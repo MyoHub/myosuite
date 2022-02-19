@@ -1,1 +1,8 @@
+*.pyc
+*.egg-info
+
 .DS_Store
+_build
+
+dist
+tags
