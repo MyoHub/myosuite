@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+
+# Copyright (c) Facebook, Inc. and its affiliates
+# Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+
 import os
 import sys
 from setuptools import setup, find_packages
@@ -9,15 +17,28 @@ if sys.version_info.major != 3:
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-setup(
-    name='myosuite',
-    version='1.0.0',
-    packages=find_packages(),
-    description='Musculoskeletal environments simulated in MuJoCo',
-    long_description=read('README.md'),
-    url='https://github.com/facebookresearch/myoSuite.git',
-    author='MyoSuite Authors - Vikash Kumar (Facebook AI), Vittorio Caggiano (Facebook AI), Huawei Wang (University of Twente), Guillaume Durandau (University of Twente), Massimo Sartori (University of Twente)',
-    install_requires=[
-        'click', 'gym==0.13', 'mujoco-py<2.1,>=2.0', 'termcolor', 'transforms3d'
-    ],
-)
+def fetch_requirements():
+    with open("requirements.txt") as f:
+        reqs = f.read().strip().split("\n")
+    return reqs
+
+if __name__ == "__main__":
+    setuptools.setup(
+        name="myoSuite",
+        version="0.1.0",
+        author='myoSuite Authors - Vikash Kumar (Facebook AI), Vittorio Caggiano (Facebook AI), Huawei Wang (University of Twente), Guillaume Durandau (University of Twente), Massimo Sartori (University of Twente)',
+        author_email="vikashplus@gmail.com",
+        license='Apache 2.0',
+        description='Musculoskeletal environments simulated in MuJoCo',
+        long_description=read('README.md'),
+        long_description_content_type="text/markdown",
+        classifiers=[
+            "Programming Language :: Python :: 3.7",
+            "License :: OSI Approved :: Apache License",
+            "Topic :: Motor Control :: Scientific/Engineering :: Artificial Intelligence :: bio-mechanics",
+            "Operating System :: OS Independent",
+        ],
+        packages=setuptools.find_packages(exclude=("tests", "tests.*")),
+        python_requires=">=3.7.1",
+        install_requires=fetch_requirements(),
+    )

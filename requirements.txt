@@ -1,0 +1,2 @@
+gym>==0.13
+free-mujoco-py
