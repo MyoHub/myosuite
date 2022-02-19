@@ -1,6 +1,10 @@
- # Myo
+""" =================================================
+# Copyright (c) Facebook, Inc. and its affiliates
+Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
+================================================= """
+
 import unittest
-from mj_envs.tests.test_envs import TestEnvs
+from myosuite.tests.test_envs import TestEnvs
 
 class TestMyo(TestEnvs):
     def test_myo(self):

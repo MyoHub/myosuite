@@ -7,8 +7,8 @@ import collections
 import gym
 import numpy as np
 
-from mj_envs.envs.myo.base_v0 import BaseV0
-from mj_envs.envs.env_base import get_sim
+from myosuite.envs.myo.base_v0 import BaseV0
+from myosuite.envs.env_base import get_sim
 
 class PoseEnvV0(BaseV0):
 

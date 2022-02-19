@@ -8,7 +8,7 @@ import enum
 import gym
 import numpy as np
 
-from mj_envs.envs.myo.base_v0 import BaseV0
+from myosuite.envs.myo.base_v0 import BaseV0
 
 # Define the task enum
 class Task(enum.Enum):
