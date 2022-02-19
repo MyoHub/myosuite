@@ -120,7 +120,7 @@ class PoseEnvV0(BaseV0):
         if self.target_type == "fixed":
             return self.target_jnt_value
         elif self.target_type == "generate":
-            return self.np_random.uniform(high=self.target_jnt_range[:,0], low=self.target_jnt_range[:,1])
+            return self.np_random.uniform(low=self.target_jnt_range[:,0], high=self.target_jnt_range[:,1])
         else:
             raise TypeError("Unknown Target type: {}".format(self.target_type))
 
