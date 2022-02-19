@@ -4,6 +4,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 
 # C extensions
 *.so
@@ -67,6 +68,7 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+docs/build/
 
 # PyBuilder
 target/
@@ -104,3 +106,8 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# release files #
+_build
+dist
+tags
