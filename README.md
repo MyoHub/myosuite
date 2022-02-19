@@ -16,11 +16,18 @@ It is adviced to create a separate environment with
 conda create --name myoSuite python=3.7.1
 conda activate myoSuite
 ```
+
 It is possible to install `myoSuite` with:
 ``` bash
 pip install -U myoSuite
 ```
-for advance installation see here.
+
+Test your installation using
+``` bash
+python myoSuite/tests/test_myo.py
+```
+
+for advance installation see [here](wwwTBD).
 
 ## Examples
 It is possible to create and interface with myoSuite environments like any other OpenAI gym environments. For example, to use the `ElbowPose1D6MRandom-v0` environment it is possible simply to run: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/googlecolab/colabtools/blob/master/notebooks/colab-github-demo.ipynb)
