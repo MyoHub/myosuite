@@ -1,4 +1,4 @@
-# Mujoco Environments
+# MyoSuite
 `MyoSuite` is a collection of environments/tasks simulated with the [Mujoco](http://www.mujoco.org/) physics engine and wrapped in the OpenAI `gym` API.
 Below is an overview of the tasks in the MyoSuite. Full task details are available [here](myosuite/envs/myo/README.md), and baseline details are availale [here](myosuite/agents).
 <img width="1240" alt="TasksALL" src="https://user-images.githubusercontent.com/23240128/135134038-1abec2a6-ee47-49fb-b886-34b909f9fc8c.png">
