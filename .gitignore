@@ -1,9 +1,14 @@
+# Compiled source #
 *.pyc
 *.egg-info
 
+# OS generated files #
 .DS_Store
-_build
+
+# read the docs build #
 docs/build
 
+# release files #
+_build
 dist
 tags
