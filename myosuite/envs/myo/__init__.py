@@ -27,7 +27,7 @@ register(id='motorFingerReachRandom-v0',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/assets/finger/motor_finger_v0.mjb',
-            'target_reach_range': {'IFtip': ((0.27, .1, .3), (.1, -.1, .1)),},
+            'target_reach_range': {'IFtip': ((.1, -.1, .1), (0.27, .1, .3)),},
             'normalize_act': True,
             'frame_skip': 5,
         }
@@ -46,7 +46,7 @@ register(id='myoFingerReachRandom-v0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/finger/myo_finger_v0.mjb',
-            'target_reach_range': {'IFtip': ((0.27, .1, .3), (.1, -.1, .1)),},
+            'target_reach_range': {'IFtip': ((.1, -.1, .1), (0.27, .1, .3)),},
             'normalize_act': True,
         }
     )
