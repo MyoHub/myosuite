@@ -11,7 +11,7 @@ import numpy as np
 from collections import deque
 from mujoco_py import load_model_from_path, MjSim, functions, ignore_mujoco_warnings
 import os
-from transforms3d.taitbryan import quat2euler
+from myosuite.utils.quat_math import quat2euler
 np.set_printoptions(precision=4)
 
 
@@ -184,7 +184,7 @@ class Robot():
 
             elif device['interface']['type'] == 'optitrack':
                 data = device['robot'].get_sensors()
-                a, b, c = quat2euler(data['quat'])
+                c, b, a = quat2euler(data['quat'])
                 rx = np.pi - a
                 rx = (rx - 2*np.pi) if rx > np.pi else rx
                 ry = b
