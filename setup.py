@@ -23,7 +23,7 @@ def fetch_requirements():
     return reqs
 
 if __name__ == "__main__":
-    setuptools.setup(
+    setup(
         name="myoSuite",
         version="0.1.0",
         author='myoSuite Authors - Vikash Kumar (Facebook AI), Vittorio Caggiano (Facebook AI), Huawei Wang (University of Twente), Guillaume Durandau (University of Twente), Massimo Sartori (University of Twente)',
@@ -38,7 +38,7 @@ if __name__ == "__main__":
             "Topic :: Motor Control :: Scientific/Engineering :: Artificial Intelligence :: bio-mechanics",
             "Operating System :: OS Independent",
         ],
-        packages=setuptools.find_packages(exclude=("tests", "tests.*")),
+        packages=find_packages(exclude=("tests", "tests.*")),
         python_requires=">=3.7.1",
         install_requires=fetch_requirements(),
     )
