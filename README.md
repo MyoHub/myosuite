@@ -1,3 +1,8 @@
+<!-- =================================================
+# Copyright (c) Facebook, Inc. and its affiliates
+Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
+================================================= -->
+
 # myoSuite
 ![PyPI](https://img.shields.io/pypi/v/myosuite)
 [![Documentation Status](https://readthedocs.org/projects/myosuite/badge/?version=latest)](https://myosuite.readthedocs.io/en/latest/?badge=latest)
