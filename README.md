@@ -11,7 +11,8 @@ Below is an overview of the tasks in the myoSuite. Full task details are availab
 
 
 ## Getting Started
-It is adviced to create a separate environment with
+You will need Python 3.7.1 or later versions. 
+It is recommended to use [Miniconda](https://docs.conda.io/en/latest/miniconda.html#latest-miniconda-installer-links) and to create a separate environment with 
 ``` bash
 conda create --name myoSuite python=3.7.1
 conda activate myoSuite
