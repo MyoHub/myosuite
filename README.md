@@ -37,3 +37,20 @@ for _ in range(1000):
 env.close()
 ```
 
+## License
+
+myoSuuite is licensed under the [Apache License](LICENSE)
+
+## Citing myoSuite
+
+If you use myoSuite in your publication, please cite the [arXiv paper](www) by using the following BibTeX entries.
+
+```BibTeX
+@Misc{myoSuite2022,
+  author =       {Vittorio, Caggiano AND Huawei, Wang AND Guillaume, Durandau AND Massimo, Sartori AND Vikash, Kumar},
+  title =        {myoSuite: A fast and contact-rich simulation suite for musculoskeletal motor control},
+  howpublished = {\url{https://github.com/facebookresearch/myoSuite}},
+  year =         {2022}
+}
+```
+
