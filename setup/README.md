@@ -30,7 +30,7 @@ alias MJPL='LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libGLEW.so:/usr/lib/nvidia-384/
 $ conda update conda
 $ cd <path/to/myosuite>
 $ conda env create -f setup/env.yml
-$ source activate myosuite-env
+$ conda activate myosuite-env
 $ pip install -e .
 ```
 - *NOTE 1:* If there are issues with install of pytorch, please follow instructions from the [pytorch website](https://pytorch.org/) to install it properly based on the specific version of CUDA (or CPU-only) you have.
@@ -56,7 +56,7 @@ export LD_LIBRARY_PATH="<path/to/.mujoco>/mujoco210/bin:$LD_LIBRARY_PATH"
 $ conda update conda
 $ cd path/to/myosuite
 $ conda env create -f setup/env.yml
-$ source activate myosuite-env
+$ conda activate myosuite-env
 $ pip install -e .
 ```
 
