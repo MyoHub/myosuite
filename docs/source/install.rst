@@ -8,7 +8,7 @@ Please follow steps exactly as below to install correctly.
 
 Requirements
 ~~~~~~~~~~~~
-* python >= 3.7.1 (if needed follow instructions `here <https://docs.conda.io/en/latest/miniconda.html>`_ for installing python)
+* python >= 3.7.1 (if needed follow instructions `here <https://docs.conda.io/en/latest/miniconda.html>`_ for installing python and conda)
 * free-mujoco-py >= 2.1.6
 
 
@@ -17,7 +17,7 @@ Installing the pip package
 
 .. code-block:: bash
 
-	pip install -U myoSuite
+	pip install -U myosuite
 
 
 (alternative) Installing from source
@@ -28,8 +28,8 @@ To get started with myoSuite, clone this repo with pre-populated submodule depen
 
 .. code-block:: bash
 
-   git clone --recursive https://github.com/facebookresearch/myoSuite.git
-   cd myoSuite
+   git clone --recursive https://github.com/facebookresearch/myosuite.git
+   cd myosuite
    pip install -e -r requirements
 
 OR Add repo to pythonpath by updating `~/.bashrc` or `~/.bash_profile`
@@ -45,7 +45,7 @@ You can visualize the environments with random controls using the below command
 
 .. code-block:: bash
 
-   python myoSuite/utils/visualize_env.py --env_name ElbowPose1D1MRandom-v0
+   python myosuite/utils/visualize_env.py --env_name myoElbowPose1D6MRandom-v0
 
 .. note::
    If the visualization results in a GLFW error, this is because ``mujoco-py`` does not see some graphics drivers correctly.
@@ -56,13 +56,13 @@ Examples
 ~~~~~~~~~
 
 It is possible to create and interface with myoSuite environments like any other OpenAI gym environments.
-For example, to use the ``ElbowPose1D6MRandom-v0`` environment it is possible simply to run:
+For example, to use the ``myoElbowPose1D6MRandom-v0`` environment it is possible simply to run:
 
 .. code-block:: python
 
-   import myoSuite
+   import myosuite
    import gym
-   env = gym.make('ElbowPose1D6MRandom-v0')
+   env = gym.make('myoElbowPose1D6MRandom-v0')
    env.reset()
    for _ in range(1000):
       env.sim.render(mode='window')
