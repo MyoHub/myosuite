@@ -1,0 +1,38 @@
+default:
+    - override hydra/output: local
+    - override hydra/launcher: local
+
+# general inputs
+env               :   myosuite-v1          # placeholder name, not a real env
+algorithm         :   NPG
+seed              :   123
+sample_mode       :   trajectories
+rl_num_traj       :   96
+rl_num_samples    :   0                # will be ignored when sample_mode=trajectories
+num_cpu           :   8
+rl_num_iter       :   1051
+save_freq         :   100
+eval_rollouts     :   10
+exp_notes         :   "Sample config for MyoSuite"
+
+# RL parameters (all params related to PG, value function etc.)
+policy_size       :   (32, 32)
+init_log_std      :   -0.25
+min_log_std       :   -1.0
+vf_hidden_size    :   (128, 128)
+vf_batch_size     :   64
+vf_epochs         :   2
+vf_learn_rate     :   1e-3
+rl_step_size      :   0.1
+rl_gamma          :   0.995
+rl_gae            :   0.97
+
+# Algorithm hyperparameters : if alg requires additional params, can be specified here (or defaults will be used)
+
+alg_hyper_params  :   {'device': 'cpu'}
+
+job_name          :   npg_${env}
+
+hydra:
+    job:
+        name: ${env}
