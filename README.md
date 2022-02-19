@@ -39,12 +39,12 @@ $ python myosuite/utils/examine_env.py --env_name myoElbowPose1D6MRandom-v0
 **NOTE:** If the visualization results in a GLFW error, this is because `mujoco-py` does not see some graphics drivers correctly. This can usually be fixed by explicitly loading the correct drivers before running the python script. See [this page](https://github.com/aravindr93/mjrl/tree/master/setup#known-issues) for details.
 
 ## Examples
-It is possible to create and interface with MyoSuite environments like any other OpenAI gym environments. For example, to use the "ElbowPose1D6MRandom-v0" environment it is possible simply to run:
+It is possible to create and interface with MyoSuite environments like any other OpenAI gym environments. For example, to use the "myoElbowPose1D6MRandom-v0" environment it is possible simply to run:
 
 ```python
 import myosuite
 import gym
-env = gym.make('ElbowPose1D6MRandom-v0')
+env = gym.make('myoElbowPose1D6MRandom-v0')
 env.reset()
 for _ in range(1000):
   env.sim.render(mode='window')
