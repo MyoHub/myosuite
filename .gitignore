@@ -1,6 +1,7 @@
 # Compiled source #
 *.pyc
 *.egg-info
+__pycache__/
 
 # OS generated files #
 .DS_Store
