@@ -1,6 +1,6 @@
 # Mujoco Environments
 `MyoSuite` is a collection of environments/tasks simulated with the [Mujoco](http://www.mujoco.org/) physics engine and wrapped in the OpenAI `gym` API.
-Below is an overview of the tasks in the MyoSuite. Full task details are available [here](myosuite/envs/myo/README.md), and baseline details are availale [here](myosuite/agents)
+Below is an overview of the tasks in the MyoSuite. Full task details are available [here](myosuite/envs/myo/README.md), and baseline details are availale [here](myosuite/agents).
 <img width="1240" alt="TasksALL" src="https://user-images.githubusercontent.com/23240128/135134038-1abec2a6-ee47-49fb-b886-34b909f9fc8c.png">
 
 
@@ -34,7 +34,7 @@ python myosuite/tests/test_myo.py
 
 6. You can visualize the environments with random controls using the below command
 ```
-$ python myosuite/utils/visualize_env.py --env_name ElbowPose1D6MRandom-v0
+$ python myosuite/utils/examine_env.py --env_name myoElbowPose1D6MRandom-v0
 ```
 **NOTE:** If the visualization results in a GLFW error, this is because `mujoco-py` does not see some graphics drivers correctly. This can usually be fixed by explicitly loading the correct drivers before running the python script. See [this page](https://github.com/aravindr93/mjrl/tree/master/setup#known-issues) for details.
 
