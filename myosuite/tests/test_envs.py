@@ -8,7 +8,6 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 import unittest
 
 import gym
-import mj_envs
 import numpy as np
 
 class TestEnvs(unittest.TestCase):

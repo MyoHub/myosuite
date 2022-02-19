@@ -9,9 +9,9 @@
 ## Launch training
 1. Get commands to run
 ```bash
-% sh train_myosuite_suits.sh biomechanics         # runs natively
-% sh train_myosuite_suits.sh biomechanics local   # use local launcher
-% sh train_myosuite_suits.sh biomechanics slurm   # use slurm launcher
+% sh train_myosuite_suits.sh myo         # runs natively
+% sh train_myosuite_suits.sh myo local   # use local launcher
+% sh train_myosuite_suits.sh myo slurm   # use slurm launcher
 ```
 2. Further customize the prompts from the previous step and execute.
 
