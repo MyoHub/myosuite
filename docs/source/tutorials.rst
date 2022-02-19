@@ -22,10 +22,14 @@ Example on how to use an environment e.g. send random movements
 
 .. code-block:: python
 
-    import myoSuite
+    import myosuite
     import gym
-    env = gym.make('XXX')
+    env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
+    for _ in range(1000):
+        env.sim.render(mode='window')
+        env.step(env.action_space.sample()) # take a random action
+    env.close()
 
 
 .. _run_visualize_index_movements:
@@ -36,10 +40,14 @@ Example on how to generate and visualize a movement e.g. index flexion, and visu
 
 .. code-block:: python
 
-    import myoSuite
+    import myosuite
     import gym
-    env = gym.make('XXX')
+    env = gym.make('myoHandPoseRandom-v0')
     env.reset()
+    for _ in range(1000):
+        env.sim.render(mode='window')
+        env.step(env.action_space.sample()) # take a random action
+    env.close()
 
 .. _run_trained_policy:
 
@@ -49,9 +57,9 @@ Example on using a policy e.g. elbow flexion, and change non-stationaries
 
 .. code-block:: python
 
-    import myoSuite
+    import myosuite
     import gym
-    env = gym.make('XXX')
+    env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
 
 
@@ -63,9 +71,9 @@ This example shows how to add fatigue to a model. It tests random actions on a m
 
 .. code-block:: python
 
-    import mj_envs
+    import myosuite
     import gym
-    env = gym.make('ElbowPose1D6MRandom-v0')
+    env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
     env.sim.render(mode='window')
     for _ in range(1000):
@@ -85,13 +93,13 @@ This example shows how to add sarcopenia or muscle weakness to a model. It tests
 
 .. code-block:: python
 
-    import mj_envs
+    import myosuite
     import gym
-    env = gym.make('ElbowPose1D6MRandom-v0')
+    env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
     env.sim.render(mode='window')
     for _ in range(1000):
-    env.step(env.action_space.sample()) # take a random action
+        env.step(env.action_space.sample()) # take a random action
     # Add muscle weakness
     env.env.muscle_condition = 'weakness'
     for _ in range(1000):
@@ -108,7 +116,7 @@ This example shows how load a model with physical tendon transfer.
 
 .. code-block:: python
 
-    import myoSuite
+    import myosuite
     import gym
     env = gym.make('XXX')
     env.reset()
@@ -126,4 +134,4 @@ When using ``mjrl`` it might be needed to resume training of a policy locally. I
 
 .. code-block:: bash
 
-    python3 hydra_mjrl_launcher.py --config-path config --config-name hydra_biomechanics_config.yaml hydra/output=local hydra/launcher=local env=HandPoseMuscleRandom-v0 job_name=[Absolute Path of the policy] rl_num_iter=[New Total number of iterations]
+    python3 hydra_mjrl_launcher.py --config-path config --config-name hydra_biomechanics_config.yaml hydra/output=local hydra/launcher=local env=myoHandPoseRandom-v0 job_name=[Absolute Path of the policy] rl_num_iter=[New Total number of iterations]
