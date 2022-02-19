@@ -34,8 +34,8 @@ if __name__ == "__main__":
         long_description_content_type="text/markdown",
         classifiers=[
             "Programming Language :: Python :: 3.7",
-            "License :: OSI Approved :: Apache License",
-            "Topic :: Motor Control :: Scientific/Engineering :: Artificial Intelligence :: bio-mechanics",
+            "License :: OSI Approved :: Apache Software License",
+            "Topic :: Scientific/Engineering :: Artificial Intelligence ",
             "Operating System :: OS Independent",
         ],
         packages=find_packages(exclude=("tests", "tests.*")),
