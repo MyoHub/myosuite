@@ -17,7 +17,9 @@ Installing the pip package
 
 .. code-block:: bash
 
-	pip install -U myosuite
+   conda create --name myoSuite python=3.7.1
+   conda activate myoSuite
+   pip install -U myosuite
 
 
 (alternative) Installing from source
@@ -40,6 +42,12 @@ OR Add repo to pythonpath by updating `~/.bashrc` or `~/.bash_profile`
 
 Testing the installation
 ~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can test the installation using
+
+.. code-block:: bash
+
+   python myoSuite/tests/test_myo.py
 
 You can visualize the environments with random controls using the below command
 
