@@ -1,12 +1,12 @@
 ## Current Solution to release
 ### Update the CHANGELOG.md
 ### Update version
-- Update version in `myoSuite/__init__.py`
+- Update version in `myosuite/__init__.py`
 - Update the doc version in `docs/source/conf.py`
 
 ### Make a tag
 ```bash
-git tag v0.0.2`
+git tag v0.0.2
 ```
 ### Commit changes from branch `something`
 ```bash
@@ -27,11 +27,11 @@ python3 -m twine upload --repository pypi dist/*
 ### Verify proper upload
 
 ```bash
-conda create --name test_myoSuite python=3.7.1
+conda create --name test_myosuite python=3.7.1
 conda activate test_myoSuite
-pip install mySuite
-python3 -c "import mySuite"
-python3 myoSuite/tests/test_envs.py
+pip install mysuite
+python3 -c "import mysuite"
+python3 myosuite/tests/test_envs.py
 conda remove --name test_myoSuite --all
 ```
 
