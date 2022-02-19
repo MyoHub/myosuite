@@ -12,6 +12,7 @@ Installation
 3. install `submitit <https://github.com/facebookincubator/submitit>`_ launcher hydra plugin to launch jobs on cluster/ local ``pip install hydra-submitit-launcher --upgrade``
 
 .. code-block:: bash
+
     pip install git+https://github.com/aravindr93/mjrl.git
     pip install hydra-core --upgrade
     pip install hydra-submitit-launcher --upgrade
