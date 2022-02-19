@@ -28,11 +28,11 @@ python3 -m twine upload --repository pypi dist/*
 
 ```bash
 conda create --name test_myosuite python=3.7.1
-conda activate test_myoSuite
+conda activate test_myosuite
 pip install mysuite
-python3 -c "import mysuite"
+python3 -c "import myosuite"
 python3 myosuite/tests/test_envs.py
-conda remove --name test_myoSuite --all
+conda remove --name test_myosuite --all
 ```
 
 ### create a newly tagged release
