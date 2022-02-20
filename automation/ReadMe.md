@@ -32,6 +32,7 @@ conda activate test_myosuite
 pip install mysuite
 python3 -c "import myosuite"
 python3 myosuite/tests/test_envs.py
+conda deactivate
 conda remove --name test_myosuite --all
 ```
 
