@@ -10,6 +10,8 @@ import os
 import sys
 from setuptools import setup, find_packages
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "myosuite"))
+
 if sys.version_info.major != 3:
     print("This Python is only compatible with Python 3, but you are running "
           "Python {}. The installation will likely fail.".format(sys.version_info.major))
@@ -21,6 +23,17 @@ def fetch_requirements():
     with open("requirements.txt") as f:
         reqs = f.read().strip().split("\n")
     return reqs
+
+def package_files(directory, ends_with):
+    paths = []
+    for (path, directories, filenames) in os.walk(directory):
+        for filename in filenames:
+            if filename.endswith(ends_with):
+                paths.append(os.path.join(path, filename))
+    return paths
+
+mjc_models_files = package_files('myosuite/envs/myo/assets/','.mjb')
+
 
 if __name__ == "__main__":
     setup(
@@ -38,7 +51,9 @@ if __name__ == "__main__":
             "Topic :: Scientific/Engineering :: Artificial Intelligence ",
             "Operating System :: OS Independent",
         ],
+        package_data={'mjc binaries': mjc_models_files},
         packages=find_packages(exclude=("tests", "tests.*")),
+        include_package_data=True,
         python_requires=">=3.7.1",
         install_requires=fetch_requirements(),
     )
