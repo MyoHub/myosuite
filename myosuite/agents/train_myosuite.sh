@@ -1,7 +1,7 @@
 # USAGE
-# ./train_myosuite_suits.sh myo         # runs natively
-# ./train_myosuite_suits.sh myo local    # use local launcher
-# ./train_myosuite_suits.sh myo slurm    # use slurm launcher
+# ./train_myosuite.sh myo          # runs natively
+# ./train_myosuite.sh myo local    # use local launcher
+# ./train_myosuite.sh myo slurm    # use slurm launcher
 
 # Configure launch
 if [ "$#" -ne 2 ] ; then
@@ -12,11 +12,11 @@ fi
 
 # Configure envs
 if [ "$1" == "myo" ] ; then
-    envs="FingerReachMuscleFixed-v0,FingerReachMuscleRandom-v0,FingerPoseMuscleFixed-v0,FingerPoseMuscleRandom-v0,ElbowPose1D1MRandom-v0,ElbowPose1D6MRandom-v0,HandPoseMuscleFixed-v0,HandPoseMuscleRandom-v0,HandReachMuscleFixed-v0,HandReachMuscleRandom-v0,HandKeyTurnFixed-v0,HandKeyTurnRandom-v0,HandObjHoldFixed-v0,HandObjHoldRandom-v0,HandPenTwirlFixed-v0,HandPenTwirlRandom-v0,BaodingFixed-v1,BaodingRandom-v1"
+    envs="myoFingerReachFixed-v0,myoFingerReachRandom-v0,myoFingerPoseFixed-v0,myoFingerPoseRandom-v0,myoElbowPose1D6MFixed-v0,myoElbowPose1D6MRandom-v0,myoHandPoseFixed-v0,myoHandPoseRandom-v0,myoHandReachFixed-v0,myoHandReachRandom-v0,myoHandKeyTurnFixed-v0,myoHandKeyTurnRandom-v0,myoHandObjHoldFixed-v0,myoHandObjHoldRandom-v0,myoHandPenTwirlFixed-v0,myoHandPenTwirlRandom-v0,myoHandBaodingFixed-v1,myoHandBaodingRandom-v1"
     config="--config-name hydra_myo_config.yaml $config"
 
 elif [ "$1" == "extra" ] ; then
-    envs="FingerReachMotorFixed-v0,FingerReachMotorRandom-v0,FingerPoseMotorFixed-v0,FingerPoseMotorRandom-v0,BaodingFixed4th-v1,BaodingFixed8th-v1"
+    envs="motorFingerReachFixed-v0,motorFingerReachRandom-v0,motorFingerPoseFixed-v0,motorFingerPoseRandom-v0,myoHandBaodingFixed4th-v1,myoHandBaodingFixed8th-v1"
     config="--config-name hydra_myo_config.yaml $config"
 
 else
