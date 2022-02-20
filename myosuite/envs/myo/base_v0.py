@@ -44,7 +44,6 @@ class BaseV0(env_base.MujocoEnv):
                     **kwargs)
 
     def initializeConditions(self):
-        # self.muscle_condition = muscle_condition
         # for muscle weakness we assume that a weaker muscle has a
         # reduced maximum force
         if self.muscle_condition == 'weakness':

@@ -25,12 +25,12 @@ def update_dict(base_dict, update_dict):
 
 
 # Register a variant of pre-registered environment
-def register_env_variants(env_name, variants):
+def register_env_variant(env_id, variants, variant_id=None, silent=False):
     # check if the base env is registered
-    assert env_name in gym.envs.registry.env_specs.keys(), "ERROR: {} not found in env registry".format(env_name)
+    assert env_id in gym.envs.registry.env_specs.keys(), "ERROR: {} not found in env registry".format(env_id)
 
     # recover the specs of the existing env
-    env_variant_specs = deepcopy(gym.envs.registry.env_specs[env_name])
+    env_variant_specs = deepcopy(gym.envs.registry.env_specs[env_id])
     env_variant_id = env_variant_specs.id[:-3]
 
     # update horizon if requested
@@ -44,14 +44,16 @@ def register_env_variants(env_name, variants):
     env_variant_id += variants_update_keyval_str
 
     # finalize name and register env
-    env_variant_specs.id = env_variant_id+env_variant_specs.id[-3:]
+    env_variant_specs.id = env_variant_id+env_variant_specs.id[-3:] if variant_id is None else variant_id
     register(
         id=env_variant_specs.id,
         entry_point=env_variant_specs._entry_point,
         max_episode_steps=env_variant_specs.max_episode_steps,
         kwargs=env_variant_specs._kwargs
     )
-    print("Registered a new env-variant:", env_variant_specs.id)
+    if not silent:
+        print("Registered a new env-variant:", env_variant_specs.id)
+    print(env_variant_specs.id, end=", ")
     return env_variant_specs.id
 
 
@@ -67,7 +69,7 @@ if __name__ == '__main__':
         "goal": {"lightswitch_joint": -0.7},
         "obj_init": {"lightswitch_joint": -0.0},
     }
-    variant_env_name = register_env_variants(env_name=base_env_name, variants=base_env_variants)
+    variant_env_name = register_env_variants(env_id=base_env_name, variants=base_env_variants)
 
     # Test variant
     print("Base-env kwargs: ")
