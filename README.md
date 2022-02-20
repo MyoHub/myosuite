@@ -7,7 +7,7 @@ Below is an overview of the tasks in the MyoSuite. Full task details are availab
 ## Getting Started
 `MyoSuite` uses git submodules to resolve dependencies. Please follow steps exactly as below to install correctly.
 
-1. The main package dependencies are `MuJoCo`, `python=3.7`, `gym>=0.13`, `mujoco-py>=2.0`, and `pytorch>=1.0`. See `setup/README.md` ([link](setup/README.md)) for detailed install instructions.
+1. The main package dependencies are [MuJoCo v2.1.0](https://github.com/deepmind/mujoco/releases/tag/2.1.0), `python=3.7`, `gym>=0.13`, `mujoco-py>=2.0`, and `pytorch>=1.0`. See `setup/README.md` ([link](setup/README.md)) for detailed install instructions.
 
 2. To get started with `MyoSuite`, clone this repo with pre-populated submodule dependencies
 ```

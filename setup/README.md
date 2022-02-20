@@ -1,8 +1,6 @@
 # Installation
-
 A short guide to install this package is below. The package relies on `mujoco-py` which might be the trickiest part of the installation. See `known issues` below and also instructions from the mujoco-py [page](https://github.com/openai/mujoco-py) if you are stuck with mujoco-py installation.
 
-The package can handle both `MuJoCo v1.5` as well as `MuJoCo v2.0`, but the former is not supported for future updates. We encourage you to use v2.0.
 
 ## Linux
 
