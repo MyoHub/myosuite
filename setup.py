@@ -51,9 +51,8 @@ if __name__ == "__main__":
             "Topic :: Scientific/Engineering :: Artificial Intelligence ",
             "Operating System :: OS Independent",
         ],
-        package_data={'mjc binaries': mjc_models_files},
+        package_data={'': mjc_models_files},
         packages=find_packages(exclude=("tests", "tests.*")),
-        include_package_data=True,
         python_requires=">=3.7.1",
         install_requires=fetch_requirements(),
     )
