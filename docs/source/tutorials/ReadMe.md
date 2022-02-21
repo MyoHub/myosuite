@@ -19,7 +19,7 @@ jupyter kernelspec uninstall myosuite
 
 ## Tutorials
 
-- [Get Started](./Get_Started.ipynb)
+- [Get Started](./1_Get_Started.ipynb)
 - [Load a trained policy and play it](./2_Load_policy.ipynb)
 - [Analyse movements from a trained policy](./3_Analyse_movements.ipynb)
 - [Train a new policy](./4_Train_policy.ipnb)
