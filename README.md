@@ -57,7 +57,7 @@ env.close()
 
 ## License
 
-myoSuuite is licensed under the [Apache License](LICENSE)
+myoSuite is licensed under the [Apache License](LICENSE)
 
 ## Citing myoSuite
 
