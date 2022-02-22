@@ -39,7 +39,7 @@ if __name__ == "__main__":
     setup(
         name="myoSuite",
         version="0.1.0",
-        author='myoSuite Authors - Vikash Kumar (Facebook AI), Vittorio Caggiano (Facebook AI), Huawei Wang (University of Twente), Guillaume Durandau (University of Twente), Massimo Sartori (University of Twente)',
+        author='MyoSuite Authors - Vikash Kumar (Facebook AI), Vittorio Caggiano (Facebook AI), Huawei Wang (University of Twente), Guillaume Durandau (University of Twente), Massimo Sartori (University of Twente)',
         author_email="vikashplus@gmail.com",
         license='Apache 2.0',
         description='Musculoskeletal environments simulated in MuJoCo',
