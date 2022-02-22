@@ -16,7 +16,8 @@ Below is an overview of the tasks in the myoSuite. Full task details are availab
 
 
 ## Getting Started
-You will need Python 3.7.1 or later versions. 
+You will need Python 3.7.1 or later versions. At this moment the library has been tested only on MacOs and Linux.
+
 It is recommended to use [Miniconda](https://docs.conda.io/en/latest/miniconda.html#latest-miniconda-installer-links) and to create a separate environment with 
 ``` bash
 conda create --name myosuite python=3.7.1
@@ -27,7 +28,7 @@ It is possible to install `myoSuite` with:
 ``` bash
 pip install -U myosuite
 ```
-for advance installation see [here](wwwTBD).
+for advance installation see [here](setup/README.md).
 
 Test your installation using
 ``` bash
