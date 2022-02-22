@@ -19,19 +19,19 @@ Below is an overview of the tasks in the myoSuite. Full task details are availab
 You will need Python 3.7.1 or later versions. 
 It is recommended to use [Miniconda](https://docs.conda.io/en/latest/miniconda.html#latest-miniconda-installer-links) and to create a separate environment with 
 ``` bash
-conda create --name myoSuite python=3.7.1
-conda activate myoSuite
+conda create --name myosuite python=3.7.1
+conda activate myosuite
 ```
 
 It is possible to install `myoSuite` with:
 ``` bash
-pip install -U myoSuite
+pip install -U myosuite
 ```
 for advance installation see [here](wwwTBD).
 
 Test your installation using
 ``` bash
-python myoSuite/tests/test_myo.py
+python myosuite/tests/test_myo.py
 ```
 
 You can also visualize the environments with random controls using the below command
@@ -45,7 +45,7 @@ It is possible to create and interface with myoSuite environments like any other
 
 
 ```python
-import myoSuite
+import myosuite
 import gym
 env = gym.make('myoElbowPose1D6MRandom-v0')
 env.reset()
