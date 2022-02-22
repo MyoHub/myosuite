@@ -67,9 +67,9 @@ You can find tutorials [here](https://github.com/facebookresearch/myosuite/tree/
 
 MyoSuite is licensed under the [Apache License](LICENSE)
 
-## Citing MyoSuite
+## Citation
 
-If you use MyoSuite in your publication, please cite the [arXiv paper](www) by using the following BibTeX entries.
+If you find this repository useful in your research, please consider giving a star ⭐ and cite the [arXiv paper](www) by using the following BibTeX entrys.
 
 ```BibTeX
 @Misc{MyoSuite2022,
