@@ -7,7 +7,7 @@ Suite
 Models
 ********
 
-AdeptSuite consists of three models: :ref:`myoFinger`, :ref:`myoElbow` and :ref:`myoHand`.
+MyoSuite consists of three models: :ref:`myoFinger`, :ref:`myoElbow` and :ref:`myoHand`.
 Using these models we design a rich collection of tasks ranging from simple reaching movements
 to contact-rich movements like pen-twirling and baoding balls.
 
