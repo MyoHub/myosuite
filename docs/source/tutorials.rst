@@ -59,8 +59,17 @@ Example on using a policy e.g. elbow flexion, and change non-stationaries
 
     import myosuite
     import gym
+    policy = "iterations/best_policy.pickle"
+
+    import pickle
+    pi = pickle.load(open(policy, 'rb'))
+
     env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
+    env.sim.render(mode='window')
+    for _ in range(1000):
+        env.step(env.action_space.sample()) # take a random action
+
 
 
 .. _test_muscle_fatigue:
@@ -78,8 +87,11 @@ This example shows how to add fatigue to a model. It tests random actions on a m
     env.sim.render(mode='window')
     for _ in range(1000):
         env.step(env.action_space.sample()) # take a random action
+
     # Add muscle fatigue
-    env.env.muscle_condition = 'fatigue'
+    env = gym.make('myoFatElbowPose1D6MRandom-v0)
+    env.reset()
+    env.sim.render(mode='window')
     for _ in range(1000):
         env.step(env.action_space.sample()) # take a random action
     env.close()
@@ -100,8 +112,11 @@ This example shows how to add sarcopenia or muscle weakness to a model. It tests
     env.sim.render(mode='window')
     for _ in range(1000):
         env.step(env.action_space.sample()) # take a random action
+
     # Add muscle weakness
-    env.env.muscle_condition = 'weakness'
+    env = gym.make('myoSarElbowPose1D6MRandom-v0)
+    env.reset()
+    env.sim.render(mode='window')
     for _ in range(1000):
         env.step(env.action_space.sample()) # take a random action
     env.close()
@@ -118,7 +133,14 @@ This example shows how load a model with physical tendon transfer.
 
     import myosuite
     import gym
-    env = gym.make('XXX')
+    env = gym.make('myoHandKeyTurnFixed-v0')
+    env.reset()
+    env.sim.render(mode='window')
+    for _ in range(1000):
+        env.step(env.action_space.sample()) # take a random action
+
+    # Add tendon transfer
+    env = gym.make('myoTTHandKeyTurnFixed-v0')
     env.reset()
     env.sim.render(mode='window')
     for _ in range(1000):
