@@ -9,10 +9,10 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ![PyPI - License](https://img.shields.io/pypi/l/myosuite)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/facebookresearch/myosuite/blob/main/docs/CONTRIBUTING.md)
 
-`myoSuite` is a collection of musculoskeletal environments and tasks simulated with the [MuJoCo](http://www.mujoco.org/) physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems
+`MyoSuite` is a collection of musculoskeletal environments and tasks simulated with the [MuJoCo](http://www.mujoco.org/) physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems
 
 
-Below is an overview of the tasks in the myoSuite. Full task details are available [here], and baseline details are availale [here]
+Below is an overview of the tasks in the MyoSuite. Full task details are available [here], and baseline details are availale [here]
 <img width="1240" alt="TasksALL" src="./docs/source/images/myoSuite_All.png">
 
 
@@ -25,7 +25,7 @@ conda create --name myosuite python=3.7.1
 conda activate myosuite
 ```
 
-It is possible to install `myoSuite` with:
+It is possible to install MyoSuite with:
 ``` bash
 pip install -U myosuite
 ```
@@ -43,7 +43,7 @@ $ python myosuite/utils/examine_env.py --env_name myoElbowPose1D6MRandom-v0
 **NOTE:** If the visualization results in a GLFW error, this is because `mujoco-py` does not see some graphics drivers correctly. This can usually be fixed by explicitly loading the correct drivers before running the python script. See [this page](setup/README.md#known-issues) for details.
 
 ## Examples
-It is possible to create and interface with myoSuite environments like any other OpenAI gym environments. For example, to use the `myoElbowPose1D6MRandom-v0` environment it is possible simply to run: [![Getting started with a Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1YFqvzspGoKTWmWcFzgWYEAxq7CQpki2G?usp=sharing)
+It is possible to create and interface with MyoSuite environments like any other OpenAI gym environments. For example, to use the `myoElbowPose1D6MRandom-v0` environment it is possible simply to run: [![Getting started with a Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1YFqvzspGoKTWmWcFzgWYEAxq7CQpki2G?usp=sharing)
 
 
 ```python
@@ -61,17 +61,17 @@ You can find tutorials [here](https://github.com/facebookresearch/myosuite/tree/
 
 ## License
 
-myoSuite is licensed under the [Apache License](LICENSE)
+MyoSuite is licensed under the [Apache License](LICENSE)
 
-## Citing myoSuite
+## Citing MyoSuite
 
-If you use myoSuite in your publication, please cite the [arXiv paper](www) by using the following BibTeX entries.
+If you use MyoSuite in your publication, please cite the [arXiv paper](www) by using the following BibTeX entries.
 
 ```BibTeX
-@Misc{myoSuite2022,
+@Misc{MyoSuite2022,
   author =       {Vittorio, Caggiano AND Huawei, Wang AND Guillaume, Durandau AND Massimo, Sartori AND Vikash, Kumar},
-  title =        {myoSuite: A fast and contact-rich simulation suite for musculoskeletal motor control},
-  howpublished = {\url{https://github.com/facebookresearch/myoSuite}},
+  title =        {MyoSuite: A fast and contact-rich simulation suite for musculoskeletal motor control},
+  howpublished = {\url{https://github.com/facebookresearch/myosuite}},
   year =         {2022}
 }
 ```
