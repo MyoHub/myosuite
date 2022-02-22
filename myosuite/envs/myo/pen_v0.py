@@ -7,10 +7,10 @@ import collections
 import numpy as np
 import gym
 
-from mj_envs.envs.myo.base_v0 import BaseV0
-from mj_envs.envs.env_base import get_sim
-from mj_envs.utils.quatmath import euler2quat
-from mj_envs.utils.vectormath import calculate_cosine
+from myosuite.envs.myo.base_v0 import BaseV0
+from myosuite.envs.env_base import get_sim
+from myosuite.utils.quat_math import euler2quat
+from myosuite.utils.vector_math import calculate_cosine
 from os import sendfile
 
 class PenTwirlFixedEnvV0(BaseV0):

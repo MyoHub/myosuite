@@ -1,0 +1,7 @@
+git+https://github.com/aravindr93/mjrl.git
+hydra-core
+hydra-submitit-launcher
+six
+torch
+matplotlib
+tabulate

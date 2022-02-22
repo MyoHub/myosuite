@@ -16,7 +16,6 @@ from mjrl.utils.train_agent import train_agent
 import os
 import json
 import gym
-import mjrl.envs
 import time as timer
 import myosuite
 

@@ -8,7 +8,7 @@ import enum
 import gym
 import numpy as np
 
-from mj_envs.envs.myo.base_v0 import BaseV0
+from myosuite.envs.myo.base_v0 import BaseV0
 
 # Define the task enum
 class Task(enum.Enum):
@@ -306,5 +306,5 @@ class BaodingFixedEnvV1(BaseV0):
 class BaodingRandomEnvV1(BaodingFixedEnvV1):
 
     def reset(self):
-        obs = super().reset(time_period = self.np_random.uniform(high=5, low=7))
+        obs = super().reset(time_period = self.np_random.uniform(low=5, high=7))
         return obs

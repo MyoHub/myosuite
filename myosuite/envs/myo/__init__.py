@@ -4,16 +4,53 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ================================================= """
 
 from gym.envs.registration import register
+from myosuite.envs.env_variants import register_env_variant
+
 import os
 import numpy as np
+
+def register_env_with_variants(id, entry_point, max_episode_steps, kwargs):
+    # register_env_with_variants base env
+    register(
+        id=id,
+        entry_point=entry_point,
+        max_episode_steps=max_episode_steps,
+        kwargs=kwargs
+    )
+    #register variants env with sarcopenia
+    if id[:3] == "myo":
+        register_env_variant(
+            env_id=id,
+            variants={'muscle_condition':'weakness'},
+            variant_id=id[:3]+"Sar"+id[3:],
+            silent=True
+        )
+    #register variants with fatigue
+    if id[:3] == "myo":
+        register_env_variant(
+            env_id=id,
+            variants={'muscle_condition':'fatigue'},
+            variant_id=id[:3]+"Fat"+id[3:],
+            silent=True
+        )
+    #register variants with tendon transfer
+    if id[:7] == "myoHand":
+        register_env_variant(
+            env_id=id,
+            variants={'muscle_condition':'reafferentation'},
+            variant_id=id[:3]+"TT"+id[3:],
+            silent=True
+        )
+
+
 
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 
 print("RS:> Registering Myo Envs")
 
 # Finger-tip reaching ==============================
-register(id='motorFingerReachFixed-v0',
-        entry_point='mj_envs.envs.myo.reach_v0:ReachEnvV0',
+register_env_with_variants(id='motorFingerReachFixed-v0',
+        entry_point='myosuite.envs.myo.reach_v0:ReachEnvV0',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/assets/finger/motor_finger_v0.mjb',
@@ -22,18 +59,18 @@ register(id='motorFingerReachFixed-v0',
             'frame_skip': 5,
         }
     )
-register(id='motorFingerReachRandom-v0',
-        entry_point='mj_envs.envs.myo.reach_v0:ReachEnvV0',
+register_env_with_variants(id='motorFingerReachRandom-v0',
+        entry_point='myosuite.envs.myo.reach_v0:ReachEnvV0',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/assets/finger/motor_finger_v0.mjb',
-            'target_reach_range': {'IFtip': ((0.27, .1, .3), (.1, -.1, .1)),},
+            'target_reach_range': {'IFtip': ((.1, -.1, .1), (0.27, .1, .3)),},
             'normalize_act': True,
             'frame_skip': 5,
         }
     )
-register(id='myoFingerReachFixed-v0',
-        entry_point='mj_envs.envs.myo.reach_v0:ReachEnvV0',
+register_env_with_variants(id='myoFingerReachFixed-v0',
+        entry_point='myosuite.envs.myo.reach_v0:ReachEnvV0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/finger/myo_finger_v0.mjb',
@@ -41,19 +78,19 @@ register(id='myoFingerReachFixed-v0',
             'normalize_act': True,
         }
     )
-register(id='myoFingerReachRandom-v0',
-        entry_point='mj_envs.envs.myo.reach_v0:ReachEnvV0',
+register_env_with_variants(id='myoFingerReachRandom-v0',
+        entry_point='myosuite.envs.myo.reach_v0:ReachEnvV0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/finger/myo_finger_v0.mjb',
-            'target_reach_range': {'IFtip': ((0.27, .1, .3), (.1, -.1, .1)),},
+            'target_reach_range': {'IFtip': ((.1, -.1, .1), (0.27, .1, .3)),},
             'normalize_act': True,
         }
     )
 
 # Elbow posing ==============================
-register(id='myoElbowPose1D6MFixed-v0',
-        entry_point='mj_envs.envs.myo.pose_v0:PoseEnvV0',
+register_env_with_variants(id='myoElbowPose1D6MFixed-v0',
+        entry_point='myosuite.envs.myo.pose_v0:PoseEnvV0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/arm/myo_elbow_1dof6muscles.mjb',
@@ -64,8 +101,8 @@ register(id='myoElbowPose1D6MFixed-v0',
             'reset_type': 'random'
         }
     )
-register(id='myoElbowPose1D6MRandom-v0',
-        entry_point='mj_envs.envs.myo.pose_v0:PoseEnvV0',
+register_env_with_variants(id='myoElbowPose1D6MRandom-v0',
+        entry_point='myosuite.envs.myo.pose_v0:PoseEnvV0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/arm/myo_elbow_1dof6muscles.mjb',
@@ -79,8 +116,8 @@ register(id='myoElbowPose1D6MRandom-v0',
 
 
 # Elbow Exo posing ==============================
-register(id='myoElbowPose1D6MExoFixed-v0',
-        entry_point='mj_envs.envs.myo.pose_v0:PoseEnvV0',
+register_env_with_variants(id='myoElbowPose1D6MExoFixed-v0',
+        entry_point='myosuite.envs.myo.pose_v0:PoseEnvV0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/arm/myo_elbow_1dof6muscles_1dofexo.mjb',
@@ -97,8 +134,8 @@ register(id='myoElbowPose1D6MExoFixed-v0',
             }
         }
     )
-register(id='myoElbowPose1D6MExoRandom-v0',
-        entry_point='mj_envs.envs.myo.pose_v0:PoseEnvV0',
+register_env_with_variants(id='myoElbowPose1D6MExoRandom-v0',
+        entry_point='myosuite.envs.myo.pose_v0:PoseEnvV0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/arm/myo_elbow_1dof6muscles_1dofexo.mjb',
@@ -120,8 +157,8 @@ register(id='myoElbowPose1D6MExoRandom-v0',
 
 
 # Finger-Joint posing ==============================
-register(id='motorFingerPoseFixed-v0',
-        entry_point='mj_envs.envs.myo.pose_v0:PoseEnvV0',
+register_env_with_variants(id='motorFingerPoseFixed-v0',
+        entry_point='myosuite.envs.myo.pose_v0:PoseEnvV0',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/assets/finger/motor_finger_v0.mjb',
@@ -135,8 +172,8 @@ register(id='motorFingerPoseFixed-v0',
             'frame_skip': 5,
         }
 )
-register(id='motorFingerPoseRandom-v0',
-        entry_point='mj_envs.envs.myo.pose_v0:PoseEnvV0',
+register_env_with_variants(id='motorFingerPoseRandom-v0',
+        entry_point='myosuite.envs.myo.pose_v0:PoseEnvV0',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/assets/finger/motor_finger_v0.mjb',
@@ -150,8 +187,8 @@ register(id='motorFingerPoseRandom-v0',
             'frame_skip': 5,
         }
     )
-register(id='myoFingerPoseFixed-v0',
-        entry_point='mj_envs.envs.myo.pose_v0:PoseEnvV0',
+register_env_with_variants(id='myoFingerPoseFixed-v0',
+        entry_point='myosuite.envs.myo.pose_v0:PoseEnvV0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/finger/myo_finger_v0.mjb',
@@ -164,8 +201,8 @@ register(id='myoFingerPoseFixed-v0',
             'normalize_act': True,
         }
     )
-register(id='myoFingerPoseRandom-v0',
-        entry_point='mj_envs.envs.myo.pose_v0:PoseEnvV0',
+register_env_with_variants(id='myoFingerPoseRandom-v0',
+        entry_point='myosuite.envs.myo.pose_v0:PoseEnvV0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/finger/myo_finger_v0.mjb',
@@ -182,8 +219,8 @@ register(id='myoFingerPoseRandom-v0',
 # Hand-Joint posing ==============================
 
 # Remove this when the ASL envs stablizes
-register(id='myoHandPoseFixed-v0', # revisit
-        entry_point='mj_envs.envs.myo.pose_v0:PoseEnvV0',
+register_env_with_variants(id='myoHandPoseFixed-v0', # revisit
+        entry_point='myosuite.envs.myo.pose_v0:PoseEnvV0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_pose.mjb',
@@ -213,8 +250,8 @@ ASL_qpos[9]='0 0 0 0.5624 0.28272 -0.75573 -1.309 1.30045 -0.006982 1.45492 0.99
 
 # ASl Eval envs for each numerals
 for k in ASL_qpos.keys():
-    register(id='myoHandPose'+str(k)+'Fixed-v0',
-            entry_point='mj_envs.envs.myo.pose_v0:PoseEnvV0',
+    register_env_with_variants(id='myoHandPose'+str(k)+'Fixed-v0',
+            entry_point='myosuite.envs.myo.pose_v0:PoseEnvV0',
             max_episode_steps=100,
             kwargs={
                 'model_path': curr_dir+'/assets/hand/myo_hand_pose.mjb',
@@ -233,8 +270,8 @@ Rpos = {}
 for i_n, n  in enumerate(jnt_namesHand):
     Rpos[n]=(np.min(m[:,i_n]), np.max(m[:,i_n]))
 
-register(id='myoHandPoseRandom-v0',  #reconsider
-        entry_point='mj_envs.envs.myo.pose_v0:PoseEnvV0',
+register_env_with_variants(id='myoHandPoseRandom-v0',  #reconsider
+        entry_point='myosuite.envs.myo.pose_v0:PoseEnvV0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_pose.mjb',
@@ -249,8 +286,8 @@ register(id='myoHandPoseRandom-v0',  #reconsider
 
 
 # Hand-Joint Reaching ==============================
-register(id='myoHandReachFixed-v0',
-        entry_point='mj_envs.envs.myo.reach_v0:ReachEnvV0',
+register_env_with_variants(id='myoHandReachFixed-v0',
+        entry_point='myosuite.envs.myo.reach_v0:ReachEnvV0',
         max_episode_steps=100,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_pose.mjb',
@@ -265,8 +302,8 @@ register(id='myoHandReachFixed-v0',
             'far_th': 0.044
         }
     )
-register(id='myoHandReachRandom-v0',
-    entry_point='mj_envs.envs.myo.reach_v0:ReachEnvV0',
+register_env_with_variants(id='myoHandReachRandom-v0',
+    entry_point='myosuite.envs.myo.reach_v0:ReachEnvV0',
     max_episode_steps=100,
     kwargs={
         'model_path': curr_dir+'/assets/hand/myo_hand_pose.mjb',
@@ -285,16 +322,16 @@ register(id='myoHandReachRandom-v0',
 
 
 # Hand-Joint key turn ==============================
-register(id='myoHandKeyTurnFixed-v0',
-        entry_point='mj_envs.envs.myo.key_turn_v0:KeyTurnEnvV0',
+register_env_with_variants(id='myoHandKeyTurnFixed-v0',
+        entry_point='myosuite.envs.myo.key_turn_v0:KeyTurnEnvV0',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_keyturn.mjb',
             'normalize_act': True
         }
     )
-register(id='myoHandKeyTurnRandom-v0',
-        entry_point='mj_envs.envs.myo.key_turn_v0:KeyTurnEnvV0',
+register_env_with_variants(id='myoHandKeyTurnRandom-v0',
+        entry_point='myosuite.envs.myo.key_turn_v0:KeyTurnEnvV0',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_keyturn.mjb',
@@ -306,16 +343,16 @@ register(id='myoHandKeyTurnRandom-v0',
 
 
 # Hold objects ==============================
-register(id='myoHandObjHoldFixed-v0',
-        entry_point='mj_envs.envs.myo.obj_hold_v0:ObjHoldFixedEnvV0',
+register_env_with_variants(id='myoHandObjHoldFixed-v0',
+        entry_point='myosuite.envs.myo.obj_hold_v0:ObjHoldFixedEnvV0',
         max_episode_steps=75,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_hold.mjb',
             'normalize_act': True
         }
     )
-register(id='myoHandObjHoldRandom-v0', # revisit
-        entry_point='mj_envs.envs.myo.obj_hold_v0:ObjHoldRandomEnvV0',
+register_env_with_variants(id='myoHandObjHoldRandom-v0', # revisit
+        entry_point='myosuite.envs.myo.obj_hold_v0:ObjHoldRandomEnvV0',
         max_episode_steps=75,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_hold.mjb',
@@ -325,8 +362,8 @@ register(id='myoHandObjHoldRandom-v0', # revisit
 
 
 # Pen twirl ==============================
-register(id='myoHandPenTwirlFixed-v0',
-            entry_point='mj_envs.envs.myo.pen_v0:PenTwirlFixedEnvV0',
+register_env_with_variants(id='myoHandPenTwirlFixed-v0',
+            entry_point='myosuite.envs.myo.pen_v0:PenTwirlFixedEnvV0',
             max_episode_steps=50,
             kwargs={
                 'model_path': curr_dir+'/assets/hand/myo_hand_pen.mjb',
@@ -334,8 +371,8 @@ register(id='myoHandPenTwirlFixed-v0',
                 'frame_skip': 5,
             }
     )
-register(id='myoHandPenTwirlRandom-v0',
-        entry_point='mj_envs.envs.myo.pen_v0:PenTwirlRandomEnvV0',
+register_env_with_variants(id='myoHandPenTwirlRandom-v0',
+        entry_point='myosuite.envs.myo.pen_v0:PenTwirlRandomEnvV0',
         max_episode_steps=50,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_pen.mjb',
@@ -346,8 +383,8 @@ register(id='myoHandPenTwirlRandom-v0',
 
 
 # Baoding ==============================
-register(id='myoHandBaodingFixed-v1',
-        entry_point='mj_envs.envs.myo.baoding_v1:BaodingFixedEnvV1',
+register_env_with_variants(id='myoHandBaodingFixed-v1',
+        entry_point='myosuite.envs.myo.baoding_v1:BaodingFixedEnvV1',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_baoding.mjb',
@@ -355,8 +392,8 @@ register(id='myoHandBaodingFixed-v1',
             'reward_option': 0,
         }
     )
-register(id='myoHandBaodingRandom-v1',
-        entry_point='mj_envs.envs.myo.baoding_v1:BaodingRandomEnvV1',
+register_env_with_variants(id='myoHandBaodingRandom-v1',
+        entry_point='myosuite.envs.myo.baoding_v1:BaodingRandomEnvV1',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_baoding.mjb',
@@ -364,8 +401,8 @@ register(id='myoHandBaodingRandom-v1',
             'reward_option': 0,
         }
     )
-register(id='myoHandBaodingFixed4th-v1',
-        entry_point='mj_envs.envs.myo.baoding_v1:BaodingFixedEnvV1',
+register_env_with_variants(id='myoHandBaodingFixed4th-v1',
+        entry_point='myosuite.envs.myo.baoding_v1:BaodingFixedEnvV1',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_baoding.mjb',
@@ -373,8 +410,8 @@ register(id='myoHandBaodingFixed4th-v1',
             'n_shifts_per_period':4,
         }
     )
-register(id='myoHandBaodingFixed8th-v1',
-        entry_point='mj_envs.envs.myo.baoding_v1:BaodingFixedEnvV1',
+register_env_with_variants(id='myoHandBaodingFixed8th-v1',
+        entry_point='myosuite.envs.myo.baoding_v1:BaodingFixedEnvV1',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_baoding.mjb',

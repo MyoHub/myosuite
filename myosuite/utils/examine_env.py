@@ -6,8 +6,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 ================================================= """
 
 import gym
-import mj_envs #even if unused it is needed to register the environments
-from mj_envs.utils.viz_paths import plot_paths as plotnsave_paths
+from myosuite.utils.viz_paths import plot_paths as plotnsave_paths
 import click
 import numpy as np
 import pickle

@@ -7,7 +7,7 @@ import collections
 import gym
 import numpy as np
 
-from mj_envs.envs.myo.base_v0 import BaseV0
+from myosuite.envs.myo.base_v0 import BaseV0
 
 
 
@@ -111,7 +111,7 @@ class ReachEnvV0(BaseV0):
     def generate_target_pose(self):
         for site, span in self.target_reach_range.items():
             sid =  self.sim.model.site_name2id(site+'_target')
-            self.sim.model.site_pos[sid] = self.np_random.uniform(high=span[0], low=span[1])
+            self.sim.model.site_pos[sid] = self.np_random.uniform(low=span[0], high=span[1])
         self.sim.forward()
 
 
