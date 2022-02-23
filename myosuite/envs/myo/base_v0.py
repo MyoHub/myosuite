@@ -46,7 +46,7 @@ class BaseV0(env_base.MujocoEnv):
     def initializeConditions(self):
         # for muscle weakness we assume that a weaker muscle has a
         # reduced maximum force
-        if self.muscle_condition == 'weakness':
+        if self.muscle_condition == 'sarcopenia':
             for mus_idx in range(self.sim.model.actuator_gainprm.shape[0]):
                 self.sim.model.actuator_gainprm[mus_idx,2] = 0.5*self.sim.model.actuator_gainprm[mus_idx,2].copy()
 

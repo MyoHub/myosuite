@@ -89,7 +89,7 @@ This example shows how to add fatigue to a model. It tests random actions on a m
         env.step(env.action_space.sample()) # take a random action
 
     # Add muscle fatigue
-    env = gym.make('myoFatElbowPose1D6MRandom-v0)
+    env = gym.make('myoFatElbowPose1D6MRandom-v0')
     env.reset()
     env.sim.render(mode='window')
     for _ in range(1000):
@@ -114,7 +114,7 @@ This example shows how to add sarcopenia or muscle weakness to a model. It tests
         env.step(env.action_space.sample()) # take a random action
 
     # Add muscle weakness
-    env = gym.make('myoSarElbowPose1D6MRandom-v0)
+    env = gym.make('myoSarElbowPose1D6MRandom-v0')
     env.reset()
     env.sim.render(mode='window')
     for _ in range(1000):

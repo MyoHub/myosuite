@@ -3,7 +3,7 @@ Installation
 
 .. _installation:
 
-myoSuite uses git submodules to resolve dependencies.
+MyoSuite uses git submodules to resolve dependencies.
 Please follow steps exactly as below to install correctly.
 
 Requirements
@@ -17,16 +17,16 @@ Installing the pip package
 
 .. code-block:: bash
 
-   conda create --name myoSuite python=3.7.1
-   conda activate myoSuite
+   conda create --name MyoSuite python=3.7.1
+   conda activate MyoSuite
    pip install -U myosuite
 
 
 (alternative) Installing from source
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-❗IMPORTANT❗ Install MuJoCo 2.1 before installing myoSuite
+❗IMPORTANT❗ Install MuJoCo 2.1 before installing MyoSuite
 
-To get started with myoSuite, clone this repo with pre-populated submodule dependencies
+To get started with MyoSuite, clone this repo with pre-populated submodule dependencies
 
 .. code-block:: bash
 
@@ -38,7 +38,7 @@ OR Add repo to pythonpath by updating `~/.bashrc` or `~/.bash_profile`
 
 .. code-block:: bash
 
-   export PYTHONPATH="<path/to/myoSuite>:$PYTHONPATH"
+   export PYTHONPATH="<path/to/myosuite>:$PYTHONPATH"
 
 Testing the installation
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -47,7 +47,7 @@ You can test the installation using
 
 .. code-block:: bash
 
-   python myoSuite/tests/test_myo.py
+   python myosuite/tests/test_myo.py
 
 You can visualize the environments with random controls using the below command
 
@@ -63,7 +63,7 @@ You can visualize the environments with random controls using the below command
 Examples
 ~~~~~~~~~
 
-It is possible to create and interface with myoSuite environments like any other OpenAI gym environments.
+It is possible to create and interface with MyoSuite environments like any other OpenAI gym environments.
 For example, to use the ``myoElbowPose1D6MRandom-v0`` environment it is possible simply to run:
 
 .. code-block:: python

@@ -9,6 +9,7 @@ from myosuite.envs.env_variants import register_env_variant
 import os
 import numpy as np
 
+# utility to register envs with all muscle conditions
 def register_env_with_variants(id, entry_point, max_episode_steps, kwargs):
     # register_env_with_variants base env
     register(
@@ -21,8 +22,8 @@ def register_env_with_variants(id, entry_point, max_episode_steps, kwargs):
     if id[:3] == "myo":
         register_env_variant(
             env_id=id,
-            variants={'muscle_condition':'weakness'},
-            variant_id=id[:3]+"Sar"+id[3:],
+            variants={'muscle_condition':'sarcopenia'},
+            variant_id=id[:3]+"Sarc"+id[3:],
             silent=True
         )
     #register variants with fatigue
@@ -30,7 +31,7 @@ def register_env_with_variants(id, entry_point, max_episode_steps, kwargs):
         register_env_variant(
             env_id=id,
             variants={'muscle_condition':'fatigue'},
-            variant_id=id[:3]+"Fat"+id[3:],
+            variant_id=id[:3]+"Fati"+id[3:],
             silent=True
         )
     #register variants with tendon transfer
@@ -38,11 +39,9 @@ def register_env_with_variants(id, entry_point, max_episode_steps, kwargs):
         register_env_variant(
             env_id=id,
             variants={'muscle_condition':'reafferentation'},
-            variant_id=id[:3]+"TT"+id[3:],
+            variant_id=id[:3]+"Reaf"+id[3:],
             silent=True
         )
-
-
 
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 

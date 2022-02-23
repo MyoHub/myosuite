@@ -53,7 +53,6 @@ def register_env_variant(env_id, variants, variant_id=None, silent=False):
     )
     if not silent:
         print("Registered a new env-variant:", env_variant_specs.id)
-    print(env_variant_specs.id, end=", ")
     return env_variant_specs.id
 
 
