@@ -1,4 +1,4 @@
-# Here a list of tutorial on how to use myoSuite
+# Here a list of tutorial on how to use MyoSuite
 
 ## Requirements
 You need to install Jupyter Notebooks with:
@@ -6,7 +6,7 @@ You need to install Jupyter Notebooks with:
 pip install jupyter
 ```
 
-Note: in case the kernel for the environent is not recognized, you can install it wiht the followin:
+Note: in case the kernel for the environent is not recognized, you can install it with the following commands:
 
 ``` bash
 pip install jupyter ipykernel
