@@ -1,6 +1,6 @@
-# Contributing to Facebook Open Source Projects
+# Contributing to MyoSuite
 
-We want to make contributing to Facebook Open Source Projects as easy and
+We want to make contributing to this project as easy and
 transparent as possible.
 
 ## Pull Requests
