@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.abspath("../../myosuite"))
 
 # -- Project information
 
-project = 'myoSuite'
+project = 'MyoSuite'
 copyright = "Copyright © 2022 Meta Platforms, Inc"
 author = "Meta AI Research"
 
