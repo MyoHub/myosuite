@@ -58,8 +58,6 @@ env.close()
 ```
 
 
-https://user-images.githubusercontent.com/23240128/155236978-519ed0bc-db4b-40a3-ba2a-3371fd15596d.mp4
-
 
 You can find [tutorials](https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials#tutorials) on how to load MyoSuite models/tasks, train them and visualize their outcome.
 
