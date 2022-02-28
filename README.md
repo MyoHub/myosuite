@@ -60,7 +60,7 @@ env.close()
 
 
 
-You can find [tutorials](https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials#tutorials) on how to load MyoSuite models/tasks, train them and visualize their outcome.
+You can find [tutorials](https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials#tutorials) on how to load MyoSuite models/tasks, train them and visualize their outcome. Also, you can find [baselines](https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents) to test some pre-trained policies.
 
 ## License
 
