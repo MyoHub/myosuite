@@ -33,7 +33,7 @@ pip install -U myosuite
 ```
 for advance installation see [here](setup/README.md).
 
-Test your installation using
+Test your installation using (this will return also a list of all the current environments):
 ``` bash
 python myosuite/tests/test_myo.py
 ```
