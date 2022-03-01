@@ -38,7 +38,7 @@ Test your installation using (this will return also a list of all the current en
 python myosuite/tests/test_myo.py
 ```
 
-You can also visualize the environments with random controls using the below command
+You can also visualize the environments with random controls using the command below:
 ```
 $ python myosuite/utils/examine_env.py --env_name myoElbowPose1D6MRandom-v0
 ```
