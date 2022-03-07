@@ -4,6 +4,8 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ================================================= -->
 
 # MyoSuite
+
+[![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 ![PyPI](https://img.shields.io/pypi/v/myosuite)
 [![Documentation Status](https://readthedocs.org/projects/myosuite/badge/?version=latest)](https://myosuite.readthedocs.io/en/latest/?badge=latest)
 ![PyPI - License](https://img.shields.io/pypi/l/myosuite)
