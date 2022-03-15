@@ -2,8 +2,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates
 Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= -->
-
-# MyoSuite
+<img src="./docs/source/images/Full Color Horizontal wider.png" width=800>
 
 [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 ![PyPI](https://img.shields.io/pypi/v/myosuite)
