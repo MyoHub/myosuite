@@ -15,7 +15,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 `MyoSuite` is a collection of musculoskeletal environments and tasks simulated with the [MuJoCo](http://www.mujoco.org/) physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems
 
 
-Below is an overview of the tasks in the MyoSuite. Full task details are available [here](https://github.com/facebookresearch/myosuite/blob/main/docs/source/suite.rst#tasks), and baseline details are availale [here](https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents/baslines_NPG)
+Below is an overview of the tasks in the MyoSuite. Full task details are available [here](https://github.com/facebookresearch/myosuite/blob/main/docs/source/suite.rst#tasks), and baseline details are available [here](https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents/baslines_NPG)
 <img width="1240" alt="TasksALL" src="./docs/source/images/myoSuite_All.png">
 
 
