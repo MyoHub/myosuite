@@ -21,3 +21,4 @@ pip install submitit
 ```
 2. Further customize the prompts from the previous step and execute.
 
+3. To resume training from a previous checkpoint add the `+output_dir=<absolute_path_of_previous_checkpoint>` to the command line
