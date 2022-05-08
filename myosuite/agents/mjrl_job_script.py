@@ -57,7 +57,7 @@ def train_loop(job_data) -> None:
     print("========================================")
 
     ts = timer.time()
-    train_agent(job_name='.',
+    train_agent(job_name=job_data.job_name,
                 agent=agent,
                 seed=job_data.seed,
                 niter=job_data.rl_num_iter,
