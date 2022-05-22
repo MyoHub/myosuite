@@ -50,7 +50,7 @@ BRA       Brachioradialis
 myoHand
 =========
 The dexterous human hand requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
-This musculoskeletal model is comprised of 29 bones, 23 joints, and 38 muscles-tendon units.
+This musculoskeletal model is comprised of 29 bones, 23 joints, and 39 muscles-tendon units.
 
 .. image:: images/myoHand.png
   :height: 200
@@ -76,6 +76,7 @@ OP       Opponens Pollicis
 FDS      Flexor Digitorum Superficialis (2- index, 3- middle, 4- ring, 5- little)
 FDP      Flexor Digitorum Profundus (2- index, 3- middle, 4- ring, 5- little)
 EDC      Extensor Digitorum Communis (2- index, 3- middle, 4- ring, 5- little)
+EDM      Extensor Digiti Minimi
 RI       Radial Interosseous (2- index, 3- middle, 4- ring, 5- little)
 LU-RB    Lumbrical (2- index, 3- middle, 4- ring, 5- little)
 UI-UB    Palmar or Ulnar Interosseous (2- index, 3- middle, 4- ring, 5- little)
