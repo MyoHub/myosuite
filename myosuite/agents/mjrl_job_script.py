@@ -1,3 +1,8 @@
+""" =================================================
+# Copyright (c) Facebook, Inc. and its affiliates
+Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
+================================================= """
+
 """
 This is a job script for running policy gradient algorithms on gym tasks.
 Separate job scripts are provided to run few other algorithms
