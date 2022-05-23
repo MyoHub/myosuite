@@ -1,4 +1,5 @@
 """ =================================================
+Copyright (c) Facebook, Inc. and its affiliates
 Copyright (C) 2018 Vikash Kumar
 Author  :: Vikash Kumar (vikashplus@gmail.com)
 Source  :: https://github.com/vikashplus/mj_envs
