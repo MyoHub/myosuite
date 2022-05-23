@@ -1,0 +1,27 @@
+default:
+- override hydra/output: local
+- override hydra/launcher: local
+env: myoHandKeyTurnRandom-v0
+algorithm: NPG
+seed: 3
+sample_mode: trajectories
+rl_num_traj: 96
+rl_num_samples: 0
+num_cpu: 8
+rl_num_iter: 1001
+save_freq: 100
+eval_rollouts: 10
+exp_notes: 'J2: Training for release mj_env branch-v0.2dev, commit id: 015a8b0a75d893b685a4e741a1f8c0f9b5363222'
+policy_size: (32, 32)
+init_log_std: -0.25
+min_log_std: -1.0
+vf_hidden_size: (128, 128)
+vf_batch_size: 64
+vf_epochs: 2
+vf_learn_rate: 0.001
+rl_step_size: 0.1
+rl_gamma: 0.995
+rl_gae: 0.97
+alg_hyper_params:
+  device: cpu
+job_name: npg_${env}
