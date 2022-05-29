@@ -269,7 +269,7 @@ and resistance to fatigue (Vøllestad (1997)).
 The current implementation is simplified to consider the same fatigue factor for all muscles and
 that muscle can be completely fatigued.
 
-.. image:: images/fatigue.png
+.. image:: images/Fatigue.png
   :width: 800
 
 
