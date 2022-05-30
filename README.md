@@ -6,7 +6,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 ![PyPI](https://img.shields.io/pypi/v/myosuite)
-[![Documentation Status](https://readthedocs.org/projects/myosuite/badge/?version=latest)](https://myosuite.readthedocs.io/en/latest/?badge=latest)
+[![Documentation Status](https://readthedocs.org/projects/myosuite/badge/?version=latest)](https://myosuite.readthedocs.io/en/latest/)
 ![PyPI - License](https://img.shields.io/pypi/l/myosuite)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/facebookresearch/myosuite/blob/main/docs/CONTRIBUTING.md)
 [![Downloads](https://pepy.tech/badge/myosuite)](https://pepy.tech/project/myosuite)
@@ -14,8 +14,10 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 `MyoSuite` is a collection of musculoskeletal environments and tasks simulated with the [MuJoCo](http://www.mujoco.org/) physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems
 
+ [Full task details](https://github.com/facebookresearch/myosuite/blob/main/docs/source/suite.rst#tasks) | [Baselines](https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents/baslines_NPG) | [Documentation](https://myosuite.readthedocs.io/en/latest/)
 
-Below is an overview of the tasks in the MyoSuite. Full task details are available [here](https://github.com/facebookresearch/myosuite/blob/main/docs/source/suite.rst#tasks), and baseline details are available [here](https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents/baslines_NPG)
+Below is an overview of the tasks in the MyoSuite.
+
 <img width="1240" alt="TasksALL" src="./docs/source/images/myoSuite_All.png">
 
 
@@ -70,15 +72,17 @@ MyoSuite is licensed under the [Apache License](LICENSE)
 
 ## Citation
 
-If you find this repository useful in your research, please consider giving a star ⭐ and cite it by using the following BibTeX entrys.
-
-<!-- the [arXiv paper](www)  -->
+If you find this repository useful in your research, please consider giving a star ⭐ and cite our [arXiv paper](https://arxiv.org/abs/2205.13600)  by using the following BibTeX entrys.
 
 ```BibTeX
 @Misc{MyoSuite2022,
   author =       {Vittorio, Caggiano AND Huawei, Wang AND Guillaume, Durandau AND Massimo, Sartori AND Vikash, Kumar},
-  title =        {MyoSuite: A fast and contact-rich simulation suite for musculoskeletal motor control},
+  title =        {MyoSuite -- A contact-rich simulation suite for musculoskeletal motor control}},
+  publisher = {arXiv},
+  year = {2022},
   howpublished = {\url{https://github.com/facebookresearch/myosuite}},
   year =         {2022}
+  doi = {10.48550/ARXIV.2205.13600},
+  url = {https://arxiv.org/abs/2205.13600},
 }
 ```
