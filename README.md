@@ -77,7 +77,7 @@ If you find this repository useful in your research, please consider giving a st
 ```BibTeX
 @Misc{MyoSuite2022,
   author =       {Vittorio, Caggiano AND Huawei, Wang AND Guillaume, Durandau AND Massimo, Sartori AND Vikash, Kumar},
-  title =        {MyoSuite -- A contact-rich simulation suite for musculoskeletal motor control}},
+  title =        {MyoSuite -- A contact-rich simulation suite for musculoskeletal motor control},
   publisher = {arXiv},
   year = {2022},
   howpublished = {\url{https://github.com/facebookresearch/myosuite}},
