@@ -10,6 +10,7 @@ wget -q https://github.com/deepmind/mujoco/releases/download/2.1.0/mujoco210-lin
 ```
 - Unzip the downloaded `mujoco210` binary into `~/.mujoco/mujoco210`.
 ```
+mkdir "$HOME/.mujoco"
 tar -zxf mujoco210.tar.gz -C "$HOME/.mujoco"
 rm mujoco210.tar.gz
 ```
@@ -42,6 +43,7 @@ wget -q https://github.com/deepmind/mujoco/releases/download/2.1.0/mujoco210-mac
 ```
 - Unzip the downloaded `mujoco210` binary into `~/.mujoco/mujoco210`.
 ```
+mkdir "$HOME/.mujoco"
 tar -zxf mujoco210.tar.gz -C "$HOME/.mujoco"
 rm mujoco210.tar.gz
 ```
