@@ -6,7 +6,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 ================================================= """
 
 import gym
-from myosuite.utils.viz_paths import plot_paths as plotnsave_paths
+from myosuite.utils.paths_utils import plot as plotnsave_paths
 import click
 import numpy as np
 import pickle
@@ -24,10 +24,12 @@ USAGE:\n
 
 # Random policy
 class rand_policy():
-    def __init__(self, env):
+    def __init__(self, env, seed):
         self.env = env
+        self.env.action_space.np_random.seed(seed) # requires exlicit seeding
 
     def get_action(self, obs):
+        # return self.env.np_random.uniform(high=self.env.action_space.high, low=self.env.action_space.low)
         return self.env.action_space.sample(), {'mode': 'random samples'}
 
 # MAIN =========================================================
@@ -43,23 +45,26 @@ class rand_policy():
 @click.option('-on', '--output_name', type=str, default=None, help=('The name to save the outputs as'))
 @click.option('-sp', '--save_paths', type=bool, default=False, help=('Save the rollout paths'))
 @click.option('-pp', '--plot_paths', type=bool, default=False, help=('2D-plot of individual paths'))
+@click.option('-ea', '--env_args', type=str, default=None, help=('env args. E.g. --env_args "{\'is_hardware\':True}"'))
 
-def main(env_name, policy_path, mode, seed, num_episodes, render, camera_name, output_dir, output_name, save_paths, plot_paths):
+def main(env_name, policy_path, mode, seed, num_episodes, render, camera_name, output_dir, output_name, save_paths, plot_paths, env_args):
 
     # seed and load environments
     np.random.seed(seed)
-    env = gym.make(env_name)
+    env = gym.make(env_name) if env_args==None else gym.make(env_name, **(eval(env_args)))
     env.seed(seed)
 
     # resolve policy and outputs
     if policy_path is not None:
         pi = pickle.load(open(policy_path, 'rb'))
         if output_dir == './': # overide the default
-           output_dir, pol_name = os.path.split(policy_path)
-           if output_name is None:
-               output_name = os.path.splitext(pol_name)[0]
+            output_dir, pol_name = os.path.split(policy_path)
+            output_name = os.path.splitext(pol_name)[0]
+        if output_name is None:
+            pol_name = os.path.split(policy_path)[1]
+            output_name = os.path.splitext(pol_name)[0]
     else:
-        pi = rand_policy(env)
+        pi = rand_policy(env, seed)
         mode = 'exploration'
         output_name ='random_policy'
 

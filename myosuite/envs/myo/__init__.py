@@ -228,7 +228,7 @@ register_env_with_variants(id='myoHandPoseFixed-v0', # revisit
             'normalize_act': True,
             'pose_thd': .7,
             'reset_type': "init",        # none, init, random
-            'target_type': 'fixed',      # switch / generate/ fixed
+            'target_type': 'fixed',      # generate/ fixed
         }
     )
 
@@ -259,7 +259,7 @@ for k in ASL_qpos.keys():
                 'normalize_act': True,
                 'pose_thd': .7,
                 'reset_type': "init",        # none, init, random
-                'target_type': 'fixed',      # switch / generate/ fixed
+                'target_type': 'fixed',      # generate/ fixed
             }
     )
 
@@ -279,7 +279,7 @@ register_env_with_variants(id='myoHandPoseRandom-v0',  #reconsider
             'normalize_act': True,
             'pose_thd': .7,
             'reset_type': "random",         # none, init, random
-            'target_type': 'generate',      # switch / generate/ fixed
+            'target_type': 'generate',      # generate/ fixed
         }
     )
 
@@ -291,11 +291,11 @@ register_env_with_variants(id='myoHandReachFixed-v0',
         kwargs={
             'model_path': curr_dir+'/assets/hand/myo_hand_pose.mjb',
             'target_reach_range': {
-                'THtip': ((-0.165, -0.217, 1.095), (-0.165, -0.217, 1.095)),
-                'IFtip': ((-0.151, -0.227, 1.055), (-0.151, -0.227, 1.055)),
-                'MFtip': ((-0.146, -0.227, 1.047), (-0.146, -0.227, 1.047)),
-                'RFtip': ((-0.148, -0.223, 1.045), (-0.148, -0.223, 1.045)),
-                'LFtip': ((-0.148, -0.208, 1.034), (-0.148, -0.208, 1.034)),
+                'THtip': ((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495)),
+                'IFtip': ((-0.151, -0.547, 1.455), (-0.151, -0.547, 1.455)),
+                'MFtip': ((-0.146, -0.547, 1.447), (-0.146, -0.547, 1.447)),
+                'RFtip': ((-0.148, -0.543, 1.445), (-0.148, -0.543, 1.445)),
+                'LFtip': ((-0.148, -0.528, 1.434), (-0.148, -0.528, 1.434)),
                 },
             'normalize_act': True,
             'far_th': 0.044
@@ -307,12 +307,11 @@ register_env_with_variants(id='myoHandReachRandom-v0',
     kwargs={
         'model_path': curr_dir+'/assets/hand/myo_hand_pose.mjb',
         'target_reach_range': {
-            'THtip': ((-0.165-0.020, -0.217-0.040, 1.095-0.040), (-0.165+0.040, -0.217+0.020, 1.095+0.040)),
-            'IFtip': ((-0.151-0.040, -0.227-0.020, 1.055-0.010), (-0.151+0.040, -0.227+0.020, 1.055+0.010)),
-            'MFtip': ((-0.146-0.040, -0.227-0.020, 1.047-0.010), (-0.146+0.040, -0.227+0.020, 1.047+0.010)),
-            'RFtip': ((-0.148-0.040, -0.223-0.020, 1.045-0.010), (-0.148+0.040, -0.223+0.020, 1.045+0.010)),
-            'LFtip': ((-0.148-0.040, -0.208-0.020, 1.034-0.010), (-0.148+0.040, -0.208+0.020, 1.034+0.010)),
-
+            'THtip': ((-0.165-0.020, -0.537-0.040, 1.495-0.040), (-0.165+0.040, -0.537+0.020, 1.495+0.040)),
+            'IFtip': ((-0.151-0.040, -0.547-0.020, 1.455-0.010), (-0.151+0.040, -0.547+0.020, 1.455+0.010)),
+            'MFtip': ((-0.146-0.040, -0.547-0.020, 1.447-0.010), (-0.146+0.040, -0.547+0.020, 1.447+0.010)),
+            'RFtip': ((-0.148-0.040, -0.543-0.020, 1.445-0.010), (-0.148+0.040, -0.543+0.020, 1.445+0.010)),
+            'LFtip': ((-0.148-0.040, -0.528-0.020, 1.434-0.010), (-0.148+0.040, -0.528+0.020, 1.434+0.010)),
             },
         'normalize_act': True,
         'far_th': 0.034

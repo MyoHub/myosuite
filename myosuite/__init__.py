@@ -4,5 +4,6 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ================================================= """
 
 import myosuite.envs.myo # noqa
+import myosuite.envs.myo.myochallenge # noqa
 
 __version__ = "0.0.4"

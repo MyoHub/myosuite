@@ -20,20 +20,21 @@ class PoseEnvV0(BaseV0):
         "penalty": 50,
     }
 
-    def __init__(self, model_path:str, **kwargs):
+    def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
+
         # EzPickle.__init__(**locals()) is capturing the input dictionary of the init method of this class.
         # In order to successfully capture all arguments we need to call gym.utils.EzPickle.__init__(**locals())
         # at the leaf level, when we do inheritance like we do here.
         # kwargs is needed at the top level to account for injection of __class__ keyword.
         # Also see: https://github.com/openai/gym/pull/1497
-        gym.utils.EzPickle.__init__(**locals())
+        gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
 
         # This two step construction is required for pickling to work correctly. All arguments to all __init__
         # calls must be pickle friendly. Things like sim / sim_obsd are NOT pickle friendly. Therefore we
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(model_path=model_path)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
 
         self._setup(**kwargs)
 
@@ -156,8 +157,6 @@ class PoseEnvV0(BaseV0):
             self.sim.model.geom_size[gid][0] = 0.01 + 2.5*weight/100
             # self.sim_obsd.model.geom_size[gid][0] = weight/10
 
-
-
         # update target
         if self.target_type == "generate":
             # use target_jnt_range to generate targets
@@ -174,7 +173,7 @@ class PoseEnvV0(BaseV0):
                 self.target_jnt_value = np.array([-0.12756566, 0.06741454, 1.51352705, 0.91777418, -0.63884237, 0.22452487, 0.42103326, 0.4139465])
                 self.sim.model.site_pos[self.target_sids[0]] = np.array([-0.11647777, -0.05180014, 0.19044284])
                 self.sim.model.site_pos[self.target_sids[1]] = np.array([-0.17728016, 0.01489491, 0.17953786])
-        elif self.target_type is "fixed":
+        elif self.target_type == "fixed":
             self.update_target(restore_sim=True)
         else:
             print("{} Target Type not found ".format(self.target_type))
