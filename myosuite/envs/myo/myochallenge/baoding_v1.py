@@ -177,10 +177,19 @@ class BaodingEnvV1(BaseV0):
 
         return rwd_dict
 
-    def get_metrics(self):
+
+    def get_metrics(self, paths):
+        """
+        Evaluate paths and report metrics
+        """
+        # average sucess over entire env horizon
+        solved = np.mean([np.sum(p['env_infos']['rwd_dict']['solved'])/self.horizon for p in paths])
+        # average activations over entire trajectory (can be shorter than horizon, if done) realized
+        act_mag = np.mean([np.mean(p['env_infos']['rwd_dict']['act_mag']) for p in paths])
+
         metrics = {
-            'solved':self.rwd_dict['solved'],
-            'act_mag':self.rwd_dict['act_mag'],
+            'solved': solved,
+            'act_mag':act_mag,
             }
         return metrics
 

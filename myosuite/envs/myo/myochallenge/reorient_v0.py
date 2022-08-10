@@ -86,7 +86,7 @@ class ReorientEnvV0(BaseV0):
             ('pos_dist', -1.*pos_dist),
             ('rot_dist', -1.*rot_dist),
             # Must keys
-            ('act_reg', -1.*act_mag),
+            ('act_mag', -1.*act_mag),
             ('sparse', -rot_dist-10.0*pos_dist),
             ('solved', (pos_dist<self.pos_th) and (rot_dist<self.rot_th) and (not drop) ),
             ('done', drop),
@@ -97,10 +97,27 @@ class ReorientEnvV0(BaseV0):
         self.sim.model.site_rgba[self.success_indicator_sid, :2] = np.array([0, 2]) if rwd_dict['solved'] else np.array([2, 0])
         return rwd_dict
 
-    def get_metrics(self):
+
+    def get_metrics(self, paths, successful_steps=5):
+        """
+        Evaluate paths and report metrics
+        """
+        num_success = 0
+        num_paths = len(paths)
+
+        # average sucess over entire env horizon
+        for path in paths:
+            # record success if solved for provided successful_steps
+            if np.sum(path['env_infos']['rwd_dict']['solved'] * 1.0) > successful_steps:
+                num_success += 1
+        solved = num_success/num_paths
+
+        # average activations over entire trajectory (can be shorter than horizon, if done) realized
+        act_mag = np.mean([np.mean(p['env_infos']['rwd_dict']['act_mag']) for p in paths])
+
         metrics = {
-            'solved':self.rwd_dict['solved'],
-            'act_mag':self.rwd_dict['act_mag'],
+            'solved': solved,
+            'act_mag':act_mag,
             }
         return metrics
 

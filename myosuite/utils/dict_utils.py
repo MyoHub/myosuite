@@ -15,6 +15,8 @@ def dict_numpify(data:dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16)->di
             val = np.array([val], dtype=i_res)
         elif isinstance(val, float):
             val = np.array([val], dtype=f_res)
+        elif isinstance(val, str):
+            val = [val]
 
         # numpy
         elif isinstance(val, np.ndarray):
@@ -26,7 +28,6 @@ def dict_numpify(data:dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16)->di
                 val = val.astype(f_res, copy=False)
             elif val.dtype == np.dtype('O'):
                 val = val.astype(np.float16, copy=False) # switch none with nan
-
 
         # dict
         elif isinstance(val, dict):

@@ -14,6 +14,8 @@ import skvideo.io
 from PIL import Image
 import click
 from myosuite.utils.dict_utils import flatten_dict, dict_numpify
+import json
+
 
 # Useful to check the horizon for teleOp / Hardware experiments
 def plot_horizon(paths, env, fileName_prefix=None):
@@ -192,12 +194,17 @@ def render(rollout_path, render_format:str="mp4", cam_names:list=["left"]):
             path_horizon = path['env_infos']['time'].shape[0]
 
         # find full key name
+        data_keys = data.keys()
         cam_keys = []
-        for key in data.keys():
-            for cam_name in cam_names:
+        for cam_name in cam_names:
+            cam_key = None
+            for key in data_keys:
                 if cam_name in key and 'rgb' in key:
-                    cam_keys.append(key)
-        assert cam_keys != [], "No observations found for cameras"
+                   cam_key = key
+                   break
+            assert cam_key != None, "Cam: {} not found in data. Available keys: [{}]".format(cam_name, data_keys)
+            cam_keys.append(key)
+
 
         # pre allocate buffer
         if i_path==0:
@@ -230,7 +237,7 @@ def render(rollout_path, render_format:str="mp4", cam_names:list=["left"]):
 
 
 # parse path from robohive format into robopen dataset format
-def path2dataset(path:dict)->dict:
+def path2dataset(path:dict, config_path=None)->dict:
     """
     Convery Robohive path.pickle format into robopen dataset format
     """
@@ -269,6 +276,10 @@ def path2dataset(path:dict)->dict:
         dataset['derived/rot_ee'] = path['env_infos']['obs_dict']['rot_ee']
 
     # Config =====
+    if config_path:
+        config = json.load(open(config_path, 'rb'))
+        dataset['config'] = config
+
     if 'user_cmt' in path.keys():
         dataset['config/solved'] = float(path['user_cmt'])
 
@@ -290,10 +301,13 @@ def print_h5_schema(obj):
 
 
 # convert paths from pickle to h5 format
-def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str='path', compress_path=False):
-    # path:         single path or folder with paths
-    # output_dir:   Directory to save the outputs. use path location if none.
-    # verify:       Verify the saved file
+def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str='path', compress_path=False, config_path=None):
+    # rollout_path:     Single path or folder with paths
+    # output_dir:       Directory to save the outputs. use path location if none.
+    # verify_output:    Verify the saved file
+    # h5_format:        robohive path / roboset h5s
+    # compress_path:    produce smaller outputs by removing duplicate data
+    # config_path:      add extra configs
 
    # resolve output dirzz
     if output_dir == None: # overide the default
@@ -341,7 +355,8 @@ def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str=
             for i_path, path in enumerate(paths):
                 print("parsing rollout", i_path)
                 trial = paths_h5.create_group('Trial'+str(i_path))
-                dataset = path2dataset(path) # convert to robopen dataset format
+                dataset = path2dataset(path, config_path) # convert to robopen dataset format
+                dataset = flatten_dict(data=dataset)
                 dataset = dict_numpify(dataset, u_res=None, i_res=np.int8, f_res=np.float16) # numpify + data resolutions
                 for k, v in dataset.items():
                     trial.create_dataset(k, data=v, compression='gzip', compression_opts=4)
@@ -377,7 +392,8 @@ Script to recover images and videos from the saved pickle files
 @click.option('-cp', '--compress_path', help='compress paths. Remove obs and env_info/state keys', default=False)
 @click.option('-rf', '--render_format', type=click.Choice(['rgb', 'mp4']), help='format to save', default="mp4")
 @click.option('-cn', '--cam_names', multiple=True, help='camera to render. Eg: left, right, top, Franka_wrist', default=["left", "top", "right", "wrist"])
-def util_path_cli(util, path, env, output_name, output_dir, verify_output, render_format, cam_names, h5_format, compress_path):
+@click.option('-ac', '--add_config', help='Add extra infos to config using as json', default=None)
+def util_path_cli(util, path, env, output_name, output_dir, verify_output, render_format, cam_names, h5_format, compress_path, add_config):
 
     if util=='plot_horizon':
         fileName_prefix = os.join(output_dir, output_name)
@@ -388,7 +404,7 @@ def util_path_cli(util, path, env, output_name, output_dir, verify_output, rende
     elif util=='render':
         render(rollout_path=path, render_format=render_format, cam_names=cam_names)
     elif util=='pickle2h5':
-        pickle2h5(rollout_path=path, output_dir=output_dir, verify_output=verify_output, h5_format=h5_format, compress_path=compress_path)
+        pickle2h5(rollout_path=path, output_dir=output_dir, verify_output=verify_output, h5_format=h5_format, compress_path=compress_path, config_path=add_config)
     elif util=='h5schema':
         with h5py.File(path, "r") as h5file:
             print("Printing schema read from output: ", path)

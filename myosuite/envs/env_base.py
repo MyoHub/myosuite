@@ -9,6 +9,7 @@ import gym
 import numpy as np
 import os
 import time as timer
+import platform
 # import torch #removed as not using visual inputs
 # import torchvision.transforms as T #removed as not using visual inputs
 
@@ -627,7 +628,11 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
             # save offscreen buffers as video
             if render =='offscreen':
                 file_name = output_dir + filename + str(ep) + ".mp4"
-                skvideo.io.vwrite(file_name, np.asarray(frames))
+                # check if the platform is OS -- make it compatible with quicktime
+                if platform == "darwin":
+                    skvideo.io.vwrite(file_name, np.asarray(frames),outputdict={"-pix_fmt": "yuv420p"})
+                else:
+                    skvideo.io.vwrite(file_name, np.asarray(frames))
                 print("saved", file_name)
 
         self.mujoco_render_frames = False
