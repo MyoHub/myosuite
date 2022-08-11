@@ -12,6 +12,8 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 [![Downloads](https://pepy.tech/badge/myosuite)](https://pepy.tech/project/myosuite)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1U6vo6Q_rPhDaq6oUMV7EAZRm6s0fD1wn?usp=sharing)
 
+[![Supporting MyoChallenge](https://img.shields.io/static/v1?label=Supporting&message=NeurIPS-MyoChallenge2022&color=informational&link=https://github.com/ET-BE/myoChallengeEval)](https://github.com/ET-BE/myoChallengeEval)
+
 `MyoSuite` is a collection of musculoskeletal environments and tasks simulated with the [MuJoCo](http://www.mujoco.org/) physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems.
 
  [Full task details](https://github.com/facebookresearch/myosuite/blob/main/docs/source/suite.rst#tasks) | [Baselines](https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents/baslines_NPG) | [Documentation](https://myosuite.readthedocs.io/en/latest/)
@@ -63,9 +65,11 @@ for _ in range(1000):
 env.close()
 ```
 
-
-
 You can find [tutorials](https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials#tutorials) on how to load MyoSuite models/tasks, train them, and visualize their outcome. Also, you can find [baselines](https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents) to test some pre-trained policies.
+
+## 🔥 NeurIPS-MyoChallenge 2022
+
+MyoSuite is supporting the [NeurIPS-MyoChallenge 2022](https://github.com/ET-BE/myoChallengeEval). The challenge consists of two tracks: a Die reorientation task and a Baoding ball task. Solutions can be uploaded following those [instructions](https://github.com/ET-BE/myoChallengeEval).
 
 ## License
 
