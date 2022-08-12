@@ -2,7 +2,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates
 Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= -->
-<img src="./docs/source/images/Full Color Horizontal wider.png" width=800>
+<img src="https://github.com/facebookresearch/myosuite/blob/main/docs/source/images/Full%20Color%20Horizontal%20wider.png?raw=true" width=800>
 
 [![Supporting MyoChallenge](https://img.shields.io/static/v1?label=Supporting&message=NeurIPS-MyoChallenge2022&color=informational&link=https://github.com/ET-BE/myoChallengeEval)](https://github.com/ET-BE/myoChallengeEval) [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 ![PyPI](https://img.shields.io/pypi/v/myosuite)
@@ -22,7 +22,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 Below is an overview of the tasks in the MyoSuite.
 
-<img width="1240" alt="TasksALL" src="./docs/source/images/myoSuite_All.png">
+<img width="1240" alt="TasksALL" src="https://github.com/facebookresearch/myosuite/blob/main/docs/source/images/myoSuite_All.png?raw=true">
 
 
 ## Getting Started
