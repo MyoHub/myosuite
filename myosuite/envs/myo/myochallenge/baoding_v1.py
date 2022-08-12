@@ -78,6 +78,8 @@ class BaodingEnvV1(BaseV0):
         self.object2_gid = self.sim.model.geom_name2id('ball2')
         self.target1_sid = self.sim.model.site_name2id('target1_site')
         self.target2_sid = self.sim.model.site_name2id('target2_site')
+        self.sim.model.site_group[self.target1_sid] = 2
+        self.sim.model.site_group[self.target2_sid] = 2
 
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
@@ -103,10 +105,10 @@ class BaodingEnvV1(BaseV0):
 
             # update both sims with desired targets
             for sim in [self.sim, self.sim_obsd]:
-                self.sim.model.site_pos[self.target1_sid, 0] = desired_positions_wrt_palm[0]
-                self.sim.model.site_pos[self.target1_sid, 1] = desired_positions_wrt_palm[1]
-                self.sim.model.site_pos[self.target2_sid, 0] = desired_positions_wrt_palm[2]
-                self.sim.model.site_pos[self.target2_sid, 1] = desired_positions_wrt_palm[3]
+                sim.model.site_pos[self.target1_sid, 0] = desired_positions_wrt_palm[0]
+                sim.model.site_pos[self.target1_sid, 1] = desired_positions_wrt_palm[1]
+                sim.model.site_pos[self.target2_sid, 0] = desired_positions_wrt_palm[2]
+                sim.model.site_pos[self.target2_sid, 1] = desired_positions_wrt_palm[3]
                 # move upward, to be seen
                 # sim.model.site_pos[self.target1_sid, 2] = -0.037
                 # sim.model.site_pos[self.target2_sid, 2] = -0.037
@@ -185,7 +187,7 @@ class BaodingEnvV1(BaseV0):
         # average sucess over entire env horizon
         solved = np.mean([np.sum(p['env_infos']['rwd_dict']['solved'])/self.horizon for p in paths])
         # average activations over entire trajectory (can be shorter than horizon, if done) realized
-        act_mag = np.mean([np.mean(p['env_infos']['rwd_dict']['act_mag']) for p in paths])
+        act_mag = -1.0*np.mean([np.mean(p['env_infos']['rwd_dict']['act_mag']) for p in paths])
 
         metrics = {
             'solved': solved,

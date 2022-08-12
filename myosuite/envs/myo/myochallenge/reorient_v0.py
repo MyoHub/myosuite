@@ -113,7 +113,7 @@ class ReorientEnvV0(BaseV0):
         solved = num_success/num_paths
 
         # average activations over entire trajectory (can be shorter than horizon, if done) realized
-        act_mag = np.mean([np.mean(p['env_infos']['rwd_dict']['act_mag']) for p in paths])
+        act_mag = -1.0*np.mean([np.mean(p['env_infos']['rwd_dict']['act_mag']) for p in paths])
 
         metrics = {
             'solved': solved,
