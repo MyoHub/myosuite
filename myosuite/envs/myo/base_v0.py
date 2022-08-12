@@ -12,8 +12,6 @@ class BaseV0(env_base.MujocoEnv):
     MVC_rest = []
     f_load = {}
     k_fatigue = 1
-    def __init__(self, model_path):
-        super().__init__(model_path)
 
     def _setup(self,
             obs_keys:list,
@@ -69,12 +67,13 @@ class BaseV0(env_base.MujocoEnv):
 
     # step the simulation forward
     def step(self, a):
+        muscle_a = a.copy()
+
         # Explicitely project normalized space (-1,1) to actuator space (0,1) if muscles
         if self.sim.model.na:
             # find muscle actuators
             muscle_act_ind = self.sim.model.actuator_dyntype==3
-
-            a[muscle_act_ind] = 1.0/(1.0+np.exp(-5.0*(a[muscle_act_ind]-0.5)))
+            muscle_a[muscle_act_ind] = 1.0/(1.0+np.exp(-5.0*(muscle_a[muscle_act_ind]-0.5)))
             # TODO: actuator space may not always be (0,1) for muscle or (-1, 1) for others
             isNormalized = False # refuse internal reprojection as we explicitely did it here
         else:
@@ -98,12 +97,12 @@ class BaseV0(env_base.MujocoEnv):
                 self.sim_obsd.model.actuator_gainprm[mus_idx,2] = f_cem
         elif self.muscle_condition == 'reafferentation':
             # redirect EIP --> EPL
-            a[self.EPLpos] = a[self.EIPpos].copy()
+            muscle_a[self.EPLpos] = muscle_a[self.EIPpos].copy()
             # Set EIP to 0
-            a[self.EIPpos] = 0
+            muscle_a[self.EIPpos] = 0
 
         # step forward
-        self.last_ctrl = self.robot.step(ctrl_desired=a,
+        self.last_ctrl = self.robot.step(ctrl_desired=muscle_a,
                                         ctrl_normalized=isNormalized,
                                         step_duration=self.dt,
                                         realTimeSim=self.mujoco_render_frames,

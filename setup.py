@@ -38,8 +38,8 @@ mjc_models_files = package_files('myosuite/envs/myo/assets/','.mjb')
 if __name__ == "__main__":
     setup(
         name="MyoSuite",
-        version="1.0.1",
-        author='MyoSuite Authors - Vikash Kumar (Facebook AI), Vittorio Caggiano (Facebook AI), Huawei Wang (University of Twente), Guillaume Durandau (University of Twente), Massimo Sartori (University of Twente)',
+        version="1.1.0",
+        author='MyoSuite Authors - Vikash Kumar (Meta AI), Vittorio Caggiano (Meta AI), Huawei Wang (University of Twente), Guillaume Durandau (University of Twente), Massimo Sartori (University of Twente)',
         author_email="vikashplus@gmail.com",
         license='Apache 2.0',
         description='Musculoskeletal environments simulated in MuJoCo',
