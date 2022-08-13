@@ -616,12 +616,12 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
 
             print("Total reward = %3.3f, Total time = %2.3f" % (ep_rwd, timer.time()-ep_t0))
             path = dict(
-            observations=np.array(observations),
-            actions=np.array(actions),
-            rewards=np.array(rewards),
-            # agent_infos=tensor_utils.stack_tensor_dict_list(agent_infos),
-            env_infos=tensor_utils.stack_tensor_dict_list(env_infos),
-            terminated=done
+                observations=np.array(observations),
+                actions=np.array(actions),
+                rewards=np.array(rewards),
+                # agent_infos=tensor_utils.stack_tensor_dict_list(agent_infos),
+                env_infos=tensor_utils.stack_tensor_dict_list(env_infos),
+                terminated=done
             )
             paths.append(path)
 
