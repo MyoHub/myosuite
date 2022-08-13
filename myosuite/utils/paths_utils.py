@@ -270,10 +270,10 @@ def path2dataset(path:dict, config_path=None)->dict:
         dataset['data/user'] = path['env_infos']['obs_dict']['user']
 
     # Derived =====
-    if 'pos_ee' in obs_keys:
-        dataset['derived/pos_ee'] = path['env_infos']['obs_dict']['pos_ee']
-    if 'rot_ee' in obs_keys:
-        dataset['derived/rot_ee'] = path['env_infos']['obs_dict']['rot_ee']
+    pose_ee = []
+    if 'pos_ee' in obs_keys or 'rot_ee' in obs_keys:
+        assert ('pos_ee' in obs_keys and 'rot_ee' in obs_keys), "Both pose_ee and rot_ee are required"
+        dataset['derived/pose_ee'] = np.hstack([path['env_infos']['obs_dict']['pos_ee'], path['env_infos']['obs_dict']['rot_ee']])
 
     # Config =====
     if config_path:
@@ -295,13 +295,13 @@ def print_h5_schema(obj):
             if isinstance(value, h5py.Group):
                 keys = keys + print_h5_schema(value)
             else:
-                print("\t", "{0:25}".format(value.name), value)
+                print("\t", "{0:35}".format(value.name), value)
                 keys = keys + (value.name,)
     return keys
 
 
 # convert paths from pickle to h5 format
-def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str='path', compress_path=False, config_path=None):
+def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str='path', compress_path=False, config_path=None, max_paths=1e6):
     # rollout_path:     Single path or folder with paths
     # output_dir:       Directory to save the outputs. use path location if none.
     # verify_output:    Verify the saved file
@@ -320,10 +320,13 @@ def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str=
         rollout_paths = glob.glob(os.path.join(rollout_path, '*.pickle'))
 
     # Parse all rollouts
+    n_rollouts = 0
     for rollout_path in rollout_paths:
 
         # parse all paths
         print('Parsing: ', rollout_path)
+        if n_rollouts>=max_paths:
+            break
 
         paths = pickle.load(open(rollout_path, 'rb'))
         rollout_name = os.path.split(rollout_path)[-1]
@@ -350,6 +353,10 @@ def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str=
                 for k, v in path.items():
                     trial.create_dataset(k, data=v, compression='gzip', compression_opts=4)
 
+                n_rollouts+=1
+                if n_rollouts>=max_paths:
+                    break
+
         # RoboPen dataset format
         elif h5_format == "dataset":
             for i_path, path in enumerate(paths):
@@ -360,6 +367,11 @@ def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str=
                 dataset = dict_numpify(dataset, u_res=None, i_res=np.int8, f_res=np.float16) # numpify + data resolutions
                 for k, v in dataset.items():
                     trial.create_dataset(k, data=v, compression='gzip', compression_opts=4)
+
+                n_rollouts+=1
+                if n_rollouts>=max_paths:
+                    break
+
 
         else:
             TypeError('Unsupported h5_format')
@@ -393,7 +405,8 @@ Script to recover images and videos from the saved pickle files
 @click.option('-rf', '--render_format', type=click.Choice(['rgb', 'mp4']), help='format to save', default="mp4")
 @click.option('-cn', '--cam_names', multiple=True, help='camera to render. Eg: left, right, top, Franka_wrist', default=["left", "top", "right", "wrist"])
 @click.option('-ac', '--add_config', help='Add extra infos to config using as json', default=None)
-def util_path_cli(util, path, env, output_name, output_dir, verify_output, render_format, cam_names, h5_format, compress_path, add_config):
+@click.option('-mp', '--max_paths', type=int, help='maximum number of paths to process', default=1e6)
+def util_path_cli(util, path, env, output_name, output_dir, verify_output, render_format, cam_names, h5_format, compress_path, add_config, max_paths):
 
     if util=='plot_horizon':
         fileName_prefix = os.join(output_dir, output_name)
@@ -404,7 +417,7 @@ def util_path_cli(util, path, env, output_name, output_dir, verify_output, rende
     elif util=='render':
         render(rollout_path=path, render_format=render_format, cam_names=cam_names)
     elif util=='pickle2h5':
-        pickle2h5(rollout_path=path, output_dir=output_dir, verify_output=verify_output, h5_format=h5_format, compress_path=compress_path, config_path=add_config)
+        pickle2h5(rollout_path=path, output_dir=output_dir, verify_output=verify_output, h5_format=h5_format, compress_path=compress_path, config_path=add_config, max_paths=max_paths)
     elif util=='h5schema':
         with h5py.File(path, "r") as h5file:
             print("Printing schema read from output: ", path)
