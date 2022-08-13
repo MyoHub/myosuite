@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.2.0] - 2022-08-12
+## [1.2.0] - 2022-08-13
 - Rebase and building on RoboHive v0.2
 - Adding the myochallenge envs
 - Fundamental bugfixes on the RoboHive engine
