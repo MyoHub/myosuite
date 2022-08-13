@@ -166,7 +166,7 @@ class BaodingEnvV1(BaseV0):
             ('pos_dist_1',      -1.*target1_dist),
             ('pos_dist_2',      -1.*target2_dist),
             # Must keys
-            ('act_mag',         -1.*act_mag),
+            ('act_reg',         -1.*act_mag),
             ('sparse',          -target_dist),
             ('solved',          (target1_dist < self.proximity_th)*(target2_dist < self.proximity_th)*(~is_fall)),
             ('done',            is_fall),
@@ -185,13 +185,13 @@ class BaodingEnvV1(BaseV0):
         Evaluate paths and report metrics
         """
         # average sucess over entire env horizon
-        solved = np.mean([np.sum(p['env_infos']['rwd_dict']['solved'])/self.horizon for p in paths])
+        score = np.mean([np.sum(p['env_infos']['rwd_dict']['solved'])/self.horizon for p in paths])
         # average activations over entire trajectory (can be shorter than horizon, if done) realized
-        act_mag = -1.0*np.mean([np.mean(p['env_infos']['rwd_dict']['act_mag']) for p in paths])
+        effort = -1.0*np.mean([np.mean(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
 
         metrics = {
-            'solved': solved,
-            'act_mag':act_mag,
+            'score': score,
+            'effort': effort,
             }
         return metrics
 
