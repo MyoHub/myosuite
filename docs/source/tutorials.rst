@@ -5,7 +5,8 @@ Tutorials
 
 
 Here a set of examples on how to use different MyoSuite models and non-stationarities.
-Jupyter-Notebooks can be found [here](https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials)
+Jupyter-Notebooks can be found `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`_
+
 * :ref:`run_myosuite`
 * :ref:`run_visualize_index_movements`
 * :ref:`run_trained_policy`
