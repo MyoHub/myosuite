@@ -1,5 +1,5 @@
 git+https://github.com/aravindr93/mjrl.git
-hydra-core
+hydra-core==1.1.0.dev7
 hydra-submitit-launcher
 six
 torch
