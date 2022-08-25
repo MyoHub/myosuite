@@ -7,7 +7,7 @@
 
 ```bash
 pip install tabulate matplotlib torch git+https://github.com/aravindr93/mjrl.git
-pip install hydra-core --upgrade
+pip install hydra-core==1.1.0.dev7
 pip install hydra-submitit-launcher --upgrade
 pip install submitit
 ```
