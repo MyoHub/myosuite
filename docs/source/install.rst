@@ -11,6 +11,8 @@ Requirements
 * python >= 3.7.1 (if needed follow instructions `here <https://docs.conda.io/en/latest/miniconda.html>`_ for installing python and conda)
 * free-mujoco-py >= 2.1.6
 
+At this moment, the library works only on MacOs and Linux
+
 
 Installing the pip package
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -53,7 +55,7 @@ You can visualize the environments with random controls using the below command
 
 .. code-block:: bash
 
-   python myosuite/utils/visualize_env.py --env_name myoElbowPose1D6MRandom-v0
+   python myosuite/utils/examine_env.py --env_name myoElbowPose1D6MRandom-v0
 
 .. note::
    If the visualization results in a GLFW error, this is because ``mujoco-py`` does not see some graphics drivers correctly.
