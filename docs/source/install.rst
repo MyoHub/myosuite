@@ -9,7 +9,6 @@ Please follow steps exactly as below to install correctly.
 Requirements
 ~~~~~~~~~~~~
 * python >= 3.7.1 (if needed follow instructions `here <https://docs.conda.io/en/latest/miniconda.html>`_ for installing python and conda)
-* free-mujoco-py >= 2.1.6
 
 At this moment, the library works only on MacOs and Linux
 
@@ -23,6 +22,8 @@ Installing the pip package
    conda activate MyoSuite
    pip install -U myosuite
 
+for advanced installation, see `here <https://github.com/facebookresearch/myosuite/blob/main/setup/README.md>`_.
+
 
 (alternative) Installing from source
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -35,6 +36,7 @@ To get started with MyoSuite, clone this repo with pre-populated submodule depen
    git clone --recursive https://github.com/facebookresearch/myosuite.git
    cd myosuite
    pip install -e -r requirements
+
 
 OR Add repo to pythonpath by updating `~/.bashrc` or `~/.bash_profile`
 
@@ -61,6 +63,7 @@ You can visualize the environments with random controls using the below command
    If the visualization results in a GLFW error, this is because ``mujoco-py`` does not see some graphics drivers correctly.
    This can usually be fixed by explicitly loading the correct drivers before running the python script.
    See `this page <https://github.com/aravindr93/mjrl/tree/master/setup#known-issues>`_ for details.
+   
 
 Examples
 ~~~~~~~~~
