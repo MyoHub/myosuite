@@ -1,0 +1,33 @@
+[2022-09-23 15:34:13,253][submitit][WARNING] - Bypassing signal SIGCONT
+[2022-09-23 15:34:13,920][submitit][INFO] - Job has not timed out. Ran 3089 minutes out of requested 4320 minutes.
+[2022-09-23 15:34:13,920][submitit][WARNING] - Caught signal SIGUSR2 on learnfair4265: this job is preempted.
+[2022-09-23 15:34:13,920][submitit][INFO] - Calling checkpoint method.
+[2022-09-23 15:34:21,090][submitit][INFO] - Requeued job 64606757_57 (3 remaining timeouts)
+[2022-09-23 15:34:21,091][submitit][INFO] - Exiting gracefully after preemption/timeout.
+[2022-09-23 15:34:21,092][submitit][WARNING] - Bypassing signal SIGCONT
+[2022-09-23 15:34:21,095][submitit][WARNING] - Bypassing signal SIGTERM
+[2022-09-24 09:29:06,431][submitit][WARNING] - Bypassing signal SIGCONT
+[2022-09-24 09:29:06,622][submitit][INFO] - Job has not timed out. Ran 86 minutes out of requested 4320 minutes.
+[2022-09-24 09:29:06,622][submitit][WARNING] - Caught signal SIGUSR2 on learnfair7493: this job is preempted.
+[2022-09-24 09:29:06,623][submitit][INFO] - Calling checkpoint method.
+[2022-09-24 09:29:06,965][submitit][INFO] - Requeued job 64606757_57 (3 remaining timeouts)
+[2022-09-24 09:29:06,965][submitit][INFO] - Exiting gracefully after preemption/timeout.
+[2022-09-24 09:29:06,967][submitit][WARNING] - Bypassing signal SIGCONT
+[2022-09-24 09:29:06,968][submitit][WARNING] - Bypassing signal SIGTERM
+[2022-09-24 15:09:39,290][submitit][INFO] - Job has not timed out. Ran 65 minutes out of requested 4320 minutes.
+[2022-09-24 15:09:39,292][submitit][WARNING] - Caught signal SIGUSR2 on learnfair5062: this job is preempted.
+[2022-09-24 15:09:39,292][submitit][INFO] - Calling checkpoint method.
+[2022-09-24 15:09:39,534][submitit][INFO] - Requeued job 64606757_57 (3 remaining timeouts)
+[2022-09-24 15:09:39,535][submitit][INFO] - Exiting gracefully after preemption/timeout.
+[2022-09-24 15:09:39,535][submitit][WARNING] - Bypassing signal SIGCONT
+[2022-09-24 15:09:39,536][submitit][WARNING] - Bypassing signal SIGCONT
+[2022-09-24 15:09:39,537][submitit][WARNING] - Bypassing signal SIGTERM
+[2022-09-27 14:29:36,100][submitit][INFO] - Job has not timed out. Ran 2820 minutes out of requested 4320 minutes.
+[2022-09-27 14:29:36,101][submitit][WARNING] - Caught signal SIGUSR2 on learnfair4353: this job is preempted.
+[2022-09-27 14:29:36,101][submitit][INFO] - Calling checkpoint method.
+[2022-09-27 14:29:42,804][submitit][INFO] - Requeued job 64606757_57 (3 remaining timeouts)
+[2022-09-27 14:29:42,804][submitit][INFO] - Exiting gracefully after preemption/timeout.
+[2022-09-27 14:29:42,804][submitit][WARNING] - Bypassing signal SIGCONT
+[2022-09-27 14:29:42,806][submitit][WARNING] - Bypassing signal SIGCONT
+[2022-09-27 14:29:42,807][submitit][WARNING] - Bypassing signal SIGTERM
+[2022-09-30 01:12:12,825][submitit][INFO] - Job completed successfully
