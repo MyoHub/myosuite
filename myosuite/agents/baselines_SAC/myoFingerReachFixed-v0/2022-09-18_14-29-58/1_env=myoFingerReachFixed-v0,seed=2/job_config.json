@@ -1,0 +1,18 @@
+default:
+- override hydra/output: local
+- override hydra/launcher: local
+algorithm: SAC
+seed: 2
+env: myoFingerReachFixed-v0
+policy: MlpPolicy
+learning_rate: 0.00073
+buffer_size: 300000
+learning_starts: 3000
+batch_size: 256
+tau: 0.02
+gamma: 0.98
+total_timesteps: 1500000
+log_interval: 10
+alg_hyper_params:
+  device: cpu
+job_name: sac_${env}
