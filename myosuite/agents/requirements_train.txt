@@ -5,3 +5,4 @@ six
 torch
 matplotlib
 tabulate
+stable-baselines3
