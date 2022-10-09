@@ -38,7 +38,7 @@ mjc_models_files = package_files('myosuite/envs/myo/assets/','.mjb')
 if __name__ == "__main__":
     setup(
         name="MyoSuite",
-        version="1.2.0",
+        version="1.2.1",
         author='MyoSuite Authors - Vikash Kumar (Meta AI), Vittorio Caggiano (Meta AI), Huawei Wang (University of Twente), Guillaume Durandau (University of Twente), Massimo Sartori (University of Twente)',
         author_email="vikashplus@gmail.com",
         license='Apache 2.0',
@@ -52,7 +52,7 @@ if __name__ == "__main__":
             "Operating System :: OS Independent",
         ],
         package_data={'': mjc_models_files},
-        packages=find_packages(exclude=("tests", "tests.*")),
+        packages=find_packages(exclude=("myosuite.tests", "myosuite.agents")),
         python_requires=">=3.7.1",
         install_requires=fetch_requirements(),
     )
