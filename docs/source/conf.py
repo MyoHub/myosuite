@@ -16,8 +16,8 @@ project = 'MyoSuite'
 copyright = "Copyright © 2022 Meta Platforms, Inc"
 author = "Meta AI Research"
 
-release = '0.1'
-version = '0.1.0'
+release = '0.2'
+version = '0.2.1'
 
 # -- General configuration
 

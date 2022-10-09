@@ -5,6 +5,7 @@ Tutorials
 
 
 Here a set of examples on how to use different MyoSuite models and non-stationarities.
+Jupyter-Notebooks can be found `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`_
 
 * :ref:`run_myosuite`
 * :ref:`run_visualize_index_movements`
@@ -66,8 +67,8 @@ Example on using a policy e.g. elbow flexion, and change non-stationaries
 
     env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
-    env.sim.render(mode='window')
     for _ in range(1000):
+        env.sim.render(mode='window')
         env.step(env.action_space.sample()) # take a random action
 
 
@@ -84,15 +85,15 @@ This example shows how to add fatigue to a model. It tests random actions on a m
     import gym
     env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
-    env.sim.render(mode='window')
     for _ in range(1000):
+        env.sim.render(mode='window')
         env.step(env.action_space.sample()) # take a random action
 
     # Add muscle fatigue
-    env = gym.make('myoFatElbowPose1D6MRandom-v0')
+    env = gym.make('myoFatiElbowPose1D6MRandom-v0')
     env.reset()
-    env.sim.render(mode='window')
     for _ in range(1000):
+        env.sim.render(mode='window')
         env.step(env.action_space.sample()) # take a random action
     env.close()
 
@@ -109,15 +110,15 @@ This example shows how to add sarcopenia or muscle weakness to a model. It tests
     import gym
     env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
-    env.sim.render(mode='window')
     for _ in range(1000):
+        env.sim.render(mode='window')
         env.step(env.action_space.sample()) # take a random action
 
     # Add muscle weakness
-    env = gym.make('myoSarElbowPose1D6MRandom-v0')
+    env = gym.make('myoSarcElbowPose1D6MRandom-v0')
     env.reset()
-    env.sim.render(mode='window')
     for _ in range(1000):
+        env.sim.render(mode='window')
         env.step(env.action_space.sample()) # take a random action
     env.close()
 
@@ -135,15 +136,15 @@ This example shows how load a model with physical tendon transfer.
     import gym
     env = gym.make('myoHandKeyTurnFixed-v0')
     env.reset()
-    env.sim.render(mode='window')
     for _ in range(1000):
+        env.sim.render(mode='window')
         env.step(env.action_space.sample()) # take a random action
 
     # Add tendon transfer
     env = gym.make('myoTTHandKeyTurnFixed-v0')
     env.reset()
-    env.sim.render(mode='window')
     for _ in range(1000):
+        env.sim.render(mode='window')
         env.step(env.action_space.sample()) # take a random action
     env.close()
 

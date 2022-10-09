@@ -4,3 +4,4 @@ gym==0.13
 free-mujoco-py
 termcolor
 flatten_dict
+h5py==3.7.0

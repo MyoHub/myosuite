@@ -101,10 +101,12 @@ def merge_xmls( receiver_xml:str,
     elif destination == "tree":
         return receiver_tree
 
+
 def reassign_parent( xml_path: str=None,
                     xml_str: str=None,
                     receiver_node=None,
                     donor_node=None,
+                    donor_override:dict=None,
                     destination="str"):
     """
     Merge XMLs preserving MuJoCo structure
@@ -113,12 +115,14 @@ def reassign_parent( xml_path: str=None,
             xml_str         : XML_str receiving data (higher priority over XML_filepath)
             receiver_node   : node_name where donor gets attached
             donor_node      : list of donor-nodes to attached (TODO)
+            donor_override  : dict of override values. eg- {pos:'1 2 3', euler:'.1 .2 .3'}
             destination     : str / tree
 
         Output:
             merged_xml      : str or tree format
     """
-    # import ipdb; ipdb.set_trace()
+
+    ori_keys = ['quat', 'euler', 'axisangle']
 
     # find elements
     xml_tree = parse_xml_with_comments(xml_path=xml_path, xml_str=xml_str)
@@ -127,6 +131,17 @@ def reassign_parent( xml_path: str=None,
 
     child_elem = xml_tree.find(".//body[@name='{}']".format(donor_node))
     assert child_elem, "Child node:{} not found".format(child_elem)
+
+
+    # override donor attributes
+    if donor_override:
+        for key, val in donor_override.items():
+            # remove other orientation keys if orientation override specified
+            if key in ori_keys:
+                for ori_key in ori_keys:
+                    if ori_key in child_elem.keys(): child_elem.attrib.pop(ori_key)
+            # set keys
+            child_elem.set(key, val)
 
     child_parent_elem = xml_tree.find(".//body[@name='{}']...".format(donor_node))
     assert child_parent_elem, "Child's parent node:{} not found".format(child_elem)

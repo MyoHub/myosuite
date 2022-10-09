@@ -81,7 +81,7 @@ class ObsVecDict():
         # recover vec
         obsvec = np.zeros(0)
         for key in self.ordered_obs_keys:
-            obsvec = np.concatenate([obsvec, obs_dict[key]])
+            obsvec = np.concatenate([obsvec, obs_dict[key].ravel()]) # ravel helps with images
 
         # cache
         t = obs_dict['t']
