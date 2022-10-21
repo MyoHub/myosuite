@@ -12,8 +12,10 @@ from myosuite.envs.myo.base_v0 import BaseV0
 
 # Define the task enum
 class Task(enum.Enum):
+    HOLD = 0
     BAODING_CW = 1
     BAODING_CCW = 2
+
 # Choose task
 WHICH_TASK = Task.BAODING_CCW
 
@@ -44,13 +46,18 @@ class BaodingEnvV1(BaseV0):
             goal_time_period = (5, 5),  # target rotation time period
             goal_xrange = (0.025, 0.025),  # target rotation: x radius (0.03)
             goal_yrange = (0.028, 0.028),  # target rotation: x radius (0.02 * 1.5 * 1.2)
+            obj_size_range = (0.018, 0.024),       # Object size range. Nominal 0.022
+            obj_mass_range = (0.030, 0.300),       # Object weight range. Nominal 43 gms
+            obj_friction_change = (0.2, 0.001, 0.00002),
+            task_choice = 'fixed',      # fixed/ random
             obs_keys:list = DEFAULT_OBS_KEYS,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             **kwargs,
         ):
 
         # user parameters
-        self.which_task = Task(WHICH_TASK)
+        self.task_choice = task_choice
+        self.which_task = self.np_random.choice(Task) if task_choice == 'random' else Task(WHICH_TASK)
         self.drop_th = drop_th
         self.proximity_th = proximity_th
         self.goal_time_period = goal_time_period
@@ -60,8 +67,8 @@ class BaodingEnvV1(BaseV0):
         # balls start at these angles
         #   1= yellow = top right
         #   2= pink = bottom left
-        self.ball_1_starting_angle = 3.*np.pi/4.0
-        self.ball_2_starting_angle = -1.*np.pi/4.0
+        self.ball_1_starting_angle = 1.*np.pi/4.0
+        self.ball_2_starting_angle = self.ball_1_starting_angle-np.pi
 
         # init desired trajectory, for rotations
         self.center_pos = [-.0125, -.07] # [-.0020, -.0522]
@@ -72,6 +79,8 @@ class BaodingEnvV1(BaseV0):
         self.goal = self.create_goal_trajectory(time_step=frame_skip*self.sim.model.opt.timestep, time_period=6)
 
         # init target and body sites
+        self.object1_bid = self.sim.model.body_name2id('ball1')
+        self.object2_bid = self.sim.model.body_name2id('ball2')
         self.object1_sid = self.sim.model.site_name2id('ball1_site')
         self.object2_sid = self.sim.model.site_name2id('ball2_site')
         self.object1_gid = self.sim.model.geom_name2id('ball1')
@@ -80,6 +89,12 @@ class BaodingEnvV1(BaseV0):
         self.target2_sid = self.sim.model.site_name2id('target2_site')
         self.sim.model.site_group[self.target1_sid] = 2
         self.sim.model.site_group[self.target2_sid] = 2
+
+        # setup for task randomization
+        self.obj_mass_range = {'low':obj_mass_range[0], 'high':obj_mass_range[1]}
+        self.obj_size_range = {'low':obj_size_range[0], 'high':obj_size_range[1]}
+        self.obj_friction_range = {'low':self.sim.model.geom_friction[self.object1_gid] - obj_friction_change,
+                                    'high':self.sim.model.geom_friction[self.object1_gid] + obj_friction_change}
 
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
@@ -92,7 +107,7 @@ class BaodingEnvV1(BaseV0):
         self.init_qpos[0] = -1.57 # Palm up
 
     def step(self, a):
-        if self.which_task in [Task.BAODING_CW, Task.BAODING_CCW]:
+        if self.which_task in [Task.HOLD, Task.BAODING_CW, Task.BAODING_CCW]:
             desired_angle_wrt_palm = self.goal[self.counter].copy()
             desired_angle_wrt_palm[0] = desired_angle_wrt_palm[0] + self.ball_1_starting_angle
             desired_angle_wrt_palm[1] = desired_angle_wrt_palm[1] + self.ball_2_starting_angle
@@ -179,6 +194,27 @@ class BaodingEnvV1(BaseV0):
 
         return rwd_dict
 
+    def evaluate_success(self, paths, logger=None, successful_steps=5):
+        """
+        Evaluate paths and log metrics to logger
+        """
+        # average sucess over entire env horizon
+        score = np.mean([np.sum(p['env_infos']['rwd_dict']['solved'])/self.horizon for p in paths])
+        success_percentage = score*100
+        # average activations over entire trajectory (can be shorter than horizon, if done) realized
+        effort = -1.0*np.mean([np.mean(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
+
+        rwd_sparse = np.mean([np.mean(p['env_infos']['rwd_sparse']) for p in paths]) # return rwd/step
+        rwd_dense = np.mean([np.sum(p['env_infos']['rwd_dense'])/self.horizon for p in paths]) # return rwd/step
+
+        # log stats
+        if logger:
+            logger.log_kv('rwd_sparse', rwd_sparse)
+            logger.log_kv('rwd_dense', rwd_dense)
+            logger.log_kv('success_percentage', success_percentage)
+            logger.log_kv('effort', effort)
+        return success_percentage
+
 
     def get_metrics(self, paths):
         """
@@ -197,6 +233,12 @@ class BaodingEnvV1(BaseV0):
 
 
     def reset(self, reset_pose=None, reset_vel=None, reset_goal=None, time_period=None):
+        # reset task
+        if self.task_choice == 'random':
+            self.which_task = self.np_random.choice(Task)
+            self.ball_1_starting_angle = self.np_random.uniform(low=0, high=2*np.pi)
+            self.ball_2_starting_angle = self.ball_1_starting_angle-np.pi
+
         # reset counters
         self.counter=0
         self.x_radius=self.np_random.uniform(low=self.goal_xrange[0], high=self.goal_xrange[1])
@@ -207,6 +249,18 @@ class BaodingEnvV1(BaseV0):
             time_period = self.np_random.uniform(low=self.goal_time_period[0], high=self.goal_time_period[1])
         self.goal = self.create_goal_trajectory(time_step=self.dt, time_period=time_period) if reset_goal is None else reset_goal.copy()
 
+        # balls mass changes
+        self.sim.model.body_mass[self.object1_bid] = self.np_random.uniform(**self.obj_mass_range) # call to mj_setConst(m,d) is being ignored. Derive quantities wont be updated. Die is simple shape. So this is reasonable approximation.
+        self.sim.model.body_mass[self.object2_bid] = self.np_random.uniform(**self.obj_mass_range) # call to mj_setConst(m,d) is being ignored. Derive quantities wont be updated. Die is simple shape. So this is reasonable approximation.
+
+        # balls friction changes
+        self.sim.model.geom_friction[self.object1_gid] = self.np_random.uniform(**self.obj_friction_range)
+        self.sim.model.geom_friction[self.object2_gid] = self.np_random.uniform(**self.obj_friction_range)
+
+        # balls size changes
+        self.sim.model.geom_size[self.object1_gid] = self.np_random.uniform(**self.obj_size_range)
+        self.sim.model.geom_size[self.object2_gid] = self.np_random.uniform(**self.obj_size_range)
+
         # reset scene
         obs = super().reset(reset_qpos=reset_pose, reset_qvel=reset_vel)
         return obs
@@ -215,9 +269,11 @@ class BaodingEnvV1(BaseV0):
         len_of_goals = 1000 # assumes that its greator than env horizon
 
         goal_traj = []
-        if self.which_task==Task.BAODING_CW:
+        if self.which_task==Task.HOLD:
+            sign = 0
+        elif self.which_task==Task.BAODING_CW:
             sign = -1
-        if self.which_task==Task.BAODING_CCW:
+        elif self.which_task==Task.BAODING_CCW:
             sign = 1
 
         # Target updates in continuous rotation

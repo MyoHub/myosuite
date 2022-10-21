@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2022-10-21
+- update MyoChallenge Die Reorient task and Baoding Ball to Phase 2
+
 ## [1.2.1] - 2022-10-09
 - update horizon for MyoChallenge Die Reorient task
 - update tutorials
