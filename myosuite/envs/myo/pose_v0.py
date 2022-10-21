@@ -105,7 +105,7 @@ class PoseEnvV0(BaseV0):
         rwd_dict = collections.OrderedDict((
             # Optional Keys
             ('pose',    -1.*pose_dist),
-            ('bonus',   1.*(pose_dist<self.pose_thd) + 1.*(pose_dist<1.5*self.pose_thd)),
+            ('bonus',   15.*(pose_dist<self.pose_thd*.8) + 10.*(pose_dist<self.pose_thd) + 5.*(pose_dist<1.5*self.pose_thd)+ 1.*(pose_dist<1.5*self.pose_thd)),
             ('penalty', -1.*(pose_dist>far_th)),
             ('act_reg', -1.*act_mag),
             # Must keys
