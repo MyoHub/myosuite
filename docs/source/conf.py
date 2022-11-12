@@ -17,7 +17,7 @@ copyright = "Copyright © 2022 Meta Platforms, Inc"
 author = "Meta AI Research"
 
 release = '0.2'
-version = '0.2.1'
+version = '0.2.4'
 
 # -- General configuration
 
