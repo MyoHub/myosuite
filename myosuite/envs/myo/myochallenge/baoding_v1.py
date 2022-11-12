@@ -46,10 +46,10 @@ class BaodingEnvV1(BaseV0):
             goal_time_period = (5, 5),  # target rotation time period
             goal_xrange = (0.025, 0.025),  # target rotation: x radius (0.03)
             goal_yrange = (0.028, 0.028),  # target rotation: x radius (0.02 * 1.5 * 1.2)
-            obj_size_range = (0.018, 0.024),       # Object size range. Nominal 0.022
-            obj_mass_range = (0.030, 0.300),       # Object weight range. Nominal 43 gms
-            obj_friction_change = (0.2, 0.001, 0.00002),
-            task_choice = 'fixed',      # fixed/ random
+            obj_size_range = None,       # Object size range. Nominal 0.022
+            obj_mass_range = None,       # Object weight range. Nominal 43 gms
+            obj_friction_change = None,  # friction change
+            task_choice = 'fixed',       # fixed/ random
             obs_keys:list = DEFAULT_OBS_KEYS,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             **kwargs,
@@ -91,10 +91,10 @@ class BaodingEnvV1(BaseV0):
         self.sim.model.site_group[self.target2_sid] = 2
 
         # setup for task randomization
-        self.obj_mass_range = {'low':obj_mass_range[0], 'high':obj_mass_range[1]}
-        self.obj_size_range = {'low':obj_size_range[0], 'high':obj_size_range[1]}
+        self.obj_mass_range = {'low':obj_mass_range[0], 'high':obj_mass_range[1]} if obj_mass_range else None
+        self.obj_size_range = {'low':obj_size_range[0], 'high':obj_size_range[1]} if obj_size_range else None
         self.obj_friction_range = {'low':self.sim.model.geom_friction[self.object1_gid] - obj_friction_change,
-                                    'high':self.sim.model.geom_friction[self.object1_gid] + obj_friction_change}
+                            'high':self.sim.model.geom_friction[self.object1_gid] + obj_friction_change} if obj_friction_change else None
 
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
@@ -250,16 +250,19 @@ class BaodingEnvV1(BaseV0):
         self.goal = self.create_goal_trajectory(time_step=self.dt, time_period=time_period) if reset_goal is None else reset_goal.copy()
 
         # balls mass changes
-        self.sim.model.body_mass[self.object1_bid] = self.np_random.uniform(**self.obj_mass_range) # call to mj_setConst(m,d) is being ignored. Derive quantities wont be updated. Die is simple shape. So this is reasonable approximation.
-        self.sim.model.body_mass[self.object2_bid] = self.np_random.uniform(**self.obj_mass_range) # call to mj_setConst(m,d) is being ignored. Derive quantities wont be updated. Die is simple shape. So this is reasonable approximation.
+        if self.obj_mass_range:
+            self.sim.model.body_mass[self.object1_bid] = self.np_random.uniform(**self.obj_mass_range) # call to mj_setConst(m,d) is being ignored. Derive quantities wont be updated. Die is simple shape. So this is reasonable approximation.
+            self.sim.model.body_mass[self.object2_bid] = self.np_random.uniform(**self.obj_mass_range) # call to mj_setConst(m,d) is being ignored. Derive quantities wont be updated. Die is simple shape. So this is reasonable approximation.
 
         # balls friction changes
-        self.sim.model.geom_friction[self.object1_gid] = self.np_random.uniform(**self.obj_friction_range)
-        self.sim.model.geom_friction[self.object2_gid] = self.np_random.uniform(**self.obj_friction_range)
+        if self.obj_friction_range:
+            self.sim.model.geom_friction[self.object1_gid] = self.np_random.uniform(**self.obj_friction_range)
+            self.sim.model.geom_friction[self.object2_gid] = self.np_random.uniform(**self.obj_friction_range)
 
         # balls size changes
-        self.sim.model.geom_size[self.object1_gid] = self.np_random.uniform(**self.obj_size_range)
-        self.sim.model.geom_size[self.object2_gid] = self.np_random.uniform(**self.obj_size_range)
+        if self.obj_size_range:
+            self.sim.model.geom_size[self.object1_gid] = self.np_random.uniform(**self.obj_size_range)
+            self.sim.model.geom_size[self.object2_gid] = self.np_random.uniform(**self.obj_size_range)
 
         # reset scene
         obs = super().reset(reset_qpos=reset_pose, reset_qvel=reset_vel)
