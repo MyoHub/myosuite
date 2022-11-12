@@ -2,6 +2,8 @@
 ### Update the CHANGELOG.md
 ### Update version
 - Update version in `myosuite/__init__.py`
+- Update version in `setup.py`
+- Update `.github/CHANGELOG.md`
 - Update the doc version in `docs/source/conf.py`
 
 ### Make a tag
@@ -30,7 +32,7 @@ python3 -m twine upload --repository pypi dist/*
 conda create --name test_myosuite python=3.7.1
 conda activate test_myosuite
 pip install myosuite
-python3 -c "import myosuite"
+python3 -c "import myosuite; print(f'MyoSuite version: {myosuite.__version__}')"
 python3 myosuite/tests/test_myo.py
 conda deactivate
 conda remove --name test_myosuite --all
