@@ -30,6 +30,8 @@ class ReorientEnvV0(BaseV0):
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             goal_pos = (0.0, 0.0),      # goal position range (relative to initial pos)
             goal_rot = (.785, .785),    # goal rotation range (relative to initial rot)
+            obj_size_change = 0,        # object size change (relative to initial size)
+            obj_friction_change = (0,0,0),# object friction change (relative to initial size)
             pos_th = .025,              # position error threshold
             rot_th = 0.262,             # rotation error threshold
             drop_th = .200,             # drop height threshold
@@ -46,6 +48,20 @@ class ReorientEnvV0(BaseV0):
         self.pos_th = pos_th
         self.rot_th = rot_th
         self.drop_th = drop_th
+
+        # setup for object randomization
+        self.target_gid = self.sim.model.geom_name2id('target_dice')
+        self.target_default_size = self.sim.model.geom_size[self.target_gid].copy()
+
+        object_bid = self.sim.model.body_name2id('Object')
+        self.object_gid0 = self.sim.model.body_geomadr[object_bid]
+        self.object_gidn = self.object_gid0 + self.sim.model.body_geomnum[object_bid]
+        self.object_default_size = self.sim.model.geom_size[self.object_gid0:self.object_gidn].copy()
+        self.object_default_pos = self.sim.model.geom_pos[self.object_gid0:self.object_gidn].copy()
+
+        self.obj_size_change = {'high':obj_size_change, 'low':-obj_size_change}
+        self.obj_friction_range = {'high':self.sim.model.geom_friction[self.object_gid0:self.object_gidn] + obj_friction_change,
+                                    'low':self.sim.model.geom_friction[self.object_gid0:self.object_gidn] - obj_friction_change}
 
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
@@ -126,7 +142,21 @@ class ReorientEnvV0(BaseV0):
             self.np_random.uniform( high=self.goal_pos[1], low=self.goal_pos[0], size=3)
 
         self.sim.model.body_quat[self.goal_bid] = \
-            euler2quat(self.np_random.uniform( high=self.goal_rot[1], low=self.goal_rot[0], size=3))
+            euler2quat(self.np_random.uniform(high=self.goal_rot[1], low=self.goal_rot[0], size=3))
+
+        # Die friction changes
+        self.sim.model.geom_friction[self.object_gid0:self.object_gidn] = self.np_random.uniform(**self.obj_friction_range)
+
+        # Die and Target size changes
+        del_size = self.np_random.uniform(**self.obj_size_change)
+        # adjust size of target
+        self.sim.model.geom_size[self.target_gid] = self.target_default_size + del_size
+        # adjust size of die
+        self.sim.model.geom_size[self.object_gid0:self.object_gidn-3][:,1] = self.object_default_size[:-3][:,1] + del_size
+        self.sim.model.geom_size[self.object_gidn-3:self.object_gidn] = self.object_default_size[-3:] + del_size
+        # adjust boundary of die
+        object_gpos = self.sim.model.geom_pos[self.object_gid0:self.object_gidn]
+        self.sim.model.geom_pos[self.object_gid0:self.object_gidn] = object_gpos/abs(object_gpos+1e-16) * (abs(self.object_default_pos) + del_size)
 
         obs = super().reset()
         return obs
