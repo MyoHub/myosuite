@@ -77,7 +77,7 @@ def train_loop(job_data) -> None:
         env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.)
         env.reset()
         
-        model = PPO(job_data.policy, env, learning_rate=job_data.learning_rate, buffer_size=job_data.buffer_size, learning_starts=job_data.learning_starts, batch_size=job_data.batch_size, tau=job_data.tau, gamma=job_data.gamma, **job_data.alg_hyper_params)
+        model = PPO(job_data.policy, env, learning_rate=job_data.learning_rate, batch_size=job_data.batch_size, gamma=job_data.gamma, **job_data.alg_hyper_params)
         
         model.set_logger(log)
     
