@@ -4,13 +4,13 @@ Authors  :: Cameron Berg (cameronberg@fb.com), Vikash Kumar (vikashplus@gmail.co
 ================================================= """
 
 """
-This is a job script for running SAC on myosuite tasks.
+This is a job script for running SB3 on myosuite tasks.
 """
 
 import os
 import json
 import time as timer
-from stable_baselines3 import SAC
+from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, CallbackList
 from collections import deque as dq
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
@@ -55,9 +55,45 @@ class SaveSuccesses(BaseCallback):
 
 def train_loop(job_data) -> None:
     
-    if job_data.algorithm == 'SAC':
+    if job_data.algorithm == 'PPO':
         print("========================================")
-        print("Starting policy learning")
+        print("Starting PPO policy learning")
+        print("========================================")
+
+        ts = timer.time()
+        
+        # specify shape of actor and critic networks
+        policy_kwargs = dict(net_arch=dict(pi=[400, 300], qf=[400, 300]))
+
+        log = configure(f'results_{job_data.env}')
+        # make the env
+        env = gym.make(job_data.env)
+
+        # wrap env in monitor object to see reward data
+        env = Monitor(env)
+        env = DummyVecEnv([lambda: env])
+
+        # Automatically normalize the input features
+        env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.)
+        env.reset()
+        
+        model = PPO(job_data.policy, env, learning_rate=job_data.learning_rate, buffer_size=job_data.buffer_size, learning_starts=job_data.learning_starts, batch_size=job_data.batch_size, tau=job_data.tau, gamma=job_data.gamma, **job_data.alg_hyper_params)
+        
+        model.set_logger(log)
+    
+        callback = SaveSuccesses(timesteps=job_data.total_timesteps, check_freq=50, env_name=job_data.env, log_dir='./')
+        
+        model.learn(total_timesteps=job_data.total_timesteps, callback=callback, log_interval=job_data.log_interval)
+        model.save(f"{job_data.env}_model")
+        env.save(f'{job_data.env}')
+        
+        print("========================================")
+        print("Job Finished. Time taken = %f" % (timer.time()-ts))
+        print("========================================")
+
+    elif job_data.algorithm == 'SAC':
+        print("========================================")
+        print("Starting SAC policy learning")
         print("========================================")
 
         ts = timer.time()
