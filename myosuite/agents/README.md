@@ -14,18 +14,6 @@ pip install hydra-submitit-launcher --upgrade
 pip install submitit
 ```
 
-## Launch training
-1. Get commands to run
-```bash
-% sh train_myosuite.sh myo         # runs natively
-% sh train_myosuite.sh myo local   # use local launcher
-% sh train_myosuite.sh myo slurm   # use slurm launcher
-```
-2. Further customize the prompts from the previous step and execute.
-
-3. To resume training from a previous checkpoint add the `+job_name=<absolute_path_of_previous_checkpoint>` to the command line
-
-
 ## Installation StableBaselines3
 Install 
 1. [Stable-Baselines3]([https://github.com/DLR-RM/stable-baselines3] `pip install stable-baselines3`,
@@ -40,12 +28,17 @@ pip install hydra-submitit-launcher --upgrade
 pip install submitit
 ```
 
+
 ## Launch training
 1. Get commands to run
 ```bash
 % sh train_myosuite.sh myo         # runs natively
-% sh train_myosuite.sh myo local   # use local launcher
-% sh train_myosuite.sh myo slurm   # use slurm launcher
+% sh train_myosuite.sh myo local mjrl   # use mjrl with local launcher
+% sh train_myosuite.sh myo slurm mjrl   # use mjrl with slurm launcher
+% sh train_myosuite.sh myo local sb3   # use stable-baselines3 with local launcher
+% sh train_myosuite.sh myo slurm sb3   # use stable-baselines3 with slurm launcher
+
 ```
 2. Further customize the prompts from the previous step and execute.
 
+3. In `mjrl` to resume training from a previous checkpoint add the `+job_name=<absolute_path_of_previous_checkpoint>` to the command line
