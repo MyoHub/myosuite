@@ -1,0 +1,33 @@
+default:
+    - override hydra/output: local
+    - override hydra/launcher: local
+
+env               :   'myoHandPoseRandom-v0' #myosuite-v1          # placeholder name, not a real env
+algorithm         :   PPO
+seed              :   123
+num_cpu           :   32
+
+# PPO object
+policy            : 'MlpPolicy'
+learning_rate     : 1e-5 
+batch_size        : 256
+gamma             : 0.95
+
+# PPO.learn function
+total_timesteps   : 15000000
+log_interval      : 100
+
+policy_kwargs:                                              # Policy parameters (initial STD and architecture)
+  net_arch:
+    - pi: [256, 128]
+      vf: [256, 128]
+
+
+# Algorithm hyperparameters : if alg requires additional params, can be specified here (or defaults will be used)
+alg_hyper_params  :   {'device': 'cpu'}
+
+job_name          :   ppo_sb3_${env}
+
+hydra:
+    job:
+        name: ${env}
