@@ -11,7 +11,7 @@ import os
 import time as timer
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from sac_job_script import train_loop
+from sb3_job_script import train_loop
 
 # ===============================================================================
 # Process Inputs and configure job
