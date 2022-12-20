@@ -16,12 +16,12 @@ pip install submitit
 
 ## Installation StableBaselines3
 Install 
-1. [Stable-Baselines3]([https://github.com/DLR-RM/stable-baselines3] `pip install stable-baselines3`,
+1. [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3]) `pip install stable-baselines3`,
 2. [Hydra](https://github.com/facebookresearch/hydra) `pip install hydra-core --upgrade`
 3. [submitit](https://github.com/facebookincubator/submitit) launcher hydra plugin to launch jobs on cluster/ local 
 
 ```bash
-pip pip install stable-baselines3
+pip install stable-baselines3
 pip install gym==0.13
 pip install hydra-core --upgrade
 pip install hydra-submitit-launcher --upgrade
