@@ -1,6 +1,8 @@
 # Baselines
 
-## Installation
+We offer baselines trained with Natural Policy Gradient (NPG) via `MJRL`. Below, instructions on how to reproduce those baselines [training models via `mjrl`](#Installation-MJRL). In addition, we provide instructions on how to [train models via `stable-baselines3`](#Installation-StableBaselines3).
+
+## Installation MJRL
 1. We use [mjrl](https://github.com/aravindr93/mjrl) for our baselines ([install instructions](https://github.com/aravindr93/mjrl/tree/master/setup#installation)) and [PyTorch](https://pytorch.org/).
 2. [Hydra](https://github.com/facebookresearch/hydra) `pip install hydra-core --upgrade`
 3. [submitit](https://github.com/facebookincubator/submitit) launcher hydra plugin to launch jobs on cluster/ local 
@@ -22,3 +24,28 @@ pip install submitit
 2. Further customize the prompts from the previous step and execute.
 
 3. To resume training from a previous checkpoint add the `+job_name=<absolute_path_of_previous_checkpoint>` to the command line
+
+
+## Installation StableBaselines3
+Install 
+1. [Stable-Baselines3]([https://github.com/DLR-RM/stable-baselines3] `pip install stable-baselines3`,
+2. [Hydra](https://github.com/facebookresearch/hydra) `pip install hydra-core --upgrade`
+3. [submitit](https://github.com/facebookincubator/submitit) launcher hydra plugin to launch jobs on cluster/ local 
+
+```bash
+pip pip install stable-baselines3
+pip install gym==0.13
+pip install hydra-core --upgrade
+pip install hydra-submitit-launcher --upgrade
+pip install submitit
+```
+
+## Launch training
+1. Get commands to run
+```bash
+% sh train_myosuite.sh myo         # runs natively
+% sh train_myosuite.sh myo local   # use local launcher
+% sh train_myosuite.sh myo slurm   # use slurm launcher
+```
+2. Further customize the prompts from the previous step and execute.
+
