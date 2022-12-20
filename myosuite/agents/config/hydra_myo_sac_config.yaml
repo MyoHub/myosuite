@@ -1,0 +1,31 @@
+default:
+    - override hydra/output: local
+    - override hydra/launcher: local
+
+
+algorithm         :   SAC
+seed              :   123
+env               :   myosuite-v1
+
+# SAC object
+policy            :   "MlpPolicy"
+learning_rate     :   0.00073
+buffer_size       :   300000
+learning_starts   :   3000
+batch_size        :   256
+tau               :   .02
+gamma             :   .98
+ 
+
+# SAC.learn function
+total_timesteps   :   15000000
+log_interval      :   10
+
+# Algorithm hyperparameters : if alg requires additional params, can be specified here (or defaults will be used)
+alg_hyper_params  :   {'device': 'cpu'}
+
+job_name          :   sac_${env}
+
+hydra:
+    job:
+        name: ${env}
