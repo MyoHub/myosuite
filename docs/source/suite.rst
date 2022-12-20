@@ -234,8 +234,8 @@ Observation Space:
 
 
 Variants:
-    - **Easy**: Swap the position of the balls ``myoHandBaodingFixed-v1``
-    - **Hard**: Achieve contineous rotations ``myoHandBaodingRandom-v1``
+    - **Easy**: Swap the position of the balls ``myoChallengeBaodingP1-v1``
+    - **Hard**: Achieve contineous rotations ``myoChallengeBaodingP2-v1``
     - **More**: Sparse rewards, 3 different dense reward options to choose from
 
 .. image:: images/hand_baoding_balls.png
@@ -337,7 +337,7 @@ Summary of task and variantions
 +--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
 | Hand Pen Twirl     | ``myoHandPenTwirlRandom-v0`` | Hard            |         √        |      √        |          √          |
 +--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Baoding Balls | ``myoHandBaodingFixed-v1``   | Easy            |         √        |      √        |          √          |
+| Hand Baoding Balls | ``myoChallengeBaodingP1-v1`` | Easy            |         √        |      √        |          √          |
 +--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Baoding Balls | ``myoHandBaodingRandom-v1``  | Hard            |         √        |      √        |          √          |
+| Hand Baoding Balls | ``myoChallengeBaodingP2-v1`` | Hard            |         √        |      √        |          √          |
 +--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
