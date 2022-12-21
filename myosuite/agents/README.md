@@ -4,28 +4,26 @@ We offer baselines trained with Natural Policy Gradient (NPG) via `MJRL`. Below,
 
 ## Installation MJRL
 1. We use [mjrl](https://github.com/aravindr93/mjrl) for our baselines ([install instructions](https://github.com/aravindr93/mjrl/tree/master/setup#installation)) and [PyTorch](https://pytorch.org/).
-2. [Hydra](https://github.com/facebookresearch/hydra) `pip install hydra-core --upgrade`
+2. [Hydra](https://github.com/facebookresearch/hydra) `pip install hydra-core==1.1.0`
 3. [submitit](https://github.com/facebookincubator/submitit) launcher hydra plugin to launch jobs on cluster/ local 
 
 ```bash
-pip install tabulate matplotlib torch git+https://github.com/aravindr93/mjrl.git
-pip install hydra-core --upgrade
-pip install hydra-submitit-launcher --upgrade
-pip install submitit
+pip install tabulate matplotlib torch git+https://github.com/aravindr93/mjrl.git hydra-core==1.1.0 hydra-submitit-launcher submitit
 ```
 
 ## Installation StableBaselines3
 Install 
 1. [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3]) `pip install stable-baselines3`,
-2. [Hydra](https://github.com/facebookresearch/hydra) `pip install hydra-core --upgrade`
+2. [Hydra](https://github.com/facebookresearch/hydra) `pip install hydra-core==1.1.0`
 3. [submitit](https://github.com/facebookincubator/submitit) launcher hydra plugin to launch jobs on cluster/ local 
+4. [Optional -- requires python >3.8] Register and Install [Weights and Biases](https://github.com/wandb/wandb) for logging `pip install wandb` (needs tensorboard `pip install tensorboard`)
 
 ```bash
 pip install stable-baselines3
 pip install gym==0.13
-pip install hydra-core --upgrade
-pip install hydra-submitit-launcher --upgrade
-pip install submitit
+pip install hydra-core==1.1.0 hydra-submitit-launcher submitit
+#optional 
+pip install tensorboard wandb
 ```
 
 
