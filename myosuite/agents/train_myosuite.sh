@@ -1,16 +1,19 @@
 # USAGE
-# ./train_myosuite.sh myo          # runs natively
 # ./train_myosuite.sh myo local mjrl   # use mjrl with local launcher
 # ./train_myosuite.sh myo slurm mjrl   # use mjrl with slurm launcher
 # ./train_myosuite.sh myo local sb3   # use stable-baselines3 with local launcher
 # ./train_myosuite.sh myo slurm sb3   # use stable-baselines3 with slurm launcher
 
 # Configure launch
-if [ "$#" -ne 2 ] ; then
+if [ "$2" == 'local' ] ; then
     config=""
-else
+elif [ "$2" == "slurm" ] ; then
     config="--multirun hydra/output=$2 hydra/launcher=$2"
+else
+    echo "Unknown .. use local or slurm"
+    exit 0
 fi
+
 
 # Configure envs
 if [ "$1" == "myo" ] ; then
@@ -37,3 +40,8 @@ else
     echo "Unknown training framework"
     exit 0
 fi
+
+
+#python hydra_sb3_launcher.py --config-path config --config-name hydra_myo_sb3_ppo_config.yaml  env=myoHandPoseRandom-v0
+
+#python hydra_sb3_launcher.py --config-path config --config-name hydra_myo_sb3_ppo_config.yaml --multirun hydra/output=slurm hydra/launcher=slurm env=myoHandPoseRandom-v0

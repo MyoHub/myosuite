@@ -11,121 +11,83 @@ import os
 import json
 import time as timer
 from stable_baselines3 import PPO, SAC
-from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, CallbackList
-from collections import deque as dq
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
-import numpy as np
-import myosuite
-import gym
-import numpy as np
-import pandas as pd
 
-class SaveSuccesses(BaseCallback):
-    """
-    :param check_freq:
-    :param log_dir: Path to the folder where the model will be saved.
-      It must contains the file created by the ``Monitor`` wrapper.
-    :param verbose: Verbosity level.
-    """
-    def __init__(self, timesteps: int, check_freq: int, log_dir: str, env_name: str, verbose: int = 1):
-        super(SaveSuccesses, self).__init__(verbose)
-        self.check_freq = check_freq
-        self.save_path = log_dir
-        self.success_buffer = dq(maxlen=200)
-        self.success_results = np.zeros(timesteps)
-        self.env_name = env_name
-        
-    def _init_callback(self) -> None:
-        # Create folder if needed
-        if self.save_path is not None:
-            os.makedirs(self.save_path, exist_ok=True)
+import functools
+from in_callbacks import InfoCallback, FallbackCheckpoint, SaveSuccesses, EvalCallback
 
-    def _on_step(self) -> bool:
-        if self.n_calls % self.check_freq == 0:
-            self.success_buffer.append(self.locals['infos'][0]['solved'])
-        if len(self.success_buffer) > 0:
-            self.success_results[self.n_calls-1] = np.mean(self.success_buffer)
-            success = f'./successes_{self.env_name}'
-            if os.path.isfile(success):
-                os.remove(success)
-            np.save(success, self.success_results)
-        return True
+IS_WnB_enabled = False
+try:
+    import wandb
+    from wandb.integration.sb3 import WandbCallback
+    IS_WnB_enabled = True
+except ImportError as e:
+    pass 
 
 def train_loop(job_data) -> None:
     
-    if job_data.algorithm == 'PPO':
-        print("========================================")
-        print("Starting PPO policy learning")
-        print("========================================")
+    config = {
+            "policy_type": job_data.policy,
+            "total_timesteps": job_data.total_timesteps,
+            "env_name": job_data.env,
+    }
+    if IS_WnB_enabled:
+        run = wandb.init(
+            project="sb3_hand",
+            config=config,
+            sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
+            monitor_gym=True,  # auto-upload the videos of agents playing the game
+            save_code=True,  # optional
+        )
 
-        ts = timer.time()
+    log = configure(f'results_{job_data.env}')
+    # Create the vectorized environment
+    env = make_vec_env(job_data.env, n_envs=job_data.n_env)
+
+    eval_env = make_vec_env(job_data.env, n_envs=job_data.n_eval_env)
+
+    algo = job_data.algorithm
+    if algo == 'PPO':
+        model = PPO(job_data.policy, env,  verbose=1,
+                    tensorboard_log=f"runs/{run.id}",
+                    learning_rate=job_data.learning_rate, 
+                    batch_size=job_data.batch_size, 
+                    gamma=job_data.gamma, **job_data.alg_hyper_params)
+    elif algo == 'SAC':
+        model = SAC(job_data.policy, env, 
+                    learning_rate=job_data.learning_rate, 
+                    buffer_size=job_data.buffer_size, 
+                    learning_starts=job_data.learning_starts, 
+                    batch_size=job_data.batch_size, 
+                    tau=job_data.tau, 
+                    gamma=job_data.gamma, **job_data.alg_hyper_params)
         
-        # specify shape of actor and critic networks
-        policy_kwargs = dict(net_arch=dict(pi=[400, 300], qf=[400, 300]))
-
-        log = configure(f'results_{job_data.env}')
-        # make the env
-        env = gym.make(job_data.env)
-
-        # wrap env in monitor object to see reward data
-        env = Monitor(env)
-        env = DummyVecEnv([lambda: env])
-
-        # Automatically normalize the input features
-        env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.)
-        env.reset()
-        
-        model = PPO(job_data.policy, env, learning_rate=job_data.learning_rate, batch_size=job_data.batch_size, gamma=job_data.gamma, **job_data.alg_hyper_params)
-        
-        model.set_logger(log)
     
-        callback = SaveSuccesses(timesteps=job_data.total_timesteps, check_freq=50, env_name=job_data.env, log_dir='./')
-        
-        model.learn(total_timesteps=job_data.total_timesteps, callback=callback, log_interval=job_data.log_interval)
-        model.save(f"{job_data.env}_model")
-        env.save(f'{job_data.env}')
-        
-        print("========================================")
-        print("Job Finished. Time taken = %f" % (timer.time()-ts))
-        print("========================================")
-
-    elif job_data.algorithm == 'SAC':
-        print("========================================")
-        print("Starting SAC policy learning")
-        print("========================================")
-
-        ts = timer.time()
-        
-        # specify shape of actor and critic networks
-        policy_kwargs = dict(net_arch=dict(pi=[400, 300], qf=[400, 300]))
-
-        log = configure(f'results_{job_data.env}')
-        # make the env
-        env = gym.make(job_data.env)
-
-        # wrap env in monitor object to see reward data
-        env = Monitor(env)
-        env = DummyVecEnv([lambda: env])
-
-        # Automatically normalize the input features
-        env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.)
-        env.reset()
-        
-        model = SAC(job_data.policy, env, learning_rate=job_data.learning_rate, buffer_size=job_data.buffer_size, learning_starts=job_data.learning_starts, batch_size=job_data.batch_size, tau=job_data.tau, gamma=job_data.gamma, **job_data.alg_hyper_params)
-        
-        model.set_logger(log)
-    
-        callback = SaveSuccesses(timesteps=job_data.total_timesteps, check_freq=50, env_name=job_data.env, log_dir='./')
-        
-        model.learn(total_timesteps=job_data.total_timesteps, callback=callback, log_interval=job_data.log_interval)
-        model.save(f"{job_data.env}_model")
-        env.save(f'{job_data.env}')
-        
-        print("========================================")
-        print("Job Finished. Time taken = %f" % (timer.time()-ts))
-        print("========================================")
-
+    if IS_WnB_enabled:
+        callback = [WandbCallback(
+                model_save_path=f"models/{run.id}",
+                verbose=2,
+            )]
     else:
-        NotImplementedError("This is for SAC only, make sure your algorithm is specified as 'SAC'.")
+        callback = []
+    
+    callback += [EvalCallback(job_data.eval_freq, eval_env)]
+    callback += [InfoCallback()]
+    callback += [FallbackCheckpoint(job_data.restore_checkpoint_freq)]
+    callback += [CheckpointCallback(save_freq=job_data.save_freq, save_path=f'logs/',
+                                            name_prefix='rl_models')]
+
+    model.learn(
+        total_timesteps=config["total_timesteps"],
+        callback=callback,
+    )
+    
+    model.set_logger(log)
+
+    model.save(f"{job_data.env}_"+algo+"_model")
+    env.save(f'{job_data.env}_'+algo+'_env')
+
+    if IS_WnB_enabled:
+        run.finish()

@@ -5,7 +5,8 @@ default:
 env               :   'myoHandPoseRandom-v0' #myosuite-v1          # placeholder name, not a real env
 algorithm         :   PPO
 seed              :   123
-num_cpu           :   32
+n_env             :   32
+n_eval_env        :   5
 
 # PPO object
 policy            : 'MlpPolicy'
@@ -14,8 +15,12 @@ batch_size        : 256
 gamma             : 0.95
 
 # PPO.learn function
-total_timesteps   : 15000000
-log_interval      : 10
+total_timesteps   : 150000
+log_interval      : 1000
+
+eval_freq : 1000000
+restore_checkpoint_freq : 500000
+save_freq : 10000000
 
 policy_kwargs:                                              # Policy parameters (initial STD and architecture)
   net_arch:
