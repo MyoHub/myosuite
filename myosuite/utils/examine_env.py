@@ -84,6 +84,10 @@ def main(env_name, policy_path, mode, seed, num_episodes, render, camera_name, o
         camera_name=camera_name,
         render=render)
 
+    # evaluate paths
+    success_percentage = env.env.evaluate_success(paths)
+    print(f'Average success over rollouts: {success_percentage}')
+
     # save paths
     time_stamp = time.strftime("%Y%m%d-%H%M%S")
     if save_paths:

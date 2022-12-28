@@ -36,7 +36,7 @@ class TestMyo(TestEnvs):
             'myoChallengeDieReorientDemo-v0', 'myoChallengeDieReorientP1-v0', 'myoChallengeDieReorientP2-v0',
             'myoChallengeBaodingP1-v1', 'myoChallengeBaodingP2-v1'
         ]
-        self.check_envs('Myo', env_names)
+        self.check_envs('MyoChallenge', env_names)
 
 if __name__ == '__main__':
     unittest.main()

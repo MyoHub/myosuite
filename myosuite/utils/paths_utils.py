@@ -231,9 +231,9 @@ def render(rollout_path, render_format:str="mp4", cam_names:list=["left"]):
 
         # Save video
         if render_format == "mp4":
-            file_name = file_name+"_{}.mp4".format(i_path)
-            skvideo.io.vwrite(file_name, np.asarray(frames))
-            print("\nSaving: " + file_name)
+            file_name_mp4 = file_name+"_{}.mp4".format(i_path)
+            skvideo.io.vwrite(file_name_mp4, np.asarray(frames))
+            print("\nSaving: " + file_name_mp4)
 
 
 # parse path from robohive format into robopen dataset format
@@ -371,7 +371,6 @@ def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str=
                 n_rollouts+=1
                 if n_rollouts>=max_paths:
                     break
-
 
         else:
             TypeError('Unsupported h5_format')
