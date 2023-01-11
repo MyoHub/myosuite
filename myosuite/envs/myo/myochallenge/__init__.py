@@ -29,6 +29,7 @@ register(id='myoChallengeDieReorientP1-v0',
             'goal_rot': (-1.57, 1.57)   # +-90 degrees
         }
     )
+
 # MyoChallenge Die: Phase2 env
 register(id='myoChallengeDieReorientP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.reorient_v0:ReorientEnvV0',
@@ -38,6 +39,7 @@ register(id='myoChallengeDieReorientP2-v0',
             'normalize_act': True,
             'frame_skip': 5,
             # Randomization in goals
+
             'goal_pos': (-.020, .020),      # +- 2 cm
             'goal_rot': (-3.14, 3.14),      # +-180 degrees
             # Randomization in physical properties of the die
@@ -46,7 +48,6 @@ register(id='myoChallengeDieReorientP2-v0',
             'obj_friction_change': (0.2, 0.001, 0.00002) # nominal: 1.0, 0.005, 0.0001
         }
     )
-
 # MyoChallenge Baoding: Phase1 env
 register(id='myoChallengeBaodingP1-v1',
         entry_point='myosuite.envs.myo.myochallenge.baoding_v1:BaodingEnvV1',

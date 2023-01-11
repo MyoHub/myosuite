@@ -277,7 +277,7 @@ register_env_with_variants(id='myoHandPoseRandom-v0',  #reconsider
             'viz_site_targets': ('THtip','IFtip','MFtip','RFtip','LFtip'),
             'target_jnt_range': Rpos,
             'normalize_act': True,
-            'pose_thd': .7,
+            'pose_thd': .8,
             'reset_type': "random",         # none, init, random
             'target_type': 'generate',      # generate/ fixed
         }
