@@ -1,0 +1,60 @@
+# adapted from https://medium.com/@VersuS_/automate-pypi-releases-with-github-actions-4c5a9cfe947d
+name: MyoSuite PyPI Release
+
+on:
+  push:
+    tags:
+     - '*'
+
+# Upon running the following instructions
+# > git tag 0.0.1 # or whatever version you want
+# > git push origin --tags
+# The following operations will be run
+# 1. Extract `tag name`
+# 2. Use the `tag name` as `release version`
+# 3. Build the PyPI packeage
+# 4. Upload the package
+# 5. Test Upload
+
+jobs:
+  pypi_package_build_and_release:
+    name: Build and publish PyPI wheel
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.9'
+
+    - name: Install pypa/setuptools
+      run: >-
+        python -m
+        pip install wheel
+
+    # 1. Extract `tag name`
+    - name: Extract tag name
+      id: tag
+      run: echo ::set-output name=TAG_NAME::$(echo $GITHUB_REF | cut -d / -f 3)
+
+    # 2. Use the `tag name` as `release version`
+    - name: Update version in setup.py
+      run: >-
+        sed -i "s/{{VERSION_PLACEHOLDER}}/${{ steps.tag.outputs.TAG_NAME }}/g" setup.py
+
+    # 3. Build the PyPI packeage
+    - name: Build a binary wheel
+      run: >-
+        python setup.py sdist bdist_wheel
+
+    # 4. Upload the package
+    - name: Publish distribution to PyPI
+      uses: pypa/gh-action-pypi-publish@master
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+
+    # 5. Test Upload
+    - name: Test latest uploaded wheel
+      run: >-
+        sh ./github/test_deploy.sh
