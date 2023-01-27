@@ -15,11 +15,13 @@ USAGE:\n
 '''
 
 import gym
-from myosuite.utils.viz_paths import plot_paths as plotnsave_paths
+from myosuite.utils.paths_utils import plot as plotnsave_paths
+from myosuite.utils.tensor_utils import split_tensor_dict_list
 from myosuite.utils import tensor_utils
 import click
 import numpy as np
 import pickle
+import h5py
 import time
 import os
 import skvideo.io
@@ -57,13 +59,22 @@ def main(env_name, rollout_path, mode, horizon, seed, num_repeat, render, camera
             print("Warning: Recording is not being saved. Enable save_paths=True to log the recorded path")
         paths = [None,]*num_repeat # empty paths for recordings
     else:
+
         assert rollout_path is not None, "Rollout path is required for mode:{} ".format(mode)
-        paths = pickle.load(open(rollout_path, 'rb'))
         if output_dir == './': # overide the default
             output_dir = os.path.dirname(rollout_path)
         if output_name is None:
             rollout_name = os.path.split(rollout_path)[-1]
-            output_name = os.path.splitext(rollout_name)[0]
+        output_name, output_type = os.path.splitext(rollout_name)
+        # file_name = os.path.join(output_dir, output_name+"_"+"-".join(cam_names))
+
+        # resolve data format
+        if output_type=='.h5':
+            paths = h5py.File(rollout_path, 'r')
+        elif output_type=='.pickle':
+            paths = pickle.load(open(rollout_path, 'rb'))
+        else:
+            raise TypeError("Unknown path format. Check file")
 
     # resolve rendering
     if render == 'onscreen':
@@ -82,6 +93,13 @@ def main(env_name, rollout_path, mode, horizon, seed, num_repeat, render, camera
         ep_rwd = 0.0
         for i_path, path in enumerate(paths):
 
+            if output_type=='.h5':
+                data = paths[path]['data']
+                path_horizon = data['ctrl_arm'].shape[0]
+            else:
+                data = path['env_infos']['obs_dict']
+                path_horizon = path['env_infos']['time'].shape[0]
+
             # initialize buffers
             ep_t0 = time.time()
             obs = []
@@ -91,14 +109,30 @@ def main(env_name, rollout_path, mode, horizon, seed, num_repeat, render, camera
             states = []
 
             # initialize env to the starting position
-            if path and "state" in path['env_infos'].keys():
-                env.reset(reset_qpos=path['env_infos']['state']['qpos'][0], reset_qvel=path['env_infos']['state']['qvel'][0])
+            if path:
+                path['actions'] = path['action']
+                # recover env initial state
+                state_t = split_tensor_dict_list(path['env_infos']['state'])
+                env.env.set_env_state(state_t[0])
+                # reset env
+                if output_type=='.h5':
+                    reset_qpos = env.init_qpos.copy()
+                    reset_qpos[:7] = data['qp_arm'][0]
+                    reset_qpos[7] = data['qp_ee'][0]
+                    env.reset(reset_qpos=reset_qpos)
+                elif output_type=='.pickle' and "state" in path['env_infos'].keys():
+                    env.reset(reset_qpos=path['env_infos']['state']['qpos'][0], reset_qvel=path['env_infos']['state']['qvel'][0])
+                else:
+                    raise TypeError("Unknown path type")
             else:
                 env.reset()
 
             # Rollout
             o = env.get_obs()
-            path_horizon = horizon if mode == 'record' else path['actions'].shape[0]
+            if output_type=='.h5':
+                path_horizon = horizon if mode == 'record' else data['qp_arm'].shape[0]
+            else:
+                path_horizon = horizon if mode == 'record' else path['actions'].shape[0]
             for i_step in range(path_horizon):
 
                 # Record Execution. Useful for kinesthetic demonstrations on hardware
@@ -108,9 +142,7 @@ def main(env_name, rollout_path, mode, horizon, seed, num_repeat, render, camera
 
                 # Directly create the scene
                 elif mode=='render':
-                    env.sim.data.qpos[:]= path['env_infos']['state']['qpos'][i_step]
-                    env.sim.data.qvel[:]= path['env_infos']['state']['qvel'][i_step]
-                    env.sim.forward()
+                    env.env.set_env_state(state_t[i_step])
                     env.mj_render()
 
                     # copy over from exiting path
@@ -122,7 +154,10 @@ def main(env_name, rollout_path, mode, horizon, seed, num_repeat, render, camera
 
                 # Apply actions in open loop
                 elif mode=='playback':
-                    a = path['actions'][i_step]
+                    if output_type=='.h5':
+                        a = np.concatenate([data['ctrl_arm'][i_step], data['ctrl_ee'][i_step]])
+                    else:
+                        a = path['actions'][i_step] if output_type=='.pickle' else path['data']['ctrl_arm']
                     onext, r, d, info = env.step(a) # t ==> t+1
 
                 # Recover actions from states
@@ -141,7 +176,7 @@ def main(env_name, rollout_path, mode, horizon, seed, num_repeat, render, camera
                 rewards.append(r)
                 if compress_paths:
                     obs.append([]); o = onext # don't save obs
-                    del info['state']  # don't save state
+                    if 'state' in info.keys(): del info['state']  # don't save state
                 else:
                     obs.append(o); o = onext
                 env_infos.append(info)

@@ -9,22 +9,25 @@ def dict_numpify(data:dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16)->di
     """
     for key, val in data.items():
         # non iteratables
-        if isinstance(val, bool):
-            val = np.array([val], dtype=np.bool_)
-        elif isinstance(val, int):
-            val = np.array([val], dtype=i_res)
-        elif isinstance(val, float):
-            val = np.array([val], dtype=f_res)
-        elif isinstance(val, str):
-            val = [val]
+        if np.isscalar(val):
+            if isinstance(val, (bool, np.bool)):
+                val = np.array([val], dtype=np.bool_)
+            elif isinstance(val, (np.unsignedinteger,)):
+                val = np.array([val], dtype=u_res)
+            elif isinstance(val, (int, np.signedinteger)):
+                val = np.array([val], dtype=i_res)
+            elif isinstance(val, (float, np.floating)):
+                val = np.array([val], dtype=f_res)
+            elif isinstance(val, str):
+                val = [val]
 
         # numpy
         elif isinstance(val, np.ndarray):
-            if 'uint' in str(val.dtype) and u_res:
+            if np.issubdtype(val.dtype, np.unsignedinteger) and u_res:
                 val = val.astype(u_res, copy=False)
-            elif 'int' in str(val.dtype) and i_res:
+            elif np.issubdtype(val.dtype, np.signedinteger) and i_res:
                 val = val.astype(i_res, copy=False)
-            elif 'float' in str(val.dtype) and f_res:
+            elif np.issubdtype(val.dtype, np.floating) and f_res:
                 val = val.astype(f_res, copy=False)
             elif val.dtype == np.dtype('O'):
                 val = val.astype(np.float16, copy=False) # switch none with nan
@@ -37,10 +40,13 @@ def dict_numpify(data:dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16)->di
         elif '__len__' in dir(val) and len(val)>0:
             if type(val[0]) == bool:
                 val = np.array(val, dtype=np.bool_)
-            if type(val[0]) == int:
+            elif type(val[0]) == int:
                 val = np.array(val, dtype=i_res)
             elif type(val[0]) == float:
                 val = np.array(val, dtype=f_res)
+            else:
+                val = np.array(val) # let numpy handle it for nested stuctures
+                # raise TypeError("Data type {} not supported for {}".format(type(val[0]), key))
 
         data[key] = val
     return data
