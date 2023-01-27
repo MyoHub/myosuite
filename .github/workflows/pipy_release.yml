@@ -21,7 +21,7 @@ jobs:
     name: Build and publish PyPI wheel
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@main
 
     - name: Set up Python 3.9
       uses: actions/setup-python@v3
@@ -40,8 +40,9 @@ jobs:
 
     # 2. Use the `tag name` as `release version`
     - name: Update version in setup.py
-      run: >-
+      run: |
         sed -i "s/{{VERSION_PLACEHOLDER}}/${{ steps.tag.outputs.TAG_NAME }}/g" setup.py
+        sed -i "s/{{VERSION_PLACEHOLDER}}/${{ steps.tag.outputs.TAG_NAME }}/g" /myosuite/__init__.py
 
     # 3. Build the PyPI packeage
     - name: Build a binary wheel
