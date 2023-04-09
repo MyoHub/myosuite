@@ -42,8 +42,7 @@ jobs:
       run: |
           conda info
           conda list
-          CONDA_DEFAULT_ENV=myosuite_test
-          conda create --name $CONDA_DEFAULT_ENV python=3.10 -y
+          conda activate $CONDA_DEFAULT_ENV
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
