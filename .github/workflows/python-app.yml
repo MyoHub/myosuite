@@ -34,12 +34,12 @@ jobs:
             software-properties-common
         sudo apt-get install -y patchelf
     - name: Enable Conda
-      - uses: conda-incubator/setup-miniconda@v2
-        with:
-          activate-environment: anaconda-client-env
-          environment-file: etc/example-environment.yml
-          auto-activate-base: false
-      - run: |
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        activate-environment: anaconda-client-env
+        environment-file: etc/example-environment.yml
+        auto-activate-base: false
+      run: |
           conda info
           conda list
     - name: Install dependencies
