@@ -26,6 +26,13 @@ jobs:
         python-version: "3.10"
     - name: Install dependencies
       run: |
+        apt-get install -y \
+          libgl1-mesa-dev \
+          libgl1-mesa-glx \
+          libglew-dev \
+          libosmesa6-dev \
+          software-properties-common
+        apt-get install -y patchelf
         python -m pip install --upgrade pip
         pip install -e .
     - name: Test with pytest
