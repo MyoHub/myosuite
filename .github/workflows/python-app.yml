@@ -41,3 +41,4 @@ jobs:
     - name: Run Test
       run: |
         python myosuite/tests/test_myo.py
+        source myosuite/tests/test_tutorials.sh
