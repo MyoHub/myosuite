@@ -12,7 +12,7 @@ RC='\033[0m'
 # Install potential missing packages needed for the tutorials
 pip install jupyter ipykernel tabulate matplotlib torch h5py
 pip install git+https://github.com/aravindr93/mjrl.git
-# python -m ipykernel install --user --name=$CONDA_DEFAULT_ENV
+python -m ipykernel install --user --name=$CONDA_DEFAULT_ENV
 
 # Tested tutorials
 declare -a StringArray=("1_Get_Started.ipynb" \
@@ -33,7 +33,7 @@ for s in ${StringArray[@]}; do
     fi
 done
 
-# jupyter kernelspec remove $CONDA_DEFAULT_ENV
-# rm ./docs/source/tutorials/*.nbconvert.ipynb
+jupyter kernelspec remove $CONDA_DEFAULT_ENV
+rm ./docs/source/tutorials/*.nbconvert.ipynb
 # conda deactivate
 # conda remove --name myosuite_test --all -y
