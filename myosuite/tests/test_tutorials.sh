@@ -36,7 +36,7 @@ for s in ${StringArray[@]}; do
     fi
 done
 
-jupyter kernelspec remove $CONDA_DEFAULT_ENV
+# jupyter kernelspec remove $CONDA_DEFAULT_ENV
 rm ./docs/source/tutorials/*.nbconvert.ipynb
 # conda deactivate
 # conda remove --name myosuite_test --all -y
