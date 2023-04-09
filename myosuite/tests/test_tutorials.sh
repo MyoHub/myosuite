@@ -4,10 +4,11 @@ RedBK='\033[1;41m'
 RC='\033[0m'
 
 # ## This routine tests the tutorials
-conda create --name myosuite_test python=3.7.1 -y
-conda init bash
-conda activate myosuite_test
+# conda create --name myosuite_test python=3.7.1 -y
+# conda init bash
+# conda activate myosuite_test
 pip install -e .
+pip install scikit-learn
 
 # Install potential missing packages needed for the tutorials
 pip install jupyter ipykernel tabulate matplotlib torch h5py
@@ -35,5 +36,5 @@ done
 
 jupyter kernelspec remove $CONDA_DEFAULT_ENV
 rm ./docs/source/tutorials/*.nbconvert.ipynb
-conda deactivate
-conda remove --name myosuite_test --all -y
+# conda deactivate
+# conda remove --name myosuite_test --all -y
