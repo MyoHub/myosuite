@@ -57,8 +57,8 @@ jobs:
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
     - name: Setup for test
       run: |
-        export DISPLAY=:99.0
-        xvfb-run -a -s "-screen 0 1400x900x24" bash
+        export DISPLAY=:0
+
     # - name: Run Test environmenta
     #   run: |
     #     python myosuite/tests/test_myo.py
