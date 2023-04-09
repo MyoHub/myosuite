@@ -38,6 +38,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e .
         pip install numpy==1.22.4
+    - name: Install ffmpeg
+      run: |
+        sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
     - name: Run Test
       run: |
         python myosuite/tests/test_myo.py
