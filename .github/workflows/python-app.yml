@@ -37,7 +37,6 @@ jobs:
       uses: conda-incubator/setup-miniconda@v2
       with:
         activate-environment: anaconda-client-env
-        environment-file: etc/example-environment.yml
         auto-activate-base: false
     - name: Test Conda
       run: |
