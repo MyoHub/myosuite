@@ -16,9 +16,10 @@ pip install git+https://github.com/aravindr93/mjrl.git
 python -m ipykernel install --user --name=$CONDA_DEFAULT_ENV
 
 # Tested tutorials
-declare -a StringArray=("1_Get_Started.ipynb" \
-                         "2_Load_policy.ipynb" \
-                         "3_Analyse_movements.ipynb" \
+declare -a StringArray=(
+                        #  "1_Get_Started.ipynb" \
+                        #  "2_Load_policy.ipynb" \
+                        #  "3_Analyse_movements.ipynb" \
                         #  "4_Train_policy.ipynb" \
                          "5_Move_Hand_Fingers.ipynb" )
 

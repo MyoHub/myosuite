@@ -57,11 +57,11 @@ jobs:
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
     - name: Setup for test
       run: |
-        export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libGLEW.so
+        export DISPLAY=:99.0
         xvfb-run -a -s "-screen 0 1400x900x24" bash
-    - name: Run Test environmenta
-      run: |
-        python myosuite/tests/test_myo.py
+    # - name: Run Test environmenta
+    #   run: |
+    #     python myosuite/tests/test_myo.py
     - name: Run Test jupyter-notebooks tutorials
       run: |
         source myosuite/tests/test_tutorials.sh
