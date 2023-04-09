@@ -15,6 +15,9 @@ permissions:
 
 jobs:
   build:
+    defaults:
+      run:
+        shell: bash -l {0}
 
     runs-on: ubuntu-latest
 
@@ -43,7 +46,6 @@ jobs:
           conda info
           CONDA_DEFAULT_ENV=test_myosuite
           conda create --name $CONDA_DEFAULT_ENV python=3.7.1 -y
-          conda init zsh
           conda activate $CONDA_DEFAULT_ENV
     - name: Install dependencies
       run: |
