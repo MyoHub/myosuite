@@ -55,6 +55,10 @@ jobs:
     - name: Install ffmpeg
       run: |
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
+    - name: Setup for test
+      run: |
+        export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libGLEW.so
+        xvfb-run -a -s "-screen 0 1400x900x24" bash
     - name: Run Test environmenta
       run: |
         python myosuite/tests/test_myo.py
