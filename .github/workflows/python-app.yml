@@ -55,13 +55,12 @@ jobs:
     - name: Install ffmpeg
       run: |
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
-    - name: Setup for test
-      run: |
-        export DISPLAY=:0
-
-    # - name: Run Test environmenta
+    # - name: Setup for screen rendering
     #   run: |
-    #     python myosuite/tests/test_myo.py
+    #     export DISPLAY=:0
+    - name: Run Test environmenta
+      run: |
+        python myosuite/tests/test_myo.py
     - name: Run Test jupyter-notebooks tutorials
       run: |
         source myosuite/tests/test_tutorials.sh
