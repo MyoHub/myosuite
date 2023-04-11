@@ -55,13 +55,9 @@ jobs:
     - name: Install ffmpeg
       run: |
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
-    - name: Setup for screen rendering
-      run: |
-        export MUJOCO_GL=egl
-        conda env config vars set \
-            DISPLAY=unix:0.0 \
-            MUJOCO_GL=egl \
-            PYOPENGL_PLATFORM=egl
+    # - name: Setup for screen rendering
+    #   run: |
+    #     export DISPLAY=:0
     - name: Run Test environmenta
       run: |
         python myosuite/tests/test_myo.py
