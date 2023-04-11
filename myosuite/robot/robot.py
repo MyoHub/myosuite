@@ -22,6 +22,7 @@ _ROBOT_VIZ = False
 # rename robot_config something more meaningful
 # support loading multiple config files
 # seperate ROBOT_VIZ as its own class
+# remap_space() needs rigerous testing
 
 # NOTE/ GOOD PRACTICES ===========================
 # nq should be nv
@@ -139,10 +140,13 @@ class Robot():
                 device['robot'] = FrankaArm(name=name, **device['interface'])
 
             elif device['interface']['type'] == 'realsense':
-                from .hardware_realsense import RealSense
-                device['robot'] = RealSense(name=name, **device['interface'])
-
-
+                try:
+                    from .hardware_realsense import RealSense
+                    device['robot'] = RealSense(name=name, **device['interface'])
+                except: 
+                    from .hardware_realsense_single import RealsenseAPI
+                    device['robot'] = RealsenseAPI(**device['interface'])
+                    
             elif device['interface']['type'] == 'robotiq':
                 from .hardware_robotiq import Robotiq
                 device['robot'] = Robotiq(name=name, **device['interface'])
@@ -502,6 +506,43 @@ class Robot():
         destination_sim.forward()
 
 
+    # remap sensor/actuators spaces: sim<>hardware, TODO: Needs rigerous testing
+    def remap_space(self, input_vec, input_type:str, input_space:str, output_space:str):
+        assert input_type in ['sensor', 'actuator'], "check input type"
+        assert input_space in ['sim', 'hdr'], "check input space"
+        assert output_space in ['sim', 'hdr'], "check output space"
+        assert input_space != output_space, "Check: Input and output spaces are the same"
+
+        input_space = input_space+'_id'
+        output_space = output_space+'_id'
+        output_vec = input_vec.copy()
+
+        # sim => hdr
+        if input_space == 'sim_id' and output_space == 'hdr_id':
+            output_space == 'data_id'# WARNING: This is a hack as we don't have physical/logical id
+            for name, device in self.robot_config.items():
+                if input_type == 'actuator' and 'actuator' in device.keys() and len(device['actuator'])>0:
+                    for id, actuator in enumerate(device['actuator']):
+                        output_vec[actuator[output_space]] = input_vec[actuator[input_space]]*actuator['scale'] + actuator['offset']
+
+                if input_type == 'sensor' and 'sensor' in device.keys() and len(device['sensor'])>0:
+                    for id, sensor in enumerate(device['sensor']):
+                        output_vec[sensor[output_space]] = (input_vec[sensor[input_space]] - sensor['offset'])/sensor['scale']
+
+        # hdr => sim
+        if input_space == 'hdr_id' and output_space == 'sim_id':
+            input_space == 'data_id' # WARNING: This is a hack as we don't have physical/logical id
+            for name, device in self.robot_config.items():
+                if input_type == 'actuator' and 'actuator' in device.keys() and len(device['actuator'])>0:
+                    for id, actuator in enumerate(device['actuator']):
+                        output_vec[actuator[output_space]] = (input_vec[actuator[input_space]] - actuator['offset'])/actuator['scale']
+
+                if input_type == 'sensor' and 'sensor' in device.keys() and len(device['sensor'])>0:
+                    for id, sensor in enumerate(device['sensor']):
+                        output_vec[sensor[output_space]] = input_vec[sensor[input_space]]*sensor['scale'] + sensor['offset']
+        return output_vec
+
+
     # Normalize actions from absolute space to unit space
     def normalize_actions(self, controls, out_space='sim'):
         """
@@ -518,8 +559,6 @@ class Robot():
                 else:
                     raise TypeError("only pos act supported")
             else:
-                # import ipdb; ipdb.set_trace()
-
                 for actuator in device['actuator']:
                     act_id += 1
                     in_id = actuator['sim_id']
@@ -608,7 +647,7 @@ class Robot():
 
         return processed_controls
 
-
+    # step the robot one step forward in time
     def step(self, ctrl_desired, step_duration, ctrl_normalized=True, realTimeSim=False, render_cbk=None):
         """
         Apply controls and step forward in time
@@ -731,14 +770,14 @@ class Robot():
 
         return feasibe_pos, feasibe_vel
 
-
+    # close connection and exit out of the robot
     def close(self):
         prompt("Closing {}".format(self.name), 'white', 'on_grey', flush=True)
         if self.is_hardware:
             status = self.hardware_close()
             prompt("Closed (Status: {})".format(status), 'white', 'on_grey', flush=True)
 
-
+    # destructor
     def __del__(self):
         self.close()
 

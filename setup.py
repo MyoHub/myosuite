@@ -24,6 +24,14 @@ def fetch_requirements():
         reqs = f.read().strip().split("\n")
     return reqs
 
+def get_version(rel_path):
+    for line in read(rel_path).splitlines():
+        if line.startswith('__version__'):
+            delim = '"' if '"' in line else "'"
+            return line.split(delim)[1]
+    else:
+        raise RuntimeError("Unable to find version string.")
+
 def package_files(directory, ends_with):
     paths = []
     for (path, directories, filenames) in os.walk(directory):
@@ -38,7 +46,7 @@ mjc_models_files = package_files('myosuite/envs/myo/assets/','.mjb')
 if __name__ == "__main__":
     setup(
         name="MyoSuite",
-        version="1.2.4",
+        version=get_version("myosuite/__init__.py"),
         author='MyoSuite Authors - Vikash Kumar (Meta AI), Vittorio Caggiano (Meta AI), Huawei Wang (University of Twente), Guillaume Durandau (University of Twente), Massimo Sartori (University of Twente)',
         author_email="vikashplus@gmail.com",
         license='Apache 2.0',
