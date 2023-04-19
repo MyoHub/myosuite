@@ -41,12 +41,12 @@ for advanced installation, see [here](setup/README.md).
 
 Test your installation using the following command (this will return also a list of all the current environments):
 ``` bash
-python myosuite/tests/test_myo.py
+python -m myosuite.tests.test_myo
 ```
 
 You can also visualize the environments with random controls using the command below:
 ```
-$ python myosuite/utils/examine_env.py --env_name myoElbowPose1D6MRandom-v0
+$ python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 ```
 **NOTE:** If the visualization results in a GLFW error, this is because `mujoco-py` does not see some graphics drivers correctly. This can usually be fixed by explicitly loading the correct drivers before running the python script. See [this page](setup/README.md#known-issues) for details.
 
