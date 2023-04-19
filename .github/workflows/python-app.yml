@@ -23,6 +23,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: Checkout submodules
+      uses: textbook/git-checkout-submodule-action@master
+      with:
+        remote: true
     - name: Set up Python 3.10
       uses: actions/setup-python@v3
       with:
@@ -52,6 +56,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e .
         pip install numpy==1.22.4
+    - name: Run Test environmenta
+      run: |
+        python myosuite/tests/test_myo.py
     - name: Install ffmpeg
       run: |
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
@@ -60,9 +67,6 @@ jobs:
     #     export DISPLAY=:0
     - name: Test rendering
       run: python -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
-    - name: Run Test environmenta
-      run: |
-        python myosuite/tests/test_myo.py
     - name: Run Test jupyter-notebooks tutorials
       run: |
         source myosuite/tests/test_tutorials.sh
