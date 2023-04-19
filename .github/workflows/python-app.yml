@@ -22,11 +22,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - name: Checkout submodules
-      uses: textbook/git-checkout-submodule-action@master
+    - name: Checkout repository and submodules
+      uses: actions/checkout@v3
       with:
-        remote: true
+        submodules: recursive
     - name: Set up Python 3.10
       uses: actions/setup-python@v3
       with:
