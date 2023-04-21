@@ -45,8 +45,8 @@ python -m myosuite.tests.test_myo
 ```
 
 You can also visualize the environments with random controls using the command below:
-```
-$ python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
+``` bash
+python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 ```
 **NOTE:** If the visualization results in a GLFW error, this is because `mujoco-py` does not see some graphics drivers correctly. This can usually be fixed by explicitly loading the correct drivers before running the python script. See [this page](setup/README.md#known-issues) for details.
 
