@@ -32,15 +32,14 @@ def get_version(rel_path):
     else:
         raise RuntimeError("Unable to find version string.")
 
-def package_files(directory, ends_with):
+def package_files(directory):
     paths = []
     for (path, directories, filenames) in os.walk(directory):
         for filename in filenames:
-            if filename.endswith(ends_with):
-                paths.append(os.path.join('..', path, filename))
+            paths.append(os.path.join('..', path, filename))
     return paths
 
-mjc_models_files = package_files('myosuite/envs/myo/assets/','.xml')
+mjc_models_files = package_files('myosuite')
 
 
 if __name__ == "__main__":
