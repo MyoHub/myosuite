@@ -46,7 +46,7 @@ jobs:
         name: wheels
         path: ./wheelhouse/*.whl
 
-test:
+
   test_build:
     name: Build wheel on ${{ matrix.os }}
     runs-on:  ${{ matrix.os }}
