@@ -1,6 +1,6 @@
 click
 sk-video
-mujoco-py
+free-mujoco-py
 gym==0.13
 termcolor
 flatten_dict
