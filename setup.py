@@ -40,7 +40,7 @@ def package_files(directory, ends_with):
                 paths.append(os.path.join('..', path, filename))
     return paths
 
-mjc_models_files = package_files('myosuite/envs/myo/assets/','.mjb')
+mjc_models_files = package_files('myosuite/envs/myo/assets/','.xml')
 
 
 if __name__ == "__main__":
@@ -60,7 +60,7 @@ if __name__ == "__main__":
             "Operating System :: OS Independent",
         ],
         package_data={'': mjc_models_files},
-        packages=find_packages(exclude=("myosuite.tests", "myosuite.agents")),
+        packages=find_packages(exclude=("myosuite.agents")),
         python_requires=">=3.7.1",
         install_requires=fetch_requirements(),
     )
