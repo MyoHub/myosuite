@@ -25,11 +25,11 @@ Below is an overview of the tasks in the MyoSuite.
 
 
 ## Getting Started
-You will need Python 3.7.1 or later versions. At this moment, the library has been tested **only on MacOs and Linux** with [MuJoCo v2.1.0](https://github.com/deepmind/mujoco/releases/tag/2.1.0).
+You will need Python 3.8 or later versions. At this moment, the library has been tested **only on MacOs and Linux** with [MuJoCo v2.1.0](https://github.com/deepmind/mujoco/releases/tag/2.1.0).
 
 It is recommended to use [Miniconda](https://docs.conda.io/en/latest/miniconda.html#latest-miniconda-installer-links) and to create a separate environment with:
 ``` bash
-conda create --name myosuite python=3.7.1
+conda create --name myosuite python=3.8
 conda activate myosuite
 ```
 
