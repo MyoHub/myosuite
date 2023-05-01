@@ -47,6 +47,19 @@ curr_dir = os.path.dirname(os.path.abspath(__file__))
 
 print("MyoSuite:> Registering Myo Envs")
 
+
+# Finger-tip reaching ==============================
+register_env_with_variants(id='myoHandGripFixed-v0',
+        entry_point='myosuite.envs.myo.grip_v0:GripEnvV0',
+        max_episode_steps=200,
+        kwargs={
+            'model_path': curr_dir+'/assets/hand/myo_hand_grip.xml',
+            'normalize_act': True,
+        }
+    )
+
+
+
 # Finger-tip reaching ==============================
 register_env_with_variants(id='motorFingerReachFixed-v0',
         entry_point='myosuite.envs.myo.reach_v0:ReachEnvV0',
