@@ -6,6 +6,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 import myosuite.envs.myo # noqa
 import myosuite.envs.myo.myochallenge # noqa
 
+from typing import List
 
 from .version import __version_tuple__
 

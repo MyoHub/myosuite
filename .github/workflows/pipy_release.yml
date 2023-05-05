@@ -49,10 +49,10 @@ jobs:
           new_tag=$(echo $output | awk '{print $2}')
           echo "new version is $new_version"
           echo "new tag is $new_tag"
-          echo "{version}={$new_version}" >> $GITHUB_OUTPUT
-          echo "{tag}={$new_tag}" >> $GITHUB_OUTPUT
+          echo ::set-output name=version::$new_version
+          echo ::set-output name=tag::$new_tag
     outputs:
-      new_version: ${{ steps.get-next-version.outputs.version }}
+      new_version: ${{ steps.get-next-version-and-tag.outputs.version }}
       new_tag: ${{ steps.get-next-version-and-tag.outputs.tag }}
 
   pypi_package_build_and_release:
@@ -94,17 +94,13 @@ jobs:
 
         branch: main
         default_author: github_actor
-        message: '${{ steps.get-next-version-and-tag.outputs.tag }} release'
+        message: '${{ needs.get_next_version.outputs.new_version }} release'
         pathspec_error_handling: exitAtEnd
 
         # Arguments for the git pull command. Use NO-PULL to avoid the action pulling at all.
         # Default: '--no-rebase'
         pull: 'NO-PULL'
-        tag: '${{ steps.get_next_version.outputs.new_tag }}'
-    - name: Tag
-      run: |
-        git tag ${{ steps.get-next-version-and-tag.outputs.tag }}
-        git push --tags origin
+        tag: '${{ needs.get_next_version.outputs.new_tag }}'
 
 
      # 3. Build the PyPI packeage
