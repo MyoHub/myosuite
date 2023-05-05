@@ -1,7 +1,7 @@
 # adapted from
 # - https://medium.com/@VersuS_/automate-pypi-releases-with-github-actions-4c5a9cfe947d
 # - https://github.com/facebookresearch/fairscale/blob/main/.github/workflows/release.yml
-name: MyoSuite PyPI Release-
+name: MyoSuite PyPI Release
 
 # on: [push]
 # on:
@@ -21,7 +21,7 @@ on:
 # # The following operations will be run
 # # 1. Update version according to major | minor | patch and use the new version as `tag name`
 # # 2. Use the `tag name` as `release version`
-# # 3. Build the PyPI packeage using /myosuite/__init__.py version
+# # 3. Build the PyPI package by using /myosuite/__init__.py version
 # # 4. Upload the package
 # # 5. Test Upload
 
@@ -52,7 +52,7 @@ jobs:
           echo "{version}={$new_version}" >> $GITHUB_OUTPUT
           echo "{tag}={$new_tag}" >> $GITHUB_OUTPUT
     outputs:
-      new_version: ${{ steps.get-next-version-and-tag.outputs.version }}
+      new_version: ${{ steps.get-next-version.outputs.version }}
       new_tag: ${{ steps.get-next-version-and-tag.outputs.tag }}
 
   pypi_package_build_and_release:
@@ -82,8 +82,6 @@ jobs:
         echo "current folder = $PWD"
         echo "current branch = $(git branch --show-current)"
         output=$(python3 .github/release_utils.py --release-type ${{ github.event.inputs.name }} --update-version)
-        echo "${{ secrets.AUTHOR_NAME }}"
-        echo "${{ secrets.AUTHOR_EMAIL }}"
 
     # 2. Use the `tag name` as `release version`
     # add and commit the updated version.py to main
@@ -96,13 +94,13 @@ jobs:
 
         branch: main
         default_author: github_actor
-        message: '${{ needs.get_next_version.outputs.new_version }} release'
+        message: '${{ steps.get-next-version-and-tag.outputs.tag }} release'
         pathspec_error_handling: exitAtEnd
 
         # Arguments for the git pull command. Use NO-PULL to avoid the action pulling at all.
         # Default: '--no-rebase'
         pull: 'NO-PULL'
-        tag: '${{ needs.get_next_version.outputs.new_tag }}'
+        tag: '${{ steps.get_next_version.outputs.new_tag }}'
     - name: Tag
       run: |
         git tag ${{ steps.get-next-version-and-tag.outputs.tag }}
