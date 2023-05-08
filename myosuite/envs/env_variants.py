@@ -1,5 +1,4 @@
 """ =================================================
-Copyright (c) Facebook, Inc. and its affiliates
 Copyright (C) 2018 Vikash Kumar
 Author  :: Vikash Kumar (vikashplus@gmail.com)
 Source  :: https://github.com/vikashplus/mj_envs
@@ -14,8 +13,18 @@ from flatten_dict import flatten, unflatten
 
 
 # Update base_dict using update_dict
-def update_dict(base_dict, update_dict):
-    base_dict_flat = flatten(base_dict, reducer='dot')
+def update_dict(base_dict:dict, update_dict:dict, override_keys:list=None):
+    """
+    Update a dict using another dict.
+    INPUTS:
+    base_dict:      dict to update
+    update_dict:    dict with updates (merge operation with base_dict)
+    override_keys:  base_dict keys to override. Removes the keys from base_dict and relies on update_dict for updates, if any.
+    """
+    if override_keys:
+        base_dict = {key: item for key, item in base_dict.items() if key not in override_keys}
+
+    base_dict_flat = flatten(base_dict, reducer='dot', keep_empty_types=(dict,))
     update_dict_flat = flatten(update_dict, reducer='dot')
     update_keyval_str = ""
     for key, value in update_dict_flat.items():
@@ -26,7 +35,17 @@ def update_dict(base_dict, update_dict):
 
 
 # Register a variant of pre-registered environment
-def register_env_variant(env_id, variants, variant_id=None, silent=False):
+def register_env_variant(env_id:str, variants:dict, variant_id=None, silent=False, override_keys=None):
+    """
+    Register a variant of pre-registered environment. Very useful for hyper-parameters sweeps when small changes are required on top of an env
+    INPUTS:
+    env_id:         name of the original env
+    variants:       dict with updates we want on the original env (merge operation with base env)
+    variant_id:     name of the varient env. Auto populated if None
+    silent:         prints the name of the newly registered env, if True.
+    override_keys:  base_env keys to override. Removes the keys from base_env and relies on update_dict for updates, if any.
+    """
+
     # check if the base env is registered
     assert env_id in gym.envs.registry.env_specs.keys(), "ERROR: {} not found in env registry".format(env_id)
 
@@ -41,7 +60,7 @@ def register_env_variant(env_id, variants, variant_id=None, silent=False):
         del variants['max_episode_steps']
 
     # merge specs._kwargs with variants
-    env_variant_specs._kwargs, variants_update_keyval_str = update_dict(env_variant_specs._kwargs, variants)
+    env_variant_specs._kwargs, variants_update_keyval_str = update_dict(env_variant_specs._kwargs, variants, override_keys=override_keys)
     env_variant_id += variants_update_keyval_str
 
     # finalize name and register env
@@ -65,17 +84,25 @@ if __name__ == '__main__':
     # Register a variant
     base_env_name = "kitchen-v3"
     base_env_variants={
-        'max_episode_steps':50, # special key
-        "goal": {"lightswitch_joint": -0.7},
-        "obj_init": {"lightswitch_joint": -0.0},
+        'max_episode_steps':50,                     # special key
+        'obj_goal': {"lightswitch_joint": -0.7},    # obj_goal keys will be updated
+        'obs_keys_wt': {                            # obs_keys_wt will be updated
+            'robot_jnt': 5.0,
+            'obj_goal': 5.0,
+            'objs_jnt': 5.0,}
     }
-    variant_env_name = register_env_variants(env_id=base_env_name, variants=base_env_variants)
+    variant_env_name = register_env_variant(env_id=base_env_name, variants=base_env_variants)
+    variant_overide_env_name = register_env_variant(env_id=base_env_name, variants=base_env_variants, override_keys="obs_keys_wt") # Instead of updating via merge, obs_keys_wt key will be completeley overwritten
 
     # Test variant
     print("Base-env kwargs: ")
     pprint.pprint(gym.envs.registry.env_specs[base_env_name]._kwargs)
     print("Env-variant kwargs: ")
     pprint.pprint(gym.envs.registry.env_specs[variant_env_name]._kwargs)
+    print("Env-variant (with override) kwargs: ")
+    pprint.pprint(gym.envs.registry.env_specs[variant_overide_env_name]._kwargs)
+
+    # Test one of the newly minted env
     env = gym.make(variant_env_name)
     env.reset()
     env.sim.render(mode='window')

@@ -19,20 +19,21 @@ class ObjHoldFixedEnvV0(BaseV0):
         "penalty": 10,
     }
 
-    def __init__(self, model_path:str, **kwargs):
+    def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
+
         # EzPickle.__init__(**locals()) is capturing the input dictionary of the init method of this class.
         # In order to successfully capture all arguments we need to call gym.utils.EzPickle.__init__(**locals())
         # at the leaf level, when we do inheritance like we do here.
         # kwargs is needed at the top level to account for injection of __class__ keyword.
         # Also see: https://github.com/openai/gym/pull/1497
-        gym.utils.EzPickle.__init__(**locals())
+        gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
 
         # This two step construction is required for pickling to work correctly. All arguments to all __init__
         # calls must be pickle friendly. Things like sim / sim_obsd are NOT pickle friendly. Therefore we
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(model_path=model_path)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
 
         self._setup(**kwargs)
 
@@ -44,6 +45,7 @@ class ObjHoldFixedEnvV0(BaseV0):
         ):
         self.object_sid = self.sim.model.site_name2id("object")
         self.goal_sid = self.sim.model.site_name2id("goal")
+        self.object_init_pos = self.sim.data.site_xpos[self.object_sid].copy()
 
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
@@ -101,7 +103,7 @@ class ObjHoldRandomEnvV0(ObjHoldFixedEnvV0):
 
     def reset(self):
         # randomize target pos
-        self.sim.model.site_pos[self.goal_sid] = np.array([-.235, -.19, 1.050]) + self.np_random.uniform(high=np.array([0.030, 0.030, 0.030]), low=np.array([-.030, -.030, -.030]))
+        self.sim.model.site_pos[self.goal_sid] = self.object_init_pos + self.np_random.uniform(high=np.array([0.030, 0.030, 0.030]), low=np.array([-.030, -.030, -.030]))
         # randomize object
         size = self.np_random.uniform(high=np.array([0.030, 0.030, 0.030]), low=np.array([.020, .020, .020]))
         self.sim.model.geom_size[-1] = size

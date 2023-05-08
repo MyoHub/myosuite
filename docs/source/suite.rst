@@ -218,8 +218,31 @@ Variants:
 .. image:: images/hand_pen_twirl.png
   :width: 200
 
-Hand Baoding Balls
-=====================
+Hand Die Rotation (MyoChallenge 2022)
+========================================
+A :ref:`myoHand` model involved for reconfiguring a die to match desired goal orientations.
+This task require delicate coordination of various muscles to manipulate the die without dropping it.
+
+Objective:
+    Rotate the object to reach a given orientation (indicated by the green reference object in the scene) without dropping it.
+
+Action Space:
+    The whole set of muscle [0, 1]
+
+Observation Space:
+    All joints angles [-:math:`\pi`, :math:`\pi`]
+
+
+Variants:
+    - **Easy**: Goal position and orientation limited ``myoChallengeDieReorientP1-v0``
+    - **Hard**: Large range of goal position and rotations. Variability in object size and frictions. ``myoChallengeDieReorientP2-v0``
+    - **More**: Sparse rewards, 3 different dense reward options to choose from
+
+.. image:: images/hand_die_rotation.png
+  :width: 200
+
+Hand Baoding Balls (MyoChallenge 2022)
+========================================
 A :ref:`myoHand` model involved for simultaneous rotation of two free-floating spheres over the palm.
 This task requires both dexterity and coordination.
 
@@ -234,8 +257,8 @@ Observation Space:
 
 
 Variants:
-    - **Easy**: Swap the position of the balls ``myoHandBaodingFixed-v1``
-    - **Hard**: Achieve contineous rotations ``myoHandBaodingRandom-v1``
+    - **Easy**: Swap the position of the balls ``myoChallengeBaodingP1-v1``
+    - **Hard**: Large range of goal position and rotations. Variability in object size and frictions. ``myoChallengeBaodingP2-v1``
     - **More**: Sparse rewards, 3 different dense reward options to choose from
 
 .. image:: images/hand_baoding_balls.png
@@ -269,7 +292,7 @@ and resistance to fatigue (Vøllestad (1997)).
 The current implementation is simplified to consider the same fatigue factor for all muscles and
 that muscle can be completely fatigued.
 
-.. image:: images/fatigue.png
+.. image:: images/Fatigue.png
   :width: 800
 
 
@@ -305,39 +328,43 @@ Summary of task and variantions
 
 
 +--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-|:ref:`tasks`        | **Environment**              | **Difficulty**  |:ref:`sarcopenia` |:ref:`fatigue` | :ref:`ttransfer`    |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Finger Joint Pose  | ``myoFingerPoseFixed-v0``    | Easy            |         √        |      √        |                     |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Finger Joint Pose  | ``myoFingerPoseRandom-v0``   | Hard            |         √        |      √        |                     |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Finger Tip Reach   | ``myoFingerReachFixed-v0``   | Easy            |         √        |      √        |                     |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Finger Tip Reach   | ``myoFingerReachRandom-v0``  | Hard            |         √        |      √        |                     |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Elbow Joint Pose   | ``myoElbowPose1D6MRandom-v0``| Hard            |         √        |      √        |                     |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Joints Pose   | ``myoHandPoseFixed-v0``      | Easy            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Joints Pose   | ``myoHandPoseRandom-v0``     | Hard            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Tips Reach    | ``myoHandReachFixed-v0``     | Easy            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Tips Reach    | ``myoHandReachRandom-v0``    | Hard            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Key Turn      | ``myoHandKeyTurnFixed-v0``   | Easy            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Key Turn      | ``myoHandKeyTurnRandom-v0``  | Hard            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Object Hold   | ``myoHandObjHoldFixed-v0``   | Easy            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Object Hold   | ``myoHandObjHoldRandom-v0``  | Hard            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Pen Twirl     | ``myoHandPenTwirlFixed-v0``  | Easy            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Pen Twirl     | ``myoHandPenTwirlRandom-v0`` | Hard            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Baoding Balls | ``myoHandBaodingFixed-v1``   | Easy            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Baoding Balls | ``myoHandBaodingRandom-v1``  | Hard            |         √        |      √        |          √          |
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
+|:ref:`tasks`        | **Environment**                  | **Difficulty**  |:ref:`sarcopenia` |:ref:`fatigue` | :ref:`ttransfer`    |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Finger Joint Pose  | ``myoFingerPoseFixed-v0``        | Easy            |         √        |      √        |                     |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Finger Joint Pose  | ``myoFingerPoseRandom-v0``       | Hard            |         √        |      √        |                     |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Finger Tip Reach   | ``myoFingerReachFixed-v0``       | Easy            |         √        |      √        |                     |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Finger Tip Reach   | ``myoFingerReachRandom-v0``      | Hard            |         √        |      √        |                     |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Elbow Joint Pose   | ``myoElbowPose1D6MRandom-v0``    | Hard            |         √        |      √        |                     |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Joints Pose   | ``myoHandPoseFixed-v0``          | Easy            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Joints Pose   | ``myoHandPoseRandom-v0``         | Hard            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Tips Reach    | ``myoHandReachFixed-v0``         | Easy            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Tips Reach    | ``myoHandReachRandom-v0``        | Hard            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Key Turn      | ``myoHandKeyTurnFixed-v0``       | Easy            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Key Turn      | ``myoHandKeyTurnRandom-v0``      | Hard            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Object Hold   | ``myoHandObjHoldFixed-v0``       | Easy            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Object Hold   | ``myoHandObjHoldRandom-v0``      | Hard            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Pen Twirl     | ``myoHandPenTwirlFixed-v0``      | Easy            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Pen Twirl     | ``myoHandPenTwirlRandom-v0``     | Hard            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Die Rotation       | ``myoChallengeDieReorientP1-v1`` | Easy            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Die Rotation       | ``myoChallengeDieReorientP1-v1`` | Hard            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Baoding Balls | ``myoChallengeBaodingP1-v1``     | Easy            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Hand Baoding Balls | ``myoChallengeBaodingP2-v1``     | Hard            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+

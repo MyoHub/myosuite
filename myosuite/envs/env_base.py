@@ -1,5 +1,4 @@
 """ =================================================
-Copyright (c) Facebook, Inc. and its affiliates
 Copyright (C) 2018 Vikash Kumar
 Author  :: Vikash Kumar (vikashplus@gmail.com)
 Source  :: https://github.com/vikashplus/mj_envs
@@ -10,6 +9,9 @@ import gym
 import numpy as np
 import os
 import time as timer
+import platform
+# import torch #removed as not using visual inputs
+# import torchvision.transforms as T #removed as not using visual inputs
 
 from myosuite.utils.obj_vec_dict import ObsVecDict
 from myosuite.utils import tensor_utils
@@ -17,15 +19,16 @@ from myosuite.robot.robot import Robot
 from os import path
 import skvideo.io
 
+# from r3m import load_r3m #removed as not using visual inputs
+
 # TODO
 # remove rwd_mode
 # convet obs_keys to obs_keys_wt
-# Seed the random number generator in the __init__
-# Pass model_path and model_obsd_path to the __init__ so the use has a choice to make partially observed envs
+# batch images before passing them through the encoder
 
 try:
     import mujoco_py
-    from mujoco_py import load_model_from_path, MjSim, MjViewer, load_model_from_xml, ignore_mujoco_warnings
+    from mujoco_py import load_model_from_path, MjSim, MjViewer, load_model_from_xml
 except ImportError as e:
     raise gym.error.DependencyNotInstalled("{}. (HINT: you need to install mujoco_py, and also perform the setup instructions here: https://github.com/openai/mujoco-py/.)".format(e))
 
@@ -48,19 +51,38 @@ def get_sim(model_path:str=None, model_xmlstr=None):
 
     return MjSim(model)
 
+# Removed as not using visual inputs
+# class IdentityEncoder(torch.nn.Module):
+#     def __init__(self):
+#         super(IdentityEncoder, self).__init__()
+
+#     def forward(self, x):
+#         return x
+
 class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
     """
     Superclass for all MuJoCo environments.
     """
 
-    def __init__(self, model_path):
-        # Get a random number generator incase its needed in pre_setup phase
-        self.input_seed = None
-        self.seed(0)
+    def __init__(self, model_path, obsd_model_path=None, seed=None):
+        """
+        Create a gym env
+        INPUTS:
+            model_path: ground truth model
+            obsd_model_path : observed model (useful for partially observed envs)
+                            : observed model (useful to propagate noisy sensor through env)
+                            : use model_path; if None
+            seed: Random number generator seed
+        """
+
+        # Seed and initialize the random number generator
+        self.seed(seed)
 
         # sims
         self.sim = get_sim(model_path)
-        self.sim_obsd = get_sim(model_path)
+        self.sim_obsd = get_sim(obsd_model_path) if obsd_model_path else self.sim
+        self.sim.forward()
+        self.sim_obsd.forward()
         ObsVecDict.__init__(self)
 
     def _setup(self,
@@ -70,7 +92,6 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
                frame_skip = 1,
                normalize_act = True,
                obs_range = (-10, 10),
-               seed = None,
                rwd_viz = False,
                device_id = 0, # device id for rendering
                **kwargs,
@@ -79,9 +100,6 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         if self.sim is None or self.sim_obsd is None:
             raise TypeError("sim and sim_obsd must be instantiated for setup to run")
 
-        # seed the random number generator
-        self.input_seed = None
-        self.seed(seed)
         self.mujoco_render_frames = False
         self.device_id = device_id
         self.rwd_viz = rwd_viz
@@ -98,6 +116,21 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         act_high = np.ones(self.sim.model.nu) if self.normalize_act else self.sim.model.actuator_ctrlrange[:,1].copy()
         self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
 
+        # resolve initial state
+        self.init_qvel = self.sim.data.qvel.ravel().copy()
+        self.init_qpos = self.sim.data.qpos.ravel().copy() # has issues with initial jump during reset
+        # self.init_qpos = np.mean(self.sim.model.actuator_ctrlrange, axis=1) if self.normalize_act else self.sim.data.qpos.ravel().copy() # has issues when nq!=nu
+        # self.init_qpos[self.sim.model.jnt_dofadr] = np.mean(self.sim.model.jnt_range, axis=1) if self.normalize_act else self.sim.data.qpos.ravel().copy()
+        if self.normalize_act:
+            # find all linear+actuated joints. Use mean(jnt_range) as init position
+            actuated_jnt_ids = self.sim.model.actuator_trnid[self.sim.model.actuator_trntype==mujoco_py.generated.const.TRN_JOINT, 0]
+            linear_jnt_ids = np.logical_or(self.sim.model.jnt_type==mujoco_py.generated.const.JNT_SLIDE, self.sim.model.jnt_type==mujoco_py.generated.const.JNT_HINGE)
+            linear_jnt_ids = np.where(linear_jnt_ids==True)[0]
+            linear_actuated_jnt_ids = np.intersect1d(actuated_jnt_ids, linear_jnt_ids)
+            # assert np.any(actuated_jnt_ids==linear_actuated_jnt_ids), "Wooho: Great evidence that it was important to check for actuated_jnt_ids as well as linear_actuated_jnt_ids"
+            linear_actuated_jnt_qposids = self.sim.model.jnt_qposadr[linear_actuated_jnt_ids]
+            self.init_qpos[linear_actuated_jnt_qposids] = np.mean(self.sim.model.jnt_range[linear_actuated_jnt_ids], axis=1)
+
         # resolve rewards
         self.rwd_dict = {}
         self.rwd_mode = reward_mode
@@ -106,27 +139,78 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         # resolve obs
         self.obs_dict = {}
         self.obs_keys = obs_keys
+        # self._setup_rgb_encoders(obs_keys, device=None) # Removed as not using visual inputs
+        self.rgb_encoder = None # To compensate for above
         observation, _reward, done, _info = self.step(np.zeros(self.sim.model.nu))
         assert not done, "Check initialization. Simulation starts in a done state."
         self.obs_dim = observation.size
         self.observation_space = gym.spaces.Box(obs_range[0]*np.ones(self.obs_dim), obs_range[1]*np.ones(self.obs_dim), dtype=np.float32)
 
-        # resolve initial state
-        self.init_qvel = self.sim.data.qvel.ravel().copy()
-        self.init_qpos = self.sim.data.qpos.ravel().copy() # has issues with initial jump during reset
-        # self.init_qpos = np.mean(self.sim.model.actuator_ctrlrange, axis=1) if self.normalize_act else self.sim.data.qpos.ravel().copy() # has issues when nq!=nu
-        # self.init_qpos[self.sim.model.jnt_dofadr] = np.mean(self.sim.model.jnt_range, axis=1) if self.normalize_act else self.sim.data.qpos.ravel().copy()
-        if self.normalize_act:
-            linear_jnt_qposids = self.sim.model.jnt_qposadr[self.sim.model.jnt_type>1] #hinge and slides
-            linear_jnt_ids = self.sim.model.jnt_type>1
-            self.init_qpos[linear_jnt_qposids] = np.mean(self.sim.model.jnt_range[linear_jnt_ids], axis=1)
-
         return
+
+    def _setup_rgb_encoders(self, obs_keys, device=None):
+        """
+        Setup the supported visual encoders: 1d /2d / r3m18/ r3m34/ r3m50
+        """
+        if device is None:
+            self.device_encoder = "cuda" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device_encoder=device
+
+        # ensure that all keys use the same encoder and image sizes
+        id_encoders = []
+        for key in obs_keys:
+            if key.startswith('rgb'):
+                id_encoder = key.split(':')[-2]+":"+key.split(':')[-1] # HxW:encoder
+                id_encoders.append(id_encoder)
+        if len(id_encoders) > 1 :
+            unique_encoder = all(elem == id_encoders[0] for elem in id_encoders)
+            assert unique_encoder, "Env only supports single encoder. Multiple in use ({})".format(id_encoders)
+
+        # prepare encoder and transforms
+        self.rgb_encoder = None
+        self.rgb_transform = None
+        if len(id_encoders) > 0:
+            wxh, id_encoder = id_encoders[0].split(':')
+
+            # load appropriate encoders
+            # if 'r3m' in id_encoder:
+            #     print("Loading r3m...")
+            #     from r3m import load_r3m
+
+            # Load encoder
+            print("Using {} visual inputs with {} encoder".format(wxh, id_encoder))
+            if id_encoder == "1d":
+                self.rgb_encoder = IdentityEncoder()
+            elif id_encoder == "2d":
+                self.rgb_encoder = IdentityEncoder()
+            elif id_encoder == "r3m18":
+                self.rgb_encoder = load_r3m("resnet18")
+            elif id_encoder == "r3m34":
+                self.rgb_encoder = load_r3m("resnet34")
+            elif id_encoder == "r3m50":
+                self.rgb_encoder = load_r3m("resnet50")
+            else:
+                raise ValueError("Unsupported visual encoder: {}".format(id_encoder))
+            self.rgb_encoder.eval()
+            self.rgb_encoder.to(self.device_encoder)
+
+            # Load tranfsormms
+            if id_encoder[:3] == 'r3m':
+                if wxh == "224x224":
+                    self.rgb_transform = T.Compose([T.ToTensor()]) # ToTensor() divides by 255
+                else:
+                    print("HxW = 224x224 recommended")
+                    self.rgb_transform = T.Compose([T.Resize(256),
+                                        T.CenterCrop(224),
+                                        T.ToTensor()]) # ToTensor() divides by 255
+
 
     def step(self, a):
         """
         Step the simulation forward (t => t+1)
         Uses robot interface to safely step the forward respecting pos/ vel limits
+        Accepts a(t) returns obs(t+1), rwd(t+1), done(t+1), info(t+1)
         """
         a = np.clip(a, self.action_space.low, self.action_space.high)
         self.last_ctrl = self.robot.step(ctrl_desired=a,
@@ -147,7 +231,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         # finalize step
         env_info = self.get_env_infos()
 
-        # returns obs(t+1), rew(t), done(t), info(t+1)
+        # returns obs(t+1), rwd(t+1), done(t+1), info(t+1)
         return obs, env_info['rwd_'+self.rwd_mode], bool(env_info['done']), env_info
 
 
@@ -165,6 +249,10 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         # get obs_dict using the observed information
         self.obs_dict = self.get_obs_dict(self.sim_obsd)
 
+        if self.rgb_encoder:
+            visual_obs_dict = self.get_visual_obs_dict(sim=self.sim_obsd)
+            self.obs_dict.update(visual_obs_dict)
+
         # recoved observation vector from the obs_dict
         t, obs = self.obsdict2obsvec(self.obs_dict, self.obs_keys)
         return obs
@@ -172,27 +260,53 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
 
     def get_visual_obs_dict(self, sim, device_id=None):
         """
-        Recover visual observation dict corresponding to the 'rgba:cam_name:HxW' keys in obs_keys
+        Recover visual observation dict corresponding to the visual keys in obs_keys
+        Acceptable visual keys:
+            - 'rgb:cam_name:HxW:1d'
+            - 'rgb:cam_name:HxW:2d'
+            - 'rgb:cam_name:HxW:r3m18'
+            - 'rgb:cam_name:HxW:r3m34'
+            - 'rgb:cam_name:HxW:r3m50'
         """
         if device_id is None:
             device_id = self.device_id
 
         visual_obs_dict = {}
         visual_obs_dict['t'] = np.array([self.sim.data.time])
+        # find keys with rgb tags
         for key in self.obs_keys:
             if key.startswith('rgb'):
-                cam = key.split(':')[1]
-                height = int(key.split(':')[2])
-                width = int(key.split(':')[3])
-                img = self.render_camera_offscreen(
+                _, cam, wxh, rgb_encoder_id = key.split(':')
+                height = int(wxh.split('x')[0])
+                width = int(wxh.split('x')[1])
+                # render images ==> returns (ncams, height, width, 3)
+                img, dpt = self.robot.get_visual_sensors(
                                     height=height,
                                     width=width,
                                     cameras=[cam],
                                     device_id=device_id,
                                     sim=sim,
                                   )
-                img = img.reshape(-1)
-                visual_obs_dict.update({key:img})
+                # encode images
+                if rgb_encoder_id == '1d':
+                    rgb_encoded = img.reshape(-1)
+                elif rgb_encoder_id == '2d':
+                    rgb_encoded = img
+                elif rgb_encoder_id[:3] == 'r3m':
+                    with torch.no_grad():
+                        rgb_encoded = 255.0 * self.rgb_transform(img[0]).reshape(-1, 3, 224, 224)
+                        rgb_encoded.to(self.device_encoder)
+                        rgb_encoded = self.rgb_encoder(rgb_encoded).cpu().numpy()
+                        rgb_encoded = np.squeeze(rgb_encoded)
+                else:
+                    raise ValueError("Unsupported visual encoder: {}".format(rgb_encoder_id))
+
+                visual_obs_dict.update({key:rgb_encoded})
+                # add depth observations if requested in the keys (assumption d will always be accompanied by rgb keys)
+                d_key = 'd:'+key[4:]
+                if d_key in self.obs_keys:
+                    visual_obs_dict.update({d_key:dpt})
+
         return visual_obs_dict
 
 
@@ -206,12 +320,13 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         """
         env_info = {
             'time': self.obs_dict['t'][()],             # MDP(t)
-            'rwd_dense': self.rwd_dict['dense'][()],    # MDP(t-1)
-            'rwd_sparse': self.rwd_dict['sparse'][()],  # MDP(t-1)
-            'solved': self.rwd_dict['solved'][()],      # MDP(t-1)
-            'done': self.rwd_dict['done'][()],          # MDP(t-1)
+            'rwd_dense': self.rwd_dict['dense'][()],    # MDP(t)
+            'rwd_sparse': self.rwd_dict['sparse'][()],  # MDP(t)
+            'solved': self.rwd_dict['solved'][()],      # MDP(t)
+            'done': self.rwd_dict['done'][()],          # MDP(t)
             'obs_dict': self.obs_dict,                  # MDP(t)
-            'rwd_dict': self.rwd_dict,                  # MDP(t-1)
+            'rwd_dict': self.rwd_dict,                  # MDP(t)
+            'state': self.get_env_state(),              # MDP(t)
         }
         return env_info
 
@@ -333,7 +448,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
             qvel = old_state.qvel
         if act is None:
             act = old_state.act
-        new_state = mujoco_py.MjSimState(old_state.time, qpos, qvel, act)
+        new_state = mujoco_py.MjSimState(old_state.time, qpos=qpos, qvel=qvel, act=act, udd_state={})
         self.sim.set_state(new_state)
         self.sim.forward()
 
@@ -382,11 +497,6 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         self.sim.model.body_quat[:] = state_dict['body_quat']
         self.sim.forward()
 
-    # def state_vector(self):
-    #     state = self.sim.get_state()
-    #     return np.concatenate([
-    #         state.qpos.flat, state.qvel.flat])
-
 
     # Vizualization utilities ================================================
 
@@ -400,7 +510,6 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
             self.viewer.cam.elevation = -30
             self.viewer.cam.azimuth = 90
             self.viewer.cam.distance = 2.5
-            # self.viewer.lookat = np.array([-0.15602934,  0.32243594,  0.70929817])
             #self.viewer._run_speed /= self.frame_skip
             self.viewer_setup()
             self.viewer.render()
@@ -424,6 +533,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         if lookat is not None:
             camera.lookat[:] = lookat
 
+
     def render_camera_offscreen(self, cameras:list, width:int=640, height:int=480, device_id:int=0, sim=None):
         """
         Render images(widthxheight) from a list_of_cameras on the specified device_id.
@@ -431,7 +541,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         if sim is None:
             sim = self.sim_obsd
         imgs = np.zeros((len(cameras), height, width, 3), dtype=np.uint8)
-        for ind, cam in enumerate(cameras) :
+        for ind, cam in enumerate(cameras):
             img = sim.render(width=width, height=height, mode='offscreen', camera_name=cam, device_id=device_id)
             img = img[::-1, :, : ] # Image has to be flipped
             imgs[ind, :, :, :] = img
@@ -504,21 +614,25 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
                 o = next_o
                 t = t+1
 
-            print("Total reward = %3.3f, Total time = %2.3f" % (ep_rwd, ep_t0-timer.time()))
+            print("Total reward = %3.3f, Total time = %2.3f" % (ep_rwd, timer.time()-ep_t0))
             path = dict(
-            observations=np.array(observations),
-            actions=np.array(actions),
-            rewards=np.array(rewards),
-            # agent_infos=tensor_utils.stack_tensor_dict_list(agent_infos),
-            env_infos=tensor_utils.stack_tensor_dict_list(env_infos),
-            terminated=done
+                observations=np.array(observations),
+                actions=np.array(actions),
+                rewards=np.array(rewards),
+                # agent_infos=tensor_utils.stack_tensor_dict_list(agent_infos),
+                env_infos=tensor_utils.stack_tensor_dict_list(env_infos),
+                terminated=done
             )
             paths.append(path)
 
             # save offscreen buffers as video
             if render =='offscreen':
                 file_name = output_dir + filename + str(ep) + ".mp4"
-                skvideo.io.vwrite(file_name, np.asarray(frames))
+                # check if the platform is OS -- make it compatible with quicktime
+                if platform == "darwin":
+                    skvideo.io.vwrite(file_name, np.asarray(frames),outputdict={"-pix_fmt": "yuv420p"})
+                else:
+                    skvideo.io.vwrite(file_name, np.asarray(frames))
                 print("saved", file_name)
 
         self.mujoco_render_frames = False
@@ -532,7 +646,9 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         """
         Get observation dictionary
         Implement this in each subclass.
-        If visual keys (rgba:cam_name:HxW) are present use get_visual_obs_dict() to get visual inputs, process it (typically passed through an encoder to reduce dims), and then update the obs_dict. For example
+        Note: for visual keys (rgb:cam_name:HxW:encoder) use get_visual_obs_dict()
+            to get visual inputs, process it (typically passed through an encoder
+            to reduce dims), and then update the obs_dict. For example -
             > visual_obs_dict = self.get_visual_obs_dict(sim=sim)
             > obs_dict.update(visual_obs_dict)
         """

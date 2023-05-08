@@ -16,8 +16,8 @@ project = 'MyoSuite'
 copyright = "Copyright © 2022 Meta Platforms, Inc"
 author = "Meta AI Research"
 
-release = '0.1'
-version = '0.1.0'
+release = '0.2'
+version = '0.2.4'
 
 # -- General configuration
 
@@ -27,8 +27,6 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
-    'sphinx_copybutton',
-    'RunNotebook',
 ]
 
 intersphinx_mapping = {
