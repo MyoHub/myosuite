@@ -82,6 +82,21 @@ LU-RB    Lumbrical (2- index, 3- middle, 4- ring, 5- little)
 UI-UB    Palmar or Ulnar Interosseous (2- index, 3- middle, 4- ring, 5- little)
 =======  ========
 
+
+myoLeg
+=========
+The 3D dexterous human leg requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
+
+This musculoskeletal model is comprised of 10 joints, 20 DoFs, and 80 muscles-tendon units. This musculoskeletal model takes
+Rajagopal's full body gait model [https://github.com/opensim-org/opensim-models/tree/master/Models/RajagopalModel] as close reference.
+
+Joints and muscle details can be found in Rajagopal's paper [https://ieeexplore.ieee.org/document/7505900]
+
+.. image:: images/MyoLeg.png
+  :height: 200
+
+
+
 .. _tasks:
 
 Tasks
