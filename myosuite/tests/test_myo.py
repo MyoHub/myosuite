@@ -41,5 +41,11 @@ class TestMyo(TestEnvs):
         ]
         self.check_envs('MyoChallenge', env_names)
 
+    def test_baseline_envs(self):
+        env_names = [
+            'myoLegWalkStraight-v0'
+        ]
+        self.check_envs('MyoBaselines', env_names)
+
 if __name__ == '__main__':
     unittest.main()
