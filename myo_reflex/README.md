@@ -1,6 +1,6 @@
 <!-- =================================================
 # Copyright (c) Seungmoon Song, Chun Kwang Tan
-Authors  :: Seungmoon Song (), Chun Kwang Tan (riodren.tan@gmail.com)
+Authors  :: Seungmoon Song (ssm0445@gmail.com), Chun Kwang Tan (riodren.tan@gmail.com)
 ================================================= -->
 
 ## Reflex-based Controller
