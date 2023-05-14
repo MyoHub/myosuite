@@ -4,7 +4,7 @@ agent: deprl.custom_agents.dep_factory(3, deprl.custom_mpo_torch.TunedMPO())(rep
 before_training: ''
 checkpoint: last
 env_args: {}
-environment: deprl.environments.Gym('myoLegWalkStraight-v0', scaled_actions=False)
+environment: deprl.environments.Gym('myoLegWalk-v0', scaled_actions=False)
 environment_name: deprl_baseline
 header: import deprl, gym, myosuite
 mpo_args:

@@ -53,7 +53,7 @@ import gym
 import myosuite
 import deprl
 
-env = gym.make("myoLegWalkStraight-v0")
+env = gym.make("myoLegWalk-v0")
 policy = deprl.load_baseline(env)
 
 N = 5 # number of episodes
@@ -76,13 +76,26 @@ where the last folder contains the `checkpoints` and `config.yaml` files. This r
 3. You can also log some settings to [wandb](https://wandb.ai/). Set it up and afterwards run 
 
 ```bash
-python -m deprl.log --path baselines_DEPRL/myoLegWalkStraight_20230514/myoLeg/log.csv --project myoleg_deprl_baseline
+python -m deprl.log --path baselines_DEPRL/myoLegWalk_20230514/myoLeg/log.csv --project myoleg_deprl_baseline
 ```
 which will log all the training metrics to your `wandb` project.
 4. If you want to plot your training run, use
 
 ```bash
-python -m deprl.plot --path baselines_DEPRL/myoLegWalkStraight_20230514/
+python -m deprl.plot --path baselines_DEPRL/myoLegWalk_20230514/
 ```
 
 For more instructions on how to use the plot feature, checkout [TonicRL](https://github.com/fabiopardo/tonic), which is the general-purpose RL library deprl was built on.
+
+### Credit
+The DEPRL baseline for the myoLeg was developed by Pierre Schumacher, Daniel Häufle and Georg Martius as members of the Max Planck Institute for Intelligent Systems and the Hertie Institute for Clinical Brain Research. Please cite the following if you are using this work:
+```
+@inproceedings{
+schumacher2023deprl,
+title={{DEP}-{RL}: Embodied Exploration for Reinforcement Learning in Overactuated and Musculoskeletal Systems},
+author={Pierre Schumacher and Daniel Haeufle and Dieter B{\"u}chler and Syn Schmitt and Georg Martius},
+booktitle={The Eleventh International Conference on Learning Representations },
+year={2023},
+url={https://openreview.net/forum?id=C-xa_D3oTj6}
+}
+```
