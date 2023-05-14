@@ -304,10 +304,7 @@ register_env_with_variants(id='myoLegWalkStraight-v0',
         max_episode_steps=1000,
         kwargs={
             'model_path': curr_dir + '/../../simhive/myo_sim/myoleg/myoleg_v0.5(mj120).mjb',
-            'normalize_act': True,
-            'max_rot': 0.8,
-            'min_height': 0.8,
-            'hip_period': 100
+            'normalize_act': True
         }
     )
 

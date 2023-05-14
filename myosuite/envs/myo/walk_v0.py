@@ -38,7 +38,6 @@ class ReachEnvV0(BaseV0):
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
         super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
-
         self._setup(**kwargs)
 
 
@@ -58,24 +57,6 @@ class ReachEnvV0(BaseV0):
                 )
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.update_camera(distance=3.0)
-
-    def get_obs_vec(self):
-        self.obs_dict['time'] = np.array([self.sim.data.time])
-        self.obs_dict['qpos'] = self.sim.data.qpos[:].copy()
-        self.obs_dict['qvel'] = self.sim.data.qvel[:].copy()*self.dt
-        if self.sim.model.na>0:
-            self.obs_dict['act'] = self.sim.data.act[:].copy()
-
-        # reach error
-        self.obs_dict['tip_pos'] = np.array([])
-        self.obs_dict['target_pos'] = np.array([])
-        for isite in range(len(self.tip_sids)):
-            self.obs_dict['tip_pos'] = np.append(self.obs_dict['tip_pos'], self.sim.data.site_xpos[self.tip_sids[isite]].copy())
-            self.obs_dict['target_pos'] = np.append(self.obs_dict['target_pos'], self.sim.data.site_xpos[self.target_sids[isite]].copy())
-        self.obs_dict['reach_err'] = np.array(self.obs_dict['target_pos'])-np.array(self.obs_dict['tip_pos'])
-
-        t, obs = self.obsdict2obsvec(self.obs_dict, self.obs_keys)
-        return obs
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -157,11 +138,10 @@ class WalkStraightEnvV0(ReachEnvV0):
 
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "forward": 5.0,
-        "self_contact": -0.2,
         "done": -100,
         "cyclic_hip": -10,
         "ref_rot": 10.0,
-        "hip_rotation": 5.0
+        "joint_angle_rew": 15.0
     }
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
@@ -179,14 +159,20 @@ class WalkStraightEnvV0(ReachEnvV0):
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
         super(ReachEnvV0, self).__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
-        self._prepare_initial_settings(kwargs)
         self._setup(**kwargs)
 
     def _setup(self,
                obs_keys: list = DEFAULT_OBS_KEYS,
                weighted_reward_keys: dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
+               min_height = 0.8,
+               max_rot = 0.8,
+               hip_period = 100,
                **kwargs,
                ):
+        self.steps = 0
+        self.hip_period = hip_period
+        self.max_rot = max_rot
+        self.min_height = min_height
         super(ReachEnvV0, self)._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        **kwargs
@@ -194,41 +180,6 @@ class WalkStraightEnvV0(ReachEnvV0):
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.init_qvel[:] = 0.0
         self.update_camera(distance=3.0)
-
-    def _prepare_initial_settings(self, kwargs):
-        self._steps = 0
-        self._min_height = kwargs.pop('min_height')
-        self._max_rot = kwargs.pop('max_rot')
-        self._hip_period = kwargs.pop('hip_period')
-        # initial root position and orientation
-        self._init_pos_root = np.array([
-            0.0000e+00,
-            0.0000e+00,
-            9.2000e-01,
-            7.0739e-01,
-            0.0000e+00,
-            0.0000e+00,
-            -7.0683e-01])
-
-    def get_obs_vec(self):
-        self.obs_dict['time'] = np.array([self.sim.data.time])
-        self.obs_dict['qpos_without_xy'] = self.sim.data.qpos[2:].copy()
-        self.obs_dict['qvel'] = self.sim.data.qvel[:].copy() * self.dt
-        self.obs_dict['com_vel'] = np.array([self._get_com_velocity().copy()])
-        self.obs_dict['torso_angle'] = np.array([self._get_torso_angle().copy()])
-        self.obs_dict['feet_heights'] = self._get_feet_heights().copy()
-        self.obs_dict['height'] = np.array([self._get_height()]).copy()
-        self.obs_dict['feet_rel_positions'] = self._get_feet_relative_position().copy()
-        self.obs_dict['phase_var'] = np.array([(self._steps/self._hip_period) % 1]).copy()
-        self.obs_dict['muscle_length'] = self.muscle_lengths()
-        self.obs_dict['muscle_velocity'] = self.muscle_velocities()
-        self.obs_dict['muscle_force'] = self.muscle_forces()
-
-        if self.sim.model.na>0:
-            self.obs_dict['act'] = self.sim.data.act[:].copy()
-
-        t, obs = self.obsdict2obsvec(self.obs_dict, self.obs_keys)
-        return obs
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -241,7 +192,7 @@ class WalkStraightEnvV0(ReachEnvV0):
         obs_dict['feet_heights'] = self._get_feet_heights().copy()
         obs_dict['height'] = np.array([self._get_height()]).copy()
         obs_dict['feet_rel_positions'] = self._get_feet_relative_position().copy()
-        obs_dict['phase_var'] = np.array([(self._steps/self._hip_period) % 1]).copy()
+        obs_dict['phase_var'] = np.array([(self.steps/self.hip_period) % 1]).copy()
         obs_dict['muscle_length'] = self.muscle_lengths()
         obs_dict['muscle_velocity'] = self.muscle_velocities()
         obs_dict['muscle_force'] = self.muscle_forces()
@@ -253,19 +204,18 @@ class WalkStraightEnvV0(ReachEnvV0):
 
     def get_reward_dict(self, obs_dict):
         forward = self._get_forward_reward()
-        self_contact = self._get_contact_force()
         cyclic_hip = self._get_cyclic_rew()
-        ref_rot = self._get_ref_deviation_cost()
-        hip_rotation = self._get_hip_rot_cost()
+        ref_rot = self._get_ref_rotation_rew()
+        joint_angle_rew = self._get_joint_angle_rew(['hip_adduction_l', 'hip_adduction_r', 'hip_rotation_l',
+                                                       'hip_rotation_r'])
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
 
         rwd_dict = collections.OrderedDict((
             # Optional Keys
             ('forward', forward),
-            ('self_contact', self_contact),
             ('cyclic_hip',  cyclic_hip),
             ('ref_rot',  ref_rot),
-            ('hip_rotation', hip_rotation),
+            ('joint_angle_rew', joint_angle_rew),
             ('act_mag', act_mag),
             # Must keys
             ('sparse',  forward),
@@ -289,11 +239,11 @@ class WalkStraightEnvV0(ReachEnvV0):
 
     def step(self, *args, **kwargs):
         obs, reward, done, info = super().step(*args, **kwargs)
-        self._steps += 1
+        self.steps += 1
         return obs, reward, done, info
 
     def reset(self):
-        self._steps = 0
+        self.steps = 0
         qpos, qvel = self.get_randomized_initial_state()
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(ReachEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel)
@@ -310,36 +260,20 @@ class WalkStraightEnvV0(ReachEnvV0):
 
     def _get_done(self):
         height = self._get_height()
-        if height < self._min_height:
+        if height < self.min_height:
             return 1
         if self._get_rot_condition():
             return 1
         return 0
 
-    def _get_hip_rot_cost(self):
+    def _get_joint_angle_rew(self, joint_names):
         """
-        Get a cost proportional to the rotation of the hip.
+        Get a reward proportional to the specified joint angles.
         """
-        joint_names = ['hip_rotation_l', 'hip_rotation_r']
         mag = 0
-        hip_rot_angles = self._get_angle(joint_names)
-        mag = np.sum(np.clip(np.abs(hip_rot_angles) - 0.2, 0, 1000))
-        return np.exp(- 5 * mag)
-
-    def _get_contact_force(self):
-        """
-        Get non-ground related contact forces. (i.e. self-contact from leg-on-leg)
-        """
-        norm = 0
-        # mujoco_py function needs to write into a c-style array
-        c_array = np.zeros(6, dtype=np.float64)
-        for i in range(self.sim.data.ncon):
-            if self.sim.data.contact[i].geom1 == 0 or self.sim.data.contact[i].geom2 == 0:
-                continue
-            mujoco_py.functions.mj_contactForce(self.sim.model, self.sim.data, i, c_array)
-            # in non-ground body collisions, only the first element is non-zero atm.
-            norm += c_array[0]
-        return np.clip(norm, -100, 100) / 100
+        joint_angles = self._get_angle(joint_names)
+        mag = np.mean(np.abs(joint_angles))
+        return np.exp(-5 * mag)
 
     def _get_feet_heights(self):
         """
@@ -364,25 +298,22 @@ class WalkStraightEnvV0(ReachEnvV0):
         over only achieves flat rewards.
         """
         vel = self._get_com_velocity()
-        if vel > 1.2:
-            return 1
-        else:
-            return np.exp(-np.square(1.2 - vel))
+        return np.exp(-np.square(1.2 - vel[1])) + np.exp(-np.square(vel[0]))
 
     def _get_cyclic_rew(self):
         """
         Cyclic extension of hip angles is rewarded to incentivize a walking gait.
         """
-        phase_var = (self._steps/self._hip_period) % 1
+        phase_var = (self.steps/self.hip_period) % 1
         des_angles = np.array([0.8 * np.cos(phase_var * 2 * np.pi + np.pi), 0.8 * np.cos(phase_var * 2 * np.pi)], dtype=np.float32)
         angles = self._get_angle(['hip_flexion_l', 'hip_flexion_r'])
         return np.linalg.norm(des_angles - angles)
 
-    def _get_ref_deviation_cost(self):
+    def _get_ref_rotation_rew(self):
         """
         Incentivize staying close to the initial reference orientation up to a certain threshold.
         """
-        return np.exp(-max(0.0, np.linalg.norm(5.0 * (self.sim.data.qpos[3:7] - self._init_pos_root[3:7])) - 0.1))
+        return np.exp(-np.linalg.norm(5.0 * (self.sim.data.qpos[3:7] - self.init_qpos[3:7])))
 
     def _get_torso_angle(self):
         body_id = self.sim.model.body_name2id('torso')
@@ -394,7 +325,7 @@ class WalkStraightEnvV0(ReachEnvV0):
         """
         mass = np.expand_dims(self.sim.model.body_mass, -1)
         cvel = - self.sim.data.cvel
-        return (np.sum(mass * cvel, 0) / np.sum(mass))[4]
+        return (np.sum(mass * cvel, 0) / np.sum(mass))[3:5]
 
     def _get_height(self):
         """
@@ -412,7 +343,7 @@ class WalkStraightEnvV0(ReachEnvV0):
         """
         # quaternion of root
         quat = np.roll(self.sim.data.qpos[3:7], -1)
-        return [1 if np.abs(R.from_quat(quat).apply([1, 0, 0])[0]) > self._max_rot else 0][0]
+        return [1 if np.abs(R.from_quat(quat).apply([1, 0, 0])[0]) > self.max_rot else 0][0]
 
     def _get_com(self):
         """
