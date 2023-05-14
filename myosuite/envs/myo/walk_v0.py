@@ -9,8 +9,7 @@ import numpy as np
 import mujoco_py
 
 from myosuite.envs.myo.base_v0 import BaseV0
-from scipy.spatial.transform import Rotation as R
-
+from myosuite.utils.quat_math import quat2mat
 
 
 class ReachEnvV0(BaseV0):
@@ -121,7 +120,7 @@ class ReachEnvV0(BaseV0):
         self.sim.forward()
 
 
-class WalkStraightEnvV0(ReachEnvV0):
+class WalkEnvV0(ReachEnvV0):
 
     DEFAULT_OBS_KEYS = [
         'qpos_without_xy',
@@ -138,7 +137,7 @@ class WalkStraightEnvV0(ReachEnvV0):
     ]
 
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
-        "forward": 5.0,
+        "vel_reward": 5.0,
         "done": -100,
         "cyclic_hip": -10,
         "ref_rot": 10.0,
@@ -168,14 +167,20 @@ class WalkStraightEnvV0(ReachEnvV0):
                min_height = 0.8,
                max_rot = 0.8,
                hip_period = 100,
-               random_leg_position=False,
+               reset_type='init',
+               target_x_vel=0.0,
+               target_y_vel=1.2,
+               target_rot = None,
                **kwargs,
                ):
-        self.steps = 0
-        self.hip_period = hip_period
-        self.max_rot = max_rot
         self.min_height = min_height
-        self.random_leg_position = random_leg_position
+        self.max_rot = max_rot
+        self.hip_period = hip_period
+        self.reset_type = reset_type
+        self.target_x_vel = target_x_vel
+        self.target_y_vel = target_y_vel
+        self.target_rot = target_rot
+        self.steps = 0
         super(ReachEnvV0, self)._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        **kwargs
@@ -206,7 +211,7 @@ class WalkStraightEnvV0(ReachEnvV0):
         return obs_dict
 
     def get_reward_dict(self, obs_dict):
-        forward = self._get_forward_reward()
+        vel_reward = self._get_vel_reward()
         cyclic_hip = self._get_cyclic_rew()
         ref_rot = self._get_ref_rotation_rew()
         joint_angle_rew = self._get_joint_angle_rew(['hip_adduction_l', 'hip_adduction_r', 'hip_rotation_l',
@@ -215,14 +220,14 @@ class WalkStraightEnvV0(ReachEnvV0):
 
         rwd_dict = collections.OrderedDict((
             # Optional Keys
-            ('forward', forward),
+            ('vel_reward', vel_reward),
             ('cyclic_hip',  cyclic_hip),
             ('ref_rot',  ref_rot),
             ('joint_angle_rew', joint_angle_rew),
             ('act_mag', act_mag),
             # Must keys
-            ('sparse',  forward),
-            ('solved',    forward >= 1.0),
+            ('sparse',  vel_reward),
+            ('solved',    vel_reward >= 1.0),
             ('done',  self._get_done()),
         ))
         rwd_dict['dense'] = np.sum([wt*rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
@@ -252,7 +257,12 @@ class WalkStraightEnvV0(ReachEnvV0):
 
     def reset(self):
         self.steps = 0
-        qpos, qvel = self.get_randomized_initial_state()
+        if self.reset_type == 'random':
+            qpos, qvel = self.get_randomized_initial_state()
+        elif self.reset_type == 'init':
+                qpos, qvel = self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
+        else:
+            qpos, qvel = self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(ReachEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel)
         return obs
@@ -300,13 +310,13 @@ class WalkStraightEnvV0(ReachEnvV0):
         pelvis = self.sim.model.body_name2id('pelvis')
         return np.array([self.sim.data.body_xpos[foot_id_l]-self.sim.data.body_xpos[pelvis], self.sim.data.body_xpos[foot_id_r]-self.sim.data.body_xpos[pelvis]])
 
-    def _get_forward_reward(self):
+    def _get_vel_reward(self):
         """
         Gaussian that incentivizes a walking velocity. Going
         over only achieves flat rewards.
         """
         vel = self._get_com_velocity()
-        return np.exp(-np.square(1.2 - vel[1])) + np.exp(-np.square(vel[0]))
+        return np.exp(-np.square(self.target_y_vel - vel[1])) + np.exp(-np.square(self.target_x_vel - vel[0]))
 
     def _get_cyclic_rew(self):
         """
@@ -321,7 +331,8 @@ class WalkStraightEnvV0(ReachEnvV0):
         """
         Incentivize staying close to the initial reference orientation up to a certain threshold.
         """
-        return np.exp(-np.linalg.norm(5.0 * (self.sim.data.qpos[3:7] - self.init_qpos[3:7])))
+        target_rot = [self.target_rot if self.target_rot is not None else self.init_qpos[3:7]][0]
+        return np.exp(-np.linalg.norm(5.0 * (self.sim.data.qpos[3:7] - target_rot)))
 
     def _get_torso_angle(self):
         body_id = self.sim.model.body_name2id('torso')
@@ -350,8 +361,8 @@ class WalkStraightEnvV0(ReachEnvV0):
         yields a vector with a strong x component.
         """
         # quaternion of root
-        quat = np.roll(self.sim.data.qpos[3:7], -1)
-        return [1 if np.abs(R.from_quat(quat).apply([1, 0, 0])[0]) > self.max_rot else 0][0]
+        quat = self.sim.data.qpos[3:7].copy()
+        return [1 if np.abs((quat2mat(quat) @ [1, 0, 0])[0]) > self.max_rot else 0][0]
 
     def _get_com(self):
         """
