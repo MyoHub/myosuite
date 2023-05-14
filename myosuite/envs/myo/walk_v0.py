@@ -56,6 +56,7 @@ class ReachEnvV0(BaseV0):
                 **kwargs,
                 )
         self.init_qpos[:] = self.sim.model.key_qpos[0]
+        self.init_qvel[:] = self.sim.model.key_qvel[0]
         self.update_camera(distance=3.0)
 
     def get_obs_dict(self, sim):
@@ -167,12 +168,14 @@ class WalkStraightEnvV0(ReachEnvV0):
                min_height = 0.8,
                max_rot = 0.8,
                hip_period = 100,
+               random_leg_position=False,
                **kwargs,
                ):
         self.steps = 0
         self.hip_period = hip_period
         self.max_rot = max_rot
         self.min_height = min_height
+        self.random_leg_position = random_leg_position
         super(ReachEnvV0, self)._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        **kwargs
@@ -227,12 +230,12 @@ class WalkStraightEnvV0(ReachEnvV0):
 
     def get_randomized_initial_state(self):
         # randomly start with flexed left or right knee
-        if np.random.uniform() < 0.5:
-            qpos = self.sim.model.key_qpos[1].copy()
-            qvel = self.sim.model.key_qvel[1].copy()
-        else:
+        if self.random_leg_position and np.random.uniform() < 0.5:
             qpos = self.sim.model.key_qpos[2].copy()
             qvel = self.sim.model.key_qvel[2].copy()
+        else:
+            qpos = self.sim.model.key_qpos[3].copy()
+            qvel = self.sim.model.key_qvel[3].copy()
 
         # randomize qpos coordinates
         rot_state = qpos[3:7]

@@ -1,6 +1,6 @@
 # Baselines
-
-## Installation
+## NPG Baselines
+### Installation
 1. We use [mjrl](https://github.com/aravindr93/mjrl) for our baselines ([install instructions](https://github.com/aravindr93/mjrl/tree/master/setup#installation)) and [PyTorch](https://pytorch.org/).
 2. [Hydra](https://github.com/facebookresearch/hydra) `pip install hydra-core --upgrade`
 3. [submitit](https://github.com/facebookincubator/submitit) launcher hydra plugin to launch jobs on cluster/ local 
@@ -12,7 +12,7 @@ pip install hydra-submitit-launcher --upgrade
 pip install submitit
 ```
 
-## Launch training
+### Launch training
 1. Get commands to run
 ```bash
 % sh train_myosuite.sh myo         # runs natively
@@ -22,3 +22,67 @@ pip install submitit
 2. Further customize the prompts from the previous step and execute.
 
 3. To resume training from a previous checkpoint add the `+job_name=<absolute_path_of_previous_checkpoint>` to the command line
+
+
+
+## DEPRL Baseline
+
+### Installation
+1. We provide [deprl](https://github.com/martius-lab/depRL) as an additional baseline for locomotion policies.
+2. Simply run
+
+```bash
+python -m pip install deprl
+```
+after installing the myosuite.
+
+### Train new policy
+For training from scratch, use
+
+```bash
+python -m deprl.main baselines_DEPRL/myoLegWalk.json
+```
+and training should start. Inside the json-file, you can set a custom output folder with `working_dir=myfolder`. Be sure to adapt the `sequential` and `parallel` settings. During a training run, `sequential x parallel` environments are spawned, which consumes over 30 GB of RAM with the default settings for the myoLeg. Reduce this number if your workstation has less memory.
+
+### Visualize trained policy
+We provide two mechanisms to visualize policies.
+1. If you wish to use your own environment, or want to just quickly try our pre-trained DEPRL baseline, take a look at the code snippet below
+
+```
+import gym
+import myosuite
+import deprl
+
+env = gym.make("myoLegWalkStraight-v0")
+policy = deprl.load_baseline(env)
+
+N = 5 # number of episodes
+for i in range(N):
+    obs = env.reset()
+    while True:
+        action = policy(obs)
+        obs, reward, done, info = env.step(action)
+        env.mj_render()
+        if done:
+            break
+```
+Use `deprl.load('path', env)`, if you have your own policy.
+2. For our visualization, simply run
+
+```bash
+python -m deprl.play --path folder/
+```
+where the last folder contains the `checkpoints` and `config.yaml` files. This runs the policy for several episodes and returns scores. 
+3. You can also log some settings to [wandb](https://wandb.ai/). Set it up and afterwards run 
+
+```bash
+python -m deprl.log --path baselines_DEPRL/myoLegWalkStraight_20230514/myoLeg/log.csv --project myoleg_deprl_baseline
+```
+which will log all the training metrics to your `wandb` project.
+4. If you want to plot your training run, use
+
+```bash
+python -m deprl.plot --path baselines_DEPRL/myoLegWalkStraight_20230514/
+```
+
+For more instructions on how to use the plot feature, checkout [TonicRL](https://github.com/fabiopardo/tonic), which is the general-purpose RL library deprl was built on.
