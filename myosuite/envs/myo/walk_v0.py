@@ -226,10 +226,15 @@ class WalkStraightEnvV0(ReachEnvV0):
         return rwd_dict
 
     def get_randomized_initial_state(self):
-        qpos, qvel = self._get_initial_state()
+        # randomly start with flexed left or right knee
         if np.random.uniform() < 0.5:
-            # randomly start with flexed left or right knee
-            qpos, qvel = self._switch_legs(qpos, qvel)
+            qpos = self.sim.model.key_qpos[1].copy()
+            qvel = self.sim.model.key_qvel[1].copy()
+        else:
+            qpos = self.sim.model.key_qpos[2].copy()
+            qvel = self.sim.model.key_qvel[2].copy()
+
+        # randomize qpos coordinates
         rot_state = qpos[3:7]
         height = qpos[2]
         qpos[:] = qpos[:] + np.random.normal(0, 0.02, size=qpos.shape)
@@ -358,50 +363,3 @@ class WalkStraightEnvV0(ReachEnvV0):
         Get the angles of a list of named joints.
         """
         return np.array([self.sim.data.qpos[self.sim.model.jnt_qposadr[self.sim.model.joint_name2id(name)]] for name in names])
-
-    def _get_initial_state(self):
-        """
-        Set the body to the scone state. The initial file in scone might be a good
-        starting state for mujoco.
-        The values for the initial joint angles and velocities were copied and slightly
-        modified from the SCONE simulator, which is written by:
-        Thomas Geijtenbeek <thomas@goatstream.com>
-        """
-        qpos = self.init_qpos.copy()
-        # positions
-        qpos[0] = 0  # pelvis x
-        qpos[1] = 0  # pelvis y
-        qpos[2] = 1.0  # pelvis z
-        qpos[7] = -0.1652  # hip_flexion_r
-        qpos[12] = +0.0888  # knee_angle_r
-        qpos[15] = -0.019  # ankle_angle_r
-        qpos[21] = -0.2326  # hip_flexion_l
-        qpos[26] = +1.227  # knee_angle_l
-        qpos[29] = +0.1672  # ankle_angle_l
-
-        # velocities
-        qvel = self.init_qvel.copy()
-        qvel[0] = 0  # pelvis x
-        qvel[1] = -1.5  # pelvis y
-        qvel[2] = 0.0  # pelvis z
-        qvel[6] = -0.576  # hip_flexion_r
-        qvel[11] = +0.175  # knee_angle_r
-        qvel[14] = +0.988  # ankle_angle_r
-        qvel[20] = +4.9066  # hip_flexion_l
-        qvel[25] = -3.59786  # knee_angle_l
-        qvel[28] = +0.633  # ankle_angle_l
-        return qpos, qvel
-
-    def _switch_legs(self, qpos, qvel):
-        """
-        Switches the joint angle and velocities symmetrically
-        between both legs, given as qpos and qvel arrays.
-        """
-        qpos[7], qpos[21] = qpos[21], qpos[7]   # hip_flexion
-        qpos[12], qpos[26] = qpos[26], qpos[12] # knee_angle
-        qpos[15],qpos[29] = qpos[29], qpos[15]  # ankle_angle
-
-        qvel[7], qvel[21] = qvel[21], qvel[7]   # hip_flexion
-        qvel[12], qvel[26] = qvel[26], qvel[12] # knee_angle
-        qvel[15], qvel[29] = qvel[29], qvel[15]  # ankle_angle
-        return qpos, qvel
