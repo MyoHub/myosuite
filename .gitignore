@@ -114,3 +114,12 @@ _build
 dist
 tags
 .vscode/settings.json
+myo_reflex/ReflexCtrInterface.py
+myo_reflex/reflexCtr.py
+myo_reflex/Hand_Tuning.ipynb
+myosuite/envs/myo/walk_v0_Backup.py
+myosuite/envs/myo/MyoReflex_Gait_v0.py
+myosuite/envs/myo/MyoReflex_Gait_v0_Backup.py
+myosuite/envs/myo/walk_v0.py
+myosuite/agents/baseline_Reflex/MyoReflex_output.mp4
+myosuite/agents/baseline_Reflex/Hand_Tuning.ipynb

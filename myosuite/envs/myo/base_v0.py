@@ -70,14 +70,19 @@ class BaseV0(env_base.MujocoEnv):
         muscle_a = a.copy()
 
         # Explicitely project normalized space (-1,1) to actuator space (0,1) if muscles
-        if self.sim.model.na:
+        if self.sim.model.na>0 and self.normalize_act:
+            #print("Normalized muscles")
             # find muscle actuators
             muscle_act_ind = self.sim.model.actuator_dyntype==3
             muscle_a[muscle_act_ind] = 1.0/(1.0+np.exp(-5.0*(muscle_a[muscle_act_ind]-0.5)))
+            
             # TODO: actuator space may not always be (0,1) for muscle or (-1, 1) for others
             isNormalized = False # refuse internal reprojection as we explicitely did it here
         else:
+            #print("Not normalizing muscles")
             isNormalized = self.normalize_act # accept requested reprojection
+
+        #print(f"Muscle_a - {muscle_a}")
 
         # implement abnormalities
         if self.muscle_condition == 'fatigue':

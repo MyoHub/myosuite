@@ -298,7 +298,6 @@ register_env_with_variants(id='myoLegDemo-v0',
         }
     )
 
-
 # Hand-Joint Reaching ==============================
 register_env_with_variants(id='myoHandReachFixed-v0',
         entry_point='myosuite.envs.myo.reach_v0:ReachEnvV0',

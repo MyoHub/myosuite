@@ -134,4 +134,5 @@ class ReachEnvV0(BaseV0):
         self.viewer.cam.elevation = -15
         self.viewer.cam.distance = 5.0
         self.viewer.vopt.flags[3] = 1 # render actuators
+        self.viewer.vopt.flags[12] = 1 # render actuators
         self.sim.forward()
