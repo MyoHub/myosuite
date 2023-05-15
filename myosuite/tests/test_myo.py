@@ -43,7 +43,7 @@ class TestMyo(TestEnvs):
 
     def test_baseline_envs(self):
         env_names = [
-            'myoLegWalkStraight-v0'
+            'myoLegWalk-v0'
         ]
         self.check_envs('MyoBaselines', env_names)
 
