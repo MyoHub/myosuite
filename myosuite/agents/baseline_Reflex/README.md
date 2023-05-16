@@ -6,7 +6,7 @@ Authors  :: Seungmoon Song (ssm0445@gmail.com), Chun Kwang Tan (cktan.neumove@gm
 `MyoLegReflex` is a reflex-based walking controller for `MyoLeg`. With the provided set of 46 control parameters, MyoLeg generates a steady walking patterns. Users have the freedom to discover alternative parameter sets for generating diverse walking behaviors, or to design a higher-level controller that modulates these parameters dynamically, thereby enabling navigation within dynamic environments.
 
 ## Examples
-`MyoLegReflex` is bundled as a wrapper around `MyoLeg`. To run `MyoLegReflex` with default parameters, you can either utilize the Jupyter notebook found at \myosuite\agents\baseline_Reflex or execute the following code snippet:
+`MyoLegReflex` is bundled as a wrapper around `MyoLeg`. To run `MyoLegReflex` with default parameters, you can either utilize the Jupyter notebook (https://github.com/elladyr/myosuite/blob/baseline_reflex/myosuite/agents/baseline_Reflex/MyoSuite_MyoReflex_Walk.ipynb) or execute the following code snippet:
 
 ```python
 import ReflexCtrInterface
