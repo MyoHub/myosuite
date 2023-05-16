@@ -36,19 +36,8 @@ Myo_env.env.close()
 
 To make the controller more straightforward, we first modified the circuits that operate based on muscle lengths and velocities to work with joint angles and angular velocities instead.
 
-Subsequently, we adapted this controller to be compatible with `MyoLeg`, which features 80 leg muscles. We achieved this by merging sensory data from each functional muscle group into one, processing the combined sensory data through the adapted reflex circuits to generate muscle stimulation signals, and then distributing these signals to the individual muscles within each group. The grouping of muscles is listed below:
+Subsequently, we adapted this controller to be compatible with `MyoLeg`, which features 80 leg muscles. We achieved this by merging sensory data from each functional muscle group into one, processing the combined sensory data through the adapted reflex circuits to generate muscle stimulation signals, and then distributing these signals to the individual muscles within each group. The grouping of muscles are defined in : https://github.com/elladyr/myosuite/blob/baseline_reflex/myosuite/agents/baseline_Reflex/ReflexCtrInterface.py#L212-L345
 
-Hip Abductors (HAB) : ['piri_r', 'sart_r', 'glmed1_r', 'glmed2_r', 'glmin1_r', 'glmin2_r', 'glmin3_r']
-Hip Adductors (HAD) : ['addbrev_r', 'addlong_r', 'addmagDist_r', 'addmagIsch_r', 'addmagMid_r', 'addmagProx_r', 'grac_r']
-Hip Flexors (HFL) : ['psoas_r', 'iliacus_r']
-Gluteus (GLU) : ['glmax1_r', 'glmax2_r', 'glmax3_r', 'glmed3_r']
-Hamstring (HAM) : ['semimem_r', 'semiten_r', 'bflh_r']
-Biceps femoris Short Head (BFSH) : ['bfsh_r']
-Gastrocnemius (GAS) : ['gaslat_r', 'gasmed_r']
-Soleus (SOL) : ['soleus_r', 'perbrev_r', 'perlong_r', 'tibpost_r']
-Rectus femoris (RF) : ['recfem_r']
-Vastus (VAS) : ['vasint_r', 'vaslat_r', 'vasmed_r']
-Tibialis anterior (TA) : ['tibant_r']
 
 ## Citation
 
