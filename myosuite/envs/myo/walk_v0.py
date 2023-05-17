@@ -235,7 +235,7 @@ class WalkEnvV0(BaseV0):
 
     def get_randomized_initial_state(self):
         # randomly start with flexed left or right knee
-        if  np.random.uniform() < 0.5:
+        if  self.np_random.uniform() < 0.5:
             qpos = self.sim.model.key_qpos[2].copy()
             qvel = self.sim.model.key_qvel[2].copy()
         else:
@@ -246,7 +246,7 @@ class WalkEnvV0(BaseV0):
         # but dont change height or rot state
         rot_state = qpos[3:7]
         height = qpos[2]
-        qpos[:] = qpos[:] + np.random.normal(0, 0.02, size=qpos.shape)
+        qpos[:] = qpos[:] + self.np_random.normal(0, 0.02, size=qpos.shape)
         qpos[3:7] = rot_state
         qpos[2] = height
         return qpos, qvel
