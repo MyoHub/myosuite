@@ -7,10 +7,20 @@ RL Baselines
 For ease of getting started, MyoSuite comes prepackaged with a set of pre-trained baselines.
 See `here <https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents>`_ for our complete set of baselines.
 
+In total, three different types of baselines are provided:
+
+* :ref:`mjrl_baseline`
+* :ref:`deprl_baseline`
+* :ref:`reflex_controller`
+
+
+.. _mjrl_baseline:
+
 MJRL baselines
 ```````````````
 
 We use a model-free on-policy algorithm - Natural Policy Gradient (from `mjrl <https://github.com/aravindr93/mjrl>`_) as our baselines.
+
 
 Try baselines
 ~~~~~~~~~~~~~~~~
@@ -36,7 +46,7 @@ Installation Steps -
     pip install hydra-submitit-launcher --upgrade
     pip install submitit
 
-Trainign steps -
+Training steps -
 
 1. Get commands to lunch training by running `train_myosuite.sh` located in the `myosuite/agents` folder:
 
@@ -76,13 +86,16 @@ Launch training
 2. Further customize the prompts from the previous step and execute.
 
 
+.. _deprl_baseline:
+
 DEPRL baseline
-`````````````````
+``````````````
 We provide `deprl <https://github.com/martius-lab/depRL>`_ as an additional baseline for locomotion policies. The controller was adapted from the original paper and produces robust locomotion policies with the MyoLeg through the use of a self-organizing exploration method.
-See `here <https://github.com/P-Schumacher/myosuite/blob/main/docs/source/tutorials/4a_deprl.ipynb>`_ for more detailed tutorials.
+While DEPRL can be used for any kind of RL task, we provide a pre-trained controller and training settings for the `myoLegWalk-v0` task.
+See `this tutorial <https://github.com/P-Schumacher/myosuite/blob/main/docs/source/tutorials/4a_deprl.ipynb>`_ for more detailed tutorials.
 
 Installation
-~~~~~~~~~~~
+~~~~~~~~~~~~
 Simply run
 
 .. code-block:: bash
@@ -92,7 +105,7 @@ Simply run
 after installing the myosuite.
 
 Train new policy
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~
 
 For training from scratch, navigate to the `agents folder <https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents/>`_ folder and run the following code
 
@@ -103,7 +116,7 @@ For training from scratch, navigate to the `agents folder <https://github.com/fa
 and training should start. Inside the json-file, you can set a custom output folder with ``working_dir=myfolder``. Be sure to adapt the ``sequential`` and ``parallel`` settings. During a training run, `sequential x parallel` environments are spawned, which consumes over 30 GB of RAM with the default settings for the myoLeg. Reduce this number if your workstation has less memory.
 
 Visualize, log and plot
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 We provide several utilities in the ``deprl`` package.
 To visualize a trained policy, run
 
@@ -130,33 +143,12 @@ If you want to plot your training run, use
 
 For more instructions on how to use the plot feature, checkout `TonicRL <https://github.com/fabiopardo/tonic>`_, which is the general-purpose RL library deprl was built on.
 
-Credit
-~~~~~~~~~~~~~~~~~~~~
-The DEPRL baseline for the myoLeg was developed by
 
-Pierre Schumacher <schumacherpier@gmail.com>
 
-Daniel Häufle <daniel.haeufle@uni-tuebingen.de>
-
-Georg Martius <georg.martius@tuebingen.mpg.de>
-
-as members of the Max Planck Institute for Intelligent Systems and the Hertie Institute for Clinical Brain Research.
-
-Please cite `this paper <https://openreview.net/forum?id=C-xa_D3oTj6>`_ if you are using our work.
-
-.. code-block:: bibtex
-
-    @inproceedings{
-    schumacher2023deprl,
-    title={{DEP}-{RL}: Embodied Exploration for Reinforcement Learning in Overactuated and Musculoskeletal Systems},
-    author={Pierre Schumacher and Daniel Haeufle and Dieter B{\"u}chler and Syn Schmitt and Georg Martius},
-    booktitle={The Eleventh International Conference on Learning Representations },
-    year={2023},
-    url={https://openreview.net/forum?id=C-xa_D3oTj6}
-    }
+.. _reflex_controller:
 
 MyoLegReflex baseline
-```````````````````````
+`````````````````````
 
 MyoLegReflex is a reflex-based walking controller for MyoLeg. With the provided set of 46 control parameters, MyoLeg generates steady walking patterns. Users have the freedom to discover alternative parameter sets for generating diverse walking behaviors or design a higher-level controller that modulates these parameters dynamically, thereby enabling navigation within dynamic environments.
 
@@ -196,19 +188,48 @@ To make the controller more straightforward, we first modified the circuits that
 
 Subsequently, we adapted this controller to be compatible with MyoLeg, which features 80 leg muscles. We achieved this by merging sensory data from each functional muscle group into one, processing the combined sensory data through the adapted reflex circuits to generate muscle stimulation signals, and then distributing these signals to the individual muscles within each group. The grouping of muscles is defined in `ReflexCtrInterface.py <https://github.com/elladyr/myosuite/blob/baseline_reflex/myosuite/agents/baseline_Reflex/ReflexCtrInterface.py#L212-L345>`_.
 
+
+
 Credit
---------
+``````
 
+DEPRL
+~~~~~
 
-.. =================================================
-.. Copyright (c) Seungmoon Song, Chun Kwang Tan
-.. Authors  :: Seungmoon Song (ssm0445@gmail.com), Chun Kwang Tan (cktan.neumove@gmail.com)
-.. =================================================
+The DEPRL baseline for the myoLeg was developed by
+
+* Pierre Schumacher <schumacherpier@gmail.com>
+* Daniel Häufle <daniel.haeufle@uni-tuebingen.de>
+* Georg Martius <georg.martius@tuebingen.mpg.de>
+
+as members of the Max Planck Institute for Intelligent Systems and the Hertie Institute for Clinical Brain Research.
+
+Please cite `this paper <https://openreview.net/forum?id=C-xa_D3oTj6>`_ if you are using our work.
+
+.. code-block:: bibtex
+
+    @inproceedings{
+    schumacher2023deprl,
+    title={{DEP}-{RL}: Embodied Exploration for Reinforcement Learning in Overactuated and Musculoskeletal Systems},
+    author={Pierre Schumacher and Daniel Haeufle and Dieter B{\"u}chler and Syn Schmitt and Georg Martius},
+    booktitle={The Eleventh International Conference on Learning Representations },
+    year={2023},
+    url={https://openreview.net/forum?id=C-xa_D3oTj6}
+    }
+
+MyoLegReflex
+~~~~~~~~~~~~
+
 The MyoLegReflex controller was developed by
 
 Seungmoon Song <ssm0446@gmail.com>
 
 Chun Kwang Tan <cktan.neumove@gmail.com>
+
+as members of the Northeastern University.
+
+
+Please cite the following paper if you are using our work.
 
 .. code-block:: bibtex
 

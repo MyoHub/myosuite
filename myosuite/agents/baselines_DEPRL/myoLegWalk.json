@@ -7,7 +7,7 @@
     "trainer": "deprl.custom_trainer.Trainer(steps=int(1e8), epoch_steps=int(2e5), save_steps=int(1e6))",
     "before_training": "",
     "after_training": "",
-    "parallel": 10,
+    "parallel": 20,
     "sequential": 10,
     "seed": 0,
     "name": "myoLeg",
@@ -15,7 +15,7 @@
     "checkpoint": "last",
     "path": ""
   },
-  "working_dir": "./baseline_DEPRL",
+  "working_dir": "./baselines_DEPRL",
   "id": 0,
   "mpo_args":{"hidden_size":1024, "lr_actor": 3.53e-5, "lr_critic": 6.081e-5, "lr_dual": 0.00213},
   "env_args":{},
