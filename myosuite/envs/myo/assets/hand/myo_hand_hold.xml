@@ -8,12 +8,12 @@
 ====================================================== -->
 
     <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
     <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
     <worldbody>
         <site type="ellipsoid" name="goal" size=".025 .036 .030" pos="-.240 -.520 1.470" rgba="0 1 0 .2"/>
+        <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
 
         <body name="object" pos="-.235 -.51 1.450">
             <geom type="ellipsoid" size=".025 .036 .030" name="object" condim="1" conaffinity="1" rgba=".4 .6 .98 1"/>

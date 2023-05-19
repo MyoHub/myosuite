@@ -8,12 +8,12 @@
 ====================================================== -->
 
     <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
     <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
 
     <worldbody>
+        <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
         <site name="THtip_target" pos="0 0 0.002" size="0.005" rgba="0.8 0 0 .8"/>
         <site name="IFtip_target" pos="0 0 0.002" size="0.005" rgba="0 0.8 0 .8"/>
         <site name="MFtip_target" pos="0 0 0.002" size="0.005" rgba="0 0 0.8 .8"/>
