@@ -87,11 +87,10 @@ class MyoLegReflex(object):
 # -----------------------------------------------------------------------------------------------------------------
     def reset(self):
         
-        #self.env = gym.make('myoLegFullBodyFixed-v0')
         self.env.reset()
         self.env.seed(self.seed)
         
-        self.ReflexCtrl.reset() #self.ReflexCtrl.reset()
+        self.ReflexCtrl.reset()
         
         self._set_muscle_groups()
         self._set_initial_pose(self.init_dict)
@@ -158,13 +157,13 @@ class MyoLegReflex(object):
             sensor_data[s_leg]['load_contra'] = sensor_data[s_legc]['load_ipsi']
 
             sensor_data[s_leg]['phi_hip'] = (np.pi - self.env.sim.data.get_joint_qpos(f"hip_flexion_{s_leg[0]}"))
-            sensor_data[s_leg]['phi_knee'] = (np.pi - self.env.sim.data.get_joint_qpos(f"knee_angle_{s_leg[0]}")) #obs_dict[s_leg]['joint']['knee']
-            sensor_data[s_leg]['phi_ankle'] = (0.5*np.pi - self.env.sim.data.get_joint_qpos(f"ankle_angle_{s_leg[0]}")) #obs_dict[s_leg]['joint']['ankle']
-            sensor_data[s_leg]['dphi_knee'] = -1*self.env.sim.data.get_joint_qvel(f"knee_angle_{s_leg[0]}") #obs_dict[s_leg]['d_joint']['knee']
+            sensor_data[s_leg]['phi_knee'] = (np.pi - self.env.sim.data.get_joint_qpos(f"knee_angle_{s_leg[0]}"))
+            sensor_data[s_leg]['phi_ankle'] = (0.5*np.pi - self.env.sim.data.get_joint_qpos(f"ankle_angle_{s_leg[0]}"))
+            sensor_data[s_leg]['dphi_knee'] = -1*self.env.sim.data.get_joint_qvel(f"knee_angle_{s_leg[0]}")
 
             # alpha = hip - 0.5*knee
             sensor_data[s_leg]['alpha'] = sensor_data[s_leg]['phi_hip'] - 0.5*sensor_data[s_leg]['phi_knee']
-            dphi_hip = -1*self.env.sim.data.get_joint_qvel(f"hip_flexion_{s_leg[0]}") #obs_dict[s_leg]['d_joint']['hip']
+            dphi_hip = -1*self.env.sim.data.get_joint_qvel(f"hip_flexion_{s_leg[0]}")
             sensor_data[s_leg]['dalpha'] = dphi_hip - 0.5*sensor_data[s_leg]['dphi_knee']
 
             # Formula: -obs_dict[s_leg]['d_joint']['hip_abd'] + .5*np.pi
@@ -174,9 +173,9 @@ class MyoLegReflex(object):
             temp_mus_force = self.env.sim.data.actuator_force.copy()
 
             sensor_data[s_leg]['F_RF'] = -1*np.mean( temp_mus_force[self.muscles_dict[s_leg]['RF']] / (self.muscle_Fmax[s_leg]['RF']) )
-            sensor_data[s_leg]['F_VAS'] = -1*np.mean( temp_mus_force[self.muscles_dict[s_leg]['VAS']] / (self.muscle_Fmax[s_leg]['VAS']) ) # obs_dict[s_leg]['VAS']['f']
-            sensor_data[s_leg]['F_GAS'] = -1*np.mean( temp_mus_force[self.muscles_dict[s_leg]['GAS']] / (self.muscle_Fmax[s_leg]['GAS']) ) # obs_dict[s_leg]['GAS']['f']
-            sensor_data[s_leg]['F_SOL'] = -1*np.mean( temp_mus_force[self.muscles_dict[s_leg]['SOL']] / (self.muscle_Fmax[s_leg]['SOL']) ) # obs_dict[s_leg]['SOL']['f']
+            sensor_data[s_leg]['F_VAS'] = -1*np.mean( temp_mus_force[self.muscles_dict[s_leg]['VAS']] / (self.muscle_Fmax[s_leg]['VAS']) )
+            sensor_data[s_leg]['F_GAS'] = -1*np.mean( temp_mus_force[self.muscles_dict[s_leg]['GAS']] / (self.muscle_Fmax[s_leg]['GAS']) )
+            sensor_data[s_leg]['F_SOL'] = -1*np.mean( temp_mus_force[self.muscles_dict[s_leg]['SOL']] / (self.muscle_Fmax[s_leg]['SOL']) )
 
         return sensor_data
 
@@ -196,7 +195,6 @@ class MyoLegReflex(object):
         out_dict = self.get_obs_dict()
         
         temp_pel_euler = quat2euler(self.env.sim.data.get_body_xquat('root').copy())
-        # Note: Should perform all reward calculations before the 2D constraint settings
         
         # Check if the simulation is still alive (height of pelvs still above threshold, has not fallen down yet)
         if self.env.sim.data.get_body_xpos('pelvis')[2] < 0.65: # (Emprical testing) Even for very bent knee walking, height of pelvis is about 0.78
