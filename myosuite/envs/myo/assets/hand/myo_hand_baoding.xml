@@ -8,7 +8,6 @@
 ====================================================== -->
 
     <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
     <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
@@ -20,6 +19,7 @@
     </asset>
 
     <worldbody>
+        <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
         <body name="ball1" pos="-.227 -.511 1.452">
             <freejoint/>
             <geom name="ball1" material="MatBallY" type="sphere" size="0.022" group='2' mass='0.043' condim='4'/>

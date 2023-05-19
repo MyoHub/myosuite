@@ -288,7 +288,7 @@ register_env_with_variants(id='myoLegDemo-v0',
         entry_point='myosuite.envs.myo.walk_v0:ReachEnvV0',
         max_episode_steps=3000,
         kwargs={
-            'model_path': curr_dir+'/../../simhive/myo_sim/myoleg/myoleg_v0.5(mj120).mjb',
+            'model_path': curr_dir+'/../../simhive/myo_sim/myoleg/myoleg_v0.52(mj120).mjb',
             'target_reach_range': {
                 # 'pelvis': ((-.05, -.05, .75), (0.05, 0.05, .92)), # stabalize around mean posture
                 'pelvis': ((-.005, -.005, .9), (0.005, 0.005, .9)), # stand still
