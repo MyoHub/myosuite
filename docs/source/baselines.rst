@@ -222,14 +222,12 @@ MyoLegReflex
 
 The MyoLegReflex controller was developed by
 
-Seungmoon Song <ssm0446@gmail.com>
-
-Chun Kwang Tan <cktan.neumove@gmail.com>
+* Seungmoon Song <ssm0446@gmail.com>
+* Chun Kwang Tan <cktan.neumove@gmail.com>
 
 as members of the Northeastern University.
 
-
-Please cite the following paper if you are using our work.
+Please cite `this paper <https://physoc.onlinelibrary.wiley.com/doi/full/10.1113/JP270228>`_ if you are using our work.
 
 .. code-block:: bibtex
 
