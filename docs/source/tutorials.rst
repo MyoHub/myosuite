@@ -162,10 +162,10 @@ When using ``mjrl`` it might be needed to resume training of a policy locally. I
 
 .. _load_deprl_baseline:
 
-Load DEPRL Baseline
+Load DEP-RL Baseline
 ===================
 
-If you want to load and execute the pre-trained DEPRL baseline.
+If you want to load and execute the pre-trained DEP-RL baseline. Make sure that the ``deprl`` package is installed.
 
 .. code-block:: python
 

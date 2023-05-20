@@ -25,7 +25,7 @@ pip install submitit
 
 
 
-## DEPRL Baseline
+## DEP-RL Locomotion Baseline
 
 ### Installation
 1. We provide [deprl](https://github.com/martius-lab/depRL) as an additional baseline for locomotion policies.
@@ -46,7 +46,7 @@ and training should start. Inside the json-file, you can set a custom output fol
 
 ### Visualize trained policy
 We provide two mechanisms to visualize policies.
-1. If you wish to use your own environment, or want to just quickly try our pre-trained DEPRL baseline, take a look at the code snippet below
+1. If you wish to use your own environment, or want to just quickly try our pre-trained DEP-RL baseline, take a look at the code snippet below
 
 ```
 import gym
@@ -88,7 +88,7 @@ python -m deprl.plot --path baselines_DEPRL/myoLegWalk_20230514/
 For more instructions on how to use the plot feature, checkout [TonicRL](https://github.com/fabiopardo/tonic), which is the general-purpose RL library deprl was built on.
 
 ### Credit
-The DEPRL baseline for the myoLeg was developed by Pierre Schumacher, Daniel Häufle and Georg Martius as members of the Max Planck Institute for Intelligent Systems and the Hertie Institute for Clinical Brain Research. Please cite the following if you are using this work:
+The DEP-RL baseline for the myoLeg was developed by Pierre Schumacher, Daniel Häufle and Georg Martius as members of the Max Planck Institute for Intelligent Systems and the Hertie Institute for Clinical Brain Research. Please cite the following if you are using this work:
 ```
 @inproceedings{
 schumacher2023deprl,
