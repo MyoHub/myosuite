@@ -141,7 +141,7 @@ class WalkEnvV0(BaseV0):
         "done": -100,
         "cyclic_hip": -10,
         "ref_rot": 10.0,
-        "joint_angle_rew": 15.0
+        "joint_angle_rew": 5.0
     }
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
