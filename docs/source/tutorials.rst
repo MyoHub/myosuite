@@ -14,6 +14,7 @@ Jupyter-Notebooks can be found `here <https://github.com/facebookresearch/myosui
 * :ref:`test_sarcopenia`
 * :ref:`test_tendon_transfer`
 * :ref:`resume_training`
+* :ref:`load_deprl_baseline`
 
 .. _run_myosuite:
 
@@ -158,3 +159,25 @@ When using ``mjrl`` it might be needed to resume training of a policy locally. I
 .. code-block:: bash
 
     python3 hydra_mjrl_launcher.py --config-path config --config-name hydra_biomechanics_config.yaml hydra/output=local hydra/launcher=local env=myoHandPoseRandom-v0 job_name=[Absolute Path of the policy] rl_num_iter=[New Total number of iterations]
+
+.. _load_deprl_baseline:
+
+Load DEPRL Baseline
+===================
+
+If you want to load and execute the pre-trained DEPRL baseline.
+
+.. code-block:: python
+
+    import gym
+    import myosuite
+    import deprl
+    env = gym.make('myoLegWalk-v0')
+    policy = deprl.load_baseline(env)
+    obs = env.reset()
+    for i in range(1000):
+        env.sim.render(mode='window')
+        action = policy(obs)
+        obs, *_ = env.step(action)
+    env.close()
+
