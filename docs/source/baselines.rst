@@ -155,7 +155,7 @@ MyoLegReflex is a reflex-based walking controller for MyoLeg. With the provided 
 Examples
 ~~~~~~~~~~~~~~
 
-MyoLegReflex is bundled as a wrapper around MyoLeg. To run MyoLegReflex with default parameters, you can either utilize the Jupyter notebook found at ``myosuite/agents/baseline_Reflex`` or execute the following code snippet:
+MyoLegReflex is bundled as a wrapper around MyoLeg. To run MyoLegReflex with default parameters, you can either utilize the Jupyter notebook found in ``myosuite/docs/source/tutorials/4b_reflex`` or execute the following code snippet:
 
 .. code-block:: python
 
@@ -178,6 +178,8 @@ MyoLegReflex is bundled as a wrapper around MyoLeg. To run MyoLegReflex with def
         frame = Myo_env.env.mj_render()
         Myo_env.run_reflex_step()
     Myo_env.env.close()
+
+Note: This code snippet only works in the folder ``myosuite/docs/source/tutorials/4b_reflex``, where the MyoLegReflex wrapper resides.
 
 Reflex-based Controller
 -----------------------
