@@ -15,6 +15,7 @@ Jupyter-Notebooks can be found `here <https://github.com/facebookresearch/myosui
 * :ref:`test_tendon_transfer`
 * :ref:`resume_training`
 * :ref:`load_deprl_baseline`
+* :ref:`load_MyoReflex_baseline`
 
 .. _run_myosuite:
 
@@ -181,3 +182,10 @@ If you want to load and execute the pre-trained DEPRL baseline.
         obs, *_ = env.step(action)
     env.close()
 
+.. _load_MyoReflex_baseline:
+
+Load MyoReflex Baseline
+===================
+
+To load and execute the MyoReflex controller with baseline parameters.
+Run the MyoReflex tutorial `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials/4b_MyoReflex>`_

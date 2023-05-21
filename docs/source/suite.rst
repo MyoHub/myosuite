@@ -314,7 +314,7 @@ that muscle can be completely fatigued.
 .. _ttransfer:
 
 Tendon transfer
-================
+=================================
 Contrary to muscle fatigue or sarcopenia that occurs to all muscles, tendon transfer surgery can target a single
 muscle-tendon unit. Tendon transfer surgery allows redirecting the application point of muscle forces from one joint
 DoF to another (see below). It can be used to regain functional control of a joint or limb motion after injury.
@@ -342,7 +342,7 @@ Summary of task and variantions
 
 
 
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
 |:ref:`tasks`        | **Environment**                  | **Difficulty**  |:ref:`sarcopenia` |:ref:`fatigue` | :ref:`ttransfer`    |
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
 | Finger Joint Pose  | ``myoFingerPoseFixed-v0``        | Easy            |         √        |      √        |                     |
@@ -383,3 +383,8 @@ Summary of task and variantions
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
 | Hand Baoding Balls | ``myoChallengeBaodingP2-v1``     | Hard            |         √        |      √        |          √          |
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+
+Variartions:
+  - **Sarcopenia**: myoSarc<Environment> e.g. myoSarcHandPoseFixed-v0
+  - **Faigue**: myoFati<Environment> e.g. myoFatiElbowPose1D6MRandom-v0
+  - **TTransfer / Reafferentation**: myoReaf<Environment> e.g. myoReafHandPoseFixed-v0
