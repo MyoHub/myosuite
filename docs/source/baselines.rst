@@ -155,7 +155,7 @@ MyoLegReflex is a reflex-based walking controller for MyoLeg. With the provided 
 Examples
 ~~~~~~~~~~~~~~
 
-MyoLegReflex is bundled as a wrapper around MyoLeg. To run MyoLegReflex with default parameters, you can either utilize the Jupyter notebook found at ``myosuite/agents/baseline_Reflex`` or execute the following code snippet:
+MyoLegReflex is bundled as a wrapper around MyoLeg. To run MyoLegReflex with default parameters, you can either utilize the Jupyter notebook found in ``myosuite/docs/source/tutorials/4b_reflex`` or execute the following code snippet:
 
 .. code-block:: python
 
@@ -179,6 +179,8 @@ MyoLegReflex is bundled as a wrapper around MyoLeg. To run MyoLegReflex with def
         Myo_env.run_reflex_step()
     Myo_env.env.close()
 
+Note: This code snippet only works in the folder ``myosuite/docs/source/tutorials/4b_reflex``, where the MyoLegReflex wrapper resides.
+
 Reflex-based Controller
 -----------------------
 
@@ -186,7 +188,7 @@ MyoLegReflex is adapted from the neural circuitry model proposed by Song and Gey
 
 To make the controller more straightforward, we first modified the circuits that operate based on muscle lengths and velocities to work with joint angles and angular velocities instead.
 
-Subsequently, we adapted this controller to be compatible with MyoLeg, which features 80 leg muscles. We achieved this by merging sensory data from each functional muscle group into one, processing the combined sensory data through the adapted reflex circuits to generate muscle stimulation signals, and then distributing these signals to the individual muscles within each group. The grouping of muscles is defined in `ReflexCtrInterface.py <https://github.com/elladyr/myosuite/blob/baseline_reflex/myosuite/agents/baseline_Reflex/ReflexCtrInterface.py#L212-L345>`_.
+Subsequently, we adapted this controller to be compatible with MyoLeg, which features 80 leg muscles. We achieved this by merging sensory data from each functional muscle group into one, processing the combined sensory data through the adapted reflex circuits to generate muscle stimulation signals, and then distributing these signals to the individual muscles within each group. The grouping of muscles is defined in `ReflexCtrInterface.py <https://github.com/facebookresearch/myosuite/blob/main/docs/source/tutorials/4b_reflex/ReflexCtrInterface.py#L212-L345>`_.
 
 
 
@@ -222,14 +224,12 @@ MyoLegReflex
 
 The MyoLegReflex controller was developed by
 
-Seungmoon Song <ssm0446@gmail.com>
-
-Chun Kwang Tan <cktan.neumove@gmail.com>
+* Seungmoon Song <ssm0446@gmail.com>
+* Chun Kwang Tan <cktan.neumove@gmail.com>
 
 as members of the Northeastern University.
 
-
-Please cite the following paper if you are using our work.
+Please cite `this paper <https://physoc.onlinelibrary.wiley.com/doi/full/10.1113/JP270228>`_ if you are using our work.
 
 .. code-block:: bibtex
 
