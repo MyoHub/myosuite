@@ -199,7 +199,7 @@ class MyoLegReflex(object):
         # Check if the simulation is still alive (height of pelvs still above threshold, has not fallen down yet)
         if self.env.sim.data.get_body_xpos('pelvis')[2] < 0.65: # (Emprical testing) Even for very bent knee walking, height of pelvis is about 0.78
             is_done = True
-        if temp_pel_euler[2] < np.deg2rad(-30) or temp_pel_euler[2] > np.deg2rad(30):
+        if temp_pel_euler[1] < np.deg2rad(-30) or temp_pel_euler[1] > np.deg2rad(30):
             # Punish for too much pitch of pelvis
             is_done = True
         

@@ -188,7 +188,7 @@ MyoLegReflex is adapted from the neural circuitry model proposed by Song and Gey
 
 To make the controller more straightforward, we first modified the circuits that operate based on muscle lengths and velocities to work with joint angles and angular velocities instead.
 
-Subsequently, we adapted this controller to be compatible with MyoLeg, which features 80 leg muscles. We achieved this by merging sensory data from each functional muscle group into one, processing the combined sensory data through the adapted reflex circuits to generate muscle stimulation signals, and then distributing these signals to the individual muscles within each group. The grouping of muscles is defined in `ReflexCtrInterface.py <https://github.com/elladyr/myosuite/blob/baseline_reflex/myosuite/agents/baseline_Reflex/ReflexCtrInterface.py#L212-L345>`_.
+Subsequently, we adapted this controller to be compatible with MyoLeg, which features 80 leg muscles. We achieved this by merging sensory data from each functional muscle group into one, processing the combined sensory data through the adapted reflex circuits to generate muscle stimulation signals, and then distributing these signals to the individual muscles within each group. The grouping of muscles is defined in `ReflexCtrInterface.py <https://github.com/facebookresearch/myosuite/blob/main/docs/source/tutorials/4b_reflex/ReflexCtrInterface.py#L212-L345>`_.
 
 
 
