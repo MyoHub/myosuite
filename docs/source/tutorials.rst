@@ -5,7 +5,7 @@ Tutorials
 
 
 Here a set of examples on how to use different MyoSuite models and non-stationarities.
-Jupyter-Notebooks can be found `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`_
+Jupyter-Notebooks can be found `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`__
 
 * :ref:`run_myosuite`
 * :ref:`run_visualize_index_movements`
@@ -164,7 +164,7 @@ When using ``mjrl`` it might be needed to resume training of a policy locally. I
 .. _load_deprl_baseline:
 
 Load DEP-RL Baseline
-===================
+====================
 
 If you want to load and execute the pre-trained DEP-RL baseline. Make sure that the ``deprl`` package is installed.
 
@@ -185,7 +185,7 @@ If you want to load and execute the pre-trained DEP-RL baseline. Make sure that 
 .. _load_MyoReflex_baseline:
 
 Load MyoReflex Baseline
-===================
+=======================
 
 To load and execute the MyoReflex controller with baseline parameters.
-Run the MyoReflex tutorial `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials/4b_MyoReflex>`_
+Run the MyoReflex tutorial `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials/4b_MyoReflex>`__
