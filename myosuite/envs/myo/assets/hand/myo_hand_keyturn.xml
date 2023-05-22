@@ -8,7 +8,6 @@
 ====================================================== -->
 
     <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
     <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
@@ -19,6 +18,7 @@
     </default>
 
     <worldbody>
+        <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
         <body name="key" pos="-.15 -.55 1.425" childclass="key" euler="0 0 2.2">
             <geom type="ellipsoid" size=".030 .030 .004" name="keyhead"/>
             <site type="sphere" size=".03" rgba=".5 .7 .8 .3"/>

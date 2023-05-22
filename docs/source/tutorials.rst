@@ -5,7 +5,7 @@ Tutorials
 
 
 Here a set of examples on how to use different MyoSuite models and non-stationarities.
-Jupyter-Notebooks can be found `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`_
+Jupyter-Notebooks can be found `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`__
 
 * :ref:`run_myosuite`
 * :ref:`run_visualize_index_movements`
@@ -14,6 +14,8 @@ Jupyter-Notebooks can be found `here <https://github.com/facebookresearch/myosui
 * :ref:`test_sarcopenia`
 * :ref:`test_tendon_transfer`
 * :ref:`resume_training`
+* :ref:`load_deprl_baseline`
+* :ref:`load_MyoReflex_baseline`
 
 .. _run_myosuite:
 
@@ -158,3 +160,32 @@ When using ``mjrl`` it might be needed to resume training of a policy locally. I
 .. code-block:: bash
 
     python3 hydra_mjrl_launcher.py --config-path config --config-name hydra_biomechanics_config.yaml hydra/output=local hydra/launcher=local env=myoHandPoseRandom-v0 job_name=[Absolute Path of the policy] rl_num_iter=[New Total number of iterations]
+
+.. _load_deprl_baseline:
+
+Load DEP-RL Baseline
+====================
+
+If you want to load and execute the pre-trained DEP-RL baseline. Make sure that the ``deprl`` package is installed.
+
+.. code-block:: python
+
+    import gym
+    import myosuite
+    import deprl
+    env = gym.make('myoLegWalk-v0')
+    policy = deprl.load_baseline(env)
+    obs = env.reset()
+    for i in range(1000):
+        env.sim.render(mode='window')
+        action = policy(obs)
+        obs, *_ = env.step(action)
+    env.close()
+
+.. _load_MyoReflex_baseline:
+
+Load MyoReflex Baseline
+=======================
+
+To load and execute the MyoReflex controller with baseline parameters.
+Run the MyoReflex tutorial `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials/4b_MyoReflex>`__

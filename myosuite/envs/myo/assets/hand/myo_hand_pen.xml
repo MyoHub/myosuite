@@ -8,7 +8,6 @@
 ====================================================== -->
 
     <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
     <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
@@ -20,6 +19,8 @@
     </default>
 
     <worldbody>
+        <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
+
         <!-- ======= PEN ======= -->
         <site name="eps_ball" type="sphere" pos="-.230 -.530 1.445" size="0.075" rgba="1 1 0 .5" group="1"/>
 

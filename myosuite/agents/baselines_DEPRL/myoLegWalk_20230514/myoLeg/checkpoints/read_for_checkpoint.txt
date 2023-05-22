@@ -1,0 +1,2 @@
+If you are looking for a policy checkpoint, they are too large to be saved here. Open https://github.com/facebookresearch/myosuite/blob/main/myosuite/agents/README.md
+and you'll see how you can download one.
