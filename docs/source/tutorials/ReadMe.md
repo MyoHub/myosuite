@@ -24,5 +24,5 @@ jupyter kernelspec uninstall myosuite
 - [Analyse movements from a trained policy](./3_Analyse_movements.ipynb)
 - [Train a new policy](./4_Train_policy.ipynb). For this tutorial, `mjrl` is needed. You can install it with `pip install tabulate matplotlib torch git+https://github.com/aravindr93/mjrl.git`
 - [Use the DEPRL baseline](./4a_deprl.ipynb). For this tutorial, `deprl` is needed. You can install it with `pip install deprl`
-- [Use the MyoReflex baseline](./4b_MyoReflex/MyoSuite_MyoReflex_Walk.ipynb). For this tutorial, we provided a wrapper to use MyoReflex together with the tutorial file
+- [Use the MyoReflex baseline](./4b_reflex/MyoSuite_MyoReflex_Walk.ipynb). For this tutorial, we provided a wrapper to use MyoReflex together with the tutorial file
 - [Move single finger of the Hand](./5_Move_Hand_Fingers.ipynb)
