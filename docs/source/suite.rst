@@ -7,9 +7,9 @@ Suite
 Models
 ********
 
-MyoSuite consists of three models: :ref:`myoFinger`, :ref:`myoElbow` and :ref:`myoHand`.
-Using these models we design a rich collection of tasks ranging from simple reaching movements
-to contact-rich movements like pen-twirling and baoding balls.
+MyoSuite consists of four models: :ref:`myoFinger`, :ref:`myoElbow`, :ref:`myoHand` and :ref:`myoLeg`.
+Using these models, we design a rich collection of tasks ranging across simple reaching movements,
+contact-rich movements involving object-manipulation such as pen-twirling and baoding balls, as well as locomotion behaviors.
 
 
 .. _myoFinger:
@@ -81,6 +81,22 @@ RI       Radial Interosseous (2- index, 3- middle, 4- ring, 5- little)
 LU-RB    Lumbrical (2- index, 3- middle, 4- ring, 5- little)
 UI-UB    Palmar or Ulnar Interosseous (2- index, 3- middle, 4- ring, 5- little)
 =======  ========
+
+.. _myoLeg:
+
+myoLeg
+=========
+The 3D dexterous human leg requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
+
+This musculoskeletal model is comprised of 10 joints, 20 DoFs, and 80 muscles-tendon units. This musculoskeletal model takes
+Rajagopal's full body gait model [https://github.com/opensim-org/opensim-models/tree/master/Models/RajagopalModel] as close reference.
+
+Joints and muscle details can be found in Rajagopal's paper [https://ieeexplore.ieee.org/document/7505900]
+
+.. image:: images/MyoLeg.png
+  :height: 200
+
+
 
 .. _tasks:
 
@@ -264,6 +280,20 @@ Variants:
 .. image:: images/hand_baoding_balls.png
   :width: 200
 
+Leg Walk
+========================================
+A :ref:`myoLeg` model walks across a flat surface.
+This task requires the control of 80 muscles while stabilizing the body to not fall down.
+
+Objective:
+    Achieve target velocities while periodically moving your hip joints.
+
+Variants:
+    - **Easy**: Achieve a forward velocity in the y-direction without moving in the x-direction. ``myoLegWalk-v0``
+
+.. image:: images/myoLeg_walk.png
+  :width: 200
+
 
 Non-stationarities task variations
 ***********************************
@@ -299,7 +329,7 @@ that muscle can be completely fatigued.
 .. _ttransfer:
 
 Tendon transfer
-================
+=================================
 Contrary to muscle fatigue or sarcopenia that occurs to all muscles, tendon transfer surgery can target a single
 muscle-tendon unit. Tendon transfer surgery allows redirecting the application point of muscle forces from one joint
 DoF to another (see below). It can be used to regain functional control of a joint or limb motion after injury.
@@ -327,7 +357,7 @@ Summary of task and variantions
 
 
 
-+--------------------+------------------------------+-----------------+------------------+---------------+---------------------+
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
 |:ref:`tasks`        | **Environment**                  | **Difficulty**  |:ref:`sarcopenia` |:ref:`fatigue` | :ref:`ttransfer`    |
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
 | Finger Joint Pose  | ``myoFingerPoseFixed-v0``        | Easy            |         √        |      √        |                     |
@@ -368,3 +398,10 @@ Summary of task and variantions
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
 | Hand Baoding Balls | ``myoChallengeBaodingP2-v1``     | Hard            |         √        |      √        |          √          |
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Leg walk           | ``myoLegWalk-v0``                | Easy            |                  |               |                     |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+
+Variartions:
+  - **Sarcopenia**: myoSarc<Environment> e.g. myoSarcHandPoseFixed-v0
+  - **Fatigue**: myoFati<Environment> e.g. myoFatiElbowPose1D6MRandom-v0
+  - **TTransfer / Reafferentation**: myoReaf<Environment> e.g. myoReafHandPoseFixed-v0

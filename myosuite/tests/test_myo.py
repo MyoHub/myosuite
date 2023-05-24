@@ -24,6 +24,9 @@ class TestMyo(TestEnvs):
             'myoHandObjHoldFixed-v0', 'myoHandObjHoldRandom-v0',
             'myoHandPenTwirlFixed-v0', 'myoHandPenTwirlRandom-v0',
 
+            # Legs
+            'myoLegDemo-v0', 'myoLegWalk-v0'
+
         ]
         for k in range(10): env_names+=['myoHandPose'+str(k)+'Fixed-v0']
 
@@ -37,6 +40,7 @@ class TestMyo(TestEnvs):
             'myoChallengeBaodingP1-v1', 'myoChallengeBaodingP2-v1'
         ]
         self.check_envs('MyoChallenge', env_names)
+
 
 if __name__ == '__main__':
     unittest.main()
