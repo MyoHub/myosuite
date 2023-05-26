@@ -1,0 +1,858 @@
+<mujoco model="obj_sim">
+    <include file="../../../../simhive/object_sim/common_extra.xml"/>
+    <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
+    <compiler meshdir='../../../../simhive/object_sim/' texturedir='../../../../simhive/object_sim/'/>
+    <size njmax="12000"/>
+    <size nconmax='4000'/>
+
+    <default>
+		<default class="obj_sim">
+			<geom contype="1" conaffinity="1" condim="3" material="MatSkin"/>
+            <site group="3"/>
+		</default>
+    </default>
+
+    <visual>
+        <quality shadowsize="16384"/>
+    </visual>
+
+    <asset>
+        <mesh name="train" file="train/train.stl" scale='.7 .7 .7'/>
+        <mesh name="train_contact0" file="train/contact0.stl" scale='.7 .7 .7'/>
+
+        <mesh name="flashlight" file="flashlight/flashlight.stl" scale='.85 .85 .85'/>
+        <mesh name="flashlight_contact0" file="flashlight/contact0.stl" scale='.85 .85 .85'/>
+        <mesh name="flashlight_contact1" file="flashlight/contact1.stl" scale='.85 .85 .85'/>
+
+        <mesh name="banana" file="banana/banana.stl" scale='.7 .7 .7'/>
+        <mesh name="banana_contact0" file="banana/contact0.stl" scale='.7 .7 .7'/>
+        <mesh name="banana_contact1" file="banana/contact1.stl" scale='.7 .7 .7'/>
+        <mesh name="banana_contact2" file="banana/contact2.stl" scale='.7 .7 .7'/>
+        <mesh name="banana_contact3" file="banana/contact3.stl" scale='.7 .7 .7'/>
+        <mesh name="banana_contact4" file="banana/contact4.stl" scale='.7 .7 .7'/>
+
+        <mesh name="airplane" file="airplane/airplane.stl" scale='.7 .7 .7'/>
+        <mesh name="airplane_contact0" file="airplane/contact0.stl" scale='.7 .7 .7'/>
+        <mesh name="airplane_contact1" file="airplane/contact1.stl" scale='.7 .7 .7'/>
+        <mesh name="airplane_contact2" file="airplane/contact2.stl" scale='.7 .7 .7'/>
+        <mesh name="airplane_contact3" file="airplane/contact3.stl" scale='.7 .7 .7'/>
+        <mesh name="airplane_contact4" file="airplane/contact4.stl" scale='.7 .7 .7'/>
+        <mesh name="airplane_contact5" file="airplane/contact5.stl" scale='.7 .7 .7'/>
+        <mesh name="airplane_contact6" file="airplane/contact6.stl" scale='.7 .7 .7'/>
+        <mesh name="airplane_contact7" file="airplane/contact7.stl" scale='.7 .7 .7'/>
+
+        <mesh name="hand" file="hand/hand.stl" scale='.8 .8 .8'/>
+        <mesh name="hand_contact0" file="hand/contact0.stl" scale='.8 .8 .8'/>
+        <mesh name="hand_contact1" file="hand/contact1.stl" scale='.8 .8 .8'/>
+        <mesh name="hand_contact2" file="hand/contact2.stl" scale='.8 .8 .8'/>
+        <mesh name="hand_contact3" file="hand/contact3.stl" scale='.8 .8 .8'/>
+        <mesh name="hand_contact4" file="hand/contact4.stl" scale='.8 .8 .8'/>
+        <mesh name="hand_contact5" file="hand/contact5.stl" scale='.8 .8 .8'/>
+        <mesh name="hand_contact6" file="hand/contact6.stl" scale='.8 .8 .8'/>
+        <mesh name="hand_contact7" file="hand/contact7.stl" scale='.8 .8 .8'/>
+        <mesh name="hand_contact8" file="hand/contact8.stl" scale='.8 .8 .8'/>
+
+        <mesh name="mug" file="mug/mug.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact0" file="mug/contact0.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact1" file="mug/contact1.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact2" file="mug/contact2.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact3" file="mug/contact3.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact4" file="mug/contact4.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact5" file="mug/contact5.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact6" file="mug/contact6.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact7" file="mug/contact7.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact8" file="mug/contact8.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact9" file="mug/contact9.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact10" file="mug/contact10.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact11" file="mug/contact11.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact12" file="mug/contact12.stl" scale='.6 .6 .6'/>
+        <mesh name="mug_contact13" file="mug/contact13.stl" scale='.6 .6 .6'/>
+
+        <mesh name="rabbit" file="stanfordbunny/stanfordbunny.stl"  scale='.55 .55 .55' />
+        <mesh name="rabbit_contact0" file="stanfordbunny/contact0.stl"  scale='.55 .55 .55'/>
+        <mesh name="rabbit_contact1" file="stanfordbunny/contact1.stl"  scale='.55 .55 .55'/>
+        <mesh name="rabbit_contact2" file="stanfordbunny/contact2.stl" scale='.55 .55 .55'/>
+        <mesh name="rabbit_contact3" file="stanfordbunny/contact3.stl" scale='.55 .55 .55' />
+        <mesh name="rabbit_contact4" file="stanfordbunny/contact4.stl" scale='.55 .55 .55' />
+        <mesh name="rabbit_contact5" file="stanfordbunny/contact5.stl" scale='.55 .55 .55'/>
+
+        <mesh name="elephant" file="elephant/elephant.stl"  scale='.55 .55 .55' />
+        <mesh name="elephant_contact0" file="elephant/contact0.stl"  scale='.55 .55 .55'/>
+        <mesh name="elephant_contact1" file="elephant/contact1.stl"  scale='.55 .55 .55'/>
+        <mesh name="elephant_contact2" file="elephant/contact2.stl" scale='.55 .55 .55'/>
+        <mesh name="elephant_contact3" file="elephant/contact3.stl" scale='.55 .55 .55' />
+        <mesh name="elephant_contact4" file="elephant/contact4.stl" scale='.55 .55 .55' />
+        <mesh name="elephant_contact5" file="elephant/contact5.stl" scale='.55 .55 .55'/>
+        <mesh name="elephant_contact6" file="elephant/contact6.stl"  scale='.55 .55 .55'/>
+        <mesh name="elephant_contact7" file="elephant/contact7.stl" scale='.55 .55 .55' />
+        <mesh name="elephant_contact8" file="elephant/contact8.stl" scale='.55 .55 .55'/>
+        <mesh name="elephant_contact9" file="elephant/contact9.stl" scale='.55 .55 .55' />
+        <mesh name="elephant_contact10" file="elephant/contact10.stl" scale='.55 .55 .55' />
+        <mesh name="elephant_contact11" file="elephant/contact11.stl" scale='.55 .55 .55'/>
+
+        <mesh name="duck" file="duck/duck.stl" scale='.8 .8 .8' />
+        <mesh name="duck_contact0" file="duck/contact0.stl"  scale='.8 .8 .8' />
+        <mesh name="duck_contact1" file="duck/contact1.stl" scale='.8 .8 .8' />
+        <mesh name="duck_contact2" file="duck/contact2.stl" scale='.8 .8 .8'/>
+
+        <mesh name="camera" file="camera/camera.stl" scale='.6 .6 .6'/>
+        <mesh name="camera_contact0" file="camera/contact0.stl" scale='.6 .6 .6'/>
+        <mesh name="camera_contact1" file="camera/contact1.stl" scale='.6 .6 .6'/>
+
+        <mesh name="human" file="human/body.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact0" file="human/contact0.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact1" file="human/contact1.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact2" file="human/contact2.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact3" file="human/contact3.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact4" file="human/contact4.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact5" file="human/contact5.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact6" file="human/contact6.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact7" file="human/contact7.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact8" file="human/contact8.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact9" file="human/contact9.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact10" file="human/contact10.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact11" file="human/contact11.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact12" file="human/contact12.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact13" file="human/contact13.stl" scale='.1 .1 .1'/>
+        <mesh name="human_contact14" file="human/contact14.stl" scale='.1 .1 .1'/>
+
+        <mesh name="lightbulb" file="lightbulb/lightbulb.stl" scale='.7 .7 .7'/>
+        <mesh name="lightbulb_contact0" file="lightbulb/contact0.stl" scale='.7 .7 .7'/>
+        <mesh name="lightbulb_contact1" file="lightbulb/contact1.stl" scale='.7 .7 .7'/>
+
+        <mesh name="waterbottle" file="waterbottle/waterbottle.stl" scale='.7 .7 .7'/>
+        <mesh name="waterbottle_contact0" file="waterbottle/contact0.stl" scale='.7 .7 .7'/>
+        <mesh name="waterbottle_contact1" file="waterbottle/contact1.stl" scale='.7 .7 .7'/>
+
+        <mesh name="scissors" file="scissors/scissors.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact0" file="scissors/contact0.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact1" file="scissors/contact1.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact2" file="scissors/contact2.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact3" file="scissors/contact3.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact4" file="scissors/contact4.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact5" file="scissors/contact5.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact6" file="scissors/contact6.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact7" file="scissors/contact7.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact8" file="scissors/contact8.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact9" file="scissors/contact9.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact10" file="scissors/contact10.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact11" file="scissors/contact11.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact12" file="scissors/contact12.stl" scale='.7 .7 .7'/>
+        <mesh name="scissors_contact13" file="scissors/contact13.stl" scale='.7 .7 .7'/>
+
+        <mesh name="alarmclock" file="alarmclock/alarmclock.stl" scale='.7 .7 .7'/>
+        <mesh name="alarmclock_contact0" file="alarmclock/contact0.stl" scale='.7 .7 .7'/>
+
+        <mesh name="cup" file="cup/cup.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact0" file="cup/contact0.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact1" file="cup/contact1.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact2" file="cup/contact2.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact3" file="cup/contact3.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact4" file="cup/contact4.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact5" file="cup/contact5.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact6" file="cup/contact6.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact7" file="cup/contact7.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact8" file="cup/contact8.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact9" file="cup/contact9.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact10" file="cup/contact10.stl" scale='.7 .7 .7'/>
+        <mesh name="cup_contact11" file="cup/contact11.stl" scale='.7 .7 .7'/>
+
+        <mesh name="toothbrush" file="toothbrush/toothbrush.stl"/>
+        <mesh name="toothbrush_contact0" file="toothbrush/contact0.stl"/>
+        <mesh name="toothbrush_contact1" file="toothbrush/contact1.stl"/>
+        <mesh name="toothbrush_contact2" file="toothbrush/contact2.stl"/>
+
+        <mesh name="apple" file="apple/apple.stl" scale='.7 .7 .7'/>
+        <mesh name="apple_contact0" file="apple/contact0.stl" scale='.7 .7 .7'/>
+        <mesh name="apple_contact1" file="apple/contact1.stl" scale='.7 .7 .7'/>
+
+        <mesh name="hammer" file="hammer/hammer.stl" scale='.7 .7 .7'/>
+        <mesh name="hammer_contact0" file="hammer/contact0.stl" scale='.7 .7 .7'/>
+        <mesh name="hammer_contact1" file="hammer/contact1.stl" scale='.7 .7 .7'/>
+
+        <mesh name="toothpaste" file="toothpaste/toothpaste.stl" scale='.7 .7 .7'/>
+        <mesh name="toothpaste_contact0" file="toothpaste/contact0.stl" scale='.7 .7 .7'/>
+
+        <mesh name="mouse" file="mouse/mouse.stl" scale='.7 .7 .7'/>
+        <mesh name="mouse_contact0" file="mouse/contact0.stl" scale='.7 .7 .7'/>
+
+        <mesh name="stapler" file="stapler/stapler.stl"  scale='.65 .65 .65' />
+        <mesh name="stapler_contact0" file="stapler/contact0.stl"  scale='.65 .65 .65' />
+        <mesh name="stapler_contact1" file="stapler/contact1.stl"  scale='.65 .65 .65' />
+        <mesh name="stapler_contact2" file="stapler/contact2.stl" scale='.65 .65 .65' />
+        <mesh name="stapler_contact3" file="stapler/contact3.stl" scale='.65 .65 .65'/>
+        <mesh name="stapler_contact4" file="stapler/contact4.stl" scale='.65 .65 .65' />
+
+        <mesh name="phone" file="phone/phone.stl" scale='.8 .8 .8' />
+        <mesh name="phone_contact0" file="phone/contact0.stl"  scale='.8 .8 .8' />
+        <mesh name="phone_contact1" file="phone/contact1.stl" scale='.8 .8 .8' />
+        <mesh name="phone_contact2" file="phone/contact2.stl" scale='.8 .8 .8'/>
+
+    </asset>
+
+    <worldbody>
+        <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
+        <camera name='front' pos="-.072 -1.230 1.6" euler='1.35 0 0'/>
+        <site name="eps_ball" type="sphere" pos="-.230 -.530 1.445" size="0.08" rgba="1 1 0 0" group="1"/>
+        <site name="success" type="sphere" pos="-.238 -.532 1.650" size="0.076" rgba="1 1 0 .1" group="1"/>
+<!-- new 7 objects -->
+        <body childclass="obj_sim" name="phone" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="phone_visual" mesh="phone" class="object_visual" />
+            <geom name="phone_contact0" mesh="phone_contact0" class="object_contact" condim="4" />
+            <geom name="phone_contact1" mesh="phone_contact1" class="object_contact" condim="4"  />
+            <geom name="phone_contact2" mesh="phone_contact2" class="object_contact" condim="4" />
+
+            <geom name="phone_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.020" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="phone_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.024" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="phone_target" pos="-.238 -.532 1.650" >
+
+            <geom name="tar_phone_visual" mesh="phone" class="object_visual" rgba="1 1 0 1.0" />
+            <geom name="tar_phone_contact0" mesh="phone_contact0" class="object_contact" condim="4" />
+            <geom name="tar_phone_contact1" mesh="phone_contact1" class="object_contact" condim="4"  />
+            <geom name="tar_phone_contact2" mesh="phone_contact2" class="object_contact" condim="4" />
+
+            <geom name="phone_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.038" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="phone_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.038" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="stapler" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="stapler_visual" mesh="stapler" class="object_visual" rgba="0.8 0.8 0.8 1.0" />
+            <geom name="stapler_contact0" mesh="stapler_contact0" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="stapler_contact1" mesh="stapler_contact1" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="stapler_contact2" mesh="stapler_contact2" class="object_contact" condim="4" rgba="0.8 0.8 0.8 1" />
+            <geom name="stapler_contact3" mesh="stapler_contact3" class="object_contact" condim="4" rgba="0.2 0.2 0.2 1" />
+            <geom name="stapler_contact4" mesh="stapler_contact4" class="object_contact" condim="4" rgba="0.2 0.2 0.2 1" />
+
+            <geom name="stapler_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.013" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="stapler_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.016" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="stapler_target" pos="-.238 -.532 1.650" >
+
+            <geom name="tar_stapler_visual" mesh="stapler" class="object_visual" rgba="0.8 0.8 0.8 1.0" />
+            <geom name="tar_stapler_contact0" mesh="stapler_contact0" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_stapler_contact1" mesh="stapler_contact1" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_stapler_contact2" mesh="stapler_contact2" class="object_contact" condim="4" rgba="0.8 0.8 0.8 1" />
+            <geom name="tar_stapler_contact3" mesh="stapler_contact3" class="object_contact" condim="4" rgba="0.2 0.2 0.2 1" />
+            <geom name="tar_stapler_contact4" mesh="stapler_contact4" class="object_contact" condim="4" rgba="0.2 0.2 0.2 1" />
+
+            <geom name="stapler_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="stapler_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+    <body childclass="obj_sim" name="mouse" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="mouse_visual" mesh="mouse" condim="4" class='object_visual' rgba="0.41 0.41 0.41 1" />
+            <geom name="mouse_contact0" mesh="mouse_contact0" class='object_contact' />
+
+            <geom name="mouse_top" type="cylinder" size="0.013 0.002" pos="0 0 -0.017" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="mouse_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.017" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="mouse_target" pos="-.238 -.532 1.650" >
+            <geom name="t_mouse_visual" mesh="mouse" class='object_visual' rgba="0.41 0.41 0.41 1" />
+            <geom name="t_mouse_contact0" mesh="mouse_contact0" class='object_contact' />
+
+            <geom name="mouse_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.036" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="mouse_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.03" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="toothpaste" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 1.27 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="toothpaste_visual" mesh="toothpaste" condim="4" class='object_visual' rgba="0.75 0.75 0.75 1.0"  />
+            <geom name="toothpaste_contact0" mesh="toothpaste_contact0" class='object_contact' />
+
+            <geom name="toothpaste_top" type="cylinder" size="0.013 0.002" pos="0 0 -0.06" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="toothpaste_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.06" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="toothpaste_target" pos="-.238 -.532 1.650" >
+            <geom name="t_toothpaste_visual" mesh="toothpaste" class='object_visual' rgba="0.75 0.75 0.75 1.0" />
+            <geom name="t_toothpaste_contact0" mesh="toothpaste_contact0" class='object_contact' />
+
+            <geom name="toothpaste_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.036" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="toothpaste_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.03" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+
+        <body childclass="obj_sim" name="hammer" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="hammer_visual" mesh="hammer" condim="4" class='object_visual' rgba="1 0 0 0.0" />
+            <geom name="hammer_contact0" mesh="hammer_contact0" class='object_contact' rgba="0.73 0.5 0.39 1" />
+            <geom name="hammer_contact1" mesh="hammer_contact1" class='object_contact' rgba="1 1 1 1" />
+
+            <geom name="hammer_top" type="cylinder" size="0.013 0.002" pos="0 0 -0.015" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="hammer_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.015" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="hammer_target" pos="-.238 -.532 1.650" >
+            <geom name="t_hammer_visual" mesh="hammer" class='object_visual' rgba="1 0 0 0.0" />
+            <geom name="t_hammer_contact0" mesh="hammer_contact0" class='object_contact' rgba="0.73 0.5 0.39 1" />
+            <geom name="t_hammer_contact1" mesh="hammer_contact1" class='object_contact' rgba="1 1 1 1"  />
+
+            <geom name="hammer_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.036" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="hammer_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.03" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="apple" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="apple_visual" mesh="apple" condim="4" class='object_visual' rgba="1 0 0 0.0" />
+            <geom name="apple_contact0" mesh="apple_contact0" class='object_contact' rgba="0 0 0 1" />
+            <geom name="apple_contact1" mesh="apple_contact1" class='object_contact' rgba="0.5 0 0 1" />
+
+            <geom name="apple_top" type="cylinder" size="0.013 0.002" pos="0 0 -0.036" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="apple_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.03" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="apple_target" pos="-.238 -.532 1.650" >
+            <geom name="t_apple_visual" mesh="apple" class='object_visual' rgba="1 0 0 0.0" />
+            <geom name="t_apple_contact0" mesh="apple_contact0" class='object_contact' rgba="0 0 0 1"  />
+            <geom name="t_apple_contact1" mesh="apple_contact1" class='object_contact' rgba="0.5 0 0 1" />
+
+            <geom name="apple_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.036" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="apple_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.03" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="toothbrush" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="toothbrush_visual" mesh="toothbrush" condim="4" class='object_visual' rgba="1 0 0 0.0" />
+            <geom name="toothbrush_contact0" mesh="toothbrush_contact0" class='object_contact' rgba="0.5 0 0 1" />
+            <geom name="toothbrush_contact1" mesh="toothbrush_contact1" class='object_contact' rgba="0.8 0.8 0.8 1" />
+            <geom name="toothbrush_contact2" mesh="toothbrush_contact2" class='object_contact' rgba="0.5 0 0 1" />
+
+            <geom name="toothbrush_top" type="cylinder" size="0.013 0.002" pos="0 0 -.006" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="toothbrush_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.006" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="toothbrush_target" pos="-.238 -.532 1.650" >
+            <geom name="t_toothbrush_visual" mesh="toothbrush" class='object_visual' rgba="1 0 0 0.0" />
+            <geom name="t_toothbrush_contact0" mesh="toothbrush_contact0" class='object_contact' rgba="0.5 0 0 1" />
+            <geom name="t_toothbrush_contact1" mesh="toothbrush_contact1" class='object_contact' rgba="0.8 0.8 0.8 1" />
+            <geom name="t_toothbrush_contact2" mesh="toothbrush_contact2" class='object_contact' rgba="0.5 0 0 1" />
+
+            <geom name="toothbrush_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.006" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="toothbrush_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.006" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+<!-- original 13 objects -->
+        <body childclass="obj_sim" name="banana" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="banana_visual" mesh="banana" class='object_visual' rgba="1 1 0 1.0"/>
+            <geom name="banana_contact0" mesh="banana_contact0" class="object_contact"/>
+            <geom name="banana_contact1" mesh="banana_contact1" class="object_contact"/>
+            <geom name="banana_contact2" mesh="banana_contact2" class="object_contact"/>
+            <geom name="banana_contact3" mesh="banana_contact3" class="object_contact"/>
+            <geom name="banana_contact4" mesh="banana_contact4" class="object_contact"/>
+
+            <geom name="banana_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.014" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="banana_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.018" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="banana_target" pos="-.238 -.532 1.650" >
+            <geom name="t_banana_visual" mesh="banana" class="object_visual" rgba="1 1 0 1.0"/>
+            <geom name="t_banana_contact0" mesh="banana_contact0" class="object_contact"/>
+            <geom name="t_banana_contact1" mesh="banana_contact1" class="object_contact"/>
+            <geom name="t_banana_contact2" mesh="banana_contact2" class="object_contact"/>
+            <geom name="t_banana_contact3" mesh="banana_contact3" class="object_contact"/>
+            <geom name="t_banana_contact4" mesh="banana_contact4" class="object_contact"/>
+
+            <geom name="banana_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.014" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="banana_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.018" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="duck" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="duck_visual" mesh="duck" class="object_visual" rgba="1 1 0 1.0" />
+            <geom name="duck_contact0" mesh="duck_contact0" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="duck_contact1" mesh="duck_contact1" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="duck_contact2" mesh="duck_contact2" class="object_contact" condim="4" rgba="1 1 0 0" />
+
+            <site name="object_top" type="sphere" size="0.005" rgba="0.8 0.2 0.2 1" pos="0 0 0.065" />
+            <site name="object_bottom" type="sphere" size="0.005" rgba="0.2 0.8 0.2 1" pos="0 0 -0.065" />
+
+            <geom name="duck_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.038" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="duck_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.038" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="duck_target" pos="-.238 -.532 1.650" >
+
+            <geom name="tar_duck_visual" mesh="duck" class="object_visual" rgba="1 1 0 1.0" />
+            <geom name="tar_duck_contact0" mesh="duck_contact0" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_duck_contact1" mesh="duck_contact1" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_duck_contact2" mesh="duck_contact2" class="object_contact" condim="4" rgba="1 1 0 0" />
+
+            <geom name="duck_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.038" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="duck_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.038" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="lightbulb" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="lightbulb_visual" mesh="lightbulb" class='object_visual' rgba="1 1 1 .55" />
+            <geom name="lightbulb_contact0" mesh="lightbulb_contact0" class="object_contact" rgba="1 1 1 0.0"/>
+            <geom name="lightbulb_contact1" mesh="lightbulb_contact1" class="object_contact" rgba=".5 .5 .5 0"/>
+
+            <geom name="lightbulb_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.025" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="lightbulb_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.025" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="lightbulb_target" pos="-.238 -.532 1.650" euler="0 1.27 0">
+
+            <geom name="t_lightbulb_visual" mesh="lightbulb" class='object_visual' rgba="1 1 1 .55" />
+            <geom name="t_lightbulb_contact0" mesh="lightbulb_contact0" class="object_contact" rgba="1 1 1 0"/>
+            <geom name="t_lightbulb_contact1" mesh="lightbulb_contact1" class="object_contact" rgba="0.5 0.5 0.5 0"/>
+
+            <geom name="lightbulb_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.025" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="lightbulb_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.025" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+
+        <body childclass="obj_sim" name="elephant" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="elephant_visual" mesh="elephant" class="object_visual" rgba="0.65 0.65 0.65 1.0" />
+            <geom name="elephant_contact0" mesh="elephant_contact0" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="elephant_contact1" mesh="elephant_contact1" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="elephant_contact2" mesh="elephant_contact2" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="elephant_contact3" mesh="elephant_contact3" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="elephant_contact4" mesh="elephant_contact4" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="elephant_contact5" mesh="elephant_contact5" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="elephant_contact6" mesh="elephant_contact6" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="elephant_contact7" mesh="elephant_contact7" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="elephant_contact8" mesh="elephant_contact8" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="elephant_contact9" mesh="elephant_contact9" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="elephant_contact10" mesh="elephant_contact10" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="elephant_contact11" mesh="elephant_contact11" class="object_contact" condim="4" rgba="1 1 0 0" />
+
+            <geom name="elephant_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.030" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="elephant_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.030" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="elephant_target" pos="-.238 -.532 1.650" >
+
+            <geom name="tar_elephant_visual" mesh="elephant" class="object_visual" rgba="0.65 0.65 0.65 1.0" />
+            <geom name="tar_elephant_contact0" mesh="elephant_contact0" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_elephant_contact1" mesh="elephant_contact1" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_elephant_contact2" mesh="elephant_contact2" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_elephant_contact3" mesh="elephant_contact3" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_elephant_contact4" mesh="elephant_contact4" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_elephant_contact5" mesh="elephant_contact5" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_elephant_contact6" mesh="elephant_contact6" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_elephant_contact7" mesh="elephant_contact7" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_elephant_contact8" mesh="elephant_contact8" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_elephant_contact9" mesh="elephant_contact9" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_elephant_contact10" mesh="elephant_contact10" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_elephant_contact11" mesh="elephant_contact11" class="object_contact" condim="4" rgba="1 1 0 0" />
+
+            <geom name="elephant_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.030" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="elephant_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.030" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="airplane" pos="-.253 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 1.27" >
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="airplane_visual" mesh="airplane" class='object_visual' rgba="0.97 0.97 0.97 1"/>
+            <geom name="airplane_contact0" mesh="airplane_contact0" class="object_contact"/>
+            <geom name="airplane_contact1" mesh="airplane_contact1" class="object_contact"/>
+            <geom name="airplane_contact2" mesh="airplane_contact2" class="object_contact"/>
+            <geom name="airplane_contact3" mesh="airplane_contact3" class="object_contact"/>
+            <geom name="airplane_contact4" mesh="airplane_contact4" class="object_contact"/>
+            <geom name="airplane_contact5" mesh="airplane_contact5" class="object_contact"/>
+            <geom name="airplane_contact6" mesh="airplane_contact6" class="object_contact"/>
+            <geom name="airplane_contact7" mesh="airplane_contact7" class="object_contact"/>
+
+            <geom name="airplane_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.02" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="airplane_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.016" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="airplane_target" pos="-.253 -.532 1.650" euler="0 0 0">
+            <geom name="t_airplane_visual" mesh="airplane" class="object_visual" rgba="0.97 0.97 0.97 1"/>
+            <geom name="t_airplane_contact0" mesh="airplane_contact0" class="object_contact"/>
+            <geom name="t_airplane_contact1" mesh="airplane_contact1" class="object_contact"/>
+            <geom name="t_airplane_contact2" mesh="airplane_contact2" class="object_contact"/>
+            <geom name="t_airplane_contact3" mesh="airplane_contact3" class="object_contact"/>
+            <geom name="t_airplane_contact4" mesh="airplane_contact4" class="object_contact"/>
+            <geom name="t_airplane_contact5" mesh="airplane_contact5" class="object_contact"/>
+            <geom name="t_airplane_contact6" mesh="airplane_contact6" class="object_contact"/>
+            <geom name="t_airplane_contact7" mesh="airplane_contact7" class="object_contact"/>
+
+            <geom name="airplane_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.02" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="airplane_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.016" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="flashlight" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 1.27 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="flashlight_visual" mesh="flashlight" class='object_visual' rgba="1 .065 0 1.0"/>
+            <geom name="flashlight_contact0" mesh="flashlight_contact0" class="object_contact"/>
+            <geom name="flashlight_contact1" mesh="flashlight_contact1" class="object_contact"/>
+
+
+            <geom name="flashlight_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.055" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="flashlight_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.055" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="flashlight_target" pos="-.238 -.532 1.650" euler="0 1.27 0" >
+            <geom name="t_flashlight_visual" mesh="flashlight" class="object_visual" rgba="1 .065 0 1.0"/>
+            <geom name="t_flashlight_contact0" mesh="flashlight_contact0" class="object_contact"/>
+            <geom name="t_flashlight_contact1" mesh="flashlight_contact1" class="object_contact"/>
+
+            <geom name="flashlight_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.055" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="flashlight_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.055" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="camera" pos="-.250 -.536 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="-1.27 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="camera_visual" mesh="camera" class='object_visual' rgba=".64 .64 .64 1"  />
+            <geom name="camera_contact0" mesh="camera_contact0" class="object_contact"/>
+            <geom name="camera_contact1" mesh="camera_contact1" class="object_contact"/>
+
+            <geom name="camera_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.027" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="camera_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.027" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="camera_target" pos="-.250 -.536 1.650">
+            <geom name="t_camera_visual" mesh="camera" class="object_visual" rgba=".64 .64 .64 1" />
+            <geom name="t_camera_contact0" mesh="camera_contact0" class="object_contact"/>
+            <geom name="t_camera_contact1" mesh="camera_contact1" class="object_contact"/>
+
+            <geom name="camera_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.027" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="camera_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.027" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="rabbit" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="rabbit_visual" mesh="rabbit" class="object_visual" rgba="0.8 0.8 0.8 1.0" />
+            <geom name="rabbit_contact0" mesh="rabbit_contact0" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="rabbit_contact1" mesh="rabbit_contact1" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="rabbit_contact2" mesh="rabbit_contact2" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="rabbit_contact3" mesh="rabbit_contact3" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="rabbit_contact4" mesh="rabbit_contact4" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="rabbit_contact5" mesh="rabbit_contact5" class="object_contact" condim="4" rgba="1 1 0 0" />
+
+            <geom name="rabbit_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="rabbit_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="rabbit_target" pos="-.238 -.532 1.650" >
+
+            <geom name="tar_rabbit_visual" mesh="rabbit" class="object_visual" rgba="0.8 0.8 0.8 1.0" />
+            <geom name="tar_rabbit_contact0" mesh="rabbit_contact0" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_rabbit_contact1" mesh="rabbit_contact1" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_rabbit_contact2" mesh="rabbit_contact2" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_rabbit_contact3" mesh="rabbit_contact3" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_rabbit_contact4" mesh="rabbit_contact4" class="object_contact" condim="4" rgba="1 1 0 0" />
+            <geom name="tar_rabbit_contact5" mesh="rabbit_contact5" class="object_contact" condim="4" rgba="1 1 0 0" />
+
+            <geom name="rabbit_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="rabbit_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="mug" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" >
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="mug_visual" mesh="mug" class='object_visual' rgba='1 1 1 1' />
+            <geom name="mug_contact0" mesh="mug_contact0" class="object_contact"/>
+            <geom name="mug_contact1" mesh="mug_contact1" class="object_contact"/>
+            <geom name="mug_contact2" mesh="mug_contact2" class="object_contact"/>
+            <geom name="mug_contact3" mesh="mug_contact3" class="object_contact"/>
+            <geom name="mug_contact4" mesh="mug_contact4" class="object_contact"/>
+            <geom name="mug_contact5" mesh="mug_contact5" class="object_contact"/>
+            <geom name="mug_contact6" mesh="mug_contact6" class="object_contact"/>
+            <geom name="mug_contact7" mesh="mug_contact7" class="object_contact"/>
+            <geom name="mug_contact8" mesh="mug_contact8" class="object_contact"/>
+            <geom name="mug_contact9" mesh="mug_contact9" class="object_contact"/>
+            <geom name="mug_contact10" mesh="mug_contact10" class="object_contact"/>
+            <geom name="mug_contact11" mesh="mug_contact11" class="object_contact"/>
+            <geom name="mug_contact12" mesh="mug_contact12" class="object_contact"/>
+            <geom name="mug_contact13" mesh="mug_contact13" class="object_contact"/>
+
+            <geom name="mug_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="mug_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.04" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="mug_target" pos="-.238 -.532 1.650">
+
+            <geom name="t_mug_visual" mesh="mug" class="object_visual" rgba='1 1 1 1' />
+            <geom name="t_mug_contact0" mesh="mug_contact0" class="object_contact"/>
+            <geom name="t_mug_contact1" mesh="mug_contact1" class="object_contact"/>
+            <geom name="t_mug_contact2" mesh="mug_contact2" class="object_contact"/>
+            <geom name="t_mug_contact3" mesh="mug_contact3" class="object_contact"/>
+            <geom name="t_mug_contact4" mesh="mug_contact4" class="object_contact"/>
+            <geom name="t_mug_contact5" mesh="mug_contact5" class="object_contact"/>
+            <geom name="t_mug_contact6" mesh="mug_contact6" class="object_contact"/>
+            <geom name="t_mug_contact7" mesh="mug_contact7" class="object_contact"/>
+            <geom name="t_mug_contact8" mesh="mug_contact8" class="object_contact"/>
+            <geom name="t_mug_contact9" mesh="mug_contact9" class="object_contact"/>
+            <geom name="t_mug_contact10" mesh="mug_contact10" class="object_contact"/>
+            <geom name="t_mug_contact11" mesh="mug_contact11" class="object_contact"/>
+            <geom name="t_mug_contact12" mesh="mug_contact12" class="object_contact"/>
+            <geom name="t_mug_contact13" mesh="mug_contact13" class="object_contact"/>
+
+            <geom name="mug_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="mug_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.04" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="train" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" >
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="train_visual" mesh="train" class='object_visual' rgba="0.25 0.41 0.87 1.0"/>
+            <geom name="train_contact0" mesh="train_contact0" class="object_contact"/>
+
+            <geom name="train_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.032" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="train_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.032" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="train_target" pos="0 -.54 1.382" >
+            <geom name="t_train_visual" mesh="train" class="object_visual" rgba="0.25 0.41 0.87 1.0"/>
+            <geom name="t_train_contact0" mesh="train_contact0" class="object_contact"/>
+
+            <geom name="train_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.032" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="train_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.032" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="waterbottle" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 1.27 0">
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="waterbottle_visual" mesh="waterbottle" class='object_visual' rgba="0 0 0 0.0" />
+            <geom name="waterbottle_contact0" mesh="waterbottle_contact0" class="object_contact" rgba="1 1 1 .8"/>
+            <geom name="waterbottle_contact1" mesh="waterbottle_contact1" class="object_contact" rgba="1 1 1 .55"/>
+
+            <geom name="waterbottle_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.042" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="waterbottle_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.037" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="waterbottle_target" pos="0 -.54 1.382" euler="0 1.27 0">
+            <geom name="t_waterbottle_visual" mesh="waterbottle" class='object_visual' rgba="0 0 0 0.0" />
+            <geom name="t_waterbottle_contact0" mesh="waterbottle_contact0" class="object_contact" rgba="1 1 1 .8"/>
+            <geom name="t_waterbottle_contact1" mesh="waterbottle_contact1" class="object_contact" rgba="1 1 1 .55"/>
+
+            <geom name="waterbottle_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.042" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="waterbottle_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.037" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="scissors" pos="-.245 -.532 1.445" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 1.27" >
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="scissors_visual" mesh="scissors" class='object_visual' rgba="0.91 0.27 0.27 1"/>
+            <geom name="scissors_contact0" mesh="scissors_contact0" class="object_contact"/>
+            <geom name="scissors_contact1" mesh="scissors_contact1" class="object_contact"/>
+            <geom name="scissors_contact2" mesh="scissors_contact2" class="object_contact"/>
+            <geom name="scissors_contact3" mesh="scissors_contact3" class="object_contact"/>
+            <geom name="scissors_contact4" mesh="scissors_contact4" class="object_contact"/>
+            <geom name="scissors_contact5" mesh="scissors_contact5" class="object_contact"/>
+            <geom name="scissors_contact6" mesh="scissors_contact6" class="object_contact"/>
+            <geom name="scissors_contact7" mesh="scissors_contact7" class="object_contact"/>
+            <geom name="scissors_contact8" mesh="scissors_contact8" class="object_contact"/>
+            <geom name="scissors_contact9" mesh="scissors_contact9" class="object_contact"/>
+            <geom name="scissors_contact10" mesh="scissors_contact10" class="object_contact"/>
+            <geom name="scissors_contact11" mesh="scissors_contact11" class="object_contact"/>
+            <geom name="scissors_contact12" mesh="scissors_contact12" class="object_contact"/>
+            <geom name="scissors_contact13" mesh="scissors_contact13" class="object_contact"/>
+
+            <geom name="scissors_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.01" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="scissors_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.01" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="scissors_target" pos="0 -.54 1.382" euler="0 0 0">
+            <geom name="t_scissors_visual" mesh="scissors" class="object_visual" rgba="0.91 0.27 0.27 1"/>
+            <geom name="t_scissors_contact0" mesh="scissors_contact0" class="object_contact"/>
+            <geom name="t_scissors_contact1" mesh="scissors_contact1" class="object_contact"/>
+            <geom name="t_scissors_contact2" mesh="scissors_contact2" class="object_contact"/>
+            <geom name="t_scissors_contact3" mesh="scissors_contact3" class="object_contact"/>
+            <geom name="t_scissors_contact4" mesh="scissors_contact4" class="object_contact"/>
+            <geom name="t_scissors_contact5" mesh="scissors_contact5" class="object_contact"/>
+            <geom name="t_scissors_contact6" mesh="scissors_contact6" class="object_contact"/>
+            <geom name="t_scissors_contact7" mesh="scissors_contact7" class="object_contact"/>
+            <geom name="t_scissors_contact8" mesh="scissors_contact8" class="object_contact"/>
+            <geom name="t_scissors_contact9" mesh="scissors_contact9" class="object_contact"/>
+            <geom name="t_scissors_contact10" mesh="scissors_contact10" class="object_contact"/>
+            <geom name="t_scissors_contact11" mesh="scissors_contact11" class="object_contact"/>
+            <geom name="t_scissors_contact12" mesh="scissors_contact12" class="object_contact"/>
+            <geom name="t_scissors_contact13" mesh="scissors_contact13" class="object_contact"/>
+
+            <geom name="scissors_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.01" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="scissors_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.01" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="alarmclock" pos="-.238 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" >
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="alarmclock_visual" mesh="alarmclock" class='object_visual' rgba="0.25 0.41 0.87 1.0"/>
+            <geom name="alarmclock_contact0" mesh="alarmclock_contact0" class="object_contact"/>
+
+            <geom name="alarmclock_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="alarmclock_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="alarmclock_target" pos=".15 -.54 1.500" >
+            <geom name="t_alarmclock_visual" mesh="alarmclock" class="object_visual" rgba="0.25 0.41 0.87 1.0"/>
+            <geom name="t_alarmclock_contact0" mesh="alarmclock_contact0" class="object_contact"/>
+
+            <geom name="alarmclock_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="alarmclock_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="cup" pos="-.235 -.510 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="1.27 -1.27 0" >
+            <joint pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="cup_visual" mesh="cup" class='object_visual' rgba="1 1 1 .4"/>
+            <geom name="cup_contact0" mesh="cup_contact0" class="object_contact"/>
+            <geom name="cup_contact1" mesh="cup_contact1" class="object_contact"/>
+            <geom name="cup_contact2" mesh="cup_contact2" class="object_contact"/>
+            <geom name="cup_contact3" mesh="cup_contact3" class="object_contact"/>
+            <geom name="cup_contact4" mesh="cup_contact4" class="object_contact"/>
+            <geom name="cup_contact5" mesh="cup_contact5" class="object_contact"/>
+            <geom name="cup_contact6" mesh="cup_contact6" class="object_contact"/>
+            <geom name="cup_contact7" mesh="cup_contact7" class="object_contact"/>
+            <geom name="cup_contact8" mesh="cup_contact8" class="object_contact"/>
+            <geom name="cup_contact9" mesh="cup_contact9" class="object_contact"/>
+            <geom name="cup_contact10" mesh="cup_contact10" class="object_contact"/>
+            <geom name="cup_contact11" mesh="cup_contact11" class="object_contact"/>
+
+            <geom name="cup_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="cup_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="obj_sim" name="cup_target" pos=".15 -.54 1.500" euler="0 0 0">
+            <geom name="t_cup_visual" mesh="cup" class="object_visual" rgba="1 1 1 .4"/>
+            <geom name="t_cup_contact0" mesh="cup_contact0" class="object_contact"/>
+            <geom name="t_cup_contact1" mesh="cup_contact1" class="object_contact"/>
+            <geom name="t_cup_contact2" mesh="cup_contact2" class="object_contact"/>
+            <geom name="t_cup_contact3" mesh="cup_contact3" class="object_contact"/>
+            <geom name="t_cup_contact4" mesh="cup_contact4" class="object_contact"/>
+            <geom name="t_cup_contact5" mesh="cup_contact5" class="object_contact"/>
+            <geom name="t_cup_contact6" mesh="cup_contact6" class="object_contact"/>
+            <geom name="t_cup_contact7" mesh="cup_contact7" class="object_contact"/>
+            <geom name="t_cup_contact8" mesh="cup_contact8" class="object_contact"/>
+            <geom name="t_cup_contact9" mesh="cup_contact9" class="object_contact"/>
+            <geom name="t_cup_contact10" mesh="cup_contact10" class="object_contact"/>
+            <geom name="t_cup_contact11" mesh="cup_contact11" class="object_contact"/>
+
+            <geom name="cup_t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="cup_t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+    </worldbody>
+</mujoco>
