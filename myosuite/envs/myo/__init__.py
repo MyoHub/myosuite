@@ -410,3 +410,144 @@ register_env_with_variants(id='myoHandPenTwirlRandom-v0',
             'frame_skip': 5,
         }
     )
+
+#############################################################################################################################
+###########################################             SAR ENVS             ################################################
+#############################################################################################################################
+
+# REORIENT: 8-object
+register_env_with_variants(id='Reorient8-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:Geometries8EnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/reorient8_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+# REORIENT: 100-object
+register_env_with_variants(id='Reorient100-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:Geometries100EnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/reorient100_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+# TEST ENVIRONMENT: in-distribution
+register_env_with_variants(id='ReorientID-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:InDistribution',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/sar_test_sets.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+
+# TEST ENVIRONMENT: out of distribution
+register_env_with_variants(id='ReorientOOD-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:OutofDistribution',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/sar_test_sets.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+# REAL WORLD OBJECT REORIENTATION: 20 objects x 1 env (note that the paper just used 8)
+register_env_with_variants(id='RealWorldObjs-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:ObjSimImprovedV2',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/obj_sim_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+# REAL WORLD OBJECT REORIENTATION: 1 object x 1 env (8 envs)
+register_env_with_variants(id='myoHandDuckRandom-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:DuckTwirlRandomEnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/duck_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+register_env_with_variants(id='myoHandElephantRandom-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:ElephantTwirlRandomEnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/elephant_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+register_env_with_variants(id='myoHandRabbitRandom-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:RabbitTwirlRandomEnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/rabbit_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+register_env_with_variants(id='myoHandCameraRandom-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:CameraTwirlRandomEnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/camera_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+register_env_with_variants(id='myoHandBananaRandom-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:BananaTwirlRandomEnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/banana_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+register_env_with_variants(id='myoHandFlashlightRandom-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:FlashlightTwirlRandomEnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/flashlight_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+register_env_with_variants(id='myoHandLightbulbRandom-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:LightbulbTwirlRandomEnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/lightbulb_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+register_env_with_variants(id='myoHandAirplaneRandom-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:AirplaneTwirlRandomEnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/airplane_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )

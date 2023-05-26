@@ -1,0 +1,75 @@
+<mujoco model="airplane">
+    <include file="../../../../simhive/object_sim/common_extra.xml"/>
+    <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
+    <compiler meshdir='../../../../simhive/object_sim/' texturedir='../../../../simhive/object_sim/'/>
+
+    <default>
+		<default class="airplane">
+			<geom contype="1" conaffinity="1" condim="3" material="MatSkin"/>
+            <site group="3"/>
+		</default>
+    </default>
+
+    <asset>
+        <mesh name="airplane" file="airplane/airplane.stl" scale='.7 .7 .7'/>
+        <mesh name="contact0" file="airplane/contact0.stl" scale='.7 .7 .7'/>
+        <mesh name="contact1" file="airplane/contact1.stl" scale='.7 .7 .7'/>
+        <mesh name="contact2" file="airplane/contact2.stl" scale='.7 .7 .7'/>
+        <mesh name="contact3" file="airplane/contact3.stl" scale='.7 .7 .7'/>
+        <mesh name="contact4" file="airplane/contact4.stl" scale='.7 .7 .7'/>
+        <mesh name="contact5" file="airplane/contact5.stl" scale='.7 .7 .7'/>
+        <mesh name="contact6" file="airplane/contact6.stl" scale='.7 .7 .7'/>
+        <mesh name="contact7" file="airplane/contact7.stl" scale='.7 .7 .7'/>
+
+    </asset>
+
+    <worldbody>
+        <include file="../../../../simhive/myo_sim/hand/assets/myo_hand_body.xml"/>
+        <camera name='front' pos="-.072 -1.230 1.6" euler='1.35 0 0'/>
+        <site name="eps_ball" type="sphere" pos="-.230 -.530 1.445" size="0.08" rgba="1 1 0 0" group="1"/>
+
+        <body childclass="airplane" name="Object" pos="-.253 -.532 1.455" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 0 1.27" >
+            <joint name="OBJTx" pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint name="OBJTy" pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint name="OBJTz" pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint name="OBJRx" pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint name="OBJRy" pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint name="OBJRz" pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+
+            <geom name="airplane_visual" mesh="airplane" class='object_visual' rgba="0.97 0.97 0.97 1"/>
+            <geom name="airplane_contact0" mesh="contact0" class="object_contact"/>
+            <geom name="airplane_contact1" mesh="contact1" class="object_contact"/>
+            <geom name="airplane_contact2" mesh="contact2" class="object_contact"/>
+            <geom name="airplane_contact3" mesh="contact3" class="object_contact"/>
+            <geom name="airplane_contact4" mesh="contact4" class="object_contact"/>
+            <geom name="airplane_contact5" mesh="contact5" class="object_contact"/>
+            <geom name="airplane_contact6" mesh="contact6" class="object_contact"/>
+            <geom name="airplane_contact7" mesh="contact7" class="object_contact"/>
+
+            <site name="object_top" type="sphere" size="0.005" rgba="0.8 0.2 0.2 1" pos="0 0 0.065" />
+            <site name="object_bottom" type="sphere" size="0.005" rgba="0.2 0.8 0.2 1" pos="0 0 -0.065" />
+
+            <geom name="top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="bot" type="cylinder" size="0.013 0.002" pos="0 0 0.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+
+        <body childclass="airplane" name="target" pos="-.253 -.532 1.650" euler="0 0 0">
+            <site name="target_top" type="sphere" size="0.005" rgba="0.8 0.2 0.2 1" pos="0 0 0.065" />
+            <site name="target_bottom" type="sphere" size="0.005" rgba="0.2 0.8 0.2 1" pos="0 0 -0.065" />
+
+            <geom name="t_airplane_visual" mesh="airplane" class="object_visual" rgba="0.97 0.97 0.97 1"/>
+            <geom name="t_airplane_contact0" mesh="contact0" class="object_contact"/>
+            <geom name="t_airplane_contact1" mesh="contact1" class="object_contact"/>
+            <geom name="t_airplane_contact2" mesh="contact2" class="object_contact"/>
+            <geom name="t_airplane_contact3" mesh="contact3" class="object_contact"/>
+            <geom name="t_airplane_contact4" mesh="contact4" class="object_contact"/>
+            <geom name="t_airplane_contact5" mesh="contact5" class="object_contact"/>
+            <geom name="t_airplane_contact6" mesh="contact6" class="object_contact"/>
+            <geom name="t_airplane_contact7" mesh="contact7" class="object_contact"/>
+
+            <geom name="t_top" type="cylinder" size="0.013 0.002" condim="4" pos="0 0 -.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+            <geom name="t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.035" rgba="0 .5 1 0" contype="0" conaffinity="0"/>
+        </body>
+    </worldbody>
+</mujoco>
