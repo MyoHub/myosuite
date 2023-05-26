@@ -416,7 +416,7 @@ register_env_with_variants(id='myoHandPenTwirlRandom-v0',
 #############################################################################################################################
 
 # REORIENT: 8-object
-register_env_with_variants(id='Reorient8-v0',
+register_env_with_variants(id='myoHandReorient8-v0',
             entry_point='myosuite.envs.myo.reorient_v0:Geometries8EnvV0',
             max_episode_steps=50,
             kwargs={
@@ -427,7 +427,7 @@ register_env_with_variants(id='Reorient8-v0',
     )
 
 # REORIENT: 100-object
-register_env_with_variants(id='Reorient100-v0',
+register_env_with_variants(id='myoHandReorient100-v0',
             entry_point='myosuite.envs.myo.reorient_v0:Geometries100EnvV0',
             max_episode_steps=50,
             kwargs={
@@ -438,7 +438,7 @@ register_env_with_variants(id='Reorient100-v0',
     )
 
 # TEST ENVIRONMENT: in-distribution
-register_env_with_variants(id='ReorientID-v0',
+register_env_with_variants(id='myoHandReorientID-v0',
             entry_point='myosuite.envs.myo.reorient_v0:InDistribution',
             max_episode_steps=50,
             kwargs={
@@ -450,7 +450,7 @@ register_env_with_variants(id='ReorientID-v0',
 
 
 # TEST ENVIRONMENT: out of distribution
-register_env_with_variants(id='ReorientOOD-v0',
+register_env_with_variants(id='myoHandReorientOOD-v0',
             entry_point='myosuite.envs.myo.reorient_v0:OutofDistribution',
             max_episode_steps=50,
             kwargs={
@@ -461,7 +461,7 @@ register_env_with_variants(id='ReorientOOD-v0',
     )
 
 # REAL WORLD OBJECT REORIENTATION: 20 objects x 1 env (note that the paper just used 8)
-register_env_with_variants(id='RealWorldObjs-v0',
+register_env_with_variants(id='myoHandRealWorldObjs-v0',
             entry_point='myosuite.envs.myo.reorient_v0:ObjSimImprovedV2',
             max_episode_steps=50,
             kwargs={
