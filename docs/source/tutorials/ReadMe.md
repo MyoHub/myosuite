@@ -5,6 +5,7 @@ You need to install Jupyter Notebooks with:
 ``` bash
 pip install jupyter
 ```
+or you can jumpstart with **ICRA2023 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1y8LIHlgfQGQ2XuHmPD3tcO93qzKODJSI)
 
 Note: in case the kernel for the environent is not recognized, you can install it with the following commands:
 
