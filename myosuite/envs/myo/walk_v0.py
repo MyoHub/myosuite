@@ -6,7 +6,6 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 import collections
 import gym
 import numpy as np
-import mujoco_py
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils.quat_math import quat2mat
@@ -36,7 +35,8 @@ class ReachEnvV0(BaseV0):
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
+
         self._setup(**kwargs)
 
 
@@ -56,11 +56,9 @@ class ReachEnvV0(BaseV0):
                 )
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.init_qvel[:] = self.sim.model.key_qvel[0]
-        self.update_camera(distance=3.0)
 
     def get_obs_dict(self, sim):
         obs_dict = {}
-        obs_dict['t'] = np.array([sim.data.time])
         obs_dict['time'] = np.array([sim.data.time])
         obs_dict['qpos'] = sim.data.qpos[:].copy()
         obs_dict['qvel'] = sim.data.qvel[:].copy()*self.dt
@@ -110,15 +108,6 @@ class ReachEnvV0(BaseV0):
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super().reset()
         return obs
-
-
-    def viewer_setup(self):
-        self.viewer.cam.azimuth = 90
-        self.viewer.cam.elevation = -15
-        self.viewer.cam.distance = 5.0
-        self.viewer.vopt.flags[3] = 1 # render actuators
-        self.sim.forward()
-
 
 class WalkEnvV0(BaseV0):
 
@@ -187,7 +176,6 @@ class WalkEnvV0(BaseV0):
                        )
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.init_qvel[:] = 0.0
-        self.update_camera(distance=3.0)
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -378,10 +366,3 @@ class WalkEnvV0(BaseV0):
         Get the angles of a list of named joints.
         """
         return np.array([self.sim.data.qpos[self.sim.model.jnt_qposadr[self.sim.model.joint_name2id(name)]] for name in names])
-
-    def viewer_setup(self):
-        self.viewer.cam.azimuth = 90
-        self.viewer.cam.elevation = -15
-        self.viewer.cam.distance = 5.0
-        self.viewer.vopt.flags[3] = 1 # render actuators
-        self.sim.forward()

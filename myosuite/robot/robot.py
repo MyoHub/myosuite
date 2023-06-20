@@ -1,21 +1,20 @@
 """ =================================================
 Copyright (C) 2018 Vikash Kumar
 Author  :: Vikash Kumar (vikashplus@gmail.com)
-Source  :: https://github.com/vikashplus/mj_envs
+Source  :: https://github.com/vikashplus/robohive
 License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ================================================= """
 
+from myosuite.physics.sim_scene import SimScene
+from myosuite.utils.quat_math import quat2euler
+from myosuite.utils.prompt_utils import prompt, Prompt
 import time
-from termcolor import cprint
 import numpy as np
 from collections import deque
-from mujoco_py import load_model_from_path, MjSim, functions, ignore_mujoco_warnings
 import os
-from myosuite.utils.quat_math import quat2euler
 np.set_printoptions(precision=4)
 
 
-_VERBOSE = False
 _ROBOT_VIZ = False
 
 # TODO ===========================================
@@ -23,14 +22,14 @@ _ROBOT_VIZ = False
 # support loading multiple config files
 # seperate ROBOT_VIZ as its own class
 # remap_space() needs rigerous testing
+# Support for sensors that provide multiple reading values. Sensor indexing might not directly follow the sensor's list index in this case. This support will potentilly allow us to also list cams as sensors
+# Support for non uniform noise in sensor readings
+# Support for noisy actions + separate noise_scale for sensor and actuator
+# rename pos/vel to act/delta_act
 
 # NOTE/ GOOD PRACTICES ===========================
 # nq should be nv
 # Order of sensors and actuators in config should follow XML order
-
-def prompt(data, color=None, on_color=None, flush=False, end="\n"):
-    if _VERBOSE:
-        cprint(data, color=color, on_color=on_color, flush=flush, end=end)
 
 
 class Robot():
@@ -54,7 +53,7 @@ class Robot():
             ):
 
         if kwargs != {}:
-            print("Warning: Unused kwargs found: {}".format(kwargs))
+            prompt("Warning: Unused kwargs found: {}".format(kwargs), type=Prompt.WARN)
         self.name = robot_name+'(sim)' if is_hardware is None else robot_name+'(hdr)'
         self._act_mode = act_mode
         self.is_hardware = bool(is_hardware)
@@ -72,7 +71,7 @@ class Robot():
         if mj_sim is None:
             # (creates new robot everytime to facilitate parallelization)
             prompt("Preparing robot-sim from %s" % model_path)
-            self.sim = MjSim(load_model_from_path(model_path))
+            self.sim =SimScene.get_sim(model_handle=model_path)
         else:
             # use provided sim
             self.sim = mj_sim
@@ -100,7 +99,7 @@ class Robot():
 
         # Robot's time
         self.time_start = time.time()
-        self.time = time.time() - self.time_start
+        self.time_wall = time.time()-self.time_start # Wall time (used for realtime factors) for both sim and hardware
 
         # refresh the sensor cache
         self._sensor_cache_refresh()
@@ -143,10 +142,10 @@ class Robot():
                 try:
                     from .hardware_realsense import RealSense
                     device['robot'] = RealSense(name=name, **device['interface'])
-                except: 
+                except:
                     from .hardware_realsense_single import RealsenseAPI
                     device['robot'] = RealsenseAPI(**device['interface'])
-                    
+
             elif device['interface']['type'] == 'robotiq':
                 from .hardware_robotiq import Robotiq
                 device['robot'] = Robotiq(name=name, **device['interface'])
@@ -377,7 +376,7 @@ class Robot():
         if self.is_hardware:
             # record sensor*device['scale']+device['offset']
             current_sen = self.hardware_get_sensors()
-            # update the sim (qpos, qvel) as per the hardware observations
+            # update the sim as per the hardware observations
             self.sensor2sim(current_sen, self.sim)
         else:
             current_sen['time']= self.sim.data.time # data time stamp
@@ -411,7 +410,7 @@ class Robot():
         self._sensor_cache.append(current_sen)
 
         # Update time
-        self.time = current_sen['time']
+        self.time_wall = time.time()-self.time_start
 
         return current_sen
 
@@ -438,7 +437,7 @@ class Robot():
                 current_sensor_value[cam_name] = data
 
                 # calibrate sensors
-                for cam in device['cams']:
+                for cam in device['cam']:
                     current_sensor_value[cam_name][cam['hdr_id']] = current_sensor_value[cam_name][cam['hdr_id']]*cam['scale'] + cam['offset']
                 device['sensor_data'] = current_sensor_value[cam_name]
                 device['sensor_time'] = current_sensor_value['time']
@@ -449,8 +448,9 @@ class Robot():
             imgs = np.zeros((len(cameras), height, width, 3), dtype=np.uint8)
             depths = np.zeros((len(cameras), height, width))
             for ind, cam in enumerate(cameras):
-                img, depth = sim.render(width=width, height=height, depth=True, mode='offscreen', camera_name=cam, device_id=device_id)
-                img = img[::-1, :, : ] # Image has to be flipped
+                # img, depth = sim.render(width=width, height=height, depth=True, mode='offscreen', camera_name=cam, device_id=device_id)
+                img, depth = sim.renderer.render_offscreen(width=width, height=height, depth=True, camera_id=cam, device_id=device_id)
+                # img = img[::-1, :, :] # Image has to be flipped
                 imgs[ind, :, :, :] = img
                 depths[ind, :, :] = depth
 
@@ -486,6 +486,7 @@ class Robot():
 
     # synchronize states between two sims
     def sync_sims(self, source_sim, destination_sim, model=True, data=True):
+        destination_sim.data.time = source_sim.data.time
         if data:
             destination_sim.data.qpos[:] = source_sim.data.qpos[:].copy()
             destination_sim.data.qvel[:] = source_sim.data.qvel[:].copy()
@@ -544,18 +545,20 @@ class Robot():
 
 
     # Normalize actions from absolute space to unit space
-    def normalize_actions(self, controls, out_space='sim'):
+    def normalize_actions(self, controls, out_space='sim', unnormalize=False):
         """
         Normalize actions from absolute space to unit space
+        Recover actions from unit space to absolute space; if unnormalize==True
+        in_space for controls has to be 'sim'
         """
         act_id = -1
-        normalized_controls = controls.copy()
+        controls_out = controls.copy()
         for name, device in self.robot_config.items():
             if name == "default_robot":
                 if self._act_mode == "pos":
                     act_mid = np.mean(self.sim.model.actuator_ctrlrange, axis=-1)
                     act_rng = (self.sim.model.actuator_ctrlrange[:,1]-self.sim.model.actuator_ctrlrange[:,0])/2.0
-                    normalized_controls = (controls-act_mid)/act_rng
+                    controls_out = controls*act_rng+act_mid if unnormalize else (controls-act_mid)/act_rng
                 else:
                     raise TypeError("only pos act supported")
             else:
@@ -574,14 +577,18 @@ class Robot():
                     else:
                         raise TypeError("Unknown act mode: {}".format(self._act_mode))
 
-                    # normalize and enforce position limits
+                    # unnormalize/ normalize
                     control = controls[in_id]
-                    control =  (control-act_mid)/act_rng
-                    control = np.clip(control, -1, 1)
+                    if unnormalize:
+                        control = np.clip(control, -1, 1)
+                        control = control*act_rng+act_mid
+                    else:
+                        control =  (control-act_mid)/act_rng
+                        control = np.clip(control, -1, 1)
 
                     # remap to desired space
-                    normalized_controls[out_id] = control
-        return normalized_controls
+                    controls_out[out_id] = control
+        return controls_out
 
 
     # enfoce limits
@@ -647,6 +654,7 @@ class Robot():
 
         return processed_controls
 
+
     # step the robot one step forward in time
     def step(self, ctrl_desired, step_duration, ctrl_normalized=True, realTimeSim=False, render_cbk=None):
         """
@@ -671,14 +679,9 @@ class Robot():
             if render_cbk:
                 render_cbk()
         else:
-            n_frames=int(step_duration/self.sim.model.opt.timestep)
+            n_frames=int(step_duration/self.sim.step_duration)
             self.sim.data.ctrl[:] = ctrl_feasible
-            with ignore_mujoco_warnings():
-                for _ in range(n_frames):
-                    functions.mj_step2(self.sim.model, self.sim.data)
-                    functions.mj_step1(self.sim.model, self.sim.data)
-                    if render_cbk:
-                        render_cbk()
+            self.sim.advance(substeps=n_frames, render=(render_cbk!=None))
 
         # update viz
         if _ROBOT_VIZ:
@@ -691,10 +694,11 @@ class Robot():
         # synchronize time to maintain step_duration
         if self.is_hardware or realTimeSim:
             time_now = (time.time() - self.time_start)
-            time_left_in_step = step_duration - (time_now - self.time)
+            time_left_in_step = step_duration - (time_now-self.time_wall)
             if (time_left_in_step > 0.001):
                 time.sleep(time_left_in_step)
-            # prompt("Step took %0.4fs, time left in step %0.4f"% ((time_now-self.time), time_left_in_step))
+            elif time_left_in_step < 0.0:
+                prompt("Step duration %0.4fs, Step took %0.4fs, Time left %0.4f"% (step_duration, (time_now-self.time_wall), time_left_in_step), type=Prompt.WARN)
 
         if _ROBOT_VIZ:
             global timing_SRV_t0
@@ -707,7 +711,9 @@ class Robot():
     # Reset the robot
     def reset(self,
               reset_pos,
-              reset_vel):
+              reset_vel,
+              blocking = True
+              ):
 
         prompt("Resetting {}".format(self.name), 'white', 'on_grey', flush=True)
 
@@ -741,13 +747,13 @@ class Robot():
             # engage other reset mechanisms for passive dofs
             # TODO raise NotImplementedError
 
-            input("press a key to start rollout")
+            if blocking:
+                input("press a key to start rollout")
             prompt(" Done in {}".format(time.time()-t_reset_start), 'white', 'on_grey', flush=True)
         else:
             # Ideally we should use actuator/ reset mechanism as in the real world
             # but choosing to directly resetting sim for efficiency
             self.sim.reset()
-            self.time = self.sim.data.time # update robot time
             self.sim.data.qpos[:] = feasibe_pos
             self.sim.data.qvel[:] = feasibe_vel
             self.sim.forward() # ???Vik alternatively should following be called? functions.mj_step1(self.sim.model, self.sim.data)
@@ -762,13 +768,15 @@ class Robot():
         # refresh sensor cache before exiting reset
         self._sensor_cache_refresh()
 
-        # restart the clock
+        # restart the robot clock
         self.time_start = time.time()
+        self.time_wall = time.time()-self.time_start
 
         global timing_SRV_t0
         timing_SRV_t0 = time.time()
 
         return feasibe_pos, feasibe_vel
+
 
     # close connection and exit out of the robot
     def close(self):
@@ -777,35 +785,35 @@ class Robot():
             status = self.hardware_close()
             prompt("Closed (Status: {})".format(status), 'white', 'on_grey', flush=True)
 
+
     # destructor
     def __del__(self):
         self.close()
 
-def main():
-    import gym
-    import darwin
-    import pprompt
 
+def demo_robot():
+    import gym
 
     prompt("Starting Robot===================")
-    env = gym.make('DarwinRideRandom-v0')
-    rob = env.env.mpl
+    env = gym.make('FrankaReachFixed-v0')
+    rob = env.env.robot
 
     prompt("Getting sensor data==============")
-    sen = rob.get_sensors(env.env)
-    pprompt.pprompt(sen)
+    sen = rob.get_sensors()
+    prompt("Sensor data: ", end="")
+    prompt(sen)
 
     prompt("stepping forward=================")
     ctrl = env.env.np_random.uniform(size=env.env.sim.model.nu)
-    rob.step(env.env, ctrl, 1.0)
+    rob.step(ctrl, 1.0)
 
     prompt("Resetting Robot==================")
     pos = env.env.np_random.uniform(size=env.env.sim.model.nq)
     vel = env.env.np_random.uniform(size=env.env.sim.model.nv)
-    rob.reset(env.env, pos, vel)
+    rob.reset(pos, vel)
 
     prompt("Closing Robot====================")
     rob.close()
 
 if __name__ == '__main__':
-    main()
+    demo_robot()

@@ -5,9 +5,15 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 from myosuite.envs import env_base
 import numpy as np
-import gym
+
 
 class BaseV0(env_base.MujocoEnv):
+
+    MYO_CREDIT = """\
+    MyoSuite: A contact-rich simulation suite for musculoskeletal motor control
+        Vittorio Caggiano, Huawei Wang, Guillaume Durandau, Massimo Sartori, Vikash Kumar
+        L4DC-2019 | https://sites.google.com/view/myosuite
+    """
 
     MVC_rest = []
     f_load = {}
@@ -40,6 +46,8 @@ class BaseV0(env_base.MujocoEnv):
                     weighted_reward_keys=weighted_reward_keys,
                     frame_skip=frame_skip,
                     **kwargs)
+        self.viewer_setup(azimuth=90, distance=1.5, render_actuator=True)
+
 
     def initializeConditions(self):
         # for muscle weakness we assume that a weaker muscle has a
@@ -66,11 +74,11 @@ class BaseV0(env_base.MujocoEnv):
             self.EIPpos = self.sim.model.actuator_name2id('EIP')
 
     # step the simulation forward
-    def step(self, a):
+    def step(self, a, **kwargs):
         muscle_a = a.copy()
 
         # Explicitely project normalized space (-1,1) to actuator space (0,1) if muscles
-        if self.sim.model.na and self.normalize_act:
+        if self.sim.model.na:
             # find muscle actuators
             muscle_act_ind = self.sim.model.actuator_dyntype==3
             muscle_a[muscle_act_ind] = 1.0/(1.0+np.exp(-5.0*(muscle_a[muscle_act_ind]-0.5)))
@@ -109,7 +117,7 @@ class BaseV0(env_base.MujocoEnv):
                                         render_cbk=self.mj_render if self.mujoco_render_frames else None)
 
         # observation
-        obs = self.get_obs()
+        obs = self.get_obs(**kwargs)
 
         # rewards
         self.expand_dims(self.obs_dict) # required for vectorized rewards calculations
@@ -120,11 +128,5 @@ class BaseV0(env_base.MujocoEnv):
         # finalize step
         env_info = self.get_env_infos()
 
-        # returns obs(t+1), rew(t), done(t), info(t+1)
+        # returns obs(t+1), rwd(t+1), done(t+1), info(t+1)
         return obs, env_info['rwd_'+self.rwd_mode], bool(env_info['done']), env_info
-
-    def viewer_setup(self):
-        self.viewer.cam.azimuth = 90
-        self.viewer.cam.distance = 1.5
-        self.viewer.vopt.flags[3] = 1 # render actuators
-        self.sim.forward()

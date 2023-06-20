@@ -8,7 +8,6 @@ import numpy as np
 import gym
 
 from myosuite.envs.myo.base_v0 import BaseV0
-from myosuite.envs.env_base import get_sim
 from myosuite.utils.quat_math import euler2quat
 from myosuite.utils.vector_math import calculate_cosine
 from os import sendfile
@@ -38,7 +37,7 @@ class PenTwirlFixedEnvV0(BaseV0):
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
 
         self._setup(**kwargs)
 
@@ -68,7 +67,7 @@ class PenTwirlFixedEnvV0(BaseV0):
 
     def get_obs_vec(self):
         # qpos for hand, xpos for obj, xpos for target
-        self.obs_dict['t'] = np.array([self.sim.data.time])
+        self.obs_dict['time'] = np.array([self.sim.data.time])
         self.obs_dict['hand_jnt'] = self.sim.data.qpos[:-6].copy()
         self.obs_dict['obj_pos'] = self.sim.data.body_xpos[self.obj_bid].copy()
         self.obs_dict['obj_des_pos'] = self.sim.data.site_xpos[self.eps_ball_sid].ravel()
@@ -86,7 +85,7 @@ class PenTwirlFixedEnvV0(BaseV0):
     def get_obs_dict(self, sim):
         obs_dict = {}
         # qpos for hand, xpos for obj, xpos for target
-        obs_dict['t'] = np.array([sim.data.time])
+        obs_dict['time'] = np.array([sim.data.time])
         obs_dict['hand_jnt'] = sim.data.qpos[:-6].copy()
         obs_dict['obj_pos'] = sim.data.body_xpos[self.obj_bid].copy()
         obs_dict['obj_des_pos'] = sim.data.site_xpos[self.eps_ball_sid].ravel()
