@@ -1,3 +1,4 @@
-sphinx==4.0.2
+sphinx == 5.3.0
+urllib3 == 1.26.15
 sphinx-autobuild
 sphinx-rtd-theme==0.5.2

@@ -22,19 +22,20 @@ class ReorientEnvV0(BaseV0):
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
         # Two step construction (init+setup) is required for pickling to work correctly.
         gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
-        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
 
     def _setup(self,
             obs_keys:list = DEFAULT_OBS_KEYS,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
-            goal_pos = (0.0, 0.0),      # goal position range (relative to initial pos)
-            goal_rot = (.785, .785),    # goal rotation range (relative to initial rot)
-            obj_size_change = 0,        # object size change (relative to initial size)
-            obj_friction_change = (0,0,0),# object friction change (relative to initial size)
-            pos_th = .025,              # position error threshold
-            rot_th = 0.262,             # rotation error threshold
-            drop_th = .200,             # drop height threshold
+            goal_pos = (0.0, 0.0),          # goal position range (relative to initial pos)
+            goal_rot = (.785, .785),        # goal rotation range (relative to initial rot)
+            obj_size_change = 0,            # object size change (relative to initial size)
+            obj_mass_range = (.108,.108),   # object size change (relative to initial size)
+            obj_friction_change = (0,0,0),  # object friction change (relative to initial size)
+            pos_th = .025,                  # position error threshold
+            rot_th = 0.262,                 # rotation error threshold
+            drop_th = .200,                 # drop height threshold
             **kwargs,
         ):
         self.object_sid = self.sim.model.site_name2id("object_o")
@@ -53,15 +54,16 @@ class ReorientEnvV0(BaseV0):
         self.target_gid = self.sim.model.geom_name2id('target_dice')
         self.target_default_size = self.sim.model.geom_size[self.target_gid].copy()
 
-        object_bid = self.sim.model.body_name2id('Object')
-        self.object_gid0 = self.sim.model.body_geomadr[object_bid]
-        self.object_gidn = self.object_gid0 + self.sim.model.body_geomnum[object_bid]
+        self.object_bid = self.sim.model.body_name2id('Object')
+        self.object_gid0 = self.sim.model.body_geomadr[self.object_bid]
+        self.object_gidn = self.object_gid0 + self.sim.model.body_geomnum[self.object_bid]
         self.object_default_size = self.sim.model.geom_size[self.object_gid0:self.object_gidn].copy()
         self.object_default_pos = self.sim.model.geom_pos[self.object_gid0:self.object_gidn].copy()
 
-        self.obj_size_change = {'high':obj_size_change, 'low':-obj_size_change}
-        self.obj_friction_range = {'high':self.sim.model.geom_friction[self.object_gid0:self.object_gidn] + obj_friction_change,
-                                    'low':self.sim.model.geom_friction[self.object_gid0:self.object_gidn] - obj_friction_change}
+        self.obj_mass_range = {'low':obj_mass_range[0], 'high':obj_mass_range[1]}
+        self.obj_size_range = {'low':-obj_size_change, 'high':obj_size_change}
+        self.obj_friction_range = {'low':self.sim.model.geom_friction[self.object_gid0:self.object_gidn] - obj_friction_change,
+                                    'high':self.sim.model.geom_friction[self.object_gid0:self.object_gidn] + obj_friction_change}
 
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
@@ -72,7 +74,7 @@ class ReorientEnvV0(BaseV0):
 
     def get_obs_dict(self, sim):
         obs_dict = {}
-        obs_dict['t'] = np.array([sim.data.time])
+        obs_dict['time'] = np.array([sim.data.time])
         obs_dict['hand_qpos'] = sim.data.qpos[:-7].copy()
         obs_dict['hand_qvel'] = sim.data.qvel[:-6].copy()*self.dt
         obs_dict['obj_pos'] = sim.data.site_xpos[self.object_sid]
@@ -137,7 +139,7 @@ class ReorientEnvV0(BaseV0):
             }
         return metrics
 
-    def reset(self):
+    def reset(self, reset_qpos=None, reset_qvel=None):
         self.sim.model.body_pos[self.goal_bid] = self.goal_init_pos + \
             self.np_random.uniform( high=self.goal_pos[1], low=self.goal_pos[0], size=3)
 
@@ -146,9 +148,11 @@ class ReorientEnvV0(BaseV0):
 
         # Die friction changes
         self.sim.model.geom_friction[self.object_gid0:self.object_gidn] = self.np_random.uniform(**self.obj_friction_range)
+        # Die mass changes
+        self.sim.model.body_mass[self.object_bid] = self.np_random.uniform(**self.obj_mass_range) # call to mj_setConst(m,d) is being ignored. Derive quantities wont be updated. Die is simple shape. So this is reasonable approximation.
 
         # Die and Target size changes
-        del_size = self.np_random.uniform(**self.obj_size_change)
+        del_size = self.np_random.uniform(**self.obj_size_range)
         # adjust size of target
         self.sim.model.geom_size[self.target_gid] = self.target_default_size + del_size
         # adjust size of die
@@ -158,5 +162,5 @@ class ReorientEnvV0(BaseV0):
         object_gpos = self.sim.model.geom_pos[self.object_gid0:self.object_gidn]
         self.sim.model.geom_pos[self.object_gid0:self.object_gidn] = object_gpos/abs(object_gpos+1e-16) * (abs(self.object_default_pos) + del_size)
 
-        obs = super().reset()
+        obs = super().reset(reset_qpos, reset_qvel)
         return obs

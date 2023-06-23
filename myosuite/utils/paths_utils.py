@@ -1,7 +1,7 @@
 """ =================================================
 Copyright (C) 2018 Vikash Kumar
 Author  :: Vikash Kumar (vikashplus@gmail.com)
-Source  :: https://github.com/vikashplus/mj_envs
+Source  :: https://github.com/vikashplus/robohive
 License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ================================================= """
 
@@ -82,11 +82,11 @@ def plot(paths, env=None, fileName_prefix=''):
     import matplotlib.pyplot as plt
     plt.rcParams.update({'font.size': 5})
 
-    for i, path in enumerate(paths):
+    for path_name, path in paths.items():
         plt.clf()
 
         # observations
-        nplt1 = len(path['env_infos']['obs_dict'])
+        nplt1 = len(path['env_infos']['obs_dict'].keys())
         for iplt1, key in enumerate(
                 sorted(path['env_infos']['obs_dict'].keys())):
             ax = plt.subplot(nplt1, 2, iplt1 * 2 + 1)
@@ -95,10 +95,11 @@ def plot(paths, env=None, fileName_prefix=''):
             if iplt1 == 0:
                 plt.title('Observations')
             ax.yaxis.tick_right()
-            plt.plot(
-                path['env_infos']['time'],
-                path['env_infos']['obs_dict'][key],
-                label=key)
+            if path['env_infos']['obs_dict'][key].ndim<3:
+                plt.plot(
+                    path['env_infos']['time'],
+                    path['env_infos']['obs_dict'][key],
+                    label=key)
             # plt.ylabel(key)
             plt.text(0.01, .01, key, transform=ax.transAxes)
         plt.xlabel('time (sec)')
@@ -145,7 +146,7 @@ def plot(paths, env=None, fileName_prefix=''):
         if env and hasattr(env.env, "rwd_keys_wt"):
             ax = plt.subplot(nplt2, 2, 6)
             ax.set_prop_cycle(None)
-            for key in env.env.rwd_keys_wt.keys():
+            for key in sorted(env.env.rwd_keys_wt.keys()):
                 plt.plot(
                     path['env_infos']['time'],
                     path['env_infos']['rwd_dict'][key]*env.env.rwd_keys_wt[key],
@@ -159,7 +160,7 @@ def plot(paths, env=None, fileName_prefix=''):
             plt.ylabel('wt*rewards')
             ax.yaxis.tick_right()
 
-        file_name = fileName_prefix + '_path' + str(i) + '.pdf'
+        file_name = fileName_prefix + path_name + '.pdf'
         plt.savefig(file_name)
         print("saved ", file_name)
 
@@ -231,21 +232,21 @@ def render(rollout_path, render_format:str="mp4", cam_names:list=["left"]):
 
         # Save video
         if render_format == "mp4":
-            file_name = file_name+"_{}.mp4".format(i_path)
-            skvideo.io.vwrite(file_name, np.asarray(frames))
-            print("\nSaving: " + file_name)
+            file_name_mp4 = file_name+"_{}.mp4".format(i_path)
+            skvideo.io.vwrite(file_name_mp4, np.asarray(frames))
+            print("\nSaving: " + file_name_mp4)
 
 
 # parse path from robohive format into robopen dataset format
 def path2dataset(path:dict, config_path=None)->dict:
     """
-    Convery Robohive path.pickle format into robopen dataset format
+    Convert Robohive format into roboset format
     """
 
     obs_keys = path['env_infos']['obs_dict'].keys()
     dataset = {}
     # Data =====
-    dataset['data/time'] = path['env_infos']['obs_dict']['t']
+    dataset['data/time'] = path['env_infos']['obs_dict']['time']
 
     # actions
     if 'actions' in path.keys():
@@ -301,7 +302,7 @@ def print_h5_schema(obj):
 
 
 # convert paths from pickle to h5 format
-def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str='path', compress_path=False, config_path=None, max_paths=1e6):
+def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str='robohive', compress_path=False, config_path=None, max_paths=1e6):
     # rollout_path:     Single path or folder with paths
     # output_dir:       Directory to save the outputs. use path location if none.
     # verify_output:    Verify the saved file
@@ -336,7 +337,7 @@ def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str=
         paths_h5 = h5py.File(output_path, "w")
 
         # Robohive path format
-        if h5_format == "path":
+        if h5_format == "robohive":
             for i_path, path in enumerate(paths):
                 print("parsing rollout", i_path)
                 trial = paths_h5.create_group('Trial'+str(i_path))
@@ -358,7 +359,7 @@ def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str=
                     break
 
         # RoboPen dataset format
-        elif h5_format == "dataset":
+        elif h5_format == 'roboset':
             for i_path, path in enumerate(paths):
                 print("parsing rollout", i_path)
                 trial = paths_h5.create_group('Trial'+str(i_path))
@@ -372,9 +373,8 @@ def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str=
                 if n_rollouts>=max_paths:
                     break
 
-
         else:
-            TypeError('Unsupported h5_format')
+            raise TypeError('Unsupported h5_format')
 
         # close the h5 writer for this path
         print('Saving:  ', output_path)
@@ -391,7 +391,7 @@ def pickle2h5(rollout_path, output_dir=None, verify_output=False, h5_format:str=
 DESC="""
 Script to recover images and videos from the saved pickle files
  - python utils/paths_utils.py -u render -p paths.pickle -rf mp4 -cn right
- - python utils/paths_utils.py -u pickle2h5 -p paths.pickle -vo True -cp True -hf dataset
+ - python utils/paths_utils.py -u pickle2h5 -p paths.pickle -vo True -cp True -hf robohive
  """
 @click.command(help=DESC)
 @click.option('-u', '--util', type=click.Choice(['plot_horizon', 'plot', 'render', 'pickle2h5', 'h5schema']), help='pick utility', required=True)
@@ -400,7 +400,7 @@ Script to recover images and videos from the saved pickle files
 @click.option('-on', '--output_name', type=str, default=None, help=('Output name'))
 @click.option('-od', '--output_dir', type=str, default=None, help=('Directory to save the outputs'))
 @click.option('-vo', '--verify_output', type=bool, default=False, help=('Verify the saved file'))
-@click.option('-hf', '--h5_format', type=click.Choice(['path', 'dataset']), help='format to save', default="dataset")
+@click.option('-hf', '--h5_format', type=click.Choice(['robohive', 'roboset']), help='format to save', default='roboset')
 @click.option('-cp', '--compress_path', help='compress paths. Remove obs and env_info/state keys', default=False)
 @click.option('-rf', '--render_format', type=click.Choice(['rgb', 'mp4']), help='format to save', default="mp4")
 @click.option('-cn', '--cam_names', multiple=True, help='camera to render. Eg: left, right, top, Franka_wrist', default=["left", "top", "right", "wrist"])

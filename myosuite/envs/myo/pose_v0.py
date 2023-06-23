@@ -8,7 +8,6 @@ import gym
 import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
-from myosuite.envs.env_base import get_sim
 
 class PoseEnvV0(BaseV0):
 
@@ -34,7 +33,7 @@ class PoseEnvV0(BaseV0):
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
 
         self._setup(**kwargs)
 
@@ -76,7 +75,7 @@ class PoseEnvV0(BaseV0):
                 )
 
     def get_obs_vec(self):
-        self.obs_dict['t'] = np.array([self.sim.data.time])
+        self.obs_dict['time'] = np.array([self.sim.data.time])
         self.obs_dict['qpos'] = self.sim.data.qpos[:].copy()
         self.obs_dict['qvel'] = self.sim.data.qvel[:].copy()*self.dt
         if self.sim.model.na>0:
@@ -88,24 +87,23 @@ class PoseEnvV0(BaseV0):
 
     def get_obs_dict(self, sim):
         obs_dict = {}
-        obs_dict['t'] = np.array([sim.data.time])
+        obs_dict['time'] = np.array([sim.data.time])
         obs_dict['qpos'] = sim.data.qpos[:].copy()
         obs_dict['qvel'] = sim.data.qvel[:].copy()*self.dt
-        if sim.model.na>0:
-            obs_dict['act'] = sim.data.act[:].copy()
-
+        obs_dict['act'] = sim.data.act[:].copy() if sim.model.na>0 else np.zeros_like(obs_dict['qpos'])
         obs_dict['pose_err'] = self.target_jnt_value - obs_dict['qpos']
         return obs_dict
 
     def get_reward_dict(self, obs_dict):
         pose_dist = np.linalg.norm(obs_dict['pose_err'], axis=-1)
-        act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
+        act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)
+        if self.sim.model.na !=0: act_mag= act_mag/self.sim.model.na
         far_th = 4*np.pi/2
 
         rwd_dict = collections.OrderedDict((
             # Optional Keys
             ('pose',    -1.*pose_dist),
-            ('bonus',   15.*(pose_dist<self.pose_thd*.8) + 10.*(pose_dist<self.pose_thd) + 5.*(pose_dist<1.5*self.pose_thd)+ 1.*(pose_dist<1.5*self.pose_thd)),
+            ('bonus',   1.*(pose_dist<self.pose_thd) + 1.*(pose_dist<1.5*self.pose_thd)),
             ('penalty', -1.*(pose_dist>far_th)),
             ('act_reg', -1.*act_mag),
             # Must keys

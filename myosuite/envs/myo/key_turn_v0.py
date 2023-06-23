@@ -36,7 +36,7 @@ class KeyTurnEnvV0(BaseV0):
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
 
         self._setup(**kwargs)
 
@@ -61,7 +61,7 @@ class KeyTurnEnvV0(BaseV0):
         self.init_qpos[:-1] *= 0 # Use fully open as init pos
 
     def get_obs_vec(self):
-        self.obs_dict['t'] = np.array([self.sim.data.time])
+        self.obs_dict['time'] = np.array([self.sim.data.time])
         self.obs_dict['hand_qpos'] = self.sim.data.qpos[:-1].copy()
         self.obs_dict['hand_qvel'] = self.sim.data.qvel[:-1].copy()*self.dt
         self.obs_dict['key_qpos'] = np.array([self.sim.data.qpos[-1]])
@@ -77,7 +77,7 @@ class KeyTurnEnvV0(BaseV0):
 
     def get_obs_dict(self, sim):
         obs_dict = {}
-        obs_dict['t'] = np.array([sim.data.time])
+        obs_dict['time'] = np.array([sim.data.time])
         obs_dict['hand_qpos'] = sim.data.qpos[:-1].copy()
         obs_dict['hand_qvel'] = sim.data.qvel[:-1].copy()*self.dt
         obs_dict['key_qpos'] = np.array([sim.data.qpos[-1]])

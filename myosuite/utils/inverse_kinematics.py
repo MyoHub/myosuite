@@ -15,7 +15,7 @@
 
 """
 Functions for computing inverse kinematics on MuJoCo models.
-This has been adjusted to work with MuJoCo_py
+This has been adjusted to work with RoboHive's physics class
 """
 
 import collections
@@ -26,8 +26,6 @@ from absl import logging
 import numpy as np
 
 # mjlib = mjbindings.mjlib
-from mujoco_py import functions as mjlib
-
 
 _INVALID_JOINT_NAMES_TYPE = (
     '`joint_names` must be either None, a list, a tuple, or a numpy array; '
@@ -100,14 +98,17 @@ def qpos_from_site_pose(physics,
   """
 
   dtype = physics.data.qpos.dtype
+  model = physics.get_handle(physics.model)
+  data = physics.get_handle(physics.data)
+  mjlib = physics.get_mjlib()
 
   if target_pos is not None and target_quat is not None:
-    jac = np.empty((6, physics.model.nv), dtype=dtype)
+    jac = np.empty((6, model.nv), dtype=dtype)
     err = np.empty(6, dtype=dtype)
     jac_pos, jac_rot = jac[:3], jac[3:]
     err_pos, err_rot = err[:3], err[3:]
   else:
-    jac = np.zeros((3, physics.model.nv), dtype=dtype)
+    jac = np.zeros((3, model.nv), dtype=dtype)
     err = np.zeros(3, dtype=dtype)
     if target_pos is not None:
       jac_pos, jac_rot = jac, None
@@ -118,7 +119,7 @@ def qpos_from_site_pose(physics,
     else:
       raise ValueError(_REQUIRE_TARGET_POS_OR_QUAT)
 
-  update_nv = np.zeros(physics.model.nv, dtype=dtype)
+  update_nv = np.zeros(model.nv, dtype=dtype)
 
   if target_quat is not None:
     site_xquat = np.empty(4, dtype=dtype)
@@ -129,10 +130,8 @@ def qpos_from_site_pose(physics,
     # physics = physics.copy(share_model=True)
     old_state = physics.get_state()
 
-
   # Ensure that the Cartesian position of the site is up to date.
-#   mjlib.mj_fwdPosition(physics.model.ptr, physics.data.ptr)
-  mjlib.mj_fwdPosition(physics.model, physics.data)
+  mjlib.mj_fwdPosition(model, data)
 
   # Convert site name to index.
 #   site_id = physics.model.name2id(site_name, 'site')
@@ -144,7 +143,6 @@ def qpos_from_site_pose(physics,
   site_xmat = physics.data.site_xmat[site_id]
 #   site_xpos = physics.named.data.site_xpos[site_name]
 #   site_xmat = physics.named.data.site_xmat[site_name]
-
 
   # This is an index into the rows of `update` and the columns of `jac`
   # that selects DOFs associated with joints that we are allowed to manipulate.
@@ -174,7 +172,6 @@ def qpos_from_site_pose(physics,
       # Translational error.
       err_pos[:] = target_pos - site_xpos
       err_norm += np.linalg.norm(err_pos)
-    #   print(target_pos, site_xpos)
     if target_quat is not None:
       # Rotational error.
       mjlib.mju_mat2Quat(site_xquat, site_xmat)
@@ -189,10 +186,7 @@ def qpos_from_site_pose(physics,
       break
     else:
       # TODO(b/112141670): Generalize this to other entities besides sites.
-    #   mjlib.mj_jacSite(physics.model.ptr, physics.data.ptr, jac_pos, jac_rot, site_id)
-      physics.data.get_site_jacp(site_name, jacp=jac_pos.ravel())
-      if jac_rot is not None:
-        physics.data.get_site_jacr(site_name, jacr=jac_rot.ravel())
+      mjlib.mj_jacSite(model, data, jac_pos, jac_rot, site_id)
       jac_joints = jac[:, dof_indices]
 
       # TODO(b/112141592): This does not take joint limits into consideration.
@@ -220,12 +214,10 @@ def qpos_from_site_pose(physics,
       update_nv[dof_indices] = update_joints
 
       # Update `physics.qpos`, taking quaternions into account.
-      mjlib.mj_integratePos(physics.model, physics.data.qpos, update_nv, 1)
-    #   mjlib.mj_integratePos(physics.model.ptr, physics.data.qpos, update_nv, 1)
+      mjlib.mj_integratePos(model, physics.data.qpos, update_nv, 1)
 
       # Compute the new Cartesian position of the site.
-      mjlib.mj_fwdPosition(physics.model, physics.data)
-    #   mjlib.mj_fwdPosition(physics.model.ptr, physics.data.ptr)
+      mjlib.mj_fwdPosition(model, data)
 
       logging.debug('Step %2i: err_norm=%-10.3g update_norm=%-10.3g',
                     steps, err_norm, update_norm)
@@ -240,7 +232,7 @@ def qpos_from_site_pose(physics,
     # will be a view onto a block of deallocated memory. We therefore need to
     # make a copy of physics.data.qpos while physics.data is still alive.
     qpos = physics.data.qpos.copy()
-    physics.set_state(old_state)
+    physics.set_state(**old_state)
     physics.forward()
   else:
     # If we're modifying physics.data in place then it's fine to return a view.

@@ -1,7 +1,7 @@
 """ =================================================
 Copyright (C) 2018 Vikash Kumar
 Author  :: Vikash Kumar (vikashplus@gmail.com)
-Source  :: https://github.com/vikashplus/mj_envs
+Source  :: https://github.com/vikashplus/robohive
 License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ================================================= """
 
@@ -78,7 +78,7 @@ def register_env_variant(env_id:str, variants:dict, variant_id=None, silent=Fals
 
 # Example usage
 if __name__ == '__main__':
-    import mj_envs
+    import robohive
     import pprint
 
     # Register a variant
@@ -105,7 +105,8 @@ if __name__ == '__main__':
     # Test one of the newly minted env
     env = gym.make(variant_env_name)
     env.reset()
-    env.sim.render(mode='window')
+    env.mj_render()
+    # env.sim.render(mode='window')
     for _ in range(50):
         env.step(env.action_space.sample()) # take a random action
     env.close()

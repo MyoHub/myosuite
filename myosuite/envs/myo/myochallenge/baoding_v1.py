@@ -36,7 +36,7 @@ class BaodingEnvV1(BaseV0):
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
         # Two step construction (init+setup) is required for pickling to work correctly.
         gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
-        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
 
     def _setup(self,
@@ -106,7 +106,7 @@ class BaodingEnvV1(BaseV0):
         self.init_qpos[:-14] *= 0 # Use fully open as init pos
         self.init_qpos[0] = -1.57 # Palm up
 
-    def step(self, a):
+    def step(self, a, **kwargs):
         if self.which_task in [Task.HOLD, Task.BAODING_CW, Task.BAODING_CCW]:
             desired_angle_wrt_palm = self.goal[self.counter].copy()
             desired_angle_wrt_palm[0] = desired_angle_wrt_palm[0] + self.ball_1_starting_angle
@@ -118,7 +118,7 @@ class BaodingEnvV1(BaseV0):
             desired_positions_wrt_palm[2] = self.x_radius*np.cos(desired_angle_wrt_palm[1]) + self.center_pos[0]
             desired_positions_wrt_palm[3] = self.y_radius*np.sin(desired_angle_wrt_palm[1]) + self.center_pos[1]
 
-            # update both sims with desired targets
+            # update both simhive with desired targets
             for sim in [self.sim, self.sim_obsd]:
                 sim.model.site_pos[self.target1_sid, 0] = desired_positions_wrt_palm[0]
                 sim.model.site_pos[self.target1_sid, 1] = desired_positions_wrt_palm[1]
@@ -128,11 +128,11 @@ class BaodingEnvV1(BaseV0):
                 # sim.model.site_pos[self.target1_sid, 2] = -0.037
                 # sim.model.site_pos[self.target2_sid, 2] = -0.037
         self.counter +=1
-        return super().step(a)
+        return super().step(a, **kwargs)
 
     def get_obs_dict(self, sim):
         obs_dict = {}
-        obs_dict['t'] = np.array([sim.data.time])
+        obs_dict['time'] = np.array([sim.data.time])
         obs_dict['hand_pos'] = sim.data.qpos[:-14].copy() # 7*2 for ball's free joint, rest should be hand
 
         # object positions
@@ -152,8 +152,7 @@ class BaodingEnvV1(BaseV0):
         obs_dict['target2_err'] = obs_dict['target2_pos'] - obs_dict['object2_pos']
 
         # muscle activations
-        if sim.model.na>0:
-            obs_dict['act'] = sim.data.act[:].copy()
+        obs_dict['act'] = sim.data.act[:].copy() if sim.model.na>0 else np.zeros_like(obs_dict['qpos'])
 
         return obs_dict
 
@@ -162,7 +161,9 @@ class BaodingEnvV1(BaseV0):
         target1_dist = np.linalg.norm(obs_dict['target1_err'], axis=-1)
         target2_dist = np.linalg.norm(obs_dict['target2_err'], axis=-1)
         target_dist = target1_dist+target2_dist
-        act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
+        act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)
+        if self.sim.model.na !=0: act_mag= act_mag/self.sim.model.na
+
 
         # detect fall
         object1_pos = obs_dict['object1_pos'][:,:,2] if obs_dict['object1_pos'].ndim==3 else obs_dict['object1_pos'][2]

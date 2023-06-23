@@ -1,0 +1,155 @@
+# adapted from
+# - https://medium.com/@VersuS_/automate-pypi-releases-with-github-actions-4c5a9cfe947d
+# - https://github.com/facebookresearch/fairscale/blob/main/.github/workflows/release.yml
+name: MyoSuite PyPI Release
+
+# on: [push]
+# on:
+#  push:
+#    tags:
+#     - '*'
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'Release Type (major, minor, patch)'
+        default: 'patch'
+        required: true
+# # Upon running the following instructions
+# # > git tag 0.0.1 # or whatever version you want
+# # > git push origin --tags
+# # The following operations will be run
+# # 1. Update version according to major | minor | patch and use the new version as `tag name`
+# # 2. Use the `tag name` as `release version`
+# # 3. Build the PyPI package by using /myosuite/__init__.py version
+# # 4. Upload the package
+# # 5. Test Upload
+
+
+
+jobs:
+  # 1. Update version according to major | minor | patch and use the new version as `tag name`
+  get_next_version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout-repo-content
+        uses: actions/checkout@v2
+
+      - name: setup-python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+      - name: get next version and tag
+        id: get-next-version-and-tag
+        run: |
+          output=$(python3 .github/release_utils.py --release-type ${{ github.event.inputs.name }})
+          echo $output
+          new_version=$(echo $output | awk '{print $1}')
+          new_tag=$(echo $output | awk '{print $2}')
+          echo "new version is $new_version"
+          echo "new tag is $new_tag"
+          echo ::set-output name=version::$new_version
+          echo ::set-output name=tag::$new_tag
+    outputs:
+      new_version: ${{ steps.get-next-version-and-tag.outputs.version }}
+      new_tag: ${{ steps.get-next-version-and-tag.outputs.tag }}
+
+  pypi_package_build_and_release:
+    name: Build and publish PyPI wheel
+    runs-on: ubuntu-latest
+    needs: get_next_version
+    steps:
+    - name: Checkout repository and submodules
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.9'
+
+    - name: Install pypa/setuptools
+      run: >-
+        python -m
+        pip install wheel
+
+    # update the version number in version.py
+    - name: update version
+      id: update-version
+      run : |
+        echo "current folder = $PWD"
+        echo "current branch = $(git branch --show-current)"
+        output=$(python3 .github/release_utils.py --release-type ${{ github.event.inputs.name }} --update-version)
+
+    # 2. Use the `tag name` as `release version`
+    # add and commit the updated version.py to main
+    - name: add and commit to main
+      uses: EndBug/add-and-commit@v7.5.0
+      with:
+        #token: ${{ secrets.REPO_TOKEN }}
+        author_name: ${{ secrets.AUTHOR_NAME }}
+        author_email: ${{ secrets.AUTHOR_EMAIL }}
+
+        branch: main
+        default_author: github_actor
+        message: '${{ needs.get_next_version.outputs.new_version }} release'
+        pathspec_error_handling: exitAtEnd
+
+        # Arguments for the git pull command. Use NO-PULL to avoid the action pulling at all.
+        # Default: '--no-rebase'
+        pull: 'NO-PULL'
+        tag: '${{ needs.get_next_version.outputs.new_tag }}'
+
+
+     # 3. Build the PyPI packeage
+    - name: Build a binary wheel
+      run: >-
+        python setup.py sdist bdist_wheel
+    # 4. Upload the package
+    - name: Publish distribution to PyPI
+      uses: pypa/gh-action-pypi-publish@master
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+#     - name: Publish distribution to TestPyPI
+#       uses: pypa/gh-action-pypi-publish@release/v1
+#       with:
+#         password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+#         repository-url: https://test.pypi.org/legacy/
+
+
+  test_latest_PyPI:
+    needs: pypi_package_build_and_release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+#           - windows-latest
+    steps:
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.9"
+
+      - name: Prepare Linux
+        if: ${{ runner.os == 'Linux' }}
+        run: >
+          sudo apt-get install -y \
+              libgl1-mesa-dev \
+              libgl1-mesa-glx \
+              libglew-dev \
+              libosmesa6-dev \
+              software-properties-common
+          sudo apt-get install -y patchelf
+      - name: Prepare macOS
+        if: ${{ runner.os == 'macOS' }}
+        run: brew install gcc@9
+
+      - shell: bash
+        run: |
+          echo "Test MyoSuite PyPI wheel"
+          pip install -U myosuite
+          python -m myosuite.tests.test_myo

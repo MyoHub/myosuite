@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2023-01-11
+- Rebase and building on RoboHive v0.3
+
 ## [1.2.4] - 2022-11-12
 - fix Baoding Ball environment for MyoChallenge Phase 1
 

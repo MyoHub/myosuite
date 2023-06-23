@@ -1,0 +1,50 @@
+<mujoco model="MyoHand model for object grasps">
+<!-- =================================================
+	Copyright 2020 Vikash Kumar
+	Model	:: MyoHand (MuJoCoV2.0)
+	Author	:: Vikash Kumar (vikashplus@gmail.com)
+	source	:: https://github.com/vikashplus
+	License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+
+    <include file="../../../../simhive/myo_sim/hand/assets/myohand_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
+    <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
+
+    <worldbody>
+        <include file="../../../../simhive/myo_sim/hand/assets/myohand_body.xml"/>
+
+        <site name="THtip_target" pos="0 0 0.002" size="0.005" rgba="0.8 0 0 .8"/>
+        <site name="IFtip_target" pos="0 0 0.002" size="0.005" rgba="0 0.8 0 .8"/>
+        <site name="MFtip_target" pos="0 0 0.002" size="0.005" rgba="0 0 0.8 .8"/>
+        <site name="RFtip_target" pos="0 0 0.002" size="0.005" rgba="0.8 0.8 0 .8"/>
+        <site name="LFtip_target" pos="0 0 0.002" size="0.005" rgba="0.8 0 0.8 .8"/>
+    </worldbody>
+
+    <keyframe>
+        <key qpos='0 0 0 -0.0904 0.0824475 -0.681555 -0.514888 0 -0.013964 -0.0458132 0 0.67553 -0.020944 0.76979 0.65982 0 0 0 0 0.479155 -0.099484 0.95831 0'/>
+    </keyframe>
+
+    <tendon>
+        <spatial name="THtip_err" rgba="0.8 0 0 0.1">
+            <site site="THtip"/>
+            <site site="THtip_target"/>
+        </spatial>
+        <spatial name="IFtip_err" rgba="0 0.8 0 0.1">
+            <site site="IFtip"/>
+            <site site="IFtip_target"/>
+        </spatial>
+        <spatial name="MFtip_err" rgba="0 0 0.8 0.1">
+            <site site="MFtip"/>
+            <site site="MFtip_target"/>
+        </spatial>
+        <spatial name="RFtip_err" rgba="0.8 0.8 0 0.1">
+            <site site="RFtip"/>
+            <site site="RFtip_target"/>
+        </spatial>
+        <spatial name="LFtip_err" rgba="0.8 0 0.8 0.1">
+            <site site="LFtip"/>
+            <site site="LFtip_target"/>
+        </spatial>
+    </tendon>
+</mujoco>

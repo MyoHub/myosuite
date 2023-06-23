@@ -1,0 +1,22 @@
+after_training: ''
+agent: deprl.custom_agents.dep_factory(3, deprl.custom_mpo_torch.TunedMPO())(replay=deprl.replays.buffers.Buffer(return_steps=3,
+  batch_size=256, steps_between_batches=1000, batch_iterations=30, steps_before_batches=1e6))
+before_training: ''
+checkpoint: last
+env_args: {}
+environment: deprl.environments.Gym('myoLegWalk-v0', scaled_actions=False)
+environment_name: deprl_baseline
+header: import deprl, gym, myosuite
+mpo_args:
+  hidden_size: 1024
+  lr_actor: 3.53e-05
+  lr_critic: 6.081e-05
+  lr_dual: 0.00213
+name: myoleg_baseline 
+parallel: 10
+path: ./
+preid: 0
+seed: 0
+sequential: 10
+test_environment: null
+trainer: deprl.custom_trainer.Trainer(steps=int(2e8), epoch_steps=int(2e5), save_steps=int(1e6))

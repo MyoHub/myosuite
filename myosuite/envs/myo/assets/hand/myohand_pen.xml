@@ -1,0 +1,55 @@
+<mujoco model="MyoHand model for pen reorient">
+<!-- =================================================
+	Copyright 2020 Vikash Kumar
+	Model	:: MyoHand (MuJoCoV2.0)
+	Author	:: Vikash Kumar (vikashplus@gmail.com)
+	source	:: https://github.com/vikashplus
+	License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+
+    <include file="../../../../simhive/myo_sim/hand/assets/myohand_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
+    <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
+
+    <default>
+        <default class="pen">
+            <geom contype="1" conaffinity="1" condim="3" material="MatSkin"/>
+            <site group="3"/>
+        </default>
+    </default>
+
+    <worldbody>
+        <include file="../../../../simhive/myo_sim/hand/assets/myohand_body.xml"/>
+
+        <!-- ======= PEN ======= -->
+        <site name="eps_ball" type="sphere" pos="-.230 -.530 1.445" size="0.075" rgba="1 1 0 .5" group="1"/>
+
+        <body childclass="pen" name="Object" pos="-.230 -.530 1.445" user="1001 0 2003 27 0 0 0.06 0 0" euler="0 1.27 0">
+            <joint name="OBJTx" pos="0 0 0" axis="1 0 0" type="slide" limited="false" damping="0" />
+            <joint name="OBJTy" pos="0 0 0" axis="0 1 0" type="slide" limited="false" damping="0" />
+            <joint name="OBJTz" pos="0 0 0" axis="0 0 1" type="slide" limited="false" damping="0" />
+            <joint name="OBJRx" pos="0 0 0" axis="1 0 0" limited="false" damping="0" />
+            <joint name="OBJRy" pos="0 0 0" axis="0 1 0" limited="false" damping="0" />
+            <joint name="OBJRz" pos="0 0 0" axis="0 0 1" limited="false" damping="0" />
+            <geom name="pen" type="cylinder" size="0.015 0.065" condim="4" rgba=".6 .6 .6 .6" density="1500" />
+
+            <geom name="top" type="cylinder" size="0.017 0.020" condim="4" pos="0 0 -.0455" rgba="0 .5 1 1" contype="0" conaffinity="0"/>
+            <geom name="bot" type="cylinder" size="0.013 0.002" pos="0 0 0.067" rgba="0 .5 1 1" contype="0" conaffinity="0"/>
+            <geom name="cli" type="box" size="0.004 0.006 0.03" pos="-.015 0 -.0255" rgba="0 .5 1 1" contype="0" conaffinity="0"/>
+
+            <site name="object_top" type="sphere" size="0.005" rgba="0.8 0.2 0.2 1" pos="0 0 0.065" />
+            <site name="object_bottom" type="sphere" size="0.005" rgba="0.2 0.8 0.2 1" pos="0 0 -0.065" />
+        </body>
+
+        <body childclass="pen" name="target" pos="0 -.54 1.382" >
+            <site name="target_top" type="sphere" size="0.005" rgba="0.8 0.2 0.2 1" pos="0 0 0.065" />
+            <site name="target_bottom" type="sphere" size="0.005" rgba="0.2 0.8 0.2 1" pos="0 0 -0.065" />
+
+            <geom name="target" type="cylinder" size="0.015 0.065" condim="4" rgba=".6 .6 .6 .3" />
+            <geom name="t_top" type="cylinder" size="0.017 0.020" condim="4" pos="0 0 -.0455" rgba="0 1 .5 1" contype="0" conaffinity="0"/>
+            <geom name="t_bot" type="cylinder" size="0.013 0.002" pos="0 0 0.067" rgba="0 1 .5 1" contype="0" conaffinity="0"/>
+            <geom name="t_cli" type="box" size="0.004 0.006 0.03" pos="-.015 0 -.0255" rgba="0 1 .5 1" contype="0" conaffinity="0"/>
+        </body>
+    </worldbody>
+
+</mujoco>

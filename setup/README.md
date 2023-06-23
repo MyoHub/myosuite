@@ -2,6 +2,7 @@
 A short guide to install this package is below. The package relies on `mujoco-py` which might be the trickiest part of the installation. See `known issues` below and also instructions from the mujoco-py [page](https://github.com/openai/mujoco-py) if you are stuck with mujoco-py installation.
 
 
+
 ## Linux
 
 - Download MuJoCo v2.1.0 binaries from the official [website](https://github.com/deepmind/mujoco/releases/download/2.1.0/mujoco210-linux-x86_64.tar.gz).
@@ -65,6 +66,12 @@ $ pip install -e .
 - *NOTE 2:* If you encounter a patchelf error in mujoco_py install, you can fix this with the following command when inside the anaconda env: `conda install -c anaconda patchelf`. See this [page](https://github.com/openai/mujoco-py/issues/147) for additional info.
 
 
+## Editable installation
+Starting with MyoSuite `1.4.0` we introduced a submodule dependency. To clone the repo, please use the following command:
+``` bash
+git clone --recursive https://github.com/facebookresearch/myosuite.git
+```
+
 ## Known Issues
 
 - Visualization in linux: If the linux system has a GPU, then mujoco-py does not automatically preload the correct drivers. We added an alias `MJPL` in bashrc (see instructions) which stands for mujoco pre-load. When runing any python script that requires rendering, prepend the execution with MJPL.
@@ -83,4 +90,3 @@ $ conda env update -n myosuite-env -f setup/env.yml
 ```
 
 - GCC error in Mac OS: If you get a GCC error from mujoco-py, you can get the correct version mujoco-py expects with `brew install gcc --without-multilib`. This may require uninstalling other versions of GCC that may have been previously installed with `brew remove gcc@6` for example. You can see which brew packages were already installed with `brew list`.
-
