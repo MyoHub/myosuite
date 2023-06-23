@@ -1,0 +1,43 @@
+default:
+    - override hydra/output: local
+    - override hydra/launcher: local
+
+
+env               :   'myoHandPoseRandom-v0'
+algorithm         :   SAC
+seed              :   123
+n_env             :   4 # 32
+n_eval_env        :   2 # 5
+
+# SAC object
+policy            :   "MlpPolicy"
+learning_rate     :   0.00073
+buffer_size       :   300000
+learning_starts   :   3000
+batch_size        :   256
+tau               :   .02
+gamma             :   .98
+
+
+# SAC.learn function
+total_timesteps   :   15000000
+log_interval      :   10
+
+eval_freq : 1000
+restore_checkpoint_freq : 5000
+save_freq : 1000
+
+
+policy_kwargs:                                              # Policy parameters (initial STD and architecture)
+  net_arch:
+    - pi: [256, 128]
+      vf: [256, 128]
+
+# Algorithm hyperparameters : if alg requires additional params, can be specified here (or defaults will be used)
+alg_hyper_params  :   {'device': 'cpu'}
+
+job_name          :   sac_${env}
+
+hydra:
+    job:
+        name: ${env}
