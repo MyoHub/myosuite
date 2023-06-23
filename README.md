@@ -25,7 +25,7 @@ Below is an overview of the tasks in the MyoSuite.
 
 
 ## Getting Started
-You will need Python 3.8 or later versions. At this moment, the library has been tested **only on MacOs and Linux** with [MuJoCo v2.1.0](https://github.com/deepmind/mujoco/releases/tag/2.1.0).
+You will need Python 3.8 or later versions.
 
 It is recommended to use [Miniconda](https://docs.conda.io/en/latest/miniconda.html#latest-miniconda-installer-links) and to create a separate environment with:
 ``` bash
@@ -48,7 +48,10 @@ You can also visualize the environments with random controls using the command b
 ``` bash
 python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 ```
-**NOTE:** If the visualization results in a GLFW error, this is because `mujoco-py` does not see some graphics drivers correctly. This can usually be fixed by explicitly loading the correct drivers before running the python script. See [this page](setup/README.md#known-issues) for details.
+**NOTE:** On MacOS, we moved to mujoco native `launch_passive` which requires that the Python script be run under `mjpython`:
+``` bash
+mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
+```
 
 ## Examples
 It is possible to create and interface with MyoSuite environments just like any other OpenAI gym environments. For example, to use the `myoElbowPose1D6MRandom-v0` environment, it is possible simply to run: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1U6vo6Q_rPhDaq6oUMV7EAZRm6s0fD1wn?usp=sharing)
@@ -60,7 +63,7 @@ import gym
 env = gym.make('myoElbowPose1D6MRandom-v0')
 env.reset()
 for _ in range(1000):
-  env.sim.render(mode='window')
+  env.mj_render()
   env.step(env.action_space.sample()) # take a random action
 env.close()
 ```
