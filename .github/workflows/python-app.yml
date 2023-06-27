@@ -63,6 +63,8 @@ jobs:
         sudo apt-get install libglfw3-dev
         export MUJOCO_GL=egl
         export DISPLAY=:0
+        pip install glfw
+        export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libGLEW.so
     # - name: Setup for screen rendering
     #   run: |
     #     export DISPLAY=:0
