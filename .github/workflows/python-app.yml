@@ -36,7 +36,6 @@ jobs:
             libgl1-mesa-dev \
             libgl1-mesa-glx \
             libglew-dev \
-            libglfw3-dev \
             libosmesa6-dev \
             software-properties-common
         sudo apt-get install -y patchelf
@@ -60,8 +59,9 @@ jobs:
         python -m myosuite.tests.test_myo
     - name: Install ffmpeg
       run: |
-        export MUJOCO_GL=egl
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
+        export MUJOCO_GL=egl
+        export DISPLAY=:0
     # - name: Setup for screen rendering
     #   run: |
     #     export DISPLAY=:0
