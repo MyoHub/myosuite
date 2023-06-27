@@ -60,7 +60,7 @@ jobs:
     - name: Install ffmpeg
       run: |
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
-        sudo apt-get install xorg
+        sudo apt-get install libglfw3-dev
         export MUJOCO_GL=egl
         export DISPLAY=:0
     # - name: Setup for screen rendering
