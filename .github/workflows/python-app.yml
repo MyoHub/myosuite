@@ -59,7 +59,7 @@ jobs:
         python -m myosuite.tests.test_myo
     - name: Install ffmpeg
       run: |
-        MUJOCO_GL=egl
+        export MUJOCO_GL=egl
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
     # - name: Setup for screen rendering
     #   run: |
