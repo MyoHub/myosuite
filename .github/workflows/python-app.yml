@@ -65,8 +65,7 @@ jobs:
     - name: Install ffmpeg
       run: |
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
-        pip install PyOpenGL
-        export LD_PRELOAD=/lib/x86_64-linux-gnu/libstdc++.so.6 
+        conda install -c conda-forge libstdcxx-ng
         export MUJOCO_GL=egl
     #   sudo apt-get install libx11-dev libglfw3-dev        
     #   export DISPLAY=:1
