@@ -32,6 +32,7 @@ jobs:
         python-version: "3.10"
     - name: Install mesa and patchelf
       run: |
+        sudo apt-get update -y -qq
         sudo apt-get install -y \
             libgl1-mesa-dev \
             libgl1-mesa-glx \
@@ -39,6 +40,8 @@ jobs:
             libosmesa6-dev \
             software-properties-common
         sudo apt-get install -y patchelf
+    - name: Check if EGL library exists
+      run: ldconfig -p | grep EGL
     - name: Enable Conda
       uses: conda-incubator/setup-miniconda@v2
       with:
