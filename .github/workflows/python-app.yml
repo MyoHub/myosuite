@@ -68,6 +68,7 @@ jobs:
         export DISPLAY=:1
         pip install glfw
         export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libGLEW.so
+        pip install PyOpenGL
     # - name: Setup for screen rendering
     #   run: |
     #     export DISPLAY=:0
