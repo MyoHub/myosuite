@@ -44,8 +44,6 @@ jobs:
       run: ldconfig -p | grep EGL
     - name: Check if libstdc library exists
       run: ldconfig -p | grep  libstdc++
-    - name: Check if libglut library exists
-      run: ldconfig -p | grep  libglut
     - name: Enable Conda
       uses: conda-incubator/setup-miniconda@v2
       with:
@@ -67,12 +65,12 @@ jobs:
     - name: Install ffmpeg
       run: |
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
+        pip install PyOpenGL
         export LD_PRELOAD=/lib/x86_64-linux-gnu/libstdc++.so.6 
         export MUJOCO_GL=egl
     #   sudo apt-get install libx11-dev libglfw3-dev        
     #   export DISPLAY=:1
     #   pip install glfw
-    #   pip install PyOpenGL
     # - name: Setup for screen rendering
     #   run: |
     #     export DISPLAY=:0
