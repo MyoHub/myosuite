@@ -63,12 +63,12 @@ jobs:
     - name: Install ffmpeg
       run: |
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
-        sudo apt-get install libx11-dev libglfw3-dev
+        export LD_PRELOAD=/lib/x86_64-linux-gnu/libEGL.so
         export MUJOCO_GL=egl
-        export DISPLAY=:1
-        pip install glfw
-        export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libGLEW.so
-        pip install PyOpenGL
+    #   sudo apt-get install libx11-dev libglfw3-dev        
+    #   export DISPLAY=:1
+    #   pip install glfw
+    #   pip install PyOpenGL
     # - name: Setup for screen rendering
     #   run: |
     #     export DISPLAY=:0
