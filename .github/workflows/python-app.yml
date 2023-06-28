@@ -62,7 +62,7 @@ jobs:
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
         sudo apt-get install libglfw3-dev
         export MUJOCO_GL=egl
-        export DISPLAY=:0
+        export DISPLAY=:1
         pip install glfw
         export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libGLEW.so
     # - name: Setup for screen rendering
