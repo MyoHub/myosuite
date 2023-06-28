@@ -44,6 +44,8 @@ jobs:
       run: ldconfig -p | grep EGL
     - name: Check if libstdc library exists
       run: ldconfig -p | grep  libstdc++
+    - name: Check if libglut library exists
+      run: ldconfig -p | grep  libglut
     - name: Enable Conda
       uses: conda-incubator/setup-miniconda@v2
       with:
