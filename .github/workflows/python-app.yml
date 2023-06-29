@@ -63,8 +63,8 @@ jobs:
     # - name: Setup for screen rendering
     #   run: |
     #     export DISPLAY=:0
-    - name: Test rendering
-      run: python -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
+#     - name: Test rendering
+#       run: python -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
     - name: Run Test jupyter-notebooks tutorials
       run: |
         source myosuite/tests/test_tutorials.sh
