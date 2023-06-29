@@ -290,7 +290,7 @@ sim_backend = SimBackend.get_sim_backend()
 if sim_backend == SimBackend.MUJOCO_PY:
     leg_model='/../../simhive/myo_sim/leg/myolegs_v0.52(mj210).mjb'
 elif sim_backend == SimBackend.MUJOCO:
-    leg_model='/../../simhive/myo_sim/leg/myolegs_v0.52(mj236).mjb'
+    leg_model='/../../simhive/myo_sim/leg/myolegs_v0.52(mj234).mjb'
 
 register_env_with_variants(id='myoLegReachFixed-v0',
         entry_point='myosuite.envs.myo.walk_v0:ReachEnvV0',
@@ -312,7 +312,7 @@ register_env_with_variants(id='myoLegWalk-v0',
         entry_point='myosuite.envs.myo.walk_v0:WalkEnvV0',
         max_episode_steps=1000,
         kwargs={
-            'model_path': curr_dir + leg_model,
+            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.52(mj236).mjb',
             'normalize_act': True,
             'min_height':0.8,    # minimum center of mass height before reset
             'max_rot':0.8,       # maximum rotation before reset
@@ -321,6 +321,63 @@ register_env_with_variants(id='myoLegWalk-v0',
             'target_x_vel':0.0,  # desired x velocity in m/s
             'target_y_vel':1.2,  # desired y velocity in m/s
             'target_rot': None   # if None then the initial root pos will be taken, otherwise provide quat
+        }
+    )
+
+# Rough Terrain Walking  ==============================
+register_env_with_variants(id='myoLegRoughTerrainWalk-v0',
+        entry_point='myosuite.envs.myo.walk_v0:TerrainEnvV0',
+        max_episode_steps=1000,
+        kwargs={
+            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.52(mj236).mjb',
+            'normalize_act': True,
+            'min_height':0.8,    # minimum center of mass height before reset
+            'max_rot':0.8,       # maximum rotation before reset
+            'hip_period':100,    # desired periodic hip angle movement
+            'reset_type':'init', # none, init, random
+            'target_x_vel':0.0,  # desired x velocity in m/s
+            'target_y_vel':1.2,  # desired y velocity in m/s
+            'target_rot': None,   # if None then the initial root pos will be taken, otherwise provide quat
+            'terrain':'rough',
+            'variant': None
+        }
+    )
+
+# Hilly Walking  ==============================
+register_env_with_variants(id='myoLegHillyTerrainWalk-v0',
+        entry_point='myosuite.envs.myo.walk_v0:TerrainEnvV0',
+        max_episode_steps=1000,
+        kwargs={
+            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.52(mj236).mjb',
+            'normalize_act': True,
+            'min_height':0.8,    # minimum center of mass height before reset
+            'max_rot':0.8,       # maximum rotation before reset
+            'hip_period':100,    # desired periodic hip angle movement
+            'reset_type':'init', # none, init, random
+            'target_x_vel':0.0,  # desired x velocity in m/s
+            'target_y_vel':1.2,  # desired y velocity in m/s
+            'target_rot': None,   # if None then the initial root pos will be taken, otherwise provide quat
+            'terrain':'hilly',
+            'variant':'fixed'
+        }
+    )
+
+# Stair Walking  ==============================
+register_env_with_variants(id='myoLegStairTerrainWalk-v0',
+        entry_point='myosuite.envs.myo.walk_v0:TerrainEnvV0',
+        max_episode_steps=1000,
+        kwargs={
+            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.52(mj236).mjb',
+            'normalize_act': True,
+            'min_height':0.8,    # minimum center of mass height before reset
+            'max_rot':0.8,       # maximum rotation before reset
+            'hip_period':100,    # desired periodic hip angle movement
+            'reset_type':'init', # none, init, random
+            'target_x_vel':0.0,  # desired x velocity in m/s
+            'target_y_vel':1.2,  # desired y velocity in m/s
+            'target_rot': None,   # if None then the initial root pos will be taken, otherwise provide quat
+            'terrain':'stairs',
+            'variant':'fixed'
         }
     )
 
@@ -419,4 +476,48 @@ register_env_with_variants(id='myoHandPenTwirlRandom-v0',
             'normalize_act': True,
             'frame_skip': 5,
         }
+    )
+
+# SAR REORIENT: 8-object
+register_env_with_variants(id='myoHandReorient8-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:Geometries8EnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/reorient_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+# SAR REORIENT: 100-object
+register_env_with_variants(id='myoHandReorient100-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:Geometries100EnvV0',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/reorient_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+# SAR TEST ENVIRONMENT: in-distribution
+register_env_with_variants(id='myoHandReorientID-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:InDistribution',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/reorient_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
+    )
+
+# SAR TEST ENVIRONMENT: out of distribution
+register_env_with_variants(id='myoHandReorientOOD-v0',
+            entry_point='myosuite.envs.myo.reorient_v0:OutofDistribution',
+            max_episode_steps=50,
+            kwargs={
+                'model_path': curr_dir+'/assets/hand/reorient_sar.xml',
+                'normalize_act': True,
+                'frame_skip': 5,
+            }
     )
