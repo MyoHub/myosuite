@@ -15,6 +15,9 @@ permissions:
 
 jobs:
   build:
+    env:
+      DISPLAY: :0
+  
     defaults:
       run:
         shell: bash -l {0}
@@ -40,10 +43,12 @@ jobs:
             libosmesa6-dev \
             software-properties-common
         sudo apt-get install -y patchelf
-    - name: Check if EGL library exists
-      run: ldconfig -p | grep EGL
-    - name: Check if libstdc library exists
-      run: ldconfig -p | grep  libstdc++
+        sudo apt-get install -y xvfb x11-xserver-utils
+        sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24                
+#     - name: Check if EGL library exists
+#       run: ldconfig -p | grep EGL
+#     - name: Check if libstdc library exists
+#       run: ldconfig -p | grep  libstdc++
     - name: Enable Conda
       uses: conda-incubator/setup-miniconda@v2
       with:
@@ -67,8 +72,8 @@ jobs:
     - name: Install ffmpeg
       run: |
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
-        conda install -c conda-forge libstdcxx-ng
-        export MUJOCO_GL=egl
+    #   conda install -c conda-forge libstdcxx-ng
+    #   export MUJOCO_GL=egl
     #   sudo apt-get install libx11-dev libglfw3-dev        
     #   export DISPLAY=:1
     #   pip install glfw
