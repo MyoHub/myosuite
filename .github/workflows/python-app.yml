@@ -43,15 +43,15 @@ jobs:
       if: ${{ runner.os == 'Linux' }}
       run: |
         sudo apt-get update -y -qq
-        sudo apt-get install -y \
-            libgl1-mesa-dev \
-            libgl1-mesa-glx \
-            libglew-dev \
-            libosmesa6-dev \
-            software-properties-common
-        sudo apt-get install -y patchelf
         sudo apt-get install -y xvfb x11-xserver-utils
-        sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24                
+        sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &               
+#     sudo apt-get install -y \
+#          libgl1-mesa-dev \
+#           libgl1-mesa-glx \
+#           libglew-dev \
+#           libosmesa6-dev \
+#           software-properties-common
+#       sudo apt-get install -y patchelf
 #     - name: Check if EGL library exists
 #       run: ldconfig -p | grep EGL
 #     - name: Check if libstdc library exists
