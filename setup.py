@@ -19,7 +19,7 @@ def fetch_requirements():
 
 # https://packaging.python.org/guides/single-sourcing-package-version/
 def find_version(version_file_path) -> str:
-    with open(version_file_path, "r", encoding="utf-8") as version_file:
+    with open(version_file_path, "r", encoding="utf-8", errors="ignore") as version_file:
         version_match = re.search(r"^__version_tuple__ = (.*)", version_file.read(), re.M)
         if version_match:
             ver_tup = eval(version_match.group(1))
