@@ -77,8 +77,7 @@ jobs:
         brew install hdf5        
         export CPATH="/opt/homebrew/include/"
         export HDF5_DIR=/opt/homebrew/
-        python3 -m pip install h5py
-        
+        pip3 install h5py --only-binary h5py
     - name: Install dependencies
       run: |
         python3 -m pip install --upgrade pip
