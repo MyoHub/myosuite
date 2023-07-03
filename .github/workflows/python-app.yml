@@ -73,17 +73,22 @@ jobs:
           CONDA_DEFAULT_ENV=test_myosuite
           conda create --name $CONDA_DEFAULT_ENV python=3.7.1 -y
           conda activate $CONDA_DEFAULT_ENV
+
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -e .
+        python -m pip3 install --upgrade pip
+        pip3 install -e .
+        
     - name: Run MuJoCo Rendering test
       if: ${{ runner.os == 'Linux' }}
       run: python -m mujoco.render_test
+      
     - name: Run Test environment
       run: |
         python -m myosuite.tests.test_myo
+        
     - name: Install ffmpeg
+      if: ${{ runner.os == 'Linux' }}
       run: |
         sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
     #   conda install -c conda-forge libstdcxx-ng
@@ -94,6 +99,7 @@ jobs:
     # - name: Setup for screen rendering
     #   run: |
     #     export DISPLAY=:0
+
     - name: Test rendering
       if: ${{ runner.os == 'Linux' }}
       run: python -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
