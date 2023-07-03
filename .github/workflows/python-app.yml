@@ -111,4 +111,5 @@ jobs:
     - name: Run Test jupyter-notebooks tutorials
       run: |
         conda activate $CONDA_DEFAULT_ENV
+        export MUJOCO_GL=egl
         source myosuite/tests/test_tutorials.sh
