@@ -57,11 +57,6 @@ jobs:
 #     - name: Check if libstdc library exists
 #       run: ldconfig -p | grep  libstdc++
 
-    - name: Prepare MacOS
-      if: ${{ runner.os == 'macOS' }}
-      run: |
-        brew install --cask xquartz
-        brew install hdf5
         
     - name: Enable Conda
       uses: conda-incubator/setup-miniconda@v2
@@ -75,6 +70,15 @@ jobs:
           conda create --name $CONDA_DEFAULT_ENV python=3.7.1 -y
           conda activate $CONDA_DEFAULT_ENV
 
+    - name: Prepare MacOS
+      if: ${{ runner.os == 'macOS' }}
+      run: |
+        brew install --cask xquartz
+        brew install hdf5        
+        export CPATH="/opt/homebrew/include/"
+        export HDF5_DIR=/opt/homebrew/
+        python3 -m pip install h5py
+        
     - name: Install dependencies
       run: |
         python3 -m pip install --upgrade pip
