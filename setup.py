@@ -13,7 +13,7 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 def fetch_requirements():
-    with open("requirements.txt", "r", encoding="utf-8") as f:
+    with open("requirements.txt", "r", encoding="utf-8", errors="ignore") as f:
         reqs = f.read().strip().split("\n")
     return reqs
 
