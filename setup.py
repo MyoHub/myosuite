@@ -10,7 +10,7 @@ if sys.version_info.major != 3:
           "Python {}. The installation will likely fail.".format(sys.version_info.major))
 
 def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+    return open(os.path.join(os.path.dirname(__file__), fname), encoding="utf-8", errors="ignore").read()
 
 def fetch_requirements():
     with open("requirements.txt", "r", encoding="utf-8", errors="ignore") as f:
