@@ -58,14 +58,14 @@ jobs:
           conda create --name $CONDA_DEFAULT_ENV python=3.7.1 -y
           conda activate $CONDA_DEFAULT_ENV
 
-    - name: Prepare MacOS
-      if: ${{ runner.os == 'macOS' }}
-      run: |
-        brew install --cask xquartz
-        brew install hdf5        
-        export CPATH="/opt/homebrew/include/"
-        export HDF5_DIR=/opt/homebrew/
-        pip3 install h5py --only-binary h5py
+#     - name: Prepare MacOS
+#       if: ${{ runner.os == 'macOS' }}
+#       run: |
+#         brew install --cask xquartz
+#         brew install hdf5        
+#         export CPATH="/opt/homebrew/include/"
+#         export HDF5_DIR=/opt/homebrew/
+#         pip3 install h5py --only-binary h5py
     - name: Install dependencies
       run: |
         conda activate $CONDA_DEFAULT_ENV
