@@ -61,6 +61,7 @@ jobs:
       if: ${{ runner.os == 'macOS' }}
       run: |
         brew install --cask xquartz
+        brew install hdf5
         
     - name: Enable Conda
       uses: conda-incubator/setup-miniconda@v2
