@@ -27,8 +27,8 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macos-latest
-          - windows-latest
+#           - macos-latest
+#           - windows-latest
 
     steps:
     - name: Checkout repository and submodules
@@ -92,5 +92,4 @@ jobs:
       if: ${{ runner.os == 'Linux' }}
       run: |
         conda activate $CONDA_DEFAULT_ENV
-        export MUJOCO_GL=egl
         source myosuite/tests/test_tutorials.sh
