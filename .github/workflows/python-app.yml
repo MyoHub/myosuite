@@ -76,7 +76,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m pip3 install --upgrade pip
+        python3 -m pip install --upgrade pip
         pip3 install -e .
         
     - name: Run MuJoCo Rendering test
@@ -85,7 +85,7 @@ jobs:
       
     - name: Run Test environment
       run: |
-        python -m myosuite.tests.test_myo
+        python3 -m myosuite.tests.test_myo
         
     - name: Install ffmpeg
       if: ${{ runner.os == 'Linux' }}
@@ -102,7 +102,7 @@ jobs:
 
     - name: Test rendering
       if: ${{ runner.os == 'Linux' }}
-      run: python -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
+      run: python3 -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
     - name: Run Test jupyter-notebooks tutorials
       run: |
         source myosuite/tests/test_tutorials.sh
