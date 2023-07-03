@@ -80,6 +80,7 @@ jobs:
         pip3 install h5py --only-binary h5py
     - name: Install dependencies
       run: |
+        conda activate $CONDA_DEFAULT_ENV
         python3 -m pip install --upgrade pip
         pip3 install -e .
         
