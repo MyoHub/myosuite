@@ -14,7 +14,7 @@ pip3 install scikit-learn
 pip3 install jupyter ipykernel tabulate matplotlib torch h5py
 pip3 install git+https://github.com/aravindr93/mjrl.git@pvr_beta_1vk # install from branch `pvr_beta_1vk` compatible with `mujoco` native binding
 pip3 install "stable-baselines3[extra]>=2.0.0a4"
-python3 -m ipykernel install --user --name=test_myosuite #$CONDA_DEFAULT_ENV
+python3 -m ipykernel install --user --name=$CONDA_DEFAULT_ENV
 
 # Tested tutorials
 declare -a StringArray=(
