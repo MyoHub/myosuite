@@ -8,13 +8,13 @@ RC='\033[0m'
 # conda init bash
 # conda activate myosuite_test
 # pip install -e .
-pip install scikit-learn
+pip3 install scikit-learn
 
 # Install potential missing packages needed for the tutorials
-pip install jupyter ipykernel tabulate matplotlib torch h5py
-pip install git+https://github.com/aravindr93/mjrl.git@pvr_beta_1vk # install from branch `pvr_beta_1vk` compatible with `mujoco` native binding
-pip install "stable-baselines3[extra]>=2.0.0a4"
-python -m ipykernel install --user --name=$CONDA_DEFAULT_ENV
+pip3 install jupyter ipykernel tabulate matplotlib torch h5py
+pip3 install git+https://github.com/aravindr93/mjrl.git@pvr_beta_1vk # install from branch `pvr_beta_1vk` compatible with `mujoco` native binding
+pip3 install "stable-baselines3[extra]>=2.0.0a4"
+python3 -m ipykernel install --user --name=$CONDA_DEFAULT_ENV
 
 # Tested tutorials
 declare -a StringArray=(
