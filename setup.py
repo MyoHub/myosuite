@@ -13,13 +13,13 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 def fetch_requirements():
-    with open("requirements.txt", encoding='utf-8') as f:
+    with open("requirements.txt", "r", encoding="utf-8") as f:
         reqs = f.read().strip().split("\n")
     return reqs
 
 # https://packaging.python.org/guides/single-sourcing-package-version/
 def find_version(version_file_path) -> str:
-    with open(version_file_path, encoding='utf-8') as version_file:
+    with open(version_file_path, "r", encoding="utf-8") as version_file:
         version_match = re.search(r"^__version_tuple__ = (.*)", version_file.read(), re.M)
         if version_match:
             ver_tup = eval(version_match.group(1))
