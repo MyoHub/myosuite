@@ -8,8 +8,8 @@ Please follow steps exactly as below to install correctly.
 
 Requirements
 ~~~~~~~~~~~~
-* python >= 3.7.1 (if needed follow instructions `here <https://docs.conda.io/en/latest/miniconda.html>`_ for installing python and conda)
-* free-mujoco-py >= 2.1.6
+* python >= 3.8 (if needed follow instructions `here <https://docs.conda.io/en/latest/miniconda.html>`_ for installing python and conda)
+* mujoco >= 2.3.6
 
 
 Installing the pip package
@@ -17,14 +17,13 @@ Installing the pip package
 
 .. code-block:: bash
 
-   conda create --name MyoSuite python=3.7.1
+   conda create --name MyoSuite python=3.8
    conda activate MyoSuite
    pip install -U myosuite
 
 
 (alternative) Installing from source
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-❗IMPORTANT❗ Install MuJoCo 2.1 before installing MyoSuite
 
 To get started with MyoSuite, clone this repo with pre-populated submodule dependencies
 
@@ -56,9 +55,8 @@ You can visualize the environments with random controls using the below command
    python myosuite/utils/visualize_env.py --env_name myoElbowPose1D6MRandom-v0
 
 .. note::
-   If the visualization results in a GLFW error, this is because ``mujoco-py`` does not see some graphics drivers correctly.
-   This can usually be fixed by explicitly loading the correct drivers before running the python script.
-   See `this page <https://github.com/aravindr93/mjrl/tree/master/setup#known-issues>`_ for details.
+   On MacOS, the need of a launch_passive option might require that the Python script be run under `mjpython` i.e. 
+   `myosuite/utils/visualize_env.py --env_name myoElbowPose1D6MRandom-v0`
 
 Examples
 ~~~~~~~~~
@@ -73,6 +71,6 @@ For example, to use the ``myoElbowPose1D6MRandom-v0`` environment it is possible
    env = gym.make('myoElbowPose1D6MRandom-v0')
    env.reset()
    for _ in range(1000):
-      env.sim.render(mode='window')
-      env.step(env.action_space.sample()) # take a random action
+     env.mj_render()
+     env.step(env.action_space.sample()) # take a random action
    env.close()
