@@ -6,7 +6,6 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 import collections
 import gym
 import numpy as np
-from mujoco_py import functions
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils.quat_math import quat2mat
 
