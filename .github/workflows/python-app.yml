@@ -61,7 +61,7 @@ jobs:
       run: |
           conda info
           CONDA_DEFAULT_ENV=test_myosuite
-          conda create --name $CONDA_DEFAULT_ENV python=3.7.1 -y
+          conda create --name $CONDA_DEFAULT_ENV python=3.8 -y
           conda activate $CONDA_DEFAULT_ENV
 
 #     - name: Prepare MacOS
@@ -80,16 +80,17 @@ jobs:
         
     - name: Run MuJoCo Rendering test
       if: ${{ runner.os == 'Linux' }}
-      run: python -m mujoco.render_test
+      run: python3 -m mujoco.render_test
       
     - name: Run Test environment
       run: |
+        conda activate $CONDA_DEFAULT_ENV
         python3 -m myosuite.tests.test_myo
         
     - name: Install ffmpeg
       if: ${{ runner.os == 'Linux' }}
       run: |
-        sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
+        sudo apt-get install --no-install-recommends ffmpeg && pip3 install ffmpeg scikit-video
 
     - name: Test rendering
       if: ${{ runner.os == 'Linux' }}
