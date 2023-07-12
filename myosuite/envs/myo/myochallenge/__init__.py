@@ -11,7 +11,7 @@ register(id='myoChallengeRelocateP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
         max_episode_steps=150,
         kwargs={
-            'model_path': curr_dir+'/../assets/arm/myoarm_object_v0.13(mj236).mjb',
+            'model_path': curr_dir+'/../../../simhive/myo_sim/arm/myoarm_object_v0.13(mj236).mjb',
             'normalize_act': True,
             'frame_skip': 5,
             'rot_th': np.inf,           # ignore rotation errors
@@ -27,7 +27,7 @@ register(id='myoChallengeChaseTagP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,
         kwargs={
-            'model_path': curr_dir+'/../assets/leg/locochallenge_p1.mjb',
+            'model_path': curr_dir+'/../../../simhive/myo_sim/leg/myolegs_chasetag_v0.10(mj236).mjb',
             'normalize_act': True,
             'reset_type':'init', # none, init, random
             'win_distance': 0.5,
