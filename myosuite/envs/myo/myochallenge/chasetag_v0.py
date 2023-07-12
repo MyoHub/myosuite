@@ -27,7 +27,6 @@ class ChallengeOpponent:
         self.noise_process = pink.ColoredNoiseProcess(beta=2, size=(2, 2000), scale=10, rng=rng)
         self.reset_opponent()
 
-
     def get_opponent_pose(self):
         """
         Get opponent Pose
@@ -118,7 +117,6 @@ class ChallengeOpponent:
             pose[:] = [0, -5, 0]
         self.set_opponent_pose(pose)
         self.opponent_vel[:] = 0.0
-
 
 
 class ChaseTagEnvV0(WalkEnvV0):
