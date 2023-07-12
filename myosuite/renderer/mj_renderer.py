@@ -49,7 +49,7 @@ class MJRenderer(Renderer):
             self._update_camera_properties(self._window.cam)
             self._update_viewer_settings(self._window.opt)
 
-        self._window.cam.azimuth+=.1 # trick to rotate camera for 360 videos
+        # self._window.cam.azimuth+=.1 # trick to rotate camera for 360 videos
         self.refresh_window()
 
 

@@ -113,3 +113,9 @@ venv.bak/
 _build
 dist
 tags
+.vscode/settings.json
+
+# Media #
+.mp4
+.vscode/settings.json
+MyoChallange_Test/
