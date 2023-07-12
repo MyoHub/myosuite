@@ -331,8 +331,8 @@ class WalkEnvV0(BaseV0):
         """
         Compute the center of mass velocity of the model.
         """
-        mass = np.expand_dims(self.sim.model.body_mass, -1)[:16]
-        cvel = - self.sim.data.cvel[:16]
+        mass = np.expand_dims(self.sim.model.body_mass, -1)
+        cvel = - self.sim.data.cvel
         return (np.sum(mass * cvel, 0) / np.sum(mass))[3:5]
 
     def _get_height(self):
@@ -357,8 +357,8 @@ class WalkEnvV0(BaseV0):
         """
         Compute the center of mass of the robot.
         """
-        mass = np.expand_dims(self.sim.model.body_mass, -1)[:16]
-        com =  self.sim.data.xipos[:16, :]
+        mass = np.expand_dims(self.sim.model.body_mass, -1)
+        com =  self.sim.data.xipos
         return (np.sum(mass * com, 0) / np.sum(mass))
 
     def _get_angle(self, names):

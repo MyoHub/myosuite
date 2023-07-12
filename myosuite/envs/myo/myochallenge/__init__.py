@@ -31,7 +31,7 @@ register(id='myoChallengeChaseTagP1-v0',
             'normalize_act': True,
             'reset_type':'init', # none, init, random
             'win_distance': 0.5,
-            'minimum_spawn_distance': 2
+            'min_spawn_distance': 2
         }
     )
 

@@ -9,6 +9,116 @@ import numpy as np
 import pink
 
 from myosuite.envs.myo.walk_v0 import WalkEnvV0
+from myosuite.utils.quat_math import quat2euler, euler2quat
+
+
+class ChallengeOpponent:
+    """
+    Training Opponent for the Locomotion Track of the MyoChallenge 2023.
+    Contains several different policies. For the final evaluation, an additional 
+    non-disclosed policy will be used.
+    """
+    def __init__(self, sim, rng, probabilities, min_spawn_distance):
+        self.dt = 0.01
+        self.sim = sim
+        self.rng = rng
+        self.opponent_probabilities = probabilities
+        self.min_spawn_distance = min_spawn_distance
+        self.noise_process = pink.ColoredNoiseProcess(beta=2, size=(2, 2000), scale=10, rng=rng)
+        self.reset_opponent()
+
+
+    def get_opponent_pose(self):
+        """
+        Get opponent Pose
+        :return: The  pose.
+        :rtype: list -> [x, y, angle]
+        """
+        angle = quat2euler(self.sim.data.mocap_quat[0, :])[-1]
+        return np.concatenate([self.sim.data.mocap_pos[0, :2], [angle]])
+
+    def set_opponent_pose(self, pose):
+        """
+        Set opponent pose directly.
+        :param pose: Pose of the opponent.
+        :type pose: list -> [x, y, angle]
+        """
+        self.sim.data.mocap_pos[0, :2] = pose[:2]
+        self.sim.data.mocap_quat[0, :] = euler2quat([0, 0, pose[-1]])
+
+    def move_opponent(self, vel: list):
+        """
+        This is the main function that moves the opponent and should always be used if you want to physically move
+        it by giving it a velocity. If you want to teleport it to a new position, use `set_opponent_pose`.
+        :param vel: Linear and rotational velocities in [-1, 1]. Moves opponent
+                  forwards or backwards and turns it. vel[0] is assumed to be linear vel and
+                  vel[1] is assumed to be rotational vel
+        :type vel: list -> [lin_vel, rot_vel].
+        """
+        self.opponent_vel = vel
+        assert len(vel) == 2
+        vel[0] = np.abs(vel[0])
+        vel = np.clip(vel, -1, 1)
+        pose = self.get_opponent_pose()
+        x_vel = vel[0] * np.cos(pose[-1]+0.5*np.pi)
+        y_vel = vel[0] * np.sin(pose[-1] +0.5*np.pi)
+        pose[0] -= self.dt * x_vel
+        pose[1] -= self.dt * y_vel
+        pose[2] += self.dt * vel[1] 
+        pose[:2] = np.clip(pose[:2], -5.5, 5.5)
+        self.set_opponent_pose(pose)
+
+    def random_movement(self):
+        """
+        This moves the opponent randomly in a correlated 
+        pattern.
+        """
+        return self.noise_process.sample()
+
+    def sample_opponent_policy(self):
+        """
+        Takes in three probabilities and returns the policies with the given frequency.
+        """
+        rand_num = self.rng.uniform()
+
+        if rand_num < self.opponent_probabilities[0]:
+            self.opponent_policy = 'static_stationary'
+        elif rand_num < self.opponent_probabilities[0] + self.opponent_probabilities[1]:
+            self.opponent_policy = 'stationary'
+        elif rand_num < self.opponent_probabilities[0] + self.opponent_probabilities[1] + self.opponent_probabilities[2]:
+            self.opponent_policy = 'random'
+
+    def update_opponent_state(self):
+        """
+        This function executes an opponent step with 
+        one of the control policies.
+        """
+        if self.opponent_policy == 'stationary' or self.opponent_policy == 'static_stationary':
+            opponent_vel = np.zeros(2,)
+
+        elif self.opponent_policy == 'random':
+            opponent_vel = self.random_movement()
+
+        else:
+            raise NotImplementedError(f"This opponent policy doesn't exist. Chose: static_stationary, stationary or random. Policy was: {self.opponent_policy}")
+        self.move_opponent(opponent_vel)
+
+    def reset_opponent(self):
+        """
+        This function should initially place the opponent on a random position with a 
+        random orientation with a minimum radius to the model.
+        """
+        self.opponent_vel = np.zeros((2,))
+        self.sample_opponent_policy()
+        dist = 0
+        while dist < self.min_spawn_distance:
+            pose = [self.rng.uniform(-5, 5), self.rng.uniform(-5, 5), self.rng.uniform(- 2 * np.pi, 2 * np.pi)]
+            dist = np.linalg.norm(pose[:2] - self.sim.data.body('root').xpos[:2])
+        if self.opponent_policy == "static_stationary":
+            pose[:] = [0, -5, 0]
+        self.set_opponent_pose(pose)
+        self.opponent_vel[:] = 0.0
+
 
 
 class ChaseTagEnvV0(WalkEnvV0):
@@ -49,10 +159,8 @@ class ChaseTagEnvV0(WalkEnvV0):
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        self.opponent_joints = ['opponent_x', 'opponent_y', 'opponent_rotate']
         super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
         self._setup(**kwargs)
-        self.startFlag = True
 
     def _setup(self,
                obs_keys: list = DEFAULT_OBS_KEYS,
@@ -63,23 +171,20 @@ class ChaseTagEnvV0(WalkEnvV0):
                min_spawn_distance = 2,
                **kwargs,
                ):
-
         self._setup_convenience_vars()
         self.reset_type = reset_type
-        self.opponent_probabilities = opponent_probabilities 
-        self._sample_opponent_policy()
         self.maxTime = 20 
         self.win_distance = win_distance
-        self.min_spawn_distance = min_spawn_distance
-        self.noise_process = pink.ColoredNoiseProcess(beta=2, size=(2, 2000), scale=10, rng=self.np_random)
-        self.opponent_vel = np.zeros((2,))
         self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
+        self.opponent = ChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance)
+        self.success_indicator_sid = self.sim.model.site_name2id("opponent_indicator")
         super()._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        **kwargs
                        )
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.init_qvel[:] = 0.0
+        self.startFlag = True
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -101,8 +206,8 @@ class ChaseTagEnvV0(WalkEnvV0):
             obs_dict['act'] = sim.data.act[:].copy()
 
         # exteroception
-        obs_dict['opponent_pose'] = self._get_opponent_pose()[:].copy()
-        obs_dict['opponent_vel'] = self.opponent_vel[:].copy()
+        obs_dict['opponent_pose'] = self.opponent.get_opponent_pose()[:].copy()
+        obs_dict['opponent_vel'] = self.opponent.opponent_vel[:].copy()
         obs_dict['model_root_pos'] = sim.data.qpos[:2].copy()
         obs_dict['model_root_vel'] = sim.data.qvel[:2].copy()
 
@@ -112,18 +217,26 @@ class ChaseTagEnvV0(WalkEnvV0):
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
         win_cdt = self._win_condition()
         lose_cdt = self._lose_condition()
-        score = [self._get_score(float(self.obs_dict['time'])) if win_cdt else 0][0]
+        score = self._get_score(float(self.obs_dict['time'])) if win_cdt else 0
 
         rwd_dict = collections.OrderedDict((
+            # Perform reward tuning here --
+            # Update Optional Keys section below
+            # Update reward keys (DEFAULT_RWD_KEYS_AND_WEIGHTS) accordingly to update final rewards
+            # Examples: Env comes pre-packaged with two keys act_reg and lose 
+
                 # Optional Keys
                 ('act_reg', act_mag),
+                ('lose', lose_cdt),
                 # Must keys
                 ('sparse',  score),
-                ('solved',    win_cdt),
-                ('drop', lose_cdt),
+                ('solved',  win_cdt),
                 ('done',  self._get_done()),
             ))
         rwd_dict['dense'] = np.sum([wt*rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
+        # Success Indicator
+        self.sim.model.site_rgba[self.success_indicator_sid, :] = np.array([0, 2, 0, 0.1]) if rwd_dict['solved'] else np.array([2, 0, 0, 0])
+
         return rwd_dict
 
     def get_metrics(self, paths):
@@ -144,21 +257,20 @@ class ChaseTagEnvV0(WalkEnvV0):
         return metrics
 
     def step(self, *args, **kwargs):
-        self._update_opponent_state()
+        self.opponent.update_opponent_state()
         obs, reward, done, info = super().step(*args, **kwargs)
         return obs, reward, done, info
 
     def reset(self):
-        self._sample_opponent_policy()
         if self.reset_type == 'random':
             qpos, qvel = self._get_randomized_initial_state()
         elif self.reset_type == 'init':
                 qpos, qvel = self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
         else:
             qpos, qvel = self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
-        qpos, qvel = self._initialize_opponent(qpos, qvel)
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel)
+        self.opponent.reset_opponent()
         return obs
 
     def viewer_setup(self, *args, **kwargs):
@@ -182,15 +294,6 @@ class ChaseTagEnvV0(WalkEnvV0):
            render_tendon=render_tendon
        )
 
-    def set_action_normalization(self, flag: bool):
-        """
-        Activates and deactivates action remapping.
-        :param flag:
-            "1" means: [-1, 1] -> [0, 1] via a non-linear remapping function. See envs/myo/base_v0.py
-            "0" means: [-1, 1] -> [0, 1] via simple clipping.
-        """
-        self.normalize_act = flag
-
     def _get_randomized_initial_state(self):
         # randomly start with flexed left or right knee
         if  self.self.np_random.uniform() < 0.5:
@@ -209,7 +312,6 @@ class ChaseTagEnvV0(WalkEnvV0):
         qpos[2] = height
         return qpos, qvel
 
-
     def _setup_convenience_vars(self):
         """
         Convenience functions for easy access. Important: There will be no access during the challenge evaluation to this,
@@ -222,100 +324,6 @@ class ChaseTagEnvV0(WalkEnvV0):
         self.tendon_len = np.array(self._get_tendon_lengthspring())
         self.musc_operating_len = np.array(self._get_muscle_operating_length())
 
-    def _get_opponent_pose(self):
-        """
-        Get opponent Pose
-        :return: The  pose.
-        :rtype: list -> [x, y, angle]
-        """
-        return np.array([self.sim.data.joint(joint).qpos for joint in self.opponent_joints], dtype=np.float32)[:,0].copy()
-
-    def _set_opponent_pose(self, pose):
-        """
-        Set opponent pose directly.
-        :param pose: Pose of the opponent.
-        :type pose: list -> [x, y, angle]
-        """
-        for name, val in zip(self.opponent_joints, pose):
-            self.sim.data.joint(name).qpos = val
-            self.sim.data.joint(name).qvel = 0.0
-
-    def _move_opponent(self, vel: list):
-        """
-        This is the main function that moves the opponent and should always be used if you want to physically move
-        it by giving it a velocity. If you want to teleport it to a new position, use `_set_opponent_pose`.
-        :param vel: Linear and rotational velocities in [-1, 1]. Moves opponent
-                  forwards or backwards and turns it. vel[0] is assumed to be linear vel and
-                  vel[1] is assumed to be rotational vel
-        :type vel: list -> [lin_vel, rot_vel].
-        """
-        self.opponent_vel = vel
-        assert len(vel) == 2
-        vel[0] = np.abs(vel[0])
-        vel = np.clip(vel, -1, 1)
-        pose = self._get_opponent_pose()
-        x_vel = vel[0] * np.cos(pose[-1]+0.5*np.pi)
-        y_vel = vel[0] * np.sin(pose[-1] +0.5*np.pi)
-        pose[0] -= self.dt * x_vel
-        pose[1] -= self.dt * y_vel
-        pose[2] += self.dt * vel[1] 
-        self._set_opponent_pose(pose)
-
-    def _random_movement(self):
-        """
-        This moves the opponent randomly in a correlated 
-        pattern.
-        """
-        return self.noise_process.sample()
-
-    def _sample_opponent_policy(self):
-        """
-        Takes in three probabilities and returns the policies with the given frequency.
-        """
-        rand_num = self.np_random.uniform()
-
-        if rand_num < self.opponent_probabilities[0]:
-            self.opponent_policy = 'static_stationary'
-        elif rand_num < self.opponent_probabilities[0] + self.opponent_probabilities[1]:
-            self.opponent_policy = 'stationary'
-        elif rand_num < self.opponent_probabilities[0] + self.opponent_probabilities[1] + self.opponent_probabilities[2]:
-            self.opponent_policy = 'random'
-
-    def _update_opponent_state(self):
-        """
-        This function executes an opponent step with 
-        one of the control policies.
-        """
-        if self.opponent_policy == 'stationary' or self.opponent_policy == 'static_stationary':
-            opponent_vel = np.zeros(2,)
-
-        elif self.opponent_policy == 'random':
-            opponent_vel = self._random_movement()
-
-        else:
-            raise NotImplementedError(f"This opponent policy doesn't exist. Chose: static_stationary, stationary or random. Policy was: {self.opponent_policy}")
-        self._move_opponent(opponent_vel)
-
-    def _initialize_opponent(self, qpos, qvel):
-        """
-        This function should initially place the opponent on a random position with a 
-        random orientation with a minimum radius to the model.
-        """
-        dist = 0
-        while dist < self.min_spawn_distance:
-            pose = [self.np_random.uniform(-5, 5), self.np_random.uniform(-5, 5), self.np_random.uniform(- 2 * np.pi, 2 * np.pi)]
-            dist = np.linalg.norm(pose[:2] - qpos[:2])
-        if self.opponent_policy == "static_stationary":
-            pose[:] = [0, -5, 0]
-        for k, v in zip(self.opponent_joints, pose):
-            jnt_id = self.sim.data.joint(k).id
-            qpos_adr = self.sim.model.jnt_qposadr[jnt_id]  
-            qvel_adr = self.sim.model.jnt_dofadr[jnt_id]  
-            qpos[qpos_adr] = v
-            qvel[qvel_adr] = 0.0
-        self.opponent_vel[:] = 0.0
-        return qpos, qvel
-
     def _get_done(self):
         if self._lose_condition():
             return 1
@@ -325,12 +333,12 @@ class ChaseTagEnvV0(WalkEnvV0):
 
     def _lose_condition(self):
         root_pos = self.sim.data.body('pelvis').xpos[:2]
-        return [ 1 if float(self.obs_dict['time']) >= self.maxTime or (np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5) else 0][0]
+        return 1 if float(self.obs_dict['time']) >= self.maxTime or (np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5) else 0
 
     def _win_condition(self):
         root_pos = self.sim.data.body('pelvis').xpos[:2]
         opp_pos = self.obs_dict['opponent_pose'][..., :2]
-        return [ 1 if np.linalg.norm(root_pos - opp_pos) <= self.win_distance and self.startFlag else 0][0]
+        return 1 if np.linalg.norm(root_pos - opp_pos) <= self.win_distance and self.startFlag else 0
 
     # Helper functions
     def _get_body_mass(self):
@@ -339,7 +347,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         :return: the weight
         :rtype: float
         """
-        return np.sum(self.sim.model.body_mass[:16])
+        return self.sim.model.body('root').subtreemass
 
     def _get_score(self, time):
         time = np.round(time, 2)

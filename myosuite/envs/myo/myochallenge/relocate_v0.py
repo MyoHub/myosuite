@@ -126,13 +126,3 @@ class RelocateEnvV0(BaseV0):
         self.sim.model.body_quat[self.goal_bid] =  euler2quat(self.np_random.uniform(**self.target_rxryrz_range))
         obs = super().reset(reset_qpos, reset_qvel)
         return obs
-
-    def set_action_normalization(self, flag: bool):
-        """
-        Activates and deactivates action remapping.
-        :param flag:
-            "1" means: [-1, 1] -> [0, 1] via a non-linear remapping function. See envs/myo/base_v0.py
-            "0" means: [-1, 1] -> [0, 1] via simple clipping.
-        """
-        self.normalize_act = flag
-
