@@ -1,4 +1,5 @@
 import numpy as np
+import unittest
 
 def dict_numpify(data:dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16)->dict:
     """
@@ -10,7 +11,7 @@ def dict_numpify(data:dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16)->di
     for key, val in data.items():
         # non iteratables
         if np.isscalar(val):
-            if isinstance(val, (bool, np.bool)):
+            if isinstance(val, (bool, np.bool_)):
                 val = np.array([val], dtype=np.bool_)
             elif isinstance(val, (np.unsignedinteger,)):
                 val = np.array([val], dtype=u_res)
@@ -44,7 +45,7 @@ def dict_numpify(data:dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16)->di
                 val = np.array(val, dtype=i_res)
             elif type(val[0]) == float:
                 val = np.array(val, dtype=f_res)
-            else:
+            elif type(val[0]) != str:
                 val = np.array(val) # let numpy handle it for nested stuctures
                 # raise TypeError("Data type {} not supported for {}".format(type(val[0]), key))
 
@@ -85,8 +86,8 @@ def flatten_dict(data:dict, name:str='', delimiter:str='/')->dict:
     return flat_dict
 
 
-if __name__ == '__main__':
 
+def demo_dict_util():
     data = {
         'none': None,
         'bool': True,
@@ -123,12 +124,18 @@ if __name__ == '__main__':
     print("Original data")
     print_dtype(data)
 
-    # print("\nFlattened data")
-    # print_dtype(flatten_dict(data))
+    print("\nFlattened data")
+    print_dtype(flatten_dict(data))
 
     print("\nNumpy-fied data")
     data = dict_numpify(data)
     print_dtype(data)
 
 
+class TestMain(unittest.TestCase):
+    def test_main(self):
+        # Call your function and test its output/assertions
+        self.assertEqual(demo_dict_util(), None)
 
+if __name__ == '__main__':
+    unittest.main()

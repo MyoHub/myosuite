@@ -34,7 +34,7 @@ class ReachEnvV0(BaseV0):
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
 
         self._setup(**kwargs)
 
@@ -55,7 +55,7 @@ class ReachEnvV0(BaseV0):
                 )
 
     def get_obs_vec(self):
-        self.obs_dict['t'] = np.array([self.sim.data.time])
+        self.obs_dict['time'] = np.array([self.sim.data.time])
         self.obs_dict['qpos'] = self.sim.data.qpos[:].copy()
         self.obs_dict['qvel'] = self.sim.data.qvel[:].copy()*self.dt
         if self.sim.model.na>0:
@@ -74,7 +74,7 @@ class ReachEnvV0(BaseV0):
 
     def get_obs_dict(self, sim):
         obs_dict = {}
-        obs_dict['t'] = np.array([sim.data.time])
+        obs_dict['time'] = np.array([sim.data.time])
         obs_dict['qpos'] = sim.data.qpos[:].copy()
         obs_dict['qvel'] = sim.data.qvel[:].copy()*self.dt
         if sim.model.na>0:
@@ -92,7 +92,7 @@ class ReachEnvV0(BaseV0):
     def get_reward_dict(self, obs_dict):
         reach_dist = np.linalg.norm(obs_dict['reach_err'], axis=-1)
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
-        far_th = self.far_th*len(self.tip_sids) if np.squeeze(obs_dict['t'])>2*self.dt else np.inf
+        far_th = self.far_th*len(self.tip_sids) if np.squeeze(obs_dict['time'])>2*self.dt else np.inf
         near_th = len(self.tip_sids)*.0125
         rwd_dict = collections.OrderedDict((
             # Optional Keys

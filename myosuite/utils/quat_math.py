@@ -1,7 +1,7 @@
 """ =================================================
 Copyright (C) 2018 Vikash Kumar
 Author  :: Vikash Kumar (vikashplus@gmail.com)
-Source  :: https://github.com/vikashplus/mj_envs
+Source  :: https://github.com/vikashplus/robohive
 License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ================================================= """
 
@@ -29,9 +29,13 @@ def quat2Vel(quat, dt=1):
     speed = 2*np.arctan2(sin_a_2, quat[0])/dt
     return speed, axis
 
-def quatDiff2Vel(quat1, quat2, dt):
+def diffQuat(quat1, quat2):
     neg = negQuat(quat1)
     diff = mulQuat(quat2, neg)
+    return diff
+
+def quatDiff2Vel(quat1, quat2, dt):
+    diff = diffQuat(quat1, quat2)
     return quat2Vel(diff, dt)
 
 
@@ -169,3 +173,26 @@ def quat2mat(quat):
     mat[..., 2, 1] = yZ + wX
     mat[..., 2, 2] = 1.0 - (xX + yY)
     return np.where((Nq > _FLOAT_EPS)[..., np.newaxis, np.newaxis], mat, np.eye(3))
+
+
+
+# multiply vector by 3D rotation matrix transpose
+def rotVecMatT(vec, mat):
+    return np.array([
+        mat[0,0]*vec[0] + mat[1,0]*vec[1] + mat[2,0]*vec[2],
+        mat[0,1]*vec[0] + mat[1,1]*vec[1] + mat[2,1]*vec[2],
+        mat[0,2]*vec[0] + mat[1,2]*vec[1] + mat[2,2]*vec[2]
+        ])
+
+# multiply vector by 3D rotation matrix
+def rotVecMat(vec, mat):
+    return np.array([
+        mat[0,0]*vec[0] + mat[0,1]*vec[1] + mat[0,2]*vec[2],
+        mat[1,0]*vec[0] + mat[1,1]*vec[1] + mat[1,2]*vec[2],
+        mat[2,0]*vec[0] + mat[2,1]*vec[1] + mat[2,2]*vec[2]
+        ])
+
+# multiply vector by quat
+def rotVecQuat(vec, quat):
+    mat = quat2mat(quat)
+    return rotVecMat(vec,mat)

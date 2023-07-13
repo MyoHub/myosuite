@@ -22,13 +22,12 @@ class ReorientEnvV0(BaseV0):
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
         # Two step construction (init+setup) is required for pickling to work correctly.
         gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
-        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
 
     def _setup(self,
             obs_keys:list = DEFAULT_OBS_KEYS,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
-
             goal_pos = (0.0, 0.0),          # goal position range (relative to initial pos)
             goal_rot = (.785, .785),        # goal rotation range (relative to initial rot)
             obj_size_change = 0,            # object size change (relative to initial size)
@@ -55,7 +54,6 @@ class ReorientEnvV0(BaseV0):
         self.target_gid = self.sim.model.geom_name2id('target_dice')
         self.target_default_size = self.sim.model.geom_size[self.target_gid].copy()
 
-
         self.object_bid = self.sim.model.body_name2id('Object')
         self.object_gid0 = self.sim.model.body_geomadr[self.object_bid]
         self.object_gidn = self.object_gid0 + self.sim.model.body_geomnum[self.object_bid]
@@ -76,7 +74,7 @@ class ReorientEnvV0(BaseV0):
 
     def get_obs_dict(self, sim):
         obs_dict = {}
-        obs_dict['t'] = np.array([sim.data.time])
+        obs_dict['time'] = np.array([sim.data.time])
         obs_dict['hand_qpos'] = sim.data.qpos[:-7].copy()
         obs_dict['hand_qvel'] = sim.data.qvel[:-6].copy()*self.dt
         obs_dict['obj_pos'] = sim.data.site_xpos[self.object_sid]
@@ -150,7 +148,6 @@ class ReorientEnvV0(BaseV0):
 
         # Die friction changes
         self.sim.model.geom_friction[self.object_gid0:self.object_gidn] = self.np_random.uniform(**self.obj_friction_range)
-
         # Die mass changes
         self.sim.model.body_mass[self.object_bid] = self.np_random.uniform(**self.obj_mass_range) # call to mj_setConst(m,d) is being ignored. Derive quantities wont be updated. Die is simple shape. So this is reasonable approximation.
 
@@ -164,7 +161,6 @@ class ReorientEnvV0(BaseV0):
         # adjust boundary of die
         object_gpos = self.sim.model.geom_pos[self.object_gid0:self.object_gidn]
         self.sim.model.geom_pos[self.object_gid0:self.object_gidn] = object_gpos/abs(object_gpos+1e-16) * (abs(self.object_default_pos) + del_size)
-
 
         obs = super().reset(reset_qpos, reset_qvel)
         return obs

@@ -1,8 +1,11 @@
 click
 sk-video
-free-mujoco-py
 gym==0.13
 termcolor
 flatten_dict
-h5py==3.7.0
-numpy==1.22.4
+h5py
+numpy
+mujoco==2.3.6
+dm-control==1.0.12
+Pillow
+pink-noise-rl

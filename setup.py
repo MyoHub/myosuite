@@ -10,16 +10,16 @@ if sys.version_info.major != 3:
           "Python {}. The installation will likely fail.".format(sys.version_info.major))
 
 def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+    return open(os.path.join(os.path.dirname(__file__), fname), encoding="utf-8", errors="ignore").read()
 
 def fetch_requirements():
-    with open("requirements.txt") as f:
+    with open("requirements.txt", "r", encoding="utf-8", errors="ignore") as f:
         reqs = f.read().strip().split("\n")
     return reqs
 
 # https://packaging.python.org/guides/single-sourcing-package-version/
 def find_version(version_file_path) -> str:
-    with open(version_file_path) as version_file:
+    with open(version_file_path, "r", encoding="utf-8", errors="ignore") as version_file:
         version_match = re.search(r"^__version_tuple__ = (.*)", version_file.read(), re.M)
         if version_match:
             ver_tup = eval(version_match.group(1))

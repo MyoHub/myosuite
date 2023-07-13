@@ -1,0 +1,27 @@
+<mujoco model="Elbow joint with six muscle">
+<!-- =================================================
+	Copyright 2020 Vikash Kumar
+	Model	:: myo-elbow (MuJoCoV2.0)
+	Author	:: Vikash Kumar (vikashplus@gmail.com)
+	source	:: https://github.com/vikashplus
+	License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+
+    <include file="../../../../simhive/myo_sim/elbow/assets/myoelbow_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/elbow/assets/myoelbow_1dof6muscles_body.xml"/>
+    <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
+    <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
+
+
+    <worldbody>
+        <site name="wrist_target" pos="0.001 0.001 0.001" size=".02" rgba="0 1 0 .2"></site>
+    </worldbody>
+
+    <tendon>
+        <spatial name="error" rgba="0 1 0 0.2">
+            <site site="wrist"></site>
+            <site site="wrist_target"></site>
+        </spatial>
+    </tendon>
+
+</mujoco>
