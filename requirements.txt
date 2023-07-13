@@ -5,7 +5,6 @@ termcolor
 flatten_dict
 h5py
 numpy
-torch
 mujoco==2.3.6
 dm-control==1.0.12
 Pillow
