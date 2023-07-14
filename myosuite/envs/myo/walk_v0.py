@@ -518,7 +518,7 @@ class TerrainEnvV0(BaseV0):
             flat_length, frequency = 3000, 3
             scalar = 0.63 if self.variant == 'fixed' else self.np_random.uniform(low=0.53, high=0.73)
 
-            combined_data = np.concatenate((-2 * np.ones(flat_length), -2 + 0.5 * (np.sin(np.linspace(0, frequency*np.pi, int(1e4-flat)) + np.pi/2) - 1)))
+            combined_data = np.concatenate((-2 * np.ones(flat_length), -2 + 0.5 * (np.sin(np.linspace(0, frequency*np.pi, int(1e4-flat_length)) + np.pi/2) - 1)))
             normalized_data = (combined_data - combined_data.min()) / (combined_data.max() - combined_data.min())
 
             self.sim.model.hfield_data[:] = np.flip(normalized_data.reshape(100,100)*scalar, [0,1]).reshape(10000,)
