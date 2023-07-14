@@ -288,10 +288,10 @@ register_env_with_variants(id='myoHandPoseRandom-v0',  #reconsider
 from myosuite.physics.sim_scene import SimBackend
 sim_backend = SimBackend.get_sim_backend()
 if sim_backend == SimBackend.MUJOCO_PY:
-    leg_model='/../../simhive/myo_sim/leg/myolegs_v0.52(mj210).mjb'
+    leg_model='/../../simhive/myo_sim/leg/myolegs_v0.54(mj210).mjb'
 elif sim_backend == SimBackend.MUJOCO:
-    leg_model='/../../simhive/myo_sim/leg/myolegs_v0.52(mj234).mjb'
-
+    leg_model='/../../simhive/myo_sim/leg/myolegs_v0.54(mj236).mjb'
+    
 register_env_with_variants(id='myoLegReachFixed-v0',
         entry_point='myosuite.envs.myo.walk_v0:ReachEnvV0',
         max_episode_steps=150,
@@ -312,7 +312,7 @@ register_env_with_variants(id='myoLegWalk-v0',
         entry_point='myosuite.envs.myo.walk_v0:WalkEnvV0',
         max_episode_steps=1000,
         kwargs={
-            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.52(mj236).mjb',
+            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.54(mj236).mjb',
             'normalize_act': True,
             'min_height':0.8,    # minimum center of mass height before reset
             'max_rot':0.8,       # maximum rotation before reset
@@ -329,7 +329,7 @@ register_env_with_variants(id='myoLegRoughTerrainWalk-v0',
         entry_point='myosuite.envs.myo.walk_v0:TerrainEnvV0',
         max_episode_steps=1000,
         kwargs={
-            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.52(mj236).mjb',
+            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.54(mj236).mjb',
             'normalize_act': True,
             'min_height':0.8,    # minimum center of mass height before reset
             'max_rot':0.8,       # maximum rotation before reset
@@ -348,7 +348,7 @@ register_env_with_variants(id='myoLegHillyTerrainWalk-v0',
         entry_point='myosuite.envs.myo.walk_v0:TerrainEnvV0',
         max_episode_steps=1000,
         kwargs={
-            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.52(mj236).mjb',
+            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.54(mj236).mjb',
             'normalize_act': True,
             'min_height':0.8,    # minimum center of mass height before reset
             'max_rot':0.8,       # maximum rotation before reset
@@ -367,7 +367,7 @@ register_env_with_variants(id='myoLegStairTerrainWalk-v0',
         entry_point='myosuite.envs.myo.walk_v0:TerrainEnvV0',
         max_episode_steps=1000,
         kwargs={
-            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.52(mj236).mjb',
+            'model_path': curr_dir + '/../../simhive/myo_sim/leg/myolegs_v0.54(mj236).mjb',
             'normalize_act': True,
             'min_height':0.8,    # minimum center of mass height before reset
             'max_rot':0.8,       # maximum rotation before reset
@@ -456,7 +456,6 @@ register_env_with_variants(id='myoHandObjHoldRandom-v0', # revisit
             'normalize_act': True
         }
     )
-
 
 # Pen twirl ==============================
 register_env_with_variants(id='myoHandPenTwirlFixed-v0',

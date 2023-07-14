@@ -33,6 +33,8 @@ class MJRenderer(Renderer):
 
     def setup_renderer(self, model, height, width):
         self._renderer = mujoco.Renderer(model, height=height, width=width)
+        self._scene_option = mujoco.MjvOption()
+        self._update_renderer_settings(self._scene_option)
 
 
     def render_to_window(self):
@@ -47,7 +49,7 @@ class MJRenderer(Renderer):
             self._update_camera_properties(self._window.cam)
             self._update_viewer_settings(self._window.opt)
 
-        self._window.cam.azimuth+=.1 # trick to rotate camera for 360 videos
+        # self._window.cam.azimuth+=.1 # trick to rotate camera for 360 videos
         self.refresh_window()
 
 
@@ -85,17 +87,17 @@ class MJRenderer(Renderer):
 
         rgb_arr = None; dpt_arr = None; seg_arr = None
         if rgb:
-            self._renderer.update_scene(self._sim.data.ptr, camera=camera_id)
+            self._renderer.update_scene(self._sim.data.ptr, camera=camera_id, scene_option=self._scene_option)
             rgb_arr = self._renderer.render()
         if depth:
             self._renderer.enable_depth_rendering()
-            self._renderer.update_scene(self._sim.data.ptr, camera=camera_id)
+            self._renderer.update_scene(self._sim.data.ptr, camera=camera_id, scene_option=self._scene_option)
             dpt_arr = self._renderer.render()
             dpt_arr = dpt_arr[::-1, :]
             self._renderer.disable_depth_rendering()
         if segmentation:
             self._renderer.enable_segmentation_rendering()
-            self._renderer.update_scene(self._sim.data.ptr, camera=camera_id)
+            self._renderer.update_scene(self._sim.data.ptr, camera=camera_id, scene_option=self._scene_option)
             dpt_arr = self._renderer.render()
             dpt_arr = dpt_arr[::-1, :]
             self._renderer.disable_segmentation_rendering()
@@ -115,8 +117,19 @@ class MJRenderer(Renderer):
         for key, value in self._viewer_settings.items():
             if key == 'render_tendon':
                 viewer.flags[7] = value
+
             if key == 'render_actuator':
                 viewer.flags[4] = value
+
+
+    def _update_renderer_settings(self, renderer):
+        """Updates the given renderer object with the current camera settings."""
+        for key, value in self._viewer_settings.items():
+            if key == 'render_tendon':
+                renderer.flags[mujoco.mjtVisFlag.mjVIS_TENDON] = value
+            if key == 'render_actuator':
+                renderer.flags[mujoco.mjtVisFlag.mjVIS_ACTUATOR] = value
+                renderer.flags[mujoco.mjtVisFlag.mjVIS_ACTIVATION] = value
 
     def close(self):
         """Cleans up any resources being used by the renderer."""

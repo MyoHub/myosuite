@@ -1,13 +1,19 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+# This workflow will install Python dependencies, run tests
 
 name: Python application
 
 on:
   push:
     branches: [ "main" , "dev"]
+    paths-ignore:
+      - "doc/**"
+      - "**/README.md"
+
   pull_request:
     branches: [ "main" , "dev"]
+    paths-ignore:
+      - "doc/**"
+      - "**/README.md"
 
 permissions:
   contents: read
@@ -15,11 +21,20 @@ permissions:
 
 jobs:
   build:
+    env:
+      DISPLAY: :0
+  
     defaults:
       run:
         shell: bash -l {0}
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
 
     steps:
     - name: Checkout repository and submodules
@@ -30,20 +45,13 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: "3.10"
-    - name: Install mesa and patchelf
+    - name: Prepare Linux
+      if: ${{ runner.os == 'Linux' }}
       run: |
         sudo apt-get update -y -qq
-        sudo apt-get install -y \
-            libgl1-mesa-dev \
-            libgl1-mesa-glx \
-            libglew-dev \
-            libosmesa6-dev \
-            software-properties-common
-        sudo apt-get install -y patchelf
-    - name: Check if EGL library exists
-      run: ldconfig -p | grep EGL
-    - name: Check if libstdc library exists
-      run: ldconfig -p | grep  libstdc++
+        sudo apt-get install -y xvfb x11-xserver-utils
+        sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &               
+        
     - name: Enable Conda
       uses: conda-incubator/setup-miniconda@v2
       with:
@@ -53,30 +61,42 @@ jobs:
       run: |
           conda info
           CONDA_DEFAULT_ENV=test_myosuite
-          conda create --name $CONDA_DEFAULT_ENV python=3.7.1 -y
+          conda create --name $CONDA_DEFAULT_ENV python=3.8 -y
           conda activate $CONDA_DEFAULT_ENV
+
+#     - name: Prepare MacOS
+#       if: ${{ runner.os == 'macOS' }}
+#       run: |
+#         brew install --cask xquartz
+#         brew install hdf5        
+#         export CPATH="/opt/homebrew/include/"
+#         export HDF5_DIR=/opt/homebrew/
+#         pip3 install h5py --only-binary h5py
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -e .
+        conda activate $CONDA_DEFAULT_ENV
+        python3 -m pip install --upgrade pip
+        pip3 install -e .
+        
     - name: Run MuJoCo Rendering test
-      run: python -m mujoco.render_test
+      if: ${{ runner.os == 'Linux' }}
+      run: python3 -m mujoco.render_test
+      
     - name: Run Test environment
       run: |
-        python -m myosuite.tests.test_myo
+        conda activate $CONDA_DEFAULT_ENV
+        python3 -m myosuite.tests.test_myo
+        
     - name: Install ffmpeg
+      if: ${{ runner.os == 'Linux' }}
       run: |
-        sudo apt-get install --no-install-recommends ffmpeg && pip install ffmpeg scikit-video
-        conda install -c conda-forge libstdcxx-ng
-        export MUJOCO_GL=egl
-    #   sudo apt-get install libx11-dev libglfw3-dev        
-    #   export DISPLAY=:1
-    #   pip install glfw
-    # - name: Setup for screen rendering
-    #   run: |
-    #     export DISPLAY=:0
+        sudo apt-get install --no-install-recommends ffmpeg && pip3 install ffmpeg scikit-video
+
     - name: Test rendering
-      run: python -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
+      if: ${{ runner.os == 'Linux' }}
+      run: python3 -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
     - name: Run Test jupyter-notebooks tutorials
+      if: ${{ runner.os == 'Linux' }}
       run: |
+        conda activate $CONDA_DEFAULT_ENV
         source myosuite/tests/test_tutorials.sh

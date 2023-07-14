@@ -30,7 +30,7 @@ Example on how to use an environment e.g. send random movements
     env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
     for _ in range(1000):
-        env.sim.render(mode='window')
+        env.mj_render()
         env.step(env.action_space.sample()) # take a random action
     env.close()
 
@@ -48,7 +48,7 @@ Example on how to generate and visualize a movement e.g. index flexion, and visu
     env = gym.make('myoHandPoseRandom-v0')
     env.reset()
     for _ in range(1000):
-        env.sim.render(mode='window')
+        env.mj_render()
         env.step(env.action_space.sample()) # take a random action
     env.close()
 
@@ -70,7 +70,7 @@ Example on using a policy e.g. elbow flexion, and change non-stationaries
     env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
     for _ in range(1000):
-        env.sim.render(mode='window')
+        env.mj_render()
         env.step(env.action_space.sample()) # take a random action
 
 
@@ -88,14 +88,14 @@ This example shows how to add fatigue to a model. It tests random actions on a m
     env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
     for _ in range(1000):
-        env.sim.render(mode='window')
+        env.mj_render()
         env.step(env.action_space.sample()) # take a random action
 
     # Add muscle fatigue
     env = gym.make('myoFatiElbowPose1D6MRandom-v0')
     env.reset()
     for _ in range(1000):
-        env.sim.render(mode='window')
+        env.mj_render()
         env.step(env.action_space.sample()) # take a random action
     env.close()
 
@@ -113,14 +113,14 @@ This example shows how to add sarcopenia or muscle weakness to a model. It tests
     env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
     for _ in range(1000):
-        env.sim.render(mode='window')
+        env.mj_render()
         env.step(env.action_space.sample()) # take a random action
 
     # Add muscle weakness
     env = gym.make('myoSarcElbowPose1D6MRandom-v0')
     env.reset()
     for _ in range(1000):
-        env.sim.render(mode='window')
+        env.mj_render()
         env.step(env.action_space.sample()) # take a random action
     env.close()
 
@@ -139,14 +139,14 @@ This example shows how load a model with physical tendon transfer.
     env = gym.make('myoHandKeyTurnFixed-v0')
     env.reset()
     for _ in range(1000):
-        env.sim.render(mode='window')
+        env.mj_render()
         env.step(env.action_space.sample()) # take a random action
 
     # Add tendon transfer
     env = gym.make('myoTTHandKeyTurnFixed-v0')
     env.reset()
     for _ in range(1000):
-        env.sim.render(mode='window')
+        env.mj_render()
         env.step(env.action_space.sample()) # take a random action
     env.close()
 
@@ -177,7 +177,7 @@ If you want to load and execute the pre-trained DEP-RL baseline. Make sure that 
     policy = deprl.load_baseline(env)
     obs = env.reset()
     for i in range(1000):
-        env.sim.render(mode='window')
+        env.mj_render()
         action = policy(obs)
         obs, *_ = env.step(action)
     env.close()

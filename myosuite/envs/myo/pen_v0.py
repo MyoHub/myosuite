@@ -10,7 +10,6 @@ import gym
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils.quat_math import euler2quat
 from myosuite.utils.vector_math import calculate_cosine
-from os import sendfile
 
 class PenTwirlFixedEnvV0(BaseV0):
 

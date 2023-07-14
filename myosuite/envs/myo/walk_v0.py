@@ -431,6 +431,7 @@ class TerrainEnvV0(BaseV0):
         self.terrain = terrain
         self.variant = variant
         self.steps = 0
+        
         super()._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        **kwargs
@@ -510,58 +511,35 @@ class TerrainEnvV0(BaseV0):
         if self.terrain == 'rough':
             rough = np.random.uniform(low=-.5, high=.5, size=(10000,))
             normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
-            self.sim.model.hfield_data[:] = normalized_data
+            scalar, offset = .08, .02
+            self.sim.model.hfield_data[:] = normalized_data*scalar - offset
 
         elif self.terrain == 'hilly':
-            flat = 3500
-            flat_part = -2 * np.ones(flat)
-            frequency = 3.75
+            flat_length, frequency = 3000, 3
+            scalar = 0.63 if self.variant == 'fixed' else self.np_random.uniform(low=0.53, high=0.73)
 
-            hilly_part_raw = np.sin(np.linspace(0, frequency*np.pi, int(1e4-flat)) + np.pi/2)
-            hilly_part = -2 + 0.5 * (hilly_part_raw - 1)
+            combined_data = np.concatenate((-2 * np.ones(flat_length), -2 + 0.5 * (np.sin(np.linspace(0, frequency*np.pi, int(1e4-flat)) + np.pi/2) - 1)))
+            normalized_data = (combined_data - combined_data.min()) / (combined_data.max() - combined_data.min())
 
-            combined_data = np.concatenate((flat_part, hilly_part))
-            
-            if self.variant == 'fixed':
-                scalar = 5.5
-            else:
-                scalar = self.np_random.uniform(low=4.5, high=6.5)
-                
-            normalized_data = (combined_data - np.min(combined_data)) / (np.max(combined_data) - np.min(combined_data))
-            self.sim.model.hfield_data[:] = np.flip(normalized_data.reshape(100,100)*scalar, [0,1]).reshape(10000,)      
+            self.sim.model.hfield_data[:] = np.flip(normalized_data.reshape(100,100)*scalar, [0,1]).reshape(10000,)
         
         elif self.terrain == 'stairs':
-            flat = 5200
             num_stairs = 12
-            flat_part = np.full((flat//100, 100), -2)
-            stair_height = .1  
-
-            remainder = (1e4 - flat) % num_stairs
-            flat = flat if remainder == 0 else flat - remainder
+            stair_height = .1
+            flat = 5200 - (1e4 - 5200) % num_stairs
             stairs_width = (1e4 - flat) // num_stairs
+            scalar = 2.5 if self.variant == 'fixed' else self.np_random.uniform(low=1.5, high=3.5)
 
-            stair_part = np.empty((0, 100))
+            stair_parts = [np.full((int(stairs_width//100), 100), -2 + stair_height * j) for j in range(num_stairs)]
+            new_terrain_data = np.concatenate([np.full((int(flat // 100), 100), -2)] + stair_parts, axis=0)
 
-            for j in range(num_stairs):
-                single_stair = np.full((int(stairs_width//100), 100), -2 + stair_height * j)
-                stair_part = np.append(stair_part, single_stair, axis=0)
-
-            new_terrain_data = np.concatenate((flat_part, stair_part), axis=0)
-            
-            if self.variant == 'fixed':
-                scalar = 25
-            else:
-                scalar = self.np_random.uniform(low=15, high=35)
-                
             normalized_data = (new_terrain_data + 2) / (2 + stair_height * num_stairs)
             self.sim.model.hfield_data[:] = np.flip(normalized_data.reshape(100,100)*scalar, [0,1]).reshape(10000,)
-            
-#         if self.sim.render_contexts:
-#             functions.mjr_uploadHField(self.sim.model, self.sim.render_contexts[0].con, 0)
-            
+
+        self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0,0,0])
         self.sim.model.geom_contype[self.sim.model.geom_name2id('terrain')] = 1
         self.sim.model.geom_conaffinity[self.sim.model.geom_name2id('terrain')] = 1
-
+        
         if self.reset_type == 'random':
             qpos, qvel = self.get_randomized_initial_state()
         elif self.reset_type == 'init':
