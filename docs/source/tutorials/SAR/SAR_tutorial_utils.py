@@ -36,7 +36,7 @@ plt.rcParams["font.family"] = "Latin Modern Roman"
 def show_video(video_path, video_width=600):
     """
     Displays any mp4 video within the notebook.
-    
+
     video_path: str; path to mp4
     video_width: str; optional; size to render video
     """
@@ -57,21 +57,21 @@ class SaveSuccesses(BaseCallback):
         self.success_buffer = dq(maxlen=100)
         self.success_results = []
         self.env_name = env_name
-        
+
     def _on_rollout_start(self) -> None:
         self.check_for_success = []
-        
+
     def _init_callback(self) -> None:
         # Create folder if needed
         if self.save_path is not None:
             os.makedirs(self.save_path, exist_ok=True)
-            
+
     def _on_rollout_end(self) -> None:
         if sum(self.check_for_success) > 0:
             self.success_buffer.append(1)
         else:
             self.success_buffer.append(0)
-        
+
         if len(self.success_buffer) > 0:
             self.success_results.append(sum(self.success_buffer)/len(self.success_buffer))
 
@@ -79,12 +79,12 @@ class SaveSuccesses(BaseCallback):
         if self.n_calls % self.check_freq == 0:
             self.check_for_success.append(self.locals['infos'][0]['solved'])
         return True
-    
+
     def _on_training_end(self) -> None:
         np.save(os.path.join(self.log_dir, f'success_{self.env_name}'), np.array(self.success_results))
 #         plt.plot(range(len(self.success_results)), self.success_results)
 #         plt.show()
-        pass    
+        pass
 
 def linear_schedule(initial_value: float) -> Callable[[float], float]:
     """
@@ -119,7 +119,7 @@ def plot_zeroshot(ax, data, colors=None, total_width=0.8, single_width=1, legend
     for i, (name, values) in enumerate(data.items()):
         x_offset = (i - n_bars / 2) * bar_width + bar_width / 2
         for x, y in enumerate(values):
-            bar = ax.bar(x + x_offset, y, width=bar_width * single_width, 
+            bar = ax.bar(x + x_offset, y, width=bar_width * single_width,
                          color=colors[i % len(colors)],capsize=2)
         bars.append(bar[0])
     if legend:
@@ -131,7 +131,7 @@ def plot_zeroshot(ax, data, colors=None, total_width=0.8, single_width=1, legend
 
     plt.xticks(fontsize=12)
     plt.yticks(fontsize=12)
-    
+
 def plot_results(smoothing=1000, experiment='locomotion', terrain=None):
     if not isinstance(smoothing, int) or smoothing < 1:
         raise ValueError("The smoothing value must be an integer greater than or equal to 1")
@@ -187,18 +187,18 @@ def plot_results(smoothing=1000, experiment='locomotion', terrain=None):
     plt.show()
 
 
-def load_manipulation_SAR():    
+def load_manipulation_SAR():
     ica = joblib.load('./SAR_pretrained/manipulation/ica.pkl')
     pca = joblib.load('./SAR_pretrained/manipulation/pca.pkl')
     normalizer = joblib.load('./SAR_pretrained/manipulation/normalizer.pkl')
-    
+
     return ica, pca, normalizer
 
-def load_locomotion_SAR():    
+def load_locomotion_SAR():
     ica = joblib.load('./SAR_pretrained/locomotion/ica.pkl')
     pca = joblib.load('./SAR_pretrained/locomotion/pca.pkl')
     normalizer = joblib.load('./SAR_pretrained/locomotion/normalizer.pkl')
-    
+
     return ica, pca, normalizer
 
 class SynNoSynWrapper(gym.ActionWrapper):
@@ -212,19 +212,19 @@ class SynNoSynWrapper(gym.ActionWrapper):
         self.pca = pca
         self.scaler = scaler
         self.weight = phi
-        
+
         self.syn_act_space = self.pca.components_.shape[0]
         self.no_syn_act_space = env.action_space.shape[0]
         self.full_act_space = self.syn_act_space + self.no_syn_act_space
-        
+
         self.action_space = gym.spaces.Box(low=-1., high=1., shape=(self.full_act_space,),dtype=np.float32)
     def action(self, act):
         syn_action = act[:self.syn_act_space]
         no_syn_action = act[self.syn_act_space:]
-        
+
         syn_action = self.pca.inverse_transform(self.ica.inverse_transform(self.scaler.inverse_transform([syn_action])))[0]
         final_action = self.weight * syn_action + (1 - self.weight) * no_syn_action
-        
+
         return final_action
 
 class SynergyWrapper(gym.ActionWrapper):
@@ -237,21 +237,21 @@ class SynergyWrapper(gym.ActionWrapper):
         self.ica = ica
         self.pca = pca
         self.scaler = w_scaler
-        
+
         self.action_space = gym.spaces.Box(low=-1., high=1., shape=(self.pca.components_.shape[0],),dtype=np.float32)
-    
+
     def action(self, act):
         action = self.pca.inverse_transform(self.ica.inverse_transform(self.scaler.inverse_transform([act])))
         return action[0]
 
-def get_vid(name, env_name, seed, episodes, video_name, determ=False, 
-            pca=None, ica=None, scaler=None, phi=None, is_sar=False, syn_nosyn=False):
+def get_vid(name, env_name, seed, episodes, video_name, determ=False,
+            pca=None, ica=None, normalizer=None, phi=None, is_sar=False, syn_nosyn=False):
     frames = []
     if is_sar:
         if syn_nosyn:
-            env = SynNoSynWrapper(gym.make(env_name), ica, pca, scaler, phi)
+            env = SynNoSynWrapper(gym.make(env_name), ica, pca, normalizer, phi)
         else:
-            env = SynergyWrapper(gym.make(env_name), ica, pca, scaler, phi)
+            env = SynergyWrapper(gym.make(env_name), ica, pca, normalizer, phi)
     else:
         env = gym.make(env_name)
 
@@ -259,26 +259,26 @@ def get_vid(name, env_name, seed, episodes, video_name, determ=False,
         camera = 'side_view'
     else:
         camera = 'front'
-        
-    for i,__ in tqdm(enumerate(range(episodes))):              
+
+    for i,__ in tqdm(enumerate(range(episodes))):
         env.reset()
 
         model = SAC.load(f'{name}_model_{env_name}_{seed}.zip')
         vec = VecNormalize.load(f'{name}_env_{env_name}_{seed}', DummyVecEnv([lambda: env]))
-        
+
         rs = 0
         is_solved = []
         done = False
         while not done:
             o = vec.normalize_obs(env.get_obs())
             a, __ = model.predict(o, deterministic=determ)
-            
+
             frame = env.sim.renderer.render_offscreen(width=640, height=480,camera_id=camera)
             frames.append(frame)
 
             next_o, r, done, info = env.step(a)
             is_solved.append(info['solved'])
-            
+
             rs+=r
     env.close()
     skvideo.io.vwrite(f'{video_name}.mp4', np.asarray(frames),outputdict={"-pix_fmt": "yuv420p"})
