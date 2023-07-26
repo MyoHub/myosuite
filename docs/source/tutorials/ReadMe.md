@@ -1,7 +1,8 @@
-# Here a list of tutorial on how to use MyoSuite
+# Here a list of tutorials on how to use MyoSuite
 
 ## Requirements
 You need to install Jupyter Notebooks with:
+
 ``` bash
 pip install jupyter
 ```
@@ -26,7 +27,7 @@ jupyter kernelspec uninstall myosuite
 - [Train a new policy with MJRL](./4_Train_policy.ipynb). *
 - [Use the DEPRL baseline](./4a_deprl.ipynb). For this tutorial, `deprl` is needed. You can install it with `pip install deprl`
 - [Use the MyoReflex baseline](./4b_reflex/MyoSuite_MyoReflex_Walk.ipynb). For this tutorial, we provided a wrapper to use MyoReflex together with the tutorial file
-- [Train a new policy with SB](./4c_Train_SB_policy.ipynb). For this tutorial, `stable-baselines3` is needed. You can install it with `pip install stable-baselines`
+- [Train a new policy with stable baselines (SB)](./4c_Train_SB_policy.ipynb). For this tutorial, `stable-baselines3` is needed. You can install it with `pip install stable-baselines`
 - [Move single finger of the Hand](./5_Move_Hand_Fingers.ipynb)
 
 *For those tutorial, `mjrl` and `mujoco_py` are needed. You can install them with `pip install tabulate matplotlib torch free-mujoco-py git+https://github.com/aravindr93/mjrl.git`
