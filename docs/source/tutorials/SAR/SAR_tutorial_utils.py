@@ -106,11 +106,44 @@ def linear_schedule(initial_value: float) -> Callable[[float], float]:
     return func
 
 def smooth(y, box_pts):
+    """
+    Smooths the input array by applying a moving average filter.
+
+    Parameters
+    ----------
+    y : ndarray
+        Input array to smooth.
+    box_pts : int
+        The size of the moving average window.
+
+    Returns
+    -------
+    y_smooth : ndarray
+        The smoothed array.
+    """
     box = np.ones(box_pts)/box_pts
     y_smooth = np.convolve(y, box, mode='same')
     return y_smooth
 
 def plot_zeroshot(ax, data, colors=None, total_width=0.8, single_width=1, legend=True):
+    """
+    Plots a grouped bar chart for the zero-shot generalization results.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The axes on which to plot.
+    data : dict
+        A dictionary where keys are the bar group names and values are lists of bar heights within each group.
+    colors : list, optional
+        The colors to use for the bars. If None, uses the colors from the current color cycle.
+    total_width : float, optional
+        The total width of each group of bars. Default is 0.8.
+    single_width : float, optional
+        The relative width of each individual bar within a group. Default is 1.
+    legend : bool, optional
+        Whether to include a legend. Default is True.
+    """
     if colors is None:
         colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     n_bars = len(data)
@@ -133,6 +166,18 @@ def plot_zeroshot(ax, data, colors=None, total_width=0.8, single_width=1, legend
     plt.yticks(fontsize=12)
 
 def plot_results(smoothing=1000, experiment='locomotion', terrain=None):
+    """
+    Plots the results for the specified experiment and terrain.
+
+    Parameters
+    ----------
+    smoothing : int, optional
+        The window size for smoothing the results. Default is 1000.
+    experiment : str, optional
+        The type of experiment to plot results for. Must be either 'locomotion' or 'manipulation'. Default is 'locomotion'.
+    terrain : str, optional
+        The type of terrain for the 'locomotion' experiment. Default is None.
+    """
     if not isinstance(smoothing, int) or smoothing < 1:
         raise ValueError("The smoothing value must be an integer greater than or equal to 1")
 
@@ -186,18 +231,39 @@ def plot_results(smoothing=1000, experiment='locomotion', terrain=None):
     plt.yticks(fontsize=12)
     plt.show()
 
-
 def load_manipulation_SAR():
-    ica = joblib.load('./SAR_pretrained/manipulation/ica.pkl')
-    pca = joblib.load('./SAR_pretrained/manipulation/pca.pkl')
-    normalizer = joblib.load('./SAR_pretrained/manipulation/normalizer.pkl')
+    """
+    Loads the trained SAR model for manipulation tasks.
+
+    Returns
+    -------
+    tuple
+        The trained ICA model, PCA model, and scaler for manipulation tasks.
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.join(current_dir, '../../../../myosuite/agents/SAR_pretrained/manipulation')
+
+    ica = joblib.load(os.path.join(root_dir, 'ica.pkl'))
+    pca = joblib.load(os.path.join(root_dir, 'pca.pkl'))
+    normalizer = joblib.load(os.path.join(root_dir, 'normalizer.pkl'))
 
     return ica, pca, normalizer
 
 def load_locomotion_SAR():
-    ica = joblib.load('./SAR_pretrained/locomotion/ica.pkl')
-    pca = joblib.load('./SAR_pretrained/locomotion/pca.pkl')
-    normalizer = joblib.load('./SAR_pretrained/locomotion/normalizer.pkl')
+    """
+    Loads the trained SAR model for locomotion tasks.
+
+    Returns
+    -------
+    tuple
+        The trained ICA model, PCA model, and scaler for locomotion tasks.
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.join(current_dir, '../../../../myosuite/agents/SAR_pretrained/locomotion')
+
+    ica = joblib.load(os.path.join(root_dir, 'ica.pkl'))
+    pca = joblib.load(os.path.join(root_dir, 'pca.pkl'))
+    normalizer = joblib.load(os.path.join(root_dir, 'normalizer.pkl'))
 
     return ica, pca, normalizer
 
@@ -232,11 +298,11 @@ class SynergyWrapper(gym.ActionWrapper):
     gym.ActionWrapper that reformulates the action space as the synergy space and inverse transforms
     synergy-exploiting actions back into the original muscle activation space.
     """
-    def __init__(self, env, ica, pca, w_scaler):
+    def __init__(self, env, ica, pca, phi):
         super().__init__(env)
         self.ica = ica
         self.pca = pca
-        self.scaler = w_scaler
+        self.scaler = phi
 
         self.action_space = gym.spaces.Box(low=-1., high=1., shape=(self.pca.components_.shape[0],),dtype=np.float32)
 
@@ -246,6 +312,36 @@ class SynergyWrapper(gym.ActionWrapper):
 
 def get_vid(name, env_name, seed, episodes, video_name, determ=False,
             pca=None, ica=None, normalizer=None, phi=None, is_sar=False, syn_nosyn=False):
+    """
+    Records a video of the agent behaving in the environment.
+
+    Parameters
+    ----------
+    name : str
+        The name of the agent.
+    env_name : str
+        The name of the environment.
+    seed : int
+        The seed for the environment.
+    episodes : int
+        The number of episodes to record.
+    video_name : str
+        The name of the output video file.
+    determ : bool, optional
+        Whether to use deterministic actions. Default is False.
+    pca : sklearn.decomposition.PCA, optional
+        The PCA model for transforming the synergy actions. Default is None.
+    ica : sklearn.decomposition.FastICA, optional
+        The ICA model for transforming the synergy actions. Default is None.
+    normalizer : sklearn.preprocessing.StandardScaler, optional
+        The scaler for normalizing and denormalizing the synergy actions. Default is None.
+    phi : float, optional
+        The weighting factor for combining the synergy and original actions. Default is None.
+    is_sar : bool, optional
+        Whether the agent uses SAR. Default is False.
+    syn_nosyn : bool, optional
+        Whether the agent uses both synergy and original actions. Default is False.
+    """
     frames = []
     if is_sar:
         if syn_nosyn:
