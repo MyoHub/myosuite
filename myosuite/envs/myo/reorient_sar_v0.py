@@ -264,7 +264,6 @@ class Geometries100EnvV0(ProprioceptiveEnvV0):
         
         self.sim.model.geom_condim[self.obj_gid] = 3
         desired_orien = np.zeros(3)
-#       THESE HAVE CHANGED!!!!!  
         desired_orien[0] = self.np_random.uniform(low=-1, high=1)
         desired_orien[1] = self.np_random.uniform(low=-.8, high=1.2)
         
