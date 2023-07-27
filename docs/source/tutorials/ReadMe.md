@@ -28,5 +28,6 @@ jupyter kernelspec uninstall myosuite
 - [Use the MyoReflex baseline](./4b_reflex/MyoSuite_MyoReflex_Walk.ipynb). For this tutorial, we provided a wrapper to use MyoReflex together with the tutorial file
 - [Train a new policy with SB](./4c_Train_SB_policy.ipynb). For this tutorial, `stable-baselines3` is needed. You can install it with `pip install stable-baselines`
 - [Move single finger of the Hand](./5_Move_Hand_Fingers.ipynb)
+- [Train policies with SAR](./SAR/SAR%20tutorial.ipynb). All required installations are included within the SAR tutorial notebook.
 
 *For those tutorial, `mjrl` and `mujoco_py` are needed. You can install them with `pip install tabulate matplotlib torch free-mujoco-py git+https://github.com/aravindr93/mjrl.git`
