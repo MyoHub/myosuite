@@ -49,6 +49,11 @@ Get commands to run
 % sh train_myosuite.sh myo slurm sb3   # use stable-baselines3 with slurm launcher
 ```
 
+## Pretrained SAR representations
+We provide pretrained synergistic representations for training locomotion and manipulation policies in `/SAR_pretrained`. These representations can be used to enhance learning using the `SAR_RL()` function defined in the SAR tutorial. Custom functions are also defined in the tutorial for automatically loading these representations (`load_locomotion_SAR()` and `load_manipulation_SAR()`). 
+
+It is also possible to build your own SAR representations from scratch by following the steps outlined in the tutorial.
+
 ## DEP-RL Locomotion Baseline
 
 ### Installation
