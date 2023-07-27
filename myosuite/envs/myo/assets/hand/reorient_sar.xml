@@ -4,10 +4,10 @@
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
     <default>
-		<default class="reorient">
-			<geom contype="1" conaffinity="1" condim="3" material="MatSkin"/>
+        <default class="reorient">
+            <geom contype="1" conaffinity="1" condim="3" material="MatSkin"/>
             <site group="3"/>
-		</default>
+        </default>
     </default>
 
     <visual>
