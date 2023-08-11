@@ -11,7 +11,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/facebookresearch/myosuite/blob/main/docs/CONTRIBUTING.md)
 [![Downloads](https://pepy.tech/badge/myosuite)](https://pepy.tech/project/myosuite)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo)
-
+[![Supporting MyoChallenge](https://img.shields.io/static/v1?label=Supporting&message=NeurIPS-MyoChallenge2023&color=informational&link=https://github.com/MyoHub/myochallenge_2023eval)](https://github.com/MyoHub/myochallenge_2023eval)
 [![Slack](https://img.shields.io/badge/Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white)](https://myosuite.slack.com)
 [![Twitter Follow](https://img.shields.io/twitter/follow/MyoSuite?style=social)](https://twitter.com/MyoSuite)
 
