@@ -8,14 +8,14 @@ import gym
 import numpy as np
 import pink
 
-from myosuite.envs.myo.walk_v0 import WalkEnvV0
+from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils.quat_math import quat2euler, euler2quat
 
 
 class ChallengeOpponent:
     """
     Training Opponent for the Locomotion Track of the MyoChallenge 2023.
-    Contains several different policies. For the final evaluation, an additional 
+    Contains several different policies. For the final evaluation, an additional
     non-disclosed policy will be used.
     """
     def __init__(self, sim, rng, probabilities, min_spawn_distance):
@@ -63,13 +63,13 @@ class ChallengeOpponent:
         y_vel = vel[0] * np.sin(pose[-1] +0.5*np.pi)
         pose[0] -= self.dt * x_vel
         pose[1] -= self.dt * y_vel
-        pose[2] += self.dt * vel[1] 
+        pose[2] += self.dt * vel[1]
         pose[:2] = np.clip(pose[:2], -5.5, 5.5)
         self.set_opponent_pose(pose)
 
     def random_movement(self):
         """
-        This moves the opponent randomly in a correlated 
+        This moves the opponent randomly in a correlated
         pattern.
         """
         return self.noise_process.sample()
@@ -89,7 +89,7 @@ class ChallengeOpponent:
 
     def update_opponent_state(self):
         """
-        This function executes an opponent step with 
+        This function executes an opponent step with
         one of the control policies.
         """
         if self.opponent_policy == 'stationary' or self.opponent_policy == 'static_stationary':
@@ -104,7 +104,7 @@ class ChallengeOpponent:
 
     def reset_opponent(self):
         """
-        This function should initially place the opponent on a random position with a 
+        This function should initially place the opponent on a random position with a
         random orientation with a minimum radius to the model.
         """
         self.opponent_vel = np.zeros((2,))
@@ -171,7 +171,7 @@ class ChaseTagEnvV0(WalkEnvV0):
                ):
         self._setup_convenience_vars()
         self.reset_type = reset_type
-        self.maxTime = 20 
+        self.maxTime = 20
         self.win_distance = win_distance
         self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
         self.opponent = ChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance)
@@ -221,7 +221,7 @@ class ChaseTagEnvV0(WalkEnvV0):
             # Perform reward tuning here --
             # Update Optional Keys section below
             # Update reward keys (DEFAULT_RWD_KEYS_AND_WEIGHTS) accordingly to update final rewards
-            # Examples: Env comes pre-packaged with two keys act_reg and lose 
+            # Examples: Env comes pre-packaged with two keys act_reg and lose
 
                 # Optional Keys
                 ('act_reg', act_mag),
@@ -374,7 +374,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         Return a list of joint names according to the index ID of the joint angles
         '''
         return [self.sim.model.joint(jnt_id).name for jnt_id in range(1, self.sim.model.njnt)]
-    
+
     def _get_actuator_names(self):
         '''
         Return a list of actuator names according to the index ID of the actuators
