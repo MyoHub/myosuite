@@ -55,6 +55,11 @@ class ReachEnvV0(BaseV0):
                 )
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.init_qvel[:] = self.sim.model.key_qvel[0]
+        # find geometries with ID == 1 which indicates the skins
+        geom_1_indices = np.where(self.sim.model.geom_group == 1)
+        # Change the alpha value to make it transparent
+        self.sim.model.geom_rgba[geom_1_indices, 3] = 0
+
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -365,7 +370,7 @@ class WalkEnvV0(BaseV0):
         Get the angles of a list of named joints.
         """
         return np.array([self.sim.data.qpos[self.sim.model.jnt_qposadr[self.sim.model.joint_name2id(name)]] for name in names])
-    
+
 class TerrainEnvV0(WalkEnvV0):
 
     DEFAULT_OBS_KEYS = [
@@ -431,18 +436,18 @@ class TerrainEnvV0(WalkEnvV0):
         self.terrain = terrain
         self.variant = variant
         self.steps = 0
-        
+
         BaseV0._setup(self, obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        **kwargs
                        )
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.init_qvel[:] = 0.0
-                   
+
     def reset(self):
         self.steps = 0
         if self.terrain == 'rough':
-            rough = np.random.uniform(low=-.5, high=.5, size=(10000,))
+            rough = self.np_random.uniform(low=-.5, high=.5, size=(10000,))
             normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
             scalar, offset = .08, .02
             self.sim.model.hfield_data[:] = normalized_data*scalar - offset
@@ -455,7 +460,7 @@ class TerrainEnvV0(WalkEnvV0):
             normalized_data = (combined_data - combined_data.min()) / (combined_data.max() - combined_data.min())
 
             self.sim.model.hfield_data[:] = np.flip(normalized_data.reshape(100,100)*scalar, [0,1]).reshape(10000,)
-        
+
         elif self.terrain == 'stairs':
             num_stairs = 12
             stair_height = .1
@@ -473,7 +478,7 @@ class TerrainEnvV0(WalkEnvV0):
         self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0,0,0])
         self.sim.model.geom_contype[self.sim.model.geom_name2id('terrain')] = 1
         self.sim.model.geom_conaffinity[self.sim.model.geom_name2id('terrain')] = 1
-        
+
         if self.reset_type == 'random':
             qpos, qvel = self.get_randomized_initial_state()
         elif self.reset_type == 'init':
