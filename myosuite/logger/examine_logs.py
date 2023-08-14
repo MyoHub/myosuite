@@ -41,13 +41,14 @@ import os
 @click.option('-cp', '--compress_paths', type=bool, default=True, help=('compress paths. Remove obs and env_info/state keys'))
 @click.option('-pp', '--plot_paths', type=bool, default=False, help=('2D-plot of individual paths'))
 @click.option('-ea', '--env_args', type=str, default=None, help=('env args. E.g. --env_args "{\'is_hardware\':True}"'))
-@click.option('-ns', '--noise_scale', type=float, default=0.0, help=('Noise amplitude in randians}"'))
-
-def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, num_repeat, render, camera_name, frame_size, output_dir, output_name, save_paths, compress_paths, plot_paths, env_args, noise_scale):
+@click.option('-ns', '--noise_scale', type=float, default=0.0, help=('Noise amplitude in randians}'))
+@click.option('-ie', '--include_exteroception', type=bool, default=False, help=('Include exteroception'))
+def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, num_repeat, render, camera_name, frame_size, output_dir, output_name, save_paths, compress_paths, plot_paths, env_args, noise_scale, include_exteroception):
 
     # seed and load environments
     np.random.seed(seed)
     env = gym.make(env_name) if env_args==None else gym.make(env_name, **(eval(env_args)))
+    env = env.env
     env.seed(seed)
 
     # Start a "trace" for recording rollouts
@@ -77,7 +78,7 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
 
     # Resolve rendering
     if render == 'onscreen':
-        env.env.mujoco_render_frames = True
+        env.mujoco_render_frames = True
     elif render =='offscreen':
         env.mujoco_render_frames = False
     elif render == None:
@@ -102,7 +103,7 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
                 if "state" in path_data['env_infos'].keys():
                     path_state = tensor_utils.split_tensor_dict_list(path_data['env_infos']['state'])
                     env.reset(reset_qpos=path_state[0]['qpos'], reset_qvel=path_state[0]['qvel'])
-                    env.env.set_env_state(path_state[0])
+                    env.set_env_state(path_state[0])
                 else:
                     env.reset()
             elif path_data and rollout_format=='RoboSet':
@@ -121,8 +122,8 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
             trace_horizon = horizon if mode=='record' else path_data['time'].shape[0]-1
 
             # Rollout path --------------------------------
-            ep_rwd = 0.0
-            obs, rwd, done, env_info = env.forward()
+            obs, rwd, done, env_info = env.forward(update_exteroception=include_exteroception)
+            ep_rwd = rwd
             for i_step in range(trace_horizon+1):
 
                 # Get step's actions ----------------------
@@ -156,7 +157,7 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
                     elif rollout_format=='RoboHive':
                         act = path_data['env_infos']['obs_dict']['qp'][i_step]
                     if noise_scale:
-                        act = act + env.env.np_random.uniform(high=noise_scale, low=-noise_scale, size=len(act)).astype(act.dtype)
+                        act = act + env.np_random.uniform(high=noise_scale, low=-noise_scale, size=len(act)).astype(act.dtype)
                     if env.normalize_act:
                         act = env.robot.normalize_actions(controls=act)
 
@@ -204,10 +205,10 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
                         env.set_env_state(path_state[i_step+1])
                     else:
                         raise NotImplementedError("Settings not found")
-                    obs, rwd, done, env_info = env.forward()
+                    obs, rwd, done, env_info = env.forward(update_exteroception=include_exteroception)
                     ep_rwd += rwd
                 elif i_step < trace_horizon: # incase last step actions (nans) can cause issues in step
-                    obs, rwd, done, env_info = env.step(act)
+                    obs, rwd, done, env_info = env.step(act, update_exteroception=include_exteroception)
                     ep_rwd += rwd
 
             # save offscreen buffers as video and clear the dataset
@@ -216,7 +217,8 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
                 trace.remove_dataset(group_keys=[path_name], dataset_key=camera_name)
 
             # Finish rollout
-            print(f"Finishing {path_name} rollout in {(time.time()-ep_t0):0.4} sec. Total rewards {ep_rwd}")
+            old_stat = f"(Old rollout rewards: {sum(path_data['rewards'][:])})" if path_data else ""
+            print(f"Finishing {path_name[:-2]} rollout in {(time.time()-ep_t0):0.4} sec. Total rewards {ep_rwd} "+old_stat)
 
         # Finish loop
         print("Finished rollout loop:{}".format(i_loop))

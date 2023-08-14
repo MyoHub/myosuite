@@ -4,7 +4,6 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ================================================= """
 
 import collections
-from traceback import print_tb
 import numpy as np
 import gym
 

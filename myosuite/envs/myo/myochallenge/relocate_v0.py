@@ -24,6 +24,7 @@ class RelocateEnvV0(BaseV0):
         super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
 
+
     def _setup(self,
             target_xyz_range,       # target position range (relative to initial pos)
             target_rxryrz_range,    # target rotation range (relative to initial rot)
@@ -71,6 +72,7 @@ class RelocateEnvV0(BaseV0):
             obs_dict['act'] = sim.data.act[:].copy()
         return obs_dict
 
+
     def get_reward_dict(self, obs_dict):
         reach_dist = np.abs(np.linalg.norm(self.obs_dict['reach_err'], axis=-1))
         pos_dist = np.abs(np.linalg.norm(self.obs_dict['pos_err'], axis=-1))
@@ -98,6 +100,7 @@ class RelocateEnvV0(BaseV0):
         self.sim.model.site_rgba[self.success_indicator_sid, :2] = np.array([0, 2]) if rwd_dict['solved'] else np.array([2, 0])
         return rwd_dict
 
+
     def get_metrics(self, paths, successful_steps=5):
         """
         Evaluate paths and report metrics
@@ -120,6 +123,7 @@ class RelocateEnvV0(BaseV0):
             'effort':effort,
             }
         return metrics
+
 
     def reset(self, reset_qpos=None, reset_qvel=None):
         self.sim.model.body_pos[self.goal_bid] = self.np_random.uniform(**self.target_xyz_range)
