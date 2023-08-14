@@ -2,13 +2,13 @@
 # Copyright (c) Facebook, Inc. and its affiliates
 Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= -->
-<img src="https://github.com/facebookresearch/myosuite/blob/main/docs/source/images/Full%20Color%20Horizontal%20wider.png?raw=true" width=800>
+<img src="https://github.com/myohub/myosuite/blob/main/docs/source/images/Full%20Color%20Horizontal%20wider.png?raw=true" width=800>
 
 [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 [![PyPI](https://img.shields.io/pypi/v/myosuite)](https://pypi.org/project/MyoSuite/)
 [![Documentation Status](https://readthedocs.org/projects/myosuite/badge/?version=latest)](https://myosuite.readthedocs.io/en/latest/)
 ![PyPI - License](https://img.shields.io/pypi/l/myosuite)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/facebookresearch/myosuite/blob/main/docs/CONTRIBUTING.md)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/myohub/myosuite/blob/main/docs/CONTRIBUTING.md)
 [![Downloads](https://pepy.tech/badge/myosuite)](https://pepy.tech/project/myosuite)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo)
 [![Supporting MyoChallenge](https://img.shields.io/static/v1?label=Supporting&message=NeurIPS-MyoChallenge2023&color=informational&link=https://github.com/MyoHub/myochallenge_2023eval)](https://github.com/MyoHub/myochallenge_2023eval)
@@ -17,12 +17,12 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 `MyoSuite` is a collection of musculoskeletal environments and tasks simulated with the [MuJoCo](http://www.mujoco.org/) physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems.
 
- [Full task details](https://github.com/facebookresearch/myosuite/blob/main/docs/source/suite.rst#tasks) | [Baselines](https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents/baslines_NPG) | [Documentation](https://myosuite.readthedocs.io/en/latest/)
-| [Tutorials](https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials)
+ [Full task details](https://github.com/myohub/myosuite/blob/main/docs/source/suite.rst#tasks) | [Baselines](https://github.com/myohub/myosuite/tree/main/myosuite/agents/baslines_NPG) | [Documentation](https://myosuite.readthedocs.io/en/latest/)
+| [Tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials)
 
 Below is an overview of the tasks in the MyoSuite.
 
-<img width="1240" alt="TasksALL" src="https://github.com/facebookresearch/myosuite/blob/main/docs/source/images/myoSuite_All.png?raw=true">
+<img width="1240" alt="TasksALL" src="https://github.com/myohub/myosuite/blob/main/docs/source/images/myoSuite_All.png?raw=true">
 
 
 ## Getting Started
@@ -69,7 +69,7 @@ for _ in range(1000):
 env.close()
 ```
 
-You can find [tutorials](https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials#tutorials) on how to load MyoSuite models/tasks, train them, and visualize their outcome. Also, you can find [baselines](https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents) to test some pre-trained policies.
+You can find [tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials#tutorials) on how to load MyoSuite models/tasks, train them, and visualize their outcome. Also, you can find [baselines](https://github.com/myohub/myosuite/tree/main/myosuite/agents) to test some pre-trained policies.
 
 
 ## License
@@ -86,7 +86,7 @@ If you find this repository useful in your research, please consider giving a st
   title =        {MyoSuite -- A contact-rich simulation suite for musculoskeletal motor control},
   publisher = {arXiv},
   year = {2022},
-  howpublished = {\url{https://github.com/facebookresearch/myosuite}},
+  howpublished = {\url{https://github.com/myohub/myosuite}},
   year =         {2022}
   doi = {10.48550/ARXIV.2205.13600},
   url = {https://arxiv.org/abs/2205.13600},
