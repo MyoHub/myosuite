@@ -52,11 +52,11 @@ You can visualize the environments with random controls using the below command
 
 .. code-block:: bash
 
-   python myosuite/utils/visualize_env.py --env_name myoElbowPose1D6MRandom-v0
+   python myosuite/utils/examine_env.py --env_name myoElbowPose1D6MRandom-v0
 
 .. note::
    On MacOS, the need of a launch_passive option might require that the Python script be run under `mjpython` i.e. 
-   `myosuite/utils/visualize_env.py --env_name myoElbowPose1D6MRandom-v0`
+   `myosuite/utils/examine_env.py --env_name myoElbowPose1D6MRandom-v0`
 
 Examples
 ~~~~~~~~~
