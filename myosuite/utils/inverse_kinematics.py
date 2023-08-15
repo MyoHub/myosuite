@@ -19,7 +19,6 @@ This has been adjusted to work with RoboHive's physics class
 """
 
 import collections
-from traceback import print_tb
 
 from absl import logging
 # from dm_control.mujoco.wrapper import mjbindings

@@ -14,6 +14,8 @@ from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
+from stable_baselines3.common.vec_env import VecNormalize
+import myosuite
 
 import functools
 from in_callbacks import InfoCallback, FallbackCheckpoint, SaveSuccesses, EvalCallback
@@ -43,15 +45,17 @@ def train_loop(job_data) -> None:
         )
 
     log = configure(f'results_{job_data.env}')
-    # Create the vectorized environment
+    
+    # Create the vectorized environment and normalize ob
     env = make_vec_env(job_data.env, n_envs=job_data.n_env)
+    env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.)
 
     eval_env = make_vec_env(job_data.env, n_envs=job_data.n_eval_env)
+    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_obs=10.)
 
     algo = job_data.algorithm
     if algo == 'PPO':
         model = PPO(job_data.policy, env,  verbose=1,
-                    tensorboard_log=f"runs/{run.id}",
                     learning_rate=job_data.learning_rate, 
                     batch_size=job_data.batch_size, 
                     gamma=job_data.gamma, **job_data.alg_hyper_params)

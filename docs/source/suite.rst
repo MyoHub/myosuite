@@ -96,6 +96,17 @@ Joints and muscle details can be found in Rajagopal's paper [https://ieeexplore.
 .. image:: images/MyoLeg.png
   :height: 200
 
+.. _myoArm:
+
+myoArm
+=========
+The 3D dexterous human arm reaching and manipulation.
+
+This musculoskeletal model is comprised of 27 Degree of Freedom, and 63 muscles-tendon units.
+
+.. image:: images/myoArm.png
+  :height: 200
+
 
 
 .. _tasks:
@@ -282,7 +293,7 @@ Variants:
 
 Leg Walk
 ========================================
-A :ref:`myoLeg` model walks across a flat surface.
+A :ref:`myoLeg` model walks across a flat (or rough) surface.
 This task requires the control of 80 muscles while stabilizing the body to not fall down.
 
 Objective:
@@ -290,9 +301,15 @@ Objective:
 
 Variants:
     - **Easy**: Achieve a forward velocity in the y-direction without moving in the x-direction. ``myoLegWalk-v0``
-
+    - **Hard**: Achieve a forward velocity in the y-direction without moving in the x-direction on uneven terrain. ``myoLeg<Rough|Hilly|Stair>Walk-v0``
 .. image:: images/myoLeg_walk.png
   :width: 200
+
+
+Relocate Mobjects
+========================================
+A :ref:`myoArm` model
+
 
 
 Non-stationarities task variations
@@ -392,14 +409,29 @@ Summary of task and variantions
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
 | Die Rotation       | ``myoChallengeDieReorientP1-v1`` | Easy            |         √        |      √        |          √          |
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Die Rotation       | ``myoChallengeDieReorientP1-v1`` | Hard            |         √        |      √        |          √          |
+| Die Rotation       | ``myoChallengeDieReorientP2-v1`` | Hard            |         √        |      √        |          √          |
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
 | Hand Baoding Balls | ``myoChallengeBaodingP1-v1``     | Easy            |         √        |      √        |          √          |
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
 | Hand Baoding Balls | ``myoChallengeBaodingP2-v1``     | Hard            |         √        |      √        |          √          |
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Leg walk           | ``myoLegWalk-v0``                | Easy            |                  |               |                     |
+| 8 Objects Rotation | ``myoHandReorient8-v0``          | Easy            |         √        |      √        |          √          |
 +--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| 100 Obj. Rotation  | ``myoHandReorient100-v0``        | Easy            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| 1000 Obj. Rotation | ``myoHandReorientID-v0``         | Easy            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| 1000 Obj. Rotataion| ``myoHandReorientOOD-v0``        | Hard            |         √        |      √        |          √          |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Leg walk           | ``myoLegWalk-v0``                | Easy            |         √        |      √        |                     |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Leg walk Rough Grd.| ``myoLegRoughTerrainWalk-v0``    | Hard            |         √        |      √        |                     |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Grasping & Placing | ``myoChallengeRelocateP1-v0``    | Easy            |         √        |      √        |                     |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+| Chase Tag          | ``myoChallengeChaseTagP1-v0``    | Easy            |         √        |      √        |                     |
++--------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+
 
 Variartions:
   - **Sarcopenia**: myoSarc<Environment> e.g. myoSarcHandPoseFixed-v0

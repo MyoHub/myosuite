@@ -4,7 +4,6 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ================================================= """
 
 import collections
-from traceback import print_tb
 import numpy as np
 import gym
 
@@ -17,6 +16,9 @@ class ReorientEnvV0(BaseV0):
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "pos_dist": 100.0,
         "rot_dist": 1.0,
+        "bonus": 0.0, #4.0,
+        "act_reg": 0.0, #1,
+        "penalty": 0.0 # 10,
     }
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
@@ -103,8 +105,10 @@ class ReorientEnvV0(BaseV0):
             # Optional Keys
             ('pos_dist', -1.*pos_dist),
             ('rot_dist', -1.*rot_dist),
-            # Must keys
+            ('bonus', 1.*(pos_dist<2*self.pos_th) + 1.*(pos_dist<self.pos_th)),
             ('act_reg', -1.*act_mag),
+            ('penalty', -1.*drop),
+            # Must keys
             ('sparse', -rot_dist-10.0*pos_dist),
             ('solved', (pos_dist<self.pos_th) and (rot_dist<self.rot_th) and (not drop) ),
             ('done', drop),

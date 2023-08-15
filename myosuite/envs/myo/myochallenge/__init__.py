@@ -21,8 +21,7 @@ register(id='myoChallengeRelocateP1-v0',
     )
 
 
-
-# MyoChallenge Locomotion ==============================
+# MyoChallenge Locomotion
 register(id='myoChallengeChaseTagP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,

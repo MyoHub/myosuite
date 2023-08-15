@@ -1,12 +1,11 @@
 """ =================================================
 # Copyright (c) Facebook, Inc. and its affiliates
-Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Pierre Schumacher (schumacherpier@gmail.com)
+Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Pierre Schumacher (schumacherpier@gmail.com), Cameron Berg (cam.h.berg@gmail.com)
 ================================================= """
 
 import collections
 import gym
 import numpy as np
-
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils.quat_math import quat2mat
 
@@ -56,6 +55,11 @@ class ReachEnvV0(BaseV0):
                 )
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.init_qvel[:] = self.sim.model.key_qvel[0]
+        # find geometries with ID == 1 which indicates the skins
+        geom_1_indices = np.where(self.sim.model.geom_group == 1)
+        # Change the alpha value to make it transparent
+        self.sim.model.geom_rgba[geom_1_indices, 3] = 0
+
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -147,7 +151,7 @@ class WalkEnvV0(BaseV0):
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
 
     def _setup(self,
@@ -366,3 +370,142 @@ class WalkEnvV0(BaseV0):
         Get the angles of a list of named joints.
         """
         return np.array([self.sim.data.qpos[self.sim.model.jnt_qposadr[self.sim.model.joint_name2id(name)]] for name in names])
+
+class TerrainEnvV0(WalkEnvV0):
+
+    DEFAULT_OBS_KEYS = [
+        'qpos_without_xy',
+        'qvel',
+        'com_vel',
+        'torso_angle',
+        'feet_heights',
+        'height',
+        'feet_rel_positions',
+        'phase_var',
+        'muscle_length',
+        'muscle_velocity',
+        'muscle_force'
+    ]
+
+    DEFAULT_RWD_KEYS_AND_WEIGHTS = {
+        "vel_reward": 5.0,
+        "done": -100,
+        "cyclic_hip": -10,
+        "ref_rot": 10.0,
+        "joint_angle_rew": 5.0
+    }
+
+    def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
+
+        # EzPickle.__init__(**locals()) is capturing the input dictionary of the init method of this class.
+        # In order to successfully capture all arguments we need to call gym.utils.EzPickle.__init__(**locals())
+        # at the leaf level, when we do inheritance like we do here.
+        # kwargs is needed at the top level to account for injection of __class__ keyword.
+        # Also see: https://github.com/openai/gym/pull/1497
+        gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
+
+        # This two step construction is required for pickling to work correctly. All arguments to all __init__
+        # calls must be pickle friendly. Things like sim / sim_obsd are NOT pickle friendly. Therefore we
+        # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
+        # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
+        # created in __init__ to complete the setup.
+        BaseV0.__init__(self, model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
+        self._setup(**kwargs)
+
+    def _setup(self,
+               obs_keys: list = DEFAULT_OBS_KEYS,
+               weighted_reward_keys: dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
+               min_height = 0.8,
+               max_rot = 0.8,
+               hip_period = 100,
+               reset_type='init',
+               target_x_vel=0.0,
+               target_y_vel=1.2,
+               target_rot = None,
+               terrain = 'rough',
+               variant = None,
+               **kwargs,
+               ):
+        self.min_height = min_height
+        self.max_rot = max_rot
+        self.hip_period = hip_period
+        self.reset_type = reset_type
+        self.target_x_vel = target_x_vel
+        self.target_y_vel = target_y_vel
+        self.target_rot = target_rot
+        self.terrain = terrain
+        self.variant = variant
+        self.steps = 0
+
+        BaseV0._setup(self, obs_keys=obs_keys,
+                       weighted_reward_keys=weighted_reward_keys,
+                       **kwargs
+                       )
+        self.init_qpos[:] = self.sim.model.key_qpos[0]
+        self.init_qvel[:] = 0.0
+
+    def reset(self):
+        self.steps = 0
+        if self.terrain == 'rough':
+            rough = self.np_random.uniform(low=-.5, high=.5, size=(10000,))
+            normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
+            scalar, offset = .08, .02
+            self.sim.model.hfield_data[:] = normalized_data*scalar - offset
+
+        elif self.terrain == 'hilly':
+            flat_length, frequency = 3000, 3
+            scalar = 0.63 if self.variant == 'fixed' else self.np_random.uniform(low=0.53, high=0.73)
+
+            combined_data = np.concatenate((-2 * np.ones(flat_length), -2 + 0.5 * (np.sin(np.linspace(0, frequency*np.pi, int(1e4-flat_length)) + np.pi/2) - 1)))
+            normalized_data = (combined_data - combined_data.min()) / (combined_data.max() - combined_data.min())
+
+            self.sim.model.hfield_data[:] = np.flip(normalized_data.reshape(100,100)*scalar, [0,1]).reshape(10000,)
+
+        elif self.terrain == 'stairs':
+            num_stairs = 12
+            stair_height = .1
+            flat = 5200 - (1e4 - 5200) % num_stairs
+            stairs_width = (1e4 - flat) // num_stairs
+            scalar = 2.5 if self.variant == 'fixed' else self.np_random.uniform(low=1.5, high=3.5)
+
+            stair_parts = [np.full((int(stairs_width//100), 100), -2 + stair_height * j) for j in range(num_stairs)]
+            new_terrain_data = np.concatenate([np.full((int(flat // 100), 100), -2)] + stair_parts, axis=0)
+
+            normalized_data = (new_terrain_data + 2) / (2 + stair_height * num_stairs)
+            self.sim.model.hfield_data[:] = np.flip(normalized_data.reshape(100,100)*scalar, [0,1]).reshape(10000,)
+
+        self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')] = np.array([0,0,0,1])
+        self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0,0,0])
+        self.sim.model.geom_contype[self.sim.model.geom_name2id('terrain')] = 1
+        self.sim.model.geom_conaffinity[self.sim.model.geom_name2id('terrain')] = 1
+
+        if self.reset_type == 'random':
+            qpos, qvel = self.get_randomized_initial_state()
+        elif self.reset_type == 'init':
+                qpos, qvel = self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
+        else:
+            qpos, qvel = self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
+        self.robot.sync_sims(self.sim, self.sim_obsd)
+        obs = BaseV0.reset(self, reset_qpos=qpos, reset_qvel=qvel)
+        return obs
+
+    def _get_done(self):
+        height = self._get_height()
+        if height < self.min_height:
+            return 1
+        if self._get_rot_condition():
+            return 1
+        if self._get_knee_condition():
+            return 1
+        return 0
+
+    def _get_knee_condition(self):
+        """
+        Checks if the agent is on its knees by comparing the distance between the center of mass and the feet.
+        """
+        feet_heights = self._get_feet_heights()
+        com_height = self._get_height()
+        if com_height - np.mean(feet_heights) < .61:
+            return 1
+        else:
+            return 0
