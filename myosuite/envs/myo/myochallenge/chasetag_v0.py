@@ -170,14 +170,17 @@ class ChaseTagEnvV0(WalkEnvV0):
                **kwargs,
                ):
         self._setup_convenience_vars()
+
         self.reset_type = reset_type
         self.maxTime = 20
+
         self.win_distance = win_distance
         self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
         self.opponent = ChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance)
         self.success_indicator_sid = self.sim.model.site_name2id("opponent_indicator")
         super()._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
+                       reset_type=reset_type,
                        **kwargs
                        )
         self.init_qpos[:] = self.sim.model.key_qpos[0]
@@ -294,7 +297,7 @@ class ChaseTagEnvV0(WalkEnvV0):
 
     def _get_randomized_initial_state(self):
         # randomly start with flexed left or right knee
-        if  self.self.np_random.uniform() < 0.5:
+        if  self.np_random.uniform() < 0.5:
             qpos = self.sim.model.key_qpos[2].copy()
             qvel = self.sim.model.key_qvel[2].copy()
         else:
@@ -305,7 +308,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         # but dont change height or rot state
         rot_state = qpos[3:7]
         height = qpos[2]
-        qpos[:] = qpos[:] + self.self.np_random.normal(0, 0.02, size=qpos.shape)
+        qpos[:] = qpos[:] + self.np_random.normal(0, 0.02, size=qpos.shape)
         qpos[3:7] = rot_state
         qpos[2] = height
         return qpos, qvel

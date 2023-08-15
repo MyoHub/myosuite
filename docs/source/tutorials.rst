@@ -188,4 +188,4 @@ Load MyoReflex Baseline
 =======================
 
 To load and execute the MyoReflex controller with baseline parameters.
-Run the MyoReflex tutorial `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials/4b_MyoReflex>`__
+Run the MyoReflex tutorial `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials/4b_reflex>`__
