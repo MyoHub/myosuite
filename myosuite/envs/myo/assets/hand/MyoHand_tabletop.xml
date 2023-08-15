@@ -17,9 +17,9 @@
         <position name="A_ARRz" joint="ARRz" ctrllimited="true" ctrlrange="-1.75 1.75" kp="150" />
     </actuator>
 
-    <include file="../../../simhive/myo_sim/hand/assets/myohand_assets.xml"/>
-    <include file="../../../simhive/furniture_sim/simpleTable/simpleTable_asset.xml"/>
-    <compiler angle="radian" meshdir="../../../simhive/myo_sim/" texturedir="../../../simhive/myo_sim/"/>
+    <include file="../../../../simhive/myo_sim/hand/assets/myohand_assets.xml"/>
+    <include file="../../../../simhive/furniture_sim/simpleTable/simpleTable_asset.xml"/>
+    <compiler angle="radian" meshdir="../../../../simhive/myo_sim/" texturedir="../../../../simhive/myo_sim/"/>
     <size njmax='1000' nconmax='1000'/>
 
     <worldbody>
@@ -45,13 +45,13 @@
             <joint name="ARRz" pos="0 0 0" axis="0 0 1" range="-1.75 1.75" damping="20" limited="true"/>
 
             <body pos="-.175 .1 -1.4" euler="0 0 3.14">
-                <include file="../../../simhive/myo_sim/hand/assets/myohand_body.xml"/>
+                <include file="../../../../simhive/myo_sim/hand/assets/myohand_body.xml"/>
             </body>
         </body>
 
         <!-- simple Table -->
         <body pos='0 0 -.76'>
-            <include file="../../../simhive/furniture_sim/simpleTable/simpleGraniteTable_body.xml"/>
+            <include file="../../../../simhive/furniture_sim/simpleTable/simpleGraniteTable_body.xml"/>
         </body>
 
         <!-- tasks details added here via include-->

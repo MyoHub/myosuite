@@ -477,12 +477,12 @@ register_env_with_variants(id='myoHandPenTwirlRandom-v0',
         }
     )
 
-# SAR REORIENT: 8-object
+# SAR REORIENT: 8-object ==============================
 register_env_with_variants(id='myoHandReorient8-v0',
             entry_point='myosuite.envs.myo.myobase.reorient_sar_v0:Geometries8EnvV0',
             max_episode_steps=50,
             kwargs={
-                'model_path': curr_dir+'/../assets/hand/reorient_sar.xml',
+                'model_path': curr_dir+'/../assets/hand/myohand_sar.xml',
                 'normalize_act': True,
                 'frame_skip': 5,
             }
@@ -493,7 +493,7 @@ register_env_with_variants(id='myoHandReorient100-v0',
             entry_point='myosuite.envs.myo.myobase.reorient_sar_v0:Geometries100EnvV0',
             max_episode_steps=50,
             kwargs={
-                'model_path': curr_dir+'/../assets/hand/reorient_sar.xml',
+                'model_path': curr_dir+'/../assets/hand/myohand_sar.xml',
                 'normalize_act': True,
                 'frame_skip': 5,
             }
@@ -504,7 +504,7 @@ register_env_with_variants(id='myoHandReorientID-v0',
             entry_point='myosuite.envs.myo.myobase.reorient_sar_v0:InDistribution',
             max_episode_steps=50,
             kwargs={
-                'model_path': curr_dir+'/../assets/hand/reorient_sar.xml',
+                'model_path': curr_dir+'/../assets/hand/myohand_sar.xml',
                 'normalize_act': True,
                 'frame_skip': 5,
             }
@@ -515,7 +515,7 @@ register_env_with_variants(id='myoHandReorientOOD-v0',
             entry_point='myosuite.envs.myo.myobase.reorient_sar_v0:OutofDistribution',
             max_episode_steps=50,
             kwargs={
-                'model_path': curr_dir+'/../assets/hand/reorient_sar.xml',
+                'model_path': curr_dir+'/../assets/hand/myohand_sar.xml',
                 'normalize_act': True,
                 'frame_skip': 5,
             }

@@ -13,6 +13,12 @@ from myosuite.utils.vector_math import calculate_cosine
 
 class ProprioceptiveEnvV0(BaseV0):
 
+    SAR_CREDIT = """\
+    SAR: Generalization of Physiological Agility and Dexterity via Synergistic Action Representation
+        Cameron Berg, Vittorio Caggiano*, Vikash Kumar*
+        RSS-2023 | https://sites.google.com/view/sar-rl/
+    """
+
     DEFAULT_OBS_KEYS =['hand_jnt','obj_pos','obj_vel','obj_rot','obj_des_rot','obj_err_pos','obj_err_rot','act','mlen','mvel','mforce']
 
     DEFAULT_RWD_KEYS_AND_WEIGHTS= {
@@ -36,7 +42,7 @@ class ProprioceptiveEnvV0(BaseV0):
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.SAR_CREDIT)
 
         self._setup(**kwargs)
 
@@ -71,25 +77,6 @@ class ProprioceptiveEnvV0(BaseV0):
         self.init_qpos[:-6] *= 0 # Use fully open as init pos
         self.init_qpos[0] = -1.5 # place palm up
 
-    def get_obs_vec(self):
-        # qpos for hand, xpos for obj, xpos for target
-        self.obs_dict['time'] = np.array([self.sim.data.time])
-        self.obs_dict['hand_jnt'] = self.sim.data.qpos[:-6].copy()
-        self.obs_dict['obj_pos'] = self.sim.data.body_xpos[self.obj_bid].copy()
-        self.obs_dict['obj_des_pos'] = self.sim.data.site_xpos[self.eps_ball_sid].ravel()
-        self.obs_dict['obj_vel'] = self.sim.data.qvel[-6:].copy()*self.dt
-        self.obs_dict['obj_rot'] = (self.sim.data.geom_xpos[self.obj_t_gid] - self.sim.data.geom_xpos[self.obj_b_gid])/self.pen_length
-        self.obs_dict['obj_des_rot'] = (self.sim.data.geom_xpos[self.tar_t_gid] - self.sim.data.geom_xpos[self.tar_b_gid])/self.tar_length
-        self.obs_dict['obj_err_pos'] = self.obs_dict['obj_pos']-self.obs_dict['obj_des_pos']
-        self.obs_dict['obj_err_rot'] = self.obs_dict['obj_rot']-self.obs_dict['obj_des_rot']
-        if self.sim.model.na>0:
-            self.obs_dict['act'] = self.sim.data.act[:].copy()
-            self.obs_dict['mlen'] = self.sim.data.actuator_length[:].copy()
-            self.obs_dict['mvel'] = self.sim.data.actuator_velocity[:].copy()
-            self.obs_dict['mforce'] = self.sim.data.actuator_force[:].copy()
-
-        t, obs = self.obsdict2obsvec(self.obs_dict, self.obs_keys)
-        return obs
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -109,6 +96,7 @@ class ProprioceptiveEnvV0(BaseV0):
             obs_dict['mforce'] = sim.data.actuator_force[:].copy()
 
         return obs_dict
+
 
     def get_reward_dict(self, obs_dict):
         pos_err = obs_dict['obj_err_pos']

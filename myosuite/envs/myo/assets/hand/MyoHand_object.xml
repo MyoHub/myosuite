@@ -1,6 +1,6 @@
 <mujoco model="MyoHand TableTop">
 <!-- =================================================
-    Copyright 2020 Vikash Kumar, Vittorio Caggiano
+    Copyright 2020 Vikash Kumar
     Model   :: MyoHand TableTop (MuJoCoV2.1)
     Author  :: Vittorio Caggiano (caggiano@gmail.com), Vikash Kumar (vikashplus@gmail.com), Sudeep Dasari (sdasari@andrew.cmu.edu )
     Source  :: https://github.com/vikashplus/robohive
@@ -8,18 +8,19 @@
 ====================================================== -->
 
     <include file="MyoHand_tabletop.xml"/>
-    <include file="../../../simhive/object_sim/common.xml"/>
-    <include file="../../../simhive/object_sim/apple/assets.xml"/>
+    <include file="../../../../simhive/object_sim/common.xml"/>
+    <include file="../../../../simhive/object_sim/OBJECT_NAME/assets.xml"/>
 
     <worldbody>
-        <body name="object1" pos="0.00 0.0 .805" childclass="grab">
+        <!-- <body name="OBJECT_NAME" pos="0.00 0.0 .045" childclass="grab"> -->
+        <body name="OBJECT_NAME" pos="0.00 0.0 .035" childclass="grab">
             <joint name="OBJTx" pos="0 0 0" axis="1 0 0" type="slide"/>
             <joint name="OBJTy" pos="0 0 0" axis="0 1 0" type="slide"/>
             <joint name="OBJTz" pos="0 0 0" axis="0 0 1" type="slide"/>
             <joint name="OBJRx" pos="0 0 0" axis="1 0 0"/>
             <joint name="OBJRy" pos="0 0 0" axis="0 1 0"/>
             <joint name="OBJRz" pos="0 0 0" axis="0 0 1"/>
-            <include file="../../../simhive/object_sim/apple/body.xml"/>
+            <include file="../../../../simhive/object_sim/OBJECT_NAME/body.xml"/>
         </body>
     </worldbody>
 
