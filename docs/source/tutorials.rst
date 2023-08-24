@@ -173,7 +173,9 @@ If you want to load and execute the pre-trained DEP-RL baseline. Make sure that 
     import gym
     import myosuite
     import deprl
-    env = gym.make('myoLegWalk-v0')
+
+    # we can pass arguments to the environments here
+    env = gym.make('myoLegWalk-v0', reset_type='random')
     policy = deprl.load_baseline(env)
     obs = env.reset()
     for i in range(1000):
