@@ -474,7 +474,7 @@ class TerrainEnvV0(WalkEnvV0):
             normalized_data = (new_terrain_data + 2) / (2 + stair_height * num_stairs)
             self.sim.model.hfield_data[:] = np.flip(normalized_data.reshape(100,100)*scalar, [0,1]).reshape(10000,)
 
-        self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')] = np.array([0,0,0,1])
+        self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 1.0
         self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0,0,0])
         self.sim.model.geom_contype[self.sim.model.geom_name2id('terrain')] = 1
         self.sim.model.geom_conaffinity[self.sim.model.geom_name2id('terrain')] = 1
