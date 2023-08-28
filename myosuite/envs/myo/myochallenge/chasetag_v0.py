@@ -18,14 +18,15 @@ class ChallengeOpponent:
     Contains several different policies. For the final evaluation, an additional
     non-disclosed policy will be used.
     """
-    def __init__(self, sim, rng, probabilities, min_spawn_distance):
+    def __init__(self, sim, rng, probabilities: list, min_spawn_distance: float):
         self.dt = 0.01
         self.sim = sim
-        self.rng = rng
         self.opponent_probabilities = probabilities
         self.min_spawn_distance = min_spawn_distance
-        self.noise_process = pink.ColoredNoiseProcess(beta=2, size=(2, 2000), scale=10, rng=rng)
-        self.reset_opponent()
+        self.reset_opponent(rng)
+
+    def reset_noise_process(self):
+        self.noise_process = pink.ColoredNoiseProcess(beta=2, size=(2, 2000), scale=10, rng=self.rng)
 
     def get_opponent_pose(self):
         """
@@ -36,7 +37,7 @@ class ChallengeOpponent:
         angle = quat2euler(self.sim.data.mocap_quat[0, :])[-1]
         return np.concatenate([self.sim.data.mocap_pos[0, :2], [angle]])
 
-    def set_opponent_pose(self, pose):
+    def set_opponent_pose(self, pose: list):
         """
         Set opponent pose directly.
         :param pose: Pose of the opponent.
@@ -102,11 +103,15 @@ class ChallengeOpponent:
             raise NotImplementedError(f"This opponent policy doesn't exist. Chose: static_stationary, stationary or random. Policy was: {self.opponent_policy}")
         self.move_opponent(opponent_vel)
 
-    def reset_opponent(self):
+    def reset_opponent(self, rng=None):
         """
         This function should initially place the opponent on a random position with a
         random orientation with a minimum radius to the model.
         """
+        if rng is not None:
+            self.rng = rng
+            self.reset_noise_process()
+
         self.opponent_vel = np.zeros((2,))
         self.sample_opponent_policy()
         dist = 0
@@ -127,16 +132,18 @@ class ChaseTagEnvV0(WalkEnvV0):
         'grf',
         'torso_angle',
         'opponent_pose',
-		'opponent_vel',
+        'opponent_vel',
         'model_root_pos',
-		'model_root_vel',
+        'model_root_vel',
         'muscle_length',
         'muscle_velocity',
         'muscle_force',
     ]
-
+    
+    # You can change reward weights here
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
-        "done": 0,
+        "distance": -0.1,
+        "lose": -1000,
     }
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
@@ -215,26 +222,39 @@ class ChaseTagEnvV0(WalkEnvV0):
         return obs_dict
 
     def get_reward_dict(self, obs_dict):
+        """
+        Rewards are computed from here, using the <self.weighted_reward_keys>.
+        These weights can either be set in this file in the
+        DEFAULT_RWD_KEYS_AND_WEIGHTS dict, or when registering the environment
+        with gym.register in myochallenge/__init__.py
+        """
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
+
         win_cdt = self._win_condition()
         lose_cdt = self._lose_condition()
         score = self._get_score(float(self.obs_dict['time'])) if win_cdt else 0
+
+        # Example reward, you should change this!
+        distance = np.linalg.norm(obs_dict['model_root_pos'][...,:2] - obs_dict['opponent_pose'][...,:2])
 
         rwd_dict = collections.OrderedDict((
             # Perform reward tuning here --
             # Update Optional Keys section below
             # Update reward keys (DEFAULT_RWD_KEYS_AND_WEIGHTS) accordingly to update final rewards
-            # Examples: Env comes pre-packaged with two keys act_reg and lose
+
+            # Example: simple distance function
 
                 # Optional Keys
                 ('act_reg', act_mag),
                 ('lose', lose_cdt),
+                ('distance', distance),
                 # Must keys
                 ('sparse',  score),
                 ('solved',  win_cdt),
                 ('done',  self._get_done()),
             ))
         rwd_dict['dense'] = np.sum([wt*rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
+
         # Success Indicator
         self.sim.model.site_rgba[self.success_indicator_sid, :] = np.array([0, 2, 0, 0.1]) if rwd_dict['solved'] else np.array([2, 0, 0, 0])
 
@@ -271,7 +291,7 @@ class ChaseTagEnvV0(WalkEnvV0):
             qpos, qvel = self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel)
-        self.opponent.reset_opponent()
+        self.opponent.reset_opponent(self.np_random)
         return obs
 
     def viewer_setup(self, *args, **kwargs):
@@ -333,6 +353,9 @@ class ChaseTagEnvV0(WalkEnvV0):
         return 0
 
     def _lose_condition(self):
+        # fall condition for phase 1
+        if self.sim.data.body('pelvis').xpos[2] < 0.5:
+            return 1
         root_pos = self.sim.data.body('pelvis').xpos[:2]
         return 1 if float(self.obs_dict['time']) >= self.maxTime or (np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5) else 0
 

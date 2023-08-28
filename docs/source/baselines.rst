@@ -126,7 +126,7 @@ To visualize a trained policy, run
 
 
 where the last folder contains the ``checkpoints`` and ``config.yaml`` files. This runs the policy for several episodes and returns scores.
-You can also log some settings to `wandb <https://wandb.ai/)>`_ . Set it up and afterwards run
+You can also log some settings to `wandb <https://wandb.ai/>`_ . Set it up and afterwards run
 
 .. code-block:: bash
 
