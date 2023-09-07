@@ -7,7 +7,7 @@ Suite
 Models
 ********
 
-MyoSuite consists of four models: :ref:`myoFinger`, :ref:`myoElbow`, :ref:`myoHand`, :ref:`myoArm` and :ref:`myoLeg`.
+MyoSuite consists of five models: :ref:`myoFinger`, :ref:`myoElbow`, :ref:`myoHand`, :ref:`myoArm` and :ref:`myoLeg`.
 Using these models, we design a rich collection of tasks ranging across simple reaching movements,
 contact-rich movements involving object-manipulation such as pen-twirling and baoding balls, as well as locomotion behaviors.
 
