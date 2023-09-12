@@ -290,7 +290,7 @@ sim_backend = SimBackend.get_sim_backend()
 if sim_backend == SimBackend.MUJOCO_PY:
     leg_model='/../../../simhive/myo_sim/leg/myolegs_v0.54(mj210).mjb'
 elif sim_backend == SimBackend.MUJOCO:
-    leg_model='/../../../simhive/myo_sim/leg/myolegs_v0.54(mj236).mjb'
+    leg_model='/../../../simhive/myo_sim/leg/myolegs_v0.55(mj236).mjb'
 
 register_env_with_variants(id='myoLegReachFixed-v0',
         entry_point='myosuite.envs.myo.myobase.walk_v0:ReachEnvV0',
