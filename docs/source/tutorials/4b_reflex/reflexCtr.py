@@ -113,6 +113,8 @@ class LocoCtrl(object):
         self.stim = {}
 
         self.n_par = len(LocoCtrl.cp_keys)
+        if self.control_dimension == 2:
+            self.n_par = 37
         self.cp = {}
 
         self.reset(params)
@@ -400,6 +402,13 @@ class LocoCtrl(object):
 
         stim = {}
         pre_stim = 0.01
+
+        # Manually set HAD and HAB for 2D case
+        Fmax_ABD = 4460.290481
+        Fmax_ADD = 3931.8
+        
+        stim['HAB'] = 0.1
+        stim['HAD'] = 0.1*Fmax_ADD/Fmax_ABD
 
         if self.control_dimension == 3:
             theta_tgt_f = self.brain_command[s_leg]['theta_tgt_f']
