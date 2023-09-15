@@ -37,7 +37,7 @@
         <geom type="plane" rgba=".1 .1 .1 1" size="10 10 1" pos="0 0 -.76"/>
 
         <body pos="0.1 -0.55 0.32" euler="0 0 0">
-            <joint name="ARTx" pos="0 0 0" axis="1 0 0" type="slide" range="-.05 .05" damping="20" limited="true"/>
+            <joint name="ARTx" pos="0 0 0" axis="1 0 0" type="slide" range="-.25 .25" damping="20" limited="true"/>
             <joint name="ARTy" pos="0 0 0" axis="0 1 0" type="slide" range="-.3 .4" damping="20" limited="true"/>
             <joint name="ARTz" pos="0 0 0" axis="0 0 1" type="slide" range="-0.1 .1" damping="20" limited="true"/>
             <joint name="ARRx" pos="0 0 0" axis="1 0 0" range="-1.75 1.75" damping="20" limited="true"/>

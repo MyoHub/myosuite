@@ -21,9 +21,9 @@ from myosuite.envs.myo.base_v0 import BaseV0
 class TrackEnv(BaseV0):
 
     DEFAULT_CREDIT = """\
-    Learning Dexterous Manipulation from Exemplar Object Trajectories and Pre-Grasps
-        Sudeep Dasari, Abhinav Gupta, Vikash Kumar
-        ICRA-2023 | https://pregrasps.github.io
+    MyoDex: A Generalizable Prior for Dexterous Manipulation
+        Vittorio Caggiano, Sudeep Dasari, Vikash Kumar
+        ICML-2023, https://arxiv.org/abs/2309.03130
     """
 
     DEFAULT_OBS_KEYS = [
