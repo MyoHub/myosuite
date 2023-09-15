@@ -14,6 +14,7 @@ register(id='myoChallengeRelocateP1-v0',
             'model_path': curr_dir+'/../../../simhive/myo_sim/arm/myoarm_object_v0.14(mj236).mjb',
             'normalize_act': True,
             'frame_skip': 5,
+            'pos_th': 0.1,              # cover entire base of the receptacle
             'rot_th': np.inf,           # ignore rotation errors
             'target_xyz_range': {'high':[0.2, -.35, 0.9], 'low':[0.0, -.1, 0.9]},
             'target_rxryrz_range': {'high':[0.0, 0.0, 0.0], 'low':[0.0, 0.0, 0.0]}
