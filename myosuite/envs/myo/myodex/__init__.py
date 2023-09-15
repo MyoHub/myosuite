@@ -81,19 +81,15 @@ MyoHand_task_spec = (
     task_spec(name='MyoHandEyeglassesPass-v0', robot='MyoHand', object='eyeglasses', motion='MyoHand_eyeglasses_pass1.npz'),
     task_spec(name='MyoHandFlashlightPass-v0', robot='MyoHand', object='flashlight', motion='MyoHand_flashlight_pass1.npz'),
     task_spec(name='MyoHandFlutePass-v0', robot='MyoHand', object='flute', motion='MyoHand_flute_pass1.npz'),
-    task_spec(name='MyoHandFryingpanCook-v0', robot='MyoHand', object='fryingpan', motion='MyoHand_fryingpan_cook2.npz'),
     task_spec(name='MyoHandHammerPass-v0', robot='MyoHand', object='hammer', motion='MyoHand_hammer_pass1.npz'),
     task_spec(name='MyoHandHandInspect-v0', robot='MyoHand', object='hand', motion='MyoHand_hand_inspect1.npz'),
-    task_spec(name='MyoHandHandPass-v0', robot='MyoHand', object='hand', motion='MyoHand_hand_pass1.npz'),
     task_spec(name='MyoHandHeadphonesPass-v0', robot='MyoHand', object='headphones', motion='MyoHand_headphones_pass1.npz'),
     task_spec(name='MyoHandKnifeChop-v0', robot='MyoHand', object='knife', motion='MyoHand_knife_chop1.npz'),
-    task_spec(name='MyoHandKnifeLift-v0', robot='MyoHand', object='knife', motion='MyoHand_knife_lift.npz'),
     task_spec(name='MyoHandLightbulbPass-v0', robot='MyoHand', object='lightbulb', motion='MyoHand_lightbulb_pass1.npz'),
     task_spec(name='MyoHandMouseUse-v0', robot='MyoHand', object='mouse', motion='MyoHand_mouse_use1.npz'),
     task_spec(name='MyoHandPiggybankUse-v0', robot='MyoHand', object='piggybank', motion='MyoHand_piggybank_use1.npz'),
     task_spec(name='MyoHandToothbrushLift-v0', robot='MyoHand', object='toothbrush', motion='MyoHand_toothbrush_lift.npz'),
     task_spec(name='MyoHandWaterbottleLift-v0', robot='MyoHand', object='waterbottle', motion='MyoHand_waterbottle_lift.npz'),
-    task_spec(name='MyoHandWineglassDrink1-v0', robot='MyoHand', object='wineglass', motion='MyoHand_wineglass_drink1.npz'),
     task_spec(name='MyoHandWineglassPass-v0', robot='MyoHand', object='wineglass', motion='MyoHand_wineglass_pass1.npz'),
     task_spec(name='MyoHandStanfordbunnyPass-v0', robot='MyoHand', object='stanfordbunny', motion='MyoHand_stanfordbunny_pass1.npz'),
     task_spec(name='MyoHandCameraPass-v0', robot='MyoHand', object='camera', motion='MyoHand_camera_pass1.npz'),
@@ -107,11 +103,9 @@ MyoHand_task_spec = (
     task_spec(name='MyoHandCylindermediumPass-v0', robot='MyoHand', object='cylindermedium', motion='MyoHand_cylindermedium_pass1.npz'),
     task_spec(name='MyoHandPyramidlargePass-v0', robot='MyoHand', object='pyramidlarge', motion='MyoHand_pyramidlarge_pass1.npz'),
     task_spec(name='MyoHandWaterbottlePass-v0', robot='MyoHand', object='waterbottle', motion='MyoHand_waterbottle_pass1.npz'),
-    task_spec(name='MyoHandCylindersmallLift-v0', robot='MyoHand', object='cylindersmall', motion='MyoHand_cylindersmall_lift.npz'),
     task_spec(name='MyoHandPyramidmediumPass-v0', robot='MyoHand', object='pyramidmedium', motion='MyoHand_pyramidmedium_pass1.npz'),
     task_spec(name='MyoHandSpherelargePass-v0', robot='MyoHand', object='spherelarge', motion='MyoHand_spherelarge_pass1.npz'),
     task_spec(name='MyoHandSpheremediumInspect-v0', robot='MyoHand', object='spheremedium', motion='MyoHand_spheremedium_inspect1.npz'),
-    task_spec(name='MyoHandCylinderlargePass-v0', robot='MyoHand', object='cylinderlarge', motion='MyoHand_cylinderlarge_pass1.npz'),
     task_spec(name='MyoHandCylinderlargeInspect-v0', robot='MyoHand', object='cylinderlarge', motion='MyoHand_cylinderlarge_inspect1.npz'),
     task_spec(name='MyoHandGamecontrollerPass-v0', robot='MyoHand', object='gamecontroller', motion='MyoHand_gamecontroller_pass1.npz'),
 
@@ -136,7 +130,7 @@ for task_name, robot_name, object_name, motion_path in MyoHand_task_spec:
 
 
 # OBJECTS = ('airplane','alarmclock','apple','banana','binoculars','bowl','camera','coffeemug','cubelarge','cubemedium','cubemiddle','cubesmall','cup','cylinderlarge','cylindermedium','cylindersmall','doorknob','duck','elephant','eyeglasses','flashlight','flute','fryingpan','gamecontroller','hammer','hand','headphones','human','knife','lightbulb','mouse','mug','phone','piggybank', 'pyramidlarge','pyramidmedium','pyramidsmall','rubberduck','scissors','spherelarge','spheremedium','spheresmall','stamp','stanfordbunny','stapler','table','teapot','toothbrush','toothpaste','toruslarge','torusmedium','torussmall','train','watch','waterbottle','wineglass','wristwatch')
-OBJECTS = ('airplane','alarmclock','apple','banana','binoculars','bowl','camera','coffeemug','cubelarge','cubemedium','cubesmall','cup','cylinderlarge','cylindermedium','cylindersmall','duck','elephant','eyeglasses','flashlight','flute','fryingpan','gamecontroller','hammer','hand','headphones','knife','lightbulb','mouse','mug','phone','piggybank', 'pyramidlarge','pyramidmedium','pyramidsmall','scissors','spherelarge','spheremedium','spheresmall','stamp','stanfordbunny','stapler','teapot','toothbrush','toothpaste','toruslarge','torusmedium','torussmall','train','watch','waterbottle','wineglass')
+OBJECTS = ('airplane','alarmclock','apple','banana','binoculars','bowl','camera','coffeemug','cubelarge','cubemedium','cubesmall','cup','cylinderlarge','cylindermedium','cylindersmall','duck','elephant','eyeglasses','flashlight','flute','gamecontroller','hammer','hand','headphones','knife','lightbulb','mouse','mug','phone','piggybank', 'pyramidlarge','pyramidmedium','pyramidsmall','scissors','spherelarge','spheremedium','spheresmall','stamp','stanfordbunny','stapler','teapot','toothbrush','toothpaste','toruslarge','torusmedium','torussmall','train','watch','waterbottle','wineglass')
 
 # Register object envs
 def register_MyoHand_object(object_name):

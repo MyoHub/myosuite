@@ -1,6 +1,6 @@
 # MyoDM
 
-The MyoDM dataset (inspired by [TCDM benchmarks](https://github.com/facebookresearch/TCDM)) is a dataset of 51 objects manipulated in 96 different tasks. Every task setup consists of a tabletop environment, an object from the ContactDB dataset (Brahmbhatt et al., 2019), and the MyoHand. Each task is initialized at the 'pre-grasp' position/posture.
+The MyoDM dataset (inspired by [TCDM benchmarks](https://github.com/facebookresearch/TCDM)) is a dataset of 50 objects manipulated in 90 different tasks. Every task setup consists of a tabletop environment, an object from the ContactDB dataset (Brahmbhatt et al., 2019), and the MyoHand. Each task is initialized at the 'pre-grasp' position/posture.
 The MyoHand model was extended to include translations and rotations at the level of the shoulder.
 
 
