@@ -15,9 +15,7 @@ import gym
 
 import numpy as np
 import os
-from scipy.spatial.transform import Rotation as R
 
-from myosuite.envs.env_variants import register_env_variant
 from myosuite.utils.quat_math import quat2euler
 from myosuite.utils.quat_math import euler2quat
 
@@ -43,6 +41,7 @@ class MyoLegReflex(object):
         
         self.n_par = len(LocoCtrl.cp_keys)
         control_dimension = 3
+        
         self.cp_map = LocoCtrl.cp_map
         self.ReflexCtrl = LocoCtrl(self.dt, control_dimension=control_dimension, params=np.ones(self.n_par))
 
@@ -53,18 +52,9 @@ class MyoLegReflex(object):
         self.init_dict = init_dict
         self.seed = seed
 
-        curr_dir = os.getcwd()
-        register_env_variant(
-                    env_id='myoLegDemo-v0',
-                    variants={'model_path': curr_dir+'/../../../../myosuite/simhive/myo_sim/myoleg/myoleg_v0.52(mj120).mjb',
-                              'normalize_act':False},
-                    variant_id='MyoLegReflex-v0',
-                    silent=False
-                )
-        self.env = gym.make('MyoLegReflex-v0')
+        self.env = gym.make('myoLegReachFixed-v0', normalize_act=False)
 
         print(f"Seed added - ", seed)
-        print('List of cameras available', self.env.sim.model.camera_names)
         self.env.reset()
         self.env.seed(seed)
 
@@ -122,20 +112,22 @@ class MyoLegReflex(object):
 
         # Getting values directly from the Mujoco env, and translating them into the controller convention
         # Measurement is in world coordinates
-        pel_euler = quat2euler(self.env.sim.data.get_body_xquat('pelvis').copy())
+        pel_euler = quat2euler(self.env.sim.data.body('pelvis').xquat.copy())
         pelvis_roll = pel_euler[0] - (np.pi/2)
         pelvis_pitch = pel_euler[2] * (-1)
         pelvis_yaw = pel_euler[1] * (-1)
 
         # Pelvis velocities and angular velocities
-        temp_seg_vel = self.env.sim.data.get_body_xvelp('pelvis').copy()
-        dx_local, dy_local = self.rotate_frame(temp_seg_vel[0], temp_seg_vel[1], pelvis_yaw)
-        pelvis_vel = np.hstack((np.array([dx_local, dy_local, -1*temp_seg_vel[2]]),
-                                            self.env.sim.data.get_body_xvelr('pelvis').copy() )) # Velocity might need to be negative in Pitch (y-axis)
+        temp_seg_vel = self.env.sim.data.object_velocity('pelvis','body', local_frame=False).copy()
+        lin_seg_vel = temp_seg_vel[0]
+        dx_local, dy_local = self.rotate_frame(lin_seg_vel[0], lin_seg_vel[1], pelvis_yaw)
+        pelvis_vel = np.hstack((np.array([dx_local, dy_local, lin_seg_vel[2]]),
+                                            temp_seg_vel[1] ))
 
         # GRF from foot contact sensor values
-        temp_right = (self.env.sim.data.get_sensor('r_foot').copy() + self.env.sim.data.get_sensor('r_toes').copy())
-        temp_left = (self.env.sim.data.get_sensor('l_foot').copy() + self.env.sim.data.get_sensor('l_toes').copy())
+        # GRF from foot contact sensor values
+        temp_right = (self.env.sim.data.sensor('r_foot').data[0].copy() + self.env.sim.data.sensor('r_toes').data[0].copy())
+        temp_left = (self.env.sim.data.sensor('l_foot').data[0].copy() + self.env.sim.data.sensor('l_toes').data[0].copy())
 
         sensor_data = {'body':{}, 'r_leg':{}, 'l_leg':{}}
         sensor_data['body']['theta'] = [pelvis_roll, # around local x axis
@@ -156,19 +148,17 @@ class MyoLegReflex(object):
             sensor_data[s_leg]['contact_contra'] = 1 if sensor_data[s_legc]['load_ipsi'] > 0.1 else 0
             sensor_data[s_leg]['load_contra'] = sensor_data[s_legc]['load_ipsi']
 
-            sensor_data[s_leg]['phi_hip'] = (np.pi - self.env.sim.data.get_joint_qpos(f"hip_flexion_{s_leg[0]}"))
-            sensor_data[s_leg]['phi_knee'] = (np.pi - self.env.sim.data.get_joint_qpos(f"knee_angle_{s_leg[0]}"))
-            sensor_data[s_leg]['phi_ankle'] = (0.5*np.pi - self.env.sim.data.get_joint_qpos(f"ankle_angle_{s_leg[0]}"))
-            sensor_data[s_leg]['dphi_knee'] = -1*self.env.sim.data.get_joint_qvel(f"knee_angle_{s_leg[0]}")
+            sensor_data[s_leg]['phi_hip'] = (np.pi - self.env.sim.data.jnt(f"hip_flexion_{s_leg[0]}").qpos[0].copy())
+            sensor_data[s_leg]['phi_knee'] = (np.pi - self.env.sim.data.jnt(f"knee_angle_{s_leg[0]}").qpos[0].copy())
+            sensor_data[s_leg]['phi_ankle'] = (0.5*np.pi - self.env.sim.data.jnt(f"ankle_angle_{s_leg[0]}").qpos[0].copy())
+            sensor_data[s_leg]['dphi_knee'] = self.env.sim.data.jnt(f"knee_angle_{s_leg[0]}").qvel[0].copy()
 
             # alpha = hip - 0.5*knee
             sensor_data[s_leg]['alpha'] = sensor_data[s_leg]['phi_hip'] - 0.5*sensor_data[s_leg]['phi_knee']
-            dphi_hip = -1*self.env.sim.data.get_joint_qvel(f"hip_flexion_{s_leg[0]}")
+            dphi_hip = self.env.sim.data.jnt(f"hip_flexion_{s_leg[0]}").qvel[0].copy()
             sensor_data[s_leg]['dalpha'] = dphi_hip - 0.5*sensor_data[s_leg]['dphi_knee']
 
-            # Formula: -obs_dict[s_leg]['d_joint']['hip_abd'] + .5*np.pi
-            # Since adduction (with D) in Mujoco is positive, need to change the sign. The formula below preserves the relation to the formula above
-            sensor_data[s_leg]['alpha_f'] = -1*(-1*self.env.sim.data.get_joint_qpos(f"hip_adduction_{s_leg[0]}")) + 0.5*np.pi
+            sensor_data[s_leg]['alpha_f'] = (-1*self.env.sim.data.jnt(f"hip_adduction_{s_leg[0]}").qpos[0].copy()) + 0.5*np.pi
 
             temp_mus_force = self.env.sim.data.actuator_force.copy()
 
@@ -194,10 +184,10 @@ class MyoLegReflex(object):
         # Have to collect observations after step, otherwise brain cmd would not have any values
         out_dict = self.get_obs_dict()
         
-        temp_pel_euler = quat2euler(self.env.sim.data.get_body_xquat('root').copy())
+        temp_pel_euler = quat2euler(self.env.sim.data.body('root').xquat.copy())
         
         # Check if the simulation is still alive (height of pelvs still above threshold, has not fallen down yet)
-        if self.env.sim.data.get_body_xpos('pelvis')[2] < 0.65: # (Emprical testing) Even for very bent knee walking, height of pelvis is about 0.78
+        if self.env.sim.data.body('pelvis').xpos[2] < 0.65: # (Emprical testing) Even for very bent knee walking, height of pelvis is about 0.78
             is_done = True
         if temp_pel_euler[1] < np.deg2rad(-30) or temp_pel_euler[1] > np.deg2rad(30):
             # Punish for too much pitch of pelvis
@@ -208,137 +198,137 @@ class MyoLegReflex(object):
     # ---------- Initialization Functions ----------
     def _set_muscle_groups(self):
         # ----- Gluteus group -----
-        glu_r = [self.env.sim.model.actuator_names.index('glmax1_r'),
-        self.env.sim.model.actuator_names.index('glmax2_r'),
-        self.env.sim.model.actuator_names.index('glmax3_r'),
-        self.env.sim.model.actuator_names.index('glmed3_r')]
+        glu_r = [self.env.sim.model.actuator('glmax1_r').id,
+        self.env.sim.model.actuator('glmax2_r').id,
+        self.env.sim.model.actuator('glmax3_r').id,
+        self.env.sim.model.actuator('glmed3_r').id]
 
-        glu_l = [self.env.sim.model.actuator_names.index('glmax1_l'),
-        self.env.sim.model.actuator_names.index('glmax2_l'),
-        self.env.sim.model.actuator_names.index('glmax3_l'),
-        self.env.sim.model.actuator_names.index('glmed3_l')]
+        glu_l = [self.env.sim.model.actuator('glmax1_l').id,
+        self.env.sim.model.actuator('glmax2_l').id,
+        self.env.sim.model.actuator('glmax3_l').id,
+        self.env.sim.model.actuator('glmed3_l').id]
 
         glu_r_lbl = ['glmax1_r','glmax2_r','glmax3_r','glmed3_r']
         glu_l_lbl = ['glmax1_l','glmax2_l','glmax3_l','glmed3_l']
 
         # ----- Hamstring (semitendinosus and semimembranosus) -----
-        ham_r = [self.env.sim.model.actuator_names.index('semimem_r'),
-                self.env.sim.model.actuator_names.index('semiten_r'),
-                self.env.sim.model.actuator_names.index('bflh_r')]
+        ham_r = [self.env.sim.model.actuator('semimem_r').id,
+                self.env.sim.model.actuator('semiten_r').id,
+                self.env.sim.model.actuator('bflh_r').id]
 
-        ham_l = [self.env.sim.model.actuator_names.index('semimem_l'),
-                self.env.sim.model.actuator_names.index('semiten_l'),
-                self.env.sim.model.actuator_names.index('bflh_l')]
+        ham_l = [self.env.sim.model.actuator('semimem_l').id,
+                self.env.sim.model.actuator('semiten_l').id,
+                self.env.sim.model.actuator('bflh_l').id]
 
         ham_r_lbl = ['semimem_r','semiten_r','bflh_r']
         ham_l_lbl = ['semimem_l','semiten_l','bflh_l']
 
         # ----- BF short head (biceps femoris) -----
-        bfsh_r = [self.env.sim.model.actuator_names.index('bfsh_r')]
+        bfsh_r = [self.env.sim.model.actuator('bfsh_r').id]
 
-        bfsh_l = [self.env.sim.model.actuator_names.index('bfsh_l')]
+        bfsh_l = [self.env.sim.model.actuator('bfsh_l').id]
 
         bfsh_r_lbl = ['bfsh_r']
         bfsh_l_lbl = ['bfsh_l']
 
         # ----- Gastrocnemius -----
-        gas_r = [self.env.sim.model.actuator_names.index('gaslat_r'),
-                self.env.sim.model.actuator_names.index('gasmed_r')]
+        gas_r = [self.env.sim.model.actuator('gaslat_r').id,
+                self.env.sim.model.actuator('gasmed_r').id]
 
-        gas_l = [self.env.sim.model.actuator_names.index('gaslat_l'),
-                self.env.sim.model.actuator_names.index('gasmed_l')]
+        gas_l = [self.env.sim.model.actuator('gaslat_l').id,
+                self.env.sim.model.actuator('gasmed_l').id]
 
         gas_r_lbl = ['gaslat_r','gasmed_r']
         gas_l_lbl = ['gaslat_l','gasmed_l']
 
         # ----- Soleus -----
-        sol_r = [self.env.sim.model.actuator_names.index('soleus_r'),
-                self.env.sim.model.actuator_names.index('perbrev_r'),
-                self.env.sim.model.actuator_names.index('perlong_r'),
-                self.env.sim.model.actuator_names.index('tibpost_r')]
+        sol_r = [self.env.sim.model.actuator('soleus_r').id,
+                self.env.sim.model.actuator('perbrev_r').id,
+                self.env.sim.model.actuator('perlong_r').id,
+                self.env.sim.model.actuator('tibpost_r').id]
 
-        sol_l = [self.env.sim.model.actuator_names.index('soleus_l'),
-                self.env.sim.model.actuator_names.index('perbrev_l'),
-                self.env.sim.model.actuator_names.index('perlong_l'),
-                self.env.sim.model.actuator_names.index('tibpost_l')]
+        sol_l = [self.env.sim.model.actuator('soleus_l').id,
+                self.env.sim.model.actuator('perbrev_l').id,
+                self.env.sim.model.actuator('perlong_l').id,
+                self.env.sim.model.actuator('tibpost_l').id]
 
         sol_r_lbl = ['soleus_r','perbrev_r','perlong_r','tibpost_r']
         sol_l_lbl = ['soleus_l','perbrev_l','perlong_l','tibpost_l']
 
         # ----- Hip Flexors (psoas and iliacus) -----
-        hfl_r = [self.env.sim.model.actuator_names.index('psoas_r'),
-                self.env.sim.model.actuator_names.index('iliacus_r')]
+        hfl_r = [self.env.sim.model.actuator('psoas_r').id,
+                self.env.sim.model.actuator('iliacus_r').id]
 
-        hfl_l = [self.env.sim.model.actuator_names.index('psoas_l'),
-                self.env.sim.model.actuator_names.index('iliacus_l')]
+        hfl_l = [self.env.sim.model.actuator('psoas_l').id,
+                self.env.sim.model.actuator('iliacus_l').id]
 
         hfl_r_lbl = ['psoas_r','iliacus_r']
         hfl_l_lbl = ['psoas_l','iliacus_l']
 
         # ----- Hip Abductors (piriformis, satorius and tensor fasciae latae) -----
-        hab_r = [self.env.sim.model.actuator_names.index('piri_r'),
-        self.env.sim.model.actuator_names.index('sart_r'), 
-        self.env.sim.model.actuator_names.index('glmed1_r'),
-        self.env.sim.model.actuator_names.index('glmed2_r'),
-        self.env.sim.model.actuator_names.index('glmin1_r'),
-        self.env.sim.model.actuator_names.index('glmin2_r'),
-        self.env.sim.model.actuator_names.index('glmin3_r')]
+        hab_r = [self.env.sim.model.actuator('piri_r').id,
+        self.env.sim.model.actuator('sart_r').id,
+        self.env.sim.model.actuator('glmed1_r').id,
+        self.env.sim.model.actuator('glmed2_r').id,
+        self.env.sim.model.actuator('glmin1_r').id,
+        self.env.sim.model.actuator('glmin2_r').id,
+        self.env.sim.model.actuator('glmin3_r').id]
 
-        hab_l = [self.env.sim.model.actuator_names.index('piri_l'),
-        self.env.sim.model.actuator_names.index('sart_l'),
-        self.env.sim.model.actuator_names.index('glmed1_l'),
-        self.env.sim.model.actuator_names.index('glmed2_l'),
-        self.env.sim.model.actuator_names.index('glmin1_l'),
-        self.env.sim.model.actuator_names.index('glmin2_l'),
-        self.env.sim.model.actuator_names.index('glmin3_l')]
+        hab_l = [self.env.sim.model.actuator('piri_l').id,
+        self.env.sim.model.actuator('sart_l').id,
+        self.env.sim.model.actuator('glmed1_l').id,
+        self.env.sim.model.actuator('glmed2_l').id,
+        self.env.sim.model.actuator('glmin1_l').id,
+        self.env.sim.model.actuator('glmin2_l').id,
+        self.env.sim.model.actuator('glmin3_l').id]
 
         hab_r_lbl = ['piri_r','sart_r','glmed1_r','glmed2_r','glmin1_r','glmin2_r','glmin3_r']
         hab_l_lbl = ['piri_l','sart_l','glmed1_l','glmed2_l','glmin1_l','glmin2_l','glmin3_l']
 
         # ----- Hip Abbuctors (adductor [brevis, longus, magnus], gracilis) -----
-        had_r = [self.env.sim.model.actuator_names.index('addbrev_r'),
-        self.env.sim.model.actuator_names.index('addlong_r'),
-        self.env.sim.model.actuator_names.index('addmagDist_r'),
-        self.env.sim.model.actuator_names.index('addmagIsch_r'),
-        self.env.sim.model.actuator_names.index('addmagMid_r'),
-        self.env.sim.model.actuator_names.index('addmagProx_r'),
-        self.env.sim.model.actuator_names.index('grac_r')]
+        had_r = [self.env.sim.model.actuator('addbrev_r').id,
+        self.env.sim.model.actuator('addlong_r').id,
+        self.env.sim.model.actuator('addmagDist_r').id,
+        self.env.sim.model.actuator('addmagIsch_r').id,
+        self.env.sim.model.actuator('addmagMid_r').id,
+        self.env.sim.model.actuator('addmagProx_r').id,
+        self.env.sim.model.actuator('grac_r').id]
 
-        had_l = [self.env.sim.model.actuator_names.index('addbrev_l'),
-        self.env.sim.model.actuator_names.index('addlong_l'),
-        self.env.sim.model.actuator_names.index('addmagDist_l'),
-        self.env.sim.model.actuator_names.index('addmagIsch_l'),
-        self.env.sim.model.actuator_names.index('addmagMid_l'),
-        self.env.sim.model.actuator_names.index('addmagProx_l'),
-        self.env.sim.model.actuator_names.index('grac_l')]
+        had_l = [self.env.sim.model.actuator('addbrev_l').id,
+        self.env.sim.model.actuator('addlong_l').id,
+        self.env.sim.model.actuator('addmagDist_l').id,
+        self.env.sim.model.actuator('addmagIsch_l').id,
+        self.env.sim.model.actuator('addmagMid_l').id,
+        self.env.sim.model.actuator('addmagProx_l').id,
+        self.env.sim.model.actuator('grac_l').id]
 
         had_r_lbl = ['addbrev_r','addlong_r','addmagDist_r','addmagIsch_r','addmagMid_r','addmagProx_r','grac_r']
         had_l_lbl = ['addbrev_l','addlong_l','addmagDist_l','addmagIsch_l','addmagMid_l','addmagProx_l','grac_l']
 
         # ----- rectus femoris -----
-        rf_r = [self.env.sim.model.actuator_names.index('recfem_r')]
+        rf_r = [self.env.sim.model.actuator('recfem_r').id]
 
-        rf_l = [self.env.sim.model.actuator_names.index('recfem_l')]
+        rf_l = [self.env.sim.model.actuator('recfem_l').id]
 
         rf_r_lbl = ['recfem_r']
         rf_l_lbl = ['recfem_l']
 
         # ----- Vastius group -----
-        vas_r = [self.env.sim.model.actuator_names.index('vasint_r'),
-        self.env.sim.model.actuator_names.index('vaslat_r'),
-        self.env.sim.model.actuator_names.index('vasmed_r')]
+        vas_r = [self.env.sim.model.actuator('vasint_r').id,
+        self.env.sim.model.actuator('vaslat_r').id,
+        self.env.sim.model.actuator('vasmed_r').id]
 
-        vas_l = [self.env.sim.model.actuator_names.index('vasint_l'),
-        self.env.sim.model.actuator_names.index('vaslat_l'),
-        self.env.sim.model.actuator_names.index('vasmed_l')]
+        vas_l = [self.env.sim.model.actuator('vasint_l').id,
+        self.env.sim.model.actuator('vaslat_l').id,
+        self.env.sim.model.actuator('vasmed_l').id]
 
         vas_r_lbl = ['vasint_r','vaslat_r','vasmed_r']
         vas_l_lbl = ['vasint_l','vaslat_l','vasmed_l']
 
         # ----- tibialis anterior -----
-        ta_r = [self.env.sim.model.actuator_names.index('tibant_r')]
+        ta_r = [self.env.sim.model.actuator('tibant_r').id]
 
-        ta_l = [self.env.sim.model.actuator_names.index('tibant_l')]
+        ta_l = [self.env.sim.model.actuator('tibant_l').id]
 
         ta_r_lbl = ['tibant_r']
         ta_l_lbl = ['tibant_l']
@@ -397,7 +387,7 @@ class MyoLegReflex(object):
         self.muscle_labels['l_leg']['TA'] = ta_l_lbl
 
         #L0 = (actuator_lengthrange)
-        temp_L0 = (self.env.sim.model.actuator_lengthrange[:,0] - self.env.sim.model.tendon_lengthspring) / self.env.sim.model.actuator_biasprm[:,0]
+        temp_L0 = (self.env.sim.model.actuator_lengthrange[:,0] - self.env.sim.model.tendon_lengthspring[:,0]) / self.env.sim.model.actuator_biasprm[:,0]
 
         # --- Muscle Fmax normalizations ---
         for x in self.muscles_dict:
@@ -413,7 +403,7 @@ class MyoLegReflex(object):
         # Sets the initial pose of the Myoleg model based on an input dictionary of values
         
         # Setting the starting position for reward calculation
-        self.init_pelvis = self.env.sim.data.get_body_xpos('pelvis').copy()
+        self.init_pelvis = self.env.sim.data.body('pelvis').xpos.copy()
 
         # Converting from Euler to quaternions
         temp_quat_util = euler2quat([init_dict['model_pose']['roll'], 
@@ -431,20 +421,11 @@ class MyoLegReflex(object):
         self.env.sim.data.qvel[1] = init_dict['velocity']['cartesian'][1]
         self.env.sim.data.qvel[2] = init_dict['velocity']['cartesian'][2]
 
-        # first 7 are free root (dof and quad), followed by 28 joints of myolegs
-        # Offset index of 7, 1st 7 elements are the 3D pos and quad of the free root joint
-        
-        # offset will change if indexing function changes
-        # env.sim.model.joint_name2id - Takes into consideration that there is a root joint. (Uses an offset of +6 instead)
-        # env.sim.model.joint_names.index - Uses only the joint_name property to perform indexing
-
-        temp_offset = 7
-        
         # Reusing the dict from above
         # Values in radians
-        for i in init_dict['joint_angles'].keys():
-            self.env.sim.data.qpos[self.env.sim.model.joint_names.index(i)+temp_offset] = init_dict['joint_angles'][i]
-
+        for joint_name in init_dict['joint_angles'].keys():
+            self.env.sim.data.joint(joint_name).qpos[0] = init_dict['joint_angles'][joint_name]
+        
         if 'height_offset' in init_dict.keys():
             height_offset = init_dict['height_offset']
         else:
@@ -464,8 +445,8 @@ class MyoLegReflex(object):
     def update_footstep(self):
         
         # Getting only the heel contacts. Works better at detecting new steps, as compared to using both heel and toe
-        r_contact = True if (self.env.sim.data.get_sensor('r_foot').copy()) > 0.1*(np.sum(self.env.sim.model.body_mass)*9.8) else False
-        l_contact = True if (self.env.sim.data.get_sensor('l_foot').copy()) > 0.1*(np.sum(self.env.sim.model.body_mass)*9.8) else False
+        r_contact = True if (self.env.sim.data.sensor('r_foot').data[0].copy()) > 0.1*(np.sum(self.env.sim.model.body_mass)*9.8) else False
+        l_contact = True if (self.env.sim.data.sensor('l_foot').data[0].copy()) > 0.1*(np.sum(self.env.sim.model.body_mass)*9.8) else False
 
         self.footstep['new'] = False
         if ( (not self.footstep['r_contact'] and r_contact) or (not self.footstep['l_contact'] and l_contact) ):
@@ -479,21 +460,18 @@ class MyoLegReflex(object):
     def reflex2mujoco(self, output):
         
         mus_act = np.zeros((80,))
-        mus_act[:] = 0 # Myosuite uses normalized action values between -1 to 1 # Currently hacked Myosuite outputs to be [0, 1]
+        mus_act[:] = 0 # Using non-normalized values of muscle activations
 
         legs = ['r_leg', 'l_leg']
         musc_idx = self.muscles_dict['r_leg'].keys()
 
         for s_leg in legs:
             for musc in musc_idx:
-                #print(f"Leg - {s_leg}, Musc - {musc}, Idx - {self.muscles_dict[s_leg][musc]}, values - {output[s_leg][musc]}")
                 mus_act[self.muscles_dict[s_leg][musc]] = output[s_leg][musc]
         
         return mus_act
 
     def rotate_frame(self, x, y, theta):
-        #print(theta)
         x_rot = np.cos(theta)*x - np.sin(theta)*y
         y_rot = np.sin(theta)*x + np.cos(theta)*y
         return x_rot, y_rot
-
