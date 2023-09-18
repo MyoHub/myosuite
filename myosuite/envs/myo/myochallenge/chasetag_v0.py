@@ -232,6 +232,7 @@ class ChaseTagEnvV0(WalkEnvV0):
 
         win_cdt = self._win_condition()
         lose_cdt = self._lose_condition()
+        self.obs_dict['time'] = self.maxTime if lose_cdt else self.obs_dict['time']
         score = self._get_score(float(self.obs_dict['time'])) if win_cdt else 0
 
         # Example reward, you should change this!
