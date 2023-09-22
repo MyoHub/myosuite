@@ -165,6 +165,7 @@ When using ``mjrl`` it might be needed to resume training of a policy locally. I
 
 Load DEP-RL Baseline
 ====================
+See `here <https://deprl.readthedocs.io/en/latest/index.html>`__ for more detailed documentation of ``deprl``.
 
 If you want to load and execute the pre-trained DEP-RL baseline. Make sure that the ``deprl`` package is installed.
 
