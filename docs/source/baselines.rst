@@ -90,7 +90,7 @@ Launch training
 
 DEP-RL baseline
 ```````````````
-We provide `deprl <https://github.com/martius-lab/depRL>`_ as an additional baseline for locomotion policies. The controller was adapted from the original paper and produces robust locomotion policies with the MyoLeg through the use of a self-organizing exploration method.
+We provide `deprl <https://github.com/martius-lab/depRL>`_ as an additional baseline for locomotion policies. You can find more detailed explanations and documentation on how to use it `here <https://deprl.readthedocs.io/en/latest/index.html>`__. The controller was adapted from the original paper and produces robust locomotion policies with the MyoLeg through the use of a self-organizing exploration method.
 While DEP-RL can be used for any kind of RL task, we provide a pre-trained controller and training settings for the `myoLegWalk-v0` task.
 See `this tutorial <https://github.com/facebookresearch/myosuite/blob/main/docs/source/tutorials/4a_deprl.ipynb>`_ for more detailed tutorials.
 
