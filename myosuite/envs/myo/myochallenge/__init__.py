@@ -22,16 +22,36 @@ register(id='myoChallengeRelocateP1-v0',
     )
 
 
-# MyoChallenge Locomotion
+
+# MyoChallenge Locomotion P1
 register(id='myoChallengeChaseTagP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,
         kwargs={
             'model_path': curr_dir+'/../../../simhive/myo_sim/leg/myolegs_chasetag_v0.10(mj236).mjb',
             'normalize_act': True,
-            'reset_type':'init', # none, init, random
             'win_distance': 0.5,
-            'min_spawn_distance': 2
+            'min_spawn_distance': 2,
+            'reset_type':'init', # none, init, random
+            'terrain': 'flat',
+            'task_choice': 'chase',
+        }
+    )
+
+
+# MyoChallenge Locomotion P2
+register(id='myoChallengeChaseTagP2-v0',
+        entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
+        max_episode_steps=2000,
+        kwargs={
+            # 'model_path': curr_dir+'/../../../simhive/myo_sim/leg/myolegs_chasetag_v0.10(mj236).mjb',
+            'model_path': curr_dir+'/../../../simhive/myochasetagp2.mjb',
+            'normalize_act': True,
+            'win_distance': 0.5,
+            'min_spawn_distance': 2,
+            'reset_type':'random', # none, init, random
+            'terrain': 'random',
+            'task_choice': 'random',
         }
     )
 

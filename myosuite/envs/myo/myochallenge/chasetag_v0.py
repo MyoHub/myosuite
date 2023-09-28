@@ -170,15 +170,19 @@ class ChaseTagEnvV0(WalkEnvV0):
     def _setup(self,
                obs_keys: list = DEFAULT_OBS_KEYS,
                weighted_reward_keys: dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
-               opponent_probabilities= [0.1, 0.45, 0.45],
-               reset_type = 'none',
-               win_distance = 0.5,
-               min_spawn_distance = 2,
+               opponent_probabilities=[0.1, 0.45, 0.45],
+               reset_type='none',
+               win_distance=0.5,
+               min_spawn_distance=2,
+               task_choice='chase',
+               terrain='flat',
                **kwargs,
                ):
-        self._setup_convenience_vars()
 
+        self._setup_convenience_vars()
         self.reset_type = reset_type
+        self.task_choice = task_choice
+        self.terrain = terrain
         self.maxTime = 20
 
         self.win_distance = win_distance
@@ -218,6 +222,8 @@ class ChaseTagEnvV0(WalkEnvV0):
         obs_dict['opponent_vel'] = self.opponent.opponent_vel[:].copy()
         obs_dict['model_root_pos'] = sim.data.qpos[:2].copy()
         obs_dict['model_root_vel'] = sim.data.qvel[:2].copy()
+        if self.terrain == 'random':
+            obs_dict['hfield'] = self.sim.model.hfield('terrain').data[:10, :10].flatten().copy()
 
         return obs_dict
 
@@ -283,16 +289,34 @@ class ChaseTagEnvV0(WalkEnvV0):
         return obs, reward, done, info
 
     def reset(self):
-        if self.reset_type == 'random':
-            qpos, qvel = self._get_randomized_initial_state()
-        elif self.reset_type == 'init':
-                qpos, qvel = self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
-        else:
-            qpos, qvel = self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
+        self._maybe_sample_terrain()
+        self._sample_task()
+        qpos, qvel = self._get_reset_state()
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel)
         self.opponent.reset_opponent(self.np_random)
         return obs
+
+    def _sample_task(self):
+        if self.task_choice == 'random':
+            self.current_task = np.random.choice(['chase', 'flee'])
+        else:
+            self.current_task = self.task_choice
+
+    def _maybe_sample_terrain(self):
+        """
+        Sample a new terrain if the terrain type asks for it.
+        """
+        if self.terrain != 'flat':
+            pass
+
+    def _get_reset_state(self):
+        if self.reset_type == 'random':
+            return self._get_randomized_initial_state()
+        elif self.reset_type == 'init':
+            return self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
+        else:
+            return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
 
     def viewer_setup(self, *args, **kwargs):
        """
