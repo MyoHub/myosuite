@@ -7,6 +7,7 @@ import collections
 import gym
 import numpy as np
 import pink
+from matplotlib import pyplot as plt
 
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils.quat_math import quat2euler, euler2quat
@@ -124,6 +125,135 @@ class ChallengeOpponent:
         self.opponent_vel[:] = 0.0
 
 
+class HeightField:
+    def __init__(self, sim, rng, patches_per_side=3, real_length=12, view_distance=20):
+        """
+        Assume square quad.
+        :sim: mujoco sim object.
+        :rng: np_random
+        :real_length: side length of quad in real-world [m]
+        :patches_per_side: how many different patches we want, relative to one side length
+                           total patch number will be patches_per_side^2
+        """
+        assert type(view_distance) is int
+        assert type(patches_per_side) is int
+        self.available_terrain_types = ['flat', 'rough', 'hilly']
+        # self.available_terrain_types = ['hilly']
+        self.sim = sim
+        self.hfield = sim.model.hfield('terrain')
+        self.patches_per_side = patches_per_side
+        self.real_length = real_length
+        self.view_distance = view_distance
+        self.patch_size = int(self.nrow / patches_per_side)
+        self.heightmap_window = None
+        self.rng = rng
+        self.padded_map = np.zeros((self.nrow[0] * 2, self.ncol[0] * 2))
+        self._populate_patches()
+
+    def _compute_patch_data(self, terrain_type):
+        if terrain_type == 'flat':
+            return np.zeros((self.patch_size, self.patch_size))
+        elif terrain_type == 'rough':
+            return self._compute_rough_terrain()
+        elif terrain_type == 'hilly':
+            return self._compute_hilly_terrain()
+        else:
+            raise NotImplementedError
+
+    def _populate_patches(self):
+        for i in range(self.patches_per_side):
+            for j in range(self.patches_per_side):
+                terrain_type = self.rng.choice(self.available_terrain_types)
+                self._fill_patch(i, j, terrain_type)
+
+    def _fill_patch(self, i, j, terrain_type='flat'):
+        """
+        Fill patch at position <i> ,<j> with terrain <type>
+        """
+        self.hfield.data[i * self.patch_size: i*self.patch_size + self.patch_size,
+                    j * self.patch_size: j * self.patch_size + self.patch_size] = self._compute_patch_data(terrain_type)
+
+    def get_heightmap_obs(self):
+        if self.heightmap_window is None:
+            self.heightmap_window = np.zeros((self.view_distance, self.view_distance))
+        map_pos = self.cart2map(self.sim.data.qpos[:2])
+        spacing = int(self.view_distance / 2)
+        self.heightmap_window[:] = self.padded_map[map_pos[0] - spacing : map_pos[0] + spacing, map_pos[1] - spacing : map_pos[1] + spacing]
+        if not hasattr(self, 'length'):
+            self.length = 0
+        # if not self.length % 10:
+        #     plt.imshow(self.heightmap_window)
+        #     plt.savefig(f'./heightmaps/imshow_{self.length}.png')
+        self.length += 1
+        return self.heightmap_window[:].flatten().copy()
+
+    def cart2map(self, pos):
+        """
+        Transform cartesian position [m * m] to rounded map position [nrow * ncol]
+        """
+        delta_map_x = self.real_length / self.nrow
+        delta_map_y = self.real_length / self.ncol
+        offset_x = self.padded_map.shape[0] / 2
+        offset_y = self.padded_map.shape[1] / 2
+        return [int(pos[0] / delta_map_x + offset_x), int(pos[1] / delta_map_y + offset_y)]
+
+    def sample(self, rng=None):
+        if not rng is None:
+            self.rng = rng
+        self._populate_patches()
+        self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 1.0
+        self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, 0])
+        self.sim.model.geom_contype[self.sim.model.geom_name2id('terrain')] = 1
+        self.padded_map[int(self.nrow/2): int(self.nrow/2 + self.padded_map.shape[0]/2), int(self.nrow/2): int(self.ncol/2 + self.padded_map.shape[1]/2)] = self.hfield.data[:]
+        if hasattr(self.sim, 'renderer') and not self.sim.renderer._window is None:
+            self.sim.renderer._window.update_hfield(0)
+
+    # Patch types  ---------------
+    def _compute_rough_terrain(self):
+        rough = self.rng.uniform(low=-.5, high=.5, size=(self.patch_size, self.patch_size))
+        normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
+        scalar, offset = .08, .02
+        return normalized_data * scalar - offset
+
+    def _compute_hilly_terrain(self):
+        # TODO random rotation
+        frequency = 10
+        scalar = self.rng.uniform(low=0.03, high=0.23)
+        data = np.sin(np.linspace(0, frequency * np.pi, self.patch_size * self.patch_size) + np.pi / 2) - 1
+        normalized_data = (data - data.min()) / (data.max() - data.min())
+        normalized_data = np.flip(normalized_data.reshape(self.patch_size, self.patch_size) * scalar, [0, 1]).reshape(self.patch_size, self.patch_size)
+        if self.rng.uniform() < 0.5:
+            normalized_data = np.rot90(normalized_data)
+        return normalized_data
+
+    def _compute_stair_terrain(self):
+        # TODO implement such that it goes slightly up and down
+        # also random rotation
+        raise NotImplementedError
+        num_stairs = 12
+        stair_height = .1
+        flat = 5200 - (1e4 - 5200) % num_stairs
+        stairs_width = (1e4 - flat) // num_stairs
+        scalar = 2.5 if self.variant == 'fixed' else self.rng.uniform(low=1.5, high=3.5)
+        stair_parts = [np.full((int(stairs_width // 100), 100), -2 + stair_height * j) for j in range(num_stairs)]
+        new_terrain_data = np.concatenate([np.full((int(flat // 100), 100), -2)] + stair_parts, axis=0)
+        normalized_data = (new_terrain_data + 2) / (2 + stair_height * num_stairs)
+        self.sim.model.hfield_data[:] = np.flip(normalized_data.reshape(100, 100) * scalar, [0, 1]).reshape(10000, )
+    # --------------------------------
+
+    @property
+    def size(self):
+        return self.hfield.size
+
+    @property
+    def nrow(self):
+        return self.hfield.nrow
+
+    @property
+    def ncol(self):
+        return self.hfield.ncol
+
+
 class ChaseTagEnvV0(WalkEnvV0):
 
     DEFAULT_OBS_KEYS = [
@@ -180,6 +310,7 @@ class ChaseTagEnvV0(WalkEnvV0):
                ):
 
         self._setup_convenience_vars()
+        self.heightfield = HeightField(self.sim, rng=self.np_random)
         self.reset_type = reset_type
         self.task_choice = task_choice
         self.terrain = terrain
@@ -223,7 +354,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         obs_dict['model_root_pos'] = sim.data.qpos[:2].copy()
         obs_dict['model_root_vel'] = sim.data.qvel[:2].copy()
         if self.terrain == 'random':
-            obs_dict['hfield'] = self.sim.model.hfield('terrain').data[:10, :10].flatten().copy()
+            obs_dict['hfield'] = self.heightfield.get_heightmap_obs()
 
         return obs_dict
 
@@ -308,11 +439,20 @@ class ChaseTagEnvV0(WalkEnvV0):
         Sample a new terrain if the terrain type asks for it.
         """
         if self.terrain != 'flat':
-            pass
+            self.heightfield.sample(self.np_random)
+            self.sim.model.geom_conaffinity[self.sim.model.geom_name2id('terrain')] = 1
+
+    def _randomize_position_orientation(self, qpos, qvel):
+        # TODO this doesnt work
+        qpos[:2]  = np.random.uniform(-6, 6)
+        # TODO this is not implemented
+        # qvel =
+        return qpos, qvel
 
     def _get_reset_state(self):
         if self.reset_type == 'random':
-            return self._get_randomized_initial_state()
+            qpos, qvel = self._get_randomized_initial_state()
+            return self._randomize_position_orientation(qpos, qvel)
         elif self.reset_type == 'init':
             return self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
         else:
@@ -430,3 +570,14 @@ class ChaseTagEnvV0(WalkEnvV0):
         Return a list of actuator names according to the index ID of the actuators
         '''
         return [self.sim.model.actuator(act_id).name for act_id in range(1, self.sim.model.na)]
+
+    def _get_knee_condition(self):
+        """
+        Checks if the agent is on its knees by comparing the distance between the center of mass and the feet.
+        """
+        feet_heights = self._get_feet_heights()
+        com_height = self._get_height()
+        if com_height - np.mean(feet_heights) < .61:
+            return 1
+        else:
+            return 0

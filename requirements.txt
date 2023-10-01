@@ -5,7 +5,7 @@ termcolor
 flatten_dict
 h5py
 numpy
-mujoco==2.3.6
+mujoco==2.3.7
 dm-control==1.0.12
 Pillow
 pink-noise-rl
