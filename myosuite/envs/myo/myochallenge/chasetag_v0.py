@@ -155,7 +155,7 @@ class ChallengeOpponent:
 
 
 class HeightField:
-    def __init__(self, sim, rng, patches_per_side=3, real_length=12, view_distance=20):
+    def __init__(self, sim, rng, patches_per_side=3, real_length=12, view_distance=10):
         """
         Assume square quad.
         :sim: mujoco sim object.
