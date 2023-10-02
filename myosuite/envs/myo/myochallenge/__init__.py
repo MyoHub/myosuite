@@ -44,15 +44,13 @@ register(id='myoChallengeChaseTagP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,
         kwargs={
-            # 'model_path': curr_dir+'/../../../simhive/myo_sim/leg/myolegs_chasetag_v0.10(mj236).mjb',
-            # 'model_path': curr_dir+'/../../../simhive/myochasetagp2.mjb',
-            'model_path': '/Users/pschumacher/Documents/myosim_internal/myo_sim/leg/myolegs_challengeP2.xml',
+            'model_path': curr_dir+'/../../../simhive/myochasetagp2.mjb',
             'normalize_act': True,
             'win_distance': 0.5,
             'min_spawn_distance': 2,
-            'reset_type': 'random', # none, init, random
-            'terrain': 'random', # flat, random
-            'task_choice': 'flee', # chase, flee, random
+            'reset_type': 'random',  # none, init, random
+            'terrain': 'random',  # flat, random
+            'task_choice': 'random',  # chase, flee, random
         }
     )
 

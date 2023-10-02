@@ -10,13 +10,31 @@ import pink
 from enum import Enum
 
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
-from myosuite.utils.quat_math import quat2euler, euler2quat
+from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat
 
 
 class TerrainTypes(Enum):
     FLAT = 0
     HILLY = 1
     ROUGH = 2
+
+
+def quat_apply(a, b):
+    shape = b.shape
+    a = a.reshape(-1, 4)
+    b = b.reshape(-1, 3)
+    xyz = a[:, :3]
+    t = np.cross(xyz, b, axis=-1) * 2
+    return (b + a[:, 3:] * t + np.cross(xyz, t, axis=-1)).reshape(shape)
+
+def normalize(x, eps: float = 1e-9):
+    return x / np.maximum(np.linalg.norm(x, axis=-1), eps)[:, np.newaxis]
+
+def quat_apply_yaw(quat, vec):
+    quat_yaw = quat.copy()
+    quat_yaw[:, :2] = 0.
+    quat_yaw = normalize(quat_yaw)
+    return quat_apply(quat_yaw, vec)
 
 
 class ChallengeOpponent:
@@ -166,9 +184,8 @@ class HeightField:
         """
         assert type(view_distance) is int
         assert type(patches_per_side) is int
-        # self.available_terrain_types = TerrainTypes()
-        # self.available_terrain_types = ['hilly']
         self.sim = sim
+        self._init_height_points()
         self.hfield = sim.model.hfield('terrain')
         self.patches_per_side = patches_per_side
         self.real_length = real_length
@@ -176,7 +193,6 @@ class HeightField:
         self.patch_size = int(self.nrow / patches_per_side)
         self.heightmap_window = None
         self.rng = rng
-        self.padded_map = np.zeros((self.nrow[0] * 2, self.ncol[0] * 2))
         self._populate_patches()
 
     def _compute_patch_data(self, terrain_type):
@@ -190,15 +206,13 @@ class HeightField:
             raise NotImplementedError
 
     def _populate_patches(self):
-        # generated_terrains = np.zeros((len(self.available_terrain_types)))
         generated_terrains = np.zeros((len(TerrainTypes)))
         for i in range(self.patches_per_side):
             for j in range(self.patches_per_side):
-                # while terrain_type.name == 'HILLY' and generated_terrains[self.available_terrain_types.HILLY.value] >= 2:
                 terrain_type = self.rng.choice(TerrainTypes)
+                # maximum of 2 hilly
                 while terrain_type.name == 'HILLY' and generated_terrains[TerrainTypes.HILLY.value] >= 2:
                     terrain_type = self.rng.choice(TerrainTypes)
-                # `terrain_type = self.rng.choice(self.available_terrain_types)
                 generated_terrains[terrain_type.value] += 1
                 self._fill_patch(i, j, terrain_type)
 
@@ -211,27 +225,18 @@ class HeightField:
 
     def get_heightmap_obs(self):
         if self.heightmap_window is None:
-            self.heightmap_window = np.zeros((self.view_distance, self.view_distance))
-        map_pos = self.cart2map(self.sim.data.qpos[:2])
-        spacing = int(self.view_distance / 2)
-        self.heightmap_window[:] = self.padded_map[map_pos[0] - spacing : map_pos[0] + spacing, map_pos[1] - spacing : map_pos[1] + spacing]
-        if not hasattr(self, 'length'):
-            self.length = 0
-        # if not self.length % 10:
-        #     plt.imshow(self.heightmap_window)
-        #     plt.savefig(f'./heightmaps/imshow_{self.length}.png')
-        self.length += 1
+            self.heightmap_window = np.zeros((10, 10))
+        self._measure_height()
         return self.heightmap_window[:].flatten().copy()
+
 
     def cart2map(self, pos):
         """
         Transform cartesian position [m * m] to rounded map position [nrow * ncol]
         """
-        delta_map_x = self.real_length / self.nrow
-        delta_map_y = self.real_length / self.ncol
-        offset_x = self.padded_map.shape[0] / 2
-        offset_y = self.padded_map.shape[1] / 2
-        return [int(pos[0] / delta_map_x + offset_x), int(pos[1] / delta_map_y + offset_y)]
+        delta_map = self.real_length / self.nrow
+        offset = self.hfield.data.shape[0] / 2
+        return pos[:] / delta_map + offset
 
     def sample(self, rng=None):
         if not rng is None:
@@ -240,7 +245,6 @@ class HeightField:
         self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 1.0
         self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, 0])
         self.sim.model.geom_contype[self.sim.model.geom_name2id('terrain')] = 1
-        self.padded_map[int(self.nrow/2): int(self.nrow/2 + self.padded_map.shape[0]/2), int(self.nrow/2): int(self.ncol/2 + self.padded_map.shape[1]/2)] = self.hfield.data[:]
         if hasattr(self.sim, 'renderer') and not self.sim.renderer._window is None:
             self.sim.renderer._window.update_hfield(0)
 
@@ -276,6 +280,52 @@ class HeightField:
         normalized_data = (new_terrain_data + 2) / (2 + stair_height * num_stairs)
         self.sim.model.hfield_data[:] = np.flip(normalized_data.reshape(100, 100) * scalar, [0, 1]).reshape(10000, )
     # --------------------------------
+
+    def _init_height_points(self):
+        """ Compute points at which height measurments are sampled (in base frame)
+         Saves the points in ndarray of shape (self.num_height_points, 3)
+        """
+        measured_points_x = [-0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
+        measured_points_y = [-0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
+        y = np.array(measured_points_y)
+        x = np.array(measured_points_x)
+        grid_x, grid_y = np.meshgrid(x, y)
+
+        self.num_height_points = grid_x.size
+        points = np.zeros((self.num_height_points, 3))
+        points[:, 0] = grid_x.flatten()
+        points[:, 1] = grid_y.flatten()
+        self.height_points = points
+
+    def _measure_height(self):
+        rot_direction = quat2euler(self.sim.data.qpos[3:7])[2]
+        rot_mat = euler2mat([0, 0, rot_direction])
+        # rotate points around z-direction
+        points = self.height_points @ rot_mat
+        # increase point spacing
+        points = (points * 5)
+        # translate points to model frame
+        points += (self.sim.data.qpos[:3])
+        px = points[:, 0]
+        py = points[:, 1]
+        # get map_index coordinates of points
+        px = np.asarray(self.cart2map(px), dtype=np.int16)
+        py = np.asarray(self.cart2map(py), dtype=np.int16)
+        # avoid out-of-bounds by clipping indices to map boundaries
+        # -2 because we go one further and shape is 1 longer than map index
+        px = np.clip(px, 0, self.hfield.data.shape[0] - 2)
+        py = np.clip(py, 0, self.hfield.data.shape[1] - 2)
+        # points are not perfectly aligned with heightfield
+        heights1 = self.hfield.data[px, py]
+        heights2 = self.hfield.data[px + 1, py]
+        heights3 = self.hfield.data[px, py + 1]
+        heights = np.minimum(heights1, heights2)
+        heights = np.minimum(heights, heights3)
+
+        if not hasattr(self, 'length'):
+            self.length = 0
+        self.length += 1
+        self.heightmap_window[:] = (heights * 0.005).reshape(10, 10)
 
     @property
     def size(self):
@@ -346,6 +396,8 @@ class ChaseTagEnvV0(WalkEnvV0):
                ):
 
         self._setup_convenience_vars()
+        # TODO dont create heightfield if terrain is flat all the time
+        # check that this works everywhere and is efficient.
         self.heightfield = HeightField(self.sim, rng=self.np_random)
         self.reset_type = reset_type
         self.task_choice = task_choice
@@ -403,9 +455,12 @@ class ChaseTagEnvV0(WalkEnvV0):
         """
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
 
+        # Task dependant metrics
+        # TODO update these three functions to work with half-chase half-flee task
         win_cdt = self._win_condition()
         lose_cdt = self._lose_condition()
         score = self._get_score(float(self.obs_dict['time'])) if win_cdt else 0
+        # ----------------------
 
         # Example reward, you should change this!
         distance = np.linalg.norm(obs_dict['model_root_pos'][...,:2] - obs_dict['opponent_pose'][...,:2])
@@ -562,13 +617,16 @@ class ChaseTagEnvV0(WalkEnvV0):
         return 0
 
     def _lose_condition(self):
+        # TODO check that knee condition gets currently triggered for falling
+        # TODO correctly switch between chase and flee
         # fall condition for phase 1
-        if self.sim.data.body('pelvis').xpos[2] < 0.5:
+        if self._get_knee_condition():
             return 1
         root_pos = self.sim.data.body('pelvis').xpos[:2]
         return 1 if float(self.obs_dict['time']) >= self.maxTime or (np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5) else 0
 
     def _win_condition(self):
+        # TODO correctly switch between chase and flee
         root_pos = self.sim.data.body('pelvis').xpos[:2]
         opp_pos = self.obs_dict['opponent_pose'][..., :2]
         return 1 if np.linalg.norm(root_pos - opp_pos) <= self.win_distance and self.startFlag else 0
@@ -622,7 +680,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         """
         feet_heights = self._get_feet_heights()
         com_height = self._get_height()
-        if com_height - np.mean(feet_heights) < .61:
+        if np.abs(com_height - np.mean(feet_heights)) < .35:
             return 1
         else:
             return 0
