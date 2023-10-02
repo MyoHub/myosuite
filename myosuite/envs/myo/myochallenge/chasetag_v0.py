@@ -7,10 +7,16 @@ import collections
 import gym
 import numpy as np
 import pink
-from matplotlib import pyplot as plt
+from enum import Enum
 
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils.quat_math import quat2euler, euler2quat
+
+
+class TerrainTypes(Enum):
+    FLAT = 0
+    HILLY = 1
+    ROUGH = 2
 
 
 class ChallengeOpponent:
@@ -137,7 +143,7 @@ class HeightField:
         """
         assert type(view_distance) is int
         assert type(patches_per_side) is int
-        self.available_terrain_types = ['flat', 'rough', 'hilly']
+        # self.available_terrain_types = TerrainTypes()
         # self.available_terrain_types = ['hilly']
         self.sim = sim
         self.hfield = sim.model.hfield('terrain')
@@ -151,22 +157,29 @@ class HeightField:
         self._populate_patches()
 
     def _compute_patch_data(self, terrain_type):
-        if terrain_type == 'flat':
+        if terrain_type.name == 'FLAT':
             return np.zeros((self.patch_size, self.patch_size))
-        elif terrain_type == 'rough':
+        elif terrain_type.name == 'ROUGH':
             return self._compute_rough_terrain()
-        elif terrain_type == 'hilly':
+        elif terrain_type.name == 'HILLY':
             return self._compute_hilly_terrain()
         else:
             raise NotImplementedError
 
     def _populate_patches(self):
+        # generated_terrains = np.zeros((len(self.available_terrain_types)))
+        generated_terrains = np.zeros((len(TerrainTypes)))
         for i in range(self.patches_per_side):
             for j in range(self.patches_per_side):
-                terrain_type = self.rng.choice(self.available_terrain_types)
+                # while terrain_type.name == 'HILLY' and generated_terrains[self.available_terrain_types.HILLY.value] >= 2:
+                terrain_type = self.rng.choice(TerrainTypes)
+                while terrain_type.name == 'HILLY' and generated_terrains[TerrainTypes.HILLY.value] >= 2:
+                    terrain_type = self.rng.choice(TerrainTypes)
+                # `terrain_type = self.rng.choice(self.available_terrain_types)
+                generated_terrains[terrain_type.value] += 1
                 self._fill_patch(i, j, terrain_type)
 
-    def _fill_patch(self, i, j, terrain_type='flat'):
+    def _fill_patch(self, i, j, terrain_type='FLAT'):
         """
         Fill patch at position <i> ,<j> with terrain <type>
         """
@@ -210,19 +223,19 @@ class HeightField:
 
     # Patch types  ---------------
     def _compute_rough_terrain(self):
-        rough = self.rng.uniform(low=-.5, high=.5, size=(self.patch_size, self.patch_size))
+        rough = self.rng.uniform(low=-1.0, high=1.0, size=(self.patch_size, self.patch_size))
         normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
         scalar, offset = .08, .02
+        scalar = np.random.uniform(low=0.01, high=0.1)
         return normalized_data * scalar - offset
 
     def _compute_hilly_terrain(self):
-        # TODO random rotation
         frequency = 10
         scalar = self.rng.uniform(low=0.03, high=0.23)
         data = np.sin(np.linspace(0, frequency * np.pi, self.patch_size * self.patch_size) + np.pi / 2) - 1
         normalized_data = (data - data.min()) / (data.max() - data.min())
         normalized_data = np.flip(normalized_data.reshape(self.patch_size, self.patch_size) * scalar, [0, 1]).reshape(self.patch_size, self.patch_size)
-        if self.rng.uniform() < 0.5:
+        if self.rng.uniform() < 0.:
             normalized_data = np.rot90(normalized_data)
         return normalized_data
 
@@ -233,7 +246,7 @@ class HeightField:
         num_stairs = 12
         stair_height = .1
         flat = 5200 - (1e4 - 5200) % num_stairs
-        stairs_width = (1e4 - flat) // num_stairs
+        stairs_width = (1e4 - FLAT) // num_stairs
         scalar = 2.5 if self.variant == 'fixed' else self.rng.uniform(low=1.5, high=3.5)
         stair_parts = [np.full((int(stairs_width // 100), 100), -2 + stair_height * j) for j in range(num_stairs)]
         new_terrain_data = np.concatenate([np.full((int(flat // 100), 100), -2)] + stair_parts, axis=0)
@@ -441,12 +454,15 @@ class ChaseTagEnvV0(WalkEnvV0):
         if self.terrain != 'flat':
             self.heightfield.sample(self.np_random)
             self.sim.model.geom_conaffinity[self.sim.model.geom_name2id('terrain')] = 1
+        else:
+            self.terrain = 'FLAT'
 
     def _randomize_position_orientation(self, qpos, qvel):
-        # TODO this doesnt work
-        qpos[:2]  = np.random.uniform(-6, 6)
-        # TODO this is not implemented
-        # qvel =
+        qpos[:2]  = np.random.uniform(-5, 5, size=(2,))
+        orientation = np.random.uniform(0, 2 * np.pi)
+        euler_angle = quat2euler(qpos[3:7])
+        euler_angle[-1] = orientation
+        qpos[3:7] = euler2quat(euler_angle)
         return qpos, qvel
 
     def _get_reset_state(self):

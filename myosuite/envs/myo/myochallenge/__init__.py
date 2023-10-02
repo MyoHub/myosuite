@@ -50,7 +50,7 @@ register(id='myoChallengeChaseTagP2-v0',
             'normalize_act': True,
             'win_distance': 0.5,
             'min_spawn_distance': 2,
-            'reset_type':'random', # none, init, random
+            'reset_type': 'random', # none, init, random
             'terrain': 'random',
             'task_choice': 'random',
         }
