@@ -30,7 +30,7 @@ class ChallengeOpponent:
         self.sim = sim
         self.opponent_probabilities = probabilities
         self.min_spawn_distance = min_spawn_distance
-        self.reset_opponent(rng)
+        self.reset_opponent(rng=rng)
 
     def reset_noise_process(self):
         self.noise_process = pink.ColoredNoiseProcess(beta=2, size=(2, 2000), scale=10, rng=self.rng)
@@ -87,7 +87,6 @@ class ChallengeOpponent:
         Takes in three probabilities and returns the policies with the given frequency.
         """
         rand_num = self.rng.uniform()
-
         if rand_num < self.opponent_probabilities[0]:
             self.opponent_policy = 'static_stationary'
         elif rand_num < self.opponent_probabilities[0] + self.opponent_probabilities[1]:
@@ -106,21 +105,31 @@ class ChallengeOpponent:
         elif self.opponent_policy == 'random':
             opponent_vel = self.random_movement()
 
+        elif self.opponent_policy == 'chase_player':
+            opponent_vel = self.chase_player()
         else:
             raise NotImplementedError(f"This opponent policy doesn't exist. Chose: static_stationary, stationary or random. Policy was: {self.opponent_policy}")
         self.move_opponent(opponent_vel)
 
-    def reset_opponent(self, rng=None):
+    def reset_opponent(self, player_task='chase', rng=None):
         """
         This function should initially place the opponent on a random position with a
         random orientation with a minimum radius to the model.
+        :task: Task for the PLAYER, I.e. 'chase' means that the player has to chase and the opponent has to flee.
+        :rng: np_random generator
         """
         if rng is not None:
             self.rng = rng
             self.reset_noise_process()
 
         self.opponent_vel = np.zeros((2,))
-        self.sample_opponent_policy()
+        if player_task == 'chase':
+            self.sample_opponent_policy()
+        elif player_task == 'flee':
+            self.opponent_policy = 'chase_player'
+        else:
+            raise NotImplementedError
+
         dist = 0
         while dist < self.min_spawn_distance:
             pose = [self.rng.uniform(-5, 5), self.rng.uniform(-5, 5), self.rng.uniform(- 2 * np.pi, 2 * np.pi)]
@@ -129,6 +138,20 @@ class ChallengeOpponent:
             pose[:] = [0, -5, 0]
         self.set_opponent_pose(pose)
         self.opponent_vel[:] = 0.0
+
+    def chase_player(self):
+        """
+        This moves the opponent randomly in a correlated
+        pattern.
+        """
+        pose = self.get_opponent_pose()
+        vec = pose[:2]
+        pel = self.sim.data.body('pelvis').xpos[:2]
+        theta = pose[-1]
+        new_vec = np.array([np.cos(theta), np.sin(theta)])
+        new_vec2 = pel - vec
+        vel = np.dot(new_vec, new_vec2)
+        return np.array([1.0, vel])
 
 
 class HeightField:
@@ -226,7 +249,7 @@ class HeightField:
         rough = self.rng.uniform(low=-1.0, high=1.0, size=(self.patch_size, self.patch_size))
         normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
         scalar, offset = .08, .02
-        scalar = np.random.uniform(low=0.01, high=0.1)
+        scalar = self.rng.uniform(low=0.01, high=0.1)
         return normalized_data * scalar - offset
 
     def _compute_hilly_terrain(self):
@@ -433,17 +456,23 @@ class ChaseTagEnvV0(WalkEnvV0):
         return obs, reward, done, info
 
     def reset(self):
+        # randomized terrain types
         self._maybe_sample_terrain()
+        # randomized tasks
         self._sample_task()
+        # randomized initial state
         qpos, qvel = self._get_reset_state()
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel)
-        self.opponent.reset_opponent(self.np_random)
+        self.opponent.reset_opponent(player_task=self.current_task, rng=self.np_random)
+        self.sim.forward()
         return obs
 
     def _sample_task(self):
+        # TODO set probablilities
+        # TODO compute right score for chase and flee
         if self.task_choice == 'random':
-            self.current_task = np.random.choice(['chase', 'flee'])
+            self.current_task = self.np_random.choice(['chase', 'flee'])
         else:
             self.current_task = self.task_choice
 
@@ -458,8 +487,8 @@ class ChaseTagEnvV0(WalkEnvV0):
             self.terrain = 'FLAT'
 
     def _randomize_position_orientation(self, qpos, qvel):
-        qpos[:2]  = np.random.uniform(-5, 5, size=(2,))
-        orientation = np.random.uniform(0, 2 * np.pi)
+        qpos[:2]  = self.np_random.uniform(-5, 5, size=(2,))
+        orientation = self.np_random.uniform(0, 2 * np.pi)
         euler_angle = quat2euler(qpos[3:7])
         euler_angle[-1] = orientation
         qpos[3:7] = euler2quat(euler_angle)
@@ -567,7 +596,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         return self.sim.model.actuator_gainprm[:,0:2].copy()
 
     def _get_muscle_fmax(self):
-        return self.sim.model.actuator_gainprm[:,2].copy()
+        return self.sim.model.actuator_gainprm[:, 2].copy()
 
     def _get_grf(self):
         return np.array([self.sim.data.sensor(sens_name).data[0] for sens_name in self.grf_sensor_names]).copy()
