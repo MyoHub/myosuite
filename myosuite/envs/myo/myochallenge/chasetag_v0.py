@@ -7,6 +7,7 @@ import collections
 import gym
 import numpy as np
 import pink
+import os
 from enum import Enum
 
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
@@ -19,22 +20,8 @@ class TerrainTypes(Enum):
     ROUGH = 2
 
 
-def quat_apply(a, b):
-    shape = b.shape
-    a = a.reshape(-1, 4)
-    b = b.reshape(-1, 3)
-    xyz = a[:, :3]
-    t = np.cross(xyz, b, axis=-1) * 2
-    return (b + a[:, 3:] * t + np.cross(xyz, t, axis=-1)).reshape(shape)
-
-def normalize(x, eps: float = 1e-9):
-    return x / np.maximum(np.linalg.norm(x, axis=-1), eps)[:, np.newaxis]
-
-def quat_apply_yaw(quat, vec):
-    quat_yaw = quat.copy()
-    quat_yaw[:, :2] = 0.
-    quat_yaw = normalize(quat_yaw)
-    return quat_apply(quat_yaw, vec)
+class SpecialTerrains(Enum):
+    RELIEF = 0
 
 
 class ChallengeOpponent:
@@ -133,7 +120,7 @@ class ChallengeOpponent:
         """
         This function should initially place the opponent on a random position with a
         random orientation with a minimum radius to the model.
-        :task: Task for the PLAYER, I.e. 'chase' means that the player has to chase and the opponent has to flee.
+        :task: Task for the PLAYER, I.e. 'chase' means that the player has to chase and the opponent has to evade.
         :rng: np_random generator
         """
         if rng is not None:
@@ -143,7 +130,7 @@ class ChallengeOpponent:
         self.opponent_vel = np.zeros((2,))
         if player_task == 'chase':
             self.sample_opponent_policy()
-        elif player_task == 'flee':
+        elif player_task == 'evade':
             self.opponent_policy = 'chase_player'
         else:
             raise NotImplementedError
@@ -202,6 +189,8 @@ class HeightField:
             return self._compute_rough_terrain()
         elif terrain_type.name == 'HILLY':
             return self._compute_hilly_terrain()
+        elif terrain_type.name == 'RELIEF':
+            return self._compute_relief_terrain()
         else:
             raise NotImplementedError
 
@@ -215,6 +204,14 @@ class HeightField:
                     terrain_type = self.rng.choice(TerrainTypes)
                 generated_terrains[terrain_type.value] += 1
                 self._fill_patch(i, j, terrain_type)
+        # put special terrain
+        if self.rng.uniform() < 0.2:
+            i, j = self.rng.randint(0, self.patches_per_side, size=2)
+            self._fill_patch(i, j, SpecialTerrains.RELIEF)
+        # TODO fix this if you want initial square to be flat
+        # # ensure spawn terrain is flat
+        # i, j = self.cart2map(self.sim.data.qpos[:2])
+        # self._fill_patch(int(i), int(j), TerrainTypes.FLAT)
 
     def _fill_patch(self, i, j, terrain_type='FLAT'):
         """
@@ -253,8 +250,14 @@ class HeightField:
         rough = self.rng.uniform(low=-1.0, high=1.0, size=(self.patch_size, self.patch_size))
         normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
         scalar, offset = .08, .02
-        scalar = self.rng.uniform(low=0.01, high=0.1)
+        scalar = self.rng.uniform(low=0.05, high=0.1)
         return normalized_data * scalar - offset
+
+    def _compute_relief_terrain(self):
+        curr_dir = os.path.dirname(__file__)
+        relief = np.load(os.path.join(curr_dir, './myo_relief.npy'))
+        normalized_data = (relief - np.min(relief)) / (np.max(relief) - np.min(relief))
+        return np.flipud(normalized_data) * 0.2
 
     def _compute_hilly_terrain(self):
         frequency = 10
@@ -262,7 +265,7 @@ class HeightField:
         data = np.sin(np.linspace(0, frequency * np.pi, self.patch_size * self.patch_size) + np.pi / 2) - 1
         normalized_data = (data - data.min()) / (data.max() - data.min())
         normalized_data = np.flip(normalized_data.reshape(self.patch_size, self.patch_size) * scalar, [0, 1]).reshape(self.patch_size, self.patch_size)
-        if self.rng.uniform() < 0.:
+        if self.rng.uniform() < 0.5:
             normalized_data = np.rot90(normalized_data)
         return normalized_data
 
@@ -396,9 +399,8 @@ class ChaseTagEnvV0(WalkEnvV0):
                ):
 
         self._setup_convenience_vars()
-        # TODO dont create heightfield if terrain is flat all the time
         # check that this works everywhere and is efficient.
-        self.heightfield = HeightField(self.sim, rng=self.np_random)
+        self.heightfield = HeightField(self.sim, rng=self.np_random) if not terrain == 'flat' else None
         self.reset_type = reset_type
         self.task_choice = task_choice
         self.terrain = terrain
@@ -408,6 +410,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
         self.opponent = ChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance)
         self.success_indicator_sid = self.sim.model.site_name2id("opponent_indicator")
+        self.current_task = 'chase'
         super()._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        reset_type=reset_type,
@@ -441,7 +444,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         obs_dict['opponent_vel'] = self.opponent.opponent_vel[:].copy()
         obs_dict['model_root_pos'] = sim.data.qpos[:2].copy()
         obs_dict['model_root_vel'] = sim.data.qvel[:2].copy()
-        if self.terrain == 'random':
+        if not self.heightfield is None:
             obs_dict['hfield'] = self.heightfield.get_heightmap_obs()
 
         return obs_dict
@@ -455,11 +458,13 @@ class ChaseTagEnvV0(WalkEnvV0):
         """
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
 
-        # Task dependant metrics
-        # TODO update these three functions to work with half-chase half-flee task
+        # The task is entirely defined by these 3 lines
         win_cdt = self._win_condition()
         lose_cdt = self._lose_condition()
-        score = self._get_score(float(self.obs_dict['time'])) if win_cdt else 0
+        if self.current_task == 'chase':
+            score = self._get_score(float(self.obs_dict['time'])) if win_cdt else 0
+        elif self.current_task == 'evade':
+            score = self._get_score(float(self.obs_dict['time']))
         # ----------------------
 
         # Example reward, you should change this!
@@ -474,8 +479,8 @@ class ChaseTagEnvV0(WalkEnvV0):
 
                 # Optional Keys
                 ('act_reg', act_mag),
-                ('lose', lose_cdt),
                 ('distance', distance),
+                ('lose', lose_cdt),
                 # Must keys
                 ('sparse',  score),
                 ('solved',  win_cdt),
@@ -524,10 +529,8 @@ class ChaseTagEnvV0(WalkEnvV0):
         return obs
 
     def _sample_task(self):
-        # TODO set probablilities
-        # TODO compute right score for chase and flee
         if self.task_choice == 'random':
-            self.current_task = self.np_random.choice(['chase', 'flee'])
+            self.current_task = self.np_random.choice(['chase', 'evade'])
         else:
             self.current_task = self.task_choice
 
@@ -535,11 +538,9 @@ class ChaseTagEnvV0(WalkEnvV0):
         """
         Sample a new terrain if the terrain type asks for it.
         """
-        if self.terrain != 'flat':
+        if not self.heightfield is None:
             self.heightfield.sample(self.np_random)
             self.sim.model.geom_conaffinity[self.sim.model.geom_name2id('terrain')] = 1
-        else:
-            self.terrain = 'FLAT'
 
     def _randomize_position_orientation(self, qpos, qvel):
         qpos[:2]  = self.np_random.uniform(-5, 5, size=(2,))
@@ -616,20 +617,59 @@ class ChaseTagEnvV0(WalkEnvV0):
             return 1
         return 0
 
-    def _lose_condition(self):
-        # TODO check that knee condition gets currently triggered for falling
-        # TODO correctly switch between chase and flee
-        # fall condition for phase 1
-        if self._get_knee_condition():
-            return 1
-        root_pos = self.sim.data.body('pelvis').xpos[:2]
-        return 1 if float(self.obs_dict['time']) >= self.maxTime or (np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5) else 0
-
     def _win_condition(self):
-        # TODO correctly switch between chase and flee
+        if self.current_task == 'chase':
+            return self._chase_win_condition()
+        elif self.current_task == 'evade':
+            return self._evade_win_condition()
+        else:
+            raise NotImplementedError
+
+    def _lose_condition(self):
+        # falling on knees is always termination
+        if self._get_fallen_condition():
+            return 1
+        if self.current_task == 'chase':
+            return self._chase_lose_condition()
+        elif self.current_task == 'evade':
+            return self._evade_lose_condition()
+        else:
+            raise NotImplementedError
+
+    def _chase_lose_condition(self):
+        root_pos = self.sim.data.body('pelvis').xpos[:2]
+        # didnt manage to tag
+        if float(self.obs_dict['time']) >= self.maxTime:
+            return 1
+        # out-of-bounds
+        if np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5:
+            return 1
+        return 0
+
+    def _evade_lose_condition(self):
         root_pos = self.sim.data.body('pelvis').xpos[:2]
         opp_pos = self.obs_dict['opponent_pose'][..., :2]
-        return 1 if np.linalg.norm(root_pos - opp_pos) <= self.win_distance and self.startFlag else 0
+
+        # got caught
+        if np.linalg.norm(root_pos - opp_pos) <= self.win_distance and self.startFlag:
+            return 1
+        # out-of-bounds
+        if np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5:
+            return 1
+        return 0
+
+    def _chase_win_condition(self):
+        root_pos = self.sim.data.body('pelvis').xpos[:2]
+        opp_pos = self.obs_dict['opponent_pose'][..., :2]
+        if np.linalg.norm(root_pos - opp_pos) <= self.win_distance and self.startFlag:
+            return 1
+        return 0
+
+    def _evade_win_condition(self):
+        # evade long enough
+        if self.obs_dict['time'] >= self.maxTime:
+            return 1
+        return 0
 
     # Helper functions
     def _get_body_mass(self):
@@ -642,7 +682,12 @@ class ChaseTagEnvV0(WalkEnvV0):
 
     def _get_score(self, time):
         time = np.round(time, 2)
-        return 1 - (time/self.maxTime)
+        if self.current_task == 'chase':
+            return 1 - (time / self.maxTime)
+        elif self.current_task == 'evade':
+            return time / self.maxTime
+        else:
+            raise NotImplementedError
 
     def _get_muscle_lengthRange(self):
         return self.sim.model.actuator_lengthrange.copy()
@@ -674,13 +719,16 @@ class ChaseTagEnvV0(WalkEnvV0):
         '''
         return [self.sim.model.actuator(act_id).name for act_id in range(1, self.sim.model.na)]
 
-    def _get_knee_condition(self):
+    def _get_fallen_condition(self):
         """
-        Checks if the agent is on its knees by comparing the distance between the center of mass and the feet.
+        Checks if the agent has fallen by comparing the head site height with the
+        average foot height.
         """
-        feet_heights = self._get_feet_heights()
-        com_height = self._get_height()
-        if np.abs(com_height - np.mean(feet_heights)) < .35:
+        head = self.sim.data.site('head').xpos
+        foot_l = self.sim.data.body('talus_l').xpos
+        foot_r = self.sim.data.body('talus_r').xpos
+        mean = (foot_l + foot_r) / 2
+        if head[2] - mean[2] < 0.2:
             return 1
         else:
             return 0
