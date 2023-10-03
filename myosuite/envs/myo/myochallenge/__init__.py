@@ -24,10 +24,10 @@ register(id='myoChallengeRelocateP1-v0',
 
 # MyoChallenge Manipulation P2
 register(id='myoChallengeRelocateP2-v0',
-        entry_point='robohive.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
+        entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
         max_episode_steps=150,
         kwargs={
-            'model_path': curr_dir+'/../assets//myoarm_object_v0.15(mj236).mjb',
+            'model_path': curr_dir+'/../assets/myoarm_object_v0.15(mj237).mjb',
             'normalize_act': True,
             'frame_skip': 5,
             'pos_th': 0.1,              # cover entire base of the receptacle
@@ -41,7 +41,7 @@ register(id='myoChallengeRelocateP2-v0',
     )
 
 
-# MyoChallenge Locomotion P1
+## MyoChallenge Locomotion P1
 register(id='myoChallengeChaseTagP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,
@@ -50,7 +50,7 @@ register(id='myoChallengeChaseTagP1-v0',
             'normalize_act': True,
             'win_distance': 0.5,
             'min_spawn_distance': 2,
-            'reset_type':'init', # none, init, random
+            'reset_type': 'init', # none, init, random
             'terrain': 'flat',
             'task_choice': 'chase',
         }
@@ -62,7 +62,7 @@ register(id='myoChallengeChaseTagP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,
         kwargs={
-            'model_path': curr_dir+'/../../../simhive/myochasetagp2.mjb',
+            'model_path': curr_dir+'/../assets/myochasetagp2.mjb',
             'normalize_act': True,
             'win_distance': 0.5,
             'min_spawn_distance': 2,

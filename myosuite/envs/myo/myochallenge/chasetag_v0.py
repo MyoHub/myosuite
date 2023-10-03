@@ -255,7 +255,7 @@ class HeightField:
 
     def _compute_relief_terrain(self):
         curr_dir = os.path.dirname(__file__)
-        relief = np.load(os.path.join(curr_dir, './myo_relief.npy'))
+        relief = np.load(os.path.join(curr_dir, '../assets/myo_relief.npy'))
         normalized_data = (relief - np.min(relief)) / (np.max(relief) - np.min(relief))
         return np.flipud(normalized_data) * 0.2
 
