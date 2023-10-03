@@ -6,7 +6,7 @@ import numpy as np
 
 
 # MyoChallenge 2023 envs ==============================================
-# MyoChallenge Manipulation
+# MyoChallenge Manipulation P1
 register(id='myoChallengeRelocateP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
         max_episode_steps=150,
@@ -21,6 +21,24 @@ register(id='myoChallengeRelocateP1-v0',
         }
     )
 
+
+# MyoChallenge Manipulation P2
+register(id='myoChallengeRelocateP2-v0',
+        entry_point='robohive.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
+        max_episode_steps=150,
+        kwargs={
+            'model_path': curr_dir+'/../assets//myoarm_object_v0.15(mj236).mjb',
+            'normalize_act': True,
+            'frame_skip': 5,
+            'pos_th': 0.1,              # cover entire base of the receptacle
+            'rot_th': np.inf,           # ignore rotation errors
+            'qpos_noise_range':0.01,    # jnt initialization range
+            'object_xyz_range': {'high':[0.1, -.15, 1.0], 'low':[-0.1, -.35, 1.0]},
+            'target_xyz_range': {'high':[0.3, -.45, 0.9], 'low':[0.0, -.1, 1.05]},
+            'target_rxryrz_range': {'high':[-.2, -.2, -.2], 'low':[0.2, 0.2, 0.2]},
+            'geom_sizes': {'high':[.025, .025, .025], 'low':[.015, 0.015, 0.015]}
+        }
+    )
 
 
 # MyoChallenge Locomotion P1

@@ -10,6 +10,7 @@ import gym
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils.quat_math import mat2euler, euler2quat
 
+
 class RelocateEnvV0(BaseV0):
 
     DEFAULT_OBS_KEYS = ['hand_qpos', 'hand_qvel', 'obj_pos', 'goal_pos', 'pos_err', 'obj_rot', 'goal_rot', 'rot_err']
@@ -26,8 +27,11 @@ class RelocateEnvV0(BaseV0):
 
 
     def _setup(self,
-            target_xyz_range,       # target position range (relative to initial pos)
-            target_rxryrz_range,    # target rotation range (relative to initial rot)
+            target_xyz_range,        # target position range (relative to initial pos)
+            target_rxryrz_range,     # target rotation range (relative to initial rot)
+            object_xyz_range = None, # object position range (relative to initial pos)
+            geom_sizes = None,       # randomization sizes for geoms
+            qpos_noise_range = None, # Noise in joint space for initialization
             obs_keys:list = DEFAULT_OBS_KEYS,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             pos_th = .025,          # position error threshold
@@ -37,11 +41,15 @@ class RelocateEnvV0(BaseV0):
         ):
         self.palm_sid = self.sim.model.site_name2id("S_grasp")
         self.object_sid = self.sim.model.site_name2id("object_o")
+        self.object_bid = self.sim.model.body_name2id("Object")
         self.goal_sid = self.sim.model.site_name2id("target_o")
         self.success_indicator_sid = self.sim.model.site_name2id("target_ball")
         self.goal_bid = self.sim.model.body_name2id("target")
         self.target_xyz_range = target_xyz_range
         self.target_rxryrz_range = target_rxryrz_range
+        self.geom_sizes = geom_sizes
+        self.object_xyz_range = object_xyz_range
+        self.qpos_noise_range = qpos_noise_range
         self.pos_th = pos_th
         self.rot_th = rot_th
         self.drop_th = drop_th
@@ -50,14 +58,14 @@ class RelocateEnvV0(BaseV0):
                     weighted_reward_keys=weighted_reward_keys,
                     **kwargs,
         )
-        keyFrame_id = 0
+        keyFrame_id = 0 if self.object_xyz_range is None else 1
         self.init_qpos[:] = self.sim.model.key_qpos[keyFrame_id].copy()
 
 
     def get_obs_dict(self, sim):
         obs_dict = {}
         obs_dict['time'] = np.array([sim.data.time])
-        obs_dict['hand_qpos'] = sim.data.qpos[:-7].copy()
+        obs_dict['hand_qpos'] = sim.data.qpos[:-6].copy()
         obs_dict['hand_qvel'] = sim.data.qvel[:-6].copy()*self.dt
         obs_dict['obj_pos'] = sim.data.site_xpos[self.object_sid]
         obs_dict['goal_pos'] = sim.data.site_xpos[self.goal_sid]
@@ -101,6 +109,7 @@ class RelocateEnvV0(BaseV0):
         self.sim.model.site_size[self.success_indicator_sid, :] = np.array([.25,]) if rwd_dict['solved'] else np.array([0.1,])
         return rwd_dict
 
+
     def get_metrics(self, paths, successful_steps=5):
         """
         Evaluate paths and report metrics
@@ -127,6 +136,32 @@ class RelocateEnvV0(BaseV0):
 
     def reset(self, reset_qpos=None, reset_qvel=None):
         self.sim.model.body_pos[self.goal_bid] = self.np_random.uniform(**self.target_xyz_range)
-        self.sim.model.body_quat[self.goal_bid] =  euler2quat(self.np_random.uniform(**self.target_rxryrz_range))
+        self.sim.model.body_quat[self.goal_bid] = euler2quat(self.np_random.uniform(**self.target_rxryrz_range))
+
+
+        if self.object_xyz_range is not None:
+            self.sim.model.body_pos[self.object_bid] = self.np_random.uniform(**self.object_xyz_range)
+
+
+        if self.geom_sizes is not None:
+            # object shapes and locations
+            for body in ["Object", ]:
+                bid = self.sim.model.body_name2id(body)
+                # self.sim.model.body_pos[bid][2] = 1.0
+
+                for gid in range(self.sim.model.body_geomnum[bid]):
+                    gid+=self.sim.model.body_geomadr[bid]
+                    self.sim.model.geom_type[gid]=self.np_random.randint(low=2, high=7) # random shape
+                    self.sim.model.geom_size[gid]=self.np_random.uniform(low=self.geom_sizes['low'], high=self.geom_sizes['high']) # random size
+                    self.sim.model.geom_pos[gid]=self.np_random.uniform(low=-1*self.sim.model.geom_size[gid], high=self.sim.model.geom_size[gid]) # random pos
+                    self.sim.model.geom_quat[gid]=euler2quat(self.np_random.uniform(low=(-np.pi/2, -np.pi/2, -np.pi/2), high=(np.pi/2, np.pi/2, np.pi/2)) ) # random quat
+                    self.sim.model.geom_rgba[gid]=self.np_random.uniform(low=[.2, .2, .2, 1], high=[.9, .9, .9, 1]) # random color
+                self.sim.forward()
+
+        # randomize init arms pose
+        if self.qpos_noise_range is not None:
+            reset_qpos = self.init_qpos + self.qpos_noise_range*(self.sim.model.jnt_range[:,1]-self.sim.model.jnt_range[:,0])
+            reset_qpos[-6:] = self.init_qpos[-6:]
+
         obs = super().reset(reset_qpos, reset_qvel)
         return obs
