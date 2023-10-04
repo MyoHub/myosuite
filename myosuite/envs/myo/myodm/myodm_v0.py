@@ -10,7 +10,7 @@ from myosuite.envs import env_base
 from myosuite.logger.reference_motion import ReferenceMotion
 from myosuite.utils.quat_math import quat2euler, euler2quat, quatDiff2Vel, mat2quat
 import numpy as np
-import os
+import os, time
 import collections
 from myosuite.envs.myo.base_v0 import BaseV0
 
@@ -39,12 +39,13 @@ class TrackEnv(BaseV0):
 
         curr_dir = os.path.dirname(os.path.abspath(__file__))
         self.object_name = object_name
+        time_stamp = str(time.time())
 
         # Process model_path to import the right object
         with open(curr_dir+model_path, 'r') as file:
             processed_xml = file.read()
             processed_xml = processed_xml.replace('OBJECT_NAME', object_name)
-        processed_model_path = curr_dir+model_path[:-4]+"_processed.xml"
+        processed_model_path = curr_dir+model_path[:-4]+time_stamp+"_processed.xml"
         with open(processed_model_path, 'w') as file:
             file.write(processed_xml)
         # Process obsd_model_path to import the right object
@@ -54,7 +55,7 @@ class TrackEnv(BaseV0):
             with open(curr_dir+obsd_model_path, 'r') as file:
                 processed_xml = file.read()
                 processed_xml = processed_xml.replace('OBJECT_NAME', object_name)
-            processed_obsd_model_path = curr_dir+model_path[:-4]+"_processed.xml"
+            processed_obsd_model_path = curr_dir+model_path[:-4]+time_stamp+"_processed.xml"
             with open(processed_obsd_model_path, 'w') as file:
                 file.write(processed_xml)
         else:
@@ -87,7 +88,7 @@ class TrackEnv(BaseV0):
                motion_extrapolation:bool=True,  # Hold the last frame if motion is over
                obs_keys=DEFAULT_OBS_KEYS,
                weighted_reward_keys=DEFAULT_RWD_KEYS_AND_WEIGHTS,
-               Termimate_obj_fail=False,
+               Termimate_obj_fail=True,
                Termimate_pose_fail=False,
                **kwargs):
 
@@ -113,7 +114,7 @@ class TrackEnv(BaseV0):
         self.qvel_err_scale = 0.1
 
         # TERMINATIONS FOR OBJ TRACK
-        self.obj_com_term = 0.5
+        self.obj_fail_thresh = 0.25
         # TERMINATIONS FOR HAND-OBJ DISTANCE
         self.base_fail_thresh = .25
         self.TermObj = Termimate_obj_fail
@@ -145,9 +146,9 @@ class TrackEnv(BaseV0):
 
         # Adjust init as per the specified key
         robot_init, object_init = self.ref.get_init()
-        if robot_init is None:
+        if robot_init is not None:
             self.init_qpos[:self.ref.robot_dim] = robot_init
-        if object_init is None:
+        if object_init is not None:
             self.init_qpos[self.ref.robot_dim:self.ref.robot_dim+3] = object_init[:3]
             self.init_qpos[-3:] = quat2euler(object_init[3:])
 
@@ -171,8 +172,10 @@ class TrackEnv(BaseV0):
             self.sim_obsd.model.site_pos[self.target_sid][:] = curr_ref.object[:3]
             self.sim.forward()
 
+
     def norm2(self, x):
         return np.sum(np.square(x))
+
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -269,6 +272,7 @@ class TrackEnv(BaseV0):
         # print(rwd_dict['dense'], obj_com_err,rwd_dict['done'],rwd_dict['sparse'])
         return rwd_dict
 
+
     def qpos_from_robot_object(self, qpos, robot, object):
         qpos[:len(robot)] = robot
         qpos[len(robot):len(robot)+3] = object[:3]
@@ -276,9 +280,9 @@ class TrackEnv(BaseV0):
 
 
     def playback(self):
-        idxs = self.ref.find_timeslot_in_reference(self.time)
+        idxs = self.ref.find_timeslot_in_reference(self.time+self.motion_start_time)
         # print(f"Time {self.time} {idxs} {self.ref.horizon}")
-        ref_mot = self.ref.get_reference(self.time)
+        ref_mot = self.ref.get_reference(self.time+self.motion_start_time)
         self.qpos_from_robot_object(self.sim.data.qpos, ref_mot.robot, ref_mot.object )
         self.sim.forward()
         self.sim.data.time = self.sim.data.time + 0.02#self.env.env.dt
@@ -297,7 +301,9 @@ class TrackEnv(BaseV0):
 
         obj_term, qpos_term, base_term = False, False, False
         if self.TermObj: # termination on object
-            obj_term = True if self.norm2(obs_dict['obj_com_err']) >= self.obj_com_term ** 2 else False
+            # object too far from reference
+            obj_term = True if self.norm2(obs_dict['obj_com_err']) >= self.obj_fail_thresh ** 2 else False
+            # wrist too far from object
             base_term = True if self.norm2(obs_dict['base_error'] ) >= self.base_fail_thresh ** 2 else False
 
         if self.TermPose: # termination on posture

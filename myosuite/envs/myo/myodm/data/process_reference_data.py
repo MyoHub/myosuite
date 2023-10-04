@@ -47,13 +47,14 @@ def proces_n_save(data, new_path_name):
     # s_pg-5 :	 (35,)
     # s_pg :	 (35,)
     # s_pg1 :	 (35,)
-    # s_g :	 (35,)
+    # s_g :	     (35,)
     # s_pg10 :	 (35,)
     # s_g5 :	 (35,)
     # s_g10 :	 (35,)
-    # s_0 :	 (35,)
+    # s_0 :	     (35,)
 
     # print(f"Motion length = {data['length']}")
+
 
     # robot details
     robot = data['s'][:,:n_robot_jnt].copy()
@@ -76,8 +77,8 @@ def proces_n_save(data, new_path_name):
              time=time,
              robot=robot,
              object=data_obj,
-             robot_int=robot[0],
-             object_int=obj[0],
+             robot_init=robot[0],
+             object_init=obj[0],
              )
 
 file_names = [
