@@ -139,7 +139,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         'muscle_velocity',
         'muscle_force',
     ]
-    
+
     # You can change reward weights here
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "distance": -0.1,
