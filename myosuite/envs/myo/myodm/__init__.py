@@ -117,7 +117,7 @@ def register_myohand_object_trackref(task_name, object_name, motion_path=None):
     # print("'"+task_name+"'", end=", ")
     register(
         id=task_name,
-        entry_point='myosuite.envs.myo.myodex.myodex_v0:TrackEnv',
+        entry_point='myosuite.envs.myo.myodm.myodm_v0:TrackEnv',
         max_episode_steps=75, #50steps*40Skip*2ms = 4s
         kwargs={
                 'model_path': '/../assets/hand/MyoHand_object.xml',
@@ -141,7 +141,7 @@ def register_MyoHand_object(object_name):
     # Envs with fixed target
     register(
         id=task_name,
-        entry_point='myosuite.envs.myo.myodex.myodex_v0:TrackEnv',
+        entry_point='myosuite.envs.myo.myodm.myodm_v0:TrackEnv',
         max_episode_steps=50, #50steps*40Skip*2ms = 4s
         kwargs={
                 'model_path': '/../assets/hand/MyoHand_object.xml',
@@ -160,7 +160,7 @@ def register_MyoHand_object(object_name):
     # print("'"+task_name+"'", end=", ")
     register(
         id=task_name,
-        entry_point='myosuite.envs.myo.myodex.myodex_v0:TrackEnv',
+        entry_point='myosuite.envs.myo.myodm.myodm_v0:TrackEnv',
         max_episode_steps=50, #50steps*40Skip*2ms = 4s
         kwargs={
                 'model_path': '/../assets/hand/MyoHand_object.xml',

@@ -23,12 +23,12 @@ myosuite_myochal_suite = set(gym.envs.registration.registry.env_specs.keys())-my
 myosuite_env_suite  = myosuite_env_suite | myosuite_myochal_suite
 myosuite_myochal_suite = sorted(myosuite_myochal_suite)
 
-# Register MyoDex Suite
+# Register MyoDM Suite
 import myosuite.envs.myo # noqa
-import myosuite.envs.myo.myodex # noqa
-myosuite_myodex_suite = set(gym.envs.registration.registry.env_specs.keys())-myosuite_env_suite-_current_gym_envs
-myosuite_env_suite  = myosuite_env_suite | myosuite_myodex_suite
-myosuite_myodex_suite = sorted(myosuite_myodex_suite)
+import myosuite.envs.myo.myodm # noqa
+myosuite_myodm_suite = set(gym.envs.registration.registry.env_specs.keys())-myosuite_env_suite-_current_gym_envs
+myosuite_env_suite  = myosuite_env_suite | myosuite_myodm_suite
+myosuite_myodm_suite = sorted(myosuite_myodm_suite)
 
 # All myosuite Envs
 myosuite_env_suite = sorted(myosuite_env_suite)

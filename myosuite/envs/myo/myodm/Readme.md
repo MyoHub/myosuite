@@ -12,10 +12,10 @@ where:
 
 for example 'MyoHandAirplaneFly-v0' is the task for Airplane Fly.
 
-You can see the whole list of tasks from the dictionary `myosuite_myodex_suite` with the command:
+You can see the whole list of tasks from the dictionary `myosuite_myodm_suite` with the command:
 ``` python
-from myosuite import myosuite_myodex_suite
-for env in myosuite_myodex_suite:
+from myosuite import myosuite_myodm_suite
+for env in myosuite_myodm_suite:
     print(env)
 ```
 
