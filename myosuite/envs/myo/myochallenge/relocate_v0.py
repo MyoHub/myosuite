@@ -95,7 +95,6 @@ class RelocateEnvV0(BaseV0):
             # Update Optional Keys section below
             # Update reward keys (DEFAULT_RWD_KEYS_AND_WEIGHTS) accordingly to update final rewards
             # Examples: Env comes pre-packaged with two keys pos_dist and rot_dist
-
             # Optional Keys
             ('pos_dist', -1.*pos_dist),
             ('rot_dist', -1.*rot_dist),

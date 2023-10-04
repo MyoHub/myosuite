@@ -234,9 +234,6 @@ class HeightField:
         if not rng is None:
             self.rng = rng
         self._populate_patches()
-        self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 1.0
-        self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, 0])
-        self.sim.model.geom_contype[self.sim.model.geom_name2id('terrain')] = 1
         if hasattr(self.sim, 'renderer') and not self.sim.renderer._window is None:
             self.sim.renderer._window.update_hfield(0)
 
@@ -252,7 +249,7 @@ class HeightField:
         curr_dir = os.path.dirname(__file__)
         relief = np.load(os.path.join(curr_dir, '../assets/myo_relief.npy'))
         normalized_data = (relief - np.min(relief)) / (np.max(relief) - np.min(relief))
-        return np.flipud(normalized_data) * 0.2
+        return np.flipud(normalized_data) * self.rng.uniform(0.1, 0.3)
 
     def _compute_hilly_terrain(self):
         frequency = 10
@@ -378,7 +375,7 @@ class ChaseTagEnvV0(WalkEnvV0):
 
         self._setup_convenience_vars()
         # check that this works everywhere and is efficient.
-        self.heightfield = HeightField(self.sim, rng=self.np_random) if not terrain == 'flat' else None
+        self.heightfield = HeightField(sim=self.sim, rng=self.np_random) if terrain != 'flat' else None
         self.reset_type = reset_type
         self.task_choice = task_choice
         self.terrain = terrain
@@ -441,6 +438,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         lose_cdt = self._lose_condition()
         if self.current_task == 'chase':
             score = self._get_score(float(self.obs_dict['time'])) if win_cdt else 0
+            self.obs_dict['time'] = self.maxTime if lose_cdt else self.obs_dict['time']
         elif self.current_task == 'evade':
             score = self._get_score(float(self.obs_dict['time']))
         # ----------------------
@@ -518,6 +516,9 @@ class ChaseTagEnvV0(WalkEnvV0):
         """
         if not self.heightfield is None:
             self.heightfield.sample(self.np_random)
+            self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 1.0
+            self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, 0])
+            self.sim.model.geom_contype[self.sim.model.geom_name2id('terrain')] = 1
             self.sim.model.geom_conaffinity[self.sim.model.geom_name2id('terrain')] = 1
 
     def _randomize_position_orientation(self, qpos, qvel):
@@ -696,17 +697,23 @@ class ChaseTagEnvV0(WalkEnvV0):
         Return a list of actuator names according to the index ID of the actuators
         '''
         return [self.sim.model.actuator(act_id).name for act_id in range(1, self.sim.model.na)]
+    
 
     def _get_fallen_condition(self):
         """
         Checks if the agent has fallen by comparing the head site height with the
         average foot height.
         """
-        head = self.sim.data.site('head').xpos
-        foot_l = self.sim.data.body('talus_l').xpos
-        foot_r = self.sim.data.body('talus_r').xpos
-        mean = (foot_l + foot_r) / 2
-        if head[2] - mean[2] < 0.2:
-            return 1
-        else:
+        if self.terrain == 'flat':
+            if self.sim.data.body('pelvis').xpos[2] < 0.5:
+                return 1
             return 0
+        else:
+            head = self.sim.data.site('head').xpos
+            foot_l = self.sim.data.body('talus_l').xpos
+            foot_r = self.sim.data.body('talus_r').xpos
+            mean = (foot_l + foot_r) / 2
+            if head[2] - mean[2] < 0.2:
+                return 1
+            else:
+                return 0
