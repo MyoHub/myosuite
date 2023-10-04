@@ -6,7 +6,7 @@ from myosuite.utils.quat_math import euler2quat
 import glob
 import pickle
 
-# Time precision to use. Avoids rounding/resolution efforts during comparisions
+# Time precision to use. Avoids rounding/resolution errors during comparisons
 _TIME_PRECISION = 4
 
 # Reference structure
@@ -49,7 +49,7 @@ class ReferenceMotion():
 
         # check reference for format
         self.check_format(self.reference)
-        self.reference['time'] = np.around(self.reference['time'], _TIME_PRECISION) # round to help with comparisions
+        self.reference['time'] = np.around(self.reference['time'], _TIME_PRECISION) # round to help with comparisons
         robot_shape = self.reference['robot'].shape if self.reference['robot'] is not None else (0,0)
         object_shape = self.reference['object'].shape if self.reference['object'] is not None else (0,0)
         self.robot_dim = robot_shape[1]
@@ -153,7 +153,7 @@ class ReferenceMotion():
                 - ind_prev == ind_next if exact time is found in reference['time']
         """
 
-        time = np.around(time, _TIME_PRECISION) # round to help with comparisions
+        time = np.around(time, _TIME_PRECISION) # round to help with comparisons
         if self.type == ReferenceType.FIXED:
             return (0,0)
         if self.motion_extrapolation and time>=self.reference['time'][-1]:
@@ -191,7 +191,7 @@ class ReferenceMotion():
 
     def reset(self):
         """
-        Reset the cache to point back to the begining
+        Reset the cache to point back to the beginning
         """
         self.index_cache = 0
 
