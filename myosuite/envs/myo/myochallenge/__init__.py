@@ -21,27 +21,6 @@ register(id='myoChallengeRelocateP1-v0',
         }
     )
 
-# MyoChallenge Manipulation
-register(id='myoChallengeRelocateP2-v0',
-        entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
-        max_episode_steps=150,
-        kwargs={
-            'model_path': curr_dir+'/../../../simhive/myo_sim/arm/myoarm_object_v0.16(mj237).mjb',
-            'normalize_act': True,
-            'frame_skip': 5,
-            'pos_th': 0.1,              # cover entire base of the receptacle
-            'rot_th': np.inf,           # ignore rotation errors
-            'qpos_noise_range':0.01,    # jnt initialization range
-            'target_xyz_range': {'high':[0.3, -.45, 0.9], 'low':[0.0, -.1, 1.05]},
-            'target_rxryrz_range': {'high':[-.2, -.2, -.2], 'low':[0.2, 0.2, 0.2]},
-            'obj_xyz_range': {'high':[0.1, -.15, 1.0], 'low':[-0.1, -.35, 1.0]},
-            'obj_geom_range': {'high':[.025, .025, .025], 'low':[.015, 0.015, 0.015]},
-            'obj_mass_range': {'high':0.200, 'low':0.050},# 50gms to 250 gms
-            'obj_friction_range': {'high':[1.2, 0.006, 0.00012], 'low':[0.8, 0.004, 0.00008]}
-        }
-    )
-
-
 # MyoChallenge Manipulation P2
 register(id='myoChallengeRelocateP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
