@@ -70,7 +70,7 @@ class ChallengeOpponent:
         self.opponent_vel = vel
         assert len(vel) == 2
         vel[0] = np.abs(vel[0])
-        vel = np.clip(vel, -1, 1)
+        vel = np.clip(vel, -2, 2)
         pose = self.get_opponent_pose()
         x_vel = vel[0] * np.cos(pose[-1]+0.5*np.pi)
         y_vel = vel[0] * np.sin(pose[-1] +0.5*np.pi)
@@ -160,7 +160,15 @@ class ChallengeOpponent:
 
 
 class HeightField:
-    def __init__(self, sim, rng, patches_per_side=3, real_length=12, view_distance=10):
+    def __init__(self,
+                 sim,
+                 rng,
+                 hills_range,
+                 rough_range,
+                 relief_range,
+                 patches_per_side=3,
+                 real_length=12,
+                 view_distance=2):
         """
         Assume square quad.
         :sim: mujoco sim object.
@@ -180,6 +188,9 @@ class HeightField:
         self.patch_size = int(self.nrow / patches_per_side)
         self.heightmap_window = None
         self.rng = rng
+        self.rough_range = rough_range
+        self.hills_range = hills_range
+        self.relief_range = relief_range
         self._populate_patches()
 
     def _compute_patch_data(self, terrain_type):
@@ -242,18 +253,18 @@ class HeightField:
         rough = self.rng.uniform(low=-1.0, high=1.0, size=(self.patch_size, self.patch_size))
         normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
         scalar, offset = .08, .02
-        scalar = self.rng.uniform(low=0.05, high=0.1)
+        scalar = self.rng.uniform(low=self.rough_range[0], high=self.rough_range[1])
         return normalized_data * scalar - offset
 
     def _compute_relief_terrain(self):
         curr_dir = os.path.dirname(__file__)
         relief = np.load(os.path.join(curr_dir, '../assets/myo_relief.npy'))
         normalized_data = (relief - np.min(relief)) / (np.max(relief) - np.min(relief))
-        return np.flipud(normalized_data) * self.rng.uniform(0.1, 0.3)
+        return np.flipud(normalized_data) * self.rng.uniform(self.relief_range[0], self.relief_range[1])
 
     def _compute_hilly_terrain(self):
         frequency = 10
-        scalar = self.rng.uniform(low=0.03, high=0.23)
+        scalar = self.rng.uniform(low=self.hills_range[0], high=self.hills_range[1])
         data = np.sin(np.linspace(0, frequency * np.pi, self.patch_size * self.patch_size) + np.pi / 2) - 1
         normalized_data = (data - data.min()) / (data.max() - data.min())
         normalized_data = np.flip(normalized_data.reshape(self.patch_size, self.patch_size) * scalar, [0, 1]).reshape(self.patch_size, self.patch_size)
@@ -283,7 +294,7 @@ class HeightField:
         # rotate points around z-direction to match model
         points = self.height_points @ rot_mat
         # increase point spacing
-        points = (points * 2)
+        points = (points * self.view_distance)
         # translate points to model frame
         self.points = points + (self.sim.data.qpos[:3])
         # get x and y points
@@ -370,12 +381,19 @@ class ChaseTagEnvV0(WalkEnvV0):
                min_spawn_distance=2,
                task_choice='chase',
                terrain='flat',
+               hills_range = None,
+               rough_range = None,
+               relief_range = None,
                **kwargs,
                ):
 
         self._setup_convenience_vars()
         # check that this works everywhere and is efficient.
-        self.heightfield = HeightField(sim=self.sim, rng=self.np_random) if terrain != 'flat' else None
+        self.heightfield = HeightField(sim=self.sim,
+                                       rng=self.np_random,
+                                       rough_range=rough_range,
+                                       hills_range=hills_range,
+                                       relief_range=relief_range) if terrain != 'flat' else None
         self.reset_type = reset_type
         self.task_choice = task_choice
         self.terrain = terrain
@@ -518,8 +536,10 @@ class ChaseTagEnvV0(WalkEnvV0):
             self.heightfield.sample(self.np_random)
             self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 1.0
             self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, 0])
-            self.sim.model.geom_contype[self.sim.model.geom_name2id('terrain')] = 1
-            self.sim.model.geom_conaffinity[self.sim.model.geom_name2id('terrain')] = 1
+        else:
+            # move heightfield down if not used
+            self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 0.0
+            self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, -10])
 
     def _randomize_position_orientation(self, qpos, qvel):
         qpos[:2]  = self.np_random.uniform(-5, 5, size=(2,))
