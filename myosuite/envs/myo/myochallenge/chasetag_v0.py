@@ -308,7 +308,7 @@ class HeightField:
         # increase point spacing
         points = (points * 5)
         # translate points to model frame
-        points += (self.sim.data.qpos[:3])
+        points = points + (self.sim.data.qpos[:3])
         px = points[:, 0]
         py = points[:, 1]
         # get map_index coordinates of points

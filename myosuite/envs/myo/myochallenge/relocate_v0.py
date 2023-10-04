@@ -10,7 +10,6 @@ import gym
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils.quat_math import mat2euler, euler2quat
 
-
 class RelocateEnvV0(BaseV0):
 
     DEFAULT_OBS_KEYS = ['hand_qpos', 'hand_qvel', 'obj_pos', 'goal_pos', 'pos_err', 'obj_rot', 'goal_rot', 'rot_err']
@@ -29,8 +28,10 @@ class RelocateEnvV0(BaseV0):
     def _setup(self,
             target_xyz_range,        # target position range (relative to initial pos)
             target_rxryrz_range,     # target rotation range (relative to initial rot)
-            object_xyz_range = None, # object position range (relative to initial pos)
-            geom_sizes = None,       # randomization sizes for geoms
+            obj_xyz_range = None,    # object position range (relative to initial pos)
+            obj_geom_range = None,   # randomization sizes for object geoms
+            obj_mass_range = None,   # object size range
+            obj_friction_range = None,# object friction range
             qpos_noise_range = None, # Noise in joint space for initialization
             obs_keys:list = DEFAULT_OBS_KEYS,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
@@ -47,8 +48,10 @@ class RelocateEnvV0(BaseV0):
         self.goal_bid = self.sim.model.body_name2id("target")
         self.target_xyz_range = target_xyz_range
         self.target_rxryrz_range = target_rxryrz_range
-        self.geom_sizes = geom_sizes
-        self.object_xyz_range = object_xyz_range
+        self.obj_geom_range = obj_geom_range
+        self.obj_mass_range = obj_mass_range
+        self.obj_friction_range = obj_friction_range
+        self.obj_xyz_range = obj_xyz_range
         self.qpos_noise_range = qpos_noise_range
         self.pos_th = pos_th
         self.rot_th = rot_th
@@ -58,7 +61,7 @@ class RelocateEnvV0(BaseV0):
                     weighted_reward_keys=weighted_reward_keys,
                     **kwargs,
         )
-        keyFrame_id = 0 if self.object_xyz_range is None else 1
+        keyFrame_id = 0 if self.obj_xyz_range is None else 1
         self.init_qpos[:] = self.sim.model.key_qpos[keyFrame_id].copy()
 
 
@@ -139,23 +142,35 @@ class RelocateEnvV0(BaseV0):
         self.sim.model.body_quat[self.goal_bid] = euler2quat(self.np_random.uniform(**self.target_rxryrz_range))
 
 
-        if self.object_xyz_range is not None:
-            self.sim.model.body_pos[self.object_bid] = self.np_random.uniform(**self.object_xyz_range)
+        if self.obj_xyz_range is not None:
+            self.sim.model.body_pos[self.object_bid] = self.np_random.uniform(**self.obj_xyz_range)
 
 
-        if self.geom_sizes is not None:
-            # object shapes and locations
+        if self.obj_geom_range is not None:
             for body in ["Object", ]:
+                # object shapes and locations
                 bid = self.sim.model.body_name2id(body)
-                # self.sim.model.body_pos[bid][2] = 1.0
-
                 for gid in range(self.sim.model.body_geomnum[bid]):
-                    gid+=self.sim.model.body_geomadr[bid]
+                    gid+=self.sim.model.body_geomadr[bid] # get geom ids
+                    # update type, size, and collision bounds
                     self.sim.model.geom_type[gid]=self.np_random.randint(low=2, high=7) # random shape
-                    self.sim.model.geom_size[gid]=self.np_random.uniform(low=self.geom_sizes['low'], high=self.geom_sizes['high']) # random size
-                    self.sim.model.geom_pos[gid]=self.np_random.uniform(low=-1*self.sim.model.geom_size[gid], high=self.sim.model.geom_size[gid]) # random pos
+                    self.sim.model.geom_size[gid]=self.np_random.uniform(low=self.obj_geom_range['low'], high=self.obj_geom_range['high']) # random size
+                    self.sim.model.geom_aabb[gid][3:]= self.obj_geom_range['high'] # bounding box, (center, size)
+                    self.sim.model.geom_rbound[gid] = 2.0*max(self.obj_geom_range['high']) # radius of bounding sphere
+
+                    self.sim.model.geom_pos[gid]=self.np_random.uniform(low=-1.0*self.sim.model.geom_size[gid], high=self.sim.model.geom_size[gid]) # random pos
                     self.sim.model.geom_quat[gid]=euler2quat(self.np_random.uniform(low=(-np.pi/2, -np.pi/2, -np.pi/2), high=(np.pi/2, np.pi/2, np.pi/2)) ) # random quat
                     self.sim.model.geom_rgba[gid]=self.np_random.uniform(low=[.2, .2, .2, 1], high=[.9, .9, .9, 1]) # random color
+
+                    # friction changes
+                    if self.obj_friction_range is not None:
+                        self.sim.model.geom_friction[gid] = self.np_random.uniform(**self.obj_friction_range)
+
+                # mass changes
+                if self.obj_mass_range is not None:
+                    self.sim.model.body_mass[self.object_bid] = self.np_random.uniform(**self.obj_mass_range)
+                    # ??? Derive quantities wont be updated.
+
                 self.sim.forward()
 
         # randomize init arms pose
