@@ -204,14 +204,10 @@ class HeightField:
                     terrain_type = self.rng.choice(TerrainTypes)
                 generated_terrains[terrain_type.value] += 1
                 self._fill_patch(i, j, terrain_type)
-        # put special terrain
+        # put special terrain only once in 20% of episodes
         if self.rng.uniform() < 0.2:
             i, j = self.rng.randint(0, self.patches_per_side, size=2)
             self._fill_patch(i, j, SpecialTerrains.RELIEF)
-        # TODO fix this if you want initial square to be flat
-        # # ensure spawn terrain is flat
-        # i, j = self.cart2map(self.sim.data.qpos[:2])
-        # self._fill_patch(int(i), int(j), TerrainTypes.FLAT)
 
     def _fill_patch(self, i, j, terrain_type='FLAT'):
         """
@@ -225,7 +221,6 @@ class HeightField:
             self.heightmap_window = np.zeros((10, 10))
         self._measure_height()
         return self.heightmap_window[:].flatten().copy()
-
 
     def cart2map(self, pos):
         """
@@ -269,21 +264,6 @@ class HeightField:
             normalized_data = np.rot90(normalized_data)
         return normalized_data
 
-    def _compute_stair_terrain(self):
-        # TODO implement such that it goes slightly up and down
-        # also random rotation
-        raise NotImplementedError
-        num_stairs = 12
-        stair_height = .1
-        flat = 5200 - (1e4 - 5200) % num_stairs
-        stairs_width = (1e4 - FLAT) // num_stairs
-        scalar = 2.5 if self.variant == 'fixed' else self.rng.uniform(low=1.5, high=3.5)
-        stair_parts = [np.full((int(stairs_width // 100), 100), -2 + stair_height * j) for j in range(num_stairs)]
-        new_terrain_data = np.concatenate([np.full((int(flat // 100), 100), -2)] + stair_parts, axis=0)
-        normalized_data = (new_terrain_data + 2) / (2 + stair_height * num_stairs)
-        self.sim.model.hfield_data[:] = np.flip(normalized_data.reshape(100, 100) * scalar, [0, 1]).reshape(10000, )
-    # --------------------------------
-
     def _init_height_points(self):
         """ Compute points at which height measurments are sampled (in base frame)
          Saves the points in ndarray of shape (self.num_height_points, 3)
@@ -303,14 +283,15 @@ class HeightField:
     def _measure_height(self):
         rot_direction = quat2euler(self.sim.data.qpos[3:7])[2]
         rot_mat = euler2mat([0, 0, rot_direction])
-        # rotate points around z-direction
+        # rotate points around z-direction to match model
         points = self.height_points @ rot_mat
         # increase point spacing
-        points = (points * 5)
+        points = (points * 2)
         # translate points to model frame
-        points = points + (self.sim.data.qpos[:3])
-        px = points[:, 0]
-        py = points[:, 1]
+        self.points = points + (self.sim.data.qpos[:3])
+        # get x and y points
+        px = self.points[:, 0]
+        py = self.points[:, 1]
         # get map_index coordinates of points
         px = np.asarray(self.cart2map(px), dtype=np.int16)
         py = np.asarray(self.cart2map(py), dtype=np.int16)
@@ -318,17 +299,14 @@ class HeightField:
         # -2 because we go one further and shape is 1 longer than map index
         px = np.clip(px, 0, self.hfield.data.shape[0] - 2)
         py = np.clip(py, 0, self.hfield.data.shape[1] - 2)
-        # points are not perfectly aligned with heightfield
-        heights1 = self.hfield.data[px, py]
-        heights2 = self.hfield.data[px + 1, py]
-        heights3 = self.hfield.data[px, py + 1]
-        heights = np.minimum(heights1, heights2)
-        heights = np.minimum(heights, heights3)
+        # switch x and y here because of array indexing
+        heights = self.hfield.data[py, px]
 
         if not hasattr(self, 'length'):
             self.length = 0
         self.length += 1
-        self.heightmap_window[:] = (heights * 0.005).reshape(10, 10)
+        # align with egocentric view of model
+        self.heightmap_window[:] = np.rot90((heights).reshape(10, 10))
 
     @property
     def size(self):
