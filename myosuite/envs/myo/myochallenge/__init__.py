@@ -12,7 +12,6 @@ register(id='myoChallengeRelocateP1-v0',
         max_episode_steps=150,
         kwargs={
             'model_path': curr_dir+'/../../../simhive/myo_sim/arm/myoarm_object_v0.16(mj237).mjb',
-            'model_path': curr_dir+'/../../../simhive/myo_sim/arm/myoarm_object_v0.16(mj237).mjb',
             'normalize_act': True,
             'frame_skip': 5,
             'pos_th': 0.1,              # cover entire base of the receptacle
