@@ -368,6 +368,7 @@ register_env_with_variants(id='myoLegStairTerrainWalk-v0',
         max_episode_steps=1000,
         kwargs={
             'model_path': curr_dir + leg_model,
+            'model_path': '/Users/pschumacher/Documents/myosim_internal/myo_sim/leg/myolegs.xml',
             'normalize_act': True,
             'min_height':0.8,    # minimum center of mass height before reset
             'max_rot':0.8,       # maximum rotation before reset
