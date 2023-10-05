@@ -70,7 +70,7 @@ class ChallengeOpponent:
         self.opponent_vel = vel
         assert len(vel) == 2
         vel[0] = np.abs(vel[0])
-        vel = np.clip(vel, -2, 2)
+        vel = np.clip(vel, -5, 5)
         pose = self.get_opponent_pose()
         x_vel = vel[0] * np.cos(pose[-1]+0.5*np.pi)
         y_vel = vel[0] * np.sin(pose[-1] +0.5*np.pi)
@@ -156,7 +156,7 @@ class ChallengeOpponent:
         new_vec = np.array([np.cos(theta), np.sin(theta)])
         new_vec2 = pel - vec
         vel = np.dot(new_vec, new_vec2)
-        return np.array([self.rng.uniform(1, 2), vel])
+        return np.array([self.rng.uniform(1, 5), vel])
 
 
 class HeightField:
@@ -458,7 +458,7 @@ class ChaseTagEnvV0(WalkEnvV0):
             score = self._get_score(float(self.obs_dict['time'])) if win_cdt else 0
             self.obs_dict['time'] = self.maxTime if lose_cdt else self.obs_dict['time']
         elif self.current_task == 'evade':
-            score = self._get_score(float(self.obs_dict['time']))
+            score = self._get_score(float(self.obs_dict['time'])) if (win_cdt or lose_cdt) else 0
         # ----------------------
 
         # Example reward, you should change this!
