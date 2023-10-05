@@ -12,7 +12,7 @@ from myosuite.utils.quat_math import mat2euler, euler2quat
 
 class RelocateEnvV0(BaseV0):
 
-    DEFAULT_OBS_KEYS = ['hand_qpos_noMD5', 'hand_qvel', 'obj_pos', 'goal_pos', 'pos_err', 'obj_rot', 'goal_rot', 'rot_err']
+    DEFAULT_OBS_KEYS = ['hand_qpos', 'hand_qvel', 'obj_pos', 'goal_pos', 'pos_err', 'obj_rot', 'goal_rot', 'rot_err']
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "pos_dist": 100.0,
         "rot_dist": 1.0,
