@@ -12,7 +12,7 @@ from myosuite.utils.quat_math import mat2euler, euler2quat
 
 class RelocateEnvV0(BaseV0):
 
-    DEFAULT_OBS_KEYS = ['hand_qpos_noMD5', 'hand_qvel', 'obj_pos', 'goal_pos', 'pos_err', 'obj_rot', 'goal_rot', 'rot_err']
+    DEFAULT_OBS_KEYS = ['hand_qpos', 'hand_qvel', 'obj_pos', 'goal_pos', 'pos_err', 'obj_rot', 'goal_rot', 'rot_err']
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "pos_dist": 100.0,
         "rot_dist": 1.0,
@@ -68,8 +68,8 @@ class RelocateEnvV0(BaseV0):
     def get_obs_dict(self, sim):
         obs_dict = {}
         obs_dict['time'] = np.array([sim.data.time])
-        obs_dict['hand_qpos_noMD5'] = sim.data.qpos[:-7].copy() # ??? This is a bug. This needs to be qpos[:-6]. This bug omits the distal joint of the little finger from the observation. A fix to this will break all the submitted policies. A fix to this will be pushed after the myochallenge23
-        obs_dict['hand_qpos'] = sim.data.qpos[:-6].copy() # V1 of the env will use this corrected key by default
+        obs_dict['hand_qpos'] = sim.data.qpos[:-7].copy()
+        obs_dict['hand_qpos_corrected'] = sim.data.qpos[:-6].copy()
         obs_dict['hand_qvel'] = sim.data.qvel[:-6].copy()*self.dt
         obs_dict['obj_pos'] = sim.data.site_xpos[self.object_sid]
         obs_dict['goal_pos'] = sim.data.site_xpos[self.goal_sid]
@@ -96,7 +96,6 @@ class RelocateEnvV0(BaseV0):
             # Update Optional Keys section below
             # Update reward keys (DEFAULT_RWD_KEYS_AND_WEIGHTS) accordingly to update final rewards
             # Examples: Env comes pre-packaged with two keys pos_dist and rot_dist
-
             # Optional Keys
             ('pos_dist', -1.*pos_dist),
             ('rot_dist', -1.*rot_dist),

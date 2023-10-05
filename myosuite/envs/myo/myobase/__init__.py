@@ -377,7 +377,7 @@ register_env_with_variants(id='myoLegStairTerrainWalk-v0',
             'target_y_vel':1.2,  # desired y velocity in m/s
             'target_rot': None,   # if None then the initial root pos will be taken, otherwise provide quat
             'terrain':'stairs',
-            'variant':'fixed'
+            'variant':'fixed',
         }
     )
 

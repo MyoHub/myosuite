@@ -6,7 +6,7 @@ import numpy as np
 
 
 # MyoChallenge 2023 envs ==============================================
-# MyoChallenge Manipulation
+# MyoChallenge Manipulation P1
 register(id='myoChallengeRelocateP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
         max_episode_steps=150,
@@ -21,7 +21,7 @@ register(id='myoChallengeRelocateP1-v0',
         }
     )
 
-# MyoChallenge Manipulation
+# MyoChallenge Manipulation P2
 register(id='myoChallengeRelocateP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
         max_episode_steps=150,
@@ -42,16 +42,40 @@ register(id='myoChallengeRelocateP2-v0',
     )
 
 
-# MyoChallenge Locomotion
+## MyoChallenge Locomotion P1
 register(id='myoChallengeChaseTagP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,
         kwargs={
-            'model_path': curr_dir+'/../../../simhive/myo_sim/leg/myolegs_chasetag_v0.10(mj237).mjb',
+            'model_path': curr_dir+'/../../../simhive/myo_sim/leg/myolegs_chasetag_v0.11(mj237).mjb',
             'normalize_act': True,
-            'reset_type':'init', # none, init, random
             'win_distance': 0.5,
-            'min_spawn_distance': 2
+            'min_spawn_distance': 2,
+            'reset_type': 'init', # none, init, random
+            'terrain': 'flat',
+            'task_choice': 'chase',
+            'hills_range': (0.0, 0.0),
+            'rough_range': (0.0, 0.0),
+            'relief_range': (0.0, 0.0),
+        }
+    )
+
+
+# MyoChallenge Locomotion P2
+register(id='myoChallengeChaseTagP2-v0',
+        entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
+        max_episode_steps=2000,
+        kwargs={
+            'model_path': curr_dir+'/../../../simhive/myo_sim/leg/myolegs_chasetag_v0.11(mj237).mjb',
+            'normalize_act': True,
+            'win_distance': 0.5,
+            'min_spawn_distance': 2,
+            'reset_type': 'random',  # none, init, random
+            'terrain': 'random',  # flat, random
+            'task_choice': 'random',  # chase, evade, random
+            'hills_range': (0.03, 0.23),
+            'rough_range': (0.05, 0.1),
+            'relief_range': (0.1, 0.3),
         }
     )
 
