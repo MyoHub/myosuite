@@ -33,13 +33,6 @@ class RelocateEnvV0(BaseV0):
             obj_mass_range = None,   # object size range
             obj_friction_range = None,# object friction range
             qpos_noise_range = None, # Noise in joint space for initialization
-            target_xyz_range,        # target position range (relative to initial pos)
-            target_rxryrz_range,     # target rotation range (relative to initial rot)
-            obj_xyz_range = None,    # object position range (relative to initial pos)
-            obj_geom_range = None,   # randomization sizes for object geoms
-            obj_mass_range = None,   # object size range
-            obj_friction_range = None,# object friction range
-            qpos_noise_range = None, # Noise in joint space for initialization
             obs_keys:list = DEFAULT_OBS_KEYS,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             pos_th = .025,          # position error threshold
@@ -50,17 +43,11 @@ class RelocateEnvV0(BaseV0):
         self.palm_sid = self.sim.model.site_name2id("S_grasp")
         self.object_sid = self.sim.model.site_name2id("object_o")
         self.object_bid = self.sim.model.body_name2id("Object")
-        self.object_bid = self.sim.model.body_name2id("Object")
         self.goal_sid = self.sim.model.site_name2id("target_o")
         self.success_indicator_sid = self.sim.model.site_name2id("target_ball")
         self.goal_bid = self.sim.model.body_name2id("target")
         self.target_xyz_range = target_xyz_range
         self.target_rxryrz_range = target_rxryrz_range
-        self.obj_geom_range = obj_geom_range
-        self.obj_mass_range = obj_mass_range
-        self.obj_friction_range = obj_friction_range
-        self.obj_xyz_range = obj_xyz_range
-        self.qpos_noise_range = qpos_noise_range
         self.obj_geom_range = obj_geom_range
         self.obj_mass_range = obj_mass_range
         self.obj_friction_range = obj_friction_range
@@ -75,7 +62,6 @@ class RelocateEnvV0(BaseV0):
                     **kwargs,
         )
         keyFrame_id = 0 if self.obj_xyz_range is None else 1
-        keyFrame_id = 0 if self.obj_xyz_range is None else 1
         self.init_qpos[:] = self.sim.model.key_qpos[keyFrame_id].copy()
 
 
@@ -83,7 +69,6 @@ class RelocateEnvV0(BaseV0):
         obs_dict = {}
         obs_dict['time'] = np.array([sim.data.time])
         obs_dict['hand_qpos'] = sim.data.qpos[:-7].copy()
-        obs_dict['hand_qpos_corrected'] = sim.data.qpos[:-6].copy()
         obs_dict['hand_qpos_corrected'] = sim.data.qpos[:-6].copy()
         obs_dict['hand_qvel'] = sim.data.qvel[:-6].copy()*self.dt
         obs_dict['obj_pos'] = sim.data.site_xpos[self.object_sid]
