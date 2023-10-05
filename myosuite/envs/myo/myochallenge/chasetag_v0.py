@@ -627,7 +627,7 @@ class ChaseTagEnvV0(WalkEnvV0):
 
     def _lose_condition(self):
         # falling on knees is always termination
-        if self._get_fallen_condition():
+        if self._get_fallen_condition() and self.current_task == 'chase':
             return 1
         if self.current_task == 'chase':
             return self._chase_lose_condition()
