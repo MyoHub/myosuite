@@ -10,6 +10,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 import numpy as np
 import mujoco
 from mujoco import viewer
+import time
 
 from typing import Union
 from myosuite.renderer.renderer import Renderer, RenderMode
@@ -29,6 +30,18 @@ class MJRenderer(Renderer):
         super().__init__(sim)
         self._window = None
         self._renderer = None
+        self._paused = False
+        self._user_exit = False
+
+
+    # viewer callback
+    def key_callback(self, keycode):
+        if chr(keycode) == ' ':
+            self._paused = not self._paused
+
+        # Escape
+        if keycode == 256:
+            self._user_exit = True
 
 
     def setup_renderer(self, model, height, width):
@@ -44,8 +57,8 @@ class MJRenderer(Renderer):
 
         This function is a no-op if the window was already created.
         """
-        if not self._window:
-            self._window = viewer.launch_passive(self._sim.model.ptr, self._sim.data.ptr)
+        if not self._window and not self._user_exit:
+            self._window = viewer.launch_passive(self._sim.model.ptr, self._sim.data.ptr, key_callback=self.key_callback)
             self._update_camera_properties(self._window.cam)
             self._update_viewer_settings(self._window.opt)
 
@@ -58,6 +71,14 @@ class MJRenderer(Renderer):
         if self._window is None:
             return
         self._window.sync()
+
+        # Keep checking to unpause if paused
+        while self._paused and not self._user_exit:
+            # print("paused")
+            time.sleep(.2)
+
+        if self._user_exit:
+            self.close()
 
 
     def render_offscreen(self,
@@ -112,6 +133,7 @@ class MJRenderer(Renderer):
         else:
             return rgb_arr
 
+
     def _update_viewer_settings(self, viewer):
         """Updates the given camera object with the current camera settings."""
         for key, value in self._viewer_settings.items():
@@ -136,3 +158,4 @@ class MJRenderer(Renderer):
         if self._window:
             self._window.close()
             self._window = None
+            quit()

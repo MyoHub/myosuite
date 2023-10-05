@@ -290,17 +290,17 @@ sim_backend = SimBackend.get_sim_backend()
 if sim_backend == SimBackend.MUJOCO_PY:
     leg_model='/../../../simhive/myo_sim/leg/myolegs_v0.54(mj210).mjb'
 elif sim_backend == SimBackend.MUJOCO:
-    leg_model='/../../../simhive/myo_sim/leg/myolegs_v0.55(mj236).mjb'
+    leg_model='/../../../simhive/myo_sim/leg/myolegs_v0.56(mj237).mjb'
 
-register_env_with_variants(id='myoLegReachFixed-v0',
+
+register_env_with_variants(id='myoLegStandRandom-v0',
         entry_point='myosuite.envs.myo.myobase.walk_v0:ReachEnvV0',
         max_episode_steps=150,
         kwargs={
             'model_path': curr_dir+leg_model,
+            'joint_random_range': (0.2, -0.2), #range of joint randomization (jnt = init_qpos + random(range)
             'target_reach_range': {
-                # 'pelvis': ((-.05, -.05, .92), (0.05, 0.05, .92)),
-                'pelvis': ((-.005, -.005, .9), (0.005, 0.005, .9)),
-                # 'pelvis': ((-.005, -.005, .75), (0.005, 0.005, .9)),
+                'pelvis': ((-.05, -.05, 0), (0.05, 0.05, 0)),
                 },
             'normalize_act': True,
             'far_th': 0.44
@@ -377,7 +377,7 @@ register_env_with_variants(id='myoLegStairTerrainWalk-v0',
             'target_y_vel':1.2,  # desired y velocity in m/s
             'target_rot': None,   # if None then the initial root pos will be taken, otherwise provide quat
             'terrain':'stairs',
-            'variant':'fixed'
+            'variant':'fixed',
         }
     )
 

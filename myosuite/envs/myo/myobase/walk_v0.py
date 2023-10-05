@@ -41,6 +41,7 @@ class ReachEnvV0(BaseV0):
 
     def _setup(self,
             target_reach_range:dict,
+            joint_random_range:tuple=(0.0,0.0),
             far_th = .35,
             obs_keys:list = DEFAULT_OBS_KEYS,
             weighted_reward_keys:dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
@@ -48,6 +49,7 @@ class ReachEnvV0(BaseV0):
         ):
         self.far_th = far_th
         self.target_reach_range = target_reach_range
+        self.joint_random_range = joint_random_range
         super()._setup(obs_keys=obs_keys,
                 weighted_reward_keys=weighted_reward_keys,
                 sites=self.target_reach_range.keys(),
@@ -78,6 +80,7 @@ class ReachEnvV0(BaseV0):
         obs_dict['reach_err'] = np.array(obs_dict['target_pos'])-np.array(obs_dict['tip_pos'])
         return obs_dict
 
+
     def get_reward_dict(self, obs_dict):
         reach_dist = np.linalg.norm(obs_dict['reach_err'], axis=-1)
         vel_dist = np.linalg.norm(obs_dict['qvel'], axis=-1)
@@ -87,7 +90,7 @@ class ReachEnvV0(BaseV0):
         near_th = len(self.tip_sids)*.050
         rwd_dict = collections.OrderedDict((
             # Optional Keys
-            ('reach',   -1.*reach_dist -10.*vel_dist),
+            ('reach',   10.-1.*reach_dist -10.*vel_dist),
             ('bonus',   1.*(reach_dist<2*near_th) + 1.*(reach_dist<near_th)),
             ('act_reg', -100.*act_mag),
             ('penalty', -1.*(reach_dist>far_th)),
@@ -96,21 +99,44 @@ class ReachEnvV0(BaseV0):
             ('solved',  reach_dist<near_th),
             ('done',    reach_dist > far_th),
         ))
+        # print(f"reach_dist:{reach_dist}, far_th:{far_th}")
         rwd_dict['dense'] = np.sum([wt*rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
         return rwd_dict
 
+
     # generate a valid target
-    def generate_target_pose(self):
+    def generate_targets(self):
         for site, span in self.target_reach_range.items():
-            sid =  self.sim.model.site_name2id(site+'_target')
-            self.sim.model.site_pos[sid] = self.np_random.uniform(low=span[0], high=span[1])
+            sid = self.sim.model.site_name2id(site)
+            sid_target = self.sim.model.site_name2id(site+'_target')
+            self.sim.model.site_pos[sid_target] = self.sim.data.site_xpos[sid].copy() + self.np_random.uniform(low=span[0], high=span[1])
         self.sim.forward()
 
 
+    # generate random qpos for targets (only at linear joints)
+    def generate_qpos(self):
+        qpos_rand = self.np_random.uniform(low= self.joint_random_range[0], high= self.joint_random_range[1], size=self.init_qpos.shape)
+        qpos_new = self.init_qpos.copy()
+        qpos_new[self.sim.model.jnt_qposadr] += qpos_rand[self.sim.model.jnt_qposadr] # only linear joints
+        qpos_new[self.sim.model.jnt_qposadr] = np.clip(qpos_new[self.sim.model.jnt_qposadr], self.sim.model.jnt_range[:,0], self.sim.model.jnt_range[:,1])
+        return qpos_new
+
+
     def reset(self):
-        self.generate_target_pose()
+        # generate random targets
+        if np.ptp(self.joint_random_range)>0:
+            self.sim.data.qpos = self.generate_qpos()
+        self.sim.forward()
+        self.generate_targets()
+
+        # sync targets to sim_obsd
         self.robot.sync_sims(self.sim, self.sim_obsd)
-        obs = super().reset()
+
+        # generate resets
+        if np.ptp(self.joint_random_range)>0:
+            obs = super().reset(reset_qpos= self.generate_qpos())
+        else:
+            obs = super().reset()
         return obs
 
 class WalkEnvV0(BaseV0):

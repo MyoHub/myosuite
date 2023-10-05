@@ -439,7 +439,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         - NOTE: Returned dict contains pointers that will be updated by the env. Deepcopy returned data if you want it to persist
         - Essential keys are added below. Users can add more keys by overriding this function in their task-env
         - Requires necessary keys (dense, sparse, solved, done) in rwd_dict to be populated
-        - Visual_dict can be {} if users hasn't explicitely updated it explicitely for current time
+        - Visual_dict can be {} if users hasn't explicitly updated it explicitly for current time
         """
 
         # resolve if current visuals are available
@@ -455,7 +455,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
             'solved': self.rwd_dict['solved'][()],      # MDP(t)
             'done': self.rwd_dict['done'][()],          # MDP(t)
             'obs_dict': self.obs_dict,                  # MDP(t)
-            'visual_dict': visual_dict,                 # MDP(t), will be {} if user hasn't explicitely updated self.visual_dict at the current time
+            'visual_dict': visual_dict,                 # MDP(t), will be {} if user hasn't explicitly updated self.visual_dict at the current time
             'proprio_dict': self.proprio_dict,          # MDP(t)
             'rwd_dict': self.rwd_dict,                  # MDP(t)
             'state': self.get_env_state(),              # MDP(t)
@@ -657,6 +657,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         )
 
 
+    # Methods on policy (should it be a part of utils?) =================================
     def examine_policy(self,
             policy,
             horizon=1000,
