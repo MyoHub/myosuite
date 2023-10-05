@@ -70,7 +70,7 @@ class ChallengeOpponent:
         self.opponent_vel = vel
         assert len(vel) == 2
         vel[0] = np.abs(vel[0])
-        vel = np.clip(vel, -2, 2)
+        vel = np.clip(vel, -5, 5)
         pose = self.get_opponent_pose()
         x_vel = vel[0] * np.cos(pose[-1]+0.5*np.pi)
         y_vel = vel[0] * np.sin(pose[-1] +0.5*np.pi)
@@ -156,7 +156,7 @@ class ChallengeOpponent:
         new_vec = np.array([np.cos(theta), np.sin(theta)])
         new_vec2 = pel - vec
         vel = np.dot(new_vec, new_vec2)
-        return np.array([1.0, vel])
+        return np.array([self.rng.uniform(1, 5), vel])
 
 
 class HeightField:
@@ -626,7 +626,7 @@ class ChaseTagEnvV0(WalkEnvV0):
 
     def _lose_condition(self):
         # falling on knees is always termination
-        if self._get_fallen_condition():
+        if self._get_fallen_condition() and self.current_task == 'chase':
             return 1
         if self.current_task == 'chase':
             return self._chase_lose_condition()
