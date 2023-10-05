@@ -175,8 +175,13 @@ class RelocateEnvV0(BaseV0):
 
         # randomize init arms pose
         if self.qpos_noise_range is not None:
-            reset_qpos = self.init_qpos + self.qpos_noise_range*(self.sim.model.jnt_range[:,1]-self.sim.model.jnt_range[:,0])
-            reset_qpos[-6:] = self.init_qpos[-6:]
+            reset_qpos_local = self.init_qpos + self.qpos_noise_range*(self.sim.model.jnt_range[:,1]-self.sim.model.jnt_range[:,0])
+            reset_qpos_local[-6:] = self.init_qpos[-6:]
+        else:
+            reset_qpos_local = reset_qpos
 
-        obs = super().reset(reset_qpos, reset_qvel)
+        obs = super().reset(reset_qpos_local, reset_qvel)
+        if self.sim.data.ncon>0:
+            self.reset(reset_qpos, reset_qvel)
+
         return obs
