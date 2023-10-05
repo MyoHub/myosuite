@@ -454,6 +454,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         # The task is entirely defined by these 3 lines
         win_cdt = self._win_condition()
         lose_cdt = self._lose_condition()
+
         if self.current_task == 'chase':
             score = self._get_score(float(self.obs_dict['time'])) if win_cdt else 0
             self.obs_dict['time'] = self.maxTime if lose_cdt else self.obs_dict['time']
