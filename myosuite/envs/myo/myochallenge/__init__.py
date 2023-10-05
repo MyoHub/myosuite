@@ -6,7 +6,7 @@ import numpy as np
 
 
 # MyoChallenge 2023 envs ==============================================
-# MyoChallenge Manipulation P1 P1
+# MyoChallenge Manipulation P1
 register(id='myoChallengeRelocateP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
         max_episode_steps=150,
