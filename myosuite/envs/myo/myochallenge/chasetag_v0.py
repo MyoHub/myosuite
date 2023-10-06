@@ -42,6 +42,7 @@ class ChallengeOpponent:
         self.sim = sim
         self.opponent_probabilities = probabilities
         self.min_spawn_distance = min_spawn_distance
+        self.linear_velocity = 1.0
         self.reset_opponent(rng=rng)
 
     def reset_noise_process(self):
@@ -151,6 +152,9 @@ class ChallengeOpponent:
         self.set_opponent_pose(pose)
         self.opponent_vel[:] = 0.0
 
+        # Randomize opponent forward velocity
+        self.linear_velocity = self.rng.uniform(1, 5)
+
     def chase_player(self):
         """
         This moves the opponent randomly in a correlated
@@ -163,7 +167,7 @@ class ChallengeOpponent:
         new_vec = np.array([np.cos(theta), np.sin(theta)])
         new_vec2 = pel - vec
         vel = np.dot(new_vec, new_vec2)
-        return np.array([1.0, vel])
+        return np.array([self.linear_velocity, vel])
 
 
 class HeightField:
