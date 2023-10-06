@@ -113,7 +113,6 @@ class RelocateEnvV0(BaseV0):
         return rwd_dict
 
 
-
     def get_metrics(self, paths, successful_steps=5):
         """
         Evaluate paths and report metrics

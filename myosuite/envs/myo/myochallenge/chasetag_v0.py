@@ -70,7 +70,7 @@ class ChallengeOpponent:
         self.opponent_vel = vel
         assert len(vel) == 2
         vel[0] = np.abs(vel[0])
-        vel = np.clip(vel, -5, 5)
+        vel = np.clip(vel, -2, 2)
         pose = self.get_opponent_pose()
         x_vel = vel[0] * np.cos(pose[-1]+0.5*np.pi)
         y_vel = vel[0] * np.sin(pose[-1] +0.5*np.pi)
@@ -156,7 +156,7 @@ class ChallengeOpponent:
         new_vec = np.array([np.cos(theta), np.sin(theta)])
         new_vec2 = pel - vec
         vel = np.dot(new_vec, new_vec2)
-        return np.array([self.rng.uniform(1, 5), vel])
+        return np.array([1.0, vel])
 
 
 class HeightField:

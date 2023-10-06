@@ -60,6 +60,7 @@ register(id='myoChallengeChaseTagP1-v0',
         }
     )
 
+
 # MyoChallenge Locomotion P2
 register(id='myoChallengeChaseTagP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
