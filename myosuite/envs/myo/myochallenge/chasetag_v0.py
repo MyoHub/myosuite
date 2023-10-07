@@ -438,6 +438,10 @@ class ChaseTagEnvV0(WalkEnvV0):
         obs_dict['opponent_vel'] = self.opponent.opponent_vel[:].copy()
         obs_dict['model_root_pos'] = sim.data.qpos[:2].copy()
         obs_dict['model_root_vel'] = sim.data.qvel[:2].copy()
+
+        # active task
+        obs_dict['task'] = np.array(0 if self.current_task == 'chase' else 1, ndmin=2, dtype=np.int16)
+        # heightfield view of 10x10 grid of points around agent. Reshape to (10, 10) for visual inspection
         if not self.heightfield is None:
             obs_dict['hfield'] = self.heightfield.get_heightmap_obs()
 
