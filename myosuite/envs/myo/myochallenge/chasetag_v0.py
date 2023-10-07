@@ -399,7 +399,7 @@ class ChaseTagEnvV0(WalkEnvV0):
                                        rng=self.np_random,
                                        rough_range=rough_range,
                                        hills_range=hills_range,
-                                       relief_range=relief_range) if terrain != 'flat' else None
+                                       relief_range=relief_range) if terrain != 'FLAT' else None
         self.reset_type = reset_type
         self.task_choice = task_choice
         self.terrain = terrain
@@ -536,7 +536,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         if self.task_choice == 'random':
             self.current_task = self.np_random.choice(Task)
         else:
-            self.current_task = self.task_choice
+            self.current_task = getattr(Task, self.task_choice)
 
     def _maybe_sample_terrain(self):
         """
