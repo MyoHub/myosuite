@@ -24,6 +24,11 @@ class SpecialTerrains(Enum):
     RELIEF = 0
 
 
+class Task(Enum):
+    CHASE = 0
+    EVADE = 1
+
+
 class ChallengeOpponent:
     """
     Training Opponent for the Locomotion Track of the MyoChallenge 2023.
@@ -116,11 +121,11 @@ class ChallengeOpponent:
             raise NotImplementedError(f"This opponent policy doesn't exist. Chose: static_stationary, stationary or random. Policy was: {self.opponent_policy}")
         self.move_opponent(opponent_vel)
 
-    def reset_opponent(self, player_task='chase', rng=None):
+    def reset_opponent(self, player_task='CHASE', rng=None):
         """
         This function should initially place the opponent on a random position with a
         random orientation with a minimum radius to the model.
-        :task: Task for the PLAYER, I.e. 'chase' means that the player has to chase and the opponent has to evade.
+        :task: Task for the PLAYER, I.e. 'CHASE' means that the player has to chase and the opponent has to evade.
         :rng: np_random generator
         """
         if rng is not None:
@@ -128,9 +133,9 @@ class ChallengeOpponent:
             self.reset_noise_process()
 
         self.opponent_vel = np.zeros((2,))
-        if player_task == 'chase':
+        if player_task == 'CHASE':
             self.sample_opponent_policy()
-        elif player_task == 'evade':
+        elif player_task == 'EVADE':
             self.opponent_policy = 'chase_player'
         else:
             raise NotImplementedError
@@ -379,11 +384,11 @@ class ChaseTagEnvV0(WalkEnvV0):
                reset_type='none',
                win_distance=0.5,
                min_spawn_distance=2,
-               task_choice='chase',
-               terrain='flat',
-               hills_range = None,
-               rough_range = None,
-               relief_range = None,
+               task_choice='CHASE',
+               terrain='FLAT',
+               hills_range=(0,0),
+               rough_range=(0,0),
+               relief_range=(0,0),
                **kwargs,
                ):
 
@@ -394,7 +399,7 @@ class ChaseTagEnvV0(WalkEnvV0):
                                        rng=self.np_random,
                                        rough_range=rough_range,
                                        hills_range=hills_range,
-                                       relief_range=relief_range) if terrain != 'flat' else None
+                                       relief_range=relief_range) if terrain != 'FLAT' else None
         self.reset_type = reset_type
         self.task_choice = task_choice
         self.terrain = terrain
@@ -404,7 +409,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
         self.opponent = ChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance)
         self.success_indicator_sid = self.sim.model.site_name2id("opponent_indicator")
-        self.current_task = 'chase'
+        self.current_task = Task.CHASE
         super()._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        reset_type=reset_type,
@@ -438,6 +443,10 @@ class ChaseTagEnvV0(WalkEnvV0):
         obs_dict['opponent_vel'] = self.opponent.opponent_vel[:].copy()
         obs_dict['model_root_pos'] = sim.data.qpos[:2].copy()
         obs_dict['model_root_vel'] = sim.data.qvel[:2].copy()
+
+        # active task
+        obs_dict['task'] = np.array(self.current_task.value, ndmin=2, dtype=np.int16)
+        # heightfield view of 10x10 grid of points around agent. Reshape to (10, 10) for visual inspection
         if not self.heightfield is None:
             obs_dict['hfield'] = self.heightfield.get_heightmap_obs()
 
@@ -455,11 +464,10 @@ class ChaseTagEnvV0(WalkEnvV0):
         # The task is entirely defined by these 3 lines
         win_cdt = self._win_condition()
         lose_cdt = self._lose_condition()
-
-        if self.current_task == 'chase':
+        if self.current_task.name == 'CHASE':
             score = self._get_score(float(self.obs_dict['time'])) if win_cdt else 0
             self.obs_dict['time'] = self.maxTime if lose_cdt else self.obs_dict['time']
-        elif self.current_task == 'evade':
+        elif self.current_task.name == 'EVADE':
             score = self._get_score(float(self.obs_dict['time'])) if (win_cdt or lose_cdt) else 0
         # ----------------------
 
@@ -520,15 +528,15 @@ class ChaseTagEnvV0(WalkEnvV0):
         qpos, qvel = self._get_reset_state()
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel)
-        self.opponent.reset_opponent(player_task=self.current_task, rng=self.np_random)
+        self.opponent.reset_opponent(player_task=self.current_task.name, rng=self.np_random)
         self.sim.forward()
         return obs
 
     def _sample_task(self):
         if self.task_choice == 'random':
-            self.current_task = self.np_random.choice(['chase', 'evade'])
+            self.current_task = self.np_random.choice(Task)
         else:
-            self.current_task = self.task_choice
+            self.current_task = getattr(Task, self.task_choice)
 
     def _maybe_sample_terrain(self):
         """
@@ -619,20 +627,20 @@ class ChaseTagEnvV0(WalkEnvV0):
         return 0
 
     def _win_condition(self):
-        if self.current_task == 'chase':
+        if self.current_task.name == 'CHASE':
             return self._chase_win_condition()
-        elif self.current_task == 'evade':
+        elif self.current_task.name == 'EVADE':
             return self._evade_win_condition()
         else:
             raise NotImplementedError
 
     def _lose_condition(self):
         # falling on knees is always termination
-        if self._get_fallen_condition() and self.current_task == 'chase':
+        if self._get_fallen_condition() and self.current_task.name == 'CHASE':
             return 1
-        if self.current_task == 'chase':
+        if self.current_task.name == 'CHASE':
             return self._chase_lose_condition()
-        elif self.current_task == 'evade':
+        elif self.current_task.name == 'EVADE':
             return self._evade_lose_condition()
         else:
             raise NotImplementedError
@@ -683,9 +691,9 @@ class ChaseTagEnvV0(WalkEnvV0):
 
     def _get_score(self, time):
         time = np.round(time, 2)
-        if self.current_task == 'chase':
+        if self.current_task.name == 'CHASE':
             return 1 - (time / self.maxTime)
-        elif self.current_task == 'evade':
+        elif self.current_task.name == 'EVADE':
             return time / self.maxTime
         else:
             raise NotImplementedError
@@ -726,7 +734,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         Checks if the agent has fallen by comparing the head site height with the
         average foot height.
         """
-        if self.terrain == 'flat':
+        if self.terrain == 'FLAT':
             if self.sim.data.body('pelvis').xpos[2] < 0.5:
                 return 1
             return 0
