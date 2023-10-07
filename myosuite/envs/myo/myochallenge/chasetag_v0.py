@@ -517,7 +517,7 @@ class RepellerChallengeOpponent(ChallengeOpponent):
 
     def update_opponent_state(self):
         """
-        This function executes an opponent step with 
+        This function executes an opponent step with
         one of the control policies.
         """
         if self.opponent_policy == 'stationary' or self.opponent_policy == 'static_stationary':
@@ -528,8 +528,11 @@ class RepellerChallengeOpponent(ChallengeOpponent):
 
         elif self.opponent_policy == 'repeller':
             opponent_vel = self.repeller_policy()
+
+        elif self.opponent_policy == 'chase_player':
+            opponent_vel = self.chase_player()
         else:
-            raise NotImplementedError(f"This opponent policy doesn't exist. Chose: static_stationary, stationary, random or repeller. Policy was: {self.opponent_policy}")
+            raise NotImplementedError(f"This opponent policy doesn't exist. Chose: static_stationary, stationary or random. Policy was: {self.opponent_policy}")
         self.move_opponent(opponent_vel)
 
 
