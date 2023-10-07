@@ -52,8 +52,8 @@ register(id='myoChallengeChaseTagP1-v0',
             'win_distance': 0.5,
             'min_spawn_distance': 2,
             'reset_type': 'init', # none, init, random
-            'terrain': 'flat',
-            'task_choice': 'chase',
+            'terrain': 'FLAT', # FLAT, random
+            'task_choice': 'CHASE', # CHASE, EVADE, random
             'hills_range': (0.0, 0.0),
             'rough_range': (0.0, 0.0),
             'relief_range': (0.0, 0.0),
@@ -71,8 +71,8 @@ register(id='myoChallengeChaseTagP2-v0',
             'win_distance': 0.5,
             'min_spawn_distance': 2,
             'reset_type': 'random',  # none, init, random
-            'terrain': 'random',  # flat, random
-            'task_choice': 'random',  # chase, evade, random
+            'terrain': 'random',  # FLAT, random
+            'task_choice': 'random',  # CHASE, EVADE, random
             'hills_range': (0.03, 0.23),
             'rough_range': (0.05, 0.1),
             'relief_range': (0.1, 0.3),
