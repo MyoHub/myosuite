@@ -1,7 +1,7 @@
 # Baselines
 MyoSuite comes packaged with pre-trained policies for a variety of our tasks using a wide variety of agents that users can. In addition to the trained policies below, we provide instructions on how to work with these agents and reproduce results.
     
-##  MJRL
+##  [MJRL](https://github.com/aravindr93/mjrl)
 We offer pre-trained baselines for a wide variety of our tasks trained with Natural Policy Gradient (NPG) via the [MJRL](https://github.com/aravindr93/mjrl) framework. 
 
 <details>
@@ -32,7 +32,7 @@ To resume training from a previous checkpoint add the `+job_name=<absolute_path_
 </details>
 
 
-## StableBaselines3
+## [StableBaselines3](https://github.com/DLR-RM/stable-baselines3)
 
 It's easy to work with most agent's frameworks such as [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3])
 
@@ -64,7 +64,7 @@ Get commands to run
 </details>
 
 
-## SAR-RL
+## [SAR-RL](https://sites.google.com/view/sar-rl/)
 [SAR-RL](https://sites.google.com/view/sar-rl/) builds and leverages SAR (Synergistic Action Representations) to solve some of the toughest problems in high-dimensional continuous control.
 
 <details>
@@ -76,7 +76,7 @@ It is also possible to build your own SAR representations from scratch by follow
 </details>
 
 
-## DEP-RL
+## [DEP-RL](https://github.com/martius-lab/depRL)
 [DEP-RL](https://github.com/martius-lab/depRL) uses differential extrinsic plasticity (DEP) for effective exploration in high-dimensional musculoskeletal systems. 
 
 <details>
