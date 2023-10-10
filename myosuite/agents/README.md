@@ -1,10 +1,14 @@
 # Baselines
+MyoSuite comes packaged with pre-trained policies for a variety of our tasks using a wide variety of agents that users can. In addition to the trained policies below, we provide instructions on how to work with these agents and reproduce results.
+    
+##  [MJRL](https://github.com/aravindr93/mjrl)
+We offer pre-trained baselines for a wide variety of our tasks trained with Natural Policy Gradient (NPG) via the [MJRL](https://github.com/aravindr93/mjrl) framework. 
 
-We offer baselines trained with Natural Policy Gradient (NPG) via `MJRL`. Below, instructions on how to reproduce those baselines [training models via `mjrl`](#Installation-MJRL). 
-We provide instructions on how to [train models via `stable-baselines3`](#Installation-StableBaselines3). 
-Specifically for locomotion, we provide also `DEP-RL Locomotion Baseline`
-
-## Installation MJRL
+<details>
+<summary>Expand for installation and training details</summary>
+    
+## Installation
+    
 1. We use [mjrl](https://github.com/aravindr93/mjrl) for our baselines ([install instructions](https://github.com/aravindr93/mjrl/tree/master/setup#installation)) and [PyTorch](https://pytorch.org/).
 2. [Hydra](https://github.com/facebookresearch/hydra) `pip install hydra-core==1.1.0`
 3. [submitit](https://github.com/facebookincubator/submitit) launcher hydra plugin to launch jobs on cluster/ local 
@@ -25,8 +29,16 @@ Get commands to run
 To resume training from a previous checkpoint add the `+job_name=<absolute_path_of_previous_checkpoint>` to the command line
 
 
+</details>
 
-## Installation StableBaselines3
+
+## [StableBaselines3](https://github.com/DLR-RM/stable-baselines3)
+
+It's easy to work with most agent's frameworks such as [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3])
+
+<details>
+<summary>Expand for installation and training details</summary>
+
 Install 
 1. [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3]) `pip install stable-baselines3`,
 2. [Hydra](https://github.com/facebookresearch/hydra) `pip install hydra-core==1.1.0`
@@ -49,12 +61,26 @@ Get commands to run
 % sh train_myosuite.sh myo slurm sb3   # use stable-baselines3 with slurm launcher
 ```
 
-## Pretrained SAR representations
+</details>
+
+
+## [SAR-RL](https://sites.google.com/view/sar-rl/)
+[SAR-RL](https://sites.google.com/view/sar-rl/) builds and leverages SAR (Synergistic Action Representations) to solve some of the toughest problems in high-dimensional continuous control.
+
+<details>
+<summary>Expand for installation and training details</summary>
+
 We provide pretrained synergistic representations for training locomotion and manipulation policies in `/SAR_pretrained`. These representations can be used to enhance learning using the `SAR_RL()` function defined in the SAR tutorial. Custom functions are also defined in the tutorial for automatically loading these representations (`load_locomotion_SAR()` and `load_manipulation_SAR()`). 
 
-It is also possible to build your own SAR representations from scratch by following the steps outlined in the tutorial.
+It is also possible to build your own SAR representations from scratch by following the steps outlined in the [MyoSuite's tutorials](https://github.com/MyoHub/myosuite/tree/main/docs/source/tutorials).
+</details>
 
-## DEP-RL Locomotion Baseline
+
+## [DEP-RL](https://github.com/martius-lab/depRL)
+[DEP-RL](https://github.com/martius-lab/depRL) uses differential extrinsic plasticity (DEP) for effective exploration in high-dimensional musculoskeletal systems. 
+
+<details>
+<summary>Expand for installation and training details on DEP-RL baselines</summary>
 
 ### Installation
 1. We provide [deprl](https://github.com/martius-lab/depRL) as an additional baseline for locomotion policies.
@@ -128,3 +154,5 @@ year={2023},
 url={https://openreview.net/forum?id=C-xa_D3oTj6}
 }
 ```
+</details>
+
