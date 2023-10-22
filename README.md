@@ -38,7 +38,7 @@ It is possible to install MyoSuite with:
 ``` bash
 pip install -U myosuite
 ```
-for advanced installation, see [here](setup/README.md).
+for advanced installation, see [here](https://myosuite.readthedocs.io/en/latest/install.html#alternative-installing-from-source).
 
 Test your installation using the following command (this will return also a list of all the current environments):
 ``` bash
