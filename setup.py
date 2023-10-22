@@ -3,8 +3,6 @@ import sys
 import re
 from setuptools import setup, find_packages
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "myosuite"))
-
 if sys.version_info.major != 3:
     print("This Python is only compatible with Python 3, but you are running "
           "Python {}. The installation will likely fail.".format(sys.version_info.major))
@@ -47,6 +45,7 @@ if __name__ == "__main__":
         description='Musculoskeletal environments simulated in MuJoCo',
         long_description=read('README.md'),
         long_description_content_type="text/markdown",
+        url='https://sites.google.com/view/myosuite',
         classifiers=[
             "Programming Language :: Python :: 3.8",
             "License :: OSI Approved :: Apache Software License",
