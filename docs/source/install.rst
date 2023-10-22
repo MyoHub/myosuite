@@ -33,12 +33,6 @@ To get started with MyoSuite, clone this repo with pre-populated submodule depen
    cd myosuite
    pip install -e -r requirements
 
-OR Add repo to pythonpath by updating `~/.bashrc` or `~/.bash_profile`
-
-.. code-block:: bash
-
-   export PYTHONPATH="<path/to/myosuite>:$PYTHONPATH"
-
 Testing the installation
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
