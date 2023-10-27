@@ -338,7 +338,7 @@ class HeightField:
         rot_direction = quat2euler(self.sim.data.qpos[3:7])[2]
         rot_mat = euler2mat([0, 0, rot_direction])
         # rotate points around z-direction to match model
-        points = self.height_points @ rot_mat
+        points = np.einsum("ij,kj->ik", self.height_points, rot_mat)
         # increase point spacing
         points = (points * self.view_distance)
         # translate points to model frame
@@ -357,9 +357,10 @@ class HeightField:
             self.length = 0
         self.length += 1
         # align with egocentric view of model
-        # flipud is included to stay consistent with earier version
-        # TODO to be removed after myochallenge
-        self.heightmap_window[:] = np.flipud(np.fliplr(np.rot90(heights.reshape(10,10), axes=(1, 0))))
+        # previous, shifted heightmap. kept for myochallenge consistency. Update after challenge
+        self.heightmap_window[:] = np.flipud(heights.reshape(10,10))
+        # aligned heightmap. include after challenge.
+        # self.heightmap_window[:] = np.flipud(np.rot90(heights.reshape(10,10), axes=(1,0)))
 
     @property
     def size(self):
@@ -615,19 +616,15 @@ class ChaseTagEnvV0(WalkEnvV0):
         if self.reset_type == 'random':
             qpos, qvel = self._get_randomized_initial_state()
             return self._randomize_position_orientation(qpos, qvel)
-            # TODO remove
-            # return self._maybe_adjust_height(qpos, qvel)
         elif self.reset_type == 'init':
             return self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
-            # TODO remove
-            # return self._maybe_adjust_height(qpos, qvel)
         else:
             return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
-            # TODO remove
-            # return self._maybe_adjust_height(qpos, qvel)
 
-    # TODO remove
     def _maybe_adjust_height(self, qpos, qvel):
+        """
+        Currently not used.
+        """
         if self.heightfield is not None:
                 map_i, map_j = self.heightfield.cart2map(qpos[:2])
                 hfield_val = self.heightfield.hfield.data[map_i, map_j]
