@@ -31,7 +31,7 @@ To get started with MyoSuite, clone this repo with pre-populated submodule depen
 
    git clone --recursive https://github.com/facebookresearch/myosuite.git
    cd myosuite
-   pip install -e -r .
+   pip install -e .
 
 Testing the installation
 ~~~~~~~~~~~~~~~~~~~~~~~~
