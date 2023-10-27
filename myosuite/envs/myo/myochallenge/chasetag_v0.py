@@ -251,7 +251,7 @@ class HeightField:
         self._measure_height()
         return self.heightmap_window[:].flatten().copy()
 
-    def cart2map(self, 
+    def cart2map(self,
                  points_1: list,
                  points_2: Optional[list] = None):
         """
@@ -268,7 +268,6 @@ class HeightField:
             ret1 = np.array(points_1[:] / delta_map + offset, dtype=np.int16)
             ret2 = np.array(points_2[:] / delta_map + offset, dtype=np.int16)
             return ret2, ret1
-            
 
     def sample(self, rng=None):
         """
