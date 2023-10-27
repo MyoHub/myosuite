@@ -225,17 +225,15 @@ class HeightField:
         for i in range(self.patches_per_side):
             for j in range(self.patches_per_side):
                 terrain_type = self.rng.choice(TerrainTypes)
-                # TODO remove
-                terrain_type = TerrainTypes.HILLY
-                # # maximum of 2 hilly
-                # while terrain_type.name == 'HILLY' and generated_terrains[TerrainTypes.HILLY.value] >= 2:
-                #     terrain_type = self.rng.choice(TerrainTypes)
-                # generated_terrains[terrain_type.value] += 1
+                # maximum of 2 hilly
+                while terrain_type.name == 'HILLY' and generated_terrains[TerrainTypes.HILLY.value] >= 2:
+                    terrain_type = self.rng.choice(TerrainTypes)
+                generated_terrains[terrain_type.value] += 1
                 self._fill_patch(i, j, terrain_type)
-        # # put special terrain only once in 20% of episodes
-        # if self.rng.uniform() < 0.2:
-        #     i, j = self.rng.randint(0, self.patches_per_side, size=2)
-        #     self._fill_patch(i, j, SpecialTerrains.RELIEF)
+        # put special terrain only once in 20% of episodes
+        if self.rng.uniform() < 0.2:
+            i, j = self.rng.randint(0, self.patches_per_side, size=2)
+            self._fill_patch(i, j, SpecialTerrains.RELIEF)
 
     def _fill_patch(self, i, j, terrain_type=TerrainTypes.FLAT):
         """
@@ -349,22 +347,19 @@ class HeightField:
         px = self.points[:, 0]
         py = self.points[:, 1]
         # get map_index coordinates of points
-        # TODO remove comment
         px, py = self.cart2map(px, py)
-        # py = self.cart2map(py)
         # avoid out-of-bounds by clipping indices to map boundaries
         # -2 because we go one further and shape is 1 longer than map index
         px = np.clip(px, 0, self.hfield.data.shape[0] - 2)
         py = np.clip(py, 0, self.hfield.data.shape[1] - 2)
-        # TODO remove comment
-        # switch x and y here because of array indexing
         heights = self.hfield.data[px, py]
         if not hasattr(self, 'length'):
             self.length = 0
         self.length += 1
         # align with egocentric view of model
-        self.heightmap_window[:] = np.fliplr(np.rot90(heights.reshape(10,10), axes=(1, 0)))
-        # self.heightmap_window[:] = heights.reshape(10, 10)
+        # flipud is included to stay consistent with earier version
+        # TODO to be removed after myochallenge
+        self.heightmap_window[:] = np.flipud(np.fliplr(np.rot90(heights.reshape(10,10), axes=(1, 0))))
 
     @property
     def size(self):
@@ -571,8 +566,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         self._sample_task()
         # randomized initial state
         qpos, qvel = self._get_reset_state()
-        # TODO uncomment
-        # self._maybe_flatten_agent_patch(qpos)
+        self._maybe_flatten_agent_patch(qpos)
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel)
         self.opponent.reset_opponent(player_task=self.current_task.name, rng=self.np_random)
@@ -610,8 +604,6 @@ class ChaseTagEnvV0(WalkEnvV0):
     def _randomize_position_orientation(self, qpos, qvel):
         qpos[:2]  = self.np_random.uniform(-5, 5, size=(2,))
         orientation = self.np_random.uniform(0, 2 * np.pi)
-        # TODO remove
-        orientation = np.pi /2
         euler_angle = quat2euler(qpos[3:7])
         euler_angle[-1] = orientation
         qpos[3:7] = euler2quat(euler_angle)
