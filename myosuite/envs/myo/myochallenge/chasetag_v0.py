@@ -357,10 +357,7 @@ class HeightField:
             self.length = 0
         self.length += 1
         # align with egocentric view of model
-        # previous, shifted heightmap. kept for myochallenge consistency. Update after challenge
-        self.heightmap_window[:] = np.flipud(heights.reshape(10,10))
-        # aligned heightmap. include after challenge.
-        # self.heightmap_window[:] = np.flipud(np.rot90(heights.reshape(10,10), axes=(1,0)))
+        self.heightmap_window[:] = np.flipud(np.rot90(heights.reshape(10, 10), axes=(1,0)))
 
     @property
     def size(self):
