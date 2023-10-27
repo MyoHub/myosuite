@@ -31,13 +31,7 @@ To get started with MyoSuite, clone this repo with pre-populated submodule depen
 
    git clone --recursive https://github.com/facebookresearch/myosuite.git
    cd myosuite
-   pip install -e -r requirements
-
-OR Add repo to pythonpath by updating `~/.bashrc` or `~/.bash_profile`
-
-.. code-block:: bash
-
-   export PYTHONPATH="<path/to/myosuite>:$PYTHONPATH"
+   pip install -e .
 
 Testing the installation
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -46,17 +40,17 @@ You can test the installation using
 
 .. code-block:: bash
 
-   python myosuite/tests/test_myo.py
+   python -m myosuite.tests.test_myo
 
 You can visualize the environments with random controls using the below command
 
 .. code-block:: bash
 
-   python myosuite/utils/examine_env.py --env_name myoElbowPose1D6MRandom-v0
-
+   python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
+   
 .. note::
    On MacOS, the need of a launch_passive option might require that the Python script be run under `mjpython` i.e. 
-   `myosuite/utils/examine_env.py --env_name myoElbowPose1D6MRandom-v0`
+   `mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0`
 
 Examples
 ~~~~~~~~~
