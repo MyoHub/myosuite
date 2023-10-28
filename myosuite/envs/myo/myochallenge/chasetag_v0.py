@@ -9,6 +9,7 @@ import numpy as np
 import pink
 import os
 from enum import Enum
+from typing import Optional
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
@@ -199,6 +200,17 @@ class HeightField:
         self.relief_range = relief_range
         self._populate_patches()
 
+    def flatten_agent_patch(self, qpos):
+        """
+        Turn terrain in the patch around the agent to flat.
+        """
+        # convert position to map position
+        pos = self.cart2map(qpos[:2])
+        # get patch that belongs to the position
+        i = pos[0] // self.patch_size
+        j = pos[1] // self.patch_size
+        self._fill_patch(i, j, terrain_type=TerrainTypes.FLAT)
+
     def _compute_patch_data(self, terrain_type):
         if terrain_type.name == 'FLAT':
             return np.zeros((self.patch_size, self.patch_size))
@@ -226,7 +238,7 @@ class HeightField:
             i, j = self.rng.randint(0, self.patches_per_side, size=2)
             self._fill_patch(i, j, SpecialTerrains.RELIEF)
 
-    def _fill_patch(self, i, j, terrain_type='FLAT'):
+    def _fill_patch(self, i, j, terrain_type=TerrainTypes.FLAT):
         """
         Fill patch at position <i> ,<j> with terrain <type>
         """
@@ -234,20 +246,37 @@ class HeightField:
                     j * self.patch_size: j * self.patch_size + self.patch_size] = self._compute_patch_data(terrain_type)
 
     def get_heightmap_obs(self):
+        """
+        Get heightmap observation.
+        """
         if self.heightmap_window is None:
             self.heightmap_window = np.zeros((10, 10))
         self._measure_height()
         return self.heightmap_window[:].flatten().copy()
 
-    def cart2map(self, pos):
+    def cart2map(self,
+                 points_1: list,
+                 points_2: Optional[list] = None):
         """
         Transform cartesian position [m * m] to rounded map position [nrow * ncol]
+        If only points_1 is given: Expects cartesian positions in [x, y] format.
+        If also points_2 is given: Expects points_1 = [x1, x2, ...] points_2 = [y1, y2, ...]
         """
         delta_map = self.real_length / self.nrow
         offset = self.hfield.data.shape[0] / 2
-        return pos[:] / delta_map + offset
+        # x, y needs to be switched to match hfield.
+        if points_2 is None:
+            return np.array(points_1[::-1] / delta_map + offset, dtype=np.int16)
+        else:
+            ret1 = np.array(points_1[:] / delta_map + offset, dtype=np.int16)
+            ret2 = np.array(points_2[:] / delta_map + offset, dtype=np.int16)
+            return ret2, ret1
 
     def sample(self, rng=None):
+        """
+        Sample an entire heightfield for the episode.
+        Update geom in viewer if rendering.
+        """
         if not rng is None:
             self.rng = rng
         self._populate_patches()
@@ -256,6 +285,9 @@ class HeightField:
 
     # Patch types  ---------------
     def _compute_rough_terrain(self):
+        """
+        Compute data for a random noise rough terrain.
+        """
         rough = self.rng.uniform(low=-1.0, high=1.0, size=(self.patch_size, self.patch_size))
         normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
         scalar, offset = .08, .02
@@ -263,12 +295,18 @@ class HeightField:
         return normalized_data * scalar - offset
 
     def _compute_relief_terrain(self):
+        """
+        Compute data for a special logo terrain.
+        """
         curr_dir = os.path.dirname(__file__)
         relief = np.load(os.path.join(curr_dir, '../assets/myo_relief.npy'))
         normalized_data = (relief - np.min(relief)) / (np.max(relief) - np.min(relief))
         return np.flipud(normalized_data) * self.rng.uniform(self.relief_range[0], self.relief_range[1])
 
     def _compute_hilly_terrain(self):
+        """
+        Compute data for a terrain with smooth hills.
+        """
         frequency = 10
         scalar = self.rng.uniform(low=self.hills_range[0], high=self.hills_range[1])
         data = np.sin(np.linspace(0, frequency * np.pi, self.patch_size * self.patch_size) + np.pi / 2) - 1
@@ -279,7 +317,7 @@ class HeightField:
         return normalized_data
 
     def _init_height_points(self):
-        """ Compute points at which height measurments are sampled (in base frame)
+        """ Compute grid points at which height measurements are sampled (in base frame)
          Saves the points in ndarray of shape (self.num_height_points, 3)
         """
         measured_points_x = [-0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
@@ -295,10 +333,14 @@ class HeightField:
         self.height_points = points
 
     def _measure_height(self):
+        """
+        Update heights at grid points around
+        model.
+        """
         rot_direction = quat2euler(self.sim.data.qpos[3:7])[2]
         rot_mat = euler2mat([0, 0, rot_direction])
         # rotate points around z-direction to match model
-        points = self.height_points @ rot_mat
+        points = np.einsum("ij,kj->ik", self.height_points, rot_mat)
         # increase point spacing
         points = (points * self.view_distance)
         # translate points to model frame
@@ -307,20 +349,17 @@ class HeightField:
         px = self.points[:, 0]
         py = self.points[:, 1]
         # get map_index coordinates of points
-        px = np.asarray(self.cart2map(px), dtype=np.int16)
-        py = np.asarray(self.cart2map(py), dtype=np.int16)
+        px, py = self.cart2map(px, py)
         # avoid out-of-bounds by clipping indices to map boundaries
         # -2 because we go one further and shape is 1 longer than map index
         px = np.clip(px, 0, self.hfield.data.shape[0] - 2)
         py = np.clip(py, 0, self.hfield.data.shape[1] - 2)
-        # switch x and y here because of array indexing
-        heights = self.hfield.data[py, px]
-
+        heights = self.hfield.data[px, py]
         if not hasattr(self, 'length'):
             self.length = 0
         self.length += 1
         # align with egocentric view of model
-        self.heightmap_window[:] = np.rot90((heights).reshape(10, 10))
+        self.heightmap_window[:] = np.flipud(np.rot90(heights.reshape(10, 10), axes=(1,0)))
 
     @property
     def size(self):
@@ -527,11 +566,21 @@ class ChaseTagEnvV0(WalkEnvV0):
         self._sample_task()
         # randomized initial state
         qpos, qvel = self._get_reset_state()
+        self._maybe_flatten_agent_patch(qpos)
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel)
         self.opponent.reset_opponent(player_task=self.current_task.name, rng=self.np_random)
         self.sim.forward()
         return obs
+
+    def _maybe_flatten_agent_patch(self, qpos):
+        """
+        Ensure that initial state patch is flat.
+        """
+        if self.heightfield is not None:
+            self.heightfield.flatten_agent_patch(qpos)
+            if hasattr(self.sim, 'renderer') and not self.sim.renderer._window is None:
+                self.sim.renderer._window.update_hfield(0)
 
     def _sample_task(self):
         if self.task_choice == 'random':
@@ -558,6 +607,8 @@ class ChaseTagEnvV0(WalkEnvV0):
         euler_angle = quat2euler(qpos[3:7])
         euler_angle[-1] = orientation
         qpos[3:7] = euler2quat(euler_angle)
+        # rotate original velocity with unit direction vector
+        qvel[:2] = np.array([np.cos(orientation), np.sin(orientation)]) * np.linalg.norm(qvel[:2])
         return qpos, qvel
 
     def _get_reset_state(self):
@@ -568,6 +619,17 @@ class ChaseTagEnvV0(WalkEnvV0):
             return self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
         else:
             return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
+
+    def _maybe_adjust_height(self, qpos, qvel):
+        """
+        Currently not used.
+        """
+        if self.heightfield is not None:
+                map_i, map_j = self.heightfield.cart2map(qpos[:2])
+                hfield_val = self.heightfield.hfield.data[map_i, map_j]
+                if hfield_val > 0.05:
+                    qpos[2] += hfield_val
+        return qpos, qvel
 
     def viewer_setup(self, *args, **kwargs):
        """

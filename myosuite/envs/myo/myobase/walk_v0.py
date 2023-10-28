@@ -139,6 +139,7 @@ class ReachEnvV0(BaseV0):
             obs = super().reset()
         return obs
 
+
 class WalkEnvV0(BaseV0):
 
     DEFAULT_OBS_KEYS = [
