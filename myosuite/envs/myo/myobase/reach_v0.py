@@ -4,7 +4,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ================================================= """
 
 import collections
-import gym
+from myosuite.utils.import_utils import import_gym; gym = import_gym()
 import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0

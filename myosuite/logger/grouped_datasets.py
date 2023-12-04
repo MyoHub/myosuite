@@ -25,7 +25,7 @@ import enum
 class TraceType(enum.Enum):
     """Trace types."""
     UNSET = -1
-    ROBOHIVE = 0
+    myosuite = 0
     ROBOSET = 1
 
     def get_type(input_type):
@@ -33,8 +33,8 @@ class TraceType(enum.Enum):
         A more robust way of getting trace type. Supports strings
         """
         if type(input_type) == str:
-            if input_type.lower() == "robohive":
-                return TraceType.ROBOHIVE
+            if input_type.lower() == "myosuite":
+                return TraceType.myosuite
             elif input_type.lower() == "roboset":
                 return TraceType.ROBOSET
             else:
@@ -48,7 +48,7 @@ class Trace:
         self.root = {name: {}}
         self.trace = self.root[name]
         self.index = 0
-        self.type = TraceType.ROBOHIVE
+        self.type = TraceType.myosuite
 
     # Create a group in your logs
     def create_group(self, name):

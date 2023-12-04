@@ -8,7 +8,7 @@ Helper script to record/examine a rollout (record/ render/ playback/ recover) on
   > Render options\n
     - either onscreen, or offscreen, or just rollout without rendering.\n
   > Save options:\n
-    - save resulting rollouts as RoboHive/Roboset format, and as 2D plots\n
+    - save resulting rollouts as myosuite/Roboset format, and as 2D plots\n
 USAGE:\n
     $ python examine_rollout.py --env_name door-v0 \n
     $ python examine_rollout.py --env_name door-v0 --rollout_path my_rollouts.h5 --repeat 10 \n
@@ -17,7 +17,7 @@ USAGE:\n
 
 from myosuite.utils.paths_utils import plot as plotnsave_paths
 from myosuite.utils import tensor_utils
-import gym
+from myosuite.utils.import_utils import import_gym; gym = import_gym()
 import click
 import numpy as np
 import time
@@ -27,7 +27,7 @@ import os
 @click.command(help=DESC)
 @click.option('-e', '--env_name', type=str, help='environment to load', required=True)
 @click.option('-p', '--rollout_path', type=str, help='absolute path of the rollout', default=None)
-@click.option('-f', '--rollout_format', type=click.Choice(['RoboHive', 'RoboSet']), help='Data format', default='RoboHive')
+@click.option('-f', '--rollout_format', type=click.Choice(['myosuite', 'RoboSet']), help='Data format', default='myosuite')
 @click.option('-m', '--mode', type=click.Choice(['record', 'render', 'playback', 'recover']), help='How to examine rollout', default='playback')
 @click.option('-h', '--horizon', type=int, help='Rollout horizon, when mode is record', default=-1)
 @click.option('-s', '--seed', type=int, help='seed for generating environment instances', default=123)
@@ -48,11 +48,11 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
     # seed and load environments
     np.random.seed(seed)
     env = gym.make(env_name) if env_args==None else gym.make(env_name, **(eval(env_args)))
-    env = env.env
+    env = env.unwrapped
     env.seed(seed)
 
     # Start a "trace" for recording rollouts
-    if rollout_format=='RoboHive':
+    if rollout_format=='myosuite':
         from myosuite.logger.grouped_datasets import Trace
     elif rollout_format=='RoboSet':
         from myosuite.logger.roboset_logger import RoboSet_Trace as Trace
@@ -98,7 +98,7 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
             trace.create_group(path_name)
 
             # init: reset to starting state
-            if path_data and rollout_format=='RoboHive':
+            if path_data and rollout_format=='myosuite':
                 # reset to init state
                 if "state" in path_data['env_infos'].keys():
                     path_state = tensor_utils.split_tensor_dict_list(path_data['env_infos']['state'])
@@ -122,7 +122,7 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
             trace_horizon = horizon if mode=='record' else path_data['time'].shape[0]-1
 
             # Rollout path --------------------------------
-            obs, rwd, done, env_info = env.forward(update_exteroception=include_exteroception)
+            obs, rwd, done, *_, env_info = env.forward(update_exteroception=include_exteroception)
             ep_rwd = rwd
             for i_step in range(trace_horizon+1):
 
@@ -137,7 +137,7 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
                     # populate actions merely for logging
                     if rollout_format=='RoboSet':
                         act = np.concatenate([path_data['ctrl_arm'][i_step], path_data['ctrl_ee'][i_step]])
-                    elif rollout_format=='RoboHive' and "state" in path_data['env_infos'].keys():
+                    elif rollout_format=='myosuite' and "state" in path_data['env_infos'].keys():
                         act = path_data['actions'][i_step]
                     else:
                         raise NotImplementedError("Settings not found")
@@ -146,7 +146,7 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
                 elif mode=='playback':
                     if rollout_format=='RoboSet':
                         act = np.concatenate([path_data['ctrl_arm'][i_step], path_data['ctrl_ee'][i_step]])
-                    elif rollout_format=='RoboHive':
+                    elif rollout_format=='myosuite':
                         act = path_data['actions'][i_step]
 
                 # Recover actions from states
@@ -154,7 +154,7 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
                     # assumes position controls
                     if rollout_format=='RoboSet':
                         act = np.concatenate([path_data['qp_arm'][i_step], path_data['qp_ee'][i_step]])
-                    elif rollout_format=='RoboHive':
+                    elif rollout_format=='myosuite':
                         act = path_data['env_infos']['obs_dict']['qp'][i_step]
                     if noise_scale:
                         act = act + env.np_random.uniform(high=noise_scale, low=-noise_scale, size=len(act)).astype(act.dtype)
@@ -201,14 +201,14 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
                         env.sim.data.qvel[:nq_arm]= path_data['qv_arm'][i_step+1]
                         env.sim.data.qvel[nq_arm:nq_arm+nq_ee]= path_data['qv_ee'][i_step+1]
                         env.sim.data.time = path_data['time'][i_step+1]
-                    elif rollout_format=='RoboHive' and "state" in path_data['env_infos'].keys():
+                    elif rollout_format=='myosuite' and "state" in path_data['env_infos'].keys():
                         env.set_env_state(path_state[i_step+1])
                     else:
                         raise NotImplementedError("Settings not found")
-                    obs, rwd, done, env_info = env.forward(update_exteroception=include_exteroception)
+                    obs, rwd, done, *_, env_info = env.forward(update_exteroception=include_exteroception)
                     ep_rwd += rwd
                 elif i_step < trace_horizon: # incase last step actions (nans) can cause issues in step
-                    obs, rwd, done, env_info = env.step(act, update_exteroception=include_exteroception)
+                    obs, rwd, done, *_, env_info = env.step(act, update_exteroception=include_exteroception)
                     ep_rwd += rwd
 
             # save offscreen buffers as video and clear the dataset

@@ -780,7 +780,7 @@ class Robot():
 
     # close connection and exit out of the robot
     def close(self):
-        # prompt("Closing {}".format(self.name), 'white', 'on_grey', flush=True)
+        prompt("Closing {}".format(self.name), 'white', 'on_grey', flush=True)
         if self.is_hardware:
             status = self.hardware_close()
             prompt("Closed (Status: {})".format(status), 'white', 'on_grey', flush=True)
@@ -792,7 +792,7 @@ class Robot():
 
 
 def demo_robot():
-    import gym
+    from myosuite.utils.import_utils import import_gym; gym = import_gym()
 
     prompt("Starting Robot===================")
     env = gym.make('FrankaReachFixed-v0')

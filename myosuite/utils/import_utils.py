@@ -1,4 +1,17 @@
 import importlib
+import importlib.util
+import os
+from os.path import expanduser
+#import git
+
+
+def import_gym():
+    if importlib.util.find_spec("gymnasium"):
+        import gymnasium as gg
+    elif importlib.util.find_spec("gym"):
+        import gym as gg
+    return gg
+
 
 def mujoco_py_isavailable():
     help = """
@@ -76,6 +89,59 @@ def vc_isavailable():
     """
     if importlib.util.find_spec("vc_models") is None:
         raise ModuleNotFoundError(help)
+
+def simhive_isavailable(robohive_version):
+    help = """
+    RoboHive environments requires SimHive for simulation assets.
+    Steps:
+        (1) Ensure RoboHive is installed and visible (pip show robohive)
+        (2) Ensure RoboHive is initialized before using. Options -
+            (a) robohive_init
+            (b) python -m robohive_init
+    """
+    file_dir = os.path.dirname(os.path.abspath(__file__))
+    if not os.path.exists(os.path.join(file_dir, "../simhive")):
+        raise ModuleNotFoundError(help)
+
+    # Check if touch file for SimHive exists
+    file_name = os.path.join(file_dir, "../simhive", 'simhive-version')
+    if os.path.isfile(file_name):
+        # Recover SimHive version
+        with open(file_name, 'r') as file:
+            simhive_version = file.read()
+
+        # Ensure that SimHive version matches RoboHive version
+        assert simhive_version==robohive_version, f"Version Mismatch: SimHive({simhive_version}) != RoboHive({robohive_version}). \nReinitialize RoboHive (python -m robohive_init)"
+
+
+def fetch_git(repo_url, commit_hash, clone_directory, clone_path=None):
+    if clone_path is None:
+        clone_path = os.path.join(expanduser("~"), ".robohive")
+    clone_directory = os.path.join(clone_path, clone_directory)
+
+    try:
+        # Create the clone directory if it doesn't exist
+        os.makedirs(clone_directory, exist_ok=True)
+
+        # Clone the repository to the specified path
+        if not os.path.exists(os.path.join(clone_directory,'.git')):
+            repo = git.Repo.clone_from(repo_url, clone_directory)
+            print(f"{repo_url} cloned at {clone_directory}")
+        else:
+            repo = git.Repo(clone_directory)
+            origin = repo.remote('origin')
+            origin.fetch()
+
+        # Check out the specific commit if not already
+        current_commit_hash = repo.head.commit.hexsha
+        if current_commit_hash != commit_hash:
+            repo.git.checkout(commit_hash)
+            print(f"{repo_url}@{commit_hash} fetched at {clone_directory}")
+
+    except git.GitCommandError as e:
+        print(f"Error: {e}")
+
+    return clone_directory
 
 
 if __name__ == '__main__':

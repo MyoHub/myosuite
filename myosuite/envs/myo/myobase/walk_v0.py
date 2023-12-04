@@ -4,7 +4,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ================================================= """
 
 import collections
-import gym
+from myosuite.utils.import_utils import import_gym; gym = import_gym()
 import numpy as np
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils.quat_math import quat2mat
@@ -138,7 +138,6 @@ class ReachEnvV0(BaseV0):
         else:
             obs = super().reset()
         return obs
-
 
 class WalkEnvV0(BaseV0):
 

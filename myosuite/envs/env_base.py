@@ -1,11 +1,13 @@
 """ =================================================
 Copyright (C) 2018 Vikash Kumar
 Author  :: Vikash Kumar (vikashplus@gmail.com)
-Source  :: https://github.com/vikashplus/robohive
+Source  :: https://github.com/vikashplus/myosuite
 License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ================================================= """
 
-import gym
+# TODO: find how to make this compatible with gymnasium. Maybe a global variable that indicates what to use as backend?
+# from myosuite.utils.import_utils import import_gym; gym = import_gym()
+from myosuite.utils.import_utils import import_gym; gym = import_gym()
 import numpy as np
 import os
 import time as timer
@@ -13,6 +15,7 @@ import time as timer
 from myosuite.envs.obs_vec_dict import ObsVecDict
 from myosuite.utils import tensor_utils
 from myosuite.robot.robot import Robot
+from myosuite.utils.implement_for import implement_for
 from myosuite.utils.prompt_utils import prompt, Prompt
 import skvideo.io
 from sys import platform
@@ -31,8 +34,8 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
     """
 
     DEFAULT_CREDIT = """\
-    RoboHive: A unified framework for robot learning | https://sites.google.com/view/robohive
-        Code: https://github.com/vikashplus/robohive/stargazers (add a star to support the project)
+        MyoSuite: a collection of environments/tasks to be solved by musculoskeletal models | https://sites.google.com/view/myosuite
+        Code: https://github.com/MyoHub/myosuite/stargazers (add a star to support the project)
     """
 
     def __init__(self,  model_path, obsd_model_path=None, seed=None, env_credits=DEFAULT_CREDIT):
@@ -130,7 +133,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         self._setup_rgb_encoders(self.visual_keys, device=None)
 
         # reset to get the env ready
-        observation, _reward, done, _info = self.step(np.zeros(self.sim.model.nu))
+        observation, _reward, done, *_, _info = self.step(np.zeros(self.sim.model.nu))
         # Question: Should we replace above with following? Its specially helpful for hardware as it forces a env reset before continuing, without which the hardware will make a big jump from its position to the position asked by step.
         # observation = self.reset()
         assert not done, "Check initialization. Simulation starts in a done state."
@@ -263,8 +266,23 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
                                         render_cbk=self.mj_render if self.mujoco_render_frames else None)
         return self.forward(**kwargs)
 
-
+    @implement_for("gym", None, "0.24")
     def forward(self, **kwargs):
+        return self._forward(**kwargs)
+
+    @implement_for("gym", "0.24", None)
+    def forward(self, **kwargs):
+        obs, reward, done, info = self._forward(**kwargs)
+        terminal = done
+        return obs, reward, terminal, False, info
+
+    @implement_for("gymnasium")
+    def forward(self, **kwargs):
+        obs, reward, done, info = self._forward(**kwargs)
+        terminal = done
+        return obs, reward, terminal, False, info
+
+    def _forward(self, **kwargs):
         """
         Forward propagate env to recover env details
         Returns current obs(t), rwd(t), done(t), info(t)
@@ -476,7 +494,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         return self.input_seed
 
 
-    def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
+    def _reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
         """
         Reset the environment
         Default implemention provided. Override if env needs custom reset
@@ -485,11 +503,19 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         qvel = self.init_qvel.copy() if reset_qvel is None else reset_qvel
         self.robot.reset(qpos, qvel, **kwargs)
         return self.get_obs()
+    @implement_for("gym", None, "0.26")
+    def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
+        return self._reset(reset_qpos=reset_qpos, reset_qvel=reset_qvel, **kwargs)
+    @implement_for("gym", "0.26", None)
+    def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
+        return self._reset(reset_qpos=reset_qpos, reset_qvel=reset_qvel, **kwargs), {}
+    @implement_for("gymnasium")
+    def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
+        return self._reset(reset_qpos=reset_qpos, reset_qvel=reset_qvel, **kwargs), {}
 
-
-    @property
-    def _step(self, a):
-        return self.step(a)
+    # @property
+    # def _step(self, a):
+    #     return self.step(a)
 
 
     @property
@@ -702,7 +728,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
             ep_rwd = 0.0
             while t < horizon and done is False:
                 a = policy.get_action(o)[0] if mode == 'exploration' else policy.get_action(o)[1]['evaluation']
-                next_o, rwd, done, env_info = self.step(a)
+                next_o, rwd, done, *_, env_info = self.step(a)
                 ep_rwd += rwd
                 # render offscreen visuals
                 if render =='offscreen':
@@ -794,7 +820,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
             ep_rwd = 0.0
 
             # Rollout --------------------------------
-            obs, rwd, done, env_info = self.forward(update_exteroception=True) # t=0
+            obs, rwd, done, *_, env_info = self.forward(update_exteroception=True) # t=0
             while t < horizon and done is False:
 
                 # print(t, t*self.dt, self.time, t*self.dt-self.time)
@@ -825,7 +851,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
 
 
                 # step env using actions from t=>t+1 ----------------------
-                obs, rwd, done, env_info = self.step(act, update_exteroception=True)
+                obs, rwd, done, *_, env_info = self.step(act, update_exteroception=True)
                 t = t+1
                 ep_rwd += rwd
 
