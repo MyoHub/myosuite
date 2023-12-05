@@ -26,14 +26,13 @@ jobs:
   
     defaults:
       run:
-        shell: bash -l {0}
+        shell: bash
 
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os:
-          - ubuntu-latest
-          - windows-latest
+          - macos-latest
 
     steps:
     - name: Checkout repository and submodules
@@ -43,14 +42,8 @@ jobs:
     - name: Set up Python 3.10
       uses: actions/setup-python@v3
       with:
-        python-version: "3.10"
-    - name: Prepare Linux
-      if: ${{ runner.os == 'Linux' }}
-      run: |
-        sudo apt-get update -y -qq
-        sudo apt-get install -y xvfb x11-xserver-utils
-        sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &               
-        
+        python-version: "3.10"     
+
     - name: Enable Conda
       uses: conda-incubator/setup-miniconda@v2
       with:
@@ -61,6 +54,7 @@ jobs:
           conda info
           CONDA_DEFAULT_ENV=test_myosuite
           conda create --name $CONDA_DEFAULT_ENV python=3.8 -y
+          source /usr/local/miniconda/etc/profile.d/conda.sh
           conda activate $CONDA_DEFAULT_ENV
 
 #     - name: Prepare MacOS
@@ -73,29 +67,14 @@ jobs:
 #         pip3 install h5py --only-binary h5py
     - name: Install dependencies
       run: |
+        export SYSTEM_VERSION_COMPAT=0
+        source /usr/local/miniconda/etc/profile.d/conda.sh
         conda activate $CONDA_DEFAULT_ENV
         python3 -m pip install --upgrade pip
         pip3 install -e .
-        
-    - name: Run MuJoCo Rendering test
-      if: ${{ runner.os == 'Linux' }}
-      run: python3 -m mujoco.render_test
       
     - name: Run Test environment
       run: |
+        source /usr/local/miniconda/etc/profile.d/conda.sh
         conda activate $CONDA_DEFAULT_ENV
         python3 -m myosuite.tests.test_myo
-        
-    - name: Install ffmpeg
-      if: ${{ runner.os == 'Linux' }}
-      run: |
-        sudo apt-get install --no-install-recommends ffmpeg && pip3 install ffmpeg scikit-video
-
-    - name: Test rendering
-      if: ${{ runner.os == 'Linux' }}
-      run: python3 -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
-    - name: Run Test jupyter-notebooks tutorials
-      if: ${{ runner.os == 'Linux' }}
-      run: |
-        conda activate $CONDA_DEFAULT_ENV
-        source myosuite/tests/test_tutorials.sh
