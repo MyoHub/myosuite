@@ -17,7 +17,8 @@ USAGE:\n
 
 from myosuite.utils.paths_utils import plot as plotnsave_paths
 from myosuite.utils import tensor_utils
-from myosuite.utils.import_utils import import_gym; gym = import_gym()
+# from myosuite.utils.import_utils import import_gym; gym = import_gym()
+from myosuite.utils import gym
 import click
 import numpy as np
 import time

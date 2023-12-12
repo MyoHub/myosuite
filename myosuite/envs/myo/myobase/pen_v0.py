@@ -5,8 +5,8 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 import collections
 import numpy as np
-from myosuite.utils.import_utils import import_gym; gym = import_gym()
-
+# from myosuite.utils.import_utils import import_gym; gym = import_gym()
+from myosuite.utils import gym
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils.quat_math import euler2quat
 from myosuite.utils.vector_math import calculate_cosine

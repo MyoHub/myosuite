@@ -7,7 +7,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 
 # TODO: find how to make this compatible with gymnasium. Maybe a global variable that indicates what to use as backend?
 # from myosuite.utils.import_utils import import_gym; gym = import_gym()
-from myosuite.utils.import_utils import import_gym; gym = import_gym()
+from myosuite.utils import gym
 import numpy as np
 import os
 import time as timer
