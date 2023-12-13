@@ -271,10 +271,10 @@ class WalkEnvV0(BaseV0):
         return qpos, qvel
 
     def step(self, *args, **kwargs):
-        obs, reward, done, *_, info = super().step(*args, **kwargs)
+        results = super().step(*args, **kwargs)
         self.steps += 1
-        return obs, reward, done, info
-
+        return results
+    
     def reset(self):
         self.steps = 0
         if self.reset_type == 'random':
