@@ -526,7 +526,7 @@ register_env_with_variants(id='myoHandReorientOOD-v0',
 
 # Baoding ==============================
 register_env_with_variants(id='myoHandBaodingFixed-v1',
-        entry_point='myosuite.envs.myo.myobase.baoding_v1:BaodingEnvV1',
+        entry_point='myosuite.envs.myo.myochallenge.baoding_v1:BaodingEnvV1',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/../assets/hand/myohand_baoding.xml',
@@ -534,7 +534,7 @@ register_env_with_variants(id='myoHandBaodingFixed-v1',
         }
     )
 register_env_with_variants(id='myoHandBaodingRandom-v1',
-        entry_point='myosuite.envs.myo.myobase.baoding_v1:BaodingEnvV1',
+        entry_point='myosuite.envs.myo.myochallenge.baoding_v1:BaodingEnvV1',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/../assets/hand/myohand_baoding.xml',
@@ -542,7 +542,7 @@ register_env_with_variants(id='myoHandBaodingRandom-v1',
         }
     )
 register_env_with_variants(id='myoHandBaodingFixed4th-v1',
-        entry_point='myosuite.envs.myo.myobase.baoding_v1:BaodingEnvV1',
+        entry_point='myosuite.envs.myo.myochallenge.baoding_v1:BaodingEnvV1',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/../assets/hand/myohand_baoding.xml',
@@ -551,7 +551,7 @@ register_env_with_variants(id='myoHandBaodingFixed4th-v1',
         }
     )
 register_env_with_variants(id='myoHandBaodingFixed8th-v1',
-        entry_point='myosuite.envs.myo.myobase.baoding_v1:BaodingEnvV1',
+        entry_point='myosuite.envs.myo.myochallenge.baoding_v1:BaodingEnvV1',
         max_episode_steps=200,
         kwargs={
             'model_path': curr_dir+'/../assets/hand/myohand_baoding.xml',
