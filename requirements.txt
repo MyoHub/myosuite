@@ -1,6 +1,6 @@
 click
 sk-video
-gym==0.13
+gym
 termcolor
 flatten_dict
 h5py
