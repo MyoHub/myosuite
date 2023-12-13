@@ -520,8 +520,8 @@ class ChaseTagEnvV0(WalkEnvV0):
 
     def step(self, *args, **kwargs):
         self.opponent.update_opponent_state()
-        obs, reward, done, info = super().step(*args, **kwargs)
-        return obs, reward, done, info
+        results = super().step(*args, **kwargs)
+        return results
 
     def reset(self):
         # randomized terrain types
