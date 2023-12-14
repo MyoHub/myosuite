@@ -494,7 +494,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         return self.input_seed
 
 
-    def _reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
+    def _reset(self, reset_qpos=None, reset_qvel=None, seed=None, **kwargs):
         """
         Reset the environment
         Default implemention provided. Override if env needs custom reset
@@ -510,8 +510,8 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
     def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
         return self._reset(reset_qpos=reset_qpos, reset_qvel=reset_qvel, **kwargs), {}
     @implement_for("gymnasium")
-    def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
-        return self._reset(reset_qpos=reset_qpos, reset_qvel=reset_qvel, **kwargs), {}
+    def reset(self, reset_qpos=None, reset_qvel=None, seed=None, **kwargs):
+        return self._reset(reset_qpos=reset_qpos, reset_qvel=reset_qvel, seed=None, **kwargs), {}
 
     # @property
     # def _step(self, a):
