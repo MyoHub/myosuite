@@ -523,7 +523,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         results = super().step(*args, **kwargs)
         return results
 
-    def reset(self):
+    def reset(self,**kwargs):
         # randomized terrain types
         self._maybe_sample_terrain()
         # randomized tasks
@@ -531,7 +531,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         # randomized initial state
         qpos, qvel = self._get_reset_state()
         self.robot.sync_sims(self.sim, self.sim_obsd)
-        obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel)
+        obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel, **kwargs)
         self.opponent.reset_opponent(player_task=self.current_task.name, rng=self.np_random)
         self.sim.forward()
         return obs

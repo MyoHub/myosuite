@@ -145,7 +145,7 @@ class ReorientEnvV0(BaseV0):
             }
         return metrics
 
-    def reset(self, reset_qpos=None, reset_qvel=None):
+    def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
         self.sim.model.body_pos[self.goal_bid] = self.goal_init_pos + \
             self.np_random.uniform( high=self.goal_pos[1], low=self.goal_pos[0], size=3)
 
@@ -168,5 +168,5 @@ class ReorientEnvV0(BaseV0):
         object_gpos = self.sim.model.geom_pos[self.object_gid0:self.object_gidn]
         self.sim.model.geom_pos[self.object_gid0:self.object_gidn] = object_gpos/abs(object_gpos+1e-16) * (abs(self.object_default_pos) + del_size)
 
-        obs = super().reset(reset_qpos, reset_qvel)
+        obs = super().reset(reset_qpos, reset_qvel, **kwargs)
         return obs

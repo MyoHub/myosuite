@@ -143,7 +143,7 @@ class PoseEnvV0(BaseV0):
 
     # reset_type = none; init; random
     # target_type = generate; switch
-    def reset(self):
+    def reset(self, **kwargs):
 
         # udpate wegith
         if self.weight_bodyname is not None:
@@ -183,11 +183,11 @@ class PoseEnvV0(BaseV0):
             obs = self.get_obs()
         elif self.reset_type == "init":
             # reset to init state
-            obs = super().reset()
+            obs = super().reset(**kwargs)
         elif self.reset_type == "random":
             # reset to random state
             jnt_init = self.np_random.uniform(high=self.sim.model.jnt_range[:,1], low=self.sim.model.jnt_range[:,0])
-            obs = super().reset(reset_qpos=jnt_init)
+            obs = super().reset(reset_qpos=jnt_init, **kwargs)
         else:
             print("Reset Type not found")
 

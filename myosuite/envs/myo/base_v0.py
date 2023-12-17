@@ -101,8 +101,8 @@ class BaseV0(env_base.MujocoEnv):
                     f_cem = self.MVC_rest[mus_idx]*np.exp(self.k_fatigue*f_int)
                 else:
                     f_cem = 0
-                self.sim.model.actuator_gainprm[mus_idx,2] = f_cem
-                self.sim_obsd.model.actuator_gainprm[mus_idx,2] = f_cem
+                self.sim.model.actuator_gainprm[mus_idx,2] = f_cem[0] if type(f_cem)==list else f_cem
+                self.sim_obsd.model.actuator_gainprm[mus_idx,2] = f_cem[0] if type(f_cem)==list else f_cem
         elif self.muscle_condition == 'reafferentation':
             # redirect EIP --> EPL
             muscle_a[self.EPLpos] = muscle_a[self.EIPpos].copy()

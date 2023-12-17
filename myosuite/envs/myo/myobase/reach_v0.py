@@ -117,8 +117,8 @@ class ReachEnvV0(BaseV0):
         self.sim.forward()
 
 
-    def reset(self):
+    def reset(self, **kwargs):
         self.generate_target_pose()
         self.robot.sync_sims(self.sim, self.sim_obsd)
-        obs = super().reset()
+        obs = super().reset(**kwargs)
         return obs

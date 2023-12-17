@@ -123,12 +123,12 @@ class PenTwirlFixedEnvV0(BaseV0):
 
 class PenTwirlRandomEnvV0(PenTwirlFixedEnvV0):
 
-    def reset(self):
+    def reset(self, **kwargs):
         # randomize target
         desired_orien = np.zeros(3)
         desired_orien[0] = self.np_random.uniform(low=-1, high=1)
         desired_orien[1] = self.np_random.uniform(low=-1, high=1)
         self.sim.model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
         self.robot.sync_sims(self.sim, self.sim_obsd)
-        obs = super().reset()
+        obs = super().reset(**kwargs)
         return obs
