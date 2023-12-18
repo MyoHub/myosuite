@@ -1,6 +1,6 @@
 click
 sk-video
-gymnasium
+gym
 termcolor
 flatten_dict
 h5py
