@@ -4,6 +4,8 @@ if importlib.util.find_spec("gymnasium"):
     import gymnasium as gg
 elif importlib.util.find_spec("gym"):
     import gym as gg
+else:
+    raise Exception("Gym/Gymnasium not found! You can install it with `pip install gymnasium`")
 
 class gym(): pass
 
