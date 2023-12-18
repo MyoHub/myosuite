@@ -9,7 +9,7 @@ class RoboSet_Trace(Trace):
         self.trace_type=TraceType.ROBOSET
 
 
-    # parse path from myosuite format into robopen dataset format
+    # parse path from robohive format into robopen dataset format
     def path2dataset(self, path:dict, config_path=None)->dict:
         """
         Convert RoboHive format into roboset format
