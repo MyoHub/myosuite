@@ -1,4 +1,3 @@
-# from myosuite.utils.import_utils import import_gym; gym = import_gym(); register=gym.register
 from myosuite.utils import gym; register=gym.register
 import collections
 import os
