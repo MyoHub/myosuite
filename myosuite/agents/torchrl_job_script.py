@@ -6,7 +6,7 @@
 """
 This script reproduces the Proximal Policy Optimization (PPO) Algorithm
 results from Schulman et al. 2017 for the on MuJoCo Environments.
-by Vincent Mons (vmoens@meta.com)
+by Vincent Moens (vmoens@meta.com) and Albert Bou (@albertbou92)
 """
 import hydra
 
