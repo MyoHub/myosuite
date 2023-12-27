@@ -533,8 +533,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         rwd_dict['dense'] = np.sum([wt*rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
 
         # Success Indicator
-        self.sim.model.site_rgba[self.success_indicator_sid, :] = np.array([0, 2, 0, 0.1]) if rwd_dict['solved'] else np.array([2, 0, 0, 0])
-
+        self.sim.model.site_rgba[self.success_indicator_sid, :] = np.array([0, 2, 0, 0.2]) if rwd_dict['solved'] else np.array([2, 0, 0, 0])
         return rwd_dict
 
     def get_metrics(self, paths):
