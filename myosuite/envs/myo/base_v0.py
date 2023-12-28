@@ -5,7 +5,8 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 from myosuite.envs import env_base
 import numpy as np
-
+import mujoco
+from myosuite.envs.myo.fatigue import CumulativeFatigue
 
 class BaseV0(env_base.MujocoEnv):
 
@@ -16,9 +17,10 @@ class BaseV0(env_base.MujocoEnv):
     """
 
     MVC_rest = []
-    f_load = {}
-    k_fatigue = 1
-
+    f_load = []
+    f_cem = []
+    k_fatigue = 10
+    
     def _setup(self,
             obs_keys:list,
             weighted_reward_keys:dict,
@@ -47,6 +49,8 @@ class BaseV0(env_base.MujocoEnv):
                     frame_skip=frame_skip,
                     **kwargs)
         self.viewer_setup(azimuth=90, distance=1.5, render_actuator=True)
+        if  self.muscle_condition == 'fatigue' and self.normalize_act:
+                raise Exception('WARNING! FATIGUE NEEDS UNNORMALIZED CONTROL ACTIVATIONS!!!')
 
 
     def initializeConditions(self):
@@ -56,23 +60,16 @@ class BaseV0(env_base.MujocoEnv):
             for mus_idx in range(self.sim.model.actuator_gainprm.shape[0]):
                 self.sim.model.actuator_gainprm[mus_idx,2] = 0.5*self.sim.model.actuator_gainprm[mus_idx,2].copy()
 
-        # for muscle fatigue we used the model from
-        # Liang Ma, Damien Chablat, Fouad Bennis, Wei Zhang
-        # A new simple dynamic muscle fatigue model and its validation
-        # International Journal of Industrial Ergonomics 39 (2009) 211–220
+        # for muscle fatigue we used the 3CC-r model
         elif self.muscle_condition == 'fatigue':
-            self.f_load = {}
-            self.MVC_rest = {}
-            for mus_idx in range(self.sim.model.actuator_gainprm.shape[0]):
-                self.f_load[mus_idx] = []
-                self.MVC_rest[mus_idx] = self.sim.model.actuator_gainprm[mus_idx,2].copy()
+            self.muscle_fatigue = CumulativeFatigue(self.sim.model)
 
         # Tendon transfer to redirect EIP --> EPL
         # https://www.assh.org/handcare/condition/tendon-transfer-surgery
         elif self.muscle_condition == 'reafferentation':
             self.EPLpos = self.sim.model.actuator_name2id('EPL')
             self.EIPpos = self.sim.model.actuator_name2id('EIP')
-
+    
     # step the simulation forward
     def step(self, a, **kwargs):
         muscle_a = a.copy()
@@ -83,32 +80,19 @@ class BaseV0(env_base.MujocoEnv):
             muscle_act_ind = self.sim.model.actuator_dyntype==3
             muscle_a[muscle_act_ind] = 1.0/(1.0+np.exp(-5.0*(muscle_a[muscle_act_ind]-0.5)))
             # TODO: actuator space may not always be (0,1) for muscle or (-1, 1) for others
-            isNormalized = False # refuse internal reprojection as we explicitely did it here
+            isNormalized = False # refuse internal reprojection as we explicitly did it here
         else:
             isNormalized = self.normalize_act # accept requested reprojection
 
         # implement abnormalities
         if self.muscle_condition == 'fatigue':
-            for mus_idx in range(self.sim.model.actuator_gainprm.shape[0]):
-
-                if self.sim.data.actuator_moment.shape[1]==1:
-                    self.f_load[mus_idx].append(self.sim.data.actuator_moment[mus_idx].copy())
-                else:
-                    self.f_load[mus_idx].append(self.sim.data.actuator_moment[mus_idx,1].copy())
-
-                if self.MVC_rest[mus_idx] != 0:
-                    f_int = np.sum(self.f_load[mus_idx]-np.max(self.f_load[mus_idx],0),0)/self.MVC_rest[mus_idx]
-                    f_cem = self.MVC_rest[mus_idx]*np.exp(self.k_fatigue*f_int)
-                else:
-                    f_cem = 0
-                self.sim.model.actuator_gainprm[mus_idx,2] = f_cem[0] if type(f_cem)==list else f_cem
-                self.sim_obsd.model.actuator_gainprm[mus_idx,2] = f_cem[0] if type(f_cem)==list else f_cem
+            muscle_a, _, _ = self.muscle_fatigue.compute_act(muscle_a)
+            
         elif self.muscle_condition == 'reafferentation':
             # redirect EIP --> EPL
             muscle_a[self.EPLpos] = muscle_a[self.EIPpos].copy()
             # Set EIP to 0
             muscle_a[self.EIPpos] = 0
-
         # step forward
         self.last_ctrl = self.robot.step(ctrl_desired=muscle_a,
                                         ctrl_normalized=isNormalized,
