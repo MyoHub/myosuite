@@ -59,7 +59,7 @@ It is possible to create and interface with MyoSuite environments just like any 
 
 
 ```python
-from myosuite.utils import gym
+from myosuite.utils.import_utils import gym
 env = gym.make('myoElbowPose1D6MRandom-v0')
 env.reset()
 for _ in range(1000):
