@@ -794,7 +794,7 @@ class Robot():
 
 
 def demo_robot():
-    from myosuite.utils.import_utils import gym
+    from myosuite.utils import gym
 
     prompt("Starting Robot===================")
     env = gym.make('FrankaReachFixed-v0')

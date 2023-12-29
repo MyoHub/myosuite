@@ -3,7 +3,7 @@
 Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= """
 
-from myosuite.utils.import_utils import gym; register=gym.register
+from myosuite.utils import gym; register=gym.register
 from myosuite.envs.env_variants import register_env_variant
 
 import os

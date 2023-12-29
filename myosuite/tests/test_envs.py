@@ -7,7 +7,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 
 import unittest
 
-from myosuite.utils.import_utils import gym
+from myosuite.utils import gym
 import numpy as np
 import pickle
 import copy

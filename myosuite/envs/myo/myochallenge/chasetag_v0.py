@@ -4,7 +4,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ================================================= """
 
 import collections
-from myosuite.utils.import_utils import gym
+from myosuite.utils import gym
 import numpy as np
 import pink
 import os

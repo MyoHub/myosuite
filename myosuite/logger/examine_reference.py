@@ -1,5 +1,5 @@
 import myosuite
-from myosuite.utils.import_utils import gym
+from myosuite.utils import gym
 import time
 import click
 from tqdm import tqdm

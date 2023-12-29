@@ -60,7 +60,7 @@ For example, to use the ``myoElbowPose1D6MRandom-v0`` environment it is possible
 
 .. code-block:: python
 
-   from myosuite.utils.import_utils import gym
+   from myosuite.utils import gym
    env = gym.make('myoElbowPose1D6MRandom-v0')
    env.reset()
    for _ in range(1000):
