@@ -1,6 +1,6 @@
 from stable_baselines3 import PPO
 import myosuite
-from myosuite.utils.import_utils import gym
+from myosuite.utils import gym
 
 from myosuite import myosuite_myobase_suite
 from myosuite import myosuite_myochal_suite
