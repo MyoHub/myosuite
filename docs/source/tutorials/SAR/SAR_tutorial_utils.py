@@ -1,4 +1,4 @@
-from myosuite.utils import gym
+from myosuite.utils.import_utils import gym
 
 from stable_baselines3 import SAC, PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize

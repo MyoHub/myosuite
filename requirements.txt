@@ -10,3 +10,4 @@ dm-control==1.0.14
 Pillow
 pink-noise-rl
 packaging
+gitpython

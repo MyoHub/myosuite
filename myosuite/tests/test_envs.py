@@ -7,7 +7,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 
 import unittest
 
-from myosuite.utils import gym
+from myosuite.utils.import_utils import gym
 import numpy as np
 import pickle
 import copy
@@ -24,7 +24,6 @@ def assert_close(prm1, prm2, atol=1e-05, rtol=1e-08):
             assert_close(prm1_dict[key], prm2_dict[key], atol=atol, rtol=rtol)
     else:
         np.testing.assert_allclose(prm1, prm2, atol=atol, rtol=rtol)
-        # torch.testing.assert_close(prm1, prm2, atol=atol, rtol=rtol)
 
 class TestEnvs(unittest.TestCase):
 
@@ -38,7 +37,7 @@ class TestEnvs(unittest.TestCase):
 
     def check_env(self, environment_id, input_seed):
 
-        # Skip tests for envs that requires encoder downloading
+        # If requested, skip tests for envs that requires encoder downloading
         ROBOHIVE_TEST = os.getenv('ROBOHIVE_TEST')
         if ROBOHIVE_TEST == 'LITE':
             if "r3m" in environment_id or "rrl" in environment_id or "vc1" in environment_id:

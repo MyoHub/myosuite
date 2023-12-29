@@ -1,4 +1,5 @@
-from myosuite.utils import gym
+import myosuite
+from myosuite.utils.import_utils import gym
 import time
 import click
 from tqdm import tqdm
@@ -15,13 +16,13 @@ Script to render trajectories embeded in the env"
 @click.option('-r', '--render', type=click.Choice(['onscreen', 'none']), help='visualize onscreen?', default='onscreen')
 def examine_reference(env_name, horizon, num_playback, render):
     env = gym.make(env_name)
-    
+
     # infer reference horizon
     if horizon==-1:
         horizon =  env.env.ref.horizon
-    elif horizon==1: # fixed or random reference
+    if horizon==1: # fixed or random reference
         horizon =  env.env.horizon
-    
+
     # Start playback loops
     print(f"Rending reference motion (total frames: {horizon})")
     for n in range(num_playback):

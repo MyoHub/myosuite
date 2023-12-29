@@ -2,26 +2,17 @@ import importlib
 import importlib.util
 import os
 from os.path import expanduser
+import git
 
 
-# def import_gym():
-#     if importlib.util.find_spec("gymnasium"):
-#         import gymnasium as gg
-#     elif importlib.util.find_spec("gym"):
-#         import gym as gg
-#     return gg
-
-# class import_gym():
-#     def __init__(self):
-#         if importlib.util.find_spec("gymnasium"):
-#             import gymnasium as gg
-#         elif importlib.util.find_spec("gym"):
-#             import gym as gg
-        
-# # https://stackoverflow.com/questions/21434332/how-to-extend-inheritance-a-module-in-python
-# for i in gg.__all__:
-#     setattr(import_gym, i, getattr(gg, i))
-
+# Utility to import gym/gymnasium
+def import_gym():
+    if importlib.util.find_spec("gymnasium"):
+        import gymnasium as gg
+    elif importlib.util.find_spec("gym"):
+        import gym as gg
+    return gg
+gym = import_gym()
 
 
 def mujoco_py_isavailable():

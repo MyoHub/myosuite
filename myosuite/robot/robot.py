@@ -8,6 +8,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 from myosuite.physics.sim_scene import SimScene
 from myosuite.utils.quat_math import quat2euler
 from myosuite.utils.prompt_utils import prompt, Prompt
+import mujoco
 import time
 import numpy as np
 from collections import deque
@@ -325,10 +326,10 @@ class Robot():
                 sensor['sim_id'] = sim.model.sensor_name2id(sensor['name'])
                 sensor_type = sim.model.sensor_type[sensor['sim_id']]
                 sensor_objid = sim.model.sensor_objid[sensor['sim_id']]
-                if sensor_type == 8:  # mjSENS_JOINTPOS,// scalar joint position (hinge and slide only)
+                if sensor_type == mujoco.mjtSensor.mjSENS_JOINTPOS:  # mjSENS_JOINTPOS,// scalar joint position (hinge and slide only)
                     sensor['data_type'] = 'qpos'
                     sensor['data_id'] = sim.model.jnt_qposadr[sensor_objid]
-                elif sensor_type == 9:  # mjSENS_JOINTVEL,// scalar joint position (hinge and slide only)
+                elif sensor_type == mujoco.mjtSensor.mjSENS_JOINTVEL:  # mjSENS_JOINTVEL,// scalar joint position (hinge and slide only)
                     sensor['data_type'] = 'qvel'
                     sensor['data_id'] = sim.model.jnt_dofadr[sensor_objid]
                 else:
@@ -793,7 +794,7 @@ class Robot():
 
 
 def demo_robot():
-    from myosuite.utils import gym
+    from myosuite.utils.import_utils import gym
 
     prompt("Starting Robot===================")
     env = gym.make('FrankaReachFixed-v0')

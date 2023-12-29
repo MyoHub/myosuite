@@ -33,7 +33,7 @@ class TraceType(enum.Enum):
         A more robust way of getting trace type. Supports strings
         """
         if type(input_type) == str:
-            if input_type.lower() == "ROBOHIVE":
+            if input_type.lower() == "robohive":
                 return TraceType.ROBOHIVE
             elif input_type.lower() == "roboset":
                 return TraceType.ROBOSET

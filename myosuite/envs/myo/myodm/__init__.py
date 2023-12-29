@@ -1,4 +1,5 @@
-from myosuite.utils import gym; register=gym.register
+from myosuite.utils.import_utils import gym; register=gym.register
+
 import collections
 import os
 import numpy as np

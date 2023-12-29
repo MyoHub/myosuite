@@ -4,7 +4,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ================================================= """
 
 # import gym
-from myosuite.utils import gym
+from myosuite.utils.import_utils import gym
 from myosuite.utils.implement_for import implement_for
 
 #TODO: check versions

@@ -237,7 +237,7 @@ def render(rollout_path, render_format:str="mp4", cam_names:list=["left"]):
             print("\nSaving: " + file_name_mp4)
 
 
-# parse path from myosuite format into robopen dataset format
+# parse path from robohive format into robopen dataset format
 def path2dataset(path:dict, config_path=None)->dict:
     """
     Convert Robohive format into roboset format
