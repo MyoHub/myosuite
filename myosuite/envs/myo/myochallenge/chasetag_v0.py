@@ -37,12 +37,13 @@ class ChallengeOpponent:
     Contains several different policies. For the final evaluation, an additional
     non-disclosed policy will be used.
     """
-    def __init__(self, sim, rng, probabilities: list, min_spawn_distance: float):
+    def __init__(self, sim, rng, probabilities: list, min_spawn_distance: float, linear_velocity: float):
         self.dt = 0.01
         self.sim = sim
         self.opponent_probabilities = probabilities
         self.min_spawn_distance = min_spawn_distance
-        self.linear_velocity = 1.0
+        self.randomize_vel = True if linear_velocity == 'random' else False
+        self.linear_velocity = linear_velocity if type(linear_velocity) == float or type(linear_velocity) == int else 1.0
         self.reset_opponent(rng=rng)
 
     def reset_noise_process(self):
@@ -153,7 +154,8 @@ class ChallengeOpponent:
         self.opponent_vel[:] = 0.0
 
         # Randomize opponent forward velocity
-        self.linear_velocity = self.rng.uniform(1, 5)
+        if self.randomize_vel:
+            self.linear_velocity = self.rng.uniform(1, 5)
 
     def chase_player(self):
         """
@@ -384,13 +386,15 @@ class RepellerChallengeOpponent(ChallengeOpponent):
     ETA = 20.0 # Scaling factor
     MIN_SPAWN_DIST = 1.5
 
-    def __init__(self, sim, rng, probabilities, min_spawn_distance):
+    def __init__(self, sim, rng, probabilities: list, min_spawn_distance: float, linear_velocity: float):
         self.dt = 0.01
         self.sim = sim
         self.rng = rng
         self.opponent_probabilities = [0.1, 0.35, 0.35, 0.2]
         self.min_spawn_distance = min_spawn_distance
         self.noise_process = pink.ColoredNoiseProcess(beta=2, size=(2, 2000), scale=10, rng=rng)
+        self.randomize_vel = True if linear_velocity == 'random' else False
+        self.linear_velocity = linear_velocity if type(linear_velocity) == float or type(linear_velocity) == int else 1.0
         self.reset_opponent()
 
     def get_agent_pos(self):
@@ -591,6 +595,8 @@ class ChaseTagEnvV0(WalkEnvV0):
                hills_range=(0,0),
                rough_range=(0,0),
                relief_range=(0,0),
+               velocity=1.0,
+               repeller_opponent=False,
                **kwargs,
                ):
 
@@ -609,7 +615,10 @@ class ChaseTagEnvV0(WalkEnvV0):
 
         self.win_distance = win_distance
         self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
-        self.opponent = RepellerChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance)
+        if repeller_opponent:
+            self.opponent = RepellerChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance, linear_velocity=velocity)
+        else:
+            self.opponent = ChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance, linear_velocity=velocity)
         self.success_indicator_sid = self.sim.model.site_name2id("opponent_indicator")
         self.current_task = Task.CHASE
         super()._setup(obs_keys=obs_keys,

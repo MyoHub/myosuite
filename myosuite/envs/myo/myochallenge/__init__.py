@@ -96,9 +96,30 @@ register(id='myoChallengeChaseTagP2-v0',
             'hills_range': (0.03, 0.23),
             'rough_range': (0.05, 0.1),
             'relief_range': (0.1, 0.3),
+            'velocity': 1.0,
+            'repeller_opponent': False
         }
     )
 
+# Register MyoChallenge Locomotion P2 Evals
+register(id='myoChallengeChaseTagP2eval-v0',
+        entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
+        max_episode_steps=2000,
+        kwargs={
+            'model_path': curr_dir+'/../assets/leg/myolegs_chasetag.xml',
+            'normalize_act': True,
+            'win_distance': 0.5,
+            'min_spawn_distance': 2,
+            'reset_type': 'random',  # none, init, random
+            'terrain': 'random',  # FLAT, random
+            'task_choice': 'random',  # CHASE, EVADE, random
+            'hills_range': (0.03, 0.23),
+            'rough_range': (0.05, 0.1),
+            'relief_range': (0.1, 0.3),
+            'velocity': 'random',
+            'repeller_opponent': True
+        }
+    )
 
 # MyoChallenge 2022 envs ==============================================
 # MyoChallenge Die: Trial env
