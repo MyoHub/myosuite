@@ -3,14 +3,15 @@ import numpy as np
 class CumulativeFatigue():
     # 3CC-r model, adapted from https://dl.acm.org/doi/pdf/10.1145/3313831.3376701 for muscles 
     # based on the implementation from Aleksi Ikkala and Florian Fischer https://github.com/aikkala/user-in-the-box/blob/main/uitb/bm_models/effort_models.py
-    def __init__(self, mj_model):
+    def __init__(self, mj_model, frame_skip=1):
         self._r = 15 # Recovery time multiplier i.e. how many times more than during rest intervals https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6092960/
         self._F = 0.0146 # Fatigue coefficients
         self._R = 0.0022 # Recovery coefficients
         self.na = mj_model.na
-        self._dt = mj_model.opt.timestep
-        self._LD = np.array([1/mj_model.actuator_dynprm[i][0] for i in range(self.na)])
-        self._LR = np.array([1/mj_model.actuator_dynprm[i][1] for i in range(self.na)])
+        self._dt = mj_model.opt.timestep * frame_skip # dt might be different from model dt because it might include a frame skip
+        muscle_act_ind = mj_model.actuator_dyntype==3
+        self._LD = np.array([1/mj_model.actuator_dynprm[i][0] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
+        self._LR = np.array([1/mj_model.actuator_dynprm[i][1] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
         self._MA = np.zeros((self.na,))  # Muscle Active
         self._MR = np.ones((self.na,))   # Muscle Resting
         self._MF = np.zeros((self.na,))  # Muscle Fatigue
@@ -31,7 +32,7 @@ class CumulativeFatigue():
     def compute_act(self, act):
         # Get target load (actual activation, which might be reached only with some "effort", 
         # depending on how many muscles can be activated (fast enough) and how many are in fatigue state)
-        self.TL = act 
+        self.TL = act.copy()
 
         # Calculate C(t) -- transfer rate between MR and MA
         C = np.zeros_like(self._MA)

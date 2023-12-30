@@ -14,13 +14,7 @@ class BaseV0(env_base.MujocoEnv):
     MyoSuite: A contact-rich simulation suite for musculoskeletal motor control
         Vittorio Caggiano, Huawei Wang, Guillaume Durandau, Massimo Sartori, Vikash Kumar
         L4DC-2019 | https://sites.google.com/view/myosuite
-    """
-
-    MVC_rest = []
-    f_load = []
-    f_cem = []
-    k_fatigue = 10
-    
+    """    
     def _setup(self,
             obs_keys:list,
             weighted_reward_keys:dict,
@@ -42,16 +36,13 @@ class BaseV0(env_base.MujocoEnv):
                 self.target_sids.append(self.sim.model.site_name2id(site+'_target'))
 
         self.muscle_condition = muscle_condition
+        self.frame_skip = frame_skip
         self.initializeConditions()
-
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
-                    frame_skip=frame_skip,
+                    frame_skip=self.frame_skip,
                     **kwargs)
         self.viewer_setup(azimuth=90, distance=1.5, render_actuator=True)
-        if  self.muscle_condition == 'fatigue' and self.normalize_act:
-                raise Exception('WARNING! FATIGUE NEEDS UNNORMALIZED CONTROL ACTIVATIONS!!!')
-
 
     def initializeConditions(self):
         # for muscle weakness we assume that a weaker muscle has a
@@ -62,7 +53,7 @@ class BaseV0(env_base.MujocoEnv):
 
         # for muscle fatigue we used the 3CC-r model
         elif self.muscle_condition == 'fatigue':
-            self.muscle_fatigue = CumulativeFatigue(self.sim.model)
+            self.muscle_fatigue = CumulativeFatigue(self.sim.model,  self.frame_skip)
 
         # Tendon transfer to redirect EIP --> EPL
         # https://www.assh.org/handcare/condition/tendon-transfer-surgery
@@ -73,11 +64,11 @@ class BaseV0(env_base.MujocoEnv):
     # step the simulation forward
     def step(self, a, **kwargs):
         muscle_a = a.copy()
-
+        muscle_act_ind = self.sim.model.actuator_dyntype==3
         # Explicitely project normalized space (-1,1) to actuator space (0,1) if muscles
         if self.sim.model.na and self.normalize_act:
             # find muscle actuators
-            muscle_act_ind = self.sim.model.actuator_dyntype==3
+            # import ipdb; ipdb.set_trace()
             muscle_a[muscle_act_ind] = 1.0/(1.0+np.exp(-5.0*(muscle_a[muscle_act_ind]-0.5)))
             # TODO: actuator space may not always be (0,1) for muscle or (-1, 1) for others
             isNormalized = False # refuse internal reprojection as we explicitly did it here
@@ -86,8 +77,8 @@ class BaseV0(env_base.MujocoEnv):
 
         # implement abnormalities
         if self.muscle_condition == 'fatigue':
-            muscle_a, _, _ = self.muscle_fatigue.compute_act(muscle_a)
-            
+            # import ipdb; ipdb.set_trace()
+            muscle_a[muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(muscle_a[muscle_act_ind])
         elif self.muscle_condition == 'reafferentation':
             # redirect EIP --> EPL
             muscle_a[self.EPLpos] = muscle_a[self.EIPpos].copy()
