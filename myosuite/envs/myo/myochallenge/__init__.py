@@ -77,6 +77,7 @@ register(id='myoChallengeChaseTagP1-v0',
             'hills_range': (0.0, 0.0),
             'rough_range': (0.0, 0.0),
             'relief_range': (0.0, 0.0),
+            'opponent_probabilities': [0.1, 0.45, 0.45],
         }
     )
 
@@ -96,8 +97,9 @@ register(id='myoChallengeChaseTagP2-v0',
             'hills_range': (0.03, 0.23),
             'rough_range': (0.05, 0.1),
             'relief_range': (0.1, 0.3),
-            'velocity': 1.0,
-            'repeller_opponent': False
+            'repeller_opponent': False,
+            'vel_range': (1.0, 1.0), # only for chase
+            'opponent_probabilities': [0.1, 0.45, 0.45],
         }
     )
 
@@ -116,8 +118,9 @@ register(id='myoChallengeChaseTagP2eval-v0',
             'hills_range': (0.03, 0.23),
             'rough_range': (0.05, 0.1),
             'relief_range': (0.1, 0.3),
-            'velocity': 'random',
-            'repeller_opponent': True
+            'repeller_opponent': True,
+            'vel_range': (1, 5), # only for chase
+            'opponent_probabilities': [0.1, 0.35, 0.35, 0.2],
         }
     )
 

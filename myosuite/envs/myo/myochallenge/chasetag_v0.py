@@ -37,13 +37,17 @@ class ChallengeOpponent:
     Contains several different policies. For the final evaluation, an additional
     non-disclosed policy will be used.
     """
-    def __init__(self, sim, rng, probabilities: list, min_spawn_distance: float, linear_velocity: float):
+    def __init__(self,
+                 sim,
+                 rng,
+                 probabilities: list[float],
+                 min_spawn_distance: float,
+                 vel_range: tuple[float]):
         self.dt = 0.01
         self.sim = sim
         self.opponent_probabilities = probabilities
         self.min_spawn_distance = min_spawn_distance
-        self.randomize_vel = True if linear_velocity == 'random' else False
-        self.linear_velocity = linear_velocity if type(linear_velocity) == float or type(linear_velocity) == int else 1.0
+        self.vel_range = vel_range
         self.reset_opponent(rng=rng)
 
     def reset_noise_process(self):
@@ -154,8 +158,7 @@ class ChallengeOpponent:
         self.opponent_vel[:] = 0.0
 
         # Randomize opponent forward velocity
-        if self.randomize_vel:
-            self.linear_velocity = self.rng.uniform(1, 5)
+        self.linear_velocity = self.rng.uniform(self.vel_range[0], self.vel_range[1])
 
     def chase_player(self):
         """
@@ -386,15 +389,20 @@ class RepellerChallengeOpponent(ChallengeOpponent):
     ETA = 20.0 # Scaling factor
     MIN_SPAWN_DIST = 1.5
 
-    def __init__(self, sim, rng, probabilities: list, min_spawn_distance: float, linear_velocity: float):
+    def __init__(self,
+                 sim,
+                 rng,
+                 probabilities: list[float],
+                 min_spawn_distance: float,
+                 vel_range: list[float]):
         self.dt = 0.01
         self.sim = sim
         self.rng = rng
-        self.opponent_probabilities = [0.1, 0.35, 0.35, 0.2]
+        self.opponent_probabilities = probabilities
+
         self.min_spawn_distance = min_spawn_distance
         self.noise_process = pink.ColoredNoiseProcess(beta=2, size=(2, 2000), scale=10, rng=rng)
-        self.randomize_vel = True if linear_velocity == 'random' else False
-        self.linear_velocity = linear_velocity if type(linear_velocity) == float or type(linear_velocity) == int else 1.0
+        self.vel_range = vel_range
         self.reset_opponent()
 
     def get_agent_pos(self):
@@ -586,7 +594,6 @@ class ChaseTagEnvV0(WalkEnvV0):
     def _setup(self,
                obs_keys: list = DEFAULT_OBS_KEYS,
                weighted_reward_keys: dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
-               opponent_probabilities=[0.1, 0.45, 0.45],
                reset_type='none',
                win_distance=0.5,
                min_spawn_distance=2,
@@ -595,8 +602,9 @@ class ChaseTagEnvV0(WalkEnvV0):
                hills_range=(0,0),
                rough_range=(0,0),
                relief_range=(0,0),
-               velocity=1.0,
                repeller_opponent=False,
+               vel_range=(1.0, 1.0),
+               opponent_probabilities=[0.1, 0.45, 0.45],
                **kwargs,
                ):
 
@@ -616,9 +624,9 @@ class ChaseTagEnvV0(WalkEnvV0):
         self.win_distance = win_distance
         self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
         if repeller_opponent:
-            self.opponent = RepellerChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance, linear_velocity=velocity)
+            self.opponent = RepellerChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance, vel_range=vel_range)
         else:
-            self.opponent = ChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance, linear_velocity=velocity)
+            self.opponent = ChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance, vel_range=vel_range)
         self.success_indicator_sid = self.sim.model.site_name2id("opponent_indicator")
         self.current_task = Task.CHASE
         super()._setup(obs_keys=obs_keys,
