@@ -388,6 +388,7 @@ class RepellerChallengeOpponent(ChallengeOpponent):
     DIST_INFLUENCE = 3.5 # Distance of influence by the repeller
     ETA = 20.0 # Scaling factor
     MIN_SPAWN_DIST = 1.5
+    BOUND_RESOLUTIONS = [-8.7, 8.7, 25]
 
     def __init__(self,
                  sim,
@@ -419,7 +420,7 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         :param pose: Pose of points along quad boundaries.
         :type pose: array -> [x, y]
         """
-        bound_resolution = np.linspace(-8.7, 8.7, 25)
+        bound_resolution = np.linspace(self.BOUND_RESOLUTIONS[0], self.BOUND_RESOLUTIONS[1], self.BOUND_RESOLUTIONS[2])
         right_left_bounds = np.vstack( (np.array([[8.7,x] for x in bound_resolution]),
                                         np.array([[-8.7,x] for x in bound_resolution])) )
         all_bounds = np.vstack( (right_left_bounds, right_left_bounds[:,[1,0]]) )
