@@ -46,7 +46,7 @@ register(id='myoChallengeRelocateP2eval-v0',
     entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
     max_episode_steps=150,
     kwargs={
-        'model_path': curr_dir+'/../../../simhive/myo_sim/arm/myoarm_object_v0.16(mj237).mjb',
+        'model_path': curr_dir + '/../assets/arm/myoarm_relocate.xml',
         'normalize_act': True,
         'frame_skip': 5,
         'pos_th': 0.1,              # cover entire base of the receptacle
