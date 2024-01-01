@@ -1,6 +1,6 @@
 click
 sk-video
-gym
+gym==0.13
 termcolor
 flatten_dict
 h5py
@@ -10,3 +10,4 @@ dm-control==1.0.14
 Pillow
 pink-noise-rl
 packaging
+gitpython
