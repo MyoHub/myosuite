@@ -44,8 +44,19 @@ class ChallengeOpponent:
                  min_spawn_distance: float,
                  chase_vel_range: tuple[float],
                  random_vel_range: tuple[float],
+                 dt=0.01,
         ):
-        self.dt = 0.01
+        """
+        Initialize the opponent class.
+        :param sim: Mujoco sim object.
+        :param rng: np_random generator.
+        :param probabilities: Probabilities for the different policies, (static_stationary, stationary, random).
+        :param min_spawn_distance: Minimum distance for opponent to spawn from the model.
+        :param chase_vel_range: Range of velocities for the chase policy. Randomly drawn.
+        :param random_vel_range: Range of velocities for the random policy. Clipped.
+        :param dt: Simulation timestep.
+        """
+        self.dt = dt
         self.sim = sim
         self.opponent_probabilities = probabilities
         self.min_spawn_distance = min_spawn_distance
@@ -401,8 +412,20 @@ class RepellerChallengeOpponent(ChallengeOpponent):
                  chase_vel_range: tuple[float],
                  random_vel_range: tuple[float],
                  repeller_vel_range: tuple[float],
+                 dt=0.01,
         ):
-        self.dt = 0.01
+        """
+        Initialize the opponent class. This class additionally contains a repeller policy which always runs away from the
+        agent.
+        :param sim: Mujoco sim object.
+        :param rng: np_random generator.
+        :param probabilities: Probabilities for the different policies, (static_stationary, stationary, random, repeller).
+        :param min_spawn_distance: Minimum distance for opponent to spawn from the model.
+        :param chase_vel_range: Range of velocities for the chase policy. Randomly drawn.
+        :param random_vel_range: Range of velocities for the random policy. Clipped.
+        :param dt: Simulation timestep.
+        """
+        self.dt = dt
         self.sim = sim
         self.rng = rng
         self.opponent_probabilities = probabilities
@@ -630,9 +653,6 @@ class ChaseTagEnvV0(WalkEnvV0):
         self.task_choice = task_choice
         self.terrain = terrain
         self.maxTime = 20
-
-        self.win_distance = win_distance
-        self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
         if repeller_opponent:
             self.opponent = RepellerChallengeOpponent(sim=self.sim,
                                                       rng=self.np_random,
@@ -649,9 +669,11 @@ class ChaseTagEnvV0(WalkEnvV0):
                                               chase_vel_range=chase_vel_range,
                                               random_vel_range=random_vel_range)
 
-
+        self.win_distance = win_distance
+        self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
         self.success_indicator_sid = self.sim.model.site_name2id("opponent_indicator")
         self.current_task = Task.CHASE
+        self.repeller_opponent = repeller_opponent
         super()._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        reset_type=reset_type,
@@ -661,6 +683,9 @@ class ChaseTagEnvV0(WalkEnvV0):
         self.init_qvel[:] = 0.0
         self.startFlag = True
         self.assert_settings()
+        self.opponent.dt = self.sim.model.opt.timestep * self.frame_skip
+
+
 
     def assert_settings(self):
         # chase always positive
@@ -670,6 +695,12 @@ class ChaseTagEnvV0(WalkEnvV0):
         assert self.opponent.random_vel_range[0] <= self.opponent.random_vel_range[1], f"Random movement velocity range is not valid {self.opponent.random_vel_range}"
         if hasattr(self.opponent, 'repeller_vel_range'):
             assert self.opponent.repeller_vel_range[0] <= self.opponent.repeller_vel_range[1], f"Repeller velocity range is not valid {self.opponent.repeller_vel_range}"
+        if self.repeller_opponent == True:
+            assert len(self.opponent.opponent_probabilities) == 4, "Repeller opponent requires 4 probabilities"
+        else:
+            assert len(self.opponent.opponent_probabilities) == 3, "Standard opponent requires 3 probabilities"
+        for x in self.opponent.opponent_probabilities:
+            assert 0 <= x <= 1, "Probabilities should be between 0 and 1"
 
     def get_obs_dict(self, sim):
         obs_dict = {}

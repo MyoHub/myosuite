@@ -98,8 +98,8 @@ register(id='myoChallengeChaseTagP2-v0',
             'rough_range': (0.05, 0.1),
             'relief_range': (0.1, 0.3),
             'repeller_opponent': False,
-            'chase_vel_range': (1.0, 1.0), # randomly drawn
-            'random_vel_range': (-2, 2), # clipped
+            'chase_vel_range': (1.0, 1.0),
+            'random_vel_range': (-2, 2),
             'opponent_probabilities': (0.1, 0.45, 0.45),
         }
     )
@@ -120,9 +120,9 @@ register(id='myoChallengeChaseTagP2eval-v0',
             'rough_range': (0.05, 0.1),
             'relief_range': (0.1, 0.3),
             'repeller_opponent': True,
-            'chase_vel_range': (1, 5), # randomly drawn
-            'random_vel_range': (-2, 2), # clipped
-            'repeller_vel_range': (0.3, 1), # clipped
+            'chase_vel_range': (1, 5),
+            'random_vel_range': (-2, 2),
+            'repeller_vel_range': (0.3, 1),
             'opponent_probabilities': (0.1, 0.35, 0.35, 0.2),
         }
     )
