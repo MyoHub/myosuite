@@ -9,7 +9,7 @@ import numpy as np
 import pink
 import os
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
@@ -40,10 +40,10 @@ class ChallengeOpponent:
     def __init__(self,
                  sim,
                  rng,
-                 probabilities: tuple[float],
+                 probabilities: Tuple[float],
                  min_spawn_distance: float,
-                 chase_vel_range: tuple[float],
-                 random_vel_range: tuple[float],
+                 chase_vel_range: Tuple[float],
+                 random_vel_range: Tuple[float],
                  dt=0.01,
         ):
         """
@@ -407,11 +407,11 @@ class RepellerChallengeOpponent(ChallengeOpponent):
     def __init__(self,
                  sim,
                  rng,
-                 probabilities: tuple[float],
+                 probabilities: Tuple[float],
                  min_spawn_distance: float,
-                 chase_vel_range: tuple[float],
-                 random_vel_range: tuple[float],
-                 repeller_vel_range: tuple[float],
+                 chase_vel_range: Tuple[float],
+                 random_vel_range: Tuple[float],
+                 repeller_vel_range: Tuple[float],
                  dt=0.01,
         ):
         """
