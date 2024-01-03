@@ -9,7 +9,7 @@ import numpy as np
 import pink
 import os
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
@@ -37,11 +37,31 @@ class ChallengeOpponent:
     Contains several different policies. For the final evaluation, an additional
     non-disclosed policy will be used.
     """
-    def __init__(self, sim, rng, probabilities: list, min_spawn_distance: float):
-        self.dt = 0.01
+    def __init__(self,
+                 sim,
+                 rng,
+                 probabilities: Tuple[float],
+                 min_spawn_distance: float,
+                 chase_vel_range: Tuple[float],
+                 random_vel_range: Tuple[float],
+                 dt=0.01,
+        ):
+        """
+        Initialize the opponent class.
+        :param sim: Mujoco sim object.
+        :param rng: np_random generator.
+        :param probabilities: Probabilities for the different policies, (static_stationary, stationary, random).
+        :param min_spawn_distance: Minimum distance for opponent to spawn from the model.
+        :param chase_vel_range: Range of velocities for the chase policy. Randomly drawn.
+        :param random_vel_range: Range of velocities for the random policy. Clipped.
+        :param dt: Simulation timestep.
+        """
+        self.dt = dt
         self.sim = sim
         self.opponent_probabilities = probabilities
         self.min_spawn_distance = min_spawn_distance
+        self.chase_vel_range = chase_vel_range
+        self.random_vel_range = random_vel_range
         self.reset_opponent(rng=rng)
 
     def reset_noise_process(self):
@@ -92,7 +112,7 @@ class ChallengeOpponent:
         This moves the opponent randomly in a correlated
         pattern.
         """
-        return self.noise_process.sample()
+        return np.clip(self.noise_process.sample(), self.random_vel_range[0], self.random_vel_range[1])
 
     def sample_opponent_policy(self):
         """
@@ -151,6 +171,9 @@ class ChallengeOpponent:
         self.set_opponent_pose(pose)
         self.opponent_vel[:] = 0.0
 
+        # Randomize opponent forward velocity
+        self.chase_velocity = self.rng.uniform(self.chase_vel_range[0], self.chase_vel_range[1])
+
     def chase_player(self):
         """
         This moves the opponent randomly in a correlated
@@ -163,7 +186,7 @@ class ChallengeOpponent:
         new_vec = np.array([np.cos(theta), np.sin(theta)])
         new_vec2 = pel - vec
         vel = np.dot(new_vec, new_vec2)
-        return np.array([1.0, vel])
+        return np.array([self.chase_velocity, vel])
 
 
 class HeightField:
@@ -374,6 +397,188 @@ class HeightField:
         return self.hfield.ncol
 
 
+class RepellerChallengeOpponent(ChallengeOpponent):
+    # Repeller parameters
+    DIST_INFLUENCE = 3.5 # Distance of influence by the repeller
+    ETA = 20.0 # Scaling factor
+    MIN_SPAWN_DIST = 1.5
+    BOUND_RESOLUTIONS = [-8.7, 8.7, 25]
+
+    def __init__(self,
+                 sim,
+                 rng,
+                 probabilities: Tuple[float],
+                 min_spawn_distance: float,
+                 chase_vel_range: Tuple[float],
+                 random_vel_range: Tuple[float],
+                 repeller_vel_range: Tuple[float],
+                 dt=0.01,
+        ):
+        """
+        Initialize the opponent class. This class additionally contains a repeller policy which always runs away from the
+        agent.
+        :param sim: Mujoco sim object.
+        :param rng: np_random generator.
+        :param probabilities: Probabilities for the different policies, (static_stationary, stationary, random, repeller).
+        :param min_spawn_distance: Minimum distance for opponent to spawn from the model.
+        :param chase_vel_range: Range of velocities for the chase policy. Randomly drawn.
+        :param random_vel_range: Range of velocities for the random policy. Clipped.
+        :param dt: Simulation timestep.
+        """
+        self.dt = dt
+        self.sim = sim
+        self.rng = rng
+        self.opponent_probabilities = probabilities
+
+        self.min_spawn_distance = min_spawn_distance
+        self.noise_process = pink.ColoredNoiseProcess(beta=2, size=(2, 2000), scale=10, rng=rng)
+        self.chase_vel_range = chase_vel_range
+        self.random_vel_range = random_vel_range
+        self.repeller_vel_range = repeller_vel_range
+        self.reset_opponent()
+
+    def get_agent_pos(self):
+        """
+        Get agent Pose
+        :param pose: Pose of the agent, measured from the pelvis.
+        :type pose: array -> [x, y]
+        """
+        return self.sim.data.body('pelvis').xpos[:2]
+
+    def get_wall_pos(self):
+        """
+        Get location of quad boundaries.
+        :param pose: Pose of points along quad boundaries.
+        :type pose: array -> [x, y]
+        """
+        bound_resolution = np.linspace(self.BOUND_RESOLUTIONS[0], self.BOUND_RESOLUTIONS[1], self.BOUND_RESOLUTIONS[2])
+        right_left_bounds = np.vstack( (np.array([[8.7,x] for x in bound_resolution]),
+                                        np.array([[-8.7,x] for x in bound_resolution])) )
+        all_bounds = np.vstack( (right_left_bounds, right_left_bounds[:,[1,0]]) )
+
+        return all_bounds
+
+    def get_repellers(self):
+        """
+        Get location of all repellers.
+        :param pose: Pose of all repellers
+        :type pose: array -> [x, y]
+        """
+        agent_pos = self.get_agent_pos()
+        wall_pos = self.get_wall_pos()
+
+        obstacle_list = np.vstack( (agent_pos, wall_pos) )
+        return obstacle_list
+
+    def repeller_stochastic(self):
+        """
+        Returns the linear velocity for the opponent
+        :param pose: Pose of points of all repellers
+        :type pose: array -> [x, y, rotation]
+        """
+        obstacle_pos = self.get_repellers()
+        opponent_pos = self.get_opponent_pose().copy()
+
+        # Calculate over all the workspace
+        distance = np.array([np.linalg.norm(diff) for diff in (obstacle_pos - opponent_pos[0:2])])
+
+        # Check if any obstacles are around
+        dist_idx = np.where(distance < self.DIST_INFLUENCE)[0]
+
+        # Take a random step if no repellers are close by, making it a non-stationary target
+        if len(dist_idx) == 0:
+            lin, rot = self.noise_process.sample()
+            escape_linear = np.clip(lin, self.repeller_vel_range[0], self.repeller_vel_range[1])
+            escape_ang_rot = self._calc_angular_vel(opponent_pos[2], rot)
+            return np.hstack((escape_linear, escape_ang_rot))
+        
+        repel_COM = np.mean(obstacle_pos[dist_idx,:], axis=0)
+        # Use repeller force as linear velocity to escape
+        repel_force = 0.5 * self.ETA * ( 1/np.maximum(distance[dist_idx], 0.00001) - 1/self.DIST_INFLUENCE )**2
+        escape_linear = np.clip(np.mean(repel_force), self.repeller_vel_range[0], self.repeller_vel_range[1])
+        escape_xpos = opponent_pos[0:2] - repel_COM
+
+        equil_idx = np.where(np.abs(escape_xpos) <= 0.1 )[0]
+        if len(equil_idx) != 0:
+            for idx in equil_idx:
+                escape_xpos[idx] = -1*np.sign(escape_xpos[idx]) * self.rng.uniform(low=0.3, high=0.9)
+
+        escape_direction = np.arctan2(escape_xpos[1], escape_xpos[0]) # Direction
+        escape_direction = escape_direction + 1.57 # Account for rotation in world frame
+
+        # Determines turning direction
+        escape_ang_rot = self._calc_angular_vel(opponent_pos[2], escape_direction)
+
+        return np.hstack((escape_linear, escape_ang_rot))
+
+    def _calc_angular_vel(self, current_pos, desired_pos):
+        # Checking for sign of the current position and escape position to prevent inefficient turning
+        # E.g. 3.14 and -3.14 are pointing in the same direction, so a simple substraction of facing direction will make the opponent turn a lot
+        
+        # Bring the current pos and desired pos to be between 0 to 2pi
+        if current_pos > (2*np.pi):
+            while current_pos > (2*np.pi):
+                current_pos = current_pos - (2*np.pi)
+        elif np.sign(current_pos) < 0:
+            while np.sign(current_pos) < 0:
+                current_pos = current_pos + (2*np.pi)
+
+        if desired_pos > (2*np.pi):
+            while desired_pos > (2*np.pi):
+                desired_pos = desired_pos - (2*np.pi)
+        elif np.sign(desired_pos) < 0:
+            while np.sign(desired_pos) < 0:
+                desired_pos = desired_pos + (2*np.pi)
+
+        direction_clock = np.abs(0 - current_pos) + (2*np.pi - desired_pos) # Clockwise rotation
+        direction_anticlock = (2*np.pi - current_pos) + (0 + desired_pos) # Anticlockwise rotation
+
+        if direction_clock < direction_anticlock:
+            return 1
+        else:
+            return -1
+
+    def repeller_policy(self):
+        """
+        This uses the repeller policy to move the opponent.
+        """
+        return self.repeller_stochastic()
+
+    def sample_opponent_policy(self):
+        """
+        Takes in three probabilities and returns the policies with the given frequency.
+        """
+        rand_num = self.rng.uniform()
+        if rand_num < self.opponent_probabilities[0]:
+            self.opponent_policy = 'static_stationary'
+        elif rand_num < self.opponent_probabilities[0] + self.opponent_probabilities[1]:
+            self.opponent_policy = 'stationary'
+        elif rand_num < self.opponent_probabilities[0] + self.opponent_probabilities[1] + self.opponent_probabilities[2]:
+            self.opponent_policy = 'random'
+        else:
+            self.opponent_policy = 'repeller'
+
+    def update_opponent_state(self):
+        """
+        This function executes an opponent step with
+        one of the control policies.
+        """
+        if self.opponent_policy == 'stationary' or self.opponent_policy == 'static_stationary':
+            opponent_vel = np.zeros(2,)
+
+        elif self.opponent_policy == 'random':
+            opponent_vel = self.random_movement()
+
+        elif self.opponent_policy == 'repeller':
+            opponent_vel = self.repeller_policy()
+
+        elif self.opponent_policy == 'chase_player':
+            opponent_vel = self.chase_player()
+        else:
+            raise NotImplementedError(f"This opponent policy doesn't exist. Chose: static_stationary, stationary or random. Policy was: {self.opponent_policy}")
+        self.move_opponent(opponent_vel)
+
+
 class ChaseTagEnvV0(WalkEnvV0):
 
     DEFAULT_OBS_KEYS = [
@@ -420,7 +625,6 @@ class ChaseTagEnvV0(WalkEnvV0):
     def _setup(self,
                obs_keys: list = DEFAULT_OBS_KEYS,
                weighted_reward_keys: dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
-               opponent_probabilities=[0.1, 0.45, 0.45],
                reset_type='none',
                win_distance=0.5,
                min_spawn_distance=2,
@@ -429,6 +633,11 @@ class ChaseTagEnvV0(WalkEnvV0):
                hills_range=(0,0),
                rough_range=(0,0),
                relief_range=(0,0),
+               repeller_opponent=False,
+               chase_vel_range=(1.0, 1.0),
+               random_vel_range=(1.0, 1.0),
+               repeller_vel_range=(1.0, 1.0),
+               opponent_probabilities=(0.1, 0.45, 0.45),
                **kwargs,
                ):
 
@@ -444,12 +653,27 @@ class ChaseTagEnvV0(WalkEnvV0):
         self.task_choice = task_choice
         self.terrain = terrain
         self.maxTime = 20
+        if repeller_opponent:
+            self.opponent = RepellerChallengeOpponent(sim=self.sim,
+                                                      rng=self.np_random,
+                                                      probabilities=opponent_probabilities,
+                                                      min_spawn_distance=min_spawn_distance,
+                                                      chase_vel_range=chase_vel_range,
+                                                      random_vel_range=random_vel_range,
+                                                      repeller_vel_range=repeller_vel_range)
+        else:
+            self.opponent = ChallengeOpponent(sim=self.sim,
+                                              rng=self.np_random,
+                                              probabilities=opponent_probabilities,
+                                              min_spawn_distance=min_spawn_distance,
+                                              chase_vel_range=chase_vel_range,
+                                              random_vel_range=random_vel_range)
 
         self.win_distance = win_distance
         self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
-        self.opponent = ChallengeOpponent(sim=self.sim, rng=self.np_random, probabilities=opponent_probabilities, min_spawn_distance = min_spawn_distance)
         self.success_indicator_sid = self.sim.model.site_name2id("opponent_indicator")
         self.current_task = Task.CHASE
+        self.repeller_opponent = repeller_opponent
         super()._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        reset_type=reset_type,
@@ -458,6 +682,25 @@ class ChaseTagEnvV0(WalkEnvV0):
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.init_qvel[:] = 0.0
         self.startFlag = True
+        self.assert_settings()
+        self.opponent.dt = self.sim.model.opt.timestep * self.frame_skip
+
+
+
+    def assert_settings(self):
+        # chase always positive
+        assert self.opponent.chase_vel_range[0] >= 0 and self.opponent.chase_vel_range[1] > 0, f"Chase velocity range should be positive. {self.opponent.chase_vel_range}"
+        # others assert that range end is bigger than range start
+        assert self.opponent.chase_vel_range[0] <= self.opponent.chase_vel_range[1], f"Chase velocity range is not valid. {self.opponent.chase_vel_range}"
+        assert self.opponent.random_vel_range[0] <= self.opponent.random_vel_range[1], f"Random movement velocity range is not valid {self.opponent.random_vel_range}"
+        if hasattr(self.opponent, 'repeller_vel_range'):
+            assert self.opponent.repeller_vel_range[0] <= self.opponent.repeller_vel_range[1], f"Repeller velocity range is not valid {self.opponent.repeller_vel_range}"
+        if self.repeller_opponent == True:
+            assert len(self.opponent.opponent_probabilities) == 4, "Repeller opponent requires 4 probabilities"
+        else:
+            assert len(self.opponent.opponent_probabilities) == 3, "Standard opponent requires 3 probabilities"
+        for x in self.opponent.opponent_probabilities:
+            assert 0 <= x <= 1, "Probabilities should be between 0 and 1"
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -533,8 +776,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         rwd_dict['dense'] = np.sum([wt*rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
 
         # Success Indicator
-        self.sim.model.site_rgba[self.success_indicator_sid, :] = np.array([0, 2, 0, 0.1]) if rwd_dict['solved'] else np.array([2, 0, 0, 0])
-
+        self.sim.model.site_rgba[self.success_indicator_sid, :] = np.array([0, 2, 0, 0.2]) if rwd_dict['solved'] else np.array([2, 0, 0, 0])
         return rwd_dict
 
     def get_metrics(self, paths):
