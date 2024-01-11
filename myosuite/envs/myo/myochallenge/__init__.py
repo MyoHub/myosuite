@@ -11,7 +11,7 @@ register(id='myoChallengeRelocateP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
         max_episode_steps=150,
         kwargs={
-            'model_path': curr_dir+'/../../../simhive/myo_sim/arm/myoarm_object_v0.16(mj237).mjb',
+            'model_path': curr_dir+'/../assets/arm/myoarm_relocate.xml',
             'normalize_act': True,
             'frame_skip': 5,
             'pos_th': 0.1,              # cover entire base of the receptacle
@@ -26,7 +26,7 @@ register(id='myoChallengeRelocateP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
         max_episode_steps=150,
         kwargs={
-            'model_path': curr_dir+'/../../../simhive/myo_sim/arm/myoarm_object_v0.16(mj237).mjb',
+            'model_path': curr_dir+'/../assets/arm/myoarm_relocate.xml',
             'normalize_act': True,
             'frame_skip': 5,
             'pos_th': 0.1,              # cover entire base of the receptacle
@@ -41,13 +41,33 @@ register(id='myoChallengeRelocateP2-v0',
         }
     )
 
+# Register MyoChallenge Manipulation P2 Evals
+register(id='myoChallengeRelocateP2eval-v0',
+    entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
+    max_episode_steps=150,
+    kwargs={
+        'model_path': curr_dir + '/../assets/arm/myoarm_relocate.xml',
+        'normalize_act': True,
+        'frame_skip': 5,
+        'pos_th': 0.1,              # cover entire base of the receptacle
+        'rot_th': np.inf,           # ignore rotation errors
+        'qpos_noise_range':0.015,    # jnt initialization range
+        'target_xyz_range': {'high':[0.4, -.1, 1.1], 'low':[-.5, -.5, .9]},
+        'target_rxryrz_range': {'high':[.3, .3, .3], 'low':[-.3, -.3, -.3]},
+        'obj_xyz_range': {'high':[0.15, -.10, 1.0], 'low':[-0.20, -.40, 1.0]},
+        'obj_geom_range': {'high':[.025, .025, .035], 'low':[.015, 0.015, 0.015]},
+        'obj_mass_range': {'high':0.300, 'low':0.050},# 50gms to 250 gms
+        'obj_friction_range': {'high':[1.2, 0.006, 0.00012], 'low':[0.8, 0.004, 0.00008]}
+    }
+)
+
 
 ## MyoChallenge Locomotion P1
 register(id='myoChallengeChaseTagP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,
         kwargs={
-            'model_path': curr_dir+'/../../../simhive/myo_sim/leg/myolegs_chasetag_v0.11(mj237).mjb',
+            'model_path': curr_dir+'/../assets/leg/myolegs_chasetag.xml',
             'normalize_act': True,
             'win_distance': 0.5,
             'min_spawn_distance': 2,
@@ -57,6 +77,7 @@ register(id='myoChallengeChaseTagP1-v0',
             'hills_range': (0.0, 0.0),
             'rough_range': (0.0, 0.0),
             'relief_range': (0.0, 0.0),
+            'opponent_probabilities': (0.1, 0.45, 0.45),
         }
     )
 
@@ -66,7 +87,7 @@ register(id='myoChallengeChaseTagP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,
         kwargs={
-            'model_path': curr_dir+'/../../../simhive/myo_sim/leg/myolegs_chasetag_v0.11(mj237).mjb',
+            'model_path': curr_dir+'/../assets/leg/myolegs_chasetag.xml',
             'normalize_act': True,
             'win_distance': 0.5,
             'min_spawn_distance': 2,
@@ -76,9 +97,35 @@ register(id='myoChallengeChaseTagP2-v0',
             'hills_range': (0.03, 0.23),
             'rough_range': (0.05, 0.1),
             'relief_range': (0.1, 0.3),
+            'repeller_opponent': False,
+            'chase_vel_range': (1.0, 1.0),
+            'random_vel_range': (-2, 2),
+            'opponent_probabilities': (0.1, 0.45, 0.45),
         }
     )
 
+# Register MyoChallenge Locomotion P2 Evals
+register(id='myoChallengeChaseTagP2eval-v0',
+        entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
+        max_episode_steps=2000,
+        kwargs={
+            'model_path': curr_dir+'/../assets/leg/myolegs_chasetag.xml',
+            'normalize_act': True,
+            'win_distance': 0.5,
+            'min_spawn_distance': 2,
+            'reset_type': 'random',  # none, init, random
+            'terrain': 'random',  # FLAT, random
+            'task_choice': 'random',  # CHASE, EVADE, random
+            'hills_range': (0.03, 0.23),
+            'rough_range': (0.05, 0.1),
+            'relief_range': (0.1, 0.3),
+            'repeller_opponent': True,
+            'chase_vel_range': (1, 5),
+            'random_vel_range': (-2, 2),
+            'repeller_vel_range': (0.3, 1),
+            'opponent_probabilities': (0.1, 0.35, 0.35, 0.2),
+        }
+    )
 
 # MyoChallenge 2022 envs ==============================================
 # MyoChallenge Die: Trial env
