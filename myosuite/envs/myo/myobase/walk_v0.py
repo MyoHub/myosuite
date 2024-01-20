@@ -281,7 +281,7 @@ class WalkEnvV0(BaseV0):
         results = super().step(*args, **kwargs)
         self.steps += 1
         return results
-    
+
     def reset(self, **kwargs):
         self.steps = 0
         if self.reset_type == 'random':
