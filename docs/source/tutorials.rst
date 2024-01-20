@@ -25,8 +25,7 @@ Example on how to use an environment e.g. send random movements
 
 .. code-block:: python
 
-    import myosuite
-    import gym
+    from myosuite.utils import gym
     env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
     for _ in range(1000):
@@ -43,8 +42,7 @@ Example on how to generate and visualize a movement e.g. index flexion, and visu
 
 .. code-block:: python
 
-    import myosuite
-    import gym
+    from myosuite.utils import gym
     env = gym.make('myoHandPoseRandom-v0')
     env.reset()
     for _ in range(1000):
@@ -60,8 +58,7 @@ Example on using a policy e.g. elbow flexion, and change non-stationaries
 
 .. code-block:: python
 
-    import myosuite
-    import gym
+    from myosuite.utils import gym
     policy = "iterations/best_policy.pickle"
 
     import pickle
@@ -83,8 +80,7 @@ This example shows how to add fatigue to a model. It tests random actions on a m
 
 .. code-block:: python
 
-    import myosuite
-    import gym
+    from myosuite.utils import gym
     env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
     for _ in range(1000):
@@ -108,8 +104,7 @@ This example shows how to add sarcopenia or muscle weakness to a model. It tests
 
 .. code-block:: python
 
-    import myosuite
-    import gym
+    from myosuite.utils import gym
     env = gym.make('myoElbowPose1D6MRandom-v0')
     env.reset()
     for _ in range(1000):
@@ -134,8 +129,7 @@ This example shows how load a model with physical tendon transfer.
 
 .. code-block:: python
 
-    import myosuite
-    import gym
+    from myosuite.utils import gym
     env = gym.make('myoHandKeyTurnFixed-v0')
     env.reset()
     for _ in range(1000):
@@ -171,8 +165,7 @@ If you want to load and execute the pre-trained DEP-RL baseline. Make sure that 
 
 .. code-block:: python
 
-    import gym
-    import myosuite
+    from myosuite.utils import gym
     import deprl
 
     # we can pass arguments to the environments here

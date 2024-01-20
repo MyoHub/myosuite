@@ -3,7 +3,7 @@
 Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= """
 
-from gym.envs.registration import register
+from myosuite.utils import gym; register=gym.register
 from myosuite.envs.env_variants import register_env_variant
 
 import os
@@ -287,6 +287,7 @@ register_env_with_variants(id='myoHandPoseRandom-v0',  #reconsider
 # Gait Torso Reaching ==============================
 from myosuite.physics.sim_scene import SimBackend
 sim_backend = SimBackend.get_sim_backend()
+
 leg_model='/../../../simhive/myo_sim/leg/myolegs.xml'
 
 register_env_with_variants(id='myoLegStandRandom-v0',
@@ -294,7 +295,7 @@ register_env_with_variants(id='myoLegStandRandom-v0',
         max_episode_steps=150,
         kwargs={
             'model_path': curr_dir+leg_model,
-            'joint_random_range': (0.2, -0.2), #range of joint randomization (jnt = init_qpos + random(range)
+            'joint_random_range': (-.2, 0.2), #range of joint randomization (jnt = init_qpos + random(range)
             'target_reach_range': {
                 'pelvis': ((-.05, -.05, 0), (0.05, 0.05, 0)),
                 },
@@ -302,6 +303,7 @@ register_env_with_variants(id='myoLegStandRandom-v0',
             'far_th': 0.44
         }
     )
+
 
 # Gait Torso Walking ==============================
 register_env_with_variants(id='myoLegWalk-v0',
@@ -373,7 +375,7 @@ register_env_with_variants(id='myoLegStairTerrainWalk-v0',
             'target_y_vel':1.2,  # desired y velocity in m/s
             'target_rot': None,   # if None then the initial root pos will be taken, otherwise provide quat
             'terrain':'stairs',
-            'variant':'fixed',
+            'variant':'fixed'
         }
     )
 
@@ -412,7 +414,6 @@ register_env_with_variants(id='myoHandReachRandom-v0',
         'far_th': 0.034
     }
 )
-
 
 # Hand-Joint key turn ==============================
 register_env_with_variants(id='myoHandKeyTurnFixed-v0',
