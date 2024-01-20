@@ -289,10 +289,10 @@ class TrackEnv(BaseV0):
         return idxs[0] < self.ref.horizon-1
 
 
-    def reset(self):
+    def reset(self, **kwargs):
         # print("Reset")
         self.ref.reset()
-        obs = super().reset(self.init_qpos, self.init_qvel)
+        obs = super().reset(self.init_qpos, self.init_qvel, **kwargs)
         # print(self.time, self.sim.data.qpos)
         return obs
 

@@ -112,6 +112,9 @@ class MJRenderer(Renderer):
             rgb_arr = self._renderer.render()
         if depth:
             self._renderer.enable_depth_rendering()
+            # Remove the following WARNING:absl:ARB_clip_control unavailable while mjDEPTH_ZEROFAR requested, depth accuracy will be limited
+            # TODO: When this feature stabalizes in mujoco, switch back to mjDEPTH_ZEROFAR for better accuracy
+            self._renderer._mjr_context.readDepthMap = mujoco.mjtDepthMap.mjDEPTH_ZERONEAR
             self._renderer.update_scene(self._sim.data.ptr, camera=camera_id, scene_option=self._scene_option)
             dpt_arr = self._renderer.render()
             dpt_arr = dpt_arr[::-1, :]

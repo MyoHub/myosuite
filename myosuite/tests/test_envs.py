@@ -1,7 +1,7 @@
 """ =================================================
 Copyright (C) 2018 Vikash Kumar
 Author  :: Vikash Kumar (vikashplus@gmail.com)
-Source  :: https://github.com/vikashplus/robohive
+Source  :: https://github.com/vikashplus/myosuite
 License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ================================================= """
 
@@ -44,23 +44,24 @@ class TestEnvs(unittest.TestCase):
                 return
 
         # test init
-        env1 = gym.make(environment_id, seed=input_seed)
+        env1w = gym.make(environment_id, seed=input_seed)
+        env1 = env1w.unwrapped
         assert env1.get_input_seed() == input_seed
         # test reseed and reset
         env1.seed(input_seed)
-        reset_obs1, *_ = env1.env.reset()
+        reset_obs1, *_ = env1.reset()
 
         # step
-        u = 0.01*np.random.uniform(low=0, high=1, size=env1.env.sim.model.nu) # small controls
-        obs1, rwd1, done1, *_, infos1 = env1.env.step(u.copy())
+        u = 0.01*np.random.uniform(low=0, high=1, size=env1.sim.model.nu) # small controls
+        obs1, rwd1, done1, *_, infos1 = env1.step(u.copy())
         infos1 = copy.deepcopy(infos1) #info points to internal variables.
-        proprio1_t, proprio1_vec, proprio1_dict = env1.env.get_proprioception()
-        extero1 = env1.env.get_exteroception()
+        proprio1_t, proprio1_vec, proprio1_dict = env1.get_proprioception()
+        extero1 = env1.get_exteroception()
         assert len(obs1>0)
         # assert len(rwd1>0)
         # test dicts
         assert len(infos1) > 0
-        obs_dict1 = env1.get_obs_dict(env1.env.sim)
+        obs_dict1 = env1.get_obs_dict(env1.sim)
         assert len(obs_dict1) > 0
         rwd_dict1 = env1.get_reward_dict(obs_dict1)
         assert len(rwd_dict1) > 0
@@ -68,7 +69,8 @@ class TestEnvs(unittest.TestCase):
         env1.reset()
 
         # serialize / deserialize env ------------
-        env2 = pickle.loads(pickle.dumps(env1))
+        env2w = pickle.loads(pickle.dumps(env1w))
+        env2 = env2w.unwrapped
         # test seed
         assert env2.get_input_seed() == input_seed
         assert env1.get_input_seed() == env2.get_input_seed(), {env1.get_input_seed(), env2.get_input_seed()}
@@ -78,14 +80,14 @@ class TestEnvs(unittest.TestCase):
 
         # test reseed and reset
         env2.seed(input_seed)
-        reset_obs2, *_ = env2.env.reset()
+        reset_obs2, *_ = env2.reset()
         assert_close(reset_obs1, reset_obs2)
 
         # step
-        obs2, rwd2, done2, *_, infos2 = env2.env.step(u)
+        obs2, rwd2, done2, *_, infos2 = env2.step(u)
         infos2 = copy.deepcopy(infos2)
-        proprio2_t, proprio2_vec, proprio2_dict = env2.env.get_proprioception()
-        extero2 = env2.env.get_exteroception()
+        proprio2_t, proprio2_vec, proprio2_dict = env2.get_proprioception()
+        extero2 = env2.get_exteroception()
 
         assert_close(obs1, obs2)
         assert_close(proprio1_vec, proprio2_vec)#, f"Difference in Proprio: {proprio1_vec-proprio2_vec}"

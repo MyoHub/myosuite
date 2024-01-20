@@ -143,4 +143,3 @@ if __name__ == '__main__':
     torchvision_isavailable()
     r3m_isavailable()
     vc_isavailable()
-

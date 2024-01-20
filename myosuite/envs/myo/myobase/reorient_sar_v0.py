@@ -401,4 +401,3 @@ class OutofDistribution(ProprioceptiveEnvV0):
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super().reset(**kwargs)
         return obs
-
