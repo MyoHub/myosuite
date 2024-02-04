@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 [FEATURE] Support for both Gym/Gymnasium
-[FEATURE] Add support for TorchRL
+[FEATURE] Add support for TorchRL by @vmoens (5efdf93)
 
 ## [2.2.0] - 2024-01-20
 [FEATURE] Inverse dynamics tutorial. Thanks to @andreh1111 #121
