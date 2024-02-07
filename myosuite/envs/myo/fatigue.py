@@ -10,8 +10,8 @@ class CumulativeFatigue():
         self.na = mj_model.na
         self._dt = mj_model.opt.timestep * frame_skip # dt might be different from model dt because it might include a frame skip
         muscle_act_ind = mj_model.actuator_dyntype==3
-        self._LD = np.array([1/mj_model.actuator_dynprm[i][0] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
-        self._LR = np.array([1/mj_model.actuator_dynprm[i][1] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
+        self._tauact = np.array([mj_model.actuator_dynprm[i][0] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
+        self._taudeact = np.array([mj_model.actuator_dynprm[i][1] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
         self._MA = np.zeros((self.na,))  # Muscle Active
         self._MR = np.ones((self.na,))   # Muscle Resting
         self._MF = np.zeros((self.na,))  # Muscle Fatigue
@@ -33,6 +33,11 @@ class CumulativeFatigue():
         # Get target load (actual activation, which might be reached only with some "effort", 
         # depending on how many muscles can be activated (fast enough) and how many are in fatigue state)
         self.TL = act.copy()
+
+        # Calculate effective time constant tau (see https://mujoco.readthedocs.io/en/stable/modeling.html#muscles)
+        self._LD = 1/self._tauact*(0.5 + 1.5*self._MA)
+        self._LR = (0.5 + 1.5*self._MA)/self._taudeact
+        ## TODO: account for smooth transition phase of length tausmooth (tausmooth = mj_model.actuator_dynprm[i][2])?
 
         # Calculate C(t) -- transfer rate between MR and MA
         C = np.zeros_like(self._MA)
