@@ -52,7 +52,7 @@ class CumulativeFatigue():
 
         # Calculate MA, MR
         self._MA += (C - self._F*self._MA)*self._dt
-        self._MR += (-C + rR*self._MR)*self._dt
+        self._MR += (-C + rR*self._MF)*self._dt
         self._MF += (self._F*self._MA - rR*self._MF)*self._dt
 
         # Not sure if these are needed
