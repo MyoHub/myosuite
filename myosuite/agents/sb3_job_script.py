@@ -15,10 +15,12 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.monitor import Monitor
+
 import myosuite
 
 import functools
-from in_callbacks import InfoCallback, FallbackCheckpoint, SaveSuccesses, EvalCallback
+from in_callbacks import make_env, InfoCallback, FallbackCheckpoint, SaveSuccesses, EvalCallback
 
 IS_WnB_enabled = False
 try:
@@ -47,11 +49,9 @@ def train_loop(job_data) -> None:
     log = configure(f'results_{job_data.env}')
 
     # Create the vectorized environment and normalize ob
-    env = make_vec_env(job_data.env, n_envs=job_data.n_env)
-    env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.)
+    env = make_env(multi_proc=False, n_envs=job_data.n_env, env_name=job_data.env)
 
-    eval_env = make_vec_env(job_data.env, n_envs=job_data.n_eval_env)
-    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_obs=10.)
+    eval_env = make_env(multi_proc=False, n_envs=job_data.n_env, env_name=job_data.env)
 
     algo = job_data.algorithm
     if algo == 'PPO':
@@ -103,5 +103,14 @@ if __name__ == "__main__":
     job_data.env= 'myoElbowPose1D6MRandom-v0'
     job_data.env_name= 'myoElbowPose1D6MRandom-v0'
     job_data.n_env= 3
+    job_data.n_eval_env = 3
+    job_data.algorithm= "PPO"
+    job_data.learning_rate= 1e-3
+    job_data.batch_size= 128
+    job_data.gamma= .995
+    job_data.alg_hyper_params = {'device': 'cpu'}
+    job_data.eval_freq = 100
+    job_data.restore_checkpoint_freq = 1000
+    job_data.save_freq = 100
 
     train_loop(job_data)

@@ -16,6 +16,35 @@ from stable_baselines3.common.monitor import Monitor
 import numpy as np
 import time
 import imageio
+from myosuite.utils import gym
+import functools
+from stable_baselines3.common.vec_env import SubprocVecEnv,DummyVecEnv, VecVideoRecorder
+
+
+def _env_maker(env_name):
+    env = gym.make(env_name, render_mode="rgb_array")
+    env = Monitor(env)
+    return env
+
+
+
+def make_env(multi_proc, n_envs, env_name):
+    vid_freq=30
+    vid_length=200
+    env_maker = functools.partial(_env_maker, env_name)
+    if multi_proc:
+        env = SubprocVecEnv([env_maker for _ in range(n_envs)])
+    else:
+        env = DummyVecEnv([env_maker for _ in range(n_envs)])
+
+    if vid_freq is not None:
+        vid_freq = max(int(vid_freq // n_envs), 1)
+        trigger = lambda x: x % vid_freq == 0 or x <= 1
+        env = VecVideoRecorder(env, "videos/",
+                            record_video_trigger=trigger,
+                            video_length=vid_length)
+    return env
+
 
 class InfoCallback(BaseCallback):
     def _on_rollout_end(self) -> None:
