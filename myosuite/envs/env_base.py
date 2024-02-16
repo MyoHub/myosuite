@@ -32,6 +32,12 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
     Superclass for all MuJoCo environments.
     """
 
+    metadata = {
+        "render_modes":[
+            "rgb_array",
+        ]
+    }
+
     DEFAULT_CREDIT = """\
         MyoSuite: a collection of environments/tasks to be solved by musculoskeletal models | https://sites.google.com/view/myosuite
         Code: https://github.com/MyoHub/myosuite/stargazers (add a star to support the project)
@@ -137,6 +143,9 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         # observation = self.reset()
         assert not done, "Check initialization. Simulation starts in a done state."
         self.observation_space = gym.spaces.Box(obs_range[0]*np.ones(observation.size), obs_range[1]*np.ones(observation.size), dtype=np.float32)
+
+        if 'render_mode' in kwargs:
+            self.render_mode = kwargs['render_mode']
 
         return
 
@@ -662,6 +671,8 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
 
         return success_percentage
 
+    def render(self):
+        return self.sim.renderer.render_offscreen(width=200, height=200, device_id=0)
 
     # Vizualization utilities ================================================
 

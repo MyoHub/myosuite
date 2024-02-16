@@ -15,6 +15,7 @@ from collections import deque as dq
 from stable_baselines3.common.monitor import Monitor
 import numpy as np
 import time
+import imageio
 
 class InfoCallback(BaseCallback):
     def _on_rollout_end(self) -> None:
@@ -58,7 +59,7 @@ class SaveSuccesses(BaseCallback):
         self.success_buffer = dq(maxlen=200)
         self.success_results = np.zeros(timesteps)
         self.env_name = env_name
-        
+
     def _init_callback(self) -> None:
         # Create folder if needed
         if self.save_path is not None:
@@ -87,6 +88,16 @@ class EvalCallback(BaseCallback):
         self._n_eval_episodes = n_eval_episodes
 
     def _info_callback(self, locals, _):
+        if locals['i'] == 0:
+            env = locals['env']
+            if 0:#env.has_multiproc:
+                pipe = env.remotes[0]
+                pipe.send(("render", "rgb_array"))
+                render = pipe.recv()
+            else:
+                render = env.envs[0].render()
+            self._info_tracker['rollout_video'].append(render)
+
         if locals['done']:
             for k, v in locals['info'].items():
                 if isinstance(v, (float, int)):
@@ -116,7 +127,12 @@ class EvalCallback(BaseCallback):
             self.logger.record('eval/mean_length', mean_length)
             for k, v in self._info_tracker.items():
                 if k == 'rollout_video':
-                    pass
+                    path = 'eval-call-{}.mp4'.format(self.n_calls)
+                    path = os.path.join(self._vid_log_dir, path)
+                    writer = imageio.get_writer(path, fps=fps)
+                    for i in v:
+                        writer.append_data(i)
+                    writer.close()
                 else:
                     self.logger.record('eval/mean_{}'.format(k), np.mean(v))
             self.logger.dump(self.num_timesteps)

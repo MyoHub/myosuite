@@ -26,10 +26,10 @@ try:
     from wandb.integration.sb3 import WandbCallback
     IS_WnB_enabled = True
 except ImportError as e:
-    pass 
+    pass
 
 def train_loop(job_data) -> None:
-    
+
     config = {
             "policy_type": job_data.policy,
             "total_timesteps": job_data.total_timesteps,
@@ -45,7 +45,7 @@ def train_loop(job_data) -> None:
         )
 
     log = configure(f'results_{job_data.env}')
-    
+
     # Create the vectorized environment and normalize ob
     env = make_vec_env(job_data.env, n_envs=job_data.n_env)
     env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.)
@@ -56,19 +56,19 @@ def train_loop(job_data) -> None:
     algo = job_data.algorithm
     if algo == 'PPO':
         model = PPO(job_data.policy, env,  verbose=1,
-                    learning_rate=job_data.learning_rate, 
-                    batch_size=job_data.batch_size, 
+                    learning_rate=job_data.learning_rate,
+                    batch_size=job_data.batch_size,
                     gamma=job_data.gamma, **job_data.alg_hyper_params)
     elif algo == 'SAC':
-        model = SAC(job_data.policy, env, 
-                    learning_rate=job_data.learning_rate, 
-                    buffer_size=job_data.buffer_size, 
-                    learning_starts=job_data.learning_starts, 
-                    batch_size=job_data.batch_size, 
-                    tau=job_data.tau, 
+        model = SAC(job_data.policy, env,
+                    learning_rate=job_data.learning_rate,
+                    buffer_size=job_data.buffer_size,
+                    learning_starts=job_data.learning_starts,
+                    batch_size=job_data.batch_size,
+                    tau=job_data.tau,
                     gamma=job_data.gamma, **job_data.alg_hyper_params)
-        
-    
+
+
     if IS_WnB_enabled:
         callback = [WandbCallback(
                 model_save_path=f"models/{run.id}",
@@ -76,7 +76,7 @@ def train_loop(job_data) -> None:
             )]
     else:
         callback = []
-    
+
     callback += [EvalCallback(job_data.eval_freq, eval_env)]
     callback += [InfoCallback()]
     callback += [FallbackCheckpoint(job_data.restore_checkpoint_freq)]
@@ -87,7 +87,7 @@ def train_loop(job_data) -> None:
         total_timesteps=config["total_timesteps"],
         callback=callback,
     )
-    
+
     model.set_logger(log)
 
     model.save(f"{job_data.env}_"+algo+"_model")
@@ -95,3 +95,13 @@ def train_loop(job_data) -> None:
 
     if IS_WnB_enabled:
         run.finish()
+
+if __name__ == "__main__":
+    job_data = lambda: None
+    job_data.policy= "MlpPolicy"
+    job_data.total_timesteps = 25000
+    job_data.env= 'myoElbowPose1D6MRandom-v0'
+    job_data.env_name= 'myoElbowPose1D6MRandom-v0'
+    job_data.n_env= 3
+
+    train_loop(job_data)
