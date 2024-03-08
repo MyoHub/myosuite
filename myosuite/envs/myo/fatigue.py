@@ -55,15 +55,17 @@ class CumulativeFatigue():
         idxs = self._MA < self.TL
         rR[idxs] = self._R
 
-        # Calculate MA, MR
-        self._MA += (C - self._F*self._MA)*self._dt
-        self._MR += (-C + rR*self._MF)*self._dt
-        self._MF += (self._F*self._MA - rR*self._MF)*self._dt
+        # Clip C(t) if needed, to ensure that MA, MR, and MF remain between 0 and 1
+        C = np.clip(C, np.maximum(-self._MA/self._dt + self._F*self._MA, (self._MR - 1)/self._dt + rR*self._MF),
+                    np.minimum((1 - self._MA)/self._dt + self._F*self._MA, self._MR/self._dt + rR*self._MF))
 
-        # Not sure if these are needed
-        self._MA = np.clip(self._MA, 0, 1)
-        self._MR = np.clip(self._MR, 0, 1)
-        self._MF = np.clip(self._MF, 0, 1)
+        # Update MA, MR, MF
+        dMA = (C - self._F*self._MA)*self._dt
+        dMR = (-C + rR*self._MF)*self._dt
+        dMF = (self._F*self._MA - rR*self._MF)*self._dt
+        self._MA += dMA
+        self._MR += dMR
+        self._MF += dMF
 
         return self._MA, self._MR, self._MF
 
