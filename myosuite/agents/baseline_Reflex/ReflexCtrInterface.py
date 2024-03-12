@@ -56,7 +56,7 @@ class MyoLegReflex(object):
         curr_dir = os.getcwd()
         register_env_variant(
                     env_id='myoLegDemo-v0',
-                    variants={'model_path': curr_dir+'/../../simhive/myo_sim/myoleg/myoleg_v0.52(mj120).mjb',
+                    variants={'model_path': curr_dir+'/../../simhive/myo_sim/leg/myolegs.xml',
                               'normalize_act':False},
                     variant_id='MyoLegReflex-v0',
                     silent=False

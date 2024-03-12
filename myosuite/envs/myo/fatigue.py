@@ -10,8 +10,8 @@ class CumulativeFatigue():
         self.na = mj_model.na
         self._dt = mj_model.opt.timestep * frame_skip # dt might be different from model dt because it might include a frame skip
         muscle_act_ind = mj_model.actuator_dyntype==3
-        self._LD = np.array([1/mj_model.actuator_dynprm[i][0] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
-        self._LR = np.array([1/mj_model.actuator_dynprm[i][1] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
+        self._tauact = np.array([mj_model.actuator_dynprm[i][0] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
+        self._taudeact = np.array([mj_model.actuator_dynprm[i][1] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
         self._MA = np.zeros((self.na,))  # Muscle Active
         self._MR = np.ones((self.na,))   # Muscle Resting
         self._MF = np.zeros((self.na,))  # Muscle Fatigue
@@ -34,6 +34,11 @@ class CumulativeFatigue():
         # depending on how many muscles can be activated (fast enough) and how many are in fatigue state)
         self.TL = act.copy()
 
+        # Calculate effective time constant tau (see https://mujoco.readthedocs.io/en/stable/modeling.html#muscles)
+        self._LD = 1/self._tauact*(0.5 + 1.5*self._MA)
+        self._LR = (0.5 + 1.5*self._MA)/self._taudeact
+        ## TODO: account for smooth transition phase of length tausmooth (tausmooth = mj_model.actuator_dynprm[i][2])?
+
         # Calculate C(t) -- transfer rate between MR and MA
         C = np.zeros_like(self._MA)
         idxs = (self._MA < self.TL) & (self._MR > (self.TL - self._MA))
@@ -50,15 +55,17 @@ class CumulativeFatigue():
         idxs = self._MA < self.TL
         rR[idxs] = self._R
 
-        # Calculate MA, MR
-        self._MA += (C - self._F*self._MA)*self._dt
-        self._MR += (-C + rR*self._MR)*self._dt
-        self._MF += (self._F*self._MA - rR*self._MF)*self._dt
+        # Clip C(t) if needed, to ensure that MA, MR, and MF remain between 0 and 1
+        C = np.clip(C, np.maximum(-self._MA/self._dt + self._F*self._MA, (self._MR - 1)/self._dt + rR*self._MF),
+                    np.minimum((1 - self._MA)/self._dt + self._F*self._MA, self._MR/self._dt + rR*self._MF))
 
-        # Not sure if these are needed
-        self._MA = np.clip(self._MA, 0, 1)
-        self._MR = np.clip(self._MR, 0, 1)
-        self._MF = np.clip(self._MF, 0, 1)
+        # Update MA, MR, MF
+        dMA = (C - self._F*self._MA)*self._dt
+        dMR = (-C + rR*self._MF)*self._dt
+        dMF = (self._F*self._MA - rR*self._MF)*self._dt
+        self._MA += dMA
+        self._MR += dMR
+        self._MF += dMF
 
         return self._MA, self._MR, self._MF
 

@@ -288,10 +288,7 @@ register_env_with_variants(id='myoHandPoseRandom-v0',  #reconsider
 # Gait Torso Reaching ==============================
 from myosuite.physics.sim_scene import SimBackend
 sim_backend = SimBackend.get_sim_backend()
-if sim_backend == SimBackend.MUJOCO_PY:
-    leg_model='/../../../simhive/myo_sim/leg/myolegs_v0.54(mj210).mjb'
-elif sim_backend == SimBackend.MUJOCO:
-    leg_model='/../../../simhive/myo_sim/leg/myolegs_v0.56(mj237).mjb'
+leg_model='/../../../simhive/myo_sim/leg/myolegs.xml'
     
 
 register_env_with_variants(id='myoLegStandRandom-v0',
