@@ -92,3 +92,11 @@ class BaseV0(env_base.MujocoEnv):
                                         render_cbk=self.mj_render if self.mujoco_render_frames else None)
 
         return self.forward(**kwargs)
+
+    def reset(self, *args, **kwargs):
+        if self.muscle_condition == 'fatigue':
+            self.muscle_fatigue.reset()
+        else:
+            pass
+
+        return super().reset(*args, **kwargs)
