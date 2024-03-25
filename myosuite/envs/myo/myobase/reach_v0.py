@@ -4,7 +4,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ================================================= """
 
 import collections
-import gym
+from myosuite.utils import gym
 import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
@@ -116,8 +116,8 @@ class ReachEnvV0(BaseV0):
         self.sim.forward()
 
 
-    def reset(self):
+    def reset(self, **kwargs):
         self.generate_target_pose()
         self.robot.sync_sims(self.sim, self.sim_obsd)
-        obs = super().reset()
+        obs = super().reset(**kwargs)
         return obs

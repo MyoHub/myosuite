@@ -12,7 +12,7 @@ class RoboSet_Trace(Trace):
     # parse path from robohive format into robopen dataset format
     def path2dataset(self, path:dict, config_path=None)->dict:
         """
-        Convert Robohive format into roboset format
+        Convert RoboHive format into roboset format
         """
 
         path_keys = path.keys()

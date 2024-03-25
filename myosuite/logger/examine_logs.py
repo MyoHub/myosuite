@@ -17,7 +17,7 @@ USAGE:\n
 
 from myosuite.utils.paths_utils import plot as plotnsave_paths
 from myosuite.utils import tensor_utils
-import gym
+from myosuite.utils import gym
 import click
 import numpy as np
 import time
@@ -48,7 +48,7 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
     # seed and load environments
     np.random.seed(seed)
     env = gym.make(env_name) if env_args==None else gym.make(env_name, **(eval(env_args)))
-    env = env.env
+    env = env.unwrapped
     env.seed(seed)
 
     # Start a "trace" for recording rollouts
@@ -122,7 +122,7 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
             trace_horizon = horizon if mode=='record' else path_data['time'].shape[0]-1
 
             # Rollout path --------------------------------
-            obs, rwd, done, env_info = env.forward(update_exteroception=include_exteroception)
+            obs, rwd, done, *_, env_info = env.forward(update_exteroception=include_exteroception)
             ep_rwd = rwd
             for i_step in range(trace_horizon+1):
 
@@ -205,10 +205,10 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
                         env.set_env_state(path_state[i_step+1])
                     else:
                         raise NotImplementedError("Settings not found")
-                    obs, rwd, done, env_info = env.forward(update_exteroception=include_exteroception)
+                    obs, rwd, done, *_, env_info = env.forward(update_exteroception=include_exteroception)
                     ep_rwd += rwd
                 elif i_step < trace_horizon: # incase last step actions (nans) can cause issues in step
-                    obs, rwd, done, env_info = env.step(act, update_exteroception=include_exteroception)
+                    obs, rwd, done, *_, env_info = env.step(act, update_exteroception=include_exteroception)
                     ep_rwd += rwd
 
             # save offscreen buffers as video and clear the dataset

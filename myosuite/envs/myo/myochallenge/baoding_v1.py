@@ -5,7 +5,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 import collections
 import enum
-import gym
+from myosuite.utils import gym
 import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
@@ -233,7 +233,7 @@ class BaodingEnvV1(BaseV0):
         return metrics
 
 
-    def reset(self, reset_pose=None, reset_vel=None, reset_goal=None, time_period=None):
+    def reset(self, reset_pose=None, reset_vel=None, reset_goal=None, time_period=None, **kwargs):
         # reset task
         if self.task_choice == 'random':
             self.which_task = self.np_random.choice(Task)
@@ -266,7 +266,7 @@ class BaodingEnvV1(BaseV0):
             self.sim.model.geom_size[self.object2_gid] = self.np_random.uniform(**self.obj_size_range)
 
         # reset scene
-        obs = super().reset(reset_qpos=reset_pose, reset_qvel=reset_vel)
+        obs = super().reset(reset_qpos=reset_pose, reset_qvel=reset_vel, **kwargs)
         return obs
 
     def create_goal_trajectory(self, time_step=.1, time_period=6):

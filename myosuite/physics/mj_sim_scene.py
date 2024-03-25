@@ -37,6 +37,8 @@ class DMSimScene(SimScene):
         if isinstance(model_handle, str):
             if model_handle.endswith('.xml'):
                 sim = dm_mujoco.Physics.from_xml_path(model_handle)
+            elif isinstance(model_handle, str) and "<mujoco" in model_handle:
+                sim = dm_mujoco.Physics.from_xml_string(model_handle)
             else:
                 sim = dm_mujoco.Physics.from_binary_path(model_handle)
         else:

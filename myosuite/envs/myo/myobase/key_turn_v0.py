@@ -5,7 +5,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 import collections
 import numpy as np
-import gym
+from myosuite.utils import gym
 
 from myosuite.envs.myo.base_v0 import BaseV0
 
@@ -110,11 +110,12 @@ class KeyTurnEnvV0(BaseV0):
         rwd_dict['dense'] = np.sum([wt*rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
         return rwd_dict
 
-    def reset(self, reset_qpos=None, reset_qvel=None):
+    def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
         qpos = self.init_qpos.copy() if reset_qpos is None else reset_qpos
         qvel = self.init_qvel.copy() if reset_qvel is None else reset_qvel
         qpos[-1] = self.np_random.uniform(low=self.key_init_range[0], high=self.key_init_range[1])
         if self.key_init_range[0]!=self.key_init_range[1]: # randomEnv
             self.sim.model.body_pos[-1] = self.key_init_pos+self.np_random.uniform(low=np.array([-0.01, -0.01, -.01]), high=np.array([0.01, 0.01, 0.01]))
-        self.robot.reset(qpos, qvel)
-        return self.get_obs()
+
+        obs = super().reset(reset_qpos=qpos, reset_qvel=qvel, **kwargs)
+        return obs

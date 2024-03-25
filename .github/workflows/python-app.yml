@@ -114,5 +114,9 @@ jobs:
     - name: Run Test jupyter-notebooks tutorials
       if: ${{ runner.os == 'Linux' }}
       run: |
-        conda activate $CONDA_DEFAULT_ENV
         source myosuite/tests/test_tutorials.sh
+
+    - name: Run Test gym/gymnasium + stable-baselines3
+      if: ${{ runner.os == 'Linux' }}
+      run: |
+        source myosuite/tests/test_versions.sh

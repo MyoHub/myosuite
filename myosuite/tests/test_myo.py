@@ -35,5 +35,22 @@ class TestMyo(TestEnvs):
             self.assertEqual(result.exception, None, result.exception)
 
 
+    def no_test_myomimic(self):
+        env_names=['MyoLegJump-v0', 'MyoLegLunge-v0', 'MyoLegSquat-v0', 'MyoLegLand-v0', 'MyoLegRun-v0', 'MyoLegWalk-v0']
+        # Check the envs
+        self.check_envs('MyoDM', env_names)
+
+        # Check trajectory playback
+        from myosuite.logger.examine_reference import examine_reference
+        for env in env_names:
+            print(f"Testing reference motion playback on: {env}")
+            runner = click.testing.CliRunner()
+            result = runner.invoke(examine_reference, ["--env_name", env, \
+                                                        "--horizon", -1, \
+                                                        "--num_playback", 1, \
+                                                        "--render", "none"])
+            self.assertEqual(result.exception, None, result.exception)
+
+
 if __name__ == '__main__':
     unittest.main()
