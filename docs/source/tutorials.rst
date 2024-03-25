@@ -200,7 +200,7 @@ In order to create a new customized task, there are two places where you need to
 Set up a new environment
 +++++++++++++++++++++++++
 
-Environment classes are developed according to the OpenAI Gym definition
+Environment classes are developed according to the `OpenAI Gym definition <https://www.gymlibrary.dev/content/environment_creation/>`__
 and contain all the information specific for a task,
 to interact with the environment, to observe it and to
 act on it. In addition, each environment class contains
@@ -215,7 +215,6 @@ In this file, it is possible to specify the type of observation (eg. joint angle
 .. code-block:: python
 
     from myosuite.envs.myo.base_v0 import BaseV0
-    import deprl
 
     # Class extends Basev0
     class NewReachEnvV0(BaseV0):
@@ -233,11 +232,6 @@ In this file, it is possible to specify the type of observation (eg. joint angle
     def reset(self):
         ...
 
-    # step the simulation forward by acting on the environment
-    def step(self, a, **kwargs):
-       ...
-       return observation, reward, task_terminated, environment_information
-
 .. _setup_base_class:
 
 
@@ -251,7 +245,9 @@ The registration of the new enviornment is obtained adding:
 
 .. code-block:: python
 
-   register_env_with_variants(id='newReachTask-v0',
+    from gym.envs.registration import register
+
+    register(id='newReachTask-v0',
         entry_point='myosuite.envs.myo.myobase.reach_v0:NewReachEnvV0', # where to find the new Environment Class
         max_episode_steps=200, # duration of the episode
         kwargs={
