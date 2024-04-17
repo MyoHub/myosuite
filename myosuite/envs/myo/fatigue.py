@@ -73,8 +73,14 @@ class CumulativeFatigue():
         # Calculate effort
         return np.linalg.norm(self._MA - self.TL)
 
-    def reset(self):
-        self._MA = np.zeros((self.na,))  # Muscle Active
-        self._MR = np.ones((self.na,))   # Muscle Resting
-        self._MF = np.zeros((self.na,))  # Muscle Fatigue
+    def reset(self, fatigue_reset_vec=None):
+        if fatigue_reset_vec is not None:
+            assert len(fatigue_reset_vec) == self.na, f"Invalid length of initial/reset fatigue vector (expected {self.na}, but obtained {len(fatigue_reset_vec)})."
+            self._MF = fatigue_reset_vec     # Muscle Fatigue
+            self._MR = 1 - fatigue_reset_vec # Muscle Resting
+            self._MA = np.zeros((self.na,))  # Muscle Active
+        else:
+            self._MA = np.zeros((self.na,))  # Muscle Active
+            self._MR = np.ones((self.na,))   # Muscle Resting
+            self._MF = np.zeros((self.na,))  # Muscle Fatigue
 

@@ -21,6 +21,7 @@ class BaseV0(env_base.MujocoEnv):
             sites:list = None,
             frame_skip = 10,
             muscle_condition='',
+            fatigue_reset_vec=None,
             **kwargs,
         ):
         if self.sim.model.na>0 and 'act' not in obs_keys:
@@ -36,6 +37,7 @@ class BaseV0(env_base.MujocoEnv):
                 self.target_sids.append(self.sim.model.site_name2id(site+'_target'))
 
         self.muscle_condition = muscle_condition
+        self.fatigue_reset_vec = fatigue_reset_vec
         self.frame_skip = frame_skip
         self.initializeConditions()
         super()._setup(obs_keys=obs_keys,
@@ -93,10 +95,11 @@ class BaseV0(env_base.MujocoEnv):
 
         return self.forward(**kwargs)
 
-    def reset(self, *args, **kwargs):
-        if self.muscle_condition == 'fatigue':
-            self.muscle_fatigue.reset()
-        else:
-            pass
+    def reset(self, fatigue_reset=True, *args, **kwargs):
+        if fatigue_reset:
+            if self.muscle_condition == 'fatigue':
+                self.muscle_fatigue.reset(fatigue_reset_vec=self.fatigue_reset_vec)
+            else:
+                pass
 
         return super().reset(*args, **kwargs)
