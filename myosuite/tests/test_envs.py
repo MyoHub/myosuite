@@ -8,6 +8,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 import unittest
 
 from myosuite.utils import gym
+from myosuite.utils.implement_for import implement_for
 import numpy as np
 import pickle
 import copy
@@ -66,7 +67,8 @@ class TestEnvs(unittest.TestCase):
         rwd_dict1 = env1.get_reward_dict(obs_dict1)
         assert len(rwd_dict1) > 0
         # reset env
-        env1.reset()
+        reset_data = env1.reset()
+        self.check_reset(reset_data)
 
         # serialize / deserialize env ------------
         env2w = pickle.loads(pickle.dumps(env1w))
@@ -101,6 +103,20 @@ class TestEnvs(unittest.TestCase):
 
         del(env1)
         del(env2)
+
+
+    @implement_for("gym", None, "0.26")
+    def check_reset(self, reset_data):
+        assert isinstance(reset_data, np.ndarray), "Reset should return the observation vector"
+
+    @implement_for("gym", "0.26", None)
+    def check_reset(self, reset_data):
+        assert isinstance(reset_data, tuple) and len(reset_data) == 2, "Reset should return a tuple of length 2"
+        assert isinstance(reset_data[1], dict), "second element returned should be a dict"
+    @implement_for("gymnasium")
+    def check_reset(self, reset_data):
+        assert isinstance(reset_data, tuple) and len(reset_data) == 2, "Reset should return a tuple of length 2"
+        assert isinstance(reset_data[1], dict), "second element returned should be a dict"
 
     def check_old_envs(self, module_name, env_names, lite=False, seed=1234):
         print("\nTesting module:: ", module_name)
