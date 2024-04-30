@@ -495,8 +495,8 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
 
     def _reset(self, reset_qpos=None, reset_qvel=None, seed=None, **kwargs):
         """
-        Reset the environment
-        Default implemention provided. Override if env needs custom reset
+        Reset the environment (Default implemention provided).
+        Override if env needs custom reset. Carefully handle return type for gym/gymnasium compatibility
         """
         qpos = self.init_qpos.copy() if reset_qpos is None else reset_qpos
         qvel = self.init_qvel.copy() if reset_qvel is None else reset_qvel
