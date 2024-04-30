@@ -42,7 +42,7 @@ jobs:
       run: echo "SYSTEM_VERSION_COMPAT=0" >> $GITHUB_ENV
 
     - name: Checkout repository and submodules
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: recursive
 
@@ -60,14 +60,14 @@ jobs:
 
     - name: Enable Conda (macOS)
       if: ${{ runner.os == 'macOS' }}
-      uses: conda-incubator/setup-miniconda@v2
+      uses: conda-incubator/setup-miniconda@v3
       with:
         auto-activate-base: false
         python-version: 3.8
 
     - name: Enable Conda (window/ubuntu)
       if: ${{ runner.os != 'macOS' }}
-      uses: conda-incubator/setup-miniconda@v2
+      uses: conda-incubator/setup-miniconda@v3
       with:
         auto-activate-base: false
 
