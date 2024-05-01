@@ -4,7 +4,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 ================================================= """
 
 import collections
-import gym
+from myosuite.utils import gym
 import numpy as np
 import pink
 import os
@@ -258,7 +258,7 @@ class HeightField:
                 self._fill_patch(i, j, terrain_type)
         # put special terrain only once in 20% of episodes
         if self.rng.uniform() < 0.2:
-            i, j = self.rng.randint(0, self.patches_per_side, size=2)
+            i, j = np.random.randint(0, self.patches_per_side, size=2)
             self._fill_patch(i, j, SpecialTerrains.RELIEF)
 
     def _fill_patch(self, i, j, terrain_type=TerrainTypes.FLAT):
@@ -491,7 +491,7 @@ class RepellerChallengeOpponent(ChallengeOpponent):
             escape_linear = np.clip(lin, self.repeller_vel_range[0], self.repeller_vel_range[1])
             escape_ang_rot = self._calc_angular_vel(opponent_pos[2], rot)
             return np.hstack((escape_linear, escape_ang_rot))
-        
+
         repel_COM = np.mean(obstacle_pos[dist_idx,:], axis=0)
         # Use repeller force as linear velocity to escape
         repel_force = 0.5 * self.ETA * ( 1/np.maximum(distance[dist_idx], 0.00001) - 1/self.DIST_INFLUENCE )**2
@@ -514,7 +514,7 @@ class RepellerChallengeOpponent(ChallengeOpponent):
     def _calc_angular_vel(self, current_pos, desired_pos):
         # Checking for sign of the current position and escape position to prevent inefficient turning
         # E.g. 3.14 and -3.14 are pointing in the same direction, so a simple substraction of facing direction will make the opponent turn a lot
-        
+
         # Bring the current pos and desired pos to be between 0 to 2pi
         if current_pos > (2*np.pi):
             while current_pos > (2*np.pi):
@@ -798,10 +798,10 @@ class ChaseTagEnvV0(WalkEnvV0):
 
     def step(self, *args, **kwargs):
         self.opponent.update_opponent_state()
-        obs, reward, done, info = super().step(*args, **kwargs)
-        return obs, reward, done, info
+        results = super().step(*args, **kwargs)
+        return results
 
-    def reset(self):
+    def reset(self, **kwargs):
         # randomized terrain types
         self._maybe_sample_terrain()
         # randomized tasks
@@ -810,7 +810,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         qpos, qvel = self._get_reset_state()
         self._maybe_flatten_agent_patch(qpos)
         self.robot.sync_sims(self.sim, self.sim_obsd)
-        obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel)
+        obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel, **kwargs)
         self.opponent.reset_opponent(player_task=self.current_task.name, rng=self.np_random)
         self.sim.forward()
         return obs
@@ -1032,7 +1032,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         Return a list of actuator names according to the index ID of the actuators
         '''
         return [self.sim.model.actuator(act_id).name for act_id in range(1, self.sim.model.na)]
-    
+
 
     def _get_fallen_condition(self):
         """

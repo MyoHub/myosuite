@@ -64,6 +64,35 @@ Get commands to run
 </details>
 
 
+## [TorchRL](https://github.com/pytorch/rl)
+
+It's possible to work with the highly performant [TorchRL](https://github.com/pytorch/rl)
+
+<details>
+<summary>Expand for installation and training details</summary>
+
+Install 
+1. [TorchRL](https://github.com/pytorch/rl) `pip install torchrl`,
+2. [Hydra](https://github.com/facebookresearch/hydra) `pip install hydra-core==1.1.0`
+3. [submitit](https://github.com/facebookincubator/submitit) launcher hydra plugin to launch jobs on cluster/ local 
+4. [Optional -- requires python >3.8] Register and Install [Weights and Biases](https://github.com/wandb/wandb) for logging `pip install wandb` (needs tensorboard `pip install tensorboard`)
+
+```bash
+pip install torchrl
+pip install gymnasium
+pip install hydra-core==1.1.0 hydra-submitit-launcher submitit
+#optional 
+pip install tensorboard wandb
+```
+
+### Launch training
+Get commands to run
+``` bash
+python torchrl_job_script.py
+```
+
+</details>
+
 ## [SAR-RL](https://sites.google.com/view/sar-rl/)
 [SAR-RL](https://sites.google.com/view/sar-rl/) builds and leverages SAR (Synergistic Action Representations) to solve some of the toughest problems in high-dimensional continuous control.
 

@@ -101,8 +101,8 @@ class BaseV0(env_base.MujocoEnv):
                     f_cem = self.MVC_rest[mus_idx]*np.exp(self.k_fatigue*f_int)
                 else:
                     f_cem = 0
-                self.sim.model.actuator_gainprm[mus_idx,2] = f_cem
-                self.sim_obsd.model.actuator_gainprm[mus_idx,2] = f_cem
+                self.sim.model.actuator_gainprm[mus_idx,2] = f_cem[0] if type(f_cem)==list else f_cem
+                self.sim_obsd.model.actuator_gainprm[mus_idx,2] = f_cem[0] if type(f_cem)==list else f_cem
         elif self.muscle_condition == 'reafferentation':
             # redirect EIP --> EPL
             muscle_a[self.EPLpos] = muscle_a[self.EIPpos].copy()
@@ -116,17 +116,4 @@ class BaseV0(env_base.MujocoEnv):
                                         realTimeSim=self.mujoco_render_frames,
                                         render_cbk=self.mj_render if self.mujoco_render_frames else None)
 
-        # observation
-        obs = self.get_obs(**kwargs)
-
-        # rewards
-        self.expand_dims(self.obs_dict) # required for vectorized rewards calculations
-        self.rwd_dict = self.get_reward_dict(self.obs_dict)
-        self.squeeze_dims(self.rwd_dict)
-        self.squeeze_dims(self.obs_dict)
-
-        # finalize step
-        env_info = self.get_env_infos()
-
-        # returns obs(t+1), rwd(t+1), done(t+1), info(t+1)
-        return obs, env_info['rwd_'+self.rwd_mode], bool(env_info['done']), env_info
+        return self.forward(**kwargs)

@@ -11,7 +11,6 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/myohub/myosuite/blob/main/docs/CONTRIBUTING.md)
 [![Downloads](https://static.pepy.tech/badge/myosuite)](https://pepy.tech/project/myosuite)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo)
-[![Supporting MyoChallenge](https://img.shields.io/static/v1?label=Supporting&message=NeurIPS-MyoChallenge2023&color=informational&link=https://github.com/MyoHub/myochallenge_2023eval)](https://github.com/MyoHub/myochallenge_2023eval)
 [![Slack](https://img.shields.io/badge/Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white)](https://join.slack.com/t/myosuite/shared_invite/zt-1zkpw2zzk-NhVhVlSDxhoMHbzROD8gMA)
 [![Twitter Follow](https://img.shields.io/twitter/follow/MyoSuite?style=social)](https://twitter.com/MyoSuite)
 
@@ -59,8 +58,7 @@ It is possible to create and interface with MyoSuite environments just like any 
 
 
 ```python
-import myosuite
-import gym
+from myosuite.utils import gym
 env = gym.make('myoElbowPose1D6MRandom-v0')
 env.reset()
 for _ in range(1000):
@@ -69,7 +67,8 @@ for _ in range(1000):
 env.close()
 ```
 
-You can find [tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials#tutorials) on how to load MyoSuite models/tasks, train them, and visualize their outcome. Also, you can find [baselines](https://github.com/myohub/myosuite/tree/main/myosuite/agents) to test some pre-trained policies.
+You can find [tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials#tutorials) and the **ICRA2023 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q)
+on how to load MyoSuite models/tasks, train them, and visualize their outcome. Also, you can find [baselines](https://github.com/myohub/myosuite/tree/main/myosuite/agents) to test some pre-trained policies.
 
 
 ## License

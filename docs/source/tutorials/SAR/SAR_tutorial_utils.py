@@ -1,5 +1,4 @@
-import myosuite
-import gym
+from myosuite.utils import gym
 
 from stable_baselines3 import SAC, PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
@@ -347,7 +346,8 @@ def get_vid(name, env_name, seed, episodes, video_name, determ=False,
         if syn_nosyn:
             env = SynNoSynWrapper(gym.make(env_name), ica, pca, normalizer, phi)
         else:
-            env = SynergyWrapper(gym.make(env_name), ica, pca, normalizer, phi)
+            # env = SynergyWrapper(gym.make(env_name), ica, pca, normalizer, phi)
+            env = SynergyWrapper(gym.make(env_name), ica, pca, normalizer)
     else:
         env = gym.make(env_name)
 
@@ -372,7 +372,7 @@ def get_vid(name, env_name, seed, episodes, video_name, determ=False,
             frame = env.sim.renderer.render_offscreen(width=640, height=480,camera_id=camera)
             frames.append(frame)
 
-            next_o, r, done, info = env.step(a)
+            next_o, r, done,  *_, info = env.step(a)
             is_solved.append(info['solved'])
 
             rs+=r
