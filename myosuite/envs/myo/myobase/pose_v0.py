@@ -179,6 +179,7 @@ class PoseEnvV0(BaseV0):
         # update init state
         if self.reset_type is None or self.reset_type == "none":
             # no reset; use last state
+            ## NOTE: fatigue is also not reset in this case!
             obs = self.get_obs()
         elif self.reset_type == "init":
             # reset to init state

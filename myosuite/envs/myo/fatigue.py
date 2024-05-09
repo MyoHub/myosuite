@@ -1,9 +1,10 @@
+from myosuite.utils import gym
 import numpy as np
 
 class CumulativeFatigue():
     # 3CC-r model, adapted from https://dl.acm.org/doi/pdf/10.1145/3313831.3376701 for muscles 
     # based on the implementation from Aleksi Ikkala and Florian Fischer https://github.com/aikkala/user-in-the-box/blob/main/uitb/bm_models/effort_models.py
-    def __init__(self, mj_model, frame_skip=1):
+    def __init__(self, mj_model, frame_skip=1, seed=None):
         self._r = 15 # Recovery time multiplier i.e. how many times more than during rest intervals https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6092960/
         self._F = 0.0146 # Fatigue coefficients
         self._R = 0.0022 # Recovery coefficients
@@ -17,6 +18,9 @@ class CumulativeFatigue():
         self._MF = np.zeros((self.na,))  # Muscle Fatigue
         self.TL  = np.zeros((self.na,))  # Target Load
 
+        self.seed(seed)  # Create own Random Number Generator (RNG) used when reset is called with fatigue_reset_random=True
+        ### NOTE: the seed from CumulativeFatigue is not synchronised with the seed used for the rest of MujocoEnv!
+
     def set_FatigueCoefficient(self, F):
         # Set Fatigue coefficients
         self._F = F
@@ -26,7 +30,7 @@ class CumulativeFatigue():
         self._R = R
     
     def set_RecoveryMultiplier(self, r):
-        # Recovery time multiplier
+        # Set Recovery time multiplier
         self._r = r
         
     def compute_act(self, act):
@@ -73,14 +77,55 @@ class CumulativeFatigue():
         # Calculate effort
         return np.linalg.norm(self._MA - self.TL)
 
-    def reset(self, fatigue_reset_vec=None):
-        if fatigue_reset_vec is not None:
-            assert len(fatigue_reset_vec) == self.na, f"Invalid length of initial/reset fatigue vector (expected {self.na}, but obtained {len(fatigue_reset_vec)})."
-            self._MF = fatigue_reset_vec     # Muscle Fatigue
-            self._MR = 1 - fatigue_reset_vec # Muscle Resting
-            self._MA = np.zeros((self.na,))  # Muscle Active
+    def reset(self, fatigue_reset_vec=None, fatigue_reset_random=False):
+        if fatigue_reset_random:
+            assert fatigue_reset_vec is None, "Cannot use 'fatigue_reset_vec' if fatigue_reset_random=False."
+            non_fatigued_muscles = self.np_random.random(size=(self.na,))
+            active_percentage = self.np_random.random(size=(self.na,))
+            self._MA = non_fatigued_muscles * active_percentage         # Muscle Active
+            self._MR = non_fatigued_muscles * (1 - active_percentage)   # Muscle Resting
+            self._MF = 1 - non_fatigued_muscles                         # Muscle Fatigue
         else:
-            self._MA = np.zeros((self.na,))  # Muscle Active
-            self._MR = np.ones((self.na,))   # Muscle Resting
-            self._MF = np.zeros((self.na,))  # Muscle Fatigue
+            if fatigue_reset_vec is not None:
+                assert len(fatigue_reset_vec) == self.na, f"Invalid length of initial/reset fatigue vector (expected {self.na}, but obtained {len(fatigue_reset_vec)})."
+                self._MF = fatigue_reset_vec     # Muscle Fatigue
+                self._MR = 1 - fatigue_reset_vec # Muscle Resting
+                self._MA = np.zeros((self.na,))  # Muscle Active
+            else:
+                self._MA = np.zeros((self.na,))  # Muscle Active
+                self._MR = np.ones((self.na,))   # Muscle Resting
+                self._MF = np.zeros((self.na,))  # Muscle Fatigue
+
+    def seed(self, seed=None):
+        """
+        Set random number seed
+        """
+        self.input_seed = seed
+        self.np_random, seed = gym.utils.seeding.np_random(seed)
+        return [seed]
+
+    @property
+    def MF(self):
+        return self._MF
+    
+    @property
+    def MR(self):
+        return self._MR
+    
+    @property
+    def MA(self):
+        return self._MA
+    
+    @property
+    def F(self):
+        return self._F
+    
+    @property
+    def R(self):
+        return self._R
+    
+    @property
+    def r(self):
+        return self._r
+
 

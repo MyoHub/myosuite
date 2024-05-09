@@ -7,6 +7,7 @@ from myosuite.envs import env_base
 import numpy as np
 import mujoco
 from myosuite.envs.myo.fatigue import CumulativeFatigue
+import logging
 
 class BaseV0(env_base.MujocoEnv):
 
@@ -22,6 +23,7 @@ class BaseV0(env_base.MujocoEnv):
             frame_skip = 10,
             muscle_condition='',
             fatigue_reset_vec=None,
+            fatigue_reset_random=False,
             **kwargs,
         ):
         if self.sim.model.na>0 and 'act' not in obs_keys:
@@ -38,6 +40,7 @@ class BaseV0(env_base.MujocoEnv):
 
         self.muscle_condition = muscle_condition
         self.fatigue_reset_vec = fatigue_reset_vec
+        self.fatigue_reset_random = fatigue_reset_random
         self.frame_skip = frame_skip
         self.initializeConditions()
         super()._setup(obs_keys=obs_keys,
@@ -55,7 +58,7 @@ class BaseV0(env_base.MujocoEnv):
 
         # for muscle fatigue we used the 3CC-r model
         elif self.muscle_condition == 'fatigue':
-            self.muscle_fatigue = CumulativeFatigue(self.sim.model,  self.frame_skip)
+            self.muscle_fatigue = CumulativeFatigue(self.sim.model,  self.frame_skip, seed=self.get_input_seed())
 
         # Tendon transfer to redirect EIP --> EPL
         # https://www.assh.org/handcare/condition/tendon-transfer-surgery
@@ -98,8 +101,13 @@ class BaseV0(env_base.MujocoEnv):
     def reset(self, fatigue_reset=True, *args, **kwargs):
         if fatigue_reset:
             if self.muscle_condition == 'fatigue':
-                self.muscle_fatigue.reset(fatigue_reset_vec=self.fatigue_reset_vec)
+                self.muscle_fatigue.reset(fatigue_reset_vec=self.fatigue_reset_vec, fatigue_reset_random=self.fatigue_reset_random)
             else:
                 pass
 
         return super().reset(*args, **kwargs)
+    
+    def set_fatigue_reset_random(self, fatigue_reset_random):#
+        if self.muscle_condition != 'fatigue':
+            logging.warning("This has no effect, as no fatigue model is provided.")
+        self.fatigue_reset_random = fatigue_reset_random
