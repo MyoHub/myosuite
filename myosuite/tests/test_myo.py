@@ -54,5 +54,3 @@ class TestMyo(TestEnvs):
 
 if __name__ == '__main__':
     unittest.main()
-
-

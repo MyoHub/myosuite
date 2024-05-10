@@ -6,6 +6,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 import collections
 import numpy as np
 from myosuite.utils import gym
+
 from myosuite.envs.myo.base_v0 import BaseV0
 
 
@@ -115,6 +116,6 @@ class KeyTurnEnvV0(BaseV0):
         qpos[-1] = self.np_random.uniform(low=self.key_init_range[0], high=self.key_init_range[1])
         if self.key_init_range[0]!=self.key_init_range[1]: # randomEnv
             self.sim.model.body_pos[-1] = self.key_init_pos+self.np_random.uniform(low=np.array([-0.01, -0.01, -.01]), high=np.array([0.01, 0.01, 0.01]))
-        
+
         obs = super().reset(reset_qpos=qpos, reset_qvel=qvel, **kwargs)
         return obs

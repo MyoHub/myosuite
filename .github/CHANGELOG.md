@@ -4,7 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.3.0] - 2024-05-01
+[FEATURE] Support for both Gym/Gymnasium (#142)
+[FEATURE] Add support for TorchRL by @vmoens (5efdf93)
+[FEATURE] Improve Inverse Dynamics tutorial (98daff2). Thanks to @andreh1111
+
+## [2.2.0] - 2024-01-20
+[FEATURE] Inverse dynamics tutorial. Thanks to @andreh1111 #121
+[RELEASE] MyoArm and MyoLeg models (4c01023, cd9a25e)
+[RELEASE] MyoChallenge'23 environments release (#128)
+[BUGFIX] Fixed heightfield collisions for myoleg scenes #132
+[BUGFIX] Fixed names of data keys from _int to _init in myodm by @andreh1111 in (#119)
 
 ## [1.3.0] - 2023-01-11
 - Rebase and building on RoboHive v0.3

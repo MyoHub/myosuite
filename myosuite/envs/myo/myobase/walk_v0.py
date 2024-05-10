@@ -62,6 +62,10 @@ class ReachEnvV0(BaseV0):
         # Change the alpha value to make it transparent
         self.sim.model.geom_rgba[geom_1_indices, 3] = 0
 
+        # move heightfield down if not used
+        self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 0.0
+        self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, -10])
+
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -207,6 +211,10 @@ class WalkEnvV0(BaseV0):
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.init_qvel[:] = 0.0
 
+        # move heightfield down if not used
+        self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 0.0
+        self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, -10])
+
     def get_obs_dict(self, sim):
         obs_dict = {}
         obs_dict['t'] = np.array([sim.data.time])
@@ -273,7 +281,7 @@ class WalkEnvV0(BaseV0):
         results = super().step(*args, **kwargs)
         self.steps += 1
         return results
-    
+
     def reset(self, **kwargs):
         self.steps = 0
         if self.reset_type == 'random':

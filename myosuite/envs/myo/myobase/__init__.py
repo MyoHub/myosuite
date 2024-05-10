@@ -3,8 +3,7 @@
 Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= """
 
-from myosuite.utils import gym
-register=gym.register
+from myosuite.utils import gym; register=gym.register
 from myosuite.envs.env_variants import register_env_variant
 
 import os
@@ -375,8 +374,8 @@ register_env_with_variants(id='myoHandPoseRandom-v0',  #reconsider
 # Gait Torso Reaching ==============================
 from myosuite.physics.sim_scene import SimBackend
 sim_backend = SimBackend.get_sim_backend()
+
 leg_model='/../../../simhive/myo_sim/leg/myolegs.xml'
-    
 
 register_env_with_variants(id='myoLegStandRandom-v0',
         entry_point='myosuite.envs.myo.myobase.walk_v0:ReachEnvV0',

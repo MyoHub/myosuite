@@ -19,6 +19,7 @@ import skvideo.io
 from sys import platform
 from myosuite.physics.sim_scene import SimScene
 import myosuite.utils.import_utils as import_utils
+from myosuite.envs.env_variants import gym_registry_specs
 
 # TODO
 # remove rwd_mode
@@ -494,12 +495,12 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
 
     def _reset(self, reset_qpos=None, reset_qvel=None, seed=None, **kwargs):
         """
-        Reset the environment
-        Default implemention provided. Override if env needs custom reset
+        Reset the environment (Default implemention provided).
+        Override if env needs custom reset. Carefully handle return type for gym/gymnasium compatibility
         """
         qpos = self.init_qpos.copy() if reset_qpos is None else reset_qpos
         qvel = self.init_qvel.copy() if reset_qvel is None else reset_qvel
-        self.robot.reset(qpos, qvel, seed, **kwargs)
+        self.robot.reset(reset_pos=qpos, reset_vel=qvel, seed=seed, **kwargs)
         return self.get_obs()
     @implement_for("gym", None, "0.26")
     def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
@@ -509,7 +510,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         return self._reset(reset_qpos=reset_qpos, reset_qvel=reset_qvel, **kwargs), {}
     @implement_for("gymnasium")
     def reset(self, reset_qpos=None, reset_qvel=None, seed=None, **kwargs):
-        return self._reset(reset_qpos=reset_qpos, reset_qvel=reset_qvel, seed=None, **kwargs), {}
+        return self._reset(reset_qpos=reset_qpos, reset_qvel=reset_qvel, seed=seed, **kwargs), {}
 
     # @property
     # def _step(self, a):
@@ -531,9 +532,15 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         return self.spec.id
 
 
+    @implement_for("gym")
+    def _horizon(self):
+        return self.spec.max_episode_steps # paths could have early termination before horizon
+    @implement_for("gymnasium")
+    def _horizon(self):
+        return gym_registry_specs()[self.spec.id].max_episode_steps # gymnasium unwrapper overrides specs (https://github.com/Farama-Foundation/Gymnasium/issues/871)
     @property
     def horizon(self):
-        return self.spec.max_episode_steps # paths could have early termination before horizon
+        return self._horizon()
 
 
     def get_env_state(self):

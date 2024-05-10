@@ -61,7 +61,8 @@ def main(env_name, policy_path, mode, seed, num_episodes, render, camera_name, o
 
     # seed and load environments
     np.random.seed(seed)
-    env = gym.make(env_name) if env_args==None else gym.make(env_name, **(eval(env_args)))
+    envw = gym.make(env_name) if env_args==None else gym.make(env_name, **(eval(env_args)))
+    env = envw.unwrapped
     env.seed(seed)
 
     # resolve policy and outputs
@@ -91,7 +92,7 @@ def main(env_name, policy_path, mode, seed, num_episodes, render, camera_name, o
     # examine policy's behavior to recover paths
     paths = env.examine_policy_new(
         policy=pi,
-        horizon=env.spec.max_episode_steps,
+        horizon=envw.spec.max_episode_steps,
         num_episodes=num_episodes,
         frame_size=(640,480),
         mode=mode,
@@ -101,7 +102,7 @@ def main(env_name, policy_path, mode, seed, num_episodes, render, camera_name, o
         render=render)
 
     # evaluate paths
-    success_percentage = env.env.evaluate_success(paths)
+    success_percentage = env.evaluate_success(paths)
     print(f'Average success over rollouts: {success_percentage}%')
 
     # save paths

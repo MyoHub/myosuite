@@ -1,16 +1,19 @@
 import importlib.util
 
-if importlib.util.find_spec("gymnasium"):
-    import gymnasium as gg
-elif importlib.util.find_spec("gym"):
-    import gym as gg
-else:
-    raise Exception("Gym/Gymnasium not found! You can install it with `pip install gymnasium`")
-
-class gym(): pass
-
-# https://stackoverflow.com/questions/21434332/how-to-extend-inheritance-a-module-in-python
-for i in gg.__all__ + ['__version__', 'envs', 'utils', 'spaces']:
-    setattr(gym, i, getattr(gg, i))
-
-
+# Utility to import gym/gymnasium
+def import_gym():
+    help = """
+        Either gym or gymnasium is required to use this library
+        Options:
+            (1) re-run the setup instructions for this package (pip install -e .)
+            (2) install chosen version of gym (pip install gym==0.13)
+            (3) install chosen version of gymnasium (pip install gymnasium==0.29.1)
+        """
+    if importlib.util.find_spec("gymnasium"):
+        import gymnasium as gg
+    elif importlib.util.find_spec("gym"):
+        import gym as gg
+    else:
+        raise ModuleNotFoundError(help)
+    return gg
+gym = import_gym()

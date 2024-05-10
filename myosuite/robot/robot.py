@@ -8,6 +8,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 from myosuite.physics.sim_scene import SimScene
 from myosuite.utils.quat_math import quat2euler
 from myosuite.utils.prompt_utils import prompt, Prompt
+import mujoco
 import time
 import numpy as np
 from collections import deque
@@ -36,7 +37,7 @@ class Robot():
     """
     A unified viewpoint of robot between simulation(sim) and hardware(hdr)
     """
-    # Cached robot that is shared for the application lifetime.
+    # Cached a persistent connection to the robot that is shared for the application's lifetime.
     robot_config = None
 
     def __init__(self,
@@ -325,10 +326,10 @@ class Robot():
                 sensor['sim_id'] = sim.model.sensor_name2id(sensor['name'])
                 sensor_type = sim.model.sensor_type[sensor['sim_id']]
                 sensor_objid = sim.model.sensor_objid[sensor['sim_id']]
-                if sensor_type == 8:  # mjSENS_JOINTPOS,// scalar joint position (hinge and slide only)
+                if sensor_type == mujoco.mjtSensor.mjSENS_JOINTPOS:  # mjSENS_JOINTPOS,// scalar joint position (hinge and slide only)
                     sensor['data_type'] = 'qpos'
                     sensor['data_id'] = sim.model.jnt_qposadr[sensor_objid]
-                elif sensor_type == 9:  # mjSENS_JOINTVEL,// scalar joint position (hinge and slide only)
+                elif sensor_type == mujoco.mjtSensor.mjSENS_JOINTVEL:  # mjSENS_JOINTVEL,// scalar joint position (hinge and slide only)
                     sensor['data_type'] = 'qvel'
                     sensor['data_id'] = sim.model.jnt_dofadr[sensor_objid]
                 else:
@@ -779,17 +780,22 @@ class Robot():
         return feasibe_pos, feasibe_vel
 
 
-    # close connection and exit out of the robot
-    def close(self):
-        # prompt("Closing {}".format(self.name), 'white', 'on_grey', flush=True)
-        if self.is_hardware:
-            status = self.hardware_close()
-            prompt("Closed (Status: {})".format(status), 'white', 'on_grey', flush=True)
-
-
-    # destructor
+    # Clear the robot class. Note that it doesn't close the persistent connection
     def __del__(self):
-        self.close()
+        if self.robot_config is not None and self.is_hardware:
+            raise RuntimeWarning("MyoSuite:> Robot class is being cleared from the workspace. This is expected if we still need to maintain the active connection to the hardware. A persistent connection to robot is still maintained and will be used next time a robot class is created. Ensure that a robot.close() is called to terminate the persistent connection before exiting the program.")
+
+    # Close the persistnent connection to the robot. This should be called only once at the end when persistent connection is no longer needed.
+    def close(self):
+        if self.robot_config is not None:
+            status = self.hardware_close() if self.is_hardware else True
+            if status:
+                prompt(f"Closed {self.name} (Status: {status})", 'white', 'on_grey', flush=True)
+                self.robot_config = None
+            else:
+                prompt(f"Error closing {self.name} (Status: {status})", 'red', 'on_grey', flush=True, type=Prompt.ERROR)
+        else:
+            prompt(f"Trying to close a non-existent robot", flush=True, type=Prompt.WARN)
 
 
 def demo_robot():

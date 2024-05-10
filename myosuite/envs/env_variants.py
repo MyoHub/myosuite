@@ -131,7 +131,7 @@ def register_env_variant(env_id:str, variants:dict, variant_id=None, silent=Fals
 
 # Example usage
 if __name__ == '__main__':
-    import myosuite
+    import robohive
     import pprint
 
     # Register a variant
