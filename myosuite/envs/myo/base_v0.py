@@ -69,7 +69,7 @@ class BaseV0(env_base.MujocoEnv):
     # step the simulation forward
     def step(self, a, **kwargs):
         muscle_a = a.copy()
-        muscle_act_ind = self.sim.model.actuator_dyntype==3
+        muscle_act_ind = self.sim.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
         # Explicitely project normalized space (-1,1) to actuator space (0,1) if muscles
         if self.sim.model.na and self.normalize_act:
             # find muscle actuators
