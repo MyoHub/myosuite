@@ -292,7 +292,7 @@ class TrackEnv(BaseV0):
     def reset(self, **kwargs):
         # print("Reset")
         self.ref.reset()
-        obs = super().reset(self.init_qpos, self.init_qvel, **kwargs)
+        obs = super().reset(reset_qpos=self.init_qpos, reset_qvel=self.init_qvel, **kwargs)
         # print(self.time, self.sim.data.qpos)
         return obs
 

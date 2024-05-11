@@ -2,11 +2,37 @@ from myosuite.utils import gym; register=gym.register
 import os
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 import numpy as np
+from myosuite.envs.env_variants import register_env_variant
 
+# utility to register envs with all muscle conditions
+def register_env_with_variants(id, entry_point, max_episode_steps, kwargs):
+    # register_env_with_variants base env
+    register(
+        id=id,
+        entry_point=entry_point,
+        max_episode_steps=max_episode_steps,
+        kwargs=kwargs
+    )
+    #register variants env with sarcopenia  #TODO: needs to be tested with myochallenge models
+    if id[:3] == "myo":
+        register_env_variant(
+            env_id=id,
+            variants={'muscle_condition':'sarcopenia'},
+            variant_id=id[:3]+"Sarc"+id[3:],
+            silent=True
+        )
+    #register variants with fatigue  #TODO: needs to be tested with myochallenge models
+    if id[:3] == "myo":
+        register_env_variant(
+            env_id=id,
+            variants={'muscle_condition':'fatigue'},
+            variant_id=id[:3]+"Fati"+id[3:],
+            silent=True
+        )
 
 # MyoChallenge 2023 envs ==============================================
 # MyoChallenge Manipulation P1
-register(id='myoChallengeRelocateP1-v0',
+register_env_with_variants(id='myoChallengeRelocateP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
         max_episode_steps=150,
         kwargs={
@@ -21,7 +47,7 @@ register(id='myoChallengeRelocateP1-v0',
     )
 
 # MyoChallenge Manipulation P2
-register(id='myoChallengeRelocateP2-v0',
+register_env_with_variants(id='myoChallengeRelocateP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
         max_episode_steps=150,
         kwargs={
@@ -41,7 +67,7 @@ register(id='myoChallengeRelocateP2-v0',
     )
 
 # Register MyoChallenge Manipulation P2 Evals
-register(id='myoChallengeRelocateP2eval-v0',
+register_env_with_variants(id='myoChallengeRelocateP2eval-v0',
     entry_point='myosuite.envs.myo.myochallenge.relocate_v0:RelocateEnvV0',
     max_episode_steps=150,
     kwargs={
@@ -62,7 +88,7 @@ register(id='myoChallengeRelocateP2eval-v0',
 
 
 ## MyoChallenge Locomotion P1
-register(id='myoChallengeChaseTagP1-v0',
+register_env_with_variants(id='myoChallengeChaseTagP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,
         kwargs={
@@ -82,7 +108,7 @@ register(id='myoChallengeChaseTagP1-v0',
 
 
 # MyoChallenge Locomotion P2
-register(id='myoChallengeChaseTagP2-v0',
+register_env_with_variants(id='myoChallengeChaseTagP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,
         kwargs={
@@ -104,7 +130,7 @@ register(id='myoChallengeChaseTagP2-v0',
     )
 
 # Register MyoChallenge Locomotion P2 Evals
-register(id='myoChallengeChaseTagP2eval-v0',
+register_env_with_variants(id='myoChallengeChaseTagP2eval-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
         max_episode_steps=2000,
         kwargs={
@@ -128,7 +154,7 @@ register(id='myoChallengeChaseTagP2eval-v0',
 
 # MyoChallenge 2022 envs ==============================================
 # MyoChallenge Die: Trial env
-register(id='myoChallengeDieReorientDemo-v0',
+register_env_with_variants(id='myoChallengeDieReorientDemo-v0',
         entry_point='myosuite.envs.myo.myochallenge.reorient_v0:ReorientEnvV0',
         max_episode_steps=150,
         kwargs={
@@ -141,7 +167,7 @@ register(id='myoChallengeDieReorientDemo-v0',
         }
     )
 # MyoChallenge Die: Phase1 env
-register(id='myoChallengeDieReorientP1-v0',
+register_env_with_variants(id='myoChallengeDieReorientP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.reorient_v0:ReorientEnvV0',
         max_episode_steps=150,
         kwargs={
@@ -153,7 +179,7 @@ register(id='myoChallengeDieReorientP1-v0',
         }
     )
 # MyoChallenge Die: Phase2 env
-register(id='myoChallengeDieReorientP2-v0',
+register_env_with_variants(id='myoChallengeDieReorientP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.reorient_v0:ReorientEnvV0',
         max_episode_steps=150,
         kwargs={
@@ -171,7 +197,7 @@ register(id='myoChallengeDieReorientP2-v0',
     )
 
 # MyoChallenge Baoding: Phase1 env
-register(id='myoChallengeBaodingP1-v1',
+register_env_with_variants(id='myoChallengeBaodingP1-v1',
         entry_point='myosuite.envs.myo.myochallenge.baoding_v1:BaodingEnvV1',
         max_episode_steps=200,
         kwargs={
@@ -184,7 +210,7 @@ register(id='myoChallengeBaodingP1-v1',
     )
 
 # MyoChallenge Baoding: Phase1 env
-register(id='myoChallengeBaodingP2-v1',
+register_env_with_variants(id='myoChallengeBaodingP2-v1',
         entry_point='myosuite.envs.myo.myochallenge.baoding_v1:BaodingEnvV1',
         max_episode_steps=200,
         kwargs={
