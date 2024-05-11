@@ -9,13 +9,12 @@ class CumulativeFatigue():
         self._r = 10 * 15 # Recovery time multiplier i.e. how many times more than during rest intervals https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6092960/ (factor 10 to compensate for 0.1 below)
         self._F = 0.00912  # Fatigue coefficients (default parameter was identified for elbow torque https://pubmed.ncbi.nlm.nih.gov/22579269/)
         self._R = 0.1 * 0.00094  # Recivery coefficients (default parameter was identified for elbow torque https://pubmed.ncbi.nlm.nih.gov/22579269/; factor 0.1 to get an approx. 1% R/F ratio)
-        self.na = mj_model.na
-        # self.na = sum(muscle_act_ind)  #WARNING: here, self.na denotes the number of muscle actuators only!
+        # self.na = mj_model.na
         self._dt = mj_model.opt.timestep * frame_skip # dt might be different from model dt because it might include a frame skip
         muscle_act_ind = mj_model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
+        self.na = sum(muscle_act_ind)  #WARNING: here, self.na denotes the number of muscle actuators only!
         self._tauact = np.array([mj_model.actuator_dynprm[i][0] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
         self._taudeact = np.array([mj_model.actuator_dynprm[i][1] for i in range(len(muscle_act_ind)) if muscle_act_ind[i]])
-        assert len(self._tauact) == self.na, f"Length of muscle parameter vectors do not match ({len(self._tauact)}, {self.na})."
         self._MA = np.zeros((self.na,))  # Muscle Active
         self._MR = np.ones((self.na,))   # Muscle Resting
         self._MF = np.zeros((self.na,))  # Muscle Fatigue
