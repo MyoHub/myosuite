@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.4.0] - 2024-05-13
 [FEATURE] Added 3CC-r Fatigue Model (#167). Thanks to @fl0fischer
+[FEATURE] Update to MuJoCo 3.1.2 and dm-control 1.0.16 (2bddf8c)
+[BUGFIX] Fixed Tutorial `2_Load_Policy.ipynb` (038457a)
 
 ## [2.3.0] - 2024-05-01
 [FEATURE] Support for both Gym/Gymnasium (#142)
