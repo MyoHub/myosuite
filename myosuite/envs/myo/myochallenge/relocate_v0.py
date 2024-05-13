@@ -180,8 +180,8 @@ class RelocateEnvV0(BaseV0):
         else:
             reset_qpos_local = reset_qpos
 
-        obs = super().reset(reset_qpos_local, reset_qvel,**kwargs)
+        obs = super().reset(reset_qpos=reset_qpos_local, reset_qvel=reset_qvel,**kwargs)
         if self.sim.data.ncon>0:
-            self.reset(reset_qpos, reset_qvel,**kwargs)
+            self.reset(reset_qpos=reset_qpos, reset_qvel=reset_qvel,**kwargs)
 
         return obs
