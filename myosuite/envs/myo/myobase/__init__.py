@@ -34,6 +34,7 @@ def register_env_with_variants(id, entry_point, max_episode_steps, kwargs):
             variant_id=id[:3]+"Fati"+id[3:],
             silent=True
         )
+
     #register variants with tendon transfer
     if id[:7] == "myoHand":
         register_env_variant(
