@@ -16,15 +16,26 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 `MyoSuite` is a collection of musculoskeletal environments and tasks simulated with the [MuJoCo](http://www.mujoco.org/) physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems.
 
- [Full task details](https://github.com/myohub/myosuite/blob/main/docs/source/suite.rst#tasks) | [Baselines](https://github.com/myohub/myosuite/tree/main/myosuite/agents/baslines_NPG) | [Documentation](https://myosuite.readthedocs.io/en/latest/)
-| [Tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials)
+
+ <!-- TODO: add brieft history of the mujoco environment? -->
+<!-- TODO: the tutorials section needs to format as now it is mixing all versions -->
+ <!-- [Full task details](https://github.com/myohub/myosuite/blob/main/docs/source/suite.rst#tasks) | [Baselines](https://github.com/myohub/myosuite/tree/main/myosuite/agents/baslines_NPG) | [Documentation](https://myosuite.readthedocs.io/en/latest/)
+| [Tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials) -->
+
+[Documentation](https://myosuite.readthedocs.io/en/latest/) | [Tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials) | [Task specifications](https://github.com/myohub/myosuite/blob/main/docs/source/suite.rst#tasks)
+
 
 Below is an overview of the tasks in the MyoSuite.
 
 <img width="1240" alt="TasksALL" src="https://github.com/myohub/myosuite/blob/main/docs/source/images/myoSuite_All.png?raw=true">
 
 
-## Getting Started
+<!-- TODO: Section is important but seemed to me as an additional notes -->
+<!-- TODO: add tutorials and readings for RL and Gym -->
+## Before you start
+It is highly recommended to familiarize your self with the OpenAI ``gym`` (also known as [Gymnasium](https://gymnasium.farama.org/)) API. The tasks are defined through the ``env`` API and a introductory level understanding of Reinforcement Learning in general is also recommened.
+
+## Installations
 You will need Python 3.8 or later versions.
 
 It is recommended to use [Miniconda](https://docs.conda.io/en/latest/miniconda.html#latest-miniconda-installer-links) and to create a separate environment with:
@@ -43,6 +54,8 @@ Test your installation using the following command (this will return also a list
 ``` bash
 python -m myosuite.tests.test_myo
 ```
+ 
+<!-- TODO : include visualize images? -->
 
 You can also visualize the environments with random controls using the command below:
 ``` bash
@@ -53,9 +66,13 @@ python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 ```
 
+
+
 ## Examples
 It is possible to create and interface with MyoSuite environments just like any other OpenAI gym environments. For example, to use the `myoElbowPose1D6MRandom-v0` environment, it is possible simply to run: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo)
 
+
+ <!-- TODO: consider instructions to gym api or introduce more annotation for the code each line -->
 
 ```python
 from myosuite.utils import gym
@@ -69,6 +86,14 @@ env.close()
 
 You can find [tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials#tutorials) and the **ICRA2023 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q)
 on how to load MyoSuite models/tasks, train them, and visualize their outcome. Also, you can find [baselines](https://github.com/myohub/myosuite/tree/main/myosuite/agents) to test some pre-trained policies.
+
+<!-- TODO : include ICRA 2024 tutorial? -->
+
+## Projects with Myosuite
+
+TODO: Add lattice paper and other works using myosuite
+TODO: add Myodex paper
+
 
 
 ## License
