@@ -11,9 +11,27 @@ Welcome to MyoSuite's documentation!
    :caption: Get started
 
    install
-   suite
    tutorials
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Advanced Topics
+
+   suite
+   
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Documentations
+
+   publications
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Projects with Myosuite
+
    baselines
+
 
 .. toctree::
    :maxdepth: 1
