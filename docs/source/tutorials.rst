@@ -17,6 +17,16 @@ Jupyter-Notebooks can be found `here <https://github.com/facebookresearch/myosui
 * :ref:`load_deprl_baseline`
 * :ref:`load_MyoReflex_baseline`
 
+.. _jupyter_notebook:
+
+Tutorials on Jupyter-Notebook
+========================================
+Please refer to our tutorials on Jupyter-Notebook can be found `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`__
+
+Alternatively, we have tutorials for our ICRA workshops: `ICRA-2023 <https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo>`__, `ICRA-2024 <https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo>`__
+
+.. TODO:edit ICRA 2024 tutorial page
+
 .. _run_myosuite:
 
 Test Environment
@@ -71,11 +81,13 @@ Example on using a policy e.g. elbow flexion, and change non-stationaries
         env.step(env.action_space.sample()) # take a random action
 
 
+Tutorials on Advanced Features
+======================================
 
 .. _test_muscle_fatigue:
 
 Test Muscle Fatigue
-======================
++++++++++++++++++++++++++++++++++++++
 This example shows how to add fatigue to a model. It tests random actions on a model without and then with muscle fatigue.
 
 .. code-block:: python
@@ -99,7 +111,7 @@ This example shows how to add fatigue to a model. It tests random actions on a m
 .. _test_sarcopenia:
 
 Test Sarcopenia
-======================
++++++++++++++++++++++++++++++++++++++
 This example shows how to add sarcopenia or muscle weakness to a model. It tests random actions on a model without and then with muscle weakness.
 
 .. code-block:: python
@@ -123,7 +135,7 @@ This example shows how to add sarcopenia or muscle weakness to a model. It tests
 .. _test_tendon_transfer:
 
 Test Physical tendon transfer
-==============================
++++++++++++++++++++++++++++++++++++++
 
 This example shows how load a model with physical tendon transfer.
 

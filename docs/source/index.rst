@@ -24,13 +24,14 @@ Welcome to MyoSuite's documentation!
    :maxdepth: 1
    :caption: Documentations
 
-   publications
+   api
 
 .. toctree::
    :maxdepth: 1
    :caption: Projects with Myosuite
 
-   baselines
+   projects
+   baselines 
 
 
 .. toctree::
