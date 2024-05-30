@@ -1,11 +1,77 @@
 Examplar Projects with Myosuite
-==============================
+======================================
+
+.. _projects:
 
 
-* Huawei Wang*, Vittorio Caggiano*, Guillaume Durandau, Massimo Sartori, Vikash Kumar,	`MyoSim: Fast and physiologically realistic MuJoCo models for musculoskeletal and exoskeletal studies <https://ieeexplore.ieee.org/abstract/document/9811684>`_, *IEEE International Conference on Robotics and Automation (ICRA)*, 2022.
+For ease of getting started, MyoSuite comes prepackaged with a set of pre-trained baselines.
+See `here <https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents>`_ for our complete set of baselines.
 
-* Vittorio Caggiano*, Huawei Wang*, Guillaume Durandau, Massimo Sartori, Vikash Kumar,	`MyoSuite - A contact-rich simulation suite for musculoskeletal motor control <https://arxiv.org/abs/2205.13600>`_, *Conference on Learning for Dynamics and Control (L4DC)*, 2022. `<web https://sites.google.com/view/myosuite>`_
+In total, three different types of baselines are provided:
 
-* Vittorio Caggiano, Sudeep Dasari, Vikash Kumar, `MyoDex: A Generalizable Prior for Dexterous Manipulation <https://arxiv.org/abs/2309.03130>`_, *International Conference on Machine Learning (ICML)*, 2023 `<web https://sites.google.com/view/myodex>`_
+* :ref:`myochallenge`
+    * :ref:`myo_challenge_22`
+    * :ref:`myo_challenge_23`
+    * :ref:`myo_challenge_24`
+* :ref:`pub_with_myosuite`
+    * :ref:`myodex`
 
-* Cameron Berg, Vittorio Caggiano*, Vikash Kumar*, `SAR: Generalization of Physiological Dexterity via Synergistic Action Representation <https://arxiv.org/abs/2307.03716>`_, *Robotics: Science and Systems (RSS)*, 2023 `<web https://sites.google.com/view/sar-rl>`_
+
+.. _myochallenge:
+
+MyoChallenge
+========================================
+
+
+.. _myo_challenge_22:
+
+MyoChallenge-2022
++++++++++++++++++++++++++++++++++++++
+Muscle Fatigue is a short-term (second to minutes) effect that happens after sustained or repetitive voluntary movement
+and it has been linked to traumas e.g. cumulative trauma disorder (Chaffin et al. (2006)).
+A dynamic muscle fatigue model (Ma et al. (2009)) was integrated into the modeling framework.
+This model was based on the idea that different types of muscle fiber that have different contributions
+and resistance to fatigue (Vøllestad (1997)).
+The current implementation is simplified to consider the same fatigue factor for all muscles and
+that muscle can be completely fatigued.
+
+
+.. _myo_challenge_23:
+
+MyoChallenge-2022
++++++++++++++++++++++++++++++++++++++
+Muscle Fatigue is a short-term (second to minutes) effect that happens after sustained or repetitive voluntary movement
+and it has been linked to traumas e.g. cumulative trauma disorder (Chaffin et al. (2006)).
+A dynamic muscle fatigue model (Ma et al. (2009)) was integrated into the modeling framework.
+This model was based on the idea that different types of muscle fiber that have different contributions
+and resistance to fatigue (Vøllestad (1997)).
+The current implementation is simplified to consider the same fatigue factor for all muscles and
+that muscle can be completely fatigued.
+
+.. _myo_challenge_24:
+
+Incoming Myochallenge This Year:
++++++++++++++++++++++++++++++++++++++
+Muscle Fatigue is a short-term (second to minutes) effect that happens after sustained or repetitive voluntary movement
+and it has been linked to traumas e.g. cumulative trauma disorder (Chaffin et al. (2006)).
+A dynamic muscle fatigue model (Ma et al. (2009)) was integrated into the modeling framework.
+This model was based on the idea that different types of muscle fiber that have different contributions
+and resistance to fatigue (Vøllestad (1997)).
+The current implementation is simplified to consider the same fatigue factor for all muscles and
+that muscle can be completely fatigued.
+
+
+
+
+.. _pub_with_myosuite:
+
+Publications with Myosuite
+========================================
+
+.. _myodex:
+
+MyoDex (ICML-2023):
++++++++++++++++++++++++++++++++++++++
+
+Lattice ():
+=======================================

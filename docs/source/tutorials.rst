@@ -5,17 +5,21 @@ Tutorials
 
 
 Here a set of examples on how to use different MyoSuite models and non-stationarities.
-Jupyter-Notebooks can be found `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`__
+It is highly recommended to read through the `OpenAI Gym API <https://gymnasium.farama.org/>`__ before you start.
 
 * :ref:`run_myosuite`
 * :ref:`run_visualize_index_movements`
 * :ref:`run_trained_policy`
-* :ref:`test_muscle_fatigue`
-* :ref:`test_sarcopenia`
-* :ref:`test_tendon_transfer`
-* :ref:`resume_training`
-* :ref:`load_deprl_baseline`
-* :ref:`load_MyoReflex_baseline`
+* :ref:`advanced_muscle_conditions`
+    * :ref:`test_muscle_fatigue`
+    * :ref:`test_sarcopenia`
+    * :ref:`test_tendon_transfer`
+    * :ref:`exoskeleton`
+* :ref:`use_reinforcement_learning`
+    * :ref:`resume_training`
+    * :ref:`load_deprl_baseline`
+    * :ref:`load_MyoReflex_baseline`
+* :ref:`customizing_tasks`
 
 .. _jupyter_notebook:
 
@@ -23,7 +27,7 @@ Tutorials on Jupyter-Notebook
 ========================================
 Please refer to our tutorials on Jupyter-Notebook can be found `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`__
 
-Alternatively, we have tutorials for our ICRA workshops: `ICRA-2023 <https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo>`__, `ICRA-2024 <https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo>`__
+Alternatively, there are tutorials for our ICRA workshops: `ICRA-2023 <https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo>`__, `ICRA-2024 <https://colab.research.google.com/drive/1JwxE7o6Z3bqCT4ewELacJ-Z1SV8xFhKK#scrollTo=QDppGIzHB9Zu>`__
 
 .. TODO:edit ICRA 2024 tutorial page
 
@@ -81,14 +85,30 @@ Example on using a policy e.g. elbow flexion, and change non-stationaries
         env.step(env.action_space.sample()) # take a random action
 
 
-Tutorials on Advanced Features
-======================================
+.. _advanced_muscle_conditions:
+
+Advanced Muscle Conditions
+=========================================
+
+Besides from the simulation of healthy muscle conditions, Myosuite also provides features to simulate a number of muscle deficiencies. We aim provides a safe and replicatable environment to develop healthcare or rehabilitation strategies with the help of a simulator.
 
 .. _test_muscle_fatigue:
 
-Test Muscle Fatigue
+Muscle Fatigue
 +++++++++++++++++++++++++++++++++++++
-This example shows how to add fatigue to a model. It tests random actions on a model without and then with muscle fatigue.
+Muscle Fatigue is a short-term (second to minutes) effect that happens after sustained or repetitive voluntary movement
+and it has been linked to traumas e.g. cumulative trauma disorder (Chaffin et al. (2006)).
+A dynamic muscle fatigue model (Ma et al. (2009)) was integrated into the modeling framework.
+This model was based on the idea that different types of muscle fiber that have different contributions
+and resistance to fatigue (Vøllestad (1997)).
+The current implementation is simplified to consider the same fatigue factor for all muscles and
+that muscle can be completely fatigued.
+
+.. image:: images/Fatigue.png
+  :width: 800
+
+
+This example shows how to add fatigue to a model. The muscle force will gradually decrease as a result of repeated actions. It tests random actions on a model without and then with muscle fatigue.
 
 .. code-block:: python
 
@@ -110,9 +130,15 @@ This example shows how to add fatigue to a model. It tests random actions on a m
 
 .. _test_sarcopenia:
 
-Test Sarcopenia
+Sarcopenia
 +++++++++++++++++++++++++++++++++++++
-This example shows how to add sarcopenia or muscle weakness to a model. It tests random actions on a model without and then with muscle weakness.
+
+Sarcopenia is a muscle disorder that occurs commonly in the elderly population (Cruz-Jentoft and Sayer (2019))
+and characterized by a reduction in muscle mass or volume.
+The peak in grip strength can be reduced up to 50% from age 20 to 40 (Dodds et al. (2016)).
+We modeled sarcopenia for each muscle as a reduction of 50% of its maximal isometric force.
+
+This example shows how to add sarcopenia or muscle weakness to a model. The maximum muscle force will be reduced. It tests random actions on a model without and then with muscle weakness.
 
 .. code-block:: python
 
@@ -134,10 +160,20 @@ This example shows how to add sarcopenia or muscle weakness to a model. It tests
 
 .. _test_tendon_transfer:
 
-Test Physical tendon transfer
+Physical tendon transfer
 +++++++++++++++++++++++++++++++++++++
+Contrary to muscle fatigue or sarcopenia that occurs to all muscles, tendon transfer surgery can target a single
+muscle-tendon unit. Tendon transfer surgery allows redirecting the application point of muscle forces from one joint
+DoF to another (see below). It can be used to regain functional control of a joint or limb motion after injury.
+One of the current procedures in the hand is the tendon transfer of Extensor Indicis Proprius (EIP) to replace the
+Extensor Pollicis Longus (EPL) (Gelb (1995)). Rupture of the EPL can happen after a broken wrist and create a loss of control
+of the Thumb extension. We introduce a physical tendon transfer where the EIP application point of the tendon was moved
+from the index to the thumb and the EPL was removed (see Figure 3).
 
-This example shows how load a model with physical tendon transfer.
+.. image:: images/tendon_transfer.png
+  :width: 400
+
+This example shows how load a model with physical tendon transfer. This simulates a redirected muscle actuations
 
 .. code-block:: python
 
@@ -156,11 +192,29 @@ This example shows how load a model with physical tendon transfer.
         env.step(env.action_space.sample()) # take a random action
     env.close()
 
+.. _exoskeleton:
+
+Exoskeleton assistance
++++++++++++++++++++++++++++++++++++++
+Exoskeleton assisted rehabilitation is becoming more and more common practice (Jezernik et al. (2003)) due to its multiple benefit (Nam et al. (2017)).
+Modeling of an exoskeleton for the elbow was done via an ideal actuator and the addition of two supports with a weight of 0.101 Kg for the upper arm and 0.111 Kg on the forearm. The assistance given by the exoskeleton was a percentage of the biological joint torque, this was based on the neuromusculoskeletal controller presented in Durandau et al. (2019).
+The models will be released soon.
+
+.. image:: images/elbow_exo.png
+  :width: 200
+
+.. _use_reinforcement_learning:
+
+Using Reinforcement Learning
+=============================================
+Myosuite provdies features to support RL training. Here are examples of using different RL libraries on Myosuite. 
+TODO: add contents to the sites of projects 
+
 
 .. _resume_training:
 
 Resume Learning of policies
-==============================
++++++++++++++++++++++++++++++++++++++
 When using ``mjrl`` it might be needed to resume training of a policy locally. It is possible to use the following instruction
 
 .. code-block:: bash
@@ -170,7 +224,7 @@ When using ``mjrl`` it might be needed to resume training of a policy locally. I
 .. _load_deprl_baseline:
 
 Load DEP-RL Baseline
-====================
++++++++++++++++++++++++++++++++++++++
 See `here <https://deprl.readthedocs.io/en/latest/index.html>`__ for more detailed documentation of ``deprl``.
 
 If you want to load and execute the pre-trained DEP-RL baseline. Make sure that the ``deprl`` package is installed.
@@ -193,15 +247,16 @@ If you want to load and execute the pre-trained DEP-RL baseline. Make sure that 
 .. _load_MyoReflex_baseline:
 
 Load MyoReflex Baseline
-=======================
++++++++++++++++++++++++++++++++++++++
 
 To load and execute the MyoReflex controller with baseline parameters.
 Run the MyoReflex tutorial `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials/4b_reflex>`__
 
 
+.. _customizing_tasks:
 
 Customizing Tasks
-=================
+======================
 
 In order to create a new customized task, there are two places where you need to act:
 
@@ -212,7 +267,7 @@ In order to create a new customized task, there are two places where you need to
 Set up a new environment
 +++++++++++++++++++++++++
 
-Environment classes are developed according to the `OpenAI Gym definition <https://www.gymlibrary.dev/content/environment_creation/>`__
+Environment classes are developed according to the `OpenAI Gym definition <https://gymnasium.farama.org>`__
 and contain all the information specific for a task,
 to interact with the environment, to observe it and to
 act on it. In addition, each environment class contains

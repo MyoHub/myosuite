@@ -1,8 +1,24 @@
-Suite
-##################
+Models and Tasks
+##############################
 
 .. _suite:
 
+Models and tasks are the most important aspects of Myosuite. To provide further, 
+
+
+* :ref:`models`
+    * :ref:`myoFinger`
+    * :ref:`myoElbow`
+    * :ref:`myoHand`
+    * :ref:`myoLeg`
+    * :ref:`myoArm`
+* :ref:`tasks`
+* :ref:`task_and_variations`
+
+
+
+
+.. _models:
 
 Models
 ********
@@ -21,8 +37,23 @@ which is actuated through a series of 5 simplified antagonistic muscle-tendon un
 We also provide its robotic counterpart with simple torque actuators
 to facilitate the comparative investigation.
 
+.. TODO: issue with running the finger tip model and the acronym
+
+
 .. image:: images/myoFinger.png
   :height: 200
+
+========  ========
+Acronym   Muscle
+========  ========
+EXTN      
+adabR     
+adabL     
+mflx      
+dflx      
+========  ========
+
+
 
 .. _myoElbow:
 
@@ -96,6 +127,47 @@ Joints and muscle details can be found in Rajagopal's paper [https://ieeexplore.
 .. image:: images/MyoLeg.png
   :height: 200
 
+.. =============   =================================
+.. Acronym         Muscle
+.. =============   =================================
+.. addbrev_r       Adductor brevis
+.. addlong_r       Adductor longus
+.. addmagDist_r    Adductor magnus (distal)
+.. addmagIsch_r    Adductor magnus (ischial)
+.. addmagMid_r     Adductor magnus (middle)
+.. addmagProx_r    Adductor magnus (proximal)
+.. bflh_r          Biceps femoris long head
+.. bfsh_r          Biceps femoris short head
+.. edl_r           Extensor digitorum longusc
+.. ehl_r           Extensor hallucis longusc
+.. fdl_r           Flexor digitorum longus
+.. fhl_r           Flexor hallucis longus
+.. gaslat_r        Gastrocnemius lateral head
+.. gasmed_r        Gastrocnemius medial head
+.. glmax1_r        Gluteus maximus (superior)
+.. glmax2_r        Gluteus maximus (middle)
+.. glmax3_r        Gluteus maximus (inferior)
+.. glmed1_r        Gluteus medius (anterior)
+.. glmed2_r        Gluteus medius (middle)
+.. glmed3_r        Gluteus medius (posterior)
+.. glmin1_r        Gluteus minimus (anterior)
+.. glmin2_r        Gluteus minimus (middle)
+.. glmin3_r        Gluteus minimus (posterior)
+
+
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. =============   =================================
+
 .. _myoArm:
 
 myoArm
@@ -103,11 +175,11 @@ myoArm
 The 3D dexterous human arm reaching and manipulation.
 
 This musculoskeletal model is comprised of 27 Degree of Freedom, and 63 muscles-tendon units.
+.. TODO: Needs to identify source of files and documentation
+
 
 .. image:: images/myoArm.png
   :height: 200
-
-
 
 .. _tasks:
 
@@ -246,7 +318,7 @@ Variants:
   :width: 200
 
 Hand Multiobject Reorientation
-==============
+======================================
 A :ref:`myoHand` model reorients a set of parameterized geometries to a given target orientation without dropping it.
 As with before, the complexity of this task is due to the intermittent contacts between the object and multiple fingers while trying to stabilize the object, as well as the multiobject nature of the task.
 
@@ -320,6 +392,7 @@ Objective:
 Variants:
     - **Easy**: Achieve a forward velocity in the y-direction without moving in the x-direction. ``myoLegWalk-v0``
     - **Hard**: Achieve a forward velocity in the y-direction without moving in the x-direction on uneven terrain. ``myoLeg<Rough|Hilly|Stair>Walk-v0``
+
 .. image:: images/myoLeg_walk.png
   :width: 200
 
@@ -386,10 +459,13 @@ Modeling of an exoskeleton for the elbow was done via an ideal actuator and the 
 .. image:: images/elbow_exo.png
   :width: 200
 
+
+.. _task_and_variations:
+
 Summary of task and variantions
 ***********************************
 
-
+Here are a list of the tasks currently implement in Myosuite. See :ref:`task_variation` on how to include the additional features.
 
 
 +------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
@@ -454,8 +530,9 @@ Summary of task and variantions
 | Chase Tag              | ``myoChallengeChaseTagP1-v0``    | Easy            |         ✓        |      ✓        |                     |
 +------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
 
+.. _task_variation:
 
-Variations:
+Variations
   - **Sarcopenia**: myoSarc<Environment> e.g. myoSarcHandPoseFixed-v0
   - **Fatigue**: myoFati<Environment> e.g. myoFatiElbowPose1D6MRandom-v0
   - **TTransfer / Reafferentation**: myoReaf<Environment> e.g. myoReafHandPoseFixed-v0
