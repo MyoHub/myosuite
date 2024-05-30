@@ -25,11 +25,10 @@ It is highly recommended to read through the `OpenAI Gym API <https://gymnasium.
 
 Tutorials on Jupyter-Notebook
 ========================================
-Please refer to our tutorials on Jupyter-Notebook can be found `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`__
+Please refer to our tutorials on Jupyter-Notebook `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`__
 
-Alternatively, there are tutorials for our ICRA workshops: `ICRA-2023 <https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo>`__, `ICRA-2024 <https://colab.research.google.com/drive/1JwxE7o6Z3bqCT4ewELacJ-Z1SV8xFhKK#scrollTo=QDppGIzHB9Zu>`__
+There are also tutorials for our ICRA workshops: `ICRA-2023 <https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo>`__, `ICRA-2024 <https://colab.research.google.com/drive/1JwxE7o6Z3bqCT4ewELacJ-Z1SV8xFhKK#scrollTo=QDppGIzHB9Zu>`__
 
-.. TODO:edit ICRA 2024 tutorial page
 
 .. _run_myosuite:
 
@@ -90,7 +89,7 @@ Example on using a policy e.g. elbow flexion, and change non-stationaries
 Advanced Muscle Conditions
 =========================================
 
-Besides from the simulation of healthy muscle conditions, Myosuite also provides features to simulate a number of muscle deficiencies. We aim provides a safe and replicatable environment to develop healthcare or rehabilitation strategies with the help of a simulator.
+Besides from the simulation of healthy muscle conditions, Myosuite also provides features to simulate a number of muscle deficiencies. We aim provides a safe and trust-worthy environment for healthcare or rehabilitation strategies development leveraging the help of a simulator.
 
 .. _test_muscle_fatigue:
 
@@ -198,7 +197,9 @@ Exoskeleton assistance
 +++++++++++++++++++++++++++++++++++++
 Exoskeleton assisted rehabilitation is becoming more and more common practice (Jezernik et al. (2003)) due to its multiple benefit (Nam et al. (2017)).
 Modeling of an exoskeleton for the elbow was done via an ideal actuator and the addition of two supports with a weight of 0.101 Kg for the upper arm and 0.111 Kg on the forearm. The assistance given by the exoskeleton was a percentage of the biological joint torque, this was based on the neuromusculoskeletal controller presented in Durandau et al. (2019).
-The models will be released soon.
+
+
+The models and code will be released soon.
 
 .. image:: images/elbow_exo.png
   :width: 200
