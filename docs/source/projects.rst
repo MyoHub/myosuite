@@ -1,4 +1,4 @@
-Examplar Projects with Myosuite
+Projects with Myosuite
 #########################################
 
 .. _projects:
