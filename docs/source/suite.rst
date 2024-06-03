@@ -32,26 +32,26 @@ contact-rich movements involving object-manipulation such as pen-twirling and ba
 
 myoFinger
 ==========
-Simplified and intuitive model (based on Xu et al. (2012)) of a 4 Degree of Freedom (DoF) finger
+Simplified and intuitive model (based on Xu et al. (2012)[https://ieeexplore.ieee.org/document/6290710]) of a 4 Degree of Freedom (DoF) finger
 which is actuated through a series of 5 simplified antagonistic muscle-tendon units.
 We also provide its robotic counterpart with simple torque actuators
 to facilitate the comparative investigation.
 
-.. TODO: issue with running the finger tip model and the acronym
+Details of this model can be found at `myoFinger <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/finger>`__
 
 
 .. image:: images/myoFinger.png
   :height: 200
 
-========  ========
+========  =============================
 Acronym   Muscle
-========  ========
-EXTN      
-adabR     
-adabL     
-mflx      
-dflx      
-========  ========
+========  =============================
+EXTN      Central Extensor
+adabR     Abduction Tendon(Right)
+adabL     Abduction Tendon(left)
+mflx      Pip Flexor
+dflx      DIP Flexor
+========  =============================
 
 
 
@@ -61,6 +61,8 @@ myoElbow
 ===========
 A model of 2 DoF human elbow joint -- based on OpenSim’s default testing arm model (Delp et al. (2007); Seth et al. (2018))
 -- and actuated using multiple agonist/antagonist pairs (3 flexors and 3 extensors).
+
+Details of this model can be found at `myoElbow <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/elbow>`__
 
 .. image:: images/myoElbow.png
   :height: 200
@@ -82,6 +84,8 @@ myoHand
 =========
 The dexterous human hand requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
 This musculoskeletal model is comprised of 29 bones, 23 joints, and 39 muscles-tendon units.
+
+Details of this model can be found at `myoHand <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/hand>`__
 
 .. image:: images/myoHand.png
   :height: 200
@@ -123,6 +127,8 @@ This musculoskeletal model is comprised of 10 joints, 20 DoFs, and 80 muscles-te
 Rajagopal's full body gait model [https://github.com/opensim-org/opensim-models/tree/master/Models/RajagopalModel] as close reference.
 
 Joints and muscle details can be found in Rajagopal's paper [https://ieeexplore.ieee.org/document/7505900]
+
+The model implementation details can be found on our github repo at `myoLeg <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/leg>`__
 
 .. image:: images/MyoLeg.png
   :height: 200
@@ -175,7 +181,8 @@ myoArm
 The 3D dexterous human arm reaching and manipulation.
 
 This musculoskeletal model is comprised of 27 Degree of Freedom, and 63 muscles-tendon units.
-.. TODO: Needs to identify source of files and documentation
+
+Model specification can be found on our github repo of `myoArm <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/arm>`__
 
 
 .. image:: images/myoArm.png
@@ -463,7 +470,7 @@ Variants:
 
 .. _task_and_variations:
 
-Task and variantions
+Task Variations
 ************************************
 
 For convenience, Myosuite has implemented a set of muscle decifiencies that currently includes: :ref:`test_muscle_fatigue` , sarcopenia and tendon transfer alongside with the tasks.
