@@ -470,7 +470,8 @@ Variants:
 
 .. _task_and_variations:
 
-Task Variations
+
+Task and Variantions
 ************************************
 
 For convenience, Myosuite has implemented a set of muscle decifiencies that currently includes: :ref:`test_muscle_fatigue` , sarcopenia and tendon transfer alongside with the tasks.
