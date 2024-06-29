@@ -107,6 +107,20 @@ register_env_with_variants(id='myoChallengeChaseTagP1-v0',
     )
 
 
+register_env_with_variants(id='myoChallengeRunTrack-v0',
+        entry_point='myosuite.envs.myo.myochallenge.run_track_v0:RunTrack',
+        max_episode_steps=1000,
+        kwargs={
+            'model_path': curr_dir+'/../assets/leg/myolegs_runtrack.xml',
+            'normalize_act': True,
+            'reset_type': 'random',  # none, init, random
+            'terrain': 'random',  # FLAT, random
+            'hills_difficulties': (0.2, 0.00, 0.1, 0.0),
+            'rough_difficulties': (0.5, 0.0, 0.2, 0.0),
+        }
+    )
+
+
 # MyoChallenge Locomotion P2
 register_env_with_variants(id='myoChallengeChaseTagP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.chasetag_v0:ChaseTagEnvV0',
