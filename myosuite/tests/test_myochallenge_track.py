@@ -12,12 +12,14 @@ def run_env():
     env.reset()
     for _ in range(10):
         env.reset()
-        for i in range(100):
+        for i in range(100000):
             action = env.action_space.sample()
-            env.step(action)
+            state, reward, done, *_ = env.step(action)
             env.unwrapped.mj_render()
             # window.sync()
             time.sleep(0.01)
+            if done:
+                break
             
     
 
