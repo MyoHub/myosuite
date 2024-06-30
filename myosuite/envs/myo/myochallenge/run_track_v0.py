@@ -89,6 +89,8 @@ class RunTrack(WalkEnvV0):
             rough_difficulties=rough_difficulties,
             hills_difficulties=hills_difficulties,
         )
+        self.real_width = real_width
+        self.real_length = real_length
         self.reset_type = reset_type
         self.terrain = terrain
         self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
@@ -113,8 +115,8 @@ class RunTrack(WalkEnvV0):
         obs_dict['time'] = np.array([sim.data.time])
 
         # proprioception
-        obs_dict['internal_qpos'] = sim.data.qpos[7:35].copy()
-        obs_dict['internal_qvel'] = sim.data.qvel[6:34].copy() * self.dt
+        obs_dict['internal_qpos'] = sim.data.qpos[7:].copy()
+        obs_dict['internal_qvel'] = sim.data.qvel[6:].copy() * self.dt
         obs_dict['grf'] = self._get_grf().copy()
         obs_dict['torso_angle'] = self.sim.data.body('pelvis').xquat.copy()
 
@@ -218,7 +220,6 @@ class RunTrack(WalkEnvV0):
             self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, -10])
 
     def _randomize_position_orientation(self, qpos, qvel):
-        qpos[:2]  = self.np_random.uniform(-5, 5, size=(2,))
         orientation = self.np_random.uniform(0, 2 * np.pi)
         euler_angle = quat2euler(qpos[3:7])
         euler_angle[-1] = orientation
@@ -281,7 +282,8 @@ class RunTrack(WalkEnvV0):
         # but dont change height or rot state
         rot_state = qpos[3:7]
         height = qpos[2]
-        qpos[:] = qpos[:] + self.np_random.normal(0, 0.02, size=qpos.shape)
+        qpos[0] = self.np_random.uniform(-self.real_width * 0.8, self.real_width * 0.8, size=1)
+        
         qpos[3:7] = rot_state
         qpos[2] = height
         return qpos, qvel
@@ -309,6 +311,9 @@ class RunTrack(WalkEnvV0):
         return 0
 
     def _lose_condition(self):
+        x_pos = self.obs_dict['model_root_pos'].squeeze()[0]
+        if x_pos > self.real_width or x_pos < - self.real_width:
+            return 1
         return 0
 
     # Helper functions
