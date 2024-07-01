@@ -17,7 +17,7 @@
     <mesh name="meshscene" file="../myo_sim/scene/myosuite_scene_noFloor.msh" scale=".01 .01 .01"/>
 
     <!-- Floor -©vk©-->
-    <texture name="texfloor" type="2d" height="1" width="1" file="../myo_sim/scene/pebble.png"/>
+    <texture name="texfloor" type="2d" height="1" width="1" file="../../envs/myo/assets/pebble.png"/>
     <material name="matfloor" reflectance="0.01" texture="texfloor" texrepeat="1 1" texuniform="true"/>
 
     <!-- Logo -©vk©-->
