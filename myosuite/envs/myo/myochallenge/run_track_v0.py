@@ -16,6 +16,10 @@ from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat
 from myosuite.utils.heightfields import TrackField
 
+from opensourceleg.control.state_machine import Event, State, StateMachine
+from opensourceleg.osl import OpenSourceLeg
+
+from gymnasium import spaces
 
 class TerrainTypes(Enum):
     FLAT = 0
@@ -47,6 +51,8 @@ class RunTrack(WalkEnvV0):
         "sparse": 1,
         "solved": -10,
     }
+
+    ACTUATOR_PARAM = {}
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
         # This flag needs to be here to prevent the simulation from starting in a done state
@@ -81,6 +87,15 @@ class RunTrack(WalkEnvV0):
                **kwargs,
                ):
 
+        # OSL specific init
+        self.OSL = OpenSourceLeg(frequency=200)
+        self.OSL.add_joint(name="knee", gear_ratio=49.4, offline_mode=True)
+        self.OSL.add_joint(name="ankle", gear_ratio=58.4, offline_mode=True)
+        self.OSL_FSM = self.build_4_state_FSM(self.OSL)
+
+        self.muscle_space = self.sim.model.na # muscles only
+        self.full_ctrl_space = self.sim.model.nu # Muscles + actuators
+        self._get_actuator_params()
 
         self._setup_convenience_vars()
         self.trackfield = TrackField(
@@ -93,7 +108,7 @@ class RunTrack(WalkEnvV0):
         self.real_length = real_length
         self.reset_type = reset_type
         self.terrain = terrain
-        self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
+        self.grf_sensor_names = ['r_prosth', 'l_foot', 'l_toes']
         super()._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        reset_type=reset_type,
@@ -101,6 +116,9 @@ class RunTrack(WalkEnvV0):
                        )
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.init_qvel[:] = 0.0
+
+
+
         self.assert_settings()
 
 
@@ -115,8 +133,8 @@ class RunTrack(WalkEnvV0):
         obs_dict['time'] = np.array([sim.data.time])
 
         # proprioception
-        obs_dict['internal_qpos'] = sim.data.qpos[7:].copy()
-        obs_dict['internal_qvel'] = sim.data.qvel[6:].copy() * self.dt
+        obs_dict['internal_qpos'] = self.get_internal_qpos() #sim.data.qpos[7:].copy()
+        obs_dict['internal_qvel'] = self.get_internal_qvel() #sim.data.qvel[6:].copy() * self.dt
         obs_dict['grf'] = self._get_grf().copy()
         obs_dict['torso_angle'] = self.sim.data.body('pelvis').xquat.copy()
 
@@ -184,7 +202,10 @@ class RunTrack(WalkEnvV0):
         return metrics
 
     def step(self, *args, **kwargs):
-        results = super().step(*args, **kwargs)
+
+        out_act = self._prepareActions(*args)
+
+        results = super().step(out_act, **kwargs)
         return results
 
     def reset(self, **kwargs):
@@ -377,3 +398,291 @@ class RunTrack(WalkEnvV0):
                 return 1
             else:
                 return 0
+            
+    def get_internal_qpos(self):
+        temp_qpos = self.sim.data.qpos.copy()
+        to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy(), self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy()]
+        
+        temp_qpos[to_remove] = 100
+        temp_qpos[temp_qpos != 100]
+        return temp_qpos[7:]
+
+    def get_internal_qvel(self):
+        temp_qvel = self.sim.data.qvel.copy()
+        to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy() -1, self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy() -1]
+        
+        temp_qvel[to_remove] = 100
+        temp_qvel[temp_qvel != 100]
+        return temp_qvel[6:] * self.dt
+    
+    def muscle_lengths(self):
+        temp_len = self.sim.data.actuator_length.copy()
+        to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
+        
+        temp_len[to_remove] = 100
+        temp_len[temp_len != 100]
+        return temp_len
+
+    def muscle_forces(self):
+        temp_frc = self.sim.data.actuator_force.copy()
+        to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
+        
+        temp_frc[to_remove] = 100
+        temp_frc[temp_frc != 100]
+
+        return np.clip(temp_frc / 1000, -100, 100)
+
+    def muscle_velocities(self):
+        temp_vel = self.sim.data.actuator_velocity.copy()
+        to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
+        
+        temp_vel[to_remove] = 100
+        temp_vel[temp_vel != 100]
+
+        return np.clip(temp_vel, -100, 100)
+    
+    def _get_actuator_params(self):
+        actuators = ['osl_knee_torque_actuator', 'osl_ankle_torque_actuator', ]
+        
+        for actu in actuators:
+            self.ACTUATOR_PARAM[actu] = {}
+            self.ACTUATOR_PARAM[actu]['id'] = self.sim.data.actuator(actu).id
+            self.ACTUATOR_PARAM[actu]['Fmax'] = np.max(self.sim.model.actuator(actu).ctrlrange) * self.sim.model.actuator(actu).gear[0]
+        
+    """
+    OSL related functions
+    """
+    def _prepareActions(self, mus_actions):
+        full_actions = np.zeros(self.sim.model.nu,)
+        full_actions[0:len(mus_actions)] = mus_actions.copy()
+
+        osl_knee_id = self.sim.model.actuator('osl_knee_torque_actuator').id
+        osl_knee_act = self.get_osl_action('knee')
+        osl_ankle_id = self.sim.model.actuator('osl_ankle_torque_actuator').id
+        osl_ankle_act = self.get_osl_action('ankle')
+
+        full_actions[osl_knee_id] = osl_knee_act
+        full_actions[osl_ankle_id] = osl_ankle_act
+
+        return full_actions
+    
+    def get_osl_action(self, joint):
+        if joint not in ['knee', 'ankle']:
+            print(f"Non-existant joint. Can only be either 'knee' or 'ankle'")
+            raise Exception
+
+        K = eval(f"self.OSL_FSM.current_state.{joint}_stiffness")
+        P = eval(f"self.OSL_FSM.current_state.{joint}_damping")
+        theta = np.deg2rad(eval(f"self.OSL_FSM.current_state.{joint}_theta"))
+        peak_torque = self.ACTUATOR_PARAM[f"osl_{joint}_torque_actuator"]['Fmax']
+
+        temp_shorten = self.sim.data.joint(f"osl_{joint}_angle_r")
+
+        T = np.clip( K*(theta - temp_shorten.qpos[0].copy()) - P*(temp_shorten.qvel[0].copy()) , -1*peak_torque, peak_torque)
+
+        return np.clip(T / self.sim.model.actuator(f"osl_{joint}_torque_actuator").gear[0], 
+                       self.sim.model.actuator(f"osl_{joint}_torque_actuator").ctrlrange[0], 
+                       self.sim.model.actuator(f"osl_{joint}_torque_actuator").ctrlrange[1])
+
+    # State machine.
+    def build_4_state_FSM(self, osl: OpenSourceLeg) -> StateMachine:
+        """
+        This method builds a state machine with 4 states.
+        The states are early stance, late stance, early swing, and late swing.
+        It uses the impedance parameters and transition criteria above.
+
+        Inputs:
+            OSL instance
+        Returns:
+            FSM object
+        
+        NOTE: The OSL variable are ignored here, and values are all from the Myosuite environment
+        CALL THIS FUNCTION AFTER CREATING THE ENVIRONMENT
+        """
+
+        # ------------- TUNABLE FSM PARAMETERS ---------------- #
+        # NOTE: Ankle angles : (+) Dorsiflexion (-) Plantarflexion
+
+        BODY_WEIGHT = np.sum(self.sim.model.body_mass) * 9.81
+
+        # STATE 1: EARLY STANCE
+        KNEE_K_ESTANCE = 99.372
+        KNEE_B_ESTANCE = 3.180
+        KNEE_THETA_ESTANCE = 5
+        ANKLE_K_ESTANCE = 19.874
+        ANKLE_B_ESTANCE = 0
+        ANKLE_THETA_ESTANCE = -2
+        LOAD_LSTANCE: float = BODY_WEIGHT * 0.25 # -1.0 * BODY_WEIGHT * 0.25
+        ANKLE_THETA_ESTANCE_TO_LSTANCE = 6.0
+
+        # STATE 2: LATE STANCE
+        KNEE_K_LSTANCE = 99.372
+        KNEE_B_LSTANCE = 1.272
+        KNEE_THETA_LSTANCE = 8
+        ANKLE_K_LSTANCE = 79.498
+        ANKLE_B_LSTANCE = 0.063
+        ANKLE_THETA_LSTANCE = -20
+        LOAD_ESWING: float = BODY_WEIGHT * 0.15 # -1.0 * BODY_WEIGHT * 0.15
+
+        # STATE 3: EARLY SWING
+        KNEE_K_ESWING = 39.749
+        KNEE_B_ESWING = 0.063
+        KNEE_THETA_ESWING = 60
+        ANKLE_K_ESWING = 7.949
+        ANKLE_B_ESWING = 0.0
+        ANKLE_THETA_ESWING = 25
+        KNEE_THETA_ESWING_TO_LSWING = 50
+        KNEE_DTHETA_ESWING_TO_LSWING = 3
+
+        # STATE 4: LATE SWING
+        KNEE_K_LSWING = 15.899
+        KNEE_B_LSWING = 3.816
+        KNEE_THETA_LSWING = 5
+        ANKLE_K_LSWING = 7.949
+        ANKLE_B_LSWING = 0.0
+        ANKLE_THETA_LSWING = 15
+        LOAD_ESTANCE: float = BODY_WEIGHT * 0.4 # -1.0 * BODY_WEIGHT * 0.4
+        KNEE_THETA_LSWING_TO_ESTANCE = 30
+        # ---------------------------------------------------- #
+
+
+        early_stance = State(name="e_stance")
+        late_stance = State(name="l_stance")
+        early_swing = State(name="e_swing")
+        late_swing = State(name="l_swing")
+
+        early_stance.set_knee_impedance_paramters(
+            theta=KNEE_THETA_ESTANCE, k=KNEE_K_ESTANCE, b=KNEE_B_ESTANCE
+        )
+        early_stance.make_knee_active()
+        early_stance.set_ankle_impedance_paramters(
+            theta=ANKLE_THETA_ESTANCE, k=ANKLE_K_ESTANCE, b=ANKLE_B_ESTANCE
+        )
+        early_stance.make_ankle_active()
+
+        late_stance.set_knee_impedance_paramters(
+            theta=KNEE_THETA_LSTANCE, k=KNEE_K_LSTANCE, b=KNEE_B_LSTANCE
+        )
+        late_stance.make_knee_active()
+        late_stance.set_ankle_impedance_paramters(
+            theta=ANKLE_THETA_LSTANCE, k=ANKLE_K_LSTANCE, b=ANKLE_B_LSTANCE
+        )
+        late_stance.make_ankle_active()
+
+        early_swing.set_knee_impedance_paramters(
+            theta=KNEE_THETA_ESWING, k=KNEE_K_ESWING, b=KNEE_B_ESWING
+        )
+        early_swing.make_knee_active()
+        early_swing.set_ankle_impedance_paramters(
+            theta=ANKLE_THETA_ESWING, k=ANKLE_K_ESWING, b=ANKLE_B_ESWING
+        )
+        early_swing.make_ankle_active()
+
+        late_swing.set_knee_impedance_paramters(
+            theta=KNEE_THETA_LSWING, k=KNEE_K_LSWING, b=KNEE_B_LSWING
+        )
+        late_swing.make_knee_active()
+        late_swing.set_ankle_impedance_paramters(
+            theta=ANKLE_THETA_LSWING, k=ANKLE_K_LSWING, b=ANKLE_B_LSWING
+        )
+        late_swing.make_ankle_active()
+
+        def estance_to_lstance(osl: OpenSourceLeg) -> bool:
+            """
+            Transition from early stance to late stance when the loadcell
+            reads a force greater than a threshold.
+            """
+            #assert osl.loadcell is not None
+            foot_load = self.sim.data.sensor('r_prosth').data[0].copy()
+            ankle_pos = self.sim.data.joint('osl_ankle_angle_r').qpos[0].copy()
+
+            return bool(
+                foot_load < LOAD_LSTANCE
+                and np.rad2deg(ankle_pos) > ANKLE_THETA_ESTANCE_TO_LSTANCE
+            )
+
+        def lstance_to_eswing(osl: OpenSourceLeg) -> bool:
+            """
+            Transition from late stance to early swing when the loadcell
+            reads a force less than a threshold.
+            """
+            #assert osl.loadcell is not None
+            foot_load = self.sim.data.sensor('r_prosth').data[0].copy()
+
+            return bool(foot_load > LOAD_ESWING)
+
+        def eswing_to_lswing(osl: OpenSourceLeg) -> bool:
+            """
+            Transition from early swing to late swing when the knee angle
+            is greater than a threshold and the knee velocity is less than
+            a threshold.
+            """
+            #assert osl.knee is not None
+            
+            knee_pos = self.sim.data.joint('osl_knee_angle_r').qpos[0].copy()
+            knee_vel = self.sim.data.joint('osl_knee_angle_r').qvel[0].copy()
+
+            return bool(
+                np.rad2deg(knee_pos) > KNEE_THETA_ESWING_TO_LSWING
+                and np.rad2deg(knee_vel) < KNEE_DTHETA_ESWING_TO_LSWING
+            )
+
+        def lswing_to_estance(osl: OpenSourceLeg) -> bool:
+            """
+            Transition from late swing to early stance when the loadcell
+            reads a force greater than a threshold or the knee angle is
+            less than a threshold.
+            """
+            #assert osl.knee is not None and osl.loadcell is not None
+
+            knee_pos = self.sim.data.joint('osl_knee_angle_r').qpos[0].copy()
+            foot_load = self.sim.data.sensor('r_prosth').data[0].copy()
+
+            return bool(
+                foot_load < LOAD_ESTANCE
+                or np.rad2deg(knee_pos) < KNEE_THETA_LSWING_TO_ESTANCE
+            )
+
+        foot_flat = Event(name="foot_flat")
+        heel_off = Event(name="heel_off")
+        toe_off = Event(name="toe_off")
+        pre_heel_strike = Event(name="pre_heel_strike")
+        heel_strike = Event(name="heel_strike")
+
+        fsm = StateMachine(osl=osl, spoof=False)
+        fsm.add_state(state=early_stance, initial_state=True)
+        fsm.add_state(state=late_stance)
+        fsm.add_state(state=early_swing)
+        fsm.add_state(state=late_swing)
+
+        fsm.add_event(event=foot_flat)
+        fsm.add_event(event=heel_off)
+        fsm.add_event(event=toe_off)
+        fsm.add_event(event=pre_heel_strike)
+        fsm.add_event(event=heel_strike)
+
+        fsm.add_transition(
+            source=early_stance,
+            destination=late_stance,
+            event=foot_flat,
+            callback=estance_to_lstance,
+        )
+        fsm.add_transition(
+            source=late_stance,
+            destination=early_swing,
+            event=heel_off,
+            callback=lstance_to_eswing,
+        )
+        fsm.add_transition(
+            source=early_swing,
+            destination=late_swing,
+            event=toe_off,
+            callback=eswing_to_lswing,
+        )
+        fsm.add_transition(
+            source=late_swing,
+            destination=early_stance,
+            event=heel_strike,
+            callback=lswing_to_estance,
+        )
+        return fsm
