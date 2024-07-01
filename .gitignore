@@ -117,3 +117,7 @@ tags
 
 # Media #
 .mp4
+
+# OSL logs #
+osl.csv
+osl.log
