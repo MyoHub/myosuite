@@ -10,7 +10,7 @@
 
     <include file="../../../../simhive/myo_sim/torso/assets/myotorsorigid_assets.xml"/>
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/scene/myosuite_track.xml"/>
+    <include file="../myosuite_track.xml"/>
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
     <asset>
