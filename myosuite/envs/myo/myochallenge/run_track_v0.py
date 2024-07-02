@@ -1,12 +1,13 @@
-""" ================================================= # Copyright (c) Facebook, Inc. and its affiliates Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Pierre Schumacher (schumacherpier@gmail.com), Chun Kwang Tan (cktan.neumove@gmail.com) ================================================= 
-""" 
-import collections 
+""" ================================================= # Copyright (c) Facebook, Inc. and its affiliates Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Pierre Schumacher (schumacherpier@gmail.com), Chun Kwang Tan (cktan.neumove@gmail.com) =================================================
+"""
+import collections
 from myosuite.utils import gym
 import numpy as np
 import pink
 import os
 from enum import Enum
 from typing import Optional, Tuple
+import copy
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
@@ -49,7 +50,10 @@ class RunTrack(WalkEnvV0):
         "solved": +10,
     }
 
+    # OSL-related paramters
     ACTUATOR_PARAM = {}
+    OSL_PARAM_LIST = []
+    OSL_PARAM_SELECT = 0
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
         # This flag needs to be here to prevent the simulation from starting in a done state
@@ -90,6 +94,7 @@ class RunTrack(WalkEnvV0):
         self.OSL = OpenSourceLeg(frequency=200)
         self.OSL.add_joint(name="knee", gear_ratio=49.4, offline_mode=True)
         self.OSL.add_joint(name="ankle", gear_ratio=58.4, offline_mode=True)
+        self._init_default_OSL_param()
         self.OSL_FSM = self.build_4_state_FSM(self.OSL)
 
         self.muscle_space = self.sim.model.na # muscles only
@@ -115,11 +120,8 @@ class RunTrack(WalkEnvV0):
                        reset_type=reset_type,
                        **kwargs
                        )
-        self.init_qpos[:] = self.sim.model.key_qpos[0]
+        self.init_qpos[:] = self.sim.model.keyframe('osl_forward').qpos.copy()
         self.init_qvel[:] = 0.0
-
-
-
         self.assert_settings()
 
     def assert_settings(self):
@@ -303,7 +305,7 @@ class RunTrack(WalkEnvV0):
         rot_state = qpos[3:7]
         height = qpos[2]
         qpos[0] = self.np_random.uniform(-self.real_width * 0.8, self.real_width * 0.8, size=1)
-        
+
         qpos[3:7] = rot_state
         qpos[2] = height
         qpos[1] = 15
@@ -409,11 +411,11 @@ class RunTrack(WalkEnvV0):
                 return 1
             else:
                 return 0
-            
+
     def get_internal_qpos(self):
         temp_qpos = self.sim.data.qpos.copy()
         to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy(), self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy()]
-        
+
         temp_qpos[to_remove] = 100
         temp_qpos[temp_qpos != 100]
         return temp_qpos[7:]
@@ -421,15 +423,15 @@ class RunTrack(WalkEnvV0):
     def get_internal_qvel(self):
         temp_qvel = self.sim.data.qvel.copy()
         to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy() -1, self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy() -1]
-        
+
         temp_qvel[to_remove] = 100
         temp_qvel[temp_qvel != 100]
         return temp_qvel[6:] * self.dt
-    
+
     def muscle_lengths(self):
         temp_len = self.sim.data.actuator_length.copy()
         to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
-        
+
         temp_len[to_remove] = 100
         temp_len[temp_len != 100]
         return temp_len
@@ -437,7 +439,7 @@ class RunTrack(WalkEnvV0):
     def muscle_forces(self):
         temp_frc = self.sim.data.actuator_force.copy()
         to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
-        
+
         temp_frc[to_remove] = 100
         temp_frc[temp_frc != 100]
 
@@ -446,20 +448,20 @@ class RunTrack(WalkEnvV0):
     def muscle_velocities(self):
         temp_vel = self.sim.data.actuator_velocity.copy()
         to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
-        
+
         temp_vel[to_remove] = 100
         temp_vel[temp_vel != 100]
 
         return np.clip(temp_vel, -100, 100)
-    
+
     def _get_actuator_params(self):
         actuators = ['osl_knee_torque_actuator', 'osl_ankle_torque_actuator', ]
-        
+
         for actu in actuators:
             self.ACTUATOR_PARAM[actu] = {}
             self.ACTUATOR_PARAM[actu]['id'] = self.sim.data.actuator(actu).id
             self.ACTUATOR_PARAM[actu]['Fmax'] = np.max(self.sim.model.actuator(actu).ctrlrange) * self.sim.model.actuator(actu).gear[0]
-        
+
     """
     OSL related functions
     """
@@ -476,7 +478,7 @@ class RunTrack(WalkEnvV0):
         full_actions[osl_ankle_id] = osl_ankle_act
 
         return full_actions
-    
+
     def get_osl_action(self, joint):
         if joint not in ['knee', 'ankle']:
             print(f"Non-existant joint. Can only be either 'knee' or 'ankle'")
@@ -491,9 +493,13 @@ class RunTrack(WalkEnvV0):
 
         T = np.clip( K*(theta - temp_shorten.qpos[0].copy()) - P*(temp_shorten.qvel[0].copy()) , -1*peak_torque, peak_torque)
 
-        return np.clip(T / self.sim.model.actuator(f"osl_{joint}_torque_actuator").gear[0], 
-                       self.sim.model.actuator(f"osl_{joint}_torque_actuator").ctrlrange[0], 
+        return np.clip(T / self.sim.model.actuator(f"osl_{joint}_torque_actuator").gear[0],
+                       self.sim.model.actuator(f"osl_{joint}_torque_actuator").ctrlrange[0],
                        self.sim.model.actuator(f"osl_{joint}_torque_actuator").ctrlrange[1])
+
+    def set_osl_mode(self, mode=0):
+        self.OSL_PARAM_SELECT = mode
+
 
     # State machine.
     def build_4_state_FSM(self, osl: OpenSourceLeg) -> StateMachine:
@@ -506,7 +512,7 @@ class RunTrack(WalkEnvV0):
             OSL instance
         Returns:
             FSM object
-        
+
         NOTE: The OSL variable are ignored here, and values are all from the Myosuite environment
         CALL THIS FUNCTION AFTER CREATING THE ENVIRONMENT
         """
@@ -517,43 +523,43 @@ class RunTrack(WalkEnvV0):
         BODY_WEIGHT = np.sum(self.sim.model.body_mass) * 9.81
 
         # STATE 1: EARLY STANCE
-        KNEE_K_ESTANCE = 99.372
-        KNEE_B_ESTANCE = 3.180
-        KNEE_THETA_ESTANCE = 5
-        ANKLE_K_ESTANCE = 19.874
-        ANKLE_B_ESTANCE = 0
-        ANKLE_THETA_ESTANCE = -2
-        LOAD_LSTANCE: float = BODY_WEIGHT * 0.25 # -1.0 * BODY_WEIGHT * 0.25
-        ANKLE_THETA_ESTANCE_TO_LSTANCE = 6.0
+        KNEE_K_ESTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_stance']['knee']['stiffness']
+        KNEE_B_ESTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_stance']['knee']['damping']
+        KNEE_THETA_ESTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_stance']['knee']['target_angle']
+        ANKLE_K_ESTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_stance']['ankle']['stiffness']
+        ANKLE_B_ESTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_stance']['ankle']['damping']
+        ANKLE_THETA_ESTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_stance']['ankle']['target_angle']
+        LOAD_LSTANCE: float = BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_stance']['threshold']['load'] # -1.0 * BODY_WEIGHT * 0.25
+        ANKLE_THETA_ESTANCE_TO_LSTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_stance']['threshold']['ankle_angle']
 
         # STATE 2: LATE STANCE
-        KNEE_K_LSTANCE = 99.372
-        KNEE_B_LSTANCE = 1.272
-        KNEE_THETA_LSTANCE = 8
-        ANKLE_K_LSTANCE = 79.498
-        ANKLE_B_LSTANCE = 0.063
-        ANKLE_THETA_LSTANCE = -20
-        LOAD_ESWING: float = BODY_WEIGHT * 0.15 # -1.0 * BODY_WEIGHT * 0.15
+        KNEE_K_LSTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_stance']['knee']['stiffness']
+        KNEE_B_LSTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_stance']['knee']['damping']
+        KNEE_THETA_LSTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_stance']['knee']['target_angle']
+        ANKLE_K_LSTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_stance']['ankle']['stiffness']
+        ANKLE_B_LSTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_stance']['ankle']['damping']
+        ANKLE_THETA_LSTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_stance']['ankle']['target_angle']
+        LOAD_ESWING: float = BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_stance']['threshold']['load'] # -1.0 * BODY_WEIGHT * 0.15
 
         # STATE 3: EARLY SWING
-        KNEE_K_ESWING = 39.749
-        KNEE_B_ESWING = 0.063
-        KNEE_THETA_ESWING = 60
-        ANKLE_K_ESWING = 7.949
-        ANKLE_B_ESWING = 0.0
-        ANKLE_THETA_ESWING = 25
-        KNEE_THETA_ESWING_TO_LSWING = 50
-        KNEE_DTHETA_ESWING_TO_LSWING = 3
+        KNEE_K_ESWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_swing']['knee']['stiffness']
+        KNEE_B_ESWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_swing']['knee']['damping']
+        KNEE_THETA_ESWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_swing']['knee']['target_angle']
+        ANKLE_K_ESWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_swing']['ankle']['stiffness']
+        ANKLE_B_ESWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_swing']['ankle']['damping']
+        ANKLE_THETA_ESWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_swing']['ankle']['target_angle']
+        KNEE_THETA_ESWING_TO_LSWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_swing']['threshold']['knee_angle']
+        KNEE_DTHETA_ESWING_TO_LSWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['early_swing']['threshold']['knee_vel']
 
         # STATE 4: LATE SWING
-        KNEE_K_LSWING = 15.899
-        KNEE_B_LSWING = 3.816
-        KNEE_THETA_LSWING = 5
-        ANKLE_K_LSWING = 7.949
-        ANKLE_B_LSWING = 0.0
-        ANKLE_THETA_LSWING = 15
-        LOAD_ESTANCE: float = BODY_WEIGHT * 0.4 # -1.0 * BODY_WEIGHT * 0.4
-        KNEE_THETA_LSWING_TO_ESTANCE = 30
+        KNEE_K_LSWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_swing']['knee']['stiffness']
+        KNEE_B_LSWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_swing']['knee']['damping']
+        KNEE_THETA_LSWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_swing']['knee']['target_angle']
+        ANKLE_K_LSWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_swing']['ankle']['stiffness']
+        ANKLE_B_LSWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_swing']['ankle']['damping']
+        ANKLE_THETA_LSWING = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_swing']['ankle']['target_angle']
+        LOAD_ESTANCE: float = BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_swing']['threshold']['load'] # -1.0 * BODY_WEIGHT * 0.4
+        KNEE_THETA_LSWING_TO_ESTANCE = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['late_swing']['threshold']['knee_angle']
         # ---------------------------------------------------- #
 
 
@@ -609,7 +615,7 @@ class RunTrack(WalkEnvV0):
 
             return bool(
                 foot_load < LOAD_LSTANCE
-                and np.rad2deg(ankle_pos) > ANKLE_THETA_ESTANCE_TO_LSTANCE
+                and ankle_pos > ANKLE_THETA_ESTANCE_TO_LSTANCE
             )
 
         def lstance_to_eswing(osl: OpenSourceLeg) -> bool:
@@ -629,13 +635,13 @@ class RunTrack(WalkEnvV0):
             a threshold.
             """
             #assert osl.knee is not None
-            
+
             knee_pos = self.sim.data.joint('osl_knee_angle_r').qpos[0].copy()
             knee_vel = self.sim.data.joint('osl_knee_angle_r').qvel[0].copy()
 
             return bool(
-                np.rad2deg(knee_pos) > KNEE_THETA_ESWING_TO_LSWING
-                and np.rad2deg(knee_vel) < KNEE_DTHETA_ESWING_TO_LSWING
+                knee_pos > KNEE_THETA_ESWING_TO_LSWING
+                and knee_vel < KNEE_DTHETA_ESWING_TO_LSWING
             )
 
         def lswing_to_estance(osl: OpenSourceLeg) -> bool:
@@ -697,3 +703,79 @@ class RunTrack(WalkEnvV0):
             callback=lswing_to_estance,
         )
         return fsm
+
+    """
+    OSL parameter loading helper functions
+    """
+    def set_osl_params(self, params, mode=0):
+
+        phase_list = ['early_stance', 'late_stance', 'early_swing', 'late_swing']
+        joint_list = ['knee', 'ankle', 'threshold']
+        idx = 0
+
+        if isinstance(params, np.ndarray):
+            for phase in phase_list:
+                for jnt_arg in joint_list:
+                    for key in self.OSL_PARAM_LIST[mode][phase][jnt_arg].keys():
+                        self.OSL_PARAM_LIST[mode][phase][jnt_arg][key] = params[idx]
+                        idx += 1
+
+        elif isinstance(params, dict):
+            self.OSL_PARAM_LIST[mode] = copy.deepcopy(params)
+
+
+    def _init_default_OSL_param(self):
+        temp_dict = {}
+        temp_dict['early_stance'] = {}
+        temp_dict['early_stance']['knee'] = {}
+        temp_dict['early_stance']['ankle'] = {}
+        temp_dict['early_stance']['threshold'] = {}
+        temp_dict['early_stance']['knee']['stiffness'] = 99.372
+        temp_dict['early_stance']['knee']['damping'] = 3.180
+        temp_dict['early_stance']['knee']['target_angle'] = np.deg2rad(5)
+        temp_dict['early_stance']['ankle']['stiffness'] = 19.874
+        temp_dict['early_stance']['ankle']['damping'] = 0
+        temp_dict['early_stance']['ankle']['target_angle'] = np.deg2rad(-2)
+        temp_dict['early_stance']['threshold']['load'] = 0.25
+        temp_dict['early_stance']['threshold']['ankle_angle'] = np.deg2rad(6)
+
+        temp_dict['late_stance'] = {}
+        temp_dict['late_stance']['knee'] = {}
+        temp_dict['late_stance']['ankle'] = {}
+        temp_dict['late_stance']['threshold'] = {}
+        temp_dict['late_stance']['knee']['stiffness'] = 99.372
+        temp_dict['late_stance']['knee']['damping'] = 1.272
+        temp_dict['late_stance']['knee']['target_angle'] = np.deg2rad(8)
+        temp_dict['late_stance']['ankle']['stiffness'] = 79.498
+        temp_dict['late_stance']['ankle']['damping'] = 0.063
+        temp_dict['late_stance']['ankle']['target_angle'] = np.deg2rad(-20)
+        temp_dict['late_stance']['threshold']['load'] = 0.15
+
+        temp_dict['early_swing'] = {}
+        temp_dict['early_swing']['knee'] = {}
+        temp_dict['early_swing']['ankle'] = {}
+        temp_dict['early_swing']['threshold'] = {}
+        temp_dict['early_swing']['knee']['stiffness'] = 39.749
+        temp_dict['early_swing']['knee']['damping'] = 0.063
+        temp_dict['early_swing']['knee']['target_angle'] = np.deg2rad(60)
+        temp_dict['early_swing']['ankle']['stiffness'] = 7.949
+        temp_dict['early_swing']['ankle']['damping'] = 0
+        temp_dict['early_swing']['ankle']['target_angle'] = np.deg2rad(25)
+        temp_dict['early_swing']['threshold']['knee_angle'] = np.deg2rad(50)
+        temp_dict['early_swing']['threshold']['knee_vel'] = np.deg2rad(3)
+
+        temp_dict['late_swing'] = {}
+        temp_dict['late_swing']['knee'] = {}
+        temp_dict['late_swing']['ankle'] = {}
+        temp_dict['late_swing']['threshold'] = {}
+        temp_dict['late_swing']['knee']['stiffness'] = 15.899
+        temp_dict['late_swing']['knee']['damping'] = 3.816
+        temp_dict['late_swing']['knee']['target_angle'] = np.deg2rad(5)
+        temp_dict['late_swing']['ankle']['stiffness'] = 7.949
+        temp_dict['late_swing']['ankle']['damping'] = 0
+        temp_dict['late_swing']['ankle']['target_angle'] = np.deg2rad(15)
+        temp_dict['late_swing']['threshold']['load'] = 0.4
+        temp_dict['late_swing']['threshold']['knee_angle'] = np.deg2rad(30)
+
+        for idx in np.arange(3):
+            self.OSL_PARAM_LIST.append(copy.deepcopy(temp_dict))
