@@ -117,6 +117,7 @@ register_env_with_variants(id='myoChallengeRunTrack-v0',
             'terrain': 'random',  # FLAT, random
             'hills_difficulties': (0.2, 0.00, 0.1, 0.0),
             'rough_difficulties': (0.5, 0.0, 0.2, 0.0),
+            'distance_thr': 20,
         }
     )
 
