@@ -25,11 +25,6 @@ class SpecialTerrains(Enum):
     RELIEF = 0
 
 
-class Task(Enum):
-    CHASE = 0
-    EVADE = 1
-
-
 class HeightField:
     def __init__(self,
                  sim,
@@ -251,12 +246,15 @@ class TrackField(HeightField):
     def __init__(self, 
                  rough_difficulties,
                  hills_difficulties,
+                 stairs_difficulties,
                  real_length = 20,
                  real_width = 1,
                  *args, **kwargs
                  ):
-        self.rough_difficulties = rough_difficulties
-        self.hills_difficulties = hills_difficulties
+        # the heightfield indexing is reversed from the walking direction
+        self.rough_difficulties = rough_difficulties[::-1]
+        self.hills_difficulties = hills_difficulties[::-1]
+        self.stairs_difficulties = hills_difficulties[::-1]
         self.real_length = real_length
         self.real_width = real_width
         super().__init__(*args, **kwargs)
@@ -274,12 +272,18 @@ class TrackField(HeightField):
             self.sim.renderer._window.update_hfield(0)
 
     def _fill_terrain(self, terrain_type):
+        """
+        Fills the entire heightfield based on the chosen terrain.
+        """
         if terrain_type == TrackTypes.ROUGH:
             self._compute_rough_track()
         if terrain_type == TrackTypes.HILLY:
             self._compute_hilly_track()
 
     def _compute_rough_track(self):
+        """
+        Computes a straight track with flat and rough patches.
+        """
         n_patches = len(self.rough_difficulties)
         patch_starts = np.arange(0, self.nrow, int(self.nrow // n_patches))
         for i in range(patch_starts[:-1].shape[0]):
@@ -288,7 +292,7 @@ class TrackField(HeightField):
 
     def _compute_hilly_track(self):
         """
-        Compute data for a terrain with smooth hills.
+        Computes a straight track with flat and rough curved slopes.
         """
         n_patches = len(self.hills_difficulties)
         frequency = 10
@@ -313,7 +317,6 @@ class TrackField(HeightField):
             length = int(patch_starts[i+1] - patch_starts[i])
             scalar = self.stair_difficulties[i]
             stair_parts = [np.full((int(stairs_width // 100), 100), -2 + stair_height * j) for j in range(num_stairs)]
-            # new_terrain_data = np.concatenate([np.full((int(flat // 100), 100), -2)] + stair_parts, axis=0)
             new_terrain_data = np.concatenate([np.full((length, 100), -2)] + stair_parts, axis=0)
             normalized_data = (new_terrain_data + 2) / (2 + stair_height * num_stairs)
             self.sim.model.hfield_data[patch_starts[i]: patch_starts[i+1]] = np.flip(normalized_data.reshape(length, self.nrow)*scalar, [0,1]).reshape(length * self.nrow,)
