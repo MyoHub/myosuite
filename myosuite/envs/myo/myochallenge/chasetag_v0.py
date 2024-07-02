@@ -17,6 +17,11 @@ from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat
 from myosuite.utils.heightfields import ChaseTagField
 
 
+class Task(Enum):
+    CHASE = 0
+    EVADE = 1
+
+
 class ChallengeOpponent:
     """
     Training Opponent for the Locomotion Track of the MyoChallenge 2023.

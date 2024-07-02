@@ -60,7 +60,6 @@ class RunTrack(WalkEnvV0):
         # kwargs is needed at the top level to account for injection of __class__ keyword.
         # Also see: https://github.com/openai/gym/pull/1497
         gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
-
         # This two step construction is required for pickling to work correctly. All arguments to all __init__
         # calls must be pickle friendly. Things like sim / sim_obsd are NOT pickle friendly. Therefore we
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
@@ -68,6 +67,7 @@ class RunTrack(WalkEnvV0):
         # created in __init__ to complete the setup.
         BaseV0.__init__(self, model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
+        self.startFlag = True
 
     def _setup(self,
                obs_keys: list = DEFAULT_OBS_KEYS,
@@ -76,18 +76,22 @@ class RunTrack(WalkEnvV0):
                terrain='FLAT',
                hills_difficulties=(0,0),
                rough_difficulties=(0,0),
+               stairs_difficulties=(0,0),
                real_length=20,
                real_width=1,
+               distance_thr = 20,
                **kwargs,
                ):
 
 
         self._setup_convenience_vars()
+        self.distance_thr = distance_thr
         self.trackfield = TrackField(
             sim=self.sim,
             rng=self.np_random,
             rough_difficulties=rough_difficulties,
             hills_difficulties=hills_difficulties,
+            stairs_difficulties=stairs_difficulties,
         )
         self.real_width = real_width
         self.real_length = real_length
@@ -102,8 +106,6 @@ class RunTrack(WalkEnvV0):
         self.init_qpos[:] = self.sim.model.key_qpos[0]
         self.init_qvel[:] = 0.0
         self.assert_settings()
-
-
 
     def assert_settings(self):
         pass
@@ -148,8 +150,7 @@ class RunTrack(WalkEnvV0):
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
 
         # The task is entirely defined by these 3 lines
-        
-        score = self._get_score(obs_dict['time'])
+        score = self.get_score()
         win_cdt = 0
         rwd_dict = collections.OrderedDict((
             # Perform reward tuning here --
@@ -158,7 +159,7 @@ class RunTrack(WalkEnvV0):
             # Example: simple distance function
 
                 # Optional Keys
-                ('act_reg', act_mag),
+                ('act_reg', act_mag.squeeze()),
                 # Must keys
                 ('sparse',  score),
                 ('solved',  win_cdt),
@@ -308,13 +309,13 @@ class RunTrack(WalkEnvV0):
         return 0
 
     def _win_condition(self):
-        y_pos = obs_dict['model_root_pos'].squeeze()[1]
-        if y_pos[1] > self.distance_thr:
+        y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
+        if y_pos > self.distance_thr:
             return 1
         return 0
 
     def _lose_condition(self):
-        x_pos = obs_dict['model_root_pos'].squeeze()[0]
+        x_pos = self.obs_dict['model_root_pos'].squeeze()[0]
         if x_pos > self.real_width or x_pos < - self.real_width:
             return 1
         return 0
@@ -328,10 +329,13 @@ class RunTrack(WalkEnvV0):
         """
         return self.sim.model.body('root').subtreemass
 
-    def _get_score(self, time):
-        y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
-        return (y_pos * time) / (self.max_episode_steps * self.distance_thr)
-        return 0
+    def get_score(self):
+        # initial environment needs to be setup for self.horizon to work
+        if not self.startFlag:
+            return -1
+        y_pos = self.obs_dict['model_root_pos'].squeeze()[1] if self.startFlag else -1
+        score = y_pos / (self.horizon * self.distance_thr)
+        return score.squeeze()
 
     def _get_muscle_lengthRange(self):
         return self.sim.model.actuator_lengthrange.copy()
