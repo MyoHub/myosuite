@@ -148,8 +148,8 @@ class RunTrack(WalkEnvV0):
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
 
         # The task is entirely defined by these 3 lines
-
-        score = 1
+        
+        score = self._get_score(obs_dict['time'])
         win_cdt = 0
         rwd_dict = collections.OrderedDict((
             # Perform reward tuning here --
@@ -308,10 +308,13 @@ class RunTrack(WalkEnvV0):
         return 0
 
     def _win_condition(self):
+        y_pos = obs_dict['model_root_pos'].squeeze()[1]
+        if y_pos[1] > self.distance_thr:
+            return 1
         return 0
 
     def _lose_condition(self):
-        x_pos = self.obs_dict['model_root_pos'].squeeze()[0]
+        x_pos = obs_dict['model_root_pos'].squeeze()[0]
         if x_pos > self.real_width or x_pos < - self.real_width:
             return 1
         return 0
@@ -326,6 +329,8 @@ class RunTrack(WalkEnvV0):
         return self.sim.model.body('root').subtreemass
 
     def _get_score(self, time):
+        y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
+        return (y_pos * time) / (self.max_episode_steps * self.distance_thr)
         return 0
 
     def _get_muscle_lengthRange(self):
