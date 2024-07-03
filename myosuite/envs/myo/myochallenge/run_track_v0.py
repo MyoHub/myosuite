@@ -214,7 +214,7 @@ class RunTrack(WalkEnvV0):
         if not self.trackfield is None:
             self.trackfield.sample(self.np_random)
             self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 1.0
-            self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, -10, 0])
+            self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, -10, 0.005])
         else:
             # move trackfield down if not used
             self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 0.0
@@ -287,6 +287,7 @@ class RunTrack(WalkEnvV0):
         
         qpos[3:7] = rot_state
         qpos[2] = height
+        qpos[1] = 4.5
         return qpos, qvel
 
     def _setup_convenience_vars(self):
@@ -316,7 +317,10 @@ class RunTrack(WalkEnvV0):
 
     def _lose_condition(self):
         x_pos = self.obs_dict['model_root_pos'].squeeze()[0]
+        y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
         if x_pos > self.real_width or x_pos < - self.real_width:
+            return 1
+        if y_pos > 5.0:
             return 1
         return 0
 
