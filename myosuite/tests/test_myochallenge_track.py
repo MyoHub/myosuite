@@ -9,9 +9,9 @@ def run_env():
     env.reset()
     env.unwrapped.mj_render()
     env.reset()
-    for _ in range(10):
+    for _ in range(100):
         env.reset()
-        for i in range(100000):
+        for i in range(100):
             action = env.action_space.sample()
             state, reward, done, *_ = env.step(action)
             env.unwrapped.mj_render()

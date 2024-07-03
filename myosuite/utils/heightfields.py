@@ -19,6 +19,7 @@ class TerrainTypes(Enum):
 class TrackTypes(Enum):
     HILLY = 0
     ROUGH = 1
+    STAIRS = 2
 
 
 class SpecialTerrains(Enum):
@@ -254,7 +255,7 @@ class TrackField(HeightField):
         # the heightfield indexing is reversed from the walking direction
         self.rough_difficulties = rough_difficulties[::-1]
         self.hills_difficulties = hills_difficulties[::-1]
-        self.stairs_difficulties = hills_difficulties[::-1]
+        self.stairs_difficulties = stairs_difficulties[::-1]
         self.real_length = real_length
         self.real_width = real_width
         super().__init__(*args, **kwargs)
@@ -279,6 +280,8 @@ class TrackField(HeightField):
             self._compute_rough_track()
         if terrain_type == TrackTypes.HILLY:
             self._compute_hilly_track()
+        if terrain_type == TrackTypes.STAIRS:
+            self._compute_stairs_track()
 
     def _compute_rough_track(self):
         """
@@ -303,22 +306,29 @@ class TrackField(HeightField):
             data = np.sin(np.linspace(0, frequency * np.pi, int(length) * self.ncol) + np.pi / 2 - 1)
             normalized_data = (data - data.min()) / (data.max() - data.min())
             normalized_data = np.flip(normalized_data.reshape(length, self.ncol) * scalar, [0, 1]).reshape(length, self.ncol)
-            self.hfield.data[patch_starts[i]: patch_starts[i+1], :] = normalized_data
+            self.hfield.data[patch_starts[i]:patch_starts[i+1], :] = normalized_data
 
-    def _compute_stair_track(self):
-        n_patches = len(self.stair_difficulties)
-        num_stairs = 5
-        stair_height = .1
-        flat = 5200 - (1e4 - 5200) % num_stairs
-        stairs_width = (1e4 - flat) // num_stairs
+    def _compute_stairs_track(self):
+        """
+        Computes a straight track with patches of ascending and descending stairs.
+        """
+        n_patches = len(self.stairs_difficulties)
+        num_ascending_stairs = 3
+        num_stairs = num_ascending_stairs * 2
+    
         patch_starts = np.arange(0, self.nrow, int(self.nrow // n_patches))
 
         for i in range(patch_starts[:-1].shape[0]):
             length = int(patch_starts[i+1] - patch_starts[i])
-            scalar = self.stair_difficulties[i]
-            stair_parts = [np.full((int(stairs_width // 100), 100), -2 + stair_height * j) for j in range(num_stairs)]
-            new_terrain_data = np.concatenate([np.full((length, 100), -2)] + stair_parts, axis=0)
-            normalized_data = (new_terrain_data + 2) / (2 + stair_height * num_stairs)
-            self.sim.model.hfield_data[patch_starts[i]: patch_starts[i+1]] = np.flip(normalized_data.reshape(length, self.nrow)*scalar, [0,1]).reshape(length * self.nrow,)
-
-
+            stair_height = self.stairs_difficulties[i]
+            stair_flat = int(length / (num_stairs))
+            stair_parts = []
+            height = 0
+            for j in range(num_stairs):
+                stair_parts.append(np.full([stair_flat, self.ncol], height))
+                if j < num_stairs / 2:
+                    height += stair_height
+                else:
+                    height -= stair_height
+            stair_parts = np.concatenate(stair_parts, axis=0)
+            self.hfield.data[patch_starts[i]: patch_starts[i] + stair_parts.shape[0]] = stair_parts
