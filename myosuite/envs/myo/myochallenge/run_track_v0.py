@@ -96,7 +96,7 @@ class RunTrack(WalkEnvV0):
         # Env initialization with data
         self._operation_mode = run_mode
 
-        file_path = os.path.join(os.getcwd(), '..','assets', 'leg', 'init_data_withVel.csv')
+        file_path = os.path.join(os.getcwd(), 'myosuite', 'envs', 'myo','assets', 'leg', 'init_data_withVel.csv')
 
         self.INIT_DATA = np.loadtxt(file_path, skiprows=1, delimiter=',')
         self.init_lookup = self.generate_init_lookup(keys=np.arange(48), value='e_swing')
@@ -108,7 +108,6 @@ class RunTrack(WalkEnvV0):
             temp = dict(list(csv_reader)[0])
             headers = list(temp.keys())
         self.imitation_lookup = dict(zip(headers, range(len(headers))))
-
 
         # OSL specific init
         self.OSL = OpenSourceLeg(frequency=200)
@@ -236,6 +235,16 @@ class RunTrack(WalkEnvV0):
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel, **kwargs)
         self.sim.forward()
+
+        # Sync the states again as the heights from data might not be correct
+        if self.reset_type == 'osl_init':
+            new_qpos, new_qvel = self.adjust_model_height()
+            self.robot.sync_sims(self.sim, self.sim_obsd)
+            obs = super(WalkEnvV0, self).reset(reset_qpos=new_qpos, reset_qvel=new_qvel, **kwargs)
+            self.sim.forward()
+
+            self.OSL_FSM.start()
+        
         return obs
 
     def _maybe_flatten_agent_patch(self, qpos):
@@ -275,6 +284,9 @@ class RunTrack(WalkEnvV0):
             return self._randomize_position_orientation(qpos, qvel)
         elif self.reset_type == 'init':
             return self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
+        elif self.reset_type == 'osl_init':
+            self.initializeFromData()
+            return self.init_qpos.copy(), self.init_qvel.copy()
         else:
             return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
 
@@ -523,6 +535,12 @@ class RunTrack(WalkEnvV0):
         
         return np.array([w, x, y, z])
 
+    def rotate_frame(self, x, y, theta):
+        #print(theta)
+        x_rot = np.cos(theta)*x - np.sin(theta)*y
+        y_rot = np.sin(theta)*x + np.cos(theta)*y
+        return x_rot, y_rot
+
     """
     Environment initialization functions
     """
@@ -532,13 +550,13 @@ class RunTrack(WalkEnvV0):
             start_idx = 0
         else:
             start_idx = self.np_random.integers(low=0, high=self.INIT_DATA.shape[0])
-        
+
         for joint in self.imitation_lookup.keys():
             if joint not in ['pelvis_euler_roll', 'pelvis_euler_pitch', 'pelvis_euler_yaw', 
                                 'l_foot_relative_X', 'l_foot_relative_Y', 'l_foot_relative_Z', 
                                 'r_foot_relative_X', 'r_foot_relative_Y', 'r_foot_relative_Z',
                                 'pelvis_vel_X', 'pelvis_vel_Y', 'pelvis_vel_Z']:
-                self.sim.init_qpos[self.sim.model.joint(joint).qposadr[0]] = self.INIT_DATA[start_idx,self.imitation_lookup[joint]]
+                self.init_qpos[self.sim.model.joint(joint).qposadr[0]] = self.INIT_DATA[start_idx,self.imitation_lookup[joint]]
 
         # Get the Yaw from the init pose
         default_quat = self.init_qpos[3:7].copy() # Get the default facing direction first
@@ -563,14 +581,21 @@ class RunTrack(WalkEnvV0):
         self.OSL_FSM = self.build_4_state_FSM(self.OSL, state)
 
     def adjust_model_height(self):
+
+        curr_qpos = self.sim.data.qpos.copy()
+        curr_qvel = self.sim.data.qvel.copy()
+
         temp_sens_height = 100
         for sens_site in ['r_prosth_touch', 'l_foot_touch', 'l_toes_touch']:
             if temp_sens_height > self.sim.data.site(sens_site).xpos[2]:
                 temp_sens_height = self.sim.data.site(sens_site).xpos[2].copy()
 
         diff_height = 0.01 - temp_sens_height
-        self.sim.data.qpos[2] = self.sim.data.qpos[2] + diff_height
-        self.forward()
+        # self.sim.data.qpos[2] = self.sim.data.qpos[2] + diff_height
+        # self.forward()
+        curr_qpos[2] = curr_qpos[2] + diff_height
+
+        return curr_qpos, curr_qvel
 
     def generate_init_lookup(self, keys, value, existing_dict=None):
         # Initialize an empty dictionary if existing_dict is None
@@ -591,7 +616,7 @@ class RunTrack(WalkEnvV0):
     OSL related functions
     """
     def _prepareActions(self, mus_actions):
-        assert len(mus_actions) == self.sim.model.na, "Should be 54 inputs" # Should be 54
+        #assert len(mus_actions) == self.sim.model.na, "Should be 54 inputs" # Should be 54
 
         full_actions = np.zeros(self.sim.model.nu,)
         full_actions[0:len(mus_actions)] = mus_actions.copy()
