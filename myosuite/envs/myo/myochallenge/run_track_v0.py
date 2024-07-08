@@ -11,6 +11,7 @@ import os
 from enum import Enum
 from typing import Optional, Tuple
 import copy
+import csv
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
@@ -88,15 +89,26 @@ class RunTrack(WalkEnvV0):
                rough_difficulties=(0,0),
                real_length=20,
                real_width=1,
+               run_mode='train',
                **kwargs,
                ):
+
+        # Env initialization with data
+        self._operation_mode = run_mode        
+        file_path = os.path.join(os.getcwd(), '..','assets', 'leg', 'init_data_withVel.csv')
+
+        self.INIT_DATA = np.loadtxt(file_path, skiprows=1, delimiter=',')
+        with open(file_path) as csv_file:
+            csv_reader = csv.DictReader(csv_file)
+            temp = dict(list(csv_reader)[0])
+            headers = list(temp.keys())
 
         # OSL specific init
         self.OSL = OpenSourceLeg(frequency=200)
         self.OSL.add_joint(name="knee", gear_ratio=49.4, offline_mode=True)
         self.OSL.add_joint(name="ankle", gear_ratio=58.4, offline_mode=True)
         self._init_default_OSL_param()
-        self.OSL_FSM = self.build_4_state_FSM(self.OSL)
+        self.OSL_FSM = self.build_4_state_FSM(self.OSL, 'e_stance')
 
         self.muscle_space = self.sim.model.na # muscles only
         self.full_ctrl_space = self.sim.model.nu # Muscles + actuators
@@ -451,9 +463,107 @@ class RunTrack(WalkEnvV0):
             self.ACTUATOR_PARAM[actu]['Fmax'] = np.max(self.sim.model.actuator(actu).ctrlrange) * self.sim.model.actuator(actu).gear[0]
         
     """
+    Math func: Intrinsic Euler angles, for euler in body coordinate frame
+    """
+    def get_intrinsic_EulerXYZ(self, q):
+        w, x, y, z = q
+
+        # Compute sin and cos values
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+
+        # Roll (X-axis rotation)
+        roll = np.arctan2(sinr_cosp, cosr_cosp)
+
+        # Compute sin and cos values
+        sinp = 2 * (w * y - z * x)
+
+        # Pitch (Y-axis rotation)
+        if abs(sinp) >= 1:
+            # Use 90 degrees if out of range
+            pitch = np.copysign(np.pi / 2, sinp)
+        else:
+            pitch = np.arcsin(sinp)
+
+        # Compute sin and cos values
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+
+        # Yaw (Z-axis rotation)
+        yaw = np.arctan2(siny_cosp, cosy_cosp)
+
+        return np.array([roll, pitch, yaw])
+    
+    def intrinsic_EulerXYZ_toQuat(self, roll, pitch, yaw):
+        # Half angles
+        half_roll = roll * 0.5
+        half_pitch = pitch * 0.5
+        half_yaw = yaw * 0.5
+        
+        # Compute sin and cos values for half angles
+        sin_roll = np.sin(half_roll)
+        cos_roll = np.cos(half_roll)
+        sin_pitch = np.sin(half_pitch)
+        cos_pitch = np.cos(half_pitch)
+        sin_yaw = np.sin(half_yaw)
+        cos_yaw = np.cos(half_yaw)
+
+        # Compute quaternion
+        w = cos_roll * cos_pitch * cos_yaw + sin_roll * sin_pitch * sin_yaw
+        x = sin_roll * cos_pitch * cos_yaw - cos_roll * sin_pitch * sin_yaw
+        y = cos_roll * sin_pitch * cos_yaw + sin_roll * cos_pitch * sin_yaw
+        z = cos_roll * cos_pitch * sin_yaw - sin_roll * sin_pitch * cos_yaw
+        
+        return np.array([w, x, y, z])
+
+    """
+    Environment initialization functions
+    """
+    def initializeFromData(self):
+
+        if self._operation_mode == 'eval':
+            start_idx = 0
+        else:
+            start_idx = self.np_random.integers(low=0, high=self.INIT_DATA.shape[0])
+
+        print(f"start idx: {start_idx}")
+        # print(f"Start idx: {start_idx}")
+        # Assumes it will always be osl_forward for now
+        for joint in self.imitation_lookup.keys():
+            if joint not in ['pelvis_euler_roll', 'pelvis_euler_pitch', 'pelvis_euler_yaw', 
+                                'l_foot_relative_X', 'l_foot_relative_Y', 'l_foot_relative_Z', 
+                                'r_foot_relative_X', 'r_foot_relative_Y', 'r_foot_relative_Z',
+                                'pelvis_vel_X', 'pelvis_vel_Y', 'pelvis_vel_Z']:
+                self.sim.init_qpos[self.MyoEnv.unwrapped.sim.model.joint(joint).qposadr[0]] = self.INIT_DATA[start_idx,self.imitation_lookup[joint]]
+
+        # Get the Yaw from the init pose
+        # self.imitation_slice[0, self.imitation_lookup['pelvis_euler_pitch']]
+        default_quat = self.MyoEnv.unwrapped.init_qpos[3:7].copy() # Get the default facing direction first
+
+        init_quat = self.intrinsic_EulerXYZ_toQuat(self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_euler_roll']], 
+                                                   self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_euler_pitch']], 
+                                                   self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_euler_yaw']])
+        self.MyoEnv.unwrapped.init_qpos[3:7] = init_quat
+        
+        temp_euler = self.get_intrinsic_EulerXYZ(default_quat)
+        world_vel_X, world_vel_Y = self.rotate_frame(self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_vel_X']], 
+                                                     self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_vel_Y']],
+                                                     temp_euler[2])
+        self.MyoEnv.unwrapped.init_qvel[:] = 0
+        self.MyoEnv.unwrapped.init_qvel[0] = world_vel_X
+        self.MyoEnv.unwrapped.init_qvel[1] = world_vel_Y
+        self.MyoEnv.unwrapped.init_qvel[2] = self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_vel_Z']]
+
+        state = self.init_lookup[start_idx]
+        # Override previous OSL controller
+        self.OSL_FSM = self.build_4_state_FSM(self.OSL, state)
+
+    """
     OSL related functions
     """
     def _prepareActions(self, mus_actions):
+        assert len(mus_actions) == self.sim.model.na, "Should be 54 inputs" # Should be 54
+
         full_actions = np.zeros(self.sim.model.nu,)
         full_actions[0:len(mus_actions)] = mus_actions.copy()
 
@@ -474,8 +584,9 @@ class RunTrack(WalkEnvV0):
 
         K = eval(f"self.OSL_FSM.current_state.{joint}_stiffness")
         P = eval(f"self.OSL_FSM.current_state.{joint}_damping")
-        theta = np.deg2rad(eval(f"self.OSL_FSM.current_state.{joint}_theta"))
-        peak_torque = self.ACTUATOR_PARAM[f"osl_{joint}_torque_actuator"]['Fmax']
+        theta = eval(f"self.OSL_FSM.current_state.{joint}_theta")
+
+        peak_torque = np.max(self.sim.model.actuator(f"osl_{joint}_torque_actuator").ctrlrange) * self.sim.model.actuator(f"osl_{joint}_torque_actuator").gear[0]
 
         temp_shorten = self.sim.data.joint(f"osl_{joint}_angle_r")
 
@@ -486,11 +597,10 @@ class RunTrack(WalkEnvV0):
                        self.sim.model.actuator(f"osl_{joint}_torque_actuator").ctrlrange[1])
 
     def set_osl_mode(self, mode=0):
-        self.OSL_PARAM_SELECT = mode
-
+        self.OSL_PARAM_SELECT = np.clip(mode, 0, 2)
 
     # State machine.
-    def build_4_state_FSM(self, osl: OpenSourceLeg) -> StateMachine:
+    def build_4_state_FSM(self, osl: OpenSourceLeg, init_state='e_stance') -> StateMachine:
         """
         This method builds a state machine with 4 states.
         The states are early stance, late stance, early swing, and late swing.
@@ -555,6 +665,7 @@ class RunTrack(WalkEnvV0):
         late_stance = State(name="l_stance")
         early_swing = State(name="e_swing")
         late_swing = State(name="l_swing")
+        state_list = [early_stance, late_stance, early_swing, late_swing]
 
         early_stance.set_knee_impedance_paramters(
             theta=KNEE_THETA_ESTANCE, k=KNEE_K_ESTANCE, b=KNEE_B_ESTANCE
@@ -602,7 +713,7 @@ class RunTrack(WalkEnvV0):
             ankle_pos = self.sim.data.joint('osl_ankle_angle_r').qpos[0].copy()
 
             return bool(
-                foot_load < LOAD_LSTANCE
+                foot_load > LOAD_LSTANCE
                 and ankle_pos > ANKLE_THETA_ESTANCE_TO_LSTANCE
             )
 
@@ -614,7 +725,7 @@ class RunTrack(WalkEnvV0):
             #assert osl.loadcell is not None
             foot_load = self.sim.data.sensor('r_prosth').data[0].copy()
 
-            return bool(foot_load > LOAD_ESWING)
+            return bool(foot_load < LOAD_ESWING)
 
         def eswing_to_lswing(osl: OpenSourceLeg) -> bool:
             """
@@ -644,8 +755,8 @@ class RunTrack(WalkEnvV0):
             foot_load = self.sim.data.sensor('r_prosth').data[0].copy()
 
             return bool(
-                foot_load < LOAD_ESTANCE
-                or np.rad2deg(knee_pos) < KNEE_THETA_LSWING_TO_ESTANCE
+                foot_load > LOAD_ESTANCE
+                or knee_pos < KNEE_THETA_LSWING_TO_ESTANCE
             )
 
         foot_flat = Event(name="foot_flat")
@@ -655,10 +766,17 @@ class RunTrack(WalkEnvV0):
         heel_strike = Event(name="heel_strike")
 
         fsm = StateMachine(osl=osl, spoof=False)
-        fsm.add_state(state=early_stance, initial_state=True)
-        fsm.add_state(state=late_stance)
-        fsm.add_state(state=early_swing)
-        fsm.add_state(state=late_swing)
+        # fsm.add_state(state=early_stance)
+        # fsm.add_state(state=late_stance)
+        # fsm.add_state(state=early_swing)
+        # fsm.add_state(state=late_swing, initial_state=True)
+
+        # state_list = [early_stance, late_stance, early_swing, late_swing]
+        for item in state_list:
+            if item.name == init_state:
+                fsm.add_state(state=item, initial_state=True)
+            else:
+                fsm.add_state(state=item)
 
         fsm.add_event(event=foot_flat)
         fsm.add_event(event=heel_off)
@@ -697,7 +815,9 @@ class RunTrack(WalkEnvV0):
     """
     def set_osl_params(self, params, mode=0):
 
-        phase_list = ['early_stance', 'late_stance', 'early_swing', 'late_swing']
+        assert len(params) == 31, "Should have 31 params"
+
+        phase_list = ['e_stance', 'l_stance', 'e_swing', 'l_swing']
         joint_list = ['knee', 'ankle', 'threshold']
         idx = 0
 
@@ -711,59 +831,58 @@ class RunTrack(WalkEnvV0):
         elif isinstance(params, dict):
             self.OSL_PARAM_LIST[mode] = copy.deepcopy(params)
 
-
     def _init_default_OSL_param(self):
         temp_dict = {}
-        temp_dict['early_stance'] = {}
-        temp_dict['early_stance']['knee'] = {}
-        temp_dict['early_stance']['ankle'] = {}
-        temp_dict['early_stance']['threshold'] = {}
-        temp_dict['early_stance']['knee']['stiffness'] = 99.372
-        temp_dict['early_stance']['knee']['damping'] = 3.180
-        temp_dict['early_stance']['knee']['target_angle'] = np.deg2rad(5)
-        temp_dict['early_stance']['ankle']['stiffness'] = 19.874
-        temp_dict['early_stance']['ankle']['damping'] = 0
-        temp_dict['early_stance']['ankle']['target_angle'] = np.deg2rad(-2)
-        temp_dict['early_stance']['threshold']['load'] = 0.25
-        temp_dict['early_stance']['threshold']['ankle_angle'] = np.deg2rad(6)
+        temp_dict['e_stance'] = {}
+        temp_dict['e_stance']['knee'] = {}
+        temp_dict['e_stance']['ankle'] = {}
+        temp_dict['e_stance']['threshold'] = {}
+        temp_dict['e_stance']['knee']['stiffness'] = 99.372
+        temp_dict['e_stance']['knee']['damping'] = 3.180
+        temp_dict['e_stance']['knee']['target_angle'] = np.deg2rad(5)
+        temp_dict['e_stance']['ankle']['stiffness'] = 19.874
+        temp_dict['e_stance']['ankle']['damping'] = 0
+        temp_dict['e_stance']['ankle']['target_angle'] = np.deg2rad(-2)
+        temp_dict['e_stance']['threshold']['load'] = 0.25
+        temp_dict['e_stance']['threshold']['ankle_angle'] = np.deg2rad(6)
 
-        temp_dict['late_stance'] = {}
-        temp_dict['late_stance']['knee'] = {}
-        temp_dict['late_stance']['ankle'] = {}
-        temp_dict['late_stance']['threshold'] = {}
-        temp_dict['late_stance']['knee']['stiffness'] = 99.372
-        temp_dict['late_stance']['knee']['damping'] = 1.272
-        temp_dict['late_stance']['knee']['target_angle'] = np.deg2rad(8)
-        temp_dict['late_stance']['ankle']['stiffness'] = 79.498
-        temp_dict['late_stance']['ankle']['damping'] = 0.063
-        temp_dict['late_stance']['ankle']['target_angle'] = np.deg2rad(-20)
-        temp_dict['late_stance']['threshold']['load'] = 0.15
+        temp_dict['l_stance'] = {}
+        temp_dict['l_stance']['knee'] = {}
+        temp_dict['l_stance']['ankle'] = {}
+        temp_dict['l_stance']['threshold'] = {}
+        temp_dict['l_stance']['knee']['stiffness'] = 99.372
+        temp_dict['l_stance']['knee']['damping'] = 1.272
+        temp_dict['l_stance']['knee']['target_angle'] = np.deg2rad(8)
+        temp_dict['l_stance']['ankle']['stiffness'] = 79.498
+        temp_dict['l_stance']['ankle']['damping'] = 0.063
+        temp_dict['l_stance']['ankle']['target_angle'] = np.deg2rad(-20)
+        temp_dict['l_stance']['threshold']['load'] = 0.15
 
-        temp_dict['early_swing'] = {}
-        temp_dict['early_swing']['knee'] = {}
-        temp_dict['early_swing']['ankle'] = {}
-        temp_dict['early_swing']['threshold'] = {}
-        temp_dict['early_swing']['knee']['stiffness'] = 39.749
-        temp_dict['early_swing']['knee']['damping'] = 0.063
-        temp_dict['early_swing']['knee']['target_angle'] = np.deg2rad(60)
-        temp_dict['early_swing']['ankle']['stiffness'] = 7.949
-        temp_dict['early_swing']['ankle']['damping'] = 0
-        temp_dict['early_swing']['ankle']['target_angle'] = np.deg2rad(25)
-        temp_dict['early_swing']['threshold']['knee_angle'] = np.deg2rad(50)
-        temp_dict['early_swing']['threshold']['knee_vel'] = np.deg2rad(3)
+        temp_dict['e_swing'] = {}
+        temp_dict['e_swing']['knee'] = {}
+        temp_dict['e_swing']['ankle'] = {}
+        temp_dict['e_swing']['threshold'] = {}
+        temp_dict['e_swing']['knee']['stiffness'] = 39.749
+        temp_dict['e_swing']['knee']['damping'] = 0.063
+        temp_dict['e_swing']['knee']['target_angle'] = np.deg2rad(60)
+        temp_dict['e_swing']['ankle']['stiffness'] = 7.949
+        temp_dict['e_swing']['ankle']['damping'] = 0
+        temp_dict['e_swing']['ankle']['target_angle'] = np.deg2rad(25)
+        temp_dict['e_swing']['threshold']['knee_angle'] = np.deg2rad(50)
+        temp_dict['e_swing']['threshold']['knee_vel'] = np.deg2rad(3)
 
-        temp_dict['late_swing'] = {}
-        temp_dict['late_swing']['knee'] = {}
-        temp_dict['late_swing']['ankle'] = {}
-        temp_dict['late_swing']['threshold'] = {}
-        temp_dict['late_swing']['knee']['stiffness'] = 15.899
-        temp_dict['late_swing']['knee']['damping'] = 3.816
-        temp_dict['late_swing']['knee']['target_angle'] = np.deg2rad(5)
-        temp_dict['late_swing']['ankle']['stiffness'] = 7.949
-        temp_dict['late_swing']['ankle']['damping'] = 0
-        temp_dict['late_swing']['ankle']['target_angle'] = np.deg2rad(15)
-        temp_dict['late_swing']['threshold']['load'] = 0.4
-        temp_dict['late_swing']['threshold']['knee_angle'] = np.deg2rad(30)
+        temp_dict['l_swing'] = {}
+        temp_dict['l_swing']['knee'] = {}
+        temp_dict['l_swing']['ankle'] = {}
+        temp_dict['l_swing']['threshold'] = {}
+        temp_dict['l_swing']['knee']['stiffness'] = 15.899
+        temp_dict['l_swing']['knee']['damping'] = 3.816
+        temp_dict['l_swing']['knee']['target_angle'] = np.deg2rad(5)
+        temp_dict['l_swing']['ankle']['stiffness'] = 7.949
+        temp_dict['l_swing']['ankle']['damping'] = 0
+        temp_dict['l_swing']['ankle']['target_angle'] = np.deg2rad(15)
+        temp_dict['l_swing']['threshold']['load'] = 0.4
+        temp_dict['l_swing']['threshold']['knee_angle'] = np.deg2rad(30)
 
         for idx in np.arange(3):
             self.OSL_PARAM_LIST.append(copy.deepcopy(temp_dict))
