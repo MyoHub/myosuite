@@ -1,8 +1,24 @@
-Suite
-##################
+Models and Tasks
+##############################
 
 .. _suite:
 
+Models and tasks are the most important aspects of Myosuite. To provide further, 
+
+
+* :ref:`models`
+    * :ref:`myoFinger`
+    * :ref:`myoElbow`
+    * :ref:`myoHand`
+    * :ref:`myoLeg`
+    * :ref:`myoArm`
+* :ref:`tasks`
+* :ref:`task_and_variations`
+
+
+
+
+.. _models:
 
 Models
 ********
@@ -16,13 +32,28 @@ contact-rich movements involving object-manipulation such as pen-twirling and ba
 
 myoFinger
 ==========
-Simplified and intuitive model (based on Xu et al. (2012)) of a 4 Degree of Freedom (DoF) finger
+Simplified and intuitive model (based on Xu et al. (2012)[https://ieeexplore.ieee.org/document/6290710]) of a 4 Degree of Freedom (DoF) finger
 which is actuated through a series of 5 simplified antagonistic muscle-tendon units.
 We also provide its robotic counterpart with simple torque actuators
 to facilitate the comparative investigation.
 
+Details of this model can be found at `myoFinger <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/finger>`__
+
+
 .. image:: images/myoFinger.png
   :height: 200
+
+========  =============================
+Acronym   Muscle
+========  =============================
+EXTN      Central Extensor
+adabR     Abduction Tendon(Right)
+adabL     Abduction Tendon(left)
+mflx      Pip Flexor
+dflx      DIP Flexor
+========  =============================
+
+
 
 .. _myoElbow:
 
@@ -30,6 +61,8 @@ myoElbow
 ===========
 A model of 2 DoF human elbow joint -- based on OpenSim’s default testing arm model (Delp et al. (2007); Seth et al. (2018))
 -- and actuated using multiple agonist/antagonist pairs (3 flexors and 3 extensors).
+
+Details of this model can be found at `myoElbow <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/elbow>`__
 
 .. image:: images/myoElbow.png
   :height: 200
@@ -51,6 +84,8 @@ myoHand
 =========
 The dexterous human hand requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
 This musculoskeletal model is comprised of 29 bones, 23 joints, and 39 muscles-tendon units.
+
+Details of this model can be found at `myoHand <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/hand>`__
 
 .. image:: images/myoHand.png
   :height: 200
@@ -93,8 +128,51 @@ Rajagopal's full body gait model [https://github.com/opensim-org/opensim-models/
 
 Joints and muscle details can be found in Rajagopal's paper [https://ieeexplore.ieee.org/document/7505900]
 
+The model implementation details can be found on our github repo at `myoLeg <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/leg>`__
+
 .. image:: images/MyoLeg.png
   :height: 200
+
+.. =============   =================================
+.. Acronym         Muscle
+.. =============   =================================
+.. addbrev_r       Adductor brevis
+.. addlong_r       Adductor longus
+.. addmagDist_r    Adductor magnus (distal)
+.. addmagIsch_r    Adductor magnus (ischial)
+.. addmagMid_r     Adductor magnus (middle)
+.. addmagProx_r    Adductor magnus (proximal)
+.. bflh_r          Biceps femoris long head
+.. bfsh_r          Biceps femoris short head
+.. edl_r           Extensor digitorum longusc
+.. ehl_r           Extensor hallucis longusc
+.. fdl_r           Flexor digitorum longus
+.. fhl_r           Flexor hallucis longus
+.. gaslat_r        Gastrocnemius lateral head
+.. gasmed_r        Gastrocnemius medial head
+.. glmax1_r        Gluteus maximus (superior)
+.. glmax2_r        Gluteus maximus (middle)
+.. glmax3_r        Gluteus maximus (inferior)
+.. glmed1_r        Gluteus medius (anterior)
+.. glmed2_r        Gluteus medius (middle)
+.. glmed3_r        Gluteus medius (posterior)
+.. glmin1_r        Gluteus minimus (anterior)
+.. glmin2_r        Gluteus minimus (middle)
+.. glmin3_r        Gluteus minimus (posterior)
+
+
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. fhl             Flexor hallucis longus
+.. =============   =================================
 
 .. _myoArm:
 
@@ -104,10 +182,11 @@ The 3D dexterous human arm reaching and manipulation.
 
 This musculoskeletal model is comprised of 27 Degree of Freedom, and 63 muscles-tendon units.
 
+Model specification can be found on our github repo of `myoArm <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/arm>`__
+
+
 .. image:: images/myoArm.png
   :height: 200
-
-
 
 .. _tasks:
 
@@ -246,7 +325,7 @@ Variants:
   :width: 200
 
 Hand Multiobject Reorientation
-==============
+======================================
 A :ref:`myoHand` model reorients a set of parameterized geometries to a given target orientation without dropping it.
 As with before, the complexity of this task is due to the intermittent contacts between the object and multiple fingers while trying to stabilize the object, as well as the multiobject nature of the task.
 
@@ -320,142 +399,150 @@ Objective:
 Variants:
     - **Easy**: Achieve a forward velocity in the y-direction without moving in the x-direction. ``myoLegWalk-v0``
     - **Hard**: Achieve a forward velocity in the y-direction without moving in the x-direction on uneven terrain. ``myoLeg<Rough|Hilly|Stair>Walk-v0``
+
 .. image:: images/myoLeg_walk.png
   :width: 200
 
 
-Relocate Mobjects
-========================================
-A :ref:`myoArm` model
+.. Relocate Mobjects
+.. ========================================
+.. A :ref:`myoArm` model
 
 
 
-Non-stationarities task variations
-***********************************
+.. Non-stationarities task variations
+.. ***********************************
 
 
-.. _sarcopenia:
+.. .. _sarcopenia:
 
-Sarcopenia
-==============
+.. Sarcopenia
+.. ==============
 
-Sarcopenia is a muscle disorder that occurs commonly in the elderly population (Cruz-Jentoft and Sayer (2019))
-and characterized by a reduction in muscle mass or volume.
-The peak in grip strength can be reduced up to 50% from age 20 to 40 (Dodds et al. (2016)).
-We modeled sarcopenia for each muscle as a reduction of 50% of its maximal isometric force.
-
-
-.. _fatigue:
-
-Fatigue
-============================
-Muscle Fatigue is a short-term (second to minutes) effect that happens after sustained or repetitive voluntary movement
-and it has been linked to traumas e.g. cumulative trauma disorder (Chaffin et al. (2006)).
-A dynamic muscle fatigue model (Ma et al. (2009)) was integrated into the modeling framework.
-This model was based on the idea that different types of muscle fiber that have different contributions
-and resistance to fatigue (Vøllestad (1997)).
-The current implementation is simplified to consider the same fatigue factor for all muscles and
-that muscle can be completely fatigued.
-
-.. image:: images/Fatigue.png
-  :width: 800
+.. Sarcopenia is a muscle disorder that occurs commonly in the elderly population (Cruz-Jentoft and Sayer (2019))
+.. and characterized by a reduction in muscle mass or volume.
+.. The peak in grip strength can be reduced up to 50% from age 20 to 40 (Dodds et al. (2016)).
+.. We modeled sarcopenia for each muscle as a reduction of 50% of its maximal isometric force.
 
 
-.. _ttransfer:
+.. .. _fatigue:
 
-Tendon transfer
-=================================
-Contrary to muscle fatigue or sarcopenia that occurs to all muscles, tendon transfer surgery can target a single
-muscle-tendon unit. Tendon transfer surgery allows redirecting the application point of muscle forces from one joint
-DoF to another (see below). It can be used to regain functional control of a joint or limb motion after injury.
-One of the current procedures in the hand is the tendon transfer of Extensor Indicis Proprius (EIP) to replace the
-Extensor Pollicis Longus (EPL) (Gelb (1995)). Rupture of the EPL can happen after a broken wrist and create a loss of control
-of the Thumb extension. We introduce a physical tendon transfer where the EIP application point of the tendon was moved
-from the index to the thumb and the EPL was removed (see Figure 3).
+.. Fatigue
+.. ============================
+.. Muscle Fatigue is a short-term (second to minutes) effect that happens after sustained or repetitive voluntary movement
+.. and it has been linked to traumas e.g. cumulative trauma disorder (Chaffin et al. (2006)).
+.. A dynamic muscle fatigue model (Ma et al. (2009)) was integrated into the modeling framework.
+.. This model was based on the idea that different types of muscle fiber that have different contributions
+.. and resistance to fatigue (Vøllestad (1997)).
+.. The current implementation is simplified to consider the same fatigue factor for all muscles and
+.. that muscle can be completely fatigued.
 
-.. image:: images/tendon_transfer.png
-  :width: 400
-
-.. _exo:
-
-Exoskeleton assistance
-======================
-Exoskeleton assisted rehabilitation is becoming more and more common practice (Jezernik et al. (2003)) due to its multiple benefit (Nam et al. (2017)).
-Modeling of an exoskeleton for the elbow was done via an ideal actuator and the addition of two supports with a weight of 0.101 Kg for the upper arm and 0.111 Kg on the forearm. The assistance given by the exoskeleton was a percentage of the biological joint torque, this was based on the neuromusculoskeletal controller presented in Durandau et al. (2019).
-
-.. image:: images/elbow_exo.png
-  :width: 200
-
-Summary of task and variantions
-***********************************
+.. .. image:: images/Fatigue.png
+..   :width: 800
 
 
+.. .. _ttransfer:
+
+.. Tendon transfer
+.. =================================
+.. Contrary to muscle fatigue or sarcopenia that occurs to all muscles, tendon transfer surgery can target a single
+.. muscle-tendon unit. Tendon transfer surgery allows redirecting the application point of muscle forces from one joint
+.. DoF to another (see below). It can be used to regain functional control of a joint or limb motion after injury.
+.. One of the current procedures in the hand is the tendon transfer of Extensor Indicis Proprius (EIP) to replace the
+.. Extensor Pollicis Longus (EPL) (Gelb (1995)). Rupture of the EPL can happen after a broken wrist and create a loss of control
+.. of the Thumb extension. We introduce a physical tendon transfer where the EIP application point of the tendon was moved
+.. from the index to the thumb and the EPL was removed (see Figure 3).
+
+.. .. image:: images/tendon_transfer.png
+..   :width: 400
+
+.. .. _exo:
+
+.. Exoskeleton assistance
+.. ======================
+.. Exoskeleton assisted rehabilitation is becoming more and more common practice (Jezernik et al. (2003)) due to its multiple benefit (Nam et al. (2017)).
+.. Modeling of an exoskeleton for the elbow was done via an ideal actuator and the addition of two supports with a weight of 0.101 Kg for the upper arm and 0.111 Kg on the forearm. The assistance given by the exoskeleton was a percentage of the biological joint torque, this was based on the neuromusculoskeletal controller presented in Durandau et al. (2019).
+
+.. .. image:: images/elbow_exo.png
+..   :width: 200
 
 
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-|:ref:`tasks`            | **Environment**                  | **Difficulty**  |:ref:`sarcopenia` |:ref:`fatigue` | :ref:`ttransfer`    |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Finger Joint Pose      | ``myoFingerPoseFixed-v0``        | Easy            |         ✓        |      ✓        |                     |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Finger Joint Pose      | ``myoFingerPoseRandom-v0``       | Hard            |         ✓        |      ✓        |                     |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Finger Tip Reach       | ``myoFingerReachFixed-v0``       | Easy            |         ✓        |      ✓        |                     |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Finger Tip Reach       | ``myoFingerReachRandom-v0``      | Hard            |         ✓        |      ✓        |                     |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Elbow Joint Pose       | ``myoElbowPose1D6MRandom-v0``    | Hard            |         ✓        |      ✓        |                     |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Joints Pose       | ``myoHandPoseFixed-v0``          | Easy            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Joints Pose       | ``myoHandPoseRandom-v0``         | Hard            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Tips Reach        | ``myoHandReachFixed-v0``         | Easy            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Tips Reach        | ``myoHandReachRandom-v0``        | Hard            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Key Turn          | ``myoHandKeyTurnFixed-v0``       | Easy            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Key Turn          | ``myoHandKeyTurnRandom-v0``      | Hard            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Object Hold       | ``myoHandObjHoldFixed-v0``       | Easy            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Object Hold       | ``myoHandObjHoldRandom-v0``      | Hard            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Pen Twirl         | ``myoHandPenTwirlFixed-v0``      | Easy            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Pen Twirl         | ``myoHandPenTwirlRandom-v0``     | Hard            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Die Rotation           | ``myoChallengeDieReorientP1-v1`` | Easy            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Die Rotation           | ``myoChallengeDieReorientP2-v1`` | Hard            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Baoding Balls     | ``myoChallengeBaodingP1-v1``     | Easy            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Hand Baoding Balls     | ``myoChallengeBaodingP2-v1``     | Hard            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| 8 Obj. Rotation        | ``myoHandReorient8-v0``          | Easy            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| 100 Obj. Rotation      | ``myoHandReorient100-v0``        | Easy            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| 1000 Obj. Rotation     | ``myoHandReorientID-v0``         | Hard            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| 1000 Obj. Rotation     | ``myoHandReorientOOD-v0``        | Hard            |         ✓        |      ✓        |          ✓          |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Leg walk               | ``myoLegWalk-v0``                | Easy            |         ✓        |      ✓        |                     |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Leg walk Rough Ground  | ``myoLegRoughTerrainWalk-v0``    | Hard            |         ✓        |      ✓        |                     |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Leg walk Hilly Ground  | ``myoLegHillyTerrainWalk-v0``    | Hard            |         ✓        |      ✓        |                     |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Leg walk Stair Ground  | ``myoLegStairTerrainWalk-v0``    | Hard            |         ✓        |      ✓        |                     |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Grasping & Placing     | ``myoChallengeRelocateP1-v0``    | Easy            |         ✓        |      ✓        |                     |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
-| Chase Tag              | ``myoChallengeChaseTagP1-v0``    | Easy            |         ✓        |      ✓        |                     |
-+------------------------+----------------------------------+-----------------+------------------+---------------+---------------------+
+.. _task_and_variations:
 
 
-Variations:
+Task and Variantions
+************************************
+
+For convenience, Myosuite has implemented a set of muscle decifiencies that currently includes: :ref:`test_muscle_fatigue` , sarcopenia and tendon transfer alongside with the tasks.
+
+Here are a list of the tasks currently implement in Myosuite. See :ref:`task_variation` on how to include the additional features.
+
+
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+|:ref:`tasks`            | **Environment**                  | **Difficulty**  |:ref:`test_sarcopenia` |:ref:`test_muscle_fatigue` | :ref:`test_tendon_transfer`    |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Finger Joint Pose      | ``myoFingerPoseFixed-v0``        | Easy            |         ✓             |      ✓                    |                                |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Finger Joint Pose      | ``myoFingerPoseRandom-v0``       | Hard            |         ✓             |      ✓                    |                                |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Finger Tip Reach       | ``myoFingerReachFixed-v0``       | Easy            |         ✓             |      ✓                    |                                |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Finger Tip Reach       | ``myoFingerReachRandom-v0``      | Hard            |         ✓             |      ✓                    |                                |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Elbow Joint Pose       | ``myoElbowPose1D6MRandom-v0``    | Hard            |         ✓             |      ✓                    |                                |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Joints Pose       | ``myoHandPoseFixed-v0``          | Easy            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Joints Pose       | ``myoHandPoseRandom-v0``         | Hard            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Tips Reach        | ``myoHandReachFixed-v0``         | Easy            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Tips Reach        | ``myoHandReachRandom-v0``        | Hard            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Key Turn          | ``myoHandKeyTurnFixed-v0``       | Easy            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Key Turn          | ``myoHandKeyTurnRandom-v0``      | Hard            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Object Hold       | ``myoHandObjHoldFixed-v0``       | Easy            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Object Hold       | ``myoHandObjHoldRandom-v0``      | Hard            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Pen Twirl         | ``myoHandPenTwirlFixed-v0``      | Easy            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Pen Twirl         | ``myoHandPenTwirlRandom-v0``     | Hard            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Die Rotation           | ``myoChallengeDieReorientP1-v1`` | Easy            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Die Rotation           | ``myoChallengeDieReorientP2-v1`` | Hard            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Baoding Balls     | ``myoChallengeBaodingP1-v1``     | Easy            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Hand Baoding Balls     | ``myoChallengeBaodingP2-v1``     | Hard            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| 8 Obj. Rotation        | ``myoHandReorient8-v0``          | Easy            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| 100 Obj. Rotation      | ``myoHandReorient100-v0``        | Easy            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| 1000 Obj. Rotation     | ``myoHandReorientID-v0``         | Hard            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| 1000 Obj. Rotation     | ``myoHandReorientOOD-v0``        | Hard            |         ✓             |      ✓                    |          ✓                     |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Leg walk               | ``myoLegWalk-v0``                | Easy            |         ✓             |      ✓                    |                                |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Leg walk Rough Ground  | ``myoLegRoughTerrainWalk-v0``    | Hard            |         ✓             |      ✓                    |                                |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Leg walk Hilly Ground  | ``myoLegHillyTerrainWalk-v0``    | Hard            |         ✓             |      ✓                    |                                |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Leg walk Stair Ground  | ``myoLegStairTerrainWalk-v0``    | Hard            |         ✓             |      ✓                    |                                |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Grasping & Placing     | ``myoChallengeRelocateP1-v0``    | Easy            |         ✓             |      ✓                    |                                |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+| Chase Tag              | ``myoChallengeChaseTagP1-v0``    | Easy            |         ✓             |      ✓                    |                                |
++------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
+
+.. _task_variation:
+
+Variations
   - **Sarcopenia**: myoSarc<Environment> e.g. myoSarcHandPoseFixed-v0
   - **Fatigue**: myoFati<Environment> e.g. myoFatiElbowPose1D6MRandom-v0
   - **TTransfer / Reafferentation**: myoReaf<Environment> e.g. myoReafHandPoseFixed-v0

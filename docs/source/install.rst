@@ -67,3 +67,8 @@ For example, to use the ``myoElbowPose1D6MRandom-v0`` environment it is possible
      env.mj_render()
      env.step(env.action_space.sample()) # take a random action
    env.close()
+
+By default it will activate the simulator and the following visualization is expected:
+
+.. image:: images/test_env.png
+  :width: 300
