@@ -80,7 +80,7 @@ class RunTrack(WalkEnvV0):
     def _setup(self,
                obs_keys: list = DEFAULT_OBS_KEYS,
                weighted_reward_keys: dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
-               reset_type='none',
+               reset_type='osl_init',
                terrain='FLAT',
                hills_difficulties=(0,0),
                rough_difficulties=(0,0),
@@ -132,7 +132,7 @@ class RunTrack(WalkEnvV0):
         self.real_length = real_length
         self.reset_type = reset_type
         self.terrain = terrain
-        self.grf_sensor_names = ['r_prosth', 'l_foot', 'l_toes']
+        self.grf_sensor_names = ['l_foot', 'l_toes']
         super()._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
                        reset_type=reset_type,
@@ -165,7 +165,7 @@ class RunTrack(WalkEnvV0):
             obs_dict['act'] = sim.data.act[:].copy()
 
         # exteroception
-        obs_dict['model_root_pos'] = sim.data.qpos[:2].copy()
+        # obs_dict['model_root_pos'] = sim.data.qpos[:2].copy()
         obs_dict['model_root_vel'] = sim.data.qvel[:2].copy()
 
         # active task
@@ -220,10 +220,13 @@ class RunTrack(WalkEnvV0):
         return metrics
 
     def step(self, *args, **kwargs):
+        
+        if self.reset_type == 'osl_init':
+            out_act = self._prepareActions(*args)
+            results = super().step(out_act, **kwargs)
+        else:
+            results = super().step(*args, **kwargs)
 
-        out_act = self._prepareActions(*args)
-
-        results = super().step(out_act, **kwargs)
         return results
 
     def reset(self, **kwargs):
@@ -356,7 +359,7 @@ class RunTrack(WalkEnvV0):
 
     def _get_done(self):
         if self._lose_condition():
-            return 1
+            return self._get_fallen_condition()
         if self._win_condition():
             return 1
         return 0
@@ -406,7 +409,9 @@ class RunTrack(WalkEnvV0):
         return self.sim.model.actuator_gainprm[:, 2].copy()
 
     def _get_grf(self):
-        return np.array([self.sim.data.sensor(sens_name).data[0] for sens_name in self.grf_sensor_names]).copy()
+        grf = np.array([self.sim.data.sensor(sens_name).data[0] for sens_name in self.grf_sensor_names]).copy()
+        grf = np.hstack( (grf, self.sim.data.sensor('r_socket_load').data[1].copy()) )
+        return grf
 
     def _get_pelvis_angle(self):
         return self.sim.data.body('pelvis').xquat.copy()
@@ -598,13 +603,11 @@ class RunTrack(WalkEnvV0):
         curr_qvel = self.sim.data.qvel.copy()
 
         temp_sens_height = 100
-        for sens_site in ['r_prosth_touch', 'l_foot_touch', 'l_toes_touch']:
+        for sens_site in ['r_heel_btm', 'r_toe_btm', 'l_heel_btm', 'l_toe_btm']:
             if temp_sens_height > self.sim.data.site(sens_site).xpos[2]:
                 temp_sens_height = self.sim.data.site(sens_site).xpos[2].copy()
 
-        diff_height = 0.01 - temp_sens_height
-        # self.sim.data.qpos[2] = self.sim.data.qpos[2] + diff_height
-        # self.forward()
+        diff_height = 0.0 - temp_sens_height
         curr_qpos[2] = curr_qpos[2] + diff_height
 
         return curr_qpos, curr_qvel
@@ -628,10 +631,13 @@ class RunTrack(WalkEnvV0):
     OSL related functions
     """
     def _prepareActions(self, mus_actions):
-        #assert len(mus_actions) == self.sim.model.na, "Should be 54 inputs" # Should be 54
+        """
+        Combines OSL torques with the muscle activations
+        Only considers the 54 muscles of the OSLMyoleg model
+        """
 
         full_actions = np.zeros(self.sim.model.nu,)
-        full_actions[0:len(mus_actions)] = mus_actions.copy()
+        full_actions[0:54] = mus_actions.copy()
 
         osl_knee_id = self.sim.model.actuator('osl_knee_torque_actuator').id
         osl_knee_act = self.get_osl_action('knee')
@@ -746,11 +752,11 @@ class RunTrack(WalkEnvV0):
             Transition from early stance to late stance when the loadcell
             reads a force greater than a threshold.
             """
-            foot_load = self.sim.data.sensor('r_prosth').data[0].copy()
+            load_cell = self.sim.data.sensor('r_osl_load').data[1].copy()
             ankle_pos = self.sim.data.joint('osl_ankle_angle_r').qpos[0].copy()
 
             return bool(
-                foot_load > BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_stance']['threshold']['load']
+                load_cell > BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_stance']['threshold']['load']
                 and ankle_pos > self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_stance']['threshold']['ankle_angle']
             )
 
@@ -759,9 +765,9 @@ class RunTrack(WalkEnvV0):
             Transition from late stance to early swing when the loadcell
             reads a force less than a threshold.
             """
-            foot_load = self.sim.data.sensor('r_prosth').data[0].copy()
+            load_cell = self.sim.data.sensor('r_osl_load').data[1].copy()
 
-            return bool(foot_load < BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_stance']['threshold']['load'])
+            return bool(load_cell < BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_stance']['threshold']['load'])
 
         def eswing_to_lswing(osl: OpenSourceLeg) -> bool:
             """
@@ -787,10 +793,10 @@ class RunTrack(WalkEnvV0):
             """
 
             knee_pos = self.sim.data.joint('osl_knee_angle_r').qpos[0].copy()
-            foot_load = self.sim.data.sensor('r_prosth').data[0].copy()
+            load_cell = self.sim.data.sensor('r_osl_load').data[1].copy()
 
             return bool(
-                foot_load > BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_swing']['threshold']['load']
+                load_cell > BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_swing']['threshold']['load']
                 or knee_pos < self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_swing']['threshold']['knee_angle']
             )
 
@@ -870,6 +876,9 @@ class RunTrack(WalkEnvV0):
         self.OSL_PARAM_LIST[mode][phase_name][type][item] = value
 
     def set_osl_mode(self, mode=0):
+        """
+        Selects the OSL parameter set to use and updates the state variables for the OSL leg
+        """
         self.OSL_PARAM_SELECT = np.clip(mode, 0, 2)
         self._update_param_to_osl()
 
@@ -944,3 +953,7 @@ class RunTrack(WalkEnvV0):
 
         for idx in np.arange(3):
             self.OSL_PARAM_LIST.append(copy.deepcopy(temp_dict))
+
+    @property
+    def getOSLparam(self):
+        return copy.deepcopy(self.OSL_PARAM_LIST)
