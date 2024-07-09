@@ -5,19 +5,24 @@ import time
 
 
 def run_env():
-    env = gymnasium.make("myoChallengeRunTrack-v0")
+    env = gymnasium.make("myoChallengeRunTrackP1-v0")
+    # env = gymnasium.make("myoLegHillyTerrainWalk-v0")
     env.reset()
     env.unwrapped.mj_render()
     env.reset()
     for _ in range(100):
         env.reset()
-        for i in range(100):
+        for i in range(1000):
             action = env.action_space.sample()
             state, reward, done, *_ = env.step(action)
             env.unwrapped.mj_render()
             time.sleep(0.01)
+            print(f"{reward=}")
+            print(f"{env.unwrapped.rwd_dict['solved']=}")
             if done:
+                print(f"{done=}")
                 break
+
             
     
 

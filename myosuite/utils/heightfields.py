@@ -1,4 +1,5 @@
 import collections
+import math
 from myosuite.utils import gym
 import numpy as np
 import os
@@ -26,7 +27,54 @@ class SpecialTerrains(Enum):
     RELIEF = 0
 
 
+def gaussian_smoothing(array, sigma=1.0):
+    """
+    Applies Gaussian kernel smoothing on a 2D array.
+    Args:
+        array: 2D np.ndarray
+        sigma: Gaussian kernel std
+    Returns:
+        array: smoothed array
+    """
+    # Create a Gaussian kernel
+    size = int(math.ceil(sigma * 3)) * 2 + 1
+    kernel = [[0] * size for _ in range(size)]
+    center = size // 2
+    total = 0
+
+    for i in range(size):
+        for j in range(size):
+            kernel[i][j] = math.exp(-((i - center) ** 2 + (j - center) ** 2) / (2 * sigma ** 2))
+            total += kernel[i][j]
+
+    # Normalize kernel
+    for i in range(size):
+        for j in range(size):
+            kernel[i][j] /= total
+
+    # Apply the kernel to the array
+    smoothed = [[0] * len(array[0]) for _ in range(len(array))]
+    array_height = len(array)
+    array_width = len(array[0])
+
+    for y in range(array_height):
+        for x in range(array_width):
+            value = 0.0
+            for i in range(size):
+                for j in range(size):
+                    nx = x + (i - center)
+                    ny = y + (j - center)
+                    if 0 <= nx < array_width and 0 <= ny < array_height:
+                        value += kernel[i][j] * array[ny][nx]
+            smoothed[y][x] = value
+
+    return smoothed
+
+
 class HeightField:
+    """
+    Generic heightfield class that supports heightmap observation generations and other support functions.
+    """
     def __init__(self,
                  sim,
                  rng,
@@ -133,6 +181,9 @@ class HeightField:
 
 
 class ChaseTagField(HeightField):
+    """
+    Quad for chasetag competition and MyoChallenge 2023.
+    """
     def __init__(self,
                  rough_range,
                  hills_range,
@@ -244,6 +295,9 @@ class ChaseTagField(HeightField):
     
 
 class TrackField(HeightField):
+    """
+    Track terrain for the MyoChallenge 2024.
+    """
     def __init__(self, 
                  rough_difficulties,
                  hills_difficulties,
@@ -298,8 +352,17 @@ class TrackField(HeightField):
         n_patches = len(self.rough_difficulties)
         patch_starts = np.arange(0, self.nrow, int(self.nrow // n_patches))
         for i in range(patch_starts[:-1].shape[0]):
-            fill_data = np.random.uniform(0, self.rough_difficulties[i], size=(int(patch_starts[i+1] - patch_starts[i]), int(self.ncol)))
+            fill_data = np.random.uniform(-1, 1, size=(int(patch_starts[i+1] - patch_starts[i]), int(self.ncol)))
+            scalar = self.rng.uniform(low=0, high=self.rough_difficulties[i])
+            fill_data = (fill_data - np.min(fill_data)) / (np.max(fill_data) - np.min(fill_data))
+            offset = 0.0
+            fill_data = fill_data * scalar - offset
             self.hfield.data[patch_starts[i]:patch_starts[i+1], :] = fill_data
+        # rough  = gaussian_smoothing(self.hfield.data[:, :])
+        
+        # normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
+        # scalar, offset = .00, .00
+
 
     def _compute_hilly_track(self):
         """
@@ -313,8 +376,10 @@ class TrackField(HeightField):
             scalar = self.hills_difficulties[i]
             data = np.sin(np.linspace(0, frequency * np.pi, int(length) * self.ncol))
             normalized_data = (data - data.min()) / (data.max() - data.min())
+            # as long as difficulties are between 0 and 1, we don't exceed heightfield max
             normalized_data = np.flip(normalized_data.reshape(length, self.ncol) * scalar, [0, 1]).reshape(length, self.ncol)
             self.hfield.data[patch_starts[i]:patch_starts[i+1], :] = normalized_data
+    
 
     def _compute_stairs_track(self):
         """
@@ -340,3 +405,6 @@ class TrackField(HeightField):
                     height -= stair_height
             stair_parts = np.concatenate(stair_parts, axis=0)
             self.hfield.data[patch_starts[i]: patch_starts[i] + stair_parts.shape[0]] = stair_parts
+
+
+
