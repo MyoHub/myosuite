@@ -262,15 +262,23 @@ class TrackField(HeightField):
 
     def sample(self, rng=None):
         """
-        Sample an entire heightfield for the episode.
+        Sample an entire heightfield of a random terrain type for the episode.
         Update geom in viewer if rendering.
+        The terrain is cleared before updating.
         """
         if not rng is None:
             self.rng = rng
         terrain_type = self.rng.choice(TrackTypes)
+        self._clear_terrain()
         self._fill_terrain(terrain_type)
         if hasattr(self.sim, 'renderer') and not self.sim.renderer._window is None:
             self.sim.renderer._window.update_hfield(0)
+
+    def _clear_terrain(self):
+        """
+        Clears the environment to make sure nothing is left over from the previous sampling.
+        """
+        self.hfield.data[:, :] = 0.0
 
     def _fill_terrain(self, terrain_type):
         """
@@ -298,12 +306,12 @@ class TrackField(HeightField):
         Computes a straight track with flat and rough curved slopes.
         """
         n_patches = len(self.hills_difficulties)
-        frequency = 10
+        frequency = 1.0
         patch_starts = np.arange(0, self.nrow, int(self.nrow // n_patches))
         for i in range(patch_starts[:-1].shape[0]):
             length = int(patch_starts[i+1] - patch_starts[i])
             scalar = self.hills_difficulties[i]
-            data = np.sin(np.linspace(0, frequency * np.pi, int(length) * self.ncol) + np.pi / 2 - 1)
+            data = np.sin(np.linspace(0, frequency * np.pi, int(length) * self.ncol))
             normalized_data = (data - data.min()) / (data.max() - data.min())
             normalized_data = np.flip(normalized_data.reshape(length, self.ncol) * scalar, [0, 1]).reshape(length, self.ncol)
             self.hfield.data[patch_starts[i]:patch_starts[i+1], :] = normalized_data
