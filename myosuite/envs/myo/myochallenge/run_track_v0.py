@@ -93,11 +93,12 @@ class RunTrack(WalkEnvV0):
                **kwargs,
                ):
 
+        # Terrain type
+        self.terrain_type = 0
+
         # Env initialization with data
         self._operation_mode = run_mode
-
         file_path = os.path.join(os.getcwd(), 'myosuite', 'envs', 'myo','assets', 'leg', 'init_data_withVel.csv')
-
         self.INIT_DATA = np.loadtxt(file_path, skiprows=1, delimiter=',')
         self.init_lookup = self.generate_init_lookup(keys=np.arange(48), value='e_swing')
         self.init_lookup = self.generate_init_lookup(keys=np.arange(48, 99), value='l_swing', existing_dict=self.init_lookup)
@@ -149,7 +150,8 @@ class RunTrack(WalkEnvV0):
         obs_dict = {}
 
         # Time
-        obs_dict['time'] = np.array([sim.data.time])
+        # obs_dict['time'] = np.array([sim.data.time])
+        obs_dict['terrain'] = self.terrain_type
 
         # proprioception
         obs_dict['internal_qpos'] = self.get_internal_qpos() #sim.data.qpos[7:].copy()
