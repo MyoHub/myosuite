@@ -70,9 +70,3 @@ Publications with Myosuite
 MyoDex: A Generalizable Prior for Dexterous Manipulation:
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 Link avaiable at `here <https://sites.google.com/view/myodex>`__
-
-
-Lattice: Latent Exploration for Reinforcement Learning:
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-Link avaiable at `here <https://github.com/amathislab/lattice>`__
