@@ -127,7 +127,7 @@ register_env_with_variants(id='myoChallengeRunTrackP1-v0',
         kwargs={
             'model_path': curr_dir+'/../assets/leg/myolegs_runtrack.xml',
             'normalize_act': True,
-            'reset_type': 'random',  # none, init, random
+            'reset_type': 'random',  # none, init, random, osl_init
             'terrain': 'random',  # FLAT, random
             'hills_difficulties': (0.0, 0.1, 0.0, 0.5, 0.0, 0.8, 0.0, 1.0),
             'rough_difficulties': (0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.3),

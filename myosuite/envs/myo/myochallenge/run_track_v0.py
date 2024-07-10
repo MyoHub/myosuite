@@ -80,7 +80,7 @@ class RunTrack(WalkEnvV0):
     def _setup(self,
                obs_keys: list = DEFAULT_OBS_KEYS,
                weighted_reward_keys: dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
-               reset_type='osl_init',
+               reset_type='init',
                terrain='FLAT',
                hills_difficulties=(0,0),
                rough_difficulties=(0,0),
@@ -88,7 +88,6 @@ class RunTrack(WalkEnvV0):
                real_length=15,
                real_width=1,
                distance_thr = 10,
-               run_mode='train',
                init_pose_path=None,
                **kwargs,
                ):
@@ -97,8 +96,7 @@ class RunTrack(WalkEnvV0):
         self.terrain_type = 0
 
         # Env initialization with data
-        self._operation_mode = run_mode
-        file_path = os.path.join(init_pose_path) # os.getcwd(), 'myosuite', 'envs', 'myo','assets', 'leg', 
+        file_path = os.path.join(init_pose_path)
         self.INIT_DATA = np.loadtxt(file_path, skiprows=1, delimiter=',')
         self.init_lookup = self.generate_init_lookup(keys=np.arange(48), value='e_swing')
         self.init_lookup = self.generate_init_lookup(keys=np.arange(48, 99), value='l_swing', existing_dict=self.init_lookup)
@@ -223,7 +221,7 @@ class RunTrack(WalkEnvV0):
         return metrics
 
     def step(self, *args, **kwargs):
-        
+
         if self.reset_type == 'osl_init':
             out_act = self._prepareActions(*args)
             results = super().step(out_act, **kwargs)
@@ -248,7 +246,6 @@ class RunTrack(WalkEnvV0):
             self.robot.sync_sims(self.sim, self.sim_obsd)
             obs = super(WalkEnvV0, self).reset(reset_qpos=new_qpos, reset_qvel=new_qvel, **kwargs)
             self.sim.forward()
-
             self.OSL_FSM.start()
 
         return obs
@@ -392,7 +389,7 @@ class RunTrack(WalkEnvV0):
         """
         head = self.sim.data.site('head').xpos
         foot_l = self.sim.data.body('talus_l').xpos
-        foot_r = self.sim.data.body('talus_r').xpos
+        foot_r = self.sim.data.body('osl_foot_assembly').xpos
         mean = (foot_l + foot_r) / 2
         if head[2] - mean[2] < 0.2:
             return 1
