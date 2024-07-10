@@ -5,8 +5,8 @@ import time
 
 
 def run_env():
-    env = gym.make("myoChallengeRunTrackP1-v0")
-    # env = gym.make("myoLegHillyTerrainWalk-v0")
+    env = gym.make("myoChallengeChaseTagP2-v0")
+    # env = gym.make("myoChallengeRunTrackP1-v0")
     env.reset()
     env.unwrapped.mj_render()
     env.reset()

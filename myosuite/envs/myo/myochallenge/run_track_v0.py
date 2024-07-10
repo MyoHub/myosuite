@@ -1,5 +1,8 @@
-""" ================================================= # Copyright (c) Facebook, Inc. and its affiliates Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Pierre Schumacher (schumacherpier@gmail.com), Chun Kwang Tan (cktan.neumove@gmail.com) =================================================
-"""
+""" =================================================
+# Copyright (c) MyoSuite Authors
+Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Pierre Schumacher (schumacherpier@gmail.com), Chun Kwang Tan (cktan.neumove@gmail.com)
+================================================= """
+
 import collections
 from myosuite.utils import gym
 import numpy as np
