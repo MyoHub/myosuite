@@ -196,7 +196,7 @@ class ChaseTagField(HeightField):
         assert type(patches_per_side) is int
         super().__init__(*args, **kwargs) 
         self.hills_range = hills_range
-        self,rough_range = rough_range
+        self.rough_range = rough_range
         self.relief_range = relief_range
         self.patches_per_side = patches_per_side
         self.real_length = real_length
