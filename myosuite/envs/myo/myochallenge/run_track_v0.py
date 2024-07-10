@@ -89,6 +89,7 @@ class RunTrack(WalkEnvV0):
                real_width=1,
                distance_thr = 10,
                run_mode='train',
+               init_pose_path=None,
                **kwargs,
                ):
 
@@ -97,7 +98,7 @@ class RunTrack(WalkEnvV0):
 
         # Env initialization with data
         self._operation_mode = run_mode
-        file_path = os.path.join(os.getcwd(), 'myosuite', 'envs', 'myo','assets', 'leg', 'init_data_withVel.csv')
+        file_path = os.path.join(init_pose_path) # os.getcwd(), 'myosuite', 'envs', 'myo','assets', 'leg', 
         self.INIT_DATA = np.loadtxt(file_path, skiprows=1, delimiter=',')
         self.init_lookup = self.generate_init_lookup(keys=np.arange(48), value='e_swing')
         self.init_lookup = self.generate_init_lookup(keys=np.arange(48, 99), value='l_swing', existing_dict=self.init_lookup)
@@ -150,8 +151,8 @@ class RunTrack(WalkEnvV0):
         obs_dict = {}
 
         # Time
-        # obs_dict['time'] = np.array([sim.data.time])
-        obs_dict['terrain'] = self.terrain_type
+        obs_dict['time'] = np.array([sim.data.time])
+        obs_dict['terrain'] = np.array([self.terrain_type])
 
         # proprioception
         obs_dict['internal_qpos'] = self.get_internal_qpos() #sim.data.qpos[7:].copy()
@@ -167,7 +168,7 @@ class RunTrack(WalkEnvV0):
             obs_dict['act'] = sim.data.act[:].copy()
 
         # exteroception
-        # obs_dict['model_root_pos'] = sim.data.qpos[:2].copy()
+        obs_dict['model_root_pos'] = sim.data.qpos[:2].copy()
         obs_dict['model_root_vel'] = sim.data.qvel[:2].copy()
 
         # active task
@@ -234,6 +235,7 @@ class RunTrack(WalkEnvV0):
     def reset(self, **kwargs):
         # randomized terrain types
         self._maybe_sample_terrain()
+        self.terrain_type = self.trackfield.terrain_type
         # randomized initial state
         qpos, qvel = self._get_reset_state()
         self.robot.sync_sims(self.sim, self.sim_obsd)
@@ -443,7 +445,7 @@ class RunTrack(WalkEnvV0):
         else:
             head = self.sim.data.site('head').xpos
             foot_l = self.sim.data.body('talus_l').xpos
-            foot_r = self.sim.data.body('talus_r').xpos
+            foot_r = self.sim.data.body('osl_foot_assembly').xpos
             mean = (foot_l + foot_r) / 2
             if head[2] - mean[2] < 0.2:
                 return 1
@@ -639,7 +641,7 @@ class RunTrack(WalkEnvV0):
         """
 
         full_actions = np.zeros(self.sim.model.nu,)
-        full_actions[0:54] = mus_actions.copy()
+        full_actions[0:54] = mus_actions[0:54].copy()
 
         osl_knee_id = self.sim.model.actuator('osl_knee_torque_actuator').id
         osl_knee_act = self.get_osl_action('knee')

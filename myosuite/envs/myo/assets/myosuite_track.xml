@@ -17,8 +17,8 @@
     <mesh name="meshscene" file="../myo_sim/scene/myosuite_scene_noFloor.msh" scale=".01 .01 .01"/>
 
     <!-- Floor -©vk©-->
-    <texture name="texfloor" type="2d" height="1" width="1" file="../../envs/myo/assets/ground_brown.png"/>
-    <texture name="texgroundfloor" type="2d" height="1" width="1" file="../../envs/myo/assets/ground_grey.png"/>
+    <texture name="texfloor" type="2d" height="1" width="1" file="../../../envs/myo/assets/ground_brown.png"/>
+    <texture name="texgroundfloor" type="2d" height="1" width="1" file="../../../envs/myo/assets/ground_grey.png"/>
     <material name="matfloor" reflectance="0.01" texture="texfloor" texrepeat="1 1" texuniform="true"/>
     <material name="groundfloor" reflectance="0.01" texture="texgroundfloor" texrepeat="1 1" texuniform="true"/>
 
