@@ -5,14 +5,14 @@ import time
 
 
 def run_env():
-    env = gym.make("myoChallengeRunTrack-v0", reset_type='osl_init')
+    env = gym.make("myoChallengeRunTrackP1-v0", reset_type='osl_init')
     # window = viewer.launch_passive(env.sim.mj_model, env.sim.mj_data)
     env.reset()
     env.unwrapped.mj_render()
     env.reset()
 
-    print(env.OSL_FSM)
-    print(env.OSL_PARAM_LIST)
+    print(env.unwrapped.OSL_FSM)
+    print(env.unwrapped.OSL_PARAM_LIST)
 
     for _ in range(10):
         env.reset()
