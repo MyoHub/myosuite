@@ -322,9 +322,9 @@ class TrackField(HeightField):
         """
         if not rng is None:
             self.rng = rng
-        terrain_type = self.rng.choice(TrackTypes)
+        self.terrain_type = self.rng.choice(TrackTypes)
         self._clear_terrain()
-        self._fill_terrain(terrain_type)
+        self._fill_terrain(self.terrain_type)
         if hasattr(self.sim, 'renderer') and not self.sim.renderer._window is None:
             self.sim.renderer._window.update_hfield(0)
 
