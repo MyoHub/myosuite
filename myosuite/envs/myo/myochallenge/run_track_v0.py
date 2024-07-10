@@ -3,7 +3,6 @@
 import collections
 from myosuite.utils import gym
 import numpy as np
-import pink
 import os
 from enum import Enum
 from typing import Optional, Tuple
@@ -18,17 +17,12 @@ from myosuite.utils.heightfields import TrackField
 from opensourceleg.control.state_machine import Event, State, StateMachine
 from opensourceleg.osl import OpenSourceLeg
 
-from gymnasium import spaces
+
 
 class TerrainTypes(Enum):
     FLAT = 0
     HILLY = 1
     ROUGH = 2
-
-
-class SpecialTerrains(Enum):
-    RELIEF = 0
-
 
 
 class RunTrack(WalkEnvV0):
