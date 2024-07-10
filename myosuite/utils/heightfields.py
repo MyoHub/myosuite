@@ -1,4 +1,5 @@
 import collections
+import math
 from myosuite.utils import gym
 import numpy as np
 import os
@@ -19,18 +20,61 @@ class TerrainTypes(Enum):
 class TrackTypes(Enum):
     HILLY = 0
     ROUGH = 1
+    STAIRS = 2
 
 
 class SpecialTerrains(Enum):
     RELIEF = 0
 
 
-class Task(Enum):
-    CHASE = 0
-    EVADE = 1
+def gaussian_smoothing(array, sigma=1.0):
+    """
+    Applies Gaussian kernel smoothing on a 2D array.
+    Args:
+        array: 2D np.ndarray
+        sigma: Gaussian kernel std
+    Returns:
+        array: smoothed array
+    """
+    # Create a Gaussian kernel
+    size = int(math.ceil(sigma * 3)) * 2 + 1
+    kernel = [[0] * size for _ in range(size)]
+    center = size // 2
+    total = 0
+
+    for i in range(size):
+        for j in range(size):
+            kernel[i][j] = math.exp(-((i - center) ** 2 + (j - center) ** 2) / (2 * sigma ** 2))
+            total += kernel[i][j]
+
+    # Normalize kernel
+    for i in range(size):
+        for j in range(size):
+            kernel[i][j] /= total
+
+    # Apply the kernel to the array
+    smoothed = [[0] * len(array[0]) for _ in range(len(array))]
+    array_height = len(array)
+    array_width = len(array[0])
+
+    for y in range(array_height):
+        for x in range(array_width):
+            value = 0.0
+            for i in range(size):
+                for j in range(size):
+                    nx = x + (i - center)
+                    ny = y + (j - center)
+                    if 0 <= nx < array_width and 0 <= ny < array_height:
+                        value += kernel[i][j] * array[ny][nx]
+            smoothed[y][x] = value
+
+    return smoothed
 
 
 class HeightField:
+    """
+    Generic heightfield class that supports heightmap observation generations and other support functions.
+    """
     def __init__(self,
                  sim,
                  rng,
@@ -137,6 +181,9 @@ class HeightField:
 
 
 class ChaseTagField(HeightField):
+    """
+    Quad for chasetag competition and MyoChallenge 2023.
+    """
     def __init__(self,
                  rough_range,
                  hills_range,
@@ -248,74 +295,116 @@ class ChaseTagField(HeightField):
     
 
 class TrackField(HeightField):
+    """
+    Track terrain for the MyoChallenge 2024.
+    """
     def __init__(self, 
                  rough_difficulties,
                  hills_difficulties,
+                 stairs_difficulties,
                  real_length = 20,
                  real_width = 1,
                  *args, **kwargs
                  ):
-        self.rough_difficulties = rough_difficulties
-        self.hills_difficulties = hills_difficulties
+        # the heightfield indexing is reversed from the walking direction
+        self.rough_difficulties = rough_difficulties[::-1]
+        self.hills_difficulties = hills_difficulties[::-1]
+        self.stairs_difficulties = stairs_difficulties[::-1]
         self.real_length = real_length
         self.real_width = real_width
         super().__init__(*args, **kwargs)
 
     def sample(self, rng=None):
         """
-        Sample an entire heightfield for the episode.
+        Sample an entire heightfield of a random terrain type for the episode.
         Update geom in viewer if rendering.
+        The terrain is cleared before updating.
         """
         if not rng is None:
             self.rng = rng
-        terrain_type = self.rng.choice(TrackTypes)
-        self._fill_terrain(terrain_type)
+        self.terrain_type = self.rng.choice(TrackTypes)
+        self._clear_terrain()
+        self._fill_terrain(self.terrain_type)
         if hasattr(self.sim, 'renderer') and not self.sim.renderer._window is None:
             self.sim.renderer._window.update_hfield(0)
 
+    def _clear_terrain(self):
+        """
+        Clears the environment to make sure nothing is left over from the previous sampling.
+        """
+        self.hfield.data[:, :] = 0.0
+
     def _fill_terrain(self, terrain_type):
+        """
+        Fills the entire heightfield based on the chosen terrain.
+        """
         if terrain_type == TrackTypes.ROUGH:
             self._compute_rough_track()
         if terrain_type == TrackTypes.HILLY:
             self._compute_hilly_track()
+        if terrain_type == TrackTypes.STAIRS:
+            self._compute_stairs_track()
 
     def _compute_rough_track(self):
+        """
+        Computes a straight track with flat and rough patches.
+        """
         n_patches = len(self.rough_difficulties)
         patch_starts = np.arange(0, self.nrow, int(self.nrow // n_patches))
         for i in range(patch_starts[:-1].shape[0]):
-            fill_data = np.random.uniform(0, self.rough_difficulties[i], size=(int(patch_starts[i+1] - patch_starts[i]), int(self.ncol)))
+            fill_data = np.random.uniform(-1, 1, size=(int(patch_starts[i+1] - patch_starts[i]), int(self.ncol)))
+            scalar = self.rng.uniform(low=0, high=self.rough_difficulties[i])
+            fill_data = (fill_data - np.min(fill_data)) / (np.max(fill_data) - np.min(fill_data))
+            offset = 0.0
+            fill_data = fill_data * scalar - offset
             self.hfield.data[patch_starts[i]:patch_starts[i+1], :] = fill_data
+        # rough  = gaussian_smoothing(self.hfield.data[:, :])
+        
+        # normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
+        # scalar, offset = .00, .00
+
 
     def _compute_hilly_track(self):
         """
-        Compute data for a terrain with smooth hills.
+        Computes a straight track with flat and rough curved slopes.
         """
         n_patches = len(self.hills_difficulties)
-        frequency = 10
+        frequency = 1.0
         patch_starts = np.arange(0, self.nrow, int(self.nrow // n_patches))
         for i in range(patch_starts[:-1].shape[0]):
             length = int(patch_starts[i+1] - patch_starts[i])
             scalar = self.hills_difficulties[i]
-            data = np.sin(np.linspace(0, frequency * np.pi, int(length) * self.ncol) + np.pi / 2 - 1)
+            data = np.sin(np.linspace(0, frequency * np.pi, int(length) * self.ncol))
             normalized_data = (data - data.min()) / (data.max() - data.min())
+            # as long as difficulties are between 0 and 1, we don't exceed heightfield max
             normalized_data = np.flip(normalized_data.reshape(length, self.ncol) * scalar, [0, 1]).reshape(length, self.ncol)
-            self.hfield.data[patch_starts[i]: patch_starts[i+1], :] = normalized_data
+            self.hfield.data[patch_starts[i]:patch_starts[i+1], :] = normalized_data
+    
 
-    def _compute_stair_track(self):
-        n_patches = len(self.stair_difficulties)
-        num_stairs = 5
-        stair_height = .1
-        flat = 5200 - (1e4 - 5200) % num_stairs
-        stairs_width = (1e4 - flat) // num_stairs
+    def _compute_stairs_track(self):
+        """
+        Computes a straight track with patches of ascending and descending stairs.
+        """
+        n_patches = len(self.stairs_difficulties)
+        num_ascending_stairs = 3
+        num_stairs = num_ascending_stairs * 2
+    
         patch_starts = np.arange(0, self.nrow, int(self.nrow // n_patches))
 
         for i in range(patch_starts[:-1].shape[0]):
             length = int(patch_starts[i+1] - patch_starts[i])
-            scalar = self.stair_difficulties[i]
-            stair_parts = [np.full((int(stairs_width // 100), 100), -2 + stair_height * j) for j in range(num_stairs)]
-            # new_terrain_data = np.concatenate([np.full((int(flat // 100), 100), -2)] + stair_parts, axis=0)
-            new_terrain_data = np.concatenate([np.full((length, 100), -2)] + stair_parts, axis=0)
-            normalized_data = (new_terrain_data + 2) / (2 + stair_height * num_stairs)
-            self.sim.model.hfield_data[patch_starts[i]: patch_starts[i+1]] = np.flip(normalized_data.reshape(length, self.nrow)*scalar, [0,1]).reshape(length * self.nrow,)
+            stair_height = self.stairs_difficulties[i]
+            stair_flat = int(length / (num_stairs))
+            stair_parts = []
+            height = 0
+            for j in range(num_stairs):
+                stair_parts.append(np.full([stair_flat, self.ncol], height))
+                if j < num_stairs / 2:
+                    height += stair_height
+                else:
+                    height -= stair_height
+            stair_parts = np.concatenate(stair_parts, axis=0)
+            self.hfield.data[patch_starts[i]: patch_starts[i] + stair_parts.shape[0]] = stair_parts
+
 
 

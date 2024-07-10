@@ -17,8 +17,10 @@
     <mesh name="meshscene" file="../myo_sim/scene/myosuite_scene_noFloor.msh" scale=".01 .01 .01"/>
 
     <!-- Floor -©vk©-->
-    <texture name="texfloor" type="2d" height="1" width="1" file="../../../envs/myo/assets/pebble.png"/>
+    <texture name="texfloor" type="2d" height="1" width="1" file="../../envs/myo/assets/ground_brown.png"/>
+    <texture name="texgroundfloor" type="2d" height="1" width="1" file="../../envs/myo/assets/ground_grey.png"/>
     <material name="matfloor" reflectance="0.01" texture="texfloor" texrepeat="1 1" texuniform="true"/>
+    <material name="groundfloor" reflectance="0.01" texture="texgroundfloor" texrepeat="1 1" texuniform="true"/>
 
     <!-- Logo -©vk©-->
     <texture name="textlogo" type="2d" file="../myo_sim/scene/myosuite_logo.png"/>
@@ -39,7 +41,7 @@
   <worldbody>
     <light directional="true" diffuse=".5 .5 .5" specular="0.25 0.25 0.25" pos="0 -3 3" dir="0 1 -1" mode="fixed" castshadow="false"/>
     <camera name="topview" pos="0 -10.5 10" euler="+0.8 0 0" mode="fixed"/>
-    <geom name="ground" type="plane" size="6 6 0.1" rgba="1 1 1 0"/>
+    <geom name="ground" type="plane" size="2 15 0.1" material="groundfloor"/>
     <geom type="mesh" mesh="logo" material="matlogo" group="2" conaffinity="0" contype="0" euler="1.57 0 0" pos="0 6.95 2.1"/>
   </worldbody>
 </mujoco>

@@ -1,25 +1,28 @@
-import gymnasium as gym
+import gymnasium 
 import myosuite
 from mujoco import viewer
 import time
 
 
 def run_env():
-    env = gym.make("myoChallengeRunTrack-v0")
-    # window = viewer.launch_passive(env.sim.mj_model, env.sim.mj_data)
+    env = gymnasium.make("myoChallengeRunTrackP1-v0")
+    # env = gymnasium.make("myoLegHillyTerrainWalk-v0")
     env.reset()
     env.unwrapped.mj_render()
     env.reset()
-    for _ in range(10):
+    for _ in range(100):
         env.reset()
-        for i in range(100000):
+        for i in range(1000):
             action = env.action_space.sample()
             state, reward, done, *_ = env.step(action)
             env.unwrapped.mj_render()
-            # window.sync()
             time.sleep(0.01)
+            print(f"{reward=}")
+            print(f"{env.unwrapped.rwd_dict['solved']=}")
             if done:
+                print(f"{done=}")
                 break
+
             
     
 

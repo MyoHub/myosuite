@@ -107,7 +107,7 @@ register_env_with_variants(id='myoChallengeChaseTagP1-v0',
     )
 
 
-register_env_with_variants(id='myoChallengeRunTrack-v0',
+register_env_with_variants(id='myoChallengeRunTrackP1-v0',
         entry_point='myosuite.envs.myo.myochallenge.run_track_v0:RunTrack',
         max_episode_steps=1000,
         kwargs={
@@ -115,8 +115,10 @@ register_env_with_variants(id='myoChallengeRunTrack-v0',
             'normalize_act': True,
             'reset_type': 'random',  # none, init, random
             'terrain': 'random',  # FLAT, random
-            'hills_difficulties': (0.2, 0.00, 0.1, 0.0),
-            'rough_difficulties': (0.5, 0.0, 0.2, 0.0),
+            'hills_difficulties': (0.0, 0.1, 0.0, 0.5, 0.0, 0.8, 0.0, 1.0),
+            'rough_difficulties': (0.0, 0.05, 0.0, 0.1, 0.0, 0.2, 0.0, 0.8),
+            'stairs_difficulties': (0.0, 0.05, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3),
+            'distance_thr': 15,
         }
     )
 

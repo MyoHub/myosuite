@@ -1,9 +1,6 @@
-""" =================================================
-# Copyright (c) Facebook, Inc. and its affiliates
-Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Pierre Schumacher (schumacherpier@gmail.com), Chun Kwang Tan (cktan.neumove@gmail.com)
-================================================= """
-
-import collections
+""" ================================================= # Copyright (c) Facebook, Inc. and its affiliates Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Pierre Schumacher (schumacherpier@gmail.com), Chun Kwang Tan (cktan.neumove@gmail.com) ================================================= 
+""" 
+import collections 
 from myosuite.utils import gym
 import numpy as np
 import pink
@@ -51,7 +48,7 @@ class RunTrack(WalkEnvV0):
     # You can change reward weights here
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "sparse": 1,
-        "solved": -10,
+        "solved": +10,
     }
 
     # OSL-related paramters
@@ -71,7 +68,6 @@ class RunTrack(WalkEnvV0):
         # kwargs is needed at the top level to account for injection of __class__ keyword.
         # Also see: https://github.com/openai/gym/pull/1497
         gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
-
         # This two step construction is required for pickling to work correctly. All arguments to all __init__
         # calls must be pickle friendly. Things like sim / sim_obsd are NOT pickle friendly. Therefore we
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
@@ -79,6 +75,7 @@ class RunTrack(WalkEnvV0):
         # created in __init__ to complete the setup.
         BaseV0.__init__(self, model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
+        self.startFlag = True
 
     def _setup(self,
                obs_keys: list = DEFAULT_OBS_KEYS,
@@ -87,8 +84,10 @@ class RunTrack(WalkEnvV0):
                terrain='FLAT',
                hills_difficulties=(0,0),
                rough_difficulties=(0,0),
-               real_length=20,
+               stairs_difficulties=(0,0),
+               real_length=15,
                real_width=1,
+               distance_thr = 10,
                run_mode='train',
                **kwargs,
                ):
@@ -122,11 +121,13 @@ class RunTrack(WalkEnvV0):
         self._get_actuator_params()
 
         self._setup_convenience_vars()
+        self.distance_thr = distance_thr
         self.trackfield = TrackField(
             sim=self.sim,
             rng=self.np_random,
             rough_difficulties=rough_difficulties,
             hills_difficulties=hills_difficulties,
+            stairs_difficulties=stairs_difficulties,
         )
         self.real_width = real_width
         self.real_length = real_length
@@ -141,7 +142,6 @@ class RunTrack(WalkEnvV0):
         self.init_qpos[:] = self.sim.model.keyframe('osl_forward').qpos.copy()
         self.init_qvel[:] = 0.0
         self.assert_settings()
-
 
     def assert_settings(self):
         pass
@@ -187,9 +187,8 @@ class RunTrack(WalkEnvV0):
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
 
         # The task is entirely defined by these 3 lines
-
-        score = 1
-        win_cdt = 0
+        score = self.get_score()
+        win_cdt = self._win_condition()
         rwd_dict = collections.OrderedDict((
             # Perform reward tuning here --
             # Update Optional Keys section below
@@ -197,7 +196,7 @@ class RunTrack(WalkEnvV0):
             # Example: simple distance function
 
                 # Optional Keys
-                ('act_reg', act_mag),
+                ('act_reg', act_mag.squeeze()),
                 # Must keys
                 ('sparse',  score),
                 ('solved',  win_cdt),
@@ -268,7 +267,8 @@ class RunTrack(WalkEnvV0):
         if not self.trackfield is None:
             self.trackfield.sample(self.np_random)
             self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 1.0
-            self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, -10, 0])
+            # self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, -10, 0.005])
+            self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, 0.005])
         else:
             # move trackfield down if not used
             self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 0.0
@@ -344,6 +344,7 @@ class RunTrack(WalkEnvV0):
         
         qpos[3:7] = rot_state
         qpos[2] = height
+        qpos[1] = 15
         return qpos, qvel
 
     def _setup_convenience_vars(self):
@@ -366,11 +367,17 @@ class RunTrack(WalkEnvV0):
         return 0
 
     def _win_condition(self):
+        y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
+        if np.abs(y_pos) > self.distance_thr:
+            return 1
         return 0
 
     def _lose_condition(self):
         x_pos = self.obs_dict['model_root_pos'].squeeze()[0]
+        y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
         if x_pos > self.real_width or x_pos < - self.real_width:
+            return 1
+        if y_pos > 15.0:
             return 1
         return 0
 
@@ -383,8 +390,13 @@ class RunTrack(WalkEnvV0):
         """
         return self.sim.model.body('root').subtreemass
 
-    def _get_score(self, time):
-        return 0
+    def get_score(self):
+        # initial environment needs to be setup for self.horizon to work
+        if not self.startFlag:
+            return -1
+        y_pos = self.obs_dict['model_root_pos'].squeeze()[1] if self.startFlag else -1
+        score = (y_pos - 15) / (- 15 - 15)
+        return score.squeeze()
 
     def _get_muscle_lengthRange(self):
         return self.sim.model.actuator_lengthrange.copy()
