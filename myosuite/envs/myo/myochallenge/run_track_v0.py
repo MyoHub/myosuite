@@ -381,7 +381,23 @@ class RunTrack(WalkEnvV0):
             return 1
         if y_pos > 15.0:
             return 1
+        if self._get_fallen_condition():
+            return 1
         return 0
+
+    def _get_fallen_condition(self):
+        """
+        Checks if the agent has fallen by comparing the head site height with the
+        average foot height.
+        """
+        head = self.sim.data.site('head').xpos
+        foot_l = self.sim.data.body('talus_l').xpos
+        foot_r = self.sim.data.body('talus_r').xpos
+        mean = (foot_l + foot_r) / 2
+        if head[2] - mean[2] < 0.2:
+            return 1
+        else:
+            return 0
 
     # Helper functions
     def _get_body_mass(self):

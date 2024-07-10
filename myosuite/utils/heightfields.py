@@ -27,7 +27,7 @@ class SpecialTerrains(Enum):
     RELIEF = 0
 
 
-def gaussian_smoothing(array, sigma=1.0):
+def gaussian_smoothing(array, sigma=1.2):
     """
     Applies Gaussian kernel smoothing on a 2D array.
     Args:

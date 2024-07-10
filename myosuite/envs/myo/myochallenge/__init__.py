@@ -130,7 +130,7 @@ register_env_with_variants(id='myoChallengeRunTrackP1-v0',
             'reset_type': 'random',  # none, init, random
             'terrain': 'random',  # FLAT, random
             'hills_difficulties': (0.0, 0.1, 0.0, 0.5, 0.0, 0.8, 0.0, 1.0),
-            'rough_difficulties': (0.0, 0.05, 0.0, 0.1, 0.0, 0.2, 0.0, 0.8),
+            'rough_difficulties': (0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.3),
             'stairs_difficulties': (0.0, 0.05, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3),
             'distance_thr': 15,
             'init_pose_path': curr_dir+'/../assets/leg/init_data_withVel.csv'
