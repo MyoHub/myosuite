@@ -7,3 +7,10 @@
 [submodule "myosuite/simhive/object_sim"]
 	path = myosuite/simhive/object_sim
 	url = https://github.com/vikashplus/object_sim.git
+[submodule "myosuite/simhive/MPL_sim"]
+	path = myosuite/simhive/MPL_sim
+	url = https://github.com/vikashplus/MPL_sim.git
+	branch = myochallenge
+[submodule "myosuite/simhive/ycb_sim"]
+	path = myosuite/simhive/ycb_sim
+	url = https://github.com/vikashplus/ycb_sim.git
