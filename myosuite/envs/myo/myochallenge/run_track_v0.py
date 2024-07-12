@@ -13,10 +13,7 @@ from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat
 from myosuite.utils.heightfields import TrackField
-
-from opensourceleg.control.state_machine import Event, State, StateMachine
-from opensourceleg.osl import OpenSourceLeg
-
+from myosuite.envs.myo.assets.leg.MyoOSLController import MyoOSLStateMachine
 
 
 class TerrainTypes(Enum):
@@ -87,27 +84,24 @@ class RunTrack(WalkEnvV0):
                ):
 
         # Terrain type
-        self.terrain_type = 0
+        self.terrain_type = TerrainTypes.FLAT
 
         # Env initialization with data
-        file_path = os.path.join(init_pose_path)
-        self.INIT_DATA = np.loadtxt(file_path, skiprows=1, delimiter=',')
-        self.init_lookup = self.generate_init_lookup(keys=np.arange(48), value='e_swing')
-        self.init_lookup = self.generate_init_lookup(keys=np.arange(48, 99), value='l_swing', existing_dict=self.init_lookup)
-        self.init_lookup = self.generate_init_lookup(keys=np.arange(99, 183), value='e_stance', existing_dict=self.init_lookup)
-        self.init_lookup = self.generate_init_lookup(keys=np.arange(183, 247), value='l_stance', existing_dict=self.init_lookup)
-        with open(file_path) as csv_file:
-            csv_reader = csv.DictReader(csv_file)
-            temp = dict(list(csv_reader)[0])
-            headers = list(temp.keys())
-        self.imitation_lookup = dict(zip(headers, range(len(headers))))
+        if init_pose_path is not None:
+            file_path = os.path.join(init_pose_path)
+            self.INIT_DATA = np.loadtxt(file_path, skiprows=1, delimiter=',')
+            self.init_lookup = self.generate_init_lookup(keys=np.arange(48), value='e_swing')
+            self.init_lookup = self.generate_init_lookup(keys=np.arange(48, 99), value='l_swing', existing_dict=self.init_lookup)
+            self.init_lookup = self.generate_init_lookup(keys=np.arange(99, 183), value='e_stance', existing_dict=self.init_lookup)
+            self.init_lookup = self.generate_init_lookup(keys=np.arange(183, 247), value='l_stance', existing_dict=self.init_lookup)
+            with open(file_path) as csv_file:
+                csv_reader = csv.DictReader(csv_file)
+                temp = dict(list(csv_reader)[0])
+                headers = list(temp.keys())
+            self.imitation_lookup = dict(zip(headers, range(len(headers))))
 
         # OSL specific init
-        self.OSL = OpenSourceLeg(frequency=200)
-        self.OSL.add_joint(name="knee", gear_ratio=49.4, offline_mode=True)
-        self.OSL.add_joint(name="ankle", gear_ratio=58.4, offline_mode=True)
-        self._init_default_OSL_param()
-        self.OSL_FSM = self.build_4_state_FSM(self.OSL, 'e_stance')
+        self.OSL_CTRL = MyoOSLStateMachine(np.sum(self.MyoEnv.unwrapped.sim.model.body_mass), 'e_stance')
 
         self.muscle_space = self.sim.model.na # muscles only
         self.full_ctrl_space = self.sim.model.nu # Muscles + actuators
@@ -150,6 +144,7 @@ class RunTrack(WalkEnvV0):
         obs_dict['internal_qpos'] = self.get_internal_qpos() #sim.data.qpos[7:].copy()
         obs_dict['internal_qvel'] = self.get_internal_qvel() #sim.data.qvel[6:].copy() * self.dt
         obs_dict['grf'] = self._get_grf().copy()
+        obs_dict['socket_force'] = self._get_socket_force().copy()
         obs_dict['torso_angle'] = self.sim.data.body('pelvis').xquat.copy()
 
         obs_dict['muscle_length'] = self.muscle_lengths()
@@ -233,6 +228,7 @@ class RunTrack(WalkEnvV0):
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel, **kwargs)
         self.sim.forward()
+        self.OSL_CTRL.reset('e_stance')
 
         # Sync the states again as the heights from data might not be correct
         if self.reset_type == 'osl_init':
@@ -241,6 +237,8 @@ class RunTrack(WalkEnvV0):
             obs = super(WalkEnvV0, self).reset(reset_qpos=new_qpos, reset_qvel=new_qvel, **kwargs)
             self.sim.forward()
             self.OSL_FSM.start()
+
+        self.OSL_CTRL.start()
 
         return obs
 
@@ -421,8 +419,10 @@ class RunTrack(WalkEnvV0):
 
     def _get_grf(self):
         grf = np.array([self.sim.data.sensor(sens_name).data[0] for sens_name in self.grf_sensor_names]).copy()
-        grf = np.hstack( (grf, self.sim.data.sensor('r_socket_load').data[1].copy()) )
         return grf
+
+    def _get_socket_force(self):
+        return self.sim.data.sensor('r_socket_load').data.copy()
 
     def _get_pelvis_angle(self):
         return self.sim.data.body('pelvis').xquat.copy()
@@ -606,7 +606,7 @@ class RunTrack(WalkEnvV0):
 
         state = self.init_lookup[start_idx]
         # Override previous OSL controller
-        self.OSL_FSM = self.build_4_state_FSM(self.OSL, state)
+        self.OSL_CTRL.reset(state)
 
     def adjust_model_height(self):
 
@@ -639,7 +639,7 @@ class RunTrack(WalkEnvV0):
         return result_dict
 
     """
-    OSL related functions
+    OSL leg interaction functions
     """
     def _prepareActions(self, mus_actions):
         """
@@ -648,323 +648,28 @@ class RunTrack(WalkEnvV0):
         """
 
         full_actions = np.zeros(self.sim.model.nu,)
-        full_actions[0:54] = mus_actions[0:54].copy()
+        full_actions[0:self.sim.model.na] = mus_actions.copy()
 
-        osl_knee_id = self.sim.model.actuator('osl_knee_torque_actuator').id
-        osl_knee_act = self.get_osl_action('knee')
-        osl_ankle_id = self.sim.model.actuator('osl_ankle_torque_actuator').id
-        osl_ankle_act = self.get_osl_action('ankle')
+        self.OSL_CTRL.update(self.get_osl_sens())
 
-        full_actions[osl_knee_id] = osl_knee_act
-        full_actions[osl_ankle_id] = osl_ankle_act
+        osl_torque = self.OSL_CTRL.get_torques()
+
+        for jnt in ['knee', 'ankle']:
+            osl_id = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").id
+
+            full_actions[osl_id] = np.clip(osl_torque['knee'] / self.sim.model.actuator(f"osl_{jnt}_torque_actuator").gear[0],
+                    self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[0],
+                    self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[1])
 
         return full_actions
 
-    def get_osl_action(self, joint):
-        if joint not in ['knee', 'ankle']:
-            print(f"Non-existant joint. Can only be either 'knee' or 'ankle'")
-            raise Exception
+    def get_osl_sens(self):
 
-        K = eval(f"self.OSL_FSM.current_state.{joint}_stiffness")
-        B = eval(f"self.OSL_FSM.current_state.{joint}_damping")
-        theta = (eval(f"self.OSL_FSM.current_state.{joint}_theta"))
-        peak_torque = self.ACTUATOR_PARAM[f"osl_{joint}_torque_actuator"]['Fmax']
+        osl_sens_data = {}
+        osl_sens_data['knee_angle'] = self.MyoEnv.unwrapped.sim.data.joint('osl_knee_angle_r').qpos[0].copy()
+        osl_sens_data['knee_vel'] = self.MyoEnv.unwrapped.sim.data.joint('osl_knee_angle_r').qvel[0].copy()
+        osl_sens_data['ankle_angle'] = self.MyoEnv.unwrapped.sim.data.joint('osl_ankle_angle_r').qpos[0].copy()
+        osl_sens_data['ankle_vel'] = self.MyoEnv.unwrapped.sim.data.joint('osl_ankle_angle_r').qvel[0].copy()
+        osl_sens_data['load_cell'] = self.MyoEnv.unwrapped.sim.data.sensor('r_socket_load').data[1].copy() # Only vertical
 
-        temp_shorten = self.sim.data.joint(f"osl_{joint}_angle_r")
-
-        T = np.clip( K*(theta - temp_shorten.qpos[0].copy()) - B*(temp_shorten.qvel[0].copy()) , -1*peak_torque, peak_torque)
-
-        return np.clip(T / self.sim.model.actuator(f"osl_{joint}_torque_actuator").gear[0],
-                       self.sim.model.actuator(f"osl_{joint}_torque_actuator").ctrlrange[0],
-                       self.sim.model.actuator(f"osl_{joint}_torque_actuator").ctrlrange[1])
-
-    # State machine.
-    def build_4_state_FSM(self, osl: OpenSourceLeg, init_state: str) -> StateMachine:
-        """
-        This method builds a state machine with 4 states.
-        The states are early stance, late stance, early swing, and late swing.
-        It uses the impedance parameters and transition criteria above.
-
-        Inputs:
-            OSL instance
-        Returns:
-            FSM object
-
-        NOTE: The OSL variable are ignored here, and values are all from the Myosuite environment
-        CALL THIS FUNCTION AFTER CREATING THE ENVIRONMENT
-        """
-
-        # ------------- TUNABLE FSM PARAMETERS ---------------- #
-        # NOTE: Ankle angles : (+) Dorsiflexion (-) Plantarflexion
-
-        BODY_WEIGHT = np.sum(self.sim.model.body_mass) * 9.81
-        # ---------------------------------------------------- #
-
-        early_stance = State(name="e_stance")
-        late_stance = State(name="l_stance")
-        early_swing = State(name="e_swing")
-        late_swing = State(name="l_swing")
-        self.OSL_STATE_LIST = [early_stance, late_stance, early_swing, late_swing]
-
-        early_stance.set_knee_impedance_paramters(
-            theta=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_stance']['knee']['target_angle'],
-            k=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_stance']['knee']['stiffness'],
-            b=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_stance']['knee']['damping']
-        )
-        early_stance.make_knee_active()
-        early_stance.set_ankle_impedance_paramters(
-            theta=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_stance']['ankle']['target_angle'],
-            k=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_stance']['ankle']['stiffness'],
-            b=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_stance']['ankle']['damping']
-        )
-        early_stance.make_ankle_active()
-
-        late_stance.set_knee_impedance_paramters(
-            theta=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_stance']['knee']['target_angle'],
-            k=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_stance']['knee']['stiffness'],
-            b=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_stance']['knee']['damping']
-        )
-        late_stance.make_knee_active()
-        late_stance.set_ankle_impedance_paramters(
-            theta=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_stance']['ankle']['target_angle'],
-            k=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_stance']['ankle']['stiffness'],
-            b=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_stance']['ankle']['damping']
-        )
-        late_stance.make_ankle_active()
-
-        early_swing.set_knee_impedance_paramters(
-            theta=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_swing']['knee']['target_angle'],
-            k=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_swing']['knee']['stiffness'],
-            b=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_swing']['knee']['damping']
-        )
-        early_swing.make_knee_active()
-        early_swing.set_ankle_impedance_paramters(
-            theta=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_swing']['ankle']['target_angle'],
-            k=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_swing']['ankle']['stiffness'],
-            b=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_swing']['ankle']['damping']
-        )
-        early_swing.make_ankle_active()
-
-        late_swing.set_knee_impedance_paramters(
-            theta=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_swing']['knee']['target_angle'],
-            k=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_swing']['knee']['stiffness'],
-            b=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_swing']['knee']['damping']
-        )
-        late_swing.make_knee_active()
-        late_swing.set_ankle_impedance_paramters(
-            theta=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_swing']['ankle']['target_angle'],
-            k=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_swing']['ankle']['stiffness'],
-            b=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_swing']['ankle']['damping']
-        )
-        late_swing.make_ankle_active()
-
-        def estance_to_lstance(osl: OpenSourceLeg) -> bool:
-            """
-            Transition from early stance to late stance when the loadcell
-            reads a force greater than a threshold.
-            """
-            load_cell = self.sim.data.sensor('r_osl_load').data[1].copy()
-            ankle_pos = self.sim.data.joint('osl_ankle_angle_r').qpos[0].copy()
-
-            return bool(
-                load_cell > BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_stance']['threshold']['load']
-                and ankle_pos > self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_stance']['threshold']['ankle_angle']
-            )
-
-        def lstance_to_eswing(osl: OpenSourceLeg) -> bool:
-            """
-            Transition from late stance to early swing when the loadcell
-            reads a force less than a threshold.
-            """
-            load_cell = self.sim.data.sensor('r_osl_load').data[1].copy()
-
-            return bool(load_cell < BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_stance']['threshold']['load'])
-
-        def eswing_to_lswing(osl: OpenSourceLeg) -> bool:
-            """
-            Transition from early swing to late swing when the knee angle
-            is greater than a threshold and the knee velocity is less than
-            a threshold.
-            """
-            #assert osl.knee is not None
-
-            knee_pos = self.sim.data.joint('osl_knee_angle_r').qpos[0].copy()
-            knee_vel = self.sim.data.joint('osl_knee_angle_r').qvel[0].copy()
-
-            return bool(
-                knee_pos > self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_swing']['threshold']['knee_angle']
-                and knee_vel < self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['e_swing']['threshold']['knee_vel']
-            )
-
-        def lswing_to_estance(osl: OpenSourceLeg) -> bool:
-            """
-            Transition from late swing to early stance when the loadcell
-            reads a force greater than a threshold or the knee angle is
-            less than a threshold.
-            """
-
-            knee_pos = self.sim.data.joint('osl_knee_angle_r').qpos[0].copy()
-            load_cell = self.sim.data.sensor('r_osl_load').data[1].copy()
-
-            return bool(
-                load_cell > BODY_WEIGHT * self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_swing']['threshold']['load']
-                or knee_pos < self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]['l_swing']['threshold']['knee_angle']
-            )
-
-        foot_flat = Event(name="foot_flat")
-        heel_off = Event(name="heel_off")
-        toe_off = Event(name="toe_off")
-        pre_heel_strike = Event(name="pre_heel_strike")
-        heel_strike = Event(name="heel_strike")
-
-        fsm = StateMachine(osl=osl, spoof=False)
-
-        for item in self.OSL_STATE_LIST:
-            if item.name == init_state:
-                fsm.add_state(state=item, initial_state=True)
-            else:
-                fsm.add_state(state=item)
-
-        fsm.add_event(event=foot_flat)
-        fsm.add_event(event=heel_off)
-        fsm.add_event(event=toe_off)
-        fsm.add_event(event=pre_heel_strike)
-        fsm.add_event(event=heel_strike)
-
-        fsm.add_transition(
-            source=early_stance,
-            destination=late_stance,
-            event=foot_flat,
-            callback=estance_to_lstance,
-        )
-        fsm.add_transition(
-            source=late_stance,
-            destination=early_swing,
-            event=heel_off,
-            callback=lstance_to_eswing,
-        )
-        fsm.add_transition(
-            source=early_swing,
-            destination=late_swing,
-            event=toe_off,
-            callback=eswing_to_lswing,
-        )
-        fsm.add_transition(
-            source=late_swing,
-            destination=early_stance,
-            event=heel_strike,
-            callback=lswing_to_estance,
-        )
-        return fsm
-
-    """
-    OSL parameter loading helper functions
-    """
-    def set_osl_params_batch(self, params, mode=0):
-
-        assert len(params) == 31, "Should have 31 params"
-
-        phase_list = ['e_stance', 'l_stance', 'e_swing', 'l_swing']
-        joint_list = ['knee', 'ankle', 'threshold']
-        idx = 0
-
-        if isinstance(params, np.ndarray):
-            for phase in phase_list:
-                for jnt_arg in joint_list:
-                    for key in self.OSL_PARAM_LIST[mode][phase][jnt_arg].keys():
-                        self.OSL_PARAM_LIST[mode][phase][jnt_arg][key] = params[idx]
-                        idx += 1
-
-        elif isinstance(params, dict):
-            self.OSL_PARAM_LIST[mode] = copy.deepcopy(params)
-
-    def set_osl_param(self, phase_name, type, item, value, mode=0):
-
-        assert phase_name in ['e_stance', 'l_stance', 'e_swing', 'l_swing'], f"Phase should be : {['e_stance', 'l_stance', 'e_swing', 'l_swing']}"
-        assert type in ['knee', 'ankle', 'threshold'], f"Type should be : {['knee', 'ankle', 'threshold']}"
-        assert item in ['stiffness', 'damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle'], f"Type should be : {['stiffness', 'damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle']}"
-
-        self.OSL_PARAM_LIST[mode][phase_name][type][item] = value
-
-    def set_osl_mode(self, mode=0):
-        """
-        Selects the OSL parameter set to use and updates the state variables for the OSL leg
-        """
-        self.OSL_PARAM_SELECT = np.clip(mode, 0, 2)
-        self._update_param_to_osl()
-
-    def _update_param_to_osl(self):
-        """
-        Updates the currently selected OSL parameter to the OSL leg state machine
-        """
-        for item in self.OSL_STATE_LIST:
-            item.set_knee_impedance_paramters(
-                theta = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT][item.name]['knee']['target_angle'],
-                k = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT][item.name]['knee']['stiffness'],
-                b = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT][item.name]['knee']['damping'],
-            )
-            item.set_ankle_impedance_paramters(
-                theta=self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT][item.name]['ankle']['target_angle'],
-                k = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT][item.name]['ankle']['stiffness'],
-                b = self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT][item.name]['ankle']['damping'],
-            )
-
-    def _init_default_OSL_param(self):
-        temp_dict = {}
-        temp_dict['e_stance'] = {}
-        temp_dict['e_stance']['knee'] = {}
-        temp_dict['e_stance']['ankle'] = {}
-        temp_dict['e_stance']['threshold'] = {}
-        temp_dict['e_stance']['knee']['stiffness'] = 99.372
-        temp_dict['e_stance']['knee']['damping'] = 3.180
-        temp_dict['e_stance']['knee']['target_angle'] = np.deg2rad(5)
-        temp_dict['e_stance']['ankle']['stiffness'] = 19.874
-        temp_dict['e_stance']['ankle']['damping'] = 0
-        temp_dict['e_stance']['ankle']['target_angle'] = np.deg2rad(-2)
-        temp_dict['e_stance']['threshold']['load'] = 0.25
-        temp_dict['e_stance']['threshold']['ankle_angle'] = np.deg2rad(6)
-
-        temp_dict['l_stance'] = {}
-        temp_dict['l_stance']['knee'] = {}
-        temp_dict['l_stance']['ankle'] = {}
-        temp_dict['l_stance']['threshold'] = {}
-        temp_dict['l_stance']['knee']['stiffness'] = 99.372
-        temp_dict['l_stance']['knee']['damping'] = 1.272
-        temp_dict['l_stance']['knee']['target_angle'] = np.deg2rad(8)
-        temp_dict['l_stance']['ankle']['stiffness'] = 79.498
-        temp_dict['l_stance']['ankle']['damping'] = 0.063
-        temp_dict['l_stance']['ankle']['target_angle'] = np.deg2rad(-20)
-        temp_dict['l_stance']['threshold']['load'] = 0.15
-
-        temp_dict['e_swing'] = {}
-        temp_dict['e_swing']['knee'] = {}
-        temp_dict['e_swing']['ankle'] = {}
-        temp_dict['e_swing']['threshold'] = {}
-        temp_dict['e_swing']['knee']['stiffness'] = 39.749
-        temp_dict['e_swing']['knee']['damping'] = 0.063
-        temp_dict['e_swing']['knee']['target_angle'] = np.deg2rad(60)
-        temp_dict['e_swing']['ankle']['stiffness'] = 7.949
-        temp_dict['e_swing']['ankle']['damping'] = 0
-        temp_dict['e_swing']['ankle']['target_angle'] = np.deg2rad(25)
-        temp_dict['e_swing']['threshold']['knee_angle'] = np.deg2rad(50)
-        temp_dict['e_swing']['threshold']['knee_vel'] = np.deg2rad(3)
-
-        temp_dict['l_swing'] = {}
-        temp_dict['l_swing']['knee'] = {}
-        temp_dict['l_swing']['ankle'] = {}
-        temp_dict['l_swing']['threshold'] = {}
-        temp_dict['l_swing']['knee']['stiffness'] = 15.899
-        temp_dict['l_swing']['knee']['damping'] = 3.816
-        temp_dict['l_swing']['knee']['target_angle'] = np.deg2rad(5)
-        temp_dict['l_swing']['ankle']['stiffness'] = 7.949
-        temp_dict['l_swing']['ankle']['damping'] = 0
-        temp_dict['l_swing']['ankle']['target_angle'] = np.deg2rad(15)
-        temp_dict['l_swing']['threshold']['load'] = 0.4
-        temp_dict['l_swing']['threshold']['knee_angle'] = np.deg2rad(30)
-
-        for idx in np.arange(3):
-            self.OSL_PARAM_LIST.append(copy.deepcopy(temp_dict))
-
-    @property
-    def getOSLparam(self):
-        return copy.deepcopy(self.OSL_PARAM_LIST)
+        return osl_sens_data
