@@ -23,10 +23,10 @@ class BimanualEnvV1(BaseV0):
                         "object_qvel", "touching_body"]
 
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
-        "reach_dist": -.5,  # 1.0,
+        "reach_dist": -.1, 
         "act": 0,
-        "fin_dis": -1,
-        # "fin_open": -1, #-1,
+        "fin_dis": -0.5,
+        # "fin_open": -1,
         # "lift_height": 2,
         "pass_err": -1,
         # "lift_bonus": 1,
