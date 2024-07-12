@@ -15,7 +15,7 @@ import csv
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat
-from myosuite.heightfields import TrackField
+from myosuite.envs.heightfields import TrackField
 from myosuite.envs.myo.assets.leg.MyoOSLController import MyoOSLStateMachine
 
 
@@ -86,7 +86,7 @@ class RunTrack(WalkEnvV0):
 
         self.startFlag = False
         # Terrain type
-        self.terrain_type = TerrainTypes.FLAT
+        self.terrain_type = TerrainTypes.FLAT.value
 
         # Env initialization with data
         if init_pose_path is not None:
@@ -225,7 +225,7 @@ class RunTrack(WalkEnvV0):
     def reset(self, **kwargs):
         # randomized terrain types
         self._maybe_sample_terrain()
-        self.terrain_type = self.trackfield.terrain_type
+        self.terrain_type = self.trackfield.terrain_type.value
         # randomized initial state
         qpos, qvel = self._get_reset_state()
         self.robot.sync_sims(self.sim, self.sim_obsd)
@@ -334,7 +334,7 @@ class RunTrack(WalkEnvV0):
         # but dont change height or rot state
         rot_state = qpos[3:7]
         height = qpos[2]
-        qpos[0] = self.np_random.uniform(-self.real_width * 0.8, self.real_width * 0.8, size=1)
+        qpos[0] = self.np_random.uniform(-self.real_width * 0.8, self.real_width * 0.8, size=1).squeeze()
 
         qpos[3:7] = rot_state
         qpos[2] = height
