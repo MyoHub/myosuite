@@ -52,7 +52,7 @@
     <include file='../../../../simhive/MPL_sim/assets/left_arm_chain_myochallenge.xml'/>
     
     <!-- ======= Object ======= -->
-    <body pos="-0.4 -0.2 1.2" euler="0 0 3.14" name="manip_object">
+    <body pos="-0.4 -0.2 1.2" euler="1.57 0 3.14" name="manip_object">
       <freejoint/>
       <include file="../../../../simhive/ycb_sim/includes/body_009_gelatin_box.xml"/>
 	    <site name="touch_site" pos = "0 0 0.015" type="sphere" size="0.1" group="5" rgba="0.1 0.1 0.1 0.1"/>
@@ -68,7 +68,7 @@
       <geom type="cylinder" size="0.15 1.09" pos="0 0 -1.05" material="pillar_goal" contype="1" conaffinity="1" solref="0.001 1" priority="2"/>
     </body>
   </worldbody>
-<!--
+
   <keyframe>
     <key qpos='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 
                0.494975 -0.23732 0.55978 1.26065 -0.2355 0.20447 -0.1456 0.5175 0.2987 0.5356 0.27248 0.13455 0.333625 0.4472 0.2415 0.757525 0.8304 0.4209 0.08625 0.357175 0.559 0.759 0.14835 0.74575 0 0.7314 
@@ -83,6 +83,6 @@
   <sensor>
 	    <touch site="touch_site"/>
   </sensor>
-  -->
+ 
 
 </mujoco>

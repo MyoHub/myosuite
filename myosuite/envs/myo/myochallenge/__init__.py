@@ -30,6 +30,21 @@ def register_env_with_variants(id, entry_point, max_episode_steps, kwargs):
             silent=True
         )
 
+#MyoChallenge 2024 envs ===================
+#MyoChallenge Manipulation P1
+
+register_env_with_variants(id='myoChallengeBimanual-v0',
+        entry_point='myosuite.envs.myo.myochallenge.bimanual_v0:BimanualEnvV1',
+        max_episode_steps=250,
+        kwargs={
+            'object_name':  '009_gelatin_box',
+            'model_path': curr_dir + '/../assets/arm/myoarm_bionic_bimanual.xml',
+            'normalize_act': True,
+            'frame_skip': 5,
+        }
+    )
+
+
 # MyoChallenge 2023 envs ==============================================
 # MyoChallenge Manipulation P1
 register_env_with_variants(id='myoChallengeRelocateP1-v0',
