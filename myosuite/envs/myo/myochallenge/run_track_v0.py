@@ -198,7 +198,6 @@ class RunTrack(WalkEnvV0):
         """
         # average sucess over entire env horizon
         score = np.mean([np.sum(p['env_infos']['rwd_dict']['sparse']) for p in paths])
-        # average activations over entire trajectory (can be shorter than horizon, if done) realized
 
         metrics = {
             'score': score,

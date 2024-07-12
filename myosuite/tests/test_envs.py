@@ -22,9 +22,15 @@ def assert_close(prm1, prm2, atol=1e-05, rtol=1e-08):
         prm1_dict = flatten(prm1)
         prm2_dict = flatten(prm2)
         for key in prm1_dict.keys():
-            assert_close(prm1_dict[key], prm2_dict[key], atol=atol, rtol=rtol)
+            try:
+                assert_close(prm1_dict[key], prm2_dict[key], atol=atol, rtol=rtol)
+            except:
+                from pudb import set_trace; set_trace()
     else:
-        np.testing.assert_allclose(prm1, prm2, atol=atol, rtol=rtol)
+        try:
+            np.testing.assert_allclose(prm1, prm2, atol=atol, rtol=rtol)
+        except:
+            from pudb import set_trace; set_trace()
 
 class TestEnvs(unittest.TestCase):
 
