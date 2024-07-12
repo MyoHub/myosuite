@@ -657,7 +657,7 @@ class RunTrack(WalkEnvV0):
         for jnt in ['knee', 'ankle']:
             osl_id = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").id
 
-            full_actions[osl_id] = np.clip(osl_torque['knee'] / self.sim.model.actuator(f"osl_{jnt}_torque_actuator").gear[0],
+            full_actions[osl_id] = np.clip(osl_torque[jnt] / self.sim.model.actuator(f"osl_{jnt}_torque_actuator").gear[0],
                     self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[0],
                     self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[1])
 
