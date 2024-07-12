@@ -14,9 +14,7 @@
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
     <asset>
-        <!--<hfield name="terrain" size="1 15 2 0.001" nrow="50" ncol="5"/>-->
         <hfield name="terrain" size="1 15 1 0.001" nrow="600" ncol="20"/>
-        <!--<hfield name="terrain" size="5 5 1 0.001" nrow="10" ncol="100"/>-->
         <texture name="texmyo" type="cube" file="scene/myosuite_icon.png"/>
         <material name="matmyo" texture="texmyo" rgba="1 1 1 1"/>
     </asset>

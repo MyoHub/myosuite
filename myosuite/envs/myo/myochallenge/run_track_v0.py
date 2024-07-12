@@ -130,11 +130,7 @@ class RunTrack(WalkEnvV0):
                        )
         self.init_qpos[:] = self.sim.model.keyframe('osl_forward').qpos.copy()
         self.init_qvel[:] = 0.0
-        self.assert_settings()
         self.startFlag = True
-
-    def assert_settings(self):
-        pass
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -194,9 +190,6 @@ class RunTrack(WalkEnvV0):
                 ('done',  self._get_done()),
             ))
         rwd_dict['dense'] = np.sum([wt*rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
-
-        # Success Indicator
-        # self.sim.model.site_rgba[self.success_indicator_sid, :] = np.array([0, 2, 0, 0.2]) if rwd_dict['solved'] else np.array([2, 0, 0, 0])
         return rwd_dict
 
     def get_metrics(self, paths):
