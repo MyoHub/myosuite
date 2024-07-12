@@ -17,6 +17,7 @@ from myosuite.envs.myo.base_v0 import BaseV0
 
 CONTACT_TRAJ_MIN_LENGTH = 100
 
+
 class BimanualEnvV1(BaseV0):
     DEFAULT_OBS_KEYS = ["time", "myohand_qpos", "myohand_qvel", "pros_hand_qpos", "pros_hand_qvel", "object_qpos",
                         "object_qvel", "touching_body"]
@@ -31,70 +32,10 @@ class BimanualEnvV1(BaseV0):
         # "lift_bonus": 1,
     }
 
-    def __init__(self, object_name, model_path, start_pos=[-0.4, -0.25], goal_pos=[0.4, -0.25], obsd_model_path=None,
-                 seed=None, **kwargs):
-
-        # TODO include features to support integration of any objects as in MyoDM code
-
-        curr_dir = os.path.dirname(os.path.abspath(__file__))
-        self.object_name = object_name
-        asset_name_str = "assets_" + object_name
-        body_name_str = "body_" + object_name
-
-        # adding random disturbanc to start and goal positions, coefficients might need to be adaptable
-        self.start_rand = 0.1 * np.random.rand(2)
-        self.goal_rand = 0.1 * np.random.rand(2)
-
-        start_pos += 0.1 * np.random.rand(2)
-        goal_pos += 0.1 * np.random.rand(2)
-
-        time_stamp = str(time.time())
-
-        # Process model_path to import the right object
-        with open( model_path, "r") as file:
-            processed_xml = file.read()
-            processed_xml = processed_xml.replace("ASSET_NAME", asset_name_str)
-            processed_xml = processed_xml.replace("BODY_NAME", body_name_str)
-            # processed_xml = processed_xml.replace("START_POS", body_name_str)
-            # processed_xml = processed_xml.replace("GOAL_POS", body_name_str)
-        processed_model_path = (
-                model_path[:-4] + time_stamp + "_processed.xml"
-        )
-        with open(processed_model_path, "w") as file:
-            file.write(processed_xml)
-        # Process obsd_model_path to import the right object
-        if obsd_model_path == model_path:
-            processed_obsd_model_path = processed_model_path
-        elif obsd_model_path:
-            with open(curr_dir + obsd_model_path, "r") as file:
-                processed_xml = file.read()
-                processed_xml = processed_xml.replace("ASSET_NAME", asset_name_str)
-                processed_xml = processed_xml.replace("BODY_NAME", body_name_str)
-            processed_obsd_model_path = (
-                    curr_dir + model_path[:-4] + time_stamp + "_processed.xml"
-            )
-            with open(processed_obsd_model_path, "w") as file:
-                file.write(processed_xml)
-        else:
-            processed_obsd_model_path = None
-
+    def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
         # Two step construction (init+setup) is required for pickling to work correctly.
         gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
-
-        super().__init__(
-            model_path=processed_model_path,
-            obsd_model_path=processed_obsd_model_path,
-            seed=seed,
-            env_credits=self.DEFAULT_CREDIT,
-        )
-        os.remove(processed_model_path)
-        if (
-                processed_obsd_model_path
-                and processed_obsd_model_path != processed_model_path
-        ):
-            os.remove(processed_obsd_model_path)
-
-        self.initialized_pos = False
+        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
 
     """
@@ -113,20 +54,20 @@ class BimanualEnvV1(BaseV0):
                # shift factor for start/goal random generation with z-axis fixed
                goal_shifts=np.array([0.098, 0.098, 0]),
 
-               obj_size_range= None,  # Object size range. Nominal 0.022
-               obj_mass_range= None, #{'high': 0.50, 'low': 0.050},  # Object weight range. Nominal 43 gms
-               obj_friction_range= None, #{'high': [1.2, 0.006, 0.00012], 'low': [0.8, 0.004, 0.00008]},  # friction change
+               obj_size_range=None,  # Object size range. Nominal 0.022
+               obj_mass_range=None,  # {'high': 0.50, 'low': 0.050},  # Object weight range. Nominal 43 gms
+               obj_friction_range=None,
+               # {'high': [1.2, 0.006, 0.00012], 'low': [0.8, 0.004, 0.00008]},  # friction change
                task_choice='fixed',  # fixed/ random
                obs_keys: list = DEFAULT_OBS_KEYS,
                weighted_reward_keys: list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
+               start_pos=(-0.4, -0.25),
+               goal_pos=(0.4, -0.25),
                **kwargs,
                ):
 
-
         # user parameters
         self.task_choice = task_choice
-        # self.which_task = self.np_random.choice(Task) if task_choice == 'random' else Task(WHICH_TASK)
-
         self.proximity_th = proximity_th
 
         # setup for task randomization
@@ -161,10 +102,9 @@ class BimanualEnvV1(BaseV0):
         self.Rpalm1_sid = self.sim.model.site_name2id('prosthesis/palm_thumb')
         self.Rpalm2_sid = self.sim.model.site_name2id('prosthesis/palm_pinky')
 
-        # Compute and update the start and goal positions
-        self.start_pos = self.start_center + self.start_shifts * (2 * np.random.rand(3) - 1)
-        self.goal_pos = self.goal_center + self.goal_shifts * (2 * np.random.rand(3) - 1)
-        #
+        self.start_pos = self.start_center
+        self.goal_pos = self.goal_center
+
         self.sim.model.body_pos[self.start_bid] = self.start_pos
         self.sim.model.body_pos[self.goal_bid] = self.goal_pos
 
@@ -180,13 +120,13 @@ class BimanualEnvV1(BaseV0):
                        **kwargs,
                        )
         self.init_qpos[:] = self.sim.model.key_qpos[2].copy()
-        # reset position
-        # self.init_qpos[:-14] *= 0 # Use fully open as init pos
-        # self.init_qpos[0] = -1.57 # Palm up 
+        # adding random disturbance to start and goal positions, coefficients might need to be adaptable
+
+        self.initialized_pos = False
 
     def _obj_label_to_obs(self, touching_body):
-        # Function to convert touching body set to an binary observation vector
-        # order follows the definition in python_api file
+        # Function to convert touching body set to a binary observation vector
+        # order follows the definition in enum class
         obs_vec = np.array([0, 0, 0, 0, 0])
         for i in touching_body:
             if i == ObjLabels.MYO:
@@ -266,9 +206,9 @@ class BimanualEnvV1(BaseV0):
         reach_dist = np.abs(np.linalg.norm(obs_dict['reach_err'], axis=-1))
         pass_dist = np.abs(np.linalg.norm(obs_dict['pass_err'], axis=-1))
 
-        obj_pos = obs_dict["obj_pos"][0][0] if obs_dict['obj_pos'].ndim==3 else obs_dict['obj_pos']
-        palm_pos = obs_dict["palm_pos"][0][0] if obs_dict["palm_pos"].ndim==3 else obs_dict["palm_pos"]
-        goal_pos = obs_dict["goal_pos"][0][0] if obs_dict["goal_pos"].ndim==3 else obs_dict["goal_pos"]
+        obj_pos = obs_dict["obj_pos"][0][0] if obs_dict['obj_pos'].ndim == 3 else obs_dict['obj_pos']
+        palm_pos = obs_dict["palm_pos"][0][0] if obs_dict["palm_pos"].ndim == 3 else obs_dict["palm_pos"]
+        goal_pos = obs_dict["goal_pos"][0][0] if obs_dict["goal_pos"].ndim == 3 else obs_dict["goal_pos"]
 
         lift_height = np.linalg.norm(np.array([[[obj_pos[-1], palm_pos[-1]]]]) -
                                      np.array([[[self.init_obj_z, self.init_palm_z]]]), axis=-1)
@@ -324,7 +264,6 @@ class BimanualEnvV1(BaseV0):
             return False
         return True
 
-
     def get_metrics(self, paths, successful_steps=5):
         """
         Evaluate paths and report metrics
@@ -353,9 +292,8 @@ class BimanualEnvV1(BaseV0):
         return metrics
 
     def reset(self, **kwargs):
-
-        self.start_pos = self.start_center + self.start_shifts * (2 * np.random.rand(3) - 1)
-        self.goal_pos = self.goal_center + self.goal_shifts * (2 * np.random.rand(3) - 1)
+        self.start_pos = self.start_center + self.start_shifts * (2 * self.np_random.random(3) - 1)
+        self.goal_pos = self.goal_center + self.goal_shifts * (2 * self.np_random.random(3) - 1)
         #
         self.sim.model.body_pos[self.start_bid] = self.start_pos
         self.sim.model.body_pos[self.goal_bid] = self.goal_pos
@@ -369,19 +307,18 @@ class BimanualEnvV1(BaseV0):
         for gid in range(self.sim.model.body_geomnum[self.object_bid]):
             # Calculate the global geometry ID
             global_gid = gid + self.sim.model.body_geomadr[self.object_bid]
-            
+
             # Randomly assign friction if a range is provided
             if self.obj_friction_range is not None:
                 self.sim.model.geom_friction[global_gid] = self.np_random.uniform(**self.obj_friction_range)
-            
+
                 # Randomly determine the rescaling factor
-                rescale_factor = np.random.uniform(0.8, 1.2)
-                
+                rescale_factor = self.np_random.uniform(0.8, 1.2)
+
                 # Rescale geometry size
                 self.sim.model.geom_size[global_gid] *= rescale_factor
-                self.sim.model.geom_aabb[global_gid][3:]= 1.2 # bounding box, (center, size)
-                self.sim.model.geom_rbound[global_gid] = 2.0*1.2 # radius of bounding sphere
-               
+                self.sim.model.geom_aabb[global_gid][3:] = 1.2  # bounding box, (center, size)
+                self.sim.model.geom_rbound[global_gid] = 2.0 * 1.2  # radius of bounding sphere
 
         self.sim.forward()
 
@@ -392,11 +329,10 @@ class BimanualEnvV1(BaseV0):
             reset_qpos=self.init_qpos, reset_qvel=self.init_qvel, **kwargs
         )
         object_qpos_adr = self.sim.model.body(self.object_bid).jntadr[0]
-        self.sim.data.qpos[object_qpos_adr:object_qpos_adr+3] = self.start_pos + np.array([0, 0, 0.1])
+        self.sim.data.qpos[object_qpos_adr:object_qpos_adr + 3] = self.start_pos + np.array([0, 0, 0.1])
         self.init_obj_z = self.sim.data.site_xpos[self.object_sid][-1]
         self.init_palm_z = self.sim.data.site_xpos[self.palm_sid][-1]
         return obs
-
 
 
 class ObjLabels(enum.Enum):
@@ -411,7 +347,7 @@ class ContactTrajIssue(enum.Enum):
     MYO_SHORT = 0
     PROSTH_SHORT = 1
     NO_GOAL = 2  # Maybe can enforce implicitly, and only declare success is sufficient consecutive frames with only
-                 # goal contact.
+    # goal contact.
     ENV_CONTACT = 3
 
 
@@ -469,4 +405,3 @@ def evaluate_contact_trajectory(contact_trajectory: List[set]):
     # Check if only goal was touching object for the last CONTACT_TRAJ_MIN_LENGTH frames
     elif not np.all([{ObjLabels.GOAL} == s for s in contact_trajectory[-CONTACT_TRAJ_MIN_LENGTH:]]):
         return ContactTrajIssue.NO_GOAL
-
