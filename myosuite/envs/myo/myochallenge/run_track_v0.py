@@ -253,7 +253,6 @@ class RunTrack(WalkEnvV0):
         if not self.trackfield is None:
             self.trackfield.sample(self.np_random)
             self.sim.model.geom_rgba[self.sim.model.geom_name2id('terrain')][-1] = 1.0
-            # self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, -10, 0.005])
             self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, 0.005])
         else:
             # move trackfield down if not used
