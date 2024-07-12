@@ -12,4 +12,4 @@ Pillow
 pink-noise-rl
 packaging
 gitpython
-opensourceleg==2.2.1
+opensourceleg
