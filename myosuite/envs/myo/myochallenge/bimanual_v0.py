@@ -265,8 +265,12 @@ class BimanualEnvV1(BaseV0):
 
         reach_dist = np.abs(np.linalg.norm(obs_dict['reach_err'], axis=-1))
         pass_dist = np.abs(np.linalg.norm(obs_dict['pass_err'], axis=-1))
-        
-        lift_height = np.linalg.norm(np.array([[[obs_dict["obj_pos"][0][0][-1], obs_dict["palm_pos"][0][0][-1]]]]) -
+
+        obj_pos = obs_dict["obj_pos"][0][0] if obs_dict['obj_pos'].ndim==3 else obs_dict['obj_pos']
+        palm_pos = obs_dict["palm_pos"][0][0] if obs_dict["palm_pos"].ndim==3 else obs_dict["palm_pos"]
+        goal_pos = obs_dict["goal_pos"][0][0] if obs_dict["goal_pos"].ndim==3 else obs_dict["goal_pos"]
+
+        lift_height = np.linalg.norm(np.array([[[obj_pos[-1], palm_pos[-1]]]]) -
                                      np.array([[[self.init_obj_z, self.init_palm_z]]]), axis=-1)
         lift_height = 5 * np.exp(-10 * (lift_height - self.target_z) ** 2) - 5
 
@@ -277,7 +281,7 @@ class BimanualEnvV1(BaseV0):
 
         elbow_err = 5 * np.exp(-10 * (obs_dict['elbow_fle'][0] - 1.) ** 2) - 5
         goal_dis = np.array(
-            [[np.abs(np.linalg.norm(obs_dict["obj_pos"][0][0][:2] - obs_dict["goal_pos"][0][0], axis=-1))]])
+            [[np.abs(np.linalg.norm(obj_pos[:2] - goal_pos, axis=-1))]])
 
         rwd_dict = collections.OrderedDict(
             (
