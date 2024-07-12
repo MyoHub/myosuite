@@ -11,21 +11,11 @@ import mujoco
 from myosuite.utils import gym
 import numpy as np
 from robohive.utils.quat_math import mat2euler, euler2quat
+from typing import List
 
 from myosuite.envs.myo.base_v0 import BaseV0
 
-from .python_api import BodyIdInfo, arm_control, get_touching_objects, ObjLabels, evaluate_contact_trajectory
-
-
-# Define the task enum
-class Task(enum.Enum):
-    HOLD = 0
-    BAODING_CW = 1
-    BAODING_CCW = 2
-
-
-# Choose task
-# WHICH_TASK = Task.BAODING_CCW
+CONTACT_TRAJ_MIN_LENGTH = 100
 
 class BimanualEnvV1(BaseV0):
     DEFAULT_OBS_KEYS = ["time", "myohand_qpos", "myohand_qvel", "pros_hand_qpos", "pros_hand_qvel", "object_qpos",
@@ -402,3 +392,77 @@ class BimanualEnvV1(BaseV0):
         self.init_obj_z = self.sim.data.site_xpos[self.object_sid][-1]
         self.init_palm_z = self.sim.data.site_xpos[self.palm_sid][-1]
         return obs
+
+
+
+class ObjLabels(enum.Enum):
+    MYO = 0
+    PROSTH = 1
+    START = 2
+    GOAL = 3
+    ENV = 4
+
+
+class ContactTrajIssue(enum.Enum):
+    MYO_SHORT = 0
+    PROSTH_SHORT = 1
+    NO_GOAL = 2  # Maybe can enforce implicitly, and only declare success is sufficient consecutive frames with only
+                 # goal contact.
+    ENV_CONTACT = 3
+
+
+# Adding some default values, however this should be updated
+class BodyIdInfo:
+    def __init__(self, model: mujoco.MjModel):
+        self.manip_body_id = model.body("manip_object").id
+
+        myo_bodies = [model.body(i).id for i in range(model.nbody)
+                      if not model.body(i).name.startswith("prosthesis")
+                      and not model.body(i).name in ["start", "goal", "manip_object"]]
+        self.myo_range = (min(myo_bodies), max(myo_bodies))
+
+        prosth_bodies = [model.body(i).id for i in range(model.nbody) if model.body(i).name.startswith("prosthesis/")]
+        self.prosth_range = (min(prosth_bodies), max(prosth_bodies))
+
+        self.start_id = model.body("start").id
+        self.goal_id = model.body("goal").id
+
+
+def get_touching_objects(model: mujoco.MjModel, data: mujoco.MjData, id_info: BodyIdInfo):
+    for con in data.contact:
+        if model.geom(con.geom1).bodyid == id_info.manip_body_id:
+            yield body_id_to_label(model.geom(con.geom2).bodyid, id_info)
+        elif model.geom(con.geom2).bodyid == id_info.manip_body_id:
+            yield body_id_to_label(model.geom(con.geom1).bodyid, id_info)
+
+
+def body_id_to_label(body_id, id_info: BodyIdInfo):
+    if id_info.myo_range[0] < body_id < id_info.myo_range[1]:
+        return ObjLabels.MYO
+    elif id_info.prosth_range[0] < body_id < id_info.prosth_range[1]:
+        return ObjLabels.PROSTH
+    elif body_id == id_info.start_id:
+        return ObjLabels.START
+    elif body_id == id_info.goal_id:
+        return ObjLabels.GOAL
+    else:
+        return ObjLabels.ENV
+
+
+def evaluate_contact_trajectory(contact_trajectory: List[set]):
+    for s in contact_trajectory:
+        if ObjLabels.ENV in s:
+            return ContactTrajIssue.ENV_CONTACT
+
+    myo_frames = np.nonzero([ObjLabels.MYO in s for s in contact_trajectory])[0]
+    prosth_frames = np.nonzero([ObjLabels.PROSTH in s for s in contact_trajectory])[0]
+
+    if len(myo_frames) < CONTACT_TRAJ_MIN_LENGTH:
+        return ContactTrajIssue.MYO_SHORT
+    elif len(prosth_frames) < CONTACT_TRAJ_MIN_LENGTH:
+        return ContactTrajIssue.PROSTH_SHORT
+
+    # Check if only goal was touching object for the last CONTACT_TRAJ_MIN_LENGTH frames
+    elif not np.all([{ObjLabels.GOAL} == s for s in contact_trajectory[-CONTACT_TRAJ_MIN_LENGTH:]]):
+        return ContactTrajIssue.NO_GOAL
+
