@@ -9,7 +9,7 @@
 ====================================================== -©vk©-->
 
     <include file="../../../../simhive/myo_sim/torso/assets/myotorsorigid_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/osl_leg/assets/myolegs_osl_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/osl/assets/myolegs_osl_assets.xml"/>
     <include file="../myosuite_track.xml"/>
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
@@ -33,7 +33,7 @@
             <camera name="agent_view" pos="4 0 1.85" xyaxes="0 1 0 -1 0 2" mode="trackcom"/>
             <site name="head" size="0.02" pos="0 0 1.80" group="4"/>
             <include file="../../../../simhive/myo_sim/torso/assets/myotorsorigid_chain.xml"/>
-            <include file="../../../../simhive/myo_sim/osl_leg/assets/myolegs_osl_chain.xml"/>
+            <include file="../../../../simhive/myo_sim/osl/assets/myolegs_osl_chain.xml"/>
             <freejoint name="root"/>
         </body>
     </worldbody>
