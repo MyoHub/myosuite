@@ -101,7 +101,7 @@ class RunTrack(WalkEnvV0):
             self.imitation_lookup = dict(zip(headers, range(len(headers))))
 
         # OSL specific init
-        self.OSL_CTRL = MyoOSLStateMachine(np.sum(self.MyoEnv.unwrapped.sim.model.body_mass), 'e_stance')
+        self.OSL_CTRL = MyoOSLStateMachine(np.sum(self.sim.model.body_mass), 'e_stance')
 
         self.muscle_space = self.sim.model.na # muscles only
         self.full_ctrl_space = self.sim.model.nu # Muscles + actuators
@@ -666,10 +666,10 @@ class RunTrack(WalkEnvV0):
     def get_osl_sens(self):
 
         osl_sens_data = {}
-        osl_sens_data['knee_angle'] = self.MyoEnv.unwrapped.sim.data.joint('osl_knee_angle_r').qpos[0].copy()
-        osl_sens_data['knee_vel'] = self.MyoEnv.unwrapped.sim.data.joint('osl_knee_angle_r').qvel[0].copy()
-        osl_sens_data['ankle_angle'] = self.MyoEnv.unwrapped.sim.data.joint('osl_ankle_angle_r').qpos[0].copy()
-        osl_sens_data['ankle_vel'] = self.MyoEnv.unwrapped.sim.data.joint('osl_ankle_angle_r').qvel[0].copy()
-        osl_sens_data['load_cell'] = self.MyoEnv.unwrapped.sim.data.sensor('r_socket_load').data[1].copy() # Only vertical
+        osl_sens_data['knee_angle'] = self.sim.data.joint('osl_knee_angle_r').qpos[0].copy()
+        osl_sens_data['knee_vel'] = self.sim.data.joint('osl_knee_angle_r').qvel[0].copy()
+        osl_sens_data['ankle_angle'] = self.sim.data.joint('osl_ankle_angle_r').qpos[0].copy()
+        osl_sens_data['ankle_vel'] = self.sim.data.joint('osl_ankle_angle_r').qvel[0].copy()
+        osl_sens_data['load_cell'] = self.sim.data.sensor('r_socket_load').data[1].copy() # Only vertical
 
         return osl_sens_data
