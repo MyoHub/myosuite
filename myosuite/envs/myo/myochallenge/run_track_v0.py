@@ -15,7 +15,7 @@ import csv
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat
-from myosuite.utils.heightfields import TrackField
+from myosuite.heightfields import TrackField
 from myosuite.envs.myo.assets.leg.MyoOSLController import MyoOSLStateMachine
 
 
@@ -54,7 +54,6 @@ class RunTrack(WalkEnvV0):
         # This flag needs to be here to prevent the simulation from starting in a done state
         # Before setting the key_frames, the model and opponent will be in the cartesian position,
         # causing the step() function to evaluate the initialization as "done".
-        self.startFlag = False
 
         # EzPickle.__init__(**locals()) is capturing the input dictionary of the init method of this class.
         # In order to successfully capture all arguments we need to call gym.utils.EzPickle.__init__(**locals())
@@ -69,7 +68,6 @@ class RunTrack(WalkEnvV0):
         # created in __init__ to complete the setup.
         BaseV0.__init__(self, model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
-        self.startFlag = True
 
     def _setup(self,
                obs_keys: list = DEFAULT_OBS_KEYS,
@@ -86,6 +84,7 @@ class RunTrack(WalkEnvV0):
                **kwargs,
                ):
 
+        self.startFlag = False
         # Terrain type
         self.terrain_type = TerrainTypes.FLAT
 
@@ -132,6 +131,7 @@ class RunTrack(WalkEnvV0):
         self.init_qpos[:] = self.sim.model.keyframe('osl_forward').qpos.copy()
         self.init_qvel[:] = 0.0
         self.assert_settings()
+        self.startFlag = True
 
     def assert_settings(self):
         pass
@@ -404,7 +404,7 @@ class RunTrack(WalkEnvV0):
         # initial environment needs to be setup for self.horizon to work
         if not self.startFlag:
             return -1
-        y_pos = self.obs_dict['model_root_pos'].squeeze()[1] if self.startFlag else -1
+        y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
         score = (y_pos - 15) / (- 15 - 15)
         return score.squeeze()
 

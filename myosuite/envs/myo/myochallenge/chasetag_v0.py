@@ -14,7 +14,7 @@ from typing import Optional, Tuple
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat
-from myosuite.utils.heightfields import ChaseTagField
+from myosuite.envs.heightfields import ChaseTagField
 
 
 class Task(Enum):
@@ -736,7 +736,7 @@ class ChaseTagEnvV0(WalkEnvV0):
     def _chase_lose_condition(self):
         root_pos = self.sim.data.body('pelvis').xpos[:2]
         # didnt manage to tag
-        if float(self.obs_dict['time']) >= self.maxTime:
+        if float(self.obs_dict['time'].squeeze()) >= self.maxTime:
             return 1
         # out-of-bounds
         if np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5:

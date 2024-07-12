@@ -173,11 +173,11 @@ class HeightField:
 
     @property
     def nrow(self):
-        return int(self.hfield.nrow)
+        return int(self.hfield.nrow[0])
 
     @property
     def ncol(self):
-        return int(self.hfield.ncol)
+        return int(self.hfield.ncol[0])
 
 
 class ChaseTagField(HeightField):
