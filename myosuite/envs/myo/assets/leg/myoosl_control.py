@@ -110,7 +110,7 @@ class MyoOSLController:
     def _update_param_to_state_machine(self):
         # Hidden function, not to be used directly
         self.STATE_MACHINE.update_state_variables(self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT])
-
+        
     def _get_joint_torque(self, joint):
         # Hidden function, not to be used directly
         if joint not in ['knee', 'ankle']:

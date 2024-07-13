@@ -104,6 +104,7 @@ class RunTrack(WalkEnvV0):
 
         # OSL specific init
         self.OSL_CTRL = MyoOSLController(np.sum(self.sim.model.body_mass), init_state='e_stance')
+        self.OSL_CTRL.start() # Starting state machine so super.setup() can pass
 
         self.muscle_space = self.sim.model.na # muscles only
         self.full_ctrl_space = self.sim.model.nu # Muscles + actuators
@@ -205,12 +206,17 @@ class RunTrack(WalkEnvV0):
         return metrics
 
     def step(self, *args, **kwargs):
+<<<<<<< HEAD
 
         if self.reset_type == 'osl_init':
             out_act = self._prepareActions(*args)
             results = super().step(out_act, **kwargs)
         else:
             results = super().step(*args, **kwargs)
+=======
+        out_act = self._prepareActions(*args)
+        results = super().step(out_act, **kwargs)
+>>>>>>> d04e3be (Cleaned up debug lines and fixed indexing)
 
         return results
 
@@ -642,7 +648,7 @@ class RunTrack(WalkEnvV0):
         """
 
         full_actions = np.zeros(self.sim.model.nu,)
-        full_actions[0:self.sim.model.na] = mus_actions.copy()
+        full_actions[0:self.sim.model.na] = mus_actions[0:self.sim.model.na].copy()
 
         self.OSL_CTRL.update(self.get_osl_sens())
 
@@ -650,7 +656,6 @@ class RunTrack(WalkEnvV0):
 
         for jnt in ['knee', 'ankle']:
             osl_id = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").id
-
             full_actions[osl_id] = np.clip(osl_torque[jnt] / self.sim.model.actuator(f"osl_{jnt}_torque_actuator").gear[0],
                     self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[0],
                     self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[1])
@@ -664,6 +669,6 @@ class RunTrack(WalkEnvV0):
         osl_sens_data['knee_vel'] = self.sim.data.joint('osl_knee_angle_r').qvel[0].copy()
         osl_sens_data['ankle_angle'] = self.sim.data.joint('osl_ankle_angle_r').qpos[0].copy()
         osl_sens_data['ankle_vel'] = self.sim.data.joint('osl_ankle_angle_r').qvel[0].copy()
-        osl_sens_data['load_cell'] = self.sim.data.sensor('r_socket_load').data[1].copy() # Only vertical
+        osl_sens_data['load'] = self.sim.data.sensor('r_socket_load').data[1].copy() # Only vertical
 
         return osl_sens_data
