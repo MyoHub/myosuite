@@ -5,12 +5,12 @@ import time
 
 
 def run_env():
-    env = gym.make("myoChallengeChaseTagP2-v0")
-    # env = gym.make("myoChallengeRunTrackP1-v0")
+    env = gym.make("myoChallengeRunTrackP1-v0")
+    # env = gym.make("myoChallengeChaseTagP2-v0")
     env.reset()
     env.unwrapped.mj_render()
     env.reset()
-    for _ in range(100):
+    for _ in range(5):
         env.reset()
         for i in range(1000):
             action = env.action_space.sample()

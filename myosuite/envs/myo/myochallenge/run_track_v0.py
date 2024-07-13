@@ -16,7 +16,7 @@ from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat
 from myosuite.envs.heightfields import TrackField
-from myosuite.envs.myo.assets.leg.MyoOSLController import MyoOSLStateMachine
+from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
 
 
 class TerrainTypes(Enum):
@@ -103,7 +103,7 @@ class RunTrack(WalkEnvV0):
             self.imitation_lookup = dict(zip(headers, range(len(headers))))
 
         # OSL specific init
-        self.OSL_CTRL = MyoOSLStateMachine(np.sum(self.sim.model.body_mass), 'e_stance')
+        self.OSL_CTRL = MyoOSLController(np.sum(self.sim.model.body_mass), init_state='e_stance')
 
         self.muscle_space = self.sim.model.na # muscles only
         self.full_ctrl_space = self.sim.model.nu # Muscles + actuators
@@ -646,7 +646,7 @@ class RunTrack(WalkEnvV0):
 
         self.OSL_CTRL.update(self.get_osl_sens())
 
-        osl_torque = self.OSL_CTRL.get_torques()
+        osl_torque = self.OSL_CTRL.get_osl_torque()
 
         for jnt in ['knee', 'ankle']:
             osl_id = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").id
