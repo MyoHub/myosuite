@@ -7,19 +7,19 @@ import os
 import random
 from stable_baselines3 import PPO
 import numpy as np
+from stable_baselines3.common.env_util import make_vec_env
 
 from myosuite.utils import gym
-
-
+import myosuite.envs.myo.myochallenge
 
 nb_seed = 1
 
 movie = True
 path = '.'#/MPL_myo_bimanual'
-
-model = PPO.load('edited_baseline')
-
-env = gym.make('myoChallengeBimanual-v0')
+env = make_vec_env('myoChallengeBimanual-v0', 4)
+#env = gym.make('myoChallengeBimanual-v0')
+#model = myosuite.load_baseline(env)
+#print(model)
 env.reset()
 
 random.seed() 

@@ -1,5 +1,4 @@
 import importlib.util
-from myosuite.utils.load_utils import load_baseline
 
 # Utility to import gym/gymnasium
 def import_gym():
@@ -19,6 +18,3 @@ def import_gym():
     return gg
 gym = import_gym()
 
-__all__ = [
-    load_baseline,
-]
