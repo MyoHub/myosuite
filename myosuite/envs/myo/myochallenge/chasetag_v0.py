@@ -736,7 +736,7 @@ class ChaseTagEnvV0(WalkEnvV0):
     def _chase_lose_condition(self):
         root_pos = self.sim.data.body('pelvis').xpos[:2]
         # didnt manage to tag
-        if float(self.obs_dict['time'].squeeze()) >= self.maxTime:
+        if self.obs_dict['time'] >= self.maxTime:
             return 1
         # out-of-bounds
         if np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5:
