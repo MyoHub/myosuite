@@ -1,0 +1,88 @@
+<mujoco model="MyoArm_Bimanual_MPL_v0.01">
+<!-- =================================================
+    Copyright 2020 Vikash Kumar, Vittorio Caggiano, Guillaume Durandau
+    Model   :: Myo Hand (MuJoCoV2.0)
+    Author  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano, Huawei Wang, Balint Hodossy
+    source  :: https://github.com/vikashplus
+    License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+
+  <include file="../../../../simhive/YCB_sim/includes/defaults_ycb.xml"/>
+  <include file="../../../../simhive/YCB_sim/includes/assets_009_gelatin_box.xml"/>
+
+  <include file="../../../../simhive/myo_sim/arm/assets/myoarm_assets.xml"/>
+  <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
+
+  <include file='../../../../simhive/MPL_sim/assets/left_arm_assets.xml'/>
+  <include file='../../../../simhive/MPL_sim/assets/handL_assets.xml'/>
+
+  <compiler autolimits = "true" inertiafromgeom="auto" angle="radian" balanceinertia="true" boundmass="0.001" boundinertia=".0001"  meshdir='../../../../simhive/myo_sim' texturedir='../../../../simhive/myo_sim/'/>
+  <option timestep="0.002">
+    <flag multiccd="enable"/>
+  </option>
+
+  <visual>
+    <global offwidth="1440" offheight="1080"/>
+  </visual>
+  <asset>
+    <texture name="tabletop" type="2d" file="../furniture_sim/common/textures/stone1.png"/>
+    <material name="tabletop" texture="tabletop" rgba=".95 .95 .95 1"/>
+    <texture name="texwood" type="cube" file="../myo_sim/scene/floor0.png"/>
+    <material name="matwood" reflectance="0.01" texture="texwood" texuniform="false"/>
+    
+    <mesh file="../myo_sim/meshes/human_lowpoly_nohand.stl" name="body_nohand"/>
+    
+	  <texture type="2d" name="pillar_start" builtin="checker" mark="random" rgb1="0.4 0.4 0.4" rgb2="0.38 0.38 0.38"
+        markrgb="0.8 0.8 0.8" width="300" height="300" random="0.5"/>
+    <material name="pillar_start" texture="pillar_start" texuniform="true" texrepeat="5 5" reflectance="0.1"/>
+	
+	  <texture type="2d" name="pillar_goal" builtin="checker" mark="random" rgb1="0.45 0.45 0.45" rgb2="0.47 0.47 0.47"
+        markrgb="0.6 0.6 0.6" width="300" height="300" random="0.4"/>
+    <material name="pillar_goal" texture="pillar_goal" texuniform="true" texrepeat="5 5" reflectance="0.1"/>
+  </asset>
+	
+
+  <worldbody>
+
+    <!-- ======= Human ======= -->
+    <geom name="body" type="mesh" mesh="body_nohand" euler="0 0 3.14" contype="0" conaffinity="0"/>
+    <body name="full_body" pos="-.025 0.1 1.40">
+      <include file="../../../../simhive/myo_sim/arm/assets/myoarm_body.xml"/>
+    </body>
+    <include file='../../../../simhive/MPL_sim/assets/left_arm_chain_myochallenge.xml'/>
+    
+    <!-- ======= Object ======= -->
+    <body pos="-0.4 -0.2 1.2" euler="1.57 0 3.14" name="manip_object">
+      <freejoint/>
+      <include file="../../../../simhive/YCB_sim/includes/body_009_gelatin_box.xml"/>
+	    <site name="touch_site" pos = "0 0 0.015" type="sphere" size="0.1" group="5" rgba="0.1 0.1 0.1 0.1"/>
+    </body>
+  
+    <!-- ======= Start ======= -->
+    <body name="start" mocap="true" pos="-0.4 -0.25 1.05">
+      <geom type="cylinder" size="0.15 1.09" pos="0 0 -1.05" material="pillar_start" contype="1" conaffinity="1" solref="0.001 1" priority="2"/>
+    </body>
+    
+    <!-- ======= Goal ======= -->
+    <body name="goal" mocap="true" pos="0.4 -0.25 1.05">
+      <geom type="cylinder" size="0.15 1.09" pos="0 0 -1.05" material="pillar_goal" contype="1" conaffinity="1" solref="0.001 1" priority="2"/>
+    </body>
+  </worldbody>
+
+  <keyframe>
+    <key qpos='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 
+               0.494975 -0.23732 0.55978 1.26065 -0.2355 0.20447 -0.1456 0.5175 0.2987 0.5356 0.27248 0.13455 0.333625 0.4472 0.2415 0.757525 0.8304 0.4209 0.08625 0.357175 0.559 0.759 0.14835 0.74575 0 0.7314 
+               -0.412997 -0.232224 1.10552 0.000796327 1.11022e-16 2.77556e-16 1'/>
+    <key qpos='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 
+               0.494975 -1.07492 0.55978 1.26065 -0.2355 -0.08841 -0.208 0.5589 0.2987 0.5356 0.27248 0.276 0.4396 0.688 0.2415 0.22765 0.8304 0.4209 0.08625 0.357175 0.559 0 0.239775 0.286525 0 0.0345 
+               -0.412997 -0.232224 1.10552 0.000796327 1.11022e-16 2.77556e-16 1'/>
+    <key qpos='-0.27804 0.11771 -0.11772 0.278047 -0.0564319 0.455158 0.204836 -0.204794 -0.455214 0.0564719 0.255888 1.14817 -0.255887 0.279129 0.844823 -0.0998497 0.248825 0.0328147 -0.31963 0.178287 0.122586 0.113854 0.156447 0.171211 0.0772555 0.0316704 0.14087 0.164449 0.0772084 0.0308998 0.126385 0.138577 0.0653656 0.0228821 0.117182 0.0890675 0.0301141 0.0205077 0.494975 -1.07492 0.55978 1.26065 -0.2355 -0.08841 -0.208 0.5589 0.2987 0.5356 0.27248 0.276 0.4396 0.688 0.2415 0.22765 0.8304 0.4209 0.08625 0.357175 0.559 0 0.239775 0.286525 0 0.0345 
+                 -0.400023 -0.200065 1.154 0.000477691 -0.000484427 -0.707107 0.707107'/>
+    <key qpos='-0.27804 0.11771 -0.11772 0.278047 -0.0564319 0.455158 0.204836 -0.204794 -0.455214 0.0564719 0.255888 1.14817 -0.255887 0.279129 0.844823 -0.0998497 0.248825 0.0328147 -0.31963 0.178287 0.122586 0.113854 0.156447 0.171211 0.0772555 0.0316704 0.14087 0.164449 0.0772084 0.0308998 0.126385 0.138577 0.0653656 0.0228821 0.117182 0.0890675 0.0301141 0.0205077 0.494975 0 0.23866 1.65267 1.57 0.11556 -0.4368 0.5589 0.25235 0.5356 0.27248 0.276 0.4396 0.688 0.2415 0.22765 0.8304 0.4209 0.08625 0.357175 0.559 0 0.239775 0.286525 0 0.0345 -0.400023 -0.200065 1.184 0.000477691 -0.000484427 -0.707107 0.707107'/>
+    </keyframe>
+  <sensor>
+	    <touch site="touch_site"/>
+  </sensor>
+ 
+
+</mujoco>
