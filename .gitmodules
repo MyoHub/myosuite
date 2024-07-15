@@ -13,4 +13,4 @@
 	branch = myochallenge
 [submodule "myosuite/simhive/YCB_sim"]
 	path = myosuite/simhive/YCB_sim
-	url = https://github.com/vikashplus/ycb_sim.git
+	url = https://github.com/vikashplus/YCB_sim.git
