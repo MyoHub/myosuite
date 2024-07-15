@@ -16,6 +16,7 @@ class TerrainTypes(Enum):
     FLAT = 0
     HILLY = 1
     ROUGH = 2
+    RELIEF = 3
 
 class TrackTypes(Enum):
     HILLY = 0

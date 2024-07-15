@@ -100,11 +100,11 @@ class RunTrack(WalkEnvV0):
                 csv_reader = csv.DictReader(csv_file)
                 temp = dict(list(csv_reader)[0])
                 headers = list(temp.keys())
-            self.imitation_lookup = dict(zip(headers, range(len(headers))))
+            self.gait_cycle_headers = dict(zip(headers, range(len(headers))))
 
         # OSL specific init
         self.OSL_CTRL = MyoOSLController(np.sum(self.sim.model.body_mass), init_state='e_stance')
-        self.OSL_CTRL.start() # Starting state machine so super.setup() can pass
+        self.OSL_CTRL.start()
 
         self.muscle_space = self.sim.model.na # muscles only
         self.full_ctrl_space = self.sim.model.nu # Muscles + actuators
@@ -129,7 +129,7 @@ class RunTrack(WalkEnvV0):
                        reset_type=reset_type,
                        **kwargs
                        )
-        self.init_qpos[:] = self.sim.model.keyframe('osl_forward').qpos.copy()
+        self.init_qpos[:] = self.sim.model.keyframe('stand').qpos.copy()
         self.init_qvel[:] = 0.0
         self.startFlag = True
 
@@ -206,17 +206,8 @@ class RunTrack(WalkEnvV0):
         return metrics
 
     def step(self, *args, **kwargs):
-<<<<<<< HEAD
-
-        if self.reset_type == 'osl_init':
-            out_act = self._prepareActions(*args)
-            results = super().step(out_act, **kwargs)
-        else:
-            results = super().step(*args, **kwargs)
-=======
         out_act = self._prepareActions(*args)
         results = super().step(out_act, **kwargs)
->>>>>>> d04e3be (Cleaned up debug lines and fixed indexing)
 
         return results
 
@@ -231,8 +222,8 @@ class RunTrack(WalkEnvV0):
         self.sim.forward()
         self.OSL_CTRL.reset('e_stance')
 
-        # Sync the states again as the heights from data might not be correct
-        if self.reset_type == 'osl_init':
+        # Sync the states again as the randomization might cause the part of the model to be inside the ground
+        if self.reset_type != 'init':
             new_qpos, new_qvel = self.adjust_model_height()
             self.robot.sync_sims(self.sim, self.sim_obsd)
             obs = super(WalkEnvV0, self).reset(reset_qpos=new_qpos, reset_qvel=new_qvel, **kwargs)
@@ -335,7 +326,7 @@ class RunTrack(WalkEnvV0):
 
         qpos[3:7] = rot_state
         qpos[2] = height
-        qpos[1] = 15
+        qpos[1] = 14
         return qpos, qvel
 
     def _setup_convenience_vars(self):
@@ -579,30 +570,30 @@ class RunTrack(WalkEnvV0):
         else:
             start_idx = self.np_random.integers(low=0, high=self.INIT_DATA.shape[0])
 
-        for joint in self.imitation_lookup.keys():
+        for joint in self.gait_cycle_headers.keys():
             if joint not in ['pelvis_euler_roll', 'pelvis_euler_pitch', 'pelvis_euler_yaw',
                                 'l_foot_relative_X', 'l_foot_relative_Y', 'l_foot_relative_Z',
                                 'r_foot_relative_X', 'r_foot_relative_Y', 'r_foot_relative_Z',
                                 'pelvis_vel_X', 'pelvis_vel_Y', 'pelvis_vel_Z']:
-                self.init_qpos[self.sim.model.joint(joint).qposadr[0]] = self.INIT_DATA[start_idx,self.imitation_lookup[joint]]
+                self.init_qpos[self.sim.model.joint(joint).qposadr[0]] = self.INIT_DATA[start_idx,self.gait_cycle_headers[joint]]
 
         # Get the Yaw from the init pose
         default_quat = self.init_qpos[3:7].copy() # Get the default facing direction first
 
-        init_quat = self.intrinsic_EulerXYZ_toQuat(self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_euler_roll']],
-                                                   self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_euler_pitch']],
-                                                   self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_euler_yaw']])
+        init_quat = self.intrinsic_EulerXYZ_toQuat(self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_roll']],
+                                                   self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_pitch']],
+                                                   self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_yaw']])
         self.init_qpos[3:7] = init_quat
 
         # Use the default facing direction to set the world frame velocity
         temp_euler = self.get_intrinsic_EulerXYZ(default_quat)
-        world_vel_X, world_vel_Y = self.rotate_frame(self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_vel_X']],
-                                                     self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_vel_Y']],
+        world_vel_X, world_vel_Y = self.rotate_frame(self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_vel_X']],
+                                                     self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_vel_Y']],
                                                      temp_euler[2])
         self.init_qvel[:] = 0
         self.init_qvel[0] = world_vel_X
         self.init_qvel[1] = world_vel_Y
-        self.init_qvel[2] = self.INIT_DATA[start_idx, self.imitation_lookup['pelvis_vel_Z']]
+        self.init_qvel[2] = self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_vel_Z']]
 
         state = self.init_lookup[start_idx]
         # Override previous OSL controller

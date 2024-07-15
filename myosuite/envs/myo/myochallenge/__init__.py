@@ -55,7 +55,7 @@ register_env_with_variants(id='myoChallengeRunTrackP1-v0',
             'stairs_difficulties': (0.0, 0.05, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3),
             'distance_thr': 15,
             'frame_skip': 5,
-            'init_pose_path': curr_dir+'/../assets/leg/init_data_withVel.csv'
+            'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv'
             
         }
     )

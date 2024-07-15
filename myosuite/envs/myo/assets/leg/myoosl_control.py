@@ -64,7 +64,7 @@ class MyoOSLController:
 
     def get_osl_torque(self):
         """
-        Obtain torques from the 
+        Internal function to obtain torques from 
         """
         out_joint_list = ['knee', 'ankle']
         return dict(zip( out_joint_list, [self._get_joint_torque(jnt) for jnt in out_joint_list] ))
@@ -101,7 +101,9 @@ class MyoOSLController:
         self.OSL_PARAM_LIST[mode][phase_name][param_type][gain] = value
 
     def set_motor_param(self, joint, act_param):
-
+        """
+        
+        """
         assert joint in ['knee', 'ankle'], f"Joint should be : {['knee', 'ankle']}"
         assert act_param in ['gear_ratio', 'peak_torque', 'control_range'], f"Actuator parameter should be : {['gear_ratio', 'peak_torque', 'control_range']}"
 
