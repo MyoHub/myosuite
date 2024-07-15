@@ -11,6 +11,6 @@
 	path = myosuite/simhive/MPL_sim
 	url = https://github.com/vikashplus/MPL_sim.git
 	branch = myochallenge
-[submodule "myosuite/simhive/ycb_sim"]
-	path = myosuite/simhive/ycb_sim
-	url = https://github.com/vikashplus/ycb_sim.git
+[submodule "myosuite/simhive/YCB_sim"]
+	path = myosuite/simhive/YCB_sim
+	url = https://github.com/vikashplus/YCB_sim.git
