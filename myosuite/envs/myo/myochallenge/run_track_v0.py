@@ -19,10 +19,11 @@ from myosuite.envs.heightfields import TrackField
 from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
 
 
-class TerrainTypes(Enum):
+class TrackTypes(Enum):
     FLAT = 0
     HILLY = 1
     ROUGH = 2
+    STAIRS = 3
 
 
 class RunTrack(WalkEnvV0):
@@ -86,7 +87,7 @@ class RunTrack(WalkEnvV0):
 
         self.startFlag = False
         # Terrain type
-        self.terrain_type = TerrainTypes.FLAT.value
+        self.terrain_type = TrackTypes.FLAT.value
 
         # Env initialization with data
         if init_pose_path is not None:

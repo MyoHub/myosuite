@@ -1,3 +1,8 @@
+""" =================================================
+# Copyright (c) MyoSuite Authors
+Authors  :: Chun Kwang Tan (cktan.neumove@gmail.com)
+================================================= """
+
 import numpy as np
 import copy
 
@@ -77,7 +82,12 @@ class MyoOSLController:
         self._update_param_to_state_machine()
 
     def set_osl_param_batch(self, params, mode=0):
-
+        """
+        A batch method to upload parameters for the State Machine
+        States: ['e_stance', 'l_stance', 'e_swing', 'l_swing']
+        Parameter type: ['knee', 'ankle', 'threshold']
+        Parameters: ['knee_stiffness', 'knee_damping', 'ankle_stiffness', 'ankle_damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle']
+        """
         phase_list = ['e_stance', 'l_stance', 'e_swing', 'l_swing']
         joint_list = ['knee', 'ankle', 'threshold']
         idx = 0
@@ -93,7 +103,9 @@ class MyoOSLController:
             self.OSL_PARAM_LIST[mode] = copy.deepcopy(params)
 
     def set_osl_param(self, phase_name, param_type, gain, value, mode=0):
-
+        """
+        Function to set individual parameters of the OSL leg
+        """
         assert phase_name in ['e_stance', 'l_stance', 'e_swing', 'l_swing'], f"Phase should be : {['e_stance', 'l_stance', 'e_swing', 'l_swing']}"
         assert param_type in ['gain', 'threshold'], f"Type should be : {['gain', 'threshold']}"
         assert gain in ['knee_stiffness', 'knee_damping', 'ankle_stiffness', 'ankle_damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle'], f"Gains should be : {['knee_stiffness', 'knee_damping', 'ankle_stiffness', 'ankle_damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle']}"
@@ -102,7 +114,7 @@ class MyoOSLController:
 
     def set_motor_param(self, joint, act_param):
         """
-        
+        Function to set hardware parameters of the actuators
         """
         assert joint in ['knee', 'ankle'], f"Joint should be : {['knee', 'ankle']}"
         assert act_param in ['gear_ratio', 'peak_torque', 'control_range'], f"Actuator parameter should be : {['gear_ratio', 'peak_torque', 'control_range']}"
@@ -110,11 +122,13 @@ class MyoOSLController:
         self.HARDWARE[joint][act_param] = act_param
 
     def _update_param_to_state_machine(self):
+        "Internal function to update gain paramters into the State Machine"
         # Hidden function, not to be used directly
         self.STATE_MACHINE.update_state_variables(self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT])
         
     def _get_joint_torque(self, joint):
         # Hidden function, not to be used directly
+        "Internal function to calculate commanded torques for each joint"
         if joint not in ['knee', 'ankle']:
             print(f"Non-existant joint. Can only be either 'knee' or 'ankle'")
             raise Exception
@@ -133,6 +147,9 @@ class MyoOSLController:
         return T
 
     def initDefaults(self, body_mass):
+        """
+        Initialization functions for body weight and default State Machine variables
+        """
         self.GRAVITY = 9.81
         self.BODY_MASS = body_mass
         self.BODY_WEIGHT = self.BODY_MASS * self.GRAVITY
@@ -228,7 +245,9 @@ class State:
         self.next_state = next_state
 
     def check_transition(self, sens_data):
-
+        """
+        Checks if a threshold has been reach for state transitions
+        """
         for key, (threshold, condition) in self.thresholds.items():
             if condition == "above" and sens_data[key] > threshold:
                 return self.next_state
@@ -237,37 +256,67 @@ class State:
         return self
 
     def get_name(self):
+        """
+        Getter: Name
+        """
         return self.name
 
     def get_variables(self):
+        """
+        Getter: State variables
+        """
         return copy.deepcopy(self.state_variables)
     
     def get_thresholds(self):
+        """
+        Getter: Thresholds for state transitions
+        """
         return copy.deepcopy(self.thresholds)
 
     def set_variables(self, new_variables: dict):
+        """
+        Setter: Sets state variables via a dictionary
+        """
         self.state_variables = copy.deepcopy(new_variables)
 
     def set_thresholds(self, new_thresholds: dict):
+        """
+        Setter: Sets state transition thresholds via a dictionary
+        """
         self.thresholds = copy.deepcopy(new_thresholds)
     
 class StateMachine:
     def __init__(self, states):
+        """
+        State Machine for OSL impedance controller
+        """
         self.states = states
         self.current_state = None
         self.running = False
 
     def init_machine(self, initial_state):
+        """
+        Initializes the state machine with an initial state
+        """
         assert initial_state in self.states.keys(), f"No state named {initial_state}. Should be {self.states.keys()}"
         self.current_state = self.states[initial_state]
 
     def start(self):
+        """
+        Starts the state machine
+        """
         self.running = True
 
     def stop(self):
+        """
+        Stops the state machine
+        """
         self.running = False
 
     def update(self, sens_data):
+        """
+        Updates the State Machine with environment sensor data and checks for state transitions
+        """
         if self.running and self.current_state is not None:
             self.current_state = self.current_state.check_transition(sens_data)
 
@@ -282,10 +331,16 @@ class StateMachine:
     
     @property
     def is_running(self):
+        """
+        Boolean to check if State Machine is running
+        """
         return self.is_running
 
     @property
     def get_current_state(self):
+        """
+        Get current state from the State Machine
+        """
         if self.running:
             return copy.deepcopy(self.current_state)
         else:

@@ -16,12 +16,12 @@ class TerrainTypes(Enum):
     FLAT = 0
     HILLY = 1
     ROUGH = 2
-    RELIEF = 3
 
 class TrackTypes(Enum):
-    HILLY = 0
-    ROUGH = 1
-    STAIRS = 2
+    FLAT = 0
+    HILLY = 1
+    ROUGH = 2
+    STAIRS = 3
 
 
 class SpecialTerrains(Enum):
