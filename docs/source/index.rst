@@ -1,19 +1,54 @@
 Welcome to MyoSuite's documentation!
 =====================================
 
-`MyoSuite <https://sites.google.com/view/myosuite>`_  is a collection of musculoskeletal environments and tasks simulated with the `MuJoCo <http://www.mujoco.org/>`_ physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems
+`MyoSuite <https://sites.google.com/view/myosuite>`_  is a collection of musculoskeletal environments and tasks simulated with the `MuJoCo <http://www.mujoco.org/>`_ physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems.
+
+Check our `github repository <https://github.com/MyoHub/myosuite>`__ for more technical details.
+
+Our paper can be found at: `https://arxiv.org/abs/2205.13600 <https://arxiv.org/abs/2205.13600>`__
+
+Before you start, we highly recommended to have a basic understanding of `OpenAI Gym API <https://gymnasium.farama.org/>`__. Principle knowledge in Reinforcement Learning is also expected for a best experience.
+
 .. note::
 
    This project is under active development.
+
+
+Main features
+============================================
+   * Bio-mechanic based simulation of musculoskeletal
+   * Task-driven controller for motion synthesis
+
+.. TODO: confirm features for myosuite
+
 
 .. toctree::
    :maxdepth: 1
    :caption: Get started
 
    install
-   suite
    tutorials
-   baselines
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Advanced Features
+
+   suite
+   
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Documentations
+
+   api
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Projects with Myosuite
+
+   projects
+   baselines 
+
 
 .. toctree::
    :maxdepth: 1
