@@ -61,18 +61,6 @@ Get commands to run
 % sh train_myosuite.sh myo slurm sb3   # use stable-baselines3 with slurm launcher
 ```
 
-### Running MyoChallenge Baseline
-Get commands to run
-```bash
-% sh train_myosuite.sh myochal local sb3
-```
-
-To load from a checkpoint, use this command to fetch the baseline:
-```bash
-% sh train_myosuite.sh myochal local sb3 baseline
-```
-You can now resume training from a previous checkpoint by adding `+job_name=checkpoint.pt` to the command line
-
 </details>
 
 
