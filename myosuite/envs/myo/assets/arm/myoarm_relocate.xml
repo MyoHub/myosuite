@@ -12,6 +12,7 @@
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
     <asset>
+        <mesh file="../myo_sim/meshes/human_lowpoly_norighthand.stl" name="body_norighthand"/>
         <texture name="tabletop" type="2d" file="../furniture_sim/common/textures/stone1.png"/>
         <material name="tabletop" texture="tabletop" rgba=".95 .95 .95 1"/>
         <texture name="texwood" type="cube" file="../myo_sim/scene/floor0.png"/>
