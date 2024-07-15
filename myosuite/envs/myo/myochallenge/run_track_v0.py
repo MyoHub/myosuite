@@ -228,8 +228,6 @@ class RunTrack(WalkEnvV0):
             self.robot.sync_sims(self.sim, self.sim_obsd)
             obs = super(WalkEnvV0, self).reset(reset_qpos=new_qpos, reset_qvel=new_qvel, **kwargs)
             self.sim.forward()
-            self.OSL_FSM.start()
-
         self.OSL_CTRL.start()
 
         return obs
