@@ -1,7 +1,8 @@
-Tutorials
-###########
-
 .. _tutorials:
+
+Tutorials
+######################
+
 
 
 Here a set of examples on how to use different MyoSuite models and non-stationarities.

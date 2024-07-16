@@ -47,7 +47,9 @@ Main features
    :caption: Projects with Myosuite
 
    projects
-   baselines 
+   baselines
+   challenge-doc
+
 
 
 .. toctree::
