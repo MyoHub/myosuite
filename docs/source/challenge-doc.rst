@@ -180,6 +180,48 @@ Observation Space
 
 .. TODO : Is it better to make it a table?
 
++-----------------------------------------+-----------------------------+-----------------+
+| **Description**                         |        **Access**           |   **Dimension** |
++-----------------------------------------+-----------------------------+-----------------+
+|Time                                     |      obs_dict['time']       |        (1x1)    |
++-----------------------------------------+-----------------------------+-----------------+
+| Terrain type (see below)                |   obs_dict['terrain']       | (1x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Torso angle                             |                             |                 |
+| (quaternion in world frame)             |   obs_dict['torso_angle']   |  (4x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Joint positions                         |                             |                 |
+| (except those from the prosthetic leg)  | obs_dict['internal_qpos']   |  (21x1)         | 
++-----------------------------------------+-----------------------------+-----------------+
+| Joint velocities                        |                             |                 | 
+| (except those from the prosthetic leg)  | obs_dict['internal_qvel']   | (21x1)          | 
++-----------------------------------------+-----------------------------+-----------------+
+| Ground reaction forces                  | obs_dict['grf']             |  (2x1)          |
+| (only for biological leg)               |                             |                 |
++-----------------------------------------+-----------------------------+-----------------+
+| Socket forces (see below)               | obs_dict['socket_force']    | (3x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Muscle activations                      | obs_dict['act']             | (54x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Muscle length                           | obs_dict['muscle_length']   |  (54x1)         |
++-----------------------------------------+-----------------------------+-----------------+
+| Muscle velocities                       | obs_dict['muscle_velocity'] | (54x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Muscle forces                           | obs_dict['muscle_force']    | (54x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Model center of mass position           |                             |  (3x1)          |
+| (in world frame)                        |  obs_dict['model_root_pos'] |                 |
++-----------------------------------------+-----------------------------+-----------------+
+| Model center of mass velocity           |  obs_dict['model_root_vel'] |   (3x1)         |
+| (in world frame)                        |                             |                 |
++-----------------------------------------+-----------------------------+-----------------+
+| Height map                              |  obs_dict['hfield']         | (100x1)         |
++-----------------------------------------+-----------------------------+-----------------+
+
+
+.. TODO: decide which observation table is better
+
+
 Observations from the environment are
     1. Time, obs_dict['time'] (1x1)
     2. Terrain type (see below) obs_dict['terrain'] (1x1)
