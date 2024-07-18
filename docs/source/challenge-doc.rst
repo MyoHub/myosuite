@@ -33,32 +33,112 @@ Objective
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
-Move the object between two locations with a handover between a hand and a prosthesis. The object parameter is
-randomized with object starting location, object weight, and friction if necessary. 
+Move the object between two locations with a handover between a hand and a prosthesis. The object parameter is randomized in terms 
+of object starting location, object target destination, object weight, and even friction during each environmental reset. 
 
 
-**Success conditions**:
-  *Moving the object to the end location without dropping it, destroying it, and having a handover.*
+
+Evaluation Criteria
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Task Constrains**
+
+    - The object is within 0.01m from the end goal position
+    - The maximum force exerted upon the object does not exceed 1500N.
 
 
-Maximum object resistance.
-The object first has to touch the MyoArm (x ms), then the MPL (x ms), and then the end location (x ms).
+**Success Criteria**
 
+    - The task is solved
+    - The object first has to touch the MyoArm (100 ms), then the MPL (100 ms), and then the end location (100 ms).
+
+
+The participants will be ranked based on the following criteria hierarchically. 
+
+    1. Finish the task and closeness to the destinations(%)
+    2. Time (s)
+    3. Muscle Effort (-)
+
+.. TODO: can we have how close to the destination here?
 
 
 Action Space
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-The whole set of muscles and actuated joints [0, 1]. Prosthesis action value range 
+.. TODO: muscle actuator different from locomotion
+
+The action spaces includes two types of actuators. Muscles control values are given as continuous values between  :math:`[0, 1]`, details on how 
+mapping take place can be founda at this `mujoco page <https://mujoco.readthedocs.io/en/stable/modeling.html#cmuscle>`__.
+
+The action for the prosthetic hand is controlled in terms of each joint angle. A normalisation is applied such that all joint angle in radiance can be 
+actuated by a control value between  :math:`[-1, 1]`.
 
 
 Observation Space
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-All joints angles [-,-]
+
 Myohand Data for hand joint positions and velocities, the MPL position and velocity. The object’s position and velocity. The starting and goal position. Contact information 
 of object with myohand/MPL/start/goal/env. 
 
+
++-----------------------------------------+-----------------------------+-----------------+
+| **Description**                         |        **Access**           |   **Dimension** |
++-----------------------------------------+-----------------------------+-----------------+
+| Time                                    | obs_dict['time']            |  (1x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Joint positions of myoArm               | obs_dict['myohand_qpos']    | (38x1)          | 
++-----------------------------------------+-----------------------------+-----------------+
+| Joint velocity of myoArm                | obs_dict['myohand_qvel"]    | (38x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Joint positions of MPL                  | obs_dict['pros_hand_qpos"]  | (27x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Joint velocity of MPL                   | obs_dict['pros_hand_qvel"]  | (27x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Joint positions of object               | obs_dict['object_qpos"]     | (7x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Joint velocity of object                | obs_dict['object_qvel"]     | (6x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Starting position                       | obs_dict['start_pos']       | (2x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Goal position                           | obs_dict['goal_pos']        | (2x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Touching information of object          | obs_dict['touching_body']   | (5x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| **Hand properties**                                                                     |
++-----------------------------------------+-----------------------------+-----------------+
+| Palm location                           | obs_dict['palm_pos']        | (3x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Finger tip location                     | obs_dict['fin_i']           | (3x5)           |
++-----------------------------------------+-----------------------------+-----------------+
+| MPL palm location                       | obs_dict['Rpalm_pos']       | (3x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Object position                         | obs_dict['obj_pos']         | (3x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Hand reaching error                     | obs_dict['reach_err']       | (3x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Hand passing error                      | obs_dict['pass_err']        | (3x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Muscle activation of myoHand            | obs_dict['act']             | (63x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+
+
+**Description of observations**
+
+    - Touching information of object in one-hot encoding. Value of which is equal to 1 if the corresponding part is touching the object and 0 otherwise
+        - myoArm = value[0]
+        - MPL    = value[1]
+        - Start  = value[2]
+        - Goal   = value[3]
+        - The rest = value[4]
+    
+    - Start and Goal positions are 2 dimensional because the height of the two pillars will be constant
+
+    - Hand reaching error measures the distance between the hand and the object
+
+    - Hand passing error measures the distance between the MPL and the object
+
+    - Object position has 7 dimension because it is defined as a "`freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__"
 
 
 
@@ -178,24 +258,44 @@ Commanded torque values are generated by an embedded State Machine :ref:`challen
 Observation Space
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. TODO : Is it better to make it a table?
++-----------------------------------------+-----------------------------+-----------------+
+| **Description**                         |        **Access**           |   **Dimension** |
++-----------------------------------------+-----------------------------+-----------------+
+| Time                                    |      obs_dict['time']       |        (1x1)    |
++-----------------------------------------+-----------------------------+-----------------+
+| Terrain type (see below)                |   obs_dict['terrain']       | (1x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Torso angle                             |                             |                 |
+| (quaternion in world frame)             |   obs_dict['torso_angle']   |  (4x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Joint positions                         |                             |                 |
+| (except those from the prosthetic leg)  | obs_dict['internal_qpos']   |  (21x1)         | 
++-----------------------------------------+-----------------------------+-----------------+
+| Joint velocities                        |                             |                 | 
+| (except those from the prosthetic leg)  | obs_dict['internal_qvel']   | (21x1)          | 
++-----------------------------------------+-----------------------------+-----------------+
+| Ground reaction forces                  | obs_dict['grf']             |  (2x1)          |
+| (only for biological leg)               |                             |                 |
++-----------------------------------------+-----------------------------+-----------------+
+| Socket forces (see below)               | obs_dict['socket_force']    | (3x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Muscle activations                      | obs_dict['act']             | (54x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Muscle length                           | obs_dict['muscle_length']   |  (54x1)         |
++-----------------------------------------+-----------------------------+-----------------+
+| Muscle velocities                       | obs_dict['muscle_velocity'] | (54x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Muscle forces                           | obs_dict['muscle_force']    | (54x1)          |
++-----------------------------------------+-----------------------------+-----------------+
+| Model center of mass position           |                             |  (3x1)          |
+| (in world frame)                        |  obs_dict['model_root_pos'] |                 |
++-----------------------------------------+-----------------------------+-----------------+
+| Model center of mass velocity           |  obs_dict['model_root_vel'] |   (3x1)         |
+| (in world frame)                        |                             |                 |
++-----------------------------------------+-----------------------------+-----------------+
+| Height map                              |  obs_dict['hfield']         | (100x1)         |
++-----------------------------------------+-----------------------------+-----------------+
 
-Observations from the environment are
-    1. Time, obs_dict['time'] (1x1)
-    2. Terrain type (see below) obs_dict['terrain'] (1x1)
-    3. Torso angle (quaternion in world frame) obs_dict['torso_angle'] (4x1)
-    4. Joint positions (except those from the prosthetic leg) obs_dict['internal_qpos'] (21x1)
-    5. Joint velocities (except those from the prosthetic leg) obs_dict['internal_qvel'] (21x1)
-    6. Ground reaction forces (only for biological leg) obs_dict['grf'] (2x1)
-    7. Socket forces (see below) obs_dict['socket_force'](3x1)
-    8. Muscle properties
-        a. Muscle activations obs_dict['act'] (54x1)
-        b. Muscle length obs_dict['muscle_length'] (54x1)
-        c. Muscle velocities obs_dict['muscle_velocity'] (54x1)
-        d. Muscle forces obs_dict['muscle_force'] (54x1)
-    9. Model center of mass position (in world frame) obs_dict['model_root_pos'] (3x1)
-    10. Model center of mass velocity (in world frame) obs_dict['model_root_vel'] (3x1)
-    11. Height map obs_dict['hfield'] (100x1)
 
 
 **Description of observations**
@@ -211,7 +311,7 @@ Observations from the environment are
 
         - Represented as a 3-DOF force vector. Note that the direction of the force sensor is from the bottom of the socket projecting to the residual limb (i.e. the vertical axis force into the residual limb is negative). Processing of the observations is left to the participant’s discretion.
     
-    Height Map
+    - Height Map
 
         - The height map is a 10x10 grid (flattened to a 100x1), centered around the center of the MyoOSL model. This is a simple representation of a visual input of the terrain around the model.
 
