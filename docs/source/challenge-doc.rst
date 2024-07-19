@@ -1,4 +1,4 @@
-MyoChallenge-2024
+MyoChallenge-2024 Documentations
 #############################################
 
 
@@ -14,8 +14,6 @@ MyoChallenge-2024
 Prosthesis Co-Manipulation
 --------------------------------------------------------------
 
-Task Overview
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 A myoHand :ref:`myoHand` model and a Modular Prosthetic Limb (`MPL <https://www.jhuapl.edu/work/projects-and-missions/revolutionizing-prosthetics/research>`__)
 involved in moving an object between two tables with a handover. This task requires delicate coordination of the 
@@ -34,7 +32,7 @@ Objective
 
 
 Move the object between two locations with a handover between a hand and a prosthesis. The object parameter is randomized in terms 
-of object starting location, object target destination, object weight, and even friction during each environmental reset. 
+of object starting location, object target destination (goal position), object weight, and even friction during each environmental reset. 
 
 
 
@@ -43,21 +41,21 @@ Evaluation Criteria
 
 **Task Constrains**
 
-    - The object is within 0.01m from the end goal position
-    - The maximum force exerted upon the object does not exceed 1500N.
+    - In order to finish the task, the object is expected to be within 0.01m from the end goal position
+    - The maximum force exerted upon the object does not exceed 1500N any time during the manipulation
 
 
 **Success Criteria**
 
-    - The task is solved
-    - The object first has to touch the MyoArm (100 ms), then the MPL (100 ms), and then the end location (100 ms).
+    - The task is solved following the constrains
+    - The object first has to touch the MyoArm (100 ms), then the MPL (100 ms), and then the end location (100 ms)
 
 
 The participants will be ranked based on the following criteria hierarchically. 
 
-    1. Finish the task and closeness to the destinations(%)
+    1. Finish the task and closeness to the goal position(%)
     2. Time (s)
-    3. Muscle Effort (-)
+    3. Total Muscle Effort (-)
 
 .. TODO: can we have how close to the destination here?
 
@@ -68,18 +66,14 @@ Action Space
 .. TODO: muscle actuator different from locomotion
 
 The action spaces includes two types of actuators. Muscles control values are given as continuous values between  :math:`[0, 1]`, details on how 
-mapping take place can be founda at this `mujoco page <https://mujoco.readthedocs.io/en/stable/modeling.html#cmuscle>`__.
+the mapping take place can be founda at this `mujoco doc <https://mujoco.readthedocs.io/en/stable/modeling.html#cmuscle>`__.
 
 The action for the prosthetic hand is controlled in terms of each joint angle. A normalisation is applied such that all joint angle in radiance can be 
-actuated by a control value between  :math:`[-1, 1]`.
+actuated by a control value between  :math:`[-1, 1]`, with -1 and 1 representing the lower and upper bound of the range of motions.
 
 
 Observation Space
 ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-Myohand Data for hand joint positions and velocities, the MPL position and velocity. The object’s position and velocity. The starting and goal position. Contact information 
-of object with myohand/MPL/start/goal/env. 
 
 
 +-----------------------------------------+-----------------------------+-----------------+
@@ -105,8 +99,6 @@ of object with myohand/MPL/start/goal/env.
 +-----------------------------------------+-----------------------------+-----------------+
 | Touching information of object          | obs_dict['touching_body']   | (5x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
-| **Hand properties**                                                                     |
-+-----------------------------------------+-----------------------------+-----------------+
 | Palm location                           | obs_dict['palm_pos']        | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Finger tip location                     | obs_dict['fin_i']           | (3x5)           |
@@ -126,6 +118,7 @@ of object with myohand/MPL/start/goal/env.
 **Description of observations**
 
     - Touching information of object in one-hot encoding. Value of which is equal to 1 if the corresponding part is touching the object and 0 otherwise
+
         - myoArm = value[0]
         - MPL    = value[1]
         - Start  = value[2]
@@ -138,7 +131,7 @@ of object with myohand/MPL/start/goal/env.
 
     - Hand passing error measures the distance between the MPL and the object
 
-    - Object position has 7 dimension because it is defined as a "`freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__"
+    - Object position has 7 dimension as it is defined by a "`freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__"
 
 
 
@@ -248,7 +241,7 @@ For participants that do not wish to use this normalization feature, it can be d
 
 
 where in this case, the control range of the muscles are set between :math:`[0, 1]` without any normalization performed.
-Commanded torque values are generated by an embedded State Machine :ref:`challenge24_state_machine`. Refer to the section below for more information.
+Commanded torque values are generated by an embedded :ref:`challenge24_state_machine`. Refer to the section below for more information.
 
 
 
@@ -365,11 +358,15 @@ List of states variables:
 
 
 Challenge Tutorial
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+--------------------------------------------------------------
 
-This page aims to provide an basic knowledge of the challenge.
+This section aims to provide an basics to get start of the challenge.
 
-For a step-by-step tutorial, please check our :ref:`tutorials` page for more advanced info.
+For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_reinforcement_learning` and :ref:`baselines` page.
+
+To obtain a more in-depth understanding of the challenge, we have prepared baselines for both of the challenges.
+Links are available for `manipulation <https://colab.research.google.com/drive/1AqC1Y7NkRnb2R1MgjT3n4u02EmSPem88#scrollTo=-mAnRvYjIS4d>`__, 
+locomotion.
 
 
 .. code-block:: python
@@ -408,8 +405,5 @@ For a step-by-step tutorial, please check our :ref:`tutorials` page for more adv
             next_obs, info = env.reset()
 
 
-To obtain a more in-depth understanding of the challenge, we have prepared baselines for both of the challenges.
-Links are available for `manipulation <https://colab.research.google.com/drive/1AqC1Y7NkRnb2R1MgjT3n4u02EmSPem88#scrollTo=-mAnRvYjIS4d>`__, 
-locomotion.
 
 .. TODO: locomotion colab page is missing
