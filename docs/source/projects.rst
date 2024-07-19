@@ -58,10 +58,10 @@ overcome these obstacles. This year’s competition will feature two tracks: the
 
 
 MyoChallenge 2024: Physiological Dexterity and Agility in Enhanced Humans
-+++++++++++++++++++++++++++++++++++++
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-Introducing `MyoChallenge 2024<https://sites.google.com/view/myosuite/myochallenge/myochallenge-2024>`__: Physiological Dexterity and Agility in Enhanced Humans
+Introducing `MyoChallenge 2024 <https://sites.google.com/view/myosuite/myochallenge/myochallenge-2024>`__: Physiological Dexterity and Agility in Enhanced Humans
 
 The movement generalization and environment adaptability skills displayed by humans using bionic extensions are
  a testament to motor intelligence, a capability yet unmatched by current artificial intelligence. 
