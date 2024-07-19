@@ -127,7 +127,7 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
-#           - windows-latest
+          - windows-latest
     steps:
       - name: Set up Python 3.9
         uses: actions/setup-python@v3
@@ -144,9 +144,6 @@ jobs:
               libosmesa6-dev \
               software-properties-common
           sudo apt-get install -y patchelf
-      - name: Prepare macOS
-        if: ${{ runner.os == 'macOS' }}
-        run: brew install gcc@9
 
       - shell: bash
         run: |

@@ -127,6 +127,7 @@ This example shows how to add fatigue to a model. The muscle force will graduall
         env.step(env.action_space.sample()) # take a random action
     env.close()
 
+More advanced examples as well as detailed explanations can be found in `this tutorial<https://github.com/MyoHub/myosuite/tree/main/docs/source/tutorials/7_Fatigue_Modeling.ipynb>`.
 
 .. _test_sarcopenia:
 
