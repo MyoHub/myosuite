@@ -124,6 +124,8 @@ Observation Space
         - Start  = value[2]
         - Goal   = value[3]
         - The rest = value[4]
+
+    - Finger tip location is accessed by an index i for each finger tips. The index i is in [0-4] and finger 0 is acccessed by obs_dict['fin0']
     
     - Start and Goal positions are 2 dimensional because the height of the two pillars will be constant
 
