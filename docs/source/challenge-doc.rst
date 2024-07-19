@@ -131,7 +131,7 @@ Observation Space
 
     - Hand passing error measures the distance between the MPL and the object
 
-    - Object position has 7 dimension as it is defined by a "`freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__"
+    - The manipulated object has full 6 degrees of freedom, its state described as a 7 dimensional value in position + quaternion format  it is defined by a "`freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__"
 
 
 
