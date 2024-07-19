@@ -8,7 +8,10 @@ Projects with Myosuite
     * :ref:`myo_challenge_23`
     * :ref:`myo_challenge_24`
 * :ref:`pub_with_myosuite`
-    * :ref:`myodex`
+    * :ref:`ref_myodex`
+    * :ref:`ref_deprl`
+    * :ref:`ref_lattic`
+    * :ref:`ref_sar`
 
 
 .. _myochallenge:
@@ -53,6 +56,7 @@ overcome these obstacles. This year’s competition will feature two tracks: the
 
 .. _myo_challenge_24:
 
+
 MyoChallenge 2024: Physiological Dexterity and Agility in Enhanced Humans
 +++++++++++++++++++++++++++++++++++++
 
@@ -69,13 +73,47 @@ exploit a new BionicMyoLegs model made from the combination of a virtual bilater
 amputation together with an Open Source prosthetic leg. The goal will be to coordinate the musculo-skeleto-bionic model To 
 navigate challenging terrains and obstacles in an oval running loop.
 
+
 .. _pub_with_myosuite:
 
 Publications with Myosuite
 ========================================
 
-.. _myodex:
 
-MyoDex: A Generalizable Prior for Dexterous Manipulation:
+Please feel free to create a PR for your own project with Myosuite
+
+.. _ref_myodex:
+
+MyoDex: A Generalizable Prior for Dexterous Manipulation
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 Link avaiable at `here <https://sites.google.com/view/myodex>`__
+
+
+
+.. _ref_deprl:
+
+DEP-RL: Embodied Exploration for Reinforcement Learning in Overactuated and Musculoskeletal Systems
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Link avaiable at `here <https://github.com/martius-lab/depRL>`__
+
+
+
+.. _ref_lattic:
+
+Lattice: Latent Exploration for Reinforcement Learning
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Link avaiable at `here <https://github.com/amathislab/lattice>`__
+
+
+
+.. _ref_sar:
+
+SAR: Generalization of Physiological Agility and Dexterity via Synergistic Action Representation
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+Link avaiable at `here <https://sites.google.com/view/sar-rl>`__
+
