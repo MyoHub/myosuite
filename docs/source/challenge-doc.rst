@@ -15,7 +15,7 @@ Prosthesis Co-Manipulation
 --------------------------------------------------------------
 
 
-A myoHand :ref:`myoHand` model and a Modular Prosthetic Limb (`MPL <https://www.jhuapl.edu/work/projects-and-missions/revolutionizing-prosthetics/research>`__)
+A myoArm :ref:`myoArm` model and a Modular Prosthetic Limb (`MPL <https://www.jhuapl.edu/work/projects-and-missions/revolutionizing-prosthetics/research>`__)
 involved in moving an object between two tables with a handover. This task requires delicate coordination of the 
 object without dropping it or destroying it (maximum force on the object for success) and a mandatory handover between 
 the MyoArm and the MPL to move the objects between two locations.
@@ -31,42 +31,19 @@ Objective
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
-Move the object between two locations with a handover between a hand and a prosthesis. The object parameter is randomized in terms 
-of object starting location, object target destination (goal position), object weight, and even friction during each environmental reset. 
+Move the object between two locations with a handover between a hand and a prosthesis. The task parameters will be randomized to provide a comprehensive 
+test to the model performance. The randomization will include but not limited to: object type, object weight and even friction during each environmental reset. 
 
 
-
-Evaluation Criteria
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-**Task Constrains**
-
-    - In order to finish the task, the object is expected to be within 0.01m from the end goal position
-    - The maximum force exerted upon the object does not exceed 1500N any time during the manipulation
-
-
-**Success Criteria**
-
-    - The task is solved following the constrains
-    - The object first has to touch the MyoArm (100 ms), then the MPL (100 ms), and then the end location (100 ms)
-
-
-The participants will be ranked based on the following criteria hierarchically. 
-
-    1. Finish the task and closeness to the goal position(%)
-    2. Time (s)
-    3. Total Muscle Effort (-)
-
-.. TODO: can we have how close to the destination here?
 
 
 Action Space
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. TODO: muscle actuator different from locomotion
 
-The action spaces includes two types of actuators. Muscles control values are given as continuous values between  :math:`[0, 1]`, details on how 
-the mapping take place can be founda at this `mujoco doc <https://mujoco.readthedocs.io/en/stable/modeling.html#cmuscle>`__.
+The action spaces includes two major parts: the :ref:`myoArm` and the `MPL <https://www.jhuapl.edu/work/projects-and-missions/revolutionizing-prosthetics/research>`__. 
+Muscles control values for myoArm are given as continuous values between  :math:`[0, 1]`, details on how this value to force mapping take place can be founda at 
+this `mujoco doc <https://mujoco.readthedocs.io/en/stable/modeling.html#cmuscle>`__.
 
 The action for the prosthetic hand is controlled in terms of each joint angle. A normalisation is applied such that all joint angle in radiance can be 
 actuated by a control value between  :math:`[-1, 1]`, with -1 and 1 representing the lower and upper bound of the range of motions.
@@ -160,7 +137,7 @@ Prosthesis Locomotion
 
 
 
-A trans-femoral myoLeg model and a Open Source Leg (`OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__)  involved 
+A trans-femoral :ref:`myoLeg` model and a Open Source Leg (`OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__)  involved 
 in walking over different terrain types. The task requires learning the dynamics and control of a powered prosthetic leg that has its own controller. 
 This is similar to how people with limb loss learn to adapt to a prosthetic leg over time. This task also requires navigation over different terrain 
 with increasing difficulty.
@@ -177,27 +154,15 @@ with increasing difficulty.
 Objective
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Traverse over different terrain types with a prosthetic leg. Randomization will be done with:
+Traverse over different terrain types with the :ref:`myoLeg` and a prosthetic leg(`OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__). 
+Randomization will take place for challenge difficulty level. For example, the terrain type might change with added obstacles.
 
-    - Terrain Types:
-        - Flat Ground
-        - Rough Ground
-        - Slopes
-        - Stairs
-    - Difficulty of Terrain
-        - Rough: Increasing roughness
-        - Slopes: Increasing steepness of Slopes
-        - Stairs: Increasing height of stairs
 
 .. figure:: images/Myotrack_promo_2.png
     :width: 600
     :align: center
 
     Example of increasing difficulty of obstacles
-
-
-Only 1 terrain type will be present in each episode. Mixed terrains in a single episode may be implemented to increase the 
-difficulty of the challenge for the purposes of tie-breaking.
 
 
 
@@ -210,27 +175,19 @@ in the observations). A state-based impedance controller would provide the comma
 are provided with the corresponding APIs to update the impedance controller.
 
 
-
-
-For task evaluation, there are no direct observations and control over the prosthetic leg. Angles, angular velocities and torque 
+For the task realism, there are no direct observations and control over the prosthetic leg. Angles, angular velocities and torque 
 of the prosthetic leg will not be available in the observations. Similarly, there is no commanded position, velocity or torques 
 for the prosthetic leg.
 
 
-
-Evaluation Criteria
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Submission are evaluated on the distance traveled over a fixed time horizon on the pre-defined track. The submission must stay on
-the track to receive full credits.
 
 
 
 Action Space
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Muscles control values are given as continuous values between  :math:`[-1, 1]`. Normalization to a range of :math:`[0, 1]` is done in the environment 
-according to the equation
+Muscles control values for :ref:`myoLeg` are given as continuous values between  :math:`[-1, 1]`. Normalization to a range of :math:`[0, 1]` is done in the environment 
+according to the equation:
 
 .. math::
 
@@ -243,9 +200,8 @@ For participants that do not wish to use this normalization feature, it can be d
 
 
 where in this case, the control range of the muscles are set between :math:`[0, 1]` without any normalization performed.
-Commanded torque values are generated by an embedded :ref:`challenge24_state_machine`. Refer to the section below for more information.
-
-
+To control the prothetic leg `OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__, commanded torque values are generated 
+by an embedded :ref:`challenge24_state_machine`. Refer to the section below for more information.
 
 
 
@@ -406,6 +362,3 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
         if terminated:
             next_obs, info = env.reset()
 
-
-
-.. TODO: locomotion colab page is missing
