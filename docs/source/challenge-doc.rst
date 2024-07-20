@@ -368,7 +368,7 @@ For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_re
 
 To obtain a more in-depth understanding of the challenge, we have prepared baselines for both of the challenges.
 Links are available for `manipulation <https://colab.research.google.com/drive/1AqC1Y7NkRnb2R1MgjT3n4u02EmSPem88#scrollTo=-mAnRvYjIS4d>`__, 
-locomotion.
+`locomotion <https://colab.research.google.com/drive/1AFbVlwnGDYD45XqMYBaYjf5xOOa_KEXd?usp=sharing>`__.
 
 
 .. code-block:: python
