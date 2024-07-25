@@ -37,12 +37,6 @@ Main features
 
 .. toctree::
    :maxdepth: 1
-   :caption: Documentations
-
-   api
-
-.. toctree::
-   :maxdepth: 1
    :caption: Projects with Myosuite
 
    projects
