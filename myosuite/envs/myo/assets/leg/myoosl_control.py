@@ -1,6 +1,6 @@
 """ =================================================
 # Copyright (c) MyoSuite Authors
-Authors  :: Chun Kwang Tan (cktan.neumove@gmail.com)
+Authors  :: Chun Kwang Tan (cktan.neumove@gmail.com), Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= """
 
 import numpy as np

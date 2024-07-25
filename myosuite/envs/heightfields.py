@@ -1,3 +1,8 @@
+""" =================================================
+# Copyright (c) MyoSuite Authors
+Authors  :: Pierre Schumacher (schumacherpier@gmail.com), Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
+================================================= """
+
 import collections
 import math
 from myosuite.utils import gym
