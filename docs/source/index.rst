@@ -19,7 +19,6 @@ Main features
    * Bio-mechanic based simulation of musculoskeletal
    * Task-driven controller for motion synthesis
 
-.. TODO: confirm features for myosuite
 
 
 .. toctree::
