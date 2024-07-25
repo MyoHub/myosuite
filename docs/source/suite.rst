@@ -133,46 +133,50 @@ The model implementation details can be found on our github repo at `myoLeg <htt
 .. image:: images/MyoLeg.png
   :height: 200
 
-.. =============   =================================
-.. Acronym         Muscle
-.. =============   =================================
-.. addbrev_r       Adductor brevis
-.. addlong_r       Adductor longus
-.. addmagDist_r    Adductor magnus (distal)
-.. addmagIsch_r    Adductor magnus (ischial)
-.. addmagMid_r     Adductor magnus (middle)
-.. addmagProx_r    Adductor magnus (proximal)
-.. bflh_r          Biceps femoris long head
-.. bfsh_r          Biceps femoris short head
-.. edl_r           Extensor digitorum longusc
-.. ehl_r           Extensor hallucis longusc
-.. fdl_r           Flexor digitorum longus
-.. fhl_r           Flexor hallucis longus
-.. gaslat_r        Gastrocnemius lateral head
-.. gasmed_r        Gastrocnemius medial head
-.. glmax1_r        Gluteus maximus (superior)
-.. glmax2_r        Gluteus maximus (middle)
-.. glmax3_r        Gluteus maximus (inferior)
-.. glmed1_r        Gluteus medius (anterior)
-.. glmed2_r        Gluteus medius (middle)
-.. glmed3_r        Gluteus medius (posterior)
-.. glmin1_r        Gluteus minimus (anterior)
-.. glmin2_r        Gluteus minimus (middle)
-.. glmin3_r        Gluteus minimus (posterior)
-
-
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. =============   =================================
+=============   =================================
+Acronym         Muscle
+=============   =================================
+addbrev_r       Adductor brevis
+addlong_r       Adductor longus
+addmagDist_r    Adductor magnus (distal)
+addmagIsch_r    Adductor magnus (ischial)
+addmagMid_r     Adductor magnus (middle)
+addmagProx_r    Adductor magnus (proximal)
+bflh_r          Biceps femoris long head
+bfsh_r          Biceps femoris short head
+edl_r           Extensor digitorum longusc
+ehl_r           Extensor hallucis longusc
+fdl_r           Flexor digitorum longus
+fhl_r           Flexor hallucis longus
+gaslat_r        Gastrocnemius lateral head
+gasmed_r        Gastrocnemius medial head
+glmax1_r        Gluteus maximus (superior)
+glmax2_r        Gluteus maximus (middle)
+glmax3_r        Gluteus maximus (inferior)
+glmed1_r        Gluteus medius (anterior)
+glmed2_r        Gluteus medius (middle)
+glmed3_r        Gluteus medius (posterior)
+glmin1_r        Gluteus minimus (anterior)
+glmin2_r        Gluteus minimus (middle)
+glmin3_r        Gluteus minimus (posterior)
+grac_r          Gracilis 
+iliacus_r       Iliacus
+perbrev_r       Peroneus brevis
+perlong_r       Peroneus longus
+piri_r          Piriformis 
+psoas_r         Psoas
+recfem_r        Rectus femoris
+sart_r          Sartorius
+semimem_r       Semimembranosus
+semiten_r       Semitendinosus 
+soleus_r        Soleus 
+tfl_r           Tensor fascia latae
+tibant_r        Tibialis anterior 
+tibpost_r       Tibialis posterior 
+vasint_r        Vastus intermedius
+vaslat_r        Vastus lateralis
+vasmed_r        Vastus medialis 
+=============   =================================
 
 .. _myoArm:
 
