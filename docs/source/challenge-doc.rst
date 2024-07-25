@@ -143,7 +143,7 @@ This is similar to how people with limb loss learn to adapt to a prosthetic leg 
 with increasing difficulty.
 
 
-.. image:: images/Myotrack_promo_1.png
+.. image:: images/MyoChallenge24_loco_1.png
   :width: 350
   :align: center
   :alt: Text
@@ -158,7 +158,7 @@ Traverse over different terrain types with the :ref:`myoLeg` and a prosthetic le
 Randomization will take place for challenge difficulty level. For example, the terrain type might change with added obstacles.
 
 
-.. figure:: images/Myotrack_promo_2.png
+.. figure:: images/MyoChallenge24_loco_2.png
     :width: 600
     :align: center
 
