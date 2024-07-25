@@ -10,7 +10,6 @@ This is a job script for running SB3 on myosuite tasks.
 import os
 import json
 import time as timer
-import myosuite
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env

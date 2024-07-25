@@ -2,7 +2,7 @@ default:
     - override hydra/output: local
     - override hydra/launcher: local
 
-env               :   'myoChallengeBimanual-v0' #myosuite-v1          # placeholder name, not a real env
+env               :   'myoChallengeBimanual-v0' 
 algorithm         :   PPO
 seed              :   123
 n_env             :   32

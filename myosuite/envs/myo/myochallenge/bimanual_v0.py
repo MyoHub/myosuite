@@ -1,6 +1,6 @@
 """ =================================================
-# Copyright (c) Facebook, Inc. and its affiliates
-Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
+# Copyright (c) MyoSuite Authors
+Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Balint Hodossy (bkh16@ic.ac.uk), Eric Lyu (shirui.lyu@kcl.ac.uk), Cheryl Wang (cheryl.wang.huiyi@gmail.com)
 ================================================= """
 
 import collections
