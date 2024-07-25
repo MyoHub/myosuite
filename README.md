@@ -72,7 +72,6 @@ mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 It is possible to create and interface with MyoSuite environments just like any other OpenAI gym environments. For example, to use the `myoElbowPose1D6MRandom-v0` environment, it is possible simply to run: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo)
 
 
- <!-- TODO: consider instructions to gym api or introduce more annotation for the code each line -->
 
 ```python
 from myosuite.utils import gym
@@ -84,7 +83,7 @@ for _ in range(1000):
 env.close()
 ```
 
-You can find [tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials#tutorials) and the **ICRA2023 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q)
+You can find our [tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials#tutorials) on the general features and the **ICRA2023 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q) **ICRA2024 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JwxE7o6Z3bqCT4ewELacJ-Z1SV8xFhKK#scrollTo=QDppGIzHB9Zu) 
 on how to load MyoSuite models/tasks, train them, and visualize their outcome. Also, you can find [baselines](https://github.com/myohub/myosuite/tree/main/myosuite/agents) to test some pre-trained policies.
 
 <!-- TODO : include ICRA 2024 tutorial? -->

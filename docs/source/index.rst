@@ -7,7 +7,7 @@ Check our `github repository <https://github.com/MyoHub/myosuite>`__ for more te
 
 Our paper can be found at: `https://arxiv.org/abs/2205.13600 <https://arxiv.org/abs/2205.13600>`__
 
-Before you start, we highly recommended to have a basic understanding of `OpenAI Gym API <https://gymnasium.farama.org/>`__. Principle knowledge in Reinforcement Learning is also expected for a best experience.
+Users are expected to have a foundational understanding of Reinforcement Learning and to review the `OpenAI Gym API <https://gymnasium.farama.org/>`__ to have the best experience with Myosuite.
 
 .. note::
 
