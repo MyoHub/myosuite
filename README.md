@@ -26,8 +26,6 @@ Below is an overview of the tasks in the MyoSuite.
 <img width="1240" alt="TasksALL" src="https://github.com/myohub/myosuite/blob/main/docs/source/images/myoSuite_All.png?raw=true">
 
 
-## Before you start
-It is highly recommended to familiarize your self with the OpenAI ``gym`` (also known as [Gymnasium](https://gymnasium.farama.org/)) API. The tasks are defined through the ``env`` API and a introductory level understanding of Reinforcement Learning is also recommened.
 
 ## Installations
 You will need Python 3.8 or later versions.
