@@ -37,7 +37,7 @@ which is actuated through a series of 5 simplified antagonistic muscle-tendon un
 We also provide its robotic counterpart with simple torque actuators
 to facilitate the comparative investigation.
 
-Details of this model can be found at `myoFinger <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/finger>`__
+Details of this model can be found at `myoFinger <https://github.com/MyoHub/myo_sim/tree/main/finger>`__
 
 
 .. image:: images/myoFinger.png
@@ -62,7 +62,7 @@ myoElbow
 A model of 2 DoF human elbow joint -- based on OpenSim’s default testing arm model (Delp et al. (2007); Seth et al. (2018))
 -- and actuated using multiple agonist/antagonist pairs (3 flexors and 3 extensors).
 
-Details of this model can be found at `myoElbow <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/elbow>`__
+Details of this model can be found at `myoElbow <https://github.com/MyoHub/myo_sim/tree/main/elbow>`__
 
 .. image:: images/myoElbow.png
   :height: 200
@@ -85,7 +85,7 @@ myoHand
 The dexterous human hand requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
 This musculoskeletal model is comprised of 29 bones, 23 joints, and 39 muscles-tendon units.
 
-Details of this model can be found at `myoHand <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/hand>`__
+Details of this model can be found at `myoHand <https://github.com/MyoHub/myo_sim/tree/main/hand>`__
 
 .. image:: images/myoHand.png
   :height: 200
@@ -128,51 +128,55 @@ Rajagopal's full body gait model [https://github.com/opensim-org/opensim-models/
 
 Joints and muscle details can be found in Rajagopal's paper [https://ieeexplore.ieee.org/document/7505900]
 
-The model implementation details can be found on our github repo at `myoLeg <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/leg>`__
+The model implementation details can be found on our github repo at `myoLeg <https://github.com/MyoHub/myo_sim/tree/main/leg>`__
 
 .. image:: images/MyoLeg.png
   :height: 200
 
-.. =============   =================================
-.. Acronym         Muscle
-.. =============   =================================
-.. addbrev_r       Adductor brevis
-.. addlong_r       Adductor longus
-.. addmagDist_r    Adductor magnus (distal)
-.. addmagIsch_r    Adductor magnus (ischial)
-.. addmagMid_r     Adductor magnus (middle)
-.. addmagProx_r    Adductor magnus (proximal)
-.. bflh_r          Biceps femoris long head
-.. bfsh_r          Biceps femoris short head
-.. edl_r           Extensor digitorum longusc
-.. ehl_r           Extensor hallucis longusc
-.. fdl_r           Flexor digitorum longus
-.. fhl_r           Flexor hallucis longus
-.. gaslat_r        Gastrocnemius lateral head
-.. gasmed_r        Gastrocnemius medial head
-.. glmax1_r        Gluteus maximus (superior)
-.. glmax2_r        Gluteus maximus (middle)
-.. glmax3_r        Gluteus maximus (inferior)
-.. glmed1_r        Gluteus medius (anterior)
-.. glmed2_r        Gluteus medius (middle)
-.. glmed3_r        Gluteus medius (posterior)
-.. glmin1_r        Gluteus minimus (anterior)
-.. glmin2_r        Gluteus minimus (middle)
-.. glmin3_r        Gluteus minimus (posterior)
-
-
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. fhl             Flexor hallucis longus
-.. =============   =================================
+=============   =================================
+Acronym         Muscle
+=============   =================================
+addbrev_r       Adductor brevis
+addlong_r       Adductor longus
+addmagDist_r    Adductor magnus (distal)
+addmagIsch_r    Adductor magnus (ischial)
+addmagMid_r     Adductor magnus (middle)
+addmagProx_r    Adductor magnus (proximal)
+bflh_r          Biceps femoris long head
+bfsh_r          Biceps femoris short head
+edl_r           Extensor digitorum longusc
+ehl_r           Extensor hallucis longusc
+fdl_r           Flexor digitorum longus
+fhl_r           Flexor hallucis longus
+gaslat_r        Gastrocnemius lateral head
+gasmed_r        Gastrocnemius medial head
+glmax1_r        Gluteus maximus (superior)
+glmax2_r        Gluteus maximus (middle)
+glmax3_r        Gluteus maximus (inferior)
+glmed1_r        Gluteus medius (anterior)
+glmed2_r        Gluteus medius (middle)
+glmed3_r        Gluteus medius (posterior)
+glmin1_r        Gluteus minimus (anterior)
+glmin2_r        Gluteus minimus (middle)
+glmin3_r        Gluteus minimus (posterior)
+grac_r          Gracilis 
+iliacus_r       Iliacus
+perbrev_r       Peroneus brevis
+perlong_r       Peroneus longus
+piri_r          Piriformis 
+psoas_r         Psoas
+recfem_r        Rectus femoris
+sart_r          Sartorius
+semimem_r       Semimembranosus
+semiten_r       Semitendinosus 
+soleus_r        Soleus 
+tfl_r           Tensor fascia latae
+tibant_r        Tibialis anterior 
+tibpost_r       Tibialis posterior 
+vasint_r        Vastus intermedius
+vaslat_r        Vastus lateralis
+vasmed_r        Vastus medialis 
+=============   =================================
 
 .. _myoArm:
 
@@ -182,7 +186,7 @@ The 3D dexterous human arm reaching and manipulation.
 
 This musculoskeletal model is comprised of 27 Degree of Freedom, and 63 muscles-tendon units.
 
-Model specification can be found on our github repo of `myoArm <https://github.com/MyoHub/myo_sim/tree/dbaecde82a18341661d4eb6d41928f26dc017bdd/arm>`__
+Model specification can be found on our github repo of `myoArm <https://github.com/MyoHub/myo_sim/tree/main/arm>`__
 
 
 .. image:: images/myoArm.png

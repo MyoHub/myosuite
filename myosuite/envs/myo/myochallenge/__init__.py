@@ -30,6 +30,38 @@ def register_env_with_variants(id, entry_point, max_episode_steps, kwargs):
             silent=True
         )
 
+
+register_env_with_variants(id='myoChallengeBimanual-v0',
+        entry_point='myosuite.envs.myo.myochallenge.bimanual_v0:BimanualEnvV1',
+        max_episode_steps=250,
+        kwargs={
+            'model_path': curr_dir + '/../assets/arm/myoarm_bionic_bimanual.xml',
+            'normalize_act': True,
+            'frame_skip': 5,
+        }
+    )
+
+# MyoChallenge 2024 envs ==============================================
+register_env_with_variants(id='myoChallengeRunTrackP1-v0',
+        entry_point='myosuite.envs.myo.myochallenge.run_track_v0:RunTrack',
+        max_episode_steps=1000,
+        kwargs={
+            'model_path': curr_dir+'/../assets/leg/myoosl_runtrack.xml',
+            'normalize_act': True,
+            'reset_type': 'random',  # none, init, random, osl_init
+            'terrain': 'random',  # FLAT, random
+            'hills_difficulties': (0.0, 0.1, 0.0, 0.5, 0.0, 0.8, 0.0, 1.0),
+            'rough_difficulties': (0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.3),
+            'stairs_difficulties': (0.0, 0.05, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3),
+            'distance_thr': 15,
+            'frame_skip': 5,
+            'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv'
+            
+        }
+    )
+
+
+
 # MyoChallenge 2023 envs ==============================================
 # MyoChallenge Manipulation P1
 register_env_with_variants(id='myoChallengeRelocateP1-v0',

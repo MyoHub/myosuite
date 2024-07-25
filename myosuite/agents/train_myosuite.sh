@@ -20,6 +20,8 @@ if [ "$1" == "myo" ] ; then
     envs="myoFingerReachFixed-v0,myoFingerReachRandom-v0,myoFingerPoseFixed-v0,myoFingerPoseRandom-v0,myoElbowPose1D6MFixed-v0,myoElbowPose1D6MRandom-v0,myoHandPoseFixed-v0,myoHandPoseRandom-v0,myoHandReachFixed-v0,myoHandReachRandom-v0,myoHandKeyTurnFixed-v0,myoHandKeyTurnRandom-v0,myoHandObjHoldFixed-v0,myoHandObjHoldRandom-v0,myoHandPenTwirlFixed-v0,myoHandPenTwirlRandom-v0,myoHandBaodingFixed-v1,myoHandBaodingRandom-v1"    
 elif [ "$1" == "extra" ] ; then
     envs="motorFingerReachFixed-v0,motorFingerReachRandom-v0,motorFingerPoseFixed-v0,motorFingerPoseRandom-v0,myoHandBaodingFixed4th-v1,myoHandBaodingFixed8th-v1"
+elif [ "$1" == "myochal" ] ; then
+    envs="myoChallengeBimanual-v0"
 else
     echo "Unknown task suite"
     exit 0
@@ -32,7 +34,11 @@ if [ "$3" == "mjrl" ] ; then
     echo "NPG: ======="
     echo "python hydra_mjrl_launcher.py --config-path config $config env=$envs"
 elif [ "$3" == "sb3" ] ; then
-    config="--config-name hydra_myo_sb3_ppo_config.yaml $config"
+    if [ "$1" == "myochal" ] ; then
+        config="--config-name hydra_myochal_sb3_ppo_config.yaml $config"
+    else
+        config="--config-name hydra_myo_sb3_ppo_config.yaml $config"
+    fi
     # Disp SB3 commands
     echo "Stable-Baselines3: ======="
     echo "python hydra_sb3_launcher.py --config-path config $config env=$envs"
@@ -40,6 +46,29 @@ else
     echo "Unknown training framework"
     exit 0
 fi
+
+if [ "$4" == 'baseline' ]; then
+    base_dir="baseline_SB3/myoChal24/${envs}"
+    filename="checkpoint.pt"  # Specify the file name to save the checkpoint as
+
+    mkdir -p $base_dir
+
+    checkpoint_path="${base_dir}/${filename}"
+
+    model_url="https://drive.google.com/uc?export=download&id=1e7bj2Lrk50FU7nSRnIDg2JmYjGLBNChs"
+    
+    # Use curl with -L to follow redirects and -o to specify output file
+    curl -L $model_url -o $checkpoint_path
+
+    if [ $? -eq 0 ]; then
+        echo "Download successful, checkpoint saved to $checkpoint_path."
+        config="$config checkpoint=$checkpoint_path job_name=$job_name"
+    else
+        echo "Download failed."
+        exit 1
+    fi
+fi
+
 
 
 #python hydra_sb3_launcher.py --config-path config --config-name hydra_myo_sb3_ppo_config.yaml  env=myoHandPoseRandom-v0

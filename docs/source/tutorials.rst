@@ -26,9 +26,10 @@ It is highly recommended to read through the `OpenAI Gym API <https://gymnasium.
 
 Tutorials on Jupyter-Notebook
 ========================================
-Please refer to our tutorials on Jupyter-Notebook `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`__
+Please refer to our tutorials on the key functionalities, such as model usage and examples of using RL on Jupyter-Notebook `here <https://github.com/facebookresearch/myosuite/tree/main/docs/source/tutorials>`__
 
-There are also tutorials for our ICRA workshops: `ICRA-2023 <https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo>`__, `ICRA-2024 <https://colab.research.google.com/drive/1JwxE7o6Z3bqCT4ewELacJ-Z1SV8xFhKK#scrollTo=QDppGIzHB9Zu>`__
+There are also tutorials for our ICRA workshops: `ICRA-2023 <https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo>`__ (example of running a simple myosuite environment)
+, `ICRA-2024 <https://colab.research.google.com/drive/1JwxE7o6Z3bqCT4ewELacJ-Z1SV8xFhKK#scrollTo=QDppGIzHB9Zu>`__ (example of hand object manipulation)
 
 
 .. _run_myosuite:
@@ -272,7 +273,7 @@ In order to create a new customized task, there are two places where you need to
 Set up a new environment
 +++++++++++++++++++++++++
 
-Environment classes are developed according to the `OpenAI Gym definition <https://gymnasium.farama.org>`__
+Environment classes are developed according to the `OpenAI Gym definition <https://gymnasium.farama.org/api/env/>`__
 and contain all the information specific for a task,
 to interact with the environment, to observe it and to
 act on it. In addition, each environment class contains

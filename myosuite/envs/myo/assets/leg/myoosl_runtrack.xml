@@ -1,0 +1,47 @@
+<?xml version="1.0" ?>
+<mujoco model="MyoSuite's MyoTrack">
+<!-- =================================================
+    Copyright 2024 MyoSuite
+    Model   :: MyoTrack (MuJoCoV3.1.2)
+    Author  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano, Pierre Schumacher, Chun Kwang Tan
+    source  :: https://github.com/MyoHub/MyoSuite
+    License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -©vk©-->
+
+    <include file="../../../../simhive/myo_sim/torso/assets/myotorsorigid_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/osl/assets/myolegs_osl_assets.xml"/>
+    <include file="../myosuite_track.xml"/>
+    <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
+
+    <asset>
+        <hfield name="terrain" size="1 15 1 0.001" nrow="600" ncol="20"/>
+        <texture name="texmyo" type="cube" file="scene/myosuite_icon.png"/>
+        <material name="matmyo" texture="texmyo" rgba="1 1 1 1"/>
+    </asset>
+
+    <worldbody>
+        <geom name="terrain" type="hfield" hfield="terrain" pos="0 0 -0.005" material="matfloor" conaffinity="1" contype="1" rgba=".9 .9 .9 1"/>
+
+        <camera name="side_view" pos="-3 0 2.25" xyaxes="0 -1 0 1 0 2" mode="trackcom"/>
+
+        <!-- ======= MyoAgent ======= -->
+        <site name="pelvis_target" size="0.02" pos="0 0 .92" group="4"/>
+        <body name="root" pos="0 0 1" euler="0 0 -1.57">
+            <light directional="false" diffuse=".25 .25 .25" specular="0.25 0.25 0.25" pos="3 0 2" dir="-1 0 -1" mode="trackcom"/>
+            <camera name="agent_view" pos="4 0 1.85" xyaxes="0 1 0 -1 0 2" mode="trackcom"/>
+            <site name="head" size="0.02" pos="0 0 1.80" group="4"/>
+            <include file="../../../../simhive/myo_sim/torso/assets/myotorsorigid_chain.xml"/>
+            <include file="../../../../simhive/myo_sim/osl/assets/myolegs_osl_chain.xml"/>
+            <freejoint name="root"/>
+        </body>
+    </worldbody>
+
+    <keyframe>
+        <key name='stand' qpos='0 14 .95 0.707388 0 0 -0.706825 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0'/>
+        <key name='neutral_1' qpos='0 14 .92 0.707388 0 0 -0.706825 0.161153 -0.0279385 -0.041886 0 0 0 0 0.461137 0.334 0.161153 -0.0279385 -0.041886 0.00247908 0.00101098 0.461137 0.0275069 0.136817 0.334 -0.00117055 -0.000125295 -0.0302192 0.0395202 -0.194029'/>
+        <key name='neutral_2' qpos='0 14 .9 0.707388 0 0 -0.706825 0.405648 -0.020957 -0.118677 0 0 0 0 0.7329 0.40143 0.405648 -0.020957 -0.118677 0.0039054 0.00122326 0.7329 0.0102961 0.215496 0.40143 -0.006982 -0.02618 -0.03738 0.0080579 -0.87272'/>
+		<key name='osl_backward' qpos='0 14 0.86  0.7011 0.0923 0.0923 -0.7011     -0.233 -0.0279385 -0.041886 0 0 0 0 0.377 0.1672 0.785 -0.0279385 -0.041886 0.00247908 0.0010198 0.209 0.0275069 0.136817 -0.0524 -0.00117055 -0.000125295 -0.0302192 0.0395202 -0.194029' qvel='0 0 0 0 0 0 4.9066 0 0 0 0 0 0 0 0 0.175 0 0 0 0 0.175 0 0 0.988 0 0 0 0 0'/>
+        <key name='osl_forward' qpos='0 14 0.86  0.7011 0.0923 0.0923 -0.7011  0.785 -0.0279385 -0.041886 0 0 0 0 0.209 -0.0524 -0.2326 -0.0279385 -0.041886 0.00247908 0.0010198 0.377 0.0275069 0.136817 0.1672 -0.00117055 -0.000125295 -0.0302192 0.0395202 -0.194029' qvel='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0'/>
+    </keyframe>
+
+</mujoco>
