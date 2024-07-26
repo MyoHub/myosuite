@@ -1,7 +1,8 @@
-Tutorials
-###########
-
 .. _tutorials:
+
+Tutorials
+######################
+
 
 
 Here a set of examples on how to use different MyoSuite models and non-stationarities.
@@ -206,12 +207,14 @@ The models and code will be released soon.
 .. image:: images/elbow_exo.png
   :width: 200
 
+
+
 .. _use_reinforcement_learning:
 
 Using Reinforcement Learning
 =============================================
 Myosuite provdies features to support RL training. Here are examples of using different RL libraries on Myosuite. 
-TODO: add contents to the sites of projects 
+
 
 
 .. _resume_training:

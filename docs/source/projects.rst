@@ -54,11 +54,22 @@ overcome these obstacles.
 
 .. _myo_challenge_24:
 
-Incoming Myochallenge This Year:
-+++++++++++++++++++++++++++++++++++++
-About to be released
+
+MyoChallenge 2024: Physiological Dexterity and Agility in Enhanced Humans
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
+`MyoChallenge 2024 <https://sites.google.com/view/myosuite/myochallenge/myochallenge-2024>`__: Physiological Dexterity and Agility in Enhanced Humans
+
+The movement generalization and environment adaptability skills displayed by humans using bionic extensions are
+a testament to motor intelligence, a capability yet unmatched by current artificial intelligence. 
+
+This year MyoChallenge will have two tracks: manipulation and locomotion. The manipulation track will require bi-manual
+coordination of the BionicMyoArms model – a combination of a virtual biological arm and the Modular Prosthetic Limb (MPL).
+The goal will be to coordinate the use of those two limbs to manipulate a series of objects. In the locomotion track, we will
+exploit a new BionicMyoLegs model made from the combination of a virtual bilateral biological leg with a trans-femoral
+amputation together with an Open Source prosthetic leg. The goal will be to coordinate the musculo-skeleto-bionic model To 
+navigate challenging terrains and obstacles in an oval running loop.
 
 
 .. _pub_with_myosuite:
@@ -103,3 +114,4 @@ SAR: Generalization of Physiological Agility and Dexterity via Synergistic Actio
 
 
 Link avaiable at `here <https://sites.google.com/view/sar-rl>`__
+
