@@ -88,7 +88,7 @@ jobs:
     - name: add and commit to main
       uses: EndBug/add-and-commit@v7.5.0
       with:
-        #token: ${{ secrets.REPO_TOKEN }}
+        token: ${{ secrets.REPO_TOKEN }}
         author_name: ${{ secrets.AUTHOR_NAME }}
         author_email: ${{ secrets.AUTHOR_EMAIL }}
 
