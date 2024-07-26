@@ -6,7 +6,8 @@ Tutorials
 
 
 Here a set of examples on how to use different MyoSuite models and non-stationarities.
-It is highly recommended to read through the `OpenAI Gym API <https://gymnasium.farama.org/>`__ before you start.
+
+It is highly recommended to read through the `OpenAI Gym API <https://gymnasium.farama.org/>`__ to get familiar with the Gym API
 
 * :ref:`run_myosuite`
 * :ref:`run_visualize_index_movements`
@@ -170,7 +171,7 @@ DoF to another (see below). It can be used to regain functional control of a joi
 One of the current procedures in the hand is the tendon transfer of Extensor Indicis Proprius (EIP) to replace the
 Extensor Pollicis Longus (EPL) (Gelb (1995)). Rupture of the EPL can happen after a broken wrist and create a loss of control
 of the Thumb extension. We introduce a physical tendon transfer where the EIP application point of the tendon was moved
-from the index to the thumb and the EPL was removed (see Figure 3).
+from the index to the thumb and the EPL was removed.
 
 .. image:: images/tendon_transfer.png
   :width: 400
