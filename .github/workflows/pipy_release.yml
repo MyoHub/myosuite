@@ -15,6 +15,9 @@ on:
         description: 'Release Type (major, minor, patch)'
         default: 'patch'
         required: true
+
+permissions: write-all
+
 # # Upon running the following instructions
 # # > git tag 0.0.1 # or whatever version you want
 # # > git push origin --tags
