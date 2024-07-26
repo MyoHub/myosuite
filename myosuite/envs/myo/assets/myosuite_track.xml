@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="myotrack_scene">
+<!-- =================================================
+    Copyright 2024 MyoSuite
+    Model   :: MyoTrack (MuJoCoV3.1.2)
+    Author  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano, Pierre Schumacher, Chun Kwang Tan
+    source  :: https://github.com/MyoHub/MyoSuite
+    License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -©vk©-->
+
+  <compiler angle="radian" meshdir=".." texturedir=".."/>
+
+  <asset>
+    <!-- Scene -©vk©-->
+    <texture name="textscene" type="2d" file="../myo_sim/scene/myosuite_scene.png"/>
+    <material name="matscene" texture="textscene"/>
+    <mesh name="meshscene" file="../myo_sim/scene/myosuite_scene_noFloor.msh" scale=".01 .01 .01"/>
+
+    <!-- Floor -©vk©-->
+    <texture name="texfloor" type="2d" height="1" width="1" file="../../envs/myo/assets/ground_brown.png"/>
+    <texture name="texgroundfloor" type="2d" height="1" width="1" file="../../envs/myo/assets/ground_grey.png"/>
+    <material name="matfloor" reflectance="0.01" texture="texfloor" texrepeat="1 1" texuniform="true"/>
+    <material name="groundfloor" reflectance="0.01" texture="texgroundfloor" texrepeat="1 1" texuniform="true"/>
+
+    <!-- Logo -©vk©-->
+    <texture name="textlogo" type="2d" file="../myo_sim/scene/myosuite_logo.png"/>
+    <mesh name="logo" file="../myo_sim/scene/myosuite_logo.msh" scale="2 2 2"/>
+    <material name="matlogo" texture="textlogo"/>
+
+  </asset>
+
+  <statistic extent="6" center="0 -1 1"/>
+
+  <visual>
+    <map fogstart="10" fogend="40" force="10" />
+    <scale light=".25" framewidth=".005"/>
+    <headlight ambient=".5 .5 .5" diffuse="0.50 0.50 0.50" specular="0.50 0.50 0.50"/>
+    <global elevation="-15"/>
+  </visual>
+
+  <worldbody>
+    <light directional="true" diffuse=".5 .5 .5" specular="0.25 0.25 0.25" pos="0 -3 3" dir="0 1 -1" mode="fixed" castshadow="false"/>
+    <camera name="topview" pos="0 -10.5 10" euler="+0.8 0 0" mode="fixed"/>
+    <geom name="ground" type="plane" size="1.5 15 0.1" material="groundfloor"/>
+    <geom type="mesh" mesh="logo" material="matlogo" group="2" conaffinity="0" contype="0" euler="1.57 0 0" pos="0 6.95 2.1"/>
+  </worldbody>
+</mujoco>

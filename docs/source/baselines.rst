@@ -1,10 +1,12 @@
-RL Baselines
-============
-
 .. _baselines:
 
+RL Baselines
+=====================================
 
-For ease of getting started, MyoSuite comes prepackaged with a set of pre-trained baselines.
+
+
+For ease of getting started, MyoSuite comes prepackaged with a set of pre-trained baselines. Tutorials in this sections aims to show how different 
+RL baselines can be integrated in the myosuite environment.
 See `here <https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents>`_ for our complete set of baselines.
 
 In total, three different types of baselines are provided:

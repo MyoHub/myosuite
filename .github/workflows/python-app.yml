@@ -46,10 +46,10 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Set up Python 3.10
+    - name: Set up Python 3.8
       uses: actions/setup-python@v3
       with:
-        python-version: "3.10"
+        python-version: "3.8"
 
     - name: Prepare Linux
       if: ${{ runner.os == 'Linux' }}
@@ -63,7 +63,7 @@ jobs:
       uses: conda-incubator/setup-miniconda@v3
       with:
         auto-activate-base: false
-        python-version: 3.8
+        python-version: "3.8"
 
     - name: Enable Conda (window/ubuntu)
       if: ${{ runner.os != 'macOS' }}
