@@ -100,7 +100,7 @@ Muscle Fatigue
 +++++++++++++++++++++++++++++++++++++
 Muscle Fatigue is a short-term (second to minutes) effect that happens after sustained or repetitive voluntary movement
 and it has been linked to traumas e.g. cumulative trauma disorder (Chaffin et al. (2006)).
-A dynamic muscle fatigue model (Ma et al. (2009)) was integrated into the modeling framework.
+A dynamic muscle fatigue model (`Cheema et al. (2020) <https://dl.acm.org/doi/pdf/10.1145/3313831.3376701>`__) was integrated into the modeling framework.
 This model was based on the idea that different types of muscle fiber that have different contributions
 and resistance to fatigue (Vøllestad (1997)).
 The current implementation is simplified to consider the same fatigue factor for all muscles and
