@@ -7,17 +7,12 @@ Check our `github repository <https://github.com/MyoHub/myosuite>`__ for more te
 
 Our paper can be found at: `https://arxiv.org/abs/2205.13600 <https://arxiv.org/abs/2205.13600>`__
 
-Users are expected to have a foundational understanding of Reinforcement Learning and to review the `OpenAI Gym API <https://gymnasium.farama.org/>`__ to have the best experience with Myosuite.
+Advanced user are invited to familiarize themselves with the basics of the `OpenAI Gym API <https://gymnasium.farama.org/>`__ and review the basic principle of Reinforcement Learning to make the most out of MyoSuite features and functionalities
 
 .. note::
 
    This project is under active development.
 
-
-Main features
-============================================
-   * Bio-mechanic based simulation of musculoskeletal
-   * Task-driven controller for motion synthesis
 
 
 

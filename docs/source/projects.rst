@@ -18,8 +18,8 @@ Projects with Myosuite
 
 MyoChallenge
 ========================================
-The Myosuite Team organised MyoChallenge to tackle difficult problems in top-level machine learning conference.
-Our latest challenge is accepted to NeuIPs 2024.
+MyoChallenge is an annual event organized by the MyoSuite team to advance our understanding 
+of the physiological motor control essential for dexterous and agile movements of the human body.
 
 .. _myo_challenge_22:
 
