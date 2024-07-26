@@ -1,6 +1,7 @@
 """ =================================================
 # Copyright (c) MyoSuite Authors
-Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Balint Hodossy (bkh16@ic.ac.uk), Eric Lyu (shirui.lyu@kcl.ac.uk), Cheryl Wang (cheryl.wang.huiyi@gmail.com)
+Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Balint Hodossy (bkh16@ic.ac.uk), 
+            Eric Lyu (shirui.lyu@kcl.ac.uk), Cheryl Wang (cheryl.wang.huiyi@gmail.com), Guillaume Durandau (guillaume.durandau@mcgill.ca)
 ================================================= """
 
 import collections
