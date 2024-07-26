@@ -115,17 +115,6 @@ Observation Space
 
 
 
-Disclaimer on challenge realism
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-
-A single policy is used to map observations about the entire bimanual task to the control of both arms. This differs from real prosthetic control tasks, where the two separate 
-agents (human and device) communicate through a narrow bandwidth human-machine interface (HMI). Usually only 1-4 degrees of freedom are communicated between the two systems, often 
-thresholded into a binary channels.
-Since bimanual manipulation is already a complex and challenging task, we did not place such a restriction into the environment or submission rules. Single agent solutions should 
-indicate an upper limit to performance with a perfect HMI. We encourage you to investigate implementing more realistic multi-agent scenarios after the challenge!
-
 
 
 .. _challenge24_locomotion:
