@@ -12,6 +12,7 @@ import time as timer
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from sb3_job_script import train_loop
+from myosuite.utils import gym
 
 # ===============================================================================
 # Process Inputs and configure job
