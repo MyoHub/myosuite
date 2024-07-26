@@ -15,6 +15,7 @@ on:
         description: 'Release Type (major, minor, patch)'
         default: 'patch'
         required: true
+
 # # Upon running the following instructions
 # # > git tag 0.0.1 # or whatever version you want
 # # > git push origin --tags
@@ -34,7 +35,7 @@ jobs:
 
     steps:
       - name: checkout-repo-content
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: setup-python
         uses: actions/setup-python@v2
@@ -61,7 +62,7 @@ jobs:
     needs: get_next_version
     steps:
     - name: Checkout repository and submodules
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         submodules: recursive
 
@@ -88,7 +89,7 @@ jobs:
     - name: add and commit to main
       uses: EndBug/add-and-commit@v7.5.0
       with:
-        #token: ${{ secrets.REPO_TOKEN }}
+        # token: ${{ secrets.REPO_TOKEN }}
         author_name: ${{ secrets.AUTHOR_NAME }}
         author_email: ${{ secrets.AUTHOR_EMAIL }}
 
