@@ -15,13 +15,13 @@ Prosthesis Co-Manipulation
 --------------------------------------------------------------
 
 
-A myoArm :ref:`myoArm` model and a Modular Prosthetic Limb (`MPL <https://www.jhuapl.edu/work/projects-and-missions/revolutionizing-prosthetics/research>`__)
+A :ref:`myoArm` model and a Modular Prosthetic Limb (`MPL <https://www.jhuapl.edu/work/projects-and-missions/revolutionizing-prosthetics/research>`__)
 involved in moving an object between two tables with a handover. This task requires delicate coordination of the 
-object without dropping it or destroying it (maximum force on the object for success) and a mandatory handover between 
+object without dropping it or destroying it (maximum force on the object for success), and a mandatory handover between 
 the MyoArm and the MPL to move the objects between two locations.
 
 
-.. image:: images/MyoChallenge-manip.png
+.. image:: images/MyoChallenge24_manip.png
     :width: 450
     :align: center
 
@@ -41,7 +41,7 @@ Action Space
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 
-The action spaces includes two major parts: the :ref:`myoArm` and the `MPL <https://www.jhuapl.edu/work/projects-and-missions/revolutionizing-prosthetics/research>`__. 
+The action spaces includes two major parts, the :ref:`myoArm` and the `MPL <https://www.jhuapl.edu/work/projects-and-missions/revolutionizing-prosthetics/research>`__. 
 Muscles control values for myoArm are given as continuous values between  :math:`[0, 1]`, details on how this value to force mapping take place can be founda at 
 this `mujoco doc <https://mujoco.readthedocs.io/en/stable/modeling.html#cmuscle>`__.
 
@@ -102,7 +102,7 @@ Observation Space
         - Goal   = value[3]
         - The rest = value[4]
 
-    - Finger tip location is accessed by an index i for each finger tips. The index i is in [0-4] and finger 0 is acccessed by obs_dict['fin0']
+    - Finger tip location is accessed by an index i for each finger tips. The index i is in [0-4] and the location of finger 0 (thumb) can acccessed by obs_dict['fin0']
     
     - Start and Goal positions are 2 dimensional because the height of the two pillars will be constant
 
