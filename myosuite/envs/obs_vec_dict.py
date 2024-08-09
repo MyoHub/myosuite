@@ -80,7 +80,7 @@ class ObsVecDict():
 
         obs_list = [np.zeros(0)]
         for key in self.ordered_obs_keys:
-            obs_list.append(obs_dict[key].ravel())
+            obs_list.append(obs_dict[key].ravel())  # ravel helps with images
         obsvec = np.concatenate(obs_list, dtype=np.float32)
 
         # cache
