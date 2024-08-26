@@ -51,6 +51,12 @@ class RunTrack(WalkEnvV0):
     OSL_PARAM_LIST = []
     OSL_PARAM_SELECT = 0
 
+    # Joint dict
+    pain_jnt = ['hip_adduction_l', 'hip_adduction_r', 'hip_flexion_l', 'hip_flexion_r', 'hip_rotation_l', 'hip_rotation_r',
+                'knee_angle_l', 'knee_angle_l_beta_rotation1', 'knee_angle_l_beta_translation1', 'knee_angle_l_beta_translation2', 
+                'knee_angle_l_rotation2', 'knee_angle_l_rotation3', 'knee_angle_l_translation1', 'knee_angle_l_translation2', 
+                'mtp_angle_l', 'ankle_angle_l', 'subtalar_angle_l']
+
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
         # This flag needs to be here to prevent the simulation from starting in a done state
         # Before setting the key_frames, the model and opponent will be in the cartesian position,
@@ -173,7 +179,9 @@ class RunTrack(WalkEnvV0):
         DEFAULT_RWD_KEYS_AND_WEIGHTS dict, or when registering the environment
         with gym.register in myochallenge/__init__.py
         """
-        act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
+        # act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
+        act_mag = np.mean( np.square(self.obs_dict['act']) ) if self.sim.model.na !=0 else 0
+        pain = self.get_pain()
 
         # The task is entirely defined by these 3 lines
         score = self.get_score()
@@ -186,6 +194,7 @@ class RunTrack(WalkEnvV0):
 
                 # Optional Keys
                 ('act_reg', act_mag.squeeze()),
+                ('pain', pain),
                 # Must keys
                 ('sparse',  score),
                 ('solved',  win_cdt),
@@ -200,9 +209,13 @@ class RunTrack(WalkEnvV0):
         """
         # average sucess over entire env horizon
         score = np.mean([np.sum(p['env_infos']['rwd_dict']['sparse']) for p in paths])
+        effort = np.mean([np.sum(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
+        pain = np.mean([np.sum(p['env_infos']['rwd_dict']['pain']) for p in paths])
 
         metrics = {
-            'score': score,
+            'score': score, # Distance travelled
+            'effort': effort,
+            'pain': pain,
             }
         return metrics
 
@@ -395,6 +408,15 @@ class RunTrack(WalkEnvV0):
         score = (y_pos - 15) / (- 15 - 15)
         return score.squeeze()
 
+    def get_pain(self):
+        if not self.startFlag:
+            return -1
+        
+        pain_score = 0
+        for joint in self.pain_jnt:
+            pain_score += np.abs(self.get_limitfrc(joint).squeeze())
+        return pain_score
+
     def _get_muscle_lengthRange(self):
         return self.sim.model.actuator_lengthrange.copy()
 
@@ -448,6 +470,14 @@ class RunTrack(WalkEnvV0):
                 return 1
             else:
                 return 0
+
+    def get_limitfrc(self, joint_name):
+        non_joint_limit_efc_idxs = np.where(self.sim.data.efc_type != self.sim.lib.mjtConstraint.mjCNSTR_LIMIT_JOINT)[0]
+        only_jnt_lim_efc_force = self.sim.data.efc_force.copy()
+        only_jnt_lim_efc_force[non_joint_limit_efc_idxs] = 0.0
+        joint_force = np.zeros((self.sim.model.nv,))
+        self.sim.lib.mj_mulJacTVec(self.sim.model._model, self.sim.data._data, joint_force, only_jnt_lim_efc_force)
+        return joint_force[self.sim.model.joint(joint_name).dofadr]
 
     def get_internal_qpos(self):
         temp_qpos = self.sim.data.qpos.copy()
@@ -659,6 +689,6 @@ class RunTrack(WalkEnvV0):
         osl_sens_data['knee_vel'] = self.sim.data.joint('osl_knee_angle_r').qvel[0].copy()
         osl_sens_data['ankle_angle'] = self.sim.data.joint('osl_ankle_angle_r').qpos[0].copy()
         osl_sens_data['ankle_vel'] = self.sim.data.joint('osl_ankle_angle_r').qvel[0].copy()
-        osl_sens_data['load'] = self.sim.data.sensor('r_socket_load').data[1].copy() # Only vertical
+        osl_sens_data['load'] = -1*self.sim.data.sensor('r_osl_load').data[1].copy() # Only vertical
 
         return osl_sens_data
