@@ -178,7 +178,7 @@ class BimanualEnvV1(BaseV0):
         current_force = sim.data.sensordata[0]
         if current_force > self.max_force:
             self.max_force = current_force
-            obs_dict['max_force'] = self.max_force
+        obs_dict['max_force'] = np.array([self.max_force])
 
         obs_vec = self._obj_label_to_obs(touching_objects)
         obs_dict["touching_body"] = obs_vec
