@@ -6,7 +6,8 @@ Tutorials
 
 
 Here a set of examples on how to use different MyoSuite models and non-stationarities.
-It is highly recommended to read through the `OpenAI Gym API <https://gymnasium.farama.org/>`__ before you start.
+
+It is highly recommended to read through the `OpenAI Gym API <https://gymnasium.farama.org/>`__ to get familiar with the Gym API
 
 * :ref:`run_myosuite`
 * :ref:`run_visualize_index_movements`
@@ -99,7 +100,7 @@ Muscle Fatigue
 +++++++++++++++++++++++++++++++++++++
 Muscle Fatigue is a short-term (second to minutes) effect that happens after sustained or repetitive voluntary movement
 and it has been linked to traumas e.g. cumulative trauma disorder (Chaffin et al. (2006)).
-A dynamic muscle fatigue model (Ma et al. (2009)) was integrated into the modeling framework.
+A dynamic muscle fatigue model (`Cheema et al. (2020) <https://dl.acm.org/doi/pdf/10.1145/3313831.3376701>`__) was integrated into the modeling framework.
 This model was based on the idea that different types of muscle fiber that have different contributions
 and resistance to fatigue (Vøllestad (1997)).
 The current implementation is simplified to consider the same fatigue factor for all muscles and
@@ -170,7 +171,7 @@ DoF to another (see below). It can be used to regain functional control of a joi
 One of the current procedures in the hand is the tendon transfer of Extensor Indicis Proprius (EIP) to replace the
 Extensor Pollicis Longus (EPL) (Gelb (1995)). Rupture of the EPL can happen after a broken wrist and create a loss of control
 of the Thumb extension. We introduce a physical tendon transfer where the EIP application point of the tendon was moved
-from the index to the thumb and the EPL was removed (see Figure 3).
+from the index to the thumb and the EPL was removed.
 
 .. image:: images/tendon_transfer.png
   :width: 400
