@@ -238,7 +238,7 @@ class BimanualEnvV1(BaseV0):
                 # Must keys
                 ("sparse", 0),
                 ("goal_dist", goal_dis), 
-                ("solved", goal_dis < 0.05),
+                ("solved", goal_dis < self.proximity_th),
                 ("done", False),
             )
         )
