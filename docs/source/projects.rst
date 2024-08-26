@@ -18,8 +18,8 @@ Projects with Myosuite
 
 MyoChallenge
 ========================================
-The Myosuite Team organised MyoChallenge to tackle difficult problems in top-level machine learning conference.
-Our latest challenge is accepted to NeuIPs 2024.
+MyoChallenge is an annual event organized by the MyoSuite team to advance our understanding 
+of the physiological motor control essential for dexterous and agile movements of the human body.
 
 .. _myo_challenge_22:
 
@@ -64,13 +64,11 @@ MyoChallenge 2024: Physiological Dexterity and Agility in Enhanced Humans
 The movement generalization and environment adaptability skills displayed by humans using bionic extensions are
 a testament to motor intelligence, a capability yet unmatched by current artificial intelligence. 
 
-This year MyoChallenge will have two tracks: manipulation and locomotion. The manipulation track will require bi-manual
-coordination of the BionicMyoArms model – a combination of a virtual biological arm and the Modular Prosthetic Limb (MPL).
-The goal will be to coordinate the use of those two limbs to manipulate a series of objects. In the locomotion track, we will
-exploit a new BionicMyoLegs model made from the combination of a virtual bilateral biological leg with a trans-femoral
-amputation together with an Open Source prosthetic leg. The goal will be to coordinate the musculo-skeleto-bionic model To 
-navigate challenging terrains and obstacles in an oval running loop.
+Limb loss profoundly affects an individual's quality of life and independence. Bionic prosthetic limbs provide a chance to restore mobility and functionality, enabling 
+users to compensate for their lost limbs and regain motor abilities. The adaptability and movement skills of bionic limb users highlight a level of motor intelligence 
+that current artificial intelligence agents have yet to achieve.
 
+The MyoChallenge 2024 will push the boundaries on how symbiotic human-robotic interaction needs to be coordinated to produce agile and dexterous behaviors.
 
 .. _pub_with_myosuite:
 
