@@ -53,8 +53,7 @@ class RunTrack(WalkEnvV0):
 
     # Joint dict
     pain_jnt = ['hip_adduction_l', 'hip_adduction_r', 'hip_flexion_l', 'hip_flexion_r', 'hip_rotation_l', 'hip_rotation_r',
-                'knee_angle_l', 'knee_angle_l_beta_rotation1', 'knee_angle_l_beta_translation1', 'knee_angle_l_beta_translation2', 
-                'knee_angle_l_rotation2', 'knee_angle_l_rotation3', 'knee_angle_l_translation1', 'knee_angle_l_translation2', 
+                'knee_angle_l', 'knee_angle_l_rotation2', 'knee_angle_l_rotation3', 
                 'mtp_angle_l', 'ankle_angle_l', 'subtalar_angle_l']
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
@@ -414,8 +413,8 @@ class RunTrack(WalkEnvV0):
         
         pain_score = 0
         for joint in self.pain_jnt:
-            pain_score += np.abs(self.get_limitfrc(joint).squeeze())
-        return pain_score
+            pain_score += np.clip(np.abs(self.get_limitfrc(joint).squeeze()), -1000, 1000)
+        return pain_score / len(self.pain_jnt)
 
     def _get_muscle_lengthRange(self):
         return self.sim.model.actuator_lengthrange.copy()
