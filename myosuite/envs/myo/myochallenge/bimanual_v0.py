@@ -167,8 +167,8 @@ class BimanualEnvV1(BaseV0):
         self.obj_size0 = self.sim.model.geom_size[self.obj_gid].copy()
         self.obj_vert_addr = np.arange(self.sim.model.mesh(self.obj_mid).vertadr,
                                        self.sim.model.mesh(self.obj_mid).vertadr + self.sim.model.mesh(0).vertnum)
-
-        r = R.from_quat(self.sim.model.geom(self.obj_gid - 1).quat, scalar_first=True)
+        q = self.sim.model.geom(self.obj_gid - 1).quat
+        r = R.from_quat([q[1], q[2], q[3], q[0]])
         self.sim.model.mesh_vert[self.obj_vert_addr] = r.apply(self.sim.model.mesh_vert[self.obj_vert_addr])
         self.sim.model.mesh_normal[self.obj_vert_addr] = r.apply(self.sim.model.mesh_normal[self.obj_vert_addr])
         self.sim.model.geom(self.obj_gid - 1).quat = [1, 0, 0, 0]
