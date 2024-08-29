@@ -53,9 +53,9 @@
     
     <!-- ======= Object ======= -->
     <body pos="-0.4 -0.2 1.2" euler="1.57 0 3.14" name="manip_object">
-      <freejoint/>
+      <freejoint name="manip_object/freejoint"/>
       <include file="../../../../simhive/YCB_sim/includes/body_009_gelatin_box.xml"/>
-	    <site name="touch_site" pos = "0 0 0.015" type="sphere" size="0.1" group="5" rgba="0.1 0.1 0.1 0.1"/>
+      <site name="touch_site" pos = "0 0 0.015" type="sphere" size="0.1" group="5" rgba="0.1 0.1 0.1 0.1"/>
     </body>
   
     <!-- ======= Start ======= -->
