@@ -139,7 +139,6 @@ class BimanualEnvV1(BaseV0):
         self.init_qpos[:] = self.sim.model.key_qpos[2].copy()
         # adding random disturbance to start and goal positions, coefficients might need to be adaptable
         self.initialized_pos = False
-        self.sim.renderer.setup_renderer(self.sim.model.ptr, 500, 500)
 
     def _obj_label_to_obs(self, touching_body):
         # Function to convert touching body set to a binary observation vector
