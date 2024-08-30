@@ -55,6 +55,26 @@ def clean_simhive():
     print("MyoSuite:> SimHive cleared")
 
 
+def accept_license():
+    prompt = """
+A permissive license for non-commercial scientific research is available.
+You can review the license at: https://github.com/myolab/myo_model/blob/main/LICENSE
+
+Do you accept the terms of the license? (yes/no):
+"""
+    response = input(prompt).strip().lower()
+
+    if response == 'yes':
+        print("Thank you for accepting the license. You may proceed.")
+        return True
+    elif response == 'no':
+        print("You have rejected the license terms. Exiting...")
+        return False
+    else:
+        print("Invalid input. Please enter 'yes' or 'no'.")
+        return accept_license()  # Recursively prompt again for valid input
+
+
 def fetch_simhive():
     """
     fetch a copy of simhive
@@ -64,8 +84,17 @@ def fetch_simhive():
     # Mark the SimHive version (ToDo: Remove this when commits hashes are auto fetched from submodules)
     __version__ = "2.5.0"
 
+    # Inform user about API
+    if accept_license():
+        # Proceed with the rest of the code
+        print("MyoSuite:> License accepted. Proceeding initialization ...")
+    else:
+        # Exit or handle the rejection case
+        print("MyoSuite:> License rejected. Exiting")
+        return
+
     # Fetch SimHive
-    print("MyoSuite:> Downloading simulation assets (upto ~300MBs)")
+    print("MyoSuite:> Downloading simulation assets (upto ~100MBs)")
     fetch_git(repo_url="https://github.com/myolab/myo_model.git",
                 commit_hash="619b1a876113e91a302b9baeaad6c2341e12ac81",
                 clone_directory="myo_model",
