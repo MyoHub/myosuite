@@ -100,7 +100,7 @@ jobs:
     - name: Test myoapi
       run: |
         conda activate $CONDA_DEFAULT_ENV
-        python3 -m myosuite.tests.test_myo
+        python3 -m myosuite.tests.test_myoapi
 
     - name: Run Test environment
       run: |
