@@ -87,6 +87,7 @@ class RunTrack(WalkEnvV0):
                real_width=1,
                distance_thr = 10,
                init_pose_path=None,
+               remap_required=False,
                **kwargs,
                ):
 
@@ -94,6 +95,7 @@ class RunTrack(WalkEnvV0):
         # Terrain type
         self.terrain_type = TrackTypes.FLAT.value
 
+        self.remap_required = remap_required
         # Env initialization with data
         if init_pose_path is not None:
             file_path = os.path.join(init_pose_path)
@@ -665,6 +667,11 @@ class RunTrack(WalkEnvV0):
         Combines OSL torques with the muscle activations
         Only considers the 54 muscles of the OSLMyoleg model
         """
+
+        if self.remap_required:
+            if np.any( (mus_actions < -1) | (mus_actions > 1) ):
+                raise ValueError("Input value should be between -1 and 1")
+            mus_actions = (mus_actions + 1) / 2
 
         full_actions = np.zeros(self.sim.model.nu,)
         full_actions[0:self.sim.model.na] = mus_actions[0:self.sim.model.na].copy()
