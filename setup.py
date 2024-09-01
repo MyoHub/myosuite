@@ -56,4 +56,10 @@ if __name__ == "__main__":
         packages=find_packages(exclude=("myosuite.agents")),
         python_requires=">=3.8",
         install_requires=fetch_requirements(),
+        entry_points={
+            'console_scripts': [
+                'myoapi_init = myosuite_init:fetch_simhive',
+                'myoapi_clean = myosuite_init:clean_simhive',
+            ],
+        },
     )
