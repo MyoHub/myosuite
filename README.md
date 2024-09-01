@@ -46,7 +46,7 @@ Test your installation using the following command (this will return also a list
 ``` bash
 python -m myosuite.tests.test_myo
 ```
- 
+
 
 You can also visualize the environments with random controls using the command below:
 ``` bash
@@ -57,7 +57,10 @@ python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 ```
 
-
+It is possible to take advantage of the latest MyoSkeleton. Once added (follow the instructions prompted by `python myosuite_init.py`), run:
+``` bash
+python myosuite/utils/examine_sim.py -s myosuite/simhive/myo_model/myoskeleton/myoskeleton.xml
+```
 
 ## Examples
 It is possible to create and interface with MyoSuite environments just like any other OpenAI gym environments. For example, to use the `myoElbowPose1D6MRandom-v0` environment, it is possible simply to run: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo)
@@ -74,7 +77,7 @@ for _ in range(1000):
 env.close()
 ```
 
-You can find our [tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials#tutorials) on the general features and the **ICRA2023 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q) **ICRA2024 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JwxE7o6Z3bqCT4ewELacJ-Z1SV8xFhKK#scrollTo=QDppGIzHB9Zu) 
+You can find our [tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials#tutorials) on the general features and the **ICRA2023 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q) **ICRA2024 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JwxE7o6Z3bqCT4ewELacJ-Z1SV8xFhKK#scrollTo=QDppGIzHB9Zu)
 on how to load MyoSuite models/tasks, train them, and visualize their outcome. Also, you can find [baselines](https://github.com/myohub/myosuite/tree/main/myosuite/agents) to test some pre-trained policies.
 
 

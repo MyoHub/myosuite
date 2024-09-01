@@ -78,10 +78,10 @@ class ObsVecDict():
         if not self.initialized:
             self.initialize(obs_dict, ordered_obs_keys)
 
-        # recover vec
-        obsvec = np.zeros(0)
+        obs_list = [np.zeros(0)]
         for key in self.ordered_obs_keys:
-            obsvec = np.concatenate([obsvec, obs_dict[key].ravel()]) # ravel helps with images
+            obs_list.append(obs_dict[key].ravel())  # ravel helps with images
+        obsvec = np.concatenate(obs_list, dtype=np.float32)
 
         # cache
         t = obs_dict['time']

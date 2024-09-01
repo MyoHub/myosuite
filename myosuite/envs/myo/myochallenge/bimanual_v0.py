@@ -111,7 +111,7 @@ class BimanualEnvV1(BaseV0):
 
         # check whether the object experience force over max force
         self.over_max = False
-        self.max_force = max_force
+        self.max_force = 0
 
         self.touch_history = []
 
@@ -177,7 +177,8 @@ class BimanualEnvV1(BaseV0):
 
         current_force = sim.data.sensordata[0]
         if current_force > self.max_force:
-            self.over_max = True
+            self.max_force = current_force
+        obs_dict['max_force'] = np.array([self.max_force])
 
         obs_vec = self._obj_label_to_obs(touching_objects)
         obs_dict["touching_body"] = obs_vec
@@ -236,7 +237,8 @@ class BimanualEnvV1(BaseV0):
                 ("pass_err", pass_dist + np.log(pass_dist + 1e-3)),
                 # Must keys
                 ("sparse", 0),
-                ("solved", self.check_solve(goal_dis)),
+                ("goal_dist", goal_dis), 
+                ("solved", goal_dis < self.proximity_th),
                 ("done", False),
             )
         )
@@ -258,12 +260,6 @@ class BimanualEnvV1(BaseV0):
                                                       - self.sim.model.actuator_ctrlrange[robotic_act_ind, 0]) / 2.0)
         return super().step(processed_controls, **kwargs)
 
-    def check_solve(self, goal_dis):
-        if goal_dis > 0.01:
-            return False
-        if self.over_max == True:
-            return False
-        return True
 
     def get_metrics(self, paths, successful_steps=5):
         """
@@ -280,15 +276,19 @@ class BimanualEnvV1(BaseV0):
                 num_success += 1
         score = num_success / num_paths
 
-        times = np.mean([np.round(p['env_infos']['obs_dict']['time'][-1], 2) for p in paths])
+        times = np.mean([np.round(p['env_infos']['obs_dict']['time'][-1], 5) for p in paths])
+        max_force = np.mean([np.round(p['env_infos']['obs_dict']['max_force'][-1], 5) for p in paths])
+        goal_dist = np.mean([np.mean(p['env_infos']['rwd_dict']['goal_dist']) for p in paths])
 
         # average activations over entire trajectory (can be shorter than horizon, if done) realized
-        effort = -1.0 * np.mean([np.mean(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
+        effort = -1.0 * np.mean([np.mean(p['env_infos']['rwd_dict']['act']) for p in paths])
 
         metrics = {
             'score': score,
             'time': times,
             'effort': effort,
+            'peak force': max_force,
+            'goal dist': goal_dist, 
         }
         return metrics
 
