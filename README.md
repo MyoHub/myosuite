@@ -57,9 +57,9 @@ python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 ```
 
-It is possible to take advantage of the latest MyoSkeleton. Once added (follow the instructions prompted by `python myosuite_init.py`), run:
+It is possible to take advantage of the latest MyoSkeleton. Once added (follow the instructions prompted by `python -m myosuite_init`), run:
 ``` bash
-python myosuite/utils/examine_sim.py -s myosuite/simhive/myo_model/myoskeleton/myoskeleton.xml
+python -m myosuite.utils.examine_sim -s myosuite/simhive/myo_model/myoskeleton/myoskeleton.xml
 ```
 
 ## Examples
