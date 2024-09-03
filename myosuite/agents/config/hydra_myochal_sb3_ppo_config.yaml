@@ -5,7 +5,7 @@ default:
 env               :   'myoChallengeBimanual-v0' 
 algorithm         :   PPO
 seed              :   123
-n_env             :   2
+n_env             :   32
 n_eval_env        :   5
 
 # PPO object
