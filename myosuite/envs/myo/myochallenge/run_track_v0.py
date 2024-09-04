@@ -209,12 +209,14 @@ class RunTrack(WalkEnvV0):
         Evaluate paths and report metrics
         """
         # average sucess over entire env horizon
+        times = np.mean([np.round(p['env_infos']['obs_dict']['time'][-1], 5) for p in paths])
         score = np.mean([np.sum(p['env_infos']['rwd_dict']['sparse']) for p in paths])
         effort = np.mean([np.sum(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
         pain = np.mean([np.sum(p['env_infos']['rwd_dict']['pain']) for p in paths])
 
         metrics = {
             'score': score, # Distance travelled
+            'Time': times,
             'effort': effort,
             'pain': pain,
             }
