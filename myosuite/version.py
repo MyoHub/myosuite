@@ -1,1 +1,1 @@
-__version_tuple__ = (2, 5, 0)
+__version_tuple__ = (2, 7, 0)
