@@ -216,7 +216,7 @@ class RunTrack(WalkEnvV0):
 
         metrics = {
             'score': score, # Distance travelled
-            'Time': times,
+            'time': times,
             'effort': effort,
             'pain': pain,
             }
