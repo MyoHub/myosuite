@@ -86,12 +86,14 @@ class RunTrack(WalkEnvV0):
                real_length=15,
                real_width=1,
                distance_thr = 10,
+               start_pos = 14,
                init_pose_path=None,
                remap_required=False,
                **kwargs,
                ):
 
         self.startFlag = False
+        self.start_pos = start_pos
         # Terrain type
         self.terrain_type = TrackTypes.FLAT.value
 
@@ -341,7 +343,7 @@ class RunTrack(WalkEnvV0):
 
         qpos[3:7] = rot_state
         qpos[2] = height
-        qpos[1] = 14
+        qpos[1] = self.start_pos
         return qpos, qvel
 
     def _setup_convenience_vars(self):
@@ -358,14 +360,14 @@ class RunTrack(WalkEnvV0):
 
     def _get_done(self):
         if self._lose_condition():
-            return self._get_fallen_condition()
+            return 1
         if self._win_condition():
             return 1
         return 0
 
     def _win_condition(self):
         y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
-        if np.abs(y_pos) > self.distance_thr:
+        if (- y_pos) > self.distance_thr:
             return 1
         return 0
 
@@ -374,7 +376,7 @@ class RunTrack(WalkEnvV0):
         y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
         if x_pos > self.real_width or x_pos < - self.real_width:
             return 1
-        if y_pos > 15.0:
+        if y_pos > self.start_pos + 1:
             return 1
         if self._get_fallen_condition():
             return 1

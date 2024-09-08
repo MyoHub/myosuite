@@ -59,6 +59,7 @@ register_env_with_variants(id='myoChallengeRunTrackP1-v0',
             'stairs_difficulties': (0.0, 0.05, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3),
             'distance_thr': 15,
             'frame_skip': 5,
+            'start_pos': 14,
             'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv'
             
         }
@@ -69,15 +70,16 @@ register_env_with_variants(id='myoChallengeRunTrackP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.run_track_v0:RunTrack',
         max_episode_steps=1000,
         kwargs={
-            'model_path': curr_dir+'/../assets/leg/myoosl_runtrack.xml',
+            'model_path': curr_dir+'/../assets/leg/myoosl_runtrack_p2.xml',
             'normalize_act': True,
             'reset_type': 'random',  # none, init, random, osl_init
             'terrain': 'random',  # FLAT, random
             'hills_difficulties': (0.0, 0.1, 0.0, 0.2, 0.0, 0.3, 0.0, 0.4, 0.0, 0.5, 0.0, 0.6, 0.0, 0.7, 0.0, 0.8),
             'rough_difficulties': (0.0, 0.05, 0.0, 0.01, 0.0, 0.02, 0.0, 0.05, 0.0, 0.1, 0.0, 0.15, 0.0, 0.2),
             'stairs_difficulties': (0.0, 0.05, 0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.25, 0.0, 0.3),
-            'distance_thr': 15,
+            'distance_thr': 35,
             'frame_skip': 5,
+            'start_pos': 32,
             'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv'
             
         }
