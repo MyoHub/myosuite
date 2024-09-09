@@ -74,9 +74,9 @@ register_env_with_variants(id='myoChallengeRunTrackP2-v0',
             'normalize_act': True,
             'reset_type': 'random',  # none, init, random, osl_init
             'terrain': 'random_mixed',  # FLAT, random
-            'hills_difficulties': (0.0, 0.1, 0.0, 0.2, 0.0, 0.3, 0.0, 0.4, 0.0, 0.5, 0.0, 0.6, 0.0, 0.7, 0.0, 0.8),
-            'rough_difficulties': (0.0, 0.05, 0.0, 0.05, 0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.25, 0.0, 0.3, 0.0, 0.4),
-            'stairs_difficulties': (0.0, 0.05, 0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.25, 0.0, 0.3, 0.0, 0.35, 0.0, 0.4),
+            'hills_difficulties': (0.0, 0.0, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3, 0.0, 0.4, 0.0, 0.5, 0.0, 0.6, 0.0, 0.7),
+            'rough_difficulties': (0.0, 0.00, 0.0, 0.05, 0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.25, 0.0, 0.3, 0.0, 0.4),
+            'stairs_difficulties': (0.0, 0.00, 0.0, 0.05, 0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.25, 0.0, 0.3, 0.0, 0.35),
             'distance_thr': 35,
             'frame_skip': 5,
             'start_pos': 32,
