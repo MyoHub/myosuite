@@ -24,6 +24,7 @@ class TrackTypes(Enum):
     HILLY = 1
     ROUGH = 2
     STAIRS = 3
+    MIXED = 4
 
 
 class RunTrack(WalkEnvV0):
@@ -79,7 +80,7 @@ class RunTrack(WalkEnvV0):
                obs_keys: list = DEFAULT_OBS_KEYS,
                weighted_reward_keys: dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
                reset_type='init',
-               terrain='FLAT',
+               terrain='random',
                hills_difficulties=(0,0),
                rough_difficulties=(0,0),
                stairs_difficulties=(0,0),
@@ -128,6 +129,7 @@ class RunTrack(WalkEnvV0):
             rough_difficulties=rough_difficulties,
             hills_difficulties=hills_difficulties,
             stairs_difficulties=stairs_difficulties,
+            reset_type=terrain,
         )
         self.real_width = real_width
         self.real_length = real_length
