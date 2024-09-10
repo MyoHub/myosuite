@@ -56,6 +56,7 @@ class MyoOSLController:
         """
         if init_state is not None:
             self.STATE_MACHINE.init_machine(init_state)
+            self.init_state = init_state
         else:
             self.STATE_MACHINE.init_machine(self.init_state)
 
