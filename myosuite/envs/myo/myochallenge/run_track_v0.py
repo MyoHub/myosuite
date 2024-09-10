@@ -237,7 +237,6 @@ class RunTrack(WalkEnvV0):
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel, **kwargs)
         self.sim.forward()
-        self.OSL_CTRL.reset('e_stance')
 
         # Sync the states again as the randomization might cause the part of the model to be inside the ground
         if self.reset_type != 'init':
@@ -287,12 +286,15 @@ class RunTrack(WalkEnvV0):
             qpos, qvel = self._get_randomized_initial_state()
             return self._randomize_position_orientation(qpos, qvel)
         elif self.reset_type == 'init':
-            return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
+            self.OSL_CTRL.reset('e_stance')
+            return self.sim.model.key_qpos[3], self.sim.model.key_qvel[3]
         elif self.reset_type == 'osl_init':
             self.initializeFromData()
             return self.init_qpos.copy(), self.init_qvel.copy()
         else:
+            self.OSL_CTRL.reset('e_stance')
             return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
+        
 
     def _maybe_adjust_height(self, qpos, qvel):
         """
@@ -328,9 +330,15 @@ class RunTrack(WalkEnvV0):
 
     def _get_randomized_initial_state(self):
         # randomly start with flexed left or right knee
-        rndInt = self.np_random.integers(low=0, high=3)
+        rndInt = self.np_random.integers(low=0, high=3) # high exclusive
         qpos = self.sim.model.key_qpos[rndInt].copy()
         qvel = self.sim.model.key_qvel[rndInt].copy()
+
+        # Set OSL leg initial state for based on initial key pose
+        if rndInt == 0 or rndInt == 2:
+            self.OSL_CTRL.reset('e_stance')
+        else:
+            self.OSL_CTRL.reset('e_swing')
 
         # randomize qpos coordinates
         # but dont change height or rot state
