@@ -272,10 +272,12 @@ class RunTrack(WalkEnvV0):
             self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, -10])
 
     def _randomize_position_orientation(self, qpos, qvel):
-        orientation = self.np_random.uniform(0, 2 * np.pi)
-        euler_angle = quat2euler(qpos[3:7])
-        euler_angle[-1] = orientation
-        qpos[3:7] = euler2quat(euler_angle)
+        orientation = self.np_random.uniform(np.deg2rad(-125), np.deg2rad(-60))
+
+        euler_angle = self.get_intrinsic_EulerXYZ(qpos[3:7]) # Roll, Pitch, Yaw format
+        euler_angle[2] = orientation
+        qpos[3:7] = self.intrinsic_EulerXYZ_toQuat(euler_angle[0], euler_angle[1], euler_angle[2])
+
         # rotate original velocity with unit direction vector
         qvel[:2] = np.array([np.cos(orientation), np.sin(orientation)]) * np.linalg.norm(qvel[:2])
         return qpos, qvel
@@ -285,7 +287,7 @@ class RunTrack(WalkEnvV0):
             qpos, qvel = self._get_randomized_initial_state()
             return self._randomize_position_orientation(qpos, qvel)
         elif self.reset_type == 'init':
-            return self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
+            return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
         elif self.reset_type == 'osl_init':
             self.initializeFromData()
             return self.init_qpos.copy(), self.init_qvel.copy()
@@ -326,12 +328,9 @@ class RunTrack(WalkEnvV0):
 
     def _get_randomized_initial_state(self):
         # randomly start with flexed left or right knee
-        if  self.np_random.uniform() < 0.5:
-            qpos = self.sim.model.key_qpos[2].copy()
-            qvel = self.sim.model.key_qvel[2].copy()
-        else:
-            qpos = self.sim.model.key_qpos[3].copy()
-            qvel = self.sim.model.key_qvel[3].copy()
+        rndInt = self.np_random.integers(low=0, high=3)
+        qpos = self.sim.model.key_qpos[rndInt].copy()
+        qvel = self.sim.model.key_qvel[rndInt].copy()
 
         # randomize qpos coordinates
         # but dont change height or rot state
@@ -641,7 +640,11 @@ class RunTrack(WalkEnvV0):
             if temp_sens_height > self.sim.data.site(sens_site).xpos[2]:
                 temp_sens_height = self.sim.data.site(sens_site).xpos[2].copy()
 
-        diff_height = 0.0 - temp_sens_height
+        if not self.trackfield is None:
+            diff_height = 0.005 - temp_sens_height
+        else:
+            diff_height = 0.0 - temp_sens_height
+
         curr_qpos[2] = curr_qpos[2] + diff_height
 
         return curr_qpos, curr_qvel
@@ -700,3 +703,17 @@ class RunTrack(WalkEnvV0):
         osl_sens_data['load'] = -1*self.sim.data.sensor('r_osl_load').data[1].copy() # Only vertical
 
         return osl_sens_data
+    
+    def upload_osl_param(self, list_of_dict):
+        """
+        Accessor function to upload full set of paramters to OSL leg
+        """
+        for idx in range(len(list_of_dict)):
+            self.OSL_CTRL.set_osl_param_batch(list_of_dict[idx], mode=idx)
+
+    def change_osl_mode(self, mode=0):
+        """
+        Accessor function to activte a set of state machine variables
+        """
+        self.OSL_CTRL.change_osl_mode(mode)
+        
