@@ -221,9 +221,10 @@ class MyoOSLController:
         temp_dict['l_swing']['threshold']['knee_angle'] = (np.deg2rad(30), 'below')
 
         self.OSL_PARAM_SELECT = 0
-        self.OSL_PARAM_LIST = []
+        self.OSL_PARAM_LIST = {}
         for idx in np.arange(3):
-            self.OSL_PARAM_LIST.append(copy.deepcopy(temp_dict))
+            self.OSL_PARAM_LIST[idx] = {}
+            self.OSL_PARAM_LIST[idx] = copy.deepcopy(temp_dict)
 
     @property
     def getOSLparam(self):

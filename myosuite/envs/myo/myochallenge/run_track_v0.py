@@ -228,7 +228,7 @@ class RunTrack(WalkEnvV0):
 
         return results
 
-    def reset(self, **kwargs):
+    def reset(self, OSL_params=None, **kwargs):
         # randomized terrain types
         self._maybe_sample_terrain()
         self.terrain_type = self.trackfield.terrain_type.value
@@ -712,12 +712,12 @@ class RunTrack(WalkEnvV0):
 
         return osl_sens_data
     
-    def upload_osl_param(self, list_of_dict):
+    def upload_osl_param(self, dict_of_dict):
         """
         Accessor function to upload full set of paramters to OSL leg
         """
-        for idx in range(len(list_of_dict)):
-            self.OSL_CTRL.set_osl_param_batch(list_of_dict[idx], mode=idx)
+        for idx in dict_of_dict.keys():
+            self.OSL_CTRL.set_osl_param_batch(dict_of_dict[idx], mode=idx)
 
     def change_osl_mode(self, mode=0):
         """
