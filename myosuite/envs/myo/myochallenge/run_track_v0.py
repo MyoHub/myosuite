@@ -229,6 +229,10 @@ class RunTrack(WalkEnvV0):
         return results
 
     def reset(self, OSL_params=None, **kwargs):
+
+        if OSL_params is not None:
+            self.upload_osl_param(OSL_params)
+
         # randomized terrain types
         self._maybe_sample_terrain()
         self.terrain_type = self.trackfield.terrain_type.value
