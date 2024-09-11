@@ -345,7 +345,7 @@ class RunTrack(WalkEnvV0):
 
         qpos[3:7] = rot_state
         qpos[2] = height
-        qpos[1] = self.start_pos
+        qpos[1] = self.start_pos + 1
         return qpos, qvel
 
     def _setup_convenience_vars(self):
@@ -378,7 +378,7 @@ class RunTrack(WalkEnvV0):
         y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
         if x_pos > self.real_width or x_pos < - self.real_width:
             return 1
-        if y_pos > self.start_pos + 1:
+        if y_pos > self.start_pos + 2:
             return 1
         if self._get_fallen_condition():
             return 1
