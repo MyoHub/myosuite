@@ -227,7 +227,7 @@ class MyoOSLController:
 
         self.OSL_PARAM_SELECT = 0
         self.OSL_PARAM_LIST = {}
-        for idx in np.arange(3):
+        for idx in np.arange(self.n_sets):
             self.OSL_PARAM_LIST[idx] = {}
             self.OSL_PARAM_LIST[idx] = copy.deepcopy(temp_dict)
 

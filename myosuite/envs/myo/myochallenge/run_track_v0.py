@@ -89,6 +89,7 @@ class RunTrack(WalkEnvV0):
                start_pos = 14,
                init_pose_path=None,
                remap_required=False,
+               osl_param_set=4,
                **kwargs,
                ):
 
@@ -98,6 +99,7 @@ class RunTrack(WalkEnvV0):
         self.terrain_type = TrackTypes.FLAT.value
 
         self.remap_required = remap_required
+        self.osl_param_set = osl_param_set
         # Env initialization with data
         if init_pose_path is not None:
             file_path = os.path.join(init_pose_path)
@@ -113,7 +115,7 @@ class RunTrack(WalkEnvV0):
             self.gait_cycle_headers = dict(zip(headers, range(len(headers))))
 
         # OSL specific init
-        self.OSL_CTRL = MyoOSLController(np.sum(self.sim.model.body_mass), init_state='e_stance')
+        self.OSL_CTRL = MyoOSLController(np.sum(self.sim.model.body_mass), init_state='e_stance', n_sets=self.osl_param_set)
         self.OSL_CTRL.start()
 
         self.muscle_space = self.sim.model.na # muscles only
