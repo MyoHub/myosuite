@@ -751,5 +751,6 @@ class RunTrack(WalkEnvV0):
         """
         Accessor function to activte a set of state machine variables
         """
+        assert mode < 4
         self.OSL_CTRL.change_osl_mode(mode)
         
