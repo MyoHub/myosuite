@@ -192,9 +192,9 @@ class ChaseTagField(HeightField):
     Quad for chasetag competition and MyoChallenge 2023.
     """
     def __init__(self,
-                 rough_range,
-                 hills_range,
-                 relief_range,
+                 rough_range: tuple[float, float] = (0.0, 0.0),
+                 hills_range: tuple[float, float] = (0.0, 0.0),
+                 relief_range: tuple[float, float] = (0.0, 0.0),
                  *args,
                  patches_per_side=3,
                  real_length=12,
@@ -307,12 +307,12 @@ class TrackField(HeightField):
     Either a random but consistent terrain type or a mixed terrain type.
     """
     def __init__(self, 
-                 rough_difficulties,
-                 hills_difficulties,
-                 stairs_difficulties,
-                 real_length = 20,
-                 real_width = 1,
-                 reset_type = "random",
+                 rough_difficulties: list[float],
+                 hills_difficulties: list[float],
+                 stairs_difficulties: list[float],
+                 real_length: int = 20,
+                 real_width: int = 1,
+                 reset_type: str = "random",
                  *args, **kwargs
                  ):
         # the heightfield indexing is reversed from the walking direction
