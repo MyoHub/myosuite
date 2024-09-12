@@ -24,7 +24,7 @@
 
         <camera name="side_view" pos="-3 0 2.25" xyaxes="0 -1 0 1 0 2" mode="trackcom"/>
 
-        <!-- ======= MyoAgent ======= -->
+        <!-- ======= Body ======= -->
         <site name="pelvis_target" size="0.02" pos="0 0 .92" group="4"/>
         <body name="root" pos="0 0 1" euler="0 0 -1.57">
             <light directional="false" diffuse=".25 .25 .25" specular="0.25 0.25 0.25" pos="3 0 2" dir="-1 0 -1" mode="trackcom"/>
