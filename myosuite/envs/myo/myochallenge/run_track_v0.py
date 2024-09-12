@@ -85,7 +85,7 @@ class RunTrack(WalkEnvV0):
                rough_difficulties=(0,0),
                stairs_difficulties=(0,0),
                real_width=1,
-               distance_thr = 10,
+               end_pos = -15,
                start_pos = 14,
                init_pose_path=None,
                remap_required=False,
@@ -121,7 +121,7 @@ class RunTrack(WalkEnvV0):
         self._get_actuator_params()
 
         self._setup_convenience_vars()
-        self.distance_thr = distance_thr
+        self.end_pos = end_pos
         self.trackfield = TrackField(
             sim=self.sim,
             rng=self.np_random,
@@ -213,12 +213,19 @@ class RunTrack(WalkEnvV0):
         """
         # average sucess over entire env horizon
         times = np.mean([np.round(p['env_infos']['obs_dict']['time'][-1], 5) for p in paths])
-        score = np.mean([np.sum(p['env_infos']['rwd_dict']['sparse']) for p in paths])
+        # use best achieved position over trajectory as score
+        score = np.mean([np.min(p['env_infos']['obs_dict']['model_root_pos'][..., 1]) for p in paths])
         effort = np.mean([np.sum(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
         pain = np.mean([np.sum(p['env_infos']['rwd_dict']['pain']) for p in paths])
 
+        # normalize score to be between 0 and 1
+        if self.start_pos > self.end_pos:
+            score = (self.start_pos - score) / (self.start_pos - self.end_pos)
+        else:
+            score = (score - self.end_pos) / (self.start_pos - self.end_pos)
+
         metrics = {
-            'score': score, # Distance travelled
+            'score': np.clip(score, 0, 1), 
             'time': times,
             'effort': effort,
             'pain': pain,
@@ -368,7 +375,7 @@ class RunTrack(WalkEnvV0):
 
     def _win_condition(self):
         y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
-        if (- y_pos) > self.distance_thr:
+        if  y_pos < self.end_pos:
             return 1
         return 0
 
@@ -430,7 +437,7 @@ class RunTrack(WalkEnvV0):
         
         pain_score = 0
         for joint in self.pain_jnt:
-            pain_score += np.clip(np.abs(self.get_limitfrc(joint).squeeze()), -1000, 1000)
+            pain_score += np.clip(np.abs(self.get_limitfrc(joint).squeeze()), -1000, 1000) / 1000
         return pain_score / len(self.pain_jnt)
 
     def _get_muscle_lengthRange(self):
