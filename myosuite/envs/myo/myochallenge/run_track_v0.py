@@ -743,7 +743,7 @@ class RunTrack(WalkEnvV0):
         """
         Accessor function to upload full set of paramters to OSL leg
         """
-        assert len(dict_of_dict.keys()) < 4
+        assert len(dict_of_dict.keys()) <= 4
         for idx in dict_of_dict.keys():
             self.OSL_CTRL.set_osl_param_batch(dict_of_dict[idx], mode=idx)
 
