@@ -11,6 +11,7 @@ class MyoOSLController:
                  body_mass,
                  init_state='e_stance',
                  hardware_param=None,
+                 n_sets=4,
                  ):
         """
         Initializes the OSL state machine
@@ -21,6 +22,7 @@ class MyoOSLController:
 
         assert init_state in ['e_stance', 'l_stance', 'e_swing', 'l_swing'], "Phase should be : ['e_stance', 'l_stance', 'e_swing', 'l_swing']"
         self.init_state = init_state
+        self.n_sets = n_sets
 
         self.initDefaults(body_mass)
 
@@ -79,7 +81,8 @@ class MyoOSLController:
         """
         In the case of multiple control gains for the OSL, this function can be used to switch between different sets of control gains
         """
-        self.OSL_PARAM_SELECT = np.clip(mode, 0, 2)
+        assert mode < self.n_sets # Ensure that no. of parameter sets do not exceed fixed value
+        self.OSL_PARAM_SELECT = mode
         self._update_param_to_state_machine()
 
     def set_osl_param_batch(self, params, mode=0):
@@ -89,6 +92,8 @@ class MyoOSLController:
         Parameter type: ['knee', 'ankle', 'threshold']
         Parameters: ['knee_stiffness', 'knee_damping', 'ankle_stiffness', 'ankle_damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle']
         """
+        assert mode < self.n_sets # Ensure that no. of parameter sets do not exceed fixed value
+
         phase_list = ['e_stance', 'l_stance', 'e_swing', 'l_swing']
         joint_list = ['knee', 'ankle', 'threshold']
         idx = 0

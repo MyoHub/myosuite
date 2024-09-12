@@ -301,7 +301,7 @@ class RunTrack(WalkEnvV0):
             return self._randomize_position_orientation(qpos, qvel)
         elif self.reset_type == 'init':
             self.OSL_CTRL.reset('e_stance')
-            return self.sim.model.key_qpos[3], self.sim.model.key_qvel[3]
+            return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
         elif self.reset_type == 'osl_init':
             self.initializeFromData()
             return self.init_qpos.copy(), self.init_qvel.copy()
@@ -741,6 +741,7 @@ class RunTrack(WalkEnvV0):
         """
         Accessor function to upload full set of paramters to OSL leg
         """
+        assert len(dict_of_dict.keys()) < 4
         for idx in dict_of_dict.keys():
             self.OSL_CTRL.set_osl_param_batch(dict_of_dict[idx], mode=idx)
 
