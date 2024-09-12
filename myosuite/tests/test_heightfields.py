@@ -3,7 +3,6 @@ import os
 import gymnasium as gym
 import mujoco
 from myosuite.envs.heightfields import ChaseTagField, TrackField
-# Assuming assert_close is a custom function, we'll keep it
 from myosuite.tests.test_envs import assert_close
 
 
