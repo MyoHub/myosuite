@@ -14,7 +14,7 @@ import csv
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
-from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat
+from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat, quat2euler_intrinsic, intrinsic_euler2quat
 from myosuite.envs.heightfields import TrackField
 from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
 
@@ -566,59 +566,6 @@ class RunTrack(WalkEnvV0):
             self.ACTUATOR_PARAM[actu]['id'] = self.sim.data.actuator(actu).id
             self.ACTUATOR_PARAM[actu]['Fmax'] = np.max(self.sim.model.actuator(actu).ctrlrange) * self.sim.model.actuator(actu).gear[0]
 
-    def get_intrinsic_EulerXYZ(self, q):
-        """
-        Math func: Intrinsic Euler angles, for euler in body coordinate frame
-        """
-        w, x, y, z = q
-
-        # Compute sin and cos values
-        sinr_cosp = 2 * (w * x + y * z)
-        cosr_cosp = 1 - 2 * (x * x + y * y)
-
-        # Roll (X-axis rotation)
-        roll = np.arctan2(sinr_cosp, cosr_cosp)
-
-        # Compute sin and cos values
-        sinp = 2 * (w * y - z * x)
-
-        # Pitch (Y-axis rotation)
-        if abs(sinp) >= 1:
-            # Use 90 degrees if out of range
-            pitch = np.copysign(np.pi / 2, sinp)
-        else:
-            pitch = np.arcsin(sinp)
-
-        # Compute sin and cos values
-        siny_cosp = 2 * (w * z + x * y)
-        cosy_cosp = 1 - 2 * (y * y + z * z)
-
-        # Yaw (Z-axis rotation)
-        yaw = np.arctan2(siny_cosp, cosy_cosp)
-
-        return np.array([roll, pitch, yaw])
-
-    def intrinsic_EulerXYZ_toQuat(self, roll, pitch, yaw):
-        # Half angles
-        half_roll = roll * 0.5
-        half_pitch = pitch * 0.5
-        half_yaw = yaw * 0.5
-
-        # Compute sin and cos values for half angles
-        sin_roll = np.sin(half_roll)
-        cos_roll = np.cos(half_roll)
-        sin_pitch = np.sin(half_pitch)
-        cos_pitch = np.cos(half_pitch)
-        sin_yaw = np.sin(half_yaw)
-        cos_yaw = np.cos(half_yaw)
-
-        # Compute quaternion
-        w = cos_roll * cos_pitch * cos_yaw + sin_roll * sin_pitch * sin_yaw
-        x = sin_roll * cos_pitch * cos_yaw - cos_roll * sin_pitch * sin_yaw
-        y = cos_roll * sin_pitch * cos_yaw + sin_roll * cos_pitch * sin_yaw
-        z = cos_roll * cos_pitch * sin_yaw - sin_roll * sin_pitch * cos_yaw
-
-        return np.array([w, x, y, z])
 
     def rotate_frame(self, x, y, theta):
         #print(theta)
@@ -631,10 +578,7 @@ class RunTrack(WalkEnvV0):
     """
     def initializeFromData(self):
 
-        if self._operation_mode == 'eval':
-            start_idx = 0
-        else:
-            start_idx = self.np_random.integers(low=0, high=self.INIT_DATA.shape[0])
+        start_idx = self.np_random.integers(low=0, high=self.INIT_DATA.shape[0])
 
         for joint in self.gait_cycle_headers.keys():
             if joint not in ['pelvis_euler_roll', 'pelvis_euler_pitch', 'pelvis_euler_yaw',
@@ -646,13 +590,15 @@ class RunTrack(WalkEnvV0):
         # Get the Yaw from the init pose
         default_quat = self.init_qpos[3:7].copy() # Get the default facing direction first
 
-        init_quat = self.intrinsic_EulerXYZ_toQuat(self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_roll']],
-                                                   self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_pitch']],
-                                                   self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_yaw']])
+        init_quat = intrinsic_euler2quat([
+            self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_roll']],
+            self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_pitch']],
+            self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_yaw']]
+        ])
         self.init_qpos[3:7] = init_quat
-
+ 
         # Use the default facing direction to set the world frame velocity
-        temp_euler = self.get_intrinsic_EulerXYZ(default_quat)
+        temp_euler = quat2euler_intrinsic(default_quat)
         world_vel_X, world_vel_Y = self.rotate_frame(self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_vel_X']],
                                                      self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_vel_Y']],
                                                      temp_euler[2])

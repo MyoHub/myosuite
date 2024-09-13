@@ -18,6 +18,7 @@ class MyoOSLController:
         Default init state: early stance [e_stance]
         All states: [e_stance, l_stance, e_swing, l_swing]
         - Early stance, Late Stance, Early Swing, Late Swing
+        n_sets : Denotes the maximum number of possible sets of state machine variables
         """
 
         assert init_state in ['e_stance', 'l_stance', 'e_swing', 'l_swing'], "Phase should be : ['e_stance', 'l_stance', 'e_swing', 'l_swing']"
