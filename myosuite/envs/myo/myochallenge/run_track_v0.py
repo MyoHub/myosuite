@@ -14,7 +14,7 @@ import csv
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
-from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat
+from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat, quat2euler_intrinsic, intrinsic_euler2quat
 from myosuite.envs.heightfields import TrackField
 from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
 
@@ -89,6 +89,7 @@ class RunTrack(WalkEnvV0):
                start_pos = 14,
                init_pose_path=None,
                remap_required=False,
+               osl_param_set=4,
                **kwargs,
                ):
 
@@ -98,6 +99,7 @@ class RunTrack(WalkEnvV0):
         self.terrain_type = TrackTypes.FLAT.value
 
         self.remap_required = remap_required
+        self.osl_param_set = osl_param_set
         # Env initialization with data
         if init_pose_path is not None:
             file_path = os.path.join(init_pose_path)
@@ -113,7 +115,7 @@ class RunTrack(WalkEnvV0):
             self.gait_cycle_headers = dict(zip(headers, range(len(headers))))
 
         # OSL specific init
-        self.OSL_CTRL = MyoOSLController(np.sum(self.sim.model.body_mass), init_state='e_stance')
+        self.OSL_CTRL = MyoOSLController(np.sum(self.sim.model.body_mass), init_state='e_stance', n_sets=self.osl_param_set)
         self.OSL_CTRL.start()
 
         self.muscle_space = self.sim.model.na # muscles only
@@ -238,7 +240,11 @@ class RunTrack(WalkEnvV0):
 
         return results
 
-    def reset(self, **kwargs):
+    def reset(self, OSL_params=None, **kwargs):
+
+        if OSL_params is not None:
+            self.upload_osl_param(OSL_params)
+
         # randomized terrain types
         self._maybe_sample_terrain()
         self.terrain_type = self.trackfield.terrain_type.value
@@ -247,7 +253,6 @@ class RunTrack(WalkEnvV0):
         self.robot.sync_sims(self.sim, self.sim_obsd)
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel, **kwargs)
         self.sim.forward()
-        self.OSL_CTRL.reset('e_stance')
 
         # Sync the states again as the randomization might cause the part of the model to be inside the ground
         if self.reset_type != 'init':
@@ -282,10 +287,12 @@ class RunTrack(WalkEnvV0):
             self.sim.model.geom_pos[self.sim.model.geom_name2id('terrain')] = np.array([0, 0, -10])
 
     def _randomize_position_orientation(self, qpos, qvel):
-        orientation = self.np_random.uniform(0, 2 * np.pi)
-        euler_angle = quat2euler(qpos[3:7])
-        euler_angle[-1] = orientation
-        qpos[3:7] = euler2quat(euler_angle)
+        orientation = self.np_random.uniform(np.deg2rad(-125), np.deg2rad(-60))
+
+        euler_angle = self.get_intrinsic_EulerXYZ(qpos[3:7]) # Roll, Pitch, Yaw format
+        euler_angle[2] = orientation
+        qpos[3:7] = self.intrinsic_EulerXYZ_toQuat(euler_angle[0], euler_angle[1], euler_angle[2])
+
         # rotate original velocity with unit direction vector
         qvel[:2] = np.array([np.cos(orientation), np.sin(orientation)]) * np.linalg.norm(qvel[:2])
         return qpos, qvel
@@ -295,12 +302,15 @@ class RunTrack(WalkEnvV0):
             qpos, qvel = self._get_randomized_initial_state()
             return self._randomize_position_orientation(qpos, qvel)
         elif self.reset_type == 'init':
-            return self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
+            self.OSL_CTRL.reset('e_stance')
+            return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
         elif self.reset_type == 'osl_init':
             self.initializeFromData()
             return self.init_qpos.copy(), self.init_qvel.copy()
         else:
+            self.OSL_CTRL.reset('e_stance')
             return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
+        
 
     def _maybe_adjust_height(self, qpos, qvel):
         """
@@ -336,12 +346,15 @@ class RunTrack(WalkEnvV0):
 
     def _get_randomized_initial_state(self):
         # randomly start with flexed left or right knee
-        if  self.np_random.uniform() < 0.5:
-            qpos = self.sim.model.key_qpos[2].copy()
-            qvel = self.sim.model.key_qvel[2].copy()
+        rndInt = self.np_random.integers(low=0, high=3) # high exclusive
+        qpos = self.sim.model.key_qpos[rndInt].copy()
+        qvel = self.sim.model.key_qvel[rndInt].copy()
+
+        # Set OSL leg initial state for based on initial key pose
+        if rndInt == 0 or rndInt == 2:
+            self.OSL_CTRL.reset('e_stance')
         else:
-            qpos = self.sim.model.key_qpos[3].copy()
-            qvel = self.sim.model.key_qvel[3].copy()
+            self.OSL_CTRL.reset('e_swing')
 
         # randomize qpos coordinates
         # but dont change height or rot state
@@ -553,59 +566,6 @@ class RunTrack(WalkEnvV0):
             self.ACTUATOR_PARAM[actu]['id'] = self.sim.data.actuator(actu).id
             self.ACTUATOR_PARAM[actu]['Fmax'] = np.max(self.sim.model.actuator(actu).ctrlrange) * self.sim.model.actuator(actu).gear[0]
 
-    def get_intrinsic_EulerXYZ(self, q):
-        """
-        Math func: Intrinsic Euler angles, for euler in body coordinate frame
-        """
-        w, x, y, z = q
-
-        # Compute sin and cos values
-        sinr_cosp = 2 * (w * x + y * z)
-        cosr_cosp = 1 - 2 * (x * x + y * y)
-
-        # Roll (X-axis rotation)
-        roll = np.arctan2(sinr_cosp, cosr_cosp)
-
-        # Compute sin and cos values
-        sinp = 2 * (w * y - z * x)
-
-        # Pitch (Y-axis rotation)
-        if abs(sinp) >= 1:
-            # Use 90 degrees if out of range
-            pitch = np.copysign(np.pi / 2, sinp)
-        else:
-            pitch = np.arcsin(sinp)
-
-        # Compute sin and cos values
-        siny_cosp = 2 * (w * z + x * y)
-        cosy_cosp = 1 - 2 * (y * y + z * z)
-
-        # Yaw (Z-axis rotation)
-        yaw = np.arctan2(siny_cosp, cosy_cosp)
-
-        return np.array([roll, pitch, yaw])
-
-    def intrinsic_EulerXYZ_toQuat(self, roll, pitch, yaw):
-        # Half angles
-        half_roll = roll * 0.5
-        half_pitch = pitch * 0.5
-        half_yaw = yaw * 0.5
-
-        # Compute sin and cos values for half angles
-        sin_roll = np.sin(half_roll)
-        cos_roll = np.cos(half_roll)
-        sin_pitch = np.sin(half_pitch)
-        cos_pitch = np.cos(half_pitch)
-        sin_yaw = np.sin(half_yaw)
-        cos_yaw = np.cos(half_yaw)
-
-        # Compute quaternion
-        w = cos_roll * cos_pitch * cos_yaw + sin_roll * sin_pitch * sin_yaw
-        x = sin_roll * cos_pitch * cos_yaw - cos_roll * sin_pitch * sin_yaw
-        y = cos_roll * sin_pitch * cos_yaw + sin_roll * cos_pitch * sin_yaw
-        z = cos_roll * cos_pitch * sin_yaw - sin_roll * sin_pitch * cos_yaw
-
-        return np.array([w, x, y, z])
 
     def rotate_frame(self, x, y, theta):
         #print(theta)
@@ -618,10 +578,7 @@ class RunTrack(WalkEnvV0):
     """
     def initializeFromData(self):
 
-        if self._operation_mode == 'eval':
-            start_idx = 0
-        else:
-            start_idx = self.np_random.integers(low=0, high=self.INIT_DATA.shape[0])
+        start_idx = self.np_random.integers(low=0, high=self.INIT_DATA.shape[0])
 
         for joint in self.gait_cycle_headers.keys():
             if joint not in ['pelvis_euler_roll', 'pelvis_euler_pitch', 'pelvis_euler_yaw',
@@ -633,13 +590,15 @@ class RunTrack(WalkEnvV0):
         # Get the Yaw from the init pose
         default_quat = self.init_qpos[3:7].copy() # Get the default facing direction first
 
-        init_quat = self.intrinsic_EulerXYZ_toQuat(self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_roll']],
-                                                   self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_pitch']],
-                                                   self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_yaw']])
+        init_quat = intrinsic_euler2quat([
+            self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_roll']],
+            self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_pitch']],
+            self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_yaw']]
+        ])
         self.init_qpos[3:7] = init_quat
-
+ 
         # Use the default facing direction to set the world frame velocity
-        temp_euler = self.get_intrinsic_EulerXYZ(default_quat)
+        temp_euler = quat2euler_intrinsic(default_quat)
         world_vel_X, world_vel_Y = self.rotate_frame(self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_vel_X']],
                                                      self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_vel_Y']],
                                                      temp_euler[2])
@@ -662,7 +621,11 @@ class RunTrack(WalkEnvV0):
             if temp_sens_height > self.sim.data.site(sens_site).xpos[2]:
                 temp_sens_height = self.sim.data.site(sens_site).xpos[2].copy()
 
-        diff_height = 0.0 - temp_sens_height
+        if not self.trackfield is None:
+            diff_height = 0.005 - temp_sens_height
+        else:
+            diff_height = 0.0 - temp_sens_height
+
         curr_qpos[2] = curr_qpos[2] + diff_height
 
         return curr_qpos, curr_qvel
@@ -721,3 +684,19 @@ class RunTrack(WalkEnvV0):
         osl_sens_data['load'] = -1*self.sim.data.sensor('r_osl_load').data[1].copy() # Only vertical
 
         return osl_sens_data
+    
+    def upload_osl_param(self, dict_of_dict):
+        """
+        Accessor function to upload full set of paramters to OSL leg
+        """
+        assert len(dict_of_dict.keys()) <= 4
+        for idx in dict_of_dict.keys():
+            self.OSL_CTRL.set_osl_param_batch(dict_of_dict[idx], mode=idx)
+
+    def change_osl_mode(self, mode=0):
+        """
+        Accessor function to activte a set of state machine variables
+        """
+        assert mode < 4
+        self.OSL_CTRL.change_osl_mode(mode)
+        

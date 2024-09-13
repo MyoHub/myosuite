@@ -196,3 +196,63 @@ def rotVecMat(vec, mat):
 def rotVecQuat(vec, quat):
     mat = quat2mat(quat)
     return rotVecMat(vec,mat)
+
+def quat2euler_intrinsic(quat):
+    """
+    Math func: Intrinsic Euler angles, for euler in body coordinate frame
+    """
+    w, x, y, z = quat
+
+    # Compute sin and cos values
+    sinr_cosp = 2 * (w * x + y * z)
+    cosr_cosp = 1 - 2 * (x * x + y * y)
+
+    # Roll (X-axis rotation)
+    roll = np.arctan2(sinr_cosp, cosr_cosp)
+
+    # Compute sin and cos values
+    sinp = 2 * (w * y - z * x)
+
+    # Pitch (Y-axis rotation)
+    if abs(sinp) >= 1:
+        # Use 90 degrees if out of range
+        pitch = np.copysign(np.pi / 2, sinp)
+    else:
+        pitch = np.arcsin(sinp)
+
+    # Compute sin and cos values
+    siny_cosp = 2 * (w * z + x * y)
+    cosy_cosp = 1 - 2 * (y * y + z * z)
+
+    # Yaw (Z-axis rotation)
+    yaw = np.arctan2(siny_cosp, cosy_cosp)
+
+    return np.array([roll, pitch, yaw])
+
+def intrinsic_euler2quat(euler):
+    """
+    Math func: Intrinsic Euler angles (roll, pitch, yaw format) to Quat
+    """
+
+    roll, pitch, yaw = euler
+
+    # Half angles
+    half_roll = roll * 0.5
+    half_pitch = pitch * 0.5
+    half_yaw = yaw * 0.5
+
+    # Compute sin and cos values for half angles
+    sin_roll = np.sin(half_roll)
+    cos_roll = np.cos(half_roll)
+    sin_pitch = np.sin(half_pitch)
+    cos_pitch = np.cos(half_pitch)
+    sin_yaw = np.sin(half_yaw)
+    cos_yaw = np.cos(half_yaw)
+
+    # Compute quaternion
+    w = cos_roll * cos_pitch * cos_yaw + sin_roll * sin_pitch * sin_yaw
+    x = sin_roll * cos_pitch * cos_yaw - cos_roll * sin_pitch * sin_yaw
+    y = cos_roll * sin_pitch * cos_yaw + sin_roll * cos_pitch * sin_yaw
+    z = cos_roll * cos_pitch * sin_yaw - sin_roll * sin_pitch * cos_yaw
+
+    return np.array([w, x, y, z])
