@@ -289,9 +289,9 @@ class RunTrack(WalkEnvV0):
     def _randomize_position_orientation(self, qpos, qvel):
         orientation = self.np_random.uniform(np.deg2rad(-125), np.deg2rad(-60))
 
-        euler_angle = self.get_intrinsic_EulerXYZ(qpos[3:7]) # Roll, Pitch, Yaw format
+        euler_angle = quat2euler_intrinsic(qpos[3:7]) # Roll, Pitch, Yaw format
         euler_angle[2] = orientation
-        qpos[3:7] = self.intrinsic_EulerXYZ_toQuat(euler_angle[0], euler_angle[1], euler_angle[2])
+        qpos[3:7] = intrinsic_euler2quat([euler_angle[0], euler_angle[1], euler_angle[2]])
 
         # rotate original velocity with unit direction vector
         qvel[:2] = np.array([np.cos(orientation), np.sin(orientation)]) * np.linalg.norm(qvel[:2])
