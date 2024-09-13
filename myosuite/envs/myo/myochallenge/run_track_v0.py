@@ -24,6 +24,7 @@ class TrackTypes(Enum):
     HILLY = 1
     ROUGH = 2
     STAIRS = 3
+    MIXED = 4
 
 
 class RunTrack(WalkEnvV0):
@@ -79,19 +80,20 @@ class RunTrack(WalkEnvV0):
                obs_keys: list = DEFAULT_OBS_KEYS,
                weighted_reward_keys: dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
                reset_type='init',
-               terrain='FLAT',
+               terrain='random',
                hills_difficulties=(0,0),
                rough_difficulties=(0,0),
                stairs_difficulties=(0,0),
-               real_length=15,
                real_width=1,
-               distance_thr = 10,
+               end_pos = -15,
+               start_pos = 14,
                init_pose_path=None,
                remap_required=False,
                **kwargs,
                ):
 
         self.startFlag = False
+        self.start_pos = start_pos
         # Terrain type
         self.terrain_type = TrackTypes.FLAT.value
 
@@ -119,16 +121,16 @@ class RunTrack(WalkEnvV0):
         self._get_actuator_params()
 
         self._setup_convenience_vars()
-        self.distance_thr = distance_thr
+        self.end_pos = end_pos
         self.trackfield = TrackField(
             sim=self.sim,
             rng=self.np_random,
             rough_difficulties=rough_difficulties,
             hills_difficulties=hills_difficulties,
             stairs_difficulties=stairs_difficulties,
+            reset_type=terrain,
         )
         self.real_width = real_width
-        self.real_length = real_length
         self.reset_type = reset_type
         self.terrain = terrain
         self.grf_sensor_names = ['l_foot', 'l_toes']
@@ -158,6 +160,7 @@ class RunTrack(WalkEnvV0):
         obs_dict['muscle_length'] = self.muscle_lengths()
         obs_dict['muscle_velocity'] = self.muscle_velocities()
         obs_dict['muscle_force'] = self.muscle_forces()
+        obs_dict['act_dot'] = self.sim.data.act_dot
 
         if sim.model.na>0:
             obs_dict['act'] = sim.data.act[:].copy()
@@ -210,12 +213,19 @@ class RunTrack(WalkEnvV0):
         """
         # average sucess over entire env horizon
         times = np.mean([np.round(p['env_infos']['obs_dict']['time'][-1], 5) for p in paths])
-        score = np.mean([np.sum(p['env_infos']['rwd_dict']['sparse']) for p in paths])
+        # use best achieved position over trajectory as score
+        score = np.mean([np.min(p['env_infos']['obs_dict']['model_root_pos'][..., 1]) for p in paths])
         effort = np.mean([np.sum(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
         pain = np.mean([np.sum(p['env_infos']['rwd_dict']['pain']) for p in paths])
 
+        # normalize score to be between 0 and 1
+        if self.start_pos > self.end_pos:
+            score = (self.start_pos - score) / (self.start_pos - self.end_pos)
+        else:
+            score = (score - self.end_pos) / (self.start_pos - self.end_pos)
+
         metrics = {
-            'score': score, # Distance travelled
+            'score': np.clip(score, 0, 1), 
             'time': times,
             'effort': effort,
             'pain': pain,
@@ -341,7 +351,7 @@ class RunTrack(WalkEnvV0):
 
         qpos[3:7] = rot_state
         qpos[2] = height
-        qpos[1] = 14
+        qpos[1] = self.start_pos + 1
         return qpos, qvel
 
     def _setup_convenience_vars(self):
@@ -358,14 +368,14 @@ class RunTrack(WalkEnvV0):
 
     def _get_done(self):
         if self._lose_condition():
-            return self._get_fallen_condition()
+            return 1
         if self._win_condition():
             return 1
         return 0
 
     def _win_condition(self):
         y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
-        if np.abs(y_pos) > self.distance_thr:
+        if  y_pos < self.end_pos:
             return 1
         return 0
 
@@ -374,7 +384,7 @@ class RunTrack(WalkEnvV0):
         y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
         if x_pos > self.real_width or x_pos < - self.real_width:
             return 1
-        if y_pos > 15.0:
+        if y_pos > self.start_pos + 2:
             return 1
         if self._get_fallen_condition():
             return 1
@@ -389,7 +399,11 @@ class RunTrack(WalkEnvV0):
         foot_l = self.sim.data.body('talus_l').xpos
         foot_r = self.sim.data.body('osl_foot_assembly').xpos
         mean = (foot_l + foot_r) / 2
+        # head is below the mean foot height
         if head[2] - mean[2] < 0.2:
+            return 1
+        # head is too close to the ground
+        if head[2] < 1.5:
             return 1
         else:
             return 0
@@ -404,20 +418,26 @@ class RunTrack(WalkEnvV0):
         return self.sim.model.body('root').subtreemass
 
     def get_score(self):
+        """
+        Score is the negative velocity in the y direction, which makes the humanoid run forward.
+        """
         # initial environment needs to be setup for self.horizon to work
         if not self.startFlag:
             return -1
-        y_pos = self.obs_dict['model_root_pos'].squeeze()[1]
-        score = (y_pos - 15) / (- 15 - 15)
-        return score.squeeze()
+        vel = self.obs_dict['model_root_vel'].squeeze()[1]
+
+        return  - vel.squeeze()
 
     def get_pain(self):
+        """
+        Pain is the sum of the joint limit violation forces.
+        """
         if not self.startFlag:
             return -1
         
         pain_score = 0
         for joint in self.pain_jnt:
-            pain_score += np.clip(np.abs(self.get_limitfrc(joint).squeeze()), -1000, 1000)
+            pain_score += np.clip(np.abs(self.get_limitfrc(joint).squeeze()), -1000, 1000) / 1000
         return pain_score / len(self.pain_jnt)
 
     def _get_muscle_lengthRange(self):
@@ -454,27 +474,10 @@ class RunTrack(WalkEnvV0):
         '''
         return [self.sim.model.actuator(act_id).name for act_id in range(1, self.sim.model.na)]
 
-
-    def _get_fallen_condition(self):
-        """
-        Checks if the agent has fallen by comparing the head site height with the
-        average foot height.
-        """
-        if self.terrain == 'FLAT':
-            if self.sim.data.body('pelvis').xpos[2] < 0.5:
-                return 1
-            return 0
-        else:
-            head = self.sim.data.site('head').xpos
-            foot_l = self.sim.data.body('talus_l').xpos
-            foot_r = self.sim.data.body('osl_foot_assembly').xpos
-            mean = (foot_l + foot_r) / 2
-            if head[2] - mean[2] < 0.2:
-                return 1
-            else:
-                return 0
-
     def get_limitfrc(self, joint_name):
+        """
+        Get the joint limit force for a given joint.
+        """
         non_joint_limit_efc_idxs = np.where(self.sim.data.efc_type != self.sim.lib.mjtConstraint.mjCNSTR_LIMIT_JOINT)[0]
         only_jnt_lim_efc_force = self.sim.data.efc_force.copy()
         only_jnt_lim_efc_force[non_joint_limit_efc_idxs] = 0.0
@@ -483,6 +486,9 @@ class RunTrack(WalkEnvV0):
         return joint_force[self.sim.model.joint(joint_name).dofadr]
 
     def get_internal_qpos(self):
+        """
+        Get the internal joint positions without the osl leg joints.
+        """
         temp_qpos = self.sim.data.qpos.copy()
         to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy(), self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy()]
 
@@ -491,6 +497,9 @@ class RunTrack(WalkEnvV0):
         return temp_qpos[7:]
 
     def get_internal_qvel(self):
+        """
+        Get the internal joint velocities without the osl leg joints.
+        """
         temp_qvel = self.sim.data.qvel.copy()
         to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy() -1, self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy() -1]
 
@@ -499,6 +508,9 @@ class RunTrack(WalkEnvV0):
         return temp_qvel[6:] * self.dt
 
     def muscle_lengths(self):
+        """
+        Get the muscle lengths. Remove the osl leg actuators from the data.
+        """
         temp_len = self.sim.data.actuator_length.copy()
         to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
 
@@ -507,6 +519,9 @@ class RunTrack(WalkEnvV0):
         return temp_len
 
     def muscle_forces(self):
+        """
+        Get the muscle forces. Remove the osl leg actuators from the data.
+        """
         temp_frc = self.sim.data.actuator_force.copy()
         to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
 
@@ -516,6 +531,9 @@ class RunTrack(WalkEnvV0):
         return np.clip(temp_frc / 1000, -100, 100)
 
     def muscle_velocities(self):
+        """
+        Get the muscle velocities. Remove the osl leg actuators from the data.
+        """
         temp_vel = self.sim.data.actuator_velocity.copy()
         to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
 
@@ -525,6 +543,9 @@ class RunTrack(WalkEnvV0):
         return np.clip(temp_vel, -100, 100)
 
     def _get_actuator_params(self):
+        """
+        Get the actuator parameters. Remove the osl leg actuators from the data.
+        """
         actuators = ['osl_knee_torque_actuator', 'osl_ankle_torque_actuator', ]
 
         for actu in actuators:
@@ -532,10 +553,10 @@ class RunTrack(WalkEnvV0):
             self.ACTUATOR_PARAM[actu]['id'] = self.sim.data.actuator(actu).id
             self.ACTUATOR_PARAM[actu]['Fmax'] = np.max(self.sim.model.actuator(actu).ctrlrange) * self.sim.model.actuator(actu).gear[0]
 
-    """
-    Math func: Intrinsic Euler angles, for euler in body coordinate frame
-    """
     def get_intrinsic_EulerXYZ(self, q):
+        """
+        Math func: Intrinsic Euler angles, for euler in body coordinate frame
+        """
         w, x, y, z = q
 
         # Compute sin and cos values
