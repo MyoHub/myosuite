@@ -245,7 +245,7 @@ class ChaseTagField(HeightField):
                     self._fill_patch(i, j, terrain_type)
             # put special terrain only once in 20% of episodes
             if self.rng.uniform() < 0.2:
-                i, j = np.random.randint(0, self.patches_per_side, size=2)
+                i, j = self.np_random.integers(0, self.patches_per_side, size=2)
                 self._fill_patch(i, j, SpecialTerrains.RELIEF)
 
     def _fill_patch(self, i, j, terrain_type=TerrainTypes.FLAT):
