@@ -32,7 +32,7 @@ Objective
 
 
 Move the object between two locations with a handover between a hand and a prosthesis. The task parameters will be randomized to provide a comprehensive 
-test to the model performance. The randomization will include but not limited to: object type, object weight and even friction during each environmental reset. 
+test to the controller model performance. The randomization will include but not limited to: object type, object weight and even friction during each environmental reset. 
 
 
 
@@ -52,6 +52,14 @@ actuated by a control value between  :math:`[-1, 1]`, with -1 and 1 representing
 Observation Space
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
+**Observations Space**
+
+
+The obs_dict variable contains useful observations for completing the task. Please note that participants are encourage to 
+modify the obs_dict to customize their reward computations; yet values directly obtained outside the obs_dict, or directly from 
+the simulator might not be accessible in submissions.  
+
+
 
 +-----------------------------------------+-----------------------------+-----------------+
 | **Description**                         |        **Access**           |   **Dimension** |
@@ -60,21 +68,23 @@ Observation Space
 +-----------------------------------------+-----------------------------+-----------------+
 | Joint positions of myoArm               | obs_dict['myohand_qpos']    | (38x1)          | 
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint velocity of myoArm                | obs_dict['myohand_qvel"]    | (38x1)          |
+| Joint velocity of myoArm                | obs_dict['myohand_qvel']    | (38x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint positions of MPL                  | obs_dict['pros_hand_qpos"]  | (27x1)          |
+| Joint positions of MPL                  | obs_dict['pros_hand_qpos']  | (27x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint velocity of MPL                   | obs_dict['pros_hand_qvel"]  | (27x1)          |
+| Joint velocity of MPL                   | obs_dict['pros_hand_qvel']  | (26x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint positions of object               | obs_dict['object_qpos"]     | (7x1)           |
+| Joint positions of object               | obs_dict['object_qpos']     | (7x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint velocity of object                | obs_dict['object_qvel"]     | (6x1)           |
+| Joint velocity of object                | obs_dict['object_qvel']     | (6x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Touching information of object          | obs_dict['touching_body']   | (5x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Starting position                       | obs_dict['start_pos']       | (2x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Goal position                           | obs_dict['goal_pos']        | (2x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
-| Touching information of object          | obs_dict['touching_body']   | (5x1)           |
+| Muscle activation of myoHand            | obs_dict['act']             | (63x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
 | Palm location                           | obs_dict['palm_pos']        | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
@@ -88,8 +98,7 @@ Observation Space
 +-----------------------------------------+-----------------------------+-----------------+
 | Hand passing error                      | obs_dict['pass_err']        | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
-| Muscle activation of myoHand            | obs_dict['act']             | (63x1)          |
-+-----------------------------------------+-----------------------------+-----------------+
+
 
 
 **Description of observations**
@@ -110,10 +119,29 @@ Observation Space
 
     - Hand passing error measures the distance between the MPL and the object
 
-    - The manipulated object has full 6 degrees of freedom, its state described as a 7 dimensional value in position + quaternion format  it is defined by a "`freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__"
+    - The manipulated object has full 6 degrees of freedom, its state described as a 7 dimensional value in position + quaternion format. Details can be found in "`freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__"
 
 
 
+
+**Variation on Object Properties**
+The geometry, mass, and friction of the object will reset at the start of each episode. 
+
+    - Object scale: a +- change between 0% - 5%, 0% - 10% scale variations in respective geom directions 
+    - Object Mass: an upper/lower bound of +-50 gms
+    - Object Friction: a +- change between 0 - 0.1, 0 - 0.001, 0 - 0.00002 from nominal value: [1.0, 0.005, 0.0001] in respective geom direction
+
+**Success Condition**
+
+    - The object moved from start position to goal position. Both the MPL hand, and MyoHand, is required to touch the object for 100 timesteps 
+    - Exerting a maximum contact force on the object, less than 1500N (subject to change based on submission)
+    - Placing the object within 0.05 meters of the goal site on the pillar
+
+**Ranking Criteria**
+    1. Task success rate (success_attempt / total_attempt)
+    2. Time to complete the task (success_attempt + failed_attempt)
+    3. Muscle activation
+    4. Distance from goal site (only if tie in previous metrics)
 
 
 
@@ -316,6 +344,7 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
 `locomotion <https://colab.research.google.com/drive/1AFbVlwnGDYD45XqMYBaYjf5xOOa_KEXd?usp=sharing>`__.
 
 
+
 .. code-block:: python
 
     from myosuite.utils import gym
@@ -331,6 +360,11 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
 
         # Activate mujoco rendering window
         env.mj_render()
+
+        # Select skin group
+        geom_1_indices = np.where(env.sim.model.geom_group == 1)
+        # Change the alpha value to make it transparent
+        env.sim.model.geom_rgba[geom_1_indices, 3] = 0
 
 
         # Get observation from the envrionment, details are described in the above docs
@@ -350,4 +384,3 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
         # Reset training if env is terminated
         if terminated:
             next_obs, info = env.reset()
-

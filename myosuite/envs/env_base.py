@@ -20,6 +20,7 @@ from sys import platform
 from myosuite.physics.sim_scene import SimScene
 import myosuite.utils.import_utils as import_utils
 from myosuite.envs.env_variants import gym_registry_specs
+from myosuite.utils import NPRandomVersionWrapper
 
 # TODO
 # remove rwd_mode
@@ -486,6 +487,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         """
         self.input_seed = seed
         self.np_random, seed = gym.utils.seeding.np_random(seed)
+        self.np_random = NPRandomVersionWrapper(self.np_random)
         return [seed]
 
 
