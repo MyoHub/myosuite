@@ -51,7 +51,7 @@ register_env_with_variants(id='myoChallengeRunTrackP1-v0',
         max_episode_steps=1000,
         kwargs={
             'model_path': curr_dir+'/../assets/leg/myoosl_runtrack.xml',
-            'normalize_act': True,
+            'normalize_act': False,
             'reset_type': 'random',  # none, init, random, osl_init
             'terrain': 'random',  # FLAT, random
             'hills_difficulties': (0.0, 0.1, 0.0, 0.5, 0.0, 0.8, 0.0, 1.0),
@@ -71,7 +71,7 @@ register_env_with_variants(id='myoChallengeRunTrackP2-v0',
         max_episode_steps=1000,
         kwargs={
             'model_path': curr_dir+'/../assets/leg/myoosl_runtrack_p2.xml',
-            'normalize_act': True,
+            'normalize_act': False,
             'reset_type': 'random',  # none, init, random, osl_init
             'terrain': 'random_mixed',  # FLAT, random
             'hills_difficulties': (0.0, 0.0, 0.0, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3, 0.0, 0.4, 0.0, 0.5, 0.0, 0.6, 0.0),

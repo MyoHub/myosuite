@@ -52,6 +52,8 @@ actuated by a control value between  :math:`[-1, 1]`, with -1 and 1 representing
 Observation Space
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
+**Default Observations**
+
 
 +-----------------------------------------+-----------------------------+-----------------+
 | **Description**                         |        **Access**           |   **Dimension** |
@@ -60,21 +62,31 @@ Observation Space
 +-----------------------------------------+-----------------------------+-----------------+
 | Joint positions of myoArm               | obs_dict['myohand_qpos']    | (38x1)          | 
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint velocity of myoArm                | obs_dict['myohand_qvel"]    | (38x1)          |
+| Joint velocity of myoArm                | obs_dict['myohand_qvel']    | (38x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint positions of MPL                  | obs_dict['pros_hand_qpos"]  | (27x1)          |
+| Joint positions of MPL                  | obs_dict['pros_hand_qpos']  | (27x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint velocity of MPL                   | obs_dict['pros_hand_qvel"]  | (27x1)          |
+| Joint velocity of MPL                   | obs_dict['pros_hand_qvel']  | (26x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint positions of object               | obs_dict['object_qpos"]     | (7x1)           |
+| Joint positions of object               | obs_dict['object_qpos']     | (7x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint velocity of object                | obs_dict['object_qvel"]     | (6x1)           |
+| Joint velocity of object                | obs_dict['object_qvel']     | (6x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Starting position                       | obs_dict['start_pos']       | (2x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Goal position                           | obs_dict['goal_pos']        | (2x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
+| Muscle activation of myoHand            | obs_dict['act']             | (63x1)          |
++-----------------------------------------+-----------------------------+-----------------+
 | Touching information of object          | obs_dict['touching_body']   | (5x1)           |
++-----------------------------------------+-----------------------------+-----------------+
+
+
+**Customized Observation** 
+
+This is where you can add customized observation on your own for reward
+computation. The final simulation will NOT have access to those
+
 +-----------------------------------------+-----------------------------+-----------------+
 | Palm location                           | obs_dict['palm_pos']        | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
@@ -88,8 +100,7 @@ Observation Space
 +-----------------------------------------+-----------------------------+-----------------+
 | Hand passing error                      | obs_dict['pass_err']        | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
-| Muscle activation of myoHand            | obs_dict['act']             | (63x1)          |
-+-----------------------------------------+-----------------------------+-----------------+
+
 
 
 **Description of observations**
@@ -110,10 +121,29 @@ Observation Space
 
     - Hand passing error measures the distance between the MPL and the object
 
-    - The manipulated object has full 6 degrees of freedom, its state described as a 7 dimensional value in position + quaternion format  it is defined by a "`freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__"
+    - The manipulated object has full 6 degrees of freedom, its state described as a 7 dimensional value in position + quaternion format. Details can be found in "`freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__"
 
 
 
+
+**Variation on Object Properties**
+The geometry, mass, and friction of the object will reset at the start of each episode. 
+
+    - Object scale: a +- change between 0% - 5%, 0% - 10% scale variations in respective geom directions 
+    - Object Mass: an upper/lower bound of +-50 gms
+    - Object Friction: a +- change between 0 - 0.1, 0 - 0.001, 0 - 0.00002 from nominal value: [1.0, 0.005, 0.0001] in respective geom direction
+
+**Success Condition**
+
+    - Touching the start position, end position, MPL hand, and MyoHand, independently for 100 timesteps 
+    - Having a maximum contact force smaller than 1500N (subject to change based on submission)
+    - Placing the object within 0.05 meters within the goal site on the pillar
+
+**Ranking Criteria**
+    1. Task success rate 
+    2. Time to complete the task
+    3. Muscle activation
+    4. Distance from goal site (only if tie in previous metrics)
 
 
 
@@ -316,6 +346,7 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
 `locomotion <https://colab.research.google.com/drive/1AFbVlwnGDYD45XqMYBaYjf5xOOa_KEXd?usp=sharing>`__.
 
 
+
 .. code-block:: python
 
     from myosuite.utils import gym
@@ -350,4 +381,3 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
         # Reset training if env is terminated
         if terminated:
             next_obs, info = env.reset()
-
