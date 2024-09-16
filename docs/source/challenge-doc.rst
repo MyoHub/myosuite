@@ -32,7 +32,7 @@ Objective
 
 
 Move the object between two locations with a handover between a hand and a prosthesis. The task parameters will be randomized to provide a comprehensive 
-test to the model performance. The randomization will include but not limited to: object type, object weight and even friction during each environmental reset. 
+test to the controller model performance. The randomization will include but not limited to: object type, object weight and even friction during each environmental reset. 
 
 
 
@@ -52,7 +52,13 @@ actuated by a control value between  :math:`[-1, 1]`, with -1 and 1 representing
 Observation Space
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**Default Observations**
+**Observations Space**
+
+
+The obs_dict variable contains useful observations for completing the task. Please note that participants are encourage to 
+modify the obs_dict to customize their reward computations; yet values directly obtained outside the obs_dict, or directly from 
+the simulator might not be accessible in submissions.  
+
 
 
 +-----------------------------------------+-----------------------------+-----------------+
@@ -72,21 +78,13 @@ Observation Space
 +-----------------------------------------+-----------------------------+-----------------+
 | Joint velocity of object                | obs_dict['object_qvel']     | (6x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
+| Touching information of object          | obs_dict['touching_body']   | (5x1)           |
++-----------------------------------------+-----------------------------+-----------------+
 | Starting position                       | obs_dict['start_pos']       | (2x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Goal position                           | obs_dict['goal_pos']        | (2x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Muscle activation of myoHand            | obs_dict['act']             | (63x1)          |
-+-----------------------------------------+-----------------------------+-----------------+
-| Touching information of object          | obs_dict['touching_body']   | (5x1)           |
-+-----------------------------------------+-----------------------------+-----------------+
-
-
-**Customized Observation** 
-
-This is where you can add customized observation on your own for reward
-computation. The final simulation will NOT have access to those
-
 +-----------------------------------------+-----------------------------+-----------------+
 | Palm location                           | obs_dict['palm_pos']        | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
@@ -135,13 +133,13 @@ The geometry, mass, and friction of the object will reset at the start of each e
 
 **Success Condition**
 
-    - Touching the start position, end position, MPL hand, and MyoHand, independently for 100 timesteps 
-    - Having a maximum contact force smaller than 1500N (subject to change based on submission)
-    - Placing the object within 0.05 meters within the goal site on the pillar
+    - The object moved from start position to goal position. Both the MPL hand, and MyoHand, is required to touch the object for 100 timesteps 
+    - Exerting a maximum contact force on the object, less than 1500N (subject to change based on submission)
+    - Placing the object within 0.05 meters of the goal site on the pillar
 
 **Ranking Criteria**
-    1. Task success rate 
-    2. Time to complete the task
+    1. Task success rate (success_attempt / total_attempt)
+    2. Time to complete the task (success_attempt + failed_attempt)
     3. Muscle activation
     4. Distance from goal site (only if tie in previous metrics)
 
@@ -362,6 +360,11 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
 
         # Activate mujoco rendering window
         env.mj_render()
+
+        # Select skin group
+        geom_1_indices = np.where(env.sim.model.geom_group == 1)
+        # Change the alpha value to make it transparent
+        env.sim.model.geom_rgba[geom_1_indices, 3] = 0
 
 
         # Get observation from the envrionment, details are described in the above docs
