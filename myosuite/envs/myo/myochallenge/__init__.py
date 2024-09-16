@@ -68,7 +68,7 @@ register_env_with_variants(id='myoChallengeRunTrackP1-v0',
 
 register_env_with_variants(id='myoChallengeRunTrackP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.run_track_v0:RunTrack',
-        max_episode_steps=1000,
+        max_episode_steps=36000,
         kwargs={
             'model_path': curr_dir+'/../assets/leg/myoosl_runtrack_p2.xml',
             'normalize_act': False,
