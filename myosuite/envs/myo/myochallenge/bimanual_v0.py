@@ -271,7 +271,7 @@ class BimanualEnvV1(BaseV0):
                 ("sparse", 0),
                 ("goal_dist", goal_dis), 
                 ("solved", goal_dis < self.proximity_th),
-                ("done", obj_pos[-1] < 0.3),
+                ("done", goal_dis < self.proximity_th),
             )
         )
 
