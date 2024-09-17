@@ -5,6 +5,7 @@ MyoChallenge-2024 Documentations
 * :ref:`challenge24_manipulation`
 * :ref:`challenge24_locomotion`
 * :ref:`challenge24_tutorial`
+* :ref:`challenge24_disclaimer`
 
 
 
@@ -32,7 +33,7 @@ Objective
 
 
 Move the object between two locations with a handover between a hand and a prosthesis. The task parameters will be randomized to provide a comprehensive 
-test to the controller model performance. The randomization will include but not limited to: object type, object weight and even friction during each environmental reset. 
+test to the controller's performance. The randomization will include but not limited to: object type, object weight and even friction during each environmental reset. 
 
 
 
@@ -78,7 +79,7 @@ the simulator might not be accessible in submissions.
 +-----------------------------------------+-----------------------------+-----------------+
 | Joint velocity of object                | obs_dict['object_qvel']     | (6x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
-| Touching information of object          | obs_dict['touching_body']   | (5x1)           |
+| Contact information of object           | obs_dict['touching_body']   | (5x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Starting position                       | obs_dict['start_pos']       | (2x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
@@ -119,29 +120,33 @@ the simulator might not be accessible in submissions.
 
     - Hand passing error measures the distance between the MPL and the object
 
-    - The manipulated object has full 6 degrees of freedom, its state described as a 7 dimensional value in position + quaternion format. Details can be found in "`freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__"
+    - The manipulated object has full 6 degrees of freedom, its state described as a 7 dimensional value in position + quaternion format. Details can be found in "`mujoco-freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__" page
 
 
 
 
 **Variation on Object Properties**
-The geometry, mass, and friction of the object will reset at the start of each episode. 
+Both the geometry and physical properties of the object as well as the environment can be sampled at the start of each episode to provide variability in the task. Provided 
+below is an example of how real-world scenarios is captured in the test environments we provide.
 
-    - Object scale: a +- change between 0% - 5%, 0% - 10% scale variations in respective geom directions 
-    - Object Mass: an upper/lower bound of +-50 gms
+    - Object scale: a +- change in respective geom directions ( between 0% - 5%, 0% - 10% in TEST environment)
+    - Object Mass: an upper/lower bound of X gms (X = 50 in TEST environment)
     - Object Friction: a +- change between 0 - 0.1, 0 - 0.001, 0 - 0.00002 from nominal value: [1.0, 0.005, 0.0001] in respective geom direction
+
+Note that these distributions may be different in the final evaluation environment. Try to maintain the performance of your policies in as wide a range as possible.
+
 
 **Success Condition**
 
     - The object moved from start position to goal position. Both the MPL hand, and MyoHand, is required to touch the object for 100 timesteps 
-    - Exerting a maximum contact force on the object, less than 1500N (subject to change based on submission)
+    - Exerting a maximum contact force on the object, less than 1500N (subject to change in final EVALUATION environment)
     - Placing the object within 0.05 meters of the goal site on the pillar
 
 **Ranking Criteria**
-    1. Task success rate (success_attempt / total_attempt)
-    2. Time to complete the task (success_attempt + failed_attempt)
-    3. Muscle activation
-    4. Distance from goal site (only if tie in previous metrics)
+    1. Task success rate (successful_attempts / total_attempts)
+    2. Total time to complete the task (failed_attemps will be punished for a time of full episode length)
+    3. Minimum total muscle activation
+    4. Minimum total distance from goal position (only if tie in previous metrics)
 
 
 
@@ -384,3 +389,15 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
         # Reset training if env is terminated
         if terminated:
             next_obs, info = env.reset()
+
+
+
+
+.. _challenge24_disclaimer:
+
+Challenge disclaimer on test and evaluation environments
+--------------------------------------------------------------
+
+This challenge aims to provide a simulated environment that captures the complexity of real-world scenarios. In order for participants to familiarise themselves with the tasks, 
+we have opened the portal for a TEST environment to begin with. Please note that even though the tasks and evaluation criteria will stay the same, there might be difference in the 
+changing factors' distributions in the final EVALUATION environment. Please try to maintain the robustness of your policies in as wide a range as possible.
