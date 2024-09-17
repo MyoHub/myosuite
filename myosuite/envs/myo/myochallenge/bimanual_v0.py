@@ -313,7 +313,7 @@ class BimanualEnvV1(BaseV0):
         goal_dist = np.mean([np.mean(p['env_infos']['rwd_dict']['goal_dist']) for p in paths])
 
         # average activations over entire trajectory (can be shorter than horizon, if done) realized
-        effort = -1.0 * np.mean([np.mean(p['env_infos']['rwd_dict']['act']) for p in paths])
+        effort = 1.0 * np.mean([np.mean(p['env_infos']['rwd_dict']['act']) for p in paths])
 
         metrics = {
             'score': score,
