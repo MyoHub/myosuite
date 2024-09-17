@@ -257,6 +257,9 @@ class BimanualEnvV1(BaseV0):
         elbow_err = 5 * np.exp(-10 * (obs_dict['elbow_fle'][0] - 1.) ** 2) - 5
         goal_dis = np.array(
             [[np.abs(np.linalg.norm(obj_pos[:2] - goal_pos, axis=-1))]])
+        
+        isTimeLimit = obs_dict['time'] > 3.0
+
         rwd_dict = collections.OrderedDict(
             (
                 # Optional Keys
@@ -271,7 +274,7 @@ class BimanualEnvV1(BaseV0):
                 ("sparse", 0),
                 ("goal_dist", goal_dis), 
                 ("solved", goal_dis < self.proximity_th),
-                ("done", goal_dis < self.proximity_th),
+                ("done", isTimeLimit),
             )
         )
 
