@@ -46,7 +46,7 @@ register_env_with_variants(id='myoChallengeBimanual-v0',
 
 
 # MyoChallenge 2024 envs ==============================================
-register_env_with_variants(id='myoChallengeRunTrackP1-v0',
+register_env_with_variants(id='myoChallengeOslRunFixed-v0',
         entry_point='myosuite.envs.myo.myochallenge.run_track_v0:RunTrack',
         max_episode_steps=1000,
         kwargs={
@@ -61,16 +61,15 @@ register_env_with_variants(id='myoChallengeRunTrackP1-v0',
             'frame_skip': 5,
             'start_pos': 14,
             'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv'
-            
         }
     )
 
 
-register_env_with_variants(id='myoChallengeRunTrackP2-v0',
+register_env_with_variants(id='myoChallengeOslRunRandom-v0',
         entry_point='myosuite.envs.myo.myochallenge.run_track_v0:RunTrack',
         max_episode_steps=36000,
         kwargs={
-            'model_path': curr_dir+'/../assets/leg/myoosl_runtrack_p2.xml',
+            'model_path': curr_dir+'/../assets/leg/myoosl_runtrack.xml',
             'normalize_act': False,
             'reset_type': 'random',  # none, init, random, osl_init
             'terrain': 'random_mixed',  # FLAT, random
@@ -81,7 +80,6 @@ register_env_with_variants(id='myoChallengeRunTrackP2-v0',
             'frame_skip': 5,
             'start_pos': 32,
             'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv'
-            
         }
     )
 
