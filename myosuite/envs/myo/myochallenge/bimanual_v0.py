@@ -271,7 +271,7 @@ class BimanualEnvV1(BaseV0):
                 ("sparse", 0),
                 ("goal_dist", goal_dis), 
                 ("solved", goal_dis < self.proximity_th),
-                ("done", goal_dis < self.proximity_th),
+                ("done", self._get_done()),
             )
         )
 
@@ -280,6 +280,16 @@ class BimanualEnvV1(BaseV0):
         )
 
         return rwd_dict
+
+    def _get_done(self):
+        if self.obs_dict['time'] > 3.0:
+            return 1
+        elif self.obs_dict["obj_pos"][0][0][-1] < 0.3:
+            self.obs_dict['time'] = 3.0
+            return 1
+        elif self.rwd_dict and self.rwd_dict['solved']:
+            return 1
+        return 0
 
     def step(self, a, **kwargs):
         # We unnormalize robotic actuators, muscle ones are handled in the parent implementation
