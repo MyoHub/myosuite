@@ -21,19 +21,23 @@ def import_gym():
 gym = import_gym()
     
 
-# utility to allow different numpy versions
-class NPRandomVersionWrapper:
-    def __init__(self, np_random):
-        self.np_random = np_random
+def seed_envs(seed):
+    # utility to allow different numpy versions
+    class NPRandomVersionWrapper:
+       def __init__(self, np_random):
+           self.np_random = np_random
 
-    def __getattr__(self, name):
-        if name == 'integers':
-            def integers(*args, **kwargs):
-                try:
-                    return self.np_random.integers(*args, **kwargs)
-                except AttributeError:
-                    # Fall back to randint if integers is not available
-                    return self.np_random.randint(*args, **kwargs)
-            return integers
-        return getattr(self.np_random, name)
+       def __getattr__(self, name):
+           if name == 'integers':
+               def integers(*args, **kwargs):
+                   try:
+                       return self.np_random.integers(*args, **kwargs)
+                   except AttributeError:
+                       # Fall back to randint if integers is not available
+                       return self.np_random.randint(*args, **kwargs)
+               return integers
+           return getattr(self.np_random, name)
+    np_random, seed = gym.utils.seeding.np_random(seed)
+    return NPRandomVersionWrapper(np_random), seed
+   
     
