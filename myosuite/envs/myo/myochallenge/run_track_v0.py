@@ -54,7 +54,7 @@ class RunTrack(WalkEnvV0):
 
     # Joint dict
     pain_jnt = ['hip_adduction_l', 'hip_adduction_r', 'hip_flexion_l', 'hip_flexion_r', 'hip_rotation_l', 'hip_rotation_r',
-                'knee_angle_l', 'knee_angle_l_rotation2', 'knee_angle_l_rotation3', 
+                'knee_angle_l', 'knee_angle_l_rotation2', 'knee_angle_l_rotation3',
                 'mtp_angle_l', 'ankle_angle_l', 'subtalar_angle_l']
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
@@ -88,7 +88,6 @@ class RunTrack(WalkEnvV0):
                end_pos = -15,
                start_pos = 14,
                init_pose_path=None,
-               remap_required=False,
                osl_param_set=4,
                **kwargs,
                ):
@@ -98,7 +97,6 @@ class RunTrack(WalkEnvV0):
         # Terrain type
         self.terrain_type = TrackTypes.FLAT.value
 
-        self.remap_required = remap_required
         self.osl_param_set = osl_param_set
         # Env initialization with data
         if init_pose_path is not None:
@@ -141,6 +139,13 @@ class RunTrack(WalkEnvV0):
                        reset_type=reset_type,
                        **kwargs
                        )
+
+        # OSL controls will be automatically infered from the OSL controller. It will not be exposed as action space. Let's fix the action space.
+        act_low = -np.ones(self.sim.model.na) if self.normalize_act else self.sim.model.actuator_ctrlrange[:,0].copy()
+        act_high = np.ones(self.sim.model.na) if self.normalize_act else self.sim.model.actuator_ctrlrange[:,1].copy()
+        self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
+
+        # Lets fix initial pose
         self.init_qpos[:] = self.sim.model.keyframe('stand').qpos.copy()
         self.init_qvel[:] = 0.0
         self.startFlag = True
@@ -227,17 +232,17 @@ class RunTrack(WalkEnvV0):
             score = (score - self.end_pos) / (self.start_pos - self.end_pos)
 
         metrics = {
-            'score': np.clip(score, 0, 1), 
+            'score': np.clip(score, 0, 1),
             'time': times,
             'effort': effort,
             'pain': pain,
             }
         return metrics
 
-    def step(self, *args, **kwargs):
-        out_act = self._prepareActions(*args)
-        results = super().step(out_act, **kwargs)
-
+    # build full action by combining user actions and OSL actions.
+    def step(self, a, **kwargs):
+        myoosl_a = self._append_osl_actions(mus_actions=a, is_normalized=self.normalize_act)
+        results = super().step(myoosl_a, **kwargs)
         return results
 
     def reset(self, OSL_params=None, **kwargs):
@@ -310,7 +315,6 @@ class RunTrack(WalkEnvV0):
         else:
             self.OSL_CTRL.reset('e_stance')
             return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
-        
 
     def _maybe_adjust_height(self, qpos, qvel):
         """
@@ -447,7 +451,7 @@ class RunTrack(WalkEnvV0):
         """
         if not self.startFlag:
             return -1
-        
+
         pain_score = 0
         for joint in self.pain_jnt:
             pain_score += np.clip(np.abs(self.get_limitfrc(joint).squeeze()), -1000, 1000) / 1000
@@ -596,7 +600,7 @@ class RunTrack(WalkEnvV0):
             self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_yaw']]
         ])
         self.init_qpos[3:7] = init_quat
- 
+
         # Use the default facing direction to set the world frame velocity
         temp_euler = quat2euler_intrinsic(default_quat)
         world_vel_X, world_vel_Y = self.rotate_frame(self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_vel_X']],
@@ -648,29 +652,30 @@ class RunTrack(WalkEnvV0):
     """
     OSL leg interaction functions
     """
-    def _prepareActions(self, mus_actions):
+    def _append_osl_actions(self, mus_actions, is_normalized):
         """
         Combines OSL torques with the muscle activations
         Only considers the 54 muscles of the OSLMyoleg model
         """
 
-        if self.remap_required:
-            if np.any( (mus_actions < -1) | (mus_actions > 1) ):
-                raise ValueError("Input value should be between -1 and 1")
-            mus_actions = (mus_actions + 1) / 2
-
+        # copy over the muscle activations
         full_actions = np.zeros(self.sim.model.nu,)
         full_actions[0:self.sim.model.na] = mus_actions[0:self.sim.model.na].copy()
 
+        # append the osl torques
         self.OSL_CTRL.update(self.get_osl_sens())
-
         osl_torque = self.OSL_CTRL.get_osl_torque()
 
         for jnt in ['knee', 'ankle']:
             osl_id = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").id
-            full_actions[osl_id] = np.clip(osl_torque[jnt] / self.sim.model.actuator(f"osl_{jnt}_torque_actuator").gear[0],
-                    self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[0],
-                    self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[1])
+            osl_ctrl = osl_torque[jnt] / self.sim.model.actuator(f"osl_{jnt}_torque_actuator").gear[0]
+
+            if is_normalized:
+                min_act = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[0]
+                max_act = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[1]
+                osl_ctrl = osl_torque[jnt]-min_act/(max_act-min_act)
+
+            full_actions[osl_id] = osl_ctrl
 
         return full_actions
 
@@ -684,7 +689,7 @@ class RunTrack(WalkEnvV0):
         osl_sens_data['load'] = -1*self.sim.data.sensor('r_osl_load').data[1].copy() # Only vertical
 
         return osl_sens_data
-    
+
     def upload_osl_param(self, dict_of_dict):
         """
         Accessor function to upload full set of paramters to OSL leg
@@ -699,4 +704,3 @@ class RunTrack(WalkEnvV0):
         """
         assert mode < 4
         self.OSL_CTRL.change_osl_mode(mode)
-        
