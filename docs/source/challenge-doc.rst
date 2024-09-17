@@ -55,11 +55,51 @@ Observation Space
 
 **Observations Space**
 
+The obs_dict variable contains useful features that are used to create observation vectors (configured via obs_keys) and for computing environment rewards (configures get_reward_dict(.) 
+in via weighted_reward_keys).
 
-The obs_dict variable contains useful observations for completing the task. Please note that participants are encourage to 
-modify the obs_dict to customize their reward computations; yet values directly obtained outside the obs_dict, or directly from 
-the simulator might not be accessible in submissions.  
+During training, participants are encouraged to add new keys to the obs_dict to further aid their reward computations. Note that the values obtained outside the provided obs_dict, 
+or directly from the simulator might not be accessible during submission evaluations.
 
+
+.. temporary change backup
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | **Description**                         |        **Access**           |   **Dimension** |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Time                                    | obs_dict['time']            |  (1x1)          |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint positions of myoArm               | obs_dict['myohand_qpos']    | (38x1)          | 
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint velocity of myoArm                | obs_dict['myohand_qvel']    | (38x1)          |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint positions of MPL                  | obs_dict['pros_hand_qpos']  | (27x1)          |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint velocity of MPL                   | obs_dict['pros_hand_qvel']  | (26x1)          |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint positions of object               | obs_dict['object_qpos']     | (7x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint velocity of object                | obs_dict['object_qvel']     | (6x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Contact information of object           | obs_dict['touching_body']   | (5x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Starting position                       | obs_dict['start_pos']       | (2x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Goal position                           | obs_dict['goal_pos']        | (2x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Muscle activation of myoHand            | obs_dict['act']             | (63x1)          |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Palm location                           | obs_dict['palm_pos']        | (3x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Finger tip location                     | obs_dict['fin_i']           | (3x5)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | MPL palm location                       | obs_dict['Rpalm_pos']       | (3x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Object position                         | obs_dict['obj_pos']         | (3x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Hand reaching error                     | obs_dict['reach_err']       | (3x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Hand passing error                      | obs_dict['pass_err']        | (3x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
 
 
 +-----------------------------------------+-----------------------------+-----------------+
@@ -86,14 +126,6 @@ the simulator might not be accessible in submissions.
 | Goal position                           | obs_dict['goal_pos']        | (2x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Muscle activation of myoHand            | obs_dict['act']             | (63x1)          |
-+-----------------------------------------+-----------------------------+-----------------+
-| Palm location                           | obs_dict['palm_pos']        | (3x1)           |
-+-----------------------------------------+-----------------------------+-----------------+
-| Finger tip location                     | obs_dict['fin_i']           | (3x5)           |
-+-----------------------------------------+-----------------------------+-----------------+
-| MPL palm location                       | obs_dict['Rpalm_pos']       | (3x1)           |
-+-----------------------------------------+-----------------------------+-----------------+
-| Object position                         | obs_dict['obj_pos']         | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Hand reaching error                     | obs_dict['reach_err']       | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
