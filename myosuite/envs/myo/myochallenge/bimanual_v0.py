@@ -197,8 +197,8 @@ class BimanualEnvV1(BaseV0):
         obs_dict["object_qpos"] = sim.data.qpos[self.id_info.manip_joint_range].copy()
         obs_dict["object_qvel"] = sim.data.qvel[self.id_info.manip_dof_range].copy()
 
-        obs_dict["start_pos"] = self.start_pos[:2].copy()
-        obs_dict["goal_pos"] = self.goal_pos[:2].copy()
+        obs_dict["start_pos"] = self.start_pos
+        obs_dict["goal_pos"] = self.goal_pos
         obs_dict["elbow_fle"] = self.sim.data.joint('elbow_flexion').qpos.copy()
 
         this_model = sim.model
@@ -256,10 +256,8 @@ class BimanualEnvV1(BaseV0):
 
         elbow_err = 5 * np.exp(-10 * (obs_dict['elbow_fle'][0] - 1.) ** 2) - 5
         goal_dis = np.array(
-            [[np.abs(np.linalg.norm(obj_pos[:2] - goal_pos, axis=-1))]])
+            [[np.abs(np.linalg.norm(obj_pos - goal_pos, axis=-1))]])
         
-        isTimeLimit = obs_dict['time'] > 3.0
-
         rwd_dict = collections.OrderedDict(
             (
                 # Optional Keys
