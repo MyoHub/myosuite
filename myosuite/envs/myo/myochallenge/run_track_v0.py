@@ -670,10 +670,16 @@ class RunTrack(WalkEnvV0):
             osl_id = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").id
             osl_ctrl = osl_torque[jnt] / self.sim.model.actuator(f"osl_{jnt}_torque_actuator").gear[0]
 
+            # clip for control limits
+            min_ctrl = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[0]
+            max_ctrl = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[1]
+            osl_ctrl = np.clip(osl_ctrl, min_ctrl, max_ctrl)
+
+            # normalize if needed
             if is_normalized:
-                min_act = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[0]
-                max_act = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[1]
-                osl_ctrl = osl_torque[jnt]-min_act/(max_act-min_act)
+                ctrl_mean = (min_ctrl + max_ctrl) / 2.0
+                ctrl_rng = (max_ctrl - min_ctrl) / 2.0
+                osl_ctrl = (osl_ctrl-ctrl_mean)/ctrl_rng
 
             full_actions[osl_id] = osl_ctrl
 
