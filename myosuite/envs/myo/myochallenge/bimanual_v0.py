@@ -258,6 +258,8 @@ class BimanualEnvV1(BaseV0):
         goal_dis = np.array(
             [[np.abs(np.linalg.norm(obj_pos - goal_pos, axis=-1))]])
         
+        touching_vec = obs_dict["touching_body"][0][0] if obs_dict['touching_body'].ndim == 3 else obs_dict['touching_body']
+
         rwd_dict = collections.OrderedDict(
             (
                 # Optional Keys
@@ -271,7 +273,7 @@ class BimanualEnvV1(BaseV0):
                 # Must keys
                 ("sparse", 0),
                 ("goal_dist", goal_dis), 
-                ("solved", goal_dis < self.proximity_th),
+                ("solved", goal_dis < self.proximity_th and touching_vec[3] == 1),
                 ("done", self._get_done(obj_pos[-1])),
             )
         )
