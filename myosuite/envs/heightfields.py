@@ -354,7 +354,7 @@ class TrackField(HeightField):
                       (self._compute_rough_track, self.rough_difficulties, TrackTypes.ROUGH)]
 
         n_types = len(terrain_fn_list)
-        if self.reset_type == "FLAT":
+        if self.reset_type == "flat":
             self.terrain_type = TrackTypes.FLAT
             return
         elif self.reset_type == "random":
