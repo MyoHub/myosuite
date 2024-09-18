@@ -53,7 +53,7 @@ register_env_with_variants(id='myoChallengeOslRunFixed-v0',
             'model_path': curr_dir+'/../assets/leg/myoosl_runtrack.xml',
             'normalize_act': True,
             'reset_type': 'random',  # none, init, random, osl_init
-            'terrain': 'random',  # FLAT, random
+            'terrain': 'FLAT',  # FLAT, random, random_mixed
             'hills_difficulties': (0.0, 0.1, 0.0, 0.5, 0.0, 0.8, 0.0, 1.0),
             'rough_difficulties': (0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.3),
             'stairs_difficulties': (0.0, 0.05, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3),
@@ -72,7 +72,7 @@ register_env_with_variants(id='myoChallengeOslRunRandom-v0',
             'model_path': curr_dir+'/../assets/leg/myoosl_runtrack.xml',
             'normalize_act': True,
             'reset_type': 'random',  # none, init, random, osl_init
-            'terrain': 'random_mixed',  # FLAT, random
+            'terrain': 'random_mixed',  # FLAT, random, random_mixed
             'hills_difficulties': (0.0, 0.0, 0.0, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3, 0.0, 0.4, 0.0, 0.5, 0.0, 0.6, 0.0),
             'rough_difficulties': (0.0, 0.00, 0.0, 0.00, 0.05, 0.0, 0.1, 0.00, 0.15, 0.0, 0.2, 0.00, 0.25, 0.0, 0.3, 0.0),
             'stairs_difficulties': (0.0, 0.00, 0.0, 0.00, 0.05, 0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.25, 0.0, 0.3, 0.0),

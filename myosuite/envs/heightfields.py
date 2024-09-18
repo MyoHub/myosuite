@@ -354,7 +354,10 @@ class TrackField(HeightField):
                       (self._compute_rough_track, self.rough_difficulties, TrackTypes.ROUGH)]
 
         n_types = len(terrain_fn_list)
-        if self.reset_type == "random":
+        if self.reset_type == "FLAT":
+            self.terrain_type = TrackTypes.FLAT
+            return
+        elif self.reset_type == "random":
             # random but consistent terrain type
             terrain_fn, difficulties, track_type = terrain_fn_list[self.rng.choice(n_types)] 
             self.terrain_type = track_type
@@ -366,6 +369,8 @@ class TrackField(HeightField):
             patch_starts = np.arange(0, self.nrow, int(self.nrow // n_patches))
             terrain_fn = lambda patch_start, patch_end, i: terrain_fn_list[self.rng.choice(n_types)][0](patch_start, patch_end, i)
             self.terrain_type = TrackTypes.MIXED
+        else:
+            raise ValueError(f"Invalid reset type: {self.reset_type}")
         for i in range(patch_starts[:-1].shape[0]):
             terrain_fn(patch_starts[i], patch_starts[i+1], i)
 
