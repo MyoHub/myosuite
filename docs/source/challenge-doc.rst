@@ -53,7 +53,7 @@ actuated by a control value between  :math:`[-1, 1]`, with -1 and 1 representing
 Observation Space
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**Observations Space**
+
 
 The obs_dict variable contains useful features that are used to create observation vectors (configured via obs_keys) and for computing environment rewards (configures get_reward_dict(.) 
 in via weighted_reward_keys).
@@ -121,9 +121,9 @@ or directly from the simulator might not be accessible during submission evaluat
 +-----------------------------------------+-----------------------------+-----------------+
 | Contact information of object           | obs_dict['touching_body']   | (5x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
-| Starting position                       | obs_dict['start_pos']       | (2x1)           |
+| Starting position                       | obs_dict['start_pos']       | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
-| Goal position                           | obs_dict['goal_pos']        | (2x1)           |
+| Goal position                           | obs_dict['goal_pos']        | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Muscle activation of myoHand            | obs_dict['act']             | (63x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
@@ -144,9 +144,8 @@ or directly from the simulator might not be accessible during submission evaluat
         - Goal   = value[3]
         - The rest = value[4]
 
-    - Finger tip location is accessed by an index i for each finger tips. The index i is in [0-4] and the location of finger 0 (thumb) can acccessed by obs_dict['fin0']
     
-    - Start and Goal positions are 2 dimensional because the height of the two pillars will be constant
+    - Start and Goal positions are 3 dimensional but the height of the two pillars are the same
 
     - Hand reaching error measures the distance between the hand and the object
 
@@ -158,23 +157,28 @@ or directly from the simulator might not be accessible during submission evaluat
 
 
 **Variation on Object Properties**
+
 Both the geometry and physical properties of the object as well as the environment can be sampled at the start of each episode to provide variability in the task. Provided 
 below is an example of how real-world scenarios is captured in the test environments we provide.
 
     - Object scale: a +- change in respective geom directions ( between 0% - 5%, 0% - 10% in myoChallengeBimanual-v0)
     - Object Mass: an upper/lower bound of X gms (X = 50 in myoChallengeBimanual-v0)
-    - Object Friction: a +- change between 0 - 0.1, 0 - 0.001, 0 - 0.00002 from nominal value: [1.0, 0.005, 0.0001] in respective geom direction
+    - Object Friction: a +- change between 0 - 0.1, 0 - 0.001, 0 - 0.00002 from nominal value: [1.0, 0.005, 0.0001] in respective geom direction in (myoChallengeBimanual-v0)
 
 Note that these distributions may be different in the final evaluation environment. Try to maintain the performance of your policies in as wide a range as possible.
 
 
-**Success Condition**
 
-    - The object moved from start position to goal position. Both the MPL hand, and MyoHand, is required to touch the object for 100 timesteps 
+Success Condition
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    - The object moved from start position to goal position. Both the MPL hand, and MyoHand, is required to touch the object for certain timesteps 
     - Exerting a maximum contact force on the object, less than 1500N (subject to change in final EVALUATION environment)
     - Placing the object within 0.05 meters of the goal site on the pillar
 
-**Ranking Criteria**
+
+Ranking Criteria
+^^^^^^^^^^^^^^^^^^^^^^^^^
     1. Task success rate (successful_attempts / total_attempts)
     2. Total time to complete the task (failed_attemps will be punished for a time of full episode length)
     3. Minimum total muscle activation
@@ -236,7 +240,6 @@ for the prosthetic leg.
 
 
 
-
 Action Space
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -254,8 +257,10 @@ For participants that do not wish to use this normalization feature, it can be d
 
 
 where in this case, the control range of the muscles are set between :math:`[0, 1]` without any normalization performed.
-To control the prothetic leg `OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__, commanded torque values are generated 
-by an embedded :ref:`challenge24_state_machine`. Refer to the section below for more information.
+
+The action space includes the control of the `OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__ leg and the :ref:`myoLeg` with a 
+total action space of 54 dimensions. To control the prothetic leg `OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__, 
+commanded torque values are generated by an embedded state machine. Refer to the section on :ref:`challenge24_state_machine` for more information.
 
 
 
@@ -324,7 +329,7 @@ Observation Space
 .. _challenge24_state_machine:
 
 State Machine
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 A simple 4-state state machine is created to track the gait phase of the prosthetic leg. Each state contains the gain parameters 
 for an impedance controller, which in turn, provides the required torques to the prosthetic actuators. The code for the state machine 
@@ -365,6 +370,43 @@ List of states variables:
         - Ankle velocity
 
 
+Testing environment
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+To increase the accessibility of the task, two set of testing environment is provided for participants to familiarise themselves with the tasks. 
+Please note that the variation parameters are subject to change in the actual evaluation environment.
+
+The two environments are :code:`myoChallengeOslRunRandom-v0` and :code:`myoChallengeOslRunFixed-v0` and can be accessed via :code:`env = gym.make(“myoChallengeOslRunRandom-v0”, normalize_act=False)`
+
+The :code:`myoChallengeOslRunFixed-v0` environment is a simplified version of the :code:`myoChallengeOslRunRandom-v0` environment for participants to begin with, with a flat ground and a shorter 15m track. 
+
+The :code:`myoChallengeOslRunRandom-v0` includes a 30 meters track with a 20m stretch of flat ground, and the remaining 10m of increasingly difficult terrain
+
+
+The environment in evaluation will be similar to the :code:`myoChallengeOslRunRandom-v0` environment.
+
+
+
+
+Success Condition
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    - The performance will be evaluated on multiple episoids under varying conditions to ensure a comprehensive evaluation. The performance will be assessed based on their average outcome across episoids.
+    - The controller needs to walk for at least 20 meters before considered for ranking without falling
+
+
+Ranking Criteria
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    1. Average distance travelled (ranked in descending order)
+    2. Average time of completion (ranked in ascending order)
+    3. Minimum physiological criteria (Pain) : Measured by the average amount of overextension torque on each rotational joint of MyoLeg as a representation of pain
+    4. Minimum total muscle activation: Measured by the total muscle activation during the task to estimate metabolic power
+
+
+
+
 
 .. _challenge24_tutorial:
 
@@ -386,8 +428,8 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
 
     from myosuite.utils import gym
     # Include the locomotion track environment, uncomment to select the manipulation challenge
-    env = gym.make('myoChallengeRunTrackP1-v0')
-    #env = gym.make('myoChallengeBimanual-v0')
+    # env = gym.make('myoChallengeOslRunRandom-v0')
+    env = gym.make('myoChallengeBimanual-v0')
     
 
     env.reset()
