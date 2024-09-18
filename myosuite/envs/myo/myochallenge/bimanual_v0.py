@@ -257,6 +257,9 @@ class BimanualEnvV1(BaseV0):
         elbow_err = 5 * np.exp(-10 * (obs_dict['elbow_fle'][0] - 1.) ** 2) - 5
         goal_dis = np.array(
             [[np.abs(np.linalg.norm(obj_pos[:2] - goal_pos, axis=-1))]])
+        
+        isTimeLimit = obs_dict['time'] > 3.0
+
         rwd_dict = collections.OrderedDict(
             (
                 # Optional Keys
@@ -323,7 +326,7 @@ class BimanualEnvV1(BaseV0):
         goal_dist = np.mean([np.mean(p['env_infos']['rwd_dict']['goal_dist']) for p in paths])
 
         # average activations over entire trajectory (can be shorter than horizon, if done) realized
-        effort = -1.0 * np.mean([np.mean(p['env_infos']['rwd_dict']['act']) for p in paths])
+        effort = 1.0 * np.mean([np.mean(p['env_infos']['rwd_dict']['act']) for p in paths])
 
         metrics = {
             'score': score,

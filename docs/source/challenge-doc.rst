@@ -5,6 +5,7 @@ MyoChallenge-2024 Documentations
 * :ref:`challenge24_manipulation`
 * :ref:`challenge24_locomotion`
 * :ref:`challenge24_tutorial`
+* :ref:`challenge24_disclaimer`
 
 
 
@@ -32,7 +33,7 @@ Objective
 
 
 Move the object between two locations with a handover between a hand and a prosthesis. The task parameters will be randomized to provide a comprehensive 
-test to the controller model performance. The randomization will include but not limited to: object type, object weight and even friction during each environmental reset. 
+test to the controller's performance. The randomization will include but not limited to: object type, object weight and even friction during each environmental reset. 
 
 
 
@@ -54,11 +55,51 @@ Observation Space
 
 **Observations Space**
 
+The obs_dict variable contains useful features that are used to create observation vectors (configured via obs_keys) and for computing environment rewards (configures get_reward_dict(.) 
+in via weighted_reward_keys).
 
-The obs_dict variable contains useful observations for completing the task. Please note that participants are encourage to 
-modify the obs_dict to customize their reward computations; yet values directly obtained outside the obs_dict, or directly from 
-the simulator might not be accessible in submissions.  
+During training, participants are encouraged to add new keys to the obs_dict to further aid their reward computations. Note that the values obtained outside the provided obs_dict, 
+or directly from the simulator might not be accessible during submission evaluations.
 
+
+.. temporary change backup
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | **Description**                         |        **Access**           |   **Dimension** |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Time                                    | obs_dict['time']            |  (1x1)          |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint positions of myoArm               | obs_dict['myohand_qpos']    | (38x1)          | 
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint velocity of myoArm                | obs_dict['myohand_qvel']    | (38x1)          |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint positions of MPL                  | obs_dict['pros_hand_qpos']  | (27x1)          |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint velocity of MPL                   | obs_dict['pros_hand_qvel']  | (26x1)          |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint positions of object               | obs_dict['object_qpos']     | (7x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint velocity of object                | obs_dict['object_qvel']     | (6x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Contact information of object           | obs_dict['touching_body']   | (5x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Starting position                       | obs_dict['start_pos']       | (2x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Goal position                           | obs_dict['goal_pos']        | (2x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Muscle activation of myoHand            | obs_dict['act']             | (63x1)          |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Palm location                           | obs_dict['palm_pos']        | (3x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Finger tip location                     | obs_dict['fin_i']           | (3x5)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | MPL palm location                       | obs_dict['Rpalm_pos']       | (3x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Object position                         | obs_dict['obj_pos']         | (3x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Hand reaching error                     | obs_dict['reach_err']       | (3x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Hand passing error                      | obs_dict['pass_err']        | (3x1)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
 
 
 +-----------------------------------------+-----------------------------+-----------------+
@@ -78,21 +119,13 @@ the simulator might not be accessible in submissions.
 +-----------------------------------------+-----------------------------+-----------------+
 | Joint velocity of object                | obs_dict['object_qvel']     | (6x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
-| Touching information of object          | obs_dict['touching_body']   | (5x1)           |
+| Contact information of object           | obs_dict['touching_body']   | (5x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Starting position                       | obs_dict['start_pos']       | (2x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Goal position                           | obs_dict['goal_pos']        | (2x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Muscle activation of myoHand            | obs_dict['act']             | (63x1)          |
-+-----------------------------------------+-----------------------------+-----------------+
-| Palm location                           | obs_dict['palm_pos']        | (3x1)           |
-+-----------------------------------------+-----------------------------+-----------------+
-| Finger tip location                     | obs_dict['fin_i']           | (3x5)           |
-+-----------------------------------------+-----------------------------+-----------------+
-| MPL palm location                       | obs_dict['Rpalm_pos']       | (3x1)           |
-+-----------------------------------------+-----------------------------+-----------------+
-| Object position                         | obs_dict['obj_pos']         | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
 | Hand reaching error                     | obs_dict['reach_err']       | (3x1)           |
 +-----------------------------------------+-----------------------------+-----------------+
@@ -119,29 +152,33 @@ the simulator might not be accessible in submissions.
 
     - Hand passing error measures the distance between the MPL and the object
 
-    - The manipulated object has full 6 degrees of freedom, its state described as a 7 dimensional value in position + quaternion format. Details can be found in "`freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__"
+    - The manipulated object has full 6 degrees of freedom, its state described as a 7 dimensional value in position + quaternion format. Details can be found in "`mujoco-freejoint <https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-freejoint>`__" page
 
 
 
 
 **Variation on Object Properties**
-The geometry, mass, and friction of the object will reset at the start of each episode. 
+Both the geometry and physical properties of the object as well as the environment can be sampled at the start of each episode to provide variability in the task. Provided 
+below is an example of how real-world scenarios is captured in the test environments we provide.
 
-    - Object scale: a +- change between 0% - 5%, 0% - 10% scale variations in respective geom directions 
-    - Object Mass: an upper/lower bound of +-50 gms
+    - Object scale: a +- change in respective geom directions ( between 0% - 5%, 0% - 10% in TEST environment)
+    - Object Mass: an upper/lower bound of X gms (X = 50 in TEST environment)
     - Object Friction: a +- change between 0 - 0.1, 0 - 0.001, 0 - 0.00002 from nominal value: [1.0, 0.005, 0.0001] in respective geom direction
+
+Note that these distributions may be different in the final evaluation environment. Try to maintain the performance of your policies in as wide a range as possible.
+
 
 **Success Condition**
 
     - The object moved from start position to goal position. Both the MPL hand, and MyoHand, is required to touch the object for 100 timesteps 
-    - Exerting a maximum contact force on the object, less than 1500N (subject to change based on submission)
+    - Exerting a maximum contact force on the object, less than 1500N (subject to change in final EVALUATION environment)
     - Placing the object within 0.05 meters of the goal site on the pillar
 
 **Ranking Criteria**
-    1. Task success rate (success_attempt / total_attempt)
-    2. Time to complete the task (success_attempt + failed_attempt)
-    3. Muscle activation
-    4. Distance from goal site (only if tie in previous metrics)
+    1. Task success rate (successful_attempts / total_attempts)
+    2. Total time to complete the task (failed_attemps will be punished for a time of full episode length)
+    3. Minimum total muscle activation
+    4. Minimum total distance from goal position (only if tie in previous metrics)
 
 
 
@@ -384,3 +421,15 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
         # Reset training if env is terminated
         if terminated:
             next_obs, info = env.reset()
+
+
+
+
+.. _challenge24_disclaimer:
+
+Challenge disclaimer on test and evaluation environments
+--------------------------------------------------------------
+
+This challenge aims to provide a simulated environment that captures the complexity of real-world scenarios. In order for participants to familiarise themselves with the tasks, 
+we have opened the portal for a TEST environment to begin with. Please note that even though the tasks and evaluation criteria will stay the same, there might be difference in the 
+changing factors' distributions in the final EVALUATION environment. Please try to maintain the robustness of your policies in as wide a range as possible.
