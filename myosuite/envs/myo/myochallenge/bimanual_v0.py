@@ -114,6 +114,8 @@ class BimanualEnvV1(BaseV0):
         # check whether the object experience force over max force
         self.over_max = False
         self.max_force = 0
+        self.goal_touch = 0
+        self.TARGET_GOAL_TOUCH = 5
 
 
         self.touch_history = []
@@ -260,6 +262,8 @@ class BimanualEnvV1(BaseV0):
         
         touching_vec = obs_dict["touching_body"][0][0] if obs_dict['touching_body'].ndim == 3 else obs_dict['touching_body']
 
+        if touching_vec[3] == 1:
+            self.goal_touch += 1
         rwd_dict = collections.OrderedDict(
             (
                 # Optional Keys
@@ -273,7 +277,7 @@ class BimanualEnvV1(BaseV0):
                 # Must keys
                 ("sparse", 0),
                 ("goal_dist", goal_dis), 
-                ("solved", goal_dis < self.proximity_th and touching_vec[3] == 1),
+                ("solved", goal_dis < self.proximity_th and self.goal_touch >= self.TARGET_GOAL_TOUCH),
                 ("done", self._get_done(obj_pos[-1])),
             )
         )
@@ -345,6 +349,7 @@ class BimanualEnvV1(BaseV0):
         self.sim.model.body_pos[self.goal_bid] = self.goal_pos
         self.touch_history = []
         self.over_max = False
+        self.goal_touch = 0
 
         # box mass changes
         if self.obj_mass_range:
