@@ -114,6 +114,8 @@ class BimanualEnvV1(BaseV0):
         # check whether the object experience force over max force
         self.over_max = False
         self.max_force = 0
+        self.goal_touch = 0
+        self.TARGET_GOAL_TOUCH = 5
 
 
         self.touch_history = []
@@ -197,8 +199,8 @@ class BimanualEnvV1(BaseV0):
         obs_dict["object_qpos"] = sim.data.qpos[self.id_info.manip_joint_range].copy()
         obs_dict["object_qvel"] = sim.data.qvel[self.id_info.manip_dof_range].copy()
 
-        obs_dict["start_pos"] = self.start_pos[:2].copy()
-        obs_dict["goal_pos"] = self.goal_pos[:2].copy()
+        obs_dict["start_pos"] = self.start_pos
+        obs_dict["goal_pos"] = self.goal_pos
         obs_dict["elbow_fle"] = self.sim.data.joint('elbow_flexion').qpos.copy()
 
         this_model = sim.model
@@ -256,10 +258,12 @@ class BimanualEnvV1(BaseV0):
 
         elbow_err = 5 * np.exp(-10 * (obs_dict['elbow_fle'][0] - 1.) ** 2) - 5
         goal_dis = np.array(
-            [[np.abs(np.linalg.norm(obj_pos[:2] - goal_pos, axis=-1))]])
+            [[np.abs(np.linalg.norm(obj_pos - goal_pos, axis=-1))]])
         
-        isTimeLimit = obs_dict['time'] > 3.0
+        touching_vec = obs_dict["touching_body"][0][0] if obs_dict['touching_body'].ndim == 3 else obs_dict['touching_body']
 
+        if touching_vec[3] == 1:
+            self.goal_touch += 1
         rwd_dict = collections.OrderedDict(
             (
                 # Optional Keys
@@ -273,8 +277,8 @@ class BimanualEnvV1(BaseV0):
                 # Must keys
                 ("sparse", 0),
                 ("goal_dist", goal_dis), 
-                ("solved", goal_dis < self.proximity_th),
-                ("done", isTimeLimit),
+                ("solved", goal_dis < self.proximity_th and self.goal_touch >= self.TARGET_GOAL_TOUCH),
+                ("done", self._get_done(obj_pos[-1])),
             )
         )
 
@@ -283,6 +287,16 @@ class BimanualEnvV1(BaseV0):
         )
 
         return rwd_dict
+
+    def _get_done(self, z):
+        if self.obs_dict['time'] > 3.0:
+            return 1  
+        elif z < 0.3:
+            self.obs_dict['time'] = 3.0
+            return 1
+        elif self.rwd_dict and self.rwd_dict['solved']:
+            return 1
+        return 0
 
     def step(self, a, **kwargs):
         # We unnormalize robotic actuators, muscle ones are handled in the parent implementation
@@ -335,6 +349,7 @@ class BimanualEnvV1(BaseV0):
         self.sim.model.body_pos[self.goal_bid] = self.goal_pos
         self.touch_history = []
         self.over_max = False
+        self.goal_touch = 0
 
         # box mass changes
         if self.obj_mass_range:
