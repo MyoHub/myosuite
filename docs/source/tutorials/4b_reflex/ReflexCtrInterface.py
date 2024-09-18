@@ -11,7 +11,7 @@ import numpy as np
 from reflexCtr import LocoCtrl
 
 import myosuite
-import gym
+from myosuite.utils import gym
 
 import numpy as np
 import os
