@@ -161,8 +161,8 @@ or directly from the simulator might not be accessible during submission evaluat
 Both the geometry and physical properties of the object as well as the environment can be sampled at the start of each episode to provide variability in the task. Provided 
 below is an example of how real-world scenarios is captured in the test environments we provide.
 
-    - Object scale: a +- change in respective geom directions ( between 0% - 5%, 0% - 10% in TEST environment)
-    - Object Mass: an upper/lower bound of X gms (X = 50 in TEST environment)
+    - Object scale: a +- change in respective geom directions ( between 0% - 5%, 0% - 10% in myoChallengeBimanual-v0)
+    - Object Mass: an upper/lower bound of X gms (X = 50 in myoChallengeBimanual-v0)
     - Object Friction: a +- change between 0 - 0.1, 0 - 0.001, 0 - 0.00002 from nominal value: [1.0, 0.005, 0.0001] in respective geom direction
 
 Note that these distributions may be different in the final evaluation environment. Try to maintain the performance of your policies in as wide a range as possible.
