@@ -271,7 +271,7 @@ class BimanualEnvV1(BaseV0):
                 ("sparse", 0),
                 ("goal_dist", goal_dis), 
                 ("solved", goal_dis < self.proximity_th),
-                ("done", self._get_done()),
+                ("done", self._get_done(obj_pos[-1])),
             )
         )
 
@@ -281,10 +281,10 @@ class BimanualEnvV1(BaseV0):
 
         return rwd_dict
 
-    def _get_done(self):
+    def _get_done(self, z):
         if self.obs_dict['time'] > 3.0:
-            return 1
-        elif self.obs_dict["obj_pos"][0][0][-1] < 0.3:
+            return 1  
+        elif z < 0.3:
             self.obs_dict['time'] = 3.0
             return 1
         elif self.rwd_dict and self.rwd_dict['solved']:
