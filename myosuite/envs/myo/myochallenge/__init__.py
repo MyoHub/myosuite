@@ -72,14 +72,15 @@ register_env_with_variants(id='myoChallengeOslRunRandom-v0',
             'model_path': curr_dir+'/../assets/leg/myoosl_runtrack.xml',
             'normalize_act': True,
             'reset_type': 'random',  # none, init, random, osl_init
-            'terrain': 'random_mixed',  # flat, random, random_mixed
+            'terrain': 'random',  # flat, random, random_mixed
             'hills_difficulties': (0.0, 0.0, 0.0, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3, 0.0, 0.4, 0.0, 0.5, 0.0, 0.6, 0.0),
             'rough_difficulties': (0.0, 0.00, 0.0, 0.00, 0.05, 0.0, 0.1, 0.00, 0.15, 0.0, 0.2, 0.00, 0.25, 0.0, 0.3, 0.0),
             'stairs_difficulties': (0.0, 0.00, 0.0, 0.00, 0.05, 0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.25, 0.0, 0.3, 0.0),
             'end_pos': -35,
             'frame_skip': 5,
             'start_pos': 32,
-            'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv'
+            'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv',
+            'max_episode_steps':36000 # Duplicate this in the environment itself
         }
     )
 

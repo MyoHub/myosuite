@@ -89,6 +89,7 @@ class RunTrack(WalkEnvV0):
                start_pos = 14,
                init_pose_path=None,
                osl_param_set=4,
+               max_episode_steps=36000,
                **kwargs,
                ):
 
@@ -150,6 +151,9 @@ class RunTrack(WalkEnvV0):
         self.init_qvel[:] = 0.0
         self.startFlag = True
 
+        # Max time for time metric
+        self.maxTime = self.dt * max_episode_steps
+
     def get_obs_dict(self, sim):
         obs_dict = {}
 
@@ -197,6 +201,10 @@ class RunTrack(WalkEnvV0):
         # The task is entirely defined by these 3 lines
         score = self.get_score()
         win_cdt = self._win_condition()
+        lose_cdt = self._lose_condition()
+
+        self.obs_dict['time'] = self.maxTime if lose_cdt else self.obs_dict['time']
+
         rwd_dict = collections.OrderedDict((
             # Perform reward tuning here --
             # Update Optional Keys section below
