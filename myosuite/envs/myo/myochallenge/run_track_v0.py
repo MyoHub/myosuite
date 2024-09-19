@@ -518,7 +518,7 @@ class RunTrack(WalkEnvV0):
         to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy(), self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy()]
 
         temp_qpos[to_remove] = 100
-        temp_qpos[temp_qpos != 100]
+        temp_qpos = temp_qpos[temp_qpos != 100]
         return temp_qpos[7:]
 
     def get_internal_qvel(self):
@@ -529,7 +529,7 @@ class RunTrack(WalkEnvV0):
         to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy() -1, self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy() -1]
 
         temp_qvel[to_remove] = 100
-        temp_qvel[temp_qvel != 100]
+        temp_qvel = temp_qvel[temp_qvel != 100]
         return temp_qvel[6:] * self.dt
 
     def muscle_lengths(self):
@@ -540,7 +540,7 @@ class RunTrack(WalkEnvV0):
         to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
 
         temp_len[to_remove] = 100
-        temp_len[temp_len != 100]
+        temp_len = temp_len[temp_len != 100]
         return temp_len
 
     def muscle_forces(self):
@@ -551,7 +551,7 @@ class RunTrack(WalkEnvV0):
         to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
 
         temp_frc[to_remove] = 100
-        temp_frc[temp_frc != 100]
+        temp_frc = temp_frc[temp_frc != 100]
 
         return np.clip(temp_frc / 1000, -100, 100)
 
@@ -563,7 +563,7 @@ class RunTrack(WalkEnvV0):
         to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
 
         temp_vel[to_remove] = 100
-        temp_vel[temp_vel != 100]
+        temp_vel = temp_vel[temp_vel != 100]
 
         return np.clip(temp_vel, -100, 100)
 
