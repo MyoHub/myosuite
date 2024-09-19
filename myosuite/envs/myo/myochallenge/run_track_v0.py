@@ -171,7 +171,6 @@ class RunTrack(WalkEnvV0):
         obs_dict['muscle_length'] = self.muscle_lengths()
         obs_dict['muscle_velocity'] = self.muscle_velocities()
         obs_dict['muscle_force'] = self.muscle_forces()
-        obs_dict['act_dot'] = self.sim.data.act_dot
 
         if sim.model.na>0:
             obs_dict['act'] = sim.data.act[:].copy()
