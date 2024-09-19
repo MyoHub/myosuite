@@ -365,7 +365,7 @@ class TrackField(HeightField):
             patch_starts = np.arange(0, self.nrow, int(self.nrow // n_patches))
         elif self.reset_type == "random_mixed":
             # random mixed terrain type
-            n_patches = 16
+            n_patches = 24
             patch_starts = np.arange(0, self.nrow, int(self.nrow // n_patches))
             terrain_fn = lambda patch_start, patch_end, i: terrain_fn_list[self.rng.choice(n_types)][0](patch_start, patch_end, i)
             self.terrain_type = TrackTypes.MIXED

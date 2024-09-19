@@ -60,31 +60,30 @@ register_env_with_variants(id='myoChallengeOslRunFixed-v0',
             'end_pos': -15,
             'frame_skip': 5,
             'start_pos': 14,
-            'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv'
+            'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv',
+            'max_episode_steps': 1000
         }
     )
 
 
 register_env_with_variants(id='myoChallengeOslRunRandom-v0',
         entry_point='myosuite.envs.myo.myochallenge.run_track_v0:RunTrack',
-        max_episode_steps=36000,
+        max_episode_steps=60000,
         kwargs={
             'model_path': curr_dir+'/../assets/leg/myoosl_runtrack.xml',
             'normalize_act': True,
             'reset_type': 'random',  # none, init, random, osl_init
             'terrain': 'random',  # flat, random, random_mixed
-            'hills_difficulties': (0.0, 0.0, 0.0, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3, 0.0, 0.4, 0.0, 0.5, 0.0, 0.6, 0.0),
-            'rough_difficulties': (0.0, 0.00, 0.0, 0.00, 0.05, 0.0, 0.1, 0.00, 0.15, 0.0, 0.2, 0.00, 0.25, 0.0, 0.3, 0.0),
-            'stairs_difficulties': (0.0, 0.00, 0.0, 0.00, 0.05, 0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.25, 0.0, 0.3, 0.0),
-            'end_pos': -35,
-            'frame_skip': 5,
-            'start_pos': 32,
+            'hills_difficulties': (0.0, 0.0, 0.0, 0.0, 0.0, 0.03, 0.0, 0.06, 0.0, 0.09, 0.0, 0.12, 0.0, 0.15, 0.0, 0.18, 0.0, 0.21, 0.0, 0.24, 0.0, 0.0, 0.0, 0.0),
+            'rough_difficulties': (0.0, 0.0, 0.0, 0.0, 0.0, 0.03, 0.0, 0.06, 0.0, 0.09, 0.0, 0.12, 0.0, 0.15, 0.0, 0.18, 0.0, 0.21, 0.0, 0.24, 0.0, 0.0, 0.0, 0.0),
+            'stairs_difficulties': (0.0, 0.0, 0.0, 0.0, 0.0, 0.03, 0.0, 0.06, 0.0, 0.09, 0.0, 0.12, 0.0, 0.15, 0.0, 0.18, 0.0, 0.21, 0.0, 0.24, 0.0, 0.0, 0.0, 0.0),
+            'end_pos': -45, # -35
+            'frame_skip': 5, # 5
+            'start_pos': 35, # 32
             'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv',
-            'max_episode_steps':36000 # Duplicate this in the environment itself
+            'max_episode_steps':60000 # Duplicate this in the environment itself
         }
     )
-
-
 
 # MyoChallenge 2023 envs ==============================================
 # MyoChallenge Manipulation P1
