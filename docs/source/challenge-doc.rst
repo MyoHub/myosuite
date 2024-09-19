@@ -145,7 +145,7 @@ or directly from the simulator might not be accessible during submission evaluat
         - The rest = value[4]
 
     
-    - Start and Goal positions are 3 dimensional but the height of the two pillars are the same
+    - Start and Goal positions are 3 dimensional position to pick and place the object
 
     - Hand reaching error measures the distance between the hand and the object
 
@@ -179,10 +179,14 @@ Success Condition
 
 Ranking Criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Individual model performance is evaluated in terms of the following criterias. Please note that the evaluation process will follow a hierarchical approach, 
+where the first criterion is the primary determinant of success. Only in cases where candidates are tied based on the first criterion will the second criterion be considered. 
+
+
     1. Task success rate (successful_attempts / total_attempts)
     2. Total time to complete the task (failed_attemps will be punished for a time of full episode length)
     3. Minimum total muscle activation
-    4. Minimum total distance from goal position (only if tie in previous metrics)
 
 
 
@@ -398,6 +402,10 @@ Success Condition
 
 Ranking Criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Individual model performance is evaluated in terms of the following criterias. Please note that the evaluation process will follow a hierarchical approach, 
+where the first criterion is the primary determinant of success. Only in cases where candidates are tied based on the first criterion will the second criterion be considered. 
+
 
     1. Average distance travelled (ranked in descending order)
     2. Average time of completion (ranked in ascending order)
