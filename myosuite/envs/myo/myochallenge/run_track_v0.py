@@ -532,7 +532,7 @@ class RunTrack(WalkEnvV0):
         temp_qpos = np.zeros(len(self.biological_jnt),)
         counter = 0
         for jnt in self.biological_jnt:
-            temp_qpos[counter] = self.sim.model.joint(jnt).qpos[0].copy()
+            temp_qpos[counter] = self.sim.data.joint(jnt).qpos[0].copy()
         return temp_qpos
 
     def get_internal_qvel(self):
@@ -542,7 +542,7 @@ class RunTrack(WalkEnvV0):
         temp_qvel = np.zeros(len(self.biological_jnt),)
         counter = 0
         for jnt in self.biological_jnt:
-            temp_qvel[counter] = self.sim.model.joint(jnt).qvel[0].copy()
+            temp_qvel[counter] = self.sim.data.joint(jnt).qvel[0].copy()
         return temp_qvel * self.dt
 
     def muscle_lengths(self):
