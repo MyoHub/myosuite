@@ -56,6 +56,22 @@ class RunTrack(WalkEnvV0):
     pain_jnt = ['hip_adduction_l', 'hip_adduction_r', 'hip_flexion_l', 'hip_flexion_r', 'hip_rotation_l', 'hip_rotation_r',
                 'knee_angle_l', 'knee_angle_l_rotation2', 'knee_angle_l_rotation3',
                 'mtp_angle_l', 'ankle_angle_l', 'subtalar_angle_l']
+    
+    biological_jnt = ['hip_adduction_l', 'hip_flexion_l', 'hip_rotation_l',
+                      'hip_adduction_r', 'hip_flexion_r', 'hip_rotation_r', 
+                      'knee_angle_l', 'knee_angle_l_beta_rotation1', 
+                      'knee_angle_l_beta_translation1', 'knee_angle_l_beta_translation2', 
+                      'knee_angle_l_rotation2', 'knee_angle_l_rotation3', 'knee_angle_l_translation1', 
+                      'knee_angle_l_translation2', 'mtp_angle_l', 'ankle_angle_l', 
+                      'subtalar_angle_l']
+    biological_act = ['addbrev_l', 'addbrev_r', 'addlong_l', 'addlong_r', 'addmagDist_l', 'addmagIsch_l', 'addmagMid_l', 
+                      'addmagProx_l', 'bflh_l', 'bfsh_l', 'edl_l', 'ehl_l', 'fdl_l', 'fhl_l', 'gaslat_l', 'gasmed_l', 
+                      'glmax1_l', 'glmax1_r', 'glmax2_l', 'glmax2_r', 'glmax3_l', 'glmax3_r', 'glmed1_l', 'glmed1_r', 
+                      'glmed2_l', 'glmed2_r', 'glmed3_l', 'glmed3_r', 'glmin1_l', 'glmin1_r', 'glmin2_l', 'glmin2_r', 
+                      'glmin3_l', 'glmin3_r', 'grac_l', 'iliacus_l', 'iliacus_r', 
+                      'perbrev_l', 'perlong_l', 'piri_l', 'piri_r', 'psoas_l', 'psoas_r', 'recfem_l', 'sart_l', 
+                      'semimem_l', 'semiten_l', 'soleus_l', 'tfl_l', 'tibant_l', 'tibpost_l', 'vasint_l', 
+                      'vaslat_l', 'vasmed_l']
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
         # This flag needs to be here to prevent the simulation from starting in a done state
@@ -513,44 +529,40 @@ class RunTrack(WalkEnvV0):
         """
         Get the internal joint positions without the osl leg joints.
         """
-        temp_qpos = self.sim.data.qpos.copy()
-        to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy(), self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy()]
-
-        temp_qpos[to_remove] = 100
-        temp_qpos = temp_qpos[temp_qpos != 100]
-        return temp_qpos[7:]
+        temp_qpos = np.zeros(len(self.biological_jnt),)
+        counter = 0
+        for jnt in self.biological_jnt:
+            temp_qpos[counter] = self.sim.model.joint(jnt).qpos[0].copy()
+        return temp_qpos
 
     def get_internal_qvel(self):
         """
         Get the internal joint velocities without the osl leg joints.
         """
-        temp_qvel = self.sim.data.qvel.copy()
-        to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy() -1, self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy() -1]
-
-        temp_qvel[to_remove] = 100
-        temp_qvel = temp_qvel[temp_qvel != 100]
-        return temp_qvel[6:] * self.dt
+        temp_qvel = np.zeros(len(self.biological_jnt),)
+        counter = 0
+        for jnt in self.biological_jnt:
+            temp_qvel[counter] = self.sim.model.joint(jnt).qvel[0].copy()
+        return temp_qvel * self.dt
 
     def muscle_lengths(self):
         """
         Get the muscle lengths. Remove the osl leg actuators from the data.
         """
-        temp_len = self.sim.data.actuator_length.copy()
-        to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
-
-        temp_len[to_remove] = 100
-        temp_len = temp_len[temp_len != 100]
+        temp_len = np.zeros(len(self.biological_act),)
+        counter = 0
+        for jnt in self.biological_act:
+            temp_len[counter] = self.sim.data.actuator(jnt).length[0].copy()
         return temp_len
 
     def muscle_forces(self):
         """
         Get the muscle forces. Remove the osl leg actuators from the data.
         """
-        temp_frc = self.sim.data.actuator_force.copy()
-        to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
-
-        temp_frc[to_remove] = 100
-        temp_frc = temp_frc[temp_frc != 100]
+        temp_frc = np.zeros(len(self.biological_act),)
+        counter = 0
+        for jnt in self.biological_act:
+            temp_frc[counter] = self.sim.data.actuator(jnt).force[0].copy()
 
         return np.clip(temp_frc / 1000, -100, 100)
 
@@ -558,11 +570,10 @@ class RunTrack(WalkEnvV0):
         """
         Get the muscle velocities. Remove the osl leg actuators from the data.
         """
-        temp_vel = self.sim.data.actuator_velocity.copy()
-        to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
-
-        temp_vel[to_remove] = 100
-        temp_vel = temp_vel[temp_vel != 100]
+        temp_vel = np.zeros(len(self.biological_act),)
+        counter = 0
+        for jnt in self.biological_act:
+            temp_vel[counter] = self.sim.data.actuator(jnt).velocity[0].copy()
 
         return np.clip(temp_vel, -100, 100)
 
