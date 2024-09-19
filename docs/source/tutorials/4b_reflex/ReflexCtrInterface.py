@@ -11,7 +11,7 @@ import numpy as np
 from reflexCtr import LocoCtrl
 
 import myosuite
-import gym
+from myosuite.utils import gym
 
 import numpy as np
 import os
@@ -52,7 +52,7 @@ class MyoLegReflex(object):
         self.init_dict = init_dict
         self.seed = seed
 
-        self.env = gym.make('myoLegReachFixed-v0', normalize_act=False)
+        self.env = gym.make('myoLegStandRandom-v0', normalize_act=False)
 
         print(f"Seed added - ", seed)
         self.env.reset()
