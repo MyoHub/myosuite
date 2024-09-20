@@ -383,9 +383,9 @@ Please note that the variation parameters are subject to change in the actual ev
 
 The two environments are :code:`myoChallengeOslRunRandom-v0` and :code:`myoChallengeOslRunFixed-v0` and can be accessed via :code:`env = gym.make(“myoChallengeOslRunRandom-v0”, normalize_act=False)`
 
-The :code:`myoChallengeOslRunFixed-v0` environment is a simplified version of the :code:`myoChallengeOslRunRandom-v0` environment for participants to begin with, with a flat ground and a shorter 15m track. 
+The :code:`myoChallengeOslRunFixed-v0` environment is a simplified version of the :code:`myoChallengeOslRunRandom-v0` environment for participants to begin with, with a flat ground, but 100m track
 
-The :code:`myoChallengeOslRunRandom-v0` includes a 30 meters track with a 20m stretch of flat ground, and the remaining 10m of increasingly difficult terrain
+The :code:`myoChallengeOslRunRandom-v0` similarly includes a 100 meters track, with a 20m initial stretch of flat ground, and the remaining 80m of increasingly difficult terrain
 
 
 The environment in evaluation will be similar to the :code:`myoChallengeOslRunRandom-v0` environment.
