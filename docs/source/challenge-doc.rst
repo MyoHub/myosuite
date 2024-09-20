@@ -377,7 +377,6 @@ List of states variables:
 Testing environment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-
 To increase the accessibility of the task, two set of testing environment is provided for participants to familiarise themselves with the tasks. 
 Please note that the variation parameters are subject to change in the actual evaluation environment.
 
@@ -387,9 +386,12 @@ The :code:`myoChallengeOslRunFixed-v0` environment is a simplified version of th
 
 The :code:`myoChallengeOslRunRandom-v0` similarly includes a 100 meters track, with a 20m initial stretch of flat ground, and the remaining 80m of increasingly difficult terrain
 
+The environment in evaluation will be similar to the :code:`myoChallengeOslRunRandom-v0` environment
 
-The environment in evaluation will be similar to the :code:`myoChallengeOslRunRandom-v0` environment.
+Both environments can be customized for ML or non-ML usage. For participants using ML-based methods, the action space can be set to between [-1 to 1] for both training and your submission with the normalize_act 
+argument during environment creation. For participants using non-ML based methods, setting normalize_act=False would provide you with the muscle action space to be between [0 to 1]
 
+During training, you can set this option with env = gym.make(env_name, normalize_act=True) for the action space [-1 to 1] and normalize_act=False for action space [0 to 1]
 
 
 
