@@ -54,8 +54,24 @@ class RunTrack(WalkEnvV0):
 
     # Joint dict
     pain_jnt = ['hip_adduction_l', 'hip_adduction_r', 'hip_flexion_l', 'hip_flexion_r', 'hip_rotation_l', 'hip_rotation_r',
-                'knee_angle_l', 'knee_angle_l_rotation2', 'knee_angle_l_rotation3', 
+                'knee_angle_l', 'knee_angle_l_rotation2', 'knee_angle_l_rotation3',
                 'mtp_angle_l', 'ankle_angle_l', 'subtalar_angle_l']
+    
+    biological_jnt = ['hip_adduction_l', 'hip_flexion_l', 'hip_rotation_l',
+                      'hip_adduction_r', 'hip_flexion_r', 'hip_rotation_r', 
+                      'knee_angle_l', 'knee_angle_l_beta_rotation1', 
+                      'knee_angle_l_beta_translation1', 'knee_angle_l_beta_translation2', 
+                      'knee_angle_l_rotation2', 'knee_angle_l_rotation3', 'knee_angle_l_translation1', 
+                      'knee_angle_l_translation2', 'mtp_angle_l', 'ankle_angle_l', 
+                      'subtalar_angle_l']
+    biological_act = ['addbrev_l', 'addbrev_r', 'addlong_l', 'addlong_r', 'addmagDist_l', 'addmagIsch_l', 'addmagMid_l', 
+                      'addmagProx_l', 'bflh_l', 'bfsh_l', 'edl_l', 'ehl_l', 'fdl_l', 'fhl_l', 'gaslat_l', 'gasmed_l', 
+                      'glmax1_l', 'glmax1_r', 'glmax2_l', 'glmax2_r', 'glmax3_l', 'glmax3_r', 'glmed1_l', 'glmed1_r', 
+                      'glmed2_l', 'glmed2_r', 'glmed3_l', 'glmed3_r', 'glmin1_l', 'glmin1_r', 'glmin2_l', 'glmin2_r', 
+                      'glmin3_l', 'glmin3_r', 'grac_l', 'iliacus_l', 'iliacus_r', 
+                      'perbrev_l', 'perlong_l', 'piri_l', 'piri_r', 'psoas_l', 'psoas_r', 'recfem_l', 'sart_l', 
+                      'semimem_l', 'semiten_l', 'soleus_l', 'tfl_l', 'tibant_l', 'tibpost_l', 'vasint_l', 
+                      'vaslat_l', 'vasmed_l']
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
         # This flag needs to be here to prevent the simulation from starting in a done state
@@ -88,8 +104,8 @@ class RunTrack(WalkEnvV0):
                end_pos = -15,
                start_pos = 14,
                init_pose_path=None,
-               remap_required=False,
                osl_param_set=4,
+               max_episode_steps=36000,
                **kwargs,
                ):
 
@@ -98,7 +114,6 @@ class RunTrack(WalkEnvV0):
         # Terrain type
         self.terrain_type = TrackTypes.FLAT.value
 
-        self.remap_required = remap_required
         self.osl_param_set = osl_param_set
         # Env initialization with data
         if init_pose_path is not None:
@@ -141,9 +156,19 @@ class RunTrack(WalkEnvV0):
                        reset_type=reset_type,
                        **kwargs
                        )
+
+        # OSL controls will be automatically infered from the OSL controller. It will not be exposed as action space. Let's fix the action space.
+        act_low = -np.ones(self.sim.model.na) if self.normalize_act else self.sim.model.actuator_ctrlrange[:,0].copy()
+        act_high = np.ones(self.sim.model.na) if self.normalize_act else self.sim.model.actuator_ctrlrange[:,1].copy()
+        self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
+
+        # Lets fix initial pose
         self.init_qpos[:] = self.sim.model.keyframe('stand').qpos.copy()
         self.init_qvel[:] = 0.0
         self.startFlag = True
+
+        # Max time for time metric
+        self.maxTime = self.dt * max_episode_steps
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -162,7 +187,6 @@ class RunTrack(WalkEnvV0):
         obs_dict['muscle_length'] = self.muscle_lengths()
         obs_dict['muscle_velocity'] = self.muscle_velocities()
         obs_dict['muscle_force'] = self.muscle_forces()
-        obs_dict['act_dot'] = self.sim.data.act_dot
 
         if sim.model.na>0:
             obs_dict['act'] = sim.data.act[:].copy()
@@ -192,6 +216,10 @@ class RunTrack(WalkEnvV0):
         # The task is entirely defined by these 3 lines
         score = self.get_score()
         win_cdt = self._win_condition()
+        lose_cdt = self._lose_condition()
+
+        self.obs_dict['time'] = self.maxTime if lose_cdt else self.obs_dict['time']
+
         rwd_dict = collections.OrderedDict((
             # Perform reward tuning here --
             # Update Optional Keys section below
@@ -227,17 +255,17 @@ class RunTrack(WalkEnvV0):
             score = (score - self.end_pos) / (self.start_pos - self.end_pos)
 
         metrics = {
-            'score': np.clip(score, 0, 1), 
+            'score': np.clip(score, 0, 1),
             'time': times,
             'effort': effort,
             'pain': pain,
             }
         return metrics
 
-    def step(self, *args, **kwargs):
-        out_act = self._prepareActions(*args)
-        results = super().step(out_act, **kwargs)
-
+    # build full action by combining user actions and OSL actions.
+    def step(self, a, **kwargs):
+        myoosl_a = self._append_osl_actions(mus_actions=a, is_normalized=self.normalize_act)
+        results = super().step(myoosl_a, **kwargs)
         return results
 
     def reset(self, OSL_params=None, **kwargs):
@@ -310,7 +338,6 @@ class RunTrack(WalkEnvV0):
         else:
             self.OSL_CTRL.reset('e_stance')
             return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
-        
 
     def _maybe_adjust_height(self, qpos, qvel):
         """
@@ -447,7 +474,7 @@ class RunTrack(WalkEnvV0):
         """
         if not self.startFlag:
             return -1
-        
+
         pain_score = 0
         for joint in self.pain_jnt:
             pain_score += np.clip(np.abs(self.get_limitfrc(joint).squeeze()), -1000, 1000) / 1000
@@ -502,44 +529,40 @@ class RunTrack(WalkEnvV0):
         """
         Get the internal joint positions without the osl leg joints.
         """
-        temp_qpos = self.sim.data.qpos.copy()
-        to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy(), self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy()]
-
-        temp_qpos[to_remove] = 100
-        temp_qpos[temp_qpos != 100]
-        return temp_qpos[7:]
+        temp_qpos = np.zeros(len(self.biological_jnt),)
+        counter = 0
+        for jnt in self.biological_jnt:
+            temp_qpos[counter] = self.sim.data.joint(jnt).qpos[0].copy()
+        return temp_qpos
 
     def get_internal_qvel(self):
         """
         Get the internal joint velocities without the osl leg joints.
         """
-        temp_qvel = self.sim.data.qvel.copy()
-        to_remove = [self.sim.model.joint('osl_knee_angle_r').qposadr[0].copy() -1, self.sim.model.joint('osl_ankle_angle_r').qposadr[0].copy() -1]
-
-        temp_qvel[to_remove] = 100
-        temp_qvel[temp_qvel != 100]
-        return temp_qvel[6:] * self.dt
+        temp_qvel = np.zeros(len(self.biological_jnt),)
+        counter = 0
+        for jnt in self.biological_jnt:
+            temp_qvel[counter] = self.sim.data.joint(jnt).qvel[0].copy()
+        return temp_qvel * self.dt
 
     def muscle_lengths(self):
         """
         Get the muscle lengths. Remove the osl leg actuators from the data.
         """
-        temp_len = self.sim.data.actuator_length.copy()
-        to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
-
-        temp_len[to_remove] = 100
-        temp_len[temp_len != 100]
+        temp_len = np.zeros(len(self.biological_act),)
+        counter = 0
+        for jnt in self.biological_act:
+            temp_len[counter] = self.sim.data.actuator(jnt).length[0].copy()
         return temp_len
 
     def muscle_forces(self):
         """
         Get the muscle forces. Remove the osl leg actuators from the data.
         """
-        temp_frc = self.sim.data.actuator_force.copy()
-        to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
-
-        temp_frc[to_remove] = 100
-        temp_frc[temp_frc != 100]
+        temp_frc = np.zeros(len(self.biological_act),)
+        counter = 0
+        for jnt in self.biological_act:
+            temp_frc[counter] = self.sim.data.actuator(jnt).force[0].copy()
 
         return np.clip(temp_frc / 1000, -100, 100)
 
@@ -547,11 +570,10 @@ class RunTrack(WalkEnvV0):
         """
         Get the muscle velocities. Remove the osl leg actuators from the data.
         """
-        temp_vel = self.sim.data.actuator_velocity.copy()
-        to_remove = [self.sim.data.actuator('osl_knee_torque_actuator').id, self.sim.data.actuator('osl_ankle_torque_actuator').id]
-
-        temp_vel[to_remove] = 100
-        temp_vel[temp_vel != 100]
+        temp_vel = np.zeros(len(self.biological_act),)
+        counter = 0
+        for jnt in self.biological_act:
+            temp_vel[counter] = self.sim.data.actuator(jnt).velocity[0].copy()
 
         return np.clip(temp_vel, -100, 100)
 
@@ -596,7 +618,7 @@ class RunTrack(WalkEnvV0):
             self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_euler_yaw']]
         ])
         self.init_qpos[3:7] = init_quat
- 
+
         # Use the default facing direction to set the world frame velocity
         temp_euler = quat2euler_intrinsic(default_quat)
         world_vel_X, world_vel_Y = self.rotate_frame(self.INIT_DATA[start_idx, self.gait_cycle_headers['pelvis_vel_X']],
@@ -648,29 +670,36 @@ class RunTrack(WalkEnvV0):
     """
     OSL leg interaction functions
     """
-    def _prepareActions(self, mus_actions):
+    def _append_osl_actions(self, mus_actions, is_normalized):
         """
         Combines OSL torques with the muscle activations
         Only considers the 54 muscles of the OSLMyoleg model
         """
 
-        if self.remap_required:
-            if np.any( (mus_actions < -1) | (mus_actions > 1) ):
-                raise ValueError("Input value should be between -1 and 1")
-            mus_actions = (mus_actions + 1) / 2
-
+        # copy over the muscle activations
         full_actions = np.zeros(self.sim.model.nu,)
         full_actions[0:self.sim.model.na] = mus_actions[0:self.sim.model.na].copy()
 
+        # append the osl torques
         self.OSL_CTRL.update(self.get_osl_sens())
-
         osl_torque = self.OSL_CTRL.get_osl_torque()
 
         for jnt in ['knee', 'ankle']:
             osl_id = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").id
-            full_actions[osl_id] = np.clip(osl_torque[jnt] / self.sim.model.actuator(f"osl_{jnt}_torque_actuator").gear[0],
-                    self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[0],
-                    self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[1])
+            osl_ctrl = osl_torque[jnt] / self.sim.model.actuator(f"osl_{jnt}_torque_actuator").gear[0]
+
+            # clip for control limits
+            min_ctrl = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[0]
+            max_ctrl = self.sim.model.actuator(f"osl_{jnt}_torque_actuator").ctrlrange[1]
+            osl_ctrl = np.clip(osl_ctrl, min_ctrl, max_ctrl)
+
+            # normalize if needed
+            if is_normalized:
+                ctrl_mean = (min_ctrl + max_ctrl) / 2.0
+                ctrl_rng = (max_ctrl - min_ctrl) / 2.0
+                osl_ctrl = (osl_ctrl-ctrl_mean)/ctrl_rng
+
+            full_actions[osl_id] = osl_ctrl
 
         return full_actions
 
@@ -684,7 +713,7 @@ class RunTrack(WalkEnvV0):
         osl_sens_data['load'] = -1*self.sim.data.sensor('r_osl_load').data[1].copy() # Only vertical
 
         return osl_sens_data
-    
+
     def upload_osl_param(self, dict_of_dict):
         """
         Accessor function to upload full set of paramters to OSL leg
@@ -699,4 +728,3 @@ class RunTrack(WalkEnvV0):
         """
         assert mode < 4
         self.OSL_CTRL.change_osl_mode(mode)
-        
