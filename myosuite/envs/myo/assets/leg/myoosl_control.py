@@ -11,16 +11,19 @@ class MyoOSLController:
                  body_mass,
                  init_state='e_stance',
                  hardware_param=None,
+                 n_sets=4,
                  ):
         """
         Initializes the OSL state machine
         Default init state: early stance [e_stance]
         All states: [e_stance, l_stance, e_swing, l_swing]
         - Early stance, Late Stance, Early Swing, Late Swing
+        n_sets : Denotes the maximum number of possible sets of state machine variables
         """
 
         assert init_state in ['e_stance', 'l_stance', 'e_swing', 'l_swing'], "Phase should be : ['e_stance', 'l_stance', 'e_swing', 'l_swing']"
         self.init_state = init_state
+        self.n_sets = n_sets
 
         self.initDefaults(body_mass)
 
@@ -56,6 +59,7 @@ class MyoOSLController:
         """
         if init_state is not None:
             self.STATE_MACHINE.init_machine(init_state)
+            self.init_state = init_state
         else:
             self.STATE_MACHINE.init_machine(self.init_state)
 
@@ -78,7 +82,8 @@ class MyoOSLController:
         """
         In the case of multiple control gains for the OSL, this function can be used to switch between different sets of control gains
         """
-        self.OSL_PARAM_SELECT = np.clip(mode, 0, 2)
+        assert mode < self.n_sets # Ensure that no. of parameter sets do not exceed fixed value
+        self.OSL_PARAM_SELECT = mode
         self._update_param_to_state_machine()
 
     def set_osl_param_batch(self, params, mode=0):
@@ -88,6 +93,8 @@ class MyoOSLController:
         Parameter type: ['knee', 'ankle', 'threshold']
         Parameters: ['knee_stiffness', 'knee_damping', 'ankle_stiffness', 'ankle_damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle']
         """
+        assert mode < self.n_sets # Ensure that no. of parameter sets do not exceed fixed value
+
         phase_list = ['e_stance', 'l_stance', 'e_swing', 'l_swing']
         joint_list = ['knee', 'ankle', 'threshold']
         idx = 0
@@ -220,9 +227,10 @@ class MyoOSLController:
         temp_dict['l_swing']['threshold']['knee_angle'] = (np.deg2rad(30), 'below')
 
         self.OSL_PARAM_SELECT = 0
-        self.OSL_PARAM_LIST = []
-        for idx in np.arange(3):
-            self.OSL_PARAM_LIST.append(copy.deepcopy(temp_dict))
+        self.OSL_PARAM_LIST = {}
+        for idx in np.arange(self.n_sets):
+            self.OSL_PARAM_LIST[idx] = {}
+            self.OSL_PARAM_LIST[idx] = copy.deepcopy(temp_dict)
 
     @property
     def getOSLparam(self):

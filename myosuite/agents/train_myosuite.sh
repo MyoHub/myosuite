@@ -55,7 +55,7 @@ if [ "$4" == 'baseline' ]; then
 
     checkpoint_path="${base_dir}/${filename}"
 
-    model_url="https://drive.google.com/uc?export=download&id=1e7bj2Lrk50FU7nSRnIDg2JmYjGLBNChs"
+    model_url="https://drive.google.com/uc?export=download&id=1P5ip5yjtL4ynbxwDmEOkuF163TG8Vaml"
     
     # Use curl with -L to follow redirects and -o to specify output file
     curl -L $model_url -o $checkpoint_path
