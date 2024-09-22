@@ -15,7 +15,7 @@ batch_size        : 64
 gamma             : 0.99
 
 # PPO.learn function
-total_timesteps   : 150000
+total_timesteps   : 1500000
 log_interval      : 10000
 
 eval_freq : 1000000

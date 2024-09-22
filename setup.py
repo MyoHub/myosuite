@@ -1,7 +1,8 @@
 import os
-import sys
 import re
-from setuptools import setup, find_packages
+import sys
+
+from setuptools import find_packages, setup
 
 if sys.version_info.major != 3:
     print("This Python is only compatible with Python 3, but you are running "
@@ -52,7 +53,7 @@ if __name__ == "__main__":
             "Topic :: Scientific/Engineering :: Artificial Intelligence ",
             "Operating System :: OS Independent",
         ],
-        package_data={'': mjc_models_files},
+        package_data={'': mjc_models_files+['../myosuite_init.py']},
         packages=find_packages(exclude=("myosuite.agents")),
         python_requires=">=3.8",
         install_requires=fetch_requirements(),
