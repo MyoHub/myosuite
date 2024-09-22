@@ -378,7 +378,13 @@ we provide a structure that allows 4 sets of state paramters to be uploaded to t
 More details of the functions are here below:
 
 - upload_osl_param(dict_of_dict) `upload_osl_param <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/myochallenge/run_track_v0.py#L717>`__
-    - This function expects a dictionary of dictionary containing state parameter values. An example of how each parameter set is structued can be found in `here <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/assets/leg/myoosl_control.py#L181>`__
+    - This function expects a dictionary of dictionary containing state parameter values
+    - Dictionary overview: top_level_dict[x][y][z][val]
+        - top_level_dict[x], where x = [0,1,2,3], which are integers
+        - y = {'e_stance', 'l_stance', 'e_swing', 'l_swing'}, which are string values denoting the gait phase
+        - z = {'gains', 'threshold'}, which are categories of the state parameters
+        - val = {'knee_stiffness', 'knee_damping', 'knee_target_angle', 'ankle_stiffness', 'ankle_damping', 'ankle_target_angle'} *(for gains)* and {'load', 'knee_angle', 'knee_velocity', 'ankle_angle', 'ankle_velocity} *(for thresholds)*
+    - Note that not all parameters are used at every state. It is recommended to examine the default structure `here <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/assets/leg/myoosl_control.py#L181>`__ for more information.
 
 - change_osl_mode(mode=0) `change_osl_mode <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/myochallenge/run_track_v0.py#L725>`__
     - This function changes the paramter set that the OSL state machine currently using. Do note that this change is immediate and the impedance controller will generate torques using the new paramter set at the next timestep.
