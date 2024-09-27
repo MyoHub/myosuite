@@ -234,15 +234,20 @@ Load DEP-RL Baseline
 +++++++++++++++++++++++++++++++++++++
 See `here <https://deprl.readthedocs.io/en/latest/index.html>`__ for more detailed documentation of ``deprl``.
 
+.. note::
+    Deprl requires Python `3.9` or newer.
+
 If you want to load and execute the pre-trained DEP-RL baseline. Make sure that the ``deprl`` package is installed.
 
 .. code-block:: python
 
     from myosuite.utils import gym
     import deprl
+    from deprl import env_wrappers
 
     # we can pass arguments to the environments here
     env = gym.make('myoLegWalk-v0', reset_type='random')
+    env = env_wrappers.GymWrapper(env)
     policy = deprl.load_baseline(env)
     obs = env.reset()
     for i in range(1000):
