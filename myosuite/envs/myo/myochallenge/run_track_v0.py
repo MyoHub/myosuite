@@ -101,6 +101,7 @@ class RunTrack(WalkEnvV0):
                rough_difficulties=(0,0),
                stairs_difficulties=(0,0),
                real_width=1,
+               real_length=60,
                end_pos = -15,
                start_pos = 14,
                init_pose_path=None,
@@ -145,9 +146,12 @@ class RunTrack(WalkEnvV0):
             rough_difficulties=rough_difficulties,
             hills_difficulties=hills_difficulties,
             stairs_difficulties=stairs_difficulties,
+            real_length=real_length,
+            real_width=real_width,
             reset_type=terrain,
         )
         self.real_width = real_width
+        self.real_length = real_length
         self.reset_type = reset_type
         self.terrain = terrain
         self.grf_sensor_names = ['l_foot', 'l_toes']
