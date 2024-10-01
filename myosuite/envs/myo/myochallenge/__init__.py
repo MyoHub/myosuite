@@ -79,7 +79,7 @@ register_env_with_variants(id='myoChallengeOslRunRandom-v0',
             'stairs_difficulties': (0.0, 0.0, 0.0, 0.0, 0.0, 0.03, 0.0, 0.06, 0.0, 0.09, 0.0, 0.12, 0.0, 0.15, 0.0, 0.18, 0.0, 0.21, 0.0, 0.24, 0.0, 0.0, 0.0, 0.0),
             'end_pos': -45, # -35
             'frame_skip': 5, # 5
-            'start_pos': 35, # 32
+            'start_pos': 58, # 32
             'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv',
             'max_episode_steps':60000 # Duplicate this in the environment itself
         }
