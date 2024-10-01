@@ -85,7 +85,9 @@ class HeightField:
     def __init__(self,
                  sim,
                  rng,
-                 view_distance=2):
+                 view_distance=2,
+                 real_length=5,
+                 real_width=1):
         """
         Assume square quad.
         :sim: mujoco sim object.
@@ -95,6 +97,8 @@ class HeightField:
                            total patch number will be patches_per_side^2
         """
         assert type(view_distance) is int
+        self.real_length = real_length
+        self.real_width = real_width
         self.sim = sim
         self._init_height_points()
         self.hfield = sim.model.hfield('terrain')
@@ -113,21 +117,24 @@ class HeightField:
 
     def cart2map(self,
                  points_1: list,
-                 points_2: Optional[list] = None):
+                 points_2: list):
         """
         Transform cartesian position [m * m] to rounded map position [nrow * ncol]
         If only points_1 is given: Expects cartesian positions in [x, y] format.
         If also points_2 is given: Expects points_1 = [x1, x2, ...] points_2 = [y1, y2, ...]
         """
-        delta_map = self.real_length / self.nrow
-        offset = self.hfield.data.shape[0] / 2
+        delta_map_x = self.real_length / self.nrow
+        delta_map_y = self.real_width / self.ncol
+        offset_x = self.hfield.data.shape[0] / 2
+        offset_y = self.hfield.data.shape[1] / 2
         # x, y needs to be switched to match hfield.
-        if points_2 is None:
-            return np.array(points_1[::-1] / delta_map + offset, dtype=np.int16)
-        else:
-            ret1 = np.array(points_1[:] / delta_map + offset, dtype=np.int16)
-            ret2 = np.array(points_2[:] / delta_map + offset, dtype=np.int16)
-            return ret2, ret1
+        ret1 = np.array(points_1[:] / delta_map_x + offset_x, dtype=np.int16)
+        ret2 = np.array(points_2[:] / delta_map_y + offset_y, dtype=np.int16)
+        # avoid out-of-bounds by clipping indices to map boundaries
+        # -2 because we go one further and shape is 1 longer than map index
+        ret1 = np.clip(ret1, 0, self.hfield.data.shape[0] - 2)
+        ret2 = np.clip(ret2, 0, self.hfield.data.shape[1] - 2)
+        return ret1, ret2
 
     def _init_height_points(self):
         """ Compute grid points at which height measurements are sampled (in base frame)
@@ -162,11 +169,8 @@ class HeightField:
             px = self.points[:, 0]
             py = self.points[:, 1]
             # get map_index coordinates of points
-            px, py = self.cart2map(px, py)
-            # avoid out-of-bounds by clipping indices to map boundaries
-            # -2 because we go one further and shape is 1 longer than map index
-            px = np.clip(px, 0, self.hfield.data.shape[0] - 2)
-            py = np.clip(py, 0, self.hfield.data.shape[1] - 2)
+            # switch x and y because of the heightfield indexing
+            px, py = self.cart2map(py, px)
             heights = self.hfield.data[px, py]
             if not hasattr(self, 'length'):
                 self.length = 0
@@ -198,15 +202,15 @@ class ChaseTagField(HeightField):
                  *args,
                  patches_per_side=3,
                  real_length=12,
+                 real_width=12,
                  **kwargs,
                  ):
         assert type(patches_per_side) is int
-        super().__init__(*args, **kwargs) 
+        super().__init__(*args, real_length=real_length, real_width=real_width, **kwargs) 
         self.hills_range = hills_range
         self.rough_range = rough_range
         self.relief_range = relief_range
         self.patches_per_side = patches_per_side
-        self.real_length = real_length
         self.patch_size = int(self.nrow / patches_per_side)
         self._populate_patches()
 
@@ -215,10 +219,10 @@ class ChaseTagField(HeightField):
         Turn terrain in the patch around the agent to flat.
         """
         # convert position to map position
-        pos = self.cart2map(qpos[:2])
+        pos = self.cart2map(qpos[0].reshape(1, -1), qpos[1].reshape(1,-1))
         # get patch that belongs to the position
-        i = pos[0] // self.patch_size
-        j = pos[1] // self.patch_size
+        i = pos[0].squeeze() // self.patch_size
+        j = pos[1].squeeze() // self.patch_size
         self._fill_patch(i, j, terrain_type=TerrainTypes.FLAT)
 
     def _compute_patch_data(self, terrain_type):
@@ -310,19 +314,17 @@ class TrackField(HeightField):
                  rough_difficulties,
                  hills_difficulties,
                  stairs_difficulties,
-                 real_length: int = 20,
-                 real_width: int = 1,
                  reset_type: str = "random",
+                 real_length: int = 20,
+                 real_width: int = 2,
                  *args, **kwargs
                  ):
         # the heightfield indexing is reversed from the walking direction
         self.rough_difficulties = rough_difficulties[::-1]
         self.hills_difficulties = hills_difficulties[::-1]
         self.stairs_difficulties = stairs_difficulties[::-1]
-        self.real_length = real_length
-        self.real_width = real_width
         self.reset_type = reset_type
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, real_length=real_length, real_width=real_width, **kwargs)
 
     def sample(self, rng=None):
         """
