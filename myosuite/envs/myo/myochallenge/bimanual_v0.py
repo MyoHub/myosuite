@@ -50,7 +50,7 @@ class BimanualEnvV1(BaseV0):
                goal_center=np.array([0.4, -0.25, 1.05]),
                max_force=1500,  # Max force against throwing
 
-               proximity_th=0.15,  # object-target proximity threshold
+               proximity_th=0.03,  # object-target proximity threshold
 
                start_shifts=np.array([0.055, 0.055, 0]),
                # shift factor for start/goal random generation with z-axis fixed
