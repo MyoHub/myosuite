@@ -78,6 +78,7 @@ class BimanualEnvV1(BaseV0):
 
         self.start_shifts = start_shifts
         self.goal_shifts = goal_shifts
+        self.PILLAR_HEIGHT = 1.09
 
         self.id_info = IdInfo(self.sim.model)
 
@@ -246,7 +247,7 @@ class BimanualEnvV1(BaseV0):
         obj_pos = obs_dict["obj_pos"][0][0] if obs_dict['obj_pos'].ndim == 3 else obs_dict['obj_pos']
         palm_pos = obs_dict["palm_pos"][0][0] if obs_dict["palm_pos"].ndim == 3 else obs_dict["palm_pos"]
         goal_pos = obs_dict["goal_pos"][0][0] if obs_dict["goal_pos"].ndim == 3 else obs_dict["goal_pos"]
-        goal_pos = np.concatenate((goal_pos[:2], np.array([1.09])))
+        goal_pos = np.concatenate((goal_pos[:2], np.array([self.PILLAR_HEIGHT])))
 
         lift_height = np.linalg.norm(np.array([[[obj_pos[-1], palm_pos[-1]]]]) -
                                      np.array([[[self.init_obj_z, self.init_palm_z]]]), axis=-1)
