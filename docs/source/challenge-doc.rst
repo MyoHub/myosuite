@@ -174,7 +174,7 @@ Success Condition
 
     - The object moved from start position to goal position. Both the MPL hand, and MyoHand, is required to touch the object for certain timesteps 
     - Exerting a maximum contact force on the object, less than 1500N (subject to change in final EVALUATION environment)
-    - Placing the object within 0.05 meters of the goal site on the pillar
+    - Placing the object within 0.17 meters of the goal site on the pillar (0.1m in each of xyz-axis)
 
 
 Ranking Criteria

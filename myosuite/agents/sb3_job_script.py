@@ -62,6 +62,7 @@ def train_loop(job_data) -> None:
                     learning_rate=job_data.learning_rate, 
                     batch_size=job_data.batch_size, 
                     policy_kwargs=policy_kwargs,
+                    tensorboard_log=f"wandb/{run.id}",
                     gamma=job_data.gamma, **job_data.alg_hyper_params)
     elif algo == 'SAC':
         model = SAC(job_data.policy, env, 
@@ -70,6 +71,7 @@ def train_loop(job_data) -> None:
                     learning_starts=job_data.learning_starts, 
                     batch_size=job_data.batch_size, 
                     tau=job_data.tau, 
+                    tensorboard_log=f"wandb/{run.id}",
                     gamma=job_data.gamma, **job_data.alg_hyper_params)
     
     
