@@ -518,3 +518,17 @@ register_env_with_variants(id='myoHandReorientOOD-v0',
                 'frame_skip': 5,
             }
     )
+
+# Arm Reaching ==============================
+register_env_with_variants(id='myoArmReachRandom-v0',
+        entry_point='myosuite.envs.myo.myobase.reach_v0:ReachEnvV0',
+        max_episode_steps=150,
+        kwargs={
+            'model_path': curr_dir+'/../assets/arm/myoarm_reach.xml',
+            'target_reach_range': {
+                'S_grasp': ((-0.2-0.2, -0.2-0.15, 1.2-0.2), (-0.2+0.2, -0.2+0.15, 1.2+0.2)),
+                },
+            'normalize_act': True,
+            'far_th': 0.025
+            }
+    )
