@@ -304,12 +304,24 @@ class BimanualEnvV1(BaseV0):
     def step(self, a, **kwargs):
         # We unnormalize robotic actuators, muscle ones are handled in the parent implementation
         processed_controls = a.copy()
+        '''
+        We provided a hard-corded way of handling the MPL for your reference, simply uncomment all the lines. 
+        '''
+        #processed_controls[30] = 1
+        #if self.time > 1.3:
+        #    processed_controls[32:40] = 0
+        #    processed_controls[40:49] = 1
         if self.normalize_act:
             robotic_act_ind = self.sim.model.actuator_dyntype != mujoco.mjtDyn.mjDYN_MUSCLE
             processed_controls[robotic_act_ind] = (np.mean(self.sim.model.actuator_ctrlrange[robotic_act_ind], axis=-1)
                                                    + processed_controls[robotic_act_ind]
                                                    * (self.sim.model.actuator_ctrlrange[robotic_act_ind, 1]
                                                       - self.sim.model.actuator_ctrlrange[robotic_act_ind, 0]) / 2.0)
+            #processed_controls[robotic_act_ind] = np.array([-0.0155, 0, 0.24681, 1.89, 1.45, 0.181, -0.28, 0.126, 0.625, 0.077, -0.0248, 0.0139, 0.044, 0.06, 0.0568, 0.0867, 0.656])
+            #if self.time > 2.5:
+            #    processed_controls[robotic_act_ind] = np.array([0.376, 0, -0.508, 1.61, 1.45, 0.276, -0.28, 0.126, 0.625, 0.077, -0.0248, 0.0139, 0.044, 0.06, 0.0568, 0.0867, 0.0656])
+            #if self.time > 3.5:
+            #    processed_controls[robotic_act_ind] = np.array([0.376, 0, -0.508, 1.61, 0.614, 0.276, -0.28, 0.126, 0.625, 0.077, -0.0248, 0.0139, 0.044, 0.06, 0.0568, 0.0867, 0.0656])
         return super().step(processed_controls, **kwargs)
 
 
