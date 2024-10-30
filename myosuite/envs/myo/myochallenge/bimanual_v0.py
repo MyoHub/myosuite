@@ -19,6 +19,7 @@ from myosuite.envs.myo.base_v0 import BaseV0
 
 CONTACT_TRAJ_MIN_LENGTH = 100
 GOAL_CONTACT = 10
+MAX_TIME = 10.0
 
 
 class BimanualEnvV1(BaseV0):
@@ -292,10 +293,10 @@ class BimanualEnvV1(BaseV0):
         return rwd_dict
 
     def _get_done(self, z):
-        if self.obs_dict['time'] > 10.0:
+        if self.obs_dict['time'] > MAX_TIME:
             return 1  
         elif z < 0.3:
-            self.obs_dict['time'] = 10.0
+            self.obs_dict['time'] = MAX_TIME
             return 1
         elif self.rwd_dict and self.rwd_dict['solved']:
             return 1
@@ -475,5 +476,5 @@ def evaluate_contact_trajectory(contact_trajectory: List[set]):
         return ContactTrajIssue.PROSTH_SHORT
 
     # Check if only goal was touching object for the last CONTACT_TRAJ_MIN_LENGTH frames
-    elif not np.all([{ObjLabels.GOAL} == s for s in contact_trajectory[-GOAL_CONTACT + 2:]]):
+    elif not np.all([{ObjLabels.GOAL} == s for s in contact_trajectory[-GOAL_CONTACT + 2:]]): # Subtract 2 from the calculation to maintain a buffer zone around trajectory boundaries for safety/accuracy.
         return ContactTrajIssue.NO_GOAL
