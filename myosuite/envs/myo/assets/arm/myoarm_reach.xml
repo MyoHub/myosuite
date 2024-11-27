@@ -17,7 +17,7 @@
 
     <worldbody>
 
-        <!-- ======= MyoArm ======= -->
+        <!-- ======= MyoArm with no hand ======= -->
         <geom name="body" type="mesh" mesh="body_norighthand" euler="0 0 3.14" contype="0" conaffinity="0"/>
         <body name="full_body" pos="-.025 0.1 1.40">
             <include file="../../../../simhive/myo_sim/arm/assets/myoarm_nohand_body.xml"/>
