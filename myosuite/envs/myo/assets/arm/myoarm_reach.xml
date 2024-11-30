@@ -1,7 +1,7 @@
 <mujoco model="MyoArm_NoHand_v0.01">
 <!-- =================================================
     Copyright 2020 Vikash Kumar, Vittorio Caggiano, Guillaume Durandau
-    Model   :: Myo Arm with No Hand (MuJoCoV2.0)
+    Model   :: Myo Arm No Hand (MuJoCoV2.0)
     Author  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano, Huawei Wang
     source  :: https://github.com/vikashplus
     License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
@@ -17,10 +17,10 @@
 
     <worldbody>
 
-        <!-- ======= MyoArm with no hand ======= -->
+        <!-- ======= MyoArm ======= -->
         <geom name="body" type="mesh" mesh="body_norighthand" euler="0 0 3.14" contype="0" conaffinity="0"/>
         <body name="full_body" pos="-.025 0.1 1.40">
-            <include file="../../../../simhive/myo_sim/arm/assets/myoarm_nohand_body.xml"/>
+            <include file="../../../../simhive/myo_sim/arm/assets/myoarm_body.xml"/>
         </body>
 
         <site name="forearm_tip_target" pos="0 0.002 0" rgba="0 1 0 .3" size="0.02"/>
@@ -28,7 +28,7 @@
     </worldbody>
 
     <keyframe>
-        <key qpos='-0.0866029 0.0366781 -0.0366812 0.0866049 -0.0175242 0.141704 0.0636844 -0.0636851 -0.141706 0.0175297 1.40579 0.357866 -1.40579 -0.287729 0 -0.267254'/>
+        <key qpos='-0.0707426 0.0299604 -0.0299638 0.0707454 -0.0143074 0.115747 0.0520177 -0.0520191 -0.115749 0.0143169 1.2671 0 -1.267 -0.013375 0 0.45559 0.173656 -0.141372 -0.500336 -0.780052 -0.383593 -0.0390846 0.0475231 -0.261981 0.0147788 0.00868063 0.00578373 -0.261937 0.00697434 0.00890255 -8.61942e-05 -0.261899 -2.25553e-05 0.00771655 -7.32368e-05 -0.133003 -1.74538e-05 0'/>
     </keyframe>
 
 </mujoco>
