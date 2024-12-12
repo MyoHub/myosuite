@@ -289,7 +289,7 @@ register_env_with_variants(id='myoHandPoseRandom-v0',  #reconsider
 from myosuite.physics.sim_scene import SimBackend
 sim_backend = SimBackend.get_sim_backend()
 
-leg_model='/../../../simhive/myo_sim/leg/myolegs.xml'
+leg_model='/../../../simhive/myo_sim/leg/myolegs_abdomen.xml'
 
 register_env_with_variants(id='myoLegStandRandom-v0',
         entry_point='myosuite.envs.myo.myobase.walk_v0:ReachEnvV0',
