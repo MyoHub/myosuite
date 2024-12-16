@@ -201,7 +201,7 @@ The myoArmNoHand is the myoArm with the extrinsic and intrinsic hand muscles rem
 
 This musculoskeletal model is comprised of 38 joints and 24 muscle-tendon units.
 
-.. image:: images/myoArmNoHand.png
+.. image:: images/myoArm_NoHand.png
   :height: 200
 
 .. _tasks:
