@@ -340,6 +340,19 @@ Variants:
 .. image:: images/hand_pen_twirl.png
   :width: 200
 
+Arm Reach
+=====================
+
+Objective:
+    - Reach a target with the end of the forearm
+
+Variants:
+    - **Easy**: Reach to a fixed target ``myoArmReachFixed-v0``
+    - **Hard**: Reach to a randomly selected target ``myoArmReachRandom-v0``
+
+.. image:: images/myoArmNoHand_reach.png
+  :width: 200
+
 Hand Multiobject Reorientation
 ======================================
 A :ref:`myoHand` model reorients a set of parameterized geometries to a given target orientation without dropping it.
