@@ -2,6 +2,7 @@
 	path = myosuite/simhive/myo_sim
 #	url = https://github.com/MyoHub/myo_sim.git
         url = https://github.com/jamesheald/myo_sim.git
+        branch = arm_with_no_hand
 [submodule "myosuite/simhive/furniture_sim"]
 	path = myosuite/simhive/furniture_sim
 	url = https://github.com/vikashplus/furniture_sim.git
