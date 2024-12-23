@@ -6,9 +6,11 @@
 [submodule "myosuite/simhive/furniture_sim"]
 	path = myosuite/simhive/furniture_sim
 	url = https://github.com/vikashplus/furniture_sim.git
+        branch = master
 [submodule "myosuite/simhive/object_sim"]
 	path = myosuite/simhive/object_sim
-	url = https://github.com/vikashplus/object_sim.git
+        url = https://github.com/vikashplus/object_sim.git
+        branch = main
 [submodule "myosuite/simhive/MPL_sim"]
 	path = myosuite/simhive/MPL_sim
 	url = https://github.com/vikashplus/MPL_sim.git
