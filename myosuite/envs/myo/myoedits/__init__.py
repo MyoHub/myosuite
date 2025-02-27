@@ -66,10 +66,9 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec):
 				body = spec.find_body(name)
 				if name == '2distph':
 					body.add_site(name=IFtip_site['name'],
-								  size=IFtip_site['size'],
+								  size=IFtip_site['size']*2,
 								  pos=IFtip_site['pos'],
 								  rgba=IFtip_site['rgba'])
-								#   rgba=[0.8, 0., 0., 1.])
 
 	spec.find_body('world').add_site(name='IFtip_target',
 									 type=mujoco.mjtGeom.mjGEOM_SPHERE,
