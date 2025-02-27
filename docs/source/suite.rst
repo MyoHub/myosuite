@@ -374,7 +374,7 @@ Arm Reach
 
 
 Model:
-    - This environment uses a simplified variant of the myoArm model in which the muscles and joints of the digits have been removed, enabling the study of reaching tasks that have no grasp or manipulation component. This reduced myoArm model is comprised of 20 joints and 32 muscle-tendon units.
+    - This environment uses a simplified version of the myoArm model in which the muscles and joints of the digits have been removed, enabling the study of reaching/pointing tasks that have no manipulation component. The simplified myoArm model is comprised of 20 joints and 32 muscle-tendon units.
 
 Objective:
     - Reach a target with the tip of the index finger.
