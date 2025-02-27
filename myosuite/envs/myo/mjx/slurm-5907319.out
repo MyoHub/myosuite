@@ -1,0 +1,22 @@
+Launching a python run
+Wed Feb 12 13:03:19 UTC 2025
+MyoSuite:> Registering Myo Envs
+2025-02-12 13:03:54.154066: I external/xla/xla/pjrt/pjrt_c_api_client.cc:130] PjRtCApiClient created.
+2025-02-12 13:03:57.363772: I external/xla/xla/service/llvm_ir/llvm_command_line_options.cc:50] XLA (re)initializing LLVM with options fingerprint: 16683731993227821626
+num steps: 0, eval/episode_reward: -53.74285125732422
+2025-02-12 13:09:14.048039: I external/xla/xla/stream_executor/cuda/subprocess_compilation.cc:346] ptxas warning : Registers are spilled to local memory in function 'gemm_fusion_dot_624', 416 bytes spill stores, 424 bytes spill loads
+
+2025-02-12 13:09:14.500054: I external/xla/xla/stream_executor/cuda/subprocess_compilation.cc:346] ptxas warning : Registers are spilled to local memory in function 'gemm_fusion_dot_624', 8 bytes spill stores, 8 bytes spill loads
+
+2025-02-12 13:09:14.862859: I external/xla/xla/stream_executor/cuda/subprocess_compilation.cc:346] ptxas warning : Registers are spilled to local memory in function 'gemm_fusion_dot_624', 24 bytes spill stores, 24 bytes spill loads
+
+2025-02-12 13:09:16.537019: I external/xla/xla/stream_executor/cuda/subprocess_compilation.cc:346] ptxas warning : Registers are spilled to local memory in function 'gemm_fusion_dot_624', 96 bytes spill stores, 112 bytes spill loads
+
+2025-02-12 13:09:17.887472: I external/xla/xla/stream_executor/cuda/subprocess_compilation.cc:346] ptxas warning : Registers are spilled to local memory in function 'gemm_fusion_dot_624', 216 bytes spill stores, 216 bytes spill loads
+
+2025-02-12 13:09:20.416556: I external/xla/xla/stream_executor/cuda/subprocess_compilation.cc:346] ptxas warning : Registers are spilled to local memory in function 'gemm_fusion_dot_625_0', 320 bytes spill stores, 308 bytes spill loads
+
+2025-02-12 13:09:22.875473: I external/xla/xla/stream_executor/cuda/subprocess_compilation.cc:346] ptxas warning : Registers are spilled to local memory in function 'gemm_fusion_dot_625', 8 bytes spill stores, 8 bytes spill loads
+
+num steps: 5038080, eval/episode_reward: 190.53746032714844
+slurmstepd-gpu-350-04: error: *** JOB 5907319 ON gpu-350-04 CANCELLED AT 2025-02-12T13:30:05 ***

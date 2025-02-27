@@ -1,0 +1,14 @@
+Launching a python run
+Wed Feb 12 14:44:38 UTC 2025
+MyoSuite:> Registering Myo Envs
+2025-02-12 14:44:54.461017: I external/xla/xla/pjrt/pjrt_c_api_client.cc:130] PjRtCApiClient created.
+2025-02-12 14:44:54.954198: I external/xla/xla/service/llvm_ir/llvm_command_line_options.cc:50] XLA (re)initializing LLVM with options fingerprint: 3186560213727340866
+2025-02-12 14:46:03.322729: I external/xla/xla/stream_executor/cuda/subprocess_compilation.cc:346] ptxas warning : Registers are spilled to local memory in function 'loop_compare_reduce_fusion', 8 bytes spill stores, 8 bytes spill loads
+ptxas warning : Registers are spilled to local memory in function 'input_multiply_reduce_fusion_1', 260 bytes spill stores, 260 bytes spill loads
+ptxas warning : Registers are spilled to local memory in function 'loop_subtract_fusion_6', 8 bytes spill stores, 8 bytes spill loads
+
+2025-02-12 14:49:26.426041: E external/xla/xla/service/slow_operation_alarm.cc:73] 
+********************************
+[Compiling module jit_step] Very slow compile? If you want to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+********************************
+slurmstepd-gpu-350-02: error: *** JOB 5907988 ON gpu-350-02 CANCELLED AT 2025-02-12T14:50:55 ***

@@ -1,0 +1,10 @@
+Launching a python run
+Wed Feb 12 11:13:10 UTC 2025
+MyoSuite:> Registering Myo Envs
+2025-02-12 11:14:13.549885: I external/xla/xla/pjrt/pjrt_c_api_client.cc:130] PjRtCApiClient created.
+2025-02-12 11:14:18.282556: I external/xla/xla/service/llvm_ir/llvm_command_line_options.cc:50] XLA (re)initializing LLVM with options fingerprint: 17801981015476207984
+2025-02-12 11:18:46.919694: E external/xla/xla/service/slow_operation_alarm.cc:73] 
+********************************
+[Compiling module jit_generate_eval_unroll] Very slow compile? If you want to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+********************************
+slurmstepd-gpu-sr670-20: error: *** JOB 5907320 ON gpu-sr670-20 CANCELLED AT 2025-02-12T11:27:21 ***
