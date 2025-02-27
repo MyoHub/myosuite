@@ -12,7 +12,6 @@ Models and tasks are the most important aspects of Myosuite. To provide further,
     * :ref:`myoHand`
     * :ref:`myoLeg`
     * :ref:`myoArm`
-    * :ref:`myoArmNoHand`
 * :ref:`tasks`
 * :ref:`task_and_variations`
 
@@ -24,7 +23,7 @@ Models and tasks are the most important aspects of Myosuite. To provide further,
 Models
 ********
 
-MyoSuite consists of six models: :ref:`myoFinger`, :ref:`myoElbow`, :ref:`myoHand`, :ref:`myoArm`, :ref:`myoArmNoHand` and :ref:`myoLeg`.
+MyoSuite consists of five models: :ref:`myoFinger`, :ref:`myoElbow`, :ref:`myoHand`, :ref:`myoArm`, and :ref:`myoLeg`.
 Using these models, we design a rich collection of tasks ranging across simple reaching movements,
 contact-rich movements involving object-manipulation such as pen-twirling and baoding balls, as well as locomotion behaviors.
 
@@ -193,17 +192,6 @@ Model specification can be found on our github repo of `myoArm <https://github.c
 .. image:: images/myoArm.png
   :height: 200
 
-.. _myoArmNoHand:
-
-myoArmNoHand
-=========
-The myoArmNoHand is the myoArm with the extrinsic and intrinsic hand muscles removed, enabling the study of pure-reaching tasks that have no grasp or manipulation component. 
-
-This musculoskeletal model is comprised of 38 joints and 24 muscle-tendon units.
-
-.. image:: images/myoArm_NoHand.png
-  :height: 200
-
 .. _tasks:
 
 Tasks
@@ -343,8 +331,12 @@ Variants:
 Arm Reach
 =====================
 
+
+Model:
+    - This environment uses a simplified variant of the myoArm model in which the muscles and joints of the digits have been removed, enabling the study of reaching tasks that have no grasp or manipulation component. This reduced myoArm model is comprised of 20 joints and 32 muscle-tendon units.
+
 Objective:
-    - Reach a target with the end of the forearm
+    - Reach a target with the tip of the index finger.
 
 Variants:
     - **Easy**: Reach to a fixed target ``myoArmReachFixed-v0``
