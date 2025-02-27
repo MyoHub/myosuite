@@ -1,9 +1,0 @@
-Launching a python run
-Wed Feb 12 14:16:03 UTC 2025
-MyoSuite:> Registering Myo Envs
-2025-02-12 14:16:11.858457: I external/xla/xla/pjrt/pjrt_c_api_client.cc:130] PjRtCApiClient created.
-2025-02-12 14:16:12.094442: I external/xla/xla/service/llvm_ir/llvm_command_line_options.cc:50] XLA (re)initializing LLVM with options fingerprint: 5176974267047178059
-num steps: 0, eval/episode_reward: -53.75284957885742
-2025-02-12 14:21:33.722007: I external/xla/xla/stream_executor/cuda/subprocess_compilation.cc:346] ptxas warning : Registers are spilled to local memory in function 'input_transpose_fusion_27', 500 bytes spill stores, 1764 bytes spill loads
-
-slurmstepd-gpu-380-17: error: *** JOB 5907318 ON gpu-380-17 CANCELLED AT 2025-02-12T14:32:02 ***
