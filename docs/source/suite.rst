@@ -23,7 +23,7 @@ Models and tasks are the most important aspects of Myosuite. To provide further,
 Models
 ********
 
-MyoSuite consists of five models: :ref:`myoFinger`, :ref:`myoElbow`, :ref:`myoHand`, :ref:`myoArm`, and :ref:`myoLeg`.
+MyoSuite consists of five models: :ref:`myoFinger`, :ref:`myoElbow`, :ref:`myoHand`, :ref:`myoArm` and :ref:`myoLeg`.
 Using these models, we design a rich collection of tasks ranging across simple reaching movements,
 contact-rich movements involving object-manipulation such as pen-twirling and baoding balls, as well as locomotion behaviors.
 
@@ -342,7 +342,7 @@ Variants:
     - **Easy**: Reach to a fixed target ``myoArmReachFixed-v0``
     - **Hard**: Reach to a randomly selected target ``myoArmReachRandom-v0``
 
-.. image:: images/myoArmNoHand_reach.png
+.. image:: images/myoArmReach.png
   :width: 200
 
 Hand Multiobject Reorientation
