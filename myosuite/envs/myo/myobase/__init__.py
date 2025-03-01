@@ -475,6 +475,26 @@ register_env_with_variants(id='myoHandPenTwirlRandom-v0',
         }
     )
 
+##### MyoTorso Env
+
+register_env_with_variants(id='myoTorsoFixed-v0',
+        entry_point='myosuite.envs.myo.myobase.torso_v0:TorsoEnvV0',
+        max_episode_steps=200,
+        kwargs={
+            'model_path': curr_dir+'/../../../simhive/myo_sim/back/myoback.xml',
+            'target_jnt_range': {'LB_wrapjnt_t1':(0, 0),'LB_wrapjnt_t2':(0, 0),'LB_wrapjnt_r3':(0, 0),
+                                 'Abs_t1':(0, 0),'Abs_t2':(0,0),'Abs_r3':(0, 0),
+                                 'flex_extension':(-0.7, -0.7),'lat_bending':(-0.436, 0.436),'axial_rotation':(0, 0),
+                                 'L4_L5_FE':(0, 0),'L4_L5_LB':(0, 0),'L4_L5_AR':(0, 0),
+                                 'L3_L4_FE':(0, 0),'L3_L4_LB':(0, 0),'L3_L4_AR':(0, 0),
+                                 'L2_L3_FE':(0, 0),'L2_L3_LB':(0, 0),'L2_L3_AR':(0, 0),
+                                 'L1_L2_FE':(0, 0),'L1_L2_LB':(0, 0),'L1_L2_AR':(0, 0),},
+            'normalize_act': True,
+            'frame_skip': 5,
+        }
+    )
+
+
 # SAR REORIENT: 8-object ==============================
 register_env_with_variants(id='myoHandReorient8-v0',
             entry_point='myosuite.envs.myo.myobase.reorient_sar_v0:Geometries8EnvV0',
