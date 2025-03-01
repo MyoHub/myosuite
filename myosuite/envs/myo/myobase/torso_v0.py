@@ -92,7 +92,6 @@ class TorsoEnvV0(BaseV0):
         if self.sim.model.na !=0: act_mag= act_mag/self.sim.model.na
         far_th = np.pi
 
-        #print(pose_dist)
 
         rwd_dict = collections.OrderedDict((
             # Optional Keys
