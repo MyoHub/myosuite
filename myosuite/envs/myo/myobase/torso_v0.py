@@ -42,7 +42,7 @@ class TorsoEnvV0(BaseV0):
             reset_type = "init",            # none; init; random
             obs_keys:list = DEFAULT_OBS_KEYS,
             weighted_reward_keys:dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
-            pose_thd = 0.35,
+            pose_thd = 0.25,
             **kwargs,
         ):
         self.reset_type = reset_type
@@ -91,7 +91,6 @@ class TorsoEnvV0(BaseV0):
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)
         if self.sim.model.na !=0: act_mag= act_mag/self.sim.model.na
         far_th = np.pi
-
 
         rwd_dict = collections.OrderedDict((
             # Optional Keys

@@ -1,7 +1,6 @@
 [submodule "myosuite/simhive/myo_sim"]
 	path = myosuite/simhive/myo_sim
-	url = https://github.com/MyoHub/myo_sim.git@dev
-	branch = dev
+	url = https://github.com/cherylwang20/myo_sim.git
 [submodule "myosuite/simhive/furniture_sim"]
 	path = myosuite/simhive/furniture_sim
 	url = https://github.com/vikashplus/furniture_sim.git
