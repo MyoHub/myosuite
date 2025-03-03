@@ -83,7 +83,7 @@ register_env_with_variants(id='myoArmReachFixed-v0',
         kwargs={
 			'model_path': curr_dir+'/../../../simhive/myo_sim/arm/myoarm.xml',
             'target_reach_range': {
-                'IFtip': ((-0.2, -0.2, 1.2), (-0.2, -0.2, 1.2)),
+                'IFtip': ((-0.175, -0.245, 1.405), (-0.175, -0.245, 1.405)),
                 },
             'normalize_act': True,
             'far_th': 1.,
@@ -97,7 +97,7 @@ register_env_with_variants(id='myoArmReachRandom-v0',
         kwargs={
 			'model_path': curr_dir+'/../../../simhive/myo_sim/arm/myoarm.xml',
             'target_reach_range': {
-                'IFtip': ((-0.2-0.30, -0.2-0.30, 1.2-0.30), (-0.2+0.30, -0.2+0.30, 1.2+0.30)),
+                'IFtip': ((-0.175-0.175, -0.245-0.175, 1.405-0.425), (-0.175+0.175, -0.245+0.175, 1.405+0.425)),
                 },
             'normalize_act': True,
             'far_th': 1.,
