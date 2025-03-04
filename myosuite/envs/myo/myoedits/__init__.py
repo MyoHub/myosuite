@@ -1,7 +1,9 @@
-""" =================================================
-# Copyright (c) Facebook, Inc. and its affiliates
-Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), James Heald (jamesbheald@gmail.com)
-================================================= """
+"""
+Copyright (c) 2024 MyoSuite
+Authors :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), James Heald (jamesbheald@gmail.com)
+Source :: https://github.com/MyoHub/myosuite
+License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+"""
 
 from myosuite.utils import gym; register=gym.register
 from myosuite.envs.myo.myobase import register_env_with_variants
@@ -16,6 +18,7 @@ curr_dir = os.path.dirname(os.path.abspath(__file__))
 # Arm Reaching ==============================
 def edit_fn_arm_reaching(spec: mujoco.MjSpec):
 
+	# get the positions of each body of each digit as well as the properties of the IFtip site
 	root_list = ['firstmc', 'secondmc', 'thirdmc', 'fourthmc', 'fifthmc']
 	body_positions = {}
 	IFtip_site = {}
@@ -70,6 +73,7 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec):
 								  pos=IFtip_site['pos'],
 								  rgba=IFtip_site['rgba'])
 
+	# add a reach target
 	spec.find_body('world').add_site(name='IFtip_target',
 									 type=mujoco.mjtGeom.mjGEOM_SPHERE,
 									 size=[0.02, 0.02, 0.02],
