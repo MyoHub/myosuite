@@ -1,16 +1,20 @@
+"""=================================================
+Copyright (C) 2025
+License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+================================================="""
+
 ### Adapted from: https://github.com/kevinzakka/mink/examples
 # REQUIRES:
 # Python 3.9
-# MINK -- pip install mink[examples]
+# MINK -- pip install "mink[examples]"
 
 import os
 
+import mink
 import mujoco
 import mujoco.viewer
 import numpy as np
 from loop_rate_limiters import RateLimiter
-
-import mink
 
 os.chdir("../../../myosuite/simhive/myo_sim/arm")
 _XML_ARM_Model = "myoarm.xml"
