@@ -8,8 +8,10 @@
     License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ====================================================== -©vk©-->
 
-    <include file="../../../../simhive/myo_sim/torso/assets/myotorsorigid_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/torso/assets/myotorso_rigid_assets.xml"/>
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_tendon.xml"/>
+    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_muscle.xml"/>
     <include file="../../../../simhive/myo_sim/scene/myosuite_quad.xml"/>
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
@@ -29,7 +31,7 @@
         <body name='opponent' pos="0 0 0" zaxis="0 0 1" mocap="true">
             <light directional="false" diffuse=".25 .25 .25" specular="0.25 0.25 0.25" pos="0 -3 3" dir="0 1 -1" mode="trackcom"/>
             <camera name="opponent_view" pos="4 0 2.75" xyaxes="0 1 0 -1 0 2" mode="trackcom"/>
-            <geom name="base" type="capsule" pos="0 0 0.15" euler="0 0 0" size="0.25 0.15" rgba=".11 .1 .1 1" group="2" contype="0" conaffinity="0"/>            
+            <geom name="base" type="capsule" pos="0 0 0.15" euler="0 0 0" size="0.25 0.15" rgba=".11 .1 .1 1" group="2" contype="0" conaffinity="0"/>
             <geom name="base_bar" type="cylinder" pos="0 0 0.8" euler="0 0 0" size="0.078 0.28" rgba=".7 .7 .7 1" group="2" contype="0" conaffinity="0"/>
             <geom name="logo" type="sphere" pos="0 0 1.20" euler="1.57 0 0" size="0.25 0.02010" material="matmyo" group="2" contype="0" conaffinity="0"/>
             <site name="opponent_indicator" size="0.3" pos="0 0 1.2" rgba="0 0 0 0"/>
@@ -40,8 +42,7 @@
         <body name="root" pos="0 0 1" euler="0 0 -1.57">
             <light directional="false" diffuse=".25 .25 .25" specular="0.25 0.25 0.25" pos="3 0 2" dir="-1 0 -1" mode="trackcom"/>
             <camera name="agent_view" pos="4 0 1.85" xyaxes="0 1 0 -1 0 2" mode="trackcom"/>
-            <site name="head" size="0.02" pos="0 0 1.80" group="4"/>
-            <include file="../../../../simhive/myo_sim/torso/assets/myotorsorigid_chain.xml"/>
+            <include file="../../../../simhive/myo_sim/torso/assets/myotorso_rigid_chain.xml"/>
             <include file="../../../../simhive/myo_sim/leg/assets/myolegs_chain.xml"/>
             <freejoint name="root"/>
         </body>

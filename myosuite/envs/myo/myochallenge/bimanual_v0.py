@@ -18,6 +18,8 @@ from typing import List
 from myosuite.envs.myo.base_v0 import BaseV0
 
 CONTACT_TRAJ_MIN_LENGTH = 100
+GOAL_CONTACT = 10
+MAX_TIME = 10.0
 
 
 class BimanualEnvV1(BaseV0):
@@ -50,7 +52,7 @@ class BimanualEnvV1(BaseV0):
                goal_center=np.array([0.4, -0.25, 1.05]),
                max_force=1500,  # Max force against throwing
 
-               proximity_th=0.015,  # object-target proximity threshold
+               proximity_th=0.17,  # object-target proximity threshold, based on 10cm in each axis in Euclidean Distance
 
                start_shifts=np.array([0.055, 0.055, 0]),
                # shift factor for start/goal random generation with z-axis fixed
@@ -78,6 +80,7 @@ class BimanualEnvV1(BaseV0):
 
         self.start_shifts = start_shifts
         self.goal_shifts = goal_shifts
+        self.PILLAR_HEIGHT = 1.09
 
         self.id_info = IdInfo(self.sim.model)
 
@@ -115,7 +118,7 @@ class BimanualEnvV1(BaseV0):
         self.over_max = False
         self.max_force = 0
         self.goal_touch = 0
-        self.TARGET_GOAL_TOUCH = 5
+        self.TARGET_GOAL_TOUCH = GOAL_CONTACT
 
 
         self.touch_history = []
@@ -246,6 +249,7 @@ class BimanualEnvV1(BaseV0):
         obj_pos = obs_dict["obj_pos"][0][0] if obs_dict['obj_pos'].ndim == 3 else obs_dict['obj_pos']
         palm_pos = obs_dict["palm_pos"][0][0] if obs_dict["palm_pos"].ndim == 3 else obs_dict["palm_pos"]
         goal_pos = obs_dict["goal_pos"][0][0] if obs_dict["goal_pos"].ndim == 3 else obs_dict["goal_pos"]
+        goal_pos = np.concatenate((goal_pos[:2], np.array([self.PILLAR_HEIGHT])))
 
         lift_height = np.linalg.norm(np.array([[[obj_pos[-1], palm_pos[-1]]]]) -
                                      np.array([[[self.init_obj_z, self.init_palm_z]]]), axis=-1)
@@ -289,10 +293,10 @@ class BimanualEnvV1(BaseV0):
         return rwd_dict
 
     def _get_done(self, z):
-        if self.obs_dict['time'] > 3.0:
+        if self.obs_dict['time'] > MAX_TIME:
             return 1  
         elif z < 0.3:
-            self.obs_dict['time'] = 3.0
+            self.obs_dict['time'] = MAX_TIME
             return 1
         elif self.rwd_dict and self.rwd_dict['solved']:
             return 1
@@ -446,9 +450,9 @@ def get_touching_objects(model: mujoco.MjModel, data: mujoco.MjData, id_info: Id
 
 
 def body_id_to_label(body_id, id_info: IdInfo):
-    if id_info.myo_body_range[0] < body_id < id_info.myo_body_range[1]:
+    if id_info.myo_body_range[0] <= body_id <= id_info.myo_body_range[1]:
         return ObjLabels.MYO
-    elif id_info.prosth_body_range[0] < body_id < id_info.prosth_body_range[1]:
+    elif id_info.prosth_body_range[0] <= body_id <= id_info.prosth_body_range[1]:
         return ObjLabels.PROSTH
     elif body_id == id_info.start_id:
         return ObjLabels.START
@@ -472,5 +476,5 @@ def evaluate_contact_trajectory(contact_trajectory: List[set]):
         return ContactTrajIssue.PROSTH_SHORT
 
     # Check if only goal was touching object for the last CONTACT_TRAJ_MIN_LENGTH frames
-    elif not np.all([{ObjLabels.GOAL} == s for s in contact_trajectory[-CONTACT_TRAJ_MIN_LENGTH:]]):
+    elif not np.all([{ObjLabels.GOAL} == s for s in contact_trajectory[-GOAL_CONTACT + 2:]]): # Subtract 2 from the calculation to maintain a buffer zone around trajectory boundaries for safety/accuracy.
         return ContactTrajIssue.NO_GOAL
