@@ -36,6 +36,7 @@ conda install conda-forge::ffmpeg
 - [Train policies with SAR](./SAR/SAR%20tutorial.ipynb). All required installations are included within the SAR tutorial notebook.
 - [Replicate hand movements with inverse dynamics](./6_Inverse_Dynamics.ipynb). For this tutorial, `osqp`, `matplotlib` and `pandas` are needed. You can install it with `pip install osqp matplotlib pandas`
 - [Fatigue Modeling](./7_Fatigue_Modeling.ipynb)
+- [Inverse Kinematics](./8_inverse_kinematics.py). This script shows how to perform inverse kinematics using the `mink` library.
 - [Computed Muscle Control (CMC)](./9_Computed_muscle_control.ipynb)
 
 *For those tutorial, `mjrl` and `gym==0.13` are needed. You can install them with `pip install tabulate matplotlib torch gym==0.13 git+https://github.com/aravindr93/mjrl.git@pvr_beta_1vk`

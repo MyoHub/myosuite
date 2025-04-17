@@ -56,21 +56,21 @@ class RunTrack(WalkEnvV0):
     pain_jnt = ['hip_adduction_l', 'hip_adduction_r', 'hip_flexion_l', 'hip_flexion_r', 'hip_rotation_l', 'hip_rotation_r',
                 'knee_angle_l', 'knee_angle_l_rotation2', 'knee_angle_l_rotation3',
                 'mtp_angle_l', 'ankle_angle_l', 'subtalar_angle_l']
-    
+
     biological_jnt = ['hip_adduction_l', 'hip_flexion_l', 'hip_rotation_l',
-                      'hip_adduction_r', 'hip_flexion_r', 'hip_rotation_r', 
-                      'knee_angle_l', 'knee_angle_l_beta_rotation1', 
-                      'knee_angle_l_beta_translation1', 'knee_angle_l_beta_translation2', 
-                      'knee_angle_l_rotation2', 'knee_angle_l_rotation3', 'knee_angle_l_translation1', 
-                      'knee_angle_l_translation2', 'mtp_angle_l', 'ankle_angle_l', 
+                      'hip_adduction_r', 'hip_flexion_r', 'hip_rotation_r',
+                      'knee_angle_l', 'knee_angle_l_beta_rotation1',
+                      'knee_angle_l_beta_translation1', 'knee_angle_l_beta_translation2',
+                      'knee_angle_l_rotation2', 'knee_angle_l_rotation3', 'knee_angle_l_translation1',
+                      'knee_angle_l_translation2', 'mtp_angle_l', 'ankle_angle_l',
                       'subtalar_angle_l']
-    biological_act = ['addbrev_l', 'addbrev_r', 'addlong_l', 'addlong_r', 'addmagDist_l', 'addmagIsch_l', 'addmagMid_l', 
-                      'addmagProx_l', 'bflh_l', 'bfsh_l', 'edl_l', 'ehl_l', 'fdl_l', 'fhl_l', 'gaslat_l', 'gasmed_l', 
-                      'glmax1_l', 'glmax1_r', 'glmax2_l', 'glmax2_r', 'glmax3_l', 'glmax3_r', 'glmed1_l', 'glmed1_r', 
-                      'glmed2_l', 'glmed2_r', 'glmed3_l', 'glmed3_r', 'glmin1_l', 'glmin1_r', 'glmin2_l', 'glmin2_r', 
-                      'glmin3_l', 'glmin3_r', 'grac_l', 'iliacus_l', 'iliacus_r', 
-                      'perbrev_l', 'perlong_l', 'piri_l', 'piri_r', 'psoas_l', 'psoas_r', 'recfem_l', 'sart_l', 
-                      'semimem_l', 'semiten_l', 'soleus_l', 'tfl_l', 'tibant_l', 'tibpost_l', 'vasint_l', 
+    biological_act = ['addbrev_l', 'addbrev_r', 'addlong_l', 'addlong_r', 'addmagDist_l', 'addmagIsch_l', 'addmagMid_l',
+                      'addmagProx_l', 'bflh_l', 'bfsh_l', 'edl_l', 'ehl_l', 'fdl_l', 'fhl_l', 'gaslat_l', 'gasmed_l',
+                      'glmax1_l', 'glmax1_r', 'glmax2_l', 'glmax2_r', 'glmax3_l', 'glmax3_r', 'glmed1_l', 'glmed1_r',
+                      'glmed2_l', 'glmed2_r', 'glmed3_l', 'glmed3_r', 'glmin1_l', 'glmin1_r', 'glmin2_l', 'glmin2_r',
+                      'glmin3_l', 'glmin3_r', 'grac_l', 'iliacus_l', 'iliacus_r',
+                      'perbrev_l', 'perlong_l', 'piri_l', 'piri_r', 'psoas_l', 'psoas_r', 'recfem_l', 'sart_l',
+                      'semimem_l', 'semiten_l', 'soleus_l', 'tfl_l', 'tibant_l', 'tibpost_l', 'vasint_l',
                       'vaslat_l', 'vasmed_l']
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
@@ -448,7 +448,7 @@ class RunTrack(WalkEnvV0):
         if head[2] - mean[2] < 0.2:
             return 1
         # head is too close to the ground
-        if head[2] < 1.5:
+        if head[2] < 0.2:
             return 1
         else:
             return 0
