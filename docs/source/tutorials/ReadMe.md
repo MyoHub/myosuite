@@ -37,4 +37,5 @@ conda install conda-forge::ffmpeg
 - [Replicate hand movements with inverse dynamics](./6_Inverse_Dynamics.ipynb). For this tutorial, `osqp`, `matplotlib` and `pandas` are needed. You can install it with `pip install osqp matplotlib pandas`
 - [Fatigue Modeling](./7_Fatigue_Modeling.ipynb)
 - [Computed Muscle Control (CMC)](./9_Computed_muscle_control.ipynb)
+
 *For those tutorial, `mjrl` and `gym==0.13` are needed. You can install them with `pip install tabulate matplotlib torch gym==0.13 git+https://github.com/aravindr93/mjrl.git@pvr_beta_1vk`
