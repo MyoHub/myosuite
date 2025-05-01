@@ -38,5 +38,6 @@ conda install conda-forge::ffmpeg
 - [Fatigue Modeling](./7_Fatigue_Modeling.ipynb)
 - [Inverse Kinematics](./8_inverse_kinematics.py). This script shows how to perform inverse kinematics using the `mink` library.
 - [Computed Muscle Control (CMC)](./9_Computed_muscle_control.ipynb)
+- [Plaback Opensim Mot Files](./10_PlaybackMotFile.ipynb). This tutorial shows how to load OpenSim Mot files and playback them on the MyoSkeleton (follow the instructions prompted by `python -m myosuite_init`)
 
 *For those tutorial, `mjrl` and `gym==0.13` are needed. You can install them with `pip install tabulate matplotlib torch gym==0.13 git+https://github.com/aravindr93/mjrl.git@pvr_beta_1vk`
