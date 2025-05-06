@@ -16,8 +16,6 @@ from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
 
 curr_dir: str = os.path.dirname(os.path.abspath(__file__))
 
-# mujoco                       3.3.0 before test
-
 class TestModelEditor(unittest.TestCase):
     """Unit tests for ModelEditor class."""
 
