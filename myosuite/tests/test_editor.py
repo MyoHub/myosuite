@@ -16,6 +16,8 @@ from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
 
 curr_dir: str = os.path.dirname(os.path.abspath(__file__))
 
+# mujoco                       3.3.0 before test
+
 class TestModelEditor(unittest.TestCase):
     """Unit tests for ModelEditor class."""
 
@@ -89,8 +91,8 @@ class TestModelEditor(unittest.TestCase):
             ModelEditor("nonexistent/path.xml")
         
         # Verify the error message contains the expected content
-        self.assertIn("Error opening file.", str(cm.exception))
-        self.assertIn("No such file or directory.", str(cm.exception))
+        self.assertIn("Error opening file", str(cm.exception))
+        self.assertIn("No such file or directory", str(cm.exception))
 
 class TestEditFnArmReaching(unittest.TestCase):
     """Unit tests for TestEditFnArmReaching and MuJoCo model editing functionality."""
@@ -114,7 +116,7 @@ class TestEditFnArmReaching(unittest.TestCase):
         
         for case in test_cases:
             with self.subTest(case=case):
-                self.assertIsNone(self.edited_spec.find_body(case))
+                self.assertIsNone(self.edited_spec.body(case))
 
     def _get_phalanx_test_cases(self) -> List[str]:
         """Get the names of the bodies of phalanges in the edited model.
@@ -149,7 +151,7 @@ class TestEditFnArmReaching(unittest.TestCase):
         
         for case in test_cases:
             with self.subTest(case=case):
-                self.assertIsNotNone(self.edited_spec.find_body(case))
+                self.assertIsNotNone(self.edited_spec.body(case))
 
     def test_digit_body_positions_are_preserved(self) -> None:
         """Test if the function preserves the positions of bodies in the edited model."""
@@ -157,8 +159,8 @@ class TestEditFnArmReaching(unittest.TestCase):
         
         for original_name, edited_name in test_cases:
             with self.subTest(original=original_name, edited=edited_name):
-                original_pos: np.ndarray = self.original_spec.find_body(original_name).pos
-                edited_pos: np.ndarray = self.edited_spec.find_body(edited_name).pos
+                original_pos: np.ndarray = self.original_spec.body(original_name).pos
+                edited_pos: np.ndarray = self.edited_spec.body(edited_name).pos
                 self.assertTrue(np.array_equal(original_pos, edited_pos))
 
     def test_digit_geoms_are_added(self) -> None:
@@ -167,13 +169,13 @@ class TestEditFnArmReaching(unittest.TestCase):
 
         for case in test_cases:
             with self.subTest(case=case):
-                body: Any = self.edited_spec.find_body(case)
+                body: Any = self.edited_spec.body(case)
                 self.assertTrue(any(g.name == case for g in body.geoms), case + " geom missing.")
 
     def test_digit_geom_types_are_correct(self) -> None:
         """Test if the function adds the correct geom type."""
         def find_geom(spec: mujoco.MjSpec, name: str) -> Tuple[Optional[Any], Optional[Any]]:
-            body: Optional[Any] = spec.find_body(name)
+            body: Optional[Any] = spec.body(name)
             geom: Optional[Any] = next((g for g in body.geoms if g.name == name), None)
             return body, geom
         
@@ -212,7 +214,7 @@ class TestEditFnArmReaching(unittest.TestCase):
     def test_reach_target_is_added(self) -> None:
         """Test if the function adds the 'IFtip_target' site to the world body."""
         target_site: Optional[Any] = next(
-            (s for s in self.edited_spec.find_body('world').sites 
+            (s for s in self.edited_spec.body('world').sites 
             if s.name == 'IFtip_target'),
             None
             )

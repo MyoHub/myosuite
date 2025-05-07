@@ -24,7 +24,7 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
 	IFtip_site = {}
 	for root in root_list:
 		body_positions[root] = []
-		body = spec.find_body(root)
+		body = spec.body(root)
 		child_body = body.first_body()
 		while child_body is not None:
 			body_positions[root].append(child_body.pos.copy())
@@ -38,23 +38,23 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
 			child_body = child_body.first_body()
 
 	# Remove the fingers
-	spec.detach_body(spec.find_body('proximal_thumb'))
-	spec.detach_body(spec.find_body('proxph2'))
-	spec.detach_body(spec.find_body('proxph3'))
-	spec.detach_body(spec.find_body('proxph4'))
-	spec.detach_body(spec.find_body('proxph5'))
+	spec.detach_body(spec.body('proximal_thumb'))
+	spec.detach_body(spec.body('proxph2'))
+	spec.detach_body(spec.body('proxph3'))
+	spec.detach_body(spec.body('proxph4'))
+	spec.detach_body(spec.body('proxph5'))
 
 	# Add back simplified digits (each phalanx is a body with a mesh)
 	
 	# Thumb
-	spec.find_body('firstmc').add_body(name="thumbprox", pos=body_positions['firstmc'][0])
-	spec.find_body('thumbprox').add_geom(meshname="thumbprox", name="thumbprox", type=mujoco.mjtGeom.mjGEOM_MESH)
-	spec.find_body('thumbprox').add_body(name="thumbdist", pos=body_positions['firstmc'][1])
-	spec.find_body('thumbdist').add_geom(meshname="thumbdist", name="thumbdist", type=mujoco.mjtGeom.mjGEOM_MESH)
+	spec.body('firstmc').add_body(name="thumbprox", pos=body_positions['firstmc'][0])
+	spec.body('thumbprox').add_geom(meshname="thumbprox", name="thumbprox", type=mujoco.mjtGeom.mjGEOM_MESH)
+	spec.body('thumbprox').add_body(name="thumbdist", pos=body_positions['firstmc'][1])
+	spec.body('thumbdist').add_geom(meshname="thumbdist", name="thumbdist", type=mujoco.mjtGeom.mjGEOM_MESH)
 	
 	# Non-thumb digits
 	for i, root in enumerate(root_list):
-		body = spec.find_body(root)
+		body = spec.body(root)
 		for j, body_position in enumerate(body_positions[root]):
 			if root != 'firstmc':
 				if j == 0:
@@ -65,8 +65,8 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
 					phalanx = 'distph'
 				name = str(i+1) + phalanx
 				body.add_body(name=name, pos=body_position)
-				spec.find_body(name).add_geom(meshname=name, name=name, type=mujoco.mjtGeom.mjGEOM_MESH)
-				body = spec.find_body(name)
+				spec.body(name).add_geom(meshname=name, name=name, type=mujoco.mjtGeom.mjGEOM_MESH)
+				body = spec.body(name)
 				if name == '2distph':
 					body.add_site(name=IFtip_site['name'],
 								  size=IFtip_site['size']*2,
@@ -74,7 +74,7 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
 								  rgba=IFtip_site['rgba'])
 
 	# Add a reach target
-	spec.find_body('world').add_site(name='IFtip_target',
+	spec.body('world').add_site(name='IFtip_target',
 									 type=mujoco.mjtGeom.mjGEOM_SPHERE,
 									 size=[0.02, 0.02, 0.02],
 									 pos=[-0.2, -0.2, 1.2],
