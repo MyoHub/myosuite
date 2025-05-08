@@ -27,6 +27,8 @@ dependencies = [
     "numpy",
     "mujoco==3.3.0",
     "dm-control==1.0.28",
+    "mujoco==3.3.2",
+    "dm-control==1.0.16",
     "Pillow",
     "pink-noise-rl",
     "packaging",
