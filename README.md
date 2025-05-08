@@ -28,11 +28,11 @@ Below is an overview of the tasks in the MyoSuite.
 
 
 ## Installations
-You will need Python 3.8 or later versions.
+You will need Python 3.9 or later versions.
 
 It is recommended to use [Miniconda](https://docs.conda.io/en/latest/miniconda.html#latest-miniconda-installer-links) and to create a separate environment with:
 ``` bash
-conda create --name myosuite python=3.8
+conda create --name myosuite python=3.9
 conda activate myosuite
 ```
 

@@ -8,7 +8,7 @@ Please follow steps exactly as below to install correctly.
 
 Requirements
 ~~~~~~~~~~~~
-* python >= 3.8 (if needed follow instructions `here <https://docs.conda.io/en/latest/miniconda.html>`_ for installing python and conda)
+* python >= 3.9 (if needed follow instructions `here <https://docs.conda.io/en/latest/miniconda.html>`_ for installing python and conda)
 * mujoco >= 2.3.6
 
 
@@ -17,7 +17,7 @@ Installing the pip package
 
 .. code-block:: bash
 
-   conda create --name MyoSuite python=3.8
+   conda create --name MyoSuite python=3.9
    conda activate MyoSuite
    pip install -U myosuite
 
@@ -47,9 +47,9 @@ You can visualize the environments with random controls using the below command
 .. code-block:: bash
 
    python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
-   
+
 .. note::
-   On MacOS, the need of a launch_passive option might require that the Python script be run under `mjpython` i.e. 
+   On MacOS, the need of a launch_passive option might require that the Python script be run under `mjpython` i.e.
    `mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0`
 
 Examples
