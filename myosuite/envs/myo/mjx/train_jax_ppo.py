@@ -48,7 +48,7 @@ from mujoco_playground.config import dm_control_suite_params
 from mujoco_playground.config import locomotion_params
 from mujoco_playground.config import manipulation_params
 
-from envs.playground_elbow import PlaygroundElbow, default_config
+from playground_myoElbow import PlaygroundElbow, default_config
 
 
 # xla_flags = os.environ.get("XLA_FLAGS", "")
@@ -164,7 +164,6 @@ def main(argv):
   del argv
   print(f"Current backend: {jax.default_backend()}")
   registry.locomotion.register_environment("MyoElbow", PlaygroundElbow, default_config)
-  registry.locomotion.ALL.append("MyoElbow")
   # Load environment configuration
   env_cfg = default_config()
 
