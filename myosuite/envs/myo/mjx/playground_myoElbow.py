@@ -101,7 +101,7 @@ class PlaygroundElbow(mjx_env.MjxEnv):
         rng, rng1, rng2, rng3 = jax.random.split(rng, 4)
 
         low, hi = -self._config.noise_config.reset_noise_scale, self._config.noise_config.reset_noise_scale
-        qpos = self.mjx_model.qpos0 + jax.random.uniform(
+        qpos = jax.random.uniform(
             rng1, (self.mjx_model.nq,), minval=self.mjx_model.jnt_range[:,0], maxval=self.mjx_model.jnt_range[:,1]
         )
         qvel = jp.array([0.0])
