@@ -1,18 +1,3 @@
-# Copyright 2025 DeepMind Technologies Limited
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-"""Base classes for Berkeley Humanoid."""
 from datetime import datetime
 from typing import Any, Dict, Optional, Union
 
@@ -36,9 +21,6 @@ def default_config() -> config_dict.ConfigDict:
         action_scale=0.5,
         history_len=1,
         healthy_angle_range=(0, 2.1),
-        noise_config=config_dict.create(
-            reset_noise_scale=1e-1,
-        ),
         reward_config=config_dict.create(
             angle_reward_weight=1,
             ctrl_cost_weight=1,
@@ -100,7 +82,6 @@ class PlaygroundElbow(mjx_env.MjxEnv):
         """Resets the environment to an initial state."""
         rng, rng1, rng2, rng3 = jax.random.split(rng, 4)
 
-        low, hi = -self._config.noise_config.reset_noise_scale, self._config.noise_config.reset_noise_scale
         qpos = jax.random.uniform(
             rng1, (self.mjx_model.nq,), minval=self.mjx_model.jnt_range[:,0], maxval=self.mjx_model.jnt_range[:,1]
         )
