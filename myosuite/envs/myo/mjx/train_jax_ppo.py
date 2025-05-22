@@ -48,14 +48,18 @@ from mujoco_playground.config import dm_control_suite_params
 from mujoco_playground.config import locomotion_params
 from mujoco_playground.config import manipulation_params
 
-from playground_myoElbow import PlaygroundElbow, default_config
+# from playground_myoElbow import PlaygroundElbow, default_config
+from playground_myoElbow import default_config
+from playground_Pose import PlaygroundPose as PlaygroundElbow
 
 
 # xla_flags = os.environ.get("XLA_FLAGS", "")
 # xla_flags += " --xla_gpu_triton_gemm_any=True"
 # os.environ["XLA_FLAGS"] = xla_flags
-# os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["MUJOCO_GL"] = "egl"
+# os.environ["JAX_DEBUG_NANS"] = "1"
+# os.environ["JAX_CHECK_TRACER_LEAKS"] = "1"
 
 # Ignore the info logs from brax
 logging.set_verbosity(logging.WARNING)
