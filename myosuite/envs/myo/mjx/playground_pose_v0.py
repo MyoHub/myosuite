@@ -60,30 +60,20 @@ def default_config() -> config_dict.ConfigDict:
     env_config["ppo_config"] = rl_config
     return env_config
 
-class PlaygroundPose(mjx_env.MjxEnv):
+
+class MjxPoseEnvV0(mjx_env.MjxEnv):
     def __init__(
             self,
+            model_path,
             config: config_dict.ConfigDict = default_config(),
             config_overrides: Optional[Dict[str, Union[str, int, list[Any]]]] = None,
-            is_msk=True
+            far_th=4*jp.pi/2
     ) -> None:
         super().__init__(config, config_overrides)
-        
-        model_path='envs/myo/assets/elbow/'
-        model_filename='myoelbow_1dof6muscles.xml'
-        path = epath.Path(epath.resource_path('myosuite')) / (model_path)
-        
-        spec = mujoco.MjSpec.from_file((path / model_filename).as_posix())
-        for geom in spec.geoms:
-            if geom.type == mujoco.mjtGeom.mjGEOM_CYLINDER:
-                geom.conaffinity = 0
-                geom.contype = 0
-                print(f"Disabled contacts for cylinder geom named {geom.name}")
+
+        spec = mujoco.MjSpec.from_file(model_path.as_posix())
+        spec = self.preprocess_spec(spec)
         self._mj_model = spec.compile()
-
-        xml_path = (path / model_filename).as_posix()
-
-        # self._mj_model = mujoco.MjModel.from_xml_path(xml_path)
 
         self._mj_model.geom_margin = np.zeros(self._mj_model.geom_margin.shape)
         print(f"All margins set to 0")
@@ -91,23 +81,37 @@ class PlaygroundPose(mjx_env.MjxEnv):
         self._mj_model.opt.timestep = self.sim_dt
 
         self._mjx_model = mjx.put_model(self._mj_model)
-        self._xml_path = xml_path
+        self._xml_path = model_path.as_posix()
 
         self._mj_model.opt.solver = mujoco.mjtSolver.mjSOL_CG
         self._mj_model.opt.iterations = 6
         self._mj_model.opt.ls_iterations = 6
         self._mj_model.opt.disableflags = self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP
 
+        self.far_th = far_th
+
+    def preprocess_spec(self, spec:mujoco.MjSpec):
+        for geom in spec.geoms:
+            if geom.type == mujoco.mjtGeom.mjGEOM_CYLINDER:
+                geom.conaffinity = 0
+                geom.contype = 0
+                print(f"Disabled contacts for cylinder geom named \"{geom.name}\"")
+        return spec
+
     def reset(self, rng: jp.ndarray) -> State:
         """Resets the environment to an initial state."""
         rng, rng1, rng2 = jax.random.split(rng, 3)
 
         qpos = jax.random.uniform(
-            rng1, (self.mjx_model.nq,), minval=self.mjx_model.jnt_range[:,0], maxval=self.mjx_model.jnt_range[:,1]
+            rng1, (self.mjx_model.nq,),
+            minval=self.mjx_model.jnt_range[:,0],
+            maxval=self.mjx_model.jnt_range[:,1]
         )
         qvel = jp.array([0.0])
         target_angle = jax.random.uniform(
-            rng2, (1,), minval=self._config.healthy_angle_range[0], maxval=self._config.healthy_angle_range[1]
+            rng2, (self.mjx_model.nq,),
+            minval=self._config.healthy_angle_range[0],
+            maxval=self._config.healthy_angle_range[1]
         )
 
         # We store the target angle in the info, can't store it as an instance variable,
