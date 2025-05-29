@@ -107,7 +107,8 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
             minval=self.mjx_model.jnt_range[:,0],
             maxval=self.mjx_model.jnt_range[:,1]
         )
-        qvel = jp.array([0.0])
+        # TODO: Velocity initialization
+        qvel = jp.zeros(self.mjx_model.nv)
         target_angle = jax.random.uniform(
             rng2, (self.mjx_model.nq,),
             minval=self._config.healthy_angle_range[0],

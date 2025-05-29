@@ -3,17 +3,19 @@ import mujoco
 import jax
 import mujoco.viewer
 from playground_elbow_v0 import MjxElbow
+from playground_hand_v0 import MjxHand
 
 # Visualize an MJX environment interactively
 
 
 def main():
-    env = MjxElbow()
+    env = MjxHand()
 
     # We could get the model from the env, but we want to make some edits for convenience
     spec = mujoco.MjSpec.from_file(env.xml_path)
     spec = env.preprocess_spec(spec)
-    spec.add_sensor(name="reward+target", type=mujoco.mjtSensor.mjSENS_USER, dim=2)
+    # Add in dummy sensor we can write to later to visualize values
+    spec.add_sensor(name="reward+target", type=mujoco.mjtSensor.mjSENS_USER, dim=1+env.mjx_model.nv)
     m = spec.compile()
 
     d = mujoco.MjData(m)
