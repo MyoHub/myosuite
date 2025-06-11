@@ -1,0 +1,34 @@
+<mujoco model="ping_pong_paddle">
+    <asset>
+        <!-- Ping Pong mesh and texture -->
+        <mesh name="pingpong_mesh" file="./table_tennis/pingpong.obj" />
+        <texture name="pingpong_tex" type="2d" file="./table_tennis/PingPong.png"/>
+        <material name="pingpong_mat" texture="pingpong_tex" specular="0.2" shininess="0.4"/>
+
+        <!-- Ping Pong Paddle mesh and texture -->
+        <mesh name="ping_pong_paddle_mesh" file="./table_tennis/Ping_Pong_Paddle.obj" />
+        <texture name="paddle_tex" type="2d" file="./table_tennis/paddle_1k.png"/>
+        <material name="paddle_mat" texture="paddle_tex" specular="0.2" shininess="0.4"/>
+
+        <!-- Floor material -->
+        <material name="floor_mat" rgba="0.3 0 0 1"/>
+    </asset>
+
+    <worldbody>
+        <!-- Floor geom -->
+        <geom name="floor" type="plane" size="5 4 0.01" pos="0 0 -0.01" material="floor_mat"/>
+        <!-- Ping Pong geom -->
+        <geom name="ping_pong_table" type="mesh" mesh="pingpong_mesh"
+              material="pingpong_mat" rgba="1 1 1 1"
+              pos="0 0 0" euler="90 0 0"/>
+        <body name="ping_pong_paddle" pos="1 0 1">
+            <geom name="ping_pong_paddle" type="mesh" mesh="ping_pong_paddle_mesh"
+                material="paddle_mat" rgba="1 1 1 1"
+                pos="0 0 0" euler="0 0 0"/>
+            <freejoint/>
+        </body>
+        <!-- Spotlights -->
+        <light name="spotlight1" pos="1 1 3" dir="-1 -1 -3" cutoff="30" exponent="5" castshadow="true"/>
+        <light name="spotlight2" pos="-1 -1 3" dir="1 1 -3" cutoff="30" exponent="5" castshadow="true"/>
+    </worldbody>
+</mujoco>
