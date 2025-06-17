@@ -16,7 +16,7 @@ MAX_TIME = 5.0
 
 class PingPongEnvV0(BaseV0):
 
-    DEFAULT_OBS_KEYS = ['body_qpos', 'body_qvel', 'ball_pos', 'ball_vel', 'paddle_pos', "paddle_vel", 'reach_err']
+    DEFAULT_OBS_KEYS = ['pelvis_pos', 'body_qpos', 'body_qvel', 'ball_pos', 'ball_vel', 'paddle_pos', "paddle_vel", 'reach_err']
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "reach_dist": -1,
         "act": 1,
@@ -59,6 +59,8 @@ class PingPongEnvV0(BaseV0):
     def get_obs_dict(self, sim):
         obs_dict = {}
         obs_dict['time'] = np.array([sim.data.time])
+
+        obs_dict['pelvis_pos'] = sim.data.site_xpos[self.sim.model.site_name2id("pelvis")]
 
         obs_dict['body_qpos'] = sim.data.qpos[self.id_info.myo_joint_range].copy()
         obs_dict['body_qvel'] = sim.data.qvel[self.id_info.myo_dof_range].copy()
@@ -151,7 +153,7 @@ class PingPongEnvV0(BaseV0):
             reset_qpos_local[-6:] = self.init_qpos[-6:]
         else:
             reset_qpos_local = reset_qpos
-            
+
         self.init_qpos[:] = self.sim.model.key_qpos[0].copy()
         obs = super().reset(reset_qpos=reset_qpos_local, reset_qvel=reset_qvel,**kwargs)
 
