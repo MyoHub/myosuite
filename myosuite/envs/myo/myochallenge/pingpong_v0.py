@@ -5,6 +5,9 @@ Authors  :: Cheryl Wang (cheryl.wang.huiyi@gmail.com), Balint Hodossy (bkh16@ic.
 ================================================= """
 
 import collections
+from typing import List
+import enum
+import mujoco
 import numpy as np
 from myosuite.utils import gym
 import mujoco
@@ -101,7 +104,7 @@ class PingPongEnvV0(BaseV0):
 
     def _get_done(self, z):
         if self.obs_dict['time'] > MAX_TIME:
-            return 1  
+            return 1
         elif z < 0.3:
             self.obs_dict['time'] = MAX_TIME
             return 1
@@ -132,7 +135,7 @@ class PingPongEnvV0(BaseV0):
             'effort':effort,
             }
         return metrics
-    
+
     def get_sensor_by_name(self, model, data, name):
         sensor_id = model.sensor_name2id(name)
         start = model.sensor_adr[sensor_id]
@@ -158,15 +161,35 @@ class PingPongEnvV0(BaseV0):
         obs = super().reset(reset_qpos=reset_qpos_local, reset_qvel=reset_qvel,**kwargs)
 
         return obs
-    
+
+    def step(self, a, **kwargs):
+        # We unnormalize robotic actuators of the "locomotion", muscle ones are handled in the parent implementation
+        processed_controls = a.copy()
+        if self.normalize_act:
+            robotic_act_ind = self.sim.model.actuator_dyntype != mujoco.mjtDyn.mjDYN_MUSCLE
+            processed_controls[robotic_act_ind] = (np.mean(self.sim.model.actuator_ctrlrange[robotic_act_ind], axis=-1)
+                                                   + processed_controls[robotic_act_ind]
+                                                   * (self.sim.model.actuator_ctrlrange[robotic_act_ind, 1]
+                                                      - self.sim.model.actuator_ctrlrange[robotic_act_ind, 0]) / 2.0)
+        return super().step(processed_controls, **kwargs)
+
+
 class IdInfo:
     def __init__(self, model: mujoco.MjModel):
         self.ball_body_id = model.body("pingpong").id
+        self.own_half_id = model.geom("coll_own_half").id
+        self.own_half_id = model.geom("coll_own_half").id
+        self.paddle_id = model.geom("ping_pong_paddle").id
+        self.opponent_half_id = model.geom("coll_opponent_half").id
+        self.ground_id = model.geom("ground").id
+        self.net_id = model.geom("coll_net").id
 
         myo_bodies = [model.body(i).id for i in range(model.nbody)
                     if not model.body(i).name.startswith("ping")
                     and not model.body(i).name in ["pingpong"]]
         self.myo_body_range = (min(myo_bodies), max(myo_bodies))
+
+        # TODO add locomotion joint ids
 
         self.myo_joint_range = np.concatenate([model.joint(i).qposadr for i in range(model.njnt)
                                             if not model.joint(i).name.startswith("ping")
@@ -175,3 +198,66 @@ class IdInfo:
         self.myo_dof_range = np.concatenate([model.joint(i).dofadr for i in range(model.njnt)
                                             if not model.joint(i).name.startswith("ping")
                                             and not model.joint(i).name == "pingpong_freejoint"])
+
+
+class PingpongContactLabels(enum.Enum):
+    PADDLE = 0 # TODO: Remove collisions with myo
+    OWN = 1
+    OPPONENT = 2
+    GROUND = 3
+    NET = 4
+    ENV = 5
+
+
+class ContactTrajIssue(enum.Enum):
+    OWN_HALF = 0
+    MISS = 1
+    NO_PADDLE = 2
+    DOUBLE_TOUCH = 3
+
+
+def get_touching_objects(model: mujoco.MjModel, data: mujoco.MjData, id_info: IdInfo):
+    for con in data.contact:
+        if model.geom(con.geom1).bodyid == id_info.ball_body_id:
+            yield geom_id_to_label(con.geom2, id_info)
+        elif model.geom(con.geom2).bodyid == id_info.ball_body_id:
+            yield geom_id_to_label(con.geom1, id_info)
+
+
+def geom_id_to_label(body_id, id_info: IdInfo):
+    if body_id == id_info.paddle_id:
+        return PingpongContactLabels.PADDLE
+    elif body_id == id_info.own_half_id:
+        return PingpongContactLabels.OWN
+    elif body_id == id_info.opponent_half_id:
+        return PingpongContactLabels.OPPONENT
+    elif body_id == id_info.net_id:
+        return PingpongContactLabels.NET
+    elif body_id == id_info.ground_id:
+        return PingpongContactLabels.GROUND
+    else:
+        return PingpongContactLabels.ENV
+
+
+def evaluate_pingpong_trajectory(contact_trajectory: List[set]):
+
+    has_hit_paddle = False
+    has_bounced_from_paddle = False
+    for s in contact_trajectory:
+        if PingpongContactLabels.PADDLE not in s and has_hit_paddle:
+            has_bounced_from_paddle = True
+        if PingpongContactLabels.PADDLE in s and has_bounced_from_paddle:
+            return ContactTrajIssue.DOUBLE_TOUCH
+        if PingpongContactLabels.PADDLE in s:
+            has_hit_paddle = True
+        if PingpongContactLabels.OWN in s:
+            return ContactTrajIssue.OWN_HALF
+        if PingpongContactLabels.OPPONENT in s:
+            if has_hit_paddle:
+                return None
+            else:
+                return ContactTrajIssue.NO_PADDLE
+
+    return ContactTrajIssue.MISS
+
+
