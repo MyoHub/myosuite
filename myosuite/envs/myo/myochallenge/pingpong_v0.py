@@ -176,6 +176,18 @@ class PingPongEnvV0(BaseV0):
             'effort':effort,
             }
         return metrics
+    
+    def get_sensor_by_name(self, model, data, name):
+        sensor_id = model.sensor_name2id(name)
+        start = model.sensor_adr[sensor_id]
+        dim = model.sensor_dim[sensor_id]
+        return data.sensordata[start:start+dim]
+
+    def get_sensor_by_name(self, model, data, name):
+        sensor_id = model.sensor_name2id(name)
+        start = model.sensor_adr[sensor_id]
+        dim = model.sensor_dim[sensor_id]
+        return data.sensordata[start:start+dim]
 
     def get_sensor_by_name(self, model, data, name):
         sensor_id = model.sensor_name2id(name)
