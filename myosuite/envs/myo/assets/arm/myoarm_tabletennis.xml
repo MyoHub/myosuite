@@ -85,7 +85,6 @@
         </body>
 
         <body name="pingpong" pos="0.95 0.0 1.252">
-            <inertial pos="0 0 0" mass="2.7e-3" diaginertia="0.00000072 0.00000072 0.00000072"/>
             <freejoint name="pingpong_freejoint"/>
             <site name="pingpong" pos="0 0 0" group="3"/>
             <geom name="pingpong" type="sphere" size=".02" shellinertia="true" fluidcoef="0.235 0.25 0.0 1.0 1.0" group="1" rgba="0.98 0.70 0.015 1" priority="2" solimp="0.9 0.95 0.001 0.5 2" solref="-80000 -1" fluidshape="ellipsoid"/>
