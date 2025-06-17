@@ -45,12 +45,10 @@
     </option>
     
     <worldbody>
-        <!-- Floor geom -->
         <camera name="default" pos="-1.150 -2.332 1.817" xyaxes="0.855 -0.519 0.000 0.125 0.206 0.971"/>
 
         <camera name="close_up" pos="0.578 0.207 1.627" xyaxes="0.225 -0.974 0.000 0.603 0.139 0.785"/>
 
-        <!--geom name="floor" type="plane" size="5 4 0.01" pos="0 0 -0.01" material="floor_mat"/>-->
         <body name="full_body" pos="1.6 0 0.95" euler="0 0 3.14">
             <include file="../../../../simhive/myo_sim/torso/assets/myotorso_arm_chain.xml"/>
             <joint name="pelvis_x" type="slide" axis="1 0 0" damping="10000" range="-1 -0.05"/>
@@ -59,13 +57,15 @@
         </body>
 
         <light name="glow" pos="0 0 1.5" directional="false"  castshadow="true" diffuse="0.7 0.7 0.7" specular="0.5 0.5 0.5" ambient="0.52 0.52 0.52"/>
+        
         <!-- Ping Pong geom -->
+
         <geom name="ping_pong_table" type="mesh" mesh="pingpong_table"
-              material="pingpong_mat" rgba="1 1 1 1"
-              pos="0 0 0" euler="1.57 0 0"/>
+            material="pingpong_mat" rgba="1 1 1 1"
+            pos="0 0 0"/>
         <geom name="ping_pong_net" type="mesh" mesh="pingpong_net_mesh"
-              material="pingpong_mat" rgba="1 1 1 1"
-              pos="0 0 0" euler="1.57 0 0"/>
+            material="pingpong_mat" rgba="1 1 1 1"
+            pos="0 0 0"/>
 
         <!--body name="ping_pong_paddle_free" pos="1 0 1.1" euler="0 0 0">
             <inertial pos="0 0 0" mass="0.1" diaginertia="0.001 0.001 0.001"/>
@@ -78,7 +78,7 @@
 
         <body name="pingpong" pos="0.95 0.0 1.252">
             <inertial pos="0 0 0" mass="2.7e-3" diaginertia="0.00000072 0.00000072 0.00000072"/>
-            <freejoint/>
+            <freejoint name="pingpong_freejoint"/>
             <site name="pingpong" pos="0 0 0" group="3"/>
             <geom name="pingpong" type="sphere" size=".02" shellinertia="false" fluidcoef="0.235 0.25 0.0 1.0 1.0" group="1" rgba="0.98 0.70 0.015 1" solref="-100000 -0" fluidshape="ellipsoid"/>
         </body>
@@ -94,6 +94,11 @@
         <position class="pelvis_move" kp="50" name="pelvis_y" joint="pelvis_y"
                   ctrlrange="-1 1"/>
     </actuator>
+
+    <sensor>
+        <velocimeter name="pingpong_vel_sensor" site="pingpong"/>
+        <velocimeter name="paddle_vel_sensor" site="paddle"/>
+    </sensor>
 
     <keyframe>
         <key name="default" qpos='0 0 0 0 0 0 0 0 0 0 0 -0.0971634 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1368 0.14842 0.70695 -0.7405 -0.343225 0.805495 -0.10284 -0.08288 -0.730422 0.0568 0.1376 0 -0.26182 1.06828 0 0.56556 0.479155 0.87976 0.015708 0.871905 0.51843 0.636255 0 1.24109 0.87976 0.934745 0.05236 0.636255 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.1 0.55 1.252 1 0 0 0'/>
