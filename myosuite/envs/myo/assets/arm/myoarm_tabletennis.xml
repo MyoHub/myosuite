@@ -62,10 +62,10 @@
 
         <geom name="ping_pong_table" type="mesh" mesh="pingpong_table"
             material="pingpong_mat" rgba="1 1 1 1"
-            pos="0 0 0"/>
+            pos="0 0 0" euler="1.57 0 0"/>
         <geom name="ping_pong_net" type="mesh" mesh="pingpong_net_mesh"
             material="pingpong_mat" rgba="1 1 1 1"
-            pos="0 0 0"/>
+            pos="0 0 0" euler="1.57 0 0"/>
 
         <!--body name="ping_pong_paddle_free" pos="1 0 1.1" euler="0 0 0">
             <inertial pos="0 0 0" mass="0.1" diaginertia="0.001 0.001 0.001"/>

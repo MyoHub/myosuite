@@ -35,12 +35,15 @@ class PingPongEnvV0(BaseV0):
     def _setup(self,
             qpos_noise_range = None, # Noise in joint space for initialization
             obs_keys:list = DEFAULT_OBS_KEYS,
+            ball_xyz_range = None,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             **kwargs,
         ):
         self.paddle_sid = self.sim.model.site_name2id("paddle")
-        self.object_sid = self.sim.model.site_name2id("pingpong")
-        self.object_bid = self.sim.model.body_name2id("pingpong")
+        self.ball_sid = self.sim.model.site_name2id("pingpong")
+        self.ball_bid = self.sim.model.body_name2id("pingpong")
+        self.ball_xyz_range = ball_xyz_range
+        self.qpos_noise_range = qpos_noise_range
 
         self.id_info = IdInfo(self.sim.model)
 
@@ -50,6 +53,7 @@ class PingPongEnvV0(BaseV0):
         )
         keyFrame_id = 0
         self.init_qpos[:] = self.sim.model.key_qpos[keyFrame_id].copy()
+        self.init_qvel[:] = 0
 
 
     def get_obs_dict(self, sim):
@@ -59,7 +63,7 @@ class PingPongEnvV0(BaseV0):
         obs_dict['body_qpos'] = sim.data.qpos[self.id_info.myo_joint_range].copy()
         obs_dict['body_qvel'] = sim.data.qvel[self.id_info.myo_dof_range].copy()
 
-        obs_dict["ball_pos"] = sim.data.site_xpos[self.object_sid]
+        obs_dict["ball_pos"] = sim.data.site_xpos[self.ball_sid]
         obs_dict["ball_vel"] = self.get_sensor_by_name(sim.model, sim.data, "pingpong_vel_sensor")
 
         obs_dict["paddle_pos"] = sim.data.site_xpos[self.paddle_sid]
@@ -138,9 +142,8 @@ class PingPongEnvV0(BaseV0):
         #self.sim.model.body_pos[self.object_bid] = self.np_random.uniform(**self.target_xyz_range)
         #self.sim.model.body_quat[self.object_bid] = euler2quat(self.np_random.uniform(**self.target_rxryrz_range))
 
-
-        if self.obj_xyz_range is not None:
-            self.sim.model.body_pos[self.object_bid] = self.np_random.uniform(**self.obj_xyz_range)
+        if self.ball_xyz_range is not None:
+            self.sim.model.body_pos[self.ball_bid] = self.np_random.uniform(**self.ball_xyz_range)
 
         # randomize init arms pose
         if self.qpos_noise_range is not None:
@@ -148,10 +151,9 @@ class PingPongEnvV0(BaseV0):
             reset_qpos_local[-6:] = self.init_qpos[-6:]
         else:
             reset_qpos_local = reset_qpos
-
+            
+        self.init_qpos[:] = self.sim.model.key_qpos[0].copy()
         obs = super().reset(reset_qpos=reset_qpos_local, reset_qvel=reset_qvel,**kwargs)
-        if self.sim.data.ncon>0:
-            self.reset(reset_qpos=reset_qpos, reset_qvel=reset_qvel,**kwargs)
 
         return obs
     
