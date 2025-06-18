@@ -19,7 +19,7 @@ MAX_TIME = 5.0
 
 class PingPongEnvV0(BaseV0):
 
-    DEFAULT_OBS_KEYS = ['pelvis_pos', 'body_qpos', 'body_qvel', 'ball_pos', 'ball_vel', 'paddle_pos', "paddle_vel", 'reach_err']
+    DEFAULT_OBS_KEYS = ['pelvis_pos', 'body_qpos', 'body_qvel', 'ball_pos', 'ball_vel', 'paddle_pos', "paddle_vel", 'reach_err', "touching_info"]
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "reach_dist": -1,
         "act": 1,
@@ -47,8 +47,10 @@ class PingPongEnvV0(BaseV0):
         self.ball_bid = self.sim.model.body_name2id("pingpong")
         self.ball_xyz_range = ball_xyz_range
         self.qpos_noise_range = qpos_noise_range
+        self.contact_trajectory = []
 
         self.id_info = IdInfo(self.sim.model)
+        self.ball_dofadr = self.sim.model.body_dofadr[self.id_info.ball_body_id]
 
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
@@ -56,7 +58,8 @@ class PingPongEnvV0(BaseV0):
         )
         keyFrame_id = 0
         self.init_qpos[:] = self.sim.model.key_qpos[keyFrame_id].copy()
-        self.init_qvel[:] = 0
+        self.start_vel = np.array([[5.5, 1, -2.8] ])
+        self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
 
 
     def get_obs_dict(self, sim):
@@ -76,6 +79,16 @@ class PingPongEnvV0(BaseV0):
 
         obs_dict['reach_err'] = obs_dict['paddle_pos'] - obs_dict['ball_pos']
 
+        this_model = sim.model
+        this_data = sim.data
+
+        touching_objects = set(get_touching_objects(this_model, this_data, self.id_info))
+        self.contact_trajectory.append(touching_objects)
+
+        obs_vec = self._ball_label_to_obs(touching_objects)
+        obs_dict["touching_info"] = obs_vec
+
+
         if sim.model.na>0:
             obs_dict['act'] = sim.data.act[:].copy()
         return obs_dict
@@ -85,6 +98,8 @@ class PingPongEnvV0(BaseV0):
         reach_dist = np.abs(np.linalg.norm(self.obs_dict['reach_err'], axis=-1))
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
         ball_pos = obs_dict["ball_pos"][0][0] if obs_dict['ball_pos'].ndim == 3 else obs_dict['ball_pos']
+        solved = evaluate_pingpong_trajectory(self.contact_trajectory) == None
+        
         rwd_dict = collections.OrderedDict((
             # Perform reward tuning here --
             # Update Optional Keys section below
@@ -95,7 +110,7 @@ class PingPongEnvV0(BaseV0):
             # Must keys
             ('act', -1.*act_mag),
             ('sparse', np.array([[ball_pos[0] < 0]])), #for reaching the other side of the table.
-            ('solved', np.array([[0]])), ### FILL IN THE TOUCH CONDITION FOR THE OTHER END OF TABLE
+            ('solved', np.array([[solved]])),
             ('done', np.array([[self._get_done(ball_pos[-1])]])),
         ))
         rwd_dict['dense'] = np.sum([wt*rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
@@ -110,7 +125,29 @@ class PingPongEnvV0(BaseV0):
             return 1
         elif self.rwd_dict and self.rwd_dict['solved']:
             return 1
+        elif evaluate_pingpong_trajectory(self.contact_trajectory) in [0, 2, 3]:
+            return 1
         return 0
+
+    def _ball_label_to_obs(self, touching_body):
+        # Function to convert touching body set to a binary observation vector
+        # order follows the definition in enum class
+        obs_vec = np.array([0, 0, 0, 0, 0, 0])
+
+        for i in touching_body:
+            if i == PingpongContactLabels.PADDLE:
+                obs_vec[0] += 1
+            elif i == PingpongContactLabels.OWN:
+                obs_vec[1] += 1
+            elif i == PingpongContactLabels.OPPONENT:
+                obs_vec[2] += 1
+            elif i == PingpongContactLabels.NET:
+                obs_vec[3] += 1
+            elif i == PingpongContactLabels.GROUND:
+                obs_vec[4] += 1
+            else: 
+                obs_vec[5] += 1
+        return obs_vec
 
 
     def get_metrics(self, paths, successful_steps=5):
@@ -158,7 +195,8 @@ class PingPongEnvV0(BaseV0):
             reset_qpos_local = reset_qpos
 
         self.init_qpos[:] = self.sim.model.key_qpos[0].copy()
-        obs = super().reset(reset_qpos=reset_qpos_local, reset_qvel=reset_qvel,**kwargs)
+        self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
+        obs = super().reset(reset_qpos=self.init_qpos, reset_qvel=self.init_qvel,**kwargs)
 
         return obs
 
