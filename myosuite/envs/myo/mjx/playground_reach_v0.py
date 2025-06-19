@@ -78,6 +78,12 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         self._mj_model.geom_margin = np.zeros(self._mj_model.geom_margin.shape)
         print(f"All margins set to 0")
 
+        self._mj_model.opt.timestep = self.sim_dt
+        self._mj_model.opt.solver = mujoco.mjtSolver.mjSOL_CG
+        self._mj_model.opt.iterations = 6
+        self._mj_model.opt.ls_iterations = 6
+        self._mj_model.opt.disableflags = self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP
+
         self._mjx_model = mjx.put_model(self._mj_model)
 
         self._xml_path = model_path.as_posix()
@@ -140,7 +146,9 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
 
     def step(self, state: State, action: jp.ndarray) -> State:
         """Runs one timestep of the environment's dynamics."""
-        data = mjx_env.step(self.mjx_model, state.data, action)
+        norm_action = 1.0/(1.0+jp.exp(-5.0*(action-0.5))) 
+
+        data = mjx_env.step(self.mjx_model, state.data, norm_action)
 
         obs, reach_err = self._get_obs(data, state.info)
                 
