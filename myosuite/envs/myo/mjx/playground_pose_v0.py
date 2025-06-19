@@ -79,14 +79,13 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
         print(f"All margins set to 0")
 
         self._mj_model.opt.timestep = self.sim_dt
-
-        self._mjx_model = mjx.put_model(self._mj_model)
-        self._xml_path = model_path.as_posix()
-
         self._mj_model.opt.solver = mujoco.mjtSolver.mjSOL_CG
         self._mj_model.opt.iterations = 6
         self._mj_model.opt.ls_iterations = 6
         self._mj_model.opt.disableflags = self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP
+
+        self._mjx_model = mjx.put_model(self._mj_model)
+        self._xml_path = model_path.as_posix()
 
         self.far_th = far_th
 
@@ -121,7 +120,7 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
 
         data = mjx_env.init(self.mjx_model, qpos=qpos, qvel=qvel, ctrl=jp.zeros((self.mjx_model.nu,)))
 
-        obs = self._get_obs(data, jp.zeros(self.mjx_model.nu), info)
+        obs = self._get_obs(data, info)
         reward, done, zero = jp.zeros(3)
         metrics = {
             'pose_reward': zero,
@@ -133,8 +132,10 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
 
     def step(self, state: State, action: jp.ndarray) -> State:
         """Runs one timestep of the environment's dynamics."""
-        data0 = state.data
-        data = mjx_env.step(self.mjx_model, data0, action)
+
+        norm_action = 1.0/(1.0+jp.exp(-5.0*(action-0.5))) 
+
+        data = mjx_env.step(self.mjx_model, state.data, norm_action)
 
         pose_dist = jp.linalg.norm(state.info['target_angle'] - data.qpos, axis=-1)
         act_mag = jp.linalg.norm(data.act, axis=-1)
@@ -147,7 +148,7 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
                  + jp.where(pose_dist<self._config.reward_config.pose_thd*1.5, 1, 0)) * self._config.reward_config.bonus_weight
         penalty = -1.*(pose_dist>far_th)
 
-        obs = self._get_obs(data, action, state.info)
+        obs = self._get_obs(data, state.info)
         reward = pose + act_reg + bonus + penalty
         done = pose_dist>far_th
 
@@ -163,17 +164,13 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
         )
 
     def _get_obs(
-            self, data: mjx.Data, action: jp.ndarray, info
-    ) -> jp.ndarray:
-        """Observes time, qpos, qvel, act and qpos_err."""
-        position = data.qpos
-
+            self, data: mjx.Data, info) -> jp.ndarray:
+        """Observe qpos, qvel, act and qpos_err."""
         return jp.concatenate([
-            jp.array([data.time]),
-            position,
+            data.qpos,
             data.qvel*self.mjx_model.opt.timestep,
             data.act,
-            info['target_angle']-position
+            info['target_angle']-data.qpos
         ])
 
     # Accessors.
