@@ -7,10 +7,13 @@ Authors  :: Cheryl Wang (cheryl.wang.huiyi@gmail.com), Balint Hodossy (bkh16@ic.
 import collections
 from typing import List
 import enum
+
+from dm_control.mujoco.wrapper import MjModel as dm_MjModel
 import mujoco
 import numpy as np
 from myosuite.utils import gym
 import mujoco
+from scipy.spatial.transform import Rotation as R
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils.quat_math import mat2euler, euler2quat
@@ -31,7 +34,10 @@ class PingPongEnvV0(BaseV0):
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
         # Two step construction (init+setup) is required for pickling to work correctly.
         gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
-        super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
+        preproc_kwargs = {"remove_body_collisions": kwargs.pop("remove_body_collisions", True),
+                          "add_left_arm": kwargs.pop("add_left_arm", True)}
+        model_handle = self._preprocess_spec(model_path, **preproc_kwargs)  # TODO: confirm this doesn't break pickling
+        super().__init__(model_path=model_handle, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
 
 
@@ -43,15 +49,12 @@ class PingPongEnvV0(BaseV0):
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             **kwargs,
         ):
-        self.paddle_sid = self.sim.model.site_name2id("paddle")
-        self.ball_sid = self.sim.model.site_name2id("pingpong")
-        self.ball_bid = self.sim.model.body_name2id("pingpong")
         self.ball_xyz_range = ball_xyz_range
         self.qpos_noise_range = qpos_noise_range
         self.contact_trajectory = []
 
         self.id_info = IdInfo(self.sim.model)
-        self.ball_dofadr = self.sim.model.body_dofadr[self.id_info.ball_body_id]
+        self.ball_dofadr = self.sim.model.body_dofadr[self.id_info.ball_bid]
 
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
@@ -63,7 +66,6 @@ class PingPongEnvV0(BaseV0):
         self.start_vel = np.array([[8.5, 1, 0.1] ]) #np.array([[5.5, 1, -2.8] ])
         self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
 
-
     def get_obs_dict(self, sim):
         obs_dict = {}
         obs_dict['time'] = np.array([sim.data.time])
@@ -73,10 +75,10 @@ class PingPongEnvV0(BaseV0):
         obs_dict['body_qpos'] = sim.data.qpos[self.id_info.myo_joint_range].copy()
         obs_dict['body_qvel'] = sim.data.qvel[self.id_info.myo_dof_range].copy()
 
-        obs_dict["ball_pos"] = sim.data.site_xpos[self.ball_sid]
+        obs_dict["ball_pos"] = sim.data.site_xpos[self.id_info.ball_sid]
         obs_dict["ball_vel"] = self.get_sensor_by_name(sim.model, sim.data, "pingpong_vel_sensor")
 
-        obs_dict["paddle_pos"] = sim.data.site_xpos[self.paddle_sid]
+        obs_dict["paddle_pos"] = sim.data.site_xpos[self.id_info.paddle_sid]
         obs_dict["paddle_vel"] = self.get_sensor_by_name(sim.model, sim.data, "paddle_vel_sensor")
 
         obs_dict['reach_err'] = obs_dict['paddle_pos'] - obs_dict['ball_pos']
@@ -84,7 +86,7 @@ class PingPongEnvV0(BaseV0):
         this_model = sim.model
         this_data = sim.data
 
-        touching_objects = set(get_touching_objects(this_model, this_data, self.id_info))
+        touching_objects = set(get_ball_contact_labels(this_model, this_data, self.id_info))
         self.contact_trajectory.append(touching_objects)
 
         obs_vec = self._ball_label_to_obs(touching_objects)
@@ -101,7 +103,7 @@ class PingPongEnvV0(BaseV0):
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
         ball_pos = obs_dict["ball_pos"][0][0] if obs_dict['ball_pos'].ndim == 3 else obs_dict['ball_pos']
         solved = evaluate_pingpong_trajectory(self.contact_trajectory) == None
-        
+
         rwd_dict = collections.OrderedDict((
             # Perform reward tuning here --
             # Update Optional Keys section below
@@ -147,7 +149,7 @@ class PingPongEnvV0(BaseV0):
                 obs_vec[3] += 1
             elif i == PingpongContactLabels.GROUND:
                 obs_vec[4] += 1
-            else: 
+            else:
                 obs_vec[5] += 1
         return obs_vec
 
@@ -187,7 +189,7 @@ class PingPongEnvV0(BaseV0):
         #self.sim.model.body_quat[self.object_bid] = euler2quat(self.np_random.uniform(**self.target_rxryrz_range))
 
         if self.ball_xyz_range is not None:
-            self.sim.model.body_pos[self.ball_bid] = self.np_random.uniform(**self.ball_xyz_range)
+            self.sim.model.body_pos[self.id_info.ball_bid] = self.np_random.uniform(**self.ball_xyz_range)
 
         # randomize init arms pose
         if self.qpos_noise_range is not None:
@@ -213,16 +215,112 @@ class PingPongEnvV0(BaseV0):
                                                       - self.sim.model.actuator_ctrlrange[robotic_act_ind, 0]) / 2.0)
         return super().step(processed_controls, **kwargs)
 
+    def _preprocess_spec(self,
+                         model_path,
+                         remove_body_collisions=True,
+                         add_left_arm=True):
+        # We'll process the string path to:
+        # - add contralateral limb
+        # - immobilize leg
+        # - optionally alter physics
+        # - we could attach the paddle at this point too
+        # and compile it to a (wrapped) model - the SimScene can now take that as an input
+        spec: mujoco.MjSpec = mujoco.MjSpec.from_file(model_path)
+        temp_model = spec.compile()
+
+        def recursive_immobilize(parent):
+            removed_joint_ids = []
+            for s in parent.sites:
+                s.delete()
+            for j in parent.joints:
+                removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
+                j.delete()
+            for child in parent.bodies:
+                removed_joint_ids.extend(recursive_immobilize(child))
+            return removed_joint_ids
+
+        removed_ids = recursive_immobilize(spec.body("femur_l"))
+        removed_ids.extend(recursive_immobilize(spec.body("femur_r")))
+        for key in spec.keys:
+            key.qpos = [j for i, j in enumerate(key.qpos) if i not in removed_ids]
+
+        def recursive_remove_contacts(parent, return_body_name="radius"):
+            if return_body_name in parent.name:
+                return
+            for g in parent.geoms:
+                g.contype=0
+                g.conaffinity=0
+            for child in parent.bodies:
+                recursive_remove_contacts(child, return_body_name)
+        if remove_body_collisions:
+            recursive_remove_contacts(spec.body("full_body"))
+
+        if add_left_arm:
+            torso = spec.body("torso")
+
+            spec_copy: mujoco.MjSpec = spec.copy()
+            attachment_frame = torso.add_frame(quat=[0.5, 0.5, -0.5, 0.5],
+                                               pos=[0.05, 0.373, -0.04])
+            [k.delete() for k in spec_copy.keys]
+            [t.delete() for t in spec_copy.textures]
+            [m.delete() for m in spec_copy.materials]
+            [t.delete() for t in spec_copy.tendons]
+            [a.delete() for a in spec_copy.actuators]
+            [e.delete() for e in spec_copy.equalities]
+            [s.delete() for s in spec_copy.sensors]
+            [c.delete() for c in spec_copy.cameras]
+            recursive_immobilize(spec_copy.worldbody)
+            recursive_remove_contacts(spec_copy.worldbody, "___")
+
+            meshes_to_mirror = set()
+
+            def recursive_mirror(parent):
+                parent.pos[1] *= -1
+                parent.quat[[1, 3]] *= -1
+                parent.name += "_mirrored"
+                for g in parent.geoms:
+                    if g.type != mujoco.mjtGeom.mjGEOM_MESH:
+                        g.delete()
+                        continue
+                    g.pos[1] *= -1
+                    g.quat[[1, 3]] *= -1
+                    g.name += "_mirrored"
+                    g.group = 5
+                    meshes_to_mirror.add(g.meshname)
+                    g.meshname += "_mirrored"
+                for child in parent.bodies:
+                    if "ping_pong" in child.name:
+                        spec_copy.detach_body(child)
+                        continue
+                    recursive_mirror(child)
+            recursive_mirror(spec_copy.body("clavicle"))
+            for mesh in spec_copy.meshes:
+                if mesh.name in meshes_to_mirror:
+                    mesh.name += "_mirrored"
+                    mesh.scale[1] *= -1
+                else:
+                    mesh.delete()
+
+            attachment_frame.attach_body(spec_copy.body("clavicle_mirrored"))
+            spec.body("ulna_mirrored").quat =[0.546, 0, 0, -0.838]
+            spec.body("humerus_mirrored").quat = [ 0.924, 0.383, 0, 0]
+            pass
+        return dm_MjModel(spec.compile())
+
+
 
 class IdInfo:
     def __init__(self, model: mujoco.MjModel):
-        self.ball_body_id = model.body("pingpong").id
-        self.own_half_id = model.geom("coll_own_half").id
-        self.own_half_id = model.geom("coll_own_half").id
-        self.paddle_id = model.geom("ping_pong_paddle").id
-        self.opponent_half_id = model.geom("coll_opponent_half").id
-        self.ground_id = model.geom("ground").id
-        self.net_id = model.geom("coll_net").id
+        self.paddle_sid = model.site("paddle").id
+        self.ball_sid = model.site("pingpong").id
+        self.ball_bid = model.body("pingpong").id
+
+        self.ball_bid = model.body("pingpong").id
+        self.own_half_gid = model.geom("coll_own_half").id
+        self.paddle_gid = model.geom("ping_pong_paddle").id
+        self.opponent_half_gid = model.geom("coll_opponent_half").id
+        self.ground_gid = model.geom("ground").id
+        self.net_gid = model.geom("coll_net").id
 
         myo_bodies = [model.body(i).id for i in range(model.nbody)
                     if not model.body(i).name.startswith("ping")
@@ -256,24 +354,24 @@ class ContactTrajIssue(enum.Enum):
     DOUBLE_TOUCH = 3
 
 
-def get_touching_objects(model: mujoco.MjModel, data: mujoco.MjData, id_info: IdInfo):
+def get_ball_contact_labels(model: mujoco.MjModel, data: mujoco.MjData, id_info: IdInfo):
     for con in data.contact:
-        if model.geom(con.geom1).bodyid == id_info.ball_body_id:
+        if model.geom(con.geom1).bodyid == id_info.ball_bid:
             yield geom_id_to_label(con.geom2, id_info)
-        elif model.geom(con.geom2).bodyid == id_info.ball_body_id:
+        elif model.geom(con.geom2).bodyid == id_info.ball_bid:
             yield geom_id_to_label(con.geom1, id_info)
 
 
 def geom_id_to_label(body_id, id_info: IdInfo):
-    if body_id == id_info.paddle_id:
+    if body_id == id_info.paddle_gid:
         return PingpongContactLabels.PADDLE
-    elif body_id == id_info.own_half_id:
+    elif body_id == id_info.own_half_gid:
         return PingpongContactLabels.OWN
-    elif body_id == id_info.opponent_half_id:
+    elif body_id == id_info.opponent_half_gid:
         return PingpongContactLabels.OPPONENT
-    elif body_id == id_info.net_id:
+    elif body_id == id_info.net_gid:
         return PingpongContactLabels.NET
-    elif body_id == id_info.ground_id:
+    elif body_id == id_info.ground_gid:
         return PingpongContactLabels.GROUND
     else:
         return PingpongContactLabels.ENV
@@ -301,3 +399,8 @@ def evaluate_pingpong_trajectory(contact_trajectory: List[set]):
     return ContactTrajIssue.MISS
 
 
+if __name__ == '__main__':
+    pingpong_env = PingPongEnvV0(r"../assets/arm/myoarm_tabletennis.xml")
+    from mujoco import viewer
+    viewer.launch(pingpong_env.sim.model._model)
+    pass
