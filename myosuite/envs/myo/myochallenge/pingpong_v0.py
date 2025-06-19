@@ -36,6 +36,7 @@ class PingPongEnvV0(BaseV0):
 
 
     def _setup(self,
+            frame_skip: int = 10,
             qpos_noise_range = None, # Noise in joint space for initialization
             obs_keys:list = DEFAULT_OBS_KEYS,
             ball_xyz_range = None,
@@ -54,11 +55,12 @@ class PingPongEnvV0(BaseV0):
 
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
+                    frame_skip=frame_skip,
                     **kwargs,
         )
         keyFrame_id = 0
         self.init_qpos[:] = self.sim.model.key_qpos[keyFrame_id].copy()
-        self.start_vel = np.array([[5.5, 1, -2.8] ])
+        self.start_vel = np.array([[8.5, 1, 0.1] ]) #np.array([[5.5, 1, -2.8] ])
         self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
 
 
