@@ -285,7 +285,7 @@ class PingPongEnvV0(BaseV0):
                     g.pos[1] *= -1
                     g.quat[[1, 3]] *= -1
                     g.name += "_mirrored"
-                    g.group = 5
+                    g.group = 1
                     meshes_to_mirror.add(g.meshname)
                     g.meshname += "_mirrored"
                 for child in parent.bodies:
@@ -331,11 +331,12 @@ class IdInfo:
 
         self.myo_joint_range = np.concatenate([model.joint(i).qposadr for i in range(model.njnt)
                                             if not model.joint(i).name.startswith("ping")
-                                            and not model.joint(i).name == "pingpong_freejoint"])
+                                            and not model.joint(i).name == "pingpong_freejoint"
+                                            and not model.joint(i).name == "paddle_freejoint"])
 
         self.myo_dof_range = np.concatenate([model.joint(i).dofadr for i in range(model.njnt)
                                             if not model.joint(i).name.startswith("ping")
-                                            and not model.joint(i).name == "pingpong_freejoint"])
+                                            and not model.joint(i).name == "paddle_freejoint"])
 
 
 class PingpongContactLabels(enum.Enum):
