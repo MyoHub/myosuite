@@ -479,7 +479,7 @@ register_env_with_variants(id='myoHandPenTwirlRandom-v0',
 
 register_env_with_variants(id='myoTorsoFixed-v0',
         entry_point='myosuite.envs.myo.myobase.torso_v0:TorsoEnvV0',
-        max_episode_steps=200,
+        max_episode_steps=220,
         kwargs={
             'model_path': curr_dir+'/../../../simhive/myo_sim/torso/myotorso.xml',
             'target_jnt_range': {'flex_extension':(0.0, 0.0),'lat_bending':(-0.1, 0.1),'axial_rotation':(0, 0),
