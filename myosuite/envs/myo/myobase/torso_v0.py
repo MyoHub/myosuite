@@ -3,7 +3,6 @@ from myosuite.utils import gym
 import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
-import mujoco as mj
 
 
 class TorsoEnvV0(BaseV0):
