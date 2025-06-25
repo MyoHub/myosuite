@@ -60,7 +60,7 @@
         <light name="glow" pos="0 0 1.5" directional="false"  castshadow="true" diffuse="0.7 0.7 0.7" specular="0.5 0.5 0.5" ambient="0.52 0.52 0.52"/>
         
         <!-- Ping Pong geom -->
-        <!--body name="pingpong_table">-->
+        <body name="pingpong_table">
             <geom name="coll_own_half" type="box" size="0.685 0.76 0.795" pos="0.685 0.04 0" rgba="0 0 0 0"/>
             <geom name="coll_opponent_half" type="box" size="0.685 0.76 0.795" pos="-0.685 0.04 0" rgba="0 0 0 0"/>
             <geom name="coll_net" type="box" size="0.005 0.9125 0.1525" pos="0 0.04 0.795" rgba="0 0 0 0"/>
@@ -71,7 +71,7 @@
             <geom name="mesh_ping_pong_net" type="mesh" mesh="pingpong_net_mesh"
                 material="pingpong_mat" rgba="1 1 1 1"
                 pos="0 0 0" euler="1.57 0 0" contype="0" conaffinity="0"/>
-        <!--/body>-->
+        </body>
 
         <body name="ping_pong_paddle" pos="1.8 0.5 1.13" euler="-0.3 1.57 0">
             <inertial pos="0 0 0" mass="0.15" diaginertia="0.001 0.001 0.001"/>
