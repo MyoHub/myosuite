@@ -41,7 +41,7 @@
   <worldbody>
     <light directional="true" diffuse=".5 .5 .5" specular="0.25 0.25 0.25" pos="0 -3 3" dir="0 1 -1" mode="fixed" castshadow="false"/>
     <camera name="topview" pos="0 -10.5 10" euler="+0.8 0 0" mode="fixed"/>
-    <geom name="ground" type="plane" size="1.5 15 0.1" material="groundfloor"/>
+    <geom name="ground" type="plane" size="1.5 60 0.1" material="groundfloor"/>
     <geom type="mesh" mesh="logo" material="matlogo" group="2" conaffinity="0" contype="0" euler="1.57 0 0" pos="0 6.95 2.1"/>
   </worldbody>
 </mujoco>

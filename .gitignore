@@ -122,3 +122,5 @@ tags
 osl.csv
 osl.log
 /workspace
+
+*processed.xml

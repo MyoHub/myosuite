@@ -33,34 +33,57 @@ def register_env_with_variants(id, entry_point, max_episode_steps, kwargs):
 
 register_env_with_variants(id='myoChallengeBimanual-v0',
         entry_point='myosuite.envs.myo.myochallenge.bimanual_v0:BimanualEnvV1',
-        max_episode_steps=250,
+        max_episode_steps=1000,
         kwargs={
             'model_path': curr_dir + '/../assets/arm/myoarm_bionic_bimanual.xml',
             'normalize_act': True,
             'frame_skip': 5,
+            'obj_scale_change': [0.1, 0.05, 0.1],  # 10%, 5%, 10% scale variations in respective geom directions
+            'obj_mass_change': (-0.050, 0.050),  # +-50gms
+            'obj_friction_change': (0.1, 0.001, 0.00002)  # nominal: 1.0, 0.005, 0.0001
         }
     )
 
+
 # MyoChallenge 2024 envs ==============================================
-register_env_with_variants(id='myoChallengeRunTrackP1-v0',
+register_env_with_variants(id='myoChallengeOslRunFixed-v0',
         entry_point='myosuite.envs.myo.myochallenge.run_track_v0:RunTrack',
         max_episode_steps=1000,
         kwargs={
             'model_path': curr_dir+'/../assets/leg/myoosl_runtrack.xml',
             'normalize_act': True,
             'reset_type': 'random',  # none, init, random, osl_init
-            'terrain': 'random',  # FLAT, random
+            'terrain': 'flat',  # flat, random, random_mixed
             'hills_difficulties': (0.0, 0.1, 0.0, 0.5, 0.0, 0.8, 0.0, 1.0),
             'rough_difficulties': (0.0, 0.1, 0.0, 0.15, 0.0, 0.2, 0.0, 0.3),
             'stairs_difficulties': (0.0, 0.05, 0.0, 0.1, 0.0, 0.2, 0.0, 0.3),
-            'distance_thr': 15,
+            'end_pos': -15,
             'frame_skip': 5,
-            'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv'
-            
+            'start_pos': 14,
+            'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv',
+            'max_episode_steps': 1000
         }
     )
 
 
+register_env_with_variants(id='myoChallengeOslRunRandom-v0',
+        entry_point='myosuite.envs.myo.myochallenge.run_track_v0:RunTrack',
+        max_episode_steps=60000,
+        kwargs={
+            'model_path': curr_dir+'/../assets/leg/myoosl_runtrack.xml',
+            'normalize_act': True,
+            'reset_type': 'random',  # none, init, random, osl_init
+            'terrain': 'random',  # flat, random, random_mixed
+            'hills_difficulties': (0.0, 0.0, 0.0, 0.0, 0.0, 0.03, 0.0, 0.06, 0.0, 0.09, 0.0, 0.12, 0.0, 0.15, 0.0, 0.18, 0.0, 0.21, 0.0, 0.24, 0.0, 0.0, 0.0, 0.0),
+            'rough_difficulties': (0.0, 0.0, 0.0, 0.0, 0.0, 0.03, 0.0, 0.06, 0.0, 0.09, 0.0, 0.12, 0.0, 0.15, 0.0, 0.18, 0.0, 0.21, 0.0, 0.24, 0.0, 0.0, 0.0, 0.0),
+            'stairs_difficulties': (0.0, 0.0, 0.0, 0.0, 0.0, 0.03, 0.0, 0.06, 0.0, 0.09, 0.0, 0.12, 0.0, 0.15, 0.0, 0.18, 0.0, 0.21, 0.0, 0.24, 0.0, 0.0, 0.0, 0.0),
+            'end_pos': -45, # -35
+            'frame_skip': 5, # 5
+            'start_pos': 58, # 32
+            'init_pose_path': curr_dir+'/../assets/leg/sample_gait_cycle.csv',
+            'max_episode_steps':60000 # Duplicate this in the environment itself
+        }
+    )
 
 # MyoChallenge 2023 envs ==============================================
 # MyoChallenge Manipulation P1

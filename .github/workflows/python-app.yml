@@ -82,7 +82,7 @@ jobs:
 #       if: ${{ runner.os == 'macOS' }}
 #       run: |
 #         brew install --cask xquartz
-#         brew install hdf5        
+#         brew install hdf5
 #         export CPATH="/opt/homebrew/include/"
 #         export HDF5_DIR=/opt/homebrew/
 #         pip3 install h5py --only-binary h5py
@@ -97,9 +97,13 @@ jobs:
       if: ${{ runner.os == 'Linux' }}
       run: python3 -m mujoco.render_test
 
-    - name: Run Test environment
+    - name: Test myoapi
       run: |
         conda activate $CONDA_DEFAULT_ENV
+        python3 -m myosuite.tests.test_myoapi
+
+    - name: Run Test environment
+      run: |
         python3 -m myosuite.tests.test_myo
 
     - name: Install ffmpeg
