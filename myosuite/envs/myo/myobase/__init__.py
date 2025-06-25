@@ -493,7 +493,7 @@ register_env_with_variants(id='myoTorsoFixed-v0',
         }
     )
 
-'''
+
 register_env_with_variants(id='myoTorsoExoFixed-v0',
         entry_point='myosuite.envs.myo.myobase.torso_v0:TorsoEnvV0',
         max_episode_steps=200,
@@ -509,7 +509,7 @@ register_env_with_variants(id='myoTorsoExoFixed-v0',
             'frame_skip': 5,
         }
     )
-'''
+
 
 # SAR REORIENT: 8-object ==============================
 register_env_with_variants(id='myoHandReorient8-v0',
