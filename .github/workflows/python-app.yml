@@ -4,7 +4,7 @@ name: Python application
 
 on:
   push:
-    branches: [ "main" , "dev"]
+    branches: [ "main" , "dev", "temp"]
     paths-ignore:
       - "docs/**"
       - "**/README.md"
