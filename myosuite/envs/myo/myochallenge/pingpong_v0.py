@@ -63,7 +63,7 @@ class PingPongEnvV0(BaseV0):
         )
         keyFrame_id = 0
         self.init_qpos[:] = self.sim.model.key_qpos[keyFrame_id].copy()
-        self.start_vel = np.array([[8.5, 1, 0.1] ]) #np.array([[5.5, 1, -2.8] ])
+        self.start_vel = np.array([[5.6, 1.6, 0.1] ]) #np.array([[5.5, 1, -2.8] ])
         self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
 
     def get_obs_dict(self, sim):
@@ -226,6 +226,9 @@ class PingPongEnvV0(BaseV0):
         # - we could attach the paddle at this point too
         # and compile it to a (wrapped) model - the SimScene can now take that as an input
         spec: mujoco.MjSpec = mujoco.MjSpec.from_file(model_path)
+        for paddle_b in spec.bodies:
+            if "paddle" in paddle_b.name and paddle_b.parent != spec.worldbody:
+                spec.detach_body(paddle_b)
         temp_model = spec.compile()
 
         def recursive_immobilize(parent):
@@ -241,6 +244,8 @@ class PingPongEnvV0(BaseV0):
 
         removed_ids = recursive_immobilize(spec.body("femur_l"))
         removed_ids.extend(recursive_immobilize(spec.body("femur_r")))
+
+
         for key in spec.keys:
             key.qpos = [j for i, j in enumerate(key.qpos) if i not in removed_ids]
 
@@ -403,5 +408,6 @@ def evaluate_pingpong_trajectory(contact_trajectory: List[set]):
 if __name__ == '__main__':
     pingpong_env = PingPongEnvV0(r"../assets/arm/myoarm_tabletennis.xml")
     from mujoco import viewer
-    viewer.launch(pingpong_env.sim.model._model)
+    pingpong_env.reset()
+    viewer.launch(pingpong_env.sim.model._model, pingpong_env.sim.data._data)
     pass

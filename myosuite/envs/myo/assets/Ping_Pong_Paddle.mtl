@@ -1,7 +1,7 @@
-# Blender 4.4.1 MTL File: 'Ping_Pong_Paddle.blend'
+# Blender 4.0.2 MTL File: 'None'
 # www.blender.org
 
-newmtl paddle
+newmtl paddle.001
 Ns 250.000000
 Ka 1.000000 1.000000 1.000000
 Ks 0.500000 0.500000 0.500000

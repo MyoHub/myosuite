@@ -59,7 +59,7 @@
         <light name="glow" pos="0 0 1.5" directional="false"  castshadow="true" diffuse="0.7 0.7 0.7" specular="0.5 0.5 0.5" ambient="0.52 0.52 0.52"/>
         
         <!-- Ping Pong geom -->
-        <!--body name="pingpong_table">-->
+        <body name="pingpong_table">
             <geom name="coll_own_half" type="box" size="0.685 0.76 0.795" pos="0.685 0.04 0" rgba="0 0 0 0"/>
             <geom name="coll_opponent_half" type="box" size="0.685 0.76 0.795" pos="-0.685 0.04 0" rgba="0 0 0 0"/>
             <geom name="coll_net" type="box" size="0.005 0.9125 0.1525" pos="0 0.04 0.795" rgba="0 0 0 0"/>
@@ -70,7 +70,7 @@
             <geom name="mesh_ping_pong_net" type="mesh" mesh="pingpong_net_mesh"
                 material="pingpong_mat" rgba="1 1 1 1"
                 pos="0 0 0" euler="1.57 0 0" contype="0" conaffinity="0"/>
-        <!--/body>-->
+        </body>
 
         <body name="ping_pong_paddle" pos="1.8 0.5 1.13" euler="-0.3 1.57 0">
             <inertial pos="0 0 0" mass="0.1" diaginertia="0.001 0.001 0.001"/>
@@ -87,7 +87,7 @@
             <inertial pos="0 0 0" mass="2.7e-3" diaginertia="0.00000072 0.00000072 0.00000072"/>
             <freejoint name="pingpong_freejoint"/>
             <site name="pingpong" pos="0 0 0" group="3"/>
-            <geom name="pingpong" type="sphere" size=".02" shellinertia="true" fluidcoef="0.235 0.25 0.0 1.0 1.0" group="1" rgba="0.98 0.70 0.015 1" priority="2" solimp="0.9 0.95 0.001 0.5 2" solref="-100000 -1" fluidshape="ellipsoid"/>
+            <geom name="pingpong" type="sphere" size=".02" shellinertia="true" fluidcoef="0.235 0.25 0.0 1.0 1.0" group="1" rgba="0.98 0.70 0.015 1" priority="2" solimp="0.9 0.95 0.001 0.5 2" solref="-80000 -1" fluidshape="ellipsoid"/>
         </body>
 
         <!-- Spotlights -->
@@ -108,7 +108,8 @@
     </sensor>
 
     <keyframe>
-        <key name="default" qpos='-0.4205 0 0 0 0 0 0 0 0 0 0 -0.0971634 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1368 0.14842 0.70695 -0.7405 -0.343225 0.805495 -0.10284 -0.08288 -0.730422 0.0632 0.7 0.07503 -0.296726 0.72266 -0.136136 0.26707 0.353475 0.65982 -0.151844 0.42417 0.51843 0.919035 -0.20944 0.259215 0.510575 0.793355 -0.204204 0.227795 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.91 0.65 1.18 0.699445 -0.105711 0.698888 -0.105627 1.05 0.5 1.252 1 0 0 0'/>
+        <key name="default"
+             qpos='-0.4205 0 0 0 0 0 0 0 0 0 0 -0.0971634 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1368 0.14842 0.70695 -0.7405 -0.343225 0.805495 -0.10284 -0.08288 -0.730422 0.0632 0.7 0.07503 -0.296726 0.72266 -0.136136 0.26707 0.353475 0.65982 -0.151844 0.42417 0.51843 0.919035 -0.20944 0.259215 0.510575 0.793355 -0.204204 0.227795 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.91 0.65 1.18 0.699445 -0.105711 0.698888 -0.105627 -1.25 -0.5 1.2 1 0 0 0'/>
         <key name="dribble" qpos='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.0375 0.00159 -0.21783 0.2625 -0.106 0.7982 0.37812 -0.0276 -0.19034 0.00608 0.18769 0.36133 -1.072 0.81125 0.533215 -1.4139 -0.018746 0.322014 0.1528 0.0636 -0.7854 0.174505 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.2 0.3 1.03 1 0 0 0 1.05 0.3 1.282 1 0 0  0'/>
     </keyframe>
 
