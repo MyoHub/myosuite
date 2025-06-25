@@ -41,7 +41,7 @@
             <light directional="false" diffuse=".25 .25 .25" specular="0.25 0.25 0.25" pos="3 0 2" dir="-1 0 -1" mode="trackcom"/>
             <camera name="agent_view" pos="4 0 1.85" xyaxes="0 1 0 -1 0 2" mode="trackcom"/>
             <site name="head" size="0.02" pos="0 0 1.80" group="4"/>
-            <include file="../../../../simhive/myo_sim/torso/assets/myotorsorigid_chain.xml"/>
+            <include file="../../../../simhive/myo_sim/torso/assets/myotorso_rigid_chain.xml"/>
             <include file="../../../../simhive/myo_sim/leg/assets/myolegs_chain.xml"/>
             <freejoint name="root"/>
         </body>
