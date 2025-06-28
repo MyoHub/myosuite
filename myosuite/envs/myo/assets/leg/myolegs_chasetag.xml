@@ -9,6 +9,8 @@
 ====================================================== -©vk©-->
 
     <include file="../../../../simhive/myo_sim/torso/assets/myotorso_rigid_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_tendon.xml"/>
+    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_muscle.xml"/>
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_tendon.xml"/>
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_muscle.xml"/>
