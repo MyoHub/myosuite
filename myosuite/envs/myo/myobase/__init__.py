@@ -477,7 +477,7 @@ register_env_with_variants(id='myoHandPenTwirlRandom-v0',
 
 ##### MyoTorso Env
 
-register_env_with_variants(id='myoTorsoReachFixed-v0',
+register_env_with_variants(id='myoTorsoPoseFixed-v0',
         entry_point='myosuite.envs.myo.myobase.torso_v0:TorsoEnvV0',
         max_episode_steps=220,
         kwargs={
@@ -494,7 +494,7 @@ register_env_with_variants(id='myoTorsoReachFixed-v0',
     )
 
 
-register_env_with_variants(id='myoTorsoExoReachFixed-v0',
+register_env_with_variants(id='myoTorsoExoPoseFixed-v0',
         entry_point='myosuite.envs.myo.myobase.torso_v0:TorsoEnvV0',
         max_episode_steps=200,
         kwargs={
