@@ -39,7 +39,7 @@
         </default>
     </default>
 
-    <compiler autolimits = "true" inertiafromgeom="auto" angle="radian" balanceinertia="true" boundmass="0.001" boundinertia=".0001" />
+    <compiler autolimits="true" inertiafromgeom="auto" angle="radian" balanceinertia="true" boundmass="0.001" boundinertia=".0001"/>
     <option timestep="0.002">
         <flag multiccd="enable"/>
     </option>
