@@ -511,7 +511,7 @@ register_env_with_variants(id='myoTorsoExoPoseFixed-v0',
     )
 
 
-register_env_with_variants(id='myoTorsoExoReachFixed-v0',
+register_env_with_variants(id='myoTorsoExoPoseFixed-v0',
         entry_point='myosuite.envs.myo.myobase.torso_v0:TorsoEnvV0',
         max_episode_steps=200,
         kwargs={
