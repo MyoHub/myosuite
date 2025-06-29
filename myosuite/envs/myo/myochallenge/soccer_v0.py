@@ -10,6 +10,8 @@ import os
 from enum import Enum
 from typing import Optional, Tuple
 
+import pink
+
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils.quat_math import quat2euler, euler2mat, euler2quat
