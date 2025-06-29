@@ -51,7 +51,7 @@
         <camera name="close_up" pos="-0.046 0.179 1.462" xyaxes="0.036 -0.999 -0.000 0.121 0.004 0.993"/>
 
         <body name="full_body" pos="1.6 0 0.95" euler="0 0 3.14">
-            <include file="../../../../simhive/myo_sim/torso/assets/myotorso_arm_chain.xml"/>
+            <include file="./pingpong_assets/myotorso_arm_chain.xml"/>
             <joint name="pelvis_x" type="slide" axis="1 0 0" damping="10000" range="-1 -0.05"/>
             <joint name="pelvis_y" type="slide" axis="0 1 0" damping="10000" range="-1 1"/>
             <include file="../../../../simhive/myo_sim/leg/assets/myolegs_chain.xml"/>
