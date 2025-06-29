@@ -65,7 +65,6 @@ class TorsoEnvV0(BaseV0):
                 sites=viz_site_targets,
                 **kwargs,
                 )
-        self.init_qpos = self.sim.model.key_qpos[0]
 
     def get_obs_vec(self):
         self.obs_dict['time'] = np.array([self.sim.data.time])
