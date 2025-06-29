@@ -1,5 +1,5 @@
 <mujoco model="ping_pong_paddle">
-    <include file="../../../../simhive/myo_sim/torso/assets/myotorso_arm_assets.xml"/>
+    <include file="./pingpong_assets/myotorso_arm_assets.xml"/>
     <include file="../../../../simhive/myo_sim/arm/assets/myoarm_assets.xml"/>
     <include file="../../../../simhive/myo_sim/scene/myosuite_quad.xml"/>
     <compiler angle="radian" meshdir='../../../../simhive/myo_sim' texturedir='../../../../simhive/myo_sim/'/>
@@ -50,7 +50,7 @@
         <camera name="close_up" pos="-0.046 0.179 1.462" xyaxes="0.036 -0.999 -0.000 0.121 0.004 0.993"/>
 
         <body name="full_body" pos="1.6 0 0.95" euler="0 0 3.14">
-            <include file="../../../../simhive/myo_sim/torso/assets/myotorso_arm_chain.xml"/>
+            <include file="./pingpong_assets/myotorso_arm_chain.xml"/>
             <joint name="pelvis_x" type="slide" axis="1 0 0" damping="10000" range="-1 -0.05"/>
             <joint name="pelvis_y" type="slide" axis="0 1 0" damping="10000" range="-1 1"/>
             <include file="../../../../simhive/myo_sim/leg/assets/myolegs_chain.xml"/>
@@ -90,9 +90,6 @@
             <geom name="pingpong" type="sphere" size=".02" shellinertia="true" fluidcoef="0.235 0.25 0.0 1.0 1.0" group="1" rgba="0.98 0.70 0.015 1" priority="2" solimp="0.9 0.95 0.001 0.5 2" solref="-80000 -1" fluidshape="ellipsoid"/>
         </body>
 
-        <!-- Spotlights -->
-        <!--light name="spotlight1" pos="1 1 3" dir="-1 -1 -3" cutoff="30" exponent="5" castshadow="true"/>
-        <light name="spotlight2" pos="-1 -1 3" dir="1 1 -3" cutoff="30" exponent="5" castshadow="true"/>-->
     </worldbody>
 
     <actuator>

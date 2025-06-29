@@ -12,8 +12,6 @@
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_tendon.xml"/>
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_muscle.xml"/>
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_tendon.xml"/>
-    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_muscle.xml"/>
     <include file="../../../../simhive/myo_sim/scene/myosuite_quad.xml"/>
     <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
 
