@@ -484,7 +484,8 @@
                 <site name="MF_m1.laminar_l_MF_m1.laminar_l-P2" pos="-0.0341019 -0.00560525 -0.00619"/>
                 <body name="torso" pos="-0.018 -0.085 0" euler="0 0 -0.33">
                   <inertial pos="0.0046 0.246 0" mass="18.619" diaginertia="0.165 0.15 0.125"/>
-                  <body name="head_attach" pos="-0.005 -0.01 0">
+				  <body name="head_attach" pos="-0.005 -0.01 0">
+					<site name="head" pos="0 0.65 0" group="4" class="myo_leg_marker"/>
                     <include file="soccer_assets/myohead_rigid_chain.xml"/>
                   </body>
                   <geom name="torso_geom_1" pos="-0.019 0.121 0" quat="0.980067 0 0 0.198669" type="mesh"  mesh="torso_geom_1_thoracic12_s"/>

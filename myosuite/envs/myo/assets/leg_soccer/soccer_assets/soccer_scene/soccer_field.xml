@@ -4,14 +4,14 @@
     <compiler angle="radian" meshdir=".." texturedir=".."/>
 
     <asset>
-        <mesh name="soccer_pitch_mesh" file="scene/SoccerPitch_field.obj" />
-        <texture name="soccer_pitch_tex" type="2d" file="scene/SoccerPitch.png"/>
+        <!-- <mesh name="soccer_pitch_mesh" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch_field.obj" /> -->
+        <texture name="soccer_pitch_tex" type="2d" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch.png"/>
         <material name="soccer_pitch_mat" texture="soccer_pitch_tex" specular="0.5" shininess="0.5" reflectance="0.0"/>
         
-        <mesh name="goal_mesh_top" file="scene/SoccerPitch_goal_top.obj" />
-        <mesh name="goal_mesh_back" file="scene/SoccerPitch_goal_back.obj" />
-        <mesh name="goal_mesh_right" file="scene/SoccerPitch_goal_right.obj" />
-        <mesh name="goal_mesh_left" file="scene/SoccerPitch_goal_left.obj" />
+        <mesh name="goal_mesh_top" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch_goal_top.obj" />
+        <mesh name="goal_mesh_back" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch_goal_back.obj" />
+        <mesh name="goal_mesh_right" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch_goal_right.obj" />
+        <mesh name="goal_mesh_left" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch_goal_left.obj" />
         
         <material name="goal_material" rgba="1 1 1 1" specular="0.2" shininess="0.3"/>
     </asset>
