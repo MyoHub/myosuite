@@ -241,6 +241,9 @@ class PingPongEnvV0(BaseV0):
         for paddle_b in spec.bodies:
             if "paddle" in paddle_b.name and paddle_b.parent != spec.worldbody:
                 spec.detach_body(paddle_b)
+        for s in spec.sensors:
+            if "pingpong" not in s.name and "paddle" not in s.name:
+                s.delete()
         temp_model = spec.compile()
 
         def recursive_immobilize(parent):
@@ -249,6 +252,12 @@ class PingPongEnvV0(BaseV0):
                 s.delete()
             for j in parent.joints:
                 removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
+                for e in spec.equalities:
+                    if e.type == mujoco.mjtEq.mjEQ_JOINT and e.name1 == j.name or e.name2 == j.name:
+                        e.delete()
+                for a in spec.actuators:
+                    if a.trntype == mujoco.mjtTrn.mjTRN_JOINT and a.target == j.name:
+                        a.delete()
                 j.delete()
             for child in parent.bodies:
                 removed_joint_ids.extend(recursive_immobilize(child))
