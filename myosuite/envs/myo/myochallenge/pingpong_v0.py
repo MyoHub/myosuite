@@ -117,7 +117,9 @@ class PingPongEnvV0(BaseV0):
             ('solved', np.array([[solved]])),
             ('done', np.array([[self._get_done(ball_pos[-1])]])),
         ))
-        rwd_dict['dense'] = np.sum([wt*rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
+        rwd_dict['dense'] = sum(float(wt) * float(np.array(rwd_dict[key]).squeeze())
+                            for key, wt in self.rwd_keys_wt.items()
+                                )
 
         return rwd_dict
 
