@@ -82,7 +82,7 @@ class TorsoEnvV0(BaseV0):
         obs_dict['qpos'] = sim.data.qpos[:].copy()
         obs_dict['qvel'] = sim.data.qvel[:].copy()*self.dt
         obs_dict['act'] = sim.data.act[:].copy() if sim.model.na>0 else np.zeros_like(obs_dict['qpos'])
-        obs_dict['pose_err'] = self.target_jnt_value - obs_dict['qpos'][:21]
+        obs_dict['pose_err'] = self.target_jnt_value - obs_dict['qpos'][:18]
         return obs_dict
 
     def get_reward_dict(self, obs_dict):
