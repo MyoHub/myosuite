@@ -246,25 +246,27 @@ class PingPongEnvV0(BaseV0):
                 s.delete()
         temp_model = spec.compile()
 
-        def recursive_immobilize(parent):
+        def recursive_immobilize(parent, remove_eqs=False, remove_actuators=False):
             removed_joint_ids = []
             for s in parent.sites:
                 s.delete()
             for j in parent.joints:
                 removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
-                for e in spec.equalities:
-                    if e.type == mujoco.mjtEq.mjEQ_JOINT and e.name1 == j.name or e.name2 == j.name:
-                        e.delete()
-                for a in spec.actuators:
-                    if a.trntype == mujoco.mjtTrn.mjTRN_JOINT and a.target == j.name:
-                        a.delete()
+                if remove_eqs:
+                    for e in spec.equalities:
+                        if e.type == mujoco.mjtEq.mjEQ_JOINT and (e.name1 == j.name or e.name2 == j.name):
+                            e.delete()
+                if remove_actuators:
+                    for a in spec.actuators:
+                        if a.trntype == mujoco.mjtTrn.mjTRN_JOINT and a.target == j.name:
+                            a.delete()
                 j.delete()
             for child in parent.bodies:
-                removed_joint_ids.extend(recursive_immobilize(child))
+                removed_joint_ids.extend(recursive_immobilize(child, remove_eqs, remove_actuators))
             return removed_joint_ids
 
-        removed_ids = recursive_immobilize(spec.body("femur_l"))
-        removed_ids.extend(recursive_immobilize(spec.body("femur_r")))
+        removed_ids = recursive_immobilize(spec.body("femur_l"), remove_eqs=True)
+        removed_ids.extend(recursive_immobilize(spec.body("femur_r"), remove_eqs=True))
 
 
         for key in spec.keys:
