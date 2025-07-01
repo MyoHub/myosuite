@@ -1,77 +1,22 @@
 from typing import Any, Dict, Optional, Union
-
-from etils import epath
 import jax
 import jax.numpy as jp
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
 from mujoco_playground import State
-
 from mujoco_playground._src import mjx_env  # Several helper functions are only visible under _src
-
 import numpy as np
-
-def default_config() -> config_dict.ConfigDict:
-    env_config = config_dict.create(
-        ctrl_dt=0.02,
-        sim_dt=0.002,
-        episode_length=100,
-        action_repeat=1,
-        action_scale=0.5,
-        history_len=1,
-        healthy_angle_range=(0, 2.1),
-        noise_config=config_dict.create(
-            reset_noise_scale=1e-1,
-        ),
-        reward_weights=config_dict.create(
-            reach=1.,
-            bonus=4.,
-            penalty=50.,
-        ),
-        target_reach_range=config_dict.ConfigDict(),
-        near_th=0.05,
-        far_th=0.35
-    )
-
-    rl_config = config_dict.create(
-        num_timesteps=40_000_000,
-        num_evals=16,
-        reward_scaling=0.1,
-        episode_length=env_config.episode_length,
-        clipping_epsilon=0.3,
-        normalize_observations=True,
-        action_repeat=1,
-        unroll_length=10,
-        num_minibatches=32,
-        num_updates_per_batch=8,
-        num_resets_per_eval=1,
-        discounting=0.97,
-        learning_rate=3e-4,
-        entropy_cost=0.001,
-        num_envs=8192,
-        batch_size=512,
-        max_grad_norm=1.0,
-        network_factory=config_dict.create(
-            policy_hidden_layer_sizes=(50, 50, 50),
-            value_hidden_layer_sizes=(50, 50, 50),
-            policy_obs_key="state",
-            value_obs_key="state",
-        )
-    )
-    env_config["ppo_config"] = rl_config
-    return env_config
 
 class MjxReachEnvV0(mjx_env.MjxEnv):
     def __init__(
             self,
-            model_path,
-            config: config_dict.ConfigDict = default_config(),
+            config: config_dict.ConfigDict,
             config_overrides: Optional[Dict[str, Union[str, int, list[Any]]]] = None,
     ) -> None:
         super().__init__(config, config_overrides)
 
-        spec = mujoco.MjSpec.from_file(model_path.as_posix())
+        spec = mujoco.MjSpec.from_file(config.model_path.as_posix())
         spec = self.preprocess_spec(spec)
         self._mj_model = spec.compile()
 
@@ -85,8 +30,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         self._mj_model.opt.disableflags = self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP
 
         self._mjx_model = mjx.put_model(self._mj_model)
-
-        self._xml_path = model_path.as_posix()
+        self._xml_path = config.model_path.as_posix()
 
         self._tip_sids = []
         for site in self._config.target_reach_range.keys():
@@ -146,6 +90,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
 
     def step(self, state: State, action: jp.ndarray) -> State:
         """Runs one timestep of the environment's dynamics."""
+        
         norm_action = 1.0/(1.0+jp.exp(-5.0*(action-0.5))) 
 
         data = mjx_env.step(self.mjx_model, state.data, norm_action)
