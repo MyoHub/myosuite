@@ -46,11 +46,11 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
         targets = []
         for span in self._config.target_jnt_range.values():
             targets.append(jax.random.uniform(
-                rng, (len(span[0]),),
+                rng, (span[0].size,),
                 minval=span[0],
                 maxval=span[1]
             ))
-        return jp.stack(targets)
+        return jp.hstack(targets)
 
     def reset(self, rng: jp.ndarray) -> State:
         """Resets the environment to an initial state."""
