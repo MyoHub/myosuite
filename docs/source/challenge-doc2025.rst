@@ -101,21 +101,21 @@ Observation Space
 
 **Object Properties**
 
-    Ping Pong Table:
-    - Table top:
-        Total: 1.37 x 1.52 x 1.59 m^3
-        Per side (agent/opponent): 0.685 x 0.76 x 0.795 m^3
-    - Net dimensions: 0.005 x 0.9125 x 0.1525 m^3
+Ping Pong Table:
+- Table top:
+    Total: 1.37 x 1.52 x 1.59 m^3
+    Per side (agent/opponent): 0.685 x 0.76 x 0.795 m^3
+- Net dimensions: 0.005 x 0.9125 x 0.1525 m^3
 
-    Paddle:
-    - Handle: radius = 0.016m, height = 0.051 m
-    - Face: radius = 0.093m, height = 0.020 m
-    - Mass: 100 g 
+Paddle:
+- Handle: radius = 0.016m, height = 0.051 m
+- Face: radius = 0.093m, height = 0.020 m
+- Mass: 100 g
 
-    Ball:
-    - Radius: 0.02m
-    - Mass: 2.7 g
-    - Inertia: 7.2e-7 kgm^2
+Ball:
+- Radius: 0.02m
+- Mass: 2.7 g
+- Inertia: 7.2e-7 kgm^2
 
 
 
@@ -129,16 +129,16 @@ Starting Criteria: Phase 1
 Success Criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    - The ball is hit by the paddle once and only once
-    - The ball does not have contact with the agent's side of the table
-    - The ball hits the opponent's side of the table
+- The ball is hit by the paddle once and only once
+- The ball does not have contact with the agent's side of the table
+- The ball hits the opponent's side of the table
 
 
 Ranking Criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    1. Success rate (of hitting the ball) (successful_attempts / total_attempts)
-    2. Effort: based on muscle activation energy
+1. Success rate (of hitting the ball) (successful_attempts / total_attempts)
+2. Effort: based on muscle activation energy
 
 
 
