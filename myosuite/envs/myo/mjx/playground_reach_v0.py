@@ -49,7 +49,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         targets = []
         for span in self._config.target_reach_range.values():
             targets.append(jax.random.uniform(
-                rng, (len(span[0]),),
+                rng, (span[0].size,),
                 minval=span[0],
                 maxval=span[1]
             ))
