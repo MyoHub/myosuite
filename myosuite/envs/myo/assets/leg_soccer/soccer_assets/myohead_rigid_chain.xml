@@ -1,0 +1,27 @@
+<mujocoinclude model="MyoHeadSimple">
+<!-- =================================================
+    Copyright 2025 Vikash Kumar, Vittorio Caggiano
+    Model	:: MyoHead (MuJoCoV3.2.4)
+    Author	:: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano
+    source	:: https://github.com/MyoHub/myosuite
+    License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+
+    <body name="neck" pos="0 0 0" childclass="myohead">
+        <!-- <joint name="neck_rotation" pos="-.02 .4 0" axis=".2 1 0" type="hinge" range="-1.4 1.4"/> -->
+
+        <geom mesh="hat_cervical" name="hat_cervical" type="mesh"/>
+        <geom class="myohead_coll" name="hat_cervical_coll" type="capsule" size="0.05 0.04" pos="-.02 .450 0" euler="1.57 -.2 0"/>
+
+        <body name="head" pos="0 0.5 0">
+            <!-- <joint name="neck_flexion" axis="0 0 1" type="hinge" range="-.87 1.05"/> -->
+
+            <geom mesh="hat_jaw" name="hat_jaw" type="mesh" pos="0 -.5 0"/>
+            <geom class="myohead_coll" name="hat_jaw_coll2" type="ellipsoid" size="0.07 0.12 0.065" pos=".025 .045 0" euler="0 0 .7"/>
+
+            <geom mesh="hat_skull" name="hat_skull" type="mesh" pos="0 -.5 0"/>
+            <geom class="myohead_coll" name="hat_skull_coll" type="ellipsoid" size="0.1 0.1 0.075" pos="0 .075 0"/>
+        </body>
+    </body>
+
+</mujocoinclude>

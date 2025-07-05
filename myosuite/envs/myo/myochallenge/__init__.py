@@ -30,6 +30,20 @@ def register_env_with_variants(id, entry_point, max_episode_steps, kwargs):
             silent=True
         )
 
+# ============================================== MyoChallenge 2025 envs ==============================================
+## MyoChallenge Locomotion P1 (Soccer)
+register_env_with_variants(id='myoChallengeSoccerP1-v0',
+        entry_point='myosuite.envs.myo.myochallenge.soccer_v0:SoccerEnvV0',
+        max_episode_steps=2000,
+        kwargs={
+            'model_path': curr_dir+'/../assets/leg_soccer/myolegs_soccer.xml',
+            'normalize_act': True,
+            'min_agent_spawn_distance': 1,
+            'reset_type': 'random', # none, init, random
+            'goalkeeper_probabilities': (1, 0),
+        }
+    )
+
 
 register_env_with_variants(id='myoChallengeBimanual-v0',
         entry_point='myosuite.envs.myo.myochallenge.bimanual_v0:BimanualEnvV1',
@@ -43,7 +57,6 @@ register_env_with_variants(id='myoChallengeBimanual-v0',
             'obj_friction_change': (0.1, 0.001, 0.00002)  # nominal: 1.0, 0.005, 0.0001
         }
     )
-
 
 # MyoChallenge 2024 envs ==============================================
 register_env_with_variants(id='myoChallengeOslRunFixed-v0',
