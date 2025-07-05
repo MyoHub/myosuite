@@ -3,15 +3,14 @@ MyoChallenge-2025 Documentations
 
 
 * :ref:`challenge25_table_tennis_manipulation`
-* :ref:`challenge25_table_tennis_manipulation_locomotion`
-* :ref:`challenge25_soccer`
+* :ref:`challenge25_soccer_locomotion`
 * :ref:`challenge25_tutorial`
 
 
 
 .. _challenge25_table_tennis_manipulation:
 
-Prosthesis Table Tennis
+Table Tennis Manipulation
 --------------------------------------------------------------
 
 Task Description: Using a paddle, the agent must hit a pingpong ball such that the ball lands on the opponent's side. This task requires coordination of a 
@@ -28,18 +27,15 @@ reaches within the dimensions of the opponent's side.
 Objective
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To develop a general policy to  engage in a high-speed rally against an AI opponent. 
-Move the object from the agent's side to the opponent's side by hitting the ball with a paddle.
+To develop a general policy to  engage in a high-speed rally.
+Move the ball from the agent's side to the opposite side by hitting the ball with a paddle.
 
 
 
 Action Space
 ^^^^^^^^^^^^^^^^^^^^^^^^
-The action space includes three major parts, the :ref:`myoArm`, consisting of 63 muscles, the `myoArm`, consisting of 210 muscles 
+The action space includes three major parts, the :ref:`myoArm`, consisting of 63 muscles, the :ref:`myoTorso`, consisting of 210 muscles 
 and two position actuators for pelvis translation in the x,y plane. 
-
-The action for the prosthetic hand is controlled in terms of each joint angle. A normalisation is applied such that all joint angle in radiance can be 
-actuated by a control value between  :math:`[-1, 1]`, with -1 and 1 representing the lower and upper bound of the range of motions.
 
 
 Observation Space
@@ -64,7 +60,9 @@ Observation Space
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Paddle Reaching Error                   | reach_err                   |  (3)            |
 .. +-----------------------------------------+-----------------------------+-----------------+
-.. | Muscles Activations                     | muscle_activations          |  (273)          |
+.. | Muscle Activations                      | muscle_activations          |  (273)          |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Touching Information                    | touching_info               |  (6)            |
 .. +-----------------------------------------+-----------------------------+-----------------+
 
 
@@ -83,9 +81,11 @@ Observation Space
 +-----------------------------------------+-----------------------------+-----------------+
 | Paddle Velocity                         | paddle_vel                  | (3)             |
 +-----------------------------------------+-----------------------------+-----------------+
-| Paddle Reaching Error                   | reach_err                   | (3)             |
+| Paddle Reaching Error (see below)       | reach_err                   | (3)             |
 +-----------------------------------------+-----------------------------+-----------------+
 | Muscle Activations                      | muscle_activations          | (273)           |
++-----------------------------------------+-----------------------------+-----------------+ 
+| Touching Information (see below)        | touching_info               | (6)             |
 +-----------------------------------------+-----------------------------+-----------------+
 
 
@@ -93,10 +93,14 @@ Observation Space
 
 **Description of observations**
 
-    - Hand paddle error measures the distance between the MPL and the object
-
-    - The pingpong ball has full 6 degrees of freedom.
-
+    - The paddle reaching error measures the distance between the MPL and the object
+    - The touching information indicates contact with various objects in the environment:
+        - Paddle: Whether the paddle is in contact with another object.
+        - Own: Whether the agent is in contact with itself.
+        - Opponent: Whether the agent is in contact with an opponent agent.
+        - Ground: Whether the agent is in contact with the ground.
+        - Net: Whether the ball has contacted the net.
+        - Env: Whether there is contact with any part of the environment. 
 
 
 **Object Properties**
@@ -139,4 +143,117 @@ Ranking Criteria
 
 1. Success rate (of hitting the ball) (successful_attempts / total_attempts)
 2. Effort: based on muscle activation energy
+
+
+
+
+Soccer Locomotion
+--------------------------------------------------------------
+
+Task Description: The locomotion task focuses on goal-scoring using dynamic muscular control. It is split into two phases.
+Phase 1:
+    The human model is placed in a fixed starting location, directly in front of the ball, which is also placed in a fixed starting location. 
+Phase 2 (upcoming) :
+    The ball is placed in a fixed starting location. The human model is placed at random locations within a fixed radius of the ball, 
+    and as before always placed in front of the ball. As well, a goalkeeper model is present, following a public policy with static and random movement. 
+
+
+.. image:: images/MyoChallenge25TableTennis.png
+    :width: 450
+    :align: center
+
+
+
+Objective
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To develop policies that allow for coordinated locomotion and kicking of a ball to score goals 
+in a net with and without a goalkeeper.
+
+
+Action Space
+^^^^^^^^^^^^^^^^^^^^^^^^
+The action space includes two major parts, the :ref:`myoLeg`, consiting of 80 leg muscles, and the `myoBack`, consisting of 210 lumabr muscles. 
+
+
+Observation Space
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+.. temporary change backup
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | **Description**                         |      **Component**          |   **Count**     |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Ball Position                           |                             | (3)             |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | 4 Position Coords (bounding goal area)  |                             | (12)            | 
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Muscles Activations                     |                             | (290)           |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Joint Angles                            |                             | ()              |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Ground Contact Forces                   |                             | (6)             |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Ball Contact Forces with Foot           |                             | (3)             |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Foot Position                           |                             | (6)             |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Goalkeeper Position (Phase 2)           |                             | (3)             |
+.. +-----------------------------------------+-----------------------------+-----------------+
+
+
++-----------------------------------------+-----------------------------+-----------------+
+| **Description**                         |      **Component**          |     **Count**   |
++-----------------------------------------+-----------------------------+-----------------+
+| Ball Position                           |                             | (3)             |
++-----------------------------------------+-----------------------------+-----------------+
+| 4 Position Coords (bounding goal area)  |                             | (12)            | 
++-----------------------------------------+-----------------------------+-----------------+
+| Muscles Activations                     |                             | (290)           |
++-----------------------------------------+-----------------------------+-----------------+
+| Joint Angles                            |                             | ()              |
++-----------------------------------------+-----------------------------+-----------------+
+| Ground Contact Forces                   |                             | (6)             |
++-----------------------------------------+-----------------------------+-----------------+
+| Ball Contact Forces with Foot           |                             | (3)             |
++-----------------------------------------+-----------------------------+-----------------+
+| Foot Position                           |                             | (6)             |
++-----------------------------------------+-----------------------------+-----------------+
+| Goalkeeper Position (Phase 2)           |                             | (3)             |
++-----------------------------------------+-----------------------------+-----------------+
+
+
+
+
+**Description of observations**
+
+    - 
+
+
+**Object Properties**
+
+Soccer Net:
+- 
+
+
+Ball:
+- Radius: 
+- Mass: 
+- Inertia: 
+
+
+
+Success Criteria
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- The ball is kicked by the human model once and only once
+- The ball enters within the confines of the soccer net.
+- The ball does not come into contact with the goal keeper (Phase 2).
+
+
+Ranking Criteria
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+1. Number of goals scored
+2. Muscle Effort: based on muscle activation energy
 
