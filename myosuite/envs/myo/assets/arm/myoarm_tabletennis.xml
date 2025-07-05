@@ -74,7 +74,7 @@
         </body>
 
         <body name="ping_pong_paddle" pos="1.8 0.5 1.13" euler="-0.3 1.57 0">
-            <inertial pos="0 0 0" mass="0.1" diaginertia="0.001 0.001 0.001"/>
+            <inertial pos="0 0 0" mass="0.15" diaginertia="0.001 0.001 0.001"/>
             <freejoint name="paddle_freejoint"/>
             <geom name="ping_pong_paddle" type="mesh" mesh="ping_pong_paddle_mesh"
                 material="paddle_mat" rgba="1 1 1 1"
