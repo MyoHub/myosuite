@@ -137,7 +137,6 @@ Observation Space
 
 
 
-
 Starting Criteria: Phase 1
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 - The ball starts at the same position with the same speed
