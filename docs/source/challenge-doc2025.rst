@@ -46,6 +46,8 @@ Observation Space
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | **Description**                         |      **Component**          |   **Count**     |
 .. +-----------------------------------------+-----------------------------+-----------------+
+.. | Pelvis Position                         | pelvis_pos                  |  ()             |
+.. +-----------------------------------------+-----------------------------+-----------------+
 .. | Joint Positions                         | body_qpos                   |  (86)           |
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Joint Velocities                        | body_vel                    |  (86)           | 
@@ -66,27 +68,29 @@ Observation Space
 .. +-----------------------------------------+-----------------------------+-----------------+
 
 
-+-----------------------------------------+-----------------------------+-----------------+
-| **Description**                         |      **Component**          |     **Count**   |
-+-----------------------------------------+-----------------------------+-----------------+
-| Joint Positions                         | body_qpos                   | (86)            |
-+-----------------------------------------+-----------------------------+-----------------+
-| Joint Velocities                        | body_vel                    | (86)            | 
-+-----------------------------------------+-----------------------------+-----------------+
-| Ball Position                           | ball_pos                    | (3)             |
-+-----------------------------------------+-----------------------------+-----------------+
-| Ball Velocity                           | ball_vel                    | (3)             |
-+-----------------------------------------+-----------------------------+-----------------+
-| Paddle Position                         | paddle_pos                  | (3)             |
-+-----------------------------------------+-----------------------------+-----------------+
-| Paddle Velocity                         | paddle_vel                  | (3)             |
-+-----------------------------------------+-----------------------------+-----------------+
-| Paddle Reaching Error (see below)       | reach_err                   | (3)             |
-+-----------------------------------------+-----------------------------+-----------------+
-| Muscle Activations                      | muscle_activations          | (273)           |
-+-----------------------------------------+-----------------------------+-----------------+ 
-| Touching Information (see below)        | touching_info               | (6)             |
-+-----------------------------------------+-----------------------------+-----------------+
++-----------------------------------+--------------------+-----------+
+| **Description**                   | **Component**      | **Count** |
++-----------------------------------+--------------------+-----------+
+| Pelvis Position                   | pelvis_pos         | ()        |
++-----------------------------------+--------------------+-----------+
+| Joint Positions                   | body_qpos          | (86)      |
++-----------------------------------+--------------------+-----------+
+| Joint Velocities                  | body_vel           | (86)      |                                   |                    |           |
++-----------------------------------+--------------------+-----------+
+| Ball Position                     | ball_pos           | (3)       |
++-----------------------------------+--------------------+-----------+
+| Ball Velocity                     | ball_vel           | (3)       |
++-----------------------------------+--------------------+-----------+
+| Paddle Position                   | paddle_pos         | (3)       |
++-----------------------------------+--------------------+-----------+
+| Paddle Velocity                   | paddle_vel         | (3)       |
++-----------------------------------+--------------------+-----------+
+| Paddle Reaching Error (see below) | reach_err          | (3)       |
++-----------------------------------+--------------------+-----------+
+| Muscle Activations                | muscle_activations | (273)     |
++-----------------------------------+--------------------+-----------+
+| Touching Information (see below)  | touching_info      | (6)       |
++-----------------------------------+--------------------+-----------+
 
 
 
@@ -150,12 +154,10 @@ Ranking Criteria
 Soccer Locomotion
 --------------------------------------------------------------
 
-Task Description: The locomotion task focuses on goal-scoring using dynamic muscular control. It is split into two phases.
-Phase 1:
-    The human model is placed in a fixed starting location, directly in front of the ball, which is also placed in a fixed starting location. 
-Phase 2 (upcoming) :
-    The ball is placed in a fixed starting location. The human model is placed at random locations within a fixed radius of the ball, 
-    and as before always placed in front of the ball. As well, a goalkeeper model is present, following a public policy with static and random movement. 
+Task Description: The locomotion task focuses on goal-scoring using dynamic muscular control. 
+The agent must kick a soccer ball, such that it enter's the goal net. This task requires coordination of a 'myoLeg' model and a 'myoTorso' model as to 
+allow the agent to accurately hit the ball without missing and allowing enough force that the ball 
+reaches within the confines of the net.
 
 
 .. image:: images/MyoChallenge25TableTennis.png
@@ -173,7 +175,7 @@ in a net with and without a goalkeeper.
 
 Action Space
 ^^^^^^^^^^^^^^^^^^^^^^^^
-The action space includes two major parts, the :ref:`myoLeg`, consiting of 80 leg muscles, and the `myoBack`, consisting of 210 lumabr muscles. 
+The action space includes two major parts, the :ref:`myoLeg`, consiting of 80 leg muscles, and the `myoTorso`, consisting of 210 lumabr muscles. 
 
 
 Observation Space
@@ -184,19 +186,19 @@ Observation Space
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | **Description**                         |      **Component**          |   **Count**     |
 .. +-----------------------------------------+-----------------------------+-----------------+
-.. | Ball Position                           |                             | (3)             |
+.. | Ball Position                           | ball_pos                    | (3)             |
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | 4 Position Coords (bounding goal area)  |                             | (12)            | 
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Muscles Activations                     |                             | (290)           |
 .. +-----------------------------------------+-----------------------------+-----------------+
-.. | Joint Angles                            |                             | ()              |
+.. | Joint Angles                            | internal_qpos               | ()              |
 .. +-----------------------------------------+-----------------------------+-----------------+
-.. | Ground Contact Forces                   |                             | (6)             |
+.. | Ground Contact Forces                   | grf                         | (6)             |
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Ball Contact Forces with Foot           |                             | (3)             |
 .. +-----------------------------------------+-----------------------------+-----------------+
-.. | Foot Position                           |                             | (6)             |
+.. | Foot Position                           | model_root_pos              | (6)             |
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Goalkeeper Position (Phase 2)           |                             | (3)             |
 .. +-----------------------------------------+-----------------------------+-----------------+
@@ -205,19 +207,19 @@ Observation Space
 +-----------------------------------------+-----------------------------+-----------------+
 | **Description**                         |      **Component**          |     **Count**   |
 +-----------------------------------------+-----------------------------+-----------------+
-| Ball Position                           |                             | (3)             |
+| Ball Position                           | ball_pos                    | (3)             |
 +-----------------------------------------+-----------------------------+-----------------+
 | 4 Position Coords (bounding goal area)  |                             | (12)            | 
 +-----------------------------------------+-----------------------------+-----------------+
 | Muscles Activations                     |                             | (290)           |
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint Angles                            |                             | ()              |
+| Joint Angles                            | internal_qpos               | ()              |
 +-----------------------------------------+-----------------------------+-----------------+
-| Ground Contact Forces                   |                             | (6)             |
+| Ground Contact Forces                   | grf                         | (6)             |
 +-----------------------------------------+-----------------------------+-----------------+
 | Ball Contact Forces with Foot           |                             | (3)             |
 +-----------------------------------------+-----------------------------+-----------------+
-| Foot Position                           |                             | (6)             |
+| Foot Position                           | model_root_pos              | (6)             |
 +-----------------------------------------+-----------------------------+-----------------+
 | Goalkeeper Position (Phase 2)           |                             | (3)             |
 +-----------------------------------------+-----------------------------+-----------------+
@@ -233,22 +235,30 @@ Observation Space
 **Object Properties**
 
 Soccer Net:
-- 
+- Width: 7.32m
+- Height: 2.50m
 
 
 Ball:
-- Radius: 
-- Mass: 
-- Inertia: 
+- Radius: 0.117m
+- Mass: 0.45 kg  
 
+
+Starting Criteria: Phase 1
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- The human model is placed in a fixed starting location, directly in front of the ball, which is also placed in a fixed starting location. 
+
+Starting Criteria: Phase 2 (upcoming)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- The ball is placed in a fixed starting location. The human model is placed at random locations within a fixed radius of the ball, 
+  and as before always placed in front of the ball. As well, a goalkeeper model is present, following a public policy with static and random movement. 
 
 
 Success Criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-- The ball is kicked by the human model once and only once
-- The ball enters within the confines of the soccer net.
-- The ball does not come into contact with the goal keeper (Phase 2).
+1. The soccer ball is fully within the confines of the net.
+2. The agent scores within 20 seconds.
 
 
 Ranking Criteria
