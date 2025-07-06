@@ -160,7 +160,7 @@ allow the agent to accurately hit the ball without missing and allowing enough f
 reaches within the confines of the net.
 
 
-.. image:: images/MyoChallenge25TableTennis.png
+.. image:: images/MyoChallenge25Soccer.png
     :width: 450
     :align: center
 
