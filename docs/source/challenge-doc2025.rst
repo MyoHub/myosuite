@@ -83,13 +83,13 @@ Observation Space
 +-----------------------------------+--------------------+-----------+
 | Paddle Position                   | paddle_pos         | (3)       |
 +-----------------------------------+--------------------+-----------+
-| Paddle Velocity.                  | paddle_vel         | (3)       |
+| Paddle Velocity                   | paddle_vel         | (3)       |
 +-----------------------------------+--------------------+-----------+
 | Paddle Reaching Error (see below) | reach_err          | (3)       |
 +-----------------------------------+--------------------+-----------+
 | Muscle Activations                | muscle_activations | (273)     |
 +-----------------------------------+--------------------+-----------+
-| Touching Information (see below)  | touching_info      | (3)       |
+| Touching Information (see below)  | touching_info      | (6)       |
 +-----------------------------------+--------------------+-----------+
 
 
@@ -108,34 +108,23 @@ Observation Space
         - Env: Whether there is contact with any part of the environment. 
 
 
-**Object Properties**
 
-**Ping Pong Table**
+**Ping Pong Object Properties**
 
-- **Table Top:**
-  
-  - **Total Dimensions:** 1.37 × 1.52 × 1.59 m³  
-  - **Per Side (Agent/Opponent):** 0.685 × 0.76 × 0.795 m³
++-------------------+------------------------------+
+| **Object**        | **Properties**               |
++-------------------+------------------------------+
+| Table Top (Total) | 1.37 × 1.52 × 1.59 m³        |
+| Table Top (Side)  | 0.685 × 0.76 × 0.795 m³      |
+| Net               | 0.005 × 0.9125 × 0.1525 m³   |
+| Paddle Handle     | Radius: 0.016 m, Height: 0.051 m |
+| Paddle Face       | Radius: 0.093 m, Height: 0.020 m |
+| Paddle Mass       | 100 g                        |
+| Ball Radius       | 0.020 m                      |
+| Ball Mass         | 2.7 g                        |
+| Ball Inertia      | 7.2×10⁻⁷ kg·m²               |
++-------------------+------------------------------+
 
-- **Net Dimensions:** 0.005 × 0.9125 × 0.1525 m³
-
-**Paddle**
-
-- **Handle:**  
-  - Radius: 0.016 m  
-  - Height: 0.051 m
-
-- **Face:**  
-  - Radius: 0.093 m  
-  - Height: 0.020 m
-
-- **Mass:** 100 g
-
-**Ball**
-
-- **Radius:** 0.020 m  
-- **Mass:** 2.7 g  
-- **Inertia:** 7.2×10⁻⁷ kg·m²
 
 
 
@@ -246,17 +235,16 @@ Observation Space
     - 
 
 
-**Object Properties**
+**Soccer Object Properties**
 
-**Soccer Net**
++------------------+-------------------------------+
+| **Object**       | **Properties**                |
++------------------+-------------------------------+
+| Soccer Net       | Width: 7.32 m, Height: 2.50 m |
+| Ball Radius      | 0.117 m                       |
+| Ball Mass        | 0.45 kg                       ||
++------------------+-------------------------------+
 
-- **Width:** 7.32 m  
-- **Height:** 2.50 m
-
-**Ball**
-
-- **Radius:** 0.117 m  
-- **Mass:** 0.45 kg
 
 
 
