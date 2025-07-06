@@ -4,7 +4,6 @@ MyoChallenge-2025 Documentations
 
 * :ref:`challenge25_table_tennis_manipulation`
 * :ref:`challenge25_soccer_locomotion`
-* :ref:`challenge25_tutorial`
 
 
 
@@ -68,6 +67,7 @@ Observation Space
 .. +-----------------------------------------+-----------------------------+-----------------+
 
 
+
 +-----------------------------------+--------------------+-----------+
 | **Description**                   | **Component**      | **Count** |
 +-----------------------------------+--------------------+-----------+
@@ -75,7 +75,7 @@ Observation Space
 +-----------------------------------+--------------------+-----------+
 | Joint Positions                   | body_qpos          | (86)      |
 +-----------------------------------+--------------------+-----------+
-| Joint Velocities                  | body_vel           | (86)      |                                   |                    |           |
+| Joint Velocities                  | body_vel           | (86)      |
 +-----------------------------------+--------------------+-----------+
 | Ball Position                     | ball_pos           | (3)       |
 +-----------------------------------+--------------------+-----------+
@@ -83,14 +83,15 @@ Observation Space
 +-----------------------------------+--------------------+-----------+
 | Paddle Position                   | paddle_pos         | (3)       |
 +-----------------------------------+--------------------+-----------+
-| Paddle Velocity                   | paddle_vel         | (3)       |
+| Paddle Velocity.                  | paddle_vel         | (3)       |
 +-----------------------------------+--------------------+-----------+
 | Paddle Reaching Error (see below) | reach_err          | (3)       |
 +-----------------------------------+--------------------+-----------+
 | Muscle Activations                | muscle_activations | (273)     |
 +-----------------------------------+--------------------+-----------+
-| Touching Information (see below)  | touching_info      | (6)       |
+| Touching Information (see below)  | touching_info      | (3)       |
 +-----------------------------------+--------------------+-----------+
+
 
 
 
@@ -109,21 +110,33 @@ Observation Space
 
 **Object Properties**
 
-Ping Pong Table:
-- Table top:
-    Total: 1.37 x 1.52 x 1.59 m^3
-    Per side (agent/opponent): 0.685 x 0.76 x 0.795 m^3
-- Net dimensions: 0.005 x 0.9125 x 0.1525 m^3
+**Ping Pong Table**
 
-Paddle:
-- Handle: radius = 0.016m, height = 0.051 m
-- Face: radius = 0.093m, height = 0.020 m
-- Mass: 100 g
+- **Table Top:**
+  
+  - **Total Dimensions:** 1.37 × 1.52 × 1.59 m³  
+  - **Per Side (Agent/Opponent):** 0.685 × 0.76 × 0.795 m³
 
-Ball:
-- Radius: 0.02m
-- Mass: 2.7 g
-- Inertia: 7.2e-7 kgm^2
+- **Net Dimensions:** 0.005 × 0.9125 × 0.1525 m³
+
+**Paddle**
+
+- **Handle:**  
+  - Radius: 0.016 m  
+  - Height: 0.051 m
+
+- **Face:**  
+  - Radius: 0.093 m  
+  - Height: 0.020 m
+
+- **Mass:** 100 g
+
+**Ball**
+
+- **Radius:** 0.020 m  
+- **Mass:** 2.7 g  
+- **Inertia:** 7.2×10⁻⁷ kg·m²
+
 
 
 
@@ -150,6 +163,7 @@ Ranking Criteria
 
 
 
+.. _challenge25_soccer_locomotion:
 
 Soccer Locomotion
 --------------------------------------------------------------
@@ -234,14 +248,16 @@ Observation Space
 
 **Object Properties**
 
-Soccer Net:
-- Width: 7.32m
-- Height: 2.50m
+**Soccer Net**
 
+- **Width:** 7.32 m  
+- **Height:** 2.50 m
 
-Ball:
-- Radius: 0.117m
-- Mass: 0.45 kg  
+**Ball**
+
+- **Radius:** 0.117 m  
+- **Mass:** 0.45 kg
+
 
 
 Starting Criteria: Phase 1
