@@ -275,9 +275,8 @@ class SoccerEnvV0(WalkEnvV0):
         obs_dict['time'] = np.array([sim.data.time])
 
         # proprioception
-        # TODO: update the qpos and qvel indices to match the new model
-        obs_dict['internal_qpos'] = sim.data.qpos[7:54].copy()
-        obs_dict['internal_qvel'] = sim.data.qvel[6:54].copy() * self.dt
+        obs_dict['internal_qpos'] = sim.data.qpos[14:60].copy()
+        obs_dict['internal_qvel'] = sim.data.qvel[12:58].copy() * self.dt
         obs_dict['grf'] = self._get_grf().copy()
         obs_dict['torso_angle'] = self.sim.data.body('torso').xquat.copy()
         obs_dict['pelvis_angle'] = self.sim.data.body('pelvis').xquat.copy()
@@ -286,13 +285,20 @@ class SoccerEnvV0(WalkEnvV0):
         obs_dict['muscle_velocity'] = self.muscle_velocities()
         obs_dict['muscle_force'] = self.muscle_forces()
 
+        obs_dict['r_toe_pos'] = sim.data.geom('r_bofoot').xpos.copy()
+        obs_dict['l_toe_pos'] = sim.data.geom('l_bofoot').xpos.copy()
+
         if sim.model.na>0:
             obs_dict['act'] = sim.data.act[:].copy()
 
         # exteroception
         obs_dict['ball_pos'] = sim.data.body('soccer_ball').xpos[:3].copy()
-        obs_dict['model_root_pos'] = sim.data.qpos[:2].copy()
-        obs_dict['model_root_vel'] = sim.data.qvel[:2].copy()
+        obs_dict['goal_bounds'] = np.array([[self.GOAL_X_POS, self.GOAL_Y_MIN, self.GOAL_Z_MIN], 
+                                            [self.GOAL_X_POS, self.GOAL_Y_MAX, self.GOAL_Z_MIN], 
+                                            [self.GOAL_X_POS, self.GOAL_Y_MIN, self.GOAL_Z_MAX], 
+                                            [self.GOAL_X_POS, self.GOAL_Y_MAX, self.GOAL_Z_MAX]]).flatten()
+        obs_dict['model_root_pos'] = sim.data.qpos[7:14].copy()
+        obs_dict['model_root_vel'] = sim.data.qvel[6:12].copy()
 
         return obs_dict
 
