@@ -39,7 +39,7 @@ jobs:
 
     steps:
       - name: checkout-repo-content
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: setup-python
         uses: actions/setup-python@v2
@@ -76,9 +76,9 @@ jobs:
         python-version: '3.9'
 
     - name: Install pypa/setuptools
-      run: >-
-        python -m
-        pip install wheel
+      run: |
+        git config --global url."https://${{secrets.REPO_TOKEN}}@github.com".insteadOf "https://github.com"
+        pip install build setuptools wheel
 
     # update the version number in version.py
     - name: update version
@@ -90,39 +90,48 @@ jobs:
 
     # 2. Use the `tag name` as `release version`
     # add and commit the updated version.py to main
-    - name: add and commit to main
-      uses: EndBug/add-and-commit@v7.5.0
+    # - name: add and commit to main
+    #   uses: EndBug/add-and-commit@v7.5.0
+    #   with:
+    #     # token: ${{ secrets.REPO_TOKEN }}
+    #     author_name: ${{ secrets.AUTHOR_NAME }}
+    #     author_email: ${{ secrets.AUTHOR_EMAIL }}
+
+    #     branch: main
+    #     default_author: github_actor
+    #     message: '${{ needs.get_next_version.outputs.new_version }} release'
+    #     pathspec_error_handling: exitAtEnd
+
+    #     # Arguments for the git pull command. Use NO-PULL to avoid the action pulling at all.
+    #     # Default: '--no-rebase'
+    #     pull: 'NO-PULL'
+    #     tag: '${{ needs.get_next_version.outputs.new_tag }}'
+
+    - uses: mukunku/tag-exists-action@v1.4.0
+      id: checkTag
       with:
-        # token: ${{ secrets.REPO_TOKEN }}
-        author_name: ${{ secrets.AUTHOR_NAME }}
-        author_email: ${{ secrets.AUTHOR_EMAIL }}
+        tag: ${{ needs.get_next_version.outputs.new_tag }}
 
-        branch: main
-        default_author: github_actor
-        message: '${{ needs.get_next_version.outputs.new_version }} release'
-        pathspec_error_handling: exitAtEnd
-
-        # Arguments for the git pull command. Use NO-PULL to avoid the action pulling at all.
-        # Default: '--no-rebase'
-        pull: 'NO-PULL'
-        tag: '${{ needs.get_next_version.outputs.new_tag }}'
+    - name: If Tag does not exists, Create Git Tag
+      run: |
+        git tag ${{ needs.get_next_version.outputs.new_tag }}
+        git push origin ${{ needs.get_next_version.outputs.new_tag }}
 
 
      # 3. Build the PyPI packeage
     - name: Build a binary wheel
       run: >-
-        python setup.py sdist bdist_wheel
+        python3 -m build
+    - name: Store the distribution packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: python-package-distributions
+        path: dist/
     # 4. Upload the package
     - name: Publish distribution to PyPI
       uses: pypa/gh-action-pypi-publish@master
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
-#     - name: Publish distribution to TestPyPI
-#       uses: pypa/gh-action-pypi-publish@release/v1
-#       with:
-#         password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-#         repository-url: https://test.pypi.org/legacy/
-
 
   test_latest_PyPI:
     needs: pypi_package_build_and_release
@@ -141,14 +150,11 @@ jobs:
 
       - name: Prepare Linux
         if: ${{ runner.os == 'Linux' }}
-        run: >
-          sudo apt-get install -y \
-              libgl1-mesa-dev \
-              libgl1-mesa-glx \
-              libglew-dev \
-              libosmesa6-dev \
-              software-properties-common
-          sudo apt-get install -y patchelf
+        run: |
+          sudo apt-get update -y -qq
+          sudo apt-get install -y xvfb x11-xserver-utils
+          sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &
+
 
       - shell: bash
         run: |
