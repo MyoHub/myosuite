@@ -12,6 +12,7 @@ Models and tasks are the most important aspects of Myosuite. To provide further,
     * :ref:`myoHand`
     * :ref:`myoLeg`
     * :ref:`myoArm`
+    * :ref:`myoTorso`
 * :ref:`tasks`
 * :ref:`task_and_variations`
 
