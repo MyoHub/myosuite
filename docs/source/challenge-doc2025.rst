@@ -73,23 +73,23 @@ Observation Space
 +-----------------------------------+--------------------+-----------+
 | Pelvis Position                   | pelvis_pos         | 3         |
 +-----------------------------------+--------------------+-----------+
-| Joint Positions                   | body_qpos          | ``(86)``  |
+| Joint Positions                   | body_qpos          | 86        |
 +-----------------------------------+--------------------+-----------+
-| Joint Velocities                  | body_vel           | ``(86)``  |
+| Joint Velocities                  | body_vel           | 86        |
 +-----------------------------------+--------------------+-----------+
-| Ball Position                     | ball_pos           | ``(3)``   |
+| Ball Position                     | ball_pos           | 3         |
 +-----------------------------------+--------------------+-----------+
-| Ball Velocity                     | ball_vel           | ``(3)``   |
+| Ball Velocity                     | ball_vel           | 3         |
 +-----------------------------------+--------------------+-----------+
-| Paddle Position                   | paddle_pos         | ``(3)``   |
+| Paddle Position                   | paddle_pos         | 3         |
 +-----------------------------------+--------------------+-----------+
-| Paddle Velocity                   | paddle_vel         | ``(3)``   |
+| Paddle Velocity                   | paddle_vel         | 3         |
 +-----------------------------------+--------------------+-----------+
-| Paddle Reaching Error (see below) | reach_err          | ``(3)``   |
+| Paddle Reaching Error (see below) | reach_err          | 3         |
 +-----------------------------------+--------------------+-----------+
-| Muscle Activations                | muscle_activations | ``(273)`` |
+| Muscle Activations                | muscle_activations | 273       |
 +-----------------------------------+--------------------+-----------+
-| Touching Information (see below)  | touching_info      | ``(6)``   |
+| Touching Information (see below)  | touching_info      | 6         |
 +-----------------------------------+--------------------+-----------+
 
 
@@ -221,23 +221,23 @@ Observation Space
 +----------------------------------------+----------------+-----------+
 | **Description**                        | **Component**  | **Count** |
 +----------------------------------------+----------------+-----------+
-| Ball Position                          | ball_pos       | ``(3)``   |
+| Ball Position                          | ball_pos       | 3         |
 +----------------------------------------+----------------+-----------+
-| 4 Position Coords (bounding goal area) | goal_bounds    | ``(12)``  |
+| 4 Position Coords (bounding goal area) | goal_bounds    | 12        |
 +----------------------------------------+----------------+-----------+
-| Muscles Activations                    | act            | ``(290)`` |
+| Muscles Activations                    | act            | 290       |
 +----------------------------------------+----------------+-----------+
-| Joint Angles                           | internal_qpos  | ``(46)``  |
+| Joint Angles                           | internal_qpos  | 46        |
 +----------------------------------------+----------------+-----------+
-| Joint Velocities.                      | internal_qvel  | ``(46)``  |
+| Joint Velocities.                      | internal_qvel  | 46        |
 +----------------------------------------+----------------+-----------+
-| Foot Position (Right)                  | r_toe_pos      | ``(3)``   |
+| Foot Position (Right)                  | r_toe_pos      | 3         |
 +----------------------------------------+----------------+-----------+
-| Foot Position (Left)                   | l_toe_pos      | ``(3)``   |
+| Foot Position (Left)                   | l_toe_pos      | 3         |
 +----------------------------------------+----------------+-----------+
-| Body COM in world frame                | model_root_pos | ``(7)``   |
+| Body COM in world frame                | model_root_pos | 7         |
 +----------------------------------------+----------------+-----------+
-| Body COM vel in world frame            | model_root_vel | ``(6)``   |
+| Body COM vel in world frame            | model_root_vel | 6         |
 +----------------------------------------+----------------+-----------+
 
 
@@ -263,8 +263,8 @@ Starting Criteria: Phase 1
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 - The human model is placed in a fixed starting location, directly in front of the ball, which is also placed in a fixed starting location. 
 
-..Starting Criteria: Phase 2 (upcoming)
-..^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. Starting Criteria: Phase 2 (upcoming)
+.. ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. - The ball is placed in a fixed starting location. The human model is placed at random locations within a fixed radius of the ball, 
   and as before always placed in front of the ball. As well, a goalkeeper model is present, following a public policy with static and random movement. 
 
