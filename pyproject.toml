@@ -1,0 +1,54 @@
+
+[project]
+name = "MyoSuite"
+dynamic = ["version"]  # Enable dynamic version
+description = "Musculoskeletal environments simulated in MuJoCo"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache 2.0" }
+authors = [
+    { name = "Vikash Kumar", email = "vikashplus@gmail.com" },
+    { name = "Vittorio Caggiano", email = "caggiano@gmail.com" },
+]
+urls = {Homepage = "https://sites.google.com/view/myosuite"}
+classifiers = [
+    "Programming Language :: Python :: 3.9",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "click",
+    "sk-video",
+    "gymnasium==0.29.1",
+    "termcolor",
+    "flatten_dict",
+    "h5py",
+    "numpy",
+    "mujoco==3.1.2",
+    "dm-control==1.0.16",
+    "Pillow",
+    "pink-noise-rl",
+    "packaging",
+    "gitpython"
+]
+[project.optional-dependencies]
+examples = ["mink[examples]; python_version > '3.9'"]
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = { find = { exclude = ["myosuite.agents"] } }
+py-modules = ["myosuite_init"]
+
+[tool.setuptools.package-data]
+"myosuite" = ["**/*"]
+
+[project.scripts]
+myoapi_init = "myosuite_init:fetch_simhive"
+myoapi_clean = "myosuite_init:clean_simhive"
+
+[tool.setuptools.dynamic]
+version = {attr = "myosuite.version.__version__"}
