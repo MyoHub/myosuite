@@ -193,6 +193,38 @@ Model specification can be found on our github repo of `myoArm <https://github.c
 .. image:: images/myoArm.png
   :height: 200
 
+
+
+
+.. _myoTorso:
+
+myoTorso
+==========
+The myoTorso mujoco musculoskeletal (MSK) model is generated from: Constrained Lumbar Spine model - 210 [https://simtk.org/projects/lumbarspine] from Opensim.
+
+This generated mujoco MSK model has almost identical kinematics, and very similar muscle kinematics (moment arms) and kinetic (forces) properties.
+
+The model have 210 actuators and 18 joints. The model can be controlled by 3 "virtual joints": Flexion extension, lateral bending, and axial rotation, that maps onto the real joints.
+
+Details of this model can be found at `myoTorso <https://github.com/MyoHub/myo_sim/tree/main/torso>`__
+
+
+.. .. image:: images/myoFinger.png
+  :height: 200
+
+========  =============================
+Acronym   Muscle
+========  =============================
+rect_abd  Rectus Adomininis
+IL        Iliocostalis
+QL        Quadratus Lumborum
+MF        Multifidus
+LT        Longissimus Thoracis
+EO        External Obliques
+IO        Internal Obliques
+========  =============================
+
+
 .. _tasks:
 
 Tasks
@@ -552,33 +584,3 @@ Variations
   - **Fatigue**: myoFati<Environment> e.g. myoFatiElbowPose1D6MRandom-v0
   - **TTransfer / Reafferentation**: myoReaf<Environment> e.g. myoReafHandPoseFixed-v0
 
-
-
-
-.. _myoTorso:
-
-myoTorso
-==========
-The myoTorso mujoco musculoskeletal (MSK) model is generated from: Constrained Lumbar Spine model - 210 [https://simtk.org/projects/lumbarspine] from Opensim.
-
-This generated mujoco MSK model has almost identical kinematics, and very similar muscle kinematics (moment arms) and kinetic (forces) properties.
-
-The model have 210 actuators and 18 joints. The model can be controlled by 3 "virtual joints": Flexion extension, lateral bending, and axial rotation, that maps onto the real joints.
-
-Details of this model can be found at `myoTorso <https://github.com/MyoHub/myo_sim/tree/main/torso>`__
-
-
-.. .. image:: images/myoFinger.png
-  :height: 200
-
-========  =============================
-Acronym   Muscle
-========  =============================
-rect_abd  Rectus Adomininis
-IL        Iliocostalis
-QL        Quadratus Lumborum
-MF        Multifidus
-LT        Longissimus Thoracis
-EO        External Obliques
-IO        Internal Obliques
-========  =============================
