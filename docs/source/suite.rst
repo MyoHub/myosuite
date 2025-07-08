@@ -209,7 +209,7 @@ The model have 210 actuators and 18 joints. The model can be controlled by 3 "vi
 Details of this model can be found at `myoTorso <https://github.com/MyoHub/myo_sim/tree/main/torso>`__
 
 
-.. .. image:: images/myoFinger.png
+ .. image:: images/MyoTorso.png
   :height: 200
 
 ========  =============================
