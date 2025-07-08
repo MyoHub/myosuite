@@ -206,7 +206,7 @@ This generated mujoco MSK model has almost identical kinematics, and very simila
 
 The model have 210 actuators and 18 joints. The model can be controlled by 3 "virtual joints": Flexion extension, lateral bending, and axial rotation, that maps onto the real joints.
 
-Details of this model can be found at `myoTorso <https://github.com/MyoHub/myo_sim/tree/main/torso>`__
+Details of this model can be found on our github repo at `myoTorso <https://github.com/MyoHub/myo_sim/tree/main/torso>`__
 
 
  .. image:: images/MyoTorso.png
