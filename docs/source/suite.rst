@@ -328,6 +328,23 @@ Variants:
 .. image:: images/hand_pen_twirl.png
   :width: 200
 
+Arm Reach
+=====================
+
+
+Model:
+    - This environment uses a simplified version of the myoArm model in which the muscles and joints of the digits have been removed, enabling the study of reaching/pointing tasks that have no manipulation component. The simplified myoArm model is comprised of 20 joints and 32 muscle-tendon units.
+
+Objective:
+    - Reach a target with the tip of the index finger.
+
+Variants:
+    - **Easy**: Reach to a fixed target ``myoArmReachFixed-v0``
+    - **Hard**: Reach to a randomly selected target ``myoArmReachRandom-v0``
+
+.. image:: images/myoArmReach.png
+  :width: 200
+
 Hand Multiobject Reorientation
 ======================================
 A :ref:`myoHand` model reorients a set of parameterized geometries to a given target orientation without dropping it.
