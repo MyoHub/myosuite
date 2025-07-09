@@ -1,0 +1,112 @@
+<mujocoinclude model="MyoLegs_v0.0.1">
+<!-- =================================================
+	Copyright 2020 Vikash Kumar, Vittorio Caggiano, Huawei Wang
+	Model	:: Myo Legs (MuJoCoV2.0)
+	Author	:: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano, Huawei Wang
+	source	:: https://github.com/vikashplus
+	License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+    <compiler angle="radian" inertiafromgeom="auto"/>
+    <option timestep="0.001"/>
+
+    <size nconmax="2000" njmax="5000" nkey="1" nuser_jnt="1"/>
+    <!-- <visual>
+        <headlight ambient=".5 .5 .5" diffuse="0.50 0.50 0.50" specular="0.50 0.50 0.50"/>
+    </visual> -->
+    <default>
+        <tendon rgba="0.95 0.3 0.3 1"/>
+        <default class="myolegs">
+            <joint armature="0.01" damping="0.5" limited="true"/>
+            <geom margin="0.001" material="mat_myolegs" rgba="0.8 0.85 0.8 1" conaffinity="0" contype="0"/>
+            <site size="0.001 0.005 0.005" group="3"/>
+            <tendon rgba="0.95 0.3 0.3 1" width="0.001"/>
+            <default class="muscle">
+                <general biasprm="0.75 1.05 -1 400 0.5 1.6 1.5 1.3 1.2 0" biastype="muscle" ctrllimited="true" ctrlrange="0 1" dynprm="0.01 0.04 0 0 0 0 0 0 0 0" dyntype="muscle" gainprm="0.75 1.05 -1 400 0.5 1.6 1.5 1.3 1.2 0" gaintype="muscle"/>
+            </default>
+            <default class="wrap">
+                <geom rgba=".5 .5 .9 0.5" group="3" contype="0" conaffinity="0"  type="cylinder"/>
+            </default>
+            <default class="coll">
+                <geom type="capsule" group="4" contype="1" conaffinity="0" condim="3" rgba="0.8 0.7 .5 1" margin="0.001" material="MatSkin"/>
+            </default>
+            <default class="myo_leg_touch">
+                <site type="box" group="3" rgba="0.8 0.2 .2 .4"/>
+            </default>
+            <default class="myo_leg_marker">
+                <site size="0.02" group="4" rgba="0.8 0.8 .2 1"/>
+            </default>
+        </default>
+    </default>
+
+    <contact>
+        <pair geom1="r_femur1_col" geom2="l_femur1_col" condim="1"/>
+        <pair geom1="r_femur2_col" geom2="l_femur2_col" condim="1"/>
+        <pair geom1="r_tibia1_col" geom2="l_tibia1_col" condim="1"/>
+        <pair geom1="r_tibia2_col" geom2="l_tibia2_col" condim="1"/>
+        <pair geom1="r_foot_col1" geom2="l_foot_col1" condim="1"/>
+        <pair geom1="r_foot_col4" geom2="l_foot_col4" condim="1"/>
+
+        <pair geom1="r_femur1_col" geom2="l_tibia1_col" condim="1"/>
+        <pair geom1="l_femur1_col" geom2="r_tibia1_col" condim="1"/>
+
+        <pair geom1="r_femur2_col" geom2="l_tibia1_col" condim="1"/>
+        <pair geom1="l_femur2_col" geom2="r_tibia1_col" condim="1"/>
+
+        <pair geom1="r_femur1_col" geom2="l_tibia2_col" condim="1"/>
+        <pair geom1="l_femur1_col" geom2="r_tibia2_col" condim="1"/>
+
+        <pair geom1="r_femur2_col" geom2="l_tibia2_col" condim="1"/>
+        <pair geom1="l_femur2_col" geom2="r_tibia2_col" condim="1"/>
+    </contact>
+
+
+    <asset>
+        <texture name="tex_myolegs" builtin="flat" height="762" mark="cross" markrgb="1 .9 .9" rgb1="1 1 1" rgb2="1 1 1" type="cube" width="127"/>
+        <material name="mat_myolegs" texture="tex_myolegs" texuniform="true"/>
+        <material name="MatSkin" specular="0.2" shininess=".1" reflectance="0.5" rgba="0.9 .7 1 1"/>
+
+        <mesh file="../myo_sim/meshes/r_pelvis.stl" name="r_pelvis"/>
+        <mesh file="../myo_sim/meshes/l_pelvis.stl" name="l_pelvis"/>
+        <mesh file="../myo_sim/meshes/r_femur.stl" name="r_femur"/>
+        <mesh file="../myo_sim/meshes/r_tibia.stl" name="r_tibia"/>
+        <mesh file="../myo_sim/meshes/r_fibula.stl" name="r_fibula"/>
+        <mesh file="../myo_sim/meshes/r_talus.stl" name="r_talus"/>
+        <mesh file="../myo_sim/meshes/r_foot.stl" name="r_foot"/>
+        <mesh file="../myo_sim/meshes/r_bofoot.stl" name="r_bofoot"/>
+        <mesh file="../myo_sim/meshes/r_patella.stl" name="r_patella"/>
+        <mesh file="../myo_sim/meshes/l_femur.stl" name="l_femur"/>
+        <mesh file="../myo_sim/meshes/l_tibia.stl" name="l_tibia"/>
+        <mesh file="../myo_sim/meshes/l_fibula.stl" name="l_fibula"/>
+        <mesh file="../myo_sim/meshes/l_talus.stl" name="l_talus"/>
+        <mesh file="../myo_sim/meshes/l_foot.stl" name="l_foot"/>
+        <mesh file="../myo_sim/meshes/l_bofoot.stl" name="l_bofoot"/>
+        <mesh file="../myo_sim/meshes/l_patella.stl" name="l_patella"/>
+    </asset>
+
+    <equality>
+        <joint joint1="knee_angle_r_translation2" joint2="knee_angle_r" name="knee_angle_r_translation2_constraint" polycoef="7.69254e-11 0.00587971 -0.00125622 -2.61846e-06 6.24355e-07" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_r_translation1" joint2="knee_angle_r" name="knee_angle_r_translation1_constraint" polycoef="9.53733e-08 0.00312879 -0.00230804 0.000561561 5.68366e-07" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_r_rotation2" joint2="knee_angle_r" name="knee_angle_r_rotation2_constraint" polycoef="-1.47325e-08 0.0791 -0.0328478 -0.0252183 0.0108321" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_r_rotation3" joint2="knee_angle_r" name="knee_angle_r_rotation3_constraint" polycoef="1.08939e-08 0.369499 -0.169478 0.0251643 3.50498e-07" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_r_beta_translation2" joint2="knee_angle_r" name="knee_angle_r_beta_translation2_constraint" polycoef="-0.0108281 -0.0487847 0.00927644 0.0131673 -0.00349673" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_r_beta_translation1" joint2="knee_angle_r" name="knee_angle_r_beta_translation1_constraint" polycoef="0.0524192 -0.0150188 -0.0340522 0.0133393 -0.000879151" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_r_beta_rotation1" joint2="knee_angle_r" name="knee_angle_r_beta_rotation1_constraint" polycoef="0.010506 0.0247615 -1.31647 0.716337 -0.138302" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <!-- <joint joint1="subtalar_angle_r" name="subtalar_angle_r_constraint" polycoef="0 0 0 0 0"/> -->
+        <!-- <joint joint1="mtp_angle_r" name="mtp_angle_r_constraint" polycoef="0 0 0 0 0"/> -->
+        <joint joint1="knee_angle_l_translation2" joint2="knee_angle_l" name="knee_angle_l_translation2_constraint" polycoef="-7.69254e-11 -0.00587971 0.00125622 2.61846e-06 -6.24355e-07" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_translation1" joint2="knee_angle_l" name="knee_angle_l_translation1_constraint" polycoef="9.53733e-08 0.00312879 -0.00230804 0.000561561 5.68366e-07" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_rotation2" joint2="knee_angle_l" name="knee_angle_l_rotation2_constraint" polycoef="-1.47325e-08 0.0791 -0.0328478 -0.0252183 0.0108321" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_rotation3" joint2="knee_angle_l" name="knee_angle_l_rotation3_constraint" polycoef="-1.08939e-08 -0.369499 0.169478 -0.0251643 -3.50498e-07" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_beta_translation2" joint2="knee_angle_l" name="knee_angle_l_beta_translation2_constraint" polycoef="-0.0108281 -0.0487847 0.00927644 0.0131673 -0.00349673" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_beta_translation1" joint2="knee_angle_l" name="knee_angle_l_beta_translation1_constraint" polycoef="0.0524192 -0.0150188 -0.0340522 0.0133393 -0.000879151" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_beta_rotation1" joint2="knee_angle_l" name="knee_angle_l_beta_rotation1_constraint" polycoef="0.010506 0.0247615 -1.31647 0.716337 -0.138302" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    </equality>
+
+    <sensor>
+        <touch name="r_foot" site="r_foot_touch"/>
+        <touch name="r_toes" site="r_toes_touch"/>
+        <touch name="l_foot" site="l_foot_touch"/>
+        <touch name="l_toes" site="l_toes_touch"/>
+    </sensor>
+
+</mujocoinclude>
