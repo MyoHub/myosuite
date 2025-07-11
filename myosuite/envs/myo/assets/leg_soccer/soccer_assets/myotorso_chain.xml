@@ -1,6 +1,6 @@
 <mujocoinclude model="MyoTorso">
   <!-- =================================================
-  Copyright 2024
+  Copyright (c) MyoSuite Authors
   Model	:: MyoTorso (MuJoCoV3.0)
   Author	::  Rohan Walia, Morgane Billot, Kevin Garzon-Aguirre, Swathika Subramanian, Huiyi Wang,
                  Mohamed Irfan Refai, Guillaume Durandau, Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano
@@ -486,7 +486,7 @@
                   <inertial pos="0.0046 0.246 0" mass="18.619" diaginertia="0.165 0.15 0.125"/>
 				          <body name="head_attach" pos="-0.005 -0.01 0">
 					          <site name="head" pos="0 0.65 0" group="4" class="myo_leg_marker"/>
-                    <include file="soccer_assets/myohead_rigid_chain.xml"/>
+                    <include file="../../../../simhive/myo_sim/head/assets/myohead_rigid_chain.xml"/>
                   </body>
                   <geom name="torso_geom_1" pos="-0.019 0.121 0" quat="0.980067 0 0 0.198669" type="mesh"  mesh="torso_geom_1_thoracic12_s"/>
                   <geom name="torso_geom_2" pos="-0.032 0.146 0" quat="0.995004 0 0 0.0998334" type="mesh"  mesh="torso_geom_2_thoracic11_s"/>
