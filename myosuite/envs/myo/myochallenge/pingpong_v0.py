@@ -10,7 +10,6 @@ import enum
 
 from dm_control.mujoco.wrapper import MjModel as dm_MjModel
 
-from gymnasium import spec
 import mujoco
 import numpy as np
 from myosuite.utils import gym
@@ -18,7 +17,6 @@ import mujoco
 from scipy.spatial.transform import Rotation as R
 
 from myosuite.envs.myo.base_v0 import BaseV0
-from myosuite.utils.quat_math import mat2euler, euler2quat
 from myosuite.utils.spec_processing import recursive_immobilize, recursive_remove_contacts, recursive_mirror
 
 
