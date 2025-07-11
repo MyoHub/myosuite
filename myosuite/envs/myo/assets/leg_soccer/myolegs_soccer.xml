@@ -1,0 +1,72 @@
+<!-- <?xml version="1.0" ?> -->
+<mujoco model="MyoSuite's myoSoccer Version 2">
+<!-- =================================================
+    Copyright 2025 MyoSuite
+    Model   :: Myo Soccer (MuJoCoV3.3)
+    Author  :: Sherwin Chan (sherwin.chan@ntu.edu.sg), J-Anne Yow (janne.yow@ntu.edu.sg), Chun Kwang Tan (cktan.neumove@gmail.com), Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano
+    source  :: https://github.com/MyoHub/MyoSuite
+    License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -©vk©-->
+
+    <!-- Torso -->
+    <include file="../../../../simhive/myo_sim/torso/assets/myotorso_assets.xml"/>
+
+    <!-- Head -->
+    <include file="../../../../simhive/myo_sim/head/assets/myohead_simple_assets.xml"/>
+     
+    <!-- Legs -->
+    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_muscle.xml"/>
+    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_tendon.xml"/>
+    
+    <!-- Include the soccer field and ball -->
+    <include file="soccer_assets/soccer_scene/soccer_field.xml"/>
+    <include file="soccer_assets/soccer_scene/soccer_ball.xml"/>
+    <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
+
+    <asset>
+        <hfield name="terrain" size="6 6 1 0.001" nrow="100" ncol="100"/>
+        <texture name="texmyo" type="cube" file="scene/myosuite_icon.png"/>
+        <material name="matmyo" texture="texmyo" rgba="1 1 1 1"/>
+    </asset>
+
+    <worldbody>
+        <geom name="terrain" type="hfield" hfield="terrain" pos="0 0 -0.005" conaffinity="1" contype="1" rgba=".9 .9 .9 1"/>
+
+    <!-- <camera name="side_view" pos="-3 0 2.25" xyaxes="0 -1 0 1 0 2" mode="trackcom"/> -->
+        <camera name="goal_view" pos="37.376 6.759 4.363" xyaxes="-0.676 -0.737 -0.000 0.308 -0.283 0.908"/>
+        <camera name="goal_view2" pos="32.423 6.486 4.857" xyaxes="-0.593 -0.805 0.000 0.293 -0.216 0.931"/>
+
+
+        <!-- ======= GoalKeeper ======= -->
+        <body name='goalkeeper' pos="50 0 0" zaxis="0 0 1" mocap="true">
+            <light directional="true" diffuse=".25 .25 .25" specular="0.25 0.25 0.25" pos="0 -3 3" dir="0 1 -1" mode="trackcom"/>
+            <camera name="goalkeeper_view" pos="4 0 2.75" xyaxes="0 1 0 -1 0 2" mode="trackcom"/>
+            <geom name="base" type="capsule" pos="0 0 0.15" euler="0 0 0" size="0.25 0.15" rgba=".11 .1 .1 1" group="2" contype="1" conaffinity="1"/>            
+            <geom name="base_bar" type="cylinder" pos="0 0 0.8" euler="0 0 0" size="0.078 0.28" rgba=".7 .7 .7 1" group="2" contype="1" conaffinity="1"/>
+            <geom name="logo" type="sphere" pos="0 0 1.20" euler="1.57 0 0" size="0.25 0.02010" material="matmyo" group="2" contype="1" conaffinity="1"/>
+            <site name="goalkeeper_indicator" size="0.3" pos="0 0 1.2" rgba="0 0 0 0"/>
+        </body>
+
+        <!-- ======= MyoAgent ======= -->
+        <site name="pelvis_target" size="0.02" pos="0 0 .92" group="4"/>
+        <body name="root" pos="0 0 1" euler="0 0 -1.57">
+            <camera name="agent_eye" pos="0 0 0.635" xyaxes="0 1 0 0 0 1"/>
+            <light directional="true" diffuse=".25 .25 .25" specular="0.25 0.25 0.25" pos="3 0 2" dir="-1 0 -1" mode="trackcom"/>
+            <camera name="agent_view" pos="4 0 1.85" xyaxes="0 1 0 -1 0 2" mode="trackcom"/>
+            <include file="soccer_assets/myotorso_chain.xml"/>
+            <include file="../../../../simhive/myo_sim/leg/assets/myolegs_chain.xml"/>
+            <freejoint name="root"/>
+        </body>
+    </worldbody>
+
+    <keyframe>
+        <key qpos='40 0 0.12 1 0 0 0 39 0 0.92 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.161153 -0.0279385 -0.041886 0.00247908 0.00101098 0.461137 0.0275069 0.136817 0.334 -0.00117055 -0.000125295 -0.0302192 0.0395202 -0.194029 0.161153 -0.0279385 -0.041886 0.00247908 0.00101098 0.461137 0.0275069 0.136817 0.334 -0.00117055 -0.000125295 -0.0302192 0.0395202 -0.194029'/>
+        <!-- Preparing to kick pose -->
+        <key qpos='40 0 0.12 1 0 0 0 39.6 0.08 0.83 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.026 -0.028 -0.042 0.0025 0.001 2.1 0.028 0.14 -0.7 -0.0012 -0.00013 -0.03 0.04 -0.19 0.72 -0.24 -0.042 -0.0016 0.00081 0.54 0.028 0.14 -0.29 -0.0012 -0.00013 -0.03 0.04 -0.19'/>
+        <!-- Feet contact the the ball pose -->
+        <key qpos='40 0 0.12 1 0 0 0 39.95 0.08 0.92 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.51 -0.028 -0.042 0.0025 0.001 1.04 0.028 0.053 -0.27 -0.0012 -0.00013 -0.03 0.04 -0.19 0.039 -0.13 -0.042 -0.0016 0.00081 0.32 0.028 0.14 0.28 -0.0012 -0.00013 -0.03 0.04 -0.19'/>
+
+    </keyframe>
+
+</mujoco>
