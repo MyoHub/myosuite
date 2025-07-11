@@ -9,6 +9,8 @@ from typing import List
 import enum
 
 from dm_control.mujoco.wrapper import MjModel as dm_MjModel
+
+from gymnasium import spec
 import mujoco
 import numpy as np
 from myosuite.utils import gym
@@ -17,6 +19,8 @@ from scipy.spatial.transform import Rotation as R
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils.quat_math import mat2euler, euler2quat
+from myosuite.utils.spec_processing import recursive_immobilize, recursive_remove_contacts, recursive_mirror
+
 
 MAX_TIME = 5.0
 
@@ -185,18 +189,6 @@ class PingPongEnvV0(BaseV0):
         dim = model.sensor_dim[sensor_id]
         return data.sensordata[start:start+dim]
 
-    def get_sensor_by_name(self, model, data, name):
-        sensor_id = model.sensor_name2id(name)
-        start = model.sensor_adr[sensor_id]
-        dim = model.sensor_dim[sensor_id]
-        return data.sensordata[start:start+dim]
-
-    def get_sensor_by_name(self, model, data, name):
-        sensor_id = model.sensor_name2id(name)
-        start = model.sensor_adr[sensor_id]
-        dim = model.sensor_dim[sensor_id]
-        return data.sensordata[start:start+dim]
-
 
     def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
         #self.sim.model.body_pos[self.object_bid] = self.np_random.uniform(**self.target_xyz_range)
@@ -248,40 +240,12 @@ class PingPongEnvV0(BaseV0):
                 s.delete()
         temp_model = spec.compile()
 
-        def recursive_immobilize(parent, remove_eqs=False, remove_actuators=False):
-            removed_joint_ids = []
-            for s in parent.sites:
-                s.delete()
-            for j in parent.joints:
-                removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
-                if remove_eqs:
-                    for e in spec.equalities:
-                        if e.type == mujoco.mjtEq.mjEQ_JOINT and (e.name1 == j.name or e.name2 == j.name):
-                            e.delete()
-                if remove_actuators:
-                    for a in spec.actuators:
-                        if a.trntype == mujoco.mjtTrn.mjTRN_JOINT and a.target == j.name:
-                            a.delete()
-                j.delete()
-            for child in parent.bodies:
-                removed_joint_ids.extend(recursive_immobilize(child, remove_eqs, remove_actuators))
-            return removed_joint_ids
-
-        removed_ids = recursive_immobilize(spec.body("femur_l"), remove_eqs=True)
-        removed_ids.extend(recursive_immobilize(spec.body("femur_r"), remove_eqs=True))
-
+        removed_ids = recursive_immobilize(spec, temp_model, spec.body("femur_l"), remove_eqs=True)
+        removed_ids.extend(recursive_immobilize(spec, temp_model, spec.body("femur_r"), remove_eqs=True))
 
         for key in spec.keys:
             key.qpos = [j for i, j in enumerate(key.qpos) if i not in removed_ids]
 
-        def recursive_remove_contacts(parent, return_body_name="radius"):
-            if return_body_name in parent.name:
-                return
-            for g in parent.geoms:
-                g.contype=0
-                g.conaffinity=0
-            for child in parent.bodies:
-                recursive_remove_contacts(child, return_body_name)
         if remove_body_collisions:
             recursive_remove_contacts(spec.body("full_body"))
 
@@ -299,31 +263,12 @@ class PingPongEnvV0(BaseV0):
             [e.delete() for e in spec_copy.equalities]
             [s.delete() for s in spec_copy.sensors]
             [c.delete() for c in spec_copy.cameras]
-            recursive_immobilize(spec_copy.worldbody)
+            recursive_immobilize(spec, temp_model, spec_copy.worldbody)
             recursive_remove_contacts(spec_copy.worldbody, "___")
 
             meshes_to_mirror = set()
 
-            def recursive_mirror(parent):
-                parent.pos[1] *= -1
-                parent.quat[[1, 3]] *= -1
-                parent.name += "_mirrored"
-                for g in parent.geoms:
-                    if g.type != mujoco.mjtGeom.mjGEOM_MESH:
-                        g.delete()
-                        continue
-                    g.pos[1] *= -1
-                    g.quat[[1, 3]] *= -1
-                    g.name += "_mirrored"
-                    g.group = 1
-                    meshes_to_mirror.add(g.meshname)
-                    g.meshname += "_mirrored"
-                for child in parent.bodies:
-                    if "ping_pong" in child.name:
-                        spec_copy.detach_body(child)
-                        continue
-                    recursive_mirror(child)
-            recursive_mirror(spec_copy.body("clavicle"))
+            recursive_mirror(meshes_to_mirror, spec_copy, spec_copy.body("clavicle"))
             for mesh in spec_copy.meshes:
                 if mesh.name in meshes_to_mirror:
                     mesh.name += "_mirrored"
