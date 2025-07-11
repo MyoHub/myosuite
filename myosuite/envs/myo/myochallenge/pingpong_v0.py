@@ -245,7 +245,7 @@ class PingPongEnvV0(BaseV0):
             key.qpos = [j for i, j in enumerate(key.qpos) if i not in removed_ids]
 
         if remove_body_collisions:
-            recursive_remove_contacts(spec.body("full_body"))
+            recursive_remove_contacts(spec.body("full_body"), return_condition=lambda b: "radius" in b.name)
 
         if add_left_arm:
             torso = spec.body("torso")
@@ -262,7 +262,7 @@ class PingPongEnvV0(BaseV0):
             [s.delete() for s in spec_copy.sensors]
             [c.delete() for c in spec_copy.cameras]
             recursive_immobilize(spec, temp_model, spec_copy.worldbody)
-            recursive_remove_contacts(spec_copy.worldbody, "___")
+            recursive_remove_contacts(spec_copy.worldbody, return_condition=None)
 
             meshes_to_mirror = set()
 

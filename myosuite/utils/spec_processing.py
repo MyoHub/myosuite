@@ -21,14 +21,16 @@ def recursive_immobilize(spec, temp_model, parent, remove_eqs=False, remove_actu
         )
     return removed_joint_ids
 
-def recursive_remove_contacts(parent, return_body_name="radius"):
-    if return_body_name in parent.name:
+
+def recursive_remove_contacts(parent, return_condition=None):
+    if return_condition is not None and return_condition(parent):
         return
     for g in parent.geoms:
         g.contype=0
         g.conaffinity=0
     for child in parent.bodies:
-        recursive_remove_contacts(child, return_body_name)
+        recursive_remove_contacts(child, return_condition)
+
 
 def recursive_mirror(meshes_to_mirror, spec_copy, parent):
     parent.pos[1] *= -1
