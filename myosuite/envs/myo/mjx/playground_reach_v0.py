@@ -106,7 +106,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         penalty = -1.*(reach_dist>self.far_th) * self._config.reward_weights.penalty 
 
         reward = reach + bonus + penalty
-        done = reach_dist > far_th
+        done = -1.*(reach_dist > far_th)
 
         state.metrics.update(
             reach_reward=reach,
