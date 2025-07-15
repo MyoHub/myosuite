@@ -97,13 +97,13 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
 
         obs, reach_err = self._get_obs(data, state.info)
                 
-        reach_dist = np.linalg.norm(reach_err, axis=-1)
+        reach_dist = jp.linalg.norm(reach_err, axis=-1)
 
         far_th = jp.where(data.time>2.*self.mjx_model.opt.timestep, self._config.far_th*self.n_targets, jp.inf)
         
         reach = -1.*reach_dist * self._config.reward_weights.reach
         bonus = (1.*(reach_dist<2*self.near_th) + 1.*(reach_dist<self.near_th)) * self._config.reward_weights.bonus
-        penalty = -1.*(reach_dist>self.far_th) * self._config.reward_weights.penalty 
+        penalty = -1.*(reach_dist>far_th) * self._config.reward_weights.penalty 
 
         reward = reach + bonus + penalty
         done = -1.*(reach_dist > far_th)
@@ -123,13 +123,13 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
     ) -> jp.ndarray:
         """Observe qpos, qvel, act, tip_pos and reach_err."""
         tip_pos = data.site_xpos[self._tip_sids]
-        reach_err = info['targets']-tip_pos
+        reach_err = (info['targets']-tip_pos).ravel()
         obs = jp.concatenate([
             data.qpos,
             data.qvel*self.mjx_model.opt.timestep,
             data.act,
             tip_pos.ravel(),
-            reach_err.ravel()
+            reach_err
         ])
         return obs, reach_err
 

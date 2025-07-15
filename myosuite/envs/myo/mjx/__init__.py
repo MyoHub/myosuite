@@ -68,7 +68,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
             elbow_pose_env_config['target_jnt_range'] = config_dict.create(
                     r_elbow_flex=jp.array(((2), (2)))
                 )
-        elif env_name == "MjxElbowPoseFixed-v0":
+        elif env_name == "MjxElbowPoseRandom-v0":
             elbow_pose_env_config['target_jnt_range'] = config_dict.create(
                     r_elbow_flex=jp.array(((0), (2.27)))
                 )
