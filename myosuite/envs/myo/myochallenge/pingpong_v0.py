@@ -384,9 +384,11 @@ if __name__ == '__main__':
         qpos=[]
         with h5py.File('traj.h5', 'r') as f:
             qpos = np.array(f['qpos'])
+            qvel = np.array(f['qpos'])
         m, d = pingpong_env.sim.model._model, pingpong_env.sim.data._data
         with viewer.launch_passive(m, d) as viewer:
             i = 0
+            d.qpos[:] = qpos[i]
             while viewer.is_running():
                 # Compute velocity and integrate into the next configuration.
                 i = (i+1) % qpos.shape[0]

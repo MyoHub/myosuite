@@ -169,7 +169,7 @@ with mujoco.viewer.launch_passive(
         mujoco.mj_forward(model, data)
         qvel = np.zeros(model.nv+6)
         mujoco.mj_differentiatePos(diff_env.sim.model._model, qvel, model.opt.timestep,
-                                   insert_paddle_pos(data.qpos), rollout[-1]['qpos'])
+                                   rollout[-1]['qpos'], insert_paddle_pos(data.qpos))
         rollout.append({"qpos": insert_paddle_pos(data.qpos), "qvel": qvel})
 
         # Visualize at fixed FPS.
