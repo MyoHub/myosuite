@@ -103,6 +103,7 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
 
         obs = self._get_obs(data, state.info)
         reward = pose + act_reg + bonus + penalty
+
         done = jp.where(pose_dist>far_th, 1., 0.)
 
         state.metrics.update(

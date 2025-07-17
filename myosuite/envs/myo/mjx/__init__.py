@@ -15,10 +15,10 @@ pose_env_config = config_dict.create(
         ctrl_dt=0.02, # not used
         sim_dt=0.002, # not used
         reward_config=config_dict.create(
-            angle_reward_weight=1,
-            ctrl_cost_weight=1,
+            angle_reward_weight=1.,
+            ctrl_cost_weight=1.,
             pose_thd=0.35,
-            bonus_weight=4
+            bonus_weight=4.
         ),
         target_jnt_range=config_dict.ConfigDict(),
         far_th=4*jp.pi/2,
@@ -101,7 +101,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
             elbow_pose_env_config['target_jnt_range'] = config_dict.create(
                     r_elbow_flex=jp.array(((2), (2)))
                 )
-        elif env_name == "MjxElbowPoseFixed-v0":
+        elif env_name == "MjxElbowPoseRandom-v0":
             elbow_pose_env_config['target_jnt_range'] = config_dict.create(
                     r_elbow_flex=jp.array(((0), (2.27)))
                 )
@@ -161,3 +161,10 @@ def make(env_name: str) -> mjx_env.MjxEnv:
         env = registry.load(env_name)
 
         return env
+
+env_names = ["MjxElbowPoseFixed-v0",
+             "MjxElbowPoseRandom-v0",
+             "MjxFingerPoseFixed-v0",
+             "MjxFingerPoseRandom-v0",
+             "MjxHandReachRandom-v0",
+             "MjxHandReachFixed-v0"]
