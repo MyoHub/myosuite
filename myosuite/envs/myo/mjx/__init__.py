@@ -4,7 +4,7 @@ from ml_collections import config_dict
 import copy
 from etils import epath
 from jax import numpy as jp
-from mujoco_playground import registry
+import myo_registry as registry
 from mujoco_playground._src import mjx_env
 import mujoco
 
@@ -38,6 +38,33 @@ reach_env_config = config_dict.create(
         model_path=epath.Path('/tmp/dummy.xml')
     )
 
+ppo_config = config_dict.create(
+        num_timesteps=40_000_000,
+        num_evals=16,
+        reward_scaling=0.1,
+        episode_length=1000,
+        num_eval_envs=128,
+        clipping_epsilon=0.3,
+        normalize_observations=True,
+        action_repeat=1,
+        unroll_length=10,
+        num_minibatches=32,
+        num_updates_per_batch=8,
+        num_resets_per_eval=1,
+        discounting=0.97,
+        learning_rate=3e-4,
+        entropy_cost=0.001,
+        num_envs=8192,
+        batch_size=512,
+        max_grad_norm=1.0,
+        network_factory=config_dict.create(
+            policy_hidden_layer_sizes=(64, 64, 64),
+            value_hidden_layer_sizes=(64, 64, 64),
+            policy_obs_key="state",
+            value_obs_key="state",
+        )
+    )
+
 # Elbow posing ==============================
 elbow_pose_env_config = copy.deepcopy(pose_env_config)
 model_path='envs/myo/assets/elbow/'
@@ -56,9 +83,15 @@ model_path='envs/myo/assets/hand/'
 model_filename='myohand_pose.xml'
 hand_reach_env_config['model_path'] = epath.Path(epath.resource_path('myosuite')) / model_path / model_filename
 
+
 def config_callable(env_config) -> Callable[[], config_dict.ConfigDict]:
     fn = lambda : env_config
     return fn
+
+
+def get_default_config(env_name) -> config_dict.ConfigDict:
+  return registry.get_default_config(env_name)
+
 
 def make(env_name: str) -> mjx_env.MjxEnv:
 
@@ -72,9 +105,9 @@ def make(env_name: str) -> mjx_env.MjxEnv:
             elbow_pose_env_config['target_jnt_range'] = config_dict.create(
                     r_elbow_flex=jp.array(((0), (2.27)))
                 )
-        registry.manipulation.register_environment(env_name,
-                                                   MjxPoseEnvV0,
-                                                   config_callable(elbow_pose_env_config))
+        registry.register_environment(env_name,
+                                      MjxPoseEnvV0,
+                                      config_callable(elbow_pose_env_config))
         env = registry.load(env_name)
 
         return env
@@ -95,9 +128,9 @@ def make(env_name: str) -> mjx_env.MjxEnv:
                 IFpip=jp.array(((.1), (1))),
                 IFdip=jp.array(((.1), (1))),
             )
-        registry.manipulation.register_environment(env_name,
-                                                   MjxPoseEnvV0,
-                                                   config_callable(finger_pose_env_config))
+        registry.register_environment(env_name,
+                                      MjxPoseEnvV0,
+                                      config_callable(finger_pose_env_config))
         env = registry.load(env_name)
 
         return env
@@ -128,18 +161,3 @@ def make(env_name: str) -> mjx_env.MjxEnv:
         env = registry.load(env_name)
 
         return env
-
-# env_list = ["MjxElbowPoseFixed-v0",
-#             "MjxElbowPoseRandom-v0",
-#             "MjxFingerPoseFixed-v0",
-#             "MjxFingerPoseRandom-v0",
-#             "MjxHandReachRandom-v0",
-#             "MjxHandReachFixed-v0"]
-
-# import jax
-# for env_name in env_list:
-#     try:
-#         env = registry.load(env_name)
-#         print(f"{env_name} loaded successfully")
-#     except:
-#         print(f"{env_name} failed to load")
