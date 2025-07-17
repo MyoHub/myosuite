@@ -1,6 +1,5 @@
-# Control of planar movements in an arm, using the example scene provided by MuJoCo. For more information on
-# the simulator and the key feature of the physics simulation see:
-# https://mujoco.readthedocs.io/en/stable/overview.html#introduction
+# Visualize a policy trained in MJX in MuJoCo. Transfer of policies from MJX to MuJoCo is not expected by default,
+# and usually requires additional precautions such as domain randomization.
 
 import mujoco
 import mujoco.viewer as viewer

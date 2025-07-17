@@ -97,13 +97,13 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
 
         pose = pose_dist * -self._config.reward_config.angle_reward_weight
         act_reg = act_mag * -self._config.reward_config.ctrl_cost_weight
-        bonus = (jp.where(pose_dist<self._config.reward_config.pose_thd, 1, 0)
-                 + jp.where(pose_dist<self._config.reward_config.pose_thd*1.5, 1, 0)) * self._config.reward_config.bonus_weight
+        bonus = (jp.where(pose_dist<self._config.reward_config.pose_thd, 1., 0.)
+                 + jp.where(pose_dist<self._config.reward_config.pose_thd*1.5, 1., 0.)) * self._config.reward_config.bonus_weight
         penalty = -1.*(pose_dist>far_th)
 
         obs = self._get_obs(data, state.info)
         reward = pose + act_reg + bonus + penalty
-        done = pose_dist>far_th
+        done = jp.where(pose_dist>far_th, 1., 0.)
 
         state.metrics.update(
             pose_reward=pose,

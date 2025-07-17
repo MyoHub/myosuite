@@ -2,14 +2,12 @@ import time
 import mujoco
 import jax
 import mujoco.viewer
-from playground_elbow_v0 import MjxElbow
-from playground_hand_v0 import MjxHand
-
+from myosuite.envs.myo.mjx import make
 # Visualize an MJX environment interactively
 
 
 def main():
-    env = MjxHand()
+    env = make("MjxElbowPoseFixed-v0")
 
     # We could get the model from the env, but we want to make some edits for convenience
     spec = mujoco.MjSpec.from_file(env.xml_path)
@@ -37,7 +35,7 @@ def main():
 
             # We'll use the sensordata array to visualize key values as real-time bar-graphs (use F4 in viewer)
             d.sensordata[0] = state.reward
-            d.sensordata[1:] = state.info['target_angle']
+            d.sensordata[1:] = state.info['target_angles']
 
             # Pick up changes to the physics state, apply perturbations, update options from GUI.
             viewer.sync()
