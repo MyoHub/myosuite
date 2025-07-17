@@ -38,7 +38,9 @@ class PingPongEnvV0(BaseV0):
         gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
         preproc_kwargs = {"remove_body_collisions": kwargs.pop("remove_body_collisions", True),
                           "add_left_arm": kwargs.pop("add_left_arm", True)}
-        model_handle = self._preprocess_spec(model_path, **preproc_kwargs)  # TODO: confirm this doesn't break pickling
+        spec: mujoco.MjSpec = mujoco.MjSpec.from_file(model_path)
+        spec = self._preprocess_spec(spec, **preproc_kwargs)  # TODO: confirm this doesn't break pickling
+        model_handle = dm_MjModel(spec.compile())
         super().__init__(model_path=model_handle, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
 
@@ -220,7 +222,7 @@ class PingPongEnvV0(BaseV0):
         return super().step(processed_controls, **kwargs)
 
     def _preprocess_spec(self,
-                         model_path,
+                         spec,
                          remove_body_collisions=True,
                          add_left_arm=True):
         # We'll process the string path to:
@@ -229,7 +231,7 @@ class PingPongEnvV0(BaseV0):
         # - optionally alter physics
         # - we could attach the paddle at this point too
         # and compile it to a (wrapped) model - the SimScene can now take that as an input
-        spec: mujoco.MjSpec = mujoco.MjSpec.from_file(model_path)
+
         for paddle_b in spec.bodies:
             if "paddle" in paddle_b.name and paddle_b.parent != spec.worldbody:
                 spec.detach_body(paddle_b)
@@ -278,7 +280,7 @@ class PingPongEnvV0(BaseV0):
             spec.body("ulna_mirrored").quat =[0.546, 0, 0, -0.838]
             spec.body("humerus_mirrored").quat = [ 0.924, 0.383, 0, 0]
             pass
-        return dm_MjModel(spec.compile())
+        return spec
 
 
 
