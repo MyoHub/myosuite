@@ -31,8 +31,8 @@ class PingPongEnvV0(BaseV0):
         "palm_dist": 1,
         "paddle_quat": 5,
         "act": 1,
-        "ref_qpos_err": 1,
-        "ref_qvel_err": .5,
+        #"ref_qpos_err": 1,
+        #"ref_qvel_err": .5,
         "sparse": 1,
         "solved": 1000,
         'done': -10
@@ -119,9 +119,12 @@ class PingPongEnvV0(BaseV0):
         ball_pos = obs_dict["ball_pos"][0][0] if obs_dict['ball_pos'].ndim == 3 else obs_dict['ball_pos']
         solved = evaluate_pingpong_trajectory(self.contact_trajectory) == None
         paddle_quat_err = np.linalg.norm(obs_dict['padde_ori_err'], axis=-1)
-        qpos_ref, qvel_ref, qpos_err, qvel_err = self.ref_traj()()
-        ref_qpos_err = np.linalg.norm(qpos_err)
-        ref_qvel_err = np.linalg.norm(qvel_err)
+
+        #=========== for the baseline, we provide an h5 file in which you could perform simple imitation learning ===========
+            #======== uncomment to load the files and rewards =======================
+        #qpos_ref, qvel_ref, qpos_err, qvel_err = self.ref_traj()()
+        #ref_qpos_err = np.linalg.norm(qpos_err)
+        #ref_qvel_err = np.linalg.norm(qvel_err)
 
         rwd_dict = collections.OrderedDict((
             # Perform reward tuning here --
@@ -132,8 +135,8 @@ class PingPongEnvV0(BaseV0):
             ('reach_dist', np.exp(-1. * reach_dist)),
             ('palm_dist', np.exp(-5. * palm_dist)),
             ('paddle_quat', np.exp(- 5 * paddle_quat_err)),
-            ('ref_qpos_err', - ref_qpos_err),
-            ('ref_qvel_err',- ref_qvel_err),
+            #('ref_qpos_err', - ref_qpos_err),
+            #('ref_qvel_err',- ref_qvel_err),
             # Must keys
             ('act', -1.*act_mag),
             ('sparse', np.array([[ball_pos[0] < 0]])), #for reaching the other side of the table.
