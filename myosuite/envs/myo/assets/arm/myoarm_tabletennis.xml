@@ -55,8 +55,8 @@
     </option>
     
     <worldbody>
-        <camera name="default" pos="-1.150 -2.332 1.817" xyaxes="0.855 -0.519 0.000 0.125 0.206 0.971"/>
-        <camera name="close_up" pos="-0.046 0.179 1.462" xyaxes="0.036 -0.999 -0.000 0.121 0.004 0.993"/>
+        <camera name="default" pos="-0.367 0.451 1.483" xyaxes="-0.033 -0.999 0.000 0.207 -0.007 0.978"/>
+        <camera name="close_up" pos="-0.031 -6.315 0.984" xyaxes="1.000 -0.009 -0.000 -0.001 -0.099 0.995"/>
 
         <body name="full_body" pos="1.6 0 0.95" euler="0 0 3.14">
             <include file="../../../../simhive/myo_sim/torso/assets/myotorso_arm_chain.xml"/>
@@ -70,7 +70,7 @@
         <!-- Ping Pong geom -->
         <body name="pingpong_table">
             <geom name="coll_own_half" type="box" size="0.685 0.76 0.795" pos="0.685 0.04 0" rgba="0 0 0 0" class="collision"/>
-            <geom name="coll_opponent_half" type="box" size="0.685 0.76 0.795" pos="-0.685 0.04 0" rgba="0 0 0 0" class="collision"/>
+            <geom name="coll_opponent_half" type="box" size="0.685 0.76 0.796" pos="-0.685 0.04 0" rgba="0 0 0 0" class="collision"/>
             <geom name="coll_net" type="box" size="0.005 0.9125 0.1525" pos="0 0.04 0.795" rgba="0 0 0 0" class="collision"/>
             <geom name="mesh_ping_pong_table" type="mesh" mesh="pingpong_table"
                 material="pingpong_mat" rgba="1 1 1 1"
