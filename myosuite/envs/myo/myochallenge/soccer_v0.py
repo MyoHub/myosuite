@@ -1,5 +1,5 @@
 """ =================================================
-# Copyright (c) Facebook, Inc. and its affiliates
+# Copyright (c) MyoSuite Authors
 Authors  :: Sherwin Chan (sherwin.chan@ntu.edu.sg), J-Anne Yow (janne.yow@ntu.edu.sg), Chun Kwang Tan (cktan.neumove@gmail.com), Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com), Pierre Schumacher (schumacherpier@gmail.com)
 ================================================= """
 

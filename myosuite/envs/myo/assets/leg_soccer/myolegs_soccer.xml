@@ -1,4 +1,4 @@
-<?xml version="1.0" ?>
+<!-- <?xml version="1.0" ?> -->
 <mujoco model="MyoSuite's myoSoccer Version 2">
 <!-- =================================================
     Copyright 2025 MyoSuite
@@ -8,16 +8,16 @@
     License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ====================================================== -©vk©-->
 
+    <!-- Torso -->
+    <include file="../../../../simhive/myo_sim/torso/assets/myotorso_assets.xml"/>
+
     <!-- Head -->
-	<include file="soccer_assets/myohead_simple_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/head/assets/myohead_simple_assets.xml"/>
      
     <!-- Legs -->
-    <include file="soccer_assets/myolegs_assets.xml"/>
-    <include file="soccer_assets/myolegs_muscle.xml"/>
-    <include file="soccer_assets/myolegs_tendon.xml"/>
-    
-    <!-- Torso -->
-    <include file="soccer_assets/myotorso_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_muscle.xml"/>
+    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_tendon.xml"/>
     
     <!-- Include the soccer field and ball -->
     <include file="soccer_assets/soccer_scene/soccer_field.xml"/>
@@ -55,7 +55,7 @@
             <light directional="true" diffuse=".25 .25 .25" specular="0.25 0.25 0.25" pos="3 0 2" dir="-1 0 -1" mode="trackcom"/>
             <camera name="agent_view" pos="4 0 1.85" xyaxes="0 1 0 -1 0 2" mode="trackcom"/>
             <include file="soccer_assets/myotorso_chain.xml"/>
-            <include file="soccer_assets/myolegs_chain.xml"/>
+            <include file="../../../../simhive/myo_sim/leg/assets/myolegs_chain.xml"/>
             <freejoint name="root"/>
         </body>
     </worldbody>
