@@ -4,7 +4,7 @@ name = "MyoSuite"
 dynamic = ["version"]  # Enable dynamic version
 description = "Musculoskeletal environments simulated in MuJoCo"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "Apache 2.0" }
 authors = [
     { name = "Vikash Kumar", email = "vikashplus@gmail.com" },
@@ -34,6 +34,43 @@ dependencies = [
 ]
 [project.optional-dependencies]
 examples = ["mink[examples]; python_version > '3.9'"]
+standard = [
+    "mujoco==3.3.0",
+]
+mjx = [
+    "mujoco>=3.3.0",
+    "jax[cuda]>=0.4.20",
+    "jaxlib>=0.4.20",
+    "brax>=0.10.0",
+    "flax>=0.8.0",
+    "optax>=0.1.7",
+    "ml-collections>=0.1.1",
+    "etils[epath]>=1.3.0",
+    "mujoco-mjx>=3.1.0",
+    "playground>=0.0.5",
+    "mediapy>=1.2.0",
+    "wandb>=0.21.0"
+]
+
+[dependency-groups]
+standard = [
+    "mujoco==3.3.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-xvfb",
+    "black",
+    "isort",
+    "flake8"
+]
+
+[tool.uv]
+conflicts = [
+    [
+        { extra = "mjx" },
+        { group = "standard" }
+    ]
+]
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]
