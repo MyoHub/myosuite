@@ -4,14 +4,8 @@ This directory contains MJX (MuJoCo XLA) implementations of MyoSuite environment
 
 ## Installation
 
-### Standard Installation (Python ≥3.9, MuJoCo 3.3.0):
-```bash
-# With uv:
-uv sync -p 3.9
-
-# With pip:
-pip install -e .
-```
+### Standard Installation
+The default installation requires Python ≥3.9 and MuJoCo 3.3.0. See the [main README](../../../../README.md) for detailed installation instructions using uv, conda, or pip.
 
 ### MJX Installation (Python ≥3.10, MuJoCo 3.3.4):
 
@@ -43,7 +37,4 @@ Train JAX PPO with:
 ```bash
 uv run train_jax_ppo.py
 ```
-Remember to initialize the submodules before running the examples:
-```bash
-git submodule update --init --recursive
-```
+Remember to initialize the submodules with `uv run myoapi_init` before running the examples (see the [main README](../../../../README.md) for more details).
