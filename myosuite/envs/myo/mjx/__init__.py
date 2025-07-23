@@ -155,9 +155,9 @@ def make(env_name: str) -> mjx_env.MjxEnv:
                         RFtip=jp.array(((-0.148-0.040, -0.543-0.020, 1.445-0.010), (-0.148+0.040, -0.543+0.020, 1.445+0.010))),
                         LFtip=jp.array(((-0.148-0.040, -0.528-0.020, 1.434-0.010), (-0.148+0.040, -0.528+0.020, 1.434+0.010))),
                     )
-        registry.manipulation.register_environment(env_name,
-                                                   MjxReachEnvV0,
-                                                   config_callable(hand_reach_env_config))
+        registry.register_environment(env_name,
+                                      MjxReachEnvV0,
+                                      config_callable(hand_reach_env_config))
         env = registry.load(env_name)
 
         return env
