@@ -290,7 +290,7 @@ class IdInfo:
 
         self.ball_bid = model.body("pingpong").id
         self.own_half_gid = model.geom("coll_own_half").id
-        self.paddle_gid = model.geom("ping_pong_paddle").id
+        self.paddle_gid = model.geom("pad").id 
         self.opponent_half_gid = model.geom("coll_opponent_half").id
         self.ground_gid = model.geom("ground").id
         self.net_gid = model.geom("coll_net").id
