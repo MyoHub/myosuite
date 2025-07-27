@@ -121,7 +121,7 @@ class PingPongEnvV0(BaseV0):
         solved = evaluate_pingpong_trajectory(self.contact_trajectory) == None
         paddle_quat_err = np.linalg.norm(obs_dict['padde_ori_err'], axis=-1)
         torso_err = abs(self.sim.data.qpos[self.sim.model.jnt_qposadr[self.sim.model.joint_name2id('flex_extension')]])
-
+        paddle_touch = obs_dict['touching_info'][0][0] if obs_dict['touching_info'].ndim == 3 else obs_dict['touching_info']
         #=========== for the baseline, we provide an h5 file in which you could perform simple imitation learning ===========
             #======== uncomment to load the files and rewards =======================
         #qpos_ref, qvel_ref, qpos_err, qvel_err = self.ref_traj()()
@@ -142,7 +142,7 @@ class PingPongEnvV0(BaseV0):
             #('ref_qvel_err', -1 * ref_qvel_err),
             # Must keys
             ('act_reg', -1.*act_mag),
-            ('sparse', obs_dict['touching_info'][0][0][0] == 1), #for reaching the other side of the table.
+            ('sparse', paddle_touch[0] == 1), #paddle_touching
             ('solved', np.array([[solved]])),
             ('done', np.array([[self._get_done(ball_pos[-1], solved)]])),
         ))
