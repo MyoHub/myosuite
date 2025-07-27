@@ -139,10 +139,11 @@ Observation Space
 
 Starting Criteria: Phase 1
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-- The ball starts at the same position with the same speed
+- The ball starts with the same speed
 - The agent has the same starting position
 - The paddle initially starts in the grasping position with the hand,
   but is not connected.
+- The starting position of the ball is randomly reset between [-1.15, -0.40, 1.55] and [-1.35, -0.5, 1.35] in x, y, z direction respectively at the start of the episode.
 - Maximum time: 3 seconds
 
 
