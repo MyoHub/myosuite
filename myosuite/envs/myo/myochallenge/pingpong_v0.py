@@ -29,11 +29,12 @@ class PingPongEnvV0(BaseV0):
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "reach_dist": 1,
         "palm_dist": 1,
-        "paddle_quat": 5,
-        "act": 1,
+        "paddle_quat": 2,
+        "act_reg": .5,
+        'torso_up': 2,
         #"ref_qpos_err": 1,
-        #"ref_qvel_err": .5,
-        "sparse": 1,
+        #"ref_qvel_err": .1,
+        "sparse": 100,
         "solved": 1000,
         'done': -10
     }
@@ -119,6 +120,7 @@ class PingPongEnvV0(BaseV0):
         ball_pos = obs_dict["ball_pos"][0][0] if obs_dict['ball_pos'].ndim == 3 else obs_dict['ball_pos']
         solved = evaluate_pingpong_trajectory(self.contact_trajectory) == None
         paddle_quat_err = np.linalg.norm(obs_dict['padde_ori_err'], axis=-1)
+        torso_err = abs(self.sim.data.qpos[self.sim.model.jnt_qposadr[self.sim.model.joint_name2id('flex_extension')]])
 
         #=========== for the baseline, we provide an h5 file in which you could perform simple imitation learning ===========
             #======== uncomment to load the files and rewards =======================
@@ -135,23 +137,23 @@ class PingPongEnvV0(BaseV0):
             ('reach_dist', np.exp(-1. * reach_dist)),
             ('palm_dist', np.exp(-5. * palm_dist)),
             ('paddle_quat', np.exp(- 5 * paddle_quat_err)),
-            #('ref_qpos_err', - ref_qpos_err),
-            #('ref_qvel_err',- ref_qvel_err),
+            ('torso_up', np.exp(-5 * torso_err)),
+            #('ref_qpos_err', -1 * ref_qpos_err), use these for your imitation learning script
+            #('ref_qvel_err', -1 * ref_qvel_err),
             # Must keys
-            ('act', -1.*act_mag),
-            ('sparse', np.array([[ball_pos[0] < 0]])), #for reaching the other side of the table.
+            ('act_reg', -1.*act_mag),
+            ('sparse', obs_dict['touching_info'][0][0][0] == 1), #for reaching the other side of the table.
             ('solved', np.array([[solved]])),
-            ('done', np.array([[self._get_done(ball_pos[-1])]])),
+            ('done', np.array([[self._get_done(ball_pos[-1], solved)]])),
         ))
 
-        #print([float(wt) * float(np.array(rwd_dict[key]).squeeze()) for key, wt in self.rwd_keys_wt.items()])
         rwd_dict['dense'] = sum(float(wt) * float(np.array(rwd_dict[key]).squeeze())
                             for key, wt in self.rwd_keys_wt.items()
                                 )
 
         return rwd_dict
     
-    def ref_traj(self, traj_path="traj.h5"):
+    def ref_traj(self, traj_path= r"your_h5.h5"):
         """
         Returns a function that provides reference (qpos, qvel) and their errors.
         After the end of the reference trajectory, errors are zero and the agent is unconstrained.
@@ -194,14 +196,13 @@ class PingPongEnvV0(BaseV0):
 
         return _get_ref
 
-    def _get_done(self, z):
+    def _get_done(self, z, solved):
         if self.obs_dict['time'] > MAX_TIME:
             return 1
         elif z < 0.3:
             self.obs_dict['time'] = MAX_TIME
             return 1
-        elif self.rwd_dict and self.rwd_dict['solved']:
-            print('successful hit')
+        elif solved:
             return 1
         elif evaluate_pingpong_trajectory(self.contact_trajectory) in [0, 2, 3]:
             return 1
@@ -228,7 +229,7 @@ class PingPongEnvV0(BaseV0):
         return obs_vec
 
 
-    def get_metrics(self, paths, successful_steps=5):
+    def get_metrics(self, paths, successful_steps=1):
         """
         Evaluate paths and report metrics
         """
@@ -238,12 +239,12 @@ class PingPongEnvV0(BaseV0):
         # average sucess over entire env horizon
         for path in paths:
             # record success if solved for provided successful_steps
-            if np.sum(path['env_infos']['rwd_dict']['solved'] * 1.0) > successful_steps:
+            if np.sum(path['env_infos']['rwd_dict']['solved'] * 1.0) >= successful_steps:
                 num_success += 1
         score = num_success/num_paths
 
         # average activations over entire trajectory (can be shorter than horizon, if done) realized
-        effort = -1.0*np.mean([np.mean(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
+        effort = 1.0*np.mean([np.mean(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
 
         metrics = {
             'score': score,
@@ -261,10 +262,11 @@ class PingPongEnvV0(BaseV0):
     def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
         #self.sim.model.body_pos[self.object_bid] = self.np_random.uniform(**self.target_xyz_range)
         #self.sim.model.body_quat[self.object_bid] = euler2quat(self.np_random.uniform(**self.target_rxryrz_range))
+        self.contact_trajectory = []
         self.init_qpos[:] = self.sim.model.key_qpos[0].copy()
         if self.ball_xyz_range is not None:
             self.sim.model.body_pos[self.id_info.ball_bid] = self.np_random.uniform(**self.ball_xyz_range)
-
+            self.init_qpos[self.ball_dofadr + 1 : self.ball_dofadr + 4] = self.np_random.uniform(**self.ball_xyz_range)
         # randomize init arms pose
         if self.qpos_noise_range is not None:
             reset_qpos_local = self.init_qpos + self.qpos_noise_range*(self.sim.model.jnt_range[:,1]-self.sim.model.jnt_range[:,0])
@@ -272,7 +274,6 @@ class PingPongEnvV0(BaseV0):
         else:
             reset_qpos_local = reset_qpos
 
-        
         self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
         obs = super().reset(reset_qpos=self.init_qpos, reset_qvel=self.init_qvel,**kwargs)
 
@@ -459,4 +460,3 @@ def evaluate_pingpong_trajectory(contact_trajectory: List[set]):
                 return ContactTrajIssue.NO_PADDLE
 
     return ContactTrajIssue.MISS
-
