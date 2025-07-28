@@ -300,7 +300,7 @@ For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_re
     from myosuite.utils import gym
     # Include the locomotion track environment, uncomment to select the manipulation challenge
     # env = gym.make('myoChallengeSoccerP1-v0')
-    env = gym.make('myoChallengePingpongP1-v0')
+    env = gym.make('myoChallengeTableTennisP1-v0')
     
 
     env.reset()
