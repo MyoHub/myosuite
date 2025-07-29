@@ -304,7 +304,8 @@ class TableTennisEnvV0(BaseV0):
 
         for paddle_b in spec.bodies:
             if "paddle" in paddle_b.name and paddle_b.parent != spec.worldbody:
-                spec.detach_body(paddle_b)
+                import warnings
+                warnings.warn("A paddle was found that was not a free body. Confirm this is intended.")
         for s in spec.sensors:
             if "pingpong" not in s.name and "paddle" not in s.name:
                 s.delete()

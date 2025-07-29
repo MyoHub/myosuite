@@ -16,12 +16,12 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 from loop_rate_limiters import RateLimiter
-from myosuite.envs.myo.myochallenge.pingpong_v0 import PingPongEnvV0
+from myosuite.envs.myo.myochallenge.tabletennis_v0 import TableTennisEnvV0
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 from scipy.interpolate import interp1d
 
-class IKPingPongEnv(PingPongEnvV0):
+class IKTableTennisEnv(TableTennisEnvV0):
     def _preprocess_spec(self,
                          spec: mujoco.MjSpec,
                          remove_body_collisions=True,
@@ -29,18 +29,18 @@ class IKPingPongEnv(PingPongEnvV0):
 
       temp_model = spec.compile()
       temp_data = mujoco.MjData(temp_model)
-      spec.body("ping_pong_paddle").quat = R.from_euler('xyz', spec.body("ping_pong_paddle").alt.euler).as_quat(scalar_first=True)
+      spec.body("paddle").quat = R.from_euler('xyz', spec.body("paddle").alt.euler).as_quat(scalar_first=True)
       mujoco.mj_resetDataKeyframe(temp_model, temp_data, 0)
       mujoco.mj_forward(temp_model, temp_data)
       body_B = temp_data.body(spec.site("S_grasp").parent.name)
-      body_A = temp_data.body("ping_pong_paddle")
+      body_A = temp_data.body("paddle")
       rel_pos, rel_quat = reparent_to(body_A.xpos, body_A.xquat, body_B.xpos, body_B.xquat)
 
       tar = spec.worldbody.add_body(name="target", pos=[0, 0, 0], quat=[0, 1, 0, 0], mocap=True)
       tar.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=[.15, .15, .15], contype=0, conaffinity=0, rgba=[.6, .3, .3, .0])
       tar_paddle = spec.worldbody.add_body(name="ping_pong_paddle_target", pos=[1.5, 0.3, 1.13], quat=[0.69, -0.153, .701, -0.0923], mocap=True)
-      offset = -spec.body("ping_pong_paddle").sites[0].pos
-      for g in spec.body("ping_pong_paddle").geoms:
+      offset = -spec.body("paddle").sites[0].pos
+      for g in spec.body("paddle").geoms:
         if g.type == mujoco.mjtGeom.mjGEOM_MESH:
           continue
         tar_paddle.add_geom(type=g.type, size=g.size, rgba=[.6, .3, .3, .3], pos=g.pos+offset, quat=g.quat, euler=g.alt.euler)
@@ -57,13 +57,12 @@ class IKPingPongEnv(PingPongEnvV0):
       [m.delete() for m in spec_copy.meshes]
       [c.delete() for c in spec_copy.cameras]
 
-      paddle = spec_copy.body("ping_pong_paddle")
+      paddle = spec_copy.body("paddle")
       paddle.joints[0].delete()
-      paddle.name = "ppp"
       paddle.pos *= 0
       paddle.alt.euler *= 0
       paddle.quat = [1, 0, 0, 0]
-      spec.detach_body(spec.body("ping_pong_paddle"))
+      spec.detach_body(spec.body("paddle"))
       fr = spec.site("S_grasp").parent.add_frame(quat=rel_quat, pos=rel_pos)
       fr.attach_body(paddle)
 
@@ -95,8 +94,8 @@ def reparent_to(xpos_A, xquat_A, xpos_B, xquat_B):
 
 
 
-env = IKPingPongEnv("..\..\..\..\myosuite\envs\myo\assets\arm\myoarm_tabletennis.xml")
-diff_env = PingPongEnvV0("..\..\..\..\myosuite\envs\myo\assets\arm\myoarm_tabletennis.xml")
+env = IKTableTennisEnv(r"..\..\..\..\myosuite\envs\myo\assets\arm\myoarm_tabletennis.xml")
+diff_env = TableTennisEnvV0(r"..\..\..\..\myosuite\envs\myo\assets\arm\myoarm_tabletennis.xml")
 
 env.reset()
 
@@ -144,7 +143,7 @@ with mujoco.viewer.launch_passive(
     rate = RateLimiter(frequency=500.0, warn=False)
 
     def insert_paddle_pos(qpos):
-      return np.insert(qpos, qpos.shape[0]-7, np.concatenate([data.body("ppp").xpos, data.body("ppp").xquat]))
+      return np.insert(qpos, qpos.shape[0]-7, np.concatenate([data.body("paddle").xpos, data.body("paddle").xquat]))
 
     rollout = [{"qpos": insert_paddle_pos(data.qpos), "qvel": data.qvel}]
     T_movement = 0.5  # movement in seconds
