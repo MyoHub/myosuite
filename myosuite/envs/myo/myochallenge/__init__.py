@@ -60,7 +60,7 @@ register_env_with_variants(id='myoChallengeTableTennisP1-v0',
         kwargs={
             'model_path': curr_dir + '/../assets/arm/myoarm_tabletennis.xml',
             'normalize_act': True,
-            'ball_xyz_range': {'high':[-1.15, -0.40, 1.55], 'low':[-1.35, -0.5, 1.35]},
+            'ball_xyz_range': {'high':[-1.20, -0.45, 1.5], 'low':[-1.25, -0.5, 1.4]},
             'frame_skip': 5,
         }
     )
