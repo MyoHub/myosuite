@@ -1,4 +1,4 @@
-<mujoco model="ping_pong_paddle">
+<mujoco model="tabletennis">
 <!-- =================================================
     Copyright (c) MyoSuite Authors
     Model   :: Myo PingPong (MuJoCoV3.3)
@@ -20,14 +20,14 @@
     
     <asset>
         <!-- Ping Pong mesh and texture -->
-        <mesh name="pingpong_table" file="../../envs/myo/assets/pingpong_table.obj" />
-        <mesh name="pingpong_net_mesh" file="../../envs/myo/assets/pingpong_net.obj" />
-        <texture name="pingpong_tex" type="2d" file="../../envs/myo/assets/PingPong.png"/>
-        
-        <material name="pingpong_mat" texture="pingpong_tex" specular="0.2" shininess="0.4"/>
+        <mesh name="tabletennis_table" file="../../envs/myo/assets/tabletennis_table.obj" />
+        <mesh name="tabletennis_net_mesh" file="../../envs/myo/assets/tabletennis_net.obj" />
+        <texture name="tabletennis_tex" type="2d" file="../../envs/myo/assets/tabletennis.png"/>
+
+        <material name="tabletennis_mat" texture="tabletennis_tex" specular="0.2" shininess="0.4"/>
 
         <!-- Ping Pong Paddle mesh and texture -->
-        <mesh name="ping_pong_paddle_mesh" file="../../envs/myo/assets/Ping_Pong_Paddle.obj" />
+        <mesh name="paddle_mesh" file="../../envs/myo/assets/paddle.obj" />
         <texture name="paddle_tex" type="2d" file="../../envs/myo/assets/paddle_1k.png"/>
         <material name="paddle_mat" texture="paddle_tex" specular="0.2" shininess="0.4"/>
 
@@ -44,8 +44,8 @@
         </default>
 
         <default class="pelvis_move">
-            <joint limited="true" damping="10"/>
-            <position kp="100" ctrllimited="true"/>
+            <joint limited="true" damping="1000" type="slide" armature="10"/>
+            <position kp="3500"  ctrllimited="true"/>
         </default>
     </default>
 
@@ -53,38 +53,38 @@
     <option timestep="0.002">
         <flag multiccd="enable"/>
     </option>
-    
+
     <worldbody>
         <camera name="default" pos="-0.367 0.451 1.483" xyaxes="-0.033 -0.999 0.000 0.207 -0.007 0.978"/>
         <camera name="close_up" pos="-0.031 -6.315 0.984" xyaxes="1.000 -0.009 -0.000 -0.001 -0.099 0.995"/>
 
         <body name="full_body" pos="1.6 0 0.95" euler="0 0 3.14">
             <include file="../../../../simhive/myo_sim/torso/assets/myotorso_arm_chain.xml"/>
-            <joint name="pelvis_x" type="slide" axis="1 0 0" damping="10000" range="-1 -0.05"/>
-            <joint name="pelvis_y" type="slide" axis="0 1 0" damping="10000" range="-1 1"/>
+            <joint name="pelvis_x" class="pelvis_move"  axis="1 0 0"  range="-1 -0.05"/>
+            <joint name="pelvis_y" class="pelvis_move"  axis="0 1 0" range="-1 1"/>
             <include file="../../../../simhive/myo_sim/leg/assets/myolegs_chain.xml"/>
         </body>
 
         <light name="glow" pos="0 0 1.5" directional="false"  castshadow="true" diffuse="0.7 0.7 0.7" specular="0.5 0.5 0.5" ambient="0.52 0.52 0.52"/>
-        
+
         <!-- Ping Pong geom -->
-        <body name="pingpong_table">
+        <body name="tabletennis_table">
             <geom name="coll_own_half" type="box" size="0.685 0.76 0.795" pos="0.685 0.04 0" rgba="0 0 0 0" class="collision"/>
             <geom name="coll_opponent_half" type="box" size="0.685 0.76 0.796" pos="-0.685 0.04 0" rgba="0 0 0 0" class="collision"/>
             <geom name="coll_net" type="box" size="0.005 0.9125 0.1525" pos="0 0.04 0.795" rgba="0 0 0 0" class="collision"/>
-            <geom name="mesh_ping_pong_table" type="mesh" mesh="pingpong_table"
-                material="pingpong_mat" rgba="1 1 1 1"
+            <geom name="mesh_tabletennis_table" type="mesh" mesh="tabletennis_table"
+                material="tabletennis_mat" rgba="1 1 1 1"
                 pos="0 0 0" euler="1.57 0 0" contype="0" conaffinity="0"/>
 
-            <geom name="mesh_ping_pong_net" type="mesh" mesh="pingpong_net_mesh"
-                material="pingpong_mat" rgba="1 1 1 1"
+            <geom name="mesh_tabletennis_net" type="mesh" mesh="tabletennis_net_mesh"
+                material="tabletennis_mat" rgba="1 1 1 1"
                 pos="0 0 0" euler="1.57 0 0" contype="0" conaffinity="0"/>
         </body>
 
-        <body name="ping_pong_paddle" pos="1.8 0.5 1.13" euler="-0.3 1.57 0">
+        <body name="paddle" pos="1.8 0.5 1.13" euler="-0.3 1.57 0">
             <inertial pos="0 0 0" mass="0.15" diaginertia="0.001 0.001 0.001"/>
             <freejoint name="paddle_freejoint"/>
-            <geom name="ping_pong_paddle" type="mesh" mesh="ping_pong_paddle_mesh"
+            <geom name="paddle" type="mesh" mesh="paddle_mesh"
                 material="paddle_mat" rgba="1 1 1 1"
                 pos="0 0 0" euler="0 0 0"/>
             <site name="paddle" pos="-0.06 0. 0" group="4"/>
@@ -102,9 +102,9 @@
     </worldbody>
 
     <actuator>
-        <position class="pelvis_move" kp="50" name="pelvis_x" joint="pelvis_x"
+        <position class="pelvis_move" name="pelvis_x" joint="pelvis_x"
                   ctrlrange="-1 0.05"/>
-        <position class="pelvis_move" kp="50" name="pelvis_y" joint="pelvis_y"
+        <position class="pelvis_move" name="pelvis_y" joint="pelvis_y"
                   ctrlrange="-1 1"/>
     </actuator>
 

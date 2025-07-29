@@ -23,7 +23,8 @@ from myosuite.utils.spec_processing import recursive_immobilize, recursive_remov
 
 MAX_TIME = 3.0
 
-class PingPongEnvV0(BaseV0):
+
+class TableTennisEnvV0(BaseV0):
 
     DEFAULT_OBS_KEYS = ['pelvis_pos', 'body_qpos', 'body_qvel', 'ball_pos', 'ball_vel', 'paddle_pos', "paddle_vel", 'paddle_ori', 'reach_err' , "touching_info"]
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
@@ -356,7 +357,7 @@ class PingPongEnvV0(BaseV0):
 class IdInfo:
     def __init__(self, model: mujoco.MjModel):
         self.paddle_sid = model.site("paddle").id
-        self.paddle_bid = model.body("ping_pong_paddle").id
+        self.paddle_bid = model.body("paddle").id
         self.ball_sid = model.site("pingpong").id
         self.ball_bid = model.body("pingpong").id
 
@@ -368,8 +369,9 @@ class IdInfo:
         self.net_gid = model.geom("coll_net").id
 
         myo_bodies = [model.body(i).id for i in range(model.nbody)
-                    if not model.body(i).name.startswith("ping")
-                    and not model.body(i).name in ["pingpong"]]
+                      if not model.body(i).name.startswith("ping")
+                      and "paddle" not in model.body(i).name
+                      and not model.body(i).name in ["pingpong"]]
         self.myo_body_range = (min(myo_bodies), max(myo_bodies))
 
         # TODO add locomotion joint ids
