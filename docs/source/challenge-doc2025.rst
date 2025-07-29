@@ -143,7 +143,7 @@ Starting Criteria: Phase 1
 - The agent has the same starting position
 - The paddle initially starts in the grasping position with the hand,
   but is not connected.
-- The starting position of the ball is randomly reset between [-1.15, -0.40, 1.55] and [-1.35, -0.5, 1.35] in x, y, z direction respectively at the start of the episode.
+- The starting position of the ball is randomly reset between [-1.20, -0.45, 1.50] and [-1.25, -0.50, 1.40] in x, y, z direction respectively at the start of the episode.
 - Maximum time: 3 seconds
 
 
