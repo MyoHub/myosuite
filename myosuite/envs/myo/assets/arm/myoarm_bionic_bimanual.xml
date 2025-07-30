@@ -1,6 +1,6 @@
 <mujoco model="MyoArm_Bimanual_MPL_v0.01">
 <!-- =================================================
-    Copyright 2020 Vikash Kumar, Vittorio Caggiano, Guillaume Durandau
+    Copyright 2024 Vikash Kumar, Vittorio Caggiano, Guillaume Durandau
     Model   :: Myo Hand (MuJoCoV2.0)
     Author  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano, Huawei Wang, Balint Hodossy
     source  :: https://github.com/vikashplus

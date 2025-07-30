@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mujoco model="soccer_ball">
+  <asset>
+    <texture name="soccer_ball" type="cube"
+      fileup="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/soccer_ball/up.png"
+      filedown="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/soccer_ball/down.png"
+      fileleft="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/soccer_ball/left.png"
+      fileright="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/soccer_ball/right.png"
+      filefront="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/soccer_ball/front.png"
+      fileback="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/soccer_ball/back.png"/>
+    <material name="soccer_mat" texture="soccer_ball" shininess="0.4" specular="0.4"/>
+  </asset>
+
+  <worldbody>
+    <!-- FIFA regulation parameters for a size 5 ball -->
+    <body name="soccer_ball" pos="40 0 0.117">
+      <freejoint/>
+      <geom
+        name="ball_geom" 
+        type="sphere"
+        size="0.117" 
+        mass="0.45" 
+        condim="6" 
+        priority="1" 
+        friction="0.7 0.05 0.04" 
+        solref="0.02 0.4" 
+        material="soccer_mat"/>
+    </body>
+  </worldbody>
+
+</mujoco>

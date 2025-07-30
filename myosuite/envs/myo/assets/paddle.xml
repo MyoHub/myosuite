@@ -1,0 +1,15 @@
+<mujoco model="ping_pong_paddle">
+    <asset>
+        <!-- Ping Pong Paddle mesh and texture -->
+        <mesh name="ping_pong_paddle_mesh" file="Ping_Pong_Paddle.obj" />
+        <texture name="paddle_tex" type="2d" file="paddle_1k.png"/>
+        <material name="paddle_mat" texture="paddle_tex" specular="0.2" shininess="0.4"/>
+    </asset>
+
+    <worldbody>
+        <!-- Ping Pong Paddle geom -->
+        <geom name="ping_pong_paddle" type="mesh" mesh="ping_pong_paddle_mesh"
+              material="paddle_mat" rgba="1 1 1 1"
+              pos="0 0 0" euler="0 0 0"/>
+    </worldbody>
+</mujoco>

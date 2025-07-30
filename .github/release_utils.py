@@ -2,10 +2,13 @@ import argparse
 import re
 from typing import Tuple
 
+
 # https://packaging.python.org/guides/single-sourcing-package-version/
 def find_version(version_file_path) -> str:
     with open(version_file_path) as version_file:
-        version_match = re.search(r"^__version_tuple__ = (.*)", version_file.read(), re.M)
+        version_match = re.search(
+            r"^__version_tuple__ = (.*)", version_file.read(), re.M
+        )
         if version_match:
             ver_tup = eval(version_match.group(1))
             ver_str = ".".join([str(x) for x in ver_tup])
@@ -26,7 +29,9 @@ def get_next_version(release_type) -> Tuple[Tuple[int, int, int], str, str]:
         major += 1
         minor = patch = 0
     else:
-        raise ValueError("Incorrect release type specified. Acceptable types are major, minor and patch.")
+        raise ValueError(
+            "Incorrect release type specified. Acceptable types are major, minor and patch."
+        )
 
     new_version_tuple = (major, minor, patch)
     new_version_str = ".".join([str(x) for x in new_version_tuple])
@@ -42,13 +47,15 @@ def update_version(new_version_tuple) -> None:
 
     with open("myosuite/version.py", "r") as reader:
         current_version_data = reader.read()
-
-    # for line in current_version_data:
-    version_match = re.search(r"^__version_tuple__ ", current_version_data)
+    version_match = re.search(
+        r"^__version_tuple__ = \(.*\)", current_version_data, re.MULTILINE
+    )
 
     if version_match:
-        new_version_data = "__version_tuple__ = %s\n" % str(new_version_tuple)
-        current_version_data = current_version_data.replace(version_match.string, new_version_data)
+        new_version_data = "__version_tuple__ = %s" % str(new_version_tuple)
+        current_version_data = current_version_data.replace(
+            version_match.group(), new_version_data
+        )
 
         with open("myosuite/version.py", "w") as writer:
             writer.write(current_version_data)
@@ -70,9 +77,17 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Versioning utils")
-    parser.add_argument("--release-type", type=str, required=True, help="type of release = major/minor/patch")
     parser.add_argument(
-        "--update-version", action="store_true", required=False, help="updates the version in fairscale/version.py"
+        "--release-type",
+        type=str,
+        required=True,
+        help="type of release = major/minor/patch",
+    )
+    parser.add_argument(
+        "--update-version",
+        action="store_true",
+        required=False,
+        help="updates the version in fairscale/version.py",
     )
 
     args = parser.parse_args()

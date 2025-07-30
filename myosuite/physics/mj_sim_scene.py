@@ -4,6 +4,7 @@ Author  :: Vikash Kumar (vikashplus@gmail.com)
 Source  :: https://github.com/vikashplus/robohive
 License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ================================================= """
+import mujoco
 
 """Simulation using DeepMind Control Suite."""
 
@@ -16,6 +17,7 @@ from myosuite.utils.prompt_utils import prompt, Prompt
 import_utils.dm_control_isavailable()
 import_utils.mujoco_isavailable()
 import dm_control.mujoco as dm_mujoco
+from dm_control.mujoco.wrapper import MjModel as dm_MjModel
 
 from myosuite.renderer.mj_renderer import MJRenderer
 from myosuite.physics.sim_scene import SimScene
@@ -41,6 +43,8 @@ class DMSimScene(SimScene):
                 sim = dm_mujoco.Physics.from_xml_string(model_handle)
             else:
                 sim = dm_mujoco.Physics.from_binary_path(model_handle)
+        elif isinstance(model_handle, mujoco.MjModel) or isinstance(model_handle, dm_MjModel):
+            sim = dm_mujoco.Physics.from_model(model_handle)
         else:
             raise NotImplementedError(model_handle)
         self._patch_mjmodel_accessors(sim.model)
