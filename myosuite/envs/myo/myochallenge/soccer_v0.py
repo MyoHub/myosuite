@@ -249,6 +249,15 @@ class SoccerEnvV0(WalkEnvV0):
                                      random_vel_range=random_vel_range)
 
         self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
+        self.myo_joints = ['Abs_r3', 'Abs_t1', 'Abs_t2', 'L1_L2_AR', 'L1_L2_FE', 'L1_L2_LB', 'L2_L3_AR', 'L2_L3_FE', 'L2_L3_LB', 
+                            'L3_L4_AR', 'L3_L4_FE', 'L3_L4_LB', 'L4_L5_AR', 'L4_L5_FE', 'L4_L5_LB', 
+                            'ankle_angle_l', 'ankle_angle_r', 'axial_rotation', 'flex_extension', 'hip_adduction_l', 
+                            'hip_adduction_r', 'hip_flexion_l', 'hip_flexion_r', 'hip_rotation_l', 'hip_rotation_r', 
+                            'knee_angle_l', 'knee_angle_l_beta_rotation1', 'knee_angle_l_beta_translation1', 'knee_angle_l_beta_translation2',
+                             'knee_angle_l_rotation2', 'knee_angle_l_rotation3', 'knee_angle_l_translation1', 'knee_angle_l_translation2',
+                             'knee_angle_r', 'knee_angle_r_beta_rotation1', 'knee_angle_r_beta_translation1', 'knee_angle_r_beta_translation2', 
+                             'knee_angle_r_rotation2', 'knee_angle_r_rotation3', 'knee_angle_r_translation1', 'knee_angle_r_translation2', 
+                             'lat_bending', 'mtp_angle_l', 'mtp_angle_r', 'subtalar_angle_l', 'subtalar_angle_r']
        
         super()._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
@@ -282,11 +291,11 @@ class SoccerEnvV0(WalkEnvV0):
         obs_dict = {}
 
         # Time
-        obs_dict['time'] = np.array([sim.data.time])
+        obs_dict['time'] = np.array([self.sim.data.time])
 
         # proprioception
-        obs_dict['internal_qpos'] = sim.data.qpos[14:60].copy()
-        obs_dict['internal_qvel'] = sim.data.qvel[12:58].copy() * self.dt
+        obs_dict['internal_qpos'] = self._get_joint_qpos()
+        obs_dict['internal_qvel'] = self._get_joint_qvel() * self.dt
         obs_dict['grf'] = self._get_grf().copy()
         obs_dict['torso_angle'] = self.sim.data.body('torso').xquat.copy()
         obs_dict['pelvis_angle'] = self.sim.data.body('pelvis').xquat.copy()
@@ -295,20 +304,20 @@ class SoccerEnvV0(WalkEnvV0):
         obs_dict['muscle_velocity'] = self.muscle_velocities()
         obs_dict['muscle_force'] = self.muscle_forces()
 
-        obs_dict['r_toe_pos'] = sim.data.geom('r_bofoot').xpos.copy()
-        obs_dict['l_toe_pos'] = sim.data.geom('l_bofoot').xpos.copy()
+        obs_dict['r_toe_pos'] = self.sim.data.geom('r_bofoot').xpos.copy()
+        obs_dict['l_toe_pos'] = self.sim.data.geom('l_bofoot').xpos.copy()
 
-        if sim.model.na>0:
-            obs_dict['act'] = sim.data.act[:].copy()
+        if self.sim.model.na>0:
+            obs_dict['act'] = self.sim.data.act[:].copy()
 
         # exteroception
-        obs_dict['ball_pos'] = sim.data.body('soccer_ball').xpos[:3].copy()
+        obs_dict['ball_pos'] = self.sim.data.body('soccer_ball').xpos[:3].copy()
         obs_dict['goal_bounds'] = np.array([[self.GOAL_X_POS, self.GOAL_Y_MIN, self.GOAL_Z_MIN], 
                                             [self.GOAL_X_POS, self.GOAL_Y_MAX, self.GOAL_Z_MIN], 
                                             [self.GOAL_X_POS, self.GOAL_Y_MIN, self.GOAL_Z_MAX], 
                                             [self.GOAL_X_POS, self.GOAL_Y_MAX, self.GOAL_Z_MAX]]).flatten()
-        obs_dict['model_root_pos'] = sim.data.qpos[7:14].copy()
-        obs_dict['model_root_vel'] = sim.data.qvel[6:12].copy()
+        obs_dict['model_root_pos'] = self.sim.data.joint('root').qpos.copy()
+        obs_dict['model_root_vel'] = self.sim.data.joint('root').qvel.copy()
 
         return obs_dict
 
@@ -431,20 +440,22 @@ class SoccerEnvV0(WalkEnvV0):
        )
 
     def _get_randomized_initial_state(self):
-        # No randomization for now
-        qpos = self.sim.model.key_qpos[0].copy()
-        qvel = self.sim.model.key_qvel[0].copy()
+        # Setting initial keypose values
+        self.sim.data.qpos = self.sim.model.key_qpos[0].copy()
+        self.sim.data.qvel = self.sim.model.key_qvel[0].copy()
 
         # Note: No randomization for ball, a goal kick ball position has to be fixed
 
         # Add some noise to the joints
-        qpos[14:60] += self.np_random.uniform(-np.abs(self.rnd_joint_noise), np.abs(self.rnd_joint_noise),size=(46,))
+        for jnt in self.myo_joints:
+            self.sim.data.joint(jnt).qpos[0] += self.np_random.uniform(-np.abs(self.rnd_joint_noise), np.abs(self.rnd_joint_noise), size=(1,))
 
         # Body start position randomizations
-        qpos[7] += self.np_random.uniform(-np.abs(self.rnd_pos_noise), 0, size=(1,)) # Only allow body to randomize backwards, not forward
-        qpos[8] += self.np_random.uniform(-np.abs(self.rnd_pos_noise), np.abs(self.rnd_pos_noise),size=(1,))
+        # Treatment for root joint is different
+        self.sim.data.joint('root').qpos[0] += self.np_random.uniform(-np.abs(self.rnd_pos_noise), 0, size=(1,)) # Only allow body to move behind the ball, not in front
+        self.sim.data.joint('root').qpos[1] += self.np_random.uniform(-np.abs(self.rnd_pos_noise), np.abs(self.rnd_pos_noise),size=(1,)) # Y-direction movement allowable
 
-        return qpos, qvel
+        return self.sim.data.qpos.copy(), self.sim.data.qvel.copy()
 
     def _setup_convenience_vars(self):
         """
@@ -501,6 +512,12 @@ class SoccerEnvV0(WalkEnvV0):
         """
         return self.sim.model.body('root').subtreemass
 
+    def _get_body_pos(self):
+        '''
+        Return an array of body positions [X,Y,Z, Quaternion]
+        '''
+        return np.array()
+
     def _get_score(self, time):
         time = np.round(time, 2)
         return 1 - (time / self.max_time)
@@ -528,6 +545,18 @@ class SoccerEnvV0(WalkEnvV0):
         Return a list of joint names according to the index ID of the joint angles
         '''
         return [self.sim.model.joint(jnt_id).name for jnt_id in range(1, self.sim.model.njnt)]
+
+    def _get_joint_qpos(self):
+        '''
+        Return a list of joint qpos from the predefined list of joint names
+        '''
+        return np.array([self.sim.data.joint(jnt).qpos[0].copy() for jnt in self.myo_joints])
+    
+    def _get_joint_qvel(self):
+        '''
+        Return a list of joint qvel from the predefined list of joint names
+        '''
+        return np.array([self.sim.data.joint(jnt).qvel[0].copy() for jnt in self.myo_joints])
 
     def _get_actuator_names(self):
         '''
