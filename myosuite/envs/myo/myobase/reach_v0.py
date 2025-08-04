@@ -57,14 +57,6 @@ class ReachEnvV0(BaseV0):
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-<<<<<<< HEAD
-        super().__init__(
-            model_path=model_path,
-            obsd_model_path=obsd_model_path,
-            seed=seed,
-            env_credits=self.MYO_CREDIT,
-        )
-=======
         super().__init__(model_path=model_path if edit_fn is None else edited_model_path,
                          obsd_model_path=obsd_model_path if edit_fn is None else edited_obsd_model_path,
                          seed=seed,
@@ -79,8 +71,7 @@ class ReachEnvV0(BaseV0):
                 and edited_obsd_model_path != edited_model_path
             ):
                 os.remove(edited_obsd_model_path)
->>>>>>> 0b38008 (added mjspec functionality to edit myoarm model as and when needed)
-
+                
         self._setup(**kwargs)
 
     def _setup(
