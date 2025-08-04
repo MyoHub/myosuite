@@ -13,23 +13,30 @@ from dm_control.mujoco.wrapper import MjModel as dm_MjModel
 import mujoco
 import numpy as np
 from myosuite.utils import gym
-import mujoco
+import h5py
+import os
 from scipy.spatial.transform import Rotation as R
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils.spec_processing import recursive_immobilize, recursive_remove_contacts, recursive_mirror
 
 
-MAX_TIME = 5.0
+MAX_TIME = 3.0
 
-class PingPongEnvV0(BaseV0):
 
-    DEFAULT_OBS_KEYS = ['pelvis_pos', 'body_qpos', 'body_qvel', 'ball_pos', 'ball_vel', 'paddle_pos', "paddle_vel", 'reach_err', "touching_info"]
+class TableTennisEnvV0(BaseV0):
+
+    DEFAULT_OBS_KEYS = ['pelvis_pos', 'body_qpos', 'body_qvel', 'ball_pos', 'ball_vel', 'paddle_pos', "paddle_vel", 'paddle_ori', 'reach_err' , "touching_info"]
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
-        "reach_dist": -1,
-        "act": 1,
-        "sparse": 1,
-        "solved": 1,
+        "reach_dist": 1,
+        "palm_dist": 1,
+        "paddle_quat": 2,
+        "act_reg": .5,
+        'torso_up': 2,
+        #"ref_qpos_err": 1,
+        #"ref_qvel_err": .1,
+        "sparse": 100,
+        "solved": 1000,
         'done': -10
     }
 
@@ -38,7 +45,9 @@ class PingPongEnvV0(BaseV0):
         gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
         preproc_kwargs = {"remove_body_collisions": kwargs.pop("remove_body_collisions", True),
                           "add_left_arm": kwargs.pop("add_left_arm", True)}
-        model_handle = self._preprocess_spec(model_path, **preproc_kwargs)  # TODO: confirm this doesn't break pickling
+        spec: mujoco.MjSpec = mujoco.MjSpec.from_file(model_path)
+        spec = self._preprocess_spec(spec, **preproc_kwargs)  # TODO: confirm this doesn't break pickling
+        model_handle = dm_MjModel(spec.compile())
         super().__init__(model_path=model_handle, obsd_model_path=obsd_model_path, seed=seed, env_credits=self.MYO_CREDIT)
         self._setup(**kwargs)
 
@@ -53,6 +62,7 @@ class PingPongEnvV0(BaseV0):
         ):
         self.ball_xyz_range = ball_xyz_range
         self.qpos_noise_range = qpos_noise_range
+        self.init_paddle_quat = R.from_euler('xyz', np.array([-0.3, 1.57, 0]), degrees = False).as_quat()[[3, 0, 1, 2]]
         self.contact_trajectory = []
 
         self.id_info = IdInfo(self.sim.model)
@@ -82,8 +92,13 @@ class PingPongEnvV0(BaseV0):
 
         obs_dict["paddle_pos"] = sim.data.site_xpos[self.id_info.paddle_sid]
         obs_dict["paddle_vel"] = self.get_sensor_by_name(sim.model, sim.data, "paddle_vel_sensor")
+        obs_dict["paddle_ori"] = sim.data.body_xquat[self.id_info.paddle_bid]
+        obs_dict['padde_ori_err'] = obs_dict["paddle_ori"] - self.init_paddle_quat
 
         obs_dict['reach_err'] = obs_dict['paddle_pos'] - obs_dict['ball_pos']
+
+        obs_dict['palm_pos'] = self.sim.data.site_xpos[self.sim.model.site_name2id('S_grasp')]
+        obs_dict['palm_err'] = obs_dict['palm_pos'] - obs_dict['paddle_pos']
 
         this_model = sim.model
         this_data = sim.data
@@ -94,7 +109,6 @@ class PingPongEnvV0(BaseV0):
         obs_vec = self._ball_label_to_obs(touching_objects)
         obs_dict["touching_info"] = obs_vec
 
-
         if sim.model.na>0:
             obs_dict['act'] = sim.data.act[:].copy()
         return obs_dict
@@ -102,9 +116,18 @@ class PingPongEnvV0(BaseV0):
 
     def get_reward_dict(self, obs_dict):
         reach_dist = np.abs(np.linalg.norm(self.obs_dict['reach_err'], axis=-1))
+        palm_dist = np.abs(np.linalg.norm(self.obs_dict['palm_err'], axis=-1))
         act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
         ball_pos = obs_dict["ball_pos"][0][0] if obs_dict['ball_pos'].ndim == 3 else obs_dict['ball_pos']
         solved = evaluate_pingpong_trajectory(self.contact_trajectory) == None
+        paddle_quat_err = np.linalg.norm(obs_dict['padde_ori_err'], axis=-1)
+        torso_err = abs(self.sim.data.qpos[self.sim.model.jnt_qposadr[self.sim.model.joint_name2id('flex_extension')]])
+        paddle_touch = obs_dict['touching_info'][0][0] if obs_dict['touching_info'].ndim == 3 else obs_dict['touching_info']
+        #=========== for the baseline, we provide an h5 file in which you could perform simple imitation learning ===========
+            #======== uncomment to load the files and rewards =======================
+        #qpos_ref, qvel_ref, qpos_err, qvel_err = self.ref_traj()()
+        #ref_qpos_err = np.linalg.norm(qpos_err)
+        #ref_qvel_err = np.linalg.norm(qvel_err)
 
         rwd_dict = collections.OrderedDict((
             # Perform reward tuning here --
@@ -112,26 +135,75 @@ class PingPongEnvV0(BaseV0):
             # Update reward keys (DEFAULT_RWD_KEYS_AND_WEIGHTS) accordingly to update final rewards
             # Examples: Env comes pre-packaged with two keys pos_dist and rot_dist
             # Optional Keys
-            ('reach_dist', -1.*reach_dist),
+            ('reach_dist', np.exp(-1. * reach_dist)),
+            ('palm_dist', np.exp(-5. * palm_dist)),
+            ('paddle_quat', np.exp(- 5 * paddle_quat_err)),
+            ('torso_up', np.exp(-5 * torso_err)),
+            #('ref_qpos_err', -1 * ref_qpos_err), use these for your imitation learning script
+            #('ref_qvel_err', -1 * ref_qvel_err),
             # Must keys
-            ('act', -1.*act_mag),
-            ('sparse', np.array([[ball_pos[0] < 0]])), #for reaching the other side of the table.
+            ('act_reg', -1.*act_mag),
+            ('sparse', paddle_touch[0] == 1), #paddle_touching
             ('solved', np.array([[solved]])),
-            ('done', np.array([[self._get_done(ball_pos[-1])]])),
+            ('done', np.array([[self._get_done(ball_pos[-1], solved)]])),
         ))
+
         rwd_dict['dense'] = sum(float(wt) * float(np.array(rwd_dict[key]).squeeze())
                             for key, wt in self.rwd_keys_wt.items()
                                 )
 
         return rwd_dict
+    
+    def ref_traj(self, traj_path= r"your_h5.h5"):
+        """
+        Returns a function that provides reference (qpos, qvel) and their errors.
+        After the end of the reference trajectory, errors are zero and the agent is unconstrained.
+        """
+        if not hasattr(self, "_ref_traj_cache"):
+            if not os.path.isfile(traj_path):
+                raise FileNotFoundError(f"Trajectory file not found: {traj_path}")
 
-    def _get_done(self, z):
+            with h5py.File(traj_path, 'r') as f:
+                qpos_ref = np.array(f['qpos'])  # shape (T, nq)
+                qvel_ref = np.array(f['qvel'])  # shape (T, nv)
+
+            self._ref_dt = self.sim.model.opt.timestep
+            self._ref_traj_cache = {
+                "qpos": qpos_ref,
+                "qvel": qvel_ref,
+                "T": len(qpos_ref),
+                "nq": qpos_ref.shape[1],
+                "nv": qvel_ref.shape[1],
+            }
+
+        def _get_ref():
+            t = self.sim.data.time
+            idx = int(t // self._ref_dt)
+
+            if idx < self._ref_traj_cache["T"]:
+                qpos_ref = self._ref_traj_cache["qpos"][idx]
+                qvel_ref = self._ref_traj_cache["qvel"][idx]
+                qpos_err = qpos_ref - self.sim.data.qpos
+                qvel_err = qvel_ref - self.sim.data.qvel
+            else:
+                nq = self._ref_traj_cache["nq"]
+                nv = self._ref_traj_cache["nv"]
+                qpos_ref = np.zeros(nq)
+                qvel_ref = np.zeros(nv)
+                qpos_err = np.zeros(nq)
+                qvel_err = np.zeros(nv)
+
+            return qpos_ref, qvel_ref, qpos_err, qvel_err
+
+        return _get_ref
+
+    def _get_done(self, z, solved):
         if self.obs_dict['time'] > MAX_TIME:
             return 1
         elif z < 0.3:
             self.obs_dict['time'] = MAX_TIME
             return 1
-        elif self.rwd_dict and self.rwd_dict['solved']:
+        elif solved:
             return 1
         elif evaluate_pingpong_trajectory(self.contact_trajectory) in [0, 2, 3]:
             return 1
@@ -158,7 +230,7 @@ class PingPongEnvV0(BaseV0):
         return obs_vec
 
 
-    def get_metrics(self, paths, successful_steps=5):
+    def get_metrics(self, paths, successful_steps=1):
         """
         Evaluate paths and report metrics
         """
@@ -168,12 +240,12 @@ class PingPongEnvV0(BaseV0):
         # average sucess over entire env horizon
         for path in paths:
             # record success if solved for provided successful_steps
-            if np.sum(path['env_infos']['rwd_dict']['solved'] * 1.0) > successful_steps:
+            if np.sum(path['env_infos']['rwd_dict']['solved'] * 1.0) >= successful_steps:
                 num_success += 1
         score = num_success/num_paths
 
         # average activations over entire trajectory (can be shorter than horizon, if done) realized
-        effort = -1.0*np.mean([np.mean(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
+        effort = 1.0*np.mean([np.mean(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
 
         metrics = {
             'score': score,
@@ -191,10 +263,11 @@ class PingPongEnvV0(BaseV0):
     def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
         #self.sim.model.body_pos[self.object_bid] = self.np_random.uniform(**self.target_xyz_range)
         #self.sim.model.body_quat[self.object_bid] = euler2quat(self.np_random.uniform(**self.target_rxryrz_range))
-
+        self.contact_trajectory = []
+        self.init_qpos[:] = self.sim.model.key_qpos[0].copy()
         if self.ball_xyz_range is not None:
             self.sim.model.body_pos[self.id_info.ball_bid] = self.np_random.uniform(**self.ball_xyz_range)
-
+            self.init_qpos[self.ball_dofadr + 1 : self.ball_dofadr + 4] = self.np_random.uniform(**self.ball_xyz_range)
         # randomize init arms pose
         if self.qpos_noise_range is not None:
             reset_qpos_local = self.init_qpos + self.qpos_noise_range*(self.sim.model.jnt_range[:,1]-self.sim.model.jnt_range[:,0])
@@ -202,7 +275,6 @@ class PingPongEnvV0(BaseV0):
         else:
             reset_qpos_local = reset_qpos
 
-        self.init_qpos[:] = self.sim.model.key_qpos[0].copy()
         self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
         obs = super().reset(reset_qpos=self.init_qpos, reset_qvel=self.init_qvel,**kwargs)
 
@@ -220,7 +292,7 @@ class PingPongEnvV0(BaseV0):
         return super().step(processed_controls, **kwargs)
 
     def _preprocess_spec(self,
-                         model_path,
+                         spec,
                          remove_body_collisions=True,
                          add_left_arm=True):
         # We'll process the string path to:
@@ -229,10 +301,11 @@ class PingPongEnvV0(BaseV0):
         # - optionally alter physics
         # - we could attach the paddle at this point too
         # and compile it to a (wrapped) model - the SimScene can now take that as an input
-        spec: mujoco.MjSpec = mujoco.MjSpec.from_file(model_path)
+
         for paddle_b in spec.bodies:
             if "paddle" in paddle_b.name and paddle_b.parent != spec.worldbody:
-                spec.detach_body(paddle_b)
+                import warnings
+                warnings.warn("A paddle was found that was not a free body. Confirm this is intended.")
         for s in spec.sensors:
             if "pingpong" not in s.name and "paddle" not in s.name:
                 s.delete()
@@ -278,26 +351,28 @@ class PingPongEnvV0(BaseV0):
             spec.body("ulna_mirrored").quat =[0.546, 0, 0, -0.838]
             spec.body("humerus_mirrored").quat = [ 0.924, 0.383, 0, 0]
             pass
-        return dm_MjModel(spec.compile())
+        return spec
 
 
 
 class IdInfo:
     def __init__(self, model: mujoco.MjModel):
         self.paddle_sid = model.site("paddle").id
+        self.paddle_bid = model.body("paddle").id
         self.ball_sid = model.site("pingpong").id
         self.ball_bid = model.body("pingpong").id
 
         self.ball_bid = model.body("pingpong").id
         self.own_half_gid = model.geom("coll_own_half").id
-        self.paddle_gid = model.geom("ping_pong_paddle").id
+        self.paddle_gid = model.geom("pad").id
         self.opponent_half_gid = model.geom("coll_opponent_half").id
         self.ground_gid = model.geom("ground").id
         self.net_gid = model.geom("coll_net").id
 
         myo_bodies = [model.body(i).id for i in range(model.nbody)
-                    if not model.body(i).name.startswith("ping")
-                    and not model.body(i).name in ["pingpong"]]
+                      if not model.body(i).name.startswith("ping")
+                      and "paddle" not in model.body(i).name
+                      and not model.body(i).name in ["pingpong"]]
         self.myo_body_range = (min(myo_bodies), max(myo_bodies))
 
         # TODO add locomotion joint ids
@@ -352,9 +427,12 @@ def geom_id_to_label(body_id, id_info: IdInfo):
 
 
 def evaluate_pingpong_trajectory(contact_trajectory: List[set]):
-
     has_hit_paddle = False
     has_bounced_from_paddle = False
+    has_bounced_from_table = False
+    own_contact_count = 0
+    own_contact_phase_done = False
+
     for s in contact_trajectory:
         if PingpongContactLabels.PADDLE not in s and has_hit_paddle:
             has_bounced_from_paddle = True
@@ -363,7 +441,21 @@ def evaluate_pingpong_trajectory(contact_trajectory: List[set]):
         if PingpongContactLabels.PADDLE in s:
             has_hit_paddle = True
         if PingpongContactLabels.OWN in s:
-            return ContactTrajIssue.OWN_HALF
+            if not has_bounced_from_table:
+                # Start of initial bounce from serving
+                has_bounced_from_table = True
+                own_contact_count = 1
+            elif not own_contact_phase_done:
+                own_contact_count += 1
+                if own_contact_count > 2: #initial serving bounce has contact for 2 timesteps
+                    own_contact_phase_done = True
+                    return ContactTrajIssue.OWN_HALF
+            else:
+                return ContactTrajIssue.OWN_HALF
+        elif has_bounced_from_table:
+            # Exit the initial own bounce phase
+            own_contact_phase_done = True
+
         if PingpongContactLabels.OPPONENT in s:
             if has_hit_paddle:
                 return None
@@ -371,11 +463,3 @@ def evaluate_pingpong_trajectory(contact_trajectory: List[set]):
                 return ContactTrajIssue.NO_PADDLE
 
     return ContactTrajIssue.MISS
-
-
-if __name__ == '__main__':
-    pingpong_env = PingPongEnvV0(r"../assets/arm/myoarm_tabletennis.xml")
-    from mujoco import viewer
-    pingpong_env.reset()
-    viewer.launch(pingpong_env.sim.model._model, pingpong_env.sim.data._data)
-    pass

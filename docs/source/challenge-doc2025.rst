@@ -59,6 +59,8 @@ Observation Space
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Paddle Velocity                         | paddle_vel                  |  (3)            |
 .. +-----------------------------------------+-----------------------------+-----------------+
+.. | Paddle Orientation                      | paddle_ori                  |  (3)            |
+.. +-----------------------------------------+-----------------------------+-----------------+
 .. | Paddle Reaching Error                   | reach_err                   |  (3)            |
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Muscle Activations                      | muscle_activations          |  (273)          |
@@ -84,6 +86,8 @@ Observation Space
 | Paddle Position                   | paddle_pos         | 3         |
 +-----------------------------------+--------------------+-----------+
 | Paddle Velocity                   | paddle_vel         | 3         |
++-----------------------------------+--------------------+-----------+
+| Paddle Orientation                | paddle_ori         | 3         |
 +-----------------------------------+--------------------+-----------+
 | Paddle Reaching Error (see below) | reach_err          | 3         |
 +-----------------------------------+--------------------+-----------+
@@ -139,10 +143,12 @@ Observation Space
 
 Starting Criteria: Phase 1
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-- The ball starts at the same position with the same speed
+- The ball starts with the same speed
 - The agent has the same starting position
 - The paddle initially starts in the grasping position with the hand,
   but is not connected.
+- The starting position of the ball is randomly reset between [-1.20, -0.45, 1.50] and [-1.25, -0.50, 1.40] in x, y, z direction respectively at the start of the episode.
+- Maximum time: 3 seconds
 
 
 Success Criteria
@@ -281,4 +287,56 @@ Ranking Criteria
 
 1. Success rate of scoring goals (goals_scored / total_attemps)
 2. Effort: based on muscle activation energy
+
+.. _challenge25_tutorial:
+
+
+Challenge Tutorial
+--------------------------------------------------------------
+
+This section aims to provide an basics to get start of the challenge.
+
+For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_reinforcement_learning` and :ref:`baselines` page. To obtain a more in-depth understanding of the challenge, we have prepared baselines for both of the challenges.
+
+
+.. code-block:: python
+
+    from myosuite.utils import gym
+    # Include the locomotion track environment, uncomment to select the manipulation challenge
+    # env = gym.make('myoChallengeSoccerP1-v0')
+    env = gym.make('myoChallengeTableTennisP1-v0')
+    
+
+    env.reset()
+
+    # Repeat 1000 time steps
+    for _ in range(1000):
+
+        # Activate mujoco rendering window
+        env.mj_render()
+
+        # Select skin group
+        geom_1_indices = np.where(env.sim.model.geom_group == 1)
+        # Change the alpha value to make it transparent
+        env.sim.model.geom_rgba[geom_1_indices, 3] = 0
+
+
+        # Get observation from the envrionment, details are described in the above docs
+        obs = env.get_obs()
+        current_time = obs['time']
+        #print(current_time)
+
+
+        # Take random actions
+        action = env.action_space.sample()
+
+
+        # Environment provides feedback on action
+        next_obs, reward, terminated, truncated, info = env.step(action)
+
+
+        # Reset training if env is terminated
+        if terminated:
+            next_obs, info = env.reset()
+
 
