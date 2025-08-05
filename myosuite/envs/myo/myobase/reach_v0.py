@@ -12,8 +12,6 @@ from myosuite.utils import gym
 
 import os
 
-from myosuite.envs.myo.myoedits.model_editor import ModelEditor
-
 class ReachEnvV0(BaseV0):
 
     DEFAULT_OBS_KEYS = ["qpos", "qvel", "tip_pos", "reach_err"]
@@ -25,52 +23,28 @@ class ReachEnvV0(BaseV0):
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, edit_fn=None, **kwargs):
 
-        if edit_fn is not None:
-
-            # Load the model
-            model_spec = ModelEditor(model_path)
-
-            # Edit the model using an edit_fn
-            model_spec.edit_model(edit_fn)
-
-            # Create am xml file for the edited model
-            edited_model_path = model_spec.create_edited_xml()
-
-            if obsd_model_path == model_path:
-                edited_obsd_model_path = edited_model_path
-            elif obsd_model_path:
-                obsd_model_spec = ModelEditor(obsd_model_path)
-                obsd_model_spec.edit_model(edit_fn)
-                edited_model_path = obsd_model_spec.create_edited_xml()
-            else:
-                edited_obsd_model_path = None
-
         # EzPickle.__init__(**locals()) is capturing the input dictionary of the init method of this class.
         # In order to successfully capture all arguments we need to call gym.utils.EzPickle.__init__(**locals())
         # at the leaf level, when we do inheritance like we do here.
         # kwargs is needed at the top level to account for injection of __class__ keyword.
         # Also see: https://github.com/openai/gym/pull/1497
-        gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
+        gym.utils.EzPickle.__init__(self,
+                                    model_path,
+                                    obsd_model_path,
+                                    seed,
+                                    edit_fn=edit_fn,
+                                    **kwargs)
 
         # This two step construction is required for pickling to work correctly. All arguments to all __init__
         # calls must be pickle friendly. Things like sim / sim_obsd are NOT pickle friendly. Therefore we
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(model_path=model_path if edit_fn is None else edited_model_path,
-                         obsd_model_path=obsd_model_path if edit_fn is None else edited_obsd_model_path,
+        super().__init__(model_path=model_path,
+                         obsd_model_path=obsd_model_path,
                          seed=seed,
+                         edit_fn=edit_fn,
                          env_credits=self.MYO_CREDIT)
-
-        if edit_fn is not None:
-            
-            # Delete the edited xml file(s)
-            model_spec.delete_edited_xml()
-            if (
-                edited_obsd_model_path
-                and edited_obsd_model_path != edited_model_path
-            ):
-                os.remove(edited_obsd_model_path)
                 
         self._setup(**kwargs)
 
