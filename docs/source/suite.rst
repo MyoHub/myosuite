@@ -13,6 +13,7 @@ Models and tasks are the most important aspects of Myosuite. To provide further,
     * :ref:`myoLeg`
     * :ref:`myoArm`
     * :ref:`myoTorso`
+    * :ref:`myoArmNoHandMuscles`
 * :ref:`tasks`
 * :ref:`task_and_variations`
 
@@ -24,7 +25,7 @@ Models and tasks are the most important aspects of Myosuite. To provide further,
 Models
 ********
 
-MyoSuite consists of six models: :ref:`myoFinger`, :ref:`myoElbow`, :ref:`myoHand`, :ref:`myoArm`, :ref:`myoLeg` and :ref:`myoTorso`.
+MyoSuite consists of six models: :ref:`myoFinger`, :ref:`myoElbow`, :ref:`myoHand`, :ref:`myoArm`, :ref:`myoLeg`, :ref:`myoTorso` and :ref:`myoArmNoHandMuscles`.
 Using these models, we design a rich collection of tasks ranging across simple reaching movements,
 contact-rich movements involving object-manipulation such as pen-twirling and baoding balls, as well as locomotion behaviors.
 
@@ -195,7 +196,6 @@ Model specification can be found on our github repo of `myoArm <https://github.c
 
 
 
-
 .. _myoTorso:
 
 myoTorso
@@ -222,6 +222,16 @@ EO        External Obliques
 IO        Internal Obliques
 ========  =============================
 
+.. _myoArmNoHandMuscles:
+
+myoArmNoHandMuscles
+=========
+The myoArmNoHandMuscles is the myoArm with the extrinsic and intrinsic hand muscles removed, enabling the study of reaching tasks that have no grasp or object manipulation component. 
+
+This musculoskeletal model is comprised of 38 joints and 24 muscle-tendon units.
+
+.. image:: images/myoArm_NoHand.png
+  :height: 200
 
 .. _tasks:
 
@@ -357,6 +367,23 @@ Variants:
     - **More**: sparse rewards, dense rewards, random resets, reset free
 
 .. image:: images/hand_pen_twirl.png
+  :width: 200
+
+Arm Reach
+=====================
+
+
+Model:
+    - This environment uses a simplified version of the myoArm model in which the muscles and joints of the digits have been removed, enabling the study of reaching/pointing tasks that have no manipulation component. The simplified myoArm model is comprised of 20 joints and 32 muscle-tendon units.
+
+Objective:
+    - Reach a target with the tip of the index finger.
+
+Variants:
+    - **Easy**: Reach to a fixed target ``myoArmReachFixed-v0``
+    - **Hard**: Reach to a randomly selected target ``myoArmReachRandom-v0``
+
+.. image:: images/myoArmReach.png
   :width: 200
 
 Hand Multiobject Reorientation

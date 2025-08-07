@@ -57,6 +57,12 @@ myosuite_myodm_suite = (
 myosuite_env_suite = myosuite_env_suite | myosuite_myodm_suite
 myosuite_myodm_suite = sorted(myosuite_myodm_suite)
 
+# Register MyoEdits Suite
+import myosuite.envs.myo.myoedits # noqa
+myosuite_myoedits_suite = set(gym_registry_specs().keys())-myosuite_env_suite-_current_gym_envs
+myosuite_env_suite  = myosuite_env_suite | myosuite_myoedits_suite
+myosuite_myoedits_suite = sorted(myosuite_myoedits_suite)
+
 # All myosuite Envs
 myosuite_env_suite = sorted(myosuite_env_suite)
 

@@ -10,6 +10,7 @@ import numpy as np
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
 
+import os
 
 class ReachEnvV0(BaseV0):
 
@@ -20,27 +21,31 @@ class ReachEnvV0(BaseV0):
         "penalty": 50,
     }
 
-    def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
+    def __init__(self, model_path, obsd_model_path=None, seed=None, edit_fn=None, **kwargs):
 
         # EzPickle.__init__(**locals()) is capturing the input dictionary of the init method of this class.
         # In order to successfully capture all arguments we need to call gym.utils.EzPickle.__init__(**locals())
         # at the leaf level, when we do inheritance like we do here.
         # kwargs is needed at the top level to account for injection of __class__ keyword.
         # Also see: https://github.com/openai/gym/pull/1497
-        gym.utils.EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
+        gym.utils.EzPickle.__init__(self,
+                                    model_path,
+                                    obsd_model_path,
+                                    seed,
+                                    edit_fn=edit_fn,
+                                    **kwargs)
 
         # This two step construction is required for pickling to work correctly. All arguments to all __init__
         # calls must be pickle friendly. Things like sim / sim_obsd are NOT pickle friendly. Therefore we
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(
-            model_path=model_path,
-            obsd_model_path=obsd_model_path,
-            seed=seed,
-            env_credits=self.MYO_CREDIT,
-        )
-
+        super().__init__(model_path=model_path,
+                         obsd_model_path=obsd_model_path,
+                         seed=seed,
+                         edit_fn=edit_fn,
+                         env_credits=self.MYO_CREDIT)
+                
         self._setup(**kwargs)
 
     def _setup(
