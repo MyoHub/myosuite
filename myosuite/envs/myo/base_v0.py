@@ -1,15 +1,12 @@
-""" =================================================
-# Copyright (c) Facebook, Inc. and its affiliates
+"""=================================================
+# Copyright (c) MyoSuite Authors
 Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
-================================================= """
+================================================="""
 
 import logging
 
 import mujoco
 import numpy as np
-
-from myosuite.envs import env_base
-from myosuite.envs.myo.fatigue import CumulativeFatigue
 
 from myosuite.envs import env_base
 from myosuite.envs.myo.fatigue import CumulativeFatigue

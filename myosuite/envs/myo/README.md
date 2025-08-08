@@ -1,5 +1,5 @@
 <!-- =================================================
-# Copyright (c) Facebook, Inc. and its affiliates
+# Copyright (c) MyoSuite Authors
 Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= -->
 

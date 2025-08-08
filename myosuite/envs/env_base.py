@@ -22,6 +22,8 @@ import myosuite.utils.import_utils as import_utils
 from myosuite.envs.env_variants import gym_registry_specs
 from myosuite.utils import seed_envs
 
+from myosuite.envs.myo.myoedits.model_editor import ModelEditor
+
 # TODO
 # remove rwd_mode
 # convert obs_keys to obs_keys_wt
@@ -38,7 +40,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         Code: https://github.com/MyoHub/myosuite/stargazers (add a star to support the project)
     """
 
-    def __init__(self,  model_path, obsd_model_path=None, seed=None, env_credits=DEFAULT_CREDIT):
+    def __init__(self,  model_path, obsd_model_path=None, seed=None, edit_fn=None, env_credits=DEFAULT_CREDIT):
         """
         Create a gym env
         INPUTS:
@@ -56,12 +58,45 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         # Seed and initialize the random number generator
         self.seed(seed)
 
+        if edit_fn is not None:
+
+            # Load the model
+            model_spec = ModelEditor(model_path)
+
+            # Edit the model using an edit_fn
+            model_spec.edit_model(edit_fn)
+
+            # Create am xml file for the edited model
+            edited_model_path = model_spec.create_edited_xml()
+
+            if obsd_model_path == model_path:
+                edited_obsd_model_path = edited_model_path
+            elif obsd_model_path:
+                obsd_model_spec = ModelEditor(obsd_model_path)
+                obsd_model_spec.edit_model(edit_fn)
+                edited_model_path = obsd_model_spec.create_edited_xml()
+            else:
+                edited_obsd_model_path = None
+
         # sims
-        self.sim = SimScene.get_sim(model_path)
-        self.sim_obsd = SimScene.get_sim(obsd_model_path) if obsd_model_path else self.sim
+        self.sim = SimScene.get_sim(model_path) if edit_fn is None else SimScene.get_sim(edited_model_path)
+        if obsd_model_path:
+            self.sim_obsd = SimScene.get_sim(obsd_model_path) if edit_fn is None else SimScene.get_sim(edited_obsd_model_path)
+        else:
+            self.sim_obsd = self.sim
         self.sim.forward()
         self.sim_obsd.forward()
         ObsVecDict.__init__(self)
+
+        if edit_fn is not None:
+            
+            # Delete the edited xml file(s)
+            model_spec.delete_edited_xml()
+            if (
+                edited_obsd_model_path
+                and edited_obsd_model_path != edited_model_path
+            ):
+                os.remove(edited_obsd_model_path)
 
 
     def _setup(self,

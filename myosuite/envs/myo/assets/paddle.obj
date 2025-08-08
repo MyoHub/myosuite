@@ -1,6 +1,6 @@
 # Blender 4.0.2
 # www.blender.org
-mtllib Ping_Pong_Paddle.mtl
+mtllib paddle.mtl
 o ping-pong_paddle_blue
 v -0.145478 -0.020060 -0.002789
 v -0.148607 -0.002634 -0.002835
