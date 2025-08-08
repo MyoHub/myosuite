@@ -245,7 +245,7 @@ Observation Space
 +----------------------------------------+----------------+-----------+
 | Body COM vel in world frame            | model_root_vel | 6         |
 +----------------------------------------+----------------+-----------+
-
+Note: The body COM is represents with a freejoint, hence the 7 dimensions, in the form of [x, y, z, qx, qy, qz, qw] Similarly the body COM velocity is represented with 6 dimensions, in the form of [vx, vy, vz, alpha, beta, gamma]
 
 
 
@@ -267,7 +267,10 @@ Observation Space
 
 Starting Criteria: Phase 1
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-- The human model is placed in a fixed starting location, directly in front of the ball, which is also placed in a fixed starting location. 
+- The soccer ball is in a fixed location
+- The starting position of the agent is randomly reset between [39, -1.0] and [38, 1.0] in [x, y] direction at the start of the episode.
+- The agent is always placed in front of the ball, facing the goal.
+- Maximum time: 20 seconds
 
 .. Starting Criteria: Phase 2 (upcoming)
 .. ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -279,7 +282,6 @@ Success Criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 1. The soccer ball is fully within the confines of the net.
-2. The agent scores within 20 seconds.
 
 
 Ranking Criteria
