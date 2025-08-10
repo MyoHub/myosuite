@@ -304,7 +304,7 @@ For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_re
 .. code-block:: python
 
     from myosuite.utils import gym
-    # Include the locomotion track environment, uncomment to select the manipulation challenge
+    # Include the table tennis track environment, uncomment to select the soccer track challenge
     # env = gym.make('myoChallengeSoccerP1-v0')
     env = gym.make('myoChallengeTableTennisP1-v0')
     
@@ -323,7 +323,7 @@ For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_re
         env.sim.model.geom_rgba[geom_1_indices, 3] = 0
 
 
-        # Get observation from the envrionment, details are described in the above docs
+        # Get observation from the environment, details are described in the above docs
         obs = env.get_obs()
         current_time = obs['time']
         #print(current_time)
