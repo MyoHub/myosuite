@@ -47,9 +47,9 @@ Observation Space
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Pelvis Position                         | pelvis_pos                  |  (3)            |
 .. +-----------------------------------------+-----------------------------+-----------------+
-.. | Joint Positions                         | body_qpos                   |  (86)           |
+.. | Joint Positions                         | body_qpos                   |  (58)           |
 .. +-----------------------------------------+-----------------------------+-----------------+
-.. | Joint Velocities                        | body_vel                    |  (86)           | 
+.. | Joint Velocities                        | body_vel                    |  (58)           | 
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Ball Position                           | ball_pos                    |  (3)            |
 .. +-----------------------------------------+-----------------------------+-----------------+
@@ -58,6 +58,8 @@ Observation Space
 .. | Paddle Position                         | paddle_pos                  |  (3)            |
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Paddle Velocity                         | paddle_vel                  |  (3)            |
+.. +-----------------------------------------+-----------------------------+-----------------+
+.. | Paddle Orientation                      | paddle_ori                  |  (4)            |
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Paddle Reaching Error                   | reach_err                   |  (3)            |
 .. +-----------------------------------------+-----------------------------+-----------------+
@@ -73,9 +75,9 @@ Observation Space
 +-----------------------------------+--------------------+-----------+
 | Pelvis Position                   | pelvis_pos         | 3         |
 +-----------------------------------+--------------------+-----------+
-| Joint Positions                   | body_qpos          | 86        |
+| Joint Positions                   | body_qpos          | 58        |
 +-----------------------------------+--------------------+-----------+
-| Joint Velocities                  | body_vel           | 86        |
+| Joint Velocities                  | body_vel           | 58        |
 +-----------------------------------+--------------------+-----------+
 | Ball Position                     | ball_pos           | 3         |
 +-----------------------------------+--------------------+-----------+
@@ -84,6 +86,8 @@ Observation Space
 | Paddle Position                   | paddle_pos         | 3         |
 +-----------------------------------+--------------------+-----------+
 | Paddle Velocity                   | paddle_vel         | 3         |
++-----------------------------------+--------------------+-----------+
+| Paddle Orientation                | paddle_ori         | 3         |
 +-----------------------------------+--------------------+-----------+
 | Paddle Reaching Error (see below) | reach_err          | 3         |
 +-----------------------------------+--------------------+-----------+
@@ -139,10 +143,12 @@ Observation Space
 
 Starting Criteria: Phase 1
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-- The ball starts at the same position with the same speed
+- The ball starts with the same speed
 - The agent has the same starting position
 - The paddle initially starts in the grasping position with the hand,
   but is not connected.
+- The starting position of the ball is randomly reset between [-1.20, -0.45, 1.50] and [-1.25, -0.50, 1.40] in x, y, z direction respectively at the start of the episode.
+- Maximum time: 3 seconds
 
 
 Success Criteria
@@ -239,7 +245,7 @@ Observation Space
 +----------------------------------------+----------------+-----------+
 | Body COM vel in world frame            | model_root_vel | 6         |
 +----------------------------------------+----------------+-----------+
-
+Note: The body COM is represents with a freejoint, hence the 7 dimensions, in the form of [x, y, z, qx, qy, qz, qw] Similarly the body COM velocity is represented with 6 dimensions, in the form of [vx, vy, vz, alpha, beta, gamma]
 
 
 
@@ -261,7 +267,10 @@ Observation Space
 
 Starting Criteria: Phase 1
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-- The human model is placed in a fixed starting location, directly in front of the ball, which is also placed in a fixed starting location. 
+- The soccer ball is in a fixed location
+- The starting position of the agent is randomly reset between [39, -1.0] and [38, 1.0] in [x, y] direction at the start of the episode.
+- The agent is always placed in front of the ball, facing the goal.
+- Maximum time: 20 seconds
 
 .. Starting Criteria: Phase 2 (upcoming)
 .. ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -273,7 +282,6 @@ Success Criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 1. The soccer ball is fully within the confines of the net.
-2. The agent scores within 20 seconds.
 
 
 Ranking Criteria
@@ -281,4 +289,56 @@ Ranking Criteria
 
 1. Success rate of scoring goals (goals_scored / total_attemps)
 2. Effort: based on muscle activation energy
+
+.. _challenge25_tutorial:
+
+
+Challenge Tutorial
+--------------------------------------------------------------
+
+This section aims to provide an basics to get start of the challenge.
+
+For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_reinforcement_learning` and :ref:`baselines` page. To obtain a more in-depth understanding of the challenge, we have prepared baselines for both of the challenges.
+
+
+.. code-block:: python
+
+    from myosuite.utils import gym
+    # Include the table tennis track environment, uncomment to select the soccer track challenge
+    # env = gym.make('myoChallengeSoccerP1-v0')
+    env = gym.make('myoChallengeTableTennisP1-v0')
+    
+
+    env.reset()
+
+    # Repeat 1000 time steps
+    for _ in range(1000):
+
+        # Activate mujoco rendering window
+        env.mj_render()
+
+        # Select skin group
+        geom_1_indices = np.where(env.sim.model.geom_group == 1)
+        # Change the alpha value to make it transparent
+        env.sim.model.geom_rgba[geom_1_indices, 3] = 0
+
+
+        # Get observation from the environment, details are described in the above docs
+        obs = env.get_obs()
+        current_time = obs['time']
+        #print(current_time)
+
+
+        # Take random actions
+        action = env.action_space.sample()
+
+
+        # Environment provides feedback on action
+        next_obs, reward, terminated, truncated, info = env.step(action)
+
+
+        # Reset training if env is terminated
+        if terminated:
+            next_obs, info = env.reset()
+
 

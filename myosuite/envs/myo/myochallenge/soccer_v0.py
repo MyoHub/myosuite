@@ -187,6 +187,8 @@ class SoccerEnvV0(WalkEnvV0):
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "goal_scored": 1000,
         "time_cost": -0.01,
+        "act_reg": -100,
+        "pain": -10,
     }
 
     # Goal dimensions based on Goalkeeper's fixed position and Y-bounds
@@ -195,6 +197,11 @@ class SoccerEnvV0(WalkEnvV0):
     GOAL_Y_MAX = GoalKeeper.Y_MAX_BOUND
     GOAL_Z_MIN = 0.0 
     GOAL_Z_MAX = 2.2 
+
+    # Joint overextension dict
+    JNT_OVEREXT = ['hip_adduction_l', 'hip_adduction_r', 'hip_flexion_l', 'hip_flexion_r', 'hip_rotation_l', 'hip_rotation_r',
+                'knee_angle_l', 'knee_angle_l_rotation2', 'knee_angle_l_rotation3',
+                'mtp_angle_l', 'ankle_angle_l', 'subtalar_angle_l']
 
     def __init__(self, model_path, obsd_model_path=None, seed=None, **kwargs):
         # This flag needs to be here to prevent the simulation from starting in a done state
@@ -223,15 +230,18 @@ class SoccerEnvV0(WalkEnvV0):
                reset_type='none',
                min_agent_spawn_distance=1,
                random_vel_range=(5.0, 5.0),
+               rnd_pos_noise=1.0,
+               rnd_joint_noise=0.02,
                goalkeeper_probabilities=(0.1, 0.45, 0.45),
                **kwargs,
                ):
 
-
         self._setup_convenience_vars()
 
         self.reset_type = reset_type
-        self.max_time = 20
+        self.rnd_pos_noise = rnd_pos_noise
+        self.rnd_joint_noise = rnd_joint_noise
+        self.max_time = 20 # in seconds
 
         self.goalkeeper = GoalKeeper(sim=self.sim,
                                      rng=self.np_random,
@@ -239,6 +249,15 @@ class SoccerEnvV0(WalkEnvV0):
                                      random_vel_range=random_vel_range)
 
         self.grf_sensor_names = ['r_foot', 'r_toes', 'l_foot', 'l_toes']
+        self.myo_joints = ['Abs_r3', 'Abs_t1', 'Abs_t2', 'L1_L2_AR', 'L1_L2_FE', 'L1_L2_LB', 'L2_L3_AR', 'L2_L3_FE', 'L2_L3_LB', 
+                            'L3_L4_AR', 'L3_L4_FE', 'L3_L4_LB', 'L4_L5_AR', 'L4_L5_FE', 'L4_L5_LB', 
+                            'ankle_angle_l', 'ankle_angle_r', 'axial_rotation', 'flex_extension', 'hip_adduction_l', 
+                            'hip_adduction_r', 'hip_flexion_l', 'hip_flexion_r', 'hip_rotation_l', 'hip_rotation_r', 
+                            'knee_angle_l', 'knee_angle_l_beta_rotation1', 'knee_angle_l_beta_translation1', 'knee_angle_l_beta_translation2',
+                             'knee_angle_l_rotation2', 'knee_angle_l_rotation3', 'knee_angle_l_translation1', 'knee_angle_l_translation2',
+                             'knee_angle_r', 'knee_angle_r_beta_rotation1', 'knee_angle_r_beta_translation1', 'knee_angle_r_beta_translation2', 
+                             'knee_angle_r_rotation2', 'knee_angle_r_rotation3', 'knee_angle_r_translation1', 'knee_angle_r_translation2', 
+                             'lat_bending', 'mtp_angle_l', 'mtp_angle_r', 'subtalar_angle_l', 'subtalar_angle_r']
        
         super()._setup(obs_keys=obs_keys,
                        weighted_reward_keys=weighted_reward_keys,
@@ -272,11 +291,11 @@ class SoccerEnvV0(WalkEnvV0):
         obs_dict = {}
 
         # Time
-        obs_dict['time'] = np.array([sim.data.time])
+        obs_dict['time'] = np.array([self.sim.data.time])
 
         # proprioception
-        obs_dict['internal_qpos'] = sim.data.qpos[14:60].copy()
-        obs_dict['internal_qvel'] = sim.data.qvel[12:58].copy() * self.dt
+        obs_dict['internal_qpos'] = self._get_joint_qpos()
+        obs_dict['internal_qvel'] = self._get_joint_qvel() * self.dt
         obs_dict['grf'] = self._get_grf().copy()
         obs_dict['torso_angle'] = self.sim.data.body('torso').xquat.copy()
         obs_dict['pelvis_angle'] = self.sim.data.body('pelvis').xquat.copy()
@@ -285,20 +304,20 @@ class SoccerEnvV0(WalkEnvV0):
         obs_dict['muscle_velocity'] = self.muscle_velocities()
         obs_dict['muscle_force'] = self.muscle_forces()
 
-        obs_dict['r_toe_pos'] = sim.data.geom('r_bofoot').xpos.copy()
-        obs_dict['l_toe_pos'] = sim.data.geom('l_bofoot').xpos.copy()
+        obs_dict['r_toe_pos'] = self.sim.data.geom('r_bofoot').xpos.copy()
+        obs_dict['l_toe_pos'] = self.sim.data.geom('l_bofoot').xpos.copy()
 
-        if sim.model.na>0:
-            obs_dict['act'] = sim.data.act[:].copy()
+        if self.sim.model.na>0:
+            obs_dict['act'] = self.sim.data.act[:].copy()
 
         # exteroception
-        obs_dict['ball_pos'] = sim.data.body('soccer_ball').xpos[:3].copy()
+        obs_dict['ball_pos'] = self.sim.data.body('soccer_ball').xpos[:3].copy()
         obs_dict['goal_bounds'] = np.array([[self.GOAL_X_POS, self.GOAL_Y_MIN, self.GOAL_Z_MIN], 
                                             [self.GOAL_X_POS, self.GOAL_Y_MAX, self.GOAL_Z_MIN], 
                                             [self.GOAL_X_POS, self.GOAL_Y_MIN, self.GOAL_Z_MAX], 
                                             [self.GOAL_X_POS, self.GOAL_Y_MAX, self.GOAL_Z_MAX]]).flatten()
-        obs_dict['model_root_pos'] = sim.data.qpos[7:14].copy()
-        obs_dict['model_root_vel'] = sim.data.qvel[6:12].copy()
+        obs_dict['model_root_pos'] = self.sim.data.joint('root').qpos.copy()
+        obs_dict['model_root_vel'] = self.sim.data.joint('root').qvel.copy()
 
         return obs_dict
 
@@ -309,16 +328,18 @@ class SoccerEnvV0(WalkEnvV0):
         DEFAULT_RWD_KEYS_AND_WEIGHTS dict, or when registering the environment
         with gym.register in myochallenge/__init__.py
         """
-        act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
+        # act_mag = np.linalg.norm(self.obs_dict['act'], axis=-1)/self.sim.model.na if self.sim.model.na !=0 else 0
+        act_mag = np.mean( np.square(self.obs_dict['act']) ) if self.sim.model.na !=0 else 0
 
         goal_scored = self._goal_scored_condition()
         time_limit_exceeded = self.obs_dict['time'] >= self.max_time
 
+        pain = self.get_jnt_limit_violation() # Joint limit violation torque as pain score
         done = bool(goal_scored or time_limit_exceeded)
         # ----------------------
 
         # Example reward, you should change this!
-        distance = np.linalg.norm(obs_dict['model_root_pos'][...,:2] - obs_dict['ball_pos'][...,:2])
+        distance = np.linalg.norm(obs_dict['model_root_pos'].flatten()[0:3] - obs_dict['ball_pos'].flatten())
 
         rwd_dict = collections.OrderedDict((
             # Perform reward tuning here --
@@ -329,16 +350,15 @@ class SoccerEnvV0(WalkEnvV0):
 
                 # Optional Keys
                 ('goal_scored', float(goal_scored)),
-                ('time_cost', -0.01),
+                ('time_cost', float(self.obs_dict['time'])),
                 ('act_reg', act_mag),
-                ('distance', distance),
+                ('pain', pain),
                 # Must keys
                 ('sparse',  float(done)),
                 ('solved',  float(goal_scored)),
                 ('done',  float(self._get_done())),
             ))
         rwd_dict['dense'] = np.sum([wt*rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
-
         # Success Indicator
         # self.sim.model.site_rgba[self.success_indicator_sid, :] = np.array([0, 2, 0, 0.2]) if rwd_dict['solved'] else np.array([2, 0, 0, 0])
         return rwd_dict
@@ -348,15 +368,19 @@ class SoccerEnvV0(WalkEnvV0):
         Evaluate paths and report metrics
         """
         # average sucess over entire env horizon
-        score = np.mean([np.sum(p['env_infos']['rwd_dict']['sparse']) for p in paths])
-        points = np.mean([np.sum(p['env_infos']['rwd_dict']['solved']) for p in paths])
+        score = np.mean([np.sum(p['env_infos']['rwd_dict']['solved']) for p in paths])
+        points = np.mean([np.sum(p['env_infos']['rwd_dict']['sparse']) for p in paths])
         times = np.mean([np.round(p['env_infos']['obs_dict']['time'][-1],2) for p in paths])
+        effort = np.mean([np.sum(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
+        pain = np.mean([np.sum(p['env_infos']['rwd_dict']['pain']) for p in paths])
         # average activations over entire trajectory (can be shorter than horizon, if done) realized
 
         metrics = {
             'score': score,
             'points': points,
             'times': times,
+            'effort':effort,
+            'pain':pain,
             }
         return metrics
 
@@ -416,11 +440,22 @@ class SoccerEnvV0(WalkEnvV0):
        )
 
     def _get_randomized_initial_state(self):
-        # No randomization for now
-        qpos = self.sim.model.key_qpos[0].copy()
-        qvel = self.sim.model.key_qvel[0].copy()
+        # Setting initial keypose values
+        self.sim.data.qpos = self.sim.model.key_qpos[0].copy()
+        self.sim.data.qvel = self.sim.model.key_qvel[0].copy()
 
-        return qpos, qvel
+        # Note: No randomization for ball, a goal kick ball position has to be fixed
+
+        # Add some noise to the joints
+        for jnt in self.myo_joints:
+            self.sim.data.joint(jnt).qpos[0] += self.np_random.uniform(-np.abs(self.rnd_joint_noise), np.abs(self.rnd_joint_noise), size=(1,))
+
+        # Body start position randomizations
+        # Treatment for root joint is different
+        self.sim.data.joint('root').qpos[0] += self.np_random.uniform(-np.abs(self.rnd_pos_noise), 0, size=(1,)) # Only allow body to move behind the ball, not in front
+        self.sim.data.joint('root').qpos[1] += self.np_random.uniform(-np.abs(self.rnd_pos_noise), np.abs(self.rnd_pos_noise),size=(1,)) # Y-direction movement allowable
+
+        return self.sim.data.qpos.copy(), self.sim.data.qvel.copy()
 
     def _setup_convenience_vars(self):
         """
@@ -456,6 +491,18 @@ class SoccerEnvV0(WalkEnvV0):
 
         return bool(is_x_past_goal and is_y_in_bounds and is_z_in_bounds)
 
+    def get_jnt_limit_violation(self):
+        """
+        Normalized sum of the joint limit violation forces.
+        """
+        if not self.startFlag:
+            return -1
+
+        limit_score = 0
+        for joint in self.JNT_OVEREXT:
+            limit_score += np.abs(np.clip(self.get_limitfrc(joint).squeeze(), -1000, 1000)) / 1000
+        return limit_score / len(self.JNT_OVEREXT)
+
     # Helper functions
     def _get_body_mass(self):
         """
@@ -464,6 +511,12 @@ class SoccerEnvV0(WalkEnvV0):
         :rtype: float
         """
         return self.sim.model.body('root').subtreemass
+
+    def _get_body_pos(self):
+        '''
+        Return an array of body positions [X,Y,Z, Quaternion]
+        '''
+        return np.array()
 
     def _get_score(self, time):
         time = np.round(time, 2)
@@ -493,6 +546,18 @@ class SoccerEnvV0(WalkEnvV0):
         '''
         return [self.sim.model.joint(jnt_id).name for jnt_id in range(1, self.sim.model.njnt)]
 
+    def _get_joint_qpos(self):
+        '''
+        Return a list of joint qpos from the predefined list of joint names
+        '''
+        return np.array([self.sim.data.joint(jnt).qpos[0].copy() for jnt in self.myo_joints])
+    
+    def _get_joint_qvel(self):
+        '''
+        Return a list of joint qvel from the predefined list of joint names
+        '''
+        return np.array([self.sim.data.joint(jnt).qvel[0].copy() for jnt in self.myo_joints])
+
     def _get_actuator_names(self):
         '''
         Return a list of actuator names according to the index ID of the actuators
@@ -508,3 +573,15 @@ class SoccerEnvV0(WalkEnvV0):
             return 1
         else:
             return 0
+
+    def get_limitfrc(self, joint_name):
+        """
+        Get the joint limit force for a given joint.
+        """
+        non_joint_limit_efc_idxs = np.where(self.sim.data.efc_type != self.sim.lib.mjtConstraint.mjCNSTR_LIMIT_JOINT)[0]
+        only_jnt_lim_efc_force = self.sim.data.efc_force.copy()
+        only_jnt_lim_efc_force[non_joint_limit_efc_idxs] = 0.0
+        joint_force = np.zeros((self.sim.model.nv,))
+        self.sim.lib.mj_mulJacTVec(self.sim.model._model, self.sim.data._data, joint_force, only_jnt_lim_efc_force)
+
+        return joint_force[self.sim.model.joint(joint_name).dofadr]
