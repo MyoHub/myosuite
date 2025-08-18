@@ -88,6 +88,16 @@ jobs:
         echo "current branch = $(git branch --show-current)"
         output=$(python3 .github/release_utils.py --release-type ${{ github.event.inputs.name }} --update-version)
 
+    # commit and push version.py update
+    - name: Commit updated version.py
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add myosuite/version.py
+        git commit -m "chore: bump version to ${{ needs.get_next_version.outputs.new_version }}"
+        git push origin main
+        git push origin dev
+
     # 2. Use the `tag name` as `release version`
     - uses: mukunku/tag-exists-action@v1.4.0
       id: checkTag
