@@ -58,6 +58,8 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         self._tip_sids = jp.array(self._tip_sids)
         self._target_sids = self._target_sids
 
+        self._n_substeps = int(config.ctrl_dt / config.sim_dt)
+
     def preprocess_spec(self, spec:mujoco.MjSpec):
         for geom in spec.geoms:
             if geom.type == mujoco.mjtGeom.mjGEOM_CYLINDER:
@@ -112,7 +114,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         
         norm_action = 1.0/(1.0+jp.exp(-5.0*(action-0.5))) 
 
-        data = mjx_env.step(self.mjx_model, state.data, norm_action)
+        data = mjx_env.step(self.mjx_model, state.data, norm_action, self._n_substeps)
 
         state = state.replace(info={**state.info, 'step_count': state.info['step_count'] + 1})
 
