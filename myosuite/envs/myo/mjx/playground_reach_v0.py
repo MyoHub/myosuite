@@ -80,12 +80,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         """Resets the environment to an initial state."""
         rng, rng1, rng2 = jax.random.split(rng, 3)
 
-        qpos = jax.random.uniform(
-            rng1, (self.mjx_model.nq,),
-            minval=self.mjx_model.jnt_range[:,0],
-            maxval=self.mjx_model.jnt_range[:,1]
-        )
-        # TODO: Velocity initialization
+        qpos = jp.array(self._mj_model.qpos0)
         qvel = jp.zeros(self.mjx_model.nv)
 
         targets = self.generate_target_pose(rng2)
