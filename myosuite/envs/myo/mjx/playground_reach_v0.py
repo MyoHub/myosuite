@@ -35,11 +35,11 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
 
         os.remove(tmp_path)
 
-        spec = self.preprocess_spec(spec)
+        # spec = self.preprocess_spec(spec)
         self._mj_model = spec.compile()
 
-        self._mj_model.geom_margin = np.zeros(self._mj_model.geom_margin.shape)
-        print(f"All margins set to 0")
+        # self._mj_model.geom_margin = np.zeros(self._mj_model.geom_margin.shape)
+        # print(f"All margins set to 0")
 
         self._mj_model.opt.timestep = self.sim_dt
         # self._mj_model.opt.solver = mujoco.mjtSolver.mjSOL_CG
@@ -47,7 +47,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         self._mj_model.opt.ls_iterations = 6
         # self._mj_model.opt.disableflags = self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP
 
-        self._mjx_model = mjx.put_model(self._mj_model)
+        self._mjx_model = mjx.put_model(self._mj_model, impl="warp")
         self._xml_path = config.model_path.as_posix()
 
         self._tip_sids = []
@@ -100,7 +100,10 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         data = make_data(self._mj_model,
                          qpos=qpos,
                          qvel=qvel,
-                         ctrl=jp.zeros((self.mjx_model.nu,)))
+                         ctrl=jp.zeros((self.mjx_model.nu,)),
+                         impl="warp",
+                         nconmax=125*self._config.num_envs,
+                         njmax=self.mj_model.njmax)
 
         obs, _ = self._get_obs(data, info)
 

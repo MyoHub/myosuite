@@ -14,6 +14,7 @@ from myosuite.envs.myo.mjx.playground_reach_v0 import MjxReachEnvV0
 pose_env_config = config_dict.create(
         ctrl_dt=0.02, # not used
         sim_dt=0.002, # not used
+        num_envs=8192,
         reward_config=config_dict.create(
             angle_reward_weight=1.,
             ctrl_cost_weight=1.,
@@ -29,6 +30,7 @@ pose_env_config = config_dict.create(
 reach_env_config = config_dict.create(
         ctrl_dt=0.02, # not used
         sim_dt=0.002, # not used
+        num_envs=8192,
         reward_weights=config_dict.create(
             reach=1.,
             bonus=4.,
