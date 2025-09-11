@@ -8,6 +8,10 @@ from mujoco_playground import State
 from mujoco_playground._src import mjx_env  # Several helper functions are only visible under _src
 import numpy as np
 
+import tempfile
+import os
+import pathlib
+
 class MjxReachEnvV0(mjx_env.MjxEnv):
     def __init__(
             self,
@@ -16,7 +20,21 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
     ) -> None:
         super().__init__(config, config_overrides)
 
-        spec = mujoco.MjSpec.from_file(config.model_path.as_posix())
+        # remove myosuite_scene to speed up simulation
+        orig_path = pathlib.Path(config.model_path)
+        with tempfile.NamedTemporaryFile('w', dir=orig_path.parent, suffix='.xml', delete=False) as tmp_file:
+            for line in orig_path.open():
+                if 'myosuite_scene.xml' in line:
+                    # comment out or skip
+                    tmp_file.write(f"<!-- {line.strip()} -->\n")
+                else:
+                    tmp_file.write(line)
+            tmp_path = tmp_file.name
+
+        spec = mujoco.MjSpec.from_file(tmp_path)
+
+        os.remove(tmp_path)
+        
         spec = self.preprocess_spec(spec)
         self._mj_model = spec.compile()
 
