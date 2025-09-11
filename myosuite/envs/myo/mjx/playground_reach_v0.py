@@ -51,9 +51,12 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         self._xml_path = config.model_path.as_posix()
 
         self._tip_sids = []
+        self._target_sids = []
         for site in self._config.target_reach_range.keys():
             self._tip_sids.append(mujoco.mj_name2id(self._mj_model, mujoco.mjtObj.mjOBJ_SITE.value, site))
+            self._target_sids.append(mujoco.mj_name2id(self._mj_model, mujoco.mjtObj.mjOBJ_SITE.value, site + '_target'))
         self._tip_sids = jp.array(self._tip_sids)
+        self._target_sids = self._target_sids
 
     def preprocess_spec(self, spec:mujoco.MjSpec):
         for geom in spec.geoms:
