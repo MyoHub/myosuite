@@ -34,7 +34,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         spec = mujoco.MjSpec.from_file(tmp_path)
 
         os.remove(tmp_path)
-        
+
         spec = self.preprocess_spec(spec)
         self._mj_model = spec.compile()
 
@@ -42,10 +42,10 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         print(f"All margins set to 0")
 
         self._mj_model.opt.timestep = self.sim_dt
-        self._mj_model.opt.solver = mujoco.mjtSolver.mjSOL_CG
+        # self._mj_model.opt.solver = mujoco.mjtSolver.mjSOL_CG
         self._mj_model.opt.iterations = 6
         self._mj_model.opt.ls_iterations = 6
-        self._mj_model.opt.disableflags = self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP
+        # self._mj_model.opt.disableflags = self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP
 
         self._mjx_model = mjx.put_model(self._mj_model)
         self._xml_path = config.model_path.as_posix()
@@ -124,7 +124,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         penalty = -1.*(reach_dist>far_th) * self._config.reward_weights.penalty 
 
         reward = reach + bonus + penalty
-        done = -1.*(reach_dist > far_th)
+        done = 1.*(reach_dist > far_th)
 
         state.metrics.update(
             reach_reward=reach,
