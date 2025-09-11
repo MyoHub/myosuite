@@ -26,6 +26,7 @@ def main(env_name):
   # Train the model
   make_inference_fn, params, _ = ppo.train(
       environment=env,
+      num_envs=env._config.num_envs,
       progress_fn=progress,
       policy_params_fn=make_policy_params_fn(env),
       network_factory=network_factory,
