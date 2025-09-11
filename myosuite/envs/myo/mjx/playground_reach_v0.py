@@ -96,8 +96,11 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         info = {'rng': rng,
                 'targets': targets,
                 'step_count':jp.array(0, dtype=jp.int32)}
-
-        data = mjx_env.init(self.mjx_model, qpos=qpos, qvel=qvel, ctrl=jp.zeros((self.mjx_model.nu,)))
+        
+        data = make_data(self._mj_model,
+                         qpos=qpos,
+                         qvel=qvel,
+                         ctrl=jp.zeros((self.mjx_model.nu,)))
 
         obs, _ = self._get_obs(data, info)
 
@@ -191,3 +194,34 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
     @property
     def mjx_model(self) -> mjx.Model:
         return self._mjx_model
+    
+def make_data(
+    model: mujoco.MjModel,
+    qpos: Optional[jax.Array] = None,
+    qvel: Optional[jax.Array] = None,
+    ctrl: Optional[jax.Array] = None,
+    act: Optional[jax.Array] = None,
+    mocap_pos: Optional[jax.Array] = None,
+    mocap_quat: Optional[jax.Array] = None,
+    impl: Optional[str] = None,
+    nconmax: Optional[int] = None,
+    njmax: Optional[int] = None,
+    device: Optional[jax.Device] = None,
+) -> mjx.Data:
+  """Initialize MJX Data."""
+  data = mjx.make_data(
+      model, impl=impl, nconmax=nconmax, njmax=njmax, device=device
+  )
+  if qpos is not None:
+    data = data.replace(qpos=qpos)
+  if qvel is not None:
+    data = data.replace(qvel=qvel)
+  if ctrl is not None:
+    data = data.replace(ctrl=ctrl)
+  if act is not None:
+    data = data.replace(act=act)
+  if mocap_pos is not None:
+    data = data.replace(mocap_pos=mocap_pos.reshape(model.nmocap, -1))
+  if mocap_quat is not None:
+    data = data.replace(mocap_quat=mocap_quat.reshape(model.nmocap, -1))
+  return data
