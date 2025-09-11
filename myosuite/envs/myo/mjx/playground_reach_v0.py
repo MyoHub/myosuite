@@ -87,20 +87,23 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         self.n_targets = len(targets)
         self.near_th = self.n_targets*.0125
 
+        reward, done, zero = jp.zeros(3)
+
         # We store the targets in the info, can't store it as an instance variable,
         # as it has to be determined in a parallelized manner
-        info = {'rng': rng, 'targets': targets}
+        info = {'rng': rng,
+                'targets': targets,
+                'step_count':jp.array(0, dtype=jp.int32)}
 
         data = mjx_env.init(self.mjx_model, qpos=qpos, qvel=qvel, ctrl=jp.zeros((self.mjx_model.nu,)))
 
         obs, _ = self._get_obs(data, info)
 
-        reward, done, zero = jp.zeros(3)
-
         metrics = {
             'reach_reward': zero,
             'bonus_reward': zero,
             'penalty_reward': zero,
+            'solved_frac': zero
         }
         return State(data, {"state": obs}, reward, done, metrics, info)
 
@@ -110,6 +113,8 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         norm_action = 1.0/(1.0+jp.exp(-5.0*(action-0.5))) 
 
         data = mjx_env.step(self.mjx_model, state.data, norm_action)
+
+        state = state.replace(info={**state.info, 'step_count': state.info['step_count'] + 1})
 
         obs, reach_err = self._get_obs(data, state.info)
                 
@@ -123,11 +128,30 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
 
         reward = reach + bonus + penalty
         done = 1.*(reach_dist > far_th)
+        solved = 1.*(reach_dist<self.near_th)
+
+        ######## reset logic ######## 
+
+        # reset step counter if done or truncation
+        truncation = jp.where(state.info['step_count'] >= self._config.max_episode_steps, 1. - done, jp.array(0.))
+        step_count = jp.where(jp.logical_or(done, truncation), jp.array(0, dtype=jp.int32), state.info['step_count'])
+
+        # reset targets if done or truncation
+        rng, rng1 = jax.random.split(state.info['rng'])
+        targets = jp.where(jp.logical_or(done, truncation), self.generate_target_pose(rng1), state.info['targets'])
+
+        state = state.replace(info={**state.info,
+                                    'rng': rng,
+                                    'step_count': step_count,
+                                    'targets': targets})
+
+        ######## reset logic ######## 
 
         state.metrics.update(
             reach_reward=reach,
             bonus_reward=bonus,
             penalty_reward=penalty,
+            solved_frac=solved/self._config.max_episode_steps
         )
 
         return state.replace(

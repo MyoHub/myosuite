@@ -22,6 +22,7 @@ pose_env_config = config_dict.create(
         ),
         target_jnt_range=config_dict.ConfigDict(),
         far_th=4*jp.pi/2,
+        max_episode_steps=100,
         model_path=epath.Path('/tmp/dummy.xml')
     )
 
@@ -35,6 +36,7 @@ reach_env_config = config_dict.create(
         ),
         target_reach_range=config_dict.ConfigDict(),
         far_th=0.35,
+        max_episode_steps=100,
         model_path=epath.Path('/tmp/dummy.xml')
     )
 
