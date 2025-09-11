@@ -11,16 +11,23 @@ from myosuite.envs.myo.mjx import ppo_config
 
 from myosuite.envs.myo.mjx import make, get_default_config
 from mujoco_playground import wrapper
+from myosuite.envs.myo.mjx.utils import make_policy_params_fn
+
+import wandb
 
 def main(env_name):
   """Run training and evaluation for the specified environment."""
 
   env, ppo_params, network_factory = load_env_and_network_factory(env_name)
 
+  wandb_run = wandb.init(project=env_name,
+                         config=ppo_params)
+
   # Train the model
   make_inference_fn, params, _ = ppo.train(
       environment=env,
       progress_fn=progress,
+      policy_params_fn=make_policy_params_fn(env),
       network_factory=network_factory,
       wrap_env_fn=wrapper.wrap_for_brax_training,
       num_eval_envs=ppo_params.pop("num_eval_envs"),
@@ -57,6 +64,7 @@ times = [time.monotonic()]
 def progress(num_steps, metrics):
   times.append(time.monotonic())
   print(f"Step {num_steps} at {times[-1]}: reward={metrics['eval/episode_reward']:.3f}")
+  wandb.log(metrics, step=num_steps)
 
 
 if __name__ == "__main__":
