@@ -37,6 +37,7 @@ Advanced user are invited to familiarize themselves with the basics of the `Open
    projects
    baselines
    challenge-doc
+   challenge-doc2025
 
 
 

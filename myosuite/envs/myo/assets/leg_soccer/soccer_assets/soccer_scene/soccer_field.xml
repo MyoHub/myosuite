@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="soccer_pitch">
+
+    <compiler angle="radian" meshdir=".." texturedir=".."/>
+
+    <asset>
+        <!-- <mesh name="soccer_pitch_mesh" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch_field.obj" /> -->
+        <texture name="soccer_pitch_tex" type="2d" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch.png"/>
+        <material name="soccer_pitch_mat" texture="soccer_pitch_tex" specular="0.5" shininess="0.5" reflectance="0.0"/>
+        
+        <mesh name="goal_mesh_top" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch_goal_top.obj" />
+        <mesh name="goal_mesh_back" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch_goal_back.obj" />
+        <mesh name="goal_mesh_right" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch_goal_right.obj" />
+        <mesh name="goal_mesh_left" file="../../envs/myo/assets/leg_soccer/soccer_assets/soccer_scene/SoccerPitch_goal_left.obj" />
+        
+        <material name="goal_material" rgba="1 1 1 1" specular="0.2" shininess="0.3"/>
+    </asset>
+
+    <worldbody>
+        <!-- <geom name="soccer_pitch" type="mesh" mesh="soccer_pitch_mesh"
+              material="soccer_pitch_mat" rgba="1 1 1 1"
+              pos="0 0 0" euler="1.57 0 0"/> -->
+
+      <geom name="soccer_floor_1" type="plane" size="28.1 40 0.1" material="soccer_pitch_mat" rgba="1 1 1 1" pos="28.1 0 0" euler="0 0 0"/>
+      <geom name="soccer_floor_2" type="plane" size="28.1 40 0.1" material="soccer_pitch_mat" rgba="1 1 1 1" pos="-28.1 0 0" euler="0 0 3.14"/>
+      <!-- <geom name="ground" type="plane" size="6 6 0.1" rgba="1 1 1 1" material="matfloor" /> -->
+
+      <geom name="goal_geomA_top" type="mesh" mesh="goal_mesh_top"
+            material="goal_material" rgba="1 1 1 1"
+            pos="0 0 0" euler="1.57 0 0"/>
+      <geom name="goal_geomA_back" type="mesh" mesh="goal_mesh_back"
+            material="goal_material" rgba="1 1 1 1"
+            pos="0 0 0" euler="1.57 0 0"/>
+      <geom name="goal_geomA_right" type="mesh" mesh="goal_mesh_right"
+            material="goal_material" rgba="1 1 1 1"
+            pos="0 0 0" euler="1.57 0 0"/>
+      <geom name="goal_geomA_left" type="mesh" mesh="goal_mesh_left"
+            material="goal_material" rgba="1 1 1 1"
+            pos="0 0 0" euler="1.57 0 0"/>
+
+      <geom name="goal_geomB_top" type="mesh" mesh="goal_mesh_top"
+            material="goal_material" rgba="1 1 1 1"
+            pos="0 0 0" euler="1.57 3.14 0"/>
+      <geom name="goal_geomB_back" type="mesh" mesh="goal_mesh_back"
+            material="goal_material" rgba="1 1 1 1"
+            pos="0 0 0" euler="1.57 3.14 0"/>
+      <geom name="goal_geomB_right" type="mesh" mesh="goal_mesh_right"
+            material="goal_material" rgba="1 1 1 1"
+            pos="0 0 0" euler="1.57 3.14 0"/>
+      <geom name="goal_geomB_left" type="mesh" mesh="goal_mesh_left"
+            material="goal_material" rgba="1 1 1 1"
+            pos="0 0 0" euler="1.57 3.14 0"/>
+    </worldbody>
+</mujoco>
