@@ -65,6 +65,17 @@ register_env_with_variants(id='myoChallengeTableTennisP1-v0',
         }
     )
 
+register_env_with_variants(id='myoChallengeTableTennisP2-v0',
+        entry_point='myosuite.envs.myo.myochallenge.tabletennis_v0:TableTennisEnvV0',
+        max_episode_steps=300,
+        kwargs={
+            'model_path': curr_dir + '/../assets/arm/myoarm_tabletennis.xml',
+            'normalize_act': True,
+            'ball_xyz_range': {'high':[-1.20, -0.45, 1.5], 'low':[-1.25, -0.5, 1.4]},
+            'frame_skip': 5,
+        }
+    )
+
 register_env_with_variants(id='myoChallengeBimanual-v0',
         entry_point='myosuite.envs.myo.myochallenge.bimanual_v0:BimanualEnvV1',
         max_episode_steps=1000,
