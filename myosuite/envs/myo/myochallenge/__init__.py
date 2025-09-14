@@ -71,7 +71,9 @@ register_env_with_variants(id='myoChallengeTableTennisP2-v0',
         kwargs={
             'model_path': curr_dir + '/../assets/arm/myoarm_tabletennis.xml',
             'normalize_act': True,
-            'ball_xyz_range': {'high':[-1.20, -0.45, 1.5], 'low':[-1.25, -0.5, 1.4]},
+            'ball_qvel': True, 
+            'qpos_noise_range': {'low': -0.05,  'high':  0.05},
+            'ball_xyz_range': {'high':[-0.5, 0.5, 1.5], 'low':[-1.25, -0.5, 1.4]},
             'frame_skip': 5,
         }
     )

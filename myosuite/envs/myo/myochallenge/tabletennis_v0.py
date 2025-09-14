@@ -57,10 +57,12 @@ class TableTennisEnvV0(BaseV0):
             qpos_noise_range = None, # Noise in joint space for initialization
             obs_keys:list = DEFAULT_OBS_KEYS,
             ball_xyz_range = None,
+            ball_qvel = None,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             **kwargs,
         ):
         self.ball_xyz_range = ball_xyz_range
+        self.ball_qvel = ball_qvel
         self.qpos_noise_range = qpos_noise_range
         self.init_paddle_quat = R.from_euler('xyz', np.array([-0.3, 1.57, 0]), degrees = False).as_quat()[[3, 0, 1, 2]]
         self.contact_trajectory = []
@@ -265,20 +267,62 @@ class TableTennisEnvV0(BaseV0):
         #self.sim.model.body_quat[self.object_bid] = euler2quat(self.np_random.uniform(**self.target_rxryrz_range))
         self.contact_trajectory = []
         self.init_qpos[:] = self.sim.model.key_qpos[0].copy()
-        if self.ball_xyz_range is not None:
-            self.sim.model.body_pos[self.id_info.ball_bid] = self.np_random.uniform(**self.ball_xyz_range)
-            self.init_qpos[self.ball_dofadr + 1 : self.ball_dofadr + 4] = self.np_random.uniform(**self.ball_xyz_range)
-        # randomize init arms pose
-        if self.qpos_noise_range is not None:
-            reset_qpos_local = self.init_qpos + self.qpos_noise_range*(self.sim.model.jnt_range[:,1]-self.sim.model.jnt_range[:,0])
-            reset_qpos_local[-6:] = self.init_qpos[-6:]
-        else:
-            reset_qpos_local = reset_qpos
 
-        self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
-        obs = super().reset(reset_qpos=self.init_qpos, reset_qvel=self.init_qvel,**kwargs)
+        if self.ball_xyz_range is not None:
+            ball_pos = self.np_random.uniform(**self.ball_xyz_range)
+            self.sim.model.body_pos[self.id_info.ball_bid] = ball_pos
+            self.init_qpos[self.ball_dofadr + 1 : self.ball_dofadr + 4] = ball_pos
+        
+        if self.qpos_noise_range is not None:
+            joint_ranges = self.sim.model.jnt_range[:, 1] - self.sim.model.jnt_range[:, 0]
+            noise_fraction = self.np_random.uniform(**self.qpos_noise_range, size=joint_ranges.shape)
+
+            reset_qpos_local = self.init_qpos.copy()
+
+            # apply noise to all but the last two joints for paddle and pingpong
+            for j, adr in enumerate(self.sim.model.jnt_qposadr[:-2]):
+                reset_qpos_local[adr] += noise_fraction[j] * joint_ranges[j]
+
+                reset_qpos_local[adr] = np.clip(
+                    reset_qpos_local[adr],
+                    self.sim.model.jnt_range[j, 0],
+                    self.sim.model.jnt_range[j, 1],
+                )
+        else:
+            reset_qpos_local = reset_qpos if reset_qpos is not None else self.init_qpos
+
+        if self.ball_qvel:            
+            v_bounds = self.cal_ball_qvel(ball_pos)
+            v_low, v_high = v_bounds[1], v_bounds[0]
+            ball_vel = self.np_random.uniform(low=v_low, high=v_high)
+            self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = ball_vel
+        obs = super().reset(reset_qpos=reset_qpos_local, reset_qvel=self.init_qvel,**kwargs)
 
         return obs
+
+    def cal_ball_qvel(self, ball_qpos):
+        table_upper = [1.35, 0.70, 0.785]
+        table_lower = [0.5, -0.60, 0.785]
+        gravity = 9.81
+        v_z = self.np_random.uniform(*(-0.1, 0.1))
+
+        a = -0.5 * gravity
+        b = v_z
+        c = ball_qpos[2] - table_upper[2]
+
+        discriminant = b**2 - 4 * a * c
+        t = (-b - discriminant**0.5) / (2 * a)
+
+        if discriminant < 0:
+            raise ValueError(f"No real t: z0={ball_qpos[2]}, z_target={table_upper[2]}, v_z_init={v_z}")
+
+        v_upper = [(table_upper[i] - ball_qpos[i]) / t for i in range(2)]
+        v_lower = [(table_lower[i] - ball_qpos[i]) / t for i in range(2)]
+
+        return [
+            [v_upper[0], v_upper[1], v_z],
+            [v_lower[0], v_lower[1], v_z]
+        ]
 
     def step(self, a, **kwargs):
         # We unnormalize robotic actuators of the "locomotion", muscle ones are handled in the parent implementation
