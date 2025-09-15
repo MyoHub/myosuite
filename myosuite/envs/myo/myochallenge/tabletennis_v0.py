@@ -58,12 +58,16 @@ class TableTennisEnvV0(BaseV0):
             obs_keys:list = DEFAULT_OBS_KEYS,
             ball_xyz_range = None,
             ball_qvel = None,
+            ball_friction_range = None,
+            paddle_mass_range = None,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             **kwargs,
         ):
         self.ball_xyz_range = ball_xyz_range
         self.ball_qvel = ball_qvel
         self.qpos_noise_range = qpos_noise_range
+        self.paddle_mass_range = paddle_mass_range
+        self.ball_friction_range = ball_friction_range
         self.init_paddle_quat = R.from_euler('xyz', np.array([-0.3, 1.57, 0]), degrees = False).as_quat()[[3, 0, 1, 2]]
         self.contact_trajectory = []
 
@@ -268,6 +272,15 @@ class TableTennisEnvV0(BaseV0):
         self.contact_trajectory = []
         self.init_qpos[:] = self.sim.model.key_qpos[0].copy()
 
+        # the mass of the paddle slightly changes 
+        if self.paddle_mass_range:
+            self.sim.model.body_mass[self.id_info.paddle_bid] = self.np_random.uniform(
+                *self.paddle_mass_range) 
+
+        # friction of the ball changes 
+        if self.ball_friction_range:
+            self.sim.model.geom_friction[self.id_info.ball_gid] = self.np_random.uniform(**self.ball_friction_range)
+
         if self.ball_xyz_range is not None:
             ball_pos = self.np_random.uniform(**self.ball_xyz_range)
             self.sim.model.body_pos[self.id_info.ball_bid] = ball_pos
@@ -407,6 +420,7 @@ class IdInfo:
         self.ball_bid = model.body("pingpong").id
 
         self.ball_bid = model.body("pingpong").id
+        self.ball_gid = model.geom("pingpong").id
         self.own_half_gid = model.geom("coll_own_half").id
         self.paddle_gid = model.geom("pad").id
         self.opponent_half_gid = model.geom("coll_opponent_half").id
