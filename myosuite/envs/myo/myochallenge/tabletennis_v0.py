@@ -167,6 +167,7 @@ class TableTennisEnvV0(BaseV0):
         if rwd_dict['done'] and self.cur_rally < self.rally_count:
             rwd_dict['done'] = False
             self.obs_dict['time'] = 0
+            self.sim.data.time = 0
             self.contact_trajectory = []
             self.relaunch_ball()
         return rwd_dict
