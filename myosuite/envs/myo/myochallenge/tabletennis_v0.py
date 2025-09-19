@@ -60,6 +60,7 @@ class TableTennisEnvV0(BaseV0):
             ball_qvel = None,
             ball_friction_range = None,
             paddle_mass_range = None,
+            rally_count = 1,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             **kwargs,
         ):
@@ -73,6 +74,7 @@ class TableTennisEnvV0(BaseV0):
 
         self.id_info = IdInfo(self.sim.model)
         self.ball_dofadr = self.sim.model.body_dofadr[self.id_info.ball_bid]
+        self.ball_posadr = self.sim.model.joint("pingpong_freejoint").qposadr[0]
 
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
@@ -83,6 +85,8 @@ class TableTennisEnvV0(BaseV0):
         self.init_qpos[:] = self.sim.model.key_qpos[keyFrame_id].copy()
         self.start_vel = np.array([[5.6, 1.6, 0.1] ]) #np.array([[5.5, 1, -2.8] ])
         self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
+        self.rally_count = rally_count
+        self.cur_rally = 0
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -158,6 +162,13 @@ class TableTennisEnvV0(BaseV0):
                             for key, wt in self.rwd_keys_wt.items()
                                 )
 
+        if rwd_dict['done']:
+            self.cur_rally += 1
+        if rwd_dict['done'] and self.cur_rally < self.rally_count:
+            rwd_dict['done'] = False
+            self.obs_dict['time'] = 0
+            self.contact_trajectory = []
+            self.relaunch_ball()
         return rwd_dict
     
     def ref_traj(self, traj_path= r"your_h5.h5"):
@@ -284,7 +295,7 @@ class TableTennisEnvV0(BaseV0):
         if self.ball_xyz_range is not None:
             ball_pos = self.np_random.uniform(**self.ball_xyz_range)
             self.sim.model.body_pos[self.id_info.ball_bid] = ball_pos
-            self.init_qpos[self.ball_dofadr + 1 : self.ball_dofadr + 4] = ball_pos
+            self.init_qpos[self.ball_posadr : self.ball_posadr + 3] = ball_pos
         
         if self.qpos_noise_range is not None:
             joint_ranges = self.sim.model.jnt_range[:, 1] - self.sim.model.jnt_range[:, 0]
@@ -311,6 +322,8 @@ class TableTennisEnvV0(BaseV0):
             self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = ball_vel
         obs = super().reset(reset_qpos=reset_qpos_local, reset_qvel=self.init_qvel,**kwargs)
 
+        self.cur_rally = 0
+
         return obs
 
     def cal_ball_qvel(self, ball_qpos):
@@ -336,6 +349,24 @@ class TableTennisEnvV0(BaseV0):
             [v_upper[0], v_upper[1], v_z],
             [v_lower[0], v_lower[1], v_z]
         ]
+
+    def relaunch_ball(self):
+
+        ball_pos = self.init_qpos[self.ball_posadr: self.ball_dofadr + 3]
+        ball_vel = self.init_qvel[self.ball_dofadr: self.ball_dofadr + 6]  # 6 dof to reset spin
+        if self.ball_xyz_range is not None:
+            ball_pos = self.np_random.uniform(**self.ball_xyz_range)
+            self.sim.model.body_pos[self.id_info.ball_bid] = ball_pos
+            self.init_qpos[self.ball_posadr: self.ball_posadr + 3] = ball_pos
+
+        if self.ball_qvel:
+            v_bounds = self.cal_ball_qvel(ball_pos)
+            v_low, v_high = v_bounds[1], v_bounds[0]
+            ball_vel[:3] = self.np_random.uniform(low=v_low, high=v_high)
+            self.init_qvel[self.ball_dofadr: self.ball_dofadr + 3] = ball_vel[:3]
+
+        self.sim.data.qpos[self.ball_posadr: self.ball_posadr + 3] = ball_pos
+        self.sim.data.qvel[self.ball_dofadr: self.ball_dofadr + 6] = ball_vel
 
     def step(self, a, **kwargs):
         # We unnormalize robotic actuators of the "locomotion", muscle ones are handled in the parent implementation
@@ -521,3 +552,28 @@ def evaluate_pingpong_trajectory(contact_trajectory: List[set]):
                 return ContactTrajIssue.NO_PADDLE
 
     return ContactTrajIssue.MISS
+
+
+if __name__ == '__main__':
+    from mujoco.viewer import launch_passive
+    import myosuite.envs.myo.myochallenge
+    import time
+    import gymnasium as gym
+
+    env = gym.make('myoChallengeTableTennisP2-v0', rally_count=5, max_episode_steps=300*5)
+
+    with launch_passive(env.sim.model._model, env.sim.data._data) as viewer:
+        while viewer.is_running():
+            obs = env.reset()
+            done = False
+            while not done:
+                obs, rwrd, done, _, info = env.step(np.zeros(env.action_space.shape))
+                step_start = time.time()
+                viewer.sync()
+
+                # Rudimentary time keeping, will drift relative to wall clock.
+                time_until_next_step = env.dt - (time.time() - step_start)
+                if time_until_next_step > 0:
+                    time.sleep(time_until_next_step)
+
+    pass
