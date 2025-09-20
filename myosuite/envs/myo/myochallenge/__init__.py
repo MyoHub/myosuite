@@ -67,15 +67,16 @@ register_env_with_variants(id='myoChallengeTableTennisP1-v0',
 
 register_env_with_variants(id='myoChallengeTableTennisP2-v0',
         entry_point='myosuite.envs.myo.myochallenge.tabletennis_v0:TableTennisEnvV0',
-        max_episode_steps=300,
+        max_episode_steps=600,
+        rally_count=2, 
         kwargs={
             'model_path': curr_dir + '/../assets/arm/myoarm_tabletennis.xml',
             'normalize_act': True,
             #'ball_qvel': True, 
-            'paddle_mass_range': (0.090, 0.20),
+            #'paddle_mass_range': (0.090, 0.20),
             #'qpos_noise_range': {'low': -0.05,  'high':  0.05},
             'ball_xyz_range': {'high':[-1.20, -0.45, 1.5], 'low':[-1.25, -0.5, 1.4]}, #'ball_xyz_range': {'high':[-0.5, 0.5, 1.5], 'low':[-1.25, -0.5, 1.4]},
-            'ball_friction_range': { 'high': [1.1, 0.006, 0.00003], 'low': [0.9, 0.004, 0.00001]},
+            #'ball_friction_range': { 'high': [1.1, 0.006, 0.00003], 'low': [0.9, 0.004, 0.00001]},
             'frame_skip': 5,
         }
     )
