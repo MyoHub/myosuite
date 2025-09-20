@@ -162,10 +162,11 @@ class TableTennisEnvV0(BaseV0):
                             for key, wt in self.rwd_keys_wt.items()
                                 )
 
-        if rwd_dict['done']:
+        if rwd_dict['solved']:
             self.cur_rally += 1
-        if rwd_dict['done'] and self.cur_rally < self.rally_count:
+        if rwd_dict['solved'] and self.cur_rally < self.rally_count:
             rwd_dict['done'] = False
+            rwd_dict['solved'] = False
             self.obs_dict['time'] = 0
             self.sim.data.time = 0
             self.contact_trajectory = []
