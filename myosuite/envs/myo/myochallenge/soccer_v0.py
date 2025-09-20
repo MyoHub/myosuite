@@ -32,26 +32,28 @@ class GoalKeeper:
     def __init__(self,
                  sim,
                  rng,
-                 probabilities: Tuple[float],
                  random_vel_range: Tuple[float],
-                 dt=0.01,
-        ):
+                 probabilities=(0.1, 0.35, 0.55),
+                 dt=0.01,):
         """
         Initialize the GoalKeeper class.
         :param sim: Mujoco sim object.
         :param rng: np_random generator.
-        :param probabilities: Probabilities for the different policies, (stationary, random, block_ball).
+        :param probabilities: Probabilities for the different policies, (block_ball, random, stationary).
         :param random_vel_range: Range of velocities for the block_ball policy. Clipped.
         :param dt: Simulation timestep.
         """
         self.dt = dt
         self.sim = sim
         self.goalkeeper_probabilities = probabilities
-        self.random_vel_range = random_vel_range 
+        self.random_vel_range = random_vel_range
+        self.rng = rng
+
+        self.block_velocity = self.rng.uniform(self.random_vel_range[0], self.random_vel_range[1])
         self.reset_goalkeeper(rng=rng)
 
     def reset_noise_process(self):
-        self.noise_process = pink.ColoredNoiseProcess(beta=2, size=(2, 2000), scale=10, rng=self.rng)
+        self.noise_process = pink.ColoredNoiseProcess(beta=2, size=(2, 10), scale=self.block_velocity, rng=self.rng)
 
     def get_goalkeeper_pose(self):
         """
@@ -118,7 +120,8 @@ class GoalKeeper:
 
         linear_vel_y = np.clip(displacement, -self.block_velocity, self.block_velocity)
         
-        return np.array([linear_vel_y * self.P_GAIN, 0.0])
+        return np.array([linear_vel_y, 0.0])
+        # return np.array([linear_vel_y * self.P_GAIN, 0.0])
 
     def sample_goalkeeper_policy(self):
         """
@@ -126,11 +129,11 @@ class GoalKeeper:
         """
         rand_num = self.rng.uniform()
         if rand_num < self.goalkeeper_probabilities[0]:
-            self.goalkeeper_policy = 'stationary'
+            self.goalkeeper_policy = 'block_ball'
         elif rand_num < self.goalkeeper_probabilities[0] + self.goalkeeper_probabilities[1]:
             self.goalkeeper_policy = 'random'
         elif rand_num < self.goalkeeper_probabilities[0] + self.goalkeeper_probabilities[1] + self.goalkeeper_probabilities[2]:
-            self.goalkeeper_policy = 'block_ball'
+            self.goalkeeper_policy = 'stationary'
 
     def update_goalkeeper_state(self):
         """
@@ -161,7 +164,9 @@ class GoalKeeper:
         self.goalkeeper_vel = np.zeros((2,))
         self.sample_goalkeeper_policy()
 
-        initial_goalkeeper_pos = [self.FIXED_X_POS, 0, 0]
+        self.rng_loc = self.rng.uniform(self.Y_MIN_BOUND, self.Y_MAX_BOUND)
+
+        initial_goalkeeper_pos = [self.FIXED_X_POS, self.rng_loc, 0]
         self.set_goalkeeper_pose(initial_goalkeeper_pos)
         self.goalkeeper_vel[:] = 0.0
 
@@ -229,10 +234,11 @@ class SoccerEnvV0(WalkEnvV0):
                weighted_reward_keys: dict = DEFAULT_RWD_KEYS_AND_WEIGHTS,
                reset_type='none',
                min_agent_spawn_distance=1,
-               random_vel_range=(5.0, 5.0),
+               random_vel_range=(1.0, 5.0),
                rnd_pos_noise=1.0,
                rnd_joint_noise=0.02,
                goalkeeper_probabilities=(0.1, 0.45, 0.45),
+               max_time_sec=10,
                **kwargs,
                ):
 
@@ -241,7 +247,7 @@ class SoccerEnvV0(WalkEnvV0):
         self.reset_type = reset_type
         self.rnd_pos_noise = rnd_pos_noise
         self.rnd_joint_noise = rnd_joint_noise
-        self.max_time = 20 # in seconds
+        self.max_time = max_time_sec # in seconds
 
         self.goalkeeper = GoalKeeper(sim=self.sim,
                                      rng=self.np_random,
@@ -333,9 +339,10 @@ class SoccerEnvV0(WalkEnvV0):
 
         goal_scored = self._goal_scored_condition()
         time_limit_exceeded = self.obs_dict['time'] >= self.max_time
+        fallen = self._get_fallen_condition()
 
         pain = self.get_jnt_limit_violation() # Joint limit violation torque as pain score
-        done = bool(goal_scored or time_limit_exceeded)
+        done = bool(goal_scored or time_limit_exceeded or fallen)
         # ----------------------
 
         # Example reward, you should change this!
@@ -476,6 +483,8 @@ class SoccerEnvV0(WalkEnvV0):
             return 1
         if (self.obs_dict['time'] >= self.max_time):
             return 1
+        if self._get_fallen_condition():
+            return 1
         return 0
 
     def _goal_scored_condition(self):
@@ -490,6 +499,16 @@ class SoccerEnvV0(WalkEnvV0):
         is_z_in_bounds = self.GOAL_Z_MIN <= ball_pos[2] <= self.GOAL_Z_MAX
 
         return bool(is_x_past_goal and is_y_in_bounds and is_z_in_bounds)
+
+    def _get_fallen_condition(self):
+        """
+        Checks if the agent has fallen by checking the if the height of the pelvis is too near to the ground
+        """
+        pelvis = self.sim.data.body('pelvis').xpos
+        if pelvis[2] < 0.2:
+            return 1
+        else:
+            return 0
 
     def get_jnt_limit_violation(self):
         """
@@ -563,16 +582,6 @@ class SoccerEnvV0(WalkEnvV0):
         Return a list of actuator names according to the index ID of the actuators
         '''
         return [self.sim.model.actuator(act_id).name for act_id in range(1, self.sim.model.na)]
-
-    def _get_fallen_condition(self):
-        """
-        Checks if the agent has fallen by comparing the head site height with the
-        average foot height.
-        """
-        if self.sim.data.body('pelvis').xpos[2] < 0.5:
-            return 1
-        else:
-            return 0
 
     def get_limitfrc(self, joint_name):
         """
