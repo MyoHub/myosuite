@@ -60,7 +60,7 @@ class TableTennisEnvV0(BaseV0):
             ball_qvel = None,
             ball_friction_range = None,
             paddle_mass_range = None,
-            rally_count = 1,
+            rally_count = 2,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             **kwargs,
         ):
