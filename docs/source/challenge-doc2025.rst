@@ -141,13 +141,24 @@ Observation Space
 
 
 
-Starting Criteria: Phase 1
+Starting Criteria: Phase 1 :code:`myoChallengeTableTennisP1-v0`
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 - The ball starts with the same speed
 - The agent has the same starting position
 - The paddle initially starts in the grasping position with the hand,
   but is not connected.
 - The starting position of the ball is randomly reset between [-1.20, -0.45, 1.50] and [-1.25, -0.50, 1.40] in x, y, z direction respectively at the start of the episode.
+- Maximum time: 3 seconds
+
+Starting Criteria: Phase 2 :code:`myoChallengeTableTennisP2-v0` (Please note the exact evaluation would be hidden.)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- The ball starts with a different velocity, guaranteed to land onthe  model's side of the table
+- The agent has the same starting position
+- The paddle initially starts in the grasping position with the hand,
+  but is not connected.
+- Table Tennis Paddle: mass is randomized between 100g - 150g. 
+- Table tennnis friction: a +- change between 0 - 0.1, 0 - 0.001, 0 - 0.00002 from nominal value: [1.0, 0.005, 0.0001] in respective geom direction in (myoChallengeTableTennisP1-v0)
+- The starting position of the ball is randomly reset between [-0.5, 0.50, 1.50] and [-1.25, -0.50, 1.40] in x, y, z direction respectively at the start of the episode.
 - Maximum time: 3 seconds
 
 

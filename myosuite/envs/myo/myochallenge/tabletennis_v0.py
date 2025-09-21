@@ -57,16 +57,24 @@ class TableTennisEnvV0(BaseV0):
             qpos_noise_range = None, # Noise in joint space for initialization
             obs_keys:list = DEFAULT_OBS_KEYS,
             ball_xyz_range = None,
+            ball_qvel = None,
+            ball_friction_range = None,
+            paddle_mass_range = None,
+            rally_count = 1,
             weighted_reward_keys:list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
             **kwargs,
         ):
         self.ball_xyz_range = ball_xyz_range
+        self.ball_qvel = ball_qvel
         self.qpos_noise_range = qpos_noise_range
+        self.paddle_mass_range = paddle_mass_range
+        self.ball_friction_range = ball_friction_range
         self.init_paddle_quat = R.from_euler('xyz', np.array([-0.3, 1.57, 0]), degrees = False).as_quat()[[3, 0, 1, 2]]
         self.contact_trajectory = []
 
         self.id_info = IdInfo(self.sim.model)
         self.ball_dofadr = self.sim.model.body_dofadr[self.id_info.ball_bid]
+        self.ball_posadr = self.sim.model.joint("pingpong_freejoint").qposadr[0]
 
         super()._setup(obs_keys=obs_keys,
                     weighted_reward_keys=weighted_reward_keys,
@@ -77,6 +85,8 @@ class TableTennisEnvV0(BaseV0):
         self.init_qpos[:] = self.sim.model.key_qpos[keyFrame_id].copy()
         self.start_vel = np.array([[5.6, 1.6, 0.1] ]) #np.array([[5.5, 1, -2.8] ])
         self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
+        self.rally_count = rally_count
+        self.cur_rally = 0
 
     def get_obs_dict(self, sim):
         obs_dict = {}
@@ -152,6 +162,15 @@ class TableTennisEnvV0(BaseV0):
                             for key, wt in self.rwd_keys_wt.items()
                                 )
 
+        if rwd_dict['solved']:
+            self.cur_rally += 1
+        if rwd_dict['solved'] and self.cur_rally < self.rally_count:
+            rwd_dict['done'] = False
+            rwd_dict['solved'] = False
+            self.obs_dict['time'] = 0
+            self.sim.data.time = 0
+            self.contact_trajectory = []
+            self.relaunch_ball()
         return rwd_dict
     
     def ref_traj(self, traj_path= r"your_h5.h5"):
@@ -245,7 +264,7 @@ class TableTennisEnvV0(BaseV0):
         score = num_success/num_paths
 
         # average activations over entire trajectory (can be shorter than horizon, if done) realized
-        effort = 1.0*np.mean([np.mean(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
+        effort = -1.0*np.mean([np.mean(p['env_infos']['rwd_dict']['act_reg']) for p in paths])
 
         metrics = {
             'score': score,
@@ -265,20 +284,94 @@ class TableTennisEnvV0(BaseV0):
         #self.sim.model.body_quat[self.object_bid] = euler2quat(self.np_random.uniform(**self.target_rxryrz_range))
         self.contact_trajectory = []
         self.init_qpos[:] = self.sim.model.key_qpos[0].copy()
-        if self.ball_xyz_range is not None:
-            self.sim.model.body_pos[self.id_info.ball_bid] = self.np_random.uniform(**self.ball_xyz_range)
-            self.init_qpos[self.ball_dofadr + 1 : self.ball_dofadr + 4] = self.np_random.uniform(**self.ball_xyz_range)
-        # randomize init arms pose
-        if self.qpos_noise_range is not None:
-            reset_qpos_local = self.init_qpos + self.qpos_noise_range*(self.sim.model.jnt_range[:,1]-self.sim.model.jnt_range[:,0])
-            reset_qpos_local[-6:] = self.init_qpos[-6:]
-        else:
-            reset_qpos_local = reset_qpos
 
-        self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
-        obs = super().reset(reset_qpos=self.init_qpos, reset_qvel=self.init_qvel,**kwargs)
+        # the mass of the paddle slightly changes 
+        if self.paddle_mass_range:
+            self.sim.model.body_mass[self.id_info.paddle_bid] = self.np_random.uniform(
+                *self.paddle_mass_range) 
+
+        # friction of the ball changes 
+        if self.ball_friction_range:
+            self.sim.model.geom_friction[self.id_info.ball_gid] = self.np_random.uniform(**self.ball_friction_range)
+
+        if self.ball_xyz_range is not None:
+            ball_pos = self.np_random.uniform(**self.ball_xyz_range)
+            self.sim.model.body_pos[self.id_info.ball_bid] = ball_pos
+            self.init_qpos[self.ball_posadr : self.ball_posadr + 3] = ball_pos
+        
+        if self.qpos_noise_range is not None:
+            joint_ranges = self.sim.model.jnt_range[:, 1] - self.sim.model.jnt_range[:, 0]
+            noise_fraction = self.np_random.uniform(**self.qpos_noise_range, size=joint_ranges.shape)
+
+            reset_qpos_local = self.init_qpos.copy()
+
+            # apply noise to all but the last two joints for paddle and pingpong
+            for j, adr in enumerate(self.sim.model.jnt_qposadr[:-2]):
+                reset_qpos_local[adr] += noise_fraction[j] * joint_ranges[j]
+
+                reset_qpos_local[adr] = np.clip(
+                    reset_qpos_local[adr],
+                    self.sim.model.jnt_range[j, 0],
+                    self.sim.model.jnt_range[j, 1],
+                )
+        else:
+            reset_qpos_local = reset_qpos if reset_qpos is not None else self.init_qpos
+
+        if self.ball_qvel:            
+            v_bounds = self.cal_ball_qvel(ball_pos)
+            v_low, v_high = v_bounds[1], v_bounds[0]
+            ball_vel = self.np_random.uniform(low=v_low, high=v_high)
+            self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = ball_vel
+        obs = super().reset(reset_qpos=reset_qpos_local, reset_qvel=self.init_qvel,**kwargs)
+
+        self.cur_rally = 0
 
         return obs
+
+    def cal_ball_qvel(self, ball_qpos):
+        """
+        Returns a range of velocity for the given ball_qpos
+        The calculated qvel will make sure the table tennis lands on the model's side of the table
+        """
+        table_upper = [1.35, 0.70, 0.785] #set the position's range on the model's side of the table
+        table_lower = [0.5, -0.60, 0.785]
+        gravity = 9.81
+        v_z = self.np_random.uniform(*(-0.1, 0.1))
+
+        a = -0.5 * gravity
+        b = v_z
+        c = ball_qpos[2] - table_upper[2]
+
+        discriminant = b**2 - 4 * a * c
+        t = (-b - discriminant**0.5) / (2 * a)
+
+        if discriminant < 0:
+            raise ValueError(f"No real t: z0={ball_qpos[2]}, z_target={table_upper[2]}, v_z_init={v_z}")
+
+        v_upper = [(table_upper[i] - ball_qpos[i]) / t for i in range(2)]
+        v_lower = [(table_lower[i] - ball_qpos[i]) / t for i in range(2)]
+
+        return [
+            [v_upper[0], v_upper[1], v_z],
+            [v_lower[0], v_lower[1], v_z]
+        ]
+
+    def relaunch_ball(self):
+
+        ball_pos = self.init_qpos[self.ball_posadr: self.ball_dofadr + 3]
+        ball_vel = self.init_qvel[self.ball_dofadr: self.ball_dofadr + 6]  # 6 dof to reset spin
+        if self.ball_xyz_range is not None:
+            ball_pos = self.np_random.uniform(**self.ball_xyz_range)
+            self.sim.model.body_pos[self.id_info.ball_bid] = ball_pos
+            self.init_qpos[self.ball_posadr: self.ball_posadr + 3] = ball_pos
+
+        if self.ball_qvel:
+            v_bounds = self.cal_ball_qvel(ball_pos)
+            v_low, v_high = v_bounds[1], v_bounds[0]
+            ball_vel[:3] = self.np_random.uniform(low=v_low, high=v_high)
+            self.init_qvel[self.ball_dofadr: self.ball_dofadr + 3] = ball_vel[:3]
+        self.sim.data.qpos[self.ball_posadr: self.ball_posadr + 3] = ball_pos
+        self.sim.data.qvel[self.ball_dofadr: self.ball_dofadr + 6] = ball_vel
 
     def step(self, a, **kwargs):
         # We unnormalize robotic actuators of the "locomotion", muscle ones are handled in the parent implementation
@@ -363,6 +456,7 @@ class IdInfo:
         self.ball_bid = model.body("pingpong").id
 
         self.ball_bid = model.body("pingpong").id
+        self.ball_gid = model.geom("pingpong").id
         self.own_half_gid = model.geom("coll_own_half").id
         self.paddle_gid = model.geom("pad").id
         self.opponent_half_gid = model.geom("coll_opponent_half").id
