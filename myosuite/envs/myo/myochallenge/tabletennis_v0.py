@@ -329,7 +329,11 @@ class TableTennisEnvV0(BaseV0):
         return obs
 
     def cal_ball_qvel(self, ball_qpos):
-        table_upper = [1.35, 0.70, 0.785]
+        """
+        Returns a range of velocity for the given ball_qpos
+        The calculated qvel will make sure the table tennis lands on the model's side of the table
+        """
+        table_upper = [1.35, 0.70, 0.785] #set the position's range on the model's side of the table
         table_lower = [0.5, -0.60, 0.785]
         gravity = 9.81
         v_z = self.np_random.uniform(*(-0.1, 0.1))
@@ -366,7 +370,6 @@ class TableTennisEnvV0(BaseV0):
             v_low, v_high = v_bounds[1], v_bounds[0]
             ball_vel[:3] = self.np_random.uniform(low=v_low, high=v_high)
             self.init_qvel[self.ball_dofadr: self.ball_dofadr + 3] = ball_vel[:3]
-
         self.sim.data.qpos[self.ball_posadr: self.ball_posadr + 3] = ball_pos
         self.sim.data.qvel[self.ball_dofadr: self.ball_dofadr + 6] = ball_vel
 
@@ -554,28 +557,3 @@ def evaluate_pingpong_trajectory(contact_trajectory: List[set]):
                 return ContactTrajIssue.NO_PADDLE
 
     return ContactTrajIssue.MISS
-
-
-if __name__ == '__main__':
-    from mujoco.viewer import launch_passive
-    import myosuite.envs.myo.myochallenge
-    import time
-    import gymnasium as gym
-
-    env = gym.make('myoChallengeTableTennisP2-v0', rally_count=5, max_episode_steps=300*5)
-
-    with launch_passive(env.sim.model._model, env.sim.data._data) as viewer:
-        while viewer.is_running():
-            obs = env.reset()
-            done = False
-            while not done:
-                obs, rwrd, done, _, info = env.step(np.zeros(env.action_space.shape))
-                step_start = time.time()
-                viewer.sync()
-
-                # Rudimentary time keeping, will drift relative to wall clock.
-                time_until_next_step = env.dt - (time.time() - step_start)
-                if time_until_next_step > 0:
-                    time.sleep(time_until_next_step)
-
-    pass
