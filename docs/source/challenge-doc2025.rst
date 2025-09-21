@@ -272,7 +272,7 @@ Starting Criteria: Phase 1
 - The agent is always placed in front of the ball, facing the goal.
 - Maximum time: 20 seconds
 
-Starting Criteria: Phase 2 (upcoming)
+Starting Criteria: Phase 2
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 - The ball is placed in a fixed starting location. 
 - The starting position of the agent is randomly reset between [39, -2.0] and [37, 2.0] in [x, y] direction at the start of the episode. Note the increase in randomization distance as compared to Phase 1.
