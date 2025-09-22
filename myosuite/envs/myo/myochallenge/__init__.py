@@ -39,8 +39,21 @@ register_env_with_variants(id='myoChallengeSoccerP1-v0',
             'model_path': curr_dir+'/../assets/leg_soccer/myolegs_soccer.xml',
             'normalize_act': True,
             'min_agent_spawn_distance': 1,
+            'reset_type': 'none', # none, init, random
+            'goalkeeper_probabilities': (0, 0, 1),
+        }
+    )
+
+register_env_with_variants(id='myoChallengeSoccerP2-v0',
+        entry_point='myosuite.envs.myo.myochallenge.soccer_v0:SoccerEnvV0',
+        max_episode_steps=2000,
+        kwargs={
+            'model_path': curr_dir+'/../assets/leg_soccer/myolegs_soccer.xml',
+            'normalize_act': True,
+            'min_agent_spawn_distance': 1,
             'reset_type': 'random', # none, init, random
-            'goalkeeper_probabilities': (1, 0),
+            'goalkeeper_probabilities': (0, 0, 1),
+            'max_time_sec': 10,
         }
     )
 
