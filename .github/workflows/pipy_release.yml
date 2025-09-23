@@ -96,9 +96,10 @@ jobs:
         git add myosuite/version.py
         git commit -m "chore: bump version to ${{ needs.get_next_version.outputs.new_version }}"
         git push origin HEAD:main
-        git fetch origin
-        # Force dev to follow main exactly
-        git push origin main:dev --force-with-lease
+
+        # git fetch origin
+        # # Force dev to follow main exactly
+        # git push origin main:dev --force-with-lease
 
     # 2. Use the `tag name` as `release version`
     - uses: mukunku/tag-exists-action@v1.4.0
