@@ -141,13 +141,24 @@ Observation Space
 
 
 
-Starting Criteria: Phase 1
+Starting Criteria: Phase 1 :code:`myoChallengeTableTennisP1-v0`
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 - The ball starts with the same speed
 - The agent has the same starting position
 - The paddle initially starts in the grasping position with the hand,
   but is not connected.
 - The starting position of the ball is randomly reset between [-1.20, -0.45, 1.50] and [-1.25, -0.50, 1.40] in x, y, z direction respectively at the start of the episode.
+- Maximum time: 3 seconds
+
+Starting Criteria: Phase 2 :code:`myoChallengeTableTennisP2-v0` (Please note the exact evaluation would be hidden.)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- The ball starts with a different velocity, guaranteed to land onthe  model's side of the table
+- The agent has the same starting position
+- The paddle initially starts in the grasping position with the hand,
+  but is not connected.
+- Table Tennis Paddle: mass is randomized between 100g - 150g. 
+- Table tennnis friction: a +- change between 0 - 0.1, 0 - 0.001, 0 - 0.00002 from nominal value: [1.0, 0.005, 0.0001] in respective geom direction in (myoChallengeTableTennisP1-v0)
+- The starting position of the ball is randomly reset between [-0.5, 0.50, 1.50] and [-1.25, -0.50, 1.40] in x, y, z direction respectively at the start of the episode.
 - Maximum time: 3 seconds
 
 
@@ -272,17 +283,19 @@ Starting Criteria: Phase 1
 - The agent is always placed in front of the ball, facing the goal.
 - Maximum time: 20 seconds
 
-.. Starting Criteria: Phase 2 (upcoming)
-.. ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. - The ball is placed in a fixed starting location. The human model is placed at random locations within a fixed radius of the ball, 
-  and as before always placed in front of the ball. As well, a goalkeeper model is present, following a public policy with static and random movement. 
-
+Starting Criteria: Phase 2
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- The ball is placed in a fixed starting location. 
+- The starting position of the agent is randomly reset between [39, -2.0] and [37, 2.0] in [x, y] direction at the start of the episode. Note the increase in randomization distance as compared to Phase 1.
+- The agent is always placed in front of the ball, facing the goal.
+- Goalkeeper is now active, choosing between 3 movement strategies: Stationary, Random movement and Track ball
+- Velocity of goalkeeper will also be randomized at each episode
+- Maximum time: 10 seconds
 
 Success Criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 1. The soccer ball is fully within the confines of the net.
-
 
 Ranking Criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^
