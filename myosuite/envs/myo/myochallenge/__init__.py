@@ -87,7 +87,7 @@ register_env_with_variants(id='myoChallengeTableTennisP2-v0',
             'ball_qvel': True, 
             'paddle_mass_range': (0.10, 0.15),
             'qpos_noise_range': None,
-            'ball_xyz_range': {'high':[0.8, 0.5, 1.5], 'low':[-1.25, -0.5, 1.4]}, 
+            'ball_xyz_range': {'high':[-0.8, 0.5, 1.5], 'low':[-1.25, -0.5, 1.4]}, 
             'ball_friction_range': { 'high': [1.1, 0.006, 0.00003], 'low': [0.9, 0.004, 0.00001]},
             'frame_skip': 5,
         }
