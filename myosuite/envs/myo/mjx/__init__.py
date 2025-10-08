@@ -12,25 +12,25 @@ from myosuite.envs.myo.mjx.playground_pose_v0 import MjxPoseEnvV0
 from myosuite.envs.myo.mjx.playground_reach_v0 import MjxReachEnvV0
 
 pose_env_config = config_dict.create(
-        ctrl_dt=0.02, # not used
-        sim_dt=0.002, # not used
-        num_envs=8192,
+        ctrl_dt=0.02,
+        sim_dt=0.002,
+        num_envs=4096,
         reward_config=config_dict.create(
             angle_reward_weight=1.,
             ctrl_cost_weight=1.,
             pose_thd=0.35,
+            far_th=4*jp.pi/2,
             bonus_weight=4.
         ),
         target_jnt_range=config_dict.ConfigDict(),
-        far_th=4*jp.pi/2,
         max_episode_steps=100,
         model_path=epath.Path('/tmp/dummy.xml')
     )
 
 reach_env_config = config_dict.create(
-        ctrl_dt=0.02, # not used
-        sim_dt=0.002, # not used
-        num_envs=8192,
+        ctrl_dt=0.02,
+        sim_dt=0.002,
+        num_envs=4096,
         reward_weights=config_dict.create(
             reach=1.,
             bonus=4.,
@@ -46,7 +46,6 @@ ppo_config = config_dict.create(
         num_timesteps=40_000_000,
         num_evals=16,
         reward_scaling=0.1,
-        episode_length=1000,
         num_eval_envs=128,
         clipping_epsilon=0.3,
         normalize_observations=True,
@@ -58,7 +57,6 @@ ppo_config = config_dict.create(
         discounting=0.97,
         learning_rate=3e-4,
         entropy_cost=0.001,
-        num_envs=8192,
         batch_size=512,
         max_grad_norm=1.0,
         network_factory=config_dict.create(

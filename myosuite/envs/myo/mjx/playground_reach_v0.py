@@ -35,13 +35,13 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
 
         os.remove(tmp_path)
 
-        # spec = self.preprocess_spec(spec)
+        spec = self.preprocess_spec(spec)
         self._mj_model = spec.compile()
 
-        # self._mj_model.geom_margin = np.zeros(self._mj_model.geom_margin.shape)
-        # print(f"All margins set to 0")
+        self._mj_model.geom_margin = np.zeros(self._mj_model.geom_margin.shape)
+        print(f"All margins set to 0")
 
-        self._mj_model.opt.timestep = self.sim_dt
+        self._mj_model.opt.timestep = config.sim_dt
         # self._mj_model.opt.solver = mujoco.mjtSolver.mjSOL_CG
         self._mj_model.opt.iterations = 6
         self._mj_model.opt.ls_iterations = 6
@@ -95,7 +95,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         # as it has to be determined in a parallelized manner
         info = {'rng': rng,
                 'targets': targets,
-                'step_count':jp.array(0, dtype=jp.int32)}
+                'step_count': jp.array(0, dtype=jp.int32)}
         
         data = make_data(self._mj_model,
                          qpos=qpos,

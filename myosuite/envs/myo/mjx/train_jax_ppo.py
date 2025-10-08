@@ -15,23 +15,24 @@ from myosuite.envs.myo.mjx.utils import make_policy_params_fn
 
 import wandb
 
-def main(env_name):
+def main(env_name, render_evaluations=False):
   """Run training and evaluation for the specified environment."""
 
   env, ppo_params, network_factory = load_env_and_network_factory(env_name)
 
   wandb_run = wandb.init(project=env_name,
                          config=ppo_params)
-
+  
   # Train the model
   make_inference_fn, params, _ = ppo.train(
       environment=env,
       num_envs=env._config.num_envs,
+      episode_length=env._config.max_episode_steps,
       progress_fn=progress,
-      policy_params_fn=make_policy_params_fn(env),
       network_factory=network_factory,
       wrap_env_fn=wrapper.wrap_for_brax_training,
       num_eval_envs=ppo_params.pop("num_eval_envs"),
+      policy_params_fn=make_policy_params_fn(env) if render_evaluations else lambda *args: None,
       **ppo_params,
   )
 
@@ -40,7 +41,6 @@ def main(env_name):
 
   with open('playground_params.pickle', 'wb') as handle:
       pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
 
 def load_env_and_network_factory(env_name):
   env = make(env_name)
@@ -69,4 +69,4 @@ def progress(num_steps, metrics):
 
 
 if __name__ == "__main__":
-  main("MjxElbowPoseFixed-v0")
+  main("MjxFingerPoseRandom-v0")

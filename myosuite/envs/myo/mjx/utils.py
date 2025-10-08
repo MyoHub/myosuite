@@ -5,7 +5,6 @@ from mujoco_playground._src.mjx_env import State
 
 import io
 import imageio
-
 import wandb
 
 from mujoco_playground import wrapper
@@ -40,7 +39,7 @@ def make_minimal_state(full_state):
 
 def make_policy_params_fn(env):
 
-    eval_env = wrapper.wrap_for_brax_training(env, episode_length=env._max_steps, action_repeat=1)
+    eval_env = wrapper.wrap_for_brax_training(env, episode_length=env._config.max_episode_steps, action_repeat=1)
     jit_env_reset = jax.jit(eval_env.reset)
     jit_env_step = jax.jit(eval_env.step)
     def make_jit_policy(make_policy, params, deterministic):
@@ -53,10 +52,11 @@ def make_policy_params_fn(env):
         key = jax.random.PRNGKey(seed=num_steps)
         key, subkey = jax.random.split(key)
         state = jit_env_reset(rng=subkey[None,:])
-        eval_env._mj_model.site_pos[eval_env._target_sids] = state.info['targets']
+        if hasattr(eval_env, "_target_sids"):
+            eval_env._mj_model.site_pos[eval_env._target_sids] = state.info['targets']
 
         rollout = [make_minimal_state(state)]
-        for i in range(eval_env._max_steps):
+        for i in range(eval_env._config.max_episode_steps):
             key, subkey = jax.random.split(key)
             action, _ = policy(state.obs, subkey[None, :])
             state = jit_env_step(state, action)
