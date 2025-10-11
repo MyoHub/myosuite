@@ -24,6 +24,8 @@ The default installation requires Python ≥3.9 and MuJoCo 3.3.0. See the [main 
    pip install "mujoco-mjx==3.3.4"
    ```
 
+NOTE: For [warp](https://github.com/google-deepmind/mujoco_warp) support, until it is integrated into the main mujoco release, you should depend on the warp tag: `mujoco-mjx[warp]`
+
 2. **Verify installation**:
    ```bash
    # remove uv run if you installed with pypi
