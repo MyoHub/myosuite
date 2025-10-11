@@ -124,3 +124,5 @@ osl.log
 /workspace
 
 *processed.xml
+
+logs/
