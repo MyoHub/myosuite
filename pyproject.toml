@@ -25,13 +25,12 @@ dependencies = [
     "flatten_dict",
     "h5py",
     "numpy",
+    "mujoco==3.3.0",
     "dm-control==1.0.28",
     "Pillow",
     "pink-noise-rl",
     "packaging",
-    "gitpython",
-    "mujoco==3.3.6",
-    "mujoco-mjx[warp]==3.3.6",
+    "gitpython"
 ]
 [project.optional-dependencies]
 examples = ["mink[examples]; python_version > '3.9'"]
