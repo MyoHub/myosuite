@@ -5,6 +5,7 @@ from jax import numpy as jp
 import jax
 import jax.random as jrandom
 import pickle
+from myosuite.utils.quat_math_jax import euler2quat
 
 # Time precision to use. Avoids rounding/resolution errors during comparisons
 _TIME_PRECISION = 4
@@ -149,6 +150,15 @@ class ReferenceMotion:
         reference.setdefault(
             "object_init", reference["object"][0] if "object" in reference else None
         )
+
+        # Handle conversion from euler to quaternion format for object_init if needed
+        if reference["object_init"] is not None and "object" in reference and reference["object"] is not None:
+            if reference["object_init"].shape[0] == 6 and reference["object"].shape[1] == 7:
+                # Convert [x, y, z, euler_x, euler_y, euler_z] to [x, y, z, quat_w, quat_x, quat_y, quat_z]
+                pos = reference["object_init"][:3]
+                euler = reference["object_init"][3:]
+                quat = euler2quat(euler)
+                reference["object_init"] = jp.concatenate([pos, quat])
 
         result = ReferenceStruct(
             time=jp.array(reference["time"]),
