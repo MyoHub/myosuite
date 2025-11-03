@@ -11,7 +11,7 @@ uv pip  install jupyter ipykernel tabulate matplotlib torch h5py
 uv pip  install git+https://github.com/aravindr93/mjrl.git@pvr_beta_1vk # install from branch `pvr_beta_1vk` compatible with `mujoco` native binding
 uv pip  install stable-baselines3
 
-python -m ipykernel install --user --name=myosuite_uv
+uv run python -m ipykernel install --user --name=myosuite_uv
 
 # Tested tutorials
 declare -a TUTORIALS=(
