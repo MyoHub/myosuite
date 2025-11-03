@@ -51,6 +51,11 @@ jobs:
       with:
         python-version: "3.9"
 
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
     - name: Prepare Linux
       if: ${{ runner.os == 'Linux' }}
       run: |
@@ -91,7 +96,7 @@ jobs:
       run: |
         conda activate $CONDA_DEFAULT_ENV
         python3 -m pip install --upgrade pip
-        pip3 install -e .
+        uv pip install -e .
 
     - name: Run MuJoCo Rendering test
       if: ${{ runner.os == 'Linux' }}
@@ -109,7 +114,8 @@ jobs:
     - name: Install ffmpeg
       if: ${{ runner.os == 'Linux' }}
       run: |
-        sudo apt-get install --no-install-recommends ffmpeg && pip3 install ffmpeg scikit-video
+        conda activate $CONDA_DEFAULT_ENV
+        sudo apt-get install --no-install-recommends ffmpeg && uv pip install ffmpeg scikit-video
 
     - name: Test rendering
       if: ${{ runner.os == 'Linux' }}
