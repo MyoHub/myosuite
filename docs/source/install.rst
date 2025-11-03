@@ -15,23 +15,53 @@ Requirements
 Installing the pip package
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Using pip:
+
 .. code-block:: bash
 
    conda create --name MyoSuite python=3.9
    conda activate MyoSuite
    pip install -U myosuite
 
+Using uv (recommended for faster installation):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+`uv` is a fast Python package installer that can significantly speed up installation times.
+
+First, install uv (if not already installed):
+
+.. code-block:: bash
+
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+
+Then install MyoSuite:
+
+.. code-block:: bash
+
+   uv venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   uv pip install -U myosuite
 
 (alternative) Installing from source
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To get started with MyoSuite, clone this repo with pre-populated submodule dependencies
 
+Using pip:
+
 .. code-block:: bash
 
    git clone --recursive https://github.com/facebookresearch/myosuite.git
    cd myosuite
    pip install -e .
+
+Using uv:
+
+.. code-block:: bash
+
+   git clone --recursive https://github.com/facebookresearch/myosuite.git
+   cd myosuite
+   uv pip install -e .
 
 Testing the installation
 ~~~~~~~~~~~~~~~~~~~~~~~~
