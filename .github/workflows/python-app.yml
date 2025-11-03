@@ -68,6 +68,8 @@ jobs:
 
     - name: Install project dependencies
       run: |
+        # Install mujoco first to allow it to download its dependencies properly
+        uv pip install mujoco==3.3.0
         uv pip install -e .
         uv pip install ffmpeg scikit-video
 
