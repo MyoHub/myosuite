@@ -65,7 +65,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install -e .
+        uv pip install -e .  --system
 
     - name: Run MuJoCo Rendering test
       if: ${{ runner.os == 'Linux' }}
@@ -83,8 +83,6 @@ jobs:
     - name: Install ffmpeg
       if: ${{ runner.os == 'Linux' }}
       run: |
-        conda activate $CONDA_DEFAULT_ENV
-        export PATH="$CONDA_PREFIX/bin:$PATH"
         sudo apt-get install --no-install-recommends ffmpeg
         uv pip install ffmpeg scikit-video
 
