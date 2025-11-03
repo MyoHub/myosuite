@@ -32,9 +32,9 @@ jobs:
     strategy:
       matrix:
         os:
-          # - macos-latest
-          - ubuntu-latest
-          - windows-latest
+          - macos-latest
+          # - ubuntu-latest
+          # - windows-latest
 
     steps:
     - name: Set environment variable for macOS
