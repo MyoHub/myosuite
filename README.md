@@ -55,7 +55,7 @@ uv pip install -U myosuite
 
 For installation from source with uv:
 ``` bash
-git clone --recursive https://github.com/facebookresearch/myosuite.git
+git clone --recursive https://github.com/myohub/myosuite.git
 cd myosuite
 uv pip install -e .
 ```
