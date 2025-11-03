@@ -10,9 +10,12 @@ authors = [
     { name = "Vikash Kumar", email = "vikashplus@gmail.com" },
     { name = "Vittorio Caggiano", email = "caggiano@gmail.com" },
 ]
-urls = {Homepage = "https://sites.google.com/view/myosuite"}
+urls = { Homepage = "https://sites.google.com/view/myosuite" }
 classifiers = [
     "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Operating System :: OS Independent",
@@ -30,7 +33,7 @@ dependencies = [
     "Pillow",
     "pink-noise-rl",
     "packaging",
-    "gitpython"
+    "gitpython",
 ]
 [project.optional-dependencies]
 examples = ["mink[examples]; python_version > '3.9'"]
