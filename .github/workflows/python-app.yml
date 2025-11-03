@@ -79,9 +79,11 @@ jobs:
     - name: Test Conda
       run: |
           conda info
-          CONDA_DEFAULT_ENV=test_myosuite
+          export CONDA_DEFAULT_ENV=test_myosuite
           conda create --name $CONDA_DEFAULT_ENV python=3.9 -y
           conda activate $CONDA_DEFAULT_ENV
+          echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
+          echo "CONDA_DEFAULT_ENV=$CONDA_DEFAULT_ENV" >> $GITHUB_ENV
 
 #     - name: Prepare MacOS
 #       if: ${{ runner.os == 'macOS' }}
@@ -96,6 +98,15 @@ jobs:
       run: |
         conda activate $CONDA_DEFAULT_ENV
         python3 -m pip install --upgrade pip
+        # Ensure conda environment is in PATH and set CONDA_PREFIX
+        export PATH="$CONDA_PREFIX/bin:$PATH"
+        export CONDA_PREFIX="$CONDA_PREFIX"
+        # Verify Python path
+        PYTHON_PATH=$(which python3)
+        echo "Using Python at: $PYTHON_PATH"
+        echo "CONDA_PREFIX: $CONDA_PREFIX"
+        # Use uv with explicit Python path via environment variable
+        # uv will use the Python from PATH when pip is called
         uv pip install -e .
 
     - name: Run MuJoCo Rendering test
@@ -115,7 +126,9 @@ jobs:
       if: ${{ runner.os == 'Linux' }}
       run: |
         conda activate $CONDA_DEFAULT_ENV
-        sudo apt-get install --no-install-recommends ffmpeg && uv pip install ffmpeg scikit-video
+        export PATH="$CONDA_PREFIX/bin:$PATH"
+        sudo apt-get install --no-install-recommends ffmpeg
+        uv pip install ffmpeg scikit-video
 
     - name: Test rendering
       if: ${{ runner.os == 'Linux' }}
