@@ -63,64 +63,22 @@ jobs:
         sudo apt-get install -y xvfb x11-xserver-utils
         sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &
 
-    - name: Enable Conda (macOS)
-      if: ${{ runner.os == 'macOS' }}
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-        auto-activate-base: false
-        python-version: "3.9"
-
-    - name: Enable Conda (window/ubuntu)
-      if: ${{ runner.os != 'macOS' }}
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-        auto-activate-base: false
-
-    - name: Test Conda
-      run: |
-          conda info
-          export CONDA_DEFAULT_ENV=test_myosuite
-          conda create --name $CONDA_DEFAULT_ENV python=3.9 -y
-          conda activate $CONDA_DEFAULT_ENV
-          echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
-          echo "CONDA_DEFAULT_ENV=$CONDA_DEFAULT_ENV" >> $GITHUB_ENV
-
-#     - name: Prepare MacOS
-#       if: ${{ runner.os == 'macOS' }}
-#       run: |
-#         brew install --cask xquartz
-#         brew install hdf5
-#         export CPATH="/opt/homebrew/include/"
-#         export HDF5_DIR=/opt/homebrew/
-#         pip3 install h5py --only-binary h5py
-
     - name: Install dependencies
       run: |
-        conda activate $CONDA_DEFAULT_ENV
-        python3 -m pip install --upgrade pip
-        # Ensure conda environment is in PATH and set CONDA_PREFIX
-        export PATH="$CONDA_PREFIX/bin:$PATH"
-        export CONDA_PREFIX="$CONDA_PREFIX"
-        # Verify Python path
-        PYTHON_PATH=$(which python3)
-        echo "Using Python at: $PYTHON_PATH"
-        echo "CONDA_PREFIX: $CONDA_PREFIX"
-        # Use uv with explicit Python path via environment variable
-        # uv will use the Python from PATH when pip is called
         uv pip install -e .
 
     - name: Run MuJoCo Rendering test
       if: ${{ runner.os == 'Linux' }}
-      run: python3 -m mujoco.render_test
+      run: uv run python -m mujoco.render_test
 
     - name: Test myoapi
       run: |
         conda activate $CONDA_DEFAULT_ENV
-        python3 -m myosuite.tests.test_myoapi
+        uv run python -m myosuite.tests.test_myoapi
 
     - name: Run Test environment
       run: |
-        python3 -m myosuite.tests.test_myo
+        uv run python -m myosuite.tests.test_myo
 
     - name: Install ffmpeg
       if: ${{ runner.os == 'Linux' }}
@@ -132,7 +90,7 @@ jobs:
 
     - name: Test rendering
       if: ${{ runner.os == 'Linux' }}
-      run: python3 -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
+      run: uv run python -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
 
     - name: Run Test jupyter-notebooks tutorials
       if: ${{ runner.os == 'Linux' }}
