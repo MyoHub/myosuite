@@ -16,7 +16,7 @@ from scipy.spatial.transform import Rotation as R
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import joint_name2id, site_name2id
+from myosuite.utils.mjc import joint_name2id, sensor_name2id, site_name2id
 from myosuite.utils.spec_processing import (
     recursive_immobilize,
     recursive_mirror,
@@ -133,7 +133,7 @@ class TableTennisEnvV0(BaseV0):
         obs_dict["paddle_vel"] = self.get_sensor_by_name(
             mj_model, mj_data, "paddle_vel_sensor"
         )
-        obs_dict["paddle_ori"] = mj_data.body_xquat[self.id_info.paddle_bid]
+        obs_dict["paddle_ori"] = mj_data.xquat[self.id_info.paddle_bid]
         obs_dict["padde_ori_err"] = obs_dict["paddle_ori"] - self.init_paddle_quat
 
         obs_dict["reach_err"] = obs_dict["paddle_pos"] - obs_dict["ball_pos"]
@@ -332,7 +332,7 @@ class TableTennisEnvV0(BaseV0):
         return metrics
 
     def get_sensor_by_name(self, model, data, name):
-        sensor_id = model.sensor_name2id(name)
+        sensor_id = sensor_name2id(model, name)
         start = model.sensor_adr[sensor_id]
         dim = model.sensor_dim[sensor_id]
         return data.sensordata[start : start + dim]

@@ -85,12 +85,18 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
             else:
                 edited_obsd_model_path = None
 
-        self.mj_model = mujoco.MjModel.from_xml_path(model_path)
+        if isinstance(model_path, str):
+            self.mj_model = mujoco.MjModel.from_xml_path(model_path)
+        else:
+            self.mj_model = model_path
         self.mj_data = mujoco.MjData(self.mj_model)
         self.mj_renderer = MJRenderer(self.mj_model, self.mj_data)
 
         if obsd_model_path:
-            self.obsd_mj_model = mujoco.MjModel.from_xml_path(obsd_model_path)
+            if isinstance(obsd_model_path, str):
+                self.obsd_mj_model = mujoco.MjModel.from_xml_path(obsd_model_path)
+            else:
+                self.obsd_mj_model = obsd_model_path
             self.obsd_mj_data = mujoco.MjData(self.obsd_mj_model)
         else:
             self.obsd_mj_model = self.mj_model

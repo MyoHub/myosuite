@@ -9,6 +9,7 @@ from enum import Enum
 
 import numpy as np
 
+from myosuite.renderer.mj_renderer import MJRenderer
 from myosuite.utils.quat_math import euler2mat, quat2euler
 
 
@@ -81,10 +82,13 @@ class HeightField:
     Generic heightfield class that supports heightmap observation generations and other support functions.
     """
 
-    def __init__(self, sim, rng, view_distance=2, real_length=5, real_width=1):
+    def __init__(
+        self, mj_model, mj_data, rng, view_distance=2, real_length=5, real_width=1
+    ):
         """
         Assume square quad.
-        :sim: mujoco sim object.
+        :mj_model: mujoco model object.
+        :mj_data: mujoco data object.
         :rng: np_random
         :real_length: side length of quad in real-world [m]
         :patches_per_side: how many different patches we want, relative to one side length
@@ -93,7 +97,9 @@ class HeightField:
         assert type(view_distance) is int
         self.real_length = real_length
         self.real_width = real_width
-        self.sim = sim
+        self.mj_model = mj_model
+        self.mj_data = mj_data
+        self.mj_renderer = MJRenderer(mj_model, mj_data)
         self._init_height_points()
         self.hfield = mj_model.hfield("terrain")
         self.heightmap_window = None
@@ -270,8 +276,8 @@ class ChaseTagField(HeightField):
         if rng is not None:
             self.rng = rng
         self._populate_patches()
-        if hasattr(self.sim, "renderer") and self.sim.renderer._window is not None:
-            self.sim.renderer._window.update_hfield(0)
+        if self.mj_renderer._window is not None:
+            self.mj_renderer._window.update_hfield(0)
 
     # Patch types  ---------------
 
@@ -356,8 +362,8 @@ class TrackField(HeightField):
             self.rng = rng
         self._clear_terrain()
         self._fill_terrain()
-        if hasattr(self.sim, "renderer") and self.sim.renderer._window is not None:
-            self.sim.renderer._window.update_hfield(0)
+        if self.mj_renderer._window is not None:
+            self.mj_renderer._window.update_hfield(0)
 
     def _clear_terrain(self):
         """
