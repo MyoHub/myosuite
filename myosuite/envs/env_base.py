@@ -461,14 +461,14 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         # Don't update extero keys by default for efficiency
         # User should make an explicit call to get_visual_dict when needed
         if update_exteroception:
-            self.visual_dict = self.get_visuals(sim=self.sim_obsd)
+            self.visual_dict = self.get_visuals(self.mj_renderer)
 
         # recoved observation vector from the obs_dict
         t, obs = self.obsdict2obsvec(self.obs_dict, self.obs_keys)
         return obs
 
     def get_visuals(
-        self, sim=None, visual_keys: list = None, device_id: int = None
+        self, renderer: MJRenderer = None, visual_keys: list = None, device_id: int = None
     ) -> dict:
         """
         Recover visual dict corresponding to the visual keys
@@ -486,8 +486,8 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
             return None
 
         # default to observed sim
-        if sim is None:
-            sim = self.sim_obsd
+        if renderer is None:
+            renderer = self.mj_renderer
 
         # default to all visual keys
         if visual_keys == None:
@@ -524,7 +524,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
                     width=width,
                     cameras=[cam],
                     device_id=device_id,
-                    sim=sim,
+                    renderer=renderer,
                 )
                 # encode images
                 if rgb_encoder_id == "1d":

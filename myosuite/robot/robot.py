@@ -508,7 +508,7 @@ class Robot:
 
     # get sensor data and update robot time accordingly
     def get_visual_sensors(
-        self, height: int, width: int, cameras: list, device_id: int, sim
+        self, height: int, width: int, cameras: list, device_id: int, renderer
     ):
 
         if self.is_hardware:
@@ -559,7 +559,7 @@ class Robot:
             depths = np.zeros((len(cameras), height, width))
             for ind, cam in enumerate(cameras):
                 # img, depth = sim.render(width=width, height=height, depth=True, mode='offscreen', camera_name=cam, device_id=device_id)
-                img, depth = sim.renderer.render_offscreen(
+                img, depth = renderer.render_offscreen(
                     width=width,
                     height=height,
                     depth=True,
