@@ -32,7 +32,7 @@ jobs:
     strategy:
       matrix:
         os:
-          # - macos-latest
+          - macos-latest
           - ubuntu-latest
           - windows-latest
 
@@ -57,7 +57,9 @@ jobs:
         version: "latest"
 
     - name: Create virtual environment
-      run: uv venv
+      run: |
+        uv venv --python 3.10
+        source .venv/bin/activate
 
     - name: Prepare Linux
       if: ${{ runner.os == 'Linux' }}
