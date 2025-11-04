@@ -16,6 +16,7 @@ from scipy.spatial.transform import Rotation as R
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
+from myosuite.utils.mjc import joint_name2id, site_name2id
 from myosuite.utils.spec_processing import (
     recursive_immobilize,
     recursive_mirror,

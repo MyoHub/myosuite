@@ -5,10 +5,12 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 import collections
 
+import mujoco
 import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
+from myosuite.utils.mjc import body_name2id, site_name2id
 from myosuite.utils.quat_math import euler2quat, mat2euler
 
 
@@ -201,7 +203,7 @@ class RelocateEnvV0(BaseV0):
                 "Object",
             ]:
                 # object shapes and locations
-                bid = body_name2id(self.mj_modelbody)
+                bid = body_name2id(self.mj_model, body)
                 for gid in range(self.mj_model.body_geomnum[bid]):
                     gid += self.mj_model.body_geomadr[bid]  # get geom ids
                     # update type, size, and collision bounds

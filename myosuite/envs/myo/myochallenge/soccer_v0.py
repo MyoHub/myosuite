@@ -6,12 +6,14 @@ Authors  :: Sherwin Chan (sherwin.chan@ntu.edu.sg), J-Anne Yow (janne.yow@ntu.ed
 import collections
 from typing import Tuple
 
+import mujoco
 import numpy as np
 import pink
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils import gym
+from myosuite.utils.mjc import body_name2id
 from myosuite.utils.quat_math import euler2quat, quat2euler
 
 
@@ -31,7 +33,8 @@ class GoalKeeper:
 
     def __init__(
         self,
-        sim,
+        mj_model,
+        mj_data,
         rng,
         random_vel_range: Tuple[float],
         probabilities=(0.1, 0.35, 0.55),
@@ -46,7 +49,8 @@ class GoalKeeper:
         :param dt: Simulation timestep.
         """
         self.dt = dt
-        self.sim = sim
+        self.mj_model = mj_model
+        self.mj_data = mj_data
         self.goalkeeper_probabilities = probabilities
         self.random_vel_range = random_vel_range
         self.rng = rng
@@ -291,7 +295,8 @@ class SoccerEnvV0(WalkEnvV0):
         self.max_time = max_time_sec  # in seconds
 
         self.goalkeeper = GoalKeeper(
-            sim=self.sim,
+            mj_model=self.mj_model,
+            mj_data=self.mj_data,
             rng=self.np_random,
             probabilities=goalkeeper_probabilities,
             random_vel_range=random_vel_range,
@@ -535,12 +540,12 @@ class SoccerEnvV0(WalkEnvV0):
         azimuth = 90
         elevation = -15
         lookat = None
-        self.sim.renderer.set_free_camera_settings(
+        self.mj_renderer.set_free_camera_settings(
             distance=distance, azimuth=azimuth, elevation=elevation, lookat=lookat
         )
         render_tendon = True
         render_actuator = True
-        self.sim.renderer.set_viewer_settings(
+        self.mj_renderer.set_viewer_settings(
             render_actuator=render_actuator, render_tendon=render_tendon
         )
 
@@ -707,14 +712,14 @@ class SoccerEnvV0(WalkEnvV0):
         Get the joint limit force for a given joint.
         """
         non_joint_limit_efc_idxs = np.where(
-            self.mj_data.efc_type != self.sim.lib.mjtConstraint.mjCNSTR_LIMIT_JOINT
+            self.mj_data.efc_type != mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT
         )[0]
         only_jnt_lim_efc_force = self.mj_data.efc_force.copy()
         only_jnt_lim_efc_force[non_joint_limit_efc_idxs] = 0.0
         joint_force = np.zeros((self.mj_model.nv,))
-        self.sim.lib.mj_mulJacTVec(
-            self.mj_model._model,
-            self.mj_data._data,
+        mujoco.mj_mulJacTVec(
+            self.mj_model,
+            self.mj_data,
             joint_force,
             only_jnt_lim_efc_force,
         )

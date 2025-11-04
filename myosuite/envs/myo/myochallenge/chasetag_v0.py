@@ -7,6 +7,7 @@ import collections
 from enum import Enum
 from typing import Tuple
 
+import mujoco
 import numpy as np
 import pink
 
@@ -14,6 +15,7 @@ from myosuite.envs.heightfields import ChaseTagField
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils import gym
+from myosuite.utils.mjc import geom_name2id, site_name2id
 from myosuite.utils.quat_math import euler2quat, quat2euler
 
 
@@ -31,7 +33,8 @@ class ChallengeOpponent:
 
     def __init__(
         self,
-        sim,
+        mj_model,
+        mj_data,
         rng,
         probabilities: Tuple[float],
         min_spawn_distance: float,
@@ -41,7 +44,7 @@ class ChallengeOpponent:
     ):
         """
         Initialize the opponent class.
-        :param sim: Mujoco sim object.
+        :param mj_model: Mujoco model object.
         :param rng: np_random generator.
         :param probabilities: Probabilities for the different policies, (static_stationary, stationary, random).
         :param min_spawn_distance: Minimum distance for opponent to spawn from the model.
@@ -50,7 +53,8 @@ class ChallengeOpponent:
         :param dt: Simulation timestep.
         """
         self.dt = dt
-        self.sim = sim
+        self.mj_model = mj_model
+        self.mj_data = mj_data
         self.opponent_probabilities = probabilities
         self.min_spawn_distance = min_spawn_distance
         self.chase_vel_range = chase_vel_range
@@ -215,7 +219,8 @@ class RepellerChallengeOpponent(ChallengeOpponent):
 
     def __init__(
         self,
-        sim,
+        mj_model,
+        mj_data,
         rng,
         probabilities: Tuple[float],
         min_spawn_distance: float,
@@ -227,7 +232,8 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         """
         Initialize the opponent class. This class additionally contains a repeller policy which always runs away from the
         agent.
-        :param sim: Mujoco sim object.
+        :param mj_model: Mujoco model object.
+        :param mj_data: Mujoco data object.
         :param rng: np_random generator.
         :param probabilities: Probabilities for the different policies, (static_stationary, stationary, random, repeller).
         :param min_spawn_distance: Minimum distance for opponent to spawn from the model.
@@ -236,7 +242,8 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         :param dt: Simulation timestep.
         """
         self.dt = dt
-        self.sim = sim
+        self.mj_model = mj_model
+        self.mj_data = mj_data
         self.rng = rng
         self.opponent_probabilities = probabilities
 
@@ -503,7 +510,8 @@ class ChaseTagEnvV0(WalkEnvV0):
         # check that this works everywhere and is efficient.
         self.heightfield = (
             ChaseTagField(
-                sim=self.sim,
+                mj_model=self.mj_model,
+                mj_data=self.mj_data,
                 rng=self.np_random,
                 rough_range=rough_range,
                 hills_range=hills_range,
@@ -518,7 +526,8 @@ class ChaseTagEnvV0(WalkEnvV0):
         self.maxTime = 20
         if repeller_opponent:
             self.opponent = RepellerChallengeOpponent(
-                sim=self.sim,
+                mj_model=self.mj_model,
+                mj_data=self.mj_data,
                 rng=self.np_random,
                 probabilities=opponent_probabilities,
                 min_spawn_distance=min_spawn_distance,
@@ -528,7 +537,8 @@ class ChaseTagEnvV0(WalkEnvV0):
             )
         else:
             self.opponent = ChallengeOpponent(
-                sim=self.sim,
+                mj_model=self.mj_model,
+                mj_data=self.mj_data,
                 rng=self.np_random,
                 probabilities=opponent_probabilities,
                 min_spawn_distance=min_spawn_distance,
@@ -721,8 +731,8 @@ class ChaseTagEnvV0(WalkEnvV0):
         """
         if self.heightfield is not None:
             self.heightfield.flatten_agent_patch(qpos)
-            if hasattr(self.sim, "renderer") and self.sim.renderer._window is not None:
-                self.sim.renderer._window.update_hfield(0)
+            if self.mj_renderer._window is not None:
+                self.mj_renderer._window.update_hfield(0)
 
     def _sample_task(self):
         if self.task_choice == "random":
@@ -787,12 +797,12 @@ class ChaseTagEnvV0(WalkEnvV0):
         azimuth = 90
         elevation = -15
         lookat = None
-        self.sim.renderer.set_free_camera_settings(
+        self.mj_renderer.set_free_camera_settings(
             distance=distance, azimuth=azimuth, elevation=elevation, lookat=lookat
         )
         render_tendon = True
         render_actuator = True
-        self.sim.renderer.set_viewer_settings(
+        self.mj_renderer.set_viewer_settings(
             render_actuator=render_actuator, render_tendon=render_tendon
         )
 

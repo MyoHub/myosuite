@@ -171,11 +171,11 @@ class BaodingEnvV1(BaseV0):
             )
 
             # update both simhive with desired targets
-            for sim in [self.sim, self.sim_obsd]:
-                mj_model.site_pos[self.target1_sid, 0] = desired_positions_wrt_palm[0]
-                mj_model.site_pos[self.target1_sid, 1] = desired_positions_wrt_palm[1]
-                mj_model.site_pos[self.target2_sid, 0] = desired_positions_wrt_palm[2]
-                mj_model.site_pos[self.target2_sid, 1] = desired_positions_wrt_palm[3]
+            for mjm in [self.mj_model, self.obsd_mj_model]:
+                mjm.site_pos[self.target1_sid, 0] = desired_positions_wrt_palm[0]
+                mjm.site_pos[self.target1_sid, 1] = desired_positions_wrt_palm[1]
+                mjm.site_pos[self.target2_sid, 0] = desired_positions_wrt_palm[2]
+                mjm.site_pos[self.target2_sid, 1] = desired_positions_wrt_palm[3]
                 # move upward, to be seen
                 # mj_model.site_pos[self.target1_sid, 2] = -0.037
                 # mj_model.site_pos[self.target2_sid, 2] = -0.037

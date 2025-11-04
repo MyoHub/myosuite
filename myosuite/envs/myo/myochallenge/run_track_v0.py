@@ -9,6 +9,7 @@ import csv
 import os
 from enum import Enum
 
+import mujoco
 import numpy as np
 
 from myosuite.envs.heightfields import TrackField
@@ -16,6 +17,7 @@ from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils import gym
+from myosuite.utils.mjc import geom_name2id
 from myosuite.utils.quat_math import intrinsic_euler2quat, quat2euler_intrinsic
 
 
@@ -235,7 +237,8 @@ class RunTrack(WalkEnvV0):
         self._setup_convenience_vars()
         self.end_pos = end_pos
         self.trackfield = TrackField(
-            sim=self.sim,
+            mj_model=self.mj_model,
+            mj_data=self.mj_data,
             rng=self.np_random,
             rough_difficulties=rough_difficulties,
             hills_difficulties=hills_difficulties,
@@ -426,8 +429,8 @@ class RunTrack(WalkEnvV0):
         """
         if self.trackfield is not None:
             self.trackfield.flatten_agent_patch(qpos)
-            if hasattr(self.sim, "renderer") and self.sim.renderer._window is not None:
-                self.sim.renderer._window.update_hfield(0)
+            if hasattr(self.sim, "renderer") and self.mj_renderer._window is not None:
+                self.mj_renderer._window.update_hfield(0)
 
     def _maybe_sample_terrain(self):
         """
@@ -494,12 +497,12 @@ class RunTrack(WalkEnvV0):
         azimuth = 90
         elevation = -15
         lookat = None
-        self.sim.renderer.set_free_camera_settings(
+        self.mj_renderer.set_free_camera_settings(
             distance=distance, azimuth=azimuth, elevation=elevation, lookat=lookat
         )
         render_tendon = True
         render_actuator = True
-        self.sim.renderer.set_viewer_settings(
+        self.mj_renderer.set_viewer_settings(
             render_actuator=render_actuator, render_tendon=render_tendon
         )
 
@@ -664,14 +667,14 @@ class RunTrack(WalkEnvV0):
         Get the joint limit force for a given joint.
         """
         non_joint_limit_efc_idxs = np.where(
-            self.mj_data.efc_type != self.sim.lib.mjtConstraint.mjCNSTR_LIMIT_JOINT
+            self.mj_data.efc_type != mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT
         )[0]
         only_jnt_lim_efc_force = self.mj_data.efc_force.copy()
         only_jnt_lim_efc_force[non_joint_limit_efc_idxs] = 0.0
         joint_force = np.zeros((self.mj_model.nv,))
-        self.sim.lib.mj_mulJacTVec(
-            self.mj_model._model,
-            self.mj_data._data,
+        mujoco.mj_mulJacTVec(
+            self.mj_model,
+            self.mj_data,
             joint_force,
             only_jnt_lim_efc_force,
         )

@@ -14,6 +14,7 @@ from scipy.spatial.transform import Rotation as R
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
+from myosuite.utils.mjc import site_name2id
 from myosuite.utils.quat_math import mat2euler
 
 CONTACT_TRAJ_MIN_LENGTH = 100
@@ -469,11 +470,11 @@ class BimanualEnvV1(BaseV0):
             obj_scales = self.np_random.uniform(**self.obj_scale_range) + 1
             self.mj_model.geom(self.obj_gid).size = self.obj_size0 * obj_scales
 
-            if self.sim.renderer._window:
+            if self.mj_renderer._window:
                 self.mj_model.mesh_vert[self.obj_vert_addr] = (
                     obj_scales[None, :] * self.mesh_vert0
                 )
-                self.sim.renderer._window.update_mesh(self.obj_mid)
+                self.mj_renderer._window.update_mesh(self.obj_mid)
         else:
             self.ignore_first_scale = False
         mujoco.mj_forward(self.mj_model, self.mj_data)
