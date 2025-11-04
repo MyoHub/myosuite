@@ -10,7 +10,7 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import body_name2id, site_name2id
+from myosuite.utils.mjc import body_name2id, geom_name2id, site_name2id
 
 
 # Define the task enum
