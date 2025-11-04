@@ -59,7 +59,6 @@ jobs:
     - name: Create virtual environment
       run: |
         uv venv --python 3.10
-        source .venv/bin/activate
 
     - name: Prepare Linux
       if: ${{ runner.os == 'Linux' }}
