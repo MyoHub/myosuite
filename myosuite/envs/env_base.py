@@ -8,6 +8,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 import os
 import time as timer
 from sys import platform
+from typing import Optional
 
 import mujoco
 import numpy as np
@@ -64,37 +65,21 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
 
         # Seed and initialize the random number generator
         self.seed(seed)
+        self.model_path = model_path
 
-        if edit_fn is not None:
-
-            # Load the model
-            model_spec = ModelEditor(model_path)
-
-            # Edit the model using an edit_fn
-            model_spec.edit_model(edit_fn)
-
-            # Create am xml file for the edited model
-            edited_model_path = model_spec.create_edited_xml()
-
-            if obsd_model_path == model_path:
-                edited_obsd_model_path = edited_model_path
-            elif obsd_model_path:
-                obsd_model_spec = ModelEditor(obsd_model_path)
-                obsd_model_spec.edit_model(edit_fn)
-                edited_model_path = obsd_model_spec.create_edited_xml()
-            else:
-                edited_obsd_model_path = None
-
+        self.mj_spec: Optional[mujoco.MjSpec] = None
         if isinstance(model_path, str):
-            self.mj_model = mujoco.MjModel.from_xml_path(model_path)
+            self.mj_spec = self._get_spec(model_path, edit_fn)
+            self.mj_model = self.mj_spec.compile()
         else:
             self.mj_model = model_path
         self.mj_data = mujoco.MjData(self.mj_model)
-        self.mj_renderer = MJRenderer(self.mj_model, self.mj_data)
 
+        self.obsd_mj_spec: Optional[mujoco.MjSpec] = None
         if obsd_model_path:
             if isinstance(obsd_model_path, str):
-                self.obsd_mj_model = mujoco.MjModel.from_xml_path(obsd_model_path)
+                self.obsd_mj_spec = self._get_spec(obsd_model_path, edit_fn)
+                self.obsd_mj_model = self.obsd_mj_spec.compile()
             else:
                 self.obsd_mj_model = obsd_model_path
             self.obsd_mj_data = mujoco.MjData(self.obsd_mj_model)
@@ -102,17 +87,24 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
             self.obsd_mj_model = self.mj_model
             self.obsd_mj_data = self.mj_data
 
+        self.mj_renderer = MJRenderer(self.mj_model, self.mj_data)
+
         mujoco.mj_forward(self.mj_model, self.mj_data)
         mujoco.mj_forward(self.obsd_mj_model, self.obsd_mj_data)
 
         ObsVecDict.__init__(self)
 
+    def _get_spec(self, model_path, edit_fn):
         if edit_fn is not None:
-
-            # Delete the edited xml file(s)
-            model_spec.delete_edited_xml()
-            if edited_obsd_model_path and edited_obsd_model_path != edited_model_path:
-                os.remove(edited_obsd_model_path)
+            # Load the model
+            model_editor = ModelEditor(model_path)
+            # Edit the model using an edit_fn
+            # TODO: Reformat to be functional instead of creating side effect
+            model_editor.edit_model(edit_fn)
+            model_spec = model_editor.spec
+        else:
+            model_spec = mujoco.MjSpec.from_file(model_path)
+        return model_spec
 
     def _setup(
         self,

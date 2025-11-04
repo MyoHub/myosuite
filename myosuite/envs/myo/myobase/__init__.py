@@ -416,9 +416,7 @@ register_env_with_variants(
 
 
 # Gait Torso Reaching ==============================
-from myosuite.physics.sim_scene import SimBackend
 
-sim_backend = SimBackend.get_sim_backend()
 
 leg_model = "/../../../simhive/myo_sim/leg/myolegs.xml"
 

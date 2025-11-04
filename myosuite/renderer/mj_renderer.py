@@ -111,20 +111,20 @@ class MJRenderer(Renderer):
         seg_arr = None
         if rgb:
             self._renderer.update_scene(
-                self._sim.data.ptr, camera=camera_id, scene_option=self._scene_option
+                self._mj_data, camera=camera_id, scene_option=self._scene_option
             )
             rgb_arr = self._renderer.render()
         if depth:
             self._renderer.enable_depth_rendering()
             self._renderer.update_scene(
-                self._sim.data.ptr, camera=camera_id, scene_option=self._scene_option
+                self._mj_data, camera=camera_id, scene_option=self._scene_option
             )
             dpt_arr = self._renderer.render()
             self._renderer.disable_depth_rendering()
         if segmentation:
             self._renderer.enable_segmentation_rendering()
             self._renderer.update_scene(
-                self._sim.data.ptr, camera=camera_id, scene_option=self._scene_option
+                self._mj_data, camera=camera_id, scene_option=self._scene_option
             )
             seg_arr = self._renderer.render()
             self._renderer.disable_segmentation_rendering()
