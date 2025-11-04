@@ -10,7 +10,6 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import body_name2id, geom_name2id, site_name2id
 
 
 # Define the task enum
@@ -102,14 +101,14 @@ class BaodingEnvV1(BaseV0):
         )
 
         # init target and body sites
-        self.object1_bid = body_name2id(self.mj_model, "ball1")
-        self.object2_bid = body_name2id(self.mj_model, "ball2")
-        self.object1_sid = site_name2id(self.mj_model, "ball1_site")
-        self.object2_sid = site_name2id(self.mj_model, "ball2_site")
-        self.object1_gid = geom_name2id(self.mj_model, "ball1")
-        self.object2_gid = geom_name2id(self.mj_model, "ball2")
-        self.target1_sid = site_name2id(self.mj_model, "target1_site")
-        self.target2_sid = site_name2id(self.mj_model, "target2_site")
+        self.object1_bid = self.mj_model.body("ball1").id
+        self.object2_bid = self.mj_model.body("ball2").id
+        self.object1_sid = self.mj_model.site("ball1_site").id
+        self.object2_sid = self.mj_model.site("ball2_site").id
+        self.object1_gid = self.mj_model.geom("ball1").id
+        self.object2_gid = self.mj_model.geom("ball2").id
+        self.target1_sid = self.mj_model.site("target1_site").id
+        self.target2_sid = self.mj_model.site("target2_site").id
         self.mj_model.site_group[self.target1_sid] = 2
         self.mj_model.site_group[self.target2_sid] = 2
 

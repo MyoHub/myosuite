@@ -10,7 +10,6 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import body_name2id, joint_name2id
 
 
 class PoseEnvV0(BaseV0):
@@ -71,7 +70,7 @@ class PoseEnvV0(BaseV0):
             self.target_jnt_ids = []
             self.target_jnt_range = []
             for jnt_name, jnt_range in target_jnt_range.items():
-                self.target_jnt_ids.append(joint_name2id(self.mj_model, jnt_name))
+                self.target_jnt_ids.append(self.mj_model.joint(jnt_name).id)
                 self.target_jnt_range.append(jnt_range)
             self.target_jnt_range = np.array(self.target_jnt_range)
             self.target_jnt_value = np.mean(
@@ -176,7 +175,7 @@ class PoseEnvV0(BaseV0):
 
         # udpate wegith
         if self.weight_bodyname is not None:
-            bid = body_name2id(self.mj_model, self.weight_bodyname)
+            bid = self.mj_model.body(self.weight_bodyname).id
             gid = self.mj_model.body_geomadr[bid]
             weight = self.np_random.uniform(
                 low=self.weight_range[0], high=self.weight_range[1]

@@ -10,7 +10,6 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import body_name2id, site_name2id
 from myosuite.utils.quat_math import euler2quat, mat2euler
 
 
@@ -58,12 +57,12 @@ class RelocateEnvV0(BaseV0):
         drop_th=0.50,  # drop height threshold
         **kwargs,
     ):
-        self.palm_sid = site_name2id(self.mj_model, "S_grasp")
-        self.object_sid = site_name2id(self.mj_model, "object_o")
-        self.object_bid = body_name2id(self.mj_model, "Object")
-        self.goal_sid = site_name2id(self.mj_model, "target_o")
-        self.success_indicator_sid = site_name2id(self.mj_model, "target_ball")
-        self.goal_bid = body_name2id(self.mj_model, "target")
+        self.palm_sid = self.mj_model.site("S_grasp").id
+        self.object_sid = self.mj_model.site("object_o").id
+        self.object_bid = self.mj_model.body("Object").id
+        self.goal_sid = self.mj_model.site("target_o").id
+        self.success_indicator_sid = self.mj_model.site("target_ball").id
+        self.goal_bid = self.mj_model.body("target").id
         self.target_xyz_range = target_xyz_range
         self.target_rxryrz_range = target_rxryrz_range
         self.obj_geom_range = obj_geom_range
@@ -203,7 +202,7 @@ class RelocateEnvV0(BaseV0):
                 "Object",
             ]:
                 # object shapes and locations
-                bid = body_name2id(self.mj_model, body)
+                bid = self.mj_model.body(body).id
                 for gid in range(self.mj_model.body_geomnum[bid]):
                     gid += self.mj_model.body_geomadr[bid]  # get geom ids
                     # update type, size, and collision bounds

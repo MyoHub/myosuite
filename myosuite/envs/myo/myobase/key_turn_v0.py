@@ -9,7 +9,6 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import site_name2id
 
 
 class KeyTurnEnvV0(BaseV0):
@@ -63,9 +62,9 @@ class KeyTurnEnvV0(BaseV0):
         **kwargs,
     ):
         self.goal_th = goal_th
-        self.keyhead_sid = site_name2id(self.mj_model, "keyhead")
-        self.IF_sid = site_name2id(self.mj_model, "IFtip")
-        self.TH_sid = site_name2id(self.mj_model, "THtip")
+        self.keyhead_sid = self.mj_model.site("keyhead").id
+        self.IF_sid = self.mj_model.site("IFtip").id
+        self.TH_sid = self.mj_model.site("THtip").id
         self.key_init_range = key_init_range
         self.key_init_pos = self.mj_data.site_xpos[self.keyhead_sid].copy()
 

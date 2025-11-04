@@ -397,7 +397,7 @@ class Robot:
             for sensor in device["sensor"]:
                 device["sensor_names"].append(sensor["name"])  # list of all ids
                 device["sensor_ids"].append(sensor["hdr_id"])  # list of all ids
-                sensor["sim_id"] = mj_model.sensor_name2id(sensor["name"])
+                sensor["sim_id"] = mj_model.sensor(sensor["name"]).id
                 sensor_type = mj_model.sensor_type[sensor["sim_id"]]
                 sensor_objid = mj_model.sensor_objid[sensor["sim_id"]]
                 if (
@@ -423,7 +423,7 @@ class Robot:
             for actuator in device["actuator"]:
                 device["actuator_names"].append(actuator["name"])  # list of all ids
                 device["actuator_ids"].append(actuator["hdr_id"])  # list of all ids
-                actuator["sim_id"] = mj_model.actuator_name2id(actuator["name"])
+                actuator["sim_id"] = mj_model.actuator(actuator["name"]).id
                 actuator_trntype = mj_model.actuator_trntype[actuator["sim_id"]]
                 actuator_trnid = mj_model.actuator_trnid[actuator["sim_id"], 0]
                 if actuator_trntype == 0:  # mjTRN_JOINT // force on joint

@@ -9,7 +9,6 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import body_name2id, site_name2id
 from myosuite.utils.quat_math import euler2quat
 from myosuite.utils.vector_math import calculate_cosine
 
@@ -62,14 +61,14 @@ class PenTwirlFixedEnvV0(BaseV0):
         weighted_reward_keys: list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
         **kwargs,
     ):
-        self.target_obj_bid = body_name2id(self.mj_model, "target")
-        self.S_grasp_sid = site_name2id(self.mj_model, "S_grasp")
-        self.obj_bid = body_name2id(self.mj_model, "Object")
-        self.eps_ball_sid = site_name2id(self.mj_model, "eps_ball")
-        self.obj_t_sid = site_name2id(self.mj_model, "object_top")
-        self.obj_b_sid = site_name2id(self.mj_model, "object_bottom")
-        self.tar_t_sid = site_name2id(self.mj_model, "target_top")
-        self.tar_b_sid = site_name2id(self.mj_model, "target_bottom")
+        self.target_obj_bid = self.mj_model.body("target").id
+        self.S_grasp_sid = self.mj_model.site("S_grasp").id
+        self.obj_bid = self.mj_model.body("Object").id
+        self.eps_ball_sid = self.mj_model.site("eps_ball").id
+        self.obj_t_sid = self.mj_model.site("object_top").id
+        self.obj_b_sid = self.mj_model.site("object_bottom").id
+        self.tar_t_sid = self.mj_model.site("target_top").id
+        self.tar_b_sid = self.mj_model.site("target_bottom").id
         self.pen_length = np.linalg.norm(
             self.mj_model.site_pos[self.obj_t_sid]
             - self.mj_model.site_pos[self.obj_b_sid]

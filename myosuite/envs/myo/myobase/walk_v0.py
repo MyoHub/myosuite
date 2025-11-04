@@ -10,7 +10,6 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import body_name2id, geom_name2id, joint_name2id, site_name2id
 from myosuite.utils.quat_math import quat2mat
 
 
@@ -73,8 +72,8 @@ class ReachEnvV0(BaseV0):
         self.mj_model.geom_rgba[geom_1_indices, 3] = 0
 
         # move heightfield down if not used
-        self.mj_model.geom_rgba[geom_name2id(self.mj_model, "terrain")][-1] = 0.0
-        self.mj_model.geom_pos[geom_name2id(self.mj_model, "terrain")] = np.array(
+        self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 0.0
+        self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
             [0, 0, -10]
         )
 
@@ -142,8 +141,8 @@ class ReachEnvV0(BaseV0):
     # generate a valid target
     def generate_targets(self):
         for site, span in self.target_reach_range.items():
-            sid = site_name2id(self.mj_model, site)
-            sid_target = site_name2id(self.mj_model, site + "_target")
+            sid = self.mj_model.site(site).id
+            sid_target = self.mj_model.site(site + "_target").id
             self.mj_model.site_pos[sid_target] = self.mj_data.site_xpos[
                 sid
             ].copy() + self.np_random.uniform(low=span[0], high=span[1])
@@ -261,8 +260,8 @@ class WalkEnvV0(BaseV0):
         self.init_qvel[:] = 0.0
 
         # move heightfield down if not used
-        self.mj_model.geom_rgba[geom_name2id(self.mj_model, "terrain")][-1] = 0.0
-        self.mj_model.geom_pos[geom_name2id(self.mj_model, "terrain")] = np.array(
+        self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 0.0
+        self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
             [0, 0, -10]
         )
 
@@ -386,8 +385,8 @@ class WalkEnvV0(BaseV0):
         """
         Get the height of both feet.
         """
-        foot_id_l = body_name2id(self.mj_model, "talus_l")
-        foot_id_r = body_name2id(self.mj_model, "talus_r")
+        foot_id_l = self.mj_model.body("talus_l").id
+        foot_id_r = self.mj_model.body("talus_r").id
         return np.array(
             [
                 self.mj_data.xpos[foot_id_l][2],
@@ -399,9 +398,9 @@ class WalkEnvV0(BaseV0):
         """
         Get the feet positions relative to the pelvis.
         """
-        foot_id_l = body_name2id(self.mj_model, "talus_l")
-        foot_id_r = body_name2id(self.mj_model, "talus_r")
-        pelvis = body_name2id(self.mj_model, "pelvis")
+        foot_id_l = self.mj_model.body("talus_l").id
+        foot_id_r = self.mj_model.body("talus_r").id
+        pelvis = self.mj_model.body("pelvis").id
         return np.array(
             [
                 self.mj_data.xpos[foot_id_l] - self.mj_data.xpos[pelvis],
@@ -444,7 +443,7 @@ class WalkEnvV0(BaseV0):
         return np.exp(-np.linalg.norm(5.0 * (self.mj_data.qpos[3:7] - target_rot)))
 
     def _get_torso_angle(self):
-        body_id = body_name2id(self.mj_model, "torso")
+        body_id = self.mj_model.body("torso").id
         return self.mj_data.xquat[body_id]
 
     def _get_com_velocity(self):
@@ -488,7 +487,7 @@ class WalkEnvV0(BaseV0):
         return np.array(
             [
                 self.mj_data.qpos[
-                    self.mj_model.jnt_qposadr[joint_name2id(self.mj_model, name)]
+                    self.mj_model.jnt_qposadr[self.mj_model.joint(name).id]
                 ]
                 for name in names
             ]
@@ -640,12 +639,12 @@ class TerrainEnvV0(WalkEnvV0):
                 10000,
             )
 
-        self.mj_model.geom_rgba[geom_name2id(self.mj_model, "terrain")][-1] = 1.0
-        self.mj_model.geom_pos[geom_name2id(self.mj_model, "terrain")] = np.array(
+        self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 1.0
+        self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
             [0, 0, 0]
         )
-        self.mj_model.geom_contype[geom_name2id(self.mj_model, "terrain")] = 1
-        self.mj_model.geom_conaffinity[geom_name2id(self.mj_model, "terrain")] = 1
+        self.mj_model.geom_contype[self.mj_model.geom("terrain").id] = 1
+        self.mj_model.geom_conaffinity[self.mj_model.geom("terrain").id] = 1
 
         if self.reset_type == "random":
             qpos, qvel = self.get_randomized_initial_state()

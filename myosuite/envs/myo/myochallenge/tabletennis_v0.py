@@ -16,7 +16,6 @@ from scipy.spatial.transform import Rotation as R
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import joint_name2id, sensor_name2id, site_name2id
 from myosuite.utils.spec_processing import (
     recursive_immobilize,
     recursive_mirror,
@@ -117,9 +116,7 @@ class TableTennisEnvV0(BaseV0):
         obs_dict = {}
         obs_dict["time"] = np.array([mj_data.time])
 
-        obs_dict["pelvis_pos"] = mj_data.site_xpos[
-            site_name2id(self.mj_model, "pelvis")
-        ]
+        obs_dict["pelvis_pos"] = mj_data.site_xpos[self.mj_model.site("pelvis").id]
 
         obs_dict["body_qpos"] = mj_data.qpos[self.id_info.myo_joint_range].copy()
         obs_dict["body_qvel"] = mj_data.qvel[self.id_info.myo_dof_range].copy()
@@ -138,9 +135,7 @@ class TableTennisEnvV0(BaseV0):
 
         obs_dict["reach_err"] = obs_dict["paddle_pos"] - obs_dict["ball_pos"]
 
-        obs_dict["palm_pos"] = self.mj_data.site_xpos[
-            site_name2id(self.mj_model, "S_grasp")
-        ]
+        obs_dict["palm_pos"] = self.mj_data.site_xpos[self.mj_model.site("S_grasp").id]
         obs_dict["palm_err"] = obs_dict["palm_pos"] - obs_dict["paddle_pos"]
 
         this_model = mj_model
@@ -175,9 +170,7 @@ class TableTennisEnvV0(BaseV0):
         paddle_quat_err = np.linalg.norm(obs_dict["padde_ori_err"], axis=-1)
         torso_err = abs(
             self.mj_data.qpos[
-                self.mj_model.jnt_qposadr[
-                    joint_name2id(self.mj_model, "flex_extension")
-                ]
+                self.mj_model.jnt_qposadr[self.mj_model.joint("flex_extension").id]
             ]
         )
         paddle_touch = (
@@ -332,7 +325,7 @@ class TableTennisEnvV0(BaseV0):
         return metrics
 
     def get_sensor_by_name(self, model, data, name):
-        sensor_id = sensor_name2id(model, name)
+        sensor_id = model.sensor(name).id
         start = model.sensor_adr[sensor_id]
         dim = model.sensor_dim[sensor_id]
         return data.sensordata[start : start + dim]
@@ -478,7 +471,7 @@ class TableTennisEnvV0(BaseV0):
                 )
         for s in spec.sensors:
             if "pingpong" not in s.name and "paddle" not in s.name:
-                s.delete()
+                spec.delete(s)
         temp_model = spec.compile()
 
         removed_ids = recursive_immobilize(
@@ -505,14 +498,14 @@ class TableTennisEnvV0(BaseV0):
             attachment_frame = torso.add_frame(
                 quat=[0.5, 0.5, -0.5, 0.5], pos=[0.05, 0.373, -0.04]
             )
-            [k.delete() for k in spec_copy.keys]
-            [t.delete() for t in spec_copy.textures]
-            [m.delete() for m in spec_copy.materials]
-            [t.delete() for t in spec_copy.tendons]
-            [a.delete() for a in spec_copy.actuators]
-            [e.delete() for e in spec_copy.equalities]
-            [s.delete() for s in spec_copy.sensors]
-            [c.delete() for c in spec_copy.cameras]
+            [spec_copy.delete(k) for k in spec_copy.keys]
+            [spec_copy.delete(t) for t in spec_copy.textures]
+            [spec_copy.delete(m) for m in spec_copy.materials]
+            [spec_copy.delete(t) for t in spec_copy.tendons]
+            [spec_copy.delete(a) for a in spec_copy.actuators]
+            [spec_copy.delete(e) for e in spec_copy.equalities]
+            [spec_copy.delete(s) for s in spec_copy.sensors]
+            [spec_copy.delete(c) for c in spec_copy.cameras]
             recursive_immobilize(spec, temp_model, spec_copy.worldbody)
             recursive_remove_contacts(spec_copy.worldbody, return_condition=None)
 
@@ -524,7 +517,7 @@ class TableTennisEnvV0(BaseV0):
                     mesh.name += "_mirrored"
                     mesh.scale[1] *= -1
                 else:
-                    mesh.delete()
+                    spec_copy.delete(mesh)
 
             attachment_frame.attach_body(spec_copy.body("clavicle_mirrored"))
             spec.body("ulna_mirrored").quat = [0.546, 0, 0, -0.838]

@@ -13,7 +13,6 @@ import pink
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import body_name2id
 from myosuite.utils.quat_math import euler2quat, quat2euler
 
 
@@ -585,7 +584,7 @@ class SoccerEnvV0(WalkEnvV0):
         self.tendon_len = np.array(self._get_tendon_lengthspring())
         self.musc_operating_len = np.array(self._get_muscle_operating_length())
 
-        self.soccer_ball_id = body_name2id(self.mj_model, "soccer_ball")
+        self.soccer_ball_id = self.mj_model.body("soccer_ball").id
 
     def _get_done(self):
         if self._goal_scored_condition():

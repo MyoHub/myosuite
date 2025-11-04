@@ -4,7 +4,6 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import joint_name2id
 
 
 class TorsoEnvV0(BaseV0):
@@ -60,7 +59,7 @@ class TorsoEnvV0(BaseV0):
             self.target_jnt_ids = []
             self.target_jnt_range = []
             for jnt_name, jnt_range in target_jnt_range.items():
-                self.target_jnt_ids.append(joint_name2id(self.mj_model, jnt_name))
+                self.target_jnt_ids.append(self.mj_model.joint(jnt_name).id)
                 self.target_jnt_range.append(jnt_range)
             self.target_jnt_range = np.array(self.target_jnt_range)
             self.target_jnt_value = np.mean(

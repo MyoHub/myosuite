@@ -17,7 +17,6 @@ from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import geom_name2id
 from myosuite.utils.quat_math import intrinsic_euler2quat, quat2euler_intrinsic
 
 
@@ -438,14 +437,14 @@ class RunTrack(WalkEnvV0):
         """
         if self.trackfield is not None:
             self.trackfield.sample(self.np_random)
-            self.mj_model.geom_rgba[geom_name2id(self.mj_model, "terrain")][-1] = 1.0
-            self.mj_model.geom_pos[geom_name2id(self.mj_model, "terrain")] = np.array(
+            self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 1.0
+            self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
                 [0, 0, 0.005]
             )
         else:
             # move trackfield down if not used
-            self.mj_model.geom_rgba[geom_name2id(self.mj_model, "terrain")][-1] = 0.0
-            self.mj_model.geom_pos[geom_name2id(self.mj_model, "terrain")] = np.array(
+            self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 0.0
+            self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
                 [0, 0, -10]
             )
 

@@ -9,7 +9,6 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import body_name2id, geom_name2id, site_name2id
 from myosuite.utils.quat_math import euler2quat
 from myosuite.utils.vector_math import calculate_cosine
 
@@ -73,17 +72,17 @@ class ProprioceptiveEnvV0(BaseV0):
         **kwargs,
     ):
 
-        self.target_obj_bid = body_name2id(self.mj_model, "target")
-        self.S_grasp_sid = site_name2id(self.mj_model, "S_grasp")
-        self.obj_bid = body_name2id(self.mj_model, "Object")
-        self.eps_ball_sid = site_name2id(self.mj_model, "eps_ball")
+        self.target_obj_bid = self.mj_model.body("target").id
+        self.S_grasp_sid = self.mj_model.site("S_grasp").id
+        self.obj_bid = self.mj_model.body("Object").id
+        self.eps_ball_sid = self.mj_model.site("eps_ball").id
 
-        self.success_indicator_sid = site_name2id(self.mj_model, "success")
+        self.success_indicator_sid = self.mj_model.site("success").id
 
-        self.obj_t_gid = geom_name2id(self.mj_model, "top")
-        self.obj_b_gid = geom_name2id(self.mj_model, "bot")
-        self.tar_t_gid = geom_name2id(self.mj_model, "t_top")
-        self.tar_b_gid = geom_name2id(self.mj_model, "t_bot")
+        self.obj_t_gid = self.mj_model.geom("top").id
+        self.obj_b_gid = self.mj_model.geom("bot").id
+        self.tar_t_gid = self.mj_model.geom("t_top").id
+        self.tar_b_gid = self.mj_model.geom("t_bot").id
 
         self.pen_length = np.linalg.norm(
             self.mj_model.geom_pos[self.obj_t_gid]
@@ -198,13 +197,13 @@ class Geometries8EnvV0(ProprioceptiveEnvV0):
         }
 
         # randomize target
-        self.obj_gid = geom_name2id(self.mj_model, "obj")
-        self.tar_gid = geom_name2id(self.mj_model, "target")
+        self.obj_gid = self.mj_model.geom("obj").id
+        self.tar_gid = self.mj_model.geom("target").id
 
-        self.obj_t_gid = geom_name2id(self.mj_model, "top")
-        self.obj_b_gid = geom_name2id(self.mj_model, "bot")
-        self.tar_t_gid = geom_name2id(self.mj_model, "t_top")
-        self.tar_b_gid = geom_name2id(self.mj_model, "t_bot")
+        self.obj_t_gid = self.mj_model.geom("top").id
+        self.obj_b_gid = self.mj_model.geom("bot").id
+        self.tar_t_gid = self.mj_model.geom("t_top").id
+        self.tar_b_gid = self.mj_model.geom("t_bot").id
 
         geom_type = self.np_random.choice([3, 4, 5, 6])
 
@@ -378,13 +377,13 @@ class Geometries100EnvV0(ProprioceptiveEnvV0):
         }
 
         # randomize target
-        self.obj_gid = geom_name2id(self.mj_model, "obj")
-        self.tar_gid = geom_name2id(self.mj_model, "target")
+        self.obj_gid = self.mj_model.geom("obj").id
+        self.tar_gid = self.mj_model.geom("target").id
 
-        self.obj_t_gid = geom_name2id(self.mj_model, "top")
-        self.obj_b_gid = geom_name2id(self.mj_model, "bot")
-        self.tar_t_gid = geom_name2id(self.mj_model, "t_top")
-        self.tar_b_gid = geom_name2id(self.mj_model, "t_bot")
+        self.obj_t_gid = self.mj_model.geom("top").id
+        self.obj_b_gid = self.mj_model.geom("bot").id
+        self.tar_t_gid = self.mj_model.geom("t_top").id
+        self.tar_b_gid = self.mj_model.geom("t_bot").id
 
         geom_type = self.np_random.choice([3, 4, 5, 6])
 
@@ -1453,13 +1452,13 @@ class InDistribution(ProprioceptiveEnvV0):
         }
 
         # randomize target
-        self.obj_gid = geom_name2id(self.mj_model, "obj")
-        self.tar_gid = geom_name2id(self.mj_model, "target")
+        self.obj_gid = self.mj_model.geom("obj").id
+        self.tar_gid = self.mj_model.geom("target").id
 
-        self.obj_t_gid = geom_name2id(self.mj_model, "top")
-        self.obj_b_gid = geom_name2id(self.mj_model, "bot")
-        self.tar_t_gid = geom_name2id(self.mj_model, "t_top")
-        self.tar_b_gid = geom_name2id(self.mj_model, "t_bot")
+        self.obj_t_gid = self.mj_model.geom("top").id
+        self.obj_b_gid = self.mj_model.geom("bot").id
+        self.tar_t_gid = self.mj_model.geom("t_top").id
+        self.tar_b_gid = self.mj_model.geom("t_bot").id
 
         geom_type = self.np_random.choice([3, 4, 5, 6])
 
@@ -2529,13 +2528,13 @@ class OutofDistribution(ProprioceptiveEnvV0):
             249: [[0.0286, 0.026, 0.0265], [0.7197, 0.4706, 0.1552, 1.0]],
         }
         # randomize target
-        self.obj_gid = geom_name2id(self.mj_model, "obj")
-        self.tar_gid = geom_name2id(self.mj_model, "target")
+        self.obj_gid = self.mj_model.geom("obj").id
+        self.tar_gid = self.mj_model.geom("target").id
 
-        self.obj_t_gid = geom_name2id(self.mj_model, "top")
-        self.obj_b_gid = geom_name2id(self.mj_model, "bot")
-        self.tar_t_gid = geom_name2id(self.mj_model, "t_top")
-        self.tar_b_gid = geom_name2id(self.mj_model, "t_bot")
+        self.obj_t_gid = self.mj_model.geom("top").id
+        self.obj_b_gid = self.mj_model.geom("bot").id
+        self.tar_t_gid = self.mj_model.geom("t_top").id
+        self.tar_b_gid = self.mj_model.geom("t_bot").id
 
         geom_type = self.np_random.choice([3, 4, 5, 6])
 

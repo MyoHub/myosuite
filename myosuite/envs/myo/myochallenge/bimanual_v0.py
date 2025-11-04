@@ -14,7 +14,6 @@ from scipy.spatial.transform import Rotation as R
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import site_name2id
 from myosuite.utils.quat_math import mat2euler
 
 CONTACT_TRAJ_MIN_LENGTH = 100
@@ -101,7 +100,7 @@ class BimanualEnvV1(BaseV0):
         self.goal_bid = self.id_info.goal_id
 
         self.obj_bid = self.id_info.manip_body_id
-        self.obj_sid = site_name2id(self.mj_model, "touch_site")
+        self.obj_sid = self.mj_model.site("touch_site").id
         self.obj_gid = self.mj_model.body(self.obj_bid).geomadr + 1
         self.obj_mid = next(
             i for i in range(self.mj_model.nmesh) if "box" in self.mj_model.mesh(i).name
@@ -110,16 +109,16 @@ class BimanualEnvV1(BaseV0):
         self.target_z = 0.2
 
         # define the palm and tip site id.
-        self.palm_sid = site_name2id(self.mj_model, "S_grasp")
+        self.palm_sid = self.mj_model.site("S_grasp").id
         self.init_palm_z = self.mj_data.site_xpos[self.palm_sid][-1]
-        self.fin0 = site_name2id(self.mj_model, "THtip")
-        self.fin1 = site_name2id(self.mj_model, "IFtip")
-        self.fin2 = site_name2id(self.mj_model, "MFtip")
-        self.fin3 = site_name2id(self.mj_model, "RFtip")
-        self.fin4 = site_name2id(self.mj_model, "LFtip")
+        self.fin0 = self.mj_model.site("THtip").id
+        self.fin1 = self.mj_model.site("IFtip").id
+        self.fin2 = self.mj_model.site("MFtip").id
+        self.fin3 = self.mj_model.site("RFtip").id
+        self.fin4 = self.mj_model.site("LFtip").id
 
-        self.Rpalm1_sid = site_name2id(self.mj_model, "prosthesis/palm_thumb")
-        self.Rpalm2_sid = site_name2id(self.mj_model, "prosthesis/palm_pinky")
+        self.Rpalm1_sid = self.mj_model.site("prosthesis/palm_thumb").id
+        self.Rpalm2_sid = self.mj_model.site("prosthesis/palm_pinky").id
 
         self.start_pos = self.start_center
         self.goal_pos = self.goal_center

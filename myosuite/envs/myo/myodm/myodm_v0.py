@@ -15,7 +15,6 @@ import numpy as np
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.logger.reference_motion import ReferenceMotion
 from myosuite.utils import gym
-from myosuite.utils.mjc import body_name2id, geom_name2id, site_name2id
 from myosuite.utils.quat_math import euler2quat, mat2quat, quat2euler, quatDiff2Vel
 
 # ToDo
@@ -119,7 +118,7 @@ class TrackEnv(BaseV0):
             random_generator=self.np_random,
         )
         self.motion_start_time = motion_start_time
-        self.target_sid = site_name2id(self.mj_model, "target")
+        self.target_sid = self.mj_model.site("target").id
 
         ##########################################
         self.lift_bonus_thresh = 0.02
@@ -146,12 +145,12 @@ class TrackEnv(BaseV0):
         self.TermPose = Termimate_pose_fail
         ##########################################
 
-        self.object_bid = body_name2id(self.mj_model, self.object_name)
-        # self.wrist_bid = body_name2id(self.mj_model,"wrist")
-        self.wrist_bid = body_name2id(self.mj_model, "lunate")
+        self.object_bid = self.mj_model.body(self.object_name).id
+        # self.wrist_bid = self.mj_model.body("wrist").id
+        self.wrist_bid = self.mj_model.body("lunate").id
 
         # turn off the body skeleton rendering
-        self.mj_model.geom_rgba[geom_name2id(self.mj_model, "body"), 3] = 0.0
+        self.mj_model.geom_rgba[self.mj_model.geom("body").id, 3] = 0.0
 
         self._lift_z = self.mj_data.xipos[self.object_bid][2] + self.lift_bonus_thresh
 

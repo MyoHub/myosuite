@@ -9,7 +9,6 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import body_name2id, geom_name2id, site_name2id
 from myosuite.utils.quat_math import euler2quat, mat2euler
 
 
@@ -62,10 +61,10 @@ class ReorientEnvV0(BaseV0):
         drop_th=0.200,  # drop height threshold
         **kwargs,
     ):
-        self.object_sid = site_name2id(self.mj_model, "object_o")
-        self.goal_sid = site_name2id(self.mj_model, "target_o")
-        self.success_indicator_sid = site_name2id(self.mj_model, "target_ball")
-        self.goal_bid = body_name2id(self.mj_model, "target")
+        self.object_sid = self.mj_model.site("object_o").id
+        self.goal_sid = self.mj_model.site("target_o").id
+        self.success_indicator_sid = self.mj_model.site("target_ball").id
+        self.goal_bid = self.mj_model.body("target").id
         self.goal_init_pos = self.mj_data.site_xpos[self.goal_sid].copy()
         self.goal_obj_offset = (
             self.mj_data.site_xpos[self.goal_sid]
@@ -78,10 +77,10 @@ class ReorientEnvV0(BaseV0):
         self.drop_th = drop_th
 
         # setup for object randomization
-        self.target_gid = geom_name2id(self.mj_model, "target_dice")
+        self.target_gid = self.mj_model.geom("target_dice").id
         self.target_default_size = self.mj_model.geom_size[self.target_gid].copy()
 
-        self.object_bid = body_name2id(self.mj_model, "Object")
+        self.object_bid = self.mj_model.body("Object").id
         self.object_gid0 = self.mj_model.body_geomadr[self.object_bid]
         self.object_gidn = (
             self.object_gid0 + self.mj_model.body_geomnum[self.object_bid]

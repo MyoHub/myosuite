@@ -10,7 +10,6 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import site_name2id
 
 
 class ReachEnvV0(BaseV0):
@@ -154,7 +153,7 @@ class ReachEnvV0(BaseV0):
     # generate a valid target
     def generate_target_pose(self):
         for site, span in self.target_reach_range.items():
-            sid = site_name2id(self.mj_model, site + "_target")
+            sid = self.mj_model.site(site + "_target").id
             self.mj_model.site_pos[sid] = self.np_random.uniform(
                 low=span[0], high=span[1]
             )

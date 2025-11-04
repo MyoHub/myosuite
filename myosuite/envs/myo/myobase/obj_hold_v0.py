@@ -9,7 +9,6 @@ import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import site_name2id
 
 
 class ObjHoldFixedEnvV0(BaseV0):
@@ -50,8 +49,8 @@ class ObjHoldFixedEnvV0(BaseV0):
         weighted_reward_keys: list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
         **kwargs,
     ):
-        self.object_sid = site_name2id(self.mj_model, "object")
-        self.goal_sid = site_name2id(self.mj_model, "goal")
+        self.object_sid = self.mj_model.site("object").id
+        self.goal_sid = self.mj_model.site("goal").id
         self.object_init_pos = self.mj_data.site_xpos[self.object_sid].copy()
 
         super()._setup(

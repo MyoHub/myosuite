@@ -10,7 +10,6 @@ import numpy as np
 
 from myosuite.envs import env_base
 from myosuite.envs.myo.fatigue import CumulativeFatigue
-from myosuite.utils.mjc import actuator_name2id, site_name2id
 
 
 class BaseV0(env_base.MujocoEnv):
@@ -43,8 +42,8 @@ class BaseV0(env_base.MujocoEnv):
         self.target_sids = []
         if sites:
             for site in sites:
-                self.tip_sids.append(site_name2id(self.mj_model, site))
-                self.target_sids.append(site_name2id(self.mj_model, site + "_target"))
+                self.tip_sids.append(self.mj_model.site(site).id)
+                self.target_sids.append(self.mj_model.site(site + "_target").id)
 
         self.muscle_condition = muscle_condition
         self.fatigue_reset_vec = fatigue_reset_vec
@@ -77,8 +76,8 @@ class BaseV0(env_base.MujocoEnv):
         # Tendon transfer to redirect EIP --> EPL
         # https://www.assh.org/handcare/condition/tendon-transfer-surgery
         elif self.muscle_condition == "reafferentation":
-            self.EPLpos = actuator_name2id(self.mj_model, "EPL")
-            self.EIPpos = actuator_name2id(self.mj_model, "EIP")
+            self.EPLpos = self.mj_model.actuator("EPL").id
+            self.EIPpos = self.mj_model.actuator("EIP").id
 
     # step the simulation forward
     def step(self, a, **kwargs):

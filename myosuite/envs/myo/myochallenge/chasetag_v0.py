@@ -15,7 +15,6 @@ from myosuite.envs.heightfields import ChaseTagField
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.envs.myo.myobase.walk_v0 import WalkEnvV0
 from myosuite.utils import gym
-from myosuite.utils.mjc import geom_name2id, site_name2id
 from myosuite.utils.quat_math import euler2quat, quat2euler
 
 
@@ -548,7 +547,7 @@ class ChaseTagEnvV0(WalkEnvV0):
 
         self.win_distance = win_distance
         self.grf_sensor_names = ["r_foot", "r_toes", "l_foot", "l_toes"]
-        self.success_indicator_sid = site_name2id(self.mj_model, "opponent_indicator")
+        self.success_indicator_sid = self.mj_model.site("opponent_indicator").id
         self.current_task = Task.CHASE
         self.repeller_opponent = repeller_opponent
         super()._setup(
@@ -746,14 +745,14 @@ class ChaseTagEnvV0(WalkEnvV0):
         """
         if self.heightfield is not None:
             self.heightfield.sample(self.np_random)
-            self.mj_model.geom_rgba[geom_name2id(self.mj_model, "terrain")][-1] = 1.0
-            self.mj_model.geom_pos[geom_name2id(self.mj_model, "terrain")] = np.array(
+            self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 1.0
+            self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
                 [0, 0, 0]
             )
         else:
             # move heightfield down if not used
-            self.mj_model.geom_rgba[geom_name2id(self.mj_model, "terrain")][-1] = 0.0
-            self.mj_model.geom_pos[geom_name2id(self.mj_model, "terrain")] = np.array(
+            self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 0.0
+            self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
                 [0, 0, -10]
             )
 
