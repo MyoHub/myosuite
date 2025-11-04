@@ -23,6 +23,7 @@ import numpy as np
 
 class RenderMode(enum.Enum):
     """Rendering modes for offscreen rendering."""
+
     RGB = 0
     DEPTH = 1
     SEGMENTATION = 2
@@ -31,13 +32,15 @@ class RenderMode(enum.Enum):
 class Renderer(abc.ABC):
     """Base interface for rendering simulations."""
 
-    def __init__(self, sim):
+    def __init__(self, mj_model, mj_data):
         """Initializes a new renderer.
 
         Args:
-            sim: A handle to the simulation.
+            mj_model: A handle to the mujoco model.
+            mj_data: A handle to the mujoco data.
         """
-        self._sim = sim
+        self._mj_model = mj_model
+        self._mj_data = mj_data
         self._camera_settings = {}
         self._viewer_settings = {}
 
@@ -50,14 +53,16 @@ class Renderer(abc.ABC):
         """Refreshes the rendered window if one is present."""
 
     @abc.abstractmethod
-    def render_offscreen(self,
-                         width: int,
-                         height: int,
-                        #  mode: RenderMode = RenderMode.RGB,
-                         depth: bool = False,
-                         segmentation: bool = False,
-                         camera_id: Union[int, str] = -1,
-                         device_id=-1) -> np.ndarray:
+    def render_offscreen(
+        self,
+        width: int,
+        height: int,
+        #  mode: RenderMode = RenderMode.RGB,
+        depth: bool = False,
+        segmentation: bool = False,
+        camera_id: Union[int, str] = -1,
+        device_id=-1,
+    ) -> np.ndarray:
         """Renders the camera view as a numpy array of pixels.
 
         Args:
@@ -72,12 +77,12 @@ class Renderer(abc.ABC):
         """
 
     def set_free_camera_settings(
-            self,
-            distance: Optional[float] = None,
-            azimuth: Optional[float] = None,
-            elevation: Optional[float] = None,
-            lookat: Sequence[float] = None,
-            center: bool = True,
+        self,
+        distance: Optional[float] = None,
+        azimuth: Optional[float] = None,
+        elevation: Optional[float] = None,
+        lookat: Sequence[float] = None,
+        center: bool = True,
     ):
         """Sets the free camera parameters.
 
@@ -91,26 +96,26 @@ class Renderer(abc.ABC):
         """
         settings = {}
         if distance is not None:
-            settings['distance'] = distance+2
+            settings["distance"] = distance + 2
         if azimuth is not None:
-            settings['azimuth'] = azimuth
+            settings["azimuth"] = azimuth
         if elevation is not None:
-            settings['elevation'] = elevation
+            settings["elevation"] = elevation
         if lookat is not None:
-            settings['lookat'] = np.array(lookat, dtype=np.float32)
+            settings["lookat"] = np.array(lookat, dtype=np.float32)
         elif center:
             # Calculate the center of the simulation geometry.
-            settings['lookat'] = np.array(
-                [np.median(self._sim.data.geom_xpos[:, i]) for i in range(3)],
-                dtype=np.float32)
+            settings["lookat"] = np.array(
+                [np.median(self._mj_data.geom_xpos[:, i]) for i in range(3)],
+                dtype=np.float32,
+            )
 
         self._camera_settings = settings
 
-
     def set_viewer_settings(
-            self,
-            render_tendon: Optional[float] = None,
-            render_actuator: Optional[float] = None,
+        self,
+        render_tendon: Optional[float] = None,
+        render_actuator: Optional[float] = None,
     ):
         """Sets the viewer parameters.
 
@@ -120,9 +125,9 @@ class Renderer(abc.ABC):
         """
         viewer_settings = {}
         if render_tendon is not None:
-            viewer_settings['render_tendon'] = render_tendon
+            viewer_settings["render_tendon"] = render_tendon
         if render_actuator is not None:
-            viewer_settings['render_actuator'] = render_actuator
+            viewer_settings["render_actuator"] = render_actuator
 
         self._viewer_settings = viewer_settings
 
@@ -132,7 +137,7 @@ class Renderer(abc.ABC):
     def _update_camera_properties(self, camera: Any):
         """Updates the given camera object with the current camera settings."""
         for key, value in self._camera_settings.items():
-            if key == 'lookat':
+            if key == "lookat":
                 getattr(camera, key)[:] = value
             else:
                 setattr(camera, key, value)

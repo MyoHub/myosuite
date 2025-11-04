@@ -10,6 +10,7 @@ import numpy as np
 
 from myosuite.envs import env_base
 from myosuite.envs.myo.fatigue import CumulativeFatigue
+from myosuite.utils.mjc import actuator_name2id, site_name2id
 
 
 class BaseV0(env_base.MujocoEnv):
@@ -31,7 +32,7 @@ class BaseV0(env_base.MujocoEnv):
         fatigue_reset_random=False,
         **kwargs,
     ):
-        if self.sim.model.na > 0 and "act" not in obs_keys:
+        if self.mj_model.na > 0 and "act" not in obs_keys:
             obs_keys = (
                 obs_keys.copy()
             )  # copy before editing incase other envs are using the defaults
@@ -42,8 +43,8 @@ class BaseV0(env_base.MujocoEnv):
         self.target_sids = []
         if sites:
             for site in sites:
-                self.tip_sids.append(self.sim.model.site_name2id(site))
-                self.target_sids.append(self.sim.model.site_name2id(site + "_target"))
+                self.tip_sids.append(site_name2id(self.mj_model, site))
+                self.target_sids.append(site_name2id(self.mj_model, site + "_target"))
 
         self.muscle_condition = muscle_condition
         self.fatigue_reset_vec = fatigue_reset_vec
@@ -62,29 +63,29 @@ class BaseV0(env_base.MujocoEnv):
         # for muscle weakness we assume that a weaker muscle has a
         # reduced maximum force
         if self.muscle_condition == "sarcopenia":
-            for mus_idx in range(self.sim.model.actuator_gainprm.shape[0]):
-                self.sim.model.actuator_gainprm[mus_idx, 2] = (
-                    0.5 * self.sim.model.actuator_gainprm[mus_idx, 2].copy()
+            for mus_idx in range(self.mj_model.actuator_gainprm.shape[0]):
+                self.mj_model.actuator_gainprm[mus_idx, 2] = (
+                    0.5 * self.mj_model.actuator_gainprm[mus_idx, 2].copy()
                 )
 
         # for muscle fatigue we used the 3CC-r model
         elif self.muscle_condition == "fatigue":
             self.muscle_fatigue = CumulativeFatigue(
-                self.sim.model, self.frame_skip, seed=self.get_input_seed()
+                self.mj_model, self.frame_skip, seed=self.get_input_seed()
             )
 
         # Tendon transfer to redirect EIP --> EPL
         # https://www.assh.org/handcare/condition/tendon-transfer-surgery
         elif self.muscle_condition == "reafferentation":
-            self.EPLpos = self.sim.model.actuator_name2id("EPL")
-            self.EIPpos = self.sim.model.actuator_name2id("EIP")
+            self.EPLpos = actuator_name2id(self.mj_model, "EPL")
+            self.EIPpos = actuator_name2id(self.mj_model, "EIP")
 
     # step the simulation forward
     def step(self, a, **kwargs):
         muscle_a = a.copy()
-        muscle_act_ind = self.sim.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
+        muscle_act_ind = self.mj_model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
         # Explicitely project normalized space (-1,1) to actuator space (0,1) if muscles
-        if self.sim.model.na and self.normalize_act:
+        if self.mj_model.na and self.normalize_act:
             # find muscle actuators
             muscle_a[muscle_act_ind] = 1.0 / (
                 1.0 + np.exp(-5.0 * (muscle_a[muscle_act_ind] - 0.5))

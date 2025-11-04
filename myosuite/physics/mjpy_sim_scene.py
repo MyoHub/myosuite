@@ -1,23 +1,26 @@
-""" =================================================
+"""=================================================
 Copyright (C) 2018 Vikash Kumar, Copyright (C) 2019 The ROBEL Authors
 Author  :: Vikash Kumar (vikashplus@gmail.com)
 Source  :: https://github.com/vikashplus/robohive
 License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-================================================= """
+================================================="""
 
 """Simulation using DeepMind Control Suite."""
 
 import logging
 import os
 from typing import Any
+
 import numpy as np
+
 import myosuite.utils.import_utils as import_utils
+
 import_utils.mujoco_py_isavailable()
 import mujoco_py
 from mujoco_py.builder import cymj, user_warning_raise_exception
 
-from myosuite.renderer.mjpy_renderer import MjPyRenderer
 from myosuite.physics.sim_scene import SimScene
+from myosuite.renderer.mjpy_renderer import MjPyRenderer
 
 
 # Custom handler for MuJoCo exceptions.
@@ -26,7 +29,7 @@ def _mj_warning_fn(warn_data: bytes):
     try:
         user_warning_raise_exception(warn_data)
     except mujoco_py.MujocoException as e:
-        logging.error('MuJoCo Exception: %s', str(e))
+        logging.error("MuJoCo Exception: %s", str(e))
 
 
 cymj.set_warning_callback(_mj_warning_fn)
@@ -47,8 +50,8 @@ class MjPySimScene(SimScene):
         if isinstance(model_handle, str):
             if not os.path.isfile(model_handle):
                 raise ValueError(
-                    '[MjPySimScene] Invalid model file path: {}'.format(
-                        model_handle))
+                    "[MjPySimScene] Invalid model file path: {}".format(model_handle)
+                )
 
             model = mujoco_py.load_model_from_path(model_handle)
             sim = mujoco_py.MjSim(model)
@@ -73,18 +76,19 @@ class MjPySimScene(SimScene):
         Returns:
             The file path that the binary was saved to.
         """
-        if not path.endswith('.mjb'):
-            path = path + '.mjb'
+        if not path.endswith(".mjb"):
+            path = path + ".mjb"
         self.get_mjlib().mj_saveModel(self.model, path.encode(), None, 0)
         return path
 
     def upload_height_field(self, hfield_id: int):
         """Uploads the height field to the rendering context."""
         if not self.sim.render_contexts:
-            logging.warning('No rendering context; not uploading height field.')
+            logging.warning("No rendering context; not uploading height field.")
             return
         self.get_mjlib().mjr_uploadHField(
-            self.model, self.sim.render_contexts[0].con, hfield_id)
+            self.model, self.sim.render_contexts[0].con, hfield_id
+        )
 
     def _patch_mjlib_accessors(self, lib):
         class _mjtTrn:
@@ -107,19 +111,25 @@ class MjPySimScene(SimScene):
         lib.mjtJoint = _mjtJoint(lib)
 
         # patch jacobians to use non flattened arrays for compatibility with dm mujoco bindings
-        lib.mj_jac_orig = lib.mj_jac # save before overwritting
+        lib.mj_jac_orig = lib.mj_jac  # save before overwritting
+
         def _mj_jac(model, data, jacp, jacr, point, body):
             lib.mj_jac_orig(model, data, np.ravel(jacp), np.ravel(jacr), point, body)
+
         lib.mj_jac = _mj_jac
 
         lib.mj_jacBody_orig = lib.mj_jacBody
+
         def _mj_jacBody(model, data, jacp, jacr, body):
             lib.mj_jacBody_orig(model, data, np.ravel(jacp), np.ravel(jacr), body)
+
         lib.mj_jacBody = _mj_jacBody
 
         lib.mj_jacBodyCom_orig = lib.mj_jacBodyCom
+
         def _mj_jacBodyCom(model, data, jacp, jacr, body):
             lib.mj_jacBodyCom_orig(model, data, np.ravel(jacp), np.ravel(jacr), body)
+
         lib.mj_jacBodyCom = _mj_jacBodyCom
 
         # lib.mj_jacSubtreeCom_orig = lib.mj_jacSubtreeCom
@@ -128,20 +138,27 @@ class MjPySimScene(SimScene):
         # lib.mj_jacSubtreeCom = _mj_jacSubtreeCom
 
         lib.mj_jacGeom_orig = lib.mj_jacGeom
+
         def _mj_jacGeom(model, data, jacp, jacr, geom):
             lib.mj_jacGeom_orig(model, data, np.ravel(jacp), np.ravel(jacr), geom)
+
         lib.mj_jacGeom = _mj_jacGeom
 
         lib.mj_jacSite_orig = lib.mj_jacSite
+
         def _mj_jacSite(model, data, jacp, jacr, site):
             lib.mj_jacSite_orig(model, data, np.ravel(jacp), np.ravel(jacr), site)
+
         lib.mj_jacSite = _mj_jacSite
 
         lib.mj_jacPointAxis_orig = lib.mj_jacPointAxis
-        def _mj_jacPointAxis(model, data, jacPoint, jacAxis, point, axis, body):
-            lib.mj_jacPointAxis_orig(model, data, np.ravel(jacPoint), np.ravel(jacAxis), point, axis, body)
-        lib.mj_jacPointAxis = _mj_jacPointAxis
 
+        def _mj_jacPointAxis(model, data, jacPoint, jacAxis, point, axis, body):
+            lib.mj_jacPointAxis_orig(
+                model, data, np.ravel(jacPoint), np.ravel(jacAxis), point, axis, body
+            )
+
+        lib.mj_jacPointAxis = _mj_jacPointAxis
 
     def get_mjlib(self) -> Any:
         """Returns an interface to the low-level MuJoCo API."""
@@ -153,12 +170,12 @@ class MjPySimScene(SimScene):
         """Returns a handle that can be passed to mjlib methods."""
         return value
 
-    def advance(self, substeps:int=1, render:bool = True):
+    def advance(self, substeps: int = 1, render: bool = True):
         """Advances the simulation substeps times forward."""
         with mujoco_py.ignore_mujoco_warnings():
             functions = self.get_mjlib()
-            model = self.get_handle(self.sim.model)
-            data = self.get_handle(self.sim.data)
+            model = self.get_handle(self.mj_model)
+            data = self.get_handle(self.mj_data)
             for _ in range(substeps):
                 functions.mj_step2(model, data)
                 functions.mj_step1(model, data)
@@ -174,6 +191,6 @@ class _MjlibWrapper:
         self._lib = lib
 
     def __getattr__(self, name: str):
-        if name.startswith('mj'):
-            return getattr(self._lib, '_' + name)
+        if name.startswith("mj"):
+            return getattr(self._lib, "_" + name)
         return getattr(self._lib, name)
