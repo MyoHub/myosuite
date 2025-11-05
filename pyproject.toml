@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
     "click",
     "sk-video",
-    "gymnasium<1.3 | gym>=0.13",
+    "gymnasium<1.3",
     "termcolor",
     "flatten_dict",
     "h5py",
