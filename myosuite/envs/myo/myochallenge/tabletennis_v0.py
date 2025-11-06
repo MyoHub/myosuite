@@ -506,7 +506,7 @@ class TableTennisEnvV0(BaseV0):
             [spec_copy.delete(e) for e in spec_copy.equalities]
             [spec_copy.delete(s) for s in spec_copy.sensors]
             [spec_copy.delete(c) for c in spec_copy.cameras]
-            recursive_immobilize(spec, temp_model, spec_copy.worldbody)
+            recursive_immobilize(spec_copy, temp_model, spec_copy.worldbody)
             recursive_remove_contacts(spec_copy.worldbody, return_condition=None)
 
             meshes_to_mirror = set()
