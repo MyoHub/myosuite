@@ -53,6 +53,6 @@ def recursive_mirror(meshes_to_mirror, spec_copy, parent):
         g.meshname += "_mirrored"
     for child in parent.bodies:
         if "ping_pong" in child.name:
-            spec_copy.detach_body(child)
+            spec_copy.delete(child)
             continue
         recursive_mirror(meshes_to_mirror, spec_copy, child)

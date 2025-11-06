@@ -52,7 +52,7 @@ class IKTableTennisEnv(TableTennisEnvV0):
       paddle.joints[0].delete()
       paddle.name="ppp"
       paddle.pos = [0, 0, 0]
-      spec.detach_body(spec.body("paddle"))
+      spec.delete(spec.body("paddle"))
       fr = spec.site("S_grasp").parent.add_frame(quat =R.from_euler("yxz", [90, 0, -30], degrees=True).as_quat(scalar_first=True), pos=spec.site("S_grasp").pos+np.array([0.05, 0, 0]))
       fr.attach_body(paddle)
       #
