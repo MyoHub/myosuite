@@ -4,7 +4,7 @@ name = "MyoSuite"
 dynamic = ["version"]  # Enable dynamic version
 description = "Musculoskeletal environments simulated in MuJoCo"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = "==3.10"
 license = { text = "Apache 2.0" }
 authors = [
     { name = "Vikash Kumar", email = "vikashplus@gmail.com" },
@@ -29,7 +29,8 @@ dependencies = [
     "Pillow",
     "pink-noise-rl",
     "packaging",
-    "gitpython"
+    "gitpython",
+    "loop-rate-limiters>=1.2.0",
 ]
 [project.optional-dependencies]
 examples = ["mink[examples]; python_version > '3.9'"]

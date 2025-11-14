@@ -512,6 +512,12 @@ class TableTennisEnvV0(BaseV0):
             meshes_to_mirror = set()
 
             recursive_mirror(meshes_to_mirror, spec_copy, spec_copy.body("clavicle"))
+
+            for b in spec_copy.bodies:
+              if "ping_pong" in b.name:  # TODO: remove
+                spec_copy.delete(b)
+                continue
+
             for mesh in spec_copy.meshes:
                 if mesh.name in meshes_to_mirror:
                     mesh.name += "_mirrored"

@@ -37,22 +37,44 @@ def recursive_remove_contacts(parent, return_condition=None):
         recursive_remove_contacts(child, return_condition)
 
 
-def recursive_mirror(meshes_to_mirror, spec_copy, parent):
+def recursive_mirror(meshes_to_mirror, spec_copy, parent, suffix="_mirrored", keep_mesh_only=True, mirror_joints=False):
     parent.pos[1] *= -1
     parent.quat[[1, 3]] *= -1
-    parent.name += "_mirrored"
+
+    for e in spec_copy.excludes:
+      if parent.name == e.bodyname1:
+        e.bodyname1 += suffix
+      if parent.name == e.bodyname2:
+        e.bodyname2 += suffix
+
+    parent.name += suffix
+
     for g in parent.geoms:
-        if g.type != mujoco.mjtGeom.mjGEOM_MESH:
+        if g.type != mujoco.mjtGeom.mjGEOM_MESH and keep_mesh_only:
             spec_copy.delete(g)
             continue
         g.pos[1] *= -1
         g.quat[[1, 3]] *= -1
-        g.name += "_mirrored"
+        for p in spec_copy.pairs:
+          if g.name == p.geomname1:
+            p.geomname1 += suffix
+          if g.name == p.geomname2:
+            p.geomname2 += suffix
+
+        # TODO: Once the API allows changing tendon routing, we should rename wrap geoms here.
+
+        g.name += suffix
         g.group = 1
         meshes_to_mirror.add(g.meshname)
-        g.meshname += "_mirrored"
+        if g.meshname:
+          g.meshname += suffix
+
+    if mirror_joints:
+      for j in parent.joints:
+        j.pos[1]*= -1
+        j.range = -1 * j.range[[1, 0]]
+        j.axis[1] *= -1
+        j.name += suffix
+
     for child in parent.bodies:
-        if "ping_pong" in child.name:
-            spec_copy.detach_body(child)
-            continue
-        recursive_mirror(meshes_to_mirror, spec_copy, child)
+        recursive_mirror(meshes_to_mirror, spec_copy, child, suffix=suffix, keep_mesh_only=keep_mesh_only, mirror_joints=True)
