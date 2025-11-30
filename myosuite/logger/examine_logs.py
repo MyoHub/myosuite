@@ -207,6 +207,9 @@ def examine_logs(env_name, rollout_path, rollout_format, mode, horizon, seed, nu
                         raise NotImplementedError("Settings not found")
                     obs, rwd, done, *_, env_info = env.forward(update_exteroception=include_exteroception)
                     ep_rwd += rwd
+                    if render == 'onscreen':
+                        time.sleep(env.sim.model.opt.timestep) # sleeping for onscreen viewer (approximation: sleep full dt)
+
                 elif i_step < trace_horizon: # incase last step actions (nans) can cause issues in step
                     obs, rwd, done, *_, env_info = env.step(act, update_exteroception=include_exteroception)
                     ep_rwd += rwd
