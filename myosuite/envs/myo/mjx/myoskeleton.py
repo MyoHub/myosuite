@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Tuple
 
 import mujoco
+import numpy as np
 from decorators import info_property
 from mujoco import MjSpec
 from observation import Observation, ObservationType
@@ -622,3 +623,65 @@ if __name__ == "__main__":
         f.write(env.spec.to_xml())
 
     mujoco.mj_saveModel(model, "myoskeleton_edited.mjb")
+
+    from myosuite.logger.grouped_datasets import Trace
+
+    mj_model = mujoco.MjModel.from_xml_path(env.get_default_xml_file_path())
+    mj_data = mujoco.MjData(mj_model)
+
+    joint_names = [mj_model.joint(jn).name for jn in range(mj_model.njnt)]
+
+    H5_FILE = "soccer1.h5"
+
+    h5trajectory = Trace.load(H5_FILE)
+
+    motion_name = list(h5trajectory.trace.keys())[0]
+
+    time = np.array(h5trajectory[motion_name]["time"])
+    horizon = time.shape[0]
+
+    joint_dict = h5trajectory[motion_name]["qpos"]
+    data_root = h5trajectory[motion_name]["qpos"]["myoskeleton_root"]
+
+    data = {
+        joint: np.array(values).flatten()
+        for joint, values in joint_dict.items()
+        if joint != "myoskeleton_root"
+    }
+    import pandas as pd
+
+    df = pd.DataFrame(data)
+
+    joint_names = [mj_model.joint(jn).name for jn in range(mj_model.njnt)]
+    subc = [c for c in df.columns if c in joint_names]
+    # ---- camera settings -- Adjust camera settings
+    camera = mujoco.MjvCamera()
+    camera.azimuth = 90
+    camera.distance = 3
+    camera.elevation = -45.0
+    camera.lookat = [0, 0, 1.75]
+    options_ref = mujoco.MjvOption()
+    options_ref.flags[:] = 0
+    options_ref.geomgroup[1:] = 0
+    renderer_ref = mujoco.Renderer(mj_model)
+    renderer_ref.scene.flags[:] = 0
+    frames = []
+    for t in range(len(df)):
+        mj_data.qpos[:7] = data_root[t]
+        for jn in subc:
+            mjc_j_idx = mj_model.joint(joint_names.index(jn)).qposadr
+            mj_data.qpos[mjc_j_idx] = df[jn].loc[t]
+
+        mujoco.mj_forward(mj_model, mj_data)
+        renderer_ref.update_scene(mj_data, camera=camera)
+        frame = renderer_ref.render()
+        frames.append(frame)
+
+    import os
+
+    import skvideo.io
+
+    output_name = "vidplayback.mp4"
+    skvideo.io.vwrite(
+        output_name, np.asarray(frames), outputdict={"-pix_fmt": "yuv420p"}
+    )
