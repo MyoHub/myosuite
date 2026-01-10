@@ -233,7 +233,9 @@ class MyoSkeletonTorque:
                     j.delete()
 
         # add actuators
-        spec = self._add_actuators(spec)
+        # spec = self._add_actuators(spec)
+        # add motor actuators with specific gear ratios
+        spec = self._add_motor_actuators(spec)
 
         return spec
 
@@ -364,6 +366,76 @@ class MyoSkeletonTorque:
                     trntype=mujoco.mjtTrn.mjTRN_JOINT,
                     ctrllimited=True,
                 )
+
+        return spec
+
+    def _add_motor_actuators(self, spec: MjSpec) -> MjSpec:
+        """
+        Adds motor actuators with specific gear ratios for key joints.
+
+        Args:
+            spec (MjSpec): Mujoco specification.
+
+        Returns:
+            MjSpec: Modified Mujoco specification.
+        """
+        motor_configs = [
+            # Lumbar motors
+            ("mot_lumbar_ext", "lumbar_extension", 160),
+            ("mot_lumbar_bend", "lumbar_bending", 160),
+            ("mot_lumbar_rot", "lumbar_rotation", 100),
+            # Right arm motors
+            ("mot_shoulder_flex_r", "arm_flex_r", 250),
+            ("mot_shoulder_add_r", "arm_add_r", 250),
+            ("mot_shoulder_rot_r", "arm_rot_r", 250),
+            ("mot_elbow_flex_r", "elbow_flex_r", 250),
+            ("mot_pro_sup_r", "pro_sup_r", 250),
+            ("mot_wrist_flex_r", "wrist_flex_r", 50),
+            ("mot_wrist_dev_r", "wrist_dev_r", 50),
+            # Left arm motors
+            ("mot_shoulder_flex_l", "arm_flex_l", 250),
+            ("mot_shoulder_add_l", "arm_add_l", 250),
+            ("mot_shoulder_rot_l", "arm_rot_l", 250),
+            ("mot_elbow_flex_l", "elbow_flex_l", 250),
+            ("mot_pro_sup_l", "pro_sup_l", 250),
+            ("mot_wrist_flex_l", "wrist_flex_l", 50),
+            ("mot_wrist_dev_l", "wrist_dev_l", 50),
+            # Right leg motors
+            ("mot_hip_flexion_r", "hip_flexion_r", 275),
+            ("mot_hip_adduction_r", "hip_adduction_r", 530),
+            ("mot_hip_rotation_r", "hip_rotation_r", 600),
+            ("mot_knee_angle_r", "knee_angle_r", 600),
+            ("mot_ankle_angle_r", "ankle_angle_r", 500),
+            ("mot_subtalar_angle_r", "subtalar_angle_r", 50),
+            ("mot_mtp_angle_r", "mtp_angle_r", 50),
+            # Left leg motors
+            ("mot_hip_flexion_l", "hip_flexion_l", 275),
+            ("mot_hip_adduction_l", "hip_adduction_l", 530),
+            ("mot_hip_rotation_l", "hip_rotation_l", 600),
+            ("mot_knee_angle_l", "knee_angle_l", 600),
+            ("mot_ankle_angle_l", "ankle_angle_l", 500),
+            ("mot_subtalar_angle_l", "subtalar_angle_l", 50),
+            ("mot_mtp_angle_l", "mtp_angle_l", 50),
+        ]
+
+        for motor_name, joint_name, gear in motor_configs:
+            # Check if joint exists in the spec
+            joint_exists = any(j.name == joint_name for j in spec.joints)
+
+            if joint_exists:
+                # Check if actuator already exists
+                actuator_exists = any(a.name == motor_name for a in spec.actuators)
+                print(joint_name, joint_exists, actuator_exists, motor_name)
+                if not actuator_exists:
+                    # gear must be a 6-element array for joint actuators
+                    gear_array = [0.0] * 6
+                    gear_array[0] = gear  # Set gear for the first DOF
+                    spec.add_actuator(
+                        name=motor_name,
+                        target=joint_name,
+                        trntype=mujoco.mjtTrn.mjTRN_JOINT,
+                        gear=gear_array,
+                    )
 
         return spec
 
