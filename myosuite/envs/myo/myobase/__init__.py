@@ -137,6 +137,16 @@ register_env_with_variants(
     },
 )
 
+# Elbow Tracking ==============================
+register_env_with_variants(
+    id="myoElbowTrack-v0",
+    entry_point="myosuite.envs.myo.myobase.track_v0:ElbowTrackEnv",
+    max_episode_steps=100,
+    kwargs={
+        "model_path": curr_dir + "/../assets/elbow/myoelbow_1dof6muscles.xml",
+        "obs_keys": ["qp", "qv", "robot_err", "robot_err_vel", "act"],
+    },
+)
 
 # Elbow Exo posing ==============================
 register_env_with_variants(
@@ -749,28 +759,33 @@ register_env_with_variants(
 )
 
 # Arm Reaching ==============================
-register_env_with_variants(id='myoArmReachFixed-v0',
-        entry_point='myosuite.envs.myo.myobase.reach_v0:ReachEnvV0',
-        max_episode_steps=150,
-        kwargs={
-            'model_path': curr_dir+'/../assets/arm/myoarm_reach.xml',
-            'target_reach_range': {
-                'forearm_tip': ((-0.2, -0.2, 1.2), (-0.2, -0.2, 1.2)),
-                },
-            'normalize_act': True,
-            'far_th': 1.
-            }
-    )
+register_env_with_variants(
+    id="myoArmReachFixed-v0",
+    entry_point="myosuite.envs.myo.myobase.reach_v0:ReachEnvV0",
+    max_episode_steps=150,
+    kwargs={
+        "model_path": curr_dir + "/../assets/arm/myoarm_reach.xml",
+        "target_reach_range": {
+            "forearm_tip": ((-0.2, -0.2, 1.2), (-0.2, -0.2, 1.2)),
+        },
+        "normalize_act": True,
+        "far_th": 1.0,
+    },
+)
 
-register_env_with_variants(id='myoArmReachRandom-v0',
-        entry_point='myosuite.envs.myo.myobase.reach_v0:ReachEnvV0',
-        max_episode_steps=150,
-        kwargs={
-            'model_path': curr_dir+'/../assets/arm/myoarm_reach.xml',
-            'target_reach_range': {
-                'forearm_tip': ((-0.2-0.15, -0.2-0.15, 1.2-0.15), (-0.2+0.15, -0.2+0.15, 1.2+0.15)),
-                },
-            'normalize_act': True,
-            'far_th': 1.
-            }
-    )
+register_env_with_variants(
+    id="myoArmReachRandom-v0",
+    entry_point="myosuite.envs.myo.myobase.reach_v0:ReachEnvV0",
+    max_episode_steps=150,
+    kwargs={
+        "model_path": curr_dir + "/../assets/arm/myoarm_reach.xml",
+        "target_reach_range": {
+            "forearm_tip": (
+                (-0.2 - 0.15, -0.2 - 0.15, 1.2 - 0.15),
+                (-0.2 + 0.15, -0.2 + 0.15, 1.2 + 0.15),
+            ),
+        },
+        "normalize_act": True,
+        "far_th": 1.0,
+    },
+)
