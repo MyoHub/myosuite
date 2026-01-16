@@ -6,6 +6,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 ================================================="""
 
 import collections
+from typing import Optional
 
 import mujoco
 import numpy as np
@@ -14,14 +15,14 @@ from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.logger.reference_motion import ReferenceMotion
 from myosuite.utils import gym
 from myosuite.utils.quat_math import quat2euler
-
+import collections
 
 class TrackEnv(BaseV0):
 
     DEFAULT_OBS_KEYS = ["qp", "qv", "hand_qpos_err", "hand_qvel_err", "obj_com_err"]
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
-        "pose": 0.0,  # 1.0,
-        "bonus": 1.0,
+        "pose": 1.0,  # 1.0,
+        "velocity": 1.0,
         "penalty": -2,
     }
 
@@ -56,11 +57,15 @@ class TrackEnv(BaseV0):
         reference,  # reference target/motion for behaviors
         motion_start_time: float = 0,  # useful to skip initial motion
         motion_extrapolation: bool = True,  # Hold the last frame if motion is over
-        obs_keys=DEFAULT_OBS_KEYS,
-        weighted_reward_keys=DEFAULT_RWD_KEYS_AND_WEIGHTS,
+        obs_keys=None,
+        weighted_reward_keys=None,
+        reference_state_init=True,
+        target_name: Optional = "target",
         **kwargs,
     ):
-
+        obs_keys = obs_keys if obs_keys is not None else self.DEFAULT_OBS_KEYS
+        weighted_reward_keys = weighted_reward_keys \
+          if weighted_reward_keys is not None else self.DEFAULT_RWD_KEYS_AND_WEIGHTS
         # prep reference
         self.ref = ReferenceMotion(
             reference_data=reference,
@@ -68,7 +73,7 @@ class TrackEnv(BaseV0):
             random_generator=self.np_random,
         )
         self.motion_start_time = motion_start_time
-        self.target_sid = self.mj_model.site("target").id
+        self.target_sid = self.mj_model.site(target_name).id if target_name is not None else None
 
         ### DEEPMIMIC
         self.qpos_reward_weight = 0.35
@@ -76,6 +81,7 @@ class TrackEnv(BaseV0):
 
         self.qvel_reward_weight = 0.05
         self.qvel_err_scale = 0.1
+        self.use_rsi = reference_state_init
 
         super()._setup(
             obs_keys=obs_keys,
@@ -128,7 +134,8 @@ class TrackEnv(BaseV0):
         rwd_dict = collections.OrderedDict(
             (
                 # Optional Keys
-                ("pose", float(pose_reward + vel_reward)),
+                ("pose", float(pose_reward)),
+                ("velocity", float(vel_reward)),
                 ("penalty", float(self.check_termination(obs_dict))),
                 # Must keys
                 ("sparse", 0),
@@ -137,7 +144,7 @@ class TrackEnv(BaseV0):
             )
         )
         rwd_dict["dense"] = np.sum(
-            [wt * rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0
+            [wt * rwd_dict.get(key, 0) for key, wt in self.rwd_keys_wt.items()], axis=0
         )
 
         # print(rwd_dict['dense'], obj_com_err,rwd_dict['done'],rwd_dict['sparse'])
@@ -160,8 +167,13 @@ class TrackEnv(BaseV0):
     def reset(self, **kwargs):
         # print("Reset")
         self.ref.reset()
+        if self.use_rsi:
+          new_ref = self.ref.get_reference(np.random.choice(self.ref.reference["time"]))
+          self.ref.index_cache = self.ref.find_timeslot_in_reference(new_ref.time)[0]
+
+        # TODO: Prewarming muscle activation
         obs = super().reset(
-            reset_qpos=self.init_qpos, reset_qvel=self.init_qvel, **kwargs
+            reset_qpos=new_ref.robot, reset_qvel=new_ref.robot_vel, **kwargs
         )
 
         return obs
@@ -183,24 +195,49 @@ class TrackEnv(BaseV0):
 class ElbowTrackEnv(TrackEnv):
     """TrackEnv subclass for elbow that handles missing target site when object is None"""
 
-    def _setup(self, reference, **kwargs):
+    DEFAULT_RWD_KEYS_AND_WEIGHTS = {
+      "pose": 1.0,  # 1.0,
+      "velocity": 1.0,
+      "bonus": 1.0,
+      "penalty": -2,
+    }
+
+    DEFAULT_OBS_KEYS = TrackEnv.DEFAULT_OBS_KEYS
+
+    def _setup(self,
+        reference,  # reference target/motion for behaviors
+        motion_start_time: float = 0,  # useful to skip initial motion
+        motion_extrapolation: bool = True,  # Hold the last frame if motion is over
+        obs_keys=None,
+        weighted_reward_keys=None,
+        reference_state_init=True,
+        **kwargs,):
         """Setup with required attributes, handling missing target site"""
         from myosuite.logger.reference_motion import ReferenceMotion
 
         # Set initialized_pos before calling super to avoid errors
         self.initialized_pos = False
+        obs_keys = obs_keys if obs_keys is not None else self.DEFAULT_OBS_KEYS
+        weighted_reward_keys = weighted_reward_keys \
+          if weighted_reward_keys is not None else self.DEFAULT_RWD_KEYS_AND_WEIGHTS
 
-        # Prep reference first to check if object exists
-        self.ref = ReferenceMotion(
-            reference_data=reference,
-            motion_extrapolation=kwargs.get("motion_extrapolation", True),
-            random_generator=self.np_random,
+
+
+        # Call parent _setup (skip TrackEnv._setup, go to BaseV0._setup)
+        super()._setup(
+            reference=reference,
+            motion_start_time=motion_start_time,
+            motion_extrapolation=motion_extrapolation,
+            obs_keys=obs_keys,
+            weighted_reward_keys=weighted_reward_keys,
+            target_name=None,
+            **kwargs
         )
-        self.motion_start_time = kwargs.get("motion_start_time", 0)
 
         # Only get target_sid if object exists and site is available
         # For elbow, object is None so we don't need target site
         self.target_sid = None
+
         if self.ref.object_dim > 0:
             try:
                 self.target_sid = self.mj_model.site("target").id
@@ -208,33 +245,6 @@ class ElbowTrackEnv(TrackEnv):
                 # Target site doesn't exist, but object is specified
                 raise ValueError("Reference has object but model lacks 'target' site")
         # If object_dim is 0 (object is None), target_sid stays None
-
-        # Set DEEPMIMIC parameters
-        self.qpos_reward_weight = 0.35
-        self.qpos_err_scale = 5.0
-        self.qvel_reward_weight = 0.05
-        self.qvel_err_scale = 0.1
-
-        # Call parent _setup (skip TrackEnv._setup, go to BaseV0._setup)
-        super(TrackEnv, self)._setup(
-            obs_keys=kwargs.get("obs_keys", self.DEFAULT_OBS_KEYS),
-            weighted_reward_keys=kwargs.get(
-                "weighted_reward_keys", self.DEFAULT_RWD_KEYS_AND_WEIGHTS
-            ),
-            frame_skip=10,
-            **{
-                k: v
-                for k, v in kwargs.items()
-                if k
-                not in [
-                    "reference",
-                    "motion_start_time",
-                    "motion_extrapolation",
-                    "obs_keys",
-                    "weighted_reward_keys",
-                ]
-            },
-        )
 
         # Set to True after setup completes (like myodm_v0 does)
         self.initialized_pos = True
@@ -262,37 +272,13 @@ class ElbowTrackEnv(TrackEnv):
                 pass
 
     def get_reward_dict(self, obs_dict):
-        """Override to add bonus key before computing dense"""
-        import collections
+        base_reward_dict = super().get_reward_dict(obs_dict)
 
-        # Calculate reward terms (same as parent)
-        qpos_reward = np.exp(-self.qpos_err_scale * self.norm2(obs_dict["robot_err"]))
-        qvel_reward = (
-            np.array([0])
-            if obs_dict["robot_err_vel"] is None
-            else np.exp(-self.qvel_err_scale * self.norm2(obs_dict["robot_err_vel"]))
+        base_reward_dict["bonus"] = 0  # TODO: decide if this concept is meaningful to keep around for TrackEnv
+        base_reward_dict["dense"] = np.sum(
+          [wt * base_reward_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0
         )
-
-        # Weight and sum individual reward terms
-        pose_reward = self.qpos_reward_weight * qpos_reward
-        vel_reward = self.qvel_reward_weight * qvel_reward
-
-        rwd_dict = collections.OrderedDict(
-            (
-                # Optional Keys
-                ("pose", float(pose_reward + vel_reward)),
-                ("bonus", 0.0),  # Add bonus key
-                ("penalty", float(self.check_termination(obs_dict))),
-                # Must keys
-                ("sparse", 0),
-                ("solved", 0),
-                ("done", self.initialized_pos and self.check_termination(obs_dict)),
-            )
-        )
-        rwd_dict["dense"] = np.sum(
-            [wt * rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0
-        )
-        return rwd_dict
+        return base_reward_dict
 
     def check_termination(self, obs_dict):
         """Override to handle missing TermPose attribute"""
