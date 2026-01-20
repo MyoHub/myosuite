@@ -28,7 +28,7 @@ dependencies = [
     "flatten_dict",
     "h5py",
     "numpy",
-    "mujoco==3.3.7",
+    "mujoco==3.4.0",
     "Pillow",
     "pink-noise-rl",
     "packaging",
@@ -37,7 +37,7 @@ dependencies = [
 [project.optional-dependencies]
 examples = ["mink[examples]; python_version > '3.9'"]
 mjx = [
-    "mujoco-mjx[warp]==3.3.7; python_version >= '3.10'",
+    "mujoco-mjx[warp]==3.4.0; python_version >= '3.10'",
     "jax[cuda12_local]>=0.4.20; python_version >= '3.10'",
     "jaxlib>=0.4.20; python_version >= '3.10'",
     "imageio; python_version >= '3.10'",
