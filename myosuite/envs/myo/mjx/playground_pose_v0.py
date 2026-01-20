@@ -77,8 +77,8 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
                          qvel=qvel,
                          ctrl=jp.zeros((self.mjx_model.nu,)),
                          impl="warp",
-                         nconmax=125*self._config.num_envs,
-                         njmax=self.mj_model.njmax)
+                         nconmax=125, #*self._config.num_envs,
+                         njmax=100)  #self.mj_model.njmax)
 
         obs = self._get_obs(data, info)
         reward, done, zero = jp.zeros(3)
