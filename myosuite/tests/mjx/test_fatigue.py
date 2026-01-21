@@ -21,7 +21,7 @@ class TestFatigue(unittest.TestCase):
         )
         cls.frame_skip = 5
         cls.test_act = np.array([0.5] * 5, dtype=np.float32)
-        cls.test_fatigue_vec = np.array([0.5] * 5, dtype=np.float32)
+        cls.test_fatigue_vec = np.array([0.5] * 5, dtype=np.float32)  #TODO: unused?
 
     def test_pytree_structure(self):
         """Test that the class works correctly as a PyTree"""
@@ -31,16 +31,31 @@ class TestFatigue(unittest.TestCase):
         flat, treedef = tree_util.tree_flatten(fatigue)
         restored = tree_util.tree_unflatten(treedef, flat)
 
-        # Check that all attributes are preserved
-        np.testing.assert_allclose(restored.MA, fatigue.MA)
-        np.testing.assert_allclose(restored.MR, fatigue.MR)
-        np.testing.assert_allclose(restored.MF, fatigue.MF)
+        # Check that attributes are preserved
+        ##TODO: remove pytree structure for CumulativeFatigue class, as any dynamic variable needs to be stored in state object?
         self.assertEqual(restored.na, fatigue.na)
 
-        # Test that the restored object works correctly
-        MA1, _, _ = fatigue.compute_act(self.test_act)
-        MA2, _, _ = restored.compute_act(self.test_act)
+        # Test that the restored object works correctly for deterministic instantiations, independent of seed
+        key=jax.random.PRNGKey(1)
+        fatigue_state = fatigue.reset(key=key, fatigue_reset_random=False)
+        fatigue_state = fatigue.compute_act(self.test_act, fatigue_state=fatigue_state)
+        MA1 = fatigue_state["MA"]
+        key2 = jax.random.PRNGKey(42)
+        fatigue_state2 = restored.reset(key=key2, fatigue_reset_random=False)
+        fatigue_state2 = restored.compute_act(self.test_act, fatigue_state=fatigue_state2)
+        MA2 = fatigue_state2["MA"]
         np.testing.assert_allclose(MA1, MA2)
+
+        # Test that the restored object works correctly for stochastic instantiations, for fixed seed
+        key=jax.random.PRNGKey(2)
+        fatigue_state = fatigue.reset(key=key, fatigue_reset_random=True)
+        fatigue_state = fatigue.compute_act(self.test_act, fatigue_state=fatigue_state)
+        MA3 = fatigue_state["MA"]
+        key2 = jax.random.PRNGKey(2)
+        fatigue_state2 = restored.reset(key=key2, fatigue_reset_random=True)
+        fatigue_state2 = restored.compute_act(self.test_act, fatigue_state=fatigue_state2)
+        MA4 = fatigue_state2["MA"]
+        np.testing.assert_allclose(MA3, MA4)
 
     def test_random_reset(self):
         """Test random reset with explicit key handling"""
@@ -48,31 +63,34 @@ class TestFatigue(unittest.TestCase):
         key = jax.random.PRNGKey(0)
 
         # Test random reset
-        fatigue.reset(key=key, fatigue_reset_random=True)
+        fatigue_state = fatigue.reset(key=key, fatigue_reset_random=True)
 
         # Verify states sum to 1
-        total = fatigue.MA + fatigue.MR + fatigue.MF
+        total = fatigue_state["MA"] + fatigue_state["MR"] + fatigue_state["MF"]
         np.testing.assert_allclose(total, jp.ones_like(total))
 
         # Test deterministic behavior with same key
         fatigue2 = JaxCumulativeFatigue(self.model, frame_skip=self.frame_skip)
-        fatigue2.reset(key=key, fatigue_reset_random=True)
+        fatigue_state2 = fatigue2.reset(key=key, fatigue_reset_random=True)
 
-        np.testing.assert_allclose(fatigue.MA, fatigue2.MA)
-        np.testing.assert_allclose(fatigue.MR, fatigue2.MR)
-        np.testing.assert_allclose(fatigue.MF, fatigue2.MF)
+        np.testing.assert_allclose(fatigue_state["MA"] , fatigue_state2["MA"])
+        np.testing.assert_allclose(fatigue_state["MR"] , fatigue_state2["MR"])
+        np.testing.assert_allclose(fatigue_state["MF"] , fatigue_state2["MF"])
 
     def test_compute_act_vmap(self):
         """Test that compute_act works with vmap"""
         batch_size = 2
         batch_acts = jp.stack([self.test_act] * batch_size)
+        key = jax.random.PRNGKey(123)
 
         # Define a batched computation using vmap and JIT
         @jax.jit
         def batch_compute(acts):
             def single_compute(act):
                 fatigue = JaxCumulativeFatigue(self.model, frame_skip=self.frame_skip)
-                return fatigue.compute_act(act)
+                fatigue_state = fatigue.reset(key=key)
+                fatigue_state = fatigue.compute_act(act, fatigue_state)
+                return fatigue_state["MA"], fatigue_state["MR"], fatigue_state["MF"]
 
             return jax.vmap(single_compute)(acts)
 
@@ -87,10 +105,11 @@ class TestFatigue(unittest.TestCase):
         # Verify against sequential computation
         for i in range(batch_size):
             fatigue = JaxCumulativeFatigue(self.model, frame_skip=self.frame_skip)
-            MA, MR, MF = fatigue.compute_act(batch_acts[i])
-            np.testing.assert_allclose(MA, batch_MA[i])
-            np.testing.assert_allclose(MR, batch_MR[i])
-            np.testing.assert_allclose(MF, batch_MF[i])
+            fatigue_state = fatigue.reset(key=key)
+            fatigue_state = fatigue.compute_act(batch_acts[i], fatigue_state)
+            np.testing.assert_allclose(fatigue_state["MA"], batch_MA[i])
+            np.testing.assert_allclose(fatigue_state["MR"], batch_MR[i])
+            np.testing.assert_allclose(fatigue_state["MF"], batch_MF[i])
 
     def test_random_reset_vmap(self):
         """Test that random reset works with vmap"""
@@ -103,8 +122,8 @@ class TestFatigue(unittest.TestCase):
         def batch_reset(keys):
             def single_reset(key):
                 fatigue = JaxCumulativeFatigue(self.model, frame_skip=self.frame_skip)
-                fatigue.reset(key=key, fatigue_reset_random=True)
-                return fatigue.MA, fatigue.MR, fatigue.MF
+                fatigue_state = fatigue.reset(key=key, fatigue_reset_random=True)
+                return fatigue_state["MA"], fatigue_state["MR"], fatigue_state["MF"]
 
             return jax.vmap(single_reset)(keys)
 
@@ -123,6 +142,7 @@ class TestFatigue(unittest.TestCase):
     def test_get_effort_vmap(self):
         """Test that get_effort works with vmap"""
         batch_size = 2
+        key = jax.random.PRNGKey(123)
         batch_acts = jp.stack([self.test_act] * batch_size)
 
         # Define a batched computation using vmap and JIT
@@ -130,8 +150,9 @@ class TestFatigue(unittest.TestCase):
         def batch_effort(acts):
             def single_effort(act):
                 fatigue = JaxCumulativeFatigue(self.model, frame_skip=self.frame_skip)
-                fatigue.compute_act(act)
-                return fatigue.get_effort()
+                fatigue_state = fatigue.reset(key=key)
+                fatigue_state = fatigue.compute_act(act, fatigue_state)
+                return fatigue.get_effort(act, fatigue_state=fatigue_state)
 
             return jax.vmap(single_effort)(acts)
 
@@ -144,8 +165,9 @@ class TestFatigue(unittest.TestCase):
         # Verify against sequential computation
         for i in range(batch_size):
             fatigue = JaxCumulativeFatigue(self.model, frame_skip=self.frame_skip)
-            fatigue.compute_act(batch_acts[i])
-            effort = fatigue.get_effort()
+            fatigue_state = fatigue.reset(key=key)
+            fatigue_state = fatigue.compute_act(batch_acts[i], fatigue_state)
+            effort = fatigue.get_effort(batch_acts[i], fatigue_state=fatigue_state)
             np.testing.assert_allclose(effort, batch_efforts[i])
 
     def test_numpy_jax_compute_act(self):
@@ -160,12 +182,17 @@ class TestFatigue(unittest.TestCase):
             np.array([0.3, 0.5, 0.7, 0.2, 0.8], dtype=np.float32),  # Mixed activation
             np.array([0.5] * 5, dtype=np.float32),  # Uniform activation
         ]
+        
+        # Resets are only required for JAX implementation
+        key = jax.random.PRNGKey(42)
+        fatigue_state = jax_fatigue.reset(key=key, fatigue_reset_random=False)
 
         for act in test_acts:
             numpy_MA, numpy_MR, numpy_MF = numpy_fatigue.compute_act(act)
-            jax_MA, jax_MR, jax_MF = jax_fatigue.compute_act(
-                jp.array(act, dtype=jp.float32)
+            fatigue_state = jax_fatigue.compute_act(
+                jp.array(act, dtype=jp.float32), fatigue_state=fatigue_state
             )
+            jax_MA, jax_MR, jax_MF = fatigue_state["MA"], fatigue_state["MR"], fatigue_state["MF"]
 
             np.testing.assert_allclose(
                 numpy_MA,
@@ -199,14 +226,18 @@ class TestFatigue(unittest.TestCase):
             np.array([0.5] * 5, dtype=np.float32),
         ]
 
+        # Resets are only required for JAX implementation
+        key = jax.random.PRNGKey(42)
+        fatigue_state = jax_fatigue.reset(key=key, fatigue_reset_random=False)
+
         for act in test_acts:
             # Update states
             numpy_fatigue.compute_act(act)
-            jax_fatigue.compute_act(act)
+            fatigue_state = jax_fatigue.compute_act(act, fatigue_state=fatigue_state)
 
             # Compare efforts
             numpy_effort = numpy_fatigue.get_effort()
-            jax_effort = float(jax_fatigue.get_effort())
+            jax_effort = float(jax_fatigue.get_effort(act, fatigue_state=fatigue_state))
 
             np.testing.assert_allclose(
                 numpy_effort,
@@ -240,8 +271,11 @@ class TestFatigue(unittest.TestCase):
 
         # Verify behavior with updated parameters
         act = np.array([0.5] * 5, dtype=np.float32)
+        key = jax.random.PRNGKey(42)
+        fatigue_state = jax_fatigue.reset(key=key, fatigue_reset_random=False)
         numpy_MA, _, _ = numpy_fatigue.compute_act(act)
-        jax_MA, _, _ = jax_fatigue.compute_act(act)
+        fatigue_state = jax_fatigue.compute_act(act, fatigue_state=fatigue_state)
+        jax_MA = fatigue_state["MA"]
         np.testing.assert_allclose(
             numpy_MA,
             np.array(jax_MA),

@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, Optional, Union
 import jax
 import jax.numpy as jp
@@ -6,6 +7,7 @@ import mujoco
 from mujoco import mjx
 from mujoco_playground import State
 from mujoco_playground._src import mjx_env  # Several helper functions are only visible under _src
+from myosuite.envs.myo.fatigue_jax import CumulativeFatigue
 import numpy as np
 
 class MjxPoseEnvV0(mjx_env.MjxEnv):
@@ -29,10 +31,12 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
         self._mj_model.opt.ls_iterations = 6
         # self._mj_model.opt.disableflags = self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP
 
+        self._n_substeps = int(config.ctrl_dt / config.sim_dt)
+
+        self.initializeConditions(config)
+
         self._mjx_model = mjx.put_model(self._mj_model, impl="warp")
         self._xml_path = config.model_path.as_posix()
-
-        self._n_substeps = int(config.ctrl_dt / config.sim_dt)
 
     def preprocess_spec(self, spec:mujoco.MjSpec):
         for geom in spec.geoms:
@@ -41,6 +45,37 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
                 geom.contype = 0
                 print(f"Disabled contacts for cylinder geom named \"{geom.name}\"")
         return spec
+    
+    def initializeConditions(self, config):
+        self.muscle_condition = config.muscle_condition
+        self.fatigue_reset_vec = config.fatigue_reset_vec
+        self.fatigue_reset_random = config.fatigue_reset_random
+        # self.sex = self._config.muscle_config.sex
+        # self.control_type = self._config.muscle_config.control_type
+        # self.muscle_noise_params = self._config.muscle_config.noise_params
+
+        self.muscle_act_ind = self.mj_model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
+
+        # for muscle weakness we assume that a weaker muscle has a
+        # reduced maximum force
+        if self.muscle_condition == "sarcopenia":
+            for mus_idx in range(self.mj_model.actuator_gainprm.shape[0]):
+                self.mj_model.actuator_gainprm[mus_idx, 2] = (
+                    0.5 * self.mj_model.actuator_gainprm[mus_idx, 2].copy()
+                )
+
+        # for muscle fatigue we used the 3CC-r model
+        elif self.muscle_condition == "fatigue":
+            self.muscle_fatigue = CumulativeFatigue(
+                self.mj_model, self._n_substeps
+            )
+
+        # Tendon transfer to redirect EIP --> EPL
+        # https://www.assh.org/handcare/condition/tendon-transfer-surgery
+        elif self.muscle_condition == "reafferentation":
+            self.EPLpos = self.mj_model.actuator("EPL").id
+            self.EIPpos = self.mj_model.actuator("EIP").id
+            
 
     def generate_target_pose(self, rng: jp.ndarray) -> Dict[str, jp.ndarray]:
         targets = []
@@ -71,6 +106,16 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
         info = {'rng': rng,
                 'target_angles': target_angles,
                 'step_count': jp.array(0, dtype=jp.int32)}
+        
+        if self.muscle_condition == "fatigue":
+            rng, rng_fati = jax.random.split(rng, 2)
+
+            fatigue_state = self.muscle_fatigue.reset(
+                fatigue_reset_vec=self.fatigue_reset_vec,
+                fatigue_reset_random=self.fatigue_reset_random,
+                key=rng_fati,
+            )
+            info["fatigue"] = fatigue_state
 
         data = make_data(self._mj_model,
                          qpos=qpos,
@@ -96,9 +141,27 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
 
         norm_action = 1.0/(1.0+jp.exp(-5.0*(action-0.5))) 
 
+        if self.muscle_condition == "fatigue":
+            # import ipdb; ipdb.set_trace()
+            previous_fatigue_state = state.info["fatigue"]
+
+            ## update fatigue state
+            fatigue_state = self.muscle_fatigue.compute_act(norm_action[self.muscle_act_ind], fatigue_state=previous_fatigue_state)
+
+            ## replace desired activations with currently active motor units
+            norm_action = norm_action.at[self.muscle_act_ind].set(fatigue_state["MA"])
+        elif self.muscle_condition == "reafferentation":
+            # redirect EIP --> EPL
+            norm_action = norm_action.at[self.EPLpos].set(norm_action.at[self.EIPpos].get().copy())
+            # Set EIP to 0
+            norm_action = norm_action.at[self.EIPpos].set(0)
+
         data = mjx_env.step(self.mjx_model, state.data, norm_action, self._n_substeps)
 
         state = state.replace(info={**state.info, 'step_count': state.info['step_count'] + 1})
+
+        if self.muscle_condition == "fatigue":
+            state = state.replace(info={**state.info, "fatigue": fatigue_state})
 
         pose_err = state.info['target_angles'] - data.qpos
         pose_dist = jp.linalg.norm(pose_err, axis=-1)
@@ -152,7 +215,12 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
             data.qvel*self.mjx_model.opt.timestep,
             data.act,
             info['target_angles']-data.qpos
-        ])
+        ])    
+    
+    def set_fatigue_reset_random(self, fatigue_reset_random):  #
+        if self.muscle_condition != "fatigue":
+            logging.warning("This has no effect, as no fatigue model is provided.")
+        self.fatigue_reset_random = fatigue_reset_random
 
     # Accessors.
     @property
