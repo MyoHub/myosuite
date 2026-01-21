@@ -7,7 +7,7 @@ import mujoco
 from mujoco import mjx
 from mujoco_playground import State
 from mujoco_playground._src import mjx_env  # Several helper functions are only visible under _src
-from myosuite.envs.myo.fatigue_jax import CumulativeFatigue
+from myosuite.envs.myo.mjx.fatigue_jax import CumulativeFatigue
 import numpy as np
 
 import tempfile
