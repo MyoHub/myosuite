@@ -19,7 +19,7 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
         super().__init__(config, config_overrides)
 
         spec = mujoco.MjSpec.from_file(config.model_path.as_posix())
-        spec = self.preprocess_spec(spec)
+        spec = self.preprocess_spec(spec, fatigue_enabled=(config.muscle_condition=="fatigue"))
         self._mj_model = spec.compile()
 
         self._mj_model.geom_margin = np.zeros(self._mj_model.geom_margin.shape)
@@ -38,12 +38,19 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
         self._mjx_model = mjx.put_model(self._mj_model, impl="warp")
         self._xml_path = config.model_path.as_posix()
 
-    def preprocess_spec(self, spec:mujoco.MjSpec):
+    def preprocess_spec(self, spec:mujoco.MjSpec, fatigue_enabled:bool=False) -> mujoco.MjSpec:
         for geom in spec.geoms:
             if geom.type == mujoco.mjtGeom.mjGEOM_CYLINDER:
                 geom.conaffinity = 0
                 geom.contype = 0
                 print(f"Disabled contacts for cylinder geom named \"{geom.name}\"")
+        if fatigue_enabled:
+            _fatigue_index_first = spec.nuserdata
+            nu = len(spec.actuators)
+            spec.nuserdata += nu * 3
+            self.fatigue_index_MA = np.arange(_fatigue_index_first, _fatigue_index_first + nu * 1)
+            self.fatigue_index_MR = np.arange(_fatigue_index_first  + nu * 1, _fatigue_index_first + nu * 2)
+            self.fatigue_index_MF = np.arange(_fatigue_index_first  + nu * 2, _fatigue_index_first + nu * 3)
         return spec
     
     def initializeConditions(self, config):
@@ -106,16 +113,6 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
         info = {'rng': rng,
                 'target_angles': target_angles,
                 'step_count': jp.array(0, dtype=jp.int32)}
-        
-        if self.muscle_condition == "fatigue":
-            rng, rng_fati = jax.random.split(rng, 2)
-
-            fatigue_state = self.muscle_fatigue.reset(
-                fatigue_reset_vec=self.fatigue_reset_vec,
-                fatigue_reset_random=self.fatigue_reset_random,
-                key=rng_fati,
-            )
-            info["fatigue"] = fatigue_state
 
         data = make_data(self._mj_model,
                          qpos=qpos,
@@ -124,7 +121,19 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
                          impl="warp",
                          nconmax=125, #*self._config.num_envs,
                          njmax=100)  #self.mj_model.njmax)
+        if self.muscle_condition == "fatigue":
+            rng, rng_fati = jax.random.split(rng, 2)
 
+            fatigue_state = self.muscle_fatigue.reset(
+                fatigue_reset_vec=self.fatigue_reset_vec,
+                fatigue_reset_random=self.fatigue_reset_random,
+                key=rng_fati,
+            )
+            new_userdata = data.userdata.at[self.fatigue_index_MA].set(fatigue_state["MA"])
+            new_userdata = new_userdata.at[self.fatigue_index_MR].set(fatigue_state["MR"])
+            new_userdata = new_userdata.at[self.fatigue_index_MF].set(fatigue_state["MF"])
+            data = data.replace(userdata=new_userdata)
+        
         obs = self._get_obs(data, info)
         reward, done, zero = jp.zeros(3)
         metrics = {
@@ -143,10 +152,17 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
 
         if self.muscle_condition == "fatigue":
             # import ipdb; ipdb.set_trace()
-            previous_fatigue_state = state.info["fatigue"]
+            previous_fatigue_state = {}
+            previous_fatigue_state["MA"] = state.data.userdata[self.fatigue_index_MA]
+            previous_fatigue_state["MR"] = state.data.userdata[self.fatigue_index_MR]
+            previous_fatigue_state["MF"] = state.data.userdata[self.fatigue_index_MF]
 
             ## update fatigue state
             fatigue_state = self.muscle_fatigue.compute_act(norm_action[self.muscle_act_ind], fatigue_state=previous_fatigue_state)
+
+            new_userdata = state.data.userdata.at[self.fatigue_index_MA].set(fatigue_state["MA"])
+            new_userdata = new_userdata.at[self.fatigue_index_MR].set(fatigue_state["MR"])
+            new_userdata = new_userdata.at[self.fatigue_index_MF].set(fatigue_state["MF"])
 
             ## replace desired activations with currently active motor units
             norm_action = norm_action.at[self.muscle_act_ind].set(fatigue_state["MA"])
@@ -161,7 +177,7 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
         state = state.replace(info={**state.info, 'step_count': state.info['step_count'] + 1})
 
         if self.muscle_condition == "fatigue":
-            state = state.replace(info={**state.info, "fatigue": fatigue_state})
+            data = data.replace(userdata=new_userdata)
 
         pose_err = state.info['target_angles'] - data.qpos
         pose_dist = jp.linalg.norm(pose_err, axis=-1)
