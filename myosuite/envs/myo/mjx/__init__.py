@@ -4,7 +4,7 @@ from ml_collections import config_dict
 import copy
 from etils import epath
 from jax import numpy as jp
-import myo_registry as registry
+import myosuite.envs.myo.mjx.myo_registry as registry
 from mujoco_playground._src import mjx_env
 import mujoco
 
@@ -24,7 +24,10 @@ pose_env_config = config_dict.create(
         ),
         target_jnt_range=config_dict.ConfigDict(),
         max_episode_steps=100,
-        model_path=epath.Path('/tmp/dummy.xml')
+        model_path=epath.Path('/tmp/dummy.xml'),
+        muscle_condition="",
+        fatigue_reset_vec=None,
+        fatigue_reset_random=False,
     )
 
 reach_env_config = config_dict.create(
@@ -97,49 +100,50 @@ def get_default_config(env_name) -> config_dict.ConfigDict:
 
 def make(env_name: str) -> mjx_env.MjxEnv:
 
-    if "MjxElbowPose" in env_name:
+    env_name_base = registry.get_base_env_name(env_name)
+    if "MjxElbowPose" in env_name_base:
 
-        if env_name == "MjxElbowPoseFixed-v0":
+        if env_name_base == "MjxElbowPoseFixed-v0":
             elbow_pose_env_config['target_jnt_range'] = config_dict.create(
                     r_elbow_flex=jp.array(((2), (2)))
                 )
-        elif env_name == "MjxElbowPoseRandom-v0":
+        elif env_name_base == "MjxElbowPoseRandom-v0":
             elbow_pose_env_config['target_jnt_range'] = config_dict.create(
                     r_elbow_flex=jp.array(((0), (2.27)))
                 )
-        registry.register_environment(env_name,
+        registry.register_environment_with_variants(env_name_base,
                                       MjxPoseEnvV0,
                                       config_callable(elbow_pose_env_config))
         env = registry.load(env_name)
 
         return env
     
-    if "MjxFingerPose" in env_name:
+    if "MjxFingerPose" in env_name_base:
 
-        if env_name == "MjxFingerPoseFixed-v0":
+        if env_name_base == "MjxFingerPoseFixed-v0":
             finger_pose_env_config['target_jnt_range'] = config_dict.create(
                 IFadb=jp.array(((0), (0))),
                 IFmcp=jp.array(((0), (0))),
                 IFpip=jp.array(((0.75), (0.75))),
                 IFdip=jp.array(((0.75), (0.75))),
             )
-        elif env_name == "MjxFingerPoseRandom-v0":
+        elif env_name_base == "MjxFingerPoseRandom-v0":
             finger_pose_env_config['target_jnt_range'] = config_dict.create(
                 IFadb=jp.array(((-.2), (.2))),
                 IFmcp=jp.array(((-.4), (1))),
                 IFpip=jp.array(((.1), (1))),
                 IFdip=jp.array(((.1), (1))),
             )
-        registry.register_environment(env_name,
+        registry.register_environment_with_variants(env_name_base,
                                       MjxPoseEnvV0,
                                       config_callable(finger_pose_env_config))
         env = registry.load(env_name)
 
         return env
 
-    if "MjxHandReach" in env_name:
+    if "MjxHandReach" in env_name_base:
 
-        if env_name == "MjxHandReachFixed-v0":
+        if env_name_base == "MjxHandReachFixed-v0":
             hand_reach_env_config['far_th'] = 0.044
             hand_reach_env_config['target_reach_range'] = config_dict.create(
                         THtip=jp.array(((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495))),
@@ -148,7 +152,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
                         RFtip=jp.array(((-0.148, -0.543, 1.445), (-0.148, -0.543, 1.445))),
                         LFtip=jp.array(((-0.148, -0.528, 1.434), (-0.148, -0.528, 1.434))),
                     )
-        elif env_name == "MjxHandReachRandom-v0":
+        elif env_name_base == "MjxHandReachRandom-v0":
             hand_reach_env_config['far_th'] = 0.034
             hand_reach_env_config['target_reach_range'] = config_dict.create(
                         THtip=jp.array(((-0.165-0.020, -0.537-0.040, 1.495-0.040), (-0.165+0.040, -0.537+0.020, 1.495+0.040))),
@@ -157,7 +161,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
                         RFtip=jp.array(((-0.148-0.040, -0.543-0.020, 1.445-0.010), (-0.148+0.040, -0.543+0.020, 1.445+0.010))),
                         LFtip=jp.array(((-0.148-0.040, -0.528-0.020, 1.434-0.010), (-0.148+0.040, -0.528+0.020, 1.434+0.010))),
                     )
-        registry.register_environment(env_name,
+        registry.register_environment_with_variants(env_name_base,
                                       MjxReachEnvV0,
                                       config_callable(hand_reach_env_config))
         env = registry.load(env_name)
