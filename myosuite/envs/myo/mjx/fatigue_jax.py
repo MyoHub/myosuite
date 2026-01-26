@@ -1,9 +1,15 @@
+import jax
 import jax.numpy as jp
 import jax.random as jrandom
 import mujoco
+from mujoco import mjx
+from mujoco_playground._src import mjx_env
 from typing import Dict, Tuple, Any
+from brax.envs.base import Wrapper
 from jax import tree_util
 import numpy as np
+
+ALLOWED_FATIGUE_OBS_KEYS = ["MA", "MR", "MF"]
 
 # Constants for floating-point precision
 _FLOAT_EPS = jp.finfo(jp.float32).eps
@@ -199,6 +205,124 @@ class CumulativeFatigue:
     def set_RecoveryMultiplier(self, r):
         """Set Recovery time multiplier"""
         self.r = jp.array(r, dtype=jp.float32)
+
+
+class FatigueWrapper(Wrapper):
+  """Wrapper that adds a CumulativeFatigue instance to the environment."""
+
+  def __init__(self, env: mjx_env.MjxEnv):
+    ## Increase nuserdata and recompile model
+    self.nuserdata_without_fatigue = env.mj_model.nuserdata
+
+    env._mj_spec.nuserdata += env.mjx_model.nu * 3
+    env._mj_model = env._mj_spec.compile()
+    env._mjx_model = mjx.put_model(env._mj_model, impl="warp")
+
+    super().__init__(env)
+
+    muscle_config = env._config.muscle_config
+
+    self.fatigue_enabled = muscle_config.fatigue_enabled
+    assert self.fatigue_enabled, "FatigueWrapper initialized but fatigue_enabled is False in muscle_config."
+    
+    self.fatigue_reset_vec = muscle_config.fatigue_reset_vec
+    self.fatigue_reset_random = muscle_config.fatigue_reset_random
+    self.fatigue_obs_keys = muscle_config.fatigue_obs_keys
+    assert all([key in ALLOWED_FATIGUE_OBS_KEYS for key in self.fatigue_obs_keys]), \
+        f"Invalid fatigue_obs_keys: {self.fatigue_obs_keys}. Allowed keys are: {ALLOWED_FATIGUE_OBS_KEYS}"
+    # self.sex = muscle_config.sex
+    # self.control_type = muscle_config.control_type
+    # self.muscle_noise_params = muscle_config.noise_params
+
+    self.muscle_act_ind = self.env.mj_model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
+
+
+    self.muscle_fatigue = CumulativeFatigue(
+        self.env.mj_model, self._n_substeps
+    )
+    _fatigue_index_first = self.nuserdata_without_fatigue
+    nu = self.env.mj_model.nu
+    self.fatigue_index_MA = jp.arange(_fatigue_index_first, _fatigue_index_first + nu * 1)
+    self.fatigue_index_MR = jp.arange(_fatigue_index_first + nu * 1, _fatigue_index_first + nu * 2)
+    self.fatigue_index_MF = jp.arange(_fatigue_index_first + nu * 2, _fatigue_index_first + nu * 3)
+
+  def reset(self, rng: jax.Array) -> mjx_env.State:
+    rng, rng_fati = jax.random.split(rng, 2)
+
+    state = super().reset(rng)
+  
+    fatigue_state = self.muscle_fatigue.reset(
+        fatigue_reset_vec=self.fatigue_reset_vec,
+        fatigue_reset_random=self.fatigue_reset_random,
+        rng=rng_fati,
+    )
+    new_userdata = state.data.userdata.at[self.fatigue_index_MA].set(fatigue_state["MA"])
+    new_userdata = new_userdata.at[self.fatigue_index_MR].set(fatigue_state["MR"])
+    new_userdata = new_userdata.at[self.fatigue_index_MF].set(fatigue_state["MF"])
+    data = state.data.replace(userdata=new_userdata)
+    state = state.replace(data=data)
+    # jax.debug.print("🤯 NORM RESET MR {x} 🤯", x=state.data.userdata.at[self.fatigue_index_MR].get())
+
+    ## add fatigue state to observation, if respective config keys are specified
+    state = state.replace(
+        obs=self.add_fatigue_to_obs(
+            state.obs, state.data
+        )
+    )
+
+    return state
+
+  def step(self, state: mjx_env.State, action: jax.Array) -> mjx_env.State:
+
+    norm_action = 1.0/(1.0+jp.exp(-5.0*(action-0.5))) 
+    previous_fatigue_state = {}
+    previous_fatigue_state["MA"] = state.data.userdata[self.fatigue_index_MA]
+    previous_fatigue_state["MR"] = state.data.userdata[self.fatigue_index_MR]
+    previous_fatigue_state["MF"] = state.data.userdata[self.fatigue_index_MF]
+
+    ## update fatigue state
+    fatigue_state = self.muscle_fatigue.compute_act(norm_action[self.muscle_act_ind], fatigue_state=previous_fatigue_state)
+
+    new_userdata = state.data.userdata.at[self.fatigue_index_MA].set(fatigue_state["MA"])
+    new_userdata = new_userdata.at[self.fatigue_index_MR].set(fatigue_state["MR"])
+    new_userdata = new_userdata.at[self.fatigue_index_MF].set(fatigue_state["MF"])
+
+    ## replace desired activations with currently active motor units
+    norm_action = norm_action.at[self.muscle_act_ind].set(fatigue_state["MA"])
+
+    ## undo previous normalisation, as it is reapplied by super().step method
+    action_fatigued = jp.log(1.0/norm_action - 1.0)/(-5.0) + 0.5
+
+    ## store fatigue params in userdata
+    data = state.data.replace(userdata=new_userdata)
+    state = state.replace(data=data)
+
+    ## perform main simulation step
+    next_state = super().step(state, action_fatigued)
+
+    ## add fatigue state to observation, if respective config keys are specified
+    next_state = next_state.replace(
+        obs=self.add_fatigue_to_obs(
+            next_state.obs, next_state.data
+        )
+    )
+
+    return next_state
+  
+  def add_fatigue_to_obs(
+    self, obs: dict, data: mjx.Data) -> dict:
+    """Observe qpos, qvel, act and qpos_err."""
+    obs_state = obs["state"]
+    if "MA" in self.fatigue_obs_keys:
+      obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MA]])
+    if "MR" in self.fatigue_obs_keys:
+      obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MR]])
+    if "MF" in self.fatigue_obs_keys:
+      obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MF]])
+    return {"state": obs_state}
+
+  def set_fatigue_reset_random(self, fatigue_reset_random):
+    self.fatigue_reset_random = fatigue_reset_random
 
 
 # # Register the class as a PyTree
