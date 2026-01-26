@@ -151,7 +151,7 @@ class CumulativeFatigue:
         MA = fatigue_state["MA"]
         return jp.linalg.norm(MA - TL)
 
-    def reset(self, fatigue_reset_vec=None, fatigue_reset_random=False, key=None):
+    def reset(self, rng, fatigue_reset_vec=None, fatigue_reset_random=False):
         """Reset fatigue state.
         
         State attributes:
@@ -163,7 +163,7 @@ class CumulativeFatigue:
             assert (
                 fatigue_reset_vec is None
             ), "Cannot use fatigue_reset_vec if fatigue_reset_random=True"
-            key1, key2 = jrandom.split(key)
+            key1, key2 = jrandom.split(rng)
             non_fatigued_muscles = jrandom.uniform(key1, (self.na,))
             active_percentage = jrandom.uniform(key2, (self.na,))
             MA = non_fatigued_muscles * active_percentage
