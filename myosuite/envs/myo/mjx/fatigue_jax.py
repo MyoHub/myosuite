@@ -238,7 +238,7 @@ class FatigueWrapper(Wrapper):
 
 
     self.muscle_fatigue = CumulativeFatigue(
-        self.env.mj_model, self._n_substeps
+        self.env.mj_model, self.n_substeps
     )
     _fatigue_index_first = self.nuserdata_without_fatigue
     nu = self.env.mj_model.nu
@@ -261,7 +261,6 @@ class FatigueWrapper(Wrapper):
     new_userdata = new_userdata.at[self.fatigue_index_MF].set(fatigue_state["MF"])
     data = state.data.replace(userdata=new_userdata)
     state = state.replace(data=data)
-    # jax.debug.print("🤯 NORM RESET MR {x} 🤯", x=state.data.userdata.at[self.fatigue_index_MR].get())
 
     ## add fatigue state to observation, if respective config keys are specified
     state = state.replace(
@@ -312,6 +311,8 @@ class FatigueWrapper(Wrapper):
   def add_fatigue_to_obs(
     self, obs: dict, data: mjx.Data) -> dict:
     """Observe qpos, qvel, act and qpos_err."""
+    if "state" not in obs:
+       return obs
     obs_state = obs["state"]
     if "MA" in self.fatigue_obs_keys:
       obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MA]])
@@ -319,7 +320,7 @@ class FatigueWrapper(Wrapper):
       obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MR]])
     if "MF" in self.fatigue_obs_keys:
       obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MF]])
-    return {"state": obs_state}
+    return {**obs, **{"state": obs_state}}
 
   def set_fatigue_reset_random(self, fatigue_reset_random):
     self.fatigue_reset_random = fatigue_reset_random
