@@ -25,9 +25,12 @@ pose_env_config = config_dict.create(
         target_jnt_range=config_dict.ConfigDict(),
         max_episode_steps=100,
         model_path=epath.Path('/tmp/dummy.xml'),
-        muscle_condition="",
-        fatigue_reset_vec=None,
-        fatigue_reset_random=False,
+        muscle_config=config_dict.create(
+            fatigue_enabled=False,
+            fatigue_reset_vec=None,
+            fatigue_reset_random=False,
+            fatigue_obs_keys=[],
+        ),
     )
 
 reach_env_config = config_dict.create(
@@ -43,9 +46,12 @@ reach_env_config = config_dict.create(
         far_th=0.35,
         max_episode_steps=100,
         model_path=epath.Path('/tmp/dummy.xml'),
-        muscle_condition="",
-        fatigue_reset_vec=None,
-        fatigue_reset_random=False,
+        muscle_config=config_dict.create(
+            fatigue_enabled=False,
+            fatigue_reset_vec=None,
+            fatigue_reset_random=False,
+            fatigue_obs_keys=[],
+        ),
     )
 
 ppo_config = config_dict.create(

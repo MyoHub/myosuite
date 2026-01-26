@@ -23,6 +23,10 @@ def __getattr__(name):
     return tuple(_envs.keys())
   raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
+def config_callable(env_config) -> Callable[[], config_dict.ConfigDict]:
+    fn = lambda : env_config
+    return fn
+
 def config_create_variant(env_config: Callable[[], config_dict.ConfigDict], **kwargs) -> Callable[[], config_dict.ConfigDict]:
     _cfg = copy.deepcopy(env_config())
     for k, v in kwargs.items():
@@ -58,32 +62,33 @@ def register_environment_with_variants(
         cfg_class=cfg_class
     )
 
-    # register variants env with sarcopenia
-    if env_name[:3] == "Mjx":
-        cfg_class_sarc = config_create_variant(cfg_class, muscle_condition="sarcopenia")
-        register_environment(
-            env_name=env_name[:3] + "Sarc" + env_name[3:],
-            env_class=env_class,
-            cfg_class=cfg_class_sarc
-        )
+    # # register variants env with sarcopenia
+    # if env_name[:3] == "Mjx":
+    #     cfg_class_sarc = config_create_variant(cfg_class, muscle_condition="sarcopenia")
+    #     register_environment(
+    #         env_name=env_name[:3] + "Sarc" + env_name[3:],
+    #         env_class=env_class,
+    #         cfg_class=cfg_class_sarc
+    #     )
     
     # register variants with fatigue
     if env_name[:3] == "Mjx":
-        cfg_class_fati =  config_create_variant(cfg_class, muscle_condition="fatigue")
+        muscle_config_fatigue = config_create_variant(config_callable(cfg_class().muscle_config), fatigue_enabled=True)
+        cfg_class_fati = config_create_variant(cfg_class, muscle_config=muscle_config_fatigue())
         register_environment(
             env_name=env_name[:3] + "Fati" + env_name[3:],
             env_class=env_class,
             cfg_class=cfg_class_fati
         )
 
-    # register variants with tendon transfer
-    if env_name[:7] == "MjxHand":
-        cfg_class_reaf =  config_create_variant(cfg_class, muscle_condition="reafferentation")
-        register_environment(
-            env_name=env_name[:3] + "Reaf" + env_name[3:],
-            env_class=env_class,
-            cfg_class=cfg_class_reaf
-        )
+    # # register variants with tendon transfer
+    # if env_name[:7] == "MjxHand":
+    #     cfg_class_reaf =  config_create_variant(cfg_class, muscle_condition="reafferentation")
+    #     register_environment(
+    #         env_name=env_name[:3] + "Reaf" + env_name[3:],
+    #         env_class=env_class,
+    #         cfg_class=cfg_class_reaf
+    #     )
 
 def get_base_env_name(env_name: str) -> str:
   """Extract default environment name (without any muscle condition variant) from env_name."""

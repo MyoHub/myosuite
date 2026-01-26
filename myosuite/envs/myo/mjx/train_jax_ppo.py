@@ -4,6 +4,8 @@ import functools
 import time
 import pickle
 import jax
+
+from myosuite.envs.myo.mjx.fatigue_jax import FatigueWrapper
 print(f"Current backend: {jax.default_backend()}")
 from brax.training.agents.ppo import networks as ppo_networks
 from brax.training.agents.ppo import train as ppo
@@ -44,10 +46,16 @@ def main(env_name, render_evaluations=False):
 
 def load_env_and_network_factory(env_name):
   env = make(env_name)
+  config = get_default_config(env_name)
+
+  ## apply fatigue wrapper if enabled
+  if config.muscle_config is not None and config.muscle_config.fatigue_enabled:
+    env = FatigueWrapper(env)
+
   ppo_params = dict(ppo_config)
 
   print(f"Training on environment:\n{env_name}")
-  print(f"Environment Config:\n{get_default_config(env_name)}")
+  print(f"Environment Config:\n{config}")
   print(f"PPO Training Parameters:\n{ppo_config}")
 
   if "network_factory" in ppo_params:
