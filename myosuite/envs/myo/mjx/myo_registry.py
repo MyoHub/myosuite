@@ -7,6 +7,7 @@ from ml_collections import config_dict
 from mujoco import mjx
 
 from mujoco_playground import MjxEnv
+from myosuite.envs.myo.mjx.fatigue_jax import FatigueWrapper
 
 
 MJX_VARIANT_PREFIXES = ("MjxSarc", "MjxFati", "MjxReaf")
@@ -129,7 +130,13 @@ def load(
         f"Env '{env_name}' not found. Available envs: {_cfgs.keys()}"
     )
   config = config or get_default_config(env_name)
-  return _envs[env_name](config=config, config_overrides=config_overrides)
+  env = _envs[env_name](config=config, config_overrides=config_overrides)
+  
+  ## apply fatigue wrapper if enabled
+  if config.muscle_config is not None and config.muscle_config.fatigue_enabled:
+    env = FatigueWrapper(env)
+    
+  return env
 
 
 def get_domain_randomizer(

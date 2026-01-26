@@ -48,10 +48,6 @@ def load_env_and_network_factory(env_name):
   env = make(env_name)
   config = get_default_config(env_name)
 
-  ## apply fatigue wrapper if enabled
-  if config.muscle_config is not None and config.muscle_config.fatigue_enabled:
-    env = FatigueWrapper(env)
-
   ppo_params = dict(ppo_config)
 
   print(f"Training on environment:\n{env_name}")
