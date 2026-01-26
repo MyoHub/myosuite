@@ -279,11 +279,11 @@ class FatigueWrapper(Wrapper):
        return obs
     obs_state = obs["state"]
     if "MA" in self.fatigue_obs_keys:
-      obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MA]])
+      obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MA]], axis=-1)
     if "MR" in self.fatigue_obs_keys:
-      obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MR]])
+      obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MR]], axis=-1)
     if "MF" in self.fatigue_obs_keys:
-      obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MF]])
+      obs_state = jp.concatenate([obs_state, data.userdata[self.fatigue_index_MF]], axis=-1)
     return {**obs, **{"state": obs_state}}
 
   def set_fatigue_reset_random(self, fatigue_reset_random):
