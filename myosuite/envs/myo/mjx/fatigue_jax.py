@@ -6,7 +6,6 @@ from mujoco import mjx
 from mujoco_playground._src import mjx_env
 from typing import Dict, Tuple, Any
 from brax.envs.base import Wrapper
-from jax import tree_util
 import numpy as np
 
 ALLOWED_FATIGUE_OBS_KEYS = ["MA", "MR", "MF"]
@@ -51,41 +50,6 @@ class CumulativeFatigue:
             ],
             dtype=jp.float32,
         )
-
-    # def _tree_flatten(self) -> Tuple[Tuple[Any, ...], Dict]:
-    #     """Flatten the class into children and auxiliary data"""
-    #     # Dynamic values (arrays that change during computation)
-    #     children = (
-    #         self.F,
-    #         self.R,
-    #         self.r,
-    #         self.dt,
-    #         self.tauact,
-    #         self.taudeact,
-    #     )
-
-    #     # Static values
-    #     aux_data = {"na": self.na}
-    #     return (children, aux_data)
-
-    # @classmethod
-    # def _tree_unflatten(cls, aux_data, children):
-    #     """Reconstruct class from flattened data"""
-    #     obj = cls.__new__(cls)  # Create new instance without __init__
-
-    #     # Restore dynamic values
-    #     (
-    #         obj.F,
-    #         obj.R,
-    #         obj.r,
-    #         obj.dt,
-    #         obj.tauact,
-    #         obj.taudeact,
-    #     ) = children
-
-    #     # Restore static values
-    #     obj.na = aux_data["na"]
-    #     return obj
 
     # @jax.jit
     def compute_act(self, TL, fatigue_state):
@@ -324,11 +288,3 @@ class FatigueWrapper(Wrapper):
 
   def set_fatigue_reset_random(self, fatigue_reset_random):
     self.fatigue_reset_random = fatigue_reset_random
-
-
-# # Register the class as a PyTree
-# tree_util.register_pytree_node(
-#     CumulativeFatigue,
-#     CumulativeFatigue._tree_flatten,
-#     CumulativeFatigue._tree_unflatten,
-# )
