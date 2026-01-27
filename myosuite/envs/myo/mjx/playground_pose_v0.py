@@ -73,7 +73,7 @@ class MjxPoseEnvV0(MjxMyoBase):
         pose_dist = self._pose_dist(data, info)
         act_mag = jp.linalg.norm(data.act, axis=-1)
 
-        pose = self._pose_dist(data, info) * -self._config.reward_config.angle_reward_weight
+        pose = pose_dist * -self._config.reward_config.angle_reward_weight
         act_reg = act_mag * -self._config.reward_config.ctrl_cost_weight
         bonus = (jp.where(pose_dist < self._config.reward_config.pose_thd, 1., 0.)
                  + jp.where(pose_dist < self._config.reward_config.pose_thd * 1.5, 1.,
