@@ -7,6 +7,7 @@ from mujoco_playground._src import mjx_env
 from typing import Dict, Tuple, Any
 from brax.envs.base import Wrapper
 import numpy as np
+from myosuite.envs.myo.mjx.mjx_base_env import MjxMyoBase
 
 ALLOWED_FATIGUE_OBS_KEYS = ["MA", "MR", "MF"]
 
@@ -174,13 +175,13 @@ class CumulativeFatigue:
 class FatigueWrapper(Wrapper):
   """Wrapper that adds a CumulativeFatigue instance to the environment."""
 
-  def __init__(self, env: mjx_env.MjxEnv):
+  def __init__(self, env: MjxMyoBase):
     ## Increase nuserdata and recompile model
     self.nuserdata_without_fatigue = env.mj_model.nuserdata
 
     env._mj_spec.nuserdata += env.mjx_model.nu * 3
     env._mj_model = env._mj_spec.compile()
-    env._mjx_model = mjx.put_model(env._mj_model, impl="warp")
+    env._mjx_model = mjx.put_model(env._mj_model, impl=env.impl)
 
     super().__init__(env)
 

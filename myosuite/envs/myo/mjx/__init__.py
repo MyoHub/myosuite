@@ -31,6 +31,7 @@ pose_env_config = config_dict.create(
             fatigue_reset_random=False,
             fatigue_obs_keys=[],
         ),
+        impl="jax"
     )
 
 reach_env_config = config_dict.create(
@@ -52,6 +53,7 @@ reach_env_config = config_dict.create(
             fatigue_reset_random=False,
             fatigue_obs_keys=[],
         ),
+        impl="jax"
     )
 
 ppo_config = config_dict.create(
@@ -74,8 +76,8 @@ ppo_config = config_dict.create(
         network_factory=config_dict.create(
             policy_hidden_layer_sizes=(64, 64, 64),
             value_hidden_layer_sizes=(64, 64, 64),
-            policy_obs_key="state",
-            value_obs_key="state",
+            policy_obs_key="base_obs",
+            value_obs_key="base_obs",
         )
     )
 
