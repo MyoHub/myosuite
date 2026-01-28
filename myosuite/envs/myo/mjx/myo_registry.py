@@ -74,12 +74,10 @@ def register_environment_with_variants(
     
     # register variants with fatigue
     if env_name[:3] == "Mjx":
-        muscle_config_fatigue = config_create_variant(config_callable(cfg_class().muscle_config), fatigue_enabled=True)
-        cfg_class_fati = config_create_variant(cfg_class, muscle_config=muscle_config_fatigue())
         register_environment(
             env_name=env_name[:3] + "Fati" + env_name[3:],
-            env_class=env_class,
-            cfg_class=cfg_class_fati
+            env_class=wrap_class(FatigueWrapper, env_class),
+            cfg_class=cfg_class
         )
 
     # # register variants with tendon transfer
@@ -131,10 +129,6 @@ def load(
     )
   config = config or get_default_config(env_name)
   env = _envs[env_name](config=config, config_overrides=config_overrides)
-  
-  ## apply fatigue wrapper if enabled
-  if config.muscle_config is not None and config.muscle_config.fatigue_enabled:
-    env = FatigueWrapper(env)
     
   return env
 
@@ -150,3 +144,10 @@ def get_domain_randomizer(
     )
     return None
   return _randomizer[env_name]
+
+
+def wrap_class(wrapper_cls, wrapped_env_cls):
+    def _get_wrapped_class(config, config_overrides):
+        base_config, wrapper_config = wrapper_cls.skim_config(config, config_overrides)
+        return wrapper_cls(wrapped_env_cls(base_config), wrapper_config)
+    return _get_wrapped_class

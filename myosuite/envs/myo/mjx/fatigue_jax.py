@@ -8,6 +8,7 @@ from typing import Dict, Tuple, Any
 from brax.envs.base import Wrapper
 import numpy as np
 from myosuite.envs.myo.mjx.mjx_base_env import MjxMyoBase
+from ml_collections import config_dict, ConfigDict
 
 ALLOWED_FATIGUE_OBS_KEYS = ["MA", "MR", "MF"]
 
@@ -175,7 +176,11 @@ class CumulativeFatigue:
 class FatigueWrapper(Wrapper):
   """Wrapper that adds a CumulativeFatigue instance to the environment."""
 
-  def __init__(self, env: MjxMyoBase):
+  DEFAULT_MUSCLE_CONFIG = config_dict.create(fatigue_reset_vec= None,
+                                             fatigue_reset_random=False,
+                                             fatigue_obs_keys= [])
+
+  def __init__(self, env: MjxMyoBase, fatigue_config=DEFAULT_MUSCLE_CONFIG):
     ## Increase nuserdata and recompile model
     self.nuserdata_without_fatigue = env.mj_model.nuserdata
 
@@ -184,15 +189,10 @@ class FatigueWrapper(Wrapper):
     env._mjx_model = mjx.put_model(env._mj_model, impl=env.impl)
 
     super().__init__(env)
-
-    muscle_config = env._config.muscle_config
-
-    self.fatigue_enabled = muscle_config.fatigue_enabled
-    assert self.fatigue_enabled, "FatigueWrapper initialized but fatigue_enabled is False in muscle_config."
     
-    self.fatigue_reset_vec = muscle_config.fatigue_reset_vec
-    self.fatigue_reset_random = muscle_config.fatigue_reset_random
-    self.fatigue_obs_keys = muscle_config.fatigue_obs_keys
+    self.fatigue_reset_vec = fatigue_config.fatigue_reset_vec
+    self.fatigue_reset_random = fatigue_config.fatigue_reset_random
+    self.fatigue_obs_keys = fatigue_config.fatigue_obs_keys
     assert all([key in ALLOWED_FATIGUE_OBS_KEYS for key in self.fatigue_obs_keys]), \
         f"Invalid fatigue_obs_keys: {self.fatigue_obs_keys}. Allowed keys are: {ALLOWED_FATIGUE_OBS_KEYS}"
     # self.sex = muscle_config.sex
@@ -289,3 +289,18 @@ class FatigueWrapper(Wrapper):
 
   def set_fatigue_reset_random(self, fatigue_reset_random):
     self.fatigue_reset_random = fatigue_reset_random
+
+  @classmethod
+  def skim_config(cls, config: ConfigDict, config_overrides=None):
+    if config_overrides is None:
+      config_overrides = {}
+    fatigue_config = FatigueWrapper.DEFAULT_MUSCLE_CONFIG
+    if "fatigue_config" in config:
+      fatigue_config = config.fatigue_config
+      del config.fatigue_config
+    for k in fatigue_config.keys():
+      if k in config_overrides:
+        fatigue_config[k] = config_overrides[k]
+        del config_overrides[k]
+    config.update(config_overrides)
+    return config, fatigue_config
