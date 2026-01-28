@@ -25,12 +25,6 @@ pose_env_config = config_dict.create(
         target_jnt_range=config_dict.ConfigDict(),
         max_episode_steps=100,
         model_path=epath.Path('/tmp/dummy.xml'),
-        muscle_config=config_dict.create(
-            fatigue_enabled=False,
-            fatigue_reset_vec=None,
-            fatigue_reset_random=False,
-            fatigue_obs_keys=[],
-        ),
         impl="jax"
     )
 
@@ -47,12 +41,6 @@ reach_env_config = config_dict.create(
         far_th=0.35,
         max_episode_steps=100,
         model_path=epath.Path('/tmp/dummy.xml'),
-        muscle_config=config_dict.create(
-            fatigue_enabled=False,
-            fatigue_reset_vec=None,
-            fatigue_reset_random=False,
-            fatigue_obs_keys=[],
-        ),
         impl="jax"
     )
 
@@ -100,6 +88,12 @@ model_filename='myohand_pose.xml'
 hand_reach_env_config['model_path'] = epath.Path(epath.resource_path('myosuite')) / model_path / model_filename
 
 
+def wrap_class(wrapper_cls, wrapped_env_cls, wrapper_config=None):
+    def _get_wrapped_class(*args, **kwargs):
+        return wrapper_cls(wrapped_env_cls(*args, **kwargs), **(wrapper_config if wrapper_config is not None else {}))
+    return _get_wrapped_class
+
+
 def config_callable(env_config) -> Callable[[], config_dict.ConfigDict]:
     fn = lambda : env_config
     return fn
@@ -108,8 +102,8 @@ def config_callable(env_config) -> Callable[[], config_dict.ConfigDict]:
 def get_default_config(env_name) -> config_dict.ConfigDict:
   return registry.get_default_config(env_name)
 
-
-def make(env_name: str) -> mjx_env.MjxEnv:
+# TODO: is there a reason these are not registered on import?
+def make(env_name: str, config_overrides=None) -> mjx_env.MjxEnv:
 
     env_name_base = registry.get_base_env_name(env_name)
     if "MjxElbowPose" in env_name_base:
@@ -125,7 +119,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
         registry.register_environment_with_variants(env_name_base,
                                       MjxPoseEnvV0,
                                       config_callable(elbow_pose_env_config))
-        env = registry.load(env_name)
+        env = registry.load(env_name, config_overrides=config_overrides)
 
         return env
     
@@ -148,7 +142,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
         registry.register_environment_with_variants(env_name_base,
                                       MjxPoseEnvV0,
                                       config_callable(finger_pose_env_config))
-        env = registry.load(env_name)
+        env = registry.load(env_name, config_overrides=config_overrides)
 
         return env
 
@@ -175,7 +169,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
         registry.register_environment_with_variants(env_name_base,
                                       MjxReachEnvV0,
                                       config_callable(hand_reach_env_config))
-        env = registry.load(env_name)
+        env = registry.load(env_name, config_overrides=config_overrides)
 
         return env
 
