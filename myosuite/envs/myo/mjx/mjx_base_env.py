@@ -72,7 +72,7 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
     def step(self, state: State, action: jp.ndarray) -> State:
         """Runs one timestep of the environment's dynamics."""
 
-        state = self._step_physics(state, action)
+        state = self._step_simulation(state, action)
         # Performed in multiple steps as the stages commonly depend on each other in this direction. HLO is expected to
         # correct for inefficiency.
         state = state.replace(obs=self._get_obs(state.data, state.info))
@@ -83,7 +83,7 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
         state = state.replace(info=self._get_info(state))
         return state
 
-    def _step_physics(self, state, action):
+    def _step_simulation(self, state, action):
         norm_action = self.__class__.norm_actions(action)
         return state.replace(data=mjx_env.step(self.mjx_model, state.data, norm_action, self._n_substeps))
 
