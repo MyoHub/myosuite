@@ -229,20 +229,22 @@ Please analyze this issue and provide:
 Please structure your response in a clear, actionable format."""
 
         # Call Claude API
-        response = self.client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
-            thinking={
-                "type": "enabled",
-                "budget_tokens": 3000
-            } if extended_thinking else None,
-            messages=[
+        kwargs = {
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 4096,
+            "messages": [
                 {
                     "role": "user",
                     "content": prompt
                 }
-            ]
-        )
+            ],
+        }
+        if extended_thinking:
+            kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": 3000
+            }
+        response = self.client.messages.create(**kwargs)
         
         # Extract the analysis from response
         analysis_text = ""
