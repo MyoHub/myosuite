@@ -129,3 +129,5 @@ logs/
 
 # Pycharm generated files
 .idea/
+
+.zip
