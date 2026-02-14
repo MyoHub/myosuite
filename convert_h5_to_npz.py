@@ -1,8 +1,8 @@
 """Convert myoskeleton H5 motion data to mjlab NPZ format.
 
-This script reads a soccer1.h5 motion file (from myosuite), plays it back
-through the myoskeleton MuJoCo model (with fingers disabled), and saves the
-resulting trajectories in the NPZ format expected by mjlab's MotionLoader:
+This script reads an H5 motion file (from myosuite), plays it back through
+the myoskeleton MuJoCo model (with fingers disabled), and saves the resulting
+trajectories in the NPZ format expected by mjlab's MotionLoader:
 
   - joint_pos:      (T, num_actuated_joints)  joint positions
   - joint_vel:      (T, num_actuated_joints)  joint velocities
@@ -12,30 +12,49 @@ resulting trajectories in the NPZ format expected by mjlab's MotionLoader:
   - body_ang_vel_w: (T, num_bodies, 3)        world-frame body angular velocities
 
 Usage:
-    python convert_h5_to_npz.py
+    python convert_h5_to_npz.py                          # converts standing_motion.h5 (default)
+    python convert_h5_to_npz.py soccer1.h5               # converts soccer1.h5
+    python convert_h5_to_npz.py /path/to/any_motion.h5   # converts a custom H5 file
 """
 
 from __future__ import annotations
 
 import os
+import sys
 
 import h5py
 import mujoco
 import numpy as np
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-H5_FILE = os.path.join(
-    os.path.dirname(__file__), "myosuite", "envs", "myo", "mjx", "soccer1.h5"
-)
+_SCRIPT_DIR = os.path.dirname(__file__)
+_H5_DIR = os.path.join(_SCRIPT_DIR, "myosuite", "envs", "myo", "mjx")
+_DEFAULT_H5 = "standing_motion.h5"
+
 XML_FILE = os.path.join(
-    os.path.dirname(__file__),
+    _SCRIPT_DIR,
     "myosuite",
     "simhive",
     "myo_model",
     "myoskeleton",
     "myoskeleton.xml",
 )
-OUTPUT_FILE = os.path.join(os.path.dirname(__file__), "soccer1_myoskeleton.npz")
+
+
+def _resolve_h5_path(arg: str | None = None) -> str:
+    """Resolve H5 input path from CLI argument or default."""
+    if arg is None:
+        return os.path.join(_H5_DIR, _DEFAULT_H5)
+    # If it's a bare filename (no path separator), look inside the H5 dir.
+    if os.sep not in arg and "/" not in arg:
+        return os.path.join(_H5_DIR, arg)
+    return arg
+
+
+def _output_path_for(h5_path: str) -> str:
+    """Derive NPZ output path from the H5 filename."""
+    stem = os.path.splitext(os.path.basename(h5_path))[0]
+    return os.path.join(_SCRIPT_DIR, f"{stem}_myoskeleton.npz")
 
 # ── Finger joints to disable ────────────────────────────────────────────────
 FINGER_JOINTS = [
@@ -91,6 +110,10 @@ def get_actuated_joint_names(model: mujoco.MjModel) -> list[str]:
 
 
 def main() -> None:
+    cli_arg = sys.argv[1] if len(sys.argv) > 1 else None
+    H5_FILE = _resolve_h5_path(cli_arg)
+    OUTPUT_FILE = _output_path_for(H5_FILE)
+
     print(f"Loading H5 from {H5_FILE}")
     time_arr, qpos_dict, qvel_dict = load_h5_motion(H5_FILE)
     horizon = len(time_arr)
