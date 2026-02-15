@@ -5,7 +5,7 @@ import myosuite
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import wandb
 from wandb.integration.sb3 import WandbCallback
 
@@ -42,6 +42,7 @@ def main():
         return env
 
     env = DummyVecEnv([make_env])
+    env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.0)
     print(f"Action space: {env.action_space}")
     print(f"Observation space: {env.observation_space}")
 
@@ -86,6 +87,7 @@ def main():
 
     # 7. Save Final Model
     model.save(f"{log_dir}/ppo_stand_final")
+    env.save(f"{log_dir}/vec_normalize.pkl")
     print(f"Training complete. Model saved to {log_dir}")
 
     run.finish()

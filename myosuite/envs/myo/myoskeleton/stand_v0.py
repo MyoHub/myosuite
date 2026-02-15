@@ -166,12 +166,12 @@ class MyoSkeletonStandEnv(BaseV0):
 
         # Terminate if root Z drops too low
         root_z = qp[2]
-        if root_z < 0.6: # Slightly higher threshold
+        if root_z < 0.4:
             # print(f"DEBUG: Terminated due to low Z: {root_z}")
             return True
         # Terminate if root moves too far horizontally (escaped)
         root_dist = np.linalg.norm(qp[:2] - self.target_root_pos[:2])
-        if root_dist > 0.5: # Harder constraint
+        if root_dist > 1.0:
             # print(f"DEBUG: Terminated due to root dist: {root_dist}")
             return True
 
@@ -179,7 +179,7 @@ class MyoSkeletonStandEnv(BaseV0):
         euler = quat2euler(pelvis_quat)
         target_euler = quat2euler(self.target_pelvis_quat)
         diff = np.abs(euler - target_euler)
-        if diff[0] > 1.0 or diff[1] > 1.0:
+        if diff[0] > 1.5 or diff[1] > 1.5:
             # print(f"DEBUG: Terminated due to tilt: {euler} vs {target_euler}")
             return True
 

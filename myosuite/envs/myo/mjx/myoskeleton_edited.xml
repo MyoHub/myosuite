@@ -1,6 +1,8 @@
 <mujoco model="MyoSuite: MyoSkeleton v0">
   <compiler angle="radian" meshdir="../" texturedir="../" boundmass="0.001" boundinertia="0.001"/>
 
+  <option integrator="implicitfast" timestep="0.002"/>
+
   <size njmax="1000" nconmax="400" nuser_jnt="1"/>
 
   <visual>
@@ -15,7 +17,7 @@
 
   <default>
     <default class="myo">
-      <joint stiffness="10" limited="true" armature="0.1" damping="2"/>
+      <joint stiffness="100" limited="true" armature="0.5" damping="20"/>
       <geom contype="1" conaffinity="1" margin="0.001" rgba="0.8 0.8 0.8 1"/>
       <site size="0.001 0.005 0.005" group="3"/>
 
@@ -771,27 +773,27 @@
   </contact>
 
   <actuator>
-    <!-- Torso/Spine: lower power but limited -->
-    <general name="mot_L5_S1_Flex_Ext" joint="L5_S1_Flex_Ext" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L5_S1_Lat_Bending" joint="L5_S1_Lat_Bending" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L4_L5_Flex_Ext" joint="L4_L5_Flex_Ext" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L4_L5_Lat_Bending" joint="L4_L5_Lat_Bending" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L4_L5_axial_rotation" joint="L4_L5_axial_rotation" gear="100" ctrlrange="-1 1" forcerange="-60 60"/>
-    <general name="mot_L3_L4_Flex_Ext" joint="L3_L4_Flex_Ext" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L3_L4_Lat_Bending" joint="L3_L4_Lat_Bending" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L3_L4_axial_rotation" joint="L3_L4_axial_rotation" gear="100" ctrlrange="-1 1" forcerange="-60 60"/>
-    <general name="mot_L2_L3_Flex_Ext" joint="L2_L3_Flex_Ext" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L2_L3_Lat_Bending" joint="L2_L3_Lat_Bending" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L2_L3_axial_rotation" joint="L2_L3_axial_rotation" gear="100" ctrlrange="-1 1" forcerange="-60 60"/>
-    <general name="mot_L1_L2_Flex_Ext" joint="L1_L2_Flex_Ext" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L1_L2_Lat_Bending" joint="L1_L2_Lat_Bending" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L1_L2_axial_rotation" joint="L1_L2_axial_rotation" gear="100" ctrlrange="-1 1" forcerange="-60 60"/>
-    <general name="mot_L1_T12_Flex_Ext" joint="L1_T12_Flex_Ext" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L1_T12_Lat_Bending" joint="L1_T12_Lat_Bending" gear="160" ctrlrange="-1 1" forcerange="-100 100"/>
-    <general name="mot_L1_T12_axial_rotation" joint="L1_T12_axial_rotation" gear="100" ctrlrange="-1 1" forcerange="-60 60"/>
+    <!-- Torso/Spine: force ranges increased to match gravity compensation requirements -->
+    <general name="mot_L5_S1_Flex_Ext" joint="L5_S1_Flex_Ext" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L5_S1_Lat_Bending" joint="L5_S1_Lat_Bending" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L4_L5_Flex_Ext" joint="L4_L5_Flex_Ext" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L4_L5_Lat_Bending" joint="L4_L5_Lat_Bending" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L4_L5_axial_rotation" joint="L4_L5_axial_rotation" gear="400" ctrlrange="-1 1" forcerange="-400 400"/>
+    <general name="mot_L3_L4_Flex_Ext" joint="L3_L4_Flex_Ext" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L3_L4_Lat_Bending" joint="L3_L4_Lat_Bending" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L3_L4_axial_rotation" joint="L3_L4_axial_rotation" gear="400" ctrlrange="-1 1" forcerange="-400 400"/>
+    <general name="mot_L2_L3_Flex_Ext" joint="L2_L3_Flex_Ext" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L2_L3_Lat_Bending" joint="L2_L3_Lat_Bending" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L2_L3_axial_rotation" joint="L2_L3_axial_rotation" gear="400" ctrlrange="-1 1" forcerange="-400 400"/>
+    <general name="mot_L1_L2_Flex_Ext" joint="L1_L2_Flex_Ext" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L1_L2_Lat_Bending" joint="L1_L2_Lat_Bending" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L1_L2_axial_rotation" joint="L1_L2_axial_rotation" gear="400" ctrlrange="-1 1" forcerange="-400 400"/>
+    <general name="mot_L1_T12_Flex_Ext" joint="L1_T12_Flex_Ext" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L1_T12_Lat_Bending" joint="L1_T12_Lat_Bending" gear="800" ctrlrange="-1 1" forcerange="-800 800"/>
+    <general name="mot_L1_T12_axial_rotation" joint="L1_T12_axial_rotation" gear="400" ctrlrange="-1 1" forcerange="-400 400"/>
     <!-- Arms -->
-    <general name="mot_elbow_flex_r" joint="elbow_flex_r" gear="250" ctrlrange="-1 1" forcerange="-150 150"/>
-    <general name="mot_elbow_flex_l" joint="elbow_flex_l" gear="250" ctrlrange="-1 1" forcerange="-150 150"/>
+    <general name="mot_elbow_flex_r" joint="elbow_flex_r" gear="300" ctrlrange="-1 1" forcerange="-250 250"/>
+    <general name="mot_elbow_flex_l" joint="elbow_flex_l" gear="300" ctrlrange="-1 1" forcerange="-250 250"/>
     <general name="mot_pro_sup_l" joint="pro_sup_l" gear="250" ctrlrange="-1 1" forcerange="-100 100"/>
     <!-- Legs: high power needed for locomotion -->
     <general name="mot_hip_flexion_r" joint="hip_flexion_r" gear="300" ctrlrange="-1 1" forcerange="-300 300"/>
