@@ -15,8 +15,8 @@
 
   <default>
     <default class="myo">
-      <joint stiffness="2" limited="true" armature="0.1" damping="0.5"/>
-      <geom contype="0" conaffinity="0" margin="0.001" rgba="0.8 0.8 0.8 1"/>
+      <joint stiffness="10" limited="true" armature="0.1" damping="2"/>
+      <geom contype="1" conaffinity="1" margin="0.001" rgba="0.8 0.8 0.8 1"/>
       <site size="0.001 0.005 0.005" group="3"/>
 
       <tendon limited="false" width="0.001" rgba="0.95 0.3 0.3 1"/>
@@ -155,7 +155,7 @@
   </asset>
 
   <worldbody>
-    <geom name="floor" size="0 0 1" type="plane" material="grid"/>
+    <geom name="floor" size="0 0 1" type="plane" material="grid" friction="1 1 1"/>
     <camera name="side_view" pos="-3 0 2.25" quat="0.601501 0.371748 -0.371748 -0.601501" mode="trackcom"/>
     <camera name="front_view" pos="0 -3 2.25" quat="0.850651 0.525731 0 0" mode="trackcom"/>
     <light pos="0 -3 3" dir="0 0.707107 -0.707107" diffuse="0.5 0.5 0.5" specular="0.25 0.25 0.25" mode="trackcom"/>
