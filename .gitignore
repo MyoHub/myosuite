@@ -131,3 +131,6 @@ logs/
 .idea/
 
 .zip
+
+# Downloaded SimHive assets (fetched by myoapi_init)
+myosuite/simhive/myo_model/
