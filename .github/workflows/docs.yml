@@ -1,0 +1,45 @@
+name: Docs Build
+
+on:
+  push:
+    branches: ["main", "dev"]
+    paths:
+      - "docs/**"
+      - "myosuite/**"
+  pull_request:
+    branches: ["main", "dev"]
+    paths:
+      - "docs/**"
+      - "myosuite/**"
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv venv --python 3.10
+          uv pip install -e ".[docs]"
+
+      - name: Build docs
+        run: uv run sphinx-build -W docs/source docs/build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-html
+          path: docs/build/

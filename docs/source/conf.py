@@ -16,8 +16,8 @@ project = "MyoSuite"
 copyright = "Copyright © MyoSuite Authors"
 author = "MyoSuite Authors"
 
-release = "0.2"
-version = "0.2.4"
+release = "2.11"
+version = "2.11.6"
 
 # -- General configuration
 
@@ -27,7 +27,11 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.intersphinx",
+    "sphinx_autodoc_typehints",
 ]
+
+autodoc_typehints = "description"
+autodoc_member_order = "bysource"
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
@@ -40,7 +44,8 @@ templates_path = ["_templates"]
 # -- Options for HTML output
 
 html_theme = "sphinx_rtd_theme"
-# html_static_path = ['_static']
+html_static_path = ['_static']
+html_css_files = ['css/custom.css']
 html_logo = "images/MyoSuite_Grayscale_Horizontal.png"
 html_theme_options = {
     "logo_only": True,

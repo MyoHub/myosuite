@@ -42,6 +42,12 @@ Advanced user are invited to familiarize themselves with the basics of the `Open
 
 
 .. toctree::
+   :maxdepth: 2
+   :caption: API Reference
+
+   api/index
+
+.. toctree::
    :maxdepth: 1
    :caption: References
 
