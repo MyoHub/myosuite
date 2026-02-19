@@ -6,7 +6,7 @@ e.g., Answering the question, Which joint angles do we need to move our hand to 
 
 # About the scripts
 Both scripts in this folder rely on [`mink`](https://github.com/kevinzakka/mink) for the IK, and used the [IK example
-from the parent folder](https://github.com/MyoHub/myosuite/blob/main/docs/source/tutorials/8_inverse_kinematics.py).
+from the parent folder](https://github.com/MyoHub/myosuite/blob/main/tutorials/8_inverse_kinematics.py).
 
 The table tennis environment from Myochallenge25 is used
 - `ik_interactive_mc25.py`: Attaches the paddle to the hand. If you expand the ctrl tab (`Shift`+`Tab`), 
