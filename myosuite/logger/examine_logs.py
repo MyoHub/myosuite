@@ -362,6 +362,11 @@ def examine_logs(
                         update_exteroception=include_exteroception
                     )
                     ep_rwd += rwd
+                    if render == "onscreen":
+                        time.sleep(
+                            env.sim.model.opt.timestep
+                        )  # sleeping for onscreen viewer (approximation: sleep full dt)
+
                 elif (
                     i_step < trace_horizon
                 ):  # incase last step actions (nans) can cause issues in step
