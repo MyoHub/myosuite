@@ -142,7 +142,7 @@ Observation Space
 
 
 Starting Criteria: Phase 1 :code:`myoChallengeTableTennisP1-v0`
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 - The ball starts with the same speed
 - The agent has the same starting position
 - The paddle initially starts in the grasping position with the hand,
@@ -151,7 +151,7 @@ Starting Criteria: Phase 1 :code:`myoChallengeTableTennisP1-v0`
 - Maximum time: 3 seconds
 
 Starting Criteria: Phase 2 :code:`myoChallengeTableTennisP2-v0` (Please note the exact evaluation would be hidden.)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 - The ball starts with a different velocity, guaranteed to land onthe  model's side of the table
 - The agent has the same starting position
 - The paddle initially starts in the grasping position with the hand,
@@ -256,6 +256,7 @@ Observation Space
 +----------------------------------------+----------------+-----------+
 | Body COM vel in world frame            | model_root_vel | 6         |
 +----------------------------------------+----------------+-----------+
+
 Note: The body COM is represents with a freejoint, hence the 7 dimensions, in the form of [x, y, z, qx, qy, qz, qw] Similarly the body COM velocity is represented with 6 dimensions, in the form of [vx, vy, vz, alpha, beta, gamma]
 
 

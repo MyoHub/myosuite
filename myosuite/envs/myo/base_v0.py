@@ -1,7 +1,6 @@
-"""=================================================
-# Copyright (c) MyoSuite Authors
-Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
-================================================="""
+"""Copyright (c) MyoSuite Authors.
+Authors: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
+"""
 
 import logging
 

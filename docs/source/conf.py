@@ -27,8 +27,12 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.intersphinx",
+    "sphinx.ext.napoleon",
     "sphinx_autodoc_typehints",
 ]
+
+napoleon_google_docstring = True
+napoleon_numpy_docstring = False
 
 autodoc_typehints = "description"
 autodoc_member_order = "bysource"
@@ -49,7 +53,6 @@ html_css_files = ['css/custom.css']
 html_logo = "images/MyoSuite_Grayscale_Horizontal.png"
 html_theme_options = {
     "logo_only": True,
-    "display_version": False,
 }
 # -- Options for EPUB output
 epub_show_urls = "footnote"
