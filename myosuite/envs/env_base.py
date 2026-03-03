@@ -1,9 +1,8 @@
-"""=================================================
-Copyright (C) 2018 Vikash Kumar
-Author  :: Vikash Kumar (vikashplus@gmail.com)
-Source  :: https://github.com/vikashplus/robohive
-License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-================================================="""
+"""Copyright (C) 2018 Vikash Kumar.
+Author: Vikash Kumar (vikashplus@gmail.com)
+Source: https://github.com/vikashplus/robohive
+License: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+"""
 
 import os
 import time as timer
@@ -462,16 +461,19 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
     def get_visuals(
         self, renderer: MJRenderer = None, visual_keys: list = None, device_id: int = None
     ) -> dict:
-        """
-        Recover visual dict corresponding to the visual keys
-        visual_keys
-            = self.visual_keys if None
-        Acceptable visual keys:
-            - 'rgb:cam_name:HxW:1d'
-            - 'rgb:cam_name:HxW:2d'
-            - 'rgb:cam_name:HxW:r3m18'
-            - 'rgb:cam_name:HxW:r3m34'
-            - 'rgb:cam_name:HxW:r3m50'
+        """Recover visual dict corresponding to the visual keys.
+
+        Args:
+            renderer: MJRenderer to use; defaults to self.mj_renderer if None.
+            visual_keys: Keys to include; defaults to self.visual_keys if None.
+            device_id: Device ID; defaults to self.device_id if None.
+
+        Returns:
+            Dictionary of visual arrays keyed by visual key.
+
+        Note:
+            Acceptable visual keys: 'rgb:cam_name:HxW:1d', 'rgb:cam_name:HxW:2d',
+            'rgb:cam_name:HxW:r3m18', 'rgb:cam_name:HxW:r3m34', 'rgb:cam_name:HxW:r3m50'.
         """
         # return if no visual configured
         if self.visual_keys == None:
@@ -1083,12 +1085,14 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
     # methods to override ====================================================
 
     def get_obs_dict(self, mj_model, mj_data):
-        """
-        Get observation dictionary
-        Implement this in each subclass.
-        Note: Visual observations are automatically calculated via call to get_visual_obs_dict() from within get_obs()
-            visual obs can be specified via visual keys of the form rgb:cam_name:HxW:encoder where cam_name is the name
-            of the camera, HxW is the frame size and encode is the encoding of the image (can be 1d/2d as well as image encoders like rrl/r3m etc)
+        """Get observation dictionary. Implement this in each subclass.
+
+        Note:
+            Visual observations are automatically calculated via get_visual_obs_dict()
+            from within get_obs(). Visual obs can be specified via visual keys of the
+            form rgb:cam_name:HxW:encoder where cam_name is the camera name, HxW is
+            the frame size, and encoder is the image encoding (1d/2d or encoders like
+            rrl/r3m etc).
         """
         raise NotImplementedError
 

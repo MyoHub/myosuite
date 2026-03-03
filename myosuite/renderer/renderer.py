@@ -69,8 +69,7 @@ class Renderer(abc.ABC):
             width: The viewport width (pixels).
             height: The viewport height (pixels).
             mode: The rendering mode.
-            camera_id: The ID of the camera to render from. By default, uses
-                the free camera.
+            camera_id: The ID of the camera to render from. By default uses the free camera.
 
         Returns:
             A numpy array of the pixels.
@@ -91,8 +90,7 @@ class Renderer(abc.ABC):
             azimuth: Horizontal angle of the camera, in degrees.
             elevation: Vertical angle of the camera, in degrees.
             lookat: The (x, y, z) position in world coordinates to target.
-            center: If True and `lookat` is not given, targets the camera at the
-                median position of the simulation geometry.
+            center: If True and lookat is not given, targets the camera at the median position of the simulation geometry.
         """
         settings = {}
         if distance is not None:

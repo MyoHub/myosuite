@@ -42,6 +42,12 @@ Advanced user are invited to familiarize themselves with the basics of the `Open
 
 
 .. toctree::
+   :maxdepth: 2
+   :caption: API Reference
+
+   api/index
+
+.. toctree::
    :maxdepth: 1
    :caption: References
 
@@ -59,7 +65,6 @@ How to cite
       publisher = {arXiv},
       year = {2022},
       howpublished = {\url{https://github.com/facebookresearch/myosuite}},
-      year =         {2022}
       doi = {10.48550/ARXIV.2205.13600},
       url = {https://arxiv.org/abs/2205.13600},
    }

@@ -80,6 +80,7 @@ jobs:
       run: uv run python -m myosuite.tests.test_myoapi
 
     - name: Run Test mjx
+      if: ${{ runner.os != 'Windows' }}
       run: |
         uv run --with ".[mjx]" python -m pytest myosuite/tests/test_mjx.py -v
         uv run --with ".[mjx]" python -m pytest myosuite/tests/mjx/test_quat_math.py -v

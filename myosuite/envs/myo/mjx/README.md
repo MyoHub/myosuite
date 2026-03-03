@@ -12,13 +12,13 @@ The default installation requires Python ≥3.9 and MuJoCo 3.3.0. See the [main 
 1. Switch to python 3.10 and install MJX dependencies:
    ```bash
    # With uv:
-   uv sync --extra mjx -p 3.10
+   uv sync --extra mjx -p 3.10 # replace "mjx" with "mjx-cuda" for jax with cuda support
    uv remove mujoco
    uv add "mujoco==3.3.6"
    uv add "mujoco-mjx==3.3.6" # use "mujoco-mjx[warp]" for warp support
 
    # With pip:
-   pip install -e ".[mjx]"
+   pip install -e ".[mjx]" # replace "mjx" with "mjx-cuda" for jax with cuda support
    pip uninstall mujoco -y
    pip install "mujoco==3.3.6"
    pip install "mujoco-mjx==3.3.6" # use "mujoco-mjx[warp]" for warp support
@@ -26,7 +26,6 @@ The default installation requires Python ≥3.9 and MuJoCo 3.3.0. See the [main 
 
 NOTE: 
    - For [warp](https://github.com/google-deepmind/mujoco_warp) support, until it is integrated into the main mujoco release, you should depend on the warp tag: `mujoco-mjx[warp]`
-   - For jax with cuda support, you could install `jax[cuda]` instead of `jax`, with `uv add "jax[cuda]>=0.4.20"` or `pip install "jax[cuda]>=0.4.20"`.
 
 
 2. **Verify installation**:

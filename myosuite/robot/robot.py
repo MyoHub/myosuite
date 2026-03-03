@@ -1,9 +1,8 @@
-"""=================================================
-Copyright (C) 2018 Vikash Kumar
-Author  :: Vikash Kumar (vikashplus@gmail.com)
-Source  :: https://github.com/vikashplus/robohive
-License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-================================================="""
+"""Copyright (C) 2018 Vikash Kumar.
+Author: Vikash Kumar (vikashplus@gmail.com)
+Source: https://github.com/vikashplus/robohive
+License: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+"""
 
 import time
 from collections import deque
@@ -574,12 +573,19 @@ class Robot:
 
     # Propagate sensor values back through the simulation.
     def sensor2sim(self, sensor, mj_model, mj_data):
-        """
-        Propagate sensor values back.
-        This operation is water-tight only where the system is fully observable (including velocities)
-        Example usage:
-          (1) can be used to feed hardware sensors to robot-sim
-          (2) can be used to feed noisy sim sensors back into the robot-sim. Note: Be careful, sim might not be stable for simulation after
+        """Propagate sensor values back into the simulation.
+
+        This operation is water-tight only where the system is fully observable
+        (including velocities).
+
+        Args:
+            sensor: Sensor data dict.
+            mj_model: MuJoCo model.
+            mj_data: MuJoCo data to update.
+
+        Note:
+            Can be used to feed hardware sensors to robot-sim, or noisy sim sensors
+            back into robot-sim (be careful: sim may be unstable afterward).
         """
         if not self.is_hardware and (self._noise_scale != 0):
             print(
@@ -863,13 +869,14 @@ class Robot:
         realTimeSim=False,
         render_cbk=None,
     ):
-        """
-        Apply controls and step forward in time
-        INPUTS:
-            ctrl_desired:       Desired control to be applied(sim_space)
-            step_duration:      Step duration (seconds)
-            ctrl_normalized:    is the ctrl normalized to [-1, 1]
-            realTimeSim:        run simulate real world speed via sim
+        """Apply controls and step forward in time.
+
+        Args:
+            ctrl_desired: Desired control to be applied (sim_space).
+            step_duration: Step duration in seconds.
+            ctrl_normalized: If True, ctrl is normalized to [-1, 1].
+            realTimeSim: If True, run simulation at real-world speed.
+            render_cbk: Optional render callback.
         """
 
         # pick output space
