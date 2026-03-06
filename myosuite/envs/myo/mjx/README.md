@@ -1,6 +1,6 @@
 # MyoSuite MJX and MJWarp
 
-This directory contains MJX (MuJoCo XLA) and MJWarp implementations of MyoSuite environments for accelerated training.
+This directory contains [MJX (MuJoCo XLA)](https://mujoco.readthedocs.io/en/stable/mjx.html) and [MJWarp](https://mujoco.readthedocs.io/en/latest/mjwarp/) implementations of MyoSuite environments for accelerated training.
 
 ## Installation
 
@@ -20,14 +20,13 @@ The default installation requires Python ≥3.9 and MuJoCo 3.3.6. See the [main 
 
 2. Apply patch to use MJWarp via the MJX API
 
-To enable `naccdmax` support in MJX (see [MuJoCo PR #3096](https://www.google.com/search?q=https://github.com/google-deepmind/mujoco/pull/3096)), run the following command to overwrite the local `io.py` with the fixed version:
+   To enable `naccdmax` support in MJX (see [MuJoCo PR #3096](https://github.com/google-deepmind/mujoco/pull/3096)), run the following command to overwrite the local `io.py` with the fixed version:
 
-```bash
-# Apply the surgical patch to the active environment
-curl -fsSL https://raw.githubusercontent.com/google-deepmind/mujoco/refs/pull/3096/head/mjx/mujoco/mjx/_src/io.py \
--o $(python -c "import mujoco.mjx._src.io as io; print(io.__file__)")
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/google-deepmind/mujoco/refs/pull/3096/head/mjx/mujoco/mjx/_src/io.py \
+   -o $(python -c "import mujoco.mjx._src.io as io; print(io.__file__)")
 
-```
+   ```
 
 3. **Verify installation**:
    ```bash
@@ -44,3 +43,27 @@ uv run train_jax_ppo.py
 ```
 Remember to initialize the submodules with `uv run myoapi_init` before running the examples (see the [main README](../../../../README.md) for more details).
 
+## Accelerated Training
+
+We benchmark training speed across three MyoSuite environments to compare the wall-clock efficiency of MuJoCo against its GPU-accelerated counterparts, MJX and MJWarp.
+
+### Benchmark Configuration
+
+* **Hardware:** NVIDIA RTX 4500 GPU.
+* **MuJoCo (CPU):** Uses [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) PPO, parallelized across **20 CPUs**.
+  * PPO params: `n_steps=4096`, `batch_size=256`, `n_epochs=8`.
+* **MJX & MJWarp (GPU):** Uses [Brax](https://github.com/google/brax) PPO for environment vectorization on the GPU.
+  * PPO params: `unroll_length=10`, `batch_size=256`, `num_minibatches=32`, `num_updates_per_batch=8`.
+
+### Results
+
+![Training Results](results.png)
+
+* **MJX** provides significant acceleration for most tasks, achieving up to a **45x** speedup over the MuJoCo baseline.
+* *Note:* In `MjxHandReachRandom-v0`, MJX shows no significant benefit over CPU, likely due to greater contact complexity.
+
+
+* **MJWarp** consistently outperforms both, offering a **20x to 73x** speedup.
+* MJWarp is specifically optimized to achieve improved scaling for contact-rich scenes compared to the MJX.
+
+* The transition from CPU-based parallelization to GPU-native vectorization drastically reduces total training time, enabling policies to be trained on myosuite environments in minutes rather than hours.
