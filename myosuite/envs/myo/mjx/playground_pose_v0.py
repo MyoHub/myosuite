@@ -10,6 +10,8 @@ from mujoco_playground._src import (
 )  # Several helper functions are only visible under _src
 import numpy as np
 
+from myosuite.envs.myo.mjx.playground_reach_v0 import make_data
+
 
 class MjxPoseEnvV0(mjx_env.MjxEnv):
     def __init__(
@@ -27,10 +29,8 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
         print(f"All margins set to 0")
 
         self._mj_model.opt.timestep = config.sim_dt
-        # self._mj_model.opt.solver = mujoco.mjtSolver.mjSOL_CG
         self._mj_model.opt.iterations = 6
         self._mj_model.opt.ls_iterations = 6
-        # self._mj_model.opt.disableflags = self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP
 
         self._mjx_model = mjx.put_model(self._mj_model, impl=config.impl)
         self._xml_path = config.model_path.as_posix()
@@ -63,27 +63,26 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
             minval=self.mjx_model.jnt_range[:, 0],
             maxval=self.mjx_model.jnt_range[:, 1],
         )
-        # TODO: Velocity initialization
         qvel = jp.zeros(self.mjx_model.nv)
 
         target_angles = self.generate_target_pose(rng2)
 
-        # We store the target angles in the info, can't store it as an instance variable,
-        # as it has to be determined in a parallelized manner
         info = {
             "rng": rng,
             "target_angles": target_angles,
             "step_count": jp.array(0, dtype=jp.int32),
         }
 
+        naconmax = 25 * self._config.num_envs
         data = make_data(
             self._mj_model,
             qpos=qpos,
             qvel=qvel,
             ctrl=jp.zeros((self.mjx_model.nu,)),
             impl=self._config.impl,
-            nconmax=125 * self._config.num_envs,
-            njmax=self.mj_model.njmax,
+            naconmax=naconmax,
+            njmax=self._mj_model.njmax if self._mj_model.njmax != -1 else 1_000,
+            naccdmax=naconmax,  # https://github.com/google-deepmind/mujoco/pull/3096
         )
 
         obs = self._get_obs(data, info)
@@ -195,33 +194,3 @@ class MjxPoseEnvV0(mjx_env.MjxEnv):
     @property
     def mjx_model(self) -> mjx.Model:
         return self._mjx_model
-
-
-def make_data(
-    model: mujoco.MjModel,
-    qpos: Optional[jax.Array] = None,
-    qvel: Optional[jax.Array] = None,
-    ctrl: Optional[jax.Array] = None,
-    act: Optional[jax.Array] = None,
-    mocap_pos: Optional[jax.Array] = None,
-    mocap_quat: Optional[jax.Array] = None,
-    impl: Optional[str] = None,
-    nconmax: Optional[int] = None,
-    njmax: Optional[int] = None,
-    device: Optional[jax.Device] = None,
-) -> mjx.Data:
-    """Initialize MJX Data."""
-    data = mjx.make_data(model, impl=impl, nconmax=nconmax, njmax=njmax, device=device)
-    if qpos is not None:
-        data = data.replace(qpos=qpos)
-    if qvel is not None:
-        data = data.replace(qvel=qvel)
-    if ctrl is not None:
-        data = data.replace(ctrl=ctrl)
-    if act is not None:
-        data = data.replace(act=act)
-    if mocap_pos is not None:
-        data = data.replace(mocap_pos=mocap_pos.reshape(model.nmocap, -1))
-    if mocap_quat is not None:
-        data = data.replace(mocap_quat=mocap_quat.reshape(model.nmocap, -1))
-    return data

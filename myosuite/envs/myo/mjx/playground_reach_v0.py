@@ -10,10 +10,6 @@ from mujoco_playground._src import (
 )  # Several helper functions are only visible under _src
 import numpy as np
 
-import tempfile
-import os
-import pathlib
-
 
 class MjxReachEnvV0(mjx_env.MjxEnv):
     def __init__(
@@ -23,23 +19,7 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
     ) -> None:
         super().__init__(config, config_overrides)
 
-        # remove myosuite_scene to speed up simulation
-        orig_path = pathlib.Path(config.model_path)
-        with tempfile.NamedTemporaryFile(
-            "w", dir=orig_path.parent, suffix=".xml", delete=False
-        ) as tmp_file:
-            for line in orig_path.open():
-                if "myosuite_scene.xml" in line:
-                    # comment out or skip
-                    tmp_file.write(f"<!-- {line.strip()} -->\n")
-                else:
-                    tmp_file.write(line)
-            tmp_path = tmp_file.name
-
-        spec = mujoco.MjSpec.from_file(tmp_path)
-
-        os.remove(tmp_path)
-
+        spec = mujoco.MjSpec.from_file(config.model_path.as_posix())
         spec = self.preprocess_spec(spec)
         self._mj_model = spec.compile()
 
@@ -47,10 +27,9 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
         print(f"All margins set to 0")
 
         self._mj_model.opt.timestep = config.sim_dt
-        # self._mj_model.opt.solver = mujoco.mjtSolver.mjSOL_CG
         self._mj_model.opt.iterations = 6
         self._mj_model.opt.ls_iterations = 6
-        # self._mj_model.opt.disableflags = self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP
+        self._mj_model.opt.ccd_iterations = 100
 
         self._mjx_model = mjx.put_model(self._mj_model, impl=config.impl)
         self._xml_path = config.model_path.as_posix()
@@ -100,22 +79,22 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
 
         reward, done, zero = jp.zeros(3)
 
-        # We store the targets in the info, can't store it as an instance variable,
-        # as it has to be determined in a parallelized manner
         info = {
             "rng": rng,
             "targets": targets,
             "step_count": jp.array(0, dtype=jp.int32),
         }
 
+        naconmax = 25 * self._config.num_envs
         data = make_data(
             self._mj_model,
             qpos=qpos,
             qvel=qvel,
             ctrl=jp.zeros((self.mjx_model.nu,)),
             impl=self._config.impl,
-            nconmax=125 * self._config.num_envs,
-            njmax=self.mj_model.njmax,
+            naconmax=naconmax,
+            njmax=self._mj_model.njmax if self._mj_model.njmax != -1 else 1_000,
+            naccdmax=naconmax,  # https://github.com/google-deepmind/mujoco/pull/3096
         )
 
         obs, _ = self._get_obs(data, info)
@@ -243,12 +222,20 @@ def make_data(
     mocap_pos: Optional[jax.Array] = None,
     mocap_quat: Optional[jax.Array] = None,
     impl: Optional[str] = None,
-    nconmax: Optional[int] = None,
+    naconmax: Optional[int] = None,
     njmax: Optional[int] = None,
+    naccdmax: Optional[int] = None,
     device: Optional[jax.Device] = None,
 ) -> mjx.Data:
     """Initialize MJX Data."""
-    data = mjx.make_data(model, impl=impl, nconmax=nconmax, njmax=njmax, device=device)
+    data = mjx.make_data(
+        model,
+        impl=impl,
+        naconmax=naconmax,
+        njmax=njmax,
+        naccdmax=naccdmax,
+        device=device,
+    )
     if qpos is not None:
         data = data.replace(qpos=qpos)
     if qvel is not None:
