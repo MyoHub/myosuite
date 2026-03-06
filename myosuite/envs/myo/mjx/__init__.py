@@ -23,7 +23,7 @@ pose_env_config = config_dict.create(
     target_jnt_range=config_dict.ConfigDict(),
     max_episode_steps=100,
     model_path=epath.Path("/tmp/dummy.xml"),
-    impl="warp",
+    impl="jax",
 )
 
 reach_env_config = config_dict.create(
@@ -39,7 +39,7 @@ reach_env_config = config_dict.create(
     far_th=0.35,
     max_episode_steps=100,
     model_path=epath.Path("/tmp/dummy.xml"),
-    impl="warp",
+    impl="jax",
 )
 
 ppo_config = config_dict.create(
@@ -102,7 +102,7 @@ def get_default_config(env_name) -> config_dict.ConfigDict:
     return registry.get_default_config(env_name)
 
 
-def make(env_name: str) -> mjx_env.MjxEnv:
+def make(env_name: str, impl: str) -> mjx_env.MjxEnv:
 
     if "MjxElbowPose" in env_name:
 
@@ -114,6 +114,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
             elbow_pose_env_config["target_jnt_range"] = config_dict.create(
                 r_elbow_flex=jp.array(((0), (2.27)))
             )
+        elbow_pose_env_config["impl"] = impl
         registry.register_environment(
             env_name, MjxPoseEnvV0, config_callable(elbow_pose_env_config)
         )
@@ -137,6 +138,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
                 IFpip=jp.array(((0.1), (1))),
                 IFdip=jp.array(((0.1), (1))),
             )
+        finger_pose_env_config["impl"] = impl
         registry.register_environment(
             env_name, MjxPoseEnvV0, config_callable(finger_pose_env_config)
         )
@@ -189,6 +191,7 @@ def make(env_name: str) -> mjx_env.MjxEnv:
                     )
                 ),
             )
+        hand_reach_env_config["impl"] = impl
         registry.register_environment(
             env_name, MjxReachEnvV0, config_callable(hand_reach_env_config)
         )

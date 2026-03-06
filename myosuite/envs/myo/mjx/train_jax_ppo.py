@@ -13,12 +13,13 @@ from myosuite.envs.myo.mjx import make, get_default_config
 from mujoco_playground import wrapper
 
 import wandb
+import argparse
 
 
-def main(env_name, log_to_wandb=False):
+def main(env_name, impl, log_to_wandb):
     """Run training and evaluation for the specified environment."""
 
-    env, ppo_params, network_factory = load_env_and_network_factory(env_name)
+    env, ppo_params, network_factory = load_env_and_network_factory(env_name, impl)
 
     if log_to_wandb:
         wandb_run = wandb.init(project=env_name, config=ppo_params)
@@ -39,11 +40,12 @@ def main(env_name, log_to_wandb=False):
     print(f"Time to train: {times[-1] - times[1]}")
 
 
-def load_env_and_network_factory(env_name):
-    env = make(env_name)
+def load_env_and_network_factory(env_name, impl):
+    env = make(env_name, impl)
     ppo_params = dict(ppo_config)
 
     print(f"Training on environment:\n{env_name}")
+    print(f"Using backend:\n{impl}")
     print(f"Environment Config:\n{get_default_config(env_name)}")
     print(f"PPO Training Parameters:\n{ppo_config}")
 
@@ -77,9 +79,23 @@ def progress(num_steps, metrics, log_to_wandb):
 
 if __name__ == "__main__":
 
-    env_name = "MjxFingerPoseRandom-v0"
-    # env_name = "MjxElbowPoseRandom-v0"
-    # env_name = "MjxHandReachRandom-v0"
-    log_to_wandb = False
+    parser = argparse.ArgumentParser(description="Train PPO agent with Brax")
+    parser.add_argument(
+        "--env_name",
+        type=str,
+        default="MjxFingerPoseRandom-v0",
+    )
+    parser.add_argument(
+        "--impl",
+        type=str,
+        default="jax",
+        help='Implementation to use: "jax" (MJX) or "warp" (MJWarp)',
+    )
+    parser.add_argument(
+        "--log_to_wandb",
+        action="store_true",
+    )
 
-    main(env_name, log_to_wandb)
+    args = parser.parse_args()
+
+    main(args.env_name, args.impl, args.log_to_wandb)
