@@ -12,37 +12,37 @@ from myosuite.envs.myo.mjx.playground_pose_v0 import MjxPoseEnvV0
 from myosuite.envs.myo.mjx.playground_reach_v0 import MjxReachEnvV0
 
 pose_env_config = config_dict.create(
-        ctrl_dt=0.02,
-        sim_dt=0.002,
-        num_envs=4096,
-        reward_config=config_dict.create(
-            angle_reward_weight=1.,
-            ctrl_cost_weight=1.,
-            pose_thd=0.35,
-            far_th=4*jp.pi/2,
-            bonus_weight=4.
-        ),
-        target_jnt_range=config_dict.ConfigDict(),
-        max_episode_steps=100,
-        model_path=epath.Path('/tmp/dummy.xml'),
-        impl="jax"
-    )
+    ctrl_dt=0.02,
+    sim_dt=0.002,
+    num_envs=4096,
+    reward_config=config_dict.create(
+        angle_reward_weight=1.,
+        ctrl_cost_weight=1.,
+        pose_thd=0.35,
+        far_th=4*jp.pi/2,
+        bonus_weight=4.
+    ),
+    target_jnt_range=config_dict.ConfigDict(),
+    max_episode_steps=100,
+    model_path=epath.Path('/tmp/dummy.xml'),
+    impl="jax"
+)
 
 reach_env_config = config_dict.create(
-        ctrl_dt=0.02,
-        sim_dt=0.002,
-        num_envs=4096,
-        reward_weights=config_dict.create(
-            reach=1.,
-            bonus=4.,
-            penalty=50.,
-        ),
-        target_reach_range=config_dict.ConfigDict(),
-        far_th=0.35,
-        max_episode_steps=100,
-        model_path=epath.Path('/tmp/dummy.xml'),
-        impl="jax"
-    )
+    ctrl_dt=0.02,
+    sim_dt=0.002,
+    num_envs=4_096,
+    reward_weights=config_dict.create(
+        reach=1.0,
+        bonus=4.0,
+        penalty=50.0,
+    ),
+    target_reach_range=config_dict.ConfigDict(),
+    far_th=0.35,
+    max_episode_steps=100,
+    model_path=epath.Path("/tmp/dummy.xml"),
+    impl="warp",
+)
 
 ppo_config = config_dict.create(
         num_timesteps=40_000_000,
@@ -122,7 +122,7 @@ def make(env_name: str, config_overrides=None) -> mjx_env.MjxEnv:
         env = registry.load(env_name, config_overrides=config_overrides)
 
         return env
-    
+
     if "MjxFingerPose" in env_name_base:
 
         if env_name_base == "MjxFingerPoseFixed-v0":
@@ -157,19 +157,44 @@ def make(env_name: str, config_overrides=None) -> mjx_env.MjxEnv:
                         RFtip=jp.array(((-0.148, -0.543, 1.445), (-0.148, -0.543, 1.445))),
                         LFtip=jp.array(((-0.148, -0.528, 1.434), (-0.148, -0.528, 1.434))),
                     )
-        elif env_name_base == "MjxHandReachRandom-v0":
-            hand_reach_env_config['far_th'] = 0.034
-            hand_reach_env_config['target_reach_range'] = config_dict.create(
-                        THtip=jp.array(((-0.165-0.020, -0.537-0.040, 1.495-0.040), (-0.165+0.040, -0.537+0.020, 1.495+0.040))),
-                        IFtip=jp.array(((-0.151-0.040, -0.547-0.020, 1.455-0.010), (-0.151+0.040, -0.547+0.020, 1.455+0.010))),
-                        MFtip=jp.array(((-0.146-0.040, -0.547-0.020, 1.447-0.010), (-0.146+0.040, -0.547+0.020, 1.447+0.010))),
-                        RFtip=jp.array(((-0.148-0.040, -0.543-0.020, 1.445-0.010), (-0.148+0.040, -0.543+0.020, 1.445+0.010))),
-                        LFtip=jp.array(((-0.148-0.040, -0.528-0.020, 1.434-0.010), (-0.148+0.040, -0.528+0.020, 1.434+0.010))),
+        elif env_name == "MjxHandReachRandom-v0":
+            hand_reach_env_config["far_th"] = 0.034
+            hand_reach_env_config["target_reach_range"] = config_dict.create(
+                THtip=jp.array(
+                    (
+                        (-0.165 - 0.020, -0.537 - 0.040, 1.495 - 0.040),
+                        (-0.165 + 0.040, -0.537 + 0.020, 1.495 + 0.040),
                     )
-        registry.register_environment_with_variants(env_name_base,
-                                      MjxReachEnvV0,
-                                      config_callable(hand_reach_env_config))
-        env = registry.load(env_name, config_overrides=config_overrides)
+                ),
+                IFtip=jp.array(
+                    (
+                        (-0.151 - 0.040, -0.547 - 0.020, 1.455 - 0.010),
+                        (-0.151 + 0.040, -0.547 + 0.020, 1.455 + 0.010),
+                    )
+                ),
+                MFtip=jp.array(
+                    (
+                        (-0.146 - 0.040, -0.547 - 0.020, 1.447 - 0.010),
+                        (-0.146 + 0.040, -0.547 + 0.020, 1.447 + 0.010),
+                    )
+                ),
+                RFtip=jp.array(
+                    (
+                        (-0.148 - 0.040, -0.543 - 0.020, 1.445 - 0.010),
+                        (-0.148 + 0.040, -0.543 + 0.020, 1.445 + 0.010),
+                    )
+                ),
+                LFtip=jp.array(
+                    (
+                        (-0.148 - 0.040, -0.528 - 0.020, 1.434 - 0.010),
+                        (-0.148 + 0.040, -0.528 + 0.020, 1.434 + 0.010),
+                    )
+                ),
+            )
+        registry.register_environment(
+            env_name, MjxReachEnvV0, config_callable(hand_reach_env_config)
+        )
+        env = registry.load(env_name)
 
         return env
 

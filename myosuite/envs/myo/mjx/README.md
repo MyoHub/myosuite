@@ -38,27 +38,27 @@ The default installation requires Python ≥3.9 and MuJoCo 3.3.6. See the [main 
 ## Examples
 Train JAX PPO with:
 ```bash
-uv run train_jax_ppo.py
+uv run train_jax_ppo.py --env_name=MjxElbowPoseRandom-v0 --impl=warp
 ```
 Remember to initialize the submodules with `uv run myoapi_init` before running the examples (see the [main README](../../../../README.md) for more details).
 
-## Accelerated Training
+## Training Speed Benchmark
 
-We benchmark training speed across three MyoSuite environments to compare the wall-clock efficiency of MuJoCo against its GPU-accelerated counterparts, MJX and MJWarp.
+We train a PPO agent on three MyoSuite environments using MuJoCo, MJX and MJWarp and compare wall-clock training time.
 
 ### Benchmark Configuration
 
+* **Environments:** MjxElbowPoseRandom-v0, MjxFingerPoseRandom-v0, and MjxHandReachRandom-v0.
+* **Algorithm:** PPO implemented in [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) (MuJoCo) and [Brax](https://github.com/google/brax) (MJX, MJWarp).
+  * Stable-Baselines3 params: n_steps=4096, batch_size=256, n_epochs=8. Environment interactions parallelized across 20 CPUs.
+  * BRAX params: unroll_length=10, batch_size=256, num_minibatches=32, num_updates_per_batch=8.
 * **Hardware:** NVIDIA RTX 4500 GPU.
-* **MuJoCo (CPU)** uses [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) PPO, parallelized across 20 CPUs.
-  * PPO params: n_steps=4096, batch_size=256, n_epochs=8.
-* **MJX & MJWarp (GPU)** use [Brax](https://github.com/google/brax) PPO.
-  * PPO params: unroll_length=10, batch_size=256, num_minibatches=32, num_updates_per_batch=8.
 
 ### Results
 
-The transition from CPU-based parallelization to GPU-native vectorization drastically reduces total training time, enabling policies to be trained on myosuite environments in minutes rather than hours.
+GPU-native vectorization (MJX, MJWarp) drastically reduces total training time compared to CPU-based parallelization (MuJoCo), enabling policies to be trained on myosuite environments in minutes rather than hours.
 
 ![Training Results](results.png)
 
-* **MJX** provides significant acceleration for most tasks, achieving up to **45x** speedup over MuJoCo. *Note*: MJX shows no benefit over CPU in MjxHandReachRandom-v0, likely due to greater contact complexity.
-* **MJWarp** consistently outperforms both MuJoCo and MJX, offering a **20x to 73x** speedup. MJWarp has been optimized to achieve improved scaling for contact-rich environments compared to the MJX.
+* **MJX** provides significant acceleration for MjxElbowPoseRandom-v0 and MjxFingerPoseRandom-v0, achieving up to **45x** speedup over MuJoCo. MJX shows no benefit over MuJoCo in MjxHandReachRandom-v0, however, likely due to greater contact complexity.
+* **MJWarp**, which has been optimized to achieve improved scaling for contact-rich environments compared to MJX, consistently outperforms both MuJoCo and MJX across all environments, offering a **20x–73x** speedup.
