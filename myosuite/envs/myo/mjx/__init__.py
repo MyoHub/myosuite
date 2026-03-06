@@ -23,7 +23,7 @@ pose_env_config = config_dict.create(
     target_jnt_range=config_dict.ConfigDict(),
     max_episode_steps=100,
     model_path=epath.Path("/tmp/dummy.xml"),
-    impl="jax",
+    impl="warp",
 )
 
 reach_env_config = config_dict.create(
