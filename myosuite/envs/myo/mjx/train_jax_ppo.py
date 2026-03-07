@@ -45,9 +45,8 @@ def main(env_name, impl='jax', log_to_wandb=False, render_evaluations=False):
         pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 def load_env_and_network_factory(env_name, impl):
-    env = make(env_name)
+    env = make(env_name, config_overrides={"impl": impl})
     config = get_default_config(env_name)
-    config["impl"] = impl
 
     ppo_params = dict(ppo_config)
 
@@ -61,7 +60,7 @@ def load_env_and_network_factory(env_name, impl):
         )
     else:
         network_factory = ppo_networks.make_ppo_networks
-        
+
     return env, ppo_params, network_factory
 
 
@@ -99,11 +98,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--log_to_wandb",
+        default=False,
         action="store_true",
     )
 
     parser.add_argument(
         "--render",
+        default=False,
         action="store_true",
     )
 
