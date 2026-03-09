@@ -49,6 +49,14 @@ mjx = [
     "wandb>=0.21.0; python_version >= '3.10' and sys_platform != 'win32'",
     "imageio",
 ]
+tutorials = [
+    "matplotlib",
+	"pandas",
+	"tqdm",
+	"mink",
+	"osqp",
+	"stable-baselines3[extra]",
+]
 mjx-cuda = [
     "MyoSuite[mjx]",
     "jax[cuda]>=0.4.20; python_version >= '3.10'",
