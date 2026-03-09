@@ -26,10 +26,10 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
         super().__init__(config, config_overrides)
 
         spec = mujoco.MjSpec.from_file(config.model_path.as_posix())
+        self.impl = self._config.impl
         spec = self.preprocess_spec(spec)
         self._mj_spec = spec
         self._mj_model = spec.compile()
-        self.impl = self._config.impl
 
         self._mjx_model = mjx.put_model(self._mj_model, impl=self._config.impl)
         self._xml_path = config.model_path.as_posix()
@@ -38,10 +38,11 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
 
     def preprocess_spec(self, spec: mujoco.MjSpec) -> mujoco.MjSpec:
         for geom in spec.geoms:
-            if geom.type == mujoco.mjtGeom.mjGEOM_CYLINDER:
-                geom.conaffinity = 0
-                geom.contype = 0
-                print(f"Disabled contacts for cylinder geom named \"{geom.name}\"")
+            if self.impl == "jax":
+                if geom.type == mujoco.mjtGeom.mjGEOM_CYLINDER:
+                    geom.conaffinity = 0
+                    geom.contype = 0
+                    print(f"Disabled contacts for cylinder geom named \"{geom.name}\"")
             if geom.margin != 0:
                 geom.margin = 0
                 print(f"Margin of \"{geom.name}\" set to 0")
@@ -114,13 +115,18 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
         return info
 
     def _get_data(self, qpos, qvel):
-        return make_data(self._mj_model,
-                         qpos=qpos,
-                         qvel=qvel,
-                         ctrl=jp.zeros((self.mjx_model.nu,)),
-                         impl=self._config.impl,
-                         nconmax=125 if self._config.impl == "warp" else None,
-                         njmax=100 if self._config.impl == "warp" else None)
+        naconmax = 25 * self._config.num_envs
+        data = make_data(
+            self._mj_model,
+            qpos=qpos,
+            qvel=qvel,
+            ctrl=jp.zeros((self.mjx_model.nu,)),
+            impl=self._config.impl,
+            naconmax=naconmax,
+            njmax=self._mj_model.njmax if self._mj_model.njmax != -1 else 1_000,
+            naccdmax=naconmax,  # https://github.com/google-deepmind/mujoco/pull/3096
+        )
+        return data
 
     @property
     def xml_path(self) -> str:
@@ -148,13 +154,14 @@ def make_data(
         mocap_pos: Optional[jax.Array] = None,
         mocap_quat: Optional[jax.Array] = None,
         impl: Optional[str] = None,
-        nconmax: Optional[int] = None,
+        naconmax: Optional[int] = None,
         njmax: Optional[int] = None,
+        naccdmax: Optional[int] = None,
         device: Optional[jax.Device] = None,
 ) -> mjx.Data:
     """Initialize MJX Data."""
     data = mjx.make_data(
-        model, impl=impl, nconmax=nconmax, njmax=njmax, device=device
+        model, impl=impl, naconmax=naconmax, njmax=njmax, naccdmax=naccdmax, device=device
     )
     if qpos is not None:
         data = data.replace(qpos=qpos)
