@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Dict, Optional, Union
 import jax
 import jax.numpy as jp
@@ -6,47 +5,37 @@ from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
 from mujoco_playground import State
-from mujoco_playground._src import mjx_env  # Several helper functions are only visible under _src
-import numpy as np
 from myosuite.envs.myo.mjx.mjx_base_env import MjxMyoBase
-import tempfile
-import os
-import pathlib
 
 
 class MjxReachEnvV0(MjxMyoBase):
     def __init__(
-            self,
-            config: config_dict.ConfigDict,
-            config_overrides: Optional[Dict[str, Union[str, int, list[Any]]]] = None,
+        self,
+        config: config_dict.ConfigDict,
+        config_overrides: Optional[Dict[str, Union[str, int, list[Any]]]] = None,
     ) -> None:
         super().__init__(config, config_overrides)
 
         self._tip_sids = []
         self._target_sids = []
         for site in self._config.target_reach_range.keys():
-            self._tip_sids.append(mujoco.mj_name2id(self._mj_model, mujoco.mjtObj.mjOBJ_SITE.value, site))
+            self._tip_sids.append(
+                mujoco.mj_name2id(self._mj_model, mujoco.mjtObj.mjOBJ_SITE.value, site)
+            )
             self._target_sids.append(
-                mujoco.mj_name2id(self._mj_model, mujoco.mjtObj.mjOBJ_SITE.value, site + '_target'))
+                mujoco.mj_name2id(
+                    self._mj_model, mujoco.mjtObj.mjOBJ_SITE.value, site + "_target"
+                )
+            )
         self._tip_sids = jp.array(self._tip_sids)
         self._target_sids = self._target_sids
-
-    def preprocess_spec(self, spec: mujoco.MjSpec) -> mujoco.MjSpec:
-        spec = super().preprocess_spec(spec)
-        for g in spec.geoms:
-            if g.parent.name == 'world':
-                spec.delete(g)
-                print(f"Deleted world geom \"{g.name}\"")
-        return spec
 
     def generate_target_pose(self, rng: jp.ndarray) -> Dict[str, jp.ndarray]:
         targets = []
         for span in self._config.target_reach_range.values():
-            targets.append(jax.random.uniform(
-                rng, (span[0].size,),
-                minval=span[0],
-                maxval=span[1]
-            ))
+            targets.append(
+                jax.random.uniform(rng, (span[0].size,), minval=span[0], maxval=span[1])
+            )
         return jp.stack(targets)
 
     def reset(self, rng: jp.ndarray) -> State:
@@ -59,9 +48,7 @@ class MjxReachEnvV0(MjxMyoBase):
         targets = self.generate_target_pose(rng2)
         self.n_targets = len(targets)
         self.near_th = self.n_targets * .0125
-
-        reward, done, zero = jp.zeros(3)
-
+        
         # We store the targets in the info, can't store it as an instance variable,
         # as it has to be determined in a parallelized manner
         info = {'rng': rng,
@@ -70,40 +57,47 @@ class MjxReachEnvV0(MjxMyoBase):
 
         data = self._get_data(qpos, qvel)
         obs = self._get_obs(data, info)
-
+        
+        reward, done, zero = jp.zeros(3)
         metrics = {
-            'reach_reward': zero,
-            'bonus_reward': zero,
-            'penalty_reward': zero,
-            'solved_frac': zero
+            "reach_reward": zero,
+            "bonus_reward": zero,
+            "penalty_reward": zero,
+            "solved_frac": zero,
         }
         return State(data, obs, reward, done, metrics, info)
 
     def _get_rewards(self, data, info):
         reach_err = self._reach_err(data, info)
         reach_dist = jp.linalg.norm(reach_err, axis=-1)
+        
+        far_th = jp.where(
+            data.time > 2.0 * self.mjx_model.opt.timestep,
+            self._config.far_th * self.n_targets,
+            jp.inf,
+        )
 
-        far_th = jp.where(data.time > 2. * self.mjx_model.opt.timestep, self._config.far_th * self.n_targets, jp.inf)
-
-        reach = -1. * reach_dist * self._config.reward_weights.reach
-        bonus = (1. * (reach_dist < 2 * self.near_th) + 1. * (
-                reach_dist < self.near_th)) * self._config.reward_weights.bonus
-        penalty = -1. * (reach_dist > far_th) * self._config.reward_weights.penalty
+        reach = -1.0 * reach_dist * self._config.reward_weights.reach
+        bonus = (
+            1.0 * (reach_dist < 2 * self.near_th) + 1.0 * (reach_dist < self.near_th)
+        ) * self._config.reward_weights.bonus
+        penalty = -1.0 * (reach_dist > far_th) * self._config.reward_weights.penalty
+        
         return {"reach": reach, "bonus": bonus, "penalty": penalty}
-
-    def _get_reward(self, data: mjx.Data, info: dict) -> float:
-        return sum(jax.tree_util.tree_leaves(self._get_rewards(data, info)))
-
+    
     def _get_done(self, state: State) -> float:
         reach_err = self._reach_err(state.data, state.info)
         reach_dist = jp.linalg.norm(reach_err, axis=-1)
         far_th = jp.where(
-            state.data.time > 2. * self.mjx_model.opt.timestep, self._config.far_th * self.n_targets, jp.inf)
-        return 1. * (reach_dist > far_th)
-
+            data.time > 2.0 * self.mjx_model.opt.timestep,
+            self._config.far_th * self.n_targets,
+            jp.inf,
+        )
+        done = 1. * (reach_dist > far_th)
+        
+        return done
+    
     def _get_metrics(self, state: State) -> dict:
-        reach_err = self._reach_err(state.data, state.info)
-        reach_dist = jp.linalg.norm(reach_err, axis=-1)
         solved = 1. * (reach_dist < self.near_th)
         rewards = self._get_rewards(state.data, state.info)
 
@@ -113,23 +107,55 @@ class MjxReachEnvV0(MjxMyoBase):
             "penalty_reward": rewards["penalty"],
             "solved_frac": solved / self._config.max_episode_steps
         }
+    
+    def _get_info(self, state: State) -> dict:
+        done = state.done
 
-    def _get_obs(
-            self, data: mjx.Data, info: Dict
-    ) -> dict:
-        """Observe qpos, qvel, act, tip_pos and reach_err."""
-        tip_pos = data.site_xpos[self._tip_sids]
-        reach_err = (info['targets'] - tip_pos).ravel()
-        obs = jp.concatenate([
-            data.qpos,
-            data.qvel,
-            data.act,
-            tip_pos.ravel(),
-            reach_err
-        ])
-        return {"base_obs": obs}
+        # reset step counter if done or truncation
+        truncation = jp.where(
+            state.info["step_count"] >= self._config.max_episode_steps,
+            1.0 - done,
+            jp.array(0.0),
+        )
+        step_count = jp.where(
+            jp.logical_or(done, truncation),
+            jp.array(0, dtype=jp.int32),
+            state.info["step_count"],
+        )
 
+        # reset targets if done or truncation
+        rng, rng1 = jax.random.split(state.info["rng"])
+        targets = jp.where(
+            jp.logical_or(done, truncation),
+            self.generate_target_pose(rng1),
+            state.info["targets"],
+        )
+        
+        info={
+                **state.info,
+                "rng": rng,
+                "step_count": step_count,
+                "targets": targets,
+            }
+        
+        return info
+    
     def _reach_err(self, data, info):
         tip_pos = data.site_xpos[self._tip_sids]
         reach_err = (info['targets'] - tip_pos).ravel()
         return reach_err
+      
+    def _get_obs(self, data: mjx.Data, info: Dict) -> jp.ndarray:
+        """Observe qpos, qvel, act, tip_pos and reach_err."""
+        tip_pos = data.site_xpos[self._tip_sids]
+        reach_err = (info["targets"] - tip_pos).ravel()
+        obs = jp.concatenate(
+            [
+                data.qpos,
+                data.qvel * self.mjx_model.opt.timestep,
+                data.act,
+                tip_pos.ravel(),
+                reach_err,
+            ]
+        )
+        return {"base_obs": obs}

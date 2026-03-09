@@ -11,13 +11,12 @@ from myosuite.envs.myo.mjx import ppo_config
 
 from myosuite.envs.myo.mjx import make, get_default_config
 from mujoco_playground import wrapper
-from myosuite.envs.myo.mjx.utils import make_policy_params_fn
-import pickle
+
 import wandb
 import argparse
 
 
-def main(env_name, impl='jax', log_to_wandb=False, render_evaluations=False):
+def main(env_name, impl, log_to_wandb):
     """Run training and evaluation for the specified environment."""
 
     env, ppo_params, network_factory = load_env_and_network_factory(env_name, impl)
@@ -34,23 +33,19 @@ def main(env_name, impl='jax', log_to_wandb=False, render_evaluations=False):
         network_factory=network_factory,
         wrap_env_fn=wrapper.wrap_for_brax_training,
         num_eval_envs=ppo_params.pop("num_eval_envs"),
-        policy_params_fn=make_policy_params_fn(env) if render_evaluations else lambda *args: None,
         **ppo_params,
     )
 
     print(f"Time to JIT compile: {times[1] - times[0]}")
     print(f"Time to train: {times[-1] - times[1]}")
 
-    with open('playground_params.pickle', 'wb') as handle:
-        pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
 def load_env_and_network_factory(env_name, impl):
     env = make(env_name, config_overrides={"impl": impl})
     config = get_default_config(env_name)
-
     ppo_params = dict(ppo_config)
 
     print(f"Training on environment:\n{env_name}")
+    print(f"Using backend:\n{impl}")
     print(f"Environment Config:\n{config}")
     print(f"PPO Training Parameters:\n{ppo_config}")
 
@@ -75,9 +70,6 @@ def progress(num_steps, metrics, log_to_wandb):
     print(
         f"Step {num_steps} at {times[-1]}: reward={metrics['eval/episode_reward']:.3f}"
     )
-    print(
-        f"Steps per second: {int((total_steps[-1] - total_steps[-2]) / (times[-1] - times[-2]))}"
-    )
     if log_to_wandb:
         wandb.log(metrics, step=num_steps)
 
@@ -98,16 +90,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--log_to_wandb",
-        default=False,
-        action="store_true",
-    )
-
-    parser.add_argument(
-        "--render",
-        default=False,
         action="store_true",
     )
 
     args = parser.parse_args()
 
-    main(args.env_name, impl=args.impl, log_to_wandb=args.log_to_wandb, render_evaluations=args.render)
+    main(args.env_name, args.impl, args.log_to_wandb)
