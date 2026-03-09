@@ -43,11 +43,12 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
                     geom.conaffinity = 0
                     geom.contype = 0
                     print(f"Disabled contacts for cylinder geom named \"{geom.name}\"")
-            if geom.margin != 0:
-                geom.margin = 0
-                print(f"Margin of \"{geom.name}\" set to 0")
+                if geom.type in (mujoco.mjtGeom.mjGEOM_MESH, mujoco.mjtGeom.mjGEOM_HFIELD) and geom.margin != 0:
+                    geom.margin = 0
+                    print(f"Margin of \"{geom.name}\" set to 0")
         spec.option.iterations = 6  # TODO: Parametrize with defaults in config?
         spec.option.ls_iterations = 6
+        spec.option.ccd_iterations = 75 
         spec.option.timestep = self._config.sim_dt
         print(f"Iterations: {spec.option.iterations}, LS Iterations: {spec.option.ls_iterations}")
         #  TODO: consider which disableflags (self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP) and solver is
@@ -86,21 +87,27 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
 
     def _step_simulation(self, state, action):
         norm_action = self.__class__.norm_actions(action)
-        return state.replace(data=mjx_env.step(self.mjx_model, state.data, norm_action, self._n_substeps))
+        return state.replace(data=mjx_env.step(self.mjx_model, state.data, norm_action, self._n_substeps),
+                             info={**state.info, "step_count": state.info["step_count"] + 1}
+                            )
 
     def _get_obs(self, data: mjx.Data, info: dict) -> dict:
         """Must return a state with the observations replaced with the updated dict."""
         obs = jp.concatenate([
             data.qpos,
-            data.qvel,  # TODO: Do we need to multiply by timestep here?
+            data.qvel * self.mjx_model.opt.timestep,
             data.act,
         ])
         return {"base_obs": obs}
 
-    @abstractmethod
     def _get_reward(self, data: mjx.Data, info: dict) -> float:
         """Return a scalar value."""
-        return 0.
+        return sum(jax.tree_util.tree_leaves(self._get_rewards(data, info)))
+
+    @abstractmethod
+    def _get_rewards(self, data: mjx.Data, info: dict) -> dict:
+        """Return a dictionary of rewards."""
+        return {}
 
     def _get_done(self, state: State) -> float:
         """Return 1 for done"""
@@ -109,13 +116,12 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
     def _get_metrics(self, state: State) -> dict:
         return {}
 
-    def _get_info(self, state) -> dict:
+    def _get_info(self, state: State) -> dict:
         info = state.info
-        info["step_count"] = info["step_count"] + 1
         return info
 
     def _get_data(self, qpos, qvel):
-        naconmax = 25 * self._config.num_envs
+        naconmax = 50 * self._config.num_envs
         data = make_data(
             self._mj_model,
             qpos=qpos,
@@ -161,7 +167,12 @@ def make_data(
 ) -> mjx.Data:
     """Initialize MJX Data."""
     data = mjx.make_data(
-        model, impl=impl, naconmax=naconmax, njmax=njmax, naccdmax=naccdmax, device=device
+        model,
+        impl=impl,
+        naconmax=naconmax,
+        njmax=njmax,
+        naccdmax=naccdmax,
+        device=device,
     )
     if qpos is not None:
         data = data.replace(qpos=qpos)
