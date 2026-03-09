@@ -1,16 +1,8 @@
-import logging
 from typing import Any, Dict, Optional, Union
 import jax
 import jax.numpy as jp
-from ml_collections import config_dict
-import mujoco
 from mujoco import mjx
 from mujoco_playground import State
-from mujoco_playground._src import (
-    mjx_env,
-)  # Several helper functions are only visible under _src
-from myosuite.envs.myo.mjx.fatigue_jax import CumulativeFatigue
-import numpy as np
 from myosuite.envs.myo.mjx.mjx_base_env import MjxMyoBase
 
 
@@ -59,7 +51,7 @@ class MjxPoseEnvV0(MjxMyoBase):
 
     def _pose_dist(self, data, info):
         # TODO: confirm this gets Common Subexpression Eliminated
-        pose_err = info['target_angles'] - data.qpos
+        pose_err = info["target_angles"] - data.qpos
         return jp.linalg.norm(pose_err, axis=-1)
     
     def _get_rewards(self, data: mjx.Data, info: dict) -> dict:
@@ -109,7 +101,7 @@ class MjxPoseEnvV0(MjxMyoBase):
 
         # reset targets if done or truncation
         rng, rng1 = jax.random.split(state.info["rng"])
-        targets = jp.where(
+        target_angles = jp.where(
             jp.logical_or(done, truncation),
             self.generate_target_pose(rng1),
             state.info["target_angles"],

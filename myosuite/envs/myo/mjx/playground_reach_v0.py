@@ -89,16 +89,18 @@ class MjxReachEnvV0(MjxMyoBase):
         reach_err = self._reach_err(state.data, state.info)
         reach_dist = jp.linalg.norm(reach_err, axis=-1)
         far_th = jp.where(
-            data.time > 2.0 * self.mjx_model.opt.timestep,
+            state.data.time > 2.0 * self.mjx_model.opt.timestep,
             self._config.far_th * self.n_targets,
             jp.inf,
         )
-        done = 1. * (reach_dist > far_th)
+        done = 1.0 * (reach_dist > far_th)
         
         return done
     
     def _get_metrics(self, state: State) -> dict:
-        solved = 1. * (reach_dist < self.near_th)
+        reach_err = self._reach_err(state.data, state.info)
+        reach_dist = jp.linalg.norm(reach_err, axis=-1)
+        solved = 1.0 * (reach_dist < self.near_th)
         rewards = self._get_rewards(state.data, state.info)
 
         return {
