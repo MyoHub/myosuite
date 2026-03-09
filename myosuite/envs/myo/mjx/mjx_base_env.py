@@ -26,10 +26,10 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
         super().__init__(config, config_overrides)
 
         spec = mujoco.MjSpec.from_file(config.model_path.as_posix())
+        self.impl = self._config.impl
         spec = self.preprocess_spec(spec)
         self._mj_spec = spec
         self._mj_model = spec.compile()
-        self.impl = self._config.impl
 
         self._mjx_model = mjx.put_model(self._mj_model, impl=self._config.impl)
         self._xml_path = config.model_path.as_posix()
@@ -38,10 +38,11 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
 
     def preprocess_spec(self, spec: mujoco.MjSpec) -> mujoco.MjSpec:
         for geom in spec.geoms:
-            if geom.type == mujoco.mjtGeom.mjGEOM_CYLINDER:
-                geom.conaffinity = 0
-                geom.contype = 0
-                print(f"Disabled contacts for cylinder geom named \"{geom.name}\"")
+            if self.impl == "jax":
+                if geom.type == mujoco.mjtGeom.mjGEOM_CYLINDER:
+                    geom.conaffinity = 0
+                    geom.contype = 0
+                    print(f"Disabled contacts for cylinder geom named \"{geom.name}\"")
             if geom.margin != 0:
                 geom.margin = 0
                 print(f"Margin of \"{geom.name}\" set to 0")
