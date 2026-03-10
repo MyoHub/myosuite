@@ -1,4 +1,5 @@
 # Adapted from mujoco-playground's registry scripts
+import copy
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import jax
@@ -6,7 +7,10 @@ from ml_collections import config_dict
 from mujoco import mjx
 
 from mujoco_playground import MjxEnv
+from myosuite.envs.myo.mjx.fatigue_jax import FatigueWrapper
 
+
+MJX_VARIANT_PREFIXES = ("MjxSarc", "MjxFati", "MjxReaf")
 
 _envs = {}
 
@@ -20,6 +24,16 @@ def __getattr__(name):
     return tuple(_envs.keys())
   raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
+def config_callable(env_config) -> Callable[[], config_dict.ConfigDict]:
+    fn = lambda : env_config
+    return fn
+
+def config_create_variant(env_config: Callable[[], config_dict.ConfigDict], **kwargs) -> Callable[[], config_dict.ConfigDict]:
+    _cfg = copy.deepcopy(env_config())
+    for k, v in kwargs.items():
+       setattr(_cfg, k, v)
+    fn = lambda : _cfg
+    return fn
 
 def register_environment(
     env_name: str,
@@ -36,6 +50,52 @@ def register_environment(
   _envs[env_name] = env_class
   _cfgs[env_name] = cfg_class
 
+# register env with all muscle conditions
+def register_environment_with_variants(
+    env_name: str,
+    env_class: Type[MjxEnv],
+    cfg_class: Callable[[], config_dict.ConfigDict],
+) -> None:
+    # register_env_with_variants base env
+    register_environment(
+        env_name=env_name,
+        env_class=env_class,
+        cfg_class=cfg_class
+    )
+
+    # # register variants env with sarcopenia
+    # if env_name[:3] == "Mjx":
+    #     cfg_class_sarc = config_create_variant(cfg_class, muscle_condition="sarcopenia")
+    #     register_environment(
+    #         env_name=env_name[:3] + "Sarc" + env_name[3:],
+    #         env_class=env_class,
+    #         cfg_class=cfg_class_sarc
+    #     )
+    
+    # register variants with fatigue
+    if env_name[:3] == "Mjx":
+        register_environment(
+            env_name=env_name[:3] + "Fati" + env_name[3:],
+            env_class=wrap_class(FatigueWrapper, env_class),
+            cfg_class=cfg_class
+        )
+
+    # # register variants with tendon transfer
+    # if env_name[:7] == "MjxHand":
+    #     cfg_class_reaf =  config_create_variant(cfg_class, muscle_condition="reafferentation")
+    #     register_environment(
+    #         env_name=env_name[:3] + "Reaf" + env_name[3:],
+    #         env_class=env_class,
+    #         cfg_class=cfg_class_reaf
+    #     )
+
+def get_base_env_name(env_name: str) -> str:
+  """Extract default environment name (without any muscle condition variant) from env_name."""
+  if env_name[:7] in MJX_VARIANT_PREFIXES:
+    env_name_default = env_name[:3] + env_name[7:]
+  else:
+    env_name_default = env_name
+  return env_name_default
 
 def get_default_config(env_name: str) -> config_dict.ConfigDict:
   """Get the default configuration for an environment."""
@@ -68,7 +128,9 @@ def load(
         f"Env '{env_name}' not found. Available envs: {_cfgs.keys()}"
     )
   config = config or get_default_config(env_name)
-  return _envs[env_name](config=config, config_overrides=config_overrides)
+  env = _envs[env_name](config=config, config_overrides=config_overrides)
+    
+  return env
 
 
 def get_domain_randomizer(
@@ -82,3 +144,10 @@ def get_domain_randomizer(
     )
     return None
   return _randomizer[env_name]
+
+
+def wrap_class(wrapper_cls, wrapped_env_cls):
+    def _get_wrapped_class(config, config_overrides):
+        base_config, wrapper_config = wrapper_cls.skim_config(config, config_overrides)
+        return wrapper_cls(wrapped_env_cls(base_config), wrapper_config)
+    return _get_wrapped_class

@@ -5,34 +5,16 @@ from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
 from mujoco_playground import State
-from mujoco_playground._src import (
-    mjx_env,
-)  # Several helper functions are only visible under _src
-import numpy as np
+from myosuite.envs.myo.mjx.mjx_base_env import MjxMyoBase
 
 
-class MjxReachEnvV0(mjx_env.MjxEnv):
+class MjxReachEnvV0(MjxMyoBase):
     def __init__(
         self,
         config: config_dict.ConfigDict,
         config_overrides: Optional[Dict[str, Union[str, int, list[Any]]]] = None,
     ) -> None:
         super().__init__(config, config_overrides)
-
-        spec = mujoco.MjSpec.from_file(config.model_path.as_posix())
-        spec = self.preprocess_spec(spec)
-        self._mj_model = spec.compile()
-
-        self._mj_model.geom_margin = np.zeros(self._mj_model.geom_margin.shape)
-        print(f"All margins set to 0")
-
-        self._mj_model.opt.timestep = config.sim_dt
-        self._mj_model.opt.iterations = 6
-        self._mj_model.opt.ls_iterations = 6
-        self._mj_model.opt.ccd_iterations = 100
-
-        self._mjx_model = mjx.put_model(self._mj_model, impl=config.impl)
-        self._xml_path = config.model_path.as_posix()
 
         self._tip_sids = []
         self._target_sids = []
@@ -47,16 +29,6 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
             )
         self._tip_sids = jp.array(self._tip_sids)
         self._target_sids = self._target_sids
-
-        self._n_substeps = int(config.ctrl_dt / config.sim_dt)
-
-    def preprocess_spec(self, spec: mujoco.MjSpec):
-        for geom in spec.geoms:
-            if geom.type == mujoco.mjtGeom.mjGEOM_CYLINDER:
-                geom.conaffinity = 0
-                geom.contype = 0
-                print(f'Disabled contacts for cylinder geom named "{geom.name}"')
-        return spec
 
     def generate_target_pose(self, rng: jp.ndarray) -> Dict[str, jp.ndarray]:
         targets = []
@@ -75,70 +47,71 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
 
         targets = self.generate_target_pose(rng2)
         self.n_targets = len(targets)
-        self.near_th = self.n_targets * 0.0125
+        self.near_th = self.n_targets * .0125
+        
+        # We store the targets in the info, can't store it as an instance variable,
+        # as it has to be determined in a parallelized manner
+        info = {'rng': rng,
+                'targets': targets,
+                'step_count': jp.array(0, dtype=jp.int32)}
 
+        data = self._get_data(qpos, qvel)
+        obs = self._get_obs(data, info)
+        
         reward, done, zero = jp.zeros(3)
-
-        info = {
-            "rng": rng,
-            "targets": targets,
-            "step_count": jp.array(0, dtype=jp.int32),
-        }
-
-        naconmax = 25 * self._config.num_envs
-        data = make_data(
-            self._mj_model,
-            qpos=qpos,
-            qvel=qvel,
-            ctrl=jp.zeros((self.mjx_model.nu,)),
-            impl=self._config.impl,
-            naconmax=naconmax,
-            njmax=self._mj_model.njmax if self._mj_model.njmax != -1 else 1_000,
-            naccdmax=naconmax,  # https://github.com/google-deepmind/mujoco/pull/3096
-        )
-
-        obs, _ = self._get_obs(data, info)
-
         metrics = {
             "reach_reward": zero,
             "bonus_reward": zero,
             "penalty_reward": zero,
             "solved_frac": zero,
         }
-        return State(data, {"state": obs}, reward, done, metrics, info)
+        return State(data, obs, reward, done, metrics, info)
 
-    def step(self, state: State, action: jp.ndarray) -> State:
-        """Runs one timestep of the environment's dynamics."""
-
-        norm_action = 1.0 / (1.0 + jp.exp(-5.0 * (action - 0.5)))
-
-        data = mjx_env.step(self.mjx_model, state.data, norm_action, self._n_substeps)
-
-        state = state.replace(
-            info={**state.info, "step_count": state.info["step_count"] + 1}
-        )
-
-        obs, reach_err = self._get_obs(data, state.info)
-
+    def _get_rewards(self, data, info):
+        reach_err = self._reach_err(data, info)
         reach_dist = jp.linalg.norm(reach_err, axis=-1)
-
+        
         far_th = jp.where(
             data.time > 2.0 * self.mjx_model.opt.timestep,
             self._config.far_th * self.n_targets,
             jp.inf,
         )
 
-        reach = -1.0 * reach_dist * self._config.reward_weights.reach
+        reach = -1.0 * reach_dist * self._config.reward_config.reach_weight
         bonus = (
             1.0 * (reach_dist < 2 * self.near_th) + 1.0 * (reach_dist < self.near_th)
-        ) * self._config.reward_weights.bonus
-        penalty = -1.0 * (reach_dist > far_th) * self._config.reward_weights.penalty
-
-        reward = reach + bonus + penalty
+        ) * self._config.reward_config.bonus_scale
+        penalty = -1.0 * (reach_dist > far_th) * self._config.reward_config.penalty_scale
+        
+        return {"reach": reach, "bonus": bonus, "penalty": penalty}
+    
+    def _get_done(self, state: State) -> float:
+        reach_err = self._reach_err(state.data, state.info)
+        reach_dist = jp.linalg.norm(reach_err, axis=-1)
+        far_th = jp.where(
+            state.data.time > 2.0 * self.mjx_model.opt.timestep,
+            self._config.far_th * self.n_targets,
+            jp.inf,
+        )
         done = 1.0 * (reach_dist > far_th)
+        
+        return done
+    
+    def _get_metrics(self, state: State) -> dict:
+        reach_err = self._reach_err(state.data, state.info)
+        reach_dist = jp.linalg.norm(reach_err, axis=-1)
         solved = 1.0 * (reach_dist < self.near_th)
+        rewards = self._get_rewards(state.data, state.info)
 
-        ######## reset logic ########
+        return {
+            "reach_reward": rewards["reach"],
+            "bonus_reward": rewards["bonus"],
+            "penalty_reward": rewards["penalty"],
+            "solved_frac": solved / self._config.max_episode_steps
+        }
+    
+    def _get_info(self, state: State) -> dict:
+        done = state.done
 
         # reset step counter if done or truncation
         truncation = jp.where(
@@ -159,27 +132,21 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
             self.generate_target_pose(rng1),
             state.info["targets"],
         )
-
-        state = state.replace(
-            info={
+        
+        info={
                 **state.info,
                 "rng": rng,
                 "step_count": step_count,
                 "targets": targets,
             }
-        )
-
-        ######## reset logic ########
-
-        state.metrics.update(
-            reach_reward=reach,
-            bonus_reward=bonus,
-            penalty_reward=penalty,
-            solved_frac=solved / self._config.max_episode_steps,
-        )
-
-        return state.replace(data=data, obs={"state": obs}, reward=reward, done=done)
-
+        
+        return info
+    
+    def _reach_err(self, data, info):
+        tip_pos = data.site_xpos[self._tip_sids]
+        reach_err = (info['targets'] - tip_pos).ravel()
+        return reach_err
+      
     def _get_obs(self, data: mjx.Data, info: Dict) -> jp.ndarray:
         """Observe qpos, qvel, act, tip_pos and reach_err."""
         tip_pos = data.site_xpos[self._tip_sids]
@@ -193,59 +160,4 @@ class MjxReachEnvV0(mjx_env.MjxEnv):
                 reach_err,
             ]
         )
-        return obs, reach_err
-
-    # Accessors.
-    @property
-    def xml_path(self) -> str:
-        return self._xml_path
-
-    @property
-    def action_size(self) -> int:
-        return self._mjx_model.nu
-
-    @property
-    def mj_model(self) -> mujoco.MjModel:
-        return self._mj_model
-
-    @property
-    def mjx_model(self) -> mjx.Model:
-        return self._mjx_model
-
-
-def make_data(
-    model: mujoco.MjModel,
-    qpos: Optional[jax.Array] = None,
-    qvel: Optional[jax.Array] = None,
-    ctrl: Optional[jax.Array] = None,
-    act: Optional[jax.Array] = None,
-    mocap_pos: Optional[jax.Array] = None,
-    mocap_quat: Optional[jax.Array] = None,
-    impl: Optional[str] = None,
-    naconmax: Optional[int] = None,
-    njmax: Optional[int] = None,
-    naccdmax: Optional[int] = None,
-    device: Optional[jax.Device] = None,
-) -> mjx.Data:
-    """Initialize MJX Data."""
-    data = mjx.make_data(
-        model,
-        impl=impl,
-        naconmax=naconmax,
-        njmax=njmax,
-        naccdmax=naccdmax,
-        device=device,
-    )
-    if qpos is not None:
-        data = data.replace(qpos=qpos)
-    if qvel is not None:
-        data = data.replace(qvel=qvel)
-    if ctrl is not None:
-        data = data.replace(ctrl=ctrl)
-    if act is not None:
-        data = data.replace(act=act)
-    if mocap_pos is not None:
-        data = data.replace(mocap_pos=mocap_pos.reshape(model.nmocap, -1))
-    if mocap_quat is not None:
-        data = data.replace(mocap_quat=mocap_quat.reshape(model.nmocap, -1))
-    return data
+        return {"state": obs}

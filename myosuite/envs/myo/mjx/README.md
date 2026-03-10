@@ -18,17 +18,7 @@ The default installation requires Python ≥3.9 and MuJoCo 3.3.6. See the [main 
    pip install -e ".[mjx]" # replace "mjx" with "mjx-cuda" for jax with cuda support
    ```
 
-2. Apply patch to use MJWarp
-
-   To use MJWarp via the MJX API, run the following command to overwrite the local io.py file and enable `naccdmax` support in MJX (see [MuJoCo PR #3096](https://github.com/google-deepmind/mujoco/pull/3096)):
-
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/google-deepmind/mujoco/refs/pull/3096/head/mjx/mujoco/mjx/_src/io.py \
-   -o $(python -c "import mujoco.mjx._src.io as io; print(io.__file__)")
-
-   ```
-
-3. **Verify installation**:
+2. **Verify installation**:
    ```bash
    # remove uv run if you installed with pypi
 

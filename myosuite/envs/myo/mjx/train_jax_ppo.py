@@ -4,7 +4,8 @@ import functools
 import time
 import jax
 
-print(f"Current backend: {jax.default_backend()}")
+print(f"Current backend: {jax.default_backend()}. "
+      f"If you expect gpu but see cpu, you may need to reinstall jax with a suitable version of cuda.")
 from brax.training.agents.ppo import networks as ppo_networks
 from brax.training.agents.ppo import train as ppo
 from myosuite.envs.myo.mjx import ppo_config
@@ -39,14 +40,14 @@ def main(env_name, impl, log_to_wandb):
     print(f"Time to JIT compile: {times[1] - times[0]}")
     print(f"Time to train: {times[-1] - times[1]}")
 
-
 def load_env_and_network_factory(env_name, impl):
-    env = make(env_name, impl)
+    env = make(env_name, config_overrides={"impl": impl})
+    config = get_default_config(env_name)
     ppo_params = dict(ppo_config)
 
     print(f"Training on environment:\n{env_name}")
     print(f"Using backend:\n{impl}")
-    print(f"Environment Config:\n{get_default_config(env_name)}")
+    print(f"Environment Config:\n{config}")
     print(f"PPO Training Parameters:\n{ppo_config}")
 
     if "network_factory" in ppo_params:
@@ -69,9 +70,6 @@ def progress(num_steps, metrics, log_to_wandb):
     total_steps.append(num_steps)
     print(
         f"Step {num_steps} at {times[-1]}: reward={metrics['eval/episode_reward']:.3f}"
-    )
-    print(
-        f"Steps per second: {int((total_steps[-1] - total_steps[-2]) / (times[-1] - times[-2]))}"
     )
     if log_to_wandb:
         wandb.log(metrics, step=num_steps)

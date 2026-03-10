@@ -27,17 +27,32 @@ dependencies = [
     "flatten_dict",
     "h5py",
     "numpy",
-    "mujoco",
+    "mujoco==3.5.0",
     "Pillow",
     "pink-noise-rl",
     "packaging",
     "gitpython",
 ]
+[[tool.uv.index]]
+name = "mujoco"
+url = "https://py.mujoco.org"
+explicit = true
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"
+explicit = true
+
+[tool.uv.sources]
+mujoco = { index = "mujoco" }
+warp-lang = { index = "nvidia" }
+mujoco-mjx = { git = "https://github.com/google-deepmind/mujoco", rev = "main", subdirectory = "mjx" }
+
 [project.optional-dependencies]
 examples = ["mink[examples]; python_version > '3.9'"]
 mjx = [
-    "mujoco>=3.5.0; python_version >= '3.10' and sys_platform != 'win32'",
-    "mujoco-mjx>=3.5.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "mujoco>=3.5.1.dev; python_version >= '3.10' and sys_platform != 'win32'",
+    "mujoco-mjx[warp]>=3.5.1.dev; python_version >= '3.10' and sys_platform != 'win32'",
     "jax>=0.4.20; python_version >= '3.10' and sys_platform != 'win32'",
     "jaxlib>=0.4.20; python_version >= '3.10' and sys_platform != 'win32'",
     "brax>=0.10.0; python_version >= '3.10' and sys_platform != 'win32'",
@@ -49,6 +64,14 @@ mjx = [
     "mediapy>=1.2.0; python_version >= '3.10' and sys_platform != 'win32'",
     "wandb>=0.21.0; python_version >= '3.10' and sys_platform != 'win32'",
     "imageio",
+]
+tutorials = [
+  "matplotlib",
+	"pandas",
+	"tqdm",
+	"mink",
+	"osqp",
+	"stable-baselines3[extra]",
 ]
 mjx-cuda = [
     "MyoSuite[mjx]",

@@ -135,7 +135,6 @@ If you find this repository useful in your research, please consider giving a st
   publisher = {arXiv},
   year = {2022},
   howpublished = {\url{https://github.com/myohub/myosuite}},
-  year =         {2022}
   doi = {10.48550/ARXIV.2205.13600},
   url = {https://arxiv.org/abs/2205.13600},
 }

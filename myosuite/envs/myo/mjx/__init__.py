@@ -3,16 +3,23 @@ from ml_collections import config_dict
 import copy
 from etils import epath
 from jax import numpy as jp
-import myo_registry as registry
+import myosuite.envs.myo.mjx.myo_registry as registry
 from mujoco_playground._src import mjx_env
 
 from myosuite.envs.myo.mjx.playground_pose_v0 import MjxPoseEnvV0
 from myosuite.envs.myo.mjx.playground_reach_v0 import MjxReachEnvV0
 
-pose_env_config = config_dict.create(
+base_config = config_dict.create(
     ctrl_dt=0.02,
     sim_dt=0.002,
     num_envs=4_096,
+    max_episode_steps=100,
+    model_path=epath.Path("/tmp/dummy.xml"),
+    impl="jax",
+    norm_actions=True,
+)
+
+pose_env_config = config_dict.ConfigDict({**base_config, **config_dict.create(
     reward_config=config_dict.create(
         angle_reward_weight=1.0,
         ctrl_cost_weight=1.0,
@@ -21,26 +28,17 @@ pose_env_config = config_dict.create(
         bonus_weight=4.0,
     ),
     target_jnt_range=config_dict.ConfigDict(),
-    max_episode_steps=100,
-    model_path=epath.Path("/tmp/dummy.xml"),
-    impl="jax",
-)
+)})
 
-reach_env_config = config_dict.create(
-    ctrl_dt=0.02,
-    sim_dt=0.002,
-    num_envs=4_096,
-    reward_weights=config_dict.create(
-        reach=1.0,
-        bonus=4.0,
-        penalty=50.0,
+reach_env_config = config_dict.ConfigDict({**base_config, **config_dict.create(
+    reward_config=config_dict.create(
+        reach_weight=1.0,
+        bonus_scale=4.0,
+        penalty_scale=50.0,
     ),
     target_reach_range=config_dict.ConfigDict(),
     far_th=0.35,
-    max_episode_steps=100,
-    model_path=epath.Path("/tmp/dummy.xml"),
-    impl="jax",
-)
+)})
 
 ppo_config = config_dict.create(
     num_timesteps=50_000_000,
@@ -93,6 +91,12 @@ hand_reach_env_config["model_path"] = (
 )
 
 
+def wrap_class(wrapper_cls, wrapped_env_cls, wrapper_config=None):
+    def _get_wrapped_class(*args, **kwargs):
+        return wrapper_cls(wrapped_env_cls(*args, **kwargs), **(wrapper_config if wrapper_config is not None else {}))
+    return _get_wrapped_class
+
+
 def config_callable(env_config) -> Callable[[], config_dict.ConfigDict]:
     fn = lambda: env_config
     return fn
@@ -101,54 +105,53 @@ def config_callable(env_config) -> Callable[[], config_dict.ConfigDict]:
 def get_default_config(env_name) -> config_dict.ConfigDict:
     return registry.get_default_config(env_name)
 
+# TODO: is there a reason these are not registered on import?
+def make(env_name: str, config_overrides=None) -> mjx_env.MjxEnv:
 
-def make(env_name: str, impl: str) -> mjx_env.MjxEnv:
+    env_name_base = registry.get_base_env_name(env_name)
+    if "MjxElbowPose" in env_name_base:
 
-    if "MjxElbowPose" in env_name:
-
-        if env_name == "MjxElbowPoseFixed-v0":
+        if env_name_base == "MjxElbowPoseFixed-v0":
             elbow_pose_env_config["target_jnt_range"] = config_dict.create(
-                r_elbow_flex=jp.array(((2), (2)))
-            )
-        elif env_name == "MjxElbowPoseRandom-v0":
+                    r_elbow_flex=jp.array(((2), (2)))
+                )
+        elif env_name_base == "MjxElbowPoseRandom-v0":
             elbow_pose_env_config["target_jnt_range"] = config_dict.create(
-                r_elbow_flex=jp.array(((0), (2.27)))
-            )
-        elbow_pose_env_config["impl"] = impl
-        registry.register_environment(
-            env_name, MjxPoseEnvV0, config_callable(elbow_pose_env_config)
-        )
-        env = registry.load(env_name)
+                    r_elbow_flex=jp.array(((0), (2.27)))
+                )
+        registry.register_environment_with_variants(env_name_base,
+                                      MjxPoseEnvV0,
+                                      config_callable(elbow_pose_env_config))
+        env = registry.load(env_name, config_overrides=config_overrides)
 
         return env
 
-    if "MjxFingerPose" in env_name:
+    if "MjxFingerPose" in env_name_base:
 
-        if env_name == "MjxFingerPoseFixed-v0":
+        if env_name_base == "MjxFingerPoseFixed-v0":
             finger_pose_env_config["target_jnt_range"] = config_dict.create(
                 IFadb=jp.array(((0), (0))),
                 IFmcp=jp.array(((0), (0))),
                 IFpip=jp.array(((0.75), (0.75))),
                 IFdip=jp.array(((0.75), (0.75))),
             )
-        elif env_name == "MjxFingerPoseRandom-v0":
+        elif env_name_base == "MjxFingerPoseRandom-v0":
             finger_pose_env_config["target_jnt_range"] = config_dict.create(
                 IFadb=jp.array(((-0.2), (0.2))),
                 IFmcp=jp.array(((-0.4), (1))),
                 IFpip=jp.array(((0.1), (1))),
                 IFdip=jp.array(((0.1), (1))),
             )
-        finger_pose_env_config["impl"] = impl
-        registry.register_environment(
-            env_name, MjxPoseEnvV0, config_callable(finger_pose_env_config)
-        )
-        env = registry.load(env_name)
+        registry.register_environment_with_variants(env_name_base,
+                                      MjxPoseEnvV0,
+                                      config_callable(finger_pose_env_config))
+        env = registry.load(env_name, config_overrides=config_overrides)
 
         return env
 
-    if "MjxHandReach" in env_name:
+    if "MjxHandReach" in env_name_base:
 
-        if env_name == "MjxHandReachFixed-v0":
+        if env_name_base == "MjxHandReachFixed-v0":
             hand_reach_env_config["far_th"] = 0.044
             hand_reach_env_config["target_reach_range"] = config_dict.create(
                 THtip=jp.array(((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495))),
@@ -157,7 +160,7 @@ def make(env_name: str, impl: str) -> mjx_env.MjxEnv:
                 RFtip=jp.array(((-0.148, -0.543, 1.445), (-0.148, -0.543, 1.445))),
                 LFtip=jp.array(((-0.148, -0.528, 1.434), (-0.148, -0.528, 1.434))),
             )
-        elif env_name == "MjxHandReachRandom-v0":
+        elif env_name_base == "MjxHandReachRandom-v0":
             hand_reach_env_config["far_th"] = 0.034
             hand_reach_env_config["target_reach_range"] = config_dict.create(
                 THtip=jp.array(
@@ -191,11 +194,10 @@ def make(env_name: str, impl: str) -> mjx_env.MjxEnv:
                     )
                 ),
             )
-        hand_reach_env_config["impl"] = impl
         registry.register_environment(
             env_name, MjxReachEnvV0, config_callable(hand_reach_env_config)
         )
-        env = registry.load(env_name)
+        env = registry.load(env_name, config_overrides=config_overrides)
 
         return env
 
