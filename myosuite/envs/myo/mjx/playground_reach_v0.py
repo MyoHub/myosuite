@@ -160,4 +160,4 @@ class MjxReachEnvV0(MjxMyoBase):
                 reach_err,
             ]
         )
-        return {"base_obs": obs}
+        return {"state": obs}

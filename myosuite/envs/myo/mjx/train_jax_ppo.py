@@ -4,7 +4,8 @@ import functools
 import time
 import jax
 
-print(f"Current backend: {jax.default_backend()}")
+print(f"Current backend: {jax.default_backend()}. "
+      f"If you expect gpu but see cpu, you may need to reinstall jax with a suitable version of cuda.")
 from brax.training.agents.ppo import networks as ppo_networks
 from brax.training.agents.ppo import train as ppo
 from myosuite.envs.myo.mjx import ppo_config

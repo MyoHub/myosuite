@@ -126,4 +126,4 @@ class MjxPoseEnvV0(MjxMyoBase):
                 info["target_angles"] - data.qpos,
             ]
         )
-        return {"base_obs": obs}
+        return {"state": obs}
