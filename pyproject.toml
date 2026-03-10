@@ -27,7 +27,7 @@ dependencies = [
     "flatten_dict",
     "h5py",
     "numpy",
-    "mujoco",
+    "mujoco==3.5.0",
     "Pillow",
     "pink-noise-rl",
     "packaging",
