@@ -9,10 +9,17 @@ from mujoco_playground._src import mjx_env
 from myosuite.envs.myo.mjx.playground_pose_v0 import MjxPoseEnvV0
 from myosuite.envs.myo.mjx.playground_reach_v0 import MjxReachEnvV0
 
-pose_env_config = config_dict.create(
+base_config = config_dict.create(
     ctrl_dt=0.02,
     sim_dt=0.002,
     num_envs=4_096,
+    max_episode_steps=100,
+    model_path=epath.Path("/tmp/dummy.xml"),
+    impl="jax",
+    norm_actions=True,
+)
+
+pose_env_config = config_dict.ConfigDict({**base_config, **config_dict.create(
     reward_config=config_dict.create(
         angle_reward_weight=1.0,
         ctrl_cost_weight=1.0,
@@ -21,26 +28,17 @@ pose_env_config = config_dict.create(
         bonus_weight=4.0,
     ),
     target_jnt_range=config_dict.ConfigDict(),
-    max_episode_steps=100,
-    model_path=epath.Path("/tmp/dummy.xml"),
-    impl="jax",
-)
+)})
 
-reach_env_config = config_dict.create(
-    ctrl_dt=0.02,
-    sim_dt=0.002,
-    num_envs=4_096,
-    reward_weights=config_dict.create(
-        reach=1.0,
-        bonus=4.0,
-        penalty=50.0,
+reach_env_config = config_dict.ConfigDict({**base_config, **config_dict.create(
+    reward_config=config_dict.create(
+        reach_weight=1.0,
+        bonus_scale=4.0,
+        penalty_scale=50.0,
     ),
     target_reach_range=config_dict.ConfigDict(),
     far_th=0.35,
-    max_episode_steps=100,
-    model_path=epath.Path("/tmp/dummy.xml"),
-    impl="jax",
-)
+)})
 
 ppo_config = config_dict.create(
     num_timesteps=50_000_000,

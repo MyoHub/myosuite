@@ -183,7 +183,7 @@ class FatigueWrapper(Wrapper):
   def __init__(self, env: MjxMyoBase, fatigue_config=DEFAULT_MUSCLE_CONFIG):
     ## Increase nuserdata and recompile model
     self.nuserdata_without_fatigue = env.mj_model.nuserdata
-
+    env._config.norm_actions = False  # Disable normalisation, we will be applying it within the wrapper
     env._mj_spec.nuserdata += env.mjx_model.nu * 3
     env._mj_model = env._mj_spec.compile()
     env._mjx_model = mjx.put_model(env._mj_model, impl=env.impl)
@@ -252,10 +252,7 @@ class FatigueWrapper(Wrapper):
     new_userdata = new_userdata.at[self.fatigue_index_MF].set(fatigue_state["MF"])
 
     ## replace desired activations with currently active motor units
-    norm_action = norm_action.at[self.muscle_act_ind].set(fatigue_state["MA"])
-
-    ## undo previous normalisation, as it is reapplied by super().step method
-    action_fatigued = jp.log(1.0/norm_action - 1.0)/(-5.0) + 0.5
+    action_fatigued = norm_action.at[self.muscle_act_ind].set(fatigue_state["MA"])
 
     ## store fatigue params in userdata
     data = state.data.replace(userdata=new_userdata)

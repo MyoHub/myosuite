@@ -86,7 +86,7 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
         return state
 
     def _step_simulation(self, state, action):
-        norm_action = self.__class__.norm_actions(action)
+        norm_action = self.__class__.norm_actions(action) if self._config.norm_actions else action
         return state.replace(data=mjx_env.step(self.mjx_model, state.data, norm_action, self._n_substeps),
                              info={**state.info, "step_count": state.info["step_count"] + 1}
                             )

@@ -77,11 +77,11 @@ class MjxReachEnvV0(MjxMyoBase):
             jp.inf,
         )
 
-        reach = -1.0 * reach_dist * self._config.reward_weights.reach
+        reach = -1.0 * reach_dist * self._config.reward_config.reach_weight
         bonus = (
             1.0 * (reach_dist < 2 * self.near_th) + 1.0 * (reach_dist < self.near_th)
-        ) * self._config.reward_weights.bonus
-        penalty = -1.0 * (reach_dist > far_th) * self._config.reward_weights.penalty
+        ) * self._config.reward_config.bonus_scale
+        penalty = -1.0 * (reach_dist > far_th) * self._config.reward_config.penalty_scale
         
         return {"reach": reach, "bonus": bonus, "penalty": penalty}
     
