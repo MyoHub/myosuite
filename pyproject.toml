@@ -27,7 +27,7 @@ dependencies = [
     "flatten_dict",
     "h5py",
     "numpy",
-    "mujoco>=3.5.1",
+    "mujoco>=3.6.0",
     "Pillow",
     "pink-noise-rl",
     "packaging",
@@ -51,8 +51,8 @@ mujoco-mjx = { git = "https://github.com/google-deepmind/mujoco", rev = "main", 
 [project.optional-dependencies]
 examples = ["mink[examples]; python_version > '3.9'"]
 mjx = [
-    "mujoco>=3.5.1; python_version >= '3.10' and sys_platform != 'win32'",
-    "mujoco-mjx[warp]>=3.5.1; python_version >= '3.10' and sys_platform != 'win32'",
+    "mujoco>=3.6.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "mujoco-mjx[warp]>=3.6.0; python_version >= '3.10' and sys_platform != 'win32'",
     "jax>=0.4.20; python_version >= '3.10' and sys_platform != 'win32'",
     "jaxlib>=0.4.20; python_version >= '3.10' and sys_platform != 'win32'",
     "brax>=0.10.0; python_version >= '3.10' and sys_platform != 'win32'",
