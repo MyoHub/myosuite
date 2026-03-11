@@ -46,7 +46,7 @@ explicit = true
 [tool.uv.sources]
 mujoco = { index = "mujoco" }
 warp-lang = { index = "nvidia" }
-mujoco-mjx = { git = "https://github.com/google-deepmind/mujoco", rev = "main", subdirectory = "mjx" }
+# mujoco-mjx = { git = "https://github.com/google-deepmind/mujoco", rev = "main", subdirectory = "mjx" }
 
 [project.optional-dependencies]
 examples = ["mink[examples]; python_version > '3.9'"]
