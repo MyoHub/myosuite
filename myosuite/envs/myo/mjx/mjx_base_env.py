@@ -48,7 +48,7 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
                     print(f"Margin of \"{geom.name}\" set to 0")
         spec.option.iterations = 6  # TODO: Parametrize with defaults in config?
         spec.option.ls_iterations = 6
-        spec.option.ccd_iterations = 75 
+        spec.option.ccd_iterations = 150
         spec.option.timestep = self._config.sim_dt
         print(f"Iterations: {spec.option.iterations}, LS Iterations: {spec.option.ls_iterations}")
         #  TODO: consider which disableflags (self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP) and solver is
@@ -121,7 +121,7 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
         return info
 
     def _get_data(self, qpos, qvel):
-        naconmax = 50 * self._config.num_envs
+        naconmax = 75 * self._config.num_envs
         data = make_data(
             self._mj_model,
             qpos=qpos,
