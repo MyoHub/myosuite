@@ -39,17 +39,23 @@ We train a PPO agent on three MyoSuite environments using MuJoCo, MJX and MJWarp
 
 ### Benchmark Configuration
 
-* **Environments:** MjxElbowPoseRandom-v0, MjxFingerPoseRandom-v0, and MjxHandReachRandom-v0.
+* **Environments:** MjxElbowPoseRandom-v0, MjxFingerPoseRandom-v0, and MjxHandReachRandom-v0, each trained for 5M total steps.
 * **Algorithm:** PPO implemented in [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) (MuJoCo) and [Brax](https://github.com/google/brax) (MJX, MJWarp).
-  * Stable-Baselines3 params: n_steps=4096, batch_size=256, n_epochs=8. Environment interactions parallelized across 20 CPUs.
+  * Stable-Baselines3 params: n_steps=2048, batch_size=64, n_epochs=10.
   * BRAX params: unroll_length=10, batch_size=256, num_minibatches=32, num_updates_per_batch=8.
-* **Hardware:** NVIDIA RTX 4500 GPU.
+* **Hardware:** NVIDIA RTX 5090 GPU.
 
 ### Results
 
 GPU-native vectorization (MJX, MJWarp) drastically reduces total training time compared to CPU-based parallelization (MuJoCo), enabling policies to be trained on myosuite environments in minutes rather than hours.
 
-![Training Results](results.png)
+![Training Results](myosuite_mjx_benchmark_PPO.png)
 
-* **MJX** provides significant acceleration for MjxElbowPoseRandom-v0 and MjxFingerPoseRandom-v0, achieving up to **45x** speedup over MuJoCo. MJX shows no benefit over MuJoCo in MjxHandReachRandom-v0, however, likely due to greater contact complexity.
-* **MJWarp**, which has been optimized to achieve improved scaling for contact-rich environments compared to MJX, consistently outperforms both MuJoCo and MJX across all environments, offering a **20x–73x** speedup.
+* **MJX** provides significant acceleration for MjxElbowPoseRandom-v0 and MjxFingerPoseRandom-v0, achieving up to **35x** speedup over MuJoCo. In MjxHandReachRandom-v0, however, MJX only shows 2-5x speedups over MuJoCo, likely due to greater contact complexity.
+* **MJWarp**, which has been optimized to achieve improved scaling for contact-rich environments compared to MJX, consistently outperforms both MuJoCo and MJX across all environments, offering up to **100x** speedup over MuJoCo and another **5-20x** speedup over MJX, depending on the task environment and the number of parallel environments. With Warp, increasing the number of parallel environments consistenly improves training time for a fixed number of total steps.
+
+## Simulation/Rollout Speed Benchmark
+
+Similar effects can be observed for forward simulations (i.e. rollouts) in the respective environments, independent of the RL policy updates. The MuJoCo Warp physics engine can in principle run **150K to 1M** simulation steps per second, depending on the task environment and the number of parallel environments.
+
+![Simulation Results](myosuite_mjx_benchmark_simulation.png)
