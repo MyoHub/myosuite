@@ -2,7 +2,6 @@ import os
 import timeit
 import functools
 
-from ml_collections.config_dict import ConfigDict
 import numpy as np
 
 ## for standard myosuite-MJX envs
