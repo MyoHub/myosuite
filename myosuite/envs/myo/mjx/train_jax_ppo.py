@@ -12,12 +12,12 @@ from myosuite.envs.myo.mjx import ppo_config
 
 from myosuite.envs.myo.mjx import make, get_default_config
 from mujoco_playground import wrapper
-
+import pickle
 import wandb
 import argparse
 
 
-def main(env_name, impl, log_to_wandb):
+def main(env_name, impl, log_to_wandb, save_policy):
     """Run training and evaluation for the specified environment."""
 
     env, ppo_params, network_factory = load_env_and_network_factory(env_name, impl)
@@ -39,6 +39,9 @@ def main(env_name, impl, log_to_wandb):
 
     print(f"Time to JIT compile: {times[1] - times[0]}")
     print(f"Time to train: {times[-1] - times[1]}")
+    if save_policy:
+        with open('playground_params.pickle', 'wb') as handle:
+            pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 def load_env_and_network_factory(env_name, impl):
     env = make(env_name, config_overrides={"impl": impl})
@@ -93,7 +96,11 @@ if __name__ == "__main__":
         "--log_to_wandb",
         action="store_true",
     )
+    parser.add_argument(
+        "--save_policy",
+        action="store_true",
+    )
 
     args = parser.parse_args()
 
-    main(args.env_name, args.impl, args.log_to_wandb)
+    main(args.env_name, args.impl, args.log_to_wandb, args.save_policy)
