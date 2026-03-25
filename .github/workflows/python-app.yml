@@ -77,7 +77,9 @@ jobs:
       run: uv run python -m mujoco.render_test
 
     - name: Test myoapi
-      run: uv run python -m myosuite.tests.test_myoapi
+      # Avoid re-syncing dependencies during `uv run` (macOS can fail while resolving/re-installing
+      # wheels, even if the earlier `uv pip install -e .` step succeeded).
+      run: uv run --no-sync python -m myosuite.tests.test_myoapi
 
     - name: Run Test mjx
       if: ${{ runner.os != 'Windows' }}
@@ -88,7 +90,7 @@ jobs:
         uv run --with ".[mjx]" python -m pytest myosuite/tests/mjx/test_reference_motion.py -v
 
     - name: Run Test environment
-      run: uv run python -m myosuite.tests.test_myo
+      run: uv run --no-sync python -m myosuite.tests.test_myo
 
     - name: Test rendering
       if: ${{ runner.os == 'Linux' }}
