@@ -14,11 +14,16 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from tqdm import tqdm
-
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.logger import configure
 from myosuite.utils import gym
 
+# Stop linters from removing import
+Monitor = Monitor
+configure = configure
+
 os.environ["MUJOCO_GL"] = "egl"
-warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
+warnings.filterwarnings("ignore", category=np.exceptions.VisibleDeprecationWarning)
 plt.rcParams["font.family"] = "Latin Modern Roman"
 
 
