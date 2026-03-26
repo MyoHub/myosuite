@@ -23,7 +23,7 @@ TUTORIALS=(
                          "4c_Train_SB_policy.ipynb" \
                          "5_Move_Hand_Fingers.ipynb"
                          "6_Inverse_Dynamics.ipynb"
-                         "7_Fatigue_Modeling.ipynb"
+                        #  "7_Fatigue_Modeling.ipynb"
                          "9_Computed_muscle_control.ipynb"
                          "10_PlaybackMotFile.ipynb"
                          )
