@@ -11,7 +11,7 @@ from typing import Optional
 
 import mujoco
 import numpy as np
-import skvideo.io
+import imageio
 
 import myosuite.utils.import_utils as import_utils
 from myosuite.envs.env_variants import gym_registry_specs
@@ -758,7 +758,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         self.obsd_mj_model.body_quat[:] = state_dict["body_quat"]
         mujoco.mj_step(self.obsd_mj_model, self.obsd_mj_data)
 
-    # Methods on paths (should it be a part of path_utils?) =================================
+    # Methods on paths =================================
 
     def compute_path_rewards(self, paths):
         """
@@ -941,15 +941,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
             # save offscreen buffers as video
             if render == "offscreen":
                 file_name = output_dir + filename + str(ep) + ".mp4"
-                # check if the platform is OS -- make it compatible with quicktime
-                if platform == "darwin":
-                    skvideo.io.vwrite(
-                        file_name,
-                        np.asarray(frames),
-                        outputdict={"-pix_fmt": "yuv420p"},
-                    )
-                else:
-                    skvideo.io.vwrite(file_name, np.asarray(frames))
+                imageio.mimwrite(file_name, frames, fps=int(1.0 / self.dt))
                 prompt("saved", file_name, type=Prompt.INFO)
 
         self.mujoco_render_frames = False
@@ -1066,15 +1058,7 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
             # save offscreen buffers as video --------------------------------
             if render == "offscreen":
                 file_name = output_dir + filename + str(ep) + ".mp4"
-                # check if the platform is OS -- make it compatible with quicktime
-                if platform == "darwin":
-                    skvideo.io.vwrite(
-                        file_name,
-                        np.asarray(frames),
-                        outputdict={"-pix_fmt": "yuv420p"},
-                    )
-                else:
-                    skvideo.io.vwrite(file_name, np.asarray(frames))
+                imageio.mimwrite(file_name, frames, fps=int(1.0 / self.dt))
                 prompt("saved: " + file_name, type=Prompt.ALWAYS)
 
         self.mujoco_render_frames = False

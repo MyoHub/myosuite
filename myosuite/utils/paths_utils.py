@@ -10,7 +10,7 @@ import os
 import glob
 import pickle
 import h5py
-import skvideo.io
+import imageio
 from PIL import Image
 import click
 from myosuite.utils.dict_utils import flatten_dict, dict_numpify
@@ -277,7 +277,7 @@ def render(rollout_path, render_format:str="mp4", cam_names:list=["left"]):
         # Save video
         if render_format == "mp4":
             file_name_mp4 = file_name+"_{}.mp4".format(i_path)
-            skvideo.io.vwrite(file_name_mp4, np.asarray(frames))
+            imageio.mimwrite(file_name_mp4, frames, fps=int(1.0 / (data['time'][1] - data['time'][0])))
             print("\nSaving: " + file_name_mp4)
 
 

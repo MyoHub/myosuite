@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "click",
-    "sk-video",
+    "imageio",
     "gymnasium<1.3",
     "termcolor",
     "flatten_dict",
@@ -64,6 +64,7 @@ tutorials = [
 	"pandas",
 	"tqdm",
 	"mink",
+    "loop-rate-limiters",
 	"osqp",
 	"stable-baselines3[extra]",
 ]

@@ -6,7 +6,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 ### Adapted from: https://github.com/kevinzakka/mink/examples
 # REQUIRES:
 # Python 3.9
-# MINK -- pip install "myosuite[examples]"
+# MINK -- pip install "myosuite[tutorials]"
 
 import os
 
@@ -16,7 +16,7 @@ import mujoco.viewer
 import numpy as np
 from loop_rate_limiters import RateLimiter
 
-os.chdir("../../../myosuite/simhive/myo_sim/arm")
+os.chdir("../myosuite/simhive/myo_sim/arm")
 _XML_ARM_Model = "myoarm.xml"
 
 xml_string = f"""

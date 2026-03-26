@@ -1,6 +1,5 @@
 import os
 import warnings
-from base64 import b64encode
 from collections import deque as dq
 from typing import Callable
 
@@ -8,8 +7,8 @@ import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import skvideo.io
-from IPython.display import HTML
+import imageio
+from IPython.display import Video, display
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
@@ -25,21 +24,6 @@ configure = configure
 os.environ["MUJOCO_GL"] = "egl"
 warnings.filterwarnings("ignore", category=np.exceptions.VisibleDeprecationWarning)
 plt.rcParams["font.family"] = "Latin Modern Roman"
-
-
-def show_video(video_path, video_width=600):
-    """
-    Displays any mp4 video within the notebook.
-
-    video_path: str; path to mp4
-    video_width: str; optional; size to render video
-    """
-    video_file = open(video_path, "r+b").read()
-    video_url = f"data:video/mp4;base64,{b64encode(video_file).decode()}"
-    return HTML(
-        f"""<video autoplay width={video_width} controls><source src="{video_url}"></video>"""
-    )
-
 
 class SaveSuccesses(BaseCallback):
     """
@@ -258,7 +242,7 @@ def load_manipulation_SAR():
     """
     current_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.join(
-        current_dir, "../../../../myosuite/agents/SAR_pretrained/manipulation"
+        current_dir, "../../myosuite/agents/SAR_pretrained/manipulation"
     )
 
     ica = joblib.load(os.path.join(root_dir, "ica.pkl"))
@@ -279,7 +263,7 @@ def load_locomotion_SAR():
     """
     current_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.join(
-        current_dir, "../../../../myosuite/agents/SAR_pretrained/locomotion"
+        current_dir, "../../myosuite/agents/SAR_pretrained/locomotion"
     )
 
     ica = joblib.load(os.path.join(root_dir, "ica.pkl"))
@@ -429,6 +413,4 @@ def get_vid(
 
             rs += r
     env.close()
-    skvideo.io.vwrite(
-        f"{video_name}.mp4", np.asarray(frames), outputdict={"-pix_fmt": "yuv420p"}
-    )
+    imageio.mimwrite(f"{video_name}.mp4", frames, fps=1.0 / env.unwrapped.dt)

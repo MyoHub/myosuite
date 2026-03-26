@@ -5,7 +5,7 @@ This directory contains [MJX (MuJoCo XLA)](https://mujoco.readthedocs.io/en/stab
 ## Installation
 
 ### Standard Installation
-The default installation requires Python ≥3.9 and MuJoCo 3.3.6. See the [main README](../../../../README.md) for detailed installation instructions using uv, conda, or pip.
+The default installation requires Python ≥3.10 and MuJoCo 3.5. See the [main README](../../../../README.md) for detailed installation instructions using uv, conda, or pip.
 
 ### Installation (Python ≥3.10, MuJoCo 3.5):
 
