@@ -419,7 +419,7 @@ def get_vid(
             o = vec.normalize_obs(env.get_obs())
             a, __ = model.predict(o, deterministic=determ)
 
-            frame = env.mj_renderer.render_offscreen(
+            frame = env.unwrapped.mj_renderer.render_offscreen(
                 width=640, height=480, camera_id=camera
             )
             frames.append(frame)

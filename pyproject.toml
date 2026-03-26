@@ -9,6 +9,7 @@ license = { text = "Apache 2.0" }
 authors = [
     { name = "Vikash Kumar", email = "vikashplus@gmail.com" },
     { name = "Vittorio Caggiano", email = "caggiano@gmail.com" },
+    { name = "Balint Hodossy", email = "balint.hodossy16@imperial.ac.uk" },
 ]
 urls = { Homepage = "https://sites.google.com/view/myosuite" }
 classifiers = [
@@ -34,19 +35,12 @@ dependencies = [
     "gitpython",
 ]
 [[tool.uv.index]]
-name = "mujoco"
-url = "https://py.mujoco.org"
-explicit = true
-
-[[tool.uv.index]]
 name = "nvidia"
 url = "https://pypi.nvidia.com"
 explicit = true
 
 [tool.uv.sources]
-mujoco = { index = "mujoco" }
 warp-lang = { index = "nvidia" }
-# mujoco-mjx = { git = "https://github.com/google-deepmind/mujoco", rev = "main", subdirectory = "mjx" }
 
 [project.optional-dependencies]
 examples = ["mink[examples]; python_version > '3.9'"]
