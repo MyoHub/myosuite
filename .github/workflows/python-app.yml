@@ -32,7 +32,7 @@ jobs:
     strategy:
       matrix:
         os:
-          # - macos-latest
+          - macos-latest
           - ubuntu-latest
           - windows-latest
 
@@ -77,17 +77,18 @@ jobs:
       run: uv run python -m mujoco.render_test
 
     - name: Test myoapi
-      # Avoid re-syncing dependencies during `uv run` (macOS can fail while resolving/re-installing
-      # wheels, even if the earlier `uv pip install -e .` step succeeded).
       run: uv run --no-sync python -m myosuite.tests.test_myoapi
 
     - name: Run Test mjx
       if: ${{ runner.os != 'Windows' }}
       run: |
-        uv run --with ".[mjx]" python -m pytest myosuite/tests/test_mjx.py -v
-        uv run --with ".[mjx]" python -m pytest myosuite/tests/mjx/test_quat_math.py -v
-        uv run --with ".[mjx]" python -m pytest myosuite/tests/mjx/test_fatigue.py -v
-        uv run --with ".[mjx]" python -m pytest myosuite/tests/mjx/test_reference_motion.py -v
+        uv pip install ".[mjx]"
+        uv pip install pytest
+
+        ./.venv/bin/python -m pytest myosuite/tests/test_mjx.py -v
+        ./.venv/bin/python -m pytest myosuite/tests/mjx/test_quat_math.py -v
+        ./.venv/bin/python -m pytest myosuite/tests/mjx/test_fatigue.py -v
+        ./.venv/bin/python -m pytest myosuite/tests/mjx/test_reference_motion.py -v
 
     - name: Run Test environment
       run: uv run --no-sync python -m myosuite.tests.test_myo
