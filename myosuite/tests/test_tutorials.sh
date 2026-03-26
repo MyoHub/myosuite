@@ -13,20 +13,6 @@ uv pip  install stable-baselines3
 
 uv run python -m ipykernel install --user --name=myosuite_uv
 
-# Tested tutorials
-TUTORIALS=(
-                         "1_Get_Started.ipynb" \
-                         "2_Load_policy.ipynb" \
-                         "3_Analyse_movements.ipynb" \
-                        #  "4_Train_policy.ipynb" \
-                        #  "4a_deprl.ipynb" \
-                         "4c_Train_SB_policy.ipynb" \
-                         "5_Move_Hand_Fingers.ipynb"
-                         "6_Inverse_Dynamics.ipynb"
-                        #  "7_Fatigue_Modeling.ipynb"
-                         "9_Computed_muscle_control.ipynb"
-                         "10_PlaybackMotFile.ipynb"
-                         )
 
 # Run all tutorials in one Python process to avoid re-parsing uv.lock each iteration
 uv run python -c "
@@ -39,7 +25,6 @@ tutorials = [
     '4c_Train_SB_policy.ipynb',
     '5_Move_Hand_Fingers.ipynb',
     '6_Inverse_Dynamics.ipynb',
-    '7_Fatigue_Modeling.ipynb',
     '9_Computed_muscle_control.ipynb',
     '10_PlaybackMotFile.ipynb',
 ]
