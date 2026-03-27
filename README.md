@@ -30,7 +30,13 @@ Below is an overview of the tasks in the MyoSuite.
 ## Installations
 You will need Python 3.9 or later versions.
 
-### Using pip
+### Using uv
+[uv](https://docs.astral.sh/uv/) is a fast Python package manager. Install MyoSuite with:
+``` bash
+uv sync -p 3.9
+```
+
+### Using conda
 It is recommended to use [Miniconda](https://docs.conda.io/en/latest/miniconda.html#latest-miniconda-installer-links) and to create a separate environment with:
 ``` bash
 conda create --name myosuite python=3.9
@@ -64,12 +70,20 @@ For advanced installation options, see [here](https://myosuite.readthedocs.io/en
 
 Test your installation using the following command (this will return also a list of all the current environments):
 ``` bash
+# With uv:
+uv run python -m myosuite.tests.test_myo
+
+# With pip/conda:
 python -m myosuite.tests.test_myo
 ```
 
 
 You can also visualize the environments with random controls using the command below:
 ``` bash
+# With uv:
+uv run python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
+
+# With pip/conda:
 python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 ```
 **NOTE:** On MacOS, we moved to mujoco native `launch_passive` which requires that the Python script be run under `mjpython`:
@@ -77,8 +91,12 @@ python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 ```
 
-It is possible to take advantage of the latest MyoSkeleton. Once added (follow the instructions prompted by `python -m myosuite_init`), run:
+It is possible to take advantage of the latest MyoSkeleton. Once added (follow the instructions prompted by `uv run myoapi_init` or `python -m myosuite_init`), run:
 ``` bash
+# With uv:
+uv run python -m myosuite.utils.examine_sim -s myosuite/simhive/myo_model/myoskeleton/myoskeleton.xml
+
+# With pip/conda:
 python -m myosuite.utils.examine_sim -s myosuite/simhive/myo_model/myoskeleton/myoskeleton.xml
 ```
 
@@ -117,7 +135,6 @@ If you find this repository useful in your research, please consider giving a st
   publisher = {arXiv},
   year = {2022},
   howpublished = {\url{https://github.com/myohub/myosuite}},
-  year =         {2022}
   doi = {10.48550/ARXIV.2205.13600},
   url = {https://arxiv.org/abs/2205.13600},
 }

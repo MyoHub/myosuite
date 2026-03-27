@@ -6,17 +6,15 @@ spinal feedback generates diverse behaviours of human locomotion." The
 Journal of physiology, 2015.
 """
 
-from __future__ import division  # '/' always means non-truncating division
+from __future__ import division
+import sys  # '/' always means non-truncating division
 
-import os
-
-import gym
 import numpy as np
 from reflexCtr import LocoCtrl
 
-from myosuite.envs.env_variants import register_env_variant
+from myosuite.utils import gym
 from myosuite.utils.quat_math import euler2quat, quat2euler
-
+import mujoco
 
 class MyoLegReflex(object):
 
@@ -46,6 +44,7 @@ class MyoLegReflex(object):
 
         self.n_par = len(LocoCtrl.cp_keys)
         control_dimension = 3
+
         self.cp_map = LocoCtrl.cp_map
         self.ReflexCtrl = LocoCtrl(
             self.dt, control_dimension=control_dimension, params=np.ones(self.n_par)
@@ -58,22 +57,11 @@ class MyoLegReflex(object):
         self.init_dict = init_dict
         self.seed = seed
 
-        curr_dir = os.getcwd()
-        register_env_variant(
-            env_id="myoLegDemo-v0",
-            variants={
-                "model_path": curr_dir + "/../../simhive/myo_sim/leg/myolegs.xml",
-                "normalize_act": False,
-            },
-            variant_id="MyoLegReflex-v0",
-            silent=False,
-        )
-        self.env = gym.make("MyoLegReflex-v0")
+        self.env = gym.make("myoLegStandRandom-v0", normalize_act=False)
 
         print("Seed added - ", seed)
-        print("List of cameras available", self.env.mj_model.camera_names)
         self.env.reset()
-        self.env.seed(seed)
+        self.env.unwrapped.seed(seed)
 
         self.muscle_labels = {}
         self.muscles_dict = {}
@@ -97,7 +85,7 @@ class MyoLegReflex(object):
     def reset(self):
 
         self.env.reset()
-        self.env.seed(self.seed)
+        self.env.unwrapped.seed(self.seed)
 
         self.ReflexCtrl.reset()
 
@@ -129,31 +117,31 @@ class MyoLegReflex(object):
 
         # Getting values directly from the Mujoco env, and translating them into the controller convention
         # Measurement is in world coordinates
-        pel_euler = quat2euler(self.env.mj_data.get_body_xquat("pelvis").copy())
+        pel_euler = quat2euler(self.env.unwrapped.mj_data.body("pelvis").xquat.copy())
         pelvis_roll = pel_euler[0] - (np.pi / 2)
         pelvis_pitch = pel_euler[2] * (-1)
         pelvis_yaw = pel_euler[1] * (-1)
 
         # Pelvis velocities and angular velocities
-        temp_seg_vel = self.env.mj_data.get_body_xvelp("pelvis").copy()
+        temp_seg_vel = np.empty(6, dtype=np.float64)
+        mujoco.mj_objectVelocity(self.env.unwrapped.mj_model, self.env.unwrapped.mj_data, mujoco.mju_str2Type("body".encode(sys.getdefaultencoding())), self.env.unwrapped.mj_model.body("pelvis").id, temp_seg_vel, flg_local=False)
+        lin_seg_vel = temp_seg_vel[:3]
         dx_local, dy_local = self.rotate_frame(
-            temp_seg_vel[0], temp_seg_vel[1], pelvis_yaw
+            lin_seg_vel[0], lin_seg_vel[1], pelvis_yaw
         )
         pelvis_vel = np.hstack(
-            (
-                np.array([dx_local, dy_local, -1 * temp_seg_vel[2]]),
-                self.env.mj_data.get_body_xvelr("pelvis").copy(),
-            )
-        )  # Velocity might need to be negative in Pitch (y-axis)
+            (np.array([dx_local, dy_local, lin_seg_vel[2]]), temp_seg_vel[3:])
+        )
 
         # GRF from foot contact sensor values
+        # GRF from foot contact sensor values
         temp_right = (
-            self.env.mj_data.get_sensor("r_foot").copy()
-            + self.env.mj_data.get_sensor("r_toes").copy()
+            self.env.unwrapped.mj_data.sensor("r_foot").data[0].copy()
+            + self.env.unwrapped.mj_data.sensor("r_toes").data[0].copy()
         )
         temp_left = (
-            self.env.mj_data.get_sensor("l_foot").copy()
-            + self.env.mj_data.get_sensor("l_toes").copy()
+            self.env.unwrapped.mj_data.sensor("l_foot").data[0].copy()
+            + self.env.unwrapped.mj_data.sensor("l_toes").data[0].copy()
         )
 
         sensor_data = {"body": {}, "r_leg": {}, "l_leg": {}}
@@ -173,10 +161,10 @@ class MyoLegReflex(object):
         ]  # around local y axis
 
         sensor_data["r_leg"]["load_ipsi"] = temp_right / (
-            np.sum(self.env.mj_model.body_mass) * 9.8
+            np.sum(self.env.unwrapped.mj_model.body_mass) * 9.8
         )
         sensor_data["l_leg"]["load_ipsi"] = temp_left / (
-            np.sum(self.env.mj_model.body_mass) * 9.8
+            np.sum(self.env.unwrapped.mj_model.body_mass) * 9.8
         )
 
         for s_leg, s_legc in zip(["r_leg", "l_leg"], ["l_leg", "r_leg"]):
@@ -189,36 +177,34 @@ class MyoLegReflex(object):
             )
             sensor_data[s_leg]["load_contra"] = sensor_data[s_legc]["load_ipsi"]
 
-            sensor_data[s_leg]["phi_hip"] = np.pi - self.env.mj_data.get_joint_qpos(
-                f"hip_flexion_{s_leg[0]}"
+            sensor_data[s_leg]["phi_hip"] = (
+                np.pi - self.env.unwrapped.mj_data.jnt(f"hip_flexion_{s_leg[0]}").qpos[0].copy()
             )
-            sensor_data[s_leg]["phi_knee"] = np.pi - self.env.mj_data.get_joint_qpos(
-                f"knee_angle_{s_leg[0]}"
+            sensor_data[s_leg]["phi_knee"] = (
+                np.pi - self.env.unwrapped.mj_data.jnt(f"knee_angle_{s_leg[0]}").qpos[0].copy()
             )
-            sensor_data[s_leg]["phi_ankle"] = 0.5 * np.pi - self.env.mj_data.get_joint_qpos(
-                f"ankle_angle_{s_leg[0]}"
+            sensor_data[s_leg]["phi_ankle"] = (
+                0.5 * np.pi
+                - self.env.unwrapped.mj_data.jnt(f"ankle_angle_{s_leg[0]}").qpos[0].copy()
             )
-            sensor_data[s_leg]["dphi_knee"] = -1 * self.env.mj_data.get_joint_qvel(
-                f"knee_angle_{s_leg[0]}"
+            sensor_data[s_leg]["dphi_knee"] = (
+                self.env.unwrapped.mj_data.jnt(f"knee_angle_{s_leg[0]}").qvel[0].copy()
             )
 
             # alpha = hip - 0.5*knee
             sensor_data[s_leg]["alpha"] = (
                 sensor_data[s_leg]["phi_hip"] - 0.5 * sensor_data[s_leg]["phi_knee"]
             )
-            dphi_hip = -1 * self.env.mj_data.get_joint_qvel(f"hip_flexion_{s_leg[0]}")
+            dphi_hip = self.env.unwrapped.mj_data.jnt(f"hip_flexion_{s_leg[0]}").qvel[0].copy()
             sensor_data[s_leg]["dalpha"] = (
                 dphi_hip - 0.5 * sensor_data[s_leg]["dphi_knee"]
             )
 
-            # Formula: -obs_dict[s_leg]['d_joint']['hip_abd'] + .5*np.pi
-            # Since adduction (with D) in Mujoco is positive, need to change the sign. The formula below preserves the relation to the formula above
             sensor_data[s_leg]["alpha_f"] = (
-                -1 * (-1 * self.env.mj_data.get_joint_qpos(f"hip_adduction_{s_leg[0]}"))
-                + 0.5 * np.pi
-            )
+                -1 * self.env.unwrapped.mj_data.jnt(f"hip_adduction_{s_leg[0]}").qpos[0].copy()
+            ) + 0.5 * np.pi
 
-            temp_mus_force = self.env.mj_data.actuator_force.copy()
+            temp_mus_force = self.env.unwrapped.mj_data.actuator_force.copy()
 
             sensor_data[s_leg]["F_RF"] = -1 * np.mean(
                 temp_mus_force[self.muscles_dict[s_leg]["RF"]]
@@ -254,34 +240,34 @@ class MyoLegReflex(object):
         # Have to collect observations after step, otherwise brain cmd would not have any values
         out_dict = self.get_obs_dict()
 
-        temp_pel_euler = quat2euler(self.env.mj_data.get_body_xquat("root").copy())
+        temp_pel_euler = quat2euler(self.env.unwrapped.mj_data.body("root").xquat.copy())
 
         # Check if the simulation is still alive (height of pelvs still above threshold, has not fallen down yet)
         if (
-            self.env.mj_data.get_body_xpos("pelvis")[2] < 0.65
+            self.env.unwrapped.mj_data.body("pelvis").xpos[2] < 0.65
         ):  # (Emprical testing) Even for very bent knee walking, height of pelvis is about 0.78
             is_done = True
         if temp_pel_euler[1] < np.deg2rad(-30) or temp_pel_euler[1] > np.deg2rad(30):
             # Punish for too much pitch of pelvis
             is_done = True
 
-        return [out_dict, is_done, np.round(self.env.mj_data.time, 2), new_act]
+        return [out_dict, is_done, np.round(self.env.unwrapped.mj_data.time, 2), new_act]
 
     # ---------- Initialization Functions ----------
     def _set_muscle_groups(self):
         # ----- Gluteus group -----
         glu_r = [
-            self.env.mj_model.actuator_names.index("glmax1_r"),
-            self.env.mj_model.actuator_names.index("glmax2_r"),
-            self.env.mj_model.actuator_names.index("glmax3_r"),
-            self.env.mj_model.actuator_names.index("glmed3_r"),
+            self.env.unwrapped.mj_model.actuator("glmax1_r").id,
+            self.env.unwrapped.mj_model.actuator("glmax2_r").id,
+            self.env.unwrapped.mj_model.actuator("glmax3_r").id,
+            self.env.unwrapped.mj_model.actuator("glmed3_r").id,
         ]
 
         glu_l = [
-            self.env.mj_model.actuator_names.index("glmax1_l"),
-            self.env.mj_model.actuator_names.index("glmax2_l"),
-            self.env.mj_model.actuator_names.index("glmax3_l"),
-            self.env.mj_model.actuator_names.index("glmed3_l"),
+            self.env.unwrapped.mj_model.actuator("glmax1_l").id,
+            self.env.unwrapped.mj_model.actuator("glmax2_l").id,
+            self.env.unwrapped.mj_model.actuator("glmax3_l").id,
+            self.env.unwrapped.mj_model.actuator("glmed3_l").id,
         ]
 
         glu_r_lbl = ["glmax1_r", "glmax2_r", "glmax3_r", "glmed3_r"]
@@ -289,37 +275,37 @@ class MyoLegReflex(object):
 
         # ----- Hamstring (semitendinosus and semimembranosus) -----
         ham_r = [
-            self.env.mj_model.actuator_names.index("semimem_r"),
-            self.env.mj_model.actuator_names.index("semiten_r"),
-            self.env.mj_model.actuator_names.index("bflh_r"),
+            self.env.unwrapped.mj_model.actuator("semimem_r").id,
+            self.env.unwrapped.mj_model.actuator("semiten_r").id,
+            self.env.unwrapped.mj_model.actuator("bflh_r").id,
         ]
 
         ham_l = [
-            self.env.mj_model.actuator_names.index("semimem_l"),
-            self.env.mj_model.actuator_names.index("semiten_l"),
-            self.env.mj_model.actuator_names.index("bflh_l"),
+            self.env.unwrapped.mj_model.actuator("semimem_l").id,
+            self.env.unwrapped.mj_model.actuator("semiten_l").id,
+            self.env.unwrapped.mj_model.actuator("bflh_l").id,
         ]
 
         ham_r_lbl = ["semimem_r", "semiten_r", "bflh_r"]
         ham_l_lbl = ["semimem_l", "semiten_l", "bflh_l"]
 
         # ----- BF short head (biceps femoris) -----
-        bfsh_r = [self.env.mj_model.actuator_names.index("bfsh_r")]
+        bfsh_r = [self.env.unwrapped.mj_model.actuator("bfsh_r").id]
 
-        bfsh_l = [self.env.mj_model.actuator_names.index("bfsh_l")]
+        bfsh_l = [self.env.unwrapped.mj_model.actuator("bfsh_l").id]
 
         bfsh_r_lbl = ["bfsh_r"]
         bfsh_l_lbl = ["bfsh_l"]
 
         # ----- Gastrocnemius -----
         gas_r = [
-            self.env.mj_model.actuator_names.index("gaslat_r"),
-            self.env.mj_model.actuator_names.index("gasmed_r"),
+            self.env.unwrapped.mj_model.actuator("gaslat_r").id,
+            self.env.unwrapped.mj_model.actuator("gasmed_r").id,
         ]
 
         gas_l = [
-            self.env.mj_model.actuator_names.index("gaslat_l"),
-            self.env.mj_model.actuator_names.index("gasmed_l"),
+            self.env.unwrapped.mj_model.actuator("gaslat_l").id,
+            self.env.unwrapped.mj_model.actuator("gasmed_l").id,
         ]
 
         gas_r_lbl = ["gaslat_r", "gasmed_r"]
@@ -327,17 +313,17 @@ class MyoLegReflex(object):
 
         # ----- Soleus -----
         sol_r = [
-            self.env.mj_model.actuator_names.index("soleus_r"),
-            self.env.mj_model.actuator_names.index("perbrev_r"),
-            self.env.mj_model.actuator_names.index("perlong_r"),
-            self.env.mj_model.actuator_names.index("tibpost_r"),
+            self.env.unwrapped.mj_model.actuator("soleus_r").id,
+            self.env.unwrapped.mj_model.actuator("perbrev_r").id,
+            self.env.unwrapped.mj_model.actuator("perlong_r").id,
+            self.env.unwrapped.mj_model.actuator("tibpost_r").id,
         ]
 
         sol_l = [
-            self.env.mj_model.actuator_names.index("soleus_l"),
-            self.env.mj_model.actuator_names.index("perbrev_l"),
-            self.env.mj_model.actuator_names.index("perlong_l"),
-            self.env.mj_model.actuator_names.index("tibpost_l"),
+            self.env.unwrapped.mj_model.actuator("soleus_l").id,
+            self.env.unwrapped.mj_model.actuator("perbrev_l").id,
+            self.env.unwrapped.mj_model.actuator("perlong_l").id,
+            self.env.unwrapped.mj_model.actuator("tibpost_l").id,
         ]
 
         sol_r_lbl = ["soleus_r", "perbrev_r", "perlong_r", "tibpost_r"]
@@ -345,13 +331,13 @@ class MyoLegReflex(object):
 
         # ----- Hip Flexors (psoas and iliacus) -----
         hfl_r = [
-            self.env.mj_model.actuator_names.index("psoas_r"),
-            self.env.mj_model.actuator_names.index("iliacus_r"),
+            self.env.unwrapped.mj_model.actuator("psoas_r").id,
+            self.env.unwrapped.mj_model.actuator("iliacus_r").id,
         ]
 
         hfl_l = [
-            self.env.mj_model.actuator_names.index("psoas_l"),
-            self.env.mj_model.actuator_names.index("iliacus_l"),
+            self.env.unwrapped.mj_model.actuator("psoas_l").id,
+            self.env.unwrapped.mj_model.actuator("iliacus_l").id,
         ]
 
         hfl_r_lbl = ["psoas_r", "iliacus_r"]
@@ -359,23 +345,23 @@ class MyoLegReflex(object):
 
         # ----- Hip Abductors (piriformis, satorius and tensor fasciae latae) -----
         hab_r = [
-            self.env.mj_model.actuator_names.index("piri_r"),
-            self.env.mj_model.actuator_names.index("sart_r"),
-            self.env.mj_model.actuator_names.index("glmed1_r"),
-            self.env.mj_model.actuator_names.index("glmed2_r"),
-            self.env.mj_model.actuator_names.index("glmin1_r"),
-            self.env.mj_model.actuator_names.index("glmin2_r"),
-            self.env.mj_model.actuator_names.index("glmin3_r"),
+            self.env.unwrapped.mj_model.actuator("piri_r").id,
+            self.env.unwrapped.mj_model.actuator("sart_r").id,
+            self.env.unwrapped.mj_model.actuator("glmed1_r").id,
+            self.env.unwrapped.mj_model.actuator("glmed2_r").id,
+            self.env.unwrapped.mj_model.actuator("glmin1_r").id,
+            self.env.unwrapped.mj_model.actuator("glmin2_r").id,
+            self.env.unwrapped.mj_model.actuator("glmin3_r").id,
         ]
 
         hab_l = [
-            self.env.mj_model.actuator_names.index("piri_l"),
-            self.env.mj_model.actuator_names.index("sart_l"),
-            self.env.mj_model.actuator_names.index("glmed1_l"),
-            self.env.mj_model.actuator_names.index("glmed2_l"),
-            self.env.mj_model.actuator_names.index("glmin1_l"),
-            self.env.mj_model.actuator_names.index("glmin2_l"),
-            self.env.mj_model.actuator_names.index("glmin3_l"),
+            self.env.unwrapped.mj_model.actuator("piri_l").id,
+            self.env.unwrapped.mj_model.actuator("sart_l").id,
+            self.env.unwrapped.mj_model.actuator("glmed1_l").id,
+            self.env.unwrapped.mj_model.actuator("glmed2_l").id,
+            self.env.unwrapped.mj_model.actuator("glmin1_l").id,
+            self.env.unwrapped.mj_model.actuator("glmin2_l").id,
+            self.env.unwrapped.mj_model.actuator("glmin3_l").id,
         ]
 
         hab_r_lbl = [
@@ -399,23 +385,23 @@ class MyoLegReflex(object):
 
         # ----- Hip Abbuctors (adductor [brevis, longus, magnus], gracilis) -----
         had_r = [
-            self.env.mj_model.actuator_names.index("addbrev_r"),
-            self.env.mj_model.actuator_names.index("addlong_r"),
-            self.env.mj_model.actuator_names.index("addmagDist_r"),
-            self.env.mj_model.actuator_names.index("addmagIsch_r"),
-            self.env.mj_model.actuator_names.index("addmagMid_r"),
-            self.env.mj_model.actuator_names.index("addmagProx_r"),
-            self.env.mj_model.actuator_names.index("grac_r"),
+            self.env.unwrapped.mj_model.actuator("addbrev_r").id,
+            self.env.unwrapped.mj_model.actuator("addlong_r").id,
+            self.env.unwrapped.mj_model.actuator("addmagDist_r").id,
+            self.env.unwrapped.mj_model.actuator("addmagIsch_r").id,
+            self.env.unwrapped.mj_model.actuator("addmagMid_r").id,
+            self.env.unwrapped.mj_model.actuator("addmagProx_r").id,
+            self.env.unwrapped.mj_model.actuator("grac_r").id,
         ]
 
         had_l = [
-            self.env.mj_model.actuator_names.index("addbrev_l"),
-            self.env.mj_model.actuator_names.index("addlong_l"),
-            self.env.mj_model.actuator_names.index("addmagDist_l"),
-            self.env.mj_model.actuator_names.index("addmagIsch_l"),
-            self.env.mj_model.actuator_names.index("addmagMid_l"),
-            self.env.mj_model.actuator_names.index("addmagProx_l"),
-            self.env.mj_model.actuator_names.index("grac_l"),
+            self.env.unwrapped.mj_model.actuator("addbrev_l").id,
+            self.env.unwrapped.mj_model.actuator("addlong_l").id,
+            self.env.unwrapped.mj_model.actuator("addmagDist_l").id,
+            self.env.unwrapped.mj_model.actuator("addmagIsch_l").id,
+            self.env.unwrapped.mj_model.actuator("addmagMid_l").id,
+            self.env.unwrapped.mj_model.actuator("addmagProx_l").id,
+            self.env.unwrapped.mj_model.actuator("grac_l").id,
         ]
 
         had_r_lbl = [
@@ -438,33 +424,33 @@ class MyoLegReflex(object):
         ]
 
         # ----- rectus femoris -----
-        rf_r = [self.env.mj_model.actuator_names.index("recfem_r")]
+        rf_r = [self.env.unwrapped.mj_model.actuator("recfem_r").id]
 
-        rf_l = [self.env.mj_model.actuator_names.index("recfem_l")]
+        rf_l = [self.env.unwrapped.mj_model.actuator("recfem_l").id]
 
         rf_r_lbl = ["recfem_r"]
         rf_l_lbl = ["recfem_l"]
 
         # ----- Vastius group -----
         vas_r = [
-            self.env.mj_model.actuator_names.index("vasint_r"),
-            self.env.mj_model.actuator_names.index("vaslat_r"),
-            self.env.mj_model.actuator_names.index("vasmed_r"),
+            self.env.unwrapped.mj_model.actuator("vasint_r").id,
+            self.env.unwrapped.mj_model.actuator("vaslat_r").id,
+            self.env.unwrapped.mj_model.actuator("vasmed_r").id,
         ]
 
         vas_l = [
-            self.env.mj_model.actuator_names.index("vasint_l"),
-            self.env.mj_model.actuator_names.index("vaslat_l"),
-            self.env.mj_model.actuator_names.index("vasmed_l"),
+            self.env.unwrapped.mj_model.actuator("vasint_l").id,
+            self.env.unwrapped.mj_model.actuator("vaslat_l").id,
+            self.env.unwrapped.mj_model.actuator("vasmed_l").id,
         ]
 
         vas_r_lbl = ["vasint_r", "vaslat_r", "vasmed_r"]
         vas_l_lbl = ["vasint_l", "vaslat_l", "vasmed_l"]
 
         # ----- tibialis anterior -----
-        ta_r = [self.env.mj_model.actuator_names.index("tibant_r")]
+        ta_r = [self.env.unwrapped.mj_model.actuator("tibant_r").id]
 
-        ta_l = [self.env.mj_model.actuator_names.index("tibant_l")]
+        ta_l = [self.env.unwrapped.mj_model.actuator("tibant_l").id]
 
         ta_r_lbl = ["tibant_r"]
         ta_l_lbl = ["tibant_l"]
@@ -524,25 +510,26 @@ class MyoLegReflex(object):
 
         # L0 = (actuator_lengthrange)
         temp_L0 = (
-            self.env.mj_model.actuator_lengthrange[:, 0] - self.env.mj_model.tendon_lengthspring
-        ) / self.env.mj_model.actuator_biasprm[:, 0]
+            self.env.unwrapped.mj_model.actuator_lengthrange[:, 0]
+            - self.env.unwrapped.mj_model.tendon_lengthspring[:, 0]
+        ) / self.env.unwrapped.mj_model.actuator_biasprm[:, 0]
 
         # --- Muscle Fmax normalizations ---
         for x in self.muscles_dict:
             self.muscle_Fmax[x] = {}
             self.muscle_L0[x] = {}
             for y in self.muscles_dict[x]:
-                self.muscle_Fmax[x][y] = self.env.mj_model.actuator_biasprm[
+                self.muscle_Fmax[x][y] = self.env.unwrapped.mj_model.actuator_biasprm[
                     self.muscles_dict[x][y], 2
                 ].copy()
-                # print(x, ' ', y, ' with', np.sum(self.env.mj_model.actuator_biasprm[self.muscles_dict[x][y],2]))
+                # print(x, ' ', y, ' with', np.sum(self.env.unwrapped.mj_model.actuator_biasprm[self.muscles_dict[x][y],2]))
                 self.muscle_L0[x][y] = temp_L0[self.muscles_dict[x][y]]
 
     def _set_initial_pose(self, init_dict):
         # Sets the initial pose of the Myoleg model based on an input dictionary of values
 
         # Setting the starting position for reward calculation
-        self.init_pelvis = self.env.mj_data.get_body_xpos("pelvis").copy()
+        self.init_pelvis = self.env.unwrapped.mj_data.body("pelvis").xpos.copy()
 
         # Converting from Euler to quaternions
         temp_quat_util = euler2quat(
@@ -553,32 +540,23 @@ class MyoLegReflex(object):
             ]
         )
 
-        self.env.mj_data.qpos[3] = temp_quat_util[0]  # Setting no roll, pitch and yaw
-        self.env.mj_data.qpos[4] = temp_quat_util[1]
-        self.env.mj_data.qpos[5] = temp_quat_util[2]
-        self.env.mj_data.qpos[6] = temp_quat_util[3]
+        self.env.unwrapped.mj_data.qpos[3] = temp_quat_util[0]  # Setting no roll, pitch and yaw
+        self.env.unwrapped.mj_data.qpos[4] = temp_quat_util[1]
+        self.env.unwrapped.mj_data.qpos[5] = temp_quat_util[2]
+        self.env.unwrapped.mj_data.qpos[6] = temp_quat_util[3]
 
         # Setting initial velocity
         # Pushes the free root joint, which propagates the velocities to all the joints and segments
-        self.env.mj_data.qvel[0] = init_dict["velocity"]["cartesian"][0]
-        self.env.mj_data.qvel[1] = init_dict["velocity"]["cartesian"][1]
-        self.env.mj_data.qvel[2] = init_dict["velocity"]["cartesian"][2]
-
-        # first 7 are free root (dof and quad), followed by 28 joints of myolegs
-        # Offset index of 7, 1st 7 elements are the 3D pos and quad of the free root joint
-
-        # offset will change if indexing function changes
-        # mj_model.joint_name2id - Takes into consideration that there is a root joint. (Uses an offset of +6 instead)
-        # mj_model.joint_names.index - Uses only the joint_name property to perform indexing
-
-        temp_offset = 7
+        self.env.unwrapped.mj_data.qvel[0] = init_dict["velocity"]["cartesian"][0]
+        self.env.unwrapped.mj_data.qvel[1] = init_dict["velocity"]["cartesian"][1]
+        self.env.unwrapped.mj_data.qvel[2] = init_dict["velocity"]["cartesian"][2]
 
         # Reusing the dict from above
         # Values in radians
-        for i in init_dict["joint_angles"].keys():
-            self.env.mj_data.qpos[self.env.mj_model.joint_names.index(i) + temp_offset] = (
-                init_dict["joint_angles"][i]
-            )
+        for joint_name in init_dict["joint_angles"].keys():
+            self.env.unwrapped.mj_data.joint(joint_name).qpos[0] = init_dict["joint_angles"][
+                joint_name
+            ]
 
         if "height_offset" in init_dict.keys():
             height_offset = init_dict["height_offset"]
@@ -586,13 +564,13 @@ class MyoLegReflex(object):
             height_offset = 0
 
         # Lowering the height of the model by manipulating the free root joint
-        self.env.mj_data.qpos[0] = 0  # X pos of free root joint
-        self.env.mj_data.qpos[1] = 0  # Y pos of free root joint
-        self.env.mj_data.qpos[2] = init_dict["model_height"] + height_offset
+        self.env.unwrapped.mj_data.qpos[0] = 0  # X pos of free root joint
+        self.env.unwrapped.mj_data.qpos[1] = 0  # Y pos of free root joint
+        self.env.unwrapped.mj_data.qpos[2] = init_dict["model_height"] + height_offset
 
         # From documentation: https://openai.github.io/mujoco-py/build/html/reference.html
         # Run forward() after modifying and joint angles or velocities
-        mujoco.forward(self.env.mj_model, self.env.mj_data
+        mujoco.mj_forward(self.env.unwrapped.mj_model, self.env.unwrapped.mj_data)
 
     # ---------- Internal functions ----------
 
@@ -601,14 +579,14 @@ class MyoLegReflex(object):
         # Getting only the heel contacts. Works better at detecting new steps, as compared to using both heel and toe
         r_contact = (
             True
-            if (self.env.mj_data.get_sensor("r_foot").copy())
-            > 0.1 * (np.sum(self.env.mj_model.body_mass) * 9.8)
+            if (self.env.unwrapped.mj_data.sensor("r_foot").data[0].copy())
+            > 0.1 * (np.sum(self.env.unwrapped.mj_model.body_mass) * 9.8)
             else False
         )
         l_contact = (
             True
-            if (self.env.mj_data.get_sensor("l_foot").copy())
-            > 0.1 * (np.sum(self.env.mj_model.body_mass) * 9.8)
+            if (self.env.unwrapped.mj_data.sensor("l_foot").data[0].copy())
+            > 0.1 * (np.sum(self.env.unwrapped.mj_model.body_mass) * 9.8)
             else False
         )
 
@@ -625,22 +603,18 @@ class MyoLegReflex(object):
     def reflex2mujoco(self, output):
 
         mus_act = np.zeros((80,))
-        mus_act[:] = (
-            0  # Myosuite uses normalized action values between -1 to 1 # Currently hacked Myosuite outputs to be [0, 1]
-        )
+        mus_act[:] = 0  # Using non-normalized values of muscle activations
 
         legs = ["r_leg", "l_leg"]
         musc_idx = self.muscles_dict["r_leg"].keys()
 
         for s_leg in legs:
             for musc in musc_idx:
-                # print(f"Leg - {s_leg}, Musc - {musc}, Idx - {self.muscles_dict[s_leg][musc]}, values - {output[s_leg][musc]}")
                 mus_act[self.muscles_dict[s_leg][musc]] = output[s_leg][musc]
 
         return mus_act
 
     def rotate_frame(self, x, y, theta):
-        # print(theta)
         x_rot = np.cos(theta) * x - np.sin(theta) * y
         y_rot = np.sin(theta) * x + np.cos(theta) * y
         return x_rot, y_rot

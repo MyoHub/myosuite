@@ -225,13 +225,10 @@ IO        Internal Obliques
 .. _myoArmNoHandMuscles:
 
 myoArmNoHandMuscles
-=========
+===================
 The myoArmNoHandMuscles is the myoArm with the extrinsic and intrinsic hand muscles removed, enabling the study of reaching tasks that have no grasp or object manipulation component. 
 
 This musculoskeletal model is comprised of 38 joints and 24 muscle-tendon units.
-
-.. image:: images/myoArm_NoHand.png
-  :height: 200
 
 .. _tasks:
 
