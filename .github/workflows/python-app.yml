@@ -77,10 +77,21 @@ jobs:
       run: uv run python -m mujoco.render_test
 
     - name: Test myoapi
-      run: uv run python -m myosuite.tests.test_myoapi
+      run: uv run --no-sync python -m myosuite.tests.test_myoapi
+
+    - name: Run Test mjx
+      if: ${{ runner.os != 'Windows' }}
+      run: |
+        uv pip install ".[mjx]"
+        uv pip install pytest
+
+        ./.venv/bin/python -m pytest myosuite/tests/test_mjx.py -v
+        ./.venv/bin/python -m pytest myosuite/tests/mjx/test_quat_math.py -v
+        ./.venv/bin/python -m pytest myosuite/tests/mjx/test_fatigue.py -v
+        ./.venv/bin/python -m pytest myosuite/tests/mjx/test_reference_motion.py -v
 
     - name: Run Test environment
-      run: uv run python -m myosuite.tests.test_myo
+      run: uv run --no-sync python -m myosuite.tests.test_myo
 
     - name: Test rendering
       if: ${{ runner.os == 'Linux' }}
