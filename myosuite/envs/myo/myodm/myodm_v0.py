@@ -1,20 +1,19 @@
-""" =================================================
+"""=================================================
 Copyright (C) 2018 Vikash Kumar
 Author  :: Vikash Kumar (vikashplus@gmail.com), Sudeep Dasari (sdasari@andrew.cmu.edu), Vittorio Caggiano (caggiano@gmail.com)
 Source  :: https://github.com/MyoHub/myosuite
 License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-================================================= """
+================================================="""
 
 import collections
 import os
 import time
 
+import mujoco
 import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.logger.reference_motion import ReferenceMotion
-from myosuite.utils import gym
-from myosuite.utils.quat_math import euler2quat, mat2quat, quat2euler, quatDiff2Vel
 from myosuite.utils import gym
 from myosuite.utils.quat_math import euler2quat, mat2quat, quat2euler, quatDiff2Vel
 
@@ -109,7 +108,7 @@ class TrackEnv(BaseV0):
         weighted_reward_keys=DEFAULT_RWD_KEYS_AND_WEIGHTS,
         Termimate_obj_fail=True,
         Termimate_pose_fail=False,
-        **kwargs
+        **kwargs,
     ):
 
         # prep reference
@@ -119,7 +118,7 @@ class TrackEnv(BaseV0):
             random_generator=self.np_random,
         )
         self.motion_start_time = motion_start_time
-        self.target_sid = self.sim.model.site_name2id("target")
+        self.target_sid = self.mj_model.site("target").id
 
         ##########################################
         self.lift_bonus_thresh = 0.02
@@ -146,20 +145,20 @@ class TrackEnv(BaseV0):
         self.TermPose = Termimate_pose_fail
         ##########################################
 
-        self.object_bid = self.sim.model.body_name2id(self.object_name)
-        # self.wrist_bid = self.sim.model.body_name2id("wrist")
-        self.wrist_bid = self.sim.model.body_name2id("lunate")
+        self.object_bid = self.mj_model.body(self.object_name).id
+        # self.wrist_bid = self.mj_model.body("wrist").id
+        self.wrist_bid = self.mj_model.body("lunate").id
 
         # turn off the body skeleton rendering
-        self.sim.model.geom_rgba[self.sim.model.geom_name2id("body"), 3] = 0.0
+        self.mj_model.geom_rgba[self.mj_model.geom("body").id, 3] = 0.0
 
-        self._lift_z = self.sim.data.xipos[self.object_bid][2] + self.lift_bonus_thresh
+        self._lift_z = self.mj_data.xipos[self.object_bid][2] + self.lift_bonus_thresh
 
         super()._setup(
             obs_keys=obs_keys,
             weighted_reward_keys=weighted_reward_keys,
             frame_skip=10,
-            **kwargs
+            **kwargs,
         )
 
         # Adjust horizon if not motion_extrapolation
@@ -178,8 +177,8 @@ class TrackEnv(BaseV0):
 
         # hack because in the super()._setup the initial posture is set to the average qpos and when a step is called, it ends in a `done` state
         self.initialized_pos = True
-        # if self.sim.model.nkey>0:
-        # self.init_qpos[:] = self.sim.model.key_qpos[0,:]
+        # if self.mj_model.nkey>0:
+        # self.init_qpos[:] = self.mj_model.key_qpos[0,:]
 
     def rotation_distance(self, q1, q2, euler=True):
         if euler:
@@ -190,30 +189,30 @@ class TrackEnv(BaseV0):
 
     def update_reference_insim(self, curr_ref):
         if curr_ref.object is not None:
-            self.sim.model.site_pos[self.target_sid][:] = curr_ref.object[:3]
-            self.sim_obsd.model.site_pos[self.target_sid][:] = curr_ref.object[:3]
-            self.sim.forward()
+            self.mj_model.site_pos[self.target_sid][:] = curr_ref.object[:3]
+            self.obsd_mj_model.site_pos[self.target_sid][:] = curr_ref.object[:3]
+            mujoco.mj_forward(self.mj_model, self.mj_data)
 
     def norm2(self, x):
         return np.sum(np.square(x))
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
 
         # get reference for current time (returns a named tuple)
-        curr_ref = self.ref.get_reference(sim.data.time + self.motion_start_time)
+        curr_ref = self.ref.get_reference(mj_data.time + self.motion_start_time)
         self.update_reference_insim(curr_ref)
 
-        obs_dict["time"] = np.array([self.sim.data.time])
-        obs_dict["qp"] = sim.data.qpos.copy()
-        obs_dict["qv"] = sim.data.qvel.copy()
+        obs_dict["time"] = np.array([self.mj_data.time])
+        obs_dict["qp"] = mj_data.qpos.copy()
+        obs_dict["qv"] = mj_data.qvel.copy()
         obs_dict["robot_err"] = obs_dict["qp"][:-6].copy() - curr_ref.robot
 
         ## info about current hand pose + vel
-        obs_dict["curr_hand_qpos"] = sim.data.qpos[
+        obs_dict["curr_hand_qpos"] = mj_data.qpos[
             :-6
         ].copy()  ## assuming only 1 object and the last values are posision + rotation
-        obs_dict["curr_hand_qvel"] = sim.data.qvel[:-6].copy()  ## not used for now
+        obs_dict["curr_hand_qvel"] = mj_data.qvel[:-6].copy()  ## not used for now
 
         ## info about target hand pose + vel
         obs_dict["targ_hand_qpos"] = curr_ref.robot
@@ -222,12 +221,12 @@ class TrackEnv(BaseV0):
         )
 
         ## info about current object com + rotations
-        obs_dict["curr_obj_com"] = self.sim.data.xipos[self.object_bid].copy()
+        obs_dict["curr_obj_com"] = self.mj_data.xipos[self.object_bid].copy()
         obs_dict["curr_obj_rot"] = mat2quat(
-            np.reshape(self.sim.data.ximat[self.object_bid].copy(), (3, 3))
+            np.reshape(self.mj_data.ximat[self.object_bid].copy(), (3, 3))
         )
 
-        obs_dict["wrist_err"] = self.sim.data.xipos[self.wrist_bid].copy()
+        obs_dict["wrist_err"] = self.mj_data.xipos[self.wrist_bid].copy()
 
         obs_dict["base_error"] = obs_dict["curr_obj_com"] - obs_dict["wrist_err"]
 
@@ -247,9 +246,9 @@ class TrackEnv(BaseV0):
 
         obs_dict["obj_com_err"] = obs_dict["curr_obj_com"] - obs_dict["targ_obj_com"]
 
-        if sim.model.na > 0:
-            obs_dict["act"] = sim.data.act[:].copy()
-        # self.sim.model.body_names --> body names
+        if mj_model.na > 0:
+            obs_dict["act"] = mj_data.act[:].copy()
+        # self.mj_model.body_names --> body names
         return obs_dict
 
     def get_reward_dict(self, obs_dict):
@@ -321,9 +320,9 @@ class TrackEnv(BaseV0):
         idxs = self.ref.find_timeslot_in_reference(self.time + self.motion_start_time)
         # print(f"Time {self.time} {idxs} {self.ref.horizon}")
         ref_mot = self.ref.get_reference(self.time + self.motion_start_time)
-        self.qpos_from_robot_object(self.sim.data.qpos, ref_mot.robot, ref_mot.object)
-        self.sim.forward()
-        self.sim.data.time = self.sim.data.time + 0.02  # self.env.env.dt
+        self.qpos_from_robot_object(self.mj_data.qpos, ref_mot.robot, ref_mot.object)
+        mujoco.mj_forward(self.mj_model, self.mj_data)
+        self.mj_data.time = self.mj_data.time + 0.02  # self.env.env.dt
         return idxs[0] < self.ref.horizon - 1
 
     def reset(self, **kwargs):

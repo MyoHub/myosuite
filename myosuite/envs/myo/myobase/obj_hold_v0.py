@@ -49,9 +49,9 @@ class ObjHoldFixedEnvV0(BaseV0):
         weighted_reward_keys: list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
         **kwargs,
     ):
-        self.object_sid = self.sim.model.site_name2id("object")
-        self.goal_sid = self.sim.model.site_name2id("goal")
-        self.object_init_pos = self.sim.data.site_xpos[self.object_sid].copy()
+        self.object_sid = self.mj_model.site("object").id
+        self.goal_sid = self.mj_model.site("goal").id
+        self.object_init_pos = self.mj_data.site_xpos[self.object_sid].copy()
 
         super()._setup(
             obs_keys=obs_keys,
@@ -62,38 +62,38 @@ class ObjHoldFixedEnvV0(BaseV0):
         self.init_qpos[0] = -1.5  # place palm up
 
     def get_obs_vec(self):
-        self.obs_dict["time"] = np.array([self.sim.data.time])
-        self.obs_dict["hand_qpos"] = self.sim.data.qpos[:-7].copy()
-        self.obs_dict["hand_qvel"] = self.sim.data.qvel[:-6].copy() * self.dt
-        self.obs_dict["obj_pos"] = self.sim.data.site_xpos[self.object_sid]
+        self.obs_dict["time"] = np.array([self.mj_data.time])
+        self.obs_dict["hand_qpos"] = self.mj_data.qpos[:-7].copy()
+        self.obs_dict["hand_qvel"] = self.mj_data.qvel[:-6].copy() * self.dt
+        self.obs_dict["obj_pos"] = self.mj_data.site_xpos[self.object_sid]
         self.obs_dict["obj_err"] = (
-            self.sim.data.site_xpos[self.goal_sid]
-            - self.sim.data.site_xpos[self.object_sid]
+            self.mj_data.site_xpos[self.goal_sid]
+            - self.mj_data.site_xpos[self.object_sid]
         )
-        if self.sim.model.na > 0:
-            self.obs_dict["act"] = self.sim.data.act[:].copy()
+        if self.mj_model.na > 0:
+            self.obs_dict["act"] = self.mj_data.act[:].copy()
 
         t, obs = self.obsdict2obsvec(self.obs_dict, self.obs_keys)
         return obs
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
-        obs_dict["time"] = np.array([sim.data.time])
-        obs_dict["hand_qpos"] = sim.data.qpos[:-7].copy()
-        obs_dict["hand_qvel"] = sim.data.qvel[:-6].copy() * self.dt
-        obs_dict["obj_pos"] = sim.data.site_xpos[self.object_sid]
+        obs_dict["time"] = np.array([mj_data.time])
+        obs_dict["hand_qpos"] = mj_data.qpos[:-7].copy()
+        obs_dict["hand_qvel"] = mj_data.qvel[:-6].copy() * self.dt
+        obs_dict["obj_pos"] = mj_data.site_xpos[self.object_sid]
         obs_dict["obj_err"] = (
-            sim.data.site_xpos[self.goal_sid] - sim.data.site_xpos[self.object_sid]
+            mj_data.site_xpos[self.goal_sid] - mj_data.site_xpos[self.object_sid]
         )
-        if sim.model.na > 0:
-            obs_dict["act"] = sim.data.act[:].copy()
+        if mj_model.na > 0:
+            obs_dict["act"] = mj_data.act[:].copy()
         return obs_dict
 
     def get_reward_dict(self, obs_dict):
         goal_dist = np.abs(np.linalg.norm(self.obs_dict["obj_err"], axis=-1))  # -0.040)
         act_mag = (
-            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.sim.model.na
-            if self.sim.model.na != 0
+            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.mj_model.na
+            if self.mj_model.na != 0
             else 0
         )
         gaol_th = 0.010
@@ -125,7 +125,7 @@ class ObjHoldRandomEnvV0(ObjHoldFixedEnvV0):
 
     def reset(self, **kwargs):
         # randomize target pos
-        self.sim.model.site_pos[self.goal_sid] = (
+        self.mj_model.site_pos[self.goal_sid] = (
             self.object_init_pos
             + self.np_random.uniform(
                 high=np.array([0.030, 0.030, 0.030]),
@@ -136,8 +136,10 @@ class ObjHoldRandomEnvV0(ObjHoldFixedEnvV0):
         size = self.np_random.uniform(
             high=np.array([0.030, 0.030, 0.030]), low=np.array([0.020, 0.020, 0.020])
         )
-        self.sim.model.geom_size[-1] = size
-        self.sim.model.site_size[self.goal_sid] = size
-        self.robot.sync_sims(self.sim, self.sim_obsd)
+        self.mj_model.geom_size[-1] = size
+        self.mj_model.site_size[self.goal_sid] = size
+        self.robot.sync_sims(
+            self.mj_model, self.mj_data, self.obsd_mj_model, self.obsd_mj_data
+        )
         obs = super().reset(**kwargs)
         return obs

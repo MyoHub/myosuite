@@ -132,6 +132,16 @@ class ReferenceMotion():
         if 'object_init' not in reference.keys():
             reference['object_init'] = reference['object'][0] if 'object' in reference.keys() else None
 
+        # Handle conversion from euler to quaternion format for object_init if needed
+        if reference['object_init'] is not None and 'object' in reference.keys() and reference['object'] is not None:
+            # Check if object_init uses 6D format (pos + euler) while object uses 7D format (pos + quat)
+            if reference['object_init'].shape[0] == 6 and reference['object'].shape[1] == 7:
+                # Convert from [x, y, z, euler_x, euler_y, euler_z] to [x, y, z, quat_w, quat_x, quat_y, quat_z]
+                pos = reference['object_init'][:3]
+                euler = reference['object_init'][3:]
+                quat = euler2quat(euler)
+                reference['object_init'] = np.concatenate([pos, quat])
+
         # build reference
         ref = ReferenceStruct(
             time = reference['time'], # Must have

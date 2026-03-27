@@ -5,6 +5,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 import collections
 
+import mujoco
 import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
@@ -69,7 +70,7 @@ class PoseEnvV0(BaseV0):
             self.target_jnt_ids = []
             self.target_jnt_range = []
             for jnt_name, jnt_range in target_jnt_range.items():
-                self.target_jnt_ids.append(self.sim.model.joint_name2id(jnt_name))
+                self.target_jnt_ids.append(self.mj_model.joint(jnt_name).id)
                 self.target_jnt_range.append(jnt_range)
             self.target_jnt_range = np.array(self.target_jnt_range)
             self.target_jnt_value = np.mean(
@@ -86,24 +87,24 @@ class PoseEnvV0(BaseV0):
         )
 
     def get_obs_vec(self):
-        self.obs_dict["time"] = np.array([self.sim.data.time])
-        self.obs_dict["qpos"] = self.sim.data.qpos[:].copy()
-        self.obs_dict["qvel"] = self.sim.data.qvel[:].copy() * self.dt
-        if self.sim.model.na > 0:
-            self.obs_dict["act"] = self.sim.data.act[:].copy()
+        self.obs_dict["time"] = np.array([self.mj_data.time])
+        self.obs_dict["qpos"] = self.mj_data.qpos[:].copy()
+        self.obs_dict["qvel"] = self.mj_data.qvel[:].copy() * self.dt
+        if self.mj_model.na > 0:
+            self.obs_dict["act"] = self.mj_data.act[:].copy()
 
         self.obs_dict["pose_err"] = self.target_jnt_value - self.obs_dict["qpos"]
         t, obs = self.obsdict2obsvec(self.obs_dict, self.obs_keys)
         return obs
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
-        obs_dict["time"] = np.array([sim.data.time])
-        obs_dict["qpos"] = sim.data.qpos[:].copy()
-        obs_dict["qvel"] = sim.data.qvel[:].copy() * self.dt
+        obs_dict["time"] = np.array([mj_data.time])
+        obs_dict["qpos"] = mj_data.qpos[:].copy()
+        obs_dict["qvel"] = mj_data.qvel[:].copy() * self.dt
         obs_dict["act"] = (
-            sim.data.act[:].copy()
-            if sim.model.na > 0
+            mj_data.act[:].copy()
+            if mj_model.na > 0
             else np.zeros_like(obs_dict["qpos"])
         )
         obs_dict["pose_err"] = self.target_jnt_value - obs_dict["qpos"]
@@ -112,8 +113,8 @@ class PoseEnvV0(BaseV0):
     def get_reward_dict(self, obs_dict):
         pose_dist = np.linalg.norm(obs_dict["pose_err"], axis=-1)
         act_mag = np.linalg.norm(self.obs_dict["act"], axis=-1)
-        if self.sim.model.na != 0:
-            act_mag = act_mag / self.sim.model.na
+        if self.mj_model.na != 0:
+            act_mag = act_mag / self.mj_model.na
         far_th = 4 * np.pi / 2
 
         rwd_dict = collections.OrderedDict(
@@ -152,21 +153,21 @@ class PoseEnvV0(BaseV0):
     # update sim with a new target pose
     def update_target(self, restore_sim=False):
         if restore_sim:
-            qpos = self.sim.data.qpos[:].copy()
-            qvel = self.sim.data.qvel[:].copy()
+            qpos = self.mj_data.qpos[:].copy()
+            qvel = self.mj_data.qvel[:].copy()
         # generate targets
         self.target_jnt_value = self.get_target_pose()
         # update finger-tip target viz
-        self.sim.data.qpos[:] = self.target_jnt_value.copy()
-        self.sim.forward()
+        self.mj_data.qpos[:] = self.target_jnt_value.copy()
+        mujoco.mj_forward(self.mj_model, self.mj_data)
         for isite in range(len(self.tip_sids)):
-            self.sim.model.site_pos[self.target_sids[isite]] = self.sim.data.site_xpos[
+            self.mj_model.site_pos[self.target_sids[isite]] = self.mj_data.site_xpos[
                 self.tip_sids[isite]
             ].copy()
         if restore_sim:
-            self.sim.data.qpos[:] = qpos[:]
-            self.sim.data.qvel[:] = qvel[:]
-        self.sim.forward()
+            self.mj_data.qpos[:] = qpos[:]
+            self.mj_data.qvel[:] = qvel[:]
+        mujoco.mj_forward(self.mj_model, self.mj_data)
 
     # reset_type = none; init; random
     # target_type = generate; switch
@@ -174,16 +175,16 @@ class PoseEnvV0(BaseV0):
 
         # udpate wegith
         if self.weight_bodyname is not None:
-            bid = self.sim.model.body_name2id(self.weight_bodyname)
-            gid = self.sim.model.body_geomadr[bid]
+            bid = self.mj_model.body(self.weight_bodyname).id
+            gid = self.mj_model.body_geomadr[bid]
             weight = self.np_random.uniform(
                 low=self.weight_range[0], high=self.weight_range[1]
             )
-            self.sim.model.body_mass[bid] = weight
-            self.sim_obsd.model.body_mass[bid] = weight
-            # self.sim_obsd.model.geom_size[gid] = self.sim.model.geom_size[gid] * weight/10
-            self.sim.model.geom_size[gid][0] = 0.01 + 2.5 * weight / 100
-            # self.sim_obsd.model.geom_size[gid][0] = weight/10
+            self.mj_model.body_mass[bid] = weight
+            self.obsd_mj_model.body_mass[bid] = weight
+            # self.obsd_mj_model.geom_size[gid] = self.mj_model.geom_size[gid] * weight/10
+            self.mj_model.geom_size[gid][0] = 0.01 + 2.5 * weight / 100
+            # self.obsd_mj_model.geom_size[gid][0] = weight/10
 
         # update target
         if self.target_type == "generate":
@@ -205,13 +206,13 @@ class PoseEnvV0(BaseV0):
                         0.64445902,
                     ]
                 )
-                self.sim.model.site_pos[self.target_sids[0]] = np.array(
+                self.mj_model.site_pos[self.target_sids[0]] = np.array(
                     [-0.11000209, -0.01753063, 0.20817679]
                 )
-                self.sim.model.site_pos[self.target_sids[1]] = np.array(
+                self.mj_model.site_pos[self.target_sids[1]] = np.array(
                     [-0.1825131, 0.07417956, 0.11407256]
                 )
-                self.sim.forward()
+                mujoco.mj_forward(self.mj_model, self.mj_data)
             else:
                 self.target_jnt_value = np.array(
                     [
@@ -225,10 +226,10 @@ class PoseEnvV0(BaseV0):
                         0.4139465,
                     ]
                 )
-                self.sim.model.site_pos[self.target_sids[0]] = np.array(
+                self.mj_model.site_pos[self.target_sids[0]] = np.array(
                     [-0.11647777, -0.05180014, 0.19044284]
                 )
-                self.sim.model.site_pos[self.target_sids[1]] = np.array(
+                self.mj_model.site_pos[self.target_sids[1]] = np.array(
                     [-0.17728016, 0.01489491, 0.17953786]
                 )
         elif self.target_type == "fixed":
@@ -247,7 +248,7 @@ class PoseEnvV0(BaseV0):
         elif self.reset_type == "random":
             # reset to random state
             jnt_init = self.np_random.uniform(
-                high=self.sim.model.jnt_range[:, 1], low=self.sim.model.jnt_range[:, 0]
+                high=self.mj_model.jnt_range[:, 1], low=self.mj_model.jnt_range[:, 0]
             )
             obs = super().reset(reset_qpos=jnt_init, **kwargs)
         else:

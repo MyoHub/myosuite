@@ -5,12 +5,12 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 import collections
 
+import mujoco
 import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
 from myosuite.utils import gym
 
-import os
 
 class ReachEnvV0(BaseV0):
 
@@ -21,31 +21,32 @@ class ReachEnvV0(BaseV0):
         "penalty": 50,
     }
 
-    def __init__(self, model_path, obsd_model_path=None, seed=None, edit_fn=None, **kwargs):
+    def __init__(
+        self, model_path, obsd_model_path=None, seed=None, edit_fn=None, **kwargs
+    ):
 
         # EzPickle.__init__(**locals()) is capturing the input dictionary of the init method of this class.
         # In order to successfully capture all arguments we need to call gym.utils.EzPickle.__init__(**locals())
         # at the leaf level, when we do inheritance like we do here.
         # kwargs is needed at the top level to account for injection of __class__ keyword.
         # Also see: https://github.com/openai/gym/pull/1497
-        gym.utils.EzPickle.__init__(self,
-                                    model_path,
-                                    obsd_model_path,
-                                    seed,
-                                    edit_fn=edit_fn,
-                                    **kwargs)
+        gym.utils.EzPickle.__init__(
+            self, model_path, obsd_model_path, seed, edit_fn=edit_fn, **kwargs
+        )
 
         # This two step construction is required for pickling to work correctly. All arguments to all __init__
         # calls must be pickle friendly. Things like sim / sim_obsd are NOT pickle friendly. Therefore we
         # first construct the inheritance chain, which is just __init__ calls all the way down, with env_base
         # creating the sim / sim_obsd instances. Next we run through "setup"  which relies on sim / sim_obsd
         # created in __init__ to complete the setup.
-        super().__init__(model_path=model_path,
-                         obsd_model_path=obsd_model_path,
-                         seed=seed,
-                         edit_fn=edit_fn,
-                         env_credits=self.MYO_CREDIT)
-                
+        super().__init__(
+            model_path=model_path,
+            obsd_model_path=obsd_model_path,
+            seed=seed,
+            edit_fn=edit_fn,
+            env_credits=self.MYO_CREDIT,
+        )
+
         self._setup(**kwargs)
 
     def _setup(
@@ -66,11 +67,11 @@ class ReachEnvV0(BaseV0):
         )
 
     def get_obs_vec(self):
-        self.obs_dict["time"] = np.array([self.sim.data.time])
-        self.obs_dict["qpos"] = self.sim.data.qpos[:].copy()
-        self.obs_dict["qvel"] = self.sim.data.qvel[:].copy() * self.dt
-        if self.sim.model.na > 0:
-            self.obs_dict["act"] = self.sim.data.act[:].copy()
+        self.obs_dict["time"] = np.array([self.mj_data.time])
+        self.obs_dict["qpos"] = self.mj_data.qpos[:].copy()
+        self.obs_dict["qvel"] = self.mj_data.qvel[:].copy() * self.dt
+        if self.mj_model.na > 0:
+            self.obs_dict["act"] = self.mj_data.act[:].copy()
 
         # reach error
         self.obs_dict["tip_pos"] = np.array([])
@@ -78,11 +79,11 @@ class ReachEnvV0(BaseV0):
         for isite in range(len(self.tip_sids)):
             self.obs_dict["tip_pos"] = np.append(
                 self.obs_dict["tip_pos"],
-                self.sim.data.site_xpos[self.tip_sids[isite]].copy(),
+                self.mj_data.site_xpos[self.tip_sids[isite]].copy(),
             )
             self.obs_dict["target_pos"] = np.append(
                 self.obs_dict["target_pos"],
-                self.sim.data.site_xpos[self.target_sids[isite]].copy(),
+                self.mj_data.site_xpos[self.target_sids[isite]].copy(),
             )
         self.obs_dict["reach_err"] = np.array(self.obs_dict["target_pos"]) - np.array(
             self.obs_dict["tip_pos"]
@@ -91,24 +92,24 @@ class ReachEnvV0(BaseV0):
         t, obs = self.obsdict2obsvec(self.obs_dict, self.obs_keys)
         return obs
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
-        obs_dict["time"] = np.array([sim.data.time])
-        obs_dict["qpos"] = sim.data.qpos[:].copy()
-        obs_dict["qvel"] = sim.data.qvel[:].copy() * self.dt
-        if sim.model.na > 0:
-            obs_dict["act"] = sim.data.act[:].copy()
+        obs_dict["time"] = np.array([mj_data.time])
+        obs_dict["qpos"] = mj_data.qpos[:].copy()
+        obs_dict["qvel"] = mj_data.qvel[:].copy() * self.dt
+        if mj_model.na > 0:
+            obs_dict["act"] = mj_data.act[:].copy()
 
         # reach error
         obs_dict["tip_pos"] = np.array([])
         obs_dict["target_pos"] = np.array([])
         for isite in range(len(self.tip_sids)):
             obs_dict["tip_pos"] = np.append(
-                obs_dict["tip_pos"], sim.data.site_xpos[self.tip_sids[isite]].copy()
+                obs_dict["tip_pos"], mj_data.site_xpos[self.tip_sids[isite]].copy()
             )
             obs_dict["target_pos"] = np.append(
                 obs_dict["target_pos"],
-                sim.data.site_xpos[self.target_sids[isite]].copy(),
+                mj_data.site_xpos[self.target_sids[isite]].copy(),
             )
         obs_dict["reach_err"] = np.array(obs_dict["target_pos"]) - np.array(
             obs_dict["tip_pos"]
@@ -118,8 +119,8 @@ class ReachEnvV0(BaseV0):
     def get_reward_dict(self, obs_dict):
         reach_dist = np.linalg.norm(obs_dict["reach_err"], axis=-1)
         act_mag = (
-            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.sim.model.na
-            if self.sim.model.na != 0
+            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.mj_model.na
+            if self.mj_model.na != 0
             else 0
         )
         far_th = (
@@ -152,14 +153,16 @@ class ReachEnvV0(BaseV0):
     # generate a valid target
     def generate_target_pose(self):
         for site, span in self.target_reach_range.items():
-            sid = self.sim.model.site_name2id(site + "_target")
-            self.sim.model.site_pos[sid] = self.np_random.uniform(
+            sid = self.mj_model.site(site + "_target").id
+            self.mj_model.site_pos[sid] = self.np_random.uniform(
                 low=span[0], high=span[1]
             )
-        self.sim.forward()
+        mujoco.mj_forward(self.mj_model, self.mj_data)
 
     def reset(self, **kwargs):
         self.generate_target_pose()
-        self.robot.sync_sims(self.sim, self.sim_obsd)
+        self.robot.sync_sims(
+            self.mj_model, self.mj_data, self.obsd_mj_model, self.obsd_mj_data
+        )
         obs = super().reset(**kwargs)
         return obs

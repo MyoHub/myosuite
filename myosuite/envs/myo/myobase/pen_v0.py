@@ -61,21 +61,21 @@ class PenTwirlFixedEnvV0(BaseV0):
         weighted_reward_keys: list = DEFAULT_RWD_KEYS_AND_WEIGHTS,
         **kwargs,
     ):
-        self.target_obj_bid = self.sim.model.body_name2id("target")
-        self.S_grasp_sid = self.sim.model.site_name2id("S_grasp")
-        self.obj_bid = self.sim.model.body_name2id("Object")
-        self.eps_ball_sid = self.sim.model.site_name2id("eps_ball")
-        self.obj_t_sid = self.sim.model.site_name2id("object_top")
-        self.obj_b_sid = self.sim.model.site_name2id("object_bottom")
-        self.tar_t_sid = self.sim.model.site_name2id("target_top")
-        self.tar_b_sid = self.sim.model.site_name2id("target_bottom")
+        self.target_obj_bid = self.mj_model.body("target").id
+        self.S_grasp_sid = self.mj_model.site("S_grasp").id
+        self.obj_bid = self.mj_model.body("Object").id
+        self.eps_ball_sid = self.mj_model.site("eps_ball").id
+        self.obj_t_sid = self.mj_model.site("object_top").id
+        self.obj_b_sid = self.mj_model.site("object_bottom").id
+        self.tar_t_sid = self.mj_model.site("target_top").id
+        self.tar_b_sid = self.mj_model.site("target_bottom").id
         self.pen_length = np.linalg.norm(
-            self.sim.model.site_pos[self.obj_t_sid]
-            - self.sim.model.site_pos[self.obj_b_sid]
+            self.mj_model.site_pos[self.obj_t_sid]
+            - self.mj_model.site_pos[self.obj_b_sid]
         )
         self.tar_length = np.linalg.norm(
-            self.sim.model.site_pos[self.tar_t_sid]
-            - self.sim.model.site_pos[self.tar_b_sid]
+            self.mj_model.site_pos[self.tar_t_sid]
+            - self.mj_model.site_pos[self.tar_b_sid]
         )
 
         super()._setup(
@@ -88,20 +88,18 @@ class PenTwirlFixedEnvV0(BaseV0):
 
     def get_obs_vec(self):
         # qpos for hand, xpos for obj, xpos for target
-        self.obs_dict["time"] = np.array([self.sim.data.time])
-        self.obs_dict["hand_jnt"] = self.sim.data.qpos[:-6].copy()
-        self.obs_dict["obj_pos"] = self.sim.data.body_xpos[self.obj_bid].copy()
-        self.obs_dict["obj_des_pos"] = self.sim.data.site_xpos[
-            self.eps_ball_sid
-        ].ravel()
-        self.obs_dict["obj_vel"] = self.sim.data.qvel[-6:].copy() * self.dt
+        self.obs_dict["time"] = np.array([self.mj_data.time])
+        self.obs_dict["hand_jnt"] = self.mj_data.qpos[:-6].copy()
+        self.obs_dict["obj_pos"] = self.mj_data.xpos[self.obj_bid].copy()
+        self.obs_dict["obj_des_pos"] = self.mj_data.site_xpos[self.eps_ball_sid].ravel()
+        self.obs_dict["obj_vel"] = self.mj_data.qvel[-6:].copy() * self.dt
         self.obs_dict["obj_rot"] = (
-            self.sim.data.site_xpos[self.obj_t_sid]
-            - self.sim.data.site_xpos[self.obj_b_sid]
+            self.mj_data.site_xpos[self.obj_t_sid]
+            - self.mj_data.site_xpos[self.obj_b_sid]
         ) / self.pen_length
         self.obs_dict["obj_des_rot"] = (
-            self.sim.data.site_xpos[self.tar_t_sid]
-            - self.sim.data.site_xpos[self.tar_b_sid]
+            self.mj_data.site_xpos[self.tar_t_sid]
+            - self.mj_data.site_xpos[self.tar_b_sid]
         ) / self.tar_length
         self.obs_dict["obj_err_pos"] = (
             self.obs_dict["obj_pos"] - self.obs_dict["obj_des_pos"]
@@ -109,30 +107,30 @@ class PenTwirlFixedEnvV0(BaseV0):
         self.obs_dict["obj_err_rot"] = (
             self.obs_dict["obj_rot"] - self.obs_dict["obj_des_rot"]
         )
-        if self.sim.model.na > 0:
-            self.obs_dict["act"] = self.sim.data.act[:].copy()
+        if self.mj_model.na > 0:
+            self.obs_dict["act"] = self.mj_data.act[:].copy()
 
         t, obs = self.obsdict2obsvec(self.obs_dict, self.obs_keys)
         return obs
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
         # qpos for hand, xpos for obj, xpos for target
-        obs_dict["time"] = np.array([sim.data.time])
-        obs_dict["hand_jnt"] = sim.data.qpos[:-6].copy()
-        obs_dict["obj_pos"] = sim.data.body_xpos[self.obj_bid].copy()
-        obs_dict["obj_des_pos"] = sim.data.site_xpos[self.eps_ball_sid].ravel()
-        obs_dict["obj_vel"] = sim.data.qvel[-6:].copy() * self.dt
+        obs_dict["time"] = np.array([mj_data.time])
+        obs_dict["hand_jnt"] = mj_data.qpos[:-6].copy()
+        obs_dict["obj_pos"] = mj_data.xpos[self.obj_bid].copy()
+        obs_dict["obj_des_pos"] = mj_data.site_xpos[self.eps_ball_sid].ravel()
+        obs_dict["obj_vel"] = mj_data.qvel[-6:].copy() * self.dt
         obs_dict["obj_rot"] = (
-            sim.data.site_xpos[self.obj_t_sid] - sim.data.site_xpos[self.obj_b_sid]
+            mj_data.site_xpos[self.obj_t_sid] - mj_data.site_xpos[self.obj_b_sid]
         ) / self.pen_length
         obs_dict["obj_des_rot"] = (
-            sim.data.site_xpos[self.tar_t_sid] - sim.data.site_xpos[self.tar_b_sid]
+            mj_data.site_xpos[self.tar_t_sid] - mj_data.site_xpos[self.tar_b_sid]
         ) / self.tar_length
         obs_dict["obj_err_pos"] = obs_dict["obj_pos"] - obs_dict["obj_des_pos"]
         obs_dict["obj_err_rot"] = obs_dict["obj_rot"] - obs_dict["obj_des_rot"]
-        if sim.model.na > 0:
-            obs_dict["act"] = sim.data.act[:].copy()
+        if mj_model.na > 0:
+            obs_dict["act"] = mj_data.act[:].copy()
 
         return obs_dict
 
@@ -143,8 +141,8 @@ class PenTwirlFixedEnvV0(BaseV0):
         # dropped = obs_dict['obj_pos'][:,:,2] < 0.075 if obs_dict['obj_pos'].ndim==3 else obs_dict['obj_pos'][2] < 0.075
         dropped = pos_align > 0.075
         act_mag = (
-            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.sim.model.na
-            if self.sim.model.na != 0
+            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.mj_model.na
+            if self.mj_model.na != 0
             else 0
         )
         rwd_dict = collections.OrderedDict(
@@ -178,7 +176,9 @@ class PenTwirlRandomEnvV0(PenTwirlFixedEnvV0):
         desired_orien = np.zeros(3)
         desired_orien[0] = self.np_random.uniform(low=-1, high=1)
         desired_orien[1] = self.np_random.uniform(low=-1, high=1)
-        self.sim.model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
-        self.robot.sync_sims(self.sim, self.sim_obsd)
+        self.mj_model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
+        self.robot.sync_sims(
+            self.mj_model, self.mj_data, self.obsd_mj_model, self.obsd_mj_data
+        )
         obs = super().reset(**kwargs)
         return obs
