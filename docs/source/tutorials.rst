@@ -214,7 +214,7 @@ The models and code will be released soon.
 
 Using Reinforcement Learning
 =============================================
-Myosuite provdies features to support RL training. Here are examples of using different RL libraries on Myosuite. 
+Myosuite provdies features to support RL training. Here are examples of using different RL libraries on Myosuite.
 
 
 
@@ -240,6 +240,7 @@ See `here <https://deprl.readthedocs.io/en/latest/index.html>`__ for more detail
 If you want to load and execute the pre-trained DEP-RL baseline. Make sure that the ``deprl`` package is installed.
 
 .. code-block:: python
+
     import mujoco
     from myosuite.utils import gym
     import deprl
