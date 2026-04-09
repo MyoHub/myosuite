@@ -35,7 +35,7 @@ Remember to initialize the submodules with `uv run myoapi_init` before running t
 
 ## Training Speed Benchmark
 
-We train a PPO agent on three MyoSuite environments using MuJoCo, MJX and MJWarp and compare wall-clock training time.
+We train a PPO agent on three MyoSuite environments using [MuJoCo](../../../../benchmarks/mjx_benchmark_PPO_baseline.py), [MJX](../../../../benchmarks/mjx_benchmark_PPO.sh) and [MJWarp](../../../../benchmarks/mjx_benchmark_PPO.sh) and compare wall-clock training time.
 
 ### Benchmark Configuration
 
@@ -44,6 +44,7 @@ We train a PPO agent on three MyoSuite environments using MuJoCo, MJX and MJWarp
   * Stable-Baselines3 params: n_steps=2048, batch_size=64, n_epochs=10.
   * BRAX params: unroll_length=10, batch_size=256, num_minibatches=32, num_updates_per_batch=8.
 * **Hardware:** NVIDIA RTX 5090 GPU.
+* **Training Scripts:** [MuJoCo](../../../../benchmarks/mjx_benchmark_PPO_baseline.py), [MJX & MJWarp](../../../../benchmarks/mjx_benchmark_PPO.sh)
 
 ### Results
 
@@ -56,6 +57,8 @@ GPU-native vectorization (MJX, MJWarp) drastically reduces total training time c
 
 ## Simulation/Rollout Speed Benchmark
 
-Similar effects can be observed for forward simulations (i.e. rollouts) in the respective environments, independent of the RL policy updates. The MuJoCo Warp physics engine can in principle run **150K to 1M** simulation steps per second, depending on the task environment and the number of parallel environments.
+Similar effects can be observed for forward simulations (i.e. rollouts) in the respective environments, independent of the RL policy updates. The MuJoCo Warp physics engine can in principle run **150K to 1M** simulation steps per second, depending on the task environment and the number of parallel environments. 
+
+Simulation scripts can be found [here](../../../../benchmarks/mjx_benchmark_baseline.py) for MuJoCo and [here](../../../../benchmarks/mjx_benchmark.py) for MJX and MJWarp.
 
 ![Simulation Results](myosuite_mjx_benchmark_simulation.png)
