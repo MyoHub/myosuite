@@ -7,6 +7,7 @@ import collections
 from enum import Enum
 from typing import Tuple
 
+import mujoco
 import numpy as np
 import pink
 
@@ -31,7 +32,8 @@ class ChallengeOpponent:
 
     def __init__(
         self,
-        sim,
+        mj_model,
+        mj_data,
         rng,
         probabilities: Tuple[float],
         min_spawn_distance: float,
@@ -41,7 +43,7 @@ class ChallengeOpponent:
     ):
         """
         Initialize the opponent class.
-        :param sim: Mujoco sim object.
+        :param mj_model: Mujoco model object.
         :param rng: np_random generator.
         :param probabilities: Probabilities for the different policies, (static_stationary, stationary, random).
         :param min_spawn_distance: Minimum distance for opponent to spawn from the model.
@@ -50,7 +52,8 @@ class ChallengeOpponent:
         :param dt: Simulation timestep.
         """
         self.dt = dt
-        self.sim = sim
+        self.mj_model = mj_model
+        self.mj_data = mj_data
         self.opponent_probabilities = probabilities
         self.min_spawn_distance = min_spawn_distance
         self.chase_vel_range = chase_vel_range
@@ -68,8 +71,8 @@ class ChallengeOpponent:
         :return: The  pose.
         :rtype: list -> [x, y, angle]
         """
-        angle = quat2euler(self.sim.data.mocap_quat[0, :])[-1]
-        return np.concatenate([self.sim.data.mocap_pos[0, :2], [angle]])
+        angle = quat2euler(self.mj_data.mocap_quat[0, :])[-1]
+        return np.concatenate([self.mj_data.mocap_pos[0, :2], [angle]])
 
     def set_opponent_pose(self, pose: list):
         """
@@ -77,8 +80,8 @@ class ChallengeOpponent:
         :param pose: Pose of the opponent.
         :type pose: list -> [x, y, angle]
         """
-        self.sim.data.mocap_pos[0, :2] = pose[:2]
-        self.sim.data.mocap_quat[0, :] = euler2quat([0, 0, pose[-1]])
+        self.mj_data.mocap_pos[0, :2] = pose[:2]
+        self.mj_data.mocap_quat[0, :] = euler2quat([0, 0, pose[-1]])
 
     def move_opponent(self, vel: list):
         """
@@ -180,7 +183,7 @@ class ChallengeOpponent:
                 self.rng.uniform(-5, 5),
                 self.rng.uniform(-2 * np.pi, 2 * np.pi),
             ]
-            dist = np.linalg.norm(pose[:2] - self.sim.data.body("root").xpos[:2])
+            dist = np.linalg.norm(pose[:2] - self.mj_data.body("root").xpos[:2])
         if self.opponent_policy == "static_stationary":
             pose[:] = [0, -5, 0]
         self.set_opponent_pose(pose)
@@ -198,7 +201,7 @@ class ChallengeOpponent:
         """
         pose = self.get_opponent_pose()
         vec = pose[:2]
-        pel = self.sim.data.body("pelvis").xpos[:2]
+        pel = self.mj_data.body("pelvis").xpos[:2]
         theta = pose[-1]
         new_vec = np.array([np.cos(theta), np.sin(theta)])
         new_vec2 = pel - vec
@@ -215,7 +218,8 @@ class RepellerChallengeOpponent(ChallengeOpponent):
 
     def __init__(
         self,
-        sim,
+        mj_model,
+        mj_data,
         rng,
         probabilities: Tuple[float],
         min_spawn_distance: float,
@@ -227,7 +231,8 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         """
         Initialize the opponent class. This class additionally contains a repeller policy which always runs away from the
         agent.
-        :param sim: Mujoco sim object.
+        :param mj_model: Mujoco model object.
+        :param mj_data: Mujoco data object.
         :param rng: np_random generator.
         :param probabilities: Probabilities for the different policies, (static_stationary, stationary, random, repeller).
         :param min_spawn_distance: Minimum distance for opponent to spawn from the model.
@@ -236,7 +241,8 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         :param dt: Simulation timestep.
         """
         self.dt = dt
-        self.sim = sim
+        self.mj_model = mj_model
+        self.mj_data = mj_data
         self.rng = rng
         self.opponent_probabilities = probabilities
 
@@ -255,7 +261,7 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         :param pose: Pose of the agent, measured from the pelvis.
         :type pose: array -> [x, y]
         """
-        return self.sim.data.body("pelvis").xpos[:2]
+        return self.mj_data.body("pelvis").xpos[:2]
 
     def get_wall_pos(self):
         """
@@ -503,7 +509,8 @@ class ChaseTagEnvV0(WalkEnvV0):
         # check that this works everywhere and is efficient.
         self.heightfield = (
             ChaseTagField(
-                sim=self.sim,
+                mj_model=self.mj_model,
+                mj_data=self.mj_data,
                 rng=self.np_random,
                 rough_range=rough_range,
                 hills_range=hills_range,
@@ -518,7 +525,8 @@ class ChaseTagEnvV0(WalkEnvV0):
         self.maxTime = 20
         if repeller_opponent:
             self.opponent = RepellerChallengeOpponent(
-                sim=self.sim,
+                mj_model=self.mj_model,
+                mj_data=self.mj_data,
                 rng=self.np_random,
                 probabilities=opponent_probabilities,
                 min_spawn_distance=min_spawn_distance,
@@ -528,7 +536,8 @@ class ChaseTagEnvV0(WalkEnvV0):
             )
         else:
             self.opponent = ChallengeOpponent(
-                sim=self.sim,
+                mj_model=self.mj_model,
+                mj_data=self.mj_data,
                 rng=self.np_random,
                 probabilities=opponent_probabilities,
                 min_spawn_distance=min_spawn_distance,
@@ -538,7 +547,7 @@ class ChaseTagEnvV0(WalkEnvV0):
 
         self.win_distance = win_distance
         self.grf_sensor_names = ["r_foot", "r_toes", "l_foot", "l_toes"]
-        self.success_indicator_sid = self.sim.model.site_name2id("opponent_indicator")
+        self.success_indicator_sid = self.mj_model.site("opponent_indicator").id
         self.current_task = Task.CHASE
         self.repeller_opponent = repeller_opponent
         super()._setup(
@@ -547,11 +556,11 @@ class ChaseTagEnvV0(WalkEnvV0):
             reset_type=reset_type,
             **kwargs,
         )
-        self.init_qpos[:] = self.sim.model.key_qpos[0]
+        self.init_qpos[:] = self.mj_model.key_qpos[0]
         self.init_qvel[:] = 0.0
         self.startFlag = True
         self.assert_settings()
-        self.opponent.dt = self.sim.model.opt.timestep * self.frame_skip
+        self.opponent.dt = self.mj_model.opt.timestep * self.frame_skip
 
     def assert_settings(self):
         # chase always positive
@@ -582,30 +591,30 @@ class ChaseTagEnvV0(WalkEnvV0):
         for x in self.opponent.opponent_probabilities:
             assert 0 <= x <= 1, "Probabilities should be between 0 and 1"
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
 
         # Time
-        obs_dict["time"] = np.array([sim.data.time])
+        obs_dict["time"] = np.array([mj_data.time])
 
         # proprioception
-        obs_dict["internal_qpos"] = sim.data.qpos[7:35].copy()
-        obs_dict["internal_qvel"] = sim.data.qvel[6:34].copy() * self.dt
+        obs_dict["internal_qpos"] = mj_data.qpos[7:35].copy()
+        obs_dict["internal_qvel"] = mj_data.qvel[6:34].copy() * self.dt
         obs_dict["grf"] = self._get_grf().copy()
-        obs_dict["torso_angle"] = self.sim.data.body("pelvis").xquat.copy()
+        obs_dict["torso_angle"] = self.mj_data.body("pelvis").xquat.copy()
 
         obs_dict["muscle_length"] = self.muscle_lengths()
         obs_dict["muscle_velocity"] = self.muscle_velocities()
         obs_dict["muscle_force"] = self.muscle_forces()
 
-        if sim.model.na > 0:
-            obs_dict["act"] = sim.data.act[:].copy()
+        if mj_model.na > 0:
+            obs_dict["act"] = mj_data.act[:].copy()
 
         # exteroception
         obs_dict["opponent_pose"] = self.opponent.get_opponent_pose()[:].copy()
         obs_dict["opponent_vel"] = self.opponent.opponent_vel[:].copy()
-        obs_dict["model_root_pos"] = sim.data.qpos[:2].copy()
-        obs_dict["model_root_vel"] = sim.data.qvel[:2].copy()
+        obs_dict["model_root_pos"] = mj_data.qpos[:2].copy()
+        obs_dict["model_root_vel"] = mj_data.qvel[:2].copy()
 
         # active task
         obs_dict["task"] = np.array(self.current_task.value, ndmin=2, dtype=np.int16)
@@ -623,8 +632,8 @@ class ChaseTagEnvV0(WalkEnvV0):
         with gym.register in myochallenge/__init__.py
         """
         act_mag = (
-            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.sim.model.na
-            if self.sim.model.na != 0
+            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.mj_model.na
+            if self.mj_model.na != 0
             else 0
         )
 
@@ -668,7 +677,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         )
 
         # Success Indicator
-        self.sim.model.site_rgba[self.success_indicator_sid, :] = (
+        self.mj_model.site_rgba[self.success_indicator_sid, :] = (
             np.array([0, 2, 0, 0.2]) if rwd_dict["solved"] else np.array([2, 0, 0, 0])
         )
         return rwd_dict
@@ -705,12 +714,14 @@ class ChaseTagEnvV0(WalkEnvV0):
         # randomized initial state
         qpos, qvel = self._get_reset_state()
         self._maybe_flatten_agent_patch(qpos)
-        self.robot.sync_sims(self.sim, self.sim_obsd)
+        self.robot.sync_sims(
+            self.mj_model, self.mj_data, self.obsd_mj_model, self.obsd_mj_data
+        )
         obs = super(WalkEnvV0, self).reset(reset_qpos=qpos, reset_qvel=qvel, **kwargs)
         self.opponent.reset_opponent(
             player_task=self.current_task.name, rng=self.np_random
         )
-        self.sim.forward()
+        mujoco.mj_forward(self.mj_model, self.mj_data)
         return obs
 
     def _maybe_flatten_agent_patch(self, qpos):
@@ -719,8 +730,8 @@ class ChaseTagEnvV0(WalkEnvV0):
         """
         if self.heightfield is not None:
             self.heightfield.flatten_agent_patch(qpos)
-            if hasattr(self.sim, "renderer") and self.sim.renderer._window is not None:
-                self.sim.renderer._window.update_hfield(0)
+            if self.mj_renderer._window is not None:
+                self.mj_renderer._window.update_hfield(0)
 
     def _sample_task(self):
         if self.task_choice == "random":
@@ -734,14 +745,14 @@ class ChaseTagEnvV0(WalkEnvV0):
         """
         if self.heightfield is not None:
             self.heightfield.sample(self.np_random)
-            self.sim.model.geom_rgba[self.sim.model.geom_name2id("terrain")][-1] = 1.0
-            self.sim.model.geom_pos[self.sim.model.geom_name2id("terrain")] = np.array(
+            self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 1.0
+            self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
                 [0, 0, 0]
             )
         else:
             # move heightfield down if not used
-            self.sim.model.geom_rgba[self.sim.model.geom_name2id("terrain")][-1] = 0.0
-            self.sim.model.geom_pos[self.sim.model.geom_name2id("terrain")] = np.array(
+            self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 0.0
+            self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
                 [0, 0, -10]
             )
 
@@ -762,9 +773,9 @@ class ChaseTagEnvV0(WalkEnvV0):
             qpos, qvel = self._get_randomized_initial_state()
             return self._randomize_position_orientation(qpos, qvel)
         elif self.reset_type == "init":
-            return self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
+            return self.mj_model.key_qpos[2], self.mj_model.key_qvel[2]
         else:
-            return self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
+            return self.mj_model.key_qpos[0], self.mj_model.key_qvel[0]
 
     def _maybe_adjust_height(self, qpos, qvel):
         """
@@ -785,23 +796,23 @@ class ChaseTagEnvV0(WalkEnvV0):
         azimuth = 90
         elevation = -15
         lookat = None
-        self.sim.renderer.set_free_camera_settings(
+        self.mj_renderer.set_free_camera_settings(
             distance=distance, azimuth=azimuth, elevation=elevation, lookat=lookat
         )
         render_tendon = True
         render_actuator = True
-        self.sim.renderer.set_viewer_settings(
+        self.mj_renderer.set_viewer_settings(
             render_actuator=render_actuator, render_tendon=render_tendon
         )
 
     def _get_randomized_initial_state(self):
         # randomly start with flexed left or right knee
         if self.np_random.uniform() < 0.5:
-            qpos = self.sim.model.key_qpos[2].copy()
-            qvel = self.sim.model.key_qvel[2].copy()
+            qpos = self.mj_model.key_qpos[2].copy()
+            qvel = self.mj_model.key_qvel[2].copy()
         else:
-            qpos = self.sim.model.key_qpos[3].copy()
-            qvel = self.sim.model.key_qvel[3].copy()
+            qpos = self.mj_model.key_qpos[3].copy()
+            qvel = self.mj_model.key_qvel[3].copy()
 
         # randomize qpos coordinates
         # but dont change height or rot state
@@ -851,7 +862,7 @@ class ChaseTagEnvV0(WalkEnvV0):
             raise NotImplementedError
 
     def _chase_lose_condition(self):
-        root_pos = self.sim.data.body("pelvis").xpos[:2]
+        root_pos = self.mj_data.body("pelvis").xpos[:2]
         # didnt manage to tag
         if self.obs_dict["time"] >= self.maxTime:
             return 1
@@ -861,7 +872,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         return 0
 
     def _evade_lose_condition(self):
-        root_pos = self.sim.data.body("pelvis").xpos[:2]
+        root_pos = self.mj_data.body("pelvis").xpos[:2]
         opp_pos = self.obs_dict["opponent_pose"][..., :2]
 
         # got caught
@@ -873,7 +884,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         return 0
 
     def _chase_win_condition(self):
-        root_pos = self.sim.data.body("pelvis").xpos[:2]
+        root_pos = self.mj_data.body("pelvis").xpos[:2]
         opp_pos = self.obs_dict["opponent_pose"][..., :2]
         if np.linalg.norm(root_pos - opp_pos) <= self.win_distance and self.startFlag:
             return 1
@@ -892,7 +903,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         :return: the weight
         :rtype: float
         """
-        return self.sim.model.body("root").subtreemass
+        return self.mj_model.body("root").subtreemass
 
     def _get_score(self, time):
         time = np.round(time, 2)
@@ -904,35 +915,34 @@ class ChaseTagEnvV0(WalkEnvV0):
             raise NotImplementedError
 
     def _get_muscle_lengthRange(self):
-        return self.sim.model.actuator_lengthrange.copy()
+        return self.mj_model.actuator_lengthrange.copy()
 
     def _get_tendon_lengthspring(self):
-        return self.sim.model.tendon_lengthspring.copy()
+        return self.mj_model.tendon_lengthspring.copy()
 
     def _get_muscle_operating_length(self):
-        return self.sim.model.actuator_gainprm[:, 0:2].copy()
+        return self.mj_model.actuator_gainprm[:, 0:2].copy()
 
     def _get_muscle_fmax(self):
-        return self.sim.model.actuator_gainprm[:, 2].copy()
+        return self.mj_model.actuator_gainprm[:, 2].copy()
 
     def _get_grf(self):
         return np.array(
             [
-                self.sim.data.sensor(sens_name).data[0]
+                self.mj_data.sensor(sens_name).data[0]
                 for sens_name in self.grf_sensor_names
             ]
         ).copy()
 
     def _get_pelvis_angle(self):
-        return self.sim.data.body("pelvis").xquat.copy()
+        return self.mj_data.body("pelvis").xquat.copy()
 
     def _get_joint_names(self):
         """
         Return a list of joint names according to the index ID of the joint angles
         """
         return [
-            self.sim.model.joint(jnt_id).name
-            for jnt_id in range(1, self.sim.model.njnt)
+            self.mj_model.joint(jnt_id).name for jnt_id in range(1, self.mj_model.njnt)
         ]
 
     def _get_actuator_names(self):
@@ -940,8 +950,7 @@ class ChaseTagEnvV0(WalkEnvV0):
         Return a list of actuator names according to the index ID of the actuators
         """
         return [
-            self.sim.model.actuator(act_id).name
-            for act_id in range(1, self.sim.model.na)
+            self.mj_model.actuator(act_id).name for act_id in range(1, self.mj_model.na)
         ]
 
     def _get_fallen_condition(self):
@@ -950,13 +959,13 @@ class ChaseTagEnvV0(WalkEnvV0):
         average foot height.
         """
         if self.terrain == "FLAT":
-            if self.sim.data.body("pelvis").xpos[2] < 0.5:
+            if self.mj_data.body("pelvis").xpos[2] < 0.5:
                 return 1
             return 0
         else:
-            head = self.sim.data.site("head").xpos
-            foot_l = self.sim.data.body("talus_l").xpos
-            foot_r = self.sim.data.body("talus_r").xpos
+            head = self.mj_data.site("head").xpos
+            foot_l = self.mj_data.body("talus_l").xpos
+            foot_r = self.mj_data.body("talus_r").xpos
             mean = (foot_l + foot_r) / 2
             if head[2] - mean[2] < 0.2:
                 return 1

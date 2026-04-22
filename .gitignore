@@ -116,7 +116,7 @@ tags
 .vscode/settings.json
 
 # Media #
-.mp4
+*.mp4
 
 # OSL logs #
 osl.csv
@@ -124,3 +124,14 @@ osl.log
 /workspace
 
 *processed.xml
+
+logs/
+
+# Pycharm generated files
+.idea/
+
+# RL learning files
+
+**/wandb/
+*params.pickle
+*tmp*.xml

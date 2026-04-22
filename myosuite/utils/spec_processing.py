@@ -1,20 +1,25 @@
 import mujoco
 
-def recursive_immobilize(spec, temp_model, parent, remove_eqs=False, remove_actuators=False):
+
+def recursive_immobilize(
+    spec, temp_model, parent, remove_eqs=False, remove_actuators=False
+):
     removed_joint_ids = []
     for s in parent.sites:
-        s.delete()
+        spec.delete(s)
     for j in parent.joints:
         removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
         if remove_eqs:
             for e in spec.equalities:
-                if e.type == mujoco.mjtEq.mjEQ_JOINT and (e.name1 == j.name or e.name2 == j.name):
-                    e.delete()
+                if e.type == mujoco.mjtEq.mjEQ_JOINT and (
+                    e.name1 == j.name or e.name2 == j.name
+                ):
+                    spec.delete(e)
         if remove_actuators:
             for a in spec.actuators:
                 if a.trntype == mujoco.mjtTrn.mjTRN_JOINT and a.target == j.name:
-                    a.delete()
-        j.delete()
+                    spec.delete(a)
+        spec.delete(j)
     for child in parent.bodies:
         removed_joint_ids.extend(
             recursive_immobilize(spec, temp_model, child, remove_eqs, remove_actuators)
@@ -26,8 +31,8 @@ def recursive_remove_contacts(parent, return_condition=None):
     if return_condition is not None and return_condition(parent):
         return
     for g in parent.geoms:
-        g.contype=0
-        g.conaffinity=0
+        g.contype = 0
+        g.conaffinity = 0
     for child in parent.bodies:
         recursive_remove_contacts(child, return_condition)
 
@@ -38,7 +43,7 @@ def recursive_mirror(meshes_to_mirror, spec_copy, parent):
     parent.name += "_mirrored"
     for g in parent.geoms:
         if g.type != mujoco.mjtGeom.mjGEOM_MESH:
-            g.delete()
+            spec_copy.delete(g)
             continue
         g.pos[1] *= -1
         g.quat[[1, 3]] *= -1
@@ -48,6 +53,6 @@ def recursive_mirror(meshes_to_mirror, spec_copy, parent):
         g.meshname += "_mirrored"
     for child in parent.bodies:
         if "ping_pong" in child.name:
-            spec_copy.detach_body(child)
+            spec_copy.delete(child)
             continue
         recursive_mirror(meshes_to_mirror, spec_copy, child)

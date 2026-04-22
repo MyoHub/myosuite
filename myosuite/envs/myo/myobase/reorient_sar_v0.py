@@ -72,28 +72,28 @@ class ProprioceptiveEnvV0(BaseV0):
         **kwargs,
     ):
 
-        self.target_obj_bid = self.sim.model.body_name2id("target")
-        self.S_grasp_sid = self.sim.model.site_name2id("S_grasp")
-        self.obj_bid = self.sim.model.body_name2id("Object")
-        self.eps_ball_sid = self.sim.model.site_name2id("eps_ball")
+        self.target_obj_bid = self.mj_model.body("target").id
+        self.S_grasp_sid = self.mj_model.site("S_grasp").id
+        self.obj_bid = self.mj_model.body("Object").id
+        self.eps_ball_sid = self.mj_model.site("eps_ball").id
 
-        self.success_indicator_sid = self.sim.model.site_name2id("success")
+        self.success_indicator_sid = self.mj_model.site("success").id
 
-        self.obj_t_gid = self.sim.model.geom_name2id("top")
-        self.obj_b_gid = self.sim.model.geom_name2id("bot")
-        self.tar_t_gid = self.sim.model.geom_name2id("t_top")
-        self.tar_b_gid = self.sim.model.geom_name2id("t_bot")
+        self.obj_t_gid = self.mj_model.geom("top").id
+        self.obj_b_gid = self.mj_model.geom("bot").id
+        self.tar_t_gid = self.mj_model.geom("t_top").id
+        self.tar_b_gid = self.mj_model.geom("t_bot").id
 
         self.pen_length = np.linalg.norm(
-            self.sim.model.geom_pos[self.obj_t_gid]
-            - self.sim.model.geom_pos[self.obj_b_gid]
+            self.mj_model.geom_pos[self.obj_t_gid]
+            - self.mj_model.geom_pos[self.obj_b_gid]
         )
         self.tar_length = np.linalg.norm(
-            self.sim.model.geom_pos[self.tar_t_gid]
-            - self.sim.model.geom_pos[self.tar_b_gid]
+            self.mj_model.geom_pos[self.tar_t_gid]
+            - self.mj_model.geom_pos[self.tar_b_gid]
         )
 
-        self.sim.model.body_mass[self.obj_bid] *= 1.25
+        self.mj_model.body_mass[self.obj_bid] *= 1.25
         super()._setup(
             obs_keys=[
                 "hand_jnt",
@@ -113,26 +113,26 @@ class ProprioceptiveEnvV0(BaseV0):
         self.init_qpos[:-6] *= 0  # Use fully open as init pos
         self.init_qpos[0] = -1.5  # place palm up
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
-        obs_dict["time"] = np.array([sim.data.time])
-        obs_dict["hand_jnt"] = sim.data.qpos[:-6].copy()
-        obs_dict["obj_pos"] = sim.data.body_xpos[self.obj_bid].copy()
-        obs_dict["obj_des_pos"] = sim.data.site_xpos[self.eps_ball_sid].ravel()
-        obs_dict["obj_vel"] = sim.data.qvel[-6:].copy() * self.dt
+        obs_dict["time"] = np.array([mj_data.time])
+        obs_dict["hand_jnt"] = mj_data.qpos[:-6].copy()
+        obs_dict["obj_pos"] = mj_data.xpos[self.obj_bid].copy()
+        obs_dict["obj_des_pos"] = mj_data.site_xpos[self.eps_ball_sid].ravel()
+        obs_dict["obj_vel"] = mj_data.qvel[-6:].copy() * self.dt
         obs_dict["obj_rot"] = (
-            sim.data.geom_xpos[self.obj_t_gid] - sim.data.geom_xpos[self.obj_b_gid]
+            mj_data.geom_xpos[self.obj_t_gid] - mj_data.geom_xpos[self.obj_b_gid]
         ) / self.pen_length
         obs_dict["obj_des_rot"] = (
-            sim.data.geom_xpos[self.tar_t_gid] - sim.data.geom_xpos[self.tar_b_gid]
+            mj_data.geom_xpos[self.tar_t_gid] - mj_data.geom_xpos[self.tar_b_gid]
         ) / self.tar_length
         obs_dict["obj_err_pos"] = obs_dict["obj_pos"] - obs_dict["obj_des_pos"]
         obs_dict["obj_err_rot"] = obs_dict["obj_rot"] - obs_dict["obj_des_rot"]
-        if sim.model.na > 0:
-            obs_dict["act"] = sim.data.act[:].copy()
-            obs_dict["mlen"] = sim.data.actuator_length[:].copy()
-            obs_dict["mvel"] = sim.data.actuator_velocity[:].copy()
-            obs_dict["mforce"] = sim.data.actuator_force[:].copy()
+        if mj_model.na > 0:
+            obs_dict["act"] = mj_data.act[:].copy()
+            obs_dict["mlen"] = mj_data.actuator_length[:].copy()
+            obs_dict["mvel"] = mj_data.actuator_velocity[:].copy()
+            obs_dict["mforce"] = mj_data.actuator_force[:].copy()
 
         return obs_dict
 
@@ -142,8 +142,8 @@ class ProprioceptiveEnvV0(BaseV0):
         rot_align = calculate_cosine(obs_dict["obj_rot"], obs_dict["obj_des_rot"])
         dropped = pos_align > 0.075
         act_mag = (
-            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.sim.model.na
-            if self.sim.model.na != 0
+            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.mj_model.na
+            if self.mj_model.na != 0
             else 0
         )
         rwd_dict = collections.OrderedDict(
@@ -167,8 +167,8 @@ class ProprioceptiveEnvV0(BaseV0):
         rwd_dict["dense"] = np.sum(
             [wt * rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0
         )
-        if list(self.sim.model.site_rgba[self.success_indicator_sid, :2]) != [0.0, 2.0]:
-            self.sim.model.site_rgba[self.success_indicator_sid, :2] = (
+        if list(self.mj_model.site_rgba[self.success_indicator_sid, :2]) != [0.0, 2.0]:
+            self.mj_model.site_rgba[self.success_indicator_sid, :2] = (
                 np.array([0, 2]) if rwd_dict["solved"] else np.array([2, 0])
             )
         return rwd_dict
@@ -197,13 +197,13 @@ class Geometries8EnvV0(ProprioceptiveEnvV0):
         }
 
         # randomize target
-        self.obj_gid = self.sim.model.geom_name2id("obj")
-        self.tar_gid = self.sim.model.geom_name2id("target")
+        self.obj_gid = self.mj_model.geom("obj").id
+        self.tar_gid = self.mj_model.geom("target").id
 
-        self.obj_t_gid = self.sim.model.geom_name2id("top")
-        self.obj_b_gid = self.sim.model.geom_name2id("bot")
-        self.tar_t_gid = self.sim.model.geom_name2id("t_top")
-        self.tar_b_gid = self.sim.model.geom_name2id("t_bot")
+        self.obj_t_gid = self.mj_model.geom("top").id
+        self.obj_b_gid = self.mj_model.geom("bot").id
+        self.tar_t_gid = self.mj_model.geom("t_top").id
+        self.tar_b_gid = self.mj_model.geom("t_bot").id
 
         geom_type = self.np_random.choice([3, 4, 5, 6])
 
@@ -234,28 +234,30 @@ class Geometries8EnvV0(ProprioceptiveEnvV0):
 
         color = [1, 0.9, 0, 1.0]
 
-        self.sim.model.geom_size[self.obj_gid] = size
-        self.sim.model.geom_type[self.obj_gid] = geom_type
-        self.sim.model.geom_rgba[self.obj_gid] = color
-        self.sim.model.geom_pos[self.obj_t_gid] = top_pos
-        self.sim.model.geom_pos[self.obj_b_gid] = bot_pos
+        self.mj_model.geom_size[self.obj_gid] = size
+        self.mj_model.geom_type[self.obj_gid] = geom_type
+        self.mj_model.geom_rgba[self.obj_gid] = color
+        self.mj_model.geom_pos[self.obj_t_gid] = top_pos
+        self.mj_model.geom_pos[self.obj_b_gid] = bot_pos
 
-        self.sim.model.body_mass[self.obj_bid] = 1.2
+        self.mj_model.body_mass[self.obj_bid] = 1.2
 
-        self.sim.model.geom_size[self.tar_gid] = size
-        self.sim.model.geom_type[self.tar_gid] = geom_type
-        self.sim.model.geom_rgba[self.tar_gid] = color
-        self.sim.model.geom_pos[self.tar_t_gid] = top_pos
-        self.sim.model.geom_pos[self.tar_b_gid] = bot_pos
+        self.mj_model.geom_size[self.tar_gid] = size
+        self.mj_model.geom_type[self.tar_gid] = geom_type
+        self.mj_model.geom_rgba[self.tar_gid] = color
+        self.mj_model.geom_pos[self.tar_t_gid] = top_pos
+        self.mj_model.geom_pos[self.tar_b_gid] = bot_pos
 
         desired_orien = np.zeros(3)
         desired_orien[0] = self.np_random.uniform(low=-1, high=1)
         desired_orien[1] = self.np_random.uniform(low=-0.8, high=1.2)
 
-        self.sim.model.site_rgba[self.success_indicator_sid, :2] = np.array([2, 0])
+        self.mj_model.site_rgba[self.success_indicator_sid, :2] = np.array([2, 0])
 
-        self.sim.model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
-        self.robot.sync_sims(self.sim, self.sim_obsd)
+        self.mj_model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
+        self.robot.sync_sims(
+            self.mj_model, self.mj_data, self.obsd_mj_model, self.obsd_mj_data
+        )
         obs = super().reset(**kwargs)
         return obs
 
@@ -375,13 +377,13 @@ class Geometries100EnvV0(ProprioceptiveEnvV0):
         }
 
         # randomize target
-        self.obj_gid = self.sim.model.geom_name2id("obj")
-        self.tar_gid = self.sim.model.geom_name2id("target")
+        self.obj_gid = self.mj_model.geom("obj").id
+        self.tar_gid = self.mj_model.geom("target").id
 
-        self.obj_t_gid = self.sim.model.geom_name2id("top")
-        self.obj_b_gid = self.sim.model.geom_name2id("bot")
-        self.tar_t_gid = self.sim.model.geom_name2id("t_top")
-        self.tar_b_gid = self.sim.model.geom_name2id("t_bot")
+        self.obj_t_gid = self.mj_model.geom("top").id
+        self.obj_b_gid = self.mj_model.geom("bot").id
+        self.tar_t_gid = self.mj_model.geom("t_top").id
+        self.tar_b_gid = self.mj_model.geom("t_bot").id
 
         geom_type = self.np_random.choice([3, 4, 5, 6])
 
@@ -406,29 +408,31 @@ class Geometries100EnvV0(ProprioceptiveEnvV0):
             top_pos = np.array([0, 0, size[2]])
             bot_pos = np.array([0, 0, -size[2]])
 
-        self.sim.model.geom_size[self.obj_gid] = size
-        self.sim.model.geom_type[self.obj_gid] = geom_type
-        self.sim.model.geom_rgba[self.obj_gid] = color
-        self.sim.model.geom_pos[self.obj_t_gid] = top_pos
-        self.sim.model.geom_pos[self.obj_b_gid] = bot_pos
+        self.mj_model.geom_size[self.obj_gid] = size
+        self.mj_model.geom_type[self.obj_gid] = geom_type
+        self.mj_model.geom_rgba[self.obj_gid] = color
+        self.mj_model.geom_pos[self.obj_t_gid] = top_pos
+        self.mj_model.geom_pos[self.obj_b_gid] = bot_pos
 
-        self.sim.model.body_mass[self.obj_bid] = 1.2
+        self.mj_model.body_mass[self.obj_bid] = 1.2
 
-        self.sim.model.geom_size[self.tar_gid] = size
-        self.sim.model.geom_type[self.tar_gid] = geom_type
-        self.sim.model.geom_rgba[self.tar_gid] = color
-        self.sim.model.geom_pos[self.tar_t_gid] = top_pos
-        self.sim.model.geom_pos[self.tar_b_gid] = bot_pos
+        self.mj_model.geom_size[self.tar_gid] = size
+        self.mj_model.geom_type[self.tar_gid] = geom_type
+        self.mj_model.geom_rgba[self.tar_gid] = color
+        self.mj_model.geom_pos[self.tar_t_gid] = top_pos
+        self.mj_model.geom_pos[self.tar_b_gid] = bot_pos
 
-        self.sim.model.geom_condim[self.obj_gid] = 3
+        self.mj_model.geom_condim[self.obj_gid] = 3
         desired_orien = np.zeros(3)
         desired_orien[0] = self.np_random.uniform(low=-1, high=1)
         desired_orien[1] = self.np_random.uniform(low=-0.8, high=1.2)
 
-        self.sim.model.site_rgba[self.success_indicator_sid, :2] = np.array([2, 0])
+        self.mj_model.site_rgba[self.success_indicator_sid, :2] = np.array([2, 0])
 
-        self.sim.model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
-        self.robot.sync_sims(self.sim, self.sim_obsd)
+        self.mj_model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
+        self.robot.sync_sims(
+            self.mj_model, self.mj_data, self.obsd_mj_model, self.obsd_mj_data
+        )
         obs = super().reset(**kwargs)
         return obs
 
@@ -1448,13 +1452,13 @@ class InDistribution(ProprioceptiveEnvV0):
         }
 
         # randomize target
-        self.obj_gid = self.sim.model.geom_name2id("obj")
-        self.tar_gid = self.sim.model.geom_name2id("target")
+        self.obj_gid = self.mj_model.geom("obj").id
+        self.tar_gid = self.mj_model.geom("target").id
 
-        self.obj_t_gid = self.sim.model.geom_name2id("top")
-        self.obj_b_gid = self.sim.model.geom_name2id("bot")
-        self.tar_t_gid = self.sim.model.geom_name2id("t_top")
-        self.tar_b_gid = self.sim.model.geom_name2id("t_bot")
+        self.obj_t_gid = self.mj_model.geom("top").id
+        self.obj_b_gid = self.mj_model.geom("bot").id
+        self.tar_t_gid = self.mj_model.geom("t_top").id
+        self.tar_b_gid = self.mj_model.geom("t_bot").id
 
         geom_type = self.np_random.choice([3, 4, 5, 6])
 
@@ -1481,29 +1485,31 @@ class InDistribution(ProprioceptiveEnvV0):
 
         color = [x / 255 for x in [38, 194, 129, 255]]
 
-        self.sim.model.geom_size[self.obj_gid] = size
-        self.sim.model.geom_type[self.obj_gid] = geom_type
-        self.sim.model.geom_rgba[self.obj_gid] = color
-        self.sim.model.geom_pos[self.obj_t_gid] = top_pos
-        self.sim.model.geom_pos[self.obj_b_gid] = bot_pos
+        self.mj_model.geom_size[self.obj_gid] = size
+        self.mj_model.geom_type[self.obj_gid] = geom_type
+        self.mj_model.geom_rgba[self.obj_gid] = color
+        self.mj_model.geom_pos[self.obj_t_gid] = top_pos
+        self.mj_model.geom_pos[self.obj_b_gid] = bot_pos
 
-        self.sim.model.body_mass[self.obj_bid] = 1.2
+        self.mj_model.body_mass[self.obj_bid] = 1.2
 
-        self.sim.model.geom_size[self.tar_gid] = size
-        self.sim.model.geom_type[self.tar_gid] = geom_type
-        self.sim.model.geom_rgba[self.tar_gid] = color
-        self.sim.model.geom_pos[self.tar_t_gid] = top_pos
-        self.sim.model.geom_pos[self.tar_b_gid] = bot_pos
+        self.mj_model.geom_size[self.tar_gid] = size
+        self.mj_model.geom_type[self.tar_gid] = geom_type
+        self.mj_model.geom_rgba[self.tar_gid] = color
+        self.mj_model.geom_pos[self.tar_t_gid] = top_pos
+        self.mj_model.geom_pos[self.tar_b_gid] = bot_pos
 
-        self.sim.model.geom_condim[self.obj_gid] = 3
+        self.mj_model.geom_condim[self.obj_gid] = 3
         desired_orien = np.zeros(3)
         desired_orien[0] = self.np_random.uniform(low=-1, high=1)
         desired_orien[1] = self.np_random.uniform(low=-0.8, high=1.2)
-        self.sim.model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
+        self.mj_model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
 
-        self.sim.model.site_rgba[self.success_indicator_sid, :2] = np.array([2, 0])
+        self.mj_model.site_rgba[self.success_indicator_sid, :2] = np.array([2, 0])
 
-        self.robot.sync_sims(self.sim, self.sim_obsd)
+        self.robot.sync_sims(
+            self.mj_model, self.mj_data, self.obsd_mj_model, self.obsd_mj_data
+        )
         obs = super().reset(**kwargs)
         return obs
 
@@ -2522,13 +2528,13 @@ class OutofDistribution(ProprioceptiveEnvV0):
             249: [[0.0286, 0.026, 0.0265], [0.7197, 0.4706, 0.1552, 1.0]],
         }
         # randomize target
-        self.obj_gid = self.sim.model.geom_name2id("obj")
-        self.tar_gid = self.sim.model.geom_name2id("target")
+        self.obj_gid = self.mj_model.geom("obj").id
+        self.tar_gid = self.mj_model.geom("target").id
 
-        self.obj_t_gid = self.sim.model.geom_name2id("top")
-        self.obj_b_gid = self.sim.model.geom_name2id("bot")
-        self.tar_t_gid = self.sim.model.geom_name2id("t_top")
-        self.tar_b_gid = self.sim.model.geom_name2id("t_bot")
+        self.obj_t_gid = self.mj_model.geom("top").id
+        self.obj_b_gid = self.mj_model.geom("bot").id
+        self.tar_t_gid = self.mj_model.geom("t_top").id
+        self.tar_b_gid = self.mj_model.geom("t_bot").id
 
         geom_type = self.np_random.choice([3, 4, 5, 6])
 
@@ -2555,28 +2561,30 @@ class OutofDistribution(ProprioceptiveEnvV0):
 
         color = [x / 255 for x in [128, 0, 0, 255]]
 
-        self.sim.model.geom_size[self.obj_gid] = size
-        self.sim.model.geom_type[self.obj_gid] = geom_type
-        self.sim.model.geom_rgba[self.obj_gid] = color
-        self.sim.model.geom_pos[self.obj_t_gid] = top_pos
-        self.sim.model.geom_pos[self.obj_b_gid] = bot_pos
+        self.mj_model.geom_size[self.obj_gid] = size
+        self.mj_model.geom_type[self.obj_gid] = geom_type
+        self.mj_model.geom_rgba[self.obj_gid] = color
+        self.mj_model.geom_pos[self.obj_t_gid] = top_pos
+        self.mj_model.geom_pos[self.obj_b_gid] = bot_pos
 
-        self.sim.model.body_mass[self.obj_bid] = 1.2
+        self.mj_model.body_mass[self.obj_bid] = 1.2
 
-        self.sim.model.geom_size[self.tar_gid] = size
-        self.sim.model.geom_type[self.tar_gid] = geom_type
-        self.sim.model.geom_rgba[self.tar_gid] = color
-        self.sim.model.geom_pos[self.tar_t_gid] = top_pos
-        self.sim.model.geom_pos[self.tar_b_gid] = bot_pos
+        self.mj_model.geom_size[self.tar_gid] = size
+        self.mj_model.geom_type[self.tar_gid] = geom_type
+        self.mj_model.geom_rgba[self.tar_gid] = color
+        self.mj_model.geom_pos[self.tar_t_gid] = top_pos
+        self.mj_model.geom_pos[self.tar_b_gid] = bot_pos
 
-        self.sim.model.geom_condim[self.obj_gid] = 3
+        self.mj_model.geom_condim[self.obj_gid] = 3
         desired_orien = np.zeros(3)
         desired_orien[0] = self.np_random.uniform(low=-1, high=1)
         desired_orien[1] = self.np_random.uniform(low=-0.8, high=1.2)
-        self.sim.model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
+        self.mj_model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
 
-        self.sim.model.site_rgba[self.success_indicator_sid, :2] = np.array([2, 0])
+        self.mj_model.site_rgba[self.success_indicator_sid, :2] = np.array([2, 0])
 
-        self.robot.sync_sims(self.sim, self.sim_obsd)
+        self.robot.sync_sims(
+            self.mj_model, self.mj_data, self.obsd_mj_model, self.obsd_mj_data
+        )
         obs = super().reset(**kwargs)
         return obs

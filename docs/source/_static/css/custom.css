@@ -1,0 +1,315 @@
+/*
+ * MyoSuite Documentation — Custom Theme
+ * Color palette derived from the MyoSuite logo
+ *
+ * Contrast reference (on white #fff):
+ *   --myo-dark       #060e0d  → 19.5:1  (body text)
+ *   --myo-dark-teal  #155257  →  9.8:1  (headings)
+ *   --myo-link       #0e7c7c  →  5.0:1  (links — WCAG AA)
+ *   --myo-teal       #3caaaa  →  2.8:1  (decorative only, NOT for text)
+ *   --myo-medium     #83c8c0  →  1.8:1  (borders/decorative only)
+ *
+ * On dark-teal (#155257):
+ *   #ffffff           →  9.8:1  (sidebar active text)
+ *   --myo-stroke     #c8ece6  →  6.5:1  (sidebar text)
+ *   --myo-medium     #83c8c0  →  4.6:1  (sidebar captions — AA)
+ */
+
+/* ===== Palette ===== */
+:root {
+  --myo-dark:      #060e0d;
+  --myo-dark-teal: #155257;
+  --myo-link:      #0e7c7c;   /* darker teal for readable links on white */
+  --myo-teal:      #3caaaa;   /* decorative / backgrounds only */
+  --myo-medium:    #83c8c0;   /* decorative borders, sidebar captions */
+  --myo-light:     #bee1dc;
+  --myo-mint:      #e6f5f0;
+  --myo-stroke:    #c8ece6;
+}
+
+/* ===== Sidebar ===== */
+.wy-side-nav-search {
+  background: var(--myo-dark-teal) !important;
+}
+
+.wy-side-nav-search input[type="text"] {
+  border: 1px solid var(--myo-medium);
+  border-radius: 3px;
+  color: var(--myo-dark);
+}
+
+.wy-side-nav-search input[type="text"]:focus {
+  border-color: var(--myo-teal);
+  box-shadow: 0 0 0 2px rgba(60, 170, 170, 0.25);
+}
+
+.wy-nav-side {
+  background: var(--myo-dark-teal) !important;
+}
+
+.wy-side-nav-search > a img.logo {
+  max-width: 200px;
+}
+
+/* ===== Sidebar navigation links ===== */
+.wy-menu-vertical a {
+  color: var(--myo-stroke) !important;  /* 6.5:1 on dark-teal */
+}
+
+.wy-menu-vertical a:hover {
+  background: rgba(60, 170, 170, 0.15) !important;
+  color: #fff !important;
+}
+
+.wy-menu-vertical li.current > a {
+  background: rgba(60, 170, 170, 0.22) !important;
+  border-right: 3px solid var(--myo-teal);
+  color: #fff !important;
+}
+
+.wy-menu-vertical li.current a:hover {
+  background: rgba(60, 170, 170, 0.3) !important;
+}
+
+.wy-menu-vertical li.toctree-l1.current > a {
+  border-bottom: 1px solid rgba(200, 236, 230, 0.15);
+}
+
+.wy-menu-vertical li.on a,
+.wy-menu-vertical li.current > a {
+  background: rgba(60, 170, 170, 0.18) !important;
+}
+
+.wy-menu-vertical p.caption {
+  color: var(--myo-medium) !important;  /* 4.6:1 on dark-teal */
+}
+
+/* Sub-level sidebar items on expanded current section (white bg) */
+.wy-menu-vertical li.toctree-l2 a,
+.wy-menu-vertical li.toctree-l3 a {
+  color: var(--myo-dark-teal) !important;
+}
+
+.wy-menu-vertical li.toctree-l2 a:hover,
+.wy-menu-vertical li.toctree-l3 a:hover {
+  color: var(--myo-dark) !important;
+}
+
+/* ===== Content area links ===== */
+.rst-content a,
+.rst-content a:visited,
+a {
+  color: var(--myo-link);  /* 5.0:1 on white — WCAG AA */
+}
+
+.rst-content a:hover,
+a:hover {
+  color: var(--myo-dark-teal);  /* 9.8:1 on white */
+}
+
+/* ===== Body text ===== */
+.wy-body-for-nav .rst-content,
+.wy-body-for-nav .rst-content p,
+.wy-body-for-nav .rst-content li,
+.wy-body-for-nav .rst-content dd {
+  color: var(--myo-dark);  /* 19.5:1 on white */
+}
+
+/* ===== Headings ===== */
+.rst-content h1,
+.rst-content h2,
+.rst-content h3,
+.rst-content h4 {
+  color: var(--myo-dark-teal);  /* 9.8:1 on white */
+}
+
+.rst-content h1 {
+  border-bottom: 2px solid var(--myo-light);
+  padding-bottom: 0.3em;
+}
+
+.rst-content h2 {
+  border-bottom: 1px solid var(--myo-light);
+  padding-bottom: 0.25em;
+}
+
+/* ===== Code blocks ===== */
+.rst-content .highlight {
+  background: var(--myo-mint) !important;
+  border: 1px solid var(--myo-light);
+  border-radius: 4px;
+}
+
+.rst-content .highlight pre {
+  background: transparent !important;
+  color: var(--myo-dark);
+}
+
+.rst-content code.literal {
+  background: var(--myo-mint);
+  color: var(--myo-dark-teal);  /* 9.8:1 on mint */
+  border: 1px solid var(--myo-light);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 0.9em;
+}
+
+/* ===== Admonitions ===== */
+.rst-content .note {
+  background: var(--myo-mint) !important;
+}
+
+.rst-content .note .admonition-title {
+  background: var(--myo-dark-teal) !important;  /* white text on dark-teal */
+  color: #fff;
+}
+
+.rst-content .note p {
+  color: var(--myo-dark);
+}
+
+.rst-content .warning {
+  background: #fef7e6 !important;
+}
+
+.rst-content .warning .admonition-title {
+  background: #7a6120 !important;  /* darkened for contrast */
+  color: #fff;
+}
+
+.rst-content .tip,
+.rst-content .hint {
+  background: var(--myo-mint) !important;
+}
+
+.rst-content .tip .admonition-title,
+.rst-content .hint .admonition-title {
+  background: var(--myo-dark-teal) !important;
+  color: #fff;
+}
+
+.rst-content .important .admonition-title {
+  background: var(--myo-dark-teal) !important;
+  color: #fff;
+}
+
+.rst-content .important {
+  background: var(--myo-mint) !important;
+}
+
+/* ===== Tables ===== */
+/*
+ * Three layers of selectors to survive the RTD theme's cascade:
+ *
+ * 1. th.head — docutils marks every header cell with this class (simple
+ *    tables, grid tables).  Specificity 0,2,1 beats plain "thead th" 0,1,2.
+ *
+ * 2. body … thead th/td — body prefix boosts specificity of the structural
+ *    selector so it beats same-weight RTD !important rules that load later.
+ *
+ * 3. thead th/td p — RTD sometimes wraps cell content in <p>.  Direct rules
+ *    on <p> win over inherited colour from the parent <th>, so we must target
+ *    the <p> explicitly.
+ *
+ * Both .wy-table-responsive wrapper and bare table.docutils variants are
+ * covered so the rules fire regardless of how the theme rewrites the DOM.
+ */
+
+/* — Header cells ---------------------------------------------------------- */
+body .rst-content table th.head,
+body .rst-content table.docutils thead th,
+body .rst-content table.docutils thead td,
+body .rst-content .wy-table-responsive table thead th,
+body .rst-content .wy-table-responsive table thead td {
+  background-color: var(--myo-dark-teal) !important;
+  color: #fff !important;
+  border-color: rgba(200, 236, 230, 0.3) !important;
+}
+
+/* — Paragraphs inside header cells (RTD injects <p> in some versions) ----- */
+body .rst-content table th.head p,
+body .rst-content table.docutils thead th p,
+body .rst-content table.docutils thead td p,
+body .rst-content .wy-table-responsive table thead th p,
+body .rst-content .wy-table-responsive table thead td p {
+  color: #fff !important;
+}
+
+/* — Alternating body rows ------------------------------------------------- */
+.rst-content table.docutils tbody tr:nth-child(even),
+.rst-content .wy-table-responsive table tbody tr:nth-child(even) {
+  background: var(--myo-mint);
+}
+
+.rst-content table.docutils tbody tr:nth-child(odd),
+.rst-content .wy-table-responsive table tbody tr:nth-child(odd) {
+  background: #fff;
+}
+
+/* — Body cells ------------------------------------------------------------ */
+.rst-content table.docutils td,
+.rst-content .wy-table-responsive table td {
+  color: var(--myo-dark) !important;
+  border-color: var(--myo-light) !important;
+}
+
+.rst-content table.docutils th,
+.rst-content .wy-table-responsive table th {
+  border-color: var(--myo-light) !important;
+}
+
+/* ===== Footer navigation buttons ===== */
+.rst-footer-buttons a {
+  background: var(--myo-dark-teal) !important;  /* white text on dark-teal */
+  color: #fff !important;
+  border: none !important;
+  border-radius: 3px;
+}
+
+.rst-footer-buttons a:hover {
+  background: var(--myo-dark) !important;
+}
+
+/* ===== Search highlight ===== */
+.rst-content .highlighted {
+  background: var(--myo-light);
+  color: var(--myo-dark);
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+
+/* ===== Breadcrumb ===== */
+.wy-breadcrumbs li a {
+  color: var(--myo-link);
+}
+
+.wy-breadcrumbs li a:hover {
+  color: var(--myo-dark-teal);
+}
+
+/* ===== Version selector / mobile header ===== */
+.wy-side-nav-search > div.version {
+  color: var(--myo-stroke);  /* on dark-teal */
+}
+
+.wy-nav-top {
+  background: var(--myo-dark-teal) !important;
+}
+
+/* ===== Scrollbar (webkit) ===== */
+.wy-nav-side::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wy-nav-side::-webkit-scrollbar-track {
+  background: var(--myo-dark-teal);
+}
+
+.wy-nav-side::-webkit-scrollbar-thumb {
+  background: var(--myo-teal);
+  border-radius: 3px;
+}
+
+.wy-nav-side::-webkit-scrollbar-thumb:hover {
+  background: var(--myo-medium);
+}

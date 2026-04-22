@@ -4,15 +4,15 @@ name = "MyoSuite"
 dynamic = ["version"]  # Enable dynamic version
 description = "Musculoskeletal environments simulated in MuJoCo"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10,<=3.12"
 license = { text = "Apache 2.0" }
 authors = [
     { name = "Vikash Kumar", email = "vikashplus@gmail.com" },
     { name = "Vittorio Caggiano", email = "caggiano@gmail.com" },
+    { name = "Balint Hodossy", email = "balint.hodossy16@imperial.ac.uk" },
 ]
 urls = { Homepage = "https://sites.google.com/view/myosuite" }
 classifiers = [
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -22,21 +22,71 @@ classifiers = [
 ]
 dependencies = [
     "click",
-    "sk-video",
-    "gymnasium==0.29.1",
+    "imageio[ffmpeg]",
+    "gymnasium<1.3",
     "termcolor",
     "flatten_dict",
     "h5py",
     "numpy",
-    "mujoco==3.3.0",
-    "dm-control==1.0.28",
+    "mujoco>=3.5,<3.6",
     "Pillow",
     "pink-noise-rl",
     "packaging",
     "gitpython",
 ]
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"
+explicit = true
+
+[tool.uv.sources]
+warp-lang = { index = "nvidia" }
+
 [project.optional-dependencies]
 examples = ["mink[examples]; python_version > '3.9'"]
+mjx = [
+    "mujoco>=3.5,<3.6; python_version >= '3.10' and sys_platform != 'win32'",
+    "mujoco-mjx[warp]>=3.5,<3.6; python_version >= '3.10' and sys_platform != 'win32'",
+    "jax>=0.4.20; python_version >= '3.10' and sys_platform != 'win32'",
+    "jaxlib>=0.4.20; python_version >= '3.10' and sys_platform != 'win32'",
+    "brax>=0.10.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "flax>=0.8.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "optax>=0.1.7; python_version >= '3.10' and sys_platform != 'win32'",
+    "ml-collections>=0.1.1; python_version >= '3.10' and sys_platform != 'win32'",
+    "etils[epath]>=1.3.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "playground>=0.1.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "mediapy>=1.2.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "wandb>=0.21.0; python_version >= '3.10' and sys_platform != 'win32'",
+]
+tutorials = [
+  "matplotlib",
+	"pandas",
+	"tqdm",
+	"mink",
+    "loop-rate-limiters",
+	"osqp",
+	"stable-baselines3[extra]",
+]
+mjx-cuda = [
+    "MyoSuite[mjx]",
+    "jax[cuda]>=0.4.20; python_version >= '3.10'",
+]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=2.0",
+    "sphinx-autodoc-typehints>=2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-xvfb",
+    "pytest-benchmark>=4.0",
+    "black",
+    "isort",
+    "flake8",
+]
+
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]

@@ -5,6 +5,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 import collections
 
+import mujoco
 import numpy as np
 
 from myosuite.envs.myo.base_v0 import BaseV0
@@ -63,37 +64,37 @@ class ReachEnvV0(BaseV0):
             sites=self.target_reach_range.keys(),
             **kwargs,
         )
-        self.init_qpos[:] = self.sim.model.key_qpos[0]
-        self.init_qvel[:] = self.sim.model.key_qvel[0]
+        self.init_qpos[:] = self.mj_model.key_qpos[0]
+        self.init_qvel[:] = self.mj_model.key_qvel[0]
         # find geometries with ID == 1 which indicates the skins
-        geom_1_indices = np.where(self.sim.model.geom_group == 1)
+        geom_1_indices = np.where(self.mj_model.geom_group == 1)
         # Change the alpha value to make it transparent
-        self.sim.model.geom_rgba[geom_1_indices, 3] = 0
+        self.mj_model.geom_rgba[geom_1_indices, 3] = 0
 
         # move heightfield down if not used
-        self.sim.model.geom_rgba[self.sim.model.geom_name2id("terrain")][-1] = 0.0
-        self.sim.model.geom_pos[self.sim.model.geom_name2id("terrain")] = np.array(
+        self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 0.0
+        self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
             [0, 0, -10]
         )
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
-        obs_dict["time"] = np.array([sim.data.time])
-        obs_dict["qpos"] = sim.data.qpos[:].copy()
-        obs_dict["qvel"] = sim.data.qvel[:].copy() * self.dt
-        if sim.model.na > 0:
-            obs_dict["act"] = sim.data.act[:].copy()
+        obs_dict["time"] = np.array([mj_data.time])
+        obs_dict["qpos"] = mj_data.qpos[:].copy()
+        obs_dict["qvel"] = mj_data.qvel[:].copy() * self.dt
+        if mj_model.na > 0:
+            obs_dict["act"] = mj_data.act[:].copy()
 
         # reach error
         obs_dict["tip_pos"] = np.array([])
         obs_dict["target_pos"] = np.array([])
         for isite in range(len(self.tip_sids)):
             obs_dict["tip_pos"] = np.append(
-                obs_dict["tip_pos"], sim.data.site_xpos[self.tip_sids[isite]].copy()
+                obs_dict["tip_pos"], mj_data.site_xpos[self.tip_sids[isite]].copy()
             )
             obs_dict["target_pos"] = np.append(
                 obs_dict["target_pos"],
-                sim.data.site_xpos[self.target_sids[isite]].copy(),
+                mj_data.site_xpos[self.target_sids[isite]].copy(),
             )
         obs_dict["reach_err"] = np.array(obs_dict["target_pos"]) - np.array(
             obs_dict["tip_pos"]
@@ -104,8 +105,8 @@ class ReachEnvV0(BaseV0):
         reach_dist = np.linalg.norm(obs_dict["reach_err"], axis=-1)
         vel_dist = np.linalg.norm(obs_dict["qvel"], axis=-1)
         act_mag = (
-            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.sim.model.na
-            if self.sim.model.na != 0
+            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.mj_model.na
+            if self.mj_model.na != 0
             else 0
         )
         far_th = (
@@ -140,12 +141,12 @@ class ReachEnvV0(BaseV0):
     # generate a valid target
     def generate_targets(self):
         for site, span in self.target_reach_range.items():
-            sid = self.sim.model.site_name2id(site)
-            sid_target = self.sim.model.site_name2id(site + "_target")
-            self.sim.model.site_pos[sid_target] = self.sim.data.site_xpos[
+            sid = self.mj_model.site(site).id
+            sid_target = self.mj_model.site(site + "_target").id
+            self.mj_model.site_pos[sid_target] = self.mj_data.site_xpos[
                 sid
             ].copy() + self.np_random.uniform(low=span[0], high=span[1])
-        self.sim.forward()
+        mujoco.mj_forward(self.mj_model, self.mj_data)
 
     # generate random qpos for targets (only at linear joints)
     def generate_qpos(self):
@@ -155,25 +156,27 @@ class ReachEnvV0(BaseV0):
             size=self.init_qpos.shape,
         )
         qpos_new = self.init_qpos.copy()
-        qpos_new[self.sim.model.jnt_qposadr] += qpos_rand[
-            self.sim.model.jnt_qposadr
+        qpos_new[self.mj_model.jnt_qposadr] += qpos_rand[
+            self.mj_model.jnt_qposadr
         ]  # only linear joints
-        qpos_new[self.sim.model.jnt_qposadr] = np.clip(
-            qpos_new[self.sim.model.jnt_qposadr],
-            self.sim.model.jnt_range[:, 0],
-            self.sim.model.jnt_range[:, 1],
+        qpos_new[self.mj_model.jnt_qposadr] = np.clip(
+            qpos_new[self.mj_model.jnt_qposadr],
+            self.mj_model.jnt_range[:, 0],
+            self.mj_model.jnt_range[:, 1],
         )
         return qpos_new
 
     def reset(self, **kwargs):
         # generate random targets
         if np.ptp(self.joint_random_range) > 0:
-            self.sim.data.qpos = self.generate_qpos()
-        self.sim.forward()
+            self.mj_data.qpos = self.generate_qpos()
+        mujoco.mj_forward(self.mj_model, self.mj_data)
         self.generate_targets()
 
         # sync targets to sim_obsd
-        self.robot.sync_sims(self.sim, self.sim_obsd)
+        self.robot.sync_sims(
+            self.mj_model, self.mj_data, self.obsd_mj_model, self.obsd_mj_data
+        )
 
         # generate resets
         if np.ptp(self.joint_random_range) > 0:
@@ -253,21 +256,21 @@ class WalkEnvV0(BaseV0):
         super()._setup(
             obs_keys=obs_keys, weighted_reward_keys=weighted_reward_keys, **kwargs
         )
-        self.init_qpos[:] = self.sim.model.key_qpos[0]
+        self.init_qpos[:] = self.mj_model.key_qpos[0]
         self.init_qvel[:] = 0.0
 
         # move heightfield down if not used
-        self.sim.model.geom_rgba[self.sim.model.geom_name2id("terrain")][-1] = 0.0
-        self.sim.model.geom_pos[self.sim.model.geom_name2id("terrain")] = np.array(
+        self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 0.0
+        self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
             [0, 0, -10]
         )
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
-        obs_dict["t"] = np.array([sim.data.time])
-        obs_dict["time"] = np.array([sim.data.time])
-        obs_dict["qpos_without_xy"] = sim.data.qpos[2:].copy()
-        obs_dict["qvel"] = sim.data.qvel[:].copy() * self.dt
+        obs_dict["t"] = np.array([mj_data.time])
+        obs_dict["time"] = np.array([mj_data.time])
+        obs_dict["qpos_without_xy"] = mj_data.qpos[2:].copy()
+        obs_dict["qvel"] = mj_data.qvel[:].copy() * self.dt
         obs_dict["com_vel"] = np.array([self._get_com_velocity().copy()])
         obs_dict["torso_angle"] = np.array([self._get_torso_angle().copy()])
         obs_dict["feet_heights"] = self._get_feet_heights().copy()
@@ -278,8 +281,8 @@ class WalkEnvV0(BaseV0):
         obs_dict["muscle_velocity"] = self.muscle_velocities()
         obs_dict["muscle_force"] = self.muscle_forces()
 
-        if sim.model.na > 0:
-            obs_dict["act"] = sim.data.act[:].copy()
+        if mj_model.na > 0:
+            obs_dict["act"] = mj_data.act[:].copy()
 
         return obs_dict
 
@@ -291,8 +294,8 @@ class WalkEnvV0(BaseV0):
             ["hip_adduction_l", "hip_adduction_r", "hip_rotation_l", "hip_rotation_r"]
         )
         act_mag = (
-            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.sim.model.na
-            if self.sim.model.na != 0
+            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.mj_model.na
+            if self.mj_model.na != 0
             else 0
         )
 
@@ -318,11 +321,11 @@ class WalkEnvV0(BaseV0):
     def get_randomized_initial_state(self):
         # randomly start with flexed left or right knee
         if self.np_random.uniform() < 0.5:
-            qpos = self.sim.model.key_qpos[2].copy()
-            qvel = self.sim.model.key_qvel[2].copy()
+            qpos = self.mj_model.key_qpos[2].copy()
+            qvel = self.mj_model.key_qvel[2].copy()
         else:
-            qpos = self.sim.model.key_qpos[3].copy()
-            qvel = self.sim.model.key_qvel[3].copy()
+            qpos = self.mj_model.key_qpos[3].copy()
+            qvel = self.mj_model.key_qvel[3].copy()
 
         # randomize qpos coordinates
         # but dont change height or rot state
@@ -343,21 +346,23 @@ class WalkEnvV0(BaseV0):
         if self.reset_type == "random":
             qpos, qvel = self.get_randomized_initial_state()
         elif self.reset_type == "init":
-            qpos, qvel = self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
+            qpos, qvel = self.mj_model.key_qpos[2], self.mj_model.key_qvel[2]
         else:
-            qpos, qvel = self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
-        self.robot.sync_sims(self.sim, self.sim_obsd)
+            qpos, qvel = self.mj_model.key_qpos[0], self.mj_model.key_qvel[0]
+        self.robot.sync_sims(
+            self.mj_model, self.mj_data, self.obsd_mj_model, self.obsd_mj_data
+        )
         obs = super().reset(reset_qpos=qpos, reset_qvel=qvel, **kwargs)
         return obs
 
     def muscle_lengths(self):
-        return self.sim.data.actuator_length
+        return self.mj_data.actuator_length
 
     def muscle_forces(self):
-        return np.clip(self.sim.data.actuator_force / 1000, -100, 100)
+        return np.clip(self.mj_data.actuator_force / 1000, -100, 100)
 
     def muscle_velocities(self):
-        return np.clip(self.sim.data.actuator_velocity, -100, 100)
+        return np.clip(self.mj_data.actuator_velocity, -100, 100)
 
     def _get_done(self):
         height = self._get_height()
@@ -380,12 +385,12 @@ class WalkEnvV0(BaseV0):
         """
         Get the height of both feet.
         """
-        foot_id_l = self.sim.model.body_name2id("talus_l")
-        foot_id_r = self.sim.model.body_name2id("talus_r")
+        foot_id_l = self.mj_model.body("talus_l").id
+        foot_id_r = self.mj_model.body("talus_r").id
         return np.array(
             [
-                self.sim.data.body_xpos[foot_id_l][2],
-                self.sim.data.body_xpos[foot_id_r][2],
+                self.mj_data.xpos[foot_id_l][2],
+                self.mj_data.xpos[foot_id_r][2],
             ]
         )
 
@@ -393,13 +398,13 @@ class WalkEnvV0(BaseV0):
         """
         Get the feet positions relative to the pelvis.
         """
-        foot_id_l = self.sim.model.body_name2id("talus_l")
-        foot_id_r = self.sim.model.body_name2id("talus_r")
-        pelvis = self.sim.model.body_name2id("pelvis")
+        foot_id_l = self.mj_model.body("talus_l").id
+        foot_id_r = self.mj_model.body("talus_r").id
+        pelvis = self.mj_model.body("pelvis").id
         return np.array(
             [
-                self.sim.data.body_xpos[foot_id_l] - self.sim.data.body_xpos[pelvis],
-                self.sim.data.body_xpos[foot_id_r] - self.sim.data.body_xpos[pelvis],
+                self.mj_data.xpos[foot_id_l] - self.mj_data.xpos[pelvis],
+                self.mj_data.xpos[foot_id_r] - self.mj_data.xpos[pelvis],
             ]
         )
 
@@ -435,18 +440,18 @@ class WalkEnvV0(BaseV0):
         target_rot = [
             self.target_rot if self.target_rot is not None else self.init_qpos[3:7]
         ][0]
-        return np.exp(-np.linalg.norm(5.0 * (self.sim.data.qpos[3:7] - target_rot)))
+        return np.exp(-np.linalg.norm(5.0 * (self.mj_data.qpos[3:7] - target_rot)))
 
     def _get_torso_angle(self):
-        body_id = self.sim.model.body_name2id("torso")
-        return self.sim.data.body_xquat[body_id]
+        body_id = self.mj_model.body("torso").id
+        return self.mj_data.xquat[body_id]
 
     def _get_com_velocity(self):
         """
         Compute the center of mass velocity of the model.
         """
-        mass = np.expand_dims(self.sim.model.body_mass, -1)
-        cvel = -self.sim.data.cvel
+        mass = np.expand_dims(self.mj_model.body_mass, -1)
+        cvel = -self.mj_data.cvel
         return (np.sum(mass * cvel, 0) / np.sum(mass))[3:5]
 
     def _get_height(self):
@@ -464,15 +469,15 @@ class WalkEnvV0(BaseV0):
         yields a vector with a strong x component.
         """
         # quaternion of root
-        quat = self.sim.data.qpos[3:7].copy()
+        quat = self.mj_data.qpos[3:7].copy()
         return [1 if np.abs((quat2mat(quat) @ [1, 0, 0])[0]) > self.max_rot else 0][0]
 
     def _get_com(self):
         """
         Compute the center of mass of the robot.
         """
-        mass = np.expand_dims(self.sim.model.body_mass, -1)
-        com = self.sim.data.xipos
+        mass = np.expand_dims(self.mj_model.body_mass, -1)
+        com = self.mj_data.xipos
         return np.sum(mass * com, 0) / np.sum(mass)
 
     def _get_angle(self, names):
@@ -481,8 +486,8 @@ class WalkEnvV0(BaseV0):
         """
         return np.array(
             [
-                self.sim.data.qpos[
-                    self.sim.model.jnt_qposadr[self.sim.model.joint_name2id(name)]
+                self.mj_data.qpos[
+                    self.mj_model.jnt_qposadr[self.mj_model.joint(name).id]
                 ]
                 for name in names
             ]
@@ -565,7 +570,7 @@ class TerrainEnvV0(WalkEnvV0):
         BaseV0._setup(
             self, obs_keys=obs_keys, weighted_reward_keys=weighted_reward_keys, **kwargs
         )
-        self.init_qpos[:] = self.sim.model.key_qpos[0]
+        self.init_qpos[:] = self.mj_model.key_qpos[0]
         self.init_qvel[:] = 0.0
 
     def reset(self, **kwargs):
@@ -574,7 +579,7 @@ class TerrainEnvV0(WalkEnvV0):
             rough = self.np_random.uniform(low=-0.5, high=0.5, size=(10000,))
             normalized_data = (rough - np.min(rough)) / (np.max(rough) - np.min(rough))
             scalar, offset = 0.08, 0.02
-            self.sim.model.hfield_data[:] = normalized_data * scalar - offset
+            self.mj_model.hfield_data[:] = normalized_data * scalar - offset
 
         elif self.terrain == "hilly":
             flat_length, frequency = 3000, 3
@@ -602,7 +607,7 @@ class TerrainEnvV0(WalkEnvV0):
                 combined_data.max() - combined_data.min()
             )
 
-            self.sim.model.hfield_data[:] = np.flip(
+            self.mj_model.hfield_data[:] = np.flip(
                 normalized_data.reshape(100, 100) * scalar, [0, 1]
             ).reshape(
                 10000,
@@ -628,26 +633,28 @@ class TerrainEnvV0(WalkEnvV0):
             )
 
             normalized_data = (new_terrain_data + 2) / (2 + stair_height * num_stairs)
-            self.sim.model.hfield_data[:] = np.flip(
+            self.mj_model.hfield_data[:] = np.flip(
                 normalized_data.reshape(100, 100) * scalar, [0, 1]
             ).reshape(
                 10000,
             )
 
-        self.sim.model.geom_rgba[self.sim.model.geom_name2id("terrain")][-1] = 1.0
-        self.sim.model.geom_pos[self.sim.model.geom_name2id("terrain")] = np.array(
+        self.mj_model.geom_rgba[self.mj_model.geom("terrain").id][-1] = 1.0
+        self.mj_model.geom_pos[self.mj_model.geom("terrain").id] = np.array(
             [0, 0, 0]
         )
-        self.sim.model.geom_contype[self.sim.model.geom_name2id("terrain")] = 1
-        self.sim.model.geom_conaffinity[self.sim.model.geom_name2id("terrain")] = 1
+        self.mj_model.geom_contype[self.mj_model.geom("terrain").id] = 1
+        self.mj_model.geom_conaffinity[self.mj_model.geom("terrain").id] = 1
 
         if self.reset_type == "random":
             qpos, qvel = self.get_randomized_initial_state()
         elif self.reset_type == "init":
-            qpos, qvel = self.sim.model.key_qpos[2], self.sim.model.key_qvel[2]
+            qpos, qvel = self.mj_model.key_qpos[2], self.mj_model.key_qvel[2]
         else:
-            qpos, qvel = self.sim.model.key_qpos[0], self.sim.model.key_qvel[0]
-        self.robot.sync_sims(self.sim, self.sim_obsd)
+            qpos, qvel = self.mj_model.key_qpos[0], self.mj_model.key_qvel[0]
+        self.robot.sync_sims(
+            self.mj_model, self.mj_data, self.obsd_mj_model, self.obsd_mj_data
+        )
         obs = BaseV0.reset(self, reset_qpos=qpos, reset_qvel=qvel, **kwargs)
         return obs
 

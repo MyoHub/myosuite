@@ -97,20 +97,20 @@ class BaodingEnvV1(BaseV0):
 
         self.counter = 0
         self.goal = self.create_goal_trajectory(
-            time_step=frame_skip * self.sim.model.opt.timestep, time_period=6
+            time_step=frame_skip * self.mj_model.opt.timestep, time_period=6
         )
 
         # init target and body sites
-        self.object1_bid = self.sim.model.body_name2id("ball1")
-        self.object2_bid = self.sim.model.body_name2id("ball2")
-        self.object1_sid = self.sim.model.site_name2id("ball1_site")
-        self.object2_sid = self.sim.model.site_name2id("ball2_site")
-        self.object1_gid = self.sim.model.geom_name2id("ball1")
-        self.object2_gid = self.sim.model.geom_name2id("ball2")
-        self.target1_sid = self.sim.model.site_name2id("target1_site")
-        self.target2_sid = self.sim.model.site_name2id("target2_site")
-        self.sim.model.site_group[self.target1_sid] = 2
-        self.sim.model.site_group[self.target2_sid] = 2
+        self.object1_bid = self.mj_model.body("ball1").id
+        self.object2_bid = self.mj_model.body("ball2").id
+        self.object1_sid = self.mj_model.site("ball1_site").id
+        self.object2_sid = self.mj_model.site("ball2_site").id
+        self.object1_gid = self.mj_model.geom("ball1").id
+        self.object2_gid = self.mj_model.geom("ball2").id
+        self.target1_sid = self.mj_model.site("target1_site").id
+        self.target2_sid = self.mj_model.site("target2_site").id
+        self.mj_model.site_group[self.target1_sid] = 2
+        self.mj_model.site_group[self.target2_sid] = 2
 
         # setup for task randomization
         self.obj_mass_range = (
@@ -125,9 +125,9 @@ class BaodingEnvV1(BaseV0):
         )
         self.obj_friction_range = (
             {
-                "low": self.sim.model.geom_friction[self.object1_gid]
+                "low": self.mj_model.geom_friction[self.object1_gid]
                 - obj_friction_change,
-                "high": self.sim.model.geom_friction[self.object1_gid]
+                "high": self.mj_model.geom_friction[self.object1_gid]
                 + obj_friction_change,
             }
             if obj_friction_change
@@ -170,35 +170,35 @@ class BaodingEnvV1(BaseV0):
             )
 
             # update both simhive with desired targets
-            for sim in [self.sim, self.sim_obsd]:
-                sim.model.site_pos[self.target1_sid, 0] = desired_positions_wrt_palm[0]
-                sim.model.site_pos[self.target1_sid, 1] = desired_positions_wrt_palm[1]
-                sim.model.site_pos[self.target2_sid, 0] = desired_positions_wrt_palm[2]
-                sim.model.site_pos[self.target2_sid, 1] = desired_positions_wrt_palm[3]
+            for mjm in [self.mj_model, self.obsd_mj_model]:
+                mjm.site_pos[self.target1_sid, 0] = desired_positions_wrt_palm[0]
+                mjm.site_pos[self.target1_sid, 1] = desired_positions_wrt_palm[1]
+                mjm.site_pos[self.target2_sid, 0] = desired_positions_wrt_palm[2]
+                mjm.site_pos[self.target2_sid, 1] = desired_positions_wrt_palm[3]
                 # move upward, to be seen
-                # sim.model.site_pos[self.target1_sid, 2] = -0.037
-                # sim.model.site_pos[self.target2_sid, 2] = -0.037
+                # mj_model.site_pos[self.target1_sid, 2] = -0.037
+                # mj_model.site_pos[self.target2_sid, 2] = -0.037
         self.counter += 1
         return super().step(a, **kwargs)
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
-        obs_dict["time"] = np.array([sim.data.time])
-        obs_dict["hand_pos"] = sim.data.qpos[
+        obs_dict["time"] = np.array([mj_data.time])
+        obs_dict["hand_pos"] = mj_data.qpos[
             :-14
         ].copy()  # 7*2 for ball's free joint, rest should be hand
 
         # object positions
-        obs_dict["object1_pos"] = sim.data.site_xpos[self.object1_sid].copy()
-        obs_dict["object2_pos"] = sim.data.site_xpos[self.object2_sid].copy()
+        obs_dict["object1_pos"] = mj_data.site_xpos[self.object1_sid].copy()
+        obs_dict["object2_pos"] = mj_data.site_xpos[self.object2_sid].copy()
 
         # object translational velocities
-        obs_dict["object1_velp"] = sim.data.qvel[-12:-9].copy() * self.dt
-        obs_dict["object2_velp"] = sim.data.qvel[-6:-3].copy() * self.dt
+        obs_dict["object1_velp"] = mj_data.qvel[-12:-9].copy() * self.dt
+        obs_dict["object2_velp"] = mj_data.qvel[-6:-3].copy() * self.dt
 
         # site locations in world frame, populated after the step/forward call
-        obs_dict["target1_pos"] = sim.data.site_xpos[self.target1_sid].copy()
-        obs_dict["target2_pos"] = sim.data.site_xpos[self.target2_sid].copy()
+        obs_dict["target1_pos"] = mj_data.site_xpos[self.target1_sid].copy()
+        obs_dict["target2_pos"] = mj_data.site_xpos[self.target2_sid].copy()
 
         # object position error
         obs_dict["target1_err"] = obs_dict["target1_pos"] - obs_dict["object1_pos"]
@@ -206,8 +206,8 @@ class BaodingEnvV1(BaseV0):
 
         # muscle activations
         obs_dict["act"] = (
-            sim.data.act[:].copy()
-            if sim.model.na > 0
+            mj_data.act[:].copy()
+            if mj_model.na > 0
             else np.zeros_like(obs_dict["qpos"])
         )
 
@@ -219,8 +219,8 @@ class BaodingEnvV1(BaseV0):
         target2_dist = np.linalg.norm(obs_dict["target2_err"], axis=-1)
         target_dist = target1_dist + target2_dist
         act_mag = np.linalg.norm(self.obs_dict["act"], axis=-1)
-        if self.sim.model.na != 0:
-            act_mag = act_mag / self.sim.model.na
+        if self.mj_model.na != 0:
+            act_mag = act_mag / self.mj_model.na
 
         # detect fall
         object1_pos = (
@@ -263,12 +263,12 @@ class BaodingEnvV1(BaseV0):
         )
 
         # Sucess Indicator
-        self.sim.model.geom_rgba[self.object1_gid, :2] = (
+        self.mj_model.geom_rgba[self.object1_gid, :2] = (
             np.array([1, 1])
             if target1_dist < self.proximity_th
             else np.array([0.5, 0.5])
         )
-        self.sim.model.geom_rgba[self.object2_gid, :2] = (
+        self.mj_model.geom_rgba[self.object2_gid, :2] = (
             np.array([0.9, 0.7])
             if target1_dist < self.proximity_th
             else np.array([0.5, 0.5])
@@ -360,28 +360,28 @@ class BaodingEnvV1(BaseV0):
 
         # balls mass changes
         if self.obj_mass_range:
-            self.sim.model.body_mass[self.object1_bid] = self.np_random.uniform(
+            self.mj_model.body_mass[self.object1_bid] = self.np_random.uniform(
                 **self.obj_mass_range
             )  # call to mj_setConst(m,d) is being ignored. Derive quantities wont be updated. Die is simple shape. So this is reasonable approximation.
-            self.sim.model.body_mass[self.object2_bid] = self.np_random.uniform(
+            self.mj_model.body_mass[self.object2_bid] = self.np_random.uniform(
                 **self.obj_mass_range
             )  # call to mj_setConst(m,d) is being ignored. Derive quantities wont be updated. Die is simple shape. So this is reasonable approximation.
 
         # balls friction changes
         if self.obj_friction_range:
-            self.sim.model.geom_friction[self.object1_gid] = self.np_random.uniform(
+            self.mj_model.geom_friction[self.object1_gid] = self.np_random.uniform(
                 **self.obj_friction_range
             )
-            self.sim.model.geom_friction[self.object2_gid] = self.np_random.uniform(
+            self.mj_model.geom_friction[self.object2_gid] = self.np_random.uniform(
                 **self.obj_friction_range
             )
 
         # balls size changes
         if self.obj_size_range:
-            self.sim.model.geom_size[self.object1_gid] = self.np_random.uniform(
+            self.mj_model.geom_size[self.object1_gid] = self.np_random.uniform(
                 **self.obj_size_range
             )
-            self.sim.model.geom_size[self.object2_gid] = self.np_random.uniform(
+            self.mj_model.geom_size[self.object2_gid] = self.np_random.uniform(
                 **self.obj_size_range
             )
 
