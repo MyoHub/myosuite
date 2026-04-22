@@ -18,7 +18,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 
 
-[Documentation](https://myosuite.readthedocs.io/en/latest/) | [Tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials) | [Task specifications](https://github.com/myohub/myosuite/blob/main/docs/source/suite.rst#tasks)
+[Documentation](https://myosuite.readthedocs.io/en/latest/) | [Tutorials](https://github.com/myohub/myosuite/tree/main/tutorials) | [Task specifications](https://github.com/myohub/myosuite/blob/main/docs/source/suite.rst#tasks)
 
 
 Below is an overview of the tasks in the MyoSuite.
@@ -28,18 +28,18 @@ Below is an overview of the tasks in the MyoSuite.
 
 
 ## Installations
-You will need Python 3.9 or later versions.
+You will need Python 3.10 or later versions.
 
 ### Using uv
 [uv](https://docs.astral.sh/uv/) is a fast Python package manager. Install MyoSuite with:
 ``` bash
-uv sync -p 3.9
+uv sync -p 3.10
 ```
 
 ### Using conda
 It is recommended to use [Miniconda](https://docs.conda.io/en/latest/miniconda.html#latest-miniconda-installer-links) and to create a separate environment with:
 ``` bash
-conda create --name myosuite python=3.9
+conda create --name myosuite python=3.10
 conda activate myosuite
 pip install -U myosuite
 ```
@@ -115,7 +115,7 @@ for _ in range(1000):
 env.close()
 ```
 
-You can find our [tutorials](https://github.com/myohub/myosuite/tree/main/docs/source/tutorials#tutorials) on the general features and the **ICRA2023 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q) **ICRA2024 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JwxE7o6Z3bqCT4ewELacJ-Z1SV8xFhKK#scrollTo=QDppGIzHB9Zu)
+You can find our [tutorials](https://github.com/myohub/myosuite/tree/main/tutorials) on the general features and the **ICRA2023 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q) **ICRA2024 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JwxE7o6Z3bqCT4ewELacJ-Z1SV8xFhKK#scrollTo=QDppGIzHB9Zu)
 on how to load MyoSuite models/tasks, train them, and visualize their outcome. Also, you can find [baselines](https://github.com/myohub/myosuite/tree/main/myosuite/agents) to test some pre-trained policies.
 
 

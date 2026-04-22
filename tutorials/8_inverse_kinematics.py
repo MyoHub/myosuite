@@ -5,7 +5,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 
 ### Adapted from: https://github.com/kevinzakka/mink/examples
 # REQUIRES:
-# Python 3.9
+# Python 3.10
 # MINK -- pip install "myosuite[tutorials]"
 
 import os
