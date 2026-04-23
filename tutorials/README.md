@@ -28,7 +28,7 @@ jupyter kernelspec uninstall myosuite
 - [Use the MyoReflex baseline](./4b_reflex/MyoSuite_MyoReflex_Walk.ipynb). For this tutorial, we provided a wrapper to use MyoReflex together with the tutorial file.
 - [Train a new policy with stable baselines (SB)](./4c_Train_SB_policy.ipynb). *
 - [Move single finger of the Hand](./5_Move_Hand_Fingers.ipynb)
-- [Train policies with SAR](./SAR/SAR%20tutorial.ipynb). All required installations are included within the SAR tutorial notebook.
+- [Train policies with SAR](./SAR/SAR_tutorial.ipynb). All required installations are included within the SAR tutorial notebook.
 - [Replicate hand movements with inverse dynamics](./6_Inverse_Dynamics.ipynb). *
 - [Fatigue Modeling](./7_Fatigue_Modeling.ipynb)
 - [Inverse Kinematics](./8_inverse_kinematics.py). This script shows how to perform inverse kinematics using the `mink` library.

@@ -43,7 +43,7 @@ explicit = true
 warp-lang = { index = "nvidia" }
 
 [project.optional-dependencies]
-examples = ["mink[examples]; python_version > '3.9'"]
+examples = ["mink[examples]; python_version >= '3.10'"]
 mjx = [
     "mujoco>=3.5,<3.6; python_version >= '3.10' and sys_platform != 'win32'",
     "mujoco-mjx[warp]>=3.5,<3.6; python_version >= '3.10' and sys_platform != 'win32'",

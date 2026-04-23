@@ -5,20 +5,29 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 
 ### Adapted from: https://github.com/kevinzakka/mink/examples
 # REQUIRES:
-# Python 3.9
+# Python 3.10
 # MINK -- pip install "myosuite[examples]"
+#
+# Interactive viewer (macOS): MuJoCo requires `mjpython`, not `python` / `uv run python`.
+# Example: mjpython tutorials/mc25/ik_interactive_mc25.py  (from repo root, env activated)
+# Headless smoke test: MYOSUITE_MC25_HEADLESS=1 uv run python tutorials/mc25/ik_interactive_mc25.py
 
+
+from pathlib import Path
 
 import mink
 import mujoco
 import mujoco.viewer
 import numpy as np
+import qpsolvers
 from loop_rate_limiters import RateLimiter
 from scipy.interpolate import interp1d
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 
 from myosuite.envs.myo.myochallenge.tabletennis_v0 import TableTennisEnvV0
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
 
 
 class IKTableTennisEnv(TableTennisEnvV0):
@@ -60,19 +69,19 @@ class IKTableTennisEnv(TableTennisEnvV0):
 
         orig_qpos = np.array(spec.keys[0].qpos)
         spec_copy = spec.copy()
-        [k.delete() for k in spec_copy.keys]
-        [t.delete() for t in spec_copy.textures]
-        [m.delete() for m in spec_copy.materials]
-        [t.delete() for t in spec_copy.tendons]
-        [a.delete() for a in spec_copy.actuators]
-        [e.delete() for e in spec_copy.equalities]
-        [s.delete() for s in spec_copy.sensors if "paddle" not in s.name]
-        [a.delete() for a in spec_copy.assets]
-        [m.delete() for m in spec_copy.meshes]
-        [c.delete() for c in spec_copy.cameras]
+        [spec_copy.delete(k) for k in spec_copy.keys]
+        [spec_copy.delete(t) for t in spec_copy.textures]
+        [spec_copy.delete(m) for m in spec_copy.materials]
+        [spec_copy.delete(t) for t in spec_copy.tendons]
+        [spec_copy.delete(a) for a in spec_copy.actuators]
+        [spec_copy.delete(e) for e in spec_copy.equalities]
+        [spec_copy.delete(s) for s in spec_copy.sensors if "paddle" not in s.name]
+        [spec_copy.delete(a) for a in spec_copy.assets]
+        [spec_copy.delete(m) for m in spec_copy.meshes]
+        [spec_copy.delete(c) for c in spec_copy.cameras]
 
         paddle = spec_copy.body("paddle")
-        paddle.joints[0].delete()
+        spec_copy.delete(paddle.joints[0])
         paddle.name = "ppp"
         paddle.pos = [0, 0, 0]
         spec.delete(spec.body("paddle"))
@@ -90,11 +99,11 @@ class IKTableTennisEnv(TableTennisEnvV0):
         spec = super()._preprocess_spec(
             spec, remove_body_collisions, add_left_arm=False
         )
-        spec.keys[0].delete()
+        spec.delete(spec.keys[0])
         spec.actuators[0].name = "interp"
 
         for a in spec.actuators[1:]:
-            a.delete()
+            spec.delete(a)
         return spec
 
     def _setup(
@@ -115,6 +124,9 @@ class IKTableTennisEnv(TableTennisEnvV0):
         keyFrame_id = 0
         self.ball_xyz_range = None
         self.qpos_noise_range = None
+        self.paddle_mass_range = None
+        self.ball_friction_range = None
+        self.ball_qvel = None
         self.start_vel = np.array([[5.6, 1.6, 0.1]])
         self.ball_dofadr = 0
         self.init_qpos[:] = self.mj_model.key_qpos[keyFrame_id].copy()
@@ -128,9 +140,11 @@ class IKTableTennisEnv(TableTennisEnvV0):
         return {"sparse": 0, "dense": 0, "solved": 0, "done": 0}
 
 
-env = IKTableTennisEnv(
-    r"..\..\..\..\myosuite\envs\myo\assets\arm\myoarm_tabletennis.xml"
+TABLE_TENNIS_MODEL_PATH = (
+    ROOT_DIR / "myosuite" / "envs" / "myo" / "assets" / "arm" / "myoarm_tabletennis.xml"
 )
+
+env = IKTableTennisEnv(str(TABLE_TENNIS_MODEL_PATH))
 
 env.reset()
 
@@ -157,45 +171,44 @@ tasks = [
 ## =================== ##
 
 # IK settings.
-solver = "quadprog"
+solver = "quadprog" if "quadprog" in qpsolvers.available_solvers else "osqp"
 pos_threshold = 3e-4
 ori_threshold = 1e-4
 max_iters = 20
+
+configuration.update(data.qpos)
+posture_task.set_target_from_configuration(configuration)
+mujoco.mj_forward(model, data)
+
+# Initialize the mocap target at the end-effector site.
+mink.move_mocap_to_frame(model, data, "target", "paddle", "site")
+slerp = Slerp([0, 1], R.from_quat(data.mocap_quat, scalar_first=True))
+lerp = interp1d([0, 1], data.mocap_pos, axis=0)
+rate = RateLimiter(frequency=500.0, warn=False)
+
+
+def ik_step(interp_value):
+    T_wt = mink.SE3.from_mocap_name(model, data, "target")
+    end_effector_task.set_target(T_wt)
+    data.mocap_pos[0] = lerp(interp_value)
+    data.mocap_quat[0] = slerp(interp_value).as_quat(scalar_first=True)
+    for _ in range(max_iters):
+        vel = mink.solve_ik(configuration, tasks, rate.dt, solver, 1e-3)
+        configuration.integrate_inplace(vel, rate.dt)
+        err = end_effector_task.compute_error(configuration)
+        pos_achieved = np.linalg.norm(err[:3]) <= pos_threshold
+        ori_achieved = np.linalg.norm(err[3:]) <= ori_threshold
+        if pos_achieved and ori_achieved:
+            break
+    data.qpos[:] = configuration.q
+    mujoco.mj_forward(model, data)
+
 
 with mujoco.viewer.launch_passive(
     model=model, data=data, show_left_ui=False, show_right_ui=False
 ) as viewer:
     mujoco.mjv_defaultFreeCamera(model, viewer.cam)
-
-    configuration.update(data.qpos)
-    posture_task.set_target_from_configuration(configuration)
-    mujoco.mj_forward(model, data)
-
-    # Initialize the mocap target at the end-effector site.
-    mink.move_mocap_to_frame(model, data, "target", "paddle", "site")
-    slerp = Slerp([0, 1], R.from_quat(data.mocap_quat, scalar_first=True))
-    lerp = interp1d([0, 1], data.mocap_pos, axis=0)
-    rate = RateLimiter(frequency=500.0, warn=False)
     while viewer.is_running():
-        # Update task target.
-        T_wt = mink.SE3.from_mocap_name(model, data, "target")
-        end_effector_task.set_target(T_wt)
-        data.mocap_pos[0] = lerp(data.ctrl[0])
-        data.mocap_quat[0] = slerp(data.ctrl[0]).as_quat(scalar_first=True)
-
-        # Compute velocity and integrate into the next configuration.
-        for i in range(max_iters):
-            vel = mink.solve_ik(configuration, tasks, rate.dt, solver, 1e-3)
-            configuration.integrate_inplace(vel, rate.dt)
-            err = end_effector_task.compute_error(configuration)
-            pos_achieved = np.linalg.norm(err[:3]) <= pos_threshold
-            ori_achieved = np.linalg.norm(err[3:]) <= ori_threshold
-            if pos_achieved and ori_achieved:
-                break
-
-        data.qpos[:] = configuration.q
-        mujoco.mj_forward(model, data)
-
-        # Visualize at fixed FPS.
+        ik_step(data.ctrl[0])
         viewer.sync()
         rate.sleep()
