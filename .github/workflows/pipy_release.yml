@@ -158,5 +158,5 @@ jobs:
       - shell: bash
         run: |
           echo "Test MyoSuite PyPI wheel"
-          pip install -U myosuite
+          pip install -U myosuite scipy
           python -m myosuite.tests.test_myo
