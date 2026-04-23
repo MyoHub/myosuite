@@ -30,7 +30,8 @@ def get_next_version(release_type) -> Tuple[Tuple[int, int, int], str, str]:
         minor = patch = 0
     else:
         raise ValueError(
-            "Incorrect release type specified. Acceptable types are major, minor and patch."
+            "Incorrect release type specified. "
+            "Acceptable types are major, minor and patch."
         )
 
     new_version_tuple = (major, minor, patch)
@@ -63,6 +64,28 @@ def update_version(new_version_tuple) -> None:
         raise RuntimeError("__version_tuple__ not found in version.py")
 
 
+def update_uv_lock_version(lock_file_path: str, new_version: str) -> bool:
+    """Update the version in uv.lock file for the myosuite package."""
+    import pathlib
+
+    lock_file = pathlib.Path(lock_file_path)
+    if not lock_file.exists():
+        # uv.lock might not exist, that's okay
+        return False
+
+    content = lock_file.read_text()
+
+    # Pattern to match the myosuite package entry
+    pattern = r'(\[\[package\]\]\nname = "myosuite"\n)version = "[^"]*"'
+    replacement = f'\\1version = "{new_version}"'
+
+    if re.search(pattern, content):
+        updated_content = re.sub(pattern, replacement, content)
+        lock_file.write_text(updated_content)
+        return True
+    return False
+
+
 def main(args):
     if args.release_type in ["major", "minor", "patch"]:
         new_version_tuple, new_version, new_tag = get_next_version(args.release_type)
@@ -71,6 +94,12 @@ def main(args):
 
     if args.update_version:
         update_version(new_version_tuple)
+        # Also update uv.lock if it exists
+        try:
+            if update_uv_lock_version("uv.lock", new_version):
+                print(f"Updated uv.lock with version {new_version}")
+        except Exception as e:
+            print(f"Warning: Could not update uv.lock: {e}")
 
     print(new_version, new_tag)
 

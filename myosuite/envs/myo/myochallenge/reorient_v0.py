@@ -61,14 +61,14 @@ class ReorientEnvV0(BaseV0):
         drop_th=0.200,  # drop height threshold
         **kwargs,
     ):
-        self.object_sid = self.sim.model.site_name2id("object_o")
-        self.goal_sid = self.sim.model.site_name2id("target_o")
-        self.success_indicator_sid = self.sim.model.site_name2id("target_ball")
-        self.goal_bid = self.sim.model.body_name2id("target")
-        self.goal_init_pos = self.sim.data.site_xpos[self.goal_sid].copy()
+        self.object_sid = self.mj_model.site("object_o").id
+        self.goal_sid = self.mj_model.site("target_o").id
+        self.success_indicator_sid = self.mj_model.site("target_ball").id
+        self.goal_bid = self.mj_model.body("target").id
+        self.goal_init_pos = self.mj_data.site_xpos[self.goal_sid].copy()
         self.goal_obj_offset = (
-            self.sim.data.site_xpos[self.goal_sid]
-            - self.sim.data.site_xpos[self.object_sid]
+            self.mj_data.site_xpos[self.goal_sid]
+            - self.mj_data.site_xpos[self.object_sid]
         )  # visualization offset between target and object
         self.goal_pos = goal_pos
         self.goal_rot = goal_rot
@@ -77,27 +77,27 @@ class ReorientEnvV0(BaseV0):
         self.drop_th = drop_th
 
         # setup for object randomization
-        self.target_gid = self.sim.model.geom_name2id("target_dice")
-        self.target_default_size = self.sim.model.geom_size[self.target_gid].copy()
+        self.target_gid = self.mj_model.geom("target_dice").id
+        self.target_default_size = self.mj_model.geom_size[self.target_gid].copy()
 
-        self.object_bid = self.sim.model.body_name2id("Object")
-        self.object_gid0 = self.sim.model.body_geomadr[self.object_bid]
+        self.object_bid = self.mj_model.body("Object").id
+        self.object_gid0 = self.mj_model.body_geomadr[self.object_bid]
         self.object_gidn = (
-            self.object_gid0 + self.sim.model.body_geomnum[self.object_bid]
+            self.object_gid0 + self.mj_model.body_geomnum[self.object_bid]
         )
-        self.object_default_size = self.sim.model.geom_size[
+        self.object_default_size = self.mj_model.geom_size[
             self.object_gid0 : self.object_gidn
         ].copy()
-        self.object_default_pos = self.sim.model.geom_pos[
+        self.object_default_pos = self.mj_model.geom_pos[
             self.object_gid0 : self.object_gidn
         ].copy()
 
         self.obj_mass_range = {"low": obj_mass_range[0], "high": obj_mass_range[1]}
         self.obj_size_range = {"low": -obj_size_change, "high": obj_size_change}
         self.obj_friction_range = {
-            "low": self.sim.model.geom_friction[self.object_gid0 : self.object_gidn]
+            "low": self.mj_model.geom_friction[self.object_gid0 : self.object_gidn]
             - obj_friction_change,
-            "high": self.sim.model.geom_friction[self.object_gid0 : self.object_gidn]
+            "high": self.mj_model.geom_friction[self.object_gid0 : self.object_gidn]
             + obj_friction_change,
         }
 
@@ -109,39 +109,39 @@ class ReorientEnvV0(BaseV0):
         self.init_qpos[:-7] *= 0  # Use fully open as init pos
         self.init_qpos[0] = -1.5  # Palm up
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
-        obs_dict["time"] = np.array([sim.data.time])
-        obs_dict["hand_qpos_noMD5"] = sim.data.qpos[
+        obs_dict["time"] = np.array([mj_data.time])
+        obs_dict["hand_qpos_noMD5"] = mj_data.qpos[
             :-7
         ].copy()  # ??? This is a bug. This needs to be qpos[:-6]. This bug omits the distal joint of the little finger from the observation. A fix to this will break all the submitted policies. A fix to this will be pushed after the myochallenge23
-        obs_dict["hand_qpos"] = sim.data.qpos[
+        obs_dict["hand_qpos"] = mj_data.qpos[
             :-6
         ].copy()  # V1 of the env will use this corrected key by default
-        obs_dict["hand_qvel"] = sim.data.qvel[:-6].copy() * self.dt
-        obs_dict["obj_pos"] = sim.data.site_xpos[self.object_sid]
-        obs_dict["goal_pos"] = sim.data.site_xpos[self.goal_sid]
+        obs_dict["hand_qvel"] = mj_data.qvel[:-6].copy() * self.dt
+        obs_dict["obj_pos"] = mj_data.site_xpos[self.object_sid]
+        obs_dict["goal_pos"] = mj_data.site_xpos[self.goal_sid]
         obs_dict["pos_err"] = (
             obs_dict["goal_pos"] - obs_dict["obj_pos"] - self.goal_obj_offset
         )  # correct for visualization offset between target and object
         obs_dict["obj_rot"] = mat2euler(
-            np.reshape(sim.data.site_xmat[self.object_sid], (3, 3))
+            np.reshape(mj_data.site_xmat[self.object_sid], (3, 3))
         )
         obs_dict["goal_rot"] = mat2euler(
-            np.reshape(sim.data.site_xmat[self.goal_sid], (3, 3))
+            np.reshape(mj_data.site_xmat[self.goal_sid], (3, 3))
         )
         obs_dict["rot_err"] = obs_dict["goal_rot"] - obs_dict["obj_rot"]
 
-        if sim.model.na > 0:
-            obs_dict["act"] = sim.data.act[:].copy()
+        if mj_model.na > 0:
+            obs_dict["act"] = mj_data.act[:].copy()
         return obs_dict
 
     def get_reward_dict(self, obs_dict):
         pos_dist = np.abs(np.linalg.norm(self.obs_dict["pos_err"], axis=-1))
         rot_dist = np.abs(np.linalg.norm(self.obs_dict["rot_err"], axis=-1))
         act_mag = (
-            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.sim.model.na
-            if self.sim.model.na != 0
+            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.mj_model.na
+            if self.mj_model.na != 0
             else 0
         )
         drop = pos_dist > self.drop_th
@@ -177,7 +177,7 @@ class ReorientEnvV0(BaseV0):
         )
 
         # Sucess Indicator
-        self.sim.model.site_rgba[self.success_indicator_sid, :2] = (
+        self.mj_model.site_rgba[self.success_indicator_sid, :2] = (
             np.array([0, 2]) if rwd_dict["solved"] else np.array([2, 0])
         )
         return rwd_dict
@@ -208,40 +208,40 @@ class ReorientEnvV0(BaseV0):
         return metrics
 
     def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
-        self.sim.model.body_pos[self.goal_bid] = (
+        self.mj_model.body_pos[self.goal_bid] = (
             self.goal_init_pos
             + self.np_random.uniform(
                 high=self.goal_pos[1], low=self.goal_pos[0], size=3
             )
         )
 
-        self.sim.model.body_quat[self.goal_bid] = euler2quat(
+        self.mj_model.body_quat[self.goal_bid] = euler2quat(
             self.np_random.uniform(high=self.goal_rot[1], low=self.goal_rot[0], size=3)
         )
 
         # Die friction changes
-        self.sim.model.geom_friction[self.object_gid0 : self.object_gidn] = (
+        self.mj_model.geom_friction[self.object_gid0 : self.object_gidn] = (
             self.np_random.uniform(**self.obj_friction_range)
         )
         # Die mass changes
-        self.sim.model.body_mass[self.object_bid] = self.np_random.uniform(
+        self.mj_model.body_mass[self.object_bid] = self.np_random.uniform(
             **self.obj_mass_range
         )  # call to mj_setConst(m,d) is being ignored. Derive quantities wont be updated. Die is simple shape. So this is reasonable approximation.
 
         # Die and Target size changes
         del_size = self.np_random.uniform(**self.obj_size_range)
         # adjust size of target
-        self.sim.model.geom_size[self.target_gid] = self.target_default_size + del_size
+        self.mj_model.geom_size[self.target_gid] = self.target_default_size + del_size
         # adjust size of die
-        self.sim.model.geom_size[self.object_gid0 : self.object_gidn - 3][:, 1] = (
+        self.mj_model.geom_size[self.object_gid0 : self.object_gidn - 3][:, 1] = (
             self.object_default_size[:-3][:, 1] + del_size
         )
-        self.sim.model.geom_size[self.object_gidn - 3 : self.object_gidn] = (
+        self.mj_model.geom_size[self.object_gidn - 3 : self.object_gidn] = (
             self.object_default_size[-3:] + del_size
         )
         # adjust boundary of die
-        object_gpos = self.sim.model.geom_pos[self.object_gid0 : self.object_gidn]
-        self.sim.model.geom_pos[self.object_gid0 : self.object_gidn] = (
+        object_gpos = self.mj_model.geom_pos[self.object_gid0 : self.object_gidn]
+        self.mj_model.geom_pos[self.object_gid0 : self.object_gidn] = (
             object_gpos
             / abs(object_gpos + 1e-16)
             * (abs(self.object_default_pos) + del_size)

@@ -44,7 +44,7 @@ jobs:
       - name: setup-python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.9
+          python-version: 3.10
       - name: get next version and tag
         id: get-next-version-and-tag
         run: |
@@ -70,17 +70,17 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Set up Python 3.9
+    - name: Set up Python 3.10
       uses: actions/setup-python@v3
       with:
-        python-version: '3.9'
+        python-version: '3.10'
 
     - name: Install pypa/setuptools
       run: |
         git config --global url."https://${{secrets.REPO_TOKEN}}@github.com".insteadOf "https://github.com"
         pip install build setuptools wheel
 
-    # update the version number in version.py
+    # update the version number in version.py and uv.lock
     - name: update version
       id: update-version
       run : |
@@ -88,12 +88,16 @@ jobs:
         echo "current branch = $(git branch --show-current)"
         output=$(python3 .github/release_utils.py --release-type ${{ github.event.inputs.name }} --update-version)
 
-    # commit and push version.py update
-    - name: Commit updated version.py
+    # commit and push version.py and uv.lock updates
+    - name: Commit updated version files
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add myosuite/version.py
+        # Add uv.lock if it exists (git will only stage if modified)
+        if [ -f uv.lock ]; then
+          git add uv.lock
+        fi
         git commit -m "chore: bump version to ${{ needs.get_next_version.outputs.new_version }}"
         git push origin HEAD:main
 
@@ -124,7 +128,7 @@ jobs:
         path: dist/
     # 4. Upload the package
     - name: Publish distribution to PyPI
-      uses: pypa/gh-action-pypi-publish@master
+      uses: pypa/gh-action-pypi-publish@release/v1
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
 
@@ -138,10 +142,10 @@ jobs:
           - macos-latest
           - windows-latest
     steps:
-      - name: Set up Python 3.9
+      - name: Set up Python 3.10
         uses: actions/setup-python@v3
         with:
-          python-version: "3.9"
+          python-version: "3.10"
 
       - name: Prepare Linux
         if: ${{ runner.os == 'Linux' }}

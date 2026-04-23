@@ -17,8 +17,8 @@ Prosthesis Co-Manipulation
 
 
 A :ref:`myoArm` model and a Modular Prosthetic Limb (`MPL <https://www.jhuapl.edu/work/projects-and-missions/revolutionizing-prosthetics/research>`__)
-involved in moving an object between two tables with a handover. This task requires delicate coordination of the 
-object without dropping it or destroying it (maximum force on the object for success), and a mandatory handover between 
+involved in moving an object between two tables with a handover. This task requires delicate coordination of the
+object without dropping it or destroying it (maximum force on the object for success), and a mandatory handover between
 the MyoArm and the MPL to move the objects between two locations.
 
 
@@ -32,8 +32,8 @@ Objective
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
-Move the object between two locations with a handover between a hand and a prosthesis. The task parameters will be randomized to provide a comprehensive 
-test to the controller's performance. The randomization will include but not limited to: object type, object weight and even friction during each environmental reset. 
+Move the object between two locations with a handover between a hand and a prosthesis. The task parameters will be randomized to provide a comprehensive
+test to the controller's performance. The randomization will include but not limited to: object type, object weight and even friction during each environmental reset.
 
 
 
@@ -42,11 +42,11 @@ Action Space
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 
-The action spaces includes two major parts, the :ref:`myoArm` and the `MPL <https://www.jhuapl.edu/work/projects-and-missions/revolutionizing-prosthetics/research>`__. 
-Muscles control values for myoArm are given as continuous values between  :math:`[0, 1]`, details on how this value to force mapping take place can be founda at 
+The action spaces includes two major parts, the :ref:`myoArm` and the `MPL <https://www.jhuapl.edu/work/projects-and-missions/revolutionizing-prosthetics/research>`__.
+Muscles control values for myoArm are given as continuous values between  :math:`[0, 1]`, details on how this value to force mapping take place can be founda at
 this `mujoco doc <https://mujoco.readthedocs.io/en/stable/modeling.html#cmuscle>`__.
 
-The action for the prosthetic hand is controlled in terms of each joint angle. A normalisation is applied such that all joint angle in radiance can be 
+The action for the prosthetic hand is controlled in terms of each joint angle. A normalisation is applied such that all joint angle in radiance can be
 actuated by a control value between  :math:`[-1, 1]`, with -1 and 1 representing the lower and upper bound of the range of motions.
 
 
@@ -55,10 +55,10 @@ Observation Space
 
 
 
-The obs_dict variable contains useful features that are used to create observation vectors (configured via obs_keys) and for computing environment rewards (configures get_reward_dict(.) 
+The obs_dict variable contains useful features that are used to create observation vectors (configured via obs_keys) and for computing environment rewards (configures get_reward_dict(.)
 in via weighted_reward_keys).
 
-During training, participants are encouraged to add new keys to the obs_dict to further aid their reward computations. Note that the values obtained outside the provided obs_dict, 
+During training, participants are encouraged to add new keys to the obs_dict to further aid their reward computations. Note that the values obtained outside the provided obs_dict,
 or directly from the simulator might not be accessible during submission evaluations.
 
 
@@ -68,7 +68,7 @@ or directly from the simulator might not be accessible during submission evaluat
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Time                                    | obs_dict['time']            |  (1x1)          |
 .. +-----------------------------------------+-----------------------------+-----------------+
-.. | Joint positions of myoArm               | obs_dict['myohand_qpos']    | (38x1)          | 
+.. | Joint positions of myoArm               | obs_dict['myohand_qpos']    | (38x1)          |
 .. +-----------------------------------------+-----------------------------+-----------------+
 .. | Joint velocity of myoArm                | obs_dict['myohand_qvel']    | (38x1)          |
 .. +-----------------------------------------+-----------------------------+-----------------+
@@ -107,7 +107,7 @@ or directly from the simulator might not be accessible during submission evaluat
 +-----------------------------------------+-----------------------------+-----------------+
 | Time                                    | obs_dict['time']            |  (1x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint positions of myoArm               | obs_dict['myohand_qpos']    | (38x1)          | 
+| Joint positions of myoArm               | obs_dict['myohand_qpos']    | (38x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
 | Joint velocity of myoArm                | obs_dict['myohand_qvel']    | (38x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
@@ -144,7 +144,7 @@ or directly from the simulator might not be accessible during submission evaluat
         - Goal   = value[3]
         - The rest = value[4]
 
-    
+
     - Start and Goal positions are 3 dimensional position to pick and place the object
 
     - Hand reaching error measures the distance between the hand and the object
@@ -158,7 +158,7 @@ or directly from the simulator might not be accessible during submission evaluat
 
 **Variation on Object Properties**
 
-Both the geometry and physical properties of the object as well as the environment can be sampled at the start of each episode to provide variability in the task. Provided 
+Both the geometry and physical properties of the object as well as the environment can be sampled at the start of each episode to provide variability in the task. Provided
 below is an example of how real-world scenarios is captured in the test environments we provide.
 
     - Object scale: a +- change in respective geom directions ( between 0% - 5%, 0% - 10% in myoChallengeBimanual-v0)
@@ -172,7 +172,7 @@ Note that these distributions may be different in the final evaluation environme
 Success Condition
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    - The object moved from start position to goal position. Both the MPL hand, and MyoHand, is required to touch the object for certain timesteps 
+    - The object moved from start position to goal position. Both the MPL hand, and MyoHand, is required to touch the object for certain timesteps
     - Exerting a maximum contact force on the object, less than 1500N (subject to change in final EVALUATION environment)
     - Placing the object within 0.17 meters of the goal site on the pillar (0.1m in each of xyz-axis)
 
@@ -180,8 +180,8 @@ Success Condition
 Ranking Criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Individual model performance is evaluated in terms of the following criterias. Please note that the evaluation process will follow a hierarchical approach, 
-where the first criterion is the primary determinant of success. Only in cases where candidates are tied based on the first criterion will the second criterion be considered. 
+Individual model performance is evaluated in terms of the following criterias. Please note that the evaluation process will follow a hierarchical approach,
+where the first criterion is the primary determinant of success. Only in cases where candidates are tied based on the first criterion will the second criterion be considered.
 
 
     1. Task success rate (successful_attempts / total_attempts)
@@ -199,9 +199,9 @@ Prosthesis Locomotion
 
 
 
-A trans-femoral :ref:`myoLeg` model and a Open Source Leg (`OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__)  involved 
-in walking over different terrain types. The task requires learning the dynamics and control of a powered prosthetic leg that has its own controller. 
-This is similar to how people with limb loss learn to adapt to a prosthetic leg over time. This task also requires navigation over different terrain 
+A trans-femoral :ref:`myoLeg` model and a Open Source Leg (`OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__)  involved
+in walking over different terrain types. The task requires learning the dynamics and control of a powered prosthetic leg that has its own controller.
+This is similar to how people with limb loss learn to adapt to a prosthetic leg over time. This task also requires navigation over different terrain
 with increasing difficulty.
 
 
@@ -216,7 +216,7 @@ with increasing difficulty.
 Objective
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Traverse over different terrain types with the :ref:`myoLeg` and a prosthetic leg(`OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__). 
+Traverse over different terrain types with the :ref:`myoLeg` and a prosthetic leg(`OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__).
 Randomization will take place for challenge difficulty level. For example, the terrain type might change with added obstacles.
 
 
@@ -232,13 +232,13 @@ Randomization will take place for challenge difficulty level. For example, the t
 **Learning interactions with prosthetic leg**
 
 
-The primary way to interact with the prosthetic leg is via socket interaction forces on the residual limb (which are provided 
-in the observations). A state-based impedance controller would provide the commands to move the prosthetic limb and participants 
+The primary way to interact with the prosthetic leg is via socket interaction forces on the residual limb (which are provided
+in the observations). A state-based impedance controller would provide the commands to move the prosthetic limb and participants
 are provided with the corresponding APIs to update the impedance controller.
 
 
-For the task realism, there are no direct observations and control over the prosthetic leg. Angles, angular velocities and torque 
-of the prosthetic leg will not be available in the observations. Similarly, there is no commanded position, velocity or torques 
+For the task realism, there are no direct observations and control over the prosthetic leg. Angles, angular velocities and torque
+of the prosthetic leg will not be available in the observations. Similarly, there is no commanded position, velocity or torques
 for the prosthetic leg.
 
 
@@ -247,7 +247,7 @@ for the prosthetic leg.
 Action Space
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Muscles control values for :ref:`myoLeg` are given as continuous values between  :math:`[-1, 1]`. Normalization to a range of :math:`[0, 1]` is done in the environment 
+Muscles control values for :ref:`myoLeg` are given as continuous values between  :math:`[-1, 1]`. Normalization to a range of :math:`[0, 1]` is done in the environment
 according to the equation:
 
 .. math::
@@ -263,7 +263,7 @@ For participants that do not wish to use this normalization feature, it can be d
 where in this case, the control range of the muscles are set between :math:`[0, 1]` without any normalization performed.
 
 The action space only includes the control of the muscles in the biological leg and residual muscles of the leg on the prosthetic side, with a total of 54 dimensions.
-To control the prothetic leg `OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__, 
+To control the prothetic leg `OSL <https://neurobionics.robotics.umich.edu/research/wearable-robotics/open-source-leg/>`__,
 commanded torque values are generated by an embedded state machine. Refer to the section on :ref:`challenge24_state_machine` for more information.
 
 
@@ -283,10 +283,10 @@ Observation Space
 | (quaternion in world frame)             |   obs_dict['torso_angle']   |  (4x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
 | Joint positions                         |                             |                 |
-| (except those from the prosthetic leg)  | obs_dict['internal_qpos']   |  (21x1)         | 
+| (except those from the prosthetic leg)  | obs_dict['internal_qpos']   |  (21x1)         |
 +-----------------------------------------+-----------------------------+-----------------+
-| Joint velocities                        |                             |                 | 
-| (except those from the prosthetic leg)  | obs_dict['internal_qvel']   | (21x1)          | 
+| Joint velocities                        |                             |                 |
+| (except those from the prosthetic leg)  | obs_dict['internal_qvel']   | (21x1)          |
 +-----------------------------------------+-----------------------------+-----------------+
 | Ground reaction forces                  | obs_dict['grf']             |  (2x1)          |
 | (only for biological leg)               |                             |                 |
@@ -324,7 +324,7 @@ Observation Space
     - Socket forces
 
         - Represented as a 3-DOF force vector. Note that the direction of the force sensor is from the bottom of the socket projecting to the residual limb (i.e. the vertical axis force into the residual limb is negative). Processing of the observations is left to the participant’s discretion.
-    
+
     - Height Map
 
         - The height map is a 10x10 grid (flattened to a 100x1), centered around the center of the MyoOSL model. This is a simple representation of a visual input of the terrain around the model.
@@ -335,9 +335,9 @@ Observation Space
 State Machine
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A simple 4-state state machine is created to track the gait phase of the prosthetic leg. Each state contains the gain parameters 
-for an impedance controller, which in turn, provides the required torques to the prosthetic actuators. The code for the state machine 
-is released together with MyoChallenge. Interested participants are invited to examine the code at 
+A simple 4-state state machine is created to track the gait phase of the prosthetic leg. Each state contains the gain parameters
+for an impedance controller, which in turn, provides the required torques to the prosthetic actuators. The code for the state machine
+is released together with MyoChallenge. Interested participants are invited to examine the code at
 `myoosl_control <https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/assets/leg/myoosl_control.py>`__
 
 
@@ -393,7 +393,7 @@ More details of the functions are here below:
 Testing environment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To increase the accessibility of the task, two set of testing environment is provided for participants to familiarise themselves with the tasks. 
+To increase the accessibility of the task, two set of testing environment is provided for participants to familiarise themselves with the tasks.
 Please note that the variation parameters are subject to change in the actual evaluation environment.
 
 The two environments are :code:`myoChallengeOslRunRandom-v0` and :code:`myoChallengeOslRunFixed-v0` and can be accessed via :code:`env = gym.make(“myoChallengeOslRunRandom-v0”, normalize_act=False)`
@@ -404,7 +404,7 @@ The :code:`myoChallengeOslRunRandom-v0` similarly includes a 100 meters track, w
 
 The environment in evaluation will be similar to the :code:`myoChallengeOslRunRandom-v0` environment
 
-Both environments can be customized for ML or non-ML usage. For participants using ML-based methods, the action space can be set to between [-1 to 1] for both training and your submission with the normalize_act 
+Both environments can be customized for ML or non-ML usage. For participants using ML-based methods, the action space can be set to between [-1 to 1] for both training and your submission with the normalize_act
 argument during environment creation. For participants using non-ML based methods, setting normalize_act=False would provide you with the muscle action space to be between [0 to 1]
 
 During training, you can set this option with env = gym.make(env_name, normalize_act=True) for the action space [-1 to 1] and normalize_act=False for action space [0 to 1]
@@ -421,8 +421,8 @@ Success Condition
 Ranking Criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Individual model performance is evaluated in terms of the following criterias. Please note that the evaluation process will follow a hierarchical approach, 
-where the first criterion is the primary determinant of success. Only in cases where candidates are tied based on the first criterion will the second criterion be considered. 
+Individual model performance is evaluated in terms of the following criterias. Please note that the evaluation process will follow a hierarchical approach,
+where the first criterion is the primary determinant of success. Only in cases where candidates are tied based on the first criterion will the second criterion be considered.
 
 
     1. Average distance travelled (ranked in descending order)
@@ -445,7 +445,7 @@ This section aims to provide an basics to get start of the challenge.
 For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_reinforcement_learning` and :ref:`baselines` page.
 
 To obtain a more in-depth understanding of the challenge, we have prepared baselines for both of the challenges.
-Links are available for `manipulation <https://colab.research.google.com/drive/1AqC1Y7NkRnb2R1MgjT3n4u02EmSPem88#scrollTo=-mAnRvYjIS4d>`__, 
+Links are available for `manipulation <https://colab.research.google.com/drive/1AqC1Y7NkRnb2R1MgjT3n4u02EmSPem88#scrollTo=-mAnRvYjIS4d>`__,
 `locomotion <https://colab.research.google.com/drive/1AFbVlwnGDYD45XqMYBaYjf5xOOa_KEXd?usp=sharing>`__.
 
 
@@ -456,7 +456,7 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
     # Include the locomotion track environment, uncomment to select the manipulation challenge
     # env = gym.make('myoChallengeOslRunRandom-v0')
     env = gym.make('myoChallengeBimanual-v0')
-    
+
 
     env.reset()
 
@@ -467,9 +467,9 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
         env.mj_render()
 
         # Select skin group
-        geom_1_indices = np.where(env.sim.model.geom_group == 1)
+        geom_1_indices = np.where(env.mj_model.geom_group == 1)
         # Change the alpha value to make it transparent
-        env.sim.model.geom_rgba[geom_1_indices, 3] = 0
+        env.mj_model.geom_rgba[geom_1_indices, 3] = 0
 
 
         # Get observation from the envrionment, details are described in the above docs
@@ -498,6 +498,6 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
 Challenge disclaimer on test and evaluation environments
 --------------------------------------------------------------
 
-This challenge aims to provide a simulated environment that captures the complexity of real-world scenarios. In order for participants to familiarise themselves with the tasks, 
-we have opened the portal for a TEST environment to begin with. Please note that even though the tasks and evaluation criteria will stay the same, there might be difference in the 
+This challenge aims to provide a simulated environment that captures the complexity of real-world scenarios. In order for participants to familiarise themselves with the tasks,
+we have opened the portal for a TEST environment to begin with. Please note that even though the tasks and evaluation criteria will stay the same, there might be difference in the
 changing factors' distributions in the final EVALUATION environment. Please try to maintain the robustness of your policies in as wide a range as possible.

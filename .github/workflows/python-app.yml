@@ -1,16 +1,16 @@
-# This workflow will install Python dependencies, run tests
+# This workflow installs Python dependencies and runs tests using uv
 
 name: Python application
 
 on:
   push:
-    branches: [ "main" , "dev"]
+    branches: [ "main", "dev" ]
     paths-ignore:
       - "docs/**"
       - "**/README.md"
 
   pull_request:
-    branches: [ "main" , "dev"]
+    branches: [ "main", "dev" ]
     paths-ignore:
       - "docs/**"
       - "**/README.md"
@@ -46,74 +46,56 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Set up Python 3.9
-      uses: actions/setup-python@v3
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
       with:
-        python-version: "3.9"
+        python-version: "3.10"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Create virtual environment
+      run: |
+        uv venv --python 3.10
 
     - name: Prepare Linux
       if: ${{ runner.os == 'Linux' }}
       run: |
         sudo apt-get update -y -qq
-        sudo apt-get install -y xvfb x11-xserver-utils
+        sudo apt-get install -y xvfb x11-xserver-utils ffmpeg
         sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &
 
-    - name: Enable Conda (macOS)
-      if: ${{ runner.os == 'macOS' }}
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-        auto-activate-base: false
-        python-version: "3.9"
-
-    - name: Enable Conda (window/ubuntu)
-      if: ${{ runner.os != 'macOS' }}
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-        auto-activate-base: false
-
-    - name: Test Conda
+    - name: Install project dependencies
       run: |
-          conda info
-          CONDA_DEFAULT_ENV=test_myosuite
-          conda create --name $CONDA_DEFAULT_ENV python=3.9 -y
-          conda activate $CONDA_DEFAULT_ENV
-
-#     - name: Prepare MacOS
-#       if: ${{ runner.os == 'macOS' }}
-#       run: |
-#         brew install --cask xquartz
-#         brew install hdf5
-#         export CPATH="/opt/homebrew/include/"
-#         export HDF5_DIR=/opt/homebrew/
-#         pip3 install h5py --only-binary h5py
-
-    - name: Install dependencies
-      run: |
-        conda activate $CONDA_DEFAULT_ENV
-        python3 -m pip install --upgrade pip
-        pip3 install -e .
+        uv pip install -e .
+        uv pip install ffmpeg scikit-video
 
     - name: Run MuJoCo Rendering test
       if: ${{ runner.os == 'Linux' }}
-      run: python3 -m mujoco.render_test
+      run: uv run python -m mujoco.render_test
 
     - name: Test myoapi
+      run: uv run --no-sync python -m myosuite.tests.test_myoapi
+
+    - name: Run Test mjx
+      if: ${{ runner.os != 'Windows' }}
       run: |
-        conda activate $CONDA_DEFAULT_ENV
-        python3 -m myosuite.tests.test_myoapi
+        uv pip install ".[mjx]"
+        uv pip install pytest
+
+        ./.venv/bin/python -m pytest myosuite/tests/test_mjx.py -v
+        ./.venv/bin/python -m pytest myosuite/tests/mjx/test_quat_math.py -v
+        ./.venv/bin/python -m pytest myosuite/tests/mjx/test_fatigue.py -v
+        ./.venv/bin/python -m pytest myosuite/tests/mjx/test_reference_motion.py -v
 
     - name: Run Test environment
-      run: |
-        python3 -m myosuite.tests.test_myo
-
-    - name: Install ffmpeg
-      if: ${{ runner.os == 'Linux' }}
-      run: |
-        sudo apt-get install --no-install-recommends ffmpeg && pip3 install ffmpeg scikit-video
+      run: uv run --no-sync python -m myosuite.tests.test_myo
 
     - name: Test rendering
       if: ${{ runner.os == 'Linux' }}
-      run: python3 -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
+      run: uv run python -m myosuite.utils.examine_env -e myoElbowPose1D6MRandom-v0 -r offscreen -n 1
 
     - name: Run Test jupyter-notebooks tutorials
       if: ${{ runner.os == 'Linux' }}

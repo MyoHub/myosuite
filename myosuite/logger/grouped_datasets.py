@@ -6,7 +6,7 @@ import pickle
 import h5py
 from PIL import Image
 from sys import platform
-import skvideo.io
+import imageio
 import os
 import enum
 
@@ -194,12 +194,7 @@ class Trace:
             # Save video
             if output_format == "mp4":
                 file_name_mp4 = os.path.join(output_dir, grp+".mp4")
-                inputdict={"-r": str(input_fps)}
-                # quicktime compatibility for mac-os
-                if platform == "darwin":
-                    skvideo.io.vwrite(file_name_mp4, np.asarray(frames),inputdict=inputdict, outputdict={"-pix_fmt": "yuv420p"})
-                else:
-                    skvideo.io.vwrite(file_name_mp4, np.asarray(frames),inputdict=inputdict)
+                imageio.mimwrite(file_name_mp4, frames, fps=input_fps)
                 print("\nSaved: " + file_name_mp4)
 
 

@@ -62,11 +62,11 @@ class KeyTurnEnvV0(BaseV0):
         **kwargs,
     ):
         self.goal_th = goal_th
-        self.keyhead_sid = self.sim.model.site_name2id("keyhead")
-        self.IF_sid = self.sim.model.site_name2id("IFtip")
-        self.TH_sid = self.sim.model.site_name2id("THtip")
+        self.keyhead_sid = self.mj_model.site("keyhead").id
+        self.IF_sid = self.mj_model.site("IFtip").id
+        self.TH_sid = self.mj_model.site("THtip").id
         self.key_init_range = key_init_range
-        self.key_init_pos = self.sim.data.site_xpos[self.keyhead_sid].copy()
+        self.key_init_pos = self.mj_data.site_xpos[self.keyhead_sid].copy()
 
         super()._setup(
             obs_keys=obs_keys,
@@ -76,41 +76,41 @@ class KeyTurnEnvV0(BaseV0):
         self.init_qpos[:-1] *= 0  # Use fully open as init pos
 
     def get_obs_vec(self):
-        self.obs_dict["time"] = np.array([self.sim.data.time])
-        self.obs_dict["hand_qpos"] = self.sim.data.qpos[:-1].copy()
-        self.obs_dict["hand_qvel"] = self.sim.data.qvel[:-1].copy() * self.dt
-        self.obs_dict["key_qpos"] = np.array([self.sim.data.qpos[-1]])
-        self.obs_dict["key_qvel"] = np.array([self.sim.data.qvel[-1]]) * self.dt
+        self.obs_dict["time"] = np.array([self.mj_data.time])
+        self.obs_dict["hand_qpos"] = self.mj_data.qpos[:-1].copy()
+        self.obs_dict["hand_qvel"] = self.mj_data.qvel[:-1].copy() * self.dt
+        self.obs_dict["key_qpos"] = np.array([self.mj_data.qpos[-1]])
+        self.obs_dict["key_qvel"] = np.array([self.mj_data.qvel[-1]]) * self.dt
         self.obs_dict["IFtip_approach"] = (
-            self.sim.data.site_xpos[self.keyhead_sid]
-            - self.sim.data.site_xpos[self.IF_sid]
+            self.mj_data.site_xpos[self.keyhead_sid]
+            - self.mj_data.site_xpos[self.IF_sid]
         )
         self.obs_dict["THtip_approach"] = (
-            self.sim.data.site_xpos[self.keyhead_sid]
-            - self.sim.data.site_xpos[self.TH_sid]
+            self.mj_data.site_xpos[self.keyhead_sid]
+            - self.mj_data.site_xpos[self.TH_sid]
         )
 
-        if self.sim.model.na > 0:
-            self.obs_dict["act"] = self.sim.data.act[:].copy()
+        if self.mj_model.na > 0:
+            self.obs_dict["act"] = self.mj_data.act[:].copy()
 
         t, obs = self.obsdict2obsvec(self.obs_dict, self.obs_keys)
         return obs
 
-    def get_obs_dict(self, sim):
+    def get_obs_dict(self, mj_model, mj_data):
         obs_dict = {}
-        obs_dict["time"] = np.array([sim.data.time])
-        obs_dict["hand_qpos"] = sim.data.qpos[:-1].copy()
-        obs_dict["hand_qvel"] = sim.data.qvel[:-1].copy() * self.dt
-        obs_dict["key_qpos"] = np.array([sim.data.qpos[-1]])
-        obs_dict["key_qvel"] = np.array([sim.data.qvel[-1]]) * self.dt
+        obs_dict["time"] = np.array([mj_data.time])
+        obs_dict["hand_qpos"] = mj_data.qpos[:-1].copy()
+        obs_dict["hand_qvel"] = mj_data.qvel[:-1].copy() * self.dt
+        obs_dict["key_qpos"] = np.array([mj_data.qpos[-1]])
+        obs_dict["key_qvel"] = np.array([mj_data.qvel[-1]]) * self.dt
         obs_dict["IFtip_approach"] = (
-            sim.data.site_xpos[self.keyhead_sid] - sim.data.site_xpos[self.IF_sid]
+            mj_data.site_xpos[self.keyhead_sid] - mj_data.site_xpos[self.IF_sid]
         )
         obs_dict["THtip_approach"] = (
-            sim.data.site_xpos[self.keyhead_sid] - sim.data.site_xpos[self.TH_sid]
+            mj_data.site_xpos[self.keyhead_sid] - mj_data.site_xpos[self.TH_sid]
         )
-        if sim.model.na > 0:
-            obs_dict["act"] = sim.data.act[:].copy()
+        if mj_model.na > 0:
+            obs_dict["act"] = mj_data.act[:].copy()
         return obs_dict
 
     def get_reward_dict(self, obs_dict):
@@ -126,8 +126,8 @@ class KeyTurnEnvV0(BaseV0):
             else obs_dict["key_qpos"][0]
         )
         act_mag = (
-            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.sim.model.na
-            if self.sim.model.na != 0
+            np.linalg.norm(self.obs_dict["act"], axis=-1) / self.mj_model.na
+            if self.mj_model.na != 0
             else 0
         )
         far_th = 0.1
@@ -162,7 +162,7 @@ class KeyTurnEnvV0(BaseV0):
             low=self.key_init_range[0], high=self.key_init_range[1]
         )
         if self.key_init_range[0] != self.key_init_range[1]:  # randomEnv
-            self.sim.model.body_pos[-1] = self.key_init_pos + self.np_random.uniform(
+            self.mj_model.body_pos[-1] = self.key_init_pos + self.np_random.uniform(
                 low=np.array([-0.01, -0.01, -0.01]), high=np.array([0.01, 0.01, 0.01])
             )
 
