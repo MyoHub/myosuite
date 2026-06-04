@@ -5,7 +5,7 @@ RL Baselines
 
 
 
-For ease of getting started, MyoSuite comes prepackaged with a set of pre-trained baselines. Tutorials in this sections aims to show how different 
+For ease of getting started, MyoSuite comes prepackaged with a set of pre-trained baselines. Tutorials in this sections aims to show how different
 RL baselines can be integrated in the myosuite environment.
 See `here <https://github.com/facebookresearch/myosuite/tree/main/myosuite/agents>`_ for our complete set of baselines.
 
@@ -161,7 +161,7 @@ MyoLegReflex is bundled as a wrapper around MyoLeg. To run MyoLegReflex with def
 
 .. code-block:: python
 
-    import ReflexCtrInterface
+    from myosuite.agents.baseline_reflex import MyoLegReflex
     import numpy as np
 
     sim_time = 5  # in seconds
@@ -171,7 +171,7 @@ MyoLegReflex is bundled as a wrapper around MyoLeg. To run MyoLegReflex with def
 
     params = np.loadtxt('baseline_params.txt')
 
-    Myo_env = ReflexCtrInterface.MyoLegReflex()
+    Myo_env = MyoLegReflex()
     Myo_env.reset()
 
     Myo_env.set_control_params(params)
@@ -181,7 +181,7 @@ MyoLegReflex is bundled as a wrapper around MyoLeg. To run MyoLegReflex with def
         Myo_env.run_reflex_step()
     Myo_env.env.close()
 
-Note: This code snippet only works in the folder ``myosuite/docs/source/tutorials/4b_reflex``, where the MyoLegReflex wrapper resides.
+Note: This code snippet works as a normal import from the installed package (no need to run from a specific folder).
 
 Reflex-based Controller
 -----------------------
@@ -190,7 +190,7 @@ MyoLegReflex is adapted from the neural circuitry model proposed by Song and Gey
 
 To make the controller more straightforward, we first modified the circuits that operate based on muscle lengths and velocities to work with joint angles and angular velocities instead.
 
-Subsequently, we adapted this controller to be compatible with MyoLeg, which features 80 leg muscles. We achieved this by merging sensory data from each functional muscle group into one, processing the combined sensory data through the adapted reflex circuits to generate muscle stimulation signals, and then distributing these signals to the individual muscles within each group. The grouping of muscles is defined in `ReflexCtrInterface.py <https://github.com/facebookresearch/myosuite/blob/main/docs/source/tutorials/4b_reflex/ReflexCtrInterface.py#L212-L345>`_.
+Subsequently, we adapted this controller to be compatible with MyoLeg, which features 80 leg muscles. We achieved this by merging sensory data from each functional muscle group into one, processing the combined sensory data through the adapted reflex circuits to generate muscle stimulation signals, and then distributing these signals to the individual muscles within each group. The grouping of muscles is defined in `reflex_ctr_interface.py <https://github.com/facebookresearch/myosuite/blob/main/tutorials/4b_reflex/reflex_ctr_interface.py#L212-L345>`_.
 
 
 

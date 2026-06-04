@@ -55,6 +55,14 @@ Using pip:
    cd myosuite
    pip install -e .
 
+If you already cloned without ``--recursive``, update submodules and pull with:
+
+.. code-block:: bash
+
+   cd myosuite
+   git submodule sync --recursive
+   git pull --recurse-submodules
+
 Using uv:
 
 .. code-block:: bash
@@ -62,6 +70,14 @@ Using uv:
    git clone --recursive https://github.com/facebookresearch/myosuite.git
    cd myosuite
    uv pip install -e .
+
+If you already cloned without ``--recursive``, update submodules and pull with:
+
+.. code-block:: bash
+
+   cd myosuite
+   git submodule sync --recursive
+   git pull --recurse-submodules
 
 Testing the installation
 ~~~~~~~~~~~~~~~~~~~~~~~~

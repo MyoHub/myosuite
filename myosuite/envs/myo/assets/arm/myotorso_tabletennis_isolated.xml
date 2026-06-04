@@ -1,0 +1,8 @@
+<mujoco model="myotorso_tabletennis_isolated">
+  <!-- Single-arm MyoSuite reference: same ``full_body`` stack as
+       ``myoarm_tabletennis.xml`` (MyoTorso + one ``myoarm_body`` + pelvis + legs).
+       This is NOT a dual-arm bimanual MJCF. Lightsaber / MuscleMimic workflows
+       that need two arms load the bimanual model from ``musclemimic_models``;
+       tests here compare that model's *right* arm to this host. -->
+  <include file="myotorso_arm_chain_host.xml"/>
+</mujoco>

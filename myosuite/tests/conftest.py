@@ -1,0 +1,50 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Pytest configuration for MyoSuite tests."""
+
+from __future__ import annotations
+
+import sys
+from typing import Any
+
+import pytest
+
+# MuJoCo Warp + full biped mjlab leg walk has crashed the interpreter on macOS
+# (segfault in native forward). Linux CI is the supported environment for these.
+_DARWIN_MJLAB_LEG_WALK_SKIP_REASON = (
+    "mjlab myoLegWalk-v0 / myoSarcLegWalk-v0 with MuJoCo Warp is unstable on macOS "
+    "(native segfault); run on Linux (e.g. GitHub Actions ubuntu job)."
+)
+
+# Tests that always construct mjlab biped leg walk on CPU/GPU (non-parametrized).
+_DARWIN_SKIP_ORIGINAL_NAMES: frozenset[str] = frozenset(
+    {
+        "test_mjlab_parallel_qacc_consistency_zero_state",
+        "test_walk_tier_a_dense_reward_gate_cpu_vs_mjlab",
+        "test_myo_leg_walk_reward_parity_cpu_vs_mjlab",
+        "test_myo_leg_walk_reward_manager_matches_term_functions",
+        "test_myo_leg_walk_state_parity_cpu_vs_mjlab",
+        "test_myo_leg_walk_initial_state_difference_cpu_vs_mjlab",
+        "test_myo_leg_walk_ctrl_mapping_cpu_vs_mjlab",
+        "test_myo_leg_walk_forced_initial_parity_one_step_stats",
+    }
+)
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[Any]) -> None:
+    """Skip mjlab biped leg-walk coverage on macOS (Warp instability)."""
+    _ = config  # hook name is part of the pytest API contract
+    if sys.platform != "darwin":
+        return
+    skip = pytest.mark.skip(reason=_DARWIN_MJLAB_LEG_WALK_SKIP_REASON)
+    for item in items:
+        orig = getattr(item, "originalname", None) or item.name
+        if orig == "test_make_reset_step_supported_tasks":
+            nid = item.nodeid
+            if "[myoLegWalk-v0]" in nid or "[myoSarcLegWalk-v0]" in nid:
+                item.add_marker(skip)
+            continue
+        if orig in _DARWIN_SKIP_ORIGINAL_NAMES:
+            item.add_marker(skip)

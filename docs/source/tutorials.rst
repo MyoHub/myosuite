@@ -214,7 +214,7 @@ The models and code will be released soon.
 
 Using Reinforcement Learning
 =============================================
-Myosuite provdies features to support RL training. Here are examples of using different RL libraries on Myosuite. 
+Myosuite provdies features to support RL training. Here are examples of using different RL libraries on Myosuite.
 
 
 
@@ -286,30 +286,26 @@ act on it. In addition, each environment class contains
 a reward function which converts the observation into a
 number that establishes how good the observation is with
 respect to the task objectives. In order to create a new
-task, a new environment class needs to be generated eg.
-reach2_v0.py (see for example how `reach_v0.py <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/myobase/reach_v0.py>`__ is structured).
-In this file, it is possible to specify the type of observation (eg. joint angles, velocities, forces), actions (e.g. muscle, motors), goal, and reward.
-
+task, subclass :class:`~myosuite.envs.gymnasium_env.MyoGymnasiumEnv` and implement
+``_get_obs_dict(accessor)``, ``get_reward_dict(obs_dict)``, and ``reset_task(np_random)``.
 
 .. code-block:: python
 
-    from myosuite.envs.myo.base_v0 import BaseV0
+    from myosuite.envs.gymnasium_env import MyoGymnasiumEnv, CpuEnvAccessor
 
-    # Class extends Basev0
-    class NewReachEnvV0(BaseV0):
-        ....
+    class NewReachEnv(MyoGymnasiumEnv):
 
-    # defines the observation
-    def get_obs_dict(self, sim):
-        ....
+        def _get_obs_dict(self, accessor: CpuEnvAccessor) -> dict:
+            # return a dict of named observation arrays
+            ...
 
-    # defines the rewards
-    def get_reward_dict(self, obs_dict):
-        ...
+        def get_reward_dict(self, obs_dict: dict) -> dict:
+            # return a dict with at minimum a "dense" key (float scalar)
+            ...
 
-    #reset condition that
-    def reset(self):
-        ...
+        def reset_task(self, np_random) -> None:
+            # randomise goal / initial conditions
+            ...
 
 .. _setup_base_class:
 
@@ -317,26 +313,22 @@ In this file, it is possible to specify the type of observation (eg. joint angle
 Register the new environment
 ++++++++++++++++++++++++++++++
 
-Once defined the task `reach2_v0.py`, the new environment needs to be registered to be
-visible when importing `myosuite`. This is achieved by introducing the new environment in
-the `__init__.py` (called when the library is imported) where the registration routine happens.
-The registration of the new enviornment is obtained adding:
+Once the task class is defined, register it via :func:`~myosuite.core.registry.register`
+so it appears when importing ``myosuite``:
 
 .. code-block:: python
 
-    from gym.envs.registration import register
+    from myosuite.core.registry import register
+    from myosuite.core.task_spec import EnvSpec
 
-    register(id='newReachTask-v0',
-        entry_point='myosuite.envs.myo.myobase.reach_v0:NewReachEnvV0', # where to find the new Environment Class
-        max_episode_steps=200, # duration of the episode
+    register(EnvSpec(
+        id="newReachTask-v0",
+        entry_point="myosuite.envs.myo.tasks.basic.arm.reach:NewReachEnv",
+        max_episode_steps=200,
         kwargs={
-            'model_path': curr_dir+'/../assets/hand/myohand_pose.xml', # where the xml file of the environment is located
-            'target_reach_range': {'IFtip': ((0.1, 0.05, 0.20), (0.2, 0.05, 0.20)),}, # this is used in the setup to define the goal e.g. rando position of the team between 0.1 and 0.2 in the x coordinates
-            'normalize_act': True, # if to use normalized actions using a sigmoid function.
-            'frame_skip': 5, # collect a sample every 5 iteration step
-        }
-    )
+            "model_path": "...",  # path relative to myo_sim root
+        },
+    ))
 
 
 .. _register_new_environment:
-

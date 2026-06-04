@@ -1,5 +1,9 @@
 *.DS_Store
 
+# Staged MJCF from myosuite.utils.simhive_assets.resolve_model_xml_path
+.myosuite_resolved_*.xml
+myosuite/simhive/myo_model/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -37,6 +41,9 @@ MANIFEST
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+
+# Generated parity reports
+reports/
 
 # Unit test / coverage reports
 htmlcov/
@@ -124,3 +131,23 @@ osl.log
 /workspace
 
 *processed.xml
+
+logs/
+
+# Pycharm generated files
+.idea/
+
+tutorials/walk_backends_saved/
+sar_benchmark_results/
+wandb/
+MUJOCO_LOG.TXT
+
+*sandbox*
+outputs/vaf_fullbody/activations.npy
+exports/
+outputs/
+.claude/
+_untracked/
+Boxing/
+myosuite/composer/
+myosuite/agents/

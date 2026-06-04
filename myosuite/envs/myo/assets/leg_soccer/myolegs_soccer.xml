@@ -13,12 +13,12 @@
 
     <!-- Head -->
     <include file="../../../../simhive/myo_sim/head/assets/myohead_simple_assets.xml"/>
-     
+
     <!-- Legs -->
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_muscle.xml"/>
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_tendon.xml"/>
-    
+
     <!-- Include the soccer field and ball -->
     <include file="soccer_assets/soccer_scene/soccer_field.xml"/>
     <include file="soccer_assets/soccer_scene/soccer_ball.xml"/>
@@ -42,7 +42,7 @@
         <body name='goalkeeper' pos="50 0 0" zaxis="0 0 1" mocap="true">
             <light directional="true" diffuse=".25 .25 .25" specular="0.25 0.25 0.25" pos="0 -3 3" dir="0 1 -1" mode="trackcom"/>
             <camera name="goalkeeper_view" pos="4 0 2.75" xyaxes="0 1 0 -1 0 2" mode="trackcom"/>
-            <geom name="base" type="capsule" pos="0 0 0.15" euler="0 0 0" size="0.25 0.15" rgba=".11 .1 .1 1" group="2" contype="1" conaffinity="1"/>            
+            <geom name="base" type="capsule" pos="0 0 0.15" euler="0 0 0" size="0.25 0.15" rgba=".11 .1 .1 1" group="2" contype="1" conaffinity="1"/>
             <geom name="base_bar" type="cylinder" pos="0 0 0.8" euler="0 0 0" size="0.078 0.28" rgba=".7 .7 .7 1" group="2" contype="1" conaffinity="1"/>
             <geom name="logo" type="sphere" pos="0 0 1.20" euler="1.57 0 0" size="0.25 0.02010" material="matmyo" group="2" contype="1" conaffinity="1"/>
             <site name="goalkeeper_indicator" size="0.3" pos="0 0 1.2" rgba="0 0 0 0"/>

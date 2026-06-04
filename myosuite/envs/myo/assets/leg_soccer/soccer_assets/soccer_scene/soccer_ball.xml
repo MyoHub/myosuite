@@ -16,14 +16,14 @@
     <body name="soccer_ball" pos="40 0 0.117">
       <freejoint/>
       <geom
-        name="ball_geom" 
+        name="ball_geom"
         type="sphere"
-        size="0.117" 
-        mass="0.45" 
-        condim="6" 
-        priority="1" 
-        friction="0.7 0.05 0.04" 
-        solref="0.02 0.4" 
+        size="0.117"
+        mass="0.45"
+        condim="6"
+        priority="1"
+        friction="0.7 0.05 0.04"
+        solref="0.02 0.4"
         material="soccer_mat"/>
     </body>
   </worldbody>

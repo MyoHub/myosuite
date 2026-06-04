@@ -1,18 +1,20 @@
-""" =================================================
-# Copyright (c) MyoSuite Authors
-Authors  :: Chun Kwang Tan (cktan.neumove@gmail.com), Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
-================================================= """
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
 
 import numpy as np
 import copy
 
+
 class MyoOSLController:
-    def __init__(self, 
-                 body_mass,
-                 init_state='e_stance',
-                 hardware_param=None,
-                 n_sets=4,
-                 ):
+    def __init__(
+        self,
+        body_mass,
+        init_state="e_stance",
+        hardware_param=None,
+        n_sets=4,
+    ):
         """
         Initializes the OSL state machine
         Default init state: early stance [e_stance]
@@ -21,7 +23,12 @@ class MyoOSLController:
         n_sets : Denotes the maximum number of possible sets of state machine variables
         """
 
-        assert init_state in ['e_stance', 'l_stance', 'e_swing', 'l_swing'], "Phase should be : ['e_stance', 'l_stance', 'e_swing', 'l_swing']"
+        assert init_state in [
+            "e_stance",
+            "l_stance",
+            "e_swing",
+            "l_swing",
+        ], "Phase should be : ['e_stance', 'l_stance', 'e_swing', 'l_swing']"
         self.init_state = init_state
         self.n_sets = n_sets
 
@@ -29,22 +36,23 @@ class MyoOSLController:
 
         if hardware_param is not None:
             self.HARDWARE = hardware_param
-        
+
         self.osl_state_list = {}
         for state_name in self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT].keys():
-            self.osl_state_list[state_name] = State(state_name, 
-                                                    self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT][state_name]['gain'], 
-                                                    self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT][state_name]['threshold'])
+            self.osl_state_list[state_name] = State(
+                state_name,
+                self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT][state_name]["gain"],
+                self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT][state_name]["threshold"],
+            )
 
         # Define state transitions
-        self.osl_state_list['e_stance'].next_state = self.osl_state_list['l_stance']
-        self.osl_state_list['l_stance'].next_state = self.osl_state_list['e_swing']
-        self.osl_state_list['e_swing'].next_state = self.osl_state_list['l_swing']
-        self.osl_state_list['l_swing'].next_state = self.osl_state_list['e_stance']
+        self.osl_state_list["e_stance"].next_state = self.osl_state_list["l_stance"]
+        self.osl_state_list["l_stance"].next_state = self.osl_state_list["e_swing"]
+        self.osl_state_list["e_swing"].next_state = self.osl_state_list["l_swing"]
+        self.osl_state_list["l_swing"].next_state = self.osl_state_list["e_stance"]
 
         self.STATE_MACHINE = StateMachine(self.osl_state_list)
         self.STATE_MACHINE.init_machine(init_state)
-
 
     def start(self):
         """
@@ -67,22 +75,37 @@ class MyoOSLController:
         """
         Updates the controller with new sensor data so state transitions can be checked
         """
-        assert all([key in sens_data.keys() for key in ['knee_angle', 'knee_vel', 'load', 'ankle_angle', 'ankle_vel']]), "Missing data, dictionary should contain all of these keys ['knee_angle', 'knee_vel', 'load', 'ankle_angle', 'ankle_vel']"
+        assert all(
+            [
+                key in sens_data.keys()
+                for key in [
+                    "knee_angle",
+                    "knee_vel",
+                    "load",
+                    "ankle_angle",
+                    "ankle_vel",
+                ]
+            ]
+        ), "Missing data, dictionary should contain all of these keys ['knee_angle', 'knee_vel', 'load', 'ankle_angle', 'ankle_vel']"
         self.SENSOR_DATA = sens_data
         self.STATE_MACHINE.update(self.SENSOR_DATA)
 
     def get_osl_torque(self):
         """
-        Internal function to obtain torques from 
+        Internal function to obtain torques from
         """
-        out_joint_list = ['knee', 'ankle']
-        return dict(zip( out_joint_list, [self._get_joint_torque(jnt) for jnt in out_joint_list] ))
+        out_joint_list = ["knee", "ankle"]
+        return dict(
+            zip(out_joint_list, [self._get_joint_torque(jnt) for jnt in out_joint_list])
+        )
 
     def change_osl_mode(self, mode=0):
         """
         In the case of multiple control gains for the OSL, this function can be used to switch between different sets of control gains
         """
-        assert mode < self.n_sets # Ensure that no. of parameter sets do not exceed fixed value
+        assert (
+            mode < self.n_sets
+        )  # Ensure that no. of parameter sets do not exceed fixed value
         self.OSL_PARAM_SELECT = mode
         self._update_param_to_state_machine()
 
@@ -93,10 +116,12 @@ class MyoOSLController:
         Parameter type: ['knee', 'ankle', 'threshold']
         Parameters: ['knee_stiffness', 'knee_damping', 'ankle_stiffness', 'ankle_damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle']
         """
-        assert mode < self.n_sets # Ensure that no. of parameter sets do not exceed fixed value
+        assert (
+            mode < self.n_sets
+        )  # Ensure that no. of parameter sets do not exceed fixed value
 
-        phase_list = ['e_stance', 'l_stance', 'e_swing', 'l_swing']
-        joint_list = ['knee', 'ankle', 'threshold']
+        phase_list = ["e_stance", "l_stance", "e_swing", "l_swing"]
+        joint_list = ["knee", "ankle", "threshold"]
         idx = 0
 
         if isinstance(params, np.ndarray):
@@ -113,9 +138,29 @@ class MyoOSLController:
         """
         Function to set individual parameters of the OSL leg
         """
-        assert phase_name in ['e_stance', 'l_stance', 'e_swing', 'l_swing'], f"Phase should be : {['e_stance', 'l_stance', 'e_swing', 'l_swing']}"
-        assert param_type in ['gain', 'threshold'], f"Type should be : {['gain', 'threshold']}"
-        assert gain in ['knee_stiffness', 'knee_damping', 'ankle_stiffness', 'ankle_damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle'], f"Gains should be : {['knee_stiffness', 'knee_damping', 'ankle_stiffness', 'ankle_damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle']}"
+        assert phase_name in [
+            "e_stance",
+            "l_stance",
+            "e_swing",
+            "l_swing",
+        ], f"Phase should be : {['e_stance', 'l_stance', 'e_swing', 'l_swing']}"
+        assert param_type in [
+            "gain",
+            "threshold",
+        ], f"Type should be : {['gain', 'threshold']}"
+        assert (
+            gain
+            in [
+                "knee_stiffness",
+                "knee_damping",
+                "ankle_stiffness",
+                "ankle_damping",
+                "load",
+                "knee_angle",
+                "knee_vel",
+                "ankle_angle",
+            ]
+        ), f"Gains should be : {['knee_stiffness', 'knee_damping', 'ankle_stiffness', 'ankle_damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle']}"
 
         self.OSL_PARAM_LIST[mode][phase_name][param_type][gain] = value
 
@@ -123,21 +168,25 @@ class MyoOSLController:
         """
         Function to set hardware parameters of the actuators
         """
-        assert joint in ['knee', 'ankle'], f"Joint should be : {['knee', 'ankle']}"
-        assert act_param in ['gear_ratio', 'peak_torque', 'control_range'], f"Actuator parameter should be : {['gear_ratio', 'peak_torque', 'control_range']}"
+        assert joint in ["knee", "ankle"], f"Joint should be : {['knee', 'ankle']}"
+        assert (
+            act_param in ["gear_ratio", "peak_torque", "control_range"]
+        ), f"Actuator parameter should be : {['gear_ratio', 'peak_torque', 'control_range']}"
 
         self.HARDWARE[joint][act_param] = act_param
 
     def _update_param_to_state_machine(self):
         "Internal function to update gain paramters into the State Machine"
         # Hidden function, not to be used directly
-        self.STATE_MACHINE.update_state_variables(self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT])
-        
+        self.STATE_MACHINE.update_state_variables(
+            self.OSL_PARAM_LIST[self.OSL_PARAM_SELECT]
+        )
+
     def _get_joint_torque(self, joint):
         # Hidden function, not to be used directly
         "Internal function to calculate commanded torques for each joint"
-        if joint not in ['knee', 'ankle']:
-            print(f"Non-existant joint. Can only be either 'knee' or 'ankle'")
+        if joint not in ["knee", "ankle"]:
+            print("Non-existant joint. Can only be either 'knee' or 'ankle'")
             raise Exception
 
         state_params = self.STATE_MACHINE.get_current_state.get_variables()
@@ -146,10 +195,14 @@ class MyoOSLController:
         B = state_params[f"{joint}_damping"]
         theta = state_params[f"{joint}_target_angle"]
 
-        peak_torque = self.HARDWARE[joint]['peak_torque']
+        peak_torque = self.HARDWARE[joint]["peak_torque"]
 
-        T = np.clip( K*(theta - self.SENSOR_DATA[f"{joint}_angle"]) - B*(self.SENSOR_DATA[f"{joint}_vel"]),
-                     -1*peak_torque, peak_torque)
+        T = np.clip(
+            K * (theta - self.SENSOR_DATA[f"{joint}_angle"])
+            - B * (self.SENSOR_DATA[f"{joint}_vel"]),
+            -1 * peak_torque,
+            peak_torque,
+        )
 
         return T
 
@@ -162,69 +215,69 @@ class MyoOSLController:
         self.BODY_WEIGHT = self.BODY_MASS * self.GRAVITY
 
         self.SENSOR_DATA = {}
-        self.SENSOR_DATA['knee_angle'] = 0
-        self.SENSOR_DATA['knee_vel'] = 0
-        self.SENSOR_DATA['ankle_angle'] = 0
-        self.SENSOR_DATA['ankle_vel'] = 0
-        self.SENSOR_DATA['load'] = 0
-        
+        self.SENSOR_DATA["knee_angle"] = 0
+        self.SENSOR_DATA["knee_vel"] = 0
+        self.SENSOR_DATA["ankle_angle"] = 0
+        self.SENSOR_DATA["ankle_vel"] = 0
+        self.SENSOR_DATA["load"] = 0
+
         self.HARDWARE = {}
-        self.HARDWARE['knee'] = {}
-        self.HARDWARE['knee']['gear_ratio'] = 49.4
-        self.HARDWARE['knee']['peak_torque'] = 142.272
-        self.HARDWARE['knee']['control_range'] = 2.88
-        self.HARDWARE['ankle'] = {}
-        self.HARDWARE['ankle']['gear_ratio'] = 58.4
-        self.HARDWARE['ankle']['peak_torque'] = 168.192
-        self.HARDWARE['ankle']['control_range'] = 2.88
-        
+        self.HARDWARE["knee"] = {}
+        self.HARDWARE["knee"]["gear_ratio"] = 49.4
+        self.HARDWARE["knee"]["peak_torque"] = 142.272
+        self.HARDWARE["knee"]["control_range"] = 2.88
+        self.HARDWARE["ankle"] = {}
+        self.HARDWARE["ankle"]["gear_ratio"] = 58.4
+        self.HARDWARE["ankle"]["peak_torque"] = 168.192
+        self.HARDWARE["ankle"]["control_range"] = 2.88
+
         temp_dict = {}
-        temp_dict['e_stance'] = {}
-        temp_dict['e_stance']['gain'] = {}
-        temp_dict['e_stance']['threshold'] = {}
-        temp_dict['e_stance']['gain']['knee_stiffness'] = 99.372
-        temp_dict['e_stance']['gain']['knee_damping'] = 3.180
-        temp_dict['e_stance']['gain']['knee_target_angle'] = np.deg2rad(5)
-        temp_dict['e_stance']['gain']['ankle_stiffness'] = 19.874
-        temp_dict['e_stance']['gain']['ankle_damping'] = 0
-        temp_dict['e_stance']['gain']['ankle_target_angle'] = np.deg2rad(-2)
-        temp_dict['e_stance']['threshold']['load'] = (0.25 * self.BODY_WEIGHT, 'above')
-        temp_dict['e_stance']['threshold']['ankle_angle'] = (np.deg2rad(6), 'above')
+        temp_dict["e_stance"] = {}
+        temp_dict["e_stance"]["gain"] = {}
+        temp_dict["e_stance"]["threshold"] = {}
+        temp_dict["e_stance"]["gain"]["knee_stiffness"] = 99.372
+        temp_dict["e_stance"]["gain"]["knee_damping"] = 3.180
+        temp_dict["e_stance"]["gain"]["knee_target_angle"] = np.deg2rad(5)
+        temp_dict["e_stance"]["gain"]["ankle_stiffness"] = 19.874
+        temp_dict["e_stance"]["gain"]["ankle_damping"] = 0
+        temp_dict["e_stance"]["gain"]["ankle_target_angle"] = np.deg2rad(-2)
+        temp_dict["e_stance"]["threshold"]["load"] = (0.25 * self.BODY_WEIGHT, "above")
+        temp_dict["e_stance"]["threshold"]["ankle_angle"] = (np.deg2rad(6), "above")
 
-        temp_dict['l_stance'] = {}
-        temp_dict['l_stance']['gain'] = {}
-        temp_dict['l_stance']['threshold'] = {}
-        temp_dict['l_stance']['gain']['knee_stiffness'] = 99.372
-        temp_dict['l_stance']['gain']['knee_damping'] = 1.272
-        temp_dict['l_stance']['gain']['knee_target_angle'] = np.deg2rad(8)
-        temp_dict['l_stance']['gain']['ankle_stiffness'] = 79.498
-        temp_dict['l_stance']['gain']['ankle_damping'] = 0.063
-        temp_dict['l_stance']['gain']['ankle_target_angle'] = np.deg2rad(-20)
-        temp_dict['l_stance']['threshold']['load'] = (0.15 * self.BODY_WEIGHT, 'below')
+        temp_dict["l_stance"] = {}
+        temp_dict["l_stance"]["gain"] = {}
+        temp_dict["l_stance"]["threshold"] = {}
+        temp_dict["l_stance"]["gain"]["knee_stiffness"] = 99.372
+        temp_dict["l_stance"]["gain"]["knee_damping"] = 1.272
+        temp_dict["l_stance"]["gain"]["knee_target_angle"] = np.deg2rad(8)
+        temp_dict["l_stance"]["gain"]["ankle_stiffness"] = 79.498
+        temp_dict["l_stance"]["gain"]["ankle_damping"] = 0.063
+        temp_dict["l_stance"]["gain"]["ankle_target_angle"] = np.deg2rad(-20)
+        temp_dict["l_stance"]["threshold"]["load"] = (0.15 * self.BODY_WEIGHT, "below")
 
-        temp_dict['e_swing'] = {}
-        temp_dict['e_swing']['gain'] = {}
-        temp_dict['e_swing']['threshold'] = {}
-        temp_dict['e_swing']['gain']['knee_stiffness'] = 39.749
-        temp_dict['e_swing']['gain']['knee_damping'] = 0.063
-        temp_dict['e_swing']['gain']['knee_target_angle'] = np.deg2rad(60)
-        temp_dict['e_swing']['gain']['ankle_stiffness'] = 7.949
-        temp_dict['e_swing']['gain']['ankle_damping'] = 0
-        temp_dict['e_swing']['gain']['ankle_target_angle'] = np.deg2rad(25)
-        temp_dict['e_swing']['threshold']['knee_angle'] = (np.deg2rad(50), 'above')
-        temp_dict['e_swing']['threshold']['knee_vel'] = (np.deg2rad(3), 'below')
+        temp_dict["e_swing"] = {}
+        temp_dict["e_swing"]["gain"] = {}
+        temp_dict["e_swing"]["threshold"] = {}
+        temp_dict["e_swing"]["gain"]["knee_stiffness"] = 39.749
+        temp_dict["e_swing"]["gain"]["knee_damping"] = 0.063
+        temp_dict["e_swing"]["gain"]["knee_target_angle"] = np.deg2rad(60)
+        temp_dict["e_swing"]["gain"]["ankle_stiffness"] = 7.949
+        temp_dict["e_swing"]["gain"]["ankle_damping"] = 0
+        temp_dict["e_swing"]["gain"]["ankle_target_angle"] = np.deg2rad(25)
+        temp_dict["e_swing"]["threshold"]["knee_angle"] = (np.deg2rad(50), "above")
+        temp_dict["e_swing"]["threshold"]["knee_vel"] = (np.deg2rad(3), "below")
 
-        temp_dict['l_swing'] = {}
-        temp_dict['l_swing']['gain'] = {}
-        temp_dict['l_swing']['threshold'] = {}
-        temp_dict['l_swing']['gain']['knee_stiffness'] = 15.899
-        temp_dict['l_swing']['gain']['knee_damping'] = 3.816
-        temp_dict['l_swing']['gain']['knee_target_angle'] = np.deg2rad(5)
-        temp_dict['l_swing']['gain']['ankle_stiffness'] = 7.949
-        temp_dict['l_swing']['gain']['ankle_damping'] = 0
-        temp_dict['l_swing']['gain']['ankle_target_angle'] = np.deg2rad(15)
-        temp_dict['l_swing']['threshold']['load'] = (0.4 * self.BODY_WEIGHT, 'above')
-        temp_dict['l_swing']['threshold']['knee_angle'] = (np.deg2rad(30), 'below')
+        temp_dict["l_swing"] = {}
+        temp_dict["l_swing"]["gain"] = {}
+        temp_dict["l_swing"]["threshold"] = {}
+        temp_dict["l_swing"]["gain"]["knee_stiffness"] = 15.899
+        temp_dict["l_swing"]["gain"]["knee_damping"] = 3.816
+        temp_dict["l_swing"]["gain"]["knee_target_angle"] = np.deg2rad(5)
+        temp_dict["l_swing"]["gain"]["ankle_stiffness"] = 7.949
+        temp_dict["l_swing"]["gain"]["ankle_damping"] = 0
+        temp_dict["l_swing"]["gain"]["ankle_target_angle"] = np.deg2rad(15)
+        temp_dict["l_swing"]["threshold"]["load"] = (0.4 * self.BODY_WEIGHT, "above")
+        temp_dict["l_swing"]["threshold"]["knee_angle"] = (np.deg2rad(30), "below")
 
         self.OSL_PARAM_SELECT = 0
         self.OSL_PARAM_LIST = {}
@@ -236,7 +289,7 @@ class MyoOSLController:
     def getOSLparam(self):
         return copy.deepcopy(self.OSL_PARAM_LIST)
 
-    
+
 class State:
     def __init__(self, name, state_variables: dict, thresholds: dict, next_state=None):
         """
@@ -248,7 +301,9 @@ class State:
         - next_state: Object reference to the next state
         """
         self.name = name
-        self.thresholds = thresholds  # Dictionary of variable thresholds and comparison types
+        self.thresholds = (
+            thresholds  # Dictionary of variable thresholds and comparison types
+        )
         self.state_variables = state_variables
         self.next_state = next_state
 
@@ -274,7 +329,7 @@ class State:
         Getter: State variables
         """
         return copy.deepcopy(self.state_variables)
-    
+
     def get_thresholds(self):
         """
         Getter: Thresholds for state transitions
@@ -292,7 +347,8 @@ class State:
         Setter: Sets state transition thresholds via a dictionary
         """
         self.thresholds = copy.deepcopy(new_thresholds)
-    
+
+
 class StateMachine:
     def __init__(self, states):
         """
@@ -306,7 +362,9 @@ class StateMachine:
         """
         Initializes the state machine with an initial state
         """
-        assert initial_state in self.states.keys(), f"No state named {initial_state}. Should be {self.states.keys()}"
+        assert (
+            initial_state in self.states.keys()
+        ), f"No state named {initial_state}. Should be {self.states.keys()}"
         self.current_state = self.states[initial_state]
 
     def start(self):
@@ -334,9 +392,11 @@ class StateMachine:
         States makes a copy of the dictionary to remove references
         """
         for state_name in self.states.keys():
-            self.states[state_name].set_variables(variable_dict[state_name]['gain'])
-            self.states[state_name].set_thresholds(variable_dict[state_name]['threshold'])
-    
+            self.states[state_name].set_variables(variable_dict[state_name]["gain"])
+            self.states[state_name].set_thresholds(
+                variable_dict[state_name]["threshold"]
+            )
+
     @property
     def is_running(self):
         """
@@ -353,4 +413,3 @@ class StateMachine:
             return copy.deepcopy(self.current_state)
         else:
             return "Not running"
-

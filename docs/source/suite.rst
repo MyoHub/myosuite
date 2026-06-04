@@ -3,7 +3,7 @@ Models and Tasks
 
 .. _suite:
 
-Models and tasks are the most important aspects of Myosuite. To provide further, 
+Models and tasks are the most important aspects of Myosuite. To provide further,
 
 
 * :ref:`models`
@@ -161,23 +161,23 @@ glmed3_r        Gluteus medius (posterior)
 glmin1_r        Gluteus minimus (anterior)
 glmin2_r        Gluteus minimus (middle)
 glmin3_r        Gluteus minimus (posterior)
-grac_r          Gracilis 
+grac_r          Gracilis
 iliacus_r       Iliacus
 perbrev_r       Peroneus brevis
 perlong_r       Peroneus longus
-piri_r          Piriformis 
+piri_r          Piriformis
 psoas_r         Psoas
 recfem_r        Rectus femoris
 sart_r          Sartorius
 semimem_r       Semimembranosus
-semiten_r       Semitendinosus 
-soleus_r        Soleus 
+semiten_r       Semitendinosus
+soleus_r        Soleus
 tfl_r           Tensor fascia latae
-tibant_r        Tibialis anterior 
-tibpost_r       Tibialis posterior 
+tibant_r        Tibialis anterior
+tibpost_r       Tibialis posterior
 vasint_r        Vastus intermedius
 vaslat_r        Vastus lateralis
-vasmed_r        Vastus medialis 
+vasmed_r        Vastus medialis
 =============   =================================
 
 .. _myoArm:
@@ -225,13 +225,10 @@ IO        Internal Obliques
 .. _myoArmNoHandMuscles:
 
 myoArmNoHandMuscles
-=========
-The myoArmNoHandMuscles is the myoArm with the extrinsic and intrinsic hand muscles removed, enabling the study of reaching tasks that have no grasp or object manipulation component. 
+===================
+The myoArmNoHandMuscles is the myoArm with the extrinsic and intrinsic hand muscles removed, enabling the study of reaching tasks that have no grasp or object manipulation component.
 
 This musculoskeletal model is comprised of 38 joints and 24 muscle-tendon units.
-
-.. image:: images/myoArm_NoHand.png
-  :height: 200
 
 .. _tasks:
 
@@ -535,7 +532,7 @@ Variants:
 Task and Variantions
 ************************************
 
-For convenience, Myosuite has implemented a set of muscle decifiencies that currently includes: :ref:`test_muscle_fatigue` , sarcopenia and tendon transfer alongside with the tasks.
+For convenience, Myosuite has implemented a set of muscle deficiencies that currently includes: :ref:`test_muscle_fatigue` , sarcopenia and tendon transfer alongside with the tasks.
 
 Here are a list of the tasks currently implement in Myosuite. See :ref:`task_variation` on how to include the additional features.
 
@@ -608,4 +605,3 @@ Variations
   - **Sarcopenia**: myoSarc<Environment> e.g. myoSarcHandPoseFixed-v0
   - **Fatigue**: myoFati<Environment> e.g. myoFatiElbowPose1D6MRandom-v0
   - **TTransfer / Reafferentation**: myoReaf<Environment> e.g. myoReafHandPoseFixed-v0
-

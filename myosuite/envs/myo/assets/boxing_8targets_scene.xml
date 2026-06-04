@@ -1,0 +1,63 @@
+<mujoco model="fightmaster_boxing_scene">
+    <compiler assetdir="." />
+
+    <asset>
+        <mesh name="boxing_targets_mesh" file="Boxing8targets.stl" />
+        <material name="mesh_gray" rgba="0.4 0.4 0.4 1" shininess="0.2" />
+
+        <material name="target_red" rgba="0.8 0 0 1" />
+
+        <texture type="2d" name="groundplane" builtin="checker" rgb1=".2 .3 .4" rgb2=".1 .1 .1" width="512" height="512" />
+        <material name="groundplane" texture="groundplane" texrepeat="5 5" />
+    </asset>
+
+    <worldbody>
+        <light pos="0 0 3" dir="0 0 -1" />
+        <geom name="floor" type="plane" size="5 5 0.05" material="groundplane" />
+
+        <body name="boxing_machine" pos="0 0 0">
+            <geom type="mesh" mesh="boxing_targets_mesh" material="mesh_gray" />
+
+            <body name="pad_1" pos="0 0.1 1.65">
+                <geom name="geom_1" type="cylinder" size="0.14 0.01" material="target_red" euler="60 0 0" />
+                <site name="site_1" type="cylinder" size="0.081 0.011" rgba="0 0 0 0" euler="90 0 0" />
+            </body>
+
+            <body name="pad_2" pos="0.35 0 1.55">
+                <geom name="geom_2" type="cylinder" size="0.10 0.01" material="target_red" euler="80 55 40" />
+                <site name="site_2" type="cylinder" size="0.081 0.011" rgba="0 0 0 0" euler="90 0 -45" />
+            </body>
+            <body name="pad_3" pos="0.0 0.18 1.2">
+                <geom name="geom_3" type="sphere" size="0.16" material="target_red"/>
+                <site name="site_3" type="cylinder" size="0.081 0.011" rgba="0 0 0 0" euler="90 0 -135" />
+            </body>
+
+            <body name="pad_4" pos="0.28 0.23 1.05">
+                <geom name="geom_4" type="cylinder" size="0.08 0.01" material="target_red" euler="50 57 40" />
+                <site name="site_4" type="cylinder" size="0.081 0.011" rgba="0 0 0 0" euler="90 0 -135" />
+            </body>
+
+            <body name="pad_5" pos="-0.26 0.25 1.05">
+                <geom name="geom_5" type="cylinder" size="0.08 0.01" material="target_red" euler="35 -50 40" />
+                <site name="site_5" type="cylinder" size="0.081 0.011" rgba="0 0 0 0" euler="90 0 -225" />
+            </body>
+
+            <body name="pad_6" pos="-0.33 0.05 1.53">
+                <geom name="geom_6" type="cylinder" size="0.1 0.01" material="target_red" euler="80 -55 40" />
+                <site name="site_6" type="cylinder" size="0.081 0.011" rgba="0 0 0 0" euler="90 0 -270" />
+            </body>
+
+        </body>
+
+
+    </worldbody>
+
+    <sensor>
+        <touch name="sensor_pad1" site="site_1" />
+        <touch name="sensor_pad2" site="site_2" />
+        <touch name="sensor_pad3" site="site_3" />
+        <touch name="sensor_pad4" site="site_4" />
+        <touch name="sensor_pad5" site="site_5" />
+        <touch name="sensor_pad6" site="site_6" />
+    </sensor>
+</mujoco>

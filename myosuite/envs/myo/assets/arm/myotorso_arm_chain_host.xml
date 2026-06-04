@@ -1,0 +1,48 @@
+<mujoco model="myotorso_arm_chain_host">
+  <!-- Same asset / default / full_body stack as myoarm_tabletennis.xml (torso +
+       myoarm_body right arm + pelvis joints + legs), but without table, paddle,
+       ball, sensors, or keyframes. Used for ``myotorso_tabletennis_isolated.xml``
+       and MuscleMimic right-arm parity tests. -->
+  <include file="../../../../simhive/myo_sim/torso/assets/myotorso_assets.xml"/>
+  <include file="../../../../simhive/myo_sim/head/assets/myohead_simple_assets.xml"/>
+  <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
+  <include file="../../../../simhive/myo_sim/arm/assets/myoarm_assets.xml"/>
+  <include file="../../../../simhive/myo_sim/scene/myosuite_quad.xml"/>
+  <compiler angle="radian" meshdir="../../../../simhive/myo_sim" texturedir="../../../../simhive/myo_sim"/>
+
+  <visual>
+    <global offwidth="1280" offheight="1080"/>
+  </visual>
+
+  <default class="main">
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="4" condim="3" contype="1" conaffinity="1" solref="0.002 1" solimp="0.95 0.95 0.01" mass="0"/>
+    </default>
+    <default class="pelvis_move">
+      <joint limited="true" damping="1000" type="slide" armature="10"/>
+      <position kp="3500" ctrllimited="true"/>
+    </default>
+  </default>
+
+  <compiler autolimits="true" inertiafromgeom="auto" angle="radian" balanceinertia="true" boundmass="0.001" boundinertia=".0001"/>
+  <option timestep="0.002">
+    <flag multiccd="enable"/>
+  </option>
+
+  <worldbody>
+    <body name="full_body" pos="1.6 0 0.95" euler="0 0 3.14">
+      <include file="../../../../simhive/myo_sim/torso/assets/myotorso_arm_chain.xml"/>
+      <joint name="pelvis_x" class="pelvis_move" axis="1 0 0" range="-1 -0.05"/>
+      <joint name="pelvis_y" class="pelvis_move" axis="0 1 0" range="-1 1"/>
+      <include file="../../../../simhive/myo_sim/leg/assets/myolegs_chain.xml"/>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position class="pelvis_move" name="pelvis_x" joint="pelvis_x" ctrlrange="-1 0.05"/>
+    <position class="pelvis_move" name="pelvis_y" joint="pelvis_y" ctrlrange="-1 1"/>
+  </actuator>
+</mujoco>

@@ -5,10 +5,11 @@ from os.path import expanduser
 import git
 
 curr_dir = os.path.dirname(os.path.abspath(__file__))
-simhive_path = os.path.join(curr_dir, 'myosuite', 'simhive')
+simhive_path = os.path.join(curr_dir, "myosuite", "simhive")
 
 
 # from myosuite.utils.import_utils import fetch_git
+
 
 def fetch_git(repo_url, commit_hash, clone_directory, clone_path=None):
     """
@@ -23,12 +24,12 @@ def fetch_git(repo_url, commit_hash, clone_directory, clone_path=None):
         os.makedirs(clone_directory, exist_ok=True)
 
         # Clone the repository to the specified path
-        if not os.path.exists(os.path.join(clone_directory,'.git')):
+        if not os.path.exists(os.path.join(clone_directory, ".git")):
             repo = git.Repo.clone_from(repo_url, clone_directory)
             print(f"{repo_url} cloned at {clone_directory}")
         else:
             repo = git.Repo(clone_directory)
-            origin = repo.remote('origin')
+            origin = repo.remote("origin")
             origin.fetch()
 
         # Check out the specific commit if not already
@@ -47,7 +48,7 @@ def clean_simhive():
     Remove cached simhive if it exists
     """
     print("MyoSuite:> Clearing SimHive ...")
-    api_path = os.path.join(simhive_path, 'myo_model')
+    api_path = os.path.join(simhive_path, "myo_model")
     if os.path.exists(api_path):
         shutil.rmtree(api_path)
     else:
@@ -64,10 +65,10 @@ Do you accept the terms of the license? (yes/no):
 """
     response = input(prompt).strip().lower()
 
-    if response == 'yes':
+    if response == "yes":
         print("Thank you for accepting the license. You may proceed.")
         return True
-    elif response == 'no':
+    elif response == "no":
         print("You have rejected the license terms. Exiting...")
         return False
     else:
@@ -95,15 +96,16 @@ def fetch_simhive():
 
     # Fetch SimHive
     print("MyoSuite:> Downloading simulation assets (upto ~100MBs)")
-    fetch_git(repo_url="https://github.com/myolab/myo_model.git",
-                commit_hash="619b1a876113e91a302b9baeaad6c2341e12ac81",
-                clone_directory="myo_model",
-                clone_path=simhive_path)
-
+    fetch_git(
+        repo_url="https://github.com/myolab/myo_model.git",
+        commit_hash="619b1a876113e91a302b9baeaad6c2341e12ac81",
+        clone_directory="myo_model",
+        clone_path=simhive_path,
+    )
 
     # mark successful creation of simhive
     filename = os.path.join(simhive_path, "simhive-version")
-    with open(filename, 'w') as file:
+    with open(filename, "w") as file:
         file.write(__version__)
 
     print("MyoSuite:> Successfully Initialized.")

@@ -1,35 +1,47 @@
-"""=================================================
-# Copyright (c) MyoSuite Authors
-Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
-================================================="""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
 
-import unittest
+from pathlib import Path
 
 import click
 import click.testing
+import pytest
 
-from myosuite import (
-    myosuite_myobase_suite,
-    myosuite_myochal_suite,
-    myosuite_myodm_suite,
-)
+import myosuite
 from myosuite.tests.test_envs import TestEnvs
 
 
+pytestmark = [pytest.mark.tier3, pytest.mark.legacy]
+
+_ARM_REACH_XML = Path("myosuite/envs/myo/assets/arm/myoarm_reach.xml")
+
+
 class TestMyo(TestEnvs):
+    @pytest.mark.skipif(
+        not _ARM_REACH_XML.exists(),
+        reason=(
+            "arm reach asset missing "
+            "(run `uv run myoapi_init` to fetch simhive assets before enabling this test)."
+        ),
+    )
     def test_myosuite_envs(self):
-        self.check_envs("MyoBase Suite", myosuite_myobase_suite)
+        myosuite.register_all_envs()
+        self.check_envs("MyoBase Suite", myosuite.myosuite_myobase_suite)
 
     def test_myochal_envs(self):
-        self.check_envs("MyoChallenge Suite", myosuite_myochal_suite)
+        myosuite.register_all_envs()
+        self.check_envs("MyoChallenge Suite", myosuite.myosuite_myochal_suite)
 
-    def test_myodm_envs(self):
-        self.check_envs("MyoDM Suite", myosuite_myodm_suite)
+    def test_myomimic_envs(self):
+        myosuite.register_all_envs()
+        self.check_envs("MyoMimic Suite", myosuite.myosuite_myomimic_suite)
 
         # Check trajectory playback
         from myosuite.logger.examine_reference import examine_reference
 
-        for env in myosuite_myodm_suite:
+        for env in myosuite.myosuite_myomimic_suite:
             print(f"Testing reference motion playback on: {env}")
             runner = click.testing.CliRunner()
             result = runner.invoke(
@@ -45,7 +57,7 @@ class TestMyo(TestEnvs):
                     "none",
                 ],
             )
-            self.assertEqual(result.exception, None, result.exception)
+            assert result.exception is None, result.exception
 
     def no_test_myomimic(self):
         env_names = [
@@ -57,7 +69,7 @@ class TestMyo(TestEnvs):
             "MyoLegWalk-v0",
         ]
         # Check the envs
-        self.check_envs("MyoDM", env_names)
+        self.check_envs("MyoMimic", env_names)
 
         # Check trajectory playback
         from myosuite.logger.examine_reference import examine_reference
@@ -81,5 +93,4 @@ class TestMyo(TestEnvs):
             self.assertEqual(result.exception, None, result.exception)
 
 
-if __name__ == "__main__":
-    unittest.main()
+#

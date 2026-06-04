@@ -1,0 +1,54 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Task config for the hand fingertip-reaching task on the mjlab backend."""
+
+from __future__ import annotations
+
+import pathlib
+from dataclasses import dataclass, field
+
+_ASSETS = pathlib.Path(__file__).parents[3] / "assets"
+
+
+@dataclass
+class HandReachCfg:
+    """Configuration for the hand reach task on the mjlab/MuJoCo Warp backend.
+
+    The agent controls the 23 hand muscle actuators to move the index
+    fingertip (IFtip) to a randomly sampled Cartesian target position.
+
+    Args:
+        model_path: Path to the MJCF model file.
+        sim_dt: MuJoCo simulation timestep in seconds.
+        ctrl_dt: Control timestep; must be a multiple of ``sim_dt``.
+        max_episode_steps: Episode truncation length.
+        tip_site_name: Name of the end-effector site in the model.
+        target_reach_range: ``(low, high)`` bounding box (metres) for
+            target sampling, shape ``(3,)`` each.
+        reach_thd: Distance threshold (m) for the bonus reward.
+        reach_reward_weight: Scaling weight for the distance component.
+        bonus_weight: Scaling weight for the in-threshold bonus.
+        penalty_weight: Scaling weight for joint-limit penalty.
+        num_envs: Number of parallel environments (batch size on GPU).
+    """
+
+    model_path: pathlib.Path = field(
+        default_factory=lambda: _ASSETS / "hand" / "myohand_pose.xml"
+    )
+    sim_dt: float = 0.002
+    ctrl_dt: float = 0.02
+    max_episode_steps: int = 200
+    tip_site_name: str = "IFtip"
+    target_reach_range: tuple[
+        tuple[float, float, float], tuple[float, float, float]
+    ] = (
+        (-0.2, -0.6, 1.35),
+        (0.0, -0.45, 1.55),
+    )
+    reach_thd: float = 0.05
+    reach_reward_weight: float = 1.0
+    bonus_weight: float = 4.0
+    penalty_weight: float = 50.0
+    num_envs: int = 4096

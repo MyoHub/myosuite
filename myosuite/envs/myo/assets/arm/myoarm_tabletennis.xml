@@ -13,11 +13,11 @@
     <include file="../../../../simhive/myo_sim/arm/assets/myoarm_assets.xml"/>
     <include file="../../../../simhive/myo_sim/scene/myosuite_quad.xml"/>
     <compiler angle="radian" meshdir='../../../../simhive/myo_sim' texturedir='../../../../simhive/myo_sim/'/>
-    
+
     <visual>
         <global offwidth="1280" offheight="1080"/>
     </visual>
-    
+
     <asset>
         <!-- Ping Pong mesh and texture -->
         <mesh name="tabletennis_table" file="../../envs/myo/assets/tabletennis_table.obj" />

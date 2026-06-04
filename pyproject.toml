@@ -4,15 +4,16 @@ name = "MyoSuite"
 dynamic = ["version"]  # Enable dynamic version
 description = "Musculoskeletal environments simulated in MuJoCo"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "Apache 2.0" }
 authors = [
-    { name = "Vikash Kumar", email = "vikashplus@gmail.com" },
     { name = "Vittorio Caggiano", email = "caggiano@gmail.com" },
+    { name = "Balint Hodossy", email = "hodossy@gmail.com" },
+    { name = "Florian Fischer", email = "florian.fischer26@gmail.com" },
+
 ]
-urls = { Homepage = "https://sites.google.com/view/myosuite" }
+urls = { Homepage = "https://www.myosuite.org" }
 classifiers = [
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -22,36 +23,156 @@ classifiers = [
 ]
 dependencies = [
     "click",
-    "sk-video",
-    "gymnasium==0.29.1",
+    "imageio[ffmpeg]",
+    "gymnasium<1.3",
     "termcolor",
     "flatten_dict",
     "h5py",
     "numpy",
-    "mujoco==3.3.0",
-    "dm-control==1.0.28",
+    "mujoco",
     "Pillow",
     "pink-noise-rl",
     "packaging",
     "gitpython",
+    "ml-collections>=0.1.1",
+    "furniture-sim @ git+https://github.com/MyoHub/furniture_sim.git@v0.2.0",
+    "mpl-sim @ git+https://github.com/MyoHub/MPL_sim.git@v0.2.0",
+    "object-sim @ git+https://github.com/MyoHub/object_sim.git@v0.1.0",
+    "ycb-sim @ git+https://github.com/MyoHub/YCB_sim.git@v0.2.0",
+    "onnxruntime<1.21",
+    "scikit-learn>=1.7.2",
+    "joblib>=1.5.3",
+    "matplotlib>=3.10.8",
 ]
 [project.optional-dependencies]
+# Reinforcement learning training with Stable-Baselines3
+rl = [
+    "stable-baselines3>=2.7.1",
+    # SB3 pulls matplotlib; pin for NumPy 2 ABI compatibility (avoids _ARRAY_API errors).
+    "matplotlib>=3.9.0",
+    "joblib>=1.5.3",
+    "scikit-learn>=1.6.1",
+    "wandb>=0.25.0",
+    "tensorboard>=2.20.0",
+]
 examples = ["mink[examples]; python_version > '3.9'"]
+mjlab = [
+    "torch>=2.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14' and sys_platform != 'win32'",
+    "mujoco-warp>=3.7.0; python_version >= '3.10' and python_version < '3.14' and sys_platform != 'win32'",
+]
+# myo_sim MJCF lives in the git submodule myosuite/simhive/myo_sim (not a PyPI package).
+mjx = [
+    "jax>=0.4.20; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
+    "jaxlib>=0.4.20; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
+    "brax>=0.10.0; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
+    "flax>=0.8.0; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
+    "optax>=0.1.7; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
+    "orbax-checkpoint>=0.11.33; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
+    "ml-collections>=0.1.1; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
+    "etils[epath]>=1.3.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "playground>=0.0.5; python_version >= '3.10' and sys_platform != 'win32'",
+    "mediapy>=1.2.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "imageio>=2.31.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "wandb>=0.21.0; python_version >= '3.10' and sys_platform != 'win32'",
+    "warp>=1.0.4; python_version >= '3.10' and sys_platform != 'win32'",
+]
+# CUDA-enabled MJX stack for GPU.
+# Install with: uv sync --extra mjx-cuda
+mjx-cuda = [
+    "myosuite[mjx]",
+    "jax[cuda12]>=0.4.30; python_version >= '3.10' and sys_platform != 'darwin'",
+]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=2.0",
+    "sphinx-autodoc-typehints>=2.0",
+]
+
+musclemimic = [
+    "musclemimic_models>=1.0.2",
+    "huggingface_hub>=0.20",
+    "scikit-learn>=1.6.1",
+    "joblib>=1.4.0",
+]
+
+dev = [
+    "myosuite[rl]",
+    "myosuite[musclemimic]",
+    "myosuite[mjx-cuda]; sys_platform != 'darwin'",
+    "pytest>=7.0.0",
+    "pytest-xvfb",
+    "pytest-benchmark>=4.0",
+    "black",
+    "isort",
+    "flake8",
+]
+
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = { find = { exclude = ["myosuite.agents"] } }
+packages = { find = { exclude = ["myosuite.agents", "myosuite.agents.*"] } }
 py-modules = ["myosuite_init"]
 
 [tool.setuptools.package-data]
-"myosuite" = ["**/*"]
+"myosuite" = [
+    # Keep distribution size down by excluding `myosuite/agents/**` entirely.
+    # `myosuite.agents` is intentionally excluded from `packages` (see above),
+    # but we also need to avoid shipping large training assets that live under
+    # `myosuite/agents/` via broad package-data globs.
+    "core/**",
+    "envs/**",
+    "integrations/**",
+    "logger/**",
+    "physics/**",
+    "robot/**",
+    "scenes/**",
+    "simhive/**",
+    "terms/**",
+    "utils/**",
+    "viz/**",
+]
 
 [project.scripts]
 myoapi_init = "myosuite_init:fetch_simhive"
 myoapi_clean = "myosuite_init:clean_simhive"
+myosuite-export-onnx = "myosuite.utils.export_onnx:main"
+# MuscleMimic full-body: native --path trajectory playback, preview, or MJX smoke.
+myosuite-musclemimic-fullbody-eval = "myosuite.integrations.musclemimic.fullbody_eval_cli:main"
+# MuJoCo validation metrics parity (MuscleMimic eval with vs without import myosuite); needs HF.
+myosuite-musclemimic-fullbody-parity = "sandbox_parity.fullbody_policy_parity:main"
+# Demo motion cache (HF); runs in MuscleMimic tree — see integrations/musclemimic/README.md.
+myosuite-musclemimic-setup-demo-cache = "myosuite.integrations.musclemimic.setup_demo_cache_cli:main"
+# Train Brax PPO on MJX mimic env and write playground_params.pickle-compatible file.
+myosuite-musclemimic-mjx-train = "myosuite.integrations.musclemimic.mjx_brax_train_cli:main"
+
+[tool.pytest.ini_options]
+# Default: run only fast tests (unit-test compatible). Use: pytest -m slow for slow tests.
+addopts = ["-m", "not slow"]
+markers = [
+    "tier1: Fast core unit/contract/regression tests for main CI.",
+    "tier2: Extended backend/parity/backend tests (MJX, mjlab, SAR, heavy env-specific checks).",
+    "tier3: Performance, tutorials, and legacy integration tests.",
+    "slow: Slow-running tests (benchmarks, long rollouts, or heavy external deps).",
+    "legacy: Tests that exercise deprecated BaseV0/env_base paths or legacy-style APIs.",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+]
+
+[project.entry-points."mjlab.tasks"]
+myosuite = "myosuite.envs.myo.backends.mjlab"
 
 [tool.setuptools.dynamic]
 version = {attr = "myosuite.version.__version__"}
+
+[tool.ruff]
+extend-exclude = ["tutorials"]
+
+[tool.ruff.lint.per-file-ignores]
+"tutorials/**" = ["E402"]
