@@ -15,6 +15,9 @@ from myosuite.envs.multi_agent_modular_env import (
     ModularMultiAgentSingleAgentWrapper,
     ModularMultiAgentTaskEnv,
 )
+from myosuite.envs.myo.tasks.challenge.boxing_mannequin.boxing_mannequin_config import (
+    BoxingMannequinConfig,
+)
 from myosuite.envs.myo.tasks.challenge.boxing_mannequin.boxing_mannequin_task_config import (
     BoxingMannequinTaskConfig,
 )
@@ -44,7 +47,7 @@ class ScriptedMannequinPolicy:
 
     def _sample_steps(self, low_s: float, high_s: float) -> int:
         return max(
-            1, int(round(self._rng.uniform(low_s, high_s) / self._config.ctrl_dt))
+            1, int(round(self._rng.uniform(low_s, high_s) / self._config.cfg.ctrl_dt))
         )
 
     def _yaw_to_face_target(self) -> float:
@@ -61,15 +64,16 @@ class ScriptedMannequinPolicy:
         zone = "head_zone" if self._state.target_head else "body_zone"
         target = data.site_xpos[meta.site_ids["agent_0"][zone]].copy()
         target[0] += self._rng.uniform(
-            -self._config.attack_target_noise_xy_m,
-            self._config.attack_target_noise_xy_m,
+            -self._config.cfg.attack_target_noise_xy_m,
+            self._config.cfg.attack_target_noise_xy_m,
         )
         target[1] += self._rng.uniform(
-            -self._config.attack_target_noise_xy_m,
-            self._config.attack_target_noise_xy_m,
+            -self._config.cfg.attack_target_noise_xy_m,
+            self._config.cfg.attack_target_noise_xy_m,
         )
         target[2] += self._rng.uniform(
-            -self._config.attack_target_noise_z_m, self._config.attack_target_noise_z_m
+            -self._config.cfg.attack_target_noise_z_m,
+            self._config.cfg.attack_target_noise_z_m,
         )
         return target
 
@@ -81,12 +85,12 @@ class ScriptedMannequinPolicy:
                 self._state.use_right = bool(self._rng.integers(0, 2))
                 self._state.target_head = bool(self._rng.integers(0, 2))
                 self._state.steps_left = self._sample_steps(
-                    self._config.attack_duration_sec_min,
-                    self._config.attack_duration_sec_max,
+                    self._config.cfg.attack_duration_sec_min,
+                    self._config.cfg.attack_duration_sec_max,
                 )
                 self._cooldown_steps = self._sample_steps(
-                    self._config.attack_interval_sec_min,
-                    self._config.attack_interval_sec_max,
+                    self._config.cfg.attack_interval_sec_min,
+                    self._config.cfg.attack_interval_sec_max,
                 )
 
         action = np.zeros(self._env.action_space["agent_1"].shape[0], dtype=np.float32)
@@ -124,16 +128,16 @@ class ScriptedMannequinPolicy:
             action[3:6] = np.array(
                 [
                     1.0,
-                    self._config.mannequin_guard_y / 0.55,
-                    self._config.mannequin_guard_z / 0.45,
+                    self._config.cfg.mannequin_guard_y / 0.55,
+                    self._config.cfg.mannequin_guard_z / 0.45,
                 ],
                 dtype=np.float32,
             )
             action[6:9] = np.array(
                 [
                     0.0,
-                    self._config.mannequin_guard_y / 0.55,
-                    self._config.mannequin_guard_z / 0.45,
+                    self._config.cfg.mannequin_guard_y / 0.55,
+                    self._config.cfg.mannequin_guard_z / 0.45,
                 ],
                 dtype=np.float32,
             )
@@ -158,7 +162,9 @@ def make_boxing_mannequin_env(
 
 def make_boxing_6targets(render_mode: str | None = None) -> gym.Env:
     """Create six-target pad env (registered as ``myoChallengeBoxingP0-v0``)."""
-    cfg = BoxingMannequinTaskConfig(include_boxing_targets_scene=True)
+    cfg = BoxingMannequinTaskConfig(
+        cfg=BoxingMannequinConfig(include_boxing_targets_scene=True)
+    )
     base = ModularMultiAgentTaskEnv(cfg, render_mode=render_mode)
 
     def static_opponent_policy(_obs: np.ndarray) -> np.ndarray:

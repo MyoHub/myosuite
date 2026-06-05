@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -29,50 +29,25 @@ from myosuite.integrations.musclemimic.fullbody_model import (
 )
 from myosuite.integrations.musclemimic.trajectory_io import load_motion_clip
 
-_DEFAULT_CFG = BoxingMannequinConfig()
 # pylint: disable=no-member
 
 
 @dataclass
 class BoxingMannequinTaskConfig(MultiAgentTaskConfig):
-    """Multi-agent task config where agent_1 is a scripted mannequin."""
+    """Multi-agent task config where agent_1 is a scripted mannequin.
 
-    max_episode_steps: int = _DEFAULT_CFG.max_episode_steps
-    ctrl_dt: float = _DEFAULT_CFG.ctrl_dt
-    sim_dt: float = _DEFAULT_CFG.sim_dt
-    agent_separation_m: float = _DEFAULT_CFG.agent_separation_m
-    disable_fingers: bool = _DEFAULT_CFG.disable_fingers
+    The low-level hyperparameters are stored in the embedded ``cfg`` field.
+    Pass a customised :class:`BoxingMannequinConfig` to override them:
 
-    hit_threshold_head_m: float = _DEFAULT_CFG.hit_threshold_head_m
-    hit_threshold_body_m: float = _DEFAULT_CFG.hit_threshold_body_m
-    hit_threshold_waist_m: float = _DEFAULT_CFG.hit_threshold_waist_m
-    w_head: float = _DEFAULT_CFG.w_head
-    w_body: float = _DEFAULT_CFG.w_body
-    w_waist: float = _DEFAULT_CFG.w_waist
+    .. code-block:: python
 
-    ko_health_threshold: float = _DEFAULT_CFG.ko_health_threshold
-    fall_pelvis_z_threshold: float = _DEFAULT_CFG.fall_pelvis_z_threshold
+        BoxingMannequinTaskConfig(
+            cfg=BoxingMannequinConfig(include_boxing_targets_scene=True)
+        )
+    """
 
-    r_damage_delivered: float = _DEFAULT_CFG.r_damage_delivered
-    r_damage_received: float = _DEFAULT_CFG.r_damage_received
-    r_ko_bonus: float = _DEFAULT_CFG.r_ko_bonus
-    r_fall_bonus: float = _DEFAULT_CFG.r_fall_bonus
-    r_self_fall_penalty: float = _DEFAULT_CFG.r_self_fall_penalty
-    r_survival_per_step: float = _DEFAULT_CFG.r_survival_per_step
-    r_act_reg: float = _DEFAULT_CFG.r_act_reg
+    cfg: BoxingMannequinConfig = field(default_factory=BoxingMannequinConfig)
 
-    mannequin_guard_y: float = _DEFAULT_CFG.mannequin_guard_y
-    mannequin_guard_z: float = _DEFAULT_CFG.mannequin_guard_z
-    attack_interval_sec_min: float = _DEFAULT_CFG.attack_interval_sec_min
-    attack_interval_sec_max: float = _DEFAULT_CFG.attack_interval_sec_max
-    attack_duration_sec_min: float = _DEFAULT_CFG.attack_duration_sec_min
-    attack_duration_sec_max: float = _DEFAULT_CFG.attack_duration_sec_max
-    attack_target_noise_xy_m: float = _DEFAULT_CFG.attack_target_noise_xy_m
-    attack_target_noise_z_m: float = _DEFAULT_CFG.attack_target_noise_z_m
-    target_hit_normal_force_threshold_n: float = (
-        _DEFAULT_CFG.target_hit_normal_force_threshold_n
-    )
-    include_boxing_targets_scene: bool = _DEFAULT_CFG.include_boxing_targets_scene
     append_fullbody_obs: bool = False
     fullbody_motion_path: str = (
         "Boxing/motions/Transitions_mocap/mazen_c3d/punchboxing_push_poses.npz"
@@ -98,11 +73,7 @@ class BoxingMannequinTaskConfig(MultiAgentTaskConfig):
     _last_step_count: int = field(init=False, default=-1, repr=False)
 
     def _low_level_config(self) -> BoxingMannequinConfig:
-        cfg_kwargs = {
-            field.name: getattr(self, field.name)
-            for field in fields(BoxingMannequinConfig)
-        }
-        return BoxingMannequinConfig(**cfg_kwargs)
+        return self.cfg
 
     def build_model(self) -> tuple[mujoco.MjModel, mujoco.MjData, Any]:
         from myosuite.envs.myo.tasks.challenge.boxing_mannequin.boxing_mannequin_model import (
@@ -120,15 +91,15 @@ class BoxingMannequinTaskConfig(MultiAgentTaskConfig):
 
     @property
     def n_substeps(self) -> int:
-        return max(1, round(self.ctrl_dt / self.sim_dt))
+        return max(1, round(self.cfg.ctrl_dt / self.cfg.sim_dt))
 
     def _ensure_fullbody_bridge(self, model: mujoco.MjModel, meta: Any) -> None:
         if not self.append_fullbody_obs:
             return
         if self._fullbody_model is None:
             cfg = default_mimic_fullbody_config()
-            cfg.disable_fingers = self.disable_fingers
-            cfg.sim_dt = self.sim_dt
+            cfg.disable_fingers = self.cfg.disable_fingers
+            cfg.sim_dt = self.cfg.sim_dt
             fb_model, _fb_spec, _fb_xml = compile_mimic_fullbody_mjmodel(cfg)
             self._fullbody_model = fb_model
             self._fullbody_data = mujoco.MjData(fb_model)
@@ -174,7 +145,7 @@ class BoxingMannequinTaskConfig(MultiAgentTaskConfig):
             self._fullbody_data.act[:] = data.act[meta.act_indices["agent_0"]]
         self._fullbody_data.ctrl[:] = data.ctrl[meta.act_indices["agent_0"]]
         mujoco.mj_forward(self._fullbody_model, self._fullbody_data)
-        frame_idx = int(round(float(data.time) / float(self.ctrl_dt)))
+        frame_idx = int(round(float(data.time) / float(self.cfg.ctrl_dt)))
         frame_idx = frame_idx % max(1, int(self._fullbody_clip.qpos.shape[0]))
         return self._fullbody_adapter.build(self._fullbody_data, frame_idx)
 
@@ -187,8 +158,8 @@ class BoxingMannequinTaskConfig(MultiAgentTaskConfig):
             meta,
             agent_id,
             {a: 0.0 for a in self.agents},
-            self.ko_health_threshold,
-            self.target_hit_normal_force_threshold_n,
+            self.cfg.ko_health_threshold,
+            self.cfg.target_hit_normal_force_threshold_n,
         )
         if self.append_fullbody_obs and agent_id == "agent_0":
             self._ensure_fullbody_bridge(model, meta)
@@ -211,8 +182,8 @@ class BoxingMannequinTaskConfig(MultiAgentTaskConfig):
             meta,
             agent_id,
             health,
-            self.ko_health_threshold,
-            self.target_hit_normal_force_threshold_n,
+            self.cfg.ko_health_threshold,
+            self.cfg.target_hit_normal_force_threshold_n,
         )
         if self.append_fullbody_obs and agent_id == "agent_0":
             self._ensure_fullbody_bridge(model, meta)
@@ -227,14 +198,14 @@ class BoxingMannequinTaskConfig(MultiAgentTaskConfig):
         )
 
         cfg = self._low_level_config()
-        if self.include_boxing_targets_scene:
+        if self.cfg.include_boxing_targets_scene:
             return {
                 "agent_0": compute_pad_damage(
                     model,
                     data,
                     meta,
                     "agent_0",
-                    hit_force_threshold_n=self.target_hit_normal_force_threshold_n,
+                    hit_force_threshold_n=self.cfg.target_hit_normal_force_threshold_n,
                 ),
                 "agent_1": 0.0,
             }
@@ -250,11 +221,11 @@ class BoxingMannequinTaskConfig(MultiAgentTaskConfig):
 
     @property
     def ko_threshold(self) -> float:
-        return self.ko_health_threshold
+        return self.cfg.ko_health_threshold
 
     @property
     def health_update_scale(self) -> float:
-        return self.ctrl_dt
+        return self.cfg.ctrl_dt
 
     def compute_reward(
         self,
@@ -267,6 +238,8 @@ class BoxingMannequinTaskConfig(MultiAgentTaskConfig):
         fell: dict[str, bool],
         ko: dict[str, bool],
     ) -> float:
+        from dataclasses import replace
+
         from myosuite.terms.multiplayer.boxing_mannequin_reward import (
             compute_agent_reward,
         )
@@ -275,7 +248,7 @@ class BoxingMannequinTaskConfig(MultiAgentTaskConfig):
         opp = self.opponent_id(agent_id)
         if agent_id == "agent_1":
             return 0.0
-        if self.include_boxing_targets_scene:
+        if self.cfg.include_boxing_targets_scene:
             # P0 is a static-pad objective, so KO/fall terms are disabled.
             cfg = replace(
                 cfg,
@@ -305,7 +278,7 @@ class BoxingMannequinTaskConfig(MultiAgentTaskConfig):
         step_count: int,
     ) -> dict[str, Any]:
         info = self.default_step_info(health, damage_delivered, fell, ko, step_count)
-        if not self.include_boxing_targets_scene:
+        if not self.cfg.include_boxing_targets_scene:
             return info
 
         if step_count <= self._last_step_count:

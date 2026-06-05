@@ -51,10 +51,6 @@ _RIGHT_SABER_ENTITY_NAME = "right_saber"
 _TARGET_ENTITY_PREFIX = "saber_target_entity_"
 
 
-def _wp_tensor(array: Any, device: str) -> torch.Tensor:
-    return torch.as_tensor(array, device=device)
-
-
 def _get_saber_entity(env: Any) -> Entity:
     return env.scene[_SABER_ENTITY_NAME]
 
@@ -570,17 +566,19 @@ class SaberTaskLogicState(ManagerTermBase):
         obstacle_mask = torch.zeros((n, p), device=self.env.device, dtype=torch.bool)
 
         nacon = int(
-            _wp_tensor(self.env.sim.wp_data.nacon, self.env.device).sum().item()
+            torch.as_tensor(self.env.sim.wp_data.nacon, device=self.env.device)
+            .sum()
+            .item()
         )
         if nacon <= 0:
             return miss_mask, obstacle_mask
 
         # contact.geom is vec2i → (naconmax, 2), contact.worldid → (naconmax,)
-        contact_geom = _wp_tensor(self.env.sim.wp_data.contact.geom, self.env.device)[
-            :nacon
-        ]  # (nacon, 2)
-        contact_world = _wp_tensor(
-            self.env.sim.wp_data.contact.worldid, self.env.device
+        contact_geom = torch.as_tensor(
+            self.env.sim.wp_data.contact.geom, device=self.env.device
+        )[:nacon]  # (nacon, 2)
+        contact_world = torch.as_tensor(
+            self.env.sim.wp_data.contact.worldid, device=self.env.device
         )[:nacon]  # (nacon,)
 
         g1 = contact_geom[:, 0]  # (nacon,)
@@ -975,12 +973,14 @@ class SaberTaskLogicState(ManagerTermBase):
         current_step = int(self.env.common_step_counter)
         if self.last_synced_common_step == current_step:
             return
-        site_xpos = _wp_tensor(self.env.sim.wp_data.site_xpos, self.env.device)
+        site_xpos = torch.as_tensor(
+            self.env.sim.wp_data.site_xpos, device=self.env.device
+        )
         env_origins = _env_origins_tensor(self.env, site_xpos.dtype).unsqueeze(1)
         target_pos = self.target_pos
         left_tip = site_xpos[:, self.left_tip_site_id, :].unsqueeze(1) - env_origins
         right_tip = site_xpos[:, self.right_tip_site_id, :].unsqueeze(1) - env_origins
-        body_xpos = _wp_tensor(self.env.sim.wp_data.xpos, self.env.device)
+        body_xpos = torch.as_tensor(self.env.sim.wp_data.xpos, device=self.env.device)
         left_base = body_xpos[:, self.left_saber_body_id, :].unsqueeze(1) - env_origins
         right_base = (
             body_xpos[:, self.right_saber_body_id, :].unsqueeze(1) - env_origins
@@ -1453,15 +1453,15 @@ class SaberMjlabEnvAccessor(MjlabEnvAccessor):
         return _saber_combined_qvel_state(self._env)
 
     def muscle_act(self) -> torch.Tensor:
-        return _wp_tensor(self._env.sim.wp_data.act, self._env.device)
+        return torch.as_tensor(self._env.sim.wp_data.act, device=self._env.device)
 
     def site_xpos(self, site_ids: Any) -> torch.Tensor:
-        return _wp_tensor(self._env.sim.wp_data.site_xpos, self._env.device)[
-            :, site_ids, :
-        ]
+        return torch.as_tensor(
+            self._env.sim.wp_data.site_xpos, device=self._env.device
+        )[:, site_ids, :]
 
     def time(self) -> torch.Tensor:
-        return _wp_tensor(self._env.sim.wp_data.time, self._env.device)
+        return torch.as_tensor(self._env.sim.wp_data.time, device=self._env.device)
 
 
 def _as_saber_accessor(env: Any) -> SaberMjlabEnvAccessor:
