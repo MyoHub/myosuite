@@ -23,8 +23,12 @@ from scipy.spatial.transform import Rotation as R
 
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.envs.myo.tasks.challenge.boxing_specs import replace_hand_visuals_with_gloves, add_helmet, \
-    replace_floor_visual_with_boxing_ring, build_targets_spec
+from myosuite.envs.myo.tasks.challenge.boxing_specs import (
+    replace_hand_visuals_with_gloves,
+    add_helmet,
+    replace_floor_visual_with_boxing_ring,
+    build_targets_spec,
+)
 from myosuite.integrations.musclemimic import build_mimic_fullbody_spec
 from myosuite.physics.quat_math import euler2quat
 
@@ -35,11 +39,12 @@ BOXING_CONFIG_P0 = config_dict.create(
     wait_time_range=(3, 3),
     qpos_noise_range=(0, 0),
     valid_targets=(0,),
-    timeout=10.,
+    timeout=10.0,
     n_hits=3,
-    guard_distance = 0.4,
-    sandbox_mode=False
+    guard_distance=0.4,
+    sandbox_mode=False,
 )
+
 
 class BoxingEnv(MyoGymnasiumEnv, EzPickle):
     """Classic MyoSuite-style definition of the boxing env. Will be used for evaluation."""
@@ -50,7 +55,7 @@ class BoxingEnv(MyoGymnasiumEnv, EzPickle):
         "act",
         "target_pos",
         "target_normal",
-        "box_state"
+        "box_state",
     ]
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "sparse": 100,
@@ -69,8 +74,9 @@ class BoxingEnv(MyoGymnasiumEnv, EzPickle):
         MyoGymnasiumEnv.__init__(self, **kwargs)
         EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
 
-        fullbody_spec = build_mimic_fullbody_spec(config=config_dict.create(disable_fingers=True,
-                                                                            model_path=model_path))[0]
+        fullbody_spec = build_mimic_fullbody_spec(
+            config=config_dict.create(disable_fingers=True, model_path=model_path)
+        )[0]
 
         self._mj_spec = self._preprocess_spec(fullbody_spec)
         self.model = self._mj_spec.compile()
@@ -89,9 +95,15 @@ class BoxingEnv(MyoGymnasiumEnv, EzPickle):
         self._init_qpos = self.model.key_qpos[1].copy()
         self._init_qvel = self.model.key_qvel[1].copy()
 
-        self.state_info = {"time_left": 0., "cur_state": BoxingTaskState.GUARD, "n_hits_successful": 0,
-                           "cur_target": self.config.valid_targets[0], "hit_successful": False, "cur_impact": 0.0,
-                           "fail_state": BoxingFailState.NONE}
+        self.state_info = {
+            "time_left": 0.0,
+            "cur_state": BoxingTaskState.GUARD,
+            "n_hits_successful": 0,
+            "cur_target": self.config.valid_targets[0],
+            "hit_successful": False,
+            "cur_impact": 0.0,
+            "fail_state": BoxingFailState.NONE,
+        }
         self.metrics = {"average_impact": 0, "n_hits_successful": 0}
         self.pad_ids = [self.model.body(f"pad_{i}").id for i in range(5)]
         self.pad_gids = [self.model.geom(f"pad_{i}_geom").id for i in range(5)]
@@ -104,10 +116,8 @@ class BoxingEnv(MyoGymnasiumEnv, EzPickle):
             10.0 * np.ones(obs.size, dtype=np.float32),
             dtype=np.float32,
         )
-        act_low = (self.model.actuator_ctrlrange[:, 0].astype(np.float32)
-        )
-        act_high = (self.model.actuator_ctrlrange[:, 1].astype(np.float32)
-        )
+        act_low = self.model.actuator_ctrlrange[:, 0].astype(np.float32)
+        act_high = self.model.actuator_ctrlrange[:, 1].astype(np.float32)
         self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
 
     def _obs_dict_to_vec(self, obs_dict: dict[str, np.ndarray]) -> np.ndarray:
@@ -119,23 +129,31 @@ class BoxingEnv(MyoGymnasiumEnv, EzPickle):
         sensor_id = self.model.sensor(name).id
         start = self.model.sensor_adr[sensor_id]
         dim = self.model.sensor_dim[sensor_id]
-        return self.data.sensordata[start: start + dim]
+        return self.data.sensordata[start : start + dim]
 
     def _get_obs_dict(self, accessor: CpuEnvAccessor) -> dict[str, np.ndarray]:
         obs_dict: dict[str, np.ndarray] = {}
         obs_dict["time"] = np.array([accessor.data.time])
-        obs_dict["pelvis_pos"] = accessor.data.site_xpos[accessor.model.site("pelvis").id]
+        obs_dict["pelvis_pos"] = accessor.data.site_xpos[
+            accessor.model.site("pelvis").id
+        ]
         obs_dict["body_qpos"] = accessor.data.qpos.copy()
         obs_dict["body_qvel"] = accessor.data.qvel.copy()
         obs_dict["act"] = accessor.data.act.copy()
-        obs_dict["target_pos"] = accessor.data.xpos[self.pad_ids[self.state_info["cur_target"]]]
-        obs_dict["target_normal"] = accessor.data.xmat[self.pad_ids[self.state_info["cur_target"]]][2::3]
+        obs_dict["target_pos"] = accessor.data.xpos[
+            self.pad_ids[self.state_info["cur_target"]]
+        ]
+        obs_dict["target_normal"] = accessor.data.xmat[
+            self.pad_ids[self.state_info["cur_target"]]
+        ][2::3]
         obs_dict["box_state"] = np.array([int(self.state_info["cur_state"])])
         return obs_dict
 
     def _get_done(self):
-        return ((self.state_info["time_left"]<0 and self.state_info["cur_state"]==BoxingTaskState.PUNCH)
-                 or self.state_info["fail_state"] != BoxingFailState.NONE)
+        return (
+            self.state_info["time_left"] < 0
+            and self.state_info["cur_state"] == BoxingTaskState.PUNCH
+        ) or self.state_info["fail_state"] != BoxingFailState.NONE
 
     def _increment_task_state(self):
         self.state_info["time_left"] -= self._ctrl_dt
@@ -143,9 +161,14 @@ class BoxingEnv(MyoGymnasiumEnv, EzPickle):
         punch_force = self._get_target_force()
         contact_with_target = punch_force > 0.01
 
-        if self.state_info["cur_state"] == BoxingTaskState.PUNCH and contact_with_target:
+        if (
+            self.state_info["cur_state"] == BoxingTaskState.PUNCH
+            and contact_with_target
+        ):
             self.state_info["cur_state"] = BoxingTaskState.GUARD
-            self.state_info["time_left"] = np.random.uniform(*self.config.wait_time_range)
+            self.state_info["time_left"] = np.random.uniform(
+                *self.config.wait_time_range
+            )
             self.state_info["n_hits_successful"] += 1
             self.metrics["n_hits_successful"] += 1
             self.state_info["hit_successful"] = True
@@ -153,28 +176,39 @@ class BoxingEnv(MyoGymnasiumEnv, EzPickle):
 
         if self.state_info["cur_state"] == BoxingTaskState.GUARD:
             if self.state_info["time_left"] < 0:
-                self.state_info["fail_state"] = (BoxingFailState.NONE
-                                                 if self._hands_within_guard_distance() else BoxingFailState.NO_GUARD)
+                self.state_info["fail_state"] = (
+                    BoxingFailState.NONE
+                    if self._hands_within_guard_distance()
+                    else BoxingFailState.NO_GUARD
+                )
                 self.state_info["cur_state"] = BoxingTaskState.PUNCH
-                self.state_info["cur_target"] = np.random.choice(self.config.valid_targets)
+                self.state_info["cur_target"] = np.random.choice(
+                    self.config.valid_targets
+                )
                 self.state_info["time_left"] = self.config.timeout
                 self._highlight_target()
-            if not contact_with_target and self.state_info["cur_impact"]>0.0:
-                self.metrics["average_impact"] = (self.metrics["average_impact"]
-                                                   + (self.state_info["cur_impact"]
-                                                      -self.metrics["average_impact"])
-                                                   / self.state_info["n_hits_successful"])
+            if not contact_with_target and self.state_info["cur_impact"] > 0.0:
+                self.metrics["average_impact"] = (
+                    self.metrics["average_impact"]
+                    + (self.state_info["cur_impact"] - self.metrics["average_impact"])
+                    / self.state_info["n_hits_successful"]
+                )
             if contact_with_target:
                 self.state_info["cur_impact"] += punch_force * self._ctrl_dt
 
-
     def _get_target_force(self):
-        return self.get_sensor_by_name(f"punch_sensor_pad_{self.state_info['cur_target']}")[0]
+        return self.get_sensor_by_name(
+            f"punch_sensor_pad_{self.state_info['cur_target']}"
+        )[0]
 
     def _hands_within_guard_distance(self):
-        dl = np.linalg.norm(self.data.body("boxing_glove_body_l").xpos-self.data.body("head").xpos)
-        dr = np.linalg.norm(self.data.body("boxing_glove_body_r").xpos-self.data.body("head").xpos)
-        return dl<self.config.guard_distance and dr<self.config.guard_distance
+        dl = np.linalg.norm(
+            self.data.body("boxing_glove_body_l").xpos - self.data.body("head").xpos
+        )
+        dr = np.linalg.norm(
+            self.data.body("boxing_glove_body_r").xpos - self.data.body("head").xpos
+        )
+        return dl < self.config.guard_distance and dr < self.config.guard_distance
 
     def _highlight_target(self):
         passive_color = [32 / 256, 138 / 256, 160 / 256, 1.0]
@@ -187,7 +221,9 @@ class BoxingEnv(MyoGymnasiumEnv, EzPickle):
         valid_targets.remove(self.state_info["cur_target"])
         for t in valid_targets:
             self.model.geom(self.pad_gids[t]).rgba = passive_color
-        self.model.geom(self.pad_gids[self.state_info["cur_target"]]).rgba = highlighted_color
+        self.model.geom(
+            self.pad_gids[self.state_info["cur_target"]]
+        ).rgba = highlighted_color
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         act_mag = (
@@ -220,14 +256,23 @@ class BoxingEnv(MyoGymnasiumEnv, EzPickle):
         self._init_qpos[:] = self.model.key_qpos[1].copy()
         self.data.mocap_pos[0][:] = 0
         if self.config.reset_pos_range:
-            self.data.mocap_pos[0] = [np.random.uniform(*self.config.reset_pos_range[i]) for i in range(3)]
+            self.data.mocap_pos[0] = [
+                np.random.uniform(*self.config.reset_pos_range[i]) for i in range(3)
+            ]
         if self.config.reset_rot_range:
-            self.data.mocap_quat[0] = euler2quat([0, 0, np.random.uniform(*self.config.reset_rot_range)])
+            self.data.mocap_quat[0] = euler2quat(
+                [0, 0, np.random.uniform(*self.config.reset_rot_range)]
+            )
 
-        self.state_info = {"time_left": np.random.uniform(*self.config.wait_time_range),
-                           "cur_state": BoxingTaskState.GUARD, "n_hits_successful": 0,
-                           "cur_target": np.random.choice(self.config.valid_targets), "hit_successful": False,
-                           "cur_impact": 0.0, "fail_state": BoxingFailState.NONE}
+        self.state_info = {
+            "time_left": np.random.uniform(*self.config.wait_time_range),
+            "cur_state": BoxingTaskState.GUARD,
+            "n_hits_successful": 0,
+            "cur_target": np.random.choice(self.config.valid_targets),
+            "hit_successful": False,
+            "cur_impact": 0.0,
+            "fail_state": BoxingFailState.NONE,
+        }
         self.metrics = {"average_impact": 0, "n_hits_successful": 0}
         if self.config.qpos_noise_range is not None:
             joint_ranges = self.model.jnt_range[:, 1] - self.model.jnt_range[:, 0]
@@ -257,7 +302,7 @@ class BoxingEnv(MyoGymnasiumEnv, EzPickle):
 
     def step(self, action: np.ndarray, **kwargs: Any):
         self._increment_task_state()
-        return super(BoxingEnv, self).step(action, **kwargs)
+        return super().step(action, **kwargs)
 
     def _preprocess_spec(self, spec):
         spec = replace_hand_visuals_with_gloves(spec)
@@ -289,18 +334,57 @@ class BoxingEnv(MyoGymnasiumEnv, EzPickle):
             _data = mujoco.MjData(_model)
             mujoco.mj_forward(_model, _data)
             spec.worldbody.add_body(name="h_p", pos=_data.body("head").xpos)
-            spec.add_equality(name="eq1", type=mujoco.mjtEq.mjEQ_WELD, name1="head", name2="h_p",
-                              objtype=mjtObj.mjOBJ_BODY, solimp=[0.99, 0.99, 0.00001, 0.5, 2], solref=[0.02, 1])
-            b = spec.worldbody.add_body(name="g_p1", pos=_data.body("boxing_glove_body_l").xpos,
-                                        quat=_data.body("boxing_glove_body_l").xquat, mocap=True)
-            b.add_geom(type=mujoco.mjtGeom.mjGEOM_SPHERE, rgba=(1, 1, 1, 0.2), size=0.05, contype=0, conaffinity=0)
-            spec.add_equality(name="eq2", type=mujoco.mjtEq.mjEQ_CONNECT, name1="g_p1", name2="boxing_glove_body_l",
-                              data=[0]*11, objtype=mjtObj.mjOBJ_BODY)
-            b = spec.worldbody.add_body(name="g_p2", pos=_data.body("boxing_glove_body_r").xpos,
-                                        quat=_data.body("boxing_glove_body_r").xquat, mocap=True)
-            b.add_geom(type=mujoco.mjtGeom.mjGEOM_SPHERE, rgba=(1, 1, 1, 0.2), size=0.05, contype=0, conaffinity=0)
-            spec.add_equality(name="eq3", type=mujoco.mjtEq.mjEQ_CONNECT, name1="g_p2", name2="boxing_glove_body_r",
-                              data=[0] * 11, objtype=mjtObj.mjOBJ_BODY)
+            spec.add_equality(
+                name="eq1",
+                type=mujoco.mjtEq.mjEQ_WELD,
+                name1="head",
+                name2="h_p",
+                objtype=mjtObj.mjOBJ_BODY,
+                solimp=[0.99, 0.99, 0.00001, 0.5, 2],
+                solref=[0.02, 1],
+            )
+            b = spec.worldbody.add_body(
+                name="g_p1",
+                pos=_data.body("boxing_glove_body_l").xpos,
+                quat=_data.body("boxing_glove_body_l").xquat,
+                mocap=True,
+            )
+            b.add_geom(
+                type=mujoco.mjtGeom.mjGEOM_SPHERE,
+                rgba=(1, 1, 1, 0.2),
+                size=0.05,
+                contype=0,
+                conaffinity=0,
+            )
+            spec.add_equality(
+                name="eq2",
+                type=mujoco.mjtEq.mjEQ_CONNECT,
+                name1="g_p1",
+                name2="boxing_glove_body_l",
+                data=[0] * 11,
+                objtype=mjtObj.mjOBJ_BODY,
+            )
+            b = spec.worldbody.add_body(
+                name="g_p2",
+                pos=_data.body("boxing_glove_body_r").xpos,
+                quat=_data.body("boxing_glove_body_r").xquat,
+                mocap=True,
+            )
+            b.add_geom(
+                type=mujoco.mjtGeom.mjGEOM_SPHERE,
+                rgba=(1, 1, 1, 0.2),
+                size=0.05,
+                contype=0,
+                conaffinity=0,
+            )
+            spec.add_equality(
+                name="eq3",
+                type=mujoco.mjtEq.mjEQ_CONNECT,
+                name1="g_p2",
+                name2="boxing_glove_body_r",
+                data=[0] * 11,
+                objtype=mjtObj.mjOBJ_BODY,
+            )
         return spec
 
 
@@ -308,10 +392,12 @@ class BoxingTaskState(enum.IntEnum):
     GUARD = 0
     PUNCH = 1
 
+
 class BoxingFailState(enum.IntEnum):
     NONE = 0
     NO_GUARD = 1
     WRONG_TARGET = 2
+
 
 def _visu_main():
     config = BOXING_CONFIG_P0
@@ -322,34 +408,57 @@ def _visu_main():
     from loop_rate_limiters import rate_limiter
 
     action = np.zeros_like(env.action_space)
-    limiter = rate_limiter.RateLimiter(frequency=1/env._ctrl_dt)
+    limiter = rate_limiter.RateLimiter(frequency=1 / env._ctrl_dt)
     env.reset()
     with viewer.launch_passive(env.model, env.data) as v:
         while v.is_running():
             obs, reward, terminated, truncated, info = env.step(action)
-            v.set_texts([(mujoco.mjtFontScale.mjFONTSCALE_150, mujoco.mjtGridPos.mjGRID_TOPLEFT,
-                          "\n\nAverage impact:",
-                          f"\n\n{env.metrics['average_impact']}",),
-                         (mujoco.mjtFontScale.mjFONTSCALE_150, mujoco.mjtGridPos.mjGRID_TOPLEFT,
-                          "Hits:",
-                          f"{env.metrics['n_hits_successful']}"),(mujoco.mjtFontScale.mjFONTSCALE_150, mujoco.mjtGridPos.mjGRID_TOPLEFT,
-                          "\nTask state:",
-                          "\nGuard" if env.state_info["cur_state"]==BoxingTaskState.GUARD else "\nPunch",),
-                         (mujoco.mjtFontScale.mjFONTSCALE_150, mujoco.mjtGridPos.mjGRID_TOPLEFT,
-                          "Hits:",
-                          f"{env.metrics['n_hits_successful']}"),
-                         (mujoco.mjtFontScale.mjFONTSCALE_150, mujoco.mjtGridPos.mjGRID_TOPRIGHT,
-                          "\nDone:",
-                          f"\n{terminated}, {truncated}",),
-                         (mujoco.mjtFontScale.mjFONTSCALE_150, mujoco.mjtGridPos.mjGRID_TOPRIGHT,
-                          "Time left:",
-                          f"{env.state_info['time_left']:0.2f}",),
-                         ])
+            v.set_texts(
+                [
+                    (
+                        mujoco.mjtFontScale.mjFONTSCALE_150,
+                        mujoco.mjtGridPos.mjGRID_TOPLEFT,
+                        "\n\nAverage impact:",
+                        f"\n\n{env.metrics['average_impact']}",
+                    ),
+                    (
+                        mujoco.mjtFontScale.mjFONTSCALE_150,
+                        mujoco.mjtGridPos.mjGRID_TOPLEFT,
+                        "Hits:",
+                        f"{env.metrics['n_hits_successful']}",
+                    ),
+                    (
+                        mujoco.mjtFontScale.mjFONTSCALE_150,
+                        mujoco.mjtGridPos.mjGRID_TOPLEFT,
+                        "\nTask state:",
+                        "\nGuard"
+                        if env.state_info["cur_state"] == BoxingTaskState.GUARD
+                        else "\nPunch",
+                    ),
+                    (
+                        mujoco.mjtFontScale.mjFONTSCALE_150,
+                        mujoco.mjtGridPos.mjGRID_TOPLEFT,
+                        "Hits:",
+                        f"{env.metrics['n_hits_successful']}",
+                    ),
+                    (
+                        mujoco.mjtFontScale.mjFONTSCALE_150,
+                        mujoco.mjtGridPos.mjGRID_TOPRIGHT,
+                        "\nDone:",
+                        f"\n{terminated}, {truncated}",
+                    ),
+                    (
+                        mujoco.mjtFontScale.mjFONTSCALE_150,
+                        mujoco.mjtGridPos.mjGRID_TOPRIGHT,
+                        "Time left:",
+                        f"{env.state_info['time_left']:0.2f}",
+                    ),
+                ]
+            )
             if terminated:
                 env.reset()
             v.sync()
             limiter.sleep()
-
 
     pass
 

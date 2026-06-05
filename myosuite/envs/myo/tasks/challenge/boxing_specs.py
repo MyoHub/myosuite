@@ -169,16 +169,19 @@ def replace_hand_visuals_with_gloves(
     glove_mat.specular = 0.15
     glove_mat.shininess = 0.35
 
-    for geom in [g for g in spec.geoms if any(token in g.name for token in HAND_GEOM_TOKENS)]:
+    for geom in [
+        g for g in spec.geoms if any(token in g.name for token in HAND_GEOM_TOKENS)
+    ]:
         if not delete_hand:
             geom.rgba = [0.0, 0.0, 0.0, 0.0]
         else:
             if geom.meshname:
-                paired_mesh = next((m for m in spec.meshes if geom.meshname == m.name), None)
+                paired_mesh = next(
+                    (m for m in spec.meshes if geom.meshname == m.name), None
+                )
                 if paired_mesh is not None:
                     spec.delete(paired_mesh)
             spec.delete(geom)
-
 
     right_quat = quat_from_euler_xyz_deg(euler_deg)
     if left_euler_deg is None:
@@ -186,9 +189,11 @@ def replace_hand_visuals_with_gloves(
     left_quat = quat_from_euler_xyz_deg(left_euler_deg)
     for side in ("r", "l"):
         side_pos = [pos[0], pos[1], pos[2] if side == "r" else -pos[2]]
-        glove_body = spec.body(f"lunate_{side}").add_body(name=f"boxing_glove_body_{side}",
-                                                          pos=side_pos,
-                                                          quat=right_quat if side == "r" else left_quat,)
+        glove_body = spec.body(f"lunate_{side}").add_body(
+            name=f"boxing_glove_body_{side}",
+            pos=side_pos,
+            quat=right_quat if side == "r" else left_quat,
+        )
         glove = glove_body.add_geom(
             name=f"boxing_glove_{side}",
             type=mujoco.mjtGeom.mjGEOM_MESH,
@@ -196,18 +201,18 @@ def replace_hand_visuals_with_gloves(
             contype=0,
             conaffinity=0,
             density=0,
-            mass=0
+            mass=0,
         )
-        collider_geom =glove_body.add_geom(
+        glove_body.add_geom(
             name=f"boxing_glove_coll_{side}",
             type=mujoco.mjtGeom.mjGEOM_CYLINDER,
-            pos=[-0.034*scale, 0.9*scale, 0.0],
+            pos=[-0.034 * scale, 0.9 * scale, 0.0],
             group=4,
             size=[scale, scale, 0],
             mass=0.3,
             conaffinity=3,
             contype=3,
-            quat=quat_from_euler_xyz_deg([0, 90, 0])
+            quat=quat_from_euler_xyz_deg([0, 90, 0]),
         )
         glove.meshname = "boxing_glove_mesh_r" if side == "r" else "boxing_glove_mesh_l"
         glove.material = "boxing_glove_mat"
@@ -277,10 +282,10 @@ def replace_floor_visual_with_boxing_ring(spec: mujoco.MjSpec) -> None:
 
     texture_ring = spec.add_texture()
     spec.compiler.texturedir = str(_ASSETS)
-    texture_ring.name = f"ring_tex"
+    texture_ring.name = "ring_tex"
     texture_ring.type = mujoco.mjtTexture.mjTEXTURE_2D
     texture_ring.file = "ring.png"
-    ring_material.textures = [''] + ["ring_tex"] + [''] * 8
+    ring_material.textures = [""] + ["ring_tex"] + [""] * 8
 
     # Keep floor plane collision, but hide its visual.
     for geom in spec.geoms:
@@ -302,7 +307,10 @@ def replace_floor_visual_with_boxing_ring(spec: mujoco.MjSpec) -> None:
 
 def build_targets_spec() -> mujoco.MjSpec:
     """Build 6-target boxing machine spec."""
-    def _quat_from_euler_deg(roll_pitch_yaw_deg: tuple[float, float, float]) -> list[float]:
+
+    def _quat_from_euler_deg(
+        roll_pitch_yaw_deg: tuple[float, float, float],
+    ) -> list[float]:
         """Convert MuJoCo XML euler degrees to quat [w, x, y, z]."""
         quat = euler2quat(np.deg2rad(np.asarray(roll_pitch_yaw_deg, dtype=np.float64)))
         return quat.astype(np.float64).tolist()
@@ -319,13 +327,13 @@ def build_targets_spec() -> mujoco.MjSpec:
     targets_mesh.file = "dummy.obj"
 
     texture_dummy = spec.add_texture()
-    texture_dummy.name = f"dummy_tex"
+    texture_dummy.name = "dummy_tex"
     texture_dummy.type = mujoco.mjtTexture.mjTEXTURE_2D
     texture_dummy.file = "dummy.png"
 
     mesh_gray = spec.add_material()
     mesh_gray.name = "boxing_targets_mesh_gray"
-    mesh_gray.textures = ['', 'dummy_tex', '', '', '', '', '', '', '', '']
+    mesh_gray.textures = ["", "dummy_tex", "", "", "", "", "", "", "", ""]
     mesh_gray.shininess = 0.2
     spec.visual.map.fogstart = 0.002
     spec.visual.map.fogend = 0.004
@@ -338,7 +346,7 @@ def build_targets_spec() -> mujoco.MjSpec:
 
     target_cyan = spec.add_material()
     target_cyan.name = "boxing_targets_cyan"
-    target_cyan.rgba = [32/256, 138/256, 160/256, 1.0]
+    target_cyan.rgba = [32 / 256, 138 / 256, 160 / 256, 1.0]
 
     machine = spec.worldbody.add_body(name="targets", pos=[0.0, 0.0, 0.0], mocap=True)
     machine_mesh = machine.add_geom(
@@ -380,7 +388,7 @@ def build_targets_spec() -> mujoco.MjSpec:
             [-0.29, 0.23, 1.038],
             mujoco.mjtGeom.mjGEOM_CYLINDER,
             [0.10, 0.012, 0.0],
-            (53, 49+90-6.5, 0),
+            (53, 49 + 90 - 6.5, 0),
             (90.0, 0.0, -225.0),
         ),
         (
@@ -388,7 +396,7 @@ def build_targets_spec() -> mujoco.MjSpec:
             [-0.36, 0.0, 1.54],
             mujoco.mjtGeom.mjGEOM_CYLINDER,
             [0.12, 0.012, 0.0],
-            (69, 49+90-6.5, 0),
+            (69, 49 + 90 - 6.5, 0),
             (90.0, 0.0, -270.0),
         ),
     )
@@ -408,11 +416,15 @@ def build_targets_spec() -> mujoco.MjSpec:
             type=mujoco.mjtGeom.mjGEOM_CYLINDER,
             size=np.array(size) + 0.05,
             rgba=[0.6, 0.6, 0.6, 0.5],
-            group=4
+            group=4,
         )
 
-        spec.add_sensor(name=f"punch_sensor_{name}", type=mujoco.mjtSensor.mjSENS_TOUCH,
-                        objtype=mujoco.mjtObj.mjOBJ_SITE, objname=f"{name}_site")
+        spec.add_sensor(
+            name=f"punch_sensor_{name}",
+            type=mujoco.mjtSensor.mjSENS_TOUCH,
+            objtype=mujoco.mjtObj.mjOBJ_SITE,
+            objname=f"{name}_site",
+        )
 
         if geom_euler is not None:
             geom.quat = _quat_from_euler_deg(geom_euler)

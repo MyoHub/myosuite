@@ -1,15 +1,21 @@
-from myosuite.envs.myo.tasks.challenge.boxing_specs import (replace_hand_visuals_with_gloves,
-                                                            add_helmet,
-                                                            replace_floor_visual_with_boxing_ring, build_targets_spec)
+from myosuite.envs.myo.tasks.challenge.boxing_specs import (
+    replace_hand_visuals_with_gloves,
+    add_helmet,
+    replace_floor_visual_with_boxing_ring,
+    build_targets_spec,
+)
 from myosuite.integrations.musclemimic.fullbody_model import build_mimic_fullbody_spec
 from ml_collections import config_dict
 
-if __name__ == '__main__':
-    fullbody_spec = build_mimic_fullbody_spec(config=config_dict.create(disable_fingers=True))[0]
+if __name__ == "__main__":
+    fullbody_spec = build_mimic_fullbody_spec(
+        config=config_dict.create(disable_fingers=True)
+    )[0]
     fullbody_spec = replace_hand_visuals_with_gloves(fullbody_spec)
     fullbody_spec = replace_floor_visual_with_boxing_ring(fullbody_spec)
     fullbody_spec = add_helmet(fullbody_spec)
     import mujoco
+
     _model = fullbody_spec.compile()
     _qpos = mujoco.MjData(_model).qpos
     for s in ["l", "r"]:
@@ -28,4 +34,5 @@ if __name__ == '__main__':
     model = fullbody_spec.compile()
     data = mujoco.MjData(model)
     from mjviser import Viewer
+
     v = Viewer(model, data).run()

@@ -21,4 +21,4 @@ of separating code based on responsibilities:
 - In the env file add `MyoMuscleActivationAction`. Even though we could also solve the issue of tendon-actuator name
   mismatches (which was the original reason for not using a default action) would be much easier using spec processing,
   traction state, such as fatigue is a worthwhile feature.
-- I suggest creating an `mdp` module and separating the boxing specific observations, rewards and events there. 
+- I suggest creating an `mdp` module and separating the boxing specific observations, rewards and events there.
