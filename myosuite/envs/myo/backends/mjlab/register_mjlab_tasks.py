@@ -48,6 +48,9 @@ from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
 from myosuite.envs.myo.backends.mjlab.register_mjlab_saber import (
     register_saber_p0_mjlab_task,
 )
+from myosuite.envs.myo.backends.mjlab.register_mjlab_boxing import (
+    register_boxing_p0_mjlab_task,
+)
 from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
     register_table_tennis_mjlab_tasks,
@@ -966,6 +969,19 @@ def register_mjlab_tasks() -> None:
             )
 
     register_table_tennis_mjlab_tasks()
+
+    # --- Boxing P0 ---
+    try:
+        register_boxing_p0_mjlab_task(
+            register_mjlab_task=register_mjlab_task,
+            rl_cfg_fn=default_mimic_clip_on_policy_runner_cfg,
+        )
+    except ValueError:
+        pass  # already registered
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "mjlab: failed to register myoChallengeBoxingP0Mjlab-v0", exc_info=True
+        )
 
 
 def _register_optional_myouser_task(myouser_config: Any) -> None:
