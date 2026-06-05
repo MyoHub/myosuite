@@ -64,6 +64,7 @@ class MyoMuscleActivationActionCfg:
         tendon_names: tuple[str, ...] | None = None,
         action_mode: str = "sigmoid",
         muscle_fatigue: bool = False,
+        persist_muscle_fatigue: bool = False,
         ctrl_dt: float = 0.01,
         pre_physics_fn: Callable[..., None] | None = None,
     ) -> None:
@@ -77,6 +78,7 @@ class MyoMuscleActivationActionCfg:
         self.tendon_names = tendon_names
         self.action_mode = action_mode
         self.muscle_fatigue = muscle_fatigue
+        self.persist_muscle_fatigue = persist_muscle_fatigue
         self.ctrl_dt = ctrl_dt
         self.pre_physics_fn = pre_physics_fn
 
@@ -190,7 +192,7 @@ class MyoMuscleActivationAction:
         else:
             self._raw_actions[env_ids] = 0.0
             self._processed_actions[env_ids] = 0.0
-        if self._fatigue is not None:
+        if self._fatigue is not None and not self.cfg.persist_muscle_fatigue:
             self._fatigue.reset(env_ids)
 
 

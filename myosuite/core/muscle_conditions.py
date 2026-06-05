@@ -379,6 +379,29 @@ class CumulativeFatigue:
             self._MR[:] = 1.0
             self._MF[:] = 0.0
 
+    def state_dict(self) -> dict[str, list]:
+        """Return serialisable snapshot of the fatigue compartments.
+
+        Returns:
+            Dict with keys ``"MA"``, ``"MR"``, ``"MF"``, each a flat list of
+            length ``na``.
+        """
+        return {
+            "MA": self._MA.tolist(),
+            "MR": self._MR.tolist(),
+            "MF": self._MF.tolist(),
+        }
+
+    def load_state_dict(self, state: dict[str, list]) -> None:
+        """Restore fatigue compartments from a :meth:`state_dict` snapshot.
+
+        Args:
+            state: Dict produced by :meth:`state_dict`.
+        """
+        self._MA = np.array(state["MA"], dtype=float)  # type: ignore[assignment]
+        self._MR = np.array(state["MR"], dtype=float)  # type: ignore[assignment]
+        self._MF = np.array(state["MF"], dtype=float)  # type: ignore[assignment]
+
     def seed(self, seed: int | None = None) -> list[int]:
         """Set random seed used by stochastic reset."""
         from myosuite.utils import gym  # noqa: PLC0415
@@ -609,3 +632,35 @@ class TorchFatigueState:
             self.MA[env_ids] = 0.0
             self.MF[env_ids] = 0.0
             self.MR[env_ids] = 1.0
+
+    def state_dict(self) -> dict[str, list]:
+        """Return serialisable snapshot of the fatigue compartments.
+
+        Returns:
+            Dict with keys ``"MA"``, ``"MR"``, ``"MF"``, each a nested list
+            of shape ``(num_envs, n_muscles)``.
+        """
+        return {
+            "MA": self.MA.cpu().numpy().tolist(),
+            "MR": self.MR.cpu().numpy().tolist(),
+            "MF": self.MF.cpu().numpy().tolist(),
+        }
+
+    def load_state_dict(self, state: dict[str, list]) -> None:
+        """Restore fatigue compartments from a :meth:`state_dict` snapshot.
+
+        Args:
+            state: Dict produced by :meth:`state_dict`.  Shape must be
+                compatible with the current ``(num_envs, n_muscles)`` tensors.
+        """
+        import torch  # noqa: PLC0415
+
+        self.MA.copy_(
+            torch.tensor(state["MA"], dtype=torch.float32, device=self.MA.device)
+        )
+        self.MR.copy_(
+            torch.tensor(state["MR"], dtype=torch.float32, device=self.MR.device)
+        )
+        self.MF.copy_(
+            torch.tensor(state["MF"], dtype=torch.float32, device=self.MF.device)
+        )
