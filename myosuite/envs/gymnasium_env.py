@@ -223,13 +223,11 @@ class MyoGymnasiumEnv(gym.Env):
         self,
         frame_skip: int = 10,
         render_mode: str | None = None,
-        mj_instability_termination: bool = True,
         **kwargs: Any,
     ) -> None:
         super().__init__()
         self.frame_skip = frame_skip
         self.render_mode = render_mode
-        self.mj_instability_termination = mj_instability_termination
 
         # Subclass must set these (or call setup_model())
         self.model: Any = None
@@ -365,11 +363,7 @@ class MyoGymnasiumEnv(gym.Env):
         obs = self._ensure_obs_gymnasium_compliant(obs)
         reward = float(rwd_dict.get("dense", 0.0))
         terminated = bool(rwd_dict.get("done", False))
-        # Physics instability (bad acceleration warning) → truncated, not terminated,
-        # consistent with the MjInstabilityTerminationWrapper and the MJX backend.
-        truncated = (
-            self.mj_instability_termination and self._check_mj_instability_termination()
-        )
+        truncated = False
         info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
         info["obs_dict"] = obs_dict
         info["rwd_dict"] = rwd_dict

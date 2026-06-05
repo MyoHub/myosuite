@@ -43,6 +43,8 @@ dependencies = [
     "scikit-learn>=1.7.2",
     "joblib>=1.5.3",
     "matplotlib>=3.10.8",
+    "mjviser>=0.0.14",
+    "loop-rate-limiters>=1.2.0",
 ]
 [project.optional-dependencies]
 # Reinforcement learning training with Stable-Baselines3
