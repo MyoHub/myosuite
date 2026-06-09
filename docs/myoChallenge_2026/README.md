@@ -122,6 +122,7 @@ from mjlab.rl import RslRlVecEnvWrapper
 from mjlab.tasks.registry import load_env_cfg
 from myosuite.utils.html import show_video
 from myosuite.utils.video_io import write_video
+import torch
 
 task_id = "myoChallengeSaberP0-v0"
 env_cfg = load_env_cfg(task_id, play=True)
