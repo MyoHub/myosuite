@@ -30,6 +30,7 @@ from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
 )
 from myosuite.integrations.musclemimic.mjlab_policy_runner import (
     OnnxCheckpointingMjlabRunner,
+    _maybe_freeze_actor_std,
 )
 from myosuite.utils.onnx_checkpoint import get_wandb_onnx_checkpoint_path
 
@@ -103,6 +104,33 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Use site-tracking reward instead of the DeepMimic composite term.",
     )
+    parser.add_argument(
+        "--init-std",
+        type=float,
+        default=0.5,
+        help=(
+            "Initial Gaussian action std. Keep ≤0.5 so that the effective stochastic "
+            "excitation (post-clamp to [0,1]) stays close to the deterministic mean. "
+            "With the default 1.0 std can grow to ~3 during training, making the "
+            "deterministic policy useless."
+        ),
+    )
+    parser.add_argument(
+        "--freeze-std",
+        action="store_true",
+        default=True,
+        help=(
+            "Freeze the Gaussian std parameter so PPO cannot grow it away from "
+            "--init-std. Strongly recommended for excitation-mode envs to keep "
+            "deterministic and stochastic policies aligned."
+        ),
+    )
+    parser.add_argument(
+        "--no-freeze-std",
+        dest="freeze_std",
+        action="store_false",
+        help="Allow PPO to learn the action std (not recommended for excitation mode).",
+    )
     return parser.parse_args(argv)
 
 
@@ -156,6 +184,12 @@ def _prepare_config(args: argparse.Namespace) -> TrainConfig:
     agent_cfg.max_iterations = int(args.max_iterations)
     agent_cfg.save_interval = int(args.save_interval)
     agent_cfg.seed = int(args.seed)
+    # Override init_std so the stochastic and deterministic policies stay aligned.
+    # action_mode="excitation" clamps to [0,1]: with std>>1 the clamped stochastic
+    # mean drifts far from the raw MLP output, so the deterministic policy becomes
+    # useless even though training metrics look good.
+    if agent_cfg.actor.distribution_cfg is not None:
+        agent_cfg.actor.distribution_cfg["init_std"] = float(args.init_std)
     if args.run_name:
         agent_cfg.run_name = args.run_name
     return replace(
@@ -202,6 +236,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 )
                 runner.load_onnx(resume_path)
                 print(f"Resumed from ONNX checkpoint: {resume_path}")
+        _maybe_freeze_actor_std(runner, learn_actor_std=not args.freeze_std)
         runner.learn(
             num_learning_iterations=cfg.agent.max_iterations,
             # init_at_random_ep_len=True,
