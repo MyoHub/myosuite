@@ -202,9 +202,27 @@ class OnnxPolicy:
         )
         self._session = load_onnx_session(onnx_path, providers=providers)
         self._device = device
+        try:
+            meta = read_onnx_checkpoint_metadata(onnx_path)
+            self._obs_key: str | None = meta.get("metadata", {}).get("obs_key", None)
+        except Exception:
+            self._obs_key = None
 
     def __call__(self, obs):
-        actor_obs = obs["actor"] if "actor" in obs.keys() else obs
+        if hasattr(obs, "keys"):
+            # TensorDict: try stored key, then "actor", then match by obs_dim
+            if self._obs_key is not None and self._obs_key in obs.keys():
+                actor_obs = obs[self._obs_key]
+            elif "actor" in obs.keys():
+                actor_obs = obs["actor"]
+            else:
+                obs_dim = self._session.obs_dim
+                actor_obs = next(
+                    (v for v in obs.values() if hasattr(v, "shape") and v.shape[-1] == obs_dim),
+                    obs,
+                )
+        else:
+            actor_obs = obs
         return self._session.act_torch(actor_obs).to(device=self._device)
 
     def reset(self) -> None:

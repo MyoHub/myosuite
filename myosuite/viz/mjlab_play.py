@@ -229,14 +229,29 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
 
             policy = PolicyRandom()
     else:
-        policy = OnnxPolicy(resume_path, device=device)
+        from dataclasses import asdict
+
+        from myosuite.integrations.musclemimic.mjlab_policy_runner import (
+            OnnxCheckpointingMjlabRunner,
+        )
+
+        runner = OnnxCheckpointingMjlabRunner(
+            env,
+            asdict(agent_cfg),
+            str(resume_path.parent),  # type: ignore[union-attr]
+            device,
+            task_id=task_id,
+        )
+        runner.load_onnx(resume_path)  # type: ignore[arg-type]
+        policy = runner.get_inference_policy(device=device)
 
     # Build checkpoint manager for hot-swapping checkpoints in the viewer.
     ckpt_manager: CheckpointManager | None = None
     if TRAINED_MODE and resume_path is not None:
 
-        def _reload_policy(path: str) -> OnnxPolicy:
-            return OnnxPolicy(Path(path), device=device)
+        def _reload_policy(path: str):
+            runner.load_onnx(Path(path))  # type: ignore[union-attr]
+            return runner.get_inference_policy(device=device)  # type: ignore[union-attr]
 
         if cfg.wandb_run_path is None:
             ckpt_dir = resume_path.parent
