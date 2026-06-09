@@ -87,7 +87,7 @@ class SaberP0Cfg:
     upright_posture_threshold: float = 0.30
 
     # --- keyframe pose debug term ---
-    saber_keyframe_pose_error_scale: float = 40.0
+    saber_keyframe_pose_error_scale: float = 5.0
 
     # --- flags used by registration only ---
     enable_saber_target_pool: bool = True

@@ -2509,17 +2509,17 @@ def default_mimic_clip_on_policy_runner_cfg(**kwargs) -> Any:
     from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
     actor = RslRlModelCfg(
-        hidden_dims=(256, 256, 256, 256),
+        hidden_dims=(256, 256, 128),
         activation="elu",
         obs_normalization=True,
         distribution_cfg={
             "class_name": "GaussianDistribution",
-            "init_std": 2.5,
+            "init_std": 1.0,
             "std_type": "scalar",
         },
     )
     critic = RslRlModelCfg(
-        hidden_dims=(256, 256, 256, 256),
+        hidden_dims=(256, 256, 128),
         activation="elu",
         obs_normalization=True,
         distribution_cfg=None,
@@ -2528,10 +2528,12 @@ def default_mimic_clip_on_policy_runner_cfg(**kwargs) -> Any:
         num_learning_epochs=4,
         num_mini_batches=4,
         learning_rate=3e-4,
-        schedule="fixed",
-        entropy_coef=1e-3,
-        value_loss_coef=0.5,
-        normalize_advantage_per_mini_batch=True,
+        schedule="adaptive",
+        entropy_coef=0.01,
+        clip_param=0.2,
+        value_loss_coef=1.0,
+        normalize_advantage_per_mini_batch=False,
+        use_clipped_value_loss=True,
     )
     return RslRlOnPolicyRunnerCfg(
         actor=actor,
