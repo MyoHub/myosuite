@@ -345,18 +345,6 @@ class OnnxCheckpointingMjlabRunner(MjlabOnPolicyRunner):
             saved_dict["infos"] = {**(infos or {}), "env_state": env_state}
             torch.save(saved_dict, tmp_native)
             self._export_actor_onnx(tmp_onnx)
-            obs_groups = getattr(self.alg.actor, "obs_groups", None)
-            obs_key = obs_groups[0] if obs_groups and len(obs_groups) == 1 else "actor"
-            metadata: dict[str, Any] = {
-                "task_id": self._task_id,
-                "obs_dim": self._obs_dim,
-                "act_dim": self._act_dim,
-                "iteration": int(self.current_learning_iteration),
-                "obs_key": obs_key,
-            }
-            fatigue_state = get_env_fatigue_state(self.env)
-            if fatigue_state is not None:
-                metadata[_FATIGUE_STATE_KEY] = fatigue_state
             bundle_onnx_with_checkpoint(
                 onnx_path=tmp_onnx,
                 checkpoint_path=tmp_native,
