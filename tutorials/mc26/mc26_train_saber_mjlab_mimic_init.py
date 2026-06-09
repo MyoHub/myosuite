@@ -160,7 +160,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--num-learning-epochs",
         type=int,
-        default=1,
+        default=6,
         help="PPO epochs per iteration for the checkpoint-resume path.",
     )
     parser.add_argument(
