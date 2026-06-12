@@ -82,6 +82,8 @@ _TT_RUNTIME: weakref.WeakKeyDictionary[Any, dict[str, Any]] = (
     weakref.WeakKeyDictionary()
 )
 _TT_SCENE: weakref.WeakKeyDictionary[Any, dict[str, dict]] = weakref.WeakKeyDictionary()
+# GPU tensor cache: label_lookup and geom_bodyid_t, built once per env on first step.
+_TT_GPU: weakref.WeakKeyDictionary[Any, dict[str, Any]] = weakref.WeakKeyDictionary()
 _TT_TENDON_NAMES: tuple[str, ...] | None = None
 _TT_POSITION_ACTUATOR_NAMES: tuple[str, ...] | None = None
 
@@ -460,6 +462,117 @@ def _ball_label_vec(labels: frozenset[PingpongContactLabels], ref_vec: Any) -> A
     return v
 
 
+_LABEL_ENUM_MAP: list[PingpongContactLabels] = [
+    PingpongContactLabels.PADDLE,
+    PingpongContactLabels.OWN,
+    PingpongContactLabels.OPPONENT,
+    PingpongContactLabels.NET,
+    PingpongContactLabels.GROUND,
+    PingpongContactLabels.ENV,
+]
+
+
+def _build_label_lookup(n_geoms: int, gids: dict[str, int], device: Any) -> Any:
+    """Build a GPU tensor mapping geom_id → label index (0=PADDLE … 5=ENV)."""
+    import torch
+
+    t = torch.full((n_geoms,), 5, dtype=torch.long, device=device)
+    t[gids["pad"]] = 0
+    t[gids["own"]] = 1
+    t[gids["opp"]] = 2
+    t[gids["net"]] = 3
+    t[gids["ground"]] = 4
+    return t
+
+
+def _get_gpu_tensors(env: Any, sc: dict[str, Any], device: Any) -> dict[str, Any]:
+    """Return (and cache) the GPU tensors needed for vectorized contact detection."""
+    import torch
+
+    if env not in _TT_GPU:
+        geom_bodyid = sc["geom_bodyid"]
+        n_geoms = len(geom_bodyid)
+        _TT_GPU[env] = {
+            "geom_bodyid_t": torch.as_tensor(
+                geom_bodyid, device=device, dtype=torch.long
+            ),
+            "label_lookup": _build_label_lookup(n_geoms, sc["gids"], device),
+            "n_geoms": n_geoms,
+        }
+    return _TT_GPU[env]
+
+
+def _contacts_all_envs_vectorized(
+    data: Any,
+    ball_bid: int,
+    gpu_tensors: dict[str, Any],
+    n: int,
+    device: Any,
+) -> tuple[list[frozenset[PingpongContactLabels]], Any]:
+    """Vectorized contact detection for all envs in a single GPU pass.
+
+    Returns:
+        contact_sets: list of frozensets (one per env) for trajectory tracking.
+        touching_info: float32 tensor of shape (n, 6) on ``device``.
+    """
+    import torch
+
+    empty_sets: list[frozenset[PingpongContactLabels]] = [frozenset() for _ in range(n)]
+    touching_info = torch.zeros(n, 6, dtype=torch.float32, device=device)
+
+    try:
+        geom = data.contact.geom  # (nconmax, 2)
+        wid = data.contact.worldid  # (nconmax,)
+    except AttributeError:
+        return empty_sets, touching_info
+
+    if geom.numel() == 0:
+        return empty_sets, touching_info
+
+    n_geoms = gpu_tensors["n_geoms"]
+    geom_bodyid_t = gpu_tensors["geom_bodyid_t"]
+    label_lookup = gpu_tensors["label_lookup"]
+
+    wid_l = wid.long()
+    g1 = torch.clamp(geom[:, 0].long(), 0, n_geoms - 1)
+    g2 = torch.clamp(geom[:, 1].long(), 0, n_geoms - 1)
+
+    b1 = geom_bodyid_t[g1]
+    b2 = geom_bodyid_t[g2]
+    is_ball1 = b1 == ball_bid
+    is_ball2 = b2 == ball_bid
+
+    valid = (wid_l >= 0) & (wid_l < n) & (is_ball1 | is_ball2)
+
+    if not valid.any():
+        return empty_sets, touching_info
+
+    other_geom = torch.where(is_ball1, g2, g1)
+    label_idx = label_lookup[other_geom]
+
+    valid_idx = valid.nonzero(as_tuple=True)[0]
+    env_idx = wid_l[valid_idx]
+    lab_idx = label_idx[valid_idx]
+
+    # Deduplicate (env_id, label_id) pairs — matches CPU frozenset semantics.
+    pairs = torch.stack([env_idx, lab_idx], dim=1)
+    unique_pairs = pairs.unique(dim=0)
+    flat_idx_dedup = unique_pairs[:, 0] * 6 + unique_pairs[:, 1]
+    touching_info.view(-1).scatter_add_(
+        0,
+        flat_idx_dedup,
+        torch.ones(flat_idx_dedup.shape[0], dtype=torch.float32, device=device),
+    )
+
+    # One batched CPU transfer for trajectory tracking (frozensets).
+    env_cpu = env_idx.cpu().numpy()
+    lab_cpu = lab_idx.cpu().numpy()
+    per_env: list[set[PingpongContactLabels]] = [set() for _ in range(n)]
+    for c, e in zip(lab_cpu, env_cpu):
+        per_env[int(e)].add(_LABEL_ENUM_MAP[int(c)])
+    return [frozenset(s) for s in per_env], touching_info
+
+
 def _cal_ball_qvel_torch(ball_qpos: Any) -> tuple[Any, Any]:
     """Return (v_low[3], v_high[3]) tensors for sampling initial ball linear velocity."""
     import torch
@@ -592,18 +705,13 @@ def _make_tt_obs_closure(
         paddle_ori = data.xquat[:, paddle_bid, :]
         reach_err = paddle_pos - ball_pos
 
-        touching_list: list[Any] = []
+        # Vectorized contact detection: one GPU pass for all envs.
+        gpu_t = _get_gpu_tensors(env, sc, device)
+        contact_sets, touching_info = _contacts_all_envs_vectorized(
+            data, sc["ball_body_id"], gpu_t, n, device
+        )
         for i in range(n):
-            cset = _contacts_for_env(
-                data,
-                i,
-                sc["ball_body_id"],
-                sc["geom_bodyid"],
-                sc["gids"],
-            )
-            rt["trajectories"][i].append(cset)
-            touching_list.append(_ball_label_vec(cset, paddle_pos[i]))
-        touching_info = torch.stack(touching_list, dim=0)
+            rt["trajectories"][i].append(contact_sets[i])
 
         parts = [
             pelvis_pos,
@@ -620,14 +728,8 @@ def _make_tt_obs_closure(
         if int(idx["na"]) > 0:
             parts.append(data.act)
 
-        def _unwrap(x: Any) -> Any:
-            import torch
-
-            return torch.from_numpy(np.asarray(x.detach().cpu(), dtype=np.float32)).to(
-                device, dtype=torch.float32
-            )
-
-        return torch.cat([_unwrap(p) for p in parts], dim=-1)
+        # Keep tensors on-device: avoid the GPU→CPU→GPU round-trip of _unwrap.
+        return torch.cat([p.to(dtype=torch.float32) for p in parts], dim=-1)
 
     return _obs
 
@@ -674,32 +776,64 @@ def _make_tt_reward_closure(
             else torch.zeros(n, device=device)
         )
 
-        dense = torch.zeros(n, device=device)
+        # Single batched CPU transfer instead of N×5 individual .item() CUDA syncs.
+        cpu_block = (
+            torch.stack(
+                [
+                    torch.exp(-1.0 * reach_dist),  # [0] reach_dist reward
+                    torch.exp(-5.0 * palm_dist),  # [1] palm_dist reward
+                    torch.exp(-5.0 * paddle_quat_err),  # [2] paddle_quat reward
+                    torch.exp(-5.0 * torso_err),  # [3] torso_up reward
+                    -act_mag,  # [4] act_reg reward
+                    ball_pos[:, 2].float(),  # [5] ball z-height
+                    data.time.float(),  # [6] sim time
+                ],
+                dim=0,
+            )
+            .cpu()
+            .numpy()
+        )  # shape (7, n) — one CUDA sync for all envs
+
+        rw_rd, rw_pd, rw_pq, rw_tu, rw_ar = (
+            cpu_block[0],
+            cpu_block[1],
+            cpu_block[2],
+            cpu_block[3],
+            cpu_block[4],
+        )
+        ball_z_arr = cpu_block[5]
+        time_arr = cpu_block[6]
+
+        wt_rd = _TT_RWD_WEIGHTS["reach_dist"]
+        wt_pd = _TT_RWD_WEIGHTS["palm_dist"]
+        wt_pq = _TT_RWD_WEIGHTS["paddle_quat"]
+        wt_tu = _TT_RWD_WEIGHTS["torso_up"]
+        wt_ar = _TT_RWD_WEIGHTS["act_reg"]
+        wt_sp = _TT_RWD_WEIGHTS["sparse"]
+        wt_sv = _TT_RWD_WEIGHTS["solved"]
+        wt_dn = _TT_RWD_WEIGHTS["done"]
+
+        dense_np = np.zeros(n, dtype=np.float32)
         for i in range(n):
             traj = rt["trajectories"][i]
             traj_py = [set(s) for s in traj]
             ev = evaluate_pingpong_trajectory(traj_py)
             solved = ev is None
             last = traj[-1] if traj else frozenset()
-            touch_vec = _ball_label_vec(last, paddle_pos[i])
-            sparse = float(touch_vec[0].item()) == 1.0
-            rw = {
-                "reach_dist": float(torch.exp(-1.0 * reach_dist[i]).item()),
-                "palm_dist": float(torch.exp(-5.0 * palm_dist[i]).item()),
-                "paddle_quat": float(torch.exp(-5.0 * paddle_quat_err[i]).item()),
-                "torso_up": float(torch.exp(-5.0 * torso_err[i]).item()),
-                "act_reg": float((-1.0 * act_mag[i]).item()),
-                "sparse": 1.0 if sparse else 0.0,
-                "solved": 1.0 if solved else 0.0,
-            }
-            ball_z = float(ball_pos[i, 2].item())
-            t = float(data.time[i].item())
+            sparse = PingpongContactLabels.PADDLE in last
+            ball_z = float(ball_z_arr[i])
+            t = float(time_arr[i])
             done_for_dense = _dense_channel_done(t, ball_z, solved, traj_py)
-            rw["done"] = float(done_for_dense)
-            di = 0.0
-            for k, wt in _TT_RWD_WEIGHTS.items():
-                di += wt * float(rw[k])
-            dense[i] = di
+            dense_np[i] = (
+                wt_rd * float(rw_rd[i])
+                + wt_pd * float(rw_pd[i])
+                + wt_pq * float(rw_pq[i])
+                + wt_tu * float(rw_tu[i])
+                + wt_ar * float(rw_ar[i])
+                + wt_sp * (1.0 if sparse else 0.0)
+                + wt_sv * (1.0 if solved else 0.0)
+                + wt_dn * float(done_for_dense)
+            )
 
             if solved:
                 rt["cur_rally"][i] += 1
@@ -719,7 +853,7 @@ def _make_tt_reward_closure(
                 t, ball_z, solved, traj_py, int(_tt_cfg.rally_count), cr
             )
 
-        return dense
+        return torch.from_numpy(dense_np).to(device=device, dtype=torch.float32)
 
     return _rew
 
@@ -822,13 +956,8 @@ def _make_tt_term_closure(
         import torch
 
         rt = _get_tt_runtime(env)
-        data = env.scene[entity_name].data.data
-        n = int(data.qpos.shape[0])
-        device = data.qpos.device
-        out = torch.zeros(n, dtype=torch.bool, device=device)
-        for i in range(n):
-            out[i] = bool(rt["last_done"][i])
-        return out
+        device = env.scene[entity_name].data.data.qpos.device
+        return torch.tensor(rt["last_done"], dtype=torch.bool, device=device)
 
     return _term
 
