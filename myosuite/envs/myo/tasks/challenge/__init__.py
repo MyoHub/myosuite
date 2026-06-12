@@ -462,38 +462,42 @@ register_myochallenge_modular_tasks()
 # Register Saber P0 via EnvSpec adapter path.
 register_saber_p0_env()
 
-# Register two-agent competitive boxing and lightsaber environments via register_task.
+# Register two-agent competitive boxing environments.
+# These use factory entry-points (not TaskConfig) because they wrap
+# ModularMultiAgentTaskEnv — routed through register_env() which is
+# idempotent and applies the instability wrapper consistently.
 try:
-    from myosuite.core.registry import register_task as _register_task
-    import gymnasium as _gym
+    from myosuite.core.registry import (
+        register_env as _register_env,
+        register_task as _register_task,
+    )
     from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_task_config import (
         BoxingVsTaskConfig as _BoxingVsTaskConfig,
     )
 
     _register_task(_BoxingVsTaskConfig(), env_id="myoChallengeBoxingVs-v0")
-    _gym.register(
-        id="myoChallengeBoxingMannequin-v0",
+    _register_env(
+        "myoChallengeBoxingMannequin-v0",
         entry_point="myosuite.envs.myo.tasks.challenge.boxing_mannequin.boxing_mannequin_env:make_boxing_mannequin_env",
         max_episode_steps=500,
+        wrap_mj_instability_termination=False,
     )
     # Six-target pad machine used by MyoChallenge boxing P0.
-    _gym.register(
-        id="myoChallengeBoxingP0-v0",
+    _register_env(
+        "myoChallengeBoxingP0-v0",
         entry_point="myosuite.envs.myo.tasks.challenge.boxing_mannequin.boxing_mannequin_env:make_boxing_6targets",
         max_episode_steps=500,
+        wrap_mj_instability_termination=False,
     )
     # Single-agent BoxingVs with mannequin_exact_clone as the fixed opponent.
-    _gym.register(
-        id="myoChallengeBoxingVsClone-v0",
+    _register_env(
+        "myoChallengeBoxingVsClone-v0",
         entry_point="myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_env:make_boxing_vs_clone_env",
         max_episode_steps=500,
+        wrap_mj_instability_termination=False,
     )
 
-    del (
-        _register_task,
-        _BoxingVsTaskConfig,
-        _gym,
-    )
+    del _register_env, _register_task, _BoxingVsTaskConfig
 except Exception as _e:  # noqa: BLE001
     import warnings as _w
 

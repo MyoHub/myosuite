@@ -1404,14 +1404,16 @@ def _first_true_index(mask: torch.Tensor) -> torch.Tensor:
 def _entity_local_qpos(entity: Any) -> torch.Tensor:
     pieces: list[torch.Tensor] = []
     if entity.data.indexing.free_joint_q_adr.numel() > 0:
+        # Freejoint DOFs (pos[3] + quat[4]): no entity.data.* stable API equivalent
+        # for raw global qpos slice — accepted exception per mjlab-design-guide.md.
         pieces.append(entity.data.data.qpos[:, entity.data.indexing.free_joint_q_adr])
-    if entity.data.indexing.joint_q_adr.numel() > 0:
-        pieces.append(entity.data.data.qpos[:, entity.data.indexing.joint_q_adr])
+    if entity.data.joint_pos.shape[-1] > 0:
+        pieces.append(entity.data.joint_pos)
     if not pieces:
         return torch.zeros(
-            (entity.data.data.qpos.shape[0], 0),
-            device=entity.data.data.qpos.device,
-            dtype=entity.data.data.qpos.dtype,
+            (entity.data.joint_pos.shape[0], 0),
+            device=entity.data.joint_pos.device,
+            dtype=entity.data.joint_pos.dtype,
         )
     return torch.cat(pieces, dim=1)
 
@@ -1419,14 +1421,16 @@ def _entity_local_qpos(entity: Any) -> torch.Tensor:
 def _entity_local_qvel(entity: Any) -> torch.Tensor:
     pieces: list[torch.Tensor] = []
     if entity.data.indexing.free_joint_v_adr.numel() > 0:
+        # Freejoint DOFs (lin_vel[3] + ang_vel[3]): no entity.data.* stable API equivalent
+        # for raw global qvel slice — accepted exception per mjlab-design-guide.md.
         pieces.append(entity.data.data.qvel[:, entity.data.indexing.free_joint_v_adr])
-    if entity.data.indexing.joint_v_adr.numel() > 0:
-        pieces.append(entity.data.data.qvel[:, entity.data.indexing.joint_v_adr])
+    if entity.data.joint_vel.shape[-1] > 0:
+        pieces.append(entity.data.joint_vel)
     if not pieces:
         return torch.zeros(
-            (entity.data.data.qvel.shape[0], 0),
-            device=entity.data.data.qvel.device,
-            dtype=entity.data.data.qvel.dtype,
+            (entity.data.joint_vel.shape[0], 0),
+            device=entity.data.joint_vel.device,
+            dtype=entity.data.joint_vel.dtype,
         )
     return torch.cat(pieces, dim=1)
 
@@ -1514,7 +1518,7 @@ def _saber_termination_from_shared(
 
 def _saber_combined_qpos_state(env: Any) -> torch.Tensor:
     logic = _get_saber_logic(env)
-    env_origins = _env_origins_tensor(env, logic.left_saber_entity.data.data.qpos.dtype)
+    env_origins = _env_origins_tensor(env, logic.left_saber_entity.data.joint_pos.dtype)
     left_qpos = _entity_local_qpos(logic.left_saber_entity).clone()
     right_qpos = _entity_local_qpos(logic.right_saber_entity).clone()
     left_qpos[:, :3] -= env_origins
