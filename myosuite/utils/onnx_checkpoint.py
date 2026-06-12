@@ -218,7 +218,11 @@ class OnnxPolicy:
             else:
                 obs_dim = self._session.obs_dim
                 actor_obs = next(
-                    (v for v in obs.values() if hasattr(v, "shape") and v.shape[-1] == obs_dim),
+                    (
+                        v
+                        for v in obs.values()
+                        if hasattr(v, "shape") and v.shape[-1] == obs_dim
+                    ),
                     obs,
                 )
         else:

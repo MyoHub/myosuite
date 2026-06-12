@@ -27,7 +27,6 @@ from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
 from mjlab.viewer.viser.viewer import CheckpointManager, format_time_ago
 
 from myosuite.utils.onnx_checkpoint import (
-    OnnxPolicy,
     get_wandb_onnx_checkpoint_path,
     is_onnx_checkpoint_name,
     normalize_onnx_checkpoint_name,
