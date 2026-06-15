@@ -22,6 +22,8 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
+from myosuite.utils.simhive_path import resolve_model_xml_path
+
 _ARM_HOST_XML = (
     Path(__file__).resolve().parents[2]
     / "envs"
@@ -52,7 +54,8 @@ def myotorso_tabletennis_isolated_xml_path() -> Path:
 
 def compile_myotorso_arm_host() -> mujoco.MjModel:
     """Compile torso + single-arm + legs host (table-tennis ``full_body``)."""
-    return mujoco.MjModel.from_xml_path(str(_ARM_HOST_XML))
+    resolved = resolve_model_xml_path(_ARM_HOST_XML)
+    return mujoco.MjModel.from_xml_path(str(resolved))
 
 
 def build_joint_value_map(

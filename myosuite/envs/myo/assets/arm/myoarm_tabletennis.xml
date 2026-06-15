@@ -10,7 +10,9 @@
     <include file="../../../../simhive/myo_sim/torso/assets/myotorso_assets.xml"/>
     <include file="../../../../simhive/myo_sim/head/assets/myohead_simple_assets.xml"/>
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_tendons.xml"/>
+    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_muscles.xml"/>
     <include file="../../../../simhive/myo_sim/scene/myosuite_quad.xml"/>
     <compiler angle="radian" meshdir='../../../../simhive/myo_sim' texturedir='../../../../simhive/myo_sim/'/>
 

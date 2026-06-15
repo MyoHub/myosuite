@@ -35,7 +35,7 @@ def test_myotorso_tabletennis_isolated_xml_loads() -> None:
     """Isolated wrapper MJCF compiles (torso + arm + legs host)."""
     path = myotorso_tabletennis_isolated_xml_path()
     assert path.is_file()
-    m = mujoco.MjModel.from_xml_path(str(path))
+    m = compile_myotorso_arm_host()
     assert m.nq > 0
 
 

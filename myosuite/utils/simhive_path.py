@@ -224,11 +224,19 @@ def _path_resolves(model_path: Path, raw: str) -> bool:
     return (model_path.parent / candidate).resolve().exists()
 
 
-def _try_rewrite(model_path: Path, raw: str) -> str | None:
+def _try_rewrite(
+    model_path: Path, raw: str, old_meshdir: Path | None = None
+) -> str | None:
     if not raw.strip() or raw.strip().lower().startswith("http"):
         return None
     if _path_resolves(model_path, raw):
         return None
+    # If the old meshdir is known, try resolving the path against it (for local assets
+    # that use paths relative to the OLD meshdir, which is no longer valid after rewrite).
+    if old_meshdir is not None:
+        candidate = (old_meshdir / raw).resolve()
+        if candidate.exists():
+            return str(candidate)
     for candidate in (
         _resolve_legacy_simhive_path(raw),
         _rewrite_relative_package_path(raw),
@@ -256,13 +264,24 @@ def resolve_model_xml_path(model_path: str | Path) -> Path:
         return model_path
 
     changed = False
+    old_meshdir: Path | None = None
     for elem in tree.getroot().iter():
         for attr in _PATH_ATTRIBUTES:
             raw = elem.get(attr)
             if not raw:
                 continue
-            new = _try_rewrite(model_path, raw)
+            new = _try_rewrite(model_path, raw, old_meshdir=old_meshdir)
             if new is not None:
+                if attr == "meshdir":
+                    # Capture old meshdir (resolved relative to model file) before overwriting.
+                    # Don't check existence — the old dir may be a submodule not checked out,
+                    # but paths relative to it (e.g. ../../envs/myo/assets/) may still resolve
+                    # to existing files once Path.resolve() collapses the `..` segments.
+                    _old = Path(raw)
+                    if not _old.is_absolute():
+                        _old = (model_path.parent / _old).resolve()
+                    if old_meshdir is None:
+                        old_meshdir = _old
                 elem.set(attr, new)
                 changed = True
 
