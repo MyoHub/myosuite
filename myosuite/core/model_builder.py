@@ -239,10 +239,9 @@ def _resolve_fragment_path(name: str) -> Path:
 
     raise FileNotFoundError(
         f"Cannot resolve fragment {name!r}. "
-        "Initialize the myo_sim git submodule "
-        "(run: `git submodule update --init --recursive`). "
-        "MJCF fragments live under myosuite/simhive/myo_sim; "
-        "there is no PyPI myo-sim package."
+        "Install the myo-sim pip package (`pip install myo-sim`) "
+        "or initialise the git submodule "
+        "(`git submodule update --init myosuite/simhive/myo_sim`)."
     )
 
 

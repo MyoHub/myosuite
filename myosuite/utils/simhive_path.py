@@ -81,7 +81,7 @@ def get_simhive_asset_root(sim_name: str) -> Path:
     if sim_name == "myo_sim":
         raise FileNotFoundError(
             "Unable to resolve myo_sim assets. "
-            "Run: git submodule update --init myosuite/simhive/myo_sim"
+            "Install via pip (`pip install myo-sim`) or run: git submodule update --init myosuite/simhive/myo_sim"
         )
     raise FileNotFoundError(
         f"Unable to resolve simhive assets for {sim_name}. "
