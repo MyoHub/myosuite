@@ -423,7 +423,11 @@ def save_myotorso_bimanual_mimic_xml(
 
     out = dest
     if out is None:
-        out = _MYOSUITE_PKG_ROOT / "simhive" / "myo_sim" / "myotorso_bimanual_mimic.xml"
+        # Default to the pip package's models dir so we don't create a fake
+        # simhive/myo_sim/ directory that confuses get_simhive_asset_root.
+        from myosuite.utils.simhive_path import get_simhive_asset_root
+
+        out = get_simhive_asset_root("myo_sim") / "myotorso_bimanual_mimic.xml"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(xml, encoding="utf-8")
     return out.resolve()
