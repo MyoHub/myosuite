@@ -35,7 +35,7 @@
         <material name="floor_mat" rgba="0.3 0 0 1"/>
     </asset>
 
-    <default class="main">
+    <default>
         <default class="visual">
             <geom group="2" type="mesh" contype="0" conaffinity="0"/>
         </default>

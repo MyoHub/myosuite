@@ -76,7 +76,8 @@ def get_simhive_asset_root(sim_name: str) -> Path:
         return local_root
     pkg_root = _installed_package_root(module_name)
     if pkg_root is not None:
-        return pkg_root
+        models_dir = pkg_root / "models"
+        return models_dir if models_dir.exists() else pkg_root
     if sim_name == "myo_sim":
         raise FileNotFoundError(
             "Unable to resolve myo_sim assets. "
