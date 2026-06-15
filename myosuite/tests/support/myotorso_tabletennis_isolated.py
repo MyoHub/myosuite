@@ -79,8 +79,9 @@ def build_joint_value_map(
         hname = host.joint(hj).name
         if not hname:
             continue
-        bname = f"{hname}_r"
-        rid = ref_by_name.get(bname)
+        # Host joints may carry _r suffix (new arm) or bare names (old arm).
+        # Try direct match first, then append _r for old-style host models.
+        rid = ref_by_name.get(hname) or ref_by_name.get(f"{hname}_r")
         if rid is None:
             continue
         if int(ref.jnt_type[rid]) != int(host.jnt_type[hj]):

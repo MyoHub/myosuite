@@ -160,22 +160,60 @@ def _materialize_myotorso_bimanual_host_xml() -> tuple[Path, Path, Path]:
     arm_dir = root / "envs" / "myo" / "assets" / "arm"
     host_tpl = arm_dir / "myotorso_arm_chain_host.xml"
     host_src = host_tpl.read_text(encoding="utf-8")
-    myoarm_inc = (
-        '<include file="../../../../simhive/myo_sim/arm/assets/' 'myoarm_assets.xml"/>'
+    # Arm asset includes — host uses the new three-file split (myoarm_r_*); replace
+    # the assets include with musclemimic bimanual assets and strip tendons/muscles
+    # (the bimanual assets file already bundles them).
+    _ARM_ASSETS_INC_NEW = (
+        '<include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_assets.xml"/>'
+    )
+    _ARM_TENDONS_INC = (
+        '<include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_tendons.xml"/>'
+    )
+    _ARM_MUSCLES_INC = (
+        '<include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_muscles.xml"/>'
+    )
+    # Legacy single-file pattern (pre-PR-#89 host).
+    _ARM_ASSETS_INC_OLD = (
+        '<include file="../../../../simhive/myo_sim/arm/assets/myoarm_assets.xml"/>'
     )
     chain_inc = (
         '<include file="../../../../simhive/myo_sim/torso/assets/'
         'myotorso_arm_chain.xml"/>'
     )
-    host_src = host_src.replace(
-        myoarm_inc,
-        f'<include file="{assets_abs}"/>',
-        1,
-    )
+    if _ARM_ASSETS_INC_NEW in host_src:
+        host_src = host_src.replace(
+            _ARM_ASSETS_INC_NEW, f'<include file="{assets_abs}"/>', 1
+        )
+        host_src = host_src.replace(_ARM_TENDONS_INC, "", 1)
+        host_src = host_src.replace(_ARM_MUSCLES_INC, "", 1)
+    else:
+        host_src = host_src.replace(
+            _ARM_ASSETS_INC_OLD, f'<include file="{assets_abs}"/>', 1
+        )
     host_src = host_src.replace(
         chain_inc,
         f'<include file="{chain_abs}"/>',
         1,
+    )
+
+    # Resolve compiler meshdir/texturedir and quad-scene include to pip path.
+    from myosuite.utils.simhive_path import get_simhive_asset_root
+
+    _myo_sim_root = get_simhive_asset_root("myo_sim").as_posix()
+    host_src = host_src.replace(
+        'meshdir="../../../../simhive/myo_sim"', f'meshdir="{_myo_sim_root}"', 1
+    )
+    host_src = host_src.replace(
+        'texturedir="../../../../simhive/myo_sim"', f'texturedir="{_myo_sim_root}"', 1
+    )
+    _quad_scene_inc = (
+        '<include file="../../../../simhive/myo_sim/scene/myosuite_quad.xml"/>'
+    )
+    _quad_scene_abs = (
+        get_simhive_asset_root("myo_sim") / "scene" / "myosuite_quad.xml"
+    ).as_posix()
+    host_src = host_src.replace(
+        _quad_scene_inc, f'<include file="{_quad_scene_abs}"/>', 1
     )
 
     torso_assets_abs = _musclemimic_model_file(
