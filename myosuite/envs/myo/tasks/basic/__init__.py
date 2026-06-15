@@ -13,8 +13,47 @@ import numpy as np
 
 import myosuite.core.registry as _registry
 
-_SIMHIVE_ROOT = pathlib.Path(__file__).parents[4] / "simhive" / "myo_sim"
+
+def _simhive_root() -> pathlib.Path:
+    """Resolve myo_sim model root: pip package first, submodule fallback."""
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        if hasattr(myo_sim, "MODELS_DIR") and myo_sim.MODELS_DIR.exists():
+            return myo_sim.MODELS_DIR
+    except ImportError:
+        pass
+    return pathlib.Path(__file__).parents[4] / "simhive" / "myo_sim"
+
+
+_SIMHIVE_ROOT = _simhive_root()
 _ASSETS_ROOT = pathlib.Path(__file__).parents[2] / "assets"
+
+
+def _resolve_elbow_xml(filename: str = "myoelbow_1dof6muscles.xml") -> pathlib.Path:
+    """Resolve elbow XML: pip package first, env assets fallback."""
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        p = myo_sim.MODELS_DIR / "elbow" / filename
+        if p.exists():
+            return p
+    except ImportError:
+        pass
+    return _ASSETS_ROOT / "elbow" / filename
+
+
+def _resolve_hand_xml(filename: str) -> pathlib.Path:
+    """Resolve hand XML: pip package first, env assets fallback."""
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        p = myo_sim.MODELS_DIR / "hand" / filename
+        if p.exists():
+            return p
+    except ImportError:
+        pass
+    return _ASSETS_ROOT / "hand" / filename
 
 
 def _reg(env_id, entry_point, max_episode_steps, kwargs):
@@ -105,7 +144,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "elbow" / "myoelbow_1dof6muscles.xml"),
+        "model_path": str(_resolve_elbow_xml("myoelbow_1dof6muscles.xml")),
         "target_jnt_range": {
             "r_elbow_flex": (2, 2),
         },
@@ -120,7 +159,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "elbow" / "myoelbow_1dof6muscles.xml"),
+        "model_path": str(_resolve_elbow_xml("myoelbow_1dof6muscles.xml")),
         "target_jnt_range": {
             "r_elbow_flex": (0, 2.27),
         },
@@ -138,7 +177,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "elbow" / "myoelbow_1dof6muscles_1dofexo.xml"),
+        "model_path": str(_resolve_elbow_xml("myoelbow_1dof6muscles_1dofexo.xml")),
         "target_jnt_range": {
             "r_elbow_flex": (2, 2),
         },
@@ -159,7 +198,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "elbow" / "myoelbow_1dof6muscles_1dofexo.xml"),
+        "model_path": str(_resolve_elbow_xml("myoelbow_1dof6muscles_1dofexo.xml")),
         "target_jnt_range": {
             "r_elbow_flex": (0, 2.27),
         },
@@ -255,7 +294,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_pose.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_pose.xml")),
         "viz_site_targets": ("THtip", "IFtip", "MFtip", "RFtip", "LFtip"),
         "target_jnt_value": np.array(
             [
@@ -377,7 +416,7 @@ for k in ASL_qpos.keys():
         entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
         max_episode_steps=100,
         kwargs={
-            "model_path": str(_ASSETS_ROOT / "hand" / "myohand_pose.xml"),
+            "model_path": str(_resolve_hand_xml("myohand_pose.xml")),
             "viz_site_targets": ("THtip", "IFtip", "MFtip", "RFtip", "LFtip"),
             "target_jnt_value": np.array(ASL_qpos[k], "float"),
             "normalize_act": True,
@@ -398,7 +437,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_pose.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_pose.xml")),
         "viz_site_targets": ("THtip", "IFtip", "MFtip", "RFtip", "LFtip"),
         "target_jnt_range": Rpos,
         "normalize_act": True,
@@ -516,7 +555,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_pose.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_pose.xml")),
         "target_reach_range": {
             "THtip": ((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495)),
             "IFtip": ((-0.151, -0.547, 1.455), (-0.151, -0.547, 1.455)),
@@ -533,7 +572,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_pose.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_pose.xml")),
         "target_reach_range": {
             "THtip": (
                 (-0.165 - 0.020, -0.537 - 0.040, 1.495 - 0.040),
@@ -567,7 +606,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.key_turn:KeyTurnEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_keyturn.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_keyturn.xml")),
         "normalize_act": True,
     },
 )
@@ -576,7 +615,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.key_turn:KeyTurnEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_keyturn.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_keyturn.xml")),
         "normalize_act": True,
         "key_init_range": (-np.pi / 2, np.pi / 2),
         "goal_th": 2 * np.pi,
@@ -590,7 +629,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.hand.obj_hold:ObjHoldFixedEnvV0",
     max_episode_steps=75,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_hold.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_hold.xml")),
         "normalize_act": True,
     },
 )
@@ -599,7 +638,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.hand.obj_hold:ObjHoldRandomEnvV0",
     max_episode_steps=75,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_hold.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_hold.xml")),
         "normalize_act": True,
     },
 )
@@ -610,7 +649,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.hand.pen:PenTwirlFixedEnvV0",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_pen.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_pen.xml")),
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -620,7 +659,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.hand.pen:PenTwirlRandomEnvV0",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_pen.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_pen.xml")),
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -698,7 +737,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reorient_sar:Geometries8EnvV0Gymnasium",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_sar.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_sar.xml")),
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -710,7 +749,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reorient_sar:Geometries100EnvV0Gymnasium",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_sar.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_sar.xml")),
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -722,7 +761,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reorient_sar:InDistribution",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_sar.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_sar.xml")),
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -734,7 +773,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reorient_sar:OutofDistribution",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "hand" / "myohand_sar.xml"),
+        "model_path": str(_resolve_hand_xml("myohand_sar.xml")),
         "normalize_act": True,
         "frame_skip": 5,
     },

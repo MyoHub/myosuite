@@ -53,16 +53,17 @@ def test_get_recipe_unknown_raises():
 
 
 def test_resolve_fragment_path_fallback():
-    """_resolve_fragment_path falls back to simhive submodule."""
+    """_resolve_fragment_path resolves via myo_sim pip package or simhive submodule."""
     from myosuite.core.model_builder import _resolve_fragment_path
 
-    # elbow should resolve — simhive submodule must be initialised
     try:
         path = _resolve_fragment_path("elbow")
         assert path.exists(), f"Resolved path does not exist: {path}"
         assert path.suffix == ".xml"
     except FileNotFoundError:
-        pytest.skip("simhive submodule not initialised; skipping path resolution test")
+        pytest.skip(
+            "elbow fragment not resolvable (no myo_sim package and no simhive submodule)"
+        )
 
 
 def test_model_builder_content_hash_stable():
