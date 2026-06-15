@@ -240,7 +240,7 @@ To inspect any model interactively:
 
 .. code-block:: bash
 
-   python -m myosuite.utils.examine_sim -s myosuite/simhive/myo_sim/elbow/myoelbow_v0.xml
+   python -m myosuite.utils.examine_sim -s $(python -c "import myo_sim; print(myo_sim.get_path('elbow/myoelbow_v0.xml'))")
 
 
 Pathological Conditions

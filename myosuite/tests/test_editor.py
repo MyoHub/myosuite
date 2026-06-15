@@ -13,8 +13,9 @@ import pytest
 
 from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
 from myosuite.envs.myo.myoedits.model_editor import ModelEditor
+from myosuite.utils.simhive_path import get_simhive_asset_root
 
-_ASSETS = Path(__file__).parents[1] / "simhive" / "myo_sim"
+_ASSETS = get_simhive_asset_root("myo_sim")
 
 pytestmark = [pytest.mark.tier3, pytest.mark.legacy]
 

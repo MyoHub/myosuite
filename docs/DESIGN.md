@@ -261,10 +261,10 @@ mapping policy output `[-1, 1]` → muscle excitation `[0, 1]`.
 
 ### New body part
 
-1. **In the `myo_sim` repo** (MyoSuite consumes it as the `myosuite/simhive/myo_sim` git submodule): add the XML fragment to the appropriate directory (e.g. `new_part/myonewpart_v0.xml`)
+1. **In the `myo_sim` repo** (published as the `myo-sim` PyPI package): add the XML fragment to the appropriate directory (e.g. `new_part/myonewpart_v0.xml`)
 2. **In `myo_sim/_registry.py`**: call `FragmentRegistry.register("new_part", "new_part/...", version=1, joints=[...])`
-3. Bump the submodule pointer in MyoSuite to the new `myo_sim` commit (or tag) after upstream merges
-4. **In myosuite**: register a recipe in `myosuite/core/model_recipes.py` using `@model_recipe` (no PyPI `myo-sim` dependency)
+3. Release a new `myo-sim` version and bump the `myo-sim` dependency in MyoSuite's `pyproject.toml`
+4. **In myosuite**: register a recipe in `myosuite/core/model_recipes.py` using `@model_recipe`
 5. No existing tasks change
 
 ### New scene object / floor

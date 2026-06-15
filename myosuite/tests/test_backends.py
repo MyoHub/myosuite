@@ -97,7 +97,6 @@ from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv  # noqa: E402
 # Constants
 # ---------------------------------------------------------------------------
 
-_SIMHIVE = pathlib.Path(__file__).parents[2] / "simhive" / "myo_sim"
 _ASSETS = pathlib.Path(__file__).parents[1] / "envs" / "myo" / "assets"
 
 _N_STEPS = 50
