@@ -109,7 +109,21 @@ ppo_config = config_dict.create(
 _MYOSUITE = epath.Path(epath.resource_path("myosuite"))
 
 _ELBOW_MODEL = Path(str(_MYOSUITE / "envs/myo/assets/elbow/myoelbow_1dof6muscles.xml"))
-_FINGER_MODEL = Path(str(_MYOSUITE / "simhive/myo_sim/finger/myofinger_v0.xml"))
+
+
+def _resolve_finger_xml() -> Path:
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        p = myo_sim.MODELS_DIR / "finger" / "myofinger_v0.xml"
+        if p.exists():
+            return p
+    except ImportError:
+        pass
+    return Path(str(_MYOSUITE / "simhive/myo_sim/finger/myofinger_v0.xml"))
+
+
+_FINGER_MODEL = _resolve_finger_xml()
 _HAND_MODEL = Path(str(_MYOSUITE / "envs/myo/assets/hand/myohand_pose.xml"))
 
 # ---------------------------------------------------------------------------

@@ -47,9 +47,22 @@ pytestmark = pytest.mark.tier2
 # Helpers
 # ---------------------------------------------------------------------------
 
-FINGER_MODEL = "myosuite/simhive/myo_sim/finger/myofinger_v0.xml"
+
+def _myo_sim_model(rel: str) -> str:
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        p = myo_sim.MODELS_DIR / rel
+        if p.exists():
+            return str(p)
+    except ImportError:
+        pass
+    return f"myosuite/simhive/myo_sim/{rel}"
+
+
+FINGER_MODEL = _myo_sim_model("finger/myofinger_v0.xml")
 ELBOW_MODEL = "myosuite/envs/myo/assets/elbow/myoelbow_1dof6muscles.xml"
-LEG_MODEL = "myosuite/simhive/myo_sim/leg/myolegs.xml"
+LEG_MODEL = _myo_sim_model("leg/myolegs.xml")
 
 
 def _make_pose_env(impl: str = "jax"):

@@ -39,9 +39,13 @@ class TestMjxFunctions:
             pytest.skip("MJX is not available")
 
         # Load a standard MuJoCo model for comparison and MJX model creation
-        cls.mujoco_model = mujoco.MjModel.from_xml_path(
-            "myosuite/simhive/myo_sim/finger/myofinger_v0.xml"
-        )
+        try:
+            import myo_sim  # type: ignore[import-untyped]
+
+            _finger = str(myo_sim.MODELS_DIR / "finger" / "myofinger_v0.xml")
+        except ImportError:
+            _finger = "myosuite/simhive/myo_sim/finger/myofinger_v0.xml"
+        cls.mujoco_model = mujoco.MjModel.from_xml_path(_finger)
         # Convert to MJX model
         cls.mjx_model = mjx.put_model(cls.mujoco_model)
 

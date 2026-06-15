@@ -59,33 +59,36 @@ from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
 if TYPE_CHECKING:  # pragma: no cover
     import torch
 
-# Resolve model paths (works from source and when installed)
-try:
-    from etils import epath
 
-    _MYOSUITE_ROOT = Path(epath.resource_path("myosuite"))
-    _ELBOW_XML = _MYOSUITE_ROOT / "envs/myo/assets/elbow/myoelbow_1dof6muscles.xml"
-    # Prefer the plane-terrain leg model for mjlab: MuJoCo Warp forward on hfield
-    # terrain has been unreliable (including native crashes) on some platforms.
-    # Muscle/torso/leg chain matches ``myolegs.xml``; CPU/MJX may still use the
-    # hfield variant where supported.
-    _LEG_DIR = _MYOSUITE_ROOT / "simhive/myo_sim/leg"
-    _WALK_XML_MJX = _LEG_DIR / "myolegs_mjx.xml"
-    _WALK_XML = _WALK_XML_MJX if _WALK_XML_MJX.is_file() else _LEG_DIR / "myolegs.xml"
-except (ImportError, ModuleNotFoundError):
-    # parents[3] from register_mjlab_tasks.py = myosuite package root
-    _MYOSUITE_ROOT = Path(__file__).resolve().parents[3]
-    _ELBOW_XML = (
-        _MYOSUITE_ROOT
-        / "envs"
-        / "myo"
-        / "assets"
-        / "elbow"
-        / "myoelbow_1dof6muscles.xml"
-    )
-    _LEG_DIR = _MYOSUITE_ROOT / "simhive" / "myo_sim" / "leg"
-    _WALK_XML_MJX = _LEG_DIR / "myolegs_mjx.xml"
-    _WALK_XML = _WALK_XML_MJX if _WALK_XML_MJX.is_file() else _LEG_DIR / "myolegs.xml"
+# Resolve model paths — pip package first, submodule fallback.
+def _resolve_model_root() -> Path:
+    try:
+        from etils import epath
+
+        return Path(epath.resource_path("myosuite"))
+    except (ImportError, ModuleNotFoundError):
+        return Path(__file__).resolve().parents[3]
+
+
+def _resolve_leg_dir() -> Path:
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        if hasattr(myo_sim, "MODELS_DIR") and (myo_sim.MODELS_DIR / "leg").exists():
+            return myo_sim.MODELS_DIR / "leg"
+    except ImportError:
+        pass
+    root = _resolve_model_root()
+    return root / "simhive" / "myo_sim" / "leg"
+
+
+_MYOSUITE_ROOT = _resolve_model_root()
+_ELBOW_XML = _MYOSUITE_ROOT / "envs/myo/assets/elbow/myoelbow_1dof6muscles.xml"
+# Prefer the plane-terrain leg model for mjlab: MuJoCo Warp forward on hfield
+# terrain has been unreliable (including native crashes) on some platforms.
+_LEG_DIR = _resolve_leg_dir()
+_WALK_XML_MJX = _LEG_DIR / "myolegs_mjx.xml"
+_WALK_XML = _WALK_XML_MJX if _WALK_XML_MJX.is_file() else _LEG_DIR / "myolegs.xml"
 
 
 def _elbow_tendon_names() -> tuple[str, ...]:
