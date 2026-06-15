@@ -54,10 +54,14 @@ def test_myotorso_arm_host_right_arm_hinge_parity_with_bimanual() -> None:
         adr = int(host_m.jnt_qposadr[hj])
         host_d.qpos[adr] = val
     mujoco.mj_forward(host_m, host_d)
+    ref_joint_names = {
+        ref_m.joint(i).name for i in range(ref_m.njnt) if ref_m.joint(i).name
+    }
     for hj, val in mapping.items():
         hname = host_m.joint(hj).name
         assert hname is not None
-        bname = f"{hname}_r"
+        # Host joints may have _r suffix (new arm) or bare names (old arm).
+        bname = hname if hname in ref_joint_names else f"{hname}_r"
         rid = mujoco.mj_name2id(ref_m, mujoco.mjtObj.mjOBJ_JOINT, bname)
         assert rid >= 0
         rq = int(ref_m.jnt_qposadr[rid])
@@ -73,13 +77,15 @@ def test_right_arm_body_names_align_stripped_suffix() -> None:
         n = mujoco.mj_id2name(ref_m, mujoco.mjtObj.mjOBJ_BODY, i) or ""
         if n.endswith("_r") and not n.endswith("_l"):
             ref_bases.add(n[:-2])
-    host_names: set[str] = set()
+    # Normalise host body names: strip _r suffix so we get the bare base name
+    # regardless of whether the host uses old (bare) or new (_r-suffixed) naming.
+    host_bases: set[str] = set()
     for i in range(host_m.nbody):
         n = mujoco.mj_id2name(host_m, mujoco.mjtObj.mjOBJ_BODY, i) or ""
         if n:
-            host_names.add(n)
+            host_bases.add(n[:-2] if n.endswith("_r") else n)
     for key in ("humerus", "ulna", "radius", "scapula", "clavicle"):
-        assert key in host_names, f"missing host body {key!r}"
+        assert key in host_bases, f"missing host body {key!r} (or {key}_r)"
         assert (
             key in ref_bases
         ), f"missing ref counterpart for {key!r} (expected {key!r} as {key}_r)"
