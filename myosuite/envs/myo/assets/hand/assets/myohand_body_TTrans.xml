@@ -17,7 +17,6 @@
 
   <worldbody>
     <body childclass="myohand" name="full_body">
-      <geom name="body" type="mesh" mesh="body_norighthand" euler="0 0 3.14"/>
       <body name="thorax" pos="0 0.08 1.4" euler="1.57 -1.57 0">
         <!-- <geom name="thorax" type="mesh" mesh="thorax"/> -->
         <body name="clavicle" pos="0.006325 0.00693 0.025465">
