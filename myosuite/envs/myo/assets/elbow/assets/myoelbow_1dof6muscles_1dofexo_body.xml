@@ -1,0 +1,183 @@
+<mujocoinclude model="MyoElbow_v0.1.7">
+<!-- =================================================
+	Copyright 2020 Vikash Kumar, Vittorio Caggiano, Huawei Wang
+	Model	  :: Myo Eblow (MuJoCoV2.0)
+	Author	:: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano, Huawei Wang
+	source	:: https://github.com/vikashplus
+	License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+
+  <worldbody>
+    <body childclass="myoElbow" name="full_body">
+      <geom name="body" type="mesh" mesh="body_norighthand" euler="0 0 3.14"/>
+
+      <body name="base" pos="0 .08 1.4" euler="1.57 -1.57 0">
+        <!-- <geom name="ground_ribs" type="mesh" mesh="ground_ribs"></geom> -->
+        <!-- <geom name="ground_spine" type="mesh" mesh="ground_spine"></geom> -->
+        <!-- <geom name="ground_skull" type="mesh" mesh="ground_skull"></geom> -->
+        <!-- <geom name="ground_jaw" type="mesh" mesh="ground_jaw"></geom> -->
+        <!-- <geom name="ground_r_clavicle" type="mesh" mesh="ground_r_clavicle"></geom> -->
+        <!-- <geom name="ground_r_scapula" type="mesh" mesh="ground_r_scapula"></geom> -->
+        <!-- <geom name="TRIlongglen_wrap" type="cylinder" size="0.003 0.015" pos="-0.043905 -0.0039 0.1478" euler="1.37532 -0.294612 2.43596" rgba=".5 .5 .9 .4" group="2"></geom> -->
+        <site name="TRIlong-P1" pos="-0.0536 -0.0137 0.1472"></site>
+        <site name="BIClong-P1" pos="-0.0392 0.0035 0.148"></site>
+        <site name="BIClong-P2" pos="-0.0289 0.0139 0.1564"></site>
+        <site name="BICshort-P1" pos="0.0047 -0.0123 0.1348"></site>
+        <site name="BICshort-P2" pos="-0.0071 -0.04 0.1451"></site>
+
+        <body name="r_humerus" pos="-0.017545 -0.007 0.17" quat="1.0 0.0 0.0 0.0">
+          <geom type="cylinder" pos="0 -.1 0" size=".04 .04" rgba=".3 .3 .3 1" euler="1.57 0 0" mass=".1"/>
+          <geom type="box" pos="0.005 -.2 0.04" size=".012 .004 .1" rgba=".3 .3 .3 1" euler="1.6 0.03 0" mass=".01"/>
+          <geom name="arm_r_humerus" type="mesh" mesh="arm_r_humerus"></geom>
+          <geom name="TRIlonghh_wrap" type="sphere" size="0.03" pos="0.0068 0.00 0.0034" euler="3.00162 -0.853466 2.57419" rgba=".5 .5 .9 .4" group="2"></geom>
+          <geom name="BIClonghh_wrap" type="sphere" size="0.025" pos="-0.001 -0.0008 0.0012" euler="0 0 0" rgba=".5 .5 .9 .4" group="2"></geom>
+          <geom name="TRI_wrap" type="cylinder" size="0.016 0.025" pos="0.0028 -0.2919 -0.0069" euler="-0.14015 -0.00628319 0.154985" rgba=".5 .5 .9 .4" group="2"></geom>
+          <inertial pos="0 -0.180496 0" mass="1.864572" fullinertia="0.01481 0.004551 0.013193 0 0 0"></inertial>
+          <site name="TRIlong-P2" pos="-0.0271 -0.1144 -0.0066"></site>
+          <site name="TRIlong-P3" pos="-0.0318 -0.2264 -0.0122"></site>
+          <site name="TRIlong-P4" pos="-0.0174 -0.2676 -0.0121"></site>
+          <site name="TRIlat-P1" pos="-0.006 -0.1265 0.0043"></site>
+          <site name="TRIlat-P2" pos="-0.0234 -0.1453 0.0093"></site>
+          <site name="TRIlat-P3" pos="-0.0318 -0.2264 -0.0122"></site>
+          <site name="TRIlat-P4" pos="-0.0174 -0.2676 -0.0121"></site>
+          <site name="TRImed-P1" pos="-0.0084 -0.1369 -0.0091"></site>
+          <site name="TRImed-P2" pos="-0.026 -0.1514 -0.0108"></site>
+          <site name="TRImed-P3" pos="-0.0318 -0.2264 -0.0122"></site>
+          <site name="TRImed-P4" pos="-0.0174 -0.2676 -0.0121"></site>
+          <site name="BIClong-P3" pos="0.0213 0.0179 0.0103"></site>
+          <site name="BIClong-P4" pos="0.0238 -0.0051 0.012"></site>
+          <site name="BIClong-P5" pos="0.0134 -0.0283 0.0014"></site>
+          <site name="BIClong-P6" pos="0.0107 -0.0774 -0.0016"></site>
+          <site name="BIClong-P7" pos="0.017 -0.1212 0.0002"></site>
+          <site name="BIClong-P8" pos="0.0228 -0.1754 -0.0063"></site>
+          <site name="BICshort-P3" pos="0.0112 -0.0758 -0.011"></site>
+          <site name="BICshort-P4" pos="0.017 -0.1212 -0.0108"></site>
+          <site name="BICshort-P5" pos="0.0228 -0.1754 -0.0063"></site>
+          <site name="BRA-P1" pos="0.0068 -0.1739 -0.0036"></site>
+
+          <site name="BIClonghh_site_BIClong_side" pos="0.00 0.03 -0.02"></site>
+          <site name="TRIlonghh_site_TRIlong_side" pos="-0.02 0.00 -0.035"></site>
+          <site name="TRI_site_TRIlong_side" pos="-0.0256308 -0.273692 0.0165713"></site>
+          <site name="TRI_site_TRIlat_side" pos="-0.0256308 -0.273692 0.0165713"></site>
+          <site name="TRI_site_TRImed_side" pos="-0.0289353 -0.297467 -0.0136312"></site>
+          <site name="TRI_site_BRA_side" pos="0.0188814 -0.25991 0.0179386"></site>
+
+
+          <!--joint name="r_shoulder_elev" type="hinge" pos="0 0 0" axis="-0.058898 0.0023 0.998261" limited="true" range="-1.5708 3.14159" ref="0"></joint-->
+          <body name="r_ulna_radius_hand" pos="0.0061 -0.2904 -0.0123" quat="1.0 0.0 0.0 0.0">
+            <geom type="cylinder" pos="0 -.12 0.035" size=".03 .03" rgba=".3 .3 .3 1" euler="1.3 0 0" mass=".1"/>
+            <geom type="box" pos="0 -.05 0.06" size=".01 .004 .06" rgba=".3 .3 .3 1" euler="1.3 0 0" mass=".01"/>
+            <geom type="cylinder" pos="0 0 0.05" size=".02 .01" rgba=".32 .32 .32 1" euler="0 0 0" mass=".001"/>
+
+            <geom name="arm_r_ulna" type="mesh" mesh="arm_r_ulna"></geom>
+            <geom name="arm_r_radius" type="mesh" mesh="arm_r_radius"></geom>
+            <geom name="arm_r_lunate" type="mesh" mesh="arm_r_lunate"></geom>
+            <geom name="arm_r_scaphoid" type="mesh" mesh="arm_r_scaphoid"></geom>
+            <geom name="arm_r_pisiform" type="mesh" mesh="arm_r_pisiform"></geom>
+            <geom name="arm_r_triquetrum" type="mesh" mesh="arm_r_triquetrum"></geom>
+            <geom name="arm_r_capitate" type="mesh" mesh="arm_r_capitate"></geom>
+            <geom name="arm_r_trapezium" type="mesh" mesh="arm_r_trapezium"></geom>
+            <geom name="arm_r_trapezoid" type="mesh" mesh="arm_r_trapezoid"></geom>
+            <geom name="arm_r_hamate" type="mesh" mesh="arm_r_hamate"></geom>
+            <geom name="arm_r_1mc" type="mesh" mesh="arm_r_1mc"></geom>
+            <geom name="arm_r_2mc" type="mesh" mesh="arm_r_2mc"></geom>
+            <geom name="arm_r_3mc" type="mesh" mesh="arm_r_3mc"></geom>
+            <geom name="arm_r_4mc" type="mesh" mesh="arm_r_4mc"></geom>
+            <geom name="arm_r_5mc" type="mesh" mesh="arm_r_5mc"></geom>
+            <geom name="arm_r_thumbprox" type="mesh" mesh="arm_r_thumbprox"></geom>
+            <geom name="arm_r_thumbdist" type="mesh" mesh="arm_r_thumbdist"></geom>
+            <geom name="arm_r_2proxph" type="mesh" mesh="arm_r_2proxph"></geom>
+            <geom name="arm_r_2midph" type="mesh" mesh="arm_r_2midph"></geom>
+            <geom name="arm_r_2distph" type="mesh" mesh="arm_r_2distph"></geom>
+            <geom name="arm_r_3proxph" type="mesh" mesh="arm_r_3proxph"></geom>
+            <geom name="arm_r_3midph" type="mesh" mesh="arm_r_3midph"></geom>
+            <geom name="arm_r_3distph" type="mesh" mesh="arm_r_3distph"></geom>
+            <geom name="arm_r_4proxph" type="mesh" mesh="arm_r_4proxph"></geom>
+            <geom name="arm_r_4midph" type="mesh" mesh="arm_r_4midph"></geom>
+            <geom name="arm_r_4distph" type="mesh" mesh="arm_r_4distph"></geom>
+            <geom name="arm_r_5proxph" type="mesh" mesh="arm_r_5proxph"></geom>
+            <geom name="arm_r_5midph" type="mesh" mesh="arm_r_5midph"></geom>
+            <geom name="arm_r_5distph" type="mesh" mesh="arm_r_5distph"></geom>
+            <inertial pos="0 -0.181479 0" mass="1.534315" fullinertia="0.019281 0.001571 0.020062 0 0 0"></inertial>
+            <site name="TRIlong-P5" pos="-0.0219 0.0105 -0.0008"></site>
+            <site name="TRIlat-P5" pos="-0.0219 0.0105 -0.0008"></site>
+            <site name="TRImed-P5" pos="-0.0219 0.0105 -0.0008"></site>
+            <site name="BIClong-P9" pos="0.0075 -0.0484 0.0218"></site>
+            <site name="BICshort-P6" pos="0.0075 -0.0484 0.0218"></site>
+            <site name="BRA-P2" pos="-0.0032 -0.0239 0.0009"></site>
+            <site name="wrist" pos="0.007 -.261 0.065" size=".005"></site>
+            <joint name="r_elbow_flex" type="hinge" pos="0 0 0" axis="0.0494 0.0366 0.998108" limited="true" range="0 2.26893" ref="0"></joint>
+            <!-- Weight -->
+            <body name="carry_weight" pos="0.05 -.35 0.07">
+              <geom type="sphere" size=".01" rgba=".4 .5 .6 1" mass=".1"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <tendon>
+    <spatial name="TRIlong_tendon" springlength="0.143" class="myoElbow">
+      <site site="TRIlong-P1"></site>
+      <geom geom="TRIlonghh_wrap" sidesite="TRIlonghh_site_TRIlong_side"></geom>
+      <site site="TRIlong-P2"></site>
+      <site site="TRIlong-P3"></site>
+      <site site="TRIlong-P4"></site>
+      <geom geom="TRI_wrap" sidesite="TRI_site_TRIlong_side"></geom>
+      <site site="TRIlong-P5"></site>
+    </spatial>
+    <spatial name="TRIlat_tendon" springlength="0.098" class="myoElbow">
+      <site site="TRIlat-P1"></site>
+      <site site="TRIlat-P2"></site>
+      <site site="TRIlat-P3"></site>
+      <site site="TRIlat-P4"></site>
+      <geom geom="TRI_wrap" sidesite="TRI_site_TRIlat_side"></geom>
+      <site site="TRIlat-P5"></site>
+    </spatial>
+    <spatial name="TRImed_tendon" springlength="0.0908" class="myoElbow">
+      <site site="TRImed-P1"></site>
+      <site site="TRImed-P2"></site>
+      <site site="TRImed-P3"></site>
+      <site site="TRImed-P4"></site>
+      <geom geom="TRI_wrap" sidesite="TRI_site_TRImed_side"></geom>
+      <site site="TRImed-P5"></site>
+    </spatial>
+    <spatial name="BIClong_tendon" springlength="0.2723" class="myoElbow">
+      <site site="BIClong-P1"></site>
+      <site site="BIClong-P2"></site>
+      <geom geom="BIClonghh_wrap" sidesite="BIClonghh_site_BIClong_side"></geom>
+      <site site="BIClong-P3"></site>
+      <site site="BIClong-P4"></site>
+      <site site="BIClong-P5"></site>
+      <site site="BIClong-P6"></site>
+      <site site="BIClong-P7"></site>
+      <site site="BIClong-P8"></site>
+      <site site="BIClong-P9"></site>
+    </spatial>
+    <spatial name="BICshort_tendon" springlength="0.1923" class="myoElbow">
+      <site site="BICshort-P1"></site>
+      <site site="BICshort-P2"></site>
+      <site site="BICshort-P3"></site>
+      <site site="BICshort-P4"></site>
+      <site site="BICshort-P5"></site>
+      <site site="BICshort-P6"></site>
+    </spatial>
+    <spatial name="BRA_tendon" springlength="0.0535" class="myoElbow">
+      <site site="BRA-P1"></site>
+      <geom geom="TRI_wrap" sidesite="TRI_site_BRA_side"></geom>
+      <site site="BRA-P2"></site>
+    </spatial>
+  </tendon>
+
+  <actuator>
+    <motor name="Exo" joint="r_elbow_flex" gear="8.5"/>
+    <muscle name="TRIlong" force = "769.595" range="0.828323 1.58818" lmin="0.420881" lmax="1.90307" fpmax="1.37875" tendon="TRIlong_tendon" lengthrange="0.253995 0.355816"  class="muscle"></muscle>
+    <muscle name="TRIlat" force = "604.403" range="0.602904 1.02895" lmin="0.335897" lmax="2.90142" fpmax="1.79842" tendon="TRIlat_tendon" lengthrange="0.16661 0.215095"  class="muscle"></muscle>
+    <muscle name="TRImed" force = "604.231" range="0.557454 0.983503" lmin="0.337519" lmax="2.16009" fpmax="1.31972" tendon="TRImed_tendon" lengthrange="0.154238 0.202723"  class="muscle"></muscle>
+    <muscle name="BIClong" force = "607.75" range="0.448656 1.53634" lmin="0.429169" lmax="1.98717" fpmax="1.30324" tendon="BIClong_tendon" lengthrange="0.324209 0.450055"  class="muscle"></muscle>
+    <muscle name="BICshort" force = "423.688" range="0.575015 1.63325" lmin="0.397179" lmax="1.96649" fpmax="1.42184" tendon="BICshort_tendon" lengthrange="0.268259 0.408052"  class="muscle"></muscle>
+    <muscle name="BRA" force = "976.169" range="0.611597 1.09358" lmin="0.357419" lmax="2.99986" fpmax="1.97876"  tendon="BRA_tendon" lengthrange="0.105975 0.147329"  class="muscle"></muscle>
+  </actuator>
+
+</mujocoinclude>

@@ -30,12 +30,7 @@ class TestFatigue:
     @classmethod
     def setup_class(cls):
         """Set up test data and model"""
-        try:
-            import myo_sim  # type: ignore[import-untyped]
-
-            _finger = str(myo_sim.MODELS_DIR / "finger" / "myofinger_v0.xml")
-        except ImportError:
-            _finger = "myosuite/simhive/myo_sim/finger/myofinger_v0.xml"
+        _finger = "myosuite/envs/myo/assets/finger/myofinger_v0.xml"
         cls.model = mujoco.MjModel.from_xml_path(_finger)
         cls.frame_skip = 5
         cls.test_act = np.array([0.5] * 5, dtype=np.float32)

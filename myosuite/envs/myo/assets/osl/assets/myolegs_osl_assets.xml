@@ -1,0 +1,511 @@
+<mujocoinclude model="OSL_MyoLegs_v0.0.1">
+<!-- =================================================
+    Copyright 2024 Chun Kwang Tan, Elizabeth Wilson, Adan Yusseff Dominguez Ruiz, Vikash Kumar, Vittorio Caggiano, Huawei Wang
+    Model   :: OSL MyoLeg (MuJoCoV2.0)
+    Author  :: Chun Kwang Tan (cktan.neumove@gmail.com), Elizabeth Wilson (elizwils@umich.edu), Adan Yusseff Dominguez Ruiz (adanydr@outlook.com), Vikash Kumar, Vittorio Caggiano, Huawei Wang
+    Original Author :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano, Huawei Wang
+	  source	:: https://github.com/myohub
+	  License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+    <compiler angle="radian" inertiafromgeom="auto"/>
+    <option timestep="0.001"/>
+
+    <size nconmax="2000" njmax="5000" nkey="1" nuser_jnt="1"/>
+    <!-- <visual>
+        <headlight ambient=".5 .5 .5" diffuse="0.50 0.50 0.50" specular="0.50 0.50 0.50"/>
+    </visual> -->
+    <default>
+        <tendon rgba="0.95 0.3 0.3 1"/>
+        <default class="myolegs">
+            <joint armature="0.01" damping="0.5" limited="true"/>
+            <geom margin="0.001" material="mat_myolegs" rgba="0.8 0.85 0.8 1" conaffinity="0" contype="0"/>
+            <site size="0.001 0.005 0.005" group="3"/>
+            <tendon rgba="0.95 0.3 0.3 1" width="0.001"/>
+            <default class="muscle">
+                <general biasprm="0.75 1.05 -1 400 0.5 1.6 1.5 1.3 1.2 0" biastype="muscle" ctrllimited="true" ctrlrange="0 1" dynprm="0.01 0.04 0 0 0 0 0 0 0 0" dyntype="muscle" gainprm="0.75 1.05 -1 400 0.5 1.6 1.5 1.3 1.2 0" gaintype="muscle"/>
+            </default>
+            <default class="wrap">
+                <geom rgba=".5 .5 .9 0.5" group="3" contype="0" conaffinity="0"  type="cylinder"/>
+            </default>
+            <default class="coll">
+                <geom type="capsule" group="4" contype="1" conaffinity="0" condim="3" rgba="0.8 0.7 .5 1" margin="0.001" material="MatSkin"/>
+            </default>
+            <default class="osl_class">
+                <geom contype="1" conaffinity="0" condim="3"/>
+            </default>
+            <default class="myo_leg_touch">
+                <site type="box" group="3" rgba="0.8 0.2 .2 .4"/>
+            </default>
+            <default class="myo_leg_marker">
+                <site size="0.02" group="4" rgba="0.8 0.8 .2 1"/>
+            </default>
+        </default>
+    </default>
+
+    <contact>
+        <pair geom1="r_femur1_col" geom2="l_femur1_col" condim="1"/>
+        <pair geom1="r_femur1_col" geom2="l_tibia1_col" condim="1"/>
+        <pair geom1="r_femur1_col" geom2="l_tibia2_col" condim="1"/>
+
+        <!-- Femur2 collisions -->
+        <pair geom1="osl_femoral_pylon_geom_1" geom2="l_femur2_col" condim="1"/>
+        <pair geom1="osl_proximal_adapter_geom_1" geom2="l_femur2_col" condim="1"/>
+
+        <!-- Tibia collisions -->
+        <pair geom1="l_tibia1_col" geom2="osl_knee_assembly_geom_1" condim="1"/>
+        <pair geom1="l_tibia1_col" geom2="osl_tibial_pylon_geom_1" condim="1"/>
+        <pair geom1="l_tibia1_col" geom2="osl_ankle_assembly_geom_1" condim="1"/>
+
+        <pair geom1="l_tibia2_col" geom2="osl_knee_assembly_geom_1" condim="1"/>
+        <pair geom1="l_tibia2_col" geom2="osl_tibial_pylon_geom_1" condim="1"/>
+        <pair geom1="l_tibia2_col" geom2="osl_ankle_assembly_geom_1" condim="1"/>
+
+        <!-- Foot collisions -->
+        <pair geom1="l_foot_col1" geom2="osl_ankle_assembly_geom_1" condim="1"/>
+        <pair geom1="l_foot_col1" geom2="osl_foot_assembly_geom_1" condim="1"/>
+
+        <pair geom1="l_foot_col4" geom2="osl_ankle_assembly_geom_1" condim="1"/>
+        <pair geom1="l_foot_col4" geom2="osl_foot_assembly_geom_1" condim="1"/>
+
+        <!-- femur to osl tibia -->
+        <pair geom1="l_femur1_col" geom2="osl_knee_assembly_geom_1" condim="1"/>
+        <pair geom1="l_femur1_col" geom2="osl_tibial_pylon_geom_1" condim="1"/>
+        <pair geom1="l_femur1_col" geom2="osl_ankle_assembly_geom_1" condim="1"/>
+
+        <pair geom1="l_femur2_col" geom2="osl_knee_assembly_geom_1" condim="1"/>
+        <pair geom1="l_femur2_col" geom2="osl_tibial_pylon_geom_1" condim="1"/>
+        <pair geom1="l_femur2_col" geom2="osl_ankle_assembly_geom_1" condim="1"/>
+
+        <!-- osl femur (femur2) to tibia -->
+        <pair geom1="osl_femoral_pylon_geom_1" geom2="l_tibia1_col" condim="1"/>
+        <pair geom1="osl_proximal_adapter_geom_1" geom2="l_tibia1_col" condim="1"/>
+
+        <pair geom1="osl_femoral_pylon_geom_1" geom2="l_tibia2_col" condim="1"/>
+        <pair geom1="osl_proximal_adapter_geom_1" geom2="l_tibia2_col" condim="1"/>
+    </contact>
+
+
+    <asset>
+        <texture name="tex_myolegs" builtin="flat" height="762" mark="cross" markrgb="1 .9 .9" rgb1="1 1 1" rgb2="1 1 1" type="cube" width="127"/>
+        <material name="mat_myolegs" texture="tex_myolegs" texuniform="true"/>
+        <material name="MatSkin" specular="0.2" shininess=".1" reflectance="0.5" rgba="0.9 .7 1 1"/>
+
+        <mesh file="../myo_sim/meshes/r_pelvis.stl" name="r_pelvis"/>
+        <mesh file="../myo_sim/meshes/l_pelvis.stl" name="l_pelvis"/>
+        <mesh file="../myo_sim/meshes/r_femur.stl" name="r_femur"/>
+        <mesh file="../myo_sim/meshes/r_tibia.stl" name="r_tibia"/>
+        <mesh file="../myo_sim/meshes/r_fibula.stl" name="r_fibula"/>
+        <mesh file="../myo_sim/meshes/r_talus.stl" name="r_talus"/>
+        <mesh file="../myo_sim/meshes/r_foot.stl" name="r_foot"/>
+        <mesh file="../myo_sim/meshes/r_bofoot.stl" name="r_bofoot"/>
+        <mesh file="../myo_sim/meshes/r_patella.stl" name="r_patella"/>
+        <mesh file="../myo_sim/meshes/l_femur.stl" name="l_femur"/>
+        <mesh file="../myo_sim/meshes/l_tibia.stl" name="l_tibia"/>
+        <mesh file="../myo_sim/meshes/l_fibula.stl" name="l_fibula"/>
+        <mesh file="../myo_sim/meshes/l_talus.stl" name="l_talus"/>
+        <mesh file="../myo_sim/meshes/l_foot.stl" name="l_foot"/>
+        <mesh file="../myo_sim/meshes/l_bofoot.stl" name="l_bofoot"/>
+        <mesh file="../myo_sim/meshes/l_patella.stl" name="l_patella"/>
+        <mesh file="../myo_sim/meshes/osl_femur_trans_r.stl" name="mesh_femur_trans_r"/>
+        <mesh file="../myo_sim/meshes/osl_generic_socket.stl" name="prosthetic_socket_geom_1_generic_socket"/>
+        <mesh file="../myo_sim/meshes/osl_proximal_adapter_v2.stl" name="osl_proximal_adapter_geom_1_osl_proximal_adapter_v2"/>
+        <mesh file="../myo_sim/meshes/osl_knee_v2.stl" name="osl_knee_assembly_geom_1_osl_knee_v2"/>
+        <mesh file="../myo_sim/meshes/osl_ankle_v2.stl" name="osl_ankle_assembly_geom_1_osl_ankle_v2"/>
+        <mesh file="../myo_sim/meshes/osl_custom_foot_v2.stl" name="osl_foot_assembly_geom_1_osl_custom_foot_v2"/>
+    </asset>
+
+    <equality>
+        <joint joint1="knee_angle_l_translation2" joint2="knee_angle_l" name="knee_angle_l_translation2_constraint" polycoef="-7.69254e-11 -0.00587971 0.00125622 2.61846e-06 -6.24355e-07" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_translation1" joint2="knee_angle_l" name="knee_angle_l_translation1_constraint" polycoef="9.53733e-08 0.00312879 -0.00230804 0.000561561 5.68366e-07" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_rotation2" joint2="knee_angle_l" name="knee_angle_l_rotation2_constraint" polycoef="-1.47325e-08 0.0791 -0.0328478 -0.0252183 0.0108321" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_rotation3" joint2="knee_angle_l" name="knee_angle_l_rotation3_constraint" polycoef="-1.08939e-08 -0.369499 0.169478 -0.0251643 -3.50498e-07" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_beta_translation2" joint2="knee_angle_l" name="knee_angle_l_beta_translation2_constraint" polycoef="-0.0108281 -0.0487847 0.00927644 0.0131673 -0.00349673" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_beta_translation1" joint2="knee_angle_l" name="knee_angle_l_beta_translation1_constraint" polycoef="0.0524192 -0.0150188 -0.0340522 0.0133393 -0.000879151" solimp="0.9999 0.9999 0.001 0.5 2"/>
+        <joint joint1="knee_angle_l_beta_rotation1" joint2="knee_angle_l" name="knee_angle_l_beta_rotation1_constraint" polycoef="0.010506 0.0247615 -1.31647 0.716337 -0.138302" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    </equality>
+
+    <sensor>
+        <touch name="r_osl_foot" site="r_osl_foot_touch"/>
+        <touch name="l_foot" site="l_foot_touch"/>
+        <touch name="l_toes" site="l_toes_touch"/>
+        <force name="r_osl_load" site="r_osl_load_force"/>
+        <force name="r_socket_load" site="r_socket_load_force"/>
+    </sensor>
+
+    <tendon>
+        <spatial name="addbrev_r_tendon" springlength="0.0354503">
+            <site site="addbrev_r-P1"/>
+            <geom geom="AB_at_femshaft_r_wrap" sidesite="AB_at_femshaft_r_site_addbrev_r_side"/>
+            <site site="addbrev_r-P2"/>
+        </spatial>
+        <spatial name="addlong_r_tendon" springlength="0.131799">
+            <site site="addlong_r-P1"/>
+            <geom geom="AL_at_femshaft_r_wrap" sidesite="AL_at_femshaft_r_site_addlong_r_side"/>
+            <site site="addlong_r-P2"/>
+        </spatial>
+        <spatial name="glmax1_r_tendon" springlength="0.0488409">
+            <site site="glmax1_r-P1"/>
+            <site site="glmax1_r-P2"/>
+            <site site="glmax1_r-P3"/>
+            <site site="glmax1_r-P4"/>
+        </spatial>
+        <spatial name="glmax2_r_tendon" springlength="0.0678872">
+            <site site="glmax2_r-P1"/>
+            <site site="glmax2_r-P2"/>
+            <site site="glmax2_r-P3"/>
+            <site site="glmax2_r-P4"/>
+        </spatial>
+        <spatial name="glmax3_r_tendon" springlength="0.0697166">
+            <site site="glmax3_r-P1"/>
+            <site site="glmax3_r-P2"/>
+            <geom geom="Gmax3_at_pelvis_r_wrap" sidesite="Gmax3_at_pelvis_r_site_glmax3_r_side"/>
+            <site site="glmax3_r-P3"/>
+            <site site="glmax3_r-P4"/>
+        </spatial>
+        <spatial name="glmed1_r_tendon" springlength="0.0558168">
+            <site site="glmed1_r-P1"/>
+            <site site="glmed1_r-P2"/>
+        </spatial>
+        <spatial name="glmed2_r_tendon" springlength="0.0652488">
+            <site site="glmed2_r-P1"/>
+            <site site="glmed2_r-P2"/>
+        </spatial>
+        <spatial name="glmed3_r_tendon" springlength="0.0452328">
+            <site site="glmed3_r-P1"/>
+            <site site="glmed3_r-P2"/>
+        </spatial>
+        <spatial name="glmin1_r_tendon" springlength="0.0161378">
+            <site site="glmin1_r-P1"/>
+            <site site="glmin1_r-P2"/>
+        </spatial>
+        <spatial name="glmin2_r_tendon" springlength="0.0260991">
+            <site site="glmin2_r-P1"/>
+            <site site="glmin2_r-P2"/>
+        </spatial>
+        <spatial name="glmin3_r_tendon" springlength="0.0508725">
+            <site site="glmin3_r-P1"/>
+            <site site="glmin3_r-P2"/>
+        </spatial>
+        <spatial name="iliacus_r_tendon" springlength="0.0961207">
+            <site site="iliacus_r-P1"/>
+            <site site="iliacus_r-P2"/>
+            <geom geom="IL_at_brim_r_wrap" sidesite="IL_at_brim_r_site_iliacus_r_side"/>
+            <site site="iliacus_r-P3"/>
+            <site site="iliacus_r-P4"/>
+        </spatial>
+        <spatial name="piri_r_tendon" springlength="0.114906">
+            <site site="piri_r-P1"/>
+            <site site="piri_r-P2"/>
+            <site site="piri_r-P3"/>
+        </spatial>
+        <spatial name="psoas_r_tendon" springlength="0.0995432">
+            <site site="psoas_r-P1"/>
+            <site site="psoas_r-P2"/>
+            <site site="psoas_r-P3"/>
+            <site site="psoas_r-P4"/>
+        </spatial>
+
+        <spatial name="addbrev_l_tendon" springlength="0.0354503">
+            <site site="addbrev_l-P1"/>
+            <geom geom="AB_at_femshaft_l_wrap" sidesite="AB_at_femshaft_l_site_addbrev_l_side"/>
+            <site site="addbrev_l-P2"/>
+        </spatial>
+        <spatial name="addlong_l_tendon" springlength="0.131799">
+            <site site="addlong_l-P1"/>
+            <geom geom="AL_at_femshaft_l_wrap" sidesite="AL_at_femshaft_l_site_addlong_l_side"/>
+            <site site="addlong_l-P2"/>
+        </spatial>
+        <spatial name="addmagDist_l_tendon" springlength="0.0873807">
+            <site site="addmagDist_l-P1"/>
+            <geom geom="AMdist_at_femshaft_l_wrap" sidesite="AMdist_at_femshaft_l_site_addmagDist_l_side"/>
+            <site site="addmagDist_l-P2"/>
+        </spatial>
+        <spatial name="addmagIsch_l_tendon" springlength="0.216343">
+            <site site="addmagIsch_l-P1"/>
+            <geom geom="AMisch_at_condyles_l_wrap" sidesite="AMisch_at_condyles_l_site_addmagIsch_l_side"/>
+            <site site="addmagIsch_l-P2"/>
+        </spatial>
+        <spatial name="addmagMid_l_tendon" springlength="0.0466277">
+            <site site="addmagMid_l-P1"/>
+            <geom geom="AMmid_at_femshaft_l_wrap" sidesite="AMmid_at_femshaft_l_site_addmagMid_l_side"/>
+            <site site="addmagMid_l-P2"/>
+        </spatial>
+        <spatial name="addmagProx_l_tendon" springlength="0.0403241">
+            <site site="addmagProx_l-P1"/>
+            <geom geom="AMprox_at_femshaft_l_wrap" sidesite="AMprox_at_femshaft_l_site_addmagProx_l_side"/>
+            <site site="addmagProx_l-P2"/>
+        </spatial>
+        <spatial name="bflh_l_tendon" springlength="0.325227">
+            <site site="bflh_l-P1"/>
+            <site site="bflh_l-P2"/>
+            <site site="bflh_l-P3"/>
+        </spatial>
+        <spatial name="bfsh_l_tendon" springlength="0.105817">
+            <site site="bfsh_l-P1"/>
+            <geom geom="BF_at_gastroc_l_wrap" sidesite="BF_at_gastroc_l_site_bfsh_l_side"/>
+            <site site="bfsh_l-P2"/>
+        </spatial>
+        <spatial name="edl_l_tendon" springlength="0.368875">
+            <site site="edl_l-P1"/>
+            <site site="edl_l-P2"/>
+            <site site="edl_l-P3"/>
+            <site site="edl_l-P4"/>
+            <site site="edl_l-P5"/>
+            <site site="edl_l-P6"/>
+        </spatial>
+        <spatial name="ehl_l_tendon" springlength="0.326795">
+            <site site="ehl_l-P1"/>
+            <site site="ehl_l-P2"/>
+            <site site="ehl_l-P3"/>
+            <site site="ehl_l-P4"/>
+            <site site="ehl_l-P5"/>
+            <site site="ehl_l-P6"/>
+            <site site="ehl_l-P7"/>
+            <site site="ehl_l-P8"/>
+        </spatial>
+        <spatial name="fdl_l_tendon" springlength="0.378773">
+            <site site="fdl_l-P1"/>
+            <site site="fdl_l-P2"/>
+            <site site="fdl_l-P3"/>
+            <site site="fdl_l-P4"/>
+            <site site="fdl_l-P5"/>
+            <site site="fdl_l-P6"/>
+            <site site="fdl_l-P7"/>
+            <site site="fdl_l-P8"/>
+        </spatial>
+        <spatial name="fhl_l_tendon" springlength="0.35434">
+            <site site="fhl_l-P1"/>
+            <site site="fhl_l-P2"/>
+            <site site="fhl_l-P3"/>
+            <site site="fhl_l-P4"/>
+            <site site="fhl_l-P5"/>
+            <site site="fhl_l-P6"/>
+            <site site="fhl_l-P7"/>
+        </spatial>
+        <spatial name="gaslat_l_tendon" springlength="0.37607">
+            <site site="gaslat_l-P1"/>
+            <geom geom="GasLat_at_shank_l_wrap" sidesite="GasLat_at_shank_l_site_gaslat_l_side"/>
+            <site site="gaslat_l-P2"/>
+        </spatial>
+        <spatial name="gasmed_l_tendon" springlength="0.398716">
+            <site site="gasmed_l-P1"/>
+            <geom geom="GasMed_at_shank_l_wrap" sidesite="GasMed_at_shank_l_site_gasmed_l_side"/>
+            <site site="gasmed_l-P2"/>
+        </spatial>
+        <spatial name="glmax1_l_tendon" springlength="0.0488409">
+            <site site="glmax1_l-P1"/>
+            <site site="glmax1_l-P2"/>
+            <site site="glmax1_l-P3"/>
+            <site site="glmax1_l-P4"/>
+        </spatial>
+        <spatial name="glmax2_l_tendon" springlength="0.0678872">
+            <site site="glmax2_l-P1"/>
+            <site site="glmax2_l-P2"/>
+            <site site="glmax2_l-P3"/>
+            <site site="glmax2_l-P4"/>
+        </spatial>
+        <spatial name="glmax3_l_tendon" springlength="0.0697166">
+            <site site="glmax3_l-P1"/>
+            <site site="glmax3_l-P2"/>
+            <geom geom="Gmax3_at_pelvis_l_wrap" sidesite="Gmax3_at_pelvis_l_site_glmax3_l_side"/>
+            <site site="glmax3_l-P3"/>
+            <site site="glmax3_l-P4"/>
+        </spatial>
+        <spatial name="glmed1_l_tendon" springlength="0.0558168">
+            <site site="glmed1_l-P1"/>
+            <site site="glmed1_l-P2"/>
+        </spatial>
+        <spatial name="glmed2_l_tendon" springlength="0.0652488">
+            <site site="glmed2_l-P1"/>
+            <site site="glmed2_l-P2"/>
+        </spatial>
+        <spatial name="glmed3_l_tendon" springlength="0.0452328">
+            <site site="glmed3_l-P1"/>
+            <site site="glmed3_l-P2"/>
+        </spatial>
+        <spatial name="glmin1_l_tendon" springlength="0.0161378">
+            <site site="glmin1_l-P1"/>
+            <site site="glmin1_l-P2"/>
+        </spatial>
+        <spatial name="glmin2_l_tendon" springlength="0.0260991">
+            <site site="glmin2_l-P1"/>
+            <site site="glmin2_l-P2"/>
+        </spatial>
+        <spatial name="glmin3_l_tendon" springlength="0.0508725">
+            <site site="glmin3_l-P1"/>
+            <site site="glmin3_l-P2"/>
+        </spatial>
+        <spatial name="grac_l_tendon" springlength="0.172014">
+            <site site="grac_l-P1"/>
+            <geom geom="GR_at_condyles_l_wrap" sidesite="GR_at_condyles_l_site_grac_l_side"/>
+            <site site="grac_l-P2"/>
+            <site site="grac_l-P3"/>
+        </spatial>
+        <spatial name="iliacus_l_tendon" springlength="0.0961207">
+            <site site="iliacus_l-P1"/>
+            <site site="iliacus_l-P2"/>
+            <geom geom="IL_at_brim_l_wrap" sidesite="IL_at_brim_l_site_iliacus_l_side"/>
+            <site site="iliacus_l-P3"/>
+            <site site="iliacus_l-P4"/>
+        </spatial>
+        <spatial name="perbrev_l_tendon" springlength="0.147528">
+            <site site="perbrev_l-P1"/>
+            <site site="perbrev_l-P2"/>
+            <site site="perbrev_l-P3"/>
+            <site site="perbrev_l-P4"/>
+            <site site="perbrev_l-P5"/>
+        </spatial>
+        <spatial name="perlong_l_tendon" springlength="0.332221">
+            <site site="perlong_l-P1"/>
+            <site site="perlong_l-P2"/>
+            <site site="perlong_l-P3"/>
+            <site site="perlong_l-P4"/>
+            <site site="perlong_l-P5"/>
+            <site site="perlong_l-P6"/>
+            <site site="perlong_l-P7"/>
+        </spatial>
+        <spatial name="piri_l_tendon" springlength="0.114906">
+            <site site="piri_l-P1"/>
+            <site site="piri_l-P2"/>
+            <site site="piri_l-P3"/>
+        </spatial>
+        <spatial name="psoas_l_tendon" springlength="0.0995432">
+            <site site="psoas_l-P1"/>
+            <site site="psoas_l-P2"/>
+            <site site="psoas_l-P3"/>
+            <site site="psoas_l-P4"/>
+        </spatial>
+        <spatial name="recfem_l_tendon" springlength="0.448494">
+            <site site="recfem_l-P1"/>
+            <geom geom="KnExt_at_fem_l_wrap" sidesite="KnExt_at_fem_l_site_recfem_l_side"/>
+            <site site="recfem_l-P2"/>
+            <site site="recfem_l-P3"/>
+            <site site="recfem_l-P4"/>
+            <site site="recfem_l-P5"/>
+        </spatial>
+        <spatial name="sart_l_tendon" springlength="0.124">
+            <site site="sart_l-P1"/>
+            <site site="sart_l-P2"/>
+            <site site="sart_l-P3"/>
+            <site site="sart_l-P4"/>
+            <site site="sart_l-P5"/>
+        </spatial>
+        <spatial name="semimem_l_tendon" springlength="0.347586">
+            <site site="semimem_l-P1"/>
+            <geom geom="SM_at_condyles_l_wrap" sidesite="SM_at_condyles_l_site_semimem_l_side"/>
+            <site site="semimem_l-P2"/>
+        </spatial>
+        <spatial name="semiten_l_tendon" springlength="0.247199">
+            <site site="semiten_l-P1"/>
+            <geom geom="ST_at_condyles_l_wrap" sidesite="ST_at_condyles_l_site_semiten_l_side"/>
+            <site site="semiten_l-P2"/>
+            <site site="semiten_l-P3"/>
+        </spatial>
+        <spatial name="soleus_l_tendon" springlength="0.276756">
+            <site site="soleus_l-P1"/>
+            <site site="soleus_l-P2"/>
+        </spatial>
+        <spatial name="tfl_l_tendon" springlength="0.449497">
+            <site site="tfl_l-P1"/>
+            <site site="tfl_l-P2"/>
+            <site site="tfl_l-P3"/>
+            <site site="tfl_l-P4"/>
+        </spatial>
+        <spatial name="tibant_l_tendon" springlength="0.240461">
+            <site site="tibant_l-P1"/>
+            <site site="tibant_l-P2"/>
+            <site site="tibant_l-P3"/>
+            <site site="tibant_l-P4"/>
+        </spatial>
+        <spatial name="tibpost_l_tendon" springlength="0.28078">
+            <site site="tibpost_l-P1"/>
+            <site site="tibpost_l-P2"/>
+            <site site="tibpost_l-P3"/>
+            <site site="tibpost_l-P4"/>
+        </spatial>
+        <spatial name="vasint_l_tendon" springlength="0.202211">
+            <site site="vasint_l-P1"/>
+            <site site="vasint_l-P2"/>
+            <geom geom="KnExt_at_fem_l_wrap" sidesite="KnExt_at_fem_l_site_vasint_l_side"/>
+            <site site="vasint_l-P3"/>
+            <site site="vasint_l-P4"/>
+            <site site="vasint_l-P5"/>
+        </spatial>
+        <spatial name="vaslat_l_tendon" springlength="0.220601">
+            <site site="vaslat_l-P1"/>
+            <site site="vaslat_l-P2"/>
+            <geom geom="KnExt_at_fem_l_wrap" sidesite="KnExt_at_fem_l_site_vaslat_l_side"/>
+            <site site="vaslat_l-P3"/>
+            <site site="vaslat_l-P4"/>
+            <site site="vaslat_l-P5"/>
+        </spatial>
+        <spatial name="vasmed_l_tendon" springlength="0.199904">
+            <site site="vasmed_l-P1"/>
+            <site site="vasmed_l-P2"/>
+            <geom geom="KnExt_at_fem_l_wrap" sidesite="KnExt_at_fem_l_site_vasmed_l_side"/>
+            <site site="vasmed_l-P3"/>
+            <site site="vasmed_l-P4"/>
+            <site site="vasmed_l-P5"/>
+        </spatial>
+    </tendon>
+
+    <actuator>
+        <general biasprm="0.381903 1.46199 604.625 1 0.0669801 2.99607 10 1.34206 1.4 0" class="muscle" gainprm="0.381903 1.46199 604.625 1 0.0669801 2.99607 10 1.34206 1.4 0" lengthrange="0.0748245 0.186181" name="addbrev_r" tendon="addbrev_r_tendon"/>
+        <general biasprm="0.361607 1.56839 881.938 1 0.126715 3.5 10 1.50984 1.4 0" class="muscle" gainprm="0.361607 1.56839 881.938 1 0.126715 3.5 10 1.50984 1.4 0" lengthrange="0.170925 0.301499" name="addlong_r" tendon="addlong_r_tendon"/>
+        <general biasprm="0.680894 1.34594 1293.79 1 0 1.99579 10 1.86621 1.4 0" class="muscle" gainprm="0.680894 1.34594 1293.79 1 0 1.99579 10 1.86621 1.4 0" lengthrange="0.148932 0.246694" name="glmax1_r" tendon="glmax1_r_tendon"/>
+        <general biasprm="0.684001 1.42041 1308.46 1 0 3.44601 10 1.22459 1.4 0" class="muscle" gainprm="0.684001 1.42041 1308.46 1 0 3.44601 10 1.22459 1.4 0" lengthrange="0.175275 0.290891" name="glmax2_r" tendon="glmax2_r_tendon"/>
+        <general biasprm="1.36664 1.8 928.184 1 0.824721 3.5 10 1.37074 1.4 0" class="muscle" gainprm="1.36664 1.8 928.184 1 0.824721 3.5 10 1.37074 1.4 0" lengthrange="0.297946 0.474778" name="glmax3_r" tendon="glmax3_r_tendon"/>
+        <general biasprm="0.103084 1.4555 1018.46 1 0 3.49286 10 1.55125 1.4 0" class="muscle" gainprm="0.103084 1.4555 1018.46 1 0 3.49286 10 1.55125 1.4 0" lengthrange="0.063342 0.162068" name="glmed1_r" tendon="glmed1_r_tendon"/>
+        <general biasprm="0.147694 1.46079 715.019 1 0 3.5 10 1.62169 1.4 0" class="muscle" gainprm="0.147694 1.46079 715.019 1 0 3.5 10 1.62169 1.4 0" lengthrange="0.0760304 0.171887" name="glmed2_r" tendon="glmed2_r_tendon"/>
+        <general biasprm="0.125877 1.51901 828.084 1 0 3.5 10 1.38543 1.4 0" class="muscle" gainprm="0.125877 1.51901 828.084 1 0 3.5 10 1.38543 1.4 0" lengthrange="0.0544219 0.156121" name="glmed3_r" tendon="glmed3_r_tendon"/>
+        <general biasprm="0.1 1.44635 357.161 1 0.0576443 3.07057 10 1.2057 1.4 0" class="muscle" gainprm="0.1 1.44635 357.161 1 0.0576443 3.07057 10 1.2057 1.4 0" lengthrange="0.0229136 0.11449" name="glmin1_r" tendon="glmin1_r_tendon"/>
+        <general biasprm="0.1 1.60052 392.017 1 0.05 3.5 10 1.20071 1.4 0" class="muscle" gainprm="0.1 1.60052 392.017 1 0.05 3.5 10 1.20071 1.4 0" lengthrange="0.0298796 0.115728" name="glmin2_r" tendon="glmin2_r_tendon"/>
+        <general biasprm="0.1 1.8 386.063 1 0.0906571 3.5 10 1.40703 1.4 0" class="muscle" gainprm="0.1 1.8 386.063 1 0.0906571 3.5 10 1.40703 1.4 0" lengthrange="0.0345943 0.11994" name="glmin3_r" tendon="glmin3_r_tendon"/>
+        <general biasprm="0.24456 1.23695 977.408 1 0.0058227 1.83512 10 1.82107 1.4 0" class="muscle" gainprm="0.24456 1.23695 977.408 1 0.0058227 1.83512 10 1.82107 1.4 0" lengthrange="0.122191 0.22798" name="iliacus_r" tendon="iliacus_r_tendon"/>
+        <general biasprm="0.1 1.8 819.319 1 0.1 3.5 10 1.62632 1.4 0" class="muscle" gainprm="0.1 1.8 819.319 1 0.1 3.5 10 1.62632 1.4 0" lengthrange="0.0953594 0.167006" name="piri_r" tendon="piri_r_tendon"/>
+        <general biasprm="0.497633 1.12953 1385.41 1 0.0134813 1.52019 10 1.47869 1.4 0" class="muscle" gainprm="0.497633 1.12953 1385.41 1 0.0134813 1.52019 10 1.47869 1.4 0" lengthrange="0.157716 0.231585" name="psoas_r" tendon="psoas_r_tendon"/>
+        <general biasprm="0.381903 1.46199 602.897 1 0.0683724 3.07879 10 1.3614 1.4 0" class="muscle" gainprm="0.381903 1.46199 602.897 1 0.0683724 3.07879 10 1.3614 1.4 0" lengthrange="0.0748245 0.186181" name="addbrev_l" tendon="addbrev_l_tendon"/>
+        <general biasprm="0.361607 1.56839 881.343 1 0.125586 3.49915 10 1.54262 1.4 0" class="muscle" gainprm="0.361607 1.56839 881.343 1 0.125586 3.49915 10 1.54262 1.4 0" lengthrange="0.170925 0.301499" name="addlong_l" tendon="addlong_l_tendon"/>
+        <general biasprm="0.647072 1.32551 581.265 1 0.0381507 2.10964 10 1.23765 1.4 0" class="muscle" gainprm="0.647072 1.32551 581.265 1 0.0381507 2.10964 10 1.23765 1.4 0" lengthrange="0.202042 0.322261" name="addmagDist_l" tendon="addmagDist_l_tendon"/>
+        <general biasprm="0.662907 1.54717 566.285 1 0.139716 3.49861 10 1.14344 1.4 0" class="muscle" gainprm="0.662907 1.54717 566.285 1 0.139716 3.49861 10 1.14344 1.4 0" lengthrange="0.319889 0.458011" name="addmagIsch_l" tendon="addmagIsch_l_tendon"/>
+        <general biasprm="0.477896 1.27927 578.677 1 0.0208952 2.02504 10 0.870476 1.4 0" class="muscle" gainprm="0.477896 1.27927 578.677 1 0.0208952 2.02504 10 0.870476 1.4 0" lengthrange="0.112434 0.222784" name="addmagMid_l" tendon="addmagMid_l_tendon"/>
+        <general biasprm="0.1628 1.1024 568.695 1 0 2.16935 10 1.06805 1.4 0" class="muscle" gainprm="0.1628 1.1024 568.695 1 0 2.16935 10 1.06805 1.4 0" lengthrange="0.0575158 0.156738" name="addmagProx_l" tendon="addmagProx_l_tendon"/>
+        <general biasprm="0.1 1.8 1327.75 1 0.05 3.5 10 1.75486 1.4 0" class="muscle" gainprm="0.1 1.8 1327.75 1 0.05 3.5 10 1.75486 1.4 0" lengthrange="0.311093 0.518283" name="bflh_l" tendon="bflh_l_tendon"/>
+        <general biasprm="0.406318 1.19782 556.777 1 0 3.14497 10 0.922935 1.4 0" class="muscle" gainprm="0.406318 1.19782 556.777 1 0 3.14497 10 0.922935 1.4 0" lengthrange="0.150634 0.237936" name="bfsh_l" tendon="bfsh_l_tendon"/>
+        <general biasprm="0.620259 1.40474 545.598 1 0.313821 3.47851 10 1.79438 1.4 0" class="muscle" gainprm="0.620259 1.40474 545.598 1 0.313821 3.47851 10 1.79438 1.4 0" lengthrange="0.411859 0.466224" name="edl_l" tendon="edl_l_tendon"/>
+        <general biasprm="0.696495 1.41066 266.688 1 0.343273 3.26938 10 1.3865 1.4 0" class="muscle" gainprm="0.696495 1.41066 266.688 1 0.343273 3.26938 10 1.3865 1.4 0" lengthrange="0.378893 0.432312" name="ehl_l" tendon="ehl_l_tendon"/>
+        <general biasprm="0.5985 1.22918 331.887 1 0.352282 3.35018 10 1.69894 1.4 0" class="muscle" gainprm="0.5985 1.22918 331.887 1 0.352282 3.35018 10 1.69894 1.4 0" lengthrange="0.405466 0.433594" name="fdl_l" tendon="fdl_l_tendon"/>
+        <general biasprm="0.562475 1.18745 746.517 1 0.288301 3.5 10 0.896858 1.4 0" class="muscle" gainprm="0.562475 1.18745 746.517 1 0.288301 3.5 10 0.896858 1.4 0" lengthrange="0.383982 0.416918" name="fhl_l" tendon="fhl_l_tendon"/>
+        <general biasprm="0.1 1.49069 1324.37 1 0.05 3.5 10 1.93411 1.4 0" class="muscle" gainprm="0.1 1.49069 1324.37 1 0.05 3.5 10 1.93411 1.4 0" lengthrange="0.366291 0.463723" name="gaslat_l" tendon="gaslat_l_tendon"/>
+        <general biasprm="0.1 1.45 2245.47 1 0.0869909 3.46941 10 1.38125 1.4 0" class="muscle" gainprm="0.1 1.45 2245.47 1 0.0869909 3.46941 10 1.38125 1.4 0" lengthrange="0.371968 0.472667" name="gasmed_l" tendon="gasmed_l_tendon"/>
+        <general biasprm="0.680894 1.34594 1272.23 1 0 2.05861 10 1.422 1.4 0" class="muscle" gainprm="0.680894 1.34594 1272.23 1 0 2.05861 10 1.422 1.4 0" lengthrange="0.148932 0.246694" name="glmax1_l" tendon="glmax1_l_tendon"/>
+        <general biasprm="0.684001 1.42041 1308.55 1 0.000794702 3.38516 10 0.806346 1.4 0" class="muscle" gainprm="0.684001 1.42041 1308.55 1 0.000794702 3.38516 10 0.806346 1.4 0" lengthrange="0.175275 0.290891" name="glmax2_l" tendon="glmax2_l_tendon"/>
+        <general biasprm="1.36664 1.8 929.762 1 0.322928 3.5 10 1.93452 1.4 0" class="muscle" gainprm="1.36664 1.8 929.762 1 0.322928 3.5 10 1.93452 1.4 0" lengthrange="0.297946 0.474778" name="glmax3_l" tendon="glmax3_l_tendon"/>
+        <general biasprm="0.103084 1.4555 1018.93 1 4.15271e-06 3.48299 10 1.46926 1.4 0" class="muscle" gainprm="0.103084 1.4555 1018.93 1 4.15271e-06 3.48299 10 1.46926 1.4 0" lengthrange="0.063342 0.162068" name="glmed1_l" tendon="glmed1_l_tendon"/>
+        <general biasprm="0.147694 1.46079 716.963 1 0 3.39296 10 1.74572 1.4 0" class="muscle" gainprm="0.147694 1.46079 716.963 1 0 3.39296 10 1.74572 1.4 0" lengthrange="0.0760304 0.171887" name="glmed2_l" tendon="glmed2_l_tendon"/>
+        <general biasprm="0.125877 1.51901 826.643 1 0.000637198 3.49115 10 1.65163 1.4 0" class="muscle" gainprm="0.125877 1.51901 826.643 1 0.000637198 3.49115 10 1.65163 1.4 0" lengthrange="0.0544219 0.156121" name="glmed3_l" tendon="glmed3_l_tendon"/>
+        <general biasprm="0.1 1.44635 357.562 1 0.0602573 3.02127 10 1.3101 1.4 0" class="muscle" gainprm="0.1 1.44635 357.562 1 0.0602573 3.02127 10 1.3101 1.4 0" lengthrange="0.0229136 0.11449" name="glmin1_l" tendon="glmin1_l_tendon"/>
+        <general biasprm="0.1 1.60052 391.417 1 0.1 3.5 10 1.19315 1.4 0" class="muscle" gainprm="0.1 1.60052 391.417 1 0.1 3.5 10 1.19315 1.4 0" lengthrange="0.0298796 0.115728" name="glmin2_l" tendon="glmin2_l_tendon"/>
+        <general biasprm="0.1 1.8 389.612 1 0.0939983 3.5 10 1.15519 1.4 0" class="muscle" gainprm="0.1 1.8 389.612 1 0.0939983 3.5 10 1.15519 1.4 0" lengthrange="0.0345943 0.11994" name="glmin3_l" tendon="glmin3_l_tendon"/>
+        <general biasprm="0.652458 1.62414 280.263 1 0 3.5 10 1.68108 1.4 0" class="muscle" gainprm="0.652458 1.62414 280.263 1 0 3.5 10 1.68108 1.4 0" lengthrange="0.320644 0.541993" name="grac_l" tendon="grac_l_tendon"/>
+        <general biasprm="0.24456 1.23695 974.831 1 0 1.8511 10 1.69465 1.4 0" class="muscle" gainprm="0.24456 1.23695 974.831 1 0 1.8511 10 1.69465 1.4 0" lengthrange="0.122191 0.22798" name="iliacus_l" tendon="iliacus_l_tendon"/>
+        <general biasprm="0.845027 1.32175 496.73 1 0.467464 3.06759 10 1.61433 1.4 0" class="muscle" gainprm="0.845027 1.32175 496.73 1 0.467464 3.06759 10 1.61433 1.4 0" lengthrange="0.185892 0.207535" name="perbrev_l" tendon="perbrev_l_tendon"/>
+        <general biasprm="0.816281 1.3032 997.426 1 0.540714 3.40374 10 1.41808 1.4 0" class="muscle" gainprm="0.816281 1.3032 997.426 1 0.540714 3.40374 10 1.41808 1.4 0" lengthrange="0.373688 0.398423" name="perlong_l" tendon="perlong_l_tendon"/>
+        <general biasprm="0.1 1.8 822.575 1 0.0713008 3.5 10 0.992879 1.4 0" class="muscle" gainprm="0.1 1.8 822.575 1 0.0713008 3.5 10 0.992879 1.4 0" lengthrange="0.0953594 0.167006" name="piri_l" tendon="piri_l_tendon"/>
+        <general biasprm="0.497633 1.12953 1366.97 1 0.0118191 1.73378 10 1.03401 1.4 0" class="muscle" gainprm="0.497633 1.12953 1366.97 1 0.0118191 1.73378 10 1.03401 1.4 0" lengthrange="0.157716 0.231585" name="psoas_l" tendon="psoas_l_tendon"/>
+        <general biasprm="0.1 1.8 2205.94 1 0.1 3.5 10 1.95607 1.4 0" class="muscle" gainprm="0.1 1.8 2205.94 1 0.1 3.5 10 1.95607 1.4 0" lengthrange="0.423402 0.713662" name="recfem_l" tendon="recfem_l_tendon"/>
+        <general biasprm="0.602155 1.16939 248.635 1 0.00170046 1.82656 10 1.79532 1.4 0" class="muscle" gainprm="0.602155 1.16939 248.635 1 0.00170046 1.82656 10 1.79532 1.4 0" lengthrange="0.366668 0.595265" name="sart_l" tendon="sart_l_tendon"/>
+        <general biasprm="0.1 1.8 2196.22 1 0.05 3.49955 10 1.30483 1.4 0" class="muscle" gainprm="0.1 1.8 2196.22 1 0.05 3.49955 10 1.30483 1.4 0" lengthrange="0.299644 0.504801" name="semimem_l" tendon="semimem_l_tendon"/>
+        <general biasprm="0.389685 1.68623 579.776 1 0.0312812 3.5 10 1.94751 1.4 0" class="muscle" gainprm="0.389685 1.68623 579.776 1 0.0312812 3.5 10 1.94751 1.4 0" lengthrange="0.322408 0.572642" name="semiten_l" tendon="semiten_l_tendon"/>
+        <general biasprm="0.360484 1.51929 5284.56 1 0.130611 3.5 10 1.35441 1.4 0" class="muscle" gainprm="0.360484 1.51929 5284.56 1 0.130611 3.5 10 1.35441 1.4 0" lengthrange="0.292617 0.343605" name="soleus_l" tendon="soleus_l_tendon"/>
+        <general biasprm="0.1 1.46235 262.053 1 0.1 3.49308 10 1.13577 1.4 0" class="muscle" gainprm="0.1 1.46235 262.053 1 0.1 3.49308 10 1.13577 1.4 0" lengthrange="0.373121 0.588421" name="tfl_l" tendon="tfl_l_tendon"/>
+        <general biasprm="0.601012 1.38869 1143.45 1 0.235755 3.05219 10 1.36022 1.4 0" class="muscle" gainprm="0.601012 1.38869 1143.45 1 0.235755 3.05219 10 1.36022 1.4 0" lengthrange="0.28151 0.335308" name="tibant_l" tendon="tibant_l_tendon"/>
+        <general biasprm="0.627194 1.23083 1429.97 1 0.35657 3.14947 10 1.76838 1.4 0" class="muscle" gainprm="0.627194 1.23083 1429.97 1 0.35657 3.14947 10 1.76838 1.4 0" lengthrange="0.304488 0.327305" name="tibpost_l" tendon="tibpost_l_tendon"/>
+        <general biasprm="0.804197 1.8 1759.59 1 0.403463 3.5 10 1.60134 1.4 0" class="muscle" gainprm="0.804197 1.8 1759.59 1 0.403463 3.5 10 1.60134 1.4 0" lengthrange="0.282067 0.454352" name="vasint_l" tendon="vasint_l_tendon"/>
+        <general biasprm="0.754438 1.8 5322.59 1 0.340667 3.5 10 1.80773 1.4 0" class="muscle" gainprm="0.754438 1.8 5322.59 1 0.340667 3.5 10 1.80773 1.4 0" lengthrange="0.295592 0.476057" name="vaslat_l" tendon="vaslat_l_tendon"/>
+        <general biasprm="1.14989 1.61299 2422.17 1 0.412194 3.49301 10 1.4918 1.4 0" class="muscle" gainprm="1.14989 1.61299 2422.17 1 0.412194 3.49301 10 1.4918 1.4 0" lengthrange="0.311214 0.356041" name="vasmed_l" tendon="vasmed_l_tendon"/>
+
+        <motor name="osl_knee_torque_actuator" gear="49.4" ctrllimited="true" ctrlrange="-2.88 2.88" joint="osl_knee_angle_r"/>
+        <motor name="osl_ankle_torque_actuator" gear="58.4" ctrllimited="true" ctrlrange="-2.88 2.88" joint="osl_ankle_angle_r"/>
+    </actuator>
+</mujocoinclude>

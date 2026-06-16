@@ -1,0 +1,78 @@
+<mujocoinclude model="MyoElbow_v0.1.7">
+<!-- =================================================
+	Copyright 2020 Vikash Kumar, Vittorio Caggiano, Huawei Wang
+	Model	  :: Myo Elbow (MuJoCoV2.0)
+	Author	:: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano, Huawei Wang
+	source	:: https://github.com/vikashplus
+	License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+  <compiler inertiafromgeom="auto" angle="radian" balanceinertia="true" boundmass="0.001" boundinertia="0.001">
+    <lengthrange inttotal="500"></lengthrange>
+  </compiler>
+
+  <default>
+    <default class="myoElbow">
+      <joint limited="true" damping="0.5" armature="0.01" stiffness="0"></joint>
+      <geom contype="1" conaffinity="0" condim="3" rgba="0.8 0.85 0.8 1" margin="0.001" solref=".02 1" solimp=".8 .8 .01" material="geom"></geom>
+      <site size="0.001"></site>
+      <tendon width="0.005" rgba=".95 .3 .3 1" limited="false"></tendon>
+      <default class="muscle">
+        <muscle ctrllimited="true" ctrlrange="0.001 1" scale="1" vmax="15" fvmax="1.4" timeconst="0.01 0.04"></muscle>
+      </default>
+    </default>
+  </default>
+
+  <option timestep="0.002"/>
+  <size njmax="1000" nconmax="400" nuser_jnt="1"/>
+
+  <visual>
+    <headlight diffuse="1 1 1"/>
+    <scale actuatorwidth=".075"/>
+  </visual>
+
+
+  <asset>
+    <mesh name="body_norighthand" file="../myo_sim/meshes/human_lowpoly_norighthand.stl" scale="1 1 1"/>
+    <mesh name="ground_ribs" file="../myo_sim/meshes/thorax.stl" scale="1 1 1"></mesh>
+    <mesh name="ground_spine" file="../myo_sim/meshes/ground_spine.stl" scale="1 1 1"></mesh>
+    <mesh name="ground_skull" file="../myo_sim/meshes/ground_skull.stl" scale="1 1 1"></mesh>
+    <mesh name="ground_jaw" file="../myo_sim/meshes/ground_jaw.stl" scale="1 1 1"></mesh>
+    <mesh name="ground_r_clavicle" file="../myo_sim/meshes/ground_r_clavicle.stl" scale="1 1 1"></mesh>
+    <mesh name="ground_r_scapula" file="../myo_sim/meshes/ground_r_scapula.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_humerus" file="../myo_sim/meshes/arm_r_humerus.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_ulna" file="../myo_sim/meshes/arm_r_ulna.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_radius" file="../myo_sim/meshes/arm_r_radius.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_lunate" file="../myo_sim/meshes/arm_r_lunate.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_scaphoid" file="../myo_sim/meshes/arm_r_scaphoid.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_pisiform" file="../myo_sim/meshes/arm_r_pisiform.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_triquetrum" file="../myo_sim/meshes/arm_r_triquetrum.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_capitate" file="../myo_sim/meshes/arm_r_capitate.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_trapezium" file="../myo_sim/meshes/arm_r_trapezium.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_trapezoid" file="../myo_sim/meshes/arm_r_trapezoid.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_hamate" file="../myo_sim/meshes/arm_r_hamate.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_1mc" file="../myo_sim/meshes/arm_r_1mc.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_2mc" file="../myo_sim/meshes/arm_r_2mc.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_3mc" file="../myo_sim/meshes/arm_r_3mc.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_4mc" file="../myo_sim/meshes/arm_r_4mc.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_5mc" file="../myo_sim/meshes/arm_r_5mc.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_thumbprox" file="../myo_sim/meshes/arm_r_thumbprox.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_thumbdist" file="../myo_sim/meshes/arm_r_thumbdist.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_2proxph" file="../myo_sim/meshes/arm_r_2proxph.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_2midph" file="../myo_sim/meshes/arm_r_2midph.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_2distph" file="../myo_sim/meshes/arm_r_2distph.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_3proxph" file="../myo_sim/meshes/arm_r_3proxph.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_3midph" file="../myo_sim/meshes/arm_r_3midph.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_3distph" file="../myo_sim/meshes/arm_r_3distph.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_4proxph" file="../myo_sim/meshes/arm_r_4proxph.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_4midph" file="../myo_sim/meshes/arm_r_4midph.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_4distph" file="../myo_sim/meshes/arm_r_4distph.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_5proxph" file="../myo_sim/meshes/arm_r_5proxph.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_5midph" file="../myo_sim/meshes/arm_r_5midph.stl" scale="1 1 1"></mesh>
+    <mesh name="arm_r_5distph" file="../myo_sim/meshes/arm_r_5distph.stl" scale="1 1 1"></mesh>
+    <texture name="texplane" type="2d" builtin="checker" rgb1=".2 .19 .2" rgb2=".1 0.11 0.11" width="50" height="50"></texture>
+    <texture name="texgeom" type="cube" builtin="flat" mark="cross" width="127" height="1278" rgb1="0.7 0.7 0.7" rgb2="0.9 0.9 0.9" markrgb="1 1 1" random="0.01"></texture>
+    <material name="MatPlane" reflectance="0.5" texture="texplane" texrepeat="4 4" texuniform="true"></material>
+    <material name="geom" texture="texgeom" texuniform="true"></material>
+  </asset>
+
+</mujocoinclude>
