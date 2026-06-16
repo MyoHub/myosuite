@@ -15,8 +15,7 @@ Composable MJCF model builder using MuJoCo 3's MjSpec API.
     or instantiate the environment class directly.
 
 ModelBuilder is a lazy recipe — it records fragment attachments, prop bodies,
-and MjSpec transforms without compiling until :meth:`build` is called.  Results
-are SHA-256 content-hashed and cached, so identical recipes compile only once.
+and MjSpec transforms without compiling until :meth:`build` is called.
 
 Current limitations
 -------------------
@@ -60,7 +59,6 @@ Alternatives
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeAlias
@@ -71,9 +69,6 @@ import mujoco
 
 # Registry of named model recipes (populated by @model_recipe decorator)
 _RECIPES: dict[str, Callable] = {}
-
-# Cache: content_hash -> MjSpec (model is compiled fresh from spec on each hit)
-_MODEL_CACHE: dict[str, mujoco.MjSpec] = {}
 
 _IDENTITY_QUAT: np.ndarray = np.array([1.0, 0.0, 0.0, 0.0])
 _ZERO_POS: np.ndarray = np.zeros(3)
@@ -728,57 +723,8 @@ class ModelBuilder:
 
         return self.apply_transform(_sarco)
 
-    def _content_hash(self) -> str:
-        """Compute a cache key from fragment file contents, positions, and transforms."""
-        h = hashlib.sha256()
-        for frag in self._fragments:
-            if frag.spec is not None:
-                h.update(frag.spec.to_xml().encode())
-            else:
-                composed = _try_myo_sim_compose(frag.name)
-                if composed is not None:
-                    h.update(composed.to_xml().encode())
-                else:
-                    try:
-                        path = _resolve_fragment_path(frag.name)
-                        h.update(path.read_bytes())
-                    except FileNotFoundError:
-                        h.update(frag.name.encode())
-            h.update(frag.parent.encode())
-            h.update(frag.pos.tobytes())
-            h.update(frag.quat.tobytes())
-        for fb in self._free_bodies:
-            h.update(fb.name.encode())
-            h.update(fb.pos.tobytes())
-            h.update(fb.quat.tobytes())
-            h.update(fb.geom_size.tobytes())
-            h.update(fb.rgba.tobytes())
-            h.update(str(fb.geom_type).encode())
-            h.update(str(fb.mass).encode())
-            h.update(str(fb.condim).encode())
-        for mb in self._mesh_bodies:
-            h.update(mb.name.encode())
-            h.update(mb.mesh_file.read_bytes())
-            h.update(mb.pos.tobytes())
-            h.update(mb.quat.tobytes())
-            h.update(mb.scale.tobytes())
-            h.update(mb.rgba.tobytes())
-            if mb.texture_file is not None:
-                h.update(mb.texture_file.read_bytes())
-            h.update(str(mb.material_shininess).encode())
-            h.update(str(mb.material_specular).encode())
-        if self._xml_path is not None:
-            try:
-                h.update(self._xml_path.read_bytes())
-            except FileNotFoundError:
-                h.update(str(self._xml_path).encode())
-        h.update(str(self._timestep).encode())
-        h.update(str(self._disable_contacts).encode())
-        h.update(str(len(self._transforms)).encode())
-        return h.hexdigest()
-
     def build(self) -> tuple[mujoco.MjModel, mujoco.MjSpec]:
-        """Compile the spec into a MjModel, using the cache if available.
+        """Compile the spec into a MjModel.
 
         Returns:
             Tuple of (MjModel, MjSpec).
@@ -787,11 +733,6 @@ class ModelBuilder:
             FileNotFoundError: If a fragment XML cannot be resolved.
             KeyError: If a named parent body does not exist in the spec.
         """
-        key = self._content_hash()
-        if key in _MODEL_CACHE:
-            cached_spec = _MODEL_CACHE[key]
-            return cached_spec.compile(), cached_spec
-
         if self._xml_path is not None:
             if not self._xml_path.exists():
                 raise FileNotFoundError(f"XML not found: {self._xml_path}")
@@ -838,7 +779,6 @@ class ModelBuilder:
         for transform in self._transforms:
             spec = transform(spec)
 
-        _MODEL_CACHE[key] = spec
         return spec.compile(), spec
 
 

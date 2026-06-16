@@ -66,45 +66,6 @@ def test_resolve_fragment_path_fallback():
         )
 
 
-def test_model_builder_content_hash_stable():
-    """Two ModelBuilder instances with the same fragments produce the same hash."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b1 = ModelBuilder()
-    b2 = ModelBuilder()
-    # No fragments — hashes should match
-    assert b1._content_hash() == b2._content_hash()
-
-
-def test_place_fragment_hash_differs_from_default():
-    """place_fragment with non-zero pos produces a different hash than attach_fragment."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b_default = ModelBuilder().attach_fragment("elbow")
-    b_placed = ModelBuilder().place_fragment("elbow", pos=[0.1, 0.0, 0.5])
-    assert b_default._content_hash() != b_placed._content_hash()
-
-
-def test_add_free_body_changes_hash():
-    """add_free_body changes the content hash."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b_bare = ModelBuilder().attach_fragment("elbow")
-    b_with_obj = (
-        ModelBuilder().attach_fragment("elbow").add_free_body("ball", pos=[0.1, 0, 0.2])
-    )
-    assert b_bare._content_hash() != b_with_obj._content_hash()
-
-
-def test_two_free_bodies_at_different_positions_differ():
-    """Two builders with free bodies at different positions get different hashes."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b1 = ModelBuilder().add_free_body("ball", pos=[0.1, 0.0, 0.0])
-    b2 = ModelBuilder().add_free_body("ball", pos=[0.2, 0.0, 0.0])
-    assert b1._content_hash() != b2._content_hash()
-
-
 @_SKIP_NO_SIMHIVE
 def test_model_builder_build_elbow():
     """ModelBuilder.build() returns (MjModel, MjSpec) for the elbow fragment."""
@@ -171,26 +132,17 @@ def test_multiple_free_bodies():
         pytest.skip("Fragment XML not found; simhive not initialised")
 
 
-def test_model_builder_cache_hit():
-    """Building the same recipe twice reuses the cached spec but returns a fresh model."""
+def test_model_builder_build_returns_distinct_models():
+    """Each build() call returns a distinct MjModel instance."""
     import mujoco
 
-    from myosuite.core.model_builder import ModelBuilder, _MODEL_CACHE
+    from myosuite.core.model_builder import ModelBuilder
 
     b = ModelBuilder()
-    key = b._content_hash()
-    # Remove any prior cache entry so we get a clean build
-    _MODEL_CACHE.pop(key, None)
-
-    # First build: populates the cache with the spec
-    model1, spec1 = b.build()
-    assert key in _MODEL_CACHE
-    assert isinstance(_MODEL_CACHE[key], mujoco.MjSpec)
-
-    # Second build: spec is reused (same object), model is freshly compiled
-    model2, spec2 = b.build()
-    assert spec2 is spec1, "Cached spec should be the same object"
-    assert model2 is not model1, "Each build() call must return a distinct MjModel"
+    model1, _ = b.build()
+    model2, _ = b.build()
+    assert isinstance(model1, mujoco.MjModel)
+    assert model2 is not model1
 
 
 # --- Minimal OBJ mesh fixture ---
@@ -260,24 +212,6 @@ def test_add_mesh_body_missing_texture_raises(minimal_mesh):
             mesh_file=minimal_mesh,
             texture_file="/nonexistent/tex.png",
         )
-
-
-def test_add_mesh_body_changes_hash(minimal_mesh):
-    """add_mesh_body produces a different hash than an empty builder."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b_bare = ModelBuilder()
-    b_mesh = ModelBuilder().add_mesh_body("obj", mesh_file=minimal_mesh)
-    assert b_bare._content_hash() != b_mesh._content_hash()
-
-
-def test_add_mesh_body_hash_differs_with_scale(minimal_mesh):
-    """Different scale values produce different content hashes."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b1 = ModelBuilder().add_mesh_body("obj", mesh_file=minimal_mesh, scale=[1, 1, 1])
-    b2 = ModelBuilder().add_mesh_body("obj", mesh_file=minimal_mesh, scale=[2, 2, 2])
-    assert b1._content_hash() != b2._content_hash()
 
 
 def test_add_mesh_body_compiles(minimal_mesh):
@@ -399,26 +333,6 @@ def test_attach_spec_body_present():
         for i in range(model.nbody)
     ]
     assert any("test_body" in (n or "") for n in body_names)
-
-
-def test_attach_spec_hash_stable():
-    """Same MjSpec XML content produces the same cache key across two builder instances."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    h1 = ModelBuilder().attach_spec(_make_minimal_spec(), name="x")._content_hash()
-    h2 = ModelBuilder().attach_spec(_make_minimal_spec(), name="x")._content_hash()
-    assert h1 == h2
-
-
-def test_attach_spec_hash_differs_from_fragment():
-    """attach_spec hash differs from an attach_fragment hash with the same name."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    h_spec = (
-        ModelBuilder().attach_spec(_make_minimal_spec(), name="elbow")._content_hash()
-    )
-    h_frag = ModelBuilder().attach_fragment("elbow")._content_hash()
-    assert h_spec != h_frag
 
 
 def test_attach_spec_combined_with_free_body():
