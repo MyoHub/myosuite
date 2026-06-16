@@ -111,15 +111,382 @@ def _bimanual_arm(b: ModelBuilder) -> ModelBuilder:
     return b.attach_fragment("arms")
 
 
-@model_recipe("hand_standard")
-def _hand_standard(b: ModelBuilder) -> ModelBuilder:
-    """Standard myohand model — composed from arm via myo_sim, or static XML fallback."""
+def _myohand_r_path() -> Path | None:
+    """Return path to myohand_r.xml from myo_sim pip package, or None."""
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        p = myo_sim.MODELS_DIR / "hand" / "myohand_r.xml"
+        if p.exists():
+            return p
+    except ImportError:
+        pass
+    return None
+
+
+def _hand_builder() -> ModelBuilder:
+    """Return a ModelBuilder seeded with myohand_r.xml, or fall back to compose/fragment."""
+    p = _myohand_r_path()
+    if p is not None:
+        return ModelBuilder.from_xml_file(p)
     try:
         from myo_sim.build.compose import load_right_hand_from_arm_spec  # type: ignore[import-untyped]
 
-        return b.attach_spec(load_right_hand_from_arm_spec(), name="hand")
+        return ModelBuilder().attach_spec(load_right_hand_from_arm_spec(), name="hand")
     except (ImportError, AttributeError):
-        return b.attach_fragment("hand")
+        return ModelBuilder().attach_fragment("hand")
+
+
+@model_recipe("hand_standard")
+def _hand_standard(b: ModelBuilder) -> ModelBuilder:
+    """Standard myohand model — from myohand_r.xml, compose pipeline, or static fallback."""
+    return _hand_builder()
+
+
+def _add_pose_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+    """Add fingertip target sites and error tendons for pose/reach visualisation."""
+    tip_names = ["THtip_r", "IFtip_r", "MFtip_r", "RFtip_r", "LFtip_r"]
+    tip_colors = [
+        (0.8, 0.0, 0.0, 0.8),
+        (0.0, 0.8, 0.0, 0.8),
+        (0.0, 0.0, 0.8, 0.8),
+        (0.8, 0.8, 0.0, 0.8),
+        (0.8, 0.0, 0.8, 0.8),
+    ]
+    for tip, rgba in zip(tip_names, tip_colors):
+        s = spec.worldbody.add_site()
+        s.name = f"{tip}_target"
+        s.pos = [0.0, 0.0, 0.002]
+        s.size = [0.005, 0.005, 0.005]
+        s.rgba = rgba
+    return spec
+
+
+@model_recipe("hand_pose")
+def _hand_pose(b: ModelBuilder) -> ModelBuilder:
+    """myohand_r + fingertip target sites for pose-tracking tasks."""
+    return _hand_builder().apply_transform(_add_pose_props)
+
+
+@model_recipe("hand_keyturn")
+def _hand_keyturn(b: ModelBuilder) -> ModelBuilder:
+    """myohand_r + key body/joint/site for the key-turning task."""
+
+    def _add_key(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+        key_body = spec.worldbody.add_body()
+        key_body.name = "key"
+        key_body.pos = [-0.15, -0.55, 1.425]
+        key_body.alt.euler = [0.0, 0.0, 2.2]
+
+        # Key head ellipsoid
+        g_head = key_body.add_geom()
+        g_head.name = "keyhead"
+        g_head.type = mujoco.mjtGeom.mjGEOM_ELLIPSOID
+        g_head.size = [0.030, 0.030, 0.004]
+        g_head.rgba = [0.6, 0.6, 0.5, 1.0]
+
+        # Key shaft capsule
+        g_shaft = key_body.add_geom()
+        g_shaft.type = mujoco.mjtGeom.mjGEOM_CAPSULE
+        g_shaft.size = [0.005, 0.070, 0.0]
+        g_shaft.pos = [-0.045, 0.0, 0.0]
+        g_shaft.alt.euler = [0.0, 1.57, 0.0]
+        g_shaft.rgba = [0.6, 0.6, 0.5, 1.0]
+
+        # Key bow box
+        g_bow = key_body.add_geom()
+        g_bow.type = mujoco.mjtGeom.mjGEOM_BOX
+        g_bow.size = [0.015, 0.010, 0.004]
+        g_bow.pos = [-0.1, 0.008, 0.0]
+        g_bow.rgba = [0.6, 0.6, 0.5, 1.0]
+
+        # Key hinge joint
+        j = key_body.add_joint()
+        j.name = "keyjoint"
+        j.type = mujoco.mjtJoint.mjJNT_HINGE
+        j.axis = [1.0, 0.0, 0.0]
+        j.frictionloss = 0.02
+        j.damping = [0.1, 0.0, 0.0]
+
+        # Keyhead site
+        s = key_body.add_site()
+        s.name = "keyhead"
+        s.size = [0.005, 0.005, 0.005]
+
+        return spec
+
+    return _hand_builder().apply_transform(_add_key)
+
+
+@model_recipe("hand_hold")
+def _hand_hold(b: ModelBuilder) -> ModelBuilder:
+    """myohand_r + object body + goal site for object-holding tasks."""
+
+    def _add_hold_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+        # Goal site in worldbody
+        goal = spec.worldbody.add_site()
+        goal.name = "goal"
+        goal.type = mujoco.mjtGeom.mjGEOM_ELLIPSOID
+        goal.size = [0.025, 0.036, 0.030]
+        goal.pos = [-0.240, -0.520, 1.470]
+        goal.rgba = [0.0, 1.0, 0.0, 0.2]
+
+        # Object body with freejoint
+        obj_body = spec.worldbody.add_body()
+        obj_body.name = "object"
+        obj_body.pos = [-0.235, -0.51, 1.450]
+
+        obj_geom = obj_body.add_geom()
+        obj_geom.name = "object"
+        obj_geom.type = mujoco.mjtGeom.mjGEOM_ELLIPSOID
+        obj_geom.size = [0.025, 0.036, 0.030]
+        obj_geom.condim = 1
+        obj_geom.conaffinity = 1
+        obj_geom.rgba = [0.4, 0.6, 0.98, 1.0]
+
+        obj_body.add_freejoint(name="object_free")
+
+        obj_site = obj_body.add_site()
+        obj_site.name = "object"
+        obj_site.size = [0.005, 0.005, 0.005]
+
+        return spec
+
+    return _hand_builder().apply_transform(_add_hold_props)
+
+
+def _add_pen_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+    """Add pen object + target body + eps_ball site to a hand spec."""
+    # eps_ball site in worldbody
+    eps = spec.worldbody.add_site()
+    eps.name = "eps_ball"
+    eps.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    eps.pos = [-0.230, -0.530, 1.445]
+    eps.size = [0.075, 0.075, 0.075]
+    eps.rgba = [1.0, 1.0, 0.0, 0.5]
+    eps.group = 1
+
+    # Object (pen) body
+    pen_body = spec.worldbody.add_body()
+    pen_body.name = "Object"
+    pen_body.pos = [-0.230, -0.530, 1.445]
+    pen_body.alt.euler = [0.0, 1.27, 0.0]
+
+    for axis, jname, jtype in [
+        ([1, 0, 0], "OBJTx", mujoco.mjtJoint.mjJNT_SLIDE),
+        ([0, 1, 0], "OBJTy", mujoco.mjtJoint.mjJNT_SLIDE),
+        ([0, 0, 1], "OBJTz", mujoco.mjtJoint.mjJNT_SLIDE),
+        ([1, 0, 0], "OBJRx", mujoco.mjtJoint.mjJNT_HINGE),
+        ([0, 1, 0], "OBJRy", mujoco.mjtJoint.mjJNT_HINGE),
+        ([0, 0, 1], "OBJRz", mujoco.mjtJoint.mjJNT_HINGE),
+    ]:
+        j = pen_body.add_joint()
+        j.name = jname
+        j.type = jtype
+        j.axis = axis
+        j.limited = False
+        j.damping = [0.0, 0.0, 0.0]
+
+    pen_geom = pen_body.add_geom()
+    pen_geom.name = "pen"
+    pen_geom.type = mujoco.mjtGeom.mjGEOM_CYLINDER
+    pen_geom.size = [0.015, 0.065, 0.0]
+    pen_geom.condim = 4
+    pen_geom.rgba = [0.6, 0.6, 0.6, 0.6]
+    pen_geom.density = 1500.0
+
+    for gname, gpos, grgba in [
+        ("top", [0, 0, -0.0455], [0, 0.5, 1, 1]),
+        ("bot", [0, 0, 0.067], [0, 0.5, 1, 1]),
+    ]:
+        pg = pen_body.add_geom()
+        pg.name = gname
+        pg.type = mujoco.mjtGeom.mjGEOM_CYLINDER
+        pg.size = [0.017, 0.020, 0.0]
+        pg.pos = gpos
+        pg.rgba = grgba
+        pg.contype = 0
+        pg.conaffinity = 0
+
+    s_top = pen_body.add_site()
+    s_top.name = "object_top"
+    s_top.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    s_top.size = [0.005, 0.005, 0.005]
+    s_top.pos = [0.0, 0.0, 0.065]
+    s_top.rgba = [0.8, 0.2, 0.2, 1.0]
+
+    s_bot = pen_body.add_site()
+    s_bot.name = "object_bottom"
+    s_bot.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    s_bot.size = [0.005, 0.005, 0.005]
+    s_bot.pos = [0.0, 0.0, -0.065]
+    s_bot.rgba = [0.2, 0.8, 0.2, 1.0]
+
+    # Target body (static)
+    tgt_body = spec.worldbody.add_body()
+    tgt_body.name = "target"
+    tgt_body.pos = [0.0, -0.54, 1.382]
+
+    tgt_geom = tgt_body.add_geom()
+    tgt_geom.name = "target"
+    tgt_geom.type = mujoco.mjtGeom.mjGEOM_CYLINDER
+    tgt_geom.size = [0.015, 0.065, 0.0]
+    tgt_geom.condim = 4
+    tgt_geom.rgba = [0.6, 0.6, 0.6, 0.3]
+
+    for gname, gpos, grgba in [
+        ("t_top", [0, 0, -0.0455], [0, 1, 0.5, 1]),
+        ("t_bot", [0, 0, 0.067], [0, 1, 0.5, 1]),
+    ]:
+        tg = tgt_body.add_geom()
+        tg.name = gname
+        tg.type = mujoco.mjtGeom.mjGEOM_CYLINDER
+        tg.size = [0.017, 0.020, 0.0]
+        tg.pos = gpos
+        tg.rgba = grgba
+        tg.contype = 0
+        tg.conaffinity = 0
+
+    ts_top = tgt_body.add_site()
+    ts_top.name = "target_top"
+    ts_top.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    ts_top.size = [0.005, 0.005, 0.005]
+    ts_top.pos = [0.0, 0.0, 0.065]
+    ts_top.rgba = [0.8, 0.2, 0.2, 1.0]
+
+    ts_bot = tgt_body.add_site()
+    ts_bot.name = "target_bottom"
+    ts_bot.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    ts_bot.size = [0.005, 0.005, 0.005]
+    ts_bot.pos = [0.0, 0.0, -0.065]
+    ts_bot.rgba = [0.2, 0.8, 0.2, 1.0]
+
+    return spec
+
+
+@model_recipe("hand_pen")
+def _hand_pen(b: ModelBuilder) -> ModelBuilder:
+    """myohand_r + pen object + target body for pen-twirl tasks."""
+    return _hand_builder().apply_transform(_add_pen_props)
+
+
+def _add_sar_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+    """Add reorientation object, target body, and tracking sites."""
+    # eps_ball site
+    eps = spec.worldbody.add_site()
+    eps.name = "eps_ball"
+    eps.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    eps.pos = [-0.248, -0.532, 1.445]
+    eps.size = [0.08, 0.08, 0.08]
+    eps.rgba = [1.0, 1.0, 0.0, 0.0]
+    eps.group = 1
+
+    # Object body
+    obj_body = spec.worldbody.add_body()
+    obj_body.name = "Object"
+    obj_body.pos = [-0.248, -0.532, 1.450]
+    obj_body.alt.euler = [0.0, 1.27, 0.0]
+
+    for axis, jname, jtype in [
+        ([1, 0, 0], "OBJTx", mujoco.mjtJoint.mjJNT_SLIDE),
+        ([0, 1, 0], "OBJTy", mujoco.mjtJoint.mjJNT_SLIDE),
+        ([0, 0, 1], "OBJTz", mujoco.mjtJoint.mjJNT_SLIDE),
+        ([1, 0, 0], "OBJRx", mujoco.mjtJoint.mjJNT_HINGE),
+        ([0, 1, 0], "OBJRy", mujoco.mjtJoint.mjJNT_HINGE),
+        ([0, 0, 1], "OBJRz", mujoco.mjtJoint.mjJNT_HINGE),
+    ]:
+        j = obj_body.add_joint()
+        j.name = jname
+        j.type = jtype
+        j.axis = axis
+        j.limited = False
+        j.damping = [0.0, 0.0, 0.0]
+
+    obj_geom = obj_body.add_geom()
+    obj_geom.name = "obj"
+    obj_geom.type = mujoco.mjtGeom.mjGEOM_ELLIPSOID
+    obj_geom.size = [0.015, 0.015, 0.045]
+    obj_geom.condim = 4
+    obj_geom.rgba = [0.6, 0.6, 0.6, 0.6]
+    obj_geom.density = 1500.0
+
+    for gname, gpos in [("top", [0, 0, -0.035]), ("bot", [0, 0, 0.035])]:
+        g = obj_body.add_geom()
+        g.name = gname
+        g.type = mujoco.mjtGeom.mjGEOM_CYLINDER
+        g.size = [0.013, 0.002, 0.0]
+        g.pos = gpos
+        g.rgba = [0.0, 0.5, 1.0, 0.0]
+        g.contype = 0
+        g.conaffinity = 0
+
+    s_otop = obj_body.add_site()
+    s_otop.name = "object_top"
+    s_otop.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    s_otop.size = [0.005, 0.005, 0.005]
+    s_otop.pos = [0.0, 0.0, 0.065]
+    s_otop.rgba = [0.8, 0.2, 0.2, 1.0]
+
+    s_obot = obj_body.add_site()
+    s_obot.name = "object_bottom"
+    s_obot.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    s_obot.size = [0.005, 0.005, 0.005]
+    s_obot.pos = [0.0, 0.0, -0.065]
+    s_obot.rgba = [0.2, 0.8, 0.2, 1.0]
+
+    # Success site
+    success = spec.worldbody.add_site()
+    success.name = "success"
+    success.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    success.pos = [-0.248, -0.54, 1.650]
+    success.size = [0.07, 0.07, 0.07]
+    success.rgba = [1.0, 1.0, 0.0, 0.1]
+    success.group = 1
+
+    # Target body
+    tgt_body = spec.worldbody.add_body()
+    tgt_body.name = "target"
+    tgt_body.pos = [-0.248, -0.54, 1.650]
+    tgt_body.alt.euler = [0.0, 1.27, 0.0]
+
+    tgt_geom = tgt_body.add_geom()
+    tgt_geom.name = "target"
+    tgt_geom.type = mujoco.mjtGeom.mjGEOM_ELLIPSOID
+    tgt_geom.size = [0.015, 0.015, 0.045]
+    tgt_geom.condim = 4
+    tgt_geom.rgba = [0.6, 0.6, 0.6, 0.6]
+
+    for gname, gpos in [("t_top", [0, 0, -0.035]), ("t_bot", [0, 0, 0.035])]:
+        tg = tgt_body.add_geom()
+        tg.name = gname
+        tg.type = mujoco.mjtGeom.mjGEOM_CYLINDER
+        tg.size = [0.013, 0.002, 0.0]
+        tg.pos = gpos
+        tg.rgba = [0.0, 1.0, 0.5, 0.0]
+        tg.contype = 0
+        tg.conaffinity = 0
+
+    ts_top = tgt_body.add_site()
+    ts_top.name = "target_top"
+    ts_top.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    ts_top.size = [0.005, 0.005, 0.005]
+    ts_top.pos = [0.0, 0.0, 0.065]
+    ts_top.rgba = [0.8, 0.2, 0.2, 1.0]
+
+    ts_bot = tgt_body.add_site()
+    ts_bot.name = "target_bottom"
+    ts_bot.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    ts_bot.size = [0.005, 0.005, 0.005]
+    ts_bot.pos = [0.0, 0.0, -0.065]
+    ts_bot.rgba = [0.2, 0.8, 0.2, 1.0]
+
+    return spec
+
+
+@model_recipe("hand_sar")
+def _hand_sar(b: ModelBuilder) -> ModelBuilder:
+    """myohand_r + reorientation object + target body for SAR tasks."""
+    return _hand_builder().apply_transform(_add_sar_props)
 
 
 @model_recipe("walk_standard")
