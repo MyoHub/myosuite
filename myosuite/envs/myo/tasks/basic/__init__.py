@@ -92,7 +92,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "finger" / "motorfinger_v0.xml"),
+        "model_path": str(_ASSETS_ROOT / "finger" / "motorfinger_v0.xml"),
         "target_reach_range": {
             "IFtip": ((0.2, 0.05, 0.20), (0.2, 0.05, 0.20)),
         },
@@ -105,7 +105,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "finger" / "motorfinger_v0.xml"),
+        "model_path": str(_ASSETS_ROOT / "finger" / "motorfinger_v0.xml"),
         "target_reach_range": {
             "IFtip": ((0.1, -0.1, 0.1), (0.27, 0.1, 0.3)),
         },
@@ -118,7 +118,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "finger" / "myofinger_v0.xml"),
+        "model_path": str(_ASSETS_ROOT / "finger" / "myofinger_v0.xml"),
         "target_reach_range": {
             "IFtip": ((0.2, 0.05, 0.20), (0.2, 0.05, 0.20)),
         },
@@ -130,7 +130,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "finger" / "myofinger_v0.xml"),
+        "model_path": str(_ASSETS_ROOT / "finger" / "myofinger_v0.xml"),
         "target_reach_range": {
             "IFtip": ((0.1, -0.1, 0.1), (0.27, 0.1, 0.3)),
         },
@@ -224,7 +224,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "finger" / "motorfinger_v0.xml"),
+        "model_path": str(_ASSETS_ROOT / "finger" / "motorfinger_v0.xml"),
         "target_jnt_range": {
             "IFadb": (0, 0),
             "IFmcp": (0, 0),
@@ -241,7 +241,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "finger" / "motorfinger_v0.xml"),
+        "model_path": str(_ASSETS_ROOT / "finger" / "motorfinger_v0.xml"),
         "target_jnt_range": {
             "IFadb": (-0.2, 0.2),
             "IFmcp": (-0.4, 1),
@@ -258,7 +258,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "finger" / "myofinger_v0.xml"),
+        "model_path": str(_ASSETS_ROOT / "finger" / "myofinger_v0.xml"),
         "target_jnt_range": {
             "IFadb": (0, 0),
             "IFmcp": (0, 0),
@@ -274,7 +274,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "finger" / "myofinger_v0.xml"),
+        "model_path": str(_ASSETS_ROOT / "finger" / "myofinger_v0.xml"),
         "target_jnt_range": {
             "IFadb": (-0.2, 0.2),
             "IFmcp": (-0.4, 1),

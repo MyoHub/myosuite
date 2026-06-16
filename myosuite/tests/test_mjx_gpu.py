@@ -84,12 +84,7 @@ def test_mjx_gpu_smoke() -> None:
         )
 
     # Use the standard myofinger MJCF used elsewhere in the test suite.
-    try:
-        import myo_sim  # type: ignore[import-untyped]
-
-        xml_path = myo_sim.MODELS_DIR / "finger" / "myofinger_v0.xml"
-    except ImportError:
-        xml_path = Path("myosuite/simhive/myo_sim/finger/myofinger_v0.xml")
+    xml_path = Path("myosuite/envs/myo/assets/finger/myofinger_v0.xml")
     if not xml_path.exists():
         pytest.skip(
             f"finger model not found at {xml_path}. "

@@ -60,7 +60,7 @@ def _myo_sim_model(rel: str) -> str:
     return f"myosuite/simhive/myo_sim/{rel}"
 
 
-FINGER_MODEL = _myo_sim_model("finger/myofinger_v0.xml")
+FINGER_MODEL = "myosuite/envs/myo/assets/finger/myofinger_v0.xml"
 ELBOW_MODEL = "myosuite/envs/myo/assets/elbow/myoelbow_1dof6muscles.xml"
 LEG_MODEL = _myo_sim_model("leg/myolegs.xml")
 

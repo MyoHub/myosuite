@@ -1,0 +1,581 @@
+<mujocoinclude model="MyoHand_v0.1.7">
+<!-- =================================================
+	Copyright 2020 Vikash Kumar, Vittorio Caggiano, Huawei Wang
+	Model	:: Myo Hand (MuJoCoV2.0)
+	Author	:: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano, Huawei Wang
+	source	:: https://github.com/vikashplus
+	License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+
+
+  <compiler inertiafromgeom="auto" angle="radian" balanceinertia="true" boundmass="0.001" boundinertia=".0001" meshdir=".." texturedir=".."/>
+  <size njmax="1000" nconmax="400" nuser_jnt="1"/>
+  <option timestep="0.002"/>
+
+  <visual>
+    <headlight diffuse="1 1 1"/>
+    <scale actuatorwidth=".075"/>
+  </visual>
+
+  <default>
+    <default class="myohand">
+      <joint limited="true" damping="0.05" armature="1e-4" stiffness="0"/>
+      <geom contype="0" conaffinity="0" condim="3" rgba="0.8 0.8 .8 1" margin="0.001" solref=".02 1" solimp=".8 .8 .01" material="geom"/>
+      <site size="0.0012" rgba=".2 .6 .2 1" group="3"/>
+      <tendon width="0.001" rgba=".95 .3 .3 1" limited="false" />
+      <default class="skin">
+        <geom type="capsule" group="4" contype="1" conaffinity="1" condim="3" rgba="0.8 0.7 .5 1" margin="0.001" material="MatSkin"/>
+      </default>
+      <default class="wrap">
+        <geom rgba=".5 .5 .9 1" group="3" contype="0" conaffinity="0"/>
+      </default>
+      <default class="muscle">
+        <muscle ctrllimited="true" ctrlrange="0 1" />
+      </default>
+    </default>
+  </default>
+
+
+  <contact>
+    <exclude body1="ulna" body2="radius"/>
+    <exclude body1="radius" body2="firstmc"/>
+    <exclude body1="proxph2" body2="proxph3"/>
+    <exclude body1="proxph3" body2="proxph4"/>
+    <exclude body1="proxph4" body2="proxph5"/>
+  </contact>
+
+
+  <asset>
+    <mesh name="body_norighthand" file="../myo_sim/meshes/human_lowpoly_norighthand.stl" scale="1 1 1"/>
+    <mesh name="thorax" file="../myo_sim/meshes/thorax.stl" scale="1 1 1"/>
+    <mesh name="clavicle" file="../myo_sim/meshes/clavicle.stl" scale="1 1 1"/>
+    <mesh name="scapula" file="../myo_sim/meshes/scapula.stl" scale="1 1 1"/>
+    <mesh name="humerus" file="../myo_sim/meshes/humerus.stl" scale="1 1 1"/>
+    <mesh name="ulna" file="../myo_sim/meshes/ulna.stl" scale="1 1 1"/>
+    <mesh name="radius" file="../myo_sim/meshes/radius.stl" scale="1 1 1"/>
+    <mesh name="lunate" file="../myo_sim/meshes/lunate.stl" scale="1 1 1"/>
+    <mesh name="scaphoid" file="../myo_sim/meshes/scaphoid.stl" scale="1 1 1"/>
+    <mesh name="pisiform" file="../myo_sim/meshes/pisiform.stl" scale="1 1 1"/>
+    <mesh name="triquetrum" file="../myo_sim/meshes/triquetrum.stl" scale="1 1 1"/>
+    <mesh name="capitate" file="../myo_sim/meshes/capitate.stl" scale="1 1 1"/>
+    <mesh name="trapezium" file="../myo_sim/meshes/trapezium.stl" scale="1 1 1"/>
+    <mesh name="1mc" file="../myo_sim/meshes/1mc.stl" scale="1 1 1"/>
+    <mesh name="thumbprox" file="../myo_sim/meshes/thumbprox.stl" scale="1 1 1"/>
+    <mesh name="thumbdist" file="../myo_sim/meshes/thumbdist.stl" scale="1 1 1"/>
+    <mesh name="trapezoid" file="../myo_sim/meshes/trapezoid.stl" scale="1 1 1"/>
+    <mesh name="hamate" file="../myo_sim/meshes/hamate.stl" scale="1 1 1"/>
+    <mesh name="2mc" file="../myo_sim/meshes/2mc.stl" scale="1 1 1"/>
+    <mesh name="2proxph" file="../myo_sim/meshes/2proxph.stl" scale="1 1 1"/>
+    <mesh name="2midph" file="../myo_sim/meshes/2midph.stl" scale="1 1 1"/>
+    <mesh name="2distph" file="../myo_sim/meshes/2distph.stl" scale="1 1 1"/>
+    <mesh name="3mc" file="../myo_sim/meshes/3mc.stl" scale="1 1 1"/>
+    <mesh name="3proxph" file="../myo_sim/meshes/3proxph.stl" scale="1 1 1"/>
+    <mesh name="3midph" file="../myo_sim/meshes/3midph.stl" scale="1 1 1"/>
+    <mesh name="3distph" file="../myo_sim/meshes/3distph.stl" scale="1 1 1"/>
+    <mesh name="4mc" file="../myo_sim/meshes/4mc.stl" scale="1 1 1"/>
+    <mesh name="4proxph" file="../myo_sim/meshes/4proxph.stl" scale="1 1 1"/>
+    <mesh name="4midph" file="../myo_sim/meshes/4midph.stl" scale="1 1 1"/>
+    <mesh name="4distph" file="../myo_sim/meshes/4distph.stl" scale="1 1 1"/>
+    <mesh name="5mc" file="../myo_sim/meshes/5mc.stl" scale="1 1 1"/>
+    <mesh name="5proxph" file="../myo_sim/meshes/5proxph.stl" scale="1 1 1"/>
+    <mesh name="5midph" file="../myo_sim/meshes/5midph.stl" scale="1 1 1"/>
+    <mesh name="5distph" file="../myo_sim/meshes/5distph.stl" scale="1 1 1"/>
+
+    <texture name="texplane" type="2d" builtin="checker" rgb1=".2 .19 .2" rgb2=".1 0.11 0.11" width="50" height="50"/>
+    <texture name="texgeom" type="cube" builtin="flat" mark="cross" width="127" height="1278" rgb1="0.7 0.7 0.7" rgb2="0.9 0.9 0.9" markrgb="1 1 1" random="0.01"/>
+    <material name="MatPlane" reflectance="0.5" texture="texplane" texrepeat="4 4" texuniform="true"/>
+    <material name="geom" texture="texgeom" texuniform="true"/>
+    <material name="MatSkin" specular="0.2" shininess=".1" reflectance="0.5" rgba="0.9 .7 .5 1"/>
+  </asset>
+
+
+  <tendon>
+    <spatial class="myohand" name="ECRL_tendon" >
+      <site site="ECRL-P1"/>
+      <geom geom="Elbow_PT_ECRL_wrap" sidesite="Elbow_PT_ECRL_site_ECRL_side"></geom>
+      <site site="ECRL-P2"/>
+      <site site="ECRL-P3"/>
+      <geom geom="ECRL_torus_wrap" sidesite="ECRL_torus_site_ECRL_side"/>
+      <site site="ECRL-P4"/>
+    </spatial>
+    <spatial class="myohand" name="ECRB_tendon" >
+      <site site="ECRB-P1"/>
+      <site site="ECRB-P2"/>
+      <site site="ECRB-P3"/>
+      <geom geom="ECRB_torus_wrap" sidesite="ECRB_torus_site_ECRB_side"/>
+      <site site="ECRB-P4"/>
+    </spatial>
+    <spatial class="myohand" name="ECU_tendon" >
+      <site site="ECU-P1"/>
+      <site site="ECU-P2"/>
+      <site site="ECU-P3"/>
+      <site site="ECU-P4"/>
+      <site site="ECU-P5"/>
+      <geom geom="ECU_torus_wrap" sidesite="ECU_torus_site_ECU_side"/>
+      <site site="ECU-P6"/>
+    </spatial>
+    <spatial class="myohand" name="FCR_tendon" >
+      <site site="FCR-P1"/>
+      <geom geom="Elbow_PT_FCU_wrap" sidesite="Elbow_PT_FCU_site_FCU_side"></geom>
+      <site site="FCR-P2"/>
+      <geom geom="FCR_torus_wrap" sidesite="FCR_torus_site_FCR_side"/>
+      <site site="FCR-P3"/>
+    </spatial>
+    <spatial class="myohand" name="FCU_tendon" >
+      <site site="FCU-P1"/>
+      <geom geom="Elbow_PT_FCU_wrap" sidesite="Elbow_PT_FCU_site_FCU_side"></geom>
+      <site site="FCU-P2"/>
+      <site site="FCU-P3"/>
+      <!-- <geom geom="FCU_torus_wrap" sidesite="FCU_torus_site_FCU_side"/> -->
+      <site site="FCU-P4"/>
+      <site site="FCU-P5"/>
+    </spatial>
+    <spatial class="myohand" name="PL_tendon" >
+      <site site="PL-P1"/>
+      <geom geom="Elbow_PT_FCU_wrap" sidesite="Elbow_PT_FCU_site_FCU_side"></geom>
+      <site site="PL-P2"/>
+      <!-- <geom geom="PL_ellipsoid_wrap" sidesite="PL_ellipsoid_site_PL_side"/> -->
+      <site site="PL-P3"/>
+      <site site="PL-P4"/>
+    </spatial>
+    <spatial class="myohand" name="PT_tendon">
+      <site site="PT-P1"/>
+      <geom geom="Elbow_PT_FCU_wrap" sidesite="Elbow_PT_FCU_site_FCU_side"></geom>
+      <site site="PT-P2"/>
+      <site site="PT-P3"/>
+      <site site="PT-P4"/>
+      <site site="PT-P5"/>
+    </spatial>
+    <spatial class="myohand" name="PQ_tendon" >
+      <site site="PQ-P1"/>
+      <geom geom="PQ2_wrap" sidesite="PQ2_site_PQ_side"/>
+      <site site="PQ-P2"/>
+    </spatial>
+    <spatial class="myohand" name="FDS5_tendon" >
+      <site site="FDS5-P1"/>
+      <geom geom="Elbow_PT_FCU_wrap" sidesite="Elbow_PT_FCU_site_FCU_side"></geom>
+      <site site="FDS5-P2"/>
+      <geom geom="FDS_ellipsoid_wrap" sidesite="FDS_ellipsoid_site_FDS5_side"/>
+      <site site="FDS5-P3"/>
+      <site site="FDS5-P4"/>
+      <site site="FDS5-P5"/>
+      <!-- <geom geom="5thmcp_ellipsoid_wrap" sidesite="5thmcp_ellipsoid_site_FDS5_side"/> -->
+      <site site="FDS5-P6"/>
+      <site site="FDS5-P7"/>
+      <site site="FDS5-P8"/>
+    </spatial>
+    <spatial class="myohand" name="FDS4_tendon" >
+      <site site="FDS4-P1"/>
+      <geom geom="Elbow_PT_FCU_wrap" sidesite="Elbow_PT_FCU_site_FCU_side"></geom>
+      <site site="FDS4-P2"/>
+      <geom geom="FDS_ellipsoid_wrap" sidesite="FDS_ellipsoid_site_FDS4_side"/>
+      <site site="FDS4-P3"/>
+      <!-- <geom geom="4thmcp_ellipsoid_wrap" sidesite="4thmcp_ellipsoid_site_FDS4_side"/> -->
+      <site site="FDS4-P4"/>
+      <site site="FDS4-P5"/>
+      <!-- <geom geom="4thmcp_ellipsoid_wrap" sidesite="4thmcp_ellipsoid_site_FDS4_side"/> -->
+      <site site="FDS4-P6"/>
+      <site site="FDS4-P7"/>
+      <site site="FDS4-P8"/>
+    </spatial>
+    <spatial class="myohand" name="FDS3_tendon" >
+      <site site="FDS3-P1"/>
+      <site site="FDS3-P2"/>
+      <geom geom="FDS_ellipsoid_wrap" sidesite="FDS_ellipsoid_site_FDS3_side"/>
+      <site site="FDS3-P3"/>
+      <site site="FDS3-P4"/>
+      <!-- <site site="FDS3-P5"/> -->
+      <site site="FDS3-P6"/>
+      <site site="FDS3-P7"/>
+      <site site="FDS3-P8"/>
+    </spatial>
+    <spatial class="myohand" name="FDS2_tendon" >
+      <site site="FDS2-P1"/>
+      <site site="FDS2-P2"/>
+      <geom geom="FDS_ellipsoid_wrap" sidesite="FDS_ellipsoid_site_FDS2_side"/>
+      <site site="FDS2-P3"/>
+      <site site="FDS2-P4"/>
+      <site site="FDS2-P5"/>
+      <site site="FDS2-P6"/>
+      <site site="FDS2-P7"/>
+      <site site="FDS2-P8"/>
+    </spatial>
+    <spatial class="myohand" name="FDP5_tendon" >
+      <site site="FDP5-P1"/>
+      <site site="FDP5-P2"/>
+      <geom geom="FDP_ellipsoid_wrap" sidesite="FDP_ellipsoid_site_FDP5_side"/>
+      <site site="FDP5-P3"/>
+      <site site="FDP5-P4"/>
+      <!-- <geom geom="5thmcp_ellipsoid_wrap" sidesite="5thmcp_ellipsoid_site_FDP5_side"/> -->
+      <site site="FDP5-P5"/>
+      <site site="FDP5-P6"/>
+      <site site="FDP5-P7"/>
+      <site site="FDP5-P8"/>
+      <site site="FDP5-P9"/>
+      <site site="FDP5-P10"/>
+    </spatial>
+    <spatial class="myohand" name="FDP4_tendon" >
+      <site site="FDP4-P1"/>
+      <site site="FDP4-P2"/>
+      <geom geom="FDP_ellipsoid_wrap" sidesite="FDP_ellipsoid_site_FDP4_side"/>
+      <site site="FDP4-P3"/>
+      <site site="FDP4-P4"/>
+      <geom geom="4thmcp_ellipsoid_wrap" sidesite="4thmcp_ellipsoid_site_FDP4_side"/>
+      <site site="FDP4-P5"/>
+      <site site="FDP4-P6"/>
+      <!-- <site site="FDP4-P7"/> -->
+      <site site="FDP4-P8"/>
+      <site site="FDP4-P9"/>
+      <site site="FDP4-P10"/>
+    </spatial>
+    <spatial class="myohand" name="FDP3_tendon" >
+      <site site="FDP3-P1"/>
+      <site site="FDP3-P2"/>
+      <geom geom="FDP_ellipsoid_wrap" sidesite="FDP_ellipsoid_site_FDP3_side"/>
+      <site site="FDP3-P3"/>
+      <site site="FDP3-P4"/>
+      <site site="FDP3-P5"/>
+      <!-- <geom geom="3rdmcp_ellipsoid_wrap" sidesite="3rdmcp_ellipsoid_site_FDP3_side"/> -->
+      <site site="FDP3-P6"/>
+      <!-- <site site="FDP3-P7"/> -->
+      <site site="FDP3-P8"/>
+      <site site="FDP3-P9"/>
+      <site site="FDP3-P10"/>
+    </spatial>
+    <spatial class="myohand" name="FDP2_tendon" >
+      <site site="FDP2-P1"/>
+      <site site="FDP2-P2"/>
+      <geom geom="FDP_ellipsoid_wrap" sidesite="FDP_ellipsoid_site_FDP2_side"/>
+      <site site="FDP2-P3"/>
+      <site site="FDP2-P4"/>
+      <site site="FDP2-P5"/>
+      <geom geom="2ndmcp_ellipsoid_wrap" sidesite="2ndmcp_ellipsoid_site_FDP2_side"/>
+      <site site="FDP2-P6"/>
+      <site site="FDP2-P7"/>
+      <site site="FDP2-P8"/>
+      <site site="FDP2-P9"/>
+      <site site="FDP2-P10"/>
+    </spatial>
+    <spatial class="myohand" name="EDC5_tendon" >
+      <site site="EDC5-P1"/>
+      <site site="EDC5-P2"/>
+      <site site="EDC5-P3"/>
+      <geom geom="EDCL_torus_wrap" sidesite="EDCL_torus_site_EDC5_side"/>
+      <site site="EDC5-P4"/>
+      <geom geom="5thmcp_ellipsoid_wrap" sidesite="5thmcp_ellipsoid_site_EDC5_side"/>
+      <site site="EDC5-P5"/>
+      <site site="EDC5-P6"/>
+      <geom geom="Fifthpm_wrap" sidesite="Fifthpm_site_EDC5_side"/>
+      <site site="EDC5-P7"/>
+      <site site="EDC5-P8"/>
+      <geom geom="Fifthmd_wrap" sidesite="Fifthmd_site_EDC5_side"/>
+      <site site="EDC5-P9"/>
+    </spatial>
+    <spatial class="myohand" name="EDC4_tendon" >
+      <site site="EDC4-P1"/>
+      <site site="EDC4-P2"/>
+      <site site="EDC4-P3"/>
+      <geom geom="EDCR_torus_wrap" sidesite="EDCR_torus_site_EDC4_side"/>
+      <site site="EDC4-P4"/>
+      <geom geom="4thmcp_ellipsoid_wrap" sidesite="4thmcp_ellipsoid_site_EDC4_side"/>
+      <site site="EDC4-P5"/>
+      <site site="EDC4-P6"/>
+      <geom geom="Fourthpm_wrap" sidesite="Fourthpm_site_EDC4_side"/>
+      <site site="EDC4-P7"/>
+      <site site="EDC4-P8"/>
+      <geom geom="Fourthmd_wrap" sidesite="Fourthmd_site_EDC4_side"/>
+      <site site="EDC4-P9"/>
+    </spatial>
+    <spatial class="myohand" name="EDC3_tendon" >
+      <site site="EDC3-P1"/>
+      <site site="EDC3-P2"/>
+      <site site="EDC3-P3"/>
+      <geom geom="EDCM_torus_wrap" sidesite="EDCM_torus_site_EDC3_side"/>
+      <site site="EDC3-P4"/>
+      <geom geom="3rdmcp_ellipsoid_wrap" sidesite="3rdmcp_ellipsoid_site_EDC3_side"/>
+      <site site="EDC3-P5"/>
+      <site site="EDC3-P6"/>
+      <geom geom="Thirdpm_wrap" sidesite="Thirdpm_site_EDC3_side"/>
+      <site site="EDC3-P7"/>
+      <site site="EDC3-P8"/>
+      <geom geom="Thirdmd_wrap" sidesite="Thirdmd_site_EDC3_side"/>
+      <site site="EDC3-P9"/>
+    </spatial>
+    <spatial class="myohand" name="EDC2_tendon" >
+      <site site="EDC2-P1"/>
+      <site site="EDC2-P2"/>
+      <site site="EDC2-P3"/>
+      <geom geom="EDCI_torus_wrap" sidesite="EDCI_torus_site_EDC2_side"/>
+      <site site="EDC2-P4"/>
+      <geom geom="2ndmcp_ellipsoid_wrap" sidesite="2ndmcp_ellipsoid_site_EDC2_side"/>
+      <site site="EDC2-P5"/>
+      <site site="EDC2-P6"/>
+      <geom geom="Secondpm_wrap" sidesite="Secondpm_site_EDC2_side"/>
+      <site site="EDC2-P7"/>
+      <site site="EDC2-P8"/>
+      <geom geom="Secondmd_wrap" sidesite="Secondmd_site_EDC2_side"/>
+      <site site="EDC2-P9"/>
+    </spatial>
+    <spatial class="myohand" name="EDM_tendon" >
+      <site site="EDM-P1"/>
+      <site site="EDM-P2"/>
+      <site site="EDM-P3"/>
+      <site site="EDM-P4"/>
+      <geom geom="EDM_ellipsoid_wrap" sidesite="EDM_ellipsoid_site_EDM_side"/>
+      <site site="EDM-P5"/>
+      <site site="EDM-P6"/>
+      <geom geom="5thmcp_ellipsoid_wrap" sidesite="5thmcp_ellipsoid_site_EDC5_side"/>
+      <site site="EDM-P7"/>
+      <geom geom="Fifthpm_wrap"/>
+      <site site="EDM-P8"/>
+      <geom geom="Fifthmd_wrap" sidesite="Fifthmd_site_EDC5_side"/>
+      <site site="EDM-P9"/>
+    </spatial>
+    <spatial class="myohand" name="EIP_tendon" >
+      <site site="EIP-P1"/>
+      <site site="EIP-P2"/>
+      <site site="EIP-P3"/>
+      <geom geom="ExtensorEllipse_ellipsoid_wrap" sidesite="ExtensorEllipse_ellipsoid_site_EIP_side"/>
+      <site site="EIP-P4"/>
+      <site site="EIP-P5"/>
+      <geom geom="2ndmcp_ellipsoid_wrap" sidesite="2ndmcp_ellipsoid_site_EIP_side"/>
+      <site site="EIP-P6"/>
+      <site site="EIP-P7"/>
+      <geom geom="Secondpm_wrap" sidesite="Secondpm_site_EIP_side"/>
+      <site site="EIP-P8"/>
+      <site site="EIP-P9"/>
+      <geom geom="Secondmd_wrap" sidesite="Secondmd_site_EIP_side"/>
+      <site site="EIP-P10"/>
+      <site site="EIP-P11"/>
+    </spatial>
+    <spatial class="myohand" name="EPL_tendon" springlength="0.2305">
+      <site site="EPL-P1"/>
+      <site site="EPL-P2"/>
+      <site site="EPL-P3"/>
+      <site site="EPL-P4"/>
+      <site site="EPL-P5"/>
+      <site site="EPL-P6"/>
+      <site site="EPL-P7"/>
+      <site site="EPL-P8"/>
+      <site site="EPL-P9"/>
+      <geom geom="MPthumb_wrap"/>
+      <site site="EPL-P10"/>
+      <site site="EPL-P11"/>
+      <geom geom="IPthumb_wrap" sidesite="IPthumb_site_EPL_side"/>
+      <site site="EPL-P12"/>
+    </spatial>
+    <spatial class="myohand" name="EPB_tendon" >
+      <site site="EPB-P1"/>
+      <site site="EPB-P2"/>
+      <site site="EPB-P3"/>
+      <site site="EPB-P4"/>
+      <site site="EPB-P5"/>
+      <site site="EPB-P6"/>
+      <site site="EPB-P7"/>
+      <geom geom="MPthumb_wrap" sidesite="MPthumb_site_EPB_side"/>
+      <site site="EPB-P8"/>
+    </spatial>
+    <spatial class="myohand" name="FPL_tendon" >
+      <site site="FPL-P1"/>
+      <site site="FPL-P2"/>
+      <site site="FPL-P3"/>
+      <site site="FPL-P4"/>
+      <site site="FPL-P5"/>
+      <geom geom="FPL_ellipsoid_wrap"/>
+      <site site="FPL-P7"/>
+      <site site="FPL-P8"/>
+      <geom geom="MPthumb_wrap" sidesite="MPthumb_site_FPL_side"/>
+      <site site="FPL-P9"/>
+      <site site="FPL-P10"/>
+      <geom geom="IPthumb_wrap" sidesite="IPthumb_site_FPL_side"/>
+      <site site="FPL-P11"/>
+    </spatial>
+    <spatial class="myohand" name="APL_tendon" >
+      <site site="APL-P1"/>
+      <site site="APL-P2"/>
+      <site site="APL-P3"/>
+      <site site="APL-P4"/>
+      <site site="APL-P5"/>
+      <!-- <geom geom="APL_torus_wrap" sidesite="APL_torus_site_APL_side"/> -->
+      <site site="APL-P6"/>
+      <site site="APL-P7"/>
+      <site site="APL-P8"/>
+    </spatial>
+    <spatial class="myohand" name="OP_tendon" >
+      <site site="OP-P1"/>
+      <site site="OP-P2"/>
+    </spatial>
+    <spatial class="myohand" name="RI2_tendon" >
+      <site site="RI2-P1"/>
+      <site site="RI2-P2"/>
+      <geom geom="2ndmcp_ellipsoid_wrap" sidesite="2ndmcp_ellipsoid_site_RI2_side"/>
+      <site site="RI2-P3"/>
+    </spatial>
+    <spatial class="myohand" name="LU_RB2_tendon" >
+      <site site="LU_RB2-P1"/>
+      <site site="LU_RB2-P2"/>
+      <site site="LU_RB2-P3"/>
+      <site site="LU_RB2-P4"/>
+      <geom geom="Secondpm_wrap" sidesite="Secondpm_site_LU_RB2_side"/>
+      <site site="LU_RB2-P5"/>
+      <site site="LU_RB2-P6"/>
+    </spatial>
+    <spatial class="myohand" name="UI_UB2_tendon" >
+      <site site="UI_UB2-P1"/>
+      <site site="UI_UB2-P2"/>
+      <site site="UI_UB2-P3"/>
+      <site site="UI_UB2-P4"/>
+      <geom geom="Secondpm_wrap" sidesite="Secondpm_site_UI_UB2_side"/>
+      <site site="UI_UB2-P5"/>
+      <site site="UI_UB2-P6"/>
+    </spatial>
+    <spatial class="myohand" name="RI3_tendon" >
+      <site site="RI3-P1"/>
+      <site site="RI3-P2"/>
+      <site site="RI3-P3"/>
+    </spatial>
+    <spatial class="myohand" name="LU_RB3_tendon" >
+      <site site="LU_RB3-P1"/>
+      <site site="LU_RB3-P2"/>
+      <site site="LU_RB3-P3"/>
+      <!-- <geom geom="3rdmcp_ellipsoid_wrap" sidesite="3rdmcp_ellipsoid_site_LU_RB3_side"/> -->
+      <site site="LU_RB3-P4"/>
+      <geom geom="Thirdpm_wrap" sidesite="Thirdpm_site_LU_RB3_side"/>
+      <site site="LU_RB3-P5"/>
+    </spatial>
+    <spatial class="myohand" name="UI_UB3_tendon" >
+      <site site="UI_UB3-P1"/>
+      <site site="UI_UB3-P2"/>
+      <site site="UI_UB3-P3"/>
+      <site site="UI_UB3-P4"/>
+      <geom geom="Thirdpm_wrap" sidesite="Thirdpm_site_UI_UB3_side"/>
+      <site site="UI_UB3-P5"/>
+    </spatial>
+    <spatial class="myohand" name="RI4_tendon">
+      <site site="RI4-P1"/>
+      <site site="RI4-P2"/>
+      <site site="RI4-P3"/>
+    </spatial>
+    <spatial class="myohand" name="LU_RB4_tendon" >
+      <site site="LU_RB4-P1"/>
+      <site site="LU_RB4-P2"/>
+      <site site="LU_RB4-P3"/>
+      <site site="LU_RB4-P4"/>
+      <site site="LU_RB4-P5"/>
+    </spatial>
+    <spatial class="myohand" name="UI_UB4_tendon" >
+      <site site="UI_UB4-P1"/>
+      <site site="UI_UB4-P2"/>
+      <geom geom="4thmcp_ellipsoid_wrap" sidesite="4thmcp_ellipsoid_site_UI_UB4_side"/>
+      <site site="UI_UB4-P3"/>
+      <site site="UI_UB4-P4"/>
+      <geom geom="Fourthpm_wrap" sidesite="Fourthpm_site_UI_UB4_side"/>
+      <site site="UI_UB4-P5"/>
+    </spatial>
+    <spatial class="myohand" name="RI5_tendon" >
+      <site site="RI5-P1"/>
+      <site site="RI5-P2"/>
+      <site site="RI5-P3"/>
+    </spatial>
+    <spatial class="myohand" name="LU_RB5_tendon" >
+      <site site="LU_RB5-P1"/>
+      <site site="LU_RB5-P2"/>
+      <geom geom="5thmcp_ellipsoid_wrap" sidesite="5thmcp_ellipsoid_site_LU_RB5_side"/>
+      <site site="LU_RB5-P3"/>
+      <site site="LU_RB5-P4"/>
+      <geom geom="Fifthpm_wrap" sidesite="Fifthpm_site_LU_RB5_side"/>
+      <site site="LU_RB5-P5"/>
+    </spatial>
+    <spatial class="myohand" name="UI_UB5_tendon" >
+      <site site="UI_UB5-P1"/>
+      <site site="UI_UB5-P2"/>
+      <geom geom="5thmcp_ellipsoid_wrap" sidesite="5thmcp_ellipsoid_site_UI_UB5_side"/>
+      <site site="UI_UB5-P3"/>
+      <site site="UI_UB5-P4"/>
+      <geom geom="Fifthpm_wrap" sidesite="Fifthpm_site_UI_UB5_side"/>
+      <site site="UI_UB5-P5"/>
+    </spatial>
+  </tendon>
+
+  <actuator>
+    <muscle name="ECRL" force="337.3" class="muscle" tendon="ECRL_tendon" lengthrange="0.313191 0.341072"/>
+    <muscle name="ECRB" force="252.2" class="muscle" tendon="ECRB_tendon" lengthrange="0.26997 0.301495"/>
+    <muscle name="ECU"  force="192.9" class="muscle" tendon="ECU_tendon" lengthrange="0.279041 0.306754"/>
+    <muscle name="FCR"  force="407.9" class="muscle" tendon="FCR_tendon" lengthrange="0.295866 0.331494"/>
+    <muscle name="FCU"  force="479.8" class="muscle" tendon="FCU_tendon" lengthrange="0.293357 0.332707"/>
+    <muscle name="PL"   force="101.0" class="muscle" tendon="PL_tendon" lengthrange="0.311593 0.362396"/>
+    <muscle name="PT"   force="557.2" class="muscle" tendon="PT_tendon" lengthrange="0.147243 0.170204"/>
+    <muscle name="PQ"   force="284.7" class="muscle" tendon="PQ_tendon" lengthrange="0.0220792 0.0371669"/>
+    <muscle name="FDS5" force="75.3" class="muscle" tendon="FDS5_tendon" lengthrange="0.354916 0.423992"/>
+    <muscle name="FDS4" force="171.2" class="muscle" tendon="FDS4_tendon" lengthrange="0.422088 0.480218"/>
+    <muscle name="FDS3" force="258.8" class="muscle" tendon="FDS3_tendon" lengthrange="0.328489 0.390589"/>
+    <muscle name="FDS2" force="162.5" class="muscle" tendon="FDS2_tendon" lengthrange="0.330149 0.392331"/>
+    <muscle name="FDP5" force="236.8" class="muscle" tendon="FDP5_tendon" lengthrange="0.387224 0.450745"/>
+    <muscle name="FDP4" force="172.9" class="muscle" tendon="FDP4_tendon" lengthrange="0.348164 0.417976"/>
+    <muscle name="FDP3" force="212.4" class="muscle" tendon="FDP3_tendon" lengthrange="0.336078 0.398672"/>
+    <muscle name="FDP2" force="197.3" class="muscle" tendon="FDP2_tendon" lengthrange="0.336953 0.40261"/>
+    <muscle name="EDC5" force="139.4" class="muscle" tendon="EDC5_tendon" lengthrange="0.381709 0.426592"/>
+    <muscle name="EDC4" force="109.2" class="muscle" tendon="EDC4_tendon" lengthrange="0.391706 0.456154"/>
+    <muscle name="EDC3" force="94.4" class="muscle" tendon="EDC3_tendon" lengthrange="0.399791 0.456735"/>
+    <muscle name="EDC2" force="48.8" class="muscle" tendon="EDC2_tendon" lengthrange="0.395914 0.455475"/>
+    <muscle name="EDM"  force="72.4" class="muscle" tendon="EDM_tendon" lengthrange="0.37707 0.417549"/>
+    <muscle name="EIP"  force="47.3" class="muscle" tendon="EIP_tendon" lengthrange="0.245809 0.291046"/>
+    <muscle name="EPL"  force="88.3" class="muscle" tendon="EPL_tendon" lengthrange="0.253147 0.327478"/>
+    <muscle name="EPB"  force="46" class="muscle" tendon="EPB_tendon" lengthrange="0.146292 0.199276"/>
+    <muscle name="FPL"  force="201" class="muscle" tendon="FPL_tendon" lengthrange="0.22287 0.27967"/>
+    <muscle name="APL"  force="116.7" class="muscle" tendon="APL_tendon" lengthrange="0.204756 0.228384"/>
+    <muscle name="OP"   force="180" class="muscle" tendon="OP_tendon" lengthrange="0.0314264 0.0518708"/>
+    <muscle name="RI2"    force="61.2" class="muscle" tendon="RI2_tendon" lengthrange="0.0314087 0.0423628"/>
+    <muscle name="LU_RB2" force="61.2" class="muscle" tendon="LU_RB2_tendon" lengthrange="0.0898587 0.0998069"/>
+    <muscle name="UI_UB2" force="61.2" class="muscle" tendon="UI_UB2_tendon" lengthrange="0.0913261 0.105141"/>
+    <muscle name="RI3"    force="61.2" class="muscle" tendon="RI3_tendon" lengthrange="0.0358365 0.0509725"/>
+    <muscle name="LU_RB3" force="98" class="muscle" tendon="LU_RB3_tendon" lengthrange="0.0827603 0.0988323"/>
+    <muscle name="UI_UB3" force="98" class="muscle" tendon="UI_UB3_tendon" lengthrange="0.0853434 0.0997261"/>
+    <muscle name="RI4"    force="97.0" class="muscle" tendon="RI4_tendon" lengthrange="0.0435566 0.058459"/>
+    <muscle name="LU_RB4" force="76.9" class="muscle" tendon="LU_RB4_tendon" lengthrange="0.0797904 0.0909592"/>
+    <muscle name="UI_UB4" force="76.9" class="muscle" tendon="UI_UB4_tendon" lengthrange="0.0819919 0.0969029"/>
+    <muscle name="RI5"    force="59.9" class="muscle" tendon="RI5_tendon" lengthrange="0.0425128 0.0462661"/>
+    <muscle name="LU_RB5" force="47.9" class="muscle" tendon="LU_RB5_tendon" lengthrange="0.0970142 0.100417"/>
+    <muscle name="UI_UB5" force="47.9" class="muscle" tendon="UI_UB5_tendon" lengthrange="0.0910226 0.0976845"/>
+    <!-- <muscle name="ECRL" force="308.12" range="1.03489 1.44688" lmin="0.804439" lmax="2.09892" fpmax="0.800013" tendon="ECRL_tendon" lengthrange="0.307826 0.341197" class="muscle"/>
+    <muscle name="ECRB" force="95.5639" range="0.768185 1.27943" lmin="0.523173" lmax="2.98779" fpmax="1.99383" tendon="ECRB_tendon" lengthrange="0.267239 0.297147" class="muscle"/>
+    <muscle name="ECU" force="89.2044" range="0.790379 1.19907" lmin="0.55057" lmax="2.9935" fpmax="1.95619" tendon="ECU_tendon" lengthrange="0.277662 0.303082" class="muscle"/>
+    <muscle name="FCR" force="71.4209" range="0.852146 1.39468" lmin="0.620338" lmax="2.62942" fpmax="0.802515" tendon="FCR_tendon" lengthrange="0.297515 0.331586" class="muscle"/>
+    <muscle name="FCU" force="116.777" range="0.563227 1.33274" lmin="0.45555" lmax="2.99249" fpmax="1.9901" tendon="FCU_tendon" lengthrange="0.293668 0.332836" class="muscle"/>
+    <muscle name="PL" force="25.0687" range="0.679147 1.4568" lmin="0.503487" lmax="2.84849" fpmax="0.800736" tendon="PL_tendon" lengthrange="0.31273 0.362344" class="muscle"/>
+    <muscle name="PT" force="570.907" range="1.03115 1.46706" lmin="0.705845" lmax="1.77424" fpmax="1.17624" tendon="PT_tendon" lengthrange="0.148733 0.170179" class="muscle"/>
+    <muscle name="PQ" force="73.7935" range="0.595614 1.14042" lmin="0.296961" lmax="1.75255" fpmax="0.868164" tendon="PQ_tendon" lengthrange="0.0217963 0.0371599" class="muscle"/>
+    <muscle name="FDS5" force="14.8508" range="0.269753 1.60871" lmin="0.528935" lmax="2.99895" fpmax="1.90444" tendon="FDS5_tendon" lengthrange="0.352192 0.421148"class="muscle"/>
+    <muscle name="FDS4" force="53.8585" range="0.422891 1.34913" lmin="0.47985" lmax="2.99826" fpmax="1.65551" tendon="FDS4_tendon" lengthrange="0.359125 0.427296" class="muscle"/>
+    <muscle name="FDS3" force="84.9503" range="0.471383 1.26695" lmin="0.452236" lmax="2.99221" fpmax="1.93413" tendon="FDS3_tendon" lengthrange="0.330307 0.389894" class="muscle"/>
+    <muscle name="FDS2" force="59.1175" range="0.7889 1.41593" lmin="0.52806" lmax="2.36086" fpmax="0.800983" tendon="FDS2_tendon" lengthrange="0.340873 0.39323" class="muscle"/>
+    <muscle name="FDP5" force="50" range="0.528125 1.36863" lmin="0.440664" lmax="2.99758" fpmax="0.946532" tendon="FDP5_tendon" lengthrange="0.321457 0.38441" class="muscle"/>
+    <muscle name="FDP4" force="60.2255" lmin="0.450036" lmax="2.60014" fpmax="10" tendon="FDP4_tendon" lengthrange="0.330099 0.3995"  class="muscle"/>
+    <muscle name="FDP3" force="76.842" range="0.521727 1.26066" lmin="0.446486" lmax="2.99571" fpmax="1.73457" tendon="FDP3_tendon" lengthrange="0.336564 0.398265"  class="muscle"/>
+    <muscle name="FDP2" force="63.3141" range="0.521727 1.26066" lmin="0.453164" lmax="2.81259" fpmax="0.800465" tendon="FDP2_tendon" lengthrange="0.342576 0.399603" class="muscle"/>
+    <muscle name="EDC5" force="75" range="1.30528 2.08496" lmin="0.643086" lmax="1.99147" fpmax="1.21068" tendon="EDC5_tendon"   lengthrange="0.381343 0.432023" class="muscle"/>
+    <muscle name="EDC4" force="75" range="1.06311 2.14524" lmin="0.922584" lmax="2.07779" fpmax="1.34651" tendon="EDC4_tendon" lengthrange="0.393551 0.461292"  class="muscle"/>
+    <muscle name="EDC3" force="33.9476" range="0.892873 1.65343" lmin="0.680628" lmax="2.47982" fpmax="1.42479" tendon="EDC3_tendon" lengthrange="0.399644 0.454709"  class="muscle"/>
+    <muscle name="EDC2" force="18.5154" range="1.0615 1.91611" lmin="0.610177" lmax="1.99958" fpmax="1.27043" tendon="EDC2_tendon" lengthrange="0.396305 0.456128"  class="muscle"/>
+    <muscle name="EDM" force="23.9601" range="0.780275 1.33407" lmin="0.581658" lmax="2.99881" fpmax="1.87685" tendon="EDM_tendon" lengthrange="0.374669 0.41205"  class="muscle"/>
+    <muscle name="EIP" force="22.3356" range="0.994963 1.73562" lmin="0.976964" lmax="1.85774" fpmax="1.17327" tendon="EIP_tendon" lengthrange="0.244603 0.288228"  class="muscle"/>
+    <muscle name="EPL" force="70" range="0.610017 1.94454" lmin="0.470801" lmax="2.10823" fpmax="1.58602" tendon="EPL_tendon" lengthrange="0.253441 0.325505"  class="muscle"/>
+    <muscle name="EPB" force="30" range="0.475177 1.24218" lmin="0.391115" lmax="2.20881" fpmax="0.80067" tendon="EPB_tendon" lengthrange="0.147574 0.199347"  class="muscle"/>
+    <muscle name="FPL" force="72.5239" range="0.574794 1.6435" lmin="0.440945" lmax="2.24357" fpmax="1.62531" tendon="FPL_tendon" lengthrange="0.225529 0.284521"  class="muscle"/>
+    <muscle name="APL" force="60.7658" range="1.05783 1.38718" lmin="0.69823" lmax="1.78018" fpmax="1.09721" tendon="APL_tendon" lengthrange="0.204923 0.228406"  class="muscle"/>
+    <muscle name="OP" force="87.1444" range="0.597706 1.45116" lmin="0.3542" lmax="1.72901" fpmax="1.24159" tendon="OP_tendon" lengthrange="0.0313449 0.0518277"  class="muscle"/>
+    <muscle name="RI2" force="100.27" range="0.593423 1.45897" lmin="0.39299" lmax="1.93515" fpmax="1.27259" tendon="RI2_tendon" lengthrange="0.0313079 0.0434255"  class="muscle"/>
+    <muscle name="LU_RB2" force="75.8432" range="0.671343 1.33508" lmin="0.527894" lmax="2.9997" fpmax="1.9882" tendon="LU_RB2_tendon" lengthrange="0.0897702 0.0997262"  class="muscle"/>
+    <muscle name="UI_UB2" force="74.344" range="0.543053 1.46203" lmin="0.501497" lmax="2.98718" fpmax="1.98028" tendon="UI_UB2_tendon" lengthrange="0.0912458 0.10503"  class="muscle"/>
+    <muscle name="RI3" force="119.701" range="0.456397 1.54591" lmin="0.410468" lmax="1.95268" fpmax="1.37003" tendon="RI3_tendon" lengthrange="0.0358896 0.0511428"  class="muscle"/>
+    <muscle name="LU_RB3" force="89.7863" range="0.477693 1.52854" lmin="0.482939" lmax="2.99909" fpmax="0.944731" tendon="LU_RB3_tendon" lengthrange="0.0827654 0.0985282"  class="muscle"/>
+    <muscle name="UI_UB3" force="90.5353" range="0.633852 1.36873" lmin="0.505064" lmax="2.99764" fpmax="1.82845" tendon="UI_UB3_tendon" lengthrange="0.0855078 0.0965309"  class="muscle"/>
+    <muscle name="RI4" force="92.8617" range="0.47514 1.53797" lmin="0.425199" lmax="2.15578" fpmax="1.3887" tendon="RI4_tendon" lengthrange="0.043652 0.0585316"  class="muscle"/>
+    <muscle name="LU_RB4" force="70.8709" range="0.512752 1.49203" lmin="0.477185" lmax="2.98674" fpmax="0.823435" tendon="LU_RB4_tendon" lengthrange="0.0771913 0.0918804"  class="muscle"/>
+    <muscle name="UI_UB4" force="70.6287" range="0.501742 1.492" lmin="0.485063" lmax="2.99963" fpmax="0.802732" tendon="UI_UB4_tendon" lengthrange="0.0820261 0.09688"  class="muscle"/>
+    <muscle name="RI5" force="58.4267" range="0.8022 1.19361" lmin="0.498496" lmax="2.99874" fpmax="1.30546" tendon="RI5_tendon" lengthrange="0.0406308 0.0461105"  class="muscle"/>
+    <muscle name="LU_RB5" force="43.9208" range="0.604347 1.40177" lmin="0.503429" lmax="2.98253" fpmax="1.99901" tendon="LU_RB5_tendon" lengthrange="0.0906652 0.102627" class="muscle"/>
+    <muscle name="UI_UB5" force="44.3878" range="0.754553 1.24692" lmin="0.571388" lmax="2.9994" fpmax="1.99511" tendon="UI_UB5_tendon" lengthrange="0.0902183 0.0976038"  class="muscle"/> -->
+  </actuator>
+
+</mujocoinclude>

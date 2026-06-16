@@ -1,0 +1,131 @@
+<mujoco model="tendon-finger">
+<!-- =================================================
+	Copyright 2020 Vikash Kumar
+	Model	:: tendon-finger (MuJoCoV2.0)
+	Author	:: Vikash Kumar (vikashplus@gmail.com)
+	source	:: https://github.com/vikashplus
+	License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+
+	<default>
+		<geom rgba=".9 .8 .6 1" size="0.01"/>
+		<site type="sphere" rgba=".9 .9 .9 1" size="0.005"/>
+		<joint type="hinge" axis="0 1 0" damping=".5" armature="0.01" limited="true" range="0 60" solimplimit="0.95 0.95 0.1"/>
+		<default class="muscle">
+			<muscle ctrllimited="true" ctrlrange="0 1" scale="10000"></muscle>
+		</default>
+	</default>
+
+	<visual>
+		<headlight diffuse=".9 .9 .9"/>
+	</visual>
+
+	<worldbody>
+		<geom type="plane" size="1 1 1" rgba=".2 .3 .2 1"/>
+		<site name="IFtip_target" pos="0.25 0.01 0.25" rgba="0 1 0 .3" size="0.02"/>
+
+		<!-- BASE -->
+		<site name="bs3" pos="-0.02 0.00 0.33"/>
+		<site name="bs2" pos="-0.02 0.02 0.30"/>
+		<site name="bs1" pos="-0.02 -.02 0.30"/>
+		<site name="bs0" pos="-0.02 0.00 0.28"/>
+
+		<!-- PROXIMAL -->
+		<body name="proximal">
+			<geom type="capsule" fromto="0 0 0.3 0.1 0 0.3" size=".018"/>
+			<geom name="pg1" type="sphere" pos="0.0 0.0 0.3" size="0.024" rgba=".5 .5 .9 .4"/>
+			<joint name="IFadb" pos="0 0 0.3" axis="0 0 1" range="-25 25"/>
+			<joint name="IFmcp" pos="0 0 0.3" axis="0 1 0" range="-25 60"/>
+			<site name="ps3" pos="0.035 0.00 0.32"/>
+			<site name="ps2" pos="0.02 0.02 0.30"/>
+			<site name="ps1" pos="0.02 -.02 0.30"/>
+			<site name="ps0" pos="0.035 0.00 0.280"/>
+			<site name="ps4" pos="0.075 0.00 0.275"/>
+
+			<!-- MIDDLE -->
+			<body name="middle">
+				<geom type="capsule" fromto="0.1 0 0.3 0.2 0 0.3" size=".015"/>
+				<geom name="mg2" type="cylinder" fromto="0.1 0.005 0.3 0.1 -0.005 0.3"
+					size="0.020" rgba=".5 .5 .9 .4"/>
+				<joint name="IFpip" pos="0.1 0 0.3"/>
+				<site name="ms4" pos="0.12 0 0.315"/>
+				<site name="ms5" pos="0.13 0 0.32"/>
+				<site name="ms6" pos="0.13 0 0.28"/>
+				<site name="ms7" pos="0.16 0 0.285"/>
+				<site name="ms8" pos="0.18 0 0.28"/>
+				<site name="side2" pos="0.1 0 0.33"/>
+
+				<!-- DISTAL -->
+				<body name="distal">
+					<geom type="capsule" fromto="0.2 0 0.3 0.27 0 0.3" size=".012"/>
+					<geom name="dg3" type="cylinder" fromto="0.2 0.005 0.3 0.2 -0.005 0.3"
+						size="0.018" rgba=".5 .5 .9 .4"/>
+					<geom type="ellipsoid" pos=".27 0 .310" size=".012 .009 .0025" rgba="1 .9 .9 1"/>
+					<joint name="IFdip" pos="0.2 0 0.3"/>
+					<site name="ds6" pos="0.22 0 0.31"/>
+					<site name="ds7" pos="0.24 0 0.29"/>
+					<site name="side3" pos="0.2 0 0.33"/>
+					<site name="IFtip" pos="0.27 0 0.3"/>
+				</body>
+			</body>
+		</body>
+	</worldbody>
+
+	<tendon>
+		<spatial name="extn" width="0.002" rgba=".95 .3 .3 1" limited="true" range="0 0.33">
+			<site site="bs3"/>
+			<geom geom="pg1"/>
+			<site site="ps3"/>
+
+			<pulley divisor="2"/>
+			<site site="ps3"/>
+			<geom geom="mg2" sidesite="side2"/>
+			<site site="ms4"/>
+
+			<pulley divisor="2"/>
+			<site site="ps3"/>
+			<geom geom="mg2" sidesite="side2"/>
+			<site site="ms5"/>
+			<geom geom="dg3" sidesite="side3"/>
+			<site site="ds6"/>
+		</spatial>
+
+		<spatial name="mflx" width="0.002" rgba=".95 .3 .3 1" limited="true" range="0 0.33">
+			<site site="bs0"/>
+			<geom geom="pg1"/>
+			<site site="ps0"/>
+			<site site="ps4"/>
+			<geom geom="mg2"/>
+			<site site="ms6"/>
+			<site site="ms7"/>
+		</spatial>
+
+		<spatial name="dflx" width="0.002" rgba=".95 .3 .3 1" limited="true" range="0 0.33">
+			<site site="bs0"/>
+			<geom geom="pg1"/>
+			<site site="ps0"/>
+			<site site="ps4"/>
+			<geom geom="mg2"/>
+			<site site="ms6"/>
+			<site site="ms8"/>
+			<geom geom="dg3"/>
+			<site site="ds7"/>
+		</spatial>
+
+		<spatial name="adabR" width="0.002" rgba=".95 .3 .3 1" limited="true" range="0 0.33">
+			<site site="bs1"/>
+			<geom geom="pg1"/>
+			<site site="ps1"/>
+		</spatial>
+
+		<spatial name="adabL" width="0.002" rgba=".95 .3 .3 1" limited="true" range="0 0.33">
+			<site site="bs2"/>
+			<geom geom="pg1"/>
+			<site site="ps2"/>
+		</spatial>
+	</tendon>
+
+	<!-- <include file="tendon_finger_muscleAct_v0.xml"/> -->
+	<!-- <include file="tendon_finger_motorAct_v0.xml"/> -->
+
+</mujoco>
