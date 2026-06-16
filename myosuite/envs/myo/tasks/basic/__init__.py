@@ -12,6 +12,10 @@ import pathlib
 import numpy as np
 
 import myosuite.core.registry as _registry
+from myosuite.envs.myo.assets._resolve import (
+    resolve_elbow_xml as _resolve_elbow_xml,
+    resolve_finger_xml as _resolve_finger_xml,
+)
 
 
 def _simhive_root() -> pathlib.Path:
@@ -28,22 +32,6 @@ def _simhive_root() -> pathlib.Path:
 
 _SIMHIVE_ROOT = _simhive_root()
 _ASSETS_ROOT = pathlib.Path(__file__).parents[2] / "assets"
-
-
-def _resolve_elbow_xml(filename: str = "myoelbow_1dof6muscles.xml") -> pathlib.Path:
-    """Resolve elbow XML: local task assets first (have task-specific sites), pip package fallback."""
-    local = _ASSETS_ROOT / "elbow" / filename
-    if local.exists():
-        return local
-    try:
-        import myo_sim  # type: ignore[import-untyped]
-
-        p = myo_sim.MODELS_DIR / "elbow" / filename
-        if p.exists():
-            return p
-    except ImportError:
-        pass
-    return local
 
 
 def _resolve_hand_xml(filename: str) -> pathlib.Path:
@@ -98,7 +86,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "finger" / "motorfinger_v0.xml"),
+        "model_path": str(_resolve_finger_xml("motorfinger_v0.xml")),
         "target_reach_range": {
             "IFtip": ((0.2, 0.05, 0.20), (0.2, 0.05, 0.20)),
         },
@@ -111,7 +99,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "finger" / "motorfinger_v0.xml"),
+        "model_path": str(_resolve_finger_xml("motorfinger_v0.xml")),
         "target_reach_range": {
             "IFtip": ((0.1, -0.1, 0.1), (0.27, 0.1, 0.3)),
         },
@@ -124,7 +112,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "finger" / "myofinger_v0.xml"),
+        "model_path": str(_resolve_finger_xml("myofinger_v0.xml")),
         "target_reach_range": {
             "IFtip": ((0.2, 0.05, 0.20), (0.2, 0.05, 0.20)),
         },
@@ -136,7 +124,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "finger" / "myofinger_v0.xml"),
+        "model_path": str(_resolve_finger_xml("myofinger_v0.xml")),
         "target_reach_range": {
             "IFtip": ((0.1, -0.1, 0.1), (0.27, 0.1, 0.3)),
         },
@@ -230,7 +218,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "finger" / "motorfinger_v0.xml"),
+        "model_path": str(_resolve_finger_xml("motorfinger_v0.xml")),
         "target_jnt_range": {
             "IFadb": (0, 0),
             "IFmcp": (0, 0),
@@ -247,7 +235,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "finger" / "motorfinger_v0.xml"),
+        "model_path": str(_resolve_finger_xml("motorfinger_v0.xml")),
         "target_jnt_range": {
             "IFadb": (-0.2, 0.2),
             "IFmcp": (-0.4, 1),
@@ -264,7 +252,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "finger" / "myofinger_v0.xml"),
+        "model_path": str(_resolve_finger_xml("myofinger_v0.xml")),
         "target_jnt_range": {
             "IFadb": (0, 0),
             "IFmcp": (0, 0),
@@ -280,7 +268,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "finger" / "myofinger_v0.xml"),
+        "model_path": str(_resolve_finger_xml("myofinger_v0.xml")),
         "target_jnt_range": {
             "IFadb": (-0.2, 0.2),
             "IFmcp": (-0.4, 1),

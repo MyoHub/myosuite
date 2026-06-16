@@ -30,7 +30,9 @@ class TestFatigue:
     @classmethod
     def setup_class(cls):
         """Set up test data and model"""
-        _finger = "myosuite/envs/myo/assets/finger/myofinger_v0.xml"
+        from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+
+        _finger = str(resolve_finger_xml("myofinger_v0.xml"))
         cls.model = mujoco.MjModel.from_xml_path(_finger)
         cls.frame_skip = 5
         cls.test_act = np.array([0.5] * 5, dtype=np.float32)
