@@ -472,3 +472,54 @@ def test_attach_spec_hand_from_arm():
     assert isinstance(model, mujoco.MjModel)
     assert model.nu > 0
     assert model.njnt > 0
+
+
+@pytest.mark.skipif(
+    not _myo_sim_has_compose(), reason="myo_sim.build.compose not available"
+)
+def test_hand_standard_numerically_equivalent_to_myo_sim_main():
+    """hand_standard recipe must be structurally equivalent to myo_sim.load('myohand_r').
+
+    myo_sim.load('myohand_r') attaches the same hand spec to a passive torso
+    scaffold, so njnt/nu and all joint+actuator names must match exactly.
+    """
+    import mujoco
+    import myo_sim
+    from myosuite.core.model_builder import build_from_recipe
+
+    # Myosuite side: hand_standard recipe (hand-only, no torso).
+    m_recipe, _ = build_from_recipe("hand_standard")
+
+    # myo_sim side: composed myohand_r (torso scaffold + same hand).
+    m_ref, _ = myo_sim.load("myohand_r")
+
+    # Structural counts must match.
+    assert (
+        m_recipe.njnt == m_ref.njnt
+    ), f"njnt mismatch: recipe={m_recipe.njnt} myo_sim={m_ref.njnt}"
+    assert (
+        m_recipe.nu == m_ref.nu
+    ), f"nu mismatch: recipe={m_recipe.nu} myo_sim={m_ref.nu}"
+
+    def _joint_names(m):
+        return sorted(
+            mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(m.njnt)
+        )
+
+    def _actuator_names(m):
+        return sorted(
+            mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_ACTUATOR, i) for i in range(m.nu)
+        )
+
+    assert _joint_names(m_recipe) == _joint_names(m_ref), "joint names diverge"
+    assert _actuator_names(m_recipe) == _actuator_names(m_ref), "actuator names diverge"
+
+    # Joint range equivalence (order-independent via name lookup).
+    for jnt_id in range(m_recipe.njnt):
+        name = mujoco.mj_id2name(m_recipe, mujoco.mjtObj.mjOBJ_JOINT, jnt_id)
+        ref_id = mujoco.mj_name2id(m_ref, mujoco.mjtObj.mjOBJ_JOINT, name)
+        lo_r, hi_r = m_recipe.jnt_range[jnt_id]
+        lo_f, hi_f = m_ref.jnt_range[ref_id]
+        assert (
+            abs(lo_r - lo_f) < 1e-6 and abs(hi_r - hi_f) < 1e-6
+        ), f"joint {name!r}: range ({lo_r:.4f},{hi_r:.4f}) != ({lo_f:.4f},{hi_f:.4f})"
