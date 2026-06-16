@@ -258,13 +258,8 @@ def _try_myo_sim_compose(name: str) -> mujoco.MjSpec | None:
     try:
         import myo_sim  # type: ignore[import-untyped]
 
-        builders = getattr(myo_sim, "_FRAGMENT_SPEC_BUILDERS", None)
-        if builders is None:
-            return None
-        builder = builders.get(name)
-        if builder is None:
-            return None
-        return builder()
+        builder = getattr(myo_sim, "_FRAGMENT_SPEC_BUILDERS", {}).get(name)
+        return builder() if builder is not None else None
     except Exception:  # ImportError, compose failures, etc.
         return None
 
