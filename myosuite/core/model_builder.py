@@ -246,6 +246,29 @@ def _resolve_fragment_path(name: str) -> Path:
     )
 
 
+def _try_myo_sim_compose(name: str) -> mujoco.MjSpec | None:
+    """Return a fragment-only MjSpec from myo_sim's compose pipeline, or None.
+
+    Consults ``myo_sim._FRAGMENT_SPEC_BUILDERS`` so that names like ``"hand"``
+    are transparently routed through the build-system compose path instead of
+    falling back to a static bundled XML.  Returns None if myo_sim is not
+    installed, is too old to have the registry, or the name is not a composed
+    fragment.
+    """
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        builders = getattr(myo_sim, "_FRAGMENT_SPEC_BUILDERS", None)
+        if builders is None:
+            return None
+        builder = builders.get(name)
+        if builder is None:
+            return None
+        return builder()
+    except Exception:  # ImportError, compose failures, etc.
+        return None
+
+
 def _get_parent_body(spec: mujoco.MjSpec, parent: str) -> mujoco.MjsBody:
     """Return the MjsBody for *parent*, raising clearly if not found.
 
@@ -717,11 +740,15 @@ class ModelBuilder:
             if frag.spec is not None:
                 h.update(frag.spec.to_xml().encode())
             else:
-                try:
-                    path = _resolve_fragment_path(frag.name)
-                    h.update(path.read_bytes())
-                except FileNotFoundError:
-                    h.update(frag.name.encode())
+                composed = _try_myo_sim_compose(frag.name)
+                if composed is not None:
+                    h.update(composed.to_xml().encode())
+                else:
+                    try:
+                        path = _resolve_fragment_path(frag.name)
+                        h.update(path.read_bytes())
+                    except FileNotFoundError:
+                        h.update(frag.name.encode())
             h.update(frag.parent.encode())
             h.update(frag.pos.tobytes())
             h.update(frag.quat.tobytes())
@@ -783,8 +810,12 @@ class ModelBuilder:
             if frag.spec is not None:
                 frag_spec = frag.spec
             else:
-                path = _resolve_fragment_path(frag.name)
-                frag_spec = mujoco.MjSpec.from_file(str(path))
+                composed = _try_myo_sim_compose(frag.name)
+                if composed is not None:
+                    frag_spec = composed
+                else:
+                    path = _resolve_fragment_path(frag.name)
+                    frag_spec = mujoco.MjSpec.from_file(str(path))
             parent_body = _get_parent_body(spec, frag.parent)
             frame = parent_body.add_frame()
             frame.pos = frag.pos
