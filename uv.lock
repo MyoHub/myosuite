@@ -3125,6 +3125,19 @@ wheels = [
 ]
 
 [[package]]
+name = "myo-sim"
+version = "0.2.0"
+source = { git = "https://github.com/Vittorio-Caggiano/myo_sim.git?rev=feat%2Fmyo-sim-pip-migration#d1240ae3674c1e4286cc7c6d7aa4db4622d6f768" }
+dependencies = [
+    { name = "matplotlib" },
+    { name = "mujoco" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+
+[[package]]
 name = "myosuite"
 source = { editable = "." }
 dependencies = [
@@ -3142,6 +3155,7 @@ dependencies = [
     { name = "ml-collections" },
     { name = "mpl-sim" },
     { name = "mujoco" },
+    { name = "myo-sim" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "object-sim" },
@@ -3308,6 +3322,7 @@ requires-dist = [
     { name = "mujoco" },
     { name = "mujoco-warp", marker = "python_full_version >= '3.10' and python_full_version < '3.14' and sys_platform != 'win32' and extra == 'mjlab'", specifier = ">=3.7.0" },
     { name = "musclemimic-models", marker = "extra == 'musclemimic'", specifier = ">=1.0.2" },
+    { name = "myo-sim", git = "https://github.com/Vittorio-Caggiano/myo_sim.git?rev=feat%2Fmyo-sim-pip-migration" },
     { name = "myosuite", extras = ["mjx"], marker = "extra == 'mjx-cuda'" },
     { name = "myosuite", extras = ["mjx-cuda"], marker = "sys_platform != 'darwin' and extra == 'dev'" },
     { name = "myosuite", extras = ["musclemimic"], marker = "extra == 'dev'" },

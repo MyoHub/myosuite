@@ -14,7 +14,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium.utils import EzPickle
 
-from myosuite.core.model_builder import ModelBuilder
+from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.physics.fatigue import CumulativeFatigue
@@ -56,7 +56,7 @@ class ObjHoldFixedEnvV0(MyoGymnasiumEnv, EzPickle):
 
     def __init__(
         self,
-        model_path: str,
+        model_path: str = "",
         obsd_model_path: str | None = None,
         seed: int | None = None,
         obs_keys: list = DEFAULT_OBS_KEYS,
@@ -89,7 +89,13 @@ class ObjHoldFixedEnvV0(MyoGymnasiumEnv, EzPickle):
         )
 
         # ── Load model ─────────────────────────────────────────────────────
-        self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
+        model_recipe = kwargs.pop("model_recipe", None)
+        if model_recipe is not None:
+            self.model, self._mj_spec = build_from_recipe(model_recipe)
+            self._name_sfx = "_r"
+        else:
+            self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
+            self._name_sfx = ""
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 
@@ -155,8 +161,9 @@ class ObjHoldFixedEnvV0(MyoGymnasiumEnv, EzPickle):
                 self.model, self.frame_skip, seed=None
             )
         elif self.muscle_condition == "reafferentation":
-            self.EPLpos = self.model.actuator("EPL").id
-            self.EIPpos = self.model.actuator("EIP").id
+            sfx = self._name_sfx
+            self.EPLpos = self.model.actuator(f"EPL{sfx}").id
+            self.EIPpos = self.model.actuator(f"EIP{sfx}").id
 
     def _apply_action(self, action: np.ndarray) -> None:
         """Map action to MuJoCo ctrl and write to data.ctrl.

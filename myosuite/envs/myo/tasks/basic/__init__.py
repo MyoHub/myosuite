@@ -31,7 +31,10 @@ _ASSETS_ROOT = pathlib.Path(__file__).parents[2] / "assets"
 
 
 def _resolve_elbow_xml(filename: str = "myoelbow_1dof6muscles.xml") -> pathlib.Path:
-    """Resolve elbow XML: pip package first, env assets fallback."""
+    """Resolve elbow XML: local task assets first (have task-specific sites), pip package fallback."""
+    local = _ASSETS_ROOT / "elbow" / filename
+    if local.exists():
+        return local
     try:
         import myo_sim  # type: ignore[import-untyped]
 
@@ -40,11 +43,14 @@ def _resolve_elbow_xml(filename: str = "myoelbow_1dof6muscles.xml") -> pathlib.P
             return p
     except ImportError:
         pass
-    return _ASSETS_ROOT / "elbow" / filename
+    return local
 
 
 def _resolve_hand_xml(filename: str) -> pathlib.Path:
-    """Resolve hand XML: pip package first, env assets fallback."""
+    """Resolve hand XML: local task assets first (have task-specific sites), pip package fallback."""
+    local = _ASSETS_ROOT / "hand" / filename
+    if local.exists():
+        return local
     try:
         import myo_sim  # type: ignore[import-untyped]
 
@@ -53,7 +59,7 @@ def _resolve_hand_xml(filename: str) -> pathlib.Path:
             return p
     except ImportError:
         pass
-    return _ASSETS_ROOT / "hand" / filename
+    return local
 
 
 def _reg(env_id, entry_point, max_episode_steps, kwargs):
@@ -294,15 +300,15 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_pose.xml")),
-        "viz_site_targets": ("THtip", "IFtip", "MFtip", "RFtip", "LFtip"),
+        "model_recipe": "hand_pose",
+        "viz_site_targets": ("THtip_r", "IFtip_r", "MFtip_r", "RFtip_r", "LFtip_r"),
         "target_jnt_value": np.array(
             [
                 0,
                 0,
                 0,
-                -0.0904,
-                0.0824475,
+                0.0824475,  # cmc_flexion_r (was index 4 in old model)
+                -0.0904,  # cmc_abduction_r (was index 3 in old model)
                 -0.681555,
                 -0.514888,
                 0,
@@ -332,79 +338,81 @@ _reg(
 
 # Create ASL envs ==============================
 jnt_namesHand = [
-    "pro_sup",
-    "deviation",
-    "flexion",
-    "cmc_abduction",
-    "cmc_flexion",
-    "mp_flexion",
-    "ip_flexion",
-    "mcp2_flexion",
-    "mcp2_abduction",
-    "pm2_flexion",
-    "md2_flexion",
-    "mcp3_flexion",
-    "mcp3_abduction",
-    "pm3_flexion",
-    "md3_flexion",
-    "mcp4_flexion",
-    "mcp4_abduction",
-    "pm4_flexion",
-    "md4_flexion",
-    "mcp5_flexion",
-    "mcp5_abduction",
-    "pm5_flexion",
-    "md5_flexion",
+    "pro_sup_r",
+    "deviation_r",
+    "flexion_r",
+    "cmc_flexion_r",  # index 3 in composed hand (was cmc_abduction at index 3 in old)
+    "cmc_abduction_r",  # index 4 in composed hand (was cmc_flexion at index 4 in old)
+    "mp_flexion_r",
+    "ip_flexion_r",
+    "mcp2_flexion_r",
+    "mcp2_abduction_r",
+    "pm2_flexion_r",
+    "md2_flexion_r",
+    "mcp3_flexion_r",
+    "mcp3_abduction_r",
+    "pm3_flexion_r",
+    "md3_flexion_r",
+    "mcp4_flexion_r",
+    "mcp4_abduction_r",
+    "pm4_flexion_r",
+    "md4_flexion_r",
+    "mcp5_flexion_r",
+    "mcp5_abduction_r",
+    "pm5_flexion_r",
+    "md5_flexion_r",
 ]
 
 ASL_qpos = {}
+# Positions 3 and 4 are swapped vs. old model: composed hand has cmc_flexion_r at index 3,
+# cmc_abduction_r at index 4 (old model had cmc_abduction at 3, cmc_flexion at 4).
 ASL_qpos[0] = (
-    "0 0 0 0.5624 0.28272 -0.75573 -1.309 1.30045 -0.006982 1.45492 0.998897 1.26466 0 1.40604 0.227795 1.07614 -0.020944 1.46103 0.06284 0.83263 -0.14399 1.571 1.38248".split(
+    "0 0 0 0.28272 0.5624 -0.75573 -1.309 1.30045 -0.006982 1.45492 0.998897 1.26466 0 1.40604 0.227795 1.07614 -0.020944 1.46103 0.06284 0.83263 -0.14399 1.571 1.38248".split(
         " "
     )
 )
 ASL_qpos[1] = (
-    "0 0 0 0.0248 0.04536 -0.7854 -1.309 0.366605 0.010473 0.269258 0.111722 1.48459 0 1.45318 1.44532 1.44532 -0.204204 1.46103 1.44532 1.48459 -0.2618 1.47674 1.48459".split(
+    "0 0 0 0.04536 0.0248 -0.7854 -1.309 0.366605 0.010473 0.269258 0.111722 1.48459 0 1.45318 1.44532 1.44532 -0.204204 1.46103 1.44532 1.48459 -0.2618 1.47674 1.48459".split(
         " "
     )
 )
 ASL_qpos[2] = (
-    "0 0 0 0.0248 0.04536 -0.7854 -1.13447 0.514973 0.010473 0.128305 0.111722 0.510575 0 0.37704 0.117825 1.44532 -0.204204 1.46103 1.44532 1.48459 -0.2618 1.47674 1.48459".split(
+    "0 0 0 0.04536 0.0248 -0.7854 -1.13447 0.514973 0.010473 0.128305 0.111722 0.510575 0 0.37704 0.117825 1.44532 -0.204204 1.46103 1.44532 1.48459 -0.2618 1.47674 1.48459".split(
         " "
     )
 )
 ASL_qpos[3] = (
-    "0 0 0 0.3384 0.25305 0.01569 -0.0262045 0.645885 0.010473 0.128305 0.111722 0.510575 0 0.37704 0.117825 1.571 -0.036652 1.52387 1.45318 1.40604 -0.068068 1.39033 1.571".split(
+    "0 0 0 0.25305 0.3384 0.01569 -0.0262045 0.645885 0.010473 0.128305 0.111722 0.510575 0 0.37704 0.117825 1.571 -0.036652 1.52387 1.45318 1.40604 -0.068068 1.39033 1.571".split(
         " "
     )
 )
 ASL_qpos[4] = (
-    "0 0 0 0.6392 -0.147495 -0.7854 -1.309 0.637158 0.010473 0.128305 0.111722 0.510575 0 0.37704 0.117825 0.306345 -0.010472 0.400605 0.133535 0.21994 -0.068068 0.274925 0.01571".split(
+    "0 0 0 -0.147495 0.6392 -0.7854 -1.309 0.637158 0.010473 0.128305 0.111722 0.510575 0 0.37704 0.117825 0.306345 -0.010472 0.400605 0.133535 0.21994 -0.068068 0.274925 0.01571".split(
         " "
     )
 )
 ASL_qpos[5] = (
-    "0 0 0 0.3384 0.25305 0.01569 -0.0262045 0.645885 0.010473 0.128305 0.111722 0.510575 0 0.37704 0.117825 0.306345 -0.010472 0.400605 0.133535 0.21994 -0.068068 0.274925 0.01571".split(
+    "0 0 0 0.25305 0.3384 0.01569 -0.0262045 0.645885 0.010473 0.128305 0.111722 0.510575 0 0.37704 0.117825 0.306345 -0.010472 0.400605 0.133535 0.21994 -0.068068 0.274925 0.01571".split(
         " "
     )
 )
 ASL_qpos[6] = (
-    "0 0 0 0.6392 -0.147495 -0.7854 -1.309 0.637158 0.010473 0.128305 0.111722 0.510575 0 0.37704 0.117825 0.306345 -0.010472 0.400605 0.133535 1.1861 -0.2618 1.35891 1.48459".split(
+    "0 0 0 -0.147495 0.6392 -0.7854 -1.309 0.637158 0.010473 0.128305 0.111722 0.510575 0 0.37704 0.117825 0.306345 -0.010472 0.400605 0.133535 1.1861 -0.2618 1.35891 1.48459".split(
         " "
     )
 )
 ASL_qpos[7] = (
-    "0 0 0 0.524 0.01569 -0.7854 -1.309 0.645885 -0.006982 0.128305 0.111722 0.510575 0 0.37704 0.117825 1.28036 -0.115192 1.52387 1.45318 0.432025 -0.068068 0.18852 0.149245".split(
+    "0 0 0 0.01569 0.524 -0.7854 -1.309 0.645885 -0.006982 0.128305 0.111722 0.510575 0 0.37704 0.117825 1.28036 -0.115192 1.52387 1.45318 0.432025 -0.068068 0.18852 0.149245".split(
         " "
     )
 )
 ASL_qpos[8] = (
-    "0 0 0 0.428 0.22338 -0.7854 -1.309 0.645885 -0.006982 0.128305 0.194636 1.39033 0 1.08399 0.573415 0.667675 -0.020944 0 0.06284 0.432025 -0.068068 0.18852 0.149245".split(
+    "0 0 0 0.22338 0.428 -0.7854 -1.309 0.645885 -0.006982 0.128305 0.194636 1.39033 0 1.08399 0.573415 0.667675 -0.020944 0 0.06284 0.432025 -0.068068 0.18852 0.149245".split(
         " "
     )
 )
 ASL_qpos[9] = (
-    "0 0 0 0.5624 0.28272 -0.75573 -1.309 1.30045 -0.006982 1.45492 0.998897 0.39275 0 0.18852 0.227795 0.667675 -0.020944 0 0.06284 0.432025 -0.068068 0.18852 0.149245".split(
+    "0 0 0 0.28272 0.5624 -0.75573 -1.309 1.30045 -0.006982 1.45492 0.998897 0.39275 0 0.18852 0.227795 0.667675 -0.020944 0 0.06284 0.432025 -0.068068 0.18852 0.149245".split(
         " "
     )
 )
@@ -416,8 +424,8 @@ for k in ASL_qpos.keys():
         entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
         max_episode_steps=100,
         kwargs={
-            "model_path": str(_resolve_hand_xml("myohand_pose.xml")),
-            "viz_site_targets": ("THtip", "IFtip", "MFtip", "RFtip", "LFtip"),
+            "model_recipe": "hand_pose",
+            "viz_site_targets": ("THtip_r", "IFtip_r", "MFtip_r", "RFtip_r", "LFtip_r"),
             "target_jnt_value": np.array(ASL_qpos[k], "float"),
             "normalize_act": True,
             "pose_thd": 0.7,
@@ -437,8 +445,8 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_pose.xml")),
-        "viz_site_targets": ("THtip", "IFtip", "MFtip", "RFtip", "LFtip"),
+        "model_recipe": "hand_pose",
+        "viz_site_targets": ("THtip_r", "IFtip_r", "MFtip_r", "RFtip_r", "LFtip_r"),
         "target_jnt_range": Rpos,
         "normalize_act": True,
         "pose_thd": 0.7,
@@ -555,13 +563,13 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_pose.xml")),
+        "model_recipe": "hand_pose",
         "target_reach_range": {
-            "THtip": ((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495)),
-            "IFtip": ((-0.151, -0.547, 1.455), (-0.151, -0.547, 1.455)),
-            "MFtip": ((-0.146, -0.547, 1.447), (-0.146, -0.547, 1.447)),
-            "RFtip": ((-0.148, -0.543, 1.445), (-0.148, -0.543, 1.445)),
-            "LFtip": ((-0.148, -0.528, 1.434), (-0.148, -0.528, 1.434)),
+            "THtip_r": ((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495)),
+            "IFtip_r": ((-0.151, -0.547, 1.455), (-0.151, -0.547, 1.455)),
+            "MFtip_r": ((-0.146, -0.547, 1.447), (-0.146, -0.547, 1.447)),
+            "RFtip_r": ((-0.148, -0.543, 1.445), (-0.148, -0.543, 1.445)),
+            "LFtip_r": ((-0.148, -0.528, 1.434), (-0.148, -0.528, 1.434)),
         },
         "normalize_act": True,
         "far_th": 0.044,
@@ -572,25 +580,25 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=100,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_pose.xml")),
+        "model_recipe": "hand_pose",
         "target_reach_range": {
-            "THtip": (
+            "THtip_r": (
                 (-0.165 - 0.020, -0.537 - 0.040, 1.495 - 0.040),
                 (-0.165 + 0.040, -0.537 + 0.020, 1.495 + 0.040),
             ),
-            "IFtip": (
+            "IFtip_r": (
                 (-0.151 - 0.040, -0.547 - 0.020, 1.455 - 0.010),
                 (-0.151 + 0.040, -0.547 + 0.020, 1.455 + 0.010),
             ),
-            "MFtip": (
+            "MFtip_r": (
                 (-0.146 - 0.040, -0.547 - 0.020, 1.447 - 0.010),
                 (-0.146 + 0.040, -0.547 + 0.020, 1.447 + 0.010),
             ),
-            "RFtip": (
+            "RFtip_r": (
                 (-0.148 - 0.040, -0.543 - 0.020, 1.445 - 0.010),
                 (-0.148 + 0.040, -0.543 + 0.020, 1.445 + 0.010),
             ),
-            "LFtip": (
+            "LFtip_r": (
                 (-0.148 - 0.040, -0.528 - 0.020, 1.434 - 0.010),
                 (-0.148 + 0.040, -0.528 + 0.020, 1.434 + 0.010),
             ),
@@ -606,7 +614,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.key_turn:KeyTurnEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_keyturn.xml")),
+        "model_recipe": "hand_keyturn",
         "normalize_act": True,
     },
 )
@@ -615,7 +623,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.key_turn:KeyTurnEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_keyturn.xml")),
+        "model_recipe": "hand_keyturn",
         "normalize_act": True,
         "key_init_range": (-np.pi / 2, np.pi / 2),
         "goal_th": 2 * np.pi,
@@ -629,7 +637,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.hand.obj_hold:ObjHoldFixedEnvV0",
     max_episode_steps=75,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_hold.xml")),
+        "model_recipe": "hand_hold",
         "normalize_act": True,
     },
 )
@@ -638,7 +646,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.hand.obj_hold:ObjHoldRandomEnvV0",
     max_episode_steps=75,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_hold.xml")),
+        "model_recipe": "hand_hold",
         "normalize_act": True,
     },
 )
@@ -649,7 +657,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.hand.pen:PenTwirlFixedEnvV0",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_pen.xml")),
+        "model_recipe": "hand_pen",
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -659,7 +667,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.hand.pen:PenTwirlRandomEnvV0",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_pen.xml")),
+        "model_recipe": "hand_pen",
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -737,7 +745,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reorient_sar:Geometries8EnvV0Gymnasium",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_sar.xml")),
+        "model_recipe": "hand_sar",
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -749,7 +757,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reorient_sar:Geometries100EnvV0Gymnasium",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_sar.xml")),
+        "model_recipe": "hand_sar",
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -761,7 +769,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reorient_sar:InDistribution",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_sar.xml")),
+        "model_recipe": "hand_sar",
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -773,7 +781,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reorient_sar:OutofDistribution",
     max_episode_steps=50,
     kwargs={
-        "model_path": str(_resolve_hand_xml("myohand_sar.xml")),
+        "model_recipe": "hand_sar",
         "normalize_act": True,
         "frame_skip": 5,
     },
