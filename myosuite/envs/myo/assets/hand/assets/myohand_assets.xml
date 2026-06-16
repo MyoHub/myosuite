@@ -46,40 +46,39 @@
 
 
   <asset>
-    <mesh name="body_norighthand" file="../myo_sim/meshes/human_lowpoly_norighthand.stl" scale="1 1 1"/>
-    <mesh name="thorax" file="../myo_sim/meshes/thorax.stl" scale="1 1 1"/>
-    <mesh name="clavicle" file="../myo_sim/meshes/clavicle.stl" scale="1 1 1"/>
-    <mesh name="scapula" file="../myo_sim/meshes/scapula.stl" scale="1 1 1"/>
-    <mesh name="humerus" file="../myo_sim/meshes/humerus.stl" scale="1 1 1"/>
-    <mesh name="ulna" file="../myo_sim/meshes/ulna.stl" scale="1 1 1"/>
-    <mesh name="radius" file="../myo_sim/meshes/radius.stl" scale="1 1 1"/>
-    <mesh name="lunate" file="../myo_sim/meshes/lunate.stl" scale="1 1 1"/>
-    <mesh name="scaphoid" file="../myo_sim/meshes/scaphoid.stl" scale="1 1 1"/>
-    <mesh name="pisiform" file="../myo_sim/meshes/pisiform.stl" scale="1 1 1"/>
-    <mesh name="triquetrum" file="../myo_sim/meshes/triquetrum.stl" scale="1 1 1"/>
-    <mesh name="capitate" file="../myo_sim/meshes/capitate.stl" scale="1 1 1"/>
-    <mesh name="trapezium" file="../myo_sim/meshes/trapezium.stl" scale="1 1 1"/>
-    <mesh name="1mc" file="../myo_sim/meshes/1mc.stl" scale="1 1 1"/>
-    <mesh name="thumbprox" file="../myo_sim/meshes/thumbprox.stl" scale="1 1 1"/>
-    <mesh name="thumbdist" file="../myo_sim/meshes/thumbdist.stl" scale="1 1 1"/>
-    <mesh name="trapezoid" file="../myo_sim/meshes/trapezoid.stl" scale="1 1 1"/>
-    <mesh name="hamate" file="../myo_sim/meshes/hamate.stl" scale="1 1 1"/>
-    <mesh name="2mc" file="../myo_sim/meshes/2mc.stl" scale="1 1 1"/>
-    <mesh name="2proxph" file="../myo_sim/meshes/2proxph.stl" scale="1 1 1"/>
-    <mesh name="2midph" file="../myo_sim/meshes/2midph.stl" scale="1 1 1"/>
-    <mesh name="2distph" file="../myo_sim/meshes/2distph.stl" scale="1 1 1"/>
-    <mesh name="3mc" file="../myo_sim/meshes/3mc.stl" scale="1 1 1"/>
-    <mesh name="3proxph" file="../myo_sim/meshes/3proxph.stl" scale="1 1 1"/>
-    <mesh name="3midph" file="../myo_sim/meshes/3midph.stl" scale="1 1 1"/>
-    <mesh name="3distph" file="../myo_sim/meshes/3distph.stl" scale="1 1 1"/>
-    <mesh name="4mc" file="../myo_sim/meshes/4mc.stl" scale="1 1 1"/>
-    <mesh name="4proxph" file="../myo_sim/meshes/4proxph.stl" scale="1 1 1"/>
-    <mesh name="4midph" file="../myo_sim/meshes/4midph.stl" scale="1 1 1"/>
-    <mesh name="4distph" file="../myo_sim/meshes/4distph.stl" scale="1 1 1"/>
-    <mesh name="5mc" file="../myo_sim/meshes/5mc.stl" scale="1 1 1"/>
-    <mesh name="5proxph" file="../myo_sim/meshes/5proxph.stl" scale="1 1 1"/>
-    <mesh name="5midph" file="../myo_sim/meshes/5midph.stl" scale="1 1 1"/>
-    <mesh name="5distph" file="../myo_sim/meshes/5distph.stl" scale="1 1 1"/>
+    <mesh name="thorax" file="meshes/thorax.stl" scale="1 1 1"/>
+    <mesh name="clavicle" file="meshes/clavicle.stl" scale="1 1 1"/>
+    <mesh name="scapula" file="meshes/scapula.stl" scale="1 1 1"/>
+    <mesh name="humerus" file="meshes/humerus.stl" scale="1 1 1"/>
+    <mesh name="ulna" file="meshes/ulna.stl" scale="1 1 1"/>
+    <mesh name="radius" file="meshes/radius.stl" scale="1 1 1"/>
+    <mesh name="lunate" file="meshes/lunate.stl" scale="1 1 1"/>
+    <mesh name="scaphoid" file="meshes/scaphoid.stl" scale="1 1 1"/>
+    <mesh name="pisiform" file="meshes/pisiform.stl" scale="1 1 1"/>
+    <mesh name="triquetrum" file="meshes/triquetrum.stl" scale="1 1 1"/>
+    <mesh name="capitate" file="meshes/capitate.stl" scale="1 1 1"/>
+    <mesh name="trapezium" file="meshes/trapezium.stl" scale="1 1 1"/>
+    <mesh name="1mc" file="meshes/1mc.stl" scale="1 1 1"/>
+    <mesh name="thumbprox" file="meshes/thumbprox.stl" scale="1 1 1"/>
+    <mesh name="thumbdist" file="meshes/thumbdist.stl" scale="1 1 1"/>
+    <mesh name="trapezoid" file="meshes/trapezoid.stl" scale="1 1 1"/>
+    <mesh name="hamate" file="meshes/hamate.stl" scale="1 1 1"/>
+    <mesh name="2mc" file="meshes/2mc.stl" scale="1 1 1"/>
+    <mesh name="2proxph" file="meshes/2proxph.stl" scale="1 1 1"/>
+    <mesh name="2midph" file="meshes/2midph.stl" scale="1 1 1"/>
+    <mesh name="2distph" file="meshes/2distph.stl" scale="1 1 1"/>
+    <mesh name="3mc" file="meshes/3mc.stl" scale="1 1 1"/>
+    <mesh name="3proxph" file="meshes/3proxph.stl" scale="1 1 1"/>
+    <mesh name="3midph" file="meshes/3midph.stl" scale="1 1 1"/>
+    <mesh name="3distph" file="meshes/3distph.stl" scale="1 1 1"/>
+    <mesh name="4mc" file="meshes/4mc.stl" scale="1 1 1"/>
+    <mesh name="4proxph" file="meshes/4proxph.stl" scale="1 1 1"/>
+    <mesh name="4midph" file="meshes/4midph.stl" scale="1 1 1"/>
+    <mesh name="4distph" file="meshes/4distph.stl" scale="1 1 1"/>
+    <mesh name="5mc" file="meshes/5mc.stl" scale="1 1 1"/>
+    <mesh name="5proxph" file="meshes/5proxph.stl" scale="1 1 1"/>
+    <mesh name="5midph" file="meshes/5midph.stl" scale="1 1 1"/>
+    <mesh name="5distph" file="meshes/5distph.stl" scale="1 1 1"/>
 
     <texture name="texplane" type="2d" builtin="checker" rgb1=".2 .19 .2" rgb2=".1 0.11 0.11" width="50" height="50"/>
     <texture name="texgeom" type="cube" builtin="flat" mark="cross" width="127" height="1278" rgb1="0.7 0.7 0.7" rgb2="0.9 0.9 0.9" markrgb="1 1 1" random="0.01"/>
