@@ -38,6 +38,7 @@ from mjlab.tasks.registry import register_mjlab_task
 
 from myosuite.core.config import TaskConfig
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
+from myosuite.envs.myo.assets._resolve import resolve_elbow_xml as _resolve_elbow_xml
 from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
     MyoMuscleActivationActionCfg,
     mjlab_env_cfg_from_task_config,
@@ -83,7 +84,7 @@ def _resolve_leg_dir() -> Path:
 
 
 _MYOSUITE_ROOT = _resolve_model_root()
-_ELBOW_XML = _MYOSUITE_ROOT / "envs/myo/assets/elbow/myoelbow_1dof6muscles.xml"
+_ELBOW_XML = _resolve_elbow_xml("myoelbow_1dof6muscles.xml")
 # Prefer the plane-terrain leg model for mjlab: MuJoCo Warp forward on hfield
 # terrain has been unreliable (including native crashes) on some platforms.
 _LEG_DIR = _resolve_leg_dir()

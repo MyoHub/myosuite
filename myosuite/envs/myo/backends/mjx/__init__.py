@@ -50,6 +50,10 @@ from myosuite.envs.myo.backends.mjx.musclemimic_fullbody_env import (
 from myosuite.envs.myo.backends.mjx.pose_env import MjxPoseEnv
 from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv
 from myosuite.envs.myo.backends.mjx.walk_env import MjxWalkEnv
+from myosuite.envs.myo.assets._resolve import (
+    resolve_elbow_xml as _resolve_elbow_xml,
+    resolve_finger_xml as _resolve_finger_xml,
+)
 from myosuite.integrations.musclemimic.bimanual_model import default_mimic_config
 from myosuite.integrations.musclemimic.fullbody_model import (
     default_mimic_fullbody_config,
@@ -109,10 +113,8 @@ ppo_config = config_dict.create(
 
 _MYOSUITE = epath.Path(epath.resource_path("myosuite"))
 
-_ELBOW_MODEL = Path(str(_MYOSUITE / "envs/myo/assets/elbow/myoelbow_1dof6muscles.xml"))
-
-
-_FINGER_MODEL = Path(str(_MYOSUITE / "envs/myo/assets/finger/myofinger_v0.xml"))
+_ELBOW_MODEL = _resolve_elbow_xml("myoelbow_1dof6muscles.xml")
+_FINGER_MODEL = _resolve_finger_xml("myofinger_v0.xml")
 _HAND_MODEL = Path(str(_MYOSUITE / "envs/myo/assets/hand/myohand_pose.xml"))
 
 # ---------------------------------------------------------------------------

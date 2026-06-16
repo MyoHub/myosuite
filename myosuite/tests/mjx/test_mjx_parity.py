@@ -23,6 +23,10 @@ needs JAX + MuJoCo.
 from __future__ import annotations
 
 import pytest
+from myosuite.envs.myo.assets._resolve import (
+    resolve_elbow_xml as _resolve_elbow_xml,
+    resolve_finger_xml as _resolve_finger_xml,
+)
 
 # ---------------------------------------------------------------------------
 # Optional-import guard — skip the whole module if MJX is unavailable
@@ -60,8 +64,8 @@ def _myo_sim_model(rel: str) -> str:
     return f"myosuite/simhive/myo_sim/{rel}"
 
 
-FINGER_MODEL = "myosuite/envs/myo/assets/finger/myofinger_v0.xml"
-ELBOW_MODEL = "myosuite/envs/myo/assets/elbow/myoelbow_1dof6muscles.xml"
+FINGER_MODEL = str(_resolve_finger_xml("myofinger_v0.xml"))
+ELBOW_MODEL = str(_resolve_elbow_xml("myoelbow_1dof6muscles.xml"))
 LEG_MODEL = _myo_sim_model("leg/myolegs.xml")
 
 
