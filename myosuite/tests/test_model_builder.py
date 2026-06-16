@@ -523,3 +523,28 @@ def test_hand_standard_numerically_equivalent_to_myo_sim_main():
         assert (
             abs(lo_r - lo_f) < 1e-6 and abs(hi_r - hi_f) < 1e-6
         ), f"joint {name!r}: range ({lo_r:.4f},{hi_r:.4f}) != ({lo_f:.4f},{hi_f:.4f})"
+
+
+@pytest.mark.skipif(
+    not _myo_sim_has_compose(), reason="myo_sim.build.compose not available"
+)
+def test_attach_fragment_hand_routes_through_compose():
+    """attach_fragment('hand') must use myo_sim compose, not the bundled static XML.
+
+    Verified by checking that joint names carry the _r suffix produced by the
+    compose pipeline (prune_arm_spec_to_hand) rather than the un-suffixed names
+    in the legacy simhive hand/myohand.xml.
+    """
+    import mujoco
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, _ = ModelBuilder().attach_fragment("hand").build()
+    assert model.njnt == 23
+    assert model.nu == 39
+    joint_names = [
+        mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
+        for i in range(model.njnt)
+    ]
+    assert all(
+        n.endswith("_r") for n in joint_names
+    ), f"Expected all joints to end with '_r' (compose path); got: {joint_names}"
