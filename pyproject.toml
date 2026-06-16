@@ -35,7 +35,7 @@ dependencies = [
     "packaging",
     "gitpython",
     "ml-collections>=0.1.1",
-    "myo-sim @ git+https://github.com/MyoHub/myo_sim.git@feat/myo-sim-pip-migration",
+    "myo-sim @ git+https://github.com/Vittorio-Caggiano/myo_sim.git@fix-pr-95",
     "furniture-sim @ git+https://github.com/MyoHub/furniture_sim.git@v0.2.0",
     "mpl-sim @ git+https://github.com/MyoHub/MPL_sim.git@v0.2.0",
     "object-sim @ git+https://github.com/MyoHub/object_sim.git@v0.1.0",
