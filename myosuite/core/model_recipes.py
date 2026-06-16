@@ -113,8 +113,13 @@ def _bimanual_arm(b: ModelBuilder) -> ModelBuilder:
 
 @model_recipe("hand_standard")
 def _hand_standard(b: ModelBuilder) -> ModelBuilder:
-    """Standard myohand model."""
-    return b.attach_fragment("hand")
+    """Standard myohand model — composed from arm via myo_sim, or static XML fallback."""
+    try:
+        from myo_sim.build.compose import load_right_hand_from_arm_spec  # type: ignore[import-untyped]
+
+        return b.attach_spec(load_right_hand_from_arm_spec(), name="hand")
+    except (ImportError, AttributeError):
+        return b.attach_fragment("hand")
 
 
 @model_recipe("walk_standard")
