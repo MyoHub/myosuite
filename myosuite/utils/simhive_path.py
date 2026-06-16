@@ -204,6 +204,14 @@ def _absolutize_include(source: Path) -> Path:
             if resolved.exists():
                 elem.set(attr, str(resolved))
                 changed = True
+            elif attr == "file":
+                # Simhive not present; try resolving via pip package.
+                fallback = _rewrite_relative_package_path(raw)
+                if fallback is None:
+                    fallback = _resolve_legacy_simhive_path(raw)
+                if fallback is not None and fallback.exists():
+                    elem.set(attr, str(fallback))
+                    changed = True
 
     if not changed:
         _PATCHED_INCLUDE_CACHE[source] = source
