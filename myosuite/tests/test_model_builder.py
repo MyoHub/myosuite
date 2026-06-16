@@ -360,3 +360,115 @@ def test_add_mesh_body_combined_with_fragment(minimal_mesh, minimal_texture):
         assert model_with.ntex >= 1
     except FileNotFoundError:
         pytest.skip("Fragment XML not found; simhive not initialised")
+
+
+# ---------------------------------------------------------------------------
+# attach_spec tests
+# ---------------------------------------------------------------------------
+
+
+def _make_minimal_spec():
+    import mujoco
+
+    s = mujoco.MjSpec()
+    body = s.worldbody.add_body(name="test_body")
+    body.add_geom(
+        name="test_geom", type=mujoco.mjtGeom.mjGEOM_SPHERE, size=[0.01, 0, 0]
+    )
+    return s
+
+
+def test_attach_spec_basic():
+    """attach_spec() accepts a pre-built MjSpec and produces a valid model."""
+    import mujoco
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, spec = ModelBuilder().attach_spec(_make_minimal_spec(), name="test").build()
+    assert isinstance(model, mujoco.MjModel)
+    assert model.nbody > 1  # worldbody + test_body
+
+
+def test_attach_spec_body_present():
+    """Body from the inline spec is reachable by name in the compiled model."""
+    import mujoco
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, _ = ModelBuilder().attach_spec(_make_minimal_spec(), name="test").build()
+    body_names = [
+        mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, i)
+        for i in range(model.nbody)
+    ]
+    assert any("test_body" in (n or "") for n in body_names)
+
+
+def test_attach_spec_hash_stable():
+    """Same MjSpec XML content produces the same cache key across two builder instances."""
+    from myosuite.core.model_builder import ModelBuilder
+
+    h1 = ModelBuilder().attach_spec(_make_minimal_spec(), name="x")._content_hash()
+    h2 = ModelBuilder().attach_spec(_make_minimal_spec(), name="x")._content_hash()
+    assert h1 == h2
+
+
+def test_attach_spec_hash_differs_from_fragment():
+    """attach_spec hash differs from an attach_fragment hash with the same name."""
+    from myosuite.core.model_builder import ModelBuilder
+
+    h_spec = (
+        ModelBuilder().attach_spec(_make_minimal_spec(), name="elbow")._content_hash()
+    )
+    h_frag = ModelBuilder().attach_fragment("elbow")._content_hash()
+    assert h_spec != h_frag
+
+
+def test_attach_spec_combined_with_free_body():
+    """attach_spec can be chained with add_free_body."""
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, _ = (
+        ModelBuilder()
+        .attach_spec(_make_minimal_spec(), name="test")
+        .add_free_body("ball", pos=[0.1, 0, 0])
+        .build()
+    )
+    assert model.nbody > 2  # worldbody + test_body + ball
+
+
+def _myo_sim_has_compose() -> bool:
+    try:
+        from myo_sim.build.compose import load_right_hand_from_arm_spec  # noqa: F401
+
+        return True
+    except (ImportError, AttributeError):
+        return False
+
+
+@pytest.mark.skipif(
+    not _myo_sim_has_compose(), reason="myo_sim.build.compose not available"
+)
+def test_hand_standard_recipe_via_compose():
+    """hand_standard recipe builds a valid hand model via myo_sim compose path."""
+    import mujoco
+    from myosuite.core.model_builder import build_from_recipe
+
+    model, spec = build_from_recipe("hand_standard")
+    assert isinstance(model, mujoco.MjModel)
+    assert model.nu > 0
+    assert model.njnt > 0
+
+
+@pytest.mark.skipif(
+    not _myo_sim_has_compose(), reason="myo_sim.build.compose not available"
+)
+def test_attach_spec_hand_from_arm():
+    """attach_spec with myo_sim composed hand produces a model with finger joints."""
+    import mujoco
+    from myo_sim.build.compose import load_right_hand_from_arm_spec
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, _ = (
+        ModelBuilder().attach_spec(load_right_hand_from_arm_spec(), name="hand").build()
+    )
+    assert isinstance(model, mujoco.MjModel)
+    assert model.nu > 0
+    assert model.njnt > 0

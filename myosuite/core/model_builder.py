@@ -91,6 +91,7 @@ class _FragmentSpec:
     parent: str = "worldbody"
     pos: np.ndarray = field(default_factory=lambda: np.zeros(3))
     quat: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0, 0.0]))
+    spec: mujoco.MjSpec | None = field(default=None, compare=False)
 
 
 @dataclass
@@ -415,6 +416,35 @@ class ModelBuilder:
         self._fragments.append(_FragmentSpec(name=name, parent=parent))
         return self
 
+    def attach_spec(
+        self,
+        spec: mujoco.MjSpec,
+        name: str = "<inline>",
+        parent: str = "worldbody",
+    ) -> ModelBuilder:
+        """Attach a pre-built MjSpec fragment directly, bypassing file resolution.
+
+        Use this when the fragment is composed programmatically rather than
+        loaded from a static XML file — for example, a hand pruned from the
+        full arm via ``myo_sim.build.compose.load_right_hand_from_arm_spec()``.
+
+        Args:
+            spec: A fully-constructed ``mujoco.MjSpec`` to attach.
+            name: Label used in error messages and cache keys (not a file path).
+            parent: Name of the parent body to attach to.
+
+        Returns:
+            Self, for method chaining.
+
+        Example:
+            >>> from myo_sim.build.compose import load_right_hand_from_arm_spec
+            >>> model, spec = ModelBuilder().attach_spec(
+            ...     load_right_hand_from_arm_spec(), name="hand"
+            ... ).build()
+        """
+        self._fragments.append(_FragmentSpec(name=name, parent=parent, spec=spec))
+        return self
+
     def attach_kinematics(self, name: str, parent: str = "worldbody") -> ModelBuilder:
         """Attach the kinematics-only component of a body part (Issue #75 API).
 
@@ -684,11 +714,14 @@ class ModelBuilder:
         """Compute a cache key from fragment file contents, positions, and transforms."""
         h = hashlib.sha256()
         for frag in self._fragments:
-            try:
-                path = _resolve_fragment_path(frag.name)
-                h.update(path.read_bytes())
-            except FileNotFoundError:
-                h.update(frag.name.encode())
+            if frag.spec is not None:
+                h.update(frag.spec.to_xml().encode())
+            else:
+                try:
+                    path = _resolve_fragment_path(frag.name)
+                    h.update(path.read_bytes())
+                except FileNotFoundError:
+                    h.update(frag.name.encode())
             h.update(frag.parent.encode())
             h.update(frag.pos.tobytes())
             h.update(frag.quat.tobytes())
@@ -747,8 +780,11 @@ class ModelBuilder:
             spec.timestep = self._timestep
 
         for frag in self._fragments:
-            path = _resolve_fragment_path(frag.name)
-            frag_spec = mujoco.MjSpec.from_file(str(path))
+            if frag.spec is not None:
+                frag_spec = frag.spec
+            else:
+                path = _resolve_fragment_path(frag.name)
+                frag_spec = mujoco.MjSpec.from_file(str(path))
             parent_body = _get_parent_body(spec, frag.parent)
             frame = parent_body.add_frame()
             frame.pos = frag.pos
