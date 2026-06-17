@@ -177,18 +177,21 @@ def _resolve_fragment_path(name: str) -> Path:
     Raises:
         FileNotFoundError: If the fragment cannot be resolved.
     """
+    registry_names = (name, "myohand_r") if name == "hand" else (name,)
+
     # Try new myo_sim package with FragmentRegistry
     try:
         import myo_sim  # type: ignore[import-untyped]
 
         if hasattr(myo_sim, "FragmentRegistry"):
-            try:
-                info = myo_sim.FragmentRegistry.get(name)
-                return Path(info.path)
-            except KeyError:
-                # myo_sim is installed but this fragment is not registered there;
-                # fall through to the simhive submodule fallback below.
-                pass
+            for registry_name in registry_names:
+                try:
+                    info = myo_sim.FragmentRegistry.get(registry_name)
+                    return Path(info.path)
+                except KeyError:
+                    # myo_sim is installed but this fragment is not registered
+                    # there; try aliases before falling through to simhive.
+                    pass
     except ImportError:
         pass  # myo_sim not installed; use simhive submodule fallback
 
