@@ -1,0 +1,1 @@
+from mjlab_myosuite.asset_zoo.humans.muscle_body.full_body_constants import get_full_body_cfg
