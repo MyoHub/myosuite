@@ -190,38 +190,19 @@ def _resolve_fragment_path(name: str) -> Path:
                 # fall through to the simhive submodule fallback below.
                 pass
     except ImportError:
-        pass  # myo_sim not installed; use simhive submodule fallback
-
-    here = Path(__file__).parent.parent  # myosuite/
-    simhive = here / "simhive" / "myo_sim"
+        pass
 
     # Issue #75 scoped convention: "kinematics/<name>" or "parts/<name>".
-    # When the new directory structure lands in the submodule we resolve
-    # directly; otherwise we strip the scope and fall back to the plain name.
     if "/" in name:
-        scope, base = name.split("/", 1)
-        if scope == "kinematics":
-            candidate = simhive / "kinematics" / base / "body.xml"
-            if candidate.exists():
-                return candidate
-        elif scope == "parts":
-            candidate = simhive / "parts" / base / "muscles.xml"
-            if candidate.exists():
-                return candidate
-        # Pre-Issue-#75 fallback: resolve the base name as a plain fragment.
-        name = base
+        name = name.split("/", 1)[1]
 
-    # Fallback: look in the simhive submodule via the legacy path map.
-    # PR #73 entries (arm_left, arms) will be live once the submodule is
-    # updated to include myoarmL_body.xml / myoarms.xml.
+    # Pip-package fallback: resolve plain fragment name via the legacy path map.
     _FALLBACK_PATHS: dict[str, str] = {
         "elbow": "elbow/myoelbow_2dof6muscles.xml",
-        "hand": "hand/myohand.xml",
+        "hand": "hand/myohand_r.xml",
         "finger": "finger/myofinger_v0.xml",
         "shoulder": "arm/myoarm.xml",
         "arm": "arm/myoarm.xml",
-        # PR #73: left arm (all body names suffixed with _left) and
-        # bimanual assembly (77 DOF, 126 muscles, right bodies get _r suffix).
         "arm_left": "arm/myoarmL_body.xml",
         "arms": "arm/myoarms.xml",
         "leg": "leg/myolegs.xml",
@@ -230,15 +211,18 @@ def _resolve_fragment_path(name: str) -> Path:
         "torso": "torso/myotorso.xml",
     }
     if name in _FALLBACK_PATHS:
-        candidate = simhive / _FALLBACK_PATHS[name]
-        if candidate.exists():
-            return candidate
+        from myosuite.utils.simhive_path import get_simhive_asset_root
+
+        try:
+            candidate = get_simhive_asset_root("myo_sim") / _FALLBACK_PATHS[name]
+            if candidate.exists():
+                return candidate
+        except FileNotFoundError:
+            pass
 
     raise FileNotFoundError(
         f"Cannot resolve fragment {name!r}. "
-        "Install the myo-sim pip package (`pip install myo-sim`) "
-        "or initialise the git submodule "
-        "(`git submodule update --init myosuite/simhive/myo_sim`)."
+        "Install the myo-sim pip package (`pip install myo-sim`)."
     )
 
 

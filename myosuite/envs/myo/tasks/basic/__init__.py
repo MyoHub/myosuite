@@ -17,21 +17,9 @@ from myosuite.envs.myo.assets._resolve import (
     resolve_elbow_xml as _resolve_elbow_xml,
     resolve_finger_xml as _resolve_finger_xml,
 )
+from myosuite.utils.simhive_path import get_simhive_asset_root as _get_simhive_root
 
-
-def _simhive_root() -> pathlib.Path:
-    """Resolve myo_sim model root: pip package first, submodule fallback."""
-    try:
-        import myo_sim  # type: ignore[import-untyped]
-
-        if hasattr(myo_sim, "MODELS_DIR") and myo_sim.MODELS_DIR.exists():
-            return myo_sim.MODELS_DIR
-    except ImportError:
-        pass
-    return pathlib.Path(__file__).parents[4] / "simhive" / "myo_sim"
-
-
-_SIMHIVE_ROOT = _simhive_root()
+_SIMHIVE_ROOT = _get_simhive_root("myo_sim")
 _ASSETS_ROOT = pathlib.Path(__file__).parents[2] / "assets"
 
 
