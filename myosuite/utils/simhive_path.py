@@ -89,6 +89,43 @@ def get_simhive_asset_root(sim_name: str) -> Path:
     )
 
 
+_MYOSUITE_ASSETS = Path(__file__).resolve().parents[1] / "envs" / "myo" / "assets"
+
+# Files that existed in the myo_sim submodule but are absent from the pip package.
+# They are bundled in myosuite/envs/myo/assets/ as a compatibility shim until the
+# upstream pip package ships them.
+_MYO_SIM_BUNDLED_FALLBACKS: dict[str, Path] = {
+    "arm/assets/myoarm_assets.xml": _MYOSUITE_ASSETS
+    / "arm"
+    / "assets"
+    / "myoarm_assets.xml",
+    "arm/assets/myoarm_body.xml": _MYOSUITE_ASSETS
+    / "arm"
+    / "assets"
+    / "myoarm_body.xml",
+    "hand/assets/myohand_assets.xml": _MYOSUITE_ASSETS
+    / "hand"
+    / "assets"
+    / "myohand_assets.xml",
+    "hand/assets/myohand_body.xml": _MYOSUITE_ASSETS
+    / "hand"
+    / "assets"
+    / "myohand_body.xml",
+    "torso/assets/myotorso_arm_chain.xml": _MYOSUITE_ASSETS
+    / "torso"
+    / "assets"
+    / "myotorso_arm_chain.xml",
+    "torso/assets/myotorso_rigid_assets.xml": _MYOSUITE_ASSETS
+    / "torso"
+    / "assets"
+    / "myotorso_rigid_assets.xml",
+    "torso/assets/myotorso_rigid_chain.xml": _MYOSUITE_ASSETS
+    / "torso"
+    / "assets"
+    / "myotorso_rigid_chain.xml",
+}
+
+
 def _resolve_legacy_simhive_path(include_file: str) -> Path | None:
     """Map ../../../../simhive/X_sim/... paths to pip or local roots."""
     posix_parts = PurePosixPath(include_file).parts
@@ -107,7 +144,13 @@ def _resolve_legacy_simhive_path(include_file: str) -> Path | None:
     if sim_idx + 1 >= len(posix_parts):
         return base
     rel_tail = Path(*posix_parts[sim_idx + 1 :])
-    return base / rel_tail
+    resolved = base / rel_tail
+    if not resolved.exists() and sim_name == "myo_sim":
+        rel_key = "/".join(posix_parts[sim_idx + 1 :])
+        fallback = _MYO_SIM_BUNDLED_FALLBACKS.get(rel_key)
+        if fallback is not None and fallback.exists():
+            return fallback
+    return resolved
 
 
 def _rewrite_relative_package_path(raw: str) -> Path | None:

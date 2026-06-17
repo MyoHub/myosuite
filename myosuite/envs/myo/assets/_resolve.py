@@ -51,6 +51,24 @@ def resolve_finger_xml(filename: str) -> pathlib.Path:
     return local
 
 
+def resolve_arm_xml(filename: str) -> pathlib.Path:
+    local = _ASSETS_ROOT / "arm" / filename
+    if local.exists():
+        return local
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        p = myo_sim.MODELS_DIR / "legacy" / "arm" / filename
+        if p.exists():
+            return p
+        p = myo_sim.MODELS_DIR / "arm" / filename
+        if p.exists():
+            return p
+    except ImportError:
+        pass
+    return local
+
+
 def resolve_osl_xml(filename: str) -> pathlib.Path:
     local = _ASSETS_ROOT / "leg" / filename
     if local.exists():

@@ -13,6 +13,7 @@ import numpy as np
 
 import myosuite.core.registry as _registry
 from myosuite.envs.myo.assets._resolve import (
+    resolve_arm_xml as _resolve_arm_xml,
     resolve_elbow_xml as _resolve_elbow_xml,
     resolve_finger_xml as _resolve_finger_xml,
 )
@@ -781,7 +782,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=150,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "arm" / "myoarm_reach.xml"),
+        "model_path": str(_resolve_arm_xml("myoarm_reach.xml")),
         "target_reach_range": {
             "forearm_tip": ((-0.2, -0.2, 1.2), (-0.2, -0.2, 1.2)),
         },
@@ -795,7 +796,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=150,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "arm" / "myoarm_reach.xml"),
+        "model_path": str(_resolve_arm_xml("myoarm_reach.xml")),
         "target_reach_range": {
             "forearm_tip": (
                 (-0.2 - 0.15, -0.2 - 0.15, 1.2 - 0.15),
