@@ -111,15 +111,36 @@ def _bimanual_arm(b: ModelBuilder) -> ModelBuilder:
     return b.attach_fragment("arms")
 
 
-def _hand_builder(b: ModelBuilder) -> ModelBuilder:
-    """Attach the canonical right-hand fragment using the ModelBuilder path."""
-    return b.attach_fragment("hand")
+def _myohand_r_path() -> Path | None:
+    """Return path to myohand_r.xml from myo_sim pip package, or None."""
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        p = myo_sim.MODELS_DIR / "hand" / "myohand_r.xml"
+        if p.exists():
+            return p
+    except ImportError:
+        pass
+    return None
+
+
+def _hand_builder() -> ModelBuilder:
+    """Return a ModelBuilder seeded with myohand_r.xml, or fall back to compose/fragment."""
+    p = _myohand_r_path()
+    if p is not None:
+        return ModelBuilder.from_xml_file(p)
+    try:
+        from myo_sim.build.compose import load_right_hand_from_arm_spec  # type: ignore[import-untyped]
+
+        return ModelBuilder().attach_spec(load_right_hand_from_arm_spec(), name="hand")
+    except (ImportError, AttributeError):
+        return ModelBuilder().attach_fragment("hand")
 
 
 @model_recipe("hand_standard")
 def _hand_standard(b: ModelBuilder) -> ModelBuilder:
-    """Standard myohand model from the registered right-hand fragment."""
-    return _hand_builder(b)
+    """Standard myohand model — from myohand_r.xml, compose pipeline, or static fallback."""
+    return _hand_builder()
 
 
 def _add_pose_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
@@ -144,7 +165,7 @@ def _add_pose_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
 @model_recipe("hand_pose")
 def _hand_pose(b: ModelBuilder) -> ModelBuilder:
     """myohand_r + fingertip target sites for pose-tracking tasks."""
-    return _hand_builder(b).apply_transform(_add_pose_props)
+    return _hand_builder().apply_transform(_add_pose_props)
 
 
 @model_recipe("hand_keyturn")
@@ -194,7 +215,7 @@ def _hand_keyturn(b: ModelBuilder) -> ModelBuilder:
 
         return spec
 
-    return _hand_builder(b).apply_transform(_add_key)
+    return _hand_builder().apply_transform(_add_key)
 
 
 @model_recipe("hand_hold")
@@ -231,7 +252,7 @@ def _hand_hold(b: ModelBuilder) -> ModelBuilder:
 
         return spec
 
-    return _hand_builder(b).apply_transform(_add_hold_props)
+    return _hand_builder().apply_transform(_add_hold_props)
 
 
 def _add_pen_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
@@ -346,7 +367,7 @@ def _add_pen_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
 @model_recipe("hand_pen")
 def _hand_pen(b: ModelBuilder) -> ModelBuilder:
     """myohand_r + pen object + target body for pen-twirl tasks."""
-    return _hand_builder(b).apply_transform(_add_pen_props)
+    return _hand_builder().apply_transform(_add_pen_props)
 
 
 def _add_sar_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
@@ -465,7 +486,7 @@ def _add_sar_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
 @model_recipe("hand_sar")
 def _hand_sar(b: ModelBuilder) -> ModelBuilder:
     """myohand_r + reorientation object + target body for SAR tasks."""
-    return _hand_builder(b).apply_transform(_add_sar_props)
+    return _hand_builder().apply_transform(_add_sar_props)
 
 
 @model_recipe("walk_standard")

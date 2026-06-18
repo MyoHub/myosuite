@@ -53,15 +53,9 @@ pytestmark = pytest.mark.tier2
 
 
 def _myo_sim_model(rel: str) -> str:
-    try:
-        import myo_sim  # type: ignore[import-untyped]
+    from myosuite.utils.simhive_path import get_simhive_asset_root
 
-        p = myo_sim.MODELS_DIR / rel
-        if p.exists():
-            return str(p)
-    except ImportError:
-        pass
-    return f"myosuite/simhive/myo_sim/{rel}"
+    return str(get_simhive_asset_root("myo_sim") / rel)
 
 
 FINGER_MODEL = str(_resolve_finger_xml("myofinger_v0.xml"))

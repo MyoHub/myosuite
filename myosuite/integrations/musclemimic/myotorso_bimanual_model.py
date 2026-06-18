@@ -47,15 +47,16 @@ _MYOTORSO_BIMANUAL_TAG = "myotorso_bimanual_mimic"
 
 # Canonical MyoLegs chain include (same path as ``myotorso_arm_chain_host``).
 _MYOLEGS_CHAIN_HOST_INCLUDE = (
-    '<include file="../../../../simhive/myo_sim/leg/assets/' 'myolegs_chain.xml"/>'
+    '<include file="../myo_sim/leg/assets/myolegs_chain.xml"/>'
 )
 
 _TORSO_ASSETS_HOST_INCLUDE = (
-    '<include file="../../../../simhive/myo_sim/torso/assets/' 'myotorso_assets.xml"/>'
+    '<include file="../myo_sim/torso/assets/myotorso_assets.xml"/>\n'
+    '  <include file="../myo_sim/torso/assets/myotorso_muscle.xml"/>\n'
+    '  <include file="../myo_sim/torso/assets/myotorso_tendon.xml"/>'
 )
 _HEAD_ASSETS_HOST_INCLUDE = (
-    '<include file="../../../../simhive/myo_sim/head/assets/'
-    'myohead_simple_assets.xml"/>'
+    '<include file="../myo_sim/head/assets/myohead_simple_assets.xml"/>'
 )
 
 
@@ -160,36 +161,10 @@ def _materialize_myotorso_bimanual_host_xml() -> tuple[Path, Path, Path]:
     arm_dir = root / "envs" / "myo" / "assets" / "arm"
     host_tpl = arm_dir / "myotorso_arm_chain_host.xml"
     host_src = host_tpl.read_text(encoding="utf-8")
-    # Arm asset includes — host uses the new three-file split (myoarm_r_*); replace
-    # the assets include with musclemimic bimanual assets and strip tendons/muscles
-    # (the bimanual assets file already bundles them).
-    _ARM_ASSETS_INC_NEW = (
-        '<include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_assets.xml"/>'
-    )
-    _ARM_TENDONS_INC = (
-        '<include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_tendons.xml"/>'
-    )
-    _ARM_MUSCLES_INC = (
-        '<include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_muscles.xml"/>'
-    )
-    # Legacy single-file pattern (pre-PR-#89 host).
-    _ARM_ASSETS_INC_OLD = (
-        '<include file="../../../../simhive/myo_sim/arm/assets/myoarm_assets.xml"/>'
-    )
-    chain_inc = (
-        '<include file="../../../../simhive/myo_sim/torso/assets/'
-        'myotorso_arm_chain.xml"/>'
-    )
-    if _ARM_ASSETS_INC_NEW in host_src:
-        host_src = host_src.replace(
-            _ARM_ASSETS_INC_NEW, f'<include file="{assets_abs}"/>', 1
-        )
-        host_src = host_src.replace(_ARM_TENDONS_INC, "", 1)
-        host_src = host_src.replace(_ARM_MUSCLES_INC, "", 1)
-    else:
-        host_src = host_src.replace(
-            _ARM_ASSETS_INC_OLD, f'<include file="{assets_abs}"/>', 1
-        )
+    # Arm asset include — swap bundled arm assets for musclemimic bimanual assets.
+    _ARM_ASSETS_INC = '<include file="../arm/assets/myoarm_assets.xml"/>'
+    chain_inc = '<include file="../torso/assets/myotorso_arm_chain.xml"/>'
+    host_src = host_src.replace(_ARM_ASSETS_INC, f'<include file="{assets_abs}"/>', 1)
     host_src = host_src.replace(
         chain_inc,
         f'<include file="{chain_abs}"/>',
@@ -200,15 +175,11 @@ def _materialize_myotorso_bimanual_host_xml() -> tuple[Path, Path, Path]:
     from myosuite.utils.simhive_path import get_simhive_asset_root
 
     _myo_sim_root = get_simhive_asset_root("myo_sim").as_posix()
+    host_src = host_src.replace('meshdir="../myo_sim"', f'meshdir="{_myo_sim_root}"', 1)
     host_src = host_src.replace(
-        'meshdir="../../../../simhive/myo_sim"', f'meshdir="{_myo_sim_root}"', 1
+        'texturedir="../myo_sim"', f'texturedir="{_myo_sim_root}"', 1
     )
-    host_src = host_src.replace(
-        'texturedir="../../../../simhive/myo_sim"', f'texturedir="{_myo_sim_root}"', 1
-    )
-    _quad_scene_inc = (
-        '<include file="../../../../simhive/myo_sim/scene/myosuite_quad.xml"/>'
-    )
+    _quad_scene_inc = '<include file="../myo_sim/scene/myosuite_quad.xml"/>'
     _quad_scene_abs = (
         get_simhive_asset_root("myo_sim") / "scene" / "myosuite_quad.xml"
     ).as_posix()
@@ -243,9 +214,7 @@ def _materialize_myotorso_bimanual_host_xml() -> tuple[Path, Path, Path]:
         _myolegs_assets_bones_only_xml_text(),
         encoding="utf-8",
     )
-    legs_assets_inc = (
-        '<include file="../../../../simhive/myo_sim/leg/assets/' 'myolegs_assets.xml"/>'
-    )
+    legs_assets_inc = '<include file="../myo_sim/leg/assets/myolegs_assets.xml"/>'
     host_src = host_src.replace(
         legs_assets_inc,
         f'<include file="{tmp_leg_assets.resolve().as_posix()}"/>',
@@ -396,10 +365,10 @@ def save_myotorso_bimanual_mimic_xml(
     spec, _ = build_myotorso_bimanual_mimic_spec(cfg)
     xml = spec.to_xml()
     xml = xml.replace(
-        'meshdir="../../../../simhive/myo_sim/"',
+        'meshdir="../myo_sim"',
         'meshdir="."',
     ).replace(
-        'texturedir="../../../../simhive/myo_sim/"',
+        'texturedir="../myo_sim"',
         'texturedir="."',
     )
     xml = xml.replace(

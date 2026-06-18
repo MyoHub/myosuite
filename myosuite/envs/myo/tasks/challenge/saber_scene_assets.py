@@ -266,12 +266,15 @@ def _build_saber_body_xml_text() -> str:
         '<mujoco model="myoarm_saber_body">',
         1,
     )
+    from myosuite.utils.simhive_path import get_simhive_asset_root
+
+    _myo_sim_root = get_simhive_asset_root("myo_sim").as_posix()
     xml = xml.replace(
         'meshdir="../../../../simhive/myo_sim/"',
-        'meshdir="."',
+        f'meshdir="{_myo_sim_root}"',
     ).replace(
         'texturedir="../../../../simhive/myo_sim/"',
-        'texturedir="."',
+        f'texturedir="{_myo_sim_root}"',
     )
     return xml
 
