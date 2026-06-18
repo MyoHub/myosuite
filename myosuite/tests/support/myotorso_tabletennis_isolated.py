@@ -22,7 +22,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from myosuite.utils.simhive_path import resolve_model_xml_path
+from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
 _ARM_HOST_XML = (
     Path(__file__).resolve().parents[2]

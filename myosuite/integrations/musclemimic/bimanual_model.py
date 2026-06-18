@@ -271,9 +271,9 @@ def compile_mimic_bimanual_mjmodel(
 
 def _default_myosuite_scene_xml() -> Path:
     """Resolve the canonical MyoSuite scene include path (pip or submodule)."""
-    from myosuite.utils.simhive_path import get_simhive_asset_root
+    from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
-    return get_simhive_asset_root("myo_sim") / "scene" / "myosuite_scene.xml"
+    return get_sim_asset_root("myo_sim") / "scene" / "myosuite_scene.xml"
 
 
 def _prepare_scene_xml_for_include(scene_xml: Path) -> Path:

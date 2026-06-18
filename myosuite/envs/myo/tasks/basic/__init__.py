@@ -16,10 +16,11 @@ from myosuite.envs.myo.assets._resolve import (
     resolve_arm_xml as _resolve_arm_xml,
     resolve_elbow_xml as _resolve_elbow_xml,
     resolve_finger_xml as _resolve_finger_xml,
+    resolve_leg_xml as _resolve_leg_xml,
 )
-from myosuite.utils.simhive_path import get_simhive_asset_root as _get_simhive_root
+from myosuite.utils.asset_path_resolver import get_sim_asset_root as _get_sim_asset_root
 
-_SIMHIVE_ROOT = _get_simhive_root("myo_sim")
+_MYO_SIM_ROOT = _get_sim_asset_root("myo_sim")
 _ASSETS_ROOT = pathlib.Path(__file__).parents[2] / "assets"
 
 
@@ -441,7 +442,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.leg.reach:LegReachEnvV0",
     max_episode_steps=150,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "leg" / "myolegs.xml"),
+        "model_path": str(_resolve_leg_xml("myolegs_with_torso.xml")),
         "joint_random_range": (
             -0.2,
             0.2,
@@ -461,7 +462,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.leg.walk:LegWalkEnvV0",
     max_episode_steps=1000,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "leg" / "myolegs.xml"),
+        "model_path": str(_resolve_leg_xml("myolegs_with_torso.xml")),
         "normalize_act": True,
         "min_height": 0.8,  # minimum center of mass height before reset
         "max_rot": 0.8,  # maximum rotation before reset
@@ -479,7 +480,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.leg.walk:LegTerrainEnvV0",
     max_episode_steps=1000,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "leg" / "myolegs.xml"),
+        "model_path": str(_resolve_leg_xml("myolegs_with_torso.xml")),
         "normalize_act": True,
         "min_height": 0.8,  # minimum center of mass height before reset
         "max_rot": 0.8,  # maximum rotation before reset
@@ -499,7 +500,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.leg.walk:LegTerrainEnvV0",
     max_episode_steps=1000,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "leg" / "myolegs.xml"),
+        "model_path": str(_resolve_leg_xml("myolegs_with_torso.xml")),
         "normalize_act": True,
         "min_height": 0.8,  # minimum center of mass height before reset
         "max_rot": 0.8,  # maximum rotation before reset
@@ -519,7 +520,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.leg.walk:LegTerrainEnvV0",
     max_episode_steps=1000,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "leg" / "myolegs.xml"),
+        "model_path": str(_resolve_leg_xml("myolegs_with_torso.xml")),
         "normalize_act": True,
         "min_height": 0.8,  # minimum center of mass height before reset
         "max_rot": 0.8,  # maximum rotation before reset
@@ -657,7 +658,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.torso.pose:TorsoEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "torso" / "myotorso.xml"),
+        "model_path": str(_MYO_SIM_ROOT / "torso" / "myotorso.xml"),
         "target_jnt_range": {
             "flex_extension": (0.0, 0.0),
             "lat_bending": (-0.1, 0.1),
@@ -689,7 +690,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.torso.pose:TorsoEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_SIMHIVE_ROOT / "torso" / "myotorso_exosuit.xml"),
+        "model_path": str(_MYO_SIM_ROOT / "torso" / "myotorso_exosuit.xml"),
         "target_jnt_range": {
             "flex_extension": (0, 0),
             "lat_bending": (-0.1, 0.1),

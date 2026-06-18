@@ -7,9 +7,9 @@
 import mujoco
 
 import myosuite.core.registry as _registry
-from myosuite.utils.simhive_path import get_simhive_asset_root
+from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
-_SIMHIVE_ROOT = get_simhive_asset_root("myo_sim")
+_SIMHIVE_ROOT = get_sim_asset_root("myo_sim")
 
 
 # Arm Reaching ==============================

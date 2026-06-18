@@ -15,7 +15,7 @@ import pytest
 
 import mujoco
 
-from myosuite.utils.simhive_path import resolve_model_xml_path
+from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 from pathlib import Path
 
 _ASSETS = Path(__file__).resolve().parents[1] / "envs" / "myo" / "assets"

@@ -15,7 +15,7 @@ pytestmark = pytest.mark.tier1
 
 _SKIP_NO_SIMHIVE = pytest.mark.skipif(
     not __import__("shutil").which("mujoco") and True,
-    reason="Requires accessible simhive or myo_sim to build",
+    reason="Requires myo_sim package to build",
 )
 
 
@@ -53,7 +53,7 @@ def test_get_recipe_unknown_raises():
 
 
 def test_resolve_fragment_path_fallback():
-    """_resolve_fragment_path resolves via myo_sim pip package or simhive submodule."""
+    """_resolve_fragment_path resolves via myo_sim pip package or bundled fallback."""
     from myosuite.core.model_builder import _resolve_fragment_path
 
     try:
@@ -62,7 +62,7 @@ def test_resolve_fragment_path_fallback():
         assert path.suffix == ".xml"
     except FileNotFoundError:
         pytest.skip(
-            "elbow fragment not resolvable (no myo_sim package and no simhive submodule)"
+            "elbow fragment not resolvable (no myo_sim package and no bundled fallback)"
         )
 
 
@@ -77,7 +77,7 @@ def test_model_builder_build_elbow():
         assert isinstance(model, mujoco.MjModel)
         assert model.nq > 0
     except FileNotFoundError:
-        pytest.skip("Fragment XML not found; simhive not initialised")
+        pytest.skip("Fragment XML not found; myo_sim not installed")
 
 
 @_SKIP_NO_SIMHIVE
@@ -92,7 +92,7 @@ def test_place_fragment_sets_position():
         assert isinstance(model, mujoco.MjModel)
         assert model.nbody > 1
     except FileNotFoundError:
-        pytest.skip("Fragment XML not found; simhive not initialised")
+        pytest.skip("Fragment XML not found; myo_sim not installed")
 
 
 @_SKIP_NO_SIMHIVE
@@ -111,7 +111,7 @@ def test_add_free_body_increases_nq():
         assert model_with.nq == model_bare.nq + 7
         assert model_with.nbody == model_bare.nbody + 1
     except FileNotFoundError:
-        pytest.skip("Fragment XML not found; simhive not initialised")
+        pytest.skip("Fragment XML not found; myo_sim not installed")
 
 
 @_SKIP_NO_SIMHIVE
@@ -129,7 +129,7 @@ def test_multiple_free_bodies():
         assert model_multi.nq == model_bare.nq + 7 * n_objects
         assert model_multi.nbody == model_bare.nbody + n_objects
     except FileNotFoundError:
-        pytest.skip("Fragment XML not found; simhive not initialised")
+        pytest.skip("Fragment XML not found; myo_sim not installed")
 
 
 def test_model_builder_build_returns_distinct_models():
@@ -293,7 +293,7 @@ def test_add_mesh_body_combined_with_fragment(minimal_mesh, minimal_texture):
         assert model_with.nmesh >= 1
         assert model_with.ntex >= 1
     except FileNotFoundError:
-        pytest.skip("Fragment XML not found; simhive not initialised")
+        pytest.skip("Fragment XML not found; myo_sim not installed")
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +447,7 @@ def test_attach_fragment_hand_routes_through_compose():
 
     Verified by checking that joint names carry the _r suffix produced by the
     compose pipeline (prune_arm_spec_to_hand) rather than the un-suffixed names
-    in the legacy simhive hand/myohand.xml.
+    in the legacy myo_sim hand/myohand.xml.
     """
     import mujoco
     from myosuite.core.model_builder import ModelBuilder

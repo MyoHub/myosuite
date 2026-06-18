@@ -56,7 +56,7 @@ pip install -U myosuite
 
 ### Install from source
 
-All simhive assets ship as pip packages (`myo-sim`, `furniture-sim`, `mpl-sim`, `object-sim`, `ycb-sim`) — no git submodule checkout required.
+All sim assets ship as pip packages (`myo-sim`, `furniture-sim`, `mpl-sim`, `object-sim`, `ycb-sim`) — no git submodule checkout required.
 
 ```bash
 git clone https://github.com/myohub/myosuite.git
@@ -75,9 +75,9 @@ pip install -e ".[docs]"     # Sphinx documentation build
 
 For advanced options, see the [installation guide](https://myosuite.readthedocs.io/en/latest/install.html).
 
-### Simhive furniture / MPL / object / YCB assets
+### Furniture / MPL / object / YCB sim assets
 
-These are installed with the base package (`pip install myosuite`). XML includes that reference `simhive/<name>/...` are automatically resolved from the installed pip package; a local `myosuite/simhive/<name>` checkout can still be used as an override.
+These are installed with the base package (`pip install myosuite`). Older model XML that still uses legacy `simhive/<name>/...`-style paths (from the pre-pip git-submodule layout) is automatically resolved to the installed pip package; a local `myosuite/simhive/<name>` checkout can still be used as an override.
 
 ### Verify your installation
 

@@ -14,9 +14,57 @@ Resolution order for each model family:
 from __future__ import annotations
 
 import pathlib
+import tempfile
 import warnings
+import xml.etree.ElementTree as ET
 
 _ASSETS_ROOT = pathlib.Path(__file__).parent
+
+# PoseEnvV0's viz_site_targets=("wrist",) needs a "wrist_target" site that the
+# upstream myo_sim pip elbow fragments don't define. Rather than maintaining a
+# duplicate copy of the (otherwise-identical) pip XML just to add one site,
+# generate a small patched file on the fly: it includes the pip fragments by
+# absolute reference (no body/asset content is copied) and adds only the site.
+_WRIST_TARGET_SITE = {
+    "name": "wrist_target",
+    "pos": "0.007 -.261 0.065",
+    "size": ".005",
+}
+_WRIST_TARGET_CACHE: dict[pathlib.Path, pathlib.Path] = {}
+
+
+def _with_wrist_target_site(pip_path: pathlib.Path) -> pathlib.Path:
+    """Return a small patched copy of *pip_path* with a "wrist_target" site added.
+
+    Include paths and the compiler meshdir/texturedir are rewritten to
+    absolute paths so the generated file works regardless of where it's
+    written, without copying any of myo_sim's own body/asset content.
+    """
+    if pip_path in _WRIST_TARGET_CACHE:
+        return _WRIST_TARGET_CACHE[pip_path]
+
+    tree = ET.parse(pip_path)
+    root = tree.getroot()
+    for include in root.findall("include"):
+        file_attr = include.get("file")
+        if file_attr:
+            include.set("file", str((pip_path.parent / file_attr).resolve()))
+    compiler = root.find("compiler")
+    if compiler is not None:
+        for attr in ("meshdir", "texturedir"):
+            value = compiler.get(attr)
+            if value:
+                compiler.set(attr, str((pip_path.parent / value).resolve()))
+    worldbody = ET.SubElement(root, "worldbody")
+    ET.SubElement(worldbody, "site", _WRIST_TARGET_SITE)
+
+    out_dir = pathlib.Path(tempfile.gettempdir()) / "myosuite_patched_xml"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"wrist_target_{pip_path.stem}_{abs(hash(pip_path))}.xml"
+    tree.write(out_path, encoding="unicode")
+    _WRIST_TARGET_CACHE[pip_path] = out_path
+    return out_path
+
 
 TORSO_PIP_CALIBRATION_WARNING = (
     "This env's torso uses myo_sim pip's muscle/tendon calibration, not the "
@@ -38,21 +86,24 @@ def warn_torso_pip_calibration_divergence() -> None:
     warnings.warn(TORSO_PIP_CALIBRATION_WARNING, UserWarning, stacklevel=3)
 
 
+_ELBOW_POSE_MODELS = frozenset(
+    {"myoelbow_1dof6muscles.xml", "myoelbow_1dof6muscles_1dofexo.xml"}
+)
+
+
 def resolve_elbow_xml(filename: str = "myoelbow_1dof6muscles.xml") -> pathlib.Path:
-    local = _ASSETS_ROOT / "elbow" / filename
-    if local.exists():
-        return local
     try:
         import myo_sim  # type: ignore[import-untyped]
 
         p = myo_sim.MODELS_DIR / "legacy" / "elbow" / filename
         if p.exists():
-            return p
+            return _with_wrist_target_site(p) if filename in _ELBOW_POSE_MODELS else p
         p = myo_sim.MODELS_DIR / "elbow" / filename
         if p.exists():
-            return p
+            return _with_wrist_target_site(p) if filename in _ELBOW_POSE_MODELS else p
     except ImportError:
         pass
+    local = _ASSETS_ROOT / "elbow" / filename
     return local
 
 

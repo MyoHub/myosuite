@@ -39,6 +39,8 @@ from mjlab.tasks.registry import register_mjlab_task
 from myosuite.core.config import TaskConfig
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
 from myosuite.envs.myo.assets._resolve import resolve_elbow_xml as _resolve_elbow_xml
+from myosuite.envs.myo.assets._resolve import resolve_leg_xml as _resolve_leg_xml
+from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
     MyoMuscleActivationActionCfg,
     mjlab_env_cfg_from_task_config,
@@ -72,18 +74,22 @@ def _resolve_model_root() -> Path:
 
 
 def _resolve_leg_dir() -> Path:
-    from myosuite.utils.simhive_path import get_simhive_asset_root
+    from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
-    return get_simhive_asset_root("myo_sim") / "leg"
+    return get_sim_asset_root("myo_sim") / "leg"
 
 
 _MYOSUITE_ROOT = _resolve_model_root()
-_ELBOW_XML = _resolve_elbow_xml("myoelbow_1dof6muscles.xml")
+_ELBOW_XML = resolve_model_xml_path(_resolve_elbow_xml("myoelbow_1dof6muscles.xml"))
 # Prefer the plane-terrain leg model for mjlab: MuJoCo Warp forward on hfield
 # terrain has been unreliable (including native crashes) on some platforms.
 _LEG_DIR = _resolve_leg_dir()
 _WALK_XML_MJX = _LEG_DIR / "myolegs_mjx.xml"
-_WALK_XML = _WALK_XML_MJX if _WALK_XML_MJX.is_file() else _LEG_DIR / "myolegs.xml"
+_WALK_XML = resolve_model_xml_path(
+    _WALK_XML_MJX
+    if _WALK_XML_MJX.is_file()
+    else _resolve_leg_xml("myolegs_with_torso_plane.xml")
+)
 
 
 def _elbow_tendon_names() -> tuple[str, ...]:
@@ -728,7 +734,7 @@ def _make_walk_env_cfg(
 ) -> ManagerBasedRlEnvCfg:
     """ManagerBasedRlEnvCfg for myoLegWalk-v0 (80-muscle bipedal walking).
 
-    Uses the simhive leg MJCF (``myolegs_mjx.xml`` when present, else
+    Uses the myo_sim leg MJCF (``myolegs_mjx.xml`` when present, else
     ``myolegs.xml``). The plane-terrain MJX variant avoids MuJoCo Warp issues
     with height-field terrain while keeping the same muscle/torso/leg chain as
     the CPU walk task.

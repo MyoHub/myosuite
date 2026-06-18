@@ -7,16 +7,16 @@
     License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ====================================================== -->
 
-    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_tendons.xml"/>
-    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_muscles.xml"/>
-    <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
-    <compiler meshdir='../../../../simhive/myo_sim' texturedir='../../../../simhive/myo_sim'/>
+    <include file="../myo_sim/arm/assets/myoarm_r_assets.xml"/>
+    <include file="../myo_sim/arm/assets/myoarm_r_tendons.xml"/>
+    <include file="../myo_sim/arm/assets/myoarm_r_muscles.xml"/>
+    <include file="../myo_sim/scene/myosuite_scene.xml"/>
+    <compiler meshdir='../myo_sim' texturedir='../myo_sim'/>
 
     <asset>
         <texture name="tabletop" type="2d" file="../furniture_sim/common/textures/stone1.png"/>
         <material name="tabletop" texture="tabletop" rgba=".95 .95 .95 1"/>
-        <texture name="texwood" type="cube" file="../../../../simhive/myo_sim/scene/floor0.png"/>
+        <texture name="texwood" type="cube" file="../myo_sim/scene/floor0.png"/>
         <material name="matwood" reflectance="0.01" texture="texwood" texuniform="false"/>
     </asset>
 
@@ -48,7 +48,7 @@
 
         <!-- ======= MyoArm (right arm, starting from clavicle_r) ======= -->
         <body name="arm_r" pos="-.025 0.1 1.40">
-            <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_chain.xml"/>
+            <include file="../myo_sim/arm/assets/myoarm_r_chain.xml"/>
         </body>
 
         <!-- ======= Table ======= -->

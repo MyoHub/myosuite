@@ -22,7 +22,7 @@ from myosuite.integrations.musclemimic.myotorso_bimanual_model import (
 )
 import tempfile
 
-from myosuite.utils.simhive_path import resolve_model_xml_path
+from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
 SABER_BODY_XML = "myoarm_saber_body.xml"
 LEFT_LIGHTSABER_XML = "left_lightsaber.xml"
@@ -265,16 +265,6 @@ def _build_saber_body_xml_text() -> str:
         '<mujoco model="myotorso_arm_chain_host">',
         '<mujoco model="myoarm_saber_body">',
         1,
-    )
-    from myosuite.utils.simhive_path import get_simhive_asset_root
-
-    _myo_sim_root = get_simhive_asset_root("myo_sim").as_posix()
-    xml = xml.replace(
-        'meshdir="../../../../simhive/myo_sim/"',
-        f'meshdir="{_myo_sim_root}"',
-    ).replace(
-        'texturedir="../../../../simhive/myo_sim/"',
-        f'texturedir="{_myo_sim_root}"',
     )
     return xml
 

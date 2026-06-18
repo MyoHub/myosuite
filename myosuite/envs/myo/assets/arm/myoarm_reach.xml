@@ -8,14 +8,14 @@
 ====================================================== -->
 
     <include file="assets/myoarm_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
-    <compiler meshdir="../../../../simhive/myo_sim" texturedir="../../../../simhive/myo_sim"/>
+    <include file="../myo_sim/scene/myosuite_scene.xml"/>
+    <compiler meshdir="../myo_sim" texturedir="../myo_sim"/>
 
     <worldbody>
 
         <!-- ======= MyoArm ======= -->
         <body name="full_body" pos="-.025 0.1 1.40">
-            <include file="../../../../simhive/myo_sim/arm/assets/myoarm_body.xml"/>
+            <include file="../myo_sim/arm/assets/myoarm_body.xml"/>
             <!-- forearm tip site: placed at wrist entry (lunate body position in local frame) -->
             <site name="forearm_tip" size="0.005" pos="0.018 -0.592 0.045" rgba="0.8 0 0 1" group="4"/>
         </body>

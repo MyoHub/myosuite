@@ -7,65 +7,28 @@
     License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ====================================================== -©vk©-->
 
-    <include file="../../../../simhive/myo_sim/torso/assets/myotorso_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/head/assets/myohead_simple_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_tendons.xml"/>
-    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_muscles.xml"/>
-    <include file="../../../../simhive/myo_sim/scene/myosuite_quad.xml"/>
-    <compiler angle="radian" meshdir='../../../../simhive/myo_sim' texturedir='../../../../simhive/myo_sim/'/>
-
-    <visual>
-        <global offwidth="1280" offheight="1080"/>
-    </visual>
+    <include file="myotorso_arm_chain_host.xml"/>
 
     <asset>
         <!-- Ping Pong mesh and texture -->
-        <mesh name="tabletennis_table" file="../../envs/myo/assets/tabletennis_table.obj" />
-        <mesh name="tabletennis_net_mesh" file="../../envs/myo/assets/tabletennis_net.obj" />
-        <texture name="tabletennis_tex" type="2d" file="../../envs/myo/assets/tabletennis.png"/>
+        <mesh name="tabletennis_table" file="../tabletennis_table.obj" />
+        <mesh name="tabletennis_net_mesh" file="../tabletennis_net.obj" />
+        <texture name="tabletennis_tex" type="2d" file="../tabletennis.png"/>
 
         <material name="tabletennis_mat" texture="tabletennis_tex" specular="0.2" shininess="0.4"/>
 
         <!-- Ping Pong Paddle mesh and texture -->
-        <mesh name="paddle_mesh" file="../../envs/myo/assets/paddle.obj" />
-        <texture name="paddle_tex" type="2d" file="../../envs/myo/assets/paddle_1k.png"/>
+        <mesh name="paddle_mesh" file="../paddle.obj" />
+        <texture name="paddle_tex" type="2d" file="../paddle_1k.png"/>
         <material name="paddle_mat" texture="paddle_tex" specular="0.2" shininess="0.4"/>
 
         <!-- Floor material -->
         <material name="floor_mat" rgba="0.3 0 0 1"/>
     </asset>
 
-    <default>
-        <default class="visual">
-            <geom group="2" type="mesh" contype="0" conaffinity="0"/>
-        </default>
-        <default class="collision">
-            <geom group="4" condim="3" contype="1" conaffinity="1" solref="0.002 1" solimp="0.95 0.95 0.01" mass="0"/>
-        </default>
-
-        <default class="pelvis_move">
-            <joint limited="true" damping="1000" type="slide" armature="10"/>
-            <position kp="3500"  ctrllimited="true"/>
-        </default>
-    </default>
-
-    <compiler autolimits="true" inertiafromgeom="auto" angle="radian" balanceinertia="true" boundmass="0.001" boundinertia=".0001"/>
-    <option timestep="0.002">
-        <flag multiccd="enable"/>
-    </option>
-
     <worldbody>
         <camera name="default" pos="-0.367 0.451 1.483" xyaxes="-0.033 -0.999 0.000 0.207 -0.007 0.978"/>
         <camera name="close_up" pos="-0.031 -6.315 0.984" xyaxes="1.000 -0.009 -0.000 -0.001 -0.099 0.995"/>
-
-        <body name="full_body" pos="1.6 0 0.95" euler="0 0 3.14">
-            <include file="../../../../simhive/myo_sim/torso/assets/myotorso_arm_chain.xml"/>
-            <joint name="pelvis_x" class="pelvis_move"  axis="1 0 0"  range="-1 -0.05"/>
-            <joint name="pelvis_y" class="pelvis_move"  axis="0 1 0" range="-1 1"/>
-            <include file="../../../../simhive/myo_sim/leg/assets/myolegs_chain.xml"/>
-        </body>
 
         <light name="glow" pos="0 0 1.5" directional="false"  castshadow="true" diffuse="0.7 0.7 0.7" specular="0.5 0.5 0.5" ambient="0.52 0.52 0.52"/>
 
@@ -102,13 +65,6 @@
         </body>
 
     </worldbody>
-
-    <actuator>
-        <position class="pelvis_move" name="pelvis_x" joint="pelvis_x"
-                  ctrlrange="-1 0.05"/>
-        <position class="pelvis_move" name="pelvis_y" joint="pelvis_y"
-                  ctrlrange="-1 1"/>
-    </actuator>
 
     <sensor>
         <velocimeter name="pingpong_vel_sensor" site="pingpong"/>

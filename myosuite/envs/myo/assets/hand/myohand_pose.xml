@@ -8,8 +8,8 @@
 ====================================================== -->
 
     <include file="assets/myohand_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
-    <compiler meshdir='../../../../simhive/myo_sim/' texturedir='../../../../simhive/myo_sim/'/>
+    <include file="../myo_sim/scene/myosuite_scene.xml"/>
+    <compiler meshdir='../myo_sim/' texturedir='../myo_sim/'/>
 
     <worldbody>
         <include file="assets/myohand_body.xml"/>
