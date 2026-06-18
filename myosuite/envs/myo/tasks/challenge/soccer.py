@@ -173,12 +173,18 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
         "internal_qvel",
         "grf",
         "torso_angle",
+        "pelvis_angle",
         "ball_pos",
         "model_root_pos",
         "model_root_vel",
         "muscle_length",
         "muscle_velocity",
         "muscle_force",
+        "r_toe_pos",
+        "l_toe_pos",
+        "goal_bounds",
+        "goalkeeper_pos",
+        "time",
     ]
     DEFAULT_RWD_KEYS_AND_WEIGHTS: dict[str, float] = {
         "goal_scored": 1000,
