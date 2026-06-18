@@ -19,6 +19,8 @@ from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
     sample_geometry_8,
     sample_geometry_100,
+    sample_geometry_id,
+    sample_geometry_ood,
 )
 from myosuite.physics.quat_math import euler2quat
 from myosuite.physics.quat_math import calculate_cosine
@@ -255,6 +257,74 @@ class Geometries8EnvV0Gymnasium(ReorientSAREnvV0):
         self.model.geom_rgba[self.tar_gid] = color
         self.model.geom_pos[self.tar_t_gid] = top_pos
         self.model.geom_pos[self.tar_b_gid] = bot_pos
+        self.model.body_quat[self.target_obj_bid] = euler2quat(desired_euler)
+        self.pen_length = float(
+            np.linalg.norm(
+                self.model.geom_pos[self.obj_t_gid]
+                - self.model.geom_pos[self.obj_b_gid]
+            )
+        )
+        self.tar_length = float(
+            np.linalg.norm(
+                self.model.geom_pos[self.tar_t_gid]
+                - self.model.geom_pos[self.tar_b_gid]
+            )
+        )
+
+
+class InDistribution(ReorientSAREnvV0):
+    """SAR reorient eval, in-distribution geometries. Migrated from reorient_sar_v0.InDistribution."""
+
+    def _apply_episode_geometry(self, rng: np.random.Generator) -> None:
+        geom_type, size, color, top_pos, bot_pos, desired_euler = sample_geometry_id(
+            rng
+        )
+        self.model.geom_size[self.obj_gid] = size
+        self.model.geom_type[self.obj_gid] = geom_type
+        self.model.geom_rgba[self.obj_gid] = color
+        self.model.geom_pos[self.obj_t_gid] = top_pos
+        self.model.geom_pos[self.obj_b_gid] = bot_pos
+        self.model.body_mass[self.obj_bid] = 1.2
+        self.model.geom_size[self.tar_gid] = size
+        self.model.geom_type[self.tar_gid] = geom_type
+        self.model.geom_rgba[self.tar_gid] = color
+        self.model.geom_pos[self.tar_t_gid] = top_pos
+        self.model.geom_pos[self.tar_b_gid] = bot_pos
+        self.model.geom_condim[self.obj_gid] = 3
+        self.model.body_quat[self.target_obj_bid] = euler2quat(desired_euler)
+        self.pen_length = float(
+            np.linalg.norm(
+                self.model.geom_pos[self.obj_t_gid]
+                - self.model.geom_pos[self.obj_b_gid]
+            )
+        )
+        self.tar_length = float(
+            np.linalg.norm(
+                self.model.geom_pos[self.tar_t_gid]
+                - self.model.geom_pos[self.tar_b_gid]
+            )
+        )
+
+
+class OutofDistribution(ReorientSAREnvV0):
+    """SAR reorient eval, out-of-distribution geometries. Migrated from reorient_sar_v0.OutofDistribution."""
+
+    def _apply_episode_geometry(self, rng: np.random.Generator) -> None:
+        geom_type, size, color, top_pos, bot_pos, desired_euler = sample_geometry_ood(
+            rng
+        )
+        self.model.geom_size[self.obj_gid] = size
+        self.model.geom_type[self.obj_gid] = geom_type
+        self.model.geom_rgba[self.obj_gid] = color
+        self.model.geom_pos[self.obj_t_gid] = top_pos
+        self.model.geom_pos[self.obj_b_gid] = bot_pos
+        self.model.body_mass[self.obj_bid] = 1.2
+        self.model.geom_size[self.tar_gid] = size
+        self.model.geom_type[self.tar_gid] = geom_type
+        self.model.geom_rgba[self.tar_gid] = color
+        self.model.geom_pos[self.tar_t_gid] = top_pos
+        self.model.geom_pos[self.tar_b_gid] = bot_pos
+        self.model.geom_condim[self.obj_gid] = 3
         self.model.body_quat[self.target_obj_bid] = euler2quat(desired_euler)
         self.pen_length = float(
             np.linalg.norm(

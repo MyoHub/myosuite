@@ -371,3 +371,71 @@ already. The remaining gaps:
 3. Ensure all state written by `_saber_step_event` is accessible from
    `RewardTermCfg` and `TerminationTermCfg` via the task_state dict (already mostly done)
 4. Run: `pytest myosuite/tests/test_saber_env.py myosuite/tests/test_myo_saber_mjlab_parity.py -v`
+
+---
+
+# Procedural hand model: remove myo_sim PR #104 / compose dependency for hand_standard
+
+**Goal**: `hand_standard` (and other hand recipes) build the right-hand model directly
+in myosuite from raw myo_sim arm asset XMLs, with no dependency on myo_sim's
+compose pipeline (`myo_sim.build.compose.load_right_hand_from_arm_spec`) or the
+static `myo_sim/models/hand/myohand_r.xml` artefact from PR #104. Once this lands,
+PR #104 (https://github.com/MyoHub/myo_sim/pull/104) can be closed upstream.
+
+## Plan
+
+- [ ] `myosuite/core/xml_compose.py` (new): port `component_children`,
+      `expand_component_element`, `build_child_xml_from_components` from
+      `myo_sim/build/utils.py` (stdlib `xml.etree.ElementTree` + `copy` + `pathlib` only).
+- [ ] `myosuite/core/hand_pruning.py` (new): port from `myo_sim/build/hand.py`:
+      `RIGHT_HAND_ACTUATORS`, `RIGHT_HAND_REMOVED_JOINTS`, `HAND_PREVIEW_JOINT_POSE`,
+      `add_side_suffix`, `side_name`, `base_actuator_name`, `tendon_wrap_geom_names`,
+      quaternion helpers, `apply_joint_pose`, `bake_current_body_poses`,
+      `bake_hand_preview_pose`, `prune_arm_spec_to_hand`.
+- [ ] `myosuite/core/model_recipes.py`: replace `_myohand_r_path()` / `_hand_builder()`
+      with a procedural builder that:
+      1. Resolves `myo_sim` asset root via `asset_path_resolver.get_sim_asset_root("myo_sim")`.
+      2. Builds the raw right-arm `MjSpec` from
+         `arm/assets/myoarm_r_{assets,tendons,muscles,chain}.xml` via the new
+         `xml_compose.build_child_xml_from_components` (mirrors
+         `load_right_arm_spec()`).
+      3. Calls `hand_pruning.prune_arm_spec_to_hand(spec, "r")`.
+      4. Wraps via `ModelBuilder().attach_spec(spec, name="hand")`.
+      No fallback to static XML or myo_sim compose — procedural path only
+      (per user decision 2026-06-18).
+- [ ] Update/verify `myosuite/tests/test_model_builder.py` and
+      `myosuite/tests/test_hand_recipe_parity.py` still pass — these compare against
+      `myo_sim.load("myohand_r")` / `myohand_r.xml` as the **reference**, which is fine
+      to keep (myo_sim still ships those for its own users); only myosuite's own
+      build path changes.
+- [ ] Run full verification suite from CLAUDE.md before considering done.
+- [ ] Once merged and parity tests green, close https://github.com/MyoHub/myo_sim/pull/104
+      as no-longer-needed by myosuite (confirm with user first).
+
+---
+
+# PyPI regression analysis (myosuite dev branch `mjlab` vs PyPI myosuite 2.12.2)
+
+**Goal**: for every env_id registered in this repo that also exists on PyPI myosuite
+2.12.2, produce a numeric regression report covering (a) static model diff
+(bodies/joints/tendons/actuators — same method as `tasks/hand_model_pypi_diff_report.md`)
+and (b) rollout diff (reset obs + fixed-action trajectory: obs/reward/done arrays).
+
+## Plan
+- [ ] Create isolated venv (e.g. `/tmp/myosuite_pypi_venv`), `pip install myosuite==2.12.2`,
+      verify it imports independently of this repo's editable install.
+- [x] Enumerate env_ids registered in this repo (gymnasium registry, substring `myo`) — ~120 ids found.
+- [ ] Enumerate env_ids registered by PyPI myosuite 2.12.2 the same way (separate subprocess
+      using the venv python, to avoid import collision with this repo's `myosuite` package name).
+- [ ] Intersect the two id lists -> directly comparable set. Record ids unique to each side.
+- [ ] For each common env_id:
+  - Static: load `MjModel` from both envs' `sim.model`, diff body tree/parents/local pose,
+    joint ranges, actuator gainprm/lengthrange, tendon resting length at qpos0.
+  - Rollout: `env.reset(seed=0)`, step a fixed deterministic action sequence for ~50 steps,
+    record obs/reward/terminated/truncated; compare arrays (max abs diff) between repo env
+    and PyPI env of the same env_id.
+- [ ] Write `tasks/myosuite_pypi_regression_report.md`: top-line table
+      (env_id | static diff severity | rollout obs max-diff | rollout reward max-diff)
+      plus narrative on which diffs look like intentional architecture changes
+      (e.g. procedural hand model, mjlab backend) vs. unintended numerical regressions.
+- [ ] Flag env_ids present only in the repo or only on PyPI.

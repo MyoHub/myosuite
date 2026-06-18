@@ -490,14 +490,6 @@ try:
         max_episode_steps=500,
         wrap_mj_instability_termination=False,
     )
-    # Single-agent BoxingVs with mannequin_exact_clone as the fixed opponent.
-    _register_env(
-        "myoChallengeBoxingVsClone-v0",
-        entry_point="myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_env:make_boxing_vs_clone_env",
-        max_episode_steps=500,
-        wrap_mj_instability_termination=False,
-    )
-
     del _register_env, _register_task, _BoxingVsTaskConfig
 except Exception as _e:  # noqa: BLE001
     import warnings as _w

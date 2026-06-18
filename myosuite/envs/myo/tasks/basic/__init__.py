@@ -17,10 +17,9 @@ from myosuite.envs.myo.assets._resolve import (
     resolve_elbow_xml as _resolve_elbow_xml,
     resolve_finger_xml as _resolve_finger_xml,
     resolve_leg_xml as _resolve_leg_xml,
+    resolve_torso_xml as _resolve_torso_xml,
 )
-from myosuite.utils.asset_path_resolver import get_sim_asset_root as _get_sim_asset_root
 
-_MYO_SIM_ROOT = _get_sim_asset_root("myo_sim")
 _ASSETS_ROOT = pathlib.Path(__file__).parents[2] / "assets"
 
 
@@ -658,7 +657,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.torso.pose:TorsoEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_MYO_SIM_ROOT / "torso" / "myotorso.xml"),
+        "model_path": str(_resolve_torso_xml("myotorso.xml")),
         "target_jnt_range": {
             "flex_extension": (0.0, 0.0),
             "lat_bending": (-0.1, 0.1),
@@ -690,7 +689,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.torso.pose:TorsoEnvV0",
     max_episode_steps=200,
     kwargs={
-        "model_path": str(_MYO_SIM_ROOT / "torso" / "myotorso_exosuit.xml"),
+        "model_path": str(_resolve_torso_xml("myotorso_exosuit.xml")),
         "target_jnt_range": {
             "flex_extension": (0, 0),
             "lat_bending": (-0.1, 0.1),

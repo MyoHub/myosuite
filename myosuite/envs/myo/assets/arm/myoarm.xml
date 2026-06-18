@@ -8,17 +8,14 @@
 ====================================================== -->
 
     <include file="assets/myoarm_assets.xml"/>
-    <include file="../scene/myosuite_scene.xml"/>
-    <compiler meshdir=".." texturedir=".."/>
-
-    <asset>
-        <!-- pick a body mesh below -->
-        <mesh file="../myo_sim/meshes/human_lowpoly_nohand.stl" name="human_body"/>
-    </asset>
+    <include file="../myo_sim/scene/myosuite_scene.xml"/>
+    <compiler meshdir="../myo_sim" texturedir="../myo_sim"/>
 
     <worldbody>
 
-        <geom name="body" type="mesh" mesh="human_body" euler="0 0 3.14" contype="0" conaffinity="0"/>
+        <!-- Decorative full-body skin mesh omitted: myo_sim pip does not ship
+             meshes/human_lowpoly_nohand.stl (see PR #91 "missing paths"). The
+             mesh was purely cosmetic (contype/conaffinity 0, no physics role). -->
         <body name="full_body" pos="-.025 0.1 1.40">
             <include file="assets/myoarm_body.xml"/>
         </body>
