@@ -2918,8 +2918,8 @@ wheels = [
 
 [[package]]
 name = "mpl-sim"
-version = "0.2.0"
-source = { git = "https://github.com/MyoHub/MPL_sim.git?rev=v0.2.0#a8f62819d46c52ff2b91f6fe7ca3d6b3bf78a8a1" }
+version = "0.2.1"
+source = { git = "https://github.com/MyoHub/MPL_sim.git?rev=v0.2.1#dcb50b63249afd857519686cc8549eac15266f1d" }
 
 [[package]]
 name = "mpmath"
@@ -3127,7 +3127,7 @@ wheels = [
 [[package]]
 name = "myo-sim"
 version = "0.2.0"
-source = { git = "https://github.com/Vittorio-Caggiano/myo_sim.git?rev=feat%2Fmyo-sim-pip-migration#d1240ae3674c1e4286cc7c6d7aa4db4622d6f768" }
+source = { git = "https://github.com/MyoHub/myo_sim.git?rev=mm_refactor_mjspec#92464dbebe330a3c8f58dd003323ffa417a329a3" }
 dependencies = [
     { name = "matplotlib" },
     { name = "mujoco" },
@@ -3318,17 +3318,17 @@ requires-dist = [
     { name = "mjviser", specifier = ">=0.0.14" },
     { name = "ml-collections", specifier = ">=0.1.1" },
     { name = "ml-collections", marker = "python_full_version >= '3.10' and sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=0.1.1" },
-    { name = "mpl-sim", git = "https://github.com/MyoHub/MPL_sim.git?rev=v0.2.0" },
+    { name = "mpl-sim", git = "https://github.com/MyoHub/MPL_sim.git?rev=v0.2.1" },
     { name = "mujoco" },
     { name = "mujoco-warp", marker = "python_full_version >= '3.10' and python_full_version < '3.14' and sys_platform != 'win32' and extra == 'mjlab'", specifier = ">=3.7.0" },
     { name = "musclemimic-models", marker = "extra == 'musclemimic'", specifier = ">=1.0.2" },
-    { name = "myo-sim", git = "https://github.com/Vittorio-Caggiano/myo_sim.git?rev=feat%2Fmyo-sim-pip-migration" },
+    { name = "myo-sim", git = "https://github.com/MyoHub/myo_sim.git?rev=mm_refactor_mjspec" },
     { name = "myosuite", extras = ["mjx"], marker = "extra == 'mjx-cuda'" },
     { name = "myosuite", extras = ["mjx-cuda"], marker = "sys_platform != 'darwin' and extra == 'dev'" },
     { name = "myosuite", extras = ["musclemimic"], marker = "extra == 'dev'" },
     { name = "myosuite", extras = ["rl"], marker = "extra == 'dev'" },
     { name = "numpy" },
-    { name = "object-sim", git = "https://github.com/MyoHub/object_sim.git?rev=v0.1.0" },
+    { name = "object-sim", git = "https://github.com/MyoHub/object_sim.git?rev=v0.1.1" },
     { name = "onnxruntime", specifier = "<1.21" },
     { name = "optax", marker = "python_full_version >= '3.10' and sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=0.1.7" },
     { name = "orbax-checkpoint", marker = "python_full_version >= '3.10' and sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=0.11.33" },
@@ -3884,8 +3884,8 @@ wheels = [
 
 [[package]]
 name = "object-sim"
-version = "0.1.0"
-source = { git = "https://github.com/MyoHub/object_sim.git?rev=v0.1.0#f7166f14c07111700532b0b2fff4fab191fd25ea" }
+version = "0.1.1"
+source = { git = "https://github.com/MyoHub/object_sim.git?rev=v0.1.1#b7ea3d0f41e24656dfc45751a960a544578be531" }
 
 [[package]]
 name = "onnx"

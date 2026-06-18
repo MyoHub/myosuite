@@ -1,0 +1,1333 @@
+<mujocoinclude model="MyoTorso_v1.0">
+  <!-- =================================================
+  Copyright 2024
+  Model	:: MyoTorso (MuJoCoV3.0)
+  Author	::  Rohan Walia, Morgane Billot, Kevin Garzon-Aguirre, Swathika Subramanian, Huiyi Wang,
+                 Mohamed Irfan Refai, Guillaume Durandau, Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano
+  License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+  ====================================================== -->
+
+  <default class="main">
+    <default class="myotorso">
+      <joint armature="0.01" damping="0.5" limited="true"/>
+      <geom margin="0.001" material="mat_myotorso" rgba="0.8 0.85 0.8 1" conaffinity="0" contype="0"/>
+      <site size="0.001 0.005 0.005" group="3"/>
+      <tendon limited="false" width="0.002" rgba="0.95 0.3 0.3 1"/>
+      <default class="myoBack_muscle">
+        <general ctrllimited="true" ctrlrange="0 1" dyntype="muscle" gaintype="muscle" biastype="muscle" dynprm="0.01 0.04 0 0 0 0 0 0 0 0" gainprm="0.75 1.05 -1 200 0.5 1.6 1.5 1.3 1.2 0" biasprm="0.75 1.05 -1 200 0.5 1.6 1.5 1.3 1.2 0"/>
+      </default>
+      <default class="myoBack_wrap">
+          <geom rgba=".5 .5 .9 0.5" group="3" contype="0" conaffinity="0"  type="cylinder"/>
+      </default>
+      <default class="sidesite">
+          <site group="3" size="0.0005"/>
+      </default>
+      <default class="motor">
+        <general gainprm="5 0 0 0 0 0 0 0 0 0"/>
+      </default>
+      <default class="myotorso_coll">
+        <geom type="capsule" group="4" contype="1" conaffinity="0" condim="3" margin="0.001" material="matskin_myotorso"/>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <mesh name="sacrum_geom_1_sacrum" file="../myo_sim/meshes/sacrum.stl"/>
+    <mesh name="lumbar5_geom_1_lumbar5" file="../myo_sim/meshes/lumbar5.stl" />
+    <mesh name="lumbar4_geom_1_lumbar4" file="../myo_sim/meshes/lumbar4.stl" />
+    <mesh name="lumbar3_geom_1_lumbar3" file="../myo_sim/meshes/lumbar3.stl" />
+    <mesh name="lumbar2_geom_1_lumbar2" file="../myo_sim/meshes/lumbar2.stl" />
+    <mesh name="lumbar1_geom_1_lumbar1" file="../myo_sim/meshes/lumbar1.stl" />
+    <mesh name="torso_geom_1_thoracic12_s" file="../myo_sim/meshes/thoracic12_s.stl" />
+    <mesh name="torso_geom_2_thoracic11_s" file="../myo_sim/meshes/thoracic11_s.stl" />
+    <mesh name="torso_geom_3_thoracic10_s" file="../myo_sim/meshes/thoracic10_s.stl" />
+    <mesh name="torso_geom_4_thoracic9_s" file="../myo_sim/meshes/thoracic9_s.stl" />
+    <mesh name="torso_geom_5_thoracic8_s" file="../myo_sim/meshes/thoracic8_s.stl" />
+    <mesh name="torso_geom_6_thoracic7_s" file="../myo_sim/meshes/thoracic7_s.stl" />
+    <mesh name="torso_geom_7_thoracic6_s" file="../myo_sim/meshes/thoracic6_s.stl" />
+    <mesh name="torso_geom_8_thoracic5_s" file="../myo_sim/meshes/thoracic5_s.stl" />
+    <mesh name="torso_geom_9_thoracic4_s" file="../myo_sim/meshes/thoracic4_s.stl" />
+    <mesh name="torso_geom_10_thoracic3_s" file="../myo_sim/meshes/thoracic3_s.stl" />
+    <mesh name="torso_geom_11_thoracic2_s" file="../myo_sim/meshes/thoracic2_s.stl" />
+    <mesh name="torso_geom_12_thoracic1_s" file="../myo_sim/meshes/thoracic1_s.stl" />
+    <mesh name="torso_geom_13_ribcage_s" file="../myo_sim/meshes/thorax.stl" />
+    <texture name="tex_myotorso" builtin="flat" height="762" mark="cross" markrgb="1 .9 .9" rgb1="1 1 1" rgb2="1 1 1" type="cube" width="127"/>
+    <material name="mat_myotorso" texture="tex_myotorso" texuniform="true"/>
+    <material name="matskin_myotorso" specular="0.2" shininess=".1" reflectance="0.5" rgba="0.8 0.7 .5 .1" />
+  </asset>
+
+
+  <equality>
+    <joint name="Abs_r3_con" joint1="Abs_r3" joint2="flex_extension" polycoef="0 0.6429 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L4_L5_FE_con" joint1="L4_L5_FE" joint2="flex_extension" polycoef="0 0.185 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L4_L5_AR_con" joint1="L4_L5_AR" joint2="axial_rotation" polycoef="0 0.03778 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L4_L5_LB_con" joint1="L4_L5_LB" joint2="lat_bending" polycoef="0 0.1811 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L3_L4_FE_con" joint1="L3_L4_FE" joint2="flex_extension" polycoef="0 0.204 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L3_L4_AR_con" joint1="L3_L4_AR" joint2="axial_rotation" polycoef="0 0.03778 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L3_L4_LB_con" joint1="L3_L4_LB" joint2="lat_bending" polycoef="0 0.2453 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L2_L3_FE_con" joint1="L2_L3_FE" joint2="flex_extension" polycoef="0 0.231 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L2_L3_AR_con" joint1="L2_L3_AR" joint2="axial_rotation" polycoef="0 0.03111 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L2_L3_LB_con" joint1="L2_L3_LB" joint2="lat_bending" polycoef="0 0.2501 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L1_L2_FE_con" joint1="L1_L2_FE" joint2="flex_extension" polycoef="0 0.255 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L1_L2_AR_con" joint1="L1_L2_AR" joint2="axial_rotation" polycoef="0 0.02889 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="L1_L2_LB_con" joint1="L1_L2_LB" joint2="lat_bending" polycoef="0 0.188 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="Abs_t1_locked" joint1="Abs_t1" polycoef="0 0 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+    <joint name="Abs_t2_locked" joint1="Abs_t2" polycoef="0 0 0 0 0" solimp="0.9999 0.9999 0.001 0.5 2"/>
+  </equality>
+
+  <tendon>
+    <spatial class="myotorso" name="Ps_L1_VB_r_tendon">
+      <site site="Ps_L1_VB_r_Ps_L1_VB_r-P1"/>
+      <site site="Ps_L1_VB_r_Ps_L1_VB_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L1_TP_r_tendon">
+      <site site="Ps_L1_TP_r_Ps_L1_TP_r-P1"/>
+      <site site="Ps_L1_TP_r_Ps_L1_TP_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L1_L2_IVD_r_tendon">
+      <site site="Ps_L1_L2_IVD_r_Ps_L1_L2_IVD_r-P1"/>
+      <site site="Ps_L1_L2_IVD_r_Ps_L1_L2_IVD_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L2_TP_r_tendon">
+      <site site="Ps_L2_TP_r_Ps_L2_TP_r-P1"/>
+      <site site="Ps_L2_TP_r_Ps_L2_TP_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L2_L3_IVD_r_tendon">
+      <site site="Ps_L2_L3_IVD_r_Ps_L2_L3_IVD_r-P1"/>
+      <site site="Ps_L2_L3_IVD_r_Ps_L2_L3_IVD_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L3_TP_r_tendon">
+      <site site="Ps_L3_TP_r_Ps_L3_TP_r-P1"/>
+      <site site="Ps_L3_TP_r_Ps_L3_TP_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L3_L4_IVD_r_tendon">
+      <site site="Ps_L3_L4_IVD_r_Ps_L3_L4_IVD_r-P1"/>
+      <site site="Ps_L3_L4_IVD_r_Ps_L3_L4_IVD_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L4_TP_r_tendon">
+      <site site="Ps_L4_TP_r_Ps_L4_TP_r-P1"/>
+      <site site="Ps_L4_TP_r_Ps_L4_TP_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L4_L5_IVD_r_tendon">
+      <site site="Ps_L4_L5_IVD_r_Ps_L4_L5_IVD_r-P1"/>
+      <site site="Ps_L4_L5_IVD_r_Ps_L4_L5_IVD_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L5_TP_r_tendon">
+      <site site="Ps_L5_TP_r_Ps_L5_TP_r-P1"/>
+      <site site="Ps_L5_TP_r_Ps_L5_TP_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L5_VB_r_tendon">
+      <site site="Ps_L5_VB_r_Ps_L5_VB_r-P1"/>
+      <site site="Ps_L5_VB_r_Ps_L5_VB_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L1_VB_l_tendon">
+      <site site="Ps_L1_VB_l_Ps_L1_VB_l-P1"/>
+      <site site="Ps_L1_VB_l_Ps_L1_VB_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L1_TP_l_tendon">
+      <site site="Ps_L1_TP_l_Ps_L1_TP_l-P1"/>
+      <site site="Ps_L1_TP_l_Ps_L1_TP_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L1_L2_IVD_l_tendon">
+      <site site="Ps_L1_L2_IVD_l_Ps_L1_L2_IVD_l-P1"/>
+      <site site="Ps_L1_L2_IVD_l_Ps_L1_L2_IVD_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L2_TP_l_tendon">
+      <site site="Ps_L2_TP_l_Ps_L2_TP_l-P1"/>
+      <site site="Ps_L2_TP_l_Ps_L2_TP_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L2_L3_IVD_l_tendon">
+      <site site="Ps_L2_L3_IVD_l_Ps_L2_L3_IVD_l-P1"/>
+      <site site="Ps_L2_L3_IVD_l_Ps_L2_L3_IVD_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L3_TP_l_tendon">
+      <site site="Ps_L3_TP_l_Ps_L3_TP_l-P1"/>
+      <site site="Ps_L3_TP_l_Ps_L3_TP_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L3_L4_IVD_l_tendon">
+      <site site="Ps_L3_L4_IVD_l_Ps_L3_L4_IVD_l-P1"/>
+      <site site="Ps_L3_L4_IVD_l_Ps_L3_L4_IVD_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L4_TP_l_tendon">
+      <site site="Ps_L4_TP_l_Ps_L4_TP_l-P1"/>
+      <site site="Ps_L4_TP_l_Ps_L4_TP_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L4_L5_IVD_l_tendon">
+      <site site="Ps_L4_L5_IVD_l_Ps_L4_L5_IVD_l-P1"/>
+      <site site="Ps_L4_L5_IVD_l_Ps_L4_L5_IVD_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L5_TP_l_tendon">
+      <site site="Ps_L5_TP_l_Ps_L5_TP_l-P1"/>
+      <site site="Ps_L5_TP_l_Ps_L5_TP_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="Ps_L5_VB_l_tendon">
+      <site site="Ps_L5_VB_l_Ps_L5_VB_l-P1"/>
+      <site site="Ps_L5_VB_l_Ps_L5_VB_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="rect_abd_r_tendon">
+      <site site="rect_abd_r_rect_abd_r-P1"/>
+      <geom geom="Cylinder_abdomen" sidesite="Abs_sidesite"/>
+      <site site="rect_abd_r_rect_abd_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="rect_abd_l_tendon">
+      <site site="rect_abd_l_rect_abd_l-P1"/>
+      <geom geom="Cylinder_abdomen" sidesite="Abs_sidesite"/>
+      <site site="rect_abd_l_rect_abd_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_L1_r_tendon">
+      <site site="IL_L1_r_IL_L1_r-P1"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_IL_L1_r_1_sidesite"/>
+      <site site="IL_L1_r_IL_L1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_L2_r_tendon">
+      <site site="IL_L2_r_IL_L2_r-P1"/>
+      <geom geom="back_cylinder_l" sidesite="back_cylinder_l_IL_L2_r_1_sidesite"/>
+      <site site="IL_L2_r_IL_L2_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_L3_r_tendon">
+      <site site="IL_L3_r_IL_L3_r-P1"/>
+      <geom geom="back_cylinder_l" sidesite="back_cylinder_l_IL_L3_r_1_sidesite"/>
+      <site site="IL_L3_r_IL_L3_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_L4_r_tendon">
+      <site site="IL_L4_r_IL_L4_r-P1"/>
+      <geom geom="back_cylinder_l" sidesite="back_cylinder_l_IL_L4_r_1_sidesite"/>
+      <site site="IL_L4_r_IL_L4_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_L1_l_tendon">
+      <site site="IL_L1_l_IL_L1_l-P1"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_IL_L1_l_1_sidesite"/>
+      <site site="IL_L1_l_IL_L1_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_L2_l_tendon">
+      <site site="IL_L2_l_IL_L2_l-P1"/>
+      <geom geom="back_cylinder_l" sidesite="back_cylinder_l_IL_L2_l_1_sidesite"/>
+      <site site="IL_L2_l_IL_L2_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_L3_l_tendon">
+      <site site="IL_L3_l_IL_L3_l-P1"/>
+      <geom geom="back_cylinder_l" sidesite="back_cylinder_l_IL_L3_l_1_sidesite"/>
+      <site site="IL_L3_l_IL_L3_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_L4_l_tendon">
+      <site site="IL_L4_l_IL_L4_l-P1"/>
+      <geom geom="back_cylinder_l" sidesite="back_cylinder_l_IL_L4_l_1_sidesite"/>
+      <site site="IL_L4_l_IL_L4_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R5_r_tendon">
+      <site site="IL_R5_r_IL_r5_R-P1"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_IL_R5_r_1_sidesite"/>
+      <site site="IL_R5_r_IL_r5_R-P2"/>
+      <site site="IL_R5_r_IL_r5_R-P2_0"/>
+      <site site="IL_R5_r_IL_r5_R-P3"/>
+      <site site="IL_R5_r_IL_r5_R-P4"/>
+      <site site="IL_R5_r_IL_r5_R-P5"/>
+      <site site="IL_R5_r_IL_r5_R-P6"/>
+      <site site="IL_R5_r_IL_r5_R-P7"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R6_r_tendon">
+      <site site="IL_R6_r_IL_r6_R-P1"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_IL_R6_r_1_sidesite"/>
+      <site site="IL_R6_r_IL_r6_R-P2"/>
+      <site site="IL_R6_r_IL_r6_R-P2_0"/>
+      <site site="IL_R6_r_IL_r6_R-P3"/>
+      <site site="IL_R6_r_IL_r6_R-P4"/>
+      <site site="IL_R6_r_IL_r6_R-P5"/>
+      <site site="IL_R6_r_IL_r6_R-P6"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R7_r_tendon">
+      <site site="IL_R7_r_IL_r7_R-P1"/>
+      <site site="IL_R7_r_IL_r7_R-P2"/>
+      <site site="IL_R7_r_IL_r7_R-P2_0"/>
+      <site site="IL_R7_r_IL_r7_R-P3"/>
+      <site site="IL_R7_r_IL_r7_R-P4"/>
+      <site site="IL_R7_r_IL_r7_R-P5"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R8_r_tendon">
+      <site site="IL_R8_r_IL_r8_R-P1"/>
+      <site site="IL_R8_r_IL_r8_R-P2"/>
+      <site site="IL_R8_r_IL_r8_R-P2_0"/>
+      <site site="IL_R8_r_IL_r8_R-P3"/>
+      <site site="IL_R8_r_IL_r8_R-P4"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R9_r_tendon">
+      <site site="IL_R9_r_IL_r9_R-P1"/>
+      <site site="IL_R9_r_IL_r9_R-P2"/>
+      <site site="IL_R9_r_IL_r9_R-P2_0"/>
+      <site site="IL_R9_r_IL_r9_R-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R10_r_tendon">
+      <site site="IL_R10_r_IL_r10_R-P1"/>
+      <site site="IL_R10_r_IL_r10_R-P2"/>
+      <site site="IL_R10_r_IL_r10_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R11_r_tendon">
+      <site site="IL_R11_r_IL_r11_R-P1"/>
+      <site site="IL_R11_r_IL_r11_R-P2"/>
+      <site site="IL_R11_r_IL_r11_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R12_r_tendon">
+      <site site="IL_R12_r_IL_r12_R-P1"/>
+      <site site="IL_R12_r_IL_r12_R-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R5_l_tendon">
+      <site site="IL_R5_l_IL_r5_R-P1"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_IL_R5_l_1_sidesite"/>
+      <site site="IL_R5_l_IL_r5_R-P2"/>
+      <site site="IL_R5_l_IL_r5_R-P2_0"/>
+      <site site="IL_R5_l_IL_r5_R-P3"/>
+      <site site="IL_R5_l_IL_r5_R-P4"/>
+      <site site="IL_R5_l_IL_r5_R-P5"/>
+      <site site="IL_R5_l_IL_r5_R-P6"/>
+      <site site="IL_R5_l_IL_r5_R-P7"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R6_l_tendon">
+      <site site="IL_R6_l_IL_r6_R-P1"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_IL_R6_l_1_sidesite"/>
+      <site site="IL_R6_l_IL_r6_R-P2"/>
+      <site site="IL_R6_l_IL_r6_R-P2_0"/>
+      <site site="IL_R6_l_IL_r6_R-P3"/>
+      <site site="IL_R6_l_IL_r6_R-P4"/>
+      <site site="IL_R6_l_IL_r6_R-P5"/>
+      <site site="IL_R6_l_IL_r6_R-P6"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R7_l_tendon">
+      <site site="IL_R7_l_IL_r7_R-P1"/>
+      <site site="IL_R7_l_IL_r7_R-P2"/>
+      <site site="IL_R7_l_IL_r7_R-P2_0"/>
+      <site site="IL_R7_l_IL_r7_R-P3"/>
+      <site site="IL_R7_l_IL_r7_R-P4"/>
+      <site site="IL_R7_l_IL_r7_R-P5"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R8_l_tendon">
+      <site site="IL_R8_l_IL_r8_R-P1"/>
+      <site site="IL_R8_l_IL_r8_R-P2"/>
+      <site site="IL_R8_l_IL_r8_R-P2_0"/>
+      <site site="IL_R8_l_IL_r8_R-P3"/>
+      <site site="IL_R8_l_IL_r8_R-P4"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R9_l_tendon">
+      <site site="IL_R9_l_IL_r9_R-P1"/>
+      <site site="IL_R9_l_IL_r9_R-P2"/>
+      <site site="IL_R9_l_IL_r9_R-P2_0"/>
+      <site site="IL_R9_l_IL_r9_R-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R10_l_tendon">
+      <site site="IL_R10_l_IL_r10_R-P1"/>
+      <site site="IL_R10_l_IL_r10_R-P2"/>
+      <site site="IL_R10_l_IL_r10_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R11_l_tendon">
+      <site site="IL_R11_l_IL_r11_R-P1"/>
+      <site site="IL_R11_l_IL_r11_R-P2"/>
+      <site site="IL_R11_l_IL_r11_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="IL_R12_l_tendon">
+      <site site="IL_R12_l_IL_r12_R-P1"/>
+      <site site="IL_R12_l_IL_r12_R-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T1_r_tendon">
+      <site site="LTpT_T1_r_LTpT_t1_R-P1"/>
+      <geom geom="Chest_r_ellipsoid" sidesite="Chest_r_ellipsoid_LTpT_T1_r_1_sidesite"/>
+      <site site="LTpT_T1_r_LTpT_t1_R-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T2_r_tendon">
+      <site site="LTpT_T2_r_LTpT_t2_R-P1"/>
+      <geom geom="Chest_r_ellipsoid" sidesite="Chest_r_ellipsoid_LTpT_T2_r_1_sidesite"/>
+      <site site="LTpT_T2_r_LTpT_t2_R-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T3_r_tendon">
+      <site site="LTpT_T3_r_LTpT_t3_R-P1"/>
+      <site site="LTpT_T3_r_LTpT_t3_R-P2"/>
+      <geom geom="Chest_r_ellipsoid" sidesite="Chest_r_ellipsoid_LTpT_T3_r_2_sidesite"/>
+      <site site="LTpT_T3_r_LTpT_t3_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T4_r_tendon">
+      <site site="LTpT_T4_r_LTpT_t4_R-P1"/>
+      <site site="LTpT_T4_r_LTpT_t4_R-P2"/>
+      <geom geom="Chest_r_ellipsoid" sidesite="Chest_r_ellipsoid_LTpT_T4_r_2_sidesite"/>
+      <site site="LTpT_T4_r_LTpT_t4_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T5_r_tendon">
+      <site site="LTpT_T5_r_LTpT_t5_R-P1"/>
+      <site site="LTpT_T5_r_LTpT_t5_R-P2"/>
+      <geom geom="Chest_r_ellipsoid" sidesite="Chest_r_ellipsoid_LTpT_T5_r_2_sidesite"/>
+      <site site="LTpT_T5_r_LTpT_t5_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T6_r_tendon">
+      <site site="LTpT_T6_r_LTpT_t6_R-P1"/>
+      <site site="LTpT_T6_r_LTpT_t6_R-P2"/>
+      <site site="LTpT_T6_r_LTpT_t6_R-P3"/>
+      <site site="LTpT_T6_r_LTpT_t6_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T7_r_tendon">
+      <site site="LTpT_T7_r_LTpT_t7_R-P1"/>
+      <site site="LTpT_T7_r_LTpT_t7_R-P2"/>
+      <site site="LTpT_T7_r_LTpT_t7_R-P3"/>
+      <site site="LTpT_T7_r_LTpT_t7_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T8_r_tendon">
+      <site site="LTpT_T8_r_LTpT_t8_R-P1"/>
+      <site site="LTpT_T8_r_LTpT_t8_R-P2"/>
+      <site site="LTpT_T8_r_LTpT_t8_R-P3"/>
+      <site site="LTpT_T8_r_LTpT_t8_R-P2_0"/>
+      <site site="LTpT_T8_r_LTpT_t8_R-P2_1"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T9_r_tendon">
+      <site site="LTpT_T9_r_LTpT_t9_R-P1"/>
+      <site site="LTpT_T9_r_LTpT_t9_R-P2"/>
+      <site site="LTpT_T9_r_LTpT_t9_R-P3"/>
+      <site site="LTpT_T9_r_LTpT_t9_R-P3_0"/>
+      <site site="LTpT_T9_r_LTpT_t9_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T10_r_tendon">
+      <site site="LTpT_T10_r_LTpT_t10_R-P1"/>
+      <site site="LTpT_T10_r_LTpT_t10_R-P2"/>
+      <site site="LTpT_T10_r_LTpT_t10_R-P2_0"/>
+      <site site="LTpT_T10_r_LTpT_t10_R-P3"/>
+      <site site="LTpT_T10_r_LTpT_t10_R-P2_1"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T11_r_tendon">
+      <site site="LTpT_T11_r_LTpT_t11_R-P1"/>
+      <site site="LTpT_T11_r_LTpT_t11_R-P2"/>
+      <site site="LTpT_T11_r_LTpT_t11_R-P3"/>
+      <site site="LTpT_T11_r_LTpT_t11_R-P2_0"/>
+      <site site="LTpT_T11_r_LTpT_t11_R-P2_1"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T12_r_tendon">
+      <site site="LTpT_T12_r_LTpT_t12_R-P1"/>
+      <site site="LTpT_T12_r_LTpT_t12_R-P2"/>
+      <site site="LTpT_T12_r_LTpT_t12_R-P3"/>
+      <site site="LTpT_T12_r_LTpT_t12_R-P2_0"/>
+      <site site="LTpT_T12_r_LTpT_t12_R-P2_1"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R4_r_tendon">
+      <site site="LTpT_R4_r_LTpT_r4_R-P1"/>
+      <site site="LTpT_R4_r_LTpT_r4_R-P2"/>
+      <site site="LTpT_R4_r_LTpT_r4_R-P2_0"/>
+      <site site="LTpT_R4_r_LTpT_r4_R-P3"/>
+      <site site="LTpT_R4_r_LTpT_r4_R-P4"/>
+      <site site="LTpT_R4_r_LTpT_r4_R-P5"/>
+      <site site="LTpT_R4_r_LTpT_r4_R-P6"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R5_r_tendon">
+      <site site="LTpT_R5_r_LTpT_r5_R-P1"/>
+      <site site="LTpT_R5_r_LTpT_r5_R-P2"/>
+      <site site="LTpT_R5_r_LTpT_r5_R-P2_0"/>
+      <site site="LTpT_R5_r_LTpT_r5_R-P3"/>
+      <site site="LTpT_R5_r_LTpT_r5_R-P4"/>
+      <site site="LTpT_R5_r_LTpT_r5_R-P5"/>
+      <site site="LTpT_R5_r_LTpT_r5_R-P6"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R6_r_tendon">
+      <site site="LTpT_R6_r_LTpT_r6_R-P1"/>
+      <site site="LTpT_R6_r_LTpT_r6_R-P2"/>
+      <site site="LTpT_R6_r_LTpT_r6_R-P2_0"/>
+      <site site="LTpT_R6_r_LTpT_r6_R-P2_1"/>
+      <site site="LTpT_R6_r_LTpT_r6_R-P3"/>
+      <site site="LTpT_R6_r_LTpT_r6_R-P4"/>
+      <site site="LTpT_R6_r_LTpT_r6_R-P5"/>
+      <site site="LTpT_R6_r_LTpT_r6_R-P6"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R7_r_tendon">
+      <site site="LTpT_R7_r_LTpT_r7_R-P1"/>
+      <site site="LTpT_R7_r_LTpT_r7_R-P2"/>
+      <site site="LTpT_R7_r_LTpT_r7_R-P2_0"/>
+      <site site="LTpT_R7_r_LTpT_r7_R-P2_1"/>
+      <site site="LTpT_R7_r_LTpT_r7_R-P2_2"/>
+      <site site="LTpT_R7_r_LTpT_r7_R-P3"/>
+      <site site="LTpT_R7_r_LTpT_r7_R-P4"/>
+      <site site="LTpT_R7_r_LTpT_r7_R-P5"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R8_r_tendon">
+      <site site="LTpT_R8_r_LTpT_r8_R-P1"/>
+      <site site="LTpT_R8_r_LTpT_r8_R-P2"/>
+      <site site="LTpT_R8_r_LTpT_r8_R-P2_0"/>
+      <site site="LTpT_R8_r_LTpT_r8_R-P2_1"/>
+      <site site="LTpT_R8_r_LTpT_r8_R-P2_2"/>
+      <site site="LTpT_R8_r_LTpT_r8_R-P3"/>
+      <site site="LTpT_R8_r_LTpT_r8_R-P4"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R9_r_tendon">
+      <site site="LTpT_R9_r_LTpT_r9_R-P1"/>
+      <site site="LTpT_R9_r_LTpT_r9_R-P2"/>
+      <site site="LTpT_R9_r_LTpT_r9_R-P2_0"/>
+      <site site="LTpT_R9_r_LTpT_r9_R-P2_1"/>
+      <site site="LTpT_R9_r_LTpT_r9_R-P2_2"/>
+      <site site="LTpT_R9_r_LTpT_r9_R-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R10_r_tendon">
+      <site site="LTpT_R10_r_LTpT_r10_R-P1"/>
+      <site site="LTpT_R10_r_LTpT_r10_R-P2"/>
+      <site site="LTpT_R10_r_LTpT_r10_R-P2_0"/>
+      <site site="LTpT_R10_r_LTpT_r10_R-P2_1"/>
+      <site site="LTpT_R10_r_LTpT_r10_R-P2_2"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R11_r_tendon">
+      <site site="LTpT_R11_r_LTpT_r11_R-P1"/>
+      <site site="LTpT_R11_r_LTpT_r11_R-P2"/>
+      <site site="LTpT_R11_r_LTpT_r11_R-P3"/>
+      <site site="LTpT_R11_r_LTpT_r11_R-P4"/>
+      <site site="LTpT_R11_r_LTpT_r11_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R12_r_tendon">
+      <site site="LTpT_R12_r_LTpT_r12_R-P1"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_LTpT_R12_r_1_sidesite"/>
+      <site site="LTpT_R12_r_LTpT_r12_R-P2"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_LTpT_R12_r_2_sidesite"/>
+      <site site="LTpT_R12_r_LTpT_r12_R-P2_0"/>
+      <site site="LTpT_R12_r_LTpT_r12_R-P2_1"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_LTpT_R12_r_4_sidesite"/>
+      <site site="LTpT_R12_r_LTpT_r12_R-P2_2"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T1_l_tendon">
+      <site site="LTpT_T1_l_LTpT_t1_R-P1"/>
+      <geom geom="Chest_l_ellipsoid" sidesite="Chest_l_ellipsoid_LTpT_T1_l_1_sidesite"/>
+      <site site="LTpT_T1_l_LTpT_t1_R-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T2_l_tendon">
+      <site site="LTpT_T2_l_LTpT_t2_R-P1"/>
+      <geom geom="Chest_l_ellipsoid" sidesite="Chest_l_ellipsoid_LTpT_T2_l_1_sidesite"/>
+      <site site="LTpT_T2_l_LTpT_t2_R-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T3_l_tendon">
+      <site site="LTpT_T3_l_LTpT_t3_R-P1"/>
+      <site site="LTpT_T3_l_LTpT_t3_R-P2"/>
+      <geom geom="Chest_l_ellipsoid" sidesite="Chest_l_ellipsoid_LTpT_T3_l_2_sidesite"/>
+      <site site="LTpT_T3_l_LTpT_t3_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T4_l_tendon">
+      <site site="LTpT_T4_l_LTpT_t4_R-P1"/>
+      <site site="LTpT_T4_l_LTpT_t4_R-P2"/>
+      <geom geom="Chest_l_ellipsoid" sidesite="Chest_l_ellipsoid_LTpT_T4_l_2_sidesite"/>
+      <site site="LTpT_T4_l_LTpT_t4_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T5_l_tendon">
+      <site site="LTpT_T5_l_LTpT_t5_R-P1"/>
+      <site site="LTpT_T5_l_LTpT_t5_R-P2"/>
+      <geom geom="Chest_l_ellipsoid" sidesite="Chest_l_ellipsoid_LTpT_T5_l_2_sidesite"/>
+      <site site="LTpT_T5_l_LTpT_t5_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T6_l_tendon">
+      <site site="LTpT_T6_l_LTpT_t6_R-P1"/>
+      <site site="LTpT_T6_l_LTpT_t6_R-P2"/>
+      <site site="LTpT_T6_l_LTpT_t6_R-P3"/>
+      <site site="LTpT_T6_l_LTpT_t6_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T7_l_tendon">
+      <site site="LTpT_T7_l_LTpT_t7_R-P1"/>
+      <site site="LTpT_T7_l_LTpT_t7_R-P2"/>
+      <site site="LTpT_T7_l_LTpT_t7_R-P3"/>
+      <site site="LTpT_T7_l_LTpT_t7_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T8_l_tendon">
+      <site site="LTpT_T8_l_LTpT_t8_R-P1"/>
+      <site site="LTpT_T8_l_LTpT_t8_R-P2"/>
+      <site site="LTpT_T8_l_LTpT_t8_R-P3"/>
+      <site site="LTpT_T8_l_LTpT_t8_R-P2_0"/>
+      <site site="LTpT_T8_l_LTpT_t8_R-P2_1"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T9_l_tendon">
+      <site site="LTpT_T9_l_LTpT_t9_R-P1"/>
+      <site site="LTpT_T9_l_LTpT_t9_R-P2"/>
+      <site site="LTpT_T9_l_LTpT_t9_R-P3"/>
+      <site site="LTpT_T9_l_LTpT_t9_R-P3_0"/>
+      <site site="LTpT_T9_l_LTpT_t9_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T10_l_tendon">
+      <site site="LTpT_T10_l_LTpT_t10_R-P1"/>
+      <site site="LTpT_T10_l_LTpT_t10_R-P2"/>
+      <site site="LTpT_T10_l_LTpT_t10_R-P2_0"/>
+      <site site="LTpT_T10_l_LTpT_t10_R-P3"/>
+      <site site="LTpT_T10_l_LTpT_t10_R-P2_1"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T11_l_tendon">
+      <site site="LTpT_T11_l_LTpT_t11_R-P1"/>
+      <site site="LTpT_T11_l_LTpT_t11_R-P2"/>
+      <site site="LTpT_T11_l_LTpT_t11_R-P3"/>
+      <site site="LTpT_T11_l_LTpT_t11_R-P2_0"/>
+      <site site="LTpT_T11_l_LTpT_t11_R-P2_1"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_T12_l_tendon">
+      <site site="LTpT_T12_l_LTpT_t12_R-P1"/>
+      <site site="LTpT_T12_l_LTpT_t12_R-P2"/>
+      <site site="LTpT_T12_l_LTpT_t12_R-P3"/>
+      <site site="LTpT_T12_l_LTpT_t12_R-P2_0"/>
+      <site site="LTpT_T12_l_LTpT_t12_R-P2_1"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R4_l_tendon">
+      <site site="LTpT_R4_l_LTpT_r4_R-P1"/>
+      <site site="LTpT_R4_l_LTpT_r4_R-P2"/>
+      <site site="LTpT_R4_l_LTpT_r4_R-P2_0"/>
+      <site site="LTpT_R4_l_LTpT_r4_R-P3"/>
+      <site site="LTpT_R4_l_LTpT_r4_R-P4"/>
+      <site site="LTpT_R4_l_LTpT_r4_R-P5"/>
+      <site site="LTpT_R4_l_LTpT_r4_R-P6"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R5_l_tendon">
+      <site site="LTpT_R5_l_LTpT_r5_R-P1"/>
+      <site site="LTpT_R5_l_LTpT_r5_R-P2"/>
+      <site site="LTpT_R5_l_LTpT_r5_R-P2_0"/>
+      <site site="LTpT_R5_l_LTpT_r5_R-P3"/>
+      <site site="LTpT_R5_l_LTpT_r5_R-P4"/>
+      <site site="LTpT_R5_l_LTpT_r5_R-P5"/>
+      <site site="LTpT_R5_l_LTpT_r5_R-P6"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R6_l_tendon">
+      <site site="LTpT_R6_l_LTpT_r6_R-P1"/>
+      <site site="LTpT_R6_l_LTpT_r6_R-P2"/>
+      <site site="LTpT_R6_l_LTpT_r6_R-P2_0"/>
+      <site site="LTpT_R6_l_LTpT_r6_R-P2_1"/>
+      <site site="LTpT_R6_l_LTpT_r6_R-P3"/>
+      <site site="LTpT_R6_l_LTpT_r6_R-P4"/>
+      <site site="LTpT_R6_l_LTpT_r6_R-P5"/>
+      <site site="LTpT_R6_l_LTpT_r6_R-P6"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R7_l_tendon">
+      <site site="LTpT_R7_l_LTpT_r7_R-P1"/>
+      <site site="LTpT_R7_l_LTpT_r7_R-P2"/>
+      <site site="LTpT_R7_l_LTpT_r7_R-P2_0"/>
+      <site site="LTpT_R7_l_LTpT_r7_R-P2_1"/>
+      <site site="LTpT_R7_l_LTpT_r7_R-P2_2"/>
+      <site site="LTpT_R7_l_LTpT_r7_R-P3"/>
+      <site site="LTpT_R7_l_LTpT_r7_R-P4"/>
+      <site site="LTpT_R7_l_LTpT_r7_R-P5"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R8_l_tendon">
+      <site site="LTpT_R8_l_LTpT_r8_R-P1"/>
+      <site site="LTpT_R8_l_LTpT_r8_R-P2"/>
+      <site site="LTpT_R8_l_LTpT_r8_R-P2_0"/>
+      <site site="LTpT_R8_l_LTpT_r8_R-P2_1"/>
+      <site site="LTpT_R8_l_LTpT_r8_R-P2_2"/>
+      <site site="LTpT_R8_l_LTpT_r8_R-P3"/>
+      <site site="LTpT_R8_l_LTpT_r8_R-P4"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R9_l_tendon">
+      <site site="LTpT_R9_l_LTpT_r9_R-P1"/>
+      <site site="LTpT_R9_l_LTpT_r9_R-P2"/>
+      <site site="LTpT_R9_l_LTpT_r9_R-P2_0"/>
+      <site site="LTpT_R9_l_LTpT_r9_R-P2_1"/>
+      <site site="LTpT_R9_l_LTpT_r9_R-P2_2"/>
+      <site site="LTpT_R9_l_LTpT_r9_R-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R10_l_tendon">
+      <site site="LTpT_R10_l_LTpT_r10_R-P1"/>
+      <site site="LTpT_R10_l_LTpT_r10_R-P2"/>
+      <site site="LTpT_R10_l_LTpT_r10_R-P2_0"/>
+      <site site="LTpT_R10_l_LTpT_r10_R-P2_1"/>
+      <site site="LTpT_R10_l_LTpT_r10_R-P2_2"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R11_l_tendon">
+      <site site="LTpT_R11_l_LTpT_r11_R-P1"/>
+      <site site="LTpT_R11_l_LTpT_r11_R-P2"/>
+      <site site="LTpT_R11_l_LTpT_r11_R-P3"/>
+      <site site="LTpT_R11_l_LTpT_r11_R-P4"/>
+      <site site="LTpT_R11_l_LTpT_r11_R-P2_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpT_R12_l_tendon">
+      <site site="LTpT_R12_l_LTpT_r12_R-P1"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_LTpT_R12_l_1_sidesite"/>
+      <site site="LTpT_R12_l_LTpT_r12_R-P2"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_LTpT_R12_l_2_sidesite"/>
+      <site site="LTpT_R12_l_LTpT_r12_R-P2_0"/>
+      <site site="LTpT_R12_l_LTpT_r12_R-P2_1"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_LTpT_R12_l_4_sidesite"/>
+      <site site="LTpT_R12_l_LTpT_r12_R-P2_2"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpL_L5_r_tendon">
+      <site site="LTpL_L5_r_pathpoint"/>
+      <site site="LTpL_L5_r_pathpoint_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpL_L4_r_tendon">
+      <site site="LTpL_L4_r_pathpoint"/>
+      <site site="LTpL_L4_r_pathpoint_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpL_L3_r_tendon">
+      <site site="LTpL_L3_r_pathpoint"/>
+      <site site="LTpL_L3_r_pathpoint_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpL_L2_r_tendon">
+      <site site="LTpL_L2_r_pathpoint"/>
+      <site site="LTpL_L2_r_pathpoint_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpL_L1_r_tendon">
+      <site site="LTpL_L1_r_pathpoint"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_LTpL_L1_r_1_sidesite"/>
+      <site site="LTpL_L1_r_pathpoint_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpL_L5_l_tendon">
+      <site site="LTpL_L5_l_pathpoint"/>
+      <site site="LTpL_L5_l_pathpoint_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpL_L4_l_tendon">
+      <site site="LTpL_L4_l_pathpoint"/>
+      <site site="LTpL_L4_l_pathpoint_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpL_L3_l_tendon">
+      <site site="LTpL_L3_l_pathpoint"/>
+      <site site="LTpL_L3_l_pathpoint_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpL_L2_l_tendon">
+      <site site="LTpL_L2_l_pathpoint"/>
+      <site site="LTpL_L2_l_pathpoint_0"/>
+    </spatial>
+    <spatial class="myotorso" name="LTpL_L1_l_tendon">
+      <site site="LTpL_L1_l_pathpoint"/>
+      <geom geom="back_cylinder_s" sidesite="back_cylinder_s_LTpL_L1_l_1_sidesite"/>
+      <site site="LTpL_L1_l_pathpoint_0"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.1-L3_r_tendon">
+      <site site="QL_post_I.1-L3_r_I.1_r-P1"/>
+      <site site="QL_post_I.1-L3_r_L3_TP_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.2-L4_r_tendon">
+      <site site="QL_post_I.2-L4_r_I.2_r-P1"/>
+      <site site="QL_post_I.2-L4_r_L4_TP_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.2-L3_r_tendon">
+      <site site="QL_post_I.2-L3_r_I.2_r-P1"/>
+      <site site="QL_post_I.2-L3_r_L3_TP_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.2-L2_r_tendon">
+      <site site="QL_post_I.2-L2_r_I.2_r-P1"/>
+      <site site="QL_post_I.2-L2_r_L2_TP_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.3-L1_r_tendon">
+      <site site="QL_post_I.3-L1_r_L1_TP-P1"/>
+      <site site="QL_post_I.3-L1_r_I.3_r-P1"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.3-L2_r_tendon">
+      <site site="QL_post_I.3-L2_r_L2_TP_r-P2"/>
+      <site site="QL_post_I.3-L2_r_I.3_r-P1"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.3-L3_r_tendon">
+      <site site="QL_post_I.3-L3_r_L3_TP_r-P2"/>
+      <site site="QL_post_I.3-L3_r_I.3_r-P1"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.1-L3_l_tendon">
+      <site site="QL_post_I.1-L3_l_I.1_l-P1"/>
+      <site site="QL_post_I.1-L3_l_L3_TP_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.2-L4_l_tendon">
+      <site site="QL_post_I.2-L4_l_I.2_l-P1"/>
+      <site site="QL_post_I.2-L4_l_L4_TP_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.2-L3_l_tendon">
+      <site site="QL_post_I.2-L3_l_I.2_l-P1"/>
+      <site site="QL_post_I.2-L3_l_L3_TP_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.2-L2_l_tendon">
+      <site site="QL_post_I.2-L2_l_I.2_l-P1"/>
+      <site site="QL_post_I.2-L2_l_L2_TP_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.3-L1_l_tendon">
+      <site site="QL_post_I.3-L1_l_L1_TP_l-P1"/>
+      <site site="QL_post_I.3-L1_l_I.3_l-P1"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.3-L2_l_tendon">
+      <site site="QL_post_I.3-L2_l_L2_TP_l-P2"/>
+      <site site="QL_post_I.3-L2_l_I.3_l-P1"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_post_I.3-L3_l_tendon">
+      <site site="QL_post_I.3-L3_l_L3_TP_l-P2"/>
+      <site site="QL_post_I.3-L3_l_I.3_l-P1"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_mid_L3-12.3_r_tendon">
+      <site site="QL_mid_L3-12.3_r_quadratus_lumb_mid_L3_1_r-P1"/>
+      <site site="QL_mid_L3-12.3_r_quadratus_lumb_mid_L3_1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_mid_L3-12.2_r_tendon">
+      <site site="QL_mid_L3-12.2_r_quadratus_lumb_mid_L3_2_r-P2"/>
+      <site site="QL_mid_L3-12.2_r_quadratus_lumb_mid_L3_2_r-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_mid_L3-12.1_r_tendon">
+      <site site="QL_mid_L3-12.1_r_quadratus_lumb_mid_L3_3_r-P2"/>
+      <site site="QL_mid_L3-12.1_r_quadratus_lumb_mid_L3_3_r-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_mid_L2-12.1_r_tendon">
+      <site site="QL_mid_L2-12.1_r_QL_mid_L2-12.1_l-P1"/>
+      <site site="QL_mid_L2-12.1_r_QL_mid_L2-12.1_l-P1_0"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_mid_L4-12.3_r_tendon">
+      <site site="QL_mid_L4-12.3_r_quadratus_lumb_mid_L4_1_r-P1"/>
+      <site site="QL_mid_L4-12.3_r_quadratus_lumb_mid_L4_1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_mid_L3-12.3_l_tendon">
+      <site site="QL_mid_L3-12.3_l_quadratus_lumb_mid_L3_1_r-P1"/>
+      <site site="QL_mid_L3-12.3_l_quadratus_lumb_mid_L3_1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_mid_L3-12.2_l_tendon">
+      <site site="QL_mid_L3-12.2_l_quadratus_lumb_mid_L3_2_r-P2"/>
+      <site site="QL_mid_L3-12.2_l_quadratus_lumb_mid_L3_2_r-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_mid_L3-12.1_l_tendon">
+      <site site="QL_mid_L3-12.1_l_quadratus_lumb_mid_L3_3_r-P2"/>
+      <site site="QL_mid_L3-12.1_l_quadratus_lumb_mid_L3_3_r-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_mid_L2-12.1_l_tendon">
+      <site site="QL_mid_L2-12.1_l_QL_mid_L2-12.1_l-P1"/>
+      <site site="QL_mid_L2-12.1_l_QL_mid_L2-12.1_l-P1_0"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_mid_L4-12.3_l_tendon">
+      <site site="QL_mid_L4-12.3_l_quadratus_lumb_mid_L4_1_r-P1"/>
+      <site site="QL_mid_L4-12.3_l_quadratus_lumb_mid_L4_1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.2-T12_r_tendon">
+      <site site="QL_ant_I.2-T12_r_I.2_r-P1"/>
+      <site site="QL_ant_I.2-T12_r_T12_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.3-T12_r_tendon">
+      <site site="QL_ant_I.3-T12_r_I.3_r-P1"/>
+      <site site="QL_ant_I.3-T12_r_T12_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.2-12.1_r_tendon">
+      <site site="QL_ant_I.2-12.1_r_I.2_r-P2"/>
+      <site site="QL_ant_I.2-12.1_r_12.1_r-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.3-12.1_r_tendon">
+      <site site="QL_ant_I.3-12.1_r_I.3_r-P1"/>
+      <site site="QL_ant_I.3-12.1_r_12.1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.3-12.2_r_tendon">
+      <site site="QL_ant_I.3-12.2_r_I.3_r-P1"/>
+      <site site="QL_ant_I.3-12.2_r_12.2_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.3-12.3_r_tendon">
+      <site site="QL_ant_I.3-12.3_r_I.3_r-P2"/>
+      <site site="QL_ant_I.3-12.3_r_12.3_r-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.2-T12_l_tendon">
+      <site site="QL_ant_I.2-T12_l_I.2_l-P1"/>
+      <site site="QL_ant_I.2-T12_l_T12_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.3-T12_l_tendon">
+      <site site="QL_ant_I.3-T12_l_I.3_l-P1"/>
+      <site site="QL_ant_I.3-T12_l_T12_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.2-12.1_l_tendon">
+      <site site="QL_ant_I.2-12.1_l_I.2_l-P2"/>
+      <site site="QL_ant_I.2-12.1_l_12.1_l-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.3-12.1_l_tendon">
+      <site site="QL_ant_I.3-12.1_l_I.3_l-P1"/>
+      <site site="QL_ant_I.3-12.1_l_12.1_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.3-12.2_l_tendon">
+      <site site="QL_ant_I.3-12.2_l_I.3_l-P1"/>
+      <site site="QL_ant_I.3-12.2_l_12.2_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="QL_ant_I.3-12.3_l_tendon">
+      <site site="QL_ant_I.3-12.3_l_I.3_l-P2"/>
+      <site site="QL_ant_I.3-12.3_l_12.3_l-P3"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m1s_r_tendon">
+      <site site="MF_m1s_r_MF_m1s_r-P1"/>
+      <site site="MF_m1s_r_MF_m1s_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m1t.1_r_tendon">
+      <site site="MF_m1t.1_r_MF_m1t.1_r-P1"/>
+      <site site="MF_m1t.1_r_MF_m1t.1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m1t.2_r_tendon">
+      <site site="MF_m1t.2_r_MF_m1t.2_r-P1"/>
+      <site site="MF_m1t.2_r_MF_m1t.2_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m1t.3_r_tendon">
+      <site site="MF_m1t.3_r_MF_m1t.3_r-P1"/>
+      <site site="MF_m1t.3_r_MF_m1t.3_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m2s_r_tendon">
+      <site site="MF_m2s_r_MF_m2s_r-P1"/>
+      <site site="MF_m2s_r_MF_m2s_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m2t.1_r_tendon">
+      <site site="MF_m2t.1_r_MF_m2t.1_r-P1"/>
+      <site site="MF_m2t.1_r_MF_m2t.1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m2t.2_r_tendon">
+      <site site="MF_m2t.2_r_MF_m2t.2_r-P1"/>
+      <site site="MF_m2t.2_r_MF_m2t.2_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m2t.3_r_tendon">
+      <site site="MF_m2t.3_r_MF_m2t.3_r-P1"/>
+      <site site="MF_m2t.3_r_MF_m2t.3_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m3s_r_tendon">
+      <site site="MF_m3s_r_MF_m3s_r-P1"/>
+      <site site="MF_m3s_r_MF_m3s_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m3t.1_r_tendon">
+      <site site="MF_m3t.1_r_MF_m3t.1_r-P1"/>
+      <site site="MF_m3t.1_r_MF_m3t.1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m3t.2_r_tendon">
+      <site site="MF_m3t.2_r_MF_m3t.2_r-P1"/>
+      <site site="MF_m3t.2_r_MF_m3t.2_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m3t.3_r_tendon">
+      <site site="MF_m3t.3_r_MF_m3t.3_r-P1"/>
+      <site site="MF_m3t.3_r_MF_m3t.3_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m4s_r_tendon">
+      <site site="MF_m4s_r_MF_m4s_r-P1"/>
+      <site site="MF_m4s_r_MF_m4s_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m4t.1_r_tendon">
+      <site site="MF_m4t.1_r_MF_m4t.1_r-P1"/>
+      <site site="MF_m4t.1_r_MF_m4t.1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m4t.2_r_tendon">
+      <site site="MF_m4t.2_r_MF_m4t.2_r-P1"/>
+      <site site="MF_m4t.2_r_MF_m4t.2_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m4t.3_r_tendon">
+      <site site="MF_m4t.3_r_MF_m4t.3_r-P1"/>
+      <site site="MF_m4t.3_r_MF_m4t.3_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m5s_r_tendon">
+      <site site="MF_m5s_r_MF_m5s_r-P1"/>
+      <site site="MF_m5s_r_MF_m5s_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m5t.1_r_tendon">
+      <site site="MF_m5t.1_r_MF_m5t.1_r-P1"/>
+      <site site="MF_m5t.1_r_MF_m5t.1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m5t.2_r_tendon">
+      <site site="MF_m5t.2_r_MF_m5t.2_r-P1"/>
+      <site site="MF_m5t.2_r_MF_m5t.2_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m5t.3_r_tendon">
+      <site site="MF_m5t.3_r_MF_m5t.3_r-P1"/>
+      <site site="MF_m5t.3_r_MF_m5t.3_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m1.laminar_r_tendon">
+      <site site="MF_m1.laminar_r_MF_m1.laminar_r-P1"/>
+      <site site="MF_m1.laminar_r_MF_m1.laminar_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m2.laminar_r_tendon">
+      <site site="MF_m2.laminar_r_MF_m2.laminar_r-P1"/>
+      <site site="MF_m2.laminar_r_MF_m2.laminar_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m3.laminar_r_tendon">
+      <site site="MF_m3.laminar_r_MF_m3.laminar_r-P1"/>
+      <site site="MF_m3.laminar_r_MF_m3.laminar_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m4.laminar_r_tendon">
+      <site site="MF_m4.laminar_r_MF_m4.laminar_r-P1"/>
+      <site site="MF_m4.laminar_r_MF_m4.laminar_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m5.laminar_r_tendon">
+      <site site="MF_m5.laminar_r_MF_m5.laminar_r-P1"/>
+      <site site="MF_m5.laminar_r_MF_m5.laminar_-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m1s_l_tendon">
+      <site site="MF_m1s_l_MF_m1s_l-P1"/>
+      <site site="MF_m1s_l_MF_m1s_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m1t.1_l_tendon">
+      <site site="MF_m1t.1_l_MF_m1t.1_l-P1"/>
+      <site site="MF_m1t.1_l_MF_m1t.1_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m1t.2_l_tendon">
+      <site site="MF_m1t.2_l_MF_m1t.2_l-P1"/>
+      <site site="MF_m1t.2_l_MF_m1t.2_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m1t.3_l_tendon">
+      <site site="MF_m1t.3_l_MF_m1t.3_l-P1"/>
+      <site site="MF_m1t.3_l_MF_m1t.3_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m2s_l_tendon">
+      <site site="MF_m2s_l_MF_m2s_l-P1"/>
+      <site site="MF_m2s_l_MF_m2s_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m2t.1_l_tendon">
+      <site site="MF_m2t.1_l_MF_m2t.1_l-P1"/>
+      <site site="MF_m2t.1_l_MF_m2t.1_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m2t.2_l_tendon">
+      <site site="MF_m2t.2_l_MF_m2t.2_l-P1"/>
+      <site site="MF_m2t.2_l_MF_m2t.2_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m2t.3_l_tendon">
+      <site site="MF_m2t.3_l_MF_m2t.3_l-P1"/>
+      <site site="MF_m2t.3_l_MF_m2t.3_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m3s_l_tendon">
+      <site site="MF_m3s_l_MF_m3s_l-P1"/>
+      <site site="MF_m3s_l_MF_m3s_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m3t.1_l_tendon">
+      <site site="MF_m3t.1_l_MF_m3t.1_l-P1"/>
+      <site site="MF_m3t.1_l_MF_m3t.1_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m3t.2_l_tendon">
+      <site site="MF_m3t.2_l_MF_m3t.2_l-P1"/>
+      <site site="MF_m3t.2_l_MF_m3t.2_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m3t.3_l_tendon">
+      <site site="MF_m3t.3_l_MF_m3t.3_l-P1"/>
+      <site site="MF_m3t.3_l_MF_m3t.3_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m4s_l_tendon">
+      <site site="MF_m4s_l_MF_m4s_l-P1"/>
+      <site site="MF_m4s_l_MF_m4s_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m4t.1_l_tendon">
+      <site site="MF_m4t.1_l_MF_m4t.1_l-P1"/>
+      <site site="MF_m4t.1_l_MF_m4t.1_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m4t.2_l_tendon">
+      <site site="MF_m4t.2_l_MF_m4t.2_l-P1"/>
+      <site site="MF_m4t.2_l_MF_m4t.2_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m4t.3_l_tendon">
+      <site site="MF_m4t.3_l_MF_m4t.3_l-P1"/>
+      <site site="MF_m4t.3_l_MF_m4t.3_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m5s_l_tendon">
+      <site site="MF_m5s_l_MF_m5s_l-P1"/>
+      <site site="MF_m5s_l_MF_m5s_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m5t.1_l_tendon">
+      <site site="MF_m5t.1_l_MF_m5t.1_l-P1"/>
+      <site site="MF_m5t.1_l_MF_m5t.1_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m5t.2_l_tendon">
+      <site site="MF_m5t.2_l_MF_m5t.2_l-P1"/>
+      <site site="MF_m5t.2_l_MF_m5t.2_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m5t.3_l_tendon">
+      <site site="MF_m5t.3_l_MF_m5t.3_l-P1"/>
+      <site site="MF_m5t.3_l_MF_m5t.3_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m1.laminar_l_tendon">
+      <site site="MF_m1.laminar_l_MF_m1.laminar_l-P1"/>
+      <site site="MF_m1.laminar_l_MF_m1.laminar_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m2.laminar_l_tendon">
+      <site site="MF_m2.laminar_l_MF_m2.laminar_l-P1"/>
+      <site site="MF_m2.laminar_l_MF_m2.laminar_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m3.laminar_l_tendon">
+      <site site="MF_m3.laminar_l_MF_m3.laminar_l-P1"/>
+      <site site="MF_m3.laminar_l_MF_m3.laminar_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m4.laminar_l_tendon">
+      <site site="MF_m4.laminar_l_MF_m4.laminar_l-P1"/>
+      <site site="MF_m4.laminar_l_MF_m4.laminar_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="MF_m5.laminar_l_tendon">
+      <site site="MF_m5.laminar_l_MF_m5.laminar_l-P1"/>
+      <site site="MF_m5.laminar_l_MF_m5.laminar_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="EO1_r_tendon">
+      <site site="EO1_r_EO1_r-P1"/>
+      <site site="EO1_r_EO1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="EO2_r_tendon">
+      <site site="EO2_r_EO2_r-P1"/>
+      <site site="EO2_r_EO2_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="EO3_r_tendon">
+      <site site="EO3_r_EO3_r-P1"/>
+      <site site="EO3_r_EO3_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="EO4_r_tendon">
+      <site site="EO4_r_EO4_r-P1"/>
+      <site site="EO4_r_default"/>
+    </spatial>
+    <spatial class="myotorso" name="EO5_r_tendon">
+      <site site="EO5_r_EO5_r-P1"/>
+      <site site="EO5_r_EO5_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="EO6_r_tendon">
+      <site site="EO6_r_EO6_r-P1"/>
+      <site site="EO6_r_EO6_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO1_r_tendon">
+      <site site="IO1_r_IO1_r-P1"/>
+      <site site="IO1_r_IO1_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO2_r_tendon">
+      <site site="IO2_r_IO2_r-P1"/>
+      <site site="IO2_r_IO2_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO3_r_tendon">
+      <site site="IO3_r_IO3_r-P1"/>
+      <site site="IO3_r_IO3_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO4_r_tendon">
+      <site site="IO4_r_IO4_r-P1"/>
+      <site site="IO4_r_IO4_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO5_r_tendon">
+      <site site="IO5_r_IO5_r-P1"/>
+      <site site="IO5_r_IO5_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO6_r_tendon">
+      <site site="IO6_r_IO6_r-P1"/>
+      <site site="IO6_r_IO6_r-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="EO1_l_tendon">
+      <site site="EO1_l_EO1_l-P1"/>
+      <site site="EO1_l_EO1_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="EO2_l_tendon">
+      <site site="EO2_l_EO2_l-P1"/>
+      <site site="EO2_l_EO2_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="EO3_l_tendon">
+      <site site="EO3_l_EO3_l-P1"/>
+      <site site="EO3_l_EO3_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="EO4_l_tendon">
+      <site site="EO4_l_EO4_l-P1"/>
+      <site site="EO4_l_EO4_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="EO5_l_tendon">
+      <site site="EO5_l_EO5_l-P1"/>
+      <site site="EO5_l_EO5_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="EO6_l_tendon">
+      <site site="EO6_l_EO6_l-P1"/>
+      <site site="EO6_l_EO6_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO1_l_tendon">
+      <site site="IO1_l_IO1_l-P1"/>
+      <site site="IO1_l_IO1_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO2_l_tendon">
+      <site site="IO2_l_IO2_l-P1"/>
+      <site site="IO2_l_IO2_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO3_l_tendon">
+      <site site="IO3_l_IO3_l-P1"/>
+      <site site="IO3_l_IO3_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO4_l_tendon">
+      <site site="IO4_l_IO4_l-P1"/>
+      <site site="IO4_l_IO4_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO5_l_tendon">
+      <site site="IO5_l_IO5_l-P1"/>
+      <site site="IO5_l_IO5_l-P2"/>
+    </spatial>
+    <spatial class="myotorso" name="IO6_l_tendon">
+      <site site="IO6_l_IO6_l-P1"/>
+      <site site="IO6_l_IO6_l-P2"/>
+    </spatial>
+  </tendon>
+
+  <actuator>
+    <general name="Ps_L1_VB_r" class="myoBack_muscle" tendon="Ps_L1_VB_r_tendon" lengthrange="0.091234 0.282334" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.906929 1.07277 102.673 1 0 2 10 2.41059 1.4 0" biasprm="0.906929 1.07277 102.673 1 0 2 10 2.41059 1.4 0"/>
+    <general name="Ps_L1_TP_r" class="myoBack_muscle" tendon="Ps_L1_TP_r_tendon" lengthrange="0.0926074 0.274687" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.860707 1.70615 32.6017 1 0 2 10 0.74068 1.4 0" biasprm="0.860707 1.70615 32.6017 1 0 2 10 0.74068 1.4 0"/>
+    <general name="Ps_L1_L2_IVD_r" class="myoBack_muscle" tendon="Ps_L1_L2_IVD_r_tendon" lengthrange="0.0841522 0.265894" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.901295 1.03079 59.5889 1 0 2 10 1.45782 1.4 0" biasprm="0.901295 1.03079 59.5889 1 0 2 10 1.45782 1.4 0"/>
+    <general name="Ps_L2_TP_r" class="myoBack_muscle" tendon="Ps_L2_TP_r_tendon" lengthrange="0.0837741 0.248876" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.85313 1.53139 110.113 1 0 2 10 0.823943 1.4 0" biasprm="0.85313 1.53139 110.113 1 0 2 10 0.823943 1.4 0"/>
+    <general name="Ps_L2_L3_IVD_r" class="myoBack_muscle" tendon="Ps_L2_L3_IVD_r_tendon" lengthrange="0.0792633 0.238598" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.774015 1.53599 62.3988 1 0 2 10 0.742198 1.4 0" biasprm="0.774015 1.53599 62.3988 1 0 2 10 0.742198 1.4 0"/>
+    <general name="Ps_L3_TP_r" class="myoBack_muscle" tendon="Ps_L3_TP_r_tendon" lengthrange="0.0785617 0.222916" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.823625 1.2736 51.9535 1 0 2 10 0.492491 1.4 0" biasprm="0.823625 1.2736 51.9535 1 0 2 10 0.492491 1.4 0"/>
+    <general name="Ps_L3_L4_IVD_r" class="myoBack_muscle" tendon="Ps_L3_L4_IVD_r_tendon" lengthrange="0.0833224 0.205211" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.96425 1.75318 19.6727 1 0 2 10 0.715098 1.4 0" biasprm="0.96425 1.75318 19.6727 1 0 2 10 0.715098 1.4 0"/>
+    <general name="Ps_L4_TP_r" class="myoBack_muscle" tendon="Ps_L4_TP_r_tendon" lengthrange="0.0865629 0.192191" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.878084 1.64686 89.2896 1 0 2 10 0.690415 1.4 0" biasprm="0.878084 1.64686 89.2896 1 0 2 10 0.690415 1.4 0"/>
+    <general name="Ps_L4_L5_IVD_r" class="myoBack_muscle" tendon="Ps_L4_L5_IVD_r_tendon" lengthrange="0.0955365 0.168097" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.925375 1.49497 41.9811 1 0 2 10 0.653017 1.4 0" biasprm="0.925375 1.49497 41.9811 1 0 2 10 0.653017 1.4 0"/>
+    <general name="Ps_L5_TP_r" class="myoBack_muscle" tendon="Ps_L5_TP_r_tendon" lengthrange="0.0995645 0.164526" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.872345 1.39152 94.2619 1 0 2 10 0.368312 1.4 0" biasprm="0.872345 1.39152 94.2619 1 0 2 10 0.368312 1.4 0"/>
+    <general name="Ps_L5_VB_r" class="myoBack_muscle" tendon="Ps_L5_VB_r_tendon" lengthrange="0.107528 0.143622" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.953748 1.40349 101.691 1 0 2 10 0.548021 1.4 0" biasprm="0.953748 1.40349 101.691 1 0 2 10 0.548021 1.4 0"/>
+    <general name="Ps_L1_VB_l" class="myoBack_muscle" tendon="Ps_L1_VB_l_tendon" lengthrange="0.0912387 0.282346" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.873348 1.20736 102.893 1 0 2 10 1.12319 1.4 0" biasprm="0.873348 1.20736 102.893 1 0 2 10 1.12319 1.4 0"/>
+    <general name="Ps_L1_TP_l" class="myoBack_muscle" tendon="Ps_L1_TP_l_tendon" lengthrange="0.092605 0.274699" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="1 1.02113 30.11 1 0 2 10 3.31838 1.4 0" biasprm="1 1.02113 30.11 1 0 2 10 3.31838 1.4 0"/>
+    <general name="Ps_L1_L2_IVD_l" class="myoBack_muscle" tendon="Ps_L1_L2_IVD_l_tendon" lengthrange="0.0841612 0.265904" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.942526 1.05053 59.1164 1 0 2 10 4.07329 1.4 0" biasprm="0.942526 1.05053 59.1164 1 0 2 10 4.07329 1.4 0"/>
+    <general name="Ps_L2_TP_l" class="myoBack_muscle" tendon="Ps_L2_TP_l_tendon" lengthrange="0.0837769 0.248888" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.950633 1.3837 113.138 1 0 2 10 0.373094 1.4 0" biasprm="0.950633 1.3837 113.138 1 0 2 10 0.373094 1.4 0"/>
+    <general name="Ps_L2_L3_IVD_l" class="myoBack_muscle" tendon="Ps_L2_L3_IVD_l_tendon" lengthrange="0.0792703 0.238608" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.961265 1.02699 58.8043 1 0 2 10 3.90425 1.4 0" biasprm="0.961265 1.02699 58.8043 1 0 2 10 3.90425 1.4 0"/>
+    <general name="Ps_L3_TP_l" class="myoBack_muscle" tendon="Ps_L3_TP_l_tendon" lengthrange="0.0785663 0.222926" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.849916 1.48898 54.45 1 0 2 10 0.605199 1.4 0" biasprm="0.849916 1.48898 54.45 1 0 2 10 0.605199 1.4 0"/>
+    <general name="Ps_L3_L4_IVD_l" class="myoBack_muscle" tendon="Ps_L3_L4_IVD_l_tendon" lengthrange="0.0833365 0.205219" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.925961 1.02662 18.0382 1 0 2 10 3.269 1.4 0" biasprm="0.925961 1.02662 18.0382 1 0 2 10 3.269 1.4 0"/>
+    <general name="Ps_L4_TP_l" class="myoBack_muscle" tendon="Ps_L4_TP_l_tendon" lengthrange="0.0865677 0.192201" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.794874 1.37697 86.9961 1 0 2 10 0.250004 1.4 0" biasprm="0.794874 1.37697 86.9961 1 0 2 10 0.250004 1.4 0"/>
+    <general name="Ps_L4_L5_IVD_l" class="myoBack_muscle" tendon="Ps_L4_L5_IVD_l_tendon" lengthrange="0.0955458 0.168106" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.935936 1.11382 39.4216 1 0 2 10 2.15763 1.4 0" biasprm="0.935936 1.11382 39.4216 1 0 2 10 2.15763 1.4 0"/>
+    <general name="Ps_L5_TP_l" class="myoBack_muscle" tendon="Ps_L5_TP_l_tendon" lengthrange="0.0995717 0.164536" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="1 1.36426 97.6584 1 0 2 10 0.143655 1.4 0" biasprm="1 1.36426 97.6584 1 0 2 10 0.143655 1.4 0"/>
+    <general name="Ps_L5_VB_l" class="myoBack_muscle" tendon="Ps_L5_VB_l_tendon" lengthrange="0.10754 0.143631" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.947816 1.07444 95.8965 1 0 2 10 2.53063 1.4 0" biasprm="0.947816 1.07444 95.8965 1 0 2 10 2.53063 1.4 0"/>
+    <general name="rect_abd_r" class="myoBack_muscle" tendon="rect_abd_r_tendon" lengthrange="0.133982 0.414269" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.625 1.48588 296.805 1 0 2 10 3.42695 1.4 0" biasprm="0.625 1.48588 296.805 1 0 2 10 3.42695 1.4 0"/>
+    <general name="rect_abd_l" class="myoBack_muscle" tendon="rect_abd_l_tendon" lengthrange="0.133968 0.414264" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.669847 1.46346 292.412 1 0 2 10 3.6469 1.4 0" biasprm="0.669847 1.46346 292.412 1 0 2 10 3.6469 1.4 0"/>
+    <general name="IL_L1_r" class="myoBack_muscle" tendon="IL_L1_r_tendon" lengthrange="0.102597 0.243125" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.189409 1.53429 65.7306 1 0 2 10 4.73097 1.4 0" biasprm="0.189409 1.53429 65.7306 1 0 2 10 4.73097 1.4 0"/>
+    <general name="IL_L2_r" class="myoBack_muscle" tendon="IL_L2_r_tendon" lengthrange="0.0566024 0.200874" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.236857 1.62287 90.2161 1 0 2 10 4.37615 1.4 0" biasprm="0.236857 1.62287 90.2161 1 0 2 10 4.37615 1.4 0"/>
+    <general name="IL_L3_r" class="myoBack_muscle" tendon="IL_L3_r_tendon" lengthrange="0.0293513 0.156583" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.273115 1.61285 86.466 1 0 2 10 4.69382 1.4 0" biasprm="0.273115 1.61285 86.466 1 0 2 10 4.69382 1.4 0"/>
+    <general name="IL_L4_r" class="myoBack_muscle" tendon="IL_L4_r_tendon" lengthrange="0.0161509 0.115396" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.307286 1.5168 88.3413 1 0 2 10 4.94697 1.4 0" biasprm="0.307286 1.5168 88.3413 1 0 2 10 4.94697 1.4 0"/>
+    <general name="IL_L1_l" class="myoBack_muscle" tendon="IL_L1_l_tendon" lengthrange="0.102601 0.243132" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.155737 1.58162 56.813 1 0 2 10 4.8264 1.4 0" biasprm="0.155737 1.58162 56.813 1 0 2 10 4.8264 1.4 0"/>
+    <general name="IL_L2_l" class="myoBack_muscle" tendon="IL_L2_l_tendon" lengthrange="0.0566043 0.200884" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.223518 1.67398 77.4676 1 0 2 10 4.80201 1.4 0" biasprm="0.223518 1.67398 77.4676 1 0 2 10 4.80201 1.4 0"/>
+    <general name="IL_L3_l" class="myoBack_muscle" tendon="IL_L3_l_tendon" lengthrange="0.0293517 0.156593" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.0423396 1.61579 98.0163 1 0 2 10 4.31994 1.4 0" biasprm="0.0423396 1.61579 98.0163 1 0 2 10 4.31994 1.4 0"/>
+    <general name="IL_L4_l" class="myoBack_muscle" tendon="IL_L4_l_tendon" lengthrange="0.0161538 0.115404" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.325246 1.5544 91.9262 1 0 2 10 3.9619 1.4 0" biasprm="0.325246 1.5544 91.9262 1 0 2 10 3.9619 1.4 0"/>
+    <general name="IL_R5_r" class="myoBack_muscle" tendon="IL_R5_r_tendon" lengthrange="0.283391 0.475287" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.955124 1.14662 11.0857 1 0 2 10 1.57366 1.4 0" biasprm="0.955124 1.14662 11.0857 1 0 2 10 1.57366 1.4 0"/>
+    <general name="IL_R6_r" class="myoBack_muscle" tendon="IL_R6_r_tendon" lengthrange="0.254348 0.439799" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.835507 1.39108 14.929 1 0 2 10 0.639216 1.4 0" biasprm="0.835507 1.39108 14.929 1 0 2 10 0.639216 1.4 0"/>
+    <general name="IL_R7_r" class="myoBack_muscle" tendon="IL_R7_r_tendon" lengthrange="0.255798 0.411005" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.856396 1.51022 18.9427 1 0 2 10 0.793526 1.4 0" biasprm="0.856396 1.51022 18.9427 1 0 2 10 0.793526 1.4 0"/>
+    <general name="IL_R8_r" class="myoBack_muscle" tendon="IL_R8_r_tendon" lengthrange="0.213797 0.384311" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.844217 1.3118 16.6349 1 0 2 10 0.629393 1.4 0" biasprm="0.844217 1.3118 16.6349 1 0 2 10 0.629393 1.4 0"/>
+    <general name="IL_R9_r" class="myoBack_muscle" tendon="IL_R9_r_tendon" lengthrange="0.182344 0.347588" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.921723 1.31353 24.0558 1 0 2 10 0.539396 1.4 0" biasprm="0.921723 1.31353 24.0558 1 0 2 10 0.539396 1.4 0"/>
+    <general name="IL_R10_r" class="myoBack_muscle" tendon="IL_R10_r_tendon" lengthrange="0.144531 0.313738" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.804923 1.60143 47.8811 1 0 2 10 0.878942 1.4 0" biasprm="0.804923 1.60143 47.8811 1 0 2 10 0.878942 1.4 0"/>
+    <general name="IL_R11_r" class="myoBack_muscle" tendon="IL_R11_r_tendon" lengthrange="0.111934 0.283099" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.806705 1.23289 58.435 1 0 2 10 1.37469 1.4 0" biasprm="0.806705 1.23289 58.435 1 0 2 10 1.37469 1.4 0"/>
+    <general name="IL_R12_r" class="myoBack_muscle" tendon="IL_R12_r_tendon" lengthrange="0.0785257 0.228352" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.715544 1.23361 69.8041 1 0 2 10 3.53462 1.4 0" biasprm="0.715544 1.23361 69.8041 1 0 2 10 3.53462 1.4 0"/>
+    <general name="IL_R5_l" class="myoBack_muscle" tendon="IL_R5_l_tendon" lengthrange="0.283389 0.475294" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.855657 1.08602 11.2601 1 0 2 10 1.41579 1.4 0" biasprm="0.855657 1.08602 11.2601 1 0 2 10 1.41579 1.4 0"/>
+    <general name="IL_R6_l" class="myoBack_muscle" tendon="IL_R6_l_tendon" lengthrange="0.254329 0.439809" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.823986 1.15284 14.3679 1 0 2 10 2.09227 1.4 0" biasprm="0.823986 1.15284 14.3679 1 0 2 10 2.09227 1.4 0"/>
+    <general name="IL_R7_l" class="myoBack_muscle" tendon="IL_R7_l_tendon" lengthrange="0.255779 0.411016" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.900255 1.34142 18.8447 1 0 2 10 0.600529 1.4 0" biasprm="0.900255 1.34142 18.8447 1 0 2 10 0.600529 1.4 0"/>
+    <general name="IL_R8_l" class="myoBack_muscle" tendon="IL_R8_l_tendon" lengthrange="0.213778 0.384321" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.88732 1.3203 16.5702 1 0 2 10 0.668525 1.4 0" biasprm="0.88732 1.3203 16.5702 1 0 2 10 0.668525 1.4 0"/>
+    <general name="IL_R9_l" class="myoBack_muscle" tendon="IL_R9_l_tendon" lengthrange="0.18234 0.347598" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.876826 1.31149 24.1002 1 0 2 10 0.517903 1.4 0" biasprm="0.876826 1.31149 24.1002 1 0 2 10 0.517903 1.4 0"/>
+    <general name="IL_R10_l" class="myoBack_muscle" tendon="IL_R10_l_tendon" lengthrange="0.144519 0.313748" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.790665 1.17616 47.7693 1 0 2 10 0.643284 1.4 0" biasprm="0.790665 1.17616 47.7693 1 0 2 10 0.643284 1.4 0"/>
+    <general name="IL_R11_l" class="myoBack_muscle" tendon="IL_R11_l_tendon" lengthrange="0.111918 0.283108" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.792543 1.2591 58.3066 1 0 2 10 1.35134 1.4 0" biasprm="0.792543 1.2591 58.3066 1 0 2 10 1.35134 1.4 0"/>
+    <general name="IL_R12_l" class="myoBack_muscle" tendon="IL_R12_l_tendon" lengthrange="0.0785141 0.228362" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.724036 1.3831 68.3402 1 0 2 10 1.97253 1.4 0" biasprm="0.724036 1.3831 68.3402 1 0 2 10 1.97253 1.4 0"/>
+    <general name="LTpT_T1_r" class="myoBack_muscle" tendon="LTpT_T1_r_tendon" lengthrange="0.318054 0.328054" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.752499 1.88921 9.48221 1 0 2 10 2.26177 1.4 0" biasprm="0.752499 1.88921 9.48221 1 0 2 10 2.26177 1.4 0"/>
+    <general name="LTpT_T2_r" class="myoBack_muscle" tendon="LTpT_T2_r_tendon" lengthrange="0.33244 0.349677" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.882393 1.07053 25.4966 1 0 2 10 2.39541 1.4 0" biasprm="0.882393 1.07053 25.4966 1 0 2 10 2.39541 1.4 0"/>
+    <general name="LTpT_T3_r" class="myoBack_muscle" tendon="LTpT_T3_r_tendon" lengthrange="0.330923 0.366604" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.932603 1.37394 26.2439 1 0 2 10 0.920624 1.4 0" biasprm="0.932603 1.37394 26.2439 1 0 2 10 0.920624 1.4 0"/>
+    <general name="LTpT_T4_r" class="myoBack_muscle" tendon="LTpT_T4_r_tendon" lengthrange="0.327279 0.379933" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.757189 1.5168 10.4017 1 0 2 10 0.938254 1.4 0" biasprm="0.757189 1.5168 10.4017 1 0 2 10 0.938254 1.4 0"/>
+    <general name="LTpT_T5_r" class="myoBack_muscle" tendon="LTpT_T5_r_tendon" lengthrange="0.308321 0.359351" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.95988 1.0384 10.1097 1 0 2 10 4.13172 1.4 0" biasprm="0.95988 1.0384 10.1097 1 0 2 10 4.13172 1.4 0"/>
+    <general name="LTpT_T6_r" class="myoBack_muscle" tendon="LTpT_T6_r_tendon" lengthrange="0.301097 0.367009" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.790324 1.22718 15.2908 1 0 2 10 1.08809 1.4 0" biasprm="0.790324 1.22718 15.2908 1 0 2 10 1.08809 1.4 0"/>
+    <general name="LTpT_T7_r" class="myoBack_muscle" tendon="LTpT_T7_r_tendon" lengthrange="0.286683 0.384494" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.892819 1.21685 18.3383 1 0 2 10 0.894571 1.4 0" biasprm="0.892819 1.21685 18.3383 1 0 2 10 0.894571 1.4 0"/>
+    <general name="LTpT_T8_r" class="myoBack_muscle" tendon="LTpT_T8_r_tendon" lengthrange="0.268023 0.388686" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.761975 1.39297 29.2237 1 0 2 10 1.11313 1.4 0" biasprm="0.761975 1.39297 29.2237 1 0 2 10 1.11313 1.4 0"/>
+    <general name="LTpT_T9_r" class="myoBack_muscle" tendon="LTpT_T9_r_tendon" lengthrange="0.275488 0.402934" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.787065 1.50067 35.7769 1 0 2 10 0.842033 1.4 0" biasprm="0.787065 1.50067 35.7769 1 0 2 10 0.842033 1.4 0"/>
+    <general name="LTpT_T10_r" class="myoBack_muscle" tendon="LTpT_T10_r_tendon" lengthrange="0.233459 0.374687" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.997309 1.37585 41.9869 1 0 2 10 0.541479 1.4 0" biasprm="0.997309 1.37585 41.9869 1 0 2 10 0.541479 1.4 0"/>
+    <general name="LTpT_T11_r" class="myoBack_muscle" tendon="LTpT_T11_r_tendon" lengthrange="0.210333 0.34272" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.81064 1.2169 40.9276 1 0 2 10 2.70407 1.4 0" biasprm="0.81064 1.2169 40.9276 1 0 2 10 2.70407 1.4 0"/>
+    <general name="LTpT_T12_r" class="myoBack_muscle" tendon="LTpT_T12_r_tendon" lengthrange="0.161793 0.295079" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.629309 1.3939 34.0799 1 0 2 10 4.45911 1.4 0" biasprm="0.629309 1.3939 34.0799 1 0 2 10 4.45911 1.4 0"/>
+    <general name="LTpT_R4_r" class="myoBack_muscle" tendon="LTpT_R4_r_tendon" lengthrange="0.322289 0.377914" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.719405 1.53847 10.9379 1 0 2 10 0.87916 1.4 0" biasprm="0.719405 1.53847 10.9379 1 0 2 10 0.87916 1.4 0"/>
+    <general name="LTpT_R5_r" class="myoBack_muscle" tendon="LTpT_R5_r_tendon" lengthrange="0.29999 0.358085" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.841477 1.33057 11.125 1 0 2 10 0.511543 1.4 0" biasprm="0.841477 1.33057 11.125 1 0 2 10 0.511543 1.4 0"/>
+    <general name="LTpT_R6_r" class="myoBack_muscle" tendon="LTpT_R6_r_tendon" lengthrange="0.297274 0.366819" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.963877 1.69345 17.4549 1 0 2 10 0.701965 1.4 0" biasprm="0.963877 1.69345 17.4549 1 0 2 10 0.701965 1.4 0"/>
+    <general name="LTpT_R7_r" class="myoBack_muscle" tendon="LTpT_R7_r_tendon" lengthrange="0.288527 0.403077" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.860691 1.37129 20.19 1 0 2 10 0.385112 1.4 0" biasprm="0.860691 1.37129 20.19 1 0 2 10 0.385112 1.4 0"/>
+    <general name="LTpT_R8_r" class="myoBack_muscle" tendon="LTpT_R8_r_tendon" lengthrange="0.263948 0.391365" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.78775 1.76464 32.5102 1 0 2 10 0.783357 1.4 0" biasprm="0.78775 1.76464 32.5102 1 0 2 10 0.783357 1.4 0"/>
+    <general name="LTpT_R9_r" class="myoBack_muscle" tendon="LTpT_R9_r_tendon" lengthrange="0.254094 0.394584" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.774125 1.20048 36.7624 1 0 2 10 3.58194 1.4 0" biasprm="0.774125 1.20048 36.7624 1 0 2 10 3.58194 1.4 0"/>
+    <general name="LTpT_R10_r" class="myoBack_muscle" tendon="LTpT_R10_r_tendon" lengthrange="0.224261 0.368627" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.904003 1.24046 41.1614 1 0 2 10 0.70946 1.4 0" biasprm="0.904003 1.24046 41.1614 1 0 2 10 0.70946 1.4 0"/>
+    <general name="LTpT_R11_r" class="myoBack_muscle" tendon="LTpT_R11_r_tendon" lengthrange="0.179792 0.333909" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.811548 1.27974 40.1381 1 0 2 10 2.18054 1.4 0" biasprm="0.811548 1.27974 40.1381 1 0 2 10 2.18054 1.4 0"/>
+    <general name="LTpT_R12_r" class="myoBack_muscle" tendon="LTpT_R12_r_tendon" lengthrange="0.132699 0.286358" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.148745 1.63708 35.665 1 0 2 10 4.36184 1.4 0" biasprm="0.148745 1.63708 35.665 1 0 2 10 4.36184 1.4 0"/>
+    <general name="LTpT_T1_l" class="myoBack_muscle" tendon="LTpT_T1_l_tendon" lengthrange="0.318054 0.328054" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.924075 1.99 6.5 1 0 2 10 2.86394 1.4 0" biasprm="0.924075 1.99 6.5 1 0 2 10 2.86394 1.4 0"/>
+    <general name="LTpT_T2_l" class="myoBack_muscle" tendon="LTpT_T2_l_tendon" lengthrange="0.33244 0.349677" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.910935 1.28437 26.1143 1 0 2 10 0.569051 1.4 0" biasprm="0.910935 1.28437 26.1143 1 0 2 10 0.569051 1.4 0"/>
+    <general name="LTpT_T3_l" class="myoBack_muscle" tendon="LTpT_T3_l_tendon" lengthrange="0.330923 0.366604" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.979894 1.292 26.5129 1 0 2 10 0.764415 1.4 0" biasprm="0.979894 1.292 26.5129 1 0 2 10 0.764415 1.4 0"/>
+    <general name="LTpT_T4_l" class="myoBack_muscle" tendon="LTpT_T4_l_tendon" lengthrange="0.327279 0.379933" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.905909 1.06813 10.1303 1 0 2 10 2.20101 1.4 0" biasprm="0.905909 1.06813 10.1303 1 0 2 10 2.20101 1.4 0"/>
+    <general name="LTpT_T5_l" class="myoBack_muscle" tendon="LTpT_T5_l_tendon" lengthrange="0.308321 0.359351" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.815665 1.10239 10.1497 1 0 2 10 3.88827 1.4 0" biasprm="0.815665 1.10239 10.1497 1 0 2 10 3.88827 1.4 0"/>
+    <general name="LTpT_T6_l" class="myoBack_muscle" tendon="LTpT_T6_l_tendon" lengthrange="0.301098 0.367008" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.880836 1.06904 15.2066 1 0 2 10 1.03165 1.4 0" biasprm="0.880836 1.06904 15.2066 1 0 2 10 1.03165 1.4 0"/>
+    <general name="LTpT_T7_l" class="myoBack_muscle" tendon="LTpT_T7_l_tendon" lengthrange="0.286683 0.384495" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.74964 1.41723 18.7524 1 0 2 10 0.827795 1.4 0" biasprm="0.74964 1.41723 18.7524 1 0 2 10 0.827795 1.4 0"/>
+    <general name="LTpT_T8_l" class="myoBack_muscle" tendon="LTpT_T8_l_tendon" lengthrange="0.268022 0.388687" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.82074 1.04154 30.0166 1 0 2 10 2.27111 1.4 0" biasprm="0.82074 1.04154 30.0166 1 0 2 10 2.27111 1.4 0"/>
+    <general name="LTpT_T9_l" class="myoBack_muscle" tendon="LTpT_T9_l_tendon" lengthrange="0.275488 0.402934" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.790888 1.04143 35.2808 1 0 2 10 4.68673 1.4 0" biasprm="0.790888 1.04143 35.2808 1 0 2 10 4.68673 1.4 0"/>
+    <general name="LTpT_T10_l" class="myoBack_muscle" tendon="LTpT_T10_l_tendon" lengthrange="0.233459 0.374687" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.829667 1.81446 43.1199 1 0 2 10 0.732415 1.4 0" biasprm="0.829667 1.81446 43.1199 1 0 2 10 0.732415 1.4 0"/>
+    <general name="LTpT_T11_l" class="myoBack_muscle" tendon="LTpT_T11_l_tendon" lengthrange="0.210333 0.34272" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.84377 1.22618 40.4352 1 0 2 10 2.46913 1.4 0" biasprm="0.84377 1.22618 40.4352 1 0 2 10 2.46913 1.4 0"/>
+    <general name="LTpT_T12_l" class="myoBack_muscle" tendon="LTpT_T12_l_tendon" lengthrange="0.161793 0.295079" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.626345 1.42353 34.1464 1 0 2 10 3.8302 1.4 0" biasprm="0.626345 1.42353 34.1464 1 0 2 10 3.8302 1.4 0"/>
+    <general name="LTpT_R4_l" class="myoBack_muscle" tendon="LTpT_R4_l_tendon" lengthrange="0.322289 0.377914" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.817208 1.38719 10.7235 1 0 2 10 0.989042 1.4 0" biasprm="0.817208 1.38719 10.7235 1 0 2 10 0.989042 1.4 0"/>
+    <general name="LTpT_R5_l" class="myoBack_muscle" tendon="LTpT_R5_l_tendon" lengthrange="0.299989 0.358086" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.93079 1.4015 11.2204 1 0 2 10 0.573668 1.4 0" biasprm="0.93079 1.4015 11.2204 1 0 2 10 0.573668 1.4 0"/>
+    <general name="LTpT_R6_l" class="myoBack_muscle" tendon="LTpT_R6_l_tendon" lengthrange="0.297275 0.366819" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.930001 1.52203 17.1541 1 0 2 10 0.615771 1.4 0" biasprm="0.930001 1.52203 17.1541 1 0 2 10 0.615771 1.4 0"/>
+    <general name="LTpT_R7_l" class="myoBack_muscle" tendon="LTpT_R7_l_tendon" lengthrange="0.288526 0.403077" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.930397 1.46419 20.447 1 0 2 10 0.564302 1.4 0" biasprm="0.930397 1.46419 20.447 1 0 2 10 0.564302 1.4 0"/>
+    <general name="LTpT_R8_l" class="myoBack_muscle" tendon="LTpT_R8_l_tendon" lengthrange="0.263951 0.391364" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.966273 1.35653 32.3409 1 0 2 10 0.529554 1.4 0" biasprm="0.966273 1.35653 32.3409 1 0 2 10 0.529554 1.4 0"/>
+    <general name="LTpT_R9_l" class="myoBack_muscle" tendon="LTpT_R9_l_tendon" lengthrange="0.254094 0.394584" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.806697 1.20867 36.4951 1 0 2 10 3.35371 1.4 0" biasprm="0.806697 1.20867 36.4951 1 0 2 10 3.35371 1.4 0"/>
+    <general name="LTpT_R10_l" class="myoBack_muscle" tendon="LTpT_R10_l_tendon" lengthrange="0.224262 0.368627" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.794391 1.84473 43.1713 1 0 2 10 0.775499 1.4 0" biasprm="0.794391 1.84473 43.1713 1 0 2 10 0.775499 1.4 0"/>
+    <general name="LTpT_R11_l" class="myoBack_muscle" tendon="LTpT_R11_l_tendon" lengthrange="0.179792 0.333909" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.819301 1.2074 40.1918 1 0 2 10 3.36297 1.4 0" biasprm="0.819301 1.2074 40.1918 1 0 2 10 3.36297 1.4 0"/>
+    <general name="LTpT_R12_l" class="myoBack_muscle" tendon="LTpT_R12_l_tendon" lengthrange="0.132696 0.286359" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.105236 1.58845 40.3562 1 0 2 10 4.37192 1.4 0" biasprm="0.105236 1.58845 40.3562 1 0 2 10 4.37192 1.4 0"/>
+    <general name="LTpL_L5_r" class="myoBack_muscle" tendon="LTpL_L5_r_tendon" lengthrange="0.0214967 0.0820109" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.913591 1.26861 56.8564 1 0 2 10 0.243619 1.4 0" biasprm="0.913591 1.26861 56.8564 1 0 2 10 0.243619 1.4 0"/>
+    <general name="LTpL_L4_r" class="myoBack_muscle" tendon="LTpL_L4_r_tendon" lengthrange="0.0349479 0.125287" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.851992 1.07379 51.32 1 0 2 10 1.46906 1.4 0" biasprm="0.851992 1.07379 51.32 1 0 2 10 1.46906 1.4 0"/>
+    <general name="LTpL_L3_r" class="myoBack_muscle" tendon="LTpL_L3_r_tendon" lengthrange="0.0522792 0.170053" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.614467 1.30984 45.454 1 0 2 10 1.28194 1.4 0" biasprm="0.614467 1.30984 45.454 1 0 2 10 1.28194 1.4 0"/>
+    <general name="LTpL_L2_r" class="myoBack_muscle" tendon="LTpL_L2_r_tendon" lengthrange="0.063885 0.207223" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.574632 1.10743 42.4693 1 0 2 10 1.33241 1.4 0" biasprm="0.574632 1.10743 42.4693 1 0 2 10 1.33241 1.4 0"/>
+    <general name="LTpL_L1_r" class="myoBack_muscle" tendon="LTpL_L1_r_tendon" lengthrange="0.0921926 0.244303" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.546243 1.21168 36.4777 1 0 2 10 1.24187 1.4 0" biasprm="0.546243 1.21168 36.4777 1 0 2 10 1.24187 1.4 0"/>
+    <general name="LTpL_L5_l" class="myoBack_muscle" tendon="LTpL_L5_l_tendon" lengthrange="0.0214951 0.08201" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.818343 1.6593 57.4581 1 0 2 10 0.800633 1.4 0" biasprm="0.818343 1.6593 57.4581 1 0 2 10 0.800633 1.4 0"/>
+    <general name="LTpL_L4_l" class="myoBack_muscle" tendon="LTpL_L4_l_tendon" lengthrange="0.0349547 0.125294" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.817849 1.14052 50.5147 1 0 2 10 2.90678 1.4 0" biasprm="0.817849 1.14052 50.5147 1 0 2 10 2.90678 1.4 0"/>
+    <general name="LTpL_L3_l" class="myoBack_muscle" tendon="LTpL_L3_l_tendon" lengthrange="0.052283 0.170062" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.591242 1.22713 46.6326 1 0 2 10 1.07917 1.4 0" biasprm="0.591242 1.22713 46.6326 1 0 2 10 1.07917 1.4 0"/>
+    <general name="LTpL_L2_l" class="myoBack_muscle" tendon="LTpL_L2_l_tendon" lengthrange="0.063878 0.207235" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.570017 1.14887 42.1939 1 0 2 10 1.14559 1.4 0" biasprm="0.570017 1.14887 42.1939 1 0 2 10 1.14559 1.4 0"/>
+    <general name="LTpL_L1_l" class="myoBack_muscle" tendon="LTpL_L1_l_tendon" lengthrange="0.0921917 0.244313" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.551316 1.25352 36.2224 1 0 2 10 1.21881 1.4 0" biasprm="0.551316 1.25352 36.2224 1 0 2 10 1.21881 1.4 0"/>
+    <general name="QL_post_I.1-L3_r" class="myoBack_muscle" tendon="QL_post_I.1-L3_r_tendon" lengthrange="0.0319974 0.137991" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.608053 1.22169 18.7713 1 0 2 10 2.63902 1.4 0" biasprm="0.608053 1.22169 18.7713 1 0 2 10 2.63902 1.4 0"/>
+    <general name="QL_post_I.2-L4_r" class="myoBack_muscle" tendon="QL_post_I.2-L4_r_tendon" lengthrange="0.00918566 0.0992524" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.623413 1.46604 24.6753 1 0 2 10 0.936467 1.4 0" biasprm="0.623413 1.46604 24.6753 1 0 2 10 0.936467 1.4 0"/>
+    <general name="QL_post_I.2-L3_r" class="myoBack_muscle" tendon="QL_post_I.2-L3_r_tendon" lengthrange="0.0176701 0.133263" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.0337168 1.34024 9.60168 1 0 2 10 2.9537 1.4 0" biasprm="0.0337168 1.34024 9.60168 1 0 2 10 2.9537 1.4 0"/>
+    <general name="QL_post_I.2-L2_r" class="myoBack_muscle" tendon="QL_post_I.2-L2_r_tendon" lengthrange="0.0378314 0.169246" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="1 1.82187 17.6 1 0 2 10 5 1.4 0" biasprm="1 1.82187 17.6 1 0 2 10 5 1.4 0"/>
+    <general name="QL_post_I.3-L1_r" class="myoBack_muscle" tendon="QL_post_I.3-L1_r_tendon" lengthrange="0.0561393 0.207654" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.637459 1.39789 13.0599 1 0 2 10 0.948455 1.4 0" biasprm="0.637459 1.39789 13.0599 1 0 2 10 0.948455 1.4 0"/>
+    <general name="QL_post_I.3-L2_r" class="myoBack_muscle" tendon="QL_post_I.3-L2_r_tendon" lengthrange="0.0289968 0.170003" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.56353 1.44032 13.3551 1 0 2 10 1.2713 1.4 0" biasprm="0.56353 1.44032 13.3551 1 0 2 10 1.2713 1.4 0"/>
+    <general name="QL_post_I.3-L3_r" class="myoBack_muscle" tendon="QL_post_I.3-L3_r_tendon" lengthrange="0.00972937 0.134997" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.574154 1.2433 23.4712 1 0 2 10 1.37032 1.4 0" biasprm="0.574154 1.2433 23.4712 1 0 2 10 1.37032 1.4 0"/>
+    <general name="QL_post_I.1-L3_l" class="myoBack_muscle" tendon="QL_post_I.1-L3_l_tendon" lengthrange="0.0319865 0.138003" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.600101 1.37149 18.5478 1 0 2 10 1.52463 1.4 0" biasprm="0.600101 1.37149 18.5478 1 0 2 10 1.52463 1.4 0"/>
+    <general name="QL_post_I.2-L4_l" class="myoBack_muscle" tendon="QL_post_I.2-L4_l_tendon" lengthrange="0.0091999 0.0992671" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.639282 1.19044 24.9592 1 0 2 10 0.475747 1.4 0" biasprm="0.639282 1.19044 24.9592 1 0 2 10 0.475747 1.4 0"/>
+    <general name="QL_post_I.2-L3_l" class="myoBack_muscle" tendon="QL_post_I.2-L3_l_tendon" lengthrange="0.0176583 0.133276" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.0509605 1.27056 10.1506 1 0 2 10 2.99894 1.4 0" biasprm="0.0509605 1.27056 10.1506 1 0 2 10 2.99894 1.4 0"/>
+    <general name="QL_post_I.2-L2_l" class="myoBack_muscle" tendon="QL_post_I.2-L2_l_tendon" lengthrange="0.0378157 0.169258" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.53099 1.99 13.5843 1 0 2 10 5 1.4 0" biasprm="0.53099 1.99 13.5843 1 0 2 10 5 1.4 0"/>
+    <general name="QL_post_I.3-L1_l" class="myoBack_muscle" tendon="QL_post_I.3-L1_l_tendon" lengthrange="0.0561229 0.207665" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.660758 1.19477 13.2859 1 0 2 10 0.43414 1.4 0" biasprm="0.660758 1.19477 13.2859 1 0 2 10 0.43414 1.4 0"/>
+    <general name="QL_post_I.3-L2_l" class="myoBack_muscle" tendon="QL_post_I.3-L2_l_tendon" lengthrange="0.0289833 0.170016" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.568049 1.4146 13.2827 1 0 2 10 1.35023 1.4 0" biasprm="0.568049 1.4146 13.2827 1 0 2 10 1.35023 1.4 0"/>
+    <general name="QL_post_I.3-L3_l" class="myoBack_muscle" tendon="QL_post_I.3-L3_l_tendon" lengthrange="0.00972873 0.135012" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.556064 1.26866 23.7514 1 0 2 10 0.912633 1.4 0" biasprm="0.556064 1.26866 23.7514 1 0 2 10 0.912633 1.4 0"/>
+    <general name="QL_mid_L3-12.3_r" class="myoBack_muscle" tendon="QL_mid_L3-12.3_r_tendon" lengthrange="0.0620792 0.0950856" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.84381 1.31992 6.1322 1 0 2 10 0.70437 1.4 0" biasprm="0.84381 1.31992 6.1322 1 0 2 10 0.70437 1.4 0"/>
+    <general name="QL_mid_L3-12.2_r" class="myoBack_muscle" tendon="QL_mid_L3-12.2_r_tendon" lengthrange="0.0666403 0.0989543" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="1 1.02146 6.85049 1 0 2 10 1.79048 1.4 0" biasprm="1 1.02146 6.85049 1 0 2 10 1.79048 1.4 0"/>
+    <general name="QL_mid_L3-12.1_r" class="myoBack_muscle" tendon="QL_mid_L3-12.1_r_tendon" lengthrange="0.0740897 0.104533" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.96854 1.32578 11.6728 1 0 2 10 0.735369 1.4 0" biasprm="0.96854 1.32578 11.6728 1 0 2 10 0.735369 1.4 0"/>
+    <general name="QL_mid_L2-12.1_r" class="myoBack_muscle" tendon="QL_mid_L2-12.1_r_tendon" lengthrange="0.0509079 0.0639678" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.944624 1.48408 9.82881 1 0 2 10 0.96267 1.4 0" biasprm="0.944624 1.48408 9.82881 1 0 2 10 0.96267 1.4 0"/>
+    <general name="QL_mid_L4-12.3_r" class="myoBack_muscle" tendon="QL_mid_L4-12.3_r_tendon" lengthrange="0.0810157 0.127833" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.872148 1.20119 5.61502 1 0 2 10 0.599538 1.4 0" biasprm="0.872148 1.20119 5.61502 1 0 2 10 0.599538 1.4 0"/>
+    <general name="QL_mid_L3-12.3_l" class="myoBack_muscle" tendon="QL_mid_L3-12.3_l_tendon" lengthrange="0.0620792 0.0950856" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.877027 1.31241 5.96688 1 0 2 10 1.09437 1.4 0" biasprm="0.877027 1.31241 5.96688 1 0 2 10 1.09437 1.4 0"/>
+    <general name="QL_mid_L3-12.2_l" class="myoBack_muscle" tendon="QL_mid_L3-12.2_l_tendon" lengthrange="0.0666403 0.0989543" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.838351 1.07824 6.9222 1 0 2 10 2.17748 1.4 0" biasprm="0.838351 1.07824 6.9222 1 0 2 10 2.17748 1.4 0"/>
+    <general name="QL_mid_L3-12.1_l" class="myoBack_muscle" tendon="QL_mid_L3-12.1_l_tendon" lengthrange="0.0740897 0.104533" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.9254 1.10614 11.4604 1 0 2 10 1.10076 1.4 0" biasprm="0.9254 1.10614 11.4604 1 0 2 10 1.10076 1.4 0"/>
+    <general name="QL_mid_L2-12.1_l" class="myoBack_muscle" tendon="QL_mid_L2-12.1_l_tendon" lengthrange="0.0509079 0.0639678" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.883177 1.16934 9.79699 1 0 2 10 0.913744 1.4 0" biasprm="0.883177 1.16934 9.79699 1 0 2 10 0.913744 1.4 0"/>
+    <general name="QL_mid_L4-12.3_l" class="myoBack_muscle" tendon="QL_mid_L4-12.3_l_tendon" lengthrange="0.0810157 0.127833" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.825575 1.34594 5.60216 1 0 2 10 0.936776 1.4 0" biasprm="0.825575 1.34594 5.60216 1 0 2 10 0.936776 1.4 0"/>
+    <general name="QL_ant_I.2-T12_r" class="myoBack_muscle" tendon="QL_ant_I.2-T12_r_tendon" lengthrange="0.0926737 0.22922" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.807863 1.0398 7.2747 1 0 2 10 3.98796 1.4 0" biasprm="0.807863 1.0398 7.2747 1 0 2 10 3.98796 1.4 0"/>
+    <general name="QL_ant_I.3-T12_r" class="myoBack_muscle" tendon="QL_ant_I.3-T12_r_tendon" lengthrange="0.0845413 0.234429" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.764397 1.1622 13.5189 1 0 2 10 2.06513 1.4 0" biasprm="0.764397 1.1622 13.5189 1 0 2 10 2.06513 1.4 0"/>
+    <general name="QL_ant_I.2-12.1_r" class="myoBack_muscle" tendon="QL_ant_I.2-12.1_r_tendon" lengthrange="0.0860004 0.224793" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.724476 1.06971 4.79053 1 0 2 10 1.97332 1.4 0" biasprm="0.724476 1.06971 4.79053 1 0 2 10 1.97332 1.4 0"/>
+    <general name="QL_ant_I.3-12.1_r" class="myoBack_muscle" tendon="QL_ant_I.3-12.1_r_tendon" lengthrange="0.0763475 0.230985" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.723983 1.07766 9.08227 1 0 2 10 2.05625 1.4 0" biasprm="0.723983 1.07766 9.08227 1 0 2 10 2.05625 1.4 0"/>
+    <general name="QL_ant_I.3-12.2_r" class="myoBack_muscle" tendon="QL_ant_I.3-12.2_r_tendon" lengthrange="0.0702509 0.227672" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.633279 1.17035 5.99965 1 0 2 10 1.01777 1.4 0" biasprm="0.633279 1.17035 5.99965 1 0 2 10 1.01777 1.4 0"/>
+    <general name="QL_ant_I.3-12.3_r" class="myoBack_muscle" tendon="QL_ant_I.3-12.3_r_tendon" lengthrange="0.064958 0.224084" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.585911 1.28747 6.97219 1 0 2 10 0.739155 1.4 0" biasprm="0.585911 1.28747 6.97219 1 0 2 10 0.739155 1.4 0"/>
+    <general name="QL_ant_I.2-T12_l" class="myoBack_muscle" tendon="QL_ant_I.2-T12_l_tendon" lengthrange="0.0926598 0.229236" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.812363 1.07417 7.24877 1 0 2 10 2.38498 1.4 0" biasprm="0.812363 1.07417 7.24877 1 0 2 10 2.38498 1.4 0"/>
+    <general name="QL_ant_I.3-T12_l" class="myoBack_muscle" tendon="QL_ant_I.3-T12_l_tendon" lengthrange="0.0845284 0.234445" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.796748 1.05534 13.5687 1 0 2 10 3.82136 1.4 0" biasprm="0.796748 1.05534 13.5687 1 0 2 10 3.82136 1.4 0"/>
+    <general name="QL_ant_I.2-12.1_l" class="myoBack_muscle" tendon="QL_ant_I.2-12.1_l_tendon" lengthrange="0.0859823 0.224802" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.639069 1.36404 4.80219 1 0 2 10 0.905991 1.4 0" biasprm="0.639069 1.36404 4.80219 1 0 2 10 0.905991 1.4 0"/>
+    <general name="QL_ant_I.3-12.1_l" class="myoBack_muscle" tendon="QL_ant_I.3-12.1_l_tendon" lengthrange="0.0763297 0.231" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.622212 1.71055 9.16188 1 0 2 10 0.950072 1.4 0" biasprm="0.622212 1.71055 9.16188 1 0 2 10 0.950072 1.4 0"/>
+    <general name="QL_ant_I.3-12.2_l" class="myoBack_muscle" tendon="QL_ant_I.3-12.2_l_tendon" lengthrange="0.0702323 0.227686" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.668386 1.06303 6.02341 1 0 2 10 2.36267 1.4 0" biasprm="0.668386 1.06303 6.02341 1 0 2 10 2.36267 1.4 0"/>
+    <general name="QL_ant_I.3-12.3_l" class="myoBack_muscle" tendon="QL_ant_I.3-12.3_l_tendon" lengthrange="0.0649389 0.224097" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.598527 1.23641 6.9765 1 0 2 10 0.731959 1.4 0" biasprm="0.598527 1.23641 6.9765 1 0 2 10 0.731959 1.4 0"/>
+    <general name="MF_m1s_r" class="myoBack_muscle" tendon="MF_m1s_r_tendon" lengthrange="0.0436995 0.0882266" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.737702 1.57373 19.2232 1 0 2 10 0.917339 1.4 0" biasprm="0.737702 1.57373 19.2232 1 0 2 10 0.917339 1.4 0"/>
+    <general name="MF_m1t.1_r" class="myoBack_muscle" tendon="MF_m1t.1_r_tendon" lengthrange="0.0643808 0.125243" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.77826 1.40443 20.5758 1 0 2 10 0.704245 1.4 0" biasprm="0.77826 1.40443 20.5758 1 0 2 10 0.704245 1.4 0"/>
+    <general name="MF_m1t.2_r" class="myoBack_muscle" tendon="MF_m1t.2_r_tendon" lengthrange="0.0766338 0.183037" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.852359 1.23647 17.2983 1 0 2 10 0.53576 1.4 0" biasprm="0.852359 1.23647 17.2983 1 0 2 10 0.53576 1.4 0"/>
+    <general name="MF_m1t.3_r" class="myoBack_muscle" tendon="MF_m1t.3_r_tendon" lengthrange="0.0595619 0.213699" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.717308 1.29386 29.1992 1 0 2 10 0.538843 1.4 0" biasprm="0.717308 1.29386 29.1992 1 0 2 10 0.538843 1.4 0"/>
+    <general name="MF_m2s_r" class="myoBack_muscle" tendon="MF_m2s_r_tendon" lengthrange="0.0422876 0.0815015" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.798899 1.50432 18.8683 1 0 2 10 0.84258 1.4 0" biasprm="0.798899 1.50432 18.8683 1 0 2 10 0.84258 1.4 0"/>
+    <general name="MF_m2t.1_r" class="myoBack_muscle" tendon="MF_m2t.1_r_tendon" lengthrange="0.0469215 0.139729" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.976215 1.02644 18.4379 1 0 2 10 1.49766 1.4 0" biasprm="0.976215 1.02644 18.4379 1 0 2 10 1.49766 1.4 0"/>
+    <general name="MF_m2t.2_r" class="myoBack_muscle" tendon="MF_m2t.2_r_tendon" lengthrange="0.04298 0.173224" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.785707 1.55253 48.1255 1 0 2 10 0.857663 1.4 0" biasprm="0.785707 1.55253 48.1255 1 0 2 10 0.857663 1.4 0"/>
+    <general name="MF_m2t.3_r" class="myoBack_muscle" tendon="MF_m2t.3_r_tendon" lengthrange="0.0554552 0.176219" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.731759 1.12388 47.9922 1 0 2 10 2.04175 1.4 0" biasprm="0.731759 1.12388 47.9922 1 0 2 10 2.04175 1.4 0"/>
+    <general name="MF_m3s_r" class="myoBack_muscle" tendon="MF_m3s_r_tendon" lengthrange="0.0303327 0.102168" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.688431 1.54259 26.5912 1 0 2 10 0.79282 1.4 0" biasprm="0.688431 1.54259 26.5912 1 0 2 10 0.79282 1.4 0"/>
+    <general name="MF_m3t.1_r" class="myoBack_muscle" tendon="MF_m3t.1_r_tendon" lengthrange="0.0876118 0.168732" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.846955 1.00361 26.1118 1 0 2 10 1.36827 1.4 0" biasprm="0.846955 1.00361 26.1118 1 0 2 10 1.36827 1.4 0"/>
+    <general name="MF_m3t.2_r" class="myoBack_muscle" tendon="MF_m3t.2_r_tendon" lengthrange="0.0661125 0.14834" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.904836 1.05071 25.2485 1 0 2 10 4.16096 1.4 0" biasprm="0.904836 1.05071 25.2485 1 0 2 10 4.16096 1.4 0"/>
+    <general name="MF_m3t.3_r" class="myoBack_muscle" tendon="MF_m3t.3_r_tendon" lengthrange="0.0661125 0.14834" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.939258 1.02678 25.3773 1 0 2 10 4.00176 1.4 0" biasprm="0.939258 1.02678 25.3773 1 0 2 10 4.00176 1.4 0"/>
+    <general name="MF_m4s_r" class="myoBack_muscle" tendon="MF_m4s_r_tendon" lengthrange="0.0372014 0.0933067" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.955011 1.006 25.2149 1 0 2 10 4.32516 1.4 0" biasprm="0.955011 1.006 25.2149 1 0 2 10 4.32516 1.4 0"/>
+    <general name="MF_m4t.1_r" class="myoBack_muscle" tendon="MF_m4t.1_r_tendon" lengthrange="0.0494169 0.109044" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.946779 1.46373 23.2997 1 0 2 10 0.808272 1.4 0" biasprm="0.946779 1.46373 23.2997 1 0 2 10 0.808272 1.4 0"/>
+    <general name="MF_m4t.2_r" class="myoBack_muscle" tendon="MF_m4t.2_r_tendon" lengthrange="0.0703966 0.128943" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.971033 1.42252 23.4914 1 0 2 10 0.693674 1.4 0" biasprm="0.971033 1.42252 23.4914 1 0 2 10 0.693674 1.4 0"/>
+    <general name="MF_m4t.3_r" class="myoBack_muscle" tendon="MF_m4t.3_r_tendon" lengthrange="0.0848742 0.150553" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.714842 1.79938 24.0943 1 0 2 10 0.775708 1.4 0" biasprm="0.714842 1.79938 24.0943 1 0 2 10 0.775708 1.4 0"/>
+    <general name="MF_m5s_r" class="myoBack_muscle" tendon="MF_m5s_r_tendon" lengthrange="0.0125925 0.0549297" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.936675 1.05202 11.1762 1 0 2 10 4.09038 1.4 0" biasprm="0.936675 1.05202 11.1762 1 0 2 10 4.09038 1.4 0"/>
+    <general name="MF_m5t.1_r" class="myoBack_muscle" tendon="MF_m5t.1_r_tendon" lengthrange="0.0827399 0.125701" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.76847 1.53972 11.5269 1 0 2 10 0.738412 1.4 0" biasprm="0.76847 1.53972 11.5269 1 0 2 10 0.738412 1.4 0"/>
+    <general name="MF_m5t.2_r" class="myoBack_muscle" tendon="MF_m5t.2_r_tendon" lengthrange="0.0561292 0.101751" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.926575 1.35993 10.9307 1 0 2 10 0.962453 1.4 0" biasprm="0.926575 1.35993 10.9307 1 0 2 10 0.962453 1.4 0"/>
+    <general name="MF_m5t.3_r" class="myoBack_muscle" tendon="MF_m5t.3_r_tendon" lengthrange="0.043602 0.0823499" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.895612 1.67615 12.5785 1 0 2 10 0.709864 1.4 0" biasprm="0.895612 1.67615 12.5785 1 0 2 10 0.709864 1.4 0"/>
+    <general name="MF_m1.laminar_r" class="myoBack_muscle" tendon="MF_m1.laminar_r_tendon" lengthrange="0.027783 0.0581624" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.780447 1.10765 9.15012 1 0 2 10 1.91578 1.4 0" biasprm="0.780447 1.10765 9.15012 1 0 2 10 1.91578 1.4 0"/>
+    <general name="MF_m2.laminar_r" class="myoBack_muscle" tendon="MF_m2.laminar_r_tendon" lengthrange="0.023229 0.0508347" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.694505 1.39345 10.7147 1 0 2 10 0.851488 1.4 0" biasprm="0.694505 1.39345 10.7147 1 0 2 10 0.851488 1.4 0"/>
+    <general name="MF_m3.laminar_r" class="myoBack_muscle" tendon="MF_m3.laminar_r_tendon" lengthrange="0.0233145 0.0475018" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.715733 1.38852 11.1801 1 0 2 10 0.77645 1.4 0" biasprm="0.715733 1.38852 11.1801 1 0 2 10 0.77645 1.4 0"/>
+    <general name="MF_m4.laminar_r" class="myoBack_muscle" tendon="MF_m4.laminar_r_tendon" lengthrange="0.0179245 0.0772614" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.898838 1.0533 7.9503 1 0 2 10 2.66264 1.4 0" biasprm="0.898838 1.0533 7.9503 1 0 2 10 2.66264 1.4 0"/>
+    <general name="MF_m5.laminar_r" class="myoBack_muscle" tendon="MF_m5.laminar_r_tendon" lengthrange="0.0246611 0.0628798" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.85228 1.57668 17.9982 1 0 2 10 0.851134 1.4 0" biasprm="0.85228 1.57668 17.9982 1 0 2 10 0.851134 1.4 0"/>
+    <general name="MF_m1s_l" class="myoBack_muscle" tendon="MF_m1s_l_tendon" lengthrange="0.0436974 0.0882251" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.76924 1.12791 19.0756 1 0 2 10 1.48804 1.4 0" biasprm="0.76924 1.12791 19.0756 1 0 2 10 1.48804 1.4 0"/>
+    <general name="MF_m1t.1_l" class="myoBack_muscle" tendon="MF_m1t.1_l_tendon" lengthrange="0.0643794 0.125242" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.758422 1.57285 20.5876 1 0 2 10 0.833136 1.4 0" biasprm="0.758422 1.57285 20.5876 1 0 2 10 0.833136 1.4 0"/>
+    <general name="MF_m1t.2_l" class="myoBack_muscle" tendon="MF_m1t.2_l_tendon" lengthrange="0.0766338 0.183037" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.787627 1.32864 17.4105 1 0 2 10 0.74433 1.4 0" biasprm="0.787627 1.32864 17.4105 1 0 2 10 0.74433 1.4 0"/>
+    <general name="MF_m1t.3_l" class="myoBack_muscle" tendon="MF_m1t.3_l_tendon" lengthrange="0.0595466 0.213709" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.793131 1.07252 28.4453 1 0 2 10 2.84487 1.4 0" biasprm="0.793131 1.07252 28.4453 1 0 2 10 2.84487 1.4 0"/>
+    <general name="MF_m2s_l" class="myoBack_muscle" tendon="MF_m2s_l_tendon" lengthrange="0.0422871 0.0815009" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.885418 1.67819 18.8709 1 0 2 10 0.868485 1.4 0" biasprm="0.885418 1.67819 18.8709 1 0 2 10 0.868485 1.4 0"/>
+    <general name="MF_m2t.1_l" class="myoBack_muscle" tendon="MF_m2t.1_l_tendon" lengthrange="0.0469176 0.139732" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.829963 1.43599 18.8482 1 0 2 10 0.784265 1.4 0" biasprm="0.829963 1.43599 18.8482 1 0 2 10 0.784265 1.4 0"/>
+    <general name="MF_m2t.2_l" class="myoBack_muscle" tendon="MF_m2t.2_l_tendon" lengthrange="0.042969 0.173236" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.758344 1.38739 48.246 1 0 2 10 0.712737 1.4 0" biasprm="0.758344 1.38739 48.246 1 0 2 10 0.712737 1.4 0"/>
+    <general name="MF_m2t.3_l" class="myoBack_muscle" tendon="MF_m2t.3_l_tendon" lengthrange="0.0558172 0.176465" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.837177 1.54527 48.4229 1 0 2 10 0.86465 1.4 0" biasprm="0.837177 1.54527 48.4229 1 0 2 10 0.86465 1.4 0"/>
+    <general name="MF_m3s_l" class="myoBack_muscle" tendon="MF_m3s_l_tendon" lengthrange="0.0302117 0.102183" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.762266 1.3719 26.3035 1 0 2 10 0.691791 1.4 0" biasprm="0.762266 1.3719 26.3035 1 0 2 10 0.691791 1.4 0"/>
+    <general name="MF_m3t.1_l" class="myoBack_muscle" tendon="MF_m3t.1_l_tendon" lengthrange="0.088171 0.16882" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.919958 1.31079 26.1353 1 0 2 10 0.645396 1.4 0" biasprm="0.919958 1.31079 26.1353 1 0 2 10 0.645396 1.4 0"/>
+    <general name="MF_m3t.2_l" class="myoBack_muscle" tendon="MF_m3t.2_l_tendon" lengthrange="0.0661069 0.148347" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.69285 1.73248 27.1617 1 0 2 10 0.793191 1.4 0" biasprm="0.69285 1.73248 27.1617 1 0 2 10 0.793191 1.4 0"/>
+    <general name="MF_m3t.3_l" class="myoBack_muscle" tendon="MF_m3t.3_l_tendon" lengthrange="0.0661069 0.148347" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.753929 1.40105 25.609 1 0 2 10 0.947917 1.4 0" biasprm="0.753929 1.40105 25.609 1 0 2 10 0.947917 1.4 0"/>
+    <general name="MF_m4s_l" class="myoBack_muscle" tendon="MF_m4s_l_tendon" lengthrange="0.0375139 0.0933657" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.856098 1.32056 25.8584 1 0 2 10 0.657498 1.4 0" biasprm="0.856098 1.32056 25.8584 1 0 2 10 0.657498 1.4 0"/>
+    <general name="MF_m4t.1_l" class="myoBack_muscle" tendon="MF_m4t.1_l_tendon" lengthrange="0.0489537 0.108897" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.924204 1.07335 22.5267 1 0 2 10 3.02141 1.4 0" biasprm="0.924204 1.07335 22.5267 1 0 2 10 3.02141 1.4 0"/>
+    <general name="MF_m4t.2_l" class="myoBack_muscle" tendon="MF_m4t.2_l_tendon" lengthrange="0.0703918 0.128949" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.973591 1.0071 22.6363 1 0 2 10 4.12952 1.4 0" biasprm="0.973591 1.0071 22.6363 1 0 2 10 4.12952 1.4 0"/>
+    <general name="MF_m4t.3_l" class="myoBack_muscle" tendon="MF_m4t.3_l_tendon" lengthrange="0.084869 0.150554" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.902947 1.57568 23.5128 1 0 2 10 0.820263 1.4 0" biasprm="0.902947 1.57568 23.5128 1 0 2 10 0.820263 1.4 0"/>
+    <general name="MF_m5s_l" class="myoBack_muscle" tendon="MF_m5s_l_tendon" lengthrange="0.0125952 0.0549305" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.891937 1.62632 12.2075 1 0 2 10 0.680187 1.4 0" biasprm="0.891937 1.62632 12.2075 1 0 2 10 0.680187 1.4 0"/>
+    <general name="MF_m5t.1_l" class="myoBack_muscle" tendon="MF_m5t.1_l_tendon" lengthrange="0.0827436 0.125703" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.706581 1.61954 11.5289 1 0 2 10 0.792739 1.4 0" biasprm="0.706581 1.61954 11.5289 1 0 2 10 0.792739 1.4 0"/>
+    <general name="MF_m5t.2_l" class="myoBack_muscle" tendon="MF_m5t.2_l_tendon" lengthrange="0.0609959 0.105349" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.809042 1.4756 11.3269 1 0 2 10 0.729731 1.4 0" biasprm="0.809042 1.4756 11.3269 1 0 2 10 0.729731 1.4 0"/>
+    <general name="MF_m5t.3_l" class="myoBack_muscle" tendon="MF_m5t.3_l_tendon" lengthrange="0.0405796 0.0907356" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.97622 1.0408 11.3739 1 0 2 10 1.84478 1.4 0" biasprm="0.97622 1.0408 11.3739 1 0 2 10 1.84478 1.4 0"/>
+    <general name="MF_m1.laminar_l" class="myoBack_muscle" tendon="MF_m1.laminar_l_tendon" lengthrange="0.027783 0.0581624" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.732637 1.43104 9.24702 1 0 2 10 0.894042 1.4 0" biasprm="0.732637 1.43104 9.24702 1 0 2 10 0.894042 1.4 0"/>
+    <general name="MF_m2.laminar_l" class="myoBack_muscle" tendon="MF_m2.laminar_l_tendon" lengthrange="0.023229 0.0508347" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.673489 1.59407 10.7238 1 0 2 10 0.906805 1.4 0" biasprm="0.673489 1.59407 10.7238 1 0 2 10 0.906805 1.4 0"/>
+    <general name="MF_m3.laminar_l" class="myoBack_muscle" tendon="MF_m3.laminar_l_tendon" lengthrange="0.0233145 0.0475018" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.689678 1.38758 11.2397 1 0 2 10 0.769349 1.4 0" biasprm="0.689678 1.38758 11.2397 1 0 2 10 0.769349 1.4 0"/>
+    <general name="MF_m4.laminar_l" class="myoBack_muscle" tendon="MF_m4.laminar_l_tendon" lengthrange="0.0179245 0.0772614" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.805485 1.39311 8.16546 1 0 2 10 0.745539 1.4 0" biasprm="0.805485 1.39311 8.16546 1 0 2 10 0.745539 1.4 0"/>
+    <general name="MF_m5.laminar_l" class="myoBack_muscle" tendon="MF_m5.laminar_l_tendon" lengthrange="0.0246755 0.0628863" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.912318 1.18098 17.4374 1 0 2 10 1.17545 1.4 0" biasprm="0.912318 1.18098 17.4374 1 0 2 10 1.17545 1.4 0"/>
+    <general name="EO1_r" class="myoBack_muscle" tendon="EO1_r_tendon" lengthrange="0.0392309 0.147356" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.606683 1.9863 54.702 1 0 2 10 4.65032 1.4 0" biasprm="0.606683 1.9863 54.702 1 0 2 10 4.65032 1.4 0"/>
+    <general name="EO2_r" class="myoBack_muscle" tendon="EO2_r_tendon" lengthrange="0.0451729 0.155696" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.191128 1.07235 183.123 1 0 2 10 1.54196 1.4 0" biasprm="0.191128 1.07235 183.123 1 0 2 10 1.54196 1.4 0"/>
+    <general name="EO3_r" class="myoBack_muscle" tendon="EO3_r_tendon" lengthrange="0.0434875 0.140931" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.629463 1.23173 123.573 1 0 2 10 1.21155 1.4 0" biasprm="0.629463 1.23173 123.573 1 0 2 10 1.21155 1.4 0"/>
+    <general name="EO4_r" class="myoBack_muscle" tendon="EO4_r_tendon" lengthrange="0.0688983 0.150772" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.931496 1.24767 125.378 1 0 2 10 1.33573 1.4 0" biasprm="0.931496 1.24767 125.378 1 0 2 10 1.33573 1.4 0"/>
+    <general name="EO5_r" class="myoBack_muscle" tendon="EO5_r_tendon" lengthrange="0.0663227 0.266885" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.619483 1.99 209.571 1 0 2 10 4.03161 1.4 0" biasprm="0.619483 1.99 209.571 1 0 2 10 4.03161 1.4 0"/>
+    <general name="EO6_r" class="myoBack_muscle" tendon="EO6_r_tendon" lengthrange="0.0510178 0.236736" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.346707 1.6136 133.746 1 0 2 10 2.60782 1.4 0" biasprm="0.346707 1.6136 133.746 1 0 2 10 2.60782 1.4 0"/>
+    <general name="IO1_r" class="myoBack_muscle" tendon="IO1_r_tendon" lengthrange="0.0784578 0.127374" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.68374 1.35316 88.7829 1 0 2 10 0.833677 1.4 0" biasprm="0.68374 1.35316 88.7829 1 0 2 10 0.833677 1.4 0"/>
+    <general name="IO2_r" class="myoBack_muscle" tendon="IO2_r_tendon" lengthrange="0.089974 0.121625" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.883159 1.59019 111.06 1 0 2 10 0.820427 1.4 0" biasprm="0.883159 1.59019 111.06 1 0 2 10 0.820427 1.4 0"/>
+    <general name="IO3_r" class="myoBack_muscle" tendon="IO3_r_tendon" lengthrange="0.118415 0.133788" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.955999 1.02471 114.385 1 0 2 10 2.28795 1.4 0" biasprm="0.955999 1.02471 114.385 1 0 2 10 2.28795 1.4 0"/>
+    <general name="IO4_r" class="myoBack_muscle" tendon="IO4_r_tendon" lengthrange="0.068495 0.259944" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.0136584 1.58536 190.421 1 0 2 10 5 1.4 0" biasprm="0.0136584 1.58536 190.421 1 0 2 10 5 1.4 0"/>
+    <general name="IO5_r" class="myoBack_muscle" tendon="IO5_r_tendon" lengthrange="0.0448549 0.200246" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.123837 1.55547 122.431 1 0 2 10 4.37035 1.4 0" biasprm="0.123837 1.55547 122.431 1 0 2 10 4.37035 1.4 0"/>
+    <general name="IO6_r" class="myoBack_muscle" tendon="IO6_r_tendon" lengthrange="0.0608242 0.226526" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.603004 1.85219 94.4598 1 0 2 10 3.31653 1.4 0" biasprm="0.603004 1.85219 94.4598 1 0 2 10 3.31653 1.4 0"/>
+    <general name="EO1_l" class="myoBack_muscle" tendon="EO1_l_tendon" lengthrange="0.0392366 0.14736" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.342031 1.87607 97.128 1 0 2 10 3.1693 1.4 0" biasprm="0.342031 1.87607 97.128 1 0 2 10 3.1693 1.4 0"/>
+    <general name="EO2_l" class="myoBack_muscle" tendon="EO2_l_tendon" lengthrange="0.0451702 0.155696" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.171163 1.10159 180.719 1 0 2 10 0.791551 1.4 0" biasprm="0.171163 1.10159 180.719 1 0 2 10 0.791551 1.4 0"/>
+    <general name="EO3_l" class="myoBack_muscle" tendon="EO3_l_tendon" lengthrange="0.0434925 0.140932" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.593378 1.2583 126.236 1 0 2 10 0.661592 1.4 0" biasprm="0.593378 1.2583 126.236 1 0 2 10 0.661592 1.4 0"/>
+    <general name="EO4_l" class="myoBack_muscle" tendon="EO4_l_tendon" lengthrange="0.0688966 0.150771" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.981584 1.47077 129.465 1 0 2 10 0.714091 1.4 0" biasprm="0.981584 1.47077 129.465 1 0 2 10 0.714091 1.4 0"/>
+    <general name="EO5_l" class="myoBack_muscle" tendon="EO5_l_tendon" lengthrange="0.066312 0.266898" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.928095 1.87359 243.216 1 0 2 10 4.87265 1.4 0" biasprm="0.928095 1.87359 243.216 1 0 2 10 4.87265 1.4 0"/>
+    <general name="EO6_l" class="myoBack_muscle" tendon="EO6_l_tendon" lengthrange="0.0510108 0.236752" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.260805 1.4605 147.532 1 0 2 10 3.49934 1.4 0" biasprm="0.260805 1.4605 147.532 1 0 2 10 3.49934 1.4 0"/>
+    <general name="IO1_l" class="myoBack_muscle" tendon="IO1_l_tendon" lengthrange="0.0784759 0.127385" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.717007 1.31197 87.1701 1 0 2 10 1.03452 1.4 0" biasprm="0.717007 1.31197 87.1701 1 0 2 10 1.03452 1.4 0"/>
+    <general name="IO2_l" class="myoBack_muscle" tendon="IO2_l_tendon" lengthrange="0.0899881 0.121636" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.819517 1.67877 112.426 1 0 2 10 0.805574 1.4 0" biasprm="0.819517 1.67877 112.426 1 0 2 10 0.805574 1.4 0"/>
+    <general name="IO3_l" class="myoBack_muscle" tendon="IO3_l_tendon" lengthrange="0.118431 0.133801" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.926899 1.5002 117.365 1 0 2 10 0.764234 1.4 0" biasprm="0.926899 1.5002 117.365 1 0 2 10 0.764234 1.4 0"/>
+    <general name="IO4_l" class="myoBack_muscle" tendon="IO4_l_tendon" lengthrange="0.068478 0.259959" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.180501 1.65711 184.643 1 0 2 10 4.04509 1.4 0" biasprm="0.180501 1.65711 184.643 1 0 2 10 4.04509 1.4 0"/>
+    <general name="IO5_l" class="myoBack_muscle" tendon="IO5_l_tendon" lengthrange="0.0448393 0.200258" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.363877 1.55151 113.569 1 0 2 10 4.46984 1.4 0" biasprm="0.363877 1.55151 113.569 1 0 2 10 4.46984 1.4 0"/>
+    <general name="IO6_l" class="myoBack_muscle" tendon="IO6_l_tendon" lengthrange="0.0608054 0.226538" dynprm="0.015 0.05 0 0 0 0 0 0 0 0" gainprm="0.612095 1.86427 92.7048 1 0 2 10 3.33474 1.4 0" biasprm="0.612095 1.86427 92.7048 1 0 2 10 3.33474 1.4 0"/>
+  </actuator>
+</mujocoinclude>

@@ -31,15 +31,27 @@ import numpy as np
 
 pytestmark = [pytest.mark.tier2]
 
-_SKIP = pytest.mark.skipif(
-    not (
+
+def _hand_fragment_available() -> bool:
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        if (myo_sim.MODELS_DIR / "hand" / "myohand_r.xml").exists():
+            return True
+    except (ImportError, AttributeError):
+        pass
+    return (
         __import__("pathlib").Path(__file__).parents[1]
         / "simhive"
         / "myo_sim"
         / "hand"
         / "myohand.xml"
-    ).exists(),
-    reason="simhive submodule not initialised",
+    ).exists()
+
+
+_SKIP = pytest.mark.skipif(
+    not _hand_fragment_available(),
+    reason="myo_sim pip package or simhive submodule required",
 )
 
 

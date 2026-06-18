@@ -72,15 +72,9 @@ def _resolve_model_root() -> Path:
 
 
 def _resolve_leg_dir() -> Path:
-    try:
-        import myo_sim  # type: ignore[import-untyped]
+    from myosuite.utils.simhive_path import get_simhive_asset_root
 
-        if hasattr(myo_sim, "MODELS_DIR") and (myo_sim.MODELS_DIR / "leg").exists():
-            return myo_sim.MODELS_DIR / "leg"
-    except ImportError:
-        pass
-    root = _resolve_model_root()
-    return root / "simhive" / "myo_sim" / "leg"
+    return get_simhive_asset_root("myo_sim") / "leg"
 
 
 _MYOSUITE_ROOT = _resolve_model_root()

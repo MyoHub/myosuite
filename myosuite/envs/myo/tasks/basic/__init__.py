@@ -13,24 +13,13 @@ import numpy as np
 
 import myosuite.core.registry as _registry
 from myosuite.envs.myo.assets._resolve import (
+    resolve_arm_xml as _resolve_arm_xml,
     resolve_elbow_xml as _resolve_elbow_xml,
     resolve_finger_xml as _resolve_finger_xml,
 )
+from myosuite.utils.simhive_path import get_simhive_asset_root as _get_simhive_root
 
-
-def _simhive_root() -> pathlib.Path:
-    """Resolve myo_sim model root: pip package first, submodule fallback."""
-    try:
-        import myo_sim  # type: ignore[import-untyped]
-
-        if hasattr(myo_sim, "MODELS_DIR") and myo_sim.MODELS_DIR.exists():
-            return myo_sim.MODELS_DIR
-    except ImportError:
-        pass
-    return pathlib.Path(__file__).parents[4] / "simhive" / "myo_sim"
-
-
-_SIMHIVE_ROOT = _simhive_root()
+_SIMHIVE_ROOT = _get_simhive_root("myo_sim")
 _ASSETS_ROOT = pathlib.Path(__file__).parents[2] / "assets"
 
 
@@ -781,7 +770,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=150,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "arm" / "myoarm_reach.xml"),
+        "model_path": str(_resolve_arm_xml("myoarm_reach.xml")),
         "target_reach_range": {
             "forearm_tip": ((-0.2, -0.2, 1.2), (-0.2, -0.2, 1.2)),
         },
@@ -795,7 +784,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=150,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "arm" / "myoarm_reach.xml"),
+        "model_path": str(_resolve_arm_xml("myoarm_reach.xml")),
         "target_reach_range": {
             "forearm_tip": (
                 (-0.2 - 0.15, -0.2 - 0.15, 1.2 - 0.15),
