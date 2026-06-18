@@ -118,6 +118,25 @@ def _myohand_r_path() -> Path | None:
     return None
 
 
+def _calibrate_compose_hand_root(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+    """Reposition the myo_sim-pip-composed hand to the legacy world frame.
+
+    ``load_right_hand_from_arm_spec()`` returns the hand still rooted at
+    ``myoarm_r_root``, which sits at the world origin in myo_sim pip's
+    PR-#73 arm-chain convention. All of this module's hand-task furniture
+    (key, pen, balls, targets) uses absolute world positions calibrated
+    against the legacy ``thorax``-rooted frame instead. Apply the rigid
+    transform (fit via Kabsch on S_grasp/IFtip/THtip/lunate/radius
+    landmarks at qpos0, residual < 4e-5 m) that maps the new root onto the
+    legacy frame, so existing task furniture lines up without every task
+    recipe needing its own correction.
+    """
+    root = spec.body("myoarm_r_root")
+    root.pos = [-0.02525155, 0.07146933, 1.39249298]
+    root.quat = [0.52167746, 0.46981366, -0.47875126, -0.52718591]
+    return spec
+
+
 def _hand_builder() -> ModelBuilder:
     """Return a ModelBuilder seeded with myohand_r.xml, or fall back to compose/fragment."""
     p = _myohand_r_path()
@@ -126,7 +145,8 @@ def _hand_builder() -> ModelBuilder:
     try:
         from myo_sim.build.compose import load_right_hand_from_arm_spec  # type: ignore[import-untyped]
 
-        return ModelBuilder().attach_spec(load_right_hand_from_arm_spec(), name="hand")
+        hand_spec = _calibrate_compose_hand_root(load_right_hand_from_arm_spec())
+        return ModelBuilder().attach_spec(hand_spec, name="hand")
     except (ImportError, AttributeError):
         return ModelBuilder().attach_fragment("hand")
 

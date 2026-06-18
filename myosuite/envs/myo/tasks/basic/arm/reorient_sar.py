@@ -113,6 +113,8 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
         self.model.body_mass[self.obj_bid] *= 1.25
 
         self.obs_keys = list(self.DEFAULT_OBS_KEYS)
+        if self.model.na > 0 and "act" not in self.obs_keys:
+            self.obs_keys.append("act")
         self.rwd_keys_wt = dict(self.DEFAULT_RWD_KEYS_AND_WEIGHTS)
 
         mujoco.mj_resetData(self.model, self.data)
@@ -216,7 +218,7 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
         return {}
 
     def _obs_dict_to_vec(self, obs_dict: dict[str, np.ndarray]) -> np.ndarray:
-        """Flatten only obs_keys so act is not in the observation vector."""
+        """Flatten only the keys in obs_keys, in obs_keys order."""
         return np.concatenate(
             [np.atleast_1d(obs_dict[k]).ravel() for k in self.obs_keys if k in obs_dict]
         )
