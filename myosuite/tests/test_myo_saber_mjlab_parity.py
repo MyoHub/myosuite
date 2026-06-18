@@ -350,8 +350,8 @@ def test_myo_challenge_saber_mjlab_mimic_mix_preserves_native_reset() -> None:
         aug_policy = aug_obs["policy"][0].detach().cpu().numpy()
 
         assert native_policy.shape[0] == 632
-        assert env_only_policy.shape[0] == 1570
-        assert aug_policy.shape[0] == 1570
+        assert env_only_policy.shape[0] == 1600
+        assert aug_policy.shape[0] == 1600
         assert np.allclose(np.asarray(cpu_obs), native_policy, atol=1e-6)
         assert np.allclose(env_only_policy[:632], native_policy, atol=1e-6)
         assert np.allclose(aug_policy[:632], native_policy, atol=1e-6)

@@ -1,3 +1,0 @@
-[submodule "myosuite/simhive/myo_sim"]
-	path = myosuite/simhive/myo_sim
-	url = https://github.com/Balint-H/myo_sim.git

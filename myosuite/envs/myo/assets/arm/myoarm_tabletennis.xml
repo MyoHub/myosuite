@@ -10,7 +10,9 @@
     <include file="../../../../simhive/myo_sim/torso/assets/myotorso_assets.xml"/>
     <include file="../../../../simhive/myo_sim/head/assets/myohead_simple_assets.xml"/>
     <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
-    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_assets.xml"/>
+    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_tendons.xml"/>
+    <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_muscles.xml"/>
     <include file="../../../../simhive/myo_sim/scene/myosuite_quad.xml"/>
     <compiler angle="radian" meshdir='../../../../simhive/myo_sim' texturedir='../../../../simhive/myo_sim/'/>
 
@@ -35,7 +37,7 @@
         <material name="floor_mat" rgba="0.3 0 0 1"/>
     </asset>
 
-    <default class="main">
+    <default>
         <default class="visual">
             <geom group="2" type="mesh" contype="0" conaffinity="0"/>
         </default>

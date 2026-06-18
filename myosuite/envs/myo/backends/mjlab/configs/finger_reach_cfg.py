@@ -9,7 +9,7 @@ from __future__ import annotations
 import pathlib
 from dataclasses import dataclass, field
 
-_SIMHIVE = pathlib.Path(__file__).parents[5] / "simhive" / "myo_sim"
+from myosuite.utils.simhive_path import get_simhive_asset_root
 
 
 @dataclass
@@ -17,7 +17,9 @@ class FingerReachCfg:
     """Configuration for the finger reach task on mjlab."""
 
     model_path: pathlib.Path = field(
-        default_factory=lambda: _SIMHIVE / "finger" / "myofinger_v0.xml"
+        default_factory=lambda: get_simhive_asset_root("myo_sim")
+        / "finger"
+        / "myofinger_v0.xml"
     )
     sim_dt: float = 0.002
     ctrl_dt: float = 0.02
