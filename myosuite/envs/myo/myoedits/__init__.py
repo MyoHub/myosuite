@@ -4,13 +4,12 @@
 # LICENSE file in the root directory of this source tree.
 """Registration of myoedits environments (arm-reach with procedural model edits)."""
 
-import pathlib
-
 import mujoco
 
 import myosuite.core.registry as _registry
+from myosuite.utils.simhive_path import get_simhive_asset_root
 
-_SIMHIVE_ROOT = pathlib.Path(__file__).parents[3] / "simhive" / "myo_sim"
+_SIMHIVE_ROOT = get_simhive_asset_root("myo_sim")
 
 
 # Arm Reaching ==============================

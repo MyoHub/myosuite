@@ -14,7 +14,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium.utils import EzPickle
 
-from myosuite.core.model_builder import ModelBuilder
+from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
     sample_geometry_8,
@@ -53,7 +53,7 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
 
     def __init__(
         self,
-        model_path: str,
+        model_path: str = "",
         obsd_model_path: str | None = None,
         seed: int | None = None,
         normalize_act: bool = True,
@@ -72,13 +72,20 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
             frame_skip=frame_skip,
             **kwargs,
         )
-        self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
+        model_recipe = kwargs.pop("model_recipe", None)
+        if model_recipe is not None:
+            self.model, self._mj_spec = build_from_recipe(model_recipe)
+            self._name_sfx = "_r"
+        else:
+            self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
+            self._name_sfx = ""
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
         self.normalize_act = normalize_act
 
+        sfx = self._name_sfx
         self.target_obj_bid = self.model.body("target").id
-        self.S_grasp_sid = self.model.site("S_grasp").id
+        self.S_grasp_sid = self.model.site(f"S_grasp{sfx}").id
         self.obj_bid = self.model.body("Object").id
         self.eps_ball_sid = self.model.site("eps_ball").id
         self.success_indicator_sid = self.model.site("success").id

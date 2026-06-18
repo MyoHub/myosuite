@@ -15,8 +15,7 @@ Composable MJCF model builder using MuJoCo 3's MjSpec API.
     or instantiate the environment class directly.
 
 ModelBuilder is a lazy recipe — it records fragment attachments, prop bodies,
-and MjSpec transforms without compiling until :meth:`build` is called.  Results
-are SHA-256 content-hashed and cached, so identical recipes compile only once.
+and MjSpec transforms without compiling until :meth:`build` is called.
 
 Current limitations
 -------------------
@@ -60,7 +59,7 @@ Alternatives
 
 from __future__ import annotations
 
-import hashlib
+
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeAlias
@@ -71,9 +70,6 @@ import mujoco
 
 # Registry of named model recipes (populated by @model_recipe decorator)
 _RECIPES: dict[str, Callable] = {}
-
-# Cache: content_hash -> MjSpec (model is compiled fresh from spec on each hit)
-_MODEL_CACHE: dict[str, mujoco.MjSpec] = {}
 
 _IDENTITY_QUAT: np.ndarray = np.array([1.0, 0.0, 0.0, 0.0])
 _ZERO_POS: np.ndarray = np.zeros(3)
@@ -91,6 +87,7 @@ class _FragmentSpec:
     parent: str = "worldbody"
     pos: np.ndarray = field(default_factory=lambda: np.zeros(3))
     quat: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0, 0.0]))
+    spec: mujoco.MjSpec | None = field(default=None, compare=False)
 
 
 @dataclass
@@ -180,51 +177,35 @@ def _resolve_fragment_path(name: str) -> Path:
     Raises:
         FileNotFoundError: If the fragment cannot be resolved.
     """
+    registry_names = (name, "myohand_r") if name == "hand" else (name,)
+
     # Try new myo_sim package with FragmentRegistry
     try:
         import myo_sim  # type: ignore[import-untyped]
 
         if hasattr(myo_sim, "FragmentRegistry"):
-            try:
-                info = myo_sim.FragmentRegistry.get(name)
-                return Path(info.path)
-            except KeyError:
-                # myo_sim is installed but this fragment is not registered there;
-                # fall through to the simhive submodule fallback below.
-                pass
+            for registry_name in registry_names:
+                try:
+                    info = myo_sim.FragmentRegistry.get(registry_name)
+                    return Path(info.path)
+                except KeyError:
+                    # myo_sim is installed but this fragment is not registered
+                    # there; try aliases before falling through to simhive.
+                    pass
     except ImportError:
-        pass  # myo_sim not installed; use simhive submodule fallback
-
-    here = Path(__file__).parent.parent  # myosuite/
-    simhive = here / "simhive" / "myo_sim"
+        pass
 
     # Issue #75 scoped convention: "kinematics/<name>" or "parts/<name>".
-    # When the new directory structure lands in the submodule we resolve
-    # directly; otherwise we strip the scope and fall back to the plain name.
     if "/" in name:
-        scope, base = name.split("/", 1)
-        if scope == "kinematics":
-            candidate = simhive / "kinematics" / base / "body.xml"
-            if candidate.exists():
-                return candidate
-        elif scope == "parts":
-            candidate = simhive / "parts" / base / "muscles.xml"
-            if candidate.exists():
-                return candidate
-        # Pre-Issue-#75 fallback: resolve the base name as a plain fragment.
-        name = base
+        name = name.split("/", 1)[1]
 
-    # Fallback: look in the simhive submodule via the legacy path map.
-    # PR #73 entries (arm_left, arms) will be live once the submodule is
-    # updated to include myoarmL_body.xml / myoarms.xml.
+    # Pip-package fallback: resolve plain fragment name via the legacy path map.
     _FALLBACK_PATHS: dict[str, str] = {
         "elbow": "elbow/myoelbow_2dof6muscles.xml",
-        "hand": "hand/myohand.xml",
+        "hand": "hand/myohand_r.xml",
         "finger": "finger/myofinger_v0.xml",
         "shoulder": "arm/myoarm.xml",
         "arm": "arm/myoarm.xml",
-        # PR #73: left arm (all body names suffixed with _left) and
-        # bimanual assembly (77 DOF, 126 muscles, right bodies get _r suffix).
         "arm_left": "arm/myoarmL_body.xml",
         "arms": "arm/myoarms.xml",
         "leg": "leg/myolegs.xml",
@@ -233,17 +214,37 @@ def _resolve_fragment_path(name: str) -> Path:
         "torso": "torso/myotorso.xml",
     }
     if name in _FALLBACK_PATHS:
-        candidate = simhive / _FALLBACK_PATHS[name]
-        if candidate.exists():
-            return candidate
+        from myosuite.utils.simhive_path import get_simhive_asset_root
+
+        try:
+            candidate = get_simhive_asset_root("myo_sim") / _FALLBACK_PATHS[name]
+            if candidate.exists():
+                return candidate
+        except FileNotFoundError:
+            pass
 
     raise FileNotFoundError(
         f"Cannot resolve fragment {name!r}. "
-        "Initialize the myo_sim git submodule "
-        "(run: `git submodule update --init --recursive`). "
-        "MJCF fragments live under myosuite/simhive/myo_sim; "
-        "there is no PyPI myo-sim package."
+        "Install the myo-sim pip package (`pip install myo-sim`)."
     )
+
+
+def _try_myo_sim_compose(name: str) -> mujoco.MjSpec | None:
+    """Return a fragment-only MjSpec from myo_sim's compose pipeline, or None.
+
+    Consults ``myo_sim._FRAGMENT_SPEC_BUILDERS`` so that names like ``"hand"``
+    are transparently routed through the build-system compose path instead of
+    falling back to a static bundled XML.  Returns None if myo_sim is not
+    installed, is too old to have the registry, or the name is not a composed
+    fragment.
+    """
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        builder = getattr(myo_sim, "_FRAGMENT_SPEC_BUILDERS", {}).get(name)
+        return builder() if builder is not None else None
+    except Exception:  # ImportError, compose failures, etc.
+        return None
 
 
 def _get_parent_body(spec: mujoco.MjSpec, parent: str) -> mujoco.MjsBody:
@@ -414,6 +415,35 @@ class ModelBuilder:
             Self, for method chaining.
         """
         self._fragments.append(_FragmentSpec(name=name, parent=parent))
+        return self
+
+    def attach_spec(
+        self,
+        spec: mujoco.MjSpec,
+        name: str = "<inline>",
+        parent: str = "worldbody",
+    ) -> ModelBuilder:
+        """Attach a pre-built MjSpec fragment directly, bypassing file resolution.
+
+        Use this when the fragment is composed programmatically rather than
+        loaded from a static XML file — for example, a hand pruned from the
+        full arm via ``myo_sim.build.compose.load_right_hand_from_arm_spec()``.
+
+        Args:
+            spec: A fully-constructed ``mujoco.MjSpec`` to attach.
+            name: Label used in error messages and cache keys (not a file path).
+            parent: Name of the parent body to attach to.
+
+        Returns:
+            Self, for method chaining.
+
+        Example:
+            >>> from myo_sim.build.compose import load_right_hand_from_arm_spec
+            >>> model, spec = ModelBuilder().attach_spec(
+            ...     load_right_hand_from_arm_spec(), name="hand"
+            ... ).build()
+        """
+        self._fragments.append(_FragmentSpec(name=name, parent=parent, spec=spec))
         return self
 
     def attach_kinematics(self, name: str, parent: str = "worldbody") -> ModelBuilder:
@@ -681,50 +711,8 @@ class ModelBuilder:
 
         return self.apply_transform(_sarco)
 
-    def _content_hash(self) -> str:
-        """Compute a cache key from fragment file contents, positions, and transforms."""
-        h = hashlib.sha256()
-        for frag in self._fragments:
-            try:
-                path = _resolve_fragment_path(frag.name)
-                h.update(path.read_bytes())
-            except FileNotFoundError:
-                h.update(frag.name.encode())
-            h.update(frag.parent.encode())
-            h.update(frag.pos.tobytes())
-            h.update(frag.quat.tobytes())
-        for fb in self._free_bodies:
-            h.update(fb.name.encode())
-            h.update(fb.pos.tobytes())
-            h.update(fb.quat.tobytes())
-            h.update(fb.geom_size.tobytes())
-            h.update(fb.rgba.tobytes())
-            h.update(str(fb.geom_type).encode())
-            h.update(str(fb.mass).encode())
-            h.update(str(fb.condim).encode())
-        for mb in self._mesh_bodies:
-            h.update(mb.name.encode())
-            h.update(mb.mesh_file.read_bytes())
-            h.update(mb.pos.tobytes())
-            h.update(mb.quat.tobytes())
-            h.update(mb.scale.tobytes())
-            h.update(mb.rgba.tobytes())
-            if mb.texture_file is not None:
-                h.update(mb.texture_file.read_bytes())
-            h.update(str(mb.material_shininess).encode())
-            h.update(str(mb.material_specular).encode())
-        if self._xml_path is not None:
-            try:
-                h.update(self._xml_path.read_bytes())
-            except FileNotFoundError:
-                h.update(str(self._xml_path).encode())
-        h.update(str(self._timestep).encode())
-        h.update(str(self._disable_contacts).encode())
-        h.update(str(len(self._transforms)).encode())
-        return h.hexdigest()
-
     def build(self) -> tuple[mujoco.MjModel, mujoco.MjSpec]:
-        """Compile the spec into a MjModel, using the cache if available.
+        """Compile the spec into a MjModel.
 
         Returns:
             Tuple of (MjModel, MjSpec).
@@ -733,11 +721,6 @@ class ModelBuilder:
             FileNotFoundError: If a fragment XML cannot be resolved.
             KeyError: If a named parent body does not exist in the spec.
         """
-        key = self._content_hash()
-        if key in _MODEL_CACHE:
-            cached_spec = _MODEL_CACHE[key]
-            return cached_spec.compile(), cached_spec
-
         if self._xml_path is not None:
             if not self._xml_path.exists():
                 raise FileNotFoundError(f"XML not found: {self._xml_path}")
@@ -748,8 +731,15 @@ class ModelBuilder:
             spec.timestep = self._timestep
 
         for frag in self._fragments:
-            path = _resolve_fragment_path(frag.name)
-            frag_spec = mujoco.MjSpec.from_file(str(path))
+            if frag.spec is not None:
+                frag_spec = frag.spec
+            else:
+                composed = _try_myo_sim_compose(frag.name)
+                if composed is not None:
+                    frag_spec = composed
+                else:
+                    path = _resolve_fragment_path(frag.name)
+                    frag_spec = mujoco.MjSpec.from_file(str(path))
             parent_body = _get_parent_body(spec, frag.parent)
             frame = parent_body.add_frame()
             frame.pos = frag.pos
@@ -777,7 +767,6 @@ class ModelBuilder:
         for transform in self._transforms:
             spec = transform(spec)
 
-        _MODEL_CACHE[key] = spec
         return spec.compile(), spec
 
 

@@ -76,16 +76,54 @@ def get_simhive_asset_root(sim_name: str) -> Path:
         return local_root
     pkg_root = _installed_package_root(module_name)
     if pkg_root is not None:
-        return pkg_root
+        models_dir = pkg_root / "models"
+        return models_dir if models_dir.exists() else pkg_root
     if sim_name == "myo_sim":
         raise FileNotFoundError(
             "Unable to resolve myo_sim assets. "
-            "Run: git submodule update --init myosuite/simhive/myo_sim"
+            "Install via pip (`pip install myo-sim`) or run: git submodule update --init myosuite/simhive/myo_sim"
         )
     raise FileNotFoundError(
         f"Unable to resolve simhive assets for {sim_name}. "
         f"Install via pip or place files under {local_root}."
     )
+
+
+_MYOSUITE_ASSETS = Path(__file__).resolve().parents[1] / "envs" / "myo" / "assets"
+
+# Files that existed in the myo_sim submodule but are absent from the pip package.
+# They are bundled in myosuite/envs/myo/assets/ as a compatibility shim until the
+# upstream pip package ships them.
+_MYO_SIM_BUNDLED_FALLBACKS: dict[str, Path] = {
+    "arm/assets/myoarm_assets.xml": _MYOSUITE_ASSETS
+    / "arm"
+    / "assets"
+    / "myoarm_assets.xml",
+    "arm/assets/myoarm_body.xml": _MYOSUITE_ASSETS
+    / "arm"
+    / "assets"
+    / "myoarm_body.xml",
+    "hand/assets/myohand_assets.xml": _MYOSUITE_ASSETS
+    / "hand"
+    / "assets"
+    / "myohand_assets.xml",
+    "hand/assets/myohand_body.xml": _MYOSUITE_ASSETS
+    / "hand"
+    / "assets"
+    / "myohand_body.xml",
+    "torso/assets/myotorso_arm_chain.xml": _MYOSUITE_ASSETS
+    / "torso"
+    / "assets"
+    / "myotorso_arm_chain.xml",
+    "torso/assets/myotorso_rigid_assets.xml": _MYOSUITE_ASSETS
+    / "torso"
+    / "assets"
+    / "myotorso_rigid_assets.xml",
+    "torso/assets/myotorso_rigid_chain.xml": _MYOSUITE_ASSETS
+    / "torso"
+    / "assets"
+    / "myotorso_rigid_chain.xml",
+}
 
 
 def _resolve_legacy_simhive_path(include_file: str) -> Path | None:
@@ -106,7 +144,13 @@ def _resolve_legacy_simhive_path(include_file: str) -> Path | None:
     if sim_idx + 1 >= len(posix_parts):
         return base
     rel_tail = Path(*posix_parts[sim_idx + 1 :])
-    return base / rel_tail
+    resolved = base / rel_tail
+    if not resolved.exists() and sim_name == "myo_sim":
+        rel_key = "/".join(posix_parts[sim_idx + 1 :])
+        fallback = _MYO_SIM_BUNDLED_FALLBACKS.get(rel_key)
+        if fallback is not None and fallback.exists():
+            return fallback
+    return resolved
 
 
 def _rewrite_relative_package_path(raw: str) -> Path | None:
@@ -203,6 +247,14 @@ def _absolutize_include(source: Path) -> Path:
             if resolved.exists():
                 elem.set(attr, str(resolved))
                 changed = True
+            elif attr == "file":
+                # Simhive not present; try resolving via pip package.
+                fallback = _rewrite_relative_package_path(raw)
+                if fallback is None:
+                    fallback = _resolve_legacy_simhive_path(raw)
+                if fallback is not None and fallback.exists():
+                    elem.set(attr, str(fallback))
+                    changed = True
 
     if not changed:
         _PATCHED_INCLUDE_CACHE[source] = source
@@ -223,11 +275,19 @@ def _path_resolves(model_path: Path, raw: str) -> bool:
     return (model_path.parent / candidate).resolve().exists()
 
 
-def _try_rewrite(model_path: Path, raw: str) -> str | None:
+def _try_rewrite(
+    model_path: Path, raw: str, old_meshdir: Path | None = None
+) -> str | None:
     if not raw.strip() or raw.strip().lower().startswith("http"):
         return None
     if _path_resolves(model_path, raw):
         return None
+    # If the old meshdir is known, try resolving the path against it (for local assets
+    # that use paths relative to the OLD meshdir, which is no longer valid after rewrite).
+    if old_meshdir is not None:
+        candidate = (old_meshdir / raw).resolve()
+        if candidate.exists():
+            return str(candidate)
     for candidate in (
         _resolve_legacy_simhive_path(raw),
         _rewrite_relative_package_path(raw),
@@ -255,13 +315,24 @@ def resolve_model_xml_path(model_path: str | Path) -> Path:
         return model_path
 
     changed = False
+    old_meshdir: Path | None = None
     for elem in tree.getroot().iter():
         for attr in _PATH_ATTRIBUTES:
             raw = elem.get(attr)
             if not raw:
                 continue
-            new = _try_rewrite(model_path, raw)
+            new = _try_rewrite(model_path, raw, old_meshdir=old_meshdir)
             if new is not None:
+                if attr == "meshdir":
+                    # Capture old meshdir (resolved relative to model file) before overwriting.
+                    # Don't check existence — the old dir may be a submodule not checked out,
+                    # but paths relative to it (e.g. ../../envs/myo/assets/) may still resolve
+                    # to existing files once Path.resolve() collapses the `..` segments.
+                    _old = Path(raw)
+                    if not _old.is_absolute():
+                        _old = (model_path.parent / _old).resolve()
+                    if old_meshdir is None:
+                        old_meshdir = _old
                 elem.set(attr, new)
                 changed = True
 

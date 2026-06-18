@@ -90,11 +90,22 @@ class _FakeAccessorWithModel(_FakeAccessor):
 # ---------------------------------------------------------------------------
 
 
+def _make_fatigue_model(n: int) -> CumulativeFatigue:  # noqa: F821
+    """Build a CumulativeFatigue with n uniform muscle actuators (no real MjModel needed)."""
+    import mujoco
+    from myosuite.core.muscle_conditions import CumulativeFatigue
+
+    mock = MagicMock()
+    mock.opt.timestep = 0.002
+    mock.nu = n
+    mock.actuator_dyntype = np.full(n, mujoco.mjtDyn.mjDYN_MUSCLE)
+    mock.actuator_dynprm = np.tile([0.01, 0.04] + [0.0] * 8, (n, 1))
+    return CumulativeFatigue(mock, use_uniform_params=True)
+
+
 class TestCumulativeFatigue:
     def test_init_compartments(self) -> None:
-        from myosuite.core.muscle_conditions import CumulativeFatigue
-
-        f = CumulativeFatigue(n_muscles=6)
+        f = _make_fatigue_model(6)
         assert f.MA.shape == (6,)
         assert f.MF.shape == (6,)
         assert f.MR.shape == (6,)
@@ -103,33 +114,25 @@ class TestCumulativeFatigue:
         assert np.all(f.MR == 1.0)
 
     def test_step_output_shape(self) -> None:
-        from myosuite.core.muscle_conditions import CumulativeFatigue
-
-        f = CumulativeFatigue(n_muscles=3)
+        f = _make_fatigue_model(3)
         out = f.step(np.ones(3) * 0.5, dt=0.01)
         assert out.shape == (3,)
 
     def test_step_output_within_bounds(self) -> None:
-        from myosuite.core.muscle_conditions import CumulativeFatigue
-
-        f = CumulativeFatigue(n_muscles=4)
+        f = _make_fatigue_model(4)
         for _ in range(50):
             out = f.step(np.random.rand(4), dt=0.01)
         assert np.all(out >= 0.0)
         assert np.all(out <= 1.0)
 
     def test_step_monotone_accumulation(self) -> None:
-        from myosuite.core.muscle_conditions import CumulativeFatigue
-
-        f = CumulativeFatigue(n_muscles=2)
+        f = _make_fatigue_model(2)
         # MA should increase from zero when excitation > MA
         f.step(np.ones(2), dt=1.0)
         assert np.all(f.MA > 0.0), "Active compartment must grow"
 
     def test_reset_restores_initial_state(self) -> None:
-        from myosuite.core.muscle_conditions import CumulativeFatigue
-
-        f = CumulativeFatigue(n_muscles=3)
+        f = _make_fatigue_model(3)
         for _ in range(20):
             f.step(np.ones(3) * 0.8, dt=0.01)
         f.reset()
@@ -138,9 +141,9 @@ class TestCumulativeFatigue:
         assert np.all(f.MR == 1.0)
 
     def test_custom_rates(self) -> None:
-        from myosuite.core.muscle_conditions import CumulativeFatigue
-
-        f = CumulativeFatigue(n_muscles=2, F=0.1, R=0.05)
+        f = _make_fatigue_model(2)
+        f.set_FatigueCoefficient(0.1)
+        f.set_RecoveryCoefficient(0.05)
         assert f.F == pytest.approx(0.1)
         assert f.R == pytest.approx(0.05)
 

@@ -32,7 +32,6 @@ Behaviour:
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import pytest
 
@@ -83,12 +82,13 @@ def test_mjx_gpu_smoke() -> None:
             "has been run in this environment."
         )
 
-    # Use the standard myofinger MJCF used elsewhere in the test suite.
-    xml_path = Path("myosuite/simhive/myo_sim/finger/myofinger_v0.xml")
+    from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+
+    xml_path = resolve_finger_xml("myofinger_v0.xml")
     if not xml_path.exists():
         pytest.skip(
-            f"Simhive XML not found at {xml_path}. "
-            "Run `uv run myoapi_init` (or otherwise fetch simhive) first."
+            f"finger model not found at {xml_path}. "
+            "Install myo-sim: `pip install myo-sim` or fetch simhive."
         )
 
     model = mujoco.MjModel.from_xml_path(str(xml_path))

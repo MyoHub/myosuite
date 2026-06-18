@@ -35,9 +35,10 @@ dependencies = [
     "packaging",
     "gitpython",
     "ml-collections>=0.1.1",
+    "myo-sim @ git+https://github.com/MyoHub/myo_sim.git@mm_refactor_mjspec",
     "furniture-sim @ git+https://github.com/MyoHub/furniture_sim.git@v0.2.0",
-    "mpl-sim @ git+https://github.com/MyoHub/MPL_sim.git@v0.2.0",
-    "object-sim @ git+https://github.com/MyoHub/object_sim.git@v0.1.0",
+    "mpl-sim @ git+https://github.com/MyoHub/MPL_sim.git@v0.2.1",
+    "object-sim @ git+https://github.com/MyoHub/object_sim.git@v0.1.1",
     "ycb-sim @ git+https://github.com/MyoHub/YCB_sim.git@v0.2.0",
     "onnxruntime<1.21",
     "scikit-learn>=1.7.2",
@@ -63,7 +64,6 @@ mjlab = [
     "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14' and sys_platform != 'win32'",
     "mujoco-warp>=3.7.0; python_version >= '3.10' and python_version < '3.14' and sys_platform != 'win32'",
 ]
-# myo_sim MJCF lives in the git submodule myosuite/simhive/myo_sim (not a PyPI package).
 mjx = [
     "jax>=0.4.20; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
     "jaxlib>=0.4.20; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
@@ -139,8 +139,6 @@ py-modules = ["myosuite_init"]
 ]
 
 [project.scripts]
-myoapi_init = "myosuite_init:fetch_simhive"
-myoapi_clean = "myosuite_init:clean_simhive"
 myosuite-export-onnx = "myosuite.utils.export_onnx:main"
 # MuscleMimic full-body: native --path trajectory playback, preview, or MJX smoke.
 myosuite-musclemimic-fullbody-eval = "myosuite.integrations.musclemimic.fullbody_eval_cli:main"

@@ -16,7 +16,7 @@ from gymnasium.utils import EzPickle
 
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.core.model_builder import ModelBuilder
+from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
@@ -61,7 +61,7 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
 
     def __init__(
         self,
-        model_path: str,
+        model_path: str = "",
         obsd_model_path: str | None = None,
         seed: int | None = None,
         target_reach_range: dict | None = None,
@@ -98,16 +98,21 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         )
 
         # ── Load model ─────────────────────────────────────────────────────
+        model_recipe = kwargs.pop("model_recipe", None)
         edit_fn = kwargs.pop("edit_fn", None)
-        builder = ModelBuilder.from_xml_file(model_path)
-        if edit_fn is not None:
+        if model_recipe is not None:
+            self._model_recipe = model_recipe
+            self.model, self._mj_spec = build_from_recipe(model_recipe)
+        else:
+            builder = ModelBuilder.from_xml_file(model_path)
+            if edit_fn is not None:
 
-            def _wrap(spec: mujoco.MjSpec, _fn=edit_fn) -> mujoco.MjSpec:
-                _fn(spec)
-                return spec
+                def _wrap(spec: mujoco.MjSpec, _fn=edit_fn) -> mujoco.MjSpec:
+                    _fn(spec)
+                    return spec
 
-            builder = builder.apply_transform(_wrap)
-        self.model, self._mj_spec = builder.build()
+                builder = builder.apply_transform(_wrap)
+            self.model, self._mj_spec = builder.build()
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 
@@ -195,8 +200,9 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
                 self.model, self.frame_skip, seed=None
             )
         elif self.muscle_condition == "reafferentation":
-            self.EPLpos = self.model.actuator("EPL").id
-            self.EIPpos = self.model.actuator("EIP").id
+            sfx = "_r" if hasattr(self, "_model_recipe") else ""
+            self.EPLpos = self.model.actuator(f"EPL{sfx}").id
+            self.EIPpos = self.model.actuator(f"EIP{sfx}").id
 
     def _apply_action(self, action: np.ndarray) -> None:
         """Map action to MuJoCo ctrl and write to data.ctrl.
