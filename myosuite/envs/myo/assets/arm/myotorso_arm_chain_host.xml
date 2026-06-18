@@ -3,14 +3,26 @@
        myoarm_body right arm + pelvis joints + legs), but without table, paddle,
        ball, sensors, or keyframes. Used for ``myotorso_tabletennis_isolated.xml``
        and MuscleMimic right-arm parity tests. -->
-  <include file="../../../../simhive/myo_sim/torso/assets/myotorso_assets.xml"/>
-  <include file="../../../../simhive/myo_sim/head/assets/myohead_simple_assets.xml"/>
-  <include file="../../../../simhive/myo_sim/leg/assets/myolegs_assets.xml"/>
-  <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_assets.xml"/>
-  <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_tendons.xml"/>
-  <include file="../../../../simhive/myo_sim/arm/assets/myoarm_r_muscles.xml"/>
-  <include file="../../../../simhive/myo_sim/scene/myosuite_quad.xml"/>
-  <compiler angle="radian" meshdir="../../../../simhive/myo_sim" texturedir="../../../../simhive/myo_sim"/>
+  <!-- Muscle/tendon calibration sourced from myo_sim pip. This host's chain
+       file (myotorso_arm_chain.xml) has had its tendon/wrap site names
+       remapped to match pip's naming convention (verified 1:1 against pip's
+       myotorso_chain.xml by exact 3D position) - see resolve_torso_xml
+       docstring in _resolve.py for the known asymmetric-vs-mirrored
+       left-muscle calibration divergence vs. the original competition
+       models.
+       myotorso_abdomen_muscle.xml/myotorso_abdomen_tendon.xml are
+       deliberately NOT included: they add 6 actuators (ercspn/intobl/
+       extobl, bilateral) that don't exist in the legacy torso model and
+       would change this env's action space relative to the original
+       competition models. -->
+  <include file="../myo_sim/torso/assets/myotorso_assets.xml"/>
+  <include file="../myo_sim/torso/assets/myotorso_muscle.xml"/>
+  <include file="../myo_sim/torso/assets/myotorso_tendon.xml"/>
+  <include file="../myo_sim/head/assets/myohead_simple_assets.xml"/>
+  <include file="../myo_sim/leg/assets/myolegs_assets.xml"/>
+  <include file="../arm/assets/myoarm_assets.xml"/>
+  <include file="../myo_sim/scene/myosuite_quad.xml"/>
+  <compiler angle="radian" meshdir="../myo_sim" texturedir="../myo_sim"/>
 
   <visual>
     <global offwidth="1280" offheight="1080"/>
@@ -36,10 +48,10 @@
 
   <worldbody>
     <body name="full_body" pos="1.6 0 0.95" euler="0 0 3.14">
-      <include file="../../../../simhive/myo_sim/torso/assets/myotorso_arm_chain.xml"/>
+      <include file="../torso/assets/myotorso_arm_chain.xml"/>
       <joint name="pelvis_x" class="pelvis_move" axis="1 0 0" range="-1 -0.05"/>
       <joint name="pelvis_y" class="pelvis_move" axis="0 1 0" range="-1 1"/>
-      <include file="../../../../simhive/myo_sim/leg/assets/myolegs_chain.xml"/>
+      <include file="../myo_sim/leg/assets/myolegs_chain.xml"/>
     </body>
   </worldbody>
 
