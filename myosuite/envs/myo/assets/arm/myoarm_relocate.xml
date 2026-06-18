@@ -47,7 +47,8 @@
         </body>
 
         <!-- ======= MyoArm (right arm, starting from clavicle_r) ======= -->
-        <body name="arm_r" pos="-.025 0.1 1.40">
+        <body name="arm_r" pos="-0.02525155 0.07146933 1.39249298"
+              quat="0.52167746 0.46981366 -0.47875126 -0.52718591">
             <include file="../myo_sim/arm/assets/myoarm_r_chain.xml"/>
         </body>
 
