@@ -64,7 +64,7 @@ def test_mjx_gpu_smoke() -> None:
 
     Skips if:
         - No MJX backend is available (``mujoco.mjx`` import fails), or
-        - The simhive XML asset is not present (simhive not initialised).
+        - The model XML asset is not present (myo_sim not installed).
 
     Fails if:
         - No JAX GPU device is visible, or
@@ -88,7 +88,7 @@ def test_mjx_gpu_smoke() -> None:
     if not xml_path.exists():
         pytest.skip(
             f"finger model not found at {xml_path}. "
-            "Install myo-sim: `pip install myo-sim` or fetch simhive."
+            "Install myo-sim: `pip install myo-sim`."
         )
 
     model = mujoco.MjModel.from_xml_path(str(xml_path))

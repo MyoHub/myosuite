@@ -99,11 +99,9 @@ def _prepare_scene_xml_keep_only_floor(scene_xml: Path) -> Path:
 
     # Match MyoSuite floor appearance while keeping upstream floor physics.
     try:
-        from myosuite.utils.simhive_path import get_simhive_asset_root
+        from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
-        myosuite_floor_texture = (
-            get_simhive_asset_root("myo_sim") / "scene" / "floor0.png"
-        )
+        myosuite_floor_texture = get_sim_asset_root("myo_sim") / "scene" / "floor0.png"
     except FileNotFoundError:
         myosuite_floor_texture = Path()
     use_myosuite_floor_texture = myosuite_floor_texture.is_file()

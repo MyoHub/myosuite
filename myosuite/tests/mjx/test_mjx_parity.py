@@ -53,9 +53,9 @@ pytestmark = pytest.mark.tier2
 
 
 def _myo_sim_model(rel: str) -> str:
-    from myosuite.utils.simhive_path import get_simhive_asset_root
+    from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
-    return str(get_simhive_asset_root("myo_sim") / rel)
+    return str(get_sim_asset_root("myo_sim") / rel)
 
 
 FINGER_MODEL = str(_resolve_finger_xml("myofinger_v0.xml"))

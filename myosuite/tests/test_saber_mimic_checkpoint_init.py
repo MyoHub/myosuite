@@ -169,13 +169,19 @@ def test_load_mimic_checkpoint_policy_builds_actor(monkeypatch) -> None:
         obs_count=obs_count,
     )
 
+    # load_mimic_checkpoint_policy() does a lazy `from <module> import <name>`
+    # at call time, so patching saber_mimic_init's copy of these names has no
+    # effect — patch the source modules it actually re-imports from.
+    import myosuite.integrations.musclemimic.fullbody_checkpoint_io as fullbody_checkpoint_io
+    import myosuite.integrations.musclemimic.fullbody_local_policy as fullbody_local_policy
+
     monkeypatch.setattr(
-        saber_mimic_init,
+        fullbody_checkpoint_io,
         "resolve_checkpoint_ref",
         lambda checkpoint_root: SimpleNamespace(local_path=Path(checkpoint_root)),
     )
     monkeypatch.setattr(
-        saber_mimic_init,
+        fullbody_local_policy,
         "load_local_policy_artifacts",
         lambda checkpoint_root: artifacts,
     )

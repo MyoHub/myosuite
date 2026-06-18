@@ -58,9 +58,9 @@ def test_myotorso_bimanual_mimic_mjmodel_solver_options() -> None:
 
 def test_myotorso_bimanual_mimic_saved_xml_loads() -> None:
     """Monolithic MyoTorso+bimanual MJCF compiles from pip package location."""
-    from myosuite.utils.simhive_path import get_simhive_asset_root
+    from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
-    xml = get_simhive_asset_root("myo_sim") / "myotorso_bimanual_mimic.xml"
+    xml = get_sim_asset_root("myo_sim") / "myotorso_bimanual_mimic.xml"
     if not xml.is_file():
         try:
             save_myotorso_bimanual_mimic_xml()

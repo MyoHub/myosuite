@@ -98,7 +98,11 @@ class RelocateEnv(MyoGymnasiumEnv, EzPickle):
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 
-        self.palm_sid = self.model.site("S_grasp").id
+        try:
+            self.palm_sid = self.model.site("S_grasp").id
+        except KeyError:
+            # myo_sim pip's right-hand fragment suffixes site names with "_r".
+            self.palm_sid = self.model.site("S_grasp_r").id
         self.object_sid = self.model.site("object_o").id
         self.object_bid = self.model.body("Object").id
         self.goal_sid = self.model.site("target_o").id

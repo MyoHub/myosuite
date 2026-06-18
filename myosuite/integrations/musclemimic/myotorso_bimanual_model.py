@@ -9,7 +9,7 @@ assets** as MuscleMimic ``myofullbody.xml`` (all under the
 ``musclemimic_models`` ``model/`` tree), plus ``myotorso_bimanual_chain.xml``
 and bimanual arm assets.
 This keeps pelvis / hip framing consistent with the Mimic full-body MJCF
-(MyoSuite simhive leg/torso files can differ, e.g. pelvis orientation).
+(MyoSuite's leg/torso files can differ, e.g. pelvis orientation).
 
 ``myoarm_assets.xml`` in the host is swapped for ``myoarm_bimanual_assets`` so
 mesh names do not collide with the bimanual arm package.
@@ -172,16 +172,16 @@ def _materialize_myotorso_bimanual_host_xml() -> tuple[Path, Path, Path]:
     )
 
     # Resolve compiler meshdir/texturedir and quad-scene include to pip path.
-    from myosuite.utils.simhive_path import get_simhive_asset_root
+    from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
-    _myo_sim_root = get_simhive_asset_root("myo_sim").as_posix()
+    _myo_sim_root = get_sim_asset_root("myo_sim").as_posix()
     host_src = host_src.replace('meshdir="../myo_sim"', f'meshdir="{_myo_sim_root}"', 1)
     host_src = host_src.replace(
         'texturedir="../myo_sim"', f'texturedir="{_myo_sim_root}"', 1
     )
     _quad_scene_inc = '<include file="../myo_sim/scene/myosuite_quad.xml"/>'
     _quad_scene_abs = (
-        get_simhive_asset_root("myo_sim") / "scene" / "myosuite_quad.xml"
+        get_sim_asset_root("myo_sim") / "scene" / "myosuite_quad.xml"
     ).as_posix()
     host_src = host_src.replace(
         _quad_scene_inc, f'<include file="{_quad_scene_abs}"/>', 1
@@ -345,14 +345,15 @@ def save_myotorso_bimanual_mimic_xml(
 ) -> Path:
     """Write a monolithic MJCF for MyoTorso + bimanual (Mimic edits) to disk.
 
-    Uses :meth:`mujoco.MjSpec.to_xml` on the composite spec, then fixes
-    ``meshdir`` / ``texturedir`` so the file loads when placed under
-    ``myosuite/simhive/myo_sim/`` (mesh ``file`` attributes use
-    ``../myo_sim/meshes/...`` paths from that layout).
+    Uses :meth:`mujoco.MjSpec.to_xml` on the composite spec, then rewrites
+    ``meshdir``/``texturedir`` to ``.`` so mesh/texture ``file`` attributes
+    (baked in as absolute paths by ``to_xml()``) resolve relative to the
+    output directory.
 
     Args:
-        dest: Output path. Default: ``myosuite/simhive/myo_sim/
-            myotorso_bimanual_mimic.xml``.
+        dest: Output path. Default: an OS temp directory
+            (``<tempdir>/myosuite_musclemimic/myotorso_bimanual_mimic.xml``) —
+            never the read-only installed myo_sim pip package directory.
         config: Mimic config; default is :func:`default_mimic_config`.
 
     Returns:

@@ -190,7 +190,8 @@ def _resolve_fragment_path(name: str) -> Path:
                     return Path(info.path)
                 except KeyError:
                     # myo_sim is installed but this fragment is not registered
-                    # there; try aliases before falling through to simhive.
+                    # there; try aliases before falling through to the
+                    # bundled/legacy sim-asset fallback.
                     pass
     except ImportError:
         pass
@@ -214,10 +215,10 @@ def _resolve_fragment_path(name: str) -> Path:
         "torso": "torso/myotorso.xml",
     }
     if name in _FALLBACK_PATHS:
-        from myosuite.utils.simhive_path import get_simhive_asset_root
+        from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
         try:
-            candidate = get_simhive_asset_root("myo_sim") / _FALLBACK_PATHS[name]
+            candidate = get_sim_asset_root("myo_sim") / _FALLBACK_PATHS[name]
             if candidate.exists():
                 return candidate
         except FileNotFoundError:
@@ -232,7 +233,7 @@ def _resolve_fragment_path(name: str) -> Path:
 def _try_myo_sim_compose(name: str) -> mujoco.MjSpec | None:
     """Return a fragment-only MjSpec from myo_sim's compose pipeline, or None.
 
-    Consults ``myo_sim._FRAGMENT_SPEC_BUILDERS`` so that names like ``"hand"``
+    Consults ``myo_sim.FRAGMENT_SPEC_BUILDERS`` so that names like ``"hand"``
     are transparently routed through the build-system compose path instead of
     falling back to a static bundled XML.  Returns None if myo_sim is not
     installed, is too old to have the registry, or the name is not a composed
@@ -241,7 +242,7 @@ def _try_myo_sim_compose(name: str) -> mujoco.MjSpec | None:
     try:
         import myo_sim  # type: ignore[import-untyped]
 
-        builder = getattr(myo_sim, "_FRAGMENT_SPEC_BUILDERS", {}).get(name)
+        builder = getattr(myo_sim, "FRAGMENT_SPEC_BUILDERS", {}).get(name)
         return builder() if builder is not None else None
     except Exception:  # ImportError, compose failures, etc.
         return None
@@ -395,7 +396,7 @@ class ModelBuilder:
         Returns:
             A new :class:`ModelBuilder` instance with *path* as its seed.
         """
-        from myosuite.utils.simhive_path import resolve_model_xml_path
+        from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
         builder = cls()
         builder._xml_path = resolve_model_xml_path(Path(path))
@@ -408,7 +409,7 @@ class ModelBuilder:
 
         Args:
             name: Fragment identifier (resolved via myo_sim.FragmentRegistry
-                  or simhive fallback).
+                  or the bundled/legacy sim-asset fallback).
             parent: Name of the parent body to attach to.
 
         Returns:

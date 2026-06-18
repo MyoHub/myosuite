@@ -154,31 +154,35 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--learning-rate",
         type=float,
-        default=3e-4,
-        help="PPO learning rate used after mimic-checkpoint initialization.",
+        default=3e-5,
+        help=(
+            "PPO learning rate used after mimic-checkpoint initialization. Kept "
+            "low (vs. the usual 3e-4) so early updates don't drift the imported "
+            "checkpoint weights too quickly."
+        ),
     )
     parser.add_argument(
         "--num-learning-epochs",
         type=int,
-        default=6,
+        default=1,
         help="PPO epochs per iteration for the checkpoint-resume path.",
     )
     parser.add_argument(
         "--clip-param",
         type=float,
-        default=0.2,
+        default=0.05,
         help="PPO clip parameter for the checkpoint-resume path.",
     )
     parser.add_argument(
         "--entropy-coef",
         type=float,
-        default=0.01,
+        default=0.0,
         help="Entropy regularization for the checkpoint-resume path.",
     )
     parser.add_argument(
         "--desired-kl",
         type=float,
-        default=0.01,
+        default=0.001,
         help="Adaptive-KL target used by PPO after checkpoint initialization.",
     )
     parser.add_argument("--run-name", default="")

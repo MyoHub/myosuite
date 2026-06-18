@@ -58,7 +58,7 @@ from myosuite.integrations.musclemimic.bimanual_model import default_mimic_confi
 from myosuite.integrations.musclemimic.fullbody_model import (
     default_mimic_fullbody_config,
 )
-from myosuite.utils.simhive_path import get_simhive_asset_root
+from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
 # ---------------------------------------------------------------------------
 # Conversion helper: dataclass → ConfigDict (required by mujoco_playground)
@@ -143,7 +143,7 @@ ALL_ENVS = [
 # Walk env config
 # ---------------------------------------------------------------------------
 
-_MYO_SIM_ROOT = Path(str(get_simhive_asset_root("myo_sim")))
+_MYO_SIM_ROOT = Path(str(get_sim_asset_root("myo_sim")))
 # Optional trimmed MJCF (not shipped): fall back to myolegs.xml and rely on
 # :func:`~myosuite.envs.myo.backends.mjx.mjx_spec_preprocess.preprocess_mjx_spec`
 # to strip JAX/XLA-incompatible cylinder/ellipsoid contacts when ``mjx_impl`` ≠ warp.

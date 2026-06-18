@@ -7,17 +7,17 @@
     License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 ====================================================== -->
 
-  <include file="../../../../simhive/YCB_sim/includes/defaults_ycb.xml"/>
-  <include file="../../../../simhive/YCB_sim/includes/assets_009_gelatin_box.xml"/>
+  <include file="../YCB_sim/includes/defaults_ycb.xml"/>
+  <include file="../YCB_sim/includes/assets_009_gelatin_box.xml"/>
 
-  <include file="../../../../simhive/myo_sim/arm/assets/myoarm_assets.xml"/>
-  <include file="../../../../simhive/myo_sim/scene/myosuite_scene.xml"/>
+  <include file="../myo_sim/arm/assets/myoarm_assets.xml"/>
+  <include file="../myo_sim/scene/myosuite_scene.xml"/>
 
-  <include file='../../../../simhive/MPL_sim/assets/arms_assets.xml'/>
-  <include file='../../../../simhive/MPL_sim/assets/simpleHandL_assets.xml'/>
-  <include file='../../../../simhive/MPL_sim/assets/simpleHandR_assets.xml'/>
+  <include file='../MPL_sim/assets/arms_assets.xml'/>
+  <include file='../MPL_sim/assets/simpleHandL_assets.xml'/>
+  <include file='../MPL_sim/assets/simpleHandR_assets.xml'/>
 
-  <compiler autolimits = "true" inertiafromgeom="auto" angle="radian" balanceinertia="true" boundmass="0.001" boundinertia=".0001"  meshdir='../../../../simhive/myo_sim' texturedir='../../../../simhive/myo_sim/'/>
+  <compiler autolimits = "true" inertiafromgeom="auto" angle="radian" balanceinertia="true" boundmass="0.001" boundinertia=".0001"  meshdir='../myo_sim' texturedir='../myo_sim/'/>
   <option timestep="0.002">
     <flag multiccd="enable"/>
   </option>
@@ -30,8 +30,6 @@
     <material name="tabletop" texture="tabletop" rgba=".95 .95 .95 1"/>
     <texture name="texwood" type="cube" file="../myo_sim/scene/floor0.png"/>
     <material name="matwood" reflectance="0.01" texture="texwood" texuniform="false"/>
-
-    <mesh file="../myo_sim/meshes/human_lowpoly_nohand.stl" name="body_nohand"/>
 
 	  <texture type="2d" name="pillar_start" builtin="checker" mark="random" rgb1="0.4 0.4 0.4" rgb2="0.38 0.38 0.38"
         markrgb="0.8 0.8 0.8" width="300" height="300" random="0.5"/>
@@ -46,16 +44,15 @@
   <worldbody>
 
     <!-- ======= Human ======= -->
-    <geom name="body" type="mesh" mesh="body_nohand" euler="0 0 3.14" contype="0" conaffinity="0"/>
     <body name="full_body" pos="-.025 0.1 1.40">
-      <include file="../../../../simhive/myo_sim/arm/assets/myoarm_body.xml"/>
+      <include file="../myo_sim/arm/assets/myoarm_body.xml"/>
     </body>
-    <include file='../../../../simhive/MPL_sim/assets/arms_chain.xml'/>
+    <include file='../MPL_sim/assets/arms_chain.xml'/>
 
     <!-- ======= Object ======= -->
     <body pos="-0.4 -0.2 1.2" euler="1.57 0 3.14" name="manip_object">
       <freejoint name="manip_object/freejoint"/>
-      <include file="../../../../simhive/YCB_sim/includes/body_009_gelatin_box.xml"/>
+      <include file="../YCB_sim/includes/body_009_gelatin_box.xml"/>
       <site name="touch_site" pos = "0 0 0.015" type="sphere" size="0.1" group="5" rgba="0.1 0.1 0.1 0.1"/>
     </body>
 
