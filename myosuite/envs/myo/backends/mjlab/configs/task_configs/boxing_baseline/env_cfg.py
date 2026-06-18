@@ -19,14 +19,14 @@ from mjlab.tasks.velocity import mdp
 from mjlab.envs.mdp import dr
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.sensor import ContactMatch, ContactSensorCfg
-from .mdp.rewards import activation
+from .mdp.rewards import activation, exponential_body_height, quadratic_action_bounds, excitation_l2, activation_l2
 from .mdp.observations import raw_activation, mean_activation
 from .mdp.terminations import body_height_below_minimum
 
 
 def stand_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
-    """Create Torque actuated standing environment configuration.
-
+    """
+    Learn full body control with musclemimic body simply to survive via standing. Derived from Unitree velocity env.
     Args:
       play: If True, disables corruption and extends episode length for evaluation.
     """
@@ -53,12 +53,12 @@ def stand_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     )
 
     sim_cfg = SimulationCfg(
-        mujoco=MujocoCfg(
-            timestep=0.004,  # 250 Hz control
-            iterations=4,
-        ),
-        njmax=270,
-        nconmax=65,
+      mujoco=MujocoCfg(
+        timestep=0.004,  # 250 Hz control
+        iterations=5,
+      ),
+      njmax=270,
+      nconmax=65
     )
 
     # ==============================================================================
@@ -66,12 +66,11 @@ def stand_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     # ==============================================================================
 
     actions = {
-        "joint_pos": TendonEffortActionCfg(
-            entity_name="human",
-            actuator_names=(".*",),
-            scale=1,
-            clip={".*": (0.0, 1.0)},
-        ),
+      "tendon_effort": TendonEffortActionCfg(
+        entity_name="human",
+        actuator_names=(".*",),
+        scale=1,
+      ),
     }
 
     # ==============================================================================
@@ -79,38 +78,27 @@ def stand_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     # ==============================================================================
 
     actor_terms = {
-        "base_lin_vel": ObservationTermCfg(
-            func=mdp.builtin_sensor,
-            params={"sensor_name": "human/lin_vel"},
-            noise=Unoise(n_min=-0, n_max=0),
-        ),
-        "base_ang_vel": ObservationTermCfg(
-            func=mdp.builtin_sensor,
-            params={"sensor_name": "human/ang_vel"},
-            noise=Unoise(n_min=-0.02, n_max=0.02),
-        ),
-        "projected_gravity": ObservationTermCfg(
-            func=mdp.projected_gravity,
-            params={"asset_cfg": SceneEntityCfg("human")},
-            noise=Unoise(n_min=-0.00, n_max=0.005),
-        ),
-        "joint_pos": ObservationTermCfg(
-            func=mdp.joint_pos_rel,
-            params={"asset_cfg": SceneEntityCfg("human")},
-            noise=Unoise(n_min=-0.001, n_max=0.001),
-        ),
-        "joint_vel": ObservationTermCfg(
-            func=mdp.joint_vel_rel,
-            params={"asset_cfg": SceneEntityCfg("human")},
-            noise=Unoise(n_min=-0.1, n_max=0.1),
-        ),
-        "activations": ObservationTermCfg(
-            func=raw_activation, params={"asset_cfg": SceneEntityCfg("human")}
-        ),
-        "command": ObservationTermCfg(
-            func=mdp.generated_commands,
-            params={"command_name": "twist"},
-        ),
+      "base_lin_vel": ObservationTermCfg(
+        func=mdp.builtin_sensor,
+        params={"sensor_name": "human/lin_vel"},
+      ),
+      "base_ang_vel": ObservationTermCfg(
+        func=mdp.builtin_sensor,
+        params={"sensor_name": "human/ang_vel"},
+      ),
+      "projected_gravity": ObservationTermCfg(
+        func=mdp.projected_gravity,
+        params={"asset_cfg": SceneEntityCfg("human")},
+      ),
+      "joint_pos": ObservationTermCfg(
+        func=mdp.joint_pos_rel,
+        params={"asset_cfg": SceneEntityCfg("human")},
+      ),
+      "joint_vel": ObservationTermCfg(
+        func=mdp.joint_vel_rel,
+        params={"asset_cfg": SceneEntityCfg("human")},
+      ),
+      "activations": ObservationTermCfg(func=raw_activation, params={"asset_cfg": SceneEntityCfg("human")}),
     }
 
     critic_terms = {
@@ -130,16 +118,17 @@ def stand_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     }
 
     observations = {
-        "actor": ObservationGroupCfg(
-            terms=actor_terms,
-            concatenate_terms=True,
-            enable_corruption=True,
-        ),
-        "critic": ObservationGroupCfg(
-            terms=critic_terms,
-            concatenate_terms=True,
-            enable_corruption=False,
-        ),
+      "actor": ObservationGroupCfg(
+        terms=actor_terms,
+        concatenate_terms=True,
+        enable_corruption=True,
+        history_length=1,
+      ),
+      "critic": ObservationGroupCfg(
+        terms=critic_terms,
+        concatenate_terms=True,
+        enable_corruption=False,
+      ),
     }
 
     # ==============================================================================
@@ -147,74 +136,42 @@ def stand_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     # ==============================================================================
 
     rewards = {
-        "track_linear_velocity": RewardTermCfg(
-            func=mdp.track_linear_velocity,
-            weight=2.0,
-            params={
-                "asset_cfg": SceneEntityCfg("human"),
-                "command_name": "twist",
-                "std": math.sqrt(1),
-            },
-        ),
-        "track_angular_velocity": RewardTermCfg(
-            func=mdp.track_angular_velocity,
-            weight=2.0,
-            params={
-                "asset_cfg": SceneEntityCfg("human"),
-                "command_name": "twist",
-                "std": math.sqrt(2),
-            },
-        ),
-        "body_orientation_l2": RewardTermCfg(
-            func=mdp.flat_orientation_l2,
-            weight=-0.0,
-            params={
-                "asset_cfg": SceneEntityCfg("human", body_names=(".*pelvis",))
-            },  # Set per-human.
-        ),
-        "body_ang_vel": RewardTermCfg(
-            func=mdp.body_angular_velocity_penalty,
-            weight=-0.03,  # Override per-human
-            params={
-                "asset_cfg": SceneEntityCfg("human", body_names=(".*pelvis",))
-            },  # Set per-human.
-        ),
-        "is_terminated": RewardTermCfg(func=mdp.is_terminated, weight=-100.0),
-        "is_surviving": RewardTermCfg(func=mdp.is_alive, weight=4),
-        "joint_acc_l2": RewardTermCfg(
-            func=mdp.joint_acc_l2,
-            weight=-2.5e-9,
-            params={"asset_cfg": SceneEntityCfg("human", joint_names=(".*",))},
-        ),
-        "joint_pos_limits": RewardTermCfg(
-            func=mdp.joint_pos_limits,
-            weight=-0.2,
-            params={"asset_cfg": SceneEntityCfg("human", joint_names=(".*",))},
-        ),
-        "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.0002),
-        "activation_l2": RewardTermCfg(func=activation, weight=-0.001),
-        "soft_landing": RewardTermCfg(
-            func=mdp.soft_landing,
-            weight=-1e-3,
-            params={
-                "sensor_name": "feet_ground_contact",
-                "command_name": "twist",
-                "command_threshold": 0.1,
-            },
-        ),
-        "pose": RewardTermCfg(
-            func=mdp.variable_posture,
-            weight=0.2,
-            params={
-                "asset_cfg": SceneEntityCfg("human", joint_names=(".*",)),
-                "command_name": "twist",
-                "std_standing": {".*": 0.05},
-                "std_walking": {".*": 0.35},
-                "std_running": {".*": 0.5},
-                "walking_threshold": 0.05,
-                "running_threshold": 1.5,
-            },
-        ),
+      "track_linear_velocity": RewardTermCfg(
+        func=mdp.track_linear_velocity,
+        weight=2.0,
+        params={"asset_cfg": SceneEntityCfg("human"), "command_name": "twist", "std": math.sqrt(1) },
+      ),
+      "track_angular_velocity": RewardTermCfg(
+        func=mdp.track_angular_velocity,
+        weight=2.0,
+        params={"asset_cfg": SceneEntityCfg("human"), "command_name": "twist", "std": math.sqrt(2)},
+      ),
+      "body_orientation_l2": RewardTermCfg(
+        func=mdp.flat_orientation_l2,
+        weight=-0.0,
+        params={"asset_cfg": SceneEntityCfg("human", body_names=(".*pelvis",))},  # Set per-human.
+      ),
+      "body_ang_vel": RewardTermCfg(
+        func=mdp.body_angular_velocity_penalty,
+        weight=-0.03,  # Override per-human
+        params={"asset_cfg": SceneEntityCfg("human", body_names=(".*head",))},  # Set per-human.
+      ),
+      "is_terminated": RewardTermCfg(func=mdp.is_terminated, weight=-50.0),
+      # "is_surviving": RewardTermCfg(func=mdp.is_alive, weight=4),
+      "joint_acc_l2": RewardTermCfg(func=mdp.joint_acc_l2, weight=-2.5e-9,
+                                    params={"asset_cfg":  SceneEntityCfg("human", joint_names=(".*",))}),
+      "joint_pos_limits": RewardTermCfg(func=mdp.joint_pos_limits, weight=-0.2,
+                                        params={"asset_cfg":  SceneEntityCfg("human", joint_names=(".*",))} ),
+      "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.002),
+      "activation_l2": RewardTermCfg(func=activation_l2, weight=-0.3),
+      "excitation_l2": RewardTermCfg(func=excitation_l2, weight=-1),
+      "action_bounds": RewardTermCfg(func=quadratic_action_bounds, weight=-5,
+                                     params={"lower_limit": -0.1,
+                                             "upper_limit": 1.5,}),
+      "head_height": RewardTermCfg(func=exponential_body_height, weight=5,
+                                   params={"asset_cfg": SceneEntityCfg("human", body_names=(".*head",)),
+                                           "std": math.sqrt(0.05),
+                                           'target_height': 1.6}),
     }
 
     # ==============================================================================
@@ -241,80 +198,83 @@ def stand_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
             params={
                 "asset_cfg": SceneEntityCfg("human"),
             },
-        )
+    ),
+      "mean_activation_l2": MetricsTermCfg(
+        func=activation_l2,
+        params={
+          "asset_cfg": SceneEntityCfg("human"),
+        }
+      )
     }
 
     # ==============================================================================
     # Events
     # ==============================================================================
 
+
     events = {
-        "reset_base": EventTermCfg(
-            func=mdp.reset_root_state_uniform,
-            mode="reset",
-            params={
-                "asset_cfg": SceneEntityCfg("human"),
-                "pose_range": {
-                    "x": (-0.5, 0.5),
-                    "y": (-0.5, 0.5),
-                    "z": (0.94996 - 0.01, 0.94996 + 0.05),
-                    "yaw": (-3.14, 3.14),
-                },
-                "velocity_range": {},
-            },
-        ),
-        "reset_human_joints": EventTermCfg(
-            func=mdp.reset_joints_by_offset,
-            mode="reset",
-            params={
-                "position_range": (0.0, 0.0),
-                "velocity_range": (0.0, 0.0),
-                "asset_cfg": SceneEntityCfg("human", joint_names=(".*",)),
-            },
-        ),
-        "push_human": EventTermCfg(
-            func=mdp.push_by_setting_velocity,
-            mode="interval",
-            interval_range_s=(1.0, 3.0),
-            params={
-                "asset_cfg": SceneEntityCfg("human"),
-                "velocity_range": {
-                    "x": (-0.5, 0.5),
-                    "y": (-0.5, 0.5),
-                    "z": (-0.4, 0.4),
-                    "roll": (-0.52, 0.52),
-                    "pitch": (-0.52, 0.52),
-                    "yaw": (-0.78, 0.78),
-                },
-            },
-        ),
-        "foot_friction": EventTermCfg(
-            mode="startup",
-            func=dr.geom_friction,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "human", geom_names=(".*foot.*", ".*talus.*", ".*floor.*")
-                ),  # Set per-human.
-                "operation": "abs",
-                "ranges": (0.3, 1.2),
-                "shared_random": True,  # All foot geoms share the same friction.
-            },
-        ),
-        "base_com": EventTermCfg(
-            mode="startup",
-            func=dr.body_com_offset,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "human", body_names=(".*thorax.*")
-                ),  # Set per-human.
-                "operation": "add",
-                "ranges": {
-                    0: (-0.025, 0.025),
-                    1: (-0.025, 0.025),
-                    2: (-0.03, 0.03),
-                },
-            },
-        ),
+      "reset_base": EventTermCfg(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+          "asset_cfg": SceneEntityCfg("human"),
+          "pose_range": {
+            "x": (-0.5, 0.5),
+            "y": (-0.5, 0.5),
+            "z": (1, 1),
+            "yaw": (-3.14, 3.14),
+          },
+          "velocity_range": {},
+        },
+      ),
+      "reset_human_joints": EventTermCfg(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+          "position_range": (0.0, 0.0),
+          "velocity_range": (0.0, 0.0),
+          "asset_cfg": SceneEntityCfg("human", joint_names=(".*",)),
+        },
+      ),
+      "push_human": EventTermCfg(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(1.0, 3.0),
+        params={
+          "asset_cfg": SceneEntityCfg("human"),
+          "velocity_range": {
+            "x": (-0.1, 0.1),
+            "y": (-0.1, 0.1),
+            "z": (-0.1, 0.1),
+            "roll": (-0.12, 0.12),
+            "pitch": (-0.12, 0.12),
+            "yaw": (-0.18, 0.18),
+          },
+        },
+      ),
+      "foot_friction": EventTermCfg(
+        mode="startup",
+        func=dr.geom_friction,
+        params={
+          "asset_cfg": SceneEntityCfg("human", geom_names=(".*foot.*", ".*talus.*", ".*floor.*")),  # Set per-human.
+          "operation": "abs",
+          "ranges": (0.9, 1.1),
+          "shared_random": True,  # All foot geoms share the same friction.
+        },
+      ),
+      "base_com": EventTermCfg(
+        mode="startup",
+        func=dr.body_com_offset,
+        params={
+          "asset_cfg": SceneEntityCfg("human", body_names=(".*thorax.*")),  # Set per-human.
+          "operation": "add",
+          "ranges": {
+            0: (-0.0025, 0.0025),
+            1: (-0.0025, 0.0025),
+            2: (-0.003, 0.003),
+          },
+        },
+      ),
     }
 
     # ==============================================================================
@@ -322,21 +282,15 @@ def stand_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     # ==============================================================================
 
     terminations = {
-        "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
-        "fell_over": TerminationTermCfg(
-            func=mdp.bad_orientation,
-            params={
-                "asset_cfg": SceneEntityCfg("human"),
-                "limit_angle": math.radians(70.0),
-            },
-        ),
-        "head_height": TerminationTermCfg(
-            func=body_height_below_minimum,
-            params={
-                "asset_cfg": SceneEntityCfg("human", body_names=(".*head")),
-                "minimum_height": 1.35,
-            },
-        ),
+      "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
+      "fell_over": TerminationTermCfg(
+        func=mdp.bad_orientation,
+        params={"asset_cfg": SceneEntityCfg("human"), "limit_angle": math.radians(70.0)},
+      ),
+      "head_height": TerminationTermCfg(
+        func=body_height_below_minimum,
+        params={"asset_cfg": SceneEntityCfg("human", body_names=(".*head")), "minimum_height": 1.2},
+      ),
     }
 
     # ==============================================================================
@@ -344,50 +298,49 @@ def stand_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     # ==============================================================================
 
     return ManagerBasedRlEnvCfg(
-        scene=scene_cfg,
-        observations=observations,
-        actions=actions,
-        rewards=rewards,
-        metrics=metrics,
-        events=events,
-        terminations=terminations,
-        commands=commands,
-        sim=sim_cfg,
-        viewer=viewer_cfg,
-        decimation=1,  # No action repeat
-        episode_length_s=int(1e9)
-        if play
-        else 10.0,  # Infinite for play, 10s for training
+      scene=scene_cfg,
+      observations=observations,
+      actions=actions,
+      rewards=rewards,
+      metrics=metrics,
+      events=events,
+      terminations=terminations,
+      commands=commands,
+      sim=sim_cfg,
+      viewer=viewer_cfg,
+      decimation=4,
+      episode_length_s=int(1e9) if play else 10.0,  # Infinite for play, 10s for training
     )
-
 
 def add_contact_sensors(scene):
     feet_ground_cfg = ContactSensorCfg(
-        name="feet_ground_contact",
-        primary=ContactMatch(
-            mode="subtree",
-            pattern=r"(calc).*",
-            entity="human",
-        ),
-        secondary=ContactMatch(mode="geom", pattern="human/floor"),
-        fields=("found", "force"),
-        reduce="netforce",
-        num_slots=1,
-        track_air_time=True,
+      name="feet_ground_contact",
+      primary=ContactMatch(
+        mode="subtree",
+        pattern=r"(calc).*",
+        entity="human",
+      ),
+      secondary=ContactMatch(mode="geom", pattern="human/floor"),
+      fields=("found", "force"),
+      reduce="netforce",
+      num_slots=1,
+      track_air_time=True,
     )
     self_collision_cfg = ContactSensorCfg(
-        name="self_collision",
-        primary=ContactMatch(mode="subtree", pattern="pelvis", entity="human"),
-        secondary=ContactMatch(mode="subtree", pattern="pelvis", entity="human"),
-        fields=("found", "force"),
-        reduce="none",
-        num_slots=1,
-        history_length=4,
+      name="self_collision",
+      primary=ContactMatch(mode="subtree", pattern="Full Body", entity="human"),
+      secondary=ContactMatch(mode="subtree", pattern="Full Body", entity="human"),
+      fields=("found", "force"),
+      reduce="none",
+      num_slots=1,
+      history_length=4,
     )
 
+
+
     scene.sensors = (scene.sensors or ()) + (
-        feet_ground_cfg,
-        self_collision_cfg,
+      feet_ground_cfg,
+      self_collision_cfg,
     )
 
     return scene

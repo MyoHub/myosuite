@@ -2,19 +2,6 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""CPU MuJoCo model builder for MuscleMimic-compatible MyoFullBody.
-
-Mirrors ``MuscleMimic`` ``MyoFullBody._apply_spec_changes`` (finger removal,
-mimic sites, muscle ``ctrlrange``) for the ``musclemimic_models`` full-body
-MJCF — importable without MJX or ``mujoco_playground``.
-
-Does **not** apply ``_modify_spec_for_mjx`` (MJX contact stripping / warp
-budgets); that path is only used when building the JAX/Warp training env.
-
-Finger joint/muscle name lists are shared with
-:mod:`myosuite.integrations.musclemimic.bimanual_model` (same names as upstream
-``MyoFullBody``).
-"""
 
 from __future__ import annotations
 
@@ -39,7 +26,12 @@ _ALL_XML_ACTUATORS = EntityArticulationInfoCfg(
 
 def _spec_only(*args, **kwargs):
     # The mimic fullbody spec builder also returns the xml of the body, but we need only the spec.
-    return build_mimic_fullbody_spec(*args, **kwargs)[0]
+    spec = build_mimic_fullbody_spec(*args, **kwargs)[0]
+    spec.add_sensor(name="lin_vel", type=mujoco.mjtSensor.mjSENS_VELOCIMETER, objtype=mujoco.mjtObj.mjOBJ_SITE,
+                    objname="head_mimic")
+    spec.add_sensor(name="ang_vel", type=mujoco.mjtSensor.mjSENS_GYRO, objtype=mujoco.mjtObj.mjOBJ_SITE,
+                    objname="head_mimic")
+    return spec
 
 
 def get_full_body_cfg() -> EntityCfg:
@@ -51,10 +43,8 @@ def get_full_body_cfg() -> EntityCfg:
 
 if __name__ == "__main__":
     from mjlab.entity.entity import Entity
-
     body = Entity(get_full_body_cfg())
     model = body.spec.compile()
     from mjviser import Viewer
-
     data = mujoco.MjData(model)
     Viewer(model, data).run()
