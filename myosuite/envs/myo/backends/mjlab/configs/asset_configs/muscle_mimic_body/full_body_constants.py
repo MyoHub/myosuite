@@ -27,10 +27,18 @@ _ALL_XML_ACTUATORS = EntityArticulationInfoCfg(
 def _spec_only(*args, **kwargs):
     # The mimic fullbody spec builder also returns the xml of the body, but we need only the spec.
     spec = build_mimic_fullbody_spec(*args, **kwargs)[0]
-    spec.add_sensor(name="lin_vel", type=mujoco.mjtSensor.mjSENS_VELOCIMETER, objtype=mujoco.mjtObj.mjOBJ_SITE,
-                    objname="head_mimic")
-    spec.add_sensor(name="ang_vel", type=mujoco.mjtSensor.mjSENS_GYRO, objtype=mujoco.mjtObj.mjOBJ_SITE,
-                    objname="head_mimic")
+    spec.add_sensor(
+        name="lin_vel",
+        type=mujoco.mjtSensor.mjSENS_VELOCIMETER,
+        objtype=mujoco.mjtObj.mjOBJ_SITE,
+        objname="head_mimic",
+    )
+    spec.add_sensor(
+        name="ang_vel",
+        type=mujoco.mjtSensor.mjSENS_GYRO,
+        objtype=mujoco.mjtObj.mjOBJ_SITE,
+        objname="head_mimic",
+    )
     return spec
 
 
@@ -43,8 +51,10 @@ def get_full_body_cfg() -> EntityCfg:
 
 if __name__ == "__main__":
     from mjlab.entity.entity import Entity
+
     body = Entity(get_full_body_cfg())
     model = body.spec.compile()
     from mjviser import Viewer
+
     data = mujoco.MjData(model)
     Viewer(model, data).run()
