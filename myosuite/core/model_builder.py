@@ -224,6 +224,22 @@ def _resolve_fragment_path(name: str) -> Path:
         except FileNotFoundError:
             pass
 
+    # myo_sim pip's restructure dropped some monolithic host XMLs (e.g.
+    # arm/myoarm.xml, torso/myotorso.xml) in favor of fragment-only assets;
+    # myosuite bundles compatibility copies under envs/myo/assets/<family>/.
+    _BUNDLED_FALLBACK_RESOLVERS = {
+        "shoulder": ("resolve_arm_xml", "myoarm.xml"),
+        "arm": ("resolve_arm_xml", "myoarm.xml"),
+        "torso": ("resolve_torso_xml", "myotorso.xml"),
+    }
+    if name in _BUNDLED_FALLBACK_RESOLVERS:
+        from myosuite.envs.myo.assets import _resolve
+
+        resolver_name, filename = _BUNDLED_FALLBACK_RESOLVERS[name]
+        candidate = getattr(_resolve, resolver_name)(filename)
+        if candidate.exists():
+            return candidate
+
     raise FileNotFoundError(
         f"Cannot resolve fragment {name!r}. "
         "Install the myo-sim pip package (`pip install myo-sim`)."
@@ -264,12 +280,19 @@ def _get_parent_body(spec: mujoco.MjSpec, parent: str) -> mujoco.MjsBody:
     if parent == "worldbody":
         return spec.worldbody
     try:
-        return spec.body(parent)
+        body = spec.body(parent)
     except Exception as exc:
         raise KeyError(
             f"Parent body {parent!r} not found in spec. "
             "Attach the parent fragment first, or use parent='worldbody'."
         ) from exc
+    if body is None:
+        # MjSpec.body() returns None (rather than raising) for unknown names.
+        raise KeyError(
+            f"Parent body {parent!r} not found in spec. "
+            "Attach the parent fragment first, or use parent='worldbody'."
+        )
+    return body
 
 
 def _add_mesh_body_to_spec(spec: mujoco.MjSpec, mb: _MeshBodySpec) -> None:
@@ -739,7 +762,11 @@ class ModelBuilder:
                 if composed is not None:
                     frag_spec = composed
                 else:
-                    path = _resolve_fragment_path(frag.name)
+                    from myosuite.utils.asset_path_resolver import (
+                        resolve_model_xml_path,
+                    )
+
+                    path = resolve_model_xml_path(_resolve_fragment_path(frag.name))
                     frag_spec = mujoco.MjSpec.from_file(str(path))
             parent_body = _get_parent_body(spec, frag.parent)
             frame = parent_body.add_frame()

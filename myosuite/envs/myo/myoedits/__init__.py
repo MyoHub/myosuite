@@ -7,9 +7,7 @@
 import mujoco
 
 import myosuite.core.registry as _registry
-from myosuite.utils.asset_path_resolver import get_sim_asset_root
-
-_SIMHIVE_ROOT = get_sim_asset_root("myo_sim")
+from myosuite.envs.myo.assets._resolve import resolve_arm_xml as _resolve_arm_xml
 
 
 # Arm Reaching ==============================
@@ -87,7 +85,7 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
 _EP = "myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0"
 
 _fixed_kwargs = {
-    "model_path": str(_SIMHIVE_ROOT / "arm" / "myoarm.xml"),
+    "model_path": str(_resolve_arm_xml("myoarm.xml")),
     "target_reach_range": {
         "IFtip": ((-0.175, -0.245, 1.405), (-0.175, -0.245, 1.405)),
     },
@@ -96,7 +94,7 @@ _fixed_kwargs = {
     "edit_fn": edit_fn_arm_reaching,
 }
 _random_kwargs = {
-    "model_path": str(_SIMHIVE_ROOT / "arm" / "myoarm.xml"),
+    "model_path": str(_resolve_arm_xml("myoarm.xml")),
     "target_reach_range": {
         "IFtip": (
             (-0.175 - 0.175, -0.245 - 0.175, 1.405 - 0.425),

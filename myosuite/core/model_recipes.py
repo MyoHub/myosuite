@@ -77,20 +77,14 @@ def _elbow_sarcopenia(b: ModelBuilder) -> ModelBuilder:
 
 @model_recipe("full_arm")
 def _full_arm(b: ModelBuilder) -> ModelBuilder:
-    """Full arm: shoulder + elbow + hand (right arm only).
+    """Full arm: shoulder through hand, right arm only.
 
-    .. note::
-        **myo_sim PR #73 breaking change.** When the submodule is updated to
-        include PR #73, right-arm body names gain an ``_r`` suffix
-        (e.g. ``thorax`` → ``chest_r``).  The ``parent`` strings below reference
-        the pre-PR-#73 names; update them once the submodule is upgraded.
-        For the bimanual (left + right) model, use the ``bimanual_arm`` recipe.
+    The ``"arm"``/``"shoulder"`` fragment is a single self-contained chain
+    (shoulder girdle -> humerus -> forearm -> wrist -> full hand, 63 muscles)
+    — there is no separate standalone elbow/hand fragment to attach onto it.
+    For the bimanual (left + right) model, use the ``bimanual_arm`` recipe.
     """
-    return (
-        b.attach_fragment("shoulder")
-        .attach_fragment("elbow", parent="shoulder_distal")
-        .attach_fragment("hand", parent="elbow_distal")
-    )
+    return b.attach_fragment("arm")
 
 
 @model_recipe("bimanual_arm")
