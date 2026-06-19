@@ -10,9 +10,6 @@ import numpy as np
 
 import myosuite.core.registry as _registry
 from myosuite.envs.myo.assets._resolve import resolve_osl_xml as _resolve_osl_xml
-from myosuite.envs.myo.tasks.challenge.task_configs import (
-    register_myochallenge_modular_tasks,
-)
 from myosuite.envs.myo.tasks.challenge.saber_task_spec import (
     register_saber_p0_env,
 )
@@ -458,8 +455,6 @@ _reg(
     },
 )
 
-# Register modular TaskConfig-backed challenge tasks.
-register_myochallenge_modular_tasks()
 # Register Saber P0 via EnvSpec adapter path.
 register_saber_p0_env()
 
