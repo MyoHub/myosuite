@@ -25,7 +25,7 @@ from scipy.spatial.transform import Rotation as np_R
 from myosuite.integrations.musclemimic.running_stats import (
     numpy_running_mean_std_update as running_mean_std_update,
 )
-from myosuite.integrations.musclemimic.trajectory_io import MotionClip
+from myosuite.core.trajectory_io import MotionClip
 
 
 def _to_numpy_tree(tree: Any) -> Any:

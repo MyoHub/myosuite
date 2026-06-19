@@ -29,7 +29,7 @@ from myosuite.integrations.musclemimic.bimanual_model import (
     FINGER_JOINT_TOKENS,
     FINGER_MUSCLE_TOKENS,
 )
-from myosuite.integrations.musclemimic.mimic_common import MimicTrackingConfig
+from myosuite.terms.mimic_reward import MimicTrackingConfig
 
 # Body → mimic site names (``MyoFullBody.body2sites_for_mimic``).
 FULLBODY_BODY2SITES_FOR_MIMIC = {

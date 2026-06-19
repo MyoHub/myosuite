@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 from ml_collections import config_dict
 import mujoco
 
-from myosuite.integrations.musclemimic.mimic_common import MimicTrackingConfig
+from myosuite.terms.mimic_reward import MimicTrackingConfig
 
 BODY2SITES_FOR_MIMIC = {
     "thorax": "upper_body_mimic",

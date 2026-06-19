@@ -17,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 if TYPE_CHECKING:
     pass
 
@@ -24,6 +26,45 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Reward config
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MimicTrackingConfig:
+    """Shared tracking constants used across CPU/MJX/mjlab bindings."""
+
+    reward_scale: float = 20.0
+    success_threshold: float = 0.04
+
+
+def compute_mimic_tracking_error(
+    current_site_pos: np.ndarray,
+    target_site_pos: np.ndarray,
+) -> float:
+    """Compute mean Euclidean tracking error over mimic sites.
+
+    Args:
+        current_site_pos: Current world-frame site positions, shape ``(n_sites, 3)``.
+        target_site_pos: Target site positions from the clip, same shape.
+
+    Returns:
+        Mean Euclidean distance across sites.
+    """
+    distances = np.linalg.norm(current_site_pos - target_site_pos, axis=1)
+    return float(distances.mean())
+
+
+def compute_mimic_reward(track_err: float, cfg: MimicTrackingConfig) -> float:
+    """Compute bounded dense tracking reward.
+
+    Args:
+        track_err: Mean Euclidean tracking error, e.g. from
+            :func:`compute_mimic_tracking_error`.
+        cfg: Tracking config supplying the exponential decay scale.
+
+    Returns:
+        Scalar reward in ``(0, 1]``.
+    """
+    return float(np.exp(-cfg.reward_scale * track_err))
 
 
 @dataclass(frozen=True)
