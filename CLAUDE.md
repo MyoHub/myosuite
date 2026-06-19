@@ -65,6 +65,7 @@ pytest myosuite/tests/test_saber_env.py -v
 ## Wiki
 
 - `docs/wiki/engineering-standards.md` — architecture rules, checklist for new envs.
+- `docs/wiki/adding-a-new-task.md` — step-by-step worked example for registering a new task; read before adding any new env ID.
 - `docs/wiki/library-usage.md` — approved library feature map; read before writing any helper.
 - `docs/wiki/mjlab-design-guide.md` — canonical mjlab patterns; read before writing any mjlab code.
 - `docs/wiki/cross-backend-contract.md` — obs/action/timing invariants for policy portability.
