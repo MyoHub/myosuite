@@ -4,6 +4,7 @@
 |---|---|
 | `repository-map.md` | Finding where code lives |
 | `engineering-standards.md` | Architecture rules, new-env checklist |
+| `adding-a-new-task.md` | Step-by-step worked example for registering a new task |
 | `library-usage.md` | Before writing any helper, wrapper, or utility |
 | `mjlab-design-guide.md` | Before writing any mjlab backend code |
 | `cross-backend-contract.md` | Before exporting a policy across backends |
