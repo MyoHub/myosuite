@@ -359,11 +359,11 @@ class TestTermFunctionsWithTorch:
             assert key in result, f"Missing key: {key}"
 
     def test_act_reg_finite(self) -> None:
-        """act_reg must return a finite scalar penalty."""
+        """act_reg must return finite dense values for all environments."""
         from myosuite.terms.base_reward import act_reg
 
         result = act_reg(self.accessor, {}, weight=0.01)
-        assert torch.isfinite(torch.tensor(float(result["dense"])))
+        assert torch.all(torch.isfinite(result["dense"]))
 
     def test_joint_penalty_finite(self) -> None:
         """joint_penalty must return a finite scalar penalty."""

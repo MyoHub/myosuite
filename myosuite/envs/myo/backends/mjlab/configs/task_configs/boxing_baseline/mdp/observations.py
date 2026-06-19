@@ -23,6 +23,6 @@ def mean_activation(
 def body_height(
     env: ManagerBasedRlEnv,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
-  ) -> torch.Tensor:
+) -> torch.Tensor:
     asset: Entity = env.scene[asset_cfg.name]
     return asset.data.data.xpos[:, asset.data.indexing.body_ids[asset_cfg.body_ids], 2]

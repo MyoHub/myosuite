@@ -44,6 +44,7 @@ from myosuite.envs.myo.tasks.challenge.tabletennis_spec import (
     preprocess_tabletennis_spec,
 )
 from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +52,17 @@ try:
     from etils import epath
 
     _MYOSUITE_ROOT = Path(epath.resource_path("myosuite"))
-    _TABLE_TENNIS_XML = _MYOSUITE_ROOT / "envs/myo/assets/arm/myoarm_tabletennis.xml"
 except (ImportError, ModuleNotFoundError):
     # ``register_mjlab_tabletennis.py`` → …/myosuite/envs/myo/backends/mjlab/ — package
     # root is parents[4], not parents[3] (which lands on ``envs/`` and duplicates ``envs/``).
     _MYOSUITE_ROOT = Path(__file__).resolve().parents[4]
-    _TABLE_TENNIS_XML = _MYOSUITE_ROOT / "envs/myo/assets/arm/myoarm_tabletennis.xml"
+
+# resolve_model_xml_path() rewrites the package-relative "../myo_sim/..."
+# includes in myoarm_tabletennis.xml to absolute pip paths — MjSpec.from_file()
+# does not resolve those on its own.
+_TABLE_TENNIS_XML = resolve_model_xml_path(
+    _MYOSUITE_ROOT / "envs/myo/assets/arm/myoarm_tabletennis.xml"
+)
 
 _TT_ENTITY_NAME = "table_tennis_robot"
 _MAX_TIME = 3.0

@@ -19,7 +19,6 @@ import tempfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
-from etils import epath
 from ml_collections import config_dict
 import mujoco
 
@@ -271,14 +270,10 @@ def compile_mimic_bimanual_mjmodel(
 
 
 def _default_myosuite_scene_xml() -> Path:
-    """Resolve the canonical MyoSuite scene include path."""
-    return (
-        Path(epath.resource_path("myosuite"))
-        / "simhive"
-        / "myo_sim"
-        / "scene"
-        / "myosuite_scene.xml"
-    ).resolve()
+    """Resolve the canonical MyoSuite scene include path (pip or submodule)."""
+    from myosuite.utils.asset_path_resolver import get_sim_asset_root
+
+    return get_sim_asset_root("myo_sim") / "scene" / "myosuite_scene.xml"
 
 
 def _prepare_scene_xml_for_include(scene_xml: Path) -> Path:
@@ -291,11 +286,39 @@ def _prepare_scene_xml_for_include(scene_xml: Path) -> Path:
     """
     root = ET.fromstring(scene_xml.read_text(encoding="utf-8"))
 
-    # Normalize legacy path prefixes so scene-local assets resolve correctly.
+    # Determine effective mesh/texture base dirs from the scene compiler element
+    # (MuJoCo resolves asset file= paths relative to meshdir/texturedir, which
+    # may be set to ".." or another relative path within the scene XML).
+    scene_dir = scene_xml.parent
+    mesh_base = scene_dir
+    tex_base = scene_dir
+    for compiler_elem in root.iter("compiler"):
+        for attr, store in (("meshdir", "mesh_base"), ("texturedir", "tex_base")):
+            v = compiler_elem.get(attr)
+            if v:
+                p = Path(v)
+                resolved = p if p.is_absolute() else (scene_dir / p).resolve()
+                if attr == "meshdir":
+                    mesh_base = resolved
+                else:
+                    tex_base = resolved
+
+    # Absolutize all relative file= paths so the temp copy (written to the
+    # same directory) resolves them regardless of sub-directory prefixes.
     for elem in root.findall(".//*[@file]"):
         file_attr = elem.get("file")
-        if file_attr:
-            elem.set("file", file_attr.replace("../myo_sim/scene/", ""))
+        if not file_attr or Path(file_attr).is_absolute():
+            continue
+        base = (
+            mesh_base
+            if elem.tag in ("mesh",)
+            else tex_base
+            if elem.tag in ("texture",)
+            else scene_dir
+        )
+        candidate = (base / file_attr).resolve()
+        if candidate.exists():
+            elem.set("file", str(candidate))
 
     # Keep only the floor geom from the default scene worldbody.
     worldbody = root.find("worldbody")

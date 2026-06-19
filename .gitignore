@@ -1,8 +1,9 @@
 *.DS_Store
 
-# Staged MJCF from myosuite.utils.simhive_assets.resolve_model_xml_path
+# Staged MJCF from myosuite.utils.asset_path_resolver.resolve_model_xml_path
 .myosuite_resolved_*.xml
-myosuite/simhive/myo_model/
+# Optional local override checkout of sim-asset packages (myo_sim, etc.)
+myosuite/simhive/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

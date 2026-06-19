@@ -29,11 +29,9 @@ Gymnasium spaces::
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
-import mujoco
 import numpy as np
 
 from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
@@ -411,122 +409,3 @@ class BoxingVsSingleAgentWrapper(ModularMultiAgentSingleAgentWrapper):
     ) -> None:
         """Backward-compatible alias around the modular single-agent wrapper."""
         super().__init__(env=env, agent_id=agent_id, opponent_policy=opponent_policy)
-
-
-# ---------------------------------------------------------------------------
-# Factory: single-agent BoxingVs with mannequin_exact_clone as opponent
-# ---------------------------------------------------------------------------
-
-_DEFAULT_CLONE_PATH = (
-    Path(__file__).resolve().parents[6]
-    / "tutorials"
-    / "mc26"
-    / "baselines"
-    / "boxing"
-    / "mannequin_exact_clone.npz"
-)
-
-_DEFAULT_MOTION_PATH = (
-    "Boxing/motions/Transitions_mocap/mazen_c3d/punchboxing_push_poses.npz"
-)
-
-
-def make_boxing_vs_clone_env(
-    render_mode: str | None = None,
-    policy_path: str | Path | None = None,
-    agent_id: str = "agent_0",
-) -> gym.Env:
-    """Single-agent BoxingVs env with ``mannequin_exact_clone.npz`` as the fixed opponent.
-
-    Loads the standalone BC clone policy and wires it as the opponent so a
-    learning agent can train against a realistic musculoskeletal boxer rather
-    than a random or scripted policy.
-
-    Note:
-        Episodes terminate when **either** agent falls (pelvis site height
-        ``< fall_pelvis_z_threshold``) or is KO'd. If the **controlled** agent
-        (default ``agent_0``) uses random or zero muscle commands, they often
-        collapse first while the clone remains standing — not a bug in the clone.
-
-    Args:
-        render_mode: ``"human"`` or ``"rgb_array"``; ``None`` disables rendering.
-        policy_path: Path to ``mannequin_exact_clone.npz``.  Defaults to
-            ``tutorials/mc26/baselines/boxing/mannequin_exact_clone.npz`` relative to the repo root.
-        agent_id: Which agent the caller controls (``"agent_0"`` or ``"agent_1"``).
-
-    Returns:
-        :class:`BoxingVsSingleAgentWrapper` controlling *agent_id* with the
-        clone as the fixed opponent.
-    """
-    from myosuite.core.trajectory_io import load_motion_clip, resolve_motion_path
-    from myosuite.integrations.musclemimic.fullbody_local_policy import (
-        FullbodyObsAdapter,
-        StandaloneBCPolicy,
-        _joint_qpos_size,
-        _joint_qvel_size,
-    )
-    from myosuite.integrations.musclemimic.fullbody_model import (
-        compile_mimic_fullbody_mjmodel,
-        default_mimic_fullbody_config,
-    )
-
-    resolved_policy = Path(policy_path) if policy_path else _DEFAULT_CLONE_PATH
-    clone_policy, goal_params = StandaloneBCPolicy.load(resolved_policy)
-
-    cfg = BoxingVsConfig()
-    base = BoxingVsEnv(config=cfg, render_mode=render_mode)
-
-    # Build a standalone fullbody model + adapter for the opponent's obs.
-    fb_model, _, _ = compile_mimic_fullbody_mjmodel(default_mimic_fullbody_config())
-    motion_path = resolve_motion_path(_DEFAULT_MOTION_PATH)
-    clip = load_motion_clip(
-        motion_path, expected_nq=fb_model.nq, expected_nv=fb_model.nv
-    )
-    adapter = FullbodyObsAdapter(fb_model, clip, goal_params)
-    fb_data = mujoco.MjData(fb_model)
-    mujoco.mj_resetDataKeyframe(fb_model, fb_data, 0)
-    mujoco.mj_forward(fb_model, fb_data)
-    clip_len = max(1, int(clip.qpos.shape[0]))
-
-    opp_id = "agent_1" if agent_id == "agent_0" else "agent_0"
-
-    # Lazily resolve qpos/qvel/act index arrays for the opponent agent.
-    _cached: dict[str, np.ndarray] = {}
-
-    def _opp_indices() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        if "qpos" not in _cached:
-            meta = base._meta
-            model = base.model
-            qpos_idx: list[int] = []
-            qvel_idx: list[int] = []
-            for jid in meta.jnt_ids[opp_id]:
-                jtype = int(model.jnt_type[jid])
-                qadr = int(model.jnt_qposadr[jid])
-                vadr = int(model.jnt_dofadr[jid])
-                qpos_idx.extend(range(qadr, qadr + _joint_qpos_size(jtype)))
-                qvel_idx.extend(range(vadr, vadr + _joint_qvel_size(jtype)))
-            _cached["qpos"] = np.asarray(qpos_idx, dtype=np.int32)
-            _cached["qvel"] = np.asarray(qvel_idx, dtype=np.int32)
-            _cached["act"] = np.asarray(meta.act_indices[opp_id], dtype=np.int32)
-        return _cached["qpos"], _cached["qvel"], _cached["act"]
-
-    def clone_opponent(_obs: np.ndarray) -> np.ndarray:
-        """Build fullbody obs for the opponent from raw physics state and run policy."""
-        qpos_idx, qvel_idx, act_idx = _opp_indices()
-        data = base.data
-        fb_data.qpos[:] = data.qpos[qpos_idx]
-        fb_data.qvel[:] = data.qvel[qvel_idx]
-        if len(fb_data.act) > 0:
-            fb_data.act[:] = data.act[act_idx]
-        fb_data.ctrl[:] = data.ctrl[act_idx]
-        mujoco.mj_forward(fb_model, fb_data)
-        frame_idx = int(round(float(data.time) / cfg.ctrl_dt)) % clip_len
-        fullbody_obs = np.asarray(adapter.build(fb_data, frame_idx), dtype=np.float32)
-        raw = clone_policy.action(fullbody_obs)
-        # Standalone BC head outputs [-1, 1]; BoxingVsEnv clips ctrl to [0, 1].
-        # Map symmetric activations to muscle range (same as ``scripts/boxing_bc``).
-        return np.clip(0.5 * (np.asarray(raw, dtype=np.float32) + 1.0), 0.0, 1.0)
-
-    return BoxingVsSingleAgentWrapper(
-        base, agent_id=agent_id, opponent_policy=clone_opponent
-    )

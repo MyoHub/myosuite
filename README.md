@@ -56,10 +56,10 @@ pip install -U myosuite
 
 ### Install from source
 
-The repo only uses a Git submodule for `myosuite/simhive/myo_sim`. Furniture, MPL, object, and YCB assets ship as default pip dependencies (`furniture-sim`, `mpl-sim`, `object-sim`, `ycb-sim`); they are not submodules.
+All sim assets ship as pip packages (`myo-sim`, `furniture-sim`, `mpl-sim`, `object-sim`, `ycb-sim`) — no git submodule checkout required.
 
 ```bash
-git clone --recursive https://github.com/myohub/myosuite.git
+git clone https://github.com/myohub/myosuite.git
 cd myosuite
 pip install -e .
 ```
@@ -75,9 +75,9 @@ pip install -e ".[docs]"     # Sphinx documentation build
 
 For advanced options, see the [installation guide](https://myosuite.readthedocs.io/en/latest/install.html).
 
-### Simhive furniture / MPL / object / YCB assets
+### Furniture / MPL / object / YCB sim assets
 
-These are installed with the base package. XML includes that reference `simhive/<name>/...` resolve from the installed package data first; a local `myosuite/simhive/<name>` checkout remains a fallback if present.
+These are installed with the base package (`pip install myosuite`). Older model XML that still uses legacy `simhive/<name>/...`-style paths (from the pre-pip git-submodule layout) is automatically resolved to the installed pip package; a local `myosuite/simhive/<name>` checkout can still be used as an override.
 
 ### Verify your installation
 
@@ -246,7 +246,7 @@ python -m myosuite_init   # or: uv run myoapi_init
 
 Visualize:
 ```bash
-python -m myosuite.utils.examine_sim -s myosuite/simhive/myo_model/myoskeleton/myoskeleton.xml
+python -m myosuite.utils.examine_sim -s $(python -c "import myo_sim; print(myo_sim.get_path('arm/myoarm.xml'))")
 ```
 
 ---

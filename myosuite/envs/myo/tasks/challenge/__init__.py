@@ -9,6 +9,7 @@ import pathlib
 import numpy as np
 
 import myosuite.core.registry as _registry
+from myosuite.envs.myo.assets._resolve import resolve_osl_xml as _resolve_osl_xml
 from myosuite.envs.myo.tasks.challenge.task_configs import (
     register_myochallenge_modular_tasks,
 )
@@ -133,7 +134,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.challenge.run_track:RunTrackEnv",
     max_episode_steps=1000,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "leg" / "myoosl_runtrack.xml"),
+        "model_path": str(_resolve_osl_xml("myoosl_runtrack.xml")),
         "normalize_act": True,
         "reset_type": "random",
         "terrain": "flat",
@@ -154,7 +155,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.challenge.run_track:RunTrackEnv",
     max_episode_steps=60000,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "leg" / "myoosl_runtrack.xml"),
+        "model_path": str(_resolve_osl_xml("myoosl_runtrack.xml")),
         "normalize_act": True,
         "reset_type": "random",
         "terrain": "random",
@@ -489,14 +490,6 @@ try:
         max_episode_steps=500,
         wrap_mj_instability_termination=False,
     )
-    # Single-agent BoxingVs with mannequin_exact_clone as the fixed opponent.
-    _register_env(
-        "myoChallengeBoxingVsClone-v0",
-        entry_point="myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_env:make_boxing_vs_clone_env",
-        max_episode_steps=500,
-        wrap_mj_instability_termination=False,
-    )
-
     del _register_env, _register_task, _BoxingVsTaskConfig
 except Exception as _e:  # noqa: BLE001
     import warnings as _w

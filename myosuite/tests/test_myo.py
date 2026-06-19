@@ -23,7 +23,7 @@ class TestMyo(TestEnvs):
         not _ARM_REACH_XML.exists(),
         reason=(
             "arm reach asset missing "
-            "(run `uv run myoapi_init` to fetch simhive assets before enabling this test)."
+            "(run `uv run myoapi_init` to fetch sim assets before enabling this test)."
         ),
     )
     def test_myosuite_envs(self):

@@ -20,7 +20,9 @@ from myosuite.integrations.musclemimic.myotorso_bimanual_model import (
     build_myotorso_bimanual_mimic_spec,
     default_myotorso_bimanual_mimic_config,
 )
-from myosuite.utils.simhive_path import get_simhive_asset_root, resolve_model_xml_path
+import tempfile
+
+from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
 SABER_BODY_XML = "myoarm_saber_body.xml"
 LEFT_LIGHTSABER_XML = "left_lightsaber.xml"
@@ -124,8 +126,10 @@ def _add_saber_helmet(spec: mujoco.MjSpec) -> None:
 
 
 def saber_scene_asset_dir() -> Path:
-    """Return the directory that stores standalone saber scene XML files."""
-    return get_simhive_asset_root("myo_sim")
+    """Return a writable cache directory for generated saber scene XML files."""
+    d = Path(tempfile.gettempdir()) / "myosuite_saber"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def saber_scene_asset_paths() -> dict[str, Path]:
@@ -261,13 +265,6 @@ def _build_saber_body_xml_text() -> str:
         '<mujoco model="myotorso_arm_chain_host">',
         '<mujoco model="myoarm_saber_body">',
         1,
-    )
-    xml = xml.replace(
-        'meshdir="../../../../simhive/myo_sim/"',
-        'meshdir="."',
-    ).replace(
-        'texturedir="../../../../simhive/myo_sim/"',
-        'texturedir="."',
     )
     return xml
 

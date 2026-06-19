@@ -4,13 +4,10 @@
 # LICENSE file in the root directory of this source tree.
 """Registration of myoedits environments (arm-reach with procedural model edits)."""
 
-import pathlib
-
 import mujoco
 
 import myosuite.core.registry as _registry
-
-_SIMHIVE_ROOT = pathlib.Path(__file__).parents[3] / "simhive" / "myo_sim"
+from myosuite.envs.myo.assets._resolve import resolve_arm_xml as _resolve_arm_xml
 
 
 # Arm Reaching ==============================
@@ -88,7 +85,7 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
 _EP = "myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0"
 
 _fixed_kwargs = {
-    "model_path": str(_SIMHIVE_ROOT / "arm" / "myoarm.xml"),
+    "model_path": str(_resolve_arm_xml("myoarm.xml")),
     "target_reach_range": {
         "IFtip": ((-0.175, -0.245, 1.405), (-0.175, -0.245, 1.405)),
     },
@@ -97,7 +94,7 @@ _fixed_kwargs = {
     "edit_fn": edit_fn_arm_reaching,
 }
 _random_kwargs = {
-    "model_path": str(_SIMHIVE_ROOT / "arm" / "myoarm.xml"),
+    "model_path": str(_resolve_arm_xml("myoarm.xml")),
     "target_reach_range": {
         "IFtip": (
             (-0.175 - 0.175, -0.245 - 0.175, 1.405 - 0.425),

@@ -65,6 +65,24 @@ _REWARD_MEAN_RTOL: dict[str, float] = {
 }
 _DEFAULT_REWARD_MEAN_RTOL = 0.80
 
+# Per-env expected obs-vector shrinkage relative to the PyPI baseline, for
+# *intentional* model simplifications made after the baseline was recorded.
+# Each entry must point to the code comment that documents why the model
+# changed. Do NOT regenerate the baseline pkl to paper over this -- the
+# baseline is captured from the *public PyPI release* (see module docstring
+# and scripts/generate_pypi_challenge_baselines.py), so it is the one fixed
+# point this test relies on to catch unintended drift. Silently regenerating
+# it would erase that signal instead of explaining the divergence.
+_OBS_SHAPE_DELTA: dict[str, int] = {
+    # myo_sim pip's leg model has a simplified hinge knee, lacking 3 passive
+    # coupling DOFs (e.g. "knee_angle_l_beta_rotation1") that
+    # SoccerEnv.MYO_JOINTS filters out at runtime -- see the comment next to
+    # "self.MYO_JOINTS = [j for j in self.MYO_JOINTS if j in _model_joints]"
+    # in SoccerEnv.__init__ (myosuite/envs/myo/tasks/challenge/soccer.py).
+    "myoChallengeSoccerP1-v0": -3,
+    "myoChallengeSoccerP2-v0": -3,
+}
+
 
 def _collect_env_ids() -> list[str]:
     if not _BASELINE_DIR.is_dir():
@@ -99,9 +117,14 @@ def _make_env(env_id: str):
 
 @pytest.mark.parametrize("env_id", _collect_env_ids())
 def test_obs_shape_matches_pypi(env_id: str) -> None:
-    """Observation vector length must be identical to the PyPI baseline."""
+    """Observation vector length must match the PyPI baseline (± documented deltas).
+
+    See ``_OBS_SHAPE_DELTA`` for envs with an accepted, intentional shape
+    change since the baseline was recorded.
+    """
     baseline = _load_baseline(env_id)
-    ref_shape = tuple(baseline["obs_shape"])
+    ref_len = baseline["obs_shape"][0] + _OBS_SHAPE_DELTA.get(env_id, 0)
+    ref_shape = (ref_len,)
 
     env = _make_env(env_id)
     try:
@@ -109,9 +132,11 @@ def test_obs_shape_matches_pypi(env_id: str) -> None:
     finally:
         env.close()
 
-    assert (
-        obs.shape == ref_shape
-    ), f"{env_id}: obs shape {obs.shape} != PyPI baseline {ref_shape}"
+    assert obs.shape == ref_shape, (
+        f"{env_id}: obs shape {obs.shape} != expected {ref_shape} "
+        f"(PyPI baseline {tuple(baseline['obs_shape'])}, "
+        f"documented delta {_OBS_SHAPE_DELTA.get(env_id, 0)})"
+    )
 
 
 @pytest.mark.parametrize("env_id", _collect_env_ids())

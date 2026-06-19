@@ -8,8 +8,8 @@
 ====================================================== -->
 
     <include file="myohand_tabletop.xml"/>
-    <include file="../../../../simhive/object_sim/common.xml"/>
-    <include file="../../../../simhive/object_sim/OBJECT_NAME/assets.xml"/>
+    <include file="../object_sim/common.xml"/>
+    <include file="../object_sim/OBJECT_NAME/assets.xml"/>
 
     <worldbody>
         <!-- <body name="OBJECT_NAME" pos="0.00 0.0 .045" childclass="grab"> -->
@@ -20,7 +20,7 @@
             <joint name="OBJRx" pos="0 0 0" axis="1 0 0"/>
             <joint name="OBJRy" pos="0 0 0" axis="0 1 0"/>
             <joint name="OBJRz" pos="0 0 0" axis="0 0 1"/>
-            <include file="../../../../simhive/object_sim/OBJECT_NAME/body.xml"/>
+            <include file="../object_sim/OBJECT_NAME/body.xml"/>
         </body>
     </worldbody>
 

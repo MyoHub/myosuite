@@ -9,8 +9,7 @@ from __future__ import annotations
 import pathlib
 from dataclasses import dataclass, field
 
-# Assets root: myosuite/envs/myo/assets/
-_ASSETS = pathlib.Path(__file__).parents[3] / "assets"
+from myosuite.envs.myo.assets._resolve import resolve_elbow_xml
 
 
 @dataclass
@@ -36,7 +35,7 @@ class ElbowPoseCfg:
     """
 
     model_path: pathlib.Path = field(
-        default_factory=lambda: _ASSETS / "elbow" / "myoelbow_1dof6muscles.xml"
+        default_factory=lambda: resolve_elbow_xml("myoelbow_1dof6muscles.xml")
     )
     sim_dt: float = 0.002
     ctrl_dt: float = 0.02

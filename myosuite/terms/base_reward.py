@@ -163,7 +163,7 @@ def act_reg(
     """
     xp = accessor.array_module()
     act = accessor.muscle_act()
-    penalty = -weight * xp.mean(act**2)
+    penalty = -weight * xp.mean(act**2, axis=-1)
     return {"act_reg": penalty, "dense": penalty, "solved": False, "done": False}
 
 
@@ -186,7 +186,7 @@ def movement_efficiency_reward(
     del task_state, kwargs
     xp = accessor.array_module()
     act = accessor.muscle_act()
-    mean_squared_activation = xp.mean(act**2)
+    mean_squared_activation = xp.mean(act**2, axis=-1)
     efficiency = 1.0 - mean_squared_activation
     return {
         "movement_efficiency": efficiency,
