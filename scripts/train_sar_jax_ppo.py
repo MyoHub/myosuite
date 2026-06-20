@@ -111,7 +111,11 @@ from typing import Any
 # (JAX treats "gpu" as ROCm/AMD; use "cuda" for NVIDIA)
 if "JAX_PLATFORMS" not in os.environ:
     os.environ["JAX_PLATFORMS"] = "cpu"
-os.environ.setdefault("MUJOCO_GL", "egl")
+if sys.platform == "darwin":
+    # egl is Linux-only; macOS has no EGL backend and would hard-fail on import.
+    os.environ.setdefault("MUJOCO_GL", "glfw")
+else:
+    os.environ.setdefault("MUJOCO_GL", "egl")
 
 import joblib  # noqa: E402
 import numpy as np  # noqa: E402
