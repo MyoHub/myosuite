@@ -65,7 +65,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from myosuite.core.trajectory_io import MotionClip
-from myosuite.integrations.musclemimic.mimic_common import MimicTrackingConfig
+from myosuite.terms.mimic_reward import MimicTrackingConfig
 
 if TYPE_CHECKING:
     from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (

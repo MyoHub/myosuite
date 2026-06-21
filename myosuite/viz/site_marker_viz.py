@@ -22,7 +22,7 @@ import mujoco
 import numpy as np
 
 if TYPE_CHECKING:
-    from myosuite.integrations.musclemimic.trajectory_io import MotionClip
+    from myosuite.core.trajectory_io import MotionClip
 
 
 # Identity rotation matrix (row-major, 9 floats) used for all sphere markers.

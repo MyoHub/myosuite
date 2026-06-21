@@ -12,9 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import mujoco
-import numpy as np
 
-from myosuite.physics.quat_math import intrinsic_euler2quat
+from myosuite.physics.quat_math import quat_from_euler_xyz_deg
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
@@ -103,24 +102,6 @@ HAND_GEOM_TOKENS: tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def quat_from_euler_xyz_deg(euler_deg: list[float]) -> list[float]:
-    """Convert intrinsic XYZ (roll, pitch, yaw) Euler angles in degrees to quat.
-
-    Uses ``intrinsic_euler2quat`` — the same convention as the historical
-    half-angle composition used for glove/helmet mesh placement.  Do not use
-    ``euler2quat`` here: that helper follows a different axis ordering used
-    elsewhere in MyoSuite.
-
-    Args:
-        euler_deg: [roll_deg, pitch_deg, yaw_deg] about X, then Y, then Z.
-
-    Returns:
-        Quaternion as [w, x, y, z].
-    """
-    euler_rad = np.deg2rad(np.asarray(euler_deg, dtype=np.float64))
-    return intrinsic_euler2quat(euler_rad).astype(np.float64).tolist()
 
 
 def replace_hand_visuals_with_gloves(

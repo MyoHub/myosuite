@@ -18,6 +18,52 @@ import numpy as np
 
 
 # ---------------------------------------------------------------------------
+# Site resolution and sampling
+# ---------------------------------------------------------------------------
+
+
+def resolve_mimic_site_ids(model, site_names: tuple[str, ...]) -> np.ndarray:
+    """Return model site ids for an ordered tuple of site names.
+
+    Args:
+        model: MuJoCo model exposing ``model.site(name).id``.
+        site_names: Ordered tuple of site names to resolve.
+
+    Returns:
+        Array of site ids, shape ``(len(site_names),)``, dtype ``int32``.
+    """
+    ids = [model.site(name).id for name in site_names]
+    return np.asarray(ids, dtype=np.int32)
+
+
+def sample_mimic_target_sites(
+    rng: np.random.Generator,
+    low: np.ndarray,
+    high: np.ndarray,
+    n_sites: int,
+) -> np.ndarray:
+    """Sample mimic target site positions (world frame), i.i.d. per site.
+
+    Matches the sampling contract of
+    :meth:`myosuite.envs.myo.backends.mjx.musclemimic_base.MjxMuscleMimicBase.sample_task`:
+    shape ``(n_sites, 3)``, each axis drawn uniformly in
+    ``[low[i], high[i]]`` for ``i in {0,1,2}``, broadcast across sites.
+
+    Args:
+        rng: NumPy random generator (e.g. ``env.np_random`` on Gymnasium CPU).
+        low: Lower box corner, shape ``(3,)``.
+        high: Upper box corner, shape ``(3,)``.
+        n_sites: Number of mimic sites.
+
+    Returns:
+        Array of shape ``(n_sites, 3)``, ``float32``.
+    """
+    lo = np.asarray(low, dtype=np.float64)
+    hi = np.asarray(high, dtype=np.float64)
+    return rng.uniform(lo, hi, size=(int(n_sites), 3)).astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
 # Lookahead observation
 # ---------------------------------------------------------------------------
 
