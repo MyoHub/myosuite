@@ -22,8 +22,9 @@ import types
 import warnings
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 import gymnasium as gym
+import numpy as np
+
 from myosuite.utils.path_utils import evaluate_success as _evaluate_success
 from myosuite.utils.policy_utils import examine_policy as _examine_policy
 
@@ -160,27 +161,6 @@ class CpuEnvAccessor:
             Array of shape ``(n_actuators,)`` in N.
         """
         return self._data.actuator_force.copy()
-
-    def moment_arm(self, joint_id: int) -> np.ndarray:
-        """Moment arm of every actuator about a given joint.
-
-        Computes the column of the actuator moment-arm matrix (``efc_J``)
-        corresponding to *joint_id* using MuJoCo's ``mj_jacActDot``
-        approach via ``mj_actuatorMoment``.
-
-        Args:
-            joint_id: Zero-based joint index (``model.joint(name).id``).
-
-        Returns:
-            Array of shape ``(n_actuators,)`` in metres.
-        """
-        import mujoco
-
-        n_act = self._model.nu
-        moment = np.zeros((n_act, self._model.nv), dtype=np.float64)
-        mujoco.mj_actuatorMoment(self._model, self._data, moment)
-        jadr = int(self._model.jnt_dofadr[joint_id])
-        return moment[:, jadr].copy()
 
 
 # Design note: MyoGymnasiumEnv intentionally does NOT inherit from
