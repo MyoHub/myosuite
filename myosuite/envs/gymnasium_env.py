@@ -179,10 +179,10 @@ class MyoGymnasiumEnv(gym.Env):
     """Base class for all MyoSuite CPU (Gymnasium) environments.
 
     Subclasses must implement:
-    - ``get_obs_dict(accessor)``  → dict[str, np.ndarray]
+    - ``_get_obs_dict(accessor)``  → dict[str, np.ndarray]
     - ``get_reward_dict(obs_dict)`` → dict[str, float | bool]
-    - ``reset_task(np_random)`` → dict  (task state for the episode)
-    - ``setup_model()`` → (MjModel, MjData)  (or set self.model / self.data)
+    - set ``self.model``, ``self.data``, ``self._ctrl_dt`` in ``__init__``
+    - optionally override ``reset_task(np_random)`` → dict
 
     The default step/reset logic handles action clipping, physics stepping,
     obs assembly, and reward extraction.
@@ -318,6 +318,14 @@ class MyoGymnasiumEnv(gym.Env):
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Advance the simulation by one control step.
 
+        Physics note: ``mj_step`` uses a semi-implicit Euler integrator whose
+        second half (``mj_step2``) integrates ``qpos`` from ``qvel`` but does
+        NOT recompute derived world-frame quantities (``xpos``, ``site_xpos``,
+        ``xipos``, body orientations, …).  ``mj_kinematics`` is therefore
+        required immediately after to synchronise those quantities with the new
+        ``qpos`` before observations are read.  Subclasses that override
+        ``step()`` must preserve this call.
+
         Args:
             action: Control command, clipped to action_space bounds.
             **kwargs: Ignored compatibility kwargs (e.g. update_exteroception).
@@ -365,6 +373,7 @@ class MyoGymnasiumEnv(gym.Env):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
+        _validate_reward_dict(rwd_dict)
         obs = self._obs_dict_to_vec(obs_dict)
         obs = self._ensure_obs_gymnasium_compliant(obs)
         reward = float(rwd_dict.get("dense", 0.0))
@@ -395,6 +404,7 @@ class MyoGymnasiumEnv(gym.Env):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
         self._task_state = self.reset_task(self.np_random)
+        mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         obs = self._obs_dict_to_vec(obs_dict)
@@ -460,10 +470,7 @@ class MyoGymnasiumEnv(gym.Env):
             hasattr(self, "_mj_renderer_compat")
             and self._mj_renderer_compat is not None
         ):
-            try:
-                self._mj_renderer_compat.close()
-            except Exception:
-                pass
+            self._mj_renderer_compat.close()
             self._mj_renderer_compat = None
         if hasattr(self, "_mujoco_renderer") and self._mujoco_renderer is not None:
             self._mujoco_renderer.close()
