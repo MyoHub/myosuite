@@ -9,7 +9,7 @@ assets** as MuscleMimic ``myofullbody.xml`` (all under the
 ``musclemimic_models`` ``model/`` tree), plus ``myotorso_bimanual_chain.xml``
 and bimanual arm assets.
 This keeps pelvis / hip framing consistent with the Mimic full-body MJCF
-(MyoSuite simhive leg/torso files can differ, e.g. pelvis orientation).
+(MyoSuite's leg/torso files can differ, e.g. pelvis orientation).
 
 ``myoarm_assets.xml`` in the host is swapped for ``myoarm_bimanual_assets`` so
 mesh names do not collide with the bimanual arm package.
@@ -47,15 +47,16 @@ _MYOTORSO_BIMANUAL_TAG = "myotorso_bimanual_mimic"
 
 # Canonical MyoLegs chain include (same path as ``myotorso_arm_chain_host``).
 _MYOLEGS_CHAIN_HOST_INCLUDE = (
-    '<include file="../../../../simhive/myo_sim/leg/assets/' 'myolegs_chain.xml"/>'
+    '<include file="../myo_sim/leg/assets/myolegs_chain.xml"/>'
 )
 
 _TORSO_ASSETS_HOST_INCLUDE = (
-    '<include file="../../../../simhive/myo_sim/torso/assets/' 'myotorso_assets.xml"/>'
+    '<include file="../myo_sim/torso/assets/myotorso_assets.xml"/>\n'
+    '  <include file="../myo_sim/torso/assets/myotorso_muscle.xml"/>\n'
+    '  <include file="../myo_sim/torso/assets/myotorso_tendon.xml"/>'
 )
 _HEAD_ASSETS_HOST_INCLUDE = (
-    '<include file="../../../../simhive/myo_sim/head/assets/'
-    'myohead_simple_assets.xml"/>'
+    '<include file="../myo_sim/head/assets/myohead_simple_assets.xml"/>'
 )
 
 
@@ -160,22 +161,30 @@ def _materialize_myotorso_bimanual_host_xml() -> tuple[Path, Path, Path]:
     arm_dir = root / "envs" / "myo" / "assets" / "arm"
     host_tpl = arm_dir / "myotorso_arm_chain_host.xml"
     host_src = host_tpl.read_text(encoding="utf-8")
-    myoarm_inc = (
-        '<include file="../../../../simhive/myo_sim/arm/assets/' 'myoarm_assets.xml"/>'
-    )
-    chain_inc = (
-        '<include file="../../../../simhive/myo_sim/torso/assets/'
-        'myotorso_arm_chain.xml"/>'
-    )
-    host_src = host_src.replace(
-        myoarm_inc,
-        f'<include file="{assets_abs}"/>',
-        1,
-    )
+    # Arm asset include — swap bundled arm assets for musclemimic bimanual assets.
+    _ARM_ASSETS_INC = '<include file="../arm/assets/myoarm_assets.xml"/>'
+    chain_inc = '<include file="../torso/assets/myotorso_arm_chain.xml"/>'
+    host_src = host_src.replace(_ARM_ASSETS_INC, f'<include file="{assets_abs}"/>', 1)
     host_src = host_src.replace(
         chain_inc,
         f'<include file="{chain_abs}"/>',
         1,
+    )
+
+    # Resolve compiler meshdir/texturedir and quad-scene include to pip path.
+    from myosuite.utils.asset_path_resolver import get_sim_asset_root
+
+    _myo_sim_root = get_sim_asset_root("myo_sim").as_posix()
+    host_src = host_src.replace('meshdir="../myo_sim"', f'meshdir="{_myo_sim_root}"', 1)
+    host_src = host_src.replace(
+        'texturedir="../myo_sim"', f'texturedir="{_myo_sim_root}"', 1
+    )
+    _quad_scene_inc = '<include file="../myo_sim/scene/myosuite_quad.xml"/>'
+    _quad_scene_abs = (
+        get_sim_asset_root("myo_sim") / "scene" / "myosuite_quad.xml"
+    ).as_posix()
+    host_src = host_src.replace(
+        _quad_scene_inc, f'<include file="{_quad_scene_abs}"/>', 1
     )
 
     torso_assets_abs = _musclemimic_model_file(
@@ -205,9 +214,7 @@ def _materialize_myotorso_bimanual_host_xml() -> tuple[Path, Path, Path]:
         _myolegs_assets_bones_only_xml_text(),
         encoding="utf-8",
     )
-    legs_assets_inc = (
-        '<include file="../../../../simhive/myo_sim/leg/assets/' 'myolegs_assets.xml"/>'
-    )
+    legs_assets_inc = '<include file="../myo_sim/leg/assets/myolegs_assets.xml"/>'
     host_src = host_src.replace(
         legs_assets_inc,
         f'<include file="{tmp_leg_assets.resolve().as_posix()}"/>',
@@ -338,14 +345,15 @@ def save_myotorso_bimanual_mimic_xml(
 ) -> Path:
     """Write a monolithic MJCF for MyoTorso + bimanual (Mimic edits) to disk.
 
-    Uses :meth:`mujoco.MjSpec.to_xml` on the composite spec, then fixes
-    ``meshdir`` / ``texturedir`` so the file loads when placed under
-    ``myosuite/simhive/myo_sim/`` (mesh ``file`` attributes use
-    ``../myo_sim/meshes/...`` paths from that layout).
+    Uses :meth:`mujoco.MjSpec.to_xml` on the composite spec, then rewrites
+    ``meshdir``/``texturedir`` to ``.`` so mesh/texture ``file`` attributes
+    (baked in as absolute paths by ``to_xml()``) resolve relative to the
+    output directory.
 
     Args:
-        dest: Output path. Default: ``myosuite/simhive/myo_sim/
-            myotorso_bimanual_mimic.xml``.
+        dest: Output path. Default: an OS temp directory
+            (``<tempdir>/myosuite_musclemimic/myotorso_bimanual_mimic.xml``) —
+            never the read-only installed myo_sim pip package directory.
         config: Mimic config; default is :func:`default_mimic_config`.
 
     Returns:
@@ -358,10 +366,10 @@ def save_myotorso_bimanual_mimic_xml(
     spec, _ = build_myotorso_bimanual_mimic_spec(cfg)
     xml = spec.to_xml()
     xml = xml.replace(
-        'meshdir="../../../../simhive/myo_sim/"',
+        'meshdir="../myo_sim"',
         'meshdir="."',
     ).replace(
-        'texturedir="../../../../simhive/myo_sim/"',
+        'texturedir="../myo_sim"',
         'texturedir="."',
     )
     xml = xml.replace(
@@ -385,7 +393,13 @@ def save_myotorso_bimanual_mimic_xml(
 
     out = dest
     if out is None:
-        out = _MYOSUITE_PKG_ROOT / "simhive" / "myo_sim" / "myotorso_bimanual_mimic.xml"
+        import tempfile
+
+        out = (
+            Path(tempfile.gettempdir())
+            / "myosuite_musclemimic"
+            / "myotorso_bimanual_mimic.xml"
+        )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(xml, encoding="utf-8")
     return out.resolve()

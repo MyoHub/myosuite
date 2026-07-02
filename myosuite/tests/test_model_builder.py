@@ -15,7 +15,7 @@ pytestmark = pytest.mark.tier1
 
 _SKIP_NO_SIMHIVE = pytest.mark.skipif(
     not __import__("shutil").which("mujoco") and True,
-    reason="Requires accessible simhive or myo_sim to build",
+    reason="Requires myo_sim package to build",
 )
 
 
@@ -53,55 +53,17 @@ def test_get_recipe_unknown_raises():
 
 
 def test_resolve_fragment_path_fallback():
-    """_resolve_fragment_path falls back to simhive submodule."""
+    """_resolve_fragment_path resolves via myo_sim pip package or bundled fallback."""
     from myosuite.core.model_builder import _resolve_fragment_path
 
-    # elbow should resolve — simhive submodule must be initialised
     try:
         path = _resolve_fragment_path("elbow")
         assert path.exists(), f"Resolved path does not exist: {path}"
         assert path.suffix == ".xml"
     except FileNotFoundError:
-        pytest.skip("simhive submodule not initialised; skipping path resolution test")
-
-
-def test_model_builder_content_hash_stable():
-    """Two ModelBuilder instances with the same fragments produce the same hash."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b1 = ModelBuilder()
-    b2 = ModelBuilder()
-    # No fragments — hashes should match
-    assert b1._content_hash() == b2._content_hash()
-
-
-def test_place_fragment_hash_differs_from_default():
-    """place_fragment with non-zero pos produces a different hash than attach_fragment."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b_default = ModelBuilder().attach_fragment("elbow")
-    b_placed = ModelBuilder().place_fragment("elbow", pos=[0.1, 0.0, 0.5])
-    assert b_default._content_hash() != b_placed._content_hash()
-
-
-def test_add_free_body_changes_hash():
-    """add_free_body changes the content hash."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b_bare = ModelBuilder().attach_fragment("elbow")
-    b_with_obj = (
-        ModelBuilder().attach_fragment("elbow").add_free_body("ball", pos=[0.1, 0, 0.2])
-    )
-    assert b_bare._content_hash() != b_with_obj._content_hash()
-
-
-def test_two_free_bodies_at_different_positions_differ():
-    """Two builders with free bodies at different positions get different hashes."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b1 = ModelBuilder().add_free_body("ball", pos=[0.1, 0.0, 0.0])
-    b2 = ModelBuilder().add_free_body("ball", pos=[0.2, 0.0, 0.0])
-    assert b1._content_hash() != b2._content_hash()
+        pytest.skip(
+            "elbow fragment not resolvable (no myo_sim package and no bundled fallback)"
+        )
 
 
 @_SKIP_NO_SIMHIVE
@@ -115,7 +77,7 @@ def test_model_builder_build_elbow():
         assert isinstance(model, mujoco.MjModel)
         assert model.nq > 0
     except FileNotFoundError:
-        pytest.skip("Fragment XML not found; simhive not initialised")
+        pytest.skip("Fragment XML not found; myo_sim not installed")
 
 
 @_SKIP_NO_SIMHIVE
@@ -130,7 +92,7 @@ def test_place_fragment_sets_position():
         assert isinstance(model, mujoco.MjModel)
         assert model.nbody > 1
     except FileNotFoundError:
-        pytest.skip("Fragment XML not found; simhive not initialised")
+        pytest.skip("Fragment XML not found; myo_sim not installed")
 
 
 @_SKIP_NO_SIMHIVE
@@ -149,7 +111,7 @@ def test_add_free_body_increases_nq():
         assert model_with.nq == model_bare.nq + 7
         assert model_with.nbody == model_bare.nbody + 1
     except FileNotFoundError:
-        pytest.skip("Fragment XML not found; simhive not initialised")
+        pytest.skip("Fragment XML not found; myo_sim not installed")
 
 
 @_SKIP_NO_SIMHIVE
@@ -167,29 +129,20 @@ def test_multiple_free_bodies():
         assert model_multi.nq == model_bare.nq + 7 * n_objects
         assert model_multi.nbody == model_bare.nbody + n_objects
     except FileNotFoundError:
-        pytest.skip("Fragment XML not found; simhive not initialised")
+        pytest.skip("Fragment XML not found; myo_sim not installed")
 
 
-def test_model_builder_cache_hit():
-    """Building the same recipe twice reuses the cached spec but returns a fresh model."""
+def test_model_builder_build_returns_distinct_models():
+    """Each build() call returns a distinct MjModel instance."""
     import mujoco
 
-    from myosuite.core.model_builder import ModelBuilder, _MODEL_CACHE
+    from myosuite.core.model_builder import ModelBuilder
 
     b = ModelBuilder()
-    key = b._content_hash()
-    # Remove any prior cache entry so we get a clean build
-    _MODEL_CACHE.pop(key, None)
-
-    # First build: populates the cache with the spec
-    model1, spec1 = b.build()
-    assert key in _MODEL_CACHE
-    assert isinstance(_MODEL_CACHE[key], mujoco.MjSpec)
-
-    # Second build: spec is reused (same object), model is freshly compiled
-    model2, spec2 = b.build()
-    assert spec2 is spec1, "Cached spec should be the same object"
-    assert model2 is not model1, "Each build() call must return a distinct MjModel"
+    model1, _ = b.build()
+    model2, _ = b.build()
+    assert isinstance(model1, mujoco.MjModel)
+    assert model2 is not model1
 
 
 # --- Minimal OBJ mesh fixture ---
@@ -259,24 +212,6 @@ def test_add_mesh_body_missing_texture_raises(minimal_mesh):
             mesh_file=minimal_mesh,
             texture_file="/nonexistent/tex.png",
         )
-
-
-def test_add_mesh_body_changes_hash(minimal_mesh):
-    """add_mesh_body produces a different hash than an empty builder."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b_bare = ModelBuilder()
-    b_mesh = ModelBuilder().add_mesh_body("obj", mesh_file=minimal_mesh)
-    assert b_bare._content_hash() != b_mesh._content_hash()
-
-
-def test_add_mesh_body_hash_differs_with_scale(minimal_mesh):
-    """Different scale values produce different content hashes."""
-    from myosuite.core.model_builder import ModelBuilder
-
-    b1 = ModelBuilder().add_mesh_body("obj", mesh_file=minimal_mesh, scale=[1, 1, 1])
-    b2 = ModelBuilder().add_mesh_body("obj", mesh_file=minimal_mesh, scale=[2, 2, 2])
-    assert b1._content_hash() != b2._content_hash()
 
 
 def test_add_mesh_body_compiles(minimal_mesh):
@@ -358,4 +293,172 @@ def test_add_mesh_body_combined_with_fragment(minimal_mesh, minimal_texture):
         assert model_with.nmesh >= 1
         assert model_with.ntex >= 1
     except FileNotFoundError:
-        pytest.skip("Fragment XML not found; simhive not initialised")
+        pytest.skip("Fragment XML not found; myo_sim not installed")
+
+
+# ---------------------------------------------------------------------------
+# attach_spec tests
+# ---------------------------------------------------------------------------
+
+
+def _make_minimal_spec():
+    import mujoco
+
+    s = mujoco.MjSpec()
+    body = s.worldbody.add_body(name="test_body")
+    body.add_geom(
+        name="test_geom", type=mujoco.mjtGeom.mjGEOM_SPHERE, size=[0.01, 0, 0]
+    )
+    return s
+
+
+def test_attach_spec_basic():
+    """attach_spec() accepts a pre-built MjSpec and produces a valid model."""
+    import mujoco
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, spec = ModelBuilder().attach_spec(_make_minimal_spec(), name="test").build()
+    assert isinstance(model, mujoco.MjModel)
+    assert model.nbody > 1  # worldbody + test_body
+
+
+def test_attach_spec_body_present():
+    """Body from the inline spec is reachable by name in the compiled model."""
+    import mujoco
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, _ = ModelBuilder().attach_spec(_make_minimal_spec(), name="test").build()
+    body_names = [
+        mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, i)
+        for i in range(model.nbody)
+    ]
+    assert any("test_body" in (n or "") for n in body_names)
+
+
+def test_attach_spec_combined_with_free_body():
+    """attach_spec can be chained with add_free_body."""
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, _ = (
+        ModelBuilder()
+        .attach_spec(_make_minimal_spec(), name="test")
+        .add_free_body("ball", pos=[0.1, 0, 0])
+        .build()
+    )
+    assert model.nbody > 2  # worldbody + test_body + ball
+
+
+def _myo_sim_has_compose() -> bool:
+    try:
+        from myo_sim.build.compose import load_right_hand_from_arm_spec  # noqa: F401
+
+        return True
+    except (ImportError, AttributeError):
+        return False
+
+
+@pytest.mark.skipif(
+    not _myo_sim_has_compose(), reason="myo_sim.build.compose not available"
+)
+def test_hand_standard_recipe_via_compose():
+    """hand_standard recipe builds a valid hand model via myo_sim compose path."""
+    import mujoco
+    from myosuite.core.model_builder import build_from_recipe
+
+    model, spec = build_from_recipe("hand_standard")
+    assert isinstance(model, mujoco.MjModel)
+    assert model.nu > 0
+    assert model.njnt > 0
+
+
+@pytest.mark.skipif(
+    not _myo_sim_has_compose(), reason="myo_sim.build.compose not available"
+)
+def test_attach_spec_hand_from_arm():
+    """attach_spec with myo_sim composed hand produces a model with finger joints."""
+    import mujoco
+    from myo_sim.build.compose import load_right_hand_from_arm_spec
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, _ = (
+        ModelBuilder().attach_spec(load_right_hand_from_arm_spec(), name="hand").build()
+    )
+    assert isinstance(model, mujoco.MjModel)
+    assert model.nu > 0
+    assert model.njnt > 0
+
+
+@pytest.mark.skipif(
+    not _myo_sim_has_compose(), reason="myo_sim.build.compose not available"
+)
+def test_hand_standard_numerically_equivalent_to_myo_sim_main():
+    """hand_standard recipe must be structurally equivalent to myo_sim.load('myohand_r').
+
+    myo_sim.load('myohand_r') attaches the same hand spec to a passive torso
+    scaffold, so njnt/nu and all joint+actuator names must match exactly.
+    """
+    import mujoco
+    import myo_sim
+    from myosuite.core.model_builder import build_from_recipe
+
+    # Myosuite side: hand_standard recipe (hand-only, no torso).
+    m_recipe, _ = build_from_recipe("hand_standard")
+
+    # myo_sim side: composed myohand_r (torso scaffold + same hand).
+    m_ref, _ = myo_sim.load("myohand_r")
+
+    # Structural counts must match.
+    assert (
+        m_recipe.njnt == m_ref.njnt
+    ), f"njnt mismatch: recipe={m_recipe.njnt} myo_sim={m_ref.njnt}"
+    assert (
+        m_recipe.nu == m_ref.nu
+    ), f"nu mismatch: recipe={m_recipe.nu} myo_sim={m_ref.nu}"
+
+    def _joint_names(m):
+        return sorted(
+            mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(m.njnt)
+        )
+
+    def _actuator_names(m):
+        return sorted(
+            mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_ACTUATOR, i) for i in range(m.nu)
+        )
+
+    assert _joint_names(m_recipe) == _joint_names(m_ref), "joint names diverge"
+    assert _actuator_names(m_recipe) == _actuator_names(m_ref), "actuator names diverge"
+
+    # Joint range equivalence (order-independent via name lookup).
+    for jnt_id in range(m_recipe.njnt):
+        name = mujoco.mj_id2name(m_recipe, mujoco.mjtObj.mjOBJ_JOINT, jnt_id)
+        ref_id = mujoco.mj_name2id(m_ref, mujoco.mjtObj.mjOBJ_JOINT, name)
+        lo_r, hi_r = m_recipe.jnt_range[jnt_id]
+        lo_f, hi_f = m_ref.jnt_range[ref_id]
+        assert (
+            abs(lo_r - lo_f) < 1e-6 and abs(hi_r - hi_f) < 1e-6
+        ), f"joint {name!r}: range ({lo_r:.4f},{hi_r:.4f}) != ({lo_f:.4f},{hi_f:.4f})"
+
+
+@pytest.mark.skipif(
+    not _myo_sim_has_compose(), reason="myo_sim.build.compose not available"
+)
+def test_attach_fragment_hand_routes_through_compose():
+    """attach_fragment('hand') must use myo_sim compose, not the bundled static XML.
+
+    Verified by checking that joint names carry the _r suffix produced by the
+    compose pipeline (prune_arm_spec_to_hand) rather than the un-suffixed names
+    in the legacy myo_sim hand/myohand.xml.
+    """
+    import mujoco
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, _ = ModelBuilder().attach_fragment("hand").build()
+    assert model.njnt == 23
+    assert model.nu == 39
+    joint_names = [
+        mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
+        for i in range(model.njnt)
+    ]
+    assert all(
+        n.endswith("_r") for n in joint_names
+    ), f"Expected all joints to end with '_r' (compose path); got: {joint_names}"

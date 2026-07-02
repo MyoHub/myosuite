@@ -13,7 +13,7 @@ import mujoco
 import numpy as np
 import pytest
 
-from myosuite.integrations.musclemimic.trajectory_io import (
+from myosuite.core.trajectory_io import (
     MotionClip,
     expand_motion_clip_to_model,
     load_motion_clip,

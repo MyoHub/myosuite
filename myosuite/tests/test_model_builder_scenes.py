@@ -11,11 +11,11 @@ Each test mirrors the physical setup of a real MyoSuite challenge environment
 add_free_body, and add_mesh_body produce the expected geometry and DoF counts.
 
 Tests are split into two groups:
-- Simhive-dependent: require the simhive submodule (hand/arm/leg fragments).
+- myo_sim-dependent: require the myo_sim pip package (hand/arm/leg fragments).
 - Asset-only: only require the mesh/texture files checked into the repo.
 
-These tests require the simhive submodule to be initialised.
-Skip markers are applied globally so CI without the submodule stays green.
+These tests require the myo_sim package to be installed.
+Skip markers are applied globally so CI without the package stays green.
 
 Parity notes
 ------------
@@ -31,15 +31,27 @@ import numpy as np
 
 pytestmark = [pytest.mark.tier2]
 
-_SKIP = pytest.mark.skipif(
-    not (
+
+def _hand_fragment_available() -> bool:
+    try:
+        import myo_sim  # type: ignore[import-untyped]
+
+        if (myo_sim.MODELS_DIR / "hand" / "myohand_r.xml").exists():
+            return True
+    except (ImportError, AttributeError):
+        pass
+    return (
         __import__("pathlib").Path(__file__).parents[1]
         / "simhive"
         / "myo_sim"
         / "hand"
         / "myohand.xml"
-    ).exists(),
-    reason="simhive submodule not initialised",
+    ).exists()
+
+
+_SKIP = pytest.mark.skipif(
+    not _hand_fragment_available(),
+    reason="myo_sim pip package or local override checkout required",
 )
 
 
@@ -430,7 +442,7 @@ def test_challenge_baoding_recipe_body_count():
     try:
         model, _ = build_from_recipe("challenge_baoding")
     except FileNotFoundError:
-        pytest.skip("hand fragment not found; simhive not initialised")
+        pytest.skip("hand fragment not found; myo_sim not installed")
 
     assert model.nbody == model_hand.nbody + 2
     assert model.nq == model_hand.nq + 14  # 7 dof × 2 balls
@@ -446,7 +458,7 @@ def test_challenge_baoding_recipe_ball_mass():
     try:
         model, _ = build_from_recipe("challenge_baoding")
     except FileNotFoundError:
-        pytest.skip("hand fragment not found; simhive not initialised")
+        pytest.skip("hand fragment not found; myo_sim not installed")
 
     for name in ("ball1", "ball2"):
         bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
@@ -464,7 +476,7 @@ def test_challenge_baoding_recipe_ball_condim():
     try:
         model, _ = build_from_recipe("challenge_baoding")
     except FileNotFoundError:
-        pytest.skip("hand fragment not found; simhive not initialised")
+        pytest.skip("hand fragment not found; myo_sim not installed")
 
     for name in ("ball1", "ball2"):
         gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, name)
@@ -517,7 +529,7 @@ def test_challenge_tabletennis_recipe_body_and_mesh_count():
     try:
         model, _ = build_from_recipe("challenge_tabletennis")
     except FileNotFoundError:
-        pytest.skip("arm fragment not found; simhive not initialised")
+        pytest.skip("arm fragment not found; myo_sim not installed")
 
     # 1 free ball + 3 mesh bodies
     assert model.nbody == model_arm.nbody + 4
@@ -537,7 +549,7 @@ def test_challenge_relocate_recipe_object_mass():
     try:
         model, _ = build_from_recipe("challenge_relocate")
     except FileNotFoundError:
-        pytest.skip("arm fragment not found; simhive not initialised")
+        pytest.skip("arm fragment not found; myo_sim not installed")
 
     bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "object")
     assert bid >= 0
