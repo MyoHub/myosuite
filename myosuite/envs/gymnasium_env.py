@@ -22,8 +22,9 @@ import types
 import warnings
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 import gymnasium as gym
+import numpy as np
+
 from myosuite.utils.path_utils import evaluate_success as _evaluate_success
 from myosuite.utils.policy_utils import examine_policy as _examine_policy
 
@@ -161,27 +162,6 @@ class CpuEnvAccessor:
         """
         return self._data.actuator_force.copy()
 
-    def moment_arm(self, joint_id: int) -> np.ndarray:
-        """Moment arm of every actuator about a given joint.
-
-        Computes the column of the actuator moment-arm matrix (``efc_J``)
-        corresponding to *joint_id* using MuJoCo's ``mj_jacActDot``
-        approach via ``mj_actuatorMoment``.
-
-        Args:
-            joint_id: Zero-based joint index (``model.joint(name).id``).
-
-        Returns:
-            Array of shape ``(n_actuators,)`` in metres.
-        """
-        import mujoco
-
-        n_act = self._model.nu
-        moment = np.zeros((n_act, self._model.nv), dtype=np.float64)
-        mujoco.mj_actuatorMoment(self._model, self._data, moment)
-        jadr = int(self._model.jnt_dofadr[joint_id])
-        return moment[:, jadr].copy()
-
 
 # Design note: MyoGymnasiumEnv intentionally does NOT inherit from
 # gymnasium.envs.mujoco.MujocoEnv.  Three contracts are incompatible:
@@ -199,10 +179,10 @@ class MyoGymnasiumEnv(gym.Env):
     """Base class for all MyoSuite CPU (Gymnasium) environments.
 
     Subclasses must implement:
-    - ``get_obs_dict(accessor)``  → dict[str, np.ndarray]
+    - ``_get_obs_dict(accessor)``  → dict[str, np.ndarray]
     - ``get_reward_dict(obs_dict)`` → dict[str, float | bool]
-    - ``reset_task(np_random)`` → dict  (task state for the episode)
-    - ``setup_model()`` → (MjModel, MjData)  (or set self.model / self.data)
+    - set ``self.model``, ``self.data``, ``self._ctrl_dt`` in ``__init__``
+    - optionally override ``reset_task(np_random)`` → dict
 
     The default step/reset logic handles action clipping, physics stepping,
     obs assembly, and reward extraction.
@@ -338,6 +318,14 @@ class MyoGymnasiumEnv(gym.Env):
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Advance the simulation by one control step.
 
+        Physics note: ``mj_step`` uses a semi-implicit Euler integrator whose
+        second half (``mj_step2``) integrates ``qpos`` from ``qvel`` but does
+        NOT recompute derived world-frame quantities (``xpos``, ``site_xpos``,
+        ``xipos``, body orientations, …).  ``mj_kinematics`` is therefore
+        required immediately after to synchronise those quantities with the new
+        ``qpos`` before observations are read.  Subclasses that override
+        ``step()`` must preserve this call.
+
         Args:
             action: Control command, clipped to action_space bounds.
             **kwargs: Ignored compatibility kwargs (e.g. update_exteroception).
@@ -385,6 +373,7 @@ class MyoGymnasiumEnv(gym.Env):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
+        _validate_reward_dict(rwd_dict)
         obs = self._obs_dict_to_vec(obs_dict)
         obs = self._ensure_obs_gymnasium_compliant(obs)
         reward = float(rwd_dict.get("dense", 0.0))
@@ -415,6 +404,7 @@ class MyoGymnasiumEnv(gym.Env):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
         self._task_state = self.reset_task(self.np_random)
+        mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         obs = self._obs_dict_to_vec(obs_dict)
@@ -480,10 +470,7 @@ class MyoGymnasiumEnv(gym.Env):
             hasattr(self, "_mj_renderer_compat")
             and self._mj_renderer_compat is not None
         ):
-            try:
-                self._mj_renderer_compat.close()
-            except Exception:
-                pass
+            self._mj_renderer_compat.close()
             self._mj_renderer_compat = None
         if hasattr(self, "_mujoco_renderer") and self._mujoco_renderer is not None:
             self._mujoco_renderer.close()

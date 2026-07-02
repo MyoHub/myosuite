@@ -45,7 +45,7 @@ from myosuite.integrations.musclemimic.fullbody_local_policy import (
     load_local_policy_artifacts,
     read_checkpoint_config_metadata,
 )
-from myosuite.integrations.musclemimic.trajectory_io import (
+from myosuite.core.trajectory_io import (
     MotionClip,
     load_motion_clip,
     resolve_motion_path,

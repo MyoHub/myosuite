@@ -14,11 +14,13 @@ import numpy as np
 import gymnasium as gym
 from gymnasium.utils import EzPickle
 
-from myosuite.core.model_builder import ModelBuilder
+from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
     sample_geometry_8,
     sample_geometry_100,
+    sample_geometry_id,
+    sample_geometry_ood,
 )
 from myosuite.physics.quat_math import euler2quat
 from myosuite.physics.quat_math import calculate_cosine
@@ -53,7 +55,7 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
 
     def __init__(
         self,
-        model_path: str,
+        model_path: str = "",
         obsd_model_path: str | None = None,
         seed: int | None = None,
         normalize_act: bool = True,
@@ -72,13 +74,20 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
             frame_skip=frame_skip,
             **kwargs,
         )
-        self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
+        model_recipe = kwargs.pop("model_recipe", None)
+        if model_recipe is not None:
+            self.model, self._mj_spec = build_from_recipe(model_recipe)
+            self._name_sfx = "_r"
+        else:
+            self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
+            self._name_sfx = ""
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
         self.normalize_act = normalize_act
 
+        sfx = self._name_sfx
         self.target_obj_bid = self.model.body("target").id
-        self.S_grasp_sid = self.model.site("S_grasp").id
+        self.S_grasp_sid = self.model.site(f"S_grasp{sfx}").id
         self.obj_bid = self.model.body("Object").id
         self.eps_ball_sid = self.model.site("eps_ball").id
         self.success_indicator_sid = self.model.site("success").id
@@ -104,6 +113,8 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
         self.model.body_mass[self.obj_bid] *= 1.25
 
         self.obs_keys = list(self.DEFAULT_OBS_KEYS)
+        if self.model.na > 0 and "act" not in self.obs_keys:
+            self.obs_keys.append("act")
         self.rwd_keys_wt = dict(self.DEFAULT_RWD_KEYS_AND_WEIGHTS)
 
         mujoco.mj_resetData(self.model, self.data)
@@ -207,7 +218,7 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
         return {}
 
     def _obs_dict_to_vec(self, obs_dict: dict[str, np.ndarray]) -> np.ndarray:
-        """Flatten only obs_keys so act is not in the observation vector."""
+        """Flatten only the keys in obs_keys, in obs_keys order."""
         return np.concatenate(
             [np.atleast_1d(obs_dict[k]).ravel() for k in self.obs_keys if k in obs_dict]
         )
@@ -248,6 +259,74 @@ class Geometries8EnvV0Gymnasium(ReorientSAREnvV0):
         self.model.geom_rgba[self.tar_gid] = color
         self.model.geom_pos[self.tar_t_gid] = top_pos
         self.model.geom_pos[self.tar_b_gid] = bot_pos
+        self.model.body_quat[self.target_obj_bid] = euler2quat(desired_euler)
+        self.pen_length = float(
+            np.linalg.norm(
+                self.model.geom_pos[self.obj_t_gid]
+                - self.model.geom_pos[self.obj_b_gid]
+            )
+        )
+        self.tar_length = float(
+            np.linalg.norm(
+                self.model.geom_pos[self.tar_t_gid]
+                - self.model.geom_pos[self.tar_b_gid]
+            )
+        )
+
+
+class InDistribution(ReorientSAREnvV0):
+    """SAR reorient eval, in-distribution geometries. Migrated from reorient_sar_v0.InDistribution."""
+
+    def _apply_episode_geometry(self, rng: np.random.Generator) -> None:
+        geom_type, size, color, top_pos, bot_pos, desired_euler = sample_geometry_id(
+            rng
+        )
+        self.model.geom_size[self.obj_gid] = size
+        self.model.geom_type[self.obj_gid] = geom_type
+        self.model.geom_rgba[self.obj_gid] = color
+        self.model.geom_pos[self.obj_t_gid] = top_pos
+        self.model.geom_pos[self.obj_b_gid] = bot_pos
+        self.model.body_mass[self.obj_bid] = 1.2
+        self.model.geom_size[self.tar_gid] = size
+        self.model.geom_type[self.tar_gid] = geom_type
+        self.model.geom_rgba[self.tar_gid] = color
+        self.model.geom_pos[self.tar_t_gid] = top_pos
+        self.model.geom_pos[self.tar_b_gid] = bot_pos
+        self.model.geom_condim[self.obj_gid] = 3
+        self.model.body_quat[self.target_obj_bid] = euler2quat(desired_euler)
+        self.pen_length = float(
+            np.linalg.norm(
+                self.model.geom_pos[self.obj_t_gid]
+                - self.model.geom_pos[self.obj_b_gid]
+            )
+        )
+        self.tar_length = float(
+            np.linalg.norm(
+                self.model.geom_pos[self.tar_t_gid]
+                - self.model.geom_pos[self.tar_b_gid]
+            )
+        )
+
+
+class OutofDistribution(ReorientSAREnvV0):
+    """SAR reorient eval, out-of-distribution geometries. Migrated from reorient_sar_v0.OutofDistribution."""
+
+    def _apply_episode_geometry(self, rng: np.random.Generator) -> None:
+        geom_type, size, color, top_pos, bot_pos, desired_euler = sample_geometry_ood(
+            rng
+        )
+        self.model.geom_size[self.obj_gid] = size
+        self.model.geom_type[self.obj_gid] = geom_type
+        self.model.geom_rgba[self.obj_gid] = color
+        self.model.geom_pos[self.obj_t_gid] = top_pos
+        self.model.geom_pos[self.obj_b_gid] = bot_pos
+        self.model.body_mass[self.obj_bid] = 1.2
+        self.model.geom_size[self.tar_gid] = size
+        self.model.geom_type[self.tar_gid] = geom_type
+        self.model.geom_rgba[self.tar_gid] = color
+        self.model.geom_pos[self.tar_t_gid] = top_pos
+        self.model.geom_pos[self.tar_b_gid] = bot_pos
+        self.model.geom_condim[self.obj_gid] = 3
         self.model.body_quat[self.target_obj_bid] = euler2quat(desired_euler)
         self.pen_length = float(
             np.linalg.norm(

@@ -163,7 +163,7 @@ def main() -> None:
         compile_mimic_fullbody_mjmodel,
         default_mimic_fullbody_config,
     )
-    from myosuite.integrations.musclemimic.trajectory_io import (
+    from myosuite.core.trajectory_io import (
         load_motion_clip,
         resolve_motion_path,
     )

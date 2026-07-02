@@ -8,16 +8,15 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 # Python 3.9
 # MINK -- pip install "myosuite[examples]"
 
-import os
-
 import mink
 import mujoco
 import mujoco.viewer
 import numpy as np
 from loop_rate_limiters import RateLimiter
 
-os.chdir("../../../myosuite/simhive/myo_sim/arm")
-_XML_ARM_Model = "myoarm.xml"
+import myo_sim
+
+_XML_ARM_Model = str(myo_sim.get_path("arm/myoarm.xml"))
 
 xml_string = f"""
         <mujoco model="MyoArm with Mocap">

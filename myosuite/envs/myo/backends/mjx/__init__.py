@@ -50,10 +50,15 @@ from myosuite.envs.myo.backends.mjx.musclemimic_fullbody_env import (
 from myosuite.envs.myo.backends.mjx.pose_env import MjxPoseEnv
 from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv
 from myosuite.envs.myo.backends.mjx.walk_env import MjxWalkEnv
+from myosuite.envs.myo.assets._resolve import (
+    resolve_elbow_xml as _resolve_elbow_xml,
+    resolve_finger_xml as _resolve_finger_xml,
+)
 from myosuite.integrations.musclemimic.bimanual_model import default_mimic_config
 from myosuite.integrations.musclemimic.fullbody_model import (
     default_mimic_fullbody_config,
 )
+from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
 # ---------------------------------------------------------------------------
 # Conversion helper: dataclass → ConfigDict (required by mujoco_playground)
@@ -108,8 +113,8 @@ ppo_config = config_dict.create(
 
 _MYOSUITE = epath.Path(epath.resource_path("myosuite"))
 
-_ELBOW_MODEL = Path(str(_MYOSUITE / "envs/myo/assets/elbow/myoelbow_1dof6muscles.xml"))
-_FINGER_MODEL = Path(str(_MYOSUITE / "simhive/myo_sim/finger/myofinger_v0.xml"))
+_ELBOW_MODEL = _resolve_elbow_xml("myoelbow_1dof6muscles.xml")
+_FINGER_MODEL = _resolve_finger_xml("myofinger_v0.xml")
 _HAND_MODEL = Path(str(_MYOSUITE / "envs/myo/assets/hand/myohand_pose.xml"))
 
 # ---------------------------------------------------------------------------
@@ -138,12 +143,12 @@ ALL_ENVS = [
 # Walk env config
 # ---------------------------------------------------------------------------
 
-_SIMHIVE = epath.Path(epath.resource_path("myosuite")) / "simhive" / "myo_sim"
+_MYO_SIM_ROOT = Path(str(get_sim_asset_root("myo_sim")))
 # Optional trimmed MJCF (not shipped): fall back to myolegs.xml and rely on
 # :func:`~myosuite.envs.myo.backends.mjx.mjx_spec_preprocess.preprocess_mjx_spec`
 # to strip JAX/XLA-incompatible cylinder/ellipsoid contacts when ``mjx_impl`` ≠ warp.
-_LEG_MJX_MODEL = _SIMHIVE / "leg" / "myolegs_mjx.xml"
-_LEG_FALLBACK_MODEL = _SIMHIVE / "leg" / "myolegs.xml"
+_LEG_MJX_MODEL = _MYO_SIM_ROOT / "leg" / "myolegs_mjx.xml"
+_LEG_FALLBACK_MODEL = _MYO_SIM_ROOT / "leg" / "myolegs.xml"
 
 
 _musclemimic_bimanual_config = default_mimic_config()

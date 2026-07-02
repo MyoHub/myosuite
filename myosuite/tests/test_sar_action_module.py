@@ -92,9 +92,16 @@ def _make_fake_env(
         ids = list(range(len(names)))
         return ids, list(names)
 
+    def _write_ctrl_to_sim(ctrl_values, ctrl_ids=None, env_ids=None):
+        """Mock of the mjlab Entity write API used by apply_actions()."""
+        row_idx = slice(None) if env_ids is None else env_ids
+        col_idx = slice(None) if ctrl_ids is None else ctrl_ids
+        entity_data_inner.ctrl[row_idx, col_idx] = ctrl_values
+
     entity = types.SimpleNamespace(
         data=entity_data,
         find_actuators=_find_actuators,
+        write_ctrl_to_sim=_write_ctrl_to_sim,
     )
     env = types.SimpleNamespace(
         num_envs=n_envs,
