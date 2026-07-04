@@ -13,7 +13,6 @@ functions (``boxing_vs_obs_terms``, ``boxing_vs_reward_terms``) into the
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import mujoco
@@ -30,7 +29,7 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
-from myosuite.core.trajectory_io import load_motion_clip
+from myosuite.core.trajectory_io import load_motion_clip, resolve_motion_path
 
 
 @dataclass
@@ -192,7 +191,7 @@ class BoxingVsTaskConfig(MultiAgentTaskConfig):
             mujoco.mj_resetDataKeyframe(fb_model, self._fullbody_data, 0)
             mujoco.mj_forward(fb_model, self._fullbody_data)
             self._fullbody_clip = load_motion_clip(
-                Path(self.fullbody_motion_path),
+                resolve_motion_path(self.fullbody_motion_path),
                 expected_nq=fb_model.nq,
                 expected_nv=fb_model.nv,
             )
