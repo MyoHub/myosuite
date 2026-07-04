@@ -18,7 +18,7 @@ Typical usage::
         fullbody_obs_adapter_params_from_metadata,
         read_checkpoint_config_metadata,
     )
-    from myosuite.integrations.musclemimic.trajectory_io import (
+    from myosuite.core.trajectory_io import (
         load_motion_clip, resolve_motion_path,
     )
     from myosuite.integrations.musclemimic.activation_collector import (
@@ -55,7 +55,7 @@ if TYPE_CHECKING:
         LocalPolicyRunner,
         OnnxPolicyRunner,
     )
-    from myosuite.integrations.musclemimic.trajectory_io import MotionClip
+    from myosuite.core.trajectory_io import MotionClip
 
 logger = logging.getLogger(__name__)
 

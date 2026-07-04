@@ -22,6 +22,8 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
+from myosuite.utils.asset_path_resolver import resolve_model_xml_path
+
 _ARM_HOST_XML = (
     Path(__file__).resolve().parents[2]
     / "envs"
@@ -52,7 +54,8 @@ def myotorso_tabletennis_isolated_xml_path() -> Path:
 
 def compile_myotorso_arm_host() -> mujoco.MjModel:
     """Compile torso + single-arm + legs host (table-tennis ``full_body``)."""
-    return mujoco.MjModel.from_xml_path(str(_ARM_HOST_XML))
+    resolved = resolve_model_xml_path(_ARM_HOST_XML)
+    return mujoco.MjModel.from_xml_path(str(resolved))
 
 
 def build_joint_value_map(
@@ -76,8 +79,9 @@ def build_joint_value_map(
         hname = host.joint(hj).name
         if not hname:
             continue
-        bname = f"{hname}_r"
-        rid = ref_by_name.get(bname)
+        # Host joints may carry _r suffix (new arm) or bare names (old arm).
+        # Try direct match first, then append _r for old-style host models.
+        rid = ref_by_name.get(hname) or ref_by_name.get(f"{hname}_r")
         if rid is None:
             continue
         if int(ref.jnt_type[rid]) != int(host.jnt_type[hj]):

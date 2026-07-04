@@ -1,0 +1,63 @@
+<mujocoinclude model="MyoTorsoAbdomen">
+<!-- =================================================
+    Copyright 2025 Vikash Kumar, Vittorio Caggiano
+    Model	:: Myo Torso (MuJoCoV3.2.4)
+    Author	:: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano
+    source	:: https://github.com/MyoHub/myosuite
+    License	:: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+====================================================== -->
+
+<!-- WARNING: This file is a duplicate of myoupperbody_chain.xml with two lines commented out. All updates should be made to myoupperbody_chain.xml and synced here when ready -->
+
+    <body name="sacrum" pos="0 0 0" quat="0.707035 0.707179 0 0" childclass="myotorso">
+        <inertial diaginertia="0.1028 0.0871 0.0579" mass="11.777" pos="-0.0707 0 0"/>
+        <geom mesh="sacrum" name="sacrum" type="mesh"/>
+
+        <site name="ercspn_r_ercspn_r-P1" pos="-0.14 0.0439 0.0436"/>
+        <site name="ercspn_l_ercspn_l-P1" pos="-0.14 0.0439 -0.0436"/>
+        <site name="intobl_r_intobl_r-P1" pos="-0.04 0.07 0.1157"/>
+        <site name="intobl_l_intobl_l-P1" pos="-0.04 0.07 -0.1157"/>
+        <site name="extobl_r_extobl_r-P1" pos="-0.03 -0.0636 0.01"/>
+        <site name="extobl_l_extobl_l-P1" pos="-0.03 -0.0636 -0.01"/>
+
+        <body name="lumbar" pos="-0.1007 0.0815 0">
+            <geom type="capsule" class="myotorso_coll" size="0.080 0.077" pos=".036 -.020 0" euler="0 0 1.57"/>
+            <geom type="ellipsoid" class="myotorso_coll" size="0.260 0.095 0.140" pos=".016 .160 0" euler="0 0 1.7"/>
+            <geom type="capsule" class="myotorso_coll" size="0.110 0.065" pos=".011 .250 0" euler="0 0 1.57"/>
+            <geom type="capsule" class="myotorso_coll" size="0.075 0.145" pos="-.009 .335 0" euler="0 0 1.57"/>
+            <geom name="pelvis_wrap" type="cylinder" size=".05 .05" pos="0 0.0175 0" class="myotorso_wrap"/>
+            <geom mesh="hat_lumbar" name="lumbar" type="mesh"/>
+
+            <inertial diaginertia="1.4745 1.4314 0.7555" mass="34.2366" pos="-0.03 0.32 0" quat="0.707107 0.707107 0 0"/>
+            <joint axis="0 0 1" name="lumbar_extension" pos="0 0 0" range="-0.8727 .2618"/>
+            <joint axis="1 0 0" name="lumbar_bending" pos="0 0 0" range="-.3491 .3491"/>
+            <joint axis="0 1 0" name="lumbar_rotation" pos="0 0 0" range="-0.0873 0.0873" damping="5"/>
+
+            <site name="lumbar_spine" pos="0.030 0 0" class="myotorso_marker"/>
+            <site name="ercspn_r_ercspn_r-P2" pos="-0.055 0.11 0.0241"/>
+            <site name="ercspn_l_ercspn_l-P2" pos="-0.055 0.11 -0.0241"/>
+            <site name="intobl_r_intobl_r-P2" pos="0.07 0.16 0.015"/>
+            <site name="intobl_l_intobl_l-P2" pos="0.07 0.16 -0.015"/>
+            <site name="extobl_r_extobl_r-P2" pos="0.065 0.11 0.11"/>
+            <site name="extobl_l_extobl_l-P2" pos="0.065 0.11 -0.11"/>
+
+            <body name="thoracic">
+                <geom mesh="hat_thoracic" name="thoracic" type="mesh"/>
+                <geom mesh="hat_ribs" name="ribs" type="mesh"/>
+
+                <site name="clavicle_l" pos="0.021 .390 -.058" class="myotorso_marker"/>
+                <site name="clavicle_r" pos="0.021 .390 0.058" class="myotorso_marker"/>
+                <site name="clavicle_spine" pos="-.01 .4 0" class="myotorso_marker"/>
+                <site name="thoracis_spine" pos="-.018 .194 0" class="myotorso_marker"/>
+                <site name="chest" pos="0.084 0.221 0" class="myotorso_marker"/>
+
+                <include file="../../myo_sim/head/assets/myohead_rigid_chain.xml"/>
+                <!-- <include file="../../myo_sim/arm/assets/myoarm_simpleR_chain.xml"/> -->
+                <!-- <include file="../../myo_sim/arm/assets/myoarm_simpleL_chain.xml"/> -->
+            </body>
+
+        </body>
+
+    </body>
+
+</mujocoinclude>

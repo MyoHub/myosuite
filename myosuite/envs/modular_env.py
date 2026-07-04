@@ -396,7 +396,14 @@ class ModularTaskEnv(MyoGymnasiumEnv):
             high=np.ones(n_actuators, dtype=np.float32),
             dtype=np.float32,
         )
+        self.mj_instability_termination: bool = True
         self._validate_backend_timing()
+
+    def _check_mj_instability_termination(self) -> bool:
+        """Return True if the simulation is numerically unstable (NaN/Inf in qpos/qvel)."""
+        return bool(
+            np.any(~np.isfinite(self.data.qpos)) or np.any(~np.isfinite(self.data.qvel))
+        )
 
     def _validate_backend_timing(self) -> None:
         """Validate control-step timing when strict alignment is requested."""
@@ -884,6 +891,7 @@ class ModularTaskEnv(MyoGymnasiumEnv):
         """Reset simulation and, when configured, the saber target pool."""
         super(MyoGymnasiumEnv, self).reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data)
         if self._fatigue_model is not None:
             self._fatigue_model.reset()
         self._task_state = self.reset_task(self.np_random)

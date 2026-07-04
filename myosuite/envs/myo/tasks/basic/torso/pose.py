@@ -17,6 +17,7 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
+from myosuite.envs.myo.assets._resolve import warn_torso_pip_calibration_divergence
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
@@ -105,6 +106,7 @@ class TorsoEnvV0(MyoGymnasiumEnv, EzPickle):
         )
 
         # ── Load model ─────────────────────────────────────────────────────
+        warn_torso_pip_calibration_divergence()
         self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)

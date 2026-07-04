@@ -25,12 +25,14 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
-from myosuite.integrations.musclemimic.mimic_common import (
+from myosuite.terms.mimic_obs import (
+    resolve_mimic_site_ids,
+    sample_mimic_target_sites,
+)
+from myosuite.terms.mimic_reward import (
     MimicTrackingConfig,
     compute_mimic_reward,
     compute_mimic_tracking_error,
-    resolve_mimic_site_ids,
-    sample_mimic_target_sites,
 )
 
 
