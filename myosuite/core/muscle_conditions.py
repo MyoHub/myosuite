@@ -88,6 +88,8 @@ MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
     },  # Shoulder values from Looft & Frey-Law 2020 (https://doi.org/10.1016/j.jbiomech.2020.109762)
     # default: Looft et al. 2018 / Looft & Frey-Law 2020
     "Default": {"F": 0.00970, "R": 0.00091, "r": 15},
+    # v2.4 fallback params (Looft et al. 2018, r compensated for 0.1 R/F ratio)
+    "Default_v2_4": {"F": 0.00912, "R": 0.1 * 0.00094, "r": 10 * 15},
 }
 
 _DEFAULT_F = MUSCLE_FATIGUE_PARAMS["Default"]["F"]
@@ -327,9 +329,12 @@ class CumulativeFatigue:
             ),
         )
 
-        self._MA += (C - self._F * self._MA) * _dt
-        self._MR += (-C + rR * self._MF) * _dt
-        self._MF += (self._F * self._MA - rR * self._MF) * _dt
+        dMA = (C - self._F * self._MA) * _dt
+        dMR = (-C + rR * self._MF) * _dt
+        dMF = (self._F * self._MA - rR * self._MF) * _dt
+        self._MA += dMA
+        self._MR += dMR
+        self._MF += dMF
 
         return self._MA, self._MR, self._MF
 
@@ -373,6 +378,29 @@ class CumulativeFatigue:
             self._MA[:] = 0.0
             self._MR[:] = 1.0
             self._MF[:] = 0.0
+
+    def state_dict(self) -> dict[str, list]:
+        """Return serialisable snapshot of the fatigue compartments.
+
+        Returns:
+            Dict with keys ``"MA"``, ``"MR"``, ``"MF"``, each a flat list of
+            length ``na``.
+        """
+        return {
+            "MA": self._MA.tolist(),
+            "MR": self._MR.tolist(),
+            "MF": self._MF.tolist(),
+        }
+
+    def load_state_dict(self, state: dict[str, list]) -> None:
+        """Restore fatigue compartments from a :meth:`state_dict` snapshot.
+
+        Args:
+            state: Dict produced by :meth:`state_dict`.
+        """
+        self._MA = np.array(state["MA"], dtype=float)  # type: ignore[assignment]
+        self._MR = np.array(state["MR"], dtype=float)  # type: ignore[assignment]
+        self._MF = np.array(state["MF"], dtype=float)  # type: ignore[assignment]
 
     def seed(self, seed: int | None = None) -> list[int]:
         """Set random seed used by stochastic reset."""
@@ -462,6 +490,8 @@ class TorchFatigueState:
         F: float | np.ndarray = _DEFAULT_F,
         R: float | np.ndarray = _DEFAULT_R,
         r: float | np.ndarray = _DEFAULT_r,
+        tauact: float | np.ndarray = 0.01,
+        taudeact: float | np.ndarray = 0.04,
     ) -> None:
         import torch  # noqa: PLC0415
 
@@ -475,6 +505,8 @@ class TorchFatigueState:
         self.MA: Any = torch.zeros(num_envs, n_muscles, device=device)
         self.MF: Any = torch.zeros(num_envs, n_muscles, device=device)
         self.MR: Any = torch.ones(num_envs, n_muscles, device=device)
+        self._tauact: Any = _to_tensor(tauact)  # (n_muscles,)
+        self._taudeact: Any = _to_tensor(taudeact)  # (n_muscles,)
 
     # ------------------------------------------------------------------
     # Factory
@@ -509,6 +541,20 @@ class TorchFatigueState:
         if use_uniform_params or na == 0:
             return cls(num_envs=num_envs, n_muscles=na or mj_model.nu, device=device)
         F_arr, R_arr, r_arr = _per_muscle_params(mj_model, sex)
+        tauact: np.ndarray = np.array(
+            [
+                mj_model.actuator_dynprm[i][0]
+                for i in range(mj_model.nu)
+                if muscle_act_ind[i]
+            ]
+        )
+        taudeact: np.ndarray = np.array(
+            [
+                mj_model.actuator_dynprm[i][1]
+                for i in range(mj_model.nu)
+                if muscle_act_ind[i]
+            ]
+        )
         return cls(
             num_envs=num_envs,
             n_muscles=na,
@@ -516,6 +562,8 @@ class TorchFatigueState:
             F=F_arr,
             R=R_arr,
             r=r_arr,
+            tauact=tauact,
+            taudeact=taudeact,
         )
 
     # ------------------------------------------------------------------
@@ -539,18 +587,31 @@ class TorchFatigueState:
         """
         import torch  # noqa: PLC0415
 
+        # Activation/deactivation rates (MuJoCo Hill-type dynamics)
+        LD = 1.0 / (self._tauact * (0.5 + 1.5 * self.MA))
+        LR = (0.5 + 1.5 * self.MA) / self._taudeact
+
         # Recovery rate: boosted during rest (MA >= TL)
         rR = torch.where(self.MA >= excitation, self._r * self._R, self._R)
 
-        ld = torch.clamp(excitation - self.MA, min=0.0)
-        lr = torch.minimum(rR * self.MF, self.MR)
-        dMA = ld - self._F * self.MA
-        dMF = self._F * self.MA - lr
-        dMR = -ld + lr
-        self.MA = torch.clamp(self.MA + dMA * dt, 0.0, 1.0)
-        self.MF = torch.clamp(self.MF + dMF * dt, 0.0, 1.0)
-        self.MR = torch.clamp(self.MR + dMR * dt, 0.0, 1.0)
-        return torch.clamp(self.MA, max=excitation)
+        # Clip C to keep compartments in [0, 1]
+        C = torch.clamp(
+            (LD * torch.minimum(excitation - self.MA, self.MR)) * (self.MA < excitation)
+            + (LR * (excitation - self.MA)) * (self.MA >= excitation),
+            min=torch.maximum(
+                -self.MA / dt + self._F * self.MA, (self.MR - 1.0) / dt + rR * self.MF
+            ),
+            max=torch.minimum(
+                (1.0 - self.MA) / dt + self._F * self.MA, self.MR / dt + rR * self.MF
+            ),
+        )
+        dMA_dt = C - self._F * self.MA
+        dMF_dt = self._F * self.MA - rR * self.MF
+        dMR_dt = -C + rR * self.MF
+        self.MA = self.MA + dMA_dt * dt
+        self.MF = self.MF + dMF_dt * dt
+        self.MR = self.MR + dMR_dt * dt
+        return torch.clamp(excitation, max=self.MA)
 
     # ------------------------------------------------------------------
     # Reset
@@ -571,3 +632,35 @@ class TorchFatigueState:
             self.MA[env_ids] = 0.0
             self.MF[env_ids] = 0.0
             self.MR[env_ids] = 1.0
+
+    def state_dict(self) -> dict[str, list]:
+        """Return serialisable snapshot of the fatigue compartments.
+
+        Returns:
+            Dict with keys ``"MA"``, ``"MR"``, ``"MF"``, each a nested list
+            of shape ``(num_envs, n_muscles)``.
+        """
+        return {
+            "MA": self.MA.cpu().numpy().tolist(),
+            "MR": self.MR.cpu().numpy().tolist(),
+            "MF": self.MF.cpu().numpy().tolist(),
+        }
+
+    def load_state_dict(self, state: dict[str, list]) -> None:
+        """Restore fatigue compartments from a :meth:`state_dict` snapshot.
+
+        Args:
+            state: Dict produced by :meth:`state_dict`.  Shape must be
+                compatible with the current ``(num_envs, n_muscles)`` tensors.
+        """
+        import torch  # noqa: PLC0415
+
+        self.MA.copy_(
+            torch.tensor(state["MA"], dtype=torch.float32, device=self.MA.device)
+        )
+        self.MR.copy_(
+            torch.tensor(state["MR"], dtype=torch.float32, device=self.MR.device)
+        )
+        self.MF.copy_(
+            torch.tensor(state["MF"], dtype=torch.float32, device=self.MF.device)
+        )
