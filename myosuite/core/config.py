@@ -254,7 +254,6 @@ class TaskConfig:
     scene: str | list[str] | Callable = "flat_floor"
     max_episode_steps: int = 200
     muscle_fatigue: bool = False
-    persist_muscle_fatigue: bool = False
     backend: BackendConfig = field(default_factory=BackendConfig)
     obs: ObsSpec = field(default_factory=ObsSpec)
     goal: GoalSpec = field(default_factory=GoalSpec)

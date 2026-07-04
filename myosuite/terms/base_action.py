@@ -91,7 +91,6 @@ class MuscleActionTermCfg:
     entity_name: str = "robot"
     normalize: bool = True
     muscle_fatigue: bool = False
-    persist_muscle_fatigue: bool = False
     ctrl_dt: float = 0.01
 
 
@@ -164,7 +163,7 @@ class MuscleActionTerm:
         Args:
             env_ids: Environment indices to reset, or ``None`` for all.
         """
-        if self._fatigue is not None and not self.cfg.persist_muscle_fatigue:
+        if self._fatigue is not None:
             self._fatigue.reset(env_ids)
 
     def apply_actions(self) -> None:

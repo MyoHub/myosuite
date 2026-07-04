@@ -706,7 +706,6 @@ def _build_manager_env_cfg(
                 tendon_names=tendons,
                 action_mode="excitation",
                 muscle_fatigue=task_cfg.muscle_fatigue,
-                persist_muscle_fatigue=task_cfg.persist_muscle_fatigue,
                 ctrl_dt=task_cfg.backend.ctrl_dt,
                 pre_physics_fn=lambda env: _get_saber_logic(env).advance_target_pool(),
             )
