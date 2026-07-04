@@ -11,6 +11,7 @@ import pytest
 
 from myosuite.envs.heightfields import ChaseTagField, TrackField
 from myosuite.tests.test_envs import assert_close
+from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
 pytestmark = pytest.mark.tier2
 
@@ -20,7 +21,8 @@ _ASSETS = Path(__file__).parents[1] / "envs" / "myo" / "assets"
 def _create_sim(xml_path: str):
     class Sim:
         def __init__(self, xml_path: str):
-            self.model = mujoco.MjModel.from_xml_path(xml_path)
+            resolved = resolve_model_xml_path(xml_path)
+            self.model = mujoco.MjModel.from_xml_path(str(resolved))
             self.data = mujoco.MjData(self.model)
 
     return Sim(xml_path)

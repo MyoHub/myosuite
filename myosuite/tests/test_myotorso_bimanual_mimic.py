@@ -7,12 +7,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import mujoco
 import pytest
 
-import myosuite
 from myosuite.integrations.musclemimic.bimanual_model import (
     default_mimic_config,
 )
@@ -59,18 +57,15 @@ def test_myotorso_bimanual_mimic_mjmodel_solver_options() -> None:
 
 
 def test_myotorso_bimanual_mimic_saved_xml_loads() -> None:
-    """Vendored monolithic MJCF under simhive/myo_sim should compile."""
-    xml = (
-        Path(myosuite.__file__).resolve().parent
-        / "simhive"
-        / "myo_sim"
-        / "myotorso_bimanual_mimic.xml"
-    )
+    """Monolithic MyoTorso+bimanual MJCF compiles from pip package location."""
+    from myosuite.utils.asset_path_resolver import get_sim_asset_root
+
+    xml = get_sim_asset_root("myo_sim") / "myotorso_bimanual_mimic.xml"
     if not xml.is_file():
         try:
-            save_myotorso_bimanual_mimic_xml(dest=xml)
+            save_myotorso_bimanual_mimic_xml()
         except ImportError as err:  # pragma: no cover
-            pytest.skip(f"missing {xml} and cannot generate (musclemimic): {err}")
+            pytest.skip(f"cannot generate monolithic MJCF (musclemimic missing): {err}")
     assert xml.is_file(), f"missing {xml}"
     m = mujoco.MjModel.from_xml_path(str(xml))
     assert m.nq >= 48

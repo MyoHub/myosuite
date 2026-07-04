@@ -260,7 +260,7 @@ try:
         SharedModelStateBridge,
         make_fullbody_checkpoint_bridged_policy,
     )
-    from myosuite.integrations.musclemimic.trajectory_io import load_motion_clip
+    from myosuite.core.trajectory_io import load_motion_clip
     from myosuite.utils.onnx_checkpoint import (
         _FATIGUE_STATE_KEY,
         bundle_onnx_with_checkpoint,

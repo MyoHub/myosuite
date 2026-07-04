@@ -27,7 +27,7 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
-from myosuite.integrations.musclemimic.trajectory_io import load_motion_clip
+from myosuite.core.trajectory_io import load_motion_clip
 
 _DEFAULT_CFG = BoxingMannequinConfig()
 # pylint: disable=no-member

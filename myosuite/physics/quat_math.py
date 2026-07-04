@@ -271,6 +271,24 @@ def intrinsic_euler2quat(euler):
     return np.array([w, x, y, z])
 
 
+def quat_from_euler_xyz_deg(euler_deg: list[float]) -> list[float]:
+    """Convert intrinsic XYZ (roll, pitch, yaw) Euler angles in degrees to quat.
+
+    Uses ``intrinsic_euler2quat`` — the same convention as the historical
+    half-angle composition used for glove/helmet mesh placement.  Do not use
+    ``euler2quat`` here: that helper follows a different axis ordering used
+    elsewhere in MyoSuite.
+
+    Args:
+        euler_deg: [roll_deg, pitch_deg, yaw_deg] about X, then Y, then Z.
+
+    Returns:
+        Quaternion as [w, x, y, z].
+    """
+    euler_rad = np.deg2rad(np.asarray(euler_deg, dtype=np.float64))
+    return intrinsic_euler2quat(euler_rad).astype(np.float64).tolist()
+
+
 def calculate_cosine(vec1: np.ndarray, vec2: np.ndarray) -> np.ndarray:
     """Return cos(theta) between two vectors, supporting batch dimensions.
 

@@ -21,6 +21,7 @@ from scipy.spatial.transform import Rotation as R
 
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
+from myosuite.envs.myo.assets._resolve import warn_torso_pip_calibration_divergence
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.utils.spec_processing import (
     recursive_immobilize,
@@ -79,6 +80,7 @@ class TableTennisEnv(MyoGymnasiumEnv, EzPickle):
         def _preprocess(spec: mujoco.MjSpec) -> mujoco.MjSpec:
             return self._preprocess_spec(spec, **preproc_kw)
 
+        warn_torso_pip_calibration_divergence()
         self.model, self._mj_spec = (
             ModelBuilder.from_xml_file(model_path).apply_transform(_preprocess).build()
         )

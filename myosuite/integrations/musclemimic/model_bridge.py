@@ -641,7 +641,7 @@ def make_fullbody_checkpoint_bridged_policy(
         compile_mimic_fullbody_mjmodel,
         default_mimic_fullbody_config,
     )
-    from myosuite.integrations.musclemimic.trajectory_io import load_motion_clip
+    from myosuite.core.trajectory_io import load_motion_clip
 
     resolved_checkpoint = resolve_checkpoint_ref(str(checkpoint_root))
     metadata = read_checkpoint_config_metadata(Path(resolved_checkpoint.local_path))

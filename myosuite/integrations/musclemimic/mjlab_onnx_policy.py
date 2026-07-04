@@ -41,7 +41,7 @@ if TYPE_CHECKING:
         FullbodyObsAdapter,
         LocalPolicyArtifacts,
     )
-    from myosuite.integrations.musclemimic.trajectory_io import MotionClip
+    from myosuite.core.trajectory_io import MotionClip
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -165,6 +164,7 @@ def test_mjlab_onnx_runner_restore_matches_pt_restore() -> None:
     )
     from tutorials.mc26.mc26_train_saber_mjlab import (
         OnnxCheckpointingMjlabRunner,
+        _parse_args,
         _prepare_config,
     )
 
@@ -173,17 +173,25 @@ def test_mjlab_onnx_runner_restore_matches_pt_restore() -> None:
     configure_torch_backends()
 
     cfg = _prepare_config(
-        argparse.Namespace(
-            task_id="myoChallengeSaberP0-v0",
-            num_envs=2,
-            num_steps_per_env=4,
-            max_iterations=1,
-            save_interval=1,
-            seed=7,
-            device="cpu",
-            run_name="",
-            resume_from=None,
-            log_root=Path("logs") / "rsl_rl" / "saber_mjlab",
+        _parse_args(
+            [
+                "--task-id",
+                "myoChallengeSaberP0-v0",
+                "--num-envs",
+                "2",
+                "--num-steps-per-env",
+                "4",
+                "--max-iterations",
+                "1",
+                "--save-interval",
+                "1",
+                "--seed",
+                "7",
+                "--device",
+                "cpu",
+                "--log-root",
+                str(Path("logs") / "rsl_rl" / "saber_mjlab"),
+            ]
         )
     )
 
@@ -280,6 +288,7 @@ def test_mjlab_onnx_export_matches_runner_actor_output() -> None:
     from myosuite.integrations.musclemimic.actor_onnx import load_onnx_session
     from tutorials.mc26.mc26_train_saber_mjlab import (
         OnnxCheckpointingMjlabRunner,
+        _parse_args,
         _prepare_config,
     )
 
@@ -288,17 +297,25 @@ def test_mjlab_onnx_export_matches_runner_actor_output() -> None:
     configure_torch_backends()
 
     cfg = _prepare_config(
-        argparse.Namespace(
-            task_id="myoChallengeSaberP0-v0",
-            num_envs=2,
-            num_steps_per_env=4,
-            max_iterations=1,
-            save_interval=1,
-            seed=7,
-            device="cpu",
-            run_name="",
-            resume_from=None,
-            log_root=Path("logs") / "rsl_rl" / "saber_mjlab",
+        _parse_args(
+            [
+                "--task-id",
+                "myoChallengeSaberP0-v0",
+                "--num-envs",
+                "2",
+                "--num-steps-per-env",
+                "4",
+                "--max-iterations",
+                "1",
+                "--save-interval",
+                "1",
+                "--seed",
+                "7",
+                "--device",
+                "cpu",
+                "--log-root",
+                str(Path("logs") / "rsl_rl" / "saber_mjlab"),
+            ]
         )
     )
 

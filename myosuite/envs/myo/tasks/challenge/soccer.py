@@ -19,6 +19,7 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
+from myosuite.envs.myo.assets._resolve import warn_torso_pip_calibration_divergence
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.physics.quat_math import euler2quat, quat2euler
 from myosuite.terms.base_action import sigmoid_muscle_activation
@@ -172,12 +173,18 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
         "internal_qvel",
         "grf",
         "torso_angle",
+        "pelvis_angle",
         "ball_pos",
         "model_root_pos",
         "model_root_vel",
         "muscle_length",
         "muscle_velocity",
         "muscle_force",
+        "r_toe_pos",
+        "l_toe_pos",
+        "goal_bounds",
+        "goalkeeper_pos",
+        "time",
     ]
     DEFAULT_RWD_KEYS_AND_WEIGHTS: dict[str, float] = {
         "goal_scored": 1000,
@@ -299,10 +306,24 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
         )
 
         # ── Load model ──────────────────────────────────────────────────────
+        warn_torso_pip_calibration_divergence()
         self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
         self.dt = self._ctrl_dt
+
+        # The pinned myo_sim leg model uses a simplified hinge knee and lacks
+        # the passive coupling DOFs (e.g. "knee_angle_l_beta_rotation1") some
+        # legacy joint lists assume — keep only joints this model has.
+        _model_joints = self._joint_names_in_model()
+        self.MYO_JOINTS = [j for j in self.MYO_JOINTS if j in _model_joints]
+        self.JNT_OVEREXT = [j for j in self.JNT_OVEREXT if j in _model_joints]
+
+        # Toe geom naming flipped from "r_bofoot"/"l_bofoot" (legacy) to
+        # "bofoot_r"/"bofoot_l" in the current myo_sim leg model.
+        _geom_names = {self.model.geom(i).name for i in range(self.model.ngeom)}
+        self._toe_geom_r = "r_bofoot" if "r_bofoot" in _geom_names else "bofoot_r"
+        self._toe_geom_l = "l_bofoot" if "l_bofoot" in _geom_names else "bofoot_l"
 
         # ── Muscle condition ────────────────────────────────────────────────
         self.muscle_condition = muscle_condition
@@ -417,8 +438,8 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
         obs_dict["muscle_length"] = data.actuator_length.copy()
         obs_dict["muscle_velocity"] = np.clip(data.actuator_velocity, -100, 100)
         obs_dict["muscle_force"] = np.clip(data.actuator_force / 1000, -100, 100)
-        obs_dict["r_toe_pos"] = data.geom("r_bofoot").xpos.copy()
-        obs_dict["l_toe_pos"] = data.geom("l_bofoot").xpos.copy()
+        obs_dict["r_toe_pos"] = data.geom(self._toe_geom_r).xpos.copy()
+        obs_dict["l_toe_pos"] = data.geom(self._toe_geom_l).xpos.copy()
         if self.model.na > 0:
             obs_dict["act"] = data.act[:].copy()
         obs_dict["ball_pos"] = data.body("soccer_ball").xpos[:3].copy()
@@ -542,6 +563,9 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
                 np.abs(np.clip(self._get_limitfrc(joint).squeeze(), -1000, 1000)) / 1000
             )
         return limit_score / len(self.JNT_OVEREXT)
+
+    def _joint_names_in_model(self) -> set[str]:
+        return {self.model.joint(i).name for i in range(self.model.njnt)}
 
     def _get_limitfrc(self, joint_name: str) -> np.ndarray:
         non_jnt_idxs = np.where(

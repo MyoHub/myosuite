@@ -49,7 +49,7 @@ conda install conda-forge::ffmpeg
 10. **[Modular Task Config](./modular_task_config.ipynb)** — define custom tasks
 
 ### Advanced (MuscleMimic / SAR)
-11. **[MuscleMimic Policy Trajectory](./MuscleMimic_Fullbody_Policy_Trajectory.ipynb)**
+11. **[MuscleMimic Policy Trajectory](./11a_MuscleMimic_Fullbody_Policy_Trajectory.ipynb)**
 12. **[SAR Tutorial](./sar/SAR_tutorial.ipynb)**
 
 ---
@@ -100,7 +100,7 @@ conda install conda-forge::ffmpeg
 
 ### MuscleMimic full-body tracking
 
-- [**MuscleMimic Fullbody Policy Trajectory**](./MuscleMimic_Fullbody_Policy_Trajectory.ipynb):
+- [**MuscleMimic Fullbody Policy Trajectory**](./11a_MuscleMimic_Fullbody_Policy_Trajectory.ipynb):
   Load a full-body MuscleMimic policy from a Hugging Face checkpoint, run it against a KIT motion clip,
   and save the rendered tracking video.
   Requires: `musclemimic_models`, `orbax-checkpoint`, `imageio`/`ffmpeg`, HF cache (`hf://amathislab/mm-10m-2`).
@@ -111,8 +111,24 @@ conda install conda-forge::ffmpeg
   uv run myosuite-musclemimic-setup-demo-cache
   ```
 
-- [**MuscleMimic mjlab**](./musclemimic_mjlab.ipynb): MuJoCo Warp / Isaac Lab backend for MuscleMimic training.
+- [**MuscleMimic mjlab**](./11c_MuscleMimic_Fullbody_mjlab.ipynb): MuJoCo Warp / Isaac Lab backend for MuscleMimic training.
 - [**SAR tutorial**](./sar/SAR_tutorial.ipynb): Train policies with Spatial Action Representations.
+
+### CLI training scripts (beyond the CPU/SB3 notebook above)
+
+The notebooks above cover the CPU/Gymnasium path. For mjlab (Warp/RSL-RL) and
+MJX (JAX/Brax) backends, training is driven from the command line:
+
+- [`scripts/train_mjlab.py`](../scripts/train_mjlab.py): RSL-RL PPO on any
+  mjlab-registered task id (e.g. `myoChallengeBoxingP0Mjlab-v0`,
+  `myoChallengeSaberP0-v0`, `myoChallengeTableTennisP0-v0`).
+- [`scripts/train_sar_jax_ppo.py`](../scripts/train_sar_jax_ppo.py): JAX/Brax
+  PPO + SAR pipeline for MJX-backed tasks (`myosuite[mjx]` extra; not
+  available on macOS).
+- [`tutorials/mc26/`](./mc26/): worked Saber training/eval scripts
+  (`mc26_train_saber_cpu.py`, `mc26_train_saber_mjlab.py`,
+  `mc26_minimal_example_train.py`/`eval.py`) for the `myoChallengeSaberP0-v0`
+  task.
 
 ### MyoChallenge boxing (environment naming)
 
