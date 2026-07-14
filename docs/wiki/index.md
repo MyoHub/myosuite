@@ -2,6 +2,7 @@
 
 | Page | When to read |
 |---|---|
+| `getting-started.md` | **New to the codebase — start here** |
 | `repository-map.md` | Finding where code lives |
 | `engineering-standards.md` | Architecture rules, new-env checklist |
 | `adding-a-new-task.md` | Step-by-step worked example for registering a new task |

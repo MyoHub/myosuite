@@ -163,6 +163,9 @@ markers = [
     "slow: Slow-running tests (benchmarks, long rollouts, or heavy external deps).",
     "legacy: Tests that exercise deprecated BaseV0/env_base paths or legacy-style APIs.",
 ]
+# A test module with no explicit `pytestmark = pytest.mark.tierN` is defaulted to
+# tier2 by myosuite/tests/conftest.py (with a warning), so `-m tierN` never
+# silently drops a whole file. Add an explicit marker to re-tier.
 
 [dependency-groups]
 dev = [
