@@ -174,25 +174,24 @@ Run `python -m myosuite.tests.test_myo` for the full list, or see the [task spec
 
 | Environment family | CPU (Gymnasium) | MJX (JAX) | mjlab (Warp/Isaac) |
 |---|---|---|---|
-| Elbow pose / sarcopenia | stable | stable (`MjxElbowPose*-v0`) | beta (`myoElbowPose1D6MFixed-v0`, `myoSarcElbow*`) |
-| Elbow fatigue | stable | stable | – (pending) |
-| Finger pose | stable | stable (`MjxFingerPose*-v0`) | – (config exists, registration pending) |
-| Finger reach | stable | beta (`MjxFingerReachRandom-v0`) | – (config exists, registration pending) |
-| Hand pose | stable | beta (`MjxHandPoseRandom-v0`) | – (config exists, registration pending) |
-| Hand reach | stable | stable (`MjxHandReach*-v0`) | – (config exists, registration pending) |
-| Leg walk / gait | stable | beta (`MjxLegWalk-v0`) | beta (`myoLegWalk-v0`, `myoSarcLegWalk-v0`) |
-| Mimic bimanual | stable | beta (`MjxMimicBimanual-v0`) | beta (`myoMimicBimanual-v0`) |
-| Mimic full-body | beta | beta (`MjxMimicFullbody-v0`) | beta (`myoMimicFullbody-v0`) |
-| MyoChallenge TableTennis | stable | wip | beta (`myoChallengeTableTennisP*-v0`) |
+| Elbow pose / sarcopenia | stable | stable (`MjxElbowPose*-v0`) | stable (`myoElbowPose1D6MFixed-v0`, `myoElbowPose1D6MRandom-v0`) |
+| Elbow fatigue | stable | beta (`FatigueWrapper` on `MjxElbowPose*-v0`) ‡ | – (pending) |
+| Finger pose | stable | stable (`MjxFingerPose*-v0`) | stable (`myoFingerPoseFixed-v0`, `myoFingerPoseRandom-v0`) |
+| Finger reach | stable | beta (`MjxFingerReachRandom-v0`) | stable (`myoFingerReachRandom-v0`) |
+| Hand pose | stable | beta (`MjxHandPoseRandom-v0`) | beta (`myoHandPoseRandom-v0`) |
+| Hand reach | stable | stable (`MjxHandReach*-v0`) | stable (`myoHandReachRandom-v0`) |
+| Leg walk / gait | stable | beta (`MjxLegWalk-v0`) | beta (`myoLegWalk-v0`, `myoSarcLegWalk-v0`) ‡ |
+| Mimic bimanual | stable | beta (`MjxMimicBimanual-v0`) | beta (`myoMimicBimanual-v0`) ‡ |
+| Mimic full-body | beta | beta (`MjxMimicFullbody-v0`) | beta (`myoMimicFullbody-v0`) ‡ |
+| MyoChallenge Baoding | stable | wip | beta (`myoChallengeBaodingP2-v1`) |
+| MyoChallenge Saber | stable | wip | beta (`myoChallengeSaberP0-v0`) |
+| MyoChallenge TableTennis | stable | wip | beta (`myoChallengeTableTennisP0-v0`, `…P1-v0`, `…P2-v0`) |
 | MyoChallenge Reorient | stable | wip | – (planned; see [porting guide](docs/wiki/mjlab-design-guide.md)) |
 | MyoChallenge Bimanual | stable | wip | – (planned) |
 | MyoChallenge Soccer | stable | wip | – (planned) |
 | MyoChallenge RunTrack | stable | wip | – (planned; OSL controller required) |
 | MyoChallenge ChaseTag | stable | wip | – (planned) |
 | Shoulder / full-arm | stable | – | – |
-
-> **Platform note:** MJX requires Linux + CUDA (or CPU-mode JAX). macOS is CPU-only (`gym.make()`).
-
 ---
 
 ## Tutorials

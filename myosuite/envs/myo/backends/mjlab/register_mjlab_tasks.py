@@ -726,6 +726,8 @@ def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
         save_interval=100,
         num_steps_per_env=24,
         max_iterations=100,
+        # See _walk_ppo_runner_cfg: map actor/critic to the env's "policy" group.
+        obs_groups={"actor": ("policy",), "critic": ("policy",)},
     )
 
 
@@ -848,6 +850,13 @@ def _make_walk_env_cfg(
                 timestep=0.002,
                 ccd_iterations=500,
             ),
+            # MuJoCo-Warp pre-allocates constraint buffers of these sizes. The
+            # default is too small for the contact-rich biped under RL
+            # exploration (nefc overflow -> NaN obs during training); size them
+            # like the other contact-heavy mjlab tasks. A max only, so CPU/mjlab
+            # parity is unaffected.
+            njmax=512,
+            nconmax=256,
         ),
         episode_length_s=20.0,
     )
@@ -890,6 +899,10 @@ def _walk_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
         save_interval=100,
         num_steps_per_env=48,
         max_iterations=500,
+        # rsl_rl maps the actor/critic obs sets to the env's observation
+        # group(s); the walk env exposes a single flat "policy" group. Without
+        # this, RslRlOnPolicyRunner raises "Observation 'actor' not found".
+        obs_groups={"actor": ("policy",), "critic": ("policy",)},
     )
 
 
