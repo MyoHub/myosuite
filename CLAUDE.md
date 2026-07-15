@@ -46,7 +46,7 @@ Read the relevant wiki pages in `docs/wiki/` before making substantial changes.
 - Plan non-trivial tasks in `tasks/todo.md` before implementing.
 - After any user correction: update `tasks/lessons.md`.
 - Never mark a task done without proving it works.
-- **Never add an AI assistant (e.g. Claude, Anthropic) as a commit co-author** — via `Co-Authored-By` trailers or otherwise. This repo's CLA check requires every commit author/co-author to have signed the CLA, and AI tools cannot sign it, so AI co-author trailers break the check.
+- **Never add an AI assistant (e.g. Claude, Anthropic, Cursor, Codex, Gemini) as a commit co-author** — via `Co-Authored-By` trailers or otherwise. This repo's CLA check requires every commit author/co-author to have signed the CLA, and AI tools cannot sign it, so AI co-author trailers break the check. Enforced by the `no-ai-coauthor` `commit-msg` pre-commit hook (`scripts/reject_ai_coauthor.py`); run `pre-commit install` so it is active locally.
 
 ---
 
