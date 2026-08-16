@@ -108,11 +108,10 @@ class KeyTurnEnvV0(MyoGymnasiumEnv, EzPickle):
         model_recipe = kwargs.pop("model_recipe", None)
         if model_recipe is not None:
             self.model, self._mj_spec = build_from_recipe(model_recipe)
-            self._name_sfx = "_r"
         else:
             self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
-            self._name_sfx = ""
         self.data = mujoco.MjData(self.model)
+        self._name_sfx = "" if model_recipe == "hand_keyturn" else "_r"
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 
         # ── Muscle condition ───────────────────────────────────────────────

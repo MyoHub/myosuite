@@ -12,6 +12,7 @@
     <include file="../myo_sim/leg/assets/myolegs_tendon.xml"/>
     <include file="../myo_sim/leg/assets/myolegs_muscle.xml"/>
     <include file="../myo_sim/leg/assets/myolegs_assets.xml"/>
+    <include file="../myo_sim/sensors/myolegs_sensors.xml"/>
     <include file="../myo_sim/scene/myosuite_quad.xml"/>
     <compiler meshdir='../myo_sim/' texturedir='../myo_sim/'/>
 

@@ -103,6 +103,9 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         if model_recipe is not None:
             self._model_recipe = model_recipe
             self.model, self._mj_spec = build_from_recipe(model_recipe)
+            if edit_fn is not None:
+                edit_fn(self._mj_spec)
+                self.model = self._mj_spec.compile()
         else:
             builder = ModelBuilder.from_xml_file(model_path)
             if edit_fn is not None:

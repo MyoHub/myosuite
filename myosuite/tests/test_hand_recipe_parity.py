@@ -241,7 +241,7 @@ def test_hand_sar_adds_sar_object(ref_model):
     ],
 )
 def test_hand_env_reset_and_step(env_id):
-    """Recipe-based hand env resets and steps without exception."""
+    """Hand env resets and steps without exception."""
     import myosuite  # noqa: F401 — registers envs
     from myosuite.utils import gym
 
@@ -253,3 +253,42 @@ def test_hand_env_reset_and_step(env_id):
     assert obs2.shape == obs.shape
     assert np.isfinite(rwd)
     env.close()
+
+
+@pytest.mark.parametrize(
+    ("env_id", "recipe", "expected_counts"),
+    [
+        ("myoHandKeyTurnFixed-v0", "hand_keyturn", (40, 101, 330)),
+        ("myoHandObjHoldFixed-v0", "hand_hold", (40, 99, 330)),
+        ("myoHandPenTwirlFixed-v0", "hand_pen", (41, 106, 333)),
+    ],
+)
+def test_legacy_hand_task_recipe_compatibility(env_id, recipe, expected_counts):
+    """Public contact-hand IDs retain release-era recipe semantics.
+
+    The composed ``hand_*`` recipes swap ``cmc_flexion`` / ``cmc_abduction``
+    relative to the release-era hand. Public NPG baselines require the legacy
+    order, while task furniture is built through MjSpec transforms.
+    """
+    import myosuite  # noqa: F401 — registers envs
+    from myosuite.core.model_builder import build_from_recipe
+    from myosuite.utils import gym
+
+    myosuite.register_all_envs()
+    recipe_model, _ = build_from_recipe(recipe)
+    env = gym.make(env_id)
+    try:
+        names = [
+            env.unwrapped.model.joint(i).name for i in range(env.unwrapped.model.njnt)
+        ]
+        cmc = [n for n in names if "cmc" in n]
+        assert cmc[:2] == [
+            "cmc_abduction",
+            "cmc_flexion",
+        ], f"{env_id}: unexpected CMC order {cmc[:2]}"
+        assert not any(n.endswith("_r") for n in cmc[:2])
+        assert (recipe_model.nbody, recipe_model.ngeom, recipe_model.nsite) == (
+            expected_counts
+        )
+    finally:
+        env.close()

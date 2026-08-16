@@ -396,6 +396,9 @@ class ModelBuilder:
         self._timestep: float | None = None
         self._disable_contacts: bool = False
         self._xml_path: Path | None = None  # set by from_xml_file()
+        self._xml_string: str | None = None
+        self._xml_include: dict[str, bytes] | None = None
+        self._seed_spec: mujoco.MjSpec | None = None
 
     @classmethod
     def from_xml_file(cls, path: str | Path) -> ModelBuilder:
@@ -423,6 +426,42 @@ class ModelBuilder:
 
         builder = cls()
         builder._xml_path = resolve_model_xml_path(Path(path))
+        return builder
+
+    @classmethod
+    def from_xml_string(
+        cls,
+        xml: str,
+        *,
+        include: dict[str, bytes] | None = None,
+    ) -> ModelBuilder:
+        """Create a builder seeded from an in-memory MJCF string.
+
+        Args:
+            xml: MJCF document text.
+            include: Optional virtual-filesystem map of ``include`` paths to
+                raw XML bytes (MuJoCo ``MjSpec.from_string`` contract).
+
+        Returns:
+            A new :class:`ModelBuilder` instance with the string as its seed.
+        """
+        builder = cls()
+        builder._xml_string = xml
+        builder._xml_include = dict(include) if include else None
+        return builder
+
+    @classmethod
+    def from_spec(cls, spec: mujoco.MjSpec) -> ModelBuilder:
+        """Create a builder seeded from a pre-built ``MjSpec``.
+
+        Args:
+            spec: Fully constructed MuJoCo model specification.
+
+        Returns:
+            A new :class:`ModelBuilder` instance with *spec* as its seed.
+        """
+        builder = cls()
+        builder._seed_spec = spec
         return builder
 
     def attach_fragment(self, name: str, parent: str = "worldbody") -> ModelBuilder:
@@ -745,7 +784,14 @@ class ModelBuilder:
             FileNotFoundError: If a fragment XML cannot be resolved.
             KeyError: If a named parent body does not exist in the spec.
         """
-        if self._xml_path is not None:
+        if self._seed_spec is not None:
+            spec = self._seed_spec
+        elif self._xml_string is not None:
+            spec = mujoco.MjSpec.from_string(
+                self._xml_string,
+                include=self._xml_include,
+            )
+        elif self._xml_path is not None:
             if not self._xml_path.exists():
                 raise FileNotFoundError(f"XML not found: {self._xml_path}")
             spec = mujoco.MjSpec.from_file(str(self._xml_path))

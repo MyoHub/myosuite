@@ -13,7 +13,6 @@ import numpy as np
 
 import myosuite.core.registry as _registry
 from myosuite.envs.myo.assets._resolve import (
-    resolve_arm_xml as _resolve_arm_xml,
     resolve_elbow_xml as _resolve_elbow_xml,
     resolve_finger_xml as _resolve_finger_xml,
     resolve_leg_xml as _resolve_leg_xml,
@@ -585,7 +584,10 @@ _reg(
     },
 )
 
-# Hand-Joint key turn ==============================
+# Hand-Joint contact tasks ==========================
+# These recipes seed from the shared release-era hand assets via an in-memory
+# MjSpec and add task furniture through transforms. This preserves public-policy
+# observation/contact semantics without duplicating task XMLs.
 _reg(
     env_id="myoHandKeyTurnFixed-v0",
     entry_point="myosuite.envs.myo.tasks.basic.arm.key_turn:KeyTurnEnvV0",
@@ -770,7 +772,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=150,
     kwargs={
-        "model_path": str(_resolve_arm_xml("myoarm_reach.xml")),
+        "model_recipe": "arm_reach",
         "target_reach_range": {
             "forearm_tip": ((-0.2, -0.2, 1.2), (-0.2, -0.2, 1.2)),
         },
@@ -784,7 +786,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
     max_episode_steps=150,
     kwargs={
-        "model_path": str(_resolve_arm_xml("myoarm_reach.xml")),
+        "model_recipe": "arm_reach",
         "target_reach_range": {
             "forearm_tip": (
                 (-0.2 - 0.15, -0.2 - 0.15, 1.2 - 0.15),

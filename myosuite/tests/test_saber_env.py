@@ -152,8 +152,21 @@ class TestSaberModel:
                 target_saber_contacts.append(contact)
 
         assert target_saber_contacts, "expected overlapping target/saber contact"
-        assert float(model.geom_margin[target_gid]) == pytest.approx(0.0)
+        # MuJoCo >=3.9.0 redefined margin/gap semantics: force threshold is
+        # `margin` alone, detection is `margin + gap` (see
+        # _saber_target_margin_gap()), so a solver-inactive contact needs
+        # margin == -gap. Older MuJoCo keeps the legacy margin=0 / gap>0 pair.
         assert float(model.geom_gap[target_gid]) > 0.0
+        import mujoco as _mj
+
+        _parts = _mj.__version__.split(".")
+        _ver = (int(_parts[0]), int(_parts[1]) if len(_parts) > 1 else 0)
+        if _ver >= (3, 9):
+            assert float(model.geom_margin[target_gid]) == pytest.approx(
+                -float(model.geom_gap[target_gid])
+            )
+        else:
+            assert float(model.geom_margin[target_gid]) == pytest.approx(0.0)
         assert all(int(contact.efc_address) == -1 for contact in target_saber_contacts)
 
     def test_saber_tip_linvel_sensors_exist(self, saber_env):
