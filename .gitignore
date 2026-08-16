@@ -152,6 +152,8 @@ _untracked/
 Boxing/
 myosuite/composer/
 myosuite/agents/
+runs/
+renders/
 
 # local GPU smoke bundles
 myosuite_gpu_smoke*.zip

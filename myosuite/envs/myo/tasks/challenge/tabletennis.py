@@ -60,7 +60,7 @@ class TableTennisEnv(MyoGymnasiumEnv, EzPickle):
 
     def __init__(
         self,
-        model_path: str,
+        model_path: str = "",
         obsd_model_path: str | None = None,
         seed: int | None = None,
         **kwargs: Any,
@@ -71,19 +71,36 @@ class TableTennisEnv(MyoGymnasiumEnv, EzPickle):
         )
         EzPickle.__init__(self, model_path, obsd_model_path, seed, **kwargs)
 
-        preproc_kwargs = {
-            "remove_body_collisions": kwargs.pop("remove_body_collisions", True),
-            "add_left_arm": kwargs.pop("add_left_arm", True),
-        }
-        preproc_kw = preproc_kwargs  # captured by closure below
+        model_recipe = kwargs.pop("model_recipe", None)
+        if model_recipe is not None:
+            # challenge_tabletennis (myosuite/core/model_recipes.py) already
+            # composes the full torso+both-arms+legs body via myo_sim-native
+            # composition (immobilized legs/left-arm, contact removal, root
+            # calibration baked in) -- the legacy _preprocess_spec()/
+            # preprocess_tabletennis_spec() mirror-and-immobilize dance is
+            # unnecessary and would error against this spec's structure
+            # (no mirrored-copy step to run).
+            kwargs.pop("remove_body_collisions", None)
+            kwargs.pop("add_left_arm", None)
+            from myosuite.core.model_recipes import build_from_recipe
 
-        def _preprocess(spec: mujoco.MjSpec) -> mujoco.MjSpec:
-            return self._preprocess_spec(spec, **preproc_kw)
+            self.model, self._mj_spec = build_from_recipe(model_recipe)
+        else:
+            preproc_kwargs = {
+                "remove_body_collisions": kwargs.pop("remove_body_collisions", True),
+                "add_left_arm": kwargs.pop("add_left_arm", True),
+            }
+            preproc_kw = preproc_kwargs  # captured by closure below
 
-        warn_torso_pip_calibration_divergence()
-        self.model, self._mj_spec = (
-            ModelBuilder.from_xml_file(model_path).apply_transform(_preprocess).build()
-        )
+            def _preprocess(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+                return self._preprocess_spec(spec, **preproc_kw)
+
+            warn_torso_pip_calibration_divergence()
+            self.model, self._mj_spec = (
+                ModelBuilder.from_xml_file(model_path)
+                .apply_transform(_preprocess)
+                .build()
+            )
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 

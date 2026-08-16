@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import weakref
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 import mujoco
@@ -33,36 +32,20 @@ from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 from scipy.spatial.transform import Rotation as R
 
-from myosuite.core.model_builder import ModelBuilder
+from myosuite.core.model_builder import build_from_recipe
+from myosuite.core.model_recipes import (
+    _add_tabletennis_furniture,
+    _tabletennis_body_spec,
+)
 from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTennisCfg
 from myosuite.envs.myo.tasks.challenge.tabletennis import (
     ContactTrajIssue,
     PingpongContactLabels,
     evaluate_pingpong_trajectory,
 )
-from myosuite.envs.myo.tasks.challenge.tabletennis_spec import (
-    preprocess_tabletennis_spec,
-)
 from myosuite.terms.base_action import sigmoid_muscle_activation
-from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
 logger = logging.getLogger(__name__)
-
-try:
-    from etils import epath
-
-    _MYOSUITE_ROOT = Path(epath.resource_path("myosuite"))
-except (ImportError, ModuleNotFoundError):
-    # ``register_mjlab_tabletennis.py`` → …/myosuite/envs/myo/backends/mjlab/ — package
-    # root is parents[4], not parents[3] (which lands on ``envs/`` and duplicates ``envs/``).
-    _MYOSUITE_ROOT = Path(__file__).resolve().parents[4]
-
-# resolve_model_xml_path() rewrites the package-relative "../myo_sim/..."
-# includes in myoarm_tabletennis.xml to absolute pip paths — MjSpec.from_file()
-# does not resolve those on its own.
-_TABLE_TENNIS_XML = resolve_model_xml_path(
-    _MYOSUITE_ROOT / "envs/myo/assets/arm/myoarm_tabletennis.xml"
-)
 
 _TT_ENTITY_NAME = "table_tennis_robot"
 _MAX_TIME = 3.0
@@ -98,11 +81,7 @@ def _reference_model() -> mujoco.MjModel:
     global _REF_MODEL, _REF_QPOS_KEY0, _REF_QVEL_INIT, _TT_INDEX
     if _REF_MODEL is not None:
         return _REF_MODEL
-    model, _ = (
-        ModelBuilder.from_xml_file(str(_TABLE_TENNIS_XML))
-        .apply_transform(preprocess_tabletennis_spec)
-        .build()
-    )
+    model, _ = build_from_recipe("challenge_tabletennis")
     _REF_MODEL = model
     d = mujoco.MjData(model)
     _REF_QPOS_KEY0 = model.key_qpos[0].copy()
@@ -308,11 +287,20 @@ def _resolve_tt_scene_ids(env: Any, entity_name: str) -> dict[str, Any]:
     return env_cache[entity_name]
 
 
+def _table_tennis_full_spec() -> mujoco.MjSpec:
+    """Build the same torso+arms+legs+furniture spec as the CPU recipe.
+
+    Reuses ``model_recipes._tabletennis_body_spec``/``_add_tabletennis_furniture``
+    directly (not :func:`build_from_recipe`) so mjlab and CPU always compose
+    the identical un-keyframed spec — the mjlab entity/scene split below then
+    strips/re-adds pieces from this one shared spec instead of maintaining a
+    second, independently-written composition.
+    """
+    return _add_tabletennis_furniture(_tabletennis_body_spec())
+
+
 def _table_tennis_spec_fn() -> mujoco.MjSpec:
-    spec = mujoco.MjSpec.from_file(str(_TABLE_TENNIS_XML))
-    preprocess_tabletennis_spec(spec)
-    for k in list(spec.keys):
-        spec.delete(k)
+    spec = _table_tennis_full_spec()
     # Remove the ball body — it becomes its own entity so it can be reset via
     # Entity.write_root_state_to_sim.  The two velocimeter sensors reference
     # sites from both trees (paddle + pingpong) and are re-added post-attachment
@@ -329,8 +317,11 @@ def _table_tennis_spec_fn() -> mujoco.MjSpec:
 
 def _pingpong_spec_fn() -> mujoco.MjSpec:
     """Minimal spec containing only the pingpong ball (freejoint + site + geom)."""
-    full = mujoco.MjSpec.from_file(str(_TABLE_TENNIS_XML))
-    ball_body = full.body("pingpong")
+    full = _table_tennis_full_spec()
+    # ``full.body("pingpong")`` returns None for this composed/attached spec
+    # (name lookup isn't populated pre-compile for attached subtrees) —
+    # iterate instead.
+    ball_body = next(b for b in full.bodies if b.name == "pingpong")
     # Build a clean spec with just the ball subtree.
     spec = mujoco.MjSpec()
     frame = spec.worldbody.add_frame()
@@ -1178,8 +1169,6 @@ def _table_tennis_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
 
 def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnvCfg:
     """Build mjlab ``ManagerBasedRlEnvCfg`` for TableTennis (vectorised)."""
-    if not _TABLE_TENNIS_XML.is_file():
-        raise FileNotFoundError(f"Table tennis model not found: {_TABLE_TENNIS_XML}")
     _reference_model()
     tendon_names, pos_names = _tt_actuator_xml_groups()
     articulation = EntityArticulationInfoCfg(
@@ -1260,16 +1249,17 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
         events=events,
         sim=SimulationCfg(
             mujoco=MujocoCfg(timestep=float(tt_cfg.sim_dt), ccd_iterations=500),
-            njmax=512,
-            nconmax=512,
+            # The myo_sim-native torso+both-arms+legs body has more
+            # equality-constraint rows (nefc) than the legacy single-arm
+            # chain — 512 overflowed at nefc=1071; use 1536 for headroom.
+            njmax=1536,
+            nconmax=1024,
         ),
     )
 
 
 def register_table_tennis_mjlab_tasks() -> None:
     """Register ``myoChallengeTableTennisP{0,1,2}-v0`` with mjlab (idempotent)."""
-    if not _TABLE_TENNIS_XML.is_file():
-        return
     try:
         _reference_model()
     except Exception as exc:

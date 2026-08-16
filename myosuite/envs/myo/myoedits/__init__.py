@@ -7,13 +7,14 @@
 import mujoco
 
 import myosuite.core.registry as _registry
-from myosuite.envs.myo.assets._resolve import resolve_arm_xml as _resolve_arm_xml
 
 
 # Arm Reaching ==============================
 def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
-    # Get the positions of each body of each digit
-    root_list = ["firstmc", "secondmc", "thirdmc", "fourthmc", "fifthmc"]
+    # Get the positions of each body of each digit. Names carry myo_sim's
+    # "_r" (right-side) suffix — this model is built via the "full_arm"
+    # recipe (myo_sim.load_spec("myoarm_r")), not the legacy bare-named XML.
+    root_list = ["firstmc_r", "secondmc_r", "thirdmc_r", "fourthmc_r", "fifthmc_r"]
     body_positions = {}
     IFtip_site = {}
 
@@ -22,8 +23,13 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
         body = spec.body(root)
         child_body = body.first_body()
         while child_body is not None:
+            # geom.name (display name) and geom.meshname (the actual mesh
+            # asset it references) can differ in myo_sim's naming — e.g.
+            # geom "thumbprox" points at mesh asset "thumbprox_r". Use
+            # geom.name for the rebuilt body/geom's own name (legacy
+            # convention) and geom.meshname for the actual asset reference.
             mesh_names = [
-                geom.name
+                (geom.name, geom.meshname)
                 for geom in child_body.geoms
                 if geom.type == mujoco.mjtGeom.mjGEOM_MESH
             ]
@@ -32,8 +38,10 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
             )
             child_body = child_body.first_body()
 
-    # Get the properties of the IFtip site
-    site = spec.site("IFtip")
+    # Get the properties of the IFtip site (myo_sim names it "IFtip_r"; the
+    # rebuilt copy below keeps the legacy bare "IFtip" name so
+    # target_reach_range={"IFtip": ...} keeps working unchanged).
+    site = spec.site("IFtip_r")
     IFtip_site = {
         attr: (
             getattr(site, attr).copy()
@@ -42,6 +50,7 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
         )
         for attr in ["name", "size", "pos", "rgba"]
     }
+    IFtip_site["name"] = "IFtip"
 
     # Remove the digits
     for root in root_list:
@@ -57,20 +66,20 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
     for root in root_list:
         body = spec.body(root)
         for orig_body_name, pos, mesh_names in body_positions[root]:
-            new_name = mesh_names[0] if mesh_names else orig_body_name
-            body.add_body(name=new_name, pos=pos)
-            for mesh_name in mesh_names:
-                spec.body(new_name).add_geom(
+            new_name = mesh_names[0][0] if mesh_names else orig_body_name
+            new_body = body.add_body(name=new_name, pos=pos)
+            for geom_name, mesh_name in mesh_names:
+                new_body.add_geom(
                     meshname=mesh_name, name=new_name, type=mujoco.mjtGeom.mjGEOM_MESH
                 )
-            if orig_body_name == "distph2":
-                spec.body(new_name).add_site(
+            if orig_body_name == "distph2_r":
+                new_body.add_site(
                     name=IFtip_site["name"],
                     size=IFtip_site["size"] * 2,
                     pos=IFtip_site["pos"],
                     rgba=IFtip_site["rgba"],
                 )
-            body = spec.body(new_name)
+            body = new_body
 
     # Add a reach target
     spec.body("world").add_site(
@@ -85,7 +94,7 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
 _EP = "myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0"
 
 _fixed_kwargs = {
-    "model_path": str(_resolve_arm_xml("myoarm.xml")),
+    "model_recipe": "full_arm",
     "target_reach_range": {
         "IFtip": ((-0.175, -0.245, 1.405), (-0.175, -0.245, 1.405)),
     },
@@ -94,7 +103,7 @@ _fixed_kwargs = {
     "edit_fn": edit_fn_arm_reaching,
 }
 _random_kwargs = {
-    "model_path": str(_resolve_arm_xml("myoarm.xml")),
+    "model_recipe": "full_arm",
     "target_reach_range": {
         "IFtip": (
             (-0.175 - 0.175, -0.245 - 0.175, 1.405 - 0.425),

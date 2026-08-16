@@ -8,8 +8,8 @@
 ====================================================== -->
 
     <include file="../myo_sim/arm/assets/myoarm_r_assets.xml"/>
-    <include file="../myo_sim/arm/assets/myoarm_r_tendons.xml"/>
-    <include file="../myo_sim/arm/assets/myoarm_r_muscles.xml"/>
+    <include file="../myo_sim/arm/assets/myoarm_r_tendon.xml"/>
+    <include file="../myo_sim/arm/assets/myoarm_r_muscle.xml"/>
     <include file="../myo_sim/scene/myosuite_scene.xml"/>
     <compiler meshdir='../myo_sim' texturedir='../myo_sim'/>
 

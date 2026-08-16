@@ -15,7 +15,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium.utils import EzPickle
 
-from myosuite.core.model_builder import ModelBuilder
+from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.physics.fatigue import CumulativeFatigue
@@ -86,7 +86,7 @@ class BaodingEnv(MyoGymnasiumEnv, EzPickle):
 
     def __init__(
         self,
-        model_path: str,
+        model_path: str = "",
         obsd_model_path: str | None = None,
         seed: int | None = None,
         frame_skip: int = 10,
@@ -137,7 +137,11 @@ class BaodingEnv(MyoGymnasiumEnv, EzPickle):
         )
 
         # ── Load model ─────────────────────────────────────────────────────
-        self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
+        model_recipe = kwargs.pop("model_recipe", None)
+        if model_recipe is not None:
+            self.model, self._mj_spec = build_from_recipe(model_recipe)
+        else:
+            self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 

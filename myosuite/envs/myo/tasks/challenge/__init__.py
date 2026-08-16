@@ -74,7 +74,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.challenge.tabletennis:TableTennisEnv",
     max_episode_steps=300,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "arm" / "myoarm_tabletennis.xml"),
+        "model_recipe": "challenge_tabletennis",
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -85,7 +85,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.challenge.tabletennis:TableTennisEnv",
     max_episode_steps=300,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "arm" / "myoarm_tabletennis.xml"),
+        "model_recipe": "challenge_tabletennis",
         "normalize_act": True,
         "ball_xyz_range": {"high": [-1.20, -0.45, 1.5], "low": [-1.25, -0.5, 1.4]},
         "frame_skip": 5,
@@ -97,7 +97,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.challenge.tabletennis:TableTennisEnv",
     max_episode_steps=300,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "arm" / "myoarm_tabletennis.xml"),
+        "model_recipe": "challenge_tabletennis",
         "normalize_act": True,
         "ball_qvel": True,
         "paddle_mass_range": (0.10, 0.15),

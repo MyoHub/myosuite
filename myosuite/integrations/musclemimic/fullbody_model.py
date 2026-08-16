@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import tempfile
+import warnings
 import xml.etree.ElementTree as ET
 
 import mujoco
@@ -28,8 +29,19 @@ from ml_collections import config_dict
 from myosuite.integrations.musclemimic.bimanual_model import (
     FINGER_JOINT_TOKENS,
     FINGER_MUSCLE_TOKENS,
+    _translate_finger_token,
 )
 from myosuite.terms.mimic_reward import MimicTrackingConfig
+
+NATIVE_FULLBODY_FALLBACK_WARNING = (
+    "musclemimic_models is not installed; using myo_sim's own myofullbody "
+    "composition with the same mimic sites/finger removal/ctrlrange edits "
+    "applied instead. This is NOT bit-exact parity with the external "
+    "MuscleMimic codebase's model (github.com/amathislab/musclemimic) - "
+    "checkpoints trained against the real musclemimic_models MJCF are not "
+    "guaranteed to transfer. Install 'musclemimic_models>=1.0.2' or "
+    "'myosuite[musclemimic]' for exact parity."
+)
 
 # Body → mimic site names (``MyoFullBody.body2sites_for_mimic``).
 FULLBODY_BODY2SITES_FOR_MIMIC = {
@@ -244,42 +256,40 @@ def _load_spec_with_floor_only_upstream_scene(xml_path: str) -> mujoco.MjSpec:
             scene_temp_path.unlink()
 
 
-def build_mimic_fullbody_spec(
+def _apply_mimic_fullbody_spec_changes(
+    spec: mujoco.MjSpec,
     config: config_dict.ConfigDict,
-) -> tuple[mujoco.MjSpec, str]:
-    """Build edited :class:`mujoco.MjSpec` for Mimic full-body (pre-compile).
+    finger_joint_tokens: tuple[str, ...],
+    finger_muscle_tokens: tuple[str, ...],
+) -> mujoco.MjSpec:
+    """Apply the shared Mimic full-body edits (finger removal, sites, ctrlrange).
 
     Args:
-        config: At least ``disable_fingers`` and ``sim_dt`` (see
+        spec: Loaded, uncompiled full-body MjSpec.
+        config: At least ``disable_fingers`` (see
             :func:`default_mimic_fullbody_config`).
+        finger_joint_tokens: Finger joint names to remove when
+            ``config.disable_fingers``, in the naming convention of *spec*.
+        finger_muscle_tokens: Finger muscle/tendon name substrings to remove,
+            in the naming convention of *spec*.
 
     Returns:
-        Tuple of ``MjSpec`` after edits and resolved source XML path string.
+        The same spec, edited in place.
     """
-    xml_path = resolve_mimic_fullbody_xml(config)
-    # Keep only ground from the upstream MuscleMimic scene, preserving floor
-    # physics/height from that source scene.
-    spec = _load_spec_with_floor_only_upstream_scene(xml_path)
-
     if config.disable_fingers:
-        joints_to_remove = []
-        for joint in spec.joints:
-            if joint.name in FINGER_JOINT_TOKENS:
-                joints_to_remove.append(joint)
+        joints_to_remove = [j for j in spec.joints if j.name in finger_joint_tokens]
         for joint in joints_to_remove:
             spec.delete(joint)
 
-        actuators_to_remove = []
-        for actuator in spec.actuators:
-            if actuator.name in FINGER_MUSCLE_TOKENS:
-                actuators_to_remove.append(actuator)
+        actuators_to_remove = [
+            a for a in spec.actuators if a.name in finger_muscle_tokens
+        ]
         for actuator in actuators_to_remove:
             spec.delete(actuator)
 
-        tendons_to_remove = []
-        for tendon in spec.tendons:
-            if any(m in tendon.name for m in FINGER_MUSCLE_TOKENS):
-                tendons_to_remove.append(tendon)
+        tendons_to_remove = [
+            t for t in spec.tendons if any(m in t.name for m in finger_muscle_tokens)
+        ]
         for tendon in tendons_to_remove:
             spec.delete(tendon)
 
@@ -299,7 +309,97 @@ def build_mimic_fullbody_spec(
             actuator.ctrlrange = [-1.0, 1.0]
             actuator.ctrllimited = True
 
+    return spec
+
+
+def build_mimic_fullbody_spec(
+    config: config_dict.ConfigDict,
+) -> tuple[mujoco.MjSpec, str]:
+    """Build edited :class:`mujoco.MjSpec` for Mimic full-body (pre-compile).
+
+    Uses the same MJCF as ``musclemimic_models`` when it's installed (or an
+    explicit ``config.model_path``); falls back to a myo_sim-native full-body
+    spec with the same edits applied (mimic sites, finger removal, muscle
+    ctrlrange) when it isn't. The native fallback is NOT bit-exact parity
+    with the external MuscleMimic codebase's model — see
+    :func:`build_native_mimic_fullbody_spec` — but is usable without the
+    optional dependency.
+
+    Args:
+        config: At least ``disable_fingers`` and ``sim_dt`` (see
+            :func:`default_mimic_fullbody_config`).
+
+    Returns:
+        Tuple of ``MjSpec`` after edits and resolved source XML path string
+        (or ``"myo_sim:myofullbody"`` when using the native fallback).
+    """
+    mp = getattr(config, "model_path", None)
+    if mp is None:
+        try:
+            import musclemimic_models  # noqa: F401
+        except ImportError:
+            warnings.warn(NATIVE_FULLBODY_FALLBACK_WARNING, UserWarning, stacklevel=2)
+            return build_native_mimic_fullbody_spec(config), "myo_sim:myofullbody"
+
+    xml_path = resolve_mimic_fullbody_xml(config)
+    # Keep only ground from the upstream MuscleMimic scene, preserving floor
+    # physics/height from that source scene.
+    spec = _load_spec_with_floor_only_upstream_scene(xml_path)
+    _apply_mimic_fullbody_spec_changes(
+        spec, config, FINGER_JOINT_TOKENS, FINGER_MUSCLE_TOKENS
+    )
     return spec, xml_path
+
+
+def build_native_mimic_fullbody_spec(config: config_dict.ConfigDict) -> mujoco.MjSpec:
+    """Build a myo_sim-native Mimic-compatible full-body MjSpec.
+
+    Applies the same edits as :func:`build_mimic_fullbody_spec` (mimic
+    tracking sites, optional finger removal, muscle ctrlrange) to myo_sim's
+    own composed ``myofullbody`` model instead of the external
+    ``musclemimic_models`` MJCF. Every body :data:`FULLBODY_BODY2SITES_FOR_MIMIC`
+    needs (pelvis, lumbar1, head, and the 7 limb-segment pairs) already
+    exists in myo_sim's ``myofullbody`` under the same names.
+
+    This is NOT bit-exact parity with the external MuscleMimic codebase's
+    model (different muscle/mesh calibration) — checkpoints trained against
+    the real ``musclemimic_models`` MJCF are not guaranteed to transfer.
+    It exists so Mimic full-body envs remain usable without the optional
+    ``musclemimic_models`` dependency installed.
+
+    Args:
+        config: At least ``disable_fingers`` (see
+            :func:`default_mimic_fullbody_config`).
+
+    Returns:
+        Edited, uncompiled MjSpec.
+    """
+    import myo_sim
+
+    spec = myo_sim.load_spec("myofullbody")
+    if config.disable_fingers:
+        model = spec.compile()
+        import mujoco as _mujoco
+
+        joint_pool = frozenset(
+            _mujoco.mj_id2name(model, _mujoco.mjtObj.mjOBJ_JOINT, i) or ""
+            for i in range(model.njnt)
+        )
+        actuator_pool = frozenset(
+            _mujoco.mj_id2name(model, _mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
+            for i in range(model.nu)
+        )
+        joint_tokens = tuple(
+            _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
+        )
+        muscle_tokens = tuple(
+            _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
+        )
+    else:
+        joint_tokens = FINGER_JOINT_TOKENS
+        muscle_tokens = FINGER_MUSCLE_TOKENS
+
+    return _apply_mimic_fullbody_spec_changes(spec, config, joint_tokens, muscle_tokens)
 
 
 def compile_mimic_fullbody_mjmodel(

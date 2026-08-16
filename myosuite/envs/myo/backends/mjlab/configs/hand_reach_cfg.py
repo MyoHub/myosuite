@@ -9,7 +9,19 @@ from __future__ import annotations
 import pathlib
 from dataclasses import dataclass, field
 
-_ASSETS = pathlib.Path(__file__).parents[3] / "assets"
+
+def _default_model_path() -> pathlib.Path:
+    """Materialize the myo_sim-native "hand_pose" recipe to a real file.
+
+    mjlab reads ``model_path`` as a plain file path (it has no hook into
+    myosuite's ModelBuilder/recipe machinery), so the recipe's live MjSpec
+    has to be written to disk. Verified numerically equivalent to the
+    legacy myohand_pose.xml this replaces: 39/39 muscle names match, 0
+    calibration (gainprm/biasprm) mismatches, nq matches exactly (23).
+    """
+    from myosuite.core.model_recipes import materialize_recipe_xml
+
+    return materialize_recipe_xml("hand_pose")
 
 
 @dataclass
@@ -17,7 +29,7 @@ class HandReachCfg:
     """Configuration for the hand reach task on the mjlab/MuJoCo Warp backend.
 
     The agent controls the 23 hand muscle actuators to move the index
-    fingertip (IFtip) to a randomly sampled Cartesian target position.
+    fingertip (IFtip_r) to a randomly sampled Cartesian target position.
 
     Args:
         model_path: Path to the MJCF model file.
@@ -34,13 +46,11 @@ class HandReachCfg:
         num_envs: Number of parallel environments (batch size on GPU).
     """
 
-    model_path: pathlib.Path = field(
-        default_factory=lambda: _ASSETS / "hand" / "myohand_pose.xml"
-    )
+    model_path: pathlib.Path = field(default_factory=_default_model_path)
     sim_dt: float = 0.002
     ctrl_dt: float = 0.02
     max_episode_steps: int = 200
-    tip_site_name: str = "IFtip"
+    tip_site_name: str = "IFtip_r"
     target_reach_range: tuple[
         tuple[float, float, float], tuple[float, float, float]
     ] = (

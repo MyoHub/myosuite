@@ -462,3 +462,59 @@ def test_attach_fragment_hand_routes_through_compose():
     assert all(
         n.endswith("_r") for n in joint_names
     ), f"Expected all joints to end with '_r' (compose path); got: {joint_names}"
+
+
+def test_model_builder_from_xml_string_and_from_spec():
+    """In-memory seeds compile and accept transforms."""
+    import mujoco
+    from myosuite.core.model_builder import ModelBuilder
+
+    xml = """
+    <mujoco model="tiny">
+      <worldbody>
+        <body name="box" pos="0 0 0.1">
+          <geom type="box" size="0.05 0.05 0.05"/>
+          <freejoint/>
+        </body>
+      </worldbody>
+    </mujoco>
+    """
+    model, spec = ModelBuilder.from_xml_string(xml).build()
+    assert isinstance(model, mujoco.MjModel)
+    assert model.nbody >= 2
+
+    def _rename(s: mujoco.MjSpec) -> mujoco.MjSpec:
+        s.worldbody.add_site(name="marker", size=[0.01, 0, 0])
+        return s
+
+    model2, _ = ModelBuilder.from_spec(spec).apply_transform(_rename).build()
+    assert model2.nsite >= 1
+
+
+def test_legacy_hand_recipes_compile_without_wrapper_xml():
+    """Contact-hand recipes seed from shared assets via in-memory MjSpec."""
+    from pathlib import Path
+
+    import myosuite.core.model_recipes  # noqa: F401
+    from myosuite.core.model_builder import build_from_recipe
+
+    wrapper = (
+        Path(__file__).resolve().parents[1]
+        / "envs"
+        / "myo"
+        / "assets"
+        / "hand"
+        / "myohand_legacy.xml"
+    )
+    assert not wrapper.exists(), "legacy wrapper XML must not ship"
+
+    for recipe, counts in (
+        ("hand_keyturn", (40, 101, 330)),
+        ("hand_hold", (40, 99, 330)),
+        ("hand_pen", (41, 106, 333)),
+    ):
+        model, _ = build_from_recipe(recipe)
+        assert (model.nbody, model.ngeom, model.nsite) == counts
+        names = [model.joint(i).name for i in range(model.njnt)]
+        cmc = [n for n in names if "cmc" in n]
+        assert cmc[:2] == ["cmc_abduction", "cmc_flexion"]
