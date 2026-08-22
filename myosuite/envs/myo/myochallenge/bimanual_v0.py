@@ -101,7 +101,7 @@ class BimanualEnvV1(BaseV0):
 
         self.obj_bid = self.id_info.manip_body_id
         self.obj_sid = self.mj_model.site("touch_site").id
-        self.obj_gid = self.mj_model.body(self.obj_bid).geomadr + 1
+        self.obj_gid = self.mj_model.body(self.obj_bid).geomadr[0] + 1
         self.obj_mid = next(
             i for i in range(self.mj_model.nmesh) if "box" in self.mj_model.mesh(i).name
         )
@@ -195,8 +195,9 @@ class BimanualEnvV1(BaseV0):
         """
         self.obj_size0 = self.mj_model.geom_size[self.obj_gid].copy()
         self.obj_vert_addr = np.arange(
-            self.mj_model.mesh(self.obj_mid).vertadr,
-            self.mj_model.mesh(self.obj_mid).vertadr + self.mj_model.mesh(0).vertnum,
+            self.mj_model.mesh(self.obj_mid).vertadr[0],
+            self.mj_model.mesh(self.obj_mid).vertadr[0]
+            + self.mj_model.mesh(0).vertnum[0],
         )
         q = self.mj_model.geom(self.obj_gid - 1).quat
         r = R.from_quat([q[1], q[2], q[3], q[0]])
@@ -563,13 +564,13 @@ class IdInfo:
         )
 
         self.manip_joint_range = np.arange(
-            model.joint("manip_object/freejoint").qposadr,
-            model.joint("manip_object/freejoint").qposadr + 7,
+            model.joint("manip_object/freejoint").qposadr[0],
+            model.joint("manip_object/freejoint").qposadr[0] + 7,
         )
 
         self.manip_dof_range = np.arange(
-            model.joint("manip_object/freejoint").dofadr,
-            model.joint("manip_object/freejoint").dofadr + 6,
+            model.joint("manip_object/freejoint").dofadr[0],
+            model.joint("manip_object/freejoint").dofadr[0] + 6,
         )
 
         self.start_id = model.body("start").id

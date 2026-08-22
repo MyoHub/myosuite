@@ -8,8 +8,8 @@ Please follow steps exactly as below to install correctly.
 
 Requirements
 ~~~~~~~~~~~~
-* python >= 3.9 (if needed follow instructions `here <https://docs.conda.io/en/latest/miniconda.html>`_ for installing python and conda)
-* mujoco >= 2.3.6
+* python >= 3.10, < 3.14 (if needed follow instructions `here <https://docs.conda.io/en/latest/miniconda.html>`_ for installing python and conda)
+* mujoco >= 3.12, < 3.13
 
 
 Installing the pip package

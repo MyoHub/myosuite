@@ -458,7 +458,7 @@ class SoccerEnvV0(WalkEnvV0):
                 # Example: simple distance function
                 # Optional Keys
                 ("goal_scored", float(goal_scored)),
-                ("time_cost", float(self.obs_dict["time"])),
+                ("time_cost", float(np.asarray(self.obs_dict["time"]).item())),
                 ("act_reg", act_mag),
                 ("pain", pain),
                 # Must keys
@@ -562,16 +562,16 @@ class SoccerEnvV0(WalkEnvV0):
         # Add some noise to the joints
         for jnt in self.myo_joints:
             self.mj_data.joint(jnt).qpos[0] += self.np_random.uniform(
-                -np.abs(self.rnd_joint_noise), np.abs(self.rnd_joint_noise), size=(1,)
+                -np.abs(self.rnd_joint_noise), np.abs(self.rnd_joint_noise)
             )
 
         # Body start position randomizations
         # Treatment for root joint is different
         self.mj_data.joint("root").qpos[0] += self.np_random.uniform(
-            -np.abs(self.rnd_pos_noise), 0, size=(1,)
+            -np.abs(self.rnd_pos_noise), 0
         )  # Only allow body to move behind the ball, not in front
         self.mj_data.joint("root").qpos[1] += self.np_random.uniform(
-            -np.abs(self.rnd_pos_noise), np.abs(self.rnd_pos_noise), size=(1,)
+            -np.abs(self.rnd_pos_noise), np.abs(self.rnd_pos_noise)
         )  # Y-direction movement allowable
 
         return self.mj_data.qpos.copy(), self.mj_data.qvel.copy()
