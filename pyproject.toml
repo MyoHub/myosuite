@@ -46,8 +46,17 @@ explicit = true
 warp-lang = { index = "nvidia" }
 
 [project.optional-dependencies]
-# NOTE: mink dropped its "examples" extra in 1.0.0; depend on the plain package.
-examples = ["mink; python_version >= '3.10'"]
+# NOTE: mink dropped its "examples" extra in 1.0.0, so depend on the plain
+# package. The version is split by interpreter on purpose: mink >=1.3.0 is the
+# first release without a <3.14 python cap, but it also raises its floor to
+# mujoco>=3.10.0. Requiring it unconditionally would drag the whole install up
+# to mujoco 3.10 and quietly invalidate our >=3.6 floor. Below 3.14 we leave
+# mink unconstrained so mujoco 3.6 stays reachable; on 3.14 mujoco 3.6 ships no
+# wheels anyway (cp310-cp313 only), so the higher floor costs nothing there.
+examples = [
+    "mink; python_version >= '3.10' and python_version < '3.14'",
+    "mink>=1.3.0; python_version >= '3.14'",
+]
 mjx = [
     "mujoco>=3.6,<3.13; python_version >= '3.10' and sys_platform != 'win32'",
     "mujoco-mjx[warp]>=3.6,<3.13; python_version >= '3.10' and sys_platform != 'win32'",
