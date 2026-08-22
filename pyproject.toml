@@ -29,7 +29,8 @@ dependencies = [
     "flatten_dict",
     "h5py",
     "numpy",
-    "mujoco>=3.6,<3.7",
+    "scipy",
+    "mujoco>=3.12,<3.13",
     "Pillow>=12.2.0",
     "pink-noise-rl",
     "packaging",
@@ -46,8 +47,8 @@ warp-lang = { index = "nvidia" }
 [project.optional-dependencies]
 examples = ["mink[examples]; python_version >= '3.10'"]
 mjx = [
-    "mujoco>=3.6,<3.7; python_version >= '3.10' and sys_platform != 'win32'",
-    "mujoco-mjx[warp]>=3.6,<3.7; python_version >= '3.10' and sys_platform != 'win32'",
+    "mujoco>=3.12,<3.13; python_version >= '3.10' and sys_platform != 'win32'",
+    "mujoco-mjx[warp]>=3.12,<3.13; python_version >= '3.10' and sys_platform != 'win32'",
     "jax>=0.4.20; python_version >= '3.10' and sys_platform != 'win32'",
     "jaxlib>=0.4.20; python_version >= '3.10' and sys_platform != 'win32'",
     "brax>=0.10.0; python_version >= '3.10' and sys_platform != 'win32'",

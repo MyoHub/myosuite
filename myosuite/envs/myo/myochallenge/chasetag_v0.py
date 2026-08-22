@@ -641,11 +641,11 @@ class ChaseTagEnvV0(WalkEnvV0):
         win_cdt = self._win_condition()
         lose_cdt = self._lose_condition()
         if self.current_task.name == "CHASE":
-            score = self._get_score(float(self.obs_dict["time"])) if win_cdt else 0
+            score = self._get_score(float(np.asarray(self.obs_dict["time"]).item())) if win_cdt else 0
             self.obs_dict["time"] = self.maxTime if lose_cdt else self.obs_dict["time"]
         elif self.current_task.name == "EVADE":
             score = (
-                self._get_score(float(self.obs_dict["time"]))
+                self._get_score(float(np.asarray(self.obs_dict["time"]).item()))
                 if (win_cdt or lose_cdt)
                 else 0
             )
