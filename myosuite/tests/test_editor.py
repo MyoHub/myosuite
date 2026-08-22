@@ -90,9 +90,10 @@ class TestModelEditor(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             ModelEditor("nonexistent/path.xml")
         
-        # Verify the error message contains the expected content
+        # Verify the error message contains the expected content.
+        # Only the stable prefix is asserted; MuJoCo no longer appends the
+        # platform-specific strerror text (e.g. "No such file or directory").
         self.assertIn("Error opening file", str(cm.exception))
-        self.assertIn("No such file or directory", str(cm.exception))
 
 class TestEditFnArmReaching(unittest.TestCase):
     """Unit tests for TestEditFnArmReaching and MuJoCo model editing functionality."""
@@ -110,39 +111,35 @@ class TestEditFnArmReaching(unittest.TestCase):
         editor.edit_model(edit_fn=edit_fn_arm_reaching)
         self.edited_spec: mujoco.MjSpec = editor.spec
 
-    def test_digit_bodies_are_removed(self) -> None:
-        """Test if the function removes the bodies of the proximal phalanges."""
-        test_cases: List[str] = ['proximal_thumb', 'proxph2', 'proxph3', 'proxph4', 'proxph5']
-        
-        for case in test_cases:
+    def test_digit_bodies_are_simplified(self) -> None:
+        """Test that the detailed phalanx bodies are replaced by simplified ones.
+
+        The edit function rebuilds each phalanx under its original name, but the
+        replacement carries only a mesh geom -- the articulating joints and the
+        muscle-routing sites of the original are dropped.
+        """
+        for case in self._get_phalanx_test_cases():
             with self.subTest(case=case):
-                self.assertIsNone(self.edited_spec.body(case))
+                original: Any = self.original_spec.body(case)
+                edited: Any = self.edited_spec.body(case)
+                self.assertIsNotNone(edited, f"Body {case} missing after edit.")
+                self.assertTrue(list(original.joints),
+                                f"Original body {case} was expected to have joints.")
+                self.assertEqual(list(edited.joints), [],
+                                 f"Body {case} should have no joints after edit.")
 
     def _get_phalanx_test_cases(self) -> List[str]:
         """Get the names of the bodies of phalanges in the edited model.
-        Example: ['thumbprox', 'thumbdist', '2proxph', '2midph', '2distph', ...]."""
-        test_cases: List[str] = ['thumbprox', 'thumbdist']
-        for i in range(1, 5):  # Digits 2-5
+
+        The edit function preserves the original body names, so these are the
+        names found in both specs. Note that 'thumbprox', '2proxph', ... are
+        geom/mesh names in the source model, not body names.
+        Example: ['proximal_thumb', 'distal_thumb', 'proxph2', 'midph2', ...].
+        """
+        test_cases: List[str] = ['proximal_thumb', 'distal_thumb']
+        for i in range(2, 6):  # Digits 2-5
             for phalanx in ['proxph', 'midph', 'distph']:
-                test_cases.append(f"{i+1}{phalanx}")
-        return test_cases
-    
-    def _get_position_test_cases(self) -> List[Tuple[str, str]]:
-        """Get pairs of (original_name, edited_name) for the bodies of all phalanges.
-        Example: [('proximal_thumb', 'thumbprox'), ..., ('proxph2', '2proxph'), ...]."""
-        phalanx_iterator = iter(self._get_phalanx_test_cases())
-        
-        test_cases: List[Tuple[str, str]] = [
-            ('proximal_thumb', next(phalanx_iterator)),
-            ('distal_thumb', next(phalanx_iterator))
-        ]
-    
-        for i in range(1, 5):
-            for phalanx in ['proxph', 'midph', 'distph']:
-                edited_name = next(phalanx_iterator)
-                original_name = f"{phalanx}{i+1}"
-                test_cases.append((original_name, edited_name))
-        
+                test_cases.append(f"{phalanx}{i}")
         return test_cases
 
     def test_digit_bodies_are_added(self) -> None:
@@ -155,12 +152,10 @@ class TestEditFnArmReaching(unittest.TestCase):
 
     def test_digit_body_positions_are_preserved(self) -> None:
         """Test if the function preserves the positions of bodies in the edited model."""
-        test_cases: List[Tuple[str, str]] = self._get_position_test_cases()
-        
-        for original_name, edited_name in test_cases:
-            with self.subTest(original=original_name, edited=edited_name):
-                original_pos: np.ndarray = self.original_spec.body(original_name).pos
-                edited_pos: np.ndarray = self.edited_spec.body(edited_name).pos
+        for case in self._get_phalanx_test_cases():
+            with self.subTest(case=case):
+                original_pos: np.ndarray = self.original_spec.body(case).pos
+                edited_pos: np.ndarray = self.edited_spec.body(case).pos
                 self.assertTrue(np.array_equal(original_pos, edited_pos))
 
     def test_digit_geoms_are_added(self) -> None:

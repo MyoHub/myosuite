@@ -11,29 +11,30 @@ class TestHeightfields(unittest.TestCase):
     def setUpClass(cls):
         cls.curr_dir = os.path.dirname(os.path.abspath(__file__))
 
-    def _create_sim(self, xml_path):
-        class Sim:
-            def __init__(self, xml_path):
-                self.model = mujoco.MjModel.from_xml_path(xml_path)
-                self.data = mujoco.MjData(self.model)
-        return Sim(xml_path)
+    def _load_model(self, xml_path):
+        mj_model = mujoco.MjModel.from_xml_path(xml_path)
+        return mj_model, mujoco.MjData(mj_model)
 
     def _create_chasetagfield(self, seed):
         np_random = gym.utils.seeding.np_random(seed)[0]
         xml_path = os.path.join(self.curr_dir, "../envs/myo/assets/leg/myolegs_chasetag.xml")
-        sim = self._create_sim(xml_path)
+        mj_model, mj_data = self._load_model(xml_path)
         return ChaseTagField(
-            sim=sim, 
+            mj_model=mj_model,
+            mj_data=mj_data,
             rng=np_random,
+            rough_range=(0.0, 0.1),
             hills_range=(0.0, 0.1),
+            relief_range=(0.0, 0.1),
             )
 
     def _create_trackfield(self, seed):
         np_random = gym.utils.seeding.np_random(seed)[0]
         xml_path = os.path.join(self.curr_dir, "../envs/myo/assets/leg/myoosl_runtrack.xml")
-        sim = self._create_sim(xml_path)
+        mj_model, mj_data = self._load_model(xml_path)
         return TrackField(
-            sim=sim, 
+            mj_model=mj_model,
+            mj_data=mj_data,
             rng=np_random,
             rough_difficulties=[0.0, 0.1, 0.2],
             hills_difficulties=[0.0, 0.1, 0.2],
