@@ -46,7 +46,8 @@ explicit = true
 warp-lang = { index = "nvidia" }
 
 [project.optional-dependencies]
-examples = ["mink[examples]; python_version >= '3.10'"]
+# NOTE: mink dropped its "examples" extra in 1.0.0; depend on the plain package.
+examples = ["mink; python_version >= '3.10'"]
 mjx = [
     "mujoco>=3.6,<3.13; python_version >= '3.10' and sys_platform != 'win32'",
     "mujoco-mjx[warp]>=3.6,<3.13; python_version >= '3.10' and sys_platform != 'win32'",
