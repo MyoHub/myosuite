@@ -401,10 +401,12 @@ class TableTennisEnvV0(BaseV0):
         dim = model.sensor_dim[sensor_id]
         return data.sensordata[start : start + dim]
 
-    def reset(self, reset_qpos=None, reset_qvel=None, **kwargs):
+    def reset(self, reset_qpos=None, reset_qvel=None, seed=None, **kwargs):
         # self.mj_model.body_pos[self.object_bid] = self.np_random.uniform(**self.target_xyz_range)
         # self.mj_model.body_quat[self.object_bid] = euler2quat(self.np_random.uniform(**self.target_rxryrz_range))
         self.contact_trajectory = []
+        if seed is not None:
+            self.seed(seed)
         self.init_qpos[:] = self.mj_model.key_qpos[0].copy()
 
         # the mass of the paddle slightly changes
@@ -449,8 +451,12 @@ class TableTennisEnvV0(BaseV0):
             v_low, v_high = v_bounds[1], v_bounds[0]
             ball_vel = self.np_random.uniform(low=v_low, high=v_high)
             self.init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = ball_vel
+        mujoco.mj_setConst(self.mj_model, self.mj_data)
         obs = super().reset(
-            reset_qpos=reset_qpos_local, reset_qvel=self.init_qvel, **kwargs
+            reset_qpos=reset_qpos_local,
+            reset_qvel=self.init_qvel,
+            seed=seed,
+            **kwargs,
         )
 
         self.cur_rally = 0
