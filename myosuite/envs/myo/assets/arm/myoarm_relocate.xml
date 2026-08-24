@@ -8,8 +8,8 @@
 ====================================================== -->
 
     <include file="../myo_sim/arm/assets/myoarm_r_assets.xml"/>
-    <include file="../myo_sim/arm/assets/myoarm_r_tendons.xml"/>
-    <include file="../myo_sim/arm/assets/myoarm_r_muscles.xml"/>
+    <include file="../myo_sim/arm/assets/myoarm_r_tendon.xml"/>
+    <include file="../myo_sim/arm/assets/myoarm_r_muscle.xml"/>
     <include file="../myo_sim/scene/myosuite_scene.xml"/>
     <compiler meshdir='../myo_sim' texturedir='../myo_sim'/>
 
@@ -25,6 +25,16 @@
         <!-- Minimal thorax stub: massless fixed body providing sites/geoms for LAT and PECM
              tendon routing. Positions are world-frame from the compose myoarm_r model. -->
         <body name="thorax_stub" pos="0 0 0">
+            <!-- Visual ribcage (thorax_r == meshes/thorax.stl, what the torso model also
+                 draws as its ribcage). Pose is myoarm_body.xml's thorax body frame,
+                 recovered by rigid (Kabsch) fit of the 13 PECM/LAT sites below onto their
+                 thorax-local coordinates there — 0.3 um residual. Do not re-derive it from
+                 the arm_r mount quat: that mount is separately calibrated and lands the
+                 ribcage ~11 cm low, 3.7 cm off this routing instead of 1.3 cm.
+                 Visual only, as the public myoarm_relocate.xml body mesh also is. -->
+            <geom name="thorax_visual" type="mesh" mesh="thorax_r"
+                  pos="0 0.084 1.4812" euler="1.57079633 -1.57079633 0"
+                  contype="0" conaffinity="0"/>
             <geom name="Thorax_ellipsoid_PECM2" type="sphere" size="0.08"
                   pos="-0.0709 0.1226 1.3539" rgba="0.19 0.83 0.78 0" group="3" contype="0" conaffinity="0"/>
             <geom name="Thorax_ellipsoid_PECM3" type="sphere" size="0.08"

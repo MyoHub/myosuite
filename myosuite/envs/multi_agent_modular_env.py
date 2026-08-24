@@ -126,6 +126,19 @@ class ModularMultiAgentTaskEnv(gym.Env):
         super().reset(seed=seed)
 
         mujoco.mj_resetData(self.model, self.data)
+        # See ModularTaskEnv.reset() in modular_env.py: mj_resetData alone
+        # zeros ALL qpos, which is not a valid standing pose for any
+        # humanoid/leg host model and collapses instantly under gravity.
+        # Two-agent combined models don't carry a compiled-in keyframe
+        # (MjSpec.attach drops them -- see two_agent_standing_qpos), so the
+        # per-agent standing pose is reconstructed once at model-build time
+        # and cached on meta; prefer that, falling back to a raw keyframe 0
+        # if the model happens to have one, before agent on_reset() runs.
+        standing_qpos = getattr(self._meta, "standing_qpos", None)
+        if standing_qpos is not None:
+            self.data.qpos[:] = standing_qpos
+        elif self.model.nkey > 0:
+            mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         self.data.ctrl[:] = 0.0
         mujoco.mj_forward(self.model, self.data)
 

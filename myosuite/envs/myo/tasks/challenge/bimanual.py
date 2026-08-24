@@ -28,6 +28,17 @@ GOAL_CONTACT = 10
 MAX_TIME = 10.0
 
 
+def _as_mj_int(value: Any) -> int:
+    """Coerce MuJoCo address / id fields to a Python ``int``.
+
+    MuJoCo 3.x often exposes fields such as ``qposadr``, ``dofadr``, ``geomadr``,
+    and ``body.id`` as length-1 ``ndarray`` values. Passing those arrays into
+    ``int(...)`` or into ``model.geom(...)`` raises under newer NumPy / MuJoCo.
+    """
+    arr = np.asarray(value)
+    return int(arr.reshape(-1)[0])
+
+
 class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Native Gymnasium implementation for the bimanual challenge task."""
 
@@ -82,22 +93,22 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.start_bid = self.id_info.start_id
         self.goal_bid = self.id_info.goal_id
         self.obj_bid = self.id_info.manip_body_id
-        self.obj_sid = self.model.site("touch_site").id
-        self.obj_gid = self.model.body(self.obj_bid).geomadr + 1
+        self.obj_sid = _as_mj_int(self.model.site("touch_site").id)
+        self.obj_gid = _as_mj_int(self.model.body(self.obj_bid).geomadr) + 1
         self.obj_mid = next(
             i for i in range(self.model.nmesh) if "box" in self.model.mesh(i).name
         )
         self.init_obj_z = self.data.site_xpos[self.obj_sid][-1]
         self.target_z = 0.2
-        self.palm_sid = self.model.site("S_grasp").id
+        self.palm_sid = _as_mj_int(self.model.site("S_grasp").id)
         self.init_palm_z = self.data.site_xpos[self.palm_sid][-1]
-        self.fin0 = self.model.site("THtip").id
-        self.fin1 = self.model.site("IFtip").id
-        self.fin2 = self.model.site("MFtip").id
-        self.fin3 = self.model.site("RFtip").id
-        self.fin4 = self.model.site("LFtip").id
-        self.rpalm1_sid = self.model.site("Lgrasp").id
-        self.rpalm2_sid = self.model.site("Lgrasp").id
+        self.fin0 = _as_mj_int(self.model.site("THtip").id)
+        self.fin1 = _as_mj_int(self.model.site("IFtip").id)
+        self.fin2 = _as_mj_int(self.model.site("MFtip").id)
+        self.fin3 = _as_mj_int(self.model.site("RFtip").id)
+        self.fin4 = _as_mj_int(self.model.site("LFtip").id)
+        self.rpalm1_sid = _as_mj_int(self.model.site("prosthesis/palm_thumb").id)
+        self.rpalm2_sid = _as_mj_int(self.model.site("prosthesis/palm_pinky").id)
         self.start_pos = self.start_center
         self.goal_pos = self.goal_center
         self.model.body_pos[self.start_bid] = self.start_pos
@@ -181,10 +192,11 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
     def _center_box_mesh(self) -> None:
         self.obj_size0 = self.model.geom_size[self.obj_gid].copy()
-        _vertadr = int(self.model.mesh(self.obj_mid).vertadr)
-        _vertnum = int(self.model.mesh(0).vertnum)
+        # MuJoCo 3.x exposes mesh address fields as length-1 ndarrays.
+        _vertadr = _as_mj_int(self.model.mesh(self.obj_mid).vertadr)
+        _vertnum = _as_mj_int(self.model.mesh(0).vertnum)
         self.obj_vert_addr = np.arange(_vertadr, _vertadr + _vertnum)
-        q = self.model.geom(self.obj_gid - 1).quat
+        q = np.asarray(self.model.geom(self.obj_gid - 1).quat, dtype=np.float64).copy()
         r = R.from_quat([q[1], q[2], q[3], q[0]])
         self.model.mesh_vert[self.obj_vert_addr] = r.apply(
             self.model.mesh_vert[self.obj_vert_addr]
@@ -192,11 +204,16 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.model.mesh_normal[self.obj_vert_addr] = r.apply(
             self.model.mesh_normal[self.obj_vert_addr]
         )
-        self.model.geom(self.obj_gid - 1).quat = [1, 0, 0, 0]
-        self.model.mesh_vert[self.obj_vert_addr] += (
-            self.model.geom(self.obj_gid - 1).pos - self.model.geom(self.obj_gid).pos
-        )[None, :]
-        self.model.geom(self.obj_gid - 1).pos = self.model.geom(self.obj_gid).pos
+        self.model.geom(self.obj_gid - 1).quat[:] = np.array(
+            [1.0, 0.0, 0.0, 0.0], dtype=np.float64
+        )
+        geom_pos_delta = np.asarray(
+            self.model.geom(self.obj_gid - 1).pos, dtype=np.float64
+        ) - np.asarray(self.model.geom(self.obj_gid).pos, dtype=np.float64)
+        self.model.mesh_vert[self.obj_vert_addr] += geom_pos_delta[None, :]
+        self.model.geom(self.obj_gid - 1).pos[:] = np.asarray(
+            self.model.geom(self.obj_gid).pos, dtype=np.float64
+        )
         self.mesh_vert0 = self.model.mesh_vert[self.obj_vert_addr].copy()
 
     def _obj_label_to_obs(self, touching_body: set) -> np.ndarray:
@@ -466,37 +483,33 @@ class ContactTrajIssue(enum.Enum):
 
 def _is_mpl_body(name: str) -> bool:
     """Return True if the body name belongs to the MPL prosthetic arm chain."""
-    if not name:
-        return False
-    return name.startswith(("torso_", "roll_", "upper_torso")) or (
-        len(name) > 1 and name[0] in "RL" and name[1].islower()
-    )
+    return bool(name) and name.startswith("prosthesis")
 
 
 def _is_mpl_joint(name: str) -> bool:
     """Return True if the joint name belongs to the MPL prosthetic arm chain."""
-    return len(name) > 1 and name[0] in "RL" and name[1].islower()
+    return bool(name) and name.startswith("prosthesis")
 
 
 class IdInfo:
     def __init__(self, model):
-        self.manip_body_id = model.body("manip_object").id
+        self.manip_body_id = _as_mj_int(model.body("manip_object").id)
         _skip = {"world", "start", "goal", "manip_object"}
         myo_bodies = [
-            model.body(i).id
+            _as_mj_int(model.body(i).id)
             for i in range(model.nbody)
             if not _is_mpl_body(model.body(i).name) and model.body(i).name not in _skip
         ]
         self.myo_body_range = (min(myo_bodies), max(myo_bodies))
         prosth_bodies = [
-            model.body(i).id
+            _as_mj_int(model.body(i).id)
             for i in range(model.nbody)
             if _is_mpl_body(model.body(i).name)
         ]
         self.prosth_body_range = (min(prosth_bodies), max(prosth_bodies))
         self.myo_joint_range = np.concatenate(
             [
-                model.joint(i).qposadr
+                np.atleast_1d(model.joint(i).qposadr).astype(np.int64)
                 for i in range(model.njnt)
                 if not _is_mpl_joint(model.joint(i).name)
                 and model.joint(i).name != "manip_object/freejoint"
@@ -504,7 +517,7 @@ class IdInfo:
         )
         self.myo_dof_range = np.concatenate(
             [
-                model.joint(i).dofadr
+                np.atleast_1d(model.joint(i).dofadr).astype(np.int64)
                 for i in range(model.njnt)
                 if not _is_mpl_joint(model.joint(i).name)
                 and model.joint(i).name != "manip_object/freejoint"
@@ -512,24 +525,24 @@ class IdInfo:
         )
         self.prosth_joint_range = np.concatenate(
             [
-                model.joint(i).qposadr
+                np.atleast_1d(model.joint(i).qposadr).astype(np.int64)
                 for i in range(model.njnt)
                 if _is_mpl_joint(model.joint(i).name)
             ]
         )
         self.prosth_dof_range = np.concatenate(
             [
-                model.joint(i).dofadr
+                np.atleast_1d(model.joint(i).dofadr).astype(np.int64)
                 for i in range(model.njnt)
                 if _is_mpl_joint(model.joint(i).name)
             ]
         )
-        _qposadr = int(model.joint("manip_object/freejoint").qposadr)
-        _dofadr = int(model.joint("manip_object/freejoint").dofadr)
+        _qposadr = _as_mj_int(model.joint("manip_object/freejoint").qposadr)
+        _dofadr = _as_mj_int(model.joint("manip_object/freejoint").dofadr)
         self.manip_joint_range = np.arange(_qposadr, _qposadr + 7)
         self.manip_dof_range = np.arange(_dofadr, _dofadr + 6)
-        self.start_id = model.body("start").id
-        self.goal_id = model.body("goal").id
+        self.start_id = _as_mj_int(model.body("start").id)
+        self.goal_id = _as_mj_int(model.body("goal").id)
 
 
 def get_touching_objects(model, data, id_info: IdInfo):

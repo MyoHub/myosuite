@@ -26,6 +26,7 @@ from myosuite.integrations.musclemimic.actor_onnx import load_onnx_session
 
 _BUNDLE_META_KEY = "myosuite.checkpoint_bundle.v1.meta"
 _BUNDLE_PAYLOAD_KEY = "myosuite.checkpoint_bundle.v1.payload_gzip_base64"
+_FATIGUE_STATE_KEY = "fatigue_state"
 _MODEL_STEP_ONNX_RE = re.compile(r"^model_(\d+)\.onnx$")
 _MODEL_STEP_PT_RE = re.compile(r"^model_(\d+)\.pt$")
 
@@ -233,6 +234,61 @@ class OnnxPolicy:
         return None
 
 
+def get_env_fatigue_state(env: Any) -> dict[str, Any] | None:
+    """Extract the current fatigue compartment state from an env's action terms.
+
+    Works for both the mjlab path (``ManagerBasedRlEnv`` with an action manager
+    whose terms expose ``_fatigue``) and the CPU path (``ModularTaskEnv`` with a
+    ``_fatigue_model`` attribute).
+
+    Args:
+        env: Gymnasium-compatible env, possibly wrapped.
+
+    Returns:
+        Dict mapping action-term name → ``{"MA": ..., "MR": ..., "MF": ...}``,
+        or ``None`` when no active fatigue model is found.
+    """
+    unwrapped = getattr(env, "unwrapped", env)
+    action_manager = getattr(unwrapped, "action_manager", None)
+    if action_manager is not None:
+        states: dict[str, Any] = {}
+        for term_name, term in action_manager._terms.items():
+            fatigue = getattr(term, "_fatigue", None)
+            if fatigue is not None:
+                states[term_name] = fatigue.state_dict()
+        return states or None
+    # CPU path (ModularTaskEnv)
+    fatigue_model = getattr(unwrapped, "_fatigue_model", None)
+    if fatigue_model is not None:
+        return {"cpu": fatigue_model.state_dict()}
+    return None
+
+
+def set_env_fatigue_state(env: Any, state: dict[str, Any]) -> None:
+    """Restore fatigue compartment state into an env's action terms.
+
+    Args:
+        env: Gymnasium-compatible env, possibly wrapped.
+        state: Dict previously returned by :func:`get_env_fatigue_state`.
+    """
+    unwrapped = getattr(env, "unwrapped", env)
+    action_manager = getattr(unwrapped, "action_manager", None)
+    if action_manager is not None:
+        for term_name, term_state in state.items():
+            try:
+                term = action_manager.get_term(term_name)
+                fatigue = getattr(term, "_fatigue", None)
+                if fatigue is not None:
+                    fatigue.load_state_dict(term_state)
+            except (KeyError, AttributeError):
+                pass
+        return
+    # CPU path (ModularTaskEnv)
+    fatigue_model = getattr(unwrapped, "_fatigue_model", None)
+    if fatigue_model is not None and "cpu" in state:
+        fatigue_model.load_state_dict(state["cpu"])
+
+
 __all__ = [
     "bundle_onnx_with_checkpoint",
     "extract_checkpoint_from_onnx",
@@ -241,5 +297,7 @@ __all__ = [
     "is_onnx_checkpoint_name",
     "normalize_onnx_checkpoint_name",
     "onnx_checkpoint_sort_key",
+    "get_env_fatigue_state",
+    "set_env_fatigue_state",
     "OnnxPolicy",
 ]

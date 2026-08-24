@@ -7,9 +7,43 @@
 from __future__ import annotations
 
 import sys
+import warnings
 from typing import Any
 
 import pytest
+
+# Tier markers (see pyproject.toml [tool.pytest.ini_options].markers).
+_TIER_MARKERS = frozenset({"tier1", "tier2", "tier3"})
+# Test modules without an explicit tier marker are treated as this tier, so
+# `pytest -m tierN` never silently drops a whole file. tier2 = "extended";
+# a warning below lists offenders so they can be given an explicit tier.
+_DEFAULT_TIER = "tier2"
+
+
+def _assign_default_tiers(items: list[Any]) -> None:
+    """Give every test an explicit tier so `-m tierN` selection is complete.
+
+    Any item whose module declares no tier marker gets ``_DEFAULT_TIER`` and its
+    module is collected into a single warning, so untagged files surface without
+    being silently excluded from tier-filtered runs.
+    """
+    untagged_modules: set[str] = set()
+    default_mark = getattr(pytest.mark, _DEFAULT_TIER)
+    for item in items:
+        if any(m.name in _TIER_MARKERS for m in item.iter_markers()):
+            continue
+        item.add_marker(default_mark)
+        module = getattr(item, "module", None)
+        untagged_modules.add(getattr(module, "__name__", item.nodeid.split("::")[0]))
+    if untagged_modules:
+        listing = ", ".join(sorted(untagged_modules))
+        warnings.warn(
+            f"{len(untagged_modules)} test module(s) have no tier marker and were "
+            f"defaulted to {_DEFAULT_TIER}; add `pytestmark = pytest.mark.tierN` "
+            f"to tier them explicitly: {listing}",
+            stacklevel=2,
+        )
+
 
 # MuJoCo Warp + full biped mjlab leg walk has crashed the interpreter on macOS
 # (segfault in native forward). Linux CI is the supported environment for these.
@@ -34,8 +68,9 @@ _DARWIN_SKIP_ORIGINAL_NAMES: frozenset[str] = frozenset(
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[Any]) -> None:
-    """Skip mjlab biped leg-walk coverage on macOS (Warp instability)."""
+    """Assign default tiers, then skip mjlab biped leg-walk on macOS (Warp instability)."""
     _ = config  # hook name is part of the pytest API contract
+    _assign_default_tiers(items)
     if sys.platform != "darwin":
         return
     skip = pytest.mark.skip(reason=_DARWIN_MJLAB_LEG_WALK_SKIP_REASON)

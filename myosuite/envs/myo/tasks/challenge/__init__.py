@@ -10,9 +10,10 @@ import numpy as np
 
 import myosuite.core.registry as _registry
 from myosuite.envs.myo.assets._resolve import resolve_osl_xml as _resolve_osl_xml
-from myosuite.envs.myo.tasks.challenge.saber_task_spec import (
-    register_saber_p0_env,
+from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
+    build_default_fullbody_chasetag_spec as _build_default_fullbody_chasetag_spec,
 )
+from myosuite.envs.myo.tasks.challenge.chasetag import ChaseTagEnv as _ChaseTagEnv
 
 _ASSETS_ROOT = pathlib.Path(__file__).parents[2] / "assets"
 
@@ -74,7 +75,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.challenge.tabletennis:TableTennisEnv",
     max_episode_steps=300,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "arm" / "myoarm_tabletennis.xml"),
+        "model_recipe": "challenge_tabletennis",
         "normalize_act": True,
         "frame_skip": 5,
     },
@@ -85,7 +86,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.challenge.tabletennis:TableTennisEnv",
     max_episode_steps=300,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "arm" / "myoarm_tabletennis.xml"),
+        "model_recipe": "challenge_tabletennis",
         "normalize_act": True,
         "ball_xyz_range": {"high": [-1.20, -0.45, 1.5], "low": [-1.25, -0.5, 1.4]},
         "frame_skip": 5,
@@ -97,7 +98,7 @@ _reg(
     entry_point="myosuite.envs.myo.tasks.challenge.tabletennis:TableTennisEnv",
     max_episode_steps=300,
     kwargs={
-        "model_path": str(_ASSETS_ROOT / "arm" / "myoarm_tabletennis.xml"),
+        "model_recipe": "challenge_tabletennis",
         "normalize_act": True,
         "ball_qvel": True,
         "paddle_mass_range": (0.10, 0.15),
@@ -375,6 +376,65 @@ _reg(
     },
 )
 
+# MyoChallenge full-body ChaseTag vs. scripted opponent (opponent-aware obs)
+_reg(
+    env_id="myoChallengeChaseTagFBP2-v0",
+    entry_point="myosuite.envs.myo.tasks.challenge.chasetag:ChaseTagEnv",
+    max_episode_steps=2000,
+    kwargs={
+        "model_path": None,
+        "model_spec_fn": _build_default_fullbody_chasetag_spec,
+        "pelvis_body_name": "pelvis",
+        "obs_keys": _ChaseTagEnv.DEFAULT_OBS_KEYS + ["opponent_relative"],
+        # normalize_act=False: this env is specifically meant to host
+        # policies warm-started from bc_directional_v2 (and PPO fine-tunes
+        # thereof), which output raw muscle activations directly in
+        # actuator_ctrlrange (matching MuscleMimicFullbodyDirectionalEnv's
+        # own un-normalized action space), not the [-1, 1]-pre-sigmoid-logit
+        # convention normalize_act=True applies via _apply_action's
+        # sigmoid_muscle_activation. With normalize_act=True, an intended
+        # "relaxed" output near 0 was silently turned into sigmoid(0)=0.5 --
+        # a large, uncontrolled activation on every muscle simultaneously,
+        # regardless of policy intent. Confirmed as the dominant cause of
+        # the "falls almost immediately" behavior in early FBP2 renders
+        # (the reset-pose fix alone was not sufficient). Unlike P1/P2/P2eval
+        # (trained fresh via RL, where sigmoid-squashed exploration is the
+        # intended convention), this env's whole purpose is hosting a
+        # transplanted BC-trained policy, so it must match that policy's
+        # native action convention instead.
+        "normalize_act": False,
+        "win_distance": 0.5,
+        "min_spawn_distance": 2,
+        # The reused full-body MJCF ships a single standing keyframe (no
+        # crouched/staggered variants like myolegs_chasetag.xml's keys 2-3),
+        # so "random" reset_type (which indexes key_qpos[2]/[3]) is not
+        # available here — "none" uses key_qpos[0], the standing pose.
+        "reset_type": "none",
+        "terrain": "random",
+        # task_choice="CHASE" (fixed), NOT "random" (P2's kwarg, mirrored
+        # here by mistake): the mjlab/GPU training pipeline this env's
+        # obs/opponent were built for is CHASE-only by design --
+        # _chasetag_obs_role in register_mjlab_tasks.py is hardcoded
+        # `[1, 0]` ("this env always plays the CHASE role"), and the
+        # vectorized opponent-scripting only replicates CHASE behavior
+        # (see chase_tag_fb_model.py / register_mjlab_tasks.py docstrings).
+        # With "random", CPU episodes could sample EVADE (different
+        # win/lose semantics, different opponent behavior) while the role
+        # observation still claimed CHASE and the fine-tuned policy had
+        # never been trained on EVADE at all -- confirmed as a real
+        # contributor to fbp2_ppo_v3 evaluating worse on CPU than on its
+        # own mjlab training backend.
+        "task_choice": "CHASE",
+        "hills_range": (0.03, 0.23),
+        "rough_range": (0.05, 0.1),
+        "relief_range": (0.1, 0.3),
+        "repeller_opponent": False,
+        "chase_vel_range": (1.0, 1.0),
+        "random_vel_range": (-2, 2),
+        "opponent_probabilities": (0.1, 0.45, 0.45),
+    },
+)
+
 # MyoChallenge 2022 envs ==============================================
 # MyoChallenge Die: Trial env
 _reg(
@@ -455,39 +515,22 @@ _reg(
     },
 )
 
-# Register Saber P0 via EnvSpec adapter path.
-register_saber_p0_env()
-
-# Register two-agent competitive boxing environments.
-# These use factory entry-points (not TaskConfig) because they wrap
-# ModularMultiAgentTaskEnv — routed through register_env() which is
-# idempotent and applies the instability wrapper consistently.
+# Register the two-agent 1v1 myoLeg chase-tag environment.
 try:
-    from myosuite.core.registry import (
-        register_env as _register_env,
-        register_task as _register_task,
-    )
-    from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_task_config import (
-        BoxingVsTaskConfig as _BoxingVsTaskConfig,
+    from myosuite.core.registry import register_task as _register_task
+    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+        ChaseTagVsFullbodySteeredTaskConfig as _ChaseTagVsFullbodySteeredTaskConfig,
     )
 
-    _register_task(_BoxingVsTaskConfig(), env_id="myoChallengeBoxingVs-v0")
-    _register_env(
-        "myoChallengeBoxingMannequin-v0",
-        entry_point="myosuite.envs.myo.tasks.challenge.boxing_mannequin.boxing_mannequin_env:make_boxing_mannequin_env",
-        max_episode_steps=500,
-        wrap_mj_instability_termination=False,
+    _register_task(
+        _ChaseTagVsFullbodySteeredTaskConfig(), env_id="myoChallengeChaseTagFBVs-v0"
     )
-    # Six-target pad machine used by MyoChallenge boxing P0.
-    _register_env(
-        "myoChallengeBoxingP0-v0",
-        entry_point="myosuite.envs.myo.tasks.challenge.boxing_mannequin.boxing_mannequin_env:make_boxing_6targets",
-        max_episode_steps=500,
-        wrap_mj_instability_termination=False,
+    del (
+        _register_task,
+        _ChaseTagVsFullbodySteeredTaskConfig,
     )
-    del _register_env, _register_task, _BoxingVsTaskConfig
 except Exception as _e:  # noqa: BLE001
     import warnings as _w
 
-    _w.warn(f"Boxing VS envs not registered: {_e}", stacklevel=1)
+    _w.warn(f"Chase-tag VS env not registered: {_e}", stacklevel=1)
     del _e, _w

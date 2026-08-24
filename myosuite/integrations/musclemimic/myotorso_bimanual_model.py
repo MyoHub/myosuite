@@ -28,12 +28,17 @@ from __future__ import annotations
 
 import re
 import tempfile
+import warnings
 from pathlib import Path
 
 from ml_collections import config_dict
 import mujoco
 
 from myosuite.integrations.musclemimic.bimanual_model import (
+    BODY2SITES_FOR_MIMIC,
+    FINGER_JOINT_TOKENS,
+    FINGER_MUSCLE_TOKENS,
+    _translate_finger_token,
     apply_mimic_bimanual_spec_edits,
     default_mimic_config,
 )
@@ -74,9 +79,8 @@ def _myolegs_chain_source_xml() -> Path:
     return _musclemimic_model_file("leg", "assets", "myolegs_chain.xml")
 
 
-def _myolegs_chain_bones_only_xml_text() -> str:
-    """``myolegs_chain`` MJCF with every ``<joint .../>`` line removed."""
-    src = _myolegs_chain_source_xml()
+def _bones_only_xml_text(src: Path) -> str:
+    """MJCF text from *src* with every ``<joint .../>`` line removed."""
     text = src.read_text(encoding="utf-8")
     stripped, n = re.subn(
         r"^\s*<joint\b[^>]*/>\s*\n",
@@ -87,9 +91,14 @@ def _myolegs_chain_bones_only_xml_text() -> str:
     if n < 20:
         raise RuntimeError(
             f"Expected many <joint/> lines in {src}, removed only {n}; "
-            "check myolegs_chain.xml format."
+            f"check {src.name} format."
         )
     return stripped
+
+
+def _myolegs_chain_bones_only_xml_text() -> str:
+    """``myolegs_chain`` MJCF with every ``<joint .../>`` line removed."""
+    return _bones_only_xml_text(_myolegs_chain_source_xml())
 
 
 def _myolegs_assets_bones_only_xml_text() -> str:
@@ -285,10 +294,114 @@ def _materialize_myotorso_bimanual_host_xml() -> tuple[Path, Path, Path]:
     return tmp_host_path, tmp_legs, tmp_leg_assets
 
 
+_NATIVE_BIMANUAL_TAG = "myo_sim:myotorso_arms"
+
+# myo_sim's own composed torso has no "thorax" body (that's a synthetic stub
+# musclemimic's bimanual arm package invents to anchor bi-articular
+# pectoralis/lat wrap sites for a standalone arm); the equivalent upper-torso
+# attachment point in myo_sim's real, connected torso is "torso".
+_NATIVE_BODY2SITES_FOR_MIMIC = {
+    ("torso" if body_name == "thorax" else body_name): site_name
+    for body_name, site_name in BODY2SITES_FOR_MIMIC.items()
+}
+
+NATIVE_BIMANUAL_FALLBACK_WARNING = (
+    "musclemimic_models is not installed; using myo_sim's own myotorso_arms "
+    "composition (torso + both arms, bones-only legs) with the same mimic "
+    "sites/finger removal/ctrlrange edits applied instead. This is NOT "
+    "bit-exact parity with the external MuscleMimic codebase's model "
+    "(github.com/amathislab/musclemimic) - checkpoints trained against the "
+    "real musclemimic_models MJCF are not guaranteed to transfer. Install "
+    "'musclemimic_models>=1.0.2' or 'myosuite[musclemimic]' for exact parity."
+)
+
+
+def build_native_myotorso_bimanual_mimic_spec(
+    config: config_dict.ConfigDict,
+) -> mujoco.MjSpec:
+    """Build a myo_sim-native MyoTorso + bimanual-arms MjSpec.
+
+    Uses myo_sim's own ``myotorso_arms`` composition (torso + right arm +
+    mirrored-left arm, full anatomy including the bi-articular pectoralis/lat
+    wrap sites that live on the real torso) instead of musclemimic_models'
+    ``myotorso_bimanual_chain.xml`` + ``myoarm_bimanual_body.xml`` (which
+    invent a synthetic "thorax" stub to provide those same wrap sites for a
+    standalone arm). Legs are myo_sim's own ``leg/assets/myolegs_chain.xml``
+    with every ``<joint/>`` stripped (bones-only, matching the external
+    package's rigidly-welded legs), attached under the root body.
+
+    This is NOT bit-exact parity with the external MuscleMimic codebase's
+    model (different muscle/mesh calibration) - checkpoints trained against
+    the real ``musclemimic_models`` MJCF are not guaranteed to transfer.
+
+    Args:
+        config: Same shape as :func:`default_mimic_config`.
+
+    Returns:
+        Edited, uncompiled MjSpec.
+    """
+    import myo_sim
+
+    spec = myo_sim.load_spec("myotorso_arms")
+
+    legs_chain_path = myo_sim.get_path("leg/assets/myolegs_chain.xml")
+    legs_body_text = _bones_only_xml_text(legs_chain_path)
+    # myolegs_chain.xml is a <mujocoinclude> fragment (bodies only, meant to
+    # be <include>d into a host); strip its wrapper tag and re-wrap as a
+    # standalone compilable model so it can be attached via spec.attach().
+    legs_body_text = re.sub(r"^<mujocoinclude[^>]*>", "", legs_body_text, count=1)
+    legs_body_text = re.sub(r"</mujocoinclude>\s*$", "", legs_body_text, count=1)
+    legs_assets_path = myo_sim.get_path("leg/assets/myolegs_assets.xml")
+    legs_xml_text = (
+        f'<mujoco model="myolegs_bones_only">'
+        f'<compiler meshdir="{myo_sim.MODELS_DIR}" '
+        f'texturedir="{myo_sim.MODELS_DIR}"/>'
+        f'<include file="{legs_assets_path}"/>'
+        f"<worldbody>{legs_body_text}</worldbody></mujoco>"
+    )
+    legs_spec = mujoco.MjSpec.from_string(legs_xml_text)
+    full_body = spec.body("Full Body")
+    legs_frame = full_body.add_frame(name="legs_attach")
+    spec.attach(legs_spec, prefix="", suffix="", frame=legs_frame)
+
+    if config.disable_fingers:
+        model = spec.compile()
+        joint_pool = frozenset(
+            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or ""
+            for i in range(model.njnt)
+        )
+        actuator_pool = frozenset(
+            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
+            for i in range(model.nu)
+        )
+        joint_tokens = tuple(
+            _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
+        )
+        muscle_tokens = tuple(
+            _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
+        )
+    else:
+        joint_tokens = FINGER_JOINT_TOKENS
+        muscle_tokens = FINGER_MUSCLE_TOKENS
+
+    apply_mimic_bimanual_spec_edits(
+        spec,
+        config,
+        body2sites=_NATIVE_BODY2SITES_FOR_MIMIC,
+        finger_joint_tokens=joint_tokens,
+        finger_muscle_tokens=muscle_tokens,
+    )
+    return spec
+
+
 def build_myotorso_bimanual_mimic_spec(
     config: config_dict.ConfigDict,
 ) -> tuple[mujoco.MjSpec, str]:
     """Build ``MjSpec`` for MyoTorso + MuscleMimic bimanual arms (pre-compile).
+
+    Uses the same MJCF as ``musclemimic_models`` when it's installed (or an
+    explicit ``config.model_path``); falls back to a myo_sim-native spec
+    (see :func:`build_native_myotorso_bimanual_mimic_spec`) when it isn't.
 
     Args:
         config: Same shape as :func:`default_mimic_config`.
@@ -296,8 +409,19 @@ def build_myotorso_bimanual_mimic_spec(
     Returns:
         Tuple of edited ``MjSpec`` and the tag string
         ``myotorso_bimanual_mimic`` (for logging parity with
-        :func:`build_mimic_bimanual_spec`, which returns a filesystem path).
+        :func:`build_mimic_bimanual_spec`, which returns a filesystem path),
+        or ``"myo_sim:myotorso_arms"`` when using the native fallback.
     """
+    mp = getattr(config, "model_path", None)
+    if mp is None:
+        try:
+            import musclemimic_models  # noqa: F401
+        except ImportError:
+            warnings.warn(NATIVE_BIMANUAL_FALLBACK_WARNING, UserWarning, stacklevel=2)
+            return build_native_myotorso_bimanual_mimic_spec(
+                config
+            ), _NATIVE_BIMANUAL_TAG
+
     tmp_host, tmp_legs, tmp_leg_assets = _materialize_myotorso_bimanual_host_xml()
     try:
         spec = mujoco.MjSpec.from_file(tmp_host.as_posix())
@@ -363,7 +487,7 @@ def save_myotorso_bimanual_mimic_xml(
         ImportError: If ``musclemimic_models`` is not installed.
     """
     cfg = config if config is not None else default_mimic_config()
-    spec, _ = build_myotorso_bimanual_mimic_spec(cfg)
+    spec, tag = build_myotorso_bimanual_mimic_spec(cfg)
     xml = spec.to_xml()
     xml = xml.replace(
         'meshdir="../myo_sim"',
@@ -377,19 +501,31 @@ def save_myotorso_bimanual_mimic_xml(
         '<mujoco model="myotorso_bimanual_mimic">',
         1,
     )
-    stale = r"<!-- Same asset.*?parity tests\. -->"
-    fresh = (
-        "  <!-- Copyright (c) MyoSuite Authors. Apache-2.0.\n"
-        "       Monolithic export: mmc torso/head/legs + bimanual_chain + "
-        "leg bones (no leg DOFs, no pelvis slides).\n"
-        "       Regenerate via save_myotorso_bimanual_mimic_xml(). -->"
-    )
-    xml, n_sub = re.subn(stale, fresh, xml, count=1, flags=re.DOTALL)
-    if n_sub != 1:
-        raise RuntimeError(
-            "Could not replace stale MJCF comment from MjSpec.to_xml(); "
-            "update save_myotorso_bimanual_mimic_xml() regex."
+    if tag == _NATIVE_BIMANUAL_TAG:
+        fresh = (
+            "  <!-- Copyright (c) MyoSuite Authors. Apache-2.0.\n"
+            "       Monolithic export: myo_sim-native myotorso_arms + bones-only\n"
+            "       leg chain (no leg DOFs). NOT bit-exact parity with the\n"
+            "       external MuscleMimic codebase's model - see\n"
+            "       build_native_myotorso_bimanual_mimic_spec() docstring.\n"
+            "       Regenerate via save_myotorso_bimanual_mimic_xml(). -->\n"
         )
+        insert_after = xml.index(">", xml.index("<mujoco")) + 1
+        xml = xml[:insert_after] + "\n" + fresh + xml[insert_after:]
+    else:
+        stale = r"<!-- Same asset.*?parity tests\. -->"
+        fresh = (
+            "  <!-- Copyright (c) MyoSuite Authors. Apache-2.0.\n"
+            "       Monolithic export: mmc torso/head/legs + bimanual_chain + "
+            "leg bones (no leg DOFs, no pelvis slides).\n"
+            "       Regenerate via save_myotorso_bimanual_mimic_xml(). -->"
+        )
+        xml, n_sub = re.subn(stale, fresh, xml, count=1, flags=re.DOTALL)
+        if n_sub != 1:
+            raise RuntimeError(
+                "Could not replace stale MJCF comment from MjSpec.to_xml(); "
+                "update save_myotorso_bimanual_mimic_xml() regex."
+            )
 
     out = dest
     if out is None:

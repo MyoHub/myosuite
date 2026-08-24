@@ -198,7 +198,10 @@ def launch_training(task_id: str, args: TrainConfig | None = None):
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, selected_gpus))
-    os.environ["MUJOCO_GL"] = "egl"
+    # Default to egl for offscreen rendering, but respect a caller-provided
+    # override (e.g. MUJOCO_GL=osmesa on a container without the NVIDIA EGL
+    # vendor stack, where egl context creation fails even with a working GPU).
+    os.environ.setdefault("MUJOCO_GL", "egl")
 
     if num_gpus <= 1:
         # CPU or single GPU: run directly without torchrunx.

@@ -176,21 +176,21 @@
       <site name="MF_m4.laminar_MF_m4.laminar-P1_l" pos="-0.12536 0.0774879 -0.01934"/>
       <body name="lumbar5" pos="-0.098 0.071 0">
         <inertial pos="0.053744 0.02 0" quat="0.707107 0 0 0.707107" mass="1.824" diaginertia="0.01765 0.01219 0.00546"/>
-        <geom name="back_cylinder_s" size="0.07 0.13" pos="-0.124 0.0768 0" class="myoBack_wrap"/>
-        <site name="back_cylinder_s_IL_L1_1_sidesite_r" pos="-0.0340058 0.0977894 -0.00109894" class="sidesite"/>
-        <site name="back_cylinder_s_IL_L1_1_sidesite_l" pos="-0.0418844 0.112331 -0.0720796" class="sidesite"/>
-        <site name="back_cylinder_s_IL_R5_1_sidesite_r" pos="-0.0340043 0.0759544 -0.0125701" class="sidesite"/>
-        <site name="back_cylinder_s_IL_R6_1_sidesite_r" pos="-0.0348449 0.0886841 -0.108783" class="sidesite"/>
-        <site name="back_cylinder_s_IL_R5_1_sidesite_l" pos="-0.0351706 0.0907744 -0.0594597" class="sidesite"/>
-        <site name="back_cylinder_s_IL_R6_1_sidesite_l" pos="-0.0408519 0.110029 -0.0306543" class="sidesite"/>
-        <site name="back_cylinder_s_LTpT_R12_4_sidesite_r" pos="-0.0411 0.1048 0.03882" class="sidesite"/>
-        <site name="back_cylinder_s_LTpT_R12_2_sidesite_r" pos="-0.03691 0.06919 0.03508" class="sidesite"/>
-        <site name="back_cylinder_s_LTpT_R12_1_sidesite_r" pos="-0.03859 0.0494129 0.0902269" class="sidesite"/>
-        <site name="back_cylinder_s_LTpT_R12_4_sidesite_l" pos="-0.0411 0.1048 -0.03882" class="sidesite"/>
-        <site name="back_cylinder_s_LTpT_R12_2_sidesite_l" pos="-0.03691 0.06919 -0.03508" class="sidesite"/>
-        <site name="back_cylinder_s_LTpT_R12_1_sidesite_l" pos="-0.0910785 -0.00276905 0.0534791" class="sidesite"/>
-        <site name="back_cylinder_s_LTpL_L1_1_sidesite_r" pos="-0.0370101 0.0990854 -0.0777896" class="sidesite"/>
-        <site name="back_cylinder_s_LTpL_L1_1_sidesite_l" pos="-0.0370101 0.0990854 0.0777896" class="sidesite"/>
+        <geom name="back_cylinder_s" size="0.07 0.13" pos="-0.124 0.0768 0" class="myotorso_back_wrap"/>
+        <site name="back_cylinder_s_IL_L1_1_sidesite_r" pos="-0.0340058 0.0977894 -0.00109894" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_IL_L1_1_sidesite_l" pos="-0.0418844 0.112331 -0.0720796" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_IL_R5_1_sidesite_r" pos="-0.0340043 0.0759544 -0.0125701" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_IL_R6_1_sidesite_r" pos="-0.0348449 0.0886841 -0.108783" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_IL_R5_1_sidesite_l" pos="-0.0351706 0.0907744 -0.0594597" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_IL_R6_1_sidesite_l" pos="-0.0408519 0.110029 -0.0306543" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_LTpT_R12_4_sidesite_r" pos="-0.0411 0.1048 0.03882" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_LTpT_R12_2_sidesite_r" pos="-0.03691 0.06919 0.03508" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_LTpT_R12_1_sidesite_r" pos="-0.03859 0.0494129 0.0902269" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_LTpT_R12_4_sidesite_l" pos="-0.0411 0.1048 -0.03882" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_LTpT_R12_2_sidesite_l" pos="-0.03691 0.06919 -0.03508" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_LTpT_R12_1_sidesite_l" pos="-0.0910785 -0.00276905 0.0534791" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_LTpL_L1_1_sidesite_r" pos="-0.0370101 0.0990854 -0.0777896" class="myotorso_sidesite"/>
+        <site name="back_cylinder_s_LTpL_L1_1_sidesite_l" pos="-0.0370101 0.0990854 0.0777896" class="myotorso_sidesite"/>
         <joint name="flex_extension" pos="0 0 0" axis="0 0 1" range="-1.35 0.7538"/>
         <joint name="lat_bending" pos="0 0 0" axis="1 0 0" range="-0.4363 0.4363"/>
         <joint name="axial_rotation" pos="0 0 0" axis="0 1 0" range="-0.7854 0.7854"/>
@@ -226,7 +226,7 @@
           <joint name="Abs_t1" pos="0 0 0" axis="1 0 0" limited="true" type="slide" range="-.05 .015"/>
           <joint name="Abs_t2" pos="0 0 0" axis="0 1 0" limited="true" type="slide" range="-.03 .03"/>
           <joint name="Abs_r3" pos="0 0 0" axis="0 0 1" limited="true" range="-.7 .7"/>
-          <site name="Abdomen_sidesite" pos="0.011 0 0" class="sidesite"/>
+          <site name="Abdomen_sidesite" pos="0.011 0 0" class="myotorso_sidesite"/>
           <site name="EO1_EO1-P1_r" pos="0.0065502 0.0627431 0.0308937"/>
           <site name="EO2_EO2-P2_r" pos="0.00723321 0.0329565 0.0364551"/>
           <site name="EO3_EO3-P2_r" pos="0.00677141 0.0129967 0.0416346"/>
@@ -507,23 +507,23 @@
                   <geom type="ellipsoid" class="myotorso_coll" size="0.260 0.095 0.140" pos=".016 .160 0" euler="0 0 1.7"/>
                   <geom type="capsule" class="myotorso_coll" size="0.110 0.065" pos=".011 .250 0" euler="0 0 1.57"/>
                   <geom type="capsule" class="myotorso_coll" size="0.075 0.145" pos="-.009 .335 0" euler="0 0 1.57"/>
-                  <geom name="back_cylinder_l" size="0.17 0.13" pos="-0.21 0.04 0" class="myoBack_wrap"/>
+                  <geom name="back_cylinder_l" size="0.17 0.13" pos="-0.21 0.04 0" class="myotorso_back_wrap"/>
                   <geom name="Chest_ellipsoid_r" size="0.073" pos="0.008 0.21 0.01" quat="0.97517 -0.0198338 -0.197677 0.0978434" rgba=".5 .5 .9 0.5" group="3" contype="0" conaffinity="0"/>
                   <geom name="Chest_ellipsoid_l" size="0.073" pos="0.008 0.21 -0.01" quat="0.97517 0.0198338 0.197677 0.0978434" rgba=".5 .5 .9 0.5" group="3" contype="0" conaffinity="0"/>
-                  <geom name="Cylinder_abdomen" size="0.09 0.13" pos="0.225 0.10 0" class="myoBack_wrap"/>
-                  <site name="Abs_sidesite" pos="0.03 0.05 0" class="sidesite" />
+                  <geom name="Cylinder_abdomen" size="0.09 0.13" pos="0.225 0.10 0" class="myotorso_back_wrap"/>
+                  <site name="Abs_sidesite" pos="0.03 0.05 0" class="myotorso_sidesite" />
                   <site name="LeftShoulder" pos="-0.11 0.3 -0.07" size="0.0005" rgba="0 1 0 1"/>
                   <site name="RightShoulder" pos="-0.11 0.3 0.07" size="0.0005" rgba="0 1 0 1"/>
-                  <site name="Chest_r_sidesite" pos="-0.02082 0.21 0.07816" class="sidesite"/>
-                  <site name="Chest_l_sidesite" pos="-0.02082 0.21 -0.07816" class="sidesite"/>
+                  <site name="Chest_r_sidesite" pos="-0.02082 0.21 0.07816" class="myotorso_sidesite"/>
+                  <site name="Chest_l_sidesite" pos="-0.02082 0.21 -0.07816" class="myotorso_sidesite"/>
                   <site name="rect_abd_rect_abd-P2_r" pos="0.0880597 0.222575 -0.0344509"/>
                   <site name="rect_abd_rect_abd-P2_l" pos="0.08806 0.22257 0.03445"/>
-                  <site name="back_cylinder_l_IL_L2_1_sidesite_r" pos="-0.0403295 -0.0732604 -0.120523" class="sidesite"/>
-                  <site name="back_cylinder_l_IL_L3_1_sidesite_r" pos="-0.108976 0.217229 0.0537206" class="sidesite"/>
-                  <site name="back_cylinder_l_IL_L4_1_sidesite_r" pos="-0.0465512 0.162068 -0.10054" class="sidesite"/>
-                  <site name="back_cylinder_l_IL_L2_1_sidesite_l" pos="-0.107766 -0.157199 -0.100314" class="sidesite"/>
-                  <site name="back_cylinder_l_IL_L3_1_sidesite_l" pos="-0.00732879 0.0167539 0.0354792" class="sidesite"/>
-                  <site name="back_cylinder_l_IL_L4_1_sidesite_l" pos="-0.00798834 0.0115872 -0.107672" class="sidesite"/>
+                  <site name="back_cylinder_l_IL_L2_1_sidesite_r" pos="-0.0403295 -0.0732604 -0.120523" class="myotorso_sidesite"/>
+                  <site name="back_cylinder_l_IL_L3_1_sidesite_r" pos="-0.108976 0.217229 0.0537206" class="myotorso_sidesite"/>
+                  <site name="back_cylinder_l_IL_L4_1_sidesite_r" pos="-0.0465512 0.162068 -0.10054" class="myotorso_sidesite"/>
+                  <site name="back_cylinder_l_IL_L2_1_sidesite_l" pos="-0.107766 -0.157199 -0.100314" class="myotorso_sidesite"/>
+                  <site name="back_cylinder_l_IL_L3_1_sidesite_l" pos="-0.00732879 0.0167539 0.0354792" class="myotorso_sidesite"/>
+                  <site name="back_cylinder_l_IL_L4_1_sidesite_l" pos="-0.00798834 0.0115872 -0.107672" class="myotorso_sidesite"/>
                   <site name="IL_R5_IL_r5_R-P2_0_r" pos="-0.07928 0.175415 0.0432678"/>
                   <site name="IL_R5_IL_r5_R-P3_r" pos="-0.0807876 0.202609 0.0433988"/>
                   <site name="IL_R5_IL_r5_R-P4_r" pos="-0.082702 0.23174 0.0437724"/>
@@ -571,15 +571,15 @@
                   <site name="IL_R11_IL_r11_R-P2_0_l" pos="-0.0624397 0.135882 -0.0599"/>
                   <site name="IL_R12_IL_r12_R-P2_l" pos="-0.0383346 0.106097 -0.0594"/>
                   <site name="LTpT_T1_LTpT_t1_R-P2_r" pos="-0.0523817 0.399196 0.02615"/>
-                  <site name="Chest_ellipsoid_LTpT_T1_1_sidesite_r" pos="-0.06459 0.2237 0.01425" class="sidesite"/>
+                  <site name="Chest_ellipsoid_LTpT_T1_1_sidesite_r" pos="-0.06459 0.2237 0.01425" class="myotorso_sidesite"/>
                   <site name="LTpT_T2_LTpT_t2_R-P2_r" pos="-0.0561283 0.380255 0.02654"/>
-                  <site name="Chest_ellipsoid_LTpT_T2_1_sidesite_r" pos="-0.06459 0.2237 0.01425" class="sidesite"/>
+                  <site name="Chest_ellipsoid_LTpT_T2_1_sidesite_r" pos="-0.06459 0.2237 0.01425" class="myotorso_sidesite"/>
                   <site name="LTpT_T3_LTpT_t3_R-P2_0_r" pos="-0.0651001 0.358859 0.02598"/>
-                  <site name="Chest_ellipsoid_LTpT_T3_2_sidesite_r" pos="-0.06459 0.2237 0.01425" class="sidesite"/>
+                  <site name="Chest_ellipsoid_LTpT_T3_2_sidesite_r" pos="-0.06459 0.2237 0.01425" class="myotorso_sidesite"/>
                   <site name="LTpT_T4_LTpT_t4_R-P2_0_r" pos="-0.0732536 0.337677 0.02615"/>
-                  <site name="Chest_ellipsoid_LTpT_T4_2_sidesite_r" pos="-0.06459 0.2237 0.01425" class="sidesite"/>
+                  <site name="Chest_ellipsoid_LTpT_T4_2_sidesite_r" pos="-0.06459 0.2237 0.01425" class="myotorso_sidesite"/>
                   <site name="LTpT_T5_LTpT_t5_R-P2_0_r" pos="-0.0761378 0.314622 0.02808"/>
-                  <site name="Chest_ellipsoid_LTpT_T5_2_sidesite_r" pos="-0.06459 0.2237 0.01425" class="sidesite"/>
+                  <site name="Chest_ellipsoid_LTpT_T5_2_sidesite_r" pos="-0.06459 0.2237 0.01425" class="myotorso_sidesite"/>
                   <site name="LTpT_T6_LTpT_t6_R-P3_r" pos="-0.0747978 0.186286 0.0154652"/>
                   <site name="LTpT_T6_LTpT_t6_R-P2_0_r" pos="-0.08338 0.289296 0.02766"/>
                   <site name="LTpT_T7_LTpT_t7_R-P3_r" pos="-0.0759558 0.18626 0.0195571"/>
@@ -617,15 +617,15 @@
                   <site name="LTpT_R11_LTpT_r11_R-P2_0_r" pos="-0.0650216 0.147656 0.045555"/>
                   <site name="LTpT_R12_LTpT_r12_R-P2_2_r" pos="-0.0450351 0.121644 0.0466148"/>
                   <site name="LTpT_T1_LTpT_t1_R-P2_l" pos="-0.0523817 0.399196 -0.02615"/>
-                  <site name="Chest_ellipsoid_LTpT_T1_1_sidesite_l" pos="-0.06459 0.2237 -0.01425" class="sidesite"/>
+                  <site name="Chest_ellipsoid_LTpT_T1_1_sidesite_l" pos="-0.06459 0.2237 -0.01425" class="myotorso_sidesite"/>
                   <site name="LTpT_T2_LTpT_t2_R-P2_l" pos="-0.0561283 0.380255 -0.02654"/>
-                  <site name="Chest_ellipsoid_LTpT_T2_1_sidesite_l" pos="-0.06459 0.2237 -0.01425" class="sidesite"/>
+                  <site name="Chest_ellipsoid_LTpT_T2_1_sidesite_l" pos="-0.06459 0.2237 -0.01425" class="myotorso_sidesite"/>
                   <site name="LTpT_T3_LTpT_t3_R-P2_0_l" pos="-0.0651001 0.358859 -0.02598"/>
-                  <site name="Chest_ellipsoid_LTpT_T3_2_sidesite_l" pos="-0.06459 0.2237 -0.01425" class="sidesite"/>
+                  <site name="Chest_ellipsoid_LTpT_T3_2_sidesite_l" pos="-0.06459 0.2237 -0.01425" class="myotorso_sidesite"/>
                   <site name="LTpT_T4_LTpT_t4_R-P2_0_l" pos="-0.0732536 0.337677 -0.02615"/>
-                  <site name="Chest_ellipsoid_LTpT_T4_2_sidesite_l" pos="-0.06459 0.2237 -0.01425" class="sidesite"/>
+                  <site name="Chest_ellipsoid_LTpT_T4_2_sidesite_l" pos="-0.06459 0.2237 -0.01425" class="myotorso_sidesite"/>
                   <site name="LTpT_T5_LTpT_t5_R-P2_0_l" pos="-0.0761378 0.314622 -0.02808"/>
-                  <site name="Chest_ellipsoid_LTpT_T5_2_sidesite_l" pos="-0.06459 0.2237 -0.01425" class="sidesite"/>
+                  <site name="Chest_ellipsoid_LTpT_T5_2_sidesite_l" pos="-0.06459 0.2237 -0.01425" class="myotorso_sidesite"/>
                   <site name="LTpT_T6_LTpT_t6_R-P3_l" pos="-0.0747978 0.186286 -0.01547"/>
                   <site name="LTpT_T6_LTpT_t6_R-P2_0_l" pos="-0.08338 0.289296 -0.02766"/>
                   <site name="LTpT_T7_LTpT_t7_R-P3_l" pos="-0.0759558 0.18626 -0.01956"/>

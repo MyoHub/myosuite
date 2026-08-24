@@ -48,6 +48,10 @@ _SABER_HIT_DIST_CAP: float = 1e3  # non-hit distance cap (normalisation)
 _SABER_HIT_PRECISION_CAP: float = 1e6  # hit offset precision cap
 _SABER_OBSTACLE_CAP: float = 1e5  # obstacle distance normalisation cap
 
+# ── heading_reward ───────────────────────────────────────────────────────────
+_HEADING_FALL_HEIGHT: float = 0.7  # pelvis z (m) below which the agent has fallen
+_HEADING_FALL_PENALTY: float = 1.0  # dense reward subtracted on fall
+
 
 def _xp_asarray(xp: Any, value: Any, *, dtype: Any | None = None) -> Any:
     """Convert *value* to the backend array type used by *xp*."""
@@ -227,6 +231,53 @@ def upright_posture_reward(
         "dense": _maybe_item(reward),
         "solved": False,
         "done": _maybe_item(done),
+    }
+
+
+def heading_reward(
+    accessor: EnvAccessor,
+    task_state: dict[str, Any],
+    heading_dir: tuple[float, float] = (0.0, 1.0),
+    target_speed: float = 1.0,
+    fall_height: float = _HEADING_FALL_HEIGHT,
+    fall_penalty: float = _HEADING_FALL_PENALTY,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Reward tracking a commanded planar velocity ``target_speed * heading_dir``.
+
+    Assumes the model's first joint is a ``freejoint`` so ``joint_vel()[:2]``
+    is the root's world-frame horizontal velocity and ``joint_pos()[2]`` is
+    its height, used for fall detection.
+
+    Args:
+        accessor: Environment state accessor.
+        task_state: Per-episode task state. If it carries ``heading_dir`` (set
+            by a command-randomized ``reset_task``), it overrides the static
+            ``heading_dir`` kwarg so the reward tracks the sampled command.
+        heading_dir: Commanded unit direction ``(dx, dy)`` (fallback default).
+        target_speed: Commanded speed (m/s) along ``heading_dir``.
+        fall_height: Pelvis height (m) below which the agent is considered fallen.
+        fall_penalty: Dense reward subtracted when fallen.
+        **kwargs: Unused extra keyword arguments.
+
+    Returns:
+        Dict with keys: ``heading_tracking``, ``dense``, ``solved``, ``done``.
+    """
+    if isinstance(task_state, dict) and "heading_dir" in task_state:
+        heading_dir = task_state["heading_dir"]
+    xp = accessor.array_module()
+    planar_vel = accessor.joint_vel()[:2]
+    height = accessor.joint_pos()[2]
+    direction = _xp_asarray(xp, heading_dir, dtype=getattr(xp, "float32", None))
+    target_vel = target_speed * direction
+    tracking = xp.exp(-xp.sum((target_vel - planar_vel) ** 2))
+    fallen = height < fall_height
+    dense = tracking - fall_penalty * fallen
+    return {
+        "heading_tracking": _maybe_item(tracking),
+        "dense": _maybe_item(dense),
+        "solved": False,
+        "done": _maybe_item(fallen),
     }
 
 

@@ -44,13 +44,6 @@ from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTenni
 from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEnvAccessor
 
-try:
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_saber import SaberP0MjlabCfg
-
-    _SABER_CFG: type | None = SaberP0MjlabCfg
-except ModuleNotFoundError:
-    _SABER_CFG = None
-
 # ---------------------------------------------------------------------------
 # Task registry — mjlab discovers tasks by reading this dict.
 # ---------------------------------------------------------------------------
@@ -66,7 +59,6 @@ REGISTERED_TASKS: dict[str, type] = {
     "myoLegWalk-v0": WalkCfg,
     "myoSarcLegWalk-v0": WalkCfg,
     "myoChallengeBaodingP2-v1": BaodingCfg,
-    **({"myoChallengeSaberP0-v0": _SABER_CFG} if _SABER_CFG is not None else {}),
     "myoChallengeTableTennisP0-v0": TableTennisCfg,
     "myoChallengeTableTennisP1-v0": TableTennisCfg,
     "myoChallengeTableTennisP2-v0": TableTennisCfg,
@@ -105,7 +97,6 @@ __all__ = [
     "HandReachCfg",
     "WalkCfg",
     "BaodingCfg",
-    "SaberP0MjlabCfg",
     "TableTennisCfg",
     "MuscleMimicBimanualCfg",
     "MuscleMimicFullbodyCfg",

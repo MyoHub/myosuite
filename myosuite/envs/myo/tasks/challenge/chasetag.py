@@ -9,6 +9,7 @@ from __future__ import annotations
 import collections
 from enum import Enum
 from typing import Any
+from collections.abc import Callable
 
 import mujoco
 import numpy as np
@@ -24,6 +25,7 @@ from myosuite.envs.heightfields import ChaseTagField
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.physics.quat_math import euler2quat, quat2euler, quat2mat
 from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.opponent_relative_obs import relative_pose_obs
 
 
 class Task(Enum):
@@ -46,6 +48,8 @@ class ChallengeOpponent:
         chase_vel_range: Velocity range for the chase policy.
         random_vel_range: Velocity range for the random policy.
         dt: Control timestep.
+        pelvis_body_name: Name of the agent body used to track the agent's
+            position for chase/evade behavior (default ``"pelvis"``).
     """
 
     def __init__(
@@ -58,6 +62,7 @@ class ChallengeOpponent:
         chase_vel_range: tuple[float, float],
         random_vel_range: tuple[float, float],
         dt: float = 0.01,
+        pelvis_body_name: str = "pelvis",
     ) -> None:
         self.dt = dt
         self.mj_model = mj_model
@@ -66,6 +71,7 @@ class ChallengeOpponent:
         self.min_spawn_distance = min_spawn_distance
         self.chase_vel_range = chase_vel_range
         self.random_vel_range = random_vel_range
+        self.pelvis_body_name = pelvis_body_name
         self.reset_opponent(rng=rng)
 
     def reset_noise_process(self) -> None:
@@ -169,7 +175,7 @@ class ChallengeOpponent:
     def chase_player(self) -> np.ndarray:
         pose = self.get_opponent_pose()
         vec = pose[:2]
-        pel = self.mj_data.body("pelvis").xpos[:2]
+        pel = self.mj_data.body(self.pelvis_body_name).xpos[:2]
         theta = pose[-1]
         new_vec = np.array([np.cos(theta), np.sin(theta)])
         new_vec2 = pel - vec
@@ -183,6 +189,8 @@ class RepellerChallengeOpponent(ChallengeOpponent):
     Args:
         repeller_vel_range: Velocity range for the repeller policy.
         probabilities: Four probabilities (static_stationary, stationary, random, repeller).
+        pelvis_body_name: Name of the agent body used to track the agent's
+            position for repel/chase behavior (default ``"pelvis"``).
     """
 
     DIST_INFLUENCE = 3.5
@@ -201,6 +209,7 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         random_vel_range: tuple[float, float],
         repeller_vel_range: tuple[float, float],
         dt: float = 0.01,
+        pelvis_body_name: str = "pelvis",
     ) -> None:
         self.dt = dt
         self.mj_model = mj_model
@@ -214,10 +223,11 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         self.chase_vel_range = chase_vel_range
         self.random_vel_range = random_vel_range
         self.repeller_vel_range = repeller_vel_range
+        self.pelvis_body_name = pelvis_body_name
         self.reset_opponent()
 
     def get_agent_pos(self) -> np.ndarray:
-        return self.mj_data.body("pelvis").xpos[:2]
+        return self.mj_data.body(self.pelvis_body_name).xpos[:2]
 
     def get_wall_pos(self) -> np.ndarray:
         bound_resolution = np.linspace(
@@ -327,7 +337,8 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
     for the full episode duration (EVADE).
 
     Args:
-        model_path: Absolute path to the MuJoCo XML model.
+        model_path: Absolute path to the MuJoCo XML model. Ignored when
+            ``model_spec_fn`` is provided.
         obsd_model_path: Unused (kept for API compatibility).
         seed: Random seed.
         frame_skip: MuJoCo substeps per :meth:`step` call.
@@ -348,6 +359,15 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         random_vel_range: Random policy velocity range.
         repeller_vel_range: Repeller policy velocity range.
         opponent_probabilities: Per-policy probabilities.
+        pelvis_body_name: Name of the agent's pelvis body, used for obs,
+            reward, and termination lookups. Default ``"pelvis"`` preserves
+            legacy leg-only P1/P2/P2eval behavior; full-body model variants
+            pass this explicitly if their pelvis body is named differently.
+        model_spec_fn: Optional zero-arg callable returning a pre-built,
+            uncompiled :class:`mujoco.MjSpec`. When provided, this spec is
+            compiled directly instead of loading ``model_path`` from disk —
+            used by in-memory model builders (e.g. the full-body + mocap
+            opponent variant) that don't have a standalone XML file.
     """
 
     DEFAULT_OBS_KEYS = [
@@ -363,9 +383,21 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         "muscle_velocity",
         "muscle_force",
     ]
+    # Dense shaping notes:
+    # - ``distance`` is a task-signed Δ(agent–opponent) range. Raw Δ is
+    #   (curr - prev); on CHASE it is used as-is, on EVADE it is negated so
+    #   weight -0.5 always rewards task progress (approach vs flee). Absolute
+    #   distance inverted the SB3 legacy Δ gate by punishing survival.
+    # - ``alive`` is continuous upright in [0, 1] (weight 0.5).
+    # - ``lose`` is -100 (not -1000): the challenge-scale -1000 swamps the
+    #   upright signal on P2 random reset/terrain so flat PPO never clears
+    #   the legacy Δ gate. ``solved`` (1000) keeps mid-episode tags better
+    #   than CHASE timeout under alive=0.5.
     DEFAULT_RWD_KEYS_AND_WEIGHTS: dict[str, float] = {
-        "distance": -0.1,
-        "lose": -1000,
+        "distance": -0.5,
+        "alive": 0.5,
+        "solved": 1000.0,
+        "lose": -100,
     }
 
     def __init__(
@@ -391,6 +423,8 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         random_vel_range: tuple = (1.0, 1.0),
         repeller_vel_range: tuple = (1.0, 1.0),
         opponent_probabilities: tuple = (0.1, 0.45, 0.45),
+        pelvis_body_name: str = "pelvis",
+        model_spec_fn: Callable[[], mujoco.MjSpec] | None = None,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -419,11 +453,18 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
             random_vel_range=random_vel_range,
             repeller_vel_range=repeller_vel_range,
             opponent_probabilities=opponent_probabilities,
+            pelvis_body_name=pelvis_body_name,
+            model_spec_fn=model_spec_fn,
             **kwargs,
         )
+        self._pelvis_body_name = pelvis_body_name
 
         # ── Load model ──────────────────────────────────────────────────────
-        self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
+        if model_spec_fn is not None:
+            self._mj_spec = model_spec_fn()
+            self.model = self._mj_spec.compile()
+        else:
+            self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
         self.dt = self._ctrl_dt  # backward-compat alias
@@ -470,6 +511,7 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
                 chase_vel_range=chase_vel_range,
                 random_vel_range=random_vel_range,
                 repeller_vel_range=repeller_vel_range,
+                pelvis_body_name=pelvis_body_name,
             )
         else:
             self.opponent = ChallengeOpponent(
@@ -480,6 +522,7 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
                 min_spawn_distance=min_spawn_distance,
                 chase_vel_range=chase_vel_range,
                 random_vel_range=random_vel_range,
+                pelvis_body_name=pelvis_body_name,
             )
         self.opponent.dt = self._ctrl_dt
 
@@ -490,6 +533,7 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         self.steps = 0
         # Prevents win/lose checks before first reset sets keyframe
         self.startFlag = False
+        self._prev_distance: float | None = None
 
         # ── Convenience caches ───────────────────────────────────────────────
         self.actuator_names = np.array(
@@ -572,7 +616,7 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         obs_dict["internal_qpos"] = data.qpos[7:35].copy()
         obs_dict["internal_qvel"] = data.qvel[6:34].copy() * self.dt
         obs_dict["grf"] = self._get_grf()
-        obs_dict["torso_angle"] = data.body("pelvis").xquat.copy()
+        obs_dict["torso_angle"] = data.body(self._pelvis_body_name).xquat.copy()
         obs_dict["muscle_length"] = self._muscle_lengths()
         obs_dict["muscle_velocity"] = self._muscle_velocities()
         obs_dict["muscle_force"] = self._muscle_forces()
@@ -582,6 +626,26 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         obs_dict["opponent_vel"] = self.opponent.opponent_vel.copy()
         obs_dict["model_root_pos"] = data.qpos[:2].copy()
         obs_dict["model_root_vel"] = data.qvel[:2].copy()
+        if "opponent_relative" in self.obs_keys:
+            # 3D relative pose block (7-dim), shared with the FBVs 1v1 env's
+            # opponent_relative_obs via relative_pose_obs. Opponent xy comes
+            # from the mocap body (z padded to the agent's own pelvis
+            # height, since the mocap opponent has no meaningful z motion).
+            pelvis_pos = data.body(self._pelvis_body_name).xpos.copy()
+            pelvis_vel = data.qvel[:3].copy()
+            opp_xy = self.opponent.get_opponent_pose()[:2]
+            opponent_pos_3d = np.array(
+                [opp_xy[0], opp_xy[1], pelvis_pos[2]], dtype=np.float32
+            )
+            # Same [lin_vel, rot_vel] control-space pair already exposed by
+            # the legacy "opponent_vel" obs key (not literal cartesian x/y).
+            opp_vel_xy = self.opponent.opponent_vel
+            opponent_vel_3d = np.array(
+                [opp_vel_xy[0], opp_vel_xy[1], 0.0], dtype=np.float32
+            )
+            obs_dict["opponent_relative"] = relative_pose_obs(
+                pelvis_pos, pelvis_vel, opponent_pos_3d, opponent_vel_3d
+            )
         obs_dict["task"] = np.array(self.current_task.value, ndmin=2, dtype=np.int16)
         if self.heightfield is not None:
             obs_dict["hfield"] = self.heightfield.get_heightmap_obs()
@@ -614,13 +678,42 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
                 else 0
             )
 
-        distance = np.linalg.norm(
-            obs_dict["model_root_pos"][..., :2] - obs_dict["opponent_pose"][..., :2]
+        distance_abs = float(
+            np.linalg.norm(
+                obs_dict["model_root_pos"][..., :2] - obs_dict["opponent_pose"][..., :2]
+            )
         )
+        if self._prev_distance is None:
+            distance_delta = 0.0
+        else:
+            distance_delta = distance_abs - self._prev_distance
+            # EVADE: reward increasing range (flee); CHASE: reward decreasing.
+            if self.current_task.name == "EVADE":
+                distance_delta = -distance_delta
+        self._prev_distance = distance_abs
+        # Continuous upright in [0, 1] (weight 0.5) — same max rate as binary
+        # alive, but gives a gradient while the pelvis is sinking. Zero when
+        # fallen so EVADE cannot farm reward while prone.
+        pelvis_z = float(self.data.body(self._pelvis_body_name).xpos[2])
+        if self.terrain == "FLAT":
+            upright = float(np.clip((pelvis_z - 0.5) / 0.5, 0.0, 1.0))
+        else:
+            # Random terrain uses head–foot clearance for fall; mirror that.
+            head_z = float(self.data.site("head").xpos[2])
+            foot_z = 0.5 * (
+                float(self.data.body("talus_l").xpos[2])
+                + float(self.data.body("talus_r").xpos[2])
+            )
+            upright = float(np.clip((head_z - foot_z - 0.2) / 0.6, 0.0, 1.0))
+        if not self.startFlag:
+            upright = 0.0
+        alive = upright
         rwd_dict = collections.OrderedDict(
             (
                 ("act_reg", act_mag),
-                ("distance", distance),
+                ("distance", distance_delta),
+                ("distance_abs", distance_abs),
+                ("alive", alive),
                 ("lose", lose_cdt),
                 ("sparse", score),
                 ("solved", win_cdt),
@@ -684,6 +777,7 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         self._maybe_flatten_agent_patch(qpos)
 
         self.steps = 0
+        self._prev_distance = None
         self.opponent.reset_opponent(
             player_task=self.current_task.name, rng=self.np_random
         )
@@ -753,7 +847,8 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
     def _lose_condition(self, obs_dict: dict) -> int:
         if not self.startFlag:
             return 0
-        if self._get_fallen_condition() and self.current_task.name == "CHASE":
+        # Fall is a lose in both CHASE and EVADE (challenge / docs contract).
+        if self._get_fallen_condition():
             return 1
         if self.current_task.name == "CHASE":
             return self._chase_lose_condition(obs_dict)
@@ -762,7 +857,7 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         raise NotImplementedError
 
     def _chase_lose_condition(self, obs_dict: dict) -> int:
-        root_pos = self.data.body("pelvis").xpos[:2]
+        root_pos = self.data.body(self._pelvis_body_name).xpos[:2]
         if float(np.atleast_1d(obs_dict["time"])[0]) >= self.maxTime:
             return 1
         if np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5:
@@ -770,7 +865,7 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         return 0
 
     def _evade_lose_condition(self, obs_dict: dict) -> int:
-        root_pos = self.data.body("pelvis").xpos[:2]
+        root_pos = self.data.body(self._pelvis_body_name).xpos[:2]
         opp_pos = obs_dict["opponent_pose"][..., :2]
         if np.linalg.norm(root_pos - opp_pos) <= self.win_distance:
             return 1
@@ -779,7 +874,7 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         return 0
 
     def _chase_win_condition(self, obs_dict: dict) -> int:
-        root_pos = self.data.body("pelvis").xpos[:2]
+        root_pos = self.data.body(self._pelvis_body_name).xpos[:2]
         opp_pos = obs_dict["opponent_pose"][..., :2]
         if np.linalg.norm(root_pos - opp_pos) <= self.win_distance:
             return 1
@@ -792,7 +887,7 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
 
     def _get_fallen_condition(self) -> int:
         if self.terrain == "FLAT":
-            return 1 if self.data.body("pelvis").xpos[2] < 0.5 else 0
+            return 1 if self.data.body(self._pelvis_body_name).xpos[2] < 0.5 else 0
         head = self.data.site("head").xpos
         foot_l = self.data.body("talus_l").xpos
         foot_r = self.data.body("talus_r").xpos

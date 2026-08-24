@@ -208,6 +208,7 @@ def mjlab_env_cfg_from_task_config(
     decimation: int = 10,
     sim_cfg: SimulationCfg | None = None,
     episode_length_s: float | None = None,
+    init_state: Any | None = None,
 ) -> ManagerBasedRlEnvCfg:
     """Build a ``ManagerBasedRlEnvCfg`` from a myosuite ``TaskConfig``.
 
@@ -226,6 +227,10 @@ def mjlab_env_cfg_from_task_config(
         sim_cfg: Optional ``SimulationCfg``; defaults to ``MujocoCfg(timestep=0.002)``.
         episode_length_s: Override computed episode length. If None, computed as
             ``cfg.max_episode_steps * decimation * _DEFAULT_SIM_DT``.
+        init_state: Optional ``EntityCfg.InitialStateCfg`` for the entity's reset
+            pose. If None, mjlab's default (root at the origin) is used — which
+            places a floating-base robot in the ground; pass an explicit standing
+            pose for locomotion tasks so they match the CPU reset.
 
     Returns:
         A fully populated ``ManagerBasedRlEnvCfg``.
@@ -244,7 +249,10 @@ def mjlab_env_cfg_from_task_config(
         episode_length_s = cfg.max_episode_steps * decimation * sim_cfg.mujoco.timestep
 
     articulation = EntityArticulationInfoCfg(actuators=actuators)
-    entity_cfg = EntityCfg(spec_fn=spec_fn, articulation=articulation)
+    entity_kwargs: dict[str, Any] = dict(spec_fn=spec_fn, articulation=articulation)
+    if init_state is not None:
+        entity_kwargs["init_state"] = init_state
+    entity_cfg = EntityCfg(**entity_kwargs)
     scene_cfg = SceneCfg(num_envs=num_envs, entities={entity_name: entity_cfg})
 
     kwargs: dict[str, Any] = dict(

@@ -50,6 +50,7 @@ from myosuite.integrations.musclemimic.myotorso_bimanual_model import (
 from myosuite.integrations.musclemimic.fullbody_model import (
     FULLBODY_BODY2SITES_FOR_MIMIC,
     build_mimic_fullbody_spec,
+    build_native_mimic_fullbody_spec,
     compile_mimic_fullbody_mjmodel,
     compile_musclemimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
@@ -83,6 +84,7 @@ __all__ = [
     "build_mimic_bimanual_spec",
     "build_myotorso_bimanual_mimic_spec",
     "build_mimic_fullbody_spec",
+    "build_native_mimic_fullbody_spec",
     "compile_mimic_bimanual_mjmodel",
     "compile_myotorso_bimanual_mimic_mjmodel",
     "compile_mimic_fullbody_mjmodel",

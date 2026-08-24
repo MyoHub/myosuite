@@ -139,6 +139,7 @@ class LegWalkEnvV0(MyoGymnasiumEnv, EzPickle):
             self.model.geom_rgba[tid, 3] = 0.0
             self.model.geom_pos[tid] = np.array([0.0, 0.0, -10.0])
         except (KeyError, AttributeError):
+            # Flat-ground models have no "terrain" geom to hide; nothing to do.
             pass
 
         self._input_seed = seed

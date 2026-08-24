@@ -510,7 +510,9 @@ class TestReachMjxSmoke:
         Args:
             mjx_impl: ``"warp"`` or ``None``, from the session fixture.
         """
-        self.model_path = _ASSETS / "hand" / "myohand_pose.xml"
+        from myosuite.core.model_recipes import materialize_recipe_xml
+
+        self.model_path = materialize_recipe_xml("hand_pose")
         if not self.model_path.exists():
             pytest.skip(f"Hand model not found: {self.model_path}")
 

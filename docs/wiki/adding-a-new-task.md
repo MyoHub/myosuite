@@ -1,15 +1,28 @@
 # Adding a New Task
 
-This is the concrete, working procedure for adding a new environment under
-the modular `TaskConfig` architecture (the Golden Rule from `CLAUDE.md`):
-**one `TaskConfig` + term functions + a `ModelBuilder` recipe — no
-task-specific env subclass, no new registration file, no backend-specific
-code.**
+A task has two matched halves under one `env_id`: a **CPU** implementation
+(`MyoGymnasiumEnv`, for playback/fine-tune) and a **GPU** mjlab config
+(`ManagerBasedRlEnvCfg`, for parallel training). **That supported path is
+covered in `engineering-standards.md`** ("CPU and GPU are two matched halves")
+— read it first. For the CPU half you copy `envs/myo/tasks/basic/arm/reach.py`;
+for the GPU half you add a mjlab config under the same `env_id`.
 
-Read `engineering-standards.md` and `writing-term-functions.md` first if you
-haven't.
+> **This page documents a different, experimental option: `TaskConfig` +
+> `ModularTaskEnv`.** It is a data-driven way to write the CPU env (and,
+> optionally, an MJX backend) from a single dataclass instead of a
+> `MyoGymnasiumEnv` subclass. It is **not the primary path** — the MJX backend
+> it can also produce is experimental and may not be maintained long-term, and
+> only the elbow reference plus a few challenge tasks use it. Use a
+> `MyoGymnasiumEnv` subclass + mjlab config unless you specifically want the
+> data-driven authoring style.
 
-## Worked example
+Read `writing-term-functions.md` before writing any new obs/reward term (the
+`MyoGymnasiumEnv`, mjlab, and `TaskConfig` routes all share the same term
+functions, which is what keeps CPU and GPU in parity).
+
+---
+
+## `TaskConfig` worked example (experimental, data-driven)
 
 `myosuite/envs/myo/tasks/basic/specs/elbow_pose_spec.py` is the canonical,
 fully-working reference — copy its shape, not its specifics:
@@ -110,8 +123,10 @@ subclass to write.
   task-relevant observation; they only added 19 dead env IDs with no test
   depending on them. Register an ID when the task is real, not as a
   placeholder for future work.
-- Don't write a new `Env` subclass, a new registration file, or
-  backend-specific branching to support a new task — if you find yourself
-  doing this, the `TaskConfig`/term-function/recipe primitives are probably
-  missing something; extend those instead (see `engineering-standards.md`'s
-  Search-Before-Write section).
+- If you are using the `TaskConfig` route, don't abandon it midway for a new
+  registration file or backend-specific branching — if a `TaskConfig` can't
+  express your task, the term-function / recipe primitives are probably missing
+  something; extend those instead (see `engineering-standards.md`'s
+  Search-Before-Write section). (Writing a `MyoGymnasiumEnv` subclass for the
+  CPU half is *not* on this list — that is the normal alternative to `TaskConfig`
+  for the CPU side; you just add the matched mjlab/MJX backend separately.)

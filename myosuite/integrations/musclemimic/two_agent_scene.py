@@ -13,8 +13,10 @@ agent-specific geometry (fists/sabers, scoring zones, sensors).
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 
 import mujoco
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -205,3 +207,163 @@ def extract_sensor_addrs(
         sid = mj_name2id_strict(model, mujoco.mjtObj.mjOBJ_SENSOR, sensor_name)
         result[f"{suffix}_vel"] = int(model.sensor_adr[sid])
     return result
+
+
+_JOINT_QPOS_WIDTH: dict[int, int] = {
+    int(mujoco.mjtJoint.mjJNT_FREE): 7,
+    int(mujoco.mjtJoint.mjJNT_BALL): 4,
+    int(mujoco.mjtJoint.mjJNT_SLIDE): 1,
+    int(mujoco.mjtJoint.mjJNT_HINGE): 1,
+}
+
+
+def default_root_offsets(
+    separation_m: float,
+) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Return the standard ``agent_0``/``agent_1`` root offsets for a 1v1 scene.
+
+    Mirrors the placement convention already used by ``build_combined_spec``:
+    agent 0 sits at ``[0, +separation_m/2, 0]`` in its default orientation,
+    agent 1 sits at ``[0, -separation_m/2, 0]`` rotated 180 degrees about Z
+    so the two agents face each other along the Y axis.
+
+    Args:
+        separation_m: Total Y-axis distance between the two agents (metres).
+
+    Returns:
+        ``{"agent_0": (offset_xyz, offset_quat_wxyz), "agent_1": (...)}``.
+    """
+    identity_quat = np.array([1.0, 0.0, 0.0, 0.0])
+    quat_180z = np.array(_QUAT_180Z)
+    return {
+        "agent_0": (np.array([0.0, separation_m / 2.0, 0.0]), identity_quat),
+        "agent_1": (np.array([0.0, -separation_m / 2.0, 0.0]), quat_180z),
+    }
+
+
+def _apply_root_offset(
+    root_qpos: np.ndarray, offset_pos: np.ndarray, offset_quat: np.ndarray
+) -> np.ndarray:
+    """Rigidly transform a free-joint's ``[xyz, wxyz]`` qpos by an offset pose.
+
+    Free-joint qpos is an *absolute* world pose (unlike hinge/slide qpos,
+    which is relative to the body's default frame), so any per-agent
+    placement offset must be composed into it explicitly rather than relying
+    on MJCF-level ``<frame>`` translation/rotation (those are folded into the
+    body's default pose at compile time and have no effect once qpos
+    overrides a free joint's position/orientation).
+
+    Args:
+        root_qpos: Length-7 ``[x, y, z, qw, qx, qy, qz]`` free-joint qpos.
+        offset_pos: Length-3 world-frame translation to apply.
+        offset_quat: Length-4 ``[qw, qx, qy, qz]`` world-frame rotation to
+            apply (rotates the source pose, then translates).
+
+    Returns:
+        New length-7 ``[xyz, wxyz]`` array with the offset applied.
+    """
+    out = np.array(root_qpos, dtype=float, copy=True)
+    src_pos = out[:3]
+    src_quat = out[3:7]
+
+    rotated_pos = np.zeros(3)
+    mujoco.mju_rotVecQuat(rotated_pos, src_pos, offset_quat)
+    out[:3] = rotated_pos + offset_pos
+
+    composed_quat = np.zeros(4)
+    mujoco.mju_mulQuat(composed_quat, offset_quat, src_quat)
+    out[3:7] = composed_quat
+    return out
+
+
+def two_agent_standing_qpos(
+    model: mujoco.MjModel,
+    jnt_ids_by_agent: Mapping[str, list[int]],
+    source_key_qpos_by_agent: Mapping[str, np.ndarray | None],
+    root_offset_by_agent: Mapping[str, tuple[np.ndarray, np.ndarray]] | None = None,
+) -> np.ndarray | None:
+    """Reconstruct a combined-model standing ``qpos`` from each agent's own keyframe.
+
+    ``MjSpec.attach`` does not carry a source model's ``<keyframe>`` into the
+    combined two-agent scene (each agent's keyframe would collide on name
+    after prefixing), so any standing pose the source model ships is
+    otherwise silently lost -- the combined model resets to all-zero joint
+    angles, i.e. a rigid "pedestal" pose that collapses immediately under
+    gravity (see ``ModularMultiAgentTaskEnv.reset()`` / the CPU
+    ``ModularTaskEnv.reset()`` fix this mirrors).
+
+    Attach preserves each agent's joint declaration order and address
+    contiguity, so one agent's qpos block in the combined model is a
+    straight positional copy of that agent's own (pre-attach) qpos layout.
+    This reconstructs the full combined ``qpos`` by placing each agent's
+    captured keyframe-0 ``qpos`` (captured from the standalone single-agent
+    model *before* attachment) at that agent's contiguous address range in
+    the combined model.
+
+    Because both agents' keyframes come from the same single-agent source
+    model, they carry the *same* root position (and orientation) -- without
+    an explicit per-agent offset both agents would land on top of each other
+    in the combined model, since free-joint qpos is an absolute world pose
+    and the ``<frame>`` translation ``build_combined_spec`` applies at the
+    MJCF level has no effect once qpos overrides it (see
+    ``_apply_root_offset``). ``root_offset_by_agent`` supplies that missing
+    per-agent translation/rotation; use ``default_root_offsets`` to match the
+    same placement convention already used by ``build_combined_spec``.
+
+    Args:
+        model: Compiled combined ``MjModel``.
+        jnt_ids_by_agent: ``{agent_id: [joint ids in the combined model]}``,
+            as returned by ``extract_prefix_indices``.
+        source_key_qpos_by_agent: ``{agent_id: standalone source model's
+            key_qpos[0]}`` (or ``None`` if that source model had no
+            keyframe).
+        root_offset_by_agent: Optional ``{agent_id: (offset_xyz,
+            offset_quat_wxyz)}`` rigid transform applied to that agent's
+            root (first 7 qpos values, i.e. a free joint) before it is
+            written into the combined qpos. Agents without a free-joint root,
+            or without an entry here, are left untransformed. If ``None``,
+            no offset is applied (legacy behaviour -- callers that build
+            their own placement must supply this to avoid overlapping
+            agents).
+
+    Returns:
+        Full-length ``qpos`` array for the combined model, or ``None`` if
+        any agent's source model had no keyframe to reconstruct from.
+    """
+    if any(v is None for v in source_key_qpos_by_agent.values()):
+        return None
+    root_offset_by_agent = root_offset_by_agent or {}
+    standing = np.zeros(model.nq)
+    for agent, jnt_ids in jnt_ids_by_agent.items():
+        src = np.asarray(source_key_qpos_by_agent[agent], dtype=float).copy()
+        addrs = [
+            (
+                int(model.jnt_qposadr[jid]),
+                int(model.jnt_qposadr[jid])
+                + _JOINT_QPOS_WIDTH[int(model.jnt_type[jid])],
+                int(model.jnt_type[jid]),
+            )
+            for jid in jnt_ids
+        ]
+        lo = min(a for a, _, _ in addrs)
+        hi = max(b for _, b, _ in addrs)
+        if hi - lo != src.shape[0]:
+            raise ValueError(
+                f"Agent {agent!r} qpos block width {hi - lo} does not match "
+                f"source keyframe width {src.shape[0]} -- attach did not "
+                "preserve contiguous per-agent joint ordering as expected."
+            )
+        offset = root_offset_by_agent.get(agent)
+        if offset is not None:
+            free_addrs = [
+                (a, b) for a, b, t in addrs if t == int(mujoco.mjtJoint.mjJNT_FREE)
+            ]
+            if free_addrs:
+                free_lo, free_hi = free_addrs[0]
+                assert free_hi - free_lo == 7
+                offset_pos, offset_quat = offset
+                src[free_lo - lo : free_hi - lo] = _apply_root_offset(
+                    src[free_lo - lo : free_hi - lo], offset_pos, offset_quat
+                )
+        standing[lo:hi] = src
+    return standing

@@ -150,4 +150,7 @@ class Renderer(abc.ABC):
         try:
             self.close()
         except Exception:
+            # __del__ must never raise. During interpreter shutdown the GL
+            # context or referenced modules may already be torn down; there is
+            # no safe action left, so swallow deliberately.
             pass

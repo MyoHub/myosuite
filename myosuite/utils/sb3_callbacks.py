@@ -8,11 +8,16 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from stable_baselines3.common.callbacks import BaseCallback
 
 from myosuite.utils.export_onnx import export_sb3_to_onnx
-from myosuite.utils.onnx_checkpoint import bundle_onnx_with_checkpoint
+from myosuite.utils.onnx_checkpoint import (
+    _FATIGUE_STATE_KEY,
+    bundle_onnx_with_checkpoint,
+    get_env_fatigue_state,
+)
 
 
 class OnnxCheckpointCallback(BaseCallback):
@@ -34,6 +39,7 @@ class OnnxCheckpointCallback(BaseCallback):
         obs_dim: int,
         act_dim: int,
         save_freq: int,
+        env: Any | None = None,
     ) -> None:
         super().__init__()
         self.checkpoint_dir = checkpoint_dir
@@ -41,6 +47,7 @@ class OnnxCheckpointCallback(BaseCallback):
         self.obs_dim = obs_dim
         self.act_dim = act_dim
         self.save_freq = max(1, save_freq)
+        self._fatigue_env = env
         self._last_save_timestep = 0
 
     def _save_bundle(self, stem: str) -> None:
@@ -56,16 +63,21 @@ class OnnxCheckpointCallback(BaseCallback):
                 obs_dim=self.obs_dim,
                 act_dim=self.act_dim,
             )
+            metadata: dict[str, Any] = {
+                "task_id": self.task_id,
+                "obs_dim": self.obs_dim,
+                "act_dim": self.act_dim,
+                "num_timesteps": int(self.model.num_timesteps),
+            }
+            env = self._fatigue_env or getattr(self.model, "env", None)
+            fatigue_state = get_env_fatigue_state(env) if env is not None else None
+            if fatigue_state is not None:
+                metadata[_FATIGUE_STATE_KEY] = fatigue_state
             bundle_onnx_with_checkpoint(
                 onnx_path=onnx_path,
                 checkpoint_path=native_ckpt,
                 framework="sb3-ppo",
-                metadata={
-                    "task_id": self.task_id,
-                    "obs_dim": self.obs_dim,
-                    "act_dim": self.act_dim,
-                    "num_timesteps": int(self.model.num_timesteps),
-                },
+                metadata=metadata,
                 output_path=self.checkpoint_dir / f"{stem}.onnx",
             )
 

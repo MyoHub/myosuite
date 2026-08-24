@@ -262,8 +262,11 @@ try:
     )
     from myosuite.core.trajectory_io import load_motion_clip
     from myosuite.utils.onnx_checkpoint import (
+        _FATIGUE_STATE_KEY,
         bundle_onnx_with_checkpoint,
         extract_checkpoint_from_onnx,
+        get_env_fatigue_state,
+        set_env_fatigue_state,
     )
 
     _TRAINING_DEPS_AVAILABLE = True
@@ -279,7 +282,12 @@ class _ActorExportWrapper(torch.nn.Module):
         self.actor = actor
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        obs_td = TensorDict({"actor": obs}, batch_size=[obs.shape[0]])
+        # Use the model's own obs_groups so the dummy TensorDict has the right key.
+        # For models with a single group (the common case) this resolves to that
+        # group name (e.g. "proprioception"); fall back to "actor" for legacy models.
+        obs_groups = getattr(self.actor, "obs_groups", None)
+        key = obs_groups[0] if obs_groups and len(obs_groups) == 1 else "actor"
+        obs_td = TensorDict({key: obs}, batch_size=[obs.shape[0]])
         return self.actor(obs_td)
 
 
@@ -299,7 +307,7 @@ class OnnxCheckpointingMjlabRunner(MjlabOnPolicyRunner):
         log_dir: str | None,
         device: str,
         *,
-        task_id: str,
+        task_id: str = "",
     ) -> None:
         super().__init__(env=env, train_cfg=train_cfg, log_dir=log_dir, device=device)
         self._task_id = task_id
@@ -345,26 +353,40 @@ class OnnxCheckpointingMjlabRunner(MjlabOnPolicyRunner):
             saved_dict["infos"] = {**(infos or {}), "env_state": env_state}
             torch.save(saved_dict, tmp_native)
             self._export_actor_onnx(tmp_onnx)
+            metadata: dict[str, Any] = {
+                "task_id": self._task_id,
+                "obs_dim": self._obs_dim,
+                "act_dim": self._act_dim,
+                "iteration": int(self.current_learning_iteration),
+            }
+            fatigue_state = get_env_fatigue_state(self.env)
+            if fatigue_state is not None:
+                metadata[_FATIGUE_STATE_KEY] = fatigue_state
             bundle_onnx_with_checkpoint(
                 onnx_path=tmp_onnx,
                 checkpoint_path=tmp_native,
                 framework="mjlab-rslrl",
-                metadata={
-                    "task_id": self._task_id,
-                    "obs_dim": self._obs_dim,
-                    "act_dim": self._act_dim,
-                    "iteration": int(self.current_learning_iteration),
-                },
+                metadata=metadata,
                 output_path=onnx_path,
             )
             if self.cfg["upload_model"] and wandb.run is not None:
                 self.logger.save_model(str(onnx_path), self.current_learning_iteration)
 
+    def load(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """Load a checkpoint; delegates to :meth:`load_onnx` for ``.onnx`` bundles."""
+        if Path(path).suffix == ".onnx":
+            return self.load_onnx(path)
+        return super().load(path, **kwargs)  # type: ignore[return-value]
+
     def load_onnx(self, path: str | Path) -> dict[str, Any]:
         """Load a previously saved ONNX bundle back into this runner."""
-        checkpoint_path, _, temp_dir = extract_checkpoint_from_onnx(path)
+        checkpoint_path, meta, temp_dir = extract_checkpoint_from_onnx(path)
         try:
-            return self.load(str(checkpoint_path), map_location=self.device)
+            result = self.load(str(checkpoint_path), map_location=self.device)
+            fatigue_state = meta.get("metadata", {}).get(_FATIGUE_STATE_KEY)
+            if fatigue_state is not None:
+                set_env_fatigue_state(self.env, fatigue_state)
+            return result
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()

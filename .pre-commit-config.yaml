@@ -1,3 +1,9 @@
+# Install commit-msg + prepare-commit-msg so `pre-commit install` wires both:
+#   pre-commit install
+default_install_hook_types: [pre-commit, prepare-commit-msg, commit-msg]
+# Keep ordinary lint hooks off message stages.
+default_stages: [pre-commit]
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.4.4
@@ -45,3 +51,19 @@ repos:
             myosuite/envs/myo/myochallenge/.*|
             myosuite/envs/myo/myoedits/.*
           )$
+
+      # Guard: AI Co-Authored-By trailers break the CLA check. Soft docs in
+      # CLAUDE.md are not enough — Cursor/Codex/etc. inject trailers after the
+      # message is composed. Strip on prepare-commit-msg; reject on commit-msg.
+      - id: strip-ai-coauthor
+        name: Strip AI Co-Authored-By / attribution trailers
+        language: script
+        entry: scripts/reject_ai_coauthor.py --strip
+        stages: [prepare-commit-msg]
+        always_run: true
+      - id: no-ai-coauthor
+        name: Reject AI Co-Authored-By / attribution trailers
+        language: script
+        entry: scripts/reject_ai_coauthor.py
+        stages: [commit-msg]
+        always_run: true

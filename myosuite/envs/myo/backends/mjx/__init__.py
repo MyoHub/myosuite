@@ -115,7 +115,23 @@ _MYOSUITE = epath.Path(epath.resource_path("myosuite"))
 
 _ELBOW_MODEL = _resolve_elbow_xml("myoelbow_1dof6muscles.xml")
 _FINGER_MODEL = _resolve_finger_xml("myofinger_v0.xml")
-_HAND_MODEL = Path(str(_MYOSUITE / "envs/myo/assets/hand/myohand_pose.xml"))
+
+
+def _default_hand_model_path() -> Path:
+    """Materialize the myo_sim-native "hand_pose" recipe to a real file.
+
+    Mirrors the mjlab backend's ``HandPoseCfg``/``HandReachCfg``, which
+    already switched from the legacy ``myohand_pose.xml`` to this recipe
+    (verified numerically equivalent: 39/39 muscle names match, 0
+    calibration mismatches, nq matches exactly). MJX reads ``model_path``
+    as a plain file, so the recipe's live MjSpec is materialized to disk.
+    """
+    from myosuite.core.model_recipes import materialize_recipe_xml
+
+    return materialize_recipe_xml("hand_pose")
+
+
+_HAND_MODEL = _default_hand_model_path()
 
 # ---------------------------------------------------------------------------
 # Registry + factory

@@ -58,6 +58,7 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -2002,8 +2003,13 @@ def _register_mimic_sar_tasks(
                     rl_cfg=rl_cfg_fn(),
                     runner_cls=None,
                 )
-    except Exception:
-        pass
+    except Exception as exc:
+        # Bimanual SAR mjlab registration is optional (needs a matching SAR
+        # model + mjlab). Log at debug so the reason is discoverable instead of
+        # the task silently vanishing; don't fail package import.
+        logging.getLogger(__name__).debug(
+            "Skipped bimanual SAR mjlab registration: %s", exc, exc_info=exc
+        )
 
     # --- Full body ---
     try:
@@ -2043,8 +2049,11 @@ def _register_mimic_sar_tasks(
                     rl_cfg=rl_cfg_fn(),
                     runner_cls=None,
                 )
-    except Exception:
-        pass
+    except Exception as exc:
+        # Full-body SAR mjlab registration is optional (see bimanual note above).
+        logging.getLogger(__name__).debug(
+            "Skipped full-body SAR mjlab registration: %s", exc, exc_info=exc
+        )
 
 
 def _make_mimic_sar_env_cfg(
@@ -2487,8 +2496,11 @@ def register_directional_walk_sar(
             rl_cfg=rl_cfg_fn(),
             runner_cls=None,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        # myoFullBodyWalkSAR mjlab registration is optional (needs SAR model + mjlab).
+        logging.getLogger(__name__).debug(
+            "Skipped myoFullBodyWalkSAR-v0 mjlab registration: %s", exc, exc_info=exc
+        )
 
 
 def default_mimic_clip_on_policy_runner_cfg(**kwargs) -> Any:

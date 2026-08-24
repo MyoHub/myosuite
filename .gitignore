@@ -134,6 +134,7 @@ osl.log
 *processed.xml
 
 logs/
+sar_outputs/
 
 # Pycharm generated files
 .idea/
@@ -152,3 +153,10 @@ _untracked/
 Boxing/
 myosuite/composer/
 myosuite/agents/
+renders/
+runs/
+scripts/
+tasks/
+
+# local GPU smoke bundles
+myosuite_gpu_smoke*.zip

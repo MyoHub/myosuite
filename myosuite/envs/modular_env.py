@@ -44,66 +44,8 @@ from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.model_recipes import _MUSCLEMIMIC_NAMES, _musclemimic_build
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.physics.quat_math import mul_quat
-from myosuite.envs.myo.tasks.challenge.saber_task_config import saber_term_params
-from myosuite.envs.myo.tasks.challenge.saber.saber_target_pool import (
-    SABER_POOL_RECYCLE_CONTACT_SUBSTRINGS,
-    SaberTargetPoolConfig,
-    SaberTargetPoolRuntime,
-    beat_saber_mocap_translation_delta,
-    build_pool_indices,
-    place_graveyard_positions,
-    pool_post_physics,
-    pool_pre_physics,
-    pool_reset,
-    resolve_recycle_contact_geom_ids,
-)
 
 logger = logging.getLogger(__name__)
-
-# Right-hand table-tennis grasp prior; left uses same stems with ``_l``.
-_TABLETENNIS_GRASP_SEED: dict[str, float] = {
-    "elbow_flex": 0.805495,
-    "pro_sup": -0.10284,
-    "deviation": -0.08288,
-    "flexion": -0.730422,
-    "cmc_abduction": 0.0632,
-    "cmc_flexion": 0.7,
-    "mp_flexion": 0.07503,
-    "ip_flexion": -0.296726,
-    "mcp2_flexion": 0.72266,
-    "mcp2_abduction": -0.136136,
-    "pm2_flexion": 0.26707,
-    "md2_flexion": 0.353475,
-    "mcp3_flexion": 0.65982,
-    "mcp3_abduction": -0.151844,
-    "pm3_flexion": 0.42417,
-    "md3_flexion": 0.51843,
-    "mcp4_flexion": 0.919035,
-    "mcp4_abduction": -0.20944,
-    "pm4_flexion": 0.259215,
-    "md4_flexion": 0.510575,
-    "mcp5_flexion": 0.793355,
-    "mcp5_abduction": -0.204204,
-    "pm5_flexion": 0.227795,
-}
-
-# Site-local offsets tuned for bilateral palm/thumb contact stability.
-_LEFT_SABER_GRASP_OFFSET = np.array(
-    [-0.0244778, 0.03560197, -0.02699442], dtype=np.float64
-)
-_RIGHT_SABER_GRASP_OFFSET = np.array(
-    [-0.03221418, 0.02980037, 0.03681982], dtype=np.float64
-)
-
-
-def _saber_upright_posture_from_xquat(quat: np.ndarray) -> float:
-    """Return the world-z projection of the torso's local y-axis, clamped to [0, 1]."""
-    quat32 = np.asarray(quat, dtype=np.float32)
-    qw, qx, qy, qz = quat32
-    upright = np.float32(2.0) * (qy * qz + qw * qx)
-    return float(np.clip(upright, np.float32(0.0), np.float32(1.0)))
-
 
 # Maps ObsSpec key → function name suffix in myo_obs_terms (e.g. "joint_pos" → joint_pos_obs)
 _OBS_TERM_SUFFIX = "_obs"
@@ -367,20 +309,6 @@ class ModularTaskEnv(MyoGymnasiumEnv):
             self._fatigue_mask = (
                 self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
             )
-        self._saber_mocap_advance: dict[str, Any] | None = None
-        self._saber_target_pool_enabled: bool = False
-        self._target_pool_cfg: SaberTargetPoolConfig | None = None
-        self._target_pool_runtime: SaberTargetPoolRuntime | None = None
-        self._target_pool_mocap_ids: np.ndarray | None = None
-        self._target_pool_site_ids: np.ndarray | None = None
-        self._target_pool_geom_ids: np.ndarray | None = None
-        self._target_pool_marker_geom_ids: np.ndarray | None = None
-        self._target_pool_recycle_contact_geom_ids: set[int] | None = None
-        self._saber_keyframe_qpos_adrs: np.ndarray | None = None
-        self._saber_keyframe_ref_pos: np.ndarray | None = None
-        self._configure_saber_mocap_driver()
-        self._configure_saber_target_pool()
-
         # Infer observation and action spaces via a dummy forward pass
         mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
@@ -451,11 +379,7 @@ class ModularTaskEnv(MyoGymnasiumEnv):
         """
         accessor = self._accessor
         task_state = self._task_state
-        _saber_cfg = getattr(self._task_config, "saber_cfg", None)
-        extra = {
-            **self._task_config.reward.extra,
-            **(saber_term_params(_saber_cfg) if _saber_cfg is not None else {}),
-        }
+        extra = dict(self._task_config.reward.extra)
 
         combined: dict[str, Any] = {}
         dense_total = 0.0
@@ -501,405 +425,59 @@ class ModularTaskEnv(MyoGymnasiumEnv):
             self.model, self.data = self._scene_models[scene]
             self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
             task_state["scene"] = scene
+        self._maybe_sample_heading(task_state, np_random)
         return task_state
 
-    def _configure_saber_mocap_driver(self) -> None:
-        """If the task requests it, cache mocap ids for Beat Saber-style target motion."""
-        self._saber_mocap_advance = None
+    def _maybe_sample_heading(
+        self, task_state: dict[str, Any], np_random: np.random.Generator
+    ) -> None:
+        """Sample a per-episode commanded heading when the task requests it.
+
+        Controlled by ``reward.extra["randomize_heading"]``. Writes the sampled
+        unit ``heading_dir`` into ``task_state`` so both the ``heading_cmd``
+        observation (merged with ``obs.extra``) and ``heading_reward`` (which
+        reads ``task_state``) follow the same command. This is what lets a policy
+        learn the command->direction mapping instead of a single fixed heading.
+
+        A ``reward.extra["heading_choices"]`` list of ``(dx, dy)`` directions, if
+        present, is sampled discretely; otherwise the heading is drawn uniformly
+        from the full unit circle.
+        """
         ex = self._task_config.reward.extra
-        if ex.get("enable_saber_target_pool"):
+        if not ex.get("randomize_heading"):
             return
-        if not ex.get("drive_saber_targets_kinematics"):
-            return
-        body_a = str(ex.get("saber_target_a_body", "saber_target_a"))
-        body_b = str(ex.get("saber_target_b_body", "saber_target_b"))
-        id_a = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, body_a)
-        id_b = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, body_b)
-        if id_a < 0 or id_b < 0:
-            logger.warning(
-                "drive_saber_targets_kinematics is set but bodies %r / %r were not found",
-                body_a,
-                body_b,
-            )
-            return
-        mocap_a = int(self.model.body_mocapid[id_a])
-        mocap_b = int(self.model.body_mocapid[id_b])
-        if mocap_a < 0 or mocap_b < 0:
-            logger.warning(
-                "Saber targets %r / %r must be mocap bodies for kinematic drive",
-                body_a,
-                body_b,
-            )
-            return
-        direction = np.asarray(
-            ex.get("saber_target_advance_direction", [0.0, -1.0, 0.0]),
-            dtype=np.float64,
-        ).reshape(3)
-        speed = float(ex.get("saber_target_speed_mps", 0.55))
-        self._saber_mocap_advance = {
-            "mocap_ids": (mocap_a, mocap_b),
-            "direction": direction,
-            "speed": speed,
-        }
-
-    def _apply_saber_mocap_advance_pre_physics(self) -> None:
-        """Translate strike-block mocap poses (one control step) before ``mj_step``."""
-        cfg = self._saber_mocap_advance
-        if cfg is None:
-            return
-        delta = beat_saber_mocap_translation_delta(
-            cfg["direction"], cfg["speed"], self._ctrl_dt
-        )
-        for mid in cfg["mocap_ids"]:
-            self.data.mocap_pos[mid] += delta
-
-    def _configure_saber_target_pool(self) -> None:
-        """If the task provides a SaberP0Cfg, resolve indices and reset the mocap pool."""
-        saber_cfg = getattr(self._task_config, "saber_cfg", None)
-        if saber_cfg is None or not saber_cfg.enable_saber_target_pool:
-            return
-        self._target_pool_cfg = SaberTargetPoolConfig(
-            pool_size=int(saber_cfg.pool_size),
-            graveyard_z=float(saber_cfg.graveyard_z),
-            spawn_interval_steps=int(saber_cfg.spawn_interval_steps),
-            sphere_radius=float(saber_cfg.sphere_radius),
-            hit_threshold=None,
-            kill_plane_y=float(saber_cfg.kill_plane_y),
-            miss_zone_y=float(saber_cfg.miss_zone_y),
-            ideal_hit_y_range=tuple(float(v) for v in saber_cfg.ideal_hit_y_range),
-            max_target_misses=saber_cfg.max_target_misses,
-            spawn_portal_x=tuple(float(v) for v in saber_cfg.spawn_portal_x),
-            spawn_portal_y=tuple(float(v) for v in saber_cfg.spawn_portal_y),
-            spawn_portal_z=tuple(float(v) for v in saber_cfg.spawn_portal_z),
-            advance_direction=tuple(float(v) for v in saber_cfg.advance_direction),
-            speed_mps_range=tuple(
-                float(v) for v in saber_cfg.saber_target_speed_mps_range
-            ),
-            recycle_on_body_or_helmet_contact=bool(
-                saber_cfg.recycle_on_body_or_helmet_contact
-            ),
-            recycle_contact_geom_substrings=saber_cfg.recycle_contact_geom_substrings
-            or SABER_POOL_RECYCLE_CONTACT_SUBSTRINGS,
-            enforce_preferred_hand=bool(saber_cfg.enforce_preferred_hand),
-            enforce_preferred_hit_area=bool(saber_cfg.enforce_preferred_hit_area),
-            obstacle_fraction=float(saber_cfg.obstacle_fraction),
-            slicing_accuracy_epsilon=float(saber_cfg.slicing_accuracy_epsilon),
-        )
-        self._target_pool_runtime = SaberTargetPoolRuntime()
-        pool_reset(self._target_pool_runtime, self._target_pool_cfg.pool_size)
-        (
-            self._target_pool_mocap_ids,
-            self._target_pool_site_ids,
-            self._target_pool_geom_ids,
-            self._target_pool_marker_geom_ids,
-        ) = build_pool_indices(self.model, self._target_pool_cfg)
-        self._target_pool_recycle_contact_geom_ids = resolve_recycle_contact_geom_ids(
-            self.model, self._target_pool_cfg, self._target_pool_geom_ids
-        )
-        keyframe_qpos_adrs: list[int] = []
-        for joint_name in ("left_saber_freejoint", "right_saber_freejoint"):
-            joint_id = mujoco.mj_name2id(
-                self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_name
-            )
-            if joint_id < 0:
-                self._saber_keyframe_qpos_adrs = None
-                break
-            qadr = int(self.model.jnt_qposadr[joint_id])
-            keyframe_qpos_adrs.extend([qadr, qadr + 1, qadr + 2])
+        choices = ex.get("heading_choices")
+        if choices:
+            dx, dy = choices[int(np_random.integers(0, len(choices)))]
         else:
-            self._saber_keyframe_qpos_adrs = np.asarray(
-                keyframe_qpos_adrs, dtype=np.int32
-            )
-        self._saber_target_pool_enabled = True
-        assert self._target_pool_cfg is not None
-        assert self._target_pool_mocap_ids is not None
-        place_graveyard_positions(
-            self.data,
-            self._target_pool_mocap_ids,
-            self._target_pool_cfg.pool_size,
-            self._target_pool_cfg.graveyard_z,
-        )
-        self._update_saber_target_pool_visuals()
-        self._publish_target_pool_task_state()
-
-    def _capture_saber_keyframe_pose_reference(self) -> None:
-        """Capture the current saber translation state as the debug pose reference."""
-        if self._saber_keyframe_qpos_adrs is None:
-            self._saber_keyframe_ref_pos = None
-            return
-        self._saber_keyframe_ref_pos = (
-            self.data.qpos[self._saber_keyframe_qpos_adrs].reshape(2, 3).copy()
-        )
-
-    def _compute_saber_keyframe_pose_error(self) -> float:
-        """Return mean free-joint translation error from the reset saber pose."""
-        if (
-            self._saber_keyframe_qpos_adrs is None
-            or self._saber_keyframe_ref_pos is None
-            or len(self._saber_keyframe_qpos_adrs) == 0
-        ):
-            return 1.0
-        current_sites = self.data.qpos[self._saber_keyframe_qpos_adrs].reshape(2, 3)
-        return float(
-            np.mean(
-                np.linalg.norm(current_sites - self._saber_keyframe_ref_pos, axis=1)
-            )
-        )
-
-    def _update_saber_target_pool_visuals(self) -> None:
-        """Color active cubes and highlight the required hit side per target."""
-        if (
-            not self._saber_target_pool_enabled
-            or self._target_pool_runtime is None
-            or self._target_pool_geom_ids is None
-            or self._target_pool_marker_geom_ids is None
-        ):
-            return
-        # Keep cubes clearly visible in all camera angles/compression settings.
-        cube_inactive = np.array([0.55, 0.55, 0.55, 0.85], dtype=np.float32)
-        cube_active = np.array([0.80, 0.80, 0.80, 1.0], dtype=np.float32)
-        obstacle_active = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
-        left_marker = np.array([0.05, 0.25, 1.0, 1.0], dtype=np.float32)
-        right_marker = np.array([1.0, 0.10, 0.10, 1.0], dtype=np.float32)
-        clear = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
-
-        active = self._target_pool_runtime.active
-        preferred = self._target_pool_runtime.preferred_hand
-        hit_face = self._target_pool_runtime.preferred_hit_area
-        is_obstacle = self._target_pool_runtime.is_obstacle
-        for i, gid in enumerate(self._target_pool_geom_ids):
-            marker_ids = self._target_pool_marker_geom_ids[i]
-            if active[i]:
-                self.model.geom_rgba[int(gid)] = (
-                    obstacle_active if bool(is_obstacle[i]) else cube_active
-                )
-                marker_color = left_marker if int(preferred[i]) == 0 else right_marker
-                active_face_idx = int(hit_face[i])
-                for face_idx, marker_gid in enumerate(marker_ids):
-                    self.model.geom_rgba[int(marker_gid)] = (
-                        marker_color
-                        if (not bool(is_obstacle[i])) and face_idx == active_face_idx
-                        else clear
-                    )
-            else:
-                self.model.geom_rgba[int(gid)] = cube_inactive
-                for marker_gid in marker_ids:
-                    self.model.geom_rgba[int(marker_gid)] = clear
-
-    def _publish_target_pool_task_state(self) -> None:
-        """Copy pool runtime into ``self._task_state`` for obs/reward terms."""
-        if not self._saber_target_pool_enabled or self._target_pool_runtime is None:
-            return
-        _saber_cfg = getattr(self._task_config, "saber_cfg", None)
-        upright_body_name = (
-            str(_saber_cfg.upright_body_name) if _saber_cfg is not None else "torso"
-        )
-        upright_bid = mujoco.mj_name2id(
-            self.model, mujoco.mjtObj.mjOBJ_BODY, upright_body_name
-        )
-        upright_posture = 0.0
-        if upright_bid >= 0:
-            upright_posture = _saber_upright_posture_from_xquat(
-                self.data.xquat[int(upright_bid)]
-            )
-        r = self._target_pool_runtime
-        self._task_state["target_pool_active"] = r.active.copy()
-        self._task_state["target_pool_vel"] = r.vel.copy()
-        self._task_state["target_pool_is_obstacle"] = r.is_obstacle.copy()
-        self._task_state["target_pool_hit_area"] = r.preferred_hit_area.copy()
-        self._task_state["target_pool_preferred_hand"] = r.preferred_hand.copy()
-        self._task_state["target_pool_hit_this_step"] = bool(r.hit_this_step)
-        self._task_state["target_pool_offset_at_hit"] = float(r.offset_at_hit)
-        self._task_state["target_pool_hit_y_at_hit"] = float(r.hit_y_at_hit)
-        self._task_state["target_pool_hit_y_deviation_at_hit"] = float(
-            r.hit_y_deviation_at_hit
-        )
-        self._task_state["target_pool_face_surface_distance_at_hit"] = float(
-            r.face_surface_distance_at_hit
-        )
-        self._task_state["target_pool_slicing_accuracy_this_step"] = float(
-            r.slicing_accuracy_this_step
-        )
-        self._task_state["target_pool_timing_accuracy_this_step"] = float(
-            r.timing_accuracy_this_step
-        )
-        dcap = float(r.d_min_closest) if r.d_min_closest < 1e5 else 1e6
-        self._task_state["target_pool_d_min"] = dcap
-        obstacle_dcap = float(r.d_min_obstacle) if r.d_min_obstacle < 1e5 else 1e6
-        self._task_state["target_pool_obstacle_d_min"] = obstacle_dcap
-        self._task_state["target_pool_obstacle_contact_this_step"] = bool(
-            r.obstacle_contact_this_step
-        )
-        self._task_state["target_pool_obstacle_contacts"] = int(r.obstacle_contacts)
-        self._task_state["target_pool_miss_zone"] = bool(r.miss_zone_this_step)
-        self._task_state["target_pool_hits"] = int(r.hits)
-        self._task_state["target_pool_misses"] = int(r.misses)
-        self._task_state["target_pool_correct_hand_this_step"] = bool(
-            r.correct_hand_this_step
-        )
-        self._task_state["target_pool_correct_face_this_step"] = bool(
-            r.correct_face_this_step
-        )
-        self._task_state["target_pool_wrong_hand_this_step"] = bool(
-            r.wrong_hand_this_step
-        )
-        self._task_state["target_pool_wrong_face_this_step"] = bool(
-            r.wrong_face_this_step
-        )
-        self._task_state["target_pool_correct_hand_hits"] = int(r.correct_hand_hits)
-        self._task_state["target_pool_correct_face_hits"] = int(r.correct_face_hits)
-        self._task_state["target_pool_wrong_hand_hits"] = int(r.wrong_hand_hits)
-        self._task_state["target_pool_wrong_face_hits"] = int(r.wrong_face_hits)
-        self._task_state["target_pool_total_spawned"] = int(r.total_spawned)
-        self._task_state["health_status"] = float(r.health_status)
-        self._task_state["upright_posture"] = upright_posture
-        self._task_state["saber_keyframe_pose_error"] = (
-            self._compute_saber_keyframe_pose_error()
-        )
-        self._task_state["target_pool_health_depleted_this_step"] = bool(
-            r.health_depleted_this_step
-        )
-
-    def _reset_saber_target_pool(self) -> None:
-        """Episode reset: all targets to graveyard and pool queues cleared."""
-        if not self._saber_target_pool_enabled or self._target_pool_cfg is None:
-            return
-        assert self._target_pool_runtime is not None
-        assert self._target_pool_mocap_ids is not None
-        pool_reset(self._target_pool_runtime, self._target_pool_cfg.pool_size)
-        place_graveyard_positions(
-            self.data,
-            self._target_pool_mocap_ids,
-            self._target_pool_cfg.pool_size,
-            self._target_pool_cfg.graveyard_z,
-        )
-        self._update_saber_target_pool_visuals()
-        mujoco.mj_forward(self.model, self.data)
-        self._publish_target_pool_task_state()
-
-    def _snap_free_sabers_to_grasp_sites(self) -> None:
-        """Place freejoint sabers at hand grasp sites with matching orientation."""
-        mount_quat = np.array(
-            [0.7071067811865476, 0.0, 0.7071067811865476, 0.0], dtype=np.float64
-        )
-        mappings = (
-            (
-                "left_saber_freejoint",
-                "S_grasp_left",
-                "lunate_l",
-                _LEFT_SABER_GRASP_OFFSET,
-            ),
-            (
-                "right_saber_freejoint",
-                "S_grasp",
-                "lunate_r",
-                _RIGHT_SABER_GRASP_OFFSET,
-            ),
-        )
-        changed = False
-        for joint_name, site_name, hand_body_name, site_local_offset in mappings:
-            jid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
-            sid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, site_name)
-            bid = mujoco.mj_name2id(
-                self.model, mujoco.mjtObj.mjOBJ_BODY, hand_body_name
-            )
-            if jid < 0 or sid < 0 or bid < 0:
-                continue
-            if int(self.model.jnt_type[jid]) != int(mujoco.mjtJoint.mjJNT_FREE):
-                continue
-            qadr = int(self.model.jnt_qposadr[jid])
-            dadr = int(self.model.jnt_dofadr[jid])
-            hand_quat = self.data.xquat[bid].copy()
-            quat = mul_quat(hand_quat, mount_quat)
-            quat /= max(np.linalg.norm(quat), 1e-12)
-            site_rot = self.data.site_xmat[sid].reshape(3, 3)
-            self.data.qpos[qadr : qadr + 3] = (
-                self.data.site_xpos[sid] + site_rot @ site_local_offset
-            )
-            self.data.qpos[qadr + 3 : qadr + 7] = quat
-            self.data.qvel[dadr : dadr + 6] = 0.0
-            changed = True
-        if changed:
-            mujoco.mj_forward(self.model, self.data)
-
-    def _apply_tabletennis_grasp_seed(self) -> None:
-        """Apply table-tennis-like arm/hand grasp posture at reset."""
-        # Only apply for saber-freejoint scenes.
-        lj = mujoco.mj_name2id(
-            self.model, mujoco.mjtObj.mjOBJ_JOINT, "left_saber_freejoint"
-        )
-        rj = mujoco.mj_name2id(
-            self.model, mujoco.mjtObj.mjOBJ_JOINT, "right_saber_freejoint"
-        )
-        if lj < 0 or rj < 0:
-            return
-
-        changed = False
-        for stem, value in _TABLETENNIS_GRASP_SEED.items():
-            for suffix in ("_r", "_l"):
-                jname = f"{stem}{suffix}"
-                jid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, jname)
-                if jid < 0:
-                    continue
-                qadr = int(self.model.jnt_qposadr[jid])
-                self.data.qpos[qadr] = float(value)
-                changed = True
-        if changed:
-            self.data.qvel[:] = 0.0
-            mujoco.mj_forward(self.model, self.data)
-
-    def _apply_saber_target_pool_pre_physics(self) -> None:
-        """Advance mocap pool and spawn before ``mj_step``."""
-        if not self._saber_target_pool_enabled or self._target_pool_cfg is None:
-            return
-        assert self._target_pool_runtime is not None
-        assert self._target_pool_mocap_ids is not None
-        pool_pre_physics(
-            self.data,
-            self._target_pool_cfg,
-            self._target_pool_runtime,
-            self._target_pool_mocap_ids,
-            self.np_random,
-            self._ctrl_dt,
-        )
-        self._update_saber_target_pool_visuals()
-
-    def _post_step_saber_target_pool(self) -> None:
-        """Hits, misses, and recycling after the control step."""
-        if not self._saber_target_pool_enabled or self._target_pool_cfg is None:
-            return
-        assert self._target_pool_runtime is not None
-        assert self._target_pool_mocap_ids is not None
-        assert self._target_pool_site_ids is not None
-        assert self._target_pool_geom_ids is not None
-        pool_post_physics(
-            self.model,
-            self.data,
-            self._target_pool_cfg,
-            self._target_pool_runtime,
-            self._target_pool_mocap_ids,
-            self._target_pool_site_ids,
-            self._target_pool_geom_ids,
-            self._target_pool_recycle_contact_geom_ids,
-        )
+            angle = float(np_random.uniform(0.0, 2.0 * np.pi))
+            dx, dy = np.cos(angle), np.sin(angle)
+        task_state["heading_dir"] = (float(dx), float(dy))
+        return
 
     def reset(
         self,
         seed: int | None = None,
         options: dict | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
-        """Reset simulation and, when configured, the saber target pool."""
+        """Reset simulation and sample a new episode task state."""
         super(MyoGymnasiumEnv, self).reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
+        if self.model.nkey > 0:
+            # mj_resetData alone zeros ALL qpos (including free-joint
+            # orientation quaternions), which is not a valid pose for any
+            # standing/walking host model -- it collapses instantly under
+            # gravity. Load keyframe 0, which every bundled host XML ships
+            # as a real standing/crouched pose (see e.g.
+            # myosuite/envs/myo/assets/leg/myolegs_with_torso.xml's
+            # <keyframe> block), so reset_task()'s goal/heading sampling
+            # below starts from a physically valid pose instead of the
+            # all-zero default.
+            mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         mujoco.mj_forward(self.model, self.data)
         if self._fatigue_model is not None:
             self._fatigue_model.reset()
         self._task_state = self.reset_task(self.np_random)
-        self._reset_saber_target_pool()
-        self._apply_tabletennis_grasp_seed()
-        self._snap_free_sabers_to_grasp_sites()
-        self._capture_saber_keyframe_pose_reference()
-        self._publish_target_pool_task_state()
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         obs = self._obs_dict_to_vec(obs_dict)
@@ -909,7 +487,7 @@ class ModularTaskEnv(MyoGymnasiumEnv):
     def step(
         self, action: np.ndarray, **kwargs: Any
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        """Step the environment, optionally applying action noise and pool kinematics.
+        """Step the environment, optionally applying action noise.
 
         Args:
             action: Control action array.
@@ -931,8 +509,6 @@ class ModularTaskEnv(MyoGymnasiumEnv):
         action = np.clip(action, self.action_space.low, self.action_space.high)
         self._task_state["last_action"] = action.astype(np.float32, copy=True)
 
-        self._apply_saber_target_pool_pre_physics()
-        self._apply_saber_mocap_advance_pre_physics()
         if self._fatigue_model is not None:
             action = action.copy()
             action[self._fatigue_mask], _, _ = self._fatigue_model.compute_act(
@@ -945,8 +521,6 @@ class ModularTaskEnv(MyoGymnasiumEnv):
             self.mj_render()
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
-        self._post_step_saber_target_pool()
-        self._publish_target_pool_task_state()
 
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)

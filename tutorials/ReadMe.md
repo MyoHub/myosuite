@@ -50,7 +50,8 @@ conda install conda-forge::ffmpeg
 
 ### Advanced (MuscleMimic / SAR)
 11. **[MuscleMimic Policy Trajectory](./11a_MuscleMimic_Fullbody_Policy_Trajectory.ipynb)**
-12. **[SAR Tutorial](./sar/SAR_tutorial.ipynb)**
+12. **[Directional Locomotion BC + DAgger](./11d_MuscleMimic_Fullbody_directional_locomotion.ipynb)**
+13. **[SAR Tutorial](./sar/SAR_tutorial.ipynb)**
 
 ---
 
@@ -112,6 +113,10 @@ conda install conda-forge::ffmpeg
   ```
 
 - [**MuscleMimic mjlab**](./11c_MuscleMimic_Fullbody_mjlab.ipynb): MuJoCo Warp / Isaac Lab backend for MuscleMimic training.
+- [**Directional Locomotion via BC + DAgger**](./11d_MuscleMimic_Fullbody_directional_locomotion.ipynb):
+  End-to-end tutorial: collect a directional walking dataset from a MuscleMimic teacher, train a BC policy
+  with DAgger refinement, evaluate 8-direction survival, and render a 1v1 ChaseTag scene with dynamic
+  pursuit and zigzag evasion. Requires: `torch`, `mediapy`, `imageio`/`ffmpeg`.
 - [**SAR tutorial**](./sar/SAR_tutorial.ipynb): Train policies with Spatial Action Representations.
 
 ### CLI training scripts (beyond the CPU/SB3 notebook above)
@@ -120,28 +125,7 @@ The notebooks above cover the CPU/Gymnasium path. For mjlab (Warp/RSL-RL) and
 MJX (JAX/Brax) backends, training is driven from the command line:
 
 - [`scripts/train_mjlab.py`](../scripts/train_mjlab.py): RSL-RL PPO on any
-  mjlab-registered task id (e.g. `myoChallengeBoxingP0Mjlab-v0`,
-  `myoChallengeSaberP0-v0`, `myoChallengeTableTennisP0-v0`).
+  mjlab-registered task id (e.g. `myoChallengeTableTennisP0-v0`).
 - [`scripts/train_sar_jax_ppo.py`](../scripts/train_sar_jax_ppo.py): JAX/Brax
   PPO + SAR pipeline for MJX-backed tasks (`myosuite[mjx]` extra; not
   available on macOS).
-- [`tutorials/mc26/`](./mc26/): worked Saber training/eval scripts
-  (`mc26_train_saber_cpu.py`, `mc26_train_saber_mjlab.py`,
-  `mc26_minimal_example_train.py`/`eval.py`) for the `myoChallengeSaberP0-v0`
-  task.
-
-### MyoChallenge boxing (environment naming)
-
-Use these **registered** Gymnasium IDs after importing MyoChallenge (e.g.
-`import myosuite.envs.myo.myochallenge` or `from myosuite import register_all_envs;
-register_all_envs()`):
-
-| ID | Use case |
-| --- | --- |
-| `myoChallengeBoxingMannequin-v0` | Scripted mannequin opponent |
-| `myoChallengeBoxingP0-v0` | Static six-target machine; long episodes; typical choice for MuscleMimic / BC collection |
-| `myoChallengeBoxingVs-v0` | Two MuscleMimic agents (competitive) |
-
-
-See also: [`docs/boxing_bc_usage.md`](../docs/boxing_bc_usage.md) and the Sphinx environment list
-[`docs/source/environments.rst`](../docs/source/environments.rst) (section *MyoChallenge boxing*).
