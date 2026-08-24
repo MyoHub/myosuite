@@ -3,8 +3,6 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
-from pathlib import Path
-
 import click
 import click.testing
 import pytest
@@ -15,17 +13,8 @@ from myosuite.tests.test_envs import TestEnvs
 
 pytestmark = [pytest.mark.tier3, pytest.mark.legacy]
 
-_ARM_REACH_XML = Path("myosuite/envs/myo/assets/arm/myoarm_reach.xml")
-
 
 class TestMyo(TestEnvs):
-    @pytest.mark.skipif(
-        not _ARM_REACH_XML.exists(),
-        reason=(
-            "arm reach asset missing "
-            "(run `uv run myoapi_init` to fetch sim assets before enabling this test)."
-        ),
-    )
     def test_myosuite_envs(self):
         myosuite.register_all_envs()
         self.check_envs("MyoBase Suite", myosuite.myosuite_myobase_suite)

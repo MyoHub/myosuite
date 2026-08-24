@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import warnings
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -177,8 +178,35 @@ def resolve_mimic_bimanual_xml(config: config_dict.ConfigDict) -> str:
     return get_xml_path("bimanual").as_posix()
 
 
+def _translate_finger_token(name: str, pool: frozenset[str]) -> str:
+    """Translate a musclemimic_models finger joint/muscle name to myo_sim's convention.
+
+    myo_sim leaves the right side unmarked (``cmc_flexion``) where
+    musclemimic_models suffixes it (``cmc_flexion_r``), and uses ``_l`` where
+    musclemimic_models uses ``_left`` (``FDS2_l`` vs. ``FDS2_left``).
+
+    Raises:
+        KeyError: If no variant of *name* resolves in *pool*, so a naming
+            drift between myo_sim releases surfaces immediately instead of
+            silently leaving a finger joint/muscle un-disabled.
+    """
+    if name in pool:
+        return name
+    if name.endswith("_r") and name[:-2] in pool:
+        return name[:-2]
+    if name.endswith("_left") and (name[:-5] + "_l") in pool:
+        return name[:-5] + "_l"
+    raise KeyError(
+        f"Could not translate finger token {name!r} to myo_sim's naming convention"
+    )
+
+
 def apply_mimic_bimanual_spec_edits(
-    spec: mujoco.MjSpec, config: config_dict.ConfigDict
+    spec: mujoco.MjSpec,
+    config: config_dict.ConfigDict,
+    body2sites: dict[str, str] | None = None,
+    finger_joint_tokens: tuple[str, ...] | None = None,
+    finger_muscle_tokens: tuple[str, ...] | None = None,
 ) -> None:
     """Apply MuscleMimic bimanual post-load edits (finger strip, mimic sites).
 
@@ -188,30 +216,44 @@ def apply_mimic_bimanual_spec_edits(
     Args:
         spec: Loaded bimanual (or MyoTorso + bimanual) ``MjSpec``.
         config: Same shape as :func:`default_mimic_config`.
+        body2sites: Body name -> mimic site name mapping. Defaults to
+            :data:`BODY2SITES_FOR_MIMIC`; override when *spec* uses a
+            different naming convention (e.g. myo_sim's native composition,
+            which has no ``"thorax"`` body).
+        finger_joint_tokens: Defaults to :data:`FINGER_JOINT_TOKENS`.
+        finger_muscle_tokens: Defaults to :data:`FINGER_MUSCLE_TOKENS`.
     """
+    body2sites = BODY2SITES_FOR_MIMIC if body2sites is None else body2sites
+    finger_joint_tokens = (
+        FINGER_JOINT_TOKENS if finger_joint_tokens is None else finger_joint_tokens
+    )
+    finger_muscle_tokens = (
+        FINGER_MUSCLE_TOKENS if finger_muscle_tokens is None else finger_muscle_tokens
+    )
+
     if config.disable_fingers:
         joints_to_remove = []
         for joint in spec.joints:
-            if any(token in joint.name for token in FINGER_JOINT_TOKENS):
+            if any(token in joint.name for token in finger_joint_tokens):
                 joints_to_remove.append(joint)
         for joint in joints_to_remove:
             spec.delete(joint)
 
         actuators_to_remove = []
         for actuator in spec.actuators:
-            if any(token in actuator.name for token in FINGER_MUSCLE_TOKENS):
+            if any(token in actuator.name for token in finger_muscle_tokens):
                 actuators_to_remove.append(actuator)
         for actuator in actuators_to_remove:
             spec.delete(actuator)
 
         tendons_to_remove = []
         for tendon in spec.tendons:
-            if any(token in tendon.name for token in FINGER_MUSCLE_TOKENS):
+            if any(token in tendon.name for token in finger_muscle_tokens):
                 tendons_to_remove.append(tendon)
         for tendon in tendons_to_remove:
             spec.delete(tendon)
 
-    for body_name, site_name in BODY2SITES_FOR_MIMIC.items():
+    for body_name, site_name in body2sites.items():
         body = spec.body(body_name)
         body.add_site(
             name=site_name,
@@ -223,10 +265,90 @@ def apply_mimic_bimanual_spec_edits(
         )
 
 
+_NATIVE_BIMANUAL_TAG = "myo_sim:myoarms"
+
+# myo_sim's own composed torso has no "thorax" body (that's a synthetic stub
+# musclemimic's bimanual arm package invents to anchor bi-articular
+# pectoralis/lat wrap sites for a standalone arm); the equivalent upper-torso
+# attachment point in myo_sim's real, connected torso is "torso".
+_NATIVE_BODY2SITES_FOR_MIMIC = {
+    ("torso" if body_name == "thorax" else body_name): site_name
+    for body_name, site_name in BODY2SITES_FOR_MIMIC.items()
+}
+
+NATIVE_BIMANUAL_FALLBACK_WARNING = (
+    "musclemimic_models is not installed; using myo_sim's own myoarms "
+    "composition (passive torso scaffold + both arms) with the same mimic "
+    "sites/finger removal/ctrlrange edits applied instead. This is NOT "
+    "bit-exact parity with the external MuscleMimic codebase's model "
+    "(github.com/amathislab/musclemimic) - checkpoints trained against the "
+    "real musclemimic_models MJCF are not guaranteed to transfer. Install "
+    "'musclemimic_models>=1.0.2' or 'myosuite[musclemimic]' for exact parity."
+)
+
+
+def build_native_mimic_bimanual_spec(config: config_dict.ConfigDict) -> mujoco.MjSpec:
+    """Build a myo_sim-native Mimic-compatible bimanual-arms MjSpec.
+
+    Uses myo_sim's own ``myoarms`` composition (passive anatomical torso
+    scaffold + right arm + mirrored-left arm, full anatomy including the
+    bi-articular pectoralis/lat wrap sites that live on the real torso)
+    instead of musclemimic_models' ``myoarm_bimanual_body.xml`` (which
+    invents a synthetic "thorax" stub to provide those same wrap sites for a
+    standalone arm).
+
+    This is NOT bit-exact parity with the external MuscleMimic codebase's
+    model (different muscle/mesh calibration) - checkpoints trained against
+    the real ``musclemimic_models`` MJCF are not guaranteed to transfer.
+
+    Args:
+        config: Same shape as :func:`default_mimic_config`.
+
+    Returns:
+        Edited, uncompiled MjSpec.
+    """
+    import myo_sim
+
+    spec = myo_sim.load_spec("myoarms")
+
+    if config.disable_fingers:
+        model = spec.compile()
+        joint_pool = frozenset(
+            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or ""
+            for i in range(model.njnt)
+        )
+        actuator_pool = frozenset(
+            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
+            for i in range(model.nu)
+        )
+        joint_tokens = tuple(
+            _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
+        )
+        muscle_tokens = tuple(
+            _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
+        )
+    else:
+        joint_tokens = FINGER_JOINT_TOKENS
+        muscle_tokens = FINGER_MUSCLE_TOKENS
+
+    apply_mimic_bimanual_spec_edits(
+        spec,
+        config,
+        body2sites=_NATIVE_BODY2SITES_FOR_MIMIC,
+        finger_joint_tokens=joint_tokens,
+        finger_muscle_tokens=muscle_tokens,
+    )
+    return spec
+
+
 def build_mimic_bimanual_spec(
     config: config_dict.ConfigDict,
 ) -> tuple[mujoco.MjSpec, str]:
     """Build edited :class:`mujoco.MjSpec` for Mimic bimanual (pre-compile).
+
+    Uses the same MJCF as ``musclemimic_models`` when it's installed (or an
+    explicit ``config.model_path``); falls back to a myo_sim-native spec
+    (see :func:`build_native_mimic_bimanual_spec`) when it isn't.
 
     Used by mjlab ``EntityCfg(spec_fn=...)`` and by
     :func:`compile_mimic_bimanual_mjmodel`.
@@ -235,8 +357,17 @@ def build_mimic_bimanual_spec(
         config: Same shape as :func:`default_mimic_config`.
 
     Returns:
-        Tuple of ``MjSpec`` after edits and resolved source XML path string.
+        Tuple of ``MjSpec`` after edits and resolved source XML path string,
+        or ``"myo_sim:myoarms"`` when using the native fallback.
     """
+    mp = getattr(config, "model_path", None)
+    if mp is None:
+        try:
+            import musclemimic_models  # noqa: F401
+        except ImportError:
+            warnings.warn(NATIVE_BIMANUAL_FALLBACK_WARNING, UserWarning, stacklevel=2)
+            return build_native_mimic_bimanual_spec(config), _NATIVE_BIMANUAL_TAG
+
     xml_path = resolve_mimic_bimanual_xml(config)
     spec = _load_spec_with_default_scene(xml_path)
     apply_mimic_bimanual_spec_edits(spec, config)

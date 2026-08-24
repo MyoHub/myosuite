@@ -1,6 +1,12 @@
 # Cross-Backend Contract
 
-**Read this before adding mjlab support to a task that will be evaluated on CPU, MJX, or browser (mjswan).**
+**Read this before adding mjlab support to a task that will be evaluated on CPU, mjlab, or browser (mjswan).**
+
+The two supported backends are **CPU (`MyoGymnasiumEnv`)** and **GPU (mjlab
+`ManagerBasedRlEnvCfg`)**; the invariants below are what keep a policy trained on
+mjlab portable to CPU playback/fine-tune. (An **MJX** backend also exists and the
+same invariants apply to it, but MJX is **experimental and may not be maintained
+long-term** — don't build new work on it.)
 
 A policy is only portable across backends if all five invariants below hold. Violating any produces wrong behaviour at eval time without an obvious error.
 
@@ -70,7 +76,6 @@ Fixed `scale` in `ObservationTermCfg` is exported to JSON and replicated in Type
 | Elbow | ✓ 9D | ✓ 6D sigmoid | ✗ | No TypeScript: `pose_err`, `act`, `qvel×ctrl_dt` |
 | Walk | ✓ 403D | ✓ 80D sigmoid | ✗ | No TypeScript: all 12 custom obs terms |
 | TableTennis | ~ | ~ | ✗ | Closure-based obs not introspectable |
-| Saber | – | – | – | Not implemented |
 
 All passing parity tests live in `myosuite/tests/test_mjlab_task_builder.py`.
 

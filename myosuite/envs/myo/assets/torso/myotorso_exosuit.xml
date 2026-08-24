@@ -56,10 +56,10 @@
     <body name="exo_torso" pos="-0.111 0.0995 1.06" quat="0.707035 0.707179 0 0" childclass="myotorsoexo">
       <freejoint/>
       <geom name="upper_exo_geom" type="mesh" euler="1.57 3.14 1.57" pos="0.01 0.165 0" mesh="upper_exo_geom_1"/>
-      <geom name="Exo_cylinder" size="0.105 0.13" pos="0.025 0.03 0" class="myoBack_wrap"/>
+      <geom name="Exo_cylinder" size="0.105 0.13" pos="0.025 0.03 0" class="myotorso_back_wrap"/>
       <site name="Exo_LeftShoulder" pos="-0.11 0.28 -0.07" size="0.0005" rgba="0 1 0 1"/>
       <site name="Exo_RightShoulder" pos="-0.11 0.28 0.07" size="0.0005" rgba="0 1 0 1"/>
-      <site name="Exo_sidesite" pos="-0.14 0.05 0" class="sidesite"/>
+      <site name="Exo_sidesite" pos="-0.14 0.05 0" class="myotorso_sidesite"/>
     </body>
   </worldbody>
 

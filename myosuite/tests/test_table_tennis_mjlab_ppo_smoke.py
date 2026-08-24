@@ -85,6 +85,14 @@ def _inprocess_table_tennis_ppo_smoke() -> None:
     )
     runner.learn(num_learning_iterations=2, init_at_random_ep_len=True)
     assert runner.alg is not None
+    # log_dir=None disables rsl_rl's TensorBoard writer, which (pre-patch) also
+    # silently disabled rewbuffer/lenbuffer accumulation — making it impossible
+    # to tell a learning run from a stuck one. Surface whatever got logged so a
+    # human/CI re-running this manually can see reward, not just "didn't crash".
+    print(f"episode rewbuffer: {list(runner.logger.rewbuffer)}")
+    print(f"episode lenbuffer: {list(runner.logger.lenbuffer)}")
+    for r in runner.logger.rewbuffer:
+        assert r == r and abs(r) < float("inf")  # noqa: PLR0124 (NaN/inf check)
 
 
 @pytest.mark.skipif(_MJLAB_SKIP, reason=_MJLAB_SKIP_REASON)

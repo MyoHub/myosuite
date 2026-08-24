@@ -144,12 +144,13 @@ def saber_scene_asset_paths() -> dict[str, Path]:
 
 
 def ensure_saber_scene_assets() -> dict[str, Path]:
-    """Ensure the standalone saber scene XML files exist on disk."""
-    paths = saber_scene_asset_paths()
-    missing = [name for name, path in paths.items() if not path.is_file()]
-    if not missing:
-        return paths
+    """Ensure the standalone saber scene XML files exist on disk.
 
+    Assets are always rewritten. Target ``margin``/``gap`` depend on the
+    installed MuJoCo version, so a stale tempfile cache would pin the wrong
+    contact semantics across upgrades.
+    """
+    paths = saber_scene_asset_paths()
     paths["body"].write_text(_build_saber_body_xml_text(), encoding="utf-8")
     paths["left_saber"].write_text(_build_left_saber_xml_text(), encoding="utf-8")
     paths["right_saber"].write_text(_build_right_saber_xml_text(), encoding="utf-8")
@@ -367,13 +368,33 @@ def _build_lightsaber_xml_text(
 """
 
 
+def _saber_target_margin_gap() -> tuple[float, float]:
+    """Return ``(margin, gap)`` for sensor-only saber/target contacts.
+
+    MuJoCo 3.9.0 redefined margin/gap: force threshold is ``margin`` alone and
+    detection uses ``margin + gap``. Pre-3.9 used the old pair ``(0, 1)``;
+    3.9+ uses ``(-1, 1)`` so contacts still appear in ``mjData.contact`` but
+    stay out of the constraint solver (``efc_address == -1``).
+    """
+    parts = mujoco.__version__.split(".")
+    major = int(parts[0]) if parts else 0
+    minor = int(parts[1]) if len(parts) > 1 else 0
+    if (major, minor) >= (3, 9):
+        return -1.0, 1.0
+    return 0.0, 1.0
+
+
 def _build_saber_targets_xml_text() -> str:
+    # margin/gap on saber_target_geom_* detect saber overlap (mjData.contact)
+    # without letting the solver push the saber away. See
+    # :func:`_saber_target_margin_gap` for MuJoCo version gating.
+    margin, gap = _saber_target_margin_gap()
     bodies = []
     for index in range(SABER_TARGET_POOL_SIZE):
         offset_x, offset_y = graveyard_offset_xy(index, SABER_TARGET_POOL_SIZE)
         bodies.append(
             f"""    <body name="saber_target_{index}" pos="{offset_x} {offset_y} {SABER_POOL_GRAVEYARD_Z}" mocap="true">
-      <geom name="saber_target_geom_{index}" type="box" size="{SABER_POOL_SPHERE_RADIUS} {SABER_POOL_SPHERE_RADIUS} {SABER_POOL_SPHERE_RADIUS}" rgba="0.5 0.5 0.5 0.2" mass="0.02" contype="2" conaffinity="1" condim="4" margin="0.0" gap="1.0" material="target_pool_cube"/>
+      <geom name="saber_target_geom_{index}" type="box" size="{SABER_POOL_SPHERE_RADIUS} {SABER_POOL_SPHERE_RADIUS} {SABER_POOL_SPHERE_RADIUS}" rgba="0.5 0.5 0.5 0.2" mass="0.02" contype="2" conaffinity="1" condim="4" margin="{margin}" gap="{gap}" material="target_pool_cube"/>
       <geom name="saber_target_geom_{index}_marker_front" type="box" pos="0 {SABER_POOL_SPHERE_RADIUS + 0.012} 0" size="{_MARKER_HALF_SPAN} 0.008 {_MARKER_HALF_SPAN}" rgba="0 0 0 0" contype="0" conaffinity="0" material="target_pool_face_left"/>
       <geom name="saber_target_geom_{index}_marker_top" type="box" pos="0 0 {SABER_POOL_SPHERE_RADIUS + 0.012}" size="{_MARKER_HALF_SPAN} {_MARKER_HALF_SPAN} 0.008" rgba="0 0 0 0" contype="0" conaffinity="0" material="target_pool_face_left"/>
       <geom name="saber_target_geom_{index}_marker_bottom" type="box" pos="0 0 -{SABER_POOL_SPHERE_RADIUS + 0.012}" size="{_MARKER_HALF_SPAN} {_MARKER_HALF_SPAN} 0.008" rgba="0 0 0 0" contype="0" conaffinity="0" material="target_pool_face_left"/>
