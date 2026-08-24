@@ -76,7 +76,6 @@ Fixed `scale` in `ObservationTermCfg` is exported to JSON and replicated in Type
 | Elbow | ✓ 9D | ✓ 6D sigmoid | ✗ | No TypeScript: `pose_err`, `act`, `qvel×ctrl_dt` |
 | Walk | ✓ 403D | ✓ 80D sigmoid | ✗ | No TypeScript: all 12 custom obs terms |
 | TableTennis | ~ | ~ | ✗ | Closure-based obs not introspectable |
-| Saber | – | – | – | Not implemented |
 
 All passing parity tests live in `myosuite/tests/test_mjlab_task_builder.py`.
 

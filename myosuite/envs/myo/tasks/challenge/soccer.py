@@ -186,11 +186,18 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
         "goalkeeper_pos",
         "time",
     ]
+    # Dense shaping notes:
+    # - ``act_reg`` must stay near -0.1. Weight -100 collapses PPO returns
+    #   (legacy Δ ≈ −thousands) before any goal signal is learnable.
+    # - ``time_cost`` is a per-step constant (value 1.0), not cumulative
+    #   ``obs_dict["time"]``, so the penalty does not grow unboundedly.
+    # - ``alive`` keeps upright rollouts competitive with early falls.
     DEFAULT_RWD_KEYS_AND_WEIGHTS: dict[str, float] = {
         "goal_scored": 1000,
         "time_cost": -0.01,
-        "act_reg": -100,
+        "act_reg": -0.1,
         "pain": -10,
+        "alive": 0.5,
     }
 
     GOAL_X_POS = GoalKeeper.FIXED_X_POS
@@ -477,9 +484,10 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
         rwd_dict = collections.OrderedDict(
             (
                 ("goal_scored", float(goal_scored)),
-                ("time_cost", float(np.atleast_1d(obs_dict["time"])[0])),
+                ("time_cost", 1.0),
                 ("act_reg", act_mag),
                 ("pain", pain),
+                ("alive", 0.0 if done else 1.0),
                 ("sparse", float(done)),
                 ("solved", float(goal_scored)),
                 ("done", done),

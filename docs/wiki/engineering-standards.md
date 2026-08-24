@@ -154,7 +154,7 @@ domain):
 | `base_event.py` | Reset / event functions |
 | `base_termination.py` | Termination terms |
 | `mimic_obs.py`, `mimic_reward.py` | MuscleMimic-specific terms |
-| `multiplayer/` | Multi-agent (boxing, chase-tag) terms |
+| `multiplayer/` | Multi-agent (chase-tag) terms |
 
 `ObsSpec.keys` entry `"foo"` resolves to `foo_obs`; `RewardSpec.terms` entry
 `"foo"` resolves to `foo_reward` (the `TaskConfig` route). A hand-written

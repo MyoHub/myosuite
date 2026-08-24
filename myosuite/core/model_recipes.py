@@ -53,9 +53,11 @@ Arm recipes
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import mujoco
+import numpy as np
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe, model_recipe
 
@@ -1124,6 +1126,41 @@ _TABLETENNIS_ROOT_QUAT = [
     -0.712515274649122,
 ]
 
+# Legacy ``myoarm_tabletennis.xml`` wraps the chain in
+# ``<body name="full_body" pos="1.6 0 0.95" euler="0 0 3.14">``.
+_TABLETENNIS_LEGACY_ROOT_YAW = 3.14
+
+
+def _tabletennis_pelvis_slide_axis(legacy_axis: list[float]) -> list[float]:
+    """Re-express a legacy pelvis slide axis in the calibrated root frame.
+
+    ``pelvis_x``/``pelvis_y`` are declared on the root body, so their axes are
+    read in that body's frame. :data:`_TABLETENNIS_ROOT_QUAT` yaws the composed
+    root ~-91 deg where legacy yaws it 180 deg, so the legacy axis literals
+    would drive the actor sideways instead of toward the table.
+
+    Args:
+        legacy_axis: Axis as written in ``myoarm_tabletennis.xml``, i.e. in the
+            legacy ``full_body`` frame.
+
+    Returns:
+        The same world direction expressed in the calibrated root frame, so
+        keyframe qpos and actuator ranges transfer verbatim.
+    """
+    legacy_quat = np.empty(4)
+    mujoco.mju_axisAngle2Quat(
+        legacy_quat, np.array([0.0, 0.0, 1.0]), _TABLETENNIS_LEGACY_ROOT_YAW
+    )
+    world = np.empty(3)
+    mujoco.mju_rotVecQuat(world, np.asarray(legacy_axis, dtype=np.float64), legacy_quat)
+    root_inverse = np.empty(4)
+    mujoco.mju_negQuat(
+        root_inverse, np.asarray(_TABLETENNIS_ROOT_QUAT, dtype=np.float64)
+    )
+    axis = np.empty(3)
+    mujoco.mju_rotVecQuat(axis, world, root_inverse)
+    return axis.tolist()
+
 
 def _calibrate_tabletennis_root(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     """Reposition the composed ``Full Body`` root to the legacy world frame."""
@@ -1140,6 +1177,8 @@ def _add_tabletennis_pelvis_actuators(spec: mujoco.MjSpec) -> mujoco.MjSpec:
 
     Not from myo_sim — copied exactly (damping/armature/kp/ranges) from the
     legacy ``myotorso_arm_chain_host.xml``'s ``pelvis_move`` default class.
+    Axes go through :func:`_tabletennis_pelvis_slide_axis` because the
+    calibrated root frame differs from legacy's.
     """
     from myo_sim.build.compose import find_body  # type: ignore[import-untyped]
 
@@ -1147,7 +1186,7 @@ def _add_tabletennis_pelvis_actuators(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     full_body.add_joint(
         name="pelvis_x",
         type=mujoco.mjtJoint.mjJNT_SLIDE,
-        axis=[1, 0, 0],
+        axis=_tabletennis_pelvis_slide_axis([1.0, 0.0, 0.0]),
         limited=True,
         range=[-1, -0.05],
         damping=1000,
@@ -1156,7 +1195,7 @@ def _add_tabletennis_pelvis_actuators(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     full_body.add_joint(
         name="pelvis_y",
         type=mujoco.mjtJoint.mjJNT_SLIDE,
-        axis=[0, 1, 0],
+        axis=_tabletennis_pelvis_slide_axis([0.0, 1.0, 0.0]),
         limited=True,
         range=[-1, 1],
         damping=1000,
@@ -1202,6 +1241,49 @@ def _add_tabletennis_contacts(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     return spec
 
 
+def _match_tabletennis_compiler(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+    """Apply legacy ``myoarm_tabletennis.xml``'s compiler and visual globals.
+
+    Without ``boundinertia`` the ping-pong ball keeps its authored 7.2e-7
+    rotational inertia instead of the 1e-4 floor the legacy model runs with,
+    which changes how much spin a paddle hit imparts. The offscreen buffer
+    matches legacy's ``<global offwidth="1280" offheight="1080"/>``.
+    """
+    spec.compiler.boundmass = 0.001
+    spec.compiler.boundinertia = 0.0001
+    spec.compiler.balanceinertia = True
+    spec.visual.global_.offwidth = 1280
+    spec.visual.global_.offheight = 1080
+    return spec
+
+
+def _spec_euler_rad(spec: mujoco.MjSpec, *radians: float) -> list[float]:
+    """Return Euler angles in the spec's ``compiler.degree`` unit.
+
+    Legacy ``myoarm_tabletennis.xml`` uses ``angle="radian"`` (e.g.
+    ``euler="1.57 0 0"``). myo_sim composed specs compile in degrees, so
+    passing those radian literals through ``add_geom(euler=...)`` rotates
+    the table by ~1.57° instead of 90° and stands the visual mesh on edge.
+    """
+    if spec.compiler.degree:
+        return [math.degrees(angle) for angle in radians]
+    return list(radians)
+
+
+# Legacy ``myoarm_tabletennis.xml``'s ``class="collision"`` default. ``mass=0``
+# is load-bearing: without it MuJoCo derives mass from the geom density, which
+# put the ping-pong ball at 5 kg and the paddle at 1.5 kg.
+_TABLETENNIS_COLLISION_GEOM: dict[str, object] = {
+    "group": 4,
+    "condim": 3,
+    "contype": 1,
+    "conaffinity": 1,
+    "solref": [0.002, 1.0],
+    "solimp": [0.95, 0.95, 0.01, 0.5, 2.0],
+    "mass": 0.0,
+}
+
+
 def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     """Add table/net/paddle/ball furniture, cameras, lights, and sensors.
 
@@ -1226,8 +1308,13 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     # myo_sim's composed spec names its ground-plane geom "floor" and the
     # right-hand grasp site "S_grasp_r"; TableTennisEnv looks them up as
     # "ground"/"S_grasp" (legacy XML, unsided-right-arm convention).
-    spec.geom("floor").name = "ground"
+    ground = spec.geom("floor")
+    ground.name = "ground"
     spec.site("S_grasp_r").name = "S_grasp"
+    # myo_sim's scene sinks its plane 0.4 m; legacy uses myosuite_quad.xml's
+    # plane at z=0, which both the table and the actor's feet rest on.
+    ground.pos = [0.0, 0.0, 0.0]
+    ground.size = [6.0, 6.0, 0.1]
 
     wb.add_camera(
         name="default",
@@ -1263,7 +1350,10 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     tt_mat = spec.add_material(name="tabletennis_mat", specular=0.2, shininess=0.4)
     tt_mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "tabletennis_tex"
 
-    spec.add_mesh(name="paddle_mesh", file=_rel(_ASSETS / "paddle.obj"))
+    paddle_mesh = spec.add_mesh(name="paddle_mesh", file=_rel(_ASSETS / "paddle.obj"))
+    # Exact mesh inertia re-frames the geom onto principal axes and stands
+    # paddle.obj (long in Z) as a stop-sign. Legacy keeps authored axes.
+    paddle_mesh.inertia = mujoco.mjtMeshInertia.mjMESH_INERTIA_LEGACY
     spec.add_texture(
         name="paddle_tex",
         type=mujoco.mjtTexture.mjTEXTURE_2D,
@@ -1279,9 +1369,7 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
         size=[0.685, 0.76, 0.795],
         pos=[0.685, 0.04, 0],
         rgba=[0, 0, 0, 0],
-        condim=3,
-        contype=1,
-        conaffinity=1,
+        **_TABLETENNIS_COLLISION_GEOM,
     )
     table.add_geom(
         name="coll_opponent_half",
@@ -1289,9 +1377,7 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
         size=[0.685, 0.76, 0.796],
         pos=[-0.685, 0.04, 0],
         rgba=[0, 0, 0, 0],
-        condim=3,
-        contype=1,
-        conaffinity=1,
+        **_TABLETENNIS_COLLISION_GEOM,
     )
     table.add_geom(
         name="coll_net",
@@ -1299,9 +1385,7 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
         size=[0.005, 0.9125, 0.1525],
         pos=[0, 0.04, 0.795],
         rgba=[0, 0, 0, 0],
-        condim=3,
-        contype=1,
-        conaffinity=1,
+        **_TABLETENNIS_COLLISION_GEOM,
     )
     table.add_geom(
         name="mesh_tabletennis_table",
@@ -1310,7 +1394,7 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
         material="tabletennis_mat",
         rgba=[1, 1, 1, 1],
         pos=[0, 0, 0],
-        euler=[1.57, 0, 0],
+        euler=_spec_euler_rad(spec, 1.57, 0.0, 0.0),
         contype=0,
         conaffinity=0,
     )
@@ -1321,14 +1405,23 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
         material="tabletennis_mat",
         rgba=[1, 1, 1, 1],
         pos=[0, 0, 0],
-        euler=[1.57, 0, 0],
+        euler=_spec_euler_rad(spec, 1.57, 0.0, 0.0),
         contype=0,
         conaffinity=0,
     )
 
-    paddle = wb.add_body(name="paddle", pos=[1.8, 0.5, 1.13], euler=[-0.3, 1.57, 0])
+    paddle = wb.add_body(
+        name="paddle",
+        pos=[1.8, 0.5, 1.13],
+        euler=_spec_euler_rad(spec, -0.3, 1.57, 0.0),
+    )
     paddle.mass = 0.15
     paddle.inertia = [0.001, 0.001, 0.001]
+    # An unset ipos/iquat under explicitinertial resolves to the body's own
+    # pos/quat, not the frame origin.
+    paddle.ipos = [0.0, 0.0, 0.0]
+    paddle.iquat = [1.0, 0.0, 0.0, 0.0]
+    paddle.explicitinertial = True
     paddle.add_freejoint(name="paddle_freejoint")
     paddle.add_geom(
         name="paddle",
@@ -1338,6 +1431,8 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
         rgba=[1, 1, 1, 1],
         pos=[0, 0, 0],
         euler=[0, 0, 0],
+        contype=0,
+        conaffinity=0,
     )
     paddle.add_site(name="paddle", pos=[-0.06, 0.0, 0], group=4)
     paddle.add_geom(
@@ -1345,24 +1440,23 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
         type=mujoco.mjtGeom.mjGEOM_CYLINDER,
         size=[0.093, 0.020, 0],
         pos=[-0.07, 0, 0],
-        condim=3,
-        contype=1,
-        conaffinity=1,
+        **_TABLETENNIS_COLLISION_GEOM,
     )
     paddle.add_geom(
         name="handle",
         type=mujoco.mjtGeom.mjGEOM_CYLINDER,
-        euler=[0, 1.57, 0],
+        euler=_spec_euler_rad(spec, 0.0, 1.57, 0.0),
         size=[0.016, 0.051, 0],
         pos=[0.04, 0, 0],
-        condim=3,
-        contype=1,
-        conaffinity=1,
+        **_TABLETENNIS_COLLISION_GEOM,
     )
 
     pingpong = wb.add_body(name="pingpong", pos=[0.95, 0.0, 1.252])
     pingpong.mass = 2.7e-3
     pingpong.inertia = [0.00000072, 0.00000072, 0.00000072]
+    pingpong.ipos = [0.0, 0.0, 0.0]
+    pingpong.iquat = [1.0, 0.0, 0.0, 0.0]
+    pingpong.explicitinertial = True
     pingpong.add_freejoint(name="pingpong_freejoint")
     pingpong.add_site(name="pingpong", pos=[0, 0, 0], group=3)
     pingpong.add_geom(
@@ -1371,15 +1465,15 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
         size=[0.02, 0, 0],
         typeinertia=mujoco.mjtGeomInertia.mjINERTIA_SHELL,
         fluid_coefs=[0.235, 0.25, 0.0, 1.0, 1.0],
-        group=1,
         rgba=[0.98, 0.70, 0.015, 1],
         priority=2,
-        solimp=[0.9, 0.95, 0.001, 0.5, 2],
-        solref=[-80000, -1],
         fluid_ellipsoid=1,
-        condim=3,
-        contype=1,
-        conaffinity=1,
+        **{
+            **_TABLETENNIS_COLLISION_GEOM,
+            "group": 1,
+            "solimp": [0.9, 0.95, 0.001, 0.5, 2],
+            "solref": [-80000, -1],
+        },
     )
 
     spec.add_sensor(
@@ -1405,6 +1499,8 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
 # for the episode's initial pose, so this keyframe is load-bearing, not
 # cosmetic (unlike the legacy XML's "dribble" keyframe, which nothing reads
 # and is intentionally not reproduced here).
+# The paddle freejoint (qpos 58:65) is the legacy world spawn verbatim; the
+# legacy arm pose already reaches it, so the handle lands in ``S_grasp``.
 _TABLETENNIS_DEFAULT_KEY_QPOS = [
     -0.4205,
     0,
@@ -1508,6 +1604,7 @@ def _tabletennis_body_spec() -> mujoco.MjSpec:
     _calibrate_tabletennis_root(spec)
     _add_tabletennis_contacts(spec)
     _add_tabletennis_pelvis_actuators(spec)
+    _match_tabletennis_compiler(spec)
     return spec
 
 
