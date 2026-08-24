@@ -213,7 +213,7 @@ def get_activations(
                     obs, r, done, *_ = step_out
                     terminated = bool(done)
                     truncated = False
-                acts.append(env.mj_data.act.copy())
+                acts.append(env.unwrapped.data.act.copy())
                 rewards += r
             if rewards > reward_threshold:
                 solved_acts.extend(acts)

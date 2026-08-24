@@ -3,7 +3,7 @@
 Read the relevant wiki pages in `docs/wiki/` before making substantial changes.
 
 ---
-
+add minimal comments and descriptions in the code / python files
 ## Non-Negotiables
 
 ### The Golden Rule
@@ -35,6 +35,7 @@ Read the relevant wiki pages in `docs/wiki/` before making substantial changes.
 ### Code Quality
 
 - **Search before writing.** `grep` the repo first. If a similar implementation exists (≥ 80%), extend or import it.
+- **Don't duplicate across task variants.** When writing multiple variants of the same task (e.g. different host models, difficulty tiers, or agent counts), factor shared model-builder/config logic into one parameterized function or base class before duplicating a file — don't write near-identical sibling files side by side in the same change. (Flagged in PR #101 review: `chase_tag_vs_fullbody_model.py` / `chase_tag_vs_model.py` duplicated their model builders and `ModelMeta` classes wholesale instead of parameterizing one implementation.)
 - **Use the library.** Check `docs/wiki/library-usage.md` before writing any helper.
 - No commented-out dead code, unused imports, or silent `except: pass`.
 - Type hints on all signatures. Google-style docstrings on all public APIs.

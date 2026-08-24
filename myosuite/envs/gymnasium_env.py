@@ -458,7 +458,9 @@ class MyoGymnasiumEnv(gym.Env):
         if not hasattr(self, "_mujoco_renderer") or self._mujoco_renderer is None:
             from gymnasium.envs.mujoco.mujoco_rendering import MujocoRenderer
 
-            self._mujoco_renderer = MujocoRenderer(self.model, self.data)
+            self._mujoco_renderer = MujocoRenderer(
+                self.model, self.data, width=640, height=480
+            )
         return self._mujoco_renderer.render(self.render_mode)
 
     def close(self) -> None:

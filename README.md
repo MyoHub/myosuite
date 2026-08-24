@@ -163,7 +163,7 @@ model.learn(total_timesteps=100_000)
 | **Elbow** | `myoElbowPose1D6MRandom-v0`, `myoElbowPoseSarcopenia*`, `myoElbowPoseFatigue*` |
 | **Finger** | `myoFingerPoseFixed-v0`, `myoFingerPoseRandom-v0`, `myoFingerReachRandom-v0` |
 | **Hand** | `myoHandPoseRandom-v0`, `myoChallengeBaodingP2-v1` |
-| **Leg / Gait** | `myoLegWalk-v0`, `myoChallengeRunTrackP2-v0` |
+| **Leg / Gait** | `myoLegWalk-v0`, `myoLegDirectionalForward-v0`, `myoChallengeRunTrackP2-v0` |
 | **Full arm** | `myoShoulder*`, `myoRelocateEnvDemoV0` |
 
 Run `python -m myosuite.tests.test_myo` for the full list, or see the [task specifications](https://github.com/myohub/myosuite/blob/main/docs/source/suite.rst#tasks).
@@ -181,6 +181,7 @@ Run `python -m myosuite.tests.test_myo` for the full list, or see the [task spec
 | Hand pose | stable | beta (`MjxHandPoseRandom-v0`) | beta (`myoHandPoseRandom-v0`) |
 | Hand reach | stable | stable (`MjxHandReach*-v0`) | stable (`myoHandReachRandom-v0`) |
 | Leg walk / gait | stable | beta (`MjxLegWalk-v0`) | beta (`myoLegWalk-v0`, `myoSarcLegWalk-v0`) ‡ |
+| Leg directional locomotion | stable | – | beta (`myoLegDirectional{Forward,Backward}-v0`) ‡‡ |
 | Mimic bimanual | stable | beta (`MjxMimicBimanual-v0`) | beta (`myoMimicBimanual-v0`) ‡ |
 | Mimic full-body | beta | beta (`MjxMimicFullbody-v0`) | beta (`myoMimicFullbody-v0`) ‡ |
 | MyoChallenge Baoding | stable | wip | beta (`myoChallengeBaodingP2-v1`) |
@@ -192,6 +193,9 @@ Run `python -m myosuite.tests.test_myo` for the full list, or see the [task spec
 | MyoChallenge RunTrack | stable | wip | – (planned; OSL controller required) |
 | MyoChallenge ChaseTag | stable | wip | – (planned) |
 | Shoulder / full-arm | stable | – | – |
+
+> **‡‡ Directional locomotion (GPU-trainable):** `myoLegDirectional{Forward,Backward}-v0` exist on **both** CPU (`ModularTaskEnv`, for playback / fine-tune / chase-tag warm-start) and **GPU mjlab** (rsl_rl PPO training) under the same `env_id`. Full CPU/GPU parity is verified — identical 153-d observation, 80-muscle action, reward, and reset pose (built from the model's `qpos0`, `max|Δ|=0` vs the CPU reset). GPU training converges on Modal L4 (mean reward 0.06 → 1.6, episode length 28 → 180 over ~470 rsl_rl iterations at ~29k env-steps/s). Walk it through with [`tutorials/directional_leg_gpu_training.py`](tutorials/directional_leg_gpu_training.py).
+
 ---
 
 ## Tutorials

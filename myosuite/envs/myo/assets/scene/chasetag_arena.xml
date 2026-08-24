@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Chase-tag arena: 6 m × 6 m square fence with 4 panels and 4 corners.
+     Meshes use inline vertex data (no external file dependency).
+     No floor or lighting — those are added by build_combined_spec(). -->
+<mujoco model="chasetag_arena">
+
+  <asset>
+    <!-- Triangular fence panel: 12 m wide, 0.5 m tall -->
+    <mesh name="pyramid"
+          vertex="0 6 0  0 -6 0  0.5 6 0  0.5 -6 0  0.5 6 0.5  0.5 -6 0.5"/>
+    <!-- Square corner post: 0.5 m × 0.5 m × 0.5 m -->
+    <mesh name="corner"
+          vertex="0 0 0  0 -0.5 0  0.5 -0.5 0  0.5 0 0  0.5 0 0.5  0.5 -0.5 0.5 0 -0.5 0.5"/>
+    <material name="fence" rgba="0.27 0.25 0.25 1"/>
+  </asset>
+
+  <worldbody>
+    <!-- Fence panels at ±6 m on each axis -->
+    <geom name="fence1" type="mesh" mesh="pyramid" material="fence"
+          pos="-6.0 0 0" euler="0 0 3.14159265"/>
+    <geom name="fence2" type="mesh" mesh="pyramid" material="fence"
+          pos="6.0 0 0"  euler="0 0 0"/>
+    <geom name="fence3" type="mesh" mesh="pyramid" material="fence"
+          pos="0 6.0 0"  euler="0 0 1.5707963"/>
+    <geom name="fence4" type="mesh" mesh="pyramid" material="fence"
+          pos="0 -6.0 0" euler="0 0 -1.5707963"/>
+    <!-- Corner posts -->
+    <geom name="corner1" type="mesh" mesh="corner" material="fence"
+          pos="-6.0 -6.0 0" euler="0 0 -1.5707963"/>
+    <geom name="corner2" type="mesh" mesh="corner" material="fence"
+          pos="6.0 -6.0 0"  euler="0 0 0"/>
+    <geom name="corner3" type="mesh" mesh="corner" material="fence"
+          pos="6.0 6.0 0"   euler="0 0 1.5707963"/>
+    <geom name="corner4" type="mesh" mesh="corner" material="fence"
+          pos="-6.0 6.0 0"  euler="0 0 3.14159265"/>
+  </worldbody>
+
+</mujoco>

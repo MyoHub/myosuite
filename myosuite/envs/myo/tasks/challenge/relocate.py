@@ -356,7 +356,11 @@ class RelocateEnv(MyoGymnasiumEnv, EzPickle):
             self.data.qpos[:] = self._init_qpos
         self.data.qvel[:] = self._init_qvel
         mujoco.mj_forward(self.model, self.data)
-        while self.data.ncon > 0:
+        # P2eval object/geom randomization can leave residual contacts. Cap
+        # rejection sampling so reset cannot spin forever (SB3 hang).
+        for _ in range(200):
+            if int(self.data.ncon) == 0:
+                break
             self._task_state = self.reset_task(self.np_random)
             if self.qpos_noise_range is not None:
                 nq = len(self._init_qpos)

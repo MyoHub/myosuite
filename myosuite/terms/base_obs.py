@@ -462,3 +462,38 @@ def health_status_obs(accessor: EnvAccessor, **kwargs: Any) -> Any:
     if value.ndim == 1:
         return value.reshape(-1, 1)
     return value
+
+
+def root_planar_vel_obs(accessor: EnvAccessor, **kwargs: Any) -> Any:
+    """Return the root free-joint's planar (x, y) linear velocity.
+
+    Assumes the model's first joint is a ``freejoint`` so ``joint_vel()[:2]``
+    is the world-frame horizontal velocity of the root body (pelvis).
+
+    Args:
+        accessor: Environment state accessor.
+        **kwargs: Unused; for uniform call signature.
+
+    Returns:
+        Length-2 array ``[vx, vy]``.
+    """
+    return accessor.joint_vel()[:2]
+
+
+def heading_cmd_obs(
+    accessor: EnvAccessor,
+    heading_dir: tuple[float, float] = (0.0, 1.0),
+    **kwargs: Any,
+) -> Any:
+    """Return the commanded planar heading direction as an observation.
+
+    Args:
+        accessor: Environment state accessor.
+        heading_dir: Commanded unit direction ``(dx, dy)``.
+        **kwargs: Unused; for uniform call signature.
+
+    Returns:
+        Length-2 array equal to ``heading_dir``.
+    """
+    xp = accessor.array_module()
+    return xp.asarray(heading_dir, dtype=xp.float32)

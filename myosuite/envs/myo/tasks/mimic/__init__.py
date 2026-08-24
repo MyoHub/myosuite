@@ -18,6 +18,9 @@ import myosuite.core.registry as _registry
 
 _BIMANUAL_ENTRY = "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicBimanualEnv"
 _FULLBODY_ENTRY = "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyEnv"
+_FULLBODY_DIRECTIONAL_ENTRY = (
+    "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyDirectionalEnv"
+)
 
 _registry.register_env(
     env_id="myoMimicBimanual-v0",
@@ -44,5 +47,12 @@ _registry.register_env(
     env_id="myoMuscleMimicFullbody-v0",
     entry_point=_FULLBODY_ENTRY,
     max_episode_steps=1000,
+    kwargs={"frame_skip": 5},
+)
+
+_registry.register_env(
+    env_id="myoFullBodyDirectional-v0",
+    entry_point=_FULLBODY_DIRECTIONAL_ENTRY,
+    max_episode_steps=500,
     kwargs={"frame_skip": 5},
 )

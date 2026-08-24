@@ -539,6 +539,61 @@ def test_challenge_tabletennis_recipe_body_and_mesh_count():
     assert model.nmesh == model_arm.nmesh + 3
 
 
+def _mesh_world_aabb(model, data, geom_name: str):
+    """World-frame AABB of a mesh geom's vertices."""
+    import mujoco
+
+    gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, geom_name)
+    mid = int(model.geom_dataid[gid])
+    adr = int(model.mesh_vertadr[mid])
+    nvert = int(model.mesh_vertnum[mid])
+    verts = model.mesh_vert[adr : adr + nvert]
+    rot = data.geom_xmat[gid].reshape(3, 3)
+    world = verts @ rot.T + data.geom_xpos[gid]
+    return world.min(axis=0), world.max(axis=0)
+
+
+@_SKIP_SIMHIVE
+@_SKIP_ASSETS
+def test_challenge_tabletennis_table_is_horizontal():
+    """Visual table/net sit in the collision table's XY plane, not on edge.
+
+    ``challenge_tabletennis`` copies radian ``euler="1.57 0 0"`` from the
+    legacy XML, but myo_sim composed specs compile in degrees. Passing the
+    radian literals through unchanged stands the table visual on its side.
+    """
+    import mujoco
+    import myosuite.core.model_recipes  # noqa: F401
+    from myosuite.core.model_builder import build_from_recipe
+
+    try:
+        model, _ = build_from_recipe("challenge_tabletennis")
+    except FileNotFoundError:
+        pytest.skip("arm fragment not found; myo_sim not installed")
+
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+
+    tmin, tmax = _mesh_world_aabb(model, data, "mesh_tabletennis_table")
+    # Full table ~2.74 m long (X) × 1.52 m wide (Y) × 0.80 m high (Z).
+    assert tmax[0] - tmin[0] > 2.5
+    assert tmax[1] - tmin[1] > 1.4
+    assert tmax[2] - tmin[2] < 1.0
+    assert tmin[2] == pytest.approx(0.0, abs=0.05)
+    assert tmax[2] == pytest.approx(0.795, abs=0.05)
+
+    nmin, nmax = _mesh_world_aabb(model, data, "mesh_tabletennis_net")
+    # Net spans table width (Y) and sits on the table top (Z ≈ 0.73–0.95).
+    assert nmax[1] - nmin[1] > 1.5
+    assert nmax[0] - nmin[0] < 0.1
+    assert nmin[2] > 0.7
+    assert nmax[2] < 1.05
+
+    bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "paddle")
+    # euler="-0.3 1.57 0" rad, not ~1.57°.
+    assert model.body_quat[bid, 0] == pytest.approx(0.6994, abs=0.02)
+
+
 @_SKIP_SIMHIVE
 def test_challenge_relocate_recipe_object_mass():
     """challenge_relocate recipe: object has the correct 100 g mass."""
