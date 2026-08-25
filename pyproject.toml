@@ -35,7 +35,7 @@ dependencies = [
     "packaging",
     "ml-collections>=0.1.1",
     # TEMPORARY: pinned to myo_sim PR #132 (leg+torso twist fix) pending merge.
-    "myo-sim @ git+https://github.com/MyoHub/myo_sim.git@fix/leg-torso-frame-twist",
+    "myo-sim @ git+https://github.com/MyoHub/myo_sim.git@dev",
     "furniture-sim @ git+https://github.com/MyoHub/furniture_sim.git@v0.2.0",
     "mpl-sim @ git+https://github.com/MyoHub/MPL_sim.git@v0.2.1",
     "object-sim @ git+https://github.com/MyoHub/object_sim.git@v0.1.1",
