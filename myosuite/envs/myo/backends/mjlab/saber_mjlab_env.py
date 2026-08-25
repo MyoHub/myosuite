@@ -17,11 +17,6 @@ from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (
 from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
     _resolve_mimic_mjlab_ids,
 )
-from myosuite.envs.modular_env import (
-    _LEFT_SABER_GRASP_OFFSET,
-    _RIGHT_SABER_GRASP_OFFSET,
-    _TABLETENNIS_GRASP_SEED,
-)
 from myosuite.envs.myo.tasks.challenge.saber.saber_target_pool import (
     SABER_POOL_HEALTH_BAD_CUT_DELTA,
     SABER_POOL_HEALTH_HIT_DELTA,
@@ -52,6 +47,40 @@ _SABER_ENTITY_NAME = "saber_p0_robot"
 _LEFT_SABER_ENTITY_NAME = "left_saber"
 _RIGHT_SABER_ENTITY_NAME = "right_saber"
 _TARGET_ENTITY_PREFIX = "saber_target_entity_"
+
+_LEFT_SABER_GRASP_OFFSET = np.array(
+    [-0.0244778, 0.03560197, -0.02699442], dtype=np.float64
+)
+_RIGHT_SABER_GRASP_OFFSET = np.array(
+    [-0.03221418, 0.02980037, 0.03681982], dtype=np.float64
+)
+
+# Right-hand table-tennis grasp prior; left uses same stems with ``_l``.
+_TABLETENNIS_GRASP_SEED: dict[str, float] = {
+    "elbow_flex": 0.805495,
+    "pro_sup": -0.10284,
+    "deviation": -0.08288,
+    "flexion": -0.730422,
+    "cmc_abduction": 0.0632,
+    "cmc_flexion": 0.7,
+    "mp_flexion": 0.07503,
+    "ip_flexion": -0.296726,
+    "mcp2_flexion": 0.72266,
+    "mcp2_abduction": -0.136136,
+    "pm2_flexion": 0.26707,
+    "md2_flexion": 0.353475,
+    "mcp3_flexion": 0.65982,
+    "mcp3_abduction": -0.151844,
+    "pm3_flexion": 0.42417,
+    "md3_flexion": 0.51843,
+    "mcp4_flexion": 0.919035,
+    "mcp4_abduction": -0.20944,
+    "pm4_flexion": 0.259215,
+    "md4_flexion": 0.510575,
+    "mcp5_flexion": 0.793355,
+    "mcp5_abduction": -0.204204,
+    "pm5_flexion": 0.227795,
+}
 
 
 def _get_saber_entity(env: Any) -> Entity:
