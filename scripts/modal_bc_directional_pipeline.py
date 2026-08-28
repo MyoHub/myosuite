@@ -52,6 +52,16 @@ _IGNORE = [
     ".pytest_cache/**",
     "**/.myosuite_resolved_*.xml",
     "myosuite/../worktree-*",
+    # A concurrent local SB3 elbow-fatigue training run keeps writing new
+    # checkpoint .zip files under this path, which trips Modal's "modified
+    # during build" snapshot-consistency check on every upload retry.
+    "tutorials/**/iterations/**",
+    "**/*.zip",
+    # Other concurrent local sessions in this repo checkout keep touching
+    # various tutorial notebooks (each retry above hit a different one),
+    # tripping Modal's "modified during build" snapshot-consistency check.
+    # This job needs no notebooks at all -- exclude all of them.
+    "tutorials/*.ipynb",
 ]
 
 IMAGE = (
