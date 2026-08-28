@@ -85,7 +85,12 @@ def add_text_to_frame(frame, text, pos=(20, 20), color=(255, 0, 0), fontsize=12)
         frame = PIL.Image.fromarray(frame)
 
     draw = PIL.ImageDraw.Draw(frame)
-    font = PIL.ImageFont.truetype("arial.ttf", fontsize)
+    try:
+        font = PIL.ImageFont.truetype("arial.ttf", fontsize)
+    except OSError:
+        # "arial.ttf" isn't resolvable as a system font on Linux/macOS --
+        # fall back to PIL's bundled default (no external font dependency).
+        font = PIL.ImageFont.load_default(size=fontsize)
     draw.text(pos, text, fill=color, font=font)
     return frame
 
