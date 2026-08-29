@@ -52,7 +52,12 @@ class ChaseTagVsConfig:
     ko_health_threshold: float = 1.0
 
     # --- Fall detection ---
-    fall_pelvis_z_threshold: float = 0.7
+    # Matches single-agent directional env; also matches
+    # ChaseTagVsTaskConfig's default (chase_tag_vs_task_config.py), which is
+    # what actually reaches the runtime -- _low_level_config() always builds
+    # this dataclass from the task config's own field values, so this default
+    # is never live, but must stay in sync to avoid misleading readers.
+    fall_pelvis_z_threshold: float = 0.6
 
     # --- Reward weights ---
     r_win_bonus: float = 1.0  # one-shot bonus on win (tag or survive)
