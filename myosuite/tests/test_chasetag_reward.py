@@ -73,7 +73,7 @@ def test_chasetag_evade_flips_distance_potential() -> None:
         )
         unwrapped._prev_distance = abs1 + 0.25  # curr closer than prev → raw Δ=-0.25
         r = unwrapped.get_reward_dict(obs_dict)
-        # Negated Δ is +0.25; weight -0.1 punishes closing in during EVADE.
+        # Negated Δ is +0.25; weight -0.5 punishes closing in during EVADE.
         assert float(r["distance"]) == pytest.approx(0.25, abs=1e-6)
     finally:
         env.close()
