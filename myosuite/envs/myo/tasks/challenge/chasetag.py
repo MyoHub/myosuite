@@ -117,12 +117,12 @@ class ChallengeOpponent:
             self.opponent_policy = "static_stationary"
         elif rand_num < self.opponent_probabilities[0] + self.opponent_probabilities[1]:
             self.opponent_policy = "stationary"
-        elif (
-            rand_num
-            < self.opponent_probabilities[0]
-            + self.opponent_probabilities[1]
-            + self.opponent_probabilities[2]
-        ):
+        else:
+            # Catches both the intended "random" bucket and any rand_num
+            # that falls past sum(opponent_probabilities) (e.g. probs not
+            # summing to 1.0) -- without this, self.opponent_policy would
+            # silently keep the previous episode's value instead of being
+            # reassigned every reset.
             self.opponent_policy = "random"
 
     def update_opponent_state(self) -> None:
@@ -1003,3 +1003,8 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         ), f"Expected {expected_n} probabilities, got {len(self.opponent.opponent_probabilities)}"
         for p in self.opponent.opponent_probabilities:
             assert 0 <= p <= 1, f"Probability out of [0, 1]: {p}"
+        prob_sum = sum(self.opponent.opponent_probabilities)
+        assert abs(prob_sum - 1.0) < 1e-6, (
+            f"opponent_probabilities must sum to 1.0, got "
+            f"{self.opponent.opponent_probabilities} (sum={prob_sum})"
+        )
