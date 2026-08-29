@@ -388,10 +388,14 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
     #   (curr - prev); on CHASE it is used as-is, on EVADE it is negated so
     #   weight -0.5 always rewards task progress (approach vs flee). Absolute
     #   distance inverted the SB3 legacy Δ gate by punishing survival.
+    #   (Original MyoChallenge spec uses -0.1 for this term -- confirmed via
+    #   the myosuite docs' challenge-tasks page. -0.5 is a deliberate,
+    #   in-repo retune, not an oversight -- see ``lose`` below.)
     # - ``alive`` is continuous upright in [0, 1] (weight 0.5).
-    # - ``lose`` is -100 (not -1000): the challenge-scale -1000 swamps the
-    #   upright signal on P2 random reset/terrain so flat PPO never clears
-    #   the legacy Δ gate. ``solved`` (1000) keeps mid-episode tags better
+    # - ``lose`` is -100 (not the original spec's -1000): the challenge-scale
+    #   -1000 swamps the upright signal on P2 random reset/terrain so flat
+    #   PPO never clears the legacy Δ gate -- confirmed empirically in this
+    #   repo, not a guess. ``solved`` (1000) keeps mid-episode tags better
     #   than CHASE timeout under alive=0.5.
     DEFAULT_RWD_KEYS_AND_WEIGHTS: dict[str, float] = {
         "distance": -0.5,
