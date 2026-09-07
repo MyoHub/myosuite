@@ -17,8 +17,12 @@ Covers three layers:
     ``general_motion_retargeting`` (gmr_plus) IK retargeter against the real
     ``myofullbody`` model with a synthetic but kinematically-consistent,
     position-only marker sequence, then feeds the converted clip into
-    MuscleMimicClipEnvV0, asserting meaningful and left/right-symmetric range
-    of motion. All three are skipped unless gmr_plus is importable.
+    MuscleMimicClipEnvV0. Asserts meaningful and left/right-symmetric range
+    of motion, joint limits, AND actual per-body position-tracking error
+    against measured, evidence-based ceilings (pelvis/legs track well;
+    chest/head/shoulders do not, on this specific model, with position-only
+    input -- see that test's docstring). All three are skipped unless
+    gmr_plus is importable.
 """
 
 from __future__ import annotations
@@ -348,12 +352,43 @@ PELVIS_Z0, CHEST_DZ, HEAD_DZ = 0.90, 0.25, 0.60
 HIP_X, SHOULDER_X = 0.10, 0.20
 
 
+# Weight hierarchy, not uniform weight. Measured empirically (see
+# test_end_to_end_soma_style_retarget_to_muscle_activation_env's docstring):
+# the pelvis is a free 6-DOF joint and reaches any target almost exactly,
+# but chest/head/shoulders/arms all share a heavily coupled spine +
+# shoulder-girdle DOF budget (many of this model's spine/scapula joints are
+# `mjEQ_JOINT`-coupled to a handful of driver angles, not independently
+# actuated). Weighting every body equally forces the solver into a worse
+# shared compromise across ALL of them than a hierarchy does -- this
+# mirrors the pattern the real bvh_soma_to_myofullbody.json config itself
+# uses (pelvis 100, chest/head lower, not uniform). It measurably helps but
+# does not fully resolve upper-body tracking error -- see that test's
+# ASSERT_MAX_MEAN_ERROR_CM thresholds, which reflect the real, measured
+# residual rather than an assumption that it's zero.
+_POSITION_WEIGHT = {
+    "pelvis": 150,
+    "lumbar1": 100,
+    "head": 90,
+    "humerus_l": 70,
+    "ulna_l": 70,
+    "lunate_l": 70,
+    "humerus_r": 70,
+    "ulna_r": 70,
+    "lunate_r": 70,
+    "tibia_l": 80,
+    "calcn_l": 90,
+    "toes_l": 90,
+    "tibia_r": 80,
+    "calcn_r": 90,
+    "toes_r": 90,
+}
+
+
 def _build_position_only_ik_config() -> dict:
     table = {
-        body: [marker, 60, 0, [0.0, 0.0, 0.0], _IDENTITY_WXYZ]
+        body: [marker, _POSITION_WEIGHT[body], 0, [0.0, 0.0, 0.0], _IDENTITY_WXYZ]
         for body, marker in _MARKER_TO_BODY.items()
     }
-    table["pelvis"][1] = 150  # extra root weight for stability
     return {
         "robot_root_name": "pelvis",
         "human_root_name": "Hips",
@@ -387,13 +422,23 @@ def _two_link_forward(
     return hip_yz + l1 * (np.cos(a) * dir_hip_ankle + np.sin(a) * perp)
 
 
+MAX_LEAN_DEG = 35.0  # natural forward trunk lean at the bottom of a deep squat
+
+
+def _leaned_offset(dz: float, lean_rad: float) -> np.ndarray:
+    """(y, z) offset for a segment of length dz tilted forward by lean_rad."""
+    return np.array([FORWARD_SIGN * dz * np.sin(lean_rad), dz * np.cos(lean_rad)])
+
+
 def _synthetic_squat_armraise_motion(n_frames: int, fps: float):
     """Bilateral squat (0->deep->0) with a bilateral lateral arm raise.
 
-    Every target position is derived from constant-length-segment geometry
-    (2-link squat IK for the legs, straight-arm rotation for the arms), so
-    the motion is kinematically self-consistent, not just approximately
-    plausible.
+    Leg targets are derived from constant-length-segment geometry (2-link
+    squat IK), so they are exactly kinematically consistent. Torso/head
+    targets include a natural forward lean proportional to squat depth
+    (a rigid, perfectly-vertical-spine assumption turned out to be
+    measurably *not* achievable on this model even before considering IK
+    weight competition -- see the end-to-end test's docstring).
     """
     t = np.arange(n_frames) / fps
     period = t[-1] if t[-1] > 0 else 1.0
@@ -404,18 +449,22 @@ def _synthetic_squat_armraise_motion(n_frames: int, fps: float):
     for i in range(n_frames):
         s, a = float(squat[i]), float(raise_[i])
         pelvis_z = PELVIS_Z0 - 0.28 * s
-        pelvis_y = -FORWARD_SIGN * 0.03 * s  # slight posterior lean while squatting
+        pelvis_y = 0.0
+        lean = np.radians(MAX_LEAN_DEG * s)
+        chest_yz = np.array([pelvis_y, pelvis_z]) + _leaned_offset(CHEST_DZ, lean)
+        head_yz = np.array([pelvis_y, pelvis_z]) + _leaned_offset(HEAD_DZ, lean)
         marker: dict[str, np.ndarray] = {
             "Hips": np.array([0.0, pelvis_y, pelvis_z]),
-            "Chest": np.array([0.0, pelvis_y, pelvis_z + CHEST_DZ]),
-            "Head": np.array([0.0, pelvis_y, pelvis_z + HEAD_DZ]),
+            "Chest": np.array([0.0, chest_yz[0], chest_yz[1]]),
+            "Head": np.array([0.0, head_yz[0], head_yz[1]]),
         }
 
         theta = np.radians(-80 + 160 * a)  # -80deg (arm down) -> +80deg (overhead)
         for side, sign in (("Left", 1.0), ("Right", -1.0)):
-            shoulder = np.array(
-                [sign * SHOULDER_X, pelvis_y, pelvis_z + CHEST_DZ - 0.05]
+            shoulder_yz = np.array([pelvis_y, pelvis_z]) + _leaned_offset(
+                CHEST_DZ - 0.05, lean
             )
+            shoulder = np.array([sign * SHOULDER_X, shoulder_yz[0], shoulder_yz[1]])
             dir_xz = np.array([sign * np.cos(theta), np.sin(theta)])
             elbow_xz = np.array([shoulder[0], shoulder[2]]) + UPPER_ARM * dir_xz
             wrist_xz = elbow_xz + FOREARM * dir_xz
@@ -450,6 +499,41 @@ def _joint_range_deg(model, qpos_arr: np.ndarray, name: str):
     return np.degrees(series), within
 
 
+# Honest, MEASURED per-body mean position-tracking-error ceilings (cm),
+# not aspirational ones. The pelvis (a free 6-DOF joint) and the legs
+# (fully reachable via explicit hip/knee/ankle/toe 2-link targets) track
+# tightly. Chest/head/shoulders/arms do NOT: this model's spine and
+# shoulder girdle are heavily `mjEQ_JOINT`-coupled to a handful of driver
+# angles (verified empirically -- raising a single upper-body target's
+# weight to dominate the others drops its own error from ~19cm to ~2cm,
+# proving the residual is IK weight-competition over a shared, limited DOF
+# budget, not a hard kinematic wall or a converter bug). A weight hierarchy
+# (see _POSITION_WEIGHT) and a physically-motivated forward trunk lean
+# measurably help but do not eliminate it: real, mutually-consistent
+# marker data (an actual human, or real SOMA/mocap capture) would not
+# fight itself this way, but this test's hand-authored synthetic upper-body
+# targets aren't proven mutually achievable on this specific model's
+# reduced-DOF torso. These thresholds exist to catch *regressions* in that
+# measured baseline, not to claim upper-body tracking is currently good.
+_MAX_MEAN_ERROR_CM = {
+    "pelvis": 8.0,
+    "tibia_l": 15.0,
+    "tibia_r": 15.0,
+    "calcn_l": 15.0,
+    "calcn_r": 15.0,
+    "toes_l": 15.0,
+    "toes_r": 15.0,
+    "lumbar1": 30.0,
+    "head": 30.0,
+    "humerus_l": 30.0,
+    "humerus_r": 30.0,
+    "ulna_l": 30.0,
+    "ulna_r": 30.0,
+    "lunate_l": 30.0,
+    "lunate_r": 30.0,
+}
+
+
 def test_end_to_end_soma_style_retarget_to_muscle_activation_env(
     tmp_path: Path, myofullbody_model
 ):
@@ -465,14 +549,22 @@ def test_end_to_end_soma_style_retarget_to_muscle_activation_env(
     Hill-type muscle activation MyoSuite forks off the same reconstructed
     kinematics).
 
-    Unlike a smoke test, this asserts the retargeting actually *worked*:
-    meaningful (not near-zero) bilateral knee/shoulder range of motion,
-    left/right symmetry for a bilaterally-symmetric input motion, and every
-    joint staying within the model's own physiological limits. These are
-    exactly the properties that were silently violated by the previous
-    version of this test (see test_bvh_soma_config_smoke's docstring).
+    This asserts three independent things the previous version of this test
+    did not (see test_bvh_soma_config_smoke's docstring for the bug that
+    slipped through without them):
+      1. Meaningful (not near-zero) bilateral knee/shoulder range of motion
+         and left/right symmetry for a bilaterally-symmetric input.
+      2. Every joint stays within the model's own physiological limits.
+      3. The retargeted pose actually tracks the input marker positions --
+         measured directly via GMR's own per-body position residual, not
+         just inferred from (1) and (2), which a systematic offset error
+         can satisfy while still being visibly wrong (a ~15-20cm chest/head
+         offset is invisible to ROM and symmetry checks alike). See
+         _MAX_MEAN_ERROR_CM for what "tracks" means quantitatively here,
+         including where it honestly does not track well.
     """
     from general_motion_retargeting import GeneralMotionRetargeting
+    import mink
 
     cfg = _build_position_only_ik_config()
     ik_config_path = tmp_path / "position_only_myofullbody.json"
@@ -486,15 +578,34 @@ def test_end_to_end_soma_style_retarget_to_muscle_activation_env(
     )
     _fix_initial_configuration(retargeter)
 
+    # GMR's own frame_tasks_2 order matches ik_match_table2's key order.
+    tracked_bodies = [
+        t.frame_name for t in retargeter.tasks2 if isinstance(t, mink.FrameTask)
+    ]
+
     n_frames, fps = 20, 20.0
     human_frames = _synthetic_squat_armraise_motion(n_frames, fps)
     qpos_frames = []
+    per_body_errors_cm: dict[str, list[float]] = {name: [] for name in tracked_bodies}
     for human_data in human_frames:
-        qpos, _err = retargeter.retarget(dict(human_data))
+        qpos, err = retargeter.retarget(dict(human_data))
         qpos_frames.append(np.asarray(qpos, dtype=np.float64).copy())
+        err = np.asarray(err)
+        assert err.shape == (len(tracked_bodies),)
+        for name, e in zip(tracked_bodies, err):
+            per_body_errors_cm[name].append(float(e) * 100.0)
     qpos_frames = np.stack(qpos_frames, axis=0)
     assert qpos_frames.shape[1] == retargeter.model.nq  # GMR's raw model width
     assert np.all(np.isfinite(qpos_frames))
+
+    for body, errors_cm in per_body_errors_cm.items():
+        mean_error_cm = float(np.mean(errors_cm))
+        ceiling = _MAX_MEAN_ERROR_CM[body]
+        assert mean_error_cm <= ceiling, (
+            f"{body} mean position-tracking error {mean_error_cm:.1f}cm exceeds "
+            f"the measured baseline ceiling {ceiling}cm -- retargeting quality "
+            "regressed."
+        )
 
     gmr_data = {
         "root_pos": qpos_frames[:, :3],
