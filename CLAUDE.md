@@ -60,9 +60,10 @@ pytest myosuite/tests/test_terms_cpu.py -v
 pytest myosuite/tests/test_fragment_compat.py -v
 pytest myosuite/tests/test_parity.py -v      # atol ≤ 1e-7 — regressions block PR
 pytest myosuite/tests/test_registry.py -v
-pytest myosuite/tests/test_boxing_registry.py -v
-pytest myosuite/tests/test_saber_env.py -v
 ```
+
+Boxing and beat-saber task implementations were removed from this repo (archived separately,
+commit `68a77811`) — there is no `test_boxing_registry.py` / `test_saber_env.py` to run anymore.
 
 ---
 
