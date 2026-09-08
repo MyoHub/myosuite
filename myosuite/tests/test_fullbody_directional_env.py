@@ -28,6 +28,25 @@ def directional_env():
     env.close()
 
 
+def _heading_slice(env) -> slice:
+    """Locate heading_cmd's span in the flattened obs from obs_dict's own
+    key sizes, rather than assuming a fixed offset like ``obs[-2:]``.
+
+    ``_obs_dict_to_vec`` concatenates in dict insertion order:
+    qpos_local, qvel_local, act, root_vel_xy, heading_cmd, orientation(6).
+    heading_cmd is NOT last — the trailing 6 elements are orientation
+    (roll, pitch, wx, wy, wz, vz), whose norm has no reason to be 1.
+    """
+    obs_dict = env.get_obs_dict(env._accessor)
+    offset = 0
+    for key, value in obs_dict.items():
+        size = np.atleast_1d(value).ravel().shape[0]
+        if key == "heading_cmd":
+            return slice(offset, offset + size)
+        offset += size
+    raise KeyError("heading_cmd not found in obs_dict")
+
+
 class TestMuscleMimicFullbodyDirectionalEnv:
     def test_observation_space_shape(self, directional_env):
         obs, _ = directional_env.reset()
@@ -36,8 +55,7 @@ class TestMuscleMimicFullbodyDirectionalEnv:
 
     def test_obs_contains_heading(self, directional_env):
         obs, _ = directional_env.reset()
-        # Last 2 elements are the heading unit vector — must have unit norm
-        heading = obs[-2:]
+        heading = obs[_heading_slice(directional_env)]
         np.testing.assert_allclose(np.linalg.norm(heading), 1.0, atol=1e-5)
 
     def test_step_returns_5tuple(self, directional_env):
@@ -58,10 +76,11 @@ class TestMuscleMimicFullbodyDirectionalEnv:
                 break
 
     def test_reset_randomises_heading(self, directional_env):
+        heading_slice = _heading_slice(directional_env)
         headings = []
         for _ in range(5):
             obs, _ = directional_env.reset()
-            headings.append(obs[-2:].copy())
+            headings.append(obs[heading_slice].copy())
         headings = np.stack(headings)
         assert not np.allclose(
             headings[0], headings[1:]
