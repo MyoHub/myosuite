@@ -160,3 +160,7 @@ tasks/
 
 # local GPU smoke bundles
 myosuite_gpu_smoke*.zip
+
+# Large baseline artifacts staged for HuggingFace upload, not tracked in git
+# (see baselines/README.md) -- keep out of the repo to avoid bloat.
+baselines/
