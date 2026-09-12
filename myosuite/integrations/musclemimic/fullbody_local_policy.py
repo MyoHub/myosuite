@@ -1157,7 +1157,7 @@ class StandaloneBCPolicy:
 
     Example::
 
-        policy, goal_params = StandaloneBCPolicy.load("tutorials/mc26/baselines/boxing/mannequin_exact_clone.npz")
+        policy, goal_params = StandaloneBCPolicy.load("tutorials/mc26/baselines/fullbody/mannequin_exact_clone.npz")
         action = policy.action(fullbody_obs)   # fullbody_obs: (obs_dim,) float32
     """
 
