@@ -65,10 +65,6 @@ from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
     _normalize_mimic_reward_mode,
     _sync_mimic_mjlab_targets,
 )
-from myosuite.envs.myo.backends.mjlab.register_mjlab_saber import (
-    SaberMimicMixCfg,
-    register_saber_p0_mjlab_task_with_mimic_mix,
-)
 
 pytestmark = pytest.mark.tier2
 
@@ -219,40 +215,6 @@ def _make_mock_env(
         physics_dt=0.002,
         cfg=types.SimpleNamespace(decimation=5),
     )
-
-
-def test_register_saber_p0_clip_task_registers_expected_env(monkeypatch) -> None:
-    """Clip-mode registration should add a split-scene mjlab saber mimic env."""
-    captured: dict[str, Any] = {}
-
-    monkeypatch.setattr(
-        "myosuite.envs.myo.backends.mjlab.register_mjlab_saber._make_saber_mimic_env_cfg",
-        lambda *, play, mimic_mix: {"play": play, "mimic_mix": mimic_mix},
-    )
-
-    def _register_mjlab_task(**kwargs: Any) -> None:
-        captured.update(kwargs)
-
-    clip = _make_clip(nq=17, nv=16)
-    register_saber_p0_mjlab_task_with_mimic_mix(
-        _register_mjlab_task,
-        lambda **_: "rl-cfg",
-        mimic_mix=SaberMimicMixCfg(
-            clips=(clip,),
-            reward_mode="augmented",
-            mimic_reward_weight=0.25,
-            env_reward_weight=2.0,
-        ),
-    )
-
-    from myosuite.envs.myo.tasks.challenge.saber_task_spec import SABER_P0_MIMIC_ENV_ID
-
-    assert captured["task_id"] == SABER_P0_MIMIC_ENV_ID
-    mm = captured["env_cfg"]["mimic_mix"]
-    assert mm.reward_mode == "augmented"
-    assert mm.mimic_reward_weight == pytest.approx(0.25)
-    assert mm.env_reward_weight == pytest.approx(2.0)
-    assert captured["play_env_cfg"]["play"] is True
 
 
 def test_normalize_mimic_reward_mode_rejects_invalid() -> None:

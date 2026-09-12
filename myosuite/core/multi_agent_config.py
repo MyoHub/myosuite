@@ -6,8 +6,8 @@
 
 ``MultiAgentTaskConfig`` is the single-source-of-truth for a two-agent task:
 it builds the MuJoCo model, supplies per-agent observation / action dimensions,
-and implements the damage→health→KO termination contract used by both boxing
-and lightsaber challenges.
+and implements the damage→health→KO termination contract used by two-agent
+competitive challenges.
 
 ``ModularMultiAgentTaskEnv`` calls these hooks to orchestrate the simultaneous
 step loop so that concrete subclasses contain zero boilerplate.
@@ -15,12 +15,12 @@ step loop so that concrete subclasses contain zero boilerplate.
 Example::
 
     @dataclass
-    class BoxingVsTaskConfig(MultiAgentTaskConfig):
+    class MyTwoAgentTaskConfig(MultiAgentTaskConfig):
         ko_threshold: float = 100.0
         ctrl_dt: float = 0.01
 
         def build_model(self):
-            model, data, meta = build_boxing_vs_model(...)
+            model, data, meta = build_two_agent_model(...)
             return model, data, meta
 
         def compute_damage(self, model, data, meta):
@@ -64,7 +64,7 @@ class MultiAgentTaskConfig(ABC):
 
         Returns:
             Tuple of ``(model, data, meta)`` where *meta* is a task-specific
-            pre-computed index cache (e.g. ``BoxingVsModelMeta``).
+            pre-computed index cache (e.g. a task-specific ``ModelMeta``).
         """
 
     def build_spec(self) -> mujoco.MjSpec | None:
@@ -193,7 +193,7 @@ class MultiAgentTaskConfig(ABC):
         """Return ``True`` if *agent_id* has fallen (e.g. pelvis below floor).
 
         Default returns ``False`` — override for tasks with free-root joints
-        (boxing) but leave as default for anchored models (saber).
+        and leave as default for anchored models.
 
         Args:
             data: Current MjData.

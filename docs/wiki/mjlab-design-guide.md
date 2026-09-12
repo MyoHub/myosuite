@@ -84,7 +84,7 @@ Custom action classes must subclass `ActionTermCfg` + `ActionTerm` so `ActionMan
 Instance attributes on `ManagerTermBase` — not module globals keyed by `id(env)` (memory leak; CPython reuses IDs after GC).
 
 ```python
-class SaberTaskLogic(ManagerTermBase):
+class MyTaskLogic(ManagerTermBase):
     def __init__(self, cfg, env):
         self._active_target = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
 
@@ -138,6 +138,5 @@ If a sensor references a site in one entity and a body in another, strip it from
 
 | Task | Deviation | Reason |
 |---|---|---|
-| Saber (`saber_mjlab_env.py`) | Sync-guarded Warp writes for mocap target pool | `spec.delete()` corrupts mocap parent chain; XML refactor in #42 |
 | TableTennis | Closure-based terms; AP-8 DR for paddle mass / ball friction | DR migration needs `dr.*` support for split-entity scenes |
 | Elbow | `MyoMuscleActivationAction` instead of `XmlActuatorCfg` | `XmlMuscleActuatorCfg` removed in mjlab v1.4 |

@@ -606,7 +606,7 @@ def make_fullbody_checkpoint_bridged_policy(
         source_model: Native runtime model being controlled.
         policy: Wrapped policy. Policies exposing ``predict(obs)`` are used
             directly; callable TensorDict policies are adapted automatically.
-        checkpoint_root: Boxing/full-body checkpoint root containing the obs
+        checkpoint_root: Full-body checkpoint root containing the obs
             adapter metadata.
         motion_path: Reference motion clip used by the checkpoint obs adapter.
         ctrl_dt: Source env control timestep used for frame alignment.

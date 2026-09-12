@@ -259,13 +259,9 @@ class TestTermFunctionsWithTorch:
         assert "dense" in result
         assert torch.all(torch.isfinite(result["dense"]))
 
-    def test_saber_shared_rewards_support_batched_torch_task_state(self) -> None:
-        """Shared saber rewards must stay batched on the mjlab/torch path."""
-        from myosuite.terms.base_reward import (
-            saber_keyframe_pose_reward,
-            saber_target_pool_reward,
-            upright_posture_reward,
-        )
+    def test_upright_posture_reward_supports_batched_torch_task_state(self) -> None:
+        """upright_posture_reward must stay batched on the mjlab/torch path."""
+        from myosuite.terms.base_reward import upright_posture_reward
 
         upright = upright_posture_reward(
             self.accessor,
@@ -275,46 +271,7 @@ class TestTermFunctionsWithTorch:
         assert upright["dense"].shape == (4,)
         assert upright["done"].shape == (4,)
 
-        keyframe = saber_keyframe_pose_reward(
-            self.accessor,
-            {"saber_keyframe_pose_error": torch.tensor([0.0, 0.01, 0.02, 0.03])},
-            saber_keyframe_pose_error_scale=40.0,
-        )
-        assert keyframe["dense"].shape == (4,)
-        assert torch.all(torch.isfinite(keyframe["dense"]))
-
-        pool = saber_target_pool_reward(
-            self.accessor,
-            {
-                "target_pool_hit_this_step": torch.tensor([True, False, True, False]),
-                "target_pool_correct_hand_this_step": torch.tensor(
-                    [True, False, True, False]
-                ),
-                "target_pool_correct_face_this_step": torch.tensor(
-                    [True, False, False, False]
-                ),
-                "target_pool_wrong_hand_this_step": torch.tensor(
-                    [False, False, False, True]
-                ),
-                "target_pool_wrong_face_this_step": torch.tensor(
-                    [False, True, False, False]
-                ),
-                "target_pool_slicing_accuracy_this_step": torch.tensor(
-                    [0.2, 0.0, 0.5, 0.0]
-                ),
-                "target_pool_timing_accuracy_this_step": torch.tensor(
-                    [0.1, 0.0, -0.2, 0.0]
-                ),
-                "target_pool_misses": torch.tensor([0, 1, 2, 3]),
-                "health_status": torch.tensor([0.5, 0.4, 0.3, 0.0]),
-            },
-            max_target_misses=3,
-        )
-        assert pool["dense"].shape == (4,)
-        assert pool["done"].shape == (4,)
-        assert bool(pool["done"][-1]) is True
-
-    def test_saber_shared_health_obs_supports_batched_torch_task_state(self) -> None:
+    def test_health_status_obs_supports_batched_torch_task_state(self) -> None:
         """health_status_obs must return a column vector on the mjlab/torch path."""
         from myosuite.terms.base_obs import health_status_obs
 
@@ -324,23 +281,9 @@ class TestTermFunctionsWithTorch:
         )
         assert obs.shape == (4, 1)
 
-    def test_saber_shared_terminations_support_batched_torch_task_state(self) -> None:
-        """Shared saber termination terms must stay batched on the mjlab path."""
-        from myosuite.terms.base_termination import (
-            saber_pool_done,
-            upright_posture_failure,
-        )
-
-        done = saber_pool_done(
-            self.accessor,
-            {
-                "target_pool_misses": torch.tensor([0, 1, 2, 3]),
-                "health_status": torch.tensor([0.5, 0.4, 0.3, 0.0]),
-            },
-            max_target_misses=3,
-        )
-        assert done.shape == (4,)
-        assert bool(done[-1]) is True
+    def test_upright_posture_failure_supports_batched_torch_task_state(self) -> None:
+        """upright_posture_failure must stay batched on the mjlab path."""
+        from myosuite.terms.base_termination import upright_posture_failure
 
         fallen = upright_posture_failure(
             self.accessor,
