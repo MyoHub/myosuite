@@ -231,6 +231,7 @@ def _resolve_fragment_path(name: str) -> Path:
         "shoulder": ("resolve_arm_xml", "myoarm.xml"),
         "arm": ("resolve_arm_xml", "myoarm.xml"),
         "torso": ("resolve_torso_xml", "myotorso.xml"),
+        "leg": ("resolve_leg_xml", "myolegs_with_torso.xml"),
     }
     if name in _BUNDLED_FALLBACK_RESOLVERS:
         from myosuite.envs.myo.assets import _resolve
@@ -258,7 +259,9 @@ def _try_myo_sim_compose(name: str) -> mujoco.MjSpec | None:
     try:
         import myo_sim  # type: ignore[import-untyped]
 
-        builder = getattr(myo_sim, "FRAGMENT_SPEC_BUILDERS", {}).get(name)
+        builders = getattr(myo_sim, "FRAGMENT_SPEC_BUILDERS", {})
+        aliases = {"leg": "myolegs", "legs": "myolegs"}
+        builder = builders.get(name) or builders.get(aliases.get(name, ""), None)
         return builder() if builder is not None else None
     except Exception:  # ImportError, compose failures, etc.
         return None

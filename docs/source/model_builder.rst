@@ -81,11 +81,12 @@ This is always the most reliable approach:
 .. code-block:: python
 
    import mujoco
+   import myosuite
+   from pathlib import Path
+   from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
-   # load from the challenge XML directly
-   model = mujoco.MjModel.from_xml_path(
-       "myosuite/envs/myo/assets/hand/myohand_baoding.xml"
-   )
+   xml = Path(myosuite.__file__).parent / "envs/myo/assets/hand/myohand_baoding.xml"
+   model = mujoco.MjModel.from_xml_path(str(resolve_model_xml_path(xml)))
 
 Gymnasium entry points (recommended)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -95,12 +96,13 @@ The safest way to get a fully-configured challenge environment:
 .. code-block:: python
 
    import gymnasium as gym
+   import myosuite
 
    env = gym.make("myoChallengeBaodingP2-v1")
-   env = gym.make("myoChallengeTableTennisP2-v0")
-   env = gym.make("myoChallengeSoccerP2-v0")
-   env = gym.make("myoChallengeRelocateP2-v0")
-   env = gym.make("myoChallengeDieReorientP2-v0")
+   obs, info = env.reset()
+   env.close()
+   # Also registered: myoChallengeTableTennisP2-v0, myoChallengeSoccerP2-v0,
+   # myoChallengeRelocateP2-v0, myoChallengeDieReorientP2-v0.
 
 These environments load their own XML scene files which include all tendons,
 sites, contacts, and other features that ModelBuilder does not cover.
@@ -121,15 +123,7 @@ Use ``apply_transform`` to add any unsupported feature to a ModelBuilder scene:
        """Add target tracking sites missing from the native API."""
        site = spec.worldbody.add_site(name="target1_site")
        site.pos = [-0.25, -0.5, 1.45]
-       site.size = [0.005]
-       return spec
-
-   def add_tendons(spec: mujoco.MjSpec) -> mujoco.MjSpec:
-       """Link ball sites to target sites via spatial tendons."""
-       t = spec.add_tendon()
-       t.name = "tendon1"
-       t.add_site(site="ball1_site")
-       t.add_site(site="target1_site")
+       site.size = [0.005, 0.005, 0.005]
        return spec
 
    model, spec = (
@@ -140,7 +134,6 @@ Use ``apply_transform`` to add any unsupported feature to a ModelBuilder scene:
                       geom_size=[0.022, 0, 0], rgba=[1, 0.8, 0.31, 1],
                       mass=0.043, condim=4)
        .apply_transform(add_tracking_sites)
-       .apply_transform(add_tendons)
        .build()
    )
 
@@ -250,11 +243,10 @@ The quaternion follows the MJCF convention ``[w, x, y, z]``:
    import numpy as np
    from myosuite.core.model_builder import ModelBuilder
 
-   # Place hand 35 cm below the elbow distal body
+   # Offset a hand fragment in world coordinates
    model, spec = (
        ModelBuilder()
-       .attach_fragment("elbow")
-       .place_fragment("hand", pos=[0, 0, -0.35], parent="elbow_distal")
+       .place_fragment("hand", pos=[0, 0, -0.35], parent="worldbody")
        .build()
    )
 
@@ -298,6 +290,20 @@ Set the initial pose at runtime:
 .. code-block:: python
 
    import mujoco, numpy as np
+   from myosuite.core.model_builder import ModelBuilder
+
+   model, spec = (
+       ModelBuilder()
+       .attach_fragment("hand")
+       .add_free_body(
+           "my_ball",
+           pos=[0.1, 0.0, 1.3],
+           geom_type=mujoco.mjtGeom.mjGEOM_SPHERE,
+           geom_size=[0.025, 0, 0],
+           rgba=[1.0, 0.4, 0.0, 1.0],
+       )
+       .build()
+   )
 
    data = mujoco.MjData(model)
    jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "my_ball_free")
@@ -334,6 +340,7 @@ and returns ``mujoco.MjSpec``:
 
 .. code-block:: python
 
+   import mujoco
    from myosuite.core.model_builder import ModelBuilder
 
    def _move_target(spec):
@@ -343,6 +350,13 @@ and returns ``mujoco.MjSpec``:
    model, spec = (
        ModelBuilder()
        .attach_fragment("elbow")
+       .add_free_body(
+           "target",
+           pos=[0.3, 0.0, 0.8],
+           geom_type=mujoco.mjtGeom.mjGEOM_SPHERE,
+           geom_size=[0.015, 0, 0],
+           rgba=[0, 1, 0, 0.5],
+       )
        .apply_transform(_move_target)
        .build()
    )
@@ -461,9 +475,10 @@ Right arm + ping-pong ball + table / net / paddle as mesh bodies with textures.
 
    import mujoco
    from pathlib import Path
+   import myosuite
    from myosuite.core.model_builder import ModelBuilder
 
-   assets = Path("myosuite/envs/myo/assets")
+   assets = Path(myosuite.__file__).parent / "envs/myo/assets"
 
    model, spec = (
        ModelBuilder()
@@ -499,26 +514,16 @@ Right arm + ping-pong ball + table / net / paddle as mesh bodies with textures.
        .build()
    )
 
-To add the missing ball aerodynamics via ``apply_transform``:
+``MjsGeom`` has no ``fluidcoef`` field. Use the registered environment for
+the full aerodynamic ball, or set drag via a custom XML include:
 
 .. code-block:: python
 
-   def add_fluidcoef(spec: mujoco.MjSpec) -> mujoco.MjSpec:
-       """Add aerodynamic drag matching the challenge XML (fluidcoef)."""
-       g = spec.geom("pingpong")
-       g.fluidcoef = [0.235, 0.25, 0.0, 1.0, 1.0]
-       return spec
+   import gymnasium as gym
+   import myosuite
 
-   model, spec = (
-       ModelBuilder()
-       .attach_fragment("arm")
-       .add_free_body("pingpong", pos=[0.0, -0.35, 1.5],
-                      geom_type=mujoco.mjtGeom.mjGEOM_SPHERE,
-                      geom_size=[0.02, 0, 0], rgba=[0.9, 0.9, 0.9, 1.0],
-                      mass=0.0027, condim=4)
-       .apply_transform(add_fluidcoef)
-       .build()
-   )
+   env = gym.make("myoChallengeTableTennisP2-v0")
+   env.close()
 
 Relocate (``myoChallengeRelocateP2-v0``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -578,81 +583,28 @@ texture; full scene lighting.
 Die Reorient (``myoChallengeDieReorientP2-v0``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Hand fragment only — the die body itself cannot be composed natively.
-The die is 12 capsule edges + 3 overlapping boxes with a 3×4 grid-layout
-dice texture, which requires ``apply_transform``:
+Hand fragment + a free box stand-in for the die. The 12-capsule textured die
+from the challenge XML is not expressible with ``add_free_body`` (no
+``imass`` / cube-map texture on ``MjsBody``). Use
+``gym.make("myoChallengeDieReorientP2-v0")`` for the full object.
 
 .. code-block:: python
 
    import mujoco
-   from pathlib import Path
    from myosuite.core.model_builder import ModelBuilder
-
-   DICE_PNG = Path("myosuite/envs/myo/assets/hand/dice.png")
-
-   def add_die(spec: mujoco.MjSpec) -> mujoco.MjSpec:
-       """Add the 12-capsule + 3-box die body via direct MjSpec manipulation."""
-       # Register cube-grid texture (not supported by add_mesh_body)
-       tex = spec.add_texture()
-       tex.name = "dice"
-       tex.file = str(DICE_PNG)
-       tex.gridsize = [3, 4]
-       tex.gridlayout = "..U.LFRB..D."
-
-       mat = spec.add_material()
-       mat.name = "MatDice"
-       mat.textures[0] = "dice"
-       mat.specular = 0.3
-       mat.shininess = 1.0
-
-       body = spec.worldbody.add_body(name="Object")
-       body.pos = [-0.240, -0.535, 1.46]
-       body.ipos = [0, 0, 0]
-       body.imass = 0.108
-       body.idiaginertia = [6.48e-5, 6.48e-5, 6.48e-5]
-
-       half = 0.0235
-       for e in [  # 12 edges as capsules
-           ([ half, -half, -half], [ half,  half, -half]),
-           ([-half, -half, -half], [-half,  half, -half]),
-           ([-half,  half, -half], [ half,  half, -half]),
-           ([-half, -half, -half], [ half, -half, -half]),
-           ([ half, -half,  half], [ half,  half,  half]),
-           ([-half, -half,  half], [-half,  half,  half]),
-           ([-half,  half,  half], [ half,  half,  half]),
-           ([-half, -half,  half], [ half, -half,  half]),
-           ([ half, -half, -half], [ half, -half,  half]),
-           ([ half,  half, -half], [ half,  half,  half]),
-           ([-half,  half, -half], [-half,  half,  half]),
-           ([-half, -half, -half], [-half, -half,  half]),
-       ]:
-           g = body.add_geom(type=mujoco.mjtGeom.mjGEOM_CAPSULE)
-           g.fromto = e[0] + e[1]
-           g.size = [0.005]
-           g.rgba = [1, 1, 1, 1]
-           g.group = 2
-
-       for size in ([0.0284, 0.0236, 0.0236],
-                    [0.0236, 0.0284, 0.0236],
-                    [0.0236, 0.0236, 0.0284]):
-           g = body.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX)
-           g.size = size
-           g.material = "MatDice"
-           g.group = 2
-
-       for ax, nm in [([1,0,0], "OBJTx"), ([0,1,0], "OBJTy"), ([0,0,1], "OBJTz")]:
-           j = body.add_joint(name=nm, type=mujoco.mjtJoint.mjJNT_SLIDE)
-           j.axis = ax; j.range = [-0.25, 0.25]; j.damping = 0.001
-       for ax, nm in [([1,0,0], "OBJRx"), ([0,1,0], "OBJRy"), ([0,0,1], "OBJRz")]:
-           j = body.add_joint(name=nm, type=mujoco.mjtJoint.mjJNT_HINGE)
-           j.axis = ax; j.limited = False; j.damping = 0.001
-
-       return spec
 
    model, spec = (
        ModelBuilder()
        .attach_fragment("hand")
-       .apply_transform(add_die)
+       .add_free_body(
+           "die",
+           pos=[-0.240, -0.535, 1.46],
+           geom_type=mujoco.mjtGeom.mjGEOM_BOX,
+           geom_size=[0.0284, 0.0284, 0.0284],
+           rgba=[1.0, 1.0, 1.0, 1.0],
+           mass=0.108,
+           condim=4,
+       )
        .build()
    )
 
@@ -667,18 +619,19 @@ For the most common configurations, pre-built recipes are registered via
 .. code-block:: python
 
    from myosuite.core.model_builder import build_from_recipe
+   import myosuite.core.model_recipes  # registers recipes
 
    model, spec = build_from_recipe("elbow_standard")
    model, spec = build_from_recipe("elbow_sarcopenia")   # 50 % muscle force
    model, spec = build_from_recipe("hand_standard")
    model, spec = build_from_recipe("full_arm")           # shoulder + elbow + hand
-   model, spec = build_from_recipe("walk_standard")      # leg + OSL
+   # Locomotion: gym.make("myoLegWalk-v0") (walk_standard duplicates leg/OSL meshes)
 
 Register your own recipe to share it across a project:
 
 .. code-block:: python
 
-   from myosuite.core.model_builder import ModelBuilder, model_recipe
+   from myosuite.core.model_builder import ModelBuilder, model_recipe, build_from_recipe
 
    @model_recipe("my_reach_scene")
    def _my_scene(b: ModelBuilder) -> ModelBuilder:
@@ -742,7 +695,7 @@ Different positions always produce different cache entries.
 See also
 --------
 
-* :doc:`architecture` — three-path design (CPU / MJX / mjlab)
+* :doc:`architecture` — CPU Gymnasium and mjlab GPU backends
 * :doc:`environments` — complete environment listing
 * ``myosuite/core/model_builder.py`` — source
 * ``myosuite/core/model_recipes.py`` — built-in recipes

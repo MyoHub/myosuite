@@ -117,6 +117,10 @@ class MJRenderer(Renderer):
         """
         if camera_id is None:
             camera_id = -1
+        if isinstance(camera_id, int) and camera_id >= 0:
+            ncam = int(self._mj_model.ncam)
+            if ncam == 0 or camera_id >= ncam:
+                camera_id = -1
         if self._renderer is None:
             self.setup_renderer(self._mj_model, width=width, height=height)
 

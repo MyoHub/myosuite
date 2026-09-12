@@ -114,7 +114,7 @@ class EnvConfig:
 
 
 # ---------------------------------------------------------------------------
-# High-level task specs (Phase 5 — Modular Task System)
+# High-level task specs (experimental ModularTaskEnv / TaskConfig route)
 # ---------------------------------------------------------------------------
 
 
@@ -123,7 +123,7 @@ class ObsSpec:
     """Declares which observation channels a task exposes.
 
     Each entry in ``keys`` maps to a term function in
-    ``myosuite/terms/myo_obs_terms.py`` (e.g. ``"joint_pos"`` → calls
+    ``myosuite/terms/base_obs.py`` (e.g. ``"joint_pos"`` → calls
     ``joint_pos_obs(accessor)``).
 
     Args:
@@ -169,7 +169,7 @@ class RewardSpec:
     """Declares the reward terms and their weights for a task.
 
     Each entry in ``terms`` maps to a function in
-    ``myosuite/terms/myo_reward_terms.py`` (e.g. ``"pose"`` → ``pose_reward``).
+    ``myosuite/terms/base_reward.py`` (e.g. ``"pose"`` → ``pose_reward``).
 
     Args:
         terms: Ordered list of reward term names to evaluate each step.

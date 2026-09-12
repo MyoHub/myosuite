@@ -7,16 +7,24 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 # REQUIRES:
 # Python 3.9
 # MINK -- pip install "myosuite[examples]"
+#
+# Interactive viewer needs mjpython on macOS:
+#   mjpython tutorials/8_inverse_kinematics.py
+# Headless smoke test:
+#   python tutorials/8_inverse_kinematics.py --no-viewer
+
+from __future__ import annotations
+
+import argparse
 
 import mink
 import mujoco
-import mujoco.viewer
 import numpy as np
-from loop_rate_limiters import RateLimiter
 
-import myo_sim
+from myosuite.envs.myo.assets._resolve import resolve_arm_xml
+from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
-_XML_ARM_Model = str(myo_sim.get_path("arm/myoarm.xml"))
+_XML_ARM_Model = str(resolve_model_xml_path(resolve_arm_xml("myoarm.xml")))
 
 xml_string = f"""
         <mujoco model="MyoArm with Mocap">
@@ -32,10 +40,6 @@ xml_string = f"""
 model = mujoco.MjModel.from_xml_string(xml_string)
 data = mujoco.MjData(model)
 
-## =================== ##
-## Setup IK.
-## =================== ##
-
 configuration = mink.Configuration(model)
 
 tasks = [
@@ -49,45 +53,80 @@ tasks = [
     posture_task := mink.PostureTask(model=model, cost=1e-2),
 ]
 
-## =================== ##
-
-# IK settings.
 solver = "quadprog"
 pos_threshold = 1e-4
 ori_threshold = 1e-4
 max_iters = 20
 
-with mujoco.viewer.launch_passive(
-    model=model, data=data, show_left_ui=False, show_right_ui=False
-) as viewer:
-    mujoco.mjv_defaultFreeCamera(model, viewer.cam)
 
+def _solve_once() -> None:
+    """One IK iteration so students can check mink + the arm XML without a GUI."""
     configuration.update(data.qpos)
     posture_task.set_target_from_configuration(configuration)
     mujoco.mj_forward(model, data)
-
-    # Initialize the mocap target at the end-effector site.
     mink.move_mocap_to_frame(model, data, "target", "S_grasp", "site")
+    T_wt = mink.SE3.from_mocap_name(model, data, "target")
+    end_effector_task.set_target(T_wt)
+    vel = mink.solve_ik(configuration, tasks, 0.002, solver, 1e-3)
+    configuration.integrate_inplace(vel, 0.002)
+    err = end_effector_task.compute_error(configuration)
+    print(
+        "IK ok: nq=",
+        model.nq,
+        "pos_err=",
+        float(np.linalg.norm(err[:3])),
+        "ori_err=",
+        float(np.linalg.norm(err[3:])),
+    )
 
-    rate = RateLimiter(frequency=500.0, warn=False)
-    while viewer.is_running():
-        # Update task target.
-        T_wt = mink.SE3.from_mocap_name(model, data, "target")
-        end_effector_task.set_target(T_wt)
 
-        # Compute velocity and integrate into the next configuration.
-        for i in range(max_iters):
-            vel = mink.solve_ik(configuration, tasks, rate.dt, solver, 1e-3)
-            configuration.integrate_inplace(vel, rate.dt)
-            err = end_effector_task.compute_error(configuration)
-            pos_achieved = np.linalg.norm(err[:3]) <= pos_threshold
-            ori_achieved = np.linalg.norm(err[3:]) <= ori_threshold
-            if pos_achieved and ori_achieved:
-                break
+def _run_viewer() -> None:
+    import mujoco.viewer
+    from loop_rate_limiters import RateLimiter
 
-        data.qpos[:] = configuration.q
-        mujoco.mj_step(model, data)
+    with mujoco.viewer.launch_passive(
+        model=model, data=data, show_left_ui=False, show_right_ui=False
+    ) as viewer:
+        mujoco.mjv_defaultFreeCamera(model, viewer.cam)
 
-        # Visualize at fixed FPS.
-        viewer.sync()
-        rate.sleep()
+        configuration.update(data.qpos)
+        posture_task.set_target_from_configuration(configuration)
+        mujoco.mj_forward(model, data)
+
+        mink.move_mocap_to_frame(model, data, "target", "S_grasp", "site")
+
+        rate = RateLimiter(frequency=500.0, warn=False)
+        while viewer.is_running():
+            T_wt = mink.SE3.from_mocap_name(model, data, "target")
+            end_effector_task.set_target(T_wt)
+
+            for _ in range(max_iters):
+                vel = mink.solve_ik(configuration, tasks, rate.dt, solver, 1e-3)
+                configuration.integrate_inplace(vel, rate.dt)
+                err = end_effector_task.compute_error(configuration)
+                pos_achieved = np.linalg.norm(err[:3]) <= pos_threshold
+                ori_achieved = np.linalg.norm(err[3:]) <= ori_threshold
+                if pos_achieved and ori_achieved:
+                    break
+
+            data.qpos[:] = configuration.q
+            mujoco.mj_step(model, data)
+
+            viewer.sync()
+            rate.sleep()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Mink IK on MyoArm. Use mjpython for the interactive viewer."
+    )
+    parser.add_argument(
+        "--no-viewer",
+        action="store_true",
+        help="Solve one IK step and exit (no GUI).",
+    )
+    args = parser.parse_args()
+    if args.no_viewer:
+        _solve_once()
+    else:
+        _run_viewer()

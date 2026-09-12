@@ -231,7 +231,7 @@ def saber_sites_obs(
 
     When ``include_target_approach_vectors`` is ``True``, appends vectors from
     each saber tip toward its paired target (same pairing as
-    ``saber_targets_reward`` in ``myo_reward_terms``): left tip → target *a*,
+    ``saber_targets_reward`` in ``base_reward``): left tip → target *a*,
     right tip → target *b*, i.e. an **18**-vector like the ``dual_beat_saber``
     prototype (four positions plus two relative vectors).
 

@@ -28,7 +28,7 @@ Choose your path
    * - **Neuroscientist**
      - :doc:`quickstart_neuroscience` — proprioception, reflex controllers, fatigue
    * - **ML / RL Researcher**
-     - :doc:`quickstart_ml` — gym API, SB3 training, GPU backends, benchmarks
+     - :doc:`quickstart_ml` — Gymnasium API, SB3, mjlab GPU training
    * - **Sports / Rehab Clinician**
      - :doc:`quickstart_rehabilitation` — pathological conditions, clinical metrics
 
@@ -96,7 +96,7 @@ How to cite
       title =        {MyoSuite -- A contact-rich simulation suite for musculoskeletal motor control},
       publisher = {arXiv},
       year = {2022},
-      howpublished = {\url{https://github.com/facebookresearch/myosuite}},
+      howpublished = {\url{https://github.com/MyoHub/myosuite}},
       doi = {10.48550/ARXIV.2205.13600},
       url = {https://arxiv.org/abs/2205.13600},
    }

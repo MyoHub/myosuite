@@ -11,7 +11,6 @@ from typing import Any
 
 import mujoco
 import numpy as np
-import pink
 
 import gymnasium as gym
 from gymnasium.utils import EzPickle
@@ -66,6 +65,8 @@ class GoalKeeper:
         self.reset_goalkeeper(rng=rng)
 
     def reset_noise_process(self) -> None:
+        import pink
+
         self.noise_process = pink.ColoredNoiseProcess(
             beta=2, size=(2, 10), scale=self.block_velocity, rng=self.rng
         )

@@ -32,7 +32,7 @@ Installation
 .. code-block:: bash
 
    pip install -U myosuite
-   python -m myosuite.tests.test_myo   # verify and list all environments
+   python -c "import myosuite; print(len(myosuite.myosuite_env_suite), 'envs')"
 
 
 Simulating Sarcopenia
@@ -316,8 +316,8 @@ Environment Index for Clinical Research
      - Sarcopenia
      - ``myoSarcLegWalk-v0``
 
-See :doc:`environments` for the complete listing of all 125+ registered IDs,
-including challenge environments and GPU-accelerated variants.
+See :doc:`environments` for the annotated listing. Print every CPU ID with
+``python -c "import myosuite; print('\\n'.join(myosuite.myosuite_env_suite))"``.
 
 
 Next Steps

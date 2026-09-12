@@ -1543,26 +1543,32 @@ def register_mimic_mjlab_tasks_with_clip(
         action_mode=action_mode,
         mimic_reward_weight=mimic_reward_weight,
     )
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_saber import (
-        SaberMimicMixCfg,
-        register_saber_p0_mjlab_task_with_mimic_mix,
-    )
-
-    register_saber_p0_mjlab_task_with_mimic_mix(
-        register_mjlab_task=register_mjlab_task,
-        rl_cfg_fn=rl_cfg_fn,
-        mimic_mix=SaberMimicMixCfg(
-            clips=(clip,),
-            reward_mode=reward_mode,
-            mimic_reward_weight=mimic_reward_weight,
-            env_reward_weight=env_reward_weight,
-            use_deepmimic_reward=use_deepmimic_reward,
-            use_lookahead=use_lookahead,
-            use_early_termination=use_early_termination,
-            use_reference_state_initialization=True,
-        ),
-    )
     from mjlab.tasks.registry import list_tasks
+
+    try:
+        from myosuite.envs.myo.backends.mjlab.register_mjlab_saber import (
+            SaberMimicMixCfg,
+            register_saber_p0_mjlab_task_with_mimic_mix,
+        )
+
+        register_saber_p0_mjlab_task_with_mimic_mix(
+            register_mjlab_task=register_mjlab_task,
+            rl_cfg_fn=rl_cfg_fn,
+            mimic_mix=SaberMimicMixCfg(
+                clips=(clip,),
+                reward_mode=reward_mode,
+                mimic_reward_weight=mimic_reward_weight,
+                env_reward_weight=env_reward_weight,
+                use_deepmimic_reward=use_deepmimic_reward,
+                use_lookahead=use_lookahead,
+                use_early_termination=use_early_termination,
+                use_reference_state_initialization=True,
+            ),
+        )
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "Saber mimic-mix registration skipped: %s", exc
+        )
 
     if "myoMimicFullbody-v0" not in list_tasks():
         raise RuntimeError(
@@ -1570,15 +1576,18 @@ def register_mimic_mjlab_tasks_with_clip(
             "Ensure musclemimic_models is installed "
             "('pip install myosuite[musclemimic]') and the clip is valid."
         )
-    from myosuite.envs.myo.tasks.challenge.saber_task_spec import (
-        SABER_P0_MIMIC_ENV_ID,
-    )
+    try:
+        from myosuite.envs.myo.tasks.challenge.saber_task_spec import (
+            SABER_P0_MIMIC_ENV_ID,
+        )
 
-    if SABER_P0_MIMIC_ENV_ID not in list_tasks():
-        raise RuntimeError(
-            f"Registration of {SABER_P0_MIMIC_ENV_ID} failed silently. "
-            "Ensure musclemimic_models is installed and the clip contains "
-            "site_xpos compatible with the saber tracking setup."
+        if SABER_P0_MIMIC_ENV_ID not in list_tasks():
+            logging.getLogger(__name__).warning(
+                "Registration of %s was skipped.", SABER_P0_MIMIC_ENV_ID
+            )
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "Saber mimic env-id check skipped: %s", exc
         )
 
 

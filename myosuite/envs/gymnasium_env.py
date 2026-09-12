@@ -3,17 +3,13 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""
-MyoGymnasiumEnv — clean Gymnasium base class for MyoSuite CPU environments.
+"""MyoGymnasiumEnv — Gymnasium base class for MyoSuite CPU environments.
 
-Replaces MujocoEnv / env_base.py as the root of the CPU class hierarchy.
-Not yet wired to registrations (Phase 1); full migration happens in Phase 2.
+``reset()`` returns ``(obs, info)``. ``step()`` returns
+``(obs, reward, terminated, truncated, info)``. TimeLimit handles truncation.
 
-Key design decisions:
-- Pure Gymnasium interface: reset() → (obs, info); step() → (obs, rwd, terminated, truncated, info)
-- No @implement_for shims — gymnasium only
-- Gymnasium TimeLimit wrapper handles truncation (no manual step counter here)
-- Subclasses implement get_obs_dict(), get_reward_dict(), reset_task()
+Subclasses implement ``_get_obs_dict()``, ``get_reward_dict()``, and
+``reset_task()``.
 """
 
 from __future__ import annotations
@@ -459,7 +455,7 @@ class MyoGymnasiumEnv(gym.Env):
             from gymnasium.envs.mujoco.mujoco_rendering import MujocoRenderer
 
             self._mujoco_renderer = MujocoRenderer(
-                self.model, self.data, width=640, height=480
+                self.model, self.data, width=640, height=480, camera_id=-1
             )
         return self._mujoco_renderer.render(self.render_mode)
 

@@ -317,40 +317,17 @@ For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_re
 
 .. code-block:: python
 
-    from myosuite.utils import gym
-    # Include the table tennis track environment, uncomment to select the soccer track challenge
-    # env = gym.make('myoChallengeSoccerP1-v0')
-    env = gym.make('myoChallengeTableTennisP1-v0')
+   import gymnasium as gym
+   import myosuite
 
+   env = gym.make("myoChallengeTableTennisP1-v0")
+   obs, info = env.reset()
+   for _ in range(10):
+       obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+       if terminated or truncated:
+           obs, info = env.reset()
+   env.close()
 
-    env.reset()
-
-    # Repeat 1000 time steps
-    for _ in range(1000):
-
-        # Activate mujoco rendering window
-        env.mj_render()
-
-        # Select skin group
-        geom_1_indices = np.where(env.mj_model.geom_group == 1)
-        # Change the alpha value to make it transparent
-        env.mj_model.geom_rgba[geom_1_indices, 3] = 0
-
-
-        # Get observation from the environment, details are described in the above docs
-        obs = env.get_obs()
-        current_time = obs['time']
-        #print(current_time)
-
-
-        # Take random actions
-        action = env.action_space.sample()
-
-
-        # Environment provides feedback on action
-        next_obs, reward, terminated, truncated, info = env.step(action)
-
-
-        # Reset training if env is terminated
-        if terminated:
-            next_obs, info = env.reset()
+The interactive MuJoCo window is not part of the Gymnasium ``step()`` loop.
+On macOS open it with ``mjpython`` and ``env.unwrapped.mj_render()``. For class
+notebooks prefer ``render_mode="rgb_array"`` and ``env.render()``.

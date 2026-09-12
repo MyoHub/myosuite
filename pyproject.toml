@@ -30,7 +30,7 @@ dependencies = [
     "h5py",
     "numpy",
     "mujoco",
-    "Pillow>=12.3.0",
+    "Pillow>=10.1.0",
     "pink-noise-rl",
     "packaging",
     "ml-collections>=0.1.1",
@@ -105,7 +105,6 @@ musclemimic = [
 dev = [
     "myosuite[rl]",
     "myosuite[musclemimic]",
-    "myosuite[mjx-cuda]; sys_platform != 'darwin'",
     "pytest>=9.0.3",
     "pytest-xvfb",
     "pytest-benchmark>=4.0",
@@ -185,9 +184,8 @@ extend-exclude = ["tutorials"]
 "tutorials/**" = ["E402"]
 
 [tool.uv]
-# Floors for vulnerable transitive deps (uv.lock bumped alongside; full re-resolve
-# currently blocked by mjx/orbax/jax metadata: orbax-checkpoint>=0.11.33 needs jax>=0.6
-# while mjx caps jax<0.5.3).
+# Floors for vulnerable transitive deps. The `[mjx]` extra still pins jax<0.5.3
+# while orbax-checkpoint wants jax>=0.6; MJX is opt-in and not part of `[dev]`.
 constraint-dependencies = [
     "torch>=2.13.0",
     "cryptography>=48.0.1",

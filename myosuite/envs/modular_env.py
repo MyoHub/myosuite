@@ -7,7 +7,7 @@
 A :class:`ModularTaskEnv` needs no subclassing: observation channels,
 reward terms, and goal sampling are fully specified by a
 :class:`~myosuite.core.config.TaskConfig` dataclass.  This is the reference
-CPU implementation for the Phase 5 Modular Task Configuration System.
+CPU implementation for the experimental TaskConfig / ModularTaskEnv route.
 
 Example::
 
@@ -47,10 +47,10 @@ from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 
 logger = logging.getLogger(__name__)
 
-# Maps ObsSpec key → function name suffix in myo_obs_terms (e.g. "joint_pos" → joint_pos_obs)
+# Maps ObsSpec key → function name suffix in base_obs (e.g. "joint_pos" → joint_pos_obs)
 _OBS_TERM_SUFFIX = "_obs"
 
-# Maps RewardSpec term → function name in myo_reward_terms (e.g. "pose" → pose_reward)
+# Maps RewardSpec term → function name in base_reward (e.g. "pose" → pose_reward)
 _REWARD_TERM_SUFFIX = "_reward"
 
 
@@ -67,7 +67,7 @@ def _load_obs_fn(key: str) -> Any:
         Callable term function.
 
     Raises:
-        AttributeError: If no matching function exists in myo_obs_terms.
+        AttributeError: If no matching function exists in ``base_obs``.
     """
     mod = importlib.import_module("myosuite.terms.base_obs")
     fn_name = f"{key}{_OBS_TERM_SUFFIX}"

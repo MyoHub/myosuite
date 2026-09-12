@@ -13,7 +13,6 @@ from collections.abc import Callable
 
 import mujoco
 import numpy as np
-import pink
 
 import gymnasium as gym
 from gymnasium.utils import EzPickle
@@ -75,6 +74,8 @@ class ChallengeOpponent:
         self.reset_opponent(rng=rng)
 
     def reset_noise_process(self) -> None:
+        import pink
+
         self.noise_process = pink.ColoredNoiseProcess(
             beta=2, size=(2, 2000), scale=10, rng=self.rng
         )
@@ -217,6 +218,8 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         self.rng = rng
         self.opponent_probabilities = probabilities
         self.min_spawn_distance = min_spawn_distance
+        import pink
+
         self.noise_process = pink.ColoredNoiseProcess(
             beta=2, size=(2, 2000), scale=10, rng=rng
         )

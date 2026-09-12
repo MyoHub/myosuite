@@ -528,4 +528,6 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             self.data.qpos[5] = rw * oy - rx * oz + ry * ow + rz * ox
             self.data.qpos[6] = rw * oz + rx * oy - ry * ox + rz * ow
 
+        if self.model.na > 0:
+            self.data.act[:] = 0.05
         return {"heading_dir": self._heading_dir}
