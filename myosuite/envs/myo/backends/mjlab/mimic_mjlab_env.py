@@ -174,7 +174,7 @@ def _reward_mode_uses_mimic_objective(reward_mode: str) -> bool:
 
 
 def _reward_mode_uses_env_objective(reward_mode: str) -> bool:
-    """Return whether *reward_mode* includes the native saber task objective."""
+    """Return whether *reward_mode* includes the native task objective."""
     return reward_mode in (_MIMIC_REWARD_MODE_ENV, _MIMIC_REWARD_MODE_AUGMENTED)
 
 
@@ -350,7 +350,7 @@ def _mimic_keyframe_reset_event(
 
         # TODO: migrate to entity.write_root_state_to_sim + write_joint_state_to_sim.
         # This function writes the full qpos/qvel in one shot, including auxiliary
-        # free joints (e.g. detached prop sabers) that are not covered by the
+        # free joints (e.g. detached props) that are not covered by the
         # entity root+joints decomposition.  Synchronise around the raw Warp writes
         # to prevent CUDA error 700 under certain allocator states (GitHub #40).
         if torch.cuda.is_available():
@@ -559,26 +559,6 @@ def _resolve_mimic_mjlab_ids(
         site_names = tuple(BODY2SITES_FOR_MIMIC.values())
         tracking = MimicTrackingConfig(
             reward_scale=float(cfg.tracking_reward_scale),
-            success_threshold=float(cfg.tracking_success_threshold),
-        )
-        lo = np.asarray(cfg.target_site_range.low, dtype=np.float64)
-        hi = np.asarray(cfg.target_site_range.high, dtype=np.float64)
-    elif variant == "saber":
-        from myosuite.integrations.musclemimic.bimanual_model import (
-            BODY2SITES_FOR_MIMIC,
-        )
-        from myosuite.integrations.musclemimic.myotorso_bimanual_model import (
-            default_myotorso_bimanual_mimic_config,
-        )
-        from myosuite.envs.myo.tasks.challenge.saber_scene_assets import (
-            build_saber_scene_mjmodel_and_spec,
-        )
-
-        cfg = default_myotorso_bimanual_mimic_config()
-        mj_model, _ = build_saber_scene_mjmodel_and_spec()
-        site_names = tuple(BODY2SITES_FOR_MIMIC.values())
-        tracking = MimicTrackingConfig(
-            reward_scale=2.0,  # saber clip tasks benefit from a denser tracking scale
             success_threshold=float(cfg.tracking_success_threshold),
         )
         lo = np.asarray(cfg.target_site_range.low, dtype=np.float64)
@@ -1410,7 +1390,7 @@ def _make_mimic_env_cfg(
     # Reset handling:
     # - use RSI when clip qpos/qvel align with the model
     # - otherwise restore the compiled model keyframe so auxiliary free joints
-    #   (e.g. saber props) do not reset to all zeros
+    #   (e.g. detached props) do not reset to all zeros
     events: dict[str, Any] = {}
     if clip is not None and enable_clip_state_terms and clip.qpos is not None:
         events["rsi"] = EventTermCfg(
@@ -1520,9 +1500,8 @@ def register_mimic_mjlab_tasks_with_clip(
               ``site_xpos`` populated.
         action_mode: Muscle action interpretation. Leave as ``"sigmoid"`` for
             training; use ``"direct"`` for fullbody checkpoint inference.
-        reward_mode: Reward composition for the saber mimic task (``"mimic"``,
-            ``"env"``, or ``"augmented"``). Forwarded to
-            :func:`register_saber_p0_mjlab_task_with_mimic_mix`.
+        reward_mode: Reward composition for the mimic task (``"mimic"``,
+            ``"env"``, or ``"augmented"``).
 
     Raises:
         ValueError: If ``clip.site_xpos`` is ``None``.
@@ -1543,25 +1522,6 @@ def register_mimic_mjlab_tasks_with_clip(
         action_mode=action_mode,
         mimic_reward_weight=mimic_reward_weight,
     )
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_saber import (
-        SaberMimicMixCfg,
-        register_saber_p0_mjlab_task_with_mimic_mix,
-    )
-
-    register_saber_p0_mjlab_task_with_mimic_mix(
-        register_mjlab_task=register_mjlab_task,
-        rl_cfg_fn=rl_cfg_fn,
-        mimic_mix=SaberMimicMixCfg(
-            clips=(clip,),
-            reward_mode=reward_mode,
-            mimic_reward_weight=mimic_reward_weight,
-            env_reward_weight=env_reward_weight,
-            use_deepmimic_reward=use_deepmimic_reward,
-            use_lookahead=use_lookahead,
-            use_early_termination=use_early_termination,
-            use_reference_state_initialization=True,
-        ),
-    )
     from mjlab.tasks.registry import list_tasks
 
     if "myoMimicFullbody-v0" not in list_tasks():
@@ -1569,16 +1529,6 @@ def register_mimic_mjlab_tasks_with_clip(
             "Registration of myoMimicFullbody-v0 failed silently. "
             "Ensure musclemimic_models is installed "
             "('pip install myosuite[musclemimic]') and the clip is valid."
-        )
-    from myosuite.envs.myo.tasks.challenge.saber_task_spec import (
-        SABER_P0_MIMIC_ENV_ID,
-    )
-
-    if SABER_P0_MIMIC_ENV_ID not in list_tasks():
-        raise RuntimeError(
-            f"Registration of {SABER_P0_MIMIC_ENV_ID} failed silently. "
-            "Ensure musclemimic_models is installed and the clip contains "
-            "site_xpos compatible with the saber tracking setup."
         )
 
 

@@ -677,7 +677,7 @@ def load_mimic_checkpoint_policy(
 
     Intended for evaluation / sanity-checking; wrap the result with
     :func:`~myosuite.integrations.musclemimic.model_bridge.make_fullbody_checkpoint_bridged_policy`
-    to run it on a native mjlab saber environment.
+    to run it on a native mjlab environment.
     """
     from myosuite.integrations.musclemimic.fullbody_checkpoint_io import (
         resolve_checkpoint_ref,

@@ -17,7 +17,7 @@ mesh names do not collide with the bimanual arm package.
 Legs use ``myolegs_chain`` geoms / bodies but **all leg DOFs are stripped**
 (``<joint/>`` lines removed) so shanks/feet are rigidly welded to the pelvis.
 The temp host drops table-tennis ``full_body`` *xy* offset and **π yaw** so
-the figure matches Mimic / saber world axes (incoming targets advance along
+the figure matches Mimic world axes (incoming targets advance along
 ``+Y``). It also removes ``pelvis_x`` / ``pelvis_y`` slide joints and their
 actuators (no horizontal root translation).
 
@@ -44,8 +44,8 @@ from myosuite.integrations.musclemimic.bimanual_model import (
 )
 
 # ``import myosuite`` must not run at module import time: ``myosuite`` executes
-# ``register_all_envs()`` which imports challenge tasks (e.g. saber_vs) that
-# import this module again → partially initialized circular import on Colab/notebooks.
+# ``register_all_envs()`` which imports challenge tasks that import this
+# module again → partially initialized circular import on Colab/notebooks.
 _MYOSUITE_PKG_ROOT = Path(__file__).resolve().parents[2]
 
 _MYOTORSO_BIMANUAL_TAG = "myotorso_bimanual_mimic"
@@ -236,7 +236,7 @@ def _materialize_myotorso_bimanual_host_xml() -> tuple[Path, Path, Path]:
     )
 
     # ``myotorso_arm_chain_host`` offsets ``full_body`` for the table-tennis
-    # court (x=1.6). MuscleMimic / saber scenes assume a near-origin layout so
+    # court (x=1.6). MuscleMimic scenes assume a near-origin layout so
     # target portals and demo cameras match the packaged bimanual-only MJCF.
     _HOST_FULL_BODY_OFFSET = '<body name="full_body" pos="1.6 0 0.95" euler="0 0 3.14">'
     _MIMIC_FULL_BODY_ORIGIN = '<body name="full_body" pos="0 0 0.95">'

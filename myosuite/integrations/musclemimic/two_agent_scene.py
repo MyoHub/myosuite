@@ -4,10 +4,10 @@
 # LICENSE file in the root directory of this source tree.
 """Shared utilities for building two-agent MuJoCo competitive scenes.
 
-Both ``boxing_vs_model`` and ``saber_vs_model`` use frame attachment to compose
-two independent agent specs into a single combined scene.  This module extracts
+Two-agent competitive model files use frame attachment to compose two
+independent agent specs into a single combined scene.  This module extracts
 the common scaffolding so each model file only needs to implement its own
-agent-specific geometry (fists/sabers, scoring zones, sensors).
+agent-specific geometry (limbs, scoring zones, sensors).
 """
 
 from __future__ import annotations
