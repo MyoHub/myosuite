@@ -8,7 +8,7 @@
 myosuite/          # core package (see below)
 docs/wiki/         # this wiki
 scripts/           # developer maintenance scripts (parity baselines, training, export)
-tutorials/         # runnable usage examples and pre-trained baselines
+tutorials/         # notebooks and GPU training walk-throughs
 benchmarks/        # performance benchmarks
 tasks/             # working notes: todo.md, lessons.md, reports (not shipped)
 ```
@@ -17,7 +17,7 @@ tasks/             # working notes: todo.md, lessons.md, reports (not shipped)
 
 | Directory | Contents |
 |---|---|
-| `core/` | Registry, config dataclasses, model builder/recipes, muscle conditions, citations |
+| `core/` | Registry, config dataclasses, model builder/recipes, muscle conditions |
 | `terms/` | Backend-agnostic pure term functions (obs, reward, action, event, termination) |
 | `physics/` | Biomechanics math — quaternions, fatigue, IK, min-jerk. No backend imports. |
 | `envs/` | `gymnasium_env.py` (CPU base), `modular_env.py` (data-driven env), wrappers |

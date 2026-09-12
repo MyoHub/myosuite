@@ -18,7 +18,6 @@ add minimal comments and descriptions in the code / python files
 - Always return 5-tuple from `step()`: `(obs, rwd, terminated, truncated, info)`.
   **Exception:** `ModularMultiAgentTaskEnv` returns 5-tuples of per-agent dicts — intentional.
 - Use `myo_sim.get_path(...)` / `ModelBuilder` for assets — no hardcoded paths.
-- New envs must include a `CitationBundle` — see `myosuite/core/citation.py`.
 
 ### mjlab Non-Negotiables
 
@@ -58,10 +57,8 @@ pre-commit run --all-files
 pytest myosuite/tests/test_model_builder.py -v
 pytest myosuite/tests/test_terms_cpu.py -v
 pytest myosuite/tests/test_fragment_compat.py -v
-pytest myosuite/tests/test_parity.py -v      # atol ≤ 1e-7 — regressions block PR
+pytest myosuite/tests/test_parity.py -v      # atol ≤ 1e-6 — regressions block PR
 pytest myosuite/tests/test_registry.py -v
-pytest myosuite/tests/test_boxing_registry.py -v
-pytest myosuite/tests/test_saber_env.py -v
 ```
 
 ---

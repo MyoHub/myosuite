@@ -61,4 +61,5 @@ def test_pose_tracking_reward(mock_cpu_accessor, mock_obs_dict):
     assert isinstance(result["dense"], float)
 ```
 
-Add a parity test in `test_parity.py` to confirm CPU and MJX produce identical outputs (atol ≤ 1e-7).
+Add a CPU parity test in `test_parity.py` (default `atol=1e-6`). For a GPU
+task, also honour `cross-backend-contract.md` so the mjlab half stays in lockstep.

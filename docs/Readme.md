@@ -5,7 +5,7 @@ All RST content lives under **`docs/source/`**. Config and tooling stay in **`do
 **Layout:**
 
 - `docs/source/` — Sphinx source (conf.py, index.rst, quickstarts, api/, images/, _static/)
-- `docs/` — Makefile, Readme, requirements.txt, DESIGN.md
+- `docs/` — Makefile, Readme, requirements.txt
 - `docs/build/` — HTML output (gitignored)
 
 **From repo root:**

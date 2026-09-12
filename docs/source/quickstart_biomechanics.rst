@@ -233,8 +233,8 @@ Available Musculoskeletal Models
      - 210
      - ``myoTorsoPoseFixed-v0``
 
-For the full environment listing — all task variants, pathological conditions,
-challenge tasks, and GPU (MJX / mjlab) IDs — see :doc:`environments`.
+For the full environment listing — task variants, pathological conditions, and
+challenge IDs — see :doc:`environments`.
 
 To inspect any model interactively:
 

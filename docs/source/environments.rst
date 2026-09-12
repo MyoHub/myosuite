@@ -1,14 +1,15 @@
 Environment Reference
 ======================
 
-MyoSuite registers environments across three execution paths:
+* **CPU** — ``gym.make(env_id)`` after ``import myosuite``. Playback and SB3.
+* **mjlab** — the same ``env_id`` for GPU training (``scripts/train_mjlab.py``).
 
-* **CPU** — standard Gymnasium environments, accessible via ``gym.make()``.
-* **MJX** — JAX/GPU environments, via ``myosuite.envs.myo.backends.mjx.make()``.
-* **mjlab** — MuJoCo Warp / Isaac Lab environments (subset).
+List every CPU ID on your install::
 
-The tables below cover all registered environments.
-Run ``python -m myosuite.tests.test_myo`` to verify registration on your system.
+   python -c "import myosuite; print('\n'.join(myosuite.myosuite_env_suite))"
+
+Tables below are the common CPU IDs. Pathological prefixes (``myoSarc…``,
+``myoFati…``, hand ``myoReaf…``) are auto-registered for ``myo*`` tasks.
 
 .. contents:: Contents
    :local:
@@ -365,112 +366,20 @@ myoTorso  (18 joints, 210 muscles)
      - ✓
 
 
-MJX Environments (JAX / GPU)
-------------------------------
+mjlab (GPU)
+-----------
 
-These environments run on GPU via MuJoCo MJX and require the ``[mjx]`` extra.
-Access via ``myosuite.envs.myo.backends.mjx.make()``.
+Install ``pip install -e ".[mjlab]"`` and train with the CPU ``env_id``::
 
-.. list-table::
-   :header-rows: 1
-   :widths: 45 30 25
+   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0
 
-   * - Environment ID
-     - Model
-     - CPU analogue
-   * - ``MjxElbowPoseFixed-v0``
-     - myoElbow
-     - ``myoElbowPose1D6MFixed-v0``
-   * - ``MjxElbowPoseRandom-v0``
-     - myoElbow
-     - ``myoElbowPose1D6MRandom-v0``
-   * - ``MjxFingerPoseFixed-v0``
-     - myoFinger
-     - ``myoFingerPoseFixed-v0``
-   * - ``MjxFingerPoseRandom-v0``
-     - myoFinger
-     - ``myoFingerPoseRandom-v0``
-   * - ``MjxHandReachFixed-v0``
-     - myoHand
-     - ``myoHandReachFixed-v0``
-   * - ``MjxHandReachRandom-v0``
-     - myoHand
-     - ``myoHandReachRandom-v0``
-   * - ``MjxLegWalk-v0``
-     - myoLeg
-     - ``myoLegWalk-v0``
-
-.. code-block:: python
-
-   from myosuite.envs.myo.backends.mjx import make
-   env = make("MjxElbowPoseRandom-v0")
+Registered mjlab IDs live in
+``myosuite.envs.myo.backends.mjlab.REGISTERED_TASKS``.
 
 
-mjlab Environments (MuJoCo Warp / Isaac Lab)
-----------------------------------------------
+MJX (experimental)
+------------------
 
-These environments use the Isaac Lab manager API with MuJoCo Warp as the
-physics backend.  They require the ``[mjlab]`` extra and are accessed via
-``mjlab.envs.make()``.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 55 45
-
-   * - Environment ID (same as CPU)
-     - Config class
-   * - ``myoElbowPose1D6MFixed-v0``
-     - ``ElbowPoseCfg``
-   * - ``myoElbowPose1D6MRandom-v0``
-     - ``ElbowPoseCfg``
-   * - ``myoHandPoseRandom-v0``
-     - ``HandReachCfg``
-   * - ``myoLegWalk-v0``
-     - ``WalkCfg``
-   * - ``myoChallengeBaodingP2-v1``
-     - ``BaodingCfg``
-
-
-Summary Counts
----------------
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 25 45
-
-   * - Category
-     - Base IDs
-     - Notes
-   * - myoFinger
-     - 4
-     - ×3 (base + Sarc + Fati) = 12
-   * - myoElbow
-     - 4
-     - ×3 = 12; includes Exo variants
-   * - myoHand (base)
-     - 14
-     - ×4 (base + Sarc + Fati + Reaf) = 56
-   * - myoHand (challenge)
-     - 12
-     - no auto-variants
-   * - myoArm
-     - 2
-     - ×3 = 6
-   * - myoLeg (base)
-     - 5
-     - ×3 = 15
-   * - myoLeg (challenge)
-     - 7
-     - no auto-variants
-   * - myoTorso
-     - 2
-     - ×3 = 6
-   * - MJX
-     - 7
-     - JAX/GPU path
-   * - mjlab
-     - 5
-     - MuJoCo Warp / Isaac Lab path
-   * - **Total (CPU)**
-     - **≥ 125**
-     - counting all variant IDs
+A JAX path exists (``pip install -e ".[mjx]"``,
+``from myosuite.envs.myo.backends.mjx import make``). Do not start new work on
+it; use mjlab for GPU training.

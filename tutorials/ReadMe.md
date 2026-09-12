@@ -1,131 +1,73 @@
 # MyoSuite Tutorials
 
-## Requirements
-
-Install Jupyter Notebooks:
-
-```bash
-pip install jupyter
-```
-
-Or jump-start with the **ICRA2023 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q)
-
-If the kernel for your environment is not recognised, register it:
-
 ```bash
 pip install jupyter ipykernel
 python -m ipykernel install --user --name=myosuite
-# To remove it later:
-jupyter kernelspec uninstall myosuite
+# video playback in notebooks: conda install conda-forge::ffmpeg  (or brew install ffmpeg)
 ```
 
-You may also need `ffmpeg` for video playback in notebooks:
+[ICRA Colab](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q)
+
+On Colab, opening a notebook from GitHub does **not** install the package. Run the install cell in `1_Get_Started.ipynb`, or:
 
 ```bash
-conda install conda-forge::ffmpeg
-# or: brew install ffmpeg
+# from a clone
+pip install -e .
+# or, if you only have the notebook
+pip install git+https://github.com/MyoHub/myosuite.git
 ```
 
----
+Then import with the public API (not the old `from myosuite.utils import gym` one-liner):
 
-## Recommended Learning Paths
+```python
+import gymnasium as gym
+import myosuite  # required — registers env ids
+```
 
-### First-time user (< 30 min)
-1. **[1 — Get Started](./1_Get_Started.ipynb)** — create an env, render a frame
-2. **[4c — Train with SB3](./4c_Train_SB_policy.ipynb)** — train your first policy
-3. **[3 — Analyse movements](./3_Analyse_movements.ipynb)** — plot kinematics & synergies
+## Path
 
-### Biomechanics researcher
-4. **[5 — Hand muscles](./5_Move_Hand_Fingers.ipynb)** — direct muscle control
-5. **[10 — Mot file playback](./10_PlaybackMotFile.ipynb)** — replay OpenSim data
-6. **[6 — Inverse Dynamics](./6_Inverse_Dynamics.ipynb)** — joint torque from motion
-7. **[9 — CMC](./9_Computed_muscle_control.ipynb)** — full muscle control pipeline
+1. [1 — Get Started](./1_Get_Started.ipynb)
+2. [4c — Train with SB3](./4c_Train_SB_policy.ipynb) (`pip install -e ".[rl]"`)
+3. [3 — Analyse movements](./3_Analyse_movements.ipynb)
 
-### Neuroscience / physiology
-8. **[7 — Fatigue Modeling](./7_Fatigue_Modeling.ipynb)** — 3CC-r fatigue model
+Also useful: [2 — Load a policy](./2_Load_policy.ipynb) (pretrained NPG weights are **not** in a clean clone; the notebook uses a random policy if they are missing), [5 — Hand muscles](./5_Move_Hand_Fingers.ipynb), [7 — Fatigue](./7_Fatigue_Modeling.ipynb), [10 — OpenSim `.mot` playback](./10_PlaybackMotFile.ipynb).
 
-### RL / ML engineer
-9. **[Walk Backends Demo](./Walk_Backends_Demo.ipynb)** — CPU vs MJX vs mjlab
-10. **[Modular Task Config](./modular_task_config.ipynb)** — define custom tasks
+Optional: [6 — Inverse dynamics](./6_Inverse_Dynamics.ipynb) (`osqp`), [9 — CMC](./9_Computed_muscle_control.ipynb), [4a — DEP-RL](./4a_deprl.ipynb), [4b — MyoReflex](./4b_reflex/MyoSuite_MyoReflex_Walk.ipynb).
 
-### Advanced (MuscleMimic / SAR)
-11. **[MuscleMimic Policy Trajectory](./11a_MuscleMimic_Fullbody_Policy_Trajectory.ipynb)**
-12. **[Directional Locomotion BC + DAgger](./11d_MuscleMimic_Fullbody_directional_locomotion.ipynb)**
-13. **[SAR Tutorial](./sar/SAR_tutorial.ipynb)**
+By default, notebooks 6 and 9 use the first 80 trajectory frames (`MYOSUITE_FULL_ID=1` for the full CSV). Notebook 11b trains 256 PPO steps (`MYOSUITE_FULL_MIMIC=1` for the 50k demo). Notebook 11c skips Warp env creation on macOS / CPU; use [11c Colab GPU](./11c_MuscleMimic_Fullbody_mjlab_colab.ipynb) on a T4. Notebook 11d stays in `QUICK_MODE` unless `MYOSUITE_FULL_BC=1`.
 
----
+`TaskConfig` / [modular_task_config.ipynb](./modular_task_config.ipynb) is **experimental**. Prefer subclassing `MyoGymnasiumEnv` (see `docs/wiki/adding-a-new-task.md`).
 
-## Optional dependencies
+GPU: `python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0` (`pip install -e ".[mjlab]"`). Walk-through: [directional_leg_gpu_training.py](./directional_leg_gpu_training.py).
 
-| Feature | Install command |
-|---|---|
-| RL training | `pip install stable-baselines3` |
-| DEP-RL baseline | `pip install deprl` |
-| Inverse dynamics / CMC | `pip install osqp scipy` |
-| MuscleMimic checkpoints | `pip install musclemimic_models huggingface_hub` |
-| Synergy analysis | `pip install scikit-learn` |
-| Video playback | `conda install conda-forge::ffmpeg` or `brew install ffmpeg` |
+MuscleMimic: [integration README](../myosuite/integrations/musclemimic/README.md). mjlab GPU (Colab T4): [11c Colab](./11c_MuscleMimic_Fullbody_mjlab_colab.ipynb) ([Open in Colab](https://colab.research.google.com/drive/144wHsu_UBVofZqXRTOUWY33ZscziA76R)). Directional locomotion (Colab-ready): [11d — Full-body directional locomotion](./11d_MuscleMimic_Fullbody_directional_locomotion.ipynb) ([Open in Colab](https://colab.research.google.com/drive/1lc64D9YS8mmqz00-p161syndTUbffrg2)). Bimanual clips on Hugging Face are **gated** — request access before running that cell in [11c](./11c_MuscleMimic_Fullbody_mjlab.ipynb).
 
----
+## Rendering
 
-## Tutorials
+Use `render_mode="rgb_array"` and `env.render()`. Models without a named camera (elbow) use the free camera (`camera_id=-1`). Hand actuators use a `_r` suffix (`FDP2_r`, `EDC2_r`).
 
-### Getting started
+Headless video on Linux often needs `MUJOCO_GL=egl`; on macOS use `MUJOCO_GL=glfw` (the default if unset in the SAR helpers).
 
-- [**1 — Get Started**](./1_Get_Started.ipynb): Basic simulation loop, environment creation, observation/action spaces.
-- [**2 — Load a policy**](./2_Load_policy.ipynb): Load a trained policy file and run a rollout.
-- [**3 — Analyse movements**](./3_Analyse_movements.ipynb): Extract and plot joint kinematics from a trained policy.
+## Models
 
-### Biomechanics
+Install from this repo so XML assets match the notebooks:
 
-- [**6 — Inverse Dynamics**](./6_Inverse_Dynamics.ipynb): Compute joint torques from motion data.
-  Requires: `pip install osqp matplotlib pandas`
-- [**8 — Inverse Kinematics**](./8_inverse_kinematics.py): IK solver using the `mink` library.
-- [**9 — Computed Muscle Control (CMC)**](./9_Computed_muscle_control.ipynb): Feedforward muscle control via CMC.
-- [**10 — Playback OpenSim Mot Files**](./10_PlaybackMotFile.ipynb): Load OpenSim `.mot` files and replay on MyoSkeleton.
-  Run `python -m myosuite_init` first to download the skeleton.
+```bash
+pip install -e ".[dev]"
+```
 
-### Neuroscience / physiology
+`pyproject.toml` pins `myo-sim` from GitHub `dev`. A plain `pip install myo-sim` (0.2.1) is missing some arm/walk files; the package falls back to bundled copies under `myosuite/envs/myo/assets/`.
 
-- [**7 — Fatigue Modeling**](./7_Fatigue_Modeling.ipynb): Three-compartment cumulative fatigue model for muscle endurance studies.
+## Inverse kinematics
 
-### RL / ML training
+```bash
+python tutorials/8_inverse_kinematics.py --no-viewer
+# interactive (macOS): mjpython tutorials/8_inverse_kinematics.py
+```
 
-- [**4a — DEPRL baseline**](./4a_deprl.ipynb): DEP-RL controller.
-  Requires: `pip install deprl`
-- [**4b — MyoReflex baseline**](./4b_reflex/MyoSuite_MyoReflex_Walk.ipynb): Spinal reflex controller for walking.
-- [**4c — Train with Stable-Baselines3**](./4c_Train_SB_policy.ipynb): SAC/PPO training loop with SB3.
-  Requires: `pip install stable-baselines3`
-- [**Walk Backends Demo**](./Walk_Backends_Demo.ipynb): Side-by-side benchmark of CPU, MJX, and mjlab backends.
-- [**Modular Task Config**](./modular_task_config.ipynb): Define new tasks with `TaskSpec` + term functions — no subclassing.
+SAR full training is hours of SB3. The notebook skips those cells unless `MYOSUITE_FULL_SAR=1`. Precomputed-SAR cells still run. Check the install with:
 
-### MuscleMimic full-body tracking
-
-- [**MuscleMimic Fullbody Policy Trajectory**](./11a_MuscleMimic_Fullbody_Policy_Trajectory.ipynb):
-  Load a full-body MuscleMimic policy from a Hugging Face checkpoint, run it against a KIT motion clip,
-  and save the rendered tracking video.
-  Requires: `musclemimic_models`, `orbax-checkpoint`, `imageio`/`ffmpeg`, HF cache (`hf://amathislab/mm-10m-2`).
-
-  ```bash
-  # One-time setup
-  uv run hf auth login
-  uv run myosuite-musclemimic-setup-demo-cache
-  ```
-
-- [**MuscleMimic mjlab**](./11c_MuscleMimic_Fullbody_mjlab.ipynb): MuJoCo Warp / Isaac Lab backend for MuscleMimic training.
-- [**Directional Locomotion via BC + DAgger**](./11d_MuscleMimic_Fullbody_directional_locomotion.ipynb):
-  End-to-end tutorial: collect a directional walking dataset from a MuscleMimic teacher, train a BC policy
-  with DAgger refinement, evaluate 8-direction survival, and render a 1v1 ChaseTag scene with dynamic
-  pursuit and zigzag evasion. Requires: `torch`, `mediapy`, `imageio`/`ffmpeg`.
-- [**SAR tutorial**](./sar/SAR_tutorial.ipynb): Train policies with Spatial Action Representations.
-
-### CLI training scripts (beyond the CPU/SB3 notebook above)
-
-The notebooks above cover the CPU/Gymnasium path. For mjlab (Warp/RSL-RL) and
-MJX (JAX/Brax) backends, training is driven from the command line:
-
-- [`scripts/train_mjlab.py`](../scripts/train_mjlab.py): RSL-RL PPO on any
-  mjlab-registered task id (e.g. `myoChallengeTableTennisP0-v0`).
-- [`scripts/train_sar_jax_ppo.py`](../scripts/train_sar_jax_ppo.py): JAX/Brax
-  PPO + SAR pipeline for MJX-backed tasks (`myosuite[mjx]` extra; not
-  available on macOS).
+```bash
+python tutorials/sar/run_sar_full.py --help
+python tutorials/sar/run_sar_full.py --dry-run
+```

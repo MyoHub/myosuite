@@ -55,6 +55,18 @@ _REL_PACKAGE_PREFIXES: tuple[tuple[str, str], ...] = (
 )
 
 _PATH_ATTRIBUTES = frozenset({"file", "meshdir", "texturedir"})
+_UNSUPPORTED_COMPILER_ATTRS = frozenset({"convexhull"})
+
+
+def _strip_unsupported_compiler_attrs(tree: ET.ElementTree) -> bool:
+    """Drop compiler attributes MuJoCo 3.8 does not accept (e.g. convexhull)."""
+    changed = False
+    for elem in tree.getroot().iter("compiler"):
+        for attr in _UNSUPPORTED_COMPILER_ATTRS:
+            if attr in elem.attrib:
+                del elem.attrib[attr]
+                changed = True
+    return changed
 
 
 def _local_override_root() -> Path:
@@ -68,6 +80,45 @@ def _installed_package_root(module_name: str) -> Path | None:
     except ImportError:
         return None
     return Path(module.__file__).resolve().parent
+
+
+def _pip_myo_sim_models_root() -> Path | None:
+    """Return the installed ``myo_sim`` models directory, if present."""
+    pkg_root = _installed_package_root("myo_sim")
+    if pkg_root is None:
+        return None
+    models_dir = pkg_root / "models"
+    return models_dir if models_dir.exists() else pkg_root
+
+
+def _resolve_myo_sim_rel(tail: str) -> Path | None:
+    """Resolve a path inside myo_sim.
+
+    Order: pip ``models/<tail>`` (current fragments), then MyoSuite bundled
+    shims, then pip ``models/legacy/<tail>``, then a local simhive checkout.
+    A partial ``simhive/myo_sim`` tree must not shadow pip files it does not
+    fully replace.
+    """
+    if not tail:
+        return None
+    models = _pip_myo_sim_models_root()
+    if models is not None:
+        candidate = models / tail
+        if candidate.exists():
+            return candidate
+    bundled = _MYO_SIM_BUNDLED_FALLBACKS.get(tail)
+    if bundled is not None and bundled.exists():
+        return bundled
+    if models is not None:
+        legacy = models / "legacy" / tail
+        if legacy.exists():
+            return legacy
+    local_root = _local_override_root() / "myo_sim"
+    if local_root.exists():
+        for candidate in (local_root / tail, local_root / "legacy" / tail):
+            if candidate.exists():
+                return candidate
+    return None
 
 
 def get_sim_asset_root(sim_name: str) -> Path:
@@ -162,6 +213,13 @@ def _rewrite_relative_package_path(raw: str) -> Path | None:
     for pref, sim_name in _REL_PACKAGE_PREFIXES:
         if norm.startswith(pref):
             tail = norm[len(pref) :].lstrip("/")
+            if sim_name == "myo_sim":
+                if not tail:
+                    try:
+                        return get_sim_asset_root(sim_name)
+                    except FileNotFoundError:
+                        return None
+                return _resolve_myo_sim_rel(tail)
             try:
                 root = get_sim_asset_root(sim_name)
             except FileNotFoundError:
@@ -169,16 +227,6 @@ def _rewrite_relative_package_path(raw: str) -> Path | None:
             if not tail:
                 return root
             resolved = root / tail
-            if not resolved.exists() and sim_name == "myo_sim":
-                # Some myo_sim pip fragments only ship under models/legacy/...
-                legacy_resolved = root / "legacy" / tail
-                if legacy_resolved.exists():
-                    return legacy_resolved
-                # A few files in the old submodule layout never made it into
-                # the pip package at all; myosuite bundles compatibility copies.
-                bundled_fallback = _MYO_SIM_BUNDLED_FALLBACKS.get(tail)
-                if bundled_fallback is not None and bundled_fallback.exists():
-                    return bundled_fallback
             return resolved
     return None
 
@@ -208,6 +256,8 @@ def _patch_bundled_include(source: Path, old_meshdir: Path | None = None) -> Pat
         return source
 
     changed = False
+    if _strip_unsupported_compiler_attrs(tree):
+        changed = True
     for elem in tree.getroot().iter():
         for attr in _PATH_ATTRIBUTES:
             raw = elem.get(attr)
@@ -278,6 +328,8 @@ def _absolutize_include(source: Path) -> Path:
 
     root = tree.getroot()
     changed = False
+    if _strip_unsupported_compiler_attrs(tree):
+        changed = True
 
     # Determine compiler-declared mesh and texture base dirs.
     compiler_meshdir: Path | None = None
@@ -408,6 +460,8 @@ def resolve_model_xml_path(model_path: str | Path) -> Path:
         return model_path
 
     changed = False
+    if _strip_unsupported_compiler_attrs(tree):
+        changed = True
     old_meshdir: Path | None = None
     for elem in tree.getroot().iter():
         for attr in _PATH_ATTRIBUTES:
