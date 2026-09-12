@@ -225,16 +225,9 @@ try:
     import tempfile
     from pathlib import Path
 
-    import mujoco
     import wandb
-    from mjlab.envs import ManagerBasedRlEnv
     from mjlab.rl import MjlabOnPolicyRunner
-    from mjlab.sim.sim import Simulation, SimulationCfg
     from mjlab.utils.lab_api.math import axis_angle_from_quat, quat_from_matrix
-    from mjlab.utils.spaces import Box
-    from mjlab.utils.spaces import Dict as DictSpace
-    from mjlab.utils.spaces import batch_space
-    from rsl_rl.env import VecEnv
     from tensordict import TensorDict
 
     import torch.nn as nn
@@ -247,20 +240,8 @@ try:
     )
     from myosuite.integrations.musclemimic.fullbody_local_policy import (
         FullbodyObsAdapter,
-        fullbody_history_settings_from_metadata,
-        fullbody_obs_adapter_params_from_metadata,
         load_local_policy_artifacts,
-        read_checkpoint_config_metadata,
     )
-    from myosuite.integrations.musclemimic.fullbody_model import (
-        compile_mimic_fullbody_mjmodel,
-        default_mimic_fullbody_config,
-    )
-    from myosuite.integrations.musclemimic.model_bridge import (
-        SharedModelStateBridge,
-        make_fullbody_checkpoint_bridged_policy,
-    )
-    from myosuite.core.trajectory_io import load_motion_clip
     from myosuite.utils.onnx_checkpoint import (
         _FATIGUE_STATE_KEY,
         bundle_onnx_with_checkpoint,
@@ -401,8 +382,8 @@ class TorchFullbodyObsAdapter:
     """Torch port of :class:`~...fullbody_local_policy.FullbodyObsAdapter`.
 
     Moves all index arrays to *device* at construction time and uses batched
-    Torch operations for the per-step observation build.  Required for the
-    GPU-parallel :class:`CheckpointVecEnv` path; CPU path uses the NumPy
+    Torch operations for the per-step observation build, for GPU-parallel
+    training; CPU path uses the NumPy
     :class:`~...fullbody_local_policy.FullbodyObsAdapter` directly.
     """
 
@@ -629,256 +610,6 @@ class TorchFullbodyObsAdapter:
 
 
 # ---------------------------------------------------------------------------
-# CheckpointVecEnv — RSL-RL VecEnv wrapping mjlab saber with fullbody obs
-# ---------------------------------------------------------------------------
-
-_SABER_ENTITY_NAME = "saber_p0_robot"
-
-
-def _to_numpy_array(value: Any) -> np.ndarray:
-    if hasattr(value, "detach"):
-        value = value.detach()
-    if hasattr(value, "cpu"):
-        value = value.cpu()
-    return np.asarray(value)
-
-
-def _to_muscle_activations(action: np.ndarray) -> np.ndarray:
-    """Map full-body logits in ``[-1, 1]`` to saber muscle activations in ``[0, 1]``."""
-    return np.clip(0.5 * (action + 1.0), 0.0, 1.0).astype(np.float32)
-
-
-class CheckpointVecEnv(VecEnv):
-    """RSL-RL :class:`~rsl_rl.env.VecEnv` exposing the mimic checkpoint interface on native mjlab saber.
-
-    Training keeps this bridge on the *environment* side because the rollout
-    storage must retain checkpoint-space observations for later PPO updates —
-    the bridge cannot be moved fully into the policy during training as it can
-    during evaluation.
-    """
-
-    def __init__(
-        self,
-        env: ManagerBasedRlEnv,
-        *,
-        checkpoint_root: Path,
-        motion_path: Path,
-    ) -> None:
-        self.env = env
-        self.checkpoint_root = Path(checkpoint_root)
-        self.motion_path = Path(motion_path)
-        self.device = torch.device(self.unwrapped.device)
-        self._use_gpu_compat = self.device.type == "cuda"
-        self.num_envs = int(self.unwrapped.num_envs)
-        self.max_episode_length = int(self.unwrapped.max_episode_length)
-        metadata = read_checkpoint_config_metadata(self.checkpoint_root)
-        self._history_settings = fullbody_history_settings_from_metadata(metadata)
-        self._artifacts = load_local_policy_artifacts(self.checkpoint_root)
-        self._fullbody_model, _, _ = compile_mimic_fullbody_mjmodel(
-            default_mimic_fullbody_config()
-        )
-        self._clip = load_motion_clip(
-            self.motion_path,
-            expected_nq=self._fullbody_model.nq,
-            expected_nv=self._fullbody_model.nv,
-        )
-        self._obs_adapter = FullbodyObsAdapter(
-            self._fullbody_model,
-            self._clip,
-            fullbody_obs_adapter_params_from_metadata(metadata),
-        )
-        self._traj_len = int(self._obs_adapter._traj_len)
-        self._source_model = self.unwrapped._saber_logic.mj_model
-        self._bridge = SharedModelStateBridge(self._source_model, self._fullbody_model)
-        if self._use_gpu_compat:
-            self._target_sim = Simulation(
-                num_envs=self.num_envs,
-                cfg=SimulationCfg(),
-                model=self._fullbody_model,
-                device=str(self.device),
-            )
-            self._target_data = None
-            self._torch_obs_adapter = TorchFullbodyObsAdapter(
-                self._obs_adapter, device=self.device
-            )
-
-            def _t(a):
-                return torch.as_tensor(
-                    np.asarray(a, dtype=np.float32), device=self.device
-                )
-
-            def _i(a):
-                return torch.as_tensor(
-                    np.asarray(a, dtype=np.int64), device=self.device
-                )
-
-            self._target_ref_qpos = _t(self._bridge._target_ref_qpos)
-            self._target_ref_qvel = _t(self._bridge._target_ref_qvel)
-            self._target_ref_ctrl = _t(self._bridge._target_ref_ctrl)
-            self._target_ref_act = (
-                _t(self._bridge._target_ref_act)
-                if self._bridge._target_ref_act is not None
-                else None
-            )
-            self._source_qpos_idx = _i(self._bridge._source_qpos_idx)
-            self._target_qpos_idx = _i(self._bridge._target_qpos_idx)
-            self._source_qvel_idx = _i(self._bridge._source_qvel_idx)
-            self._target_qvel_idx = _i(self._bridge._target_qvel_idx)
-            self._source_act_idx = _i(self._bridge._source_act_idx)
-            self._target_act_idx = _i(self._bridge._target_act_idx)
-        else:
-            self._target_sim = None
-            self._target_data = [
-                mujoco.MjData(self._fullbody_model) for _ in range(self.num_envs)
-            ]
-            self._torch_obs_adapter = None
-        self._ctrl_dt = float(self.unwrapped._saber_logic.task_cfg.backend.ctrl_dt)
-        self.num_actions = int(self._fullbody_model.nu)
-        self.single_action_space = Box(shape=(self.num_actions,), low=-1.0, high=1.0)
-        obs_box = Box(
-            shape=(int(self._artifacts.obs_dim),), low=-float("inf"), high=float("inf")
-        )
-        self.single_observation_space = DictSpace(
-            spaces={"actor": obs_box, "critic": obs_box}
-        )
-        self.action_space = batch_space(self.single_action_space, self.num_envs)
-        self.observation_space = batch_space(
-            self.single_observation_space, self.num_envs
-        )
-        self.env.reset()
-
-    @property
-    def cfg(self) -> Any:
-        return self.unwrapped.cfg
-
-    @property
-    def render_mode(self) -> str | None:
-        return self.env.render_mode
-
-    @property
-    def unwrapped(self) -> ManagerBasedRlEnv:
-        return self.env.unwrapped
-
-    @property
-    def episode_length_buf(self) -> torch.Tensor:
-        return self.unwrapped.episode_length_buf
-
-    @episode_length_buf.setter
-    def episode_length_buf(self, value: torch.Tensor) -> None:
-        self.unwrapped.episode_length_buf = value
-
-    def seed(self, seed: int = -1) -> int:
-        return self.unwrapped.seed(seed)
-
-    def _frame_idx_from_time(self, sim_time: Any) -> int:
-        t = float(np.asarray(_to_numpy_array(sim_time)).reshape(-1)[0])
-        return int(round(t / self._ctrl_dt)) % int(self._clip.qpos.shape[0])
-
-    def _build_single_obs(self, env_idx: int) -> np.ndarray:
-        if self._target_data is None:
-            raise RuntimeError("_build_single_obs is CPU-path only.")
-        live = self.unwrapped.scene[_SABER_ENTITY_NAME].data.data
-        td = self._target_data[env_idx]
-        self._bridge.copy_source_state_into_target(
-            source_qpos=live.qpos[env_idx],
-            source_qvel=live.qvel[env_idx],
-            source_ctrl=live.ctrl[env_idx],
-            source_act=live.act[env_idx]
-            if getattr(live, "act", None) is not None
-            else None,
-            target_data=td,
-        )
-        return np.asarray(
-            self._obs_adapter.build(td, self._frame_idx_from_time(live.time[env_idx])),
-            dtype=np.float32,
-        )
-
-    def _build_obs_batch(self) -> torch.Tensor:
-        if self._target_sim is not None:
-            live = self.unwrapped.scene[_SABER_ENTITY_NAME].data.data
-            td = self._target_sim.data
-            td.qpos[:] = self._target_ref_qpos.unsqueeze(0)
-            td.qvel[:] = self._target_ref_qvel.unsqueeze(0)
-            td.ctrl[:] = self._target_ref_ctrl.unsqueeze(0)
-            if self._target_ref_act is not None and hasattr(td, "act"):
-                td.act[:] = self._target_ref_act.unsqueeze(0)
-            if self._source_qpos_idx.numel() > 0:
-                td.qpos[:, self._target_qpos_idx] = live.qpos[:, self._source_qpos_idx]
-            if self._source_qvel_idx.numel() > 0:
-                td.qvel[:, self._target_qvel_idx] = live.qvel[:, self._source_qvel_idx]
-            if self._source_act_idx.numel() > 0:
-                td.ctrl[:, self._target_act_idx] = live.ctrl[:, self._source_act_idx]
-                if (
-                    self._target_ref_act is not None
-                    and hasattr(td, "act")
-                    and getattr(live, "act", None) is not None
-                ):
-                    td.act[:, self._target_act_idx] = live.act[:, self._source_act_idx]
-            self._target_sim.forward()
-            frame_idx = torch.remainder(
-                torch.round(live.time / self._ctrl_dt).to(dtype=torch.long),
-                self._traj_len,
-            )
-            return self._torch_obs_adapter.build(td, frame_idx)
-        obs_np = np.stack(
-            [self._build_single_obs(i) for i in range(self.num_envs)], axis=0
-        ).astype(np.float32)
-        return torch.as_tensor(obs_np, dtype=torch.float32, device=self.device)
-
-    def get_observations(self) -> TensorDict:
-        obs = self._build_obs_batch()
-        return TensorDict(
-            {"actor": obs, "critic": obs},
-            batch_size=[self.num_envs],
-            device=self.device,
-        )
-
-    def reset(self) -> tuple[TensorDict, dict]:
-        self.env.reset()
-        return self.get_observations(), {}
-
-    def step(
-        self, actions: torch.Tensor
-    ) -> tuple[TensorDict, torch.Tensor, torch.Tensor, dict[str, Any]]:
-        if self._target_sim is not None:
-            projected = torch.full(
-                (self.num_envs, int(self._source_model.nu)),
-                -1.0,
-                dtype=torch.float32,
-                device=self.device,
-            )
-            if self._source_act_idx.numel() > 0:
-                projected[:, self._source_act_idx] = actions[:, self._target_act_idx]
-            native_actions = torch.clamp(0.5 * (projected + 1.0), 0.0, 1.0)
-        else:
-            action_np = np.asarray(actions.detach().cpu(), dtype=np.float32)
-            projected = np.stack(
-                [
-                    _to_muscle_activations(
-                        self._bridge.project_target_action_to_source(
-                            action_np[i], fill_value=-1.0
-                        )
-                    )
-                    for i in range(self.num_envs)
-                ],
-                axis=0,
-            ).astype(np.float32)
-            native_actions = torch.as_tensor(
-                projected, dtype=torch.float32, device=self.device
-            )
-        _obs_dict, rew, terminated, truncated, extras = self.env.step(native_actions)
-        dones = (terminated | truncated).to(dtype=torch.long)
-        if not self.cfg.is_finite_horizon:
-            extras["time_outs"] = truncated
-        return self.get_observations(), rew, dones, extras
-
-    def close(self) -> None:
-        if self._target_sim is not None:
-            del self._target_sim
-        self.env.close()
-
-
-# ---------------------------------------------------------------------------
 # Convenience utilities for the mimic-init training workflow
 # ---------------------------------------------------------------------------
 
@@ -919,69 +650,3 @@ def _maybe_freeze_actor_std(
         param = getattr(distribution, attr, None)
         if isinstance(param, nn.Parameter):
             param.requires_grad_(False)
-
-
-def _run_sanity_rollouts(
-    policy: Any,
-    env: ManagerBasedRlEnv,
-    *,
-    checkpoint_root: Path,
-    motion_path: Path,
-    device: str,
-    num_episodes: int,
-    min_episode_length: int,
-) -> list[int]:
-    """Run deterministic zero-exploration sanity rollouts on the native saber env.
-
-    Wraps *policy* with :func:`~...model_bridge.make_fullbody_checkpoint_bridged_policy`
-    and steps through the environment until *num_episodes* are complete, returning
-    the per-episode step counts.  Raises :exc:`RuntimeError` if any episode is
-    shorter than *min_episode_length*.
-    """
-    if num_episodes <= 0:
-        return []
-    bridged = make_fullbody_checkpoint_bridged_policy(
-        source_model=env._saber_logic.mj_model,
-        policy=policy,
-        checkpoint_root=checkpoint_root,
-        motion_path=motion_path,
-        ctrl_dt=float(env._saber_logic.task_cfg.backend.ctrl_dt),
-        source_action_fill=-1.0,
-        source_entity_name=_SABER_ENTITY_NAME,
-        policy_device=device,
-    )
-    completed: list[int] = []
-    live_lengths = np.zeros(int(env.num_envs), dtype=np.int32)
-    tracked = np.zeros(int(env.num_envs), dtype=bool)
-    tracked[: min(int(env.num_envs), num_episodes)] = True
-    env.reset()
-    reset_fn = getattr(bridged, "reset", None)
-    if callable(reset_fn):
-        reset_fn()
-    with torch.no_grad():
-        while len(completed) < num_episodes:
-            actions = np.stack(
-                [
-                    np.asarray(
-                        bridged.predict_from_env(env, env_idx=i), dtype=np.float32
-                    )
-                    for i in range(int(env.num_envs))
-                ],
-                axis=0,
-            )
-            native_actions = torch.as_tensor(
-                actions, dtype=torch.float32, device=device
-            )
-            _obs, _rew, terminated, truncated, _extras = env.step(native_actions)
-            live_lengths += 1
-            done_np = (terminated | truncated).detach().cpu().numpy().astype(bool)
-            for idx in np.where(done_np & tracked)[0]:
-                completed.append(int(live_lengths[idx]))
-                live_lengths[idx] = 0
-                if len(completed) >= num_episodes:
-                    break
-    if any(length < min_episode_length for length in completed):
-        raise RuntimeError(
-            f"Sanity rollout lengths {completed} below required minimum {min_episode_length}."
-        )
-    return completed

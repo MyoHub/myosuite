@@ -5,9 +5,8 @@
 """Sweep every CPU/Gymnasium-registered MyoSuite env id for reset/step sanity.
 
 CLAUDE.md's pre-commit checklist names this file, but no test currently
-swept the full registry (per-task tests like test_boxing_registry.py and
-test_saber_env.py only cover their own task). This file is the
-registry-wide complement: cheap reset()/step() smoke checks across every
+swept the full registry (per-task tests only cover their own task). This
+file is the registry-wide complement: cheap reset()/step() smoke checks across every
 id in ``myosuite.myosuite_env_suite`` (the CPU/mujoco-py-backed suite;
 mjlab/mjx envs are registered separately and covered by their own
 backend-specific tests).

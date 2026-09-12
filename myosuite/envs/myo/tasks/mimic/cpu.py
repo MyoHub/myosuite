@@ -65,7 +65,7 @@ class _MuscleMimicCpuBase(MyoGymnasiumEnv, EzPickle):
         self._target_hi = np.asarray(high, dtype=np.float64)
         # Random-target CPU mimic starts with ~0.8 m site error. reward_scale=20
         # saturates exp(-20*err)≈0 and hides the learning signal from PPO; use
-        # the denser scale already employed for saber clip tracking on mjlab.
+        # the denser scale already employed for clip tracking on mjlab.
         self._tracking_cfg = MimicTrackingConfig(reward_scale=2.0)
 
     def _setup_spaces(self) -> None:

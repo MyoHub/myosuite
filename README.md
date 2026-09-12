@@ -82,7 +82,7 @@ These are installed with the base package (`pip install myosuite`). Older model 
 ### Verify your installation
 
 ```bash
-python -m myosuite.tests.test_myo   # lists all available environments
+python -c "import myosuite; print(len(myosuite.myosuite_env_suite), 'environments registered')"
 
 python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
 # On macOS use: mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
@@ -136,7 +136,7 @@ import gymnasium as gym
 import myosuite
 
 # Muscles fatigue with sustained activation, just as in vivo
-env = gym.make('myoElbowPoseFatigue1D6MFixed-v0')
+env = gym.make('myoFatiElbowPose1D6MFixed-v0')
 obs, info = env.reset()
 for _ in range(1000):
     obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
@@ -163,8 +163,8 @@ model.learn(total_timesteps=100_000)
 | **Elbow** | `myoElbowPose1D6MRandom-v0`, `myoElbowPoseSarcopenia*`, `myoElbowPoseFatigue*` |
 | **Finger** | `myoFingerPoseFixed-v0`, `myoFingerPoseRandom-v0`, `myoFingerReachRandom-v0` |
 | **Hand** | `myoHandPoseRandom-v0`, `myoChallengeBaodingP2-v1` |
-| **Leg / Gait** | `myoLegWalk-v0`, `myoLegDirectionalForward-v0`, `myoChallengeRunTrackP2-v0` |
-| **Full arm** | `myoShoulder*`, `myoRelocateEnvDemoV0` |
+| **Leg / Gait** | `myoLegWalk-v0`, `myoLegDirectionalForward-v0`, `myoChallengeOslRunRandom-v0` |
+| **Full arm** | `myoArmReachRandom-v0`, `myoChallengeRelocateP1-v0` |
 
 Run `python -m myosuite.tests.test_myo` for the full list, or see the [task specifications](https://github.com/myohub/myosuite/blob/main/docs/source/suite.rst#tasks).
 
@@ -185,7 +185,6 @@ Run `python -m myosuite.tests.test_myo` for the full list, or see the [task spec
 | Mimic bimanual | stable | beta (`MjxMimicBimanual-v0`) | beta (`myoMimicBimanual-v0`) ‡ |
 | Mimic full-body | beta | beta (`MjxMimicFullbody-v0`) | beta (`myoMimicFullbody-v0`) ‡ |
 | MyoChallenge Baoding | stable | wip | beta (`myoChallengeBaodingP2-v1`) |
-| MyoChallenge Saber | stable | wip | beta (`myoChallengeSaberP0-v0`) |
 | MyoChallenge TableTennis | stable | wip | beta (`myoChallengeTableTennisP0-v0`, `…P1-v0`, `…P2-v0`) |
 | MyoChallenge Reorient | stable | wip | – (planned; see [porting guide](docs/wiki/mjlab-design-guide.md)) |
 | MyoChallenge Bimanual | stable | wip | – (planned) |
@@ -239,21 +238,6 @@ See [benchmarks/sar_backends/README.md](benchmarks/sar_backends/README.md) for f
 
 ---
 
-## MyoSkeleton
-
-Initialize the full-body MyoSkeleton model:
-
-```bash
-python -m myosuite_init   # or: uv run myoapi_init
-```
-
-Visualize:
-```bash
-python -m myosuite.utils.examine_sim -s $(python -c "import myo_sim; print(myo_sim.get_path('arm/myoarm.xml'))")
-```
-
----
-
 ## MuscleMimic full-body playback
 
 The eval CLI supports native full-body playback via `--path` + `--motion_path`
@@ -288,11 +272,14 @@ uv run myosuite-musclemimic-fullbody-eval --backend mjlab --n-steps 32 --seed 0
 **Python training** (random targets):
 
 ```python
-import mjlab.envs as mjlab_envs
-from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import register_mjlab_tasks
+from mjlab.envs import ManagerBasedRlEnv
+from mjlab.tasks.registry import load_env_cfg, register_mjlab_task
+from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import register_mimic_mjlab_tasks
+from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import _elbow_ppo_runner_cfg
 
-register_mjlab_tasks()   # register all MyoSuite tasks on mjlab
-env = mjlab_envs.make("myoMimicFullbody-v0")
+register_mimic_mjlab_tasks(register_mjlab_task, _elbow_ppo_runner_cfg)
+env_cfg = load_env_cfg("myoMimicFullbody-v0")
+env = ManagerBasedRlEnv(cfg=env_cfg, device="cpu")
 obs, _ = env.reset()
 ```
 
@@ -301,14 +288,16 @@ obs, _ = env.reset()
 ```python
 from myosuite.core.trajectory_io import load_motion_clip, resolve_motion_path
 from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import register_mimic_mjlab_tasks_with_clip
-from mjlab.tasks.registry import register_mjlab_task
+from mjlab.tasks.registry import register_mjlab_task, load_env_cfg
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import _elbow_ppo_runner_cfg
-import mjlab.envs as mjlab_envs
+from mjlab.envs import ManagerBasedRlEnv
 
 motion_file = resolve_motion_path("KIT/314/walking_medium09_poses")
 clip = load_motion_clip(motion_file, expected_nq=89, expected_nv=88)
 register_mimic_mjlab_tasks_with_clip(register_mjlab_task, _elbow_ppo_runner_cfg, clip=clip)
-env = mjlab_envs.make("myoMimicFullbody-v0")
+env_cfg = load_env_cfg("myoMimicFullbody-v0")
+env = ManagerBasedRlEnv(cfg=env_cfg, device="cpu")
+obs, _ = env.reset()
 ```
 
 Requires `pip install 'myosuite[mjlab]'` (GPU/CUDA recommended).

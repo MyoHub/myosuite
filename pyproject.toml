@@ -121,7 +121,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = { find = { exclude = ["myosuite.agents", "myosuite.agents.*"] } }
-py-modules = ["myosuite_init"]
 
 [tool.setuptools.package-data]
 "myosuite" = [

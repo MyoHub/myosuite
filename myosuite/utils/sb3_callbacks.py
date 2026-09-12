@@ -52,7 +52,7 @@ class OnnxCheckpointCallback(BaseCallback):
 
     def _save_bundle(self, stem: str) -> None:
         assert self.model is not None
-        with tempfile.TemporaryDirectory(prefix="saber-cpu-onnx-") as tmp_dir:
+        with tempfile.TemporaryDirectory(prefix="cpu-onnx-") as tmp_dir:
             tmp_root = Path(tmp_dir)
             native_ckpt = tmp_root / f"{stem}.zip"
             onnx_path = tmp_root / f"{stem}.onnx"

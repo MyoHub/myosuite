@@ -140,37 +140,3 @@ def upright_posture_failure(
         dtype=getattr(xp, "float32", None),
     )
     return _maybe_item(posture < float(upright_posture_threshold))
-
-
-def saber_pool_done(
-    accessor: EnvAccessor,
-    task_state: dict[str, Any],
-    max_target_misses: int | None = None,
-    use_health_status: bool = True,
-    **kwargs: Any,
-) -> Any:
-    """Terminate when the saber pool reaches its miss or health limit."""
-
-    del kwargs
-    xp = accessor.array_module()
-    bool_dtype = getattr(xp, "bool", bool)
-    misses = _xp_asarray(
-        xp,
-        task_state.get("target_pool_misses", 0),
-        dtype=getattr(xp, "float32", None),
-    )
-    miss_limit = (
-        misses >= float(max_target_misses)
-        if max_target_misses is not None
-        else xp.zeros_like(misses, dtype=bool_dtype)
-    )
-    if use_health_status:
-        health_status = _xp_asarray(
-            xp,
-            task_state.get("health_status", 0.5),
-            dtype=getattr(xp, "float32", None),
-        )
-        health_done = health_status <= 0.0
-    else:
-        health_done = xp.zeros_like(miss_limit, dtype=bool_dtype)
-    return _maybe_item(miss_limit | health_done)

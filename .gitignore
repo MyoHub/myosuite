@@ -150,7 +150,6 @@ exports/
 outputs/
 .claude/
 _untracked/
-Boxing/
 myosuite/composer/
 myosuite/agents/
 renders/

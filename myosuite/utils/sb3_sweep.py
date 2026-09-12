@@ -19,7 +19,7 @@ def budget_for(act_dim: int, base: int, *, escalate: bool = False) -> int:
     """Scale PPO timesteps with action dimension.
 
     High-dimensional tasks (act > 80) escalate rather than shrink: the
-    historical ``base // 2`` schedule left boxing/mimic/torso under-trained.
+    historical ``base // 2`` schedule left mimic/torso under-trained.
 
     Args:
         act_dim: Environment action dimension.
