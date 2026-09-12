@@ -12,14 +12,14 @@ from reflex_ctr import LocoCtrl
 import mujoco
 
 from myosuite.utils import gym
-from myosuite.physics.quat_math import euler2quat, quat2euler
+from myosuite.physics.quat_math import euler2quat, quat2mat
 
 
 class MyoLegReflex:
     DEFAULT_INIT_POSE = {}
     DEFAULT_INIT_POSE["model_pose"] = {
         "yaw": np.deg2rad(0),
-        "pitch": np.deg2rad(15),
+        "pitch": np.deg2rad(0),
         "roll": np.deg2rad(0),
     }
     DEFAULT_INIT_POSE["model_height"] = 0.92
@@ -34,28 +34,34 @@ class MyoLegReflex:
     DEFAULT_INIT_POSE["velocity"] = {"cartesian": [1.5, 0.0, 0.0]}
 
     def __init__(
-        self, init_dict=DEFAULT_INIT_POSE, dt=0.01, mode="3D", sim_time=2.0, seed=0
-    ):  # Default mode was '3D', currently defaulting to 2D (13 Mar 2023)
-        self.dt = dt
+        self,
+        init_dict=None,
+        dt=0.01,
+        mode="3D",
+        sim_time=5.0,
+        seed=0,
+        render_mode="rgb_array",
+    ):
         self.t = 0
         self.mode = mode
-
-        self.n_par = len(LocoCtrl.cp_keys)
-        control_dimension = 3
-
-        self.cp_map = LocoCtrl.cp_map
-        self.ReflexCtrl = LocoCtrl(
-            self.dt, control_dimension=control_dimension, params=np.ones(self.n_par)
-        )
-
-        # Myosuite setup
         self.sim_time = sim_time
-        self.timestep_limit = int(self.sim_time / self.dt)
-
-        self.init_dict = init_dict
+        self.init_dict = self.DEFAULT_INIT_POSE if init_dict is None else init_dict
         self.seed = seed
 
-        self.env = gym.make("myoLegStandRandom-v0", normalize_act=False)
+        self.env = gym.make(
+            "myoLegWalk-v0",
+            normalize_act=False,
+            reset_type="init",
+            render_mode=render_mode,
+        )
+        self.dt = float(getattr(self.env.unwrapped, "_ctrl_dt", dt))
+        self.timestep_limit = int(self.sim_time / self.dt)
+
+        self.n_par = len(LocoCtrl.cp_keys)
+        self.cp_map = LocoCtrl.cp_map
+        self.ReflexCtrl = LocoCtrl(
+            self.dt, control_dimension=3, params=np.ones(self.n_par)
+        )
 
         print("Seed added - ", seed)
         self.env.reset(seed=seed)
@@ -101,7 +107,59 @@ class MyoLegReflex:
     def set_control_params_RL(self, s_leg, params):
         self.ReflexCtrl.set_control_params_RL(s_leg, params)
 
-    # -----------------------------------------------------------------------------------------------------------------
+    def _foot_load(self, sensor_names: tuple[str, ...], body_names: tuple[str, ...]) -> float:
+        """Vertical support load from touch sensors, or contact forces if sensors are absent."""
+        data = self.env.unwrapped.data
+        model = self.env.unwrapped.model
+        total = 0.0
+        found = False
+        for name in sensor_names:
+            try:
+                total += float(data.sensor(name).data[0])
+                found = True
+            except KeyError:
+                continue
+        if found:
+            return total
+        body_ids = set()
+        for name in body_names:
+            try:
+                body_ids.add(int(model.body(name).id))
+            except KeyError:
+                continue
+        cforce = np.zeros(6, dtype=np.float64)
+        for i in range(int(data.ncon)):
+            con = data.contact[i]
+            b1 = int(model.geom_bodyid[con.geom1])
+            b2 = int(model.geom_bodyid[con.geom2])
+            if b1 in body_ids or b2 in body_ids:
+                mujoco.mj_contactForce(model, data, i, cforce)
+                total += abs(float(cforce[0]))
+        return total
+
+    def _root_pose_vel(self):
+        """Root attitude and velocity in the controller frame (x forward, y left, z up)."""
+        model = self.env.unwrapped.model
+        data = self.env.unwrapped.data
+        xmat = np.asarray(data.body("root").xmat, dtype=np.float64).reshape(3, 3)
+        fwd = xmat[:, 0]
+        left = xmat[:, 1]
+        up = xmat[:, 2]
+        pitch = float(np.arctan2(-fwd[2], np.hypot(fwd[0], fwd[1])))
+        roll = float(np.arctan2(left[2], up[2]))
+        vel = np.zeros(6, dtype=np.float64)
+        mujoco.mj_objectVelocity(
+            model,
+            data,
+            mujoco.mjtObj.mjOBJ_BODY,
+            int(model.body("root").id),
+            vel,
+            0,
+        )
+        lin_body = xmat.T @ vel[3:6]
+        ang_body = xmat.T @ vel[0:3]
+        return roll, pitch, lin_body, ang_body
+
     def get_obs_dict(self):
         # Function translate Myosuite joint angle conventions into the conventions used by the reflex controller
         # refer to LocoCtrl.s_b_keys and LocoCtrl.s_l_keys
@@ -110,43 +168,10 @@ class MyoLegReflex:
         #   [1] y: leftward
         #   [2] z: upward
 
-        # Getting values directly from the Mujoco env, and translating them into the controller convention
-        # Measurement is in world coordinates
-        pel_euler = quat2euler(self.env.unwrapped.data.body("pelvis").xquat.copy())
-        pelvis_roll = pel_euler[0] - (np.pi / 2)
-        pelvis_pitch = pel_euler[2] * (-1)
-        pelvis_yaw = pel_euler[1] * (-1)
+        pelvis_roll, pelvis_pitch, lin_body, ang_body = self._root_pose_vel()
 
-        # Pelvis velocities and angular velocities
-        pelvis_body_id = self.env.unwrapped.model.body("pelvis").id
-        temp_seg_vel = np.zeros(6, dtype=np.float64)
-        mujoco.mj_objectVelocity(
-            self.env.unwrapped.mj_model,
-            self.env.unwrapped.mj_data,
-            mujoco.mjtObj.mjOBJ_BODY,
-            pelvis_body_id,
-            temp_seg_vel,
-            0,  # world frame
-        )
-        lin_seg_vel = temp_seg_vel[3:6]
-        ang_seg_vel = temp_seg_vel[0:3]
-        dx_local, dy_local = self.rotate_frame(
-            lin_seg_vel[0], lin_seg_vel[1], pelvis_yaw
-        )
-        pelvis_vel = np.hstack(
-            (np.array([dx_local, dy_local, lin_seg_vel[2]]), ang_seg_vel)
-        )
-
-        # GRF from foot contact sensor values
-        # GRF from foot contact sensor values
-        temp_right = (
-            self.env.unwrapped.data.sensor("r_foot").data[0].copy()
-            + self.env.unwrapped.data.sensor("r_toes").data[0].copy()
-        )
-        temp_left = (
-            self.env.unwrapped.data.sensor("l_foot").data[0].copy()
-            + self.env.unwrapped.data.sensor("l_toes").data[0].copy()
-        )
+        temp_right = self._foot_load(("r_foot", "r_toes"), ("calcn_r", "toes_r"))
+        temp_left = self._foot_load(("l_foot", "l_toes"), ("calcn_l", "toes_l"))
 
         sensor_data = {"body": {}, "r_leg": {}, "l_leg": {}}
         sensor_data["body"]["theta"] = [
@@ -155,13 +180,13 @@ class MyoLegReflex:
         ]  # around local y axis
 
         sensor_data["body"]["d_pos"] = [
-            pelvis_vel[0],  # local x (+) forward
-            pelvis_vel[1],
+            float(lin_body[0]),  # local x (+) forward
+            float(lin_body[1]),
         ]  # local y (+) leftward
 
         sensor_data["body"]["dtheta"] = [
-            pelvis_vel[3],  # around local x axis
-            pelvis_vel[4],
+            float(ang_body[0]),  # around local x axis
+            float(ang_body[1]),
         ]  # around local y axis
 
         sensor_data["r_leg"]["load_ipsi"] = temp_right / (
@@ -250,18 +275,14 @@ class MyoLegReflex:
         # Have to collect observations after step, otherwise brain cmd would not have any values
         out_dict = self.get_obs_dict()
 
-        temp_pel_euler = quat2euler(self.env.unwrapped.data.body("root").xquat.copy())
-
-        # Check if the simulation is still alive (height of pelvs still above threshold, has not fallen down yet)
-        if (
-            self.env.unwrapped.data.body("pelvis").xpos[2] < 0.65
-        ):  # (Emprical testing) Even for very bent knee walking, height of pelvis is about 0.78
+        data = self.env.unwrapped.data
+        _, pitch, _, _ = self._root_pose_vel()
+        if data.body("pelvis").xpos[2] < 0.65:
             is_done = True
-        if temp_pel_euler[1] < np.deg2rad(-30) or temp_pel_euler[1] > np.deg2rad(30):
-            # Punish for too much pitch of pelvis
+        if abs(pitch) > np.deg2rad(30):
             is_done = True
 
-        return [out_dict, is_done, np.round(self.env.unwrapped.data.time, 2), new_act]
+        return [out_dict, is_done, np.round(data.time, 2), new_act]
 
     # ---------- Initialization Functions ----------
     def _set_muscle_groups(self):
@@ -536,70 +557,44 @@ class MyoLegReflex:
                 self.muscle_L0[x][y] = temp_L0[self.muscles_dict[x][y]]
 
     def _set_initial_pose(self, init_dict):
-        # Sets the initial pose of the Myoleg model based on an input dictionary of values
+        # Preserve the model's keyframe heading (MyoLeg faces -Y in world) and
+        # express cartesian velocity in that frame. Replacing the freejoint
+        # quaternion with a from-scratch euler used to point the walker +X and
+        # it fell immediately.
+        model = self.env.unwrapped.model
+        data = self.env.unwrapped.data
+        self.init_pelvis = data.body("pelvis").xpos.copy()
 
-        # Setting the starting position for reward calculation
-        self.init_pelvis = self.env.unwrapped.data.body("pelvis").xpos.copy()
+        heading = np.asarray(data.qpos[3:7], dtype=np.float64).copy()
+        extra_euler = [
+            init_dict["model_pose"]["roll"],
+            init_dict["model_pose"]["pitch"],
+            init_dict["model_pose"]["yaw"],
+        ]
+        if np.any(np.abs(extra_euler) > 1e-8):
+            composed = np.zeros(4, dtype=np.float64)
+            mujoco.mju_mulQuat(composed, heading, euler2quat(extra_euler))
+            data.qpos[3:7] = composed
 
-        # Converting from Euler to quaternions
-        temp_quat_util = euler2quat(
-            [
-                init_dict["model_pose"]["roll"],
-                init_dict["model_pose"]["pitch"],
-                init_dict["model_pose"]["yaw"],
-            ]
-        )
+        cart = np.asarray(init_dict["velocity"]["cartesian"], dtype=np.float64)
+        data.qvel[0:3] = quat2mat(heading) @ cart
 
-        self.env.unwrapped.data.qpos[3] = temp_quat_util[
-            0
-        ]  # Setting no roll, pitch and yaw
-        self.env.unwrapped.data.qpos[4] = temp_quat_util[1]
-        self.env.unwrapped.data.qpos[5] = temp_quat_util[2]
-        self.env.unwrapped.data.qpos[6] = temp_quat_util[3]
+        for joint_name, angle in init_dict["joint_angles"].items():
+            data.joint(joint_name).qpos[0] = angle
 
-        # Setting initial velocity
-        # Pushes the free root joint, which propagates the velocities to all the joints and segments
-        self.env.unwrapped.data.qvel[0] = init_dict["velocity"]["cartesian"][0]
-        self.env.unwrapped.data.qvel[1] = init_dict["velocity"]["cartesian"][1]
-        self.env.unwrapped.data.qvel[2] = init_dict["velocity"]["cartesian"][2]
+        height_offset = init_dict.get("height_offset", 0)
+        data.qpos[0] = 0
+        data.qpos[1] = 0
+        data.qpos[2] = init_dict["model_height"] + height_offset
 
-        # Reusing the dict from above
-        # Values in radians
-        for joint_name in init_dict["joint_angles"].keys():
-            self.env.unwrapped.data.joint(joint_name).qpos[0] = init_dict[
-                "joint_angles"
-            ][joint_name]
-
-        if "height_offset" in init_dict.keys():
-            height_offset = init_dict["height_offset"]
-        else:
-            height_offset = 0
-
-        # Lowering the height of the model by manipulating the free root joint
-        self.env.unwrapped.data.qpos[0] = 0  # X pos of free root joint
-        self.env.unwrapped.data.qpos[1] = 0  # Y pos of free root joint
-        self.env.unwrapped.data.qpos[2] = init_dict["model_height"] + height_offset
-
-        # From documentation: https://openai.github.io/mujoco-py/build/html/reference.html
-        # Run forward() after modifying and joint angles or velocities
-        mujoco.mj_forward(self.env.unwrapped.mj_model, self.env.unwrapped.mj_data)
+        mujoco.mj_forward(model, data)
 
     # ---------- Internal functions ----------
 
     def update_footstep(self):
-        # Getting only the heel contacts. Works better at detecting new steps, as compared to using both heel and toe
-        r_contact = (
-            True
-            if (self.env.unwrapped.data.sensor("r_foot").data[0].copy())
-            > 0.1 * (np.sum(self.env.unwrapped.model.body_mass) * 9.8)
-            else False
-        )
-        l_contact = (
-            True
-            if (self.env.unwrapped.data.sensor("l_foot").data[0].copy())
-            > 0.1 * (np.sum(self.env.unwrapped.model.body_mass) * 9.8)
-            else False
-        )
+        weight = np.sum(self.env.unwrapped.model.body_mass) * 9.8
+        r_contact = self._foot_load(("r_foot",), ("calcn_r",)) > 0.1 * weight
+        l_contact = self._foot_load(("l_foot",), ("calcn_l",)) > 0.1 * weight
 
         self.footstep["new"] = False
         if (not self.footstep["r_contact"] and r_contact) or (
@@ -612,8 +607,8 @@ class MyoLegReflex:
         self.footstep["l_contact"] = l_contact
 
     def reflex2mujoco(self, output):
-        mus_act = np.zeros((80,))
-        mus_act[:] = 0  # Using non-normalized values of muscle activations
+        n_act = int(self.env.action_space.shape[0])
+        mus_act = np.zeros(n_act)
 
         legs = ["r_leg", "l_leg"]
         musc_idx = self.muscles_dict["r_leg"].keys()

@@ -12,20 +12,19 @@ page is about *changing* the code.
 
 ```bash
 # from the repo root
-uv sync --extra dev            # or: pip install -e ".[dev]"
+uv sync -p 3.10 --extra dev     # or: pip install -e ".[dev]"
+# GPU training (Linux + CUDA): also --extra mjlab / pip install -e ".[mjlab]"
 
-# run the fast core tests — these should all pass on a clean checkout
 pytest myosuite/tests/test_registry.py -q
 pytest myosuite/tests/test_parity.py -q
 ```
 
-`test_registry.py` loads every registered environment and takes one step —
-if it passes, your install is sound. `test_parity.py` replays frozen action
-sequences and checks the physics still matches a stored baseline to `1e-7`;
-it is your safety net for any change that touches an environment.
+`test_registry.py` smokes every CPU env (`reset` + one `step`).
+`test_parity.py` replays frozen actions against stored baselines
+(default `atol=1e-6`). MJX is experimental and is not part of `[dev]`.
 
-On **macOS**, rendering needs `mjpython` instead of `python` (see the README
-troubleshooting section). Tests run under plain `pytest`.
+On **macOS**, the interactive viewer needs `mjpython` instead of `python`.
+Tests run under plain `pytest`.
 
 ## 2. The mental model
 
@@ -142,5 +141,5 @@ old example; use `MyoGymnasiumEnv` instead.
 | Find where something lives | `repository-map.md` |
 | Understand the two env patterns | `engineering-standards.md` |
 | Write an obs/reward term | `writing-term-functions.md` |
-| Add MJX or mjlab support | `mjlab-design-guide.md`, `cross-backend-contract.md` |
+| Add mjlab GPU support | `mjlab-design-guide.md`, `cross-backend-contract.md` |
 | Use an existing helper | `library-usage.md` |

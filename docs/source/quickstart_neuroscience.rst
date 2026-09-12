@@ -151,8 +151,8 @@ This example implements a Ia-driven stretch reflex for the elbow:
    env.close()
 
 A more biologically realistic reflex controller (including co-activation and
-reciprocal inhibition) is in ``myosuite/agents/baseline_reflex/``.
-See ``tutorials/4b_reflex/`` for training and evaluation.
+reciprocal inhibition) is in ``tutorials/4b_reflex/``.
+See that notebook for playback of the published Song-Geyer walking gains.
 
 
 Neuromuscular Fatigue Modeling
@@ -283,6 +283,6 @@ Next Steps
 
 * ``tutorials/7_Fatigue_Modeling.ipynb`` — cumulative fatigue dynamics
 * ``tutorials/9_Computed_muscle_control.ipynb`` — feedforward CMC
-* ``myosuite/agents/baseline_reflex/`` — reflex controller baselines
+* ``tutorials/4b_reflex/`` — Song-Geyer reflex walking baseline
 * :doc:`quickstart_biomechanics` — kinematics and kinetics extraction
 * :doc:`quickstart_rehabilitation` — clinical applications and assistive devices

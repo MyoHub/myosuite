@@ -30,8 +30,13 @@
         <site name="pelvis_target" size="0.02" pos="0 0 .92" group="4"/>
         <body name="root" pos="0 0 1" euler="0 0 -1.57">
             <site name="head" size="0.02" pos="-0.1 0 0.72" group="4"/>
-            <!-- myotorso_rigid_chain.xml bakes its own compensating yaw as of myo_sim#132; do not re-add torso_mount. -->
-            <include file="../myo_sim/torso/assets/myotorso_rigid_chain.xml"/>
+            <!-- Rigid torso is Z-up; myolegs_chain pelvis is OpenSim-framed.
+                 Yaw -90° so torso anterior matches the legs (soccer does this
+                 via sacrum euler; OSL uses +90° because its pelvis quat differs).
+                 Do not bake this into myotorso_rigid_chain.xml - OSL wraps it. -->
+            <frame euler="0 0 -1.57">
+                <include file="../myo_sim/torso/assets/myotorso_rigid_chain.xml"/>
+            </frame>
             <include file="../myo_sim/leg/assets/myolegs_chain.xml"/>
             <freejoint name="root"/>
         </body>
@@ -43,5 +48,13 @@
         <key qpos='0 0 1.0 0.707388 0 0 -0.706825 -0.2326 -0.0279385 -0.041886 0.00247908 0.00101098 1.227 0.0275069 0.136817 0.1672 -0.00117055 -0.000125295 -0.0302192 0.0395202 -0.194029 -0.1652 -0.0279385 -0.041886 0.00247908 0.0010198 0.0888 0.0275069 0.136817 -0.019 -0.00117055 -0.000125295 -0.0302192 0.0395202 -0.194029' qvel='0 -1.5 0 0 0 0 4.9066 0 0 0 0 -3.597 0 0 0.633 0 0 0 0 0 0.175 0 0 0 0 0.175 0 0 0.988 0 0 0 0 0'/>
         <key qpos='0 0 1.0 0.707388 0 0 -0.706825 -0.1652 -0.0279385 -0.041886 0.00247908 0.00101098 0.0888 0.0275069 0.136817 -0.019 -0.00117055 -0.000125295 -0.0302192 0.0395202 -0.194029 -0.2326 -0.0279385 -0.041886 0.00247908 0.0010198 1.227 0.0275069 0.136817 0.1672 -0.00117055 -0.000125295 -0.0302192 0.0395202 -0.194029' qvel='0 -1.5 0 0 0 0 -0.576 0 0 0 0 0.175 0 0 0.988 0 0 0 0 0 4.9066 0 0 0 0 -3.597 0 0 0.633 0 0 0 0 0'/>
     </keyframe>
+
+    <!-- Foot GRF sensors used by the Song-Geyer reflex tutorial (site names from pip myolegs_chain). -->
+    <sensor>
+        <touch name="r_foot" site="foot_touch_r"/>
+        <touch name="r_toes" site="toes_touch_r"/>
+        <touch name="l_foot" site="foot_touch_l"/>
+        <touch name="l_toes" site="toes_touch_l"/>
+    </sensor>
 
 </mujoco>

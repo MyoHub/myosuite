@@ -16,14 +16,16 @@ directory from which this script is launched.
 
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 import sys
 from pathlib import Path
 
-# Force headless rendering backend for mp4 generation in non-GUI sessions.
-os.environ.setdefault("MUJOCO_GL", "egl")
-os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
+if "MUJOCO_GL" not in os.environ:
+    os.environ["MUJOCO_GL"] = "glfw" if sys.platform == "darwin" else "egl"
+    if os.environ["MUJOCO_GL"] == "egl":
+        os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
 
 import joblib  # noqa: E402
 import matplotlib  # noqa: E402
@@ -455,5 +457,35 @@ def main() -> None:
     log.info("Full SAR pipeline complete.")
 
 
+def _dry_run() -> None:
+    """Load the play env once so students can check the install without training."""
+    env = gym.make(PLAY_ENV)
+    obs, info = env.reset(seed=0)
+    action_shape = env.action_space.shape
+    obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+    env.close()
+    log.info(
+        "Dry-run ok: %s obs_dim=%s action_dim=%s",
+        PLAY_ENV,
+        getattr(obs, "shape", type(obs)),
+        action_shape,
+    )
+
+
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description=(
+            "Full SAR locomotion pipeline (1.5M + 2.5M SB3 steps). "
+            "This takes hours. Use --dry-run to only construct the env."
+        )
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=f"gym.make({PLAY_ENV!r}), reset, one random step, then exit.",
+    )
+    args = parser.parse_args()
+    if args.dry_run:
+        _dry_run()
+    else:
+        main()

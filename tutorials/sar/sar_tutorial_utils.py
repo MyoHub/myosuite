@@ -1,4 +1,5 @@
 import os
+import sys
 import warnings
 from collections import deque as dq
 from collections.abc import Callable
@@ -17,13 +18,14 @@ from tqdm import tqdm
 
 from myosuite.utils import gym
 
-os.environ["MUJOCO_GL"] = "egl"
+if "MUJOCO_GL" not in os.environ:
+    os.environ["MUJOCO_GL"] = "glfw" if sys.platform == "darwin" else "egl"
 # np.VisibleDeprecationWarning was moved to np.exceptions in NumPy 2.x
 _vis_dep_warning = getattr(np, "VisibleDeprecationWarning", None) or getattr(
     np.exceptions, "VisibleDeprecationWarning", DeprecationWarning
 )
 warnings.filterwarnings("ignore", category=_vis_dep_warning)
-plt.rcParams["font.family"] = "Latin Modern Roman"
+plt.rcParams["font.family"] = "DejaVu Sans"
 
 
 def show_video(video_path, video_width=600):
@@ -209,6 +211,12 @@ def plot_results(smoothing=1000, experiment="locomotion", terrain=None):
             plt.plot(b_timesteps, b_reward_mean, linewidth=3, label="RL-E2E")
 
         plt.title(f"MyoLeg {terrain} locomotion task success comparison", size=14)
+        if not os.path.isfile(sar_rl_file) and not os.path.isfile(rl_e2e_file):
+            print(
+                "[SKIP] no locomotion training CSVs yet; run SAR training "
+                "or set MYOSUITE_FULL_SAR=1."
+            )
+            return
 
     elif experiment == "manipulation":
         sar_rl_file = "./SAR-RL_successes_myoHandReorient100-v0_0/success_myoHandReorient100-v0_0.npy"
@@ -225,6 +233,12 @@ def plot_results(smoothing=1000, experiment="locomotion", terrain=None):
             plt.plot(range(len(suc)), suc, linewidth=2.5, label="RL-E2E")
 
         plt.title("Success comparison on Reorient100", size=17)
+        if not os.path.isfile(sar_rl_file) and not os.path.isfile(rl_e2e_file):
+            print(
+                "[SKIP] no manipulation success logs yet; run SAR training "
+                "or set MYOSUITE_FULL_SAR=1."
+            )
+            return
 
     else:
         raise ValueError("experiment must be either 'locomotion' or 'manipulation'")
@@ -253,12 +267,7 @@ def load_manipulation_SAR():
     root_dir = os.path.join(
         current_dir, "../../myosuite/agents/SAR_pretrained/manipulation"
     )
-
-    ica = joblib.load(os.path.join(root_dir, "ica.pkl"))
-    pca = joblib.load(os.path.join(root_dir, "pca.pkl"))
-    normalizer = joblib.load(os.path.join(root_dir, "normalizer.pkl"))
-
-    return ica, pca, normalizer
+    return _load_sar_pickles(root_dir, "manipulation")
 
 
 def load_locomotion_SAR():
@@ -274,11 +283,19 @@ def load_locomotion_SAR():
     root_dir = os.path.join(
         current_dir, "../../myosuite/agents/SAR_pretrained/locomotion"
     )
+    return _load_sar_pickles(root_dir, "locomotion")
 
-    ica = joblib.load(os.path.join(root_dir, "ica.pkl"))
+
+def _load_sar_pickles(root_dir: str, kind: str):
+    ica_path = os.path.join(root_dir, "ica.pkl")
+    if not os.path.isfile(ica_path):
+        raise FileNotFoundError(
+            f"Precomputed {kind} SAR not found at {root_dir}. "
+            "Those pickles are optional; skip this cell or train SAR from scratch."
+        )
+    ica = joblib.load(ica_path)
     pca = joblib.load(os.path.join(root_dir, "pca.pkl"))
     normalizer = joblib.load(os.path.join(root_dir, "normalizer.pkl"))
-
     return ica, pca, normalizer
 
 
