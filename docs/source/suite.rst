@@ -1,9 +1,10 @@
 Models and Tasks
-##############################
+================
 
 .. _suite:
 
-Models and tasks are the most important aspects of Myosuite. To provide further,
+Musculoskeletal models used by MyoSuite tasks. Registered Gymnasium IDs:
+:doc:`environments`.
 
 
 * :ref:`models`

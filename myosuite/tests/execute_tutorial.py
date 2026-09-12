@@ -5,6 +5,7 @@
 
 """Execute a single notebook and normalize outputs for nbformat validation."""
 
+import re
 import sys
 from pathlib import Path
 
@@ -46,7 +47,11 @@ def main():
     nb = nbformat.read(path, as_version=4)
     for cell in nb.cells:
         if cell.get("cell_type") == "code":
-            cell["source"] = cell["source"].replace("env.env.", "env.unwrapped.")
+            # Only rewrite the Gym wrapper pattern ``env.env.`` — not
+            # ``Myo_env.env.`` on non-Gym helpers such as MyoLegReflex.
+            cell["source"] = re.sub(
+                r"(?<![\w])env\.env\.", "env.unwrapped.", cell["source"]
+            )
     # Compatibility shim for Gymnasium wrappers used in tutorials:
     # when env is wrapped (e.g., TimeLimit), tutorials still access
     # env.mj_renderer; forward this to env.unwrapped when available.

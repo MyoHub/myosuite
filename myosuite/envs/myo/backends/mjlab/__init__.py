@@ -4,11 +4,9 @@
 # LICENSE file in the root directory of this source tree.
 """mjlab backend task discovery module.
 
-.. warning::
-    **Experimental** — the mjlab integration is a work in progress.  The API
-    (task configs, ``REGISTERED_TASKS`` keys, observation layouts) may change
-    without notice until this warning is removed.  Do not depend on this module
-    in production code.
+.. note::
+    This is the **supported GPU training path**. MJX (JAX) is experimental.
+    Task IDs share the CPU ``env_id`` (see ``REGISTERED_TASKS``).
 
 This module is the entry-point for mjlab's auto-discovery mechanism, registered
 in ``pyproject.toml`` as::

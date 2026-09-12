@@ -388,12 +388,12 @@ class TestRegistryVariantPaths:
 
 
 # ---------------------------------------------------------------------------
-# myo_reward_terms: walk_env_reward
+# walk_env_reward (myosuite.terms.base_reward)
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# myo_action_terms: MuscleActionTerm (mjlab-style)
+# MuscleActionTerm (mjlab-style)
 # ---------------------------------------------------------------------------
 
 

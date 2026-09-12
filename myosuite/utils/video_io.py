@@ -9,12 +9,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import PIL.Image
-import PIL.ImageDraw
-import PIL.ImageFont
 
 if TYPE_CHECKING:
     from IPython.display import HTML
@@ -80,19 +77,39 @@ def write_video(
             writer.append_data(frame)
 
 
-def add_text_to_frame(frame, text, pos=(20, 20), color=(255, 0, 0), fontsize=12):
-    if isinstance(frame, np.ndarray):
-        frame = PIL.Image.fromarray(frame)
+def add_text_to_frame(
+    frame: np.ndarray,
+    text: str,
+    pos: tuple[int, int] = (20, 20),
+    color: tuple[int, int, int] = (255, 0, 0),
+    fontsize: int = 12,
+) -> Any:
+    """Draw a text overlay on a frame. Requires a consistent Pillow install."""
+    from PIL import Image, ImageDraw
 
-    draw = PIL.ImageDraw.Draw(frame)
-    try:
-        font = PIL.ImageFont.truetype("arial.ttf", fontsize)
-    except OSError:
-        # "arial.ttf" isn't resolvable as a system font on Linux/macOS --
-        # fall back to PIL's bundled default (no external font dependency).
-        font = PIL.ImageFont.load_default(size=fontsize)
+    image = Image.fromarray(frame) if isinstance(frame, np.ndarray) else frame
+    draw = ImageDraw.Draw(image)
+    font = _load_overlay_font(fontsize)
     draw.text(pos, text, fill=color, font=font)
-    return frame
+    return image
+
+
+def _load_overlay_font(fontsize: int) -> Any:
+    from PIL import ImageFont
+
+    candidates = (
+        "arial.ttf",
+        "Arial.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    )
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, fontsize)
+        except OSError:
+            continue
+    return ImageFont.load_default()
 
 
 def show_video(video_path: str | Path, video_width: int = 400) -> HTML:

@@ -121,7 +121,6 @@ MuJoCo-Warp constraint buffers (`njmax`/`nconmax`) for the task's contact load.
 - Term functions are pure and backend-agnostic: use `accessor.array_module()`,
   never import `numpy`/`jax.numpy`/`torch` directly. See `writing-term-functions.md`.
 - Assets via `myo_sim.get_path(...)` / `ModelBuilder` — no hardcoded paths.
-- New envs include a `CitationBundle` — see `myosuite/core/citation.py`.
 
 ### Base classes (what actually exists)
 
@@ -187,7 +186,8 @@ walked through in `adding-a-new-task.md`.
 ## Parity Policy
 
 `pytest myosuite/tests/test_parity.py -v` after every env change. CPU parity is
-gated at `atol ≤ 1e-7`; regressions block PRs. To regenerate a baseline after an
+gated at `atol ≤ 1e-6` (some contact-rich envs are relaxed); regressions block
+PRs. To regenerate a baseline after an
 *intentional* change:
 
 ```bash
