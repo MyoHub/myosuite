@@ -49,6 +49,7 @@ from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
 )
 from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
     _init_state_from_model,
+    _mimic_cache_key,
     _mimic_keyframe_reset_event,
     _mimic_mjlab_cache,
     _mimic_obs_act,
@@ -60,6 +61,7 @@ from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
     _mimic_obs_qvel,
     _mimic_obs_site_pos,
     _mimic_obs_target,
+    _mimic_rsi_event,
     _mimic_tracking_reward,
     _mjlab_sim_time_to_tensor,
     _normalize_mimic_reward_mode,
@@ -720,7 +722,7 @@ class TestMimicMjlabClosures:
         variant: str,
         cache: dict[str, Any],
     ) -> None:
-        key = (id(env), entity_name, variant)
+        key = _mimic_cache_key(env, entity_name, variant)
         _mimic_mjlab_cache[key] = cache
         # Ensure targets are populated
         _sync_mimic_mjlab_targets(env, entity_name, cache)
@@ -930,3 +932,48 @@ class TestMjlabSimTimeToTensor:
         out = _mjlab_sim_time_to_tensor(np.float32(0.1))
         assert out.shape == (1,)
         assert float(out[0]) == pytest.approx(0.1, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Env-wrapper / env_ids regressions
+# ---------------------------------------------------------------------------
+
+
+class _EnvProxy:
+    """Minimal attribute-forwarding env wrapper."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+def test_mimic_cache_key_stable_across_env_wrappers() -> None:
+    """A wrapped env must resolve to the same cache entry as the raw env.
+
+    Keying on ``id(env)`` gave each wrapper its own ClipTrajectorySource, and
+    hence a different random start frame.
+    """
+    env = _make_mock_env()
+    key = _mimic_cache_key(env, "robot", "bimanual")
+    assert _mimic_cache_key(_EnvProxy(env), "robot", "bimanual") == key
+    assert _mimic_cache_key(_EnvProxy(_EnvProxy(env)), "robot", "bimanual") == key
+
+
+def test_rsi_event_accepts_env_ids_none() -> None:
+    """``env_ids=None`` means "every env" in mjlab's event contract."""
+    entity, variant = "robot", "bimanual"
+    env = _make_mock_env(t=0.0, entity_name=entity)
+    _mimic_mjlab_cache[_mimic_cache_key(env, entity, variant)] = (
+        _make_cache_with_source(_make_source())
+    )
+    seen: dict[str, torch.Tensor] = {}
+    ent = env.scene[entity]
+    ent.write_root_state_to_sim = lambda state, env_ids: seen.update(root=env_ids)
+    ent.write_joint_state_to_sim = lambda pos, vel, env_ids: seen.update(joint=env_ids)
+
+    _mimic_rsi_event(entity, variant, _make_clip(), _CTRL_DT)(env, None)
+
+    assert seen["root"].tolist() == list(range(_N))
+    assert seen["joint"].tolist() == list(range(_N))
