@@ -1741,7 +1741,7 @@ class SARMuscleActivationActionCfg:
     """Action term config that maps SAR synergy actions to muscle activations.
 
     The policy outputs ``n_synergies`` values in ``[-1, 1]``.  These are
-    passed through a :class:`~benchmarks.sar_backends.sar_torch_transform.SARTorchTransform`
+    passed through a :class:`~myosuite.integrations.musclemimic.sar_torch_transform.SARTorchTransform`
     (MinMaxScaler⁻¹ → FastICA⁻¹ → PCA⁻¹ → clamp) to produce ``n_muscles``
     activations in ``[0, 1]``, which are then written to MuJoCo's ``ctrl``
     array.
@@ -1896,7 +1896,7 @@ def _register_mimic_sar_tasks(
     if importlib.util.find_spec("musclemimic_models") is None:
         return
 
-    from benchmarks.sar_backends.sar_torch_transform import SARTorchTransform
+    from myosuite.integrations.musclemimic.sar_torch_transform import SARTorchTransform
     from ml_collections import config_dict
 
     from myosuite.integrations.musclemimic.bimanual_model import (
@@ -2033,7 +2033,7 @@ def _make_mimic_sar_env_cfg(
         spec_fn: Callable returning an :class:`mujoco.MjSpec`.
         muscle_actuators: Full-dimensional muscle actuator names.
         tendon_targets: Tendon names for XmlMuscle actuator config.
-        sar_transform: Fitted :class:`~benchmarks.sar_backends.sar_torch_transform.SARTorchTransform`.
+        sar_transform: Fitted :class:`~myosuite.integrations.musclemimic.sar_torch_transform.SARTorchTransform`.
         sim_dt: Physics timestep.
         ctrl_dt: Control timestep.
         max_episode_steps: Episode length in control steps.
@@ -2391,7 +2391,7 @@ def register_directional_walk_sar(
     if importlib.util.find_spec("musclemimic_models") is None:
         return
 
-    from benchmarks.sar_backends.sar_torch_transform import SARTorchTransform
+    from myosuite.integrations.musclemimic.sar_torch_transform import SARTorchTransform
     from ml_collections import config_dict
 
     from myosuite.integrations.musclemimic.fullbody_model import (

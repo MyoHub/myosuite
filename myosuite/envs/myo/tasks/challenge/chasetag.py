@@ -162,7 +162,7 @@ class ChallengeOpponent:
                 self.rng.uniform(-2 * np.pi, 2 * np.pi),
             ]
             dist = np.linalg.norm(
-                np.array(pose[:2]) - self.mj_data.body("root").xpos[:2]
+                np.array(pose[:2]) - self.mj_data.body(self.pelvis_body_name).xpos[:2]
             )
         if self.opponent_policy == "static_stationary":
             pose[:] = [0, -5, 0]
