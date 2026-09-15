@@ -11,6 +11,6 @@
 | `cross-backend-contract.md` | Before exporting a policy across backends |
 | `writing-term-functions.md` | Writing obs/reward/action term functions |
 | `agent-workflow.md` | Required agent workflow and subagent strategy |
-| `log.md` | Append-only wiki change log |
+| `log.md` | Append-only log of PRs to `dev` with new features / critical changes |
 
 **Source of truth priority:** code and tests → `CLAUDE.md` → this wiki.
