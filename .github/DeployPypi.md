@@ -1,8 +1,7 @@
 ## Current Solution to release
 ### Update the CHANGELOG.md
 ### Update version
-- Update version in `myosuite/__init__.py`
-- Update version in `setup.py`
+- Update version in `myosuite/version.py`
 - Update `.github/CHANGELOG.md`
 - Update the doc version in `docs/source/conf.py`
 
@@ -20,7 +19,7 @@ git push --tags origin [branch]
 ```
 ### build a new package (default repo in dist/)
 ```bash
-python3 setup.py bdist_wheel --universal
+python -m build
 ```
 ### Upload to pypi
 ```bash
@@ -29,11 +28,11 @@ python3 -m twine upload --repository pypi dist/*
 ### Verify proper upload
 
 ```bash
-conda create --name test_myosuite python=3.7.1
+conda create --name test_myosuite python=3.10
 conda activate test_myosuite
 pip install myosuite
 python3 -c "import myosuite; print(f'MyoSuite version: {myosuite.__version__}')"
-python3 myosuite/tests/test_myo.py
+python3 -m myosuite.tests.test_myo
 conda deactivate
 conda remove --name test_myosuite --all
 ```

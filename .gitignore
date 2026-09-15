@@ -124,7 +124,7 @@ tags
 .vscode/settings.json
 
 # Media #
-.mp4
+*.mp4
 
 # OSL logs #
 osl.csv
@@ -163,3 +163,7 @@ myosuite_gpu_smoke*.zip
 # Large baseline artifacts staged for HuggingFace upload, not tracked in git
 # (see baselines/README.md) -- keep out of the repo to avoid bloat.
 baselines/
+
+# RL learning files
+*params.pickle
+*tmp*.xml
