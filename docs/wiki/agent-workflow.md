@@ -11,7 +11,9 @@
 1. Implement following `engineering-standards.md`.
 2. Verify correctness (tests, diffs). Run the commands in `CLAUDE.md`.
 3. Update any wiki page affected by the change.
-4. Append an entry to `docs/wiki/log.md`.
+4. If this change is going into a PR to `dev` introducing a new feature or a
+   critical/breaking change, append an entry to `docs/wiki/log.md`. Routine
+   fixes, refactors, and doc edits don't need a log entry.
 
 ## After a User Correction
 

@@ -1,6 +1,8 @@
 # Wiki Maintenance Log
 
-Append-only record of wiki updates and why they happened.
+Append-only record of PRs to `dev` that introduced a new feature or a
+critical/breaking change, and why. Routine fixes, refactors, and doc edits
+don't get an entry here.
 
 ## [2026-04-30] bootstrap | repository wiki initialized
 
