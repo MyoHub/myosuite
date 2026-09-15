@@ -21,9 +21,17 @@ pytest.importorskip("huggingface_hub", reason="huggingface_hub required")
 
 @pytest.fixture(scope="module")
 def directional_env():
+    from huggingface_hub.errors import HfHubHTTPError
+
     from myosuite.envs.myo.tasks.mimic.cpu import MuscleMimicFullbodyDirectionalEnv
 
-    env = MuscleMimicFullbodyDirectionalEnv(seed=0)
+    try:
+        env = MuscleMimicFullbodyDirectionalEnv(seed=0)
+    except HfHubHTTPError as exc:
+        # amathislab/musclemimic-retargeted is a gated HF dataset; skip rather
+        # than error when there's no HF_TOKEN for an account that has
+        # accepted its license (e.g. in CI).
+        pytest.skip(f"gated HF dataset unavailable ({exc})")
     yield env
     env.close()
 
@@ -96,9 +104,14 @@ class TestMuscleMimicFullbodyDirectionalEnv:
 
     def test_gym_make_registration(self):
         import gymnasium as gym
+        from huggingface_hub.errors import HfHubHTTPError
+
         import myosuite  # noqa: F401 — triggers registration
 
-        env = gym.make("myoFullBodyDirectional-v0")
+        try:
+            env = gym.make("myoFullBodyDirectional-v0")
+        except HfHubHTTPError as exc:
+            pytest.skip(f"gated HF dataset unavailable ({exc})")
         obs, _ = env.reset()
         assert obs.shape == env.observation_space.shape
         env.close()

@@ -22,6 +22,11 @@ from typing import Any
 
 from myosuite.integrations.musclemimic.actor_onnx import load_onnx_session
 
+try:
+    import wandb
+except ImportError:  # wandb is optional; only get_wandb_onnx_checkpoint_path needs it.
+    wandb = None
+
 _BUNDLE_META_KEY = "myosuite.checkpoint_bundle.v1.meta"
 _BUNDLE_PAYLOAD_KEY = "myosuite.checkpoint_bundle.v1.payload_gzip_base64"
 _FATIGUE_STATE_KEY = "fatigue_state"
@@ -165,7 +170,8 @@ def get_wandb_onnx_checkpoint_path(
     run_path: Path,
     checkpoint_name: str | None = None,
 ) -> tuple[Path, bool]:
-    import wandb
+    if wandb is None:
+        raise ImportError("wandb is required for get_wandb_onnx_checkpoint_path")
 
     run_id = str(run_path).split("/")[-1]
     download_dir = log_path / "wandb_checkpoints" / run_id
