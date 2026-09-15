@@ -45,6 +45,10 @@ dependencies = [
     "matplotlib>=3.10.8",
     "mjviser>=0.0.14",
     "loop-rate-limiters>=1.2.0",
+    # Core registered envs (myoFullBodyDirectional-v0, ChaseTagFBVs) download
+    # reference gait clips at runtime via hf_hub_download -- not gated behind
+    # the [musclemimic] extra since these envs are reachable via plain gym.make.
+    "huggingface_hub>=0.20",
 ]
 [project.optional-dependencies]
 # Reinforcement learning training with Stable-Baselines3
