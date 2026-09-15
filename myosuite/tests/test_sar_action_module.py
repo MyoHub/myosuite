@@ -54,7 +54,7 @@ def _make_sar_transform(n_syn: int = N_SYN, n_muscles: int = N_MUSCLES) -> objec
     ``pca.components_``, ``pca.mean_``, ``normalizer.min_``,
     ``normalizer.scale_``.
     """
-    from benchmarks.sar_backends.sar_torch_transform import SARTorchTransform
+    from myosuite.integrations.musclemimic.sar_torch_transform import SARTorchTransform
 
     rng = np.random.default_rng(0)
     # PCA: projects n_muscles → n_syn
