@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Install packages required by tutorials.
-uv pip install scikit-learn jupyter ipykernel tabulate matplotlib torch h5py tqdm osqp stable-baselines3
+uv pip install scikit-learn jupyter ipykernel tabulate matplotlib pandas torch h5py tqdm osqp stable-baselines3
 
 uv run python -m ipykernel install --user --name=myosuite_uv
 
