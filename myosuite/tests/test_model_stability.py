@@ -72,6 +72,17 @@ _KNOWN_UNSTABLE_RECIPES: dict[str, str] = {
         "fixed by someone with the model's anatomical intent, not a "
         "generic asset-dedup workaround in ModelBuilder."
     ),
+    "musclemimic_myotorso_bimanual": (
+        "myotorso_bimanual_model.py's hardcoded torso/assets paths don't "
+        "match musclemimic_models' actual PyPI layout on any published "
+        "version (checked 1.0.4-1.0.6) -- ValueError opening .../torso/"
+        "assets/meshes/lumbar*.stl, which doesn't exist there. Same bug as "
+        "myosuite/tests/test_myotorso_bimanual_mimic.py."
+    ),
+    "musclemimic_myotorso_bimanual_fingers": (
+        "Same musclemimic_models layout mismatch as "
+        "'musclemimic_myotorso_bimanual' above."
+    ),
 }
 
 

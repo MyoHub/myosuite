@@ -68,6 +68,8 @@ def test_normalize_onnx_checkpoint_name_accepts_pt_aliases() -> None:
 def test_get_wandb_onnx_checkpoint_path_prefers_final_and_normalizes_alias(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    pytest.importorskip("wandb")
+
     class _FakeFile:
         def __init__(self, name: str) -> None:
             self.name = name
