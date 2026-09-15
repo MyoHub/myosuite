@@ -6,7 +6,6 @@ spinal feedback generates diverse behaviours of human locomotion." The
 Journal of physiology, 2015.
 """
 
-from __future__ import division
 import sys  # '/' always means non-truncating division
 
 import numpy as np
@@ -16,7 +15,7 @@ from myosuite.utils import gym
 from myosuite.utils.quat_math import euler2quat, quat2euler
 import mujoco
 
-class MyoLegReflex(object):
+class MyoLegReflex:
 
     DEFAULT_INIT_POSE = {}
     DEFAULT_INIT_POSE["model_pose"] = {

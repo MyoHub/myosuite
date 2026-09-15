@@ -57,7 +57,7 @@ GPU-native vectorization (MJX, MJWarp) drastically reduces total training time c
 
 ## Simulation/Rollout Speed Benchmark
 
-Similar effects can be observed for forward simulations (i.e. rollouts) in the respective environments, independent of the RL policy updates. The MuJoCo Warp physics engine can in principle run **150K to 1M** simulation steps per second, depending on the task environment and the number of parallel environments. 
+Similar effects can be observed for forward simulations (i.e. rollouts) in the respective environments, independent of the RL policy updates. The MuJoCo Warp physics engine can in principle run **150K to 1M** simulation steps per second, depending on the task environment and the number of parallel environments.
 
 Simulation scripts can be found [here](../../../../benchmarks/mjx_benchmark_baseline.py) for MuJoCo and [here](../../../../benchmarks/mjx_benchmark.py) for MJX and MJWarp.
 

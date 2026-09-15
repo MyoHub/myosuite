@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any
 import jax
 import jax.numpy as jp
 from ml_collections import config_dict
@@ -12,7 +12,7 @@ class MjxReachEnvV0(MjxMyoBase):
     def __init__(
         self,
         config: config_dict.ConfigDict,
-        config_overrides: Optional[Dict[str, Union[str, int, list[Any]]]] = None,
+        config_overrides: dict[str, str | int | list[Any]] | None = None,
     ) -> None:
         super().__init__(config, config_overrides)
 
@@ -30,7 +30,7 @@ class MjxReachEnvV0(MjxMyoBase):
         self._tip_sids = jp.array(self._tip_sids)
         self._target_sids = self._target_sids
 
-    def generate_target_pose(self, rng: jp.ndarray) -> Dict[str, jp.ndarray]:
+    def generate_target_pose(self, rng: jp.ndarray) -> dict[str, jp.ndarray]:
         targets = []
         for span in self._config.target_reach_range.values():
             targets.append(
@@ -47,17 +47,19 @@ class MjxReachEnvV0(MjxMyoBase):
 
         targets = self.generate_target_pose(rng2)
         self.n_targets = len(targets)
-        self.near_th = self.n_targets * .0125
-        
+        self.near_th = self.n_targets * 0.0125
+
         # We store the targets in the info, can't store it as an instance variable,
         # as it has to be determined in a parallelized manner
-        info = {'rng': rng,
-                'targets': targets,
-                'step_count': jp.array(0, dtype=jp.int32)}
+        info = {
+            "rng": rng,
+            "targets": targets,
+            "step_count": jp.array(0, dtype=jp.int32),
+        }
 
         data = self._get_data(qpos, qvel)
         obs = self._get_obs(data, info)
-        
+
         reward, done, zero = jp.zeros(3)
         metrics = {
             "reach_reward": zero,
@@ -70,7 +72,7 @@ class MjxReachEnvV0(MjxMyoBase):
     def _get_rewards(self, data, info):
         reach_err = self._reach_err(data, info)
         reach_dist = jp.linalg.norm(reach_err, axis=-1)
-        
+
         far_th = jp.where(
             data.time > 2.0 * self.mjx_model.opt.timestep,
             self._config.far_th * self.n_targets,
@@ -81,10 +83,12 @@ class MjxReachEnvV0(MjxMyoBase):
         bonus = (
             1.0 * (reach_dist < 2 * self.near_th) + 1.0 * (reach_dist < self.near_th)
         ) * self._config.reward_config.bonus_scale
-        penalty = -1.0 * (reach_dist > far_th) * self._config.reward_config.penalty_scale
-        
+        penalty = (
+            -1.0 * (reach_dist > far_th) * self._config.reward_config.penalty_scale
+        )
+
         return {"reach": reach, "bonus": bonus, "penalty": penalty}
-    
+
     def _get_done(self, state: State) -> float:
         reach_err = self._reach_err(state.data, state.info)
         reach_dist = jp.linalg.norm(reach_err, axis=-1)
@@ -94,9 +98,9 @@ class MjxReachEnvV0(MjxMyoBase):
             jp.inf,
         )
         done = 1.0 * (reach_dist > far_th)
-        
+
         return done
-    
+
     def _get_metrics(self, state: State) -> dict:
         reach_err = self._reach_err(state.data, state.info)
         reach_dist = jp.linalg.norm(reach_err, axis=-1)
@@ -107,9 +111,9 @@ class MjxReachEnvV0(MjxMyoBase):
             "reach_reward": rewards["reach"],
             "bonus_reward": rewards["bonus"],
             "penalty_reward": rewards["penalty"],
-            "solved_frac": solved / self._config.max_episode_steps
+            "solved_frac": solved / self._config.max_episode_steps,
         }
-    
+
     def _get_info(self, state: State) -> dict:
         done = state.done
 
@@ -132,22 +136,22 @@ class MjxReachEnvV0(MjxMyoBase):
             self.generate_target_pose(rng1),
             state.info["targets"],
         )
-        
-        info={
-                **state.info,
-                "rng": rng,
-                "step_count": step_count,
-                "targets": targets,
-            }
-        
+
+        info = {
+            **state.info,
+            "rng": rng,
+            "step_count": step_count,
+            "targets": targets,
+        }
+
         return info
-    
+
     def _reach_err(self, data, info):
         tip_pos = data.site_xpos[self._tip_sids]
-        reach_err = (info['targets'] - tip_pos).ravel()
+        reach_err = (info["targets"] - tip_pos).ravel()
         return reach_err
-      
-    def _get_obs(self, data: mjx.Data, info: Dict) -> jp.ndarray:
+
+    def _get_obs(self, data: mjx.Data, info: dict) -> jp.ndarray:
         """Observe qpos, qvel, act, tip_pos and reach_err."""
         tip_pos = data.site_xpos[self._tip_sids]
         reach_err = (info["targets"] - tip_pos).ravel()

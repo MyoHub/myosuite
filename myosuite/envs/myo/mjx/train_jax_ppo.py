@@ -1,20 +1,22 @@
 """Train a PPO agent using brax."""
 
+import argparse
 import functools
+import pickle
 import time
-import jax
 
-print(f"Current backend: {jax.default_backend()}. "
-      f"If you expect gpu but see cpu, you may need to reinstall jax with a suitable version of cuda.")
+import jax
+import wandb
 from brax.training.agents.ppo import networks as ppo_networks
 from brax.training.agents.ppo import train as ppo
-from myosuite.envs.myo.mjx import ppo_config
-
-from myosuite.envs.myo.mjx import make, get_default_config
 from mujoco_playground import wrapper
-import pickle
-import wandb
-import argparse
+
+from myosuite.envs.myo.mjx import get_default_config, make, ppo_config
+
+print(
+    f"Current backend: {jax.default_backend()}. "
+    f"If you expect gpu but see cpu, you may need to reinstall jax with a suitable version of cuda."
+)
 
 
 def main(env_name, impl, log_to_wandb, save_policy):
@@ -23,7 +25,7 @@ def main(env_name, impl, log_to_wandb, save_policy):
     env, ppo_params, network_factory = load_env_and_network_factory(env_name, impl)
 
     if log_to_wandb:
-        wandb_run = wandb.init(project=env_name, config=ppo_params)
+        wandb.init(project=env_name, config=ppo_params)
 
     # Train the model
     make_inference_fn, params, _ = ppo.train(
@@ -40,8 +42,9 @@ def main(env_name, impl, log_to_wandb, save_policy):
     print(f"Time to JIT compile: {times[1] - times[0]}")
     print(f"Time to train: {times[-1] - times[1]}")
     if save_policy:
-        with open('playground_params.pickle', 'wb') as handle:
+        with open("playground_params.pickle", "wb") as handle:
             pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 
 def load_env_and_network_factory(env_name, impl):
     env = make(env_name, config_overrides={"impl": impl})
@@ -79,7 +82,6 @@ def progress(num_steps, metrics, log_to_wandb):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(description="Train PPO agent with Brax")
     parser.add_argument(
         "--env_name",

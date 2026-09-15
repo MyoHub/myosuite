@@ -442,7 +442,7 @@ Challenge Tutorial
 
 This section aims to provide an basics to get start of the challenge.
 
-For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_reinforcement_learning` and :ref:`baselines` page.
+For a step-by-step tutorial, please check our :doc:`tutorials` page and :doc:`baselines` page.
 
 To obtain a more in-depth understanding of the challenge, we have prepared baselines for both of the challenges.
 Links are available for `manipulation <https://colab.research.google.com/drive/1AqC1Y7NkRnb2R1MgjT3n4u02EmSPem88#scrollTo=-mAnRvYjIS4d>`__,

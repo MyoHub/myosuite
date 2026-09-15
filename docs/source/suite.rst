@@ -533,13 +533,13 @@ Variants:
 Task and Variantions
 ************************************
 
-For convenience, Myosuite has implemented a set of muscle deficiencies that currently includes: :ref:`test_muscle_fatigue` , sarcopenia and tendon transfer alongside with the tasks.
+For convenience, Myosuite has implemented a set of muscle deficiencies that currently includes: muscle fatigue , sarcopenia and tendon transfer alongside with the tasks.
 
 Here are a list of the tasks currently implement in Myosuite. See :ref:`task_variation` on how to include the additional features.
 
 
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
-|:ref:`tasks`            | **Environment**                  | **Difficulty**  |:ref:`test_sarcopenia` |:ref:`test_muscle_fatigue` | :ref:`test_tendon_transfer`    |
+|:ref:`tasks`            | **Environment**                  | **Difficulty**  |Sarcopenia             |Muscle Fatigue             | Tendon Transfer                |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
 | Finger Joint Pose      | ``myoFingerPoseFixed-v0``        | Easy            |         ✓             |      ✓                    |                                |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+

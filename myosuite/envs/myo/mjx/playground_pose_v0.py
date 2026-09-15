@@ -1,4 +1,3 @@
-from typing import Any, Dict, Optional, Union
 import jax
 import jax.numpy as jp
 from mujoco import mjx
@@ -7,8 +6,7 @@ from myosuite.envs.myo.mjx.mjx_base_env import MjxMyoBase
 
 
 class MjxPoseEnvV0(MjxMyoBase):
-
-    def generate_target_pose(self, rng: jp.ndarray) -> Dict[str, jp.ndarray]:
+    def generate_target_pose(self, rng: jp.ndarray) -> dict[str, jp.ndarray]:
         targets = []
         for span in self._config.target_jnt_range.values():
             targets.append(
@@ -38,7 +36,7 @@ class MjxPoseEnvV0(MjxMyoBase):
 
         data = self._get_data(qpos, qvel)
         obs = self._get_obs(data, info)
-        
+
         reward, done, zero = jp.zeros(3)
         metrics = {
             "pose_reward": zero,
@@ -53,7 +51,7 @@ class MjxPoseEnvV0(MjxMyoBase):
         # TODO: confirm this gets Common Subexpression Eliminated
         pose_err = info["target_angles"] - data.qpos
         return jp.linalg.norm(pose_err, axis=-1)
-    
+
     def _get_rewards(self, data: mjx.Data, info: dict) -> dict:
         """We are counting on CSE to simplify the two calls to this into one"""
         pose_dist = self._pose_dist(data, info)
@@ -61,16 +59,17 @@ class MjxPoseEnvV0(MjxMyoBase):
 
         pose = pose_dist * -self._config.reward_config.angle_reward_weight
         act_reg = act_mag * -self._config.reward_config.ctrl_cost_weight
-        bonus = (jp.where(pose_dist < self._config.reward_config.pose_thd, 1.0, 0.0)
-                 + jp.where(pose_dist < self._config.reward_config.pose_thd * 1.5, 1.0,
-                            0.0)) * self._config.reward_config.bonus_weight
+        bonus = (
+            jp.where(pose_dist < self._config.reward_config.pose_thd, 1.0, 0.0)
+            + jp.where(pose_dist < self._config.reward_config.pose_thd * 1.5, 1.0, 0.0)
+        ) * self._config.reward_config.bonus_weight
         penalty = -1.0 * (pose_dist > self._config.reward_config.far_th)
         return {"pose": pose, "act_reg": act_reg, "bonus": bonus, "penalty": penalty}
-    
+
     def _get_done(self, state: State) -> float:
         pose_dist = self._pose_dist(state.data, state.info)
         return jp.where(pose_dist > self._config.reward_config.far_th, 1.0, 0.0)
-    
+
     def _get_metrics(self, state: State) -> dict:
         pose_dist = self._pose_dist(state.data, state.info)
         solved = 1.0 * (pose_dist < self._config.reward_config.pose_thd)
@@ -81,9 +80,9 @@ class MjxPoseEnvV0(MjxMyoBase):
             "act_reg_reward": rewards["act_reg"],
             "bonus_reward": rewards["bonus"],
             "penalty_reward": rewards["penalty"],
-            "solved_frac": solved / self._config.max_episode_steps
+            "solved_frac": solved / self._config.max_episode_steps,
         }
-    
+
     def _get_info(self, state: State) -> dict:
         done = state.done
 
@@ -106,16 +105,16 @@ class MjxPoseEnvV0(MjxMyoBase):
             self.generate_target_pose(rng1),
             state.info["target_angles"],
         )
-        
-        info={
-                **state.info,
-                "rng": rng,
-                "step_count": step_count,
-                "target_angles": target_angles,
-            }
-        
+
+        info = {
+            **state.info,
+            "rng": rng,
+            "step_count": step_count,
+            "target_angles": target_angles,
+        }
+
         return info
-    
+
     def _get_obs(self, data: mjx.Data, info) -> jp.ndarray:
         """Observe qpos, qvel, act and qpos_err."""
         obs = jp.concatenate(

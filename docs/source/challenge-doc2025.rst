@@ -312,7 +312,7 @@ Challenge Tutorial
 
 This section aims to provide an basics to get start of the challenge.
 
-For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_reinforcement_learning` and :ref:`baselines` page. To obtain a more in-depth understanding of the challenge, we have prepared baselines for both of the challenges.
+For a step-by-step tutorial, please check our :doc:`tutorials` page and :doc:`baselines` page. To obtain a more in-depth understanding of the challenge, we have prepared baselines for both of the challenges.
 
 
 .. code-block:: python

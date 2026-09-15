@@ -67,11 +67,7 @@ def _actor_body_ids(model: Any) -> np.ndarray:
     if not actor_roots and subtrees:
         actor_roots = [max(subtrees, key=lambda root_id: len(subtrees[root_id]))]
     body_ids = sorted(
-        {
-            body_id
-            for root_id in actor_roots
-            for body_id in subtrees[root_id]
-        }
+        {body_id for root_id in actor_roots for body_id in subtrees[root_id]}
     )
     return np.asarray(body_ids, dtype=np.int32)
 
@@ -149,7 +145,13 @@ def _overlay(frame: np.ndarray, lines: list[str]) -> np.ndarray:
         return frame
     out = frame.copy()
     y0 = 22
-    cv2.rectangle(out, (6, 6), (min(out.shape[1] - 6, 520), 12 + 20 * len(lines)), (20, 20, 20), -1)
+    cv2.rectangle(
+        out,
+        (6, 6),
+        (min(out.shape[1] - 6, 520), 12 + 20 * len(lines)),
+        (20, 20, 20),
+        -1,
+    )
     for i, line in enumerate(lines):
         cv2.putText(
             out,
@@ -370,7 +372,11 @@ def _write_index(out_dir: Path, rows: list[dict[str, Any]]) -> Path:
         ret = row.get("return", "")
         ret_s = f"{ret:.2f}" if isinstance(ret, float) else ret
         path = row.get("path", "")
-        link = f"[mp4]({Path(path).name})" if path and status in ("ok", "skipped_existing") else ""
+        link = (
+            f"[mp4]({Path(path).name})"
+            if path and status in ("ok", "skipped_existing")
+            else ""
+        )
         lines.append(f"| `{eid}` | {rollout} | {frames} | {ret_s} | {link} |")
     index = out_dir / "index.md"
     index.write_text("\n".join(lines) + "\n")
@@ -467,8 +473,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest.write_text(json.dumps(rows, indent=2) + "\n")
     index = _write_index(out_dir, rows)
     print(
-        f"Done. ok={n_ok} error={n_err} "
-        f"manifest={manifest} index={index}",
+        f"Done. ok={n_ok} error={n_err} " f"manifest={manifest} index={index}",
         flush=True,
     )
     return 0 if n_err == 0 else 1
