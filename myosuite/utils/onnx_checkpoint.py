@@ -20,8 +20,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import wandb
-
 from myosuite.integrations.musclemimic.actor_onnx import load_onnx_session
 
 _BUNDLE_META_KEY = "myosuite.checkpoint_bundle.v1.meta"
@@ -167,6 +165,8 @@ def get_wandb_onnx_checkpoint_path(
     run_path: Path,
     checkpoint_name: str | None = None,
 ) -> tuple[Path, bool]:
+    import wandb
+
     run_id = str(run_path).split("/")[-1]
     download_dir = log_path / "wandb_checkpoints" / run_id
     api = wandb.Api()

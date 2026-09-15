@@ -14,7 +14,6 @@ The **core** and **terms** packages are documented via Sphinx autoapi (see the
    muscle_action
    policy_utils
    physics
-   robot
    quat_math
    tensor_utils
    renderer

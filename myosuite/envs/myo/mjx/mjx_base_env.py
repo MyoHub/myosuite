@@ -4,24 +4,24 @@
 # irreconcilable. Currently we are building on top of MuJoCo playground's base env.
 # TODO: Consider if the two implementations could be merged.
 
-import logging
-from typing import Any, Dict, Optional, Union
+from typing import Any
 import jax
 import jax.numpy as jp
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
 from mujoco_playground import State
-from mujoco_playground._src import mjx_env  # Several helper functions are only visible under _src
+from mujoco_playground._src import (
+    mjx_env,
+)  # Several helper functions are only visible under _src
 from abc import ABC, abstractmethod
-import numpy as np
 
 
 class MjxMyoBase(mjx_env.MjxEnv, ABC):
     def __init__(
-            self,
-            config: config_dict.ConfigDict,
-            config_overrides: Optional[Dict[str, Union[str, int, list[Any]]]] = None,
+        self,
+        config: config_dict.ConfigDict,
+        config_overrides: dict[str, str | int | list[Any]] | None = None,
     ) -> None:
         super().__init__(config, config_overrides)
 
@@ -42,15 +42,21 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
                 if geom.type == mujoco.mjtGeom.mjGEOM_CYLINDER:
                     geom.conaffinity = 0
                     geom.contype = 0
-                    print(f"Disabled contacts for cylinder geom named \"{geom.name}\"")
-                if geom.type in (mujoco.mjtGeom.mjGEOM_MESH, mujoco.mjtGeom.mjGEOM_HFIELD) and geom.margin != 0:
+                    print(f'Disabled contacts for cylinder geom named "{geom.name}"')
+                if (
+                    geom.type
+                    in (mujoco.mjtGeom.mjGEOM_MESH, mujoco.mjtGeom.mjGEOM_HFIELD)
+                    and geom.margin != 0
+                ):
                     geom.margin = 0
-                    print(f"Margin of \"{geom.name}\" set to 0")
+                    print(f'Margin of "{geom.name}" set to 0')
         spec.option.iterations = 6  # TODO: Parametrize with defaults in config?
         spec.option.ls_iterations = 6
         spec.option.ccd_iterations = 150
         spec.option.timestep = self._config.sim_dt
-        print(f"Iterations: {spec.option.iterations}, LS Iterations: {spec.option.ls_iterations}")
+        print(
+            f"Iterations: {spec.option.iterations}, LS Iterations: {spec.option.ls_iterations}"
+        )
         #  TODO: consider which disableflags (self._mj_model.opt.disableflags | mjx.DisableBit.EULERDAMP) and solver is
         #        most appropriate for the base preprocess. (mujoco.mjtSolver.mjSOL_NEWTON perhaps?)
         return spec
@@ -63,13 +69,15 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
     def reset(self, rng: jp.ndarray) -> State:
         """Resets the environment to an initial state. Abstract, so child class needs to provide actual implementation"""
 
-        info = {'rng': rng,
-                'step_count': jp.array(0, dtype=jp.int32)}  # These are mandatory fields needed
+        info = {
+            "rng": rng,
+            "step_count": jp.array(0, dtype=jp.int32),
+        }  # These are mandatory fields needed
         obs = {}
         metrics = {}
         data = self._get_data(jp.zeros(self._mj_model.nq), jp.zeros(self._mj_model.nv))
 
-        return State(data, obs, 0., 0., metrics, info)
+        return State(data, obs, 0.0, 0.0, metrics, info)
 
     def step(self, state: State, action: jp.ndarray) -> State:
         """Runs one timestep of the environment's dynamics."""
@@ -81,23 +89,31 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
         state = state.replace(reward=self._get_reward(state.data, state.info))
         state = state.replace(done=self._get_done(state))
         state = state.replace(
-            metrics={**state.metrics, **self._get_metrics(state)})  # Other metrics get added by learning
+            metrics={**state.metrics, **self._get_metrics(state)}
+        )  # Other metrics get added by learning
         state = state.replace(info=self._get_info(state))
         return state
 
     def _step_simulation(self, state, action):
-        norm_action = self.__class__.norm_actions(action) if self._config.norm_actions else action
-        return state.replace(data=mjx_env.step(self.mjx_model, state.data, norm_action, self._n_substeps),
-                             info={**state.info, "step_count": state.info["step_count"] + 1}
-                            )
+        norm_action = (
+            self.__class__.norm_actions(action) if self._config.norm_actions else action
+        )
+        return state.replace(
+            data=mjx_env.step(
+                self.mjx_model, state.data, norm_action, self._n_substeps
+            ),
+            info={**state.info, "step_count": state.info["step_count"] + 1},
+        )
 
     def _get_obs(self, data: mjx.Data, info: dict) -> dict:
         """Must return a state with the observations replaced with the updated dict."""
-        obs = jp.concatenate([
-            data.qpos,
-            data.qvel * self.mjx_model.opt.timestep,
-            data.act,
-        ])
+        obs = jp.concatenate(
+            [
+                data.qpos,
+                data.qvel * self.mjx_model.opt.timestep,
+                data.act,
+            ]
+        )
         return {"base_obs": obs}
 
     def _get_reward(self, data: mjx.Data, info: dict) -> float:
@@ -111,7 +127,7 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
 
     def _get_done(self, state: State) -> float:
         """Return 1 for done"""
-        return 0.
+        return 0.0
 
     def _get_metrics(self, state: State) -> dict:
         return {}
@@ -152,18 +168,18 @@ class MjxMyoBase(mjx_env.MjxEnv, ABC):
 
 
 def make_data(
-        model: mujoco.MjModel,
-        qpos: Optional[jax.Array] = None,
-        qvel: Optional[jax.Array] = None,
-        ctrl: Optional[jax.Array] = None,
-        act: Optional[jax.Array] = None,
-        mocap_pos: Optional[jax.Array] = None,
-        mocap_quat: Optional[jax.Array] = None,
-        impl: Optional[str] = None,
-        naconmax: Optional[int] = None,
-        njmax: Optional[int] = None,
-        naccdmax: Optional[int] = None,
-        device: Optional[jax.Device] = None,
+    model: mujoco.MjModel,
+    qpos: jax.Array | None = None,
+    qvel: jax.Array | None = None,
+    ctrl: jax.Array | None = None,
+    act: jax.Array | None = None,
+    mocap_pos: jax.Array | None = None,
+    mocap_quat: jax.Array | None = None,
+    impl: str | None = None,
+    naconmax: int | None = None,
+    njmax: int | None = None,
+    naccdmax: int | None = None,
+    device: jax.Device | None = None,
 ) -> mjx.Data:
     """Initialize MJX Data."""
     data = mjx.make_data(
