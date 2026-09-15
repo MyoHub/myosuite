@@ -28,6 +28,23 @@ _ALL_ENV_IDS = sorted(
 )
 
 
+def _skip_if_hf_gated(env_id: str, exc: Exception) -> None:
+    """Skip (rather than fail) an env that needs a gated HuggingFace dataset.
+
+    Some envs (e.g. ChaseTagFBVs, FullBodyDirectional) download a reference
+    gait clip from a gated HF dataset (amathislab/musclemimic-retargeted) on
+    first reset/step. CI has no HF_TOKEN for an account that has accepted the
+    dataset's license, so this is an access-control limitation, not a code
+    bug -- treat it the same as an unavailable optional dependency.
+    """
+    try:
+        from huggingface_hub.errors import HfHubHTTPError
+    except ImportError:
+        return
+    if isinstance(exc, HfHubHTTPError):
+        pytest.skip(f"{env_id}: gated HF dataset unavailable ({exc})")
+
+
 @pytest.mark.parametrize("env_id", _ALL_ENV_IDS)
 def test_env_resets_and_steps(env_id: str) -> None:
     """Every registered env must reset and take one random action without error."""
@@ -42,7 +59,12 @@ def test_env_resets_and_steps(env_id: str) -> None:
             return
         assert np.all(np.isfinite(np.asarray(value, dtype=np.float64)))
 
-    env = gym.make(env_id)
+    try:
+        env = gym.make(env_id)
+    except Exception as exc:
+        _skip_if_hf_gated(env_id, exc)
+        raise
+
     try:
         obs, info = env.reset(seed=0)
         assert obs is not None
@@ -54,6 +76,9 @@ def test_env_resets_and_steps(env_id: str) -> None:
         _assert_finite(rwd)
         assert isinstance(terminated, bool | np.bool_) or isinstance(terminated, dict)
         assert isinstance(truncated, bool | np.bool_) or isinstance(truncated, dict)
+    except Exception as exc:
+        _skip_if_hf_gated(env_id, exc)
+        raise
     finally:
         env.close()
 
