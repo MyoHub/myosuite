@@ -59,6 +59,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+import weakref
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -76,11 +77,35 @@ if TYPE_CHECKING:
     from myosuite.integrations.musclemimic.sar_extraction import SynergyModel
 
 # ---------------------------------------------------------------------------
-# Module-level cache keyed by (env_instance_id, entity_name, variant).
+# Module-level cache keyed by (env_config_id, entity_name, variant).
 # Populated lazily on first obs/reward evaluation.
 # ---------------------------------------------------------------------------
 
 _mimic_mjlab_cache: dict[tuple[int, str, str], dict[str, Any]] = {}
+
+
+def _mimic_cache_key(env: Any, entity_name: str, variant: str) -> tuple[int, str, str]:
+    """Cache key that survives env wrappers.
+
+    ``id(env)`` differs per wrapper, so every view of one env would get its own
+    entry — and hence its own :class:`ClipTrajectorySource`, which draws random
+    start frames on first use. ``env.cfg`` is shared by all views; keying on
+    it also lets the entry be dropped when the config is collected.
+    """
+    owner = getattr(env, "cfg", None)
+    if owner is None:
+        return (id(env), entity_name, variant)
+    key = (id(owner), entity_name, variant)
+    if key not in _mimic_mjlab_cache:
+        try:
+            weakref.finalize(owner, _mimic_mjlab_cache.pop, key, None)
+        except TypeError:
+            # Not weak-referenceable (e.g. a SimpleNamespace test stub).
+            # the entry then lives as long as the process, as it did before.
+            pass
+    return key
+
+
 _MIMIC_REWARD_MODE_MIMIC = "mimic"
 _MIMIC_REWARD_MODE_ENV = "env"
 _MIMIC_REWARD_MODE_AUGMENTED = "augmented"
@@ -540,7 +565,7 @@ def _resolve_mimic_mjlab_ids(
     """
     from ml_collections import config_dict
 
-    key = (id(env), entity_name, variant)
+    key = _mimic_cache_key(env, entity_name, variant)
     if key in _mimic_mjlab_cache:
         cache = _mimic_mjlab_cache[key]
         _sync_mimic_mjlab_targets(env, entity_name, cache)
@@ -1102,7 +1127,13 @@ def _mimic_rsi_event(
         clip_source._ensure_device(device, n_envs)
 
         # Resample start offsets for the envs that just reset.
-        env_ids_long = torch.as_tensor(env_ids, device=device, dtype=torch.long)
+        # env_ids=None means "all envs" in mjlab's event contract.
+        if env_ids is None:
+            env_ids_long = torch.arange(n_envs, device=device, dtype=torch.long)
+        else:
+            env_ids_long = torch.as_tensor(
+                env_ids, device=device, dtype=torch.long
+            ).reshape(-1)
         n_reset = int(env_ids_long.shape[0])
         if hasattr(clip_source, "_clip_indices") and hasattr(clip_source, "clips"):
             new_clip_indices = torch.randint(
