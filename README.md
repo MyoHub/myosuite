@@ -36,7 +36,7 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 ## Install
 
-Python 3.10+. From source (recommended):
+Python 3.10, 3.11, 3.12, and 3.13 are currently supported. From source (recommended):
 
 ```bash
 git clone https://github.com/MyoHub/myosuite.git
