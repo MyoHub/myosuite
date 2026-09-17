@@ -65,10 +65,12 @@ rl = [
 ]
 examples = ["mink[examples]; python_version > '3.9'"]
 mjlab = [
-    "torch>=2.13.0; python_version >= '3.10' and sys_platform != 'win32'",
-    "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14' and sys_platform != 'win32'",
-    "mujoco-warp>=3.7.0; python_version >= '3.10' and python_version < '3.14' and sys_platform != 'win32'",
+    "torch>=2.13.0; python_version >= '3.10'",
+    "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14'",
+    "mujoco-warp>=3.7.0; python_version >= '3.10' and python_version < '3.14'",
+    "warp-lang>=1.12.0; python_version >= '3.10'",
 ]
+
 mjx = [
     # brax's PPO trainer calls jax.device_put_replicated, removed in jax>=0.5.3 —
     # cap the floor below that line until brax drops the call (verified against
@@ -97,7 +99,6 @@ mjx = [
     "mediapy>=1.2.0; python_version >= '3.10' and sys_platform != 'win32'",
     "imageio>=2.31.0; python_version >= '3.10' and sys_platform != 'win32'",
     "wandb>=0.21.0; python_version >= '3.10' and sys_platform != 'win32'",
-    "warp>=1.0.4; python_version >= '3.10' and sys_platform != 'win32'",
 ]
 # CUDA-enabled MJX stack for GPU.
 # Install with: uv sync --extra mjx-cuda
