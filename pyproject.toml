@@ -29,6 +29,8 @@ dependencies = [
     "flatten_dict",
     "h5py",
     "numpy",
+    "pandas",
+    "osqp",
     "mujoco",
     "Pillow>=10.1.0",
     "pink-noise-rl",
