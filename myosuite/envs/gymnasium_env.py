@@ -440,7 +440,7 @@ class MyoGymnasiumEnv(gym.Env):
             )
         return obs
 
-    def render(self):
+    def render(self, **kwargs):
         """Render the environment using a lazy MujocoRenderer.
 
         Mirrors ``gymnasium.envs.mujoco.MujocoEnv.render()`` without
@@ -449,14 +449,13 @@ class MyoGymnasiumEnv(gym.Env):
         Returns:
             Rendered frame (ndarray for ``"rgb_array"``) or ``None``.
         """
+        kwargs = kwargs or {"width": 640, "height": 480, "camera_id": -1}
         if self.render_mode is None:
             return None
         if not hasattr(self, "_mujoco_renderer") or self._mujoco_renderer is None:
             from gymnasium.envs.mujoco.mujoco_rendering import MujocoRenderer
 
-            self._mujoco_renderer = MujocoRenderer(
-                self.model, self.data, width=640, height=480, camera_id=-1
-            )
+            self._mujoco_renderer = MujocoRenderer(self.model, self.data, **kwargs)
         return self._mujoco_renderer.render(self.render_mode)
 
     def close(self) -> None:
