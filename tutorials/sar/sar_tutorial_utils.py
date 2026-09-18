@@ -268,9 +268,7 @@ def load_manipulation_SAR():
         The trained ICA model, PCA model, and scaler for manipulation tasks.
     """
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    root_dir = os.path.join(
-        current_dir, "../../myosuite/agents/SAR_pretrained/manipulation"
-    )
+    root_dir = os.path.join(current_dir, "SAR_pretrained/manipulation")
     return _load_sar_pickles(root_dir, "manipulation")
 
 
@@ -285,9 +283,7 @@ def load_locomotion_SAR():
         The trained ICA model, PCA model, and scaler for locomotion tasks.
     """
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    root_dir = os.path.join(
-        current_dir, "../../myosuite/agents/SAR_pretrained/locomotion"
-    )
+    root_dir = os.path.join(current_dir, "SAR_pretrained/locomotion")
     return _load_sar_pickles(root_dir, "locomotion")
 
 
