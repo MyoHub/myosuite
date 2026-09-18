@@ -4,7 +4,7 @@ name = "MyoSuite"
 dynamic = ["version"]  # Enable dynamic version
 description = "Musculoskeletal environments simulated in MuJoCo"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10"
 license = { text = "Apache 2.0" }
 authors = [
     { name = "Vittorio Caggiano", email = "caggiano@gmail.com" },

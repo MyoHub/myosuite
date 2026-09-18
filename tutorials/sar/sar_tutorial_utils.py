@@ -8,11 +8,15 @@ import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.decomposition import PCA, FastICA
+from sklearn.preprocessing import MinMaxScaler
 
 from myosuite.utils.video_io import show_video as _video_show_video
 from myosuite.utils.video_io import write_video
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.logger import configure
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from tqdm import tqdm
 
