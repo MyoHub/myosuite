@@ -1,3 +1,8 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+
 DESC = """
 Helper script to record/examine a rollout (record/ render/ playback/ recover) on an environment\n
   > Examine options:\n
@@ -15,14 +20,14 @@ USAGE:\n
     $ python logger/examine_logs.py --env_name rpFrankaRobotiqData-v0 --rollout_path teleOp_trace.h5 --rollout_format RoboSet --render offscreen --compress_paths False -c left_cam -c right_cam -c top_cam -c Franka_wrist_cam --plot_paths True
 """
 
-import os
-import time
+import time  # noqa: E402
+from pathlib import Path  # noqa: E402
 
-import click
-import numpy as np
+import click  # noqa: E402
+import numpy as np  # noqa: E402
 
-from myosuite.utils import gym, tensor_utils
-from myosuite.utils.paths_utils import plot as plotnsave_paths
+from myosuite.utils import gym, tensor_utils  # noqa: E402
+from myosuite.utils.path_plotting import plot as plotnsave_paths  # noqa: E402
 
 
 @click.command(help=DESC)
@@ -149,12 +154,11 @@ def examine_logs(
     noise_scale,
     include_exteroception,
 ):
-
     # seed and load environments
     np.random.seed(seed)
     env = (
         gym.make(env_name)
-        if env_args == None
+        if env_args is None
         else gym.make(env_name, **(eval(env_args)))
     )
     env = env.unwrapped
@@ -164,7 +168,7 @@ def examine_logs(
     if rollout_format == "RoboHive":
         from myosuite.logger.grouped_datasets import Trace
     elif rollout_format == "RoboSet":
-        from myosuite.logger.roboset_logger import RoboSet_Trace as Trace
+        from myosuite.logger.roboset_logger import RoboSetTrace as Trace
     else:
         raise TypeError("unknown rollout_format format")
     trace = Trace("Rollouts")
@@ -185,10 +189,10 @@ def examine_logs(
             mode
         )
         if output_dir == "./":  # overide the default
-            output_dir = os.path.dirname(rollout_path)
+            output_dir = str(Path(rollout_path).parent)
         if output_name is None:  # default to the rollout name
-            rollout_name = os.path.split(rollout_path)[-1]
-            output_name, output_type = os.path.splitext(rollout_name)
+            rollout_name = Path(rollout_path).name
+            output_name = Path(rollout_name).stem
         paths = Trace.load(trace_path=rollout_path, trace_type=rollout_format)
 
     # Resolve rendering
@@ -196,20 +200,18 @@ def examine_logs(
         env.mujoco_render_frames = True
     elif render == "offscreen":
         env.mujoco_render_frames = False
-    elif render == None:
+    elif render is None:
         env.mujoco_render_frames = False
 
     # Rollout paths
     for i_loop in range(num_repeat):
-
         # Rollout path
-        print("Starting rollout loop:{}".format(i_loop))
+        print(f"Starting rollout loop:{i_loop}")
         for path_name, path_data in paths.items():
-
             # initialize path -----------------------------
             ep_t0 = time.time()
             path_name += "-" + str(i_loop)
-            print("Starting {} rollout".format(path_name))
+            print(f"Starting {path_name} rollout")
             trace.create_group(path_name)
 
             # init: reset to starting state
@@ -249,7 +251,6 @@ def examine_logs(
             )
             ep_rwd = rwd
             for i_step in range(trace_horizon + 1):
-
                 # Get step's actions ----------------------
 
                 # Record Execution. Useful for kinesthetic demonstrations on hardware
@@ -398,22 +399,20 @@ def examine_logs(
             )
 
         # Finish loop
-        print("Finished rollout loop:{}".format(i_loop))
+        print(f"Finished rollout loop:{i_loop}")
 
     # plot paths ???: Needs upgrade to the new logger
     trace.stack()
     time_stamp = time.strftime("%Y%m%d-%H%M%S")
     # plot paths
     if plot_paths:
-        file_name = os.path.join(output_dir, output_name + "{}".format(time_stamp))
+        file_name = str(Path(output_dir) / (output_name + f"{time_stamp}"))
         plotnsave_paths(trace.trace, env=env, fileName_prefix=file_name)
 
     # Close and save paths
     trace.close()
     if save_paths:
-        file_name = os.path.join(
-            output_dir, output_name + "{}_paths.h5".format(time_stamp)
-        )
+        file_name = str(Path(output_dir) / (output_name + f"{time_stamp}_paths.h5"))
         trace.save(trace_name=file_name)
 
 

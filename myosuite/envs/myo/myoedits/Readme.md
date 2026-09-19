@@ -1,7 +1,7 @@
 # MyoEdits
 
-MyoEdits builds on the [Model Editing](https://mujoco.readthedocs.io/en/stable/programming/modeledit.html) capabilities of MuJoCo to modify existing MyoSuite models using the mjSpec struct and related API. 
-This enables flexible, programmatic manipulation of model components such as bodies, joints, tendons, and actuators without requiring manual editing of the base XML file. 
+MyoEdits builds on the [Model Editing](https://mujoco.readthedocs.io/en/stable/programming/modeledit.html) capabilities of MuJoCo to modify existing MyoSuite models using the mjSpec struct and related API.
+This enables flexible, programmatic manipulation of model components such as bodies, joints, tendons, and actuators without requiring manual editing of the base XML file.
 Custom tasks can then be designed based on the MyoEdited model.
 Each time the task is run, the base XML model is loaded and modified on the fly, ensuring that MyoEdited models remain automatically synchronized with any updates to the underlying MyoSuite models.
 

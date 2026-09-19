@@ -5,30 +5,30 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 
 ### Adapted from: https://github.com/kevinzakka/mink/examples
 # REQUIRES:
-# Python 3.10
+# Python 3.9
 # MINK -- pip install "myosuite[examples]"
 
+import pathlib
 
 import h5py
 import mink
 import mujoco
 import mujoco.viewer
 import numpy as np
-import qpsolvers
-from pathlib import Path
 from loop_rate_limiters import RateLimiter
 from scipy.interpolate import interp1d
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 
-from myosuite.envs.myo.myochallenge.tabletennis_v0 import TableTennisEnvV0
+from myosuite.envs.myo.tasks.challenge.tabletennis import (
+    TableTennisEnv as TableTennisEnvV0,
+)
 
 
 class IKTableTennisEnv(TableTennisEnvV0):
     def _preprocess_spec(
         self, spec: mujoco.MjSpec, remove_body_collisions=True, add_left_arm=True
     ):
-
         temp_model = spec.compile()
         temp_data = mujoco.MjData(temp_model)
         spec.body("paddle").quat = R.from_euler(
@@ -72,19 +72,19 @@ class IKTableTennisEnv(TableTennisEnvV0):
             )
 
         spec_copy = spec.copy()
-        [spec_copy.delete(k) for k in spec_copy.keys]
-        [spec_copy.delete(t) for t in spec_copy.textures]
-        [spec_copy.delete(m) for m in spec_copy.materials]
-        [spec_copy.delete(t) for t in spec_copy.tendons]
-        [spec_copy.delete(a) for a in spec_copy.actuators]
-        [spec_copy.delete(e) for e in spec_copy.equalities]
-        [spec_copy.delete(s) for s in spec_copy.sensors if "paddle" not in s.name]
-        [spec_copy.delete(a) for a in spec_copy.assets]
-        [spec_copy.delete(m) for m in spec_copy.meshes]
-        [spec_copy.delete(c) for c in spec_copy.cameras]
+        [k.delete() for k in spec_copy.keys]
+        [t.delete() for t in spec_copy.textures]
+        [m.delete() for m in spec_copy.materials]
+        [t.delete() for t in spec_copy.tendons]
+        [a.delete() for a in spec_copy.actuators]
+        [e.delete() for e in spec_copy.equalities]
+        [s.delete() for s in spec_copy.sensors if "paddle" not in s.name]
+        [a.delete() for a in spec_copy.assets]
+        [m.delete() for m in spec_copy.meshes]
+        [c.delete() for c in spec_copy.cameras]
 
         paddle = spec_copy.body("paddle")
-        spec_copy.delete(paddle.joints[0])
+        paddle.joints[0].delete()
         paddle.pos *= 0
         paddle.alt.euler *= 0
         paddle.quat = [1, 0, 0, 0]
@@ -104,11 +104,11 @@ class IKTableTennisEnv(TableTennisEnvV0):
         spec = super()._preprocess_spec(
             spec, remove_body_collisions, add_left_arm=False
         )
-        spec.delete(spec.keys[0])
+        spec.keys[0].delete()
         spec.actuators[0].name = "interp"
 
         for a in spec.actuators[1:]:
-            spec.delete(a)
+            a.delete()
         return spec
 
 
@@ -121,18 +121,23 @@ def reparent_to(xpos_A, xquat_A, xpos_B, xquat_B):
     return rel_pos, rel_quat
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-TABLE_TENNIS_MODEL_PATH = (
-    ROOT_DIR / "myosuite" / "envs" / "myo" / "assets" / "arm" / "myoarm_tabletennis.xml"
+env = IKTableTennisEnv(
+    str(
+        pathlib.Path(__file__).parents[1]
+        / "myosuite/envs/myo/assets/arm/myoarm_tabletennis.xml"
+    )
 )
-
-env = IKTableTennisEnv(str(TABLE_TENNIS_MODEL_PATH))
-diff_env = TableTennisEnvV0(str(TABLE_TENNIS_MODEL_PATH))
+diff_env = TableTennisEnvV0(
+    str(
+        pathlib.Path(__file__).parents[1]
+        / "myosuite/envs/myo/assets/arm/myoarm_tabletennis.xml"
+    )
+)
 
 env.reset()
 
-model = env.mj_model
-data = env.mj_data
+model = env.model
+data = env.data
 
 ## =================== ##
 ## Setup IK.
@@ -154,37 +159,36 @@ tasks = [
 ## =================== ##
 
 # IK settings.
-solver = "quadprog" if "quadprog" in qpsolvers.available_solvers else "osqp"
+solver = "quadprog"
 pos_threshold = 3e-4
 ori_threshold = 1e-4
 max_iters = 20
 
-configuration.update(data.qpos)
-posture_task.set_target_from_configuration(configuration)
-mujoco.mj_forward(model, data)
+with mujoco.viewer.launch_passive(
+    model=model, data=data, show_left_ui=False, show_right_ui=False
+) as viewer:
+    mujoco.mjv_defaultFreeCamera(model, viewer.cam)
 
-# Initialize the mocap target at the end-effector site.
-mink.move_mocap_to_frame(model, data, "target", "paddle", "site")
-slerp = Slerp([0, 1], R.from_quat(data.mocap_quat, scalar_first=True))
-lerp = interp1d([0, 1], data.mocap_pos, axis=0)
-rate = RateLimiter(frequency=500.0, warn=False)
+    configuration.update(data.qpos)
+    posture_task.set_target_from_configuration(configuration)
+    mujoco.mj_forward(model, data)
 
+    # Initialize the mocap target at the end-effector site.
+    mink.move_mocap_to_frame(model, data, "target", "paddle", "site")
+    slerp = Slerp([0, 1], R.from_quat(data.mocap_quat, scalar_first=True))
+    lerp = interp1d([0, 1], data.mocap_pos, axis=0)
+    rate = RateLimiter(frequency=500.0, warn=False)
 
-def insert_paddle_pos(qpos):
-    return np.insert(
-        qpos,
-        qpos.shape[0] - 7,
-        np.concatenate([data.body("paddle").xpos, data.body("paddle").xquat]),
-    )
+    def insert_paddle_pos(qpos):
+        return np.insert(
+            qpos,
+            qpos.shape[0] - 7,
+            np.concatenate([data.body("paddle").xpos, data.body("paddle").xquat]),
+        )
 
-
-rollout = [{"qpos": insert_paddle_pos(data.qpos), "qvel": data.qvel}]
-T_movement = 0.5  # movement in seconds
-timesteps = np.linspace(0, 1, int(T_movement // model.opt.timestep))
-
-
-def run_rollout(with_viewer=False, viewer=None):
-    for t in timesteps:
+    rollout = [{"qpos": insert_paddle_pos(data.qpos), "qvel": data.qvel}]
+    T_movement = 0.5  # movement in seconds
+    for t in np.linspace(0, 1, int(T_movement // model.opt.timestep)):
         # Update task target.
         T_wt = mink.SE3.from_mocap_name(model, data, "target")
         end_effector_task.set_target(T_wt)
@@ -192,7 +196,7 @@ def run_rollout(with_viewer=False, viewer=None):
         data.mocap_quat[0] = slerp(t).as_quat(scalar_first=True)
 
         # Compute velocity and integrate into the next configuration.
-        for _ in range(max_iters):
+        for i in range(max_iters):
             vel = mink.solve_ik(configuration, tasks, rate.dt, solver, 1e-3)
             configuration.integrate_inplace(vel, rate.dt)
             err = end_effector_task.compute_error(configuration)
@@ -205,7 +209,7 @@ def run_rollout(with_viewer=False, viewer=None):
         mujoco.mj_forward(model, data)
         qvel = np.zeros(model.nv + 6)
         mujoco.mj_differentiatePos(
-            diff_env.mj_model,
+            diff_env.sim.model._model,
             qvel,
             model.opt.timestep,
             rollout[-1]["qpos"],
@@ -213,24 +217,11 @@ def run_rollout(with_viewer=False, viewer=None):
         )
         rollout.append({"qpos": insert_paddle_pos(data.qpos), "qvel": qvel})
 
-        if with_viewer and viewer is not None:
-            viewer.sync()
-            rate.sleep()
-
-
-try:
-    with mujoco.viewer.launch_passive(
-        model=model, data=data, show_left_ui=False, show_right_ui=False
-    ) as viewer:
-        mujoco.mjv_defaultFreeCamera(model, viewer.cam)
-        run_rollout(with_viewer=True, viewer=viewer)
-except RuntimeError as err:
-    if "run under `mjpython` on macOS" not in str(err):
-        raise
-    print("Falling back to headless rollout; use mjpython for interactive viewer.")
-    run_rollout(with_viewer=False, viewer=None)
-
-rollout[0]["qvel"] = rollout[1]["qvel"]
-with h5py.File("traj.h5", "w") as h5f:
-    h5f.create_dataset("qpos", data=[s["qpos"] for s in rollout])
-    h5f.create_dataset("qvel", data=[s["qvel"] for s in rollout])
+        # Visualize at fixed FPS.
+        viewer.sync()
+        rate.sleep()
+    rollout[0]["qvel"] = rollout[1]["qvel"]
+    with h5py.File("traj.h5", "w") as h5f:
+        h5f.create_dataset("qpos", data=[s["qpos"] for s in rollout])
+        h5f.create_dataset("qvel", data=[s["qvel"] for s in rollout])
+        h5f.close()

@@ -1,45 +1,77 @@
 Welcome to MyoSuite's documentation!
 =====================================
 
-`MyoSuite <https://sites.google.com/view/myosuite>`_  is a collection of musculoskeletal environments and tasks simulated with the `MuJoCo <http://www.mujoco.org/>`_ physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems.
+`MyoSuite <https://sites.google.com/view/myosuite>`_ is a collection of musculoskeletal
+environments and tasks simulated with the `MuJoCo <https://mujoco.org/>`_ physics engine.
+It serves researchers and practitioners across biomechanics, neuroscience, machine learning,
+sports medicine, and physical rehabilitation.
 
-Check our `github repository <https://github.com/MyoHub/myosuite>`__ for more technical details.
-
-Our paper can be found at: `https://arxiv.org/abs/2205.13600 <https://arxiv.org/abs/2205.13600>`__
-
-Advanced user are invited to familiarize themselves with the basics of the `OpenAI Gym API <https://gymnasium.farama.org/>`__ and review the basic principle of Reinforcement Learning to make the most out of MyoSuite features and functionalities
+`GitHub <https://github.com/MyoHub/myosuite>`__ |
+`Paper (arXiv) <https://arxiv.org/abs/2205.13600>`__ |
+`Slack <https://join.slack.com/t/myosuite/shared_invite/zt-1zkpw2zzk-NhVhVlSDxhoMHbzROD8gMA>`__
 
 .. note::
 
    This project is under active development.
 
+Choose your path
+-----------------
 
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - I am a…
+     - Start here
+   * - **Biomechanist**
+     - :doc:`quickstart_biomechanics` — kinematics, muscle forces, inverse dynamics, OpenSim
+   * - **Neuroscientist**
+     - :doc:`quickstart_neuroscience` — proprioception, reflex controllers, fatigue
+   * - **ML / RL Researcher**
+     - :doc:`quickstart_ml` — Gymnasium API, SB3, mjlab GPU training
+   * - **Sports / Rehab Clinician**
+     - :doc:`quickstart_rehabilitation` — pathological conditions, clinical metrics
 
 
 .. toctree::
    :maxdepth: 1
-   :caption: Get started
+   :caption: Quick Start by Audience
+
+   quickstart_biomechanics
+   quickstart_neuroscience
+   quickstart_ml
+   quickstart_rehabilitation
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Installation & Tutorials
 
    install
    tutorials
 
 .. toctree::
    :maxdepth: 1
-   :caption: Advanced Features
+   :caption: Reference
 
-   suite
-   
+   architecture
+   environments
+   model_builder
+   backend_parity
 
 .. toctree::
    :maxdepth: 1
-   :caption: Projects with Myosuite
+   :caption: Advanced Features
+
+   suite
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Projects with MyoSuite
 
    projects
    baselines
    challenge-doc
    challenge-doc2025
-
-
 
 .. toctree::
    :maxdepth: 2
@@ -64,7 +96,7 @@ How to cite
       title =        {MyoSuite -- A contact-rich simulation suite for musculoskeletal motor control},
       publisher = {arXiv},
       year = {2022},
-      howpublished = {\url{https://github.com/facebookresearch/myosuite}},
+      howpublished = {\url{https://github.com/MyoHub/myosuite}},
       doi = {10.48550/ARXIV.2205.13600},
       url = {https://arxiv.org/abs/2205.13600},
    }

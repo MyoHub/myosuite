@@ -1,18 +1,42 @@
-import unittest
-import numpy as np
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+
 import glob
+from pathlib import Path
 
-from myosuite.logger.reference_motion_jax import ReferenceMotion as JaxReferenceMotion
-from myosuite.logger.reference_motion import ReferenceMotion as NumpyReferenceMotion
-from myosuite.logger.reference_motion import ReferenceType
+import numpy as np
+import pytest
+
+# Guard: skip entire module if JAX / reference_motion_jax is not available
+try:
+    from myosuite.logger.reference_motion_jax import (
+        ReferenceMotion as JaxReferenceMotion,
+    )
+    from myosuite.logger.reference_motion import ReferenceMotion as NumpyReferenceMotion
+    from myosuite.logger.reference_motion import ReferenceType
+except (ImportError, AttributeError) as _err:
+    pytest.skip(
+        f"JAX/reference_motion_jax not available ({_err}); install with uv sync --extra mjx",
+        allow_module_level=True,
+    )
 
 
-class TestReferenceMotion(unittest.TestCase):
+pytestmark = pytest.mark.tier2
+
+
+class TestReferenceMotion:
     @classmethod
-    def setUpClass(cls):
-        # Path to test data
-        cls.data_dir = "./myosuite/envs/myo/myodm/data/"
+    def setup_class(cls):
+        # Path to optional reference-motion fixtures (kept outside package code).
+        cls.data_dir = "./myosuite/envs/myo/myomimic/data/"
         cls.reference_files = glob.glob(f"{cls.data_dir}*.npz")
+        if not cls.reference_files:
+            pytest.skip(
+                "No reference-motion .npz fixtures found for MJX parity tests",
+                allow_module_level=False,
+            )
         cls.ignore_files = [
             f"{cls.data_dir}MyoHand_cylindersmall_lift.npz",
             f"{cls.data_dir}MyoHand_fryingpan_cook2.npz",
@@ -40,7 +64,7 @@ class TestReferenceMotion(unittest.TestCase):
                 ]
             ),
         }
-        cls.file_path = "./myosuite/envs/myo/myodm/data/MyoHand_airplane_fly1.npz"
+        cls.file_path = str(Path(cls.data_dir) / "MyoHand_airplane_fly1.npz")
 
     def test_load_npz_file(self):
         """Test loading .npz files in both implementations"""
@@ -54,10 +78,10 @@ class TestReferenceMotion(unittest.TestCase):
             jax_ref = JaxReferenceMotion(file_path)
 
             # Compare basic properties
-            self.assertEqual(jax_ref.horizon, numpy_ref.horizon)
-            self.assertEqual(jax_ref.robot_dim, numpy_ref.robot_dim)
-            self.assertEqual(jax_ref.object_dim, numpy_ref.object_dim)
-            self.assertEqual(jax_ref.type.value, numpy_ref.type.value)
+            assert jax_ref.horizon == numpy_ref.horizon
+            assert jax_ref.robot_dim == numpy_ref.robot_dim
+            assert jax_ref.object_dim == numpy_ref.object_dim
+            assert jax_ref.type.value == numpy_ref.type.value
 
             # Compare reference data
             np.testing.assert_allclose(
@@ -86,8 +110,8 @@ class TestReferenceMotion(unittest.TestCase):
         numpy_ref = NumpyReferenceMotion(self.fixed_ref_data)
 
         # Check type
-        self.assertEqual(jax_ref.type.value, ReferenceType.FIXED.value)
-        self.assertEqual(numpy_ref.type.value, ReferenceType.FIXED.value)
+        assert jax_ref.type.value == ReferenceType.FIXED.value
+        assert numpy_ref.type.value == ReferenceType.FIXED.value
 
         # Check initialization
         robot_init_jax, object_init_jax = jax_ref.get_init()
@@ -103,8 +127,8 @@ class TestReferenceMotion(unittest.TestCase):
         numpy_ref = NumpyReferenceMotion(self.random_ref_data)
 
         # Check type
-        self.assertEqual(jax_ref.type.value, ReferenceType.RANDOM.value)
-        self.assertEqual(numpy_ref.type.value, ReferenceType.RANDOM.value)
+        assert jax_ref.type.value == ReferenceType.RANDOM.value
+        assert numpy_ref.type.value == ReferenceType.RANDOM.value
 
         # Check initialization
         robot_init_jax, object_init_jax = jax_ref.get_init()
@@ -121,15 +145,15 @@ class TestReferenceMotion(unittest.TestCase):
         numpy_ref = NumpyReferenceMotion(self.file_path)
 
         # Check type
-        self.assertEqual(jax_ref.type.value, ReferenceType.TRACK.value)
-        self.assertEqual(numpy_ref.type.value, ReferenceType.TRACK.value)
+        assert jax_ref.type.value == ReferenceType.TRACK.value
+        assert numpy_ref.type.value == ReferenceType.TRACK.value
 
         # Test time slot finding
         test_times = [0.0, 0.1, 0.5, 1.0]
         for time in test_times:
             jax_indices = jax_ref.find_timeslot_in_reference(time)
             numpy_indices = numpy_ref.find_timeslot_in_reference(time)
-            self.assertEqual(jax_indices, numpy_indices)
+            assert jax_indices == numpy_indices
 
     def test_reset(self):
         """Test reset functionality"""
@@ -147,8 +171,8 @@ class TestReferenceMotion(unittest.TestCase):
         numpy_ref.reset()
 
         # Check if index cache is reset
-        self.assertEqual(jax_ref.index_cache, 0)
-        self.assertEqual(numpy_ref.index_cache, 0)
+        assert jax_ref.index_cache == 0
+        assert numpy_ref.index_cache == 0
 
     def test_error_handling(self):
         """Test error handling in both implementations"""
@@ -158,17 +182,17 @@ class TestReferenceMotion(unittest.TestCase):
             "robot": np.array([0.0, 0.1, 0.2]),  # Wrong shape
         }
 
-        with self.assertRaises(AssertionError):
+        with pytest.raises(AssertionError):
             _ = JaxReferenceMotion(invalid_ref)
-        with self.assertRaises(AssertionError):
+        with pytest.raises(AssertionError):
             _ = NumpyReferenceMotion(invalid_ref)
 
         # Test missing time key
         invalid_ref = {"robot": np.array([[0.0, 0.1, 0.2]])}
 
-        with self.assertRaises(AssertionError):
+        with pytest.raises(AssertionError):
             _ = JaxReferenceMotion(invalid_ref)
-        with self.assertRaises(AssertionError):
+        with pytest.raises(AssertionError):
             _ = NumpyReferenceMotion(invalid_ref)
 
     def test_get_init_fixed(self):
@@ -301,7 +325,7 @@ class TestReferenceMotion(unittest.TestCase):
             rtol=1e-5,
             err_msg="Extrapolation doesn't match final position",
         )
-        
+
     def test_missing_init_fixed(self):
         """Test initialization when robot_init and object_init are missing for fixed reference"""
         # Create reference data without init values
@@ -455,5 +479,4 @@ class TestReferenceMotion(unittest.TestCase):
             )
 
 
-if __name__ == "__main__":
-    unittest.main()
+#

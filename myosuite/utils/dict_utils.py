@@ -1,7 +1,13 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+
 import numpy as np
 import unittest
 
-def dict_numpify(data:dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16)->dict:
+
+def dict_numpify(data: dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16) -> dict:
     """
     Convert all data to numpy using specified resolution
     data:   Input dict
@@ -30,45 +36,45 @@ def dict_numpify(data:dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16)->di
                 val = val.astype(i_res, copy=False)
             elif np.issubdtype(val.dtype, np.floating) and f_res:
                 val = val.astype(f_res, copy=False)
-            elif val.dtype == np.dtype('O'):
-                val = val.astype(np.float16, copy=False) # switch none with nan
+            elif val.dtype == np.dtype("O"):
+                val = val.astype(np.float16, copy=False)  # switch none with nan
 
         # dict
         elif isinstance(val, dict):
             val = dict_numpify(val, i_res, f_res)
 
         # lists/ tuples
-        elif '__len__' in dir(val) and len(val)>0:
-            if type(val[0]) == bool:
+        elif "__len__" in dir(val) and len(val) > 0:
+            if isinstance(val[0], (bool, np.bool_)):
                 val = np.array(val, dtype=np.bool_)
-            elif type(val[0]) == int:
+            elif isinstance(val[0], (int, np.integer)):
                 val = np.array(val, dtype=i_res)
-            elif type(val[0]) == float:
+            elif isinstance(val[0], (float, np.floating)):
                 val = np.array(val, dtype=f_res)
-            elif type(val[0]) != str:
-                val = np.array(val) # let numpy handle it for nested stuctures
+            elif not isinstance(val[0], str):
+                val = np.array(val)  # let numpy handle it for nested stuctures
                 # raise TypeError("Data type {} not supported for {}".format(type(val[0]), key))
 
         data[key] = val
     return data
 
 
-def print_dtype(data:dict, name:str='', delimiter:str='/')->None:
+def print_dtype(data: dict, name: str = "", delimiter: str = "/") -> None:
     """
     Print dtype of the provided dict
     """
     for key, val in data.items():
-        flat_key = key if name=='' else name+delimiter+key
+        flat_key = key if name == "" else name + delimiter + key
 
         if isinstance(val, dict):
             print_dtype(data=val, name=flat_key)
-        elif '__len__' in dir(val):
+        elif "__len__" in dir(val):
             print(flat_key, ":", type(val), "::", type(val[0]))
         else:
             print(flat_key, ":", type(val))
 
 
-def flatten_dict(data:dict, name:str='', delimiter:str='/')->dict:
+def flatten_dict(data: dict, name: str = "", delimiter: str = "/") -> dict:
     """
     Flatten a dict with keys seperated by the delimiter
     """
@@ -78,7 +84,7 @@ def flatten_dict(data:dict, name:str='', delimiter:str='/')->dict:
         return data
 
     for key, val in data.items():
-        flat_key = key if name=='' else name+delimiter+key
+        flat_key = key if name == "" else name + delimiter + key
         if isinstance(val, dict):
             flat_dict.update(flatten_dict(data=val, name=flat_key))
         else:
@@ -86,38 +92,31 @@ def flatten_dict(data:dict, name:str='', delimiter:str='/')->dict:
     return flat_dict
 
 
-
 def demo_dict_util():
     data = {
-        'none': None,
-        'bool': True,
-        'int': 1,
-        'float': 1.0,
-
-        'bool_list': [False, True],
-        'int_list': [1, 2, 3],
-        'float_list': [1.0, 2.0, 3.0],
-
-        'bool_tuple': (False, True),
-        'int_tuple': (1, 2, 3),
-        'float_tuple': (1.0, 2.0, 3.0),
-
-        'bool_np': np.array([0, 1], dtype=np.bool_),
-
-        'u08_np': np.array([0, 1, 3], dtype=np.uint8),
-        'u16_np': np.array([0, 1, 3], dtype=np.uint16),
-        'u32_np': np.array([0, 1, 3], dtype=np.uint32),
-        'u64_np': np.array([0, 1, 3], dtype=np.uint64),
-
-        'i08_np': np.array([0, 1, 3], dtype=np.int8),
-        'i16_np': np.array([0, 1, 3], dtype=np.int16),
-        'i32_np': np.array([0, 1, 3], dtype=np.int32),
-        'i64_np': np.array([0, 1, 3], dtype=np.int64),
-
-        'f16_np': np.array([0, 1, 3], dtype=np.float16),
-        'f32_np': np.array([0, 1, 3], dtype=np.float32),
-        'f64_np': np.array([0, 1, 3], dtype=np.float64),
-        'f128_np': np.array([0, 1, 3], dtype=np.float128),
+        "none": None,
+        "bool": True,
+        "int": 1,
+        "float": 1.0,
+        "bool_list": [False, True],
+        "int_list": [1, 2, 3],
+        "float_list": [1.0, 2.0, 3.0],
+        "bool_tuple": (False, True),
+        "int_tuple": (1, 2, 3),
+        "float_tuple": (1.0, 2.0, 3.0),
+        "bool_np": np.array([0, 1], dtype=np.bool_),
+        "u08_np": np.array([0, 1, 3], dtype=np.uint8),
+        "u16_np": np.array([0, 1, 3], dtype=np.uint16),
+        "u32_np": np.array([0, 1, 3], dtype=np.uint32),
+        "u64_np": np.array([0, 1, 3], dtype=np.uint64),
+        "i08_np": np.array([0, 1, 3], dtype=np.int8),
+        "i16_np": np.array([0, 1, 3], dtype=np.int16),
+        "i32_np": np.array([0, 1, 3], dtype=np.int32),
+        "i64_np": np.array([0, 1, 3], dtype=np.int64),
+        "f16_np": np.array([0, 1, 3], dtype=np.float16),
+        "f32_np": np.array([0, 1, 3], dtype=np.float32),
+        "f64_np": np.array([0, 1, 3], dtype=np.float64),
+        "f128_np": np.array([0, 1, 3], dtype=np.float128),
     }
     # data['dict'] = data.copy()
 
@@ -137,5 +136,6 @@ class TestMain(unittest.TestCase):
         # Call your function and test its output/assertions
         self.assertEqual(demo_dict_util(), None)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

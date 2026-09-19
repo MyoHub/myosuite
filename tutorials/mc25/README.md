@@ -9,7 +9,7 @@ Both scripts in this folder rely on [`mink`](https://github.com/kevinzakka/mink)
 from the parent folder](https://github.com/MyoHub/myosuite/blob/main/tutorials/8_inverse_kinematics.py).
 
 The table tennis environment from Myochallenge25 is used
-- `ik_interactive_mc25.py`: Attaches the paddle to the hand. If you expand the ctrl tab (`Shift`+`Tab`), 
+- `ik_interactive_mc25.py`: Attaches the paddle to the hand. If you expand the ctrl tab (`Shift`+`Tab`),
 you can interactively use the slider to see the joint poses identified that corresponds to the interpolation from the
 starting pose and a desired one.
 - `ik_demo_mc25.py`: Attaches the paddle to the hand specifically corresponding to the configuration of the first
@@ -19,6 +19,6 @@ file. Joint velocities are also estimated through finite differences.
 # Applications to the Myochallenge
 You may wish to start your episode in various plausible poses, some closer to high value states, some farther away.
 By collecting this trajectory of interpolating between poses far away from good positions to well positioned paddles,
-you can make exploration of control policies more efficient (for more discussion, look up Reference State 
+you can make exploration of control policies more efficient (for more discussion, look up Reference State
 Initialization). Alternatively, you could use IK extracted trajectories for motion tracking and imitation learning
 algorithms.

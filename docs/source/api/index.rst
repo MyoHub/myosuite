@@ -1,13 +1,19 @@
 API Reference
 =============
 
+The **core** and **terms** packages are documented via Sphinx autoapi (see the
+:ref:`genindex`). The following pages cover environment base classes and utilities.
+
+**Base for new CPU envs:** :class:`myosuite.envs.gymnasium_env.MyoGymnasiumEnv`
+(see :doc:`/quickstart_ml`).
+
 .. toctree::
    :maxdepth: 2
 
-   env_base
-   base_v0
-   obs_vec_dict
-   robot
+   wrappers
+   muscle_action
+   policy_utils
+   physics
    quat_math
    tensor_utils
    renderer

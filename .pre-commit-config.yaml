@@ -1,0 +1,69 @@
+# Install commit-msg + prepare-commit-msg so `pre-commit install` wires both:
+#   pre-commit install
+default_install_hook_types: [pre-commit, prepare-commit-msg, commit-msg]
+# Keep ordinary lint hooks off message stages.
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+        args: [--fix, --unsafe-fixes]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [numpy, mujoco]
+        args: [--ignore-missing-imports, --strict-optional, --follow-imports=silent]
+        files: ^myosuite/(core|terms|scenes|envs/gymnasium_env\.py)
+
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.15.2
+    hooks:
+      - id: pyupgrade
+        args: [--py310-plus]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: debug-statements
+
+  # Guard: new code must not import the legacy MujocoEnv base class.
+  # Only the known-legacy directories are excluded from this check.
+  - repo: local
+    hooks:
+      - id: no-legacy-mujocoenv-import
+        name: Block legacy MujocoEnv imports in new code
+        language: pygrep
+        entry: 'from\s+.*env_base\s+import\s+.*MujocoEnv'
+        files: \.py$
+        exclude: >-
+          (?x)^(
+            myosuite/envs/env_base\.py|
+            myosuite/envs/myo/myobase/.*|
+            myosuite/envs/myo/myochallenge/.*|
+            myosuite/envs/myo/myoedits/.*
+          )$
+
+      # Guard: AI Co-Authored-By trailers break the CLA check. Soft docs in
+      # CLAUDE.md are not enough — Cursor/Codex/etc. inject trailers after the
+      # message is composed. Strip on prepare-commit-msg; reject on commit-msg.
+      - id: strip-ai-coauthor
+        name: Strip AI Co-Authored-By / attribution trailers
+        language: script
+        entry: scripts/reject_ai_coauthor.py --strip
+        stages: [prepare-commit-msg]
+        always_run: true
+      - id: no-ai-coauthor
+        name: Reject AI Co-Authored-By / attribution trailers
+        language: script
+        entry: scripts/reject_ai_coauthor.py
+        stages: [commit-msg]
+        always_run: true

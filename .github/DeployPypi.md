@@ -39,4 +39,4 @@ conda remove --name test_myosuite --all
 
 ### Create a newly tagged release
 
-Visit [this page](https://github.com/facebookresearch/myoSuite/tags) and create the newly tagged release.
+Visit [this page](https://github.com/MyoHub/myosuite/tags) and create the newly tagged release.

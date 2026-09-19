@@ -1,12 +1,12 @@
 Renderer
 ========
 
-.. automodule:: myosuite.renderer.renderer
+.. automodule:: myosuite.viz.renderer
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: myosuite.renderer.mj_renderer
+.. automodule:: myosuite.viz.mj_renderer
    :members:
    :undoc-members:
    :show-inheritance:

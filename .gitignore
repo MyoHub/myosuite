@@ -1,5 +1,10 @@
 *.DS_Store
 
+# Staged MJCF from myosuite.utils.asset_path_resolver.resolve_model_xml_path
+.myosuite_resolved_*.xml
+# Optional local override checkout of sim-asset packages (myo_sim, etc.)
+myosuite/simhive/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -37,6 +42,9 @@ MANIFEST
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+
+# Generated parity reports
+reports/
 
 # Unit test / coverage reports
 htmlcov/
@@ -126,12 +134,36 @@ osl.log
 *processed.xml
 
 logs/
+sar_outputs/
 
 # Pycharm generated files
 .idea/
 
-# RL learning files
+tutorials/walk_backends_saved/
+sar_benchmark_results/
+wandb/
+MUJOCO_LOG.TXT
 
-**/wandb/
+*sandbox*
+outputs/vaf_fullbody/activations.npy
+exports/
+outputs/
+.claude/
+_untracked/
+myosuite/composer/
+myosuite/agents/
+renders/
+runs/
+scripts/
+tasks/
+
+# local GPU smoke bundles
+myosuite_gpu_smoke*.zip
+
+# Large baseline artifacts staged for HuggingFace upload, not tracked in git
+# (see baselines/README.md) -- keep out of the repo to avoid bloat.
+baselines/
+
+# RL learning files
 *params.pickle
 *tmp*.xml
