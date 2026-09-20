@@ -122,9 +122,23 @@ def main():
     obs_norm.eval()
     print(f"loaded actor obs={n_obs} act={n_act}")
 
-    frames = []
-    renderer.update(env.sim.data)
-    frames.append(renderer.render().copy())
+    # OffscreenRenderer.update() also loops over every world (up to 32) and re-adds each one's geoms a
+    # second time via mjv_addGeoms -- meant for side-by-side multi-env visualization, but with num_envs=1
+    # it just redundantly overlays env 0's own geoms a second time at an offset, producing a duplicate
+    # skeleton. Drive its own mujoco.Renderer/camera/model directly instead (still mjlab's own renderer,
+    # just without that loop) for the single-env case this render actually is.
+    import mujoco
+
+    dat = mujoco.MjData(env.sim.mj_model)
+
+    def render_frame():
+        dat.qpos[:] = env.sim.wp_data.qpos.numpy()[0]
+        dat.qvel[:] = env.sim.wp_data.qvel.numpy()[0]
+        mujoco.mj_forward(env.sim.mj_model, dat)
+        renderer.renderer.update_scene(dat, camera=renderer._cam)  # noqa: SLF001
+        return renderer.render().copy()
+
+    frames = [render_frame()]
 
     fell = False
     for t in range(HORIZON):
@@ -141,8 +155,7 @@ def main():
         ctrl = bolt_action_to_mj_ctrl(act, muscles, mapf, mjm.nu, orders)
         env.step(torch.as_tensor(ctrl[None], dtype=torch.float32))
 
-        renderer.update(env.sim.data)
-        frames.append(renderer.render().copy())
+        frames.append(render_frame())
 
         qpos = env.sim.wp_data.qpos.numpy()[0]
         if (t + 1) % 15 == 0:

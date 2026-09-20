@@ -59,80 +59,89 @@ def _sprint_spec_fn():
 
 # Bone mesh set for a real skeletal render (myosprinter's own spec carries no visual geoms at all -- it's
 # collision/physics only, since this suite's own ContactSystem does collision from its own geom_flat/pairs
-# table, not MuJoCo's native contype/conaffinity). Meshes and the body->mesh map come from Bolt's own
-# OpenSim conversion assets (myo_bolt_vv), referenced by path rather than duplicated here.
-_BONE_MESH_DIR = "/Users/caggiano/Desktop/myo_bolt_vv/scripts/msk_envs_repro/artifacts/renders/bone_meshes"
-_OSIM_PATH = "/Users/caggiano/Desktop/myo_bolt_vv/models_sprinter/full_bolt.osim"
-# hat_skull.obj/hat_spine.obj (head+neck, spine) aren't referenced by full_bolt.osim's own torso body (Bolt's
-# sprinter has no separate head/neck/spine bodies -- a single rigid "torso" represents the whole HAT segment,
-# same simplification OpenSim gait models call Head-Arms-Trunk), but they exist in the same geometry
-# library and are authored in the *same local frame* as torso.obj (verified directly: hat_skull.obj's
-# vertices start right where torso.obj's end, no offset needed) -- attaching them to the torso body with
-# torso's own scale (Bolt's own full_bolt.osim value) gives a visually complete skeleton with no anatomical
-# change (still one rigid body physically, just more of its own mesh set drawn).
-_TORSO_EXTRA_MESHES = ("hat_skull.obj", "hat_spine.obj")
-_TORSO_SCALE = (1.0, 0.9961, 1.0745)
+# table, not MuJoCo's native contype/conaffinity). Meshes come *only* from myo_sim's own bundled asset
+# library (myo_sim/models/meshes/*.stl -- the same generic-OpenSim-skeleton STL set myo_sim's own leg/arm
+# models attach at identity pos/quat/scale, e.g. myo_sim/models/leg/assets/myolegs_chain.xml's
+# `<geom mesh="r_femur" .../>` inside the femur_r body -- confirming these meshes are already authored in
+# each body's own local frame, the same convention Bolt's OpenSim-derived sprinter bodies use). No files
+# from outside myo_sim, and nothing copied in.
+_MESH_DIR = None  # resolved lazily from myo_sim.MODELS_DIR / "meshes" (see _mesh_dir())
+
+# myosprinter's body name -> myo_sim mesh file(s). Bolt's sprinter has no separate head/neck/spine bodies
+# (see full_bolt.osim's own <Body> list: 23 bodies, no head/neck/spine -- "torso" is the whole
+# Head-Arms-Trunk segment, the standard OpenSim gait-model simplification), so the torso entry below pulls
+# in myo_sim's own HAT mesh set (hat_skull/hat_cervical/hat_thoracic/hat_lumbar/hat_ribs_scap) -- visual
+# only, no new physics body, same as any other body's own extra mesh piece.
+_MESH_MAP = {
+    "pelvis": ["r_pelvis.stl", "l_pelvis.stl"],
+    "femur_r": ["r_femur.stl"],
+    "femur_l": ["l_femur.stl"],
+    "tibia_r": ["r_tibia.stl", "r_fibula.stl"],
+    "tibia_l": ["l_tibia.stl", "l_fibula.stl"],
+    "talus_r": ["r_talus.stl"],
+    "talus_l": ["l_talus.stl"],
+    "calcn_r": ["r_foot.stl"],
+    "calcn_l": ["l_foot.stl"],
+    "toes_r": ["r_bofoot.stl"],
+    "toes_l": ["l_bofoot.stl"],
+    # torso_lowpoly-v1.stl and the hat_*.stl set turned out to be authored in an absolute ground/display
+    # frame (verified directly: torso_lowpoly-v1.stl's own bounding box is y=[0.69, 1.67], matching a
+    # standing human's hip-to-shoulder height in world coordinates, not a small body-local offset -- myo_sim
+    # itself only uses these as worldbody-attached reference geoms, e.g. ground_spine.stl/ground_skull.stl).
+    # thorax.stl is myo_sim's actual body-local ribcage mesh (myotorso_chain.xml:524, pos="0.028 0.365 0"
+    # relative to its parent body -- the only real calibration data point available), used here as the best
+    # available approximation for Bolt's single rigid torso body. No calibrated body-local offset was found
+    # for a head/neck/spine piece specifically (the hat_* set is ground-frame only), so head/neck/spine is
+    # dropped rather than guessed at and risk another disconnected-looking render.
+    "torso": [("thorax.stl", (0.028, 0.365, 0.0))],
+    "clavicle_r": ["clavicle.stl"],
+    "clavicle_l": ["clavicle.stl"],  # myo_sim ships one clavicle/scapula/humerus/ulna/radius mesh, not
+    "scapula_r": ["scapula.stl"],  # separate left/right pairs (unlike the leg meshes, which are genuinely
+    "scapula_l": ["scapula.stl"],  # l_/r_ prefixed) -- myo_sim's own build mirrors the whole arm spec at
+    "humerus_r": ["humerus.stl"],  # the body level (build_mirrored_left_arm_spec in compose.py) rather than
+    "humerus_l": ["humerus.stl"],  # per-mesh; reusing the same unmirrored mesh on both sides here is an
+    "ulna_r": ["ulna.stl"],  # accepted simplification -- the left arm won't be mirrored, just reused as-is.
+    "ulna_l": ["ulna.stl"],
+    "radius_r": ["radius.stl"],
+    "radius_l": ["radius.stl"],
+    # hand_r/hand_l: no hand mesh in myo_sim/models/meshes -- left unmeshed rather than approximating with
+    # something anatomically wrong.
+}
 
 
-def _parse_osim_meshes(osim_path: str, geom_dir: str) -> dict:
-    """body_name -> [(obj_filename, scale_xyz), ...], from an OpenSim <Body>'s <Mesh> DisplayGeometry."""
-    import re
-    from collections import defaultdict
-    from pathlib import Path
+def _mesh_dir() -> str:
+    import myo_sim
 
-    text = Path(osim_path).read_text()
-    parts = re.split(r'<Body name="([^"]+)">', text)
-    out = defaultdict(list)
-    for i in range(1, len(parts), 2):
-        bname, content = parts[i], parts[i + 1].split("</Body>")[0]
-        for m in re.finditer(r"<Mesh\b[^>]*>.*?</Mesh>", content, re.S):
-            block = m.group(0)
-            mf = re.search(r"<mesh_file>([^<]+)</mesh_file>", block)
-            if not mf:
-                continue
-            stem = Path(mf.group(1).strip()).stem
-            obj = f"{stem}.obj"
-            if not (Path(geom_dir) / obj).is_file():
-                continue
-            sc = re.search(r"<scale_factors>\s*([\d.\seE+-]+)\s*</scale_factors>", block)
-            scale = [float(x) for x in sc.group(1).split()] if sc else [1.0, 1.0, 1.0]
-            out[bname].append((obj, scale))
-    missing = [e for e in _TORSO_EXTRA_MESHES if not (Path(geom_dir) / e).is_file()]
-    if missing:
-        raise FileNotFoundError(
-            f"head/neck/spine mesh(es) {missing} not found in {geom_dir} -- copy them in from Bolt's full "
-            "geometry library (myo_bolt_vv_deps/bolt/data/geometry) rather than silently rendering without "
-            "a head, which is what happened here before this check was added."
-        )
-    for extra in _TORSO_EXTRA_MESHES:
-        out["torso"].append((extra, list(_TORSO_SCALE)))
-    return out
+    return str(myo_sim.MODELS_DIR / "meshes")
 
 
 def _attach_bone_meshes(spec, verbose: bool = True):
     """Mutates `spec` in place, adding visual-only bone mesh geoms (contype=0, conaffinity=0 -- this
-    suite's ContactSystem does collision from its own table, so these have no physics effect), including a
-    head/neck/spine Bolt's own sprinter model doesn't carry as separate bodies (see _TORSO_EXTRA_MESHES)."""
+    suite's ContactSystem does collision from its own table, so these have no physics effect), using only
+    myo_sim's own bundled meshes (see _MESH_MAP above)."""
     import mujoco
     from pathlib import Path
 
-    spec.meshdir = _BONE_MESH_DIR
-    mesh_map = _parse_osim_meshes(_OSIM_PATH, _BONE_MESH_DIR)
+    mesh_dir = _mesh_dir()
+    spec.meshdir = mesh_dir
     bodies = {b.name: b for b in spec.bodies if b.name}
     used = 0
-    for bname, meshes in mesh_map.items():
+    for bname, files in _MESH_MAP.items():
         body = bodies.get(bname)
         if body is None:
             continue
-        for k, (obj, scale) in enumerate(meshes):
-            mname = f"{bname}__{k}_{Path(obj).stem}"
+        for k, entry in enumerate(files):
+            fname, pos = entry if isinstance(entry, tuple) else (entry, (0.0, 0.0, 0.0))
+            if not (Path(mesh_dir) / fname).is_file():
+                raise FileNotFoundError(f"{fname} not found in myo_sim's own {mesh_dir}")
+            mname = f"{bname}__{k}_{Path(fname).stem}"
             mesh = spec.add_mesh()
             mesh.name = mname
-            mesh.file = obj
-            mesh.scale[:] = scale
+            mesh.file = fname
             body.add_geom(
                 type=mujoco.mjtGeom.mjGEOM_MESH,
                 meshname=mname,
+                pos=list(pos),
                 rgba=[0.88, 0.84, 0.74, 1.0],
                 contype=0,
                 conaffinity=0,
@@ -140,13 +149,39 @@ def _attach_bone_meshes(spec, verbose: bool = True):
             )
             used += 1
     if verbose:
-        print(f"attached {used} bone meshes (incl. head/neck/spine on torso) from {_BONE_MESH_DIR}")
+        print(f"attached {used} bone meshes (myo_sim's own meshes only) from {mesh_dir}")
+    return spec
+
+
+def _add_floor_and_lights(spec):
+    """mjlab's OffscreenRenderer doesn't add a floor or lights by default -- add both directly to the
+    visual spec so the render isn't a skeleton floating in a black void."""
+    import mujoco
+
+    # Sprint covers ~18m in x; a fixed-position worldbody light stays put while the runner moves far away
+    # from it, so lighting fades over the clip. Headlight (camera-relative, always-on ambient/diffuse/
+    # specular) doesn't have that problem -- boost it well above MuJoCo's dim defaults instead of relying
+    # on worldbody point lights for the primary illumination.
+    spec.visual.headlight.ambient = [0.5, 0.5, 0.5]
+    spec.visual.headlight.diffuse = [0.6, 0.6, 0.6]
+    spec.visual.headlight.specular = [0.2, 0.2, 0.2]
+
+    spec.worldbody.add_geom(
+        type=mujoco.mjtGeom.mjGEOM_PLANE,
+        size=[40, 40, 0.1],
+        # This model is Y-up (gravity along -y); the plane's default normal is local +Z, so rotate -90 deg
+        # about X to point it along world +Y (same convention used throughout myo_bolt_vv's own renders).
+        quat=[0.70710678, -0.70710678, 0, 0],
+        rgba=[0.55, 0.55, 0.58, 1],
+        contype=0,
+        conaffinity=0,
+    )
     return spec
 
 
 def _sprint_spec_fn_visual():
-    """Same physics spec as _sprint_spec_fn(), plus real bone meshes for rendering."""
-    return _attach_bone_meshes(_sprint_spec_fn())
+    """Same physics spec as _sprint_spec_fn(), plus real bone meshes and a floor/lights for rendering."""
+    return _add_floor_and_lights(_attach_bone_meshes(_sprint_spec_fn()))
 
 
 def _init_state() -> EntityCfg.InitialStateCfg:
