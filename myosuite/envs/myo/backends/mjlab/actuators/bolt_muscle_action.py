@@ -68,6 +68,18 @@ class BoltMuscleAction(ActionTerm):
     def raw_action(self) -> torch.Tensor:
         return self._raw_action
 
+    @property
+    def muscles(self):
+        """The live myo_sim.warp.MuscleSystem instance -- for observation terms (e.g. the 336-D
+        Bolt-convention observation, Phase 4) or transfer-validation scripts (Phase 6) that need
+        muscle state directly (state[:,9] = geometric norm fiber length, not state[:,1])."""
+        return self._muscles
+
+    @property
+    def contacts(self):
+        """The live myo_sim.warp.ContactSystem instance."""
+        return self._contacts
+
     def process_actions(self, actions: torch.Tensor) -> None:
         # actions: (num_envs, nu) in [0, 1], MuJoCo ctrl order (motors then muscles, per the compiled model).
         self._raw_action[:] = actions.clamp(0.0, 1.0)
@@ -78,6 +90,18 @@ class BoltMuscleAction(ActionTerm):
             # this (see myo_bolt_vv CLAUDE.md's "round-off traps" -- the same equilibrate() step WarpBackend
             # and every other consumer of MuscleSystem in this codebase always calls before stepping).
             self._muscles.equilibrate(wd)
+            if self.cfg.default_activation is not None:
+                # Matches Bolt's own StartingStateHelper (see bolt_sprint_parity.set_bolt_reset_activations):
+                # activation is set to this value *after* equilibrating (fiber length is equilibrated at
+                # activation=0, then activation is overwritten -- a deliberate mismatch this codebase
+                # reproduces rather than "fixes", since a Bolt-trained policy was trained against exactly
+                # this reset behavior).
+                st = self._muscles.state.numpy().copy()
+                st[:, :, 0] = self.cfg.default_activation
+                self._muscles.state.assign(st)
+                act = wd.act.numpy().copy()
+                act[:] = self.cfg.default_activation
+                wd.act.assign(act)
             self._equilibrated = True
 
     def apply_actions(self) -> None:
@@ -114,6 +138,11 @@ class BoltMuscleActionCfg(ActionTermCfg):
     """Config for BoltMuscleAction. `entity_name` is required by the base class but unused: this action
     term writes the full model's ctrl/qfrc_applied/xfrc_applied buffers directly, not through a per-entity
     id mapping (the sprinter model's every muscle and dof belongs to a single entity in practice)."""
+
+    default_activation: float | None = None
+    """Muscle + native-actuator activation to set right after the first-call equilibrate() (matching
+    Bolt's own StartingStateHelper -- see BoltMuscleAction.process_actions()). None (default) leaves
+    activation at whatever equilibrate() itself produced (0). Bolt's own reset uses 0.5."""
 
     def build(self, env: "ManagerBasedRlEnv") -> BoltMuscleAction:
         return BoltMuscleAction(self, env)

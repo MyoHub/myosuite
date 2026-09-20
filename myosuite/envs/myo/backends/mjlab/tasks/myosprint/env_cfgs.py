@@ -117,9 +117,21 @@ def _fall_termination(env) -> torch.Tensor:
     return _pelvis_y(env) < FALL_HEIGHT
 
 
-def make_sprint_env_cfg(num_envs: int = 64) -> ManagerBasedRlEnvCfg:
-    """A minimal but real ManagerBasedRlEnvCfg for the Bolt-parity sprinter, driven by BoltMuscleAction."""
-    entity_cfg = EntityCfg(spec_fn=_sprint_spec_fn, init_state=_init_state())
+def make_sprint_env_cfg(
+    num_envs: int = 64,
+    init_state: EntityCfg.InitialStateCfg | None = None,
+    default_activation: float | None = None,
+) -> ManagerBasedRlEnvCfg:
+    """A minimal but real ManagerBasedRlEnvCfg for the Bolt-parity sprinter, driven by BoltMuscleAction.
+
+    init_state: defaults to the neutral standing pose (_init_state()). Pass an explicit InitialStateCfg to
+    override it -- e.g. Phase 6's transfer-validation test needs Bolt's own "running start" pose
+    (scripts/msk_envs_repro/starting_pose_run.yaml: nonzero forward/hip/knee velocity, not neutral), which
+    the TD3 checkpoint was trained to begin from; a neutral zero-velocity standing start is a different
+    initial condition the policy was never trained on and falls within a few steps from it (observed
+    directly: xT=-0.16m, fell at step 11, moving backward -- not a physics bug, a mismatched starting state).
+    """
+    entity_cfg = EntityCfg(spec_fn=_sprint_spec_fn, init_state=init_state or _init_state())
     scene_cfg = SceneCfg(num_envs=num_envs, env_spacing=3.0, entities={SPRINT_ENTITY: entity_cfg})
 
     observations = {
@@ -131,7 +143,7 @@ def make_sprint_env_cfg(num_envs: int = 64) -> ManagerBasedRlEnvCfg:
         ),
     }
     actions = {
-        "bolt_muscles": BoltMuscleActionCfg(entity_name=SPRINT_ENTITY),
+        "bolt_muscles": BoltMuscleActionCfg(entity_name=SPRINT_ENTITY, default_activation=default_activation),
     }
     rewards = {
         "forward_vel": RewardTermCfg(func=_forward_vel_reward, weight=LAMBDA_VEL),
