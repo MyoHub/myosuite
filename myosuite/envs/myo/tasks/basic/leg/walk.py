@@ -292,7 +292,10 @@ class LegWalkEnvV0(MyoGymnasiumEnv, EzPickle):
         return 0
 
     def _get_rot_condition(self) -> int:
-        quat = self.data.qpos[3:7].copy()
+        # Use torso body orientation, not freejoint quat. The leg XML offsets the
+        # freejoint frame from anatomical forward (+Y); identity qpos[3:7] has
+        # |(R_free @ e_x)[0]| == 1 and would terminate every episode at reset.
+        quat = self._get_torso_angle()
         return (
             1 if np.abs((quat2mat(quat) @ np.array([1, 0, 0]))[0]) > self.max_rot else 0
         )
