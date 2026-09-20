@@ -30,10 +30,16 @@
             <light directional="false" diffuse=".25 .25 .25" specular="0.25 0.25 0.25" pos="3 0 2" dir="-1 0 -1" mode="trackcom"/>
             <camera name="agent_view" pos="4 0 1.85" xyaxes="0 1 0 -1 0 2" mode="trackcom"/>
             <site name="head" size="0.02" pos="-0.1 0 0.72" group="4"/>
-            <!-- cancels torso's self-yaw (myo_sim#132) locally; do not move root's yaw onto the legs, it would re-base the keyframes below. -->
-            <frame euler="0 0 1.57">
-                <include file="../myo_sim/torso/assets/myotorso_rigid_chain.xml"/>
-            </frame>
+            <!-- Rigid torso is Z-up and carries no intrinsic yaw; no wrap
+                 needed here (unlike myolegs_with_torso*/myolegs_chasetag,
+                 whose myo_sim pelvis chain carries an intrinsic -90° yaw that
+                 needs cancelling): the OSL leg chain below has no intrinsic
+                 yaw of its own, so it already lands on root's plain -90°
+                 keyframe yaw, and torso must match that directly rather than
+                 add a further +90° on top (which put it at 0°, facing +x
+                 instead of -y, verified via mj_forward body-frame
+                 introspection). -->
+            <include file="../myo_sim/torso/assets/myotorso_rigid_chain.xml"/>
             <include file="../myo_sim/osl/assets/myolegs_osl_chain.xml"/>
             <freejoint name="root"/>
         </body>

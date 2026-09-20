@@ -30,14 +30,26 @@
         <site name="pelvis_target" size="0.02" pos="0 0 .92" group="4"/>
         <body name="root" pos="0 0 1" euler="0 0 -1.57">
             <site name="head" size="0.02" pos="-0.1 0 0.72" group="4"/>
-            <!-- Rigid torso is Z-up; myolegs_chain pelvis is OpenSim-framed.
-                 Yaw -90° so torso anterior matches the legs (soccer does this
-                 via sacrum euler; OSL uses +90° because its pelvis quat differs).
-                 Do not bake this into myotorso_rigid_chain.xml - OSL wraps it. -->
-            <frame euler="0 0 -1.57">
-                <include file="../myo_sim/torso/assets/myotorso_rigid_chain.xml"/>
+            <!-- Rigid torso is Z-up and carries no intrinsic yaw, so it needs
+                 no wrap: it inherits root's -90° keyframe yaw directly.
+                 myolegs_chain's pelvis is OpenSim-framed and bakes its own
+                 intrinsic -90° yaw; wrap it +90° here to cancel that out so
+                 the legs also end up at root's plain -90° (matching torso)
+                 instead of double-rotating to -180° (facing -x instead of
+                 -y, the bug behind the "character rotated 90° off from its
+                 walking direction" report, verified via mj_forward body-frame
+                 introspection: previously both torso and legs landed on
+                 local+x to world -x; now both land on -y). Do NOT fix this
+                 by changing the keyframe root quat instead, since the
+                 done-termination checks in LegWalkEnvV0._get_rot_condition
+                 and the backend-agnostic myosuite.terms.base_reward.walk_env_reward
+                 both read qpos[3:7] directly and assume it already equals
+                 world -y (see myoosl_runtrack.xml for what happens when a
+                 sign gets flipped: same fix, opposite constants). -->
+            <include file="../myo_sim/torso/assets/myotorso_rigid_chain.xml"/>
+            <frame euler="0 0 1.57">
+                <include file="../myo_sim/leg/assets/myolegs_chain.xml"/>
             </frame>
-            <include file="../myo_sim/leg/assets/myolegs_chain.xml"/>
             <freejoint name="root"/>
         </body>
     </worldbody>
