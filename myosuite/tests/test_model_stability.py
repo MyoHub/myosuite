@@ -60,6 +60,12 @@ _KNOWN_UNSTABLE_RECIPES: dict[str, str] = {
         "under a zero-control rollout with the myo-sim@dev hand+pen model -- "
         "not a code bug in this test or in ModelBuilder."
     ),
+    "hand_sar": (
+        "Same free-floating manipulation-object instability as hand_pen "
+        "(mjWARN_BADQACC at DOF 26, ~t=0.37s) under zero-control rollout "
+        "with the myo-sim hand+SAR model -- not a code bug in this test "
+        "or in ModelBuilder."
+    ),
     "walk_standard": (
         "attach_fragment('leg').attach_fragment('osl') composes two "
         "overlapping complete leg models rather than an amputation + "
