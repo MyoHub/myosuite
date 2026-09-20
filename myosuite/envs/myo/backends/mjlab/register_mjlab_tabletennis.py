@@ -13,7 +13,8 @@ from typing import Any
 
 import mujoco
 import numpy as np
-from mjlab.actuator import XmlActuatorCfg as _XmlActuatorCfg
+from mjlab.actuator import XmlMuscleActuatorCfg as _XmlMuscleActuatorCfg
+from mjlab.actuator import XmlPositionActuatorCfg as _XmlPositionActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
@@ -1173,11 +1174,11 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
     tendon_names, pos_names = _tt_actuator_xml_groups()
     articulation = EntityArticulationInfoCfg(
         actuators=(
-            _XmlActuatorCfg(
+            _XmlMuscleActuatorCfg(
                 target_names_expr=tendon_names,
                 transmission_type=TransmissionType.TENDON,
             ),
-            _XmlActuatorCfg(
+            _XmlPositionActuatorCfg(
                 target_names_expr=pos_names,
                 transmission_type=TransmissionType.JOINT,
             ),

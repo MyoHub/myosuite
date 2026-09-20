@@ -154,6 +154,7 @@ myosuite/composer/
 myosuite/agents/
 renders/
 runs/
+scripts/
 # Root-only: scratch planning notes (see CLAUDE.md workflow), not the
 # myosuite/envs/myo/tasks/ or .../backends/mjlab/tasks/ source packages.
 /tasks/

@@ -21,7 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from mjlab.actuator import XmlActuatorCfg as _XmlWrappedActuatorCfg
+from mjlab.actuator import XmlMuscleActuatorCfg as _XmlWrappedActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import events as mdp_events
@@ -844,6 +844,63 @@ def _chasetag_ppo_runner_cfg(
     )
 
 
+<<<<<<< HEAD
+=======
+# Directional variants: (env_id, heading_dir, target_speed) — mirror the CPU
+# LegDirectional{Forward,Backward}Task specs.
+_DIRECTIONAL_VARIANTS = (
+    ("myoLegDirectionalForward-v0", (0.0, 1.0), 1.2, "myo_leg_directional_fwd", False),
+    (
+        "myoLegDirectionalBackward-v0",
+        (0.0, -1.0),
+        1.0,
+        "myo_leg_directional_bwd",
+        False,
+    ),
+    ("myoLegDirectionalRandom-v0", (0.0, 1.0), 1.2, "myo_leg_directional_rand", True),
+)
+
+
+def _sprint_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+    """PPO runner config for myoSprint-v0 (Phase 8 spike: mjlab's native rsl-rl path, per the myo_bolt_vv
+    porting plan -- a starting point, not yet tuned)."""
+    return RslRlOnPolicyRunnerCfg(
+        actor=RslRlModelCfg(
+            hidden_dims=(256, 256, 128),
+            activation="elu",
+            obs_normalization=True,
+            init_noise_std=1.0,
+            noise_std_type="scalar",
+            stochastic=True,
+        ),
+        critic=RslRlModelCfg(
+            hidden_dims=(256, 256, 128),
+            activation="elu",
+            obs_normalization=True,
+        ),
+        algorithm=RslRlPpoAlgorithmCfg(
+            value_loss_coef=1.0,
+            use_clipped_value_loss=True,
+            clip_param=0.2,
+            entropy_coef=0.01,
+            num_learning_epochs=5,
+            num_mini_batches=4,
+            learning_rate=3e-4,
+            schedule="adaptive",
+            gamma=0.99,
+            lam=0.95,
+            desired_kl=0.01,
+            max_grad_norm=1.0,
+        ),
+        experiment_name="myo_sprint",
+        save_interval=100,
+        num_steps_per_env=24,
+        max_iterations=2000,
+        obs_groups={"actor": ("policy",), "critic": ("policy",)},
+    )
+
+
+>>>>>>> c708a04 (Register myoSprint-v0: Bolt's sprinter model on mjlab, driven by myo_sim.warp (Phases 2-4, 7))
 def register_mjlab_tasks() -> None:
     """Register MyoSuite env ids with mjlab.tasks.registry. Idempotent."""
 
@@ -854,7 +911,14 @@ def register_mjlab_tasks() -> None:
 
     # myoLegDirectional* are CPU twins registered by the tasks package.
 
-    register_table_tennis_mjlab_tasks()
+    try:
+        register_table_tennis_mjlab_tasks()
+    except Exception:
+        # Guarded like every other task block in this function: one task's registration failure must not
+        # block the rest (myoSprint-v0, registered further below, was silently unreachable before this).
+        logging.getLogger(__name__).warning(
+            "mjlab: failed to register table tennis tasks", exc_info=True
+        )
 
     # --- ChaseTag full-body vs. scripted opponent (GPU match for CPU FBP2) ---
     try:
@@ -873,6 +937,27 @@ def register_mjlab_tasks() -> None:
         logging.getLogger(__name__).warning(
             "mjlab: failed to register myoChallengeChaseTagFBP2-v0", exc_info=True
         )
+
+    # --- Sprint: Bolt's full-body sprinter model, driven by myo_sim.warp's Bolt-parity muscle/contact
+    # physics (not myosuite's own MyoMuscleActivationActionCfg) -- see actuators/bolt_muscle_action.py.
+    # Phase 2-4 of the myo_bolt_vv porting plan: env/physics wiring only so far, not yet the full 336-D
+    # Bolt-convention observation or the transfer/parity validation (Phases 4-6).
+    try:
+        from myosuite.envs.myo.backends.mjlab.tasks.myosprint.env_cfgs import make_sprint_env_cfg
+
+        sprint_env_cfg = make_sprint_env_cfg()
+        sprint_rl_cfg = _sprint_ppo_runner_cfg()
+        register_mjlab_task(
+            task_id="myoSprint-v0",
+            env_cfg=sprint_env_cfg,
+            play_env_cfg=sprint_env_cfg,
+            rl_cfg=sprint_rl_cfg,
+            runner_cls=None,
+        )
+    except ValueError:
+        pass  # already registered
+    except Exception:
+        logging.getLogger(__name__).warning("mjlab: failed to register myoSprint-v0", exc_info=True)
 
 
 def bootstrap_myosuite_mjlab_registry(
