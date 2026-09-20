@@ -112,6 +112,7 @@ def main():
     print(f"loaded actor obs={n_obs} act={n_act}")
 
     xs, ys = [], []
+    qpos_traj = [env.sim.wp_data.qpos.numpy()[0].copy()]
     fell = False
     for t in range(HORIZON):
         st = action_term.muscles.state.numpy()[0].copy()
@@ -131,6 +132,7 @@ def main():
         qpos = env.sim.wp_data.qpos.numpy()[0]
         xs.append(float(qpos[0]))
         ys.append(float(qpos[1]))
+        qpos_traj.append(qpos.copy())
         if (t + 1) % 15 == 0 or qpos[1] < FALL_Y:
             print(f"  t={t + 1} x={qpos[0]:.2f} y={qpos[1]:.3f}")
         if qpos[1] < FALL_Y:
@@ -142,6 +144,12 @@ def main():
     y_min = min(ys)
     print(f"myoSprint-v0 (mjlab) closed-loop: {len(xs)} steps xT={xt:.2f} y_min={y_min:.3f} fell={fell}")
     print(f"reference: raw WarpSprintEnv xT={XT_WARP_REF}, Bolt xT={XT_BOLT}")
+
+    out_dir = f"{MSK_REPRO}/artifacts/renders"
+    os.makedirs(out_dir, exist_ok=True)
+    np.savez(f"{out_dir}/trajs_mjlab_myosprint.npz", td3_mjlab_q=np.stack(qpos_traj))
+    print(f"wrote {out_dir}/trajs_mjlab_myosprint.npz ({len(qpos_traj)} frames)")
+
     assert not fell, "policy fell through mjlab -- did not transfer"
     assert abs(xt - XT_BOLT) < XT_TOL, f"xT={xt:.2f} outside +-{XT_TOL}m of Bolt's {XT_BOLT}"
     print("PASS: Bolt-trained TD3 policy transfers through myoSprint-v0 on mjlab")
