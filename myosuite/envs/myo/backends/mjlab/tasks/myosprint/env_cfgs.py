@@ -57,6 +57,98 @@ def _sprint_spec_fn():
     return myo_sim.load_spec("myosprinter")
 
 
+# Bone mesh set for a real skeletal render (myosprinter's own spec carries no visual geoms at all -- it's
+# collision/physics only, since this suite's own ContactSystem does collision from its own geom_flat/pairs
+# table, not MuJoCo's native contype/conaffinity). Meshes and the body->mesh map come from Bolt's own
+# OpenSim conversion assets (myo_bolt_vv), referenced by path rather than duplicated here.
+_BONE_MESH_DIR = "/Users/caggiano/Desktop/myo_bolt_vv/scripts/msk_envs_repro/artifacts/renders/bone_meshes"
+_OSIM_PATH = "/Users/caggiano/Desktop/myo_bolt_vv/models_sprinter/full_bolt.osim"
+# hat_skull.obj/hat_spine.obj (head+neck, spine) aren't referenced by full_bolt.osim's own torso body (Bolt's
+# sprinter has no separate head/neck/spine bodies -- a single rigid "torso" represents the whole HAT segment,
+# same simplification OpenSim gait models call Head-Arms-Trunk), but they exist in the same geometry
+# library and are authored in the *same local frame* as torso.obj (verified directly: hat_skull.obj's
+# vertices start right where torso.obj's end, no offset needed) -- attaching them to the torso body with
+# torso's own scale (Bolt's own full_bolt.osim value) gives a visually complete skeleton with no anatomical
+# change (still one rigid body physically, just more of its own mesh set drawn).
+_TORSO_EXTRA_MESHES = ("hat_skull.obj", "hat_spine.obj")
+_TORSO_SCALE = (1.0, 0.9961, 1.0745)
+
+
+def _parse_osim_meshes(osim_path: str, geom_dir: str) -> dict:
+    """body_name -> [(obj_filename, scale_xyz), ...], from an OpenSim <Body>'s <Mesh> DisplayGeometry."""
+    import re
+    from collections import defaultdict
+    from pathlib import Path
+
+    text = Path(osim_path).read_text()
+    parts = re.split(r'<Body name="([^"]+)">', text)
+    out = defaultdict(list)
+    for i in range(1, len(parts), 2):
+        bname, content = parts[i], parts[i + 1].split("</Body>")[0]
+        for m in re.finditer(r"<Mesh\b[^>]*>.*?</Mesh>", content, re.S):
+            block = m.group(0)
+            mf = re.search(r"<mesh_file>([^<]+)</mesh_file>", block)
+            if not mf:
+                continue
+            stem = Path(mf.group(1).strip()).stem
+            obj = f"{stem}.obj"
+            if not (Path(geom_dir) / obj).is_file():
+                continue
+            sc = re.search(r"<scale_factors>\s*([\d.\seE+-]+)\s*</scale_factors>", block)
+            scale = [float(x) for x in sc.group(1).split()] if sc else [1.0, 1.0, 1.0]
+            out[bname].append((obj, scale))
+    missing = [e for e in _TORSO_EXTRA_MESHES if not (Path(geom_dir) / e).is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f"head/neck/spine mesh(es) {missing} not found in {geom_dir} -- copy them in from Bolt's full "
+            "geometry library (myo_bolt_vv_deps/bolt/data/geometry) rather than silently rendering without "
+            "a head, which is what happened here before this check was added."
+        )
+    for extra in _TORSO_EXTRA_MESHES:
+        out["torso"].append((extra, list(_TORSO_SCALE)))
+    return out
+
+
+def _attach_bone_meshes(spec, verbose: bool = True):
+    """Mutates `spec` in place, adding visual-only bone mesh geoms (contype=0, conaffinity=0 -- this
+    suite's ContactSystem does collision from its own table, so these have no physics effect), including a
+    head/neck/spine Bolt's own sprinter model doesn't carry as separate bodies (see _TORSO_EXTRA_MESHES)."""
+    import mujoco
+    from pathlib import Path
+
+    spec.meshdir = _BONE_MESH_DIR
+    mesh_map = _parse_osim_meshes(_OSIM_PATH, _BONE_MESH_DIR)
+    bodies = {b.name: b for b in spec.bodies if b.name}
+    used = 0
+    for bname, meshes in mesh_map.items():
+        body = bodies.get(bname)
+        if body is None:
+            continue
+        for k, (obj, scale) in enumerate(meshes):
+            mname = f"{bname}__{k}_{Path(obj).stem}"
+            mesh = spec.add_mesh()
+            mesh.name = mname
+            mesh.file = obj
+            mesh.scale[:] = scale
+            body.add_geom(
+                type=mujoco.mjtGeom.mjGEOM_MESH,
+                meshname=mname,
+                rgba=[0.88, 0.84, 0.74, 1.0],
+                contype=0,
+                conaffinity=0,
+                group=0,
+            )
+            used += 1
+    if verbose:
+        print(f"attached {used} bone meshes (incl. head/neck/spine on torso) from {_BONE_MESH_DIR}")
+    return spec
+
+
+def _sprint_spec_fn_visual():
+    """Same physics spec as _sprint_spec_fn(), plus real bone meshes for rendering."""
+    return _attach_bone_meshes(_sprint_spec_fn())
+
+
 def _init_state() -> EntityCfg.InitialStateCfg:
     """Standing pose, not mjlab's zero default.
 
@@ -121,6 +213,7 @@ def make_sprint_env_cfg(
     num_envs: int = 64,
     init_state: EntityCfg.InitialStateCfg | None = None,
     default_activation: float | None = None,
+    visual: bool = False,
 ) -> ManagerBasedRlEnvCfg:
     """A minimal but real ManagerBasedRlEnvCfg for the Bolt-parity sprinter, driven by BoltMuscleAction.
 
@@ -130,8 +223,14 @@ def make_sprint_env_cfg(
     the TD3 checkpoint was trained to begin from; a neutral zero-velocity standing start is a different
     initial condition the policy was never trained on and falls within a few steps from it (observed
     directly: xT=-0.16m, fell at step 11, moving backward -- not a physics bug, a mismatched starting state).
+
+    visual: False (default, used for training/testing) compiles the plain physics-only spec (myosprinter
+    has no visual geoms at all -- faster to compile/step at scale). True attaches real bone meshes
+    (_sprint_spec_fn_visual(), including head/neck/spine on the torso body) for rendering -- see
+    render_myosprint_mjlab.py.
     """
-    entity_cfg = EntityCfg(spec_fn=_sprint_spec_fn, init_state=init_state or _init_state())
+    spec_fn = _sprint_spec_fn_visual if visual else _sprint_spec_fn
+    entity_cfg = EntityCfg(spec_fn=spec_fn, init_state=init_state or _init_state())
     scene_cfg = SceneCfg(num_envs=num_envs, env_spacing=3.0, entities={SPRINT_ENTITY: entity_cfg})
 
     observations = {
