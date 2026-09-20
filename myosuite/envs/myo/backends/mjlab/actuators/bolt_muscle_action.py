@@ -83,6 +83,17 @@ class BoltMuscleAction(ActionTerm):
     def apply_actions(self) -> None:
         sim = self._env.sim
         wd = sim.wp_data
+        # mjlab's Simulation.step() calls the monolithic mujoco_warp.step() (== forward() + integrate), not
+        # staged fwd_position/fwd_velocity calls we could hook between -- so d.ten_length/d.ten_velocity, as
+        # they stand when apply_actions() runs (before sim.step()), are one step stale: they reflect the
+        # kinematics computed by the END of the *previous* step's internal forward() call, for the qpos
+        # *before* that step's integration, not the qpos now. Refresh them explicitly for the current qpos,
+        # matching myo_bolt_vv's own WarpBackend/MuscleSystem convention (which always calls
+        # mjw.fwd_position/fwd_velocity immediately before MuscleSystem.compute()).
+        import mujoco_warp as mjw
+
+        mjw.fwd_position(sim.wp_model, wd)
+        mjw.fwd_velocity(sim.wp_model, wd)
         self._muscles.compute(wd)
         self._muscles.apply(wd, m=sim.wp_model, zero=True)
         wd.xfrc_applied.zero_()
