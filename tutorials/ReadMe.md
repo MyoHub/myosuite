@@ -34,7 +34,7 @@ Also useful: [2 — Load a policy](./2_Load_policy.ipynb) (pretrained NPG weight
 
 Optional: [6 — Inverse dynamics](./6_Inverse_Dynamics.ipynb) (`osqp`), [9 — CMC](./9_Computed_muscle_control.ipynb), [4a — DEP-RL](./4a_deprl.ipynb) (`pip install deprl`, **Python ≤3.11.5 only**), [4b — MyoReflex](./4b_reflex/MyoSuite_MyoReflex_Walk.ipynb).
 
-By default, notebooks 6 and 9 use the first 80 trajectory frames (`MYOSUITE_FULL_ID=1` for the full CSV). Notebook 11b trains 256 PPO steps (`MYOSUITE_FULL_MIMIC=1` for the 50k demo). Notebook 11c skips Warp env creation on macOS / CPU; use [11c Colab GPU](./11c_MuscleMimic_Fullbody_mjlab_colab.ipynb) on a T4. Notebook 11d stays in `QUICK_MODE` unless `MYOSUITE_FULL_BC=1`.
+By default, notebooks 6 and 9 use the first 80 trajectory frames (set `FULL_ID = True` in the notebook for the full CSV). Notebook 11b trains 256 PPO steps (`MYOSUITE_FULL_MIMIC=1` for the 50k demo). Notebook 11c skips Warp env creation on macOS / CPU; use [11c Colab GPU](./11c_MuscleMimic_Fullbody_mjlab_colab.ipynb) on a T4. Notebook 11d stays in `QUICK_MODE` unless `MYOSUITE_FULL_BC=1`.
 
 The notebook [modular_task_config.ipynb](./modular_task_config.ipynb) is **experimental**. Prefer subclassing `MyoGymnasiumEnv` (see `docs/wiki/adding-a-new-task.md`).
 
