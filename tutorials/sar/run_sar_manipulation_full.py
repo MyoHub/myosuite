@@ -84,7 +84,10 @@ SAR_RL_STEPS = int(1.5e6)
 E2E_STEPS = int(2.5e6)
 SEED = "0"
 N_SYNERGIES = 20
-ACTIVATION_EPISODES = 10
+# Notebook's literal value (10) yields too few post-percentile-filter frames
+# for a 20-component PCA fit on this env (verified: 13 samples, n_components
+# must be <= n_samples) -- raised to guarantee enough activation frames.
+ACTIVATION_EPISODES = 500
 ACTIVATION_PERCENTILE = 80
 PHI = 0.66
 RESUME_IF_AVAILABLE = True
