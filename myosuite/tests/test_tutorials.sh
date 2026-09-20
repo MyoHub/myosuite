@@ -24,7 +24,6 @@ SKIP_IN_CI_REL = frozenset(
         'tutorials/6_Inverse_Dynamics.ipynb',
         'tutorials/4_Train_policy.ipynb',
         'tutorials/4b_reflex/MyoSuite_MyoReflex_Walk.ipynb',
-        'tutorials/Walk_Backends_Demo.ipynb',
         'tutorials/mc26/mc26_PyTorch_Policies.ipynb',
         'tutorials/11a_MuscleMimic_Fullbody_Policy_Trajectory.ipynb',
         'tutorials/11b_MuscleMimic_Fullbody_Training.ipynb',
