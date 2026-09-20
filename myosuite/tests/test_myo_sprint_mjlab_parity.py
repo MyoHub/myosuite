@@ -21,7 +21,8 @@ import pytest
 os.environ.setdefault("VV_WARP_DEVICE", "cpu")
 
 NUM_ENVS = 1
-STEPS = 15
+STEPS = 3  # env.step() calls; at DECIMATION substeps each this is still hundreds of physics steps -- kept
+# small since the point is confirming exactness holds at the real control-rate decimation, not a long rollout
 TOL_QPOS = 1e-4
 TOL_QVEL = 1e-4
 
@@ -56,11 +57,11 @@ def _raw_reference_rollout(ctrl_sequence: np.ndarray):
     cs = ContactSystem(cz["geom_flat"], cz["pairs"], NUM_ENVS, mjm.nbody, naconmax=cz["naconmax"])
     ms.equilibrate(wd)
     dt = float(mjm.opt.timestep)
-    # make_sprint_env_cfg() uses decimation=10: each of mjlab's env.step() calls holds one action constant
-    # across 10 physics substeps. Replicate that here so both rollouts see the same action-vs-substep
-    # structure (150 physics substeps total, the action changing only every 10th one), not one action per
-    # raw substep -- otherwise this "reference" would be answering a different question.
-    DECIMATION = 10
+    # Each of mjlab's env.step() calls holds one action constant across DECIMATION physics substeps.
+    # Replicate that here (imported from env_cfgs, not hardcoded) so both rollouts see the same
+    # action-vs-substep structure -- otherwise this "reference" would be answering a different question.
+    from myosuite.envs.myo.backends.mjlab.tasks.myosprint.env_cfgs import DECIMATION
+
     for t in range(STEPS):
         ctrl_t = np.tile(ctrl_sequence[t], (NUM_ENVS, 1)).astype(np.float32)
         for _ in range(DECIMATION):

@@ -11,6 +11,10 @@ observations are raw qpos/qvel rather than the full 336-D Bolt-convention observ
 construct a working ManagerBasedRlEnv end to end and gate BoltMuscleAction's physics against myo_sim.warp
 directly; the full Bolt-parity observation/transfer validation are tracked separately (Phases 4-6).
 
+Control timing: decimation=333 at sim timestep=1e-4 gives Bolt's own ~30 Hz control rate
+(scripts/msk_envs_repro/cpu_td3_side_by_side.py's CTRL_DT) -- required for a Bolt-trained policy (tuned at
+that rate) to see the timing it expects; an earlier placeholder of decimation=10 here was 33x too fine.
+
 Reward lambdas cross-checked against a sibling exploration (myosuite branch
 feature/myofullbody-simple-sprint, athletic_contract.py's AthleticSpec -- itself sourced from Bolt/
 msk_envs_repro's own SprintConfig/LaneConfig): lambda_vel=1e-2, lambda_limit=-3e-4. Two things worth noting
@@ -37,6 +41,11 @@ from myosuite.envs.myo.backends.mjlab.actuators.bolt_muscle_action import BoltMu
 # Bolt / msk_envs SprintConfig lambdas (cross-checked against athletic_contract.py, see module docstring).
 LAMBDA_VEL = 1e-2
 LAMBDA_LIMIT = -3e-4
+SIM_DT = 1e-4
+CTRL_DT = 1.0 / 30.0  # Bolt sprint's own ~30 Hz control rate (scripts/msk_envs_repro/cpu_td3_side_by_side.py)
+DECIMATION = round(CTRL_DT / SIM_DT)  # 333 -- NOT an arbitrary choice: this is what makes a Bolt-trained
+# policy (whose actions were tuned at 30 Hz) see the timing it expects. An earlier placeholder of 10 here
+# would have run the policy 33x faster than the control rate it was trained at.
 FALL_HEIGHT = 0.55  # pelvis y (this model's up axis) below which an episode ends -- matches the fixed-body
 # fall threshold used throughout myo_bolt_vv's own sprint trainers (scripts/msk_envs_repro/warp_sprint_env.py).
 SPRINT_ENTITY = "sprinter"
@@ -137,7 +146,7 @@ def make_sprint_env_cfg(num_envs: int = 64) -> ManagerBasedRlEnvCfg:
     }
 
     return ManagerBasedRlEnvCfg(
-        decimation=10,
+        decimation=DECIMATION,
         scene=scene_cfg,
         observations=observations,
         actions=actions,
@@ -147,7 +156,7 @@ def make_sprint_env_cfg(num_envs: int = 64) -> ManagerBasedRlEnvCfg:
         episode_length_s=10.0,
         sim=SimulationCfg(
             mujoco=MujocoCfg(
-                timestep=1e-4,
+                timestep=SIM_DT,
                 # This model is Y-up (gravity along -y, matching Bolt's own convention), not mjlab's Z-up
                 # default -- SimulationCfg.mujoco.apply() unconditionally overwrites model.opt.gravity, so
                 # it must be set explicitly here or the model falls sideways relative to its own up axis.
