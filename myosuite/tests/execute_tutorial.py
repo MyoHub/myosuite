@@ -55,8 +55,17 @@ def main():
     # Compatibility shim for Gymnasium wrappers used in tutorials:
     # when env is wrapped (e.g., TimeLimit), tutorials still access
     # env.mj_renderer; forward this to env.unwrapped when available.
+    # Also disable write_video in automated runs so notebooks stay free of
+    # CI-only noop cells that would break interactive "Run All" video demos.
     compat_cell = nbformat.v4.new_code_cell(
         "import gymnasium as gym\n"
+        "import myosuite.utils.video_io as _video_io\n"
+        "\n"
+        "def _noop_write_video(*args, **kwargs):\n"
+        "    return None\n"
+        "\n"
+        "_video_io.write_video = _noop_write_video\n"
+        "\n"
         "def _unwrap_attr(self, name):\n"
         "    value = getattr(self.env, name, None)\n"
         "    if value is None:\n"
