@@ -103,8 +103,11 @@ def test_prop_masses_match_public(tabletennis_env) -> None:
     model = tabletennis_env.unwrapped.model
     assert float(model.body_mass[model.body("paddle").id]) == pytest.approx(0.15)
     assert float(model.body_mass[model.body("pingpong").id]) == pytest.approx(2.7e-3)
+    # rel is loose enough to absorb mujoco's mesh-inertia refinements across
+    # versions (~2e-7 between 3.11 and 3.13) while still failing by orders of
+    # magnitude if the table mass were ever computed from geom density.
     assert float(model.body_mass[model.body("tabletennis_table").id]) == pytest.approx(
-        1012.3920413955552, rel=1e-9
+        1012.3920413955552, rel=1e-5
     )
 
 

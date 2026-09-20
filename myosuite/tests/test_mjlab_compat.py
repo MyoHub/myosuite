@@ -926,6 +926,10 @@ def test_bootstrap_myosuite_mjlab_registry_idempotent() -> None:
     assert mid >= before
 
 
+@pytest.mark.skipif(
+    not _MJLAB_AVAILABLE,
+    reason="mjlab not installed (pip install myosuite[mjlab])",
+)
 def test_bootstrap_myosuite_mjlab_registry_skips_myouser_without_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -949,6 +953,10 @@ def test_bootstrap_myosuite_mjlab_registry_skips_myouser_without_config(
     assert calls == ["core"]
 
 
+@pytest.mark.skipif(
+    not _MJLAB_AVAILABLE,
+    reason="mjlab not installed (pip install myosuite[mjlab])",
+)
 def test_bootstrap_myosuite_mjlab_registry_registers_myouser_with_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

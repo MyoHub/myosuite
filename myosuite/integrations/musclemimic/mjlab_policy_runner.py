@@ -254,6 +254,20 @@ try:
 except ImportError:
     _TRAINING_DEPS_AVAILABLE = False
 
+    class MjlabOnPolicyRunner:  # type: ignore[no-redef]
+        """Placeholder base so this module stays importable without mjlab.
+
+        ``MjlabPolicyRunner`` inference needs only torch/onnxruntime, so the
+        module must import on Pythons where the mjlab training stack is
+        unavailable (e.g. 3.14). Only the training runner below is unusable.
+        """
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            raise ImportError(
+                "OnnxCheckpointingMjlabRunner requires the mjlab training stack; "
+                "install it with `pip install -e '.[mjlab]'` (needs Python <3.14)."
+            )
+
 
 class _ActorExportWrapper(torch.nn.Module):
     """Wrap mjlab's Gaussian actor to export a deterministic mean-action ONNX."""

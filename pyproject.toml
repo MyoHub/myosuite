@@ -17,6 +17,8 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Operating System :: OS Independent",
@@ -41,7 +43,10 @@ dependencies = [
     "mpl-sim @ git+https://github.com/MyoHub/MPL_sim.git@v0.2.1",
     "object-sim @ git+https://github.com/MyoHub/object_sim.git@v0.1.1",
     "ycb-sim @ git+https://github.com/MyoHub/YCB_sim.git@v0.2.0",
-    "onnxruntime<1.21",
+    # onnxruntime <=1.23.2 is the last line shipping cp310 wheels and >=1.24.1 the
+    # first shipping cp314, so no single version spans 3.10-3.14; split by marker.
+    "onnxruntime<1.21; python_version < '3.14'",
+    "onnxruntime>=1.24.1; python_version >= '3.14'",
     "scikit-learn>=1.7.2",
     "joblib>=1.5.3",
     "matplotlib>=3.10.8",
