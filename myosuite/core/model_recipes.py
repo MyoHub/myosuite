@@ -229,7 +229,7 @@ def _myohand_r_path() -> Path | None:
 def _calibrate_compose_hand_root(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     """Reposition the myo_sim-pip-composed hand to the legacy world frame.
 
-    ``load_right_hand_from_arm_spec()`` returns the hand still rooted at
+    ``build_right_hand_from_arm_spec()`` returns the hand still rooted at
     ``myoarm_r_root``, which sits at the world origin in myo_sim pip's
     PR-#73 arm-chain convention. All of this module's hand-task furniture
     (key, pen, balls, targets) uses absolute world positions calibrated
@@ -251,9 +251,9 @@ def _hand_builder() -> ModelBuilder:
     if p is not None:
         return ModelBuilder.from_xml_file(p)
     try:
-        from myo_sim.build.compose import load_right_hand_from_arm_spec  # type: ignore[import-untyped]
+        from myo_sim.build.compose import build_right_hand_from_arm_spec  # type: ignore[import-untyped]
 
-        hand_spec = _calibrate_compose_hand_root(load_right_hand_from_arm_spec())
+        hand_spec = _calibrate_compose_hand_root(build_right_hand_from_arm_spec())
         return ModelBuilder().attach_spec(hand_spec, name="hand")
     except (ImportError, AttributeError):
         return ModelBuilder().attach_fragment("hand")

@@ -120,7 +120,6 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
         mujoco.mj_resetData(self.model, self.data)
         self._init_qpos = self.data.qpos.copy()
         self._init_qpos[:-6] *= 0
-        self._init_qpos[0] = -1.5
         self._init_qvel = np.zeros(self.model.nv, dtype=np.float64)
 
         gym.Env.reset(self, seed=seed)
