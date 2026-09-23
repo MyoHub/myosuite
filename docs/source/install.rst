@@ -21,6 +21,13 @@ From source
    # CPU RL:    pip install -e ".[rl]"
    # GPU (Linux + CUDA): pip install -e ".[mjlab]"
 
+For GPU, install a torch build matching your driver's CUDA version *before*
+the ``.[mjlab]`` install, e.g. ``pip install torch --index-url
+https://download.pytorch.org/whl/cu128`` (see `pytorch.org/get-started/locally
+<https://pytorch.org/get-started/locally/>`_ for the right tag). Otherwise an
+unconstrained resolve may pick a torch build requiring a newer CUDA runtime
+than your driver supports (or, in some environments, a CPU-only wheel).
+
 Or with `uv <https://docs.astral.sh/uv/>`_::
 
    uv sync -p 3.10 --extra rl

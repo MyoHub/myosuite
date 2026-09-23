@@ -369,7 +369,8 @@ myoTorso  (18 joints, 210 muscles)
 mjlab (GPU)
 -----------
 
-Install ``pip install -e ".[mjlab]"`` and train with the CPU ``env_id``::
+Install ``pip install -e ".[mjlab]"`` (see :doc:`install` for matching the torch
+build to your driver's CUDA version) and train with the CPU ``env_id``::
 
    python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen
 

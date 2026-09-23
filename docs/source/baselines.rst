@@ -11,7 +11,8 @@ CPU
 GPU
 ---
 
-RSL-RL PPO on mjlab::
+RSL-RL PPO on mjlab (see :doc:`install` for matching the torch build to your
+driver's CUDA version)::
 
    pip install -e ".[mjlab]"
    python scripts/train_mjlab.py myoLegWalk-v0

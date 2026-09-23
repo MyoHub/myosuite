@@ -13,7 +13,8 @@ page is about *changing* the code.
 ```bash
 # from the repo root
 uv sync -p 3.10 --extra dev     # or: pip install -e ".[dev]"
-# GPU training (Linux + CUDA): also --extra mjlab / pip install -e ".[mjlab]"
+# GPU (Linux + CUDA): also --extra mjlab / pip install -e ".[mjlab]"
+# -- see docs/source/install.rst for matching the torch build to your driver's CUDA version
 
 pytest myosuite/tests/test_registry.py -q
 pytest myosuite/tests/test_parity.py -q

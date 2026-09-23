@@ -15,15 +15,9 @@ Installation
 .. code-block:: bash
 
    pip install -e ".[rl]"
-   # GPU (Linux + CUDA): 
-   # NOTE: install a torch build matching your driver's CUDA
-   # version *before* this, e.g. `pip install torch --index-url
-   # https://download.pytorch.org/whl/cu128` (see
-   # https://pytorch.org/get-started/locally/ for the right tag). Otherwise an
-   # unconstrained resolve may pick a torch build requiring a newer CUDA
-   # runtime than your driver supports (or, in some environments, a
-   # CPU-only wheel).
-   pip install -e ".[mjlab]"
+   # GPU (Linux + CUDA): pip install -e ".[mjlab]"
+
+See :doc:`install` for matching the torch build to your driver's CUDA version.
 
 
 Environment API
