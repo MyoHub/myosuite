@@ -59,6 +59,8 @@ Installation
 
    pip install -U myosuite
 
+See :doc:`install` for a from-source install and Python version support.
+
 
 Simulating Proprioceptive Signals
 -----------------------------------

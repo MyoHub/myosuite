@@ -1,7 +1,7 @@
 Installation
 ============
 
-Requires Python 3.10 or later.
+Python 3.10, 3.11, 3.12, and 3.13 are supported.
 
 From PyPI
 ~~~~~~~~~

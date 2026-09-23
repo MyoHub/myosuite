@@ -16,8 +16,8 @@ uv sync -p 3.10 --extra dev     # or: pip install -e ".[dev]"
 # GPU (Linux + CUDA): also --extra mjlab / pip install -e ".[mjlab]"
 # -- see docs/source/install.rst for matching the torch build to your driver's CUDA version
 
-pytest myosuite/tests/test_registry.py -q
-pytest myosuite/tests/test_parity.py -q
+pytest myosuite/tests/test_registry.py -v
+pytest myosuite/tests/test_parity.py -v
 ```
 
 `test_registry.py` smokes every CPU env (`reset` + one `step`).
@@ -127,8 +127,8 @@ the same `env_id` — see the CPU/GPU section in `engineering-standards.md`.
 
 ```bash
 pre-commit run --all-files
-pytest myosuite/tests/test_registry.py -q
-pytest myosuite/tests/test_parity.py -q
+pytest myosuite/tests/test_registry.py -v
+pytest myosuite/tests/test_parity.py -v
 ```
 
 See `CLAUDE.md` for the full gate list. A pre-commit hook blocks imports of the

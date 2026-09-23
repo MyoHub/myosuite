@@ -204,6 +204,7 @@ python scripts/generate_parity_baselines.py --env-id <env-id>
 pre-commit run --all-files
 pytest myosuite/tests/test_model_builder.py -v
 pytest myosuite/tests/test_terms_cpu.py -v
+pytest myosuite/tests/test_fragment_compat.py -v
 pytest myosuite/tests/test_parity.py -v
 pytest myosuite/tests/test_registry.py -v
 ```

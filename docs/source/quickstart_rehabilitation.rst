@@ -34,6 +34,8 @@ Installation
    pip install -U myosuite
    python -c "import myosuite; print(len(myosuite.myosuite_env_suite), 'envs')"
 
+See :doc:`install` for a from-source install and Python version support.
+
 
 Simulating Sarcopenia
 ----------------------

@@ -33,6 +33,8 @@ Installation
    # or with uv:
    uv sync -p 3.10
 
+See :doc:`install` for a from-source install and Python version support.
+
 
 Running a Forward Simulation
 ------------------------------

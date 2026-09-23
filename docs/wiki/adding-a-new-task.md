@@ -108,10 +108,12 @@ subclass to write.
 
 7. **Run parity / quality gates**:
    ```bash
+   pre-commit run --all-files
    pytest myosuite/tests/test_model_builder.py -v
    pytest myosuite/tests/test_terms_cpu.py -v
+   pytest myosuite/tests/test_fragment_compat.py -v
    pytest myosuite/tests/test_parity.py -v
-   pre-commit run --all-files
+   pytest myosuite/tests/test_registry.py -v
    ```
 
 ## What not to do

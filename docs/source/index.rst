@@ -91,6 +91,18 @@ How to cite
 
 .. code-block:: bibtex
 
+   @Misc{MyoSuite2026,
+      author =       {Vittorio, Caggiano AND Balint, Hodossy AND Florian, Fischer, AND Cheryl, Wang, AND MyoSuiteTeam},
+      title =        {MyoSuite 3.0 -- A multimodal platform for efficient and scalable musculoskeletal motor control},
+      publisher =    {arXiv},
+      year =         {2026},
+      howpublished = {\url{https://github.com/myohub/myosuite}},
+      doi =          {...},
+      url =          {...},
+   }
+
+.. code-block:: bibtex
+
    @article{MyoSuite2022,
       author =       {Vittorio, Caggiano AND Huawei, Wang AND Guillaume, Durandau AND Massimo, Sartori AND Vikash, Kumar},
       title =        {MyoSuite -- A contact-rich simulation suite for musculoskeletal motor control},
