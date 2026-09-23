@@ -154,8 +154,9 @@ myosuite/composer/
 myosuite/agents/
 renders/
 runs/
-scripts/
-tasks/
+# Root-only: scratch planning notes (see CLAUDE.md workflow), not the
+# myosuite/envs/myo/tasks/ or .../backends/mjlab/tasks/ source packages.
+/tasks/
 
 # local GPU smoke bundles
 myosuite_gpu_smoke*.zip
@@ -167,3 +168,9 @@ baselines/
 # RL learning files
 *params.pickle
 *tmp*.xml
+
+# Benchmarks and other stuff
+benchmarks/*
+docs/source/tutorials/checkpoints/*
+tutorials/**/*.zip
+*.out
