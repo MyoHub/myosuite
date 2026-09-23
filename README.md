@@ -85,7 +85,7 @@ import gymnasium as gym
 import myosuite
 
 env = gym.make("myoElbowPose1D6MRandom-v0")
-model = PPO("MlpPolicy", env)
+model = PPO("MlpPolicy", env, device="cpu")
 model.learn(total_timesteps=100_000)
 ```
 
