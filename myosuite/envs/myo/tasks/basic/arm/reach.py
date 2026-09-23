@@ -19,6 +19,7 @@ from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_reward import multi_site_reach_reward
 
 
 class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
@@ -274,34 +275,17 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
             Ordered dict with reward components including ``"dense"`` and
             ``"done"``.
         """
-        reach_err = obs_dict.get("reach_err", np.zeros(3 * len(self.tip_sids)))
-        reach_dist = float(np.linalg.norm(reach_err))
-        act_mag = (
-            float(np.linalg.norm(obs_dict.get("act", np.zeros(1)))) / self.model.na
-            if self.model.na != 0
-            else 0.0
+        target_pos = np.concatenate(
+            [self._accessor.site_xpos(sid).ravel() for sid in self.target_sids]
         )
-        near_th = len(self.tip_sids) * 0.0125
-        # Penalty only applies after the first 2 control steps
-        far_th = (
-            self.far_th * len(self.tip_sids)
-            if self.data.time > 2.0 * self._ctrl_dt
-            else float("inf")
-        )
-
+        task_state = {
+            "tip_site_ids": self.tip_sids,
+            "target_pos": target_pos,
+            # Penalty only applies after the first 2 control steps
+            "penalty_active": self.data.time > 2.0 * self._ctrl_dt,
+        }
         rwd_dict = collections.OrderedDict(
-            (
-                ("reach", -1.0 * reach_dist),
-                (
-                    "bonus",
-                    1.0 * (reach_dist < 2 * near_th) + 1.0 * (reach_dist < near_th),
-                ),
-                ("act_reg", -1.0 * act_mag),
-                ("penalty", -1.0 * (reach_dist > far_th)),
-                ("sparse", -1.0 * reach_dist),
-                ("solved", reach_dist < near_th),
-                ("done", reach_dist > far_th),
-            )
+            multi_site_reach_reward(self._accessor, task_state, far_th=self.far_th)
         )
         rwd_dict["dense"] = float(
             np.sum([wt * rwd_dict[key] for key, wt in self.rwd_keys_wt.items()])

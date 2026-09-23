@@ -195,7 +195,8 @@ def pose_error_obs(
         **kwargs: Unused; for uniform call signature.
 
     Returns:
-        Pose error array (target - current), same shape as ``joint_pos()``.
+        Pose error array (target - current). A target shorter than ``qpos``
+        covers the leading ``qpos`` entries only.
 
     Raises:
         ValueError: If neither ``target`` nor ``target_angles`` is provided.
@@ -205,7 +206,7 @@ def pose_error_obs(
         raise ValueError(
             "pose_error_obs requires 'target' or 'target_angles' in kwargs"
         )
-    return t - accessor.joint_pos()
+    return t - accessor.joint_pos()[..., : np.shape(t)[-1]]
 
 
 def time_obs(accessor: EnvAccessor, **kwargs: Any) -> Any:

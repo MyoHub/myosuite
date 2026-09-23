@@ -17,6 +17,8 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 if TYPE_CHECKING:
     from myosuite.core.protocols import EnvAccessor
 
@@ -70,17 +72,20 @@ def pose_reward(
     accessor: EnvAccessor,
     task_state: dict[str, Any],
     pose_thd: float = 0.35,
+    far_thd: float = _POSE_PENALTY_THRESHOLD,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Reward for reaching a target joint configuration.
 
     Returns a negative distance reward plus discrete bonuses for being
-    within threshold and a penalty for wildly out-of-range poses.
+    within threshold and a penalty for wildly out-of-range poses. A target
+    shorter than ``qpos`` covers the leading ``qpos`` entries only.
 
     Args:
         accessor: Environment state accessor.
         task_state: Must contain ``"target_angles"`` — target joint positions.
         pose_thd: Distance threshold (radians) for the bonus reward.
+        far_thd: Distance above which the penalty applies and the episode ends.
         **kwargs: Unused extra keyword arguments.
 
     Returns:
@@ -88,12 +93,14 @@ def pose_reward(
         ``solved`` (bool scalar), ``done`` (bool scalar).
     """
     xp = accessor.array_module()
-    dist = xp.linalg.norm(task_state["target_angles"] - accessor.joint_pos(), axis=-1)
+    target = task_state["target_angles"]
+    qpos = accessor.joint_pos()[..., : np.shape(target)[-1]]
+    dist = xp.linalg.norm(target - qpos, axis=-1)
     pose = -dist
     bonus = 1.0 * (dist < pose_thd) + 1.0 * (
         dist < _POSE_BONUS_FAR_MULTIPLIER * pose_thd
     )
-    penalty = -1.0 * (dist > _POSE_PENALTY_THRESHOLD)
+    penalty = -1.0 * (dist > far_thd)
     dense = pose + bonus + penalty
     return {
         "pose": pose,
@@ -101,7 +108,7 @@ def pose_reward(
         "penalty": penalty,
         "dense": dense,
         "solved": dist < pose_thd,
-        "done": dist > _POSE_PENALTY_THRESHOLD,
+        "done": dist > far_thd,
     }
 
 
@@ -140,6 +147,52 @@ def reach_reward(
         "dense": dense,
         "solved": dist < reach_thd,
         "done": False,
+    }
+
+
+def multi_site_reach_reward(
+    accessor: EnvAccessor,
+    task_state: dict[str, Any],
+    far_th: float = 0.35,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """``ReachEnvV0`` reward: reach several tip sites to their targets.
+
+    Thresholds scale with the number of sites ``k``: ``near = 0.0125 k`` and
+    ``far = far_th k``; the far penalty/termination is only active once
+    ``task_state["penalty_active"]`` is true (CPU: after two control steps).
+
+    Args:
+        accessor: Environment state accessor.
+        task_state: ``"tip_site_ids"`` (k site ids), ``"target_pos"`` (flattened
+            ``3k`` target positions, same order), ``"penalty_active"`` (bool).
+        far_th: Per-site distance above which the episode fails.
+        **kwargs: Unused extra keyword arguments.
+
+    Returns:
+        Dict with ``reach``, ``bonus``, ``act_reg``, ``penalty``, ``sparse``,
+        ``solved`` and ``done``.
+    """
+    xp = accessor.array_module()
+    n_sites = len(task_state["tip_site_ids"])
+    tip = accessor.site_xpos(task_state["tip_site_ids"])
+    tip = tip.reshape(*tip.shape[:-2], 3 * n_sites)
+    dist = xp.linalg.norm(task_state["target_pos"] - tip, axis=-1)
+    act = accessor.muscle_act()
+    na = act.shape[-1]
+    act_mag = xp.linalg.norm(act, axis=-1) / na if na else 0.0 * dist
+    near = n_sites * 0.0125
+    far = xp.where(
+        _xp_asarray(xp, task_state["penalty_active"]), far_th * n_sites, float("inf")
+    )
+    return {
+        "reach": -1.0 * dist,
+        "bonus": 1.0 * (dist < 2 * near) + 1.0 * (dist < near),
+        "act_reg": -1.0 * act_mag,
+        "penalty": -1.0 * (dist > far),
+        "sparse": -1.0 * dist,
+        "solved": dist < near,
+        "done": dist > far,
     }
 
 
@@ -361,77 +414,67 @@ def walk_env_reward(
     """
     xp = accessor.array_module()
 
-    # Resolve COM velocity.
-    if com_vel_indices is None:
-        com_vel = task_state["com_vel"]
-        vx, vy = com_vel[0], com_vel[1]
-    else:
-        com_vel_arr = task_state["com_vel"]
-        vx, vy = com_vel_arr[com_vel_indices[0]], com_vel_arr[com_vel_indices[1]]
+    # Leading axes are batch axes (none on CPU, (N,) on mjlab).
+    com_vel = task_state["com_vel"]
+    ix, iy = com_vel_indices if com_vel_indices is not None else (0, 1)
+    vx, vy = com_vel[..., ix], com_vel[..., iy]
 
     target_x_vel, target_y_vel = target_vel
     vel_reward = xp.exp(-xp.square(target_y_vel - vy)) + xp.exp(
         -xp.square(target_x_vel - vx)
     )
 
-    # Resolve COM height.
     if com_height_index is None:
         height = task_state["height"]
     else:
-        height_vec = task_state["height_like"]
-        height = height_vec[com_height_index]
+        height = task_state["height_like"][..., com_height_index]
 
-    # Rotation condition using root quaternion from qpos[3:7].
+    # Rotation condition from the root quaternion qpos[3:7]:
+    # (R @ e_x)[0] = R[0, 0] = 1 - 2 * (qy^2 + qz^2).
     qpos = task_state["qpos"]
-    quat = qpos[3:7]
-    # (R @ [1, 0, 0])[0] for a unit quaternion.
-    # We approximate via the standard formula: R[0,0] = 1 - 2*(qy^2 + qz^2).
-    qy = quat[2]
-    qz = quat[3]
+    quat = qpos[..., 3:7]
+    qy, qz = quat[..., 2], quat[..., 3]
     r00 = 1.0 - 2.0 * (qy * qy + qz * qz)
+    done = xp.logical_or(height < min_height, xp.abs(r00) > max_rot)
 
-    done_height = height < min_height
-    done_rot = xp.abs(r00) > max_rot
-    done = xp.logical_or(done_height, done_rot)
-
-    # Cyclic hip reward.
-    phase = xp.asarray(task_state.get("phase_var", xp.array(0.0)))
-    phase_scalar = phase[0] if phase.shape else phase
-    des_l = _WALK_HIP_AMPLITUDE * xp.cos(phase_scalar * 2.0 * xp.pi + xp.pi)
-    des_r = _WALK_HIP_AMPLITUDE * xp.cos(phase_scalar * 2.0 * xp.pi)
-
+    # Cyclic hip reward; phase_var is a scalar or carries a trailing size-1 axis.
+    phase = task_state.get("phase_var", 0.0)
+    if getattr(phase, "ndim", 0) > 0:
+        phase = phase[..., 0]
+    des_l = _WALK_HIP_AMPLITUDE * xp.cos(phase * 2.0 * math.pi + math.pi)
+    des_r = _WALK_HIP_AMPLITUDE * xp.cos(phase * 2.0 * math.pi)
     hip_flex_l_idx, hip_flex_r_idx = hip_flex_indices
-    hip_flex = xp.asarray(
-        [qpos[hip_flex_l_idx], qpos[hip_flex_r_idx]], dtype=xp.asarray(qpos).dtype
+    cyclic_hip = xp.sqrt(
+        xp.square(des_l - qpos[..., hip_flex_l_idx])
+        + xp.square(des_r - qpos[..., hip_flex_r_idx])
     )
-    des = xp.asarray([des_l, des_r])
-    cyclic_hip = xp.linalg.norm(des - hip_flex)
 
     # Ref rotation reward.
-    quat_np = xp.asarray(quat)
-    target_rot_arr = xp.asarray(target_rot)
-    ref_rot = xp.exp(-xp.linalg.norm(_WALK_REF_ROT_SCALE * (quat_np - target_rot_arr)))
-
-    # Joint angle reward.
-    hip_adduct_l, hip_adduct_r, hip_rot_l, hip_rot_r = hip_angle_indices
-    hip_angles = xp.asarray(
-        [qpos[hip_adduct_l], qpos[hip_adduct_r], qpos[hip_rot_l], qpos[hip_rot_r]]
+    target_rot_arr = _xp_asarray(xp, target_rot)
+    if getattr(xp, "__name__", "") == "torch":
+        target_rot_arr = target_rot_arr.to(quat)
+    ref_rot = xp.exp(
+        -xp.linalg.norm(_WALK_REF_ROT_SCALE * (quat - target_rot_arr), axis=-1)
     )
-    joint_angle_rew = xp.exp(-_WALK_JOINT_ANGLE_SCALE * xp.mean(xp.abs(hip_angles)))
 
+    # Joint angle reward: exp(-5 * mean |hip adduction/rotation|).
+    hip_angle_mag = sum(xp.abs(qpos[..., i]) for i in hip_angle_indices) / len(
+        hip_angle_indices
+    )
+    joint_angle_rew = xp.exp(-_WALK_JOINT_ANGLE_SCALE * hip_angle_mag)
+
+    done_flag = 1.0 * done
     dense = (
         _WALK_W_VEL * vel_reward
-        + _WALK_W_FALL * done.astype(xp.float32)
+        + _WALK_W_FALL * done_flag
         + _WALK_W_CYCLIC * cyclic_hip
         + _WALK_W_REF_ROT * ref_rot
         + _WALK_W_JOINT * joint_angle_rew
     )
-
-    done_flag = done.astype(xp.float32)
     return {
         "vel_reward": vel_reward,
         "done": done_flag,
-        "solved": xp.array(False),
+        "solved": dense > float("inf"),
         "cyclic_hip": cyclic_hip,
         "ref_rot": ref_rot,
         "joint_angle_rew": joint_angle_rew,
