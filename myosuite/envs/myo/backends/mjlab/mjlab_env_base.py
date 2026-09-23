@@ -116,6 +116,97 @@ class MjlabEnvAccessor(EnvAccessor):
         return torch
 
 
+class MjlabEntityAccessor(EnvAccessor):
+    """EnvAccessor over one mjlab scene entity, laid out like the CPU ``MjData``.
+
+    ``joint_pos`` / ``joint_vel`` follow CPU ``qpos`` / ``qvel`` layout: a free
+    root contributes ``[pos (relative to the env origin), quat]`` and
+    ``[lin vel (world), ang vel (body)]`` ahead of the remaining joints, so
+    shared term functions see the same vectors on both backends.
+
+    Args:
+        env: The mjlab environment.
+        entity_name: Scene entity key.
+    """
+
+    def __init__(self, env: Any, entity_name: str) -> None:
+        self._env = env
+        self._entity = env.scene[entity_name]
+
+    @property
+    def physics_path(self) -> PhysicsPath:
+        """Returns ``PhysicsPath.MJLAB``."""
+        return PhysicsPath.MJLAB
+
+    def joint_pos(self) -> torch.Tensor:
+        """CPU-layout ``qpos``, shape ``(N, nq)``."""
+        import torch
+
+        data = self._entity.data
+        if self._entity.is_fixed_base:
+            return data.joint_pos
+        root_pos = data.root_link_pos_w - self._env.scene.env_origins
+        return torch.cat([root_pos, data.root_link_quat_w, data.joint_pos], dim=-1)
+
+    def joint_vel(self) -> torch.Tensor:
+        """CPU-layout ``qvel``, shape ``(N, nv)``."""
+        import torch
+
+        data = self._entity.data
+        if self._entity.is_fixed_base:
+            return data.joint_vel
+        return torch.cat(
+            [data.root_link_lin_vel_w, data.root_link_ang_vel_b, data.joint_vel],
+            dim=-1,
+        )
+
+    def muscle_act(self) -> torch.Tensor:
+        """Muscle activation state, shape ``(N, na)``."""
+        # accepted: no entity.data API for muscle activation — entity.data.data.act
+        return self._entity.data.data.act
+
+    def site_xpos(self, site_ids: Any) -> torch.Tensor:
+        """Entity-local site positions in the CPU world frame, ``(N, k, 3)``.
+
+        Floating-base entities are spawned at their env origin, so the origin
+        is removed; fixed-base entities are never offset.
+        """
+        pos = self._entity.data.site_pos_w[:, site_ids, :]
+        if self._entity.is_fixed_base:
+            return pos
+        return pos - self._env.scene.env_origins[:, None, :]
+
+    def site_id(self, name: str) -> int:
+        """Entity-local id of site *name*."""
+        ids, _ = self._entity.find_sites((f"^{name}$",), preserve_order=True)
+        return int(ids[0])
+
+    def time(self) -> torch.Tensor:
+        """Time since episode start, shape ``(N,)``."""
+        return self._env.episode_length_buf * self._env.step_dt
+
+    def ctrl_range(self) -> torch.Tensor:
+        """Control range of the entity actuators, shape ``(nu, 2)``."""
+        import torch
+
+        ids = self._entity.indexing.ctrl_ids.cpu().numpy()
+        return torch.as_tensor(
+            self._env.sim.mj_model.actuator_ctrlrange[ids],
+            dtype=torch.float32,
+            device=self._env.device,
+        )
+
+    def dt(self) -> float:
+        """Control timestep in seconds."""
+        return self._env.step_dt
+
+    def array_module(self) -> Any:
+        """Returns the ``torch`` module."""
+        import torch
+
+        return torch
+
+
 try:
     from mjlab.envs.mdp.events import resolve_env_ids as normalize_mjlab_env_ids
 except ImportError:

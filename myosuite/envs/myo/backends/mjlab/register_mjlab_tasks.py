@@ -1911,25 +1911,8 @@ _DIRECTIONAL_VARIANTS = (
 def register_mjlab_tasks() -> None:
     """Register MyoSuite env ids with mjlab.tasks.registry. Idempotent."""
 
-    # --- Elbow pose ---
-    if _ELBOW_XML.exists():
-        try:
-            env_cfg = _make_elbow_env_cfg(play=False)
-            play_cfg = _make_elbow_env_cfg(play=True)
-            rl_cfg = _elbow_ppo_runner_cfg()
-            register_mjlab_task(
-                task_id="myoElbowPose1D6MFixed-v0",
-                env_cfg=env_cfg,
-                play_env_cfg=play_cfg,
-                rl_cfg=rl_cfg,
-                runner_cls=None,
-            )
-        except ValueError:
-            pass  # already registered
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "mjlab: failed to register myoElbowPose1D6MFixed-v0", exc_info=True
-            )
+    # Basic-suite CPU twins (pose, ...): importing the package registers them.
+    import myosuite.envs.myo.backends.mjlab.tasks  # noqa: F401, PLC0415
 
     # --- Leg walk ---
     if _WALK_XML.exists():
