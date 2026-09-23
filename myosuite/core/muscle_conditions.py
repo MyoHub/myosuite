@@ -149,8 +149,11 @@ def apply_sarcopenia_to_spec(
 ) -> mujoco.MjSpec:
     """Scale muscle peak forces to simulate sarcopenia (age-related muscle loss).
 
-    Multiplies the ``forcerange`` attribute of every actuator in the spec
-    by *force_scale*.
+    Spec-level equivalent of :func:`apply_sarcopenia_to_model`: scales the
+    *compiled* peak force ``gainprm[2]`` of every actuator. Muscles declared
+    with ``force="-1"`` only get their peak force at compile time, so the spec
+    is compiled once to read the resolved values, which are then written back
+    explicitly (scaled).
 
     Args:
         spec: MuJoCo model spec to modify in-place.
@@ -164,10 +167,9 @@ def apply_sarcopenia_to_spec(
         >>> spec = mujoco.MjSpec.from_file("elbow.xml")
         >>> apply_sarcopenia_to_spec(spec, force_scale=0.5)
     """
-    for actuator in spec.actuators:
-        if hasattr(actuator, "forcerange"):
-            actuator.forcerange[0] *= force_scale
-            actuator.forcerange[1] *= force_scale
+    peak_force = spec.compile().actuator_gainprm[:, 2]
+    for actuator, force in zip(spec.actuators, peak_force, strict=True):
+        actuator.gainprm[2] = float(force) * force_scale
     return spec
 
 
@@ -573,16 +575,14 @@ class TorchFatigueState:
     def step(self, excitation: Any, dt: float) -> Any:
         """Advance fatigue state by one control step.
 
-        Implements the same 3CC-r dynamics as :meth:`CumulativeFatigue.step`
-        (without the tauact / taudeact transfer-rate correction, which is not
-        available in the batched torch setting without additional model data).
+        Implements the same 3CC-r dynamics as :meth:`CumulativeFatigue.step`.
 
         Args:
             excitation: Muscle excitation tensor, shape ``(num_envs, n_muscles)``.
             dt: Control timestep in seconds.
 
         Returns:
-            Effective excitation after fatigue scaling, same shape as
+            Active compartment ``MA`` (the effective muscle ctrl), same shape as
             *excitation*.
         """
         import torch  # noqa: PLC0415
@@ -611,7 +611,8 @@ class TorchFatigueState:
         self.MA = self.MA + dMA_dt * dt
         self.MF = self.MF + dMF_dt * dt
         self.MR = self.MR + dMR_dt * dt
-        return torch.clamp(excitation, max=self.MA)
+        # Same as CPU CumulativeFatigue: the active compartment is the ctrl.
+        return self.MA
 
     # ------------------------------------------------------------------
     # Reset

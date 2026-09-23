@@ -165,19 +165,42 @@ class TestApplySarcopenia:
         apply_sarcopenia_to_model(model)
         assert np.all(model.actuator_gainprm[:, 2] == pytest.approx(1.0))
 
-    def test_apply_sarcopenia_to_spec(self) -> None:
-        from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
+    def test_apply_sarcopenia_to_spec_matches_model(self) -> None:
+        """Spec-level sarcopenia compiles to the same peak forces as the CPU path."""
+        import mujoco
 
-        act1 = MagicMock()
-        act1.forcerange = [100.0, 500.0]
-        act2 = MagicMock()
-        act2.forcerange = [200.0, 800.0]
-        spec = MagicMock()
-        spec.actuators = [act1, act2]
+        from myosuite.core.muscle_conditions import (
+            apply_sarcopenia_to_model,
+            apply_sarcopenia_to_spec,
+        )
+
+        xml = """
+        <mujoco>
+          <worldbody>
+            <site name="s0" pos="0 0 0"/>
+            <body pos="0.05 0 -0.3">
+              <joint name="j" type="hinge" axis="0 1 0" limited="true" range="-1 1"/>
+              <geom type="capsule" size="0.02" fromto="0 0 0 0 0 -0.2"/>
+              <site name="s1" pos="0.05 0 -0.1"/>
+            </body>
+          </worldbody>
+          <tendon><spatial name="t"><site site="s0"/><site site="s1"/></spatial></tendon>
+          <actuator>
+            <muscle name="auto" tendon="t"/>
+            <muscle name="explicit" tendon="t" force="80"/>
+          </actuator>
+        </mujoco>
+        """
+        cpu_model = mujoco.MjSpec.from_string(xml).compile()
+        apply_sarcopenia_to_model(cpu_model, force_scale=0.5)
+
+        spec = mujoco.MjSpec.from_string(xml)
         returned = apply_sarcopenia_to_spec(spec, force_scale=0.5)
         assert returned is spec
-        assert act1.forcerange[0] == pytest.approx(50.0)
-        assert act1.forcerange[1] == pytest.approx(250.0)
+        np.testing.assert_allclose(
+            spec.compile().actuator_gainprm[:, 2], cpu_model.actuator_gainprm[:, 2]
+        )
+        assert cpu_model.actuator_gainprm[1, 2] == pytest.approx(40.0)
 
 
 # ---------------------------------------------------------------------------
