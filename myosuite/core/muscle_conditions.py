@@ -301,7 +301,7 @@ class CumulativeFatigue:
         self.TL = act.copy()
 
         # Activation/deactivation rates (MuJoCo Hill-type dynamics)
-        LD = (1.0 / self._tauact) * (0.5 + 1.5 * self._MA)
+        LD = 1.0 / (self._tauact * (0.5 + 1.5 * self._MA))
         LR = (0.5 + 1.5 * self._MA) / self._taudeact
 
         # Transfer rate C between MR and MA
