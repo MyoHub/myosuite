@@ -2,6 +2,7 @@
 # Copyright (c) MyoSuite Authors
 Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= -->
+
 <img src="https://github.com/myohub/myosuite/blob/main/docs/source/images/Full%20Color%20Horizontal%20wider.png?raw=true" width=800>
 
 [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
@@ -24,13 +25,13 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 ## Start here
 
-| I am a… | Start here |
-|---------|------------|
-| **ML / RL** | [ML guide](docs/source/quickstart_ml.rst) |
-| **Biomechanics** | [Biomechanics guide](docs/source/quickstart_biomechanics.rst) |
-| **Neuroscience** | [Neuroscience guide](docs/source/quickstart_neuroscience.rst) |
-| **Rehab / sports** | [Rehab guide](docs/source/quickstart_rehabilitation.rst) |
-| **Changing the code** | [Developer getting started](docs/wiki/getting-started.md) |
+| I am a…                    | Start here                                                   |
+| --------------------------- | ------------------------------------------------------------ |
+| **ML / RL**           | [ML guide](docs/source/quickstart_ml.rst)                     |
+| **Biomechanics**      | [Biomechanics guide](docs/source/quickstart_biomechanics.rst) |
+| **Neuroscience**      | [Neuroscience guide](docs/source/quickstart_neuroscience.rst) |
+| **Rehab / sports**    | [Rehab guide](docs/source/quickstart_rehabilitation.rst)      |
+| **Changing the code** | [Developer getting started](docs/wiki/getting-started.md)     |
 
 ---
 
@@ -49,12 +50,12 @@ Or: `uv sync -p 3.10 --extra rl`.
 
 From PyPI: `pip install -U myosuite`. Sim assets (`myo-sim`, `furniture-sim`, …) are installed as packages — no git submodules.
 
-Verify:
+Verify (replace "onscreen" with "offscreen" when running on a remote, headless machine):
 
 ```bash
 python -c "import myosuite; print(len(myosuite.myosuite_env_suite), 'envs')"
-python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
-# macOS viewer: mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
+python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --render onscreen
+# macOS viewer: mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --render onscreen
 ```
 
 ---
@@ -100,22 +101,22 @@ Pathological variants use prefixes, not a `Fatigue` infix: `myoSarcElbowPose1D6M
 
 ## Environments
 
-| Body | Example IDs |
-|------|-------------|
-| Elbow | `myoElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MFixed-v0` |
-| Finger | `myoFingerPoseRandom-v0`, `myoFingerReachRandom-v0` |
-| Hand | `myoHandPoseRandom-v0`, `myoChallengeBaodingP2-v1` |
-| Arm | `myoArmReachRandom-v0` |
-| Leg | `myoLegWalk-v0`, `myoLegDirectionalForward-v0` |
-| Full body | `myoMimicFullbody-v0` |
+| Body      | Example IDs                                                     |
+| --------- | --------------------------------------------------------------- |
+| Elbow     | `myoElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MFixed-v0` |
+| Finger    | `myoFingerPoseRandom-v0`, `myoFingerReachRandom-v0`         |
+| Hand      | `myoHandPoseRandom-v0`, `myoChallengeBaodingP2-v1`          |
+| Arm       | `myoArmReachRandom-v0`                                        |
+| Leg       | `myoLegWalk-v0`, `myoLegDirectionalForward-v0`              |
+| Full body | `myoMimicFullbody-v0`                                         |
 
 List every registered CPU ID: `python -c "import myosuite; print('\n'.join(myosuite.myosuite_env_suite))"`. Annotated catalog: [environments](https://myosuite.readthedocs.io/en/latest/environments.html).
 
 ### Backends
 
-| Backend | Use | How |
-|---------|-----|-----|
-| **CPU** (Gymnasium) | playback, debug, SB3 | `gym.make(env_id)` |
+| Backend                       | Use                   | How                                                                    |
+| ----------------------------- | --------------------- | ---------------------------------------------------------------------- |
+| **CPU** (Gymnasium)     | playback, debug, SB3  | `gym.make(env_id)`                                                   |
 | **mjlab** (MuJoCo Warp) | parallel GPU training | `pip install -e ".[mjlab]"` then `scripts/train_mjlab.py <env_id>` |
 
 A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/wiki/cross-backend-contract.md)). An MJX (JAX) path also exists; it is **experimental** and not the supported training route.
@@ -137,6 +138,7 @@ Full-body MuscleMimic playback and training: [`myosuite/integrations/musclemimic
 [Apache License](LICENSE).
 
 ## Citation
+
 ```bibtex
 @Misc{MyoSuite2026,
   author =       {Vittorio, Caggiano AND Balint, Hodossy AND Florian, Fischer, AND Cheryl, Wang, AND MyoSuiteTeam},
