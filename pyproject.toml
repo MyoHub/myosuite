@@ -74,6 +74,15 @@ mjlab = [
     "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14'",
     "mujoco-warp>=3.7.0; python_version >= '3.10' and python_version < '3.14'",
     "warp-lang>=1.12.0; python_version >= '3.10'",
+    # mjlab's own rsl_rl dependency (rsl-rl-lib) still passes the deprecated
+    # wandb.Settings(start_method=...) kwarg; wandb>=0.29.0 rewrote Settings to
+    # reject unknown fields there, so an unpinned resolve breaks
+    # runner.learn()'s first call to init_logging_writer() with a pydantic
+    # ValidationError ("Extra inputs are not permitted") the moment training
+    # actually starts -- not at install time. mjlab itself requires
+    # wandb>=0.22.3; verified 0.22.3-0.28.0 all accept start_method (with a
+    # harmless deprecation warning), 0.29.0 is the first to reject it.
+    "wandb>=0.22.3,<0.29.0; python_version >= '3.10' and python_version < '3.14'",
 ]
 
 mjx = [
