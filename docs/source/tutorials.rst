@@ -18,8 +18,9 @@ Muscle-condition IDs:
 
 GPU training (Linux + CUDA)::
 
-   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0
+   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen
 
+Replace "onscreen" with "offscreen" when running on a remote, headless machine.
 Walk-through: ``tutorials/directional_leg_gpu_training.py``.
 
 New CPU tasks subclass :class:`~myosuite.envs.gymnasium_env.MyoGymnasiumEnv`

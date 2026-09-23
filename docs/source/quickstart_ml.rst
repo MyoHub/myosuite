@@ -15,7 +15,14 @@ Installation
 .. code-block:: bash
 
    pip install -e ".[rl]"
-   # GPU (Linux + CUDA):
+   # GPU (Linux + CUDA): 
+   # NOTE: install a torch build matching your driver's CUDA
+   # version *before* this, e.g. `pip install torch --index-url
+   # https://download.pytorch.org/whl/cu128` (see
+   # https://pytorch.org/get-started/locally/ for the right tag). Otherwise an
+   # unconstrained resolve may pick a torch build requiring a newer CUDA
+   # runtime than your driver supports (or, in some environments, a
+   # CPU-only wheel).
    pip install -e ".[mjlab]"
 
 
@@ -65,8 +72,9 @@ Training (GPU)
 
 Same ``env_id`` as CPU::
 
-   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0
+   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen
 
+Replace "onscreen" with "offscreen" when running on a remote, headless machine.
 Walk-through: ``tutorials/directional_leg_gpu_training.py``.
 
 An MJX (JAX) backend also exists (``pip install -e ".[mjx]"``). It is

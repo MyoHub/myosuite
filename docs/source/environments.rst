@@ -371,7 +371,7 @@ mjlab (GPU)
 
 Install ``pip install -e ".[mjlab]"`` and train with the CPU ``env_id``::
 
-   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0
+   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen
 
 Registered mjlab IDs live in
 ``myosuite.envs.myo.backends.mjlab.REGISTERED_TASKS``.
