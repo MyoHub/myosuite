@@ -93,7 +93,7 @@ model.learn(total_timesteps=100_000)
 Train on GPU (same `env_id`, mjlab / RSL-RL):
 
 ```bash
-python scripts/train_mjlab.py myoElbowPose1D6MFixed-v0
+python scripts/train_mjlab.py myoElbowPose1D6MFixed-v0 --env.scene.num-envs 1024
 ```
 
 Pathological variants use prefixes, not a `Fatigue` infix: `myoSarcElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MFixed-v0`, `myoReafHandPoseRandom-v0`.

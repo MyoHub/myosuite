@@ -67,7 +67,7 @@ Training (GPU)
 Same ``env_id`` as CPU::
 
    python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen \
-       --agent.max-iterations 1000 --env.scene.num-envs 2048
+       --agent.max-iterations 1000 --env.scene.num-envs 1024
 
 Replace "onscreen" with "offscreen" when running on a remote, headless machine.
 The flag ``--agent.max-iterations`` sets the number of PPO update iterations (default is
@@ -94,7 +94,7 @@ Resuming a run
 .. code-block:: bash
 
    python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --agent.resume True \
-       --agent.max-iterations 5000 --env.scene.num-envs 2048
+       --agent.max-iterations 5000 --env.scene.num-envs 4096
 
 ``--agent.resume True`` continues training from a checkpoint of the same
 ``--agent.experiment-name`` (default: task-specific, e.g. ``myo_elbow_pose``),

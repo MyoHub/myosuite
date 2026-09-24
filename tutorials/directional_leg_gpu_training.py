@@ -31,7 +31,7 @@ Run
     # 2. GPU: train on mjlab (needs CUDA). Short smoke:
     python tutorials/directional_leg_gpu_training.py --gpu-train --iterations 5
     # Full run via the training CLI:
-    python scripts/train_mjlab.py myoLegDirectionalForward-v0
+    python scripts/train_mjlab.py myoLegDirectionalForward-v0 --env.scene.num-envs 1024
 
     # 3. CPU: play back the trained checkpoint
     python tutorials/directional_leg_gpu_training.py --cpu-playback logs/rsl_rl/.../model_*.pt

@@ -372,7 +372,7 @@ mjlab (GPU)
 Install ``pip install -e ".[mjlab]"`` (see :doc:`install` for matching the torch
 build to your driver's CUDA version) and train with the CPU ``env_id``::
 
-   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen
+   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen --env.scene.num-envs 1024
 
 Registered mjlab IDs live in
 ``myosuite.envs.myo.backends.mjlab.REGISTERED_TASKS``.

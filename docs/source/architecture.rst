@@ -45,7 +45,7 @@ mjlab
 Install ``pip install -e ".[mjlab]"`` (see :doc:`install` for matching the torch
 build to your driver's CUDA version). Tasks are discovered through the
 ``mjlab.tasks`` entry point (``myosuite.envs.myo.backends.mjlab``).
-Train with ``python scripts/train_mjlab.py <env_id>``.
+Train with ``python scripts/train_mjlab.py <env_id> --env.scene.num-envs 1024``.
 
 
 Terms

@@ -38,7 +38,7 @@ By default, notebooks 6 and 9 use the first 80 trajectory frames (set `FULL_ID =
 
 The notebook [modular_task_config.ipynb](./modular_task_config.ipynb) is **experimental**. Prefer subclassing `MyoGymnasiumEnv` (see `docs/wiki/adding-a-new-task.md`).
 
-GPU: `python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen` (`pip install -e ".[mjlab]"`). Walk-through: [directional_leg_gpu_training.py](./directional_leg_gpu_training.py).
+GPU: `python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen --env.scene.num-envs 1024` (`pip install -e ".[mjlab]"`). Walk-through: [directional_leg_gpu_training.py](./directional_leg_gpu_training.py).
 
 MuscleMimic: [integration README](../myosuite/integrations/musclemimic/README.md). mjlab GPU (Colab T4): [11c Colab](./11c_MuscleMimic_Fullbody_mjlab_colab.ipynb) ([Open in Colab](https://colab.research.google.com/drive/144wHsu_UBVofZqXRTOUWY33ZscziA76R)). Directional locomotion (Colab-ready): [11d — Full-body directional locomotion](./11d_MuscleMimic_Fullbody_directional_locomotion.ipynb) ([Open in Colab](https://colab.research.google.com/drive/1lc64D9YS8mmqz00-p161syndTUbffrg2)). Bimanual clips on Hugging Face are **gated** — request access before running that cell in [11c](./11c_MuscleMimic_Fullbody_mjlab.ipynb).
 
