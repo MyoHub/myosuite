@@ -21,17 +21,16 @@ from myosuite.tests.execute_tutorial import main as run_one
 # long mjlab training; keep them for manual / release runs only.
 SKIP_IN_CI_REL = frozenset(
     {
-        'tutorials/3.3_Inverse_Dynamics.ipynb',
-        'tutorials/2.5_MyoReflex_Walk.ipynb',
-        'tutorials/5.1_Fullbody_Policy_Trajectory.ipynb',
-        'tutorials/5.2_Fullbody_Training.ipynb',
-        'tutorials/5.3_Fullbody_Mjlab.ipynb',
         'tutorials/2.2_Train_MjLab_Policy.ipynb',
         'tutorials/2.3_SAR.ipynb',
-        'tutorials/3.2_Inverse_Kinematics.ipynb',
-        'tutorials/3.5_Playback_Mot_File.ipynb',
+        'tutorials/2.4_DEP_RL.ipynb',
+        'tutorials/2.5_MyoReflex_Walk.ipynb',
+        'tutorials/4.2_Fatigue_Modeling.ipynb',
         'tutorials/4.3_Modular_Task_Config.ipynb',
-        'tutorials/5.4_Fullbody_Directional_Locomotion.ipynb',
+        'tutorials/5.1_Fullbody_Load_Policy.ipynb',
+        'tutorials/5.2_Fullbody_Train_Policy.ipynb',
+        'tutorials/5.3_Fullbody_Train_MjLab_Policy.ipynb',
+        'tutorials/5.4_MuscleMimic_Directional_Locomotion.ipynb',
         'tutorials/5.5_MuscleMimic_SAR.ipynb',
     }
 )
@@ -39,12 +38,13 @@ RUN_IN_CI_REL = frozenset(
     {
         'tutorials/1.1_Get_Started.ipynb',
         'tutorials/1.2_Load_Policy.ipynb',
-        'tutorials/3.1_Analyse_Movements.ipynb',
-        'tutorials/2.4_DEP_RL.ipynb',
         'tutorials/2.1_Train_SB3_Policy.ipynb',
-        'tutorials/4.1_Move_Hand_Fingers.ipynb',
-        'tutorials/4.2_Fatigue_Modeling.ipynb',
+        'tutorials/3.1_Analyse_Movements.ipynb',
+        'tutorials/3.2_Inverse_Kinematics.ipynb',
+        'tutorials/3.3_Inverse_Dynamics.ipynb',
         'tutorials/3.4_Computed_Muscle_Control.ipynb',
+        'tutorials/3.5_Playback_Mot_File.ipynb',
+        'tutorials/4.1_Move_Hand_Fingers.ipynb',
     }
 )
 

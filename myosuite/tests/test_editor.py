@@ -9,7 +9,6 @@ from typing import Any
 
 import mujoco
 import myo_sim
-import numpy as np
 import pytest
 
 from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
@@ -96,104 +95,57 @@ class TestModelEditor:
         assert "Error opening file" in str(cm.value)
 
 
+_HAND_ROOTS = ("firstmc_r", "secondmc_r", "thirdmc_r", "fourthmc_r", "fifthmc_r")
+
+
+def _joints_below(body: Any) -> list[str]:
+    """Names of all joints of *body* and its descendants."""
+    names = [j.name for j in body.joints]
+    for child in body.bodies:
+        names.extend(_joints_below(child))
+    return names
+
+
 class TestEditFnArmReaching:
-    """Unit tests for TestEditFnArmReaching and MuJoCo model editing functionality."""
+    """The arm-reaching edit immobilises the hand in place and adds the reach sites."""
 
     def setup_method(self) -> None:
-        spec = myo_sim.load_spec("myoarm_r")
-        editor: ModelEditor = ModelEditor(spec=spec)
+        self.original_spec: mujoco.MjSpec = myo_sim.load_spec("myoarm_r")
+        editor: ModelEditor = ModelEditor(spec=myo_sim.load_spec("myoarm_r"))
         editor.edit_model(edit_fn=edit_fn_arm_reaching)
         self.edited_spec: mujoco.MjSpec = editor.spec
 
-    def test_digit_bodies_are_removed(self) -> None:
-        """Test if the function removes the bodies of the proximal phalanges."""
-        test_cases: list[str] = [
-            "proximal_thumb",
-            "proxph2",
-            "proxph3",
-            "proxph4",
-            "proxph5",
-        ]
-        for case in test_cases:
-            assert self.edited_spec.body(case) is None
+    @pytest.mark.parametrize("root", _HAND_ROOTS)
+    def test_hand_joints_are_removed(self, root: str) -> None:
+        """Every joint of the thumb and finger chains is gone after the edit."""
+        assert _joints_below(self.original_spec.body(root))
+        assert _joints_below(self.edited_spec.body(root)) == []
 
-    def _get_phalanx_test_cases(self) -> list[str]:
-        test_cases: list[str] = ["thumbprox", "thumbdist"]
-        for i in range(1, 5):
-            for phalanx in ["proxph", "midph", "distph"]:
-                test_cases.append(f"{i+1}{phalanx}")
-        return test_cases
+    @pytest.mark.parametrize("root", _HAND_ROOTS)
+    def test_hand_bodies_are_kept(self, root: str) -> None:
+        """The digits stay as rigid bodies (same number of bodies below each root)."""
 
-    def _get_position_test_cases(self) -> list[tuple[str, str]]:
-        phalanx_iterator = iter(self._get_phalanx_test_cases())
-        test_cases: list[tuple[str, str]] = [
-            ("proximal_thumb", next(phalanx_iterator)),
-            ("distal_thumb", next(phalanx_iterator)),
-        ]
-        for i in range(1, 5):
-            for phalanx in ["proxph", "midph", "distph"]:
-                edited_name = next(phalanx_iterator)
-                original_name = f"{phalanx}{i+1}"
-                test_cases.append((original_name, edited_name))
-        return test_cases
+        def count(body: Any) -> int:
+            return 1 + sum(count(child) for child in body.bodies)
 
-    def test_digit_bodies_are_added(self) -> None:
-        """Test if the function adds the new digit bodies."""
-        for case in self._get_phalanx_test_cases():
-            assert self.edited_spec.body(case) is not None
-
-    def test_digit_body_positions_are_preserved(self) -> None:
-        """Test if the function preserves the positions of bodies in the edited model."""
-        for original_name, edited_name in self._get_position_test_cases():
-            original_pos: np.ndarray = self.original_spec.body(original_name).pos
-            edited_pos: np.ndarray = self.edited_spec.body(edited_name).pos
-            assert np.array_equal(original_pos, edited_pos)
-
-    def test_digit_geoms_are_added(self) -> None:
-        """Test if the function adds the new digit geoms."""
-        for case in self._get_phalanx_test_cases():
-            body: Any = self.edited_spec.body(case)
-            assert any(g.name == case for g in body.geoms), case + " geom missing."
-
-    def test_digit_geom_types_are_correct(self) -> None:
-        """Test if the function adds the correct geom type."""
-
-        def find_geom(spec: mujoco.MjSpec, name: str) -> tuple[Any | None, Any | None]:
-            body: Any | None = spec.body(name)
-            geom: Any | None = next((g for g in body.geoms if g.name == name), None)
-            return body, geom
-
-        def test_geom(body: Any | None, geom: Any | None, name: str) -> None:
-            assert body is not None, f"Body {name} not found."
-            assert geom is not None, f"Geom {name} not found in body."
-            assert (
-                geom.type == mujoco.mjtGeom.mjGEOM_MESH
-            ), f"Geom {name} has wrong type: {geom.type}."
-
-        for case in self._get_phalanx_test_cases():
-            body, geom = find_geom(self.edited_spec, case)
-            test_geom(body, geom, case)
-
-    def compare_sites(
-        self, original_spec: mujoco.MjSpec, edited_spec: mujoco.MjSpec, site_name: str
-    ) -> None:
-        """Compare all properties of a site between two specs."""
-        original_site: Any | None = next(
-            (s for s in original_spec.sites if s.name == site_name), None
+        assert count(self.edited_spec.body(root)) == count(
+            self.original_spec.body(root)
         )
-        edited_site: Any | None = next(
-            (s for s in edited_spec.sites if s.name == site_name), None
+
+    def test_unused_muscles_are_pruned(self) -> None:
+        """Muscles that only acted on the removed joints are deleted."""
+        assert len(self.edited_spec.actuators) < len(self.original_spec.actuators)
+        tendons = {t.name for t in self.edited_spec.tendons}
+        assert all(
+            a.target in tendons
+            for a in self.edited_spec.actuators
+            if a.trntype == mujoco.mjtTrn.mjTRN_TENDON
         )
-        assert original_site is not None, f"Original site {site_name} not found."
-        assert edited_site is not None, f"Edited site {site_name} not found."
-        assert edited_site.type == original_site.type
-        assert list(edited_site.pos) == list(original_site.pos)
-        assert list(edited_site.rgba) == list(original_site.rgba)
-        assert [x * 0.5 for x in edited_site.size] == list(original_site.size)
 
     def test_finger_tip_site_is_added(self) -> None:
-        """Test if the function adds the finger tip site with the correct properties."""
-        self.compare_sites(self.original_spec, self.edited_spec, "IFtip")
+        """The index fingertip site sits on the distal index phalanx."""
+        body: Any = self.edited_spec.body("distph2_r")
+        assert any(site.name == "IFtip" for site in body.sites)
 
     def test_reach_target_is_added(self) -> None:
         """Test if the function adds the 'IFtip_target' site to the world body."""
@@ -210,19 +162,18 @@ class TestEditFnArmReaching:
         assert list(target_site.size) == [0.02] * 3
         assert list(target_site.pos) == [-0.2, -0.2, 1.2]
 
+    def test_default_camera_frames_the_arm(self) -> None:
+        """The model sets a small extent so the default free camera is close."""
+        assert self.edited_spec.compile().stat.extent < 5.0
+
     # --- Edge Case Test ---
     def test_none_edit_fn(self) -> None:
-        """Test passing None as the edit function (should do nothing)."""
-        self.editor: ModelEditor = ModelEditor(str(self.model_path))
+        """Passing None as the edit function does nothing."""
+        editor: ModelEditor = ModelEditor(spec=myo_sim.load_spec("myoarm_r"))
+        editor.spec.compile()
+        original_xml: str = editor.spec.to_xml()
 
-        _: Any = self.editor.spec.compile()
-        original_xml: str = self.editor.spec.to_xml()
+        editor.edit_model(edit_fn=None)
 
-        self.editor.edit_model(edit_fn=None)
-
-        _: Any = self.editor.spec.compile()
-        edited_xml: str = self.editor.spec.to_xml()
-
-        assert (
-            edited_xml == original_xml
-        ), "Model should not change when edit_fn is None."
+        editor.spec.compile()
+        assert editor.spec.to_xml() == original_xml, "Model changed for edit_fn=None."

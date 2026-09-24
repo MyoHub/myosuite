@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 """End-to-end test for notebook-style policy loading, motion tracking, and frame saving.
 
-Mirrors the logic in ``tutorials/MuscleMimic_Fullbody_Policy_Trajectory.ipynb``.
+Mirrors the logic in ``tutorials/5.1_Fullbody_Load_Policy.ipynb``.
 
 Requires:
     - ``musclemimic_models``: full-body MJCF model package

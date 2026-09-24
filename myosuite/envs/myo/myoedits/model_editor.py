@@ -11,10 +11,28 @@ import mujoco
 
 
 class ModelEditor:
-    def __init__(self, model_path: str) -> None:
-        """Load the MuJoCo model using mjspec."""
-        self.spec = mujoco.MjSpec.from_file(str(model_path))
-        self._edited_model_path = Path(str(model_path)[:-4])
+    def __init__(
+        self, model_path: str | None = None, spec: mujoco.MjSpec | None = None
+    ) -> None:
+        """Load the MuJoCo model using mjspec.
+
+        Args:
+            model_path: XML file to load. Exactly one of ``model_path`` and ``spec``
+                must be given.
+            spec: Already-built spec to edit in place (edited XML files are then
+                written to the working directory as ``model<timestamp>_edited.xml``).
+
+        Raises:
+            ValueError: If both or neither of ``model_path`` and ``spec`` are given.
+        """
+        if (model_path is None) == (spec is None):
+            raise ValueError("Pass exactly one of model_path and spec.")
+        if spec is None:
+            spec = mujoco.MjSpec.from_file(str(model_path))
+            self._edited_model_path = Path(str(model_path)[:-4])
+        else:
+            self._edited_model_path = Path("model")
+        self.spec = spec
 
     def edit_model(
         self, edit_fn: Callable[[mujoco.MjSpec], None] | None = None
