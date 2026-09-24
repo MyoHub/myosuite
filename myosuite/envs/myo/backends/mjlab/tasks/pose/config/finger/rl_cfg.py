@@ -7,4 +7,4 @@ from myosuite.envs.myo.backends.mjlab.tasks.rl import myo_ppo_runner_cfg
 
 def finger_pose_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     """PPO config for the finger pose tasks."""
-    return myo_ppo_runner_cfg("myo_finger_pose", hidden_dims=(128, 128))
+    return myo_ppo_runner_cfg("myo_finger_pose")

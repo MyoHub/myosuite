@@ -31,6 +31,10 @@ class TrainConfig:
     video_length: int = 200
     video_interval: int = 2000
     enable_nan_guard: bool = False
+    reward_scale: float = 1.0
+    """Multiplies the weight of every reward term (e.g. ``0.1`` shrinks returns and the
+    value loss, as in the myoInteract tasks). Applied on top of
+    ``--env.scale-rewards-by-dt``; ``1.0`` leaves the task's rewards unchanged."""
     torchrunx_log_dir: str | None = None
     wandb_run_path: str | None = None
     wandb_checkpoint_name: str | None = None
@@ -64,6 +68,11 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
 
     cfg.agent.seed = seed
     cfg.env.seed = seed
+    if cfg.reward_scale != 1.0:
+        for term in cfg.env.rewards.values():
+            term.weight *= cfg.reward_scale
+        if rank == 0:
+            print(f"[INFO] Reward weights scaled by {cfg.reward_scale}.")
 
     print(f"[INFO] Training with: device={device}, seed={seed}, rank={rank}")
 

@@ -78,7 +78,7 @@ task-specific); see ``--help`` for the full flag list, including
 
    ``--env.scene.num-envs`` defaults to **1** if you don't pass it. PPO's batch size
    per update is ``num_envs * num_steps_per_env``, so training with the default
-   collects only ``num_steps_per_env`` (24) transitions per iteration — the reward
+   collects only ``num_steps_per_env`` (24 by default) transitions per iteration — the reward
    curve is dominated by single-trajectory noise, the KL-adaptive learning-rate
    schedule sees noisy KL estimates and collapses toward its floor, and with little
    policy-gradient signal left to oppose it, the entropy bonus keeps inflating the
