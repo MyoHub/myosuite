@@ -17,10 +17,14 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
     root_list = ["firstmc_r", "secondmc_r", "thirdmc_r", "fourthmc_r", "fifthmc_r"]
     body_positions = {}
     IFtip_site = {}
+    # Resolve every metacarpal handle up front: MjSpec name lookups after
+    # deleting/adding bodies can return a different (index-shifted) body, which
+    # used to attach digits 3-5 to the index finger and the index to the wrong bone.
+    root_bodies = {root: spec.body(root) for root in root_list}
 
     for root in root_list:
         body_positions[root] = []
-        body = spec.body(root)
+        body = root_bodies[root]
         child_body = body.first_body()
         while child_body is not None:
             # geom.name (display name) and geom.meshname (the actual mesh
@@ -54,8 +58,7 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
 
     # Remove the digits
     for root in root_list:
-        root_body = spec.body(root)
-        child_body = root_body.first_body()
+        child_body = root_bodies[root].first_body()
         if child_body is not None:
             spec.delete(child_body)
 
@@ -64,7 +67,7 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
     # corresponding mesh names (e.g. "2proxph") to match the simplified
     # arm-reaching model convention expected by the arm-reaching tasks.
     for root in root_list:
-        body = spec.body(root)
+        body = root_bodies[root]
         for orig_body_name, pos, mesh_names in body_positions[root]:
             new_name = mesh_names[0][0] if mesh_names else orig_body_name
             new_body = body.add_body(name=new_name, pos=pos)
