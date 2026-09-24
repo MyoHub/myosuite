@@ -73,15 +73,14 @@ try:
     )
 
     bootstrap_myosuite_mjlab_registry()
-except (ImportError, RuntimeError, ValueError):
-    # Keep import side effects best-effort: task registration should not break
-    # package import on systems without a full mjlab installation.
+except ImportError:
+    # Package import must work on systems without a full mjlab installation.
     pass
 except Exception:
     import logging
 
     logging.getLogger(__name__).warning(
-        "myosuite mjlab backend: unexpected error during task registration",
+        "myosuite mjlab backend: error during task registration",
         exc_info=True,
     )
 

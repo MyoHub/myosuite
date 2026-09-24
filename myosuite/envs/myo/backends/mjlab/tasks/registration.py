@@ -6,12 +6,15 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 import gymnasium as gym
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.rl import RslRlOnPolicyRunnerCfg
 from mjlab.tasks.registry import register_mjlab_task
+
+_log = logging.getLogger(__name__)
 
 # Prefixes the CPU registry uses for muscle-condition variants of ``myo*`` ids.
 _CONDITION_PREFIXES = ("myoSarc", "myoFati", "myoReaf")
@@ -32,6 +35,9 @@ def register_cpu_twins(
 ) -> None:
     """Register each id in *env_ids* and its muscle-condition variants.
 
+    A task whose config cannot be built (e.g. a model asset missing from the
+    installed ``myo_sim``) is skipped with a warning so the others stay usable.
+
     Args:
         env_ids: Base CPU env ids.
         env_cfg_fn: ``env_cfg_fn(env_id, play=False)`` building the env config
@@ -40,9 +46,12 @@ def register_cpu_twins(
     """
     for base_id in env_ids:
         for env_id in (base_id, *condition_variants(base_id)):
+            try:
+                env_cfg = env_cfg_fn(env_id)
+                play_cfg = env_cfg_fn(env_id, play=True)
+            except Exception:  # noqa: BLE001  (any model/config failure)
+                _log.warning("mjlab: skipping %s (config failed)", env_id, exc_info=True)
+                continue
             register_mjlab_task(
-                task_id=env_id,
-                env_cfg=env_cfg_fn(env_id),
-                play_env_cfg=env_cfg_fn(env_id, play=True),
-                rl_cfg=rl_cfg_fn(),
+                task_id=env_id, env_cfg=env_cfg, play_env_cfg=play_cfg, rl_cfg=rl_cfg_fn()
             )

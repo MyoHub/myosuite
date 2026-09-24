@@ -62,7 +62,8 @@ class UniformVectorCommand(CommandTerm):
         u = torch.rand(len(env_ids), self._low.numel(), device=self.device)
         self._target[env_ids] = self._low + u * (self._high - self._low)
 
-    def _update_command(self, env_ids: torch.Tensor | None) -> None:
+    def _update_command(self, env_ids: torch.Tensor | None = None) -> None:
+        # Defaulted: mjlab < 1.6 calls _update_command() without env_ids.
         del env_ids  # Target is constant within an episode.
 
     def _update_metrics(self) -> None:
