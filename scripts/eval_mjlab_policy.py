@@ -45,7 +45,14 @@ class EvalConfig:
     backend: Literal["cpu", "mjlab"] = "cpu"
     """Roll out in the CPU gymnasium env or in the mjlab env."""
     episodes: int = 10
-    """Number of evaluation episodes."""
+    """CPU: number of evaluation episodes. mjlab: number of parallel envs when
+    neither ``--num-cols`` nor ``--num-rows`` is given (square-ish grid)."""
+    episodes_per_env: int = 1
+    """mjlab only: episodes recorded (and scored) for every parallel env; envs
+    auto-reset between episodes and the video runs until all have finished."""
+    show_scene: bool = False
+    """Also draw everything but the bone meshes (floor/world geoms, target
+    markers, tendons, wrapping primitives). Default: the skeleton only."""
     seed: int = 0
     """Seed of the first episode (CPU) / the mjlab env."""
     video: Path | None = None
@@ -115,6 +122,29 @@ def _grid_shape(cfg: EvalConfig) -> tuple[int, int]:
     return cfg.num_cols or 1, cfg.num_rows or 1
 
 
+_HIDDEN_GROUP = 5
+
+
+def _render_option(model: mujoco.MjModel, show_scene: bool) -> mujoco.MjvOption:
+    """Render option drawing only the skeleton unless *show_scene* is set.
+
+    Sites (target markers, ...) and tendons are switched off; world-body geoms
+    (floor, terrain, scenery) and non-mesh geoms (tendon-wrapping primitives,
+    contact shapes) are moved to a hidden geom group, leaving the bone meshes.
+    Only visual ``geom_group`` metadata is touched; physics is unaffected.
+    """
+    opt = mujoco.MjvOption()
+    if not show_scene:
+        opt.sitegroup[:] = 0
+        opt.flags[mujoco.mjtVisFlag.mjVIS_TENDON] = 0
+        hidden = (model.geom_bodyid == 0) | (
+            model.geom_type != mujoco.mjtGeom.mjGEOM_MESH
+        )
+        model.geom_group[hidden] = _HIDDEN_GROUP
+        opt.geomgroup[_HIDDEN_GROUP] = 0
+    return opt
+
+
 def _grid_offsets(cols: int, rows: int, spacing: float) -> np.ndarray:
     """World offsets ``(cols * rows, 3)`` of a centred grid, x = column, y = row."""
     n = cols * rows
@@ -149,7 +179,7 @@ class GridRenderer:
         self._renderer = mujoco.Renderer(
             self._model, height=cfg.height, width=cfg.width
         )
-        self._opt = mujoco.MjvOption()
+        self._opt = _render_option(self._model, cfg.show_scene)
         self._pert = mujoco.MjvPerturb()
         spacing = cfg.env_spacing or 0.8 * float(self._model.stat.extent)
         self._offsets = _grid_offsets(*_grid_shape(cfg), spacing)
@@ -223,6 +253,7 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path) -> None:
         model.vis.global_.offwidth = max(model.vis.global_.offwidth, cfg.width)
         model.vis.global_.offheight = max(model.vis.global_.offheight, cfg.height)
         renderer = mujoco.Renderer(model, height=cfg.height, width=cfg.width)
+        opt = _render_option(model, cfg.show_scene)
     returns, lengths, solved_end, frames = [], [], [], []
     for ep in range(cfg.episodes):
         obs, _ = env.reset(seed=cfg.seed + ep)
@@ -233,7 +264,7 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path) -> None:
             steps += 1
             done = terminated or truncated
             if renderer is not None:
-                renderer.update_scene(data, camera=camera)
+                renderer.update_scene(data, camera=camera, scene_option=opt)
                 frames.append(renderer.render())
         returns.append(total)
         lengths.append(steps)
@@ -272,21 +303,30 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
     )
 
     obs, _ = env.reset()
-    totals = torch.zeros(n_envs, device=device)
-    lengths = torch.zeros(n_envs, dtype=torch.long, device=device)
-    active = torch.ones(n_envs, dtype=torch.bool, device=device)
+    ep_return = torch.zeros(n_envs, device=device)
+    ep_length = torch.zeros(n_envs, dtype=torch.long, device=device)
+    episodes_done = torch.zeros(n_envs, dtype=torch.long, device=device)
+    returns: list[float] = []
+    lengths: list[int] = []
+    max_steps = cfg.episodes_per_env * env.max_episode_length
     with torch.no_grad():
-        for _ in range(env.max_episode_length):
+        for _ in range(max_steps):
             obs, rew, terminated, truncated, _ = env.step(policy(obs["actor"]))
             if grid is not None:
                 frames.append(grid.render())
-            totals += rew * active
-            lengths += active.long()
-            active &= ~(terminated | truncated)
-            if not active.any():
+            recording = episodes_done < cfg.episodes_per_env
+            ep_return += rew * recording
+            ep_length += recording.long()
+            finished = (terminated | truncated) & recording
+            returns += ep_return[finished].tolist()
+            lengths += ep_length[finished].tolist()
+            ep_return[finished] = 0.0
+            ep_length[finished] = 0
+            episodes_done += finished.long()
+            if bool((episodes_done >= cfg.episodes_per_env).all()):
                 break
     env.close()
-    _summary(totals.cpu().tolist(), lengths.cpu().tolist(), {})
+    _summary(returns, lengths, {})
     if grid is not None:
         import imageio
 
