@@ -36,11 +36,13 @@ def test_actor_camera_ignores_full_model_extent() -> None:
         env.reset(seed=0)
         model = env.unwrapped.model
         data = env.unwrapped.data
+        # The arm-reach model frames its own default camera (small extent); emulate
+        # the huge automatic extent of a full scene, which the camera must ignore.
+        model.stat.extent = 25.0
         actor_body_ids = _actor_body_ids(model)
         camera = _actor_camera(data, actor_body_ids)
 
         assert actor_body_ids.size > 20
-        assert model.stat.extent > 20.0
         assert camera.distance < 3.0
         assert 0.5 < camera.lookat[2] < 1.6
     finally:
