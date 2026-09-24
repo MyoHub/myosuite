@@ -14,6 +14,10 @@ Examples::
     python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN --backend mjlab
     python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN --video out.mp4
 
+    # mjlab backend: all parallel envs side by side in one video
+    python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN \\
+        --backend mjlab --episodes 9 --video grid.mp4 --width 1280 --height 720
+
     # Video from a model camera (name or id; -1 = free camera)
     python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN \\
         --video out.mp4 --camera side_view --width 1280 --height 720
@@ -45,21 +49,28 @@ class EvalConfig:
     seed: int = 0
     """Seed of the first episode (CPU) / the mjlab env."""
     video: Path | None = None
-    """CPU only: write an MP4 of the rollouts (offscreen rendering)."""
+    """Write an MP4 of the rollouts (offscreen rendering). With ``--backend mjlab``
+    the ``--episodes`` parallel envs are laid out on a grid in one shared scene."""
+    env_spacing: float | None = None
+    """mjlab video only: distance between neighbouring envs in metres
+    (default: 0.8 x the model's extent)."""
     camera: str = "-1"
-    """Video camera: a camera name from the model, or an id (``-1`` = free camera)."""
+    """Video camera: a camera name from the model, or an id (``-1`` = free camera).
+    The mjlab grid video always uses the free camera."""
     width: int = 640
     """Video frame width."""
     height: int = 480
     """Video frame height."""
     distance: float | None = None
-    """Free camera only: distance to the look-at point (default: MuJoCo's)."""
+    """Free camera only: distance to the look-at point (default: MuJoCo's; the
+    mjlab grid video scales it to fit the grid)."""
     azimuth: float | None = None
     """Free camera only: azimuth in degrees."""
     elevation: float | None = None
     """Free camera only: elevation in degrees."""
     lookat: tuple[float, float, float] | None = None
-    """Free camera only: look-at point in world coordinates."""
+    """Free camera only: look-at point in world coordinates (mjlab grid video:
+    relative to the grid centre)."""
 
 
 def _resolve_checkpoint(path: Path) -> Path:
@@ -87,6 +98,90 @@ def _video_camera(
         if value is not None:
             setattr(free, attr, value)
     return free
+
+
+def _grid_offsets(n: int, spacing: float) -> np.ndarray:
+    """World offsets ``(n, 3)`` placing *n* envs on a centred square-ish grid (xy)."""
+    cols = int(np.ceil(np.sqrt(n)))
+    idx = np.arange(n)
+    xy = np.stack([idx % cols, idx // cols], axis=1).astype(float)
+    xy -= (xy.max(axis=0)) / 2.0
+    return np.concatenate([xy * spacing, np.zeros((n, 1))], axis=1)
+
+
+class GridRenderer:
+    """Render every parallel mjlab env into one scene, laid out on a grid.
+
+    mjlab places fixed-base robots on top of each other (env origins only move
+    floating bases), so the scene is composed here: each env's state is copied
+    into a host ``MjData`` and its geoms are translated by the env's grid offset.
+
+    Args:
+        env: An mjlab env (``env.sim.mj_model`` is the host model).
+        cfg: Video options (size, camera, spacing).
+    """
+
+    def __init__(self, env, cfg: EvalConfig) -> None:
+        self._env = env
+        self._model = env.sim.mj_model
+        self._data = mujoco.MjData(self._model)
+        self._model.vis.global_.offwidth = max(
+            self._model.vis.global_.offwidth, cfg.width
+        )
+        self._model.vis.global_.offheight = max(
+            self._model.vis.global_.offheight, cfg.height
+        )
+        self._renderer = mujoco.Renderer(
+            self._model, height=cfg.height, width=cfg.width
+        )
+        self._opt = mujoco.MjvOption()
+        self._pert = mujoco.MjvPerturb()
+        spacing = cfg.env_spacing or 0.8 * float(self._model.stat.extent)
+        self._offsets = _grid_offsets(env.num_envs, spacing)
+        self._cam = mujoco.MjvCamera()
+        mujoco.mjv_defaultFreeCamera(self._model, self._cam)
+        grid_size = float(np.ptp(self._offsets, axis=0).max())
+        self._cam.distance = (
+            cfg.distance
+            if cfg.distance is not None
+            else self._cam.distance + 1.3 * grid_size
+        )
+        if cfg.azimuth is not None:
+            self._cam.azimuth = cfg.azimuth
+        if cfg.elevation is not None:
+            self._cam.elevation = cfg.elevation
+        self._cam.lookat[:] = self._cam.lookat + (cfg.lookat or (0.0, 0.0, 0.0))
+
+    def render(self) -> np.ndarray:
+        sim_data = self._env.sim.data
+        qpos = sim_data.qpos.cpu().numpy()
+        qvel = sim_data.qvel.cpu().numpy()
+        scene = self._renderer.scene
+        for env_id, offset in enumerate(self._offsets):
+            self._data.qpos[:] = qpos[env_id]
+            self._data.qvel[:] = qvel[env_id]
+            mujoco.mj_forward(self._model, self._data)
+            if env_id == 0:
+                self._renderer.update_scene(
+                    self._data, camera=self._cam, scene_option=self._opt
+                )
+                first = 0
+            else:
+                first = scene.ngeom
+                mujoco.mjv_addGeoms(
+                    self._model,
+                    self._data,
+                    self._opt,
+                    self._pert,
+                    mujoco.mjtCatBit.mjCAT_ALL.value,
+                    scene,
+                )
+            for i in range(first, scene.ngeom):
+                scene.geoms[i].pos[:] += offset
+        return self._renderer.render()
+
+    def close(self) -> None:
+        self._renderer.close()
 
 
 def _summary(returns: list[float], lengths: list[int], extra: dict[str, float]) -> None:
@@ -153,6 +248,8 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
     env_cfg.scene.num_envs = cfg.episodes
     env_cfg.seed = cfg.seed
     env = ManagerBasedRlEnv(cfg=env_cfg, device=device)
+    grid = GridRenderer(env, cfg) if cfg.video else None
+    frames = []
     policy = load_rslrl_policy(checkpoint, env.action_manager.total_action_dim).to(
         device
     )
@@ -164,6 +261,8 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
     with torch.no_grad():
         for _ in range(env.max_episode_length):
             obs, rew, terminated, truncated, _ = env.step(policy(obs["actor"]))
+            if grid is not None:
+                frames.append(grid.render())
             totals += rew * active
             lengths += active.long()
             active &= ~(terminated | truncated)
@@ -171,6 +270,12 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
                 break
     env.close()
     _summary(totals.cpu().tolist(), lengths.cpu().tolist(), {})
+    if grid is not None:
+        import imageio
+
+        grid.close()
+        imageio.mimsave(cfg.video, frames, fps=int(round(1.0 / env.step_dt)))
+        print(f"video:    {cfg.video}")
 
 
 def main() -> None:
