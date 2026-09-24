@@ -7,96 +7,42 @@
 import mujoco
 
 import myosuite.core.registry as _registry
-
+from myosuite.utils.spec_processing import recursive_immobilize
+import numpy as np
 
 # Arm Reaching ==============================
-# Thumb muscles (abductor pollicis longus, opponens pollicis) and the CMC joints
-# they actuate: removed by the arm-reaching edit, which keeps a rigid hand.
-_THUMB_MUSCLES = ("APL", "OP")
-_THUMB_JOINTS = ("cmc_flexion", "cmc_abduction")
-
-
-def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
+def edit_fn_arm_reaching(spec: mujoco.MjSpec, remove_wrist=False, min_moment=1e-10) -> None:
     # Get the positions of each body of each digit. Names carry myo_sim's
     # "_r" (right-side) suffix — this model is built via the "full_arm"
     # recipe (myo_sim.load_spec("myoarm_r")), not the legacy bare-named XML.
     root_list = ["firstmc_r", "secondmc_r", "thirdmc_r", "fourthmc_r", "fifthmc_r"]
-    body_positions = {}
-    IFtip_site = {}
-    # Resolve every metacarpal handle up front: MjSpec name lookups after
-    # deleting/adding bodies can return a different (index-shifted) body, which
-    # used to attach digits 3-5 to the index finger and the index to the wrong bone.
-    root_bodies = {root: spec.body(root) for root in root_list}
+
+    if remove_wrist:
+        root_list = ["lunate_r"]
+        spec.delete(spec.joint("pro_sup_r"))
 
     for root in root_list:
-        body_positions[root] = []
-        body = root_bodies[root]
-        child_body = body.first_body()
-        while child_body is not None:
-            # geom.name (display name) and geom.meshname (the actual mesh
-            # asset it references) can differ in myo_sim's naming — e.g.
-            # geom "thumbprox" points at mesh asset "thumbprox_r". Use
-            # geom.name for the rebuilt body/geom's own name (legacy
-            # convention) and geom.meshname for the actual asset reference.
-            mesh_names = [
-                (geom.name, geom.meshname)
-                for geom in child_body.geoms
-                if geom.type == mujoco.mjtGeom.mjGEOM_MESH
-            ]
-            body_positions[root].append(
-                (child_body.name, child_body.pos.copy(), mesh_names)
-            )
-            child_body = child_body.first_body()
+        recursive_immobilize(spec, spec.copy().compile(), spec.body(root), remove_sites=False)
 
-    # Get the properties of the IFtip site (myo_sim names it "IFtip_r"; the
-    # rebuilt copy below keeps the legacy bare "IFtip" name so
-    # target_reach_range={"IFtip": ...} keeps working unchanged).
-    site = spec.site("IFtip_r")
-    IFtip_site = {
-        attr: (
-            getattr(site, attr).copy()
-            if hasattr(getattr(site, attr), "copy")
-            else getattr(site, attr)
-        )
-        for attr in ["name", "size", "pos", "rgba"]
-    }
-    IFtip_site["name"] = "IFtip"
 
-    # Remove the digits
-    for root in root_list:
-        child_body = root_bodies[root].first_body()
-        if child_body is not None:
-            spec.delete(child_body)
+    _m = spec.compile()
+    _d = mujoco.MjData(_m)
+    mujoco.mj_step(_m, _d, nstep=100)
 
-    # Add back simplified digits using mesh names as body names.
-    # The original body names (e.g. "proxph2") are replaced by the
-    # corresponding mesh names (e.g. "2proxph") to match the simplified
-    # arm-reaching model convention expected by the arm-reaching tasks.
-    for root in root_list:
-        body = root_bodies[root]
-        for orig_body_name, pos, mesh_names in body_positions[root]:
-            new_name = mesh_names[0][0] if mesh_names else orig_body_name
-            new_body = body.add_body(name=new_name, pos=pos)
-            for geom_name, mesh_name in mesh_names:
-                new_body.add_geom(
-                    meshname=mesh_name, name=new_name, type=mujoco.mjtGeom.mjGEOM_MESH
-                )
-            if orig_body_name == "distph2_r":
-                new_body.add_site(
-                    name=IFtip_site["name"],
-                    size=IFtip_site["size"] * 2,
-                    pos=IFtip_site["pos"],
-                    rgba=IFtip_site["rgba"],
-                )
-            body = new_body
+    # Now that we immobilized fingers, som muscles have no effect and can be pruned. We check through the tendon
+    # moment arms to find them.
+    J_tendon = np.empty((_m.ntendon, _m.nv))
+    mujoco.mju_sparse2dense(J_tendon, _d.ten_J, _m.ten_J_rownnz, _m.ten_J_rowadr, _m.ten_J_colind)
 
-    # Freeze the thumb: remove its two remaining muscles (with their tendons) and
-    # the carpometacarpal joints they drove, so the whole hand is rigid.
-    for name in _THUMB_MUSCLES:
-        spec.delete(spec.actuator(name))
-        spec.delete(spec.tendon(f"{name}_tendon"))
-    for name in _THUMB_JOINTS:
-        spec.delete(spec.joint(name))
+    for t in spec.tendons:
+        if np.sum(np.abs(J_tendon[_m.tendon(t.name).id, :])) < min_moment:
+            for a in spec.actuators:
+
+                if a.target == t.name:
+                    spec.delete(a)
+            spec.delete(t)
+
+    spec.body("distph2_r").add_site(name="IFtip")
 
     # Add a reach target
     spec.body("world").add_site(

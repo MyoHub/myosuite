@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import mujoco
+import myo_sim
 import numpy as np
 import pytest
 
@@ -99,15 +100,8 @@ class TestEditFnArmReaching:
     """Unit tests for TestEditFnArmReaching and MuJoCo model editing functionality."""
 
     def setup_method(self) -> None:
-        self.model_path = _ASSETS / "arm" / "myoarm.xml"
-        if not self.model_path.exists():
-            pytest.skip(f"Test model {self.model_path} not found")
-
-        self.original_spec: mujoco.MjSpec = mujoco.MjSpec.from_file(
-            str(self.model_path)
-        )
-
-        editor: ModelEditor = ModelEditor(str(self.model_path))
+        spec = myo_sim.load_spec("myoarm_r")
+        editor: ModelEditor = ModelEditor(spec=spec)
         editor.edit_model(edit_fn=edit_fn_arm_reaching)
         self.edited_spec: mujoco.MjSpec = editor.spec
 

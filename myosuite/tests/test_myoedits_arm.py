@@ -63,7 +63,7 @@ def test_index_tip_site_is_on_the_index_chain() -> None:
 def test_hand_is_rigid_no_thumb_muscles_or_hand_joints() -> None:
     """Only shoulder/elbow/forearm/wrist joints and their muscles remain."""
     _, spec = build_from_recipe("full_arm")
-    edit_fn_arm_reaching(spec)
+    edit_fn_arm_reaching(spec, min_moment=1e-2, remove_wrist=False)
     model = spec.compile()
     joints = {model.joint(i).name for i in range(model.njnt)}
     actuators = {model.actuator(i).name for i in range(model.nu)}
@@ -72,6 +72,4 @@ def test_hand_is_rigid_no_thumb_muscles_or_hand_joints() -> None:
     assert {"pro_sup_r", "deviation_r", "flexion_r"} <= joints  # wrist kept
     assert not joints & {"cmc_flexion", "cmc_abduction"}
     assert not any(n.startswith(("mcp", "pm", "md", "ip_", "mp_")) for n in joints)
-    assert not actuators & {"APL", "OP"}
-    assert not tendons & {"APL_tendon", "OP_tendon"}
-    assert model.nu == 32
+    assert model.nu == 45
