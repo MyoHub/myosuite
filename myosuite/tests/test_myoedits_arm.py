@@ -66,8 +66,8 @@ def test_hand_is_rigid_no_thumb_muscles_or_hand_joints() -> None:
     edit_fn_arm_reaching(spec, min_moment=1e-2, remove_wrist=False)
     model = spec.compile()
     joints = {model.joint(i).name for i in range(model.njnt)}
-    actuators = {model.actuator(i).name for i in range(model.nu)}
-    tendons = {model.tendon(i).name for i in range(model.ntendon)}
+    {model.actuator(i).name for i in range(model.nu)}
+    {model.tendon(i).name for i in range(model.ntendon)}
 
     assert {"pro_sup_r", "deviation_r", "flexion_r"} <= joints  # wrist kept
     assert not joints & {"cmc_flexion", "cmc_abduction"}

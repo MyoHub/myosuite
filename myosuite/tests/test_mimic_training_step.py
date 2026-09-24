@@ -50,7 +50,9 @@ pytestmark = pytest.mark.skipif(
 
 
 # ``tutorials/files/5.2`` is not a package (dots in the name): put it on sys.path.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "tutorials" / "files/5.2"))
+sys.path.insert(
+    0, str(pathlib.Path(__file__).resolve().parents[2] / "tutorials" / "files/5.2")
+)
 
 
 def test_ppo_loss_decreases():

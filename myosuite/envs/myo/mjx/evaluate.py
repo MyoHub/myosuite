@@ -1,13 +1,10 @@
-import json
-import os
-
 import jax
 import jax.numpy as jp
-from ml_collections import ConfigDict
 from myosuite.envs.myo.mjx.train_jax_ppo import load_env_and_network_factory
 from myosuite.envs.myo.mjx.wrapper import _maybe_wrap_env_for_evaluation
 from mujoco_playground import wrapper
 from brax.training.agents.ppo import train as ppo
+
 
 def find_first_one(arr):
     # Returns the index of first 1, or len(arr) if no 1 exists
@@ -35,7 +32,9 @@ def evaluate_non_vision_completion_times(
     for ii in range(ep_length):
         eval_key, key = jax.random.split(eval_key)
         if predefined_actions:
-            ctrl, _ = jit_inference_fn(state.obs, jax.random.split(key, n_episodes), state.data.time)
+            ctrl, _ = jit_inference_fn(
+                state.obs, jax.random.split(key, n_episodes), state.data.time
+            )
         else:
             ctrl, _ = jit_inference_fn(state.obs, jax.random.split(key, n_episodes))
         state = jit_step(state, ctrl)
@@ -86,15 +85,16 @@ def evaluate_non_vision_completion_times(
         * episode_mask,
         axis=1,
     )
-    unvmap = lambda x, i: jax.tree.map(lambda x: x[i], x)
+
+    def unvmap(x, i):
+        return jax.tree.map(lambda x: x[i], x)
+
     states = [unvmap(state, i) for i in range(n_episodes)]
     all_completion_times = []
     all_out_of_bounds_nsteps = []
     all_states = []
-    for ct, oob, st in zip(
-        completion_times, out_of_bounds_nsteps, states
-    ):
-        if (ct < ep_length):
+    for ct, oob, st in zip(completion_times, out_of_bounds_nsteps, states):
+        if ct < ep_length:
             all_completion_times.append(ct * eval_env.dt)
             all_out_of_bounds_nsteps.append(oob)
             all_states.append(st)
@@ -117,13 +117,18 @@ def evaluate_non_vision(
     state = jit_reset(
         reset_keys, eval_id=jp.arange(n_episodes, dtype=jp.int32), **reset_info_kwargs
     )
-    unvmap = lambda x, i: jax.tree.map(lambda x: x[i], x)
+
+    def unvmap(x, i):
+        return jax.tree.map(lambda x: x[i], x)
+
     dones = jp.zeros(n_episodes)
     rollouts = {i: [] for i in range(n_episodes)}
     for ii in range(ep_length):
         eval_key, key = jax.random.split(eval_key)
         if predefined_actions:
-            ctrl, _ = jit_inference_fn(state.obs, jax.random.split(key, n_episodes), state.data.time)
+            ctrl, _ = jit_inference_fn(
+                state.obs, jax.random.split(key, n_episodes), state.data.time
+            )
         else:
             ctrl, _ = jit_inference_fn(state.obs, jax.random.split(key, n_episodes))
         state = jit_step(state, ctrl)
@@ -163,8 +168,13 @@ def evaluate_vision(
     pixel_key = [key for key in state.obs.keys() if "pixels" in key]
     assert len(pixel_key) == 1, "Only one pixel key is supported"
     pixel_key = pixel_key[0]
-    unvmap_upto = lambda x, i: jax.tree.map(lambda x: x[:i], x)
-    unvmap = lambda x, i: jax.tree.map(lambda x: x[i], x)
+
+    def unvmap_upto(x, i):
+        return jax.tree.map(lambda x: x[:i], x)
+
+    def unvmap(x, i):
+        return jax.tree.map(lambda x: x[i], x)
+
     extract_states = unvmap_upto(state, n_episodes)
     dones = jp.zeros(n_episodes)
     videos = {i: [] for i in range(n_episodes)}
@@ -229,7 +239,7 @@ def evaluate_policy(
             env_name is not None
         ), "If checkpoint path is provided, env name must also be passed as 'env_name'"
         assert (
-            predefined_actions == False
+            predefined_actions is False
         ), "If checkpoint path is provided, 'predefined_actions' must be False"
         # from myosuite.train.utils.train import train_or_load_checkpoint
 

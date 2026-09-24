@@ -17,7 +17,9 @@ _REACH_CAMERA_EXTENT = 1.5
 _REACH_CAMERA_CENTER = [-0.17, -0.3, 1.2]
 
 
-def edit_fn_arm_reaching(spec: mujoco.MjSpec, remove_wrist=False, min_moment=1e-10) -> None:
+def edit_fn_arm_reaching(
+    spec: mujoco.MjSpec, remove_wrist=False, min_moment=1e-10
+) -> None:
     spec.stat.extent = _REACH_CAMERA_EXTENT
     spec.stat.center = _REACH_CAMERA_CENTER
     # Get the positions of each body of each digit. Names carry myo_sim's
@@ -30,8 +32,9 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec, remove_wrist=False, min_moment=1e-
         spec.delete(spec.joint("pro_sup_r"))
 
     for root in root_list:
-        recursive_immobilize(spec, spec.copy().compile(), spec.body(root), remove_sites=False)
-
+        recursive_immobilize(
+            spec, spec.copy().compile(), spec.body(root), remove_sites=False
+        )
 
     _m = spec.compile()
     _d = mujoco.MjData(_m)
@@ -40,12 +43,13 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec, remove_wrist=False, min_moment=1e-
     # Now that we immobilized fingers, som muscles have no effect and can be pruned. We check through the tendon
     # moment arms to find them.
     J_tendon = np.empty((_m.ntendon, _m.nv))
-    mujoco.mju_sparse2dense(J_tendon, _d.ten_J, _m.ten_J_rownnz, _m.ten_J_rowadr, _m.ten_J_colind)
+    mujoco.mju_sparse2dense(
+        J_tendon, _d.ten_J, _m.ten_J_rownnz, _m.ten_J_rowadr, _m.ten_J_colind
+    )
 
     for t in spec.tendons:
         if np.sum(np.abs(J_tendon[_m.tendon(t.name).id, :])) < min_moment:
             for a in spec.actuators:
-
                 if a.target == t.name:
                     spec.delete(a)
             spec.delete(t)

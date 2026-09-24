@@ -7,7 +7,12 @@ import mujoco
 
 
 def recursive_immobilize(
-    spec, temp_model, parent, remove_eqs=False, remove_actuators=False, remove_sites=True
+    spec,
+    temp_model,
+    parent,
+    remove_eqs=False,
+    remove_actuators=False,
+    remove_sites=True,
 ):
     removed_joint_ids = []
     if remove_sites:
@@ -28,7 +33,9 @@ def recursive_immobilize(
         spec.delete(j)
     for child in parent.bodies:
         removed_joint_ids.extend(
-            recursive_immobilize(spec, temp_model, child, remove_eqs, remove_actuators, remove_sites)
+            recursive_immobilize(
+                spec, temp_model, child, remove_eqs, remove_actuators, remove_sites
+            )
         )
     return removed_joint_ids
 
