@@ -102,13 +102,15 @@ class EvalConfig:
 
 
 def _resolve_checkpoint(path: Path) -> Path:
+    """A checkpoint file, or the newest ``model_<iter>.pt`` in a run directory."""
     if path.is_file():
         return path
     ckpts = sorted(
-        path.glob("model_*.pt"), key=lambda p: int(re.findall(r"\d+", p.stem)[-1])
+        (c for c in path.glob("model_*.pt") if re.fullmatch(r"model_\d+", c.stem)),
+        key=lambda c: int(c.stem.split("_")[-1]),
     )
     if not ckpts:
-        raise FileNotFoundError(f"No model_*.pt in {path}")
+        raise FileNotFoundError(f"No model_<iter>.pt in {path}")
     return ckpts[-1]
 
 
@@ -162,6 +164,14 @@ TARGET_SITE_RADIUS: float | None = 0.05
 # regular free camera (front view, elevated).
 SWEEP_START = {"azimuth": 35.0, "elevation": -6.0, "distance_scale": 0.7}
 DEFAULT_AZIMUTH, DEFAULT_ELEVATION = 90.0, -35.0
+
+# Fog (floor fading into the horizon), as multiples of the camera distance. The
+# Renderer bakes in fog colour, distances and extent when it is created. MuJoCo
+# scales fog distances (and clip planes) by ``model.stat.extent``, which is huge
+# for models that include the scene (arm reach: 25 m), so GridRenderer overrides
+# the extent with a camera-based value instead of using the model's.
+FOG_RGBA = (1.0, 1.0, 1.0, 1.0)
+FOG_START, FOG_END, HORIZON = 0.7, 2.0, 5.0
 
 # Floor look (RGBA): light plate with darker grid lines every FLOOR_CELL metres.
 FLOOR_RGBA = (0.94, 0.94, 0.94, 1.0)
@@ -245,7 +255,8 @@ def _add_floor(
     """Append a light floor plate with a grid, white sky walls and a shadow light.
 
     The plate and walls are far beyond the fog end, so they fade into a white
-    horizon and sky; grid lines only cover ``half_extent`` around the origin.
+    horizon and sky. Grid lines only cover ``half_extent`` around the origin:
+    thin coplanar lines far away z-fight (speckle), and are fogged out anyway.
     """
     eye = np.eye(3).ravel()
 
@@ -314,26 +325,9 @@ class GridRenderer:
         model.vis.global_.offheight = max(model.vis.global_.offheight, cfg.height)
         self._opt = _render_option(model, cfg.show_scene, cfg.show_tendons)
         if cfg.floor:
-            model.vis.rgba.fog[:] = (1.0, 1.0, 1.0, 1.0)
-            model.vis.rgba.haze[:] = (1.0, 1.0, 1.0, 1.0)
-            model.vis.map.zfar = max(model.vis.map.zfar, 300.0)  # sky walls are far
-        # The scene holds every env's geoms (bones, and tendon/site geoms when
-        # enabled): size the buffer to the grid instead of MuJoCo's default 10000.
-        probe = mujoco.MjvScene(model, maxgeom=10000)
-        mujoco.mj_forward(model, self._data)
-        mujoco.mjv_addGeoms(
-            model,
-            self._data,
-            self._opt,
-            mujoco.MjvPerturb(),
-            mujoco.mjtCatBit.mjCAT_ALL.value,
-            probe,
-        )
-        floor_geoms = 2 * 40 * 2 * 6 + 10 if cfg.floor else 0  # plate + grid lines
-        max_geom = max(10000, int(1.5 * probe.ngeom * n_envs) + 1000 + floor_geoms)
-        self._renderer = mujoco.Renderer(
-            model, height=cfg.height, width=cfg.width, max_geom=max_geom
-        )
+            model.vis.rgba.fog[:] = FOG_RGBA
+            model.vis.rgba.haze[:] = FOG_RGBA
+            model.vis.quality.offsamples = 8  # anti-alias thin far grid lines
         self._pert = mujoco.MjvPerturb()
         center, size, floor_z = _visible_bounds(model, self._opt)
         spacing = cfg.env_spacing or 1.36 * size
@@ -363,19 +357,41 @@ class GridRenderer:
                 end = (self._cam.azimuth, self._cam.elevation, self._cam.distance)
                 self._sweep = (SWEEP_START, end)
         if cfg.floor:
-            # Fog fades the floor to white beyond the grid (the fog colour itself
-            # is set before the Renderer is created, which bakes it in).
+            # Fog distances are in units of the extent (MuJoCo multiplies them by it).
             reach = (
                 self._cam.distance if isinstance(self._cam, mujoco.MjvCamera) else 4.0
             )
-            model.vis.map.fogstart, model.vis.map.fogend = 2.5 * reach, 5.0 * reach
-            self._horizon = 7.0 * reach  # plate / sky walls, fully fogged
-            self._floor_half = 12.0 * max(
-                size, float(np.ptp(self._offsets, axis=0).max())
-            )
-            self._floor_half = float(
-                np.ceil(self._floor_half / FLOOR_CELL) * FLOOR_CELL
-            )
+            extent = 1.5 * reach  # visual only: clip planes, shadow clip, fog scale
+            model.stat.extent = extent
+            model.vis.map.fogstart = FOG_START * reach / extent
+            model.vis.map.fogend = FOG_END * reach / extent
+            self._horizon = HORIZON * reach  # plate / sky walls, fully fogged
+            grid_size = float(np.ptp(self._offsets, axis=0).max())
+            half = 0.5 * grid_size + 2.0 * size  # grid lines only near the agents
+            self._floor_half = float(np.ceil(half / FLOOR_CELL) * FLOOR_CELL)
+
+        # Create the Renderer last: it bakes in the fog colour, fog distances and
+        # ``stat.extent`` set above (later changes to them are ignored).
+        # The scene holds every env's geoms (bones, and tendon/site geoms when
+        # enabled): size the buffer to the grid instead of MuJoCo's default 10000.
+        probe = mujoco.MjvScene(model, maxgeom=10000)
+        mujoco.mj_forward(model, self._data)
+        mujoco.mjv_addGeoms(
+            model,
+            self._data,
+            self._opt,
+            mujoco.MjvPerturb(),
+            mujoco.mjtCatBit.mjCAT_ALL.value,
+            probe,
+        )
+        # plate + sky walls + light + grid lines (two directions)
+        floor_geoms = (
+            2 * (int(2 * self._floor_half / FLOOR_CELL) + 2) + 10 if cfg.floor else 0
+        )
+        max_geom = max(10000, int(1.5 * probe.ngeom * n_envs) + 1000 + floor_geoms)
+        self._renderer = mujoco.Renderer(
+            model, height=cfg.height, width=cfg.width, max_geom=max_geom
+        )
 
     def _sweep_camera(self) -> None:
         """Ease the free camera from the low oblique start to its end pose."""
@@ -467,7 +483,9 @@ def _cpu_state_fn(envs):
 
 
 def _summary(
-    returns: list[float], lengths: list[int], successes: list[float] | None
+    returns: list[float],
+    lengths: list[int],
+    successes: list[float] | None,
 ) -> None:
     """Print return/length and the success rate (``n/a`` if the env has none)."""
     print(f"episodes: {len(returns)}")
