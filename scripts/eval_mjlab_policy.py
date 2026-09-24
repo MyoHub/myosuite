@@ -16,7 +16,7 @@ Examples::
 
     # mjlab backend: all parallel envs side by side in one video
     python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN \\
-        --backend mjlab --episodes 9 --video grid.mp4 --width 1280 --height 720
+        --backend mjlab --num-cols 4 --num-rows 2 --video grid.mp4 --width 1280 --height 720
 
     # Video from a model camera (name or id; -1 = free camera)
     python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN \\
@@ -50,7 +50,14 @@ class EvalConfig:
     """Seed of the first episode (CPU) / the mjlab env."""
     video: Path | None = None
     """Write an MP4 of the rollouts (offscreen rendering). With ``--backend mjlab``
-    the ``--episodes`` parallel envs are laid out on a grid in one shared scene."""
+    the parallel envs (``--num-cols`` x ``--num-rows``) are laid out on a grid in
+    one shared scene."""
+    num_cols: int | None = None
+    """mjlab only: parallel envs along the horizontal axis of the video grid.
+    Setting ``--num-cols`` and/or ``--num-rows`` runs ``cols * rows`` envs
+    (a missing one defaults to 1) instead of ``--episodes`` (square-ish grid)."""
+    num_rows: int | None = None
+    """mjlab only: parallel envs along the vertical (depth) axis of the grid."""
     env_spacing: float | None = None
     """mjlab video only: distance between neighbouring envs in metres
     (default: 0.8 x the model's extent)."""
@@ -100,9 +107,17 @@ def _video_camera(
     return free
 
 
-def _grid_offsets(n: int, spacing: float) -> np.ndarray:
-    """World offsets ``(n, 3)`` placing *n* envs on a centred square-ish grid (xy)."""
-    cols = int(np.ceil(np.sqrt(n)))
+def _grid_shape(cfg: EvalConfig) -> tuple[int, int]:
+    """``(cols, rows)`` of the mjlab env grid; square-ish for ``--episodes`` by default."""
+    if cfg.num_cols is None and cfg.num_rows is None:
+        cols = int(np.ceil(np.sqrt(cfg.episodes)))
+        return cols, int(np.ceil(cfg.episodes / cols))
+    return cfg.num_cols or 1, cfg.num_rows or 1
+
+
+def _grid_offsets(cols: int, rows: int, spacing: float) -> np.ndarray:
+    """World offsets ``(cols * rows, 3)`` of a centred grid, x = column, y = row."""
+    n = cols * rows
     idx = np.arange(n)
     xy = np.stack([idx % cols, idx // cols], axis=1).astype(float)
     xy -= (xy.max(axis=0)) / 2.0
@@ -137,7 +152,7 @@ class GridRenderer:
         self._opt = mujoco.MjvOption()
         self._pert = mujoco.MjvPerturb()
         spacing = cfg.env_spacing or 0.8 * float(self._model.stat.extent)
-        self._offsets = _grid_offsets(env.num_envs, spacing)
+        self._offsets = _grid_offsets(*_grid_shape(cfg), spacing)
         self._cam = mujoco.MjvCamera()
         mujoco.mjv_defaultFreeCamera(self._model, self._cam)
         grid_size = float(np.ptp(self._offsets, axis=0).max())
@@ -245,7 +260,9 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
     os.environ.setdefault("MUJOCO_GL", "egl")
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     env_cfg = load_env_cfg(cfg.env_id, play=True)
-    env_cfg.scene.num_envs = cfg.episodes
+    cols, rows = _grid_shape(cfg)
+    n_envs = cols * rows
+    env_cfg.scene.num_envs = n_envs
     env_cfg.seed = cfg.seed
     env = ManagerBasedRlEnv(cfg=env_cfg, device=device)
     grid = GridRenderer(env, cfg) if cfg.video else None
@@ -255,9 +272,9 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
     )
 
     obs, _ = env.reset()
-    totals = torch.zeros(cfg.episodes, device=device)
-    lengths = torch.zeros(cfg.episodes, dtype=torch.long, device=device)
-    active = torch.ones(cfg.episodes, dtype=torch.bool, device=device)
+    totals = torch.zeros(n_envs, device=device)
+    lengths = torch.zeros(n_envs, dtype=torch.long, device=device)
+    active = torch.ones(n_envs, dtype=torch.bool, device=device)
     with torch.no_grad():
         for _ in range(env.max_episode_length):
             obs, rew, terminated, truncated, _ = env.step(policy(obs["actor"]))
