@@ -2488,7 +2488,7 @@ def default_mimic_clip_on_policy_runner_cfg(**kwargs) -> Any:
     """Return mjlab PPO runner defaults tuned for clip-mode MuscleMimic.
 
     Hyperparameters and network width match the spirit of
-    ``tutorials/mimic/train_mimic.py`` (256×4 MLP, lower LR, lower entropy,
+    ``tutorials/5.2_files/train_mimic.py`` (256×4 MLP, lower LR, lower entropy,
     fixed LR schedule, observation normalization, advantage norm per
     minibatch) while remaining compatible with ``MjlabOnPolicyRunner``.
 

@@ -126,9 +126,9 @@ A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract]
 
 ## Tutorials
 
-See [`tutorials/ReadMe.md`](tutorials/ReadMe.md). Start with `1_Get_Started.ipynb` then `4c_Train_SB_policy.ipynb`.
+See [`tutorials/README.md`](tutorials/README.md). Start with `1.1_Get_Started.ipynb` then `2.1_Train_SB3_Policy.ipynb`.
 
-GPU walk-through: [`tutorials/directional_leg_gpu_training.py`](tutorials/directional_leg_gpu_training.py).
+GPU walk-through: [`tutorials/2.2_Train_MjLab_Policy.ipynb`](tutorials/2.2_Train_MjLab_Policy.ipynb).
 
 Full-body MuscleMimic playback and training: [`myosuite/integrations/musclemimic/README.md`](myosuite/integrations/musclemimic/README.md).
 

@@ -153,7 +153,7 @@ This example implements a Ia-driven stretch reflex for the elbow:
    env.close()
 
 A more biologically realistic reflex controller (including co-activation and
-reciprocal inhibition) is in ``tutorials/4b_reflex/``.
+reciprocal inhibition) is in ``tutorials/2.5_files/``.
 See that notebook for playback of the published Song-Geyer walking gains.
 
 
@@ -188,7 +188,7 @@ which tracks active (MA), fatigued (MF), and resting (MR) motor unit pools:
    print(f"Activation drift: {act[0].mean():.3f} → {act[-1].mean():.3f}")
 
 For detailed fatigue dynamics and recovery curves, see
-``tutorials/7_Fatigue_Modeling.ipynb``.
+``tutorials/4.2_Fatigue_Modeling.ipynb``.
 
 
 Sarcopenia (Age-Related Muscle Loss)
@@ -238,7 +238,7 @@ Computed Muscle Control
 ------------------------
 
 For feedforward control (driving muscles to reproduce a target motion without
-RL), see ``tutorials/9_Computed_muscle_control.ipynb``.
+RL), see ``tutorials/3.4_Computed_Muscle_Control.ipynb``.
 This tutorial computes muscle excitations that minimise a muscular effort
 cost while tracking a joint-angle trajectory.
 
@@ -283,8 +283,8 @@ Recording a Full Neural-Motor Trace
 Next Steps
 ----------
 
-* ``tutorials/7_Fatigue_Modeling.ipynb`` — cumulative fatigue dynamics
-* ``tutorials/9_Computed_muscle_control.ipynb`` — feedforward CMC
-* ``tutorials/4b_reflex/`` — Song-Geyer reflex walking baseline
+* ``tutorials/4.2_Fatigue_Modeling.ipynb`` — cumulative fatigue dynamics
+* ``tutorials/3.4_Computed_Muscle_Control.ipynb`` — feedforward CMC
+* ``tutorials/2.5_files/`` — Song-Geyer reflex walking baseline
 * :doc:`quickstart_biomechanics` — kinematics and kinetics extraction
 * :doc:`quickstart_rehabilitation` — clinical applications and assistive devices

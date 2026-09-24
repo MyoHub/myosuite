@@ -297,7 +297,7 @@ Every other challenge ID below is CPU-only.
   about Z) through `two_agent_standing_qpos()`. The render above reflects the
   fix: the two agents are now separated by `config.agent_separation_m` (2 m)
   and facing each other.
-  Separately, the tutorial `tutorials/11d_MuscleMimic_Fullbody_directional_locomotion.ipynb`
+  Separately, the tutorial `tutorials/5.4_Fullbody_Directional_Locomotion.ipynb`
   documents a "single shared policy" data-collection pipeline for this task that
   has **no working checkpoint** — its data-collection cell is currently a stub.
 

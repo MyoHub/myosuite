@@ -58,7 +58,7 @@ Training (CPU)
    model.learn(total_timesteps=100_000)
    model.save("ppo_elbow_pose")
 
-Walkthrough: ``tutorials/4c_Train_SB_policy.ipynb``.
+Walkthrough: ``tutorials/2.1_Train_SB3_Policy.ipynb``.
 
 
 Training (GPU)
@@ -86,7 +86,7 @@ task-specific); see ``--help`` for the full flag list, including
    ``--env.scene.num-envs`` explicitly — 1024–4096, depending on GPU memory and
    model size (larger musculoskeletal models need more memory per env).
 
-Walk-through: ``tutorials/directional_leg_gpu_training.py``.
+Walk-through: ``tutorials/2.2_Train_MjLab_Policy.ipynb``.
 
 Resuming a run
 ^^^^^^^^^^^^^^^
@@ -138,7 +138,7 @@ Pathological prefixes: ``myoSarc…`` (sarcopenia), ``myoFati…`` (fatigue),
 ``myoReaf…`` (tendon transfer, hands). See :doc:`environments`.
 
 Pretrained NPG trees under ``myosuite/agents/`` are not shipped. Train your own
-policy, or see ``tutorials/2_Load_policy.ipynb`` (falls back to a random policy
+policy, or see ``tutorials/1.2_Load_Policy.ipynb`` (falls back to a random policy
 when weights are missing).
 
 

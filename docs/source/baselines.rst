@@ -4,9 +4,9 @@ RL baselines
 CPU
 ---
 
-* **Stable-Baselines3** — ``tutorials/4c_Train_SB_policy.ipynb`` (``pip install -e ".[rl]"``)
-* **DEP-RL** (walk) — ``tutorials/4a_deprl.ipynb`` (``pip install deprl``, Python ≤3.11.5)
-* **MyoReflex** — ``tutorials/4b_reflex/MyoSuite_MyoReflex_Walk.ipynb``
+* **Stable-Baselines3** — ``tutorials/2.1_Train_SB3_Policy.ipynb`` (``pip install -e ".[rl]"``)
+* **DEP-RL** (walk) — ``tutorials/2.4_DEP_RL.ipynb`` (``pip install deprl``, Python ≤3.11.5)
+* **MyoReflex** — ``tutorials/2.5_MyoReflex_Walk.ipynb``
 
 GPU
 ---

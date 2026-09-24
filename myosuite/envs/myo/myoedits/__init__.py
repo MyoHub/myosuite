@@ -11,7 +11,15 @@ from myosuite.utils.spec_processing import recursive_immobilize
 import numpy as np
 
 # Arm Reaching ==============================
+# Default free-camera framing of the arm-reach model (camera distance = 1.5 * extent).
+# The composed scene makes the automatic extent ~25 m, i.e. a camera far from the body.
+_REACH_CAMERA_EXTENT = 1.5
+_REACH_CAMERA_CENTER = [-0.17, -0.3, 1.2]
+
+
 def edit_fn_arm_reaching(spec: mujoco.MjSpec, remove_wrist=False, min_moment=1e-10) -> None:
+    spec.stat.extent = _REACH_CAMERA_EXTENT
+    spec.stat.center = _REACH_CAMERA_CENTER
     # Get the positions of each body of each digit. Names carry myo_sim's
     # "_r" (right-side) suffix — this model is built via the "full_arm"
     # recipe (myo_sim.load_spec("myoarm_r")), not the legacy bare-named XML.

@@ -133,7 +133,7 @@ Inverse Dynamics
 -----------------
 
 MyoSuite includes a tutorial for computing joint torques from motion data.
-See ``tutorials/6_Inverse_Dynamics.ipynb`` for a step-by-step walkthrough.
+See ``tutorials/3.3_Inverse_Dynamics.ipynb`` for a step-by-step walkthrough.
 
 The key MuJoCo function is ``mujoco.mj_inverse(model, data)``, which fills
 ``data.qfrc_inverse`` with the generalised forces required to produce the
@@ -152,20 +152,20 @@ observed acceleration:
 Inverse Kinematics
 -------------------
 
-See ``tutorials/8_inverse_kinematics.py`` for an IK solver built on top of
+See ``tutorials/3.2_Inverse_Kinematics.ipynb`` for an IK solver built on top of
 `MINK <https://github.com/kevinzakka/mink>`_:
 
 .. code-block:: bash
 
    pip install -e ".[examples]"   # install mink
-   python tutorials/8_inverse_kinematics.py
+   python tutorials/3.2_files/inverse_kinematics.py
 
 
 Replaying OpenSim Motion Files
 -------------------------------
 
 MyoSuite can play back ``*.mot`` files exported from OpenSim.
-See ``tutorials/10_PlaybackMotFile.ipynb`` for the full workflow.
+See ``tutorials/3.5_Playback_Mot_File.ipynb`` for the full workflow.
 
 The high-level steps are:
 
@@ -264,8 +264,8 @@ Variant environments model common clinical conditions:
 Next Steps
 ----------
 
-* ``tutorials/3_Analyse_movements.ipynb`` — movement analysis with plotting
-* ``tutorials/6_Inverse_Dynamics.ipynb`` — joint torque computation
-* ``tutorials/9_Computed_muscle_control.ipynb`` — feedforward muscle control (CMC)
+* ``tutorials/3.1_Analyse_Movements.ipynb`` — movement analysis with plotting
+* ``tutorials/3.3_Inverse_Dynamics.ipynb`` — joint torque computation
+* ``tutorials/3.4_Computed_Muscle_Control.ipynb`` — feedforward muscle control (CMC)
 * :doc:`quickstart_neuroscience` — sensory feedback and reflex controllers
 * :doc:`quickstart_rehabilitation` — rehabilitation and clinical condition modelling

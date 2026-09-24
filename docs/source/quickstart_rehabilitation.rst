@@ -102,7 +102,7 @@ work capacity:
 
    env.close()
 
-See ``tutorials/7_Fatigue_Modeling.ipynb`` for plots and recovery dynamics.
+See ``tutorials/4.2_Fatigue_Modeling.ipynb`` for plots and recovery dynamics.
 
 
 Clinical Metrics
@@ -325,8 +325,8 @@ See :doc:`environments` for the annotated listing. Print every CPU ID with
 Next Steps
 ----------
 
-* ``tutorials/7_Fatigue_Modeling.ipynb`` — detailed fatigue dynamics
-* ``tutorials/3_Analyse_movements.ipynb`` — kinematic analysis
-* ``tutorials/6_Inverse_Dynamics.ipynb`` — joint torque estimation
+* ``tutorials/4.2_Fatigue_Modeling.ipynb`` — detailed fatigue dynamics
+* ``tutorials/3.1_Analyse_Movements.ipynb`` — kinematic analysis
+* ``tutorials/3.3_Inverse_Dynamics.ipynb`` — joint torque estimation
 * :doc:`quickstart_biomechanics` — extract raw simulation data for analysis
 * :doc:`quickstart_neuroscience` — add reflex controllers and sensory models
