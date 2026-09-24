@@ -4,7 +4,7 @@ Tutorials
 Notebooks live in the repository ``tutorials/`` directory, not under
 ``docs/source/``. Index and install notes: ``tutorials/README.md``.
 
-Notebooks are numbered ``<track>.<number>``; extra files of ``X.Y`` live in ``tutorials/X.Y_files/``.
+Notebooks are numbered ``<track>.<number>``; extra files of ``X.Y`` live in ``tutorials/files/X.Y/``.
 
 1. **Basics** — ``1.1_Get_Started`` (create an env and step it), ``1.2_Load_Policy`` (run an mjlab or SB3 checkpoint)
 2. **Training** — ``2.1_Train_SB3_Policy`` (PPO, CPU), ``2.2_Train_MjLab_Policy`` (GPU), ``2.3_SAR``, ``2.4_DEP_RL``, ``2.5_MyoReflex_Walk``

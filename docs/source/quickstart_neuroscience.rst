@@ -153,7 +153,7 @@ This example implements a Ia-driven stretch reflex for the elbow:
    env.close()
 
 A more biologically realistic reflex controller (including co-activation and
-reciprocal inhibition) is in ``tutorials/2.5_files/``.
+reciprocal inhibition) is in ``tutorials/files/2.5/``.
 See that notebook for playback of the published Song-Geyer walking gains.
 
 
@@ -285,6 +285,6 @@ Next Steps
 
 * ``tutorials/4.2_Fatigue_Modeling.ipynb`` — cumulative fatigue dynamics
 * ``tutorials/3.4_Computed_Muscle_Control.ipynb`` — feedforward CMC
-* ``tutorials/2.5_files/`` — Song-Geyer reflex walking baseline
+* ``tutorials/files/2.5/`` — Song-Geyer reflex walking baseline
 * :doc:`quickstart_biomechanics` — kinematics and kinetics extraction
 * :doc:`quickstart_rehabilitation` — clinical applications and assistive devices

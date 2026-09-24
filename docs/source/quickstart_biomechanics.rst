@@ -158,7 +158,7 @@ See ``tutorials/3.2_Inverse_Kinematics.ipynb`` for an IK solver built on top of
 .. code-block:: bash
 
    pip install -e ".[examples]"   # install mink
-   python tutorials/3.2_files/inverse_kinematics.py
+   python tutorials/files/3.2/inverse_kinematics.py
 
 
 Replaying OpenSim Motion Files

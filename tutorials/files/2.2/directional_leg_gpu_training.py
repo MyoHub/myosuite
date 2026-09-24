@@ -26,15 +26,15 @@ Requirements
 Run
 ---
     # 1. CPU: confirm the env and play a random policy
-    python tutorials/2.2_files/directional_leg_gpu_training.py --cpu-demo
+    python tutorials/files/2.2/directional_leg_gpu_training.py --cpu-demo
 
     # 2. GPU: train on mjlab (needs CUDA). Short smoke:
-    python tutorials/2.2_files/directional_leg_gpu_training.py --gpu-train --iterations 5
+    python tutorials/files/2.2/directional_leg_gpu_training.py --gpu-train --iterations 5
     # Full run via the training CLI:
     python scripts/train_mjlab.py myoLegDirectionalForward-v0 --env.scene.num-envs 1024
 
     # 3. CPU: play back the trained checkpoint
-    python tutorials/2.2_files/directional_leg_gpu_training.py --cpu-playback logs/rsl_rl/.../model_*.pt
+    python tutorials/files/2.2/directional_leg_gpu_training.py --cpu-playback logs/rsl_rl/.../model_*.pt
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ def gpu_train(iterations: int) -> None:
     myosuite.register_all_envs()
 
     # scripts/ is not importable as a package; add it to the path.
-    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     sys.path.insert(0, os.path.join(repo_root, "scripts"))
     from train_mjlab import TrainConfig, launch_training
 

@@ -9,9 +9,9 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 # MINK -- pip install "myosuite[examples]"
 #
 # Interactive viewer needs mjpython on macOS:
-#   mjpython tutorials/3.2_files/inverse_kinematics.py
+#   mjpython tutorials/files/3.2/inverse_kinematics.py
 # Headless smoke test:
-#   python tutorials/3.2_files/inverse_kinematics.py --no-viewer
+#   python tutorials/files/3.2/inverse_kinematics.py --no-viewer
 
 from __future__ import annotations
 

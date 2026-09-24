@@ -43,7 +43,7 @@ from tqdm import tqdm  # noqa: E402
 
 # Ensure the repo root is on sys.path so ``import myosuite`` works when this
 # script is executed from any directory.
-_REPO_ROOT = Path(__file__).parents[2]
+_REPO_ROOT = Path(__file__).parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 

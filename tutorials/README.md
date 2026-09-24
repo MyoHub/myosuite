@@ -27,7 +27,7 @@ import myosuite  # required — registers env ids
 ## Tutorials by track
 
 Notebooks are numbered `<track>.<number>_Name.ipynb`. Within a track they go from
-simple to advanced; extra files of notebook `X.Y` live in `X.Y_files/`.
+simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 
 | # | Notebook | Needs |
 |---|---|---|
@@ -81,13 +81,13 @@ pip install -e ".[dev]"
 ## Inverse kinematics
 
 ```bash
-python tutorials/3.2_files/inverse_kinematics.py --no-viewer
-# interactive (macOS): mjpython tutorials/3.2_files/inverse_kinematics.py
+python tutorials/files/3.2/inverse_kinematics.py --no-viewer
+# interactive (macOS): mjpython tutorials/files/3.2/inverse_kinematics.py
 ```
 
 SAR full training (notebook 2.3) is hours of SB3. The notebook skips those cells unless `MYOSUITE_FULL_SAR=1`. Precomputed-SAR cells still run. Check the install with:
 
 ```bash
-python tutorials/2.3_files/run_sar_full.py --help
-python tutorials/2.3_files/run_sar_full.py --dry-run
+python tutorials/files/2.3/run_sar_full.py --help
+python tutorials/files/2.3/run_sar_full.py --dry-run
 ```

@@ -48,7 +48,7 @@ from stable_baselines3.common.logger import configure  # noqa: E402
 from stable_baselines3.common.monitor import Monitor  # noqa: E402
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize  # noqa: E402
 
-_REPO_ROOT = Path(__file__).parents[2]
+_REPO_ROOT = Path(__file__).parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 

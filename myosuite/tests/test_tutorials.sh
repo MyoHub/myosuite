@@ -22,9 +22,7 @@ from myosuite.tests.execute_tutorial import main as run_one
 SKIP_IN_CI_REL = frozenset(
     {
         'tutorials/3.3_Inverse_Dynamics.ipynb',
-        'tutorials/4_Train_policy.ipynb',
         'tutorials/2.5_MyoReflex_Walk.ipynb',
-        'tutorials/mc26/mc26_PyTorch_Policies.ipynb',
         'tutorials/5.1_Fullbody_Policy_Trajectory.ipynb',
         'tutorials/5.2_Fullbody_Training.ipynb',
         'tutorials/5.3_Fullbody_Mjlab.ipynb',

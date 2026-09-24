@@ -8,6 +8,8 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 # Python 3.9
 # MINK -- pip install "myosuite[examples]"
 
+
+import h5py
 import mink
 import mujoco
 import mujoco.viewer
@@ -17,10 +19,14 @@ from scipy.interpolate import interp1d
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 
-import pathlib
-
+from myosuite.envs.myo.assets._resolve import resolve_arm_xml
 from myosuite.envs.myo.tasks.challenge.tabletennis import (
     TableTennisEnv as TableTennisEnvV0,
+)
+from myosuite.utils.asset_path_resolver import resolve_model_xml_path
+
+_XML_TABLETENNIS = str(
+    resolve_model_xml_path(resolve_arm_xml("myoarm_tabletennis.xml"))
 )
 
 
@@ -28,6 +34,19 @@ class IKTableTennisEnv(TableTennisEnvV0):
     def _preprocess_spec(
         self, spec: mujoco.MjSpec, remove_body_collisions=True, add_left_arm=True
     ):
+        temp_model = spec.compile()
+        temp_data = mujoco.MjData(temp_model)
+        spec.body("paddle").quat = R.from_euler(
+            "xyz", spec.body("paddle").alt.euler
+        ).as_quat(scalar_first=True)
+        mujoco.mj_resetDataKeyframe(temp_model, temp_data, 0)
+        mujoco.mj_forward(temp_model, temp_data)
+        body_B = temp_data.body(spec.site("S_grasp").parent.name)
+        body_A = temp_data.body("paddle")
+        rel_pos, rel_quat = reparent_to(
+            body_A.xpos, body_A.xquat, body_B.xpos, body_B.xquat
+        )
+
         tar = spec.worldbody.add_body(
             name="target", pos=[0, 0, 0], quat=[0, 1, 0, 0], mocap=True
         )
@@ -44,10 +63,6 @@ class IKTableTennisEnv(TableTennisEnvV0):
             quat=[0.69, -0.153, 0.701, -0.0923],
             mocap=True,
         )
-        tar_paddle.quat = (
-            R.from_quat(tar_paddle.quat, scalar_first=True)
-            * R.from_euler("xyz", [180, 0, 0], degrees=True)
-        ).as_quat(scalar_first=True)
         offset = -spec.body("paddle").sites[0].pos
         for g in spec.body("paddle").geoms:
             if g.type == mujoco.mjtGeom.mjGEOM_MESH:
@@ -61,7 +76,6 @@ class IKTableTennisEnv(TableTennisEnvV0):
                 euler=g.alt.euler,
             )
 
-        np.array(spec.keys[0].qpos)
         spec_copy = spec.copy()
         [k.delete() for k in spec_copy.keys]
         [t.delete() for t in spec_copy.textures]
@@ -76,16 +90,18 @@ class IKTableTennisEnv(TableTennisEnvV0):
 
         paddle = spec_copy.body("paddle")
         paddle.joints[0].delete()
-        paddle.name = "ppp"
-        paddle.pos = [0, 0, 0]
+        paddle.pos *= 0
+        paddle.alt.euler *= 0
+        paddle.quat = [1, 0, 0, 0]
         spec.delete(spec.body("paddle"))
-        fr = spec.site("S_grasp").parent.add_frame(
-            quat=R.from_euler("yxz", [90, 0, -30], degrees=True).as_quat(
-                scalar_first=True
-            ),
-            pos=spec.site("S_grasp").pos + np.array([0.05, 0, 0]),
-        )
+        fr = spec.site("S_grasp").parent.add_frame(quat=rel_quat, pos=rel_pos)
         fr.attach_body(paddle)
+
+        temp_model2 = spec.compile()
+        temp_data2 = mujoco.MjData(temp_model2)
+        mujoco.mj_resetDataKeyframe(temp_model2, temp_data2, 0)
+        mujoco.mj_forward(temp_model2, temp_data2)
+
         #
         #
         # for k in spec.keys:
@@ -100,42 +116,21 @@ class IKTableTennisEnv(TableTennisEnvV0):
             a.delete()
         return spec
 
-    def _setup(
-        self,
-        frame_skip: int = 10,
-        qpos_noise_range=None,  # Noise in joint space for initialization
-        obs_keys: list = TableTennisEnvV0.DEFAULT_OBS_KEYS,
-        ball_xyz_range=None,
-        weighted_reward_keys: list = TableTennisEnvV0.DEFAULT_RWD_KEYS_AND_WEIGHTS,
-        **kwargs,
-    ):
-        super(TableTennisEnvV0, self)._setup(
-            obs_keys=obs_keys,
-            weighted_reward_keys=weighted_reward_keys,
-            frame_skip=frame_skip,
-            **kwargs,
-        )
-        keyFrame_id = 0
-        self.ball_xyz_range = None
-        self.qpos_noise_range = None
-        self.start_vel = np.array([[5.6, 1.6, 0.1]])
-        self.ball_dofadr = 0
-        self.init_qpos[:] = self.mj_model.key_qpos[keyFrame_id].copy()
 
-    def get_obs_dict(self, mj_model, mj_data):
-        return {
-            k: np.zeros(1) for k in TableTennisEnvV0.DEFAULT_OBS_KEYS + ["time", "act"]
-        }
+def reparent_to(xpos_A, xquat_A, xpos_B, xquat_B):
+    qA_scipy = R.from_quat(xquat_A, scalar_first=True)
+    qB_scipy = R.from_quat(xquat_B, scalar_first=True)
 
-    def get_reward_dict(self, obs_dict):
-        return {"sparse": 0, "dense": 0, "solved": 0, "done": 0}
+    rel_pos = qA_scipy.inv().apply(xpos_B - xpos_A)
+    rel_quat = (qA_scipy.inv() * qB_scipy).inv().as_quat(scalar_first=True)
+    return rel_pos, rel_quat
 
 
 env = IKTableTennisEnv(
-    str(
-        pathlib.Path(__file__).parents[1]
-        / "myosuite/envs/myo/assets/arm/myoarm_tabletennis.xml"
-    )
+    _XML_TABLETENNIS
+)
+diff_env = TableTennisEnvV0(
+    _XML_TABLETENNIS
 )
 
 env.reset()
@@ -182,12 +177,22 @@ with mujoco.viewer.launch_passive(
     slerp = Slerp([0, 1], R.from_quat(data.mocap_quat, scalar_first=True))
     lerp = interp1d([0, 1], data.mocap_pos, axis=0)
     rate = RateLimiter(frequency=500.0, warn=False)
-    while viewer.is_running():
+
+    def insert_paddle_pos(qpos):
+        return np.insert(
+            qpos,
+            qpos.shape[0] - 7,
+            np.concatenate([data.body("paddle").xpos, data.body("paddle").xquat]),
+        )
+
+    rollout = [{"qpos": insert_paddle_pos(data.qpos), "qvel": data.qvel}]
+    T_movement = 0.5  # movement in seconds
+    for t in np.linspace(0, 1, int(T_movement // model.opt.timestep)):
         # Update task target.
         T_wt = mink.SE3.from_mocap_name(model, data, "target")
         end_effector_task.set_target(T_wt)
-        data.mocap_pos[0] = lerp(data.ctrl[0])
-        data.mocap_quat[0] = slerp(data.ctrl[0]).as_quat(scalar_first=True)
+        data.mocap_pos[0] = lerp(t)
+        data.mocap_quat[0] = slerp(t).as_quat(scalar_first=True)
 
         # Compute velocity and integrate into the next configuration.
         for i in range(max_iters):
@@ -201,7 +206,21 @@ with mujoco.viewer.launch_passive(
 
         data.qpos[:] = configuration.q
         mujoco.mj_forward(model, data)
+        qvel = np.zeros(model.nv + 6)
+        mujoco.mj_differentiatePos(
+            diff_env.sim.model._model,
+            qvel,
+            model.opt.timestep,
+            rollout[-1]["qpos"],
+            insert_paddle_pos(data.qpos),
+        )
+        rollout.append({"qpos": insert_paddle_pos(data.qpos), "qvel": qvel})
 
         # Visualize at fixed FPS.
         viewer.sync()
         rate.sleep()
+    rollout[0]["qvel"] = rollout[1]["qvel"]
+    with h5py.File("traj.h5", "w") as h5f:
+        h5f.create_dataset("qpos", data=[s["qpos"] for s in rollout])
+        h5f.create_dataset("qvel", data=[s["qvel"] for s in rollout])
+        h5f.close()

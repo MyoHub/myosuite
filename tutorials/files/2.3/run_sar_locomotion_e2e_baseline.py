@@ -22,7 +22,7 @@ if "MUJOCO_GL" not in os.environ:
     if os.environ["MUJOCO_GL"] == "egl":
         os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
 
-_REPO_ROOT = Path(__file__).parents[2]
+_REPO_ROOT = Path(__file__).parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 

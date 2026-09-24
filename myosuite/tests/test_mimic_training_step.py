@@ -11,6 +11,7 @@ in a few seconds without GPU or a large clip.
 from __future__ import annotations
 
 import pathlib
+import sys
 
 import numpy as np
 import pytest
@@ -48,9 +49,13 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+# ``tutorials/files/5.2`` is not a package (dots in the name): put it on sys.path.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "tutorials" / "files/5.2"))
+
+
 def test_ppo_loss_decreases():
     """Two PPO iterations should reduce policy-gradient loss."""
-    from tutorials.mimic.train_mimic import ActorCritic, VecMimicEnv
+    from train_mimic import ActorCritic, VecMimicEnv
 
     torch.manual_seed(0)
     n_envs = 2
@@ -117,7 +122,7 @@ def test_ppo_loss_decreases():
 
 def test_actor_critic_forward():
     """Basic forward pass shape test."""
-    from tutorials.mimic.train_mimic import ActorCritic
+    from train_mimic import ActorCritic
 
     obs_dim, act_dim = 821, 354
     policy = ActorCritic(obs_dim, act_dim, hidden_dim=64, n_layers=2)
@@ -132,7 +137,7 @@ def test_actor_critic_forward():
 
 def test_vec_env_reset_step():
     """VecMimicEnv returns correct shapes."""
-    from tutorials.mimic.train_mimic import VecMimicEnv
+    from train_mimic import VecMimicEnv
 
     env = VecMimicEnv(clip_path=_HF_CLIP, n_envs=2, max_episode_steps=10)
     obs = env.reset_all()

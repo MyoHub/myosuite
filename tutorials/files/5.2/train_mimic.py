@@ -17,10 +17,10 @@ Runs on CPU when no CUDA is available; set CUDA_VISIBLE_DEVICES for GPU.
 Usage::
 
     # Quick test (2k steps):
-    python tutorials/5.2_files/train_mimic.py --total_steps 2000 --n_envs 4
+    python tutorials/files/5.2/train_mimic.py --total_steps 2000 --n_envs 4
 
     # Full training (2B steps recommended for convergence — use GPU):
-    python tutorials/5.2_files/train_mimic.py \\
+    python tutorials/files/5.2/train_mimic.py \\
         --clip /path/to/walking_medium06_poses.npz \\
         --total_steps 2_000_000_000 \\
         --n_envs 512 \\
@@ -28,7 +28,7 @@ Usage::
         --device cuda
 
     # mjlab backend (when mjlab is installed):
-    python tutorials/5.2_files/train_mimic.py --backend mjlab --n_envs 8192
+    python tutorials/files/5.2/train_mimic.py --backend mjlab --n_envs 8192
 
 Environment vars:
     MIMIC_CLIP: default clip path (overridden by --clip)

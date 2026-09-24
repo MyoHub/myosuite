@@ -14,7 +14,7 @@ Usage::
     # Interactive viewer
     python render_mimic.py \\
         --clip ~/.cache/huggingface/.../walking_medium06_poses.npz \\
-        --checkpoint tutorials/5.2_files/mimic_policy_demo.pt
+        --checkpoint tutorials/files/5.2/mimic_policy_demo.pt
 
     # Export to MP4
     python render_mimic.py \\
@@ -54,7 +54,7 @@ def _load_policy(checkpoint_path: pathlib.Path, obs_dim: int, act_dim: int):
 
 def _make_env(clip_path: pathlib.Path, max_episode_steps: int = 1000):
     """Create MuscleMimicClipEnvV0 for the given clip."""
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
     from myosuite.envs.myo.tasks.mimic.clip_env import MuscleMimicClipEnvV0
 
     return MuscleMimicClipEnvV0(
