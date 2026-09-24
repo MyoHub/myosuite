@@ -33,7 +33,7 @@ Usage
     python export_onnx.py --framework sb3 --checkpoint walk_sac.zip \
         --obs-dim 243 --act-dim 80 --output walk_policy.onnx
 
-    # Export an RSL-RL policy (needs --rslrl-config):
+    # Export an RSL-RL (mjlab) policy (architecture read from the checkpoint):
     python export_onnx.py --framework rslrl --checkpoint walk_ppo.pt \
         --obs-dim 243 --act-dim 80 --output walk_policy.onnx
 
@@ -43,11 +43,12 @@ Usage
 ONNX model interface
 --------------------
   Input:  ``obs``    float32  (1, obs_dim)   — normalised observation vector
-  Output: ``action`` float32  (1, act_dim)   — deterministic action in [0, 1]
+  Output: ``action`` float32  (1, act_dim)   — deterministic action
 
-The action output is clipped to [0, 1] inside the export wrapper so that
-the ONNX model is self-contained and does not require the env's action-space
-clipping to be applied externally.
+SB3 exports clip the action to [0, 1] inside the export wrapper. RSL-RL (mjlab)
+exports return the raw policy action that the CPU env's ``step()`` expects
+(``[-1, 1]``, mapped to muscle excitation by the env), with any observation
+normalizer of the checkpoint baked in.
 """
 
 from __future__ import annotations
@@ -160,52 +161,34 @@ def export_rslrl_to_onnx(
     output: str | Path,
     obs_dim: int,
     act_dim: int,
-    hidden_dims: tuple[int, ...] = (512, 256, 128),
     opset: int = 17,
 ) -> None:
-    """Export an RSL-RL ActorCritic policy (PPO) to ONNX.
+    """Export the deterministic actor of an RSL-RL (mjlab) checkpoint to ONNX.
 
-    RSL-RL checkpoints store state-dicts; the network architecture must be
-    reconstructed with the same hidden dims used during training.
+    The actor is rebuilt from the checkpoint itself (layer sizes from the
+    weights, activation from the run's ``params/agent.yaml``), including the
+    observation normalizer when training used one. The ONNX output is the
+    action fed to the env's action term (``[-1, 1]`` pre-sigmoid for muscles),
+    i.e. what the CPU env's ``step()`` expects.
 
     Args:
-        checkpoint: Path to ``.pt`` file saved by ``runner.save()``.
+        checkpoint: Path to ``model_*.pt`` saved by ``scripts/train_mjlab.py``.
         output: Destination ``.onnx`` file path.
-        obs_dim: Observation vector dimension.
+        obs_dim: Observation vector dimension (checked against the weights).
         act_dim: Action dimension.
-        hidden_dims: MLP hidden layer sizes (default matches mjlab walk config).
         opset: ONNX opset version.
     """
-    checkpoint = Path(checkpoint)
+    from myosuite.utils.rslrl_policy import load_rslrl_policy  # noqa: PLC0415
+
     output = Path(output)
-
-    state = torch.load(checkpoint, map_location="cpu")
-
-    # Build a minimal actor MLP matching RSL-RL ActorCritic architecture.
-    layers: list[torch.nn.Module] = []
-    in_dim = obs_dim
-    for h in hidden_dims:
-        layers += [torch.nn.Linear(in_dim, h), torch.nn.ELU()]
-        in_dim = h
-    layers += [torch.nn.Linear(in_dim, act_dim), torch.nn.Sigmoid()]
-    actor = torch.nn.Sequential(*layers)
-
-    # Load the actor weights from the checkpoint.
-    actor_state = {
-        k.removeprefix("actor."): v
-        for k, v in state.get("model_state_dict", state).items()
-        if k.startswith("actor.")
-    }
-    missing, unexpected = actor.load_state_dict(actor_state, strict=False)
-    if missing:
-        log.warning("Missing actor keys: %s", missing)
-    if unexpected:
-        log.warning("Unexpected actor keys: %s", unexpected)
-    actor.eval()
+    policy = load_rslrl_policy(checkpoint, act_dim)
+    expected = next(policy.mlp.parameters()).shape[1]
+    if expected != obs_dim:
+        raise ValueError(f"--obs-dim {obs_dim} != checkpoint input size {expected}")
 
     dummy_obs = torch.zeros(1, obs_dim, dtype=torch.float32)
     torch.onnx.export(
-        actor,
+        policy,
         dummy_obs,
         str(output),
         opset_version=opset,
@@ -649,13 +632,6 @@ def _build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--obs-dim", type=int, default=None)
     ex.add_argument("--act-dim", type=int, default=None)
     ex.add_argument("--opset", type=int, default=17)
-    ex.add_argument(
-        "--hidden-dims",
-        type=int,
-        nargs="+",
-        default=[512, 256, 128],
-        help="Hidden layer sizes (RSL-RL only)",
-    )
 
     # --- verify ---
     vr = sub.add_parser("verify", help="Run an ONNX policy on the CPU env")
@@ -697,7 +673,6 @@ def main() -> None:
                     args.output,
                     args.obs_dim,
                     args.act_dim,
-                    tuple(args.hidden_dims),
                     args.opset,
                 )
             elif args.framework == "jax":
