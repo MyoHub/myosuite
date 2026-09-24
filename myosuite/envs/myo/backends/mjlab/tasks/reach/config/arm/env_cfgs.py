@@ -2,7 +2,9 @@
 
 from mjlab.envs import ManagerBasedRlEnvCfg
 
-from myosuite.envs.myo.backends.mjlab.tasks.reach.reach_env_cfg import make_reach_env_cfg
+from myosuite.envs.myo.backends.mjlab.tasks.reach.reach_env_cfg import (
+    make_reach_env_cfg,
+)
 
 ARM_REACH_IDS = ("myoArmReachFixed-v0", "myoArmReachRandom-v0")
 

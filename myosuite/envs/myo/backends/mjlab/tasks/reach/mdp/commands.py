@@ -41,7 +41,9 @@ class ReachTargetCommand(UniformVectorCommand):
 
     def __init__(self, cfg: ReachTargetCommandCfg, env: ManagerBasedRlEnv) -> None:
         super().__init__(cfg, env)
-        ids, _ = env.scene[cfg.entity_name].find_sites(cfg.tip_sites, preserve_order=True)
+        ids, _ = env.scene[cfg.entity_name].find_sites(
+            cfg.tip_sites, preserve_order=True
+        )
         self._tip_ids = ids
         self.metrics["reach_error"] = torch.zeros(self.num_envs, device=self.device)
 

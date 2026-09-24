@@ -132,10 +132,12 @@ def _sync(cpu: gym.Env, mj: ManagerBasedRlEnv) -> None:
     if getattr(cpu, "weight_bodyname", None) is not None:
         body = cpu.model.body(cpu.weight_bodyname).id
         geom = cpu.model.body_geomadr[body]
-        mj_body = int(robot.indexing.body_ids[robot.find_bodies(cpu.weight_bodyname)[0][0]])
+        mj_body = int(
+            robot.indexing.body_ids[robot.find_bodies(cpu.weight_bodyname)[0][0]]
+        )
         mj.sim.model.body_mass[:, mj_body] = float(cpu.model.body_mass[body])
-        mj.sim.model.geom_size[:, int(mj.sim.mj_model.body_geomadr[mj_body]), 0] = float(
-            cpu.model.geom_size[geom, 0]
+        mj.sim.model.geom_size[:, int(mj.sim.mj_model.body_geomadr[mj_body]), 0] = (
+            float(cpu.model.geom_size[geom, 0])
         )
     mj.episode_length_buf[:] = round(cpu.data.time / mj.step_dt)
     mj.sim.forward()
@@ -146,7 +148,10 @@ def test_one_step_parity(env_id: str) -> None:
     """Same state + same action -> same obs, reward and termination."""
     cpu, mj = _make_pair(env_id)
     assert mj.action_manager.total_action_dim == cpu.action_space.shape[0]
-    assert mj.observation_manager.group_obs_dim["actor"][0] == cpu.observation_space.shape[0]
+    assert (
+        mj.observation_manager.group_obs_dim["actor"][0]
+        == cpu.observation_space.shape[0]
+    )
 
     _sync(cpu, mj)
     obs0 = mj.observation_manager.compute_group("actor")[0].numpy()

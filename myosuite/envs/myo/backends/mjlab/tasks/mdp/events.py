@@ -120,7 +120,9 @@ class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
         self._noise_adr = torch.tensor(
             [int(model.jnt_qposadr[j]) - base for j in joints], device=env.device
         )
-        rng = torch.as_tensor(model.jnt_range[joints], dtype=torch.float32, device=env.device)
+        rng = torch.as_tensor(
+            model.jnt_range[joints], dtype=torch.float32, device=env.device
+        )
         self._lo, self._hi = rng[:, 0], rng[:, 1]
 
     def __call__(
@@ -136,6 +138,12 @@ class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
         q = self._qpos.repeat(len(env_ids), 1)
         if joint_noise is not None and joint_noise[1] > joint_noise[0]:
             lo, hi = joint_noise
-            noise = lo + (hi - lo) * torch.rand(len(env_ids), len(self._noise_adr), device=env.device)
-            q[:, self._noise_adr] = torch.clamp(q[:, self._noise_adr] + noise, self._lo, self._hi)
-        write_cpu_state(env, asset_cfg.name, env_ids, q, self._qvel.repeat(len(env_ids), 1))
+            noise = lo + (hi - lo) * torch.rand(
+                len(env_ids), len(self._noise_adr), device=env.device
+            )
+            q[:, self._noise_adr] = torch.clamp(
+                q[:, self._noise_adr] + noise, self._lo, self._hi
+            )
+        write_cpu_state(
+            env, asset_cfg.name, env_ids, q, self._qvel.repeat(len(env_ids), 1)
+        )

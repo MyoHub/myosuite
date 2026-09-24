@@ -73,7 +73,9 @@ def _resolve_checkpoint(path: Path) -> Path:
     return ckpts[-1]
 
 
-def _video_camera(cfg: EvalConfig, model: mujoco.MjModel) -> int | str | mujoco.MjvCamera:
+def _video_camera(
+    cfg: EvalConfig, model: mujoco.MjModel
+) -> int | str | mujoco.MjvCamera:
     """Camera for ``mujoco.Renderer.update_scene``: model camera or tuned free camera."""
     camera = int(cfg.camera) if cfg.camera.lstrip("-").isdigit() else cfg.camera
     if camera != -1:
@@ -151,7 +153,9 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
     env_cfg.scene.num_envs = cfg.episodes
     env_cfg.seed = cfg.seed
     env = ManagerBasedRlEnv(cfg=env_cfg, device=device)
-    policy = load_rslrl_policy(checkpoint, env.action_manager.total_action_dim).to(device)
+    policy = load_rslrl_policy(checkpoint, env.action_manager.total_action_dim).to(
+        device
+    )
 
     obs, _ = env.reset()
     totals = torch.zeros(cfg.episodes, device=device)

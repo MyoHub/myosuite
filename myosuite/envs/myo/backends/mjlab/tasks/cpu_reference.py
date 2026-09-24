@@ -152,7 +152,7 @@ def _model_key(task: CpuTaskSpec) -> tuple[Any, ...]:
     return (kw.get("model_path"), kw.get("model_recipe"), kw.get("edit_fn"))
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _compiled_info(key: tuple[Any, ...]) -> CompiledModelInfo:
     model_path, model_recipe, edit_fn = key
     kwargs = {"model_path": model_path, "model_recipe": model_recipe}
@@ -193,7 +193,9 @@ def _cpu_init_qpos(model: mujoco.MjModel) -> np.ndarray:
     """CPU ``_init_qpos`` for ``normalize_act=True``: ``qpos0``, except that
     joint-actuated hinge/slide joints start at the middle of their range."""
     init_qpos = model.qpos0.copy()
-    actuated = model.actuator_trnid[model.actuator_trntype == mujoco.mjtTrn.mjTRN_JOINT, 0]
+    actuated = model.actuator_trnid[
+        model.actuator_trntype == mujoco.mjtTrn.mjTRN_JOINT, 0
+    ]
     linear = np.where(
         np.logical_or(
             model.jnt_type == mujoco.mjtJoint.mjJNT_SLIDE,
@@ -282,9 +284,14 @@ def init_state_from_model(
     qpos = info.init_qpos if qpos is None else qpos
     root: dict[str, tuple[float, ...]] = {}
     joint_pos: dict[str, float] = {}
-    for name, jtype, adr in zip(info.joint_names, info.jnt_type, info.jnt_qposadr, strict=True):
+    for name, jtype, adr in zip(
+        info.joint_names, info.jnt_type, info.jnt_qposadr, strict=True
+    ):
         if jtype == mujoco.mjtJoint.mjJNT_FREE:
-            root = {"pos": tuple(qpos[adr : adr + 3]), "rot": tuple(qpos[adr + 3 : adr + 7])}
+            root = {
+                "pos": tuple(qpos[adr : adr + 3]),
+                "rot": tuple(qpos[adr + 3 : adr + 7]),
+            }
         elif jtype == mujoco.mjtJoint.mjJNT_BALL:
             raise ValueError(f"Ball joint {name!r} is not supported.")
         else:
@@ -405,4 +412,3 @@ def first_step_after(time_s: float, timestep: float, frame_skip: int) -> int:
             t += timestep
         step += 1
     return step
-

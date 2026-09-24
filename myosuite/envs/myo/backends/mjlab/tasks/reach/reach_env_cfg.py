@@ -94,7 +94,9 @@ def make_reach_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
     weights = kw.get("weighted_reward_keys", ReachEnvV0.DEFAULT_RWD_KEYS_AND_WEIGHTS)
     rewards = {
         key: RewardTermCfg(
-            func=mdp.reach_term, weight=float(weight), params={"key": key, **reach_params}
+            func=mdp.reach_term,
+            weight=float(weight),
+            params={"key": key, **reach_params},
         )
         for key, weight in weights.items()
     }

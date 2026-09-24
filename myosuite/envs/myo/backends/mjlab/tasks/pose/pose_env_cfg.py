@@ -149,7 +149,11 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
         "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
         "pose_diverged": TerminationTermCfg(
             func=mdp.pose_diverged,
-            params={"command_name": COMMAND, "far_thd": variant.far_thd, "asset_cfg": robot},
+            params={
+                "command_name": COMMAND,
+                "far_thd": variant.far_thd,
+                "asset_cfg": robot,
+            },
         ),
     }
 
@@ -169,7 +173,9 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
             func=mdp.randomize_carry_weight,
             mode="reset",
             params={
-                "asset_cfg": SceneEntityCfg(ENTITY, body_names=(kw["weight_bodyname"],)),
+                "asset_cfg": SceneEntityCfg(
+                    ENTITY, body_names=(kw["weight_bodyname"],)
+                ),
                 "mass_range": tuple(kw["weight_range"]),
             },
         )

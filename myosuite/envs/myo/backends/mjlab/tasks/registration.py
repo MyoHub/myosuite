@@ -50,8 +50,13 @@ def register_cpu_twins(
                 env_cfg = env_cfg_fn(env_id)
                 play_cfg = env_cfg_fn(env_id, play=True)
             except Exception:  # noqa: BLE001  (any model/config failure)
-                _log.warning("mjlab: skipping %s (config failed)", env_id, exc_info=True)
+                _log.warning(
+                    "mjlab: skipping %s (config failed)", env_id, exc_info=True
+                )
                 continue
             register_mjlab_task(
-                task_id=env_id, env_cfg=env_cfg, play_env_cfg=play_cfg, rl_cfg=rl_cfg_fn()
+                task_id=env_id,
+                env_cfg=env_cfg,
+                play_env_cfg=play_cfg,
+                rl_cfg=rl_cfg_fn(),
             )

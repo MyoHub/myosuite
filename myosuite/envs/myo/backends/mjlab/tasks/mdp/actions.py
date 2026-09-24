@@ -121,7 +121,9 @@ class MyoAction(ActionTerm):
                 model, num_envs=self.num_envs, device=str(self.device)
             )
 
-        self._raw_actions = torch.zeros(self.num_envs, self._action_dim, device=self.device)
+        self._raw_actions = torch.zeros(
+            self.num_envs, self._action_dim, device=self.device
+        )
         self._processed_actions = torch.zeros_like(self._raw_actions)
 
     @property

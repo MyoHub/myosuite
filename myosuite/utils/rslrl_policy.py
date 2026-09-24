@@ -89,7 +89,11 @@ def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
 
     mlp = MLP(obs_dim, out_dim, hidden, actor_cfg.get("activation", "elu"))
     mlp.load_state_dict(
-        {k.removeprefix("mlp."): v for k, v in actor_state.items() if k.startswith("mlp.")}
+        {
+            k.removeprefix("mlp."): v
+            for k, v in actor_state.items()
+            if k.startswith("mlp.")
+        }
     )
     if any(k.startswith("obs_normalizer.") for k in actor_state):
         normalizer: torch.nn.Module = EmpiricalNormalization(obs_dim)

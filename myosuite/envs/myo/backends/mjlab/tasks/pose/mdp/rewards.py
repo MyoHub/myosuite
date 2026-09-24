@@ -81,7 +81,9 @@ def pose_solved(
     asset_cfg: SceneEntityCfg = _ROBOT,
 ) -> torch.Tensor:
     """``"solved"`` as a float (only weighted when a CPU config weights it)."""
-    return _components(env, command_name, pose_thd, far_thd, asset_cfg)["solved"].float()
+    return _components(env, command_name, pose_thd, far_thd, asset_cfg)[
+        "solved"
+    ].float()
 
 
 def pose_done(
@@ -95,7 +97,9 @@ def pose_done(
     return _components(env, command_name, pose_thd, far_thd, asset_cfg)["done"].float()
 
 
-def act_norm(env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:
+def act_norm(
+    env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg = _ROBOT
+) -> torch.Tensor:
     """``"act_reg"``: ``-||act|| / na`` (zero for motor-only models)."""
     act = MjlabEntityAccessor(env, asset_cfg.name).muscle_act()
     if act.shape[-1] == 0:
