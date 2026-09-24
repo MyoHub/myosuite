@@ -171,7 +171,7 @@ DEFAULT_AZIMUTH, DEFAULT_ELEVATION = 90.0, -35.0
 # for models that include the scene (arm reach: 25 m), so GridRenderer overrides
 # the extent with a camera-based value instead of using the model's.
 FOG_RGBA = (1.0, 1.0, 1.0, 1.0)
-FOG_START, FOG_END, HORIZON = 0.7, 2.0, 5.0
+FOG_START, FOG_END, HORIZON = 1.0, 4.0, 5.0
 
 # Floor look (RGBA): light plate with darker grid lines every FLOOR_CELL metres.
 FLOOR_RGBA = (0.94, 0.94, 0.94, 1.0)
