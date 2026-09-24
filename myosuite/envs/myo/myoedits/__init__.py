@@ -10,6 +10,12 @@ import myosuite.core.registry as _registry
 
 
 # Arm Reaching ==============================
+# Thumb muscles (abductor pollicis longus, opponens pollicis) and the CMC joints
+# they actuate: removed by the arm-reaching edit, which keeps a rigid hand.
+_THUMB_MUSCLES = ("APL", "OP")
+_THUMB_JOINTS = ("cmc_flexion", "cmc_abduction")
+
+
 def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
     # Get the positions of each body of each digit. Names carry myo_sim's
     # "_r" (right-side) suffix — this model is built via the "full_arm"
@@ -83,6 +89,14 @@ def edit_fn_arm_reaching(spec: mujoco.MjSpec) -> None:
                     rgba=IFtip_site["rgba"],
                 )
             body = new_body
+
+    # Freeze the thumb: remove its two remaining muscles (with their tendons) and
+    # the carpometacarpal joints they drove, so the whole hand is rigid.
+    for name in _THUMB_MUSCLES:
+        spec.delete(spec.actuator(name))
+        spec.delete(spec.tendon(f"{name}_tendon"))
+    for name in _THUMB_JOINTS:
+        spec.delete(spec.joint(name))
 
     # Add a reach target
     spec.body("world").add_site(

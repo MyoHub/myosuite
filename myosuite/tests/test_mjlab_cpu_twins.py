@@ -76,8 +76,9 @@ _PENDING_TWINS = {
 # side-site wraps at some poses, where the CPU length is smooth (not a float32
 # branch flip; Warp does implement wrap_inside). Measured over random
 # joint-range poses: hand EDC* ~2e-4 m (1 of 39 tendons), arm DELT2/DELT3/
-# PECM1/FCR up to 2.6e-3 m. The hand and arm models get a looser tolerance.
-_WARP_WRAP_DIFF_OBS_ATOL = 5e-3
+# PECM1/FCR up to 2.6e-3 m, which shows up as up to ~8e-3 in qvel*dt after a step
+# (muscle forces differ). The hand and arm models get a looser tolerance.
+_WARP_WRAP_DIFF_OBS_ATOL = 1e-2
 _WARP_WRAP_DIFF_REW_ATOL = 5e-2
 
 
