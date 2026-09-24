@@ -13,6 +13,7 @@ from __future__ import annotations
 import numpy as np
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers.event_manager import EventTermCfg
+from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
@@ -109,6 +110,16 @@ def make_reach_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
         "reach_failed": TerminationTermCfg(func=mdp.reach_failed, params=reach_params),
     }
 
+    # Standard success metric (logged as Episode_Metrics/success): the CPU
+    # "solved" flag on the final step of the episode.
+    metrics = {
+        "success": MetricsTermCfg(
+            func=mdp.reach_term,
+            params={"key": "solved", **reach_params},
+            reduce="last",
+        )
+    }
+
     events = {
         "reset_scene_to_default": EventTermCfg(
             func=mdp.reset_scene_to_default, mode="reset"
@@ -123,6 +134,7 @@ def make_reach_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
         commands=commands,
         rewards=rewards,
         terminations=terminations,
+        metrics=metrics,
         events=events,
         sim=SimulationCfg(mujoco=info.mujoco_cfg),
         decimation=task.frame_skip,

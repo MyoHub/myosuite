@@ -173,6 +173,8 @@ def test_one_step_parity(env_id: str) -> None:
             break
         np.testing.assert_allclose(mj_obs["actor"][0].numpy(), cpu_obs, atol=obs_atol)
         np.testing.assert_allclose(float(mj_rew[0]), cpu_rew, atol=rew_atol)
+        values = dict(mj.metrics_manager.get_active_iterable_terms(0))
+        assert bool(values["success"][0]) == bool(cpu_info["solved"])
 
 
 def test_fatigue_torch_matches_numpy() -> None:
@@ -203,3 +205,20 @@ def test_every_ported_cpu_env_has_mjlab_twin() -> None:
         if e not in registered and e not in _PENDING_TWINS
     ]
     assert not missing, f"CPU envs without mjlab twin: {missing}"
+
+
+def test_every_twin_logs_a_success_metric() -> None:
+    """Success rate is a standard metric (``Episode_Metrics/success``) of every twin."""
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
+
+    twins = [
+        e for e in _basic_suite_ids(_PORTED_ENTRY_POINTS) if e in set(list_tasks())
+    ]
+    assert twins
+    missing = [
+        e
+        for e in twins
+        if "success" not in load_env_cfg(e).metrics
+        or load_env_cfg(e).metrics["success"].reduce != "last"
+    ]
+    assert not missing, f"twins without a 'last'-reduced success metric: {missing}"

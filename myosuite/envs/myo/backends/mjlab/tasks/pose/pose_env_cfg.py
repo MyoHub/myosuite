@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers.event_manager import EventTermCfg
+from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
@@ -157,6 +158,14 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
         ),
     }
 
+    # Standard success metric (logged as Episode_Metrics/success): the CPU
+    # "solved" flag on the final step of the episode.
+    metrics = {
+        "success": MetricsTermCfg(
+            func=mdp.pose_solved, params=pose_params, reduce="last"
+        )
+    }
+
     events = {
         "reset_scene_to_default": EventTermCfg(
             func=mdp.reset_scene_to_default, mode="reset"
@@ -188,6 +197,7 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
         commands=commands,
         rewards=rewards,
         terminations=terminations,
+        metrics=metrics,
         events=events,
         sim=SimulationCfg(mujoco=info.mujoco_cfg),
         decimation=task.frame_skip,
