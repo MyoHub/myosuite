@@ -18,7 +18,8 @@ A policy is only portable across backends if all five invariants below hold. Vio
 
 - Obs terms registered in the same order in `ObservationGroupCfg` (mjlab) and the browser config.
 - Per-term `scale` and `clip` must match exactly — these are applied in TypeScript at inference.
-- **No `VecNormalize` or running mean/std.** The browser runtime cannot load normalization statistics. Express normalization as fixed `scale` in `ObservationTermCfg`.
+- **Browser (mjswan) export: no `VecNormalize` or running mean/std.** The browser runtime cannot load normalization statistics. Express normalization as fixed `scale` in `ObservationTermCfg` and train with `obs_normalization=False`.
+- **CPU / mjlab / ONNX: running normalization is allowed.** The basic-suite runner (`tasks/rl.py`) enables it by default; the frozen statistics are folded into the policy by `load_rslrl_policy` / `export_rslrl_to_onnx`, so the policy still takes the raw CPU observation vector.
 
 ### 2. Action space — identical dimensionality, scaling, and activation
 
@@ -60,7 +61,7 @@ Fixed `scale` in `ObservationTermCfg` is exported to JSON and replicated in Type
 
 - [ ] Obs term key order identical between mjlab and browser config (assert in `test_mjlab_task_builder.py`)
 - [ ] Obs term `scale` and `clip` values match exactly
-- [ ] No running mean/std normalization
+- [ ] Browser export only: no running mean/std normalization (`obs_normalization=False`)
 - [ ] `ctrl_dt = decimation × timestep = 0.02 s`
 - [ ] XML path via `myo_sim.get_path(...)`
 - [ ] Keyframe at index 0 for `encoder_bias`
