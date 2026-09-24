@@ -66,10 +66,48 @@ Training (GPU)
 
 Same ``env_id`` as CPU::
 
-   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen
+   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen \
+       --agent.max-iterations 1000 --env.scene.num-envs 2048
 
 Replace "onscreen" with "offscreen" when running on a remote, headless machine.
+The flag ``--agent.max-iterations`` sets the number of PPO update iterations (default is
+task-specific); see ``--help`` for the full flag list, including
+``--agent.num-steps-per-env`` and ``--env.scene.num-envs``.
+
+.. important::
+
+   ``--env.scene.num-envs`` defaults to **1** if you don't pass it. PPO's batch size
+   per update is ``num_envs * num_steps_per_env``, so training with the default
+   collects only ``num_steps_per_env`` (24) transitions per iteration — the reward
+   curve is dominated by single-trajectory noise, the KL-adaptive learning-rate
+   schedule sees noisy KL estimates and collapses toward its floor, and with little
+   policy-gradient signal left to oppose it, the entropy bonus keeps inflating the
+   action std over time instead of the policy converging. Always set
+   ``--env.scene.num-envs`` explicitly — 1024–4096, depending on GPU memory and
+   model size (larger musculoskeletal models need more memory per env).
+
 Walk-through: ``tutorials/directional_leg_gpu_training.py``.
+
+Resuming a run
+^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --agent.resume True \
+       --agent.max-iterations 5000 --env.scene.num-envs 2048
+
+``--agent.resume True`` continues training from a checkpoint of the same
+``--agent.experiment-name`` (default: task-specific, e.g. ``myo_elbow_pose``),
+by default the most recent run's latest ``model_*.pt`` under
+``logs/rsl_rl/<experiment_name>/``. Use ``--agent.load-run <regex>`` and
+``--agent.load-checkpoint <regex>`` to pick a specific run or checkpoint instead.
+
+**Only the network weights and optimizer state are resumed.** The environment
+config (``--env.*``, including ``--env.scene.num-envs``) is rebuilt fresh from
+this invocation's CLI flags before the checkpoint loads — it is **not** read
+back from the original run. Repeat every ``--env.*`` flag you used originally
+(especially ``--env.scene.num-envs``) on every resumed run, or the run silently
+falls back to the defaults above.
 
 An MJX (JAX) backend also exists (``pip install -e ".[mjx]"``). It is
 experimental — prefer mjlab for new GPU work.

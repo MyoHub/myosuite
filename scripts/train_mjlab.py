@@ -107,6 +107,18 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
 
     if rank == 0:
         print(f"[INFO] Logging experiment in directory: {log_dir}")
+        if cfg.env.scene.num_envs <= 8:
+            batch_size = cfg.env.scene.num_envs * cfg.agent.num_steps_per_env
+            print(
+                f"[WARNING] --env.scene.num-envs={cfg.env.scene.num_envs} gives a PPO "
+                f"batch of only {batch_size} transitions/update "
+                "(num_envs * num_steps_per_env). This is usually an oversight — the "
+                "default is 1, and it is NOT restored by --agent.resume — rather than "
+                "intentional: training will be slow and noisy, and the KL-adaptive "
+                "learning rate tends to collapse toward its floor. Pass "
+                "--env.scene.num-envs 1024 (or higher, GPU-memory permitting); see "
+                "docs/source/quickstart_ml.rst."
+            )
 
     env = ManagerBasedRlEnv(
         cfg=cfg.env, device=device, render_mode="rgb_array" if cfg.video else None

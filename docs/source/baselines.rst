@@ -15,7 +15,11 @@ RSL-RL PPO on mjlab (see :doc:`install` for matching the torch build to your
 driver's CUDA version)::
 
    pip install -e ".[mjlab]"
-   python scripts/train_mjlab.py myoLegWalk-v0
+   python scripts/train_mjlab.py myoLegWalk-v0 --env.scene.num-envs 2048
+
+Always set ``--env.scene.num-envs`` explicitly (default is 1 — see
+:doc:`quickstart_ml` for why that stalls training) and re-pass it whenever you
+``--agent.resume True`` a long walk run.
 
 Pretrained NPG / DEP-RL weight trees under ``myosuite/agents/`` are **not**
 shipped in the pip package and are gitignored. Train your own policy, or use
