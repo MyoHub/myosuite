@@ -20,9 +20,10 @@ What's new in MyoSuite 3
 MyoSuite 3 brings the whole suite to fast, scalable training while keeping the simple
 interface you know:
 
-* **One task, several backends.** The same ``env_id`` runs on the **CPU** (Gymnasium:
-  playback, debugging, Stable-Baselines3), on **mjlab** for massively parallel GPU
-  training, and on an **experimental MJX** (JAX) path. See :doc:`quickstart_ml`.
+* **One task, several backends.** The same ``env_id`` runs on your **CPU** through the
+  standard `Gymnasium <https://gymnasium.farama.org/>`_ interface (to explore, debug and
+  replay policies, or to train with libraries such as Stable-Baselines3), on **mjlab** for
+  massively parallel GPU training, and on an **experimental MJX** (JAX) path. See :doc:`quickstart_ml`.
 * **MuscleMimic support.** Run, evaluate and train full-body and bimanual **MuscleMimic**
   policies, with ready-to-use checkpoints and motion datasets.
 * **The complete MyoChallenge suite** as Gymnasium environments: Baoding, Bimanual, Chase
