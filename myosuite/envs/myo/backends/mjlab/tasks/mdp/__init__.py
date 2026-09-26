@@ -3,7 +3,12 @@
 from mjlab.envs.mdp import *  # noqa: F401, F403
 
 from .actions import MyoAction, MyoActionCfg  # noqa: F401
-from .commands import UniformVectorCommand, UniformVectorCommandCfg  # noqa: F401
+from .commands import (  # noqa: F401
+    HeadingCommand,
+    HeadingCommandCfg,
+    UniformVectorCommand,
+    UniformVectorCommandCfg,
+)
 from .events import (  # noqa: F401
     randomize_carry_weight,
     reset_joints_uniform_in_range,

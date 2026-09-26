@@ -721,18 +721,10 @@ def _mjlab_velocity_fn(env):
     if "target_y_vel" in params:
         velocity = np.array([params["target_x_vel"], params["target_y_vel"]])
         return lambda i: velocity
-    if "heading_dir" not in params:
-        return None
-    if not params.get("randomized"):
-        velocity = params["target_speed"] * np.asarray(params["heading_dir"], float)
-        return lambda i: velocity
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
-        _directional_cmd_buffer,
-    )
-
-    return lambda i: (
-        params["target_speed"] * _directional_cmd_buffer(env)[i].cpu().numpy()
-    )
+    if "command_name" in params and "target_speed" in params:  # directional walks
+        name, speed = params["command_name"], params["target_speed"]
+        return lambda i: speed * env.command_manager.get_command(name)[i].cpu().numpy()
+    return None
 
 
 def _mjlab_pose_thd(env) -> float | None:

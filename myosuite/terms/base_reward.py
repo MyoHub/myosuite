@@ -358,8 +358,8 @@ def heading_reward(
 ) -> dict[str, Any]:
     """Reward tracking a commanded planar velocity ``target_speed * heading_dir``.
 
-    Assumes the model's first joint is a ``freejoint`` so ``joint_vel()[:2]``
-    is the root's world-frame horizontal velocity and ``joint_pos()[2]`` is
+    Assumes the model's first joint is a ``freejoint`` so ``joint_vel()[..., :2]``
+    is the root's world-frame horizontal velocity and ``joint_pos()[..., 2]`` is
     its height, used for fall detection.
 
     Args:
@@ -379,14 +379,16 @@ def heading_reward(
     if isinstance(task_state, dict) and "heading_dir" in task_state:
         heading_dir = task_state["heading_dir"]
     xp = accessor.array_module()
-    planar_vel = accessor.joint_vel()[:2]
-    height = accessor.joint_pos()[2]
+    # Leading axes are batch axes (none on CPU, (N,) on mjlab).
+    planar_vel = accessor.joint_vel()[..., :2]
+    height = accessor.joint_pos()[..., 2]
     direction = _xp_asarray(xp, heading_dir, dtype=getattr(xp, "float32", None))
     target_vel = target_speed * direction
-    tracking = xp.exp(-xp.sum((target_vel - planar_vel) ** 2))
+    sq_error = xp.sum((target_vel - planar_vel) ** 2, axis=-1)
+    tracking = xp.exp(-sq_error)
     fallen = height < fall_height
     dense = tracking - fall_penalty * fallen
-    vel_error = xp.sqrt(xp.sum((target_vel - planar_vel) ** 2))
+    vel_error = xp.sqrt(sq_error)
     return {
         "heading_tracking": _maybe_item(tracking),
         "dense": _maybe_item(dense),

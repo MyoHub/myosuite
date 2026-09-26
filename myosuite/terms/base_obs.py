@@ -255,7 +255,7 @@ def root_planar_vel_obs(accessor: EnvAccessor, **kwargs: Any) -> Any:
     Returns:
         Length-2 array ``[vx, vy]``.
     """
-    return accessor.joint_vel()[:2]
+    return accessor.joint_vel()[..., :2]
 
 
 def heading_cmd_obs(

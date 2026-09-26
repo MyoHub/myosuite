@@ -68,3 +68,48 @@ class UniformVectorCommand(CommandTerm):
 
     def _update_metrics(self) -> None:
         pass
+
+
+@dataclass(kw_only=True)
+class HeadingCommandCfg(CommandTermCfg):
+    """Commanded planar heading (unit vector), fixed or sampled once per episode.
+
+    Attributes:
+        heading_dir: Heading of the fixed-direction tasks (and the initial value).
+        randomize: Sample a fresh direction from the full unit circle at every reset
+            (CPU ``randomize_heading``).
+    """
+
+    heading_dir: tuple[float, float] = (0.0, 1.0)
+    randomize: bool = False
+    resampling_time_range: tuple[float, float] = RESAMPLE_ON_RESET_ONLY
+
+    def build(self, env: ManagerBasedRlEnv) -> HeadingCommand:
+        return HeadingCommand(self, env)
+
+
+class HeadingCommand(CommandTerm):
+    """Per-env unit heading vector ``(dx, dy)``, constant within an episode."""
+
+    cfg: HeadingCommandCfg
+
+    def __init__(self, cfg: HeadingCommandCfg, env: ManagerBasedRlEnv) -> None:
+        super().__init__(cfg, env)
+        fixed = torch.tensor(cfg.heading_dir, dtype=torch.float32, device=self.device)
+        self._target = fixed.repeat(self.num_envs, 1)
+
+    @property
+    def command(self) -> torch.Tensor:
+        return self._target
+
+    def _resample_command(self, env_ids: torch.Tensor) -> None:
+        if not self.cfg.randomize:
+            return
+        angle = 2.0 * torch.pi * torch.rand(len(env_ids), device=self.device)
+        self._target[env_ids] = torch.stack([angle.cos(), angle.sin()], dim=-1)
+
+    def _update_command(self, env_ids: torch.Tensor | None = None) -> None:
+        del env_ids  # Target is constant within an episode.
+
+    def _update_metrics(self) -> None:
+        pass

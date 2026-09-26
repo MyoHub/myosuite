@@ -34,6 +34,7 @@ from myosuite.core.muscle_conditions import (  # noqa: E402
 )
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
 from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0  # noqa: E402
+from myosuite.envs.modular_env import ModularTaskEnv  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0  # noqa: E402
 
@@ -74,6 +75,9 @@ PARITY_IDS = (
     "myoLegRoughTerrainWalk-v0",
     "myoLegHillyTerrainWalk-v0",
     "myoLegStairTerrainWalk-v0",
+    "myoLegDirectionalForward-v0",
+    "myoLegDirectionalBackward-v0",
+    "myoLegDirectionalRandom-v0",
 )
 
 # Ported families whose multi-floating-body models still need the
@@ -98,6 +102,9 @@ _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL = 1e-2, 1e-2
 # C MuJoCo can create several, so contact forces (and the muscle forces reacting to them)
 # differ per step: measured up to 1e-2 in velocities and 0.2 in force / 1000.
 _HFIELD_OBS_ATOL, _HFIELD_REW_ATOL = 0.3, 0.1
+# Directional legs start from a falling pose with joint velocities of 5-10 rad/s; float32
+# Warp vs float64 MuJoCo differs by up to 0.2 rad/s (rewards agree to 1e-4).
+_DIRECTIONAL_OBS_ATOL = 0.5
 
 
 def _tolerances(env_id: str) -> tuple[float, float]:
@@ -105,6 +112,8 @@ def _tolerances(env_id: str) -> tuple[float, float]:
         return _WARP_WRAP_DIFF_OBS_ATOL, _WARP_WRAP_DIFF_REW_ATOL
     if "TerrainWalk" in env_id:
         return _HFIELD_OBS_ATOL, _HFIELD_REW_ATOL
+    if "LegDirectional" in env_id:
+        return _DIRECTIONAL_OBS_ATOL, _CONTACT_REW_ATOL
     if "LegWalk" in env_id:
         return _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL
     return 5e-4, 5e-3
@@ -147,6 +156,13 @@ def _sync(cpu: gym.Env, mj: ManagerBasedRlEnv) -> None:
         mj.sim.data.act[:] = _t(cpu.data.act)
     if "pose" in mj.command_manager.active_terms:
         mj.command_manager.get_term("pose")._target[:] = _t(cpu.target_jnt_value)
+    elif "heading" in mj.command_manager.active_terms:
+        heading = np.asarray(
+            cpu._task_state.get(
+                "heading_dir", mj.command_manager.get_command("heading")[0].numpy()
+            )
+        )
+        mj.command_manager.get_term("heading")._target[:] = _t(heading)
     elif hasattr(cpu, "target_sids"):
         target = np.concatenate([cpu.data.site_xpos[s] for s in cpu.target_sids])
         mj.command_manager.get_term("reach")._target[:] = _t(target)
@@ -184,7 +200,7 @@ def test_one_step_parity(env_id: str) -> None:
 
     _sync(cpu, mj)
     obs0 = mj.observation_manager.compute_group("actor")[0].numpy()
-    if isinstance(cpu, LegReachEnvV0 | LegWalkEnvV0):
+    if isinstance(cpu, LegReachEnvV0 | LegWalkEnvV0 | ModularTaskEnv):
         expected = cpu._obs_dict_to_vec(cpu._get_obs_dict(cpu._accessor))
     else:
         expected = cpu.get_obs()

@@ -152,11 +152,16 @@ class MjlabEntityAccessor(EnvAccessor):
         """CPU-layout ``qvel``, shape ``(N, nv)``."""
         import torch
 
-        data = self._entity.data
         if self._entity.is_fixed_base:
-            return data.joint_vel
+            return self._entity.data.joint_vel
+        # ``qvel`` itself (like the CPU env): the root link velocities of the entity data
+        # derive from ``cvel``, which is only refreshed by ``forward()``.
+        qvel, index = self._env.sim.data.qvel, self._entity.indexing
         return torch.cat(
-            [data.root_link_lin_vel_w, data.root_link_ang_vel_b, data.joint_vel],
+            [
+                qvel[:, index.free_joint_v_adr.long()],
+                qvel[:, index.joint_v_adr.long()],
+            ],
             dim=-1,
         )
 

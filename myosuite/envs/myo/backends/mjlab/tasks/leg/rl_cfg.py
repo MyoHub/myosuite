@@ -23,3 +23,8 @@ def leg_walk_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     (gamma 0.99, 48-step rollouts).
     """
     return myo_ppo_runner_cfg("myo_leg_walk", gamma=0.99, num_steps_per_env=48)
+
+
+def leg_directional_ppo_runner_cfg(experiment_name: str) -> RslRlOnPolicyRunnerCfg:
+    """PPO config for a directional leg task (80 muscles, 500-step episodes)."""
+    return myo_ppo_runner_cfg(experiment_name, gamma=0.99, num_steps_per_env=48)

@@ -767,6 +767,52 @@ def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     )
 
 
+def _directional_init_state():
+    """Standing ``InitialStateCfg`` from the leg model's keyframe-0 pose.
+
+    mjlab's default init places a floating-base robot's root at the origin, i.e.
+    in the ground (pelvis height 0). ``m.qpos0`` (the XML's raw joint defaults)
+    is *not* a standing pose -- it is all zeros, since none of this model's
+    joints declare a nonzero ``ref``. The CPU ``myoLegDirectional*-v0`` env
+    resets to keyframe 0 (see ``ModularTaskEnv.reset()`` in
+    ``myosuite/envs/modular_env.py``), which every bundled leg host XML ships
+    as a real crouched-standing pose (pelvis ~0.92 m, nonzero hip/knee
+    angles). Reading ``qpos0`` here instead of that keyframe reproduced the
+    same "root at the origin" bug on GPU that CPU had before its own fix --
+    matching keyframe 0 (not qpos0) on both backends is what actually lets
+    the GPU policy learn to walk from a real standing pose instead of
+    collapsing/crawling off the floor every episode.
+    """
+    import mujoco  # noqa: PLC0415
+    from mjlab.entity import EntityCfg
+
+    import re  # noqa: PLC0415
+
+    m = mujoco.MjModel.from_xml_path(str(_WALK_XML))
+    q0 = m.key_qpos[0] if m.nkey > 0 else m.qpos0
+    pos = tuple(float(x) for x in q0[:3])
+    rot = tuple(float(x) for x in q0[3:7])
+    joint_pos: dict[str, float] = {}
+    for j in range(m.njnt):
+        name = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, j)
+        if not name:
+            continue
+        if int(m.jnt_type[j]) in (
+            int(mujoco.mjtJoint.mjJNT_SLIDE),
+            int(mujoco.mjtJoint.mjJNT_HINGE),
+        ):
+            # mjlab's Entity.resolve_expr matches these keys as regex
+            # patterns via re.match (prefix-anchored, not a full match) --
+            # an unescaped literal name like "knee_angle_r" would also match
+            # "knee_angle_rotation2_r" as a prefix and silently steal its
+            # value (confirmed empirically: without the anchor, several
+            # joints sharing a name prefix all resolved to the same wrong
+            # value). Anchor with ^...$ so each key matches only its exact
+            # joint.
+            joint_pos[f"^{re.escape(name)}$"] = float(q0[int(m.jnt_qposadr[j])])
+    return EntityCfg.InitialStateCfg(pos=pos, rot=rot, joint_pos=joint_pos)
+
+
 def _make_walk_env_cfg(
     play: bool = False, muscle_condition: str = ""
 ) -> ManagerBasedRlEnvCfg:
@@ -927,374 +973,6 @@ def _make_walk_env_cfg(
         )
     }
     return env_cfg
-
-
-# ---------------------------------------------------------------------------
-# Directional myoLeg locomotion — GPU (mjlab) match for the CPU
-# myoLegDirectional{Forward,Backward}-v0 TaskConfig envs. Obs/reward mirror
-# myosuite/terms/base_obs.py + base_reward.py (root_planar_vel, heading_cmd,
-# heading_reward) so a policy trained on GPU transfers to the CPU env.
-# ---------------------------------------------------------------------------
-_DIRECTIONAL_FALL_HEIGHT = 0.7  # _HEADING_FALL_HEIGHT in base_reward.py
-_DIRECTIONAL_FALL_PENALTY = 1.0  # _HEADING_FALL_PENALTY in base_reward.py
-
-
-def _directional_obs_joint_pos(env):
-    """Full free-joint qpos (N, nq) — matches accessor.joint_pos()."""
-    return env.scene[_WALK_ENTITY_NAME].data.data.qpos
-
-
-def _directional_obs_joint_vel(env):
-    """Raw qvel (N, nv) — matches accessor.joint_vel() (unscaled)."""
-    return env.scene[_WALK_ENTITY_NAME].data.data.qvel
-
-
-def _directional_obs_muscle_act(env):
-    """Muscle activation state (N, 80) — matches accessor.muscle_act()."""
-    return env.scene[_WALK_ENTITY_NAME].data.data.act
-
-
-def _directional_obs_root_planar_vel(env):
-    """Root free-joint planar velocity (N, 2) — matches joint_vel()[:2]."""
-    return env.scene[_WALK_ENTITY_NAME].data.data.qvel[:, :2]
-
-
-def _directional_obs_heading_cmd(env, heading_dir: tuple[float, float] = (0.0, 1.0)):
-    """Constant commanded heading direction (N, 2) — matches heading_cmd_obs."""
-    import torch  # noqa: PLC0415
-
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    n = data.qpos.shape[0]
-    return torch.tensor(
-        heading_dir, dtype=torch.float32, device=data.qpos.device
-    ).expand(n, 2)
-
-
-def _directional_heading_tracking(
-    env, heading_dir: tuple[float, float] = (0.0, 1.0), target_speed: float = 1.2
-):
-    """exp(-||target_speed*heading_dir - planar_vel||^2) (N,) — heading_reward tracking."""
-    import torch  # noqa: PLC0415
-
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    planar_vel = data.qvel[:, :2]
-    direction = torch.tensor(heading_dir, dtype=torch.float32, device=planar_vel.device)
-    target_vel = target_speed * direction
-    return torch.exp(-torch.sum((target_vel - planar_vel) ** 2, dim=1))
-
-
-# --- Command-randomized directional variant (GPU match for myoLegDirectionalRandom-v0) ---
-# A per-env commanded heading is resampled from the full unit circle at each
-# reset and stored on ``env._directional_cmd``. Both the heading_cmd observation
-# and the heading-tracking reward read this buffer, so a policy trained here
-# learns the command->direction mapping (the fix for the chase-tag steering null
-# result). Mirrors the CPU ``LegDirectionalRandomTask`` (randomize_heading=True).
-
-
-def _directional_cmd_buffer(env):
-    """Lazily create / return the per-env commanded-heading buffer ``(N, 2)``."""
-    import torch  # noqa: PLC0415
-
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    n = data.qpos.shape[0]
-    buf = getattr(env, "_directional_cmd", None)
-    if buf is None or buf.shape[0] != n:
-        buf = torch.zeros(n, 2, dtype=torch.float32, device=data.qpos.device)
-        buf[:, 1] = 1.0  # default forward until the first reset populates it
-        env._directional_cmd = buf  # noqa: SLF001
-    return env._directional_cmd
-
-
-def _directional_reset_heading(env, env_ids=None, **_):
-    """Reset event: resample a full-circle unit heading for the reset envs."""
-    import math  # noqa: PLC0415
-
-    import torch  # noqa: PLC0415
-
-    from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (  # noqa: PLC0415
-        normalize_mjlab_env_ids,
-    )
-
-    buf = _directional_cmd_buffer(env)
-    idx = normalize_mjlab_env_ids(env, env_ids)
-    if idx.numel() == 0:
-        return
-    angles = torch.rand(idx.numel(), device=buf.device) * (2.0 * math.pi)
-    buf[idx, 0] = torch.cos(angles)
-    buf[idx, 1] = torch.sin(angles)
-
-
-def _directional_obs_heading_cmd_rand(env):
-    """Per-env commanded heading ``(N, 2)`` from the reset-sampled buffer."""
-    return _directional_cmd_buffer(env)
-
-
-def _directional_heading_tracking_rand(env, target_speed: float = 1.2):
-    """Heading tracking using the per-env sampled command buffer ``(N,)``."""
-    import torch  # noqa: PLC0415
-
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    planar_vel = data.qvel[:, :2]
-    target_vel = target_speed * _directional_cmd_buffer(env)
-    return torch.exp(-torch.sum((target_vel - planar_vel) ** 2, dim=1))
-
-
-def _directional_solved(
-    env,
-    heading_dir: tuple[float, float] = (0.0, 1.0),
-    target_speed: float = 1.2,
-    randomized: bool = False,
-):
-    """``success`` metric of the directional tasks (CPU ``solved``): upright and the
-    planar velocity within ``LOCOMOTION_VEL_TOL`` of ``target_speed * heading``."""
-    import torch  # noqa: PLC0415
-
-    planar_vel = env.scene[_WALK_ENTITY_NAME].data.data.qvel[:, :2]
-    if randomized:
-        direction = _directional_cmd_buffer(env)
-    else:
-        direction = torch.tensor(
-            heading_dir, dtype=torch.float32, device=planar_vel.device
-        )
-    vel_error = torch.linalg.norm(target_speed * direction - planar_vel, dim=1)
-    return locomotion_solved(torch, vel_error, _directional_fallen_bool(env)).float()
-
-
-def _directional_fallen_bool(env, fall_height: float = _DIRECTIONAL_FALL_HEIGHT):
-    """Bool (N,): pelvis height (qpos[2]) < fall_height. For the TerminationManager."""
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    return data.qpos[:, 2] < fall_height
-
-
-def _directional_fallen(env, fall_height: float = _DIRECTIONAL_FALL_HEIGHT):
-    """1.0 where fallen else 0.0 (N,) float. For the RewardManager fall penalty."""
-    import torch  # noqa: PLC0415
-
-    return _directional_fallen_bool(env, fall_height).to(dtype=torch.float32)
-
-
-def _directional_alive_reward(env, fall_height: float = _DIRECTIONAL_FALL_HEIGHT):
-    """Alive reward: 1.0 while the pelvis is above the fall height, else 0.0.
-
-    Mirrors ``_walk_alive_reward`` (myoLegWalk-v0's working pattern for this
-    exact class of problem): a small constant per-step bonus for staying
-    upright gives the policy an immediate, dense reward signal for surviving
-    longer, on top of the sparser heading-tracking term. Without it, an
-    early/undertrained policy that can't yet balance the crouched standing
-    pose gets no reward difference between falling at step 20 vs step 150,
-    so there's nothing pushing episode length to grow during the hardest
-    part of exploration (confirmed empirically: episode length was pinned
-    flat at ~101/500 steps for hundreds of iterations even with the reset
-    pose itself confirmed correct).
-    """
-    import torch  # noqa: PLC0415
-
-    return (~_directional_fallen_bool(env, fall_height)).to(dtype=torch.float32)
-
-
-def _directional_init_state():
-    """Standing ``InitialStateCfg`` from the leg model's keyframe-0 pose.
-
-    mjlab's default init places a floating-base robot's root at the origin, i.e.
-    in the ground (pelvis height 0). ``m.qpos0`` (the XML's raw joint defaults)
-    is *not* a standing pose -- it is all zeros, since none of this model's
-    joints declare a nonzero ``ref``. The CPU ``myoLegDirectional*-v0`` env
-    resets to keyframe 0 (see ``ModularTaskEnv.reset()`` in
-    ``myosuite/envs/modular_env.py``), which every bundled leg host XML ships
-    as a real crouched-standing pose (pelvis ~0.92 m, nonzero hip/knee
-    angles). Reading ``qpos0`` here instead of that keyframe reproduced the
-    same "root at the origin" bug on GPU that CPU had before its own fix --
-    matching keyframe 0 (not qpos0) on both backends is what actually lets
-    the GPU policy learn to walk from a real standing pose instead of
-    collapsing/crawling off the floor every episode.
-    """
-    import mujoco  # noqa: PLC0415
-    from mjlab.entity import EntityCfg
-
-    import re  # noqa: PLC0415
-
-    m = mujoco.MjModel.from_xml_path(str(_WALK_XML))
-    q0 = m.key_qpos[0] if m.nkey > 0 else m.qpos0
-    pos = tuple(float(x) for x in q0[:3])
-    rot = tuple(float(x) for x in q0[3:7])
-    joint_pos: dict[str, float] = {}
-    for j in range(m.njnt):
-        name = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, j)
-        if not name:
-            continue
-        if int(m.jnt_type[j]) in (
-            int(mujoco.mjtJoint.mjJNT_SLIDE),
-            int(mujoco.mjtJoint.mjJNT_HINGE),
-        ):
-            # mjlab's Entity.resolve_expr matches these keys as regex
-            # patterns via re.match (prefix-anchored, not a full match) --
-            # an unescaped literal name like "knee_angle_r" would also match
-            # "knee_angle_rotation2_r" as a prefix and silently steal its
-            # value (confirmed empirically: without the anchor, several
-            # joints sharing a name prefix all resolved to the same wrong
-            # value). Anchor with ^...$ so each key matches only its exact
-            # joint.
-            joint_pos[f"^{re.escape(name)}$"] = float(q0[int(m.jnt_qposadr[j])])
-    return EntityCfg.InitialStateCfg(pos=pos, rot=rot, joint_pos=joint_pos)
-
-
-def _make_directional_env_cfg(
-    heading_dir: tuple[float, float],
-    target_speed: float,
-    randomize_heading: bool = False,
-) -> ManagerBasedRlEnvCfg:
-    """ManagerBasedRlEnvCfg for directional myoLeg locomotion (GPU match).
-
-    Obs = [joint_pos(nq), joint_vel(nv), muscle_act(80), root_planar_vel(2),
-    heading_cmd(2)] matching the CPU ``myoLegDirectional*-v0`` obs. Reward =
-    heading velocity tracking − fall penalty − act regularisation.
-
-    Args:
-        heading_dir: Fixed commanded direction (used when not randomizing).
-        target_speed: Commanded speed (m/s).
-        randomize_heading: If True, the commanded heading is resampled from the
-            full unit circle per env at each reset (mirrors the CPU
-            ``myoLegDirectionalRandom-v0``); the heading_cmd obs and tracking
-            reward read the per-env buffer. This teaches the command->direction
-            mapping needed for chase-tag steering transfer.
-    """
-    if not _WALK_XML.exists():
-        raise FileNotFoundError(f"Leg model not found: {_WALK_XML}")
-
-    muscle_names = _walk_muscle_names()
-    from mjlab.managers.event_manager import EventTermCfg
-    from mjlab.managers.reward_manager import RewardTermCfg
-
-    if randomize_heading:
-        heading_cmd_term = ObservationTermCfg(func=_directional_obs_heading_cmd_rand)
-        heading_reward_term = RewardTermCfg(
-            func=_directional_heading_tracking_rand,
-            weight=1.0,
-            params={"target_speed": float(target_speed)},
-        )
-    else:
-        heading_cmd_term = ObservationTermCfg(
-            func=_directional_obs_heading_cmd,
-            params={"heading_dir": tuple(heading_dir)},
-        )
-        heading_reward_term = RewardTermCfg(
-            func=_directional_heading_tracking,
-            weight=1.0,
-            params={
-                "heading_dir": tuple(heading_dir),
-                "target_speed": float(target_speed),
-            },
-        )
-
-    observations = {
-        "policy": ObservationGroupCfg(
-            terms={
-                "joint_pos": ObservationTermCfg(func=_directional_obs_joint_pos),
-                "joint_vel": ObservationTermCfg(func=_directional_obs_joint_vel),
-                "muscle_act": ObservationTermCfg(func=_directional_obs_muscle_act),
-                "root_planar_vel": ObservationTermCfg(
-                    func=_directional_obs_root_planar_vel
-                ),
-                "heading_cmd": heading_cmd_term,
-            },
-        ),
-    }
-    observations = _actor_critic_groups(observations["policy"])
-    actions = {
-        "muscles": MyoMuscleActivationActionCfg(
-            entity_name=_WALK_ENTITY_NAME,
-            actuator_names=muscle_names,
-        ),
-    }
-    rewards = {
-        "heading_tracking": heading_reward_term,
-        "fall_penalty": RewardTermCfg(
-            func=_directional_fallen,
-            weight=-_DIRECTIONAL_FALL_PENALTY,
-        ),
-        # See _directional_alive_reward's docstring: borrowed from
-        # myoLegWalk-v0's working alive_bonus pattern (WalkCfg.alive_bonus =
-        # 0.2) to give a dense per-step survival signal while the policy is
-        # still too undertrained to balance the crouched standing pose.
-        "alive_reward": RewardTermCfg(func=_directional_alive_reward, weight=0.2),
-        "act_reg": RewardTermCfg(func=_walk_act_reg, weight=-0.1),
-    }
-    # Fall termination matches the CPU env (heading_reward returns done=fallen).
-    # Safe now that init_state starts the pelvis standing at ~0.92 m (well
-    # above the 0.7 m fall height), so it only fires on a genuine fall — not
-    # step 1.
-    terminations = {
-        "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
-        "fallen": TerminationTermCfg(func=_directional_fallen_bool),
-    }
-    events = {
-        # init_state (see _directional_init_state()) only seeds the entity's
-        # spec-level "init_state" keyframe used to build the compiled model's
-        # default_root_state/default_joint_pos; it is NOT automatically
-        # reapplied to data.qpos at each episode boundary. Without this
-        # event, every reset after the very first falls back to whatever
-        # mjlab's own generic default is (confirmed empirically: pelvis
-        # z=1.0, all joint angles 0 -- not our standing pose at all), so the
-        # leg was silently resetting to the same broken "pedestal" pose this
-        # whole fix was meant to solve. This mirrors every mjlab example
-        # task (cartpole, velocity, manipulation, tracking), which all
-        # register a mode="reset" event to actually apply entity defaults.
-        "reset_scene_to_default": EventTermCfg(
-            func=mdp_events.reset_scene_to_default, mode="reset"
-        ),
-    }
-    if randomize_heading:
-        events["sample_heading"] = EventTermCfg(
-            func=_directional_reset_heading, mode="reset"
-        )
-    env_cfg = mjlab_env_cfg_from_task_config(
-        cfg=TaskConfig(max_episode_steps=500),
-        spec_fn=_walk_spec_fn,
-        entity_name=_WALK_ENTITY_NAME,
-        actuators=(
-            _XmlWrappedActuatorCfg(
-                target_names_expr=tuple(f"{name}_tendon" for name in muscle_names),
-                transmission_type=TransmissionType.TENDON,
-            ),
-        ),
-        observations=observations,
-        actions=actions,
-        rewards=rewards,
-        terminations=terminations,
-        events=events,
-        num_envs=1,
-        decimation=5,  # CPU BackendConfig(n_substeps=5, ctrl_dt=0.01, sim_dt=0.002)
-        sim_cfg=SimulationCfg(
-            mujoco=MujocoCfg(timestep=0.002, ccd_iterations=500),
-            njmax=512,
-            nconmax=256,
-        ),
-        episode_length_s=20.0,  # matches myoLegWalk-v0's proven horizon (was 5.0)
-        init_state=_directional_init_state(),  # stand at ~1.0 m, matching CPU reset
-    )
-    # Standard success metric (logged as Episode_Metrics/success): the CPU "solved"
-    # flag (upright and tracking the commanded velocity) on the final step.
-    env_cfg.metrics = {
-        "success": MetricsTermCfg(
-            func=_directional_solved,
-            params={
-                "heading_dir": tuple(heading_dir),
-                "target_speed": float(target_speed),
-                "randomized": randomize_heading,
-            },
-            reduce="last",
-        )
-    }
-    return env_cfg
-
-
-def _directional_ppo_runner_cfg(experiment_name: str) -> RslRlOnPolicyRunnerCfg:
-    """PPO runner config for directional myoLeg locomotion (shared MyoSuite defaults)."""
-    from myosuite.envs.myo.backends.mjlab.tasks.rl import (  # noqa: PLC0415
-        myo_ppo_runner_cfg,
-    )
-
-    return myo_ppo_runner_cfg(experiment_name)
 
 
 # ---------------------------------------------------------------------------
@@ -1910,21 +1588,6 @@ def _chasetag_ppo_runner_cfg(
     )
 
 
-# Directional variants: (env_id, heading_dir, target_speed) — mirror the CPU
-# LegDirectional{Forward,Backward}Task specs.
-_DIRECTIONAL_VARIANTS = (
-    ("myoLegDirectionalForward-v0", (0.0, 1.0), 1.2, "myo_leg_directional_fwd", False),
-    (
-        "myoLegDirectionalBackward-v0",
-        (0.0, -1.0),
-        1.0,
-        "myo_leg_directional_bwd",
-        False,
-    ),
-    ("myoLegDirectionalRandom-v0", (0.0, 1.0), 1.2, "myo_leg_directional_rand", True),
-)
-
-
 def register_mjlab_tasks() -> None:
     """Register MyoSuite env ids with mjlab.tasks.registry. Idempotent."""
 
@@ -1933,33 +1596,7 @@ def register_mjlab_tasks() -> None:
 
     # myoLegWalk-v0 (+ Sarc/Fati) are CPU twins registered by the tasks package.
 
-    # --- Directional myoLeg locomotion (GPU match for CPU TaskConfig envs) ---
-    if _WALK_XML.exists():
-        for (
-            env_id,
-            heading_dir,
-            target_speed,
-            exp_name,
-            randomize,
-        ) in _DIRECTIONAL_VARIANTS:
-            try:
-                dir_env_cfg = _make_directional_env_cfg(
-                    heading_dir, target_speed, randomize_heading=randomize
-                )
-                dir_rl_cfg = _directional_ppo_runner_cfg(exp_name)
-                register_mjlab_task(
-                    task_id=env_id,
-                    env_cfg=dir_env_cfg,
-                    play_env_cfg=dir_env_cfg,
-                    rl_cfg=dir_rl_cfg,
-                    runner_cls=None,
-                )
-            except ValueError:
-                pass  # already registered
-            except Exception:
-                logging.getLogger(__name__).warning(
-                    "mjlab: failed to register %s", env_id, exc_info=True
-                )
+    # myoLegDirectional* are CPU twins registered by the tasks package.
 
     register_table_tennis_mjlab_tasks()
 
