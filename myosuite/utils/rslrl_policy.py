@@ -22,22 +22,33 @@ from rsl_rl.modules import MLP, EmpiricalNormalization
 
 
 class RslRlPolicy(torch.nn.Module):
-    """Deterministic RSL-RL actor: ``mlp(normalizer(obs))`` -> action mean.
+    """RSL-RL actor: ``mlp(normalizer(obs))`` -> action mean (deterministic).
+
+    :meth:`sample` adds the training Gaussian noise, i.e. the policy the training
+    success rate was measured with. The two can behave very differently for muscle
+    tasks (the action goes through a sigmoid), so a policy can succeed when sampled
+    and fail with its mean action.
 
     Args:
         mlp: Actor MLP.
         normalizer: Observation normalizer (``Identity`` when training used none).
         action_dim: Action dimension; a ``2 * action_dim`` MLP output (state-
             dependent std) is reduced to its mean slice.
+        std: Learned action standard deviation (scalar or per action), if known.
     """
 
     def __init__(
-        self, mlp: torch.nn.Module, normalizer: torch.nn.Module, action_dim: int
+        self,
+        mlp: torch.nn.Module,
+        normalizer: torch.nn.Module,
+        action_dim: int,
+        std: torch.Tensor | None = None,
     ) -> None:
         super().__init__()
         self.mlp = mlp
         self.normalizer = normalizer
         self.action_dim = action_dim
+        self.register_buffer("std", None if std is None else std.flatten().clone())
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         out = self.mlp(self.normalizer(obs))
@@ -45,11 +56,18 @@ class RslRlPolicy(torch.nn.Module):
             out = out.reshape(*out.shape[:-1], 2, self.action_dim)[..., 0, :]
         return out
 
+    def sample(self, obs: torch.Tensor) -> torch.Tensor:
+        """Action mean plus Gaussian noise with the learned std (as in training)."""
+        if self.std is None:
+            raise ValueError("The checkpoint has no action std to sample from.")
+        mean = self(obs)
+        return mean + self.std * torch.randn_like(mean)
+
     @torch.no_grad()
-    def act(self, obs: np.ndarray) -> np.ndarray:
+    def act(self, obs: np.ndarray, stochastic: bool = False) -> np.ndarray:
         """Numpy convenience wrapper (single or batched observations)."""
         x = torch.as_tensor(np.asarray(obs), dtype=torch.float32)
-        return self(x).numpy()
+        return (self.sample(x) if stochastic else self(x)).numpy()
 
 
 def _agent_params(checkpoint: Path) -> dict[str, Any]:
@@ -106,4 +124,9 @@ def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
         )
     else:
         normalizer = torch.nn.Identity()
-    return RslRlPolicy(mlp, normalizer, action_dim).eval()
+    std = None
+    if "distribution.std_param" in actor_state:
+        std = actor_state["distribution.std_param"]
+    elif "distribution.log_std_param" in actor_state:
+        std = actor_state["distribution.log_std_param"].exp()
+    return RslRlPolicy(mlp, normalizer, action_dim, std).eval()
