@@ -11,6 +11,8 @@ follow the CPU env.
 
 from __future__ import annotations
 
+import functools
+
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
@@ -24,6 +26,7 @@ from mjlab.sim import SimulationCfg
 from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref
 from myosuite.envs.myo.backends.mjlab.tasks import mdp
 from myosuite.envs.myo.backends.mjlab.tasks.leg import walk_mdp
+from myosuite.envs.myo.backends.mjlab.tasks.leg.terrain import add_terrain
 from myosuite.envs.myo.backends.mjlab.tasks.leg.stand_env_cfg import (
     _NCONMAX,
     _NJMAX,
@@ -32,6 +35,8 @@ from myosuite.envs.myo.backends.mjlab.tasks.leg.stand_env_cfg import (
 from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0
 
 ENTITY = "robot"
+# LegTerrainEnvV0 ends the episode when the centre of mass is < 0.61 m above the feet.
+_KNEE_MARGIN = 0.61
 
 
 def _qpos_index(info: ref.CompiledModelInfo, name: str) -> int:
@@ -68,11 +73,12 @@ def walk_params(
         min_height=float(kw.get("min_height", 0.8)),
         max_rot=float(kw.get("max_rot", 0.8)),
         hip_period=int(kw.get("hip_period", 100)),
+        knee_margin=_KNEE_MARGIN if kw.get("terrain") else None,
     )
 
 
 def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
-    """mjlab twin of the CPU ``LegWalkEnvV0`` registration of *env_id*.
+    """mjlab twin of the CPU ``LegWalkEnvV0`` / ``LegTerrainEnvV0`` registration of *env_id*.
 
     Args:
         env_id: CPU env id (also the mjlab task id).
@@ -91,6 +97,12 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
         raise NotImplementedError("Only reset_type='init' is ported.")
     info = ref.compiled_info(task)
     robot = SceneEntityCfg(ENTITY)
+    if kw.get("terrain"):  # height field baked in (see terrain.py)
+        model_edit = functools.partial(
+            add_terrain, terrain=kw["terrain"], variant=kw.get("variant")
+        )
+    else:
+        model_edit = hide_terrain
     walk = walk_params(task, info)
     hip_period = walk.hip_period
 
@@ -171,7 +183,7 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
         scene=SceneCfg(
             entities={
                 ENTITY: ref.robot_entity_cfg(
-                    task, init_qpos=info.key_qpos[2], spec_edits=(hide_terrain,)
+                    task, init_qpos=info.key_qpos[2], spec_edits=(model_edit,)
                 )
             },
             num_envs=1,

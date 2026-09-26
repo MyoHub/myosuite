@@ -2,11 +2,9 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Leg terrain walking (mjlab twin of CPU ``LegTerrainEnvV0``).
+"""Height-field terrains of the CPU ``LegTerrainEnvV0`` for the mjlab leg twins.
 
-Observations, rewards and actions are those of the ``myoLegWalk-v0`` twin; the
-task adds an height-field terrain and the CPU env's knee termination signal. The
-CPU env rewrites the terrain at every reset. MuJoCo Warp shares one height field
+The CPU env rewrites the terrain at every reset. MuJoCo Warp shares one height field
 between all envs, so the twin bakes one terrain (fixed seed for ``rough``) into the
 model instead; the ``hilly`` and ``stairs`` CPU registrations use their fixed variant
 and are reproduced exactly.
@@ -14,20 +12,9 @@ and are reproduced exactly.
 
 from __future__ import annotations
 
-import functools
-
 import mujoco
 import numpy as np
-from mjlab.envs import ManagerBasedRlEnvCfg
-from mjlab.managers.event_manager import EventTermCfg
-from mjlab.managers.metrics_manager import MetricsTermCfg
-from mjlab.managers.reward_manager import RewardTermCfg
-from mjlab.managers.scene_entity_config import SceneEntityCfg
 
-from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref
-from myosuite.envs.myo.backends.mjlab.tasks.mdp import reset_to_cpu_state
-
-ENTITY = "walk_robot"  # entity key the walk observation/reward terms look up
 _TERRAIN_SEED = 0  # the CPU env draws a new rough terrain at every reset
 _N = 10_000  # height-field samples (100 x 100)
 
@@ -102,53 +89,3 @@ def add_terrain(spec: mujoco.MjSpec, terrain: str, variant: str | None) -> None:
     geom.pos = np.array([0.0, 0.0, float(heights.min())])
     geom.rgba[3] = 1.0
     geom.contype = geom.conaffinity = 1
-
-
-def make_leg_terrain_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
-    """mjlab twin of the CPU ``LegTerrainEnvV0`` registration of *env_id*.
-
-    Args:
-        env_id: CPU env id (also the mjlab task id).
-        play: Play/eval variant (identical: the CPU env has no noise or DR).
-
-    Returns:
-        The env config.
-    """
-    del play
-    # Imported here: the legacy walk module imports this package's helpers.
-    from myosuite.envs.myo.backends.mjlab import register_mjlab_tasks as walk
-
-    task = ref.cpu_task_spec(env_id)
-    kw = task.kwargs
-    info = ref.compiled_info(task)
-    cfg = walk._make_walk_env_cfg()
-    entity = cfg.scene.entities[walk._WALK_ENTITY_NAME]
-    edit = functools.partial(add_terrain, terrain=kw["terrain"], variant=kw["variant"])
-    entity.spec_fn = functools.partial(ref._entity_spec, task, (edit,))
-    # CPU reset ("init"): keyframe 2, positions and velocities.
-    entity.init_state = ref.init_state_from_model(info, info.key_qpos[2])
-    cfg.events = {
-        "reset_scene_to_default": EventTermCfg(
-            func=reset_to_cpu_state,
-            mode="reset",
-            params={
-                "asset_cfg": SceneEntityCfg(walk._WALK_ENTITY_NAME),
-                "qpos": info.key_qpos[2],
-                "qvel": info.key_qvel[2],
-            },
-        ),
-    }
-    # The CPU ``done`` of the terrain env also fires on the knee condition.
-    cfg.rewards["done"] = RewardTermCfg(func=walk._terrain_done_signal, weight=-100.0)
-    cfg.metrics = {
-        "success": MetricsTermCfg(
-            func=walk._walk_solved,
-            params={
-                "target_y_vel": float(kw["target_y_vel"]),
-                "target_x_vel": float(kw["target_x_vel"]),
-                "terrain": True,
-            },
-            reduce="last",
-        )
-    }
-    return cfg

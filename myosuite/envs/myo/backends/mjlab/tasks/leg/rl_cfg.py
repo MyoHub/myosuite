@@ -11,8 +11,8 @@ def leg_stand_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
 
 
 def leg_terrain_ppo_runner_cfg(experiment_name: str) -> RslRlOnPolicyRunnerCfg:
-    """PPO config for a leg terrain walking task (80 muscles)."""
-    return myo_ppo_runner_cfg(experiment_name)
+    """PPO config for a leg terrain walking task (80 muscles, 1000-step episodes)."""
+    return myo_ppo_runner_cfg(experiment_name, gamma=0.99, num_steps_per_env=48)
 
 
 def leg_walk_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:

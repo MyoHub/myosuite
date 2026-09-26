@@ -46,6 +46,7 @@ _PORTED_ENTRY_POINTS = (
     "arm.reach:ReachEnvV0",
     "leg.reach:LegReachEnvV0",
     "leg.walk:LegWalkEnvV0",
+    "leg.walk:LegTerrainEnvV0",
 )
 
 PARITY_IDS = (
@@ -70,6 +71,9 @@ PARITY_IDS = (
     "myoLegWalk-v0",
     "myoSarcLegWalk-v0",
     "myoFatiLegWalk-v0",
+    "myoLegRoughTerrainWalk-v0",
+    "myoLegHillyTerrainWalk-v0",
+    "myoLegStairTerrainWalk-v0",
 )
 
 # Ported families whose multi-floating-body models still need the
@@ -90,11 +94,17 @@ _WARP_WRAP_DIFF_REW_ATOL = 5e-2
 # Foot-contact events: one step can differ by ~5e-3 in velocities although the muscle
 # lengths agree to 1e-5 (constraint-solver ordering; the other steps match to ~1e-6).
 _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL = 1e-2, 1e-2
+# Height-field terrain: MuJoCo Warp generates at most one capsule-hfield contact where
+# C MuJoCo can create several, so contact forces (and the muscle forces reacting to them)
+# differ per step: measured up to 1e-2 in velocities and 0.2 in force / 1000.
+_HFIELD_OBS_ATOL, _HFIELD_REW_ATOL = 0.3, 0.1
 
 
 def _tolerances(env_id: str) -> tuple[float, float]:
     if "Hand" in env_id or "Arm" in env_id:
         return _WARP_WRAP_DIFF_OBS_ATOL, _WARP_WRAP_DIFF_REW_ATOL
+    if "TerrainWalk" in env_id:
+        return _HFIELD_OBS_ATOL, _HFIELD_REW_ATOL
     if "LegWalk" in env_id:
         return _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL
     return 5e-4, 5e-3

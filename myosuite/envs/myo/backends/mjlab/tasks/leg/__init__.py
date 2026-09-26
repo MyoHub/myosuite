@@ -10,7 +10,6 @@ from .rl_cfg import (
     leg_walk_ppo_runner_cfg,
 )
 from .stand_env_cfg import make_leg_stand_env_cfg
-from .terrain_env_cfg import make_leg_terrain_env_cfg
 from .walk_env_cfg import make_leg_walk_env_cfg
 
 LEG_STAND_IDS = ("myoLegStandRandom-v0",)
@@ -27,6 +26,6 @@ register_cpu_twins(LEG_WALK_IDS, make_leg_walk_env_cfg, leg_walk_ppo_runner_cfg)
 for _env_id, _experiment in LEG_TERRAIN_EXPERIMENTS.items():
     register_cpu_twins(
         (_env_id,),
-        make_leg_terrain_env_cfg,
+        make_leg_walk_env_cfg,
         functools.partial(leg_terrain_ppo_runner_cfg, _experiment),
     )

@@ -37,6 +37,8 @@ class WalkParams:
         min_height: Centre-of-mass height below which the episode ends.
         max_rot: Rotation limit of the done condition.
         hip_period: Steps of the reference hip cycle.
+        knee_margin: Terrain env: the episode also ends when the centre of mass is less than
+            this above the mean foot height (CPU ``_get_knee_condition``); ``None``: off.
     """
 
     hip_flex_indices: tuple[int, int]
@@ -46,6 +48,7 @@ class WalkParams:
     min_height: float
     max_rot: float
     hip_period: int
+    knee_margin: float | None = None
 
 
 def _body_ids(env: ManagerBasedRlEnv, entity: str, *names: str) -> list[int]:
@@ -152,6 +155,11 @@ def walk_components(
         min_height=walk.min_height,
         max_rot=walk.max_rot,
     )
+    if walk.knee_margin is not None:
+        left, right = _body_ids(env, asset_cfg.name, "talus_l", "talus_r")
+        feet = env.sim.data.xpos[:, [left, right], 2].mean(1)
+        knee = (task_state["height"] - feet) < walk.knee_margin
+        comps["done"] = torch.logical_or(comps["done"], knee)
     target = torch.tensor(walk.target_vel, device=env.device)
     comps["vel_error"] = torch.linalg.norm(target - com_vel, dim=1)
     return comps
