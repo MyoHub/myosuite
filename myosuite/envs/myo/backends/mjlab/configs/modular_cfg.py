@@ -67,7 +67,9 @@ class ModularMjlabCfg:
         reward_weights: Per-term scalar weights.
         goal_type: Semantic goal type (``"joint_angles"`` or ``"site_positions"``).
         goal_randomize: Whether to randomize goals at each episode reset.
-        goal_range: Joint/site name → ``(lo, hi)`` sampling range.
+        goal_range: Joint/site name → ``(lo, hi)`` sampling range (``(x, y, z)`` bounds for
+            sites). This dataclass only carries the fields; ``site_position_command_cfg``
+            (``tasks/mdp/commands.py``) turns a site goal into an mjlab command.
         action_terms: One entry per actuator group.
     """
 
@@ -84,7 +86,7 @@ class ModularMjlabCfg:
     reward_weights: dict[str, float] = field(default_factory=dict)
     goal_type: str = "joint_angles"
     goal_randomize: bool = True
-    goal_range: dict[str, tuple[float, float]] = field(default_factory=dict)
+    goal_range: dict[str, tuple[Any, Any]] = field(default_factory=dict)
     action_terms: list[ModularActionTermEntry] = field(
         default_factory=lambda: [ModularActionTermEntry(name="muscles")]
     )

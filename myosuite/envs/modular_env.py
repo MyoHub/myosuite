@@ -165,7 +165,9 @@ def _sample_goal(
 
     Returns:
         Dict with ``"target_angles"`` for ``joint_angles`` targets,
-        ``"target_pos"`` for ``site_positions`` targets.
+        ``"target_pos"`` (flattened ``(3 * n_sites,)``, sites in ``goal_spec.range``
+        order) for ``site_positions`` targets with a non-empty ``range``, plus any
+        ``goal_spec.extra`` entries.
 
     Raises:
         ValueError: If the target type is not supported.
@@ -190,8 +192,12 @@ def _sample_goal(
                     target[qadr : qadr + span] = np.full((span,), float(lo))
             return {"target_angles": target}
         case "site_positions":
-            # Minimal: return whatever extra the caller provided
-            return dict(goal_spec.extra)
+            state = dict(goal_spec.extra)
+            if goal_spec.range:  # per-site (x, y, z) bounds; else the fixed ``extra``
+                _, lo, hi = goal_spec.site_bounds()
+                target = np_random.uniform(lo, hi) if goal_spec.randomize else lo
+                state["target_pos"] = target.reshape(-1)
+            return state
         case _:
             raise ValueError(
                 f"Unsupported GoalSpec.target_type: {goal_spec.target_type!r}. "

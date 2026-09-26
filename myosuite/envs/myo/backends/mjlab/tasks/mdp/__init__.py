@@ -8,6 +8,7 @@ from .commands import (  # noqa: F401
     HeadingCommandCfg,
     UniformVectorCommand,
     UniformVectorCommandCfg,
+    site_position_command_cfg,
 )
 from .events import (  # noqa: F401
     randomize_carry_weight,

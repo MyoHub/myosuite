@@ -255,6 +255,108 @@ def test_sample_goal_unsupported_type_raises() -> None:
         _sample_goal(spec, model, qpos, rng)
 
 
+def test_sample_goal_site_positions_without_range_is_extra() -> None:
+    """Backward compatible: an empty ``range`` keeps returning ``extra`` and draws no numbers."""
+    extra = {"target_pos": np.array([0.1, 0.2, 0.3])}
+    spec = GoalSpec(target_type="site_positions", randomize=True, extra=extra)
+    model, qpos = _one_hinge_model_qpos()
+    rng = np.random.default_rng(0)
+    state_before = rng.bit_generator.state
+    goal = _sample_goal(spec, model, qpos, rng)
+    assert goal.keys() == extra.keys()
+    np.testing.assert_array_equal(goal["target_pos"], extra["target_pos"])
+    assert rng.bit_generator.state == state_before
+
+
+def test_sample_goal_site_positions_random_within_bounds() -> None:
+    spec = GoalSpec(
+        target_type="site_positions",
+        randomize=True,
+        range={"tipA": ((0.0, 0.0, 0.0), (0.1, 0.2, 0.3)), "tipB": (-1.0, 1.0)},
+        extra={"note": 1},
+    )
+    model, qpos = _one_hinge_model_qpos()
+    rng = np.random.default_rng(0)
+    draws = []
+    for _ in range(50):
+        goal = _sample_goal(spec, model, qpos, rng)
+        target = goal["target_pos"]
+        assert target.shape == (6,) and goal["note"] == 1
+        assert np.all(target[:3] >= 0) and np.all(target[:3] <= [0.1, 0.2, 0.3])
+        assert np.all(np.abs(target[3:]) <= 1.0)  # scalar bounds broadcast to xyz
+        draws.append(target)
+    assert np.std(np.stack(draws), axis=0).min() > 0  # actually randomized
+
+
+def test_sample_goal_site_positions_fixed_uses_lower_bound() -> None:
+    spec = GoalSpec(
+        target_type="site_positions",
+        randomize=False,
+        range={"tip": ((0.1, 0.2, 0.3), (0.5, 0.5, 0.5))},
+    )
+    model, qpos = _one_hinge_model_qpos()
+    goal = _sample_goal(spec, model, qpos, np.random.default_rng(0))
+    np.testing.assert_allclose(goal["target_pos"], [0.1, 0.2, 0.3])
+
+
+def test_goal_spec_site_bounds_requires_range() -> None:
+    with pytest.raises(ValueError, match="empty"):
+        GoalSpec(target_type="site_positions").site_bounds()
+
+
+def test_sample_goal_site_positions_jax_matches_cpu_contract() -> None:
+    """MJX samples ``target_pos`` with the same layout, bounds and back-compat rule."""
+    jax = pytest.importorskip("jax")
+    from myosuite.envs.myo.backends.mjx.mjx_modular_env import _sample_task_jax
+
+    model, qpos = _one_hinge_model_qpos()
+    fixed = GoalSpec(
+        target_type="site_positions", extra={"target_pos": [0.1, 0.2, 0.3]}
+    )
+    out = _sample_task_jax(fixed, model, qpos, jax.random.PRNGKey(0))
+    np.testing.assert_allclose(np.asarray(out["target_pos"]), [0.1, 0.2, 0.3])
+    spec = GoalSpec(
+        target_type="site_positions",
+        randomize=True,
+        range={"tipA": ((0.0, 0.0, 0.0), (0.1, 0.2, 0.3)), "tipB": (-1.0, 1.0)},
+    )
+    draws = np.stack(
+        [
+            np.asarray(
+                _sample_task_jax(spec, model, qpos, jax.random.PRNGKey(i))["target_pos"]
+            )
+            for i in range(30)
+        ]
+    )
+    assert draws.shape == (30, 6)
+    assert np.all(draws[:, :3] >= 0) and np.all(draws[:, :3] <= [0.1, 0.2, 0.3])
+    assert np.all(np.abs(draws[:, 3:]) <= 1.0) and draws.std(axis=0).min() > 0
+    still = GoalSpec(target_type="site_positions", randomize=False, range=spec.range)
+    out = _sample_task_jax(still, model, qpos, jax.random.PRNGKey(0))
+    np.testing.assert_allclose(np.asarray(out["target_pos"]), [0, 0, 0, -1, -1, -1])
+
+
+def test_site_position_command_cfg_matches_the_goal_contract() -> None:
+    """The mjlab command samples the same flattened ``target_pos`` bounds as CPU/MJX."""
+    pytest.importorskip("mjlab")
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp import site_position_command_cfg
+
+    spec = GoalSpec(
+        target_type="site_positions",
+        range={"tipA": ((0.0, 0.0, 0.0), (0.1, 0.2, 0.3)), "tipB": (-1.0, 1.0)},
+    )
+    cfg = site_position_command_cfg(spec, "robot")
+    assert cfg.low == (0.0, 0.0, 0.0, -1.0, -1.0, -1.0)
+    assert cfg.high == (0.1, 0.2, 0.3, 1.0, 1.0, 1.0)
+    fixed = site_position_command_cfg(
+        GoalSpec(target_type="site_positions", randomize=False, range=spec.range),
+        "robot",
+    )
+    assert fixed.low == fixed.high == (0.0, 0.0, 0.0, -1.0, -1.0, -1.0)
+    with pytest.raises(ValueError, match="site_positions"):
+        site_position_command_cfg(GoalSpec(target_type="joint_angles"), "robot")
+
+
 # ---------------------------------------------------------------------------
 # Integration tests — ModularTaskEnv lifecycle
 # ---------------------------------------------------------------------------

@@ -118,8 +118,18 @@ def _sample_task_jax(
                 vals = jp.full((span,), float(lo))
             target = target.at[qadr : qadr + span].set(vals)
         return {"target_angles": target}
-    # site_positions — return from goal.extra if provided
-    return {k: jp.array(v) for k, v in goal.extra.items()}
+    # site_positions: goal.extra, plus sampled target_pos when goal.range is given
+    state = {k: jp.array(v) for k, v in goal.extra.items()}
+    if goal.range:
+        _, lo, hi = goal.site_bounds()
+        lo, hi = jp.asarray(lo, jp.float32), jp.asarray(hi, jp.float32)
+        target = (
+            jax.random.uniform(rng, lo.shape, minval=lo, maxval=hi)
+            if goal.randomize
+            else lo
+        )
+        state["target_pos"] = target.reshape(-1)
+    return state
 
 
 class MjxModularTaskEnv(MyoMjxEnvBase):

@@ -36,6 +36,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
+import numpy as np
+
 
 # ---------------------------------------------------------------------------
 # Variant specification (Phase 2 — declarative muscle condition variants)
@@ -153,15 +155,38 @@ class GoalSpec:
         randomize: If ``True``, sample a new target at each episode reset.
             If ``False``, use the fixed values in ``range``.
         range: Mapping from joint/site name to ``(lo, hi)`` sampling bounds.
-            For ``"joint_angles"`` the values are in radians; for
-            ``"site_positions"`` in metres.
+            For ``"joint_angles"`` the values are scalars in radians. For
+            ``"site_positions"`` each bound is an ``(x, y, z)`` position in metres (a
+            scalar is broadcast to all three axes); the order of the mapping is the
+            order of the sites in the sampled ``target_pos``. With an empty ``range``
+            a ``"site_positions"`` goal is just ``extra`` (fixed, not sampled).
         extra: Additional goal-specific parameters (e.g. ``{"motion_clip": Path(...)}``.
     """
 
     target_type: str = "joint_angles"
     randomize: bool = True
-    range: dict[str, tuple[float, float]] = field(default_factory=dict)
+    range: dict[str, tuple[Any, Any]] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict)
+
+    def site_bounds(self) -> tuple[list[str], np.ndarray, np.ndarray]:
+        """Site names and ``(k, 3)`` lower/upper position bounds of a site goal.
+
+        Returns:
+            ``(names, lo, hi)`` in the order of :attr:`range`.
+
+        Raises:
+            ValueError: If :attr:`range` is empty.
+        """
+        if not self.range:
+            raise ValueError("GoalSpec.range is empty: no site position bounds.")
+        names = list(self.range)
+        lo = np.stack(
+            [np.broadcast_to(np.asarray(self.range[n][0], float), (3,)) for n in names]
+        )
+        hi = np.stack(
+            [np.broadcast_to(np.asarray(self.range[n][1], float), (3,)) for n in names]
+        )
+        return names, lo, hi
 
 
 @dataclass

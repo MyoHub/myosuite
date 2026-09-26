@@ -17,6 +17,8 @@ from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
 
+    from myosuite.core.config import GoalSpec
+
 # Resampling window long enough that commands only resample on episode reset.
 RESAMPLE_ON_RESET_ONLY: tuple[float, float] = (1.0e9, 1.0e9)
 
@@ -113,3 +115,36 @@ class HeadingCommand(CommandTerm):
 
     def _update_metrics(self) -> None:
         pass
+
+
+def site_position_command_cfg(
+    goal_spec: GoalSpec, entity_name: str
+) -> UniformVectorCommandCfg:
+    """mjlab command sampling the targets of a ``GoalSpec(target_type="site_positions")``.
+
+    The command is the flattened ``(3 * n_sites,)`` position vector the CPU/MJX goal
+    sampler returns as ``target_pos`` (sites in ``goal_spec.range`` order): uniform in
+    the per-site bounds with ``randomize=True``, the lower bound otherwise.
+
+    Args:
+        goal_spec: A site-position goal with a non-empty ``range``.
+        entity_name: Scene entity the targets refer to.
+
+    Returns:
+        The command config (read the values with ``command_manager.get_command``).
+
+    Raises:
+        ValueError: If the goal is not a ``site_positions`` goal or has no ``range``.
+    """
+    if goal_spec.target_type != "site_positions":
+        raise ValueError(
+            f"Expected a site_positions goal, got {goal_spec.target_type!r}."
+        )
+    _, lo, hi = goal_spec.site_bounds()
+    if not goal_spec.randomize:
+        hi = lo
+    return UniformVectorCommandCfg(
+        entity_name=entity_name,
+        low=tuple(float(x) for x in lo.reshape(-1)),
+        high=tuple(float(x) for x in hi.reshape(-1)),
+    )
