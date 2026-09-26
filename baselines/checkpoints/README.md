@@ -61,6 +61,7 @@ runs on the CPU env (same return and success as on mjlab).
 | myoLegDirectionalBackward-v0 | model_4999.pt | - |
 | myoLegDirectionalForward-v0 | model_4999.pt | - |
 | myoLegDirectionalRandom-v0 | model_4999.pt | - |
+| myoLegHillyTerrainWalk-v0 | model_4999.pt | 25.0% |
 | myoLegStandRandom-v0 | model_4999.pt | 35.9% |
 | myoLegWalk-v0 | model_4999.pt | - |
 | myoTorsoExoPoseFixed-v0 | model_188.pt | 100.0% |
