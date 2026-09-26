@@ -762,7 +762,7 @@ def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
         save_interval=100,
         num_steps_per_env=24,
         max_iterations=100,
-        # See _walk_ppo_runner_cfg: map actor/critic to the env's "policy" group.
+        # Map actor/critic to the env's "policy" group.
         obs_groups={"actor": ("policy",), "critic": ("policy",)},
     )
 
@@ -927,15 +927,6 @@ def _make_walk_env_cfg(
         )
     }
     return env_cfg
-
-
-def _walk_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-    """PPO runner config for the bipedal walk benchmark (shared MyoSuite defaults)."""
-    from myosuite.envs.myo.backends.mjlab.tasks.rl import (  # noqa: PLC0415
-        myo_ppo_runner_cfg,
-    )
-
-    return myo_ppo_runner_cfg("myo_leg_walk")
 
 
 # ---------------------------------------------------------------------------
@@ -1940,25 +1931,7 @@ def register_mjlab_tasks() -> None:
     # Basic-suite CPU twins (pose, ...): importing the package registers them.
     import myosuite.envs.myo.backends.mjlab.tasks  # noqa: F401, PLC0415
 
-    # --- Leg walk ---
-    if _WALK_XML.exists():
-        try:
-            walk_env_cfg = _make_walk_env_cfg(play=False)
-            walk_play_cfg = _make_walk_env_cfg(play=True)
-            walk_rl_cfg = _walk_ppo_runner_cfg()
-            register_mjlab_task(
-                task_id="myoLegWalk-v0",
-                env_cfg=walk_env_cfg,
-                play_env_cfg=walk_play_cfg,
-                rl_cfg=walk_rl_cfg,
-                runner_cls=None,
-            )
-        except ValueError:
-            pass  # already registered
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "mjlab: failed to register myoLegWalk-v0", exc_info=True
-            )
+    # myoLegWalk-v0 (+ Sarc/Fati) are CPU twins registered by the tasks package.
 
     # --- Directional myoLeg locomotion (GPU match for CPU TaskConfig envs) ---
     if _WALK_XML.exists():
@@ -1986,28 +1959,6 @@ def register_mjlab_tasks() -> None:
             except Exception:
                 logging.getLogger(__name__).warning(
                     "mjlab: failed to register %s", env_id, exc_info=True
-                )
-
-    if _WALK_XML.exists():
-        for walk_id, condition in (
-            ("myoSarcLegWalk-v0", "sarcopenia"),
-            ("myoFatiLegWalk-v0", "fatigue"),
-        ):
-            try:
-                register_mjlab_task(
-                    task_id=walk_id,
-                    env_cfg=_make_walk_env_cfg(play=False, muscle_condition=condition),
-                    play_env_cfg=_make_walk_env_cfg(
-                        play=True, muscle_condition=condition
-                    ),
-                    rl_cfg=_walk_ppo_runner_cfg(),
-                    runner_cls=None,
-                )
-            except ValueError:
-                pass  # already registered
-            except Exception:
-                logging.getLogger(__name__).warning(
-                    "mjlab: failed to register %s", walk_id, exc_info=True
                 )
 
     register_table_tennis_mjlab_tasks()

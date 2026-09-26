@@ -35,6 +35,7 @@ from myosuite.core.muscle_conditions import (  # noqa: E402
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
 from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0  # noqa: E402
+from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0  # noqa: E402
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
@@ -44,6 +45,7 @@ _PORTED_ENTRY_POINTS = (
     "torso.pose:TorsoEnvV0",
     "arm.reach:ReachEnvV0",
     "leg.reach:LegReachEnvV0",
+    "leg.walk:LegWalkEnvV0",
 )
 
 PARITY_IDS = (
@@ -65,6 +67,9 @@ PARITY_IDS = (
     "myoReafHandReachFixed-v0",
     "myoSarcArmReachFixed-v0",
     "myoLegStandRandom-v0",
+    "myoLegWalk-v0",
+    "myoSarcLegWalk-v0",
+    "myoFatiLegWalk-v0",
 )
 
 # Ported families whose multi-floating-body models still need the
@@ -82,9 +87,16 @@ _WARP_WRAP_DIFF_OBS_ATOL = 1e-2
 _WARP_WRAP_DIFF_REW_ATOL = 5e-2
 
 
+# Foot-contact events: one step can differ by ~5e-3 in velocities although the muscle
+# lengths agree to 1e-5 (constraint-solver ordering; the other steps match to ~1e-6).
+_CONTACT_OBS_ATOL, _CONTACT_REW_ATOL = 1e-2, 1e-2
+
+
 def _tolerances(env_id: str) -> tuple[float, float]:
     if "Hand" in env_id or "Arm" in env_id:
         return _WARP_WRAP_DIFF_OBS_ATOL, _WARP_WRAP_DIFF_REW_ATOL
+    if "LegWalk" in env_id:
+        return _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL
     return 5e-4, 5e-3
 
 
@@ -125,7 +137,7 @@ def _sync(cpu: gym.Env, mj: ManagerBasedRlEnv) -> None:
         mj.sim.data.act[:] = _t(cpu.data.act)
     if "pose" in mj.command_manager.active_terms:
         mj.command_manager.get_term("pose")._target[:] = _t(cpu.target_jnt_value)
-    else:
+    elif hasattr(cpu, "target_sids"):
         target = np.concatenate([cpu.data.site_xpos[s] for s in cpu.target_sids])
         mj.command_manager.get_term("reach")._target[:] = _t(target)
 
@@ -162,11 +174,11 @@ def test_one_step_parity(env_id: str) -> None:
 
     _sync(cpu, mj)
     obs0 = mj.observation_manager.compute_group("actor")[0].numpy()
-    if isinstance(cpu, LegReachEnvV0):
+    if isinstance(cpu, LegReachEnvV0 | LegWalkEnvV0):
         expected = cpu._obs_dict_to_vec(cpu._get_obs_dict(cpu._accessor))
     else:
         expected = cpu.get_obs()
-    if isinstance(cpu, PoseEnvV0 | LegReachEnvV0):  # these clip to their +-10 space
+    if isinstance(cpu, PoseEnvV0 | LegReachEnvV0 | LegWalkEnvV0):  # clip to +-10
         expected = expected.clip(-10, 10)
     np.testing.assert_allclose(obs0, expected, atol=1e-5)
 

@@ -67,6 +67,9 @@ def cpu_post_step_field(env: ManagerBasedRlEnv, field: str) -> torch.Tensor:
         The field, shape ``(num_envs, ...)``.
     """
     live = getattr(env.sim.data, field)
-    stale = env.termination_manager.get_term_cfg(SYNC_TERM).func.stale[field]
+    manager = getattr(env, "termination_manager", None)
+    if manager is None:  # observation shapes are probed before the managers exist
+        return live
+    stale = manager.get_term_cfg(SYNC_TERM).func.stale[field]
     started = (env.episode_length_buf > 0).view(-1, *([1] * (live.ndim - 1)))
     return torch.where(started, stale, live)

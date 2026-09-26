@@ -172,11 +172,7 @@ def test_myo_leg_walk_initial_state_difference_cpu_vs_mjlab() -> None:
     obs_mj, _ = mj_env.reset(seed=seed)
     del obs_mj
 
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
-        _WALK_ENTITY_NAME,
-    )
-
-    entity = mj_env.scene[_WALK_ENTITY_NAME]
+    entity = mj_env.scene["robot"]
     raw_data = entity.data.data  # torch-backed mjlab data
     qpos_mj = raw_data.qpos[0].detach().cpu().numpy()
     qvel_mj = raw_data.qvel[0].detach().cpu().numpy()
@@ -211,9 +207,6 @@ def test_myo_leg_walk_ctrl_mapping_cpu_vs_mjlab() -> None:
 
     myosuite.register_all_envs()
     from myosuite.core.registry import make_env
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
-        _WALK_ENTITY_NAME,
-    )
 
     seed = 0
     rng = np.random.default_rng(seed)
@@ -228,7 +221,7 @@ def test_myo_leg_walk_ctrl_mapping_cpu_vs_mjlab() -> None:
     obs_mj, _ = mj_env.reset(seed=seed)
     del obs_mj
 
-    entity = mj_env.scene[_WALK_ENTITY_NAME]
+    entity = mj_env.scene["robot"]
 
     act_dim = cpu_env.action_space.shape[0]
 
@@ -286,9 +279,6 @@ def test_myo_leg_walk_forced_initial_parity_one_step_stats() -> None:
 
     myosuite.register_all_envs()
     from myosuite.core.registry import make_env
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
-        _WALK_ENTITY_NAME,
-    )
 
     seed = 0
     rng = np.random.default_rng(seed)
@@ -314,7 +304,7 @@ def test_myo_leg_walk_forced_initial_parity_one_step_stats() -> None:
         obs_mj = obs_mj.detach().cpu().numpy()
     obs_mj = np.asarray(obs_mj, dtype=np.float32)
 
-    entity = mj_env.scene[_WALK_ENTITY_NAME]
+    entity = mj_env.scene["robot"]
     raw_data = entity.data.data  # torch-backed mjlab data
 
     # Force mjlab qpos/qvel to match CPU for env 0.
