@@ -114,3 +114,42 @@ def test_expand_motion_clip_to_model_expands_named_subset() -> None:
     np.testing.assert_array_equal(
         expanded.qvel_model_indices, np.array([0], dtype=np.int32)
     )
+
+
+def test_motion_clip_weights_default_to_none(tmp_path: Path) -> None:
+    """Backward compatible: clips without a weights entry have ``weights is None``."""
+    p = tmp_path / "m.npz"
+    _write_motion(p, nq=5, nv=4)
+    assert load_motion_clip(p, expected_nq=5, expected_nv=4).weights is None
+
+
+def test_motion_clip_weights_load_and_survive_expansion(tmp_path: Path) -> None:
+    """Per-frame weights are loaded from the NPZ and kept when a clip is expanded."""
+    p = tmp_path / "w.npz"
+    np.savez(
+        p,
+        qpos=np.zeros((4, 1)),
+        qpos_joint_names=np.array(["joint_a"]),
+        weights=np.array([1.0, 0.5, 0.25, 0.0], dtype=np.float32),
+    )
+    clip = load_motion_clip(p, expected_nq=2, expected_nv=2)
+    assert clip.weights is not None
+    np.testing.assert_allclose(clip.weights, [1.0, 0.5, 0.25, 0.0])
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><body><joint name="joint_a" type="hinge"/>'
+        '<joint name="joint_b" type="hinge"/><geom size="0.01"/></body></worldbody></mujoco>'
+    )
+    expanded = expand_motion_clip_to_model(clip, model)
+    assert expanded.qpos.shape == (4, 2)
+    np.testing.assert_allclose(expanded.weights, clip.weights)
+
+
+def test_motion_clip_weights_must_match_the_frame_count() -> None:
+    with pytest.raises(ValueError, match="weights"):
+        MotionClip(
+            qpos=np.zeros((3, 2)),
+            qvel=None,
+            site_xpos=None,
+            site_names=None,
+            weights=np.ones(5),
+        )

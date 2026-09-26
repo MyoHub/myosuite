@@ -21,7 +21,12 @@ _QVEL_NAME_KEYS: tuple[str, ...] = ("qvel_names", "qvel_joint_names", "joint_nam
 
 @dataclass(frozen=True)
 class MotionClip:
-    """Trajectory clip loaded from NPZ."""
+    """Trajectory clip loaded from NPZ.
+
+    ``weights`` is an optional per-frame weight ``(T,)`` (e.g. to down-weight noisy
+    frames of a hand-authored trajectory); nothing in MyoSuite reads it, it only
+    travels with the clip.
+    """
 
     qpos: np.ndarray
     qvel: np.ndarray | None
@@ -33,8 +38,25 @@ class MotionClip:
     qvel_model_indices: np.ndarray | None = None
     frequency_hz: float | None = None
     source_path: Path | None = None
+    weights: np.ndarray | None = None
 
     def __post_init__(self) -> None:
+        if self.weights is not None:
+            frames = next(
+                (
+                    int(a.shape[0])
+                    for a in (self.qpos, self.qvel, self.site_xpos)
+                    if a is not None
+                ),
+                None,
+            )
+            if self.weights.ndim != 1 or (
+                frames is not None and int(self.weights.shape[0]) != frames
+            ):
+                raise ValueError(
+                    f"MotionClip.weights must have shape ({frames},), "
+                    f"got {self.weights.shape}."
+                )
         if (
             self.qpos is not None
             and self.qpos_model_indices is None
@@ -269,6 +291,7 @@ def expand_motion_clip_to_model(
         qvel_model_indices=qvel_indices,
         frequency_hz=clip.frequency_hz,
         source_path=clip.source_path,
+        weights=clip.weights,
     )
 
 
@@ -366,6 +389,9 @@ def load_motion_clip(
                 f"Could not decode frequency from motion file: {exc}", stacklevel=2
             )
             frequency_hz = None
+    weights: np.ndarray | None = None
+    if "weights" in npz.files:
+        weights = np.asarray(npz["weights"], dtype=np.float64).reshape(-1)
     return MotionClip(
         qpos=qpos,
         qvel=qvel,
@@ -375,6 +401,7 @@ def load_motion_clip(
         qvel_joint_names=qvel_joint_names,
         frequency_hz=frequency_hz,
         source_path=path.resolve(),
+        weights=weights,
     )
 
 

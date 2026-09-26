@@ -158,6 +158,7 @@ def _canonicalize_clip_sites(
             qvel_model_indices=clip.qvel_model_indices,
             frequency_hz=clip.frequency_hz,
             source_path=clip.source_path,
+            weights=clip.weights,
         )
     try:
         clip_site_ids = np.asarray(
@@ -179,6 +180,7 @@ def _canonicalize_clip_sites(
         qvel_model_indices=clip.qvel_model_indices,
         frequency_hz=clip.frequency_hz,
         source_path=clip.source_path,
+        weights=clip.weights,
     )
 
 
