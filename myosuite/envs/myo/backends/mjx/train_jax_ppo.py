@@ -17,7 +17,6 @@ from myosuite.envs.myo.backends.mjx import ppo_config
 from myosuite.envs.myo.backends.mjx import make, get_default_config
 from mujoco_playground import wrapper
 
-from myosuite.envs.myo.backends.mjx import get_default_config, make, ppo_config
 from myosuite.envs.myo.backends.mjx.utils import make_policy_params_fn
 
 import wandb
@@ -56,7 +55,6 @@ def main(env_name, impl, log_to_wandb, save_policy, render_evaluations):
 
 def load_env_and_network_factory(env_name, impl):
     env = make(env_name, config_overrides={"mjx_impl": impl})
-    config = get_default_config(env_name)
     ppo_params = dict(ppo_config)
 
     print(f"Training on environment:\n{env_name}")
