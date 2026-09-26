@@ -162,9 +162,12 @@ runs/
 myosuite_gpu_smoke*.zip
 
 # Large baseline artifacts (eval videos, logs) are not tracked in git; only the
-# small default-run policies in baselines/checkpoints/ are (see its README.md).
+# default-run policies (baselines/checkpoints/) and eval videos (baselines/evals/*.mp4).
 baselines/*
 !baselines/checkpoints/
+!baselines/evals/
+baselines/evals/*
+!baselines/evals/*.mp4
 
 # RL learning files
 *params.pickle
