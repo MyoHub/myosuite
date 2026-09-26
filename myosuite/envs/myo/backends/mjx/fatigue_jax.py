@@ -349,22 +349,20 @@ class FatigueWrapper(Wrapper):
     def _add_fatigue_to_obs(
         self, obs: dict[str, Any], data: mjx.Data
     ) -> dict[str, Any]:
-        """Append requested fatigue arrays to the ``"state"`` observation.
+        """Append requested fatigue arrays to the ``"fatigue_state"`` observation.
 
         Args:
-            obs: Current obs dict (must contain ``"state"`` key).
+            obs: Current obs dict.
             data: Current ``mjx.Data`` with fatigue in ``userdata``.
 
         Returns:
             Updated obs dict.
         """
-        if "state" not in obs:
+        if not self.fatigue_obs_keys:
             return obs
-        obs_state = obs["state"]
+        obs_state = jp.array([])
         if "MA" in self.fatigue_obs_keys:
-            obs_state = jp.concatenate(
-                [obs_state, data.userdata[self.fatigue_index_MA]], axis=-1
-            )
+            obs_state = data.userdata[self.fatigue_index_MA]
         if "MR" in self.fatigue_obs_keys:
             obs_state = jp.concatenate(
                 [obs_state, data.userdata[self.fatigue_index_MR]], axis=-1
@@ -373,7 +371,7 @@ class FatigueWrapper(Wrapper):
             obs_state = jp.concatenate(
                 [obs_state, data.userdata[self.fatigue_index_MF]], axis=-1
             )
-        return {**obs, "state": obs_state}
+        return {**obs, "fatigue_state": obs_state}
 
     def set_fatigue_reset_random(self, fatigue_reset_random: bool) -> None:
         """Toggle random fatigue initialisation.
