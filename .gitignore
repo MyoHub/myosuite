@@ -161,9 +161,10 @@ runs/
 # local GPU smoke bundles
 myosuite_gpu_smoke*.zip
 
-# Large baseline artifacts staged for HuggingFace upload, not tracked in git
-# (see baselines/README.md) -- keep out of the repo to avoid bloat.
-baselines/
+# Large baseline artifacts (eval videos, logs) are not tracked in git; only the
+# small default-run policies in baselines/checkpoints/ are (see its README.md).
+baselines/*
+!baselines/checkpoints/
 
 # RL learning files
 *params.pickle
