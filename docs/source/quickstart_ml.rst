@@ -86,6 +86,11 @@ task-specific); see ``--help`` for the full flag list, including
    ``--env.scene.num-envs`` explicitly — 1024–4096, depending on GPU memory and
    model size (larger musculoskeletal models need more memory per env).
 
+By default a run stops early once the ``Episode_Metrics/success`` rate of an iteration
+exceeds 95% (``--success-threshold``); a checkpoint of that iteration is stored first.
+Pass ``--stop-on-success False`` to always train for ``--agent.max-iterations``. The
+early stop only applies to tasks that log a ``success`` metric and to single-GPU runs.
+
 Walk-through: ``tutorials/2.2_Train_MjLab_Policy.ipynb``.
 
 Resuming a run

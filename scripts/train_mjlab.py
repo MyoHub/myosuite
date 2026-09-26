@@ -1,5 +1,6 @@
 """Script to train RL agent with RSL-RL."""
 
+import copy
 import logging
 import os
 import sys
@@ -8,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, cast
 
+import numpy as np
+import torch
 import tyro
 # os.environ["WANDB_MODE"] = "offline"
 
@@ -35,6 +38,17 @@ class TrainConfig:
     """Multiplies the weight of every reward term (e.g. ``0.1`` shrinks returns and the
     value loss, as in the myoInteract tasks). Applied on top of
     ``--env.scale-rewards-by-dt``; ``1.0`` leaves the task's rewards unchanged."""
+    stop_on_success: bool = True
+    """Stop the run as soon as the logged ``Episode_Metrics/success`` rate of an
+    iteration exceeds ``--success-threshold``; a checkpoint of that iteration is stored
+    first. Has no effect for tasks without a ``success`` metric or with several GPUs."""
+    success_threshold: float = 0.95
+    """Success rate (0-1) above which ``--stop-on-success`` ends the run."""
+    success_deterministic: bool = True
+    """``--stop-on-success`` also requires the success rate of the deterministic
+    (mean-action) policy to exceed the threshold, measured on a separate evaluation
+    env. The logged training success uses sampled actions, and a policy that only
+    succeeds with the exploration noise fails when deployed (ONNX / browser export)."""
     torchrunx_log_dir: str | None = None
     wandb_run_path: str | None = None
     wandb_checkpoint_name: str | None = None
@@ -47,6 +61,119 @@ class TrainConfig:
         agent_cfg = load_rl_cfg(task_id)
         assert isinstance(agent_cfg, RslRlOnPolicyRunnerCfg)
         return TrainConfig(env=env_cfg, agent=agent_cfg)
+
+
+class SuccessReached(Exception):
+    """Raised inside ``runner.learn`` once the success rate exceeds the threshold."""
+
+
+DETERMINISTIC_EVAL_ENVS = 256  # envs of the separate deterministic evaluation env
+DETERMINISTIC_EVAL_EPISODES = 2  # episodes per env in one deterministic evaluation
+DETERMINISTIC_CHECK_ITERS = 10  # minimum iterations between two such evaluations
+
+
+def deterministic_success(runner: MjlabOnPolicyRunner, eval_env) -> float:
+    """Success rate of the runner's mean-action policy on *eval_env* (final-step metric).
+
+    Args:
+        runner: Runner holding the current policy.
+        eval_env: ``RslRlVecEnvWrapper`` around a separate env (its state is reset).
+
+    Returns:
+        Fraction of finished episodes whose ``success`` metric is 1 at the last step.
+    """
+    base = eval_env.unwrapped
+    base.reset()
+    obs = eval_env.get_observations()
+    policy = runner.get_inference_policy(device=base.device)
+    finished: list[float] = []
+    with torch.no_grad():
+        for _ in range(DETERMINISTIC_EVAL_EPISODES * base.max_episode_length):
+            obs, _, dones, _ = eval_env.step(policy(obs))
+            for i in dones.nonzero().flatten().tolist():
+                terms = dict(base.metrics_manager.get_active_iterable_terms(i))
+                finished.append(float(terms["success"][0]))
+    runner.alg.train_mode()  # get_inference_policy switched the models to eval mode
+    return float(np.mean(finished)) if finished else 0.0
+
+
+def _make_eval_env(cfg: TrainConfig, device: str) -> RslRlVecEnvWrapper:
+    """A small separate env (own seed) for the deterministic success check."""
+    eval_cfg = copy.deepcopy(cfg.env)
+    eval_cfg.scene.num_envs = DETERMINISTIC_EVAL_ENVS
+    eval_cfg.seed = cfg.env.seed + 1
+    return RslRlVecEnvWrapper(
+        ManagerBasedRlEnv(cfg=eval_cfg, device=device),
+        clip_actions=cfg.agent.clip_actions,
+    )
+
+
+def stop_on_success(
+    runner: MjlabOnPolicyRunner, threshold: float, make_eval_env=None
+) -> None:
+    """Make ``runner.learn`` stop once the success rate of an iteration exceeds *threshold*.
+
+    RSL-RL has no callback hook, so this wraps ``runner.logger.log`` (called once per
+    iteration, after the policy update). Before delegating, it averages the iteration's
+    ``Episode_Metrics/success`` values the way the logger does for TensorBoard. If the
+    rate exceeds *threshold* (and, with *make_eval_env*, so does the success of the
+    deterministic policy on a separate env, checked at most every
+    ``DETERMINISTIC_CHECK_ITERS`` iterations), a checkpoint ``model_<iteration>.pt``
+    is stored and :class:`SuccessReached` is raised.
+
+    Args:
+        runner: The runner whose ``learn`` loop should stop early.
+        threshold: Success rate in [0, 1].
+        make_eval_env: Optional factory of the ``RslRlVecEnvWrapper`` used to measure
+            the deterministic success (created on first use).
+    """
+    logger = runner.logger
+    key = "Episode_Metrics/success"
+    log = logger.log
+    warned = False
+    eval_env = None
+    last_check = -DETERMINISTIC_CHECK_ITERS
+
+    def log_and_check(*args, **kwargs):
+        nonlocal warned, eval_env, last_check
+        values = [
+            torch.as_tensor(extras[key]).reshape(-1).float()
+            for extras in logger.ep_extras
+            if key in extras
+        ]
+        rate = float(torch.cat(values).mean()) if values else None
+        log(*args, **kwargs)  # also clears logger.ep_extras
+        if rate is None:
+            if not warned:
+                print(f"[INFO] --stop-on-success: no '{key}' metric logged (yet).")
+                warned = True
+            return
+        if rate <= threshold or logger.writer is None:
+            return
+        it = kwargs["it"]
+        detail = ""
+        if make_eval_env is not None:
+            if it - last_check < DETERMINISTIC_CHECK_ITERS:
+                return
+            last_check = it
+            eval_env = eval_env or make_eval_env()
+            det = deterministic_success(runner, eval_env)
+            if det <= threshold:
+                print(
+                    f"[INFO] Sampled success {rate:.1%} > {threshold:.0%}, but the "
+                    f"deterministic policy only reaches {det:.1%}: continuing."
+                )
+                return
+            detail = f" (deterministic policy: {det:.1%})"
+        path = Path(logger.log_dir) / f"model_{it}.pt"
+        runner.save(str(path))
+        print(
+            f"[INFO] Success rate {rate:.1%}{detail} > {threshold:.0%}: stored "
+            f"{path.name}, stopping training."
+        )
+        raise SuccessReached
+
+    logger.log = log_and_check
 
 
 def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
@@ -193,9 +320,23 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
         dump_yaml(log_dir / "params" / "env.yaml", env_cfg)
         dump_yaml(log_dir / "params" / "agent.yaml", agent_cfg)
 
-    runner.learn(
-        num_learning_iterations=cfg.agent.max_iterations, init_at_random_ep_len=True
-    )
+    if cfg.stop_on_success:
+        if getattr(runner, "is_distributed", False):
+            print("[WARNING] --stop-on-success is ignored with several GPUs.")
+        else:
+            make_eval_env = (
+                (lambda: _make_eval_env(cfg, device))
+                if cfg.success_deterministic
+                else None
+            )
+            stop_on_success(runner, cfg.success_threshold, make_eval_env)
+
+    try:
+        runner.learn(
+            num_learning_iterations=cfg.agent.max_iterations, init_at_random_ep_len=True
+        )
+    except SuccessReached:
+        runner.logger.stop_logging_writer()
 
     env.close()
 
