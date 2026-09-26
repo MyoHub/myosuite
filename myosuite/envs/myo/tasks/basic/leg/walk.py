@@ -22,7 +22,7 @@ from myosuite.core.model_builder import ModelBuilder
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.physics.fatigue import CumulativeFatigue
-from myosuite.terms.base_reward import walk_env_reward
+from myosuite.terms.base_reward import locomotion_solved, walk_env_reward
 from myosuite.physics.quat_math import quat2mat
 
 
@@ -360,6 +360,11 @@ class LegWalkEnvV0(MyoGymnasiumEnv, EzPickle):
             max_rot=self.max_rot,
         )
         vel_reward = float(term_rwd["vel_reward"])
+        done = self._get_done()
+        com_vel = np.asarray(task_state["com_vel"]).ravel()
+        vel_error = float(
+            np.hypot(self.target_x_vel - com_vel[0], self.target_y_vel - com_vel[1])
+        )
         act_mag = (
             float(np.linalg.norm(obs_dict.get("act", np.zeros(1)))) / self.model.na
             if self.model.na != 0
@@ -373,8 +378,8 @@ class LegWalkEnvV0(MyoGymnasiumEnv, EzPickle):
                 ("joint_angle_rew", float(term_rwd["joint_angle_rew"])),
                 ("act_mag", act_mag),
                 ("sparse", vel_reward),
-                ("solved", vel_reward >= 1.0),
-                ("done", self._get_done()),
+                ("solved", bool(locomotion_solved(np, vel_error, bool(done)))),
+                ("done", done),
             )
         )
         rwd_dict["dense"] = float(

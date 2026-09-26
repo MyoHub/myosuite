@@ -196,6 +196,71 @@ def multi_site_reach_reward(
     }
 
 
+def leg_reach_reward(
+    accessor: EnvAccessor,
+    task_state: dict[str, Any],
+    far_th: float = 0.35,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """``LegReachEnvV0`` reward: reach tip sites while standing still.
+
+    Like :func:`multi_site_reach_reward` but with ``near = 0.05 k`` and a velocity
+    term: ``reach = 10 - dist - 10 * ||qvel * dt||`` and ``act_reg = -100 * |act|``.
+
+    Args:
+        accessor: Environment state accessor.
+        task_state: ``"tip_site_ids"`` (k site ids), ``"target_pos"`` (flattened
+            ``3k`` target positions, same order), ``"penalty_active"`` (bool).
+        far_th: Per-site distance above which the episode fails.
+        **kwargs: Unused extra keyword arguments.
+
+    Returns:
+        Dict with ``reach``, ``bonus``, ``act_reg``, ``penalty``, ``sparse``,
+        ``solved`` and ``done``.
+    """
+    xp = accessor.array_module()
+    n_sites = len(task_state["tip_site_ids"])
+    tip = accessor.site_xpos(task_state["tip_site_ids"])
+    tip = tip.reshape(*tip.shape[:-2], 3 * n_sites)
+    dist = xp.linalg.norm(task_state["target_pos"] - tip, axis=-1)
+    vel_dist = xp.linalg.norm(accessor.joint_vel() * accessor.dt(), axis=-1)
+    act = accessor.muscle_act()
+    na = act.shape[-1]
+    act_mag = xp.linalg.norm(act, axis=-1) / na if na else 0.0 * dist
+    near = n_sites * 0.05
+    far = xp.where(
+        _xp_asarray(xp, task_state["penalty_active"]), far_th * n_sites, float("inf")
+    )
+    return {
+        "reach": 10.0 - 1.0 * dist - 10.0 * vel_dist,
+        "bonus": 1.0 * (dist < 2 * near) + 1.0 * (dist < near),
+        "act_reg": -100.0 * act_mag,
+        "penalty": -1.0 * (dist > far),
+        "sparse": -1.0 * dist,
+        "solved": dist < near,
+        "done": dist > far,
+    }
+
+
+# Locomotion tasks count as solved while the body is upright and its planar velocity
+# is within this many m/s of the commanded velocity.
+LOCOMOTION_VEL_TOL = 0.5
+
+
+def locomotion_solved(xp: Any, vel_error: Any, fallen: Any) -> Any:
+    """``solved`` flag of the walking tasks: upright and tracking the commanded velocity.
+
+    Args:
+        xp: Array module (``numpy`` or ``torch``).
+        vel_error: Norm of the planar velocity error (m/s).
+        fallen: Whether the agent has fallen (bool or bool array).
+
+    Returns:
+        ``vel_error < LOCOMOTION_VEL_TOL`` and not *fallen*.
+    """
+    return xp.logical_and(vel_error < LOCOMOTION_VEL_TOL, xp.logical_not(fallen))
+
+
 def act_reg(
     accessor: EnvAccessor,
     task_state: dict[str, Any],
@@ -321,10 +386,11 @@ def heading_reward(
     tracking = xp.exp(-xp.sum((target_vel - planar_vel) ** 2))
     fallen = height < fall_height
     dense = tracking - fall_penalty * fallen
+    vel_error = xp.sqrt(xp.sum((target_vel - planar_vel) ** 2))
     return {
         "heading_tracking": _maybe_item(tracking),
         "dense": _maybe_item(dense),
-        "solved": False,
+        "solved": _maybe_item(locomotion_solved(xp, vel_error, fallen)),
         "done": _maybe_item(fallen),
     }
 
