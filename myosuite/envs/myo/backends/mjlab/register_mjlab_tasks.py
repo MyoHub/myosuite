@@ -1619,31 +1619,16 @@ def register_mjlab_tasks() -> None:
         )
 
 
-def _register_optional_myouser_task(myouser_config: Any) -> None:
-    """Register the optional myouser mjlab task for an explicit config."""
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_myouser_tasks import (
-        register_mjlab_myouser_task,
-    )
-
-    register_mjlab_myouser_task(myouser_config)
-
-
 def bootstrap_myosuite_mjlab_registry(
     *,
     clip_path: str | os.PathLike[str] | None = None,
-    myouser_config: Any | None = None,
     rl_cfg_fn: Callable[[], Any] | None = None,
     use_lookahead: bool = True,
 ) -> None:
     """Register all MyoSuite mjlab tasks in one call (idempotent).
 
     Runs :func:`register_mjlab_tasks` (static envs). Plain ``import mjlab`` stays
-    limited to MyoSuite's own mjlab tasks and does not import the optional
-    ``myouser`` package anymore.
-
-    To register the optional ``myoUserUniversal-v0`` mjlab task, pass an
-    explicit ``myouser_config`` object compatible with
-    :func:`register_mjlab_myouser_task`.
+    limited to MyoSuite's own mjlab tasks.
 
     If *clip_path* is set, or environment variable ``MYOSUITE_MIMIC_CLIP`` or
     ``MIMIC_CLIP`` points to an existing file, also registers clip-mode
@@ -1662,8 +1647,6 @@ def bootstrap_myosuite_mjlab_registry(
             clip lacks ``site_xpos``.
     """
     register_mjlab_tasks()
-    if myouser_config is not None:
-        _register_optional_myouser_task(myouser_config)
 
     explicit_clip = clip_path is not None
     raw = (

@@ -930,63 +930,8 @@ def test_bootstrap_myosuite_mjlab_registry_idempotent() -> None:
     not _MJLAB_AVAILABLE,
     reason="mjlab not installed (pip install myosuite[mjlab])",
 )
-def test_bootstrap_myosuite_mjlab_registry_skips_myouser_without_config(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Default bootstrap must not import or register optional myouser tasks."""
-    from myosuite.envs.myo.backends.mjlab import register_mjlab_tasks as registry_mod
-
-    calls: list[Any] = []
-    monkeypatch.setattr(
-        registry_mod, "register_mjlab_tasks", lambda: calls.append("core")
-    )
-    monkeypatch.setattr(
-        registry_mod,
-        "_register_optional_myouser_task",
-        lambda cfg: calls.append(("myouser", cfg)),
-    )
-    monkeypatch.delenv("MYOSUITE_MIMIC_CLIP", raising=False)
-    monkeypatch.delenv("MIMIC_CLIP", raising=False)
-
-    registry_mod.bootstrap_myosuite_mjlab_registry()
-
-    assert calls == ["core"]
-
-
-@pytest.mark.skipif(
-    not _MJLAB_AVAILABLE,
-    reason="mjlab not installed (pip install myosuite[mjlab])",
-)
-def test_bootstrap_myosuite_mjlab_registry_registers_myouser_with_config(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Explicit myouser config must trigger optional myouser registration."""
-    from myosuite.envs.myo.backends.mjlab import register_mjlab_tasks as registry_mod
-
-    calls: list[Any] = []
-    config = object()
-    monkeypatch.setattr(
-        registry_mod, "register_mjlab_tasks", lambda: calls.append("core")
-    )
-    monkeypatch.setattr(
-        registry_mod,
-        "_register_optional_myouser_task",
-        lambda cfg: calls.append(("myouser", cfg)),
-    )
-    monkeypatch.delenv("MYOSUITE_MIMIC_CLIP", raising=False)
-    monkeypatch.delenv("MIMIC_CLIP", raising=False)
-
-    registry_mod.bootstrap_myosuite_mjlab_registry(myouser_config=config)
-
-    assert calls == ["core", ("myouser", config)]
-
-
-@pytest.mark.skipif(
-    not _MJLAB_AVAILABLE,
-    reason="mjlab not installed (pip install myosuite[mjlab])",
-)
 def test_import_mjlab_has_no_duplicate_registration_warnings() -> None:
-    """Plain ``import mjlab`` must not pull in myouser's duplicate Gym registrations."""
+    """Plain ``import mjlab`` must not pull in duplicate Gym registrations."""
     repo = Path(__file__).resolve().parents[2]
     code = "import sys; sys.path.insert(0, %r); import mjlab" % str(repo)
     proc = subprocess.run(
