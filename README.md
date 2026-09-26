@@ -3,7 +3,7 @@
 Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= -->
 
-<img src="https://github.com/myohub/myosuite/blob/main/docs/source/images/MyoSuite%203%20Full%20Color%20Horizontal%20wider.png?raw=true" width=800>
+<img src="docs/source/images/MyoSuite%203%20Full%20Color%20Horizontal%20wider.png" width=800>
 
 [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 [![PyPI](https://img.shields.io/pypi/v/myosuite)](https://pypi.org/project/MyoSuite/)
