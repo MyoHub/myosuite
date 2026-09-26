@@ -48,9 +48,18 @@ class RslRlPolicy(torch.nn.Module):
         self.mlp = mlp
         self.normalizer = normalizer
         self.action_dim = action_dim
+        self.obs_dim = next(
+            m.in_features for m in mlp.modules() if isinstance(m, torch.nn.Linear)
+        )
         self.register_buffer("std", None if std is None else std.flatten().clone())
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        if obs.shape[-1] != self.obs_dim:
+            raise ValueError(
+                f"The policy expects {self.obs_dim}-d observations but the env gives "
+                f"{obs.shape[-1]}-d. It was trained on an env whose observation differs "
+                "from this one (different env, or a backend with a different observation)."
+            )
         out = self.mlp(self.normalizer(obs))
         if out.shape[-1] != self.action_dim:
             out = out.reshape(*out.shape[:-1], 2, self.action_dim)[..., 0, :]
