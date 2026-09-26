@@ -33,12 +33,16 @@
     <mesh name="upper_exo_geom_1" file="../myo_sim/meshes/upper_exo.stl" scale="0.001 0.0011 0.001"/>
   </asset>
 
+  <!-- The exo bodies are placed in the world frame of the original myo_sim torso. The pip myo_sim
+       torso is rotated by -90 degrees about the vertical axis (around the sacrum) relative to it,
+       so the exo positions and orientations are rotated by the same amount. Weld relative poses
+       are derived from these initial poses at compile time. -->
   <worldbody>
     <body name="full_body" pos=".005 0.1 0.93">
       <include file="../myo_sim/torso/assets/myotorso_chain.xml"/>
     </body>
 
-    <body name="exo_pelvis" pos="-.025 0.1 0.979" quat="0.707035 0.707179 0 0" childclass="myotorsoexo">
+    <body name="exo_pelvis" pos="0.005 0.13 0.979" quat="0.499949 0.500051 -0.500051 -0.499949" childclass="myotorsoexo">
       <geom name="lower_exo_legs_geom" type="mesh" euler="1.57 3.14 -1.57" pos="-0.08 0.1 0" mesh="lower_exo_legs_geom_1"/>
       <site name="Lower_Exo_Left_Leg" pos="-0.08 -0.15 -0.17" size="0.005" rgba="0.4 0.4 0.4 1"/>
       <site name="Lower_Exo_Right_Leg" pos="-0.08 -0.15 0.17" size="0.005" rgba="0.4 0.4 0.4 1"/>
@@ -46,14 +50,14 @@
       <site name="Exo_RightLeg" pos="-0.2 0 0.04" size="0.0005" rgba="0 1 0 1"/>
     </body>
 
-    <body name="exo_lumbar4" pos="-0.0951 0.091 1.05" quat="0.707035 0.707179 0 0" childclass="myotorsoexo">
+    <body name="exo_lumbar4" pos="-0.004 0.2001 1.05" quat="0.499949 0.500051 -0.500051 -0.499949" childclass="myotorsoexo">
       <freejoint/>
       <site name="Lower_Exo_Left_Belt" pos="0.02 0.02 -0.158" size="0.005" rgba="0.4 0.4 0.4 1"/>
       <site name="Lower_Exo_Right_Belt" pos="0.02 0.02 0.158" size="0.005" rgba="0.4 0.4 0.4 1"/>
       <geom name="lower_exo_belt_geom" type="mesh" euler="1.57 3.14 -1.57" pos="0.03 0.03 0" mesh="lower_exo_belt_geom_1" mass="0.094"/>
     </body>
 
-    <body name="exo_torso" pos="-0.111 0.0995 1.06" quat="0.707035 0.707179 0 0" childclass="myotorsoexo">
+    <body name="exo_torso" pos="0.0045 0.216 1.06" quat="0.499949 0.500051 -0.500051 -0.499949" childclass="myotorsoexo">
       <freejoint/>
       <geom name="upper_exo_geom" type="mesh" euler="1.57 3.14 1.57" pos="0.01 0.165 0" mesh="upper_exo_geom_1"/>
       <geom name="Exo_cylinder" size="0.105 0.13" pos="0.025 0.03 0" class="myotorso_back_wrap"/>
