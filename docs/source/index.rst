@@ -1,45 +1,100 @@
 Welcome to MyoSuite's documentation!
 =====================================
 
-`MyoSuite <https://sites.google.com/view/myosuite>`_  is a collection of musculoskeletal environments and tasks simulated with the `MuJoCo <http://www.mujoco.org/>`_ physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems.
+`MyoSuite <https://sites.google.com/view/myosuite>`_ is a collection of musculoskeletal
+environments and tasks simulated with the `MuJoCo <https://mujoco.org/>`_ physics engine.
+It serves researchers and practitioners across biomechanics, neuroscience, machine learning,
+sports medicine, and physical rehabilitation.
 
-Check our `github repository <https://github.com/MyoHub/myosuite>`__ for more technical details.
-
-Our paper can be found at: `https://arxiv.org/abs/2205.13600 <https://arxiv.org/abs/2205.13600>`__
-
-Advanced user are invited to familiarize themselves with the basics of the `OpenAI Gym API <https://gymnasium.farama.org/>`__ and review the basic principle of Reinforcement Learning to make the most out of MyoSuite features and functionalities
+`GitHub <https://github.com/MyoHub/myosuite>`__ |
+`Paper (arXiv) <https://arxiv.org/abs/2205.13600>`__ |
+`Slack <https://join.slack.com/t/myosuite/shared_invite/zt-1zkpw2zzk-NhVhVlSDxhoMHbzROD8gMA>`__
 
 .. note::
 
    This project is under active development.
 
+What's new in MyoSuite 3
+-------------------------
 
+MyoSuite 3 brings the whole suite to fast, scalable training while keeping the simple
+interface you know:
+
+* **One task, several backends.** The same ``env_id`` runs on your **CPU** through the
+  standard `Gymnasium <https://gymnasium.farama.org/>`_ interface (to explore, debug and
+  replay policies, or to train with libraries such as Stable-Baselines3), on **mjlab** for
+  massively parallel GPU training, and on an **experimental MJX** (JAX) path. See :doc:`quickstart_ml`.
+* **MuscleMimic support.** Run, evaluate and train full-body and bimanual **MuscleMimic**
+  policies, with ready-to-use checkpoints and motion datasets.
+* **The complete MyoChallenge suite** as Gymnasium environments: Baoding, Bimanual, Chase
+  Tag, Die Reorient, OSL Run, Relocate, Soccer and Table Tennis.
+* **Much faster learning.** Train with thousands of environments in parallel on a single
+  GPU, then replay the policy on the CPU.
+* **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared
+  observation, reward and model-building blocks instead of writing an environment class.
+* **Ready to use.** Default trained policies with evaluation videos (see
+  :doc:`baselines`), plus updated tutorials from the first rollout to GPU training and
+  MuscleMimic (:doc:`tutorials`). The repository's ``CHANGELOG.md`` lists everything that
+  changed since v2.12.
+
+Choose your path
+-----------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - I am a…
+     - Start here
+   * - **Biomechanist**
+     - :doc:`quickstart_biomechanics` — kinematics, muscle forces, inverse dynamics, OpenSim
+   * - **Neuroscientist**
+     - :doc:`quickstart_neuroscience` — proprioception, reflex controllers, fatigue
+   * - **ML / RL Researcher**
+     - :doc:`quickstart_ml` — Gymnasium API, SB3, mjlab GPU training
+   * - **Sports / Rehab Clinician**
+     - :doc:`quickstart_rehabilitation` — pathological conditions, clinical metrics
 
 
 .. toctree::
    :maxdepth: 1
-   :caption: Get started
+   :caption: Quick Start by Audience
+
+   quickstart_biomechanics
+   quickstart_neuroscience
+   quickstart_ml
+   quickstart_rehabilitation
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Installation & Tutorials
 
    install
    tutorials
 
 .. toctree::
    :maxdepth: 1
-   :caption: Advanced Features
+   :caption: Reference
 
-   suite
-   
+   architecture
+   environments
+   model_builder
+   backend_parity
 
 .. toctree::
    :maxdepth: 1
-   :caption: Projects with Myosuite
+   :caption: Advanced Features
+
+   suite
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Projects with MyoSuite
 
    projects
    baselines
    challenge-doc
    challenge-doc2025
-
-
 
 .. toctree::
    :maxdepth: 2
@@ -59,12 +114,24 @@ How to cite
 
 .. code-block:: bibtex
 
+   @Misc{MyoSuite2026,
+      author =       {Vittorio, Caggiano AND Balint, Hodossy AND Florian, Fischer, AND Cheryl, Wang, AND MyoSuiteTeam},
+      title =        {MyoSuite 3.0 -- A multimodal platform for efficient and scalable musculoskeletal motor control},
+      publisher =    {arXiv},
+      year =         {2026},
+      howpublished = {\url{https://github.com/myohub/myosuite}},
+      doi =          {...},
+      url =          {...},
+   }
+
+.. code-block:: bibtex
+
    @article{MyoSuite2022,
       author =       {Vittorio, Caggiano AND Huawei, Wang AND Guillaume, Durandau AND Massimo, Sartori AND Vikash, Kumar},
       title =        {MyoSuite -- A contact-rich simulation suite for musculoskeletal motor control},
       publisher = {arXiv},
       year = {2022},
-      howpublished = {\url{https://github.com/facebookresearch/myosuite}},
+      howpublished = {\url{https://github.com/MyoHub/myosuite}},
       doi = {10.48550/ARXIV.2205.13600},
       url = {https://arxiv.org/abs/2205.13600},
    }

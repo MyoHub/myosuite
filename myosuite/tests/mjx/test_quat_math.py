@@ -1,57 +1,71 @@
-import unittest
-import numpy as np
-import jax
-import jax.numpy as jp
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
 
-# Configure JAX to use CPU to avoid potential GPU-related issues
-jax.config.update("jax_platform_name", "cpu")
+import pytest
 
-from myosuite.utils.quat_math import (
-    mulQuat as np_mulQuat,
-    negQuat as np_negQuat,
-    quat2Vel as np_quat2Vel,
-    diffQuat as np_diffQuat,
-    quatDiff2Vel as np_quatDiff2Vel,
-    axis_angle2quat as np_axis_angle2quat,
-    euler2mat as np_euler2mat,
-    intrinsic_euler2quat as np_euler2quat,
-    mat2euler as np_mat2euler,
-    mat2quat as np_mat2quat,
-    quat2euler as np_quat2euler,
-    quat2mat as np_quat2mat,
-    rotVecMatT as np_rotVecMatT,
-    rotVecMat as np_rotVecMat,
-    rotVecQuat as np_rotVecQuat,
-    quat2euler_intrinsic as np_quat2euler_intrinsic,
-)
-from myosuite.utils.quat_math_jax import (
-    mulQuat as jax_mulQuat,
-    negQuat as jax_negQuat,
-    quat2Vel as jax_quat2Vel,
-    diffQuat as jax_diffQuat,
-    quatDiff2Vel as jax_quatDiff2Vel,
-    axis_angle2quat as jax_axis_angle2quat,
-    euler2mat as jax_euler2mat,
-    intrinsic_euler2quat as jax_euler2quat,
-    mat2euler as jax_mat2euler,
-    mat2quat as jax_mat2quat,
-    quat2euler as jax_quat2euler,
-    quat2mat as jax_quat2mat,
-    rotVecMatT as jax_rotVecMatT,
-    rotVecMat as jax_rotVecMat,
-    rotVecQuat as jax_rotVecQuat,
-    quat2euler_intrinsic as jax_quat2euler_intrinsic,
-)
+# Guard: skip entire module if JAX or quat_math_jax is not available
+try:
+    import jax
+    import jax.numpy as jp
+    import numpy as np
+
+    # Configure JAX to use CPU to avoid potential GPU-related issues
+    jax.config.update("jax_platform_name", "cpu")
+    from myosuite.physics.quat_math import (
+        mul_quat as np_mulQuat,
+        neg_quat as np_negQuat,
+        quat2Vel as np_quat2Vel,
+        diff_quat as np_diffQuat,
+        quat_diff_to_vel as np_quatDiff2Vel,
+        axis_angle2quat as np_axis_angle2quat,
+        euler2mat as np_euler2mat,
+        intrinsic_euler2quat as np_euler2quat,
+        mat2euler as np_mat2euler,
+        mat2quat as np_mat2quat,
+        quat2euler as np_quat2euler,
+        quat2mat as np_quat2mat,
+        rot_vec_mat_t as np_rotVecMatT,
+        rot_vec_mat as np_rotVecMat,
+        rot_vec_quat as np_rotVecQuat,
+        quat2euler_intrinsic as np_quat2euler_intrinsic,
+    )
+    from myosuite.physics.quat_math_jax import (
+        mul_quat as jax_mulQuat,
+        neg_quat as jax_negQuat,
+        quat2Vel as jax_quat2Vel,
+        diff_quat as jax_diffQuat,
+        quat_diff_to_vel as jax_quatDiff2Vel,
+        axis_angle2quat as jax_axis_angle2quat,
+        euler2mat as jax_euler2mat,
+        intrinsic_euler2quat as jax_euler2quat,
+        mat2euler as jax_mat2euler,
+        mat2quat as jax_mat2quat,
+        quat2euler as jax_quat2euler,
+        quat2mat as jax_quat2mat,
+        rot_vec_mat_t as jax_rotVecMatT,
+        rot_vec_mat as jax_rotVecMat,
+        rot_vec_quat as jax_rotVecQuat,
+        quat2euler_intrinsic as jax_quat2euler_intrinsic,
+    )
+except (ImportError, AttributeError) as _err:
+    pytest.skip(
+        f"JAX/quat_math_jax not available ({_err}); install with uv sync --extra mjx",
+        allow_module_level=True,
+    )
+
+pytestmark = pytest.mark.tier2
 
 
-class TestQuatMath(unittest.TestCase):
+class TestQuatMath:
     @classmethod
-    def setUpClass(cls):
+    def setup_class(cls):
         """Initialize JAX"""
         # Ensure JAX is initialized on CPU
         cls.device = jax.devices("cpu")[0]
 
-    def setUp(self):
+    def setup_method(self):
         # Define some test quaternions with explicit dtype
         self.test_cases = [
             # Identity quaternion
@@ -1950,10 +1964,9 @@ class TestQuatMath(unittest.TestCase):
 
                 # Property 3: Angles should be in valid ranges
                 euler_np = np.array(euler)
-                self.assertTrue(
-                    np.all(euler_np >= -np.pi) and np.all(euler_np <= np.pi),
-                    f"Euler angles out of range [-π, π] for quaternion: {quat}",
-                )
+                assert np.all(euler_np >= -np.pi) and np.all(
+                    euler_np <= np.pi
+                ), f"Euler angles out of range [-π, π] for quaternion: {quat}"
 
         except Exception as e:
             print(f"Error in quat2euler_intrinsic properties test: {str(e)}")
@@ -2056,8 +2069,4 @@ class TestQuatMath(unittest.TestCase):
             raise
 
 
-if __name__ == "__main__":
-    try:
-        unittest.main()
-    except Exception as e:
-        print(f"Test failed with error: {str(e)}")
+#

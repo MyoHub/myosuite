@@ -5,6 +5,7 @@
 # from the environment for the first two.
 SPHINXOPTS    ?=
 SPHINXBUILD   ?= sphinx-build
+# Root-level docs layout: conf.py and all .rst live in docs/source/
 SOURCEDIR     = source
 BUILDDIR      = build
 

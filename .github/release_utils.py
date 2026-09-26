@@ -1,6 +1,5 @@
 import argparse
 import re
-from typing import Tuple
 
 
 # https://packaging.python.org/guides/single-sourcing-package-version/
@@ -16,7 +15,7 @@ def find_version(version_file_path) -> str:
         raise RuntimeError("Unable to find version tuple.")
 
 
-def get_next_version(release_type) -> Tuple[Tuple[int, int, int], str, str]:
+def get_next_version(release_type) -> tuple[tuple[int, int, int], str, str]:
     current_ver = find_version("myosuite/version.py")
     version_list = [int(x) for x in current_ver.strip("'").split(".")]
     major, minor, patch = version_list[0], version_list[1], version_list[2]
@@ -46,7 +45,7 @@ def update_version(new_version_tuple) -> None:
     next version depending on the type of release.
     """
 
-    with open("myosuite/version.py", "r") as reader:
+    with open("myosuite/version.py") as reader:
         current_version_data = reader.read()
     version_match = re.search(
         r"^__version_tuple__ = \(.*\)", current_version_data, re.MULTILINE

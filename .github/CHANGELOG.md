@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - 2026-04-20
+
+### Added
+- **MuscleMimic full-body policy tracking test** (`test_notebook_policy_tracking.py`): 10-test end-to-end suite covering checkpoint loading, policy rollout, off-screen rendering, and MP4 video saving.
+- **New tutorial**: `MuscleMimic_Fullbody_Policy_Trajectory.ipynb` — load `hf://amathislab/mm-10m-2`, track a KIT walking clip, render and save video.
+- **Coverage gap tests** (`test_coverage_gaps.py`): 39 new tests for `CumulativeFatigue`, `apply_sarcopenia`, `apply_fatigue`, `resolve_motion_path`, `load_motion_clip`, `walk_env_reward`, `MuscleActionTerm`, registry variant paths, and `make_env` import-error paths.
+- `modular_task_config.ipynb` tutorial for `TaskSpec`-first environment authoring.
+
+### Changed
+- **MyoChallenge registration**: All challenge environments (`Bimanual`, `TableTennis`, `Soccer`, `RunTrack`, `ChaseTag`) now register against Gymnasium-native implementations. The transitional `*Native-v0` duplicate IDs have been removed.
+- **Legacy code removed**: Deleted `tabletennis_v0.py`, `reorient_v0.py`, `bimanual_v0.py`, `reorient_sar_v0.py`, `myodm_v0.py`; removed Robot delegate pattern from `bimanual_gymnasium_v0.py`; replaced Robot-based step/reset in `tabletennis_gymnasium_v0.py` with direct MuJoCo API calls.
+- **DeprecationWarnings removed** from `env_base.py` and `base_v0.py`; all `LEGACY_REMOVE_AFTER` markers cleaned.
+- Per-env MyoChallenge parity test files removed (superseded by `test_parity.py`).
+- README, `tutorials/ReadMe.md`, and `docs/backend_compatibility_matrix.md` updated to reflect v4 state.
+
+### Fixed
+- `bimanual_gymnasium_v0.py`: native mode was shadowed by the legacy delegate; delegate removed so native MuJoCo path is active.
+- `tabletennis_gymnasium_v0.py`: removed stale `_sync_state_from_sensors()` call.
+
 ## [2.4.0] - 2024-05-13
 [FEATURE] Added 3CC-r Fatigue Model (#167). Thanks to @fl0fischer
 [FEATURE] Update to MuJoCo 3.1.2 and dm-control 1.0.16 (2bddf8c)
