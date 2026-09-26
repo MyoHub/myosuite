@@ -61,6 +61,9 @@ groups the changes by theme; `git log v2.12.2..ms3` has the full commit list.
   (`eb91414`, `89f23fd`, `e764f74`).
 * Fatigue: episode-persistent and resumable states (`a4b979c`), torch 3CC-r parity (`99e8812`).
 * Arm-reach model edits (thumb frozen, digits under their metacarpals) (`e3e326d`, `f8f9e06`).
+* `GoalSpec(target_type="site_positions")` samples per-episode targets from per-site (x, y, z) ranges on
+  CPU and MJX, with an mjlab command helper (`site_position_command_cfg`); `MotionClip` carries optional
+  per-frame `weights` (issue #410).
 * Tutorials: restructured numbered tracks (`5bb6d3a`, `1e61f7e`, `3d1d28c`), SAR tutorials and pretrained
   pickles (`bb5cf7b`), fatigue tutorial for MyoSuite 3 (`d1eda5c`), trained-policy loader (`5bb6d3a`).
 * Documentation: quickstarts, environment reference, backend parity, baselines, MJX env list,
@@ -92,6 +95,7 @@ groups the changes by theme; `git log v2.12.2..ms3` has the full commit list.
 
 ### Removed
 
+* The myouser-specific mjlab task and helpers (they live in the standalone myoInteract repository).
 * Boxing and Saber tasks with their shared code (`de44aca`, `eab9c0c`, `e27dcd0`); the `composer`
   package, the legacy `simhive` copies and `myosuite_init`; placeholder `*Modular-v0` challenge
   registrations (`a453fe4`); the Walk Backends demo notebook (`8e9d51f`); the stale examine-rollout
