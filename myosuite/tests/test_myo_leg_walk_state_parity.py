@@ -77,9 +77,9 @@ def test_myo_leg_walk_state_parity_cpu_vs_mjlab() -> None:
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     mj_env = make_env("myoLegWalk-v0", backend="mjlab", device=device)
     obs_mj, _ = mj_env.reset(seed=seed)
-    # mjlab observations are dict[group_name] → array; use "policy" group.
+    # mjlab observations are dict[group_name] → array; use "actor" group.
     if isinstance(obs_mj, dict):
-        obs_mj_arr = obs_mj["policy"]
+        obs_mj_arr = obs_mj["actor"]
         if isinstance(obs_mj_arr, torch.Tensor):
             obs_mj_arr = obs_mj_arr.detach().cpu().numpy()
         obs_mj = obs_mj_arr[0] if obs_mj_arr.ndim > 1 else obs_mj_arr
@@ -105,7 +105,7 @@ def test_myo_leg_walk_state_parity_cpu_vs_mjlab() -> None:
         ).unsqueeze(0)
         obs_mj, _, term_mj, trunc_mj, _ = mj_env.step(action_t)
         if isinstance(obs_mj, dict):
-            obs_mj_arr = obs_mj["policy"]
+            obs_mj_arr = obs_mj["actor"]
             if isinstance(obs_mj_arr, torch.Tensor):
                 obs_mj_arr = obs_mj_arr.detach().cpu().numpy()
             obs_mj = obs_mj_arr[0] if obs_mj_arr.ndim > 1 else obs_mj_arr
@@ -124,7 +124,7 @@ def test_myo_leg_walk_state_parity_cpu_vs_mjlab() -> None:
         if bool(term_mj.any()) or bool(trunc_mj.any()):
             obs_mj, _ = mj_env.reset()
             if isinstance(obs_mj, dict):
-                obs_mj_arr = obs_mj["policy"]
+                obs_mj_arr = obs_mj["actor"]
                 if isinstance(obs_mj_arr, torch.Tensor):
                     obs_mj_arr = obs_mj_arr.detach().cpu().numpy()
                 obs_mj = obs_mj_arr[0] if obs_mj_arr.ndim > 1 else obs_mj_arr
@@ -306,7 +306,7 @@ def test_myo_leg_walk_forced_initial_parity_one_step_stats() -> None:
     mj_env = make_env("myoLegWalk-v0", backend="mjlab", device=device)
     obs_mj, _ = mj_env.reset(seed=seed)
     if isinstance(obs_mj, dict):
-        obs_mj_arr = obs_mj["policy"]
+        obs_mj_arr = obs_mj["actor"]
         if isinstance(obs_mj_arr, torch.Tensor):
             obs_mj_arr = obs_mj_arr.detach().cpu().numpy()
         obs_mj = obs_mj_arr[0] if obs_mj_arr.ndim > 1 else obs_mj_arr
@@ -342,7 +342,7 @@ def test_myo_leg_walk_forced_initial_parity_one_step_stats() -> None:
     action_t = torch.as_tensor(action, dtype=torch.float32, device=device).unsqueeze(0)
     obs_mj_1, _, _, _, _ = mj_env.step(action_t)
     if isinstance(obs_mj_1, dict):
-        obs_mj_arr = obs_mj_1["policy"]
+        obs_mj_arr = obs_mj_1["actor"]
         if isinstance(obs_mj_arr, torch.Tensor):
             obs_mj_arr = obs_mj_arr.detach().cpu().numpy()
         obs_mj_1 = obs_mj_arr[0] if obs_mj_arr.ndim > 1 else obs_mj_arr

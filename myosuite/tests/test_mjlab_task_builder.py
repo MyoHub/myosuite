@@ -292,7 +292,7 @@ def test_elbow_action_dim_matches_cpu() -> None:
 def test_walk_obs_keys_match_cpu() -> None:
     """mjlab walk obs terms must match LegWalkEnvV0 DEFAULT_OBS_KEYS + act."""
     cfg = _make_walk_env_cfg()
-    mjlab_keys = list(cfg.observations["policy"].terms.keys())
+    mjlab_keys = list(cfg.observations["actor"].terms.keys())
     cpu_keys = [
         "qpos_without_xy",
         "qvel",
