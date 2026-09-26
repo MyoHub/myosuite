@@ -114,6 +114,10 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
         "act": (mdp.act, {"asset_cfg": robot}),
         "pose_err": (mdp.pose_err, {"command_name": COMMAND, "asset_cfg": robot}),
     }
+    chains = ref.free_joint_chains(info)  # freejoints turned into 6-DoF chains
+    if chains:  # keep the CPU observation layout
+        obs_funcs["qpos"] = (mdp.qpos_chains, {"asset_cfg": robot, "chains": chains})
+        obs_funcs["qvel"] = (mdp.qvel_chains, {"asset_cfg": robot, "chains": chains})
     obs_keys = list(kw.get("obs_keys", variant.default_obs_keys))
     if info.na > 0 and "act" not in obs_keys:
         obs_keys.append("act")

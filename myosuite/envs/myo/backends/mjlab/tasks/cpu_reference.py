@@ -138,6 +138,7 @@ class CompiledModelInfo:
     jnt_type: tuple[int, ...]
     jnt_qposadr: tuple[int, ...]
     init_qpos: tuple[float, ...]
+    qpos0: tuple[float, ...]
     key_qpos: tuple[tuple[float, ...], ...]
     key_qvel: tuple[tuple[float, ...], ...]
     jnt_range: tuple[tuple[float, float], ...]
@@ -166,6 +167,7 @@ def _compiled_info(key: tuple[Any, ...]) -> CompiledModelInfo:
         jnt_type=tuple(int(t) for t in model.jnt_type),
         jnt_qposadr=tuple(int(a) for a in model.jnt_qposadr),
         init_qpos=tuple(float(q) for q in _cpu_init_qpos(model)),
+        qpos0=tuple(float(q) for q in model.qpos0),
         key_qpos=tuple(tuple(float(q) for q in k) for k in model.key_qpos),
         key_qvel=tuple(tuple(float(v) for v in k) for k in model.key_qvel),
         jnt_range=tuple((float(lo), float(hi)) for lo, hi in model.jnt_range),
@@ -301,6 +303,36 @@ def init_state_from_model(
     return EntityCfg.InitialStateCfg(**root, joint_pos=joint_pos, joint_vel={".*": 0.0})
 
 
+@dataclass(frozen=True)
+class FreeJointChain:
+    """A freejoint replaced by a 6-DoF chain (:func:`demote_extra_freejoints`).
+
+    Attributes:
+        chain_start: Index of the chain's first slide in the entity's ``joint_pos``.
+        pos0: Rest position of the body (its ``qpos0``).
+        quat0: Rest orientation ``wxyz`` of the body (its ``qpos0``).
+    """
+
+    chain_start: int
+    pos0: tuple[float, ...]
+    quat0: tuple[float, ...]
+
+
+def free_joint_chains(info: CompiledModelInfo) -> tuple[FreeJointChain, ...]:
+    """Chains :func:`demote_extra_freejoints` creates for the model of *info*."""
+    chains: list[FreeJointChain] = []
+    for jtype, adr in zip(info.jnt_type, info.jnt_qposadr, strict=True):
+        if jtype == mujoco.mjtJoint.mjJNT_FREE and adr != 0:
+            chains.append(
+                FreeJointChain(
+                    adr - len(chains),  # each earlier chain has 6 values, not 7
+                    tuple(info.qpos0[adr : adr + 3]),
+                    tuple(info.qpos0[adr + 3 : adr + 7]),
+                )
+            )
+    return tuple(chains)
+
+
 def _entity_spec(
     task: CpuTaskSpec, spec_edits: tuple[Callable[[mujoco.MjSpec], None], ...]
 ) -> mujoco.MjSpec:
@@ -319,10 +351,11 @@ def demote_extra_freejoints(spec: mujoco.MjSpec) -> None:
 
     An mjlab entity has at most one freejoint, and it must be the spec's first
     joint. Any other freejoint (e.g. the passive, soft-welded exosuit parts of
-    ``myotorso_exosuit.xml``) becomes three world-axis slides plus three hinges at
-    the body origin, starting from the body's own pose. Dynamics match; the ``qpos``
-    of such a body holds 6 Euler-chain values instead of a 7-value pose, so the
-    observation is one value shorter per demoted joint than on CPU.
+    ``myotorso_exosuit.xml``) becomes three slides (along the body's rest-frame axes)
+    plus three hinges (x, y, z) at the body origin, starting from the body's own
+    pose. Dynamics match; the ``qpos`` of such a body holds 6 chain values instead of
+    a 7-value pose. The observation terms ``qpos_chains`` / ``qvel_chains`` convert
+    them back to the CPU layout (see :class:`FreeJointChain`).
 
     Args:
         spec: Entity spec, edited in place.

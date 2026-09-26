@@ -10,5 +10,5 @@ from .events import (  # noqa: F401
     reset_to_cpu_state,
     write_cpu_state,
 )
-from .observations import act, qpos, qvel  # noqa: F401
+from .observations import act, qpos, qpos_chains, qvel, qvel_chains  # noqa: F401
 from .terminations import SYNC_TERM, cpu_post_step_field, sync_kinematics  # noqa: F401

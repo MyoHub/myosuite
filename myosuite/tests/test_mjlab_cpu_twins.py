@@ -217,6 +217,34 @@ def test_every_ported_cpu_env_has_mjlab_twin() -> None:
     assert not missing, f"CPU envs without mjlab twin: {missing}"
 
 
+@pytest.mark.parametrize(
+    "env_id",
+    [
+        "myoTorsoExoPoseFixed-v0",
+        "myoSarcTorsoExoPoseFixed-v0",
+        "myoFatiTorsoExoPoseFixed-v0",
+    ],
+)
+def test_torso_exo_observation_matches_cpu(env_id: str) -> None:
+    """The exo twin's 6-DoF chains are converted back to the CPU ``qpos``/``qvel``.
+
+    Both envs start from the same reset and get the same random actions (free run, no
+    state sync); the CPU observation layout and values must agree.
+    """
+    cpu = gym.make(env_id).unwrapped
+    obs_cpu, _ = cpu.reset(seed=0)
+    mj = ManagerBasedRlEnv(cfg=load_env_cfg(env_id), device="cpu")
+    obs_mj = mj.reset()[0]["actor"][0].numpy()
+    assert obs_mj.shape == obs_cpu.shape
+    np.testing.assert_allclose(obs_mj, obs_cpu, atol=1e-5)
+    rng = np.random.default_rng(0)
+    for _ in range(10):
+        action = rng.uniform(-1, 1, cpu.action_space.shape).astype(np.float32)
+        obs_cpu = cpu.step(action)[0]
+        obs_mj = mj.step(torch.as_tensor(action[None]))[0]["actor"][0].numpy()
+        np.testing.assert_allclose(obs_mj, obs_cpu, atol=2e-3)
+
+
 def test_every_twin_logs_a_success_metric() -> None:
     """Success rate is a standard metric (``Episode_Metrics/success``) of every twin."""
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
