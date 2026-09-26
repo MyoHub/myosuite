@@ -1,7 +1,6 @@
 # Default-run policies (mjlab / RSL-RL)
 
-Newest checkpoint of the latest `scripts/train_mjlab.py` run of each env (the one
-`scripts/eval_mjlab_policy.py` and `scripts/train_all_mjlab.sh` runs use). Each folder
+Newest checkpoint of the latest `scripts/train_mjlab.py` run of each env. Each folder
 `<env_id>/model_<iter>.pt` works with both backends:
 
 ```bash
@@ -9,25 +8,32 @@ python scripts/eval_mjlab_policy.py <env_id> --checkpoint baselines/checkpoints/
 ```
 
 and is found automatically by `tutorials/1.2_Load_Policy.ipynb` when no `logs/` run exists.
-Deterministic success = last measurement of `scripts/resume_all_mjlab.sh`
-(`baselines/evals/deterministic_success.log`, measured on the checkpoint of that time; `-` = not measured).
+**Deterministic success** = success rate of the mean-action policy, measured with
+`scripts/eval_mjlab_policy.py --backend mjlab` (the GPU backend; the same checkpoints
+are also loadable on the CPU backend, but the column was not measured there). `-` = not
+measured.
+
+**Not all policies converged.** Several stopped below the 95% success threshold (see the
+table), and training for more iterations may well reach higher success rates. Resume a
+run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.load-run <run>
+--env.scene.num-envs 4096`.
 
 **Caveat — `myoLeg{Walk,DirectionalForward,DirectionalBackward,DirectionalRandom}-v0`:**
 trained (2026-09-25) before the leg twins got their success metric / shared PPO defaults.
 On the CPU backend they walk (Directional Forward/Backward: 100% success), but on the
 current mjlab twin they fall after ~200 steps, so they are provisional; retrain them
-with `scripts/train_all_mjlab.sh` and refresh these files.
+with `python scripts/train_mjlab.py <env_id> --env.scene.num-envs 4096` and refresh these files.
 `myoHandPose0Fixed`/`myoHandPoseFixed` (0%) and the reach/motor envs below 95% are
 unconverged snapshots.
 
-| Env | Checkpoint | Deterministic success |
+| Env | Checkpoint | Deterministic success (mjlab) |
 |---|---|---|
 | motorFingerPoseFixed-v0 | model_9998.pt | 0.0% |
 | motorFingerPoseRandom-v0 | model_9998.pt | 15.6% |
 | motorFingerReachFixed-v0 | model_9998.pt | 0.0% |
 | motorFingerReachRandom-v0 | model_9998.pt | 9.4% |
 | myoArmReachFixed-v0 | model_696.pt | 100.0% |
-| myoArmReachRandom-v0 | model_4999.pt | - |
+| myoArmReachRandom-v0 | model_4999.pt | 64.1% |
 | myoElbowPose1D6MExoFixed-v0 | model_9.pt | 100.0% |
 | myoElbowPose1D6MExoRandom-v0 | model_13.pt | 100.0% |
 | myoElbowPose1D6MFixed-v0 | model_100.pt | 100.0% |
