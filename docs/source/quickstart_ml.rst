@@ -163,7 +163,7 @@ Default policies
 ^^^^^^^^^^^^^^^^^
 
 ``baselines/checkpoints/<env_id>/model_<iter>.pt`` holds a ready-made mjlab policy for
-32 envs (see ``baselines/checkpoints/README.md`` for their deterministic success rates
+many envs (see ``baselines/checkpoints/README.md`` for their deterministic success rates
 and caveats), and ``baselines/evals/`` their videos. Evaluate one directly with
 ``--checkpoint baselines/checkpoints/<env_id>``; ``tutorials/1.2_Load_Policy.ipynb``
 finds them automatically. Some are unconverged snapshots; the README lists which.

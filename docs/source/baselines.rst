@@ -24,7 +24,7 @@ Always set ``--env.scene.num-envs`` explicitly (default is 1 — see
 Default policies
 ^^^^^^^^^^^^^^^^
 
-The repository ships mjlab (RSL-RL) checkpoints of default training runs for 32 envs
+The repository ships mjlab (RSL-RL) checkpoints of default training runs for many envs
 in ``baselines/checkpoints/<env_id>/`` (with their evaluation videos in
 ``baselines/evals/``). They run on the CPU and the mjlab backend::
 

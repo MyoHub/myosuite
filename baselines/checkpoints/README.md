@@ -23,8 +23,9 @@ trained (2026-09-25) before the leg twins got their success metric / shared PPO 
 On the CPU backend they walk (Directional Forward/Backward: 100% success), but on the
 current mjlab twin they fall after ~200 steps, so they are provisional; retrain them
 with `python scripts/train_mjlab.py <env_id> --env.scene.num-envs 4096` and refresh these files.
-`myoHandPose0Fixed`/`myoHandPoseFixed` (0%) and the reach/motor envs below 95% are
-unconverged snapshots.
+`myoHandPose0Fixed`/`myoHandPoseFixed` (0%), `myoLegStandRandom` (36%, plateaued) and the
+reach/motor envs below 95% are unconverged snapshots. `myoTorsoExoPoseFixed` (converged) also
+runs on the CPU env (same return and success as on mjlab).
 
 | Env | Checkpoint | Deterministic success (mjlab) |
 |---|---|---|
@@ -58,5 +59,7 @@ unconverged snapshots.
 | myoLegDirectionalBackward-v0 | model_4999.pt | - |
 | myoLegDirectionalForward-v0 | model_4999.pt | - |
 | myoLegDirectionalRandom-v0 | model_4999.pt | - |
+| myoLegStandRandom-v0 | model_4999.pt | 35.9% |
 | myoLegWalk-v0 | model_4999.pt | - |
+| myoTorsoExoPoseFixed-v0 | model_227.pt | 100.0% |
 | myoTorsoPoseFixed-v0 | model_103.pt | 100.0% |
