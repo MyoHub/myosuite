@@ -27,6 +27,7 @@ from mjlab.actuator.actuator import TransmissionType
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import events as mdp_events
 from mjlab.envs.mdp import terminations as mdp_terminations
+from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.rl import (
@@ -39,6 +40,7 @@ from mjlab.tasks.registry import register_mjlab_task
 
 from myosuite.core.config import TaskConfig
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
+from myosuite.terms.base_reward import locomotion_solved
 from myosuite.envs.myo.assets._resolve import resolve_elbow_xml as _resolve_elbow_xml
 from myosuite.envs.myo.assets._resolve import resolve_leg_xml as _resolve_leg_xml
 from myosuite.utils.asset_path_resolver import resolve_model_xml_path
@@ -435,6 +437,15 @@ def _walk_obs_act(env) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 
 
+def _walk_com_vel(env):
+    """Mass-weighted COM velocity ``(N, 2)`` (x, y), as the CPU ``com_vel`` obs."""
+    ids = _resolve_walk_obs_ids(env)
+    data = env.scene[_WALK_ENTITY_NAME].data.data
+    body_mass = ids["body_mass"]  # (nbody,)
+    cvel_lin = -data.cvel[:, :, 3:5]  # (N, nbody, 2), sign per MuJoCo convention
+    return (body_mass[None, :, None] * cvel_lin).sum(dim=1) / body_mass.sum()
+
+
 def _walk_vel_reward(env, target_y_vel: float = 1.2, target_x_vel: float = 0.0):
     """Forward/lateral velocity reward using exponential decay, matching WalkEnvV0.
 
@@ -446,13 +457,7 @@ def _walk_vel_reward(env, target_y_vel: float = 1.2, target_x_vel: float = 0.0):
     """
     import torch  # noqa: PLC0415
 
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    body_mass = ids["body_mass"]  # (nbody,)
-    cvel_lin = -data.cvel[:, :, 3:5]  # (N, nbody, 2), sign per MuJoCo convention
-    com_vel = (body_mass[None, :, None] * cvel_lin).sum(
-        dim=1
-    ) / body_mass.sum()  # (N, 2)
+    com_vel = _walk_com_vel(env)  # (N, 2)
     return torch.exp(-torch.square(target_y_vel - com_vel[:, 1])) + torch.exp(
         -torch.square(target_x_vel - com_vel[:, 0])
     )  # (N,)
@@ -502,6 +507,35 @@ def _walk_done_signal(env):
     done_rot = (torch.abs(r00) > max_rot).to(dtype=torch.float32)
 
     return torch.maximum(done_height, done_rot)  # (N,)
+
+
+def _terrain_done_signal(env):
+    """``_walk_done_signal`` plus the CPU ``LegTerrainEnvV0`` knee condition.
+
+    The knee condition is ``com_height - mean(feet_height) < 0.61``. Shape: (N,)
+    """
+    import torch  # noqa: PLC0415
+
+    knee = (
+        _walk_obs_height(env)[:, 0] - _walk_obs_feet_heights(env).mean(dim=1) < 0.61
+    ).to(dtype=torch.float32)
+    return torch.maximum(_walk_done_signal(env), knee)
+
+
+def _walk_solved(
+    env,
+    target_y_vel: float = 1.2,
+    target_x_vel: float = 0.0,
+    terrain: bool = False,
+):
+    """``success`` metric of the walking tasks (CPU ``solved``): upright and within
+    ``LOCOMOTION_VEL_TOL`` of the commanded COM velocity. Shape: (N,) float."""
+    import torch  # noqa: PLC0415
+
+    com_vel = _walk_com_vel(env)
+    vel_error = torch.hypot(target_x_vel - com_vel[:, 0], target_y_vel - com_vel[:, 1])
+    done = _terrain_done_signal(env) if terrain else _walk_done_signal(env)
+    return locomotion_solved(torch, vel_error, done > 0.5).float()
 
 
 def _walk_alive_reward(env, fall_height_threshold: float = 0.8):
@@ -607,6 +641,13 @@ def _elbow_spec_fn():
     import mujoco
 
     return mujoco.MjSpec.from_file(str(_ELBOW_XML))
+
+
+def _actor_critic_groups(group: ObservationGroupCfg) -> dict[str, ObservationGroupCfg]:
+    """The ``actor`` / ``critic`` observation groups the MyoSuite PPO configs expect."""
+    import copy  # noqa: PLC0415
+
+    return {"actor": group, "critic": copy.deepcopy(group)}
 
 
 def _walk_spec_fn():
@@ -773,10 +814,13 @@ def _make_walk_env_cfg(
         ),
     }
 
+    observations = _actor_critic_groups(observations["policy"])
+
     actions = {
         "muscles": MyoMuscleActivationActionCfg(
             entity_name=walk_entity_name,
             actuator_names=muscle_names,
+            muscle_fatigue=muscle_condition == "fatigue",
         ),
     }
 
@@ -837,7 +881,7 @@ def _make_walk_env_cfg(
         ),
     }
 
-    return mjlab_env_cfg_from_task_config(
+    env_cfg = mjlab_env_cfg_from_task_config(
         cfg=TaskConfig(max_episode_steps=1000),
         spec_fn=walk_spec_fn,
         entity_name=walk_entity_name,
@@ -870,50 +914,28 @@ def _make_walk_env_cfg(
         episode_length_s=20.0,
         init_state=_directional_init_state(),  # stand at ~1.0 m; same host XML as directional
     )
+    # Standard success metric (logged as Episode_Metrics/success): the CPU "solved"
+    # flag on the final step of the episode.
+    env_cfg.metrics = {
+        "success": MetricsTermCfg(
+            func=_walk_solved,
+            params={
+                "target_y_vel": float(walk_cfg.target_vel),
+                "target_x_vel": 0.0,
+            },
+            reduce="last",
+        )
+    }
+    return env_cfg
 
 
 def _walk_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-    """PPO runner config for the bipedal walk benchmark."""
-    return RslRlOnPolicyRunnerCfg(
-        actor=RslRlModelCfg(
-            hidden_dims=(256, 128, 64),
-            activation="elu",
-            obs_normalization=True,
-            distribution_cfg={
-                "class_name": "GaussianDistribution",
-                "init_std": 1.0,
-                "std_type": "scalar",
-            },
-        ),
-        critic=RslRlModelCfg(
-            hidden_dims=(256, 128, 64),
-            activation="elu",
-            obs_normalization=True,
-            distribution_cfg=None,
-        ),
-        algorithm=RslRlPpoAlgorithmCfg(
-            value_loss_coef=1.0,
-            use_clipped_value_loss=True,
-            clip_param=0.2,
-            entropy_coef=0.01,
-            num_learning_epochs=4,
-            num_mini_batches=4,
-            learning_rate=3e-4,
-            schedule="adaptive",
-            gamma=0.99,
-            lam=0.95,
-            desired_kl=0.01,
-            max_grad_norm=1.0,
-        ),
-        experiment_name="myo_leg_walk",
-        save_interval=100,
-        num_steps_per_env=48,
-        max_iterations=500,
-        # rsl_rl maps the actor/critic obs sets to the env's observation
-        # group(s); the walk env exposes a single flat "policy" group. Without
-        # this, RslRlOnPolicyRunner raises "Observation 'actor' not found".
-        obs_groups={"actor": ("policy",), "critic": ("policy",)},
+    """PPO runner config for the bipedal walk benchmark (shared MyoSuite defaults)."""
+    from myosuite.envs.myo.backends.mjlab.tasks.rl import (  # noqa: PLC0415
+        myo_ppo_runner_cfg,
     )
+
+    return myo_ppo_runner_cfg("myo_leg_walk")
 
 
 # ---------------------------------------------------------------------------
@@ -1024,6 +1046,27 @@ def _directional_heading_tracking_rand(env, target_speed: float = 1.2):
     planar_vel = data.qvel[:, :2]
     target_vel = target_speed * _directional_cmd_buffer(env)
     return torch.exp(-torch.sum((target_vel - planar_vel) ** 2, dim=1))
+
+
+def _directional_solved(
+    env,
+    heading_dir: tuple[float, float] = (0.0, 1.0),
+    target_speed: float = 1.2,
+    randomized: bool = False,
+):
+    """``success`` metric of the directional tasks (CPU ``solved``): upright and the
+    planar velocity within ``LOCOMOTION_VEL_TOL`` of ``target_speed * heading``."""
+    import torch  # noqa: PLC0415
+
+    planar_vel = env.scene[_WALK_ENTITY_NAME].data.data.qvel[:, :2]
+    if randomized:
+        direction = _directional_cmd_buffer(env)
+    else:
+        direction = torch.tensor(
+            heading_dir, dtype=torch.float32, device=planar_vel.device
+        )
+    vel_error = torch.linalg.norm(target_speed * direction - planar_vel, dim=1)
+    return locomotion_solved(torch, vel_error, _directional_fallen_bool(env)).float()
 
 
 def _directional_fallen_bool(env, fall_height: float = _DIRECTIONAL_FALL_HEIGHT):
@@ -1165,6 +1208,7 @@ def _make_directional_env_cfg(
             },
         ),
     }
+    observations = _actor_critic_groups(observations["policy"])
     actions = {
         "muscles": MyoMuscleActivationActionCfg(
             entity_name=_WALK_ENTITY_NAME,
@@ -1212,7 +1256,7 @@ def _make_directional_env_cfg(
         events["sample_heading"] = EventTermCfg(
             func=_directional_reset_heading, mode="reset"
         )
-    return mjlab_env_cfg_from_task_config(
+    env_cfg = mjlab_env_cfg_from_task_config(
         cfg=TaskConfig(max_episode_steps=500),
         spec_fn=_walk_spec_fn,
         entity_name=_WALK_ENTITY_NAME,
@@ -1237,47 +1281,29 @@ def _make_directional_env_cfg(
         episode_length_s=20.0,  # matches myoLegWalk-v0's proven horizon (was 5.0)
         init_state=_directional_init_state(),  # stand at ~1.0 m, matching CPU reset
     )
+    # Standard success metric (logged as Episode_Metrics/success): the CPU "solved"
+    # flag (upright and tracking the commanded velocity) on the final step.
+    env_cfg.metrics = {
+        "success": MetricsTermCfg(
+            func=_directional_solved,
+            params={
+                "heading_dir": tuple(heading_dir),
+                "target_speed": float(target_speed),
+                "randomized": randomize_heading,
+            },
+            reduce="last",
+        )
+    }
+    return env_cfg
 
 
 def _directional_ppo_runner_cfg(experiment_name: str) -> RslRlOnPolicyRunnerCfg:
-    """PPO runner config for directional myoLeg locomotion."""
-    return RslRlOnPolicyRunnerCfg(
-        actor=RslRlModelCfg(
-            hidden_dims=(256, 128, 64),
-            activation="elu",
-            obs_normalization=True,
-            distribution_cfg={
-                "class_name": "GaussianDistribution",
-                "init_std": 1.0,
-                "std_type": "scalar",
-            },
-        ),
-        critic=RslRlModelCfg(
-            hidden_dims=(256, 128, 64),
-            activation="elu",
-            obs_normalization=True,
-            distribution_cfg=None,
-        ),
-        algorithm=RslRlPpoAlgorithmCfg(
-            value_loss_coef=1.0,
-            use_clipped_value_loss=True,
-            clip_param=0.2,
-            entropy_coef=0.01,
-            num_learning_epochs=4,
-            num_mini_batches=4,
-            learning_rate=3e-4,
-            schedule="adaptive",
-            gamma=0.99,
-            lam=0.95,
-            desired_kl=0.01,
-            max_grad_norm=1.0,
-        ),
-        experiment_name=experiment_name,
-        save_interval=100,
-        num_steps_per_env=48,
-        max_iterations=500,
-        obs_groups={"actor": ("policy",), "critic": ("policy",)},
+    """PPO runner config for directional myoLeg locomotion (shared MyoSuite defaults)."""
+    from myosuite.envs.myo.backends.mjlab.tasks.rl import (  # noqa: PLC0415
+        myo_ppo_runner_cfg,
     )
+
+    return myo_ppo_runner_cfg(experiment_name)
 
 
 # ---------------------------------------------------------------------------
@@ -1963,27 +1989,26 @@ def register_mjlab_tasks() -> None:
                 )
 
     if _WALK_XML.exists():
-        try:
-            sarc_walk_env_cfg = _make_walk_env_cfg(
-                play=False, muscle_condition="sarcopenia"
-            )
-            sarc_walk_play_cfg = _make_walk_env_cfg(
-                play=True, muscle_condition="sarcopenia"
-            )
-            sarc_walk_rl_cfg = _walk_ppo_runner_cfg()
-            register_mjlab_task(
-                task_id="myoSarcLegWalk-v0",
-                env_cfg=sarc_walk_env_cfg,
-                play_env_cfg=sarc_walk_play_cfg,
-                rl_cfg=sarc_walk_rl_cfg,
-                runner_cls=None,
-            )
-        except ValueError:
-            pass  # already registered
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "mjlab: failed to register myoSarcLegWalk-v0", exc_info=True
-            )
+        for walk_id, condition in (
+            ("myoSarcLegWalk-v0", "sarcopenia"),
+            ("myoFatiLegWalk-v0", "fatigue"),
+        ):
+            try:
+                register_mjlab_task(
+                    task_id=walk_id,
+                    env_cfg=_make_walk_env_cfg(play=False, muscle_condition=condition),
+                    play_env_cfg=_make_walk_env_cfg(
+                        play=True, muscle_condition=condition
+                    ),
+                    rl_cfg=_walk_ppo_runner_cfg(),
+                    runner_cls=None,
+                )
+            except ValueError:
+                pass  # already registered
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "mjlab: failed to register %s", walk_id, exc_info=True
+                )
 
     register_table_tennis_mjlab_tasks()
 
