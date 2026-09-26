@@ -96,7 +96,7 @@ muscle-activation action mapping, custom init pose). See
 The matched GPU implementation is a mjlab (MuJoCo-Warp) `ManagerBasedRlEnvCfg`
 plus a PPO runner config, registered under the **same `env_id`** via
 `register_mjlab_task(...)` in `envs/myo/backends/mjlab/register_mjlab_*.py`
-(e.g. `_make_walk_env_cfg` + `_walk_ppo_runner_cfg` for `myoLegWalk-v0`). Train
+(e.g. `tasks/leg/walk_env_cfg.py` + `leg_walk_ppo_runner_cfg` for `myoLegWalk-v0`). Train
 it with `scripts/train_mjlab.py`. Read `mjlab-design-guide.md` and
 `cross-backend-contract.md` before writing one.
 

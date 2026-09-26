@@ -57,8 +57,10 @@ Differences from the CPU env that matter when moving policies between backends:
   the backends has not been tested yet.
 * **Terrain walks:** the terrain is baked into the model with a fixed seed instead of
   being resampled at each reset (``myoLegRoughTerrainWalk`` uses one fixed sample).
-* Leg locomotion twins are checked only for bounded divergence from the CPU env, not
-  step-by-step parity (see :doc:`backend_parity`).
+* Leg locomotion twins (walk, directional, terrain) are step-parity tested like the other
+  twins, with looser tolerances where contacts dominate (see :doc:`backend_parity`).
+  Height-field contacts differ most, because MuJoCo Warp creates at most one
+  capsule-hfield contact.
 
 Naming Conventions
 -------------------

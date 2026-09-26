@@ -19,10 +19,11 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 --env.scene.num-envs 4096`.
 
 **Caveat — `myoLeg{Walk,DirectionalForward,DirectionalBackward,DirectionalRandom}-v0`:**
-trained (2026-09-25) before the leg twins got their success metric / shared PPO defaults.
-On the CPU backend they walk (Directional Forward/Backward: 100% success), but on the
-current mjlab twin they fall after ~200 steps, so they are provisional; retrain them
-with `python scripts/train_mjlab.py <env_id> --env.scene.num-envs 4096` and refresh these files.
+trained (2026-09-25) on the old leg twins, which differed from the CPU env. On the CPU backend
+they walk (Directional Forward/Backward: 100% success); on the rebuilt mjlab twins
+(2026-09-26, matching the CPU env step by step) they reach 67% / 31% / 55% success
+(Forward / Backward / Random) and `myoLegWalk` falls early on both backends, so they are
+provisional; retrain them with `python scripts/train_mjlab.py <env_id> --env.scene.num-envs 4096` and refresh these files.
 `myoHandPose0Fixed`/`myoHandPoseFixed` (0%), `myoLegStandRandom` (36%, plateaued) and the
 reach/motor envs below 95% are unconverged snapshots. `myoTorsoExoPoseFixed` (converged) also
 runs on the CPU env (same return and success as on mjlab).

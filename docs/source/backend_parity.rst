@@ -18,11 +18,14 @@ Regenerate a baseline after an *intentional* env change::
 
 What is verified per family (``myosuite/tests/test_mjlab_cpu_twins.py``):
 
-* **Pose, reach, ``myoLegStandRandom``**: one-step parity of observation, reward and
-  solved flag against the CPU env (a random reset state written into both).
-* **``myoLegWalk``, ``myoLegDirectional*`` and the terrain walks**: only that the
-  divergence stays bounded (``test_myo_leg_walk_state_parity.py``, GPU run); trained
-  policies can still behave differently on the two backends.
+* **Pose, reach, ``myoLegStandRandom``, ``myoLegWalk`` (+ Sarc/Fati), ``myoLegDirectional*``
+  and the terrain walks**: 25-step parity of observation, reward, termination and solved
+  flag against the CPU env (the CPU state is written into both at every step). Tolerances
+  are looser where contacts dominate: foot-contact events (walking), joint velocities of
+  5-10 rad/s in the first steps (directional) and height-field terrain, where MuJoCo Warp
+  creates at most one capsule-hfield contact (see the constants in
+  ``myosuite/tests/test_mjlab_cpu_twins.py``). Trajectories of trained locomotion policies
+  still drift apart over hundreds of steps, so re-check them on the CPU env.
 * **Torso exosuit twins** (experimental): the observation is compared with the CPU env
   over short free-running rollouts (``test_torso_exo_observation_matches_cpu``). Their
   two free bodies are 6-DoF chains on mjlab, converted back to the CPU layout. Policy
