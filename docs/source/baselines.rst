@@ -21,6 +21,20 @@ Always set ``--env.scene.num-envs`` explicitly (default is 1 — see
 :doc:`quickstart_ml` for why that stalls training) and re-pass it whenever you
 ``--agent.resume True`` a long walk run.
 
+Default policies
+^^^^^^^^^^^^^^^^
+
+The repository ships mjlab (RSL-RL) checkpoints of default training runs for 32 envs
+in ``baselines/checkpoints/<env_id>/`` (with their evaluation videos in
+``baselines/evals/``). They run on the CPU and the mjlab backend::
+
+   python scripts/eval_mjlab_policy.py myoFingerPoseRandom-v0 \
+       --checkpoint baselines/checkpoints/myoFingerPoseRandom-v0 --backend cpu
+
+``baselines/checkpoints/README.md`` lists each policy's deterministic success rate;
+some are unconverged snapshots, and the ``myoLeg*`` locomotion policies are
+provisional. See :doc:`quickstart_ml` for how success is defined and evaluated.
+
 Pretrained NPG / DEP-RL weight trees under ``myosuite/agents/`` are **not**
 shipped in the pip package and are gitignored. Train your own policy, or use
 MuscleMimic checkpoints from Hugging Face (see

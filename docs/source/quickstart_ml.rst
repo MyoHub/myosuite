@@ -114,6 +114,60 @@ back from the original run. Repeat every ``--env.*`` flag you used originally
 (especially ``--env.scene.num-envs``) on every resumed run, or the run silently
 falls back to the defaults above.
 
+Success metric
+^^^^^^^^^^^^^^^
+
+Every mjlab env logs ``Episode_Metrics/success``: the env's standard "solved" flag
+(0/1) on the **last step** of an episode, averaged over the finished episodes. Solved
+means
+
+* **pose** tasks: the joint errors (target minus current angle) have a norm below the
+  task's ``pose_thd`` (rad; e.g. 0.7 for the hand numeral poses);
+* **reach** tasks: every tip site is within the task's reach threshold of its target;
+* **locomotion** (``myoLegWalk``, ``myoLegDirectional*``, terrain walks): upright and
+  the planar COM velocity within 0.5 m/s of the commanded velocity (speed times heading);
+* ``myoLegStandRandom``: the pelvis has reached its (relative) target position.
+
+The training log uses the *sampled* policy (with exploration noise). For muscle tasks
+the *deterministic* policy (mean action) can behave very differently, and it is what
+you deploy, so ``--stop-on-success`` also requires the deterministic success rate to
+exceed the threshold.
+
+
+Evaluating a policy
+^^^^^^^^^^^^^^^^^^^^
+
+``scripts/eval_mjlab_policy.py`` rolls a trained checkpoint out on either backend and
+prints the number of episodes, the mean return and length, and the success rate:
+
+.. code-block:: bash
+
+   python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 \
+       --checkpoint logs/rsl_rl/myo_elbow_pose/<run> --backend cpu     # or --backend mjlab
+   # video of a grid of parallel envs (5 x 3 envs, 2 episodes each), offscreen (EGL):
+   python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 \
+       --checkpoint logs/rsl_rl/myo_elbow_pose/<run> --video out.mp4 --backend mjlab \
+       --num-cols 5 --num-rows 3 --episodes-per-env 2
+
+``--checkpoint`` is a ``model_<iter>.pt`` file or a run directory (its newest
+checkpoint). By default the deterministic (mean-action) policy is used; add
+``--stochastic`` to sample actions like the training log does. The video marks the
+targets of reach tasks, colours the joint errors of pose tasks and draws the target
+velocity of walking tasks as an arrow. ``--backend cpu`` requires the mjlab twin to have
+the same observation as the CPU env (the torso exosuit twins do so through a
+conversion that is still experimental, see :doc:`environments`); a checkpoint that does
+not fit stops the script with a clear "expects N-d observations" error.
+
+
+Default policies
+^^^^^^^^^^^^^^^^^
+
+``baselines/checkpoints/<env_id>/model_<iter>.pt`` holds a ready-made mjlab policy for
+32 envs (see ``baselines/checkpoints/README.md`` for their deterministic success rates
+and caveats), and ``baselines/evals/`` their videos. Evaluate one directly with
+``--checkpoint baselines/checkpoints/<env_id>``; ``tutorials/1.2_Load_Policy.ipynb``
+finds them automatically. Some are unconverged snapshots; the README lists which.
+
 An MJX (JAX) backend also exists (``pip install -e ".[mjx]"``). It is
 experimental — prefer mjlab for new GPU work.
 

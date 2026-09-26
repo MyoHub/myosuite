@@ -33,7 +33,7 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 |---|---|---|
 | **1 — Basics** | | |
 | 1.1 | [Get Started](./1.1_Get_Started.ipynb) | `pip install -e .` |
-| 1.2 | [Load Policy](./1.2_Load_Policy.ipynb) — run a checkpoint from an mjlab or SB3 training run (random policy if none is found) | a checkpoint from 2.1 or 2.2 (optional) |
+| 1.2 | [Load Policy](./1.2_Load_Policy.ipynb) — run a policy in a video rollout: your own mjlab/SB3 checkpoint, else the shipped default policy in `baselines/checkpoints/` (random policy if none is found) | nothing (optional: a checkpoint from 2.1 or 2.2) |
 | **2 — Training** | | |
 | 2.1 | [Train SB3 Policy](./2.1_Train_SB3_Policy.ipynb) — PPO on CPU | `pip install -e ".[rl]"` |
 | 2.2 | [Train MjLab Policy](./2.2_Train_MjLab_Policy.ipynb) — thousands of parallel envs on GPU, playback on CPU | Linux + CUDA, `pip install -e ".[mjlab]"` |

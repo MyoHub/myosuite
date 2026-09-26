@@ -15,6 +15,51 @@ Tables below are the common CPU IDs. Pathological prefixes (``myoSarc…``,
    :local:
    :depth: 2
 
+GPU (mjlab) coverage
+---------------------
+
+The mjlab backend registers a twin under the same ``env_id`` for these CPU families
+(``myoSarc…``/``myoFati…``/``myoReaf…`` variants exist where the CPU env has them):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Family
+     - mjlab twins
+   * - Pose
+     - ``myoElbowPose1D6M{Fixed,Random}`` (+ ``Exo``), ``myoFingerPose{Fixed,Random}``,
+       ``myoHandPose{0-9}Fixed``, ``myoHandPose{Fixed,Random}``,
+       ``myoTorsoPoseFixed``, ``myoTorsoExoPoseFixed``, ``motorFingerPose{Fixed,Random}``
+   * - Reach
+     - ``myoArmReach``, ``myoFingerReach``, ``myoHandReach``, ``motorFingerReach``
+       (each ``{Fixed,Random}``)
+   * - Leg
+     - ``myoLegWalk``, ``myoLegDirectional{Forward,Backward,Random}``,
+       ``myoLegStandRandom``, ``myoLeg{Rough,Hilly,Stair}TerrainWalk``
+   * - Challenge
+     - ``myoChallengeChaseTagFBP2``, ``myoChallengeTableTennisP{0,1,2}``
+
+Variants: ``myoSarc…`` exist for all twins above except ``myoLegDirectional*`` (no CPU
+variant) and the Challenge twins; ``myoFati…`` likewise, and ``myoReaf…`` for the hand
+pose and reach twins. **Not on mjlab yet:** the other Challenge tasks, ``myoElbowPoseTask*``,
+``myoFullBodyDirectional`` and the other MyoMimic/MuscleMimic envs, and the hand manipulation
+families (``myoHandKeyTurn``, ``ObjHold``, ``PenTwirl``, ``Reorient*``) including their
+variants.
+
+Differences from the CPU env that matter when moving policies between backends:
+
+* **Torso exosuit** (``myoTorsoExoPoseFixed`` and variants) — *experimental*: the two
+  free exosuit bodies are 6-DoF joint chains on mjlab (mjlab allows one freejoint per
+  entity); their ``qpos``/``qvel`` are converted back to the CPU layout, so the
+  observation is the same 296-d vector (matching CPU to ~1e-3 over short rollouts, see
+  ``test_torso_exo_observation_matches_cpu``). Transfer of *trained* policies between
+  the backends has not been tested yet.
+* **Terrain walks:** the terrain is baked into the model with a fixed seed instead of
+  being resampled at each reset (``myoLegRoughTerrainWalk`` uses one fixed sample).
+* Leg locomotion twins are checked only for bounded divergence from the CPU env, not
+  step-by-step parity (see :doc:`backend_parity`).
+
 Naming Conventions
 -------------------
 
