@@ -1,6 +1,6 @@
 # Changelog
 
-## MyoSuite 3 (branch `ms3`, unreleased) — changes since v2.12.2
+## MyoSuite 3.0.0 (branch `ms3`, unreleased) — changes since v2.12.2
 
 Last official release: **v2.12.2** (2026-05-06). This branch has **258 commits** on top of it
 (239 without merges): about 1,150 files changed, +124k / −161k lines. The list below

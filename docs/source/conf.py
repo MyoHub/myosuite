@@ -17,8 +17,8 @@ project = "MyoSuite"
 copyright = "Copyright © MyoSuite Authors"
 author = "MyoSuite Authors"
 
-release = "2.11"
-version = "2.11.6"
+release = "3.0.0"
+version = "3.0"
 
 # -- General configuration
 
