@@ -267,7 +267,7 @@ def init_state_from_model(
 ) -> EntityCfg.InitialStateCfg:
     """Initial state at a CPU ``qpos`` (default: the CPU ``_init_qpos``), zero velocity.
 
-    A free root joint maps to the entity root pose; every hinge/slide joint is
+    A free root joint (``qpos`` address 0) maps to the entity root pose; every hinge/slide joint is
     pinned to its value. Tasks whose CPU reset writes a non-zero ``qvel`` (e.g.
     keyframe resets) restore the exact state with a reset event.
 
@@ -288,6 +288,8 @@ def init_state_from_model(
         info.joint_names, info.jnt_type, info.jnt_qposadr, strict=True
     ):
         if jtype == mujoco.mjtJoint.mjJNT_FREE:
+            if adr != 0:  # not the entity root; see demote_extra_freejoints
+                continue
             root = {
                 "pos": tuple(qpos[adr : adr + 3]),
                 "rot": tuple(qpos[adr + 3 : adr + 7]),
@@ -310,6 +312,34 @@ def _entity_spec(
     for key in list(spec.keys):
         spec.delete(key)
     return spec
+
+
+def demote_extra_freejoints(spec: mujoco.MjSpec) -> None:
+    """Replace every freejoint mjlab cannot use as entity root by a 6-DoF chain.
+
+    An mjlab entity has at most one freejoint, and it must be the spec's first
+    joint. Any other freejoint (e.g. the passive, soft-welded exosuit parts of
+    ``myotorso_exosuit.xml``) becomes three world-axis slides plus three hinges at
+    the body origin, starting from the body's own pose. Dynamics match; the ``qpos``
+    of such a body holds 6 Euler-chain values instead of a 7-value pose, so the
+    observation is one value shorter per demoted joint than on CPU.
+
+    Args:
+        spec: Entity spec, edited in place.
+    """
+    joints = list(spec.joints)
+    for joint in joints:
+        if joint.type != mujoco.mjtJoint.mjJNT_FREE or joint is joints[0]:
+            continue
+        body = joint.parent
+        spec.delete(joint)
+        for kind, axes in (
+            (mujoco.mjtJoint.mjJNT_SLIDE, np.eye(3)),
+            (mujoco.mjtJoint.mjJNT_HINGE, np.eye(3)),
+        ):
+            for axis in axes:
+                name = f"{body.name}_{'xyz'[int(np.argmax(axis))]}_{kind.name[-5:].lower()}"
+                body.add_joint(name=name, type=kind, axis=axis)
 
 
 _XML_TRANSMISSIONS = {

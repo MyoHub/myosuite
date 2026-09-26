@@ -191,7 +191,14 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
 
     step_dt = info.opt_timestep * task.frame_skip
     return ManagerBasedRlEnvCfg(
-        scene=SceneCfg(entities={ENTITY: ref.robot_entity_cfg(task)}, num_envs=1),
+        scene=SceneCfg(
+            entities={
+                ENTITY: ref.robot_entity_cfg(
+                    task, spec_edits=(ref.demote_extra_freejoints,)
+                )
+            },
+            num_envs=1,
+        ),
         observations=observations,
         actions={"muscles": ref.action_cfg(task, ENTITY)},
         commands=commands,
