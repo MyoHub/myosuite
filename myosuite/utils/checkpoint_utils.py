@@ -47,7 +47,8 @@ def find_checkpoint(
         env_id: Registered env id.
         checkpoint: Explicit checkpoint (returned as is when given).
         roots: Directories searched for ``logs/rsl_rl/<experiment>/<run>/model_*.pt``
-            (newest run and iteration wins), then for *sb3_zip*.
+            (newest run and iteration wins), then for the repository's default policy
+            ``baselines/checkpoints/<env_id>/model_*.pt``, then for *sb3_zip*.
         sb3_zip: Optional file name of a Stable-Baselines3 checkpoint to fall back to.
 
     Returns:
@@ -65,6 +66,13 @@ def find_checkpoint(
         )
         if runs:
             return runs[-1]
+    for root in roots:
+        baseline = sorted(
+            (root / "baselines" / "checkpoints" / env_id).glob("model_*.pt"),
+            key=lambda c: int(c.stem.split("_")[-1]),
+        )
+        if baseline:
+            return baseline[-1]
     for root in roots:
         if sb3_zip and (root / sb3_zip).is_file():
             return root / sb3_zip
