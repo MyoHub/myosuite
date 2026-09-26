@@ -177,6 +177,23 @@ def plot_zeroshot(ax, data, colors=None, total_width=0.8, single_width=1, legend
     plt.yticks(fontsize=12)
 
 
+def _window(n_points, smoothing, label):
+    """Smoothing window for a log with *n_points* entries.
+
+    Returns *smoothing* unchanged whenever the log is longer than it. A shorter log
+    would give an empty curve (``[:-smoothing]`` drops everything), so it gets a window
+    of a tenth of its length instead, and a notice is printed.
+    """
+    if n_points > smoothing:
+        return smoothing
+    window = max(1, n_points // 10)
+    print(
+        f"[INFO] {label}: only {n_points} entries (smoothing={smoothing}); "
+        f"using a smoothing window of {window}."
+    )
+    return window
+
+
 def plot_results(smoothing=1000, experiment="locomotion", terrain=None):
     """
     Plots the results for the specified experiment and terrain.
@@ -204,14 +221,16 @@ def plot_results(smoothing=1000, experiment="locomotion", terrain=None):
 
         if os.path.isfile(sar_rl_file):
             a_df = pd.read_csv(sar_rl_file)
-            a_timesteps = a_df["time/total_timesteps"][:-smth]
-            a_reward_mean = smooth(a_df["rollout/ep_rew_mean"], smth)[:-smth]
+            a_smth = _window(len(a_df), smth, "SAR-RL")
+            a_timesteps = a_df["time/total_timesteps"][:-a_smth]
+            a_reward_mean = smooth(a_df["rollout/ep_rew_mean"], a_smth)[:-a_smth]
             plt.plot(a_timesteps, a_reward_mean, linewidth=3, label="SAR-RL")
 
         if os.path.isfile(rl_e2e_file):
             b_df = pd.read_csv(rl_e2e_file)
-            b_timesteps = b_df["time/total_timesteps"][:-smth]
-            b_reward_mean = smooth(b_df["rollout/ep_rew_mean"], smth)[:-smth]
+            b_smth = _window(len(b_df), smth, "RL-E2E")
+            b_timesteps = b_df["time/total_timesteps"][:-b_smth]
+            b_reward_mean = smooth(b_df["rollout/ep_rew_mean"], b_smth)[:-b_smth]
             plt.plot(b_timesteps, b_reward_mean, linewidth=3, label="RL-E2E")
 
         plt.title(f"MyoLeg {terrain} locomotion task success comparison", size=14)
@@ -228,12 +247,14 @@ def plot_results(smoothing=1000, experiment="locomotion", terrain=None):
 
         if os.path.isfile(sar_rl_file):
             suc = np.load(sar_rl_file)
-            suc = smooth(suc, smth)[:-smth]
+            w = _window(len(suc), smth, "SAR-RL")
+            suc = smooth(suc, w)[:-w]
             plt.plot(range(len(suc)), suc, linewidth=2.5, label="SAR-RL")
 
         if os.path.isfile(rl_e2e_file):
             suc = np.load(rl_e2e_file)
-            suc = smooth(suc, smth)[:-smth]
+            w = _window(len(suc), smth, "RL-E2E")
+            suc = smooth(suc, w)[:-w]
             plt.plot(range(len(suc)), suc, linewidth=2.5, label="RL-E2E")
 
         plt.title("Success comparison on Reorient100", size=17)
@@ -410,10 +431,10 @@ def get_vid(
     else:
         env = gym.make(env_name)
 
-    if "Leg" in env_name:
-        camera = "side_view"
-    else:
-        camera = "front"
+    # First camera the model has (leg models: side_view; hand models: hand_top),
+    # else MuJoCo's free camera.
+    model_cams = {env.unwrapped.model.camera(i).name for i in range(env.unwrapped.model.ncam)}
+    camera = next((c for c in ("side_view", "hand_top", "front") if c in model_cams), -1)
 
     for i, __ in tqdm(enumerate(range(episodes))):
         reset_out = env.reset()
