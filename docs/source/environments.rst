@@ -429,3 +429,27 @@ MJX (experimental)
 A JAX path exists (``pip install -e ".[mjx]"``,
 ``from myosuite.envs.myo.backends.mjx import make``). Do not start new work on
 it; use mjlab for GPU training.
+
+Supported envs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 78
+
+   * - Family
+     - MJX ids (``make("<id>")``)
+   * - Pose
+     - ``MjxElbowPoseFixed-v0``, ``MjxElbowPoseRandom-v0``, ``MjxFingerPoseFixed-v0``,
+       ``MjxFingerPoseRandom-v0``, ``MjxHandPoseRandom-v0``
+   * - Reach
+     - ``MjxHandReachFixed-v0``, ``MjxHandReachRandom-v0``, ``MjxFingerReachRandom-v0``
+   * - Walk
+     - ``MjxLegWalk-v0`` (flat ground, mirrors ``myoLegWalk-v0``)
+   * - Mimic
+     - ``MjxMimicBimanual-v0``, ``MjxMimicFullbody-v0`` (aliases
+       ``MjxMuscleMimicBimanual-v0``, ``MjxMuscleMimicFullbody-v0``)
+
+MJX ids use the ``Mjx`` prefix and are not the ``myo…`` ids of the CPU and mjlab
+backends; there is no MJX version of the torso, arm, leg terrain/stand/directional
+envs or of the ``myoSarc…``/``myoFati…``/``myoReaf…`` variants. The list is defined in
+``myosuite/envs/myo/backends/mjx/__init__.py``.
