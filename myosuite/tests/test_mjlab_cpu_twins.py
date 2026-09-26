@@ -32,7 +32,9 @@ from myosuite.core.muscle_conditions import (  # noqa: E402
     CumulativeFatigue,
     TorchFatigueState,
 )
+from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
 from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0  # noqa: E402
+from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0  # noqa: E402
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
@@ -41,6 +43,7 @@ _PORTED_ENTRY_POINTS = (
     "arm.pose:PoseEnvV0",
     "torso.pose:TorsoEnvV0",
     "arm.reach:ReachEnvV0",
+    "leg.reach:LegReachEnvV0",
 )
 
 PARITY_IDS = (
@@ -61,15 +64,12 @@ PARITY_IDS = (
     "myoArmReachRandom-v0",
     "myoReafHandReachFixed-v0",
     "myoSarcArmReachFixed-v0",
+    "myoLegStandRandom-v0",
 )
 
 # Ported families whose multi-floating-body models still need the
 # entity-splitting scene builder (mjlab allows one freejoint per entity).
-_PENDING_TWINS = {
-    "myoTorsoExoPoseFixed-v0",
-    "myoSarcTorsoExoPoseFixed-v0",
-    "myoFatiTorsoExoPoseFixed-v0",
-}
+_PENDING_TWINS: set[str] = set()
 
 
 # MuJoCo Warp computes a different wrapped length than C MuJoCo for a few
@@ -114,7 +114,13 @@ def _sync(cpu: gym.Env, mj: ManagerBasedRlEnv) -> None:
         return torch.as_tensor(np.asarray(x)[None], dtype=torch.float32)
 
     robot = mj.scene["robot"]
-    robot.write_joint_state_to_sim(_t(cpu.data.qpos), _t(cpu.data.qvel))
+    write_cpu_state(  # CPU layout: a free root joint first, if any
+        mj,
+        "robot",
+        torch.zeros(1, dtype=torch.long),
+        _t(cpu.data.qpos),
+        _t(cpu.data.qvel),
+    )
     if cpu.model.na:
         mj.sim.data.act[:] = _t(cpu.data.act)
     if "pose" in mj.command_manager.active_terms:
@@ -156,8 +162,11 @@ def test_one_step_parity(env_id: str) -> None:
 
     _sync(cpu, mj)
     obs0 = mj.observation_manager.compute_group("actor")[0].numpy()
-    expected = cpu.get_obs()
-    if isinstance(cpu, PoseEnvV0):  # PoseEnvV0 clips to its +-10 observation space
+    if isinstance(cpu, LegReachEnvV0):
+        expected = cpu._obs_dict_to_vec(cpu._get_obs_dict(cpu._accessor))
+    else:
+        expected = cpu.get_obs()
+    if isinstance(cpu, PoseEnvV0 | LegReachEnvV0):  # these clip to their +-10 space
         expected = expected.clip(-10, 10)
     np.testing.assert_allclose(obs0, expected, atol=1e-5)
 
@@ -212,9 +221,10 @@ def test_every_twin_logs_a_success_metric() -> None:
     """Success rate is a standard metric (``Episode_Metrics/success``) of every twin."""
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
 
-    twins = [
-        e for e in _basic_suite_ids(_PORTED_ENTRY_POINTS) if e in set(list_tasks())
-    ]
+    registered = set(list_tasks())
+    twins = [e for e in _basic_suite_ids(_PORTED_ENTRY_POINTS) if e in registered]
+    # Legacy leg/torso twins are not in the basic-suite entry-point list.
+    twins += [e for e in registered if "Leg" in e or "Torso" in e]
     assert twins
     missing = [
         e

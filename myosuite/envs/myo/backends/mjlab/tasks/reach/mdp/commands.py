@@ -9,7 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import mujoco_warp as mjwarp
 import torch
+import warp as wp
 
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.commands import (
     UniformVectorCommand,
@@ -50,3 +52,30 @@ class ReachTargetCommand(UniformVectorCommand):
     def _update_metrics(self) -> None:
         tip = self._accessor.site_xpos(self._tip_ids).reshape(self.num_envs, -1)
         self.metrics["reach_error"][:] = torch.linalg.norm(self._target - tip, dim=-1)
+
+
+@dataclass(kw_only=True)
+class RelativeReachTargetCommandCfg(ReachTargetCommandCfg):
+    """Targets ``U(low, high)`` away from the tip sites' position at reset.
+
+    ``low`` / ``high`` are the flattened ``3k`` offsets (CPU ``LegReachEnvV0``).
+    """
+
+    def build(self, env: ManagerBasedRlEnv) -> RelativeReachTargetCommand:
+        return RelativeReachTargetCommand(self, env)
+
+
+class RelativeReachTargetCommand(ReachTargetCommand):
+    """Reach targets relative to where the tip sites start the episode."""
+
+    cfg: RelativeReachTargetCommandCfg
+
+    def _resample_command(self, env_ids: torch.Tensor) -> None:
+        # Reset-path resamples run before mjlab's forward(): refresh the site
+        # positions from the qpos the reset events just wrote.
+        env = self._env
+        with wp.ScopedDevice(env.sim.wp_device):
+            mjwarp.kinematics(env.sim.wp_model, env.sim.wp_data)
+        tip = self._accessor.site_xpos(self._tip_ids).reshape(self.num_envs, -1)
+        u = torch.rand(len(env_ids), self._low.numel(), device=self.device)
+        self._target[env_ids] = tip[env_ids] + self._low + u * (self._high - self._low)

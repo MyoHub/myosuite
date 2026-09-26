@@ -3,4 +3,4 @@
 Importing this package registers every task with ``mjlab.tasks.registry``.
 """
 
-from . import pose, reach  # noqa: F401
+from . import leg, pose, reach  # noqa: F401

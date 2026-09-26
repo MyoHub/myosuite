@@ -2,7 +2,17 @@
 
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import *  # noqa: F401, F403
 
-from .commands import ReachTargetCommand, ReachTargetCommandCfg  # noqa: F401
+from .commands import (  # noqa: F401
+    ReachTargetCommand,
+    ReachTargetCommandCfg,
+    RelativeReachTargetCommand,
+    RelativeReachTargetCommandCfg,
+)
 from .observations import reach_err, tip_pos  # noqa: F401
-from .rewards import reach_components, reach_term  # noqa: F401
-from .terminations import reach_failed  # noqa: F401
+from .rewards import (  # noqa: F401
+    leg_reach_components,
+    leg_reach_term,
+    reach_components,
+    reach_term,
+)
+from .terminations import leg_reach_failed, reach_failed  # noqa: F401
