@@ -14,6 +14,21 @@ sports medicine, and physical rehabilitation.
 
    This project is under active development.
 
+What's new in MyoSuite 3
+-------------------------
+
+MyoSuite 3 brings the whole suite to fast, scalable training while keeping the simple
+interface you know:
+
+* **One task, several backends.** The same ``env_id`` runs on the **CPU** (Gymnasium:
+  playback, debugging, Stable-Baselines3), on **mjlab** for massively parallel GPU
+  training, and on an **experimental MJX** (JAX) path. See :doc:`quickstart_ml`.
+* **Much faster learning.** Train with thousands of environments in parallel on a single
+  GPU, then replay the policy on the CPU.
+* **Ready to use.** Default trained policies with evaluation videos (see
+  :doc:`baselines`), plus updated tutorials from the first rollout to GPU training
+  (:doc:`tutorials`).
+
 Choose your path
 -----------------
 

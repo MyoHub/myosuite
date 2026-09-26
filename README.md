@@ -23,6 +23,16 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 ---
 
+## What's new in MyoSuite 3
+
+MyoSuite 3 brings the whole suite to fast, scalable training while keeping the simple interface you know:
+
+- **One task, several backends.** The same `env_id` runs on the **CPU** (Gymnasium: playback, debugging, Stable-Baselines3), on **mjlab** for massively parallel GPU training, and on an **experimental MJX** (JAX) path.
+- **Much faster learning.** Train with thousands of environments in parallel on a single GPU, then replay the policy on the CPU.
+- **Ready to use.** Default trained policies with evaluation videos, plus updated tutorials from first rollout to GPU training.
+
+---
+
 ## Start here
 
 | I am a…                    | Start here                                                   |
