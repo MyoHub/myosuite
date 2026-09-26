@@ -23,11 +23,18 @@ interface you know:
 * **One task, several backends.** The same ``env_id`` runs on the **CPU** (Gymnasium:
   playback, debugging, Stable-Baselines3), on **mjlab** for massively parallel GPU
   training, and on an **experimental MJX** (JAX) path. See :doc:`quickstart_ml`.
+* **MuscleMimic support.** Run, evaluate and train full-body and bimanual **MuscleMimic**
+  policies, with ready-to-use checkpoints and motion datasets.
+* **The complete MyoChallenge suite** as Gymnasium environments: Baoding, Bimanual, Chase
+  Tag, Die Reorient, OSL Run, Relocate, Soccer and Table Tennis.
 * **Much faster learning.** Train with thousands of environments in parallel on a single
   GPU, then replay the policy on the CPU.
+* **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared
+  observation, reward and model-building blocks instead of writing an environment class.
 * **Ready to use.** Default trained policies with evaluation videos (see
-  :doc:`baselines`), plus updated tutorials from the first rollout to GPU training
-  (:doc:`tutorials`).
+  :doc:`baselines`), plus updated tutorials from the first rollout to GPU training and
+  MuscleMimic (:doc:`tutorials`). The repository's ``CHANGELOG.md`` lists everything that
+  changed since v2.12.
 
 Choose your path
 -----------------
