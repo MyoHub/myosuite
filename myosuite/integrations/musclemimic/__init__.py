@@ -16,10 +16,6 @@ Upstream: https://github.com/amathislab/musclemimic
 * **Demo cache** — ``myosuite-musclemimic-setup-demo-cache`` downloads HF demo
   motions via ``huggingface_hub`` (``MyoSuite[musclemimic]``); no upstream
   ``musclemimic`` package required.
-* **Parity** — ``myosuite-musclemimic-fullbody-parity`` checks that
-  validation metrics match with vs without ``import myosuite``
-  (needs ``musclemimic`` + HF access). Sandbox parity tooling now lives in
-  top-level ``sandbox_parity`` outside the main ``myosuite`` package.
 """
 
 from myosuite.integrations.musclemimic.citation import (

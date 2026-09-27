@@ -496,6 +496,16 @@ class LegTerrainEnvV0(LegWalkEnvV0):
             seed=seed,
             **kwargs,
         )
+        # Re-record ctor args so pickling keeps terrain/variant (parent omits them).
+        EzPickle.__init__(
+            self,
+            model_path,
+            obsd_model_path,
+            seed,
+            terrain=terrain,
+            variant=variant,
+            **kwargs,
+        )
         self.terrain = terrain
         self.variant = variant
 

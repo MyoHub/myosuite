@@ -58,7 +58,8 @@ class _MuscleMimicCpuBase(MyoGymnasiumEnv, EzPickle):
         MyoGymnasiumEnv.__init__(
             self, frame_skip=frame_skip, render_mode=kwargs.get("render_mode")
         )
-        EzPickle.__init__(self, frame_skip, seed, **kwargs)
+        # Keyword args: subclass signatures order (seed, frame_skip, ...).
+        EzPickle.__init__(self, frame_skip=frame_skip, seed=seed, **kwargs)
         self._site_ids: np.ndarray | None = None
         self._target_site_pos: np.ndarray | None = None
         self._target_lo = np.asarray(low, dtype=np.float64)
@@ -227,6 +228,25 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             seed=seed,
             mimic_target_low=(0.0,),
             mimic_target_high=(1.0,),
+            **kwargs,
+        )
+        # Record this class's own ctor args; the base would replay fixed mimic bounds.
+        EzPickle.__init__(
+            self,
+            seed=seed,
+            frame_skip=frame_skip,
+            target_speed=target_speed,
+            w_jpos=w_jpos,
+            w_jvel=w_jvel,
+            w_heading=w_heading,
+            w_act_reg=w_act_reg,
+            w_act_smooth=w_act_smooth,
+            w_survival=w_survival,
+            upright_pelvis_z=upright_pelvis_z,
+            fall_pelvis_z=fall_pelvis_z,
+            gait_clip_repo=gait_clip_repo,
+            gait_clip_filename=gait_clip_filename,
+            angle_override=angle_override,
             **kwargs,
         )
         cfg = default_mimic_fullbody_config()

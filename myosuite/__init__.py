@@ -25,6 +25,7 @@ myosuite_myobase_suite: list[str] = []
 myosuite_myochal_suite: list[str] = []
 myosuite_myomimic_suite: list[str] = []
 myosuite_myoedits_suite: list[str] = []
+_registered_suites: dict[str, list[str]] | None = None
 
 
 def gym_registry_specs() -> Any:
@@ -36,9 +37,16 @@ def gym_registry_specs() -> Any:
 def register_all_envs() -> dict[str, list[str]]:
     """Register all MyoSuite environment suites with Gymnasium.
 
+    Idempotent: suites are computed as registry diffs on the first call, so
+    later calls return the cached mapping instead of empty lists.
+
     Returns:
         Mapping of suite name to registered environment ids.
     """
+
+    global _registered_suites
+    if _registered_suites is not None:
+        return _registered_suites
 
     global myosuite_env_suite
     global myosuite_myobase_suite
@@ -91,13 +99,14 @@ def register_all_envs() -> dict[str, list[str]]:
 
     myosuite_env_suite = sorted(suite_envs)
 
-    return {
+    _registered_suites = {
         "myobase": myosuite_myobase_suite,
         "myochallenge": myosuite_myochal_suite,
         "myomimic": myosuite_myomimic_suite,
         "myoedits": myosuite_myoedits_suite,
         "all": myosuite_env_suite,
     }
+    return _registered_suites
 
 
 register_all_envs()

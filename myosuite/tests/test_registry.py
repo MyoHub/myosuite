@@ -17,11 +17,6 @@ from myosuite.utils import gym
 
 pytestmark = pytest.mark.tier1
 
-# NOTE: do not rely on myosuite.myosuite_env_suite here. register_all_envs()
-# computes each suite by diffing the gym registry against its state *before*
-# that call; a second call elsewhere (e.g. test_parity.py imports myosuite
-# and calls register_all_envs() again at module scope) diffs against an
-# already-fully-registered registry and clobbers the suite globals to empty.
 # Scanning the live gym registry directly is robust to call order.
 _ALL_ENV_IDS = sorted(
     env_id for env_id in gym.envs.registry if env_id.startswith(("myo", "motor"))
@@ -86,3 +81,14 @@ def test_env_resets_and_steps(env_id: str) -> None:
 def test_registry_is_non_empty() -> None:
     """Guard against register_all_envs() silently registering nothing."""
     assert len(_ALL_ENV_IDS) > 50
+
+
+def test_register_all_envs_is_idempotent() -> None:
+    """Repeated register_all_envs() calls must not clobber the suite lists."""
+    import myosuite
+
+    first = {k: list(v) for k, v in myosuite.register_all_envs().items()}
+    second = myosuite.register_all_envs()
+    assert first == second
+    assert len(myosuite.myosuite_env_suite) > 50
+    assert myosuite.myosuite_myobase_suite == first["myobase"]

@@ -91,11 +91,14 @@ groups the changes by theme; `git log v2.12.2..ms3` has the full commit list.
 * Leg twins: a stale root velocity in shared rewards under mjlab, batch-safe heading terms
   (`917bed2`); ChaseTag fall threshold and opponent policy fall-through (`f681cb4`, `33d89ce`).
 * `.gitignore` no longer ignores `myosuite/**/tasks` and `scripts/*.py` (`b4f7338`).
+* `register_all_envs()` is idempotent (a second call emptied the suite lists); pickling keeps the
+  terrain type of hilly/stairs walk envs and `frame_skip` of the CPU MuscleMimic envs.
 * Many CI, packaging and notebook fixes (`fd09a79`, `1315c36`, `3ca1ed3`, `50aff25`, `af2d51d` and others).
 
 ### Removed
 
 * The myouser-specific mjlab task and helpers (they live in the standalone myoInteract repository).
+* The MyoDM suite (`MyoHand*-v0` hand–object reference-tracking envs, `myosuite_myodm_suite`).
 * Boxing and Saber tasks with their shared code (`de44aca`, `eab9c0c`, `e27dcd0`); the `composer`
   package, the legacy `simhive` copies and `myosuite_init`; placeholder `*Modular-v0` challenge
   registrations (`a453fe4`); the Walk Backends demo notebook (`8e9d51f`); the stale examine-rollout

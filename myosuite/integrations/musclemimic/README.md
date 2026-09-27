@@ -478,12 +478,6 @@ for i in range(len(clip.qpos)):
 > 2418-dim observations built by `FullbodyObsAdapter`. Using the ONNX model
 > requires the CPU-based playback path with `FullbodyObsAdapter`.
 
-## Optional: validation parity
-
-```bash
-uv run myosuite-musclemimic-fullbody-parity --metrics-steps 2
-```
-
 ## Environment variables
 
 | Variable | Purpose |

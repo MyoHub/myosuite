@@ -1,7 +1,7 @@
 Installation
 ============
 
-Python 3.10, 3.11, 3.12, and 3.13 are supported.
+Python 3.10–3.14 is supported (the GPU ``[mjlab]`` extra needs Python ≤3.13).
 
 From PyPI
 ~~~~~~~~~

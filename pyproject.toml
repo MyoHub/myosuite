@@ -175,12 +175,8 @@ packages = { find = { exclude = ["myosuite.agents", "myosuite.agents.*"] } }
 myosuite-export-onnx = "myosuite.utils.export_onnx:main"
 # MuscleMimic full-body: native --path trajectory playback, preview, or MJX smoke.
 myosuite-musclemimic-fullbody-eval = "myosuite.integrations.musclemimic.fullbody_eval_cli:main"
-# MuJoCo validation metrics parity (MuscleMimic eval with vs without import myosuite); needs HF.
-myosuite-musclemimic-fullbody-parity = "sandbox_parity.fullbody_policy_parity:main"
 # Demo motion cache (HF); runs in MuscleMimic tree — see integrations/musclemimic/README.md.
 myosuite-musclemimic-setup-demo-cache = "myosuite.integrations.musclemimic.setup_demo_cache_cli:main"
-# Train Brax PPO on MJX mimic env and write playground_params.pickle-compatible file.
-myosuite-musclemimic-mjx-train = "myosuite.integrations.musclemimic.mjx_brax_train_cli:main"
 
 [tool.pytest.ini_options]
 # Default: run only fast tests (unit-test compatible). Use: pytest -m slow for slow tests.
