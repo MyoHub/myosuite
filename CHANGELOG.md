@@ -1,10 +1,11 @@
 # Changelog
 
-## MyoSuite 3.0.0 (branch `ms3`, unreleased) — changes since v2.12.2
+All notable changes to this project are documented in this file.
 
-Last official release: **v2.12.2** (2026-05-06). This branch has **258 commits** on top of it
-(239 without merges): about 1,150 files changed, +124k / −161k lines. The list below
-groups the changes by theme; `git log v2.12.2..ms3` has the full commit list.
+## [3.0.0] - unreleased
+
+Changes since the last official release, **v2.12.2** (2026-05-06). `git log v2.12.2..v3.0.0` has the
+full commit list.
 
 ### Highlights
 
@@ -99,6 +100,8 @@ groups the changes by theme; `git log v2.12.2..ms3` has the full commit list.
 
 * The myouser-specific mjlab task and helpers (they live in the standalone myoInteract repository).
 * The MyoDM suite (`MyoHand*-v0` hand–object reference-tracking envs, `myosuite_myodm_suite`).
+* Unused Boxing meshes (`PunchingBag.obj`, `fencing_helmet.stl`) and the console scripts
+  `myosuite-musclemimic-fullbody-parity` and `myosuite-musclemimic-mjx-train` (their modules were deleted).
 * Boxing and Saber tasks with their shared code (`de44aca`, `eab9c0c`, `e27dcd0`); the `composer`
   package, the legacy `simhive` copies and `myosuite_init`; placeholder `*Modular-v0` challenge
   registrations (`a453fe4`); the Walk Backends demo notebook (`8e9d51f`); the stale examine-rollout
@@ -110,7 +113,60 @@ groups the changes by theme; `git log v2.12.2..ms3` has the full commit list.
   `wandb`, `orbax-checkpoint`, `jax`/`brax` pins for the mjlab and MJX extras; security bumps of
   `gitpython` and `urllib3` and in `uv.lock`.
 
+* Packaging: SPDX `license = "Apache-2.0"` with `license-files`; MJX benchmark plots are no longer
+  shipped in the wheel.
+
 ### Contributors
 
 Vittorio Caggiano, Florian Fischer, Balint Hodossy, Vikash Kumar, Tatsuki Tsujimoto, Hyoungseo Son,
 Cheryl Wang and Calder Robbins.
+
+## [2.4.0] - 2024-05-13
+[FEATURE] Added 3CC-r Fatigue Model (#167). Thanks to @fl0fischer
+[FEATURE] Update to MuJoCo 3.1.2 and dm-control 1.0.16 (2bddf8c)
+[BUGFIX] Fixed Tutorial `2_Load_Policy.ipynb` (038457a)
+
+## [2.3.0] - 2024-05-01
+[FEATURE] Support for both Gym/Gymnasium (#142)
+[FEATURE] Add support for TorchRL by @vmoens (5efdf93)
+[FEATURE] Improve Inverse Dynamics tutorial (98daff2). Thanks to @andreh1111
+
+## [2.2.0] - 2024-01-20
+[FEATURE] Inverse dynamics tutorial. Thanks to @andreh1111 #121
+[RELEASE] MyoArm and MyoLeg models (4c01023, cd9a25e)
+[RELEASE] MyoChallenge'23 environments release (#128)
+[BUGFIX] Fixed heightfield collisions for myoleg scenes #132
+[BUGFIX] Fixed names of data keys from _int to _init in myodm by @andreh1111 in (#119)
+
+## [1.3.0] - 2023-01-11
+- Rebase and building on RoboHive v0.3
+
+## [1.2.4] - 2022-11-12
+- fix Baoding Ball environment for MyoChallenge Phase 1
+
+## [1.2.3] - 2022-10-21
+- update horizon for MyoChallenge Die Reorient task - Phase 2
+
+## [1.2.2] - 2022-10-21
+- update MyoChallenge Die Reorient task and Baoding Ball to Phase 2
+
+## [1.2.1] - 2022-10-09
+- update horizon for MyoChallenge Die Reorient task
+- update tutorials
+
+## [1.2.0] - 2022-08-13
+- Rebase and building on RoboHive v0.2
+- Adding the myochallenge envs
+- Fundamental bugfixes on the RoboHive engine
+- Bugfixes on myo environments as well
+- Closes baselines are on RoboHive-v0.2
+- Next planned baseline release will align when Robohive-v0.3dev moves to prerelease.
+- Renaming the metrics for clarity and changed sign from `act_mag` to `effort` and `solved` to `score`
+
+## [1.1.0] - 2022-08-12
+- Upgrade to mj_env v0.2 experimental
+- add Die Rotation and Baoding Ball task for MyoChallenge (https://sites.google.com/view/myochallenge)
+
+## [1.0.1] - 2022-05-23
+- First Release of MyoSuite.
+- Basic Documentation

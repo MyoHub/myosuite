@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       name:
-        description: 'Release Type (major, minor, patch)'
+        description: 'Release Type (current = release version.py as-is, major, minor, patch)'
         default: 'patch'
         required: true
 
@@ -98,8 +98,11 @@ jobs:
         if [ -f uv.lock ]; then
           git add uv.lock
         fi
-        git commit -m "chore: bump version to ${{ needs.get_next_version.outputs.new_version }}"
-        git push origin HEAD:main
+        # "current" leaves the files unchanged; only commit a real bump.
+        if ! git diff --cached --quiet; then
+          git commit -m "chore: bump version to ${{ needs.get_next_version.outputs.new_version }}"
+          git push origin HEAD:main
+        fi
 
         # git fetch origin
         # # Force dev to follow main exactly
@@ -112,6 +115,7 @@ jobs:
         tag: ${{ needs.get_next_version.outputs.new_tag }}
 
     - name: If Tag does not exists, Create Git Tag
+      if: steps.checkTag.outputs.exists != 'true'
       run: |
         git tag ${{ needs.get_next_version.outputs.new_tag }}
         git push origin ${{ needs.get_next_version.outputs.new_tag }}

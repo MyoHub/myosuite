@@ -5,7 +5,8 @@ dynamic = ["version"]  # Enable dynamic version
 description = "Musculoskeletal environments simulated in MuJoCo"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache 2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
     { name = "Vittorio Caggiano", email = "caggiano@gmail.com" },
     { name = "Balint Hodossy", email = "hodossy@gmail.com" },
@@ -19,7 +20,6 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
-    "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Operating System :: OS Independent",
 ]
@@ -170,6 +170,10 @@ packages = { find = { exclude = ["myosuite.agents", "myosuite.agents.*"] } }
     "utils/**",
     "viz/**",
 ]
+
+[tool.setuptools.exclude-package-data]
+# Benchmark plots are docs-only (MJX README); keep them out of the wheel.
+"myosuite" = ["envs/myo/backends/mjx/*.png"]
 
 [project.scripts]
 myosuite-export-onnx = "myosuite.utils.export_onnx:main"
