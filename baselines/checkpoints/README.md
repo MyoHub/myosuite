@@ -58,7 +58,7 @@ runs on the CPU env (same return and success as on mjlab).
 | myoHandPoseRandom-v0 | model_24999.pt | 35.9% |
 | myoHandReachFixed-v0 | model_97.pt | 100.0% |
 | myoHandReachRandom-v0 | model_1912.pt | 93.8% |
-| myoLegDirectionalBackward-v0 | model_4999.pt | - |
+| myoLegDirectionalBackward-v0 | model_687.pt | 100.0% |
 | myoLegDirectionalForward-v0 | model_692.pt | 96.9% |
 | myoLegDirectionalRandom-v0 | model_4999.pt | - |
 | myoLegHillyTerrainWalk-v0 | model_4999.pt | 25.0% |
