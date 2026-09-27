@@ -60,7 +60,7 @@ runs on the CPU env (same return and success as on mjlab).
 | myoHandReachRandom-v0 | model_1912.pt | 93.8% |
 | myoLegDirectionalBackward-v0 | model_687.pt | 100.0% |
 | myoLegDirectionalForward-v0 | model_692.pt | 96.9% |
-| myoLegDirectionalRandom-v0 | model_4999.pt | - |
+| myoLegDirectionalRandom-v0 | model_4999.pt | 29.7% |
 | myoLegHillyTerrainWalk-v0 | model_4999.pt | 25.0% |
 | myoLegRoughTerrainWalk-v0 | model_3715.pt | 90.6% |
 | myoLegStairTerrainWalk-v0 | model_4999.pt | 1.6% |
