@@ -2,9 +2,9 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.0.0] - unreleased
+## [2.13.0] - unreleased
 
-Changes since the last official release, **v2.12.2** (2026-05-06). `git log v2.12.2..v3.0.0` has the
+Changes since the last official release, **v2.12.2** (2026-05-06). `git log v2.12.2..v2.13.0` has the
 full commit list.
 
 ### Highlights

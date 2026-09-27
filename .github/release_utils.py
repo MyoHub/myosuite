@@ -20,7 +20,7 @@ def get_next_version(release_type) -> tuple[tuple[int, int, int], str, str]:
     version_list = [int(x) for x in current_ver.strip("'").split(".")]
     major, minor, patch = version_list[0], version_list[1], version_list[2]
     if release_type == "current":
-        # Release the version already in version.py (e.g. a hand-set 3.0.0).
+        # Release the version already in version.py (e.g. a hand-set 2.13.0).
         pass
     elif release_type == "patch":
         patch += 1
