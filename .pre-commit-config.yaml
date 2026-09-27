@@ -31,8 +31,13 @@ repos:
     hooks:
       - id: check-merge-conflict
       - id: check-yaml
+      - id: check-symlinks
+      # AGENTS.md is a symlink to CLAUDE.md; on checkouts without symlink
+      # support it is a plain file and these fixers would corrupt the target.
       - id: end-of-file-fixer
+        exclude: ^AGENTS\.md$
       - id: trailing-whitespace
+        exclude: ^AGENTS\.md$
       - id: debug-statements
 
   # Guard: new code must not import the legacy MujocoEnv base class.
