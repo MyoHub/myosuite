@@ -14,6 +14,7 @@ import pytest
 
 from myosuite.core.hf_io import (
     default_musclemimic_cache_root,
+    download_baseline_checkpoint,
     parse_hf_ref,
 )
 
@@ -66,3 +67,53 @@ def test_default_cache_root_falls_back_to_converted_amass_path(
     root = default_musclemimic_cache_root()
 
     assert root == Path("~/scratch/.musclemimic/caches/AMASS").expanduser()
+
+
+def test_download_baseline_checkpoint_returns_the_env_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A snapshot containing the env's checkpoint resolves to its subdirectory."""
+    (tmp_path / "checkpoints" / "myoElbowPose1D6MRandom-v0").mkdir(parents=True)
+    (
+        tmp_path / "checkpoints" / "myoElbowPose1D6MRandom-v0" / "model_200.pt"
+    ).write_bytes(b"")
+
+    def fake_snapshot_download(*, repo_id: str, repo_type: str, allow_patterns) -> str:
+        assert repo_id == "myohub/myosuite-3-baselines"
+        assert repo_type == "model"
+        assert allow_patterns == ["checkpoints/myoElbowPose1D6MRandom-v0/*"]
+        return str(tmp_path)
+
+    monkeypatch.setattr(
+        "huggingface_hub.snapshot_download", fake_snapshot_download, raising=False
+    )
+
+    local = download_baseline_checkpoint("myoElbowPose1D6MRandom-v0")
+
+    assert local == tmp_path / "checkpoints" / "myoElbowPose1D6MRandom-v0"
+
+
+def test_download_baseline_checkpoint_missing_env_returns_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An env not hosted on the baselines repo (e.g. below the success threshold) is None."""
+    monkeypatch.setattr(
+        "huggingface_hub.snapshot_download",
+        lambda **kwargs: str(tmp_path),
+        raising=False,
+    )
+
+    assert download_baseline_checkpoint("motorFingerPoseFixed-v0") is None
+
+
+def test_download_baseline_checkpoint_network_error_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A network/auth/repo error is treated as "no baseline", not raised."""
+
+    def raises(**kwargs):
+        raise OSError("no network")
+
+    monkeypatch.setattr("huggingface_hub.snapshot_download", raises, raising=False)
+
+    assert download_baseline_checkpoint("myoElbowPose1D6MRandom-v0") is None

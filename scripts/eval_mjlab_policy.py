@@ -6,7 +6,11 @@ from ``scripts/train_mjlab.py`` drives the CPU env unchanged.
 
 Examples::
 
-    # CPU rollouts (plain gymnasium env), latest checkpoint of a run
+    # No --checkpoint: the newest local run, else a local baseline, else the env's default
+    # policy from the Hugging Face baselines repo (downloaded and cached automatically)
+    python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0
+
+    # CPU rollouts (plain gymnasium env), latest checkpoint of a specific run
     python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 \\
         --checkpoint logs/rsl_rl/myo_elbow_pose/2026-09-23_12-23-29
 
@@ -46,8 +50,11 @@ import tyro
 class EvalConfig:
     env_id: tyro.conf.Positional[str]
     """Task id (shared by the CPU env and its mjlab twin)."""
-    checkpoint: Path
-    """``model_*.pt`` file, or a run directory (latest checkpoint is used)."""
+    checkpoint: Path | None = None
+    """``model_*.pt`` file, or a run directory (latest checkpoint is used). Default: the
+    newest local ``logs/rsl_rl/...`` run, else a local ``baselines/checkpoints/<env_id>``,
+    else the env's default policy downloaded from the Hugging Face baselines repo (see
+    ``myosuite.utils.checkpoint_utils.find_checkpoint``)."""
     backend: Literal["cpu", "mjlab"] = "cpu"
     """Roll out in the CPU gymnasium env or in the mjlab env."""
     episodes: int = 10
@@ -111,8 +118,21 @@ class EvalConfig:
     relative to the grid centre)."""
 
 
-def _resolve_checkpoint(path: Path) -> Path:
-    """A checkpoint file, or the newest ``model_<iter>.pt`` in a run directory."""
+def _resolve_checkpoint(env_id: str, path: Path | None) -> Path:
+    """A checkpoint file, the newest ``model_<iter>.pt`` in a run directory, or (when *path*
+    is ``None``) the newest local run / local baseline / Hugging Face default policy for
+    *env_id* (see :func:`myosuite.utils.checkpoint_utils.find_checkpoint`)."""
+    if path is None:
+        from myosuite.utils.checkpoint_utils import find_checkpoint  # noqa: PLC0415
+
+        found = find_checkpoint(env_id, roots=(Path.cwd(),))
+        if found is None:
+            raise SystemExit(
+                f"No checkpoint for {env_id!r}: no local run, no local baseline, and no "
+                "Hugging Face default policy (it may be below the 25% success threshold "
+                "published there). Pass --checkpoint explicitly."
+            )
+        return found
     if path.is_file():
         return path
     ckpts = sorted(
@@ -982,7 +1002,7 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
 
 def main() -> None:
     cfg = tyro.cli(EvalConfig)
-    checkpoint = _resolve_checkpoint(cfg.checkpoint)
+    checkpoint = _resolve_checkpoint(cfg.env_id, cfg.checkpoint)
     print(f"\n\ncheckpoint: {checkpoint}  backend: {cfg.backend}  env: {cfg.env_id}")
     if cfg.backend == "cpu":
         evaluate_cpu(cfg, checkpoint)

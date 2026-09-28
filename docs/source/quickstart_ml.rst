@@ -162,11 +162,13 @@ not fit stops the script with a clear "expects N-d observations" error.
 Default policies
 ^^^^^^^^^^^^^^^^^
 
-``baselines/checkpoints/<env_id>/model_<iter>.pt`` holds a ready-made mjlab policy for
-many envs (see ``baselines/checkpoints/README.md`` for their deterministic success rates
-and caveats), and ``baselines/evals/`` their videos. Evaluate one directly with
-``--checkpoint baselines/checkpoints/<env_id>``; ``tutorials/1.2_Load_Policy.ipynb``
-finds them automatically. Some are unconverged snapshots; the README lists which.
+A ready-made mjlab policy for many envs is hosted on
+`myohub/myosuite-3-baselines <https://huggingface.co/myohub/myosuite-3-baselines>`_ on Hugging
+Face (see ``baselines/checkpoints/README.md`` for their deterministic success rates and
+caveats); a preview video of each is on the same page. Evaluate one directly with
+``scripts/eval_mjlab_policy.py <env_id> --backend cpu`` (no ``--checkpoint`` needed);
+``tutorials/1.2_Load_Policy.ipynb`` finds and downloads them automatically. Some are unconverged
+snapshots, and some envs have no default policy yet; the README lists which.
 
 An MJX (JAX) backend also exists (``pip install -e ".[mjx]"``). It is
 experimental — prefer mjlab for new GPU work.

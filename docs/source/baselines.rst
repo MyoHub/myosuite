@@ -24,16 +24,17 @@ Always set ``--env.scene.num-envs`` explicitly (default is 1 — see
 Default policies
 ^^^^^^^^^^^^^^^^
 
-The repository ships mjlab (RSL-RL) checkpoints of default training runs for many envs
-in ``baselines/checkpoints/<env_id>/`` (with their evaluation videos in
-``baselines/evals/``). They run on the CPU and the mjlab backend::
+Default mjlab (RSL-RL) checkpoints of policies that reached at least 25% deterministic success
+are hosted on `myohub/myosuite-3-baselines <https://huggingface.co/myohub/myosuite-3-baselines>`_
+on Hugging Face, and are downloaded automatically (cached by ``huggingface_hub``) the first time
+they're needed — by the tutorials, and by ``myosuite.utils.checkpoint_utils.find_checkpoint``.
+They run on both the CPU and the mjlab backend::
 
-   python scripts/eval_mjlab_policy.py myoFingerPoseRandom-v0 \
-       --checkpoint baselines/checkpoints/myoFingerPoseRandom-v0 --backend cpu
+   python scripts/eval_mjlab_policy.py myoFingerPoseRandom-v0 --backend cpu
 
-``baselines/checkpoints/README.md`` lists each policy's deterministic success rate;
-some are unconverged snapshots, and the ``myoLeg*`` locomotion policies are
-provisional. See :doc:`quickstart_ml` for how success is defined and evaluated.
+``baselines/checkpoints/README.md`` lists every default-run env id's deterministic success rate
+(``-`` where no checkpoint reached 25% yet); some published policies are unconverged snapshots.
+See :doc:`quickstart_ml` for how success is defined and evaluated.
 
 Pretrained NPG / DEP-RL weight trees under ``myosuite/agents/`` are **not**
 shipped in the pip package and are gitignored. Train your own policy, or use

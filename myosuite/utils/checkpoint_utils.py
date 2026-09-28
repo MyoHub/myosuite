@@ -52,7 +52,9 @@ def find_checkpoint(
         sb3_zip: Optional file name of a Stable-Baselines3 checkpoint to fall back to.
 
     Returns:
-        Path of the checkpoint, or ``None`` when none was found.
+        Path of the checkpoint, or ``None`` when none was found. When no local baseline
+        exists in *roots* either, this downloads it from the Hugging Face baselines repo
+        (:func:`myosuite.core.hf_io.download_baseline_checkpoint`) before giving up.
     """
     if checkpoint is not None:
         return Path(checkpoint)
@@ -73,6 +75,15 @@ def find_checkpoint(
         )
         if baseline:
             return baseline[-1]
+    from myosuite.core.hf_io import download_baseline_checkpoint  # noqa: PLC0415
+
+    hf_dir = download_baseline_checkpoint(env_id)
+    if hf_dir is not None:
+        hf_ckpts = sorted(
+            hf_dir.glob("model_*.pt"), key=lambda c: int(c.stem.split("_")[-1])
+        )
+        if hf_ckpts:
+            return hf_ckpts[-1]
     for root in roots:
         if sb3_zip and (root / sb3_zip).is_file():
             return root / sb3_zip

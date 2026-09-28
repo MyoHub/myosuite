@@ -169,6 +169,70 @@ baselines/*
 baselines/evals/*
 !baselines/evals/*.mp4
 
+# Checkpoints/eval videos of policies with >=25% deterministic success are hosted on Hugging
+# Face (myohub/myosuite-3-baselines) instead, and downloaded on demand -- see
+# baselines/checkpoints/README.md. Keep the local copies (present after a local training run,
+# or after that download) out of git so they don't get re-added by accident.
+baselines/checkpoints/myoArmReachFixed-v0/
+baselines/checkpoints/myoArmReachRandom-v0/
+baselines/checkpoints/myoElbowPose1D6MExoFixed-v0/
+baselines/checkpoints/myoElbowPose1D6MExoRandom-v0/
+baselines/checkpoints/myoElbowPose1D6MFixed-v0/
+baselines/checkpoints/myoElbowPose1D6MRandom-v0/
+baselines/checkpoints/myoFingerPoseFixed-v0/
+baselines/checkpoints/myoFingerPoseRandom-v0/
+baselines/checkpoints/myoFingerReachFixed-v0/
+baselines/checkpoints/myoFingerReachRandom-v0/
+baselines/checkpoints/myoHandPose1Fixed-v0/
+baselines/checkpoints/myoHandPose2Fixed-v0/
+baselines/checkpoints/myoHandPose3Fixed-v0/
+baselines/checkpoints/myoHandPose4Fixed-v0/
+baselines/checkpoints/myoHandPose5Fixed-v0/
+baselines/checkpoints/myoHandPose6Fixed-v0/
+baselines/checkpoints/myoHandPose7Fixed-v0/
+baselines/checkpoints/myoHandPose8Fixed-v0/
+baselines/checkpoints/myoHandPose9Fixed-v0/
+baselines/checkpoints/myoHandPoseRandom-v0/
+baselines/checkpoints/myoHandReachFixed-v0/
+baselines/checkpoints/myoHandReachRandom-v0/
+baselines/checkpoints/myoLegDirectionalBackward-v0/
+baselines/checkpoints/myoLegDirectionalForward-v0/
+baselines/checkpoints/myoLegDirectionalRandom-v0/
+baselines/checkpoints/myoLegHillyTerrainWalk-v0/
+baselines/checkpoints/myoLegRoughTerrainWalk-v0/
+baselines/checkpoints/myoLegStandRandom-v0/
+baselines/checkpoints/myoLegWalk-v0/
+baselines/checkpoints/myoTorsoExoPoseFixed-v0/
+baselines/checkpoints/myoTorsoPoseFixed-v0/
+baselines/evals/eval_myoArmReachFixed-v0.mp4
+baselines/evals/eval_myoArmReachRandom-v0.mp4
+baselines/evals/eval_myoElbowPose1D6MExoFixed-v0.mp4
+baselines/evals/eval_myoElbowPose1D6MExoRandom-v0.mp4
+baselines/evals/eval_myoElbowPose1D6MFixed-v0.mp4
+baselines/evals/eval_myoElbowPose1D6MRandom-v0.mp4
+baselines/evals/eval_myoFingerPoseFixed-v0.mp4
+baselines/evals/eval_myoFingerPoseRandom-v0.mp4
+baselines/evals/eval_myoFingerReachFixed-v0.mp4
+baselines/evals/eval_myoFingerReachRandom-v0.mp4
+baselines/evals/eval_myoHandPose1Fixed-v0.mp4
+baselines/evals/eval_myoHandPose2Fixed-v0.mp4
+baselines/evals/eval_myoHandPose3Fixed-v0.mp4
+baselines/evals/eval_myoHandPose4Fixed-v0.mp4
+baselines/evals/eval_myoHandPose5Fixed-v0.mp4
+baselines/evals/eval_myoHandPose6Fixed-v0.mp4
+baselines/evals/eval_myoHandPose7Fixed-v0.mp4
+baselines/evals/eval_myoHandPose8Fixed-v0.mp4
+baselines/evals/eval_myoHandPose9Fixed-v0.mp4
+baselines/evals/eval_myoHandPoseRandom-v0.mp4
+baselines/evals/eval_myoHandReachFixed-v0.mp4
+baselines/evals/eval_myoHandReachRandom-v0.mp4
+baselines/evals/eval_myoLegDirectionalBackward-v0.mp4
+baselines/evals/eval_myoLegDirectionalForward-v0.mp4
+baselines/evals/eval_myoLegDirectionalRandom-v0.mp4
+baselines/evals/eval_myoLegWalk-v0.mp4
+baselines/evals/eval_myoTorsoExoPoseFixed-v0.mp4
+baselines/evals/eval_myoTorsoPoseFixed-v0.mp4
+
 # RL learning files
 *params.pickle
 *tmp*.xml

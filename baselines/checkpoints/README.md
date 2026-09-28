@@ -1,70 +1,79 @@
 # Default-run policies (mjlab / RSL-RL)
 
-Newest checkpoint of the latest `scripts/train_mjlab.py` run of each env. Each folder
-`<env_id>/model_<iter>.pt` works with both backends:
+Every mjlab-registered env id with a default `scripts/train_mjlab.py` run (Sarc/Fati/Reaf
+muscle-condition variants excluded here; they use the same checkpoint as their base env).
 
-```bash
-python scripts/eval_mjlab_policy.py <env_id> --checkpoint baselines/checkpoints/<env_id> --backend cpu   # or mjlab
-```
-
-and is found automatically by `tutorials/1.2_Load_Policy.ipynb` when no `logs/` run exists.
 **Deterministic success** = success rate of the mean-action policy, measured with
-`scripts/eval_mjlab_policy.py --backend mjlab` (the GPU backend; the same checkpoints
-are also loadable on the CPU backend, but the column was not measured there). `-` = not
-measured.
+`scripts/eval_mjlab_policy.py --backend mjlab` (the GPU backend; the same checkpoints are also
+loadable on the CPU backend, but the column was not measured there).
 
-**Not all policies converged.** Several stopped below the 95% success threshold (see the
-table), and training for more iterations may well reach higher success rates. Resume a
+**`-` in both columns** = no checkpoint reached 25% deterministic success yet (either
+unconverged, or not evaluated — see the notes below), so none is published as a default policy.
+
+Checkpoints at or above 25% are hosted on
+[myohub/myosuite-3-baselines](https://huggingface.co/myohub/myosuite-3-baselines) (Hugging Face)
+rather than in this git repository, and are downloaded automatically by the tutorials and
+`myosuite.utils.checkpoint_utils.find_checkpoint` the first time they're needed. Use one
+directly::
+
+    python scripts/eval_mjlab_policy.py <env_id> --backend cpu   # or mjlab
+
+(pass `--checkpoint <run directory>` instead to use a checkpoint you trained yourself). Resume a
 run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.load-run <run>
 --env.scene.num-envs 4096`.
 
-**Caveat — `myoLeg{Walk,DirectionalForward,DirectionalBackward,DirectionalRandom}-v0`:**
-trained (2026-09-25) on the old leg twins, which differed from the CPU env. On the CPU backend
-they walk (Directional Forward/Backward: 100% success); on the rebuilt mjlab twins
-(2026-09-26, matching the CPU env step by step) they reach 67% / 31% / 55% success
-(Forward / Backward / Random) and `myoLegWalk` falls early on both backends, so they are
-provisional; retrain them with `python scripts/train_mjlab.py <env_id> --env.scene.num-envs 4096` and refresh these files.
-`myoHandPose0Fixed`/`myoHandPoseFixed` (0%), `myoLegStandRandom` (36%, plateaued) and the
-reach/motor envs below 95% are unconverged snapshots. `myoTorsoExoPoseFixed` (converged) also
-runs on the CPU env (same return and success as on mjlab).
+**Not all published policies converged to the standard 95% threshold**, and training for more
+iterations may well reach higher success rates: `myoLegStandRandom-v0`/`myoHandPoseRandom-v0`
+(36%, plateaued), `myoArmReachRandom-v0` (64%), `myoFingerReachRandom-v0` (48%),
+`myoLegDirectionalRandom-v0` (30%) and `myoLegHillyTerrainWalk-v0` (25%, right at the threshold).
+
+**`myoChallengeChaseTagFBP2-v0` and `myoChallengeTableTennisP{0,1,2}-v0`** trained, but
+`scripts/eval_mjlab_policy.py` currently fails to evaluate them (`ChaseTagFBP2`: a keyframe/qpos
+size mismatch building the eval env; `TableTennisP{0,1,2}`: the policy's observation group isn't
+named `"actor"` for these envs) — deterministic success is unmeasured, not necessarily low; fix
+the eval script, then measure and publish these.
 
 | Env | Checkpoint | Deterministic success (mjlab) |
 |---|---|---|
-| motorFingerPoseFixed-v0 | model_9998.pt | 0.0% |
-| motorFingerPoseRandom-v0 | model_9998.pt | 15.6% |
-| motorFingerReachFixed-v0 | model_9998.pt | 0.0% |
-| motorFingerReachRandom-v0 | model_9998.pt | 9.4% |
-| myoArmReachFixed-v0 | model_696.pt | 100.0% |
-| myoArmReachRandom-v0 | model_4999.pt | 64.1% |
-| myoElbowPose1D6MExoFixed-v0 | model_9.pt | 100.0% |
-| myoElbowPose1D6MExoRandom-v0 | model_13.pt | 100.0% |
-| myoElbowPose1D6MFixed-v0 | model_100.pt | 100.0% |
-| myoElbowPose1D6MRandom-v0 | model_200.pt | 100.0% |
-| myoFingerPoseFixed-v0 | model_59.pt | 100.0% |
-| myoFingerPoseRandom-v0 | model_321.pt | 98.4% |
-| myoFingerReachFixed-v0 | model_45.pt | 100.0% |
-| myoFingerReachRandom-v0 | model_7900.pt | 48.4% |
-| myoHandPose0Fixed-v0 | model_3500.pt | 0.0% |
-| myoHandPose1Fixed-v0 | model_357.pt | 100.0% |
-| myoHandPose2Fixed-v0 | model_416.pt | 100.0% |
-| myoHandPose3Fixed-v0 | model_801.pt | 100.0% |
-| myoHandPose4Fixed-v0 | model_410.pt | 100.0% |
-| myoHandPose5Fixed-v0 | model_486.pt | 100.0% |
-| myoHandPose6Fixed-v0 | model_473.pt | 100.0% |
-| myoHandPose7Fixed-v0 | model_542.pt | 100.0% |
-| myoHandPose8Fixed-v0 | model_370.pt | 100.0% |
-| myoHandPose9Fixed-v0 | model_459.pt | 100.0% |
-| myoHandPoseFixed-v0 | model_4999.pt | 0.0% |
-| myoHandPoseRandom-v0 | model_24999.pt | 35.9% |
-| myoHandReachFixed-v0 | model_97.pt | 100.0% |
-| myoHandReachRandom-v0 | model_1912.pt | 93.8% |
-| myoLegDirectionalBackward-v0 | model_687.pt | 100.0% |
-| myoLegDirectionalForward-v0 | model_692.pt | 96.9% |
-| myoLegDirectionalRandom-v0 | model_4999.pt | 29.7% |
-| myoLegHillyTerrainWalk-v0 | model_4999.pt | 25.0% |
-| myoLegRoughTerrainWalk-v0 | model_3715.pt | 90.6% |
-| myoLegStairTerrainWalk-v0 | model_4999.pt | 1.6% |
-| myoLegStandRandom-v0 | model_4999.pt | 35.9% |
-| myoLegWalk-v0 | model_1355.pt | 98.4% |
-| myoTorsoExoPoseFixed-v0 | model_188.pt | 100.0% |
-| myoTorsoPoseFixed-v0 | model_103.pt | 100.0% |
+| motorFingerPoseFixed-v0 | - | - |
+| motorFingerPoseRandom-v0 | - | - |
+| motorFingerReachFixed-v0 | - | - |
+| motorFingerReachRandom-v0 | - | - |
+| myoArmReachFixed-v0 | `model_696.pt` | 100.0% |
+| myoArmReachRandom-v0 | `model_4999.pt` | 64.1% |
+| myoChallengeChaseTagFBP2-v0 | - | - |
+| myoChallengeTableTennisP0-v0 | - | - |
+| myoChallengeTableTennisP1-v0 | - | - |
+| myoChallengeTableTennisP2-v0 | - | - |
+| myoElbowPose1D6MExoFixed-v0 | `model_9.pt` | 100.0% |
+| myoElbowPose1D6MExoRandom-v0 | `model_13.pt` | 100.0% |
+| myoElbowPose1D6MFixed-v0 | `model_100.pt` | 100.0% |
+| myoElbowPose1D6MRandom-v0 | `model_200.pt` | 100.0% |
+| myoFingerPoseFixed-v0 | `model_59.pt` | 100.0% |
+| myoFingerPoseRandom-v0 | `model_321.pt` | 98.4% |
+| myoFingerReachFixed-v0 | `model_45.pt` | 100.0% |
+| myoFingerReachRandom-v0 | `model_7900.pt` | 48.4% |
+| myoHandPose0Fixed-v0 | - | - |
+| myoHandPose1Fixed-v0 | `model_357.pt` | 100.0% |
+| myoHandPose2Fixed-v0 | `model_416.pt` | 100.0% |
+| myoHandPose3Fixed-v0 | `model_801.pt` | 100.0% |
+| myoHandPose4Fixed-v0 | `model_410.pt` | 100.0% |
+| myoHandPose5Fixed-v0 | `model_486.pt` | 100.0% |
+| myoHandPose6Fixed-v0 | `model_473.pt` | 100.0% |
+| myoHandPose7Fixed-v0 | `model_542.pt` | 100.0% |
+| myoHandPose8Fixed-v0 | `model_370.pt` | 100.0% |
+| myoHandPose9Fixed-v0 | `model_459.pt` | 100.0% |
+| myoHandPoseFixed-v0 | - | - |
+| myoHandPoseRandom-v0 | `model_24999.pt` | 35.9% |
+| myoHandReachFixed-v0 | `model_97.pt` | 100.0% |
+| myoHandReachRandom-v0 | `model_1912.pt` | 93.8% |
+| myoLegDirectionalBackward-v0 | `model_687.pt` | 100.0% |
+| myoLegDirectionalForward-v0 | `model_692.pt` | 96.9% |
+| myoLegDirectionalRandom-v0 | `model_4999.pt` | 29.7% |
+| myoLegHillyTerrainWalk-v0 | `model_4999.pt` | 25.0% |
+| myoLegRoughTerrainWalk-v0 | `model_3715.pt` | 90.6% |
+| myoLegStairTerrainWalk-v0 | - | - |
+| myoLegStandRandom-v0 | `model_4999.pt` | 35.9% |
+| myoLegWalk-v0 | `model_1355.pt` | 98.4% |
+| myoTorsoExoPoseFixed-v0 | `model_188.pt` | 100.0% |
+| myoTorsoPoseFixed-v0 | `model_103.pt` | 100.0% |
