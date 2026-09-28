@@ -23,8 +23,15 @@ def test_find_checkpoint_returns_the_explicit_one_unchanged() -> None:
     ) == Path("some/model.pt")
 
 
-def test_find_checkpoint_prefers_a_local_logs_run(tmp_path: Path) -> None:
+def test_find_checkpoint_prefers_a_local_logs_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """A local ``logs/rsl_rl/<experiment>/<run>/model_*.pt`` wins over everything else."""
+    # Pin the experiment name: its mjlab lookup is unavailable where mjlab is not installed (py3.14).
+    monkeypatch.setattr(
+        "myosuite.utils.checkpoint_utils.mjlab_experiment",
+        lambda _env_id: "myo_elbow_pose",
+    )
     run = tmp_path / "logs" / "rsl_rl" / "myo_elbow_pose" / "2026-01-01_00-00-00"
     run.mkdir(parents=True)
     (run / "model_0.pt").write_bytes(b"")
