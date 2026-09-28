@@ -36,11 +36,16 @@ jobs:
           - ubuntu-latest
           - windows-latest
         python-version: ["3.10"]
-        # 3.14 runs on Linux only: it exercises the full suite, and the risks it
-        # guards (dependency resolution, Python-level incompatibilities) are
-        # OS-independent. The [mjlab] extra resolves to torch + warp-lang here,
-        # since mjlab caps itself at <3.14 upstream.
+        # 3.12 and 3.14 run on Linux only: they exercise the full suite, and the risks they
+        # guard (dependency resolution, Python-level incompatibilities) are OS-independent.
+        # 3.12 matters specifically because NumPy resolves to >=2.3 there (3.10 still resolves
+        # 2.2.x, which only deprecates rather than removes implicit shape-(1,)-array-to-scalar
+        # conversion -- the exact class of bug the ``_as_mj_int``-style guards in
+        # myosuite/envs/myo/tasks/challenge/ exist for). The [mjlab] extra resolves to torch +
+        # warp-lang here, since mjlab caps itself at <3.14 upstream.
         include:
+          - os: ubuntu-latest
+            python-version: "3.12"
           - os: ubuntu-latest
             python-version: "3.14"
 

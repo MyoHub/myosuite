@@ -31,6 +31,7 @@ dependencies = [
     "flatten_dict",
     "h5py",
     "numpy",
+    "scipy",
     "pandas",
     "osqp",
     "mujoco",
@@ -64,7 +65,13 @@ rl = [
     "wandb>=0.25.0",
     "tensorboard>=2.20.0",
 ]
-examples = ["mink[examples]; python_version > '3.9'"]
+# mink dropped its "examples" extra in 1.0.0 (depend on the plain package instead); split by
+# interpreter because mink>=1.3.0 -- needed on 3.14, the first release without its own <3.14
+# cap -- also raises mink's own mujoco floor, which an unconditional pin would drag in everywhere.
+examples = [
+    "mink; python_version >= '3.10' and python_version < '3.14'",
+    "mink>=1.3.0; python_version >= '3.14'",
+]
 mjlab = [
     "torch>=2.13.0; python_version >= '3.10'",
     "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14'",
