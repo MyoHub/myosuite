@@ -59,10 +59,6 @@ _DARWIN_SKIP_ORIGINAL_NAMES: frozenset[str] = frozenset(
         "test_walk_tier_a_dense_reward_gate_cpu_vs_mjlab",
         "test_myo_leg_walk_reward_parity_cpu_vs_mjlab",
         "test_myo_leg_walk_reward_manager_matches_term_functions",
-        "test_myo_leg_walk_state_parity_cpu_vs_mjlab",
-        "test_myo_leg_walk_initial_state_difference_cpu_vs_mjlab",
-        "test_myo_leg_walk_ctrl_mapping_cpu_vs_mjlab",
-        "test_myo_leg_walk_forced_initial_parity_one_step_stats",
     }
 )
 

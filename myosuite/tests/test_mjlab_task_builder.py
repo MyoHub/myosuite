@@ -2,7 +2,14 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Parity tests: factory-built walk config must match the reference inline config."""
+"""Parity tests: ``mjlab_env_cfg_from_task_config``'s factory-built config must match a
+hand-built reference one, term for term.
+
+The reference/factory pair reuses the elbow spec/entity/actuators (already exercised by
+``_make_elbow_env_cfg``) with two dummy reward terms -- the point of the comparison is the
+generic factory's structural output (decimation, episode length, sim settings, term
+ordering, reward weights), not any particular task's semantics.
+"""
 
 from __future__ import annotations
 
@@ -29,180 +36,104 @@ from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (  # noqa: E402
 )
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (  # noqa: E402
     MyoMuscleActivationActionCfg,
-    WalkCfg,
+    _ELBOW_ENTITY_NAME,
+    _elbow_obs_act,
+    _elbow_obs_qpos,
+    _elbow_obs_qvel,
+    _elbow_spec_fn,
+    _elbow_tendon_names,
     _make_elbow_env_cfg,
-    _make_walk_env_cfg,
-    _walk_muscle_names,
-    _walk_obs_act,
-    _walk_obs_com_vel,
-    _walk_obs_feet_heights,
-    _walk_obs_feet_rel_positions,
-    _walk_obs_height,
-    _walk_obs_muscle_force,
-    _walk_obs_muscle_length,
-    _walk_obs_muscle_velocity,
-    _walk_obs_phase_var,
-    _walk_obs_qpos_without_xy,
-    _walk_obs_qvel,
-    _walk_obs_torso_angle,
-    _walk_forward_vel_reward,
-    _walk_alive_reward,
-    _walk_done_signal,
-    _walk_cyclic_hip,
-    _walk_ref_rot,
-    _walk_joint_angle_rew,
-    _walk_act_reg,
-    _walk_spec_fn,
 )
 
 
-def _build_reference_walk_cfg() -> ManagerBasedRlEnvCfg:
-    """Inline reference config built identically to old _make_walk_env_cfg body."""
-    from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
-    from mjlab.scene import SceneCfg
+def _dummy_reward_a(env) -> object:
+    """Arbitrary reward term: only its presence/weight is checked, not its value."""
+    return _elbow_obs_qpos(env)[:, 0]
 
-    muscle_names = _walk_muscle_names()
-    walk_entity_name = "walk_robot"
 
-    articulation = EntityArticulationInfoCfg(
-        actuators=(
-            _XmlWrappedActuatorCfg(
-                target_names_expr=tuple(f"{name}_tendon" for name in muscle_names),
-                transmission_type=TransmissionType.TENDON,
-            ),
-        )
-    )
-    entity_cfg = EntityCfg(spec_fn=_walk_spec_fn, articulation=articulation)
-    scene_cfg = SceneCfg(num_envs=1, entities={walk_entity_name: entity_cfg})
+def _dummy_reward_b(env) -> object:
+    """A second arbitrary reward term, so key ordering has something to compare."""
+    return _elbow_obs_qvel(env)[:, 0]
 
+
+def _reference_cfg_kwargs() -> dict:
+    """Shared pieces of the reference/factory pair below, built once."""
+    tendon_names = _elbow_tendon_names()
+    muscle_names = tuple(n.replace("_tendon", "") for n in tendon_names)
     observations = {
         "policy": ObservationGroupCfg(
             terms={
-                "qpos_without_xy": ObservationTermCfg(func=_walk_obs_qpos_without_xy),
-                "qvel": ObservationTermCfg(func=_walk_obs_qvel),
-                "com_vel": ObservationTermCfg(func=_walk_obs_com_vel),
-                "torso_angle": ObservationTermCfg(func=_walk_obs_torso_angle),
-                "feet_heights": ObservationTermCfg(func=_walk_obs_feet_heights),
-                "height": ObservationTermCfg(func=_walk_obs_height),
-                "feet_rel_positions": ObservationTermCfg(
-                    func=_walk_obs_feet_rel_positions
-                ),
-                "phase_var": ObservationTermCfg(func=_walk_obs_phase_var),
-                "muscle_length": ObservationTermCfg(func=_walk_obs_muscle_length),
-                "muscle_velocity": ObservationTermCfg(func=_walk_obs_muscle_velocity),
-                "muscle_force": ObservationTermCfg(func=_walk_obs_muscle_force),
-                "act": ObservationTermCfg(func=_walk_obs_act),
+                "qpos": ObservationTermCfg(func=_elbow_obs_qpos),
+                "qvel": ObservationTermCfg(func=_elbow_obs_qvel),
+                "act": ObservationTermCfg(func=_elbow_obs_act),
             },
         ),
     }
     actions = {
         "muscles": MyoMuscleActivationActionCfg(
-            entity_name=walk_entity_name,
+            entity_name=_ELBOW_ENTITY_NAME,
             actuator_names=muscle_names,
         ),
     }
+    rewards = {
+        "a": RewardTermCfg(func=_dummy_reward_a, weight=5.0),
+        "b": RewardTermCfg(func=_dummy_reward_b, weight=-2.0),
+    }
+    return {
+        "tendon_names": tendon_names,
+        "observations": observations,
+        "actions": actions,
+        "rewards": rewards,
+    }
+
+
+def _build_reference_cfg() -> ManagerBasedRlEnvCfg:
+    """Inline reference config, built by hand instead of through the factory."""
+    from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
+    from mjlab.scene import SceneCfg
+
+    kw = _reference_cfg_kwargs()
+    articulation = EntityArticulationInfoCfg(
+        actuators=(
+            _XmlWrappedActuatorCfg(
+                target_names_expr=kw["tendon_names"],
+                transmission_type=TransmissionType.TENDON,
+            ),
+        )
+    )
+    entity_cfg = EntityCfg(spec_fn=_elbow_spec_fn, articulation=articulation)
+    scene_cfg = SceneCfg(num_envs=1, entities={_ELBOW_ENTITY_NAME: entity_cfg})
     terminations = {
         "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
-    }
-    walk_cfg = WalkCfg()
-    rewards = {
-        "vel_reward": RewardTermCfg(
-            func=_walk_forward_vel_reward,
-            weight=5.0,
-            params={"target_vel": float(walk_cfg.target_vel), "target_x_vel": 0.0},
-        ),
-        "alive_reward": RewardTermCfg(
-            func=_walk_alive_reward,
-            weight=float(walk_cfg.alive_bonus),
-            params={"fall_height_threshold": float(walk_cfg.fall_height_threshold)},
-        ),
-        "done": RewardTermCfg(func=_walk_done_signal, weight=-100.0),
-        "cyclic_hip": RewardTermCfg(func=_walk_cyclic_hip, weight=-10.0),
-        "ref_rot": RewardTermCfg(func=_walk_ref_rot, weight=10.0),
-        "joint_angle_rew": RewardTermCfg(func=_walk_joint_angle_rew, weight=5.0),
-        "act_reg": RewardTermCfg(
-            func=_walk_act_reg, weight=-float(walk_cfg.act_reg_weight)
-        ),
     }
     return ManagerBasedRlEnvCfg(
         scene=scene_cfg,
         decimation=10,
         episode_length_s=20.0,
-        observations=observations,
-        actions=actions,
+        observations=kw["observations"],
+        actions=kw["actions"],
         terminations=terminations,
-        rewards=rewards,
+        rewards=kw["rewards"],
         sim=SimulationCfg(mujoco=MujocoCfg(timestep=0.002, ccd_iterations=500)),
     )
 
 
-def _build_factory_walk_cfg() -> ManagerBasedRlEnvCfg:
-    muscle_names = _walk_muscle_names()
-    walk_entity_name = "walk_robot"
-
-    observations = {
-        "policy": ObservationGroupCfg(
-            terms={
-                "qpos_without_xy": ObservationTermCfg(func=_walk_obs_qpos_without_xy),
-                "qvel": ObservationTermCfg(func=_walk_obs_qvel),
-                "com_vel": ObservationTermCfg(func=_walk_obs_com_vel),
-                "torso_angle": ObservationTermCfg(func=_walk_obs_torso_angle),
-                "feet_heights": ObservationTermCfg(func=_walk_obs_feet_heights),
-                "height": ObservationTermCfg(func=_walk_obs_height),
-                "feet_rel_positions": ObservationTermCfg(
-                    func=_walk_obs_feet_rel_positions
-                ),
-                "phase_var": ObservationTermCfg(func=_walk_obs_phase_var),
-                "muscle_length": ObservationTermCfg(func=_walk_obs_muscle_length),
-                "muscle_velocity": ObservationTermCfg(func=_walk_obs_muscle_velocity),
-                "muscle_force": ObservationTermCfg(func=_walk_obs_muscle_force),
-                "act": ObservationTermCfg(func=_walk_obs_act),
-            },
-        ),
-    }
-    actions = {
-        "muscles": MyoMuscleActivationActionCfg(
-            entity_name=walk_entity_name,
-            actuator_names=muscle_names,
-        ),
-    }
-    terminations = {
-        "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
-    }
-    walk_cfg = WalkCfg()
-    rewards = {
-        "vel_reward": RewardTermCfg(
-            func=_walk_forward_vel_reward,
-            weight=5.0,
-            params={"target_vel": float(walk_cfg.target_vel), "target_x_vel": 0.0},
-        ),
-        "alive_reward": RewardTermCfg(
-            func=_walk_alive_reward,
-            weight=float(walk_cfg.alive_bonus),
-            params={"fall_height_threshold": float(walk_cfg.fall_height_threshold)},
-        ),
-        "done": RewardTermCfg(func=_walk_done_signal, weight=-100.0),
-        "cyclic_hip": RewardTermCfg(func=_walk_cyclic_hip, weight=-10.0),
-        "ref_rot": RewardTermCfg(func=_walk_ref_rot, weight=10.0),
-        "joint_angle_rew": RewardTermCfg(func=_walk_joint_angle_rew, weight=5.0),
-        "act_reg": RewardTermCfg(
-            func=_walk_act_reg, weight=-float(walk_cfg.act_reg_weight)
-        ),
-    }
+def _build_factory_cfg() -> ManagerBasedRlEnvCfg:
+    """The same config, built through ``mjlab_env_cfg_from_task_config``."""
+    kw = _reference_cfg_kwargs()
     return mjlab_env_cfg_from_task_config(
         cfg=TaskConfig(max_episode_steps=1000),
-        spec_fn=_walk_spec_fn,
-        entity_name=walk_entity_name,
+        spec_fn=_elbow_spec_fn,
+        entity_name=_ELBOW_ENTITY_NAME,
         actuators=(
             _XmlWrappedActuatorCfg(
-                target_names_expr=tuple(f"{name}_tendon" for name in muscle_names),
+                target_names_expr=kw["tendon_names"],
                 transmission_type=TransmissionType.TENDON,
             ),
         ),
-        observations=observations,
-        actions=actions,
-        rewards=rewards,
-        terminations=terminations,
+        observations=kw["observations"],
+        actions=kw["actions"],
+        rewards=kw["rewards"],
         num_envs=1,
         decimation=10,
         sim_cfg=SimulationCfg(mujoco=MujocoCfg(timestep=0.002, ccd_iterations=500)),
@@ -212,7 +143,7 @@ def _build_factory_walk_cfg() -> ManagerBasedRlEnvCfg:
 
 @pytest.fixture(scope="module")
 def configs() -> tuple[ManagerBasedRlEnvCfg, ManagerBasedRlEnvCfg]:
-    return _build_reference_walk_cfg(), _build_factory_walk_cfg()
+    return _build_reference_cfg(), _build_factory_cfg()
 
 
 def test_decimation(configs: tuple) -> None:
@@ -289,41 +220,6 @@ def test_elbow_action_dim_matches_cpu() -> None:
     assert len(cfg.actions["muscles"].actuator_names) == cpu_act_dim
 
 
-def test_walk_obs_keys_match_cpu() -> None:
-    """mjlab walk obs terms must match LegWalkEnvV0 DEFAULT_OBS_KEYS + act."""
-    cfg = _make_walk_env_cfg()
-    mjlab_keys = list(cfg.observations["actor"].terms.keys())
-    cpu_keys = [
-        "qpos_without_xy",
-        "qvel",
-        "com_vel",
-        "torso_angle",
-        "feet_heights",
-        "height",
-        "feet_rel_positions",
-        "phase_var",
-        "muscle_length",
-        "muscle_velocity",
-        "muscle_force",
-        "act",
-    ]
-    assert mjlab_keys == cpu_keys
-
-
-def test_walk_action_dim_matches_cpu() -> None:
-    """mjlab walk action dim must equal CPU action_space.shape[0] = 80."""
-    cfg = _make_walk_env_cfg()
-    cpu_act_dim = 80  # myoLegWalk-v0 action_space.shape=(80,)
-    assert len(cfg.actions["muscles"].actuator_names) == cpu_act_dim
-
-
-def test_walk_ctrl_dt_is_50hz() -> None:
-    """ctrl_dt must equal 0.02 s so mjswan's hardcoded 50 Hz matches training."""
-    cfg = _make_walk_env_cfg()
-    ctrl_dt = cfg.sim.mujoco.timestep * cfg.decimation
-    assert ctrl_dt == pytest.approx(0.02)
-
-
 def test_elbow_ctrl_dt_is_50hz() -> None:
     """ctrl_dt must equal 0.02 s so mjswan's hardcoded 50 Hz matches training."""
     cfg = _make_elbow_env_cfg()
@@ -337,7 +233,7 @@ def test_episode_length_uses_sim_timestep() -> None:
     non_default_dt = 0.001
     result = mjlab_env_cfg_from_task_config(
         cfg=cfg,
-        spec_fn=_walk_spec_fn,
+        spec_fn=_elbow_spec_fn,
         entity_name="e",
         actuators=(),
         observations={"policy": ObservationGroupCfg(terms={})},

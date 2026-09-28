@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 import os
-import weakref
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -27,7 +26,6 @@ from mjlab.actuator.actuator import TransmissionType
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import events as mdp_events
 from mjlab.envs.mdp import terminations as mdp_terminations
-from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.rl import (
@@ -39,10 +37,7 @@ from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 
 from myosuite.core.config import TaskConfig
-from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
-from myosuite.terms.base_reward import locomotion_solved
 from myosuite.envs.myo.assets._resolve import resolve_elbow_xml as _resolve_elbow_xml
-from myosuite.envs.myo.assets._resolve import resolve_leg_xml as _resolve_leg_xml
 from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
     MyoMuscleActivationActionCfg,
@@ -51,7 +46,6 @@ from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
 from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
     default_mimic_clip_on_policy_runner_cfg,
 )
-from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
     register_table_tennis_mjlab_tasks,
 )
@@ -70,23 +64,8 @@ def _resolve_model_root() -> Path:
         return Path(__file__).resolve().parents[3]
 
 
-def _resolve_leg_dir() -> Path:
-    from myosuite.utils.asset_path_resolver import get_sim_asset_root
-
-    return get_sim_asset_root("myo_sim") / "leg"
-
-
 _MYOSUITE_ROOT = _resolve_model_root()
 _ELBOW_XML = resolve_model_xml_path(_resolve_elbow_xml("myoelbow_1dof6muscles.xml"))
-# Prefer the plane-terrain leg model for mjlab: MuJoCo Warp forward on hfield
-# terrain has been unreliable (including native crashes) on some platforms.
-_LEG_DIR = _resolve_leg_dir()
-_WALK_XML_MJX = _LEG_DIR / "myolegs_mjx.xml"
-_WALK_XML = resolve_model_xml_path(
-    _WALK_XML_MJX
-    if _WALK_XML_MJX.is_file()
-    else _resolve_leg_xml("myolegs_with_torso_plane.xml")
-)
 
 
 def _elbow_tendon_names() -> tuple[str, ...]:
@@ -109,37 +88,6 @@ def _elbow_tendon_names() -> tuple[str, ...]:
             names.append(name)
     return tuple(names)
 
-
-def _walk_muscle_names() -> tuple[str, ...]:
-    """Return walk muscle actuator names from the compiled model (no hardcoded list)."""
-    import mujoco
-
-    m = mujoco.MjModel.from_xml_path(str(_WALK_XML))
-    return tuple(
-        mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_ACTUATOR, i) for i in range(m.nu)
-    )
-
-
-# ---------------------------------------------------------------------------
-# Walk observation functions (matching WalkEnvV0 / MjxWalkEnv obs space)
-# ---------------------------------------------------------------------------
-# Each function receives `env` (ManagerBasedRlEnv) and returns a batched
-# torch.Tensor of shape (N, d) where N = num_envs and d is the component dim.
-#
-# Mapping to CPU env (walk_v0.py get_obs_dict):
-#   qpos_without_xy  (nq-2)   ← mj_data.qpos[2:]
-#   qvel             (nv)     ← mj_data.qvel * dt
-#   com_vel          (2)      ← mass-weighted COM velocity (x, y)
-#   torso_angle      (4)      ← mj_data.xquat[torso_id]
-#   feet_heights     (2)      ← talus_l/r z-pos
-#   height           (1)      ← mass-weighted COM z-height
-#   feet_rel_positions (6)    ← (talus_l, talus_r) pos − pelvis pos
-#   phase_var        (1)      ← (steps / hip_period) % 1
-#   muscle_length    (80)     ← actuator_length
-#   muscle_velocity  (80)     ← clip(actuator_velocity, −100, 100)
-#   muscle_force     (80)     ← clip(actuator_force / 1000, −100, 100)
-#   act              (80)     ← mj_data.act
-# Total: matches CPU/MJX 403-dim observation vector.
 
 _ELBOW_ENTITY_NAME = "elbow"
 _ELBOW_FIXED_TARGET_RAD = 2.0  # r_elbow_flex fixed target (myoElbowPose1D6MFixed-v0)
@@ -181,462 +129,6 @@ def _elbow_obs_act(env) -> torch.Tensor:
     return env.scene[_ELBOW_ENTITY_NAME].data.data.act
 
 
-_WALK_ENTITY_NAME = "walk_robot"
-_WALK_HIP_PERIOD = 100  # steps per hip cycle (WalkEnvV0 default)
-
-# Weak-keyed cache: entries are evicted automatically when the env is garbage collected.
-_walk_obs_cache: weakref.WeakKeyDictionary[Any, dict] = weakref.WeakKeyDictionary()
-
-
-def _resolve_walk_obs_ids(env) -> dict:
-    """Lazily resolve and cache body IDs, joint qpos addresses, and reward constants.
-
-    Loads the standalone XML model once to extract:
-      - Scene-global body IDs (torso, pelvis, talus_l, talus_r)
-      - Body mass tensor for mass-weighted COM computations
-      - Joint qpos addresses for hip flexion, adduction, rotation (reward computation)
-      - Initial quaternion from keyframe 2 (standing pose) as target_rot for ref_rot reward
-      - Termination thresholds (min_height, max_rot) matching WalkEnvV0 defaults
-
-    Uses ``entity.find_bodies()`` (mjlab/Isaac-Lab API) for body IDs when available,
-    with a fallback to the standalone XML model for single-entity scenes.
-    """
-    if env in _walk_obs_cache:
-        return _walk_obs_cache[env]
-
-    import mujoco  # noqa: PLC0415
-    import torch
-
-    entity = env.scene[_WALK_ENTITY_NAME]
-    raw_data = entity.data.data
-    device = raw_data.qpos.device
-
-    # --- Load standalone model for joint addresses, keyframe poses, and thresholds ---
-    # (The mjlab scene strips keyframes, so we must load separately for key_qpos access)
-    spec = mujoco.MjSpec.from_file(str(_WALK_XML))
-    mj_model = spec.compile()
-
-    def _qadr(name: str) -> int:
-        """Return the qpos address of a joint by name."""
-        jnt_id = mj_model.joint(name).id
-        return int(mj_model.jnt_qposadr[jnt_id])
-
-    # --- Body IDs (scene-global) ---
-    try:
-        torso_ids, _ = entity.find_bodies(["torso"])
-        pelvis_ids, _ = entity.find_bodies(["pelvis"])
-        talus_l_ids, _ = entity.find_bodies(["talus_l"])
-        talus_r_ids, _ = entity.find_bodies(["talus_r"])
-        torso_id = int(torso_ids[0])
-        pelvis_id = int(pelvis_ids[0])
-        talus_l_id = int(talus_l_ids[0])
-        talus_r_id = int(talus_r_ids[0])
-    except (AttributeError, TypeError, IndexError):
-        # Fallback: for a single-entity scene, scene-global IDs match entity-local IDs.
-        torso_id = int(mj_model.body("torso").id)
-        pelvis_id = int(mj_model.body("pelvis").id)
-        talus_l_id = int(mj_model.body("talus_l").id)
-        talus_r_id = int(mj_model.body("talus_r").id)
-
-    # --- Body mass ---
-    try:
-        body_mass = torch.as_tensor(
-            raw_data.model.body_mass, dtype=torch.float32, device=device
-        )
-    except AttributeError:
-        body_mass = torch.tensor(mj_model.body_mass, dtype=torch.float32, device=device)
-
-    # --- Joint qpos addresses for reward computation ---
-    hip_flex_l_adr = _qadr("hip_flexion_l")
-    hip_flex_r_adr = _qadr("hip_flexion_r")
-    hip_adduct_l_adr = _qadr("hip_adduction_l")
-    hip_adduct_r_adr = _qadr("hip_adduction_r")
-    hip_rot_l_adr = _qadr("hip_rotation_l")
-    hip_rot_r_adr = _qadr("hip_rotation_r")
-
-    # --- Target rotation: quaternion from keyframe 2 ("init" standing pose) ---
-    # Matches MjxWalkEnv.sample_task() and WalkEnvV0 init_qpos when reset_type="init".
-    nq = mj_model.nq
-    nkey = mj_model.nkey
-    if nkey >= 3:
-        init_qpos = mj_model.key_qpos.reshape(nkey, nq)[2]
-    else:
-        init_qpos = mj_model.qpos0
-    target_rot = torch.tensor(
-        init_qpos[3:7], dtype=torch.float32, device=device
-    )  # (4,)
-
-    # --- Termination thresholds (WalkEnvV0 defaults) ---
-    min_height = 0.8  # matches WalkEnvV0(min_height=0.8)
-    max_rot = 0.8  # matches WalkEnvV0(max_rot=0.8)
-
-    _walk_obs_cache[env] = dict(
-        torso_id=torso_id,
-        pelvis_id=pelvis_id,
-        talus_l_id=talus_l_id,
-        talus_r_id=talus_r_id,
-        body_mass=body_mass,
-        hip_flex_l_adr=hip_flex_l_adr,
-        hip_flex_r_adr=hip_flex_r_adr,
-        hip_adduct_l_adr=hip_adduct_l_adr,
-        hip_adduct_r_adr=hip_adduct_r_adr,
-        hip_rot_l_adr=hip_rot_l_adr,
-        hip_rot_r_adr=hip_rot_r_adr,
-        target_rot=target_rot,
-        min_height=min_height,
-        max_rot=max_rot,
-    )
-    return _walk_obs_cache[env]
-
-
-def _walk_obs_qpos_without_xy(env) -> torch.Tensor:
-    """Joint positions excluding x, y root translation. Shape: (N, nq-2)."""
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    return data.qpos[:, 2:]
-
-
-def _walk_obs_qvel(env) -> torch.Tensor:
-    """Joint velocities scaled by ctrl_dt. Shape: (N, nv)."""
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    ctrl_dt = env.physics_dt * env.cfg.decimation
-    return data.qvel * ctrl_dt
-
-
-def _walk_obs_com_vel(env) -> torch.Tensor:
-    """Mass-weighted COM velocity (x, y). Shape: (N, 2).
-
-    Replicates ``WalkEnvV0._get_com_velocity()`` and the MJX equivalent.
-    MuJoCo's ``cvel`` stores spatial velocity in body frame; indices 3:5 are
-    the translational components, negated per MuJoCo convention.
-    """
-
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    body_mass = ids["body_mass"]  # (nbody,)
-    # cvel: (N, nbody, 6) — translational part at [:, :, 3:5]
-    cvel_lin = -data.cvel[:, :, 3:5]  # (N, nbody, 2), sign per MJX convention
-    total_mass = body_mass.sum()
-    com_vel = (body_mass[None, :, None] * cvel_lin).sum(dim=1) / total_mass  # (N, 2)
-    return com_vel
-
-
-def _walk_obs_torso_angle(env) -> torch.Tensor:
-    """Torso body quaternion (w, x, y, z). Shape: (N, 4).
-
-    Matches ``WalkEnvV0._get_torso_angle()`` → ``mj_data.xquat[torso_id]``.
-    """
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    return data.xquat[:, ids["torso_id"], :]  # (N, 4)
-
-
-def _walk_obs_feet_heights(env) -> torch.Tensor:
-    """z-heights of left and right talus bodies. Shape: (N, 2).
-
-    Matches ``WalkEnvV0._get_feet_heights()``.
-    """
-    import torch
-
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    return torch.stack(
-        [data.xpos[:, ids["talus_l_id"], 2], data.xpos[:, ids["talus_r_id"], 2]],
-        dim=1,
-    )  # (N, 2)
-
-
-def _walk_obs_height(env) -> torch.Tensor:
-    """Mass-weighted COM z-height. Shape: (N, 1).
-
-    Matches ``WalkEnvV0._get_height()`` → ``sum(mass * xipos[:, 2]) / sum(mass)``.
-    """
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    body_mass = ids["body_mass"]  # (nbody,)
-    height = (body_mass[None, :] * data.xipos[:, :, 2]).sum(dim=1) / body_mass.sum()
-    return height.unsqueeze(-1)  # (N, 1)
-
-
-def _walk_obs_feet_rel_positions(env) -> torch.Tensor:
-    """Feet positions relative to pelvis. Shape: (N, 6).
-
-    Matches ``WalkEnvV0._get_feet_relative_position()``.
-    """
-    import torch
-
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    pelvis_pos = data.xpos[:, ids["pelvis_id"], :]  # (N, 3)
-    left_rel = data.xpos[:, ids["talus_l_id"], :] - pelvis_pos  # (N, 3)
-    right_rel = data.xpos[:, ids["talus_r_id"], :] - pelvis_pos  # (N, 3)
-    return torch.cat([left_rel, right_rel], dim=1)  # (N, 6)
-
-
-def _walk_obs_phase_var(env) -> torch.Tensor:
-    """Cyclic gait phase variable in [0, 1). Shape: (N, 1).
-
-    Matches ``WalkEnvV0`` → ``(self.steps / self.hip_period) % 1``.
-    Here steps ≈ time / ctrl_dt so phase = (time / (hip_period * ctrl_dt)) % 1.
-    """
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    ctrl_dt = env.physics_dt * env.cfg.decimation
-    hip_period_time = float(_WALK_HIP_PERIOD) * ctrl_dt
-    phase = (data.time / hip_period_time) % 1.0  # (N,)
-    return phase.unsqueeze(-1)  # (N, 1)
-
-
-def _walk_obs_muscle_length(env) -> torch.Tensor:
-    """Actuator (muscle) lengths. Shape: (N, nu).
-
-    Matches ``WalkEnvV0.muscle_lengths()`` → ``mj_data.actuator_length``.
-    """
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    return data.actuator_length  # (N, nu)
-
-
-def _walk_obs_muscle_velocity(env) -> torch.Tensor:
-    """Actuator (muscle) velocities, clipped to [-100, 100]. Shape: (N, nu).
-
-    Matches ``WalkEnvV0.muscle_velocities()`` → ``clip(actuator_velocity, -100, 100)``.
-    """
-    import torch
-
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    return torch.clamp(data.actuator_velocity, -100.0, 100.0)  # (N, nu)
-
-
-def _walk_obs_muscle_force(env) -> torch.Tensor:
-    """Actuator (muscle) forces / 1000, clipped to [-100, 100]. Shape: (N, nu).
-
-    Matches ``WalkEnvV0.muscle_forces()`` → ``clip(actuator_force / 1000, -100, 100)``.
-    """
-    import torch
-
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    return torch.clamp(data.actuator_force / 1000.0, -100.0, 100.0)  # (N, nu)
-
-
-def _walk_obs_act(env) -> torch.Tensor:
-    """Muscle activation state. Shape: (N, na).
-
-    Matches ``WalkEnvV0.get_obs_dict`` → ``mj_data.act`` (when ``mj_model.na > 0``).
-    """
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    return data.act  # (N, na)
-
-
-# ---------------------------------------------------------------------------
-# Walk reward functions — matching WalkEnvV0 (CPU) and MjxWalkEnv (MJX)
-#
-# Reward components and weights (from WalkEnvV0.DEFAULT_RWD_KEYS_AND_WEIGHTS):
-#   vel_reward      ×  5.0  — forward velocity match (exponential decay)
-#   done            × -100  — termination penalty (height or rotation exceeded)
-#   cyclic_hip      × -10   — hip flexion gait periodicity
-#   ref_rot         ×  10.0 — torso quaternion tracking
-#   joint_angle_rew ×   5.0 — hip adduction/rotation penalty
-# ---------------------------------------------------------------------------
-
-
-def _walk_com_vel(env):
-    """Mass-weighted COM velocity ``(N, 2)`` (x, y), as the CPU ``com_vel`` obs."""
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    body_mass = ids["body_mass"]  # (nbody,)
-    cvel_lin = -data.cvel[:, :, 3:5]  # (N, nbody, 2), sign per MuJoCo convention
-    return (body_mass[None, :, None] * cvel_lin).sum(dim=1) / body_mass.sum()
-
-
-def _walk_vel_reward(env, target_y_vel: float = 1.2, target_x_vel: float = 0.0):
-    """Forward/lateral velocity reward using exponential decay, matching WalkEnvV0.
-
-    CPU formula (walk_v0.py:375-380):
-        exp(-(target_y - com_vel_y)²) + exp(-(target_x - com_vel_x)²)
-
-    Uses mass-weighted COM velocity (not root qvel) for correct parity with CPU.
-    Shape: (N,)
-    """
-    import torch  # noqa: PLC0415
-
-    com_vel = _walk_com_vel(env)  # (N, 2)
-    return torch.exp(-torch.square(target_y_vel - com_vel[:, 1])) + torch.exp(
-        -torch.square(target_x_vel - com_vel[:, 0])
-    )  # (N,)
-
-
-def _walk_forward_vel_reward(
-    env,
-    target_vel: float = 1.2,
-    target_x_vel: float = 0.0,
-):
-    """Compatibility wrapper for forward-velocity reward term naming.
-
-    Kept as a thin alias so benchmark invariants can assert the canonical
-    forward-velocity reward hook while preserving the existing WalkEnvV0-style
-    implementation in :func:`_walk_vel_reward`.
-    """
-    return _walk_vel_reward(env, target_y_vel=target_vel, target_x_vel=target_x_vel)
-
-
-def _walk_done_signal(env):
-    """Termination signal: 1.0 if height < min_height or rotation exceeded, else 0.
-
-    CPU formula (walk_v0.py:346-351):
-        done = 1 if height < min_height or |quat2mat(qpos[3:7])[0,0]| > max_rot
-
-    Weight -100 in dense reward.  Shape: (N,)
-    """
-    import torch  # noqa: PLC0415
-
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    min_height = ids["min_height"]
-    max_rot = ids["max_rot"]
-
-    # Height condition: mass-weighted COM z-height < min_height
-    body_mass = ids["body_mass"]
-    height = (body_mass[None, :] * data.xipos[:, :, 2]).sum(
-        dim=1
-    ) / body_mass.sum()  # (N,)
-    done_height = (height < min_height).to(dtype=torch.float32)
-
-    # Rotation condition: |R[0,0]| > max_rot  where R = quat2mat(qpos[3:7])
-    # R[0,0] = 1 - 2*(qy² + qz²)
-    qy = data.qpos[:, 5]
-    qz = data.qpos[:, 6]
-    r00 = 1.0 - 2.0 * (qy * qy + qz * qz)
-    done_rot = (torch.abs(r00) > max_rot).to(dtype=torch.float32)
-
-    return torch.maximum(done_height, done_rot)  # (N,)
-
-
-def _terrain_done_signal(env):
-    """``_walk_done_signal`` plus the CPU ``LegTerrainEnvV0`` knee condition.
-
-    The knee condition is ``com_height - mean(feet_height) < 0.61``. Shape: (N,)
-    """
-    import torch  # noqa: PLC0415
-
-    knee = (
-        _walk_obs_height(env)[:, 0] - _walk_obs_feet_heights(env).mean(dim=1) < 0.61
-    ).to(dtype=torch.float32)
-    return torch.maximum(_walk_done_signal(env), knee)
-
-
-def _walk_solved(
-    env,
-    target_y_vel: float = 1.2,
-    target_x_vel: float = 0.0,
-    terrain: bool = False,
-):
-    """``success`` metric of the walking tasks (CPU ``solved``): upright and within
-    ``LOCOMOTION_VEL_TOL`` of the commanded COM velocity. Shape: (N,) float."""
-    import torch  # noqa: PLC0415
-
-    com_vel = _walk_com_vel(env)
-    vel_error = torch.hypot(target_x_vel - com_vel[:, 0], target_y_vel - com_vel[:, 1])
-    done = _terrain_done_signal(env) if terrain else _walk_done_signal(env)
-    return locomotion_solved(torch, vel_error, done > 0.5).float()
-
-
-def _walk_alive_reward(env, fall_height_threshold: float = 0.8):
-    """Alive reward term: 1 when COM height is above threshold, else 0.
-
-    This term complements the done penalty and matches the benchmark invariant
-    expectation that walk reward shaping includes explicit uprightness signal.
-    """
-    import torch  # noqa: PLC0415
-
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    body_mass = ids["body_mass"]
-    height = (body_mass[None, :] * data.xipos[:, :, 2]).sum(dim=1) / body_mass.sum()
-    return (height >= fall_height_threshold).to(dtype=torch.float32)
-
-
-def _walk_act_reg(env):
-    """Action regularization on muscle activations (mean L2 per env)."""
-    import torch  # noqa: PLC0415
-
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    return torch.mean(torch.square(data.act), dim=1)
-
-
-def _walk_cyclic_hip(env):
-    """Cyclic hip gait reward: L2 distance from desired sinusoidal hip trajectory.
-
-    CPU formula (walk_v0.py:382-392):
-        phase = (steps / hip_period) % 1
-        des = [0.8 * cos(phase*2π + π), 0.8 * cos(phase*2π)]
-        reward = ‖des − [hip_flex_l, hip_flex_r]‖₂
-
-    Weight -10 (penalises deviation from gait pattern).  Shape: (N,)
-    """
-    import math
-
-    import torch  # noqa: PLC0415
-
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    ctrl_dt = env.physics_dt * env.cfg.decimation
-    hip_period_time = float(_WALK_HIP_PERIOD) * ctrl_dt
-    phase = (data.time / hip_period_time) % 1.0  # (N,)
-
-    des_l = 0.8 * torch.cos(phase * 2.0 * math.pi + math.pi)  # (N,)
-    des_r = 0.8 * torch.cos(phase * 2.0 * math.pi)  # (N,)
-
-    hip_flex_l = data.qpos[:, ids["hip_flex_l_adr"]]  # (N,)
-    hip_flex_r = data.qpos[:, ids["hip_flex_r_adr"]]  # (N,)
-
-    diff = torch.stack([des_l - hip_flex_l, des_r - hip_flex_r], dim=1)  # (N, 2)
-    return torch.linalg.norm(diff, dim=1)  # (N,)
-
-
-def _walk_ref_rot(env):
-    """Torso orientation reward: exponential decay from initial standing quaternion.
-
-    CPU formula (walk_v0.py:394-400):
-        ref_rot = exp(-‖5 * (qpos[3:7] − target_rot)‖₂)
-
-    target_rot = key_qpos[2][3:7] (keyframe 2 = standing "init" pose),
-    matching MjxWalkEnv.sample_task() and WalkEnvV0 with reset_type="init".
-    Shape: (N,)
-    """
-    import torch  # noqa: PLC0415
-
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-    target_rot = ids["target_rot"]  # (4,) on correct device
-
-    quat = data.qpos[:, 3:7]  # (N, 4)
-    diff = 5.0 * (quat - target_rot[None, :])  # (N, 4)
-    return torch.exp(-torch.linalg.norm(diff, dim=1))  # (N,)
-
-
-def _walk_joint_angle_rew(env):
-    """Hip adduction/rotation penalty: exp(-5 * mean(|angles|)).
-
-    CPU formula (walk_v0.py:353-355):
-        joint_angle_rew = exp(-5 * mean(|[hip_adduct_l, hip_adduct_r, hip_rot_l, hip_rot_r]|))
-
-    Weight 5.0 (penalises unnatural lateral/rotational hip motion).  Shape: (N,)
-    """
-    import torch  # noqa: PLC0415
-
-    ids = _resolve_walk_obs_ids(env)
-    data = env.scene[_WALK_ENTITY_NAME].data.data
-
-    hip_angles = torch.stack(
-        [
-            data.qpos[:, ids["hip_adduct_l_adr"]],
-            data.qpos[:, ids["hip_adduct_r_adr"]],
-            data.qpos[:, ids["hip_rot_l_adr"]],
-            data.qpos[:, ids["hip_rot_r_adr"]],
-        ],
-        dim=1,
-    )  # (N, 4)
-    return torch.exp(-5.0 * torch.mean(torch.abs(hip_angles), dim=1))  # (N,)
-
-
 def _elbow_spec_fn():
     import mujoco
 
@@ -648,34 +140,6 @@ def _actor_critic_groups(group: ObservationGroupCfg) -> dict[str, ObservationGro
     import copy  # noqa: PLC0415
 
     return {"actor": group, "critic": copy.deepcopy(group)}
-
-
-def _walk_spec_fn():
-    """Load the leg model MJCF for mjlab and strip source keyframes.
-
-    The upstream ``myolegs`` MJCF includes multiple anonymous keyframes. When
-    composed into an mjlab ``Scene`` as an ``Entity``, these extra keyframes
-    interact poorly with ``Scene._add_entities``'s keyframe merging logic and
-    can trigger a MuJoCo ``ValueError`` about repeated names in the keyframe
-    table.
-
-    For mjlab we don't rely on those original keyframes: ``Entity`` will create
-    its own single ``init_state`` keyframe from ``InitialStateCfg``. To avoid
-    the duplicate-name issue, we drop all keyframes from the raw spec before
-    handing it to mjlab.
-    """
-    import mujoco
-
-    spec = mujoco.MjSpec.from_file(str(_WALK_XML))
-    # Remove all existing keyframes; Entity will add its own "init_state".
-    for k in list(spec.keys):
-        spec.delete(k)
-    return spec
-
-
-def _walk_sarc_spec_fn():
-    """Build walk spec with sarcopenia transform applied for mjlab variants."""
-    return apply_sarcopenia_to_spec(_walk_spec_fn(), force_scale=0.5)
 
 
 def _make_elbow_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
@@ -765,214 +229,6 @@ def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
         # Map actor/critic to the env's "policy" group.
         obs_groups={"actor": ("policy",), "critic": ("policy",)},
     )
-
-
-def _directional_init_state():
-    """Standing ``InitialStateCfg`` from the leg model's keyframe-0 pose.
-
-    mjlab's default init places a floating-base robot's root at the origin, i.e.
-    in the ground (pelvis height 0). ``m.qpos0`` (the XML's raw joint defaults)
-    is *not* a standing pose -- it is all zeros, since none of this model's
-    joints declare a nonzero ``ref``. The CPU ``myoLegDirectional*-v0`` env
-    resets to keyframe 0 (see ``ModularTaskEnv.reset()`` in
-    ``myosuite/envs/modular_env.py``), which every bundled leg host XML ships
-    as a real crouched-standing pose (pelvis ~0.92 m, nonzero hip/knee
-    angles). Reading ``qpos0`` here instead of that keyframe reproduced the
-    same "root at the origin" bug on GPU that CPU had before its own fix --
-    matching keyframe 0 (not qpos0) on both backends is what actually lets
-    the GPU policy learn to walk from a real standing pose instead of
-    collapsing/crawling off the floor every episode.
-    """
-    import mujoco  # noqa: PLC0415
-    from mjlab.entity import EntityCfg
-
-    import re  # noqa: PLC0415
-
-    m = mujoco.MjModel.from_xml_path(str(_WALK_XML))
-    q0 = m.key_qpos[0] if m.nkey > 0 else m.qpos0
-    pos = tuple(float(x) for x in q0[:3])
-    rot = tuple(float(x) for x in q0[3:7])
-    joint_pos: dict[str, float] = {}
-    for j in range(m.njnt):
-        name = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, j)
-        if not name:
-            continue
-        if int(m.jnt_type[j]) in (
-            int(mujoco.mjtJoint.mjJNT_SLIDE),
-            int(mujoco.mjtJoint.mjJNT_HINGE),
-        ):
-            # mjlab's Entity.resolve_expr matches these keys as regex
-            # patterns via re.match (prefix-anchored, not a full match) --
-            # an unescaped literal name like "knee_angle_r" would also match
-            # "knee_angle_rotation2_r" as a prefix and silently steal its
-            # value (confirmed empirically: without the anchor, several
-            # joints sharing a name prefix all resolved to the same wrong
-            # value). Anchor with ^...$ so each key matches only its exact
-            # joint.
-            joint_pos[f"^{re.escape(name)}$"] = float(q0[int(m.jnt_qposadr[j])])
-    return EntityCfg.InitialStateCfg(pos=pos, rot=rot, joint_pos=joint_pos)
-
-
-def _make_walk_env_cfg(
-    play: bool = False, muscle_condition: str = ""
-) -> ManagerBasedRlEnvCfg:
-    """ManagerBasedRlEnvCfg for myoLegWalk-v0 (80-muscle bipedal walking).
-
-    Uses the myo_sim leg MJCF (``myolegs_mjx.xml`` when present, else
-    ``myolegs.xml``). The plane-terrain MJX variant avoids MuJoCo Warp issues
-    with height-field terrain while keeping the same muscle/torso/leg chain as
-    the CPU walk task.
-
-    Observations: projected gravity vector (3D) — a minimal but stable obs
-    that avoids joint-id indexing issues across mjlab versions.
-
-    Actions: TendonLengthActionCfg for all 80 leg muscles, control in [0, 1].
-
-    Terminations: time-out only (falling is handled by the RL reward shaping).
-    """
-    if not _WALK_XML.exists():
-        raise FileNotFoundError(f"Leg walk model not found: {_WALK_XML}")
-
-    muscle_names = _walk_muscle_names()
-    walk_entity_name = "walk_robot"
-    walk_spec_fn = (
-        _walk_sarc_spec_fn if muscle_condition == "sarcopenia" else _walk_spec_fn
-    )
-
-    observations = {
-        "policy": ObservationGroupCfg(
-            terms={
-                "qpos_without_xy": ObservationTermCfg(func=_walk_obs_qpos_without_xy),
-                "qvel": ObservationTermCfg(func=_walk_obs_qvel),
-                "com_vel": ObservationTermCfg(func=_walk_obs_com_vel),
-                "torso_angle": ObservationTermCfg(func=_walk_obs_torso_angle),
-                "feet_heights": ObservationTermCfg(func=_walk_obs_feet_heights),
-                "height": ObservationTermCfg(func=_walk_obs_height),
-                "feet_rel_positions": ObservationTermCfg(
-                    func=_walk_obs_feet_rel_positions
-                ),
-                "phase_var": ObservationTermCfg(func=_walk_obs_phase_var),
-                "muscle_length": ObservationTermCfg(func=_walk_obs_muscle_length),
-                "muscle_velocity": ObservationTermCfg(func=_walk_obs_muscle_velocity),
-                "muscle_force": ObservationTermCfg(func=_walk_obs_muscle_force),
-                "act": ObservationTermCfg(func=_walk_obs_act),
-            },
-        ),
-    }
-
-    observations = _actor_critic_groups(observations["policy"])
-
-    actions = {
-        "muscles": MyoMuscleActivationActionCfg(
-            entity_name=walk_entity_name,
-            actuator_names=muscle_names,
-            muscle_fatigue=muscle_condition == "fatigue",
-        ),
-    }
-
-    terminations = {
-        "time_out": TerminationTermCfg(
-            func=mdp_terminations.time_out,
-            time_out=True,
-        ),
-    }
-    from mjlab.managers.event_manager import EventTermCfg
-
-    events = {
-        # Without an explicit reset event, mjlab falls back to its own
-        # generic default (root at the origin, all joints at 0) at every
-        # episode boundary after the first -- see _directional_init_state()
-        # and the "reset_scene_to_default" comment on the directional env
-        # config, which hit and fixed the identical bug for the same host
-        # model. This mirrors that fix for myoLegWalk-v0.
-        "reset_scene_to_default": EventTermCfg(
-            func=mdp_events.reset_scene_to_default, mode="reset"
-        ),
-    }
-
-    from mjlab.managers.reward_manager import RewardTermCfg
-
-    walk_cfg = WalkCfg()
-
-    rewards = {
-        "vel_reward": RewardTermCfg(
-            func=_walk_forward_vel_reward,
-            weight=5.0,
-            params={"target_vel": float(walk_cfg.target_vel), "target_x_vel": 0.0},
-        ),
-        "alive_reward": RewardTermCfg(
-            func=_walk_alive_reward,
-            weight=float(walk_cfg.alive_bonus),
-            params={"fall_height_threshold": float(walk_cfg.fall_height_threshold)},
-        ),
-        "done": RewardTermCfg(
-            func=_walk_done_signal,
-            weight=-100.0,
-        ),
-        "cyclic_hip": RewardTermCfg(
-            func=_walk_cyclic_hip,
-            weight=-10.0,
-        ),
-        "ref_rot": RewardTermCfg(
-            func=_walk_ref_rot,
-            weight=10.0,
-        ),
-        "joint_angle_rew": RewardTermCfg(
-            func=_walk_joint_angle_rew,
-            weight=5.0,
-        ),
-        "act_reg": RewardTermCfg(
-            func=_walk_act_reg,
-            weight=-float(walk_cfg.act_reg_weight),
-        ),
-    }
-
-    env_cfg = mjlab_env_cfg_from_task_config(
-        cfg=TaskConfig(max_episode_steps=1000),
-        spec_fn=walk_spec_fn,
-        entity_name=walk_entity_name,
-        actuators=(
-            _XmlWrappedActuatorCfg(
-                target_names_expr=tuple(f"{name}_tendon" for name in muscle_names),
-                transmission_type=TransmissionType.TENDON,
-            ),
-        ),
-        observations=observations,
-        actions=actions,
-        rewards=rewards,
-        terminations=terminations,
-        events=events,
-        num_envs=1,
-        decimation=10,
-        sim_cfg=SimulationCfg(
-            mujoco=MujocoCfg(
-                timestep=0.002,
-                ccd_iterations=500,
-            ),
-            # MuJoCo-Warp pre-allocates constraint buffers of these sizes. The
-            # default is too small for the contact-rich biped under RL
-            # exploration (nefc overflow -> NaN obs during training); size them
-            # like the other contact-heavy mjlab tasks. A max only, so CPU/mjlab
-            # parity is unaffected.
-            njmax=512,
-            nconmax=256,
-        ),
-        episode_length_s=20.0,
-        init_state=_directional_init_state(),  # stand at ~1.0 m; same host XML as directional
-    )
-    # Standard success metric (logged as Episode_Metrics/success): the CPU "solved"
-    # flag on the final step of the episode.
-    env_cfg.metrics = {
-        "success": MetricsTermCfg(
-            func=_walk_solved,
-            params={
-                "target_y_vel": float(walk_cfg.target_vel),
-                "target_x_vel": 0.0,
-            },
-            reduce="last",
-        )
-    }
-    return env_cfg
 
 
 # ---------------------------------------------------------------------------
@@ -1509,9 +765,9 @@ def _make_chasetag_fbp2_env_cfg(num_envs: int = 128) -> ManagerBasedRlEnvCfg:
         "tagged": TerminationTermCfg(func=_chasetag_tagged_bool),
     }
     events = {
-        # Mandatory for every leg-family full-body GPU env on this branch —
-        # without it, resets after the first fall back to mjlab's broken
-        # generic default pose (see _directional_init_state's docstring).
+        # Mandatory for every leg-family full-body GPU env on this branch — without
+        # it, resets after the first fall back to mjlab's default init (root at the
+        # origin, i.e. in the ground), not a standing pose.
         "reset_scene_to_default": EventTermCfg(
             func=mdp_events.reset_scene_to_default, mode="reset"
         ),
@@ -1534,7 +790,7 @@ def _make_chasetag_fbp2_env_cfg(num_envs: int = 128) -> ManagerBasedRlEnvCfg:
         terminations=terminations,
         events=events,
         num_envs=num_envs,
-        decimation=5,  # matches _walk_spec_fn/_directional cfgs' proven GPU decimation
+        decimation=5,  # matches the leg walk/directional twins' proven GPU decimation
         sim_cfg=SimulationCfg(
             mujoco=MujocoCfg(timestep=0.002, ccd_iterations=500),
             njmax=1024,
