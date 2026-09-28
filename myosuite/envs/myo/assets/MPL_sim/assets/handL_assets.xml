@@ -1,0 +1,162 @@
+<!-- =========== Copyright | Vikash Kumar | vikashplus@gmail.com ==========================
+    Model       :: MPL
+    Mujoco      :: Advanced physics simulation engine
+        Source      : www.roboti.us
+        Version     : 2.00
+        Released    : 1Oct"18
+    Author      :: Vikash Kumar
+        Contacts    : vikashplus@gmail.com
+        Last edits  : 25Dec"19
+
+Copyright 2018 Vikash Kumar: Licensed under Apache License, Version 2.0 (the "License")
+
+You may not use this file except in compliance with the License. You may obtain a copy of
+the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law
+or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+for the specific language governing permissions and limitations under the License.
+============================================================================================= -->
+
+<mujocoinclude>
+    <compiler meshdir=".." texturedir='../scenes/'/>
+    <default>
+        <default class="MPL">
+            <geom condim="1" contype="2" conaffinity="1" type="mesh" rgba=".9 .9 2 1"/>
+            <joint limited="true" damping="0.2" armature=".01"/>
+            <site material="prosthesis/MatTouch" type="ellipsoid" group="3"/>
+            <position ctrllimited="true" kp="10"/>
+        </default>
+
+        <default class="IMU">
+
+            <site material="prosthesis/MatIMU" type="box" group="4"/>
+        </default>
+
+        <default class="free">
+            <joint type="free" damping="0" armature="0" limited="false"/>
+        </default>
+    </default>
+
+    <asset>
+        <mesh name="prosthesis/index0" file="../MPL_sim/meshes/mplL/index0_left.stl"/>
+        <mesh name="prosthesis/index1" file="../MPL_sim/meshes/mplL/index1_left.stl"/>
+        <mesh name="prosthesis/index2" file="../MPL_sim/meshes/mplL/index2_left.stl"/>
+        <mesh name="prosthesis/index3" file="../MPL_sim/meshes/mplL/index3_left.stl"/>
+        <mesh name="prosthesis/middle0" file="../MPL_sim/meshes/mplL/middle0_left.stl"/>
+        <mesh name="prosthesis/middle1" file="../MPL_sim/meshes/mplL/middle1_left.stl"/>
+        <mesh name="prosthesis/middle2" file="../MPL_sim/meshes/mplL/middle2_left.stl"/>
+        <mesh name="prosthesis/middle3" file="../MPL_sim/meshes/mplL/middle3_left.stl"/>
+        <mesh name="prosthesis/palm" file="../MPL_sim/meshes/mplL/palm_left.stl"/>
+        <mesh name="prosthesis/pinky0" file="../MPL_sim/meshes/mplL/pinky0_left.stl"/>
+        <mesh name="prosthesis/pinky1" file="../MPL_sim/meshes/mplL/pinky1_left.stl"/>
+        <mesh name="prosthesis/pinky2" file="../MPL_sim/meshes/mplL/pinky2_left.stl"/>
+        <mesh name="prosthesis/pinky3" file="../MPL_sim/meshes/mplL/pinky3_left.stl"/>
+        <mesh name="prosthesis/ring0" file="../MPL_sim/meshes/mplL/ring0_left.stl"/>
+        <mesh name="prosthesis/ring1" file="../MPL_sim/meshes/mplL/ring1_left.stl"/>
+        <mesh name="prosthesis/ring2" file="../MPL_sim/meshes/mplL/ring2_left.stl"/>
+        <mesh name="prosthesis/ring3" file="../MPL_sim/meshes/mplL/ring3_left.stl"/>
+        <mesh name="prosthesis/thumb0" file="../MPL_sim/meshes/mplL/thumb0_left.stl"/>
+        <mesh name="prosthesis/thumb1" file="../MPL_sim/meshes/mplL/thumb1_left.stl"/>
+        <mesh name="prosthesis/thumb2" file="../MPL_sim/meshes/mplL/thumb2_left.stl"/>
+        <mesh name="prosthesis/thumb3" file="../MPL_sim/meshes/mplL/thumb3_left.stl"/>
+        <mesh name="prosthesis/wristx" file="../MPL_sim/meshes/mplL/wristx_left.stl"/>
+        <mesh name="prosthesis/wristy" file="../MPL_sim/meshes/mplL/wristy_left.stl"/>
+        <mesh name="prosthesis/wristz" file="../MPL_sim/meshes/mplL/wristz_left.stl"/>
+        <material name="prosthesis/MatTouch" rgba=".3 .9 .3 .3"/>
+        <material name="prosthesis/MatIMU" rgba=".1 .1 .9 1"/>
+        <material name="prosthesis/MatMesh"/>
+    </asset>
+
+    <contact>
+        <exclude body1="prosthesis/wristz" body2="prosthesis/wristy"/>
+        <exclude body1="prosthesis/wristx" body2="prosthesis/thumb0"/>
+        <exclude body1="prosthesis/palm" body2="prosthesis/thumb1"/>
+        <exclude body1="prosthesis/palm" body2="prosthesis/index1"/>
+        <exclude body1="prosthesis/palm" body2="prosthesis/middle1"/>
+        <exclude body1="prosthesis/palm" body2="prosthesis/ring1"/>
+        <exclude body1="prosthesis/palm" body2="prosthesis/pinky1"/>
+    </contact>
+
+    <tendon>
+        <!--Index coupler tendons-->
+        <fixed name="prosthesis/T_index32_cpl" range="0 1" group="4">
+            <joint joint="prosthesis/index_DIP" coef="0.00705"/>
+            <joint joint="prosthesis/index_PIP" coef="-0.00805"/>
+        </fixed>
+        <fixed name="prosthesis/T_index21_cpl" range="0 1" group="4">
+            <joint joint="prosthesis/index_PIP" coef="0.010"/>
+            <joint joint="prosthesis/index_MCP" coef="-0.010"/>
+        </fixed>
+
+        <!--Middle coupler tendons-->
+        <fixed name="prosthesis/T_middle32_cpl" group="4">
+            <joint joint="prosthesis/middle_DIP" coef="0.00705"/>
+            <joint joint="prosthesis/middle_PIP" coef="-0.00805"/>
+        </fixed>
+        <fixed name="prosthesis/T_middle21_cpl" group="4">
+            <joint joint="prosthesis/middle_PIP" coef="0.010"/>
+            <joint joint="prosthesis/middle_MCP" coef="-0.010"/>
+        </fixed>
+
+        <!--Ring coupler tendons-->
+        <fixed name="prosthesis/T_ring32_cpl" group="4">
+            <joint joint="prosthesis/ring_DIP" coef="0.00705"/>
+            <joint joint="prosthesis/ring_PIP" coef="-0.00805"/>
+        </fixed>
+        <fixed name="prosthesis/T_ring21_cpl" group="4">
+            <joint joint="prosthesis/ring_PIP" coef="0.010"/>
+            <joint joint="prosthesis/ring_MCP" coef="-0.010"/>
+        </fixed>
+
+        <!--Little coupler tendons-->
+        <fixed name="prosthesis/T_pinky32_cpl" group="4">
+            <joint joint="prosthesis/pinky_DIP" coef="0.00705"/>
+            <joint joint="prosthesis/pinky_PIP" coef="-0.00805"/>
+        </fixed>
+        <fixed name="prosthesis/T_pinky21_cpl" group="4">
+            <joint joint="prosthesis/pinky_PIP" coef="0.010"/>
+            <joint joint="prosthesis/pinky_MCP" coef="-0.010"/>
+        </fixed>
+
+    </tendon>
+
+
+    <equality>
+        <!-- DIP-PIP-MCP Couplings -->
+        <tendon name="prosthesis/E_index32_cpl" tendon1="prosthesis/T_index32_cpl"/>
+        <tendon name="prosthesis/E_index21_cpl" tendon1="prosthesis/T_index21_cpl"/>
+        <tendon name="prosthesis/E_middle32_cpl" tendon1="prosthesis/T_middle32_cpl"/>
+        <tendon name="prosthesis/E_middle21_cpl" tendon1="prosthesis/T_middle21_cpl"/>
+        <tendon name="prosthesis/E_ring32_cpl" tendon1="prosthesis/T_ring32_cpl"/>
+        <tendon name="prosthesis/E_ring21_cpl" tendon1="prosthesis/T_ring21_cpl"/>
+        <tendon name="prosthesis/E_pinky32_cpl" tendon1="prosthesis/T_pinky32_cpl"/>
+        <tendon name="prosthesis/E_pinky21_cpl" tendon1="prosthesis/T_pinky21_cpl"/>
+
+        <!-- AD-AB Coupling -->
+        <joint name="prosthesis/ring_pinky_cpl" joint1="prosthesis/ring_ABD" joint2="prosthesis/pinky_ABD"
+               polycoef="0 0.5 0 0 0"/>
+    </equality>
+
+
+    <actuator>
+        <!-- Wrist -->
+        <position name="prosthesis/A_wrist_PRO" class="MPL" joint="prosthesis/wrist_PRO" ctrlrange="-1.57 1.57"/>
+        <position name="prosthesis/A_wrist_UDEV" class="MPL" joint="prosthesis/wrist_UDEV" ctrlrange="-0.26 0.79"/>
+        <position name="prosthesis/A_wrist_FLEX" class="MPL" joint="prosthesis/wrist_FLEX" ctrlrange="-1 1"/>
+
+        <!-- Thumb -->
+        <position name="prosthesis/A_thumb_ABD" class="MPL" joint="prosthesis/thumb_ABD" ctrlrange="0 2.1"/>
+        <position name="prosthesis/A_thumb_MCP" class="MPL" joint="prosthesis/thumb_MCP" ctrlrange="0 1.0"/>
+        <position name="prosthesis/A_thumb_PIP" class="MPL" joint="prosthesis/thumb_PIP" ctrlrange="0 1.0"/>
+        <position name="prosthesis/A_thumb_DIP" class="MPL" joint="prosthesis/thumb_DIP" ctrlrange="-0.82 1.3"/>
+
+        <!-- Fingers -->
+        <position name="prosthesis/A_index_ABD" class="MPL" joint="prosthesis/index_ABD" ctrlrange="0 0.34"/>
+        <position name="prosthesis/A_index_MCP" class="MPL" joint="prosthesis/index_MCP" ctrlrange="0 1.6"/>
+        <position name="prosthesis/A_middle_MCP" class="MPL" joint="prosthesis/middle_MCP" ctrlrange="0 1.6"/>
+        <position name="prosthesis/A_ring_MCP" class="MPL" joint="prosthesis/ring_MCP" ctrlrange="0 1.6"/>
+        <position name="prosthesis/A_pinky_ABD" class="MPL" joint="prosthesis/pinky_ABD" ctrlrange="0 0.34"/>
+        <position name="prosthesis/A_pinky_MCP" class="MPL" joint="prosthesis/pinky_MCP" ctrlrange="0 1.6"/>
+    </actuator>
+
+</mujocoinclude>

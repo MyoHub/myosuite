@@ -115,6 +115,9 @@ full commit list.
 
 * Packaging: SPDX `license = "Apache-2.0"` with `license-files`; MJX benchmark plots are no longer
   shipped in the wheel.
+* The `furniture-sim`, `mpl-sim`, `object-sim` and `ycb-sim` git dependencies are gone: the 40 files
+  MyoSuite uses (MPL left arm/hand, YCB gelatin box, table texture; 2.9 MB) are bundled under
+  `myosuite/envs/myo/assets/`, so every dependency now installs from PyPI.
 
 ### Contributors
 

@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 """Resolve cross-package sim-asset paths in main model XML files.
 
-The MyoSuite MJCF scene files reference assets from sibling pip packages
+The MyoSuite MJCF scene files reference assets from sim-asset families
 (myo_sim, ycb_sim, furniture_sim, mpl_sim, object_sim) via paths like:
 
     ../../../../simhive/YCB_sim/includes/defaults_ycb.xml
@@ -19,6 +19,10 @@ loads the model.
 
 Only the main model XML is rewritten; pip-package internal XML files are
 correct as of v0.2.0+ (upstream path fixes applied).
+
+Lookup order per family: a local ``myosuite/simhive/<name>`` checkout, then the
+subsets bundled under ``myosuite/envs/myo/assets/<name>`` (MPL_sim, YCB_sim,
+furniture_sim), then an installed pip package. ``myo_sim`` always comes from pip.
 """
 
 from __future__ import annotations
@@ -129,6 +133,10 @@ def get_sim_asset_root(sim_name: str) -> Path:
     local_root = _local_override_root() / local_dir
     if local_root.exists():
         return local_root
+    # Assets vendored into myosuite (MPL/YCB/furniture subsets) take precedence over pip.
+    bundled_root = _MYOSUITE_ASSETS / local_dir
+    if sim_name != "myo_sim" and bundled_root.exists():
+        return bundled_root
     pkg_root = _installed_package_root(module_name)
     if pkg_root is not None:
         models_dir = pkg_root / "models"

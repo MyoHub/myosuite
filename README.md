@@ -27,10 +27,10 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 MyoSuite 3 brings the whole suite to fast, scalable training while keeping the simple interface you know:
 
+- **Much faster learning.** Train with thousands of environments in parallel on a single GPU, then replay the policy on the CPU.
 - **One task, several backends.** The same `env_id` runs on your **CPU** through the standard [Gymnasium](https://gymnasium.farama.org/) interface (to explore, debug and replay policies, or to train with libraries such as Stable-Baselines3), on **mjlab** for massively parallel GPU training, and on an **experimental MJX** (JAX) path.
 - **MuscleMimic support.** Run, evaluate and train full-body and bimanual **MuscleMimic** policies, with ready-to-use checkpoints and motion datasets.
 - **The complete MyoChallenge suite** as Gymnasium environments: Baoding, Bimanual, Chase Tag, Die Reorient, OSL Run, Relocate, Soccer and Table Tennis.
-- **Much faster learning.** Train with thousands of environments in parallel on a single GPU, then replay the policy on the CPU.
 - **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared observation, reward and model-building blocks instead of writing an environment class.
 - **Ready to use.** Default trained policies with evaluation videos, plus updated tutorials from the first rollout to GPU training and MuscleMimic. See the [changelog](CHANGELOG.md) for everything that changed since v2.12.
 
@@ -62,7 +62,7 @@ pip install -e ".[rl]"          # CPU training (Stable-Baselines3)
 
 Or: `uv sync -p 3.10 --extra rl`.
 
-From PyPI: `pip install -U myosuite`. Sim assets (`myo-sim`, `furniture-sim`, …) are installed as packages — no git submodules.
+From PyPI: `pip install -U myosuite`. Musculoskeletal models come from the `myo-sim` package; the few MPL/YCB/furniture assets used are bundled — no git submodules.
 
 Verify (replace "onscreen" with "offscreen" when running on a remote, headless machine):
 
