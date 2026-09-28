@@ -32,8 +32,8 @@ Or with `uv <https://docs.astral.sh/uv/>`_::
 
    uv sync -p 3.10 --extra rl
 
-Sim assets ship as pip packages (``myo-sim``, ``furniture-sim``, ``mpl-sim``,
-``object-sim``, ``ycb-sim``). No git submodule checkout is required.
+Musculoskeletal models ship in the ``myo-sim`` pip package; the few MPL, YCB and
+furniture assets MyoSuite uses are bundled in the package. No git submodule checkout is required.
 A source install uses the ``myo-sim`` pin in ``pyproject.toml``.
 
 Verify

@@ -62,7 +62,7 @@ pip install -e ".[rl]"          # CPU training (Stable-Baselines3)
 
 Or: `uv sync -p 3.10 --extra rl`.
 
-From PyPI: `pip install -U myosuite`. Sim assets (`myo-sim`, `furniture-sim`, …) are installed as packages — no git submodules.
+From PyPI: `pip install -U myosuite`. Musculoskeletal models come from the `myo-sim` package; the few MPL/YCB/furniture assets used are bundled — no git submodules.
 
 Verify (replace "onscreen" with "offscreen" when running on a remote, headless machine):
 
