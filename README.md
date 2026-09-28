@@ -30,10 +30,10 @@ MyoSuite 3 brings the whole suite to fast, scalable training while keeping the s
 - **Much faster learning.** Train with thousands of environments in parallel on a single GPU, then replay the policy on the CPU.
 - **One task, several backends.** The same `env_id` runs on your **CPU** through the standard [Gymnasium](https://gymnasium.farama.org/) interface (to explore, debug and replay policies, or to train with libraries such as Stable-Baselines3), on **mjlab** for massively parallel GPU training, and on an **experimental MJX** (JAX) path.
 - **MuscleMimic support.** Run, evaluate and train full-body and bimanual **MuscleMimic** policies, with ready-to-use checkpoints and motion datasets.
+- **Updated musculoskeletal models.** `myo-sim` moved from a moving `dev` branch to a pinned PyPI release (0.2.3) with some model updates, including a torso/pelvis frame fix for the leg models ([myo_sim#132](https://github.com/MyoHub/myo_sim/pull/132)).
 - **The complete MyoChallenge suite** as Gymnasium environments: Baoding, Bimanual, Chase Tag, Die Reorient, OSL Run, Relocate, Soccer and Table Tennis.
 - **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared observation, reward and model-building blocks instead of writing an environment class.
 - **Ready to use.** Default trained policies with evaluation videos, plus updated tutorials from the first rollout to GPU training and MuscleMimic. See the [changelog](CHANGELOG.md) for everything that changed since v2.12.
-- **Updated musculoskeletal models.** `myo-sim` moved from a moving `dev` branch to a pinned PyPI release (0.2.3) with some model updates, including a torso/pelvis frame fix for the leg models ([myo_sim#132](https://github.com/MyoHub/myo_sim/pull/132)).
 
 ---
 
