@@ -97,6 +97,23 @@ _DEFAULT_R = MUSCLE_FATIGUE_PARAMS["Default"]["R"]
 _DEFAULT_r = MUSCLE_FATIGUE_PARAMS["Default"]["r"]
 
 
+def _muscle_group(name: str) -> str:
+    """Return the functional muscle group of actuator *name*, or ``"Default"``.
+
+    Scene models prefix actuator names (mjlab: ``robot/BIClong``) and some
+    models suffix the side (``ECRL_r``, ``BIClong_l``), while ``MUSCLE_FMG``
+    keys arm and hand muscles without it. Leg muscles are keyed with their
+    side, so the exact name is tried first.
+    """
+    from myosuite.core.muscle_groups import MUSCLE_FMG  # noqa: PLC0415
+
+    base = name.rsplit("/", 1)[-1]
+    for key in (base, base.removesuffix("_r"), base.removesuffix("_l")):
+        if key in MUSCLE_FMG:
+            return MUSCLE_FMG[key]
+    return "Default"
+
+
 def _per_muscle_params(
     mj_model: Any, sex: str | None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -106,8 +123,6 @@ def _per_muscle_params(
     actuators in *mj_model*.
     """
     import mujoco as _mujoco  # noqa: PLC0415
-
-    from myosuite.core.muscle_groups import MUSCLE_FMG  # noqa: PLC0415
 
     muscle_act_ind = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
     na = int(sum(muscle_act_ind))
@@ -120,7 +135,7 @@ def _per_muscle_params(
     r_arr = np.zeros(na)
 
     for idx, name in enumerate(actuator_names):
-        mfg = MUSCLE_FMG.get(name, "Default")
+        mfg = _muscle_group(name)
         if sex is not None:
             mfg_sex = f"{mfg}-{sex}"
             if mfg_sex not in MUSCLE_FATIGUE_PARAMS:

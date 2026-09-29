@@ -87,6 +87,9 @@ full commit list.
   orientation (`531dba0`); hand composition and reorient hand orientation (`53f17a9`, `3f4bf9d`).
 * CPU fatigue activation-rate term (`9e237e3`); fatigue and sarcopenia parity between CPU and mjlab
   (`b6d903e`, `99e8812`).
+* Per-muscle fatigue parameters are found for mjlab scene actuators (`robot/BIClong`) and
+  side-suffixed muscles (`ECRL_r`, `BIClong_l`); both fell back to `Default`, so the fatigue twins
+  and the CPU hand pose/reach envs used one F / R / r for every muscle.
 * mjlab command API compatibility and isolated per-task registration failures (`658cfdb`); RSI event
   handles `env_ids=None` (#407, `be917b9`).
 * Leg twins: a stale root velocity in shared rewards under mjlab, batch-safe heading terms

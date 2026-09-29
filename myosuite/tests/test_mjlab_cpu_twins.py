@@ -29,6 +29,7 @@ from mjlab.tasks.registry import list_tasks, load_env_cfg  # noqa: E402
 
 import myosuite  # noqa: E402, F401
 from myosuite.core.muscle_conditions import (  # noqa: E402
+    MUSCLE_FATIGUE_PARAMS,
     CumulativeFatigue,
     TorchFatigueState,
 )
@@ -240,6 +241,35 @@ def test_fatigue_torch_matches_numpy() -> None:
         gpu_ctrl = gpu.step(torch.as_tensor(excitation[None], dtype=torch.float32), dt)
         np.testing.assert_allclose(gpu_ctrl[0].numpy(), cpu_ctrl, atol=1e-5)
     assert int(sum(model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE)) == cpu.na
+
+
+@pytest.mark.parametrize(
+    "env_id",
+    [
+        "myoFatiElbowPose1D6MRandom-v0",
+        "myoFatiHandPoseRandom-v0",
+        "myoFatiArmReachRandom-v0",
+        "myoFatiLegWalk-v0",
+    ],
+)
+def test_twin_fatigue_parameters_match_cpu(env_id: str) -> None:
+    """The twin's fatigue model has the CPU env's per-muscle F / R / r.
+
+    Twin actuators carry the scene prefix (``robot/BIClong``) and the hand's
+    muscles a side suffix (``ECRL_r``); neither may make the lookup fall back
+    to ``Default``. The step-parity test re-syncs MA / MR / MF every step, so
+    it cannot see F / R / r.
+    """
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+
+    cpu = gym.make(env_id).unwrapped.muscle_fatigue
+    mj = ManagerBasedRlEnv(cfg=load_env_cfg(env_id), device="cpu")
+    twin = mj.action_manager.get_term("muscles")._fatigue
+    assert np.any(cpu.F != MUSCLE_FATIGUE_PARAMS["Default"]["F"])
+    for p in ("F", "R", "r"):
+        np.testing.assert_allclose(
+            getattr(twin, f"_{p}").numpy(), getattr(cpu, p), rtol=1e-6, err_msg=p
+        )
 
 
 def test_every_ported_cpu_env_has_mjlab_twin() -> None:
