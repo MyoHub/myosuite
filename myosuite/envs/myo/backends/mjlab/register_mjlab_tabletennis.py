@@ -634,6 +634,18 @@ class TableTennisMixedCtrlAction:
         self._half = 0.5 * (hi - lo)
         self._raw_actions = torch.zeros((self.num_envs, self._nu), device=self.device)
         self._processed = torch.zeros_like(self._raw_actions)
+        # The XmlActuatorCfg groups rewrite ctrl from the actuator targets before
+        # every physics step, so write targets: tendon effort for the muscles,
+        # joint position for the pelvis position actuators.
+        tendon_names, joint_names = _tt_actuator_xml_groups()
+        tendon_ids, _ = self._entity.find_tendons(tendon_names, preserve_order=True)
+        joint_ids, _ = self._entity.find_joints(joint_names, preserve_order=True)
+        self._muscle_cols = torch.nonzero(self._muscle_mask).squeeze(-1)
+        self._position_cols = torch.nonzero(~self._muscle_mask).squeeze(-1)
+        self._tendon_ids = torch.tensor(
+            tendon_ids, dtype=torch.long, device=self.device
+        )
+        self._joint_ids = torch.tensor(joint_ids, dtype=torch.long, device=self.device)
 
     @property
     def action_dim(self) -> int:
@@ -656,7 +668,12 @@ class TableTennisMixedCtrlAction:
         self._processed[:] = ctrl
 
     def apply_actions(self) -> None:
-        self._entity.write_ctrl_to_sim(self._processed)
+        self._entity.set_tendon_effort_target(
+            self._processed[:, self._muscle_cols], tendon_ids=self._tendon_ids
+        )
+        self._entity.set_joint_position_target(
+            self._processed[:, self._position_cols], joint_ids=self._joint_ids
+        )
 
     def reset(self, env_ids: Any | None = None) -> None:
         if env_ids is None:
