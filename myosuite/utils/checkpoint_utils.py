@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,10 @@ from typing import Any
 import numpy as np
 
 Policy = Callable[[np.ndarray], np.ndarray]
+
+# ``env_id: <id>`` line of a run's ``params/env.yaml`` (the task's ``CpuTaskSpec``). The
+# dump holds ``!!python/...`` tags, so it is matched as text rather than YAML-loaded.
+_ENV_ID_LINE = re.compile(r"^[ \t-]*env_id:[ \t]*['\"]?([^'\"\s]+)", re.MULTILINE)
 
 
 def mjlab_experiment(env_id: str) -> str | None:
@@ -35,6 +40,20 @@ def mjlab_experiment(env_id: str) -> str | None:
         return None
 
 
+def _run_is_for(run_dir: Path, env_id: str) -> bool:
+    """Whether a ``logs/rsl_rl/<experiment>/<run>`` directory was trained on *env_id*.
+
+    Several env ids share one ``experiment_name`` (e.g. all ``myo_elbow_pose`` envs,
+    whose Exo members have 7 actuators instead of 6). A run that records no env id in
+    its ``params/env.yaml`` (e.g. Table Tennis) is kept.
+    """
+    params = run_dir / "params" / "env.yaml"
+    if not params.is_file():
+        return True
+    recorded = set(_ENV_ID_LINE.findall(params.read_text(errors="replace")))
+    return not recorded or env_id in recorded
+
+
 def find_checkpoint(
     env_id: str,
     checkpoint: str | Path | None = None,
@@ -47,7 +66,8 @@ def find_checkpoint(
         env_id: Registered env id.
         checkpoint: Explicit checkpoint (returned as is when given).
         roots: Directories searched for ``logs/rsl_rl/<experiment>/<run>/model_*.pt``
-            (newest run and iteration wins), then for the repository's default policy
+            (newest run and iteration wins; runs whose ``params/env.yaml`` records
+            another env id are skipped), then for the repository's default policy
             ``baselines/checkpoints/<env_id>/model_*.pt``, then for *sb3_zip*.
         sb3_zip: Optional file name of a Stable-Baselines3 checkpoint to fall back to.
 
@@ -61,7 +81,11 @@ def find_checkpoint(
     experiment = mjlab_experiment(env_id)
     for root in roots:
         runs = sorted(
-            (root / "logs" / "rsl_rl" / experiment).glob("*/model_*.pt")
+            (
+                c
+                for c in (root / "logs" / "rsl_rl" / experiment).glob("*/model_*.pt")
+                if _run_is_for(c.parent, env_id)
+            )
             if experiment
             else [],
             key=lambda c: (c.parent.name, int(c.stem.split("_")[-1])),
