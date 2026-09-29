@@ -45,7 +45,9 @@ ONNX model interface
   Input:  ``obs``    float32  (1, obs_dim)   — normalised observation vector
   Output: ``action`` float32  (1, act_dim)   — deterministic action
 
-SB3 exports clip the action to [0, 1] inside the export wrapper. RSL-RL (mjlab)
+SB3 exports apply the post-processing of ``model.predict(deterministic=True)``:
+the action is clipped to the model's action space (``[-1, 1]`` for MyoSuite
+muscle envs), or rescaled to it for tanh-squashed SAC/TD3 actors. RSL-RL (mjlab)
 exports return the raw policy action that the CPU env's ``step()`` expects
 (``[-1, 1]``, mapped to muscle excitation by the env), with any observation
 normalizer of the checkpoint baked in.
@@ -108,12 +110,15 @@ def export_sb3_to_onnx(
         raise ValueError(f"Could not load {checkpoint} as SAC, TD3, or PPO")
 
     class _DeterministicWrapper(torch.nn.Module):
-        """Wrap SB3 actor to return a clipped action tensor."""
+        """Wrap SB3 actor to return the action ``model.predict`` returns."""
 
         def __init__(self, policy: Any, algorithm_name: str) -> None:
             super().__init__()
             self.policy = policy
             self.algorithm_name = algorithm_name
+            low, high = policy.action_space.low, policy.action_space.high
+            self.register_buffer("low", torch.as_tensor(low, dtype=torch.float32))
+            self.register_buffer("high", torch.as_tensor(high, dtype=torch.float32))
 
         def forward(self, obs: torch.Tensor) -> torch.Tensor:
             with torch.no_grad():
@@ -126,8 +131,11 @@ def export_sb3_to_onnx(
                     except TypeError:
                         actor_out = actor(obs)
                     action = actor_out[0] if isinstance(actor_out, tuple) else actor_out
-            # Clip to [0, 1] — myoSuite action space
-            return torch.clamp(action, 0.0, 1.0)
+            # As in SB3 predict(): rescale a squashed action from [-1, 1] to the
+            # action space, otherwise clip to it.
+            if self.policy.squash_output:
+                return self.low + 0.5 * (action + 1.0) * (self.high - self.low)
+            return torch.clamp(action, self.low, self.high)
 
     assert algo_name is not None
     wrapper = _DeterministicWrapper(model.policy, algo_name)
