@@ -236,7 +236,39 @@ class TestCumulativeFatigue:
             np.testing.assert_array_equal(getattr(got, p), getattr(want, p), p)
 
 
+def _active_muscle_force(model: Any) -> np.ndarray:
+    """Active muscle force at qpos0: actuator force at act=1 minus act=0."""
+    import mujoco
+
+    data = mujoco.MjData(model)
+    forces = []
+    for act in (1.0, 0.0):
+        data.act[:] = act
+        mujoco.mj_forward(model, data)
+        forces.append(data.actuator_force.copy())
+    return forces[0] - forces[1]
+
+
 class TestApplySarcopenia:
+    # One muscle with automatic peak force (force="-1", the default) and one explicit.
+    _XML = """
+        <mujoco>
+          <worldbody>
+            <site name="s0" pos="0 0 0"/>
+            <body pos="0.05 0 -0.3">
+              <joint name="j" type="hinge" axis="0 1 0" limited="true" range="-1 1"/>
+              <geom type="capsule" size="0.02" fromto="0 0 0 0 0 -0.2"/>
+              <site name="s1" pos="0.05 0 -0.1"/>
+            </body>
+          </worldbody>
+          <tendon><spatial name="t"><site site="s0"/><site site="s1"/></spatial></tendon>
+          <actuator>
+            <muscle name="auto" tendon="t"/>
+            <muscle name="explicit" tendon="t" force="80"/>
+          </actuator>
+        </mujoco>
+        """
+
     def test_apply_sarcopenia_to_model_scales_gainprm(self) -> None:
         from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 
@@ -262,33 +294,36 @@ class TestApplySarcopenia:
             apply_sarcopenia_to_spec,
         )
 
-        xml = """
-        <mujoco>
-          <worldbody>
-            <site name="s0" pos="0 0 0"/>
-            <body pos="0.05 0 -0.3">
-              <joint name="j" type="hinge" axis="0 1 0" limited="true" range="-1 1"/>
-              <geom type="capsule" size="0.02" fromto="0 0 0 0 0 -0.2"/>
-              <site name="s1" pos="0.05 0 -0.1"/>
-            </body>
-          </worldbody>
-          <tendon><spatial name="t"><site site="s0"/><site site="s1"/></spatial></tendon>
-          <actuator>
-            <muscle name="auto" tendon="t"/>
-            <muscle name="explicit" tendon="t" force="80"/>
-          </actuator>
-        </mujoco>
-        """
-        cpu_model = mujoco.MjSpec.from_string(xml).compile()
+        cpu_model = mujoco.MjSpec.from_string(self._XML).compile()
         apply_sarcopenia_to_model(cpu_model, force_scale=0.5)
 
-        spec = mujoco.MjSpec.from_string(xml)
+        spec = mujoco.MjSpec.from_string(self._XML)
         returned = apply_sarcopenia_to_spec(spec, force_scale=0.5)
         assert returned is spec
         np.testing.assert_allclose(
             spec.compile().actuator_gainprm[:, 2], cpu_model.actuator_gainprm[:, 2]
         )
         assert cpu_model.actuator_gainprm[1, 2] == pytest.approx(40.0)
+
+    def test_apply_sarcopenia_scales_auto_peak_force(self) -> None:
+        """Both paths halve the active force, including force="-1" muscles."""
+        import mujoco
+
+        from myosuite.core.muscle_conditions import (
+            apply_sarcopenia_to_model,
+            apply_sarcopenia_to_spec,
+        )
+
+        healthy = _active_muscle_force(mujoco.MjSpec.from_string(self._XML).compile())
+        assert np.all(np.abs(healthy) > 1.0)
+
+        cpu_model = mujoco.MjSpec.from_string(self._XML).compile()
+        apply_sarcopenia_to_model(cpu_model, force_scale=0.5)
+        spec = mujoco.MjSpec.from_string(self._XML)
+        apply_sarcopenia_to_spec(spec, force_scale=0.5)
+
+        for model in (cpu_model, spec.compile()):
+            np.testing.assert_allclose(_active_muscle_force(model), 0.5 * healthy)
 
 
 # ---------------------------------------------------------------------------

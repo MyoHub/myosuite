@@ -159,6 +159,24 @@ def _per_muscle_params(
 # ---------------------------------------------------------------------------
 
 
+def _peak_force(model: mujoco.MjModel) -> np.ndarray:
+    """Per-actuator peak force ``gainprm[:, 2]`` as MuJoCo applies it.
+
+    A negative muscle peak force (``force="-1"``) means automatic: MuJoCo
+    uses ``gainprm[3] / acc0`` at runtime, so scaling the stored value would
+    leave the force unchanged.
+    """
+    import mujoco as _mujoco  # noqa: PLC0415
+
+    force = np.array(model.actuator_gainprm[:, 2], dtype=np.float64)
+    auto = (force < 0) & (model.actuator_gaintype == _mujoco.mjtGain.mjGAIN_MUSCLE)
+    if np.any(auto):
+        force[auto] = model.actuator_gainprm[auto, 3] / np.maximum(
+            model.actuator_acc0[auto], _mujoco.mjMINVAL
+        )
+    return force
+
+
 def apply_sarcopenia_to_spec(
     spec: mujoco.MjSpec, force_scale: float = 0.5
 ) -> mujoco.MjSpec:
@@ -166,8 +184,9 @@ def apply_sarcopenia_to_spec(
 
     Spec-level equivalent of :func:`apply_sarcopenia_to_model`: scales the
     *compiled* peak force ``gainprm[2]`` of every actuator. Muscles declared
-    with ``force="-1"`` only get their peak force at compile time, so the spec
-    is compiled once to read the resolved values, which are then written back
+    with ``force="-1"`` keep ``gainprm[2] = -1`` after compilation and get
+    their peak force ``scale / acc0`` from the compiled model, so the spec is
+    compiled once to resolve the peak forces, which are then written back
     explicitly (scaled).
 
     Args:
@@ -182,7 +201,7 @@ def apply_sarcopenia_to_spec(
         >>> spec = mujoco.MjSpec.from_file("elbow.xml")
         >>> apply_sarcopenia_to_spec(spec, force_scale=0.5)
     """
-    peak_force = spec.compile().actuator_gainprm[:, 2]
+    peak_force = _peak_force(spec.compile())
     for actuator, force in zip(spec.actuators, peak_force, strict=True):
         actuator.gainprm[2] = float(force) * force_scale
     return spec
@@ -192,14 +211,15 @@ def apply_sarcopenia_to_model(model: mujoco.MjModel, force_scale: float = 0.5) -
     """Scale muscle peak forces on a compiled MjModel in-place.
 
     Multiplies ``actuator_gainprm[:, 2]`` (the maximum isometric force Fmax)
-    by *force_scale* for every actuator.  This matches the original
-    ``BaseV0.initializeConditions`` implementation.
+    by *force_scale* for every actuator, as the original
+    ``BaseV0.initializeConditions`` does. Muscles declared with
+    ``force="-1"`` are first resolved to their peak force ``scale / acc0``.
 
     Args:
         model: Compiled MuJoCo model to modify.
         force_scale: Fraction of original peak force to retain (0–1).
     """
-    model.actuator_gainprm[:, 2] *= force_scale
+    model.actuator_gainprm[:, 2] = _peak_force(model) * force_scale
 
 
 # ---------------------------------------------------------------------------
