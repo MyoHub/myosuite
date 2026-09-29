@@ -78,6 +78,37 @@ def test_env_resets_and_steps(env_id: str) -> None:
         env.close()
 
 
+@pytest.mark.parametrize(
+    "env_id",
+    [
+        "myoElbowPose1D6MRandom-v0",  # MyoGymnasiumEnv subclass (PoseEnvV0)
+        "myoElbowPoseTaskFixed-v0",  # ModularTaskEnv
+    ],
+)
+def test_default_wrapper_terminates_on_mujoco_instability(env_id: str) -> None:
+    """A diverged state must end the episode instead of being silently reset.
+
+    ``mj_step`` flags the bad state (``mjWARN_BADQVEL``) and auto-resets the
+    data to ``qpos0``, so the state it leaves behind is finite.
+    """
+    import gymnasium as gym
+
+    env = gym.make(env_id)
+    action = np.zeros(env.action_space.shape, dtype=env.action_space.dtype)
+    try:
+        env.reset(seed=0)
+        assert env.step(action)[2] is False
+
+        env.unwrapped.data.qvel[:] = np.nan
+        assert env.step(action)[2] is True
+
+        # reset() clears the instability.
+        env.reset(seed=0)
+        assert env.step(action)[2] is False
+    finally:
+        env.close()
+
+
 def test_registry_is_non_empty() -> None:
     """Guard against register_all_envs() silently registering nothing."""
     assert len(_ALL_ENV_IDS) > 50
