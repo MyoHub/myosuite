@@ -1776,8 +1776,9 @@ class SARMuscleActivationActionCfg:
     The policy outputs ``n_synergies`` values in ``[-1, 1]``.  These are
     passed through a :class:`~myosuite.integrations.musclemimic.sar_torch_transform.SARTorchTransform`
     (MinMaxScaler⁻¹ → FastICA⁻¹ → PCA⁻¹ → clamp) to produce ``n_muscles``
-    activations in ``[0, 1]``, which are then written to MuJoCo's ``ctrl``
-    array.
+    activations in ``[0, 1]``, which are then written as the effort targets
+    of the muscle tendons (the ``XmlActuatorCfg`` wrapping the muscles copies
+    them into MuJoCo's ``ctrl`` before every physics step).
 
     Args:
         entity_name: mjlab scene entity name.
@@ -1812,6 +1813,7 @@ class SARMuscleActivationAction:
     """
 
     def __init__(self, cfg: SARMuscleActivationActionCfg, env: Any) -> None:
+        import mujoco
         import torch
 
         self.cfg = cfg
@@ -1833,8 +1835,23 @@ class SARMuscleActivationAction:
                 f"SARMuscleActivationAction expected {len(cfg.actuator_names)} "
                 f"actuators, resolved {len(target_ids)}"
             )
-        self._target_ids = torch.tensor(
-            target_ids, device=self.device, dtype=torch.long
+        # mjlab rewrites the ctrl of XmlActuatorCfg-wrapped actuators from their
+        # targets before every physics step, so a direct ctrl write is lost:
+        # write each muscle's activation to the tendon it pulls instead.
+        model = env.sim.mj_model
+        entity_tendons = entity.indexing.tendon_ids.tolist()
+        tendon_ids = []
+        for act_id in entity.indexing.ctrl_ids[target_ids].tolist():
+            if int(model.actuator_trntype[act_id]) != mujoco.mjtTrn.mjTRN_TENDON:
+                raise ValueError(
+                    f"SARMuscleActivationAction: actuator "
+                    f"{model.actuator(act_id).name!r} has no tendon transmission"
+                )
+            tendon = int(model.actuator_trnid[act_id, 0])
+            tendon_ids.append(entity_tendons.index(tendon))
+        self._entity = entity
+        self._tendon_ids = torch.tensor(
+            tendon_ids, device=self.device, dtype=torch.long
         )
 
         self._raw_actions = torch.zeros(
@@ -1865,11 +1882,17 @@ class SARMuscleActivationAction:
             self._processed_actions[:] = self._sar(self._raw_actions)
 
     def apply_actions(self) -> None:
-        """Write muscle activations into MuJoCo ctrl slots."""
-        entity = self._env.scene[self.cfg.entity_name]
-        indexing = entity.data.indexing
-        global_ctrl_ids = indexing.ctrl_ids[self._target_ids]
-        entity.write_ctrl_to_sim(self._processed_actions, ctrl_ids=global_ctrl_ids)
+        """Write muscle activations as the effort targets of the muscle tendons."""
+        self._entity.set_tendon_effort_target(
+            self._processed_actions, tendon_ids=self._tendon_ids
+        )
+
+    def reset(self, env_ids: Any = None) -> None:
+        """Zero the stored actions of the reset environments (all if ``None``)."""
+        if env_ids is None:
+            env_ids = slice(None)
+        self._raw_actions[env_ids] = 0.0
+        self._processed_actions[env_ids] = 0.0
 
 
 # ---------------------------------------------------------------------------

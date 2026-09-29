@@ -7,7 +7,8 @@
 and register_mimic_mjlab_tasks_with_sar.
 
 No mjlab or musclemimic_models installation required — SAR transform
-mechanics are tested directly via the SARTorchTransform unit.
+mechanics are tested directly via the SARTorchTransform unit. The one
+real-mjlab test is skipped when mjlab is not installed.
 """
 
 from __future__ import annotations
@@ -32,6 +33,15 @@ def _sklearn_available() -> bool:
     try:
         import sklearn  # noqa: F401
         import joblib  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def _mjlab_available() -> bool:
+    try:
+        import mjlab  # noqa: F401
 
         return True
     except ImportError:
@@ -75,38 +85,71 @@ def _make_sar_transform(n_syn: int = N_SYN, n_muscles: int = N_MUSCLES) -> objec
     return SARTorchTransform(ica, pca, normalizer, device="cpu")
 
 
+def _muscle_tendon(i: int, n_muscles: int = N_MUSCLES) -> int:
+    """Tendon pulled by muscle ``i`` in :func:`_make_fake_env`.
+
+    Tendon 0 is passive and the muscles pull the others in reverse order, so
+    actuator and tendon indices differ.
+    """
+    return n_muscles - i
+
+
 def _make_fake_env(
     n_envs: int = 4, n_muscles: int = N_MUSCLES
 ) -> types.SimpleNamespace:
-    """Minimal mock of a mjlab ManagerBasedRlEnv."""
+    """Minimal mock of a mjlab env whose muscles are XmlActuatorCfg-wrapped."""
+    import mujoco
     import torch
 
-    ctrl = torch.zeros(n_envs, n_muscles)
-    ctrl_ids = torch.arange(n_muscles, dtype=torch.long)
-
-    indexing = types.SimpleNamespace(ctrl_ids=ctrl_ids)
-    entity_data_inner = types.SimpleNamespace(ctrl=ctrl)
-    entity_data = types.SimpleNamespace(data=entity_data_inner, indexing=indexing)
+    n_tendons = n_muscles + 1
+    muscle_tendons = [_muscle_tendon(i, n_muscles) for i in range(n_muscles)]
+    trnid = np.full((n_muscles, 2), -1)
+    trnid[:, 0] = muscle_tendons
+    mj_model = types.SimpleNamespace(
+        actuator_trntype=np.full(n_muscles, mujoco.mjtTrn.mjTRN_TENDON),
+        actuator_trnid=trnid,
+    )
+    indexing = types.SimpleNamespace(
+        ctrl_ids=torch.arange(n_muscles, dtype=torch.long),
+        tendon_ids=torch.arange(n_tendons, dtype=torch.long),
+    )
+    entity_data = types.SimpleNamespace(
+        indexing=indexing,
+        ctrl=torch.zeros(n_envs, n_muscles),
+        tendon_effort_target=torch.zeros(n_envs, n_tendons),
+    )
 
     def _find_actuators(names: tuple[str, ...]):
         ids = list(range(len(names)))
         return ids, list(names)
 
     def _write_ctrl_to_sim(ctrl_values, ctrl_ids=None, env_ids=None):
-        """Mock of the mjlab Entity write API used by apply_actions()."""
         row_idx = slice(None) if env_ids is None else env_ids
         col_idx = slice(None) if ctrl_ids is None else ctrl_ids
-        entity_data_inner.ctrl[row_idx, col_idx] = ctrl_values
+        entity_data.ctrl[row_idx, col_idx] = ctrl_values
+
+    def _set_tendon_effort_target(effort, tendon_ids=None, env_ids=None):
+        row_idx = slice(None) if env_ids is None else env_ids
+        col_idx = slice(None) if tendon_ids is None else tendon_ids
+        entity_data.tendon_effort_target[row_idx, col_idx] = effort
+
+    def _write_data_to_sim():
+        """What XmlActuatorCfg does before every physics step."""
+        entity_data.ctrl[:] = entity_data.tendon_effort_target[:, muscle_tendons]
 
     entity = types.SimpleNamespace(
         data=entity_data,
+        indexing=indexing,
         find_actuators=_find_actuators,
         write_ctrl_to_sim=_write_ctrl_to_sim,
+        set_tendon_effort_target=_set_tendon_effort_target,
+        write_data_to_sim=_write_data_to_sim,
     )
     env = types.SimpleNamespace(
         num_envs=n_envs,
         device="cpu",
         scene={"test_entity": entity},
+        sim=types.SimpleNamespace(mj_model=mj_model),
     )
     return env
 
@@ -152,15 +195,25 @@ class TestSARMuscleActivationAction(unittest.TestCase):
         self.assertTrue((acts >= 0.0).all(), "activations below 0")
         self.assertTrue((acts <= 1.0).all(), "activations above 1")
 
-    def test_apply_actions_writes_to_ctrl(self) -> None:
+    def test_apply_actions_survives_the_actuator_write(self) -> None:
         import torch
 
-        actions = torch.randn(4, N_SYN)
-        self.action.process_actions(actions)
+        entity = self.env.scene["test_entity"]
+        self.action.process_actions(torch.randn(4, N_SYN))
         self.action.apply_actions()
-        ctrl = self.env.scene["test_entity"].data.data.ctrl
-        # ctrl must have been updated (not all zeros)
-        self.assertFalse((ctrl == 0).all().item())
+        entity.write_data_to_sim()
+        torch.testing.assert_close(entity.data.ctrl, self.action._processed_actions)
+
+    def test_reset_zeroes_only_the_reset_envs(self) -> None:
+        import torch
+
+        self.action.process_actions(torch.randn(4, N_SYN))
+        self.action.reset(env_ids=torch.tensor([1, 3]))
+        for buf in (self.action.raw_action, self.action._processed_actions):
+            self.assertTrue((buf[[1, 3]] == 0).all().item())
+            self.assertFalse((buf[[0, 2]] == 0).all().item())
+        self.action.reset()
+        self.assertTrue((self.action.raw_action == 0).all().item())
 
     def test_raw_action_shape(self) -> None:
         self.assertEqual(self.action.raw_action.shape, (4, N_SYN))
@@ -184,6 +237,51 @@ class TestSARMuscleActivationAction(unittest.TestCase):
         )
 
         self.assertIsInstance(self.action, SARMuscleActivationAction)
+
+
+@unittest.skipUnless(
+    _torch_available() and _mjlab_available(), "torch/mjlab not available"
+)
+class TestSARMuscleActivationActionMjlab(unittest.TestCase):
+    def test_activations_reach_sim_ctrl(self) -> None:
+        """Reset and step a real mjlab env whose muscles are XmlActuatorCfg-wrapped.
+
+        Same composition as ``_make_mimic_sar_env_cfg`` (which needs
+        musclemimic_models), rebuilt on the packaged elbow model.
+        """
+        import torch
+        from mjlab.envs import ManagerBasedRlEnv
+
+        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+            SARMuscleActivationActionCfg,
+        )
+        from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
+            _ELBOW_ENTITY_NAME,
+            _elbow_tendon_names,
+            _make_elbow_env_cfg,
+        )
+
+        muscles = tuple(n.replace("_tendon", "") for n in _elbow_tendon_names())
+        cfg = _make_elbow_env_cfg()
+        cfg.actions = {
+            "muscles": SARMuscleActivationActionCfg(
+                entity_name=_ELBOW_ENTITY_NAME,
+                actuator_names=muscles,
+                sar_transform=_make_sar_transform(3, len(muscles)),
+            )
+        }
+        env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+        try:
+            env.reset()
+            term = env.action_manager.get_term("muscles")
+            for _ in range(3):
+                env.step(torch.full((env.num_envs, term.action_dim), 0.5))
+            activations = term._processed_actions
+            self.assertGreater(float(activations.max()), 0.1)
+            ctrl_ids = env.scene[_ELBOW_ENTITY_NAME].indexing.ctrl_ids
+            torch.testing.assert_close(env.sim.data.ctrl[:, ctrl_ids], activations)
+        finally:
+            env.close()
 
 
 # ---------------------------------------------------------------------------
