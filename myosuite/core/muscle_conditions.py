@@ -305,6 +305,11 @@ class CumulativeFatigue:
         # Activation/deactivation rates (MuJoCo Hill-type dynamics)
         LD = 1.0 / (self._tauact * (0.5 + 1.5 * self._MA))
         LR = (0.5 + 1.5 * self._MA) / self._taudeact
+        # Integrate the first-order approach to TL exactly over _dt: an
+        # explicit Euler step overshoots TL once L * _dt > 1 (LD = 200 /s at
+        # MA = 0 vs 10-25 ms control steps), driving MA above the command.
+        LD = -np.expm1(-LD * _dt) / _dt
+        LR = -np.expm1(-LR * _dt) / _dt
 
         # Transfer rate C between MR and MA
         C = np.zeros_like(self._MA)
@@ -590,6 +595,9 @@ class TorchFatigueState:
         # Activation/deactivation rates (MuJoCo Hill-type dynamics)
         LD = 1.0 / (self._tauact * (0.5 + 1.5 * self.MA))
         LR = (0.5 + 1.5 * self.MA) / self._taudeact
+        # Exact per-step rates, as in CumulativeFatigue.compute_act.
+        LD = -torch.expm1(-LD * dt) / dt
+        LR = -torch.expm1(-LR * dt) / dt
 
         # Recovery rate: boosted during rest (MA >= TL)
         rR = torch.where(self.MA >= excitation, self._r * self._R, self._R)
