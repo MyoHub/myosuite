@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 
 import gymnasium as gym
+import mujoco
 import numpy as np
 import pytest
 
@@ -35,6 +36,7 @@ from myosuite.core.muscle_conditions import (  # noqa: E402
 )
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
 from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0  # noqa: E402
+from myosuite.envs.myo.tasks.basic.arm.reach import ReachEnvV0  # noqa: E402
 from myosuite.envs.modular_env import ModularTaskEnv  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0  # noqa: E402
@@ -106,6 +108,13 @@ _HFIELD_OBS_ATOL, _HFIELD_REW_ATOL = 0.3, 0.1
 # Directional legs start from a falling pose with joint velocities of 5-10 rad/s; float32
 # Warp vs float64 MuJoCo differs by up to 0.2 rad/s (rewards agree to 1e-4).
 _DIRECTIONAL_OBS_ATOL = 0.5
+
+
+# Random actions keep most hand, arm and reach states far from their target (the
+# myoArmReachRandom tip stays ~35 success radii away), so test_one_step_parity never
+# sees the solved flag or the bonus switch on for them. test_success_parity_near_target
+# puts the target this many success thresholds away: solved (+2 bonus), +1, none.
+_NEAR_TARGET_MULTIPLES = (0.5, 1.25, 2.2)
 
 
 def _tolerances(env_id: str) -> tuple[float, float]:
@@ -224,6 +233,70 @@ def test_one_step_parity(env_id: str) -> None:
         np.testing.assert_allclose(float(mj_rew[0]), cpu_rew, atol=rew_atol)
         values = dict(mj.metrics_manager.get_active_iterable_terms(0))
         assert bool(values["success"][0]) == bool(cpu_info["solved"])
+
+
+def _move_target_near(
+    cpu: gym.Env, multiple: float, rng: np.random.Generator
+) -> np.ndarray:
+    """Move the CPU target ``multiple`` success thresholds from the current state.
+
+    Returns:
+        The new target in the layout of the twin's ``pose``/``reach`` command.
+    """
+    if isinstance(cpu, ReachEnvV0):
+        tip = np.concatenate([cpu.data.site_xpos[s] for s in cpu.tip_sids])
+        thd = 0.0125 * len(cpu.tip_sids)  # "near" of multi_site_reach_reward
+        direction = rng.normal(size=tip.shape)
+        target = tip + multiple * thd * direction / np.linalg.norm(direction)
+        for i, sid in enumerate(cpu.target_sids):
+            body = cpu.model.site_bodyid[sid]
+            cpu.model.site_pos[sid] = cpu.data.xmat[body].reshape(3, 3).T @ (
+                target[3 * i : 3 * i + 3] - cpu.data.xpos[body]
+            )
+        mujoco.mj_kinematics(cpu.model, cpu.data)
+        return target
+    n = len(cpu.target_jnt_value)
+    direction = rng.normal(size=n)
+    target = cpu.data.qpos[:n] + multiple * cpu.pose_thd * direction / np.linalg.norm(
+        direction
+    )
+    cpu.target_jnt_value = target.copy()
+    if isinstance(cpu, PoseEnvV0):  # scores its reset-time copy of the target
+        cpu._task_state["target_angles"] = target.copy()
+    return target
+
+
+@pytest.mark.parametrize("env_id", [e for e in PARITY_IDS if "Leg" not in e])
+def test_success_parity_near_target(env_id: str) -> None:
+    """Solved flag and bonus agree when the step ends near the target.
+
+    As :func:`test_one_step_parity`, but after the CPU step the target is moved
+    ``_NEAR_TARGET_MULTIPLES`` success thresholds from the reached pose or tip, the
+    CPU reward is recomputed and the twin steps against the same target.
+    """
+    cpu, mj = _make_pair(env_id)
+    _, rew_atol = _tolerances(env_id)
+    command = "reach" if isinstance(cpu, ReachEnvV0) else "pose"
+    rng = np.random.default_rng(0)
+    solved_steps = 0
+    for multiple in _NEAR_TARGET_MULTIPLES * 3:
+        _sync(cpu, mj)
+        action = rng.uniform(-1.2, 1.2, cpu.action_space.shape).astype(np.float32)
+        cpu.step(action)
+        target = _move_target_near(cpu, multiple, rng)
+        cpu_rwd = cpu.get_reward_dict(cpu.get_obs_dict(cpu._accessor))
+        mj.command_manager.get_term(command)._target[:] = torch.as_tensor(
+            target[None], dtype=torch.float32
+        )
+        _, mj_rew, mj_term, _, _ = mj.step(torch.as_tensor(action[None]))
+        assert bool(mj_term[0]) == bool(cpu_rwd["done"])
+        if cpu_rwd["done"]:
+            continue
+        np.testing.assert_allclose(float(mj_rew[0]), cpu_rwd["dense"], atol=rew_atol)
+        values = dict(mj.metrics_manager.get_active_iterable_terms(0))
+        assert bool(values["success"][0]) == bool(cpu_rwd["solved"])
+        solved_steps += bool(cpu_rwd["solved"])
+    assert solved_steps > 0, "the solved flag was never exercised"
 
 
 def test_fatigue_torch_matches_numpy() -> None:

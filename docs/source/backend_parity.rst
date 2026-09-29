@@ -20,7 +20,10 @@ What is verified per family (``myosuite/tests/test_mjlab_cpu_twins.py``):
 
 * **Pose, reach, ``myoLegStandRandom``, ``myoLegWalk`` (+ Sarc/Fati), ``myoLegDirectional*``
   and the terrain walks**: 25-step parity of observation, reward, termination and solved
-  flag against the CPU env (the CPU state is written into both at every step). Tolerances
+  flag against the CPU env (the CPU state is written into both at every step). Random
+  actions rarely reach a pose or reach target, so for those the solved flag and bonus are
+  also checked with the target moved near the reached state
+  (``test_success_parity_near_target``). Tolerances
   are looser where contacts dominate: foot-contact events (walking), joint velocities of
   5-10 rad/s in the first steps (directional) and height-field terrain, where MuJoCo Warp
   creates at most one capsule-hfield contact (see the constants in
