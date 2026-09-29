@@ -344,8 +344,10 @@ def make_athletic_env(
     if backend == "mjlab":
         from mjlab.envs.manager_based_rl_env import ManagerBasedRlEnv
 
+        device = overrides.pop("device", "cpu")
+        # device is an env ctor arg, not a cfg field (make_sprint_env_cfg rejects it).
         cfg = mjlab_env_cfg_from_bundle(bundle, num_envs=num_envs, **overrides)
-        return ManagerBasedRlEnv(cfg=cfg, device=overrides.get("device", "cpu"))
+        return ManagerBasedRlEnv(cfg=cfg, device=device)
     if backend == "cpu":
         from myosuite.core.registry import make_env
 
