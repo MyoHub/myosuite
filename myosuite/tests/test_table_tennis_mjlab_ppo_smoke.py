@@ -115,6 +115,46 @@ def test_mjlab_table_tennis_task_registered() -> None:
 
 
 @pytest.mark.skipif(_MJLAB_SKIP, reason=_MJLAB_SKIP_REASON)
+def test_mjlab_table_tennis_action_reaches_ctrl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ctrl MuJoCo integrates at every physics step is the processed action.
+
+    The entity wraps its actuators with ``XmlActuatorCfg``, which rewrites ctrl
+    from the actuator targets before each ``sim.step()``.
+    """
+    import myosuite
+
+    myosuite.register_all_envs()
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401
+
+    from mjlab.envs import ManagerBasedRlEnv
+    from mjlab.tasks.registry import load_env_cfg
+
+    cfg = load_env_cfg("myoChallengeTableTennisP0-v0")
+    cfg.scene.num_envs = 2
+    env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    env.reset()
+    term = env.action_manager.get_term("ctrl")
+    ctrl_ids = env.scene["table_tennis_robot"].indexing.ctrl_ids
+    seen: list[torch.Tensor] = []
+    sim_step = env.sim.step
+
+    def _step(*args, **kwargs):
+        seen.append(env.sim.data.ctrl[:, ctrl_ids].clone())
+        return sim_step(*args, **kwargs)
+
+    monkeypatch.setattr(env.sim, "step", _step)
+    gen = torch.Generator().manual_seed(0)
+    for _ in range(2):
+        seen.clear()
+        env.step(torch.rand(2, term.action_dim, generator=gen) * 2 - 1)
+        assert len(seen) == cfg.decimation
+        for ctrl in seen:
+            torch.testing.assert_close(ctrl, term._processed)
+
+
+@pytest.mark.skipif(_MJLAB_SKIP, reason=_MJLAB_SKIP_REASON)
 def test_mjlab_table_tennis_ppo_short_learn() -> None:
     """A few PPO iterations on ``myoChallengeTableTennisP0-v0`` must complete."""
     repo = Path(__file__).resolve().parents[2]
