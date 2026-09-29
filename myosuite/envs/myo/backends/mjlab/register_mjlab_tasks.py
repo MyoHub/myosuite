@@ -844,23 +844,6 @@ def _chasetag_ppo_runner_cfg(
     )
 
 
-<<<<<<< HEAD
-=======
-# Directional variants: (env_id, heading_dir, target_speed) — mirror the CPU
-# LegDirectional{Forward,Backward}Task specs.
-_DIRECTIONAL_VARIANTS = (
-    ("myoLegDirectionalForward-v0", (0.0, 1.0), 1.2, "myo_leg_directional_fwd", False),
-    (
-        "myoLegDirectionalBackward-v0",
-        (0.0, -1.0),
-        1.0,
-        "myo_leg_directional_bwd",
-        False,
-    ),
-    ("myoLegDirectionalRandom-v0", (0.0, 1.0), 1.2, "myo_leg_directional_rand", True),
-)
-
-
 def _sprint_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     """PPO runner config for myoSprint-v0 (Phase 8 spike: mjlab's native rsl-rl path, per the myo_bolt_vv
     porting plan -- a starting point, not yet tuned)."""
@@ -900,7 +883,6 @@ def _sprint_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     )
 
 
->>>>>>> c708a04 (Register myoSprint-v0: Bolt's sprinter model on mjlab, driven by myo_sim.warp (Phases 2-4, 7))
 def register_mjlab_tasks() -> None:
     """Register MyoSuite env ids with mjlab.tasks.registry. Idempotent."""
 
