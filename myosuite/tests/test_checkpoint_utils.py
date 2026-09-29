@@ -42,6 +42,76 @@ def test_find_checkpoint_prefers_a_local_logs_run(
     assert found == run / "model_200.pt"
 
 
+def test_find_checkpoint_skips_runs_of_another_env_in_the_same_experiment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Env ids share an experiment name (the Exo twins have 7 actuators, not 6): only
+    runs whose ``params/env.yaml`` records *env_id* are used."""
+    monkeypatch.setattr(
+        "myosuite.utils.checkpoint_utils.mjlab_experiment",
+        lambda _env_id: "myo_elbow_pose",
+    )
+    experiment = tmp_path / "logs" / "rsl_rl" / "myo_elbow_pose"
+    runs = {}
+    for name, env_id in (
+        ("2026-01-01_00-00-00", "myoElbowPose1D6MExoRandom-v0"),
+        ("2026-02-01_00-00-00", "myoElbowPose1D6MRandom-v0"),  # newer, other env
+    ):
+        runs[env_id] = experiment / name
+        (runs[env_id] / "params").mkdir(parents=True)
+        # Shape of the dump: the env id sits in the robot entity's CpuTaskSpec.
+        (runs[env_id] / "params" / "env.yaml").write_text(
+            "scene:\n  entities:\n    robot:\n"
+            "      spec_fn: !!python/object/apply:functools.partial\n"
+            "        state: !!python/tuple\n        - !!python/tuple\n"
+            "          - !!python/object:cpu_reference.CpuTaskSpec\n"
+            f"            env_id: {env_id}\n"
+            "viewer:\n  env_idx: 0\n"
+        )
+        (runs[env_id] / "model_100.pt").write_bytes(b"")
+    baseline = tmp_path / "baselines" / "checkpoints" / "myoElbowPose1D6MFixed-v0"
+    baseline.mkdir(parents=True)
+    (baseline / "model_9.pt").write_bytes(b"")
+
+    for env_id, run in runs.items():
+        assert find_checkpoint(env_id, roots=(tmp_path,)) == run / "model_100.pt"
+    # No run of its own: the env's baseline, not a sibling's run.
+    assert (
+        find_checkpoint("myoElbowPose1D6MFixed-v0", roots=(tmp_path,))
+        == baseline / "model_9.pt"
+    )
+
+
+def test_find_checkpoint_reads_the_env_id_train_mjlab_records(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Runs are told apart by the ``params/env.yaml`` that ``train_mjlab.py`` writes."""
+    pytest.importorskip("mjlab")
+    from dataclasses import asdict
+
+    from mjlab.tasks.registry import load_env_cfg
+    from mjlab.utils.os import dump_yaml
+
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+
+    monkeypatch.setattr(
+        "myosuite.core.hf_io.download_baseline_checkpoint", lambda env_id: None
+    )
+    experiment = tmp_path / "logs" / "rsl_rl" / "myo_elbow_pose"
+    runs = {}
+    for name, env_id in (
+        ("2026-01-01_00-00-00", "myoElbowPose1D6MExoRandom-v0"),
+        ("2026-02-01_00-00-00", "myoElbowPose1D6MRandom-v0"),
+    ):
+        runs[env_id] = experiment / name
+        dump_yaml(runs[env_id] / "params" / "env.yaml", asdict(load_env_cfg(env_id)))
+        (runs[env_id] / "model_100.pt").write_bytes(b"")
+
+    for env_id, run in runs.items():
+        assert find_checkpoint(env_id, roots=(tmp_path,)) == run / "model_100.pt"
+    assert find_checkpoint("myoElbowPose1D6MExoFixed-v0", roots=(tmp_path,)) is None
+
+
 def test_find_checkpoint_falls_back_to_a_local_baseline(tmp_path: Path) -> None:
     """With no local run, the repository's default baseline checkpoint is used."""
     baseline = tmp_path / "baselines" / "checkpoints" / "myoElbowPose1D6MRandom-v0"
