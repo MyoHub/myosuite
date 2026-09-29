@@ -218,6 +218,8 @@ class MyoGymnasiumEnv(gym.Env):
         self.mujoco_render_frames: bool = False
         # Backward-compatible visual key container expected by examine_env.py.
         self.visual_keys: list[str] = []
+        # Read by MjInstabilityTerminationWrapper (appended by register_env).
+        self.mj_instability_termination: bool = True
 
     # ------------------------------------------------------------------
     # Subclass interface (must override)
@@ -439,6 +441,33 @@ class MyoGymnasiumEnv(gym.Env):
                 self.observation_space.high,
             )
         return obs
+
+    def _check_mj_instability_termination(self) -> bool:
+        """Return True if the simulation went unstable since the last reset.
+
+        ``mj_step`` counts a bad qpos/qvel/qacc in ``data.warning`` and then
+        auto-resets the data to ``qpos0``, so the state it leaves behind is
+        finite. ``mj_resetData`` zeroes the counters, so a non-zero count means
+        the episode diverged. Called by ``MjInstabilityTerminationWrapper``.
+
+        Returns:
+            True if the episode should terminate.
+        """
+        import mujoco
+
+        diverged = any(
+            self.data.warning[int(w)].number > 0
+            for w in (
+                mujoco.mjtWarning.mjWARN_BADQPOS,
+                mujoco.mjtWarning.mjWARN_BADQVEL,
+                mujoco.mjtWarning.mjWARN_BADQACC,
+            )
+        )
+        return bool(
+            diverged
+            or not np.isfinite(self.data.qpos).all()
+            or not np.isfinite(self.data.qvel).all()
+        )
 
     def render(self, **kwargs):
         """Render the environment using a lazy MujocoRenderer.
