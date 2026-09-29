@@ -7,6 +7,8 @@
 
 import argparse
 import functools
+import json
+import os
 import time
 import pickle
 import jax
@@ -16,27 +18,30 @@ from myosuite.envs.myo.backends.mjx import ppo_config
 
 from myosuite.envs.myo.backends.mjx import make, get_default_config
 from mujoco_playground import wrapper
+from tensorboardX import SummaryWriter
 
 from myosuite.envs.myo.backends.mjx.utils import make_policy_params_fn
 
 import wandb
 
 
-def main(env_name, impl, log_to_wandb, save_policy, render_evaluations):
+def main(env_name, impl, log_to_wandb, log_to_tb, save_policy, render_evaluations):
     """Run training and evaluation for the specified environment."""
     print(f"Current backend: {jax.default_backend()}")
 
-    env, ppo_params, network_factory = load_env_and_network_factory(env_name)
+    env, ppo_params, network_factory = load_env_and_network_factory(env_name, impl)
 
     if log_to_wandb:
         wandb.init(project=env_name, config=ppo_params)
+
+    os.makedirs(f"./mjx_logs/{env_name}", exist_ok=True)
 
     # Train the model
     make_inference_fn, params, _ = ppo.train(
         environment=env,
         num_envs=env._config.num_envs,
         episode_length=env._config.max_episode_steps,
-        progress_fn=functools.partial(progress, log_to_wandb=log_to_wandb),
+        progress_fn=functools.partial(progress, log_to_wandb=log_to_wandb, tb_writer=None if not log_to_tb else SummaryWriter(f"./mjx_logs/{env_name}")),
         network_factory=network_factory,
         wrap_env_fn=wrapper.wrap_for_brax_training,
         num_eval_envs=ppo_params.pop("num_eval_envs"),
@@ -49,8 +54,10 @@ def main(env_name, impl, log_to_wandb, save_policy, render_evaluations):
     print(f"Time to JIT compile: {times[1] - times[0]}")
     print(f"Time to train: {times[-1] - times[1]}")
     if save_policy:
-        with open("playground_params.pickle", "wb") as handle:
+        with open(f"./mjx_logs/{env_name}/playground_params.pickle", "wb") as handle:
             pickle.dump(params, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        with open(f"./mjx_logs/{env_name}/config.pickle", "wb") as handle:
+            pickle.dump(env._config, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def load_env_and_network_factory(env_name, impl):
@@ -77,7 +84,7 @@ total_steps = [0]
 
 
 # Progress function for logging
-def progress(num_steps, metrics, log_to_wandb):
+def progress(num_steps, metrics, log_to_wandb, tb_writer=None):
     times.append(time.monotonic())
     total_steps.append(num_steps)
     print(
@@ -85,6 +92,10 @@ def progress(num_steps, metrics, log_to_wandb):
     )
     if log_to_wandb:
         wandb.log(metrics, step=num_steps)
+    if tb_writer:
+        for key, value in metrics.items():
+            tb_writer.add_scalar(key, value, num_steps)
+        tb_writer.flush()
 
 
 if __name__ == "__main__":
@@ -92,7 +103,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--env_name",
         type=str,
-        default="MjxFingerPoseRandom-v0",
+        default="MjxElbowPoseRandom-v0",
     )
     parser.add_argument(
         "--impl",
@@ -104,6 +115,12 @@ if __name__ == "__main__":
         "--log_to_wandb",
         action="store_true",
     )
+
+    parser.add_argument(
+        "--log_to_tb",
+        action="store_true",
+    )
+
     parser.add_argument(
         "--save_policy",
         action="store_true",
@@ -120,6 +137,7 @@ if __name__ == "__main__":
         args.env_name,
         args.impl,
         args.log_to_wandb,
+        args.log_to_tb,
         args.save_policy,
         args.render_evaluations,
     )
