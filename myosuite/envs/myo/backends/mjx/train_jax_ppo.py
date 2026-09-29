@@ -7,7 +7,6 @@
 
 import argparse
 import functools
-import json
 import os
 import time
 import pickle
@@ -41,7 +40,13 @@ def main(env_name, impl, log_to_wandb, log_to_tb, save_policy, render_evaluation
         environment=env,
         num_envs=env._config.num_envs,
         episode_length=env._config.max_episode_steps,
-        progress_fn=functools.partial(progress, log_to_wandb=log_to_wandb, tb_writer=None if not log_to_tb else SummaryWriter(f"./mjx_logs/{env_name}")),
+        progress_fn=functools.partial(
+            progress,
+            log_to_wandb=log_to_wandb,
+            tb_writer=None
+            if not log_to_tb
+            else SummaryWriter(f"./mjx_logs/{env_name}"),
+        ),
         network_factory=network_factory,
         wrap_env_fn=wrapper.wrap_for_brax_training,
         num_eval_envs=ppo_params.pop("num_eval_envs"),
