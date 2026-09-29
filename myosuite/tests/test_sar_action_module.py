@@ -226,6 +226,64 @@ class TestSARTorchTransformForward(unittest.TestCase):
         np.testing.assert_array_equal(out1.numpy(), out2.numpy())
 
 
+def _synergistic_acts(n_samples: int = 400, n_muscles: int = N_MUSCLES) -> np.ndarray:
+    """Low-rank activations (5 non-negative synergies plus noise) in [0, 1]."""
+    rng = np.random.default_rng(0)
+    weights = rng.uniform(0.0, 1.0, (5, n_muscles))
+    drive = rng.uniform(0.0, 1.0, (n_samples, 5)) ** 2
+    noise = 0.02 * rng.standard_normal((n_samples, n_muscles))
+    return np.clip(drive @ weights / 5.0 + noise, 0.0, 1.0).astype(np.float32)
+
+
+@unittest.skipUnless(
+    _torch_available() and _sklearn_available(), "torch/sklearn not available"
+)
+class TestSARTorchTransformMatchesSklearn(unittest.TestCase):
+    """SARTorchTransform must reproduce the sklearn inverse chain it mirrors,
+    ``pca.inverse_transform(ica.inverse_transform(scaler.inverse_transform(s)))``,
+    for real fitted sklearn objects (the fakes above have no ``whiten``)."""
+
+    def _assert_matches_sklearn(self, pca, ica, scaler, syn: np.ndarray) -> None:
+        import torch
+
+        from myosuite.integrations.musclemimic.sar_torch_transform import (
+            SARTorchTransform,
+        )
+
+        expected = np.clip(
+            pca.inverse_transform(ica.inverse_transform(scaler.inverse_transform(syn))),
+            0.0,
+            1.0,
+        )
+        transform = SARTorchTransform(ica, pca, scaler, device="cpu")
+        out = transform(torch.as_tensor(syn, dtype=torch.float32)).numpy()
+        np.testing.assert_allclose(out, expected, rtol=0.0, atol=1e-5)
+
+    def test_whitened_pca_from_extract_synergies(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import (
+            encode_activations,
+            extract_synergies,
+        )
+
+        acts = _synergistic_acts()
+        model = extract_synergies(acts, n_synergies=N_SYN)
+        self.assertTrue(model.pca.whiten)
+        syn = encode_activations(model, acts[:100])
+        self._assert_matches_sklearn(model.pca, model.ica, model.scaler, syn)
+
+    def test_unwhitened_pca(self) -> None:
+        from sklearn.decomposition import PCA, FastICA
+        from sklearn.preprocessing import MinMaxScaler
+
+        acts = _synergistic_acts().astype(np.float64)
+        pca = PCA(n_components=N_SYN).fit(acts)
+        ica = FastICA(n_components=N_SYN, max_iter=1000, random_state=0)
+        x_ica = ica.fit_transform(pca.transform(acts))
+        scaler = MinMaxScaler().fit(x_ica)
+        syn = np.clip(scaler.transform(x_ica[:100]), 0.0, 1.0)
+        self._assert_matches_sklearn(pca, ica, scaler, syn)
+
+
 # ---------------------------------------------------------------------------
 # Tests: register_mimic_mjlab_tasks_with_sar (smoke, no mjlab needed)
 # ---------------------------------------------------------------------------
