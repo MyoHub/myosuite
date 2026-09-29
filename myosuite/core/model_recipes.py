@@ -717,6 +717,14 @@ def _walk_standard(b: ModelBuilder) -> ModelBuilder:
     return b.attach_fragment("leg").attach_fragment("osl")
 
 
+@model_recipe("myofullbody_simple")
+def _myofullbody_simple(b: ModelBuilder) -> ModelBuilder:  # noqa: ARG001
+    """Bolt-like HAT fullbody from myo_sim ``myofullbody_simple`` compose."""
+    import myo_sim  # type: ignore[import-untyped]
+
+    return ModelBuilder.from_spec(myo_sim.load_spec("myofullbody_simple"))
+
+
 # ---------------------------------------------------------------------------
 # MyoChallenge recipes
 # ---------------------------------------------------------------------------

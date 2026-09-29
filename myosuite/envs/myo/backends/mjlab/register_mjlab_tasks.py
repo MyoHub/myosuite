@@ -920,26 +920,19 @@ def register_mjlab_tasks() -> None:
             "mjlab: failed to register myoChallengeChaseTagFBP2-v0", exc_info=True
         )
 
-    # --- Sprint: Bolt's full-body sprinter model, driven by myo_sim.warp's Bolt-parity muscle/contact
-    # physics (not myosuite's own MyoMuscleActivationActionCfg) -- see actuators/bolt_muscle_action.py.
-    # Phase 2-4 of the myo_bolt_vv porting plan: env/physics wiring only so far, not yet the full 336-D
-    # Bolt-convention observation or the transfer/parity validation (Phases 4-6).
+    # --- Athletic matrix (msk_envs sweep × plants). Bolt myoSprint-v0 keeps the
+    # golden make_sprint_env_cfg path via PlantSpec.use_golden_sprint_cfg.
     try:
-        from myosuite.envs.myo.backends.mjlab.tasks.myosprint.env_cfgs import make_sprint_env_cfg
+        from myosuite.envs.myo.athletic.catalog import register_athletic_matrix
 
-        sprint_env_cfg = make_sprint_env_cfg()
-        sprint_rl_cfg = _sprint_ppo_runner_cfg()
-        register_mjlab_task(
-            task_id="myoSprint-v0",
-            env_cfg=sprint_env_cfg,
-            play_env_cfg=sprint_env_cfg,
-            rl_cfg=sprint_rl_cfg,
-            runner_cls=None,
+        register_athletic_matrix(
+            plants=("myosprinter", "myofullbody_simple"),
+            backends={"mjlab"},
         )
-    except ValueError:
-        pass  # already registered
     except Exception:
-        logging.getLogger(__name__).warning("mjlab: failed to register myoSprint-v0", exc_info=True)
+        logging.getLogger(__name__).warning(
+            "mjlab: failed to register athletic matrix", exc_info=True
+        )
 
 
 def bootstrap_myosuite_mjlab_registry(

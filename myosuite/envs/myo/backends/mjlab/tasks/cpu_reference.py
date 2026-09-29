@@ -20,7 +20,7 @@ from typing import Any
 import gymnasium as gym
 import mujoco
 import numpy as np
-from mjlab.actuator import XmlActuatorCfg
+from mjlab.actuator import XmlMuscleActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.sim import MujocoCfg
@@ -246,7 +246,11 @@ def mujoco_cfg_from_model(model: mujoco.MjModel) -> MujocoCfg:
         for name, bit in mujoco.mjtEnableBit.__members__.items()
         if name != "mjNENABLE" and opt.enableflags & int(bit)
     )
-    return MujocoCfg(
+    # Newer mjlab MujocoCfg dropped disableflags/enableflags; keep computed
+    # tuples only when the dataclass still accepts them.
+    import dataclasses
+
+    kwargs: dict[str, object] = dict(
         timestep=float(opt.timestep),
         integrator=_INTEGRATORS[int(opt.integrator)],  # type: ignore[arg-type]
         impratio=float(opt.impratio),
@@ -259,9 +263,13 @@ def mujoco_cfg_from_model(model: mujoco.MjModel) -> MujocoCfg:
         ls_tolerance=float(opt.ls_tolerance),
         ccd_iterations=int(opt.ccd_iterations),
         gravity=tuple(float(g) for g in opt.gravity),  # type: ignore[arg-type]
-        disableflags=disable,
-        enableflags=enable,
     )
+    field_names = {f.name for f in dataclasses.fields(MujocoCfg)}
+    if "disableflags" in field_names:
+        kwargs["disableflags"] = disable
+    if "enableflags" in field_names:
+        kwargs["enableflags"] = enable
+    return MujocoCfg(**kwargs)  # type: ignore[arg-type]
 
 
 def init_state_from_model(
@@ -399,7 +407,7 @@ def robot_entity_cfg(
     """
     info = compiled_info(task)
     actuators = tuple(
-        XmlActuatorCfg(
+        XmlMuscleActuatorCfg(
             target_names_expr=tuple(f"^{n}$" for n in info.actuator_targets[trn_type]),
             transmission_type=trn,
         )

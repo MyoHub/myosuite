@@ -6,3 +6,4 @@
 
 import myosuite.envs.myo.tasks.basic.specs.elbow_pose_spec  # noqa: F401
 import myosuite.envs.myo.tasks.basic.leg.specs  # noqa: F401
+import myosuite.envs.myo.athletic.register_cpu  # noqa: F401

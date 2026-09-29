@@ -548,3 +548,70 @@ def walk_env_reward(
         "joint_angle_rew": joint_angle_rew,
         "dense": dense,
     }
+
+def sprint_reward(
+    accessor: "EnvAccessor",
+    task_state: dict[str, Any],
+    heading_dir: tuple[float, float] = (1.0, 0.0),
+    lambda_vel: float = 1e-2,
+    lambda_mid_lane: float = 1e-2,
+    lambda_limit: float = -3e-4,
+    fall_height: float = 0.5,
+    alive_bonus: float = 0.0,
+    mid_lane_weight: float = 2.5,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Bolt SprintConfig-style sparse reward on a freejoint root.
+
+    ``dense = λ_vel·v_forward + λ_mid·exp(-w·y²) + λ_limit·pain + alive``.
+    """
+    del kwargs
+    if isinstance(task_state, dict) and "heading_dir" in task_state:
+        heading_dir = task_state["heading_dir"]
+
+    xp = accessor.array_module()
+    qpos = accessor.joint_pos()
+    qvel = accessor.joint_vel()
+    direction = _xp_asarray(xp, heading_dir, dtype=getattr(xp, "float32", None))
+    planar_vel = qvel[:2]
+    rew_vel = xp.sum(planar_vel * direction)
+    lateral = qpos[0] * direction[1] - qpos[1] * direction[0]
+    rew_mid = xp.exp(-mid_lane_weight * (lateral**2))
+
+    pain = _xp_asarray(xp, 0.0, dtype=getattr(xp, "float32", None))
+    model = getattr(accessor, "model", None)
+    if model is not None:
+        overshoot = _xp_asarray(xp, 0.0, dtype=getattr(xp, "float32", None))
+        njnt = int(model.njnt)
+        for j in range(njnt):
+            jtype = int(model.jnt_type[j])
+            if jtype not in (2, 3):
+                continue
+            lo, hi = float(model.jnt_range[j, 0]), float(model.jnt_range[j, 1])
+            if not (hi > lo) or abs(hi - lo) > 1e6:
+                continue
+            adr = int(model.jnt_qposadr[j])
+            q = qpos[adr]
+            overshoot = overshoot + xp.clip(lo - q, 0.0, None) + xp.clip(q - hi, 0.0, None)
+        pain = overshoot
+
+    height = qpos[2]
+    fallen = height < fall_height
+    alive = 1.0 - _xp_asarray(xp, fallen, dtype=getattr(xp, "float32", None)).astype(
+        getattr(xp, "float32", float)
+    )
+    dense = (
+        lambda_vel * rew_vel
+        + lambda_mid_lane * rew_mid
+        + lambda_limit * pain
+        + alive_bonus * alive
+    )
+    return {
+        "rew_vel": _maybe_item(rew_vel),
+        "rew_mid_lane": _maybe_item(rew_mid),
+        "rew_limit": _maybe_item(pain),
+        "dense": _maybe_item(dense),
+        "solved": False,
+        "done": _maybe_item(fallen),
+    }
+
