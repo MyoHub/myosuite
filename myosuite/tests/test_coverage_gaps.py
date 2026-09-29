@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
@@ -204,6 +205,35 @@ class TestCumulativeFatigue:
             for _ in range(10):
                 fine.compute_act(tl, dt=0.002)
         np.testing.assert_allclose(coarse.MF, fine.MF, rtol=0.02)
+
+    def test_per_muscle_params_ignore_attach_prefix_and_side_suffix(self) -> None:
+        """Prefixed and side-suffixed muscle names get their group's F / R / r.
+
+        mjlab scenes prefix actuators (``robot/BIClong``); ``myohand_r.xml`` and
+        the left arm of full-body models suffix the side (``ECRL_r``, ``BIClong_l``).
+        """
+        import mujoco
+        from myosuite.core.muscle_conditions import (
+            MUSCLE_FATIGUE_PARAMS,
+            CumulativeFatigue,
+        )
+
+        def fatigue(names: list[str]) -> CumulativeFatigue:
+            mock = MagicMock()
+            mock.opt.timestep = 0.002
+            mock.nu = len(names)
+            mock.actuator_dyntype = np.full(len(names), mujoco.mjtDyn.mjDYN_MUSCLE)
+            mock.actuator_dynprm = np.tile([0.01, 0.04] + [0.0] * 8, (len(names), 1))
+            mock.actuator.side_effect = lambda i: SimpleNamespace(name=names[i])
+            return CumulativeFatigue(mock)
+
+        got = fatigue(
+            ["robot/BIClong", "ECRL_r", "robot/ECRL_r", "BIClong_l", "robot/soleus_r"]
+        )
+        want = fatigue(["BIClong", "ECRL", "ECRL", "BIClong", "soleus_r"])
+        assert np.all(want.F != MUSCLE_FATIGUE_PARAMS["Default"]["F"])
+        for p in ("F", "R", "r"):
+            np.testing.assert_array_equal(getattr(got, p), getattr(want, p), p)
 
 
 class TestApplySarcopenia:
