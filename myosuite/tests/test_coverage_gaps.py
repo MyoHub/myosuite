@@ -103,6 +103,24 @@ def _make_fatigue_model(n: int) -> CumulativeFatigue:  # noqa: F821
     return CumulativeFatigue(mock, use_uniform_params=True)
 
 
+def _fatigue_stepper(backend: str, n: int) -> Any:
+    """Return ``step(TL, dt) -> MA`` for the numpy or torch 3CC-r model (tau 10/40 ms)."""
+    if backend == "numpy":
+        f = _make_fatigue_model(n)
+        return lambda tl, dt: f.compute_act(tl.copy(), dt=dt)[0].copy()
+    torch = pytest.importorskip("torch")
+    from myosuite.core.muscle_conditions import TorchFatigueState
+
+    t = TorchFatigueState(num_envs=1, n_muscles=n)
+    return lambda tl, dt: (
+        t.step(torch.tensor(tl[None], dtype=torch.float32), dt)[0].double().numpy()
+    )
+
+
+# Control steps of the registered myoFati* envs (10, 20 and 25 ms).
+_FATIGUE_CTRL_DTS = (0.01, 0.02, 0.025)
+
+
 class TestCumulativeFatigue:
     def test_init_compartments(self) -> None:
         f = _make_fatigue_model(6)
@@ -146,6 +164,46 @@ class TestCumulativeFatigue:
         f.set_RecoveryCoefficient(0.05)
         assert f.F == pytest.approx(0.1)
         assert f.R == pytest.approx(0.05)
+
+    @pytest.mark.parametrize("dt", _FATIGUE_CTRL_DTS)
+    @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    def test_step_from_rest_does_not_overshoot_command(
+        self, backend: str, dt: float
+    ) -> None:
+        # LD * dt reaches 5 at a control step; an explicit Euler step then
+        # drove MA from rest to 1.0 for a 0.25 command.
+        tl = np.array([0.05, 0.1, 0.25, 0.5, 0.8, 1.0])
+        ma = _fatigue_stepper(backend, tl.size)(tl, dt)
+        assert np.all(ma > 0.0)
+        assert np.all(ma <= tl + 1e-6), f"MA {ma} overshoots TL {tl}"
+
+    @pytest.mark.parametrize("dt", _FATIGUE_CTRL_DTS)
+    @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    def test_step_never_crosses_command(self, backend: str, dt: float) -> None:
+        # MA moves towards TL and stops short of it (on the way down, only the
+        # fatigue drain F * MA * dt < 3e-4 may take it below TL).
+        step = _fatigue_stepper(backend, 8)
+        rng = np.random.default_rng(0)
+        ma = np.zeros(8)
+        for _ in range(300):
+            tl = rng.uniform(0.0, 1.0, 8)
+            new = step(tl, dt)
+            rising = ma < tl
+            assert np.all(new[rising] <= tl[rising] + 1e-6)
+            assert np.all(new[~rising] >= tl[~rising] - 1e-3)
+            ma = new
+
+    def test_sustained_command_fatigue_matches_fine_step(self) -> None:
+        # At the 20 ms control step MF must match the same ODE integrated at
+        # the 2 ms physics step. Overshooting MA to TL selected the rest-phase
+        # recovery rate r * R on every other step and under-counted MF (-9%).
+        coarse, fine = _make_fatigue_model(1), _make_fatigue_model(1)
+        tl = np.full(1, 0.3)
+        for _ in range(1500):  # 30 s
+            coarse.compute_act(tl, dt=0.02)
+            for _ in range(10):
+                fine.compute_act(tl, dt=0.002)
+        np.testing.assert_allclose(coarse.MF, fine.MF, rtol=0.02)
 
 
 class TestApplySarcopenia:
