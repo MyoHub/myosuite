@@ -26,11 +26,14 @@ iterations may well reach higher success rates: `myoLegStandRandom-v0`/`myoHandP
 (36%, plateaued), `myoArmReachRandom-v0` (64%), `myoFingerReachRandom-v0` (48%),
 `myoLegDirectionalRandom-v0` (30%) and `myoLegHillyTerrainWalk-v0` (25%).
 
-**`myoChallengeChaseTagFBP2-v0` and `myoChallengeTableTennisP{0,1,2}-v0`** trained, but
-`scripts/eval_mjlab_policy.py` currently fails to evaluate them (`ChaseTagFBP2`: a keyframe/qpos
-size mismatch building the eval env; `TableTennisP{0,1,2}`: the policy's observation group isn't
-named `"actor"` for these envs) — deterministic success is unmeasured, not necessarily low; fix
-the eval script, then measure and publish these.
+**`myoChallengeChaseTagFBP2-v0` and `myoChallengeTableTennisP{0,1,2}-v0`** — `scripts/eval_mjlab_policy.py`
+previously crashed on `--backend mjlab` for any task whose env config uses the standard mjlab
+`"policy"` observation group name (it hardcoded `obs["actor"]`, a key that only exists for
+MuscleMimic tasks, which register a redundant `"actor"` group as a workaround); fixed to read
+`obs["policy"]`, the group every mjlab task config actually defines. `ChaseTagFBP2` now evaluates,
+but the task has no `success`/metrics term configured yet, so deterministic success still can't be
+measured until that's added. `TableTennisP{0,1,2}` construct and reset correctly under the fix, but
+no trained checkpoint for them is available locally to run a full eval and publish a number.
 
 | Env                          | Checkpoint         | Deterministic success (mjlab) |
 | ---------------------------- | ------------------ | ----------------------------- |

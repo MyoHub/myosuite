@@ -974,7 +974,7 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
     with torch.no_grad():
         for _ in range(per_env * env.max_episode_length):
             act = policy.sample if cfg.stochastic else policy
-            obs, rew, terminated, truncated, _ = env.step(act(obs["actor"]))
+            obs, rew, terminated, truncated, _ = env.step(act(obs["policy"]))
             if grid is not None:
                 frames.append(grid.render())
             recording = episodes_done < per_env
