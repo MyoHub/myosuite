@@ -24,6 +24,10 @@ Which expands to:
     x = x @ pca.components_ + pca.mean_           # PCA⁻¹
     x = clamp(x, 0.0, 1.0)                        # valid activation range
 
+For a whitened PCA (``pca.whiten``, as fitted by ``extract_synergies``), the
+PCA⁻¹ step uses ``sqrt(pca.explained_variance_)[:, None] * pca.components_``
+in place of ``pca.components_``, as ``pca.inverse_transform`` does.
+
 Usage::
 
     from myosuite.integrations.musclemimic.sar_torch_transform import SARTorchTransform
@@ -35,6 +39,7 @@ Usage::
 
 from __future__ import annotations
 
+import numpy as np
 
 try:
     import torch
@@ -98,9 +103,15 @@ class SARTorchTransform(nn.Module if _TORCH_OK else object):
         # sklearn:  X_reduced = (X - mean_) @ components_.T
         # inverse:  X = X_reduced @ components_ + mean_
         #   components_ shape: (n_components, n_features) = (n_pca_comps, n_muscles)
+        # With whiten=True (as fitted by sar_extraction.extract_synergies)
+        # transform also divides by sqrt(explained_variance_), so the inverse
+        # scales each component back, exactly as pca.inverse_transform does.
+        components = np.asarray(pca.components_, dtype=np.float64)
+        if getattr(pca, "whiten", False):
+            components = np.sqrt(pca.explained_variance_)[:, None] * components
         self.register_buffer(
             "pca_components",
-            torch.tensor(pca.components_.copy(), dtype=torch.float32),
+            torch.tensor(components, dtype=torch.float32),
             # shape: (n_pca_comps, n_muscles)
         )
         self.register_buffer(
@@ -149,6 +160,7 @@ class SARTorchTransform(nn.Module if _TORCH_OK else object):
         x = x @ self.ica_mixing_T + self.ica_mean
 
         # 3. PCA inverse:  x_reduced @ components_ + mean_
+        #    (pca_components already holds the whitening scale, if any)
         #    x:             (..., n_pca_comps)
         #    pca_components: (n_pca_comps, n_muscles)
         #    result:        (..., n_muscles)
