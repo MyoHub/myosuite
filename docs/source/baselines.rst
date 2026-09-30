@@ -31,8 +31,9 @@ They run on both the CPU and the mjlab backend::
 
    python scripts/eval_mjlab_policy.py myoFingerPoseRandom-v0 --backend cpu
 
-``baselines/checkpoints/README.md`` lists every default-run env id's deterministic success rate; some published policies are unconverged snapshots.
-See :doc:`quickstart_ml` for how success is defined and evaluated.
+`docs/baseline_checkpoints.md <https://github.com/MyoHub/myosuite/blob/ms3/docs/baseline_checkpoints.md>`_
+lists every default-run env id's deterministic success rate; some published policies are
+unconverged snapshots. See :doc:`quickstart_ml` for how success is defined and evaluated.
 
 Pretrained NPG / DEP-RL weight trees under ``myosuite/agents/`` are **not**
 shipped in the pip package and are gitignored. Train your own policy, or use

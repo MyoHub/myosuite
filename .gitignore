@@ -163,12 +163,9 @@ myosuite_gpu_smoke*.zip
 
 # Baseline checkpoints and eval videos are not tracked in git; checkpoints with >=25%
 # deterministic success are hosted on Hugging Face (myohub/myosuite-3-baselines) instead and
-# downloaded on demand, and the rest exist locally only -- see baselines/checkpoints/README.md,
-# the sole tracked file under baselines/.
-baselines/*
-!baselines/checkpoints/
-baselines/checkpoints/*
-!baselines/checkpoints/README.md
+# downloaded on demand (into the huggingface_hub cache, not this directory), and the rest
+# exist locally only -- see docs/baseline_checkpoints.md.
+baselines/
 
 # RL learning files
 *params.pickle
