@@ -182,22 +182,27 @@ class TestFatigue:
                 jp.array(act, dtype=jp.float32)
             )
 
+            # atol accounts for float32 (JAX) vs float64 (numpy) precision drift
+            # compounding across the sequential compute_act calls in this loop.
             np.testing.assert_allclose(
                 numpy_MA,
                 np.array(jax_MA),
                 rtol=1e-5,
+                atol=1e-4,
                 err_msg=f"MA mismatch for activation {act}",
             )
             np.testing.assert_allclose(
                 numpy_MR,
                 np.array(jax_MR),
                 rtol=1e-5,
+                atol=1e-4,
                 err_msg=f"MR mismatch for activation {act}",
             )
             np.testing.assert_allclose(
                 numpy_MF,
                 np.array(jax_MF),
                 rtol=1e-5,
+                atol=1e-4,
                 err_msg=f"MF mismatch for activation {act}",
             )
 

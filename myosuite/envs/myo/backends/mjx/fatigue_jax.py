@@ -106,8 +106,15 @@ class CumulativeFatigue:
         MR = fatigue_state["MR"]
         MF = fatigue_state["MF"]
 
-        LD = 1 / self.tauact * (0.5 + 1.5 * MA)
+        # Effective time constants (MuJoCo Hill-type dynamics).
+        LD = 1.0 / (self.tauact * (0.5 + 1.5 * MA))
         LR = (0.5 + 1.5 * MA) / self.taudeact
+        # Integrate the first-order approach to TL exactly over dt: an
+        # explicit Euler step overshoots TL once L * dt > 1 (LD = 200 /s at
+        # MA = 0 vs 10-25 ms control steps), driving MA above the command.
+        # Matches CumulativeFatigue.compute_act / TorchFatigueState.step.
+        LD = -jp.expm1(-LD * self.dt) / self.dt
+        LR = -jp.expm1(-LR * self.dt) / self.dt
 
         C = jp.zeros_like(MA)
         mask1 = (MA < TL) & (MR > (TL - MA))
