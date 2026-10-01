@@ -26,9 +26,8 @@ iterations may well reach higher success rates: `myoLegStandRandom-v0`/`myoHandP
 (36%, plateaued), `myoArmReachRandom-v0` (64%), `myoFingerReachRandom-v0` (48%),
 `myoLegDirectionalRandom-v0` (30%) and `myoLegHillyTerrainWalk-v0` (25%).
 
-**`myoChallengeChaseTagFBP2-v0`** has no `success`/metrics term configured yet, so deterministic
-success can't be measured. **`myoChallengeTableTennisP{0,1,2}-v0`** have no trained checkpoint
-available yet to evaluate.
+**`myoChallengeChaseTagFBP2-v0`** (success: the agent tags the opponent) and
+**`myoChallengeTableTennisP{0,1,2}-v0`** have no trained checkpoint available yet to evaluate.
 
 | Env                          | Checkpoint         | Deterministic success (mjlab) |
 | ---------------------------- | ------------------ | ----------------------------- |
