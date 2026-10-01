@@ -47,7 +47,8 @@ class ElbowPoseFixedTask(TaskConfig):
     """Elbow pose task with a fixed target (r_elbow_flex = 2.0 rad).
 
     Uses the ``elbow_standard`` ModelBuilder recipe (fragment-based assembly).
-    Registered as ``myoElbowPoseTaskFixed-v0`` on import.
+    Registered as ``myoElbowPoseTaskFixed-v0`` on import. Observes the pose
+    error like the Random task, so both share one observation layout.
     """
 
     model: str = "elbow_standard"
@@ -56,7 +57,9 @@ class ElbowPoseFixedTask(TaskConfig):
         default_factory=lambda: BackendConfig(n_substeps=10, ctrl_dt=0.02, sim_dt=0.002)
     )
     obs: ObsSpec = field(
-        default_factory=lambda: ObsSpec(keys=["joint_pos", "joint_vel", "muscle_act"])
+        default_factory=lambda: ObsSpec(
+            keys=["joint_pos", "joint_vel", "muscle_act", "pose_error"]
+        )
     )
     goal: GoalSpec = field(
         default_factory=lambda: GoalSpec(
@@ -102,7 +105,8 @@ class ElbowPoseRandomTask(TaskConfig):
     """Elbow pose task with random target sampled from [0.0, 2.27] rad.
 
     Uses the ``elbow_standard`` ModelBuilder recipe (fragment-based assembly).
-    Registered as ``myoElbowPoseTaskRandom-v0`` on import.
+    Registered as ``myoElbowPoseTaskRandom-v0`` on import. The ``pose_error``
+    observation (target minus current angle) exposes the sampled target.
     """
 
     model: str = "elbow_standard"
@@ -111,7 +115,9 @@ class ElbowPoseRandomTask(TaskConfig):
         default_factory=lambda: BackendConfig(n_substeps=10, ctrl_dt=0.02, sim_dt=0.002)
     )
     obs: ObsSpec = field(
-        default_factory=lambda: ObsSpec(keys=["joint_pos", "joint_vel", "muscle_act"])
+        default_factory=lambda: ObsSpec(
+            keys=["joint_pos", "joint_vel", "muscle_act", "pose_error"]
+        )
     )
     goal: GoalSpec = field(
         default_factory=lambda: GoalSpec(
