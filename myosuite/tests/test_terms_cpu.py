@@ -83,6 +83,15 @@ def test_joint_vel_obs_shape():
     assert obs.shape == (4,)
 
 
+def test_joint_vel_obs_is_scaled_by_the_control_timestep():
+    """``qvel * dt``: the velocity convention shared by every backend and legacy env."""
+    from myosuite.terms.base_obs import joint_vel_obs
+
+    acc = _FakeAccessor(nq=4)
+    acc._qvel = np.array([1.0, -2.0, 0.5, 0.0])
+    np.testing.assert_allclose(joint_vel_obs(acc), acc._qvel * acc.dt())
+
+
 def test_muscle_act_obs_shape():
     from myosuite.terms.base_obs import muscle_act_obs
 

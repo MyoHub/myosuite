@@ -78,8 +78,8 @@ class MjxEnvAccessor:
         return self._data.qpos
 
     def joint_vel(self) -> jax.Array:
-        """Joint velocity vector scaled by ctrl_dt, shape ``(nv,)``."""
-        return self._data.qvel * self._ctrl_dt
+        """Joint velocity vector (raw ``qvel``, like the CPU/mjlab accessors), shape ``(nv,)``."""
+        return self._data.qvel
 
     def muscle_act(self) -> jax.Array:
         """Muscle activation vector, shape ``(na,)``."""

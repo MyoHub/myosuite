@@ -67,3 +67,15 @@ def test_pose_error_only_appends_to_the_old_observation(env_id: str) -> None:
         obs_old, rwd_old, *_ = old.step(action)
         assert rwd_new == rwd_old
         np.testing.assert_array_equal(obs_new[:-1], obs_old)
+
+
+@pytest.mark.parametrize("env_id", _RANDOM_IDS + _FIXED_IDS)
+def test_joint_velocity_is_scaled_by_the_control_timestep(env_id: str) -> None:
+    """The observed velocity is ``qvel * ctrl_dt``, as in the legacy PoseEnvV0 twins."""
+    env = gym.make(env_id)
+    unwrapped = env.unwrapped
+    unwrapped.reset(seed=0)
+    unwrapped.data.qvel[:] = 0.8  # a known joint velocity
+    accessor = unwrapped._accessor
+    obs_dict = unwrapped._get_obs_dict(accessor)
+    np.testing.assert_allclose(obs_dict["joint_vel"], 0.8 * accessor.dt(), rtol=1e-6)
