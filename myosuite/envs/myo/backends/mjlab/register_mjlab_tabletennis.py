@@ -520,6 +520,7 @@ def _contacts_all_envs_vectorized(
     try:
         geom = data.contact.geom  # (nconmax, 2)
         wid = data.contact.worldid  # (nconmax,)
+        nacon = data.nacon  # (1,): live rows, over all worlds
     except AttributeError:
         return empty_sets, touching_info
 
@@ -539,7 +540,9 @@ def _contacts_all_envs_vectorized(
     is_ball1 = b1 == ball_bid
     is_ball2 = b2 == ball_bid
 
-    valid = (wid_l >= 0) & (wid_l < n) & (is_ball1 | is_ball2)
+    # Rows at or past nacon keep contacts of earlier collision passes.
+    live = torch.arange(geom.shape[0], device=geom.device) < nacon.reshape(1)
+    valid = live & (wid_l >= 0) & (wid_l < n) & (is_ball1 | is_ball2)
 
     if not valid.any():
         return empty_sets, touching_info
