@@ -304,15 +304,17 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
         options: dict | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         gym.Env.reset(self, seed=seed)
+        self._apply_episode_geometry(self.np_random)
+        refresh_geom_derived_fields(
+            self.model, self._mj_spec, (self.obj_bid, self.target_obj_bid)
+        )
+        # After the geometry draw, as in the legacy env, so that every muscle
+        # condition samples the same episode geometry for a given seed.
         if self.muscle_condition == "fatigue":
             self.muscle_fatigue.reset(
                 fatigue_reset_vec=self.fatigue_reset_vec,
                 fatigue_reset_random=self.fatigue_reset_random,
             )
-        self._apply_episode_geometry(self.np_random)
-        refresh_geom_derived_fields(
-            self.model, self._mj_spec, (self.obj_bid, self.target_obj_bid)
-        )
         self.model.site_rgba[self.success_indicator_sid, :2] = np.array([2.0, 0.0])
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = self._init_qpos

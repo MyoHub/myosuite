@@ -78,6 +78,21 @@ def test_fatigue_limits_excitation_and_resets() -> None:
     np.testing.assert_array_equal(fatigue.MA, 0.0)
 
 
+def test_fatigue_variant_samples_the_healthy_geometry() -> None:
+    healthy = gym.make("myoHandReorientOOD-v0").unwrapped
+    fatigued = gym.make(
+        "myoFatiHandReorientOOD-v0", fatigue_reset_random=True
+    ).unwrapped
+    gid = healthy.obj_gid
+    for seed in range(3):
+        healthy.reset(seed=seed)
+        fatigued.reset(seed=seed)
+        assert healthy.model.geom_type[gid] == fatigued.model.geom_type[gid]
+        np.testing.assert_array_equal(
+            healthy.model.geom_size[gid], fatigued.model.geom_size[gid]
+        )
+
+
 def test_reafferentation_reroutes_eip_to_epl() -> None:
     env = _make("myoReafHandReorient8-v0")
     eip, epl = env.model.actuator("EIP_r").id, env.model.actuator("EPL_r").id
