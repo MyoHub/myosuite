@@ -92,6 +92,11 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.id_info = IdInfo(self.model)
         self.start_bid = self.id_info.start_id
         self.goal_bid = self.id_info.goal_id
+        # The pillars are mocap bodies: their simulated pose is data.mocap_pos.
+        self._pillar_mocap = (
+            (int(self.model.body_mocapid[self.start_bid]), "start_pos"),
+            (int(self.model.body_mocapid[self.goal_bid]), "goal_pos"),
+        )
         self.obj_bid = self.id_info.manip_body_id
         self.obj_sid = _as_mj_int(self.model.site("touch_site").id)
         self.obj_gid = _as_mj_int(self.model.body(self.obj_bid).geomadr) + 1
@@ -169,6 +174,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self._init_qvel = self.data.qvel.copy()
         self.model.body_pos[self.start_bid] = self.start_pos
         self.model.body_pos[self.goal_bid] = self.goal_pos
+        self._place_pillars()
         mujoco.mj_forward(self.model, self.data)
         self._default_mocap_pos = self.data.mocap_pos.copy()
         self._default_mocap_quat = self.data.mocap_quat.copy()
@@ -392,6 +398,12 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             ctrl[self.eip_pos] = 0.0
         return ctrl
 
+    def _place_pillars(self) -> None:
+        """Move the start/goal pillars to this episode's sampled positions."""
+        for mocap_id, attr in self._pillar_mocap:
+            if mocap_id >= 0:
+                self.data.mocap_pos[mocap_id] = getattr(self, attr)
+
     def reset(self, seed: int | None = None, options: dict | None = None, **_kwargs):
         if seed is not None:
             self.input_seed = seed
@@ -433,6 +445,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         if self.model.nmocap > 0:
             self.data.mocap_pos[:] = self._default_mocap_pos
             self.data.mocap_quat[:] = self._default_mocap_quat
+        self._place_pillars()
         object_qpos_adr = self.model.body(self.obj_bid).jntadr[0]
         self.data.qpos[object_qpos_adr : object_qpos_adr + 3] = (
             self.start_pos + np.array([0, 0, 0.1])
