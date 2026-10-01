@@ -116,7 +116,7 @@ class MjxPoseEnv(MyoMjxEnvBase):
         """
         return {
             "qpos": accessor.joint_pos(),
-            "qvel": accessor.joint_vel(),
+            "qvel": accessor.joint_vel() * accessor.dt(),
             "act": accessor.muscle_act(),
             "pose_err": pose_error_obs(accessor, task_state["target_angles"]),
         }

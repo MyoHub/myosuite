@@ -59,9 +59,9 @@ class TestRelocateModel:
         bid = mujoco.mj_name2id(relocate_model, mujoco.mjtObj.mjOBJ_BODY, "clavicle_r")
         assert bid >= 0, "clavicle_r body not found"
         z = float(d.xpos[bid][2])
-        assert (
-            1.2 < z < 1.8
-        ), f"clavicle_r z={z:.3f} not in expected shoulder-height range [1.2, 1.8]"
+        assert 1.2 < z < 1.8, (
+            f"clavicle_r z={z:.3f} not in expected shoulder-height range [1.2, 1.8]"
+        )
 
     def test_object_site_exists(self, relocate_model: mujoco.MjModel) -> None:
         sid = mujoco.mj_name2id(relocate_model, mujoco.mjtObj.mjOBJ_SITE, "object_o")
@@ -79,9 +79,9 @@ class TestTableTennisModel:
     def test_nq_reasonable(self, tabletennis_model: mujoco.MjModel) -> None:
         # Full body (torso + arm + legs) + paddle freejoint + pingpong freejoint
         # Exact count depends on model; verify it's in a reasonable range
-        assert (
-            80 < tabletennis_model.nq < 150
-        ), f"nq={tabletennis_model.nq} outside expected range"
+        assert 80 < tabletennis_model.nq < 150, (
+            f"nq={tabletennis_model.nq} outside expected range"
+        )
 
     def test_nu_has_arm_and_pelvis(self, tabletennis_model: mujoco.MjModel) -> None:
         # At least 63 arm + 2 pelvis actuators

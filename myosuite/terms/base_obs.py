@@ -133,16 +133,20 @@ def joint_pos_obs(accessor: EnvAccessor, **kwargs: Any) -> Any:
 
 
 def joint_vel_obs(accessor: EnvAccessor, **kwargs: Any) -> Any:
-    """Return joint velocities as the observation.
+    """Return joint velocities scaled by the control timestep as the observation.
+
+    ``qvel * ctrl_dt`` (the joint displacement per control step) is the velocity
+    convention of the CPU task envs and their mjlab twins (as in the original
+    MyoSuite envs), so it is the one shared by these backends.
 
     Args:
         accessor: Environment state accessor.
         **kwargs: Unused; for uniform call signature.
 
     Returns:
-        Joint velocity array, shape (nv,) or (N, nv).
+        Scaled joint velocity array, shape (nv,) or (N, nv).
     """
-    return accessor.joint_vel()
+    return accessor.joint_vel() * accessor.dt()
 
 
 def muscle_act_obs(accessor: EnvAccessor, **kwargs: Any) -> Any:

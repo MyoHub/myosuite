@@ -90,17 +90,17 @@ class TestMuscleMimicFullbodyDirectionalEnv:
             obs, _ = directional_env.reset()
             headings.append(obs[heading_slice].copy())
         headings = np.stack(headings)
-        assert not np.allclose(
-            headings[0], headings[1:]
-        ), "heading should be randomised across resets"
+        assert not np.allclose(headings[0], headings[1:]), (
+            "heading should be randomised across resets"
+        )
 
     def test_heading_reward_term_in_info(self, directional_env):
         directional_env.reset()
         action = directional_env.action_space.sample()
         _, _, _, _, info = directional_env.step(action)
-        assert "rwd_dict" in info or "heading" in str(
-            info
-        ), f"expected reward breakdown in info, got: {info.keys()}"
+        assert "rwd_dict" in info or "heading" in str(info), (
+            f"expected reward breakdown in info, got: {info.keys()}"
+        )
 
     def test_gym_make_registration(self):
         import gymnasium as gym

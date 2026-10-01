@@ -16,7 +16,7 @@ import torch
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
-from myosuite.terms.base_obs import root_planar_vel_obs
+from myosuite.terms.base_obs import joint_vel_obs, root_planar_vel_obs
 from myosuite.terms.base_reward import act_reg, heading_reward
 
 if TYPE_CHECKING:
@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 
 
 def joint_vel(env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """CPU ``joint_vel`` observation: raw ``qvel`` (not scaled by the control step)."""
-    return MjlabEntityAccessor(env, asset_cfg.name).joint_vel()
+    """CPU ``joint_vel`` observation: ``qvel`` scaled by the control step."""
+    return joint_vel_obs(MjlabEntityAccessor(env, asset_cfg.name))
 
 
 def root_planar_vel(env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:

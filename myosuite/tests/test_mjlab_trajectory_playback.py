@@ -365,7 +365,7 @@ def _make_cache_with_source(
         hi=rng.uniform(0.0, 1.0, 3),
         tracking=types.SimpleNamespace(reward_scale=20.0, success_threshold=0.04),
         clip_source=source,
-        last_sim_time=None,
+        last_step=None,
         target_torch=None,
     )
 
@@ -379,7 +379,7 @@ def _make_cache_random(n_sites: int = _N_SITES) -> dict[str, Any]:
         hi=np.array([0.5, 0.5, 2.0]),
         tracking=types.SimpleNamespace(reward_scale=20.0, success_threshold=0.04),
         clip_source=None,
-        last_sim_time=None,
+        last_step=None,
         target_torch=None,
     )
 
@@ -475,6 +475,21 @@ class TestClipTrajectorySourceBasics:
         assert (ph >= 0.0).all()
         assert (ph < 1.0).all()
 
+    def test_clip_end_flags_episodes_past_the_last_frame(self) -> None:
+        src = _make_source(T=10)
+        src.update(_steps(0))
+        src._start_offsets = torch.tensor([0, 5, 8, 9][:_N], dtype=torch.long)
+        assert src.clip_end(_steps(1)).tolist() == [False, False, False, True][:_N]
+        assert src.clip_end(_steps(5)).tolist() == [False, True, True, True][:_N]
+
+    def test_multi_clip_end_uses_each_envs_clip_length(self) -> None:
+        src = _make_multi_clip_source()
+        src.update(torch.zeros(_N, dtype=torch.long))
+        src._clip_indices = torch.tensor([0, 1, 0, 1][:_N], dtype=torch.long)
+        src._start_offsets = torch.tensor([3, 3, 4, 6][:_N], dtype=torch.long)
+        # lengths 5 / 7 / 5 / 7
+        assert src.clip_end(_steps(2)).tolist() == [True, False, True, True][:_N]
+
     def test_multi_clip_source_uses_per_env_clip_assignments(self) -> None:
         src = _make_multi_clip_source()
         t = torch.tensor([0, 2, 4, 6], dtype=torch.long)
@@ -530,9 +545,9 @@ class TestClipTrajectorySourceAdvance:
         src.update(t1)
         tgt1 = src.site_targets(t1)
 
-        assert not torch.allclose(
-            tgt0, tgt1
-        ), "Targets must differ after advancing one frame"
+        assert not torch.allclose(tgt0, tgt1), (
+            "Targets must differ after advancing one frame"
+        )
 
     def test_targets_match_clip_data(self) -> None:
         """Targets at frame k must equal clip.site_xpos[k]."""
@@ -550,9 +565,9 @@ class TestClipTrajectorySourceAdvance:
                 .expand(_N, -1, -1)
             )
             actual = src.site_targets(t_k)
-            assert torch.allclose(
-                actual, expected, atol=1e-6
-            ), f"Frame {frame_k}: targets don't match clip"
+            assert torch.allclose(actual, expected, atol=1e-6), (
+                f"Frame {frame_k}: targets don't match clip"
+            )
 
     def test_clip_wraps_at_end(self) -> None:
         """After T frames the clip wraps back to frame 0."""
@@ -741,6 +756,21 @@ class TestMimicMjlabCacheDispatch:
 
         # Resampled targets will almost certainly differ
         assert not torch.allclose(tgt_before, tgt_after)
+
+    def test_sync_random_resamples_only_the_reset_envs(self) -> None:
+        """A reset of env 2 must not resample the other envs' targets."""
+        cache = _make_cache_random()
+        _sync_mimic_mjlab_targets(_make_mock_env(t=5 * _CTRL_DT), "robot", cache)
+        before = cache["target_torch"].clone()
+
+        steps = torch.full((_N,), 6.0) * _CTRL_DT
+        steps[2] = 0.0  # only env 2 restarts its episode
+        _sync_mimic_mjlab_targets(_make_mock_env(t=steps), "robot", cache)
+        after = cache["target_torch"]
+
+        keep = torch.arange(_N) != 2
+        assert torch.equal(after[keep], before[keep])
+        assert not torch.allclose(after[2], before[2])
 
 
 # ---------------------------------------------------------------------------
@@ -992,3 +1022,16 @@ def test_rsi_event_accepts_env_ids_none() -> None:
 
     assert seen["root"].tolist() == list(range(_N))
     assert seen["joint"].tolist() == list(range(_N))
+
+
+def test_check_clip_rate_warns_only_on_mismatch() -> None:
+    import warnings
+
+    from myosuite.core.trajectory_io import check_clip_rate
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        check_clip_rate(None, _CTRL_DT)
+        check_clip_rate(1.0 / _CTRL_DT, _CTRL_DT)
+    with pytest.warns(UserWarning, match="control rate"):
+        check_clip_rate(30.0, _CTRL_DT)

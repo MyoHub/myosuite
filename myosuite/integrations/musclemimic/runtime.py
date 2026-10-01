@@ -37,10 +37,7 @@ def _python_libdir(python_exe: Path) -> str | None:
             [
                 str(python_exe),
                 "-c",
-                (
-                    "import sysconfig; "
-                    "print(sysconfig.get_config_var('LIBDIR') or '')"
-                ),
+                ("import sysconfig; print(sysconfig.get_config_var('LIBDIR') or '')"),
             ],
             capture_output=True,
             text=True,

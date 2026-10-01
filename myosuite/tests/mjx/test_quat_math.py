@@ -1964,9 +1964,9 @@ class TestQuatMath:
 
                 # Property 3: Angles should be in valid ranges
                 euler_np = np.array(euler)
-                assert np.all(euler_np >= -np.pi) and np.all(
-                    euler_np <= np.pi
-                ), f"Euler angles out of range [-π, π] for quaternion: {quat}"
+                assert np.all(euler_np >= -np.pi) and np.all(euler_np <= np.pi), (
+                    f"Euler angles out of range [-π, π] for quaternion: {quat}"
+                )
 
         except Exception as e:
             print(f"Error in quat2euler_intrinsic properties test: {str(e)}")

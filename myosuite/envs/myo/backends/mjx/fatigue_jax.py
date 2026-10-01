@@ -181,9 +181,9 @@ class CumulativeFatigue:
                 length of *fatigue_reset_vec* does not match ``self.na``.
         """
         if fatigue_reset_random:
-            assert (
-                fatigue_reset_vec is None
-            ), "Cannot use fatigue_reset_vec if fatigue_reset_random=True"
+            assert fatigue_reset_vec is None, (
+                "Cannot use fatigue_reset_vec if fatigue_reset_random=True"
+            )
             key1, key2 = jrandom.split(rng)
             non_fatigued = jrandom.uniform(key1, (self.na,))
             active_frac = jrandom.uniform(key2, (self.na,))
@@ -191,9 +191,9 @@ class CumulativeFatigue:
             MR = non_fatigued * (1 - active_frac)
             MF = 1 - non_fatigued
         elif fatigue_reset_vec is not None:
-            assert (
-                len(fatigue_reset_vec) == self.na
-            ), f"Invalid length of fatigue vector (expected {self.na}, got {len(fatigue_reset_vec)})"
+            assert len(fatigue_reset_vec) == self.na, (
+                f"Invalid length of fatigue vector (expected {self.na}, got {len(fatigue_reset_vec)})"
+            )
             MF = jp.array(fatigue_reset_vec, dtype=jp.float32)
             MR = 1 - MF
             MA = jp.zeros(self.na, dtype=jp.float32)

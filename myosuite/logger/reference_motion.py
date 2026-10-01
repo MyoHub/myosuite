@@ -111,29 +111,29 @@ class ReferenceMotion:
         Check reference format
         """
         if reference["robot"] is not None:
-            assert (
-                reference["robot"].ndim == 2
-            ), "Check robot reference, must be shape(N, n_robot_jnt)"
+            assert reference["robot"].ndim == 2, (
+                "Check robot reference, must be shape(N, n_robot_jnt)"
+            )
         if reference["object"] is not None:
-            assert (
-                reference["object"].ndim == 2
-            ), "Check object reference, must be shape(N, n_object_jnt)"
+            assert reference["object"].ndim == 2, (
+                "Check object reference, must be shape(N, n_object_jnt)"
+            )
         if reference["robot_init"] is not None:
-            assert (
-                reference["robot_init"].ndim == 1
-            ), "Check robot_init reference, must be shape(n_robot_jnt)"
+            assert reference["robot_init"].ndim == 1, (
+                "Check robot_init reference, must be shape(n_robot_jnt)"
+            )
         if reference["robot"] is not None and reference["robot_init"] is not None:
-            assert (
-                reference["robot_init"].shape[0] == reference["robot"].shape[1]
-            ), "n_robot_jnt different between motion and init "
+            assert reference["robot_init"].shape[0] == reference["robot"].shape[1], (
+                "n_robot_jnt different between motion and init "
+            )
         if reference["object_init"] is not None:
-            assert (
-                reference["object_init"].ndim == 1
-            ), "Check object_init reference, must be shape(n_object_jnt)"
+            assert reference["object_init"].ndim == 1, (
+                "Check object_init reference, must be shape(n_object_jnt)"
+            )
         if reference["object_init"] is not None and reference["object"] is not None:
-            assert (
-                reference["object_init"].shape[0] == reference["object"].shape[1]
-            ), "n_object_jnt different between motion and init "
+            assert reference["object_init"].shape[0] == reference["object"].shape[1], (
+                "n_object_jnt different between motion and init "
+            )
 
     def load(self, reference_data):
         """
@@ -230,9 +230,9 @@ class ReferenceMotion:
         if self.motion_extrapolation and time >= self.reference["time"][-1]:
             return (self.horizon - 1, self.horizon - 1)
         else:
-            assert (
-                time <= self.reference["time"][-1]
-            ), f"Trying to access time (={time}) beyond max reference duration (={self.reference['time'][-1]}) "
+            assert time <= self.reference["time"][-1], (
+                f"Trying to access time (={time}) beyond max reference duration (={self.reference['time'][-1]}) "
+            )
 
         # search locally for index
         if time == self.reference["time"][self.index_cache]:

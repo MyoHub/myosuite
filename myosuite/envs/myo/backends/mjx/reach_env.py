@@ -159,7 +159,7 @@ class MjxReachEnv(MyoMjxEnvBase):
         reach_err = (task_state["targets"] - tip_pos).ravel()
         return {
             "qpos": accessor.joint_pos(),
-            "qvel": accessor.joint_vel(),
+            "qvel": accessor.joint_vel() * accessor.dt(),
             "act": accessor.muscle_act(),
             "tip_pos": tip_pos.ravel(),
             "reach_err": reach_err,

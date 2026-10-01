@@ -80,8 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     n_steps = max(1, int(args.n_steps))
 
     logger.info(
-        "MuJoCo viewer open (passive). Close window or ESC to exit. "
-        "steps=%d seed=%d",
+        "MuJoCo viewer open (passive). Close window or ESC to exit. steps=%d seed=%d",
         n_steps,
         args.eval_seed,
     )

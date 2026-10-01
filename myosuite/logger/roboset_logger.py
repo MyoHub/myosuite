@@ -103,7 +103,7 @@ class RoboSetTrace(Trace):
         Ensure that input type is RoboSet format before loading
         """
         trace_type = TraceType.get_type(trace_type)
-        assert (
-            trace_type == TraceType.ROBOSET
-        ), "RoboSetTrace requires TraceType.ROBOSET as trace_type"
+        assert trace_type == TraceType.ROBOSET, (
+            "RoboSetTrace requires TraceType.ROBOSET as trace_type"
+        )
         super().load(trace_type=trace_type, **kwargs)

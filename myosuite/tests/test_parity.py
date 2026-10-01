@@ -138,11 +138,11 @@ def test_parity(env_id: str) -> None:
                 err_msg=f"{env_id} step {i}: obs mismatch",
             )
             rwd_atol = RELAXED_RWD_ATOL.get(env_id, 1e-6)
-            assert (
-                abs(rwd - rec["rwd"]) < rwd_atol
-            ), f"{env_id} step {i}: reward mismatch (got {rwd}, expected {rec['rwd']})"
-            assert (
-                terminated == rec["terminated"]
-            ), f"{env_id} step {i}: terminated mismatch"
+            assert abs(rwd - rec["rwd"]) < rwd_atol, (
+                f"{env_id} step {i}: reward mismatch (got {rwd}, expected {rec['rwd']})"
+            )
+            assert terminated == rec["terminated"], (
+                f"{env_id} step {i}: terminated mismatch"
+            )
     finally:
         env.close()

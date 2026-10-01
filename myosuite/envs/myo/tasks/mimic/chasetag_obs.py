@@ -142,9 +142,9 @@ def chasetag_obs(
     obs = np.concatenate([directional_block, opponent_block, role_block]).astype(
         np.float32
     )
-    assert obs.shape == (
-        CHASETAG_OBS_DIM,
-    ), f"chasetag_obs produced shape {obs.shape}, expected ({CHASETAG_OBS_DIM},)"
+    assert obs.shape == (CHASETAG_OBS_DIM,), (
+        f"chasetag_obs produced shape {obs.shape}, expected ({CHASETAG_OBS_DIM},)"
+    )
     return obs
 
 

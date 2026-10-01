@@ -472,7 +472,7 @@ def test_reward_mode_reaches_the_env_cfg_builder() -> None:
         reward_mode="MIMIC",
     )["myoMimicFullbody-v0"]["env_cfg"]
     assert list(cfg.rewards) == ["tracking"]
-    assert list(cfg.terminations) == ["time_out", "mimic_deviation"]
+    assert list(cfg.terminations) == ["time_out", "clip_end", "mimic_deviation"]
     with pytest.raises(NotImplementedError, match="native task reward"):
         _registered_cfgs(
             mimic._register_mimic_tasks,

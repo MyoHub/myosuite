@@ -118,7 +118,7 @@ def test_zero_control_rollout_stays_bounded(recipe_name: str) -> None:
             max_abs_qacc = max(max_abs_qacc, float(np.max(np.abs(data.qacc))))
 
     warnings = _engine_warnings(data)
-    assert not (
-        set(warnings) & BAD_WARNINGS
-    ), f"engine instability warnings: {warnings}"
+    assert not (set(warnings) & BAD_WARNINGS), (
+        f"engine instability warnings: {warnings}"
+    )
     assert max_abs_qacc < SUPERPHYSICAL_QACC, f"max(abs(qacc))={max_abs_qacc:.3e}"

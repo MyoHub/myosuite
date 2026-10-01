@@ -540,9 +540,9 @@ class TestReachMjxSmoke:
         """Dense rewards should be non-positive (distance penalty dominates)."""
         _, rewards = _run_mjx_episode(self.mjx_env, self.task_state, self.actions)
         # Allow tiny positives from bonus; overall sum must be negative
-        assert (
-            float(np.sum(rewards)) < 0.0
-        ), f"Expected negative total reward; got {float(np.sum(rewards)):.4f}"
+        assert float(np.sum(rewards)) < 0.0, (
+            f"Expected negative total reward; got {float(np.sum(rewards)):.4f}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -696,9 +696,9 @@ class TestSARMjlabSmoke:
             self.full_actions,
         )
         n = min(len(cpu_qpos), len(mjlab_qpos))
-        assert (
-            n >= 10
-        ), f"Episodes too short: cpu={len(cpu_qpos)}, mjlab={len(mjlab_qpos)}"
+        assert n >= 10, (
+            f"Episodes too short: cpu={len(cpu_qpos)}, mjlab={len(mjlab_qpos)}"
+        )
 
         diff = cpu_qpos[:n] - mjlab_qpos[:n]
         max_abs = float(np.max(np.abs(diff)))
@@ -729,9 +729,9 @@ class TestSARMjlabSmoke:
             self.full_actions,
         )
         n = min(len(cpu_rwds), len(mjlab_rwds))
-        assert (
-            n >= 10
-        ), f"Episodes too short: cpu={len(cpu_rwds)}, mjlab={len(mjlab_rwds)}"
+        assert n >= 10, (
+            f"Episodes too short: cpu={len(cpu_rwds)}, mjlab={len(mjlab_rwds)}"
+        )
         assert np.all(np.isfinite(cpu_rwds))
         assert np.all(np.isfinite(mjlab_rwds))
 

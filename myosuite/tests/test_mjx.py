@@ -89,9 +89,9 @@ class TestMjxFunctions:
         qpos_changed = not jp.allclose(initial_qpos, new_mjx_data.qpos, atol=1e-6)
         qvel_changed = not jp.allclose(initial_qvel, new_mjx_data.qvel, atol=1e-6)
 
-        assert (
-            qpos_changed or qvel_changed
-        ), "qpos or qvel should change after a step with gravity"
+        assert qpos_changed or qvel_changed, (
+            "qpos or qvel should change after a step with gravity"
+        )
 
     def test_forward_kinematics(self):
         """Test mjx.forward function and compare with MuJoCo's mj_forward"""

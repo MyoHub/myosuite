@@ -172,9 +172,9 @@ class CumulativeFatigue:
     def reset(self, fatigue_reset_vec=None, fatigue_reset_random=False, key=None):
         """Reset fatigue states"""
         if fatigue_reset_random:
-            assert (
-                fatigue_reset_vec is None
-            ), "Cannot use fatigue_reset_vec if fatigue_reset_random=True"
+            assert fatigue_reset_vec is None, (
+                "Cannot use fatigue_reset_vec if fatigue_reset_random=True"
+            )
             key1, key2 = jrandom.split(key)
             non_fatigued_muscles = jrandom.uniform(key1, (self.na,))
             active_percentage = jrandom.uniform(key2, (self.na,))
@@ -183,9 +183,9 @@ class CumulativeFatigue:
             self.MF = 1 - non_fatigued_muscles
         else:
             if fatigue_reset_vec is not None:
-                assert (
-                    len(fatigue_reset_vec) == self.na
-                ), f"Invalid length of fatigue vector (expected {self.na}, got {len(fatigue_reset_vec)})"
+                assert len(fatigue_reset_vec) == self.na, (
+                    f"Invalid length of fatigue vector (expected {self.na}, got {len(fatigue_reset_vec)})"
+                )
                 self.MF = jp.array(fatigue_reset_vec, dtype=jp.float32)
                 self.MR = 1 - self.MF
                 self.MA = jp.zeros(self.na, dtype=jp.float32)

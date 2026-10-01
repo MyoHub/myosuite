@@ -502,8 +502,7 @@ class BridgedPredictPolicy:
         del obs
         if self._source_env is None:
             raise TypeError(
-                "__call__ requires source_env to be configured on "
-                "BridgedPredictPolicy."
+                "__call__ requires source_env to be configured on BridgedPredictPolicy."
             )
         action = self.predict_from_env(self._source_env)[None, :]
         if self._output_device is None:
