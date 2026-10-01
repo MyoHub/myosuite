@@ -28,8 +28,9 @@ iterations may well reach higher success rates: `myoHandPoseRandom-v0` (36%, pla
 and the rows marked _pending_ (`myoLegStandRandom-v0`, `myoLegDirectionalRandom-v0`), which are being
 retrained (see below).
 
-Both `FingerReachRandom` variants share one target box, of which only about 55% (65% at a looser
-tolerance) lies within the fingertip's workspace, so their success rate cannot exceed roughly that.
+Both `FingerReachRandom` variants used to share one target box, of which only about 55% (65% at a looser
+tolerance) lies within the fingertip's workspace, which capped their success rate at roughly that. They now
+sample only targets the fingertip can reach, and their policies were retrained.
 
 **Compatibility with the ms3 observation changes.** Policies are tied to the observation contract they
 were trained with. Two changes since the first set of checkpoints affect them:
