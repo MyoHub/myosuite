@@ -17,10 +17,12 @@ from mjlab.actuator import XmlActuatorCfg as _XmlActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
+from mjlab.envs.mdp import dr
 from mjlab.envs.mdp import terminations as mdp_terminations
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
 from mjlab.managers.reward_manager import RewardTermCfg
+from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.rl import (
     RslRlModelCfg,
@@ -1003,30 +1005,6 @@ def _make_tt_reset_event(
             rt["cur_rally"][int(e)] = 0
             rt["last_done"][int(e)] = False
 
-        # --- paddle mass DR (AP-8 known exception; TODO: dr.body_mass once supported) ---
-        if tt_cfg.paddle_mass_range is not None:
-            lo, hi = tt_cfg.paddle_mass_range
-            mass = lo + torch.rand(n_reset, device=device) * (hi - lo)
-            bid = sc["paddle_body"]
-            try:
-                arm_ent.data.model.body_mass[env_ids_long, bid] = mass
-            except (AttributeError, TypeError) as e:
-                logger.debug("paddle mass DR skipped (AP-8): %s", e)
-
-        # --- ball friction DR (AP-8 known exception; TODO: dr.geom_friction once supported) ---
-        if tt_cfg.ball_friction_range is not None:
-            low = torch.tensor(
-                tt_cfg.ball_friction_range["low"], device=device, dtype=torch.float32
-            )
-            high = torch.tensor(
-                tt_cfg.ball_friction_range["high"], device=device, dtype=torch.float32
-            )
-            fr = torch.rand(n_reset, 3, device=device) * (high - low) + low
-            try:
-                ball_ent.data.model.geom_friction[env_ids_long, 0, :3] = fr
-            except (AttributeError, TypeError) as e:
-                logger.debug("ball friction DR skipped (AP-8): %s", e)
-
         # --- arm joint reset via entity.write_joint_state_to_sim ---
         # joint_q_adr has one entry per qpos slot (not per joint) for non-free
         # joints.  write_joint_state_to_sim takes indices into joint_q_adr.
@@ -1187,6 +1165,38 @@ def _table_tennis_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     )
 
 
+def _tt_dr_events(tt_cfg: TableTennisCfg) -> dict[str, EventTermCfg]:
+    """Per-env P2 domain randomization of the paddle mass and the ball friction."""
+    events: dict[str, EventTermCfg] = {}
+    if tt_cfg.paddle_mass_range is not None:
+        # Mass only, inertia kept, as on CPU (hence dr.body_mass's warning).
+        events["paddle_mass"] = EventTermCfg(
+            func=dr.body_mass,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg(_TT_ENTITY_NAME, body_names=("paddle",)),
+                "ranges": tuple(tt_cfg.paddle_mass_range),
+                "operation": "abs",
+            },
+        )
+    if tt_cfg.ball_friction_range is not None:
+        low = tt_cfg.ball_friction_range["low"]
+        high = tt_cfg.ball_friction_range["high"]
+        events["ball_friction"] = EventTermCfg(
+            func=dr.geom_friction,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    _TT_BALL_ENTITY_NAME, geom_names=("pingpong",)
+                ),
+                "ranges": {axis: (low[axis], high[axis]) for axis in range(3)},
+                "axes": [0, 1, 2],
+                "operation": "abs",
+            },
+        )
+    return events
+
+
 def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnvCfg:
     """Build mjlab ``ManagerBasedRlEnvCfg`` for TableTennis (vectorised)."""
     _reference_model()
@@ -1256,6 +1266,7 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
             func=_make_tt_reset_event(_TT_ENTITY_NAME, tt_cfg),
             mode="reset",
         ),
+        **_tt_dr_events(tt_cfg),
     }
 
     return ManagerBasedRlEnvCfg(

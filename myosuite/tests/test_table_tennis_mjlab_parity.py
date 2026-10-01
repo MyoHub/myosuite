@@ -23,7 +23,7 @@ from mjlab.tasks.registry import load_env_cfg  # noqa: E402
 
 import myosuite  # noqa: E402, F401
 
-_P0 = "myoChallengeTableTennisP0-v0"
+_P0, _P2 = "myoChallengeTableTennisP0-v0", "myoChallengeTableTennisP2-v0"
 
 
 def _make_env(env_id: str, num_envs: int) -> ManagerBasedRlEnv:
@@ -51,6 +51,13 @@ def cpu_p0() -> gym.Env:
 def _geom_id(env: ManagerBasedRlEnv, short: str) -> int:
     model = env.sim.mj_model
     ids = [i for i in range(model.ngeom) if model.geom(i).name.split("/")[-1] == short]
+    assert len(ids) == 1, short
+    return ids[0]
+
+
+def _body_id(env: ManagerBasedRlEnv, short: str) -> int:
+    model = env.sim.mj_model
+    ids = [i for i in range(model.nbody) if model.body(i).name.split("/")[-1] == short]
     assert len(ids) == 1, short
     return ids[0]
 
@@ -89,3 +96,27 @@ def test_stale_contact_rows_produce_no_labels(
     # compute_group: compute() would return the observations cached at the step.
     obs = p0.observation_manager.compute_group("policy")
     assert torch.count_nonzero(obs[0, _touching_slice(cpu_p0)]) == 0
+
+
+def test_p2_randomizes_the_ball_and_paddle_per_env() -> None:
+    """Ball friction DR hits the ball (not the floor); paddle mass differs per env."""
+    env = _make_env(_P2, 2)
+    try:
+        default = env.sim.mj_model.geom_friction.copy()
+        torch.manual_seed(0)
+        env.reset()
+        friction = env.sim.model.geom_friction.numpy()  # (num_envs, ngeom, 3)
+        ball = _geom_id(env, "pingpong")
+        low, high = [0.9, 0.004, 1e-5], [1.1, 0.006, 3e-5]
+        others = np.delete(friction, ball, axis=1)
+        np.testing.assert_allclose(
+            others, np.broadcast_to(np.delete(default, ball, 0), others.shape)
+        )
+        assert np.all(friction[:, ball] >= np.array(low) - 1e-9)
+        assert np.all(friction[:, ball] <= np.array(high) + 1e-9)
+        assert not np.allclose(friction[0, ball], friction[1, ball])
+        mass = env.sim.model.body_mass.numpy()[:, _body_id(env, "paddle")]
+        assert np.all((mass >= 0.10) & (mass <= 0.15))
+        assert mass[0] != mass[1]
+    finally:
+        env.close()
