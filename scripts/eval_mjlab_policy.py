@@ -39,7 +39,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import mujoco
 import numpy as np
@@ -925,6 +925,15 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path) -> None:
         _write_video(cfg, frames, step_dt)
 
 
+def _actor_obs(obs: Any) -> Any:
+    """Policy input of an mjlab observation dict.
+
+    The mjlab twins name their observation group ``actor`` (with a ``critic``
+    group), other tasks use mjlab's standard ``policy`` group.
+    """
+    return obs["actor"] if "actor" in obs else obs["policy"]
+
+
 def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
     """Roll out ``cols x rows`` parallel mjlab envs, ``episodes_per_env`` each."""
     import torch
@@ -974,7 +983,7 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
     with torch.no_grad():
         for _ in range(per_env * env.max_episode_length):
             act = policy.sample if cfg.stochastic else policy
-            obs, rew, terminated, truncated, _ = env.step(act(obs["policy"]))
+            obs, rew, terminated, truncated, _ = env.step(act(_actor_obs(obs)))
             if grid is not None:
                 frames.append(grid.render())
             recording = episodes_done < per_env
