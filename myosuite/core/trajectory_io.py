@@ -350,7 +350,7 @@ def load_motion_clip(
     qpos_joint_names = _decode_name_list(npz, _QPOS_NAME_KEYS)
     if qpos.shape[1] != expected_nq and qpos_joint_names is None:
         raise ValueError(
-            "qpos width mismatch: expected nq=" f"{expected_nq}, got {qpos.shape[1]}"
+            f"qpos width mismatch: expected nq={expected_nq}, got {qpos.shape[1]}"
         )
     qvel: np.ndarray | None = None
     qvel_joint_names: list[str] | None = None
@@ -361,8 +361,7 @@ def load_motion_clip(
             raise ValueError(f"qvel must be rank-2, got shape {qvel_arr.shape}")
         if qvel_arr.shape[1] != expected_nv and qvel_joint_names is None:
             raise ValueError(
-                "qvel width mismatch: expected nv="
-                f"{expected_nv}, got {qvel_arr.shape}"
+                f"qvel width mismatch: expected nv={expected_nv}, got {qvel_arr.shape}"
             )
         qvel = qvel_arr
     site_xpos: np.ndarray | None = None
@@ -406,7 +405,9 @@ def load_motion_clip(
     )
 
 
-def check_clip_rate(frequency_hz: float | None, ctrl_dt: float, name: str = "clip") -> None:
+def check_clip_rate(
+    frequency_hz: float | None, ctrl_dt: float, name: str = "clip"
+) -> None:
     """Warn when a clip's frame rate differs from the control rate.
 
     Clips play back one frame per control step, so a clip recorded at another
