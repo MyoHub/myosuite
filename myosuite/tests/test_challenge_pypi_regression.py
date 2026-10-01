@@ -174,9 +174,9 @@ def test_action_shape_matches_pypi(env_id: str) -> None:
     finally:
         env.close()
 
-    assert current_shape == ref_shape, (
-        f"{env_id}: action shape {current_shape} != PyPI baseline {ref_shape}"
-    )
+    assert (
+        current_shape == ref_shape
+    ), f"{env_id}: action shape {current_shape} != PyPI baseline {ref_shape}"
 
 
 @pytest.mark.parametrize("env_id", _collect_env_ids())
@@ -216,9 +216,9 @@ def test_obs_dict_keys_superset_of_pypi(env_id: str) -> None:
         )
 
     missing = ref_keys - current_keys
-    assert not missing, (
-        f"{env_id}: current env is missing obs keys present in PyPI: {sorted(missing)}"
-    )
+    assert (
+        not missing
+    ), f"{env_id}: current env is missing obs keys present in PyPI: {sorted(missing)}"
 
 
 @pytest.mark.parametrize("env_id", _collect_env_ids())
@@ -246,9 +246,9 @@ def test_step_returns_5tuple(env_id: str) -> None:
     finally:
         env.close()
 
-    assert len(result) == 5, (
-        f"{env_id}: step() returned {len(result)}-tuple, expected 5"
-    )
+    assert (
+        len(result) == 5
+    ), f"{env_id}: step() returned {len(result)}-tuple, expected 5"
     _, rwd, terminated, truncated, info = result
     assert isinstance(rwd, float), f"{env_id}: reward must be float, got {type(rwd)}"
     assert isinstance(terminated, bool), f"{env_id}: terminated must be bool"
@@ -265,9 +265,9 @@ def test_reset_returns_2tuple(env_id: str) -> None:
     finally:
         env.close()
 
-    assert len(result) == 2, (
-        f"{env_id}: reset() returned {len(result)}-tuple, expected 2"
-    )
+    assert (
+        len(result) == 2
+    ), f"{env_id}: reset() returned {len(result)}-tuple, expected 2"
     obs, info = result
     assert obs.ndim == 1, f"{env_id}: obs should be 1-D, got shape {obs.shape}"
     assert np.all(np.isfinite(obs)), f"{env_id}: reset obs contains non-finite values"

@@ -108,9 +108,9 @@ class TestMjxEntryPoint:
             # (e.g. cylinder–mesh); treat this as an environment limitation
             # rather than a hard failure for the entry-point test.
             pytest.skip(f"MJX env not supported on this mujoco.mjx build: {exc}")
-        assert isinstance(env, MjxEnv), (
-            f"make() returned {type(env)}, expected MjxEnv subclass"
-        )
+        assert isinstance(
+            env, MjxEnv
+        ), f"make() returned {type(env)}, expected MjxEnv subclass"
 
     def test_brax_wrap(self):
         """wrap_for_brax_training() returns an object with reset and step attributes."""

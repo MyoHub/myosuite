@@ -545,9 +545,9 @@ class TestClipTrajectorySourceAdvance:
         src.update(t1)
         tgt1 = src.site_targets(t1)
 
-        assert not torch.allclose(tgt0, tgt1), (
-            "Targets must differ after advancing one frame"
-        )
+        assert not torch.allclose(
+            tgt0, tgt1
+        ), "Targets must differ after advancing one frame"
 
     def test_targets_match_clip_data(self) -> None:
         """Targets at frame k must equal clip.site_xpos[k]."""
@@ -565,9 +565,9 @@ class TestClipTrajectorySourceAdvance:
                 .expand(_N, -1, -1)
             )
             actual = src.site_targets(t_k)
-            assert torch.allclose(actual, expected, atol=1e-6), (
-                f"Frame {frame_k}: targets don't match clip"
-            )
+            assert torch.allclose(
+                actual, expected, atol=1e-6
+            ), f"Frame {frame_k}: targets don't match clip"
 
     def test_clip_wraps_at_end(self) -> None:
         """After T frames the clip wraps back to frame 0."""

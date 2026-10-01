@@ -89,9 +89,9 @@ def test_hand_standard_joint_names_and_order(ref_model, recipe_hand_model):
     recipe_names = [
         recipe_hand_model.joint(i).name for i in range(recipe_hand_model.njnt)
     ]
-    assert recipe_names == ref_names, (
-        f"Joint name/order mismatch.\n  ref:    {ref_names}\n  recipe: {recipe_names}"
-    )
+    assert (
+        recipe_names == ref_names
+    ), f"Joint name/order mismatch.\n  ref:    {ref_names}\n  recipe: {recipe_names}"
 
 
 @_SKIP
@@ -167,9 +167,9 @@ def test_hand_pose_adds_target_sites(ref_model, recipe_hand_pose_model):
     recipe_sites = {
         recipe_hand_pose_model.site(i).name for i in range(recipe_hand_pose_model.nsite)
     }
-    assert expected_extra.issubset(recipe_sites), (
-        f"Missing target sites: {expected_extra - recipe_sites}"
-    )
+    assert expected_extra.issubset(
+        recipe_sites
+    ), f"Missing target sites: {expected_extra - recipe_sites}"
     assert recipe_hand_pose_model.nsite == ref_model.nsite + len(expected_extra)
 
 

@@ -72,9 +72,9 @@ class TestModelEditor:
         assert base_id != -1, "base body should exist."
 
         base_body: Any = model.body(base_id)
-        assert base_body.parentid == world_id, (
-            "base body should be child of world body."
-        )
+        assert (
+            base_body.parentid == world_id
+        ), "base body should be child of world body."
 
         geom: Any = model.geom(0)
         assert geom.bodyid == base_id, "geom should be attached to base body."

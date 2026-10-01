@@ -104,9 +104,9 @@ class TestSolverParams:
 
     def test_pose_env_ccd_iterations(self):
         env = _make_pose_env()
-        assert env._mj_model.opt.ccd_iterations == 75, (
-            "MjxPoseEnv is missing opt.ccd_iterations = 75 (Gap 1)"
-        )
+        assert (
+            env._mj_model.opt.ccd_iterations == 75
+        ), "MjxPoseEnv is missing opt.ccd_iterations = 75 (Gap 1)"
 
     def test_pose_env_iterations(self):
         env = _make_pose_env()
@@ -115,9 +115,9 @@ class TestSolverParams:
 
     def test_reach_env_ccd_iterations(self):
         env = _make_reach_env()
-        assert env._mj_model.opt.ccd_iterations == 75, (
-            "MjxReachEnv is missing opt.ccd_iterations = 75 (Gap 1)"
-        )
+        assert (
+            env._mj_model.opt.ccd_iterations == 75
+        ), "MjxReachEnv is missing opt.ccd_iterations = 75 (Gap 1)"
 
     def test_reach_env_iterations(self):
         env = _make_reach_env()
@@ -176,9 +176,9 @@ class TestCylinderContactGuard:
 
         for g in result.geoms:
             if g.type == mujoco.mjtGeom.mjGEOM_CYLINDER and g.name in orig:
-                assert (g.contype, g.conaffinity) == orig[g.name], (
-                    f"Geom {g.name!r}: impl='warp' should not change cylinder contacts"
-                )
+                assert (g.contype, g.conaffinity) == orig[
+                    g.name
+                ], f"Geom {g.name!r}: impl='warp' should not change cylinder contacts"
 
     def test_preprocess_spec_impl_jax_disables_cylinder_contacts(self):
         """_preprocess_spec with impl='jax' should disable all cylinder contacts."""
@@ -222,9 +222,9 @@ class TestCylinderContactGuard:
             and g.contype == 0
             and g.conaffinity == 0
         ]
-        assert len(disabled_none) == n_cylinders, (
-            "MjxReachEnv: impl=None must disable all cylinder contacts for JAX default"
-        )
+        assert (
+            len(disabled_none) == n_cylinders
+        ), "MjxReachEnv: impl=None must disable all cylinder contacts for JAX default"
 
     def test_impl_jax_env_has_no_cylinder_contacts(self):
         """Full env with impl='jax' should have all cylinder contacts disabled."""
@@ -241,9 +241,9 @@ class TestCylinderContactGuard:
             for i in range(env._mj_model.ngeom)
             if env._mj_model.geom_type[i] == mujoco.mjtGeom.mjGEOM_CYLINDER
         )
-        assert disabled == n_cylinders, (
-            f"impl='jax' env should have all {n_cylinders} cylinder contacts disabled"
-        )
+        assert (
+            disabled == n_cylinders
+        ), f"impl='jax' env should have all {n_cylinders} cylinder contacts disabled"
 
 
 # ---------------------------------------------------------------------------
@@ -322,9 +322,9 @@ class TestEllipsoidContactGuard:
             for i in range(mj.ngeom)
             if mj.geom_type[i] == mujoco.mjtGeom.mjGEOM_ELLIPSOID
         )
-        assert disabled == n_ellipsoid, (
-            "MjxLegWalk default impl should disable all ellipsoid collision masks"
-        )
+        assert (
+            disabled == n_ellipsoid
+        ), "MjxLegWalk default impl should disable all ellipsoid collision masks"
 
 
 # ---------------------------------------------------------------------------
@@ -453,9 +453,9 @@ class TestMjxCumulativeFatigue:
         state = self.fatigue.reset(rng)  # MA=0
         act = jp.ones(self.fatigue.na) * 0.8
         state2 = self.fatigue.compute_act(act, fatigue_state=state)
-        assert float(jp.mean(state2["MA"])) > 0.0, (
-            "MA should increase from zero with positive TL"
-        )
+        assert (
+            float(jp.mean(state2["MA"])) > 0.0
+        ), "MA should increase from zero with positive TL"
 
     def test_compute_act_deterministic(self):
         """Same inputs → same outputs (pure function, no side effects)."""
@@ -591,9 +591,9 @@ class TestFatigueWrapper:
 
         ma_after = np.array(next_state.data.userdata[wrapped.fatigue_index_MA])
         # MA should have increased from 0 given a high action
-        assert np.mean(ma_after) > 0.0, (
-            "MA should increase after step with high activation"
-        )
+        assert (
+            np.mean(ma_after) > 0.0
+        ), "MA should increase after step with high activation"
 
     def test_wrapper_obs_keys_appended(self):
         """When fatigue_obs_keys=['MA'], obs state vector grows by nu."""
