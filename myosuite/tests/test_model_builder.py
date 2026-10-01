@@ -518,3 +518,27 @@ def test_legacy_hand_recipes_compile_without_wrapper_xml():
         names = [model.joint(i).name for i in range(model.njnt)]
         cmc = [n for n in names if "cmc" in n]
         assert cmc[:2] == ["cmc_abduction", "cmc_flexion"]
+
+
+def test_motor_finger_recipe_scales_the_motor_gears() -> None:
+    """The four motorFinger* envs use the stronger gears (x1/x2 never reached the poses)."""
+    import gymnasium as gym
+    import mujoco
+
+    from myosuite.core.model_recipes import _MOTOR_FINGER_GEAR_SCALE
+    from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+
+    stock = mujoco.MjModel.from_xml_path(
+        str(resolve_finger_xml("motorfinger_v0.xml"))
+    ).actuator_gear[:, 0]
+    for env_id in (
+        "motorFingerPoseFixed-v0",
+        "motorFingerPoseRandom-v0",
+        "motorFingerReachFixed-v0",
+        "motorFingerReachRandom-v0",
+    ):
+        env = gym.make(env_id)
+        np.testing.assert_allclose(
+            env.unwrapped.model.actuator_gear[:, 0], stock * _MOTOR_FINGER_GEAR_SCALE
+        )
+        env.close()

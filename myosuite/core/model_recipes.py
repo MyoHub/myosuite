@@ -117,6 +117,28 @@ def _elbow_sarcopenia(b: ModelBuilder) -> ModelBuilder:
     return b.attach_fragment("elbow").apply_sarcopenia(force_scale=0.5)
 
 
+# The shipped motor finger (20/5/5/10/10) is too weak to reach its target poses: trained
+# policies stay at 0% success with x1 and x2 and reach 100% with x4.
+_MOTOR_FINGER_GEAR_SCALE = 4.0
+
+
+def _scale_motor_gears(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+    """Scale the gear of every motor of the finger model."""
+    for actuator in spec.actuators:
+        actuator.gear = np.asarray(actuator.gear) * _MOTOR_FINGER_GEAR_SCALE
+    return spec
+
+
+@model_recipe("motor_finger")
+def _motor_finger(b: ModelBuilder) -> ModelBuilder:
+    """Tendon-motor finger (``motorfinger_v0.xml``) with the stronger motor gears."""
+    from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+
+    return ModelBuilder.from_xml_file(
+        resolve_finger_xml("motorfinger_v0.xml")
+    ).apply_transform(_scale_motor_gears)
+
+
 def _calibrate_compose_arm_root(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     """Reposition the myo_sim-pip-composed arm+scaffold to the legacy world frame.
 
