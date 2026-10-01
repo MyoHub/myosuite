@@ -36,3 +36,15 @@ don't get an entry here.
 - Relocated wiki files from `wiki/` to `docs/wiki/` to keep the repository root cleaner.
 - Updated `CLAUDE.md` mandatory wiki references to point to `docs/wiki/*`.
 - Updated internal wiki links and workflow instructions to use `docs/wiki/*`.
+
+## [2026-10-01] breaking | CPU observation contract (branch: fix/observation-contract)
+
+- Observations are never clipped: every CPU env declares a float32 `Box(-inf, inf)` and only casts to float32;
+  the mjlab twins dropped their matching `clip=(-10, 10)`. 43 envs had clipped positions/forces before.
+- Every `step()` override ends with `MyoGymnasiumEnv._finalize_step` (reward-dict validation, render hook,
+  float32 obs, standard info); 61 envs returned float64 obs outside their space before.
+- Derived quantities are fresh after stepping: CPU runs `mj_forward` after `mj_step` (`_step_physics`), mjlab
+  twins run `mdp.sync_forward` before rewards/terminations; the CPU-staleness emulation is gone. State
+  trajectories are bit-identical except OslRun (its OSL controller reads a load sensor).
+- Why: clipped and stale inputs were silently corrupting training signals; policies trained on them may need
+  retraining. Convention documented in `cross-backend-contract.md` (invariant 1).
