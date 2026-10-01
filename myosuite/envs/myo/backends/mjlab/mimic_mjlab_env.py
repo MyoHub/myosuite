@@ -1215,33 +1215,58 @@ def _mimic_early_termination(
     ctrl_dt: float | None = None,
     site_err_threshold: float = 1.0,
     root_err_threshold: float = 0.3,
+    use_clip_root: bool = True,
 ) -> Callable[[Any], Any]:
     """Terminate episodes where tracking error exceeds recovery threshold.
 
+    Same rule as the CPU ``mimic_should_terminate``: mean site error against
+    the clip targets, plus the root position error against the clip's
+    reference root.  The root check runs only when the entity has a free root
+    joint, *use_clip_root* is set and the clip covers the root qpos.
+
     Returns boolean tensor ``(N,)`` — ``True`` for envs that should terminate.
     """
+    from myosuite.terms.mimic_obs import mimic_termination_mask
 
     def _fn(env: Any) -> Any:
         import torch
 
         cache = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)
-        ids = cache["site_ids"]
+        entity = env.scene[entity_name]
+        cur_sites = entity.data.data.site_xpos[:, cache["site_ids"], :]
         tgt = cache["target_torch"]
         if tgt is None:
             return torch.zeros(
-                env.scene[entity_name].data.data.qpos.shape[0],
-                dtype=torch.bool,
-                device=env.scene[entity_name].data.data.qpos.device,
+                cur_sites.shape[0], dtype=torch.bool, device=cur_sites.device
             )
-        data = env.scene[entity_name].data.data
-        cur_sites = data.site_xpos[:, ids, :]  # (N, n_sites, 3)
-        err = cur_sites - tgt
-        mean_dist = torch.sqrt((err * err).sum(dim=-1)).mean(dim=-1)  # (N,)
-        site_term = mean_dist > site_err_threshold
 
-        root_err = torch.sqrt(((data.qpos[:, :3] - tgt.mean(dim=1)) ** 2).sum(dim=-1))
-        root_term = root_err > root_err_threshold
-        return site_term | root_term
+        # Root error vs the clip's reference root, only for a free root joint
+        # (bimanual is fixed-base: its qpos[:3] are hinge angles).
+        cur_root = ref_root = None
+        resolved_clip: MotionClip | None = cache.get("clip")
+        clip_source = cache.get("clip_source")
+        if (
+            use_clip_root
+            and not entity.is_fixed_base
+            and clip_source is not None
+            and resolved_clip is not None
+            and _clip_has_required_indices(
+                resolved_clip.qpos_model_indices, range(0, 3)
+            )
+        ):
+            ref_qpos = clip_source.ref_qpos(_mimic_episode_steps(env))
+            if ref_qpos is not None:
+                ref_root = ref_qpos[:, :3]
+                cur_root = entity.data.root_link_pos_w
+        return mimic_termination_mask(
+            torch,
+            cur_sites,
+            tgt,
+            cur_root,
+            ref_root,
+            site_err_threshold=site_err_threshold,
+            root_err_threshold=root_err_threshold,
+        )
 
     return _fn
 
@@ -1402,7 +1427,13 @@ def _make_mimic_env_cfg(
         and clip is not None
     ):
         terminations["mimic_deviation"] = TerminationTermCfg(
-            func=_mimic_early_termination(entity_name, variant, clip, ctrl_dt),
+            func=_mimic_early_termination(
+                entity_name,
+                variant,
+                clip,
+                ctrl_dt,
+                use_clip_root=enable_clip_state_terms,
+            ),
             time_out=False,
         )
 

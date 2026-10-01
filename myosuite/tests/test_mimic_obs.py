@@ -7,11 +7,13 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from myosuite.terms.mimic_obs import (
     mimic_lookahead_obs,
     mimic_lookahead_obs_size,
     mimic_should_terminate,
+    mimic_termination_mask,
 )
 
 RNG = np.random.default_rng(42)
@@ -142,3 +144,35 @@ def test_termination_exactly_at_threshold():
     assert mimic_should_terminate(
         current, ref, np.zeros(3), np.zeros(3), site_err_threshold=1.0
     )
+
+
+def _batched_termination_case() -> tuple[np.ndarray, ...]:
+    """Four envs: on track, site error 1.5 m, root error 0.5 m, root error 0.2 m."""
+    ref_sites = np.zeros((4, N_SITES, 3))
+    cur_sites = ref_sites.copy()
+    cur_sites[:, :, 0] = [[0.1], [1.5], [0.1], [0.1]]
+    ref_root = np.zeros((4, 3))
+    cur_root = np.array([[0.1, 0, 0], [0, 0, 0], [0, 0.5, 0], [0, 0, 0.2]])
+    return cur_sites, ref_sites, cur_root, ref_root
+
+
+def test_termination_mask_is_batched_on_numpy_and_torch():
+    """One term serves both backends: per-env site and root checks."""
+    cur_sites, ref_sites, cur_root, ref_root = _batched_termination_case()
+    expected = [False, True, True, False]
+    mask = mimic_termination_mask(np, cur_sites, ref_sites, cur_root, ref_root)
+    assert mask.tolist() == expected
+    assert [
+        mimic_should_terminate(*case)
+        for case in zip(cur_sites, ref_sites, cur_root, ref_root)
+    ] == expected
+    torch = pytest.importorskip("torch")
+    tensors = [torch.as_tensor(a) for a in (cur_sites, ref_sites, cur_root, ref_root)]
+    assert mimic_termination_mask(torch, *tensors).tolist() == expected
+
+
+def test_termination_mask_without_reference_root_checks_sites_only():
+    """Without a reference root (no free joint) only the site error counts."""
+    cur_sites, ref_sites, cur_root, _ = _batched_termination_case()
+    mask = mimic_termination_mask(np, cur_sites, ref_sites, cur_root, None)
+    assert mask.tolist() == [False, True, False, False]

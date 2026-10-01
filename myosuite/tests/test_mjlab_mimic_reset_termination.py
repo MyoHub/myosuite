@@ -167,6 +167,14 @@ def fullbody_env() -> Iterator[tuple[Any, MotionClip]]:
 
 
 @pytest.fixture(scope="module")
+def bimanual_env() -> Iterator[tuple[Any, MotionClip]]:
+    clip = _synthetic_clip("bimanual")
+    env = _make_env("bimanual", clip)
+    yield env, clip
+    env.close()
+
+
+@pytest.fixture(scope="module")
 def bimanual_long_env() -> Iterator[tuple[Any, MotionClip]]:
     """Bimanual env whose episodes outlast the longest test rollout."""
     clip = _synthetic_clip("bimanual", n_frames=1500)
@@ -206,6 +214,52 @@ def test_rsi_writes_reference_world_root_velocity(
         expected.append(np.concatenate([vel[3:], vel[:3]]))
     root_vel_w = env.scene[_ENTITY["fullbody"]].data.root_link_vel_w
     np.testing.assert_allclose(root_vel_w.cpu().numpy(), np.stack(expected), atol=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Early termination
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("variant", ["fullbody", "bimanual"])
+def test_perfect_tracking_does_not_terminate(
+    variant: str, request: pytest.FixtureRequest
+) -> None:
+    """A state on the reference clip must not end the episode.
+
+    The root error used to be measured against the centroid of the target
+    sites.  Bimanual has no free joint, so its hinge angles were compared with
+    a world position and every step terminated; the full-body pike pose has
+    its site centroid 0.36 m from the pelvis, past the 0.3 m tolerance.
+    """
+    env, _ = request.getfixturevalue(f"{variant}_env")
+    torch.manual_seed(0)
+    env.reset()
+    deviation = env.termination_manager.get_term_cfg("mimic_deviation").func
+    assert not deviation(env).any()
+    action = torch.zeros(env.num_envs, sum(env.action_manager.action_term_dim))
+    _, _, terminated, _, _ = env.step(action)
+    assert not terminated.any()
+
+
+def test_root_drift_from_reference_terminates(
+    fullbody_env: tuple[Any, MotionClip],
+) -> None:
+    """Moving the pelvis 0.5 m off the reference root ends that env only.
+
+    The sites move by 0.5 m as well, below the 1 m site tolerance, so only
+    the root check against the clip's reference root can fire.
+    """
+    env, _ = fullbody_env
+    torch.manual_seed(0)
+    env.reset()
+    entity = env.scene[_ENTITY["fullbody"]]
+    pose = torch.cat([entity.data.root_link_pos_w, entity.data.root_link_quat_w], -1)
+    pose[0, 0] += 0.5
+    entity.write_root_link_pose_to_sim(pose)
+    env.sim.forward()
+    deviation = env.termination_manager.get_term_cfg("mimic_deviation").func
+    assert deviation(env).tolist() == [True, False]
 
 
 # ---------------------------------------------------------------------------

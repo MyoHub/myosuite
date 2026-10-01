@@ -13,6 +13,7 @@ All functions are backend-agnostic (numpy / jax.numpy / torch).
 
 from __future__ import annotations
 
+from typing import Any
 
 import numpy as np
 
@@ -149,6 +150,44 @@ def mimic_lookahead_obs_size(
 # ---------------------------------------------------------------------------
 
 
+def mimic_termination_mask(
+    xp: Any,
+    current_site_pos: Any,
+    ref_site_pos: Any,
+    current_root_pos: Any | None,
+    ref_root_pos: Any | None,
+    site_err_threshold: float = 1.0,
+    root_err_threshold: float = 0.3,
+) -> Any:
+    """Batched MuscleMimic early-termination test for any array backend.
+
+    Terminates when the mean Euclidean site error exceeds
+    ``site_err_threshold`` or the root position error exceeds
+    ``root_err_threshold``.  The root check needs the clip's reference root
+    (the free-joint position); pass ``None`` for models without a free root.
+
+    Args:
+        xp: Array module (``numpy``, ``jax.numpy`` or ``torch``).
+        current_site_pos: Shape ``(..., n_sites, 3)``.
+        ref_site_pos: Shape ``(..., n_sites, 3)``.
+        current_root_pos: Shape ``(..., 3)`` or ``None``.
+        ref_root_pos: Shape ``(..., 3)`` or ``None`` to disable root checks.
+        site_err_threshold: Mean site distance threshold in metres.
+        root_err_threshold: Root position L2 distance threshold in metres.
+
+    Returns:
+        Boolean array of shape ``(...)``.
+    """
+    diff = current_site_pos - ref_site_pos
+    mean_site_err = xp.sqrt((diff * diff).sum(axis=-1)).mean(axis=-1)
+    terminate = mean_site_err > site_err_threshold
+    if current_root_pos is None or ref_root_pos is None:
+        return terminate
+    root_diff = current_root_pos - ref_root_pos
+    root_err = xp.sqrt((root_diff * root_diff).sum(axis=-1))
+    return terminate | (root_err > root_err_threshold)
+
+
 def mimic_should_terminate(
     current_site_pos: np.ndarray,
     ref_site_pos: np.ndarray,
@@ -159,7 +198,8 @@ def mimic_should_terminate(
 ) -> bool:
     """Return True when the agent has deviated past an irrecoverable threshold.
 
-    Matches MuscleMimic early-termination logic:
+    Single-env NumPy form of :func:`mimic_termination_mask`, which matches
+    MuscleMimic early-termination logic:
     - Mean Euclidean site tracking error > ``site_err_threshold`` (default 1 m)
     - Root position error > ``root_err_threshold`` (default 0.3 m)
 
@@ -174,9 +214,14 @@ def mimic_should_terminate(
     Returns:
         ``True`` if episode should terminate.
     """
-    diffs = current_site_pos - ref_site_pos
-    mean_site_err = float(np.linalg.norm(diffs, axis=-1).mean())
-    if ref_root_pos is None:
-        return mean_site_err > site_err_threshold
-    root_err = float(np.linalg.norm(current_root_pos - ref_root_pos))
-    return (mean_site_err > site_err_threshold) or (root_err > root_err_threshold)
+    return bool(
+        mimic_termination_mask(
+            np,
+            np.asarray(current_site_pos),
+            np.asarray(ref_site_pos),
+            np.asarray(current_root_pos),
+            None if ref_root_pos is None else np.asarray(ref_root_pos),
+            site_err_threshold=site_err_threshold,
+            root_err_threshold=root_err_threshold,
+        )
+    )
