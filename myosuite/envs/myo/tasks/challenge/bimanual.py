@@ -466,16 +466,11 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         self.obs_dict = self._get_obs_dict(self._accessor)
         self.rwd_dict = self.get_reward_dict(self.obs_dict)
-        obs = self._obs_dict_to_vec(self.obs_dict)
-        obs = self._ensure_obs_gymnasium_compliant(obs)
-        reward = float(np.asarray(self.rwd_dict["dense"]).ravel()[0])
-        terminated = bool(np.asarray(self.rwd_dict["done"]).ravel()[0])
-        info = {
-            "obs_dict": self.obs_dict,
-            "rwd_dict": self.rwd_dict,
-            "touch_history": self.touch_history,
-        }
-        return obs, reward, terminated, False, info
+        obs, reward, terminated, truncated, info = self._finalize_step(
+            self.obs_dict, self.rwd_dict
+        )
+        info["touch_history"] = self.touch_history
+        return obs, reward, terminated, truncated, info
 
     def close(self) -> None:
         if hasattr(self, "_legacy_delegate"):
