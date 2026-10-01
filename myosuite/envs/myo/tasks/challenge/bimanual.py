@@ -157,6 +157,8 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
         self.muscle_condition = kwargs.get("muscle_condition", "")
+        self.fatigue_reset_vec = kwargs.get("fatigue_reset_vec")
+        self.fatigue_reset_random = bool(kwargs.get("fatigue_reset_random", False))
         self.init_muscle_condition()
 
         self._init_qpos = (
@@ -405,6 +407,10 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.touch_history = []
         self.over_max = False
         self.goal_touch = 0
+        self.max_force = 0
+        # _get_done reads the previous step's rwd_dict; a stale `solved`
+        # would end the new episode on its first step.
+        self.rwd_dict = None
         if self.obj_mass_range:
             self.model.body_mass[self.obj_bid] = self.np_random.uniform(
                 **self.obj_mass_range
@@ -418,7 +424,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.model.geom(self.obj_gid).size = self.obj_size0 * obj_scales
         else:
             self.ignore_first_scale = False
-        mujoco.mj_forward(self.model, self.data)
+        self.reset_muscle_condition()
         if self.model.nkey > 2:
             self._init_qpos = self.model.key_qpos[2].copy()
         mujoco.mj_resetData(self.model, self.data)
@@ -427,15 +433,16 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         if self.model.nmocap > 0:
             self.data.mocap_pos[:] = self._default_mocap_pos
             self.data.mocap_quat[:] = self._default_mocap_quat
-        self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
-        self.obs_dict = self._get_obs_dict(self._accessor)
-        obs = self._obs_dict_to_vec(self.obs_dict)
         object_qpos_adr = self.model.body(self.obj_bid).jntadr[0]
         self.data.qpos[object_qpos_adr : object_qpos_adr + 3] = (
             self.start_pos + np.array([0, 0, 0.1])
         )
+        mujoco.mj_forward(self.model, self.data)
         self.init_obj_z = self.data.site_xpos[self.obj_sid][-1]
         self.init_palm_z = self.data.site_xpos[self.palm_sid][-1]
+        self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
+        self.obs_dict = self._get_obs_dict(self._accessor)
+        obs = self._obs_dict_to_vec(self.obs_dict)
         obs = np.clip(np.asarray(obs, dtype=np.float32), -10.0, 10.0)
         return obs, {}
 

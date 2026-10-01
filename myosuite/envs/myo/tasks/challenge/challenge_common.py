@@ -14,13 +14,16 @@ from myosuite.terms.base_action import sigmoid_muscle_activation
 
 
 class MuscleActionMixin:
-    """Shared muscle-condition setup and action processing."""
+    """Shared muscle-condition setup, per-episode reset and action processing."""
 
     model: any
     data: any
     frame_skip: int
     normalize_act: bool
     muscle_condition: str
+    fatigue_reset_vec: np.ndarray | None
+    fatigue_reset_random: bool
+    np_random: np.random.Generator
     action_space: any
     _muscle_act_ind: np.ndarray
 
@@ -35,6 +38,19 @@ class MuscleActionMixin:
         elif self.muscle_condition == "reafferentation":
             self.epl_pos = self.model.actuator("EPL").id
             self.eip_pos = self.model.actuator("EIP").id
+
+    def reset_muscle_condition(self) -> None:
+        """Reset the fatigue state for a new episode (no-op for other conditions).
+
+        Call from ``reset()`` after seeding: a random fatigue state is drawn
+        from the env's ``np_random`` so that ``reset(seed=...)`` reproduces it.
+        """
+        if self.muscle_condition == "fatigue":
+            self.muscle_fatigue.reset(
+                fatigue_reset_vec=self.fatigue_reset_vec,
+                fatigue_reset_random=self.fatigue_reset_random,
+                np_random=self.np_random,
+            )
 
     def apply_action(self, action: np.ndarray) -> None:
         """Project and write control action into MuJoCo ctrl buffer."""

@@ -39,14 +39,8 @@ pytestmark = pytest.mark.tier1
 
 BASELINE_DIR = Path(__file__).parent / "parity_baselines"
 
-# Envs whose reset() uses collision-avoidance loops can resample goal/object
-# poses, so replay may not match baseline exactly; use looser obs atol.
+# Per-env obs atol overrides of the strict 1e-6 default; each needs a reason.
 RELAXED_OBS_ATOL: dict[str, float] = {
-    # Goal / object resampling + cross-platform MuJoCo drift can exceed 1.0 on
-    # some runners while still matching the intended replay contract.
-    "myoChallengeRelocateP1-v0": 4.0,
-    "myoChallengeRelocateP2-v0": 0.2,
-    "myoChallengeRelocateP2eval-v0": 0.2,
     # Cross-platform MuJoCo minor drift (arm64 vs x86_64) for these tasks.
     "myoFingerPoseFixed-v0": 2e-3,
     "myoFingerPoseRandom-v0": 2e-3,
@@ -65,11 +59,11 @@ RELAXED_OBS_ATOL: dict[str, float] = {
     # 1.36e-4 by step 115 on uneven-terrain contact events), so it is treated
     # as nondeterministic below rather than given an ever-growing atol.
     "myoLegWalk-v0": 1e-4,
+    # Contact-rich; the baseline was captured on Windows. On Linux/x86_64 the
+    # obs drift by up to 1.5e-5 from step ~30 (contact-order drift), reward by 7e-9.
+    "myoChallengeRelocateP1-v0": 1e-4,
 }
 RELAXED_RWD_ATOL: dict[str, float] = {
-    "myoChallengeRelocateP1-v0": 25.0,
-    "myoChallengeRelocateP2-v0": 20.0,
-    "myoChallengeRelocateP2eval-v0": 20.0,
     "myoFingerPoseFixed-v0": 5e-4,
     "myoFingerPoseRandom-v0": 5e-4,
     "myoHandPoseRandom-v0": 5e-4,

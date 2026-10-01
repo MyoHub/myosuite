@@ -273,11 +273,7 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         **_kwargs: Any,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         gym.Env.reset(self, seed=seed)
-        if self.muscle_condition == "fatigue":
-            self.muscle_fatigue.reset(
-                fatigue_reset_vec=self.fatigue_reset_vec,
-                fatigue_reset_random=self.fatigue_reset_random,
-            )
+        self.reset_muscle_condition()
         mujoco.mj_resetData(self.model, self.data)
         self._sample_goal_and_object()
         self.data.qpos[:] = self._init_qpos

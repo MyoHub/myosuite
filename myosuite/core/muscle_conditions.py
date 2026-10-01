@@ -244,7 +244,8 @@ class CumulativeFatigue:
         sex: Optional sex specifier (``"F"`` or ``"M"``) selects
             sex-specific rows in :data:`MUSCLE_FATIGUE_PARAMS`.
         seed: Random seed for stochastic resets via
-            :meth:`reset(fatigue_reset_random=True)`.
+            :meth:`reset(fatigue_reset_random=True)` when no ``np_random``
+            generator is passed to it.
         use_uniform_params: If ``True``, bypass per-muscle lookup and use
             uniform F/R/r for all muscles (matches the original
             ``use_fatigue_model_v2_4`` behaviour in ``physics/fatigue.py``).
@@ -388,6 +389,7 @@ class CumulativeFatigue:
         self,
         fatigue_reset_vec: np.ndarray | None = None,
         fatigue_reset_random: bool = False,
+        np_random: np.random.Generator | None = None,
     ) -> None:
         """Reset fatigue state.
 
@@ -395,16 +397,20 @@ class CumulativeFatigue:
             fatigue_reset_vec: If provided, set MF to this vector and
                 MR = 1 - fatigue_reset_vec.  Shape ``(na,)``.
             fatigue_reset_random: If ``True``, sample a random fatigue
-                state using the stored RNG.  Cannot be combined with
-                *fatigue_reset_vec*.
+                state.  Cannot be combined with *fatigue_reset_vec*.
+            np_random: Generator for the random state, typically the env's
+                seeded ``np_random`` so that ``env.reset(seed=...)`` is
+                reproducible.  Defaults to the model's own RNG (see
+                :meth:`seed`).
         """
         if fatigue_reset_random:
             if fatigue_reset_vec is not None:
                 raise ValueError(
                     "Cannot pass fatigue_reset_vec when fatigue_reset_random=True."
                 )
-            nf = self.np_random.random(size=(self.na,))
-            ap = self.np_random.random(size=(self.na,))
+            rng = self.np_random if np_random is None else np_random
+            nf = rng.random(size=(self.na,))
+            ap = rng.random(size=(self.na,))
             self._MA = nf * ap
             self._MR = nf * (1.0 - ap)
             self._MF = 1.0 - nf
