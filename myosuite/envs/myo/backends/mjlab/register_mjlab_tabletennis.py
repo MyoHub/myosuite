@@ -6,9 +6,12 @@
 
 from __future__ import annotations
 
+import functools
 import logging
+import re
 import weakref
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import mujoco
@@ -50,6 +53,7 @@ from myosuite.terms.base_action import sigmoid_muscle_activation
 logger = logging.getLogger(__name__)
 
 _TT_ENTITY_NAME = "table_tennis_robot"
+_TT_PADDLE_ENTITY_NAME = "paddle"
 _MAX_TIME = 3.0
 _TT_RWD_WEIGHTS: dict[str, float] = {
     "reach_dist": 1.0,
@@ -163,6 +167,40 @@ def _reference_model() -> mujoco.MjModel:
     return model
 
 
+_BALL_LAUNCH_VEL = (5.6, 1.6, 0.1)  # CPU ``start_vel`` (P0/P1)
+
+
+@dataclass(frozen=True)
+class _TTKeyframe:
+    """CPU keyframe the mjlab scene starts from (arm joints, free-body poses)."""
+
+    arm_joint_pos: dict[str, float]
+    paddle_pose: tuple[float, ...]
+    ball_pose: tuple[float, ...]
+
+
+@functools.cache
+def _tt_keyframe() -> _TTKeyframe:
+    model = _reference_model()
+    key = model.key_qpos[0]
+
+    def pose(joint: str) -> tuple[float, ...]:
+        adr = int(model.joint(joint).qposadr[0])
+        return tuple(float(q) for q in key[adr : adr + 7])
+
+    # Anchored: mjlab matches init_state joint patterns as regex prefixes.
+    arm_joint_pos = {
+        re.escape(model.joint(j).name) + "$": float(key[model.jnt_qposadr[j]])
+        for j in range(model.njnt)
+        if model.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE
+    }
+    return _TTKeyframe(
+        arm_joint_pos=arm_joint_pos,
+        paddle_pose=pose("paddle_freejoint"),
+        ball_pose=pose("pingpong_freejoint"),
+    )
+
+
 def _tt_actuator_xml_groups() -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Return (muscle tendon names, position actuator names) for mjlab Xml wrapping."""
     global _TT_TENDON_NAMES, _TT_POSITION_ACTUATOR_NAMES
@@ -202,12 +240,12 @@ def _resolve_tt_scene_ids(env: Any, entity_name: str) -> dict[str, Any]:
         return env_cache[entity_name]
 
     ent = env.scene[entity_name]
+    paddle_ent = env.scene[_TT_PADDLE_ENTITY_NAME]
     ball_ent = env.scene[_TT_BALL_ENTITY_NAME]
     mj_m = env.sim.mj_model
 
     arm_prefix = f"{entity_name}/"
     ball_prefix = f"{_TT_BALL_ENTITY_NAME}/"
-    paddle_fj = f"{arm_prefix}paddle_freejoint"
 
     # --- site IDs (scene-level via entity.indexing.site_ids) ---
     def _scene_site(e: Any, short_name: str) -> int:
@@ -228,8 +266,6 @@ def _resolve_tt_scene_ids(env: Any, entity_name: str) -> dict[str, Any]:
         if not jname or not jname.startswith(arm_prefix):
             continue
         jnt = mj_m.joint(jname)
-        if jname == paddle_fj:
-            continue
         jnt_qposadr_arm.append(int(jnt.qposadr[0]))
         jnt_range_arm.append((float(mj_m.jnt_range[i, 0]), float(mj_m.jnt_range[i, 1])))
         myo_qpos.append(int(jnt.qposadr[0]))
@@ -246,7 +282,7 @@ def _resolve_tt_scene_ids(env: Any, entity_name: str) -> dict[str, Any]:
         return int(mj_m.geom(name).id)
 
     gids = {
-        "pad": _gid(f"{arm_prefix}pad"),
+        "pad": _gid(f"{_TT_PADDLE_ENTITY_NAME}/pad"),
         "own": _gid(f"{arm_prefix}coll_own_half"),
         "opp": _gid(f"{arm_prefix}coll_opponent_half"),
         "net": _gid(f"{arm_prefix}coll_net"),
@@ -254,9 +290,9 @@ def _resolve_tt_scene_ids(env: Any, entity_name: str) -> dict[str, Any]:
         "ground": _gid(f"{arm_prefix}ground"),
     }
 
-    # --- sensor addresses (added via SceneCfg.spec_fn, not inside any entity) ---
-    sid_pv = mj_m.sensor("pingpong_vel_sensor").id
-    sid_pad = mj_m.sensor("paddle_vel_sensor").id
+    # --- sensor addresses (each velocimeter lives in its body's entity) ---
+    sid_pv = mj_m.sensor(f"{ball_prefix}pingpong_vel_sensor").id
+    sid_pad = mj_m.sensor(f"{_TT_PADDLE_ENTITY_NAME}/paddle_vel_sensor").id
 
     # --- ball qpos / dof addresses in the scene model ---
     ball_fj = mj_m.joint(f"{ball_prefix}pingpong_freejoint")
@@ -266,9 +302,9 @@ def _resolve_tt_scene_ids(env: Any, entity_name: str) -> dict[str, Any]:
     env_cache[entity_name] = {
         "pelvis_site": _scene_site(ent, "pelvis"),
         "ball_site": _scene_site(ball_ent, "pingpong"),
-        "paddle_site": _scene_site(ent, "paddle"),
+        "paddle_site": _scene_site(paddle_ent, "paddle"),
         "grasp_site": _scene_site(ent, "S_grasp"),
-        "paddle_body": _scene_body(ent, "paddle"),
+        "paddle_body": _scene_body(paddle_ent, "paddle"),
         "ball_body_id": int(ball_bid),
         "geom_bodyid": geom_bodyid,
         "gids": gids,
@@ -302,66 +338,55 @@ def _table_tennis_full_spec() -> mujoco.MjSpec:
 
 
 def _table_tennis_spec_fn() -> mujoco.MjSpec:
+    """Athlete and table; the paddle and the ball are entities of their own.
+
+    mjlab resets a floating body only through the root of its entity, so each
+    free body of the CPU model gets its own entity. Without a free joint mjlab
+    mounts this entity on a mocap body at the origin, which keeps the recipe's
+    calibrated root pose (the CPU world pose).
+    """
     spec = _table_tennis_full_spec()
-    # Remove the ball body — it becomes its own entity so it can be reset via
-    # Entity.write_root_state_to_sim.  The two velocimeter sensors reference
-    # sites from both trees (paddle + pingpong) and are re-added post-attachment
-    # by _tt_scene_spec_fn via SceneCfg.spec_fn.
+    # The velocimeters move with their bodies (see _free_body_spec).
     for s in list(spec.sensors):
         if s.name in ("pingpong_vel_sensor", "paddle_vel_sensor"):
             spec.delete(s)
-    for b in list(spec.bodies):
-        if b.name == "pingpong":
-            spec.delete(b)
-            break
+    for name in ("paddle", "pingpong"):
+        spec.delete(next(b for b in spec.bodies if b.name == name))
     return spec
+
+
+def _free_body_spec(body_name: str) -> mujoco.MjSpec:
+    """Spec holding one free body of the full spec, with its velocimeter."""
+    full = _table_tennis_full_spec()
+    # ``full.body(name)`` returns None for this composed/attached spec
+    # (name lookup isn't populated pre-compile for attached subtrees) —
+    # iterate instead.
+    body = next(b for b in full.bodies if b.name == body_name)
+    spec = mujoco.MjSpec()
+    # attach_body also carries the sensor that reads the body's site.
+    spec.worldbody.add_frame().attach_body(body, "", "")
+    return spec
+
+
+def _paddle_spec_fn() -> mujoco.MjSpec:
+    """Minimal spec containing only the paddle (freejoint + site + geoms)."""
+    return _free_body_spec("paddle")
 
 
 def _pingpong_spec_fn() -> mujoco.MjSpec:
     """Minimal spec containing only the pingpong ball (freejoint + site + geom)."""
-    full = _table_tennis_full_spec()
-    # ``full.body("pingpong")`` returns None for this composed/attached spec
-    # (name lookup isn't populated pre-compile for attached subtrees) —
-    # iterate instead.
-    ball_body = next(b for b in full.bodies if b.name == "pingpong")
-    # Build a clean spec with just the ball subtree.
-    spec = mujoco.MjSpec()
-    frame = spec.worldbody.add_frame()
-    frame.attach_body(ball_body, "", "")
-    # attach_body may carry sensors that reference the ball site; strip them
-    # here — they will be re-added at scene level via SceneCfg.spec_fn.
-    for s in list(spec.sensors):
-        spec.delete(s)
-    return spec
+    return _free_body_spec("pingpong")
 
 
-def _tt_scene_spec_fn(
-    arm_entity_name: str, ball_entity_name: str
-) -> Callable[[mujoco.MjSpec], None]:
-    """Return a SceneCfg.spec_fn that re-adds the two cross-tree velocimeters.
-
-    After mjlab attaches entities the site names are prefixed as
-    ``{entity_name}/{site_name}``.  The two velocimeters reference sites in
-    different entity trees so they cannot live inside either entity spec and
-    must be added here, at the combined-spec level.
-    """
-    paddle_site = f"{arm_entity_name}/paddle"
-    ball_site = f"{ball_entity_name}/pingpong"
-
-    def _fn(spec: mujoco.MjSpec) -> None:
-        s1 = spec.add_sensor()
-        s1.name = "pingpong_vel_sensor"
-        s1.type = mujoco.mjtSensor.mjSENS_VELOCIMETER
-        s1.objtype = mujoco.mjtObj.mjOBJ_SITE
-        s1.objname = ball_site
-
-        s2 = spec.add_sensor()
-        s2.name = "paddle_vel_sensor"
-        s2.type = mujoco.mjtSensor.mjSENS_VELOCIMETER
-        s2.objtype = mujoco.mjtObj.mjOBJ_SITE
-        s2.objname = paddle_site
-
-    return _fn
+def _free_body_init_state(
+    pose: tuple[float, ...], lin_vel: tuple[float, float, float] = (0.0, 0.0, 0.0)
+) -> EntityCfg.InitialStateCfg:
+    """Root state of a free-body entity from a free-joint qpos (pos + wxyz quat)."""
+    return EntityCfg.InitialStateCfg(
+        pos=(pose[0], pose[1], pose[2]),
+        rot=(pose[3], pose[4], pose[5], pose[6]),
+        lin_vel=lin_vel,
+    )
 
 
 def _get_tt_runtime(env: Any) -> dict[str, Any]:
@@ -1117,6 +1142,12 @@ def _make_tt_reset_event(
         )
         ball_ent.write_root_state_to_sim(ball_root_state, env_ids=env_ids_long)
 
+        # --- paddle back in the hand (CPU keyframe) via its entity root ---
+        paddle_ent = env.scene[_TT_PADDLE_ENTITY_NAME]
+        paddle_ent.write_root_state_to_sim(
+            paddle_ent.data.default_root_state[env_ids_long], env_ids=env_ids_long
+        )
+
     return _fn
 
 
@@ -1174,7 +1205,9 @@ def _tt_dr_events(tt_cfg: TableTennisCfg) -> dict[str, EventTermCfg]:
             func=dr.body_mass,
             mode="reset",
             params={
-                "asset_cfg": SceneEntityCfg(_TT_ENTITY_NAME, body_names=("paddle",)),
+                "asset_cfg": SceneEntityCfg(
+                    _TT_PADDLE_ENTITY_NAME, body_names=("paddle",)
+                ),
                 "ranges": tuple(tt_cfg.paddle_mass_range),
                 "operation": "abs",
             },
@@ -1199,7 +1232,7 @@ def _tt_dr_events(tt_cfg: TableTennisCfg) -> dict[str, EventTermCfg]:
 
 def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnvCfg:
     """Build mjlab ``ManagerBasedRlEnvCfg`` for TableTennis (vectorised)."""
-    _reference_model()
+    key = _tt_keyframe()
     tendon_names, pos_names = _tt_actuator_xml_groups()
     articulation = EntityArticulationInfoCfg(
         actuators=(
@@ -1214,22 +1247,27 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
         ),
     )
 
+    # The CPU keyframe: arm joints, paddle in the hand, ball launch pose.
     entity_cfg = EntityCfg(
         spec_fn=_table_tennis_spec_fn,
         articulation=articulation,
+        init_state=EntityCfg.InitialStateCfg(joint_pos=dict(key.arm_joint_pos)),
     )
-    ball_entity_cfg = EntityCfg(spec_fn=_pingpong_spec_fn)
+    paddle_entity_cfg = EntityCfg(
+        spec_fn=_paddle_spec_fn, init_state=_free_body_init_state(key.paddle_pose)
+    )
+    ball_entity_cfg = EntityCfg(
+        spec_fn=_pingpong_spec_fn,
+        init_state=_free_body_init_state(key.ball_pose, _BALL_LAUNCH_VEL),
+    )
     scene_cfg = SceneCfg(
         num_envs=int(tt_cfg.num_envs),
+        # Same order as the CPU qpos: athlete, paddle, ball.
         entities={
             _TT_ENTITY_NAME: entity_cfg,
+            _TT_PADDLE_ENTITY_NAME: paddle_entity_cfg,
             _TT_BALL_ENTITY_NAME: ball_entity_cfg,
         },
-        # Re-add the two velocimeters that cross entity trees (paddle site lives
-        # in table_tennis_robot; pingpong site lives in pingpong).  They are
-        # stripped from both entity specs and re-added here after attachment so
-        # MuJoCo can resolve the prefixed site names in the combined spec.
-        spec_fn=_tt_scene_spec_fn(_TT_ENTITY_NAME, _TT_BALL_ENTITY_NAME),
     )
 
     decimation = max(1, int(round(tt_cfg.ctrl_dt / tt_cfg.sim_dt)))

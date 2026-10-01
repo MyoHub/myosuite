@@ -79,6 +79,44 @@ def _step(env: ManagerBasedRlEnv) -> tuple[float, bool, bool]:
     return float(rew[0]), bool(term[0]), bool(trunc[0])
 
 
+def test_reset_state_matches_cpu(p0: ManagerBasedRlEnv, cpu_p0: gym.Env) -> None:
+    """Athlete root, paddle grip and the whole first observation match CPU."""
+    obs = p0.reset()[0]["policy"][0].numpy()
+    cpu_obs, _ = cpu_p0.reset(seed=0)
+    cm, cd = cpu_p0.model, cpu_p0.data
+    data = p0.sim.data
+
+    for body in ("Full Body", "pelvis", "paddle"):
+        bid = _body_id(p0, body)
+        np.testing.assert_allclose(
+            data.xpos[0, bid].numpy(),
+            cd.xpos[cm.body(body).id],
+            atol=1e-5,
+            err_msg=body,
+        )
+        np.testing.assert_allclose(
+            data.xquat[0, bid].numpy(),
+            cd.xquat[cm.body(body).id],
+            atol=1e-5,
+            err_msg=body,
+        )
+    grasp = [
+        i
+        for i in range(p0.sim.mj_model.nsite)
+        if p0.sim.mj_model.site(i).name.endswith("/S_grasp")
+    ][0]
+    handle = _geom_id(p0, "handle")
+    mj_grip = np.linalg.norm(
+        data.site_xpos[0, grasp].numpy() - data.geom_xpos[0, handle].numpy()
+    )
+    cpu_grip = np.linalg.norm(
+        cd.site_xpos[cm.site("S_grasp").id] - cd.geom_xpos[cm.geom("handle").id]
+    )
+    assert mj_grip == pytest.approx(cpu_grip, abs=1e-5)
+    assert cpu_grip < 0.03  # the handle sits in the hand
+    np.testing.assert_allclose(obs, cpu_obs, atol=1e-4)
+
+
 def test_stale_contact_rows_produce_no_labels(
     p0: ManagerBasedRlEnv, cpu_p0: gym.Env
 ) -> None:
