@@ -37,6 +37,7 @@ from __future__ import annotations
 import inspect
 import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -840,6 +841,13 @@ def _summary(
     print(f"episodes: {len(returns)}")
     print(f"return:   {np.mean(returns):.3f} +- {np.std(returns):.3f}")
     print(f"length:   {np.mean(lengths):.1f}")
+    if len(returns) > 1 and np.allclose(returns, returns[0], rtol=0, atol=1e-6):
+        print(
+            f"warning: all {len(returns)} episodes are identical (deterministic env and "
+            "policy), so this is one trajectory, not an estimate of the success rate "
+            "(0% or 100%). Use --stochastic or perturb the start to get a distribution.",
+            file=sys.stderr,
+        )
     if successes:
         print(f"success:  {100 * np.mean(successes):.1f}% (solved on the final step)")
     else:
