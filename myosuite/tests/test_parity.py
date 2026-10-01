@@ -59,6 +59,9 @@ RELAXED_OBS_ATOL: dict[str, float] = {
     # 1.36e-4 by step 115 on uneven-terrain contact events), so it is treated
     # as nondeterministic below rather than given an ever-growing atol.
     "myoLegWalk-v0": 1e-4,
+    # Contact-rich; the baseline was captured on Windows. On Linux/x86_64 the
+    # obs drift by up to 1.5e-5 from step ~30 (contact-order drift), reward by 7e-9.
+    "myoChallengeRelocateP1-v0": 1e-4,
 }
 RELAXED_RWD_ATOL: dict[str, float] = {
     "myoFingerPoseFixed-v0": 5e-4,
