@@ -51,8 +51,9 @@ RELAXED_OBS_ATOL: dict[str, float] = {
     "myoFingerPoseFixed-v0": 2e-3,
     "myoFingerPoseRandom-v0": 2e-3,
     "myoHandPoseRandom-v0": 5e-4,
-    # Replays bit-exactly on x86-64 across processes and MuJoCo 3.8.1/3.11.0;
-    # the margin covers the arm64 drift recorded for this env (reward below).
+    # Replays bit-exactly across processes on x86-64 with MuJoCo 3.11.0 and
+    # drifts by up to 6e-5 with 3.8.1; the margin covers the arm64 drift
+    # recorded for this env (reward below).
     "myoHandReorient8-v0": 1e-2,
     # Contact-solver floating-point nondeterminism: obs match to 6+ significant
     # figures for the first ~25 steps, then diverge sharply at a single step
