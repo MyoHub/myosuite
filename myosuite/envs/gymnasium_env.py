@@ -33,9 +33,9 @@ _REQUIRED_RWD_KEYS = frozenset({"dense", "done"})
 def _validate_reward_dict(rwd_dict: dict) -> None:
     """Raise ``KeyError`` when a required reward key is missing.
 
-    Called by :meth:`MyoGymnasiumEnv.step` after every ``get_reward_dict``
-    call so that custom task authors catch schema violations immediately
-    rather than producing silent NaNs downstream.
+    Called by :meth:`MyoGymnasiumEnv._finalize_step` (every step, including
+    ``step()`` overrides) so that custom task authors catch schema violations
+    immediately rather than producing silent NaNs downstream.
 
     Args:
         rwd_dict: Dict returned by ``get_reward_dict``.
@@ -337,24 +337,11 @@ class MyoGymnasiumEnv(gym.Env):
         self.data.ctrl[:] = action
         mujoco.mj_step(self.model, self.data, self.frame_skip)
         mujoco.mj_kinematics(self.model, self.data)
-        if self.mujoco_render_frames:
-            self.mj_render()
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
-        _validate_reward_dict(rwd_dict)
-
-        obs = self._obs_dict_to_vec(obs_dict)
-        obs = self._ensure_obs_gymnasium_compliant(obs)
-        reward = float(rwd_dict.get("dense", 0.0))
-        terminated = bool(rwd_dict.get("done", False))
-        truncated = False
-        info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
-        info["obs_dict"] = obs_dict
-        info["rwd_dict"] = rwd_dict
-
-        return obs, reward, terminated, truncated, info
+        return self._finalize_step(obs_dict, rwd_dict)
 
     def forward(
         self, update_exteroception: bool = False
@@ -371,17 +358,7 @@ class MyoGymnasiumEnv(gym.Env):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
-        _validate_reward_dict(rwd_dict)
-        obs = self._obs_dict_to_vec(obs_dict)
-        obs = self._ensure_obs_gymnasium_compliant(obs)
-        reward = float(rwd_dict.get("dense", 0.0))
-        terminated = bool(rwd_dict.get("done", False))
-        info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
-        info["obs_dict"] = obs_dict
-        info["rwd_dict"] = rwd_dict
-        if self.mujoco_render_frames:
-            self.mj_render()
-        return obs, reward, terminated, False, info
+        return self._finalize_step(obs_dict, rwd_dict)
 
     def reset(
         self,
@@ -450,6 +427,37 @@ class MyoGymnasiumEnv(gym.Env):
             The same values as a float32 array.
         """
         return np.asarray(obs, dtype=np.float32)
+
+    def _finalize_step(
+        self, obs_dict: dict[str, np.ndarray], rwd_dict: dict[str, Any]
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """Build the step 5-tuple from the post-step obs and reward dicts.
+
+        The shared tail of :meth:`step`, :meth:`forward` and every ``step()``
+        override: validates the reward dict, renders when
+        ``mujoco_render_frames`` is set, flattens the obs to float32 (no
+        clipping) and returns the standard info (the reward components plus
+        ``obs_dict`` and ``rwd_dict``).
+
+        Args:
+            obs_dict: Observation dict of the current state.
+            rwd_dict: Reward dict computed from ``obs_dict``.
+
+        Returns:
+            ``(obs, reward, terminated, truncated, info)``; ``truncated`` is
+            always ``False`` (``TimeLimit`` handles it).
+        """
+        _validate_reward_dict(rwd_dict)
+        if self.mujoco_render_frames:
+            self.mj_render()
+        obs = self._ensure_obs_gymnasium_compliant(self._obs_dict_to_vec(obs_dict))
+        info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
+        info["obs_dict"] = obs_dict
+        info["rwd_dict"] = rwd_dict
+        # .item(): scalar or 1-element array (float() rejects the latter).
+        reward = float(np.asarray(rwd_dict["dense"]).item())
+        terminated = bool(np.asarray(rwd_dict["done"]).item())
+        return obs, reward, terminated, False, info
 
     def _check_mj_instability_termination(self) -> bool:
         """Return True if the simulation went unstable since the last reset.

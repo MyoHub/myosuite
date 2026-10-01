@@ -86,6 +86,12 @@ full commit list.
   `Box(-inf, inf)` and observations are only cast to float32, as in legacy MyoSuite and mjlab; the
   mjlab twins dropped their matching ±10 clip. Policies trained on the clipped observations of these
   envs may need retraining.
+* **One step contract for every CPU env.** The env classes that override `step()` now end it with
+  the shared `MyoGymnasiumEnv._finalize_step`. 61 envs (the Reach, KeyTurn, ObjHold, PenTwirl, Torso
+  pose and TableTennis families) returned float64 observations outside their float32 observation
+  space and now return float32; every `step()` validates the reward dict and honours
+  `mujoco_render_frames`; Bimanual and TableTennis `info` now carries the reward components (e.g.
+  `solved`) like every other env.
 
 ### Fixed
 

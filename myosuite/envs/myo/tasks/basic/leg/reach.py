@@ -283,14 +283,7 @@ class LegReachEnvV0(MyoGymnasiumEnv, EzPickle):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
-        obs = self._obs_dict_to_vec(obs_dict)
-        obs = self._ensure_obs_gymnasium_compliant(obs)
-        reward = float(rwd_dict["dense"])
-        terminated = bool(rwd_dict["done"])
-        info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
-        info["obs_dict"] = obs_dict
-        info["rwd_dict"] = rwd_dict
-        return obs, reward, terminated, False, info
+        return self._finalize_step(obs_dict, rwd_dict)
 
     def reset(
         self,
