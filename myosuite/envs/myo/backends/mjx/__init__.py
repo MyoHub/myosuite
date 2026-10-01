@@ -53,12 +53,12 @@ from myosuite.envs.myo.backends.mjx.walk_env import MjxWalkEnv
 from myosuite.envs.myo.assets._resolve import (
     resolve_elbow_xml as _resolve_elbow_xml,
     resolve_finger_xml as _resolve_finger_xml,
+    resolve_leg_xml as _resolve_leg_xml,
 )
 from myosuite.integrations.musclemimic.bimanual_model import default_mimic_config
 from myosuite.integrations.musclemimic.fullbody_model import (
     default_mimic_fullbody_config,
 )
-from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
 # ---------------------------------------------------------------------------
 # Conversion helper: dataclass → ConfigDict (required by mujoco_playground)
@@ -159,12 +159,11 @@ ALL_ENVS = [
 # Walk env config
 # ---------------------------------------------------------------------------
 
-_MYO_SIM_ROOT = Path(str(get_sim_asset_root("myo_sim")))
-# Optional trimmed MJCF (not shipped): fall back to myolegs.xml and rely on
+# Same host model as ``myoLegWalk-v0``. The ellipsoid/cylinder contacts that
+# JAX/XLA cannot handle are stripped by
 # :func:`~myosuite.envs.myo.backends.mjx.mjx_spec_preprocess.preprocess_mjx_spec`
-# to strip JAX/XLA-incompatible cylinder/ellipsoid contacts when ``mjx_impl`` ≠ warp.
-_LEG_MJX_MODEL = _MYO_SIM_ROOT / "leg" / "myolegs_mjx.xml"
-_LEG_FALLBACK_MODEL = _MYO_SIM_ROOT / "leg" / "myolegs.xml"
+# when ``mjx_impl`` is not warp.
+_LEG_MODEL = _resolve_leg_xml("myolegs_with_torso.xml")
 
 
 _musclemimic_bimanual_config = default_mimic_config()
@@ -177,10 +176,6 @@ _musclemimic_fullbody_config = default_mimic_fullbody_config()
 # ConfigDict at the mujoco_playground boundary via _to_config_dict().
 # To add a new MJX env: add a factory and an entry in _MJX_SPECS below.
 # ---------------------------------------------------------------------------
-
-_LEG_MODEL = Path(
-    str(_LEG_MJX_MODEL if _LEG_MJX_MODEL.exists() else _LEG_FALLBACK_MODEL)
-)
 
 
 def _cfg_elbow_fixed() -> MjxPoseConfig:

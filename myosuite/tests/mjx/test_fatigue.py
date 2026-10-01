@@ -224,14 +224,16 @@ class TestFatigue:
             numpy_fatigue.compute_act(act)
             jax_fatigue.compute_act(act)
 
-            # Compare efforts
-            numpy_effort = numpy_fatigue.get_effort()
+            # Effort = norm(MA - target load); the numpy model keeps no effort
+            # accessor, so the reference is computed from its state.
+            numpy_effort = np.linalg.norm(numpy_fatigue.MA - act)
             jax_effort = float(jax_fatigue.get_effort())
 
             np.testing.assert_allclose(
                 numpy_effort,
                 jax_effort,
-                rtol=1e-5,
+                rtol=1e-4,
+                atol=1e-4,  # float32 (JAX) vs float64 (numpy) drift, as in compute_act
                 err_msg=f"Effort mismatch for activation {act}",
             )
 

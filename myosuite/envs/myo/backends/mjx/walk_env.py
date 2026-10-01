@@ -31,11 +31,11 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jp
-import mujoco
 import numpy as np
 from typing import Any
 from mujoco import mjx
 
+from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEnvBase
 from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_spec
 from myosuite.physics.quat_math_jax import quat2mat
@@ -82,7 +82,7 @@ class MjxWalkEnv(MyoMjxEnvBase):
             config: Frozen environment config dict.
         """
         impl = getattr(config, "mjx_impl", None) or None
-        spec = mujoco.MjSpec.from_file(config.model_path.as_posix())
+        _, spec = ModelBuilder.from_xml_file(config.model_path).build()
         spec = preprocess_mjx_spec(spec, impl=impl)
         self._mj_spec = spec
         self._mj_model = spec.compile()
