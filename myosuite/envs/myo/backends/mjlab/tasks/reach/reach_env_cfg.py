@@ -52,8 +52,13 @@ def make_reach_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
 
     low = np.concatenate([np.asarray(r[0], dtype=float) for r in ranges.values()])
     high = np.concatenate([np.asarray(r[1], dtype=float) for r in ranges.values()])
+    command_cfg = (
+        mdp.WorkspaceReachTargetCommandCfg
+        if kw.get("target_sampling", "box") == "workspace"
+        else mdp.ReachTargetCommandCfg
+    )
     commands = {
-        COMMAND: mdp.ReachTargetCommandCfg(
+        COMMAND: command_cfg(
             entity_name=ENTITY,
             low=tuple(low.tolist()),
             high=tuple(high.tolist()),

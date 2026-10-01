@@ -7,6 +7,8 @@ from .commands import (  # noqa: F401
     ReachTargetCommandCfg,
     RelativeReachTargetCommand,
     RelativeReachTargetCommandCfg,
+    WorkspaceReachTargetCommand,
+    WorkspaceReachTargetCommandCfg,
 )
 from .observations import reach_err, tip_pos  # noqa: F401
 from .rewards import (  # noqa: F401

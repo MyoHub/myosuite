@@ -88,6 +88,7 @@ _reg(
     max_episode_steps=200,
     kwargs={
         "model_recipe": "motor_finger",
+        "target_sampling": "workspace",
         "target_reach_range": {
             "IFtip": ((0.1, -0.1, 0.1), (0.27, 0.1, 0.3)),
         },
@@ -113,6 +114,7 @@ _reg(
     max_episode_steps=100,
     kwargs={
         "model_path": str(_resolve_finger_xml("myofinger_v0.xml")),
+        "target_sampling": "workspace",
         "target_reach_range": {
             "IFtip": ((0.1, -0.1, 0.1), (0.27, 0.1, 0.3)),
         },
