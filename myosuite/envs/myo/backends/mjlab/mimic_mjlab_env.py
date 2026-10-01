@@ -924,9 +924,13 @@ def _mimic_deepmimic_reward(
         ref_qpos = _select_clip_columns(ref_qpos_full, qpos_indices)
         ref_qvel = _select_clip_columns(ref_qvel_full, qvel_indices)
 
-        has_root_pos = _clip_has_required_indices(qpos_indices, range(0, 3))
-        has_root_quat = _clip_has_required_indices(qpos_indices, range(3, 7))
-        has_root_vel = _clip_has_required_indices(qvel_indices, range(0, 3))
+        # A fixed-base entity (bimanual) has no root: qpos[:7] are hinge angles.
+        free_root = not env.scene[entity_name].is_fixed_base
+        has_root_pos = free_root and _clip_has_required_indices(qpos_indices, range(3))
+        has_root_quat = free_root and _clip_has_required_indices(
+            qpos_indices, range(3, 7)
+        )
+        has_root_vel = free_root and _clip_has_required_indices(qvel_indices, range(3))
         cur_root_pos = data.qpos[:, :3] if has_root_pos else None
         cur_root_vel = data.qvel[:, :3] if has_root_vel else None
         cur_root_quat = data.qpos[:, 3:7] if has_root_quat else None
@@ -971,7 +975,8 @@ def _mimic_obs_lookahead(
 ) -> Callable[[Any], Any]:
     """k-step lookahead observation over future clip targets.
 
-    Returns flattened relative tracked-site positions plus future phase. For
+    Returns flattened relative tracked-site positions plus future phase, and the
+    root position delta / velocity when the entity has a free root.
 
     Args:
         entity_name: Scene entity name.
@@ -1000,13 +1005,18 @@ def _mimic_obs_lookahead(
         clip_lengths = clip_source.clip_lengths(step)
 
         cur_frames = clip_source.frame_indices(step)
-        cur_root_pos = data.qpos[:, :3]  # (N, 3)
-
-        has_root_pos = _clip_has_required_indices(
-            resolved_clip.qpos_model_indices, range(0, 3)
+        # Site targets are relative to the root; a fixed base (bimanual) has none, so
+        # they stay in the world frame and carry no root terms.
+        free_root = not env.scene[entity_name].is_fixed_base
+        cur_root_pos = (
+            data.qpos[:, :3] if free_root else torch.zeros(n_envs, 3, device=device)
         )
-        has_root_vel = _clip_has_required_indices(
-            resolved_clip.qvel_model_indices, range(0, 3)
+
+        has_root_pos = free_root and _clip_has_required_indices(
+            resolved_clip.qpos_model_indices, range(3)
+        )
+        has_root_vel = free_root and _clip_has_required_indices(
+            resolved_clip.qvel_model_indices, range(3)
         )
         per_step_dim = (
             int(clip_source.n_tracked) * 3

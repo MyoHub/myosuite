@@ -480,3 +480,67 @@ def test_reward_mode_reaches_the_env_cfg_builder() -> None:
             clip=clip,
             reward_mode="env",
         )
+
+
+# ---------------------------------------------------------------------------
+# Root assumptions: a fixed base (bimanual) has no root, qpos[:7] are hinge angles
+# ---------------------------------------------------------------------------
+
+
+def _lookahead(env: Any, clip: MotionClip, variant: str) -> Any:
+    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import _mimic_obs_lookahead
+
+    fn = _mimic_obs_lookahead(
+        _ENTITY[variant], variant, clip, float(env.step_dt), k=2, stride=3
+    )
+    return fn(env)
+
+
+def test_bimanual_lookahead_has_no_root_terms(
+    bimanual_env: tuple[Any, MotionClip],
+) -> None:
+    env, clip = bimanual_env
+    env.reset()
+    n_sites = len(clip.site_names or [])
+    out = _lookahead(env, clip, "bimanual")
+    assert out.shape[-1] == 2 * (n_sites * 3 + 1)  # sites + phase per step
+    assert env.scene[_ENTITY["bimanual"]].is_fixed_base
+
+
+def test_fullbody_lookahead_keeps_root_terms(
+    fullbody_env: tuple[Any, MotionClip],
+) -> None:
+    env, clip = fullbody_env
+    env.reset()
+    n_sites = len(clip.site_names or [])
+    out = _lookahead(env, clip, "fullbody")
+    assert out.shape[-1] == 2 * (n_sites * 3 + 3 + 3 + 1)
+
+
+@pytest.mark.parametrize(
+    ("variant", "has_root"), [("bimanual", False), ("fullbody", True)]
+)
+def test_deepmimic_reward_root_terms_only_for_free_root(
+    variant: str,
+    has_root: bool,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import myosuite.terms.mimic_reward as mimic_reward
+    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        _mimic_deepmimic_reward,
+    )
+
+    env, clip = request.getfixturevalue(f"{variant}_env")
+    env.reset()
+    seen: dict[str, Any] = {}
+    real = mimic_reward.mimic_composite_reward
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen["root"] = args[7:13]  # cur/ref root pos, vel, quat
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(mimic_reward, "mimic_composite_reward", spy)
+    _mimic_deepmimic_reward(_ENTITY[variant], variant, clip, float(env.step_dt))(env)
+    assert all(arg is not None for arg in seen["root"]) == has_root
+    assert all(arg is None for arg in seen["root"]) == (not has_root)
