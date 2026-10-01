@@ -317,6 +317,7 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
             self.muscle_fatigue.reset(
                 fatigue_reset_vec=self.fatigue_reset_vec,
                 fatigue_reset_random=self.fatigue_reset_random,
+                np_random=self.np_random,
             )
         self.model.site_rgba[self.success_indicator_sid, :2] = np.array([2.0, 0.0])
         mujoco.mj_resetData(self.model, self.data)
