@@ -380,11 +380,7 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             v_low, v_high = v_bounds[1], v_bounds[0]
             ball_vel = self.np_random.uniform(low=v_low, high=v_high)
             self._init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = ball_vel
-        if self.muscle_condition == "fatigue":
-            self.muscle_fatigue.reset(
-                fatigue_reset_vec=self.fatigue_reset_vec,
-                fatigue_reset_random=self.fatigue_reset_random,
-            )
+        self.reset_muscle_condition()
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = reset_qpos_local
         self.data.qvel[:] = self._init_qvel

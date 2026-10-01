@@ -42,6 +42,7 @@ CHALLENGE_IDS = [
     "myoChallengeRelocateP2eval-v0",
     "myoChallengeBaodingP1-v1",
     "myoChallengeBaodingP2-v1",
+    "myoChallengeTableTennisP1-v0",
 ]
 # One id per basic env class that owns a fatigue model.
 BASIC_FATIGUE_IDS = [
@@ -54,6 +55,7 @@ BASIC_FATIGUE_IDS = [
     "myoFatiLegWalk-v0",
     "myoFatiLegHillyTerrainWalk-v0",
     "myoFatiTorsoPoseFixed-v0",
+    "myoFatiHandReorient8-v0",
 ]
 
 
@@ -80,6 +82,7 @@ FATIGUE_IDS = [
         "myoChallengeRelocateP1-v0",
         "myoChallengeBaodingP1-v1",
         "myoChallengeDieReorientP2-v0",
+        "myoChallengeTableTennisP1-v0",
     )
 ] + BASIC_FATIGUE_IDS
 
