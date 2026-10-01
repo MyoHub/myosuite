@@ -21,6 +21,7 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.physics.quat_math import euler2quat, mat2euler
+from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
 
 class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
@@ -288,8 +289,6 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                     low=self.obj_geom_range["low"],
                     high=self.obj_geom_range["high"],
                 )
-                self.model.geom_aabb[gid][3:] = self.obj_geom_range["high"]
-                self.model.geom_rbound[gid] = 2.0 * max(self.obj_geom_range["high"])
                 self.model.geom_pos[gid] = np_random.uniform(
                     low=-1.0 * self.model.geom_size[gid],
                     high=self.model.geom_size[gid],
@@ -311,6 +310,7 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 self.model.body_mass[self.object_bid] = np_random.uniform(
                     **self.obj_mass_range
                 )
+            refresh_geom_derived_fields(self.model, self._mj_spec, (bid,))
             mujoco.mj_forward(self.model, self.data)
         return {}
 

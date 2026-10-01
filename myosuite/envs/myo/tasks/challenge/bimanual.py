@@ -21,6 +21,7 @@ from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.utils import seed_envs
+from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 from myosuite.physics.quat_math import mat2euler
 
 CONTACT_TRAJ_MIN_LENGTH = 100
@@ -434,6 +435,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         if self.obj_scale_range and not self.ignore_first_scale:
             obj_scales = self.np_random.uniform(**self.obj_scale_range) + 1
             self.model.geom(self.obj_gid).size = self.obj_size0 * obj_scales
+            refresh_geom_derived_fields(self.model, self._mj_spec, (self.obj_bid,))
         else:
             self.ignore_first_scale = False
         self.reset_muscle_condition()
