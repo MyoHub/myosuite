@@ -155,11 +155,7 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         gym.Env.reset(self, seed=seed)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
-        self.observation_space = gym.spaces.Box(
-            -10.0 * np.ones(obs.size, dtype=np.float32),
-            10.0 * np.ones(obs.size, dtype=np.float32),
-            dtype=np.float32,
-        )
+        self.observation_space = self._unbounded_obs_space(obs.size)
         act_low = (
             -np.ones(self.model.nu, dtype=np.float32)
             if self.normalize_act
@@ -389,27 +385,22 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         self.obs_dict = self._get_obs_dict(self._accessor)
         obs = self._obs_dict_to_vec(self.obs_dict)
-        return np.asarray(obs), {}
+        obs = self._ensure_obs_gymnasium_compliant(obs)
+        return obs, {}
 
     def step(self, action: np.ndarray, **kwargs: Any):
         ctrl = self._process_controls(action)
         n_frames = int(self._ctrl_dt / self.model.opt.timestep)
         self.data.ctrl[:] = ctrl
-        for _ in range(n_frames):
-            mujoco.mj_step(self.model, self.data)
-        mujoco.mj_forward(self.model, self.data)
+        self._step_physics(n_frames)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         self.obs_dict = self._get_obs_dict(self._accessor)
         self.rwd_dict = self.get_reward_dict(self.obs_dict)
-        obs = self._obs_dict_to_vec(self.obs_dict)
-        reward = float(self.rwd_dict["dense"])
-        terminated = bool(np.asarray(self.rwd_dict["done"]).ravel()[0])
-        info = {
-            "obs_dict": self.obs_dict,
-            "rwd_dict": self.rwd_dict,
-            "touch_history": self.contact_trajectory,
-        }
-        return np.asarray(obs), reward, terminated, False, info
+        obs, reward, terminated, truncated, info = self._finalize_step(
+            self.obs_dict, self.rwd_dict
+        )
+        info["touch_history"] = self.contact_trajectory
+        return obs, reward, terminated, truncated, info
 
     def _preprocess_spec(self, spec, remove_body_collisions=True, add_left_arm=True):
         for paddle_b in spec.bodies:

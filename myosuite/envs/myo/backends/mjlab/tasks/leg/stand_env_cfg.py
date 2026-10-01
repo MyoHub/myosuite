@@ -87,11 +87,8 @@ def make_leg_stand_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnv
     obs_keys = list(kw.get("obs_keys", LegReachEnvV0.DEFAULT_OBS_KEYS))
     if info.na > 0 and "act" not in obs_keys:
         obs_keys.append("act")
-    # LegReachEnvV0 clips its observation to the +-10 observation space.
     terms = {
-        key: ObservationTermCfg(
-            func=obs_funcs[key][0], params=obs_funcs[key][1], clip=(-10.0, 10.0)
-        )
+        key: ObservationTermCfg(func=obs_funcs[key][0], params=obs_funcs[key][1])
         for key in obs_keys
         if key in obs_funcs
     }
@@ -121,7 +118,7 @@ def make_leg_stand_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnv
     }
 
     terminations = {
-        mdp.SYNC_TERM: TerminationTermCfg(func=mdp.sync_kinematics),
+        mdp.SYNC_TERM: TerminationTermCfg(func=mdp.sync_forward),
         "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
         "reach_failed": TerminationTermCfg(
             func=mdp.leg_reach_failed, params=reach_params

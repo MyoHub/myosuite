@@ -79,6 +79,28 @@ full commit list.
 * Documentation and developer wiki cut down and reorganised (`897744f`, `b7c83a9`, `8079643`).
 * Tutorials simplified for newcomers and verified with real training runs (`cf03010`, `89faae4`).
 * Python support 3.10–3.14 (`38cf140`, `2546095`, `3b025ab`); MuJoCo 3.6.0 (`21edbfc`).
+* **Observations are no longer clipped.** CPU envs declared `Box(-10, 10)` and clipped every
+  observation to it, which saturated positions and forces in 43 envs (Soccer ball, goal and keeper
+  x ≈ 40–50 m; OslRun forward progress; ground reaction forces of Soccer, OslRun and ChaseTag;
+  HandReorient muscle forces; Bimanual velocities). Every env now declares a float32
+  `Box(-inf, inf)` and observations are only cast to float32, as in legacy MyoSuite and mjlab; the
+  mjlab twins dropped their matching ±10 clip. Policies trained on the clipped observations of these
+  envs may need retraining.
+* **One step contract for every CPU env.** The env classes that override `step()` now end it with
+  the shared `MyoGymnasiumEnv._finalize_step`. 61 envs (the Reach, KeyTurn, ObjHold, PenTwirl, Torso
+  pose and TableTennis families) returned float64 observations outside their float32 observation
+  space and now return float32; every `step()` validates the reward dict and honours
+  `mujoco_render_frames`; Bimanual and TableTennis `info` now carries the reward components (e.g.
+  `solved`) like every other env.
+* **Observations and rewards read the current state.** `step()` followed `mj_step` with
+  `mj_kinematics` only, so actuator length/velocity/force, sensors (ground reaction forces),
+  contacts, `cvel` and `subtree_com` were one physics substep old in 53 envs (Soccer, ChaseTag,
+  OslRun, HandReorient, leg walk and terrain). CPU `step()` and the legacy `forward()` now run
+  `mj_forward` (`MyoGymnasiumEnv._step_physics`); the mjlab twins refresh with a full forward before
+  rewards and terminations (`mdp.sync_forward`, now also in the directional twins) and no longer
+  emulate the stale values. The simulated trajectories are bit-identical except OslRun, whose
+  prosthesis controller now reads its current load sensor. Policies trained on the stale
+  observations of these envs may need retraining.
 
 ### Fixed
 

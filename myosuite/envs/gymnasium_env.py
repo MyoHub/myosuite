@@ -33,9 +33,9 @@ _REQUIRED_RWD_KEYS = frozenset({"dense", "done"})
 def _validate_reward_dict(rwd_dict: dict) -> None:
     """Raise ``KeyError`` when a required reward key is missing.
 
-    Called by :meth:`MyoGymnasiumEnv.step` after every ``get_reward_dict``
-    call so that custom task authors catch schema violations immediately
-    rather than producing silent NaNs downstream.
+    Called by :meth:`MyoGymnasiumEnv._finalize_step` (every step, including
+    ``step()`` overrides) so that custom task authors catch schema violations
+    immediately rather than producing silent NaNs downstream.
 
     Args:
         rwd_dict: Dict returned by ``get_reward_dict``.
@@ -316,13 +316,8 @@ class MyoGymnasiumEnv(gym.Env):
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Advance the simulation by one control step.
 
-        Physics note: ``mj_step`` uses a semi-implicit Euler integrator whose
-        second half (``mj_step2``) integrates ``qpos`` from ``qvel`` but does
-        NOT recompute derived world-frame quantities (``xpos``, ``site_xpos``,
-        ``xipos``, body orientations, …).  ``mj_kinematics`` is therefore
-        required immediately after to synchronise those quantities with the new
-        ``qpos`` before observations are read.  Subclasses that override
-        ``step()`` must preserve this call.
+        Subclasses that override ``step()`` advance the physics with
+        :meth:`_step_physics` and end with :meth:`_finalize_step`.
 
         Args:
             action: Control command, clipped to action_space bounds.
@@ -331,35 +326,23 @@ class MyoGymnasiumEnv(gym.Env):
         Returns:
             Tuple of (obs, reward, terminated, truncated, info).
         """
-        import mujoco
-
         action = np.clip(action, self.action_space.low, self.action_space.high)
         self.data.ctrl[:] = action
-        mujoco.mj_step(self.model, self.data, self.frame_skip)
-        mujoco.mj_kinematics(self.model, self.data)
-        if self.mujoco_render_frames:
-            self.mj_render()
+        self._step_physics()
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
-        _validate_reward_dict(rwd_dict)
-
-        obs = self._obs_dict_to_vec(obs_dict)
-        obs = self._ensure_obs_gymnasium_compliant(obs)
-        reward = float(rwd_dict.get("dense", 0.0))
-        terminated = bool(rwd_dict.get("done", False))
-        truncated = False
-        info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
-        info["obs_dict"] = obs_dict
-        info["rwd_dict"] = rwd_dict
-
-        return obs, reward, terminated, truncated, info
+        return self._finalize_step(obs_dict, rwd_dict)
 
     def forward(
         self, update_exteroception: bool = False
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Legacy forward() compatibility without stepping dynamics.
+
+        Derived quantities are recomputed first, so the result matches the
+        current ``qpos``/``qvel`` even after they were written directly
+        (log playback).
 
         Args:
             update_exteroception: Unused compatibility flag.
@@ -367,21 +350,14 @@ class MyoGymnasiumEnv(gym.Env):
         Returns:
             Gymnasium-style 5-tuple for current state.
         """
+        import mujoco
+
         del update_exteroception
+        mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
-        _validate_reward_dict(rwd_dict)
-        obs = self._obs_dict_to_vec(obs_dict)
-        obs = self._ensure_obs_gymnasium_compliant(obs)
-        reward = float(rwd_dict.get("dense", 0.0))
-        terminated = bool(rwd_dict.get("done", False))
-        info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
-        info["obs_dict"] = obs_dict
-        info["rwd_dict"] = rwd_dict
-        if self.mujoco_render_frames:
-            self.mj_render()
-        return obs, reward, terminated, False, info
+        return self._finalize_step(obs_dict, rwd_dict)
 
     def reset(
         self,
@@ -424,23 +400,84 @@ class MyoGymnasiumEnv(gym.Env):
         """
         return np.concatenate([np.atleast_1d(v).ravel() for v in obs_dict.values()])
 
-    def _ensure_obs_gymnasium_compliant(self, obs: np.ndarray) -> np.ndarray:
-        """Cast obs to float32 and clip to observation_space so passive_env_checker is satisfied.
+    @staticmethod
+    def _unbounded_obs_space(obs_dim: int) -> gym.spaces.Box:
+        """Float32 ``Box(-inf, inf)`` space for a flat observation of ``obs_dim`` values.
+
+        Observations are physical quantities (positions on a 50 m pitch, contact
+        forces in N, ...) with no common bound, so none is declared and nothing is
+        clipped (as in legacy MyoSuite and in mjlab).
 
         Args:
-            obs: Raw observation vector (may be float64 or outside declared bounds).
+            obs_dim: Length of the observation vector.
 
         Returns:
-            float32 array within observation_space.low/high.
+            The observation space.
         """
-        obs = np.asarray(obs, dtype=np.float32)
-        if getattr(self, "observation_space", None) is not None:
-            obs = np.clip(
-                obs,
-                self.observation_space.low,
-                self.observation_space.high,
-            )
-        return obs
+        return gym.spaces.Box(-np.inf, np.inf, shape=(obs_dim,), dtype=np.float32)
+
+    def _ensure_obs_gymnasium_compliant(self, obs: np.ndarray) -> np.ndarray:
+        """Cast obs to float32, the dtype of the observation space; never clip.
+
+        Args:
+            obs: Raw observation vector (may be float64).
+
+        Returns:
+            The same values as a float32 array.
+        """
+        return np.asarray(obs, dtype=np.float32)
+
+    def _step_physics(self, nstep: int | None = None) -> None:
+        """Run ``nstep`` physics substeps, then refresh every derived quantity.
+
+        ``mj_step`` computes derived quantities (``xpos``, ``site_xpos``,
+        ``cvel``, ``actuator_length/velocity/force``, ``sensordata``, contacts)
+        before it integrates, so afterwards they lag ``qpos``/``qvel``/``act``
+        by one substep. ``mj_forward`` recomputes them from the new state, so
+        observations and rewards read one consistent state. It writes no
+        state that the next ``mj_step`` reads: the trajectory changes only
+        where Python code feeds a derived quantity back into the controls
+        (e.g. the OSL controller reads its load sensor).
+
+        Args:
+            nstep: Number of substeps; ``None`` uses ``frame_skip``.
+        """
+        import mujoco
+
+        n = self.frame_skip if nstep is None else nstep
+        mujoco.mj_step(self.model, self.data, n)
+        mujoco.mj_forward(self.model, self.data)
+
+    def _finalize_step(
+        self, obs_dict: dict[str, np.ndarray], rwd_dict: dict[str, Any]
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """Build the step 5-tuple from the post-step obs and reward dicts.
+
+        The shared tail of :meth:`step`, :meth:`forward` and every ``step()``
+        override: validates the reward dict, renders when
+        ``mujoco_render_frames`` is set, flattens the obs to float32 (no
+        clipping) and returns the standard info (the reward components plus
+        ``obs_dict`` and ``rwd_dict``).
+
+        Args:
+            obs_dict: Observation dict of the current state.
+            rwd_dict: Reward dict computed from ``obs_dict``.
+
+        Returns:
+            ``(obs, reward, terminated, truncated, info)``; ``truncated`` is
+            always ``False`` (``TimeLimit`` handles it).
+        """
+        _validate_reward_dict(rwd_dict)
+        if self.mujoco_render_frames:
+            self.mj_render()
+        obs = self._ensure_obs_gymnasium_compliant(self._obs_dict_to_vec(obs_dict))
+        info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
+        info["obs_dict"] = obs_dict
+        info["rwd_dict"] = rwd_dict
+        # .item(): scalar or 1-element array (float() rejects the latter).
+        reward = float(np.asarray(rwd_dict["dense"]).item())
+        terminated = bool(np.asarray(rwd_dict["done"]).item())
+        return obs, reward, terminated, False, info
 
     def _check_mj_instability_termination(self) -> bool:
         """Return True if the simulation went unstable since the last reset.

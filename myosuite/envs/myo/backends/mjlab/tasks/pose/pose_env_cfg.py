@@ -51,7 +51,6 @@ class _PoseVariant:
         default_weights: Class ``DEFAULT_RWD_KEYS_AND_WEIGHTS``.
         default_pose_thd: Constructor default of ``pose_thd``.
         far_thd: Distance above which the penalty applies and the episode ends.
-        obs_clip: Observation clip (``PoseEnvV0`` clips to its ``+-10`` space).
         target_always_mean: Target is the range mean (``TorsoEnvV0``).
     """
 
@@ -59,7 +58,6 @@ class _PoseVariant:
     default_weights: dict[str, float]
     default_pose_thd: float
     far_thd: float
-    obs_clip: tuple[float, float] | None
     target_always_mean: bool
 
 
@@ -68,7 +66,6 @@ _POSE_ENV = _PoseVariant(
     default_weights=dict(PoseEnvV0.DEFAULT_RWD_KEYS_AND_WEIGHTS),
     default_pose_thd=0.35,
     far_thd=2 * math.pi,
-    obs_clip=(-10.0, 10.0),
     target_always_mean=False,
 )
 _TORSO_ENV = _PoseVariant(
@@ -76,7 +73,6 @@ _TORSO_ENV = _PoseVariant(
     default_weights=dict(TorsoEnvV0.DEFAULT_RWD_KEYS_AND_WEIGHTS),
     default_pose_thd=0.25,
     far_thd=math.pi,
-    obs_clip=None,
     target_always_mean=True,
 )
 
@@ -122,9 +118,7 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
     if info.na > 0 and "act" not in obs_keys:
         obs_keys.append("act")
     terms = {
-        key: ObservationTermCfg(
-            func=obs_funcs[key][0], params=obs_funcs[key][1], clip=variant.obs_clip
-        )
+        key: ObservationTermCfg(func=obs_funcs[key][0], params=obs_funcs[key][1])
         for key in obs_keys
         if key in obs_funcs
     }

@@ -145,11 +145,7 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
-        self.observation_space = gym.spaces.Box(
-            -10.0 * np.ones(obs.size, dtype=np.float32),
-            10.0 * np.ones(obs.size, dtype=np.float32),
-            dtype=np.float32,
-        )
+        self.observation_space = self._unbounded_obs_space(obs.size)
         act_low = (
             -np.ones(self.model.nu, dtype=np.float32)
             if normalize_act
@@ -318,23 +314,11 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self, action: np.ndarray
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         self._apply_action(action)
-        mujoco.mj_step(self.model, self.data, self.frame_skip)
-        mujoco.mj_kinematics(self.model, self.data)
+        self._step_physics()
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
-        obs = self._obs_dict_to_vec(obs_dict)
-        obs = np.clip(
-            np.asarray(obs, dtype=np.float32),
-            self.observation_space.low,
-            self.observation_space.high,
-        )
-        reward = float(rwd_dict["dense"])
-        terminated = bool(rwd_dict["done"])
-        info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
-        info["obs_dict"] = obs_dict
-        info["rwd_dict"] = rwd_dict
-        return obs, reward, terminated, False, info
+        return self._finalize_step(obs_dict, rwd_dict)
 
     def reset(
         self,
@@ -376,9 +360,5 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
-        obs = np.clip(
-            np.asarray(obs, dtype=np.float32),
-            self.observation_space.low,
-            self.observation_space.high,
-        )
+        obs = self._ensure_obs_gymnasium_compliant(obs)
         return obs, {}

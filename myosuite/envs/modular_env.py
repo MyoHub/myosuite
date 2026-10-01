@@ -522,20 +522,10 @@ class ModularTaskEnv(MyoGymnasiumEnv):
                 action[self._fatigue_mask]
             )
         self.data.ctrl[:] = action
-        mujoco.mj_step(self.model, self.data, self.frame_skip)
-        mujoco.mj_kinematics(self.model, self.data)
-        if self.mujoco_render_frames:
-            self.mj_render()
+        self._step_physics()
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
 
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
-        obs = self._obs_dict_to_vec(obs_dict)
-        obs = self._ensure_obs_gymnasium_compliant(obs)
-        reward = float(rwd_dict.get("dense", 0.0))
-        terminated = bool(rwd_dict.get("done", False))
-        info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
-        info["obs_dict"] = obs_dict
-        info["rwd_dict"] = rwd_dict
-        return obs, reward, terminated, False, info
+        return self._finalize_step(obs_dict, rwd_dict)
