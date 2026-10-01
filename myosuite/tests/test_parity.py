@@ -51,12 +51,9 @@ RELAXED_OBS_ATOL: dict[str, float] = {
     "myoFingerPoseFixed-v0": 2e-3,
     "myoFingerPoseRandom-v0": 2e-3,
     "myoHandPoseRandom-v0": 5e-4,
-    # Baseline regenerated after fixing the missing contype/conaffinity on the
-    # SAR reorient object (it previously free-fell untouched, unskippable
-    # nondeterminism from uncontrolled contact ordering). Now deterministic at
-    # 1e-6 locally; kept relaxed for cross-platform MuJoCo/BLAS drift margin,
-    # same as the other envs in this table.
-    "myoHandReorient8-v0": 1.0,
+    # Replays bit-exactly on x86-64 across processes and MuJoCo 3.8.1/3.11.0;
+    # the margin covers the arm64 drift recorded for this env (reward below).
+    "myoHandReorient8-v0": 1e-2,
     # Contact-solver floating-point nondeterminism: obs match to 6+ significant
     # figures for the first ~25 steps, then diverge sharply at a single step
     # (observed max |dobs| 4.22e-5) - the classic signature of contact-order

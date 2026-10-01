@@ -19,6 +19,7 @@ from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
 
 class ObjHoldFixedEnvV0(MyoGymnasiumEnv, EzPickle):
@@ -369,5 +370,8 @@ class ObjHoldRandomEnvV0(ObjHoldFixedEnvV0):
             low=np.array([0.020, 0.020, 0.020]),
         )
         self.model.geom_size[-1] = size
+        refresh_geom_derived_fields(
+            self.model, self._mj_spec, (self.model.geom_bodyid[-1],)
+        )
         self.model.site_size[self.goal_sid] = size
         return {}

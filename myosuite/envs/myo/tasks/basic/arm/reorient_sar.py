@@ -25,6 +25,7 @@ from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
 )
 from myosuite.physics.quat_math import euler2quat
 from myosuite.physics.quat_math import calculate_cosine
+from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
 _MUSCLE_CONDITIONS = ("", "sarcopenia", "fatigue", "reafferentation")
 
@@ -309,6 +310,9 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
                 fatigue_reset_random=self.fatigue_reset_random,
             )
         self._apply_episode_geometry(self.np_random)
+        refresh_geom_derived_fields(
+            self.model, self._mj_spec, (self.obj_bid, self.target_obj_bid)
+        )
         self.model.site_rgba[self.success_indicator_sid, :2] = np.array([2.0, 0.0])
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = self._init_qpos
