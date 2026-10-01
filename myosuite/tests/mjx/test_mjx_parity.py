@@ -26,6 +26,7 @@ import pytest
 from myosuite.envs.myo.assets._resolve import (
     resolve_elbow_xml as _resolve_elbow_xml,
     resolve_finger_xml as _resolve_finger_xml,
+    resolve_leg_xml as _resolve_leg_xml,
 )
 
 # ---------------------------------------------------------------------------
@@ -35,6 +36,7 @@ try:
     import jax
     import jax.numpy as jp
     import mujoco
+    from myosuite.core.model_builder import ModelBuilder
     import numpy as np
     from mujoco import mjx  # noqa: F401  # importability check for MJX stack
 
@@ -52,15 +54,9 @@ pytestmark = pytest.mark.tier2
 # ---------------------------------------------------------------------------
 
 
-def _myo_sim_model(rel: str) -> str:
-    from myosuite.utils.asset_path_resolver import get_sim_asset_root
-
-    return str(get_sim_asset_root("myo_sim") / rel)
-
-
 FINGER_MODEL = str(_resolve_finger_xml("myofinger_v0.xml"))
 ELBOW_MODEL = str(_resolve_elbow_xml("myoelbow_1dof6muscles.xml"))
-LEG_MODEL = _myo_sim_model("leg/myolegs.xml")
+LEG_MODEL = str(_resolve_leg_xml("myolegs_with_torso.xml"))
 
 
 def _make_pose_env(impl: str = "jax"):
@@ -71,13 +67,12 @@ def _make_pose_env(impl: str = "jax"):
     Passing ``impl="jax"`` triggers ``_preprocess_spec`` to disable those
     contacts, matching the upstream ``MjxMyoBase`` behaviour.
     """
-    import copy
     import jax.numpy as jp
     from ml_collections import config_dict
-    from myosuite.envs.myo.backends.mjx import _elbow_pose_config
+    from myosuite.envs.myo.backends.mjx import _cfg_elbow_random, _to_config_dict
     from myosuite.envs.myo.backends.mjx.pose_env import MjxPoseEnv
 
-    cfg = copy.deepcopy(_elbow_pose_config)
+    cfg = _to_config_dict(_cfg_elbow_random())
     cfg["mjx_impl"] = impl
     cfg["target_jnt_range"] = config_dict.create(r_elbow_flex=jp.array((0.0, 2.27)))
     return MjxPoseEnv(config=cfg)
@@ -85,13 +80,12 @@ def _make_pose_env(impl: str = "jax"):
 
 def _make_reach_env(impl: str = "jax"):
     """Instantiate ``MjxReachEnv`` (hand) with the given backend *impl*."""
-    import copy
     import jax.numpy as jp
     from ml_collections import config_dict
-    from myosuite.envs.myo.backends.mjx import _hand_reach_config
+    from myosuite.envs.myo.backends.mjx import _cfg_hand_reach_fixed, _to_config_dict
     from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv
 
-    cfg = copy.deepcopy(_hand_reach_config)
+    cfg = _to_config_dict(_cfg_hand_reach_fixed())
     cfg["mjx_impl"] = impl
     cfg["far_th"] = 0.044
     cfg["target_reach_range"] = config_dict.create(
@@ -266,7 +260,7 @@ class TestEllipsoidContactGuard:
             preprocess_mjx_spec,
         )
 
-        spec = mujoco.MjSpec.from_file(LEG_MODEL)
+        spec = ModelBuilder.from_xml_file(LEG_MODEL).build()[1]
         n_ellipsoid = sum(
             1 for g in spec.geoms if g.type == mujoco.mjtGeom.mjGEOM_ELLIPSOID
         )
@@ -291,7 +285,7 @@ class TestEllipsoidContactGuard:
             preprocess_mjx_spec,
         )
 
-        spec = mujoco.MjSpec.from_file(LEG_MODEL)
+        spec = ModelBuilder.from_xml_file(LEG_MODEL).build()[1]
         before = [
             (g.contype, g.conaffinity)
             for g in spec.geoms
@@ -310,12 +304,10 @@ class TestEllipsoidContactGuard:
 
     def test_mjx_leg_walk_compiles_and_clears_ellipsoid_contacts(self):
         """MjxLegWalk loads myolegs.xml and clears ellipsoid contacts for JAX/XLA."""
-        import copy
-
-        from myosuite.envs.myo.backends.mjx import _leg_walk_config
+        from myosuite.envs.myo.backends.mjx import _cfg_leg_walk, _to_config_dict
         from myosuite.envs.myo.backends.mjx.walk_env import MjxWalkEnv
 
-        cfg = copy.deepcopy(_leg_walk_config)
+        cfg = _to_config_dict(_cfg_leg_walk())
         env = MjxWalkEnv(cfg)
         mj = env._mj_model
         disabled = sum(
@@ -378,14 +370,14 @@ class TestNormActionsFlag:
     def test_default_configs_have_norm_actions_true(self):
         """All default configs should include norm_actions=True."""
         from myosuite.envs.myo.backends.mjx import (
-            _pose_env_config,
-            _reach_env_config,
-            _leg_walk_config,
+            _cfg_elbow_random,
+            _cfg_hand_reach_fixed,
+            _cfg_leg_walk,
         )
 
-        assert _pose_env_config.norm_actions is True
-        assert _reach_env_config.norm_actions is True
-        assert _leg_walk_config.norm_actions is True
+        assert _cfg_elbow_random().norm_actions is True
+        assert _cfg_hand_reach_fixed().norm_actions is True
+        assert _cfg_leg_walk().norm_actions is True
 
     def test_impl_and_n_substeps_properties(self):
         """MyoMjxEnvBase should expose impl and n_substeps properties."""
@@ -617,17 +609,12 @@ class TestFatigueWrapper:
         wrapped = self.FatigueWrapper(env, fatigue_config=fat_cfg)
 
         rng = jax.random.PRNGKey(0)
+        plain = _make_pose_env().reset(rng)
 
-        # Get baseline obs size without fatigue appended
-        env_plain = _make_pose_env()
-        state_plain = env_plain.reset(rng)
-        plain_size = state_plain.obs["state"].shape[0]
-
+        # The fatigue arrays go into their own "fatigue_state" obs key.
         state = wrapped.reset(rng)
-        wrapped_size = state.obs["state"].shape[0]
-        assert wrapped_size == plain_size + nu, (
-            f"Expected obs size {plain_size + nu} with MA appended, got {wrapped_size}"
-        )
+        assert state.obs["fatigue_state"].shape[0] == nu
+        assert state.obs["state"].shape == plain.obs["state"].shape
 
     def test_wrapper_invalid_obs_key_raises(self):
         """FatigueWrapper should raise on invalid fatigue_obs_keys."""
