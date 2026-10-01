@@ -315,9 +315,17 @@ class ModularTaskEnv(MyoGymnasiumEnv):
             self._fatigue_mask = (
                 self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
             )
-        # Infer observation and action spaces via a dummy forward pass
+        # Infer observation and action spaces via a dummy forward pass with a
+        # goal, which goal-dependent obs terms (e.g. pose_error) need. Only its
+        # shape matters, so a separate generator leaves np_random untouched.
         mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
+        self._task_state = _sample_goal(
+            task_config.goal,
+            self.model,
+            self.data.qpos.copy(),
+            np.random.default_rng(0),
+        )
         dummy_obs_dict = self._get_obs_dict(self._accessor)
         obs_dim = sum(np.atleast_1d(v).size for v in dummy_obs_dict.values())
 

@@ -38,8 +38,8 @@ from myosuite.core.registry import register_task
 class ElbowPoseFixedTask(TaskConfig):
     model: str = "elbow_standard"          # ModelBuilder recipe name
     max_episode_steps: int = 100
-    obs: ObsSpec = field(
-        default_factory=lambda: ObsSpec(keys=["joint_pos", "joint_vel", "muscle_act"])
+    obs: ObsSpec = field(  # observe the goal: pose_error = target - joint_pos
+        default_factory=lambda: ObsSpec(keys=["joint_pos", "joint_vel", "muscle_act", "pose_error"])
     )
     goal: GoalSpec = field(
         default_factory=lambda: GoalSpec(
