@@ -16,15 +16,13 @@ import gymnasium as gym
 from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
-from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.physics.fatigue import CumulativeFatigue
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleConditionMixin
 from myosuite.terms.base_obs import pose_error_obs
 from myosuite.terms.base_reward import pose_reward
 
 
-class PoseEnvV0(MyoGymnasiumEnv, EzPickle):
+class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
     """Pose-tracking task for musculoskeletal (or motor) MuJoCo models.
 
     The environment presents a target joint configuration and rewards the
@@ -234,58 +232,6 @@ class PoseEnvV0(MyoGymnasiumEnv, EzPickle):
         self.observation_space = self._unbounded_obs_space(obs.size)
 
     # ── Private helpers ────────────────────────────────────────────────────
-
-    def _init_muscle_condition(self) -> None:
-        """Apply the muscle condition to the compiled model."""
-        if self.muscle_condition == "sarcopenia":
-            apply_sarcopenia_to_model(self.model, force_scale=0.5)
-        elif self.muscle_condition == "fatigue":
-            self.muscle_fatigue = CumulativeFatigue(
-                self.model, self.frame_skip, seed=None
-            )
-        elif self.muscle_condition == "reafferentation":
-            sfx = self._name_sfx
-            self.EPLpos = self.model.actuator(f"EPL{sfx}").id
-            self.EIPpos = self.model.actuator(f"EIP{sfx}").id
-
-    def _apply_action(self, action: np.ndarray) -> None:
-        """Map action from action-space to MuJoCo ctrl and write to data.ctrl.
-
-        Args:
-            action: Action vector in the action-space (already clipped).
-
-        Note:
-            For muscle envs, ctrl is intentionally kept as float32 during the
-            sigmoid so that the result is truncated back to float32 precision,
-            matching the original BaseV0.step() behaviour and ensuring parity.
-        """
-        ctrl = action.copy()  # preserve float32 dtype from action_space
-
-        if self.model.na > 0 and self.normalize_act:
-            # Sigmoid mapping for muscle actuators: [-1, 1] → [0, 1].
-            # RHS is float64 but assigned into a float32 slice, so the value
-            # is truncated to float32 — identical to the original BaseV0.step().
-            ctrl[self._muscle_act_ind] = sigmoid_muscle_activation(
-                ctrl[self._muscle_act_ind], np
-            )
-        elif self.normalize_act:
-            # Linear denormalisation for motor actuators: [-1, 1] → ctrl_range.
-            # ctrlrange is float64, so the result naturally promotes to float64.
-            ctrl_range = self.model.actuator_ctrlrange
-            ctrl = (
-                np.mean(ctrl_range, axis=-1)
-                + ctrl * (ctrl_range[:, 1] - ctrl_range[:, 0]) / 2.0
-            )
-
-        if self.muscle_condition == "fatigue":
-            ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
-                ctrl[self._muscle_act_ind]
-            )
-        elif self.muscle_condition == "reafferentation":
-            ctrl[self.EPLpos] = ctrl[self.EIPpos].copy()
-            ctrl[self.EIPpos] = 0.0
-
-        self.data.ctrl[:] = ctrl
 
     def _get_target_pose(self) -> np.ndarray:
         """Sample a target pose from the joint range.
@@ -526,12 +472,7 @@ class PoseEnvV0(MyoGymnasiumEnv, EzPickle):
             self.model.geom_size[gid][0] = 0.01 + 2.5 * weight / 100
 
         # Reset fatigue model
-        if self.muscle_condition == "fatigue":
-            self.muscle_fatigue.reset(
-                fatigue_reset_vec=self.fatigue_reset_vec,
-                fatigue_reset_random=self.fatigue_reset_random,
-                np_random=self.np_random,
-            )
+        self._reset_muscle_condition()
 
         # Reset physics state
         mujoco.mj_resetData(self.model, self.data)

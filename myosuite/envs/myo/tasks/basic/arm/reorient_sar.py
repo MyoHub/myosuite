@@ -16,7 +16,7 @@ from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0
+from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleConditionMixin
 from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
     sample_geometry_8,
     sample_geometry_100,
@@ -30,7 +30,7 @@ from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 _MUSCLE_CONDITIONS = ("", "sarcopenia", "fatigue", "reafferentation")
 
 
-class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
+class ReorientSAREnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
     """Base SAR reorient env: object pose/rotation alignment.
 
     Migrated from reorient_sar_v0.ProprioceptiveEnvV0. Same obs/reward; no obsd.
@@ -53,10 +53,6 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
     Raises:
         ValueError: If ``muscle_condition`` is not a known condition.
     """
-
-    # Muscle-condition setup and action mapping shared with the other basic envs.
-    _init_muscle_condition = PoseEnvV0._init_muscle_condition
-    _apply_action = PoseEnvV0._apply_action
 
     DEFAULT_OBS_KEYS = [
         "hand_jnt",
@@ -296,12 +292,7 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
         )
         # After the geometry draw, as in the legacy env, so that every muscle
         # condition samples the same episode geometry for a given seed.
-        if self.muscle_condition == "fatigue":
-            self.muscle_fatigue.reset(
-                fatigue_reset_vec=self.fatigue_reset_vec,
-                fatigue_reset_random=self.fatigue_reset_random,
-                np_random=self.np_random,
-            )
+        self._reset_muscle_condition()
         self.model.site_rgba[self.success_indicator_sid, :2] = np.array([2.0, 0.0])
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = self._init_qpos

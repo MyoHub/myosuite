@@ -15,13 +15,11 @@ import gymnasium as gym
 from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
-from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.physics.fatigue import CumulativeFatigue
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleConditionMixin
 
 
-class KeyTurnEnvV0(MyoGymnasiumEnv, EzPickle):
+class KeyTurnEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
     """Key-turning task for the musculoskeletal hand model.
 
     The agent must grasp a key with two fingers (index and thumb) and rotate
@@ -170,48 +168,6 @@ class KeyTurnEnvV0(MyoGymnasiumEnv, EzPickle):
 
     # ── Private helpers ────────────────────────────────────────────────────
 
-    def _init_muscle_condition(self) -> None:
-        """Apply the muscle condition to the compiled model."""
-        if self.muscle_condition == "sarcopenia":
-            apply_sarcopenia_to_model(self.model, force_scale=0.5)
-        elif self.muscle_condition == "fatigue":
-            self.muscle_fatigue = CumulativeFatigue(
-                self.model, self.frame_skip, seed=None
-            )
-        elif self.muscle_condition == "reafferentation":
-            sfx = self._name_sfx
-            self.EPLpos = self.model.actuator(f"EPL{sfx}").id
-            self.EIPpos = self.model.actuator(f"EIP{sfx}").id
-
-    def _apply_action(self, action: np.ndarray) -> None:
-        """Map action to MuJoCo ctrl and write to data.ctrl.
-
-        Args:
-            action: Action vector in the action-space (already clipped).
-        """
-        ctrl = action.copy()
-
-        if self.model.na > 0 and self.normalize_act:
-            ctrl[self._muscle_act_ind] = sigmoid_muscle_activation(
-                ctrl[self._muscle_act_ind], np
-            )
-        elif self.normalize_act:
-            ctrl_range = self.model.actuator_ctrlrange
-            ctrl = (
-                np.mean(ctrl_range, axis=-1)
-                + ctrl * (ctrl_range[:, 1] - ctrl_range[:, 0]) / 2.0
-            )
-
-        if self.muscle_condition == "fatigue":
-            ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
-                ctrl[self._muscle_act_ind]
-            )
-        elif self.muscle_condition == "reafferentation":
-            ctrl[self.EPLpos] = ctrl[self.EIPpos].copy()
-            ctrl[self.EIPpos] = 0.0
-
-        self.data.ctrl[:] = ctrl
-
     # ── MyoGymnasiumEnv interface ──────────────────────────────────────────
 
     def _get_obs_dict(self, accessor: CpuEnvAccessor) -> dict[str, np.ndarray]:
@@ -342,12 +298,7 @@ class KeyTurnEnvV0(MyoGymnasiumEnv, EzPickle):
 
         gymnasium.Env.reset(self, seed=seed)
 
-        if self.muscle_condition == "fatigue":
-            self.muscle_fatigue.reset(
-                fatigue_reset_vec=self.fatigue_reset_vec,
-                fatigue_reset_random=self.fatigue_reset_random,
-                np_random=self.np_random,
-            )
+        self._reset_muscle_condition()
 
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = self._init_qpos
