@@ -195,14 +195,28 @@ def _normalize_mimic_reward_mode(reward_mode: str) -> str:
     return normalized
 
 
-def _reward_mode_uses_mimic_objective(reward_mode: str) -> bool:
-    """Return whether *reward_mode* includes the clip-tracking objective."""
-    return reward_mode in (_MIMIC_REWARD_MODE_MIMIC, _MIMIC_REWARD_MODE_AUGMENTED)
-
-
 def _reward_mode_uses_env_objective(reward_mode: str) -> bool:
     """Return whether *reward_mode* includes the native task objective."""
     return reward_mode in (_MIMIC_REWARD_MODE_ENV, _MIMIC_REWARD_MODE_AUGMENTED)
+
+
+def _require_supported_reward_mode(reward_mode: str) -> str:
+    """Validate *reward_mode* and reject modes the Mimic tasks cannot honour.
+
+    ``"env"`` and ``"augmented"`` add a native task reward; the Mimic tasks
+    define none, only the clip-tracking objective.
+
+    Raises:
+        ValueError: If *reward_mode* is not a known mode.
+        NotImplementedError: If *reward_mode* needs a native task reward.
+    """
+    normalized = _normalize_mimic_reward_mode(reward_mode)
+    if _reward_mode_uses_env_objective(normalized):
+        raise NotImplementedError(
+            f"reward_mode={normalized!r} needs a native task reward, which the "
+            "mjlab Mimic tasks do not define; only 'mimic' is supported."
+        )
+    return normalized
 
 
 def _clip_has_required_indices(
@@ -1335,7 +1349,8 @@ def _make_mimic_env_cfg(
         enable_clip_state_terms: Whether to expose clip qpos/qvel references and
             use RSI from clip state. Disable this when clip state widths do not
             match the model but ``site_xpos`` remains usable.
-        reward_mode: Reward composition mode (``"mimic"``, ``"augmented"``).
+        reward_mode: Reward composition mode.  Only ``"mimic"`` (the
+            clip-tracking objective) is implemented.
         action_mode: Muscle action interpretation. ``"sigmoid"`` keeps the
             training path's canonical action normalisation; ``"direct"``
             preserves checkpoint playback by clipping incoming values to
@@ -1343,6 +1358,10 @@ def _make_mimic_env_cfg(
 
     Returns:
         A configured :class:`~mjlab.envs.ManagerBasedRlEnvCfg` instance.
+
+    Raises:
+        NotImplementedError: If *reward_mode* needs a native task reward
+            (``"env"``, ``"augmented"``).
     """
     from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
         MyoMuscleActivationActionCfg,
@@ -1361,7 +1380,7 @@ def _make_mimic_env_cfg(
     from mjlab.scene import SceneCfg
     from mjlab.sim import MujocoCfg, SimulationCfg
 
-    reward_mode = _normalize_mimic_reward_mode(reward_mode)
+    _require_supported_reward_mode(reward_mode)
 
     articulation = EntityArticulationInfoCfg(
         actuators=(
@@ -1428,11 +1447,7 @@ def _make_mimic_env_cfg(
     terminations = {
         "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
     }
-    if (
-        _reward_mode_uses_mimic_objective(reward_mode)
-        and use_early_termination
-        and clip is not None
-    ):
+    if use_early_termination and clip is not None:
         terminations["mimic_deviation"] = TerminationTermCfg(
             func=_mimic_early_termination(
                 entity_name,
@@ -1462,23 +1477,21 @@ def _make_mimic_env_cfg(
             mode="reset",
         )
 
-    rewards: dict[str, Any] = {}
-    if _reward_mode_uses_mimic_objective(reward_mode):
-        if (
-            use_deepmimic_reward
-            and clip is not None
-            and enable_clip_state_terms
-            and clip.qpos is not None
-            and clip.qvel is not None
-        ):
-            reward_fn = _mimic_deepmimic_reward(entity_name, variant, clip, ctrl_dt)
-        else:
-            reward_fn = _mimic_tracking_reward(entity_name, variant, clip, ctrl_dt)
+    if (
+        use_deepmimic_reward
+        and clip is not None
+        and enable_clip_state_terms
+        and clip.qpos is not None
+        and clip.qvel is not None
+    ):
+        reward_fn = _mimic_deepmimic_reward(entity_name, variant, clip, ctrl_dt)
+    else:
+        reward_fn = _mimic_tracking_reward(entity_name, variant, clip, ctrl_dt)
 
-        # mjlab RewardManager multiplies every term by ctrl_dt (scale_by_dt=True).
-        # Compensate so the logged reward matches the raw composite reward (0–1).
-        reward_weight = float(mimic_reward_weight) / ctrl_dt if ctrl_dt > 0 else 1.0
-        rewards["tracking"] = RewardTermCfg(func=reward_fn, weight=reward_weight)
+    # mjlab RewardManager multiplies every term by ctrl_dt (scale_by_dt=True).
+    # Compensate so the logged reward matches the raw composite reward (0–1).
+    reward_weight = float(mimic_reward_weight) / ctrl_dt if ctrl_dt > 0 else 1.0
+    rewards = {"tracking": RewardTermCfg(func=reward_fn, weight=reward_weight)}
     decimation = max(1, int(round(ctrl_dt / sim_dt)))
     episode_length_s = float(max_episode_steps) * ctrl_dt
 
@@ -1557,13 +1570,25 @@ def register_mimic_mjlab_tasks_with_clip(
               ``site_xpos`` populated.
         action_mode: Muscle action interpretation. Leave as ``"sigmoid"`` for
             training; use ``"direct"`` for fullbody checkpoint inference.
-        reward_mode: Reward composition for the mimic task (``"mimic"``,
-            ``"env"``, or ``"augmented"``).
+        reward_mode: Reward composition for the mimic task.  Only ``"mimic"``
+            (clip tracking) is implemented: the Mimic tasks have no native
+            task reward for ``"env"`` or ``"augmented"`` to use.
+        mimic_reward_weight: Weight of the clip-tracking reward.
+        env_reward_weight: Weight of the native task reward; must stay
+            ``1.0`` since the Mimic tasks define none.
 
     Raises:
-        ValueError: If ``clip.site_xpos`` is ``None``.
+        ValueError: If ``clip.site_xpos`` is ``None`` or *reward_mode* is
+            unknown.
+        NotImplementedError: If *reward_mode* or *env_reward_weight* needs a
+            native task reward.
     """
-    reward_mode = _normalize_mimic_reward_mode(reward_mode)
+    reward_mode = _require_supported_reward_mode(reward_mode)
+    if env_reward_weight != 1.0:
+        raise NotImplementedError(
+            f"env_reward_weight={env_reward_weight} weights a native task reward, "
+            "which the mjlab Mimic tasks do not define."
+        )
     if clip.site_xpos is None:
         raise ValueError(
             "register_mimic_mjlab_tasks_with_clip requires clip.site_xpos; "
@@ -1577,6 +1602,7 @@ def register_mimic_mjlab_tasks_with_clip(
         use_lookahead=use_lookahead,
         use_early_termination=use_early_termination,
         action_mode=action_mode,
+        reward_mode=reward_mode,
         mimic_reward_weight=mimic_reward_weight,
     )
     from mjlab.tasks.registry import list_tasks
@@ -1597,6 +1623,7 @@ def _register_mimic_tasks(
     use_lookahead: bool = True,
     use_early_termination: bool = True,
     action_mode: str = "sigmoid",
+    reward_mode: str = _MIMIC_REWARD_MODE_MIMIC,
     mimic_reward_weight: float = 1.0,
 ) -> None:
     """Internal implementation shared by both registration entry points."""
@@ -1653,6 +1680,7 @@ def _register_mimic_tasks(
                 use_early_termination=use_early_termination,
                 action_mode=action_mode,
                 mj_model=b_mj,
+                reward_mode=reward_mode,
                 mimic_reward_weight=mimic_reward_weight,
             )
             b_train_env = _make_mimic_env_cfg(
@@ -1718,6 +1746,7 @@ def _register_mimic_tasks(
         use_early_termination=use_early_termination,
         action_mode=action_mode,
         mj_model=f_mj,
+        reward_mode=reward_mode,
         mimic_reward_weight=mimic_reward_weight,
     )
     f_train_env = _make_mimic_env_cfg(

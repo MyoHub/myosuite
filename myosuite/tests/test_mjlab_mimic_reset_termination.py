@@ -427,3 +427,56 @@ def test_directional_sar_task_has_runner_obs_groups(tmp_path: Any) -> None:
     assert {g for gs in groups.values() for g in gs} <= set(
         task["env_cfg"].observations
     )
+
+
+# ---------------------------------------------------------------------------
+# Reward modes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{"reward_mode": "env"}, {"reward_mode": "augmented"}, {"env_reward_weight": 2.0}],
+)
+def test_clip_registration_rejects_reward_options_it_cannot_honour(
+    options: dict[str, Any],
+) -> None:
+    """The Mimic tasks have only the clip-tracking objective.
+
+    ``reward_mode="env"``/``"augmented"`` and ``env_reward_weight`` were
+    accepted and silently ignored: every mode registered the same
+    clip-tracking reward and termination.
+    """
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    registered: list[str] = []
+    with pytest.raises(NotImplementedError, match="native task reward"):
+        mimic.register_mimic_mjlab_tasks_with_clip(
+            register_mjlab_task=lambda **task: registered.append(task["task_id"]),
+            rl_cfg_fn=lambda: None,
+            clip=_synthetic_clip("fullbody", n_frames=10),
+            **options,
+        )
+    assert registered == []
+
+
+def test_reward_mode_reaches_the_env_cfg_builder() -> None:
+    """``reward_mode`` is threaded through the registration to the cfg."""
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    clip = _synthetic_clip("fullbody", n_frames=10)
+    cfg = _registered_cfgs(
+        mimic._register_mimic_tasks,
+        rl_cfg_fn=lambda: None,
+        clip=clip,
+        reward_mode="MIMIC",
+    )["myoMimicFullbody-v0"]["env_cfg"]
+    assert list(cfg.rewards) == ["tracking"]
+    assert list(cfg.terminations) == ["time_out", "mimic_deviation"]
+    with pytest.raises(NotImplementedError, match="native task reward"):
+        _registered_cfgs(
+            mimic._register_mimic_tasks,
+            rl_cfg_fn=lambda: None,
+            clip=clip,
+            reward_mode="env",
+        )
