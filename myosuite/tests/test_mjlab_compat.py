@@ -374,11 +374,11 @@ def test_clip_trajectory_source_public_frame_indices_matches_offsets() -> None:
         tracked_site_ids=np.asarray([0, 1], dtype=np.int64),
         ctrl_dt=0.1,
     )
-    t = torch.tensor([0.0, 0.2], dtype=torch.float32)
-    source.update(t)
+    step = torch.tensor([0, 2], dtype=torch.long)  # mjlab episode_length_buf
+    source.update(step)
     source._start_offsets = torch.tensor([1, 2], dtype=torch.long)
 
-    idx = source.frame_indices(t)
+    idx = source.frame_indices(step)
 
     torch.testing.assert_close(idx, torch.tensor([1, 0], dtype=torch.long))
 

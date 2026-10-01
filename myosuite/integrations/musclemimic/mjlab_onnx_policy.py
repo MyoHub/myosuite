@@ -264,8 +264,6 @@ def reset_mjlab_env_to_clip_frame(
         sim_data.ctrl[env_ids] = 0.0
     if zero_act and hasattr(sim_data, "act"):
         sim_data.act[env_ids] = 0.0
-    if hasattr(sim_data, "time"):
-        sim_data.time[env_ids] = 0.0
 
     if hasattr(unwrapped, "sim"):
         unwrapped.sim.forward()
@@ -279,6 +277,7 @@ def reset_mjlab_env_to_clip_frame(
 
     if ctrl_dt is not None:
         from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+            _mimic_episode_steps,
             _resolve_mimic_mjlab_ids,
         )
 
@@ -292,9 +291,10 @@ def reset_mjlab_env_to_clip_frame(
         source = cache.get("clip_source")
         if source is not None:
             source._ensure_device(sim_data.qpos.device, n_envs)
-            source._start_offsets[env_ids] = frame
-            if source._last_t is not None:
-                source._last_t[env_ids] = 0.0
+            # Clip frame = (episode step + offset) % T: choose the offset that
+            # puts each env's current step on `frame`.
+            step = _mimic_episode_steps(unwrapped)[env_ids]
+            source._start_offsets[env_ids] = (frame - step) % source.n_frames
 
     return frame
 
@@ -456,16 +456,17 @@ class _FullbodyMjlabPolicyBridge:
             logger.debug("Could not resolve mjlab ClipTrajectorySource: %s", err)
         return self._clip_source
 
-    def _current_frame_indices(self, sim_data: Any) -> np.ndarray:
+    def _current_frame_indices(self) -> np.ndarray:
         source = self._trajectory_source()
         if source is not None:
             from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
-                _mjlab_sim_time_to_tensor,
+                _mimic_episode_steps,
             )
 
-            t = _mjlab_sim_time_to_tensor(sim_data.time)
-            source.update(t)
-            frames = source.frame_indices(t).detach().cpu().numpy().astype(np.int64)
+            # Same integer step counter as the env's clip terms (not float time).
+            step = _mimic_episode_steps(self._unwrapped)
+            source.update(step)
+            frames = source.frame_indices(step).detach().cpu().numpy().astype(np.int64)
             return frames[np.asarray(self._env_indices, dtype=np.int64)]
 
         frame = self._frame_idx % self._frame_count()
@@ -491,7 +492,7 @@ class _FullbodyMjlabPolicyBridge:
 
     def _build_fullbody_obs_batch(self) -> np.ndarray:
         sim_data = self._sim_data()
-        frame_indices = self._current_frame_indices(sim_data)
+        frame_indices = self._current_frame_indices()
 
         obs_batch: list[np.ndarray] = []
         for cpu_data, env_idx, frame_idx in zip(

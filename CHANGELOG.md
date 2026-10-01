@@ -98,6 +98,13 @@ full commit list.
 * `register_all_envs()` is idempotent (a second call emptied the suite lists); pickling keeps the
   terrain type of hilly/stairs walk envs and `frame_skip` of the CPU MuscleMimic envs.
 * Many CI, packaging and notebook fixes (`fd09a79`, `1315c36`, `3ca1ed3`, `50aff25`, `af2d51d` and others).
+* mjlab MuscleMimic resets and terminations: RSI writes the clip's root angular velocity in the world
+  frame; early termination measures the root error against the clip's reference root, so bimanual
+  clips no longer end every episode after one step; clip frames follow the integer episode step
+  counter instead of float32 sim time, which lagged the CPU twin on 69% of steps; the SAR tasks
+  start standing, expose the `actor`/`critic` groups rsl_rl needs and are the muscle-space task with
+  a synergy action term; unsupported `reward_mode`/`env_reward_weight` values raise instead of being
+  ignored.
 
 ### Removed
 

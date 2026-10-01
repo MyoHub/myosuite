@@ -20,10 +20,11 @@ Two target-sourcing modes
     clip is supplied.
 
 **Trajectory (when a** :class:`~myosuite.core.trajectory_io.MotionClip` **is provided)**
-    Targets are taken from the clip's ``site_xpos`` array at the frame
-    corresponding to each environment's current simulation time.  Each of the N
-    parallel environments starts at a *different random frame* in the clip;
-    on episode reset that offset is resampled.  This produces a diverse
+    Targets are taken from the clip's ``site_xpos`` array, one frame per
+    control step since each environment's last reset (mjlab's integer
+    ``episode_length_buf``).  Each of the N parallel environments starts at a
+    *different random frame* in the clip; on episode reset that offset is
+    resampled.  This produces a diverse
     distribution of motion phases across the batch while keeping each episode's
     target sequence coherent with the reference motion.
 
@@ -195,14 +196,28 @@ def _normalize_mimic_reward_mode(reward_mode: str) -> str:
     return normalized
 
 
-def _reward_mode_uses_mimic_objective(reward_mode: str) -> bool:
-    """Return whether *reward_mode* includes the clip-tracking objective."""
-    return reward_mode in (_MIMIC_REWARD_MODE_MIMIC, _MIMIC_REWARD_MODE_AUGMENTED)
-
-
 def _reward_mode_uses_env_objective(reward_mode: str) -> bool:
     """Return whether *reward_mode* includes the native task objective."""
     return reward_mode in (_MIMIC_REWARD_MODE_ENV, _MIMIC_REWARD_MODE_AUGMENTED)
+
+
+def _require_supported_reward_mode(reward_mode: str) -> str:
+    """Validate *reward_mode* and reject modes the Mimic tasks cannot honour.
+
+    ``"env"`` and ``"augmented"`` add a native task reward; the Mimic tasks
+    define none, only the clip-tracking objective.
+
+    Raises:
+        ValueError: If *reward_mode* is not a known mode.
+        NotImplementedError: If *reward_mode* needs a native task reward.
+    """
+    normalized = _normalize_mimic_reward_mode(reward_mode)
+    if _reward_mode_uses_env_objective(normalized):
+        raise NotImplementedError(
+            f"reward_mode={normalized!r} needs a native task reward, which the "
+            "mjlab Mimic tasks do not define; only 'mimic' is supported."
+        )
+    return normalized
 
 
 def _clip_has_required_indices(
@@ -460,29 +475,15 @@ def _mjlab_sim_time_to_float(tim: Any) -> float:
     return float(t.reshape(-1)[0].detach().cpu())
 
 
-def _mjlab_sim_time_to_tensor(tim: Any) -> Any:
-    """Coerce mjlab ``data.time`` to a ``(N,)`` float32 :class:`torch.Tensor`.
+def _mimic_episode_steps(env: Any) -> Any:
+    """Per-env control steps since the last reset, ``(N,)`` int64.
 
-    Args:
-        tim: mjlab time field (``torch.Tensor``, TorchArray, scalar, or
-             numpy value).
-
-    Returns:
-        1-D float32 tensor of per-env simulation times.
+    Clip frames advance one per control step, so they are indexed by mjlab's
+    integer ``episode_length_buf``, like the CPU twin's step counter.  The
+    float32 ``data.time`` drifts: ``floor(time / ctrl_dt)`` lags the counter
+    on most steps of a 1000-step episode.
     """
-    import torch
-
-    if isinstance(tim, torch.Tensor):
-        return tim.reshape(-1).float()
-    if isinstance(tim, (int, float, np.integer, np.floating)):
-        return torch.tensor([float(tim)], dtype=torch.float32)
-    try:
-        t = tim.reshape(-1)
-    except (AttributeError, TypeError):
-        t = torch.as_tensor(tim)
-    if not isinstance(t, torch.Tensor):
-        t = torch.as_tensor(t)
-    return t.reshape(-1).float()
+    return env.episode_length_buf
 
 
 # ---------------------------------------------------------------------------
@@ -513,9 +514,9 @@ def _sync_mimic_mjlab_targets(
 
     if clip_source is not None:
         # --- Trajectory mode: targets come from the MotionClip ---
-        t = _mjlab_sim_time_to_tensor(data.time)  # (N,) float32
-        clip_source.update(t)
-        cache["target_torch"] = clip_source.site_targets(t)  # (N, n_tracked, 3)
+        step = _mimic_episode_steps(env)  # (N,) int64
+        clip_source.update(step)
+        cache["target_torch"] = clip_source.site_targets(step)  # (N, n_tracked, 3)
     else:
         # --- Random mode: resample once per episode (original behaviour) ---
         t_now = _mjlab_sim_time_to_float(data.time)
@@ -786,8 +787,7 @@ def _mimic_obs_clip_ref_qpos(
             raise RuntimeError(
                 "clip_ref_qpos obs requires trajectory mode (clip_source is None)"
             )
-        t = _mjlab_sim_time_to_tensor(env.scene[entity_name].data.data.time)
-        ref = clip_source.ref_qpos(t)
+        ref = clip_source.ref_qpos(_mimic_episode_steps(env))
         if ref is None:
             raise RuntimeError("clip.qpos is not available in this MotionClip")
         return ref
@@ -810,8 +810,7 @@ def _mimic_obs_clip_ref_qvel(
             raise RuntimeError(
                 "clip_ref_qvel obs requires trajectory mode (clip_source is None)"
             )
-        t = _mjlab_sim_time_to_tensor(env.scene[entity_name].data.data.time)
-        ref = clip_source.ref_qvel(t)
+        ref = clip_source.ref_qvel(_mimic_episode_steps(env))
         if ref is None:
             raise RuntimeError("clip.qvel is not available in this MotionClip")
         return ref
@@ -834,8 +833,7 @@ def _mimic_obs_clip_phase(
             raise RuntimeError(
                 "clip_phase obs requires trajectory mode (clip_source is None)"
             )
-        t = _mjlab_sim_time_to_tensor(env.scene[entity_name].data.data.time)
-        return clip_source.phase(t)
+        return clip_source.phase(_mimic_episode_steps(env))
 
     return _fn
 
@@ -918,7 +916,7 @@ def _mimic_deepmimic_reward(
         cur_sites = data.site_xpos[:, ids, :]  # (N, n_sites, 3)
 
         clip_source: ClipTrajectorySource | None = cache.get("clip_source")
-        t = _mjlab_sim_time_to_tensor(data.time)
+        step = _mimic_episode_steps(env)
 
         if (
             clip_source is not None
@@ -926,8 +924,8 @@ def _mimic_deepmimic_reward(
             and resolved_clip.qpos is not None
             and resolved_clip.qvel is not None
         ):
-            ref_qpos = clip_source.ref_qpos(t)  # (N, nq)  or None
-            ref_qvel = clip_source.ref_qvel(t)  # (N, nv) or None
+            ref_qpos = clip_source.ref_qpos(step)  # (N, nq)  or None
+            ref_qvel = clip_source.ref_qvel(step)  # (N, nv) or None
         else:
             ref_qpos = None
             ref_qvel = None
@@ -1017,12 +1015,12 @@ def _mimic_obs_lookahead(
             raise RuntimeError("lookahead obs requires a resolved MotionClip")
 
         data = env.scene[entity_name].data.data
-        t = _mjlab_sim_time_to_tensor(data.time)  # (N,)
-        n_envs = int(t.shape[0])
-        device = t.device
-        clip_lengths = clip_source.clip_lengths(t)
+        step = _mimic_episode_steps(env)  # (N,)
+        n_envs = int(step.shape[0])
+        device = step.device
+        clip_lengths = clip_source.clip_lengths(step)
 
-        cur_frames = clip_source.frame_indices(t)
+        cur_frames = clip_source.frame_indices(step)
         cur_root_pos = data.qpos[:, :3]  # (N, 3)
 
         has_root_pos = _clip_has_required_indices(
@@ -1038,8 +1036,8 @@ def _mimic_obs_lookahead(
             + 1  # phase
         )
         out = torch.zeros(n_envs, k * per_step_dim, device=device, dtype=torch.float32)
-        has_qpos = has_root_pos and clip_source.ref_qpos(t) is not None
-        has_qvel = has_root_vel and clip_source.ref_qvel(t) is not None
+        has_qpos = has_root_pos and clip_source.ref_qpos(step) is not None
+        has_qvel = has_root_vel and clip_source.ref_qvel(step) is not None
 
         offset = 0
         for step_i in range(1, k + 1):
@@ -1109,6 +1107,7 @@ def _mimic_rsi_event(
     def _fn(env: Any, env_ids: Any) -> None:
         import torch
         import mujoco
+        from mjlab.utils.lab_api.math import quat_apply
 
         data = env.scene[entity_name].data.data
         n_envs = int(data.qpos.shape[0])
@@ -1156,11 +1155,11 @@ def _mimic_rsi_event(
                 0, clip_source.n_frames, (n_reset,), device=device, dtype=torch.long
             )
         clip_source._start_offsets[env_ids_long] = new_offsets
-        # Prevent _detect_and_resample_resets from overwriting these offsets on
-        # the very next update() call (t=0 would look like a regression from
-        # whatever _last_t was before the reset).
-        if clip_source._last_t is not None:
-            clip_source._last_t[env_ids_long] = 0.0
+        # mjlab zeroes episode_length_buf after the reset events; mark these
+        # envs as already at step 0 so the next update() does not see the drop
+        # as another reset and overwrite the offsets just drawn.
+        if clip_source._last_step is not None:
+            clip_source._last_step[env_ids_long] = 0
 
         # --- Write root state (pos + quat + lin_vel + ang_vel) ---
         ref_qpos = clip_source.ref_qpos_at_frames(new_offsets)
@@ -1173,8 +1172,10 @@ def _mimic_rsi_event(
 
         ref_qvel = clip_source.ref_qvel_at_frames(new_offsets)
         if ref_qvel is not None:
+            # Free-joint qvel holds the world-frame linear but the body-frame
+            # angular velocity; write_root_state_to_sim expects both in world.
             root_lin_vel = ref_qvel[:, :3].float()
-            root_ang_vel = ref_qvel[:, 3:6].float()
+            root_ang_vel = quat_apply(root_quat, ref_qvel[:, 3:6].float())
         else:
             root_lin_vel = torch.zeros(n_reset, 3, device=device)
             root_ang_vel = torch.zeros(n_reset, 3, device=device)
@@ -1229,33 +1230,58 @@ def _mimic_early_termination(
     ctrl_dt: float | None = None,
     site_err_threshold: float = 1.0,
     root_err_threshold: float = 0.3,
+    use_clip_root: bool = True,
 ) -> Callable[[Any], Any]:
     """Terminate episodes where tracking error exceeds recovery threshold.
 
+    Same rule as the CPU ``mimic_should_terminate``: mean site error against
+    the clip targets, plus the root position error against the clip's
+    reference root.  The root check runs only when the entity has a free root
+    joint, *use_clip_root* is set and the clip covers the root qpos.
+
     Returns boolean tensor ``(N,)`` — ``True`` for envs that should terminate.
     """
+    from myosuite.terms.mimic_obs import mimic_termination_mask
 
     def _fn(env: Any) -> Any:
         import torch
 
         cache = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)
-        ids = cache["site_ids"]
+        entity = env.scene[entity_name]
+        cur_sites = entity.data.data.site_xpos[:, cache["site_ids"], :]
         tgt = cache["target_torch"]
         if tgt is None:
             return torch.zeros(
-                env.scene[entity_name].data.data.qpos.shape[0],
-                dtype=torch.bool,
-                device=env.scene[entity_name].data.data.qpos.device,
+                cur_sites.shape[0], dtype=torch.bool, device=cur_sites.device
             )
-        data = env.scene[entity_name].data.data
-        cur_sites = data.site_xpos[:, ids, :]  # (N, n_sites, 3)
-        err = cur_sites - tgt
-        mean_dist = torch.sqrt((err * err).sum(dim=-1)).mean(dim=-1)  # (N,)
-        site_term = mean_dist > site_err_threshold
 
-        root_err = torch.sqrt(((data.qpos[:, :3] - tgt.mean(dim=1)) ** 2).sum(dim=-1))
-        root_term = root_err > root_err_threshold
-        return site_term | root_term
+        # Root error vs the clip's reference root, only for a free root joint
+        # (bimanual is fixed-base: its qpos[:3] are hinge angles).
+        cur_root = ref_root = None
+        resolved_clip: MotionClip | None = cache.get("clip")
+        clip_source = cache.get("clip_source")
+        if (
+            use_clip_root
+            and not entity.is_fixed_base
+            and clip_source is not None
+            and resolved_clip is not None
+            and _clip_has_required_indices(
+                resolved_clip.qpos_model_indices, range(0, 3)
+            )
+        ):
+            ref_qpos = clip_source.ref_qpos(_mimic_episode_steps(env))
+            if ref_qpos is not None:
+                ref_root = ref_qpos[:, :3]
+                cur_root = entity.data.root_link_pos_w
+        return mimic_termination_mask(
+            torch,
+            cur_sites,
+            tgt,
+            cur_root,
+            ref_root,
+            site_err_threshold=site_err_threshold,
+            root_err_threshold=root_err_threshold,
+        )
 
     return _fn
 
@@ -1263,6 +1289,20 @@ def _mimic_early_termination(
 # ---------------------------------------------------------------------------
 # mjlab env-config builder
 # ---------------------------------------------------------------------------
+
+
+def _policy_actor_critic_groups(obs_terms: dict[str, Any]) -> dict[str, Any]:
+    """One observation group per name rsl_rl may ask for, all with *obs_terms*.
+
+    mjlab's default runner cfg maps ``actor``/``critic`` to groups of the same
+    name and rsl_rl raises when they are missing; ``policy`` serves play.
+    """
+    from mjlab.managers.observation_manager import ObservationGroupCfg
+
+    return {
+        name: ObservationGroupCfg(terms=obs_terms)
+        for name in ("policy", "actor", "critic")
+    }
 
 
 def _make_mimic_env_cfg(
@@ -1310,7 +1350,8 @@ def _make_mimic_env_cfg(
         enable_clip_state_terms: Whether to expose clip qpos/qvel references and
             use RSI from clip state. Disable this when clip state widths do not
             match the model but ``site_xpos`` remains usable.
-        reward_mode: Reward composition mode (``"mimic"``, ``"augmented"``).
+        reward_mode: Reward composition mode.  Only ``"mimic"`` (the
+            clip-tracking objective) is implemented.
         action_mode: Muscle action interpretation. ``"sigmoid"`` keeps the
             training path's canonical action normalisation; ``"direct"``
             preserves checkpoint playback by clipping incoming values to
@@ -1318,6 +1359,10 @@ def _make_mimic_env_cfg(
 
     Returns:
         A configured :class:`~mjlab.envs.ManagerBasedRlEnvCfg` instance.
+
+    Raises:
+        NotImplementedError: If *reward_mode* needs a native task reward
+            (``"env"``, ``"augmented"``).
     """
     from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
         MyoMuscleActivationActionCfg,
@@ -1330,16 +1375,13 @@ def _make_mimic_env_cfg(
     from mjlab.envs import ManagerBasedRlEnvCfg
     from mjlab.envs.mdp import terminations as mdp_terminations
     from mjlab.managers.event_manager import EventTermCfg
-    from mjlab.managers.observation_manager import (
-        ObservationGroupCfg,
-        ObservationTermCfg,
-    )
+    from mjlab.managers.observation_manager import ObservationTermCfg
     from mjlab.managers.reward_manager import RewardTermCfg
     from mjlab.managers.termination_manager import TerminationTermCfg
     from mjlab.scene import SceneCfg
     from mjlab.sim import MujocoCfg, SimulationCfg
 
-    reward_mode = _normalize_mimic_reward_mode(reward_mode)
+    _require_supported_reward_mode(reward_mode)
 
     articulation = EntityArticulationInfoCfg(
         actuators=(
@@ -1394,11 +1436,7 @@ def _make_mimic_env_cfg(
                 func=_mimic_obs_lookahead(entity_name, variant, clip, ctrl_dt)
             )
 
-    observations = {
-        "policy": ObservationGroupCfg(terms=obs_terms),
-        "actor": ObservationGroupCfg(terms=obs_terms),
-        "critic": ObservationGroupCfg(terms=obs_terms),
-    }
+    observations = _policy_actor_critic_groups(obs_terms)
     actions = {
         "muscles": MyoMuscleActivationActionCfg(
             entity_name=entity_name,
@@ -1410,13 +1448,15 @@ def _make_mimic_env_cfg(
     terminations = {
         "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
     }
-    if (
-        _reward_mode_uses_mimic_objective(reward_mode)
-        and use_early_termination
-        and clip is not None
-    ):
+    if use_early_termination and clip is not None:
         terminations["mimic_deviation"] = TerminationTermCfg(
-            func=_mimic_early_termination(entity_name, variant, clip, ctrl_dt),
+            func=_mimic_early_termination(
+                entity_name,
+                variant,
+                clip,
+                ctrl_dt,
+                use_clip_root=enable_clip_state_terms,
+            ),
             time_out=False,
         )
 
@@ -1438,23 +1478,21 @@ def _make_mimic_env_cfg(
             mode="reset",
         )
 
-    rewards: dict[str, Any] = {}
-    if _reward_mode_uses_mimic_objective(reward_mode):
-        if (
-            use_deepmimic_reward
-            and clip is not None
-            and enable_clip_state_terms
-            and clip.qpos is not None
-            and clip.qvel is not None
-        ):
-            reward_fn = _mimic_deepmimic_reward(entity_name, variant, clip, ctrl_dt)
-        else:
-            reward_fn = _mimic_tracking_reward(entity_name, variant, clip, ctrl_dt)
+    if (
+        use_deepmimic_reward
+        and clip is not None
+        and enable_clip_state_terms
+        and clip.qpos is not None
+        and clip.qvel is not None
+    ):
+        reward_fn = _mimic_deepmimic_reward(entity_name, variant, clip, ctrl_dt)
+    else:
+        reward_fn = _mimic_tracking_reward(entity_name, variant, clip, ctrl_dt)
 
-        # mjlab RewardManager multiplies every term by ctrl_dt (scale_by_dt=True).
-        # Compensate so the logged reward matches the raw composite reward (0–1).
-        reward_weight = float(mimic_reward_weight) / ctrl_dt if ctrl_dt > 0 else 1.0
-        rewards["tracking"] = RewardTermCfg(func=reward_fn, weight=reward_weight)
+    # mjlab RewardManager multiplies every term by ctrl_dt (scale_by_dt=True).
+    # Compensate so the logged reward matches the raw composite reward (0–1).
+    reward_weight = float(mimic_reward_weight) / ctrl_dt if ctrl_dt > 0 else 1.0
+    rewards = {"tracking": RewardTermCfg(func=reward_fn, weight=reward_weight)}
     decimation = max(1, int(round(ctrl_dt / sim_dt)))
     episode_length_s = float(max_episode_steps) * ctrl_dt
 
@@ -1516,8 +1554,8 @@ def register_mimic_mjlab_tasks_with_clip(
 ) -> None:
     """Register Mimic tasks in trajectory mode.
 
-    Targets are taken from *clip*'s ``site_xpos`` at the frame corresponding
-    to each environment's current simulation time.  Each of the N parallel
+    Targets are taken from *clip*'s ``site_xpos``, advancing one frame per
+    control step of each environment's episode.  Each of the N parallel
     environments starts at a random frame; on reset that offset is resampled.
 
     Additional observation terms are added automatically:
@@ -1533,13 +1571,25 @@ def register_mimic_mjlab_tasks_with_clip(
               ``site_xpos`` populated.
         action_mode: Muscle action interpretation. Leave as ``"sigmoid"`` for
             training; use ``"direct"`` for fullbody checkpoint inference.
-        reward_mode: Reward composition for the mimic task (``"mimic"``,
-            ``"env"``, or ``"augmented"``).
+        reward_mode: Reward composition for the mimic task.  Only ``"mimic"``
+            (clip tracking) is implemented: the Mimic tasks have no native
+            task reward for ``"env"`` or ``"augmented"`` to use.
+        mimic_reward_weight: Weight of the clip-tracking reward.
+        env_reward_weight: Weight of the native task reward; must stay
+            ``1.0`` since the Mimic tasks define none.
 
     Raises:
-        ValueError: If ``clip.site_xpos`` is ``None``.
+        ValueError: If ``clip.site_xpos`` is ``None`` or *reward_mode* is
+            unknown.
+        NotImplementedError: If *reward_mode* or *env_reward_weight* needs a
+            native task reward.
     """
-    reward_mode = _normalize_mimic_reward_mode(reward_mode)
+    reward_mode = _require_supported_reward_mode(reward_mode)
+    if env_reward_weight != 1.0:
+        raise NotImplementedError(
+            f"env_reward_weight={env_reward_weight} weights a native task reward, "
+            "which the mjlab Mimic tasks do not define."
+        )
     if clip.site_xpos is None:
         raise ValueError(
             "register_mimic_mjlab_tasks_with_clip requires clip.site_xpos; "
@@ -1553,6 +1603,7 @@ def register_mimic_mjlab_tasks_with_clip(
         use_lookahead=use_lookahead,
         use_early_termination=use_early_termination,
         action_mode=action_mode,
+        reward_mode=reward_mode,
         mimic_reward_weight=mimic_reward_weight,
     )
     from mjlab.tasks.registry import list_tasks
@@ -1573,6 +1624,7 @@ def _register_mimic_tasks(
     use_lookahead: bool = True,
     use_early_termination: bool = True,
     action_mode: str = "sigmoid",
+    reward_mode: str = _MIMIC_REWARD_MODE_MIMIC,
     mimic_reward_weight: float = 1.0,
 ) -> None:
     """Internal implementation shared by both registration entry points."""
@@ -1629,6 +1681,7 @@ def _register_mimic_tasks(
                 use_early_termination=use_early_termination,
                 action_mode=action_mode,
                 mj_model=b_mj,
+                reward_mode=reward_mode,
                 mimic_reward_weight=mimic_reward_weight,
             )
             b_train_env = _make_mimic_env_cfg(
@@ -1694,6 +1747,7 @@ def _register_mimic_tasks(
         use_early_termination=use_early_termination,
         action_mode=action_mode,
         mj_model=f_mj,
+        reward_mode=reward_mode,
         mimic_reward_weight=mimic_reward_weight,
     )
     f_train_env = _make_mimic_env_cfg(
@@ -1910,7 +1964,10 @@ def register_mimic_mjlab_tasks_with_sar(
 
     The policy learns to output ``n_synergies`` actions.  The SAR inverse
     transform maps them to full-dimensional muscle activations before they
-    are applied in simulation.
+    are applied in simulation.  Everything else (initial state, observations,
+    RSI, early termination, rewards) is the ``myoMimic*-v0`` task that
+    :func:`register_mimic_mjlab_tasks` (no clip) or
+    :func:`register_mimic_mjlab_tasks_with_clip` registers.
 
     Task IDs registered:
     * ``myoMimicFullbody-SAR-v0``  /  ``myoMuscleMimicFullbody-SAR-v0``
@@ -1955,6 +2012,12 @@ def _register_mimic_sar_tasks(
     from myosuite.integrations.musclemimic.sar_torch_transform import SARTorchTransform
     from ml_collections import config_dict
 
+    from myosuite.envs.myo.backends.mjlab.configs.musclemimic_bimanual_cfg import (
+        MuscleMimicBimanualCfg,
+    )
+    from myosuite.envs.myo.backends.mjlab.configs.musclemimic_fullbody_cfg import (
+        MuscleMimicFullbodyCfg,
+    )
     from myosuite.integrations.musclemimic.bimanual_model import (
         build_mimic_bimanual_spec,
         default_mimic_config,
@@ -1970,6 +2033,10 @@ def _register_mimic_sar_tasks(
                 f"SAR model has {sar_model.n_muscles} muscles but model has {n_muscles}"
             )
         return SARTorchTransform(sar_model.ica, sar_model.pca, sar_model.scaler)
+
+    # Reward weight defaults of the muscle-space entry points:
+    # register_mimic_mjlab_tasks_with_clip (clip) / register_mimic_mjlab_tasks.
+    mimic_reward_weight = 5.0 if clip is not None else 1.0
 
     # --- Bimanual ---
     try:
@@ -1987,8 +2054,7 @@ def _register_mimic_sar_tasks(
                 _strip_spec_keyframes(spec)
                 return spec
 
-            b_ctrl_dt = float(b_cfg.ctrl_dt)
-            b_env = _make_mimic_sar_env_cfg(
+            _b_common = dict(
                 _task_id="myoMimicBimanual-SAR-v0",
                 entity_name="mimic_bimanual_robot",
                 variant="bimanual",
@@ -1997,15 +2063,21 @@ def _register_mimic_sar_tasks(
                 tendon_targets=b_tendons,
                 sar_transform=b_transform,
                 sim_dt=float(b_cfg.sim_dt),
-                ctrl_dt=b_ctrl_dt,
+                ctrl_dt=float(b_cfg.ctrl_dt),
                 max_episode_steps=int(b_cfg.max_episode_steps),
                 clip=clip,
+                mj_model=b_mj,
+                mimic_reward_weight=mimic_reward_weight,
             )
+            b_env = _make_mimic_sar_env_cfg(
+                num_envs=MuscleMimicBimanualCfg.num_envs, **_b_common
+            )
+            b_play_env = _make_mimic_sar_env_cfg(num_envs=1, **_b_common)
             for task_id in ("myoMimicBimanual-SAR-v0", "myoMuscleMimicBimanual-SAR-v0"):
                 register_mjlab_task(
                     task_id=task_id,
                     env_cfg=b_env,
-                    play_env_cfg=b_env,
+                    play_env_cfg=b_play_env,
                     rl_cfg=rl_cfg_fn(),
                     runner_cls=None,
                 )
@@ -2033,8 +2105,9 @@ def _register_mimic_sar_tasks(
                 _strip_spec_keyframes(spec)
                 return spec
 
-            f_ctrl_dt = float(f_cfg.ctrl_dt)
-            f_env = _make_mimic_sar_env_cfg(
+            # The compiled model keeps the keyframe the spec_fn strips, so the
+            # entity's initial state is the standing pose, not pelvis z = 0.
+            _f_common = dict(
                 _task_id="myoMimicFullbody-SAR-v0",
                 entity_name="mimic_fullbody_robot",
                 variant="fullbody",
@@ -2043,15 +2116,21 @@ def _register_mimic_sar_tasks(
                 tendon_targets=f_tendons,
                 sar_transform=f_transform,
                 sim_dt=float(f_cfg.sim_dt),
-                ctrl_dt=f_ctrl_dt,
+                ctrl_dt=float(f_cfg.ctrl_dt),
                 max_episode_steps=int(f_cfg.max_episode_steps),
                 clip=clip,
+                mj_model=f_mj,
+                mimic_reward_weight=mimic_reward_weight,
             )
+            f_env = _make_mimic_sar_env_cfg(
+                num_envs=MuscleMimicFullbodyCfg.num_envs, **_f_common
+            )
+            f_play_env = _make_mimic_sar_env_cfg(num_envs=1, **_f_common)
             for task_id in ("myoMimicFullbody-SAR-v0", "myoMuscleMimicFullbody-SAR-v0"):
                 register_mjlab_task(
                     task_id=task_id,
                     env_cfg=f_env,
-                    play_env_cfg=f_env,
+                    play_env_cfg=f_play_env,
                     rl_cfg=rl_cfg_fn(),
                     runner_cls=None,
                 )
@@ -2064,128 +2143,39 @@ def _register_mimic_sar_tasks(
 
 def _make_mimic_sar_env_cfg(
     *,
-    _task_id: str,
     entity_name: str,
-    variant: str,
-    spec_fn: Callable[[], Any],
     muscle_actuators: tuple[str, ...],
-    tendon_targets: tuple[str, ...],
     sar_transform: Any,
-    sim_dt: float,
-    ctrl_dt: float,
-    max_episode_steps: int,
-    clip: MotionClip | None = None,
+    **mimic_cfg_kwargs: Any,
 ) -> Any:
-    """Build a :class:`~mjlab.envs.ManagerBasedRlEnvCfg` with SAR action space.
+    """Build the :func:`_make_mimic_env_cfg` task with a SAR action space.
 
-    Identical to :func:`_make_mimic_env_cfg` except the ``"muscles"`` action
-    term uses :class:`SARMuscleActivationActionCfg` so the policy operates in
-    synergy space.
+    Scene, initial state, observations, RSI, early termination and rewards all
+    come from :func:`_make_mimic_env_cfg`; only the ``"muscles"`` action term
+    is replaced by :class:`SARMuscleActivationActionCfg`, so the policy acts
+    in synergy space on the same task as ``myoMimic*-v0``.
 
     Args:
-        _task_id: Task ID (informational).
         entity_name: Scene entity name.
-        variant: ``"bimanual"`` or ``"fullbody"``.
-        spec_fn: Callable returning an :class:`mujoco.MjSpec`.
         muscle_actuators: Full-dimensional muscle actuator names.
-        tendon_targets: Tendon names for XmlMuscle actuator config.
         sar_transform: Fitted :class:`~myosuite.integrations.musclemimic.sar_torch_transform.SARTorchTransform`.
-        sim_dt: Physics timestep.
-        ctrl_dt: Control timestep.
-        max_episode_steps: Episode length in control steps.
-        clip: Optional MotionClip for trajectory-mode targets.
+        **mimic_cfg_kwargs: Remaining keyword arguments of
+            :func:`_make_mimic_env_cfg` (model, timing, clip, ...).
 
     Returns:
         Configured :class:`~mjlab.envs.ManagerBasedRlEnvCfg`.
     """
-    from mjlab.actuator import XmlActuatorCfg as _XmlActuatorCfg
-    from mjlab.actuator.actuator import TransmissionType
-    from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
-    from mjlab.envs import ManagerBasedRlEnvCfg
-    from mjlab.envs.mdp import terminations as mdp_terminations
-    from mjlab.managers.observation_manager import (
-        ObservationGroupCfg,
-        ObservationTermCfg,
+    cfg = _make_mimic_env_cfg(
+        entity_name=entity_name,
+        muscle_actuators=muscle_actuators,
+        **mimic_cfg_kwargs,
     )
-    from mjlab.managers.reward_manager import RewardTermCfg
-    from mjlab.managers.termination_manager import TerminationTermCfg
-    from mjlab.scene import SceneCfg
-    from mjlab.sim import MujocoCfg, SimulationCfg
-
-    articulation = EntityArticulationInfoCfg(
-        actuators=(
-            _XmlActuatorCfg(
-                target_names_expr=tendon_targets,
-                transmission_type=TransmissionType.TENDON,
-            ),
-        )
+    cfg.actions["muscles"] = SARMuscleActivationActionCfg(
+        entity_name=entity_name,
+        actuator_names=muscle_actuators,
+        sar_transform=sar_transform,
     )
-    entity_cfg = EntityCfg(spec_fn=spec_fn, articulation=articulation)
-    scene_cfg = SceneCfg(num_envs=1, entities={entity_name: entity_cfg})
-
-    obs_terms: dict[str, Any] = {
-        "qpos": ObservationTermCfg(func=_mimic_obs_qpos(entity_name)),
-        "qvel": ObservationTermCfg(func=_mimic_obs_qvel(entity_name)),
-        "act": ObservationTermCfg(func=_mimic_obs_act(entity_name)),
-        "mimic_site_pos": ObservationTermCfg(
-            func=_mimic_obs_site_pos(entity_name, variant, clip, ctrl_dt)
-        ),
-        "mimic_site_target": ObservationTermCfg(
-            func=_mimic_obs_target(entity_name, variant, clip, ctrl_dt)
-        ),
-        "mimic_site_err": ObservationTermCfg(
-            func=_mimic_obs_err(entity_name, variant, clip, ctrl_dt)
-        ),
-    }
-
-    if clip is not None:
-        if clip.qpos is not None:
-            obs_terms["clip_ref_qpos"] = ObservationTermCfg(
-                func=_mimic_obs_clip_ref_qpos(entity_name, variant, clip, ctrl_dt)
-            )
-        if clip.qvel is not None:
-            obs_terms["clip_ref_qvel"] = ObservationTermCfg(
-                func=_mimic_obs_clip_ref_qvel(entity_name, variant, clip, ctrl_dt)
-            )
-        obs_terms["clip_phase"] = ObservationTermCfg(
-            func=_mimic_obs_clip_phase(entity_name, variant, clip, ctrl_dt)
-        )
-
-    observations = {"policy": ObservationGroupCfg(terms=obs_terms)}
-    actions = {
-        "muscles": SARMuscleActivationActionCfg(
-            entity_name=entity_name,
-            actuator_names=muscle_actuators,
-            sar_transform=sar_transform,
-        ),
-    }
-    terminations = {
-        "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
-    }
-    rewards = {
-        "tracking": RewardTermCfg(
-            func=_mimic_tracking_reward(entity_name, variant, clip, ctrl_dt),
-            weight=1.0,
-        ),
-    }
-
-    decimation = max(1, int(round(ctrl_dt / sim_dt)))
-    episode_length_s = float(max_episode_steps) * ctrl_dt
-
-    return ManagerBasedRlEnvCfg(
-        scene=scene_cfg,
-        decimation=decimation,
-        episode_length_s=episode_length_s,
-        observations=observations,
-        actions=actions,
-        terminations=terminations,
-        rewards=rewards,
-        sim=SimulationCfg(
-            mujoco=MujocoCfg(timestep=sim_dt, ccd_iterations=500),
-            njmax=512,
-            nconmax=256,
-        ),
-    )
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -2319,10 +2309,7 @@ def _make_directional_sar_env_cfg(
     from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
     from mjlab.envs import ManagerBasedRlEnvCfg
     from mjlab.envs.mdp import terminations as mdp_terminations
-    from mjlab.managers.observation_manager import (
-        ObservationGroupCfg,
-        ObservationTermCfg,
-    )
+    from mjlab.managers.observation_manager import ObservationTermCfg
     from mjlab.managers.reward_manager import RewardTermCfg
     from mjlab.managers.termination_manager import TerminationTermCfg
     from mjlab.scene import SceneCfg
@@ -2353,16 +2340,14 @@ def _make_directional_sar_env_cfg(
     )
     scene_cfg = SceneCfg(num_envs=num_envs, entities={entity_name: entity_cfg})
 
-    observations = {
-        "policy": ObservationGroupCfg(
-            terms={
-                "qpos": ObservationTermCfg(func=_dir_obs_qpos_wo_root_xy(entity_name)),
-                "qvel": ObservationTermCfg(func=_mimic_obs_qvel(entity_name)),
-                "act": ObservationTermCfg(func=_mimic_obs_act(entity_name)),
-                "root_vel": ObservationTermCfg(func=_dir_obs_root_vel(entity_name)),
-            },
-        ),
-    }
+    observations = _policy_actor_critic_groups(
+        {
+            "qpos": ObservationTermCfg(func=_dir_obs_qpos_wo_root_xy(entity_name)),
+            "qvel": ObservationTermCfg(func=_mimic_obs_qvel(entity_name)),
+            "act": ObservationTermCfg(func=_mimic_obs_act(entity_name)),
+            "root_vel": ObservationTermCfg(func=_dir_obs_root_vel(entity_name)),
+        }
+    )
 
     actions = {
         "muscles": SARMuscleActivationActionCfg(
