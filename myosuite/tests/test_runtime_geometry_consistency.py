@@ -40,6 +40,8 @@ _EDITED_BODIES: dict[str, Callable] = {
     "myoHandReorientOOD-v0": lambda env: (env.obj_bid, env.target_obj_bid),
     "myoHandObjHoldRandom-v0": lambda env: (env.model.geom_bodyid[-1],),
     "myoChallengeBimanual-v0": lambda env: (env.obj_bid,),
+    "myoChallengeRelocateP2-v0": lambda env: (env.object_bid,),
+    "myoChallengeRelocateP2eval-v0": lambda env: (env.object_bid,),
 }
 
 
@@ -72,7 +74,12 @@ def _recompiled(env, body_ids: tuple[int, ...]) -> mujoco.MjModel:
         for geom in bodies[b].geoms:
             geom.density *= scale
             geom.mass *= scale
-    return spec.compile()
+    ref = spec.compile()
+    # Body poses the env sets on reset (goal, object start) are inputs, not
+    # derived fields: take them from the env like the state.
+    ref.body_pos[:] = model.body_pos
+    ref.body_quat[:] = model.body_quat
+    return ref
 
 
 def _assert_derived_fields_match(
