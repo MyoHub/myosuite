@@ -15,11 +15,11 @@ Test classes
     frame-index arithmetic, per-env reset detection, device placement.
 
 ``TestClipTrajectorySourceAdvance``
-    Verifies that targets advance frame-by-frame as simulation time progresses.
+    Verifies that targets advance frame-by-frame as the step counter advances.
 
 ``TestClipTrajectorySourceReset``
     Verifies that start offsets are resampled independently when individual
-    environments reset (their time regresses).
+    environments reset (their step counter regresses).
 
 ``TestMimicMjlabCacheDispatch``
     Verifies that :func:`_sync_mimic_mjlab_targets` dispatches to the clip
@@ -63,7 +63,6 @@ from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
     _mimic_obs_target,
     _mimic_rsi_event,
     _mimic_tracking_reward,
-    _mjlab_sim_time_to_tensor,
     _normalize_mimic_reward_mode,
     _sync_mimic_mjlab_targets,
 )
@@ -109,6 +108,11 @@ def _make_clip(
 
 def _make_site_ids(n: int = _N_SITES) -> np.ndarray:
     return np.arange(n, dtype=np.int32)
+
+
+def _steps(k: int) -> torch.Tensor:
+    """Per-env control-step counter (mjlab ``episode_length_buf``) at step *k*."""
+    return torch.full((_N,), k, dtype=torch.long)
 
 
 def _make_source(
@@ -194,6 +198,8 @@ def _make_mock_env(
         time_tensor = torch.full((n_envs,), t, dtype=torch.float32)
     else:
         time_tensor = t.float()
+    # mjlab's integer step counter, which indexes the clip frames.
+    episode_length_buf = torch.round(time_tensor / _CTRL_DT).long()
 
     # Innermost: actual physics arrays
     physics = types.SimpleNamespace(
@@ -216,6 +222,7 @@ def _make_mock_env(
         sim=_MockSim(),
         physics_dt=0.002,
         cfg=types.SimpleNamespace(decimation=5),
+        episode_length_buf=episode_length_buf,
     )
 
 
@@ -405,22 +412,22 @@ class TestClipTrajectorySourceBasics:
 
     def test_update_initialises_device(self) -> None:
         src = _make_source()
-        t = torch.zeros(_N)
+        t = torch.zeros(_N, dtype=torch.long)
         src.update(t)
         assert src._site_tensor is not None
         assert src._start_offsets is not None
-        assert src._last_t is not None
+        assert src._last_step is not None
 
     def test_site_tensor_shape(self) -> None:
         src = _make_source(T=_T, n_sites=_N_SITES)
-        t = torch.zeros(_N)
+        t = torch.zeros(_N, dtype=torch.long)
         src.update(t)
         assert src._site_tensor is not None
         assert src._site_tensor.shape == (_T, _N_SITES, 3)
 
     def test_qpos_tensor_shape(self) -> None:
         src = _make_source(T=_T, nq=_NQ)
-        t = torch.zeros(_N)
+        t = torch.zeros(_N, dtype=torch.long)
         src.update(t)
         assert src._qpos_tensor is not None
         assert src._qpos_tensor.shape == (_T, _NQ)
@@ -430,7 +437,7 @@ class TestClipTrajectorySourceBasics:
         src = ClipTrajectorySource(
             clip=clip, tracked_site_ids=_make_site_ids(), ctrl_dt=_CTRL_DT
         )
-        t = torch.zeros(_N)
+        t = torch.zeros(_N, dtype=torch.long)
         src.update(t)
         assert src._qpos_tensor is None
         assert src.ref_qpos(t) is None
@@ -438,7 +445,7 @@ class TestClipTrajectorySourceBasics:
 
     def test_start_offsets_in_range(self) -> None:
         src = _make_source(T=_T)
-        t = torch.zeros(_N)
+        t = torch.zeros(_N, dtype=torch.long)
         src.update(t)
         assert src._start_offsets is not None
         assert (src._start_offsets >= 0).all()
@@ -446,14 +453,14 @@ class TestClipTrajectorySourceBasics:
 
     def test_site_targets_shape(self) -> None:
         src = _make_source()
-        t = torch.zeros(_N)
+        t = torch.zeros(_N, dtype=torch.long)
         src.update(t)
         out = src.site_targets(t)
         assert out.shape == (_N, _N_SITES, 3)
 
     def test_ref_qpos_shape(self) -> None:
         src = _make_source(nq=_NQ)
-        t = torch.zeros(_N)
+        t = torch.zeros(_N, dtype=torch.long)
         src.update(t)
         out = src.ref_qpos(t)
         assert out is not None
@@ -461,7 +468,7 @@ class TestClipTrajectorySourceBasics:
 
     def test_phase_shape_and_range(self) -> None:
         src = _make_source()
-        t = torch.zeros(_N)
+        t = torch.zeros(_N, dtype=torch.long)
         src.update(t)
         ph = src.phase(t)
         assert ph.shape == (_N, 1)
@@ -470,7 +477,7 @@ class TestClipTrajectorySourceBasics:
 
     def test_multi_clip_source_uses_per_env_clip_assignments(self) -> None:
         src = _make_multi_clip_source()
-        t = torch.tensor([0.00, 0.02, 0.04, 0.06], dtype=torch.float32)
+        t = torch.tensor([0, 2, 4, 6], dtype=torch.long)
         src.update(t)
         src._clip_indices = torch.tensor([0, 1, 0, 1], dtype=torch.long)
         src._start_offsets = torch.tensor([1, 2, 3, 4], dtype=torch.long)
@@ -509,17 +516,17 @@ class TestClipTrajectorySourceBasics:
 
 
 class TestClipTrajectorySourceAdvance:
-    def test_targets_change_as_time_advances(self) -> None:
-        """Targets must change when simulation time advances by ctrl_dt."""
+    def test_targets_change_as_step_advances(self) -> None:
+        """Targets must change when the step counter advances by one."""
         src = _make_source(T=_T, ctrl_dt=_CTRL_DT)
         # Pin start_offsets to 0 for determinism
-        t0 = torch.zeros(_N)
+        t0 = _steps(0)
         src.update(t0)
         src._start_offsets = torch.zeros(_N, dtype=torch.long)
 
         tgt0 = src.site_targets(t0).clone()
 
-        t1 = torch.full((_N,), _CTRL_DT)  # one frame later
+        t1 = _steps(1)  # one frame later
         src.update(t1)
         tgt1 = src.site_targets(t1)
 
@@ -530,13 +537,13 @@ class TestClipTrajectorySourceAdvance:
     def test_targets_match_clip_data(self) -> None:
         """Targets at frame k must equal clip.site_xpos[k]."""
         src = _make_source(T=_T, ctrl_dt=_CTRL_DT)
-        t0 = torch.zeros(_N)
+        t0 = _steps(0)
         src.update(t0)
         # Force all envs to start at frame 0
         src._start_offsets = torch.zeros(_N, dtype=torch.long)
 
         for frame_k in [0, 1, 5, _T - 1]:
-            t_k = torch.full((_N,), frame_k * _CTRL_DT)
+            t_k = _steps(frame_k)
             expected = (
                 torch.as_tensor(src.clip.site_xpos[frame_k], dtype=torch.float32)
                 .unsqueeze(0)
@@ -550,32 +557,61 @@ class TestClipTrajectorySourceAdvance:
     def test_clip_wraps_at_end(self) -> None:
         """After T frames the clip wraps back to frame 0."""
         src = _make_source(T=_T, ctrl_dt=_CTRL_DT)
-        t0 = torch.zeros(_N)
+        t0 = _steps(0)
         src.update(t0)
         src._start_offsets = torch.zeros(_N, dtype=torch.long)
 
         # Frame 0 and frame T should give identical targets
-        tgt0 = src.site_targets(torch.zeros(_N)).clone()
-        t_wrap = torch.full((_N,), _T * _CTRL_DT)
+        tgt0 = src.site_targets(_steps(0)).clone()
+        t_wrap = _steps(_T)
         src.update(t_wrap)
         tgt_wrap = src.site_targets(t_wrap)
         assert torch.allclose(tgt0, tgt_wrap, atol=1e-6)
 
     def test_phase_advances(self) -> None:
-        """Phase must increase as time progresses."""
+        """Phase must increase as the step counter advances."""
         src = _make_source(T=_T, ctrl_dt=_CTRL_DT)
-        t0 = torch.zeros(_N)
+        t0 = _steps(0)
         src.update(t0)
         src._start_offsets = torch.zeros(_N, dtype=torch.long)
 
-        ph0 = src.phase(torch.zeros(_N))
-        ph1 = src.phase(torch.full((_N,), 5 * _CTRL_DT))
+        ph0 = src.phase(_steps(0))
+        ph1 = src.phase(_steps(5))
         assert (ph1 > ph0).all()
+
+    def test_float_time_is_rejected(self) -> None:
+        """Float sim time drifts, so it must not be accepted as a frame counter."""
+        src = _make_source()
+        with pytest.raises(TypeError, match="episode_length_buf"):
+            src.update(torch.zeros(_N))
+        src.update(_steps(0))
+        with pytest.raises(TypeError, match="episode_length_buf"):
+            src.site_targets(torch.full((_N,), 0.07))
+
+    def test_frames_follow_step_counter_not_float32_time(self) -> None:
+        """Frame k after k control steps, unlike floor(float32 time / ctrl_dt).
+
+        mujoco_warp accumulates ``time += timestep`` in float32 every physics
+        substep; that clock reads 0.06999 s after 7 steps of 5 x 2 ms, so the
+        old ``floor(time / ctrl_dt)`` index fell one frame behind.
+        """
+        src = _make_source(T=_T, ctrl_dt=_CTRL_DT)
+        src.update(_steps(0))
+        src._start_offsets = torch.zeros(_N, dtype=torch.long)
+        time = np.float32(0.0)
+        lagging = 0
+        for k in range(1, 1001):
+            for _ in range(5):
+                time = np.float32(time + np.float32(0.002))
+            lagging += int(np.floor(time / _CTRL_DT)) != k
+            src.update(_steps(k))
+            assert int(src.frame_indices(_steps(k))[0]) == k % _T
+        assert lagging > 600  # the float32 clock is behind on most steps
 
     def test_different_start_offsets_give_different_targets(self) -> None:
         """Two envs at the same time but different offsets must have different targets."""
         src = _make_source(T=_T, ctrl_dt=_CTRL_DT)
-        t = torch.zeros(_N)
+        t = torch.zeros(_N, dtype=torch.long)
         src.update(t)
         # Give each env a different offset
         src._start_offsets = torch.arange(_N, dtype=torch.long)
@@ -592,16 +628,16 @@ class TestClipTrajectorySourceAdvance:
 
 class TestClipTrajectorySourceReset:
     def test_reset_resamples_offsets_for_regressed_envs(self) -> None:
-        """Envs whose time regresses must get new start offsets."""
+        """Envs whose step counter regresses must get new start offsets."""
         src = _make_source(T=_T, ctrl_dt=_CTRL_DT)
-        t_forward = torch.full((_N,), 5 * _CTRL_DT)
+        t_forward = _steps(5)
         src.update(t_forward)
         offsets_before = src._start_offsets.clone()
 
-        # Env 0 and env 2 reset (time goes back to 0)
+        # Env 0 and env 2 reset (step counter goes back to 0)
         t_mixed = t_forward.clone()
-        t_mixed[0] = 0.0
-        t_mixed[2] = 0.0
+        t_mixed[0] = 0
+        t_mixed[2] = 0
         src.update(t_mixed)
         offsets_after = src._start_offsets
 
@@ -611,12 +647,12 @@ class TestClipTrajectorySourceReset:
 
     def test_non_reset_envs_keep_offsets(self) -> None:
         src = _make_source(T=_T, ctrl_dt=_CTRL_DT)
-        t = torch.full((_N,), 3 * _CTRL_DT)
+        t = _steps(3)
         src.update(t)
         offsets_before = src._start_offsets.clone()
 
         # All envs continue forward
-        t2 = torch.full((_N,), 6 * _CTRL_DT)
+        t2 = _steps(6)
         src.update(t2)
         assert torch.all(src._start_offsets == offsets_before)
 
@@ -624,12 +660,12 @@ class TestClipTrajectorySourceReset:
         """All envs reset simultaneously — all offsets should be resampled."""
         torch.manual_seed(99)
         src = _make_source(T=_T, ctrl_dt=_CTRL_DT)
-        t_fwd = torch.full((_N,), 10 * _CTRL_DT)
+        t_fwd = _steps(10)
         src.update(t_fwd)
         offsets_before = src._start_offsets.clone()
 
         torch.manual_seed(42)
-        t_reset = torch.zeros(_N)
+        t_reset = _steps(0)
         src.update(t_reset)
         offsets_after = src._start_offsets
 
@@ -850,7 +886,7 @@ class TestMimicMjlabClosures:
 class TestInitialPoseHelpers:
     def test_initial_qpos_shape(self) -> None:
         src = _make_source(nq=_NQ)
-        t = torch.zeros(_N)
+        t = torch.zeros(_N, dtype=torch.long)
         src.update(t)
         q = src.initial_qpos()
         assert q is not None
@@ -861,13 +897,13 @@ class TestInitialPoseHelpers:
         src = ClipTrajectorySource(
             clip=clip, tracked_site_ids=_make_site_ids(), ctrl_dt=_CTRL_DT
         )
-        src.update(torch.zeros(_N))
+        src.update(_steps(0))
         assert src.initial_qpos() is None
         assert src.initial_qvel() is None
 
     def test_initial_qpos_matches_start_offset(self) -> None:
         src = _make_source(T=_T, nq=_NQ)
-        t = torch.zeros(_N)
+        t = torch.zeros(_N, dtype=torch.long)
         src.update(t)
         # Pin offset for env 0 to frame 5
         assert src._start_offsets is not None
@@ -908,30 +944,6 @@ class TestInitialPoseHelpers:
         qpos, qvel = fn(n_envs=4, device=torch.device("cpu"))
         assert qpos is None
         assert qvel is None
-
-
-# ---------------------------------------------------------------------------
-# TestMjlabSimTimeToTensor
-# ---------------------------------------------------------------------------
-
-
-class TestMjlabSimTimeToTensor:
-    def test_from_tensor(self) -> None:
-        t = torch.tensor([0.1, 0.2, 0.3])
-        out = _mjlab_sim_time_to_tensor(t)
-        assert out.shape == (3,)
-        assert out.dtype == torch.float32
-        assert torch.allclose(out, t.float())
-
-    def test_from_scalar_float(self) -> None:
-        out = _mjlab_sim_time_to_tensor(0.05)
-        assert out.shape == (1,)
-        assert float(out[0]) == pytest.approx(0.05)
-
-    def test_from_numpy_scalar(self) -> None:
-        out = _mjlab_sim_time_to_tensor(np.float32(0.1))
-        assert out.shape == (1,)
-        assert float(out[0]) == pytest.approx(0.1, abs=1e-6)
 
 
 # ---------------------------------------------------------------------------

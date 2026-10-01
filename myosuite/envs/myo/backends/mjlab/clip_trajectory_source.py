@@ -6,10 +6,15 @@
 """Per-environment trajectory source backed by a :class:`~myosuite.core.trajectory_io.MotionClip`.
 
 Each of the N parallel mjlab environments gets its own random starting frame
-that is resampled independently on episode reset.  Frame indices advance in
-lock-step with the per-env simulation time:
+that is resampled independently on episode reset.  Frames advance one per
+control step:
 
-    frame[i] = (floor(t[i] / ctrl_dt) + start_offset[i]) % T
+    frame[i] = (step[i] + start_offset[i]) % T
+
+where ``step`` is the integer number of control steps since each env's last
+reset (mjlab's ``env.episode_length_buf``), the counterpart of the CPU twin's
+step counter.  Float32 simulation time is not used: it drifts, and
+``floor(time / ctrl_dt)`` lags the step counter on most steps.
 
 This gives a diverse distribution of motion phases across the batch while
 keeping each individual episode's targets coherent with the reference clip.
@@ -29,6 +34,17 @@ if TYPE_CHECKING:
     from myosuite.core.trajectory_io import MotionClip
 
 
+def _as_steps(step: torch.Tensor) -> torch.Tensor:
+    """Return the per-env step counter as int64, rejecting float tensors."""
+    if step.is_floating_point():
+        raise TypeError(
+            "Clip frames are indexed by the integer per-env control-step counter "
+            "(mjlab env.episode_length_buf), not by float simulation time; "
+            f"got dtype {step.dtype}."
+        )
+    return step.long()
+
+
 @dataclass
 class ClipTrajectorySource:
     """Manages per-env frame tracking for batched MotionClip playback in mjlab.
@@ -41,8 +57,11 @@ class ClipTrajectorySource:
               (shape ``(T, n_model_sites, 3)``).
         tracked_site_ids: Indices into the model's full site array selecting
                           the sites used for tracking (shape ``(n_tracked,)``).
-        ctrl_dt: Control timestep in seconds (``sim_dt × decimation``).
-                 Determines how fast frames advance.
+        ctrl_dt: Control timestep in seconds (``sim_dt × decimation``); the
+                 clip plays back one frame per control step.
+
+    The per-step methods take ``step``: the ``(N,)`` integer control-step
+    counter since each env's last reset (mjlab ``env.episode_length_buf``).
 
     Raises:
         ValueError: If ``clip.site_xpos`` is ``None``.
@@ -57,7 +76,7 @@ class ClipTrajectorySource:
     _qpos_tensor: torch.Tensor | None = field(default=None, repr=False, init=False)
     _qvel_tensor: torch.Tensor | None = field(default=None, repr=False, init=False)
     _start_offsets: torch.Tensor | None = field(default=None, repr=False, init=False)
-    _last_t: torch.Tensor | None = field(default=None, repr=False, init=False)
+    _last_step: torch.Tensor | None = field(default=None, repr=False, init=False)
     _device: object = field(default=None, repr=False, init=False)
 
     def __post_init__(self) -> None:
@@ -113,15 +132,15 @@ class ClipTrajectorySource:
         self._start_offsets = torch.randint(
             0, n_frames, (n_envs,), device=device, dtype=torch.long
         )
-        self._last_t = torch.full((n_envs,), -1.0, device=device, dtype=torch.float32)
+        self._last_step = torch.full((n_envs,), -1, device=device, dtype=torch.long)
 
-    def _detect_and_resample_resets(self, t: torch.Tensor) -> None:
-        """Resample start offsets for envs whose time regressed (new episode)."""
+    def _detect_and_resample_resets(self, step: torch.Tensor) -> None:
+        """Resample start offsets for envs whose step counter regressed (new episode)."""
         import torch
 
-        assert self._last_t is not None and self._start_offsets is not None
+        assert self._last_step is not None and self._start_offsets is not None
 
-        reset_mask = t < (self._last_t - 1e-6)  # (N,) bool
+        reset_mask = step < self._last_step  # (N,) bool
         if reset_mask.any():
             new_offsets = torch.randint(
                 0,
@@ -133,22 +152,21 @@ class ClipTrajectorySource:
             self._start_offsets = torch.where(
                 reset_mask, new_offsets, self._start_offsets
             )
-        self._last_t = t.clone()
+        self._last_step = step.clone()
 
-    def _frame_indices(self, t: torch.Tensor) -> torch.Tensor:
-        """Return ``(N,)`` frame indices from per-env simulation time."""
+    def _frame_indices(self, step: torch.Tensor) -> torch.Tensor:
+        """Return ``(N,)`` frame indices from the per-env step counter."""
         assert self._start_offsets is not None
-        step = (t / self.ctrl_dt).long()  # (N,) floor
-        return (step + self._start_offsets) % self.n_frames  # (N,)
+        return (_as_steps(step) + self._start_offsets) % self.n_frames  # (N,)
 
-    def frame_indices(self, t: torch.Tensor) -> torch.Tensor:
+    def frame_indices(self, step: torch.Tensor) -> torch.Tensor:
         """Return current ``(N,)`` clip frame indices for each environment.
 
         This is the public equivalent of :meth:`_frame_indices` for consumers
         that need to stay phase-aligned with the mjlab trajectory source, such
         as checkpoint policy inference wrappers.
         """
-        return self._frame_indices(t)
+        return self._frame_indices(step)
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -165,31 +183,37 @@ class ClipTrajectorySource:
         """Number of tracked sites."""
         return int(self.tracked_site_ids.shape[0])
 
-    def update(self, t: torch.Tensor) -> None:
-        """Synchronise internal state with the current per-env simulation time.
+    def update(self, step: torch.Tensor) -> None:
+        """Synchronise internal state with the current per-env step counter.
 
         Must be called once per step before querying :meth:`site_targets`,
-        :meth:`ref_qpos`, or :meth:`phase`.
+        :meth:`ref_qpos`, or :meth:`phase`.  A counter that went backwards
+        marks a new episode and resamples that env's start offset.
 
         Args:
-            t: Per-env simulation time, shape ``(N,)``, ``float32``.
-        """
-        n_envs = int(t.shape[0])
-        self._ensure_device(t.device, n_envs)
-        self._detect_and_resample_resets(t)
+            step: Control steps since each env's last reset, shape ``(N,)``,
+                integer dtype (mjlab ``env.episode_length_buf``).
 
-    def site_targets(self, t: torch.Tensor) -> torch.Tensor:
+        Raises:
+            TypeError: If *step* is a floating-point tensor.
+        """
+        step = _as_steps(step)
+        n_envs = int(step.shape[0])
+        self._ensure_device(step.device, n_envs)
+        self._detect_and_resample_resets(step)
+
+    def site_targets(self, step: torch.Tensor) -> torch.Tensor:
         """Return ``(N, n_tracked, 3)`` site targets at the current frame.
 
         Args:
-            t: Per-env simulation time, shape ``(N,)``.  Must match the ``t``
-               passed to the most recent :meth:`update` call.
+            step: Per-env step counter, shape ``(N,)``.  Must match the
+                ``step`` passed to the most recent :meth:`update` call.
 
         Returns:
             World-frame site positions from the clip, shape ``(N, n_tracked, 3)``.
         """
         assert self._site_tensor is not None
-        idx = self._frame_indices(t)  # (N,)
+        idx = self._frame_indices(step)  # (N,)
         return self.site_targets_at_frames(idx)  # (N, n_tracked, 3)
 
     def site_targets_at_frames(self, frame_idx: torch.Tensor) -> torch.Tensor:
@@ -197,18 +221,18 @@ class ClipTrajectorySource:
         assert self._site_tensor is not None
         return self._site_tensor[frame_idx]
 
-    def ref_qpos(self, t: torch.Tensor) -> torch.Tensor | None:
+    def ref_qpos(self, step: torch.Tensor) -> torch.Tensor | None:
         """Return ``(N, nq)`` reference joint positions, or ``None`` if unavailable.
 
         Args:
-            t: Per-env simulation time, shape ``(N,)``.
+            step: Per-env step counter, shape ``(N,)``.
 
         Returns:
             Reference qpos tensor or ``None`` when ``clip.qpos`` is absent.
         """
         if self._qpos_tensor is None:
             return None
-        idx = self._frame_indices(t)
+        idx = self._frame_indices(step)
         return self.ref_qpos_at_frames(idx)  # (N, nq)
 
     def ref_qpos_at_frames(self, frame_idx: torch.Tensor) -> torch.Tensor | None:
@@ -217,18 +241,18 @@ class ClipTrajectorySource:
             return None
         return self._qpos_tensor[frame_idx]
 
-    def ref_qvel(self, t: torch.Tensor) -> torch.Tensor | None:
+    def ref_qvel(self, step: torch.Tensor) -> torch.Tensor | None:
         """Return ``(N, nv)`` reference joint velocities, or ``None`` if unavailable.
 
         Args:
-            t: Per-env simulation time, shape ``(N,)``.
+            step: Per-env step counter, shape ``(N,)``.
 
         Returns:
             Reference qvel tensor or ``None`` when ``clip.qvel`` is absent.
         """
         if self._qvel_tensor is None:
             return None
-        idx = self._frame_indices(t)
+        idx = self._frame_indices(step)
         return self.ref_qvel_at_frames(idx)  # (N, nv)
 
     def ref_qvel_at_frames(self, frame_idx: torch.Tensor) -> torch.Tensor | None:
@@ -237,32 +261,34 @@ class ClipTrajectorySource:
             return None
         return self._qvel_tensor[frame_idx]
 
-    def phase(self, t: torch.Tensor) -> torch.Tensor:
+    def phase(self, step: torch.Tensor) -> torch.Tensor:
         """Return ``(N, 1)`` normalised phase in ``[0, 1]`` along the clip.
 
         Phase reaches 1.0 at the last frame and wraps back to 0.0, giving the
         RL policy a continuous signal of progress through the motion cycle.
 
         Args:
-            t: Per-env simulation time, shape ``(N,)``.
+            step: Per-env step counter, shape ``(N,)``.
 
         Returns:
             Phase tensor, shape ``(N, 1)``, ``float32``.
         """
-        idx = self._frame_indices(t).float()
+        idx = self._frame_indices(step).float()
         return (idx / float(self.n_frames)).unsqueeze(-1)  # (N, 1)
 
-    def clip_lengths(self, t: torch.Tensor) -> torch.Tensor:
+    def clip_lengths(self, step: torch.Tensor) -> torch.Tensor:
         """Return the active clip length for each environment."""
         import torch
 
-        return torch.full_like(self._frame_indices(t), self.n_frames, dtype=torch.long)
+        return torch.full_like(
+            self._frame_indices(step), self.n_frames, dtype=torch.long
+        )
 
     def initial_qpos(self) -> torch.Tensor | None:
         """Return ``(N, nq)`` qpos for each env at its assigned start offset.
 
         Called after :meth:`update` — uses the current ``start_offsets`` so
-        results match the first call to :meth:`ref_qpos` at ``t=0``.
+        results match the first call to :meth:`ref_qpos` at ``step=0``.
 
         Returns:
             Tensor of shape ``(N, nq)`` or ``None`` when ``clip.qpos`` is absent.
@@ -336,7 +362,8 @@ class MultiClipTrajectorySource:
 
     Each environment samples a clip index and a start frame independently on
     reset, while keeping the single-clip public API used by the mjlab mimic
-    observation and reward closures.
+    observation and reward closures (per-step methods take the integer
+    per-env step counter, see :class:`ClipTrajectorySource`).
     """
 
     clips: tuple[MotionClip, ...]
@@ -355,7 +382,7 @@ class MultiClipTrajectorySource:
     _clip_lengths: torch.Tensor | None = field(default=None, repr=False, init=False)
     _clip_indices: torch.Tensor | None = field(default=None, repr=False, init=False)
     _start_offsets: torch.Tensor | None = field(default=None, repr=False, init=False)
-    _last_t: torch.Tensor | None = field(default=None, repr=False, init=False)
+    _last_step: torch.Tensor | None = field(default=None, repr=False, init=False)
     _device: object = field(default=None, repr=False, init=False)
 
     def __post_init__(self) -> None:
@@ -455,19 +482,19 @@ class MultiClipTrajectorySource:
         self._clip_indices, self._start_offsets = self._sample_assignments(
             n_envs, device
         )
-        self._last_t = torch.full((n_envs,), -1.0, device=device, dtype=torch.float32)
+        self._last_step = torch.full((n_envs,), -1, device=device, dtype=torch.long)
 
-    def _detect_and_resample_resets(self, t: torch.Tensor) -> None:
+    def _detect_and_resample_resets(self, step: torch.Tensor) -> None:
         import torch
 
-        assert self._last_t is not None
+        assert self._last_step is not None
         assert self._clip_indices is not None
         assert self._start_offsets is not None
 
-        reset_mask = t < (self._last_t - 1e-6)
+        reset_mask = step < self._last_step
         if reset_mask.any():
             new_clip_indices, new_offsets = self._sample_assignments(
-                int(t.shape[0]), t.device
+                int(step.shape[0]), step.device
             )
             self._clip_indices = torch.where(
                 reset_mask, new_clip_indices, self._clip_indices
@@ -475,15 +502,14 @@ class MultiClipTrajectorySource:
             self._start_offsets = torch.where(
                 reset_mask, new_offsets, self._start_offsets
             )
-        self._last_t = t.clone()
+        self._last_step = step.clone()
 
-    def _frame_indices(self, t: torch.Tensor) -> torch.Tensor:
+    def _frame_indices(self, step: torch.Tensor) -> torch.Tensor:
         assert self._clip_indices is not None
         assert self._start_offsets is not None
         assert self._clip_lengths is not None
-        step = (t / self.ctrl_dt).long()
         lengths = self._clip_lengths.index_select(0, self._clip_indices)
-        return (step + self._start_offsets) % lengths
+        return (_as_steps(step) + self._start_offsets) % lengths
 
     def _gather_from_bank(
         self,
@@ -519,24 +545,25 @@ class MultiClipTrajectorySource:
         """Number of tracked sites."""
         return int(self.tracked_site_ids.shape[0])
 
-    def update(self, t: torch.Tensor) -> None:
-        """Synchronise the clip bank state with per-env simulation time."""
-        self._ensure_device(t.device, int(t.shape[0]))
-        self._detect_and_resample_resets(t)
+    def update(self, step: torch.Tensor) -> None:
+        """Synchronise the clip bank state with the per-env step counter."""
+        step = _as_steps(step)
+        self._ensure_device(step.device, int(step.shape[0]))
+        self._detect_and_resample_resets(step)
 
-    def frame_indices(self, t: torch.Tensor) -> torch.Tensor:
+    def frame_indices(self, step: torch.Tensor) -> torch.Tensor:
         """Return the current frame index within each env's active clip."""
-        return self._frame_indices(t)
+        return self._frame_indices(step)
 
-    def clip_lengths(self, t: torch.Tensor) -> torch.Tensor:
+    def clip_lengths(self, step: torch.Tensor) -> torch.Tensor:
         """Return the active clip length for each environment."""
         assert self._clip_lengths is not None
         assert self._clip_indices is not None
         return self._clip_lengths.index_select(0, self._clip_indices)
 
-    def site_targets(self, t: torch.Tensor) -> torch.Tensor:
+    def site_targets(self, step: torch.Tensor) -> torch.Tensor:
         """Return tracked-site targets at the current frame."""
-        return self.site_targets_at_frames(self._frame_indices(t))
+        return self.site_targets_at_frames(self._frame_indices(step))
 
     def site_targets_at_frames(self, frame_idx: torch.Tensor) -> torch.Tensor:
         """Return tracked-site targets for explicit frame indices."""
@@ -544,26 +571,26 @@ class MultiClipTrajectorySource:
         assert result is not None
         return result
 
-    def ref_qpos(self, t: torch.Tensor) -> torch.Tensor | None:
+    def ref_qpos(self, step: torch.Tensor) -> torch.Tensor | None:
         """Return reference qpos at the current frame."""
-        return self.ref_qpos_at_frames(self._frame_indices(t))
+        return self.ref_qpos_at_frames(self._frame_indices(step))
 
     def ref_qpos_at_frames(self, frame_idx: torch.Tensor) -> torch.Tensor | None:
         """Return reference qpos for explicit frame indices."""
         return self._gather_from_bank(self._qpos_tensors, frame_idx)  # type: ignore[arg-type]
 
-    def ref_qvel(self, t: torch.Tensor) -> torch.Tensor | None:
+    def ref_qvel(self, step: torch.Tensor) -> torch.Tensor | None:
         """Return reference qvel at the current frame."""
-        return self.ref_qvel_at_frames(self._frame_indices(t))
+        return self.ref_qvel_at_frames(self._frame_indices(step))
 
     def ref_qvel_at_frames(self, frame_idx: torch.Tensor) -> torch.Tensor | None:
         """Return reference qvel for explicit frame indices."""
         return self._gather_from_bank(self._qvel_tensors, frame_idx)  # type: ignore[arg-type]
 
-    def phase(self, t: torch.Tensor) -> torch.Tensor:
+    def phase(self, step: torch.Tensor) -> torch.Tensor:
         """Return normalised phase within the active clip for each environment."""
-        idx = self._frame_indices(t).float()
-        lengths = self.clip_lengths(t).float().clamp_min(1.0)
+        idx = self._frame_indices(step).float()
+        lengths = self.clip_lengths(step).float().clamp_min(1.0)
         return (idx / lengths).unsqueeze(-1)
 
     def initial_qpos(self) -> torch.Tensor | None:

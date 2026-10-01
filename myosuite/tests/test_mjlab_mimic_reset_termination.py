@@ -166,6 +166,17 @@ def fullbody_env() -> Iterator[tuple[Any, MotionClip]]:
     env.close()
 
 
+@pytest.fixture(scope="module")
+def bimanual_long_env() -> Iterator[tuple[Any, MotionClip]]:
+    """Bimanual env whose episodes outlast the longest test rollout."""
+    clip = _synthetic_clip("bimanual", n_frames=1500)
+    env = _make_env(
+        "bimanual", clip, use_early_termination=False, max_episode_steps=1100
+    )
+    yield env, clip
+    env.close()
+
+
 # ---------------------------------------------------------------------------
 # Reference state initialisation
 # ---------------------------------------------------------------------------
@@ -195,3 +206,32 @@ def test_rsi_writes_reference_world_root_velocity(
         expected.append(np.concatenate([vel[3:], vel[:3]]))
     root_vel_w = env.scene[_ENTITY["fullbody"]].data.root_link_vel_w
     np.testing.assert_allclose(root_vel_w.cpu().numpy(), np.stack(expected), atol=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Clip frame index
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("n_steps", [100, pytest.param(1000, marks=pytest.mark.slow)])
+def test_clip_frame_follows_cpu_step_counter(
+    n_steps: int, bimanual_long_env: tuple[Any, MotionClip]
+) -> None:
+    """After k control steps the clip frame is start + k, like the CPU twin.
+
+    The CPU env advances one frame per step (``_step_count``).  mjlab's old
+    ``floor(float32 time / ctrl_dt)`` index lagged it on 691 of 1000 steps,
+    first at step 7, repeating and then skipping frames.
+    """
+    env, clip = bimanual_long_env
+    env.reset()
+    n_frames = int(clip.site_xpos.shape[0])
+    start = np.asarray(_clip_frames(env, clip))
+    target_fn = env.observation_manager.get_term_cfg("policy", "mimic_site_target").func
+    action = torch.zeros(env.num_envs, sum(env.action_manager.action_term_dim))
+    for k in range(1, n_steps + 1):
+        env.step(action)
+        frames = (start + k) % n_frames
+        assert _clip_frames(env, clip) == frames.tolist(), f"step {k}"
+        targets = target_fn(env).reshape(env.num_envs, -1, 3).cpu().numpy()
+        np.testing.assert_array_equal(targets, clip.site_xpos[frames])

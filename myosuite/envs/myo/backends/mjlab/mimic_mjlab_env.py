@@ -460,29 +460,15 @@ def _mjlab_sim_time_to_float(tim: Any) -> float:
     return float(t.reshape(-1)[0].detach().cpu())
 
 
-def _mjlab_sim_time_to_tensor(tim: Any) -> Any:
-    """Coerce mjlab ``data.time`` to a ``(N,)`` float32 :class:`torch.Tensor`.
+def _mimic_episode_steps(env: Any) -> Any:
+    """Per-env control steps since the last reset, ``(N,)`` int64.
 
-    Args:
-        tim: mjlab time field (``torch.Tensor``, TorchArray, scalar, or
-             numpy value).
-
-    Returns:
-        1-D float32 tensor of per-env simulation times.
+    Clip frames advance one per control step, so they are indexed by mjlab's
+    integer ``episode_length_buf``, like the CPU twin's step counter.  The
+    float32 ``data.time`` drifts: ``floor(time / ctrl_dt)`` lags the counter
+    on most steps of a 1000-step episode.
     """
-    import torch
-
-    if isinstance(tim, torch.Tensor):
-        return tim.reshape(-1).float()
-    if isinstance(tim, (int, float, np.integer, np.floating)):
-        return torch.tensor([float(tim)], dtype=torch.float32)
-    try:
-        t = tim.reshape(-1)
-    except (AttributeError, TypeError):
-        t = torch.as_tensor(tim)
-    if not isinstance(t, torch.Tensor):
-        t = torch.as_tensor(t)
-    return t.reshape(-1).float()
+    return env.episode_length_buf
 
 
 # ---------------------------------------------------------------------------
@@ -513,9 +499,9 @@ def _sync_mimic_mjlab_targets(
 
     if clip_source is not None:
         # --- Trajectory mode: targets come from the MotionClip ---
-        t = _mjlab_sim_time_to_tensor(data.time)  # (N,) float32
-        clip_source.update(t)
-        cache["target_torch"] = clip_source.site_targets(t)  # (N, n_tracked, 3)
+        step = _mimic_episode_steps(env)  # (N,) int64
+        clip_source.update(step)
+        cache["target_torch"] = clip_source.site_targets(step)  # (N, n_tracked, 3)
     else:
         # --- Random mode: resample once per episode (original behaviour) ---
         t_now = _mjlab_sim_time_to_float(data.time)
@@ -786,8 +772,7 @@ def _mimic_obs_clip_ref_qpos(
             raise RuntimeError(
                 "clip_ref_qpos obs requires trajectory mode (clip_source is None)"
             )
-        t = _mjlab_sim_time_to_tensor(env.scene[entity_name].data.data.time)
-        ref = clip_source.ref_qpos(t)
+        ref = clip_source.ref_qpos(_mimic_episode_steps(env))
         if ref is None:
             raise RuntimeError("clip.qpos is not available in this MotionClip")
         return ref
@@ -810,8 +795,7 @@ def _mimic_obs_clip_ref_qvel(
             raise RuntimeError(
                 "clip_ref_qvel obs requires trajectory mode (clip_source is None)"
             )
-        t = _mjlab_sim_time_to_tensor(env.scene[entity_name].data.data.time)
-        ref = clip_source.ref_qvel(t)
+        ref = clip_source.ref_qvel(_mimic_episode_steps(env))
         if ref is None:
             raise RuntimeError("clip.qvel is not available in this MotionClip")
         return ref
@@ -834,8 +818,7 @@ def _mimic_obs_clip_phase(
             raise RuntimeError(
                 "clip_phase obs requires trajectory mode (clip_source is None)"
             )
-        t = _mjlab_sim_time_to_tensor(env.scene[entity_name].data.data.time)
-        return clip_source.phase(t)
+        return clip_source.phase(_mimic_episode_steps(env))
 
     return _fn
 
@@ -918,7 +901,7 @@ def _mimic_deepmimic_reward(
         cur_sites = data.site_xpos[:, ids, :]  # (N, n_sites, 3)
 
         clip_source: ClipTrajectorySource | None = cache.get("clip_source")
-        t = _mjlab_sim_time_to_tensor(data.time)
+        step = _mimic_episode_steps(env)
 
         if (
             clip_source is not None
@@ -926,8 +909,8 @@ def _mimic_deepmimic_reward(
             and resolved_clip.qpos is not None
             and resolved_clip.qvel is not None
         ):
-            ref_qpos = clip_source.ref_qpos(t)  # (N, nq)  or None
-            ref_qvel = clip_source.ref_qvel(t)  # (N, nv) or None
+            ref_qpos = clip_source.ref_qpos(step)  # (N, nq)  or None
+            ref_qvel = clip_source.ref_qvel(step)  # (N, nv) or None
         else:
             ref_qpos = None
             ref_qvel = None
@@ -1017,12 +1000,12 @@ def _mimic_obs_lookahead(
             raise RuntimeError("lookahead obs requires a resolved MotionClip")
 
         data = env.scene[entity_name].data.data
-        t = _mjlab_sim_time_to_tensor(data.time)  # (N,)
-        n_envs = int(t.shape[0])
-        device = t.device
-        clip_lengths = clip_source.clip_lengths(t)
+        step = _mimic_episode_steps(env)  # (N,)
+        n_envs = int(step.shape[0])
+        device = step.device
+        clip_lengths = clip_source.clip_lengths(step)
 
-        cur_frames = clip_source.frame_indices(t)
+        cur_frames = clip_source.frame_indices(step)
         cur_root_pos = data.qpos[:, :3]  # (N, 3)
 
         has_root_pos = _clip_has_required_indices(
@@ -1038,8 +1021,8 @@ def _mimic_obs_lookahead(
             + 1  # phase
         )
         out = torch.zeros(n_envs, k * per_step_dim, device=device, dtype=torch.float32)
-        has_qpos = has_root_pos and clip_source.ref_qpos(t) is not None
-        has_qvel = has_root_vel and clip_source.ref_qvel(t) is not None
+        has_qpos = has_root_pos and clip_source.ref_qpos(step) is not None
+        has_qvel = has_root_vel and clip_source.ref_qvel(step) is not None
 
         offset = 0
         for step_i in range(1, k + 1):
@@ -1157,11 +1140,11 @@ def _mimic_rsi_event(
                 0, clip_source.n_frames, (n_reset,), device=device, dtype=torch.long
             )
         clip_source._start_offsets[env_ids_long] = new_offsets
-        # Prevent _detect_and_resample_resets from overwriting these offsets on
-        # the very next update() call (t=0 would look like a regression from
-        # whatever _last_t was before the reset).
-        if clip_source._last_t is not None:
-            clip_source._last_t[env_ids_long] = 0.0
+        # mjlab zeroes episode_length_buf after the reset events; mark these
+        # envs as already at step 0 so the next update() does not see the drop
+        # as another reset and overwrite the offsets just drawn.
+        if clip_source._last_step is not None:
+            clip_source._last_step[env_ids_long] = 0
 
         # --- Write root state (pos + quat + lin_vel + ang_vel) ---
         ref_qpos = clip_source.ref_qpos_at_frames(new_offsets)

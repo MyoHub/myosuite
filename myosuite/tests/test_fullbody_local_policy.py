@@ -784,6 +784,112 @@ def test_orbax_mjlab_policy_bridge_returns_env_action_tensor() -> None:
     assert adapter.frames == [0, 0]
 
 
+def test_orbax_mjlab_policy_clip_frames_follow_episode_steps() -> None:
+    """The bridge reads clip frames from the env's integer step counter.
+
+    It used ``floor(float32 sim time / ctrl_dt)``, which lags the CPU playback
+    frame (``frame_idx + step``) once the float32 clock drifts (step 7 here).
+    """
+    import mujoco
+    import torch
+
+    from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
+        ClipTrajectorySource,
+    )
+    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        _mimic_cache_key,
+        _mimic_mjlab_cache,
+    )
+    from myosuite.integrations.musclemimic.mjlab_onnx_policy import (
+        FullbodyOrbaxMjlabPolicy,
+    )
+
+    xml = """
+    <mujoco>
+      <worldbody>
+        <body name="body">
+          <joint name="joint" type="hinge"/>
+          <geom type="capsule" size="0.01 0.05"/>
+        </body>
+      </worldbody>
+      <actuator>
+        <motor name="motor" joint="joint" ctrllimited="true" ctrlrange="0 1"/>
+      </actuator>
+    </mujoco>
+    """
+    model = mujoco.MjModel.from_xml_string(xml)
+    obs_dim, n_frames, entity = 5, 50, "mimic_fullbody_robot"
+    artifacts = LocalPolicyArtifacts(
+        params=_toy_params(obs_dim=obs_dim, hidden_dim=4, action_dim=model.nu),
+        obs_mean=np.zeros((obs_dim,), dtype=np.float32),
+        obs_var=np.ones((obs_dim,), dtype=np.float32),
+        obs_count=np.asarray(1e-6, dtype=np.float32),
+        obs_dim=obs_dim,
+        action_dim=model.nu,
+    )
+    clip = MotionClip(
+        qpos=np.zeros((n_frames, model.nq), dtype=np.float32),
+        qvel=np.zeros((n_frames, model.nv), dtype=np.float32),
+        site_xpos=np.zeros((n_frames, 1, 3), dtype=np.float32),
+        site_names=None,
+    )
+
+    class _ObsAdapter:
+        def __init__(self) -> None:
+            self.frames: list[int] = []
+
+        def build(self, data: object, frame_idx: int) -> np.ndarray:
+            self.frames.append(frame_idx)
+            return np.zeros((obs_dim,), dtype=np.float32)
+
+    sim_data = SimpleNamespace(
+        qpos=torch.zeros((2, model.nq)),
+        qvel=torch.zeros((2, model.nv)),
+        ctrl=torch.zeros((2, model.nu)),
+        act=torch.zeros((2, model.na)),
+        time=torch.zeros((2,), dtype=torch.float32),
+    )
+    env = SimpleNamespace(
+        num_envs=2,
+        device=torch.device("cpu"),
+        physics_dt=0.002,
+        cfg=SimpleNamespace(decimation=5),
+        scene={entity: SimpleNamespace(data=SimpleNamespace(data=sim_data))},
+        sim=SimpleNamespace(data=sim_data, forward=lambda: None),
+        episode_length_buf=torch.full((2,), 7, dtype=torch.long),  # mid-episode
+    )
+    key = _mimic_cache_key(env, entity, "fullbody")
+    _mimic_mjlab_cache[key] = dict(
+        site_ids=np.arange(1),
+        clip=clip,
+        clip_source=ClipTrajectorySource(
+            clip=clip, tracked_site_ids=np.arange(1), ctrl_dt=0.01
+        ),
+        last_sim_time=None,
+        target_torch=None,
+    )
+    try:
+        adapter = _ObsAdapter()
+        policy = FullbodyOrbaxMjlabPolicy(
+            env=env,
+            cpu_model=model,
+            obs_adapter=adapter,  # type: ignore[arg-type]
+            clip=clip,
+            artifacts=artifacts,
+            output_ctrl=True,
+        )
+        policy.reset_env_to_clip_frame(3)
+        for _ in range(12):
+            policy(torch.zeros((2, 1), dtype=torch.float32))
+            env.episode_length_buf += 1
+            for _ in range(5):  # mujoco_warp: time += timestep in float32
+                sim_data.time += np.float32(0.002)
+    finally:
+        _mimic_mjlab_cache.pop(key, None)
+
+    assert adapter.frames == [frame for frame in range(3, 15) for _ in range(2)]
+
+
 def test_orbax_mjlab_policy_derives_split_goal_history_indices() -> None:
     import mujoco
     import torch
