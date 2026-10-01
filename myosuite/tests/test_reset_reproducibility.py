@@ -317,3 +317,23 @@ def test_rough_track_terrain_ignores_global_rng() -> None:
         np.testing.assert_array_equal(u.model.hfield_data, hfield)
     finally:
         env.close()
+
+
+def test_bimanual_pillars_follow_the_sampled_start_and_goal() -> None:
+    """The mocap pillars sit at this episode's sampled start/goal, not at the XML centres."""
+    env = gym.make("myoChallengeBimanual-v0")
+    u = env.unwrapped
+    try:
+        positions = []
+        for seed in (SEED, SEED + 1):
+            env.reset(seed=seed)
+            for body, sampled in ((u.start_bid, u.start_pos), (u.goal_bid, u.goal_pos)):
+                np.testing.assert_allclose(u.data.xpos[body], sampled, atol=1e-9)
+            positions.append(u.data.xpos[u.start_bid].copy())
+        assert not np.allclose(*positions)  # the sample actually moves the pillar
+        obj_adr = u.model.body(u.obj_bid).jntadr[0]
+        np.testing.assert_allclose(
+            u.data.qpos[obj_adr : obj_adr + 2], u.start_pos[:2], atol=1e-9
+        )
+    finally:
+        env.close()
