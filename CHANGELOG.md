@@ -101,6 +101,10 @@ full commit list.
   emulate the stale values. The simulated trajectories are bit-identical except OslRun, whose
   prosthesis controller now reads its current load sensor. Policies trained on the stale
   observations of these envs may need retraining.
+* **Joint velocities are observed as `qvel * ctrl_dt` on every backend** (the CPU task envs already
+  did): the directional-leg twin and the MJX pose and reach envs observed raw `qvel`. The previous
+  directional-leg checkpoints were retrained. `ElbowPoseTask` (tutorial 4.3) now also observes the
+  `pose_error`, so its observation grows from 8 to 9 values.
 
 ### Fixed
 
@@ -127,6 +131,21 @@ full commit list.
   start standing, expose the `actor`/`critic` groups rsl_rl needs and are the muscle-space task with
   a synergy action term; unsupported `reward_mode`/`env_reward_weight` values raise instead of being
   ignored.
+* Follow-ups to the MuscleMimic fixes: random mimic targets are resampled per env when its own episode
+  restarts; an episode that plays past the end of its clip is truncated (it used to wrap and could
+  end as a termination); a clip whose `frequency` differs from the control rate warns; the bimanual
+  lookahead observation and DeepMimic reward no longer treat hinge angles as a root, so bimanual mimic
+  checkpoints trained before need retraining; the ONNX/Orbax bridge keeps its observation history and
+  running normalizer per env.
+* `reset(seed=...)` reproduces the episode in the challenge envs (state no longer leaks between
+  episodes, random fatigue states, Relocate goals, Soccer goalkeeper and rough tracks draw from the
+  env seed); the Bimanual start and goal pillars move to the sampled positions; TableTennis and SAR
+  reorient draw their random fatigue state from the env RNG.
+* SAR reorient: the action goes through the muscle model, the muscle conditions take effect, episodes
+  start palm up, and the geometry-derived fields are refreshed after the per-reset edits (contacts were
+  silently culled with MuJoCo >= 3.8).
+* The MJX tests and the MJX leg-walk host model work with the pinned `myo-sim`; `eval_mjlab_policy.py`
+  reads the `actor` observation group of the twins (falling back to `policy`).
 
 ### Removed
 
