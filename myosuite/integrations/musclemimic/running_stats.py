@@ -103,4 +103,45 @@ def torch_running_mean_std_update(
     return normalized, new_mean.detach(), new_var.detach(), updated_count.detach()
 
 
-__all__ = ["numpy_running_mean_std_update", "torch_running_mean_std_update"]
+def torch_running_mean_std_update_per_env(
+    obs: torch.Tensor,  # noqa: F821
+    run_mean: torch.Tensor,  # noqa: F821
+    run_var: torch.Tensor,  # noqa: F821
+    run_count: torch.Tensor,  # noqa: F821
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:  # noqa: F821
+    """One single-observation RunningMeanStd update per env, with per-env statistics.
+
+    Row ``i`` equals :func:`torch_running_mean_std_update` on ``obs[i:i+1]`` with
+    row ``i`` of the statistics, so ``N`` envs behave like ``N`` independent
+    single-env runs.
+
+    Args:
+        obs: Current observations, shape ``(N, obs_dim)``.
+        run_mean: Per-env running mean, shape ``(N, obs_dim)``.
+        run_var: Per-env running variance, shape ``(N, obs_dim)``.
+        run_count: Per-env running sample count, shape ``(N,)``.
+
+    Returns:
+        Tuple ``(normalized_obs, new_mean, new_var, new_count)``.
+    """
+    import torch
+
+    updated_count = run_count + 1.0
+    count = updated_count.unsqueeze(-1)
+    delta = obs - run_mean
+    new_mean = run_mean + delta / count
+    m2 = (
+        run_var * run_count.unsqueeze(-1)
+        + 1e-6
+        + torch.square(delta) * run_count.unsqueeze(-1) / count
+    )
+    new_var = m2 / count
+    normalized = (obs - new_mean) / torch.sqrt(new_var + 1e-8)
+    return normalized, new_mean.detach(), new_var.detach(), updated_count.detach()
+
+
+__all__ = [
+    "numpy_running_mean_std_update",
+    "torch_running_mean_std_update",
+    "torch_running_mean_std_update_per_env",
+]

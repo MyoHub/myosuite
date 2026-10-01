@@ -33,7 +33,7 @@ import numpy as np
 import torch
 
 from myosuite.integrations.musclemimic.running_stats import (
-    torch_running_mean_std_update,
+    torch_running_mean_std_update_per_env,
 )
 
 if TYPE_CHECKING:
@@ -172,7 +172,10 @@ class _BatchedObservationHistoryBuffer:
         self._buffer[:, -1, :] = obs
         return self._buffer.reshape(obs.shape[0], -1).astype(np.float32)
 
-    def step(self, obs: np.ndarray) -> np.ndarray:
+    def step(
+        self, obs: np.ndarray, new_episode: np.ndarray | None = None
+    ) -> np.ndarray:
+        """Append *obs*; envs flagged in *new_episode* (``(N,)`` bool) restart their history."""
         if self._buffer is None:
             return self.reset(obs)
         obs = np.asarray(obs, dtype=np.float32)
@@ -183,6 +186,7 @@ class _BatchedObservationHistoryBuffer:
             goal_obs = obs[:, self.goal_indices]
             self._buffer = np.roll(self._buffer, shift=-1, axis=1)
             self._buffer[:, -1, :] = state_obs
+            self._restart_rows(new_episode)
             return np.concatenate(
                 [self._buffer.reshape(obs.shape[0], -1), goal_obs],
                 axis=1,
@@ -190,7 +194,13 @@ class _BatchedObservationHistoryBuffer:
 
         self._buffer = np.roll(self._buffer, shift=-1, axis=1)
         self._buffer[:, -1, :] = obs
+        self._restart_rows(new_episode)
         return self._buffer.reshape(obs.shape[0], -1).astype(np.float32)
+
+    def _restart_rows(self, new_episode: np.ndarray | None) -> None:
+        """Drop the older frames of the flagged envs (as :meth:`reset` does)."""
+        if new_episode is not None and self._buffer is not None:
+            self._buffer[np.asarray(new_episode, dtype=bool), :-1, :] = 0.0
 
 
 def reset_mjlab_env_to_clip_frame(
@@ -347,6 +357,8 @@ class _FullbodyMjlabPolicyBridge:
         )
         self._history: _BatchedObservationHistoryBuffer | None = None
         self._history_started = False
+        self._last_steps: np.ndarray | None = None
+        self._new_episode = np.zeros(0, dtype=bool)
 
         n_envs = self._num_envs()
         if env_indices is None:
@@ -374,6 +386,7 @@ class _FullbodyMjlabPolicyBridge:
         """Reset fallback frame counter and running normalizer state if present."""
         self._frame_idx = 0
         self._history_started = False
+        self._last_steps = None
         if self._history is not None:
             self._history.clear()
 
@@ -472,6 +485,22 @@ class _FullbodyMjlabPolicyBridge:
         frame = self._frame_idx % self._frame_count()
         return np.full((len(self._env_indices),), frame, dtype=np.int64)
 
+    def _episode_start_mask(self) -> np.ndarray:
+        """``(n_selected,)`` bool: envs whose episode began since the last call.
+
+        Read from each env's own step counter, so an env that resets mid-run
+        restarts its history and normalizer without touching the others.
+        """
+        n = len(self._env_indices)
+        steps = getattr(self._unwrapped, "episode_length_buf", None)
+        if steps is None:
+            return np.zeros(n, dtype=bool)
+        steps = steps.detach().cpu().numpy()[np.asarray(self._env_indices)]
+        last, self._last_steps = self._last_steps, steps.copy()
+        if last is None:
+            return np.ones(n, dtype=bool)
+        return (steps < last) | (steps == 0)
+
     def _sync_env_to_cpu(
         self, cpu_data: mujoco.MjData, sim_data: Any, env_idx: int
     ) -> None:
@@ -505,13 +534,14 @@ class _FullbodyMjlabPolicyBridge:
         if self._trajectory_source() is None:
             self._frame_idx += 1
         raw_obs = np.stack(obs_batch, axis=0).astype(np.float32)
+        self._new_episode = self._episode_start_mask()
         history = self._ensure_history(raw_obs.shape[1])
         if history is None:
             return raw_obs
         if not self._history_started:
             self._history_started = True
             return history.reset(raw_obs)
-        return history.step(raw_obs)
+        return history.step(raw_obs, self._new_episode)
 
     def _actions_to_tensor(self, action_np: np.ndarray) -> torch.Tensor:
         action_np = np.asarray(action_np, dtype=np.float32)
@@ -727,9 +757,7 @@ class FullbodyOrbaxMjlabPolicy(_FullbodyMjlabPolicyBridge):
             torch.device(actor_device) if actor_device is not None else self._device
         )
         self._actor = make_actor_module(artifacts).to(self._actor_device).eval()
-        self._run_mean = _artifact_tensor(artifacts.obs_mean, self._actor_device)
-        self._run_var = _artifact_tensor(artifacts.obs_var, self._actor_device)
-        self._run_count = _artifact_tensor(artifacts.obs_count, self._actor_device)
+        self._init_running_stats()
 
         logger.info(
             "FullbodyOrbaxMjlabPolicy: obs_dim=%d action_dim=%d actor_device=%s "
@@ -742,14 +770,21 @@ class FullbodyOrbaxMjlabPolicy(_FullbodyMjlabPolicyBridge):
             self._output_ctrl,
         )
 
+    def _init_running_stats(self) -> None:
+        """Per-env running statistics, all starting from the checkpoint's."""
+        n = len(self._env_indices)
+        mean = _artifact_tensor(self._artifacts.obs_mean, self._actor_device)
+        var = _artifact_tensor(self._artifacts.obs_var, self._actor_device)
+        count = _artifact_tensor(self._artifacts.obs_count, self._actor_device)
+        self._init_stats = (mean, var, count.reshape(()))
+        self._run_mean = mean.expand(n, -1).clone()
+        self._run_var = var.expand(n, -1).clone()
+        self._run_count = count.reshape(()).expand(n).clone()
+
     def reset(self) -> None:
         """Reset fallback frame counter and running-normalizer state."""
         super().reset()
-        self._run_mean = _artifact_tensor(self._artifacts.obs_mean, self._actor_device)
-        self._run_var = _artifact_tensor(self._artifacts.obs_var, self._actor_device)
-        self._run_count = _artifact_tensor(
-            self._artifacts.obs_count, self._actor_device
-        )
+        self._init_running_stats()
 
     def reset_env_to_clip_frame(
         self,
@@ -777,9 +812,18 @@ class FullbodyOrbaxMjlabPolicy(_FullbodyMjlabPolicyBridge):
         return frame
 
     def _normalize_running(self, obs: torch.Tensor) -> torch.Tensor:
-        """RunningMeanStd update compatible with the CPU local runner."""
+        """Per-env RunningMeanStd update, equal to one CPU ``LocalPolicyRunner`` per env.
+
+        Envs that started a new episode first restart from the checkpoint statistics.
+        """
+        fresh = torch.as_tensor(self._new_episode, device=self._actor_device)
+        if bool(fresh.any()):
+            mean, var, count = self._init_stats
+            self._run_mean[fresh] = mean
+            self._run_var[fresh] = var
+            self._run_count[fresh] = count
         normalized, self._run_mean, self._run_var, self._run_count = (
-            torch_running_mean_std_update(
+            torch_running_mean_std_update_per_env(
                 obs, self._run_mean, self._run_var, self._run_count
             )
         )
