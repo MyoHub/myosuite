@@ -1387,7 +1387,10 @@ def _make_mimic_env_cfg(
     from mjlab.managers.reward_manager import RewardTermCfg
     from mjlab.managers.termination_manager import TerminationTermCfg
     from mjlab.scene import SceneCfg
-    from mjlab.sim import MujocoCfg, SimulationCfg
+    from mjlab.sim import SimulationCfg
+    from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
+        musclemimic_mujoco_cfg,
+    )
 
     _require_supported_reward_mode(reward_mode)
 
@@ -1517,7 +1520,7 @@ def _make_mimic_env_cfg(
         terminations=terminations,
         rewards=rewards,
         sim=SimulationCfg(
-            mujoco=MujocoCfg(timestep=sim_dt, ccd_iterations=500),
+            mujoco=musclemimic_mujoco_cfg(variant, timestep=sim_dt),
             njmax=512,
             nconmax=256,
         ),
@@ -2325,9 +2328,12 @@ def _make_directional_sar_env_cfg(
     from mjlab.managers.reward_manager import RewardTermCfg
     from mjlab.managers.termination_manager import TerminationTermCfg
     from mjlab.scene import SceneCfg
-    from mjlab.sim import MujocoCfg, SimulationCfg
+    from mjlab.sim import SimulationCfg
     from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
         _XmlWrappedActuatorCfg,
+    )
+    from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
+        musclemimic_mujoco_cfg,
     )
 
     decimation = max(1, round(ctrl_dt / sim_dt))
@@ -2399,7 +2405,7 @@ def _make_directional_sar_env_cfg(
         actions=actions,
         terminations=terminations,
         rewards=rewards,
-        sim=SimulationCfg(mujoco=MujocoCfg(timestep=sim_dt, ccd_iterations=500)),
+        sim=SimulationCfg(mujoco=musclemimic_mujoco_cfg("fullbody", timestep=sim_dt)),
     )
 
 

@@ -28,7 +28,7 @@ from mjlab.rl import (
     RslRlPpoAlgorithmCfg,
 )
 from mjlab.scene import SceneCfg
-from mjlab.sim import MujocoCfg, SimulationCfg
+from mjlab.sim import SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 from scipy.spatial.transform import Rotation as R
 
@@ -38,6 +38,7 @@ from myosuite.core.model_recipes import (
     _tabletennis_body_spec,
 )
 from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTennisCfg
+from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import mujoco_cfg_from_model
 from myosuite.envs.myo.tasks.challenge.tabletennis import (
     ContactTrajIssue,
     PingpongContactLabels,
@@ -1265,7 +1266,10 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
         rewards=rewards,
         events=events,
         sim=SimulationCfg(
-            mujoco=MujocoCfg(timestep=float(tt_cfg.sim_dt), ccd_iterations=500),
+            # Physics options of the CPU model (same recipe).
+            mujoco=mujoco_cfg_from_model(
+                _reference_model(), timestep=float(tt_cfg.sim_dt)
+            ),
             # The myo_sim-native torso+both-arms+legs body has more
             # equality-constraint rows (nefc) than the legacy single-arm
             # chain — 512 overflowed at nefc=1071; use 1536 for headroom.
