@@ -136,8 +136,8 @@ def joint_vel_obs(accessor: EnvAccessor, **kwargs: Any) -> Any:
     """Return joint velocities scaled by the control timestep as the observation.
 
     ``qvel * ctrl_dt`` (the joint displacement per control step) is the velocity
-    convention of every legacy CPU env, the mjlab twins and the MuscleMimic
-    observations, so it is the one shared by all backends.
+    convention of the CPU task envs and their mjlab twins (as in the original
+    MyoSuite envs), so it is the one shared by these backends.
 
     Args:
         accessor: Environment state accessor.

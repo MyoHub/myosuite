@@ -162,6 +162,11 @@ class ClipTrajectorySource:
         assert self._start_offsets is not None
         return (_as_steps(step) + self._start_offsets) % self.n_frames  # (N,)
 
+    def clip_end(self, step: torch.Tensor) -> torch.Tensor:
+        """``(N,)`` bool: the episode has played past the last frame of its clip."""
+        assert self._start_offsets is not None
+        return _as_steps(step) + self._start_offsets >= self.n_frames
+
     def frame_indices(self, step: torch.Tensor) -> torch.Tensor:
         """Return current ``(N,)`` clip frame indices for each environment.
 
@@ -513,6 +518,14 @@ class MultiClipTrajectorySource:
         assert self._clip_lengths is not None
         lengths = self._clip_lengths.index_select(0, self._clip_indices)
         return (_as_steps(step) + self._start_offsets) % lengths
+
+    def clip_end(self, step: torch.Tensor) -> torch.Tensor:
+        """``(N,)`` bool: the episode has played past the last frame of its clip."""
+        assert self._clip_indices is not None
+        assert self._start_offsets is not None
+        assert self._clip_lengths is not None
+        lengths = self._clip_lengths.index_select(0, self._clip_indices)
+        return _as_steps(step) + self._start_offsets >= lengths
 
     def _gather_from_bank(
         self,

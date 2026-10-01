@@ -177,9 +177,9 @@ def test_reorient8_step_info_contains_rwd_dict() -> None:
             "solved",
             "sparse",
         }
-        assert expected.issubset(
-            rwd_dict.keys()
-        ), f"rwd_dict missing keys: {expected - set(rwd_dict)}"
+        assert expected.issubset(rwd_dict.keys()), (
+            f"rwd_dict missing keys: {expected - set(rwd_dict)}"
+        )
         assert "dense" in rwd_dict
         assert isinstance(rwd_dict["dense"], (float, np.floating))
         assert isinstance(rwd_dict["done"], (bool, np.bool_))
@@ -209,9 +209,9 @@ def test_reorient8_step_obs_in_space() -> None:
         env.reset(seed=4)
         for _ in range(5):
             obs, _, _, _, _ = env.step(env.action_space.sample())
-            assert env.observation_space.contains(
-                obs
-            ), f"obs not in space: min={obs.min()}, max={obs.max()}"
+            assert env.observation_space.contains(obs), (
+                f"obs not in space: min={obs.min()}, max={obs.max()}"
+            )
     finally:
         env.close()
 

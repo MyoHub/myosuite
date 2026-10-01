@@ -173,9 +173,9 @@ class Trace:
             else:
                 groups = [groups]
         for grp in groups:
-            assert (
-                grp in self.trace.keys()
-            ), f"Unknown group {grp}. Available groups {self.trace.keys()}"
+            assert grp in self.trace.keys(), (
+                f"Unknown group {grp}. Available groups {self.trace.keys()}"
+            )
 
         # Run through all trajs in the paths
         for i_grp, grp in enumerate(groups):
@@ -235,14 +235,14 @@ class Trace:
         Example: Data = Trace(); Data[0] == Data['Trial0']
         """
         if isinstance(index, str):
-            assert (
-                index in self.trace.keys()
-            ), f"Index({index}) not in existing keys({list(self.trace.keys())})"
+            assert index in self.trace.keys(), (
+                f"Index({index}) not in existing keys({list(self.trace.keys())})"
+            )
             return self.trace[index]
         elif isinstance(index, int) and not isinstance(index, bool):
-            assert index < len(
-                self
-            ), f"Index({index}) outside the max lenght({len(self)})"
+            assert index < len(self), (
+                f"Index({index}) outside the max lenght({len(self)})"
+            )
             keys = list(self.trace.keys())
             key = keys[index]
             value = self.trace[key]

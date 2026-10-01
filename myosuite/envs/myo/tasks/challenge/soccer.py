@@ -648,12 +648,12 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
     def _assert_settings(self) -> None:
         for prob in self.goalkeeper.goalkeeper_probabilities:
             assert 0 <= prob <= 1, f"Goalkeeper probability out of [0, 1]: {prob}"
-        assert np.isclose(
-            np.sum(self.goalkeeper.goalkeeper_probabilities), 1.0
-        ), "Goalkeeper probabilities must sum to 1.0"
-        assert (
-            self.goalkeeper.random_vel_range[0] >= 0
-        ), "Goalkeeper block_vel_range min must be >= 0"
+        assert np.isclose(np.sum(self.goalkeeper.goalkeeper_probabilities), 1.0), (
+            "Goalkeeper probabilities must sum to 1.0"
+        )
+        assert self.goalkeeper.random_vel_range[0] >= 0, (
+            "Goalkeeper block_vel_range min must be >= 0"
+        )
         assert (
             self.goalkeeper.random_vel_range[0] <= self.goalkeeper.random_vel_range[1]
         ), "Goalkeeper block_vel_range min must be <= max"

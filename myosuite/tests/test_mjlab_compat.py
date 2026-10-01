@@ -990,6 +990,6 @@ def test_mjlab_parallel_qacc_consistency_zero_state() -> None:
     if hasattr(env, "close"):
         env.close()
 
-    assert (
-        max_diff < 1e-10
-    ), f"qacc mismatch across identical env states: max_diff={max_diff:.6e}"
+    assert max_diff < 1e-10, (
+        f"qacc mismatch across identical env states: max_diff={max_diff:.6e}"
+    )

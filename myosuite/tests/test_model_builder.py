@@ -408,12 +408,12 @@ def test_hand_standard_numerically_equivalent_to_myo_sim_main():
     m_ref, _ = myo_sim.load("myohand_r")
 
     # Structural counts must match.
-    assert (
-        m_recipe.njnt == m_ref.njnt
-    ), f"njnt mismatch: recipe={m_recipe.njnt} myo_sim={m_ref.njnt}"
-    assert (
-        m_recipe.nu == m_ref.nu
-    ), f"nu mismatch: recipe={m_recipe.nu} myo_sim={m_ref.nu}"
+    assert m_recipe.njnt == m_ref.njnt, (
+        f"njnt mismatch: recipe={m_recipe.njnt} myo_sim={m_ref.njnt}"
+    )
+    assert m_recipe.nu == m_ref.nu, (
+        f"nu mismatch: recipe={m_recipe.nu} myo_sim={m_ref.nu}"
+    )
 
     def _joint_names(m):
         return sorted(
@@ -434,9 +434,9 @@ def test_hand_standard_numerically_equivalent_to_myo_sim_main():
         ref_id = mujoco.mj_name2id(m_ref, mujoco.mjtObj.mjOBJ_JOINT, name)
         lo_r, hi_r = m_recipe.jnt_range[jnt_id]
         lo_f, hi_f = m_ref.jnt_range[ref_id]
-        assert (
-            abs(lo_r - lo_f) < 1e-6 and abs(hi_r - hi_f) < 1e-6
-        ), f"joint {name!r}: range ({lo_r:.4f},{hi_r:.4f}) != ({lo_f:.4f},{hi_f:.4f})"
+        assert abs(lo_r - lo_f) < 1e-6 and abs(hi_r - hi_f) < 1e-6, (
+            f"joint {name!r}: range ({lo_r:.4f},{hi_r:.4f}) != ({lo_f:.4f},{hi_f:.4f})"
+        )
 
 
 @pytest.mark.skipif(
@@ -459,9 +459,9 @@ def test_attach_fragment_hand_routes_through_compose():
         mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
         for i in range(model.njnt)
     ]
-    assert all(
-        n.endswith("_r") for n in joint_names
-    ), f"Expected all joints to end with '_r' (compose path); got: {joint_names}"
+    assert all(n.endswith("_r") for n in joint_names), (
+        f"Expected all joints to end with '_r' (compose path); got: {joint_names}"
+    )
 
 
 def test_model_builder_from_xml_string_and_from_spec():

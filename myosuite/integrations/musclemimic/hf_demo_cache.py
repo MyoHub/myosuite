@@ -76,8 +76,8 @@ def get_demo_motions() -> dict[str, list[str]]:
     """Demo motion paths per env (match upstream ``demo_cache``)."""
     return {
         _BIMANUAL_ENV_NAME: [
-            ("gmr/BioMotionLab_NTroje/rub039/" "0022_throwing_hard1_poses.npz"),
-            ("gmr/BioMotionLab_NTroje/rub109/" "0021_catching_and_throwing_poses.npz"),
+            ("gmr/BioMotionLab_NTroje/rub039/0022_throwing_hard1_poses.npz"),
+            ("gmr/BioMotionLab_NTroje/rub109/0021_catching_and_throwing_poses.npz"),
             "gmr/KIT/3/tennis_forehand_right04_poses.npz",
             "gmr/KIT/3/wave_left09_poses.npz",
             "gmr/KIT/572/throw_left03_poses.npz",

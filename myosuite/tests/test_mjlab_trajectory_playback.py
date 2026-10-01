@@ -475,6 +475,21 @@ class TestClipTrajectorySourceBasics:
         assert (ph >= 0.0).all()
         assert (ph < 1.0).all()
 
+    def test_clip_end_flags_episodes_past_the_last_frame(self) -> None:
+        src = _make_source(T=10)
+        src.update(_steps(0))
+        src._start_offsets = torch.tensor([0, 5, 8, 9][:_N], dtype=torch.long)
+        assert src.clip_end(_steps(1)).tolist() == [False, False, False, True][:_N]
+        assert src.clip_end(_steps(5)).tolist() == [False, True, True, True][:_N]
+
+    def test_multi_clip_end_uses_each_envs_clip_length(self) -> None:
+        src = _make_multi_clip_source()
+        src.update(torch.zeros(_N, dtype=torch.long))
+        src._clip_indices = torch.tensor([0, 1, 0, 1][:_N], dtype=torch.long)
+        src._start_offsets = torch.tensor([3, 3, 4, 6][:_N], dtype=torch.long)
+        # lengths 5 / 7 / 5 / 7
+        assert src.clip_end(_steps(2)).tolist() == [True, False, True, True][:_N]
+
     def test_multi_clip_source_uses_per_env_clip_assignments(self) -> None:
         src = _make_multi_clip_source()
         t = torch.tensor([0, 2, 4, 6], dtype=torch.long)

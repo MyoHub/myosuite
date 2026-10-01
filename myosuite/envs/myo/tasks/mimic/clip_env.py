@@ -551,8 +551,9 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
 
         obs = self._build_obs()
         reward, info = self._compute_reward()
-        terminated = self._check_termination()
-        truncated = False  # episode length managed externally
+        # Past the clip end the reference is undefined: that is a truncation.
+        truncated = self._frame_offset + self._step_count >= self._clip_T
+        terminated = not truncated and self._check_termination()
 
         info.update(
             {

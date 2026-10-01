@@ -989,21 +989,21 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
             self.opponent.chase_vel_range[0] >= 0
             and self.opponent.chase_vel_range[1] > 0
         ), f"Chase velocity range must be positive: {self.opponent.chase_vel_range}"
-        assert (
-            self.opponent.chase_vel_range[0] <= self.opponent.chase_vel_range[1]
-        ), f"Invalid chase velocity range: {self.opponent.chase_vel_range}"
-        assert (
-            self.opponent.random_vel_range[0] <= self.opponent.random_vel_range[1]
-        ), f"Invalid random velocity range: {self.opponent.random_vel_range}"
+        assert self.opponent.chase_vel_range[0] <= self.opponent.chase_vel_range[1], (
+            f"Invalid chase velocity range: {self.opponent.chase_vel_range}"
+        )
+        assert self.opponent.random_vel_range[0] <= self.opponent.random_vel_range[1], (
+            f"Invalid random velocity range: {self.opponent.random_vel_range}"
+        )
         if hasattr(self.opponent, "repeller_vel_range"):
             assert (
                 self.opponent.repeller_vel_range[0]
                 <= self.opponent.repeller_vel_range[1]
             ), f"Invalid repeller velocity range: {self.opponent.repeller_vel_range}"
         expected_n = 4 if self.repeller_opponent else 3
-        assert (
-            len(self.opponent.opponent_probabilities) == expected_n
-        ), f"Expected {expected_n} probabilities, got {len(self.opponent.opponent_probabilities)}"
+        assert len(self.opponent.opponent_probabilities) == expected_n, (
+            f"Expected {expected_n} probabilities, got {len(self.opponent.opponent_probabilities)}"
+        )
         for p in self.opponent.opponent_probabilities:
             assert 0 <= p <= 1, f"Probability out of [0, 1]: {p}"
         prob_sum = sum(self.opponent.opponent_probabilities)

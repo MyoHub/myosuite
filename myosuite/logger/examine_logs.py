@@ -394,7 +394,7 @@ def examine_logs(
                 else ""
             )
             print(
-                f"Finishing {path_name[:-2]} rollout in {(time.time()-ep_t0):0.4} sec. Total rewards {ep_rwd} "
+                f"Finishing {path_name[:-2]} rollout in {(time.time() - ep_t0):0.4} sec. Total rewards {ep_rwd} "
                 + old_stat
             )
 

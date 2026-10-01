@@ -28,7 +28,7 @@ import numpy as np
 # mjlib = mjbindings.mjlib
 
 _INVALID_JOINT_NAMES_TYPE = (
-    "`joint_names` must be either None, a list, a tuple, or a numpy array; " "got {}."
+    "`joint_names` must be either None, a list, a tuple, or a numpy array; got {}."
 )
 _REQUIRE_TARGET_POS_OR_QUAT = (
     "At least one of `target_pos` or `target_quat` must be specified."

@@ -153,12 +153,12 @@ class TestEnvs(unittest.TestCase):
         del env2
 
     def check_reset(self, reset_data):
-        assert (
-            isinstance(reset_data, tuple) and len(reset_data) == 2
-        ), "Reset should return a tuple of length 2"
-        assert isinstance(
-            reset_data[1], dict
-        ), "second element returned should be a dict"
+        assert isinstance(reset_data, tuple) and len(reset_data) == 2, (
+            "Reset should return a tuple of length 2"
+        )
+        assert isinstance(reset_data[1], dict), (
+            "second element returned should be a dict"
+        )
 
     def check_old_envs(self, module_name, env_names, lite=False, seed=1234):
         print("\nTesting module:: ", module_name)
