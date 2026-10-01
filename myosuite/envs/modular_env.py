@@ -522,8 +522,7 @@ class ModularTaskEnv(MyoGymnasiumEnv):
                 action[self._fatigue_mask]
             )
         self.data.ctrl[:] = action
-        mujoco.mj_step(self.model, self.data, self.frame_skip)
-        mujoco.mj_kinematics(self.model, self.data)
+        self._step_physics()
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
 

@@ -92,6 +92,15 @@ full commit list.
   space and now return float32; every `step()` validates the reward dict and honours
   `mujoco_render_frames`; Bimanual and TableTennis `info` now carries the reward components (e.g.
   `solved`) like every other env.
+* **Observations and rewards read the current state.** `step()` followed `mj_step` with
+  `mj_kinematics` only, so actuator length/velocity/force, sensors (ground reaction forces),
+  contacts, `cvel` and `subtree_com` were one physics substep old in 53 envs (Soccer, ChaseTag,
+  OslRun, HandReorient, leg walk and terrain). CPU `step()` and the legacy `forward()` now run
+  `mj_forward` (`MyoGymnasiumEnv._step_physics`); the mjlab twins refresh with a full forward before
+  rewards and terminations (`mdp.sync_forward`, now also in the directional twins) and no longer
+  emulate the stale values. The simulated trajectories are bit-identical except OslRun, whose
+  prosthesis controller now reads its current load sensor. Policies trained on the stale
+  observations of these envs may need retraining.
 
 ### Fixed
 

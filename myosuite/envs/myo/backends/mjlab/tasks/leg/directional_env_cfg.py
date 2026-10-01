@@ -92,6 +92,9 @@ def make_leg_directional_env_cfg(
         for term in config.reward.terms
     }
     terminations = {
+        # The fall check and the heading reward read the root pose and velocity:
+        # refresh them before scoring (CPU runs mj_forward right after stepping).
+        mdp.SYNC_TERM: TerminationTermCfg(func=mdp.sync_forward),
         "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
         "fallen": TerminationTermCfg(func=dmdp.fallen, params=reward_params),
     }

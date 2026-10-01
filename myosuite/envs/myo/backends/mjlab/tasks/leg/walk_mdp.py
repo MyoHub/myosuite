@@ -4,9 +4,10 @@
 # LICENSE file in the root directory of this source tree.
 """MDP terms of the leg walking task (mjlab twin of CPU ``LegWalkEnvV0``).
 
-Observation terms mirror ``LegWalkEnvV0._get_obs_dict`` (post-step quantities are read
-through :func:`cpu_post_step_field`, like the CPU env), the reward terms call the shared
-:func:`walk_env_reward`, and the termination is the CPU ``_get_done``.
+Observation terms mirror ``LegWalkEnvV0._get_obs_dict``, the reward terms call the shared
+:func:`walk_env_reward`, and the termination is the CPU ``_get_done``. Rewards and the
+termination read derived quantities after the task's ``sync_forward`` term, like the CPU
+env after ``mj_forward``.
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ import torch
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
-from myosuite.envs.myo.backends.mjlab.tasks.mdp import cpu_post_step_field
 from myosuite.terms.base_reward import locomotion_solved, walk_env_reward
 
 if TYPE_CHECKING:
@@ -69,9 +69,9 @@ def _com(env: ManagerBasedRlEnv) -> torch.Tensor:
 
 
 def com_velocity(env: ManagerBasedRlEnv) -> torch.Tensor:
-    """CPU ``_get_com_velocity``: mass-weighted ``-cvel[3:5]`` (pre-kinematics values)."""
+    """CPU ``_get_com_velocity``: mass-weighted ``-cvel[3:5]``."""
     mass = _mass(env)
-    cvel = -cpu_post_step_field(env, "cvel")
+    cvel = -env.sim.data.cvel  # no entity.data API for cvel / actuator_* (CLAUDE.md)
     return ((mass[None, :, None] * cvel).sum(1) / mass.sum())[:, 3:5]
 
 
@@ -113,15 +113,15 @@ def phase_var(env: ManagerBasedRlEnv, hip_period: int) -> torch.Tensor:
 
 
 def muscle_length(env: ManagerBasedRlEnv) -> torch.Tensor:
-    return cpu_post_step_field(env, "actuator_length")
+    return env.sim.data.actuator_length
 
 
 def muscle_velocity(env: ManagerBasedRlEnv) -> torch.Tensor:
-    return cpu_post_step_field(env, "actuator_velocity").clip(-100.0, 100.0)
+    return env.sim.data.actuator_velocity.clip(-100.0, 100.0)
 
 
 def muscle_force(env: ManagerBasedRlEnv) -> torch.Tensor:
-    return (cpu_post_step_field(env, "actuator_force") / 1000.0).clip(-100.0, 100.0)
+    return (env.sim.data.actuator_force / 1000.0).clip(-100.0, 100.0)
 
 
 def walk_components(

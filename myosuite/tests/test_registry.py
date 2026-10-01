@@ -10,9 +10,11 @@ Cheap ``reset()``/``step()`` smoke checks across every ID in
 
 from __future__ import annotations
 
+import mujoco
 import numpy as np
 import pytest
 
+from myosuite.envs.gymnasium_env import CpuEnvAccessor
 from myosuite.utils import gym
 
 pytestmark = pytest.mark.tier1
@@ -40,13 +42,31 @@ def _skip_if_hf_gated(env_id: str, exc: Exception) -> None:
         pytest.skip(f"{env_id}: gated HF dataset unavailable ({exc})")
 
 
+def _obs_after_extra_forward(env: gym.Env) -> np.ndarray:
+    """The env's obs vector after an extra ``mj_forward``; the data is restored.
+
+    Runs in place (some envs read ``self.data`` rather than the accessor) on
+    the live ``MjData``, which is copied back from a backup afterwards.
+    """
+    u = env.unwrapped
+    backup = mujoco.MjData(u.model)
+    mujoco.mj_copyData(backup, u.model, u.data)
+    try:
+        mujoco.mj_forward(u.model, u.data)
+        accessor = CpuEnvAccessor(u.model, u.data, u._ctrl_dt)
+        return np.asarray(u._obs_dict_to_vec(u._get_obs_dict(accessor)), np.float32)
+    finally:
+        mujoco.mj_copyData(u.data, u.model, backup)
+
+
 @pytest.mark.parametrize("env_id", _ALL_ENV_IDS)
 def test_env_resets_and_steps(env_id: str) -> None:
     """Every registered env must reset and take a few random actions without error.
 
     Flat observations must be float32 members of the observation space at reset
-    and every step, and exactly the env's own flattening of
-    ``info["obs_dict"]``: no clipping to the declared space.
+    and every step, exactly the env's own flattening of ``info["obs_dict"]``
+    (no clipping to the declared space), and fresh: an extra ``mj_forward``
+    after the step does not change them.
     """
     import gymnasium as gym
 
@@ -88,6 +108,7 @@ def test_env_resets_and_steps(env_id: str) -> None:
             _assert_in_space(obs)
             raw = env.unwrapped._obs_dict_to_vec(info["obs_dict"])
             np.testing.assert_array_equal(obs, np.asarray(raw, dtype=obs.dtype))
+            np.testing.assert_array_equal(obs, _obs_after_extra_forward(env))
             if terminated or truncated:
                 env.reset()
     except Exception as exc:

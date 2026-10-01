@@ -316,13 +316,8 @@ class MyoGymnasiumEnv(gym.Env):
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Advance the simulation by one control step.
 
-        Physics note: ``mj_step`` uses a semi-implicit Euler integrator whose
-        second half (``mj_step2``) integrates ``qpos`` from ``qvel`` but does
-        NOT recompute derived world-frame quantities (``xpos``, ``site_xpos``,
-        ``xipos``, body orientations, …).  ``mj_kinematics`` is therefore
-        required immediately after to synchronise those quantities with the new
-        ``qpos`` before observations are read.  Subclasses that override
-        ``step()`` must preserve this call.
+        Subclasses that override ``step()`` advance the physics with
+        :meth:`_step_physics` and end with :meth:`_finalize_step`.
 
         Args:
             action: Control command, clipped to action_space bounds.
@@ -331,12 +326,9 @@ class MyoGymnasiumEnv(gym.Env):
         Returns:
             Tuple of (obs, reward, terminated, truncated, info).
         """
-        import mujoco
-
         action = np.clip(action, self.action_space.low, self.action_space.high)
         self.data.ctrl[:] = action
-        mujoco.mj_step(self.model, self.data, self.frame_skip)
-        mujoco.mj_kinematics(self.model, self.data)
+        self._step_physics()
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
@@ -348,13 +340,20 @@ class MyoGymnasiumEnv(gym.Env):
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Legacy forward() compatibility without stepping dynamics.
 
+        Derived quantities are recomputed first, so the result matches the
+        current ``qpos``/``qvel`` even after they were written directly
+        (log playback).
+
         Args:
             update_exteroception: Unused compatibility flag.
 
         Returns:
             Gymnasium-style 5-tuple for current state.
         """
+        import mujoco
+
         del update_exteroception
+        mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
@@ -427,6 +426,27 @@ class MyoGymnasiumEnv(gym.Env):
             The same values as a float32 array.
         """
         return np.asarray(obs, dtype=np.float32)
+
+    def _step_physics(self, nstep: int | None = None) -> None:
+        """Run ``nstep`` physics substeps, then refresh every derived quantity.
+
+        ``mj_step`` computes derived quantities (``xpos``, ``site_xpos``,
+        ``cvel``, ``actuator_length/velocity/force``, ``sensordata``, contacts)
+        before it integrates, so afterwards they lag ``qpos``/``qvel``/``act``
+        by one substep. ``mj_forward`` recomputes them from the new state, so
+        observations and rewards read one consistent state. It writes no
+        state that the next ``mj_step`` reads: the trajectory changes only
+        where Python code feeds a derived quantity back into the controls
+        (e.g. the OSL controller reads its load sensor).
+
+        Args:
+            nstep: Number of substeps; ``None`` uses ``frame_skip``.
+        """
+        import mujoco
+
+        n = self.frame_skip if nstep is None else nstep
+        mujoco.mj_step(self.model, self.data, n)
+        mujoco.mj_forward(self.model, self.data)
 
     def _finalize_step(
         self, obs_dict: dict[str, np.ndarray], rwd_dict: dict[str, Any]
