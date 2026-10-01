@@ -1,0 +1,197 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Regression tests for mjlab Mimic resets, terminations and task configs.
+
+Real mjlab environments run on CPU. They are built with the same
+``_make_mimic_env_cfg`` that the task registration uses. The clips are
+synthetic: their site positions come from MuJoCo forward kinematics, so a
+simulator state equal to a clip frame tracks that frame perfectly.
+"""
+
+from __future__ import annotations
+
+import functools
+from collections.abc import Iterator
+from typing import Any
+
+import numpy as np
+import pytest
+
+from myosuite.core.trajectory_io import MotionClip
+from myosuite.tests.support.optional_deps import (
+    require_mjlab,
+    require_mujoco_warp,
+    require_musclemimic_models,
+)
+
+pytestmark = pytest.mark.tier2
+
+torch = pytest.importorskip("torch")
+mujoco = pytest.importorskip("mujoco")
+
+_ENTITY = {"fullbody": "mimic_fullbody_robot", "bimanual": "mimic_bimanual_robot"}
+# Clip root: world-frame linear and body-frame angular velocity (MuJoCo qvel).
+_ROOT_LIN_VEL = (0.3, 0.1, 0.0)
+_ROOT_ANG_VEL_BODY = (0.5, -1.2, 2.0)
+# Folded "pike" pose: hips and trunk flexed, arms forward. Its site centroid is
+# about 0.36 m from the pelvis, above the 0.3 m root-error tolerance.
+_FULLBODY_PIKE = {
+    "hip_flexion_r": 2.0,
+    "hip_flexion_l": 2.0,
+    "flex_extension": -1.3,
+    "shoulder_elv_r": 1.57,
+    "shoulder_elv_l": 1.57,
+}
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _require_mimic_stack() -> None:
+    require_mjlab()
+    require_mujoco_warp()
+    require_musclemimic_models()
+
+
+@functools.cache
+def _variant(variant: str) -> tuple[Any, Any, Any, tuple[str, ...]]:
+    """Return (mimic config, spec builder, compiled model, tracked site names)."""
+    from ml_collections import config_dict
+
+    if variant == "fullbody":
+        from myosuite.integrations.musclemimic.fullbody_model import (
+            FULLBODY_BODY2SITES_FOR_MIMIC as sites,
+            build_mimic_fullbody_spec as build,
+            default_mimic_fullbody_config as default_cfg,
+        )
+    else:
+        from myosuite.integrations.musclemimic.bimanual_model import (
+            BODY2SITES_FOR_MIMIC as sites,
+            build_mimic_bimanual_spec as build,
+            default_mimic_config as default_cfg,
+        )
+    cfg = config_dict.create(**dict(default_cfg()))
+    return cfg, build, build(cfg)[0].compile(), tuple(sites.values())
+
+
+def _axis_angle_quat(axis: tuple[float, ...], angle: float) -> np.ndarray:
+    unit_axis = np.asarray(axis, dtype=np.float64) / np.linalg.norm(axis)
+    quat = np.zeros(4)
+    mujoco.mju_axisAngle2Quat(quat, unit_axis, angle)
+    return quat
+
+
+def _synthetic_clip(
+    variant: str,
+    *,
+    n_frames: int = 60,
+    joint_pos: dict[str, float] | None = None,
+) -> MotionClip:
+    """Clip whose sites are the forward kinematics of its own qpos.
+
+    A free root (full body) is tilted, turns over the clip and carries a
+    body-frame angular velocity, so world and body frames differ.
+    """
+    _, _, model, site_names = _variant(variant)
+    data = mujoco.MjData(model)
+    pose = (model.key_qpos[0] if model.nkey else model.qpos0).copy()
+    for name, value in (joint_pos or {}).items():
+        pose[model.jnt_qposadr[model.joint(name).id]] = value
+    free_root = int(model.jnt_type[0]) == int(mujoco.mjtJoint.mjJNT_FREE)
+    n_root_dof = 6 if free_root else 0
+    rng = np.random.default_rng(0)
+    qpos = np.tile(pose, (n_frames, 1))
+    qvel = np.zeros((n_frames, model.nv))
+    qvel[:, n_root_dof:] = rng.normal(0.0, 0.05, (n_frames, model.nv - n_root_dof))
+    site_ids = [model.site(name).id for name in site_names]
+    site_xpos = np.zeros((n_frames, len(site_ids), 3))
+    tilt = _axis_angle_quat((1.0, 0.3, 0.0), 0.4)
+    for i in range(n_frames):
+        if free_root:
+            yaw = _axis_angle_quat((0.0, 0.0, 1.0), 0.7 + 0.01 * i)
+            mujoco.mju_mulQuat(qpos[i, 3:7], yaw, tilt)
+            qpos[i, :3] = pose[:3] + 0.01 * i * np.asarray(_ROOT_LIN_VEL)
+            qvel[i, :6] = _ROOT_LIN_VEL + _ROOT_ANG_VEL_BODY
+        data.qpos[:] = qpos[i]
+        mujoco.mj_kinematics(model, data)
+        site_xpos[i] = data.site_xpos[site_ids]
+    return MotionClip(
+        qpos=qpos.astype(np.float32),
+        qvel=qvel.astype(np.float32),
+        site_xpos=site_xpos.astype(np.float32),
+        site_names=list(site_names),
+        frequency_hz=100.0,
+    )
+
+
+def _make_env(
+    variant: str, clip: MotionClip, *, num_envs: int = 2, **cfg_kwargs: Any
+) -> Any:
+    """mjlab env from ``_make_mimic_env_cfg`` with the registration's arguments."""
+    from mjlab.envs import ManagerBasedRlEnv
+
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    cfg, build, model, _ = _variant(variant)
+    cfg_kwargs.setdefault("max_episode_steps", int(cfg.max_episode_steps))
+    env_cfg = mimic._make_mimic_env_cfg(
+        _task_id=f"test-mimic-{variant}",
+        entity_name=_ENTITY[variant],
+        variant=variant,
+        spec_fn=lambda: build(cfg)[0],
+        muscle_actuators=mimic._muscle_actuator_names(model),
+        tendon_targets=mimic._muscle_tendon_names(model),
+        sim_dt=float(cfg.sim_dt),
+        ctrl_dt=float(cfg.ctrl_dt),
+        clip=clip,
+        num_envs=num_envs,
+        mj_model=model,
+        **cfg_kwargs,
+    )
+    return ManagerBasedRlEnv(cfg=env_cfg, device="cpu")
+
+
+def _clip_frames(env: Any, clip: MotionClip) -> list[int]:
+    """Clip frame of every env, read back from the ``clip_phase`` observation."""
+    phase = env.observation_manager.get_term_cfg("policy", "clip_phase").func(env)
+    n_frames = int(clip.site_xpos.shape[0])
+    return torch.round(phase.reshape(-1) * n_frames).long().tolist()
+
+
+@pytest.fixture(scope="module")
+def fullbody_env() -> Iterator[tuple[Any, MotionClip]]:
+    clip = _synthetic_clip("fullbody", joint_pos=_FULLBODY_PIKE)
+    env = _make_env("fullbody", clip)
+    yield env, clip
+    env.close()
+
+
+# ---------------------------------------------------------------------------
+# Reference state initialisation
+# ---------------------------------------------------------------------------
+
+
+def test_rsi_writes_reference_world_root_velocity(
+    fullbody_env: tuple[Any, MotionClip],
+) -> None:
+    """RSI must start the root with the clip's world-frame velocity.
+
+    Clip qvel holds the free-joint angular velocity in the body frame, while
+    ``write_root_state_to_sim`` expects it in the world frame.
+    """
+    env, clip = fullbody_env
+    env.reset()
+    _, _, model, _ = _variant("fullbody")
+    data = mujoco.MjData(model)
+    expected = []
+    for frame in _clip_frames(env, clip):
+        data.qpos[:] = clip.qpos[frame]
+        data.qvel[:] = clip.qvel[frame]
+        mujoco.mj_forward(model, data)
+        vel = np.zeros(6)  # [angular, linear] at the body origin, world frame
+        mujoco.mj_objectVelocity(
+            model, data, mujoco.mjtObj.mjOBJ_XBODY, int(model.jnt_bodyid[0]), vel, 0
+        )
+        expected.append(np.concatenate([vel[3:], vel[:3]]))
+    root_vel_w = env.scene[_ENTITY["fullbody"]].data.root_link_vel_w
+    np.testing.assert_allclose(root_vel_w.cpu().numpy(), np.stack(expected), atol=1e-4)

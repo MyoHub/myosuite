@@ -963,6 +963,9 @@ def test_mimic_cache_key_stable_across_env_wrappers() -> None:
 
 def test_rsi_event_accepts_env_ids_none() -> None:
     """``env_ids=None`` means "every env" in mjlab's event contract."""
+    from myosuite.tests.support.optional_deps import require_mjlab
+
+    require_mjlab()  # RSI rotates the root velocity with mjlab's quat_apply
     entity, variant = "robot", "bimanual"
     env = _make_mock_env(t=0.0, entity_name=entity)
     _mimic_mjlab_cache[_mimic_cache_key(env, entity, variant)] = (

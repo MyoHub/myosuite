@@ -1109,6 +1109,7 @@ def _mimic_rsi_event(
     def _fn(env: Any, env_ids: Any) -> None:
         import torch
         import mujoco
+        from mjlab.utils.lab_api.math import quat_apply
 
         data = env.scene[entity_name].data.data
         n_envs = int(data.qpos.shape[0])
@@ -1173,8 +1174,10 @@ def _mimic_rsi_event(
 
         ref_qvel = clip_source.ref_qvel_at_frames(new_offsets)
         if ref_qvel is not None:
+            # Free-joint qvel holds the world-frame linear but the body-frame
+            # angular velocity; write_root_state_to_sim expects both in world.
             root_lin_vel = ref_qvel[:, :3].float()
-            root_ang_vel = ref_qvel[:, 3:6].float()
+            root_ang_vel = quat_apply(root_quat, ref_qvel[:, 3:6].float())
         else:
             root_lin_vel = torch.zeros(n_reset, 3, device=device)
             root_ang_vel = torch.zeros(n_reset, 3, device=device)
