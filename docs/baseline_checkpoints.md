@@ -23,9 +23,13 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 
 **Not all published policies converged to the standard 95% threshold**, and training for more
 iterations may well reach higher success rates: `myoHandPoseRandom-v0` (36%, plateaued),
-`myoArmReachRandom-v0` (67%), `myoFingerReachRandom-v0` (45%), `myoLegHillyTerrainWalk-v0` (27%),
+`myoArmReachRandom-v0` (67%), `myoFingerReachRandom-v0` (45%), `motorFingerReachRandom-v0` (44%),
+`myoLegHillyTerrainWalk-v0` (27%),
 and the rows marked _pending_ (`myoLegStandRandom-v0`, `myoLegDirectionalRandom-v0`), which are being
 retrained (see below).
+
+Both `FingerReachRandom` variants share one target box, of which only about 55% (65% at a looser
+tolerance) lies within the fingertip's workspace, so their success rate cannot exceed roughly that.
 
 **Compatibility with the ms3 observation changes.** Policies are tied to the observation contract they
 were trained with. Two changes since the first set of checkpoints affect them:
@@ -33,6 +37,9 @@ were trained with. Two changes since the first set of checkpoints affect them:
 - The directional-leg twins observed raw `qvel`; every backend now observes `qvel * ctrl_dt`.
   The old `myoLegDirectional{Forward,Backward,Random}-v0` checkpoints no longer work (0% success)
   and were retrained.
+- The `motorFinger*` envs now use motors with four times the stock gear (80/20/20/40/40): with the stock
+  gears (and with x2) no policy left 0% success, with x4 the three fixed/pose tasks reach 100%.
+  These policies are new.
 - Observations are no longer clipped to +-10 and every derived quantity (muscle force, sensors, `cvel`)
   is refreshed after each step (walk, stand and reach twins, 55 CPU env ids). The walk, terrain and
   reach checkpoints above were re-evaluated after this change; their success rates are the numbers in
@@ -49,10 +56,10 @@ available yet to evaluate.
 
 | Env                          | Checkpoint         | Deterministic success (mjlab) |
 | ---------------------------- | ------------------ | ----------------------------- |
-| motorFingerPoseFixed-v0      | -                  | -                             |
-| motorFingerPoseRandom-v0     | -                  | -                             |
-| motorFingerReachFixed-v0     | -                  | -                             |
-| motorFingerReachRandom-v0    | -                  | -                             |
+| motorFingerPoseFixed-v0      | `model_267.pt`     | 100.0%                        |
+| motorFingerPoseRandom-v0     | `model_152.pt`     | 100.0%                        |
+| motorFingerReachFixed-v0     | `model_120.pt`     | 100.0%                        |
+| motorFingerReachRandom-v0    | `model_500.pt`     | 43.8%                         |
 | myoArmReachFixed-v0          | `model_696.pt`   | 100.0%                        |
 | myoArmReachRandom-v0         | `model_4999.pt`    | 67.2%                         |
 | myoChallengeChaseTagFBP2-v0  | -                  | -                             |

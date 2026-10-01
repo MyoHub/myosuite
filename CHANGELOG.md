@@ -101,6 +101,9 @@ full commit list.
   emulate the stale values. The simulated trajectories are bit-identical except OslRun, whose
   prosthesis controller now reads its current load sensor. Policies trained on the stale
   observations of these envs may need retraining.
+* **The `motorFinger*` envs use motors with four times the stock gear** (80/20/20/40/40 instead of
+  20/5/5/10/10, a `motor_finger` model recipe shared by the CPU and mjlab envs): policies trained with the
+  stock motors stayed at 0% success and now reach 100% on the pose and fixed-reach tasks.
 * **Joint velocities are observed as `qvel * ctrl_dt` on every backend** (the CPU task envs already
   did): the directional-leg twin and the MJX pose and reach envs observed raw `qvel`. The previous
   directional-leg checkpoints were retrained. `ElbowPoseTask` (tutorial 4.3) now also observes the
