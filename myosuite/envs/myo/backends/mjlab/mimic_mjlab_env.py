@@ -20,10 +20,11 @@ Two target-sourcing modes
     clip is supplied.
 
 **Trajectory (when a** :class:`~myosuite.core.trajectory_io.MotionClip` **is provided)**
-    Targets are taken from the clip's ``site_xpos`` array at the frame
-    corresponding to each environment's current simulation time.  Each of the N
-    parallel environments starts at a *different random frame* in the clip;
-    on episode reset that offset is resampled.  This produces a diverse
+    Targets are taken from the clip's ``site_xpos`` array, one frame per
+    control step since each environment's last reset (mjlab's integer
+    ``episode_length_buf``).  Each of the N parallel environments starts at a
+    *different random frame* in the clip; on episode reset that offset is
+    resampled.  This produces a diverse
     distribution of motion phases across the batch while keeping each episode's
     target sequence coherent with the reference motion.
 
@@ -1553,8 +1554,8 @@ def register_mimic_mjlab_tasks_with_clip(
 ) -> None:
     """Register Mimic tasks in trajectory mode.
 
-    Targets are taken from *clip*'s ``site_xpos`` at the frame corresponding
-    to each environment's current simulation time.  Each of the N parallel
+    Targets are taken from *clip*'s ``site_xpos``, advancing one frame per
+    control step of each environment's episode.  Each of the N parallel
     environments starts at a random frame; on reset that offset is resampled.
 
     Additional observation terms are added automatically:
