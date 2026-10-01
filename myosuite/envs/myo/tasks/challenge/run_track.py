@@ -360,11 +360,7 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         # ── Observation space ─────────────────────────────────────────────────
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
-        self.observation_space = gym.spaces.Box(
-            -10.0 * np.ones(obs.size, dtype=np.float32),
-            10.0 * np.ones(obs.size, dtype=np.float32),
-            dtype=np.float32,
-        )
+        self.observation_space = self._unbounded_obs_space(obs.size)
         self.startFlag = True
 
     # ── Action application ────────────────────────────────────────────────────

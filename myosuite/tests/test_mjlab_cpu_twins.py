@@ -214,8 +214,6 @@ def test_one_step_parity(env_id: str) -> None:
         expected = cpu._obs_dict_to_vec(cpu._get_obs_dict(cpu._accessor))
     else:
         expected = cpu.get_obs()
-    if isinstance(cpu, PoseEnvV0 | LegReachEnvV0 | LegWalkEnvV0):  # clip to +-10
-        expected = expected.clip(-10, 10)
     np.testing.assert_allclose(obs0, expected, atol=1e-5)
 
     obs_atol, rew_atol = _tolerances(env_id)

@@ -123,11 +123,8 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
     obs_keys = list(kw.get("obs_keys", LegWalkEnvV0.DEFAULT_OBS_KEYS))
     if info.na > 0 and "act" not in obs_keys:
         obs_keys.append("act")
-    # LegWalkEnvV0 clips its observation to the +-10 observation space.
     terms = {
-        key: ObservationTermCfg(
-            func=obs_funcs[key][0], params=obs_funcs[key][1], clip=(-10.0, 10.0)
-        )
+        key: ObservationTermCfg(func=obs_funcs[key][0], params=obs_funcs[key][1])
         for key in obs_keys
         if key in obs_funcs
     }

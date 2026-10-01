@@ -181,11 +181,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self._default_mocap_quat = self.data.mocap_quat.copy()
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
-        self.observation_space = gym.spaces.Box(
-            -10.0 * np.ones(obs.size, dtype=np.float32),
-            10.0 * np.ones(obs.size, dtype=np.float32),
-            dtype=np.float32,
-        )
+        self.observation_space = self._unbounded_obs_space(obs.size)
         act_low = (
             -np.ones(self.model.nu, dtype=np.float32)
             if self.normalize_act
@@ -458,7 +454,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         self.obs_dict = self._get_obs_dict(self._accessor)
         obs = self._obs_dict_to_vec(self.obs_dict)
-        obs = np.clip(np.asarray(obs, dtype=np.float32), -10.0, 10.0)
+        obs = self._ensure_obs_gymnasium_compliant(obs)
         return obs, {}
 
     def step(self, action: np.ndarray, **kwargs: Any):
@@ -471,7 +467,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.obs_dict = self._get_obs_dict(self._accessor)
         self.rwd_dict = self.get_reward_dict(self.obs_dict)
         obs = self._obs_dict_to_vec(self.obs_dict)
-        obs = np.clip(np.asarray(obs, dtype=np.float32), -10.0, 10.0)
+        obs = self._ensure_obs_gymnasium_compliant(obs)
         reward = float(np.asarray(self.rwd_dict["dense"]).ravel()[0])
         terminated = bool(np.asarray(self.rwd_dict["done"]).ravel()[0])
         info = {

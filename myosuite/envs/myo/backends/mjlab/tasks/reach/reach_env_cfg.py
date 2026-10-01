@@ -71,7 +71,6 @@ def make_reach_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
     obs_keys = list(kw.get("obs_keys", ReachEnvV0.DEFAULT_OBS_KEYS))
     if info.na > 0 and "act" not in obs_keys:
         obs_keys.append("act")
-    # ReachEnvV0 does not clip observations to its observation space.
     terms = {
         key: ObservationTermCfg(func=obs_funcs[key][0], params=obs_funcs[key][1])
         for key in obs_keys
