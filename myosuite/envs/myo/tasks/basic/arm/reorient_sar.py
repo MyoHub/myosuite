@@ -16,6 +16,7 @@ from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
+from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0
 from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
     sample_geometry_8,
     sample_geometry_100,
@@ -25,13 +26,36 @@ from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
 from myosuite.physics.quat_math import euler2quat
 from myosuite.physics.quat_math import calculate_cosine
 
+_MUSCLE_CONDITIONS = ("", "sarcopenia", "fatigue", "reafferentation")
+
 
 class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
     """Base SAR reorient env: object pose/rotation alignment.
 
     Migrated from reorient_sar_v0.ProprioceptiveEnvV0. Same obs/reward; no obsd.
     Subclasses override _apply_episode_geometry() to set object/target for the variant.
+
+    Args:
+        model_path: MJCF path, used when no ``model_recipe`` kwarg is given.
+        obsd_model_path: Unused; kept for legacy signature compatibility.
+        seed: Seed for the initial ``np_random``.
+        normalize_act: If ``True``, the action space is ``[-1, 1]`` and muscle
+            actions are mapped to excitations by the sigmoid of the other
+            basic envs.
+        frame_skip: Physics substeps per control step.
+        muscle_condition: One of ``""``, ``"sarcopenia"``, ``"fatigue"``,
+            ``"reafferentation"``.
+        fatigue_reset_vec: Initial fatigue state passed to the fatigue model.
+        fatigue_reset_random: If ``True``, randomise the fatigue state on reset.
+        **kwargs: ``model_recipe`` and ``render_mode``.
+
+    Raises:
+        ValueError: If ``muscle_condition`` is not a known condition.
     """
+
+    # Muscle-condition setup and action mapping shared with the other basic envs.
+    _init_muscle_condition = PoseEnvV0._init_muscle_condition
+    _apply_action = PoseEnvV0._apply_action
 
     DEFAULT_OBS_KEYS = [
         "hand_jnt",
@@ -60,8 +84,16 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
         seed: int | None = None,
         normalize_act: bool = True,
         frame_skip: int = 5,
+        muscle_condition: str = "",
+        fatigue_reset_vec: np.ndarray | None = None,
+        fatigue_reset_random: bool = False,
         **kwargs: Any,
     ) -> None:
+        if muscle_condition not in _MUSCLE_CONDITIONS:
+            raise ValueError(
+                f"Unknown muscle_condition {muscle_condition!r}; "
+                f"expected one of {_MUSCLE_CONDITIONS}."
+            )
         MyoGymnasiumEnv.__init__(
             self, frame_skip=frame_skip, render_mode=kwargs.get("render_mode")
         )
@@ -72,6 +104,9 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
             seed,
             normalize_act=normalize_act,
             frame_skip=frame_skip,
+            muscle_condition=muscle_condition,
+            fatigue_reset_vec=fatigue_reset_vec,
+            fatigue_reset_random=fatigue_reset_random,
             **kwargs,
         )
         model_recipe = kwargs.pop("model_recipe", None)
@@ -84,6 +119,12 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
         self.normalize_act = normalize_act
+
+        self.muscle_condition = muscle_condition
+        self.fatigue_reset_vec = fatigue_reset_vec
+        self.fatigue_reset_random = fatigue_reset_random
+        self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
+        self._init_muscle_condition()
 
         sfx = self._name_sfx
         self.target_obj_bid = self.model.body("target").id
@@ -222,12 +263,51 @@ class ReorientSAREnvV0(MyoGymnasiumEnv, EzPickle):
             [np.atleast_1d(obs_dict[k]).ravel() for k in self.obs_keys if k in obs_dict]
         )
 
+    def step(
+        self, action: np.ndarray, **kwargs: Any
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """Advance one control step, mapping the action through the muscle model.
+
+        Args:
+            action: Action in the action space.
+            **kwargs: Ignored compatibility kwargs.
+
+        Returns:
+            Tuple ``(obs, reward, terminated, truncated, info)``.
+        """
+        action = np.clip(action, self.action_space.low, self.action_space.high)
+        self._apply_action(action)
+        mujoco.mj_step(self.model, self.data, self.frame_skip)
+        mujoco.mj_kinematics(self.model, self.data)
+        if self.mujoco_render_frames:
+            self.mj_render()
+
+        self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
+        obs_dict = self._get_obs_dict(self._accessor)
+        rwd_dict = self.get_reward_dict(obs_dict)
+        obs = self._ensure_obs_gymnasium_compliant(self._obs_dict_to_vec(obs_dict))
+        info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
+        info["obs_dict"] = obs_dict
+        info["rwd_dict"] = rwd_dict
+        return (
+            obs,
+            float(rwd_dict["dense"]),
+            bool(rwd_dict["done"]),
+            False,
+            info,
+        )
+
     def reset(
         self,
         seed: int | None = None,
         options: dict | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         gym.Env.reset(self, seed=seed)
+        if self.muscle_condition == "fatigue":
+            self.muscle_fatigue.reset(
+                fatigue_reset_vec=self.fatigue_reset_vec,
+                fatigue_reset_random=self.fatigue_reset_random,
+            )
         self._apply_episode_geometry(self.np_random)
         self.model.site_rgba[self.success_indicator_sid, :2] = np.array([2.0, 0.0])
         mujoco.mj_resetData(self.model, self.data)
