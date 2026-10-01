@@ -24,6 +24,7 @@ from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.heightfields import TrackField
 from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
+from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.physics.quat_math import intrinsic_euler2quat, quat2euler_intrinsic
 from myosuite.terms.base_action import sigmoid_muscle_activation
@@ -37,7 +38,7 @@ class TrackTypes(Enum):
     MIXED = 4
 
 
-class RunTrackEnv(MyoGymnasiumEnv, EzPickle):
+class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """OSL prosthetic running track challenge — native MyoGymnasiumEnv implementation.
 
     The agent controls 54 biological muscles; the OSL prosthetic leg joints are
@@ -52,6 +53,10 @@ class RunTrackEnv(MyoGymnasiumEnv, EzPickle):
         weighted_reward_keys: Dict ``{key: weight}`` for dense reward.
         normalize_act: If ``True``, action space is ``[-1, 1]``.
         muscle_condition: One of ``""``, ``"sarcopenia"``, ``"fatigue"``.
+        fatigue_reset_vec: Fatigued fraction (MF) of each muscle at every
+            reset (``muscle_condition="fatigue"`` only).
+        fatigue_reset_random: If ``True``, draw the fatigue state at each
+            reset from the env's ``np_random``.
         reset_type: One of ``"init"``, ``"random"``, ``"osl_init"``.
         terrain: One of ``"flat"``, ``"hilly"``, ``"rough"``, ``"stairs"``,
             ``"random"``.
@@ -187,6 +192,8 @@ class RunTrackEnv(MyoGymnasiumEnv, EzPickle):
         weighted_reward_keys: dict[str, float] = DEFAULT_RWD_KEYS_AND_WEIGHTS,
         normalize_act: bool = True,
         muscle_condition: str = "",
+        fatigue_reset_vec: np.ndarray | None = None,
+        fatigue_reset_random: bool = False,
         reset_type: str = "init",
         terrain: str = "random",
         hills_difficulties: tuple = (0, 0),
@@ -214,6 +221,8 @@ class RunTrackEnv(MyoGymnasiumEnv, EzPickle):
             weighted_reward_keys=weighted_reward_keys,
             normalize_act=normalize_act,
             muscle_condition=muscle_condition,
+            fatigue_reset_vec=fatigue_reset_vec,
+            fatigue_reset_random=fatigue_reset_random,
             reset_type=reset_type,
             terrain=terrain,
             hills_difficulties=hills_difficulties,
@@ -237,6 +246,8 @@ class RunTrackEnv(MyoGymnasiumEnv, EzPickle):
 
         # ── Muscle condition ────────────────────────────────────────────────
         self.muscle_condition = muscle_condition
+        self.fatigue_reset_vec = fatigue_reset_vec
+        self.fatigue_reset_random = fatigue_reset_random
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
         if muscle_condition == "sarcopenia":
             apply_sarcopenia_to_model(self.model, force_scale=0.5)
@@ -511,6 +522,7 @@ class RunTrackEnv(MyoGymnasiumEnv, EzPickle):
             mujoco.mj_forward(self.model, self.data)
 
         self.OSL_CTRL.start()
+        self.reset_muscle_condition()
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)

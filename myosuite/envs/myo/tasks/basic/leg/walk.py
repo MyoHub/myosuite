@@ -446,6 +446,7 @@ class LegWalkEnvV0(MyoGymnasiumEnv, EzPickle):
             self.muscle_fatigue.reset(
                 fatigue_reset_vec=self.fatigue_reset_vec,
                 fatigue_reset_random=self.fatigue_reset_random,
+                np_random=self.np_random,
             )
         self.steps = 0
         mujoco.mj_resetData(self.model, self.data)
@@ -533,6 +534,7 @@ class LegTerrainEnvV0(LegWalkEnvV0):
             self.muscle_fatigue.reset(
                 fatigue_reset_vec=self.fatigue_reset_vec,
                 fatigue_reset_random=self.fatigue_reset_random,
+                np_random=self.np_random,
             )
         self.steps = 0
         rng = self.np_random

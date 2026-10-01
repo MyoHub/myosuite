@@ -21,6 +21,7 @@ from myosuite.core.model_builder import ModelBuilder
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.heightfields import ChaseTagField
+from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.physics.quat_math import euler2quat, quat2euler, quat2mat
 from myosuite.terms.base_action import sigmoid_muscle_activation
@@ -333,7 +334,7 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         self.move_opponent(opponent_vel)
 
 
-class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
+class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Chase-Tag locomotion challenge — native MyoGymnasiumEnv implementation.
 
     The agent must either chase and tag the opponent (CHASE) or evade it
@@ -349,6 +350,10 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         weighted_reward_keys: Dict of ``{key: weight}`` for dense reward.
         normalize_act: If ``True``, action space is ``[-1, 1]``.
         muscle_condition: One of ``""``, ``"sarcopenia"``, ``"fatigue"``.
+        fatigue_reset_vec: Fatigued fraction (MF) of each muscle at every
+            reset (``muscle_condition="fatigue"`` only).
+        fatigue_reset_random: If ``True``, draw the fatigue state at each
+            reset from the env's ``np_random``.
         reset_type: One of ``"none"``, ``"init"``, ``"random"``.
         win_distance: Tagging distance threshold (m).
         min_spawn_distance: Minimum opponent spawn radius (m).
@@ -417,6 +422,8 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         weighted_reward_keys: dict[str, float] = DEFAULT_RWD_KEYS_AND_WEIGHTS,
         normalize_act: bool = True,
         muscle_condition: str = "",
+        fatigue_reset_vec: np.ndarray | None = None,
+        fatigue_reset_random: bool = False,
         reset_type: str = "none",
         win_distance: float = 0.5,
         min_spawn_distance: float = 2.0,
@@ -447,6 +454,8 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
             weighted_reward_keys=weighted_reward_keys,
             normalize_act=normalize_act,
             muscle_condition=muscle_condition,
+            fatigue_reset_vec=fatigue_reset_vec,
+            fatigue_reset_random=fatigue_reset_random,
             reset_type=reset_type,
             win_distance=win_distance,
             min_spawn_distance=min_spawn_distance,
@@ -478,6 +487,8 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
 
         # ── Muscle condition ────────────────────────────────────────────────
         self.muscle_condition = muscle_condition
+        self.fatigue_reset_vec = fatigue_reset_vec
+        self.fatigue_reset_random = fatigue_reset_random
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
         if muscle_condition == "sarcopenia":
             apply_sarcopenia_to_model(self.model, force_scale=0.5)
@@ -788,6 +799,7 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         self.opponent.reset_opponent(
             player_task=self.current_task.name, rng=self.np_random
         )
+        self.reset_muscle_condition()
         mujoco.mj_forward(self.model, self.data)
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
