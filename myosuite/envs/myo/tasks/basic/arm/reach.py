@@ -16,6 +16,7 @@ from gymnasium.utils import EzPickle
 
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
+from myosuite.utils.reach_workspace import reachable_target_points
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
@@ -32,6 +33,9 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         model_path: Absolute path to the MuJoCo XML model.
         obsd_model_path: Unused (kept for API compatibility).
         seed: Random seed.
+        target_sampling: ``"box"`` samples each target uniformly in its box; ``"workspace"``
+            samples fingertip positions over the joint ranges that lie in the boxes, so every
+            target can be reached.
         target_reach_range: Dict ``{site_name: (low_3d, high_3d)}``
             defining the sampling bounds for each target site.
         far_th: Distance threshold beyond which a penalty is applied
@@ -66,6 +70,7 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         obsd_model_path: str | None = None,
         seed: int | None = None,
         target_reach_range: dict | None = None,
+        target_sampling: str = "box",
         far_th: float = 0.35,
         obs_keys: list = DEFAULT_OBS_KEYS,
         weighted_reward_keys: dict[str, float] = DEFAULT_RWD_KEYS_AND_WEIGHTS,
@@ -87,6 +92,7 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
             obsd_model_path,
             seed,
             target_reach_range=target_reach_range,
+            target_sampling=target_sampling,
             far_th=far_th,
             obs_keys=obs_keys,
             weighted_reward_keys=weighted_reward_keys,
@@ -131,6 +137,11 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         if target_reach_range is None:
             raise ValueError("target_reach_range is required")
         self.target_reach_range = target_reach_range
+        if target_sampling not in ("box", "workspace"):
+            raise ValueError(
+                f"target_sampling must be 'box' or 'workspace', got {target_sampling!r}"
+            )
+        self.target_sampling = target_sampling
         self.far_th = far_th
 
         # Site IDs: tip site and corresponding <site>_target site
@@ -139,6 +150,15 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         for site_name in target_reach_range:
             self.tip_sids.append(self.model.site(site_name).id)
             self.target_sids.append(self.model.site(site_name + "_target").id)
+        self._workspace_points: np.ndarray | None = None
+        if target_sampling == "workspace":
+            spans = list(target_reach_range.values())
+            self._workspace_points = reachable_target_points(
+                self.model,
+                self.tip_sids,
+                np.array([span[0] for span in spans]),
+                np.array([span[1] for span in spans]),
+            )
 
         # ── Reward / obs config ────────────────────────────────────────────
         self.rwd_keys_wt = weighted_reward_keys
@@ -297,9 +317,17 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         Returns:
             Empty task state dict (targets stored on model directly).
         """
-        for site_name, span in self.target_reach_range.items():
-            sid = self.model.site(site_name + "_target").id
-            self.model.site_pos[sid] = np_random.uniform(low=span[0], high=span[1])
+        if self._workspace_points is not None:
+            # Targets the fingertips can reach: positions over the joint ranges.
+            sample = self._workspace_points[
+                np_random.integers(len(self._workspace_points))
+            ]
+            for sid, position in zip(self.target_sids, sample):
+                self.model.site_pos[sid] = position
+        else:
+            for site_name, span in self.target_reach_range.items():
+                sid = self.model.site(site_name + "_target").id
+                self.model.site_pos[sid] = np_random.uniform(low=span[0], high=span[1])
         mujoco.mj_forward(self.model, self.data)
         return {}
 
