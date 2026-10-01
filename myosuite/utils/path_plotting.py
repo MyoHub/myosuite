@@ -257,10 +257,10 @@ def render(rollout_path, render_format: str = "mp4", cam_names: list = ["left"])
                 if cam_name in key and "rgb" in key:
                     cam_key = key
                     break
-            assert cam_key is not None, (
-                "Cam: {} not found in data. Available keys: [{}]".format(
-                    cam_name, data_keys
-                )
+            assert (
+                cam_key is not None
+            ), "Cam: {} not found in data. Available keys: [{}]".format(
+                cam_name, data_keys
             )
             cam_keys.append(key)
 
@@ -331,9 +331,9 @@ def path2dataset(path: dict, config_path=None) -> dict:
 
     # Derived =====
     if "pos_ee" in obs_keys or "rot_ee" in obs_keys:
-        assert "pos_ee" in obs_keys and "rot_ee" in obs_keys, (
-            "Both pose_ee and rot_ee are required"
-        )
+        assert (
+            "pos_ee" in obs_keys and "rot_ee" in obs_keys
+        ), "Both pose_ee and rot_ee are required"
         dataset["derived/pose_ee"] = np.hstack(
             [
                 path["env_infos"]["obs_dict"]["pos_ee"],

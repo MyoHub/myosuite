@@ -86,9 +86,7 @@ class MyoOSLController:
                     "ankle_vel",
                 ]
             ]
-        ), (
-            "Missing data, dictionary should contain all of these keys ['knee_angle', 'knee_vel', 'load', 'ankle_angle', 'ankle_vel']"
-        )
+        ), "Missing data, dictionary should contain all of these keys ['knee_angle', 'knee_vel', 'load', 'ankle_angle', 'ankle_vel']"
         self.SENSOR_DATA = sens_data
         self.STATE_MACHINE.update(self.SENSOR_DATA)
 
@@ -150,18 +148,19 @@ class MyoOSLController:
             "gain",
             "threshold",
         ], f"Type should be : {['gain', 'threshold']}"
-        assert gain in [
-            "knee_stiffness",
-            "knee_damping",
-            "ankle_stiffness",
-            "ankle_damping",
-            "load",
-            "knee_angle",
-            "knee_vel",
-            "ankle_angle",
-        ], (
-            f"Gains should be : {['knee_stiffness', 'knee_damping', 'ankle_stiffness', 'ankle_damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle']}"
-        )
+        assert (
+            gain
+            in [
+                "knee_stiffness",
+                "knee_damping",
+                "ankle_stiffness",
+                "ankle_damping",
+                "load",
+                "knee_angle",
+                "knee_vel",
+                "ankle_angle",
+            ]
+        ), f"Gains should be : {['knee_stiffness', 'knee_damping', 'ankle_stiffness', 'ankle_damping', 'load', 'knee_angle', 'knee_vel', 'ankle_angle']}"
 
         self.OSL_PARAM_LIST[mode][phase_name][param_type][gain] = value
 
@@ -170,9 +169,9 @@ class MyoOSLController:
         Function to set hardware parameters of the actuators
         """
         assert joint in ["knee", "ankle"], f"Joint should be : {['knee', 'ankle']}"
-        assert act_param in ["gear_ratio", "peak_torque", "control_range"], (
-            f"Actuator parameter should be : {['gear_ratio', 'peak_torque', 'control_range']}"
-        )
+        assert (
+            act_param in ["gear_ratio", "peak_torque", "control_range"]
+        ), f"Actuator parameter should be : {['gear_ratio', 'peak_torque', 'control_range']}"
 
         self.HARDWARE[joint][act_param] = act_param
 
@@ -363,9 +362,9 @@ class StateMachine:
         """
         Initializes the state machine with an initial state
         """
-        assert initial_state in self.states.keys(), (
-            f"No state named {initial_state}. Should be {self.states.keys()}"
-        )
+        assert (
+            initial_state in self.states.keys()
+        ), f"No state named {initial_state}. Should be {self.states.keys()}"
         self.current_state = self.states[initial_state]
 
     def start(self):

@@ -72,15 +72,15 @@ def test_env_smoke(env_id: str) -> None:
         if isinstance(obs, dict):
             # Multi-agent env: validate each agent's obs independently.
             for agent_id, agent_obs in obs.items():
-                assert agent_obs.ndim == 1, (
-                    f"{env_id}/{agent_id}: obs should be 1-D, got shape {agent_obs.shape}"
-                )
-                assert agent_obs.shape[0] > 0, (
-                    f"{env_id}/{agent_id}: obs must not be empty"
-                )
-                assert np.all(np.isfinite(agent_obs)), (
-                    f"{env_id}/{agent_id}: obs contains non-finite values"
-                )
+                assert (
+                    agent_obs.ndim == 1
+                ), f"{env_id}/{agent_id}: obs should be 1-D, got shape {agent_obs.shape}"
+                assert (
+                    agent_obs.shape[0] > 0
+                ), f"{env_id}/{agent_id}: obs must not be empty"
+                assert np.all(
+                    np.isfinite(agent_obs)
+                ), f"{env_id}/{agent_id}: obs contains non-finite values"
             obs, rwd, terminated, truncated, info = env.step(env.action_space.sample())
             assert isinstance(rwd, dict), f"{env_id}: multi-agent reward must be a dict"
             assert isinstance(terminated, dict), f"{env_id}: terminated must be a dict"

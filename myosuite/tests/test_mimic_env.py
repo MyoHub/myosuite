@@ -97,9 +97,9 @@ def test_reward_degrades_with_zero_ctrl(env):
         if term:
             break
     # Later rewards should be lower on average than early rewards
-    assert np.mean(rewards[:3]) > np.mean(rewards[-3:]), (
-        f"Reward should degrade; got {rewards}"
-    )
+    assert np.mean(rewards[:3]) > np.mean(
+        rewards[-3:]
+    ), f"Reward should degrade; got {rewards}"
 
 
 def test_early_termination_fires(env):
@@ -112,9 +112,9 @@ def test_early_termination_fires(env):
         if term:
             terminated_ever = True
             break
-    assert terminated_ever, (
-        "Expected early termination with zero control over 500 steps"
-    )
+    assert (
+        terminated_ever
+    ), "Expected early termination with zero control over 500 steps"
 
 
 def test_reset_different_frames(env):

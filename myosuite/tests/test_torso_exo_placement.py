@@ -66,9 +66,9 @@ def test_exo_shell_covers_the_back_of_the_rib_cage() -> None:
     # centred on the sagittal plane, and reaching behind the whole rib cage
     lateral_offset = along(shell, lateral).mean() - along(spine, lateral).mean()
     assert abs(lateral_offset) < 0.03, f"shell is {lateral_offset:.3f} m off the spine"
-    assert along(shell, anterior).min() < along(ribs, anterior).min(), (
-        "shell not behind ribs"
-    )
+    assert (
+        along(shell, anterior).min() < along(ribs, anterior).min()
+    ), "shell not behind ribs"
     # a vest opens at the front: the shell's centre lies behind the rib cage's centre
     assert along(shell, anterior).mean() < along(ribs, anterior).mean()
     # and it does not float away from the trunk

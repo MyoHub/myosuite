@@ -86,6 +86,6 @@ def test_right_arm_body_names_align_stripped_suffix() -> None:
             host_bases.add(n[:-2] if n.endswith("_r") else n)
     for key in ("humerus", "ulna", "radius", "scapula", "clavicle"):
         assert key in host_bases, f"missing host body {key!r} (or {key}_r)"
-        assert key in ref_bases, (
-            f"missing ref counterpart for {key!r} (expected {key!r} as {key}_r)"
-        )
+        assert (
+            key in ref_bases
+        ), f"missing ref counterpart for {key!r} (expected {key!r} as {key}_r)"

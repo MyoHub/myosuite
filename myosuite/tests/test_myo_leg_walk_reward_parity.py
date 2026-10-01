@@ -93,14 +93,14 @@ def test_myo_leg_walk_cpu_rwd_dict_contract() -> None:
             assert key in rwd_dict, f"rwd_dict missing key '{key}' at step {step}"
             val = rwd_dict[key]
             if isinstance(val, (int, float)):
-                assert np.isfinite(val), (
-                    f"rwd_dict['{key}'] not finite at step {step}: {val}"
-                )
+                assert np.isfinite(
+                    val
+                ), f"rwd_dict['{key}'] not finite at step {step}: {val}"
             else:
                 arr = np.asarray(val)
-                assert np.all(np.isfinite(arr)), (
-                    f"rwd_dict['{key}'] has non-finite values at step {step}"
-                )
+                assert np.all(
+                    np.isfinite(arr)
+                ), f"rwd_dict['{key}'] has non-finite values at step {step}"
         if term or trunc:
             env.reset()
     env.close()
@@ -198,9 +198,9 @@ def test_myo_leg_walk_reward_parity_cpu_vs_mjlab() -> None:
         # reward shaping (especially termination penalties) intentionally
         # differs from the legacy CPU implementation.
         assert np.isfinite(dense_cpu), f"CPU dense reward not finite: {dense_cpu}"
-        assert np.isfinite(dense_mj_raw), (
-            f"mjlab dense reward not finite: {dense_mj_raw}"
-        )
+        assert np.isfinite(
+            dense_mj_raw
+        ), f"mjlab dense reward not finite: {dense_mj_raw}"
 
         # Handle episode terminations / truncations for both backends.
         if term_cpu or trunc_cpu:

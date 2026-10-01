@@ -186,9 +186,9 @@ def test_reward_keys(configs: tuple) -> None:
 def test_reward_weights(configs: tuple) -> None:
     old_cfg, new_cfg = configs
     for k in old_cfg.rewards:
-        assert new_cfg.rewards[k].weight == old_cfg.rewards[k].weight, (
-            f"reward '{k}' weight mismatch: {new_cfg.rewards[k].weight} != {old_cfg.rewards[k].weight}"
-        )
+        assert (
+            new_cfg.rewards[k].weight == old_cfg.rewards[k].weight
+        ), f"reward '{k}' weight mismatch: {new_cfg.rewards[k].weight} != {old_cfg.rewards[k].weight}"
 
 
 def test_elbow_obs_keys_match_cpu() -> None:
