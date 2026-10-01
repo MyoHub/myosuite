@@ -161,11 +161,7 @@ class LegWalkEnvV0(MyoGymnasiumEnv, EzPickle):
             _qadr("hip_rotation_r"),
         )
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
-        self.observation_space = gym.spaces.Box(
-            -10.0 * np.ones(obs.size, dtype=np.float32),
-            10.0 * np.ones(obs.size, dtype=np.float32),
-            dtype=np.float32,
-        )
+        self.observation_space = self._unbounded_obs_space(obs.size)
         act_low = (
             np.zeros(self.model.nu, dtype=np.float32)
             if normalize_act
@@ -421,11 +417,7 @@ class LegWalkEnvV0(MyoGymnasiumEnv, EzPickle):
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
         obs = self._obs_dict_to_vec(obs_dict)
-        obs = np.clip(
-            np.asarray(obs, dtype=np.float32),
-            self.observation_space.low,
-            self.observation_space.high,
-        )
+        obs = self._ensure_obs_gymnasium_compliant(obs)
         reward = float(rwd_dict["dense"])
         terminated = bool(rwd_dict["done"])
         info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
@@ -463,11 +455,7 @@ class LegWalkEnvV0(MyoGymnasiumEnv, EzPickle):
         self._task_state = self.reset_task(self.np_random)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
-        obs = np.clip(
-            np.asarray(obs, dtype=np.float32),
-            self.observation_space.low,
-            self.observation_space.high,
-        )
+        obs = self._ensure_obs_gymnasium_compliant(obs)
         return obs, {}
 
     @property
@@ -610,9 +598,5 @@ class LegTerrainEnvV0(LegWalkEnvV0):
         self._task_state = self.reset_task(self.np_random)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
-        obs = np.clip(
-            np.asarray(obs, dtype=np.float32),
-            self.observation_space.low,
-            self.observation_space.high,
-        )
+        obs = self._ensure_obs_gymnasium_compliant(obs)
         return obs, {}

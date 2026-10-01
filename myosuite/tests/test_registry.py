@@ -42,7 +42,11 @@ def _skip_if_hf_gated(env_id: str, exc: Exception) -> None:
 
 @pytest.mark.parametrize("env_id", _ALL_ENV_IDS)
 def test_env_resets_and_steps(env_id: str) -> None:
-    """Every registered env must reset and take one random action without error."""
+    """Every registered env must reset and take a few random actions without error.
+
+    Flat observations must be exactly the env's own flattening of
+    ``info["obs_dict"]``: no clipping to the declared space.
+    """
     import gymnasium as gym
 
     def _assert_finite(value: object) -> None:
@@ -65,12 +69,19 @@ def test_env_resets_and_steps(env_id: str) -> None:
         assert obs is not None
         _assert_finite(obs)
 
-        action = env.action_space.sample()
-        obs, rwd, terminated, truncated, info = env.step(action)
-        _assert_finite(obs)
-        _assert_finite(rwd)
-        assert isinstance(terminated, bool | np.bool_) or isinstance(terminated, dict)
-        assert isinstance(truncated, bool | np.bool_) or isinstance(truncated, dict)
+        env.action_space.seed(0)
+        for _ in range(3):
+            obs, rwd, terminated, truncated, info = env.step(env.action_space.sample())
+            _assert_finite(obs)
+            _assert_finite(rwd)
+            assert isinstance(terminated, bool | np.bool_ | dict)
+            assert isinstance(truncated, bool | np.bool_ | dict)
+            if isinstance(obs, dict):
+                continue
+            raw = env.unwrapped._obs_dict_to_vec(info["obs_dict"])
+            np.testing.assert_array_equal(obs, np.asarray(raw, dtype=obs.dtype))
+            if terminated or truncated:
+                env.reset()
     except Exception as exc:
         _skip_if_hf_gated(env_id, exc)
         raise

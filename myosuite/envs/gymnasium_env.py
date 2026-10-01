@@ -424,23 +424,32 @@ class MyoGymnasiumEnv(gym.Env):
         """
         return np.concatenate([np.atleast_1d(v).ravel() for v in obs_dict.values()])
 
-    def _ensure_obs_gymnasium_compliant(self, obs: np.ndarray) -> np.ndarray:
-        """Cast obs to float32 and clip to observation_space so passive_env_checker is satisfied.
+    @staticmethod
+    def _unbounded_obs_space(obs_dim: int) -> gym.spaces.Box:
+        """Float32 ``Box(-inf, inf)`` space for a flat observation of ``obs_dim`` values.
+
+        Observations are physical quantities (positions on a 50 m pitch, contact
+        forces in N, ...) with no common bound, so none is declared and nothing is
+        clipped (as in legacy MyoSuite and in mjlab).
 
         Args:
-            obs: Raw observation vector (may be float64 or outside declared bounds).
+            obs_dim: Length of the observation vector.
 
         Returns:
-            float32 array within observation_space.low/high.
+            The observation space.
         """
-        obs = np.asarray(obs, dtype=np.float32)
-        if getattr(self, "observation_space", None) is not None:
-            obs = np.clip(
-                obs,
-                self.observation_space.low,
-                self.observation_space.high,
-            )
-        return obs
+        return gym.spaces.Box(-np.inf, np.inf, shape=(obs_dim,), dtype=np.float32)
+
+    def _ensure_obs_gymnasium_compliant(self, obs: np.ndarray) -> np.ndarray:
+        """Cast obs to float32, the dtype of the observation space; never clip.
+
+        Args:
+            obs: Raw observation vector (may be float64).
+
+        Returns:
+            The same values as a float32 array.
+        """
+        return np.asarray(obs, dtype=np.float32)
 
     def _check_mj_instability_termination(self) -> bool:
         """Return True if the simulation went unstable since the last reset.

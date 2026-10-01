@@ -79,6 +79,13 @@ full commit list.
 * Documentation and developer wiki cut down and reorganised (`897744f`, `b7c83a9`, `8079643`).
 * Tutorials simplified for newcomers and verified with real training runs (`cf03010`, `89faae4`).
 * Python support 3.10–3.14 (`38cf140`, `2546095`, `3b025ab`); MuJoCo 3.6.0 (`21edbfc`).
+* **Observations are no longer clipped.** CPU envs declared `Box(-10, 10)` and clipped every
+  observation to it, which saturated positions and forces in 43 envs (Soccer ball, goal and keeper
+  x ≈ 40–50 m; OslRun forward progress; ground reaction forces of Soccer, OslRun and ChaseTag;
+  HandReorient muscle forces; Bimanual velocities). Every env now declares a float32
+  `Box(-inf, inf)` and observations are only cast to float32, as in legacy MyoSuite and mjlab; the
+  mjlab twins dropped their matching ±10 clip. Policies trained on the clipped observations of these
+  envs may need retraining.
 
 ### Fixed
 
