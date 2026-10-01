@@ -363,9 +363,7 @@ class TableTennisEnv(MyoGymnasiumEnv, EzPickle):
         ctrl = self._process_controls(action)
         n_frames = int(self._ctrl_dt / self.model.opt.timestep)
         self.data.ctrl[:] = ctrl
-        for _ in range(n_frames):
-            mujoco.mj_step(self.model, self.data)
-        mujoco.mj_forward(self.model, self.data)
+        self._step_physics(n_frames)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         self.obs_dict = self._get_obs_dict(self._accessor)
         self.rwd_dict = self.get_reward_dict(self.obs_dict)

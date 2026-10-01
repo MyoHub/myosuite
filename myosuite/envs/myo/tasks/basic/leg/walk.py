@@ -410,8 +410,7 @@ class LegWalkEnvV0(MyoGymnasiumEnv, EzPickle):
         self, action: np.ndarray, **kwargs: Any
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         self._apply_action(action)
-        mujoco.mj_step(self.model, self.data, self.frame_skip)
-        mujoco.mj_kinematics(self.model, self.data)
+        self._step_physics()
         self.steps += 1
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)

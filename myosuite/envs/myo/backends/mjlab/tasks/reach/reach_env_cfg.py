@@ -103,8 +103,8 @@ def make_reach_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
 
     terminations = {
         # Tip sites are derived quantities: refresh them before scoring (CPU
-        # runs mj_kinematics right after stepping).
-        mdp.SYNC_TERM: TerminationTermCfg(func=mdp.sync_kinematics),
+        # runs mj_forward right after stepping).
+        mdp.SYNC_TERM: TerminationTermCfg(func=mdp.sync_forward),
         "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
         "reach_failed": TerminationTermCfg(func=mdp.reach_failed, params=reach_params),
     }

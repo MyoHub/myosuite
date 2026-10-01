@@ -485,8 +485,7 @@ class PoseEnvV0(MyoGymnasiumEnv, EzPickle):
         self._apply_action(action)
         # Store for backward-compat last_ctrl property (do not warn per step)
         self._last_ctrl = self.data.ctrl.copy()
-        mujoco.mj_step(self.model, self.data, self.frame_skip)
-        mujoco.mj_kinematics(self.model, self.data)
+        self._step_physics()
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self.get_obs_dict(self._accessor)

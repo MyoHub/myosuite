@@ -18,6 +18,13 @@ A policy is only portable across backends if all five invariants below hold. Vio
 
 - Obs terms registered in the same order in `ObservationGroupCfg` (mjlab) and the browser config.
 - Per-term `scale` and `clip` must match exactly — these are applied in TypeScript at inference.
+- **No implicit clipping.** CPU observation spaces are float32 `Box(-inf, inf)` and observations are
+  only cast to float32; neither backend clips beyond an explicit per-term `clip`.
+- **Fresh derived quantities.** Observations, rewards and terminations read positions, `cvel`,
+  actuator length/velocity/force, sensors and contacts of the post-step state. CPU `step()` runs
+  `mj_forward` after `mj_step` (`MyoGymnasiumEnv._step_physics`). mjlab scores rewards and terminations
+  before its own post-step `forward()`, so twins whose rewards or terminations read derived quantities
+  register `mdp.sync_forward` as their first termination term.
 - **Browser (mjswan) export: no `VecNormalize` or running mean/std.** The browser runtime cannot load normalization statistics. Express normalization as fixed `scale` in `ObservationTermCfg` and train with `obs_normalization=False`.
 - **CPU / mjlab / ONNX: running normalization is allowed.** The basic-suite runner (`tasks/rl.py`) enables it by default; the frozen statistics are folded into the policy by `load_rslrl_policy` / `export_rslrl_to_onnx`, so the policy still takes the raw CPU observation vector.
 

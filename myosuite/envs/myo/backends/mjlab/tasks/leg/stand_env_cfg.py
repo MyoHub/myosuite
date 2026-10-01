@@ -118,7 +118,7 @@ def make_leg_stand_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnv
     }
 
     terminations = {
-        mdp.SYNC_TERM: TerminationTermCfg(func=mdp.sync_kinematics),
+        mdp.SYNC_TERM: TerminationTermCfg(func=mdp.sync_forward),
         "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
         "reach_failed": TerminationTermCfg(
             func=mdp.leg_reach_failed, params=reach_params

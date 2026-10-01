@@ -740,8 +740,7 @@ class ChaseTagEnv(MyoGymnasiumEnv, EzPickle):
         action = np.clip(action, self.action_space.low, self.action_space.high)
         self.opponent.update_opponent_state()
         self._apply_action(action)
-        mujoco.mj_step(self.model, self.data, self.frame_skip)
-        mujoco.mj_kinematics(self.model, self.data)
+        self._step_physics()
         self.steps += 1
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)

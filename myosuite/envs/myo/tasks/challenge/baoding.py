@@ -464,8 +464,7 @@ class BaodingEnv(MyoGymnasiumEnv, EzPickle):
             )
 
         self._apply_action(action)
-        mujoco.mj_step(self.model, self.data, self.frame_skip)
-        mujoco.mj_kinematics(self.model, self.data)
+        self._step_physics()
         self.counter += 1
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)

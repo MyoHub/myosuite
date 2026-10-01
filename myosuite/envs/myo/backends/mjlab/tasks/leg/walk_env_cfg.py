@@ -143,7 +143,7 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
         for key, weight in weights.items()
     }
     terminations = {
-        mdp.SYNC_TERM: TerminationTermCfg(func=mdp.sync_kinematics),
+        mdp.SYNC_TERM: TerminationTermCfg(func=mdp.sync_forward),
         "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
         "fallen": TerminationTermCfg(
             func=walk_mdp.walk_done, params={"walk": walk, "asset_cfg": robot}
