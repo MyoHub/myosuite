@@ -208,6 +208,9 @@ def test_one_step_parity(env_id: str) -> None:
         == cpu.observation_space.shape[0]
     )
 
+    # Same control step: it scales the velocity observation and every dt-based term.
+    assert cpu.unwrapped._ctrl_dt == pytest.approx(float(mj.step_dt))
+
     _sync(cpu, mj)
     obs0 = mj.observation_manager.compute_group("actor")[0].numpy()
     if isinstance(cpu, LegReachEnvV0 | LegWalkEnvV0 | ModularTaskEnv):

@@ -53,7 +53,7 @@ class LegDirectionalForwardTask(TaskConfig):
     model: str = field(default_factory=_leg_model_path)
     max_episode_steps: int = 500
     backend: BackendConfig = field(
-        default_factory=lambda: BackendConfig(n_substeps=5, ctrl_dt=0.01, sim_dt=0.002)
+        default_factory=lambda: BackendConfig(n_substeps=5, ctrl_dt=0.005, sim_dt=0.001)
     )
     obs: ObsSpec = field(
         default_factory=lambda: ObsSpec(
