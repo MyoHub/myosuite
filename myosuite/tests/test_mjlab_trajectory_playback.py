@@ -365,7 +365,7 @@ def _make_cache_with_source(
         hi=rng.uniform(0.0, 1.0, 3),
         tracking=types.SimpleNamespace(reward_scale=20.0, success_threshold=0.04),
         clip_source=source,
-        last_sim_time=None,
+        last_step=None,
         target_torch=None,
     )
 
@@ -379,7 +379,7 @@ def _make_cache_random(n_sites: int = _N_SITES) -> dict[str, Any]:
         hi=np.array([0.5, 0.5, 2.0]),
         tracking=types.SimpleNamespace(reward_scale=20.0, success_threshold=0.04),
         clip_source=None,
-        last_sim_time=None,
+        last_step=None,
         target_torch=None,
     )
 
@@ -742,6 +742,21 @@ class TestMimicMjlabCacheDispatch:
         # Resampled targets will almost certainly differ
         assert not torch.allclose(tgt_before, tgt_after)
 
+    def test_sync_random_resamples_only_the_reset_envs(self) -> None:
+        """A reset of env 2 must not resample the other envs' targets."""
+        cache = _make_cache_random()
+        _sync_mimic_mjlab_targets(_make_mock_env(t=5 * _CTRL_DT), "robot", cache)
+        before = cache["target_torch"].clone()
+
+        steps = torch.full((_N,), 6.0) * _CTRL_DT
+        steps[2] = 0.0  # only env 2 restarts its episode
+        _sync_mimic_mjlab_targets(_make_mock_env(t=steps), "robot", cache)
+        after = cache["target_torch"]
+
+        keep = torch.arange(_N) != 2
+        assert torch.equal(after[keep], before[keep])
+        assert not torch.allclose(after[2], before[2])
+
 
 # ---------------------------------------------------------------------------
 # TestMimicMjlabClosures
@@ -992,3 +1007,16 @@ def test_rsi_event_accepts_env_ids_none() -> None:
 
     assert seen["root"].tolist() == list(range(_N))
     assert seen["joint"].tolist() == list(range(_N))
+
+
+def test_check_clip_rate_warns_only_on_mismatch() -> None:
+    import warnings
+
+    from myosuite.core.trajectory_io import check_clip_rate
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        check_clip_rate(None, _CTRL_DT)
+        check_clip_rate(1.0 / _CTRL_DT, _CTRL_DT)
+    with pytest.warns(UserWarning, match="control rate"):
+        check_clip_rate(30.0, _CTRL_DT)

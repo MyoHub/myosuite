@@ -447,34 +447,6 @@ def _muscle_tendon_names(mj_model: Any) -> tuple[str, ...]:
     return tuple(names)
 
 
-# ---------------------------------------------------------------------------
-# Time-coercion helpers
-# ---------------------------------------------------------------------------
-
-
-def _mjlab_sim_time_to_float(tim: Any) -> float:
-    """Coerce mjlab ``data.time`` to a Python ``float`` (first env's value).
-
-    Warp-backed fields may be wrapped as ``mjlab.sim.sim_data.TorchArray``;
-    ``isinstance(..., torch.Tensor)`` is false and ``float(tim)`` raises
-    ``TypeError``.
-    """
-    import torch
-
-    if isinstance(tim, (int, float, np.integer, np.floating)):
-        return float(tim)
-    if isinstance(tim, torch.Tensor):
-        t = tim
-    else:
-        try:
-            t = tim.reshape(-1)
-        except (AttributeError, TypeError):
-            t = torch.as_tensor(tim).reshape(-1)
-        if not isinstance(t, torch.Tensor):
-            t = torch.as_tensor(t).reshape(-1)
-    return float(t.reshape(-1)[0].detach().cpu())
-
-
 def _mimic_episode_steps(env: Any) -> Any:
     """Per-env control steps since the last reset, ``(N,)`` int64.
 
@@ -518,21 +490,28 @@ def _sync_mimic_mjlab_targets(
         clip_source.update(step)
         cache["target_torch"] = clip_source.site_targets(step)  # (N, n_tracked, 3)
     else:
-        # --- Random mode: resample once per episode (original behaviour) ---
-        t_now = _mjlab_sim_time_to_float(data.time)
-        last = cache.get("last_sim_time")
-        need = cache.get("target_torch") is None
-        if last is not None and t_now < last - 1e-6:
-            need = True
-        if need:
-            n_env = int(data.qpos.shape[0])
+        # --- Random mode: each env resamples when its own episode restarts ---
+        step = _mimic_episode_steps(env)
+        last = cache.get("last_step")
+        target = cache.get("target_torch")
+        n_env = int(data.qpos.shape[0])
+        if target is None or last is None:
+            reset = torch.ones(n_env, dtype=torch.bool, device=step.device)
+        else:
+            reset = step < last
+        if bool(reset.any()):
             n_sites = int(cache["site_ids"].shape[0])
             device = data.qpos.device
             lo = torch.as_tensor(cache["lo"], device=device, dtype=torch.float32)
             hi = torch.as_tensor(cache["hi"], device=device, dtype=torch.float32)
             u = torch.rand((n_env, n_sites, 3), device=device, dtype=torch.float32)
-            cache["target_torch"] = lo + (hi - lo) * u
-        cache["last_sim_time"] = t_now
+            fresh = lo + (hi - lo) * u
+            cache["target_torch"] = (
+                fresh
+                if target is None
+                else torch.where(reset.to(device)[:, None, None], fresh, target)
+            )
+        cache["last_step"] = step.clone()
 
 
 # ---------------------------------------------------------------------------
@@ -655,7 +634,7 @@ def _resolve_mimic_mjlab_ids(
         tracking=tracking,
         clip=resolved_clip,
         clip_source=clip_source,
-        last_sim_time=None,
+        last_step=None,
         target_torch=None,
     )
     cache = _mimic_mjlab_cache[key]

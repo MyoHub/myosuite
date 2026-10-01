@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -405,8 +406,31 @@ def load_motion_clip(
     )
 
 
+def check_clip_rate(frequency_hz: float | None, ctrl_dt: float, name: str = "clip") -> None:
+    """Warn when a clip's frame rate differs from the control rate.
+
+    Clips play back one frame per control step, so a clip recorded at another
+    rate would run too fast or too slow.
+
+    Args:
+        frequency_hz: Clip frame rate, or ``None`` if the clip does not record it.
+        ctrl_dt: Control timestep in seconds.
+        name: Label used in the warning.
+    """
+    if frequency_hz is None:
+        return
+    if abs(frequency_hz * ctrl_dt - 1.0) > 1e-3:
+        warnings.warn(
+            f"{name} is recorded at {frequency_hz:g} Hz but plays back at the control "
+            f"rate {1.0 / ctrl_dt:g} Hz (one frame per step); playback will be "
+            "time-scaled.",
+            stacklevel=2,
+        )
+
+
 __all__ = [
     "MotionClip",
+    "check_clip_rate",
     "expand_motion_clip_to_model",
     "load_motion_clip",
     "resolve_motion_path",

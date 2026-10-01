@@ -865,7 +865,7 @@ def test_orbax_mjlab_policy_clip_frames_follow_episode_steps() -> None:
         clip_source=ClipTrajectorySource(
             clip=clip, tracked_site_ids=np.arange(1), ctrl_dt=0.01
         ),
-        last_sim_time=None,
+        last_step=None,
         target_torch=None,
     )
     try:

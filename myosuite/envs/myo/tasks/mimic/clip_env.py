@@ -26,6 +26,7 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
+from myosuite.core.trajectory_io import check_clip_rate
 from myosuite.physics.running_stats import RunningMeanStd, normalize, update
 from myosuite.terms.mimic_obs import (
     mimic_lookahead_obs,
@@ -328,6 +329,12 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
             or "site_xpos" not in npz.files
         ):
             raise KeyError("Clip NPZ must contain qpos, qvel, and site_xpos arrays.")
+        if "frequency" in npz.files:
+            check_clip_rate(
+                float(np.asarray(npz["frequency"]).reshape(())),
+                self._ctrl_dt,
+                str(clip_path.name),
+            )
         raw_qpos = npz["qpos"].astype(np.float64)
         raw_qvel = npz["qvel"].astype(np.float64)
         if raw_qpos.ndim != 2:

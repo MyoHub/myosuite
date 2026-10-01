@@ -28,6 +28,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from myosuite.core.trajectory_io import check_clip_rate
+
 if TYPE_CHECKING:
     import torch
 
@@ -85,6 +87,7 @@ class ClipTrajectorySource:
                 "ClipTrajectorySource requires clip.site_xpos; "
                 "the loaded MotionClip does not contain site positions."
             )
+        check_clip_rate(self.clip.frequency_hz, self.ctrl_dt)
 
     # ------------------------------------------------------------------ #
     # Internal helpers
