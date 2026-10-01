@@ -13,7 +13,8 @@ simulator state equal to a clip frame tracks that frame perfectly.
 from __future__ import annotations
 
 import functools
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -149,6 +150,46 @@ def _make_env(
         **cfg_kwargs,
     )
     return ManagerBasedRlEnv(cfg=env_cfg, device="cpu")
+
+
+def _synergy_model(n_muscles: int, n_syn: int = 4) -> Any:
+    """Minimal synergy model with the fields ``SARTorchTransform`` reads."""
+    rng = np.random.default_rng(0)
+    return SimpleNamespace(
+        n_muscles=n_muscles,
+        pca=SimpleNamespace(
+            components_=rng.standard_normal((n_syn, n_muscles)),
+            mean_=rng.random(n_muscles),
+        ),
+        ica=SimpleNamespace(
+            mixing_=rng.standard_normal((n_syn, n_syn)), mean_=rng.random(n_syn)
+        ),
+        scaler=SimpleNamespace(scale_=np.ones(n_syn), min_=np.zeros(n_syn)),
+    )
+
+
+def _registered_cfgs(register: Callable[..., None], **kwargs: Any) -> dict[str, Any]:
+    """Run a registration function and capture ``task_id -> registration kwargs``."""
+    registered: dict[str, Any] = {}
+
+    def _capture(**task: Any) -> None:
+        registered[task["task_id"]] = task
+
+    register(register_mjlab_task=_capture, **kwargs)
+    return registered
+
+
+def _register_full_body_sar(clip: MotionClip | None) -> dict[str, Any]:
+    """Registration kwargs of ``myoMimicFullbody-SAR-v0``."""
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    n_muscles = len(mimic._muscle_actuator_names(_variant("fullbody")[2]))
+    return _registered_cfgs(
+        mimic._register_mimic_sar_tasks,
+        rl_cfg_fn=mimic.default_mimic_clip_on_policy_runner_cfg,
+        sar_model=_synergy_model(n_muscles),
+        clip=clip,
+    )["myoMimicFullbody-SAR-v0"]
 
 
 def _clip_frames(env: Any, clip: MotionClip) -> list[int]:
@@ -289,3 +330,100 @@ def test_clip_frame_follows_cpu_step_counter(
         assert _clip_frames(env, clip) == frames.tolist(), f"step {k}"
         targets = target_fn(env).reshape(env.num_envs, -1, 3).cpu().numpy()
         np.testing.assert_array_equal(targets, clip.site_xpos[frames])
+
+
+# ---------------------------------------------------------------------------
+# SAR tasks
+# ---------------------------------------------------------------------------
+
+
+def _runner_obs_groups(rl_cfg: Any) -> dict[str, list[str]]:
+    return {name: list(groups) for name, groups in rl_cfg.obs_groups.items()}
+
+
+def test_sar_mimic_task_resets_standing_and_has_runner_obs_groups() -> None:
+    """``myoMimicFullbody-SAR-v0`` starts at the keyframe and trains with rsl_rl.
+
+    Its spec strips keyframes and the cfg set no initial state, so the pelvis
+    started at z = 0 with the legs about 1 m through the floor.  It also had
+    only a ``policy`` group, while the runner cfg asks for ``actor``/``critic``.
+    """
+    from mjlab.envs import ManagerBasedRlEnv
+
+    rsl_rl_utils = pytest.importorskip("rsl_rl.utils.utils")
+    task = _register_full_body_sar(clip=None)
+    env_cfg = task["play_env_cfg"]
+    env_cfg.scene.num_envs = 2
+    env = ManagerBasedRlEnv(cfg=env_cfg, device="cpu")
+    try:
+        obs, _ = env.reset()
+        pelvis_z = env.scene[_ENTITY["fullbody"]].data.root_link_pos_w[:, 2]
+        key_z = float(_variant("fullbody")[2].key_qpos[0][2])
+        np.testing.assert_allclose(pelvis_z.cpu().numpy(), key_z, atol=1e-5)
+        rsl_rl_utils.resolve_obs_groups(
+            obs, _runner_obs_groups(task["rl_cfg"]), default_sets=["actor", "critic"]
+        )
+    finally:
+        env.close()
+
+
+def test_sar_mimic_cfg_is_the_mimic_task_in_synergy_space() -> None:
+    """With a clip the SAR cfg equals ``myoMimicFullbody-v0`` but for its action.
+
+    It used to drop RSI, early termination, the DeepMimic reward and its
+    ``1 / ctrl_dt`` weight compensation, and the lookahead observation.
+    """
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    clip = _synthetic_clip("fullbody", n_frames=30)
+    sar = _register_full_body_sar(clip)
+    # The weight register_mimic_mjlab_tasks_with_clip passes by default.
+    muscle = _registered_cfgs(
+        mimic._register_mimic_tasks,
+        rl_cfg_fn=lambda: None,
+        clip=clip,
+        mimic_reward_weight=5.0,
+    )["myoMimicFullbody-v0"]
+    for key in ("env_cfg", "play_env_cfg"):
+        sar_cfg, muscle_cfg = sar[key], muscle[key]
+        assert sar_cfg.scene.num_envs == muscle_cfg.scene.num_envs
+        entity = _ENTITY["fullbody"]
+        assert (
+            sar_cfg.scene.entities[entity].init_state
+            == muscle_cfg.scene.entities[entity].init_state
+        )
+        assert {g: list(c.terms) for g, c in sar_cfg.observations.items()} == {
+            g: list(c.terms) for g, c in muscle_cfg.observations.items()
+        }
+        assert list(sar_cfg.events) == list(muscle_cfg.events) == ["rsi"]
+        assert list(sar_cfg.terminations) == list(muscle_cfg.terminations)
+        assert {
+            n: (t.func.__qualname__, t.weight) for n, t in sar_cfg.rewards.items()
+        } == {n: (t.func.__qualname__, t.weight) for n, t in muscle_cfg.rewards.items()}
+        assert isinstance(
+            sar_cfg.actions["muscles"], mimic.SARMuscleActivationActionCfg
+        )
+
+
+def test_directional_sar_task_has_runner_obs_groups(tmp_path: Any) -> None:
+    """``myoFullBodyWalkSAR-v0`` defines the groups the default runner cfg uses."""
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    pytest.importorskip("sklearn")
+    from myosuite.integrations.musclemimic.sar_extraction import (
+        extract_synergies,
+        save_synergy_model,
+    )
+
+    n_muscles = len(mimic._muscle_actuator_names(_variant("fullbody")[2]))
+    activations = np.random.default_rng(0).random((200, n_muscles))
+    save_synergy_model(extract_synergies(activations, n_synergies=4), tmp_path)
+    task = _registered_cfgs(
+        mimic.register_directional_walk_sar,
+        rl_cfg_fn=mimic.default_mimic_clip_on_policy_runner_cfg,
+        sar_dir=tmp_path,
+    )["myoFullBodyWalkSAR-v0"]
+    groups = _runner_obs_groups(task["rl_cfg"])
+    assert {g for gs in groups.values() for g in gs} <= set(
+        task["env_cfg"].observations
+    )

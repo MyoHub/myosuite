@@ -1276,6 +1276,20 @@ def _mimic_early_termination(
 # ---------------------------------------------------------------------------
 
 
+def _policy_actor_critic_groups(obs_terms: dict[str, Any]) -> dict[str, Any]:
+    """One observation group per name rsl_rl may ask for, all with *obs_terms*.
+
+    mjlab's default runner cfg maps ``actor``/``critic`` to groups of the same
+    name and rsl_rl raises when they are missing; ``policy`` serves play.
+    """
+    from mjlab.managers.observation_manager import ObservationGroupCfg
+
+    return {
+        name: ObservationGroupCfg(terms=obs_terms)
+        for name in ("policy", "actor", "critic")
+    }
+
+
 def _make_mimic_env_cfg(
     *,
     _task_id: str,
@@ -1341,10 +1355,7 @@ def _make_mimic_env_cfg(
     from mjlab.envs import ManagerBasedRlEnvCfg
     from mjlab.envs.mdp import terminations as mdp_terminations
     from mjlab.managers.event_manager import EventTermCfg
-    from mjlab.managers.observation_manager import (
-        ObservationGroupCfg,
-        ObservationTermCfg,
-    )
+    from mjlab.managers.observation_manager import ObservationTermCfg
     from mjlab.managers.reward_manager import RewardTermCfg
     from mjlab.managers.termination_manager import TerminationTermCfg
     from mjlab.scene import SceneCfg
@@ -1405,11 +1416,7 @@ def _make_mimic_env_cfg(
                 func=_mimic_obs_lookahead(entity_name, variant, clip, ctrl_dt)
             )
 
-    observations = {
-        "policy": ObservationGroupCfg(terms=obs_terms),
-        "actor": ObservationGroupCfg(terms=obs_terms),
-        "critic": ObservationGroupCfg(terms=obs_terms),
-    }
+    observations = _policy_actor_critic_groups(obs_terms)
     actions = {
         "muscles": MyoMuscleActivationActionCfg(
             entity_name=entity_name,
@@ -1927,7 +1934,10 @@ def register_mimic_mjlab_tasks_with_sar(
 
     The policy learns to output ``n_synergies`` actions.  The SAR inverse
     transform maps them to full-dimensional muscle activations before they
-    are applied in simulation.
+    are applied in simulation.  Everything else (initial state, observations,
+    RSI, early termination, rewards) is the ``myoMimic*-v0`` task that
+    :func:`register_mimic_mjlab_tasks` (no clip) or
+    :func:`register_mimic_mjlab_tasks_with_clip` registers.
 
     Task IDs registered:
     * ``myoMimicFullbody-SAR-v0``  /  ``myoMuscleMimicFullbody-SAR-v0``
@@ -1972,6 +1982,12 @@ def _register_mimic_sar_tasks(
     from myosuite.integrations.musclemimic.sar_torch_transform import SARTorchTransform
     from ml_collections import config_dict
 
+    from myosuite.envs.myo.backends.mjlab.configs.musclemimic_bimanual_cfg import (
+        MuscleMimicBimanualCfg,
+    )
+    from myosuite.envs.myo.backends.mjlab.configs.musclemimic_fullbody_cfg import (
+        MuscleMimicFullbodyCfg,
+    )
     from myosuite.integrations.musclemimic.bimanual_model import (
         build_mimic_bimanual_spec,
         default_mimic_config,
@@ -1987,6 +2003,10 @@ def _register_mimic_sar_tasks(
                 f"SAR model has {sar_model.n_muscles} muscles but model has {n_muscles}"
             )
         return SARTorchTransform(sar_model.ica, sar_model.pca, sar_model.scaler)
+
+    # Reward weight defaults of the muscle-space entry points:
+    # register_mimic_mjlab_tasks_with_clip (clip) / register_mimic_mjlab_tasks.
+    mimic_reward_weight = 5.0 if clip is not None else 1.0
 
     # --- Bimanual ---
     try:
@@ -2004,8 +2024,7 @@ def _register_mimic_sar_tasks(
                 _strip_spec_keyframes(spec)
                 return spec
 
-            b_ctrl_dt = float(b_cfg.ctrl_dt)
-            b_env = _make_mimic_sar_env_cfg(
+            _b_common = dict(
                 _task_id="myoMimicBimanual-SAR-v0",
                 entity_name="mimic_bimanual_robot",
                 variant="bimanual",
@@ -2014,15 +2033,21 @@ def _register_mimic_sar_tasks(
                 tendon_targets=b_tendons,
                 sar_transform=b_transform,
                 sim_dt=float(b_cfg.sim_dt),
-                ctrl_dt=b_ctrl_dt,
+                ctrl_dt=float(b_cfg.ctrl_dt),
                 max_episode_steps=int(b_cfg.max_episode_steps),
                 clip=clip,
+                mj_model=b_mj,
+                mimic_reward_weight=mimic_reward_weight,
             )
+            b_env = _make_mimic_sar_env_cfg(
+                num_envs=MuscleMimicBimanualCfg.num_envs, **_b_common
+            )
+            b_play_env = _make_mimic_sar_env_cfg(num_envs=1, **_b_common)
             for task_id in ("myoMimicBimanual-SAR-v0", "myoMuscleMimicBimanual-SAR-v0"):
                 register_mjlab_task(
                     task_id=task_id,
                     env_cfg=b_env,
-                    play_env_cfg=b_env,
+                    play_env_cfg=b_play_env,
                     rl_cfg=rl_cfg_fn(),
                     runner_cls=None,
                 )
@@ -2050,8 +2075,9 @@ def _register_mimic_sar_tasks(
                 _strip_spec_keyframes(spec)
                 return spec
 
-            f_ctrl_dt = float(f_cfg.ctrl_dt)
-            f_env = _make_mimic_sar_env_cfg(
+            # The compiled model keeps the keyframe the spec_fn strips, so the
+            # entity's initial state is the standing pose, not pelvis z = 0.
+            _f_common = dict(
                 _task_id="myoMimicFullbody-SAR-v0",
                 entity_name="mimic_fullbody_robot",
                 variant="fullbody",
@@ -2060,15 +2086,21 @@ def _register_mimic_sar_tasks(
                 tendon_targets=f_tendons,
                 sar_transform=f_transform,
                 sim_dt=float(f_cfg.sim_dt),
-                ctrl_dt=f_ctrl_dt,
+                ctrl_dt=float(f_cfg.ctrl_dt),
                 max_episode_steps=int(f_cfg.max_episode_steps),
                 clip=clip,
+                mj_model=f_mj,
+                mimic_reward_weight=mimic_reward_weight,
             )
+            f_env = _make_mimic_sar_env_cfg(
+                num_envs=MuscleMimicFullbodyCfg.num_envs, **_f_common
+            )
+            f_play_env = _make_mimic_sar_env_cfg(num_envs=1, **_f_common)
             for task_id in ("myoMimicFullbody-SAR-v0", "myoMuscleMimicFullbody-SAR-v0"):
                 register_mjlab_task(
                     task_id=task_id,
                     env_cfg=f_env,
-                    play_env_cfg=f_env,
+                    play_env_cfg=f_play_env,
                     rl_cfg=rl_cfg_fn(),
                     runner_cls=None,
                 )
@@ -2081,128 +2113,39 @@ def _register_mimic_sar_tasks(
 
 def _make_mimic_sar_env_cfg(
     *,
-    _task_id: str,
     entity_name: str,
-    variant: str,
-    spec_fn: Callable[[], Any],
     muscle_actuators: tuple[str, ...],
-    tendon_targets: tuple[str, ...],
     sar_transform: Any,
-    sim_dt: float,
-    ctrl_dt: float,
-    max_episode_steps: int,
-    clip: MotionClip | None = None,
+    **mimic_cfg_kwargs: Any,
 ) -> Any:
-    """Build a :class:`~mjlab.envs.ManagerBasedRlEnvCfg` with SAR action space.
+    """Build the :func:`_make_mimic_env_cfg` task with a SAR action space.
 
-    Identical to :func:`_make_mimic_env_cfg` except the ``"muscles"`` action
-    term uses :class:`SARMuscleActivationActionCfg` so the policy operates in
-    synergy space.
+    Scene, initial state, observations, RSI, early termination and rewards all
+    come from :func:`_make_mimic_env_cfg`; only the ``"muscles"`` action term
+    is replaced by :class:`SARMuscleActivationActionCfg`, so the policy acts
+    in synergy space on the same task as ``myoMimic*-v0``.
 
     Args:
-        _task_id: Task ID (informational).
         entity_name: Scene entity name.
-        variant: ``"bimanual"`` or ``"fullbody"``.
-        spec_fn: Callable returning an :class:`mujoco.MjSpec`.
         muscle_actuators: Full-dimensional muscle actuator names.
-        tendon_targets: Tendon names for XmlMuscle actuator config.
         sar_transform: Fitted :class:`~myosuite.integrations.musclemimic.sar_torch_transform.SARTorchTransform`.
-        sim_dt: Physics timestep.
-        ctrl_dt: Control timestep.
-        max_episode_steps: Episode length in control steps.
-        clip: Optional MotionClip for trajectory-mode targets.
+        **mimic_cfg_kwargs: Remaining keyword arguments of
+            :func:`_make_mimic_env_cfg` (model, timing, clip, ...).
 
     Returns:
         Configured :class:`~mjlab.envs.ManagerBasedRlEnvCfg`.
     """
-    from mjlab.actuator import XmlActuatorCfg as _XmlActuatorCfg
-    from mjlab.actuator.actuator import TransmissionType
-    from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
-    from mjlab.envs import ManagerBasedRlEnvCfg
-    from mjlab.envs.mdp import terminations as mdp_terminations
-    from mjlab.managers.observation_manager import (
-        ObservationGroupCfg,
-        ObservationTermCfg,
+    cfg = _make_mimic_env_cfg(
+        entity_name=entity_name,
+        muscle_actuators=muscle_actuators,
+        **mimic_cfg_kwargs,
     )
-    from mjlab.managers.reward_manager import RewardTermCfg
-    from mjlab.managers.termination_manager import TerminationTermCfg
-    from mjlab.scene import SceneCfg
-    from mjlab.sim import MujocoCfg, SimulationCfg
-
-    articulation = EntityArticulationInfoCfg(
-        actuators=(
-            _XmlActuatorCfg(
-                target_names_expr=tendon_targets,
-                transmission_type=TransmissionType.TENDON,
-            ),
-        )
+    cfg.actions["muscles"] = SARMuscleActivationActionCfg(
+        entity_name=entity_name,
+        actuator_names=muscle_actuators,
+        sar_transform=sar_transform,
     )
-    entity_cfg = EntityCfg(spec_fn=spec_fn, articulation=articulation)
-    scene_cfg = SceneCfg(num_envs=1, entities={entity_name: entity_cfg})
-
-    obs_terms: dict[str, Any] = {
-        "qpos": ObservationTermCfg(func=_mimic_obs_qpos(entity_name)),
-        "qvel": ObservationTermCfg(func=_mimic_obs_qvel(entity_name)),
-        "act": ObservationTermCfg(func=_mimic_obs_act(entity_name)),
-        "mimic_site_pos": ObservationTermCfg(
-            func=_mimic_obs_site_pos(entity_name, variant, clip, ctrl_dt)
-        ),
-        "mimic_site_target": ObservationTermCfg(
-            func=_mimic_obs_target(entity_name, variant, clip, ctrl_dt)
-        ),
-        "mimic_site_err": ObservationTermCfg(
-            func=_mimic_obs_err(entity_name, variant, clip, ctrl_dt)
-        ),
-    }
-
-    if clip is not None:
-        if clip.qpos is not None:
-            obs_terms["clip_ref_qpos"] = ObservationTermCfg(
-                func=_mimic_obs_clip_ref_qpos(entity_name, variant, clip, ctrl_dt)
-            )
-        if clip.qvel is not None:
-            obs_terms["clip_ref_qvel"] = ObservationTermCfg(
-                func=_mimic_obs_clip_ref_qvel(entity_name, variant, clip, ctrl_dt)
-            )
-        obs_terms["clip_phase"] = ObservationTermCfg(
-            func=_mimic_obs_clip_phase(entity_name, variant, clip, ctrl_dt)
-        )
-
-    observations = {"policy": ObservationGroupCfg(terms=obs_terms)}
-    actions = {
-        "muscles": SARMuscleActivationActionCfg(
-            entity_name=entity_name,
-            actuator_names=muscle_actuators,
-            sar_transform=sar_transform,
-        ),
-    }
-    terminations = {
-        "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
-    }
-    rewards = {
-        "tracking": RewardTermCfg(
-            func=_mimic_tracking_reward(entity_name, variant, clip, ctrl_dt),
-            weight=1.0,
-        ),
-    }
-
-    decimation = max(1, int(round(ctrl_dt / sim_dt)))
-    episode_length_s = float(max_episode_steps) * ctrl_dt
-
-    return ManagerBasedRlEnvCfg(
-        scene=scene_cfg,
-        decimation=decimation,
-        episode_length_s=episode_length_s,
-        observations=observations,
-        actions=actions,
-        terminations=terminations,
-        rewards=rewards,
-        sim=SimulationCfg(
-            mujoco=MujocoCfg(timestep=sim_dt, ccd_iterations=500),
-            njmax=512,
-            nconmax=256,
-        ),
-    )
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -2336,10 +2279,7 @@ def _make_directional_sar_env_cfg(
     from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
     from mjlab.envs import ManagerBasedRlEnvCfg
     from mjlab.envs.mdp import terminations as mdp_terminations
-    from mjlab.managers.observation_manager import (
-        ObservationGroupCfg,
-        ObservationTermCfg,
-    )
+    from mjlab.managers.observation_manager import ObservationTermCfg
     from mjlab.managers.reward_manager import RewardTermCfg
     from mjlab.managers.termination_manager import TerminationTermCfg
     from mjlab.scene import SceneCfg
@@ -2370,16 +2310,14 @@ def _make_directional_sar_env_cfg(
     )
     scene_cfg = SceneCfg(num_envs=num_envs, entities={entity_name: entity_cfg})
 
-    observations = {
-        "policy": ObservationGroupCfg(
-            terms={
-                "qpos": ObservationTermCfg(func=_dir_obs_qpos_wo_root_xy(entity_name)),
-                "qvel": ObservationTermCfg(func=_mimic_obs_qvel(entity_name)),
-                "act": ObservationTermCfg(func=_mimic_obs_act(entity_name)),
-                "root_vel": ObservationTermCfg(func=_dir_obs_root_vel(entity_name)),
-            },
-        ),
-    }
+    observations = _policy_actor_critic_groups(
+        {
+            "qpos": ObservationTermCfg(func=_dir_obs_qpos_wo_root_xy(entity_name)),
+            "qvel": ObservationTermCfg(func=_mimic_obs_qvel(entity_name)),
+            "act": ObservationTermCfg(func=_mimic_obs_act(entity_name)),
+            "root_vel": ObservationTermCfg(func=_dir_obs_root_vel(entity_name)),
+        }
+    )
 
     actions = {
         "muscles": SARMuscleActivationActionCfg(
