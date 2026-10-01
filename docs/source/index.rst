@@ -32,6 +32,11 @@ interface you know:
   GPU, then replay the policy on the CPU.
 * **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared
   observation, reward and model-building blocks instead of writing an environment class.
+* **Some existing environments changed.** Observations are no longer clipped and are read
+  after a fresh forward step (55 env ids), the ``motorFinger*`` envs have 4x stronger motors,
+  the Random finger-reach tasks now sample only targets the fingertip can reach, and several
+  reset and seed behaviours were corrected. Policies trained with MyoSuite 2.x or earlier
+  snapshots may need retraining; the repository's ``CHANGELOG.md`` lists the changes.
 * **Ready to use.** Default trained policies with evaluation videos (see
   :doc:`baselines`), plus updated tutorials from the first rollout to GPU training and
   MuscleMimic (:doc:`tutorials`). The repository's ``CHANGELOG.md`` lists everything that

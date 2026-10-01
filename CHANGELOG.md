@@ -104,6 +104,12 @@ full commit list.
 * **The `motorFinger*` envs use motors with four times the stock gear** (80/20/20/40/40 instead of
   20/5/5/10/10, a `motor_finger` model recipe shared by the CPU and mjlab envs): policies trained with the
   stock motors stayed at 0% success and now reach 100% on the pose and fixed-reach tasks.
+* **The Random finger-reach tasks sample targets the fingertip can reach.** `myoFingerReachRandom-v0` and
+  `motorFingerReachRandom-v0` drew targets uniformly in a box of which only about 55% lies in the fingertip's
+  workspace (two opposite corners: near the base but high, and far out but low), which capped any policy near
+  55%. `ReachEnvV0(target_sampling="workspace")` (used by these ids and their muscle-condition variants, on CPU
+  and mjlab) now draws fingertip positions over the joint ranges that lie inside the box. Policies trained on
+  the old targets need retraining; the other reach tasks are unchanged.
 * **Joint velocities are observed as `qvel * ctrl_dt` on every backend** (the CPU task envs already
   did): the directional-leg twin and the MJX pose and reach envs observed raw `qvel`. The previous
   directional-leg checkpoints were retrained. `ElbowPoseTask` (tutorial 4.3) now also observes the
