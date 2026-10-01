@@ -348,6 +348,7 @@ class TorsoEnvV0(MyoGymnasiumEnv, EzPickle):
             self.muscle_fatigue.reset(
                 fatigue_reset_vec=self.fatigue_reset_vec,
                 fatigue_reset_random=self.fatigue_reset_random,
+                np_random=self.np_random,
             )
 
         if self.reset_type is None or self.reset_type == "none":

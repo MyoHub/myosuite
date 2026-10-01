@@ -358,6 +358,7 @@ class KeyTurnEnvV0(MyoGymnasiumEnv, EzPickle):
             self.muscle_fatigue.reset(
                 fatigue_reset_vec=self.fatigue_reset_vec,
                 fatigue_reset_random=self.fatigue_reset_random,
+                np_random=self.np_random,
             )
 
         mujoco.mj_resetData(self.model, self.data)

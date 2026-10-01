@@ -18,6 +18,7 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
+from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
@@ -34,7 +35,7 @@ class Task(enum.Enum):
 WHICH_TASK = Task.BAODING_CCW
 
 
-class BaodingEnv(MyoGymnasiumEnv, EzPickle):
+class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Baoding balls manipulation task for the musculoskeletal hand.
 
     The agent must rotate two balls in a circular pattern while keeping
@@ -431,7 +432,28 @@ class BaodingEnv(MyoGymnasiumEnv, EzPickle):
                 **self.obj_size_range
             )
 
+        # The reset obs shows the targets the first step() aims for.
+        self._update_target_sites()
         return {}
+
+    def _update_target_sites(self) -> None:
+        """Place the target sites at the goal angles of ``self.counter``."""
+        if self.which_task in (Task.HOLD, Task.BAODING_CW, Task.BAODING_CCW):
+            desired_angle = self.goal[self.counter].copy()
+            desired_angle[0] += self.ball_1_starting_angle
+            desired_angle[1] += self.ball_2_starting_angle
+            self.model.site_pos[self.target1_sid, 0] = (
+                self.x_radius * np.cos(desired_angle[0]) + self.center_pos[0]
+            )
+            self.model.site_pos[self.target1_sid, 1] = (
+                self.y_radius * np.sin(desired_angle[0]) + self.center_pos[1]
+            )
+            self.model.site_pos[self.target2_sid, 0] = (
+                self.x_radius * np.cos(desired_angle[1]) + self.center_pos[0]
+            )
+            self.model.site_pos[self.target2_sid, 1] = (
+                self.y_radius * np.sin(desired_angle[1]) + self.center_pos[1]
+            )
 
     # ── Gymnasium step / reset ─────────────────────────────────────────────
 
@@ -450,22 +472,7 @@ class BaodingEnv(MyoGymnasiumEnv, EzPickle):
         action = np.clip(action, self.action_space.low, self.action_space.high)
 
         # Update target positions for this step (before physics)
-        if self.which_task in (Task.HOLD, Task.BAODING_CW, Task.BAODING_CCW):
-            desired_angle = self.goal[self.counter].copy()
-            desired_angle[0] += self.ball_1_starting_angle
-            desired_angle[1] += self.ball_2_starting_angle
-            self.model.site_pos[self.target1_sid, 0] = (
-                self.x_radius * np.cos(desired_angle[0]) + self.center_pos[0]
-            )
-            self.model.site_pos[self.target1_sid, 1] = (
-                self.y_radius * np.sin(desired_angle[0]) + self.center_pos[1]
-            )
-            self.model.site_pos[self.target2_sid, 0] = (
-                self.x_radius * np.cos(desired_angle[1]) + self.center_pos[0]
-            )
-            self.model.site_pos[self.target2_sid, 1] = (
-                self.y_radius * np.sin(desired_angle[1]) + self.center_pos[1]
-            )
+        self._update_target_sites()
 
         self._apply_action(action)
         mujoco.mj_step(self.model, self.data, self.frame_skip)
@@ -503,12 +510,7 @@ class BaodingEnv(MyoGymnasiumEnv, EzPickle):
         import gymnasium
 
         gymnasium.Env.reset(self, seed=seed)
-
-        if self.muscle_condition == "fatigue":
-            self.muscle_fatigue.reset(
-                fatigue_reset_vec=self.fatigue_reset_vec,
-                fatigue_reset_random=self.fatigue_reset_random,
-            )
+        self.reset_muscle_condition()
 
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = self._init_qpos

@@ -19,6 +19,7 @@ from myosuite.core.model_builder import ModelBuilder
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.assets._resolve import warn_torso_pip_calibration_divergence
+from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.physics.quat_math import euler2quat, quat2euler
 from myosuite.terms.base_action import sigmoid_muscle_activation
@@ -59,9 +60,6 @@ class GoalKeeper:
         self.goalkeeper_probabilities = probabilities
         self.random_vel_range = random_vel_range
         self.rng = rng
-        self.block_velocity = self.rng.uniform(
-            self.random_vel_range[0], self.random_vel_range[1]
-        )
         self.reset_goalkeeper(rng=rng)
 
     def reset_noise_process(self) -> None:
@@ -131,10 +129,9 @@ class GoalKeeper:
         self.move_goalkeeper(goalkeeper_vel)
 
     def reset_goalkeeper(self, rng=None) -> None:
-        """Reset goalkeeper position and policy."""
+        """Reset goalkeeper position, policy, speed and noise process."""
         if rng is not None:
             self.rng = rng
-            self.reset_noise_process()
         self.goalkeeper_vel = np.zeros(2)
         self.sample_goalkeeper_policy()
         initial_y = self.rng.uniform(self.Y_MIN_BOUND, self.Y_MAX_BOUND)
@@ -143,9 +140,11 @@ class GoalKeeper:
         self.block_velocity = self.rng.uniform(
             self.random_vel_range[0], self.random_vel_range[1]
         )
+        # Scaled by this episode's speed, so built after sampling it.
+        self.reset_noise_process()
 
 
-class SoccerEnv(MyoGymnasiumEnv, EzPickle):
+class SoccerEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Soccer locomotion challenge — native MyoGymnasiumEnv implementation.
 
     The agent must kick a soccer ball into the goal while a goalkeeper tries
@@ -160,6 +159,10 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
         weighted_reward_keys: Dict ``{key: weight}`` for dense reward.
         normalize_act: If ``True``, action space is ``[-1, 1]``.
         muscle_condition: One of ``""``, ``"sarcopenia"``, ``"fatigue"``.
+        fatigue_reset_vec: Fatigued fraction (MF) of each muscle at every
+            reset (``muscle_condition="fatigue"`` only).
+        fatigue_reset_random: If ``True``, draw the fatigue state at each
+            reset from the env's ``np_random``.
         reset_type: One of ``"none"``, ``"init"``, ``"random"``.
         min_agent_spawn_distance: Minimum spawn radius for agent (m).
         random_vel_range: Goalkeeper velocity range.
@@ -281,6 +284,8 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
         weighted_reward_keys: dict[str, float] = DEFAULT_RWD_KEYS_AND_WEIGHTS,
         normalize_act: bool = True,
         muscle_condition: str = "",
+        fatigue_reset_vec: np.ndarray | None = None,
+        fatigue_reset_random: bool = False,
         reset_type: str = "none",
         min_agent_spawn_distance: float = 1.0,
         random_vel_range: tuple = (1.0, 5.0),
@@ -303,6 +308,8 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
             weighted_reward_keys=weighted_reward_keys,
             normalize_act=normalize_act,
             muscle_condition=muscle_condition,
+            fatigue_reset_vec=fatigue_reset_vec,
+            fatigue_reset_random=fatigue_reset_random,
             reset_type=reset_type,
             min_agent_spawn_distance=min_agent_spawn_distance,
             random_vel_range=random_vel_range,
@@ -335,6 +342,8 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
 
         # ── Muscle condition ────────────────────────────────────────────────
         self.muscle_condition = muscle_condition
+        self.fatigue_reset_vec = fatigue_reset_vec
+        self.fatigue_reset_random = fatigue_reset_random
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
         if muscle_condition == "sarcopenia":
             apply_sarcopenia_to_model(self.model, force_scale=0.5)
@@ -352,16 +361,6 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
         mujoco.mj_forward(self.model, self.data)
         self.soccer_ball_id = self.model.body("soccer_ball").id
         self.grf_sensor_names = ["r_foot", "r_toes", "l_foot", "l_toes"]
-
-        # ── Goalkeeper ───────────────────────────────────────────────────────
-        self.goalkeeper = GoalKeeper(
-            mj_model=self.model,
-            mj_data=self.data,
-            rng=self.np_random,
-            probabilities=goalkeeper_probabilities,
-            random_vel_range=random_vel_range,
-        )
-        self.goalkeeper.dt = self._ctrl_dt
 
         # ── Convenience caches ───────────────────────────────────────────────
         self.actuator_names = np.array(
@@ -398,6 +397,16 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
         import gymnasium as _gym
 
         _gym.Env.reset(self, seed=seed)
+
+        # ── Goalkeeper ───────────────────────────────────────────────────────
+        self.goalkeeper = GoalKeeper(
+            mj_model=self.model,
+            mj_data=self.data,
+            rng=self.np_random,
+            probabilities=goalkeeper_probabilities,
+            random_vel_range=random_vel_range,
+        )
+        self.goalkeeper.dt = self._ctrl_dt
 
         # ── Observation space ─────────────────────────────────────────────────
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
@@ -541,6 +550,7 @@ class SoccerEnv(MyoGymnasiumEnv, EzPickle):
         mujoco.mj_forward(self.model, self.data)
 
         self.goalkeeper.reset_goalkeeper(rng=self.np_random)
+        self.reset_muscle_condition()
         mujoco.mj_forward(self.model, self.data)
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)

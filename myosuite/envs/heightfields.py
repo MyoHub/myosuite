@@ -452,7 +452,7 @@ class TrackField(HeightField):
         Computes a rough terrain patch.
         """
         length = int(patch_end - patch_start)
-        fill_data = np.random.uniform(-1, 1, size=(length, int(self.ncol)))
+        fill_data = self.rng.uniform(-1, 1, size=(length, int(self.ncol)))
         scalar = self.rng.uniform(low=0, high=self.rough_difficulties[i])
         fill_data = (fill_data - np.min(fill_data)) / (
             np.max(fill_data) - np.min(fill_data)

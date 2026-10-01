@@ -17,12 +17,13 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
+from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.physics.quat_math import euler2quat, mat2euler
 
 
-class RelocateEnv(MyoGymnasiumEnv, EzPickle):
+class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Relocate object to target pose; migrated from BaseV0 for parity."""
 
     DEFAULT_OBS_KEYS = [
@@ -108,6 +109,7 @@ class RelocateEnv(MyoGymnasiumEnv, EzPickle):
         self.goal_sid = self.model.site("target_o").id
         self.success_indicator_sid = self.model.site("target_ball").id
         self.goal_bid = self.model.body("target").id
+        self.goal_mocap_id = self.model.body_mocapid[self.goal_bid]
         self.target_xyz_range = target_xyz_range
         self.target_rxryrz_range = target_rxryrz_range
         self.obj_geom_range = obj_geom_range
@@ -269,6 +271,10 @@ class RelocateEnv(MyoGymnasiumEnv, EzPickle):
         self.model.body_quat[self.goal_bid] = euler2quat(
             np_random.uniform(**self.target_rxryrz_range)
         )
+        # The target is a mocap body: its simulated pose is data.mocap_*,
+        # which mj_resetData has already copied from the model.
+        self.data.mocap_pos[self.goal_mocap_id] = self.model.body_pos[self.goal_bid]
+        self.data.mocap_quat[self.goal_mocap_id] = self.model.body_quat[self.goal_bid]
         if self.obj_xyz_range is not None:
             self.model.body_pos[self.object_bid] = np_random.uniform(
                 **self.obj_xyz_range
@@ -339,11 +345,7 @@ class RelocateEnv(MyoGymnasiumEnv, EzPickle):
         import gymnasium as _gym
 
         _gym.Env.reset(self, seed=seed)
-        if self.muscle_condition == "fatigue":
-            self.muscle_fatigue.reset(
-                fatigue_reset_vec=self.fatigue_reset_vec,
-                fatigue_reset_random=self.fatigue_reset_random,
-            )
+        self.reset_muscle_condition()
         mujoco.mj_resetData(self.model, self.data)
         self._task_state = self.reset_task(self.np_random)
         if self.qpos_noise_range is not None:
