@@ -196,30 +196,66 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.ignore_first_scale = bool(obj_scale_change)
 
     def _center_box_mesh(self) -> None:
-        self.obj_size0 = self.model.geom_size[self.obj_gid].copy()
-        # MuJoCo 3.x exposes mesh address fields as length-1 ndarrays.
-        _vertadr = _as_mj_int(self.model.mesh(self.obj_mid).vertadr)
-        _vertnum = _as_mj_int(self.model.mesh(0).vertnum)
-        self.obj_vert_addr = np.arange(_vertadr, _vertadr + _vertnum)
-        q = np.asarray(self.model.geom(self.obj_gid - 1).quat, dtype=np.float64).copy()
-        r = R.from_quat([q[1], q[2], q[3], q[0]])
-        self.model.mesh_vert[self.obj_vert_addr] = r.apply(
-            self.model.mesh_vert[self.obj_vert_addr]
+        """Express the visual box mesh in the collision box's frame.
+
+        Scaling the mesh vertices per axis then scales the visual box like the
+        collision box. The world placement of the mesh does not change.
+        """
+        m = self.model
+        vis = self.obj_gid - 1
+        self.obj_size0 = m.geom_size[self.obj_gid].copy()
+        mid = self.obj_mid
+        vertadr, normaladr = int(m.mesh_vertadr[mid]), int(m.mesh_normaladr[mid])
+        self.obj_vert_addr = np.arange(vertadr, vertadr + int(m.mesh_vertnum[mid]))
+        self._obj_normal_addr = np.arange(
+            normaladr, normaladr + int(m.mesh_normalnum[mid])
         )
-        self.model.mesh_normal[self.obj_vert_addr] = r.apply(
-            self.model.mesh_normal[self.obj_vert_addr]
+        bvhadr = int(m.mesh_bvhadr[mid])
+        self._obj_mesh_bvh = slice(bvhadr, bvhadr + int(m.mesh_bvhnum[mid]))
+
+        q = m.geom_quat[vis]
+        rot = R.from_quat([q[1], q[2], q[3], q[0]]).as_matrix()
+        # The collision box has the body's orientation (identity geom quat).
+        shift = m.geom_pos[vis] - m.geom_pos[self.obj_gid]
+        m.mesh_vert[self.obj_vert_addr] = (
+            m.mesh_vert[self.obj_vert_addr] @ rot.T + shift
         )
-        self.model.geom(self.obj_gid - 1).quat[:] = np.array(
-            [1.0, 0.0, 0.0, 0.0], dtype=np.float64
+        m.mesh_normal[self._obj_normal_addr] = (
+            m.mesh_normal[self._obj_normal_addr] @ rot.T
         )
-        geom_pos_delta = np.asarray(
-            self.model.geom(self.obj_gid - 1).pos, dtype=np.float64
-        ) - np.asarray(self.model.geom(self.obj_gid).pos, dtype=np.float64)
-        self.model.mesh_vert[self.obj_vert_addr] += geom_pos_delta[None, :]
-        self.model.geom(self.obj_gid - 1).pos[:] = np.asarray(
-            self.model.geom(self.obj_gid).pos, dtype=np.float64
+        # mj_ray walks the mesh BVH: give its nodes boxes that hold the moved
+        # vertices (the box of each rotated node box, so ray hits stay exact).
+        aabb = m.bvh_aabb[self._obj_mesh_bvh]
+        m.bvh_aabb[self._obj_mesh_bvh] = np.hstack(
+            [aabb[:, :3] @ rot.T + shift, aabb[:, 3:] @ np.abs(rot).T]
         )
-        self.mesh_vert0 = self.model.mesh_vert[self.obj_vert_addr].copy()
+        m.geom_quat[vis] = [1.0, 0.0, 0.0, 0.0]
+        m.geom_pos[vis] = m.geom_pos[self.obj_gid]
+        self.mesh_vert0 = m.mesh_vert[self.obj_vert_addr].copy()
+        self._mesh_normal0 = m.mesh_normal[self._obj_normal_addr].copy()
+        self._mesh_bvh0 = m.bvh_aabb[self._obj_mesh_bvh].copy()
+        self._refresh_obj_mesh_bounds()
+
+    def _scale_obj_mesh(self, scales: np.ndarray) -> None:
+        """Scale the visual box mesh per axis, like the collision box size."""
+        m = self.model
+        m.mesh_vert[self.obj_vert_addr] = self.mesh_vert0 * scales
+        # Normals transform with the inverse scale.
+        normals = self._mesh_normal0 / scales
+        norm = np.linalg.norm(normals, axis=1, keepdims=True)
+        m.mesh_normal[self._obj_normal_addr] = normals / np.where(norm > 0, norm, 1.0)
+        m.bvh_aabb[self._obj_mesh_bvh] = self._mesh_bvh0 * np.tile(scales, 2)
+        self._refresh_obj_mesh_bounds()
+        self._upload_mesh_to_renderers(self.obj_mid)
+
+    def _refresh_obj_mesh_bounds(self) -> None:
+        """Bounding box and sphere of the visual mesh geom, as the compiler sets them."""
+        verts = self.model.mesh_vert[self.obj_vert_addr]
+        lo, hi = verts.min(axis=0), verts.max(axis=0)
+        center, half = (lo + hi) / 2, (hi - lo) / 2
+        vis = self.obj_gid - 1
+        self.model.geom_aabb[vis] = np.concatenate([center, half])
+        self.model.geom_rbound[vis] = np.linalg.norm(np.abs(center) + half)
 
     def _obj_label_to_obs(self, touching_body: set) -> np.ndarray:
         obs_vec = np.array([0, 0, 0, 0, 0])
@@ -418,10 +454,12 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         # _get_done reads the previous step's rwd_dict; a stale `solved`
         # would end the new episode on its first step.
         self.rwd_dict = None
+        obj_edited = False
         if self.obj_mass_range:
             self.model.body_mass[self.obj_bid] = self.np_random.uniform(
                 **self.obj_mass_range
             )
+            obj_edited = True
         if self.obj_friction_range:
             self.model.geom_friction[self.obj_gid] = self.np_random.uniform(
                 **self.obj_friction_range
@@ -429,9 +467,12 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         if self.obj_scale_range and not self.ignore_first_scale:
             obj_scales = self.np_random.uniform(**self.obj_scale_range) + 1
             self.model.geom(self.obj_gid).size = self.obj_size0 * obj_scales
-            refresh_geom_derived_fields(self.model, self._mj_spec, (self.obj_bid,))
+            self._scale_obj_mesh(obj_scales)
+            obj_edited = True
         else:
             self.ignore_first_scale = False
+        if obj_edited:  # new mass or size: inertia, bounds, mj_setConst constants
+            refresh_geom_derived_fields(self.model, self._mj_spec, (self.obj_bid,))
         self.reset_muscle_condition()
         if self.model.nkey > 2:
             self._init_qpos = self.model.key_qpos[2].copy()

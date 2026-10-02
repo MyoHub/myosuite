@@ -592,6 +592,32 @@ class MyoGymnasiumEnv(gym.Env):
             self._mujoco_renderer.close()
             self._mujoco_renderer = None
 
+    def _upload_mesh_to_renderers(self, mesh_id: int) -> None:
+        """Show an in-place edit of ``model.mesh_vert`` in the live renderers.
+
+        Render contexts copy the meshes when they are created, so a mesh edited
+        afterwards must be uploaded again: to every viewer of the Gymnasium
+        renderer and to the legacy passive window. The legacy offscreen
+        ``mujoco.Renderer`` has no upload API and is rebuilt on its next use.
+
+        Args:
+            mesh_id: Id of the edited mesh.
+        """
+        import mujoco
+
+        renderer = getattr(self, "_mujoco_renderer", None)
+        for viewer in getattr(renderer, "_viewers", {}).values():
+            viewer.make_context_current()
+            mujoco.mjr_uploadMesh(self.model, viewer.con, mesh_id)
+        compat = getattr(self, "_mj_renderer_compat", None)
+        if compat is None:
+            return
+        if compat._window is not None:
+            compat._window.update_mesh(mesh_id)
+        if compat._renderer is not None:
+            compat._renderer.close()
+            compat._renderer = None
+
     # ------------------------------------------------------------------
     # MujocoEnv-compatible utility helpers
     # ------------------------------------------------------------------
