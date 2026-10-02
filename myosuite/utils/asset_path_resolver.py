@@ -27,6 +27,7 @@ furniture_sim), then an installed pip package. ``myo_sim`` always comes from pip
 
 from __future__ import annotations
 
+import hashlib
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
@@ -243,12 +244,93 @@ _PATCHED_INCLUDE_CACHE: dict[Path, Path] = {}
 _PATCHED_BUNDLED_CACHE: dict[Path, Path] = {}
 
 
-def _write_patched_xml(tree: ET.ElementTree, source: Path, prefix: str) -> Path:
-    patch_dir = Path(tempfile.gettempdir()) / "myosuite_patched_xml"
-    patch_dir.mkdir(parents=True, exist_ok=True)
-    out_path = patch_dir / f"{prefix}_{source.stem}_{abs(hash(source))}{source.suffix}"
-    tree.write(out_path, encoding="unicode")
-    return out_path
+def patched_xml_dir() -> Path:
+    """Directory for patched model XML copies, one per user (POSIX ``/tmp`` is shared)."""
+    user = f"-{os.getuid()}" if hasattr(os, "getuid") else ""
+    return Path(tempfile.gettempdir()) / f"myosuite_patched_xml{user}"
+
+
+def _holds(path: Path, data: bytes) -> bool:
+    """Whether *path* is a readable file containing exactly *data*."""
+    try:
+        return path.read_bytes() == data
+    except OSError:
+        return False
+
+
+def _write_once(directory: Path, stem: str, source: Path, data: bytes) -> Path:
+    """Write *data* to ``<directory>/<stem>_<digest>.xml`` unless that file holds it.
+
+    The digest covers *source* and *data*, so repeated calls and other processes
+    share one file. The write is atomic (temp file, then rename), so a reader
+    never sees a partial file.
+    """
+    digest = hashlib.sha256(f"{source}\0".encode() + data).hexdigest()[:16]
+    path = directory / f"{stem}_{digest}.xml"
+    if _holds(path, data):
+        return path
+    directory.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=directory, prefix=f"{path.stem}.", suffix=".xml"
+    )
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        try:
+            tmp.replace(path)
+        except OSError:
+            # Windows cannot replace a file another process holds open; that
+            # process wrote the same bytes, so its file is used.
+            if not _holds(path, data):
+                raise
+    finally:
+        tmp.unlink(missing_ok=True)
+    return path
+
+
+def write_patched_xml(tree: ET.ElementTree, source: Path, prefix: str) -> Path:
+    """Write a patched copy of *source* to :func:`patched_xml_dir` and return its path.
+
+    Args:
+        tree: The patched XML; its paths must not depend on where the copy lives.
+        source: The XML file the copy was made from.
+        prefix: File name prefix naming the kind of patch.
+
+    Returns:
+        ``<prefix>_<source stem>_<digest>.xml``, reused while its content is unchanged.
+    """
+    data = ET.tostring(tree.getroot(), encoding="unicode").encode("utf-8")
+    return _write_once(patched_xml_dir(), f"{prefix}_{source.stem}", source, data)
+
+
+def _anchor_to_model_dir(root: ET.Element, model_dir: Path) -> None:
+    """Make the paths MuJoCo resolves from a main model's directory absolute.
+
+    MuJoCo resolves include files and the compiler's asset directories from the
+    main model's directory, and looks asset files up in ``<model dir>/<meshdir or
+    texturedir>`` before the including file's directory. Absolute includes and
+    asset directories (explicitly the model directory when unset) keep those
+    lookups unchanged for a copy of the model written to another directory.
+    """
+    declared: set[str] = set()
+    for compiler in root.iter("compiler"):
+        for attr in ("assetdir", "meshdir", "texturedir"):
+            value = compiler.get(attr)
+            if value is None:
+                continue
+            declared.add(attr)
+            if not Path(value).is_absolute():
+                compiler.set(attr, str((model_dir / value).resolve()))
+    for include in root.iter("include"):
+        value = include.get("file")
+        if value and not Path(value).is_absolute():
+            include.set("file", str((model_dir / value).resolve()))
+    unset = set() if "assetdir" in declared else {"meshdir", "texturedir"} - declared
+    if unset:
+        root.insert(
+            0, ET.Element("compiler", {a: str(model_dir) for a in sorted(unset)})
+        )
 
 
 def _patch_bundled_include(source: Path, old_meshdir: Path | None = None) -> Path:
@@ -301,7 +383,7 @@ def _patch_bundled_include(source: Path, old_meshdir: Path | None = None) -> Pat
         _PATCHED_BUNDLED_CACHE[source] = source
         return source
 
-    out_path = _write_patched_xml(tree, source, "bundled")
+    out_path = write_patched_xml(tree, source, "bundled")
     _PATCHED_BUNDLED_CACHE[source] = out_path
     return out_path
 
@@ -411,7 +493,7 @@ def _absolutize_include(source: Path) -> Path:
         _PATCHED_INCLUDE_CACHE[source] = source
         return source
 
-    out_path = _write_patched_xml(tree, source, source.stem)
+    out_path = write_patched_xml(tree, source, source.stem)
     _PATCHED_INCLUDE_CACHE[source] = out_path
     return out_path
 
@@ -457,9 +539,15 @@ def resolve_model_xml_path(model_path: str | Path) -> Path:
 
     Parses the XML, rewrites any include/file/meshdir/texturedir attributes that
     reference other sim-asset packages (myo_sim, YCB_sim, furniture_sim, etc.)
-    via legacy submodule-relative or short package-relative paths, saves a
-    patched temp file next to the source, and returns its path. Returns the
-    original path unchanged when no rewrites are needed.
+    via legacy submodule-relative or short package-relative paths, and returns
+    the path of the patched copy. Returns the original path unchanged when no
+    rewrites are needed.
+
+    The copy, ``.myosuite_resolved_<stem>_<digest>.xml``, is written next to the
+    source so that its remaining relative paths still resolve, and is reused
+    while its content is unchanged. When the source directory is not writable
+    (e.g. a read-only install) it goes to :func:`patched_xml_dir` instead, with
+    the paths MuJoCo resolves from the model's directory made absolute.
     """
     model_path = Path(model_path).resolve()
     try:
@@ -524,19 +612,10 @@ def resolve_model_xml_path(model_path: str | Path) -> Path:
     if not changed:
         return model_path
 
-    fd, out_str = tempfile.mkstemp(
-        suffix=".xml",
-        prefix=".myosuite_resolved_",
-        dir=str(model_path.parent),
-    )
+    data = ET.tostring(tree.getroot(), encoding="unicode").encode("utf-8")
+    stem = f".myosuite_resolved_{model_path.stem}"
     try:
-        os.close(fd)
-        out_path = Path(out_str)
-        tree.write(out_path, encoding="unicode")
-    except Exception:
-        try:
-            os.unlink(out_str)
-        except OSError:
-            pass
-        raise
-    return out_path
+        return _write_once(model_path.parent, stem, model_path, data)
+    except OSError:  # read-only model directory, e.g. a system-wide install
+        _anchor_to_model_dir(tree.getroot(), model_path.parent)
+        return write_patched_xml(tree, model_path, "resolved")
