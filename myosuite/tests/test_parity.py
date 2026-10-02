@@ -6,8 +6,9 @@
 """Numerical parity tests against frozen baselines.
 
 For each env that has a corresponding .pkl in parity_baselines/, replays the
-stored action sequence and asserts that observations, rewards, and termination
-flags are bit-identical (within float32 tolerance).
+stored action sequence and asserts that the observations and rewards match
+within atol 1e-6 (or a per-env relaxed tolerance, each with a measured reason)
+and that the terminated and truncated flags are identical.
 
 Baseline format: list of dicts with keys:
     action, obs, rwd, terminated, truncated, info, episode_np_state
@@ -40,23 +41,32 @@ pytestmark = pytest.mark.tier1
 BASELINE_DIR = Path(__file__).parent / "parity_baselines"
 
 # Per-env obs atol overrides of the strict 1e-6 default; each needs a reason.
+# Every replay is deterministic on one machine (bit-identical in-process and
+# across processes); the margins cover drift between platforms and machines.
 RELAXED_OBS_ATOL: dict[str, float] = {
-    # Cross-platform MuJoCo minor drift (arm64 vs x86_64) for these tasks.
+    # Cross-platform MuJoCo minor drift (arm64 vs x86_64) for these tasks. The
+    # finger baselines hold one episode only (see the generator's
+    # N_STEPS_OVERRIDES): the second episode of the seed-42 action stream is
+    # ill-conditioned (a 1e-12 qpos offset at reset grows past 3e-3 by step 158),
+    # while the first episode of the previous, macOS-made baseline replayed
+    # within 1.3e-3 obs / 3.2e-4 reward on x86-64 Windows.
     "myoFingerPoseFixed-v0": 2e-3,
     "myoFingerPoseRandom-v0": 2e-3,
     "myoHandPoseRandom-v0": 5e-4,
-    # Replays bit-exactly across processes on x86-64 with MuJoCo 3.11.0 and
-    # drifts by up to 6e-5 with 3.8.1; the margin covers the arm64 drift
-    # recorded for this env (reward below).
+    # Bit-exact across processes on one machine; on another x86-64 machine the
+    # obs jump by up to 7.5e-4 at isolated steps (the first at step 40), and a
+    # 1e-14 qpos offset at reset already causes a 4.4e-4 jump. The margin also
+    # covers the arm64 drift recorded for this env (reward below).
     "myoHandReorient8-v0": 1e-2,
-    # Contact-solver floating-point nondeterminism: obs match to 6+ significant
-    # figures for the first ~25 steps, then diverge sharply at a single step
-    # (observed max |dobs| 4.22e-5) - the classic signature of contact-order
-    # drift, not a logic regression. myoLegRoughTerrainWalk-v0 shows the same
-    # pattern but the divergence keeps growing over the full episode (up to
-    # 1.36e-4 by step 115 on uneven-terrain contact events), so it is treated
-    # as nondeterministic below rather than given an ever-growing atol.
+    # Contact-solver floating-point drift: obs match to 6+ significant figures
+    # for the first ~25 steps, then jump at a single step (observed max |dobs|
+    # 4.22e-5), the signature of contact-order drift, not a logic regression.
     "myoLegWalk-v0": 1e-4,
+    # Same leg model on uneven terrain; cross-platform drift of up to 1.36e-4 by
+    # step 115 was recorded before #444 regenerated the baseline. The current
+    # replay is well-conditioned (a 1e-9 qpos offset at reset moves the obs by
+    # at most 2.4e-7), so 1e-3 covers the recorded drift with margin.
+    "myoLegRoughTerrainWalk-v0": 1e-3,
     # Contact-rich; the baseline was captured on Windows. On Linux/x86_64 the
     # obs drift by up to 1.5e-5 from step ~30 (contact-order drift), reward by 7e-9.
     "myoChallengeRelocateP1-v0": 1e-4,
@@ -65,22 +75,12 @@ RELAXED_RWD_ATOL: dict[str, float] = {
     "myoFingerPoseFixed-v0": 5e-4,
     "myoFingerPoseRandom-v0": 5e-4,
     "myoHandPoseRandom-v0": 5e-4,
-    # Step-50 reward drift ~1e-3 on arm64 vs baseline capture (obs atol already 1e-2).
+    # Step-50 reward drift ~1e-3 on arm64 vs baseline capture.
     "myoHandReorient8-v0": 1e-2,
     # Reward is a function of the obs positions relaxed above; give it the same
-    # contact-order-drift margin.
+    # contact-order-drift margin (per-step reward changes have median 0.3-0.4).
     "myoLegWalk-v0": 1e-2,
-}
-# Finger-pose environments show occasional branch divergence in long baseline
-# replays on Linux/x86 CI runners (goal resets in nested wrappers can drift by
-# one branch after ~100 steps). Keep parity coverage on deterministic envs.
-NONDETERMINISTIC_PARITY_ENVS: set[str] = {
-    "myoFingerPoseFixed-v0",
-    "myoFingerPoseRandom-v0",
-    # Rough-terrain foot contact ordering: obs match to 6+ significant figures
-    # early on, then diverge further with episode length (unbounded, unlike
-    # myoLegWalk-v0's single-step jump covered by RELAXED_OBS_ATOL above).
-    "myoLegRoughTerrainWalk-v0",
+    "myoLegRoughTerrainWalk-v0": 1e-2,
 }
 
 
@@ -92,22 +92,13 @@ def _get_baseline_env_ids() -> list[str]:
 @pytest.mark.parametrize("env_id", _get_baseline_env_ids())
 def test_parity(env_id: str) -> None:
     """Replay frozen action sequence and assert numerical parity."""
-    if env_id in NONDETERMINISTIC_PARITY_ENVS:
-        pytest.skip(
-            f"{env_id} baseline replay is non-deterministic on CI runners; "
-            "tracked separately from strict parity gates."
-        )
-
     pkl_path = BASELINE_DIR / f"{env_id}.pkl"
 
     with open(pkl_path, "rb") as fh:
         records: list[dict] = pickle.load(fh)
 
-    try:
-        env = gym.make(env_id)
-    except Exception as exc:
-        pytest.skip(f"Cannot instantiate {env_id}: {exc}")
-
+    # A construction failure is a regression, so it fails rather than skips.
+    env = gym.make(env_id)
     try:
         env.reset()
         current_episode_np_state = None
@@ -136,5 +127,8 @@ def test_parity(env_id: str) -> None:
             assert (
                 terminated == rec["terminated"]
             ), f"{env_id} step {i}: terminated mismatch"
+            assert (
+                truncated == rec["truncated"]
+            ), f"{env_id} step {i}: truncated mismatch"
     finally:
         env.close()
