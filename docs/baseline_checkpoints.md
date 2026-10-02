@@ -24,10 +24,9 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 **Not all published policies converged to the standard 95% threshold**, and training for more
 iterations may well reach higher success rates: `myoHandPoseRandom-v0` (36%, plateaued),
 `myoArmReachRandom-v0` (67%), `myoFingerReachRandom-v0` (73%), `motorFingerReachRandom-v0` (94%),
-`myoLegDirectionalRandom-v0` (54%) and `myoLegHillyTerrainWalk-v0` (27%). `myoLegDirectionalRandom-v0`
-succeeds with exploration noise (99% sampled success) but only about half of the time with the mean
-action; the checkpoint is the best one of the run. The row marked _pending_ (`myoLegStandRandom-v0`) is
-being retrained.
+`myoLegDirectionalRandom-v0` (54%), `myoLegStandRandom-v0` (34%) and `myoLegHillyTerrainWalk-v0`
+(27%). `myoLegDirectionalRandom-v0` succeeds with exploration noise (99% sampled success) but only about half of the time with the mean
+action; the checkpoint is the best one of the run.
 
 `myoFingerReachRandom-v0` and `motorFingerReachRandom-v0` used to sample their targets uniformly in a box
 of which only about 55% lies within the fingertip's workspace, which capped any policy near that. They now
@@ -45,7 +44,7 @@ were trained with. Two changes since the first set of checkpoints affect them:
 - Observations are no longer clipped to +-10 and every derived quantity (muscle force, sensors, `cvel`)
   is refreshed after each step (walk, stand and reach twins, 55 CPU env ids). The walk, terrain and
   reach checkpoints above were re-evaluated after this change; their success rates are the numbers in
-  the table. `myoLegStandRandom-v0` dropped from 35.9% to 23.4% and is being retrained.
+  the table. `myoLegStandRandom-v0` dropped from 35.9% to 23.4% with the old checkpoint and was retrained (34.1%).
 
 Re-evaluate a checkpoint after any change to an env's observations with
 `python scripts/eval_mjlab_policy.py <env_id> --backend mjlab`; train it again if its success rate drops
@@ -96,7 +95,7 @@ available yet to evaluate.
 | myoLegHillyTerrainWalk-v0    | `model_4999.pt`    | 26.6%                         |
 | myoLegRoughTerrainWalk-v0    | `model_3715.pt`    | 89.1%                         |
 | myoLegStairTerrainWalk-v0    | -                  | -                             |
-| myoLegStandRandom-v0         | _pending_          | _pending_                     |
+| myoLegStandRandom-v0         | `model_3500.pt`    | 34.1%                         |
 | myoLegWalk-v0                | `model_1355.pt`    | 100.0%                        |
 | myoTorsoExoPoseFixed-v0      | `model_188.pt`   | 100.0%                        |
 | myoTorsoPoseFixed-v0         | `model_103.pt`   | 100.0%                        |
