@@ -193,6 +193,9 @@ def _table_tennis_spec_fn() -> mujoco.MjSpec:
 def _free_body_spec(body_name: str) -> mujoco.MjSpec:
     """Spec holding one free body of the full spec, with its velocimeter."""
     full = _table_tennis_full_spec()
+    # The attached body is compiled with the compiler options of its source spec;
+    # its boundinertia (1e-4) would raise the 7.2e-7 inertia of the ball.
+    full.compiler.boundinertia = 0.0
     # ``full.body(name)`` returns None for this composed/attached spec
     # (name lookup isn't populated pre-compile for attached subtrees) —
     # iterate instead.

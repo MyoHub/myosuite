@@ -117,3 +117,17 @@ def test_paddle_target_orientation_is_the_keyframe_orientation() -> None:
         assert min(
             np.linalg.norm(target - keyframe), np.linalg.norm(target + keyframe)
         ) == pytest.approx(0.0, abs=1e-3)
+
+
+def test_ball_and_paddle_inertia_match_the_cpu_model() -> None:
+    """The free-body specs keep the CPU model's mass and inertia (no 1e-4 clamp)."""
+    import numpy as np  # noqa: PLC0415
+
+    ref = tt_mjlab._reference_model()
+    for name, spec_fn in (
+        ("pingpong", tt_mjlab._pingpong_spec_fn),
+        ("paddle", tt_mjlab._paddle_spec_fn),
+    ):
+        body = spec_fn().compile().body(name)
+        np.testing.assert_allclose(body.mass, ref.body(name).mass, rtol=1e-6)
+        np.testing.assert_allclose(body.inertia, ref.body(name).inertia, rtol=1e-6)

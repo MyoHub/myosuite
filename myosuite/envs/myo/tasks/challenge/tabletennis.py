@@ -349,6 +349,8 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.model.body_mass[self.id_info.paddle_bid] = self.np_random.uniform(
                 *self.paddle_mass_range
             )
+            # Derived constants (subtree mass, inverse weights), as mjlab's dr.body_mass.
+            mujoco.mj_setConst(self.model, self.data)
         if self.ball_friction_range:
             self.model.geom_friction[self.id_info.ball_gid] = self.np_random.uniform(
                 **self.ball_friction_range
