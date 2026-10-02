@@ -3,6 +3,7 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
+import jax
 import jax.numpy as jp
 import jax.random as jrandom
 import mujoco
@@ -13,6 +14,68 @@ import numpy as np
 # Constants for floating-point precision
 _FLOAT_EPS = jp.finfo(jp.float32).eps
 _EPS4 = _FLOAT_EPS * 4.0
+
+
+def cumulative_fatigue_step(
+    MA: jax.Array,
+    MR: jax.Array,
+    MF: jax.Array,
+    TL: jax.Array,
+    *,
+    F: jax.Array,
+    R: jax.Array,
+    r: jax.Array,
+    dt: jax.Array,
+    tauact: jax.Array,
+    taudeact: jax.Array,
+) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Advance the 3CC-r compartments by one step (pure and JIT-compatible).
+
+    All three deltas are computed from the old state, so ``MA + MR + MF``
+    stays 1. Matches ``core.muscle_conditions.CumulativeFatigue.compute_act``.
+
+    Args:
+        MA: Active fraction, shape ``(na,)``.
+        MR: Resting fraction, shape ``(na,)``.
+        MF: Fatigued fraction, shape ``(na,)``.
+        TL: Target load (commanded excitation), shape ``(na,)``.
+        F: Fatigue coefficient.
+        R: Recovery coefficient.
+        r: Recovery multiplier applied while resting (``MA >= TL``).
+        dt: Step length in seconds.
+        tauact: Muscle activation time constants, shape ``(na,)``.
+        taudeact: Muscle deactivation time constants, shape ``(na,)``.
+
+    Returns:
+        Updated ``(MA, MR, MF)``.
+    """
+    # Effective time constants (MuJoCo Hill-type dynamics).
+    LD = 1.0 / (tauact * (0.5 + 1.5 * MA))
+    LR = (0.5 + 1.5 * MA) / taudeact
+    # Integrate the first-order approach to TL exactly over dt: an explicit
+    # Euler step overshoots TL once L * dt > 1 (LD = 200 /s at MA = 0 vs
+    # 10-25 ms control steps), driving MA above the command.
+    LD = -jp.expm1(-LD * dt) / dt
+    LR = -jp.expm1(-LR * dt) / dt
+
+    # Transfer rate C(t) between MR and MA.
+    C = jp.zeros_like(MA)
+    C = jp.where((MA < TL) & (MR > (TL - MA)), LD * (TL - MA), C)
+    C = jp.where((MA < TL) & (MR <= (TL - MA)), LD * MR, C)
+    C = jp.where(MA >= TL, LR * (TL - MA), C)
+
+    # Faster recovery while resting.
+    rR = jp.where(MA >= TL, r * R, R)
+
+    # Clip C(t) so that every compartment stays in [0, 1].
+    C_min = jp.maximum(-MA / dt + F * MA, (MR - 1) / dt + rR * MF)
+    C_max = jp.minimum((1 - MA) / dt + F * MA, MR / dt + rR * MF)
+    C = jp.clip(C, C_min, C_max)
+
+    dMA = (C - F * MA) * dt
+    dMR = (-C + rR * MF) * dt
+    dMF = (F * MA - rR * MF) * dt
+    return MA + dMA, MR + dMR, MF + dMF
 
 
 class CumulativeFatigue:
@@ -114,54 +177,18 @@ class CumulativeFatigue:
         """
         # Set target load
         self.TL = jp.array(act, dtype=jp.float32)
-
-        # Calculate effective time constants (MuJoCo Hill-type dynamics)
-        LD = 1.0 / (self.tauact * (0.5 + 1.5 * self.MA))
-        LR = (0.5 + 1.5 * self.MA) / self.taudeact
-        # Integrate the first-order approach to TL exactly over dt: an
-        # explicit Euler step overshoots TL once L * dt > 1 (LD = 200 /s at
-        # MA = 0 vs 10-25 ms control steps), driving MA above the command.
-        # Matches CumulativeFatigue.compute_act / TorchFatigueState.step.
-        LD = -jp.expm1(-LD * self.dt) / self.dt
-        LR = -jp.expm1(-LR * self.dt) / self.dt
-
-        # Calculate C(t) - transfer rate between MR and MA
-        C = jp.zeros_like(self.MA)
-
-        # Case 1: MA < TL and MR > (TL - MA)
-        mask1 = (self.MA < self.TL) & (self.MR > (self.TL - self.MA))
-        C = jp.where(mask1, LD * (self.TL - self.MA), C)
-
-        # Case 2: MA < TL and MR <= (TL - MA)
-        mask2 = (self.MA < self.TL) & (self.MR <= (self.TL - self.MA))
-        C = jp.where(mask2, LD * self.MR, C)
-
-        # Case 3: MA >= TL
-        mask3 = self.MA >= self.TL
-        C = jp.where(mask3, LR * (self.TL - self.MA), C)
-
-        # Calculate recovery rate
-        rR = jp.where(self.MA >= self.TL, self.r * self.R, self.R)
-
-        # Clip C(t) to ensure states remain between 0 and 1
-        C_min = jp.maximum(
-            -self.MA / self.dt + self.F * self.MA,
-            (self.MR - 1) / self.dt + rR * self.MF,
+        self.MA, self.MR, self.MF = cumulative_fatigue_step(
+            self.MA,
+            self.MR,
+            self.MF,
+            self.TL,
+            F=self.F,
+            R=self.R,
+            r=self.r,
+            dt=self.dt,
+            tauact=self.tauact,
+            taudeact=self.taudeact,
         )
-        C_max = jp.minimum(
-            (1 - self.MA) / self.dt + self.F * self.MA, self.MR / self.dt + rR * self.MF
-        )
-        C = jp.clip(C, C_min, C_max)
-
-        # Update states
-        dMA = (C - self.F * self.MA) * self.dt
-        dMR = (-C + rR * self.MF) * self.dt
-        dMF = (self.F * self.MA - rR * self.MF) * self.dt
-
-        self.MA = self.MA + dMA
-        self.MR = self.MR + dMR
-        self.MF = self.MF + dMF
-
         return self.MA, self.MR, self.MF
 
     # @jax.jit

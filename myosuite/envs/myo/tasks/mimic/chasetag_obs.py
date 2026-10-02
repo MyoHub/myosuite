@@ -7,11 +7,11 @@ empirically better-performing alternative that reuses the directional
 policy's own heading channel instead.
 
 **Not the same contract as** :class:`~myosuite.integrations.musclemimic.bc_directional_collector`
-/ ``MuscleMimicFullbodyDirectionalEnv``'s pure-locomotion obs. This module
-exists for a **future** chase-tag BC data-collection/fine-tuning pass and is
-not wired into any live training loop by this change — it's a post-hoc
-adapter callable from wrapper/collector code around the new full-body
-scripted-opponent env or FBVs, not a change to either env's own obs contract.
+/ ``MuscleMimicFullbodyDirectionalEnv``'s pure-locomotion obs. The 537-dim
+layout is the observation of ``myoChallengeChaseTagFBP2-v0`` on both backends:
+the CPU ``ChaseTagEnv`` builds it with :func:`chasetag_obs_blocks` (obs keys
+:data:`CHASETAG_OBS_KEYS`) and the mjlab twin registers one observation term
+per block, in the same order.
 
 The design is strictly additive: the existing 528-dim ``_directional_obs``
 block (``qpos_local(82) + qvel_local(82) + act(354) + root_vel_body(2) +
@@ -68,6 +68,18 @@ from myosuite.terms.opponent_relative_obs import relative_pose_obs
 _NO_HEADING_COMMAND_THETA = 0.0
 
 CHASETAG_OBS_DIM = 537
+
+#: Blocks of :func:`chasetag_obs` in layout order (the mjlab obs term names).
+CHASETAG_OBS_KEYS = (
+    "qpos_local",
+    "qvel_local",
+    "act",
+    "root_vel_body",
+    "heading_cmd",
+    "orientation",
+    "opponent_relative",
+    "role",
+)
 
 
 def chasetag_heading_directional_obs(
@@ -131,21 +143,52 @@ def chasetag_obs(
         ``heading_theta``), followed by the 7-dim opponent-relative block and
         the 2-dim role one-hot.
     """
-    directional_block = _directional_obs(model, data, _NO_HEADING_COMMAND_THETA)
-
-    self_pos = data.qpos[:3].astype(np.float32)
-    self_vel = data.qvel[:3].astype(np.float32)
-    opponent_block = relative_pose_obs(self_pos, self_vel, opponent_pos, opponent_vel)
-
-    role_block = np.asarray(role_onehot, dtype=np.float32)
-
-    obs = np.concatenate([directional_block, opponent_block, role_block]).astype(
-        np.float32
-    )
+    blocks = chasetag_obs_blocks(model, data, opponent_pos, opponent_vel, role_onehot)
+    obs = np.concatenate(list(blocks.values())).astype(np.float32)
     assert obs.shape == (
         CHASETAG_OBS_DIM,
     ), f"chasetag_obs produced shape {obs.shape}, expected ({CHASETAG_OBS_DIM},)"
     return obs
 
 
-__all__ = ["chasetag_obs", "CHASETAG_OBS_DIM"]
+def chasetag_obs_blocks(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    opponent_pos: np.ndarray,
+    opponent_vel: np.ndarray,
+    role_onehot: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """:func:`chasetag_obs` as named blocks, keyed and ordered by :data:`CHASETAG_OBS_KEYS`.
+
+    Args:
+        model: Compiled full-body MuJoCo model.
+        data: Current ``MjData`` state.
+        opponent_pos: Opponent world position, shape ``(3,)``.
+        opponent_vel: Opponent linear velocity, shape ``(3,)``.
+        role_onehot: Chaser/runner one-hot, shape ``(2,)``.
+
+    Returns:
+        Float32 blocks: the six ``_directional_obs`` blocks (fixed heading
+        ``[1, 0]``), the 7-dim opponent-relative block and the 2-dim role.
+    """
+    directional = _directional_obs(model, data, _NO_HEADING_COMMAND_THETA)
+    sizes = (model.nq - 7, model.nv - 6, model.na, 2, 2, 6)
+    blocks = dict(
+        zip(CHASETAG_OBS_KEYS[:6], np.split(directional, np.cumsum(sizes)[:-1]))
+    )
+
+    self_pos = data.qpos[:3].astype(np.float32)
+    self_vel = data.qvel[:3].astype(np.float32)
+    blocks["opponent_relative"] = relative_pose_obs(
+        self_pos, self_vel, opponent_pos, opponent_vel
+    )
+    blocks["role"] = np.asarray(role_onehot, dtype=np.float32)
+    return blocks
+
+
+__all__ = [
+    "chasetag_obs",
+    "chasetag_obs_blocks",
+    "CHASETAG_OBS_DIM",
+    "CHASETAG_OBS_KEYS",
+]

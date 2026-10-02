@@ -15,35 +15,49 @@ for a single idempotent entry point (optional clip via ``MYOSUITE_MIMIC_CLIP`` /
 
 from __future__ import annotations
 
+import functools
 import logging
+import math
 import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import mujoco
+import torch
 from mjlab.actuator import XmlActuatorCfg as _XmlWrappedActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
+from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.envs import ManagerBasedRlEnvCfg
-from mjlab.envs.mdp import events as mdp_events
 from mjlab.envs.mdp import terminations as mdp_terminations
+from mjlab.managers.event_manager import EventTermCfg
+from mjlab.managers.manager_base import ManagerTermBase
+from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
+from mjlab.managers.reward_manager import RewardTermCfg
+from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.rl import (
     RslRlModelCfg,
     RslRlOnPolicyRunnerCfg,
     RslRlPpoAlgorithmCfg,
 )
-from mjlab.sim import MujocoCfg, SimulationCfg
+from mjlab.scene import SceneCfg
+from mjlab.sim import SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 
 from myosuite.core.config import TaskConfig
 from myosuite.envs.myo.assets._resolve import resolve_elbow_xml as _resolve_elbow_xml
 from myosuite.utils.asset_path_resolver import resolve_model_xml_path
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
 from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
     MyoMuscleActivationActionCfg,
     mjlab_env_cfg_from_task_config,
 )
 from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+    _init_state_from_model,
+    _muscle_actuator_names,
+    _muscle_tendon_names,
     default_mimic_clip_on_policy_runner_cfg,
 )
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
@@ -51,7 +65,9 @@ from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
-    import torch
+    from mjlab.envs import ManagerBasedRlEnv
+
+    from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import CpuTaskSpec
 
 
 # Resolve model paths — pip package first, submodule fallback.
@@ -185,7 +201,6 @@ def _make_elbow_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         actions=actions,
         num_envs=1,
         decimation=10,
-        sim_cfg=SimulationCfg(mujoco=MujocoCfg(timestep=0.002)),
     )
 
 
@@ -232,486 +247,412 @@ def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
 
 
 # ---------------------------------------------------------------------------
-# ChaseTag full-body vs. scripted-opponent (GPU match for myoChallengeChaseTagFBP2-v0)
+# ChaseTag full-body vs. scripted opponent (mjlab half of myoChallengeChaseTagFBP2-v0)
 # ---------------------------------------------------------------------------
-# Reuses the full-body + mocap-opponent MjSpec (build_fullbody_chasetag_spec)
-# as a single mjlab Entity spanning both the agent's kinematic tree and the
-# scripted "opponent" mocap body — mirroring how the CPU ChaseTagEnv treats
-# both as one MjModel/MjData. Obs order matches
-# myosuite/envs/myo/tasks/mimic/chasetag_obs.py::chasetag_obs's 537-dim
-# additive composition exactly (qpos_local(82) + qvel_local(82) + act(354) +
-# root_vel_body(2) + heading_cmd(2, fixed [1,0] — no external heading command
-# in chase-tag) + orientation(6) + opponent_relative(7) + role(2)) so the
-# pretrained bc_directional_v2 checkpoint's first 528 input columns warm-start
-# meaningfully via ActorCritic.load_expanded.
+# The CPU registration (tasks/challenge/__init__.py) is the source of truth for
+# the model, control step, horizon, reward weights and opponent parameters. The
+# terms reproduce ChaseTagEnv(task_choice="CHASE", terrain="FLAT") and its
+# 537-dim chasetag_obs layout, one observation term per CHASETAG_OBS_KEYS block.
+# Agent and mocap "opponent" share one MjSpec, hence one entity, as on the CPU.
 
+_CHASETAG_ENV_ID = "myoChallengeChaseTagFBP2-v0"
 _CHASETAG_ENTITY_NAME = "chasetag_agent"
-# Matches ChaseTagEnv._get_fallen_condition's FLAT-terrain pelvis-height check.
+# ChaseTagEnv: FLAT-terrain fall height and the CHASE out-of-bounds limit.
 _CHASETAG_FALL_HEIGHT = 0.5
-# Matches ChaseTagEnv.__init__'s win_distance / chase_vel_range defaults.
-_CHASETAG_WIN_DISTANCE = 0.5
-_CHASETAG_CHASE_VEL_RANGE = (1.0, 1.0)
-_CHASETAG_MIN_SPAWN_DISTANCE = 2.0
-_CHASETAG_ARENA_BOUND = 5.5  # matches ChallengeOpponent.move_opponent's clip range
-# ChallengeOpponent.reset_opponent: player_task="CHASE" -> sample_opponent_policy()
-# picks among these three (opponent_probabilities=(0.1, 0.45, 0.45) default) --
-# "chase_player" is a DIFFERENT opponent policy, only ever selected for
-# player_task="EVADE" (where the opponent hunts the agent and the agent's job
-# is to evade). FBP2 is CHASE-only, so its opponent must be one of these three,
-# never chase_player -- confirmed as a real bug in an earlier version of this
-# file, which ported chase_player unconditionally (see git history).
-_CHASETAG_OPPONENT_PROBABILITIES = (
-    0.1,
-    0.45,
-    0.45,
-)  # static_stationary, stationary, random
-_CHASETAG_RANDOM_VEL_RANGE = (-2.0, 2.0)  # ChallengeOpponent's default random_vel_range
-_CHASETAG_STATIC_STATIONARY_POSE = (
-    0.0,
-    -5.0,
-    0.0,
-)  # ChallengeOpponent.reset_opponent's fixed spot
+_CHASETAG_AGENT_BOUND = 6.5
+# ChallengeOpponent: arena clip, static_stationary spot and the random policy's
+# velocity process ColoredNoiseProcess(beta=2, size=(2, 2000), scale=10).
+_CHASETAG_ARENA_BOUND = 5.5
+_CHASETAG_STATIC_STATIONARY_POSE = (0.0, -5.0, 0.0)
+_CHASETAG_NOISE_BETA = 2.0
+_CHASETAG_NOISE_STEPS = 2000
+_CHASETAG_NOISE_SCALE = 10.0
+# Fixed rejection rounds for the minimum spawn distance (CPU: unbounded loop). A
+# draw is rejected with probability <= pi * 2**2 / 10**2 < 0.13, so 16 rounds
+# leave fewer than 1e-14 of the resets unresolved.
+_CHASETAG_SPAWN_ROUNDS = 16
 
 
-def _chasetag_spec_fn():
-    """Return the full-body + mocap-opponent ``MjSpec`` (no source keyframes)."""
-    from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (  # noqa: PLC0415
-        build_fullbody_chasetag_spec,
+def _chasetag_cpu_task() -> CpuTaskSpec:
+    """The CPU registration of ``myoChallengeChaseTagFBP2-v0``."""
+    from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference  # noqa: PLC0415
+
+    return cpu_reference.cpu_task_spec(_CHASETAG_ENV_ID)
+
+
+@functools.cache
+def _chasetag_cpu_model() -> mujoco.MjModel:
+    """The compiled CPU model (physics options, keyframe, muscle names)."""
+    return _chasetag_cpu_task().kwargs["model_spec_fn"]().compile()
+
+
+def _chasetag_spec_fn() -> mujoco.MjSpec:
+    """The CPU ``MjSpec``, terrain hidden as ``ChaseTagEnv`` does on flat ground."""
+    from myosuite.envs.myo.backends.mjlab.tasks.leg.stand_env_cfg import (  # noqa: PLC0415
+        hide_terrain,
     )
 
-    return build_fullbody_chasetag_spec()
+    spec = _chasetag_cpu_task().kwargs["model_spec_fn"]()
+    hide_terrain(spec)
+    return spec
 
 
-def _chasetag_muscle_and_tendon_names() -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Return (muscle_actuator_names, tendon_target_names) for the full-body model."""
-    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (  # noqa: PLC0415
-        _muscle_actuator_names,
-        _muscle_tendon_names,
-    )
+def _chasetag_root(env: ManagerBasedRlEnv) -> tuple[torch.Tensor, torch.Tensor]:
+    """CPU-layout root ``qpos[:7]`` / ``qvel[:6]`` of the agent, (N, 7) / (N, 6).
 
-    mj_model = _chasetag_spec_fn().compile()
-    return _muscle_actuator_names(mj_model), _muscle_tendon_names(mj_model)
-
-
-def _chasetag_init_state():
-    """Standing ``InitialStateCfg`` for the full-body chase-tag agent.
-
-    Reuses the same keyframe-extraction helper the full-body Mimic mjlab
-    tasks use (``_init_state_from_model``) — the full-body model ships no
-    source keyframe, so this returns ``EntityCfg.InitialStateCfg()`` (mjlab's
-    own zero default) when ``nkey == 0``, matching Mimic full-body's own
-    fallback behavior for this exact host model.
+    Read from ``qpos`` / ``qvel``: mjlab's ``root_link_*`` API derives from
+    ``xpos`` / ``cvel``, which lag one substep until ``forward()`` (terminations
+    and rewards run before it). The CPU env reads the pelvis ``xpos`` after
+    ``mj_kinematics``; the pelvis sits at the free-joint origin, so that is
+    ``qpos[:3]``.
     """
-    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (  # noqa: PLC0415
-        _init_state_from_model,
-    )
-
-    mj_model = _chasetag_spec_fn().compile()
-    return _init_state_from_model(mj_model)
-
-
-# ── Obs terms: byte-identical 528-dim directional prefix (torch, batched) ──
+    index = env.scene[_CHASETAG_ENTITY_NAME].indexing
+    qpos = env.sim.data.qpos[:, index.free_joint_q_adr.long()]
+    qvel = env.sim.data.qvel[:, index.free_joint_v_adr.long()]
+    pos = qpos[:, :3] - env.scene.env_origins
+    return torch.cat([pos, qpos[:, 3:]], dim=1), qvel
 
 
-def _chasetag_obs_qpos_local(env):
-    """``qpos[7:]`` — matches chasetag_obs's ``qpos_local`` block. Shape (N, nq-7)."""
-    return env.scene[_CHASETAG_ENTITY_NAME].data.data.qpos[:, 7:]
+# ── Observation terms: the chasetag_obs blocks, in CHASETAG_OBS_KEYS order ──
 
 
-def _chasetag_obs_qvel_local(env):
-    """``qvel[6:]`` — matches chasetag_obs's ``qvel_local`` block. Shape (N, nv-6)."""
-    return env.scene[_CHASETAG_ENTITY_NAME].data.data.qvel[:, 6:]
+def _chasetag_obs_qpos_local(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """``qpos[7:]``. Shape (N, nq - 7)."""
+    return env.scene[_CHASETAG_ENTITY_NAME].data.joint_pos
 
 
-def _chasetag_obs_act(env):
-    """Muscle activation state. Shape (N, 354)."""
+def _chasetag_obs_qvel_local(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """``qvel[6:]``. Shape (N, nv - 6)."""
+    return env.scene[_CHASETAG_ENTITY_NAME].data.joint_vel
+
+
+def _chasetag_obs_act(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """Muscle activation state. Shape (N, na)."""
+    # accepted: no entity.data API for muscle activation — entity.data.data.act
     return env.scene[_CHASETAG_ENTITY_NAME].data.data.act
 
 
-def _chasetag_yaw(env):
-    """Pelvis yaw from the free-joint quaternion. Shape (N,)."""
-    import torch  # noqa: PLC0415
-
-    qpos = env.scene[_CHASETAG_ENTITY_NAME].data.data.qpos
-    w, x, y, z = qpos[:, 3], qpos[:, 4], qpos[:, 5], qpos[:, 6]
+def _chasetag_yaw(quat: torch.Tensor) -> torch.Tensor:
+    """Yaw of ``wxyz`` quaternions, as ``_pelvis_yaw_from_qpos``. Shape (N,)."""
+    w, x, y, z = quat.unbind(dim=1)
     return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
 
 
-def _chasetag_obs_root_vel_body(env):
-    """Root planar velocity rotated into the pelvis frame. Shape (N, 2).
-
-    Matches ``_pelvis_yaw_from_qpos`` + the ``root_vel_body`` rotation in
-    ``bc_directional_collector._directional_obs``.
-    """
-    import torch  # noqa: PLC0415
-
-    qvel = env.scene[_CHASETAG_ENTITY_NAME].data.data.qvel
-    yaw = _chasetag_yaw(env)
+def _chasetag_rotate_by_neg_yaw(xy: torch.Tensor, yaw: torch.Tensor) -> torch.Tensor:
+    """Rotate planar vectors ``(N, 2)`` by ``-yaw``, as ``_directional_obs``."""
     c, s = torch.cos(-yaw), torch.sin(-yaw)
-    vx, vy = qvel[:, 0], qvel[:, 1]
-    return torch.stack([c * vx - s * vy, s * vx + c * vy], dim=1)
+    x, y = xy.unbind(dim=1)
+    return torch.stack([c * x - s * y, s * x + c * y], dim=1)
 
 
-def _chasetag_obs_heading_cmd(env):
-    """Fixed heading command ``[1, 0]`` (chase-tag has no external heading). Shape (N, 2)."""
-    import torch  # noqa: PLC0415
+def _chasetag_obs_root_vel_body(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """Root planar velocity in the pelvis yaw frame. Shape (N, 2)."""
+    qpos, qvel = _chasetag_root(env)
+    return _chasetag_rotate_by_neg_yaw(qvel[:, :2], _chasetag_yaw(qpos[:, 3:7]))
 
-    qpos = env.scene[_CHASETAG_ENTITY_NAME].data.data.qpos
-    n = qpos.shape[0]
-    out = torch.zeros(n, 2, dtype=torch.float32, device=qpos.device)
+
+def _chasetag_obs_heading_cmd(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """Fixed heading command ``[1, 0]`` (no heading command in chase-tag). (N, 2)."""
+    out = torch.zeros(env.num_envs, 2, device=env.device)
     out[:, 0] = 1.0
     return out
 
 
-def _chasetag_obs_orientation(env):
-    """``[roll, pitch, wx_b, wy_b, wz_w, vz]`` — matches ``_directional_obs``'s
-    ``orientation`` block. Shape (N, 6)."""
-    import torch  # noqa: PLC0415
-
-    data = env.scene[_CHASETAG_ENTITY_NAME].data.data
-    qpos, qvel = data.qpos, data.qvel
-    w, x, y, z = qpos[:, 3], qpos[:, 4], qpos[:, 5], qpos[:, 6]
+def _chasetag_obs_orientation(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """``[roll, pitch, wx_b, wy_b, wz, vz]`` of ``_directional_obs``. Shape (N, 6)."""
+    qpos, qvel = _chasetag_root(env)
+    w, x, y, z = qpos[:, 3:7].unbind(dim=1)
     roll = torch.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
     pitch = torch.asin(torch.clamp(2.0 * (w * y - z * x), -1.0, 1.0))
-    yaw = _chasetag_yaw(env)
-    c, s = torch.cos(-yaw), torch.sin(-yaw)
-    wx_w, wy_w, wz_w, vz = qvel[:, 3], qvel[:, 4], qvel[:, 5], qvel[:, 2]
-    wx_b = c * wx_w - s * wy_w
-    wy_b = s * wx_w + c * wy_w
-    return torch.stack([roll, pitch, wx_b, wy_b, wz_w, vz], dim=1)
-
-
-# ── Opponent-relative obs + scripted-opponent (CHASE-only) motion state ────
-
-
-def _chasetag_opponent_state(env):
-    """Lazily create / return the per-env scripted-opponent state buffers.
-
-    Mirrors ``_directional_cmd_buffer``'s lazy-buffer pattern. Holds the
-    mocap "opponent" body's control-space pose ``[x, y, theta]`` (N, 3), its
-    ``[lin_vel, rot_vel]`` control pair (N, 2) — the same pair
-    ``ChallengeOpponent.move_opponent`` stores as ``opponent_vel`` and that
-    ``ChaseTagEnv`` feeds into ``relative_pose_obs`` as a 3-D "velocity" — and
-    each env's sampled constant chase speed (N,).
-    """
-    import torch  # noqa: PLC0415
-
-    data = env.scene[_CHASETAG_ENTITY_NAME].data.data
-    n = data.qpos.shape[0]
-    state = getattr(env, "_chasetag_opponent", None)
-    if state is None or state["pose"].shape[0] != n:
-        device = data.qpos.device
-        state = {
-            "pose": torch.zeros(n, 3, dtype=torch.float32, device=device),
-            "vel": torch.zeros(n, 2, dtype=torch.float32, device=device),
-            "chase_speed": torch.ones(n, dtype=torch.float32, device=device),
-            # 0 = static_stationary, 1 = stationary, 2 = random -- sampled
-            # per-episode at reset, matching ChallengeOpponent.sample_opponent_policy.
-            "policy": torch.ones(n, dtype=torch.long, device=device),
-        }
-        env._chasetag_opponent = state  # noqa: SLF001
-    return state
-
-
-def _chasetag_write_mocap_pose(env, pose: torch.Tensor) -> None:
-    """Write ``[x, y, theta]`` (N, 3) into the scene's mocap_pos/mocap_quat.
-
-    The "opponent" mocap body is grafted onto the *same* MjSpec as the
-    full-body agent (single composite entity, see
-    ``build_fullbody_chasetag_spec``), not a separate mjlab mocap Entity —
-    so there is no ``Entity.write_mocap_pose_to_sim`` target (that API only
-    applies when an entity's own root body is the mocap body, see
-    ``mjlab.entity.Entity.is_mocap``). Writing ``data.data.mocap_pos`` /
-    ``mocap_quat`` directly is therefore a documented, justified exception to
-    the "never write wp_data directly" rule (alongside the already-accepted
-    ``data.data.act`` reads elsewhere in this file) — there is exactly one
-    mocap body in the whole scene (mocap index 0).
-    """
-    import torch  # noqa: PLC0415
-
-    data = env.scene[_CHASETAG_ENTITY_NAME].data.data
-    theta = pose[:, 2]
-    half = theta * 0.5
-    data.mocap_pos[:, 0, 0] = pose[:, 0]
-    data.mocap_pos[:, 0, 1] = pose[:, 1]
-    data.mocap_pos[:, 0, 2] = 0.0
-    data.mocap_quat[:, 0, 0] = torch.cos(half)
-    data.mocap_quat[:, 0, 1] = 0.0
-    data.mocap_quat[:, 0, 2] = 0.0
-    data.mocap_quat[:, 0, 3] = torch.sin(half)
-
-
-def _chasetag_reset_opponent(env, env_ids=None, **_):
-    """Reset event: place the opponent >= min_spawn_distance from the agent.
-
-    Vectorized port of ``ChallengeOpponent.reset_opponent`` for
-    ``task_choice="CHASE"`` only (this pass's scope, per the plan). Samples
-    each env's opponent policy (static_stationary / stationary / random,
-    matching ``sample_opponent_policy``'s probabilities) and, for
-    static_stationary, teleports to the fixed spot the CPU env also uses.
-    Uses a bounded number of vectorized resample rounds (not a per-env
-    Python loop) to satisfy the minimum-spawn-distance constraint.
-    """
-    import math  # noqa: PLC0415
-
-    import torch  # noqa: PLC0415
-
-    from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (  # noqa: PLC0415
-        normalize_mjlab_env_ids,
+    ang_b = _chasetag_rotate_by_neg_yaw(qvel[:, 3:5], _chasetag_yaw(qpos[:, 3:7]))
+    return torch.cat(
+        [roll[:, None], pitch[:, None], ang_b, qvel[:, 5:6], qvel[:, 2:3]], dim=1
     )
 
-    state = _chasetag_opponent_state(env)
-    idx = normalize_mjlab_env_ids(env, env_ids)
-    if idx.numel() == 0:
-        return
-    data = env.scene[_CHASETAG_ENTITY_NAME].data.data
-    device = data.qpos.device
-    agent_xy = data.qpos[idx, :2]
 
-    pose = torch.empty(idx.numel(), 3, dtype=torch.float32, device=device)
-    pose[:, 0].uniform_(-5.0, 5.0)
-    pose[:, 1].uniform_(-5.0, 5.0)
-    pose[:, 2].uniform_(-2.0 * math.pi, 2.0 * math.pi)
-    for _attempt in range(8):  # bounded vectorized resample, no per-env loop
-        dist = torch.linalg.norm(pose[:, :2] - agent_xy, dim=1)
-        bad = dist < _CHASETAG_MIN_SPAWN_DISTANCE
-        if not bool(bad.any()):
-            break
-        n_bad = int(bad.sum())
-        pose[bad, 0] = torch.empty(n_bad, device=device).uniform_(-5.0, 5.0)
-        pose[bad, 1] = torch.empty(n_bad, device=device).uniform_(-5.0, 5.0)
+# ── Scripted CHASE opponent ──────────────────────────────────────────────────
 
-    # Sample opponent policy per env: 0=static_stationary, 1=stationary,
-    # 2=random, matching sample_opponent_policy's probability thresholds.
-    r = torch.rand(idx.numel(), device=device)
-    p0, p1, _p2 = _CHASETAG_OPPONENT_PROBABILITIES
-    policy = torch.full((idx.numel(),), 2, dtype=torch.long, device=device)
-    policy[r < p0] = 0
-    policy[(r >= p0) & (r < p0 + p1)] = 1
-    state["policy"][idx] = policy
 
-    # static_stationary overrides the spawn pose to a fixed spot (matches
-    # ChallengeOpponent.reset_opponent: `if self.opponent_policy ==
-    # "static_stationary": pose[:] = [0, -5, 0]`).
-    static_mask = policy == 0
-    if bool(static_mask.any()):
-        fixed = torch.tensor(
-            _CHASETAG_STATIC_STATIONARY_POSE, dtype=torch.float32, device=device
+def _powerlaw_psd_gaussian(
+    exponent: float,
+    shape: tuple[int, ...],
+    device: str | torch.device,
+    normals: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Torch port of ``pink.colorednoise.powerlaw_psd_gaussian`` (``fmin=0``).
+
+    Unit-variance Gaussian ``(1/f)**exponent`` noise along the last axis
+    (Timmer & Koenig 1995), generated on *device*: pink and colorednoise are
+    numpy-only. ``test_chasetag_fbp2_parity`` checks it against pink for the
+    same normal draws.
+
+    Args:
+        exponent: Power-law exponent (2: Brownian noise).
+        shape: Output shape; the last axis is time.
+        device: Torch device.
+        normals: Standard normals of shape ``(2, *shape[:-1], shape[-1] // 2 + 1)``
+            (real and imaginary parts) to use instead of fresh draws.
+
+    Returns:
+        Float32 noise of shape *shape*.
+    """
+    samples = shape[-1]
+    freqs = torch.fft.rfftfreq(samples, dtype=torch.float64, device=device)
+    freqs[0] = 1.0 / samples  # pink's low-frequency cutoff 1 / samples
+    s_scale = freqs ** (-exponent / 2.0)
+    w = s_scale[1:].clone()
+    w[-1] *= (1 + samples % 2) / 2.0
+    sigma = 2.0 * torch.sqrt(torch.sum(w**2)) / samples
+    if normals is None:
+        normals = torch.randn(
+            2, *shape[:-1], freqs.numel(), dtype=torch.float64, device=device
         )
-        pose[static_mask] = fixed
+    s_real = normals[0].to(torch.float64) * s_scale
+    s_imag = normals[1].to(torch.float64) * s_scale
+    if samples % 2 == 0:  # real Nyquist bin
+        s_imag[..., -1] = 0.0
+        s_real[..., -1] *= math.sqrt(2.0)
+    s_imag[..., 0] = 0.0  # real DC bin
+    s_real[..., 0] *= math.sqrt(2.0)
+    noise = torch.fft.irfft(torch.complex(s_real, s_imag), n=samples, dim=-1)
+    return (noise / sigma).float()
 
-    state["pose"][idx] = pose
-    state["vel"][idx] = 0.0
-    state["chase_speed"][idx] = torch.empty(idx.numel(), device=device).uniform_(
-        *_CHASETAG_CHASE_VEL_RANGE
-    )
-    _chasetag_write_mocap_pose(env, state["pose"])
 
+class _ChaseTagOpponent(ManagerTermBase):
+    """Vectorized ``ChallengeOpponent`` for ``player_task="CHASE"``.
 
-def _chasetag_step_opponent(env, dt: float | None = None, **_):
-    """Step event (mode="step"): vectorized CHASE-task opponent motion.
-
-    Vectorized port of ``ChallengeOpponent.update_opponent_state`` +
-    ``move_opponent`` for the three policies ``sample_opponent_policy``
-    actually selects under ``player_task="CHASE"`` (static_stationary /
-    stationary / random -- see ``_CHASETAG_OPPONENT_PROBABILITIES``). Each
-    env's opponent stays put (stationary/static_stationary) or wanders with
-    a random per-step velocity clipped to ``_CHASETAG_RANDOM_VEL_RANGE``
-    (an i.i.d.-per-step approximation of the CPU env's colored-noise
-    ``random_movement``, not bit-identical but directionally correct: an
-    opponent that wanders rather than pursues).
-
-    NOTE: an earlier version of this function ported
-    ``ChallengeOpponent.chase_player`` instead -- the opponent *hunting the
-    agent*, which is only ever selected for ``player_task="EVADE"``, never
-    "CHASE". That was a real, confirmed bug: it trained fbp2_ppo_v3 against
-    a fundamentally wrong opponent behavior (the reward function assumes
-    the agent should close in on a passive target, while the opponent was
-    simultaneously closing in on the agent) -- a self-contradictory task,
-    not the intended one.
+    The ``reset_opponent`` reset event; owns the per-env opponent state. The
+    action term's ``pre_physics_fn`` advances it before the physics step, as
+    ``ChaseTagEnv.step`` does, so terminations, rewards and observations of a
+    step all see the moved opponent. ``policy`` 0 / 1 / 2 = static_stationary /
+    stationary / random (the CHASE choices of ``sample_opponent_policy``).
     """
-    import torch  # noqa: PLC0415
 
-    state = _chasetag_opponent_state(env)
-    ctrl_dt = dt if dt is not None else (env.physics_dt * env.cfg.decimation)
+    def __init__(self, cfg: EventTermCfg, env: ManagerBasedRlEnv) -> None:
+        super().__init__(env)
+        n, device = env.num_envs, env.device
+        self._vel_range = tuple(float(v) for v in cfg.params["random_vel_range"])
+        self._static_pose = torch.tensor(
+            _CHASETAG_STATIC_STATIONARY_POSE, device=device
+        )
+        self.pose = torch.zeros(n, 3, device=device)  # [x, y, theta]
+        self.vel = torch.zeros(n, 2, device=device)  # [lin_vel, rot_vel]
+        self.policy = torch.ones(n, dtype=torch.long, device=device)
+        # Unit-variance noise buffer and read index of the colored-noise process.
+        self.noise = torch.zeros(n, 2, _CHASETAG_NOISE_STEPS, device=device)
+        self.noise_idx = torch.zeros(n, dtype=torch.long, device=device)
 
-    pose = state["pose"]
-    theta = pose[:, 2]
-    n = pose.shape[0]
-    device = pose.device
+    def __call__(
+        self,
+        env: ManagerBasedRlEnv,
+        env_ids: torch.Tensor | None,
+        min_spawn_distance: float,
+        opponent_probabilities: tuple[float, ...],
+        random_vel_range: tuple[float, float],
+    ) -> None:
+        """``reset_opponent``: policy, spawn >= *min_spawn_distance* from the agent."""
+        del random_vel_range  # used by advance()
+        ids = normalize_mjlab_env_ids(env, env_ids)
+        k = ids.numel()
+        if k == 0:
+            return
+        agent_xy = _chasetag_root(env)[0][ids, :2]
+        xy = torch.empty(k, 2, device=env.device).uniform_(-5.0, 5.0)
+        for _ in range(_CHASETAG_SPAWN_ROUNDS):  # fixed rounds: no host sync
+            redraw = torch.linalg.norm(xy - agent_xy, dim=1) < min_spawn_distance
+            xy = torch.where(redraw[:, None], torch.empty_like(xy).uniform_(-5, 5), xy)
+        theta = torch.empty(k, 1, device=env.device).uniform_(-2 * math.pi, 2 * math.pi)
+        r = torch.rand(k, device=env.device)
+        p_static, p_stationary = opponent_probabilities[:2]
+        policy = (r >= p_static).long() + (r >= p_static + p_stationary).long()
+        pose = torch.cat([xy, theta], dim=1)
+        self.pose[ids] = torch.where((policy == 0)[:, None], self._static_pose, pose)
+        self.vel[ids] = 0.0
+        self.policy[ids] = policy
+        # reset_noise_process: a fresh noise series per episode.
+        self.noise[ids] = _powerlaw_psd_gaussian(
+            _CHASETAG_NOISE_BETA, (k, 2, _CHASETAG_NOISE_STEPS), env.device
+        )
+        self.noise_idx[ids] = 0
+        self._write_mocap(env)
 
-    lin_vel = torch.zeros(n, device=device)
-    rot_vel = torch.zeros(n, device=device)
-    random_mask = state["policy"] == 2
-    if bool(random_mask.any()):
-        lo, hi = _CHASETAG_RANDOM_VEL_RANGE
-        n_rand = int(random_mask.sum())
-        rand_vel = torch.empty(n_rand, 2, device=device).uniform_(lo, hi)
-        lin_vel[random_mask] = rand_vel[:, 0]
-        rot_vel[random_mask] = rand_vel[:, 1]
-    # stationary / static_stationary (policy 0 or 1): lin_vel = rot_vel = 0,
-    # already the initialized value -- no motion, matching move_opponent's
-    # behavior for opponent_vel == [0, 0].
+    def advance(self, dt: float) -> None:
+        """One step of ``update_opponent_state`` + ``move_opponent``, all envs.
 
-    vel = torch.stack(
-        [lin_vel.abs(), rot_vel], dim=1
-    )  # move_opponent: vel[0]=abs(vel[0])
-    vel = torch.clamp(vel, -2.0, 2.0)
-    lin_vel, rot_vel = vel[:, 0], vel[:, 1]
+        Args:
+            dt: Control timestep in seconds.
+        """
+        lo, hi = self._vel_range
+        # The horizon equals the noise length; the index wraps beyond it.
+        idx = (self.noise_idx % _CHASETAG_NOISE_STEPS).view(-1, 1, 1).expand(-1, 2, 1)
+        sample = _CHASETAG_NOISE_SCALE * torch.gather(self.noise, 2, idx).squeeze(2)
+        self.noise_idx += 1
+        vel = torch.where(
+            (self.policy == 2)[:, None], sample.clamp(lo, hi), torch.zeros_like(sample)
+        )
+        vel = torch.stack([vel[:, 0].abs(), vel[:, 1]], dim=1)
+        step = vel.clamp(-2.0, 2.0) * dt
+        heading = self.pose[:, 2] + 0.5 * math.pi
+        bound = _CHASETAG_ARENA_BOUND
+        self.pose = torch.stack(
+            [
+                (self.pose[:, 0] - step[:, 0] * torch.cos(heading)).clamp(
+                    -bound, bound
+                ),
+                (self.pose[:, 1] - step[:, 0] * torch.sin(heading)).clamp(
+                    -bound, bound
+                ),
+                self.pose[:, 2] + step[:, 1],
+            ],
+            dim=1,
+        )
+        self.vel = vel
+        self._write_mocap(self._env)
 
-    x_vel = lin_vel * torch.cos(theta + 0.5 * torch.pi)
-    y_vel = lin_vel * torch.sin(theta + 0.5 * torch.pi)
-    new_pose = torch.stack(
-        [
-            torch.clamp(
-                pose[:, 0] - ctrl_dt * x_vel,
-                -_CHASETAG_ARENA_BOUND,
-                _CHASETAG_ARENA_BOUND,
-            ),
-            torch.clamp(
-                pose[:, 1] - ctrl_dt * y_vel,
-                -_CHASETAG_ARENA_BOUND,
-                _CHASETAG_ARENA_BOUND,
-            ),
-            theta + ctrl_dt * rot_vel,
-        ],
-        dim=1,
-    )
-    state["pose"] = new_pose
-    state["vel"] = vel
-    _chasetag_write_mocap_pose(env, new_pose)
+    def _write_mocap(self, env: ManagerBasedRlEnv) -> None:
+        """Write the pose into the opponent mocap body (mocap index 0).
+
+        The mocap body belongs to the agent's composite entity, which has no
+        mocap write API (``Entity.write_mocap_pose_to_sim`` needs a mocap root
+        body), so this is a documented direct write.
+        """
+        data = env.scene[_CHASETAG_ENTITY_NAME].data.data
+        half = 0.5 * self.pose[:, 2]
+        data.mocap_pos[:, 0, :2] = self.pose[:, :2] + env.scene.env_origins[:, :2]
+        data.mocap_pos[:, 0, 2] = 0.0
+        zeros = torch.zeros_like(half)
+        data.mocap_quat[:, 0] = torch.stack(
+            [torch.cos(half), zeros, zeros, torch.sin(half)], dim=1
+        )
 
 
-def _chasetag_opponent_pos3(env) -> torch.Tensor:
-    """Opponent mocap world position as ``(N, 3)`` (z fixed at 0, matching CPU)."""
-    import torch  # noqa: PLC0415
-
-    state = _chasetag_opponent_state(env)
-    pose = state["pose"]
-    return torch.stack([pose[:, 0], pose[:, 1], torch.zeros_like(pose[:, 0])], dim=1)
+def _chasetag_opponent(env: ManagerBasedRlEnv) -> _ChaseTagOpponent:
+    """The opponent state, owned by the ``reset_opponent`` event term."""
+    return env.event_manager.get_term_cfg("reset_opponent").func
 
 
-def _chasetag_obs_opponent_relative(env):
-    """7-dim ``[rel_pos(3), rel_vel(3), dist(1)]`` block, vectorized equivalent
-    of ``relative_pose_obs`` as used by ``chasetag_obs`` (self_pos/self_vel =
-    the agent's root ``qpos[:3]``/``qvel[:3]``, matching the CPU formula
-    exactly rather than a pelvis-site lookup)."""
-    import torch  # noqa: PLC0415
+def _chasetag_advance_opponent(env: ManagerBasedRlEnv) -> None:
+    """Action ``pre_physics_fn``: move the opponent before the physics step."""
+    _chasetag_opponent(env).advance(env.step_dt)
 
-    data = env.scene[_CHASETAG_ENTITY_NAME].data.data
-    state = _chasetag_opponent_state(env)
-    self_pos = data.qpos[:, :3]
-    self_vel = data.qvel[:, :3]
-    opp_pos = _chasetag_opponent_pos3(env)
-    vel = state["vel"]
-    opp_vel = torch.stack([vel[:, 0], vel[:, 1], torch.zeros_like(vel[:, 0])], dim=1)
-    rel_pos = opp_pos - self_pos
-    rel_vel = opp_vel - self_vel
+
+def _chasetag_obs_opponent_relative(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """``[rel_pos, rel_vel, dist]`` of ``chasetag_obs``. Shape (N, 7).
+
+    The opponent sits at its mocap position (z = 0); its "velocity" is the
+    ``[lin_vel, rot_vel, 0]`` control pair, as on the CPU.
+    """
+    qpos, qvel = _chasetag_root(env)
+    opponent = _chasetag_opponent(env)
+    zeros = torch.zeros_like(opponent.vel[:, :1])
+    rel_pos = torch.cat([opponent.pose[:, :2], zeros], dim=1) - qpos[:, :3]
+    rel_vel = torch.cat([opponent.vel, zeros], dim=1) - qvel[:, :3]
     dist = torch.linalg.norm(rel_pos, dim=1, keepdim=True)
     return torch.cat([rel_pos, rel_vel, dist], dim=1)
 
 
-def _chasetag_obs_role(env):
-    """Chaser one-hot ``[1, 0]`` (this env always plays the CHASE role). Shape (N, 2)."""
-    import torch  # noqa: PLC0415
-
-    data = env.scene[_CHASETAG_ENTITY_NAME].data.data
-    n = data.qpos.shape[0]
-    out = torch.zeros(n, 2, dtype=torch.float32, device=data.qpos.device)
+def _chasetag_obs_role(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """Chaser one-hot ``[1, 0]`` (this env always plays the CHASE role). (N, 2)."""
+    out = torch.zeros(env.num_envs, 2, device=env.device)
     out[:, 0] = 1.0
     return out
 
 
-# ── Rewards / terminations ──────────────────────────────────────────────────
+# ── Rewards and terminations: ChaseTagEnv.get_reward_dict / _get_done (CHASE) ──
 
 
-def _chasetag_pelvis_z(env):
-    """Pelvis height (free-joint qpos z). Shape (N,)."""
-    return env.scene[_CHASETAG_ENTITY_NAME].data.data.qpos[:, 2]
+def _chasetag_distance(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """Planar agent–opponent distance (``distance_abs``). Shape (N,)."""
+    agent_xy = _chasetag_root(env)[0][:, :2]
+    return torch.linalg.norm(agent_xy - _chasetag_opponent(env).pose[:, :2], dim=1)
 
 
-def _chasetag_fallen_bool(env):
-    """Bool (N,): pelvis height below ``_CHASETAG_FALL_HEIGHT`` (FLAT-terrain
-    fall check, matches ``ChaseTagEnv._get_fallen_condition``)."""
-    return _chasetag_pelvis_z(env) < _CHASETAG_FALL_HEIGHT
+def _chasetag_fallen(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """Bool (N,): pelvis below the FLAT-terrain fall height."""
+    return _chasetag_root(env)[0][:, 2] < _CHASETAG_FALL_HEIGHT
 
 
-def _chasetag_distance_to_opponent(env):
-    """Planar distance from the agent's root to the opponent. Shape (N,)."""
-    import torch  # noqa: PLC0415
-
-    data = env.scene[_CHASETAG_ENTITY_NAME].data.data
-    agent_xy = data.qpos[:, :2]
-    opp_xy = _chasetag_opponent_pos3(env)[:, :2]
-    return torch.linalg.norm(agent_xy - opp_xy, dim=1)
+def _chasetag_out_of_bounds(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """Bool (N,): CHASE loses when ``|x|`` or ``|y|`` exceeds the agent bound."""
+    agent_xy = _chasetag_root(env)[0][:, :2]
+    return (agent_xy.abs() > _CHASETAG_AGENT_BOUND).any(dim=1)
 
 
-def _chasetag_tagged_bool(env):
-    """Bool (N,): agent within ``win_distance`` of the opponent (CHASE win)."""
-    return _chasetag_distance_to_opponent(env) <= _CHASETAG_WIN_DISTANCE
+def _chasetag_tagged(env: ManagerBasedRlEnv, win_distance: float) -> torch.Tensor:
+    """Bool (N,): the agent is within *win_distance* of the opponent (CHASE win)."""
+    return _chasetag_distance(env) <= win_distance
 
 
-def _chasetag_distance_delta_reward(env, weight: float = -0.5):
-    """Potential-based distance-closing reward: negative Δdistance since last
-    step (closing the gap gives positive reward), matching ``ChaseTagEnv``'s
-    CHASE ``distance`` reward term (``b8f61507``'s fix — delta, not raw
-    absolute distance) with its default weight folded in via ``RewardTermCfg``
-    already, so this returns the raw (unweighted) per-step delta.
+class _ChaseTagDistanceDelta(ManagerTermBase):
+    """``distance`` reward: change of the agent–opponent distance since the last step.
+
+    ``reset`` forgets the previous distance, so the first step of an episode
+    scores 0, as ``ChaseTagEnv`` (``_prev_distance = None`` on reset).
     """
 
-    dist = _chasetag_distance_to_opponent(env)
-    prev = getattr(env, "_chasetag_prev_distance", None)
-    if prev is None or prev.shape[0] != dist.shape[0]:
-        prev = dist.clone()
-    delta = dist - prev
-    env._chasetag_prev_distance = dist.clone()  # noqa: SLF001
-    return delta
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv) -> None:
+        super().__init__(env)
+        self._prev = torch.full((env.num_envs,), float("nan"), device=env.device)
+
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+        """Forget the previous distance of *env_ids* (all envs for ``None``)."""
+        self._prev[slice(None) if env_ids is None else env_ids] = float("nan")
+
+    def __call__(self, env: ManagerBasedRlEnv) -> torch.Tensor:
+        dist = _chasetag_distance(env)
+        delta = torch.where(
+            torch.isnan(self._prev), torch.zeros_like(dist), dist - self._prev
+        )
+        self._prev.copy_(dist)
+        return delta
 
 
-def _chasetag_alive_reward(env):
-    """Continuous upright-ness in [0, 1], matching ``ChaseTagEnv``'s FLAT-terrain
-    ``alive`` reward: ``clip((pelvis_z - 0.5) / 0.5, 0, 1)``."""
-    import torch  # noqa: PLC0415
-
-    z = _chasetag_pelvis_z(env)
+def _chasetag_alive(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """``alive``: FLAT-terrain uprightness ``clip((z - 0.5) / 0.5, 0, 1)``. (N,)."""
+    z = _chasetag_root(env)[0][:, 2]
     return torch.clamp((z - 0.5) / 0.5, 0.0, 1.0)
 
 
-def _chasetag_tag_bonus(env):
-    """Sparse +1 the step the agent tags the opponent (see ``solved`` reward)."""
-    import torch  # noqa: PLC0415
-
-    return _chasetag_tagged_bool(env).to(dtype=torch.float32)
+def _chasetag_solved(env: ManagerBasedRlEnv, win_distance: float) -> torch.Tensor:
+    """``solved``: 1 on the step the agent tags the opponent. (N,)."""
+    return _chasetag_tagged(env, win_distance).float()
 
 
-def _chasetag_fall_penalty(env):
-    """Fall penalty term: 1.0 the step the pelvis drops below the fall height."""
-    import torch  # noqa: PLC0415
+def _chasetag_lose(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """``lose``: 1 on a fall or out of bounds (the CHASE time limit lies beyond
+    the horizon: CPU ``data.time`` after the last step is still below 20 s). (N,)."""
+    return (_chasetag_fallen(env) | _chasetag_out_of_bounds(env)).float()
 
-    return _chasetag_fallen_bool(env).to(dtype=torch.float32)
 
-
-def _chasetag_act_reg(env):
-    """Action regularization on muscle activations (mean L2 per env)."""
-    import torch  # noqa: PLC0415
-
-    data = env.scene[_CHASETAG_ENTITY_NAME].data.data
-    return torch.mean(torch.square(data.act), dim=1)
+def _chasetag_act_reg(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """``act_reg``: ``||act|| / na``, as ``ChaseTagEnv``. Shape (N,)."""
+    act = _chasetag_obs_act(env)
+    return torch.linalg.norm(act, dim=1) / act.shape[1]
 
 
 def _make_chasetag_fbp2_env_cfg(num_envs: int = 128) -> ManagerBasedRlEnvCfg:
-    """ManagerBasedRlEnvCfg for ``myoChallengeChaseTagFBP2-v0`` (GPU match).
+    """``ManagerBasedRlEnvCfg`` of ``myoChallengeChaseTagFBP2-v0``, from its CPU registration.
 
-    Full-body (354-muscle) agent vs. a scripted, mocap-driven CHASE-only
-    opponent. Obs = the 537-dim additive chase-tag observation (see module
-    docstring above); actions = single muscle-activation term over all 354
-    muscles; rewards = distance-closing potential + alive bonus + tag bonus −
-    fall penalty − act regularization, mirroring the CPU ``ChaseTagEnv``'s
-    current (``b8f61507``) reward shaping.
+    Full-body (354-muscle) agent vs. a scripted mocap opponent, CHASE only:
+    the 537-dim chasetag_obs observation, direct muscle controls, the CPU
+    reward terms and weights (unscaled by dt), the CPU control step, horizon,
+    keyframe reset and physics options.
+
+    Args:
+        num_envs: Number of parallel environments.
+
+    Returns:
+        The env config.
     """
-    muscle_names, tendon_names = _chasetag_muscle_and_tendon_names()
-    from mjlab.managers.event_manager import EventTermCfg
-    from mjlab.managers.reward_manager import RewardTermCfg
+    from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref  # noqa: PLC0415
+    from myosuite.envs.myo.backends.mjlab.tasks import mdp  # noqa: PLC0415
+
+    task = _chasetag_cpu_task()
+    kwargs = task.kwargs
+    model = _chasetag_cpu_model()
+    muscle_names = _muscle_actuator_names(model)
+    tendon_names = _muscle_tendon_names(model)
+    win = {"win_distance": float(kwargs["win_distance"])}
 
     observations = {
         "policy": ObservationGroupCfg(
@@ -730,74 +671,92 @@ def _make_chasetag_fbp2_env_cfg(num_envs: int = 128) -> ManagerBasedRlEnvCfg:
         ),
     }
     actions = {
-        # action_mode="direct": this env hosts policies warm-started from
-        # bc_directional_v2 (and PPO fine-tunes thereof), trained on
-        # MuscleMimicFullbodyDirectionalEnv, whose action_space passes
-        # actuator_ctrlrange straight through with no transform. The default
-        # "sigmoid" mode (ctrl = sigmoid(5*(a-0.5)), the WalkEnvV0/CPU
-        # myoLeg convention) is wrong here for the same reason the CPU
-        # ChaseTagEnv registration's normalize_act=True was wrong (see
-        # myosuite/envs/myo/tasks/challenge/__init__.py's
-        # myoChallengeChaseTagFBP2-v0 kwargs comment): this full-body
-        # model's muscle actuators have ctrlrange=[-1, 1] (not the classic
-        # myoLeg [0, 1]), and sigmoid's output is always in (0, 1), so
-        # muscles could never receive a negative ctrl value at all under
-        # the default mode, regardless of the policy's actual output.
+        # action_mode="direct": the CPU env has normalize_act=False (ctrl =
+        # action in the [-1, 1] ctrlrange), the convention of the hosted
+        # bc_directional_v2-style policies; sigmoid could never output < 0.
+        # pre_physics_fn moves the opponent first, as ChaseTagEnv.step.
         "muscles": MyoMuscleActivationActionCfg(
             entity_name=_CHASETAG_ENTITY_NAME,
             actuator_names=muscle_names,
             tendon_names=tendon_names,
             action_mode="direct",
+            pre_physics_fn=_chasetag_advance_opponent,
         ),
+    }
+    reward_terms = {
+        "distance": (_ChaseTagDistanceDelta, {}),
+        "alive": (_chasetag_alive, {}),
+        "solved": (_chasetag_solved, win),
+        "lose": (_chasetag_lose, {}),
+        "act_reg": (_chasetag_act_reg, {}),
     }
     rewards = {
-        "distance_closing": RewardTermCfg(
-            func=_chasetag_distance_delta_reward, weight=-0.5
-        ),
-        "alive_reward": RewardTermCfg(func=_chasetag_alive_reward, weight=0.5),
-        "tag_bonus": RewardTermCfg(func=_chasetag_tag_bonus, weight=1000.0),
-        "fall_penalty": RewardTermCfg(func=_chasetag_fall_penalty, weight=-100.0),
-        "act_reg": RewardTermCfg(func=_chasetag_act_reg, weight=-0.1),
+        key: RewardTermCfg(
+            func=reward_terms[key][0], weight=float(weight), params=reward_terms[key][1]
+        )
+        for key, weight in kwargs["weighted_reward_keys"].items()
     }
+    # ChaseTagEnv._get_done for CHASE: lose (fall, out of bounds) or win (tag).
     terminations = {
         "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
-        "fallen": TerminationTermCfg(func=_chasetag_fallen_bool),
-        "tagged": TerminationTermCfg(func=_chasetag_tagged_bool),
+        "fallen": TerminationTermCfg(func=_chasetag_fallen),
+        "out_of_bounds": TerminationTermCfg(func=_chasetag_out_of_bounds),
+        "tagged": TerminationTermCfg(func=_chasetag_tagged, params=win),
     }
     events = {
-        # Mandatory for every leg-family full-body GPU env on this branch — without
-        # it, resets after the first fall back to mjlab's default init (root at the
-        # origin, i.e. in the ground), not a standing pose.
+        # reset_type="none": keyframe 0, including its body-frame root angular
+        # velocity (mjlab's default reset reads it as world-frame).
         "reset_scene_to_default": EventTermCfg(
-            func=mdp_events.reset_scene_to_default, mode="reset"
+            func=mdp.reset_to_cpu_state,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg(_CHASETAG_ENTITY_NAME),
+                "qpos": tuple(float(q) for q in model.key_qpos[0]),
+                "qvel": tuple(float(v) for v in model.key_qvel[0]),
+            },
         ),
-        "reset_opponent": EventTermCfg(func=_chasetag_reset_opponent, mode="reset"),
-        "step_opponent": EventTermCfg(func=_chasetag_step_opponent, mode="step"),
+        # After the agent reset: the spawn distance is measured from its new pose.
+        "reset_opponent": EventTermCfg(
+            func=_ChaseTagOpponent,
+            mode="reset",
+            params={
+                "min_spawn_distance": float(kwargs["min_spawn_distance"]),
+                "opponent_probabilities": tuple(kwargs["opponent_probabilities"]),
+                "random_vel_range": tuple(kwargs["random_vel_range"]),
+            },
+        ),
     }
-    return mjlab_env_cfg_from_task_config(
-        cfg=TaskConfig(max_episode_steps=500),
+    metrics = {
+        "success": MetricsTermCfg(func=_chasetag_tagged, params=win, reduce="last")
+    }
+    entity = EntityCfg(
         spec_fn=_chasetag_spec_fn,
-        entity_name=_CHASETAG_ENTITY_NAME,
-        actuators=(
-            _XmlWrappedActuatorCfg(
-                target_names_expr=tuple(tendon_names),
-                transmission_type=TransmissionType.TENDON,
-            ),
+        articulation=EntityArticulationInfoCfg(
+            actuators=(
+                _XmlWrappedActuatorCfg(
+                    target_names_expr=tuple(tendon_names),
+                    transmission_type=TransmissionType.TENDON,
+                ),
+            )
         ),
+        init_state=_init_state_from_model(model),
+    )
+    step_dt = float(model.opt.timestep) * task.frame_skip
+    return ManagerBasedRlEnvCfg(
+        scene=SceneCfg(num_envs=num_envs, entities={_CHASETAG_ENTITY_NAME: entity}),
         observations=observations,
         actions=actions,
         rewards=rewards,
         terminations=terminations,
+        metrics=metrics,
         events=events,
-        num_envs=num_envs,
-        decimation=5,  # matches the leg walk/directional twins' proven GPU decimation
-        sim_cfg=SimulationCfg(
-            mujoco=MujocoCfg(timestep=0.002, ccd_iterations=500),
-            njmax=1024,
-            nconmax=512,
+        # CPU <option> (Euler integrator, solver iterations, ccd) of the model.
+        sim=SimulationCfg(
+            mujoco=ref.mujoco_cfg_from_model(model), njmax=1024, nconmax=512
         ),
-        episode_length_s=20.0,
-        init_state=_chasetag_init_state(),
+        decimation=task.frame_skip,
+        episode_length_s=ref.episode_length_s(task.max_episode_steps, step_dt),
+        scale_rewards_by_dt=False,
     )
 
 
@@ -856,12 +815,12 @@ def register_mjlab_tasks() -> None:
 
     register_table_tennis_mjlab_tasks()
 
-    # --- ChaseTag full-body vs. scripted opponent (GPU match for CPU FBP2) ---
+    # --- ChaseTag full-body vs. scripted opponent (mjlab half of CPU FBP2) ---
     try:
         chasetag_env_cfg = _make_chasetag_fbp2_env_cfg()
         chasetag_rl_cfg = _chasetag_ppo_runner_cfg()
         register_mjlab_task(
-            task_id="myoChallengeChaseTagFBP2-v0",
+            task_id=_CHASETAG_ENV_ID,
             env_cfg=chasetag_env_cfg,
             play_env_cfg=chasetag_env_cfg,
             rl_cfg=chasetag_rl_cfg,

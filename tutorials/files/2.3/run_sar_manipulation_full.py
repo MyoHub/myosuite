@@ -43,10 +43,8 @@ matplotlib.use("Agg")
 import numpy as np  # noqa: E402
 from sklearn.decomposition import FastICA, PCA  # noqa: E402
 from sklearn.preprocessing import MinMaxScaler  # noqa: E402
-from stable_baselines3 import SAC  # noqa: E402
-from stable_baselines3.common.logger import configure  # noqa: E402
 from stable_baselines3.common.monitor import Monitor  # noqa: E402
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize  # noqa: E402
+from stable_baselines3.common.vec_env import DummyVecEnv  # noqa: E402
 
 _REPO_ROOT = Path(__file__).parents[3]
 if str(_REPO_ROOT) not in sys.path:
@@ -54,11 +52,12 @@ if str(_REPO_ROOT) not in sys.path:
 
 import myosuite  # noqa: E402
 from myosuite.utils import gym  # noqa: E402
-from sar_tutorial_utils import SaveSuccesses, SynNoSynWrapper, linear_schedule  # noqa: E402
+from sar_tutorial_utils import SynNoSynWrapper, fit_sac  # noqa: E402
 
 # Reuse run_sar_full.py's play-phase trainer and activation/SAR helpers
 # verbatim -- identical hyperparameters, only the call-site args differ.
 from run_sar_full import (  # noqa: E402
+    CHECKPOINT_EVERY,
     compute_SAR,
     find_synergies,
     get_activations,
@@ -115,38 +114,10 @@ def sar_rl_synnosyn(
         env_name,
         timesteps,
     )
-    env = SynNoSynWrapper(gym.make(env_name), ica, pca, normalizer, phi)
-    env = Monitor(env)
-    env = DummyVecEnv([lambda: env])
-    env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.0)
-
-    net_shape = [400, 300]
-    policy_kwargs = dict(net_arch=dict(pi=net_shape, qf=net_shape))
-
-    model = SAC(
-        "MlpPolicy",
-        env,
-        learning_rate=linear_schedule(0.001),
-        buffer_size=int(3e5),
-        learning_starts=5000,
-        batch_size=256,
-        tau=0.02,
-        gamma=0.98,
-        train_freq=(1, "episode"),
-        gradient_steps=-1,
-        policy_kwargs=policy_kwargs,
-        verbose=1,
+    env = DummyVecEnv(
+        [lambda: Monitor(SynNoSynWrapper(gym.make(env_name), ica, pca, normalizer, phi))]
     )
-
-    succ_callback = SaveSuccesses(
-        check_freq=1,
-        env_name=f"{env_name}_{seed}",
-        log_dir=f"{policy_name}_successes_{env_name}_{seed}",
-    )
-    model.set_logger(configure(f"{policy_name}_results_{env_name}_{seed}"))
-    model.learn(total_timesteps=timesteps, callback=succ_callback, log_interval=4)
-    model.save(f"{policy_name}_model_{env_name}_{seed}")
-    env.save(f"{policy_name}_env_{env_name}_{seed}")
+    fit_sac(env, policy_name, env_name, seed, timesteps, 5000, CHECKPOINT_EVERY)
     log.info("SAR-RL training complete. Model saved.")
 
 
@@ -239,7 +210,9 @@ if __name__ == "__main__":
         )
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--seed", default=SEED, help="Seed of SAC and the environment.")
     args = parser.parse_args()
+    SEED = args.seed
     if args.dry_run:
         _dry_run()
     else:

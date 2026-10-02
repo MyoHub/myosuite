@@ -14,6 +14,9 @@ from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
     build_default_fullbody_chasetag_spec as _build_default_fullbody_chasetag_spec,
 )
 from myosuite.envs.myo.tasks.challenge.chasetag import ChaseTagEnv as _ChaseTagEnv
+from myosuite.envs.myo.tasks.mimic.chasetag_obs import (
+    CHASETAG_OBS_KEYS as _CHASETAG_OBS_KEYS,
+)
 
 _ASSETS_ROOT = pathlib.Path(__file__).parents[2] / "assets"
 
@@ -376,7 +379,10 @@ _reg(
     },
 )
 
-# MyoChallenge full-body ChaseTag vs. scripted opponent (opponent-aware obs)
+# MyoChallenge full-body ChaseTag vs. scripted opponent (opponent-aware obs).
+# CPU half of the mjlab task with the same id (register_mjlab_tasks.py): the
+# 537-dim chasetag_obs layout, 0.01 s control step (frame_skip 5), 2000 steps
+# = 20 s, flat ground and the same reward terms and weights.
 _reg(
     env_id="myoChallengeChaseTagFBP2-v0",
     entry_point="myosuite.envs.myo.tasks.challenge.chasetag:ChaseTagEnv",
@@ -385,7 +391,13 @@ _reg(
         "model_path": None,
         "model_spec_fn": _build_default_fullbody_chasetag_spec,
         "pelvis_body_name": "pelvis",
-        "obs_keys": _ChaseTagEnv.DEFAULT_OBS_KEYS + ["opponent_relative"],
+        "frame_skip": 5,
+        "obs_keys": list(_CHASETAG_OBS_KEYS),
+        # act_reg (||act|| / na) is part of the mjlab training reward.
+        "weighted_reward_keys": {
+            **_ChaseTagEnv.DEFAULT_RWD_KEYS_AND_WEIGHTS,
+            "act_reg": -0.1,
+        },
         # normalize_act=False: this env is specifically meant to host
         # policies warm-started from bc_directional_v2 (and PPO fine-tunes
         # thereof), which output raw muscle activations directly in
@@ -410,7 +422,9 @@ _reg(
         # so "random" reset_type (which indexes key_qpos[2]/[3]) is not
         # available here — "none" uses key_qpos[0], the standing pose.
         "reset_type": "none",
-        "terrain": "random",
+        # Flat like the mjlab twin: mjlab trains on flat ground, and FLAT
+        # also selects the pelvis-height fall/alive terms both halves use.
+        "terrain": "FLAT",
         # task_choice="CHASE" (fixed), NOT "random" (P2's kwarg, mirrored
         # here by mistake): the mjlab/GPU training pipeline this env's
         # obs/opponent were built for is CHASE-only by design --
@@ -425,9 +439,6 @@ _reg(
         # contributor to fbp2_ppo_v3 evaluating worse on CPU than on its
         # own mjlab training backend.
         "task_choice": "CHASE",
-        "hills_range": (0.03, 0.23),
-        "rough_range": (0.05, 0.1),
-        "relief_range": (0.1, 0.3),
         "repeller_opponent": False,
         "chase_vel_range": (1.0, 1.0),
         "random_vel_range": (-2, 2),

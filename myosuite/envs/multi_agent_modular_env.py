@@ -36,7 +36,10 @@ class ModularMultiAgentTaskEnv(gym.Env):
     """Two-agent simultaneous-step environment driven by :class:`MultiAgentTaskConfig`.
 
     Both agents act each step; the episode ends when any agent falls, is KO'd,
-    or the step limit is reached.
+    or the step limit is reached. The env truncates itself at
+    :attr:`max_episode_steps`, so ``register_task`` registers it without
+    gymnasium's ``TimeLimit`` (which would replace the per-agent ``truncated``
+    dict with a bare ``True``).
 
     Interface::
 
@@ -103,6 +106,11 @@ class ModularMultiAgentTaskEnv(gym.Env):
 
         self._viewer: Any = None
         self._renderer: Any = None
+
+    @property
+    def max_episode_steps(self) -> int:
+        """Number of steps after which :meth:`step` truncates the episode."""
+        return self._config.max_episode_steps
 
     # ------------------------------------------------------------------
     # Gymnasium interface
@@ -213,8 +221,7 @@ class ModularMultiAgentTaskEnv(gym.Env):
 
         terminated = {a: episode_over for a in self._agents}
         truncated = {
-            a: (not episode_over)
-            and (self._step_count >= self._config.max_episode_steps)
+            a: (not episode_over) and (self._step_count >= self.max_episode_steps)
             for a in self._agents
         }
 

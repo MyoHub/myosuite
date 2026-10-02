@@ -161,6 +161,9 @@ def _export_mp4(
         print("mediapy not installed — cannot export MP4.  Run: pip install mediapy")
         return
 
+    # The model's offscreen framebuffer (640x480 by default) must cover the video size.
+    env.model.vis.global_.offwidth = max(env.model.vis.global_.offwidth, width)
+    env.model.vis.global_.offheight = max(env.model.vis.global_.offheight, height)
     renderer = mujoco.Renderer(env.model, height=height, width=width)
     frames: list[np.ndarray] = []
 
@@ -263,7 +266,11 @@ def main(argv: list[str] | None = None) -> None:
     policy = None
     if args.checkpoint is not None:
         print(f"Loading policy from: {args.checkpoint}")
-        policy = _load_policy(args.checkpoint, env.obs_dim, env.act_dim)
+        policy = _load_policy(
+            args.checkpoint,
+            env.observation_space.shape[0],
+            env.action_space.shape[0],
+        )
     else:
         print("No checkpoint — running in replay mode (reference motion only)")
 

@@ -6,6 +6,29 @@
 import mujoco
 
 
+def compile_with_options(spec: mujoco.MjSpec, model: mujoco.MjModel) -> mujoco.MjModel:
+    """Recompile *spec*, keeping the runtime options set on *model*.
+
+    Envs often set ``model.opt`` (timestep, solver iterations, flags) after
+    compiling, so a plain ``spec.compile()`` would silently revert them to the
+    XML values. Every ``mjOption`` field is copied into ``spec.option`` first.
+
+    Args:
+        spec: Spec to compile; its ``option`` is overwritten from *model*.
+        model: Previously compiled model whose ``opt`` is kept.
+
+    Returns:
+        The newly compiled model.
+    """
+    for name in dir(model.opt):
+        if name.startswith("_"):
+            continue
+        value = getattr(model.opt, name)
+        if not callable(value):
+            setattr(spec.option, name, value)
+    return spec.compile()
+
+
 def recursive_immobilize(
     spec,
     temp_model,

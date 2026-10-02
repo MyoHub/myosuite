@@ -114,6 +114,11 @@ full commit list.
   did): the directional-leg twin and the MJX pose and reach envs observed raw `qvel`. The previous
   directional-leg checkpoints were retrained. `ElbowPoseTask` (tutorial 4.3) now also observes the
   `pose_error`, so its observation grows from 8 to 9 values.
+* `myoChallengeChaseTagFBP2-v0` is one task on both backends, so mjlab-trained policies run on
+  the CPU env. The CPU env now uses the 537-dim `chasetag_obs` layout, a 0.01 s control step
+  (2000 steps = 20 s) and flat ground, all on purpose. The mjlab task takes the CPU rewards
+  (unscaled by dt), the out-of-bounds lose, the physics options, the keyframe reset and the
+  colored-noise opponent. Its distance reward now restarts every episode.
 
 ### Fixed
 

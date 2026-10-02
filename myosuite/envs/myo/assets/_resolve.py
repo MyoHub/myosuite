@@ -14,9 +14,10 @@ Resolution order for each model family:
 from __future__ import annotations
 
 import pathlib
-import tempfile
 import warnings
 import xml.etree.ElementTree as ET
+
+from myosuite.utils.asset_path_resolver import write_patched_xml
 
 _ASSETS_ROOT = pathlib.Path(__file__).parent
 
@@ -58,10 +59,7 @@ def _with_wrist_target_site(pip_path: pathlib.Path) -> pathlib.Path:
     worldbody = ET.SubElement(root, "worldbody")
     ET.SubElement(worldbody, "site", _WRIST_TARGET_SITE)
 
-    out_dir = pathlib.Path(tempfile.gettempdir()) / "myosuite_patched_xml"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"wrist_target_{pip_path.stem}_{abs(hash(pip_path))}.xml"
-    tree.write(out_path, encoding="unicode")
+    out_path = write_patched_xml(tree, pip_path, "wrist_target")
     _WRIST_TARGET_CACHE[pip_path] = out_path
     return out_path
 
@@ -244,10 +242,7 @@ def _leg_scene_without_pedestal(scene_path: pathlib.Path) -> pathlib.Path:
     root = tree.getroot()
     _absolutize_paths(root, no_pedestal_path.parent)
 
-    out_dir = pathlib.Path(tempfile.gettempdir()) / "myosuite_patched_xml"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"no_pedestal_{scene_path.stem}_{abs(hash(scene_path))}.xml"
-    tree.write(out_path, encoding="unicode")
+    out_path = write_patched_xml(tree, scene_path, "no_pedestal")
     _LEG_SCENE_CACHE[scene_path] = out_path
     return out_path
 
@@ -285,10 +280,7 @@ def _without_pedestal(host_path: pathlib.Path) -> pathlib.Path:
     # patched copy is written, so they must not be pre-absolutized against
     # host_path.parent (which would point into a nonexistent local mirror).
 
-    out_dir = pathlib.Path(tempfile.gettempdir()) / "myosuite_patched_xml"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"no_pedestal_{host_path.stem}_{abs(hash(host_path))}.xml"
-    tree.write(out_path, encoding="unicode")
+    out_path = write_patched_xml(tree, host_path, "no_pedestal")
     _LEG_HOST_CACHE[host_path] = out_path
     return out_path
 

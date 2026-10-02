@@ -10,8 +10,9 @@ the same myoLegWalk task can run on:
     - MJX XLA (JAX CPU/GPU/TPU): ``MjxLegWalk-v0`` using this class (``impl=None``)
     - MJX Warp (GPU): ``MjxLegWalk-v0`` using this class with ``impl="warp"``
 
-The three backends share the same observation space, reward function, and
-action space so that training results can be directly compared.
+The observation and reward terms follow ``WalkEnvV0``, but the control
+timestep and initial velocity differ from the CPU env (see the MJX README), so
+results are not directly comparable across backends.
 
 Config keys (in addition to ``MyoMjxEnvBase`` defaults):
     ``model_path``     Path to ``myolegs.xml`` (leg musculoskeletal model).

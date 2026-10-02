@@ -4,9 +4,12 @@
 
 The two supported backends are **CPU (`MyoGymnasiumEnv`)** and **GPU (mjlab
 `ManagerBasedRlEnvCfg`)**; the invariants below are what keep a policy trained on
-mjlab portable to CPU playback/fine-tune. (An **MJX** backend also exists and the
-same invariants apply to it, but MJX is **experimental and may not be maintained
-long-term** — don't build new work on it.)
+mjlab portable to CPU playback/fine-tune. (An **MJX** backend also exists, but it
+is **experimental, may not be maintained long-term, and does not meet these
+invariants**: its envs differ from the CPU/mjlab envs in obs order, reward weights,
+thresholds and reset/target distributions, so MJX-trained policies are not
+portable. See the limitations in `myosuite/envs/myo/backends/mjx/README.md`.
+Don't build new work on it.)
 
 A policy is only portable across backends if all five invariants below hold. Violating any produces wrong behaviour at eval time without an obvious error.
 
@@ -26,7 +29,7 @@ A policy is only portable across backends if all five invariants below hold. Vio
   before its own post-step `forward()`, so twins whose rewards or terminations read derived quantities
   register `mdp.sync_forward` as their first termination term.
 - **Browser (mjswan) export: no `VecNormalize` or running mean/std.** The browser runtime cannot load normalization statistics. Express normalization as fixed `scale` in `ObservationTermCfg` and train with `obs_normalization=False`.
-- **CPU / mjlab / ONNX: running normalization is allowed.** The basic-suite runner (`tasks/rl.py`) enables it by default; the frozen statistics are folded into the policy by `load_rslrl_policy` / `export_rslrl_to_onnx`, so the policy still takes the raw CPU observation vector.
+- **CPU / mjlab / ONNX: running normalization is allowed.** The basic-suite runner (`tasks/rl.py`) enables it by default; the frozen statistics are folded into the policy by `load_rslrl_policy` / `export_rslrl_to_onnx`, so the policy still takes the raw CPU observation vector. SB3 `VecNormalize` statistics are folded the same way by `export_sb3_to_onnx(vec_normalize=...)` and `OnnxCheckpointCallback`.
 
 ### 2. Action space — identical dimensionality, scaling, and activation
 
@@ -83,7 +86,8 @@ Fixed `scale` in `ObservationTermCfg` is exported to JSON and replicated in Type
 |---|---|---|---|---|
 | Elbow | ✓ 9D | ✓ 6D sigmoid | ✗ | No TypeScript: `pose_err`, `act`, `qvel×ctrl_dt` |
 | Walk | ✓ 403D | ✓ 80D sigmoid | ✗ | No TypeScript: all 12 custom obs terms |
-| TableTennis | ~ | ~ | ✗ | Closure-based obs not introspectable |
+| TableTennis | ✓ 417D | ~ | ✗ | Custom obs term (no TypeScript) |
+| ChaseTag FBP2 | ✓ 537D (`test_chasetag_fbp2_parity.py`) | ✓ 354D direct | ✗ | No TypeScript: `chasetag_obs` blocks, scripted opponent; ctrl_dt 0.01 s |
 
 All passing parity tests live in `myosuite/tests/test_mjlab_task_builder.py`.
 

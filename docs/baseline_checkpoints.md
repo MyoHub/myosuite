@@ -51,9 +51,8 @@ Re-evaluate a checkpoint after any change to an env's observations with
 noticeably (with 64 episodes, differences of a few points are noise). Success rates were measured with
 64 parallel episodes of the deterministic policy.
 
-**`myoChallengeChaseTagFBP2-v0`** has no `success`/metrics term configured yet, so deterministic
-success can't be measured. **`myoChallengeTableTennisP{0,1,2}-v0`** have no trained checkpoint
-available yet to evaluate.
+**`myoChallengeChaseTagFBP2-v0`** (success: the agent tags the opponent) and
+**`myoChallengeTableTennisP{0,1,2}-v0`** have no trained checkpoint available yet to evaluate.
 
 | Env                          | Checkpoint         | Deterministic success (mjlab) |
 | ---------------------------- | ------------------ | ----------------------------- |

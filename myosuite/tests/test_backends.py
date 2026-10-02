@@ -516,11 +516,11 @@ class TestReachMjxSmoke:
         if not self.model_path.exists():
             pytest.skip(f"Hand model not found: {self.model_path}")
 
-        # Fixed target: IFtip at a reachable position
+        # Fixed target: IFtip_r at a reachable position
         target_pt = jnp.array([-0.151, -0.547, 1.455])
         cfg = _reach_config(
             self.model_path,
-            {"IFtip": (target_pt, target_pt)},
+            {"IFtip_r": (target_pt, target_pt)},
             mjx_impl,
         )
         self.mjx_env = MjxReachEnv(cfg)

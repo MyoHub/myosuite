@@ -36,7 +36,8 @@ from mujoco import mjx
 from mujoco_playground._src import mjx_env
 
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MyoMjxEnvBase
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.physics.fatigue_jax import cumulative_fatigue_step
+from myosuite.utils.spec_processing import compile_with_options
 
 # Keys that may be included in the obs state from fatigue internals
 ALLOWED_FATIGUE_OBS_KEYS: list[str] = ["MA", "MR", "MF"]
@@ -102,44 +103,20 @@ class CumulativeFatigue:
         Returns:
             Updated fatigue state dict.
         """
-        MA = fatigue_state["MA"]
-        MR = fatigue_state["MR"]
-        MF = fatigue_state["MF"]
-
-        # Effective time constants (MuJoCo Hill-type dynamics).
-        LD = 1.0 / (self.tauact * (0.5 + 1.5 * MA))
-        LR = (0.5 + 1.5 * MA) / self.taudeact
-        # Integrate the first-order approach to TL exactly over dt: an
-        # explicit Euler step overshoots TL once L * dt > 1 (LD = 200 /s at
-        # MA = 0 vs 10-25 ms control steps), driving MA above the command.
-        # Matches CumulativeFatigue.compute_act / TorchFatigueState.step.
-        LD = -jp.expm1(-LD * self.dt) / self.dt
-        LR = -jp.expm1(-LR * self.dt) / self.dt
-
-        C = jp.zeros_like(MA)
-        mask1 = (MA < TL) & (MR > (TL - MA))
-        C = jp.where(mask1, LD * (TL - MA), C)
-        mask2 = (MA < TL) & (MR <= (TL - MA))
-        C = jp.where(mask2, LD * MR, C)
-        mask3 = MA >= TL
-        C = jp.where(mask3, LR * (TL - MA), C)
-
-        rR = jp.where(MA >= TL, self.r * self.R, self.R)
-
-        C_min = jp.maximum(
-            -MA / self.dt + self.F * MA,
-            (MR - 1) / self.dt + rR * MF,
+        # Shared pure update: every delta comes from the old state, so the
+        # compartments keep summing to 1.
+        MA, MR, MF = cumulative_fatigue_step(
+            fatigue_state["MA"],
+            fatigue_state["MR"],
+            fatigue_state["MF"],
+            TL,
+            F=self.F,
+            R=self.R,
+            r=self.r,
+            dt=self.dt,
+            tauact=self.tauact,
+            taudeact=self.taudeact,
         )
-        C_max = jp.minimum(
-            (1 - MA) / self.dt + self.F * MA,
-            MR / self.dt + rR * MF,
-        )
-        C = jp.clip(C, C_min, C_max)
-
-        MA = MA + (C - self.F * MA) * self.dt
-        MR = MR + (-C + rR * MF) * self.dt
-        MF = MF + (self.F * MA - rR * MF) * self.dt
-
         return {"MA": MA, "MR": MR, "MF": MF}
 
     def get_effort(
@@ -235,12 +212,13 @@ class FatigueWrapper(Wrapper):
     Fatigue state (MA, MR, MF) is stored in ``mjx.Data.userdata`` to remain
     fully JIT-compatible.  On each ``step()``, the wrapper:
 
-    1. Applies the sigmoid action normalisation (since the inner env is
-       configured with ``norm_actions=False`` to avoid double-normalisation).
-    2. Updates the fatigue model with the normalised action.
-    3. Replaces the muscle activations in the action with the active fraction MA.
-    4. Passes the fatigued action to the inner env's step.
-    5. Optionally appends fatigue state arrays (MA/MR/MF) to the observation.
+    1. Maps the action to ``ctrl`` with the wrapped env's own mapping
+       (``_normalize_action``: sigmoid, clip or identity, depending on the env).
+    2. Updates the fatigue model with the muscle entries of ``ctrl``.
+    3. Replaces those entries with the active fraction MA.
+    4. Steps the wrapped env with this ``ctrl`` via ``step_ctrl`` (no second
+       mapping).
+    5. Optionally adds fatigue state arrays (MA/MR/MF) to the observation.
 
     Args:
         env: A ``MyoMjxEnvBase`` instance to wrap.
@@ -261,12 +239,15 @@ class FatigueWrapper(Wrapper):
         env: MyoMjxEnvBase,
         fatigue_config: config_dict.ConfigDict = DEFAULT_MUSCLE_CONFIG,
     ) -> None:
-        # Expand userdata to hold 3 × nu fatigue state values, then recompile
+        self.muscle_act_ind: np.ndarray = (
+            env.mj_model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
+        )
+        na = int(np.sum(self.muscle_act_ind))
+        # Expand userdata to hold 3 × na fatigue values and recompile, keeping
+        # the timestep/solver options the env set on its compiled model.
         self.nuserdata_without_fatigue: int = env.mj_model.nuserdata
-        # Disable inner env normalisation — we apply it here before fatigue
-        env._config.norm_actions = False
-        env._mj_spec.nuserdata += env.mjx_model.nu * 3
-        env._mj_model = env._mj_spec.compile()
+        env._mj_spec.nuserdata += 3 * na
+        env._mj_model = compile_with_options(env._mj_spec, env._mj_model)
         env._mjx_model = mjx.put_model(env._mj_model, impl=env.impl)
 
         super().__init__(env)
@@ -279,16 +260,12 @@ class FatigueWrapper(Wrapper):
             f"Allowed keys are: {ALLOWED_FATIGUE_OBS_KEYS}"
         )
 
-        self.muscle_act_ind: np.ndarray = (
-            self.env.mj_model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
-        )
         self.muscle_fatigue = CumulativeFatigue(self.env.mj_model, self.n_substeps)
 
         _first = self.nuserdata_without_fatigue
-        nu = self.env.mj_model.nu
-        self.fatigue_index_MA = jp.arange(_first, _first + nu)
-        self.fatigue_index_MR = jp.arange(_first + nu, _first + nu * 2)
-        self.fatigue_index_MF = jp.arange(_first + nu * 2, _first + nu * 3)
+        self.fatigue_index_MA = jp.arange(_first, _first + na)
+        self.fatigue_index_MR = jp.arange(_first + na, _first + na * 2)
+        self.fatigue_index_MF = jp.arange(_first + na * 2, _first + na * 3)
 
     def reset(self, rng: jax.Array) -> mjx_env.State:
         """Reset the environment and initialise fatigue state.
@@ -326,7 +303,8 @@ class FatigueWrapper(Wrapper):
         Returns:
             Next ``State``.
         """
-        norm_action = sigmoid_muscle_activation(action, jp)
+        # The wrapped env's own action -> ctrl mapping, applied exactly once.
+        ctrl = self.env._normalize_action(action)
 
         prev_fatigue = {
             "MA": state.data.userdata[self.fatigue_index_MA],
@@ -334,7 +312,7 @@ class FatigueWrapper(Wrapper):
             "MF": state.data.userdata[self.fatigue_index_MF],
         }
         fatigue_state = self.muscle_fatigue.compute_act(
-            norm_action[self.muscle_act_ind], fatigue_state=prev_fatigue
+            ctrl[self.muscle_act_ind], fatigue_state=prev_fatigue
         )
 
         new_userdata = state.data.userdata.at[self.fatigue_index_MA].set(
@@ -343,11 +321,11 @@ class FatigueWrapper(Wrapper):
         new_userdata = new_userdata.at[self.fatigue_index_MR].set(fatigue_state["MR"])
         new_userdata = new_userdata.at[self.fatigue_index_MF].set(fatigue_state["MF"])
 
-        # Replace desired activations with currently active motor-unit fraction
-        action_fatigued = norm_action.at[self.muscle_act_ind].set(fatigue_state["MA"])
+        # Muscles are driven by the currently active motor-unit fraction MA.
+        ctrl = ctrl.at[self.muscle_act_ind].set(fatigue_state["MA"])
 
         state = state.replace(data=state.data.replace(userdata=new_userdata))
-        next_state = super().step(state, action_fatigued)
+        next_state = self.env.step_ctrl(state, ctrl)
         next_state = next_state.replace(
             obs=self._add_fatigue_to_obs(next_state.obs, next_state.data)
         )

@@ -214,7 +214,9 @@ def compiled_info(task: CpuTaskSpec) -> CompiledModelInfo:
     return _compiled_info(_model_key(task))
 
 
-def mujoco_cfg_from_model(model: mujoco.MjModel) -> MujocoCfg:
+def mujoco_cfg_from_model(
+    model: mujoco.MjModel, timestep: float | None = None
+) -> MujocoCfg:
     """Copy the XML ``<option>`` of *model* into an mjlab ``MujocoCfg``.
 
     mjlab overwrites ``model.opt`` with its ``MujocoCfg`` (default integrator
@@ -223,14 +225,22 @@ def mujoco_cfg_from_model(model: mujoco.MjModel) -> MujocoCfg:
 
     Args:
         model: The compiled CPU model.
+        timestep: Physics step the caller derived its decimation from. If given,
+            it must equal the model's, so the control step cannot drift from CPU.
 
     Returns:
         A ``MujocoCfg`` reproducing the model's solver/integrator options.
 
     Raises:
-        ValueError: If the model uses an integrator MuJoCo Warp does not support.
+        ValueError: If the model uses an integrator MuJoCo Warp does not support,
+            or if *timestep* differs from the model's.
     """
     opt = model.opt
+    if timestep is not None and timestep != float(opt.timestep):
+        raise ValueError(
+            f"Config timestep {timestep} differs from the CPU model's "
+            f"{float(opt.timestep)}; the control step would not match CPU."
+        )
     if int(opt.integrator) not in _INTEGRATORS:
         raise ValueError(
             f"Integrator {mujoco.mjtIntegrator(opt.integrator).name} is not "
@@ -262,6 +272,31 @@ def mujoco_cfg_from_model(model: mujoco.MjModel) -> MujocoCfg:
         disableflags=disable,
         enableflags=enable,
     )
+
+
+@functools.cache
+def _musclemimic_cpu_model(variant: str) -> mujoco.MjModel:
+    from myosuite.core.model_recipes import _musclemimic_build  # noqa: PLC0415
+
+    return _musclemimic_build(f"musclemimic_{variant}")[0]
+
+
+def musclemimic_mujoco_cfg(variant: str, timestep: float | None = None) -> MujocoCfg:
+    """``MujocoCfg`` of the CPU MuscleMimic model of *variant*.
+
+    The CPU envs (``myoMimicBimanual-v0`` / ``myoMimicFullbody-v0``) compile
+    with ``compile_mimic_*_mjmodel``, which edits ``model.opt`` after compiling
+    the spec (``sim_dt``; bimanual also solver iterations and ``eulerdamp``),
+    so the spec's own ``<option>`` is not the CPU physics.
+
+    Args:
+        variant: ``"bimanual"`` or ``"fullbody"``.
+        timestep: See :func:`mujoco_cfg_from_model`.
+
+    Returns:
+        A ``MujocoCfg`` reproducing the CPU model's options.
+    """
+    return mujoco_cfg_from_model(_musclemimic_cpu_model(variant), timestep=timestep)
 
 
 def init_state_from_model(

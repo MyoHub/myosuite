@@ -48,3 +48,15 @@ don't get an entry here.
   trajectories are bit-identical except OslRun (its OSL controller reads a load sensor).
 - Why: clipped and stale inputs were silently corrupting training signals; policies trained on them may need
   retraining. Convention documented in `cross-backend-contract.md` (invariant 1).
+
+## [2026-10-02] breaking | MuscleMimic bridge and SAR activation collector (branch: fix/musclemimic-bridge-and-collector)
+
+- `model_bridge.to_muscle_activations` maps a checkpoint action to excitation `clip(a, 0, 1)` (was `0.5*(a+1)`),
+  matching MuJoCo's muscle clamp on the [-1, 1] MuscleMimic ctrlrange. A relaxed output (a = 0) now gives 0, not 0.5.
+- `SharedModelStateBridge` resolves `FULLBODY_NAME_ALIASES` (myo_sim `elbow_flexion_*`/`*_l` vs musclemimic_models
+  `elbow_flex_*`/`*_left`; 83/83 joints, 354/354 actuators) and raises on unmatched target joints, target actuators
+  or source actuators unless `allow_partial=True`.
+- `activation_collector` ranks episodes by mean per-step tracking reward (the sum kept only short clip-end episodes),
+  and each episode starts from `mj_resetData` plus `policy_runner.reset()`.
+- Why: bridged policies drove every muscle at half excitation and dropped the left arm. SAR synergies were fit on
+  clip tails with state carried over between episodes. Re-collect cached activations and re-extract synergy models.

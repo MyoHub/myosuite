@@ -6,21 +6,26 @@
 
 from __future__ import annotations
 
+import functools
 import logging
-import weakref
-from collections.abc import Callable
+import re
+from dataclasses import dataclass
 from typing import Any
 
 import mujoco
 import numpy as np
+import torch
 from mjlab.actuator import XmlActuatorCfg as _XmlActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
+from mjlab.envs.mdp import dr
 from mjlab.envs.mdp import terminations as mdp_terminations
 from mjlab.managers.event_manager import EventTermCfg
+from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
 from mjlab.managers.reward_manager import RewardTermCfg
+from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.rl import (
     RslRlModelCfg,
@@ -28,7 +33,7 @@ from mjlab.rl import (
     RslRlPpoAlgorithmCfg,
 )
 from mjlab.scene import SceneCfg
-from mjlab.sim import MujocoCfg, SimulationCfg
+from mjlab.sim import SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 from scipy.spatial.transform import Rotation as R
 
@@ -37,17 +42,20 @@ from myosuite.core.model_recipes import (
     _add_tabletennis_furniture,
     _tabletennis_body_spec,
 )
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
+from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM, sync_forward
 from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTennisCfg
+from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import mujoco_cfg_from_model
 from myosuite.envs.myo.tasks.challenge.tabletennis import (
     ContactTrajIssue,
-    PingpongContactLabels,
-    evaluate_pingpong_trajectory,
 )
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
 logger = logging.getLogger(__name__)
 
 _TT_ENTITY_NAME = "table_tennis_robot"
+_TT_PADDLE_ENTITY_NAME = "paddle"
+_TT_BALL_ENTITY_NAME = "pingpong"
 _MAX_TIME = 3.0
 _TT_RWD_WEIGHTS: dict[str, float] = {
     "reach_dist": 1.0,
@@ -60,112 +68,80 @@ _TT_RWD_WEIGHTS: dict[str, float] = {
     "done": -10.0,
 }
 
-_REF_MODEL: mujoco.MjModel | None = None
-_REF_QPOS_KEY0: np.ndarray | None = None
-_REF_QVEL_INIT: np.ndarray | None = None
-_TT_INDEX: dict[str, Any] | None = None
+# Columns of the CPU ``touching_info`` observation (``_ball_label_to_obs``).
+_PADDLE, _OWN, _OPPONENT, _NET, _GROUND, _ENV = range(6)
+_NUM_LABELS = 6
 
-# Weak-keyed caches: entries are evicted when the env is garbage collected,
-# preventing id(env) stale-key bugs and memory leaks in long-running processes.
-_TT_RUNTIME: weakref.WeakKeyDictionary[Any, dict[str, Any]] = (
-    weakref.WeakKeyDictionary()
+# ``evaluate_pingpong_trajectory`` results as int codes: the ContactTrajIssue
+# values, MISS while nothing is decided yet, and _SOLVED for its ``None``.
+_UNDECIDED = ContactTrajIssue.MISS.value
+_SOLVED = -1
+_FAILED = (
+    ContactTrajIssue.OWN_HALF.value,
+    ContactTrajIssue.NO_PADDLE.value,
+    ContactTrajIssue.DOUBLE_TOUCH.value,
 )
-_TT_SCENE: weakref.WeakKeyDictionary[Any, dict[str, dict]] = weakref.WeakKeyDictionary()
-# GPU tensor cache: label_lookup and geom_bodyid_t, built once per env on first step.
-_TT_GPU: weakref.WeakKeyDictionary[Any, dict[str, Any]] = weakref.WeakKeyDictionary()
-_TT_TENDON_NAMES: tuple[str, ...] | None = None
-_TT_POSITION_ACTUATOR_NAMES: tuple[str, ...] | None = None
+
+_BALL_DROP_Z = 0.3  # CPU ``_get_done``: a ball below this height ends the rally
+_BALL_LAUNCH_VEL = (5.6, 1.6, 0.1)  # CPU ``start_vel`` (P0/P1)
+# CPU ``cal_ball_qvel``: a sampled launch lands between these table points.
+_TABLE_UPPER = (1.35, 0.70, 0.785)
+_TABLE_LOWER = (0.5, -0.60, 0.785)
+_GRAVITY = 9.81
 
 
+@functools.cache
 def _reference_model() -> mujoco.MjModel:
-    global _REF_MODEL, _REF_QPOS_KEY0, _REF_QVEL_INIT, _TT_INDEX
-    if _REF_MODEL is not None:
-        return _REF_MODEL
+    """CPU model of ``myoChallengeTableTennisP*-v0`` (same recipe); read-only."""
     model, _ = build_from_recipe("challenge_tabletennis")
-    _REF_MODEL = model
-    d = mujoco.MjData(model)
-    _REF_QPOS_KEY0 = model.key_qpos[0].copy()
-    _REF_QVEL_INIT = d.qvel.copy()
-    start_vel = np.array([5.6, 1.6, 0.1], dtype=np.float64)
-    ball_dofadr = int(model.body_dofadr[model.body("pingpong").id])
-    _REF_QVEL_INIT[ball_dofadr : ball_dofadr + 3] = start_vel
-
-    myo_joint_range = np.concatenate(
-        [
-            model.joint(i).qposadr
-            for i in range(model.njnt)
-            if not model.joint(i).name.startswith("ping")
-            and model.joint(i).name not in ("pingpong_freejoint", "paddle_freejoint")
-        ]
-    )
-    myo_dof_range = np.concatenate(
-        [
-            model.joint(i).dofadr
-            for i in range(model.njnt)
-            if not model.joint(i).name.startswith("ping")
-            and model.joint(i).name != "paddle_freejoint"
-        ]
-    )
-    init_paddle_quat = R.from_euler(
-        "xyz", np.array([-0.3, 1.57, 0]), degrees=False
-    ).as_quat()[[3, 0, 1, 2]]
-    flex_adr = int(model.jnt_qposadr[model.joint("flex_extension").id])
-    ball_bid = int(model.body("pingpong").id)
-    ball_gid = int(model.geom("pingpong").id)
-    _TT_INDEX = {
-        "pelvis_site_id": int(model.site("pelvis").id),
-        "ball_site_id": int(model.site("pingpong").id),
-        "paddle_site_id": int(model.site("paddle").id),
-        "grasp_site_id": int(model.site("S_grasp").id),
-        "paddle_body_id": int(model.body("paddle").id),
-        "ball_body_id": ball_bid,
-        "ball_geom_id": ball_gid,
-        "geom_bodyid": np.asarray(model.geom_bodyid, dtype=np.int32),
-        "gids": {
-            "pad": int(model.geom("pad").id),
-            "own": int(model.geom("coll_own_half").id),
-            "opp": int(model.geom("coll_opponent_half").id),
-            "net": int(model.geom("coll_net").id),
-            "ground": int(model.geom("ground").id),
-        },
-        "myo_joint_idx": np.asarray(myo_joint_range, dtype=np.int64),
-        "myo_dof_idx": np.asarray(myo_dof_range, dtype=np.int64),
-        "sensor_pingpong_vel_adr": int(
-            model.sensor_adr[model.sensor("pingpong_vel_sensor").id]
-        ),
-        "sensor_pingpong_vel_dim": int(
-            model.sensor_dim[model.sensor("pingpong_vel_sensor").id]
-        ),
-        "sensor_paddle_vel_adr": int(
-            model.sensor_adr[model.sensor("paddle_vel_sensor").id]
-        ),
-        "sensor_paddle_vel_dim": int(
-            model.sensor_dim[model.sensor("paddle_vel_sensor").id]
-        ),
-        "flex_qpos_adr": flex_adr,
-        "ball_qpos_adr": int(model.joint("pingpong_freejoint").qposadr[0]),
-        "ball_dof_adr": ball_dofadr,
-        "init_paddle_quat": init_paddle_quat.astype(np.float32),
-        "muscle_act_mask": np.asarray(
-            model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE, dtype=bool
-        ),
-        "actuator_ctrlrange": np.asarray(model.actuator_ctrlrange, dtype=np.float64),
-        "nq": int(model.nq),
-        "nv": int(model.nv),
-        "nu": int(model.nu),
-        "na": int(model.na),
-        "jnt_range": np.asarray(model.jnt_range, dtype=np.float64),
-        "jnt_qposadr": np.asarray(model.jnt_qposadr, dtype=np.int32),
-        "njnt": int(model.njnt),
-    }
     return model
 
 
+@dataclass(frozen=True)
+class _TTReference:
+    """CPU keyframe and actuator data the mjlab scene reproduces."""
+
+    arm_joint_pos: dict[str, float]
+    paddle_pose: tuple[float, ...]
+    ball_pose: tuple[float, ...]
+    muscle_mask: np.ndarray
+    ctrlrange: np.ndarray
+    init_paddle_quat: tuple[float, ...]
+
+
+@functools.cache
+def _tt_reference() -> _TTReference:
+    model = _reference_model()
+    key = model.key_qpos[0]
+
+    def pose(joint: str) -> tuple[float, ...]:
+        adr = int(model.joint(joint).qposadr[0])
+        return tuple(float(q) for q in key[adr : adr + 7])
+
+    # Anchored: mjlab matches init_state joint patterns as regex prefixes.
+    arm_joint_pos = {
+        re.escape(model.joint(j).name) + "$": float(key[model.jnt_qposadr[j]])
+        for j in range(model.njnt)
+        if model.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE
+    }
+    init_paddle_quat = R.from_euler(
+        "xyz", np.array([-0.3, 1.57, 0]), degrees=False
+    ).as_quat()[[3, 0, 1, 2]]
+    return _TTReference(
+        arm_joint_pos=arm_joint_pos,
+        paddle_pose=pose("paddle_freejoint"),
+        ball_pose=pose("pingpong_freejoint"),
+        muscle_mask=np.asarray(
+            model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE, dtype=bool
+        ),
+        ctrlrange=np.asarray(model.actuator_ctrlrange, dtype=np.float64),
+        init_paddle_quat=tuple(float(q) for q in init_paddle_quat),
+    )
+
+
+@functools.cache
 def _tt_actuator_xml_groups() -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Return (muscle tendon names, position actuator names) for mjlab Xml wrapping."""
-    global _TT_TENDON_NAMES, _TT_POSITION_ACTUATOR_NAMES
-    if _TT_TENDON_NAMES is not None and _TT_POSITION_ACTUATOR_NAMES is not None:
-        return _TT_TENDON_NAMES, _TT_POSITION_ACTUATOR_NAMES
     m = _reference_model()
     tendons: list[str] = []
     positions: list[str] = []
@@ -179,112 +155,7 @@ def _tt_actuator_xml_groups() -> tuple[tuple[str, ...], tuple[str, ...]]:
         else:
             if aname is not None:
                 positions.append(aname)
-    _TT_TENDON_NAMES = tuple(tendons)
-    _TT_POSITION_ACTUATOR_NAMES = tuple(positions)
-    return _TT_TENDON_NAMES, _TT_POSITION_ACTUATOR_NAMES
-
-
-_TT_BALL_ENTITY_NAME = "pingpong"
-
-
-def _resolve_tt_scene_ids(env: Any, entity_name: str) -> dict[str, Any]:
-    """Resolve all scene-level indices from the compiled mjlab model.
-
-    Called once per env instance and cached.  All IDs are scene-level (i.e.
-    suitable for indexing into ``entity.data.data.*`` Warp buffers).  The
-    reference model (``_TT_INDEX``) is only used for quantities that do not
-    depend on scene-level addressing: actuator masks, ctrlrange, muscle flags.
-    """
-    env_cache = _TT_SCENE.setdefault(env, {})
-    if entity_name in env_cache:
-        return env_cache[entity_name]
-
-    ent = env.scene[entity_name]
-    ball_ent = env.scene[_TT_BALL_ENTITY_NAME]
-    mj_m = env.sim.mj_model
-
-    arm_prefix = f"{entity_name}/"
-    ball_prefix = f"{_TT_BALL_ENTITY_NAME}/"
-    paddle_fj = f"{arm_prefix}paddle_freejoint"
-
-    # --- site IDs (scene-level via entity.indexing.site_ids) ---
-    def _scene_site(e: Any, short_name: str) -> int:
-        local, _ = e.find_sites([short_name])
-        return int(e.indexing.site_ids[local[0]])
-
-    def _scene_body(e: Any, short_name: str) -> int:
-        local, _ = e.find_bodies([short_name])
-        return int(e.indexing.body_ids[local[0]])
-
-    # --- arm joint qpos / dof addresses in the scene model ---
-    myo_qpos: list[int] = []
-    myo_dof: list[int] = []
-    jnt_qposadr_arm: list[int] = []
-    jnt_range_arm: list[tuple[float, float]] = []
-    for i in range(mj_m.njnt):
-        jname = mujoco.mj_id2name(mj_m, mujoco.mjtObj.mjOBJ_JOINT, i)
-        if not jname or not jname.startswith(arm_prefix):
-            continue
-        jnt = mj_m.joint(jname)
-        if jname == paddle_fj:
-            continue
-        jnt_qposadr_arm.append(int(jnt.qposadr[0]))
-        jnt_range_arm.append((float(mj_m.jnt_range[i, 0]), float(mj_m.jnt_range[i, 1])))
-        myo_qpos.append(int(jnt.qposadr[0]))
-        myo_dof.append(int(jnt.dofadr[0]))
-
-    flex_jnt = mj_m.joint(f"{arm_prefix}flex_extension")
-    flex_qpos_adr = int(flex_jnt.qposadr[0])
-
-    # --- ball body / contact geom IDs in the scene model ---
-    ball_bid = mj_m.body(f"{ball_prefix}pingpong").id
-    geom_bodyid = np.asarray(mj_m.geom_bodyid, dtype=np.int32)
-
-    def _gid(name: str) -> int:
-        return int(mj_m.geom(name).id)
-
-    gids = {
-        "pad": _gid(f"{arm_prefix}pad"),
-        "own": _gid(f"{arm_prefix}coll_own_half"),
-        "opp": _gid(f"{arm_prefix}coll_opponent_half"),
-        "net": _gid(f"{arm_prefix}coll_net"),
-        # ground is inside the arm entity spec (attached via table tennis XML)
-        "ground": _gid(f"{arm_prefix}ground"),
-    }
-
-    # --- sensor addresses (added via SceneCfg.spec_fn, not inside any entity) ---
-    sid_pv = mj_m.sensor("pingpong_vel_sensor").id
-    sid_pad = mj_m.sensor("paddle_vel_sensor").id
-
-    # --- ball qpos / dof addresses in the scene model ---
-    ball_fj = mj_m.joint(f"{ball_prefix}pingpong_freejoint")
-    ball_qpos_adr = int(ball_fj.qposadr[0])
-    ball_dof_adr = int(ball_fj.dofadr[0])
-
-    env_cache[entity_name] = {
-        "pelvis_site": _scene_site(ent, "pelvis"),
-        "ball_site": _scene_site(ball_ent, "pingpong"),
-        "paddle_site": _scene_site(ent, "paddle"),
-        "grasp_site": _scene_site(ent, "S_grasp"),
-        "paddle_body": _scene_body(ent, "paddle"),
-        "ball_body_id": int(ball_bid),
-        "geom_bodyid": geom_bodyid,
-        "gids": gids,
-        "flex_qpos_adr": flex_qpos_adr,
-        "myo_joint_idx": np.asarray(myo_qpos, dtype=np.int64),
-        "myo_dof_idx": np.asarray(myo_dof, dtype=np.int64),
-        "jnt_qposadr": np.asarray(jnt_qposadr_arm, dtype=np.int32),
-        "jnt_range": np.asarray(jnt_range_arm, dtype=np.float64),
-        "njnt_arm": len(jnt_qposadr_arm),
-        "ball_qpos_adr": ball_qpos_adr,
-        "ball_dof_adr": ball_dof_adr,
-        # Sensors live in the scene spec (via SceneCfg.spec_fn).
-        "sensor_pingpong_vel_adr": int(mj_m.sensor_adr[sid_pv]),
-        "sensor_pingpong_vel_dim": int(mj_m.sensor_dim[sid_pv]),
-        "sensor_paddle_vel_adr": int(mj_m.sensor_adr[sid_pad]),
-        "sensor_paddle_vel_dim": int(mj_m.sensor_dim[sid_pad]),
-    }
-    return env_cache[entity_name]
+    return tuple(tendons), tuple(positions)
 
 
 def _table_tennis_full_spec() -> mujoco.MjSpec:
@@ -300,300 +171,233 @@ def _table_tennis_full_spec() -> mujoco.MjSpec:
 
 
 def _table_tennis_spec_fn() -> mujoco.MjSpec:
+    """Athlete and table; the paddle and the ball are entities of their own.
+
+    mjlab resets a floating body only through the root of its entity, so each
+    free body of the CPU model gets its own entity. Without a free joint mjlab
+    mounts this entity on a mocap body at the origin, which keeps the recipe's
+    calibrated root pose (the CPU world pose).
+    """
     spec = _table_tennis_full_spec()
-    # Remove the ball body — it becomes its own entity so it can be reset via
-    # Entity.write_root_state_to_sim.  The two velocimeter sensors reference
-    # sites from both trees (paddle + pingpong) and are re-added post-attachment
-    # by _tt_scene_spec_fn via SceneCfg.spec_fn.
+    # The velocimeters move with their bodies (see _free_body_spec).
     for s in list(spec.sensors):
         if s.name in ("pingpong_vel_sensor", "paddle_vel_sensor"):
             spec.delete(s)
-    for b in list(spec.bodies):
-        if b.name == "pingpong":
-            spec.delete(b)
-            break
+    for name in ("paddle", "pingpong"):
+        spec.delete(next(b for b in spec.bodies if b.name == name))
     return spec
+
+
+def _free_body_spec(body_name: str) -> mujoco.MjSpec:
+    """Spec holding one free body of the full spec, with its velocimeter."""
+    full = _table_tennis_full_spec()
+    # ``full.body(name)`` returns None for this composed/attached spec
+    # (name lookup isn't populated pre-compile for attached subtrees) —
+    # iterate instead.
+    body = next(b for b in full.bodies if b.name == body_name)
+    spec = mujoco.MjSpec()
+    # attach_body also carries the sensor that reads the body's site.
+    spec.worldbody.add_frame().attach_body(body, "", "")
+    return spec
+
+
+def _paddle_spec_fn() -> mujoco.MjSpec:
+    """Minimal spec containing only the paddle (freejoint + site + geoms)."""
+    return _free_body_spec("paddle")
 
 
 def _pingpong_spec_fn() -> mujoco.MjSpec:
     """Minimal spec containing only the pingpong ball (freejoint + site + geom)."""
-    full = _table_tennis_full_spec()
-    # ``full.body("pingpong")`` returns None for this composed/attached spec
-    # (name lookup isn't populated pre-compile for attached subtrees) —
-    # iterate instead.
-    ball_body = next(b for b in full.bodies if b.name == "pingpong")
-    # Build a clean spec with just the ball subtree.
-    spec = mujoco.MjSpec()
-    frame = spec.worldbody.add_frame()
-    frame.attach_body(ball_body, "", "")
-    # attach_body may carry sensors that reference the ball site; strip them
-    # here — they will be re-added at scene level via SceneCfg.spec_fn.
-    for s in list(spec.sensors):
-        spec.delete(s)
-    return spec
+    return _free_body_spec("pingpong")
 
 
-def _tt_scene_spec_fn(
-    arm_entity_name: str, ball_entity_name: str
-) -> Callable[[mujoco.MjSpec], None]:
-    """Return a SceneCfg.spec_fn that re-adds the two cross-tree velocimeters.
-
-    After mjlab attaches entities the site names are prefixed as
-    ``{entity_name}/{site_name}``.  The two velocimeters reference sites in
-    different entity trees so they cannot live inside either entity spec and
-    must be added here, at the combined-spec level.
-    """
-    paddle_site = f"{arm_entity_name}/paddle"
-    ball_site = f"{ball_entity_name}/pingpong"
-
-    def _fn(spec: mujoco.MjSpec) -> None:
-        s1 = spec.add_sensor()
-        s1.name = "pingpong_vel_sensor"
-        s1.type = mujoco.mjtSensor.mjSENS_VELOCIMETER
-        s1.objtype = mujoco.mjtObj.mjOBJ_SITE
-        s1.objname = ball_site
-
-        s2 = spec.add_sensor()
-        s2.name = "paddle_vel_sensor"
-        s2.type = mujoco.mjtSensor.mjSENS_VELOCIMETER
-        s2.objtype = mujoco.mjtObj.mjOBJ_SITE
-        s2.objname = paddle_site
-
-    return _fn
+def _free_body_init_state(
+    pose: tuple[float, ...], lin_vel: tuple[float, float, float] = (0.0, 0.0, 0.0)
+) -> EntityCfg.InitialStateCfg:
+    """Root state of a free-body entity from a free-joint qpos (pos + wxyz quat)."""
+    return EntityCfg.InitialStateCfg(
+        pos=(pose[0], pose[1], pose[2]),
+        rot=(pose[3], pose[4], pose[5], pose[6]),
+        lin_vel=lin_vel,
+    )
 
 
-def _get_tt_runtime(env: Any) -> dict[str, Any]:
-    if env not in _TT_RUNTIME:
-        n = int(env.num_envs)
-        _TT_RUNTIME[env] = {
-            "trajectories": [[] for _ in range(n)],
-            "cur_rally": [0] * n,
-            "last_done": [False] * n,
-        }
-    return _TT_RUNTIME[env]
+def _ball_contact_labels(
+    nacon: torch.Tensor,
+    geom: torch.Tensor,
+    worldid: torch.Tensor,
+    geom_body: torch.Tensor,
+    ball_body: int,
+    label_of_geom: torch.Tensor,
+    num_envs: int,
+) -> torch.Tensor:
+    """Labels touching the ball, per env (CPU ``get_ball_contact_labels``).
 
-
-def _geom_to_label(gid: int, gids: dict[str, int]) -> PingpongContactLabels | None:
-    if gid == gids["pad"]:
-        return PingpongContactLabels.PADDLE
-    if gid == gids["own"]:
-        return PingpongContactLabels.OWN
-    if gid == gids["opp"]:
-        return PingpongContactLabels.OPPONENT
-    if gid == gids["net"]:
-        return PingpongContactLabels.NET
-    if gid == gids["ground"]:
-        return PingpongContactLabels.GROUND
-    return PingpongContactLabels.ENV
-
-
-def _contacts_for_env(
-    data: Any,
-    env_i: int,
-    ball_bid: int,
-    geom_bodyid: np.ndarray,
-    gids: dict[str, int],
-) -> frozenset[PingpongContactLabels]:
-    labels: set[PingpongContactLabels] = set()
-    try:
-        nacon = int(data.nacon.detach().cpu().item())
-    except (AttributeError, TypeError):
-        # mjlab API shape varies: try indexed form (nacon is a per-env tensor)
-        try:
-            nacon = int(data.nacon[0].item())
-        except (AttributeError, IndexError, TypeError):
-            return frozenset()
-    if nacon <= 0:
-        return frozenset()
-    try:
-        geom = data.contact.geom
-        wid = data.contact.worldid
-    except AttributeError:
-        return frozenset()
-    nmax = min(nacon, int(geom.shape[0]))
-    for k in range(nmax):
-        try:
-            if int(wid[k].detach().cpu().item()) != env_i:
-                continue
-        except (IndexError, TypeError):
-            continue
-        try:
-            g1 = int(geom[k, 0].detach().cpu().item())
-            g2 = int(geom[k, 1].detach().cpu().item())
-        except (IndexError, TypeError):
-            try:
-                g1 = int(geom[k][0].detach().cpu().item())
-                g2 = int(geom[k][1].detach().cpu().item())
-            except (IndexError, TypeError):
-                continue
-        b1 = int(geom_bodyid[g1])
-        b2 = int(geom_bodyid[g2])
-        if b1 == ball_bid:
-            lab = _geom_to_label(g2, gids)
-        elif b2 == ball_bid:
-            lab = _geom_to_label(g1, gids)
-        else:
-            continue
-        if lab is not None:
-            labels.add(lab)
-    return frozenset(labels)
-
-
-def _ball_label_vec(labels: frozenset[PingpongContactLabels], ref_vec: Any) -> Any:
-    import torch
-
-    v = torch.zeros(6, dtype=torch.float32, device=ref_vec.device)
-    for lab in labels:
-        if lab == PingpongContactLabels.PADDLE:
-            v[0] += 1.0
-        elif lab == PingpongContactLabels.OWN:
-            v[1] += 1.0
-        elif lab == PingpongContactLabels.OPPONENT:
-            v[2] += 1.0
-        elif lab == PingpongContactLabels.NET:
-            v[3] += 1.0
-        elif lab == PingpongContactLabels.GROUND:
-            v[4] += 1.0
-        else:
-            v[5] += 1.0
-    return v
-
-
-_LABEL_ENUM_MAP: list[PingpongContactLabels] = [
-    PingpongContactLabels.PADDLE,
-    PingpongContactLabels.OWN,
-    PingpongContactLabels.OPPONENT,
-    PingpongContactLabels.NET,
-    PingpongContactLabels.GROUND,
-    PingpongContactLabels.ENV,
-]
-
-
-def _build_label_lookup(n_geoms: int, gids: dict[str, int], device: Any) -> Any:
-    """Build a GPU tensor mapping geom_id → label index (0=PADDLE … 5=ENV)."""
-    import torch
-
-    t = torch.full((n_geoms,), 5, dtype=torch.long, device=device)
-    t[gids["pad"]] = 0
-    t[gids["own"]] = 1
-    t[gids["opp"]] = 2
-    t[gids["net"]] = 3
-    t[gids["ground"]] = 4
-    return t
-
-
-def _get_gpu_tensors(env: Any, sc: dict[str, Any], device: Any) -> dict[str, Any]:
-    """Return (and cache) the GPU tensors needed for vectorized contact detection."""
-    import torch
-
-    if env not in _TT_GPU:
-        geom_bodyid = sc["geom_bodyid"]
-        n_geoms = len(geom_bodyid)
-        _TT_GPU[env] = {
-            "geom_bodyid_t": torch.as_tensor(
-                geom_bodyid, device=device, dtype=torch.long
-            ),
-            "label_lookup": _build_label_lookup(n_geoms, sc["gids"], device),
-            "n_geoms": n_geoms,
-        }
-    return _TT_GPU[env]
-
-
-def _contacts_all_envs_vectorized(
-    data: Any,
-    ball_bid: int,
-    gpu_tensors: dict[str, Any],
-    n: int,
-    device: Any,
-) -> tuple[list[frozenset[PingpongContactLabels]], Any]:
-    """Vectorized contact detection for all envs in a single GPU pass.
+    Args:
+        nacon: Number of live contacts over all worlds, shape ``(1,)``. Rows at
+            or past it keep contacts of earlier collision passes.
+        geom: Geom pair of each contact row, ``(naconmax, 2)``.
+        worldid: World of each contact row, ``(naconmax,)``.
+        geom_body: Body id of each geom.
+        ball_body: Body id of the ball.
+        label_of_geom: ``touching_info`` column of each geom.
+        num_envs: Number of worlds.
 
     Returns:
-        contact_sets: list of frozensets (one per env) for trajectory tracking.
-        touching_info: float32 tensor of shape (n, 6) on ``device``.
+        ``(num_envs, 6)`` bool, one flag per ``touching_info`` column (the CPU
+        label set). Computed on device, without host syncs.
     """
-    import torch
-
-    empty_sets: list[frozenset[PingpongContactLabels]] = [frozenset() for _ in range(n)]
-    touching_info = torch.zeros(n, 6, dtype=torch.float32, device=device)
-
-    try:
-        geom = data.contact.geom  # (nconmax, 2)
-        wid = data.contact.worldid  # (nconmax,)
-    except AttributeError:
-        return empty_sets, touching_info
-
-    if geom.numel() == 0:
-        return empty_sets, touching_info
-
-    n_geoms = gpu_tensors["n_geoms"]
-    geom_bodyid_t = gpu_tensors["geom_bodyid_t"]
-    label_lookup = gpu_tensors["label_lookup"]
-
-    wid_l = wid.long()
-    g1 = torch.clamp(geom[:, 0].long(), 0, n_geoms - 1)
-    g2 = torch.clamp(geom[:, 1].long(), 0, n_geoms - 1)
-
-    b1 = geom_bodyid_t[g1]
-    b2 = geom_bodyid_t[g2]
-    is_ball1 = b1 == ball_bid
-    is_ball2 = b2 == ball_bid
-
-    valid = (wid_l >= 0) & (wid_l < n) & (is_ball1 | is_ball2)
-
-    if not valid.any():
-        return empty_sets, touching_info
-
-    other_geom = torch.where(is_ball1, g2, g1)
-    label_idx = label_lookup[other_geom]
-
-    valid_idx = valid.nonzero(as_tuple=True)[0]
-    env_idx = wid_l[valid_idx]
-    lab_idx = label_idx[valid_idx]
-
-    # Deduplicate (env_id, label_id) pairs — matches CPU frozenset semantics.
-    pairs = torch.stack([env_idx, lab_idx], dim=1)
-    unique_pairs = pairs.unique(dim=0)
-    flat_idx_dedup = unique_pairs[:, 0] * 6 + unique_pairs[:, 1]
-    touching_info.view(-1).scatter_add_(
-        0,
-        flat_idx_dedup,
-        torch.ones(flat_idx_dedup.shape[0], dtype=torch.float32, device=device),
-    )
-
-    # One batched CPU transfer for trajectory tracking (frozensets).
-    env_cpu = env_idx.cpu().numpy()
-    lab_cpu = lab_idx.cpu().numpy()
-    per_env: list[set[PingpongContactLabels]] = [set() for _ in range(n)]
-    for c, e in zip(lab_cpu, env_cpu):
-        per_env[int(e)].add(_LABEL_ENUM_MAP[int(c)])
-    return [frozenset(s) for s in per_env], touching_info
+    live = torch.arange(geom.shape[0], device=geom.device) < nacon.reshape(1)
+    pair = geom.long().clamp(0, geom_body.shape[0] - 1)
+    body = geom_body[pair]
+    ball_first = body[:, 0] == ball_body
+    hit = live & (ball_first | (body[:, 1] == ball_body))
+    other = torch.where(ball_first, pair[:, 1], pair[:, 0])
+    world = worldid.long().clamp(0, num_envs - 1)
+    dropped = num_envs * _NUM_LABELS  # slot for rows that are not ball contacts
+    slot = torch.where(hit, world * _NUM_LABELS + label_of_geom[other], dropped)
+    flags = torch.zeros(dropped + 1, dtype=torch.bool, device=geom.device)
+    flags[slot] = True
+    return flags[:dropped].view(num_envs, _NUM_LABELS)
 
 
-def _cal_ball_qvel_torch(ball_qpos: Any) -> tuple[Any, Any]:
-    """Return (v_low[3], v_high[3]) tensors for sampling initial ball linear velocity."""
-    import torch
+class _BallContacts:
+    """:func:`_ball_contact_labels` bound to the ids of one scene."""
 
-    table_upper = torch.tensor(
-        [1.35, 0.70, 0.785], dtype=ball_qpos.dtype, device=ball_qpos.device
-    )
-    table_lower = torch.tensor(
-        [0.5, -0.60, 0.785], dtype=ball_qpos.dtype, device=ball_qpos.device
-    )
-    gravity = 9.81
-    v_z = (
-        torch.rand(1, device=ball_qpos.device, dtype=ball_qpos.dtype) * 0.2 - 0.1
-    ).squeeze(0)
-    a = -0.5 * gravity
-    b = v_z
-    c = ball_qpos[2] - table_upper[2]
-    disc = b * b - 4 * a * c
-    t = (-b - torch.sqrt(torch.clamp(disc, min=0.0))) / (2 * a + 1e-8)
-    v_upper = torch.stack([(table_upper[i] - ball_qpos[i]) / t for i in range(2)])
-    v_lower = torch.stack([(table_lower[i] - ball_qpos[i]) / t for i in range(2)])
-    v_high = torch.cat([v_upper, v_z.unsqueeze(0)], dim=0)
-    v_low = torch.cat([v_lower, v_z.unsqueeze(0)], dim=0)
-    return v_low, v_high
+    def __init__(self, env: ManagerBasedRlEnv) -> None:
+        model = env.sim.mj_model
+        label_of_geom = torch.full(
+            (model.ngeom,), _ENV, dtype=torch.long, device=env.device
+        )
+        for column, geom in (
+            (_PADDLE, f"{_TT_PADDLE_ENTITY_NAME}/pad"),
+            (_OWN, f"{_TT_ENTITY_NAME}/coll_own_half"),
+            (_OPPONENT, f"{_TT_ENTITY_NAME}/coll_opponent_half"),
+            (_NET, f"{_TT_ENTITY_NAME}/coll_net"),
+            (_GROUND, f"{_TT_ENTITY_NAME}/ground"),
+        ):
+            label_of_geom[model.geom(geom).id] = column
+        self._label_of_geom = label_of_geom
+        self._geom_body = torch.as_tensor(
+            model.geom_bodyid, dtype=torch.long, device=env.device
+        )
+        self._ball_body = env.scene[_TT_BALL_ENTITY_NAME].indexing.root_body_id
+        self._num_envs = env.num_envs
+
+    def __call__(self, data: Any) -> torch.Tensor:
+        return _ball_contact_labels(
+            data.nacon,
+            data.contact.geom,
+            data.contact.worldid,
+            self._geom_body,
+            self._ball_body,
+            self._label_of_geom,
+            self._num_envs,
+        )
+
+
+def _trajectory_outcome(code: int) -> ContactTrajIssue | None:
+    """``evaluate_pingpong_trajectory`` result of an outcome code."""
+    return None if code == _SOLVED else ContactTrajIssue(code)
+
+
+class _PingpongTrajectory:
+    """Incremental, vectorized ``evaluate_pingpong_trajectory``.
+
+    The CPU function re-scans the whole contact trajectory and returns at its
+    first decisive contact set, so feeding one set per step and keeping the
+    first decision gives the CPU result after every step.
+    """
+
+    def __init__(self, num_envs: int, device: Any) -> None:
+        def zeros(dtype: torch.dtype) -> torch.Tensor:
+            return torch.zeros(num_envs, dtype=dtype, device=device)
+
+        self.hit_paddle = zeros(torch.bool)  # has_hit_paddle
+        self.left_paddle = zeros(torch.bool)  # has_bounced_from_paddle
+        self.bounced = zeros(torch.bool)  # has_bounced_from_table
+        self.bounce_over = zeros(torch.bool)  # own_contact_phase_done
+        self.own_count = zeros(torch.int32)
+        self.outcome = torch.full(
+            (num_envs,), _UNDECIDED, dtype=torch.int32, device=device
+        )
+
+    def reset(self, env_ids: torch.Tensor | slice) -> None:
+        """Empty the trajectory of *env_ids*."""
+        for flag in (self.hit_paddle, self.left_paddle, self.bounced, self.bounce_over):
+            flag[env_ids] = False
+        self.own_count[env_ids] = 0
+        self.outcome[env_ids] = _UNDECIDED
+
+    def restart(self, mask: torch.Tensor) -> None:
+        """Empty the trajectory where the bool *mask* is set (no host sync)."""
+        for flag in (self.hit_paddle, self.left_paddle, self.bounced, self.bounce_over):
+            flag.masked_fill_(mask, False)
+        self.own_count.masked_fill_(mask, 0)
+        self.outcome.masked_fill_(mask, _UNDECIDED)
+
+    def update(self, labels: torch.Tensor) -> None:
+        """Append one contact set per env (``(num_envs, 6)`` bool)."""
+        paddle = labels[:, _PADDLE]
+        own = labels[:, _OWN]
+        opponent = labels[:, _OPPONENT]
+        left_paddle = self.left_paddle | (~paddle & self.hit_paddle)
+        double_touch = paddle & left_paddle
+        hit_paddle = self.hit_paddle | paddle
+        first_own = own & ~self.bounced
+        more_own = own & self.bounced & ~self.bounce_over
+        own_count = torch.where(
+            first_own,
+            torch.ones_like(self.own_count),
+            self.own_count + more_own.to(self.own_count.dtype),
+        )
+        long_bounce = more_own & (own_count > 2)
+        own_half = long_bounce | (own & self.bounced & self.bounce_over)
+        # The first matching check of the CPU loop decides the step.
+        step = torch.full_like(self.outcome, _UNDECIDED)
+        step = torch.where(
+            opponent & ~hit_paddle, ContactTrajIssue.NO_PADDLE.value, step
+        )
+        step = torch.where(opponent & hit_paddle, _SOLVED, step)
+        step = torch.where(own_half, ContactTrajIssue.OWN_HALF.value, step)
+        step = torch.where(double_touch, ContactTrajIssue.DOUBLE_TOUCH.value, step)
+        # A decided trajectory keeps its outcome (its flags no longer matter).
+        self.outcome = torch.where(self.outcome == _UNDECIDED, step, self.outcome)
+        self.left_paddle = left_paddle
+        self.hit_paddle = hit_paddle
+        self.bounce_over = self.bounce_over | long_bounce | (~own & self.bounced)
+        self.bounced = self.bounced | own
+        self.own_count = own_count
+
+
+def _sample_ball_lin_vel(pos: torch.Tensor) -> torch.Tensor:
+    """CPU ``cal_ball_qvel`` + uniform draw, for every row of *pos*."""
+    n, device = pos.shape[0], pos.device
+    upper = torch.tensor(_TABLE_UPPER, dtype=pos.dtype, device=device)
+    lower = torch.tensor(_TABLE_LOWER, dtype=pos.dtype, device=device)
+    v_z = torch.rand(n, dtype=pos.dtype, device=device) * 0.2 - 0.1
+    a = -0.5 * _GRAVITY
+    c = pos[:, 2] - upper[2]
+    t = (-v_z - torch.sqrt(torch.clamp(v_z * v_z - 4 * a * c, min=0.0))) / (2 * a)
+    v_low = (lower[:2] - pos[:, :2]) / t[:, None]
+    v_high = (upper[:2] - pos[:, :2]) / t[:, None]
+    v_xy = v_low + torch.rand(n, 2, dtype=pos.dtype, device=device) * (v_high - v_low)
+    return torch.cat([v_xy, v_z[:, None]], dim=-1)
+
+
+def _ball_launch_state(
+    ball: Any, env_ids: torch.Tensor, tt_cfg: TableTennisCfg
+) -> torch.Tensor:
+    """Root state of a (re)launched ball: CPU keyframe or sampled pos/vel."""
+    state = ball.data.default_root_state[env_ids].clone()
+    n, device = state.shape[0], state.device
+    if tt_cfg.ball_xyz_range is not None:
+        low = torch.tensor(tt_cfg.ball_xyz_range["low"], device=device)
+        high = torch.tensor(tt_cfg.ball_xyz_range["high"], device=device)
+        state[:, :3] = low + torch.rand(n, 3, device=device) * (high - low)
+        if tt_cfg.ball_qvel:
+            state[:, 7:10] = _sample_ball_lin_vel(state[:, :3])
+    return state
 
 
 class TableTennisMixedCtrlActionCfg:
@@ -612,23 +416,19 @@ class TableTennisMixedCtrlAction:
     def __init__(
         self, cfg: TableTennisMixedCtrlActionCfg, env: ManagerBasedRlEnv
     ) -> None:
-        import torch
-
         self.cfg = cfg
         self._env = env
         self.num_envs = env.num_envs
         self.device = env.device
         self._entity = env.scene[cfg.entity_name]
-        _reference_model()
-        idx = _TT_INDEX
-        assert idx is not None
-        self._nu = int(idx["nu"])
-        self._muscle_mask = torch.as_tensor(idx["muscle_act_mask"], device=self.device)
+        ref = _tt_reference()
+        self._nu = int(ref.muscle_mask.shape[0])
+        self._muscle_mask = torch.as_tensor(ref.muscle_mask, device=self.device)
         lo = torch.as_tensor(
-            idx["actuator_ctrlrange"][:, 0], dtype=torch.float32, device=self.device
+            ref.ctrlrange[:, 0], dtype=torch.float32, device=self.device
         )
         hi = torch.as_tensor(
-            idx["actuator_ctrlrange"][:, 1], dtype=torch.float32, device=self.device
+            ref.ctrlrange[:, 1], dtype=torch.float32, device=self.device
         )
         self._mid = 0.5 * (lo + hi)
         self._half = 0.5 * (hi - lo)
@@ -656,11 +456,8 @@ class TableTennisMixedCtrlAction:
         return self._raw_actions
 
     def process_actions(self, actions: Any) -> None:
-        import torch
-
         a = torch.clamp(actions.to(self.device), -1.0, 1.0)
         self._raw_actions[:] = a
-        ctrl = torch.zeros_like(a)
         m = self._muscle_mask[None, :].expand_as(a)
         ctrl = torch.where(
             m, sigmoid_muscle_activation(a, torch), self._mid + a * self._half
@@ -682,461 +479,230 @@ class TableTennisMixedCtrlAction:
             self._raw_actions[env_ids] = 0.0
 
 
-def _make_tt_obs_closure(
-    entity_name: str, _tt_cfg: TableTennisCfg
-) -> Callable[[Any], Any]:
-    def _obs(env: Any) -> Any:
-        import torch
+class TableTennisObservation(ManagerTermBase):
+    """CPU ``TableTennisEnv`` observation vector (417-d): same order and units."""
 
-        _reference_model()
-        idx = _TT_INDEX
-        assert idx is not None
-        rt = _get_tt_runtime(env)
-        sc = _resolve_tt_scene_ids(env, entity_name)
-        data = env.scene[entity_name].data.data
-        n = int(data.qpos.shape[0])
-        device = data.qpos.device
-        pelvis_sid = sc["pelvis_site"]
-        ball_sid = sc["ball_site"]
-        paddle_sid = sc["paddle_site"]
-        paddle_bid = sc["paddle_body"]
+    def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedRlEnv) -> None:
+        super().__init__(env)
+        self._arm = env.scene[_TT_ENTITY_NAME]
+        self._paddle = env.scene[_TT_PADDLE_ENTITY_NAME]
+        self._ball = env.scene[_TT_BALL_ENTITY_NAME]
+        self._pelvis = self._arm.find_sites(["pelvis"])[0][0]
+        self._paddle_site = self._paddle.find_sites(["paddle"])[0][0]
+        self._ball_site = self._ball.find_sites(["pingpong"])[0][0]
+        self._ball_vel = env.scene[f"{_TT_BALL_ENTITY_NAME}/pingpong_vel_sensor"]
+        self._paddle_vel = env.scene[f"{_TT_PADDLE_ENTITY_NAME}/paddle_vel_sensor"]
+        self._contacts = _BallContacts(env)
+        self._has_act = int(env.sim.mj_model.na) > 0
 
-        # All addressing uses scene-level IDs from sc (resolved from the
-        # actual compiled mjlab model, not from the reference model _TT_INDEX).
-        jix = torch.as_tensor(sc["myo_joint_idx"], device=device, dtype=torch.long)
-        dix = torch.as_tensor(sc["myo_dof_idx"], device=device, dtype=torch.long)
-        pelvis_pos = data.site_xpos[:, pelvis_sid, :]
-        body_qpos = data.qpos[:, jix]
-        body_qvel = data.qvel[:, dix]
-        ball_pos = data.site_xpos[:, ball_sid, :]
-        adr_p = sc["sensor_pingpong_vel_adr"]
-        dim_p = sc["sensor_pingpong_vel_dim"]
-        ball_vel = data.sensordata[:, adr_p : adr_p + dim_p]
-        paddle_pos = data.site_xpos[:, paddle_sid, :]
-        adr_pad = sc["sensor_paddle_vel_adr"]
-        dim_pad = sc["sensor_paddle_vel_dim"]
-        paddle_vel = data.sensordata[:, adr_pad : adr_pad + dim_pad]
-        paddle_ori = data.xquat[:, paddle_bid, :]
-        reach_err = paddle_pos - ball_pos
-
-        # Vectorized contact detection: one GPU pass for all envs.
-        gpu_t = _get_gpu_tensors(env, sc, device)
-        contact_sets, touching_info = _contacts_all_envs_vectorized(
-            data, sc["ball_body_id"], gpu_t, n, device
-        )
-        for i in range(n):
-            rt["trajectories"][i].append(contact_sets[i])
-
+    def __call__(self, env: ManagerBasedRlEnv) -> torch.Tensor:
+        ball_pos = self._ball.data.site_pos_w[:, self._ball_site]
+        paddle_pos = self._paddle.data.site_pos_w[:, self._paddle_site]
         parts = [
-            pelvis_pos,
-            body_qpos,
-            body_qvel,
+            self._arm.data.site_pos_w[:, self._pelvis],
+            self._arm.data.joint_pos,
+            self._arm.data.joint_vel,
             ball_pos,
-            ball_vel,
+            self._ball_vel.data,
             paddle_pos,
-            paddle_vel,
-            paddle_ori,
-            reach_err,
-            touching_info,
+            self._paddle_vel.data,
+            self._paddle.data.root_link_quat_w,
+            paddle_pos - ball_pos,
+            # Contacts are fresh here: mjlab runs forward() before observations.
+            self._contacts(env.sim.data).float(),
         ]
-        if int(idx["na"]) > 0:
-            parts.append(data.act)
-
-        # Keep tensors on-device: avoid the GPU→CPU→GPU round-trip of _unwrap.
+        if self._has_act:
+            # accepted: no entity.data API for muscle activation
+            parts.append(self._arm.data.data.act)
         return torch.cat([p.to(dtype=torch.float32) for p in parts], dim=-1)
 
-    return _obs
+
+def _rally_done(
+    timed_out: torch.Tensor,
+    ball_z: torch.Tensor,
+    solved: torch.Tensor,
+    outcome: torch.Tensor,
+) -> torch.Tensor:
+    """CPU ``_get_done``: time up, ball dropped, solved, or a failed rally."""
+    failed = (outcome == _FAILED[0]) | (outcome == _FAILED[1]) | (outcome == _FAILED[2])
+    return timed_out | (ball_z < _BALL_DROP_Z) | solved | failed
 
 
-def _make_tt_reward_closure(
-    entity_name: str, _tt_cfg: TableTennisCfg
-) -> Callable[[Any], Any]:
-    def _rew(env: Any) -> Any:
-        import torch
+class TableTennisRally(ManagerTermBase):
+    """Contacts, rally outcome and ``done`` of the step (the ``task_done`` term).
 
-        _reference_model()
-        idx = _TT_INDEX
-        assert idx is not None
-        rt = _get_tt_runtime(env)
-        sc = _resolve_tt_scene_ids(env, entity_name)
-        data = env.scene[entity_name].data.data
-        n = int(data.qpos.shape[0])
-        device = data.qpos.device
+    CPU ``step()`` runs ``mj_forward`` and derives the contact set, the reward
+    and ``done`` from that one post-step state. The ``sync_forward`` term
+    refreshes the same state for mjlab before this term, which appends the
+    step's ball contacts to the trajectory and keeps the step's flags for
+    :class:`TableTennisReward`. The bonus and the penalty are thus paid once,
+    on the step that ends the rally, as on CPU.
+    """
 
-        ball_sid = sc["ball_site"]
-        paddle_sid = sc["paddle_site"]
-        grasp_sid = sc["grasp_site"]
-        paddle_bid = sc["paddle_body"]
+    def __init__(self, cfg: TerminationTermCfg, env: ManagerBasedRlEnv) -> None:
+        super().__init__(env)
+        tt_cfg: TableTennisCfg = cfg.params["tt_cfg"]
+        n, device = env.num_envs, env.device
+        self._contacts = _BallContacts(env)
+        self._trajectory = _PingpongTrajectory(n, device)
+        self._ball = env.scene[_TT_BALL_ENTITY_NAME]
+        self._ball_site = self._ball.find_sites(["pingpong"])[0][0]
+        self._rally_count = int(tt_cfg.rally_count)
+        # CPU compares the float64 sim time with 3 s (false at 300 steps of
+        # 10 ms); counting steps avoids float32 time drift.
+        self._max_steps = round(_MAX_TIME / env.step_dt)
+        self.labels = torch.zeros(n, _NUM_LABELS, dtype=torch.bool, device=device)
+        self.solved = torch.zeros(n, dtype=torch.bool, device=device)
+        self.done = torch.zeros_like(self.solved)
+        self.relaunch = torch.zeros_like(self.solved)
+        self._rallies = torch.zeros(n, dtype=torch.long, device=device)
+        self._rally_start = torch.zeros(n, dtype=torch.long, device=device)
 
-        paddle_pos = data.site_xpos[:, paddle_sid, :]
-        ball_pos = data.site_xpos[:, ball_sid, :]
-        reach_err = paddle_pos - ball_pos
-        palm_pos = data.site_xpos[:, grasp_sid, :]
-        palm_err = palm_pos - paddle_pos
-        paddle_ori = data.xquat[:, paddle_bid, :]
-        init_q = paddle_ori.new_tensor(
-            idx["init_paddle_quat"], dtype=torch.float32
-        ).expand_as(paddle_ori)
-        padde_ori_err = paddle_ori - init_q
-        flex_adr = int(sc["flex_qpos_adr"])
-        torso_err = torch.abs(data.qpos[:, flex_adr])
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+        ids = slice(None) if env_ids is None else env_ids
+        self._trajectory.reset(ids)
+        for flag in (self.labels, self.solved, self.done, self.relaunch):
+            flag[ids] = False
+        self._rallies[ids] = 0
+        self._rally_start[ids] = 0
 
-        reach_dist = torch.linalg.norm(reach_err, dim=-1)
-        palm_dist = torch.linalg.norm(palm_err, dim=-1)
-        paddle_quat_err = torch.linalg.norm(padde_ori_err, dim=-1)
-        act_mag = (
-            torch.linalg.norm(data.act, dim=-1) / float(idx["na"])
-            if int(idx["na"]) > 0
-            else torch.zeros(n, device=device)
+    def __call__(self, env: ManagerBasedRlEnv, tt_cfg: TableTennisCfg) -> torch.Tensor:
+        del tt_cfg  # read at construction
+        self.labels = self._contacts(env.sim.data)
+        self._trajectory.update(self.labels)
+        outcome = self._trajectory.outcome
+        self.solved = outcome == _SOLVED
+        self.done = _rally_done(
+            env.episode_length_buf - self._rally_start > self._max_steps,
+            self._ball.data.site_pos_w[:, self._ball_site, 2],
+            self.solved,
+            outcome,
+        )
+        # CPU rally bookkeeping: a solved rally short of rally_count goes on
+        # with a fresh trajectory and clock (the ball is relaunched by an event).
+        self._rallies += self.solved.long()
+        self.relaunch = self.solved & (self._rallies < self._rally_count)
+        self._rally_start = torch.where(
+            self.relaunch, env.episode_length_buf, self._rally_start
+        )
+        self._trajectory.restart(self.relaunch)
+        return self.done & ~self.relaunch
+
+
+def _rally_term(env: ManagerBasedRlEnv) -> TableTennisRally:
+    return env.termination_manager.get_term_cfg("task_done").func
+
+
+class TableTennisReward(ManagerTermBase):
+    """CPU ``get_reward_dict()["dense"]`` with ``_TT_RWD_WEIGHTS``, for all envs."""
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv) -> None:
+        super().__init__(env)
+        self._arm = env.scene[_TT_ENTITY_NAME]
+        self._paddle = env.scene[_TT_PADDLE_ENTITY_NAME]
+        self._ball = env.scene[_TT_BALL_ENTITY_NAME]
+        self._grasp = self._arm.find_sites(["S_grasp"])[0][0]
+        self._paddle_site = self._paddle.find_sites(["paddle"])[0][0]
+        self._ball_site = self._ball.find_sites(["pingpong"])[0][0]
+        self._flex = self._arm.find_joints(["flex_extension"])[0][0]
+        self._init_quat = torch.tensor(
+            _tt_reference().init_paddle_quat, dtype=torch.float32, device=env.device
+        )
+        self._na = int(env.sim.mj_model.na)
+
+    def __call__(self, env: ManagerBasedRlEnv) -> torch.Tensor:
+        rally = _rally_term(env)
+        w = _TT_RWD_WEIGHTS
+        paddle_pos = self._paddle.data.site_pos_w[:, self._paddle_site]
+        ball_pos = self._ball.data.site_pos_w[:, self._ball_site]
+        palm_pos = self._arm.data.site_pos_w[:, self._grasp]
+        reach_dist = torch.linalg.norm(paddle_pos - ball_pos, dim=-1)
+        palm_dist = torch.linalg.norm(palm_pos - paddle_pos, dim=-1)
+        quat_err = torch.linalg.norm(
+            self._paddle.data.root_link_quat_w - self._init_quat, dim=-1
+        )
+        torso_err = torch.abs(self._arm.data.joint_pos[:, self._flex])
+        if self._na:
+            # accepted: no entity.data API for muscle activation
+            act_mag = torch.linalg.norm(self._arm.data.data.act, dim=-1) / self._na
+        else:
+            act_mag = torch.zeros_like(reach_dist)
+        return (
+            w["reach_dist"] * torch.exp(-1.0 * reach_dist)
+            + w["palm_dist"] * torch.exp(-5.0 * palm_dist)
+            + w["paddle_quat"] * torch.exp(-5.0 * quat_err)
+            + w["torso_up"] * torch.exp(-5.0 * torso_err)
+            - w["act_reg"] * act_mag
+            + w["sparse"] * rally.labels[:, _PADDLE]
+            + w["solved"] * rally.solved
+            + w["done"] * rally.done
         )
 
-        # Single batched CPU transfer instead of N×5 individual .item() CUDA syncs.
-        cpu_block = (
-            torch.stack(
-                [
-                    torch.exp(-1.0 * reach_dist),  # [0] reach_dist reward
-                    torch.exp(-5.0 * palm_dist),  # [1] palm_dist reward
-                    torch.exp(-5.0 * paddle_quat_err),  # [2] paddle_quat reward
-                    torch.exp(-5.0 * torso_err),  # [3] torso_up reward
-                    -act_mag,  # [4] act_reg reward
-                    ball_pos[:, 2].float(),  # [5] ball z-height
-                    data.time.float(),  # [6] sim time
-                ],
-                dim=0,
-            )
-            .cpu()
-            .numpy()
-        )  # shape (7, n) — one CUDA sync for all envs
 
-        rw_rd, rw_pd, rw_pq, rw_tu, rw_ar = (
-            cpu_block[0],
-            cpu_block[1],
-            cpu_block[2],
-            cpu_block[3],
-            cpu_block[4],
-        )
-        ball_z_arr = cpu_block[5]
-        time_arr = cpu_block[6]
+class TableTennisReset(ManagerTermBase):
+    """CPU ``reset()``: keyframe pose (+ optional joint noise), paddle back in
+    the hand and the ball (re)launched from the keyframe or a sampled state."""
 
-        wt_rd = _TT_RWD_WEIGHTS["reach_dist"]
-        wt_pd = _TT_RWD_WEIGHTS["palm_dist"]
-        wt_pq = _TT_RWD_WEIGHTS["paddle_quat"]
-        wt_tu = _TT_RWD_WEIGHTS["torso_up"]
-        wt_ar = _TT_RWD_WEIGHTS["act_reg"]
-        wt_sp = _TT_RWD_WEIGHTS["sparse"]
-        wt_sv = _TT_RWD_WEIGHTS["solved"]
-        wt_dn = _TT_RWD_WEIGHTS["done"]
-
-        dense_np = np.zeros(n, dtype=np.float32)
-        for i in range(n):
-            traj = rt["trajectories"][i]
-            traj_py = [set(s) for s in traj]
-            ev = evaluate_pingpong_trajectory(traj_py)
-            solved = ev is None
-            last = traj[-1] if traj else frozenset()
-            sparse = PingpongContactLabels.PADDLE in last
-            ball_z = float(ball_z_arr[i])
-            t = float(time_arr[i])
-            done_for_dense = _dense_channel_done(t, ball_z, solved, traj_py)
-            dense_np[i] = (
-                wt_rd * float(rw_rd[i])
-                + wt_pd * float(rw_pd[i])
-                + wt_pq * float(rw_pq[i])
-                + wt_tu * float(rw_tu[i])
-                + wt_ar * float(rw_ar[i])
-                + wt_sp * (1.0 if sparse else 0.0)
-                + wt_sv * (1.0 if solved else 0.0)
-                + wt_dn * float(done_for_dense)
-            )
-
-            if solved:
-                rt["cur_rally"][i] += 1
-                cr = rt["cur_rally"][i]
-                if cr < int(_tt_cfg.rally_count):
-                    rt["trajectories"][i] = []
-                    data.time[i] = 0.0
-                    _relaunch_ball_torch(
-                        env,
-                        entity_name,
-                        torch.tensor([i], device=device, dtype=torch.long),
-                        _tt_cfg,
-                    )
-            else:
-                cr = rt["cur_rally"][i]
-            rt["last_done"][i] = _episode_terminal(
-                t, ball_z, solved, traj_py, int(_tt_cfg.rally_count), cr
-            )
-
-        return torch.from_numpy(dense_np).to(device=device, dtype=torch.float32)
-
-    return _rew
-
-
-def _dense_channel_done(
-    t: float,
-    ball_z: float,
-    solved: bool,
-    traj_py: list[set[PingpongContactLabels]],
-) -> float:
-    """Match CPU ``_get_done`` contribution to ``rwd_dict['done']`` (before rally override)."""
-    if t > _MAX_TIME:
-        return 1.0
-    if ball_z < 0.3:
-        return 1.0
-    if solved:
-        return 1.0
-    ev2 = evaluate_pingpong_trajectory(traj_py)
-    if ev2 in (
-        ContactTrajIssue.OWN_HALF,
-        ContactTrajIssue.NO_PADDLE,
-        ContactTrajIssue.DOUBLE_TOUCH,
-    ):
-        return 1.0
-    return 0.0
-
-
-def _episode_terminal(
-    t: float,
-    ball_z: float,
-    solved: bool,
-    traj_py: list[set[PingpongContactLabels]],
-    rally_count: int,
-    cur_rally_after_increment_if_solved_else_current: int,
-) -> bool:
-    """Episode termination flag after CPU-style rally bookkeeping for the current step."""
-    if t > _MAX_TIME:
-        return True
-    if ball_z < 0.3:
-        return True
-    if solved:
-        return cur_rally_after_increment_if_solved_else_current >= rally_count
-    ev2 = evaluate_pingpong_trajectory(traj_py)
-    return ev2 in (
-        ContactTrajIssue.OWN_HALF,
-        ContactTrajIssue.NO_PADDLE,
-        ContactTrajIssue.DOUBLE_TOUCH,
-    )
-
-
-def _relaunch_ball_torch(
-    env: Any,
-    entity_name: str,
-    env_ids: Any,
-    tt_cfg: TableTennisCfg,
-) -> None:
-    """Reset ball state for env_ids (subset) after an intermediate rally."""
-    import torch
-
-    _reference_model()
-    idx = _TT_INDEX
-    assert idx is not None
-    assert _REF_QPOS_KEY0 is not None and _REF_QVEL_INIT is not None
-    ball_ent = env.scene[_TT_BALL_ENTITY_NAME]
-    device = env.device
-    n = len(env_ids) if hasattr(env_ids, "__len__") else int(env_ids.shape[0])
-
-    qadr = idx["ball_qpos_adr"]
-    vadr = idx["ball_dof_adr"]
-    q0 = torch.as_tensor(_REF_QPOS_KEY0, dtype=torch.float32, device=device)
-    v0 = torch.as_tensor(_REF_QVEL_INIT, dtype=torch.float32, device=device)
-
-    # root_state: pos(3) + quat(4) + linvel(3) + angvel(3)
-    pos_init = q0[qadr : qadr + 3].expand(n, -1).clone()
-    quat_init = q0[qadr + 3 : qadr + 7].expand(n, -1).clone()
-    linvel_init = v0[vadr : vadr + 3].expand(n, -1).clone()
-    angvel_init = v0[vadr + 3 : vadr + 6].expand(n, -1).clone()
-
-    if tt_cfg.ball_xyz_range is not None:
-        low = torch.tensor(
-            tt_cfg.ball_xyz_range["low"], device=device, dtype=torch.float32
-        )
-        high = torch.tensor(
-            tt_cfg.ball_xyz_range["high"], device=device, dtype=torch.float32
-        )
-        pos_init = torch.rand(n, 3, device=device) * (high - low) + low
-    if tt_cfg.ball_qvel:
-        for row in range(n):
-            v_lo, v_hi = _cal_ball_qvel_torch(pos_init[row])
-            linvel_init[row] = torch.rand(3, device=device) * (v_hi - v_lo) + v_lo
-
-    root_state = torch.cat([pos_init, quat_init, linvel_init, angvel_init], dim=-1)
-    ball_ent.write_root_state_to_sim(root_state, env_ids=env_ids)
-
-
-def _make_tt_term_closure(
-    entity_name: str, _tt_cfg: TableTennisCfg
-) -> Callable[[Any], Any]:
-    def _term(env: Any) -> Any:
-        import torch
-
-        rt = _get_tt_runtime(env)
-        device = env.scene[entity_name].data.data.qpos.device
-        return torch.tensor(rt["last_done"], dtype=torch.bool, device=device)
-
-    return _term
-
-
-def _make_tt_reset_event(
-    entity_name: str, tt_cfg: TableTennisCfg
-) -> Callable[[Any, Any], None]:
-    def _fn(env: Any, env_ids: Any) -> None:
-        import torch
-
-        _reference_model()
-        idx = _TT_INDEX
-        assert idx is not None
-        assert _REF_QPOS_KEY0 is not None and _REF_QVEL_INIT is not None
-        # sc is resolved lazily on first call (needs compiled mjlab model).
-        sc = _resolve_tt_scene_ids(env, entity_name)
-        rt = _get_tt_runtime(env)
-        arm_ent = env.scene[entity_name]
-        ball_ent = env.scene[_TT_BALL_ENTITY_NAME]
-        device = env.device
-        env_ids_long = torch.as_tensor(env_ids, device=device, dtype=torch.long)
-        n_reset = int(env_ids_long.shape[0])
-
-        for e in env_ids_long.tolist():
-            rt["trajectories"][int(e)] = []
-            rt["cur_rally"][int(e)] = 0
-            rt["last_done"][int(e)] = False
-
-        # --- paddle mass DR (AP-8 known exception; TODO: dr.body_mass once supported) ---
-        if tt_cfg.paddle_mass_range is not None:
-            lo, hi = tt_cfg.paddle_mass_range
-            mass = lo + torch.rand(n_reset, device=device) * (hi - lo)
-            bid = sc["paddle_body"]
-            try:
-                arm_ent.data.model.body_mass[env_ids_long, bid] = mass
-            except (AttributeError, TypeError) as e:
-                logger.debug("paddle mass DR skipped (AP-8): %s", e)
-
-        # --- ball friction DR (AP-8 known exception; TODO: dr.geom_friction once supported) ---
-        if tt_cfg.ball_friction_range is not None:
-            low = torch.tensor(
-                tt_cfg.ball_friction_range["low"], device=device, dtype=torch.float32
-            )
-            high = torch.tensor(
-                tt_cfg.ball_friction_range["high"], device=device, dtype=torch.float32
-            )
-            fr = torch.rand(n_reset, 3, device=device) * (high - low) + low
-            try:
-                ball_ent.data.model.geom_friction[env_ids_long, 0, :3] = fr
-            except (AttributeError, TypeError) as e:
-                logger.debug("ball friction DR skipped (AP-8): %s", e)
-
-        # --- arm joint reset via entity.write_joint_state_to_sim ---
-        # joint_q_adr has one entry per qpos slot (not per joint) for non-free
-        # joints.  write_joint_state_to_sim takes indices into joint_q_adr.
-        # Build the initial positions from the reference keyframe by matching
-        # each joint's scene-level qpos address to its reference-model value.
-        ref_model = _reference_model()
-        n_qpos_slots = int(arm_ent.indexing.joint_q_adr.shape[0])
-        kf_pos = torch.zeros(n_reset, n_qpos_slots, device=device)
-        for jnt_spec in arm_ent.spec.joints:
-            jname = jnt_spec.name
-            ref_jname = jname.split("/")[-1]
-            try:
-                ref_jnt = ref_model.joint(ref_jname)
-                scene_jnt = env.sim.mj_model.joint(jname)
-                scene_qadr = int(scene_jnt.qposadr[0])
-                ref_kf_val = float(_REF_QPOS_KEY0[int(ref_jnt.qposadr[0])])
-                matches = (arm_ent.indexing.joint_q_adr == scene_qadr).nonzero(
-                    as_tuple=True
-                )[0]
-                if matches.numel() > 0:
-                    kf_pos[:, int(matches[0])] = ref_kf_val
-            except (KeyError, ValueError) as e:
-                logger.debug("joint %s not in reference model: %s", ref_jname, e)
-        kf_vel = torch.zeros_like(kf_pos)
-
+    def __init__(self, cfg: EventTermCfg, env: ManagerBasedRlEnv) -> None:
+        super().__init__(env)
+        tt_cfg: TableTennisCfg = cfg.params["tt_cfg"]
+        self._arm = env.scene[_TT_ENTITY_NAME]
+        self._paddle = env.scene[_TT_PADDLE_ENTITY_NAME]
+        self._ball = env.scene[_TT_BALL_ENTITY_NAME]
+        self._noise: tuple[torch.Tensor, ...] | None = None
         if tt_cfg.qpos_noise_range is not None:
-            jnt_range = torch.as_tensor(
-                sc["jnt_range"], device=device, dtype=kf_pos.dtype
-            )
-            span = jnt_range[:, 1] - jnt_range[:, 0]
-            nj_loop = int(sc["njnt_arm"])
+            # CPU: uniform fraction of each joint range, clipped to the raw
+            # jnt_range (which is [0, 0] for unlimited joints).
+            joint_ids = self._arm.indexing.joint_ids.cpu().numpy()
+            jnt_range = env.sim.mj_model.jnt_range[joint_ids]
+            n = len(joint_ids)
             qr = tt_cfg.qpos_noise_range
-            lo_np = np.asarray(qr.get("low", 0.0), dtype=np.float64).ravel()
-            hi_np = np.asarray(qr.get("high", 1.0), dtype=np.float64).ravel()
-            lo_np = lo_np[0] * np.ones(nj_loop) if lo_np.size == 1 else lo_np[:nj_loop]
-            hi_np = hi_np[0] * np.ones(nj_loop) if hi_np.size == 1 else hi_np[:nj_loop]
-            lo_t = torch.as_tensor(lo_np, device=device, dtype=kf_pos.dtype).view(1, -1)
-            hi_t = torch.as_tensor(hi_np, device=device, dtype=kf_pos.dtype).view(1, -1)
-            u = torch.rand(n_reset, nj_loop, device=device, dtype=kf_pos.dtype)
-            noise = lo_t + u * (hi_t - lo_t)
-            for j in range(nj_loop):
-                if j < kf_pos.shape[1]:
-                    kf_pos[:, j] = torch.clamp(
-                        kf_pos[:, j] + noise[:, j] * span[j],
-                        min=float(jnt_range[j, 0]),
-                        max=float(jnt_range[j, 1]),
-                    )
 
-        all_slot_ids = torch.arange(n_qpos_slots, device=device, dtype=torch.int)
-        arm_ent.write_joint_state_to_sim(
-            kf_pos, kf_vel, joint_ids=all_slot_ids, env_ids=env_ids_long
+            def bound(key: str, default: float) -> np.ndarray:
+                v = np.asarray(qr.get(key, default), dtype=np.float64).ravel()
+                return np.full(n, v[0]) if v.size == 1 else v[:n]
+
+            self._noise = tuple(
+                torch.as_tensor(v, dtype=torch.float32, device=env.device)
+                for v in (
+                    bound("low", 0.0),
+                    bound("high", 1.0),
+                    jnt_range[:, 0],
+                    jnt_range[:, 1],
+                )
+            )
+
+    def __call__(
+        self,
+        env: ManagerBasedRlEnv,
+        env_ids: torch.Tensor | None,
+        tt_cfg: TableTennisCfg,
+    ) -> None:
+        env_ids = normalize_mjlab_env_ids(env, env_ids)
+        pos = self._arm.data.default_joint_pos[env_ids].clone()
+        if self._noise is not None:
+            low, high, j_lo, j_hi = self._noise
+            frac = low + torch.rand_like(pos) * (high - low)
+            pos = torch.clamp(pos + frac * (j_hi - j_lo), j_lo, j_hi)
+        self._arm.write_joint_state_to_sim(pos, torch.zeros_like(pos), env_ids=env_ids)
+        self._paddle.write_root_state_to_sim(
+            self._paddle.data.default_root_state[env_ids], env_ids=env_ids
+        )
+        self._ball.write_root_state_to_sim(
+            _ball_launch_state(self._ball, env_ids, tt_cfg), env_ids=env_ids
         )
 
-        # --- ball reset via Entity API (no raw Warp writes) ---
-        ref_qadr = int(idx["ball_qpos_adr"])
-        ref_vadr = int(idx["ball_dof_adr"])
-        pos_init = (
-            torch.as_tensor(
-                _REF_QPOS_KEY0[ref_qadr : ref_qadr + 3],
-                device=device,
-                dtype=torch.float32,
-            )
-            .expand(n_reset, -1)
-            .clone()
-        )
-        quat_init = (
-            torch.as_tensor(
-                _REF_QPOS_KEY0[ref_qadr + 3 : ref_qadr + 7],
-                device=device,
-                dtype=torch.float32,
-            )
-            .expand(n_reset, -1)
-            .clone()
-        )
-        linvel_init = (
-            torch.as_tensor(
-                _REF_QVEL_INIT[ref_vadr : ref_vadr + 3],
-                device=device,
-                dtype=torch.float32,
-            )
-            .expand(n_reset, -1)
-            .clone()
-        )
-        angvel_init = (
-            torch.as_tensor(
-                _REF_QVEL_INIT[ref_vadr + 3 : ref_vadr + 6],
-                device=device,
-                dtype=torch.float32,
-            )
-            .expand(n_reset, -1)
-            .clone()
-        )
 
-        if tt_cfg.ball_xyz_range is not None:
-            low = torch.tensor(
-                tt_cfg.ball_xyz_range["low"], device=device, dtype=torch.float32
-            )
-            high = torch.tensor(
-                tt_cfg.ball_xyz_range["high"], device=device, dtype=torch.float32
-            )
-            pos_init = torch.rand(n_reset, 3, device=device) * (high - low) + low
-
-        if tt_cfg.ball_qvel:
-            for row in range(n_reset):
-                v_lo, v_hi = _cal_ball_qvel_torch(pos_init[row])
-                linvel_init[row] = torch.rand(3, device=device) * (v_hi - v_lo) + v_lo
-
-        ball_root_state = torch.cat(
-            [pos_init, quat_init, linvel_init, angvel_init], dim=-1
-        )
-        ball_ent.write_root_state_to_sim(ball_root_state, env_ids=env_ids_long)
-
-    return _fn
+def _tt_relaunch_ball(
+    env: ManagerBasedRlEnv, env_ids: None, tt_cfg: TableTennisCfg
+) -> None:
+    """Step event: relaunch the ball of envs that go on to their next rally."""
+    del env_ids  # step events cover all envs
+    # Host sync; only registered when rally_count > 1.
+    ids = _rally_term(env).relaunch.nonzero(as_tuple=False).squeeze(-1)
+    if ids.numel():
+        ball = env.scene[_TT_BALL_ENTITY_NAME]
+        ball.write_root_state_to_sim(_ball_launch_state(ball, ids, tt_cfg), env_ids=ids)
 
 
 def _table_tennis_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
@@ -1184,9 +750,43 @@ def _table_tennis_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     )
 
 
+def _tt_dr_events(tt_cfg: TableTennisCfg) -> dict[str, EventTermCfg]:
+    """Per-env P2 domain randomization of the paddle mass and the ball friction."""
+    events: dict[str, EventTermCfg] = {}
+    if tt_cfg.paddle_mass_range is not None:
+        # Mass only, inertia kept, as on CPU (hence dr.body_mass's warning).
+        events["paddle_mass"] = EventTermCfg(
+            func=dr.body_mass,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    _TT_PADDLE_ENTITY_NAME, body_names=("paddle",)
+                ),
+                "ranges": tuple(tt_cfg.paddle_mass_range),
+                "operation": "abs",
+            },
+        )
+    if tt_cfg.ball_friction_range is not None:
+        low = tt_cfg.ball_friction_range["low"]
+        high = tt_cfg.ball_friction_range["high"]
+        events["ball_friction"] = EventTermCfg(
+            func=dr.geom_friction,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    _TT_BALL_ENTITY_NAME, geom_names=("pingpong",)
+                ),
+                "ranges": {axis: (low[axis], high[axis]) for axis in range(3)},
+                "axes": [0, 1, 2],
+                "operation": "abs",
+            },
+        )
+    return events
+
+
 def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnvCfg:
     """Build mjlab ``ManagerBasedRlEnvCfg`` for TableTennis (vectorised)."""
-    _reference_model()
+    ref = _tt_reference()
     tendon_names, pos_names = _tt_actuator_xml_groups()
     articulation = EntityArticulationInfoCfg(
         actuators=(
@@ -1201,22 +801,27 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
         ),
     )
 
+    # The CPU keyframe: arm joints, paddle in the hand, ball launch pose.
     entity_cfg = EntityCfg(
         spec_fn=_table_tennis_spec_fn,
         articulation=articulation,
+        init_state=EntityCfg.InitialStateCfg(joint_pos=dict(ref.arm_joint_pos)),
     )
-    ball_entity_cfg = EntityCfg(spec_fn=_pingpong_spec_fn)
+    paddle_entity_cfg = EntityCfg(
+        spec_fn=_paddle_spec_fn, init_state=_free_body_init_state(ref.paddle_pose)
+    )
+    ball_entity_cfg = EntityCfg(
+        spec_fn=_pingpong_spec_fn,
+        init_state=_free_body_init_state(ref.ball_pose, _BALL_LAUNCH_VEL),
+    )
     scene_cfg = SceneCfg(
         num_envs=int(tt_cfg.num_envs),
+        # Same order as the CPU qpos: athlete, paddle, ball.
         entities={
             _TT_ENTITY_NAME: entity_cfg,
+            _TT_PADDLE_ENTITY_NAME: paddle_entity_cfg,
             _TT_BALL_ENTITY_NAME: ball_entity_cfg,
         },
-        # Re-add the two velocimeters that cross entity trees (paddle site lives
-        # in table_tennis_robot; pingpong site lives in pingpong).  They are
-        # stripped from both entity specs and re-added here after attachment so
-        # MuJoCo can resolve the prefixed site names in the combined spec.
-        spec_fn=_tt_scene_spec_fn(_TT_ENTITY_NAME, _TT_BALL_ENTITY_NAME),
     )
 
     decimation = max(1, int(round(tt_cfg.ctrl_dt / tt_cfg.sim_dt)))
@@ -1225,35 +830,39 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
     observations = {
         "policy": ObservationGroupCfg(
             terms={
-                "table_tennis_vec": ObservationTermCfg(
-                    func=_make_tt_obs_closure(_TT_ENTITY_NAME, tt_cfg),
-                ),
+                "table_tennis_vec": ObservationTermCfg(func=TableTennisObservation),
             },
         ),
     }
     actions = {"ctrl": TableTennisMixedCtrlActionCfg(entity_name=_TT_ENTITY_NAME)}
     terminations = {
+        # First: contacts and positions of the post-step state, as on CPU.
+        SYNC_TERM: TerminationTermCfg(func=sync_forward),
         "time_out": TerminationTermCfg(
             func=mdp_terminations.time_out,
             time_out=True,
         ),
         "task_done": TerminationTermCfg(
-            func=_make_tt_term_closure(_TT_ENTITY_NAME, tt_cfg),
+            func=TableTennisRally,
+            params={"tt_cfg": tt_cfg},
             time_out=False,
         ),
     }
     rewards = {
-        "dense": RewardTermCfg(
-            func=_make_tt_reward_closure(_TT_ENTITY_NAME, tt_cfg),
-            weight=1.0,
-        ),
+        "dense": RewardTermCfg(func=TableTennisReward, weight=1.0),
     }
     events = {
         "tt_reset": EventTermCfg(
-            func=_make_tt_reset_event(_TT_ENTITY_NAME, tt_cfg),
+            func=TableTennisReset,
             mode="reset",
+            params={"tt_cfg": tt_cfg},
         ),
+        **_tt_dr_events(tt_cfg),
     }
+    if tt_cfg.rally_count > 1:
+        events["tt_relaunch"] = EventTermCfg(
+            func=_tt_relaunch_ball, mode="step", params={"tt_cfg": tt_cfg}
+        )
 
     return ManagerBasedRlEnvCfg(
         scene=scene_cfg,
@@ -1265,7 +874,10 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
         rewards=rewards,
         events=events,
         sim=SimulationCfg(
-            mujoco=MujocoCfg(timestep=float(tt_cfg.sim_dt), ccd_iterations=500),
+            # Physics options of the CPU model (same recipe).
+            mujoco=mujoco_cfg_from_model(
+                _reference_model(), timestep=float(tt_cfg.sim_dt)
+            ),
             # The myo_sim-native torso+both-arms+legs body has more
             # equality-constraint rows (nefc) than the legacy single-arm
             # chain — 512 overflowed at nefc=1071; use 1536 for headroom.

@@ -13,7 +13,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import mujoco
 import numpy as np
+
+from myosuite.integrations.musclemimic.fullbody_local_policy import (
+    LocalPolicyArtifacts,
+    LocalPolicyRunner,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -68,48 +74,168 @@ def _make_policy_runner() -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
+# Helpers: real one-DoF MuJoCo model and a stub runner stepping it
+# ---------------------------------------------------------------------------
+
+_SLIDER_XML = """
+<mujoco>
+  <worldbody>
+    <body>
+      <joint name="slide" type="slide" axis="1 0 0"/>
+      <geom size="0.1" mass="1"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <general name="drive" joint="slide" dyntype="filter" dynprm="0.02"
+             ctrlrange="0 1"/>
+  </actuator>
+</mujoco>
+"""
+
+
+def _slider_clip(n_frames: int) -> types.SimpleNamespace:
+    return types.SimpleNamespace(
+        qpos=np.linspace(0.0, 1.0, n_frames)[:, None],
+        qvel=None,
+        site_xpos=None,
+        source_path="synthetic_clip.npz",
+    )
+
+
+class _StubRunner:
+    """Policy-runner stand-in: full excitation, real MuJoCo stepping."""
+
+    obs_adapter = None
+
+    def __init__(self) -> None:
+        self.episode_id = -1
+        self.events: list[str] = []
+
+    def reset(self) -> None:
+        self.events.append("reset")
+
+    def action_for(self, data, clip, frame_idx, obs_adapter=None):  # noqa: ANN001
+        self.events.append("action")
+        return np.ones(1, dtype=np.float32)
+
+    def step(self, model, data, action):  # noqa: ANN001
+        data.ctrl[:] = action
+        for _ in range(5):
+            mujoco.mj_step(model, data)
+
+
+class _EpisodeMarkingRunner(_StubRunner):
+    """Records the episode index as the activation, to trace kept frames."""
+
+    def step(self, model, data, action):  # noqa: ANN001
+        super().step(model, data, action)
+        data.act[:] = self.episode_id
+
+
+class _StateRecordingRunner(_StubRunner):
+    """Records ``(qpos, qvel, act, ctrl)`` as seen by every ``action_for``."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen: list[np.ndarray] = []
+
+    def action_for(self, data, clip, frame_idx, obs_adapter=None):  # noqa: ANN001
+        self.seen.append(np.concatenate([data.qpos, data.qvel, data.act, data.ctrl]))
+        return super().action_for(data, clip, frame_idx, obs_adapter)
+
+
+class _StateObsAdapter:
+    """Observation-adapter stand-in: live state plus clip phase."""
+
+    def build(self, data, frame_idx):  # noqa: ANN001
+        return np.asarray(
+            [data.qpos[0], data.qvel[0], data.act[0], frame_idx / 50.0],
+            dtype=np.float32,
+        )
+
+
+def _history_policy_runner() -> LocalPolicyRunner:
+    """Real runner: random actor, running normaliser, 3-step obs history."""
+    obs_dim, hidden = 4 * 3, 8
+    rng = np.random.default_rng(0)
+    actor = {
+        "Dense_0": {
+            "kernel": rng.normal(0.0, 0.5, (obs_dim, hidden)).astype(np.float32),
+            "bias": np.zeros(hidden, dtype=np.float32),
+        },
+        "LayerNorm_0": {
+            "scale": np.ones(hidden, dtype=np.float32),
+            "bias": np.zeros(hidden, dtype=np.float32),
+        },
+        "Dense_1": {
+            "kernel": rng.normal(0.0, 0.5, (hidden, 1)).astype(np.float32),
+            "bias": np.full(1, 0.5, dtype=np.float32),
+        },
+    }
+    artifacts = LocalPolicyArtifacts(
+        params={"actor": actor},
+        obs_mean=np.zeros(obs_dim, dtype=np.float32),
+        obs_var=np.ones(obs_dim, dtype=np.float32),
+        obs_count=np.asarray(1e-6, dtype=np.float32),
+        obs_dim=obs_dim,
+        action_dim=1,
+    )
+    return LocalPolicyRunner(
+        artifacts=artifacts,
+        stochastic=False,
+        seed=0,
+        obs_adapter=_StateObsAdapter(),  # type: ignore[arg-type]
+        len_obs_history=3,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Tests: _init_episode
 # ---------------------------------------------------------------------------
 
 
 class TestInitEpisode(unittest.TestCase):
+    def setUp(self) -> None:
+        self.model = mujoco.MjModel.from_xml_string(_SLIDER_XML)
+        self.data = mujoco.MjData(self.model)
+        # State a previous episode leaves behind.
+        self.data.qvel[:] = 2.0
+        self.data.act[:] = 0.7
+        self.data.ctrl[:] = 0.9
+        self.data.time = 1.5
+
     def test_sets_qpos(self) -> None:
         from myosuite.integrations.musclemimic.activation_collector import _init_episode
 
-        clip = _make_clip()
-        model = _make_model()
-        data = _make_data()
-        data.qpos = np.zeros(30, dtype=np.float32)
+        clip = _slider_clip(20)
+        _init_episode(self.model, self.data, clip, start_frame=3)
 
-        with patch("mujoco.mj_forward"):
-            _init_episode(model, data, clip, start_frame=3)
-
-        np.testing.assert_array_equal(data.qpos, clip.qpos[3])
+        np.testing.assert_array_equal(self.data.qpos, clip.qpos[3])
 
     def test_sets_qvel_when_present(self) -> None:
         from myosuite.integrations.musclemimic.activation_collector import _init_episode
 
-        clip = _make_clip()
-        model = _make_model()
-        data = _make_data()
-        data.qvel = np.zeros(29, dtype=np.float32)
+        clip = _slider_clip(20)
+        clip.qvel = np.linspace(-1.0, 1.0, 20)[:, None]
+        _init_episode(self.model, self.data, clip, start_frame=5)
 
-        with patch("mujoco.mj_forward"):
-            _init_episode(model, data, clip, start_frame=5)
+        np.testing.assert_array_equal(self.data.qvel, clip.qvel[5])
 
-        np.testing.assert_array_equal(data.qvel, clip.qvel[5])
-
-    def test_skips_qvel_when_none(self) -> None:
+    def test_zeroes_qvel_when_none(self) -> None:
         from myosuite.integrations.musclemimic.activation_collector import _init_episode
 
-        clip = _make_clip()
-        clip.qvel = None
-        model = _make_model()
-        data = _make_data()
+        _init_episode(self.model, self.data, _slider_clip(20), start_frame=0)
 
-        with patch("mujoco.mj_forward"):
-            _init_episode(model, data, clip, start_frame=0)
-        # no error means success; qvel not touched
+        np.testing.assert_array_equal(self.data.qvel, [0.0])
+
+    def test_clears_activation_ctrl_and_time(self) -> None:
+        from myosuite.integrations.musclemimic.activation_collector import _init_episode
+
+        _init_episode(self.model, self.data, _slider_clip(20), start_frame=0)
+
+        np.testing.assert_array_equal(self.data.act, [0.0])
+        np.testing.assert_array_equal(self.data.ctrl, [0.0])
+        self.assertEqual(self.data.time, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +253,7 @@ class TestRunEpisode(unittest.TestCase):
         runner = _make_policy_runner()
 
         with (
+            patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
                 "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
@@ -148,9 +275,11 @@ class TestRunEpisode(unittest.TestCase):
         acts, _ = self._run()
         self.assertEqual(acts.dtype, np.float32)
 
-    def test_total_reward_nonzero(self) -> None:
-        _, reward = self._run()
-        self.assertNotEqual(reward, 0.0)
+    def test_returns_mean_per_step_reward(self) -> None:
+        """The episode score is length-normalised (0.5 per step -> 0.5)."""
+        acts, reward = self._run(start_frame=0, max_steps=10)
+        self.assertEqual(acts.shape[0], 10)
+        self.assertAlmostEqual(reward, 0.5)
 
     def test_stops_at_end_of_clip(self) -> None:
         """Episode must not run past the last frame."""
@@ -173,6 +302,7 @@ class TestRunEpisode(unittest.TestCase):
         adapter = object()
 
         with (
+            patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
                 "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
@@ -191,6 +321,47 @@ class TestRunEpisode(unittest.TestCase):
         runner.action_for.assert_called()
         for call in runner.action_for.call_args_list:
             self.assertEqual(call.kwargs.get("obs_adapter"), adapter)
+
+
+class TestEpisodeIndependence(unittest.TestCase):
+    def test_each_episode_starts_clean_after_a_runner_reset(self) -> None:
+        """act, ctrl and qvel (the clip has none) must not carry over."""
+        from myosuite.integrations.musclemimic.activation_collector import _run_episode
+
+        model = mujoco.MjModel.from_xml_string(_SLIDER_XML)
+        data = mujoco.MjData(model)
+        clip = _slider_clip(50)
+        runner = _StateRecordingRunner()
+
+        _run_episode(runner, model, data, clip, 0, 20)
+        _run_episode(runner, model, data, clip, 30, 5)
+
+        expected_events = ["reset"] + ["action"] * 20 + ["reset"] + ["action"] * 5
+        self.assertEqual(runner.events, expected_events)
+        last_state_ep1, first_state_ep2 = runner.seen[19], runner.seen[20]
+        self.assertTrue(np.all(last_state_ep1[1:] > 0.0))  # qvel, act, ctrl
+        np.testing.assert_array_equal(first_state_ep2, [clip.qpos[30, 0], 0, 0, 0])
+
+    def test_rollout_does_not_depend_on_the_previous_episode(self) -> None:
+        """Real runner: MjData, running normaliser and obs history all start fresh.
+
+        Episode A ends at frame 9 and episode B starts at frame 30, so the
+        runner's own frame-index check would not reset the history.
+        """
+        from myosuite.integrations.musclemimic.activation_collector import _run_episode
+
+        model = mujoco.MjModel.from_xml_string(_SLIDER_XML)
+        clip = _slider_clip(50)
+
+        alone, _ = _run_episode(
+            _history_policy_runner(), model, mujoco.MjData(model), clip, 30, 10
+        )
+        runner, data = _history_policy_runner(), mujoco.MjData(model)
+        _run_episode(runner, model, data, clip, 0, 10)
+        self.assertGreater(float(data.act[0]), 0.0)  # episode A leaves state behind
+        after, _ = _run_episode(runner, model, data, clip, 30, 10)
+
+        np.testing.assert_array_equal(after, alone)
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +393,7 @@ class TestCollectActivationsFromClip(unittest.TestCase):
 
         with (
             patch("mujoco.MjData", return_value=_make_data()),
+            patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
                 "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
@@ -262,6 +434,7 @@ class TestCollectActivationsFromClip(unittest.TestCase):
 
         with (
             patch("mujoco.MjData", return_value=_make_data()),
+            patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
                 "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
@@ -279,6 +452,53 @@ class TestCollectActivationsFromClip(unittest.TestCase):
         acts1 = self._collect()
         acts2 = self._collect()
         np.testing.assert_array_equal(acts1, acts2)
+
+
+class TestRewardFilterLengthBias(unittest.TestCase):
+    def test_keeps_best_tracking_episodes_wherever_they_start(self) -> None:
+        """Random starts give episodes of 1..299 steps; quality must decide, not length.
+
+        Each episode gets a per-step tracking error independent of its start
+        frame. Summed negative errors used to keep only short clip-end
+        episodes (all kept starts >= 238 of 300).
+        """
+        from myosuite.integrations.musclemimic import activation_collector as ac
+
+        model = mujoco.MjModel.from_xml_string(_SLIDER_XML)
+        clip = _slider_clip(300)
+        runner = _EpisodeMarkingRunner()
+        error_rng = np.random.default_rng(1)
+        episodes: list[tuple[int, float]] = []  # (start frame, per-step error)
+        init_episode = ac._init_episode
+
+        def _init_and_draw_error(model, data, clip, *, start_frame=0):  # noqa: ANN001
+            episodes.append((start_frame, float(error_rng.uniform(0.05, 0.15))))
+            runner.episode_id = len(episodes) - 1
+            init_episode(model, data, clip, start_frame=start_frame)
+
+        config = ac.CollectionConfig(n_episodes_per_clip=200, reward_percentile=80)
+        with (
+            patch.object(ac, "_init_episode", side_effect=_init_and_draw_error),
+            patch.object(
+                ac, "_tracking_reward", side_effect=lambda *_: -episodes[-1][1]
+            ),
+        ):
+            acts = ac.collect_activations_from_clip(
+                runner, model, clip, config, rng=np.random.default_rng(0)
+            )
+
+        n_preview = len(episodes) - config.n_episodes_per_clip
+        preview_errors = [error for _, error in episodes[:n_preview]]
+        max_error = -np.percentile(np.negative(preview_errors), 80)
+        expected = [
+            i
+            for i, (_, error) in enumerate(episodes)
+            if i >= n_preview and error <= max_error
+        ]
+        kept = sorted({int(i) for i in acts[:, 0]})
+        self.assertEqual(kept, expected)
+        kept_starts = [episodes[i][0] for i in kept]
+        self.assertLess(min(kept_starts), 100)
 
 
 # ---------------------------------------------------------------------------
@@ -304,6 +524,7 @@ class TestCollectActivations(unittest.TestCase):
 
         with (
             patch("mujoco.MjData", return_value=_make_data()),
+            patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
                 "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
@@ -327,6 +548,7 @@ class TestCollectActivations(unittest.TestCase):
 
         with (
             patch("mujoco.MjData", return_value=_make_data()),
+            patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
                 "myosuite.integrations.musclemimic.activation_collector._run_episode",
@@ -350,6 +572,7 @@ class TestCollectActivations(unittest.TestCase):
 
             with (
                 patch("mujoco.MjData", return_value=_make_data()),
+                patch("mujoco.mj_resetData"),
                 patch("mujoco.mj_forward"),
                 patch(
                     "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
@@ -379,6 +602,7 @@ class TestCollectActivations(unittest.TestCase):
 
         with (
             patch("mujoco.MjData", return_value=_make_data()),
+            patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
                 "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
