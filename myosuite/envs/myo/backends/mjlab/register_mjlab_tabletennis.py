@@ -21,6 +21,7 @@ from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import dr
 from mjlab.envs.mdp import terminations as mdp_terminations
+from mjlab.managers.action_manager import ActionTerm, ActionTermCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
@@ -124,8 +125,9 @@ def _tt_reference() -> _TTReference:
         for j in range(model.njnt)
         if model.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE
     }
+    # Intrinsic "XYZ" matches the keyframe paddle orientation (as on the CPU env).
     init_paddle_quat = R.from_euler(
-        "xyz", np.array([-0.3, 1.57, 0]), degrees=False
+        "XYZ", np.array([-0.3, 1.57, 0]), degrees=False
     ).as_quat()[[3, 0, 1, 2]]
     return _TTReference(
         arm_joint_pos=arm_joint_pos,
@@ -191,6 +193,9 @@ def _table_tennis_spec_fn() -> mujoco.MjSpec:
 def _free_body_spec(body_name: str) -> mujoco.MjSpec:
     """Spec holding one free body of the full spec, with its velocimeter."""
     full = _table_tennis_full_spec()
+    # The attached body is compiled with the compiler options of its source spec;
+    # its boundinertia (1e-4) would raise the 7.2e-7 inertia of the ball.
+    full.compiler.boundinertia = 0.0
     # ``full.body(name)`` returns None for this composed/attached spec
     # (name lookup isn't populated pre-compile for attached subtrees) —
     # iterate instead.
@@ -400,27 +405,23 @@ def _ball_launch_state(
     return state
 
 
-class TableTennisMixedCtrlActionCfg:
+@dataclass(kw_only=True)
+class TableTennisMixedCtrlActionCfg(ActionTermCfg):
     """Config for mixed muscle + position actuator control (TableTennis)."""
-
-    def __init__(self, *, entity_name: str) -> None:
-        self.entity_name = entity_name
 
     def build(self, env: ManagerBasedRlEnv) -> TableTennisMixedCtrlAction:
         return TableTennisMixedCtrlAction(self, env)
 
 
-class TableTennisMixedCtrlAction:
+class TableTennisMixedCtrlAction(ActionTerm):
     """Map policy actions in [-1, 1] to MuJoCo ctrl (muscles + pelvis position)."""
+
+    cfg: TableTennisMixedCtrlActionCfg
 
     def __init__(
         self, cfg: TableTennisMixedCtrlActionCfg, env: ManagerBasedRlEnv
     ) -> None:
-        self.cfg = cfg
-        self._env = env
-        self.num_envs = env.num_envs
-        self.device = env.device
-        self._entity = env.scene[cfg.entity_name]
+        super().__init__(cfg=cfg, env=env)
         ref = _tt_reference()
         self._nu = int(ref.muscle_mask.shape[0])
         self._muscle_mask = torch.as_tensor(ref.muscle_mask, device=self.device)
@@ -868,6 +869,7 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
         scene=scene_cfg,
         decimation=decimation,
         episode_length_s=episode_length_s,
+        scale_rewards_by_dt=False,  # CPU rewards are per step, not per second
         observations=observations,
         actions=actions,
         terminations=terminations,

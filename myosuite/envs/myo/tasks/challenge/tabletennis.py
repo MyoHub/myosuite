@@ -127,8 +127,10 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.cur_rally = 0
         self.contact_trajectory: list[set[PingpongContactLabels]] = []
 
+        # Intrinsic "XYZ" matches the keyframe paddle orientation (extrinsic "xyz" flips
+        # the sign of the z component, so the paddle_quat reward never reached its maximum).
         self.init_paddle_quat = R.from_euler(
-            "xyz", np.array([-0.3, 1.57, 0]), degrees=False
+            "XYZ", np.array([-0.3, 1.57, 0]), degrees=False
         ).as_quat()[[3, 0, 1, 2]]
 
         self.id_info = IdInfo(self.model)
@@ -347,6 +349,8 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.model.body_mass[self.id_info.paddle_bid] = self.np_random.uniform(
                 *self.paddle_mass_range
             )
+            # Derived constants (subtree mass, inverse weights), as mjlab's dr.body_mass.
+            mujoco.mj_setConst(self.model, self.data)
         if self.ball_friction_range:
             self.model.geom_friction[self.id_info.ball_gid] = self.np_random.uniform(
                 **self.ball_friction_range

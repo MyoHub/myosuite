@@ -176,10 +176,11 @@ def get_wandb_onnx_checkpoint_path(
     if wandb is None:
         raise ImportError("wandb is required for get_wandb_onnx_checkpoint_path")
 
-    run_id = str(run_path).split("/")[-1]
+    run_path_str = Path(run_path).as_posix()  # W&B paths use "/" on every OS
+    run_id = run_path_str.split("/")[-1]
     download_dir = log_path / "wandb_checkpoints" / run_id
     api = wandb.Api()
-    wandb_run = api.run(str(run_path))
+    wandb_run = api.run(run_path_str)
     files = [
         file.name for file in wandb_run.files() if is_onnx_checkpoint_name(file.name)
     ]

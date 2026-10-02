@@ -97,3 +97,37 @@ def test_trajectories_cover_every_issue_and_failures_terminate() -> None:
     for trajectory in _TRAJECTORIES.values():
         failed = tt_cpu.evaluate_pingpong_trajectory(trajectory) in _FAILURES
         assert _cpu_done(0.5, 0.9, False, trajectory) == failed
+
+
+def test_paddle_target_orientation_is_the_keyframe_orientation() -> None:
+    """The paddle_quat reward target equals the held paddle's keyframe orientation."""
+    import gymnasium as gym  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    import myosuite  # noqa: F401, PLC0415
+
+    keyframe = np.asarray(tt_mjlab._tt_reference().paddle_pose[3:7])
+    mjlab_target = np.asarray(tt_mjlab._tt_reference().init_paddle_quat)
+    env = gym.make("myoChallengeTableTennisP0-v0")
+    try:
+        cpu_target = np.asarray(env.unwrapped.init_paddle_quat)
+    finally:
+        env.close()
+    for target in (mjlab_target, cpu_target):  # q and -q are the same rotation
+        assert min(
+            np.linalg.norm(target - keyframe), np.linalg.norm(target + keyframe)
+        ) == pytest.approx(0.0, abs=1e-3)
+
+
+def test_ball_and_paddle_inertia_match_the_cpu_model() -> None:
+    """The free-body specs keep the CPU model's mass and inertia (no 1e-4 clamp)."""
+    import numpy as np  # noqa: PLC0415
+
+    ref = tt_mjlab._reference_model()
+    for name, spec_fn in (
+        ("pingpong", tt_mjlab._pingpong_spec_fn),
+        ("paddle", tt_mjlab._paddle_spec_fn),
+    ):
+        body = spec_fn().compile().body(name)
+        np.testing.assert_allclose(body.mass, ref.body(name).mass, rtol=1e-6)
+        np.testing.assert_allclose(body.inertia, ref.body(name).inertia, rtol=1e-6)

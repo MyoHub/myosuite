@@ -33,7 +33,7 @@ of which only about 55% lies within the fingertip's workspace, which capped any 
 sample only targets the fingertip can reach, and their policies were retrained.
 
 **Compatibility with the ms3 observation changes.** Policies are tied to the observation contract they
-were trained with. Two changes since the first set of checkpoints affect them:
+were trained with. These changes since the first set of checkpoints affect them:
 
 - The directional-leg twins observed raw `qvel`; every backend now observes `qvel * ctrl_dt`.
   The old `myoLegDirectional{Forward,Backward,Random}-v0` checkpoints no longer work (0% success)
@@ -45,6 +45,12 @@ were trained with. Two changes since the first set of checkpoints affect them:
   is refreshed after each step (walk, stand and reach twins, 55 CPU env ids). The walk, terrain and
   reach checkpoints above were re-evaluated after this change; their success rates are the numbers in
   the table. `myoLegStandRandom-v0` dropped from 35.9% to 23.4% with the old checkpoint and was retrained (34.1%).
+- Later changes touch only tasks without a published baseline here: the CPU `myoChallengeChaseTagFBP2-v0`
+  now uses the 537-dim `chasetag_obs` layout, 0.01 s steps and flat ground (the mjlab task takes the CPU
+  rewards, reset and opponent); the mjlab TableTennis scene and scoring and the physics options of the
+  TableTennis and MuscleMimic mjlab tasks follow the CPU models; the MuscleMimic bridge maps outputs with
+  `clip(a, 0, 1)`. Policies trained on the earlier versions of those tasks must be retrained or
+  re-evaluated; the checkpoints in the table are not affected.
 
 Re-evaluate a checkpoint after any change to an env's observations with
 `python scripts/eval_mjlab_policy.py <env_id> --backend mjlab`; train it again if its success rate drops

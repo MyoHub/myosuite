@@ -14,6 +14,7 @@ reward and termination are compared.
 from __future__ import annotations
 
 import os
+import sys
 
 import gymnasium as gym
 import mujoco
@@ -41,7 +42,8 @@ from myosuite.envs.modular_env import ModularTaskEnv  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0  # noqa: E402
 
-os.environ.setdefault("MUJOCO_GL", "egl")
+if sys.platform.startswith("linux"):  # "egl" is an invalid MUJOCO_GL on Windows/macOS
+    os.environ.setdefault("MUJOCO_GL", "egl")
 
 # Entry points of the basic suite that have an mjlab twin.
 _PORTED_ENTRY_POINTS = (

@@ -68,6 +68,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from myosuite.core.trajectory_io import MotionClip
+from myosuite.physics.quat_math import quat2mat
 from myosuite.terms.mimic_reward import MimicTrackingConfig
 
 if TYPE_CHECKING:
@@ -297,9 +298,14 @@ def _init_state_from_model(mj_model: Any) -> Any:
         rot = tuple(float(x) for x in kqpos[3:7])
         if kqvel is not None and kqvel.shape[0] >= 6:
             lin_vel = tuple(float(x) for x in kqvel[:3])
-            ang_vel = tuple(float(x) for x in kqvel[3:6])
+            # qvel[3:6] of a free joint is the body-frame angular velocity.
+            ang_vel = tuple(
+                float(x) for x in quat2mat(np.asarray(rot)) @ np.asarray(kqvel[3:6])
+            )
 
-    # Per-joint positions for all non-free joints.
+    # Per-joint positions for all non-free joints. Keys are anchored regexes,
+    # because mjlab matches them as such (``knee_angle_r`` alone also hits
+    # ``knee_angle_rotation2_r``).
     joint_pos: dict[str, float] = {}
     joint_vel: dict[str, float] = {}
     for j in range(mj_model.njnt):
@@ -309,10 +315,10 @@ def _init_state_from_model(mj_model: Any) -> Any:
             continue
         if jtype in (int(_mj.mjtJoint.mjJNT_SLIDE), int(_mj.mjtJoint.mjJNT_HINGE)):
             qpos_adr = int(mj_model.jnt_qposadr[j])
-            joint_pos[name] = float(kqpos[qpos_adr])
+            joint_pos[f"^{name}$"] = float(kqpos[qpos_adr])
             if kqvel is not None:
                 dof_adr = int(mj_model.jnt_dofadr[j])
-                joint_vel[name] = float(kqvel[dof_adr])
+                joint_vel[f"^{name}$"] = float(kqvel[dof_adr])
 
     return EntityCfg.InitialStateCfg(
         pos=pos,

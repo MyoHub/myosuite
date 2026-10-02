@@ -23,8 +23,7 @@ SKIP_IN_CI_REL = frozenset(
     {
         'tutorials/2.2_Train_MjLab_Policy.ipynb',
         'tutorials/2.3_SAR.ipynb',
-        'tutorials/2.4_DEP_RL.ipynb',
-        'tutorials/2.5_MyoReflex_Walk.ipynb',
+        'tutorials/2.4_MyoReflex_Walk.ipynb',
         'tutorials/4.2_Fatigue_Modeling.ipynb',
         'tutorials/4.3_Modular_Task_Config.ipynb',
         'tutorials/5.1_Fullbody_Load_Policy.ipynb',
