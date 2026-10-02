@@ -405,3 +405,17 @@ def test_every_twin_logs_a_success_metric() -> None:
         or load_env_cfg(e).metrics["success"].reduce != "last"
     ]
     assert not missing, f"twins without a 'last'-reduced success metric: {missing}"
+
+
+def test_twin_rejects_unknown_obs_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A twin fails loudly on an obs key it has no term for, as the CPU env does."""
+    from myosuite.envs.myo.backends.mjlab.tasks.pose.pose_env_cfg import (  # noqa: PLC0415
+        make_pose_env_cfg,
+    )
+
+    env_id = "myoElbowPose1D6MRandom-v0"
+    monkeypatch.setitem(
+        gym.spec(env_id).kwargs, "obs_keys", ["qpos", "no_such_obs_key"]
+    )
+    with pytest.raises(KeyError, match="no_such_obs_key"):
+        make_pose_env_cfg(env_id)

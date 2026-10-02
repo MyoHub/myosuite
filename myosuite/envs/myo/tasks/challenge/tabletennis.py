@@ -171,9 +171,7 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
 
     def _obs_dict_to_vec(self, obs_dict: dict[str, np.ndarray]) -> np.ndarray:
-        return np.concatenate(
-            [np.atleast_1d(obs_dict[k]).ravel() for k in self.obs_keys if k in obs_dict]
-        )
+        return self._obs_keys_to_vec(obs_dict)
 
     def get_sensor_by_name(self, name: str) -> np.ndarray:
         sensor_id = self.model.sensor(name).id

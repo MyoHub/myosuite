@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import types
 import warnings
+from collections.abc import Collection, Iterable
 from typing import TYPE_CHECKING, Any
 
 import gymnasium as gym
@@ -48,6 +49,30 @@ def _validate_reward_dict(rwd_dict: dict) -> None:
         raise KeyError(
             f"get_reward_dict() must return keys {_REQUIRED_RWD_KEYS}; "
             f"missing: {missing}"
+        )
+
+
+def check_obs_keys(
+    obs_keys: Iterable[str], available: Collection[str], owner: str
+) -> None:
+    """Raise ``KeyError`` if an observation key names nothing ``owner`` computes.
+
+    Shared by the CPU envs and the mjlab twin configs, so a misspelt or
+    unsupported key fails loudly instead of silently shrinking the
+    observation.
+
+    Args:
+        obs_keys: Requested observation keys.
+        available: Keys the env (or twin) can provide.
+        owner: Name used in the error message (env class or task family).
+
+    Raises:
+        KeyError: Naming every requested key that is not in ``available``.
+    """
+    unknown = [k for k in obs_keys if k not in available]
+    if unknown:
+        raise KeyError(
+            f"{owner}: unknown obs_keys {unknown}; available: {sorted(available)}"
         )
 
 
@@ -399,6 +424,34 @@ class MyoGymnasiumEnv(gym.Env):
             Concatenated 1-D numpy array.
         """
         return np.concatenate([np.atleast_1d(v).ravel() for v in obs_dict.values()])
+
+    def _select_obs_keys(self, obs_dict: dict[str, Any]) -> dict[str, Any]:
+        """Return the ``self.obs_keys`` entries of ``obs_dict``, in that order.
+
+        Args:
+            obs_dict: Every observation the env computes, by key.
+
+        Returns:
+            Dict of the requested entries.
+
+        Raises:
+            KeyError: If an obs key is not in ``obs_dict`` (see
+                :func:`check_obs_keys`).
+        """
+        check_obs_keys(self.obs_keys, obs_dict, type(self).__name__)
+        return {k: obs_dict[k] for k in self.obs_keys}
+
+    def _obs_keys_to_vec(self, obs_dict: dict[str, Any]) -> np.ndarray:
+        """Flatten the ``self.obs_keys`` entries of ``obs_dict`` to a 1-D array.
+
+        Args:
+            obs_dict: Every observation the env computes, by key.
+
+        Returns:
+            Concatenated 1-D numpy array, in ``obs_keys`` order.
+        """
+        selected = self._select_obs_keys(obs_dict).values()
+        return np.concatenate([np.atleast_1d(v).ravel() for v in selected])
 
     @staticmethod
     def _unbounded_obs_space(obs_dim: int) -> gym.spaces.Box:

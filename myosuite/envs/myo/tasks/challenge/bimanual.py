@@ -282,9 +282,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         return obs_dict
 
     def _obs_dict_to_vec(self, obs_dict: dict[str, np.ndarray]) -> np.ndarray:
-        return np.concatenate(
-            [np.atleast_1d(obs_dict[k]).ravel() for k in self.obs_keys if k in obs_dict]
-        )
+        return self._obs_keys_to_vec(obs_dict)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         reach_dist = np.abs(np.linalg.norm(obs_dict["reach_err"], axis=-1))

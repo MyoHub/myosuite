@@ -107,6 +107,11 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.palm_sid = self.model.site("S_grasp_r").id
         self.object_sid = self.model.site("object_o").id
         self.object_bid = self.model.body("Object").id
+        # The hand joints precede the object's joints (3 slides + 3 hinges).
+        self._obj_qposadr = int(
+            self.model.jnt_qposadr[self.model.body_jntadr[self.object_bid]]
+        )
+        self._obj_dofadr = int(self.model.body_dofadr[self.object_bid])
         self.goal_sid = self.model.site("target_o").id
         self.success_indicator_sid = self.model.site("target_ball").id
         self.goal_bid = self.model.body("target").id
@@ -199,10 +204,13 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         goal_xmat = self.data.site_xmat[self.goal_sid].reshape(3, 3)
         obj_rot = mat2euler(obj_xmat)
         goal_rot = mat2euler(goal_xmat)
+        hand_qpos = qpos[: self._obj_qposadr].copy()
         obs = {
             "time": np.array([accessor.time()]),
-            "hand_qpos": qpos[:-7].copy(),
-            "hand_qvel": (qvel[:-6] * accessor.dt()).copy(),
+            "hand_qpos": hand_qpos,
+            # Legacy relocate_v0 name of the same (all hand joints) slice.
+            "hand_qpos_corrected": hand_qpos,
+            "hand_qvel": (qvel[: self._obj_dofadr] * accessor.dt()).copy(),
             "obj_pos": obj_pos,
             "goal_pos": goal_pos,
             "palm_pos": palm_pos,
@@ -217,9 +225,7 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         return obs
 
     def _obs_dict_to_vec(self, obs_dict: dict[str, np.ndarray]) -> np.ndarray:
-        return np.concatenate(
-            [np.atleast_1d(obs_dict[k]).ravel() for k in self.obs_keys if k in obs_dict]
-        )
+        return self._obs_keys_to_vec(obs_dict)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         reach_dist = float(np.linalg.norm(obs_dict["reach_err"]))

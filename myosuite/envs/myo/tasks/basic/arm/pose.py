@@ -354,7 +354,7 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             "act": accessor.muscle_act(),
             "pose_err": pose_error_obs(accessor, self.target_jnt_value),
         }
-        return {k: obs[k] for k in self.obs_keys if k in obs}
+        return self._select_obs_keys(obs)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         """Compute the reward dictionary from the observation dict.

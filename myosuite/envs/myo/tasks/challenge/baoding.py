@@ -309,7 +309,7 @@ class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         }
         obs["target1_err"] = obs["target1_pos"] - obs["object1_pos"]
         obs["target2_err"] = obs["target2_pos"] - obs["object2_pos"]
-        return {k: obs[k] for k in self.obs_keys if k in obs}
+        return self._select_obs_keys(obs)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         """Compute the reward dictionary.

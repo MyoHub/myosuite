@@ -242,7 +242,7 @@ class TorsoEnvV0(MyoGymnasiumEnv, EzPickle):
             "act": accessor.muscle_act(),
             "pose_err": self.target_jnt_value - qpos[: self._n_pose_jnts],
         }
-        return {k: obs[k] for k in self.obs_keys if k in obs}
+        return self._select_obs_keys(obs)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         """Compute the reward dictionary.
