@@ -119,6 +119,11 @@ full commit list.
   (2000 steps = 20 s) and flat ground, all on purpose. The mjlab task takes the CPU rewards
   (unscaled by dt), the out-of-bounds lose, the physics options, the keyframe reset and the
   colored-noise opponent. Its distance reward now restarts every episode.
+* **Unknown observation keys raise.** An `obs_keys` entry that an env does not compute (e.g. a typo) was
+  silently dropped from the observation; the CPU envs and the mjlab pose/reach/stand/walk twins now raise a
+  `KeyError` that lists the available keys, and the SAR reorient envs honour an `obs_keys` argument. The
+  Relocate ids observe every hand joint: `hand_qpos` was missing the last one (`md5_flexion_r`), so their
+  observation grows by one value (P1: 156 to 157); the legacy `hand_qpos_corrected` key is available again.
 
 ### Fixed
 
@@ -196,6 +201,12 @@ full commit list.
 * **Tutorial scripts and CI.** The SAR tutorial scripts seed SAC and checkpoint/resume (`--seed`,
   `--play-only`); the 2.3 results depend strongly on the seed. CI runs for PRs into `ms3` and installs the
   `[rl]` extra; the mimic suite no longer comes out empty (it is registered before the challenge suite).
+* **Challenge scoring and targets.** RunTrack and ChaseTag `get_metrics` again score a lost episode (a
+  lost CHASE episode for ChaseTag) with the full `maxTime`, as legacy MyoSuite did, so falling early no
+  longer earns the best time. `PoseEnvV0.update_target()` (or setting `target_jnt_value`) moves the
+  rewarded target with the observed one. Bimanual refreshes the box inertia after every mass draw (the
+  first reset skipped it) and rescales the visual box with the collision box; the visual mesh keeps
+  correct bounds, so ray casts (viewer picking) hit it.
 
 ### Removed
 
