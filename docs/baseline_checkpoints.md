@@ -23,13 +23,14 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 
 **Not all published policies converged to the standard 95% threshold**, and training for more
 iterations may well reach higher success rates: `myoHandPoseRandom-v0` (36%, plateaued),
-`myoArmReachRandom-v0` (67%), `myoFingerReachRandom-v0` (45%), `motorFingerReachRandom-v0` (44%),
-`myoLegHillyTerrainWalk-v0` (27%),
-and the rows marked _pending_ (`myoLegStandRandom-v0`, `myoLegDirectionalRandom-v0`), which are being
-retrained (see below).
+`myoArmReachRandom-v0` (67%), `myoFingerReachRandom-v0` (73%), `motorFingerReachRandom-v0` (94%),
+`myoLegDirectionalRandom-v0` (54%) and `myoLegHillyTerrainWalk-v0` (27%). `myoLegDirectionalRandom-v0`
+succeeds with exploration noise (99% sampled success) but only about half of the time with the mean
+action; the checkpoint is the best one of the run. The row marked _pending_ (`myoLegStandRandom-v0`) is
+being retrained.
 
-Both `FingerReachRandom` variants used to share one target box, of which only about 55% (65% at a looser
-tolerance) lies within the fingertip's workspace, which capped their success rate at roughly that. They now
+`myoFingerReachRandom-v0` and `motorFingerReachRandom-v0` used to sample their targets uniformly in a box
+of which only about 55% lies within the fingertip's workspace, which capped any policy near that. They now
 sample only targets the fingertip can reach, and their policies were retrained.
 
 **Compatibility with the ms3 observation changes.** Policies are tied to the observation contract they
@@ -60,7 +61,7 @@ available yet to evaluate.
 | motorFingerPoseFixed-v0      | `model_267.pt`     | 100.0%                        |
 | motorFingerPoseRandom-v0     | `model_152.pt`     | 100.0%                        |
 | motorFingerReachFixed-v0     | `model_120.pt`     | 100.0%                        |
-| motorFingerReachRandom-v0    | `model_500.pt`     | 43.8%                         |
+| motorFingerReachRandom-v0    | `model_1999.pt`    | 93.9%                         |
 | myoArmReachFixed-v0          | `model_696.pt`   | 100.0%                        |
 | myoArmReachRandom-v0         | `model_4999.pt`    | 67.2%                         |
 | myoChallengeChaseTagFBP2-v0  | -                  | -                             |
@@ -74,7 +75,7 @@ available yet to evaluate.
 | myoFingerPoseFixed-v0        | `model_59.pt`    | 100.0%                        |
 | myoFingerPoseRandom-v0       | `model_321.pt`   | 98.4%                         |
 | myoFingerReachFixed-v0       | `model_45.pt`    | 100.0%                        |
-| myoFingerReachRandom-v0      | `model_7900.pt`    | 45.3%                         |
+| myoFingerReachRandom-v0      | `model_1500.pt`    | 72.7%                         |
 | myoHandPose0Fixed-v0         | -                  | -                             |
 | myoHandPose1Fixed-v0         | `model_357.pt`   | 100.0%                        |
 | myoHandPose2Fixed-v0         | `model_416.pt`   | 100.0%                        |
@@ -91,7 +92,7 @@ available yet to evaluate.
 | myoHandReachRandom-v0        | `model_1912.pt`    | 96.9%                         |
 | myoLegDirectionalBackward-v0 | `model_583.pt`     | 96.9%                         |
 | myoLegDirectionalForward-v0  | `model_681.pt`     | 100.0%                        |
-| myoLegDirectionalRandom-v0   | _pending_          | _pending_                     |
+| myoLegDirectionalRandom-v0   | `model_2000.pt`    | 53.8%                         |
 | myoLegHillyTerrainWalk-v0    | `model_4999.pt`    | 26.6%                         |
 | myoLegRoughTerrainWalk-v0    | `model_3715.pt`    | 89.1%                         |
 | myoLegStairTerrainWalk-v0    | -                  | -                             |
