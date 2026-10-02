@@ -6,6 +6,8 @@
 
 - ``utils.target_ranges``: target ranges resolved by joint/site name, in model
   order, whatever the mapping order (``ConfigDict`` iterates alphabetically).
+- ``utils.spec_processing.compile_with_options``: recompiling a spec keeps the
+  options that were set on the compiled model (``FatigueWrapper`` path).
 - ``terms.mimic_obs.resolve_mimic_site_ids``: unknown site names raise.
 """
 
@@ -18,6 +20,7 @@ import pytest
 
 import myosuite  # noqa: F401  # registers the CPU envs
 from myosuite.terms.mimic_obs import resolve_mimic_site_ids
+from myosuite.utils.spec_processing import compile_with_options
 from myosuite.utils.target_ranges import (
     resolve_joint_target_ranges,
     resolve_site_target_ranges,
@@ -151,3 +154,33 @@ def test_mimic_site_ids_reject_unknown_names() -> None:
     )
     with pytest.raises(KeyError):
         resolve_mimic_site_ids(model, ("tip", "missing"))
+
+
+def test_compile_with_options_keeps_model_options() -> None:
+    """Growing nuserdata and recompiling must not revert model.opt."""
+    spec = mujoco.MjSpec.from_string(_TINY_XML)
+    model = spec.compile()
+    model.opt.timestep = 0.0025
+    model.opt.iterations = 6
+    model.opt.ls_iterations = 6
+    model.opt.ccd_iterations = 75
+    model.opt.disableflags = int(mujoco.mjtDisableBit.mjDSBL_EULERDAMP)
+    model.opt.gravity[:] = (0.0, 0.0, -3.0)
+    spec.nuserdata += 12
+
+    assert spec.compile().opt.timestep != model.opt.timestep  # the bug being guarded
+    new = compile_with_options(spec, model)
+
+    assert new.nuserdata == model.nuserdata + 12
+    fields = [
+        n
+        for n in dir(model.opt)
+        if not n.startswith("_") and not callable(getattr(model.opt, n))
+    ]
+    assert {"timestep", "iterations", "ccd_iterations", "gravity"} <= set(fields)
+    for name in fields:
+        np.testing.assert_array_equal(
+            np.asarray(getattr(new.opt, name)),
+            np.asarray(getattr(model.opt, name)),
+            err_msg=name,
+        )
