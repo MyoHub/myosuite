@@ -38,7 +38,7 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | 2.1 | [Train SB3 Policy](./2.1_Train_SB3_Policy.ipynb) — PPO on CPU | `pip install -e ".[rl]"` |
 | 2.2 | [Train MjLab Policy](./2.2_Train_MjLab_Policy.ipynb) — thousands of parallel envs on GPU, playback on CPU | Linux + CUDA, `pip install -e ".[mjlab]"` |
 | 2.3 | [SAR](./2.3_SAR.ipynb) — synergistic action representations | `pip install -e ".[rl]"` (full training is hours; set `MYOSUITE_FULL_SAR=1`) |
-| 2.4 | [DEP-RL](./2.4_DEP_RL.ipynb) | `pip install deprl`, **Python ≤ 3.11.5 only** |
+| 2.4 | [DEP-RL](./2.4_DEP_RL.ipynb) | `pip install deprl gym`, **Python ≤ 3.11** (the DEP-RL baseline is a 2023 checkpoint) |
 | 2.5 | [MyoReflex Walk](./2.5_MyoReflex_Walk.ipynb) — reflex-based walking baseline | — |
 | **3 — Analysis** | | |
 | 3.1 | [Analyse Movements](./3.1_Analyse_Movements.ipynb) — kinematics and synergies | `pip install stable-baselines3 scikit-learn` |

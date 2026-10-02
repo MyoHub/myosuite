@@ -96,7 +96,7 @@ jobs:
         run: uv run python -m pytest -o addopts= myosuite/tests -v -m "not slow"
 
       # Pinned to 3.10: several tutorials depend on packages with tighter ceilings
-      # than the library itself (e.g. deprl requires Python <=3.11.5).
+      # than the library itself (e.g. deprl requires Python <=3.11).
       - name: Execute tutorials (discovered; HF-heavy notebooks skipped in CI)
         if: ${{ runner.os == 'Linux' && matrix.python-version == '3.10' }}
         run: source myosuite/tests/test_tutorials.sh
