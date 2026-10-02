@@ -43,7 +43,7 @@ from mjlab.rl import (
     RslRlPpoAlgorithmCfg,
 )
 from mjlab.scene import SceneCfg
-from mjlab.sim import MujocoCfg, SimulationCfg
+from mjlab.sim import SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 
 from myosuite.core.config import TaskConfig
