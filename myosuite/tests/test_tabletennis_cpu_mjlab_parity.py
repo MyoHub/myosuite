@@ -4,10 +4,10 @@
 # LICENSE file in the root directory of this source tree.
 """CPU / mjlab parity of the TableTennis episode termination.
 
-The mjlab twin documents ``_dense_channel_done`` as matching the CPU ``_get_done``. They
-must agree for every contact-trajectory issue and every combination of time, ball height
-and solved flag: a failed rally ends the episode on both backends, a missed ball (MISS)
-plays on on both.
+The mjlab rally term (``_rally_done`` on the ``_PingpongTrajectory`` outcome) must agree
+with the CPU ``_get_done`` for every contact-trajectory issue and every combination of
+time, ball height and solved flag: a failed rally ends the episode on both backends, a
+missed ball (MISS) plays on on both.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from types import SimpleNamespace
 import pytest
 
 pytest.importorskip("mjlab")
+torch = pytest.importorskip("torch")
 
 from myosuite.envs.myo.backends.mjlab import (  # noqa: E402
     register_mjlab_tabletennis as tt_mjlab,
@@ -26,7 +27,17 @@ from myosuite.envs.myo.tasks.challenge import tabletennis as tt_cpu  # noqa: E40
 
 pytestmark = pytest.mark.tier1
 
+_CTRL_DT = 0.01  # control step of myoChallengeTableTennisP{0,1,2}-v0
 _LABEL = tt_cpu.PingpongContactLabels
+# Column of each label in the ``touching_info`` observation / mjlab label flags.
+_COLUMN = {
+    _LABEL.PADDLE: 0,
+    _LABEL.OWN: 1,
+    _LABEL.OPPONENT: 2,
+    _LABEL.NET: 3,
+    _LABEL.GROUND: 4,
+    _LABEL.ENV: 5,
+}
 _ISSUE = tt_cpu.ContactTrajIssue
 # Contact trajectories covering every outcome of evaluate_pingpong_trajectory.
 _TRAJECTORIES = {
@@ -46,6 +57,25 @@ def _cpu_done(time: float, z: float, solved: bool, trajectory: list) -> bool:
     return bool(tt_cpu.TableTennisEnv._get_done(env, z, solved))
 
 
+def _mjlab_done(time: float, z: float, solved: bool, trajectory: list) -> bool:
+    """The mjlab rally term's ``done`` for the same inputs (one env)."""
+    state = tt_mjlab._PingpongTrajectory(1, "cpu")
+    for contacts in trajectory:
+        labels = torch.zeros(1, 6, dtype=torch.bool)
+        for label in contacts:
+            labels[0, _COLUMN[label]] = True
+        state.update(labels)
+    # mjlab counts control steps where CPU compares the sim time with MAX_TIME.
+    timed_out = round(time / _CTRL_DT) > round(tt_cpu.MAX_TIME / _CTRL_DT)
+    done = tt_mjlab._rally_done(
+        torch.tensor([timed_out]),
+        torch.tensor([z]),
+        torch.tensor([solved]),
+        state.outcome,
+    )
+    return bool(done[0])
+
+
 @pytest.mark.parametrize("name", sorted(_TRAJECTORIES))
 @pytest.mark.parametrize(
     "time,z,solved",
@@ -56,7 +86,7 @@ def test_done_flag_matches_mjlab(
 ) -> None:
     trajectory = _TRAJECTORIES[name]
     cpu = _cpu_done(time, z, solved, trajectory)
-    mjlab = bool(tt_mjlab._dense_channel_done(time, z, solved, trajectory))
+    mjlab = _mjlab_done(time, z, solved, trajectory)
     assert cpu == mjlab, (name, time, z, solved)
 
 
