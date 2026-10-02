@@ -6,8 +6,9 @@
 """Render SB3 PPO checkpoints from an ``sb3_all_envs`` sweep to MP4.
 
 Reads ``summary.json`` (or scans ``*/result.json``), loads each ``pass``
-env's ``ppo_final.zip``, rolls out deterministically, and writes
-``renders/<env_id>.mp4`` plus an ``index.md`` gallery.
+env's ``ppo_final.zip`` (with the ``VecNormalize`` statistics saved next to it,
+if any), rolls out deterministically, and writes ``renders/<env_id>.mp4`` plus
+an ``index.md`` gallery.
 
 Usage::
 
@@ -23,6 +24,7 @@ import json
 import sys
 import time
 import traceback
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -186,9 +188,31 @@ def _capture_frame(
     return _overlay(frame, overlay_lines)
 
 
+Policy = Callable[[np.ndarray], np.ndarray]
+
+
+def _sb3_policy(ckpt: Path) -> tuple[Policy, Path | None]:
+    """Deterministic ``act(raw_obs)`` of a PPO checkpoint and its VecNormalize file.
+
+    The policy normalizes observations with the ``VecNormalize`` statistics saved
+    next to the checkpoint, as in training (``None`` when there are none).
+    """
+    from stable_baselines3 import PPO
+
+    from myosuite.utils.checkpoint_utils import (
+        find_vec_normalize,
+        load_vec_normalize,
+        sb3_policy,
+    )
+
+    stats = find_vec_normalize(ckpt)
+    vec_normalize = load_vec_normalize(stats) if stats is not None else None
+    return sb3_policy(PPO.load(str(ckpt), device="cpu"), vec_normalize), stats
+
+
 def _rollout_score(
     env: Any,
-    policy: Any,
+    policy: Policy,
     *,
     seed: int,
     max_steps: int,
@@ -201,7 +225,7 @@ def _rollout_score(
     solved = False
     steps = 0
     for steps in range(1, max_steps + 1):
-        action, _ = policy.predict(obs, deterministic=True)
+        action = policy(obs)
         obs, reward, terminated, truncated, info = env.step(action)
         episode_return += float(np.asarray(reward).sum())
         solved = solved or solved_from_info(info)
@@ -217,7 +241,7 @@ def _rollout_score(
 
 def _best_rollout(
     env: Any,
-    policy: Any,
+    policy: Policy,
     *,
     seed: int,
     candidates: int,
@@ -252,7 +276,6 @@ def render_one(
     """Render one env checkpoint to MP4. Returns a status dict."""
     import imageio.v2 as imageio
     import mujoco
-    from stable_baselines3 import PPO
 
     from myosuite.utils import gym
     from myosuite.viz.mj_renderer import _tune_mjv_scene_for_rgb
@@ -272,7 +295,7 @@ def render_one(
         uw = env.unwrapped
         model = uw.model
         data = uw.data
-        policy = PPO.load(str(ckpt), device="cpu")
+        policy, vec_normalize_path = _sb3_policy(ckpt)
         best = _best_rollout(
             env,
             policy,
@@ -294,7 +317,7 @@ def render_one(
         from myosuite.utils.sb3_sweep import solved_from_info
 
         for step in range(max_steps):
-            action, _ = policy.predict(obs, deterministic=True)
+            action = policy(obs)
             obs, reward, terminated, truncated, info = env.step(action)
             ep_r += float(np.asarray(reward).sum())
             solved = solved or solved_from_info(info)
@@ -332,6 +355,7 @@ def render_one(
             "candidate_solved": bool(best["solved"]),
             "candidate_seed": int(best["seed"]),
             "candidates": candidates,
+            "vec_normalize": str(vec_normalize_path) if vec_normalize_path else None,
             "elapsed_s": round(time.time() - t0, 2),
         }
     finally:

@@ -20,6 +20,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from myosuite.integrations.musclemimic.actor_onnx import load_onnx_session
 
 try:
@@ -30,6 +32,7 @@ except ImportError:  # wandb is optional; only get_wandb_onnx_checkpoint_path ne
 _BUNDLE_META_KEY = "myosuite.checkpoint_bundle.v1.meta"
 _BUNDLE_PAYLOAD_KEY = "myosuite.checkpoint_bundle.v1.payload_gzip_base64"
 _FATIGUE_STATE_KEY = "fatigue_state"
+_VEC_NORMALIZE_KEY = "vec_normalize"
 _MODEL_STEP_ONNX_RE = re.compile(r"^model_(\d+)\.onnx$")
 _MODEL_STEP_PT_RE = re.compile(r"^model_(\d+)\.pt$")
 
@@ -295,6 +298,75 @@ def set_env_fatigue_state(env: Any, state: dict[str, Any]) -> None:
         fatigue_model.load_state_dict(state["cpu"])
 
 
+def _running_mean_std_state(rms: Any) -> dict[str, Any] | None:
+    """JSON data of an SB3 ``RunningMeanStd`` (float64 values round-trip exactly)."""
+    if rms is None:
+        return None
+    return {
+        "mean": np.asarray(rms.mean, dtype=np.float64).tolist(),
+        "var": np.asarray(rms.var, dtype=np.float64).tolist(),
+        "count": float(rms.count),
+    }
+
+
+def get_vec_normalize_state(vec_normalize: Any) -> dict[str, Any]:
+    """Return the statistics and settings of an SB3 ``VecNormalize`` as JSON data.
+
+    Args:
+        vec_normalize: The ``VecNormalize`` a policy is trained behind (Box
+            observations).
+
+    Returns:
+        Everything :func:`vec_normalize_from_state` needs to resume training.
+    """
+    obs_rms = getattr(vec_normalize, "obs_rms", None)
+    if isinstance(obs_rms, dict):
+        raise ValueError("VecNormalize of a Dict observation space is not supported.")
+    return {
+        "norm_obs": bool(vec_normalize.norm_obs),
+        "norm_reward": bool(vec_normalize.norm_reward),
+        "clip_obs": float(vec_normalize.clip_obs),
+        "clip_reward": float(vec_normalize.clip_reward),
+        "gamma": float(vec_normalize.gamma),
+        "epsilon": float(vec_normalize.epsilon),
+        "obs_rms": _running_mean_std_state(obs_rms),
+        "ret_rms": _running_mean_std_state(vec_normalize.ret_rms),
+    }
+
+
+def vec_normalize_from_state(state: dict[str, Any], venv: Any) -> Any:
+    """Wrap *venv* in an SB3 ``VecNormalize`` restored from :func:`get_vec_normalize_state`.
+
+    Args:
+        state: Output of :func:`get_vec_normalize_state`, e.g. the
+            ``"vec_normalize"`` entry of an SB3 bundle's metadata.
+        venv: The VecEnv to normalize.
+
+    Returns:
+        A ``VecNormalize`` in training mode with the saved statistics.
+    """
+    from stable_baselines3.common.vec_env import VecNormalize  # noqa: PLC0415
+
+    vec_normalize = VecNormalize(
+        venv,
+        norm_obs=state["norm_obs"],
+        norm_reward=state["norm_reward"],
+        clip_obs=state["clip_obs"],
+        clip_reward=state["clip_reward"],
+        gamma=state["gamma"],
+        epsilon=state["epsilon"],
+    )
+    for name in ("obs_rms", "ret_rms"):
+        saved = state[name]
+        if saved is None:
+            continue
+        rms = getattr(vec_normalize, name)
+        rms.mean = np.asarray(saved["mean"], dtype=np.float64).reshape(rms.mean.shape)
+        rms.var = np.asarray(saved["var"], dtype=np.float64).reshape(rms.var.shape)
+        rms.count = saved["count"]
+    return vec_normalize
+
+
 __all__ = [
     "bundle_onnx_with_checkpoint",
     "extract_checkpoint_from_onnx",
@@ -305,5 +377,7 @@ __all__ = [
     "onnx_checkpoint_sort_key",
     "get_env_fatigue_state",
     "set_env_fatigue_state",
+    "get_vec_normalize_state",
+    "vec_normalize_from_state",
     "OnnxPolicy",
 ]
