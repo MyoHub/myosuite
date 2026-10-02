@@ -493,7 +493,7 @@ class ModelBuilder:
 
         Use this when the fragment is composed programmatically rather than
         loaded from a static XML file — for example, a hand pruned from the
-        full arm via ``myo_sim.build.compose.load_right_hand_from_arm_spec()``.
+        full arm via ``myo_sim.build.compose.build_right_hand_from_arm_spec()``.
 
         Args:
             spec: A fully-constructed ``mujoco.MjSpec`` to attach.
@@ -504,9 +504,9 @@ class ModelBuilder:
             Self, for method chaining.
 
         Example:
-            >>> from myo_sim.build.compose import load_right_hand_from_arm_spec
+            >>> from myo_sim.build.compose import build_right_hand_from_arm_spec
             >>> model, spec = ModelBuilder().attach_spec(
-            ...     load_right_hand_from_arm_spec(), name="hand"
+            ...     build_right_hand_from_arm_spec(), name="hand"
             ... ).build()
         """
         self._fragments.append(_FragmentSpec(name=name, parent=parent, spec=spec))
