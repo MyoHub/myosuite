@@ -121,11 +121,20 @@ def sar_rl_synnosyn(
     log.info("SAR-RL training complete. Model saved.")
 
 
-def main() -> None:
+def main(skip_e2e: bool = False, only_e2e: bool = False) -> None:
     os.makedirs("sar_outputs", exist_ok=True)
     os.chdir("sar_outputs")
     log.info("Working directory: %s", os.getcwd())
 
+    if not only_e2e:
+        _train_sar_pipeline()
+    if not skip_e2e:
+        _train_e2e()
+    log.info("Full SAR manipulation pipeline complete.")
+
+
+def _train_sar_pipeline() -> None:
+    """Play phase, activation rollout, SAR fit and SAR-RL."""
     # --- Step 1: play phase ---
     play_model_path = Path(f"play_period_model_{PLAY_ENV}_{SEED}.zip")
     play_env_path = Path(f"play_period_env_{PLAY_ENV}_{SEED}")
@@ -177,15 +186,16 @@ def main() -> None:
     else:
         sar_rl_synnosyn(TARGET_ENV, "SAR-RL", SAR_RL_STEPS, SEED, ica, pca, normalizer, PHI)
 
-    # --- Step 5: RL-E2E baseline on Reorient100 ---
+
+
+def _train_e2e() -> None:
+    """RL-E2E baseline on Reorient100."""
     e2e_model_path = Path(f"RL-E2E_model_{TARGET_ENV}_{SEED}.zip")
     e2e_env_path = Path(f"RL-E2E_env_{TARGET_ENV}_{SEED}")
     if RESUME_IF_AVAILABLE and e2e_model_path.exists() and e2e_env_path.exists():
         log.info("Skipping RL-E2E baseline; found existing artifacts")
     else:
         train(TARGET_ENV, "RL-E2E", E2E_STEPS, SEED)
-
-    log.info("Full SAR manipulation pipeline complete.")
 
 
 def _dry_run() -> None:
@@ -211,9 +221,23 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--seed", default=SEED, help="Seed of SAC and the environment.")
+    parser.add_argument("--play-steps", type=int, default=PLAY_STEPS, help="Play-phase steps.")
+    parser.add_argument("--sar-steps", type=int, default=SAR_RL_STEPS, help="SAR-RL steps.")
+    parser.add_argument("--e2e-steps", type=int, default=E2E_STEPS, help="RL-E2E steps.")
+    parser.add_argument(
+        "--skip-e2e", action="store_true", help="Do not train the RL-E2E baseline."
+    )
+    parser.add_argument(
+        "--only-e2e",
+        action="store_true",
+        help="Only train the RL-E2E baseline (run it in parallel to the SAR pipeline).",
+    )
     args = parser.parse_args()
     SEED = args.seed
+    PLAY_STEPS = args.play_steps
+    SAR_RL_STEPS = args.sar_steps
+    E2E_STEPS = args.e2e_steps
     if args.dry_run:
         _dry_run()
     else:
-        main()
+        main(skip_e2e=args.skip_e2e, only_e2e=args.only_e2e)

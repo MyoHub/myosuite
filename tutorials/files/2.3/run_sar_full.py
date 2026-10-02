@@ -437,8 +437,16 @@ if __name__ == "__main__":
         action="store_true",
         help="Stop after the play phase, e.g. to pick the best of several seeds.",
     )
+    parser.add_argument("--play-steps", type=int, default=PLAY_STEPS, help="Play-phase steps.")
+    parser.add_argument("--sar-steps", type=int, default=SAR_RL_STEPS, help="SAR-RL steps.")
+    parser.add_argument(
+        "--no-videos", action="store_true", help="Skip rendering the rollout videos."
+    )
     args = parser.parse_args()
     SEED = args.seed
+    PLAY_STEPS = args.play_steps
+    SAR_RL_STEPS = args.sar_steps
+    RENDER_VIDEOS = RENDER_VIDEOS and not args.no_videos
     if args.dry_run:
         _dry_run()
     else:
