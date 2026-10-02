@@ -337,7 +337,7 @@ class BridgedPredictPolicy:
         source_action_fill: Fill value for unmapped source actuators before any
             final action transform.
         source_action_transform: Optional post-processing applied to projected
-            source actions, for example mapping ``[-1, 1]`` logits to ``[0, 1]``.
+            source actions, for example :func:`to_muscle_activations`.
         target_keyframe: Reference keyframe for target-only state.
         source_entity_name: Optional scene entity key used by
             :meth:`predict_from_env` for mjlab environments.
@@ -573,10 +573,17 @@ class TensorDictPredictPolicyAdapter:
 
 
 def to_muscle_activations(action: Any) -> np.ndarray:
-    """Map checkpoint logits in ``[-1, 1]`` into muscle activations in ``[0, 1]``."""
+    """Map MuscleMimic checkpoint actions to the muscle excitations they produce.
+
+    The MuscleMimic models give every muscle ``ctrlrange=[-1, 1]`` and the
+    policy runners write the action into ``ctrl`` unchanged. MuJoCo's muscle
+    dynamics then clamp ``ctrl`` to ``[0, 1]``, so the excitation seen in
+    training is ``clip(a, 0, 1)``: an output of ``a <= 0`` means "off", not
+    "half on".
+    """
 
     action_np = _to_numpy_array(action, dtype=np.float32).reshape(-1)
-    return np.clip(0.5 * (action_np + 1.0), 0.0, 1.0).astype(np.float32)
+    return np.clip(action_np, 0.0, 1.0).astype(np.float32)
 
 
 def make_fullbody_checkpoint_bridged_policy(
@@ -612,7 +619,9 @@ def make_fullbody_checkpoint_bridged_policy(
         source_action_fill: Fill value for source actuators without a mapped
             checkpoint counterpart.
         source_action_transform: Optional transform applied after projecting the
-            checkpoint action back into the source actuator space.
+            checkpoint action back into the source actuator space. The default,
+            :func:`to_muscle_activations`, turns it into the ``[0, 1]`` muscle
+            excitation the checkpoint produced in training.
         target_keyframe: Reference keyframe for the full-body target model.
         source_entity_name: Optional mjlab scene entity name used by
             :meth:`BridgedPredictPolicy.predict_from_env`.
