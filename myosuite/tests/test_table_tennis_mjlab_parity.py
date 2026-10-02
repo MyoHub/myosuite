@@ -31,10 +31,10 @@ from myosuite.envs.myo.tasks.challenge.tabletennis import (  # noqa: E402
 )
 
 _P0, _P2 = "myoChallengeTableTennisP0-v0", "myoChallengeTableTennisP2-v0"
-# Reward of a step that pays ``done`` (-10, dt-scaled: -0.1) is clearly negative;
-# every other per-step reward is positive (dense terms, ~0.025).
-_DONE_PAID = -0.05
-_SOLVED_PAID = 5.0  # ``solved`` is +1000, dt-scaled +10
+# Reward of a step that pays ``done`` (-10) is clearly negative; every other
+# per-step reward is positive (dense terms, ~2.5).
+_DONE_PAID = -5.0
+_SOLVED_PAID = 500.0  # ``solved`` is +1000
 
 
 def _make_env(env_id: str, num_envs: int) -> ManagerBasedRlEnv:
@@ -175,7 +175,6 @@ def test_obs_and_reward_match_cpu_on_the_same_state(
     cpu.reset(seed=0)
     p0.reset()
     data = p0.sim.data
-    dt = p0.step_dt
     rng = np.random.default_rng(1)
     touching = _touching_slice(cpu)
     events = set()
@@ -186,7 +185,7 @@ def test_obs_and_reward_match_cpu_on_the_same_state(
         p0.episode_length_buf[:] = t
         p0.sim.forward()
         p0.termination_manager.compute()
-        reward = float(p0.reward_manager.compute(dt=dt)[0]) / dt
+        reward = float(p0.reward_manager.compute(dt=p0.step_dt)[0])
         obs = p0.observation_manager.compute_group("policy")[0].numpy()
         np.testing.assert_allclose(obs, obs_cpu, atol=2e-4, err_msg=f"step {t}")
         rwd = info["rwd_dict"]

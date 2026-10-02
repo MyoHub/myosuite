@@ -869,6 +869,7 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
         scene=scene_cfg,
         decimation=decimation,
         episode_length_s=episode_length_s,
+        scale_rewards_by_dt=False,  # CPU rewards are per step, not per second
         observations=observations,
         actions=actions,
         terminations=terminations,
