@@ -428,8 +428,10 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
     # ------------------------------------------------------------------
 
     def _current_frame(self) -> int:
+        # Held at the last frame: the step that plays past it is truncated and
+        # scored against it, as in the mjlab ClipTrajectorySource.
         step = int(round(self.data.time / self._ctrl_dt))
-        return (self._frame_offset + step) % self._clip_T
+        return min(self._frame_offset + step, self._clip_T - 1)
 
     def _build_obs(self) -> np.ndarray:
         frame = self._current_frame()

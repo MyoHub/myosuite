@@ -9,12 +9,14 @@ Each of the N parallel mjlab environments gets its own random starting frame
 that is resampled independently on episode reset.  Frames advance one per
 control step:
 
-    frame[i] = (step[i] + start_offset[i]) % T
+    frame[i] = min(step[i] + start_offset[i], T - 1)
 
 where ``step`` is the integer number of control steps since each env's last
 reset (mjlab's ``env.episode_length_buf``), the counterpart of the CPU twin's
 step counter.  Float32 simulation time is not used: it drifts, and
-``floor(time / ctrl_dt)`` lags the step counter on most steps.
+``floor(time / ctrl_dt)`` lags the step counter on most steps.  The step that
+plays past the last frame is truncated (:meth:`ClipTrajectorySource.clip_end`)
+and scored against the last frame, not a wrapped frame 0.
 
 This gives a diverse distribution of motion phases across the batch while
 keeping each individual episode's targets coherent with the reference clip.
@@ -158,9 +160,13 @@ class ClipTrajectorySource:
         self._last_step = step.clone()
 
     def _frame_indices(self, step: torch.Tensor) -> torch.Tensor:
-        """Return ``(N,)`` frame indices from the per-env step counter."""
+        """Return ``(N,)`` frame indices from the per-env step counter.
+
+        Held at the last frame past the clip end (see :meth:`clip_end`).
+        """
         assert self._start_offsets is not None
-        return (_as_steps(step) + self._start_offsets) % self.n_frames  # (N,)
+        frames = _as_steps(step) + self._start_offsets
+        return frames.clamp(max=self.n_frames - 1)  # (N,)
 
     def clip_end(self, step: torch.Tensor) -> torch.Tensor:
         """``(N,)`` bool: the episode has played past the last frame of its clip."""
@@ -270,10 +276,10 @@ class ClipTrajectorySource:
         return self._qvel_tensor[frame_idx]
 
     def phase(self, step: torch.Tensor) -> torch.Tensor:
-        """Return ``(N, 1)`` normalised phase in ``[0, 1]`` along the clip.
+        """Return ``(N, 1)`` normalised phase ``frame / T`` in ``[0, 1)`` along the clip.
 
-        Phase reaches 1.0 at the last frame and wraps back to 0.0, giving the
-        RL policy a continuous signal of progress through the motion cycle.
+        Phase grows by ``1 / T`` per step and holds at ``(T - 1) / T`` from the
+        last frame on, giving the RL policy a signal of progress through the motion.
 
         Args:
             step: Per-env step counter, shape ``(N,)``.
@@ -517,7 +523,8 @@ class MultiClipTrajectorySource:
         assert self._start_offsets is not None
         assert self._clip_lengths is not None
         lengths = self._clip_lengths.index_select(0, self._clip_indices)
-        return (_as_steps(step) + self._start_offsets) % lengths
+        # Held at each clip's last frame past its end (see :meth:`clip_end`).
+        return (_as_steps(step) + self._start_offsets).minimum(lengths - 1)
 
     def clip_end(self, step: torch.Tensor) -> torch.Tensor:
         """``(N,)`` bool: the episode has played past the last frame of its clip."""

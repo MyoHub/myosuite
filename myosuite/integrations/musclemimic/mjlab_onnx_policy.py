@@ -301,10 +301,11 @@ def reset_mjlab_env_to_clip_frame(
         source = cache.get("clip_source")
         if source is not None:
             source._ensure_device(sim_data.qpos.device, n_envs)
-            # Clip frame = (episode step + offset) % T: choose the offset that
-            # puts each env's current step on `frame`.
+            # Clip frame = min(episode step + offset, T - 1): choose the offset that
+            # puts each env's current step on `frame` (negative mid-episode), so
+            # the clip end is reached after T - frame steps.
             step = _mimic_episode_steps(unwrapped)[env_ids]
-            source._start_offsets[env_ids] = (frame - step) % source.n_frames
+            source._start_offsets[env_ids] = frame - step
 
     return frame
 

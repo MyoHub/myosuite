@@ -80,3 +80,29 @@ def test_unknown_keyword_arguments_are_rejected(tmp_path: Path) -> None:
     clip_path = _write_standing_clip(tmp_path / "c.npz", 5, 0.0)
     with pytest.raises(TypeError, match="max_episode_steps"):
         _env(clip_path, max_episode_steps=10)
+
+
+def test_clip_end_step_is_scored_against_the_last_frame(tmp_path: Path) -> None:
+    """The truncating step compares the state with frame T-1, not wrapped frame 0.
+
+    Two clips differ only in frame 0 (shifted 1 m up); from frame 0 both envs run
+    the same physics, so the clip-end reward must not depend on frame 0.
+    """
+    n_frames = 4
+    rewards, frames = [], []
+    for name, shift in (("plain", 0.0), ("shifted", 1.0)):
+        env = _env(
+            _write_standing_clip(tmp_path / f"{name}.npz", n_frames, shift),
+            random_start=False,
+        )
+        env.reset(seed=0)
+        action = np.zeros(env.action_space.shape, dtype=np.float32)
+        for step in range(1, n_frames + 1):
+            _, reward, terminated, truncated, info = env.step(action)
+            assert truncated == (step == n_frames)
+            assert not terminated
+        rewards.append(reward)
+        frames.append(info["frame"])
+        env.close()
+    assert frames == [n_frames - 1, n_frames - 1]
+    assert rewards[1] == pytest.approx(rewards[0], abs=1e-12)
