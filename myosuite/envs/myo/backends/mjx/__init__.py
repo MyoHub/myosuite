@@ -33,8 +33,9 @@ import dataclasses
 import copy
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-import jax.numpy as jp
+import gymnasium as gym
 from etils import epath
 from ml_collections import config_dict
 
@@ -178,72 +179,47 @@ _musclemimic_fullbody_config = default_mimic_fullbody_config()
 # ---------------------------------------------------------------------------
 
 
+def _cpu_kwarg(env_id: str, key: str) -> Any:
+    """Return a copy of one kwarg of the CPU registration of the same task.
+
+    The pose/reach target ranges are read from the CPU registrations so the
+    joint/site names and ranges of the two backends cannot drift apart.
+    """
+    return copy.deepcopy(gym.spec(env_id).kwargs[key])
+
+
 def _cfg_elbow_fixed() -> MjxPoseConfig:
     return MjxPoseConfig(
         model_path=_ELBOW_MODEL,
-        target_jnt_range={"r_elbow_flex": jp.array((2.0, 2.0))},
+        target_jnt_range=_cpu_kwarg("myoElbowPose1D6MFixed-v0", "target_jnt_range"),
     )
 
 
 def _cfg_elbow_random() -> MjxPoseConfig:
     return MjxPoseConfig(
         model_path=_ELBOW_MODEL,
-        target_jnt_range={"r_elbow_flex": jp.array((0.0, 2.27))},
+        target_jnt_range=_cpu_kwarg("myoElbowPose1D6MRandom-v0", "target_jnt_range"),
     )
 
 
 def _cfg_finger_fixed() -> MjxPoseConfig:
     return MjxPoseConfig(
         model_path=_FINGER_MODEL,
-        target_jnt_range={
-            "IFadb": jp.array((0.0, 0.0)),
-            "IFmcp": jp.array((0.0, 0.0)),
-            "IFpip": jp.array((0.75, 0.75)),
-            "IFdip": jp.array((0.75, 0.75)),
-        },
+        target_jnt_range=_cpu_kwarg("myoFingerPoseFixed-v0", "target_jnt_range"),
     )
 
 
 def _cfg_finger_random() -> MjxPoseConfig:
     return MjxPoseConfig(
         model_path=_FINGER_MODEL,
-        target_jnt_range={
-            "IFadb": jp.array((-0.2, 0.2)),
-            "IFmcp": jp.array((-0.4, 1.0)),
-            "IFpip": jp.array((0.1, 1.0)),
-            "IFdip": jp.array((0.1, 1.0)),
-        },
+        target_jnt_range=_cpu_kwarg("myoFingerPoseRandom-v0", "target_jnt_range"),
     )
 
 
 def _cfg_hand_pose_random() -> MjxPoseConfig:
     return MjxPoseConfig(
         model_path=_HAND_MODEL,
-        target_jnt_range={
-            "pro_sup": jp.array((-0.3, 0.7)),
-            "deviation": jp.array((-0.2, 0.3)),
-            "flexion": jp.array((-0.8, 0.2)),
-            "cmc_abduction": jp.array((-0.2, 0.8)),
-            "cmc_flexion": jp.array((-0.2, 0.4)),
-            "mp_flexion": jp.array((-1.35, 0.0)),
-            "ip_flexion": jp.array((-1.35, 0.0)),
-            "mcp2_flexion": jp.array((0.0, 1.4)),
-            "mcp2_abduction": jp.array((-0.1, 0.1)),
-            "pm2_flexion": jp.array((0.0, 1.5)),
-            "md2_flexion": jp.array((0.0, 1.5)),
-            "mcp3_flexion": jp.array((0.0, 1.5)),
-            "mcp3_abduction": jp.array((-0.1, 0.1)),
-            "pm3_flexion": jp.array((0.0, 1.5)),
-            "md3_flexion": jp.array((0.0, 1.5)),
-            "mcp4_flexion": jp.array((0.0, 1.5)),
-            "mcp4_abduction": jp.array((-0.2, 0.2)),
-            "pm4_flexion": jp.array((0.0, 1.5)),
-            "md4_flexion": jp.array((0.0, 1.5)),
-            "mcp5_flexion": jp.array((0.0, 1.5)),
-            "mcp5_abduction": jp.array((-0.3, 0.3)),
-            "pm5_flexion": jp.array((0.0, 1.5)),
-            "md5_flexion": jp.array((0.0, 1.5)),
-        },
+        target_jnt_range=_cpu_kwarg("myoHandPoseRandom-v0", "target_jnt_range"),
     )
 
 
@@ -251,13 +227,7 @@ def _cfg_hand_reach_fixed() -> MjxReachConfig:
     return MjxReachConfig(
         model_path=_HAND_MODEL,
         far_th=0.044,
-        target_reach_range={
-            "THtip": jp.array(((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495))),
-            "IFtip": jp.array(((-0.151, -0.547, 1.455), (-0.151, -0.547, 1.455))),
-            "MFtip": jp.array(((-0.146, -0.547, 1.447), (-0.146, -0.547, 1.447))),
-            "RFtip": jp.array(((-0.148, -0.543, 1.445), (-0.148, -0.543, 1.445))),
-            "LFtip": jp.array(((-0.148, -0.528, 1.434), (-0.148, -0.528, 1.434))),
-        },
+        target_reach_range=_cpu_kwarg("myoHandReachFixed-v0", "target_reach_range"),
     )
 
 
@@ -265,38 +235,7 @@ def _cfg_hand_reach_random() -> MjxReachConfig:
     return MjxReachConfig(
         model_path=_HAND_MODEL,
         far_th=0.034,
-        target_reach_range={
-            "THtip": jp.array(
-                (
-                    (-0.165 - 0.020, -0.537 - 0.040, 1.495 - 0.040),
-                    (-0.165 + 0.040, -0.537 + 0.020, 1.495 + 0.040),
-                )
-            ),
-            "IFtip": jp.array(
-                (
-                    (-0.151 - 0.040, -0.547 - 0.020, 1.455 - 0.010),
-                    (-0.151 + 0.040, -0.547 + 0.020, 1.455 + 0.010),
-                )
-            ),
-            "MFtip": jp.array(
-                (
-                    (-0.146 - 0.040, -0.547 - 0.020, 1.447 - 0.010),
-                    (-0.146 + 0.040, -0.547 + 0.020, 1.447 + 0.010),
-                )
-            ),
-            "RFtip": jp.array(
-                (
-                    (-0.148 - 0.040, -0.543 - 0.020, 1.445 - 0.010),
-                    (-0.148 + 0.040, -0.543 + 0.020, 1.445 + 0.010),
-                )
-            ),
-            "LFtip": jp.array(
-                (
-                    (-0.148 - 0.040, -0.528 - 0.020, 1.434 - 0.010),
-                    (-0.148 + 0.040, -0.528 + 0.020, 1.434 + 0.010),
-                )
-            ),
-        },
+        target_reach_range=_cpu_kwarg("myoHandReachRandom-v0", "target_reach_range"),
     )
 
 
@@ -304,9 +243,7 @@ def _cfg_finger_reach_random() -> MjxReachConfig:
     return MjxReachConfig(
         model_path=_FINGER_MODEL,
         far_th=0.10,
-        target_reach_range={
-            "IFtip": jp.array(((0.1, -0.1, 0.1), (0.27, 0.1, 0.3))),
-        },
+        target_reach_range=_cpu_kwarg("myoFingerReachRandom-v0", "target_reach_range"),
     )
 
 

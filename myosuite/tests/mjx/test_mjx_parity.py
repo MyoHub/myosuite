@@ -89,9 +89,76 @@ def _make_reach_env(impl: str = "jax"):
     cfg["mjx_impl"] = impl
     cfg["far_th"] = 0.044
     cfg["target_reach_range"] = config_dict.create(
-        THtip=jp.array(((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495))),
+        THtip_r=jp.array(((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495))),
     )
     return MjxReachEnv(config=cfg)
+
+
+def _uniform_fractions(targets, lo, hi) -> np.ndarray:
+    """Map sampled targets to [0, 1] per coordinate (only coordinates with lo < hi)."""
+    t = np.asarray(targets).reshape(len(targets), -1)
+    lo, hi = np.asarray(lo).ravel(), np.asarray(hi).ravel()
+    var = hi > lo
+    return (t[:, var] - lo[var]) / (hi[var] - lo[var])
+
+
+# ---------------------------------------------------------------------------
+# 0. Targets: resolved by name, independent per coordinate
+# ---------------------------------------------------------------------------
+
+
+class TestTargetResolution:
+    """Pose/reach targets match the CPU twins and are sampled independently."""
+
+    def test_finger_pose_fixed_targets_the_right_joints(self):
+        """CPU myoFingerPoseFixed-v0: IFadb, IFmcp = 0 and IFpip, IFdip = 0.75."""
+        from myosuite.envs.myo.backends.mjx import make
+
+        env = make("MjxFingerPoseFixed-v0")
+        target = env.sample_task(jax.random.PRNGKey(0))["target_angles"]
+        np.testing.assert_allclose(np.asarray(target), [0.0, 0.0, 0.75, 0.75])
+
+    @pytest.mark.parametrize(
+        "env_name", ["MjxFingerPoseRandom-v0", "MjxHandPoseRandom-v0"]
+    )
+    def test_pose_targets_independent_per_joint(self, env_name):
+        """One key used to drive every joint (correlation 1.0)."""
+        from myosuite.envs.myo.backends.mjx import make
+
+        env = make(env_name)
+        keys = jax.random.split(jax.random.PRNGKey(0), 2000)
+        targets = jax.vmap(env.sample_task)(keys)["target_angles"]
+        u = _uniform_fractions(targets, env._target_lo, env._target_hi)
+        corr = np.corrcoef(u.T)
+        assert np.abs(corr[~np.eye(len(corr), dtype=bool)]).max() < 0.15
+
+    def test_hand_reach_tracks_five_distinct_tips_in_cpu_order(self):
+        """Unsuffixed names used to resolve to id -1, i.e. LFtip_r five times."""
+        from myosuite.envs.myo.backends.mjx import make
+
+        env = make("MjxHandReachRandom-v0")
+        names = [env.mj_model.site(int(i)).name for i in np.asarray(env._tip_sids)]
+        assert names == ["THtip_r", "IFtip_r", "MFtip_r", "RFtip_r", "LFtip_r"]
+        keys = jax.random.split(jax.random.PRNGKey(0), 2000)
+        targets = jax.vmap(env.sample_task)(keys)["targets"]
+        u = _uniform_fractions(targets, env._target_lo, env._target_hi)
+        corr = np.corrcoef(u.T)
+        assert np.abs(corr[~np.eye(len(corr), dtype=bool)]).max() < 0.15
+
+    def test_unknown_site_name_raises(self):
+        from ml_collections import config_dict
+        from myosuite.envs.myo.backends.mjx import (
+            _cfg_hand_reach_fixed,
+            _to_config_dict,
+        )
+        from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv
+
+        cfg = _to_config_dict(_cfg_hand_reach_fixed())
+        cfg["target_reach_range"] = config_dict.create(
+            THtip=jp.array(((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495))),
+        )
+        with pytest.raises(KeyError):
+            MjxReachEnv(config=cfg)
 
 
 # ---------------------------------------------------------------------------

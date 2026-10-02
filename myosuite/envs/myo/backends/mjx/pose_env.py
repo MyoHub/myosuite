@@ -14,8 +14,8 @@ Config keys (in addition to ``MyoMjxEnvBase`` defaults):
     ``ctrl_dt``            Control timestep (= ``sim_dt × n_substeps``).
     ``num_envs``           Number of parallel environments (batch size).
     ``max_episode_steps``  Episode truncation length.
-    ``target_jnt_range``   Mapping of joint name → ``(lo, hi)``
-                           JAX arrays of shape ``(n_joints,)``.
+    ``target_jnt_range``   Mapping of joint name → ``(lo, hi)``. Matched by
+                           name; the joints must occupy ``qpos[:n]``.
     ``reward_config``      Sub-dict with:
                            ``angle_reward_weight``, ``ctrl_cost_weight``,
                            ``bonus_weight``, ``pose_thd``, ``far_th``.
@@ -33,6 +33,7 @@ from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEn
 from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_spec
 from myosuite.terms.base_obs import pose_error_obs
 from myosuite.terms.base_reward import pose_reward
+from myosuite.utils.target_ranges import resolve_joint_target_ranges
 
 
 class MjxPoseEnv(MyoMjxEnvBase):
@@ -83,6 +84,11 @@ class MjxPoseEnv(MyoMjxEnvBase):
         self._xml_path = config.model_path.as_posix()
         self._n_substeps = int(config.ctrl_dt / config.sim_dt)
 
+        # Ranges matched to joints by name, in qpos order (never mapping order).
+        lo, hi = resolve_joint_target_ranges(self._mj_model, config.target_jnt_range)
+        self._target_lo = jp.asarray(lo, dtype=jp.float32)
+        self._target_hi = jp.asarray(hi, dtype=jp.float32)
+
     def sample_task(self, rng: jax.Array) -> dict[str, jax.Array]:
         """Sample a random target joint configuration.
 
@@ -90,15 +96,13 @@ class MjxPoseEnv(MyoMjxEnvBase):
             rng: JAX random key.
 
         Returns:
-            Dict with ``"target_angles"`` — 1-D JAX array of target angles,
-            concatenated from all joints in ``config.target_jnt_range``.
+            Dict with ``"target_angles"``: 1-D target for ``qpos[:n]``, one
+            independent uniform draw per joint.
         """
-        targets = []
-        for span in self._config.target_jnt_range.values():
-            targets.append(
-                jax.random.uniform(rng, (span[0].size,), minval=span[0], maxval=span[1])
-            )
-        return {"target_angles": jp.hstack(targets)}
+        target = jax.random.uniform(
+            rng, self._target_lo.shape, minval=self._target_lo, maxval=self._target_hi
+        )
+        return {"target_angles": target}
 
     def get_obs_dict(
         self,

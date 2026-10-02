@@ -41,7 +41,8 @@ class MjxPoseConfig:
         mjx_impl: ``None`` for JAX/XLA backend; ``"warp"`` for GPU Warp.
         norm_actions: Whether to apply sigmoid action normalisation.
         max_episode_steps: Episode truncation length.
-        target_jnt_range: Mapping of joint name → ``(lo, hi)`` JAX arrays.
+        target_jnt_range: Mapping of joint name → ``(lo, hi)``, matched to
+            the model by joint name (mapping order is ignored).
         reward_config: Reward component weights.
     """
 
@@ -78,7 +79,8 @@ class MjxReachConfig:
         norm_actions: Whether to apply sigmoid action normalisation.
         max_episode_steps: Episode truncation length.
         far_th: Distance threshold (metres) triggering episode termination.
-        target_reach_range: Mapping of site name → ``(lo, hi)`` JAX arrays.
+        target_reach_range: Mapping of site name → ``(lo_xyz, hi_xyz)``,
+            matched to the model by site name (mapping order is ignored).
         reward_weights: Reward component weights.
     """
 

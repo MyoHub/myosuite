@@ -21,6 +21,7 @@ import mujoco
 from ml_collections import config_dict
 
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEnvBase
+from myosuite.terms.mimic_obs import resolve_mimic_site_ids
 
 
 class MjxMuscleMimicBase(MyoMjxEnvBase):
@@ -51,15 +52,9 @@ class MjxMuscleMimicBase(MyoMjxEnvBase):
             mujoco.mj_id2name(self._mj_model, mujoco.mjtObj.mjOBJ_ACTUATOR, idx)
             for idx in self._actuator_ids
         )
-        self._track_site_ids = jp.array(
-            [
-                mujoco.mj_name2id(
-                    self._mj_model,
-                    mujoco.mjtObj.mjOBJ_SITE.value,
-                    site_name,
-                )
-                for site_name in config.mimic_site_names
-            ],
+        # Raises on unknown names (an unchecked id of -1 would wrap to the last site).
+        self._track_site_ids = jp.asarray(
+            resolve_mimic_site_ids(self._mj_model, tuple(config.mimic_site_names)),
             dtype=jp.int32,
         )
 
