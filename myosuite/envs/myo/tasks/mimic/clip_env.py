@@ -264,6 +264,8 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
         use_obs_normalizer: Whether to update and apply RunningMeanStd on obs.
         frame_skip: Number of simulation sub-steps per control step.
         seed: Optional RNG seed.
+        random_start: Start each episode at a clip frame drawn from the env RNG
+            (reference state initialisation); ``False`` starts at frame 0.
     """
 
     def __init__(
@@ -276,7 +278,7 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
         use_obs_normalizer: bool = True,
         frame_skip: int = 5,
         seed: int | None = None,
-        **kwargs: Any,
+        random_start: bool = True,
     ) -> None:
         gym.Env.__init__(self)
         EzPickle.__init__(
@@ -289,10 +291,11 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
             use_obs_normalizer,
             frame_skip,
             seed,
-            **kwargs,
+            random_start,
         )
         self.frame_skip = frame_skip
         self.np_random = np.random.default_rng(seed)
+        self._random_start = random_start
         self._lookahead_k = lookahead_k
         self._lookahead_stride = lookahead_stride
         self._site_err_threshold = site_err_threshold
@@ -523,8 +526,9 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
     ) -> tuple[np.ndarray, dict[str, Any]]:
         if seed is not None:
             self.np_random = np.random.default_rng(seed)
-        # Random start frame
-        self._frame_offset = int(self.np_random.integers(0, self._clip_T))
+        self._frame_offset = (
+            int(self.np_random.integers(0, self._clip_T)) if self._random_start else 0
+        )
         self._step_count = 0
 
         # Set state from clip
