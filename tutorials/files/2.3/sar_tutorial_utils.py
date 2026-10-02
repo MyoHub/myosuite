@@ -1,8 +1,10 @@
 import os
+import re
 import sys
 import warnings
 from collections import deque as dq
 from collections.abc import Callable
+from glob import glob
 
 import joblib
 import matplotlib.pyplot as plt
@@ -87,6 +89,115 @@ class SaveSuccesses(BaseCallback):
         #         plt.plot(range(len(self.success_results)), self.success_results)
         #         plt.show()
         pass
+
+
+class _Checkpoint(BaseCallback):
+    """Every ``every`` steps, save what is needed to resume training (files are replaced atomically)."""
+
+    def __init__(self, stem: str, venv: VecNormalize, successes: "SaveSuccesses", every: int):
+        super().__init__()
+        self.stem, self.venv, self.successes, self.every = stem, venv, successes, every
+        self._last = 0
+
+    def _on_training_start(self) -> None:
+        self._last = self.num_timesteps
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps - self._last >= self.every:
+            self._last = self.num_timesteps
+            writers = {
+                ".zip": self.model.save,
+                "_buffer.pkl": self.model.save_replay_buffer,
+                "_env.pkl": self.venv.save,
+                "_success.npy": lambda path: np.save(path, np.array(self.successes.success_results)),
+            }
+            for suffix, write in writers.items():
+                write(f"{self.stem}.tmp{suffix}")
+            for suffix in writers:
+                os.replace(f"{self.stem}.tmp{suffix}", f"{self.stem}{suffix}")
+        return True
+
+
+def fit_sac(
+    venv: DummyVecEnv,
+    policy_name: str,
+    env_name: str,
+    seed: str,
+    timesteps: int,
+    learning_starts: int,
+    checkpoint_every: int = 100_000,
+) -> None:
+    """Train a SAC policy on ``venv`` with the SAR tutorial's settings, or resume it.
+
+    SAC and the environment are seeded with ``int(seed)``. Every ``checkpoint_every`` steps the
+    model, replay buffer, observation normalizer and success history are saved to
+    ``{policy_name}_ckpt_{env_name}_{seed}*``; if these files exist, training resumes from them
+    (and the logged ``progress.csv`` continues), so an interrupted run loses at most
+    ``checkpoint_every`` steps. At the end the model and the normalizer are saved as
+    ``{policy_name}_model_{env_name}_{seed}`` and ``{policy_name}_env_{env_name}_{seed}``.
+
+    Args:
+        venv: Vectorised training environment (not yet normalised).
+        policy_name: Prefix of the saved files.
+        env_name: Environment id, used in the file names.
+        seed: Seed as a string (also part of the file names).
+        timesteps: Total number of environment steps.
+        learning_starts: Random steps before the first update.
+        checkpoint_every: Steps between resumable checkpoints.
+    """
+    tag = f"{env_name}_{seed}"
+    stem, results = f"{policy_name}_ckpt_{tag}", f"{policy_name}_results_{tag}"
+    successes = SaveSuccesses(
+        check_freq=1, env_name=tag, log_dir=f"{policy_name}_successes_{tag}"
+    )
+    resume = all(os.path.isfile(f"{stem}{s}") for s in (".zip", "_buffer.pkl", "_env.pkl"))
+    if resume:
+        venv = VecNormalize.load(f"{stem}_env.pkl", venv)
+        model = SAC.load(f"{stem}.zip", env=venv)
+        model.load_replay_buffer(f"{stem}_buffer.pkl")
+        if os.path.isfile(f"{stem}_success.npy"):
+            successes.success_results = list(np.load(f"{stem}_success.npy"))
+        print(f"Resuming {tag} from step {model.num_timesteps} of {timesteps}")
+        if os.path.isfile(f"{results}/progress.csv"):  # keep the earlier log, merged below
+            part = len(glob(f"{results}/progress_part*.csv")) + 1
+            os.replace(f"{results}/progress.csv", f"{results}/progress_part{part}.csv")
+    else:
+        venv = VecNormalize(venv, norm_obs=True, norm_reward=False, clip_obs=10.0)
+        model = SAC(
+            "MlpPolicy",
+            venv,
+            learning_rate=linear_schedule(0.001),
+            buffer_size=int(3e5),
+            learning_starts=learning_starts,
+            batch_size=256,
+            tau=0.02,
+            gamma=0.98,
+            train_freq=(1, "episode"),
+            gradient_steps=-1,
+            policy_kwargs=dict(net_arch=dict(pi=[400, 300], qf=[400, 300])),
+            verbose=1,
+            seed=int(seed),
+        )
+    model.set_logger(configure(results))
+    model.learn(
+        total_timesteps=timesteps - model.num_timesteps,
+        callback=[successes, _Checkpoint(stem, venv, successes, checkpoint_every)],
+        log_interval=4,
+        reset_num_timesteps=not resume,
+    )
+    model.save(f"{policy_name}_model_{tag}")
+    venv.save(f"{policy_name}_env_{tag}")
+
+    parts = sorted(glob(f"{results}/progress_part*.csv"), key=lambda f: int(re.findall(r"part(\d+)", f)[-1]))
+    if parts:  # one continuous progress.csv, as for an uninterrupted run
+        frames = [pd.read_csv(f) for f in parts] + [pd.read_csv(f"{results}/progress.csv")]
+        pd.concat(frames, ignore_index=True).to_csv(f"{results}/progress.csv", index=False)
+        for f in parts:
+            os.remove(f)
+    for suffix in (".zip", "_buffer.pkl", "_env.pkl", "_success.npy"):
+        if os.path.isfile(f"{stem}{suffix}"):
+            os.remove(f"{stem}{suffix}")
+
 
 
 def linear_schedule(initial_value: float) -> Callable[[float], float]:

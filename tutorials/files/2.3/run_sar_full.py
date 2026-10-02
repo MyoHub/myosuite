@@ -36,7 +36,6 @@ import numpy as np  # noqa: E402
 from sklearn.decomposition import FastICA, PCA  # noqa: E402
 from sklearn.preprocessing import MinMaxScaler  # noqa: E402
 from stable_baselines3 import SAC  # noqa: E402
-from stable_baselines3.common.logger import configure  # noqa: E402
 from stable_baselines3.common.monitor import Monitor  # noqa: E402
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize  # noqa: E402
 from tqdm import tqdm  # noqa: E402
@@ -50,10 +49,9 @@ if str(_REPO_ROOT) not in sys.path:
 import myosuite  # noqa: E402
 from myosuite.utils import gym  # noqa: E402
 from sar_tutorial_utils import (  # noqa: E402
-    SaveSuccesses,
+    fit_sac,
     SynergyWrapper,
     get_vid,
-    linear_schedule,
 )
 
 myosuite.register_all_envs()
@@ -72,7 +70,7 @@ PLAY_ENV = "myoLegWalk-v0"
 TARGET_ENV = "myoLegHillyTerrainWalk-v0"
 PLAY_STEPS = int(1.5e6)
 SAR_RL_STEPS = int(2.5e6)
-SEED = "0"
+SEED = "0"  # seeds SAC and the environment (and names the output files); results depend on it
 N_SYNERGIES = 20
 ACTIVATION_EPISODES = 1000
 ACTIVATION_PERCENTILE = 80
@@ -84,6 +82,7 @@ PLAY_VIDEO_EPISODES = 10
 SAR_RL_VIDEO_NAME = "walk_SAR-RL_video"
 SAR_RL_VIDEO_EPISODES = 5
 RESUME_IF_AVAILABLE = True
+CHECKPOINT_EVERY = 100_000  # steps between resumable training checkpoints
 
 
 # ---------------------------------------------------------------------------
@@ -98,41 +97,11 @@ def train(env_name: str, policy_name: str, timesteps: int, seed: str) -> None:
         env_name: Gymnasium environment id.
         policy_name: Prefix used for saved file names.
         timesteps: Total environment steps to train for.
-        seed: String seed appended to output file names.
+        seed: Seed (as a string) of SAC and the environment, also appended to the output file names.
     """
     log.info("Starting play-phase training on %s for %d steps", env_name, timesteps)
-    env = gym.make(env_name)
-    env = Monitor(env)
-    env = DummyVecEnv([lambda: env])
-    env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.0)
-
-    net_shape = [400, 300]
-    policy_kwargs = dict(net_arch=dict(pi=net_shape, qf=net_shape))
-
-    model = SAC(
-        "MlpPolicy",
-        env,
-        learning_rate=linear_schedule(0.001),
-        buffer_size=int(3e5),
-        learning_starts=1000,
-        batch_size=256,
-        tau=0.02,
-        gamma=0.98,
-        train_freq=(1, "episode"),
-        gradient_steps=-1,
-        policy_kwargs=policy_kwargs,
-        verbose=1,
-    )
-
-    succ_callback = SaveSuccesses(
-        check_freq=1,
-        env_name=f"{env_name}_{seed}",
-        log_dir=f"{policy_name}_successes_{env_name}_{seed}",
-    )
-    model.set_logger(configure(f"{policy_name}_results_{env_name}_{seed}"))
-    model.learn(total_timesteps=timesteps, callback=succ_callback, log_interval=4)
-    model.save(f"{policy_name}_model_{env_name}_{seed}")
-    env.save(f"{policy_name}_env_{env_name}_{seed}")
+    env = DummyVecEnv([lambda: Monitor(gym.make(env_name))])
+    fit_sac(env, policy_name, env_name, seed, timesteps, 1000, CHECKPOINT_EVERY)
     log.info("Play-phase training complete. Model saved.")
 
 
@@ -327,38 +296,10 @@ def sar_rl(
         normalizer: Fitted MinMaxScaler.
     """
     log.info("Starting SAR-RL on %s for %d steps", env_name, timesteps)
-    env = SynergyWrapper(gym.make(env_name), ica, pca, normalizer)
-    env = Monitor(env)
-    env = DummyVecEnv([lambda: env])
-    env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.0)
-
-    net_shape = [400, 300]
-    policy_kwargs = dict(net_arch=dict(pi=net_shape, qf=net_shape))
-
-    model = SAC(
-        "MlpPolicy",
-        env,
-        learning_rate=linear_schedule(0.001),
-        buffer_size=int(3e5),
-        learning_starts=5000,
-        batch_size=256,
-        tau=0.02,
-        gamma=0.98,
-        train_freq=(1, "episode"),
-        gradient_steps=-1,
-        policy_kwargs=policy_kwargs,
-        verbose=1,
+    env = DummyVecEnv(
+        [lambda: Monitor(SynergyWrapper(gym.make(env_name), ica, pca, normalizer))]
     )
-
-    succ_callback = SaveSuccesses(
-        check_freq=1,
-        env_name=f"{env_name}_{seed}",
-        log_dir=f"{policy_name}_successes_{env_name}_{seed}",
-    )
-    model.set_logger(configure(f"{policy_name}_results_{env_name}_{seed}"))
-    model.learn(total_timesteps=timesteps, callback=succ_callback, log_interval=4)
-    model.save(f"{policy_name}_model_{env_name}_{seed}")
-    env.save(f"{policy_name}_env_{env_name}_{seed}")
+    fit_sac(env, policy_name, env_name, seed, timesteps, 5000, CHECKPOINT_EVERY)
     log.info("SAR-RL training complete. Model saved.")
 
 
@@ -367,8 +308,8 @@ def sar_rl(
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
-    """Run the full SAR locomotion pipeline end-to-end."""
+def main(play_only: bool = False) -> None:
+    """Run the full SAR locomotion pipeline end-to-end (``play_only``: stop after the play phase)."""
     os.makedirs("sar_outputs", exist_ok=True)
     os.chdir("sar_outputs")
     log.info("Working directory: %s", os.getcwd())
@@ -385,6 +326,8 @@ def main() -> None:
         )
     else:
         train(PLAY_ENV, "play_period", PLAY_STEPS, SEED)
+    if play_only:
+        return
     if RENDER_VIDEOS:
         get_vid(
             name="play_period",
@@ -484,8 +427,19 @@ if __name__ == "__main__":
         action="store_true",
         help=f"gym.make({PLAY_ENV!r}), reset, one random step, then exit.",
     )
+    parser.add_argument(
+        "--seed",
+        default=SEED,
+        help="Seed of SAC and the environment (also in the output file names).",
+    )
+    parser.add_argument(
+        "--play-only",
+        action="store_true",
+        help="Stop after the play phase, e.g. to pick the best of several seeds.",
+    )
     args = parser.parse_args()
+    SEED = args.seed
     if args.dry_run:
         _dry_run()
     else:
-        main()
+        main(play_only=args.play_only)
