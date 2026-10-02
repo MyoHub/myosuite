@@ -21,6 +21,7 @@ from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import dr
 from mjlab.envs.mdp import terminations as mdp_terminations
+from mjlab.managers.action_manager import ActionTerm, ActionTermCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
@@ -401,27 +402,23 @@ def _ball_launch_state(
     return state
 
 
-class TableTennisMixedCtrlActionCfg:
+@dataclass(kw_only=True)
+class TableTennisMixedCtrlActionCfg(ActionTermCfg):
     """Config for mixed muscle + position actuator control (TableTennis)."""
-
-    def __init__(self, *, entity_name: str) -> None:
-        self.entity_name = entity_name
 
     def build(self, env: ManagerBasedRlEnv) -> TableTennisMixedCtrlAction:
         return TableTennisMixedCtrlAction(self, env)
 
 
-class TableTennisMixedCtrlAction:
+class TableTennisMixedCtrlAction(ActionTerm):
     """Map policy actions in [-1, 1] to MuJoCo ctrl (muscles + pelvis position)."""
+
+    cfg: TableTennisMixedCtrlActionCfg
 
     def __init__(
         self, cfg: TableTennisMixedCtrlActionCfg, env: ManagerBasedRlEnv
     ) -> None:
-        self.cfg = cfg
-        self._env = env
-        self.num_envs = env.num_envs
-        self.device = env.device
-        self._entity = env.scene[cfg.entity_name]
+        super().__init__(cfg=cfg, env=env)
         ref = _tt_reference()
         self._nu = int(ref.muscle_mask.shape[0])
         self._muscle_mask = torch.as_tensor(ref.muscle_mask, device=self.device)
