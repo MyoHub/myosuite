@@ -53,19 +53,20 @@ RELAXED_OBS_ATOL: dict[str, float] = {
     "myoFingerPoseFixed-v0": 2e-3,
     "myoFingerPoseRandom-v0": 2e-3,
     "myoHandPoseRandom-v0": 5e-4,
-    # Bit-exact across processes on one machine; on another x86-64 machine the
-    # obs jump by up to 7.5e-4 at isolated steps (the first at step 40), and a
-    # 1e-14 qpos offset at reset already causes a 4.4e-4 jump. The margin also
-    # covers the arm64 drift recorded for this env (reward below).
+    # Bit-exact across processes on one machine. Replayed on a second machine
+    # (x86-64 Windows, same pins) the obs jump by up to 7.5e-4 at isolated steps
+    # (the first at step 40), and a 1e-14 qpos offset at reset already causes a
+    # 4.4e-4 jump. The margin also covers the arm64 drift recorded for this env
+    # (reward below).
     "myoHandReorient8-v0": 1e-2,
     # Contact-solver floating-point drift: obs match to 6+ significant figures
     # for the first ~25 steps, then jump at a single step (observed max |dobs|
     # 4.22e-5), the signature of contact-order drift, not a logic regression.
     "myoLegWalk-v0": 1e-4,
-    # Same leg model on uneven terrain; cross-platform drift of up to 1.36e-4 by
-    # step 115 was recorded before #444 regenerated the baseline. The current
-    # replay is well-conditioned (a 1e-9 qpos offset at reset moves the obs by
-    # at most 2.4e-7), so 1e-3 covers the recorded drift with margin.
+    # Same leg model on uneven terrain. Cross-platform drift of up to 1.36e-4 by
+    # step 115 was recorded before #444 regenerated the baseline; 1e-3 covers it
+    # 7x. The current replay is well-conditioned: a 1e-9 qpos offset at reset
+    # moves the obs by at most 2.4e-7.
     "myoLegRoughTerrainWalk-v0": 1e-3,
     # Contact-rich; the baseline was captured on Windows. On Linux/x86_64 the
     # obs drift by up to 1.5e-5 from step ~30 (contact-order drift), reward by 7e-9.
