@@ -124,8 +124,9 @@ def _tt_reference() -> _TTReference:
         for j in range(model.njnt)
         if model.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE
     }
+    # Intrinsic "XYZ" matches the keyframe paddle orientation (as on the CPU env).
     init_paddle_quat = R.from_euler(
-        "xyz", np.array([-0.3, 1.57, 0]), degrees=False
+        "XYZ", np.array([-0.3, 1.57, 0]), degrees=False
     ).as_quat()[[3, 0, 1, 2]]
     return _TTReference(
         arm_joint_pos=arm_joint_pos,
