@@ -101,6 +101,19 @@ full commit list.
   emulate the stale values. The simulated trajectories are bit-identical except OslRun, whose
   prosthesis controller now reads its current load sensor. Policies trained on the stale
   observations of these envs may need retraining.
+* **The `motorFinger*` envs use motors with four times the stock gear** (80/20/20/40/40 instead of
+  20/5/5/10/10, a `motor_finger` model recipe shared by the CPU and mjlab envs): policies trained with the
+  stock motors stayed at 0% success and now reach 100% on the pose and fixed-reach tasks.
+* **The Random finger-reach tasks sample targets the fingertip can reach.** `myoFingerReachRandom-v0` and
+  `motorFingerReachRandom-v0` drew targets uniformly in a box of which only about 55% lies in the fingertip's
+  workspace (two opposite corners: near the base but high, and far out but low), which capped any policy near
+  55%. `ReachEnvV0(target_sampling="workspace")` (used by these ids and their muscle-condition variants, on CPU
+  and mjlab) now draws fingertip positions over the joint ranges that lie inside the box. Policies trained on
+  the old targets need retraining; the other reach tasks are unchanged.
+* **Joint velocities are observed as `qvel * ctrl_dt` on every backend** (the CPU task envs already
+  did): the directional-leg twin and the MJX pose and reach envs observed raw `qvel`. The previous
+  directional-leg checkpoints were retrained. `ElbowPoseTask` (tutorial 4.3) now also observes the
+  `pose_error`, so its observation grows from 8 to 9 values.
 * `myoChallengeChaseTagFBP2-v0` is one task on both backends, so mjlab-trained policies run on
   the CPU env. The CPU env now uses the 537-dim `chasetag_obs` layout, a 0.01 s control step
   (2000 steps = 20 s) and flat ground, all on purpose. The mjlab task takes the CPU rewards
@@ -132,16 +145,61 @@ full commit list.
   start standing, expose the `actor`/`critic` groups rsl_rl needs and are the muscle-space task with
   a synergy action term; unsupported `reward_mode`/`env_reward_weight` values raise instead of being
   ignored.
-* **Asset resolver and Mimic reset.** The resolved/patched model XML copies are written once under
-  content-addressed names instead of leaking a new file per `gym.make` call. Copies written by
-  earlier versions stay on disk; remove them with
-  `find myosuite -name '.myosuite_resolved_*.xml' -delete`. The Mimic mjlab initial state anchors its
-  joint-name keys (`^name$`, `knee_angle_r` no longer also sets `knee_angle_rotation{2,3}_*`) and
-  converts the keyframe's body-frame root angular velocity to the world frame. W&B run paths use
-  `/` on Windows too.
+* Follow-ups to the MuscleMimic fixes: random mimic targets are resampled per env when its own episode
+  restarts; an episode that plays past the end of its clip is truncated (it used to wrap and could
+  end as a termination); a clip whose `frequency` differs from the control rate warns; the bimanual
+  lookahead observation and DeepMimic reward no longer treat hinge angles as a root, so bimanual mimic
+  checkpoints trained before need retraining; the ONNX/Orbax bridge keeps its observation history and
+  running normalizer per env.
+* `reset(seed=...)` reproduces the episode in the challenge envs (state no longer leaks between
+  episodes, random fatigue states, Relocate goals, Soccer goalkeeper and rough tracks draw from the
+  env seed); the Bimanual start and goal pillars move to the sampled positions; TableTennis and SAR
+  reorient draw their random fatigue state from the env RNG.
+* SAR reorient: the action goes through the muscle model, the muscle conditions take effect, episodes
+  start palm up, and the geometry-derived fields are refreshed after the per-reset edits (contacts were
+  silently culled with MuJoCo >= 3.8).
+* The MJX tests and the MJX leg-walk host model work with the pinned `myo-sim`; `eval_mjlab_policy.py`
+  reads the `actor` observation group of the twins (falling back to `policy`).
+* **mjlab physics options follow the CPU models.** The TableTennis and MuscleMimic mjlab configs ran with
+  mjlab's defaults (implicitfast, other iteration counts, `ccd_iterations` 500) instead of the Euler options of
+  the CPU model; they now take them from the CPU model, and a guard rejects a timestep that differs from the
+  one the control step was derived from.
+* **mjlab TableTennis simulates the CPU scene and scores it once per step**: the athlete starts at the
+  calibrated pose with the paddle in the hand, stale contact rows are ignored, the terminal bonus/penalty is
+  paid once, rewards are per step (not dt-scaled), the P2 randomization hits the ball and the paddle of each
+  env (it used to hit the floor), and the ball keeps its 7.2e-7 inertia. On both backends the paddle target
+  orientation used the wrong Euler convention (the `paddle_quat` reward never reached its maximum); it now
+  matches the keyframe. `TableTennisMixedCtrlAction` is an `ActionTerm`.
+* **MuscleMimic bridge and SAR collector.** The bridge mapped a relaxed policy output to half excitation
+  (`0.5 * (a + 1)` instead of the `clip(a, 0, 1)` the policies were trained with) and silently skipped
+  unmatched names (elbows, left-arm muscles); it now covers 83/83 joints and 354/354 actuators and raises on
+  incomplete bridges unless `allow_partial=True`. The SAR activation collector ranks episodes by mean reward
+  and resets its state per episode: recollect SAR datasets and re-extract the synergies, and redo evaluations
+  made with the old bridge mapping.
+* **Mimic mjlab initial state**: the joint-name keys are anchored (`knee_angle_r` no longer also sets
+  `knee_angle_rotation{2,3}_*`) and the keyframe's body-frame root angular velocity is converted to the world
+  frame.
+* **ONNX and SB3.** rsl_rl and Orbax exports are self-contained (no external `.onnx.data`); SB3 exports and
+  `OnnxCheckpointCallback` bundles fold `VecNormalize` in, so they take raw observations; `load_policy` and
+  `render_sb3_solutions.py` apply the normalization statistics (and handle SAC/TD3). W&B run paths use `/` on
+  Windows too.
+* **Asset resolver**: resolved/patched model XML copies are written once under content-addressed names
+  instead of one new file per `gym.make` call, and the model directory may be read-only. Files leaked by
+  earlier versions can be removed with `find myosuite -name '.myosuite_resolved_*.xml' -delete`.
+* **Multi-agent envs** (`myoChallengeChaseTagFBVs-v0`) are registered without gymnasium's `TimeLimit`, which
+  replaced the per-agent `truncated` dict by a bare `True` on the last step.
+* **Experimental MJX backend**: pose targets are matched to joints by name (they were assigned in
+  alphabetical order), hand reach tracks each fingertip, every target coordinate has its own random draw, the
+  3CC-r fatigue update uses the old state for all deltas, and `FatigueWrapper` keeps the model options. Creating
+  an MJX env warns that the backend is experimental and not observation/reward-compatible with the CPU and
+  mjlab envs.
+* **Tutorial scripts and CI.** The SAR tutorial scripts seed SAC and checkpoint/resume (`--seed`,
+  `--play-only`); the 2.3 results depend strongly on the seed. CI runs for PRs into `ms3` and installs the
+  `[rl]` extra; the mimic suite no longer comes out empty (it is registered before the challenge suite).
 
 ### Removed
 
+* The 2.4 DEP-RL tutorial: the published 2023 baseline no longer walks on the current envs (#468); MyoReflex Walk is now tutorial 2.4.
 * The myouser-specific mjlab task and helpers (they live in the standalone myoInteract repository).
 * The MyoDM suite (`MyoHand*-v0` hand–object reference-tracking envs, `myosuite_myodm_suite`).
 * Unused Boxing meshes (`PunchingBag.obj`, `fencing_helmet.stl`) and the console scripts
