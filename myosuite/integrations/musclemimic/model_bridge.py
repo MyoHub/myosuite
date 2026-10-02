@@ -7,12 +7,82 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import mujoco
 import numpy as np
+
+logger = logging.getLogger(__name__)
+
+# Left-arm muscles: myo_sim names them ``*_l``, musclemimic_models ``*_left``.
+_FULLBODY_LEFT_ARM_MUSCLES: tuple[str, ...] = tuple(
+    "DELT1 DELT2 DELT3 SUPSP INFSP SUBSC TMIN TMAJ PECM1 PECM2 PECM3 LAT1 LAT2 "
+    "LAT3 CORB TRIlong TRIlat TRImed ANC SUP BIClong BICshort BRA BRD ECRL ECRB "
+    "ECU FCR FCU PL PT PQ".split()
+)
+
+#: Known name differences between the myo_sim and musclemimic_models full
+#: bodies, as ``(myo_sim name, musclemimic_models name)``. Each pair is the
+#: same joint (type, axis, range, frame) or muscle (gain, dynamics, length
+#: range). Pairs apply in both directions and only when the exact name is
+#: missing from the other model.
+FULLBODY_NAME_ALIASES: tuple[tuple[str, str], ...] = (
+    ("elbow_flexion_r", "elbow_flex_r"),
+    ("elbow_flexion_l", "elbow_flex_l"),
+    *((f"{muscle}_l", f"{muscle}_left") for muscle in _FULLBODY_LEFT_ARM_MUSCLES),
+)
+
+
+def _object_names(model: mujoco.MjModel, obj: mujoco.mjtObj, count: int) -> list[str]:
+    return [mujoco.mj_id2name(model, obj, i) or "" for i in range(count)]
+
+
+def _alias_lookup(aliases: tuple[tuple[str, str], ...]) -> dict[str, str]:
+    """Return a symmetric ``name -> alias`` map, rejecting ambiguous tables."""
+
+    lookup: dict[str, str] = {}
+    for pair in aliases:
+        for name, alias in (pair, pair[::-1]):
+            if name in lookup:
+                raise ValueError(f"Name {name!r} appears in more than one alias pair.")
+            lookup[name] = alias
+    return lookup
+
+
+def _match_names(
+    source_names: list[str],
+    target_names: list[str],
+    aliases: dict[str, str],
+) -> list[tuple[int, int]]:
+    """Return ``(source_id, target_id)`` pairs matched by exact name, else alias."""
+
+    target_ids = {name: i for i, name in enumerate(target_names) if name}
+    claimed: dict[int, str] = {}
+    pairs: list[tuple[int, int]] = []
+    for source_id, name in enumerate(source_names):
+        target_name = name if name in target_ids else aliases.get(name, "")
+        target_id = target_ids.get(target_name) if name else None
+        if target_id is None:
+            continue
+        if target_id in claimed:
+            raise ValueError(
+                f"Source names {claimed[target_id]!r} and {name!r} both map to "
+                f"target {target_name!r}."
+            )
+        claimed[target_id] = name
+        pairs.append((source_id, target_id))
+    return pairs
+
+
+def _unmatched(names: list[str], matched_ids: set[int]) -> list[str]:
+    return [
+        name or f"<unnamed #{i}>"
+        for i, name in enumerate(names)
+        if i not in matched_ids
+    ]
 
 
 def _joint_qpos_size(jnt_type: int) -> int:
@@ -64,42 +134,86 @@ def _unwrap_env_like(env: Any) -> Any:
 class SharedModelStateBridge:
     """Bridge state and actions between related MuJoCo models.
 
-    The bridge matches joints and actuators by exact MuJoCo name. Shared source
-    state can then be copied into a target model with different extra DoFs, and
+    The bridge matches joints and actuators by MuJoCo name, falling back to
+    ``name_aliases`` where the two models name the same element differently.
+    Shared source state can then be copied into the target model, and
     target-model policy actions can be projected back into the source model's
     actuator space.
+
+    Every target joint, target actuator and source actuator must be matched;
+    otherwise target observations would stay at the keyframe, policy outputs
+    would be dropped, or source muscles would sit at the fill value. Source-only
+    joints (e.g. scene objects) are ignored.
 
     Args:
         source_model: Runtime model being controlled, such as a task env model.
         target_model: Model expected by the policy or observation adapter.
         target_keyframe: Reference keyframe used to initialize target-only state.
+        name_aliases: ``(name, name)`` pairs naming the same joint or actuator
+            in the two models, applied in both directions.
+        allow_partial: Accept unmatched target joints, target actuators or
+            source actuators (they are logged) instead of raising.
+
+    Raises:
+        ValueError: If coverage is incomplete and ``allow_partial`` is False,
+            listing the unmatched names.
     """
 
     source_model: mujoco.MjModel
     target_model: mujoco.MjModel
     target_keyframe: int = 0
+    name_aliases: tuple[tuple[str, str], ...] = FULLBODY_NAME_ALIASES
+    allow_partial: bool = False
 
     def __post_init__(self) -> None:
+        aliases = _alias_lookup(self.name_aliases)
+        src, tgt = self.source_model, self.target_model
+        joint, actuator = mujoco.mjtObj.mjOBJ_JOINT, mujoco.mjtObj.mjOBJ_ACTUATOR
+        source_joints = _object_names(src, joint, src.njnt)
+        target_joints = _object_names(tgt, joint, tgt.njnt)
+        source_acts = _object_names(src, actuator, src.nu)
+        target_acts = _object_names(tgt, actuator, tgt.nu)
+        joint_pairs = _match_names(source_joints, target_joints, aliases)
+        act_pairs = _match_names(source_acts, target_acts, aliases)
+        self._check_coverage(
+            {
+                "target joints (left at the target keyframe)": _unmatched(
+                    target_joints, {t for _, t in joint_pairs}
+                ),
+                "target actuators (policy outputs dropped)": _unmatched(
+                    target_acts, {t for _, t in act_pairs}
+                ),
+                "source actuators (set to the fill value)": _unmatched(
+                    source_acts, {s for s, _ in act_pairs}
+                ),
+            }
+        )
+
+        for use_qvel, prefix in ((False, "qpos"), (True, "qvel")):
+            source_idx, target_idx = self._joint_index_arrays(
+                joint_pairs, use_qvel=use_qvel
+            )
+            object.__setattr__(self, f"_source_{prefix}_idx", source_idx)
+            object.__setattr__(self, f"_target_{prefix}_idx", target_idx)
         object.__setattr__(
-            self, "_source_qpos_idx", self._build_joint_index_array(use_qvel=False)[0]
+            self,
+            "_source_act_idx",
+            np.asarray([s for s, _ in act_pairs], dtype=np.int32),
         )
         object.__setattr__(
-            self, "_target_qpos_idx", self._build_joint_index_array(use_qvel=False)[1]
+            self,
+            "_target_act_idx",
+            np.asarray([t for _, t in act_pairs], dtype=np.int32),
         )
         object.__setattr__(
-            self, "_source_qvel_idx", self._build_joint_index_array(use_qvel=True)[0]
+            self,
+            "_shared_joint_names",
+            tuple(source_joints[s] for s, _ in joint_pairs),
         )
         object.__setattr__(
-            self, "_target_qvel_idx", self._build_joint_index_array(use_qvel=True)[1]
-        )
-        source_act_idx, target_act_idx, shared_actuators = (
-            self._build_actuator_indices()
-        )
-        object.__setattr__(self, "_source_act_idx", source_act_idx)
-        object.__setattr__(self, "_target_act_idx", target_act_idx)
-        object.__setattr__(self, "_shared_actuator_names", shared_actuators)
-        object.__setattr__(
-            self, "_shared_joint_names", self._build_shared_joint_names()
+            self,
+            "_shared_actuator_names",
+            tuple(source_acts[s] for s, _ in act_pairs),
         )
 
         ref_data = mujoco.MjData(self.target_model)
@@ -224,51 +338,36 @@ class SharedModelStateBridge:
             projected[self._source_act_idx] = action[self._target_act_idx]
         return projected
 
-    def _build_shared_joint_names(self) -> tuple[str, ...]:
-        names: list[str] = []
-        for source_joint_id in range(int(self.source_model.njnt)):
-            joint_name = mujoco.mj_id2name(
-                self.source_model,
-                mujoco.mjtObj.mjOBJ_JOINT,
-                source_joint_id,
-            )
-            if not joint_name:
-                continue
-            if (
-                mujoco.mj_name2id(
-                    self.target_model,
-                    mujoco.mjtObj.mjOBJ_JOINT,
-                    joint_name,
-                )
-                >= 0
-            ):
-                names.append(joint_name)
-        return tuple(names)
+    def _check_coverage(self, unmatched: dict[str, list[str]]) -> None:
+        """Raise (or log, with ``allow_partial``) on unmatched names."""
 
-    def _build_joint_index_array(
-        self, *, use_qvel: bool
+        report = "; ".join(
+            f"{len(missing)} {kind}: {missing}"
+            for kind, missing in unmatched.items()
+            if missing
+        )
+        if not report:
+            return
+        if not self.allow_partial:
+            raise ValueError(
+                "Source and target models do not cover each other: "
+                f"{report}. Add the missing pairs to name_aliases, or pass "
+                "allow_partial=True if the gap is intended."
+            )
+        logger.warning("Partial model bridge (allow_partial=True): %s", report)
+
+    def _joint_index_arrays(
+        self, joint_pairs: list[tuple[int, int]], *, use_qvel: bool
     ) -> tuple[np.ndarray, np.ndarray]:
         source_idx: list[int] = []
         target_idx: list[int] = []
-        for source_joint_id in range(int(self.source_model.njnt)):
-            joint_name = mujoco.mj_id2name(
-                self.source_model,
-                mujoco.mjtObj.mjOBJ_JOINT,
-                source_joint_id,
-            )
-            if not joint_name:
-                continue
-            target_joint_id = mujoco.mj_name2id(
-                self.target_model,
-                mujoco.mjtObj.mjOBJ_JOINT,
-                joint_name,
-            )
-            if target_joint_id < 0:
-                continue
-
+        for source_joint_id, target_joint_id in joint_pairs:
             source_type = int(self.source_model.jnt_type[source_joint_id])
             target_type = int(self.target_model.jnt_type[target_joint_id])
             if source_type != target_type:
+                joint_name = mujoco.mj_id2name(
+                    self.source_model, mujoco.mjtObj.mjOBJ_JOINT, source_joint_id
+                )
                 raise ValueError(
                     f"Joint {joint_name!r} has incompatible types: "
                     f"{mujoco.mjtJoint(source_type).name} vs {mujoco.mjtJoint(target_type).name}."
@@ -287,39 +386,6 @@ class SharedModelStateBridge:
         return (
             np.asarray(source_idx, dtype=np.int32),
             np.asarray(target_idx, dtype=np.int32),
-        )
-
-    def _build_actuator_indices(self) -> tuple[np.ndarray, np.ndarray, tuple[str, ...]]:
-        target_actuator_ids = {
-            name: act_id
-            for act_id in range(int(self.target_model.nu))
-            if (
-                name := mujoco.mj_id2name(
-                    self.target_model,
-                    mujoco.mjtObj.mjOBJ_ACTUATOR,
-                    act_id,
-                )
-            )
-        }
-
-        source_idx: list[int] = []
-        target_idx: list[int] = []
-        shared_names: list[str] = []
-        for source_act_id in range(int(self.source_model.nu)):
-            name = mujoco.mj_id2name(
-                self.source_model,
-                mujoco.mjtObj.mjOBJ_ACTUATOR,
-                source_act_id,
-            )
-            if not name or name not in target_actuator_ids:
-                continue
-            source_idx.append(source_act_id)
-            target_idx.append(target_actuator_ids[name])
-            shared_names.append(name)
-        return (
-            np.asarray(source_idx, dtype=np.int32),
-            np.asarray(target_idx, dtype=np.int32),
-            tuple(shared_names),
         )
 
 
@@ -346,6 +412,8 @@ class BridgedPredictPolicy:
         source_env: Optional bound env-like object used by :meth:`__call__`.
         output_device: Optional torch device used by :meth:`__call__` when
             returning a batched tensor action.
+        name_aliases: Name pairs forwarded to :class:`SharedModelStateBridge`.
+        allow_partial: Forwarded to :class:`SharedModelStateBridge`.
     """
 
     def __init__(
@@ -364,6 +432,8 @@ class BridgedPredictPolicy:
         source_env_idx: int = 0,
         source_env: Any | None = None,
         output_device: str | None = None,
+        name_aliases: tuple[tuple[str, str], ...] = FULLBODY_NAME_ALIASES,
+        allow_partial: bool = False,
     ) -> None:
         if int(clip_frame_count) <= 0:
             raise ValueError(
@@ -375,6 +445,8 @@ class BridgedPredictPolicy:
             source_model,
             target_model,
             target_keyframe=target_keyframe,
+            name_aliases=name_aliases,
+            allow_partial=allow_partial,
         )
         self._target_model = target_model
         self._target_data = mujoco.MjData(target_model)
@@ -601,12 +673,14 @@ def make_fullbody_checkpoint_bridged_policy(
     source_env: Any | None = None,
     output_device: str | None = None,
     policy_device: str | None = None,
+    allow_partial: bool = False,
 ) -> BridgedPredictPolicy:
     """Build a full-body checkpoint bridge around a native env policy.
 
     The returned policy reads live source-model state, reconstructs the
     full-body checkpoint observation expected by the wrapped policy, and
     projects the checkpoint action back into the source model's actuator space.
+    Names are matched with :data:`FULLBODY_NAME_ALIASES`.
 
     Args:
         source_model: Native runtime model being controlled.
@@ -631,6 +705,9 @@ def make_fullbody_checkpoint_bridged_policy(
         output_device: Optional torch output device for batched ``__call__``.
         policy_device: Optional torch device hosting a callable TensorDict
             policy. Defaults to ``output_device`` or ``"cpu"``.
+        allow_partial: Accept a source model that does not cover the
+            checkpoint model, e.g. one that keeps the finger muscles (see
+            :class:`SharedModelStateBridge`).
 
     Returns:
         A :class:`BridgedPredictPolicy` configured for the full-body checkpoint
@@ -686,10 +763,12 @@ def make_fullbody_checkpoint_bridged_policy(
         source_env_idx=int(source_env_idx),
         source_env=source_env,
         output_device=output_device,
+        allow_partial=allow_partial,
     )
 
 
 __all__ = [
+    "FULLBODY_NAME_ALIASES",
     "BridgedPredictPolicy",
     "SharedModelStateBridge",
     "TensorDictPredictPolicyAdapter",
