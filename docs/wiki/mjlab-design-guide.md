@@ -139,3 +139,4 @@ If a sensor references a site in one entity and a body in another, strip it from
 | Task | Deviation | Reason |
 |---|---|---|
 | Elbow | `MyoMuscleActivationAction` instead of `XmlActuatorCfg` | `XmlMuscleActuatorCfg` removed in mjlab v1.4 |
+| TableTennis | Ball contact labels read the raw contact buffer (`data.contact`, masked by `nacon`) instead of a `ContactSensor` | The labels need "any other contact" (athlete, paddle frame, furniture) next to five specific geoms. A `ContactSensor` has one primary/secondary pair per sensor and no complement, and the buffer read is a single on-device pass, equivalent to the CPU `get_ball_contact_labels` (tested per state) |
