@@ -74,6 +74,7 @@ def register_env(
     config: EnvConfig | None = None,
     backend_configs: dict[str, Any] | None = None,
     wrap_mj_instability_termination: bool = True,
+    time_limit: bool = True,
     **kwargs: Any,
 ) -> None:
     """Register an environment for the CPU (Gymnasium) path.
@@ -90,6 +91,11 @@ def register_env(
         backend_configs: Optional per-backend override dicts.
         wrap_mj_instability_termination: Append the default instability wrapper
             so loaded environments convert MuJoCo instability into termination.
+        time_limit: Let ``gym.make`` enforce *max_episode_steps* with
+            gymnasium's ``TimeLimit``. ``False`` for an env that truncates
+            itself, such as the multi-agent env, whose per-agent ``truncated``
+            dict ``TimeLimit`` would replace with a bare ``True``; the limit is
+            then only recorded here.
         **kwargs: Additional keyword arguments forwarded to gym.register().
 
     Example:
@@ -111,12 +117,13 @@ def register_env(
         "backend_configs": backend_configs or {},
         "additional_wrappers": kwargs["additional_wrappers"],
     }
+    gym_max_episode_steps = max_episode_steps if time_limit else None
     if env_id in _gym_registry:
         existing = _gym_registry[env_id]
         new_kwargs = kwargs.get("kwargs", {})
         same_spec = (
             existing.entry_point == entry_point
-            and int(existing.max_episode_steps or 0) == int(max_episode_steps)
+            and existing.max_episode_steps == gym_max_episode_steps
             and dict(existing.kwargs or {}) == dict(new_kwargs or {})
             and tuple(existing.additional_wrappers or ())
             == tuple(kwargs["additional_wrappers"] or ())
@@ -128,7 +135,7 @@ def register_env(
     gym.register(
         id=env_id,
         entry_point=entry_point,
-        max_episode_steps=max_episode_steps,
+        max_episode_steps=gym_max_episode_steps,
         **kwargs,
     )
 
@@ -190,6 +197,8 @@ def register_task(
                 env_id=env_id,
                 entry_point=entry_point,
                 max_episode_steps=task_config.max_episode_steps,
+                # The env truncates itself with per-agent dicts.
+                time_limit=False,
                 kwargs={"task_config": task_config},
                 **kwargs,
             )

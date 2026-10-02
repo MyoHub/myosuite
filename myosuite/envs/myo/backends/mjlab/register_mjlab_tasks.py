@@ -201,7 +201,6 @@ def _make_elbow_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         actions=actions,
         num_envs=1,
         decimation=10,
-        sim_cfg=SimulationCfg(mujoco=MujocoCfg(timestep=0.002)),
     )
 
 
