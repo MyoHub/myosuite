@@ -103,7 +103,13 @@ def _init_episode(
     *,
     start_frame: int = 0,
 ) -> None:
-    """Reset MjData to the clip state at *start_frame*."""
+    """Reset MjData to the clip state at *start_frame*.
+
+    ``mj_resetData`` runs first, so act, ctrl, qvel, time and warm-starts from
+    the previous episode never carry over. qvel stays zero when the clip has
+    none.
+    """
+    mujoco.mj_resetData(model, data)
     data.qpos[:] = clip.qpos[start_frame]
     if clip.qvel is not None and clip.qvel.shape[0] > start_frame:
         data.qvel[:] = clip.qvel[start_frame]
@@ -140,6 +146,10 @@ def _run_episode(
 ) -> tuple[np.ndarray, float]:
     """Run one episode; return ``(activations (T, nu), mean per-step reward)``.
 
+    Each episode starts from a fresh MjData state and a reset runner (running
+    normaliser and observation history), so it does not depend on the episodes
+    run before it.
+
     Args:
         policy_runner: Loaded policy runner.
         model: Compiled MuJoCo model.
@@ -157,6 +167,7 @@ def _run_episode(
         errors.
     """
     _init_episode(model, data, clip, start_frame=start_frame)
+    policy_runner.reset()
 
     state = _ClipRolloutState(frame_idx=start_frame)
     n_frames = int(clip.qpos.shape[0])
