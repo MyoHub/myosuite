@@ -26,7 +26,7 @@ A policy is only portable across backends if all five invariants below hold. Vio
   before its own post-step `forward()`, so twins whose rewards or terminations read derived quantities
   register `mdp.sync_forward` as their first termination term.
 - **Browser (mjswan) export: no `VecNormalize` or running mean/std.** The browser runtime cannot load normalization statistics. Express normalization as fixed `scale` in `ObservationTermCfg` and train with `obs_normalization=False`.
-- **CPU / mjlab / ONNX: running normalization is allowed.** The basic-suite runner (`tasks/rl.py`) enables it by default; the frozen statistics are folded into the policy by `load_rslrl_policy` / `export_rslrl_to_onnx`, so the policy still takes the raw CPU observation vector.
+- **CPU / mjlab / ONNX: running normalization is allowed.** The basic-suite runner (`tasks/rl.py`) enables it by default; the frozen statistics are folded into the policy by `load_rslrl_policy` / `export_rslrl_to_onnx`, so the policy still takes the raw CPU observation vector. SB3 `VecNormalize` statistics are folded the same way by `export_sb3_to_onnx(vec_normalize=...)` and `OnnxCheckpointCallback`.
 
 ### 2. Action space — identical dimensionality, scaling, and activation
 

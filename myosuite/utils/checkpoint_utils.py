@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import pickle
 import re
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -112,6 +113,26 @@ def find_checkpoint(
         if sb3_zip and (root / sb3_zip).is_file():
             return root / sb3_zip
     return None
+
+
+def load_vec_normalize(path: str | Path) -> Any:
+    """Load the ``VecNormalize`` written by its ``save()`` for inference.
+
+    ``VecNormalize.load`` would also need a VecEnv to wrap, but normalizing
+    observations does not. The statistics are frozen (``training=False``) and
+    rewards are left unnormalized, as for SB3 evaluation.
+
+    Args:
+        path: File written by ``VecNormalize.save()`` (a pickle: load trusted files only).
+
+    Returns:
+        The ``VecNormalize``; use its ``normalize_obs`` before ``model.predict``.
+    """
+    with Path(path).open("rb") as f:
+        vec_normalize = pickle.load(f)  # the format of VecNormalize.save
+    vec_normalize.training = False
+    vec_normalize.norm_reward = False
+    return vec_normalize
 
 
 def load_policy(env: Any, checkpoint: Path | None) -> Policy:

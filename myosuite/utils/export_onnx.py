@@ -29,28 +29,32 @@ Supported source frameworks
 
 Usage
 -----
-    # Export an SB3 policy:
-    python export_onnx.py --framework sb3 --checkpoint walk_sac.zip \
-        --obs-dim 243 --act-dim 80 --output walk_policy.onnx
+    # Export an SB3 policy (with the VecNormalize stats it was trained behind):
+    python export_onnx.py export --framework sb3 --checkpoint walk_sac.zip \
+        --vecnormalize vecnormalize.pkl --obs-dim 243 --act-dim 80 \
+        --output walk_policy.onnx
 
     # Export an RSL-RL (mjlab) policy (architecture read from the checkpoint):
-    python export_onnx.py --framework rslrl --checkpoint walk_ppo.pt \
+    python export_onnx.py export --framework rslrl --checkpoint walk_ppo.pt \
         --obs-dim 243 --act-dim 80 --output walk_policy.onnx
 
     # Verify an exported ONNX policy on the CPU env:
-    python export_onnx.py --verify --onnx walk_policy.onnx --steps 200
+    python export_onnx.py verify --onnx walk_policy.onnx --steps 200
 
 ONNX model interface
 --------------------
-  Input:  ``obs``    float32  (1, obs_dim)   — normalised observation vector
+  Input:  ``obs``    float32  (1, obs_dim)   — raw observation vector of the env
   Output: ``action`` float32  (1, act_dim)   — deterministic action
+
+The observation normalization of training is folded into the graph: SB3
+``VecNormalize`` statistics (when given), the RSL-RL observation normalizer and
+the MuscleMimic running statistics.
 
 SB3 exports apply the post-processing of ``model.predict(deterministic=True)``:
 the action is clipped to the model's action space (``[-1, 1]`` for MyoSuite
 muscle envs), or rescaled to it for tanh-squashed SAC/TD3 actors. RSL-RL (mjlab)
 exports return the raw policy action that the CPU env's ``step()`` expects
-(``[-1, 1]``, mapped to muscle excitation by the env), with any observation
-normalizer of the checkpoint baked in.
+(``[-1, 1]``, mapped to muscle excitation by the env).
 """
 
 from __future__ import annotations
@@ -59,10 +63,13 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
+
+if TYPE_CHECKING:
+    from stable_baselines3.common.vec_env import VecNormalize
 
 log = logging.getLogger(__name__)
 
@@ -95,12 +102,35 @@ def _export_policy(
 # ---------------------------------------------------------------------------
 
 
+def _vec_normalize_obs_stats(
+    vec_normalize: VecNormalize | None, obs_dim: int
+) -> tuple[np.ndarray, np.ndarray, float] | None:
+    """``(mean, sqrt(var + epsilon), clip_obs)`` of a VecNormalize, in float64.
+
+    Returns ``None`` when there is no VecNormalize or it does not normalize
+    observations.
+    """
+    if vec_normalize is None or not vec_normalize.norm_obs:
+        return None
+    obs_rms = vec_normalize.obs_rms
+    if isinstance(obs_rms, dict):
+        raise ValueError("VecNormalize of a Dict observation space cannot be folded.")
+    mean = np.asarray(obs_rms.mean, dtype=np.float64)
+    if mean.shape != (obs_dim,):
+        raise ValueError(
+            f"VecNormalize statistics have shape {mean.shape}, expected ({obs_dim},)."
+        )
+    std = np.sqrt(np.asarray(obs_rms.var, dtype=np.float64) + vec_normalize.epsilon)
+    return mean, std, float(vec_normalize.clip_obs)
+
+
 def export_sb3_to_onnx(
     checkpoint: str | Path,
     output: str | Path,
     obs_dim: int,
     act_dim: int,
     opset: int = 17,
+    vec_normalize: VecNormalize | str | Path | None = None,
 ) -> None:
     """Export a Stable-Baselines3 policy (SAC/TD3/PPO) to ONNX.
 
@@ -114,11 +144,20 @@ def export_sb3_to_onnx(
         obs_dim: Observation vector dimension (must match the trained env).
         act_dim: Action vector dimension (number of muscles).
         opset: ONNX opset version (17 recommended for PyTorch >= 2.0).
+        vec_normalize: The ``VecNormalize`` the policy was trained behind, or the
+            file written by its ``save()``. Its observation normalization
+            ``clip((obs - mean) / sqrt(var + epsilon), -clip_obs, clip_obs)`` is
+            folded into the graph, so the ONNX model takes raw observations.
     """
     from stable_baselines3 import SAC, TD3, PPO
 
+    from myosuite.utils.checkpoint_utils import load_vec_normalize  # noqa: PLC0415
+
     checkpoint = Path(checkpoint)
     output = Path(output)
+    if isinstance(vec_normalize, (str, Path)):
+        vec_normalize = load_vec_normalize(vec_normalize)
+    obs_stats = _vec_normalize_obs_stats(vec_normalize, obs_dim)
 
     # Try SAC first (most common for myoSuite), fall back to TD3/PPO.
     algo_name: str | None = None
@@ -136,15 +175,33 @@ def export_sb3_to_onnx(
     class _DeterministicWrapper(torch.nn.Module):
         """Wrap SB3 actor to return the action ``model.predict`` returns."""
 
-        def __init__(self, policy: Any, algorithm_name: str) -> None:
+        def __init__(
+            self,
+            policy: Any,
+            algorithm_name: str,
+            obs_stats: tuple[np.ndarray, np.ndarray, float] | None,
+        ) -> None:
             super().__init__()
             self.policy = policy
             self.algorithm_name = algorithm_name
             low, high = policy.action_space.low, policy.action_space.high
             self.register_buffer("low", torch.as_tensor(low, dtype=torch.float32))
             self.register_buffer("high", torch.as_tensor(high, dtype=torch.float32))
+            self.normalize_obs = obs_stats is not None
+            if obs_stats is not None:
+                mean, std, clip_obs = obs_stats
+                self.clip_obs = clip_obs
+                self.register_buffer("obs_mean", torch.as_tensor(mean))
+                self.register_buffer("obs_std", torch.as_tensor(std))
 
         def forward(self, obs: torch.Tensor) -> torch.Tensor:
+            if self.normalize_obs:
+                # VecNormalize.normalize_obs: float64 statistics, float32 result.
+                obs = torch.clamp(
+                    (obs.double() - self.obs_mean) / self.obs_std,
+                    -self.clip_obs,
+                    self.clip_obs,
+                ).float()
             with torch.no_grad():
                 if self.algorithm_name == "PPO":
                     action, _, _ = self.policy(obs, deterministic=True)
@@ -162,11 +219,15 @@ def export_sb3_to_onnx(
             return torch.clamp(action, self.low, self.high)
 
     assert algo_name is not None
-    wrapper = _DeterministicWrapper(model.policy, algo_name)
+    wrapper = _DeterministicWrapper(model.policy, algo_name, obs_stats)
     wrapper.eval()
     _export_policy(wrapper, obs_dim, output, opset)
     log.info(
-        "Exported SB3 policy → %s  (obs_dim=%d, act_dim=%d)", output, obs_dim, act_dim
+        "Exported SB3 policy → %s  (obs_dim=%d, act_dim=%d, VecNormalize folded: %s)",
+        output,
+        obs_dim,
+        act_dim,
+        obs_stats is not None,
     )
 
 
@@ -458,6 +519,15 @@ def export_orbax_to_onnx(
 # ---------------------------------------------------------------------------
 
 
+def _onnx_obs(obs: Any) -> np.ndarray:
+    """The raw env observation as the ``(1, obs_dim)`` float32 ONNX input.
+
+    Exports carry the observation normalization of training in the graph, so
+    playback feeds the observation unnormalized.
+    """
+    return np.asarray(obs, dtype=np.float32).reshape(1, -1)
+
+
 def verify_onnx_on_cpu(
     onnx_path: str | Path,
     n_steps: int = 200,
@@ -491,8 +561,7 @@ def verify_onnx_on_cpu(
     total_reward = 0.0
     steps = 0
     for _ in range(n_steps):
-        obs_f32 = obs[None].astype(np.float32)  # (1, obs_dim)
-        action = sess.run([output_name], {input_name: obs_f32})[0].squeeze()
+        action = sess.run([output_name], {input_name: _onnx_obs(obs)})[0].squeeze()
         obs, rew, term, trunc, _ = env.step(action)
         total_reward += float(rew)
         steps += 1
@@ -549,8 +618,7 @@ def compare_onnx_across_backends(
         obs, _ = env.reset(seed=seed)
         obs_seq, rew_seq = [obs.copy()], []
         for _ in range(n_steps):
-            obs_f32 = np.asarray(obs).ravel()[None].astype(np.float32)
-            action = sess.run([output_name], {input_name: obs_f32})[0].squeeze()
+            action = sess.run([output_name], {input_name: _onnx_obs(obs)})[0].squeeze()
             obs, rew, term, trunc, _ = env.step(action)
             obs_seq.append(np.asarray(obs).ravel().copy())
             rew_seq.append(float(rew))
@@ -614,6 +682,12 @@ def _build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--obs-dim", type=int, default=None)
     ex.add_argument("--act-dim", type=int, default=None)
     ex.add_argument("--opset", type=int, default=17)
+    ex.add_argument(
+        "--vecnormalize",
+        type=Path,
+        default=None,
+        help="sb3 only: VecNormalize.save() file to fold into the exported graph",
+    )
 
     # --- verify ---
     vr = sub.add_parser("verify", help="Run an ONNX policy on the CPU env")
@@ -647,7 +721,12 @@ def main() -> None:
                 )
             if args.framework == "sb3":
                 export_sb3_to_onnx(
-                    args.checkpoint, args.output, args.obs_dim, args.act_dim, args.opset
+                    args.checkpoint,
+                    args.output,
+                    args.obs_dim,
+                    args.act_dim,
+                    args.opset,
+                    vec_normalize=args.vecnormalize,
                 )
             elif args.framework == "rslrl":
                 export_rslrl_to_onnx(

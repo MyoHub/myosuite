@@ -15,13 +15,20 @@ from stable_baselines3.common.callbacks import BaseCallback
 from myosuite.utils.export_onnx import export_sb3_to_onnx
 from myosuite.utils.onnx_checkpoint import (
     _FATIGUE_STATE_KEY,
+    _VEC_NORMALIZE_KEY,
     bundle_onnx_with_checkpoint,
     get_env_fatigue_state,
+    get_vec_normalize_state,
 )
 
 
 class OnnxCheckpointCallback(BaseCallback):
     """Save SB3 checkpoints as ONNX bundles at a fixed timestep interval.
+
+    When the model trains behind a ``VecNormalize``, its observation normalization
+    is folded into the ONNX graph (which then takes raw observations) and its
+    statistics are stored in the bundle metadata under ``"vec_normalize"``; restore
+    them for resuming with :func:`~myosuite.utils.onnx_checkpoint.vec_normalize_from_state`.
 
     Args:
         checkpoint_dir: Directory to write ``.onnx`` bundle files into.
@@ -57,11 +64,13 @@ class OnnxCheckpointCallback(BaseCallback):
             native_ckpt = tmp_root / f"{stem}.zip"
             onnx_path = tmp_root / f"{stem}.onnx"
             self.model.save(native_ckpt)
+            vec_normalize = self.model.get_vec_normalize_env()
             export_sb3_to_onnx(
                 checkpoint=native_ckpt,
                 output=onnx_path,
                 obs_dim=self.obs_dim,
                 act_dim=self.act_dim,
+                vec_normalize=vec_normalize,
             )
             metadata: dict[str, Any] = {
                 "task_id": self.task_id,
@@ -69,6 +78,8 @@ class OnnxCheckpointCallback(BaseCallback):
                 "act_dim": self.act_dim,
                 "num_timesteps": int(self.model.num_timesteps),
             }
+            if vec_normalize is not None:
+                metadata[_VEC_NORMALIZE_KEY] = get_vec_normalize_state(vec_normalize)
             env = self._fatigue_env or getattr(self.model, "env", None)
             fatigue_state = get_env_fatigue_state(env) if env is not None else None
             if fatigue_state is not None:
@@ -76,7 +87,7 @@ class OnnxCheckpointCallback(BaseCallback):
             bundle_onnx_with_checkpoint(
                 onnx_path=onnx_path,
                 checkpoint_path=native_ckpt,
-                framework="sb3-ppo",
+                framework=f"sb3-{type(self.model).__name__.lower()}",
                 metadata=metadata,
                 output_path=self.checkpoint_dir / f"{stem}.onnx",
             )

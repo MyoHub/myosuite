@@ -10,6 +10,7 @@ Every export is one self-contained ``.onnx`` file that takes the raw observation
 from __future__ import annotations
 
 import io
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -196,3 +197,187 @@ def test_sb3_onnx_export_matches_predict(
     sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     actual = sess.run(None, {"obs": obs})[0]
     np.testing.assert_allclose(actual, expected, atol=1e-5)
+
+
+def _vec_normalized_model(algo_name: str) -> tuple[Any, Any]:
+    """A fresh SB3 model behind a VecNormalize with spread, non-trivial statistics."""
+    sb3 = pytest.importorskip("stable_baselines3")
+    from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+
+    myosuite.register_all_envs()
+    venv = VecNormalize(
+        DummyVecEnv([lambda: gym.make(_ENV_ID)]), norm_reward=False, clip_obs=3.0
+    )
+    rng = np.random.default_rng(0)
+    obs_dim = venv.observation_space.shape[0]
+    venv.obs_rms.mean = rng.normal(0.0, 1.0, obs_dim)
+    venv.obs_rms.var = rng.uniform(1e-3, 2.0, obs_dim)
+    if algo_name == "PPO":
+        kwargs: dict[str, Any] = {"n_steps": 16, "batch_size": 16}
+    else:
+        kwargs = {"buffer_size": 16}
+    model = getattr(sb3, algo_name)("MlpPolicy", venv, seed=0, device="cpu", **kwargs)
+    return model, venv
+
+
+def _raw_observations(venv: Any) -> np.ndarray:
+    """Raw float32 env observations, some far enough out to hit ``clip_obs``."""
+    env = venv.envs[0]
+    obs = np.stack([env.reset(seed=s)[0] for s in range(16)]).astype(np.float32)
+    noise = np.random.default_rng(1).normal(0.0, 2.0, obs.shape).astype(np.float32)
+    return np.concatenate([obs, obs + noise])
+
+
+@pytest.mark.parametrize("algo_name", ["PPO", "SAC"])
+def test_sb3_onnx_export_folds_vec_normalize(algo_name: str, tmp_path: Path) -> None:
+    """On raw observations the export equals ``predict(normalize_obs(raw))``."""
+    ort = pytest.importorskip("onnxruntime")
+    from myosuite.utils.export_onnx import export_sb3_to_onnx
+
+    model, venv = _vec_normalized_model(algo_name)
+    try:
+        raw = _raw_observations(venv)
+        assert np.abs(venv.normalize_obs(raw)).max() == venv.clip_obs
+        expected, _ = model.predict(venv.normalize_obs(raw), deterministic=True)
+        model.save(tmp_path / "model.zip")
+        venv.save(tmp_path / "vecnormalize.pkl")
+    finally:
+        venv.close()
+
+    onnx_path = tmp_path / "model.onnx"
+    export_sb3_to_onnx(
+        tmp_path / "model.zip",
+        onnx_path,
+        raw.shape[1],
+        expected.shape[1],
+        vec_normalize=tmp_path / "vecnormalize.pkl",
+    )
+    sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    np.testing.assert_allclose(sess.run(None, {"obs": raw})[0], expected, atol=1e-5)
+
+
+@pytest.mark.parametrize("algo_name", ["PPO", "SAC"])
+def test_onnx_checkpoint_callback_bundles_vec_normalize(
+    algo_name: str, tmp_path: Path
+) -> None:
+    """A bundle acts on raw observations and resumes with its VecNormalize stats."""
+    ort = pytest.importorskip("onnxruntime")
+    pytest.importorskip("onnx")
+    sb3 = pytest.importorskip("stable_baselines3")
+    from stable_baselines3.common.vec_env import DummyVecEnv
+
+    from myosuite.utils.onnx_checkpoint import (
+        extract_checkpoint_from_onnx,
+        read_onnx_checkpoint_metadata,
+        vec_normalize_from_state,
+    )
+    from myosuite.utils.sb3_callbacks import OnnxCheckpointCallback
+
+    model, venv = _vec_normalized_model(algo_name)
+    callback = OnnxCheckpointCallback(
+        checkpoint_dir=tmp_path,
+        task_id=_ENV_ID,
+        obs_dim=venv.observation_space.shape[0],
+        act_dim=venv.action_space.shape[0],
+        save_freq=10**9,
+    )
+    try:
+        model.learn(total_timesteps=16, callback=callback)  # updates the statistics
+        raw = _raw_observations(venv)
+        expected, _ = model.predict(venv.normalize_obs(raw), deterministic=True)
+    finally:
+        venv.close()
+
+    bundle = tmp_path / "model_final.onnx"
+    sess = ort.InferenceSession(str(bundle), providers=["CPUExecutionProvider"])
+    np.testing.assert_allclose(sess.run(None, {"obs": raw})[0], expected, atol=1e-5)
+
+    meta = read_onnx_checkpoint_metadata(bundle)
+    assert meta["framework"] == f"sb3-{algo_name.lower()}"
+    restored = vec_normalize_from_state(
+        meta["metadata"]["vec_normalize"], DummyVecEnv([lambda: gym.make(_ENV_ID)])
+    )
+    try:
+        for name in ("obs_rms", "ret_rms"):
+            saved, live = getattr(restored, name), getattr(venv, name)
+            np.testing.assert_array_equal(saved.mean, live.mean)
+            np.testing.assert_array_equal(saved.var, live.var)
+            assert saved.count == live.count
+        for name in ("norm_obs", "norm_reward", "clip_obs", "clip_reward", "gamma"):
+            assert getattr(restored, name) == getattr(venv, name)
+        assert restored.epsilon == venv.epsilon
+        checkpoint, _, temp_dir = extract_checkpoint_from_onnx(bundle)
+        assert temp_dir is not None
+        try:
+            resumed = getattr(sb3, algo_name).load(checkpoint, env=restored)
+        finally:
+            temp_dir.cleanup()
+        np.testing.assert_allclose(
+            resumed.predict(restored.normalize_obs(raw), deterministic=True)[0],
+            expected,
+            atol=1e-6,
+        )
+    finally:
+        restored.close()
+
+
+def test_vec_normalize_state_round_trips_without_obs_normalization() -> None:
+    """Reward-only normalization (no ``obs_rms``) survives the JSON round trip."""
+    pytest.importorskip("stable_baselines3")
+    from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+
+    from myosuite.utils.onnx_checkpoint import (
+        get_vec_normalize_state,
+        vec_normalize_from_state,
+    )
+
+    myosuite.register_all_envs()
+    venv = VecNormalize(
+        DummyVecEnv([lambda: gym.make(_ENV_ID)]), norm_obs=False, gamma=0.9
+    )
+    venv.ret_rms.mean, venv.ret_rms.var, venv.ret_rms.count = 0.25, 3.5, 42.0
+    state = json.loads(json.dumps(get_vec_normalize_state(venv)))
+    venv.close()
+    assert state["obs_rms"] is None
+
+    restored = vec_normalize_from_state(state, DummyVecEnv([lambda: gym.make(_ENV_ID)]))
+    try:
+        assert not restored.norm_obs and restored.norm_reward
+        assert restored.gamma == 0.9
+        rms = restored.ret_rms
+        assert (float(rms.mean), float(rms.var), rms.count) == (0.25, 3.5, 42.0)
+    finally:
+        restored.close()
+
+
+def test_verify_onnx_on_cpu_feeds_raw_observations(tmp_path: Path) -> None:
+    """``verify_onnx_on_cpu`` reproduces the VecNormalize -> predict rollout."""
+    pytest.importorskip("onnxruntime")
+    from myosuite.utils.export_onnx import export_sb3_to_onnx, verify_onnx_on_cpu
+
+    model, venv = _vec_normalized_model("PPO")
+    try:
+        model.save(tmp_path / "model.zip")
+        export_sb3_to_onnx(
+            tmp_path / "model.zip",
+            tmp_path / "model.onnx",
+            venv.observation_space.shape[0],
+            venv.action_space.shape[0],
+            vec_normalize=venv,
+        )
+        env = venv.envs[0]
+        obs, _ = env.reset(seed=3)
+        total_reward = 0.0
+        for _ in range(10):
+            action, _ = model.predict(venv.normalize_obs(obs), deterministic=True)
+            obs, reward, terminated, truncated, _ = env.step(action)
+            total_reward += float(reward)
+            if terminated or truncated:
+                break
+    finally:
+        venv.close()
+
+    metrics = verify_onnx_on_cpu(
+        tmp_path / "model.onnx", n_steps=10, seed=3, env_id=_ENV_ID
+    )
+    assert metrics["total_reward"] == pytest.approx(total_reward, rel=1e-4)
