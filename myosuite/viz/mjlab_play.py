@@ -143,7 +143,7 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
                         "or provide `wandb_run_path` so the motion artifact can be resolved."
                     )
                 if cfg.wandb_run_path is not None:
-                    wandb_run = api.run(str(cfg.wandb_run_path))
+                    wandb_run = api.run(Path(cfg.wandb_run_path).as_posix())
                     art = next(
                         (a for a in wandb_run.used_artifacts() if a.type == "motions"),
                         None,
