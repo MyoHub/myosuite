@@ -20,15 +20,13 @@ from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import terminations as mdp_terminations
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
-from mjlab.sim import MujocoCfg, SimulationCfg
+from mjlab.sim import SimulationCfg
 
 from myosuite.core.config import TaskConfig
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
 if TYPE_CHECKING:  # pragma: no cover
     import torch
-
-_DEFAULT_SIM_DT = 0.002
 
 
 class MyoMuscleActivationActionCfg:
@@ -224,9 +222,11 @@ def mjlab_env_cfg_from_task_config(
         events: Optional events dict; omitted from cfg if None.
         num_envs: Number of parallel environments.
         decimation: Physics steps per control step.
-        sim_cfg: Optional ``SimulationCfg``; defaults to ``MujocoCfg(timestep=0.002)``.
+        sim_cfg: Optional ``SimulationCfg``; defaults to the physics options
+            (``<option>``) of the model built by *spec_fn*, which mjlab would
+            otherwise replace with its own defaults.
         episode_length_s: Override computed episode length. If None, computed as
-            ``cfg.max_episode_steps * decimation * _DEFAULT_SIM_DT``.
+            ``cfg.max_episode_steps * decimation * sim_cfg.mujoco.timestep``.
         init_state: Optional ``EntityCfg.InitialStateCfg`` for the entity's reset
             pose. If None, mjlab's default (root at the origin) is used — which
             places a floating-base robot in the ground; pass an explicit standing
@@ -236,7 +236,11 @@ def mjlab_env_cfg_from_task_config(
         A fully populated ``ManagerBasedRlEnvCfg``.
     """
     if sim_cfg is None:
-        sim_cfg = SimulationCfg(mujoco=MujocoCfg(timestep=_DEFAULT_SIM_DT))
+        from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (  # noqa: PLC0415
+            mujoco_cfg_from_model,
+        )
+
+        sim_cfg = SimulationCfg(mujoco=mujoco_cfg_from_model(spec_fn().compile()))
 
     if terminations is None:
         terminations = {
