@@ -66,6 +66,30 @@ import torch
 
 log = logging.getLogger(__name__)
 
+
+def _export_policy(
+    policy: torch.nn.Module, obs_dim: int, output: Path, opset: int
+) -> None:
+    """Export ``policy(obs) -> action`` with a dynamic batch axis to one ``.onnx`` file.
+
+    Uses the TorchScript exporter (``dynamo=False``): torch's default dynamo exporter
+    writes the weights to a separate ``.onnx.data`` file, so the ``.onnx`` alone does
+    not load, and prints progress that a non-UTF-8 stdout cannot encode.
+    """
+    output.parent.mkdir(parents=True, exist_ok=True)
+    torch.onnx.export(
+        policy,
+        torch.zeros(1, obs_dim, dtype=torch.float32),
+        str(output),
+        opset_version=opset,
+        input_names=["obs"],
+        output_names=["action"],
+        dynamic_axes={"obs": {0: "batch"}, "action": {0: "batch"}},
+        do_constant_folding=True,
+        dynamo=False,
+    )
+
+
 # ---------------------------------------------------------------------------
 # SB3 export
 # ---------------------------------------------------------------------------
@@ -140,20 +164,7 @@ def export_sb3_to_onnx(
     assert algo_name is not None
     wrapper = _DeterministicWrapper(model.policy, algo_name)
     wrapper.eval()
-
-    dummy_obs = torch.zeros(1, obs_dim, dtype=torch.float32)
-
-    torch.onnx.export(
-        wrapper,
-        dummy_obs,
-        str(output),
-        opset_version=opset,
-        input_names=["obs"],
-        output_names=["action"],
-        dynamic_axes={"obs": {0: "batch"}, "action": {0: "batch"}},
-        do_constant_folding=True,
-        dynamo=False,
-    )
+    _export_policy(wrapper, obs_dim, output, opset)
     log.info(
         "Exported SB3 policy → %s  (obs_dim=%d, act_dim=%d)", output, obs_dim, act_dim
     )
@@ -194,17 +205,7 @@ def export_rslrl_to_onnx(
     if expected != obs_dim:
         raise ValueError(f"--obs-dim {obs_dim} != checkpoint input size {expected}")
 
-    dummy_obs = torch.zeros(1, obs_dim, dtype=torch.float32)
-    torch.onnx.export(
-        policy,
-        dummy_obs,
-        str(output),
-        opset_version=opset,
-        input_names=["obs"],
-        output_names=["action"],
-        dynamic_axes={"obs": {0: "batch"}, "action": {0: "batch"}},
-        do_constant_folding=True,
-    )
+    _export_policy(policy, obs_dim, output, opset)
     log.info(
         "Exported RSL-RL policy → %s  (obs_dim=%d, act_dim=%d)",
         output,
@@ -420,10 +421,6 @@ def export_orbax_to_onnx(
     opset: int = 17,
 ) -> None:
     """Export a MuscleMimic full-body Orbax/Flax policy to ONNX."""
-    import tempfile
-
-    import onnx
-
     output = Path(output)
 
     checkpoint_str = str(checkpoint)
@@ -453,30 +450,7 @@ def export_orbax_to_onnx(
     actor_net = _OrbaxActorNet(artifacts.params)
     wrapper = _OrbaxPolicyWrapper(actor_net, artifacts.obs_mean, artifacts.obs_var)
     wrapper.eval()
-
-    dummy_obs = torch.zeros(1, artifacts.obs_dim, dtype=torch.float32)
-    with torch.no_grad():
-        _ = wrapper(dummy_obs).numpy()
-
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_out = Path(tmp_dir) / "policy.onnx"
-        torch.onnx.export(
-            wrapper,
-            dummy_obs,
-            str(tmp_out),
-            opset_version=opset,
-            input_names=["obs"],
-            output_names=["action"],
-            dynamic_axes={"obs": {0: "batch"}, "action": {0: "batch"}},
-            do_constant_folding=True,
-        )
-        model_proto = onnx.load(str(tmp_out), load_external_data=True)
-        onnx.save_model(
-            model_proto,
-            str(output),
-            save_as_external_data=False,
-        )
+    _export_policy(wrapper, artifacts.obs_dim, output, opset)
 
 
 # ---------------------------------------------------------------------------

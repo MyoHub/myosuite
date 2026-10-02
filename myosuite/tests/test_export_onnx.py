@@ -2,11 +2,17 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""The SB3 ONNX export must return the same action as SB3's own predict."""
+"""ONNX exports must reproduce the framework's own deterministic policy.
+
+Every export is one self-contained ``.onnx`` file that takes the raw observation.
+"""
 
 from __future__ import annotations
 
+import io
+import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -18,6 +24,132 @@ from myosuite.utils import gym
 pytestmark = pytest.mark.tier1
 
 _ENV_ID = "myoElbowPose1D6MRandom-v0"
+
+
+def _cp1252_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Emulate a Windows console whose stdout is piped (cp1252, strict)."""
+    monkeypatch.setattr(
+        sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    )
+
+
+def _load_moved_onnx(onnx_path: Path, ort: Any) -> Any:
+    """Move the export alone to another directory and open it there.
+
+    An export whose weights live in an external ``.onnx.data`` sidecar fails here,
+    as it does for a browser runtime, a W&B upload or a bundle written elsewhere.
+    """
+    assert sorted(p.name for p in onnx_path.parent.iterdir()) == [onnx_path.name]
+    moved = onnx_path.parent.parent / "moved" / onnx_path.name
+    moved.parent.mkdir()
+    onnx_path.replace(moved)
+    return ort.InferenceSession(str(moved), providers=["CPUExecutionProvider"])
+
+
+@pytest.mark.parametrize("state_dependent_std", [False, True])
+def test_rslrl_onnx_export_is_self_contained_and_matches_the_policy(
+    state_dependent_std: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rsl_rl export loads on its own and equals ``load_rslrl_policy``."""
+    pytest.importorskip("rsl_rl")
+    ort = pytest.importorskip("onnxruntime")
+    from rsl_rl.modules import MLP, EmpiricalNormalization
+
+    from myosuite.utils.export_onnx import export_rslrl_to_onnx
+    from myosuite.utils.rslrl_policy import load_rslrl_policy
+
+    obs_dim, act_dim = 23, 6
+    torch.manual_seed(0)
+    mlp = MLP(
+        obs_dim, [2, act_dim] if state_dependent_std else act_dim, [32, 16], "elu"
+    )
+    normalizer = EmpiricalNormalization(obs_dim)
+    normalizer._mean.copy_(torch.randn(1, obs_dim) * 3)
+    normalizer._var.copy_(torch.rand(1, obs_dim) * 5 + 0.01)
+    normalizer._std.copy_(normalizer._var.sqrt())
+    actor_state = {f"mlp.{k}": v for k, v in mlp.state_dict().items()}
+    actor_state.update(
+        {f"obs_normalizer.{k}": v for k, v in normalizer.state_dict().items()}
+    )
+    checkpoint = tmp_path / "model_0.pt"
+    torch.save({"actor_state_dict": actor_state}, checkpoint)
+
+    onnx_path = tmp_path / "export" / "policy.onnx"
+    onnx_path.parent.mkdir()
+    _cp1252_stdout(monkeypatch)
+    export_rslrl_to_onnx(checkpoint, onnx_path, obs_dim, act_dim)
+    monkeypatch.undo()
+
+    sess = _load_moved_onnx(onnx_path, ort)
+    obs = torch.randn(64, obs_dim) * 4
+    with torch.no_grad():
+        expected = load_rslrl_policy(checkpoint, act_dim)(obs).numpy()
+    actual = sess.run(None, {"obs": obs.numpy()})[0]
+    np.testing.assert_allclose(actual, expected, atol=1e-5)
+
+
+def _orbax_actor_params(obs_dim: int, act_dim: int, rng: np.random.Generator) -> dict:
+    """Random Flax-layout residual actor: a projected block, an identity block, a tail."""
+
+    def dense(n_in: int, n_out: int) -> dict:
+        return {
+            "kernel": rng.normal(0.0, n_in**-0.5, (n_in, n_out)).astype(np.float32),
+            "bias": rng.normal(0.0, 0.1, n_out).astype(np.float32),
+        }
+
+    def layer_norm(n: int) -> dict:
+        return {
+            "scale": rng.uniform(0.5, 1.5, n).astype(np.float32),
+            "bias": rng.normal(0.0, 0.1, n).astype(np.float32),
+        }
+
+    actor: dict = {}
+    for idx, (n_in, n_out) in enumerate([(obs_dim, 32), (32, 32)]):
+        actor[f"block{idx}_layer0_dense"] = dense(n_in, 48)
+        actor[f"block{idx}_layer0_ln"] = layer_norm(48)
+        actor[f"block{idx}_layer1_dense"] = dense(48, n_out)
+        actor[f"block{idx}_layer1_ln"] = layer_norm(n_out)
+        actor[f"res_gate_{idx}"] = np.float32(rng.normal())
+        if n_in != n_out:
+            actor[f"block{idx}_proj"] = dense(n_in, n_out)
+    actor["tail_dense"] = dense(32, 16)
+    actor["tail_ln"] = layer_norm(16)
+    actor["output"] = dense(16, act_dim)
+    return {"actor": actor}
+
+
+def test_orbax_onnx_export_is_self_contained_and_matches_the_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The MuscleMimic (Orbax) export equals the NumPy reference actor."""
+    ort = pytest.importorskip("onnxruntime")
+    from myosuite.integrations.musclemimic import fullbody_local_policy as local
+    from myosuite.utils.export_onnx import export_orbax_to_onnx
+
+    obs_dim, act_dim = 19, 7
+    rng = np.random.default_rng(0)
+    artifacts = local.LocalPolicyArtifacts(
+        params=_orbax_actor_params(obs_dim, act_dim, rng),
+        obs_mean=rng.normal(0.0, 2.0, obs_dim).astype(np.float32),
+        obs_var=rng.uniform(0.01, 4.0, obs_dim).astype(np.float32),
+        obs_count=np.float32(100.0),
+        obs_dim=obs_dim,
+        action_dim=act_dim,
+    )
+    monkeypatch.setattr(local, "has_local_policy_artifacts", lambda _root: True)
+    monkeypatch.setattr(local, "load_local_policy_artifacts", lambda _root: artifacts)
+
+    onnx_path = tmp_path / "export" / "policy.onnx"
+    _cp1252_stdout(monkeypatch)
+    export_orbax_to_onnx(tmp_path / "checkpoint", onnx_path)
+    monkeypatch.undo()
+
+    sess = _load_moved_onnx(onnx_path, ort)
+    obs = rng.normal(0.0, 3.0, (32, obs_dim)).astype(np.float32)
+    norm_obs = (obs - artifacts.obs_mean) / np.sqrt(artifacts.obs_var + 1e-8)
+    expected = np.clip(local._actor_forward(artifacts.params, norm_obs), -1.0, 1.0)
+    actual = sess.run(None, {"obs": obs})[0]
+    np.testing.assert_allclose(actual, expected, atol=1e-5)
 
 
 @pytest.mark.parametrize("algo_name", ["PPO", "SAC", "TD3"])
