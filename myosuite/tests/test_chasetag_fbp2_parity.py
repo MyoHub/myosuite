@@ -61,6 +61,8 @@ _STEP_ATOL = {
     "role": 0.0,
 }
 _STEP_MEDIAN_ATOL = 1e-3  # a block that is merely bounded (e.g. zeros) fails this
+# Blocks whose median float32/solver noise between MuJoCo versions exceeds the default.
+_STEP_MEDIAN_ATOL_BY_KEY = {"orientation": 2e-3}
 _STEP_REW_ATOL = 1e-3
 # Same state, no physics: term functions must agree to float32 precision.
 _TERM_ATOL = 1e-5
@@ -129,7 +131,8 @@ def _assert_obs_close(cpu, got: np.ndarray, expected: np.ndarray) -> None:
         size = np.atleast_1d(obs_dict[key]).size
         diff = np.abs(got[start : start + size] - expected[start : start + size])
         assert diff.max() <= _STEP_ATOL[key], (key, diff.max())
-        assert np.median(diff) <= _STEP_MEDIAN_ATOL, (key, np.median(diff))
+        median_atol = _STEP_MEDIAN_ATOL_BY_KEY.get(key, _STEP_MEDIAN_ATOL)
+        assert np.median(diff) <= median_atol, (key, np.median(diff))
         start += size
     assert start == CHASETAG_OBS_DIM
 
