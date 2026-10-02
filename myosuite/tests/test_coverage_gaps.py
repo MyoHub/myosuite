@@ -583,6 +583,31 @@ class TestMakeEnvBackends:
             with pytest.raises(ImportError, match="mujoco_playground"):
                 make_env("NonExistent-v0", backend="mjx")
 
+    def test_make_env_mjx_forwards_overrides(self) -> None:
+        """Keyword overrides reach mujoco_playground as config_overrides."""
+        import types
+
+        from myosuite.core.registry import make_env
+
+        calls: list[tuple[str, Any]] = []
+
+        def _load(
+            env_id: str, config: Any = None, config_overrides: Any = None
+        ) -> None:
+            calls.append((env_id, config_overrides))
+
+        registry = types.ModuleType("mujoco_playground.registry")
+        registry.load = _load  # type: ignore[attr-defined]
+        playground = types.ModuleType("mujoco_playground")
+        playground.registry = registry  # type: ignore[attr-defined]
+        with patch.dict(
+            "sys.modules",
+            {"mujoco_playground": playground, "mujoco_playground.registry": registry},
+        ):
+            make_env("Task-v0", backend="mjx", num_envs=8)
+            make_env("Task-v0", backend="mjx")
+        assert calls == [("Task-v0", {"num_envs": 8}), ("Task-v0", None)]
+
     def test_make_env_mjlab_import_error(self) -> None:
         from myosuite.core.registry import make_env
 
