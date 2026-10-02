@@ -60,6 +60,7 @@ Alternatives
 from __future__ import annotations
 
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeAlias
@@ -67,6 +68,8 @@ from collections.abc import Callable
 
 import numpy as np
 import mujoco
+
+logger = logging.getLogger(__name__)
 
 # Registry of named model recipes (populated by @model_recipe decorator)
 _RECIPES: dict[str, Callable] = {}
@@ -254,16 +257,30 @@ def _try_myo_sim_compose(name: str) -> mujoco.MjSpec | None:
     are transparently routed through the build-system compose path instead of
     falling back to a static bundled XML.  Returns None if myo_sim is not
     installed, is too old to have the registry, or the name is not a composed
-    fragment.
+    fragment.  A builder that cannot run in this install (missing optional
+    module or source file) is logged and also returns None; any other compose
+    error is raised, because the fallback is a different model.
     """
     try:
         import myo_sim  # type: ignore[import-untyped]
+    except ImportError:
+        return None
 
-        builders = getattr(myo_sim, "FRAGMENT_SPEC_BUILDERS", {})
-        aliases = {"leg": "myolegs", "legs": "myolegs"}
-        builder = builders.get(name) or builders.get(aliases.get(name, ""), None)
-        return builder() if builder is not None else None
-    except Exception:  # ImportError, compose failures, etc.
+    builders = getattr(myo_sim, "FRAGMENT_SPEC_BUILDERS", {})
+    aliases = {"leg": "myolegs", "legs": "myolegs"}
+    builder = builders.get(name) or builders.get(aliases.get(name, ""), None)
+    if builder is None:
+        return None
+    try:
+        return builder()
+    except (ImportError, FileNotFoundError) as exc:
+        logger.warning(
+            "myo_sim compose for fragment %r is unavailable (%s: %s); "
+            "falling back to the static fragment XML.",
+            name,
+            type(exc).__name__,
+            exc,
+        )
         return None
 
 
@@ -346,8 +363,10 @@ class ModelBuilder:
         **Experimental.**  See module docstring for the full list of unsupported
         scene features and recommended alternatives for production use.
 
-    Records fragment attachments and transform functions lazily;
-    compiles and caches the result on the first call to :meth:`build`.
+    Records fragment attachments and transform functions lazily.  Every
+    call to :meth:`build` composes and compiles a fresh model (nothing is
+    cached, since callers mutate the returned model and spec), and never
+    modifies the seed or attached specs, so a builder can be built repeatedly.
 
     Positioning
     -----------
@@ -743,6 +762,9 @@ class ModelBuilder:
     def set_timestep(self, dt: float) -> ModelBuilder:
         """Set the simulation timestep.
 
+        Applied after all transforms, so it overrides the seed XML's
+        ``<option timestep>``.
+
         Args:
             dt: Simulation timestep in seconds.
 
@@ -754,6 +776,9 @@ class ModelBuilder:
 
     def disable_cylinder_contacts(self) -> ModelBuilder:
         """Disable contacts on cylindrical geoms (reduces simulation stiffness).
+
+        Applied after all transforms: every cylinder geom of the built model
+        gets ``contype = conaffinity = 0``.
 
         Returns:
             Self, for method chaining.
@@ -778,17 +803,19 @@ class ModelBuilder:
         return self.apply_transform(_sarco)
 
     def build(self) -> tuple[mujoco.MjModel, mujoco.MjSpec]:
-        """Compile the spec into a MjModel.
+        """Compose a fresh spec and compile it into a MjModel.
 
         Returns:
-            Tuple of (MjModel, MjSpec).
+            Tuple of (MjModel, MjSpec).  The spec is new on every call (a copy
+            for :meth:`from_spec` seeds).
 
         Raises:
             FileNotFoundError: If a fragment XML cannot be resolved.
             KeyError: If a named parent body does not exist in the spec.
         """
         if self._seed_spec is not None:
-            spec = self._seed_spec
+            # Copy: the composition below must not mutate the caller's spec.
+            spec = self._seed_spec.copy()
         elif self._xml_string is not None:
             spec = mujoco.MjSpec.from_string(
                 self._xml_string,
@@ -800,12 +827,11 @@ class ModelBuilder:
             spec = mujoco.MjSpec.from_file(str(self._xml_path))
         else:
             spec = mujoco.MjSpec()
-        if self._timestep is not None:
-            spec.timestep = self._timestep
 
         for frag in self._fragments:
             if frag.spec is not None:
-                frag_spec = frag.spec
+                # Copy: attaching the same spec again (next build) adds nothing.
+                frag_spec = frag.spec.copy()
             else:
                 composed = _try_myo_sim_compose(frag.name)
                 if composed is not None:
@@ -843,6 +869,14 @@ class ModelBuilder:
 
         for transform in self._transforms:
             spec = transform(spec)
+
+        if self._timestep is not None:
+            spec.option.timestep = self._timestep
+        if self._disable_contacts:
+            for geom in spec.geoms:
+                if geom.type == mujoco.mjtGeom.mjGEOM_CYLINDER:
+                    geom.contype = 0
+                    geom.conaffinity = 0
 
         return spec.compile(), spec
 
