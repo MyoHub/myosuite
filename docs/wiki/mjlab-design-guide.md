@@ -138,5 +138,4 @@ If a sensor references a site in one entity and a body in another, strip it from
 
 | Task | Deviation | Reason |
 |---|---|---|
-| TableTennis | Closure-based terms; AP-8 DR for paddle mass / ball friction | DR migration needs `dr.*` support for split-entity scenes |
 | Elbow | `MyoMuscleActivationAction` instead of `XmlActuatorCfg` | `XmlMuscleActuatorCfg` removed in mjlab v1.4 |
