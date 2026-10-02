@@ -27,6 +27,8 @@ Subclasses must implement:
 
 from __future__ import annotations
 
+import functools
+import warnings
 from typing import Any
 
 import jax
@@ -38,6 +40,21 @@ from mujoco_playground._src import mjx_env
 
 from myosuite.core.protocols import PhysicsPath
 from myosuite.terms.base_action import sigmoid_muscle_activation
+
+EXPERIMENTAL_WARNING = (
+    "The MyoSuite MJX backend is experimental and may not be maintained "
+    "long-term. MJX envs are not observation- or reward-compatible with the "
+    "CPU/mjlab envs of the same task (observation order, reward weights, "
+    "thresholds, reset and target distributions differ), so MJX-trained "
+    "policies do not transfer to them. Use the CPU or mjlab backend for "
+    "portable policies."
+)
+
+
+@functools.cache
+def _warn_experimental_once() -> None:
+    """Emit :data:`EXPERIMENTAL_WARNING` once per process."""
+    warnings.warn(EXPERIMENTAL_WARNING, UserWarning, stacklevel=3)
 
 
 class MjxEnvAccessor:
@@ -182,6 +199,7 @@ class MyoMjxEnvBase(mjx_env.MjxEnv):
     """
 
     def __init__(self, config, config_overrides=None) -> None:
+        _warn_experimental_once()
         super().__init__(config, config_overrides)
         self._mj_model: mujoco.MjModel | None = None
         self._mjx_model: mjx.Model | None = None
@@ -283,8 +301,7 @@ class MyoMjxEnvBase(mjx_env.MjxEnv):
 
         Default: sigmoid ``1 / (1 + exp(-5 * (a - 0.5)))``.  Can be disabled
         by setting ``config.norm_actions = False``, in which case the action is
-        passed through unchanged (useful for wrappers like ``FatigueWrapper``
-        that apply their own normalisation).
+        passed through unchanged.  ``FatigueWrapper`` reuses this mapping.
 
         Args:
             action: Raw action from the policy.
@@ -361,9 +378,8 @@ class MyoMjxEnvBase(mjx_env.MjxEnv):
     def step(self, state: State, action: jax.Array) -> State:
         """Advance one control step.
 
-        Applies action normalisation, steps MJX physics, computes obs/reward
-        via term functions, and handles the auto-reset (re-sample task on
-        episode termination or truncation).
+        Maps the action to ``ctrl`` with :meth:`_normalize_action`, then calls
+        :meth:`step_ctrl`.
 
         Args:
             state: Current environment ``State``.
@@ -372,8 +388,24 @@ class MyoMjxEnvBase(mjx_env.MjxEnv):
         Returns:
             Next ``State``.
         """
-        norm_action = self._normalize_action(action)
-        data = mjx_env.step(self._mjx_model, state.data, norm_action, self._n_substeps)
+        return self.step_ctrl(state, self._normalize_action(action))
+
+    def step_ctrl(self, state: State, ctrl: jax.Array) -> State:
+        """Advance one control step from an already-mapped ``ctrl`` vector.
+
+        Steps MJX physics, computes obs/reward via term functions, and handles
+        the auto-reset (re-sample task on episode termination or truncation).
+        Wrappers that transform ``ctrl`` (e.g. ``FatigueWrapper``) call this
+        directly so the action mapping is not applied twice.
+
+        Args:
+            state: Current environment ``State``.
+            ctrl: Actuator controls, shape ``(nu,)``.
+
+        Returns:
+            Next ``State``.
+        """
+        data = mjx_env.step(self._mjx_model, state.data, ctrl, self._n_substeps)
 
         ctrl_dt = float(self._config.ctrl_dt)
         task_state = {

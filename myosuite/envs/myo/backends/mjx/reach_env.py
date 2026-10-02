@@ -14,8 +14,9 @@ Config keys (in addition to ``MyoMjxEnvBase`` defaults):
     ``ctrl_dt``            Control timestep (= ``sim_dt × n_substeps``).
     ``num_envs``           Number of parallel environments (batch size).
     ``max_episode_steps``  Episode truncation length.
-    ``target_reach_range`` Mapping of site name → ``(lo, hi)``
-                           JAX arrays of shape ``(3,)``.
+    ``target_reach_range`` Mapping of site name → ``(lo, hi)`` 3-vectors.
+                           Matched by name and kept in model (site id)
+                           order; each site needs a ``<name>_target`` site.
     ``far_th``             Distance threshold (metres) triggering done.
     ``reward_weights``     Sub-dict with ``reach``, ``bonus``, ``penalty``.
 """
@@ -35,6 +36,7 @@ from mujoco import mjx
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEnvBase
 from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_spec
 from myosuite.terms.base_obs import tip_pos_obs
+from myosuite.utils.target_ranges import resolve_site_target_ranges
 
 
 class MjxReachEnv(MyoMjxEnvBase):
@@ -103,25 +105,14 @@ class MjxReachEnv(MyoMjxEnvBase):
         self._xml_path = config.model_path.as_posix()
         self._n_substeps = int(config.ctrl_dt / config.sim_dt)
 
-        # Pre-compute site ID arrays (host-side, used for obs + reward)
-        tip_sids = []
-        target_sids = []
-        for site_name in config.target_reach_range.keys():
-            tip_sids.append(
-                mujoco.mj_name2id(
-                    self._mj_model, mujoco.mjtObj.mjOBJ_SITE.value, site_name
-                )
-            )
-            target_sids.append(
-                mujoco.mj_name2id(
-                    self._mj_model,
-                    mujoco.mjtObj.mjOBJ_SITE.value,
-                    site_name + "_target",
-                )
-            )
-        self._tip_sids = jp.array(tip_sids)
-        self._target_sids = jp.array(target_sids)
-        self._n_targets = len(tip_sids)
+        # Site ids and target boxes matched by name, in model order; raises on
+        # unknown names (an unchecked id of -1 would wrap to the last site).
+        targets = resolve_site_target_ranges(self._mj_model, config.target_reach_range)
+        self._tip_sids = jp.asarray(targets.tip_ids)
+        self._target_sids = jp.asarray(targets.target_ids)
+        self._target_lo = jp.asarray(targets.lo, dtype=jp.float32)
+        self._target_hi = jp.asarray(targets.hi, dtype=jp.float32)
+        self._n_targets = len(targets.names)
         self._near_th = float(self._n_targets) * 0.0125
 
     def sample_task(self, rng: jax.Array) -> dict[str, jax.Array]:
@@ -131,15 +122,13 @@ class MjxReachEnv(MyoMjxEnvBase):
             rng: JAX random key.
 
         Returns:
-            Dict with ``"targets"`` — shape ``(n_sites, 3)`` JAX array of
-            target Cartesian positions.
+            Dict with ``"targets"``: shape ``(n_sites, 3)`` target positions,
+            one independent uniform draw per coordinate.
         """
-        targets = []
-        for span in self._config.target_reach_range.values():
-            targets.append(
-                jax.random.uniform(rng, (span[0].size,), minval=span[0], maxval=span[1])
-            )
-        return {"targets": jp.stack(targets)}
+        target = jax.random.uniform(
+            rng, self._target_lo.shape, minval=self._target_lo, maxval=self._target_hi
+        )
+        return {"targets": target}
 
     def get_obs_dict(
         self,

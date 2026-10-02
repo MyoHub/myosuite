@@ -272,4 +272,50 @@ class TestFatigue:
         )
 
 
+def test_cumulative_fatigue_step_conserves_and_matches_cpu():
+    """The shared 3CC-r step (also used by the MJX FatigueWrapper) keeps
+    MA + MR + MF = 1 and tracks the CPU model over a long load/rest sequence.
+
+    The MJX copy used to integrate MF with the already-updated MA, which
+    drifted by ~2e-4 over this sequence.
+    """
+    from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+    from myosuite.physics.fatigue_jax import cumulative_fatigue_step
+
+    model = mujoco.MjModel.from_xml_path(str(resolve_finger_xml("myofinger_v0.xml")))
+    frame_skip = 10
+    jax_model = JaxCumulativeFatigue(model, frame_skip=frame_skip)
+    cpu = NumpyCumulativeFatigue(model, frame_skip=frame_skip, use_uniform_params=True)
+    cpu.set_FatigueCoefficient(float(jax_model.F))
+    cpu.set_RecoveryCoefficient(float(jax_model.R))
+    cpu.set_RecoveryMultiplier(float(jax_model.r))
+    cpu.reset()
+
+    params = dict(
+        F=jax_model.F,
+        R=jax_model.R,
+        r=jax_model.r,
+        dt=jax_model.dt,
+        tauact=jax_model.tauact,
+        taudeact=jax_model.taudeact,
+    )
+    step = jax.jit(
+        lambda ma, mr, mf, tl: cumulative_fatigue_step(ma, mr, mf, tl, **params)
+    )
+    na = jax_model.na
+    MA, MR, MF = jp.zeros(na), jp.ones(na), jp.zeros(na)
+    rng = np.random.default_rng(0)
+    sum_err = cpu_err = 0.0
+    for k in range(3000):
+        # 300-step blocks alternating random load and rest
+        TL = rng.uniform(0.0, 1.0, na) if (k // 300) % 2 == 0 else np.zeros(na)
+        MA, MR, MF = step(MA, MR, MF, jp.asarray(TL, dtype=jp.float32))
+        cpu_state = np.stack(cpu.compute_act(TL))
+        jax_state = np.stack([np.asarray(MA), np.asarray(MR), np.asarray(MF)])
+        sum_err = max(sum_err, float(np.max(np.abs(jax_state.sum(axis=0) - 1.0))))
+        cpu_err = max(cpu_err, float(np.max(np.abs(jax_state - cpu_state))))
+    assert sum_err < 1e-5, sum_err
+    assert cpu_err < 1e-5, cpu_err
+
+
 #

@@ -14,6 +14,10 @@ These tests verify the four functional gaps fixed in the myosuite4 refactor:
 4. ``CumulativeFatigue`` (``mjx/fatigue_jax.py``) computes correct state
    updates and ``FatigueWrapper`` stores fatigue in ``data.userdata``.
 
+They also guard the silent-corruption fixes: pose/reach targets resolved by
+name and sampled independently per coordinate, 3CC-r compartments conserved,
+and ``FatigueWrapper`` keeping the model options and the env's action mapping.
+
 The tests in classes 1–3 instantiate real environments (requires myoelbow
 model XML) and are skipped if MJX stack or model files are not available.
 Class 4 tests the fatigue model on a lightweight finger model and only
@@ -89,9 +93,83 @@ def _make_reach_env(impl: str = "jax"):
     cfg["mjx_impl"] = impl
     cfg["far_th"] = 0.044
     cfg["target_reach_range"] = config_dict.create(
-        THtip=jp.array(((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495))),
+        THtip_r=jp.array(((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495))),
     )
     return MjxReachEnv(config=cfg)
+
+
+def _uniform_fractions(targets, lo, hi) -> np.ndarray:
+    """Map sampled targets to [0, 1] per coordinate (only coordinates with lo < hi)."""
+    t = np.asarray(targets).reshape(len(targets), -1)
+    lo, hi = np.asarray(lo).ravel(), np.asarray(hi).ravel()
+    var = hi > lo
+    return (t[:, var] - lo[var]) / (hi[var] - lo[var])
+
+
+# ---------------------------------------------------------------------------
+# 0. Targets: resolved by name, independent per coordinate
+# ---------------------------------------------------------------------------
+
+
+class TestTargetResolution:
+    """Pose/reach targets match the CPU twins and are sampled independently."""
+
+    def test_finger_pose_fixed_targets_the_right_joints(self):
+        """CPU myoFingerPoseFixed-v0: IFadb, IFmcp = 0 and IFpip, IFdip = 0.75."""
+        from myosuite.envs.myo.backends.mjx import make
+
+        env = make("MjxFingerPoseFixed-v0")
+        target = env.sample_task(jax.random.PRNGKey(0))["target_angles"]
+        np.testing.assert_allclose(np.asarray(target), [0.0, 0.0, 0.75, 0.75])
+
+    @pytest.mark.parametrize(
+        "env_name", ["MjxFingerPoseRandom-v0", "MjxHandPoseRandom-v0"]
+    )
+    def test_pose_targets_independent_per_joint(self, env_name):
+        """One key used to drive every joint (correlation 1.0)."""
+        from myosuite.envs.myo.backends.mjx import make
+
+        env = make(env_name)
+        keys = jax.random.split(jax.random.PRNGKey(0), 2000)
+        targets = jax.vmap(env.sample_task)(keys)["target_angles"]
+        u = _uniform_fractions(targets, env._target_lo, env._target_hi)
+        corr = np.corrcoef(u.T)
+        assert np.abs(corr[~np.eye(len(corr), dtype=bool)]).max() < 0.15
+
+    def test_hand_reach_tracks_five_distinct_tips_in_cpu_order(self):
+        """Unsuffixed names used to resolve to id -1, i.e. LFtip_r five times."""
+        from myosuite.envs.myo.backends.mjx import make
+
+        env = make("MjxHandReachRandom-v0")
+        names = [env.mj_model.site(int(i)).name for i in np.asarray(env._tip_sids)]
+        assert names == ["THtip_r", "IFtip_r", "MFtip_r", "RFtip_r", "LFtip_r"]
+        keys = jax.random.split(jax.random.PRNGKey(0), 2000)
+        targets = jax.vmap(env.sample_task)(keys)["targets"]
+        u = _uniform_fractions(targets, env._target_lo, env._target_hi)
+        corr = np.corrcoef(u.T)
+        assert np.abs(corr[~np.eye(len(corr), dtype=bool)]).max() < 0.15
+
+    def test_unknown_site_name_raises(self):
+        from ml_collections import config_dict
+        from myosuite.envs.myo.backends.mjx import (
+            _cfg_hand_reach_fixed,
+            _to_config_dict,
+        )
+        from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv
+
+        cfg = _to_config_dict(_cfg_hand_reach_fixed())
+        cfg["target_reach_range"] = config_dict.create(
+            THtip=jp.array(((-0.165, -0.537, 1.495), (-0.165, -0.537, 1.495))),
+        )
+        with pytest.raises(KeyError):
+            MjxReachEnv(config=cfg)
+
+    def test_env_creation_warns_experimental(self):
+        from myosuite.envs.myo.backends.mjx import mjx_env_base
+
+        mjx_env_base._warn_experimental_once.cache_clear()
+        with pytest.warns(UserWarning, match="experimental"):
+            _make_pose_env()
 
 
 # ---------------------------------------------------------------------------
@@ -438,14 +516,47 @@ class TestMjxCumulativeFatigue:
         np.testing.assert_allclose(np.array(state["MA"]), np.zeros(5), atol=1e-6)
 
     def test_compute_act_preserves_mass(self):
-        """MA + MR + MF should remain close to 1 after one step."""
-        rng = jax.random.PRNGKey(0)
-        state = self.fatigue.reset(rng)
+        """MA + MR + MF stays 1 over a long load/rest sequence.
+
+        MF used to be integrated with the already-updated MA (drift ~2e-4).
+        """
+        state = self.fatigue.reset(jax.random.PRNGKey(0))
+        step = jax.jit(lambda tl, s: self.fatigue.compute_act(tl, fatigue_state=s))
+        rng = np.random.default_rng(0)
+        worst = 0.0
+        for k in range(3000):
+            on = (k // 300) % 2 == 0
+            tl = (
+                rng.uniform(0.0, 1.0, self.fatigue.na)
+                if on
+                else np.zeros(self.fatigue.na)
+            )
+            state = step(jp.asarray(tl, dtype=jp.float32), state)
+            total = np.asarray(state["MA"] + state["MR"] + state["MF"])
+            worst = max(worst, float(np.max(np.abs(total - 1.0))))
+        assert worst < 1e-5, worst
+
+    def test_compute_act_uses_shared_step(self):
+        """The MJX model and physics.fatigue_jax share one 3CC-r update."""
+        from myosuite.physics.fatigue_jax import cumulative_fatigue_step
+
+        state = {"MA": jp.full(5, 0.3), "MR": jp.full(5, 0.5), "MF": jp.full(5, 0.2)}
         act = jp.array(self.test_act)
-        state2 = self.fatigue.compute_act(act, fatigue_state=state)
-        total = np.array(state2["MA"]) + np.array(state2["MR"]) + np.array(state2["MF"])
-        # Allow small numerical drift
-        np.testing.assert_allclose(total, np.ones(self.fatigue.na), atol=1e-4)
+        out = self.fatigue.compute_act(act, fatigue_state=state)
+        ref = cumulative_fatigue_step(
+            state["MA"],
+            state["MR"],
+            state["MF"],
+            act,
+            F=self.fatigue.F,
+            R=self.fatigue.R,
+            r=self.fatigue.r,
+            dt=self.fatigue.dt,
+            tauact=self.fatigue.tauact,
+            taudeact=self.fatigue.taudeact,
+        )
+        for key, value in zip(("MA", "MR", "MF"), ref):
+            np.testing.assert_array_equal(np.asarray(out[key]), np.asarray(value))
 
     def test_compute_act_increases_ma_from_zero(self):
         """Starting from MA=0, compute_act with positive TL should increase MA."""
@@ -547,12 +658,40 @@ class TestFatigueWrapper:
         assert fat_cfg.fatigue_reset_random is True
         assert "fatigue_reset_random" not in env_cfg
 
-    def test_wrapper_disables_inner_norm_actions(self):
-        """FatigueWrapper must set env._config.norm_actions = False."""
+    def test_wrapper_keeps_inner_action_mapping(self):
+        """The wrapper reuses the env's own mapping instead of disabling it."""
         env = _make_pose_env()
-        assert env._config.norm_actions is True  # sanity: default is True
         wrapped = self.FatigueWrapper(env)
-        assert wrapped.env._config.norm_actions is False
+        assert wrapped.env._config.norm_actions is True
+
+    def test_wrapper_keeps_model_options(self):
+        """Recompiling for userdata must not revert timestep/solver options."""
+        env = _make_pose_env()
+        names = ("timestep", "iterations", "ls_iterations", "ccd_iterations")
+        before = {n: getattr(env.mj_model.opt, n) for n in names}
+        wrapped = self.FatigueWrapper(env)
+        assert {n: getattr(wrapped.env.mj_model.opt, n) for n in names} == before
+        assert wrapped.muscle_fatigue.dt == pytest.approx(env._config.ctrl_dt)
+
+    def test_wrapper_step_applies_env_mapping_once(self):
+        """Muscles get MA computed from the env mapping of the action."""
+        env = _make_pose_env()
+        wrapped = self.FatigueWrapper(env)
+        state = wrapped.reset(jax.random.PRNGKey(0))
+        action = jp.linspace(-1.0, 1.0, env.mj_model.nu)
+        mask = wrapped.muscle_act_ind
+        prev = {
+            "MA": state.data.userdata[wrapped.fatigue_index_MA],
+            "MR": state.data.userdata[wrapped.fatigue_index_MR],
+            "MF": state.data.userdata[wrapped.fatigue_index_MF],
+        }
+        expected = wrapped.muscle_fatigue.compute_act(
+            env._normalize_action(action)[mask], fatigue_state=prev
+        )["MA"]
+        next_state = wrapped.step(state, action)
+        np.testing.assert_allclose(
+            np.asarray(next_state.data.ctrl)[mask], np.asarray(expected), atol=1e-6
+        )
 
     def test_wrapper_expands_nuserdata(self):
         """FatigueWrapper expands nuserdata by 3×nu."""
