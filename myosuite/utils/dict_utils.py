@@ -37,11 +37,12 @@ def dict_numpify(data: dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16) ->
             elif np.issubdtype(val.dtype, np.floating) and f_res:
                 val = val.astype(f_res, copy=False)
             elif val.dtype == np.dtype("O"):
-                val = val.astype(np.float16, copy=False)  # switch none with nan
+                # switch none with nan
+                val = val.astype(f_res or np.float16, copy=False)
 
         # dict
         elif isinstance(val, dict):
-            val = dict_numpify(val, i_res, f_res)
+            val = dict_numpify(val, u_res=u_res, i_res=i_res, f_res=f_res)
 
         # lists/ tuples
         elif "__len__" in dir(val) and len(val) > 0:
