@@ -12,6 +12,7 @@ simulator state equal to a clip frame tracks that frame perfectly.
 
 from __future__ import annotations
 
+import copy
 import functools
 from collections.abc import Callable, Iterator
 from types import SimpleNamespace
@@ -126,14 +127,23 @@ def _synthetic_clip(
 
 
 def _make_env(
-    variant: str, clip: MotionClip, *, num_envs: int = 2, **cfg_kwargs: Any
+    variant: str,
+    clip: MotionClip | None,
+    *,
+    num_envs: int = 2,
+    mj_model: Any = None,
+    **cfg_kwargs: Any,
 ) -> Any:
-    """mjlab env from ``_make_mimic_env_cfg`` with the registration's arguments."""
+    """mjlab env from ``_make_mimic_env_cfg`` with the registration's arguments.
+
+    ``mj_model`` replaces the compiled model the initial state is read from.
+    """
     from mjlab.envs import ManagerBasedRlEnv
 
     from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
 
     cfg, build, model, _ = _variant(variant)
+    model = model if mj_model is None else mj_model
     cfg_kwargs.setdefault("max_episode_steps", int(cfg.max_episode_steps))
     env_cfg = mimic._make_mimic_env_cfg(
         _task_id=f"test-mimic-{variant}",
@@ -255,6 +265,39 @@ def test_rsi_writes_reference_world_root_velocity(
         expected.append(np.concatenate([vel[3:], vel[:3]]))
     root_vel_w = env.scene[_ENTITY["fullbody"]].data.root_link_vel_w
     np.testing.assert_allclose(root_vel_w.cpu().numpy(), np.stack(expected), atol=1e-4)
+
+
+def test_entity_default_state_is_the_model_keyframe() -> None:
+    """The entity's default state (reset without RSI) is the model keyframe.
+
+    mjlab matches ``InitialStateCfg.joint_pos`` keys as regexes, so a bare
+    ``knee_angle_r`` also set ``knee_angle_rotation2_r`` & co. to its angle.
+    The keyframe root angular velocity is body-frame, ``ang_vel`` world-frame;
+    the keyframe gets a tilted root and a root velocity so the frames differ,
+    and distinct joint values so a pattern matching the wrong joint shows.
+    """
+    _, _, model, _ = _variant("fullbody")
+    keyed = copy.copy(model)
+    rng = np.random.default_rng(0)
+    mujoco.mju_mulQuat(
+        keyed.key_qpos[0, 3:7],
+        _axis_angle_quat((0.0, 0.0, 1.0), 0.7),
+        _axis_angle_quat((1.0, 0.3, 0.0), 0.4),
+    )
+    keyed.key_qpos[0, 7:] += rng.normal(0.0, 0.05, keyed.nq - 7)
+    keyed.key_qvel[0, :6] = _ROOT_LIN_VEL + _ROOT_ANG_VEL_BODY
+    keyed.key_qvel[0, 6:] = rng.normal(0.0, 0.1, keyed.nv - 6)
+    env = _make_env("fullbody", None, num_envs=1, mj_model=keyed)
+    env.reset()
+    data = env.scene[_ENTITY["fullbody"]].data
+    key_qpos = keyed.key_qpos[0].astype(np.float32)
+    key_qvel = keyed.key_qvel[0].astype(np.float32)
+    np.testing.assert_array_equal(data.default_joint_pos[0].numpy(), key_qpos[7:])
+    np.testing.assert_array_equal(data.default_joint_vel[0].numpy(), key_qvel[6:])
+    np.testing.assert_array_equal(data.joint_pos[0].numpy(), key_qpos[7:])
+    root_vel_b = torch.cat([data.root_link_lin_vel_w, data.root_link_ang_vel_b], -1)
+    np.testing.assert_allclose(root_vel_b[0].numpy(), key_qvel[:6], atol=1e-5)
+    env.close()
 
 
 # ---------------------------------------------------------------------------
