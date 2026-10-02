@@ -12,15 +12,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import gymnasium as gym
 import mujoco
 import numpy as np
+import pytest
 
 from myosuite.core.multi_agent_config import MultiAgentTaskConfig
-from myosuite.core.registry import register_task
+from myosuite.core.registry import _ENV_REGISTRY, register_task
 from myosuite.envs.multi_agent_modular_env import (
     ModularMultiAgentSingleAgentWrapper,
     ModularMultiAgentTaskEnv,
 )
+
+pytestmark = pytest.mark.tier1
 
 # ---------------------------------------------------------------------------
 # Minimal two-agent MJCF
@@ -204,9 +208,45 @@ def test_register_task_routes_multi_agent():
     env_id = register_task(cfg, env_id="DummyMultiAgent-test-v0")
     assert env_id == "DummyMultiAgent-test-v0"
 
-    import gymnasium as gym
-
     env = gym.make("DummyMultiAgent-test-v0")
     obs, info = env.reset(seed=0)
     assert set(obs) == {"agent_0", "agent_1"}
+    env.close()
+
+
+_TIME_LIMIT_ENV_ID = "DummyMultiAgentTimeLimit-test-v0"
+
+
+def _make_time_limited_env() -> gym.Env:
+    """``gym.make`` of the dummy task registered with a 3-step limit."""
+    register_task(DummyMultiAgentConfig(max_episode_steps=3), env_id=_TIME_LIMIT_ENV_ID)
+    return gym.make(_TIME_LIMIT_ENV_ID)
+
+
+def test_gym_make_keeps_per_agent_dicts_at_the_step_limit():
+    """No gymnasium TimeLimit replaces the env's per-agent ``truncated`` dict."""
+    env = _make_time_limited_env()
+    env.reset(seed=0)
+    for _ in range(3):
+        _, rewards, terminated, truncated, _ = env.step(env.action_space.sample())
+        assert (
+            set(rewards) == set(terminated) == set(truncated) == {"agent_0", "agent_1"}
+        )
+    assert truncated == {"agent_0": True, "agent_1": True}
+    assert terminated == {"agent_0": False, "agent_1": False}
+    # The limit is still reported, by the env and by the registry.
+    assert env.get_wrapper_attr("max_episode_steps") == 3
+    assert _ENV_REGISTRY[_TIME_LIMIT_ENV_ID]["max_episode_steps"] == 3
+    env.close()
+
+
+def test_single_agent_wrapper_reaches_the_step_limit():
+    """The single-agent view of a ``gym.make`` env truncates instead of crashing."""
+    env = ModularMultiAgentSingleAgentWrapper(_make_time_limited_env(), "agent_0")
+    for seed in (0, 1):  # a second episode starts cleanly after the truncation
+        env.reset(seed=seed)
+        for _ in range(3):
+            _, reward, terminated, truncated, _ = env.step(env.action_space.sample())
+        assert (terminated, truncated) == (False, True)
+        assert isinstance(reward, float)
     env.close()
