@@ -196,6 +196,13 @@ full commit list.
 * **Tutorial scripts and CI.** The SAR tutorial scripts seed SAC and checkpoint/resume (`--seed`,
   `--play-only`); the 2.3 results depend strongly on the seed. CI runs for PRs into `ms3` and installs the
   `[rl]` extra; the mimic suite no longer comes out empty (it is registered before the challenge suite).
+* **TaskConfig control step**: a control step is `n_substeps` steps of `sim_dt` on every backend, and
+  `BackendConfig` rejects a `ctrl_dt` that differs from their product. The CPU `ModularTaskEnv` kept the XML
+  timestep and scaled `joint_vel` by a `ctrl_dt` it did not simulate; it now sets the timestep to `sim_dt`.
+  The registered TaskConfig ids are unchanged. Tutorial 4.3's `ElbowPoseTask` declares the 5 x 2 ms step it
+  ran.
+* The mjlab reach workspace table is built with scene site ids (it used the entity-local ids, which pick
+  other sites when an entity with sites comes before the robot).
 
 ### Removed
 
