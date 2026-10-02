@@ -328,23 +328,22 @@ class ReferenceMotion:
                     )
             else:
                 # Linearly interpolate between frames to get references
-                # ref[time] = blend(ref[ind] + (1-blend)*ref[ind_next])
+                # ref[time] = (1-blend)*ref[ind] + blend*ref[ind_next]
                 print(
                     f"Direct frame reference not found at {time} sec. Attempting linear blend between two frames [{ind},{ind_next}]"
                 )
-                blend = time - self.reference["time"][ind] / (
-                    self.reference["time"][ind_next] - self.reference["time"][ind]
-                )
+                t_prev = self.reference["time"][ind]
+                blend = (time - t_prev) / (self.reference["time"][ind_next] - t_prev)
 
                 # robot motion
                 if self.robot_horizon > 1:
-                    robot_ref = (1.0 - blend) ** self.reference["robot"][
+                    robot_ref = (1.0 - blend) * self.reference["robot"][
                         ind
                     ] + blend * self.reference["robot"][ind_next]
                     if self.reference["robot_vel"] is None:
                         robot_vel_ref = None
                     else:
-                        robot_vel_ref = (1.0 - blend) ** self.reference["robot_vel"][
+                        robot_vel_ref = (1.0 - blend) * self.reference["robot_vel"][
                             ind
                         ] + blend * self.reference["robot_vel"][ind_next]
                 else:
