@@ -82,9 +82,11 @@ jobs:
           sudo /usr/bin/Xvfb :99 -screen 0 1280x1024x24 &
           sleep 1
 
+      # [rl] (Stable-Baselines3) so the SB3 tests run instead of skipping, among
+      # them the tier-1 SB3 -> ONNX export check (test_export_onnx.py).
       - name: Install project and pytest
         run: |
-          uv pip install -e ".[mjlab]"
+          uv pip install -e ".[mjlab,rl]"
           uv pip install pytest pytest-xvfb ffmpeg torch ipython musclemimic_models
 
       - name: Pytest tier-1 (fast, backend-agnostic contracts)
