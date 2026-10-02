@@ -5,7 +5,7 @@ CPU
 ---
 
 * **Stable-Baselines3** — ``tutorials/2.1_Train_SB3_Policy.ipynb`` (``pip install -e ".[rl]"``)
-* **MyoReflex** — ``tutorials/2.5_MyoReflex_Walk.ipynb``
+* **MyoReflex** — ``tutorials/2.4_MyoReflex_Walk.ipynb``
 
 GPU
 ---
