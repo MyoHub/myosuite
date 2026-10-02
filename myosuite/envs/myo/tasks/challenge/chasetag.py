@@ -966,13 +966,34 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         raise NotImplementedError
 
     def get_metrics(self, paths: list) -> dict[str, float]:
-        """Compute aggregate metrics over rollout paths."""
+        """Compute aggregate metrics over rollout paths.
+
+        As in legacy ``chasetag_v0``, a lost CHASE episode (fall, out of bounds
+        or timeout) reports the full ``maxTime``; an EVADE episode reports the
+        time survived.
+
+        Args:
+            paths: Rollouts whose ``env_infos`` stack the per-step ``obs_dict``
+                (``time``, ``task``) and ``rwd_dict`` (``sparse``, ``solved``,
+                ``lose``).
+
+        Returns:
+            Dict with ``score``, ``points`` and ``times``.
+        """
         score = np.mean([np.sum(p["env_infos"]["rwd_dict"]["sparse"]) for p in paths])
         points = np.mean([np.sum(p["env_infos"]["rwd_dict"]["solved"]) for p in paths])
-        times = np.mean(
-            [np.round(p["env_infos"]["obs_dict"]["time"][-1], 2) for p in paths]
-        )
+        times = np.mean([self._episode_time(p["env_infos"]) for p in paths])
         return {"score": score, "points": points, "times": times}
+
+    def _episode_time(self, env_infos: dict) -> float:
+        """Episode time of one path: ``maxTime`` for a lost CHASE episode."""
+        lost_chase = (
+            np.ravel(env_infos["rwd_dict"]["lose"])[-1]
+            and np.ravel(env_infos["obs_dict"]["task"])[-1] == Task.CHASE.value
+        )
+        if lost_chase:
+            return float(self.maxTime)
+        return float(np.round(np.ravel(env_infos["obs_dict"]["time"])[-1], 2))
 
     # ── Validation ────────────────────────────────────────────────────────────
 

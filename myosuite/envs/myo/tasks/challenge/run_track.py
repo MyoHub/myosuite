@@ -448,12 +448,14 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         pain = self._get_pain(obs_dict)
         score = self._get_score(obs_dict)
         win_cdt = self._win_condition(obs_dict)
-        self._lose_condition(obs_dict)
+        lose_cdt = self._lose_condition(obs_dict)
 
         rwd_dict = collections.OrderedDict(
             (
                 ("act_reg", float(act_mag)),
                 ("pain", pain),
+                # Unweighted; get_metrics scores a lost episode with maxTime.
+                ("lose", lose_cdt),
                 ("sparse", score),
                 ("solved", win_cdt),
                 ("done", self._get_done(obs_dict)),
@@ -789,8 +791,26 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     # ── Metrics ───────────────────────────────────────────────────────────────
 
     def get_metrics(self, paths: list) -> dict[str, float]:
+        """Compute aggregate metrics over rollout paths.
+
+        As in legacy ``run_track_v0``, a lost episode (fall or out of bounds)
+        reports the full ``maxTime``, so falling early cannot earn a short time.
+
+        Args:
+            paths: Rollouts whose ``env_infos`` stack the per-step ``obs_dict``
+                and ``rwd_dict`` (``time``, ``model_root_pos``, ``lose``,
+                ``act_reg``, ``pain``).
+
+        Returns:
+            Dict with ``score``, ``time``, ``effort`` and ``pain``.
+        """
         times = np.mean(
-            [np.round(p["env_infos"]["obs_dict"]["time"][-1], 5) for p in paths]
+            [
+                self.maxTime
+                if np.ravel(p["env_infos"]["rwd_dict"]["lose"])[-1]
+                else np.round(np.ravel(p["env_infos"]["obs_dict"]["time"])[-1], 5)
+                for p in paths
+            ]
         )
         score = np.mean(
             [
