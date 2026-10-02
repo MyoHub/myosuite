@@ -149,28 +149,21 @@ def export_sb3_to_onnx(
             ``clip((obs - mean) / sqrt(var + epsilon), -clip_obs, clip_obs)`` is
             folded into the graph, so the ONNX model takes raw observations.
     """
-    from stable_baselines3 import SAC, TD3, PPO
-
-    from myosuite.utils.checkpoint_utils import load_vec_normalize  # noqa: PLC0415
+    from myosuite.utils.checkpoint_utils import (  # noqa: PLC0415
+        load_sb3_model,
+        load_vec_normalize,
+    )
 
     checkpoint = Path(checkpoint)
     output = Path(output)
     if isinstance(vec_normalize, (str, Path)):
+        log.info("VecNormalize statistics: %s", vec_normalize)
         vec_normalize = load_vec_normalize(vec_normalize)
     obs_stats = _vec_normalize_obs_stats(vec_normalize, obs_dim)
 
-    # Try SAC first (most common for myoSuite), fall back to TD3/PPO.
-    algo_name: str | None = None
-    for cls in (SAC, TD3, PPO):
-        try:
-            model = cls.load(checkpoint, device="cpu")
-            log.info("Loaded %s checkpoint from %s", cls.__name__, checkpoint)
-            algo_name = cls.__name__
-            break
-        except Exception:
-            continue
-    else:
-        raise ValueError(f"Could not load {checkpoint} as SAC, TD3, or PPO")
+    model = load_sb3_model(checkpoint)
+    algo_name = type(model).__name__
+    log.info("Loaded %s checkpoint from %s", algo_name, checkpoint)
 
     class _DeterministicWrapper(torch.nn.Module):
         """Wrap SB3 actor to return the action ``model.predict`` returns."""
@@ -218,7 +211,6 @@ def export_sb3_to_onnx(
                 return self.low + 0.5 * (action + 1.0) * (self.high - self.low)
             return torch.clamp(action, self.low, self.high)
 
-    assert algo_name is not None
     wrapper = _DeterministicWrapper(model.policy, algo_name, obs_stats)
     wrapper.eval()
     _export_policy(wrapper, obs_dim, output, opset)
@@ -686,7 +678,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--vecnormalize",
         type=Path,
         default=None,
-        help="sb3 only: VecNormalize.save() file to fold into the exported graph",
+        help=(
+            "sb3 only: VecNormalize.save() file to fold into the exported graph "
+            "(default: the stats saved next to the checkpoint, if any)"
+        ),
     )
 
     # --- verify ---
@@ -720,13 +715,17 @@ def main() -> None:
                     f"--framework {args.framework} requires --obs-dim and --act-dim"
                 )
             if args.framework == "sb3":
+                from myosuite.utils.checkpoint_utils import find_vec_normalize
+
                 export_sb3_to_onnx(
                     args.checkpoint,
                     args.output,
                     args.obs_dim,
                     args.act_dim,
                     args.opset,
-                    vec_normalize=args.vecnormalize,
+                    vec_normalize=(
+                        args.vecnormalize or find_vec_normalize(args.checkpoint)
+                    ),
                 )
             elif args.framework == "rslrl":
                 export_rslrl_to_onnx(

@@ -20,11 +20,14 @@ import pytest
 import torch
 
 import myosuite
+from myosuite.tests.support.sb3_models import (
+    ENV_ID as _ENV_ID,
+    raw_observations,
+    vec_normalized_model,
+)
 from myosuite.utils import gym
 
 pytestmark = pytest.mark.tier1
-
-_ENV_ID = "myoElbowPose1D6MRandom-v0"
 
 
 def _cp1252_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -199,44 +202,15 @@ def test_sb3_onnx_export_matches_predict(
     np.testing.assert_allclose(actual, expected, atol=1e-5)
 
 
-def _vec_normalized_model(algo_name: str) -> tuple[Any, Any]:
-    """A fresh SB3 model behind a VecNormalize with spread, non-trivial statistics."""
-    sb3 = pytest.importorskip("stable_baselines3")
-    from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-
-    myosuite.register_all_envs()
-    venv = VecNormalize(
-        DummyVecEnv([lambda: gym.make(_ENV_ID)]), norm_reward=False, clip_obs=3.0
-    )
-    rng = np.random.default_rng(0)
-    obs_dim = venv.observation_space.shape[0]
-    venv.obs_rms.mean = rng.normal(0.0, 1.0, obs_dim)
-    venv.obs_rms.var = rng.uniform(1e-3, 2.0, obs_dim)
-    if algo_name == "PPO":
-        kwargs: dict[str, Any] = {"n_steps": 16, "batch_size": 16}
-    else:
-        kwargs = {"buffer_size": 16}
-    model = getattr(sb3, algo_name)("MlpPolicy", venv, seed=0, device="cpu", **kwargs)
-    return model, venv
-
-
-def _raw_observations(venv: Any) -> np.ndarray:
-    """Raw float32 env observations, some far enough out to hit ``clip_obs``."""
-    env = venv.envs[0]
-    obs = np.stack([env.reset(seed=s)[0] for s in range(16)]).astype(np.float32)
-    noise = np.random.default_rng(1).normal(0.0, 2.0, obs.shape).astype(np.float32)
-    return np.concatenate([obs, obs + noise])
-
-
 @pytest.mark.parametrize("algo_name", ["PPO", "SAC"])
 def test_sb3_onnx_export_folds_vec_normalize(algo_name: str, tmp_path: Path) -> None:
     """On raw observations the export equals ``predict(normalize_obs(raw))``."""
     ort = pytest.importorskip("onnxruntime")
     from myosuite.utils.export_onnx import export_sb3_to_onnx
 
-    model, venv = _vec_normalized_model(algo_name)
+    model, venv = vec_normalized_model(algo_name)
     try:
-        raw = _raw_observations(venv)
+        raw = raw_observations(venv)
         assert np.abs(venv.normalize_obs(raw)).max() == venv.clip_obs
         expected, _ = model.predict(venv.normalize_obs(raw), deterministic=True)
         model.save(tmp_path / "model.zip")
@@ -273,7 +247,7 @@ def test_onnx_checkpoint_callback_bundles_vec_normalize(
     )
     from myosuite.utils.sb3_callbacks import OnnxCheckpointCallback
 
-    model, venv = _vec_normalized_model(algo_name)
+    model, venv = vec_normalized_model(algo_name)
     callback = OnnxCheckpointCallback(
         checkpoint_dir=tmp_path,
         task_id=_ENV_ID,
@@ -283,7 +257,7 @@ def test_onnx_checkpoint_callback_bundles_vec_normalize(
     )
     try:
         model.learn(total_timesteps=16, callback=callback)  # updates the statistics
-        raw = _raw_observations(venv)
+        raw = raw_observations(venv)
         expected, _ = model.predict(venv.normalize_obs(raw), deterministic=True)
     finally:
         venv.close()
@@ -355,7 +329,7 @@ def test_verify_onnx_on_cpu_feeds_raw_observations(tmp_path: Path) -> None:
     pytest.importorskip("onnxruntime")
     from myosuite.utils.export_onnx import export_sb3_to_onnx, verify_onnx_on_cpu
 
-    model, venv = _vec_normalized_model("PPO")
+    model, venv = vec_normalized_model("PPO")
     try:
         model.save(tmp_path / "model.zip")
         export_sb3_to_onnx(

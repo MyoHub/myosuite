@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -47,3 +49,32 @@ def test_actor_camera_ignores_full_model_extent() -> None:
         assert 0.5 < camera.lookat[2] < 1.6
     finally:
         env.close()
+
+
+def test_sb3_policy_normalizes_with_the_saved_vec_normalize(tmp_path: Path) -> None:
+    """The rendered PPO policy sees observations normalized as in training."""
+    from myosuite.tests.support.sb3_models import (
+        raw_observations,
+        vec_normalized_model,
+    )
+    from scripts.render_sb3_solutions import _sb3_policy
+
+    model, venv = vec_normalized_model("PPO")
+    try:
+        raw = raw_observations(venv)
+        expected, _ = model.predict(venv.normalize_obs(raw), deterministic=True)
+        unnormalized, _ = model.predict(raw, deterministic=True)
+        model.save(tmp_path / "ppo_final.zip")
+        venv.save(tmp_path / "stats.pkl")
+    finally:
+        venv.close()
+    assert np.abs(expected - unnormalized).max() > 1e-2
+
+    policy, stats = _sb3_policy(tmp_path / "ppo_final.zip")
+    assert stats is None
+    np.testing.assert_allclose(policy(raw), unnormalized, atol=1e-6)
+
+    (tmp_path / "stats.pkl").replace(tmp_path / "vecnormalize.pkl")
+    policy, stats = _sb3_policy(tmp_path / "ppo_final.zip")
+    assert stats == tmp_path / "vecnormalize.pkl"
+    np.testing.assert_allclose(policy(raw), expected, atol=1e-6)

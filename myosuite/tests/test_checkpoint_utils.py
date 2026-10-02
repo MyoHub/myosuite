@@ -3,15 +3,21 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Tests for checkpoint discovery (``find_checkpoint``)."""
+"""Tests for checkpoint discovery and loading (``find_checkpoint``, ``load_policy``)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from myosuite.utils.checkpoint_utils import find_checkpoint
+from myosuite.tests.support.sb3_models import raw_observations, vec_normalized_model
+from myosuite.utils.checkpoint_utils import (
+    find_checkpoint,
+    find_vec_normalize,
+    load_policy,
+)
 
 pytestmark = pytest.mark.tier1
 
@@ -166,3 +172,35 @@ def test_find_checkpoint_returns_none_when_nothing_is_found(
     )
 
     assert find_checkpoint("myoElbowPose1D6MRandom-v0", roots=(tmp_path,)) is None
+
+
+def test_find_vec_normalize_prefers_the_checkpoint_specific_file(
+    tmp_path: Path,
+) -> None:
+    """``<stem>_vecnormalize.pkl`` wins over RL Zoo's and the legacy MyoSuite name."""
+    checkpoint = tmp_path / "ppo_final.zip"
+    assert find_vec_normalize(checkpoint) is None
+    for name in ("vec_normalize.pkl", "vecnormalize.pkl", "ppo_final_vecnormalize.pkl"):
+        (tmp_path / name).write_bytes(b"")
+        assert find_vec_normalize(checkpoint) == tmp_path / name
+
+
+@pytest.mark.parametrize("algo_name", ["PPO", "SAC"])
+def test_load_policy_normalizes_observations_like_training(
+    algo_name: str, tmp_path: Path
+) -> None:
+    """An SB3 policy (PPO or SAC) acts on raw observations through its VecNormalize."""
+    model, venv = vec_normalized_model(algo_name)
+    try:
+        raw = raw_observations(venv)
+        expected, _ = model.predict(venv.normalize_obs(raw), deterministic=True)
+        unnormalized, _ = model.predict(raw, deterministic=True)
+        model.save(tmp_path / "policy.zip")
+        venv.save(tmp_path / "vecnormalize.pkl")
+
+        policy = load_policy(venv.envs[0], tmp_path / "policy.zip")
+    finally:
+        venv.close()
+
+    assert np.abs(expected - unnormalized).max() > 1e-2
+    np.testing.assert_allclose(policy(raw), expected, atol=1e-6)

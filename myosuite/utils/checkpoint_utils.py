@@ -115,6 +115,56 @@ def find_checkpoint(
     return None
 
 
+def load_sb3_model(checkpoint: str | Path, device: str = "cpu") -> Any:
+    """Load a Stable-Baselines3 ``.zip`` saved by SAC, TD3 or PPO.
+
+    Args:
+        checkpoint: File written by ``model.save()``.
+        device: Torch device for the policy.
+
+    Returns:
+        The loaded model (the first of SAC, TD3, PPO that loads it).
+    """
+    from stable_baselines3 import PPO, SAC, TD3
+
+    errors = []
+    for cls in (SAC, TD3, PPO):
+        try:
+            return cls.load(checkpoint, device=device)
+        except Exception as err:  # noqa: BLE001 — saved by another algorithm
+            errors.append(f"{cls.__name__}: {type(err).__name__}: {err}")
+    raise ValueError(
+        f"Could not load {checkpoint} as SAC, TD3 or PPO:\n" + "\n".join(errors)
+    )
+
+
+# ``VecNormalize.save()`` files of an SB3 checkpoint, looked up in its directory:
+# ``<stem>_vecnormalize.pkl``, then the RL Zoo and earlier MyoSuite names.
+_VEC_NORMALIZE_NAMES = (
+    "{stem}_vecnormalize.pkl",
+    "vecnormalize.pkl",
+    "vec_normalize.pkl",
+)
+
+
+def find_vec_normalize(checkpoint: str | Path) -> Path | None:
+    """Locate the ``VecNormalize`` statistics saved next to an SB3 checkpoint.
+
+    Args:
+        checkpoint: SB3 ``.zip`` checkpoint.
+
+    Returns:
+        ``<stem>_vecnormalize.pkl``, ``vecnormalize.pkl`` or ``vec_normalize.pkl``
+        in the checkpoint's directory (the first that exists), or ``None``.
+    """
+    checkpoint = Path(checkpoint)
+    for name in _VEC_NORMALIZE_NAMES:
+        candidate = checkpoint.with_name(name.format(stem=checkpoint.stem))
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def load_vec_normalize(path: str | Path) -> Any:
     """Load the ``VecNormalize`` written by its ``save()`` for inference.
 
@@ -135,12 +185,33 @@ def load_vec_normalize(path: str | Path) -> Any:
     return vec_normalize
 
 
+def sb3_policy(model: Any, vec_normalize: Any | None = None) -> Policy:
+    """Deterministic ``act(raw_obs)`` of an SB3 model trained behind *vec_normalize*.
+
+    Args:
+        model: Loaded SB3 model.
+        vec_normalize: Its ``VecNormalize`` (see :func:`load_vec_normalize`), if any.
+
+    Returns:
+        ``model.predict(vec_normalize.normalize_obs(obs), deterministic=True)``.
+    """
+
+    def act(obs: np.ndarray) -> np.ndarray:
+        if vec_normalize is not None:
+            obs = vec_normalize.normalize_obs(obs)
+        return model.predict(obs, deterministic=True)[0]
+
+    return act
+
+
 def load_policy(env: Any, checkpoint: Path | None) -> Policy:
     """Return ``act(obs) -> action`` for a checkpoint, driving *env* with raw observations.
 
     Args:
         env: Gymnasium env the policy will act in (its spaces are used).
-        checkpoint: mjlab ``model_*.pt`` or run directory, an SB3 ``.zip``, or ``None``.
+        checkpoint: mjlab ``model_*.pt`` or run directory, an SB3 (SAC/TD3/PPO)
+            ``.zip``, or ``None``. The ``VecNormalize`` statistics saved next to an
+            SB3 checkpoint (:func:`find_vec_normalize`) normalize its observations.
 
     Returns:
         A deterministic policy; a random one when there is no usable checkpoint (none
@@ -155,11 +226,10 @@ def load_policy(env: Any, checkpoint: Path | None) -> Policy:
         return random_policy
     if checkpoint.suffix == ".zip":  # Stable-Baselines3
         try:
-            from stable_baselines3 import PPO
+            model = load_sb3_model(checkpoint)
         except ImportError:
             print("stable-baselines3 is not installed; using a random policy.")
             return random_policy
-        model = PPO.load(checkpoint)
         if model.observation_space.shape != env.observation_space.shape:
             print(
                 f"{checkpoint} was trained on another env (obs "
@@ -167,8 +237,9 @@ def load_policy(env: Any, checkpoint: Path | None) -> Policy:
                 "using a random policy."
             )
             return random_policy
-        print(f"SB3 policy: {checkpoint}")
-        return lambda obs: model.predict(obs, deterministic=True)[0]
+        stats = find_vec_normalize(checkpoint)
+        print(f"SB3 policy: {checkpoint} (VecNormalize: {stats})")
+        return sb3_policy(model, load_vec_normalize(stats) if stats else None)
     from myosuite.utils.rslrl_policy import load_rslrl_policy  # mjlab / RSL-RL
 
     if checkpoint.is_dir():
