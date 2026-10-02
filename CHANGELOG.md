@@ -101,6 +101,11 @@ full commit list.
   emulate the stale values. The simulated trajectories are bit-identical except OslRun, whose
   prosthesis controller now reads its current load sensor. Policies trained on the stale
   observations of these envs may need retraining.
+* `myoChallengeChaseTagFBP2-v0` is one task on both backends, so mjlab-trained policies run on
+  the CPU env. The CPU env now uses the 537-dim `chasetag_obs` layout, a 0.01 s control step
+  (2000 steps = 20 s) and flat ground, all on purpose. The mjlab task takes the CPU rewards
+  (unscaled by dt), the out-of-bounds lose, the physics options, the keyframe reset and the
+  colored-noise opponent. Its distance reward now restarts every episode.
 
 ### Fixed
 
