@@ -12,8 +12,9 @@ components), like the torch and JAX twins in ``quat_math_torch.py`` /
 
 import numpy as np
 
-# For testing whether a number is close to zero
-_FLOAT_EPS = np.finfo(np.float64).eps
+# Near-zero cutoffs (quat2mat norm, mat2euler gimbal lock). Float32 values, as
+# in the torch/JAX twins, so that all three backends take the same branch.
+_FLOAT_EPS = np.finfo(np.float32).eps
 _EPS4 = _FLOAT_EPS * 4.0
 
 _CONJ = np.array([1.0, -1.0, -1.0, -1.0])

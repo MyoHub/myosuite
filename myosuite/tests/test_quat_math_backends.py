@@ -155,3 +155,24 @@ def test_euler_conventions_match_scipy(backend: SimpleNamespace) -> None:
             _wxyz(rotation.from_euler("xyz", deg, degrees=True)),
             1e-12,
         )
+
+
+def test_near_singular_cutoffs_agree_across_backends() -> None:
+    """numpy used float64 cutoffs, so near gimbal lock (and for a near-zero quat) it
+    returned another Euler triple (matrix) than the float32 torch/JAX twins."""
+    torch = pytest.importorskip("torch")
+    rotation = pytest.importorskip("scipy.spatial.transform").Rotation
+    from myosuite.physics import quat_math_torch
+
+    near_gimbal = rotation.from_euler("XYZ", [0.3, np.pi / 2 - 1e-7, 0.7]).as_matrix()
+    np.testing.assert_allclose(
+        quat_math.mat2euler(near_gimbal),
+        quat_math_torch.mat2euler(torch.tensor(near_gimbal)).double().numpy(),
+        atol=1e-5,
+    )
+    tiny = np.array([0.0, 1e-4, 0.0, 0.0])  # |q|^2 = 1e-8: identity on every backend
+    np.testing.assert_allclose(
+        quat_math.quat2mat(tiny),
+        quat_math_torch.quat2mat(torch.tensor(tiny)).double().numpy(),
+        atol=1e-6,
+    )
