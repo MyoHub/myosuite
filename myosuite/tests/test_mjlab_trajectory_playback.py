@@ -267,8 +267,33 @@ def test_init_state_from_model_handles_fixed_base_with_free_props(monkeypatch) -
 
     assert init.pos == (0.0, 0.0, 0.0)
     assert init.rot == (1.0, 0.0, 0.0, 0.0)
-    assert init.joint_pos == {"hinge0": 0.1, "slide1": -0.2}
-    assert init.joint_vel == {"hinge0": 0.3, "slide1": -0.4}
+    assert init.joint_pos == {"^hinge0$": 0.1, "^slide1$": -0.2}
+    assert init.joint_vel == {"^hinge0$": 0.3, "^slide1$": -0.4}
+
+
+def test_init_state_from_model_world_frame_root_angular_velocity(monkeypatch) -> None:
+    """The free joint's body-frame angular velocity is rotated to the world frame."""
+    from myosuite.tests.support.optional_deps import require_mjlab
+
+    require_mjlab()
+    import mujoco
+
+    monkeypatch.setattr(mujoco, "mj_id2name", lambda _model, _obj, _idx: "root")
+    half = np.sqrt(0.5)  # +90 deg about z: body x-axis points along world y
+    model = types.SimpleNamespace(
+        nkey=1,
+        njnt=1,
+        key_qpos=np.array([[0.0, 0.0, 1.0, half, 0.0, 0.0, half]]),
+        key_qvel=np.array([[0.1, 0.2, 0.3, 1.0, 0.0, 0.0]]),
+        jnt_type=np.array([int(mujoco.mjtJoint.mjJNT_FREE)], dtype=np.int32),
+        jnt_qposadr=np.array([0], dtype=np.int32),
+        jnt_dofadr=np.array([0], dtype=np.int32),
+    )
+
+    init = _init_state_from_model(model)
+
+    assert init.lin_vel == (0.1, 0.2, 0.3)
+    np.testing.assert_allclose(init.ang_vel, (0.0, 1.0, 0.0), atol=1e-12)
 
 
 def test_keyframe_reset_event_restores_aux_free_joints() -> None:

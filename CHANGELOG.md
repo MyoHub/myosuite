@@ -132,6 +132,13 @@ full commit list.
   start standing, expose the `actor`/`critic` groups rsl_rl needs and are the muscle-space task with
   a synergy action term; unsupported `reward_mode`/`env_reward_weight` values raise instead of being
   ignored.
+* **Asset resolver and Mimic reset.** The resolved/patched model XML copies are written once under
+  content-addressed names instead of leaking a new file per `gym.make` call. Copies written by
+  earlier versions stay on disk; remove them with
+  `find myosuite -name '.myosuite_resolved_*.xml' -delete`. The Mimic mjlab initial state anchors its
+  joint-name keys (`^name$`, `knee_angle_r` no longer also sets `knee_angle_rotation{2,3}_*`) and
+  converts the keyframe's body-frame root angular velocity to the world frame. W&B run paths use
+  `/` on Windows too.
 
 ### Removed
 
