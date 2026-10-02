@@ -12,6 +12,7 @@ Writes into the same ``sar_outputs/`` directory as run_sar_full.py so
 
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 import sys
@@ -40,19 +41,21 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def main() -> None:
+def main(seed: str = SEED) -> None:
     os.makedirs("sar_outputs", exist_ok=True)
     os.chdir("sar_outputs")
     log.info("Working directory: %s", os.getcwd())
 
-    model_path = Path(f"RL-E2E_model_{TARGET_ENV}_{SEED}.zip")
-    env_path = Path(f"RL-E2E_env_{TARGET_ENV}_{SEED}")
+    model_path = Path(f"RL-E2E_model_{TARGET_ENV}_{seed}.zip")
+    env_path = Path(f"RL-E2E_env_{TARGET_ENV}_{seed}")
     if model_path.exists() and env_path.exists():
         log.info("RL-E2E baseline already trained; found %s and %s", model_path, env_path)
         return
-    train(TARGET_ENV, "RL-E2E", SAR_RL_STEPS, SEED)
+    train(TARGET_ENV, "RL-E2E", SAR_RL_STEPS, seed)
     log.info("RL-E2E baseline complete.")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="End-to-end SAC baseline on the SAR target env.")
+    parser.add_argument("--seed", default=SEED, help="Seed of SAC and the environment.")
+    main(parser.parse_args().seed)
