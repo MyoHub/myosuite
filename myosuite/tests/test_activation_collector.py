@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import mujoco
 import numpy as np
 
 
@@ -65,6 +66,63 @@ def _make_policy_runner() -> MagicMock:
     runner.action_for.side_effect = _action_for
     runner.step.side_effect = _step
     return runner
+
+
+# ---------------------------------------------------------------------------
+# Helpers: real one-DoF MuJoCo model and a stub runner stepping it
+# ---------------------------------------------------------------------------
+
+_SLIDER_XML = """
+<mujoco>
+  <worldbody>
+    <body>
+      <joint name="slide" type="slide" axis="1 0 0"/>
+      <geom size="0.1" mass="1"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <general name="drive" joint="slide" dyntype="filter" dynprm="0.02"
+             ctrlrange="0 1"/>
+  </actuator>
+</mujoco>
+"""
+
+
+def _slider_clip(n_frames: int) -> types.SimpleNamespace:
+    return types.SimpleNamespace(
+        qpos=np.linspace(0.0, 1.0, n_frames)[:, None],
+        qvel=None,
+        site_xpos=None,
+        source_path="synthetic_clip.npz",
+    )
+
+
+class _StubRunner:
+    """Policy-runner stand-in: full excitation, real MuJoCo stepping."""
+
+    obs_adapter = None
+
+    def __init__(self) -> None:
+        self.episode_id = -1
+
+    def reset(self) -> None:
+        pass
+
+    def action_for(self, data, clip, frame_idx, obs_adapter=None):  # noqa: ANN001
+        return np.ones(1, dtype=np.float32)
+
+    def step(self, model, data, action):  # noqa: ANN001
+        data.ctrl[:] = action
+        for _ in range(5):
+            mujoco.mj_step(model, data)
+
+
+class _EpisodeMarkingRunner(_StubRunner):
+    """Records the episode index as the activation, to trace kept frames."""
+
+    def step(self, model, data, action):  # noqa: ANN001
+        super().step(model, data, action)
+        data.act[:] = self.episode_id
 
 
 # ---------------------------------------------------------------------------
@@ -148,9 +206,11 @@ class TestRunEpisode(unittest.TestCase):
         acts, _ = self._run()
         self.assertEqual(acts.dtype, np.float32)
 
-    def test_total_reward_nonzero(self) -> None:
-        _, reward = self._run()
-        self.assertNotEqual(reward, 0.0)
+    def test_returns_mean_per_step_reward(self) -> None:
+        """The episode score is length-normalised (0.5 per step -> 0.5)."""
+        acts, reward = self._run(start_frame=0, max_steps=10)
+        self.assertEqual(acts.shape[0], 10)
+        self.assertAlmostEqual(reward, 0.5)
 
     def test_stops_at_end_of_clip(self) -> None:
         """Episode must not run past the last frame."""
@@ -279,6 +339,53 @@ class TestCollectActivationsFromClip(unittest.TestCase):
         acts1 = self._collect()
         acts2 = self._collect()
         np.testing.assert_array_equal(acts1, acts2)
+
+
+class TestRewardFilterLengthBias(unittest.TestCase):
+    def test_keeps_best_tracking_episodes_wherever_they_start(self) -> None:
+        """Random starts give episodes of 1..299 steps; quality must decide, not length.
+
+        Each episode gets a per-step tracking error independent of its start
+        frame. Summed negative errors used to keep only short clip-end
+        episodes (all kept starts >= 238 of 300).
+        """
+        from myosuite.integrations.musclemimic import activation_collector as ac
+
+        model = mujoco.MjModel.from_xml_string(_SLIDER_XML)
+        clip = _slider_clip(300)
+        runner = _EpisodeMarkingRunner()
+        error_rng = np.random.default_rng(1)
+        episodes: list[tuple[int, float]] = []  # (start frame, per-step error)
+        init_episode = ac._init_episode
+
+        def _init_and_draw_error(model, data, clip, *, start_frame=0):  # noqa: ANN001
+            episodes.append((start_frame, float(error_rng.uniform(0.05, 0.15))))
+            runner.episode_id = len(episodes) - 1
+            init_episode(model, data, clip, start_frame=start_frame)
+
+        config = ac.CollectionConfig(n_episodes_per_clip=200, reward_percentile=80)
+        with (
+            patch.object(ac, "_init_episode", side_effect=_init_and_draw_error),
+            patch.object(
+                ac, "_tracking_reward", side_effect=lambda *_: -episodes[-1][1]
+            ),
+        ):
+            acts = ac.collect_activations_from_clip(
+                runner, model, clip, config, rng=np.random.default_rng(0)
+            )
+
+        n_preview = len(episodes) - config.n_episodes_per_clip
+        preview_errors = [error for _, error in episodes[:n_preview]]
+        max_error = -np.percentile(np.negative(preview_errors), 80)
+        expected = [
+            i
+            for i, (_, error) in enumerate(episodes)
+            if i >= n_preview and error <= max_error
+        ]
+        kept = sorted({int(i) for i in acts[:, 0]})
+        self.assertEqual(kept, expected)
+        kept_starts = [episodes[i][0] for i in kept]
+        self.assertLess(min(kept_starts), 100)
 
 
 # ---------------------------------------------------------------------------

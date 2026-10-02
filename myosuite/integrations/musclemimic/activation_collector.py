@@ -7,7 +7,8 @@
 
 Rolls a :class:`~...LocalPolicyRunner` through a list of motion clips and
 collects ``data.act`` (post-dynamics muscle activations, shape ``(nu,)`` per
-step) from episodes whose total tracking reward clears a percentile threshold.
+step) from episodes whose mean per-step tracking reward clears a percentile
+threshold.
 The filtered activations from all clips are concatenated into a single
 ``(T, n_muscles)`` array that feeds the SAR extraction pipeline.
 
@@ -66,8 +67,11 @@ class CollectionConfig:
 
     Args:
         n_episodes_per_clip: Number of rollout episodes per motion clip.
-        reward_percentile: Only episodes above this reward percentile
-            contribute activations (same logic as the original SAR paper).
+        reward_percentile: Only episodes whose mean per-step tracking reward
+            reaches this percentile of the preview episodes contribute
+            activations. The original SAR filter ranks fixed-horizon episodes
+            by total reward; the mean ranks them the same way and stays
+            comparable when random starts and the clip end vary the length.
         max_steps_per_episode: Cap on steps per episode.  ``None`` means
             run the full clip length.
         use_random_start: Whether to initialise each episode at a random
@@ -134,7 +138,7 @@ def _run_episode(
     *,
     obs_adapter: FullbodyObsAdapter | None = None,
 ) -> tuple[np.ndarray, float]:
-    """Run one episode; return ``(activations (T, nu), total_reward)``.
+    """Run one episode; return ``(activations (T, nu), mean per-step reward)``.
 
     Args:
         policy_runner: Loaded policy runner.
@@ -148,7 +152,9 @@ def _run_episode(
             was built from a different clip).
 
     Returns:
-        Tuple of activation array ``(steps, nu)`` and summed tracking reward.
+        Tuple of activation array ``(steps, nu)`` and mean per-step tracking
+        reward. A sum would favour short episodes, since rewards are negative
+        errors.
     """
     _init_episode(model, data, clip, start_frame=start_frame)
 
@@ -172,7 +178,7 @@ def _run_episode(
         if state.activations
         else np.empty((0, model.nu), dtype=np.float32)
     )
-    return acts, state.total_reward
+    return acts, state.total_reward / max(state.step_count, 1)
 
 
 def collect_activations_from_clip(
@@ -204,7 +210,7 @@ def collect_activations_from_clip(
         clip_obs_adapter = policy_runner.obs_adapter.with_clip(clip)
 
     # ------------------------------------------------------------------
-    # Pass 1: estimate the reward threshold from preview episodes.
+    # Pass 1: estimate the mean-reward threshold from preview episodes.
     # ------------------------------------------------------------------
     n_preview = max(10, config.n_episodes_per_clip // 10)
     preview_rewards: list[float] = []
@@ -223,7 +229,7 @@ def collect_activations_from_clip(
 
     threshold = float(np.percentile(preview_rewards, config.reward_percentile))
     logger.debug(
-        "Clip %s: reward threshold (p%d over %d preview) = %.4f",
+        "Clip %s: mean-reward threshold (p%d over %d preview) = %.4f",
         getattr(clip, "source_path", "?"),
         config.reward_percentile,
         n_preview,
