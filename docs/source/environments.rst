@@ -430,7 +430,10 @@ MJX (experimental)
 
 A JAX path exists (``pip install -e ".[mjx]"``,
 ``from myosuite.envs.myo.backends.mjx import make``). Do not start new work on
-it; use mjlab for GPU training.
+it; use mjlab for GPU training. The MJX envs are not observation- or
+reward-compatible with the CPU/mjlab envs of the same task, so MJX-trained
+policies do not transfer to them (see the limitations in
+``myosuite/envs/myo/backends/mjx/README.md``).
 
 Supported envs:
 

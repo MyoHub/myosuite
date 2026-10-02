@@ -4,6 +4,10 @@
 # LICENSE file in the root directory of this source tree.
 """MyoSuite MJX environments — JAX-accelerated musculoskeletal RL.
 
+Experimental: these envs are not observation- or reward-compatible with the
+CPU/mjlab envs of the same task (see ``README.md`` in this package), and env
+creation warns once about it.
+
 Public API::
 
     from myosuite.envs.myo.backends.mjx import make

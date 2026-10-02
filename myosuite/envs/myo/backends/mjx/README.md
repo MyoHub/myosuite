@@ -37,6 +37,25 @@ prefix and are not the `myo…` ids of the CPU and mjlab backends:
 There is no MJX version of the torso, arm, leg terrain/stand/directional envs or of the
 `myoSarc…`/`myoFati…`/`myoReaf…` variants.
 
+## Limitations: MJX policies are not portable
+
+The MJX backend is experimental and may not be maintained long-term. Creating an MJX env
+emits a one-time `UserWarning` about this. The MJX envs are **not** observation- or
+reward-compatible with the CPU/mjlab envs of the same task, so a policy trained here
+will not run correctly on the CPU or mjlab backends. Known differences:
+
+- **Observation order:** `act` comes before `pose_err` (pose) and before `tip_pos`/`reach_err` (reach). On CPU it comes last.
+- **Pose reward:** `act_reg` is not divided by the number of muscles, the penalty weight is 1 (CPU: 50), and `pose_thd` is 0.35 (CPU: 0.175 for the elbow, 0.7 for the hand).
+- **Resets:** every episode starts at `qpos0`, where CPU uses random resets for the elbow and hand pose tasks. `MjxLegWalk-v0` starts with zero velocity (CPU uses the keyframe velocity) and runs at `ctrl_dt` = 0.02 s (CPU: 0.01 s).
+- **Reach:** the far-threshold grace period is 2 physics steps (CPU: 2 control steps). `MjxFingerReachRandom-v0` samples its target box uniformly, while CPU samples the fingertip workspace.
+- **Fatigue:** the MJX models use uniform 3CC-r parameters (CPU: per-muscle). Fatigue observations go to a separate `fatigue_state` key that the PPO config does not read. Brax auto-reset (`full_reset=False`) restores the first episode's data, so the fatigue state and the first observation of each episode come from episode 1.
+- **Mimic:** the reward scale is 20 (CPU twin: 2) and the observation layout is different.
+- **Kinematics:** obs/reward read site and body positions from before the last physics substep.
+
+What *does* match the CPU twins: pose/reach targets are matched to joints/sites by name
+and read from the CPU registrations (`_cpu_kwarg` in `__init__.py`). Each target
+coordinate is sampled independently, and unknown joint/site names raise at setup.
+
 
 ## Examples
 Train JAX PPO with:

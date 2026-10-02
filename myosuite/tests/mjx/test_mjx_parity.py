@@ -164,6 +164,13 @@ class TestTargetResolution:
         with pytest.raises(KeyError):
             MjxReachEnv(config=cfg)
 
+    def test_env_creation_warns_experimental(self):
+        from myosuite.envs.myo.backends.mjx import mjx_env_base
+
+        mjx_env_base._warn_experimental_once.cache_clear()
+        with pytest.warns(UserWarning, match="experimental"):
+            _make_pose_env()
+
 
 # ---------------------------------------------------------------------------
 # 1. Solver params — ccd_iterations and friends

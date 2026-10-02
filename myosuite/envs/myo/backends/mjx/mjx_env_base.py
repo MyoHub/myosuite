@@ -27,6 +27,8 @@ Subclasses must implement:
 
 from __future__ import annotations
 
+import functools
+import warnings
 from typing import Any
 
 import jax
@@ -38,6 +40,21 @@ from mujoco_playground._src import mjx_env
 
 from myosuite.core.protocols import PhysicsPath
 from myosuite.terms.base_action import sigmoid_muscle_activation
+
+EXPERIMENTAL_WARNING = (
+    "The MyoSuite MJX backend is experimental and may not be maintained "
+    "long-term. MJX envs are not observation- or reward-compatible with the "
+    "CPU/mjlab envs of the same task (observation order, reward weights, "
+    "thresholds, reset and target distributions differ), so MJX-trained "
+    "policies do not transfer to them. Use the CPU or mjlab backend for "
+    "portable policies."
+)
+
+
+@functools.cache
+def _warn_experimental_once() -> None:
+    """Emit :data:`EXPERIMENTAL_WARNING` once per process."""
+    warnings.warn(EXPERIMENTAL_WARNING, UserWarning, stacklevel=3)
 
 
 class MjxEnvAccessor:
@@ -182,6 +199,7 @@ class MyoMjxEnvBase(mjx_env.MjxEnv):
     """
 
     def __init__(self, config, config_overrides=None) -> None:
+        _warn_experimental_once()
         super().__init__(config, config_overrides)
         self._mj_model: mujoco.MjModel | None = None
         self._mjx_model: mjx.Model | None = None

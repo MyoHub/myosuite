@@ -4,9 +4,12 @@
 
 The two supported backends are **CPU (`MyoGymnasiumEnv`)** and **GPU (mjlab
 `ManagerBasedRlEnvCfg`)**; the invariants below are what keep a policy trained on
-mjlab portable to CPU playback/fine-tune. (An **MJX** backend also exists and the
-same invariants apply to it, but MJX is **experimental and may not be maintained
-long-term** — don't build new work on it.)
+mjlab portable to CPU playback/fine-tune. (An **MJX** backend also exists, but it
+is **experimental, may not be maintained long-term, and does not meet these
+invariants**: its envs differ from the CPU/mjlab envs in obs order, reward weights,
+thresholds and reset/target distributions, so MJX-trained policies are not
+portable. See the limitations in `myosuite/envs/myo/backends/mjx/README.md`.
+Don't build new work on it.)
 
 A policy is only portable across backends if all five invariants below hold. Violating any produces wrong behaviour at eval time without an obvious error.
 
