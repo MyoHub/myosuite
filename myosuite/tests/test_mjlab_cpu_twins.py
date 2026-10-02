@@ -36,7 +36,6 @@ from myosuite.core.muscle_conditions import (  # noqa: E402
     TorchFatigueState,
 )
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
-from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0  # noqa: E402
 from myosuite.envs.myo.tasks.basic.arm.reach import ReachEnvV0  # noqa: E402
 from myosuite.envs.modular_env import ModularTaskEnv  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0  # noqa: E402
@@ -264,8 +263,6 @@ def _move_target_near(
         direction
     )
     cpu.target_jnt_value = target.copy()
-    if isinstance(cpu, PoseEnvV0):  # scores its reset-time copy of the target
-        cpu._task_state["target_angles"] = target.copy()
     return target
 
 
