@@ -22,10 +22,10 @@ from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.heightfields import ChaseTagField
 from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
+from myosuite.envs.myo.tasks.mimic.chasetag_obs import chasetag_obs_blocks
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.physics.quat_math import euler2quat, quat2euler, quat2mat
 from myosuite.terms.base_action import sigmoid_muscle_activation
-from myosuite.terms.opponent_relative_obs import relative_pose_obs
 
 
 class Task(Enum):
@@ -641,25 +641,20 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         obs_dict["model_root_pos"] = data.qpos[:2].copy()
         obs_dict["model_root_vel"] = data.qvel[:2].copy()
         if "opponent_relative" in self.obs_keys:
-            # 3D relative pose block (7-dim), shared with the FBVs 1v1 env's
-            # opponent_relative_obs via relative_pose_obs. Opponent xy comes
-            # from the mocap body (z padded to the agent's own pelvis
-            # height, since the mocap opponent has no meaningful z motion).
-            pelvis_pos = data.body(self._pelvis_body_name).xpos.copy()
-            pelvis_vel = data.qvel[:3].copy()
+            # mjlab training layout of myoChallengeChaseTagFBP2-v0 (keys
+            # CHASETAG_OBS_KEYS): the opponent at its mocap position (z = 0)
+            # with its [lin_vel, rot_vel] control pair as "velocity".
             opp_xy = self.opponent.get_opponent_pose()[:2]
-            opponent_pos_3d = np.array(
-                [opp_xy[0], opp_xy[1], pelvis_pos[2]], dtype=np.float32
+            opp_vel = self.opponent.opponent_vel
+            role = [1.0, 0.0] if self.current_task.name == "CHASE" else [0.0, 1.0]
+            blocks = chasetag_obs_blocks(
+                model,
+                data,
+                np.array([opp_xy[0], opp_xy[1], 0.0]),
+                np.array([opp_vel[0], opp_vel[1], 0.0]),
+                np.array(role),
             )
-            # Same [lin_vel, rot_vel] control-space pair already exposed by
-            # the legacy "opponent_vel" obs key (not literal cartesian x/y).
-            opp_vel_xy = self.opponent.opponent_vel
-            opponent_vel_3d = np.array(
-                [opp_vel_xy[0], opp_vel_xy[1], 0.0], dtype=np.float32
-            )
-            obs_dict["opponent_relative"] = relative_pose_obs(
-                pelvis_pos, pelvis_vel, opponent_pos_3d, opponent_vel_3d
-            )
+            obs_dict.update({k: v for k, v in blocks.items() if k not in obs_dict})
         obs_dict["task"] = np.array(self.current_task.value, ndmin=2, dtype=np.int16)
         if self.heightfield is not None:
             obs_dict["hfield"] = self.heightfield.get_heightmap_obs()
