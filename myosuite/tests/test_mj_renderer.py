@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Offscreen rendering with MJRenderer (needs an OpenGL context)."""
+"""Offscreen rendering with MJRenderer and examine_policy (needs an OpenGL context)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,9 @@ import mujoco
 import numpy as np
 import pytest
 
+import myosuite.utils.video_io as video_io
+from myosuite.utils import gym
+from myosuite.utils.policy_utils import examine_policy
 from myosuite.viz.mj_renderer import MJRenderer
 
 pytestmark = pytest.mark.tier2
@@ -70,3 +73,32 @@ def test_rgb_render_leaves_model_reflectance_untouched(scene) -> None:
     np.testing.assert_array_equal(
         renderer.render_offscreen(width=160, height=120), frame
     )
+
+
+def test_examine_policy_offscreen_video_is_not_black(monkeypatch, tmp_path) -> None:
+    videos: dict[str, np.ndarray] = {}
+    monkeypatch.setattr(
+        video_io,
+        "write_video",
+        lambda name, frames, **kw: videos.update({name: frames}),
+    )
+    env = gym.make("myoElbowPose1D6MRandom-v0").unwrapped
+    env.seed(0)
+
+    class _Policy:
+        def get_action(self, obs):
+            act = env.action_space.sample()
+            return act, {"evaluation": act}
+
+    examine_policy(
+        env,
+        _Policy(),
+        horizon=4,
+        render="offscreen",
+        frame_size=(160, 120),
+        output_dir=str(tmp_path),
+    )
+    (frames,) = videos.values()
+    assert frames.shape == (4, 120, 160, 3)
+    assert frames.max() > 0
+    env.close()
