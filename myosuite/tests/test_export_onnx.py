@@ -167,6 +167,7 @@ def test_sb3_onnx_export_matches_predict(
     MyoSuite muscle envs expose Box(-1, 1); the [0, 1] case (an env
     without action normalisation) exercises the rescaling of squashed actions.
     """
+    pytest.importorskip("onnx")  # torch.onnx.export needs it (missing on py3.14)
     sb3 = pytest.importorskip("stable_baselines3")
     ort = pytest.importorskip("onnxruntime")
     from myosuite.utils.export_onnx import export_sb3_to_onnx
@@ -206,6 +207,7 @@ def test_sb3_onnx_export_matches_predict(
 @pytest.mark.parametrize("algo_name", ["PPO", "SAC"])
 def test_sb3_onnx_export_folds_vec_normalize(algo_name: str, tmp_path: Path) -> None:
     """On raw observations the export equals ``predict(normalize_obs(raw))``."""
+    pytest.importorskip("onnx")  # torch.onnx.export needs it (missing on py3.14)
     ort = pytest.importorskip("onnxruntime")
     from myosuite.utils.export_onnx import export_sb3_to_onnx
 
@@ -327,6 +329,7 @@ def test_vec_normalize_state_round_trips_without_obs_normalization() -> None:
 
 def test_verify_onnx_on_cpu_feeds_raw_observations(tmp_path: Path) -> None:
     """``verify_onnx_on_cpu`` reproduces the VecNormalize -> predict rollout."""
+    pytest.importorskip("onnx")  # torch.onnx.export needs it (missing on py3.14)
     pytest.importorskip("onnxruntime")
     from myosuite.utils.export_onnx import export_sb3_to_onnx, verify_onnx_on_cpu
 
