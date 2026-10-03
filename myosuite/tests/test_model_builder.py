@@ -520,6 +520,81 @@ def test_legacy_hand_recipes_compile_without_wrapper_xml():
         assert cmc[:2] == ["cmc_abduction", "cmc_flexion"]
 
 
+def _counting_recipe(calls: list[int]):
+    """Recipe building one free box; appends to *calls* on every build."""
+    from myosuite.core.model_builder import ModelBuilder
+
+    def _recipe(b: ModelBuilder) -> ModelBuilder:
+        calls.append(1)
+        return b.add_free_body("box", geom_size=[0.1, 0.1, 0.1])
+
+    return _recipe
+
+
+def test_build_from_recipe_builds_once_and_returns_private_copies(monkeypatch):
+    """A recipe is built once per process; each call gets its own spec and model."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    model_a, spec_a = model_builder.build_from_recipe("_test_counting")
+    spec_a.worldbody.add_body(name="edit_of_a")
+    spec_a.geoms[0].size = [0.5, 0.5, 0.5]
+    model_a.geom_size[:] = 9.0
+    model_b, spec_b = model_builder.build_from_recipe("_test_counting")
+
+    assert len(calls) == 1
+    assert spec_b is not spec_a and model_b is not model_a
+    assert spec_b.body("edit_of_a") is None
+    np.testing.assert_array_equal(model_b.geom_size, [[0.1, 0.1, 0.1]])
+    np.testing.assert_array_equal(spec_b.geoms[0].size, [0.1, 0.1, 0.1])
+
+
+def test_build_from_recipe_cache_keys_recipe_and_cwd(monkeypatch, tmp_path):
+    """Re-registering a recipe or changing directory builds the spec again."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    model_builder.build_from_recipe("_test_counting")
+    monkeypatch.chdir(tmp_path)
+    model_builder.build_from_recipe("_test_counting")
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 3
+
+
+def test_cached_spec_unhashable_arguments_and_clear():
+    """Unhashable arguments bypass the cache; clear_spec_caches drops cached specs."""
+    import mujoco
+
+    from myosuite.core.model_builder import cached_spec, clear_spec_caches
+
+    calls: list[object] = []
+
+    @cached_spec()
+    def _build(size) -> mujoco.MjSpec:
+        calls.append(size)
+        spec = mujoco.MjSpec()
+        spec.worldbody.add_geom(size=list(size))
+        return spec
+
+    _build((0.1, 0.0, 0.0))
+    _build((0.1, 0.0, 0.0))
+    _build([0.2, 0.0, 0.0])
+    _build([0.2, 0.0, 0.0])
+    assert len(calls) == 3
+    clear_spec_caches()
+    _build((0.1, 0.0, 0.0))
+    assert len(calls) == 4
+
+
 def test_motor_finger_recipe_scales_the_motor_gears() -> None:
     """The four motorFinger* envs use the stronger gears (x1/x2 never reached the poses)."""
     import gymnasium as gym

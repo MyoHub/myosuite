@@ -26,6 +26,7 @@ import xml.etree.ElementTree as ET
 import mujoco
 from ml_collections import config_dict
 
+from myosuite.core.model_builder import cached_spec
 from myosuite.integrations.musclemimic.bimanual_model import (
     FINGER_JOINT_TOKENS,
     FINGER_MUSCLE_TOKENS,
@@ -258,7 +259,7 @@ def _load_spec_with_floor_only_upstream_scene(xml_path: str) -> mujoco.MjSpec:
 
 def _apply_mimic_fullbody_spec_changes(
     spec: mujoco.MjSpec,
-    config: config_dict.ConfigDict,
+    disable_fingers: bool,
     finger_joint_tokens: tuple[str, ...],
     finger_muscle_tokens: tuple[str, ...],
 ) -> mujoco.MjSpec:
@@ -266,17 +267,17 @@ def _apply_mimic_fullbody_spec_changes(
 
     Args:
         spec: Loaded, uncompiled full-body MjSpec.
-        config: At least ``disable_fingers`` (see
-            :func:`default_mimic_fullbody_config`).
+        disable_fingers: Remove the finger joints, muscles and tendons
+            (``config.disable_fingers``, see :func:`default_mimic_fullbody_config`).
         finger_joint_tokens: Finger joint names to remove when
-            ``config.disable_fingers``, in the naming convention of *spec*.
+            *disable_fingers*, in the naming convention of *spec*.
         finger_muscle_tokens: Finger muscle/tendon name substrings to remove,
             in the naming convention of *spec*.
 
     Returns:
         The same spec, edited in place.
     """
-    if config.disable_fingers:
+    if disable_fingers:
         joints_to_remove = [j for j in spec.joints if j.name in finger_joint_tokens]
         for joint in joints_to_remove:
             spec.delete(joint)
@@ -312,6 +313,17 @@ def _apply_mimic_fullbody_spec_changes(
     return spec
 
 
+@cached_spec()
+def _mimic_fullbody_spec(xml_path: str, disable_fingers: bool) -> mujoco.MjSpec:
+    """Edited full-body spec of *xml_path* (absolute), loaded once per process."""
+    # Keep only ground from the upstream MuscleMimic scene, preserving floor
+    # physics/height from that source scene.
+    spec = _load_spec_with_floor_only_upstream_scene(xml_path)
+    return _apply_mimic_fullbody_spec_changes(
+        spec, disable_fingers, FINGER_JOINT_TOKENS, FINGER_MUSCLE_TOKENS
+    )
+
+
 def build_mimic_fullbody_spec(
     config: config_dict.ConfigDict,
 ) -> tuple[mujoco.MjSpec, str]:
@@ -323,7 +335,8 @@ def build_mimic_fullbody_spec(
     ctrlrange) when it isn't. The native fallback is NOT bit-exact parity
     with the external MuscleMimic codebase's model — see
     :func:`build_native_mimic_fullbody_spec` — but is usable without the
-    optional dependency.
+    optional dependency. The MJCF is loaded and edited once per path and
+    ``disable_fingers`` in a process; every call returns a private copy.
 
     Args:
         config: At least ``disable_fingers`` and ``sim_dt`` (see
@@ -342,11 +355,8 @@ def build_mimic_fullbody_spec(
             return build_native_mimic_fullbody_spec(config), "myo_sim:myofullbody"
 
     xml_path = resolve_mimic_fullbody_xml(config)
-    # Keep only ground from the upstream MuscleMimic scene, preserving floor
-    # physics/height from that source scene.
-    spec = _load_spec_with_floor_only_upstream_scene(xml_path)
-    _apply_mimic_fullbody_spec_changes(
-        spec, config, FINGER_JOINT_TOKENS, FINGER_MUSCLE_TOKENS
+    spec = _mimic_fullbody_spec(
+        Path(xml_path).absolute().as_posix(), bool(config.disable_fingers)
     )
     return spec, xml_path
 
@@ -399,7 +409,9 @@ def build_native_mimic_fullbody_spec(config: config_dict.ConfigDict) -> mujoco.M
         joint_tokens = FINGER_JOINT_TOKENS
         muscle_tokens = FINGER_MUSCLE_TOKENS
 
-    return _apply_mimic_fullbody_spec_changes(spec, config, joint_tokens, muscle_tokens)
+    return _apply_mimic_fullbody_spec_changes(
+        spec, bool(config.disable_fingers), joint_tokens, muscle_tokens
+    )
 
 
 def compile_mimic_fullbody_mjmodel(
