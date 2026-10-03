@@ -370,15 +370,15 @@ def test_distance_delta_restarts_each_episode(pair) -> None:
 
 
 @pytest.mark.parametrize("samples", [2000, 1999])
-def test_opponent_noise_matches_pink(samples: int) -> None:
-    """The torch colored-noise generator is pink's for the same normal draws."""
-    from pink import colorednoise  # noqa: PLC0415
+def test_opponent_noise_matches_colorednoise(samples: int) -> None:
+    """The torch colored-noise generator is colorednoise's for the same normal draws."""
+    import colorednoise  # noqa: PLC0415
 
     shape = (3, 2, samples)
     expected = colorednoise.powerlaw_psd_gaussian(
-        2, shape, rng=np.random.default_rng(7)
+        2, shape, random_state=np.random.default_rng(7)
     )
-    rng = np.random.default_rng(7)  # pink draws the real, then the imaginary parts
+    rng = np.random.default_rng(7)  # the real, then the imaginary parts
     freq_shape = (*shape[:-1], samples // 2 + 1)
     normals = np.stack(
         [rng.standard_normal(freq_shape), rng.standard_normal(freq_shape)]
