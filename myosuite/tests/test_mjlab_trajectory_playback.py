@@ -506,6 +506,8 @@ class TestClipTrajectorySourceBasics:
         src._start_offsets = torch.tensor([0, 5, 8, 9][:_N], dtype=torch.long)
         assert src.clip_end(_steps(1)).tolist() == [False, False, False, True][:_N]
         assert src.clip_end(_steps(5)).tolist() == [False, True, True, True][:_N]
+        # The truncating step reads the last frame (not wrapped frame 0).
+        assert src.frame_indices(_steps(1)).tolist() == [1, 6, 9, 9][:_N]
 
     def test_multi_clip_end_uses_each_envs_clip_length(self) -> None:
         src = _make_multi_clip_source()
@@ -514,10 +516,12 @@ class TestClipTrajectorySourceBasics:
         src._start_offsets = torch.tensor([3, 3, 4, 6][:_N], dtype=torch.long)
         # lengths 5 / 7 / 5 / 7
         assert src.clip_end(_steps(2)).tolist() == [True, False, True, True][:_N]
+        # Past its end each env holds its own clip's last frame.
+        assert src.frame_indices(_steps(2)).tolist() == [4, 5, 4, 6][:_N]
 
     def test_multi_clip_source_uses_per_env_clip_assignments(self) -> None:
         src = _make_multi_clip_source()
-        t = torch.tensor([0, 2, 4, 6], dtype=torch.long)
+        t = torch.tensor([0, 2, 0, 1], dtype=torch.long)
         src.update(t)
         src._clip_indices = torch.tensor([0, 1, 0, 1], dtype=torch.long)
         src._start_offsets = torch.tensor([1, 2, 3, 4], dtype=torch.long)
@@ -528,7 +532,7 @@ class TestClipTrajectorySourceBasics:
         qpos = src.ref_qpos(t)
         qvel = src.ref_qvel(t)
 
-        torch.testing.assert_close(frame_idx, torch.tensor([1, 4, 2, 3]))
+        torch.testing.assert_close(frame_idx, torch.tensor([1, 4, 3, 5]))
         torch.testing.assert_close(clip_lengths, torch.tensor([5, 7, 5, 7]))
         np.testing.assert_allclose(
             targets[0].cpu().numpy(),
@@ -542,11 +546,11 @@ class TestClipTrajectorySourceBasics:
         assert qvel is not None
         np.testing.assert_allclose(
             qpos[2].cpu().numpy(),
-            np.asarray(src.clips[0].qpos[2], dtype=np.float32),
+            np.asarray(src.clips[0].qpos[3], dtype=np.float32),
         )
         np.testing.assert_allclose(
             qvel[3].cpu().numpy(),
-            np.asarray(src.clips[1].qvel[3], dtype=np.float32),
+            np.asarray(src.clips[1].qvel[5], dtype=np.float32),
         )
 
 
@@ -594,19 +598,23 @@ class TestClipTrajectorySourceAdvance:
                 actual, expected, atol=1e-6
             ), f"Frame {frame_k}: targets don't match clip"
 
-    def test_clip_wraps_at_end(self) -> None:
-        """After T frames the clip wraps back to frame 0."""
+    def test_clip_end_step_scores_the_last_frame(self) -> None:
+        """The step that truncates at the clip end reads frame T-1, not wrapped frame 0."""
         src = _make_source(T=_T, ctrl_dt=_CTRL_DT)
-        t0 = _steps(0)
-        src.update(t0)
+        src.update(_steps(0))
         src._start_offsets = torch.zeros(_N, dtype=torch.long)
 
-        # Frame 0 and frame T should give identical targets
-        tgt0 = src.site_targets(_steps(0)).clone()
-        t_wrap = _steps(_T)
-        src.update(t_wrap)
-        tgt_wrap = src.site_targets(t_wrap)
-        assert torch.allclose(tgt0, tgt_wrap, atol=1e-6)
+        t_end = _steps(_T)
+        src.update(t_end)
+        assert src.clip_end(t_end).all()
+        assert src.frame_indices(t_end).tolist() == [_T - 1] * _N
+        last = torch.as_tensor(src.clip.site_xpos[_T - 1], dtype=torch.float32)
+        assert torch.allclose(src.site_targets(t_end), last.expand(_N, -1, -1))
+        ref_qpos = src.ref_qpos(t_end)
+        assert ref_qpos is not None
+        last_qpos = torch.as_tensor(src.clip.qpos[_T - 1], dtype=torch.float32)
+        assert torch.allclose(ref_qpos, last_qpos.expand(_N, -1))
+        assert torch.allclose(src.phase(t_end), torch.full((_N, 1), (_T - 1) / _T))
 
     def test_phase_advances(self) -> None:
         """Phase must increase as the step counter advances."""
@@ -635,7 +643,7 @@ class TestClipTrajectorySourceAdvance:
         substep; that clock reads 0.06999 s after 7 steps of 5 x 2 ms, so the
         old ``floor(time / ctrl_dt)`` index fell one frame behind.
         """
-        src = _make_source(T=_T, ctrl_dt=_CTRL_DT)
+        src = _make_source(T=1001, ctrl_dt=_CTRL_DT)
         src.update(_steps(0))
         src._start_offsets = torch.zeros(_N, dtype=torch.long)
         time = np.float32(0.0)
@@ -645,7 +653,7 @@ class TestClipTrajectorySourceAdvance:
                 time = np.float32(time + np.float32(0.002))
             lagging += int(np.floor(time / _CTRL_DT)) != k
             src.update(_steps(k))
-            assert int(src.frame_indices(_steps(k))[0]) == k % _T
+            assert int(src.frame_indices(_steps(k))[0]) == k
         assert lagging > 600  # the float32 clock is behind on most steps
 
     def test_different_start_offsets_give_different_targets(self) -> None:

@@ -119,6 +119,13 @@ full commit list.
   (2000 steps = 20 s) and flat ground, all on purpose. The mjlab task takes the CPU rewards
   (unscaled by dt), the out-of-bounds lose, the physics options, the keyframe reset and the
   colored-noise opponent. Its distance reward now restarts every episode.
+* The CPU `myoMimicBimanual-v0` and `myoMimicFullbody-v0` (random targets) are the CPU half of their
+  mjlab twins. They observe `[qpos, qvel * ctrl_dt, act, site position, target, target - position]`
+  (199 / 684 values, was 137 / 532 with raw `qvel` and a scalar tracking error). The reward is
+  `exp(-2 * mean site error)` on both backends (mjlab used `exp(-20 * error)`, which gives almost no
+  signal at the 0.8 m initial error), and actions go through the muscle sigmoid on both without a clip. CPU policies trained on these ids need retraining. The mjlab Mimic rewards and deviation
+  check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
+  stale.
 
 ### Fixed
 
@@ -151,6 +158,11 @@ full commit list.
   lookahead observation and DeepMimic reward no longer treat hinge angles as a root, so bimanual mimic
   checkpoints trained before need retraining; the ONNX/Orbax bridge keeps its observation history and
   running normalizer per env.
+* **Mimic clip end and start**: on both backends, the step that truncates at the clip end is scored against
+  the clip's last frame. It read the wrapped frame 0, so a non-looping clip scored about 0 on that step. A
+  mid-episode checkpoint-playback reset to a clip frame no longer counts as a clip end.
+  `MuscleMimicClipEnvV0` takes `random_start` and rejects unknown keyword arguments, so `render_mimic.py`
+  (whose `random_start=False` was silently ignored) renders from frame 0, with the ghost on the env's frame.
 * `reset(seed=...)` reproduces the episode in the challenge envs (state no longer leaks between
   episodes, random fatigue states, Relocate goals, Soccer goalkeeper and rough tracks draw from the
   env seed); the Bimanual start and goal pillars move to the sampled positions; TableTennis and SAR
