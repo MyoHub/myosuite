@@ -62,6 +62,10 @@ _REWARD_MEAN_RTOL: dict[str, float] = {
     "myoFatiChallengeOslRunRandom-v0": 2.0,
     "myoSarcChallengeOslRunFixed-v0": 2.0,
     "myoSarcChallengeOslRunRandom-v0": 2.0,
+    # ChaseTag P2: ms3 ends the episode on a fall (-100 ``lose``) and pays a per-step ``alive``
+    # bonus and the change in distance; PyPI 2.12.2 scores the absolute distance and never
+    # ended an episode within 200 random steps. Magnitudes differ, the sign must still match.
+    "myoChallengeChaseTagP2-v0": 1.5,
 }
 _DEFAULT_REWARD_MEAN_RTOL = 0.80
 
