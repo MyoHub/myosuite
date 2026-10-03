@@ -224,9 +224,7 @@ class TestFatigue:
             numpy_fatigue.compute_act(act)
             jax_fatigue.compute_act(act)
 
-            # Effort = norm(MA - target load); the numpy model keeps no effort
-            # accessor, so the reference is computed from its state.
-            numpy_effort = np.linalg.norm(numpy_fatigue.MA - act)
+            numpy_effort = numpy_fatigue.get_effort()
             jax_effort = float(jax_fatigue.get_effort())
 
             np.testing.assert_allclose(

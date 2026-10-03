@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import builtins
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -94,11 +95,20 @@ def test_build_demo_cache_command_respects_python_override(
     monkeypatch.delenv("MYOSUITE_MUSCLEMIMIC_PYTHON", raising=False)
 
 
+@pytest.mark.parametrize(
+    ("platform", "venv_python"),
+    [("linux", ("bin", "python")), ("win32", ("Scripts", "python.exe"))],
+)
 def test_build_demo_cache_command_prefers_venv_python(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    platform: str,
+    venv_python: tuple[str, str],
 ) -> None:
-    """With no override and no ``uv``, use ``exec_cwd/.venv/bin/python``."""
+    """With no override and no ``uv``, use the platform's ``exec_cwd/.venv`` python.
+
+    Windows venvs keep it in ``Scripts/python.exe``; only ``bin/python`` was probed.
+    """
     monkeypatch.delenv("MYOSUITE_MUSCLEMIMIC_PYTHON", raising=False)
     real_which = shutil.which
 
@@ -108,9 +118,10 @@ def test_build_demo_cache_command_prefers_venv_python(
         return real_which(name)
 
     monkeypatch.setattr(shutil, "which", _which)
-    venv_bin = tmp_path / ".venv" / "bin"
-    venv_bin.mkdir(parents=True)
-    py = venv_bin / "python"
+    monkeypatch.setattr(sys, "platform", platform)
+    venv_dir = tmp_path / ".venv" / venv_python[0]
+    venv_dir.mkdir(parents=True)
+    py = venv_dir / venv_python[1]
     py.write_text("#!/bin/sh\necho\n")
     py.chmod(0o755)
     cmd, _env = build_demo_cache_command(tmp_path)

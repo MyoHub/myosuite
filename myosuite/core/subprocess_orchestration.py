@@ -25,7 +25,8 @@ def build_python_command(
     Resolution order:
     1. ``override_env_var`` executable if provided and set.
     2. ``uv run --directory`` when ``uv`` exists and ``pyproject.toml`` exists.
-    3. ``exec_cwd/.venv/bin/python`` when present.
+    3. the ``exec_cwd/.venv`` interpreter when present
+       (``Scripts/python.exe`` on Windows, ``bin/python`` elsewhere).
     4. current ``sys.executable``.
     """
     if override_env_var:
@@ -33,7 +34,10 @@ def build_python_command(
         if override:
             return [override, *py_args], os.environ.copy()
 
-    venv_py = exec_cwd / ".venv" / "bin" / "python"
+    if sys.platform == "win32":
+        venv_py = exec_cwd / ".venv" / "Scripts" / "python.exe"
+    else:
+        venv_py = exec_cwd / ".venv" / "bin" / "python"
     uv = shutil.which("uv")
     if uv and (exec_cwd / "pyproject.toml").is_file():
         return [

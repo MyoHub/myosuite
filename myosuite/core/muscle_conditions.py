@@ -95,6 +95,18 @@ MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
 _DEFAULT_F = MUSCLE_FATIGUE_PARAMS["Default"]["F"]
 _DEFAULT_R = MUSCLE_FATIGUE_PARAMS["Default"]["R"]
 _DEFAULT_r = MUSCLE_FATIGUE_PARAMS["Default"]["r"]
+# ``use_uniform_params``: the single parameter set of the legacy (<= v2.x)
+# CumulativeFatigue, also hard-coded in the JAX models (physics/fatigue_jax.py).
+_UNIFORM_PARAMS = MUSCLE_FATIGUE_PARAMS["Default_v2_4"]
+
+
+def _muscle_time_constants(mj_model: Any) -> tuple[np.ndarray, np.ndarray]:
+    """Return the ``(tauact, taudeact)`` of the muscle actuators, shape ``(na,)``."""
+    import mujoco as _mujoco  # noqa: PLC0415
+
+    muscle = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
+    dynprm = np.asarray(mj_model.actuator_dynprm)[muscle]
+    return dynprm[:, 0].copy(), dynprm[:, 1].copy()
 
 
 def _muscle_group(name: str) -> str:
@@ -247,8 +259,9 @@ class CumulativeFatigue:
             :meth:`reset(fatigue_reset_random=True)` when no ``np_random``
             generator is passed to it.
         use_uniform_params: If ``True``, bypass per-muscle lookup and use
-            uniform F/R/r for all muscles (matches the original
-            ``use_fatigue_model_v2_4`` behaviour in ``physics/fatigue.py``).
+            the ``"Default_v2_4"`` row of :data:`MUSCLE_FATIGUE_PARAMS` for
+            all muscles: the single F/R/r of the legacy (v2.x) model, which the
+            JAX models in ``physics/fatigue_jax.py`` also use.
 
     Example:
         >>> fatigue = CumulativeFatigue(mj_model, frame_skip=5)
@@ -265,34 +278,18 @@ class CumulativeFatigue:
         seed: int | None = None,
         use_uniform_params: bool = False,
     ) -> None:
-        import mujoco as _mujoco  # noqa: PLC0415
-
         self._dt = float(mj_model.opt.timestep) * int(frame_skip)
-        muscle_act_ind = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
-        self.na: int = int(sum(muscle_act_ind))
-        self._tauact: np.ndarray = np.array(
-            [
-                mj_model.actuator_dynprm[i][0]
-                for i in range(mj_model.nu)
-                if muscle_act_ind[i]
-            ]
-        )
-        self._taudeact: np.ndarray = np.array(
-            [
-                mj_model.actuator_dynprm[i][1]
-                for i in range(mj_model.nu)
-                if muscle_act_ind[i]
-            ]
-        )
+        self._tauact, self._taudeact = _muscle_time_constants(mj_model)
+        self.na: int = int(self._tauact.size)
         self._MA = np.zeros(self.na)
         self._MR = np.ones(self.na)
         self._MF = np.zeros(self.na)
         self.TL = np.zeros(self.na)
 
         if use_uniform_params:
-            self._F = _DEFAULT_F * np.ones(self.na)
-            self._R = _DEFAULT_R * np.ones(self.na)
-            self._r = _DEFAULT_r * np.ones(self.na)
+            self._F = _UNIFORM_PARAMS["F"] * np.ones(self.na)
+            self._R = _UNIFORM_PARAMS["R"] * np.ones(self.na)
+            self._r = _UNIFORM_PARAMS["r"] * np.ones(self.na)
         else:
             self._F, self._R, self._r = _per_muscle_params(mj_model, sex)
 
@@ -380,6 +377,14 @@ class CumulativeFatigue:
         self._MF += dMF
 
         return self._MA, self._MR, self._MF
+
+    def get_effort(self) -> float:
+        """Return the effort ``||MA - TL||`` of the last :meth:`compute_act` call.
+
+        Same as the legacy model and the JAX ``get_effort``: how far the active
+        compartment falls short of (or exceeds) the commanded target load.
+        """
+        return float(np.linalg.norm(self._MA - self.TL))
 
     # ------------------------------------------------------------------
     # Reset
@@ -550,9 +555,11 @@ class TorchFatigueState:
         self._F: Any = _to_tensor(F)  # (n_muscles,)
         self._R: Any = _to_tensor(R)  # (n_muscles,)
         self._r: Any = _to_tensor(r)  # (n_muscles,)
-        self.MA: Any = torch.zeros(num_envs, n_muscles, device=device)
-        self.MF: Any = torch.zeros(num_envs, n_muscles, device=device)
-        self.MR: Any = torch.ones(num_envs, n_muscles, device=device)
+        # The state stays float32 whatever the dtype of the excitation.
+        shape = (num_envs, n_muscles)
+        self.MA: Any = torch.zeros(shape, dtype=torch.float32, device=device)
+        self.MF: Any = torch.zeros(shape, dtype=torch.float32, device=device)
+        self.MR: Any = torch.ones(shape, dtype=torch.float32, device=device)
         self._tauact: Any = _to_tensor(tauact)  # (n_muscles,)
         self._taudeact: Any = _to_tensor(taudeact)  # (n_muscles,)
 
@@ -572,7 +579,8 @@ class TorchFatigueState:
         """Build a :class:`TorchFatigueState` from a compiled MuJoCo model.
 
         Extracts per-muscle F / R / r from :data:`MUSCLE_FATIGUE_PARAMS` via
-        the muscle functional group (MFG) lookup — the same logic used by
+        the muscle functional group (MFG) lookup, and the muscle time constants
+        from ``actuator_dynprm`` — the same logic used by
         :class:`CumulativeFatigue`.
 
         Args:
@@ -580,29 +588,19 @@ class TorchFatigueState:
             num_envs: Number of parallel environments.
             device: Torch device string.
             sex: Optional ``"F"`` / ``"M"`` for sex-specific parameters.
-            use_uniform_params: Use default uniform F/R/r instead of per-muscle.
+            use_uniform_params: Use the uniform ``"Default_v2_4"`` F/R/r for
+                every muscle, as :class:`CumulativeFatigue` does.
         """
-        import mujoco as _mujoco  # noqa: PLC0415
-
-        muscle_act_ind = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
-        na = int(sum(muscle_act_ind))
-        if use_uniform_params or na == 0:
-            return cls(num_envs=num_envs, n_muscles=na or mj_model.nu, device=device)
-        F_arr, R_arr, r_arr = _per_muscle_params(mj_model, sex)
-        tauact: np.ndarray = np.array(
-            [
-                mj_model.actuator_dynprm[i][0]
-                for i in range(mj_model.nu)
-                if muscle_act_ind[i]
-            ]
-        )
-        taudeact: np.ndarray = np.array(
-            [
-                mj_model.actuator_dynprm[i][1]
-                for i in range(mj_model.nu)
-                if muscle_act_ind[i]
-            ]
-        )
+        tauact, taudeact = _muscle_time_constants(mj_model)
+        na = int(tauact.size)
+        if na == 0:
+            return cls(num_envs=num_envs, n_muscles=mj_model.nu, device=device)
+        if use_uniform_params:
+            F_arr = np.full(na, _UNIFORM_PARAMS["F"])
+            R_arr = np.full(na, _UNIFORM_PARAMS["R"])
+            r_arr = np.full(na, _UNIFORM_PARAMS["r"])
+        else:
+            F_arr, R_arr, r_arr = _per_muscle_params(mj_model, sex)
         return cls(
             num_envs=num_envs,
             n_muscles=na,
@@ -624,7 +622,8 @@ class TorchFatigueState:
         Implements the same 3CC-r dynamics as :meth:`CumulativeFatigue.step`.
 
         Args:
-            excitation: Muscle excitation tensor, shape ``(num_envs, n_muscles)``.
+            excitation: Muscle excitation tensor, shape ``(num_envs, n_muscles)``;
+                cast to the float32 state.
             dt: Control timestep in seconds.
 
         Returns:
@@ -632,6 +631,8 @@ class TorchFatigueState:
             *excitation*.
         """
         import torch  # noqa: PLC0415
+
+        excitation = excitation.to(self.MA.dtype)
 
         # Activation/deactivation rates (MuJoCo Hill-type dynamics)
         LD = 1.0 / (self._tauact * (0.5 + 1.5 * self.MA))
@@ -641,12 +642,20 @@ class TorchFatigueState:
         LR = -torch.expm1(-LR * dt) / dt
 
         # Recovery rate: boosted during rest (MA >= TL)
-        rR = torch.where(self.MA >= excitation, self._r * self._R, self._R)
+        rising = self.MA < excitation
+        resting = self.MA >= excitation
+        rR = torch.where(resting, self._r * self._R, self._R)
 
+        # Transfer rate C (select, not mask-multiply: a NaN excitation then gives
+        # C = 0 as on CPU instead of NaN * 0 = NaN poisoning the state).
+        C = torch.where(
+            rising,
+            LD * torch.minimum(excitation - self.MA, self.MR),
+            torch.where(resting, LR * (excitation - self.MA), torch.zeros_like(LD)),
+        )
         # Clip C to keep compartments in [0, 1]
         C = torch.clamp(
-            (LD * torch.minimum(excitation - self.MA, self.MR)) * (self.MA < excitation)
-            + (LR * (excitation - self.MA)) * (self.MA >= excitation),
+            C,
             min=torch.maximum(
                 -self.MA / dt + self._F * self.MA, (self.MR - 1.0) / dt + rR * self.MF
             ),

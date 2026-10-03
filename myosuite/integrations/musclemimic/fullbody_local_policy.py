@@ -25,7 +25,7 @@ from scipy.spatial.transform import Rotation as np_R
 from myosuite.integrations.musclemimic.running_stats import (
     numpy_running_mean_std_update as running_mean_std_update,
 )
-from myosuite.core.trajectory_io import MotionClip
+from myosuite.core.trajectory_io import MotionClip, expand_motion_clip_to_model
 
 
 def _to_numpy_tree(tree: Any) -> Any:
@@ -457,7 +457,8 @@ class FullbodyObsAdapter:
         goal_params: dict[str, Any] | None = None,
     ) -> None:
         self._model = model
-        self._clip = clip
+        # Map the clip's columns by joint name: features index it as model qpos/qvel.
+        self._clip = expand_motion_clip_to_model(clip, model)
         gp = dict(goal_params or {})
         self._goal = _TrajectoryGoalSpec(
             n_step_lookahead=int(gp.get("n_step_lookahead", 5)),
