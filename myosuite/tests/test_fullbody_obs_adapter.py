@@ -212,7 +212,8 @@ def _reference_obs(
     goal: list[Any] = [rpos] if flag("enable_mimic_site_rpos_observations") else []
     goal += [rangles, rvel]
 
-    traj = np.load(clip.source_path)
+    with np.load(clip.source_path) as npz:
+        traj = {key: npz[key] for key in npz.files}
     names = [str(n) for n in traj["site_names"]]
     traj_ids = np.asarray([names.index(n) for n in _SITES])
     n_frames = int(clip.qpos.shape[0])

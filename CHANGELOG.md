@@ -126,6 +126,13 @@ full commit list.
   signal at the 0.8 m initial error), and actions go through the muscle sigmoid on both without a clip. CPU policies trained on these ids need retraining. The mjlab Mimic rewards and deviation
   check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
   stale.
+* **Faster full-body MuscleMimic observations.** `FullbodyObsAdapter.build`, the 2418-value observation of
+  the `mm-10m-2` checkpoints used by CPU and ONNX playback, the full-body eval tool, the BC and activation
+  collectors and the mjlab bridges, read the 354 muscles one actuator at a time in Python (1,770 one-element
+  arrays per step) and recomputed the goal features of all five lookahead clip frames every step. It now reads
+  the muscle fields in one vectorized gather and computes each clip frame's goal features once. A build takes
+  0.51 ms instead of 5.4 ms on the MyoFullBody model, and a `LocalPolicyRunner` control step (5 physics
+  substeps) 7.9 ms instead of 13.9 ms. The observations are bit-identical.
 
 ### Fixed
 

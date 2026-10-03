@@ -738,7 +738,7 @@ class FullbodyObsAdapter:
 
         if self._touch_sensor_slices:
             sens = np.asarray(data.sensordata, dtype=np.float32)
-            # np.sum per sensor (at most four), as upstream: it also maps -0.0 to 0.0.
+            # np.sum per sensor (at most four) keeps the values exact (-0.0 -> 0.0).
             obs.append(
                 np.asarray(
                     [float(np.sum(sens[s])) for s in self._touch_sensor_slices],
