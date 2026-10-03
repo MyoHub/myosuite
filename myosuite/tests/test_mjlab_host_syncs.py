@@ -7,7 +7,9 @@
 Every host sync (a device-to-host read or a pageable host-to-device copy) stalls
 the CUDA stream once per env step. The counter of ``support/host_sync`` sees them
 on a CPU-only torch too. The walk twin used to upload the body masses and target
-vectors in every reward term (34 syncs per step, 41 on terrain).
+vectors in every reward term (34 syncs per step, 41 on terrain), and TableTennis
+P1/P2 the ball launch ranges on every reset (4 per reset step); the ChaseTag check
+guards its already sync-free step (#456).
 """
 
 from __future__ import annotations
@@ -124,3 +126,24 @@ def test_walk_terms_read_a_fresh_evaluation(
     # Per step: the done term, one read per reward term, the success metric.
     n_rewards = len(walk_env.reward_manager.active_terms)
     assert len(reads) == 3 * (n_rewards + 2)
+
+
+# ---------------------------------------------------------------------------
+# Challenge twins: TableTennis (ball relaunch on reset), ChaseTag (a guard)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "task_id",
+    [
+        "myoChallengeTableTennisP2-v0",
+        pytest.param("myoChallengeChaseTagFBP2-v0", marks=pytest.mark.slow),
+    ],
+)
+def test_challenge_twin_steps_without_host_syncs(task_id: str) -> None:
+    env = _make_env(task_id)
+    try:
+        for syncs, _ in _step_syncs(env, 3):
+            assert syncs.total == 0, syncs.report()
+    finally:
+        env.close()
