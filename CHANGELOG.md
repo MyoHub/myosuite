@@ -126,6 +126,18 @@ full commit list.
   signal at the 0.8 m initial error), and actions go through the muscle sigmoid on both without a clip. CPU policies trained on these ids need retraining. The mjlab Mimic rewards and deviation
   check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
   stale.
+* **OslRun steps about twice as fast on the CPU.** Python took 72–75% of the step: the OSL
+  controller read its gains through getters that deep-copy the whole state machine (about 260
+  recursive copies per step), `RunTrackEnv` read its observations and OSL inputs with about 200
+  per-name lookups, the pain term computed the joint-limit forces once per joint (Soccer too), and the
+  heightmap built a full rotation matrix to get the yaw. The step now reads the gains in place, gathers
+  with index arrays built once, computes the joint-limit forces once
+  (`challenge_common.joint_limit_forces`) and takes the yaw from `quat_math.quat2yaw`.
+  `myoChallengeOslRunFixed-v0` takes 0.98 ms per step instead of 1.92 ms and the Sarcopenia and
+  Fatigue variants 1.05–1.60 ms instead of 2.75–3.31 ms (Python share 48–52%; median of 12 runs of 300
+  random-action steps, Windows, Python 3.12). Seeded episodes of the OslRun, ChaseTag and Soccer envs
+  are bit-identical, and `obs_dict["hfield"]` is still filled every step. A stopped OSL state machine
+  raises `RuntimeError`.
 
 ### Fixed
 
