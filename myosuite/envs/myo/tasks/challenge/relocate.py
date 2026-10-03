@@ -17,7 +17,11 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
+from myosuite.envs.myo.tasks.challenge.challenge_common import (
+    MuscleActionMixin,
+    mean_effort,
+    solved_step_count,
+)
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.physics.quat_math import euler2quat, mat2euler
@@ -325,6 +329,20 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
         return self._finalize_step(obs_dict, rwd_dict)
+
+    def get_metrics(self, paths: list, successful_steps: int = 5) -> dict[str, float]:
+        """Success rate and effort over rollout paths (as legacy ``relocate_v0``).
+
+        Args:
+            paths: Rollouts whose ``env_infos`` stack the per-step ``rwd_dict``
+                (``solved``, ``act_reg``).
+            successful_steps: A path succeeds if it was solved on more steps.
+
+        Returns:
+            Dict with ``score`` (fraction of successful paths) and ``effort``.
+        """
+        score = np.mean([solved_step_count(p) > successful_steps for p in paths])
+        return {"score": float(score), "effort": mean_effort(paths)}
 
     def reset(
         self,

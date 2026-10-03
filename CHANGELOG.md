@@ -203,7 +203,9 @@ full commit list.
   `[rl]` extra; the mimic suite no longer comes out empty (it is registered before the challenge suite).
 * **Challenge scoring and targets.** RunTrack and ChaseTag `get_metrics` again score a lost episode (a
   lost CHASE episode for ChaseTag) with the full `maxTime`, as legacy MyoSuite did, so falling early no
-  longer earns the best time. `PoseEnvV0.update_target()` (or setting `target_jnt_value`) moves the
+  longer earns the best time. Baoding, Relocate, Reorient, Bimanual and TableTennis have a `get_metrics`
+  again, with the legacy scores (success rate, effort; time, peak force and goal distance for Bimanual).
+  `PoseEnvV0.update_target()` (or setting `target_jnt_value`) moves the
   rewarded target with the observed one. Bimanual refreshes the box inertia after every mass draw (the
   first reset skipped it) and rescales the visual box with the collision box; the visual mesh keeps
   correct bounds, so ray casts (viewer picking) hit it.

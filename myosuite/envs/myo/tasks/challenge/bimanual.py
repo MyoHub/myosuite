@@ -18,7 +18,11 @@ from scipy.spatial.transform import Rotation as R
 
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
+from myosuite.envs.myo.tasks.challenge.challenge_common import (
+    MuscleActionMixin,
+    mean_effort,
+    solved_step_count,
+)
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.utils import seed_envs
 from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
@@ -435,6 +439,52 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             if mocap_id >= 0:
                 self.data.mocap_pos[mocap_id] = getattr(self, attr)
 
+    def get_metrics(self, paths: list, successful_steps: int = 5) -> dict[str, float]:
+        """Success rate, time, effort, peak force and goal distance (legacy ``bimanual_v0``).
+
+        A path succeeds if it was solved on more than ``successful_steps`` steps and
+        its contact history has no :class:`ContactTrajIssue`.
+
+        Args:
+            paths: Rollouts whose ``env_infos`` stack the per-step ``obs_dict``
+                (``time``, ``max_force``), ``rwd_dict`` (``solved``, ``act``,
+                ``goal_dist``) and the ``touch_history``.
+            successful_steps: Minimum number of solved steps.
+
+        Returns:
+            Dict with ``score``, ``time``, ``effort``, ``peak force`` and ``goal dist``.
+        """
+        score = np.mean(
+            [
+                solved_step_count(p) > successful_steps
+                and evaluate_contact_trajectory(_touch_history(p)) is None
+                for p in paths
+            ]
+        )
+        return {
+            "score": float(score),
+            "time": float(
+                np.mean(
+                    [
+                        np.round(np.ravel(p["env_infos"]["obs_dict"]["time"])[-1], 5)
+                        for p in paths
+                    ]
+                )
+            ),
+            "effort": mean_effort(paths, key="act", sign=1.0),
+            "peak force": float(
+                np.mean(
+                    [
+                        np.round(
+                            np.ravel(p["env_infos"]["obs_dict"]["max_force"])[-1], 5
+                        )
+                        for p in paths
+                    ]
+                )
+            ),
+            "goal dist": mean_effort(paths, key="goal_dist", sign=1.0),
+        }
+
     def reset(self, seed: int | None = None, options: dict | None = None, **_kwargs):
         if seed is not None:
             self.input_seed = seed
@@ -530,6 +580,33 @@ class ContactTrajIssue(enum.Enum):
     PROSTH_SHORT = 1
     NO_GOAL = 2
     ENV_CONTACT = 3
+
+
+def _touch_history(path: dict) -> list[set]:
+    """Contact history of a path; a per-step stack of the history uses its last entry."""
+    history = path["env_infos"]["touch_history"]
+    if len(history) and isinstance(history[0], (list, tuple)):
+        return list(history[-1])
+    return list(history)
+
+
+def evaluate_contact_trajectory(
+    contact_trajectory: list[set],
+) -> ContactTrajIssue | None:
+    """Return the first :class:`ContactTrajIssue` of a contact history, or ``None``."""
+    if any(ObjLabels.ENV in labels for labels in contact_trajectory):
+        return ContactTrajIssue.ENV_CONTACT
+    myo_frames = np.nonzero([ObjLabels.MYO in s for s in contact_trajectory])[0]
+    prosth_frames = np.nonzero([ObjLabels.PROSTH in s for s in contact_trajectory])[0]
+    if len(myo_frames) < CONTACT_TRAJ_MIN_LENGTH:
+        return ContactTrajIssue.MYO_SHORT
+    if len(prosth_frames) < CONTACT_TRAJ_MIN_LENGTH:
+        return ContactTrajIssue.PROSTH_SHORT
+    # Only the goal may touch the object during the last frames (a 2-frame buffer
+    # keeps the check clear of the trajectory boundary).
+    if not all({ObjLabels.GOAL} == s for s in contact_trajectory[-GOAL_CONTACT + 2 :]):
+        return ContactTrajIssue.NO_GOAL
+    return None
 
 
 def _is_mpl_body(name: str) -> bool:

@@ -18,7 +18,11 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
+from myosuite.envs.myo.tasks.challenge.challenge_common import (
+    MuscleActionMixin,
+    mean_effort,
+    solved_step_count,
+)
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
@@ -478,6 +482,27 @@ class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         obs_dict = self.get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
         return self._finalize_step(obs_dict, rwd_dict)
+
+    def get_metrics(self, paths: list) -> dict[str, float]:
+        """Success over the episode horizon and effort (as legacy ``baoding_v1``).
+
+        Args:
+            paths: Rollouts whose ``env_infos`` stack the per-step ``rwd_dict``
+                (``solved``, ``act_reg``).
+
+        Returns:
+            Dict with ``score`` (mean fraction of the horizon spent solved) and
+            ``effort``.
+        """
+        horizon = self.spec.max_episode_steps if self.spec is not None else None
+        score = np.mean(
+            [
+                solved_step_count(p)
+                / (horizon or len(np.ravel(p["env_infos"]["rwd_dict"]["solved"])))
+                for p in paths
+            ]
+        )
+        return {"score": float(score), "effort": mean_effort(paths)}
 
     def reset(
         self,

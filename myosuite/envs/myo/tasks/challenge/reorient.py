@@ -16,7 +16,11 @@ import numpy as np
 
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
+from myosuite.envs.myo.tasks.challenge.challenge_common import (
+    MuscleActionMixin,
+    mean_effort,
+    solved_step_count,
+)
 from myosuite.physics.quat_math import euler2quat, mat2euler
 
 
@@ -259,6 +263,20 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             / abs(object_gpos + 1e-16)
             * (abs(self.object_default_pos) + del_size)
         )
+
+    def get_metrics(self, paths: list, successful_steps: int = 5) -> dict[str, float]:
+        """Success rate and effort over rollout paths (as legacy ``reorient_v0``).
+
+        Args:
+            paths: Rollouts whose ``env_infos`` stack the per-step ``rwd_dict``
+                (``solved``, ``act_reg``).
+            successful_steps: A path succeeds if it was solved on more steps.
+
+        Returns:
+            Dict with ``score`` (fraction of successful paths) and ``effort``.
+        """
+        score = np.mean([solved_step_count(p) > successful_steps for p in paths])
+        return {"score": float(score), "effort": mean_effort(paths)}
 
     def reset(
         self,
