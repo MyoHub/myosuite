@@ -357,6 +357,9 @@ def test_clip_frame_follows_cpu_step_counter(
 ) -> None:
     """After k control steps the clip frame is start + k, like the CPU twin.
 
+    The frame is held at the last one on the step that truncates at the clip end
+    (it no longer wraps to frame 0); the check stops there.
+
     The CPU env advances one frame per step (``_step_count``).  mjlab's old
     ``floor(float32 time / ctrl_dt)`` index lagged it on 691 of 1000 steps,
     first at step 7, repeating and then skipping frames.
@@ -369,10 +372,12 @@ def test_clip_frame_follows_cpu_step_counter(
     action = torch.zeros(env.num_envs, sum(env.action_manager.action_term_dim))
     for k in range(1, n_steps + 1):
         env.step(action)
-        frames = (start + k) % n_frames
+        frames = np.minimum(start + k, n_frames - 1)
         assert _clip_frames(env, clip) == frames.tolist(), f"step {k}"
         targets = target_fn(env).reshape(env.num_envs, -1, 3).cpu().numpy()
         np.testing.assert_array_equal(targets, clip.site_xpos[frames])
+        if (start + k >= n_frames - 1).any():  # a clip end truncates and resets
+            break
 
 
 # ---------------------------------------------------------------------------
