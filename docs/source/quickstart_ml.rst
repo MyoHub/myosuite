@@ -103,9 +103,13 @@ Resuming a run
 
 ``--agent.resume True`` continues training from a checkpoint of the same
 ``--agent.experiment-name`` (default: task-specific, e.g. ``myo_elbow_pose``),
-by default the most recent run's latest ``model_*.pt`` under
-``logs/rsl_rl/<experiment_name>/``. Use ``--agent.load-run <regex>`` and
-``--agent.load-checkpoint <regex>`` to pick a specific run or checkpoint instead.
+by default the latest ``model_*.pt`` of the most recent run *of this env id* under
+``logs/rsl_rl/<experiment_name>/``. Several env ids share an experiment name (e.g.
+the 12 ``myo_elbow_pose`` envs, whose Exo members have 7 actuators instead of 6), so
+runs whose ``params/env.yaml`` records another env id are skipped. Use
+``--agent.load-run <regex>`` and ``--agent.load-checkpoint <regex>`` to pick a
+specific run or checkpoint instead; a run named exactly is used even when it was
+trained on another env id (e.g. to warm-start ``...Fixed`` from ``...Random``).
 
 **Only the network weights and optimizer state are resumed.** The environment
 config (``--env.*``, including ``--env.scene.num-envs``) is rebuilt fresh from
@@ -131,7 +135,8 @@ means
 The training log uses the *sampled* policy (with exploration noise). For muscle tasks
 the *deterministic* policy (mean action) can behave very differently, and it is what
 you deploy, so ``--stop-on-success`` also requires the deterministic success rate to
-exceed the threshold.
+exceed the threshold (measured on the first two episodes of each of 256 separate envs,
+so envs that fail early do not count more often than the others).
 
 
 Evaluating a policy

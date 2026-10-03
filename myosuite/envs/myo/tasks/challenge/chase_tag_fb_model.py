@@ -20,15 +20,15 @@ be edited or depended on as an include target.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import mujoco
 import numpy as np
-from ml_collections import config_dict
 
-from myosuite.integrations.musclemimic.fullbody_model import (
-    build_mimic_fullbody_spec,
-    default_mimic_fullbody_config,
-)
 from myosuite.utils.asset_path_resolver import get_sim_asset_root
+
+if TYPE_CHECKING:
+    from ml_collections import config_dict
 
 # A single real mid-gait frame captured from ``myoFullBodyDirectional-v0``'s
 # own reset (seed=0) -- i.e. the actual state distribution
@@ -393,6 +393,13 @@ def build_fullbody_chasetag_spec(
     Returns:
         Uncompiled ``MjSpec`` ready for ``.compile()``.
     """
+    # Deferred: registering the env only needs this module, and the full-body
+    # builder pulls in ml_collections.
+    from myosuite.integrations.musclemimic.fullbody_model import (  # noqa: PLC0415
+        build_mimic_fullbody_spec,
+        default_mimic_fullbody_config,
+    )
+
     cfg = config if config is not None else default_mimic_fullbody_config()
     spec, _xml_path = build_mimic_fullbody_spec(cfg)
     # build_mimic_fullbody_spec returns the *uncompiled* spec, which keeps

@@ -567,6 +567,19 @@ wheels = [
 ]
 
 [[package]]
+name = "colorednoise"
+version = "2.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/bb/f1afcfa05ea976e260c5f7e2534391ed5b8c647752c4e52967b1e30bb013/colorednoise-2.2.0.tar.gz", hash = "sha256:6ffe0ab1baf3355df28cde497d0affb0fb0ef1cd0a0c41302e0d7e7814c187b6", size = 7329, upload-time = "2023-10-09T21:09:54.162Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4c/5d/a3112110f9d7cbd4f39e97816bdcbbc1b10f0b1c0c67562055f4ce531cda/colorednoise-2.2.0-py3-none-any.whl", hash = "sha256:7a39faab851889bd742668d3ba1502eec6a72008d6e004bd8fa6313355c7b487", size = 4617, upload-time = "2023-10-09T21:09:48.839Z" },
+]
+
+[[package]]
 name = "contourpy"
 version = "1.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3063,6 +3076,7 @@ name = "myosuite"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "colorednoise" },
     { name = "flatten-dict" },
     { name = "gymnasium" },
     { name = "h5py" },
@@ -3085,7 +3099,6 @@ dependencies = [
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pillow" },
-    { name = "pink-noise-rl" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -3200,6 +3213,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'" },
     { name = "brax", marker = "python_full_version >= '3.10' and sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=0.10.0" },
     { name = "click", specifier = ">=8.3.3" },
+    { name = "colorednoise", specifier = ">=2.2.0" },
     { name = "etils", extras = ["epath"], marker = "python_full_version >= '3.10' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=1.3.0" },
     { name = "flake8", marker = "extra == 'dev'" },
     { name = "flatten-dict" },
@@ -3245,7 +3259,6 @@ requires-dist = [
     { name = "packaging" },
     { name = "pandas" },
     { name = "pillow", specifier = ">=10.1.0" },
-    { name = "pink-noise-rl" },
     { name = "playground", marker = "python_full_version >= '3.10' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=0.0.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
     { name = "pytest-benchmark", marker = "extra == 'dev'", specifier = ">=4.0" },
@@ -4397,19 +4410,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/bf/20/22fe9384b7949e25fb1293bcfc84fb82590ff4ea6b37c95b24d26d793d86/pillow-12.3.0-pp311-pypy311_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:fbd139c8447d25dd750ab79ee274cc5e1fe80fc56340ab10b18a195e1b6eca3e", size = 5237776, upload-time = "2026-07-01T11:56:30.263Z" },
     { url = "https://files.pythonhosted.org/packages/08/14/f6ba68107680ffa74b39985f3f30884e41318fbc4250caa423c79b4788bb/pillow-12.3.0-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e7e480451b9fa137494bccd3a7d69adbe8ac65a87d97be61e11f1b1050a5bac3", size = 5860358, upload-time = "2026-07-01T11:56:32.68Z" },
     { url = "https://files.pythonhosted.org/packages/36/54/0169bc772ec491108b62f644f8ecf1fe5d8ae5ebafde2ee2142210166903/pillow-12.3.0-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:04f01d28a6aaff387bf842a13be313df23ba0597a44f1a976c9feb3c6ff4711a", size = 7231786, upload-time = "2026-07-01T11:56:35.046Z" },
-]
-
-[[package]]
-name = "pink-noise-rl"
-version = "2.0.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/cb/dc3ed54c7938bdf95f84e3b68e13e7297d6c80e071144f9d77132bfcb1f1/pink_noise_rl-2.0.1.tar.gz", hash = "sha256:50e3ffa2c35e21777f955b61fa9ed96843cf3c76f7ecf8298e7801a07b5cd9dd", size = 8854, upload-time = "2023-04-13T13:09:03.81Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/32/153022cf4374b4bb523d86fd9c9a398555f59cd49b8ca53d16d71e1c5d0c/pink_noise_rl-2.0.1-py3-none-any.whl", hash = "sha256:15b70e61f4670112769226d08512ccae0bdc1eaa30638b8c4f1ef66176f5ef32", size = 9042, upload-time = "2023-04-13T13:09:02.004Z" },
 ]
 
 [[package]]

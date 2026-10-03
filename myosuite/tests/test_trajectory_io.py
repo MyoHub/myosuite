@@ -144,6 +144,42 @@ def test_motion_clip_weights_load_and_survive_expansion(tmp_path: Path) -> None:
     np.testing.assert_allclose(expanded.weights, clip.weights)
 
 
+def test_expand_motion_clip_maps_full_width_clip_by_name(tmp_path: Path) -> None:
+    """A full-width clip stored in another joint order is reordered by name.
+
+    It used to be applied column by column (names ignored at full width).
+    """
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><body name="pelvis"><freejoint name="root"/>'
+        '<geom size="0.1"/><body name="shank"><joint name="knee" type="hinge"/>'
+        '<geom size="0.05"/></body></body></worldbody></mujoco>'
+    )
+    root_qpos = [1.0, 2.0, 3.0, 1.0, 0.0, 0.0, 0.0]
+    root_qvel = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    p = tmp_path / "reordered.npz"
+    np.savez(  # columns: knee, then the 7 / 6 root coordinates
+        p,
+        qpos=np.array([[0.5, *root_qpos]]),
+        qvel=np.array([[-0.5, *root_qvel]]),
+        joint_names=np.array(["knee", "root"]),
+    )
+    clip = load_motion_clip(p, expected_nq=model.nq, expected_nv=model.nv)
+    expanded = expand_motion_clip_to_model(clip, model)
+
+    np.testing.assert_allclose(expanded.qpos, [[*root_qpos, 0.5]])
+    np.testing.assert_allclose(expanded.qvel, [[*root_qvel, -0.5]])
+    np.testing.assert_allclose(expanded.qpos[:, expanded.qpos_model_indices], clip.qpos)
+    # Idempotent, and positional full-width clips (no names) are left as they are.
+    again = expand_motion_clip_to_model(expanded, model)
+    np.testing.assert_array_equal(again.qpos, expanded.qpos)
+    positional = MotionClip(
+        qpos=expanded.qpos, qvel=expanded.qvel, site_xpos=None, site_names=None
+    )
+    np.testing.assert_array_equal(
+        expand_motion_clip_to_model(positional, model).qpos, expanded.qpos
+    )
+
+
 def test_motion_clip_weights_must_match_the_frame_count() -> None:
     with pytest.raises(ValueError, match="weights"):
         MotionClip(

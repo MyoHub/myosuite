@@ -26,6 +26,7 @@ from myosuite.envs.myo.tasks.mimic.chasetag_obs import chasetag_obs_blocks
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.physics.quat_math import euler2quat, quat2euler, quat2mat
 from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.utils.colored_noise import ColoredNoiseProcess
 
 
 class Task(Enum):
@@ -75,9 +76,7 @@ class ChallengeOpponent:
         self.reset_opponent(rng=rng)
 
     def reset_noise_process(self) -> None:
-        import pink
-
-        self.noise_process = pink.ColoredNoiseProcess(
+        self.noise_process = ColoredNoiseProcess(
             beta=2, size=(2, 2000), scale=10, rng=self.rng
         )
 
@@ -219,9 +218,7 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         self.rng = rng
         self.opponent_probabilities = probabilities
         self.min_spawn_distance = min_spawn_distance
-        import pink
-
-        self.noise_process = pink.ColoredNoiseProcess(
+        self.noise_process = ColoredNoiseProcess(
             beta=2, size=(2, 2000), scale=10, rng=rng
         )
         self.chase_vel_range = chase_vel_range

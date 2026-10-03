@@ -55,6 +55,55 @@ def _run_is_for(run_dir: Path, env_id: str) -> bool:
     return not recorded or env_id in recorded
 
 
+def resume_checkpoint(
+    experiment_dir: Path,
+    env_id: str,
+    load_run: str = ".*",
+    load_checkpoint: str = "model_.*.pt",
+) -> Path:
+    """Checkpoint that ``scripts/train_mjlab.py <env_id> --agent.resume`` continues from.
+
+    mjlab's ``get_checkpoint_path`` picks the newest run of the experiment matching
+    *load_run*, whatever env id it was trained on. Here only runs trained on *env_id*
+    qualify (see :func:`_run_is_for`), unless *load_run* names a run exactly, and runs
+    without a checkpoint matching *load_checkpoint* (e.g. a run that crashed before
+    its first save) are skipped. The newest checkpoint of the newest such run wins.
+
+    Args:
+        experiment_dir: ``logs/rsl_rl/<experiment_name>``.
+        env_id: Task being trained.
+        load_run: Regex of run directory names (``--agent.load-run``).
+        load_checkpoint: Regex of checkpoint file names (``--agent.load-checkpoint``).
+
+    Returns:
+        Path of the checkpoint.
+
+    Raises:
+        ValueError: No run qualifies.
+    """
+    from mjlab.utils.os import get_checkpoint_path  # noqa: PLC0415  (optional dep)
+
+    runs = sorted(
+        run.name
+        for run in (experiment_dir.iterdir() if experiment_dir.is_dir() else ())
+        if run.is_dir()
+        and run.name != "wandb_checkpoints"  # mjlab's W&B download cache
+        and re.match(load_run, run.name)
+        and (run.name == load_run or _run_is_for(run, env_id))
+        and any(re.match(load_checkpoint, f.name) for f in run.iterdir())
+    )
+    if not runs:
+        raise ValueError(
+            f"No run of {env_id} in {experiment_dir} matches {load_run!r} and holds a "
+            f"checkpoint matching {load_checkpoint!r} (runs whose params/env.yaml "
+            "records another env id are skipped; pass --agent.load-run <run> to pick "
+            "one explicitly)."
+        )
+    return get_checkpoint_path(
+        experiment_dir, re.escape(runs[-1]) + "$", load_checkpoint
+    )
+
+
 def find_checkpoint(
     env_id: str,
     checkpoint: str | Path | None = None,

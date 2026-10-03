@@ -35,19 +35,17 @@ import logging
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import mujoco
 import numpy as np
 
 from myosuite.core.trajectory_io import MotionClip
-from myosuite.integrations.musclemimic.fullbody_local_policy import (
-    FullbodyObsAdapter,
-    LocalPolicyRunner,
-    fullbody_history_settings_from_metadata,
-    fullbody_obs_adapter_params_from_metadata,
-    load_local_policy_artifacts,
-    read_checkpoint_config_metadata,
-)
+
+if TYPE_CHECKING:
+    from myosuite.integrations.musclemimic.fullbody_local_policy import (
+        LocalPolicyRunner,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +149,17 @@ def load_teacher_runner(
     Returns:
         A ready-to-step :class:`LocalPolicyRunner`.
     """
+    # Deferred: chasetag_obs imports this module for _directional_obs only, and
+    # the policy runtime pulls in scipy.spatial.
+    from myosuite.integrations.musclemimic.fullbody_local_policy import (  # noqa: PLC0415
+        FullbodyObsAdapter,
+        LocalPolicyRunner,
+        fullbody_history_settings_from_metadata,
+        fullbody_obs_adapter_params_from_metadata,
+        load_local_policy_artifacts,
+        read_checkpoint_config_metadata,
+    )
+
     artifacts = load_local_policy_artifacts(checkpoint_root)
     metadata = read_checkpoint_config_metadata(checkpoint_root)
     goal_params = fullbody_obs_adapter_params_from_metadata(metadata)

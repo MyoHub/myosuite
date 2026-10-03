@@ -102,3 +102,4 @@ These custom implementations exist for documented reasons — do not replace wit
 | `register_mjlab_tasks.py` | `MyoMuscleActivationAction` | Tendon-name mismatch in `_find_targets`; `XmlMuscleActuatorCfg` insufficient |
 | `physics/quat_math.py` | entire module | numpy + JAX dual-backend predating `mujoco.mju_*`; used in MJX reward terms |
 | `integrations/musclemimic/running_stats.py` | `RunningMeanStd` | Must match stats embedded in `.pt` checkpoints exactly |
+| `utils/colored_noise.py` | `ColoredNoiseProcess` | pink-noise-rl's buffered process on top of `colorednoise.powerlaw_psd_gaussian`: `import pink` loads stable-baselines3 and torch (seconds per env worker). Bit-identical, golden-tested |

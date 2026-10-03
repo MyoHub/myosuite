@@ -69,7 +69,7 @@ import numpy as np
 
 from myosuite.core.trajectory_io import MotionClip
 from myosuite.physics.quat_math import quat2mat
-from myosuite.terms.mimic_reward import MimicTrackingConfig
+from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
 
 if TYPE_CHECKING:
     from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
@@ -836,7 +836,7 @@ def _mimic_tracking_reward(
 ) -> Callable[[Any], Any]:
     """Dense reward ``exp(-scale * mean(||target - pos||))`` matching MJX base.
 
-    Works in both random and trajectory modes.
+    Works in both random and trajectory modes; the same term as the CPU twin.
     """
 
     def _fn(env: Any) -> Any:
@@ -849,9 +849,9 @@ def _mimic_tracking_reward(
         assert tgt is not None
         data = env.scene[entity_name].data.data
         pos = data.site_xpos[:, ids, :]
-        err = tgt - pos
-        dist = torch.sqrt(torch.sum(err * err, dim=-1)).mean(dim=-1)  # (N,)
-        return torch.exp(-tracking.reward_scale * dist)
+        return mimic_site_tracking_reward(
+            torch, pos, tgt, scale=tracking.reward_scale
+        )  # (N,)
 
     return _fn
 
@@ -1397,6 +1397,10 @@ def _make_mimic_env_cfg(
     from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
         musclemimic_mujoco_cfg,
     )
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp.terminations import (
+        SYNC_TERM,
+        sync_forward,
+    )
 
     _require_supported_reward_mode(reward_mode)
 
@@ -1463,6 +1467,9 @@ def _make_mimic_env_cfg(
         ),
     }
     terminations = {
+        # Site positions are derived quantities: refresh them before the reward and
+        # the deviation check score them (the CPU twin runs mj_forward after stepping).
+        SYNC_TERM: TerminationTermCfg(func=sync_forward),
         "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
     }
     if clip is not None:

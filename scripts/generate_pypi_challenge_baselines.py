@@ -52,19 +52,26 @@ _CORE_CHALLENGE_ENVS = [
 _VARIANT_PREFIXES = ["myoFati", "myoSarc"]
 
 
+def _venv_python(venv_dir: Path) -> Path:
+    """Interpreter of a venv: ``Scripts\\python.exe`` on Windows, else ``bin/python``."""
+    if sys.platform == "win32":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
+
+
 def _build_venv(venv_dir: Path, pypi_version: str | None) -> Path:
-    """Create a fresh venv and install the requested myosuite from PyPI."""
+    """Create a fresh venv, install the requested myosuite from PyPI, return its python."""
     print(f"[setup] Creating venv at {venv_dir} …")
     venv.create(str(venv_dir), with_pip=True, clear=True)
 
-    pip = venv_dir / "bin" / "pip"
+    python = _venv_python(venv_dir)
     pkg = f"myosuite=={pypi_version}" if pypi_version else "myosuite"
     print(f"[setup] Installing {pkg} …")
     subprocess.run(
-        [str(pip), "install", "--quiet", pkg],
+        [str(python), "-m", "pip", "install", "--quiet", pkg],
         check=True,
     )
-    return venv_dir / "bin" / "python"
+    return python
 
 
 # Inner script executed inside the isolated venv.
@@ -104,11 +111,16 @@ _INNER_SCRIPT = textwrap.dedent(
         if isinstance(raw, dict):
             obs_dict_keys = sorted(raw.keys())
 
-        # Run multiple episodes to get stable reward statistics.
+        # Run multiple episodes to get stable reward statistics. The actions are the
+        # seeded stream test_reward_mean_sign_vs_pypi replays (reset(seed) does not
+        # seed action_space.sample()).
+        action_rng = np.random.default_rng(seed)
         all_rewards: list[float] = []
         steps = []
         for step_i in range(n_steps):
-            action = env.action_space.sample()
+            action = action_rng.uniform(
+                env.action_space.low, env.action_space.high, size=env.action_space.shape
+            )
             obs_next, rwd, terminated, truncated, info = env.step(action)
             all_rewards.append(float(rwd))
             steps.append({
@@ -151,8 +163,9 @@ def run(
     out_dir: Path,
 ) -> dict[str, dict]:
     """Execute the inner script in the isolated venv."""
+    # UTF-8 as Python reads it back (the script is not ASCII; Windows' default is cp1252).
     with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", delete=False, prefix="pypi_inner_"
+        mode="w", suffix=".py", delete=False, prefix="pypi_inner_", encoding="utf-8"
     ) as tmp:
         tmp.write(_INNER_SCRIPT)
         script_path = tmp.name

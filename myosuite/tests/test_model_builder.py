@@ -542,3 +542,100 @@ def test_motor_finger_recipe_scales_the_motor_gears() -> None:
             env.unwrapped.model.actuator_gear[:, 0], stock * _MOTOR_FINGER_GEAR_SCALE
         )
         env.close()
+
+
+_CYLINDER_XML = """
+<mujoco>
+  <option timestep="0.002"/>
+  <worldbody>
+    <body name="link">
+      <joint type="hinge"/>
+      <geom name="cyl" type="cylinder" size="0.05 0.1"/>
+      <geom name="box" type="box" size="0.05 0.05 0.05" pos="0 0 0.2"/>
+    </body>
+  </worldbody>
+</mujoco>
+"""
+
+
+def test_set_timestep_sets_option_timestep():
+    """set_timestep() overrides <option timestep> (it used to crash build())."""
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, spec = ModelBuilder.from_xml_string(_CYLINDER_XML).set_timestep(0.01).build()
+    assert model.opt.timestep == pytest.approx(0.01)
+    assert spec.option.timestep == pytest.approx(0.01)
+
+
+def test_disable_cylinder_contacts_clears_only_cylinders():
+    """disable_cylinder_contacts() zeroes contype/conaffinity of cylinder geoms only."""
+    import mujoco
+
+    from myosuite.core.model_builder import ModelBuilder
+
+    def _add_cylinder_prop(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+        spec.worldbody.add_geom(
+            name="prop", type=mujoco.mjtGeom.mjGEOM_CYLINDER, size=[0.02, 0.02, 0]
+        )
+        return spec
+
+    model, _ = (
+        ModelBuilder.from_xml_string(_CYLINDER_XML)
+        .apply_transform(_add_cylinder_prop)
+        .disable_cylinder_contacts()
+        .build()
+    )
+    for name, enabled in (("cyl", 0), ("prop", 0), ("box", 1)):
+        geom = model.geom(name)
+        assert (int(geom.contype[0]), int(geom.conaffinity[0])) == (enabled, enabled)
+
+
+def test_build_twice_leaves_seed_and_attached_specs_untouched():
+    """build() works on copies: a builder can be built again with the same result."""
+    import mujoco
+
+    from myosuite.core.model_builder import ModelBuilder
+
+    seed = mujoco.MjSpec.from_string(_CYLINDER_XML)
+    child = mujoco.MjSpec.from_string(
+        '<mujoco><worldbody><body name="child"><geom size="0.01"/></body>'
+        "</worldbody></mujoco>"
+    )
+    builder = (
+        ModelBuilder.from_spec(seed)
+        .attach_spec(child, name="child")
+        .add_free_body("ball", pos=[0, 0, 1])
+    )
+    first, _ = builder.build()
+    second, _ = builder.build()  # raised "repeated name 'ball'" before
+    assert [b.name for b in seed.bodies] == ["world", "link"]
+    names = [first.body(i).name for i in range(first.nbody)]
+    assert names == [second.body(i).name for i in range(second.nbody)]
+    assert {"link", "child", "ball"} <= set(names)
+
+
+def test_try_myo_sim_compose_raises_compose_errors(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """A failing compose is raised; only an unavailable builder falls back (logged)."""
+    import sys
+    import types
+
+    from myosuite.core import model_builder
+
+    def _broken() -> None:
+        raise ValueError("bad compose")
+
+    def _unavailable() -> None:
+        raise ModuleNotFoundError("No module named 'myo_sim.build'")
+
+    fake = types.ModuleType("myo_sim")
+    fake.FRAGMENT_SPEC_BUILDERS = {"hand": _broken, "myolegs": _unavailable}
+    monkeypatch.setitem(sys.modules, "myo_sim", fake)
+
+    with pytest.raises(ValueError, match="bad compose"):
+        model_builder._try_myo_sim_compose("hand")
+    with caplog.at_level("WARNING", logger=model_builder.__name__):
+        assert model_builder._try_myo_sim_compose("leg") is None
+    assert "falling back" in caplog.text
+    assert model_builder._try_myo_sim_compose("elbow") is None

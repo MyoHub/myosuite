@@ -19,4 +19,7 @@ sphinx:
 # https://docs.readthedocs.io/en/stable/guides/reproducible-builds.html
 python:
   install:
+  # The package and its dependencies, so autodoc can import myosuite (api/*.rst).
+  - method: pip
+    path: .
   - requirements: docs/requirements.txt

@@ -105,24 +105,33 @@ def gpu_train(iterations: int) -> None:
     print("[GPU] done — checkpoints under logs/rsl_rl/myo_leg_directional_fwd/")
 
 
-def cpu_playback(checkpoint: str) -> None:
-    """Load a GPU-trained rsl_rl checkpoint and evaluate it on the CPU env.
+def cpu_playback(checkpoint: str, episodes: int) -> None:
+    """Roll a GPU-trained rsl_rl checkpoint out on the CPU env (deterministic actor).
 
-    The obs/action layout is identical across backends, so the policy loads
-    directly. (Actor MLP weights are under ``model_state_dict``.)
+    The obs/action layout is identical across backends, so the actor (rebuilt from
+    the checkpoint's ``actor_state_dict`` by ``load_policy``) drives the CPU env
+    unchanged. ``scripts/eval_mjlab_policy.py myoLegDirectionalForward-v0
+    --checkpoint CKPT --backend cpu`` does the same over a grid of envs, with video.
     """
+    from pathlib import Path
+
     import gymnasium as gym
-    import numpy as np
-    import torch
 
     import myosuite  # noqa: F401
+    from myosuite.utils.checkpoint_utils import load_policy
 
     env = gym.make(ENV_ID)
-    obs, _ = env.reset(seed=0)
-    ckpt = torch.load(checkpoint, map_location="cpu")
-    print(f"[CPU] loaded checkpoint keys: {list(ckpt)[:4]} ...")
-    print("[CPU] wire the actor MLP from ckpt['model_state_dict'] to map obs->action;")
-    print("      the 153-d obs and 80-d muscle action match the training env exactly.")
+    policy = load_policy(env, Path(checkpoint))  # model_*.pt or its run directory
+    for episode in range(episodes):
+        obs, _ = env.reset(seed=episode)
+        total, steps, done, info = 0.0, 0, False, {}
+        while not done:
+            obs, reward, terminated, truncated, info = env.step(policy(obs))
+            total += float(reward)
+            steps += 1
+            done = terminated or truncated
+        print(f"[CPU] episode {episode}: return {total:.2f} over {steps} steps, "
+              f"solved at the end: {bool(info.get('solved', False))}")
     env.close()
 
 
@@ -132,13 +141,15 @@ def main() -> None:
     p.add_argument("--cpu-demo", action="store_true", help="roll out a random policy on CPU")
     p.add_argument("--gpu-train", action="store_true", help="train on mjlab GPU (needs CUDA)")
     p.add_argument("--iterations", type=int, default=5, help="mjlab training iterations")
-    p.add_argument("--cpu-playback", metavar="CKPT", help="evaluate a trained checkpoint on CPU")
+    p.add_argument("--cpu-playback", metavar="CKPT",
+                   help="evaluate a trained checkpoint (model_*.pt or run dir) on CPU")
+    p.add_argument("--episodes", type=int, default=2, help="CPU playback episodes")
     args = p.parse_args()
 
     if args.gpu_train:
         gpu_train(args.iterations)
     elif args.cpu_playback:
-        cpu_playback(args.cpu_playback)
+        cpu_playback(args.cpu_playback, args.episodes)
     else:
         cpu_demo()  # default
 

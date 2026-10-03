@@ -23,6 +23,7 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.physics.quat_math import euler2quat, quat2euler
 from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.utils.colored_noise import ColoredNoiseProcess
 
 
 class GoalKeeper:
@@ -63,9 +64,7 @@ class GoalKeeper:
         self.reset_goalkeeper(rng=rng)
 
     def reset_noise_process(self) -> None:
-        import pink
-
-        self.noise_process = pink.ColoredNoiseProcess(
+        self.noise_process = ColoredNoiseProcess(
             beta=2, size=(2, 10), scale=self.block_velocity, rng=self.rng
         )
 
