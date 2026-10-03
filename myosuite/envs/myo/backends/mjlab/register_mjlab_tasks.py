@@ -379,12 +379,12 @@ def _powerlaw_psd_gaussian(
     device: str | torch.device,
     normals: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Torch port of ``pink.colorednoise.powerlaw_psd_gaussian`` (``fmin=0``).
+    """Torch port of ``colorednoise.powerlaw_psd_gaussian`` (``fmin=0``).
 
     Unit-variance Gaussian ``(1/f)**exponent`` noise along the last axis
-    (Timmer & Koenig 1995), generated on *device*: pink and colorednoise are
-    numpy-only. ``test_chasetag_fbp2_parity`` checks it against pink for the
-    same normal draws.
+    (Timmer & Koenig 1995), generated on *device*: colorednoise is numpy-only.
+    ``test_chasetag_fbp2_parity`` checks it against colorednoise for the same
+    normal draws.
 
     Args:
         exponent: Power-law exponent (2: Brownian noise).
@@ -398,7 +398,7 @@ def _powerlaw_psd_gaussian(
     """
     samples = shape[-1]
     freqs = torch.fft.rfftfreq(samples, dtype=torch.float64, device=device)
-    freqs[0] = 1.0 / samples  # pink's low-frequency cutoff 1 / samples
+    freqs[0] = 1.0 / samples  # colorednoise's low-frequency cutoff 1 / samples
     s_scale = freqs ** (-exponent / 2.0)
     w = s_scale[1:].clone()
     w[-1] *= (1 + samples % 2) / 2.0
