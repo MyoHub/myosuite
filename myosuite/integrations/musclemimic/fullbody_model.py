@@ -313,7 +313,9 @@ def _apply_mimic_fullbody_spec_changes(
     return spec
 
 
-@cached_spec()
+# Kept from the first load: the edited full body is small (~6 MiB) and an mjlab
+# env construction loads it several times.
+@cached_spec(min_uses=1)
 def _mimic_fullbody_spec(xml_path: str, disable_fingers: bool) -> mujoco.MjSpec:
     """Edited full-body spec of *xml_path* (absolute), loaded once per process."""
     # Keep only ground from the upstream MuscleMimic scene, preserving floor

@@ -62,10 +62,11 @@ from __future__ import annotations
 import functools
 import logging
 import os
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeAlias
-from collections.abc import Callable
+from typing import Any, NamedTuple, TypeAlias
+from collections.abc import Callable, Hashable
 
 import numpy as np
 import mujoco
@@ -914,22 +915,43 @@ def list_recipes() -> list[str]:
 _SPEC_CACHE_CLEARS: list[Callable[[], None]] = []
 
 
+class SpecCacheInfo(NamedTuple):
+    """Statistics of a :func:`cached_spec` builder (``currsize``: specs kept)."""
+
+    hits: int
+    misses: int
+    maxsize: int | None
+    currsize: int
+
+
+def _trim(entries: OrderedDict, maxsize: int | None) -> None:
+    """Evict the least recently used entries beyond *maxsize*."""
+    while maxsize is not None and len(entries) > maxsize:
+        entries.popitem(last=False)
+
+
 def cached_spec(
     maxsize: int | None = 32,
+    min_uses: int = 2,
 ) -> Callable[[Callable[..., mujoco.MjSpec]], Callable[..., mujoco.MjSpec]]:
-    """Memoize a deterministic ``MjSpec`` builder: one build per argument set.
+    """Memoize a deterministic ``MjSpec`` builder.
 
     The builder's arguments must capture every input that changes the spec it
-    builds. The cache is process-local and every call returns a private
-    :meth:`mujoco.MjSpec.copy`, so callers may edit and compile it freely.
-    Calls with unhashable arguments build without the cache. Setting the
-    environment variable ``MYOSUITE_SPEC_CACHE=0`` disables caching, e.g. in
-    vector-env worker processes that make a single env, where a cached spec
-    only adds memory.
+    builds. A spec is kept from the *min_uses*-th build of its arguments on, so
+    with the default of 2 a process that builds a model once (e.g. a vector-env
+    worker making one env) keeps nothing, and one that builds it repeatedly
+    (tests, in-process vector envs, train and eval envs) builds it twice. Every
+    call returns a private spec that callers may edit and compile freely: the
+    fresh build until the spec is kept, a :meth:`mujoco.MjSpec.copy` after.
+    The cache is process-local; calls with unhashable arguments build without
+    it, and setting the environment variable ``MYOSUITE_SPEC_CACHE=0`` disables
+    it.
 
     Args:
         maxsize: Most specs kept, least recently used evicted first; ``None``
             keeps all.
+        min_uses: Builds of an argument set before its spec is kept; 1 keeps
+            the first build (small specs that a process rebuilds anyway).
 
     Returns:
         Decorator; the wrapped builder exposes ``cache_info`` and ``cache_clear``.
@@ -943,21 +965,52 @@ def cached_spec(
     def decorator(
         build: Callable[..., mujoco.MjSpec],
     ) -> Callable[..., mujoco.MjSpec]:
-        cached = functools.lru_cache(maxsize=maxsize, typed=True)(build)
-        _SPEC_CACHE_CLEARS.append(cached.cache_clear)
+        specs: OrderedDict[Hashable, mujoco.MjSpec] = OrderedDict()
+        builds: OrderedDict[Hashable, int] = OrderedDict()  # keys not kept yet
+        stats = {"hits": 0, "misses": 0}
+
+        def cache_clear() -> None:
+            specs.clear()
+            builds.clear()
+            stats.update(hits=0, misses=0)
+
+        def cache_info() -> SpecCacheInfo:
+            return SpecCacheInfo(stats["hits"], stats["misses"], maxsize, len(specs))
+
+        _SPEC_CACHE_CLEARS.append(cache_clear)
 
         @functools.wraps(build)
         def wrapper(*args: Any, **kwargs: Any) -> mujoco.MjSpec:
             if os.environ.get("MYOSUITE_SPEC_CACHE") == "0":
                 return build(*args, **kwargs)
+            # Typed, as functools.lru_cache(typed=True): 1 and 1.0 differ.
+            key = (
+                args,
+                tuple(kwargs.items()),
+                tuple(map(type, args)),
+                tuple(map(type, kwargs.values())),
+            )
             try:
-                hash((args, tuple(kwargs.items())))
+                hash(key)
             except TypeError:
                 return build(*args, **kwargs)
-            return cached(*args, **kwargs).copy()
+            if key in specs:
+                specs.move_to_end(key)
+                stats["hits"] += 1
+                return specs[key].copy()
+            stats["misses"] += 1
+            spec = build(*args, **kwargs)
+            uses = builds.pop(key, 0) + 1
+            if uses < min_uses:
+                builds[key] = uses
+                _trim(builds, maxsize)
+                return spec
+            specs[key] = spec
+            _trim(specs, maxsize)
+            return spec.copy()
 
-        wrapper.cache_info = cached.cache_info  # type: ignore[attr-defined]
-        wrapper.cache_clear = cached.cache_clear  # type: ignore[attr-defined]
+        wrapper.cache_info = cache_info  # type: ignore[attr-defined]
+        wrapper.cache_clear = cache_clear  # type: ignore[attr-defined]
         return wrapper
 
     return decorator
@@ -1005,8 +1058,9 @@ def build_from_recipe(
 ) -> tuple[mujoco.MjModel, mujoco.MjSpec]:
     """Build a model from a named recipe.
 
-    The spec is built once per recipe, edit, working directory and kwargs in
-    a process; every call compiles a private copy of it.
+    From its second build in a process (same recipe, edit, working directory
+    and kwargs), the spec is kept and every call compiles a private copy of it
+    (see :func:`cached_spec`).
 
     Args:
         name: Recipe name registered via @model_recipe.

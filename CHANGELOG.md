@@ -127,16 +127,16 @@ full commit list.
   check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
   stale.
 * **`gym.make` reuses built model specs.** `build_from_recipe` (now with an optional `edit_fn`) and
-  `build_mimic_fullbody_spec` build each spec once per process and give every env a private
+  `build_mimic_fullbody_spec` keep the spec they build and give every later env a private
   `MjSpec.copy()` to compile (`ModelBuilder.build_spec`, `cached_spec`, `clear_spec_caches`); the
-  compiled models and rollouts are bit-identical to a fresh build. Measured back to back under the
-  same machine load, a repeated make takes 0.26 s instead of 4.5 s for TableTennis, 0.24 s instead of
-  3.9 s for ChaseTagFBP2, 0.20 s instead of 3.8 s for the Mimic full body, 0.16 s instead of 2.4 s
-  for ArmReach, 0.08 s instead of 0.5 s for the hand recipe envs and 1.6 s instead of 16.3 s for
-  ChaseTagFBVs (four full-body loads per make before); making all 225 ids twice takes 113 s instead
-  of 350 s. The cache holds one spec per model (TableTennis ~165 MiB, ArmReach ~105 MiB, hand
-  ~55 MiB, full body ~6 MiB); set `MYOSUITE_SPEC_CACHE=0` in processes that make a single env, such
-  as vector-env workers.
+  compiled models and rollouts are bit-identical to a fresh build. Recipe specs are kept from their
+  second build, so a process that makes an env once (a vector-env worker) uses no extra memory, and
+  one that makes it repeatedly holds one spec (TableTennis ~165 MiB, ArmReach ~105 MiB, hand
+  ~55 MiB); the small full-body spec (~6 MiB) is kept from its first load. In a fresh process the
+  third make of an id takes 0.37 s instead of 2.8 s for TableTennis, 0.20 s instead of 2.5 s for
+  ArmReach and 0.06 s instead of 0.35 s for the hand recipe envs; a repeated ChaseTagFBP2 or Mimic
+  full-body make takes about 0.2 s instead of 3.8 s, and ChaseTagFBVs, which loaded the full body
+  four times per make, 1.6 s instead of 16.3 s. `MYOSUITE_SPEC_CACHE=0` turns the caches off.
 
 ### Fixed
 

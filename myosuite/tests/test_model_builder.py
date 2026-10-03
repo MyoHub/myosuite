@@ -531,21 +531,26 @@ def _counting_recipe(calls: list[int]):
     return _recipe
 
 
-def test_build_from_recipe_builds_once_and_returns_private_copies(monkeypatch):
-    """A recipe is built once per process; each call gets its own spec and model."""
+def test_build_from_recipe_keeps_the_spec_from_its_second_build(monkeypatch):
+    """A recipe is built at most twice per process; each call gets its own spec and model."""
     from myosuite.core import model_builder
 
     calls: list[int] = []
     monkeypatch.setitem(
         model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
     )
+    kept = model_builder._recipe_spec.cache_info().currsize
+    model_builder.build_from_recipe("_test_counting")
+    assert model_builder._recipe_spec.cache_info().currsize == kept
     model_a, spec_a = model_builder.build_from_recipe("_test_counting")
     spec_a.worldbody.add_body(name="edit_of_a")
     spec_a.geoms[0].size = [0.5, 0.5, 0.5]
     model_a.geom_size[:] = 9.0
     model_b, spec_b = model_builder.build_from_recipe("_test_counting")
+    model_builder.build_from_recipe("_test_counting")
 
-    assert len(calls) == 1
+    assert len(calls) == 2
+    assert model_builder._recipe_spec.cache_info().currsize == kept + 1
     assert spec_b is not spec_a and model_b is not model_a
     assert spec_b.body("edit_of_a") is None
     np.testing.assert_array_equal(model_b.geom_size, [[0.1, 0.1, 0.1]])
@@ -560,14 +565,17 @@ def test_build_from_recipe_cache_keys_recipe_and_cwd(monkeypatch, tmp_path):
     monkeypatch.setitem(
         model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
     )
-    model_builder.build_from_recipe("_test_counting")
+    for _ in range(3):
+        model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 2  # kept from the second build on
     monkeypatch.chdir(tmp_path)
     model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 3
     monkeypatch.setitem(
         model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
     )
     model_builder.build_from_recipe("_test_counting")
-    assert len(calls) == 3
+    assert len(calls) == 4
 
 
 def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
@@ -584,12 +592,14 @@ def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
         edits.append(1)
         spec.worldbody.add_site(name="edited")
 
-    edited_a, _ = model_builder.build_from_recipe("_test_counting", edit_fn=_edit)
-    edited_b, _ = model_builder.build_from_recipe("_test_counting", edit_fn=_edit)
+    edited = [
+        model_builder.build_from_recipe("_test_counting", edit_fn=_edit)[0]
+        for _ in range(3)
+    ]
     plain, _ = model_builder.build_from_recipe("_test_counting")
-    assert len(edits) == 1
-    assert len(calls) == 2
-    assert edited_a.nsite == edited_b.nsite == 1
+    assert len(edits) == 2  # the third edited call is served from the cache
+    assert len(calls) == 3
+    assert [model.nsite for model in edited] == [1, 1, 1]
     assert plain.nsite == 0
 
 
@@ -603,9 +613,9 @@ def test_spec_cache_opt_out_builds_every_call(monkeypatch):
         model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
     )
     size = model_builder._recipe_spec.cache_info().currsize
-    model_builder.build_from_recipe("_test_counting")
-    model_builder.build_from_recipe("_test_counting")
-    assert len(calls) == 2
+    for _ in range(3):
+        model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 3
     assert model_builder._recipe_spec.cache_info().currsize == size
 
 
@@ -617,7 +627,7 @@ def test_cached_spec_unhashable_arguments_and_clear():
 
     calls: list[object] = []
 
-    @cached_spec()
+    @cached_spec(min_uses=1)
     def _build(size) -> mujoco.MjSpec:
         calls.append(size)
         spec = mujoco.MjSpec()
@@ -632,6 +642,32 @@ def test_cached_spec_unhashable_arguments_and_clear():
     clear_spec_caches()
     _build((0.1, 0.0, 0.0))
     assert len(calls) == 4
+
+
+def test_cached_spec_keeps_a_spec_from_its_second_build():
+    """A first build is handed over and not kept; the second is kept and copied out."""
+    import mujoco
+
+    from myosuite.core.model_builder import cached_spec
+
+    built: list[mujoco.MjSpec] = []
+
+    @cached_spec(maxsize=1)
+    def _build(name: str) -> mujoco.MjSpec:
+        spec = mujoco.MjSpec()
+        spec.worldbody.add_body(name=name)
+        built.append(spec)
+        return spec
+
+    assert _build("a") is built[0]
+    assert _build.cache_info().currsize == 0
+    second, third = _build("a"), _build("a")
+    assert len(built) == 2 and _build.cache_info().currsize == 1
+    assert second is not built[1] and third is not built[1] and second is not third
+    _build("b")
+    _build("b")  # kept, evicts "a" (maxsize=1)
+    _build("a")
+    assert len(built) == 5
 
 
 def test_motor_finger_recipe_scales_the_motor_gears() -> None:

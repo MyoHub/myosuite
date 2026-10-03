@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""gym.make reuses cached model specs: one build per key, a private copy per env."""
+"""gym.make reuses cached model specs: kept from the second build, a private copy per env."""
 
 from __future__ import annotations
 
@@ -65,18 +65,29 @@ def _make_model(env_id: str) -> tuple[gym.Env, mujoco.MjModel]:
     return env, env.unwrapped.model
 
 
-def test_tabletennis_builds_the_recipe_once_for_two_makes(monkeypatch, tmp_path):
-    """Two makes build the TableTennis body once and compile equal models."""
+def test_tabletennis_builds_the_recipe_twice_for_three_makes(monkeypatch, tmp_path):
+    """The TableTennis body is kept from its second build; all makes compile equal models."""
     # A new working directory is a new recipe cache key, so the first make builds.
     monkeypatch.chdir(tmp_path)
     calls = _count_calls(monkeypatch, model_recipes, "_tabletennis_body_spec")
-    env_a, model_a = _make_model(TT_P0)
-    env_b, model_b = _make_model(TT_P0)
-    assert len(calls) == 1
-    assert model_b is not model_a
-    _assert_same_model(model_a, model_b)
-    env_a.close()
-    env_b.close()
+    envs, models = zip(*(_make_model(TT_P0) for _ in range(3)))
+    assert len(calls) == 2
+    assert models[2] is not models[1]
+    for model in models[1:]:
+        _assert_same_model(models[0], model)
+    for env in envs:
+        env.close()
+
+
+def test_a_single_make_keeps_no_recipe_spec(monkeypatch, tmp_path):
+    """A process that makes TableTennis once (a vector-env worker) caches nothing."""
+    from myosuite.core.model_builder import _recipe_spec
+
+    monkeypatch.chdir(tmp_path)  # a recipe key no other test has built
+    kept = _recipe_spec.cache_info().currsize
+    env, _ = _make_model(TT_P0)
+    assert _recipe_spec.cache_info().currsize == kept
+    env.close()
 
 
 def test_chasetag_fb_loads_the_fullbody_once_for_two_makes(monkeypatch):
@@ -100,6 +111,7 @@ def test_cached_makes_share_no_model_or_spec_state(env_id: str) -> None:
     """Edits to one env's model and spec never reach a later make of the id."""
     from myosuite.core.model_builder import clear_spec_caches
 
+    warm = [_make_model(env_id)[0] for _ in range(2)]  # the spec is kept by now
     env_a, model_a = _make_model(env_id)
     model_a.geom_size[:] *= 2.0
     model_a.body_mass[:] *= 3.0
@@ -118,14 +130,15 @@ def test_cached_makes_share_no_model_or_spec_state(env_id: str) -> None:
     np.testing.assert_array_equal(
         spec_b.geoms[0].size, env_fresh.unwrapped._mj_spec.geoms[0].size
     )
-    for env in (env_a, env_b, env_fresh):
+    for env in (*warm, env_a, env_b, env_fresh):
         env.close()
 
 
 def test_muscle_condition_variant_does_not_reach_the_cached_spec() -> None:
     """The sarcopenia variant edits its own model copy, not the shared recipe spec."""
-    env_sarc, model_sarc = _make_model("myoSarcChallengeTableTennisP0-v0")
     env_base, model_base = _make_model(TT_P0)
+    _make_model(TT_P0)[0].close()  # the recipe spec is kept by now
+    env_sarc, model_sarc = _make_model("myoSarcChallengeTableTennisP0-v0")
     np.testing.assert_allclose(
         model_sarc.actuator_gainprm[:, 2], 0.5 * _peak_force(model_base)
     )
