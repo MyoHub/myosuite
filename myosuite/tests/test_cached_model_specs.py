@@ -65,10 +65,13 @@ def _make_model(env_id: str) -> tuple[gym.Env, mujoco.MjModel]:
     return env, env.unwrapped.model
 
 
-def test_tabletennis_builds_the_recipe_twice_for_three_makes(monkeypatch, tmp_path):
+def test_tabletennis_builds_the_recipe_twice_for_three_makes(monkeypatch):
     """The TableTennis body is kept from its second build; all makes compile equal models."""
-    # A new working directory is a new recipe cache key, so the first make builds.
-    monkeypatch.chdir(tmp_path)
+    from myosuite.core.model_builder import clear_spec_caches
+
+    # Start without kept specs or build counts. (Not a chdir to a new cache key: the
+    # TableTennis furniture mesh paths are cwd-relative and fail across drives.)
+    clear_spec_caches()
     calls = _count_calls(monkeypatch, model_recipes, "_tabletennis_body_spec")
     envs, models = zip(*(_make_model(TT_P0) for _ in range(3)))
     assert len(calls) == 2
@@ -79,14 +82,13 @@ def test_tabletennis_builds_the_recipe_twice_for_three_makes(monkeypatch, tmp_pa
         env.close()
 
 
-def test_a_single_make_keeps_no_recipe_spec(monkeypatch, tmp_path):
+def test_a_single_make_keeps_no_recipe_spec() -> None:
     """A process that makes TableTennis once (a vector-env worker) caches nothing."""
-    from myosuite.core.model_builder import _recipe_spec
+    from myosuite.core.model_builder import _recipe_spec, clear_spec_caches
 
-    monkeypatch.chdir(tmp_path)  # a recipe key no other test has built
-    kept = _recipe_spec.cache_info().currsize
+    clear_spec_caches()  # as in a fresh process
     env, _ = _make_model(TT_P0)
-    assert _recipe_spec.cache_info().currsize == kept
+    assert _recipe_spec.cache_info().currsize == 0
     env.close()
 
 
