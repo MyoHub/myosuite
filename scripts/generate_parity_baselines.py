@@ -40,6 +40,15 @@ import myosuite  # noqa: E402
 myosuite.register_all_envs()
 
 BASELINE_DIR = Path(__file__).parent.parent / "myosuite" / "tests" / "parity_baselines"
+DEFAULT_N_STEPS = 200
+# Per-env step counts used unless --n-steps is given. The finger-pose baselines
+# stop after their first 100-step episode: the second episode of the seed-42
+# action stream is ill-conditioned (a 1e-12 qpos offset at reset grows to 3e-3
+# in the obs), so it cannot be compared across platforms.
+N_STEPS_OVERRIDES: dict[str, int] = {
+    "myoFingerPoseFixed-v0": 100,
+    "myoFingerPoseRandom-v0": 100,
+}
 
 
 def _get_all_env_ids() -> list[str]:
@@ -58,7 +67,7 @@ def _get_all_env_ids() -> list[str]:
 
 def generate_baseline(
     env_id: str,
-    n_steps: int = 200,
+    n_steps: int = DEFAULT_N_STEPS,
     seed: int = 42,
     output_dir: Path = BASELINE_DIR,
 ) -> bool:
@@ -140,7 +149,11 @@ def generate_baseline(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--n-steps", type=int, default=200, help="Steps per environment (default: 200)"
+        "--n-steps",
+        type=int,
+        default=None,
+        help=f"Steps per environment (default: {DEFAULT_N_STEPS}, "
+        "or the env's N_STEPS_OVERRIDES entry)",
     )
     parser.add_argument(
         "--seed", type=int, default=42, help="Random seed (default: 42)"
@@ -173,9 +186,10 @@ def main() -> int:
 
     failures = []
     for env_id in sorted(env_ids):
+        n_steps = args.n_steps or N_STEPS_OVERRIDES.get(env_id, DEFAULT_N_STEPS)
         ok = generate_baseline(
             env_id,
-            n_steps=args.n_steps,
+            n_steps=n_steps,
             seed=args.seed,
             output_dir=args.output_dir,
         )

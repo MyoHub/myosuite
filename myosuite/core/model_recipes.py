@@ -787,7 +787,7 @@ def _apply_baoding_inertia_floor(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     (``clavphant``, and siblings using the same "tiny mass + huge inertia"
     joint-constrained idiom) left with a physically-absurd fused inertia
     after the arm-to-hand pruning step removes its stabilizing joints.
-    ``load_right_hand_from_arm_spec()`` doesn't expose the new parameter
+    ``build_right_hand_from_arm_spec()`` doesn't expose the new parameter
     directly, so apply it here via myo_sim's standalone utility instead.
     """
     from myo_sim.build.compose import apply_inertia_floor  # type: ignore[import-untyped]
