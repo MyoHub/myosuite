@@ -36,7 +36,6 @@ from myosuite.core.muscle_conditions import (  # noqa: E402
     TorchFatigueState,
 )
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
-from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0  # noqa: E402
 from myosuite.envs.myo.tasks.basic.arm.reach import ReachEnvV0  # noqa: E402
 from myosuite.envs.modular_env import ModularTaskEnv  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0  # noqa: E402
@@ -264,8 +263,6 @@ def _move_target_near(
         direction
     )
     cpu.target_jnt_value = target.copy()
-    if isinstance(cpu, PoseEnvV0):  # scores its reset-time copy of the target
-        cpu._task_state["target_angles"] = target.copy()
     return target
 
 
@@ -405,3 +402,17 @@ def test_every_twin_logs_a_success_metric() -> None:
         or load_env_cfg(e).metrics["success"].reduce != "last"
     ]
     assert not missing, f"twins without a 'last'-reduced success metric: {missing}"
+
+
+def test_twin_rejects_unknown_obs_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A twin fails loudly on an obs key it has no term for, as the CPU env does."""
+    from myosuite.envs.myo.backends.mjlab.tasks.pose.pose_env_cfg import (  # noqa: PLC0415
+        make_pose_env_cfg,
+    )
+
+    env_id = "myoElbowPose1D6MRandom-v0"
+    monkeypatch.setitem(
+        gym.spec(env_id).kwargs, "obs_keys", ["qpos", "no_such_obs_key"]
+    )
+    with pytest.raises(KeyError, match="no_such_obs_key"):
+        make_pose_env_cfg(env_id)

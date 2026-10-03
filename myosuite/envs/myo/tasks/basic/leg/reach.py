@@ -220,9 +220,7 @@ class LegReachEnvV0(MyoGymnasiumEnv, EzPickle):
 
     def _obs_dict_to_vec(self, obs_dict: dict[str, np.ndarray]) -> np.ndarray:
         """Flatten only obs_keys from obs dict to match legacy observation vector."""
-        return np.concatenate(
-            [np.atleast_1d(obs_dict[k]).ravel() for k in self.obs_keys if k in obs_dict]
-        )
+        return self._obs_keys_to_vec(obs_dict)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         reach_dist = float(np.linalg.norm(obs_dict["reach_err"]))

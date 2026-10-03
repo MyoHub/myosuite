@@ -223,13 +223,27 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
 
         gymnasium.Env.reset(self, seed=seed)
 
-        # Pre-populate task state so get_reward_dict is safe before first reset().
-        self._task_state: dict[str, Any] = {"target_angles": self.target_jnt_value}
-
         # ── Observation space (inferred from initial obs) ─────────────────
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self.get_obs_dict(self._accessor))
         self.observation_space = self._unbounded_obs_space(obs.size)
+
+    # ── Target ─────────────────────────────────────────────────────────────
+
+    @property
+    def target_jnt_value(self) -> np.ndarray | None:
+        """Target joint angles, scored by the reward and shown in ``pose_err``.
+
+        Stored once, as ``_task_state["target_angles"]`` (read by
+        :func:`~myosuite.terms.base_reward.pose_reward`), so setting it or
+        calling :meth:`update_target` moves the observed and the rewarded
+        target together.
+        """
+        return self._task_state.get("target_angles")
+
+    @target_jnt_value.setter
+    def target_jnt_value(self, value: np.ndarray | None) -> None:
+        self._task_state["target_angles"] = value
 
     # ── Private helpers ────────────────────────────────────────────────────
 
@@ -354,7 +368,7 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             "act": accessor.muscle_act(),
             "pose_err": pose_error_obs(accessor, self.target_jnt_value),
         }
-        return {k: obs[k] for k in self.obs_keys if k in obs}
+        return self._select_obs_keys(obs)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         """Compute the reward dictionary from the observation dict.
@@ -370,9 +384,6 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             Ordered dict with reward components including ``"dense"`` and
             ``"done"``.
         """
-        # Safety net: ensure task_state has target_angles if called before reset().
-        self._task_state.setdefault("target_angles", self.target_jnt_value)
-
         act_mag = np.linalg.norm(obs_dict.get("act", np.zeros(1)), axis=-1)
         if self.model.na != 0:
             act_mag = act_mag / self.model.na
