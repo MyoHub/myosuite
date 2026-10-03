@@ -977,25 +977,36 @@ def _recipe_spec(
     name: str,
     recipe_fn: Callable[[ModelBuilder], ModelBuilder],
     cwd: Path | None,
+    edit_fn: Callable[[mujoco.MjSpec], None] | None,
     params: tuple[tuple[str, Any], ...],
 ) -> mujoco.MjSpec:
-    """Uncompiled spec of recipe *name*.
+    """Uncompiled spec of recipe *name*, edited by *edit_fn* after a first compile.
 
     *recipe_fn* tells a re-registered recipe apart, *cwd* the relative asset
     paths a recipe may write (the TableTennis furniture meshes), *params* the
     reserved recipe kwargs.
     """
-    return recipe_fn(ModelBuilder()).build_spec()
+    spec = recipe_fn(ModelBuilder()).build_spec()
+    if edit_fn is not None:
+        spec.compile()  # the edit sees a compiled spec, as when envs applied it
+        edit_fn(spec)
+    return spec
 
 
-def build_from_recipe(name: str, **kwargs: Any) -> tuple[mujoco.MjModel, mujoco.MjSpec]:
+def build_from_recipe(
+    name: str,
+    edit_fn: Callable[[mujoco.MjSpec], None] | None = None,
+    **kwargs: Any,
+) -> tuple[mujoco.MjModel, mujoco.MjSpec]:
     """Build a model from a named recipe.
 
-    The spec is built once per recipe, working directory and kwargs in a
-    process; every call compiles a private copy of it.
+    The spec is built once per recipe, edit, working directory and kwargs in
+    a process; every call compiles a private copy of it.
 
     Args:
         name: Recipe name registered via @model_recipe.
+        edit_fn: In-place edit of the compiled recipe spec, e.g. the ``edit_fn``
+            kwarg of an env; built and cached with the recipe.
         **kwargs: Unused; reserved for future recipe parameterisation.
 
     Returns:
@@ -1004,5 +1015,7 @@ def build_from_recipe(name: str, **kwargs: Any) -> tuple[mujoco.MjModel, mujoco.
     Example:
         >>> model, spec = build_from_recipe("elbow_standard")
     """
-    spec = _recipe_spec(name, get_recipe(name), _cwd(), tuple(sorted(kwargs.items())))
+    spec = _recipe_spec(
+        name, get_recipe(name), _cwd(), edit_fn, tuple(sorted(kwargs.items()))
+    )
     return spec.compile(), spec

@@ -570,6 +570,29 @@ def test_build_from_recipe_cache_keys_recipe_and_cwd(monkeypatch, tmp_path):
     assert len(calls) == 3
 
 
+def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
+    """An edit_fn runs once, on the compiled recipe spec; the plain recipe stays unedited."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    edits: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+
+    def _edit(spec) -> None:
+        edits.append(1)
+        spec.worldbody.add_site(name="edited")
+
+    edited_a, _ = model_builder.build_from_recipe("_test_counting", edit_fn=_edit)
+    edited_b, _ = model_builder.build_from_recipe("_test_counting", edit_fn=_edit)
+    plain, _ = model_builder.build_from_recipe("_test_counting")
+    assert len(edits) == 1
+    assert len(calls) == 2
+    assert edited_a.nsite == edited_b.nsite == 1
+    assert plain.nsite == 0
+
+
 def test_cached_spec_unhashable_arguments_and_clear():
     """Unhashable arguments bypass the cache; clear_spec_caches drops cached specs."""
     import mujoco
