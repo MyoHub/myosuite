@@ -593,6 +593,22 @@ def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
     assert plain.nsite == 0
 
 
+def test_spec_cache_opt_out_builds_every_call(monkeypatch):
+    """MYOSUITE_SPEC_CACHE=0 builds the recipe on every call and keeps nothing."""
+    from myosuite.core import model_builder
+
+    monkeypatch.setenv("MYOSUITE_SPEC_CACHE", "0")
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    size = model_builder._recipe_spec.cache_info().currsize
+    model_builder.build_from_recipe("_test_counting")
+    model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 2
+    assert model_builder._recipe_spec.cache_info().currsize == size
+
+
 def test_cached_spec_unhashable_arguments_and_clear():
     """Unhashable arguments bypass the cache; clear_spec_caches drops cached specs."""
     import mujoco

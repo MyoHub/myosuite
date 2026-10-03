@@ -922,7 +922,10 @@ def cached_spec(
     The builder's arguments must capture every input that changes the spec it
     builds. The cache is process-local and every call returns a private
     :meth:`mujoco.MjSpec.copy`, so callers may edit and compile it freely.
-    Calls with unhashable arguments build without the cache.
+    Calls with unhashable arguments build without the cache. Setting the
+    environment variable ``MYOSUITE_SPEC_CACHE=0`` disables caching, e.g. in
+    vector-env worker processes that make a single env, where a cached spec
+    only adds memory.
 
     Args:
         maxsize: Most specs kept, least recently used evicted first; ``None``
@@ -945,6 +948,8 @@ def cached_spec(
 
         @functools.wraps(build)
         def wrapper(*args: Any, **kwargs: Any) -> mujoco.MjSpec:
+            if os.environ.get("MYOSUITE_SPEC_CACHE") == "0":
+                return build(*args, **kwargs)
             try:
                 hash((args, tuple(kwargs.items())))
             except TypeError:
