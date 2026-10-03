@@ -1,0 +1,39 @@
+<mujocoinclude>
+    <compiler angle="radian" meshdir="../" texturedir='../scenes/' />
+    <size nconmax="1000" njmax="5000"/>
+    <option timestep="0.002"/>
+
+    <default>
+        <default class="MPL_arm">
+            <geom condim="3" contype="2" conaffinity="1" type="mesh" rgba=".9 .9 2 1" />
+            <joint limited="true" damping="10"/>
+            <position kp="100" ctrllimited="true"/>
+            <default class="MPL_arm_dark">
+                <geom rgba=".1 .13 .13 1"/>
+            </default>
+        </default>
+    </default>
+
+    <asset>
+        <mesh file="../MPL_sim/meshes/mplL/base_link-cvx.stl" name="prosthesis/base_linkL"/>
+        <mesh file="../MPL_sim/meshes/mplL/shoulder_link-cvx.stl" name="prosthesis/shoulder_linkL"/>
+        <mesh file="../MPL_sim/meshes/mplL/humerus_upper_link-cvx.stl" name="prosthesis/humerus_upper_linkL"/>
+        <mesh file="../MPL_sim/meshes/mplL/humerus_lower_top_link-cvx.stl" name="prosthesis/humerus_lower_top_linkL"/>
+        <mesh file="../MPL_sim/meshes/mplL/humerus_lower_bottom_link-cvx.stl" name="prosthesis/humerus_lower_bottom_linkL"/>
+        <mesh file="../MPL_sim/meshes/mplL/forearm_link-cvx.stl" name="prosthesis/forearm_linkL"/>
+
+        <texture name="prosthesis/texmetal" type="cube" builtin="flat" rgb1=".85 .85 0.86" rgb2=".85 .85 0.86"
+                 mark="random" markrgb=".2 .2 .3" random="0.25" width="512" height="512"/>
+        <material name="prosthesis/matmetal" texture="prosthesis/texmetal" specular="0.75" shininess=".03"/>
+    </asset>
+
+    <actuator>
+        <position class="MPL_arm" kp="50" name="prosthesis/Lshoulder_fe" joint="prosthesis/Lshoulder_fe"
+                  ctrlrange="-0.611 2.792"/>
+        <position class="MPL_arm" kp="50" name="prosthesis/Lshoulder_abad" joint="prosthesis/Lshoulder_abad"
+                  ctrlrange="-2.792 0"/>
+        <position class="MPL_arm" kp="50" name="prosthesis/Lhumeral_rot" joint="prosthesis/Lhumeral_rot"
+                  ctrlrange="-0.524 1.483"/>
+        <position class="MPL_arm" kp="50" name="prosthesis/Lelbow" joint="prosthesis/Lelbow" ctrlrange="0.05 2.356"/>
+    </actuator>
+</mujocoinclude>

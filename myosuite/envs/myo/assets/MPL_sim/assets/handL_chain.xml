@@ -1,0 +1,257 @@
+<!-- =========== Copyright | Vikash Kumar | vikashplus@gmail.com ==========================
+    Model       :: MPL
+    Mujoco      :: Advanced physics simulation engine
+        Source      : www.roboti.us
+        Version     : 2.00
+        Released    : 1Oct"18
+    Author      :: Vikash Kumar
+        Contacts    : vikashplus@gmail.com
+        Last edits  : 25Dec"19
+    
+Copyright 2018 Vikash Kumar: Licensed under Apache License, Version 2.0 (the "License")
+
+You may not use this file except in compliance with the License. You may obtain a copy of 
+the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law
+or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+for the specific language governing permissions and limitations under the License.
+============================================================================================= -->
+
+<mujocoinclude>
+    <body childclass="MPL" name="prosthesis/forearm" pos="0 -0.15 0" euler="0 3.14 0">
+        <geom type="cylinder" size="0.02 0.01" zaxis="0 1 0"/>
+        <body name="prosthesis/wristy" pos="0 0 0">
+            <inertial pos="7.08369e-005 -0.0217787 -0.000286168" quat="0.707488 0.00581744 -0.0107421 0.70662"
+                      mass="0.0272932" diaginertia="2.46813e-005 1.77029e-005 1.71079e-005"/>
+            <geom type="mesh" mesh="prosthesis/wristy"/>
+            <joint name="prosthesis/wrist_PRO" type="hinge" damping="0.4" pos="0 0 0" axis="0 1 0" range="-1.57 1.57"/>
+            <body name="prosthesis/wristx" pos="3.36826e-005 -0.0476452 0.00203763">
+                <inertial pos="-0.00139174 -0.00975189 -0.00252668" quat="-0.0729226 0.705959 0.0352732 0.703605"
+                          mass="0.010691" diaginertia="5.04455e-006 4.25035e-006 3.25677e-006"/>
+                <joint name="prosthesis/wrist_UDEV" damping="0.4" type="hinge" pos="0 0 0" axis="0 0 -1"
+                       range="-0.261 0.785"/>
+                <geom type="mesh" mesh="prosthesis/wristx"/>
+                <body name="prosthesis/wristz" pos="-0.0001872 -0.03 -0.002094">
+                    <inertial pos="-0.000579016 -0.00125952 0.000455968" quat="0.527723 0.475346 0.521597 0.472749"
+                              mass="0.00602247" diaginertia="1.58133e-006 1.43102e-006 1.26861e-006"/>
+                    <joint name="prosthesis/wrist_FLEX" damping="0.4" type="hinge" pos="0 0 0" axis="1 0 0"
+                           range="-1.04 1.04"/>
+                    <geom type="mesh" mesh="prosthesis/wristz"/>
+
+                    <!-- ======= PALM  ======= -->
+                    <body name="prosthesis/palm" pos="-0.025625 0 0">
+                        <inertial pos="0.0217876 -0.0376147 0.00276997" quat="0.36373 1.523094 -.3585561 1.66783"
+                                  mass="0.119867" diaginertia="0.000123088 0.000100082 6.89467e-005"/>
+                        <geom type="mesh" mesh="prosthesis/palm"/>
+                        <site name="prosthesis/palm_thumb" pos="0.0052 -0.0438 -0.0182" size=".017 .03 .01"/>
+                        <site name="prosthesis/palm_pinky" pos="0.0358 -0.0401 -0.0183" size=".017 .03 .01"/>
+                        <site name="prosthesis/palm_side" pos="0.0604 -0.0329 -0.0048" size=".01 .03 .015"/>
+                        <site name="prosthesis/palm_back" pos="0.0246 -0.0446 0.018" size=".03 .035 .015"/>
+
+                        <!-- ======= THUMB ======= -->
+                        <body name="prosthesis/thumb0" pos="-0.00835752 -0.0206978 -0.010093"
+                              quat="0.990237 -0.0412644 0.0209178 0.13149">
+                            <inertial pos="-0.00863339 -0.000156884 -0.000945846"
+                                      quat="0.408795 0.551643 0.541079 0.485602" mass="0.00336696"
+                                      diaginertia="4.50769e-007 4.48758e-007 2.35017e-007"/>
+                            <joint name="prosthesis/thumb_ABD" type="hinge" pos="0 0 0" axis="0 -1 0" range="0 2.07"/>
+                            <geom type="mesh" mesh="prosthesis/thumb0"/>
+                            <body name="prosthesis/thumb1" pos="-0.0209172 -0.00084 0.0014476">
+                                <inertial pos="-0.019024 0.000361131 -0.000186763"
+                                          quat="0.5208 0.469572 0.484571 0.522934" mass="0.00596213"
+                                          diaginertia="9.88001e-007 9.45125e-007 5.32989e-007"/>
+                                <joint name="prosthesis/thumb_MCP" type="hinge" pos="0 0 0" axis="0 0 1"
+                                       range="0 1.03"/>
+                                <geom type="mesh" mesh="prosthesis/thumb1"/>
+                                <site name="prosthesis/thumb_proximal" pos="-0.0173 -0.008 0.0009"
+                                      size=".015 .0075 .01"/>
+                                <body name="prosthesis/thumb2" pos="-0.0335 0 -0.0007426">
+                                    <inertial pos="-0.0188965 0.000375725 0.00065381"
+                                              quat="0.502274 0.484638 0.475673 0.535333" mass="0.00599792"
+                                              diaginertia="9.96692e-007 9.64948e-007 5.14416e-007"/>
+                                    <joint name="prosthesis/thumb_PIP" type="hinge" pos="0 0 0" axis="0 0 1"
+                                           range="0 1.03"/>
+                                    <geom type="mesh" mesh="prosthesis/thumb2"/>
+                                    <site name="prosthesis/thumb_medial" pos="-0.0182 -0.008 0.0015"
+                                          size=".015 .0075 .01"/>
+                                    <body name="prosthesis/thumb3" pos="-0.0335 0 0.0010854">
+                                        <inertial pos="-0.0188965 0.000375725 0.00065381"
+                                                  quat="0.502274 0.484638 0.475673 0.535333" mass="0.00599792"
+                                                  diaginertia="9.96692e-007 9.64948e-007 5.14416e-007"/>
+                                        <joint name="prosthesis/thumb_DIP" type="hinge" pos="0 0 0" axis="0 0 1"
+                                               range="-0.819 1.28"/>
+                                        <geom type="mesh" mesh="prosthesis/thumb3"/>
+                                        <site name="prosthesis/thumb_distal" pos="-0.0156 -0.007 0.0003"
+                                              size=".015 .0075 .01" axisangle="0 0 1 -0.2"/>
+                                        <site class="IMU" name="prosthesis/thumb_IMU" pos="-0.0099 -0.00052 0"
+                                              quat=".5 .5 .5 .5" size=".003 .003 .003"/>
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+
+                        <!-- ======= INDEX ======= -->
+                        <body name="prosthesis/index0" pos="-0.00986485 -0.0658 0.00101221"
+                              quat="0.996195 0 -0.0871557 0">
+                            <inertial pos="0.000142572 -0.00548494 0.000206145"
+                                      quat="0.699132 0.714861 -0.000723869 0.013694" mass="0.00295579"
+                                      diaginertia="4.22462e-007 4.02281e-007 1.93868e-007"/>
+                            <joint name="prosthesis/index_ABD" type="hinge" pos="0 0 0" axis="0 0 -1" range="0 0.345"/>
+                            <geom type="mesh" mesh="prosthesis/index0"/>
+                            <body name="prosthesis/index1" pos="-6.26e-005 -0.018 0">
+                                <inertial pos="-0.000406487 -0.0213125 0.000655609"
+                                          quat="0.698452 0.715642 -0.00415384 0.0023049" mass="0.00478235"
+                                          diaginertia="8.18599e-007 7.95693e-007 3.06254e-007"/>
+                                <joint name="prosthesis/index_MCP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                       range="-0.785 1.57"/>
+                                <geom type="mesh" mesh="prosthesis/index1"/>
+                                <site name="prosthesis/index_proximal" pos="0 -0.0235 -0.007" size=".009 .015 .0075"/>
+                                <body name="prosthesis/index2" pos="-0.001086 -0.0435 0.0005">
+                                    <inertial pos="0.000841462 -0.012689 0.000572665"
+                                              quat="0.734882 0.677481 -0.028511 0.0124827" mass="0.00344764"
+                                              diaginertia="3.63962e-007 3.59059e-007 1.05304e-007"/>
+                                    <joint name="prosthesis/index_PIP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                           range="0 1.72"/>
+                                    <geom type="mesh" mesh="prosthesis/index2"/>
+                                    <site name="prosthesis/index_medial" pos="0 -0.009 -0.0047" size=".0075 .01 .006"/>
+                                    <body name="prosthesis/index3" pos="0.000635 -0.0245 0">
+                                        <inertial pos="-4.32004e-005 -0.0125318 0.000903476"
+                                                  quat="0.516251 0.4829 -0.483241 0.516498" mass="0.00274415"
+                                                  diaginertia="1.19635e-007 1.09202e-007 7.77873e-008"/>
+                                        <joint name="prosthesis/index_DIP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                               range="0 1.38"/>
+                                        <geom type="mesh" mesh="prosthesis/index3"/>
+                                        <site name="prosthesis/index_distal" pos="0 -0.0132 -0.0038"
+                                              size=".0075 .01 .006"/>
+                                        <site class="IMU" name="prosthesis/index_IMU" pos="0 -0.0093 0.00063"
+                                              quat=".5 .5 -.5 .5" size=".003 .003 .003"/>
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+
+                        <!-- ======= MIDDLE ======= -->
+                        <body name="prosthesis/middle0" pos="0.012814 -0.0779014 0.00544608" quat="3.14 -0.0436194 0 0">
+                            <inertial pos="0.000142567 -0.00548493 0.000206162"
+                                      quat="0.699131 0.714862 -0.000723874 0.013694" mass="0.00295579"
+                                      diaginertia="4.22461e-007 4.02281e-007 1.93868e-007"/>
+                            <!--<joint name="prosthesis/middle0" type="hinge" pos="0 0 0" range="-0.345 0" axis="0 0 -1" />-->
+                            <geom type="mesh" mesh="prosthesis/middle0"/>
+                            <body name="prosthesis/middle1" pos="-6.26e-005 -0.018 0">
+                                <inertial pos="-0.000406411 -0.0213125 0.00065565"
+                                          quat="0.698451 0.715642 -0.00415503 0.00230486" mass="0.00478229"
+                                          diaginertia="8.18595e-007 7.9569e-007 3.06253e-007"/>
+                                <joint name="prosthesis/middle_MCP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                       range="-0.785 1.57"/>
+                                <geom type="mesh" mesh="prosthesis/middle1"/>
+                                <site name="prosthesis/middle_proximal" pos="0 -0.025 -0.007" size=".009 .015 .0075"/>
+                                <body name="prosthesis/middle2" pos="-0.001086 -0.0435 0.0005">
+                                    <inertial pos="0.000841444 -0.012689 0.00057266"
+                                              quat="0.734883 0.677482 -0.0284727 0.0124412" mass="0.00344765"
+                                              diaginertia="3.63962e-007 3.5906e-007 1.05304e-007"/>
+                                    <joint name="prosthesis/middle_PIP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                           range="0 1.73"/>
+                                    <geom type="mesh" mesh="prosthesis/middle2"/>
+                                    <site name="prosthesis/middle_medial" pos="0 -0.0146 -0.0047"
+                                          size=".0075 .01 .006"/>
+                                    <body name="prosthesis/middle3" pos="0.000635 -0.0245 0">
+                                        <inertial pos="-4.31236e-005 -0.0125318 0.000903446"
+                                                  quat="0.516263 0.482913 -0.483228 0.516487" mass="0.00274417"
+                                                  diaginertia="1.19635e-007 1.09202e-007 7.77884e-008"/>
+                                        <joint name="prosthesis/middle_DIP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                               range="0 1.38"/>
+                                        <geom type="mesh" mesh="prosthesis/middle3"/>
+                                        <site name="prosthesis/middle_distal" pos="0 -0.0129 -0.0038"
+                                              size=".0075 .01 .006"/>
+                                        <site class="IMU" name="prosthesis/middle_IMU" pos="0 -0.0093 0.00063"
+                                              quat=".5 .5 -.5 .5" size=".003 .003 .003"/>
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+
+                        <!-- ======= RING ======= -->
+                        <body name="prosthesis/ring0" pos="0.0354928 -0.0666999 0.00151221"
+                              quat="0.996195 0 0.0871557 0">
+                            <inertial pos="0.000142559 -0.00548494 0.000206147"
+                                      quat="0.699132 0.714861 -0.000720946 0.013691" mass="0.00295579"
+                                      diaginertia="4.22462e-007 4.02281e-007 1.93868e-007"/>
+                            <joint name="prosthesis/ring_ABD" type="hinge" pos="0 0 0" axis="0 0 1" range="0 0.345"/>
+                            <geom type="mesh" mesh="prosthesis/ring0"/>
+                            <body name="prosthesis/ring1" pos="-6.26e-005 -0.018 0">
+                                <inertial pos="-0.000406447 -0.0213125 0.00065563"
+                                          quat="0.698451 0.715642 -0.00415675 0.00230715" mass="0.00478232"
+                                          diaginertia="8.18597e-007 7.95692e-007 3.06254e-007"/>
+                                <joint name="prosthesis/ring_MCP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                       range="-0.785 1.57"/>
+                                <geom type="mesh" mesh="prosthesis/ring1"/>
+                                <site name="prosthesis/ring_proximal" pos="0 -0.0259 -0.007" size=".009 .015 .0075"/>
+                                <body name="prosthesis/ring2" pos="-0.001086 -0.0435 0.0005">
+                                    <inertial pos="0.000841518 -0.012689 0.000572674"
+                                              quat="0.73488 0.677478 -0.0285773 0.0125557" mass="0.00344767"
+                                              diaginertia="3.63963e-007 3.59061e-007 1.05305e-007"/>
+                                    <joint name="prosthesis/ring_PIP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                           range="0 1.72"/>
+                                    <geom type="mesh" mesh="prosthesis/ring2"/>
+                                    <site name="prosthesis/ring_medial" pos="0 -0.0137 -0.0047" size=".0075 .01 .006"/>
+                                    <body name="prosthesis/ring3" pos="0.000635 -0.0245 0">
+                                        <inertial pos="-4.31973e-005 -0.0125318 0.000903457"
+                                                  quat="0.516255 0.482902 -0.483238 0.516495" mass="0.00274416"
+                                                  diaginertia="1.19635e-007 1.09202e-007 7.77877e-008"/>
+                                        <joint name="prosthesis/ring_DIP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                               range="0 1.38"/>
+                                        <geom type="mesh" mesh="prosthesis/ring3"/>
+                                        <site name="prosthesis/ring_distal" pos="0 -0.0117 -0.0038"
+                                              size=".0075 .01 .006"/>
+                                        <site class="IMU" name="prosthesis/ring_IMU" pos="0 -0.0093 0.00063"
+                                              quat=".5 .5 -.5 .5" size=".003 .003 .003"/>
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+
+                        <!-- ======= LITTLE ======= -->
+                        <body name="prosthesis/pinky0" pos="0.0562459 -0.0554001 -0.00563858"
+                              quat="0.996195 0 0.0871557 0">
+                            <inertial pos="0.000142559 -0.00538484 0.000206147"
+                                      quat="0.699132 0.714861 -0.000721037 0.0136911" mass="0.00295579"
+                                      diaginertia="4.22462e-007 4.02281e-007 1.93868e-007"/>
+                            <joint name="prosthesis/pinky_ABD" type="hinge" pos="0 0 0" axis="0 0 1" range="0 0.345"/>
+                            <geom type="mesh" mesh="prosthesis/pinky0"/>
+                            <body name="prosthesis/pinky1" pos="-6.26e-005 -0.0178999 0">
+                                <inertial pos="-0.000458624 -0.0160478 0.000924735"
+                                          quat="0.685529 0.72723 0.021252 -0.0270914" mass="0.0034099"
+                                          diaginertia="4.03391e-007 3.84061e-007 2.19866e-007"/>
+                                <joint name="prosthesis/pinky_MCP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                       range="-0.785 1.57"/>
+                                <geom type="mesh" mesh="prosthesis/pinky1"/>
+                                <site name="prosthesis/pinky_proximal" pos="0 -0.021 -0.0066" size=".009 .013 .0075"/>
+                                <body name="prosthesis/pinky2" pos="-0.000578 -0.033 0.0005">
+                                    <inertial pos="0.000270832 -0.00914628 0.000738493"
+                                              quat="0.746786 0.664476 -4.11065e-005 -0.0279675" mass="0.00250622"
+                                              diaginertia="1.79089e-007 1.75934e-007 7.44543e-008"/>
+                                    <joint name="prosthesis/pinky_PIP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                           range="0 1.72"/>
+                                    <geom type="mesh" mesh="prosthesis/pinky2"/>
+                                    <site name="prosthesis/pinky_medial" pos="0 -0.0117 -0.0047" size=".0075 .01 .006"/>
+                                    <body name="prosthesis/pinky3" pos="4.78e-005 -0.0175 0">
+                                        <inertial pos="-3.85026e-005 -0.0125047 0.000912295"
+                                                  quat="0.516037 0.484447 -0.483043 0.515448" mass="0.00273265"
+                                                  diaginertia="1.19141e-007 1.08629e-007 7.77271e-008"/>
+                                        <joint name="prosthesis/pinky_DIP" type="hinge" pos="0 0 0" axis="1 0 0"
+                                               range="0 1.38"/>
+                                        <geom type="mesh" mesh="prosthesis/pinky3"/>
+                                        <site name="prosthesis/pinky_distal" pos="0 -0.0121 -0.0038"
+                                              size=".0075 .01 .006"/>
+                                        <site class="IMU" name="prosthesis/pinky_IMU" pos="0 -0.0093 0.00063"
+                                              quat=".5 .5 -.5 .5" size=".003 .003 .003"/>
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+                    </body>
+                </body>
+            </body>
+        </body>
+    </body>
+</mujocoinclude>

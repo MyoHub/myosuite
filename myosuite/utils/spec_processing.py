@@ -1,12 +1,46 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+
 import mujoco
 
 
+def compile_with_options(spec: mujoco.MjSpec, model: mujoco.MjModel) -> mujoco.MjModel:
+    """Recompile *spec*, keeping the runtime options set on *model*.
+
+    Envs often set ``model.opt`` (timestep, solver iterations, flags) after
+    compiling, so a plain ``spec.compile()`` would silently revert them to the
+    XML values. Every ``mjOption`` field is copied into ``spec.option`` first.
+
+    Args:
+        spec: Spec to compile; its ``option`` is overwritten from *model*.
+        model: Previously compiled model whose ``opt`` is kept.
+
+    Returns:
+        The newly compiled model.
+    """
+    for name in dir(model.opt):
+        if name.startswith("_"):
+            continue
+        value = getattr(model.opt, name)
+        if not callable(value):
+            setattr(spec.option, name, value)
+    return spec.compile()
+
+
 def recursive_immobilize(
-    spec, temp_model, parent, remove_eqs=False, remove_actuators=False
+    spec,
+    temp_model,
+    parent,
+    remove_eqs=False,
+    remove_actuators=False,
+    remove_sites=True,
 ):
     removed_joint_ids = []
-    for s in parent.sites:
-        spec.delete(s)
+    if remove_sites:
+        for s in parent.sites:
+            spec.delete(s)
     for j in parent.joints:
         removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
         if remove_eqs:
@@ -22,7 +56,9 @@ def recursive_immobilize(
         spec.delete(j)
     for child in parent.bodies:
         removed_joint_ids.extend(
-            recursive_immobilize(spec, temp_model, child, remove_eqs, remove_actuators)
+            recursive_immobilize(
+                spec, temp_model, child, remove_eqs, remove_actuators, remove_sites
+            )
         )
     return removed_joint_ids
 

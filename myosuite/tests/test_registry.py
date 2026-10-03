@@ -1,0 +1,165 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Sweep every CPU/Gymnasium-registered MyoSuite env id for reset/step sanity.
+
+Cheap ``reset()``/``step()`` smoke checks across every ID in
+``myosuite.myosuite_env_suite``. mjlab/MJX envs are registered separately.
+"""
+
+from __future__ import annotations
+
+import mujoco
+import numpy as np
+import pytest
+
+from myosuite.envs.gymnasium_env import CpuEnvAccessor
+from myosuite.utils import gym
+
+pytestmark = pytest.mark.tier1
+
+# Scanning the live gym registry directly is robust to call order.
+_ALL_ENV_IDS = sorted(
+    env_id for env_id in gym.envs.registry if env_id.startswith(("myo", "motor"))
+)
+
+
+def _skip_if_hf_gated(env_id: str, exc: Exception) -> None:
+    """Skip (rather than fail) an env that needs a gated HuggingFace dataset.
+
+    Some envs (e.g. ChaseTagFBVs, FullBodyDirectional) download a reference
+    gait clip from a gated HF dataset (amathislab/musclemimic-retargeted) on
+    first reset/step. CI has no HF_TOKEN for an account that has accepted the
+    dataset's license, so this is an access-control limitation, not a code
+    bug -- treat it the same as an unavailable optional dependency.
+    """
+    try:
+        from huggingface_hub.errors import HfHubHTTPError
+    except ImportError:
+        return
+    if isinstance(exc, HfHubHTTPError):
+        pytest.skip(f"{env_id}: gated HF dataset unavailable ({exc})")
+
+
+def _obs_after_extra_forward(env: gym.Env) -> np.ndarray:
+    """The env's obs vector after an extra ``mj_forward``; the data is restored.
+
+    Runs in place (some envs read ``self.data`` rather than the accessor) on
+    the live ``MjData``, which is copied back from a backup afterwards.
+    """
+    u = env.unwrapped
+    backup = mujoco.MjData(u.model)
+    mujoco.mj_copyData(backup, u.model, u.data)
+    try:
+        mujoco.mj_forward(u.model, u.data)
+        accessor = CpuEnvAccessor(u.model, u.data, u._ctrl_dt)
+        return np.asarray(u._obs_dict_to_vec(u._get_obs_dict(accessor)), np.float32)
+    finally:
+        mujoco.mj_copyData(u.data, u.model, backup)
+
+
+@pytest.mark.parametrize("env_id", _ALL_ENV_IDS)
+def test_env_resets_and_steps(env_id: str) -> None:
+    """Every registered env must reset and take a few random actions without error.
+
+    Flat observations must be float32 members of the observation space at reset
+    and every step, exactly the env's own flattening of ``info["obs_dict"]``
+    (no clipping to the declared space), and fresh: an extra ``mj_forward``
+    after the step does not change them.
+    """
+    import gymnasium as gym
+
+    def _assert_finite(value: object) -> None:
+        # ModularMultiAgentTaskEnv returns per-agent dicts (CLAUDE.md exception);
+        # everything else returns a flat array-like.
+        if isinstance(value, dict):
+            for v in value.values():
+                _assert_finite(v)
+            return
+        assert np.all(np.isfinite(np.asarray(value, dtype=np.float64)))
+
+    def _assert_in_space(obs: np.ndarray) -> None:
+        assert obs.dtype == np.float32, obs.dtype
+        assert env.observation_space.contains(obs)
+
+    try:
+        env = gym.make(env_id)
+    except Exception as exc:
+        _skip_if_hf_gated(env_id, exc)
+        raise
+
+    try:
+        obs, info = env.reset(seed=0)
+        assert obs is not None
+        _assert_finite(obs)
+        if not isinstance(obs, dict):
+            _assert_in_space(obs)
+
+        env.action_space.seed(0)
+        for _ in range(3):
+            obs, rwd, terminated, truncated, info = env.step(env.action_space.sample())
+            _assert_finite(obs)
+            _assert_finite(rwd)
+            assert isinstance(terminated, bool | np.bool_ | dict)
+            assert isinstance(truncated, bool | np.bool_ | dict)
+            if isinstance(obs, dict):
+                continue
+            _assert_in_space(obs)
+            raw = env.unwrapped._obs_dict_to_vec(info["obs_dict"])
+            np.testing.assert_array_equal(obs, np.asarray(raw, dtype=obs.dtype))
+            np.testing.assert_array_equal(obs, _obs_after_extra_forward(env))
+            if terminated or truncated:
+                env.reset()
+    except Exception as exc:
+        _skip_if_hf_gated(env_id, exc)
+        raise
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize(
+    "env_id",
+    [
+        "myoElbowPose1D6MRandom-v0",  # MyoGymnasiumEnv subclass (PoseEnvV0)
+        "myoElbowPoseTaskFixed-v0",  # ModularTaskEnv
+    ],
+)
+def test_default_wrapper_terminates_on_mujoco_instability(env_id: str) -> None:
+    """A diverged state must end the episode instead of being silently reset.
+
+    ``mj_step`` flags the bad state (``mjWARN_BADQVEL``) and auto-resets the
+    data to ``qpos0``, so the state it leaves behind is finite.
+    """
+    import gymnasium as gym
+
+    env = gym.make(env_id)
+    action = np.zeros(env.action_space.shape, dtype=env.action_space.dtype)
+    try:
+        env.reset(seed=0)
+        assert env.step(action)[2] is False
+
+        env.unwrapped.data.qvel[:] = np.nan
+        assert env.step(action)[2] is True
+
+        # reset() clears the instability.
+        env.reset(seed=0)
+        assert env.step(action)[2] is False
+    finally:
+        env.close()
+
+
+def test_registry_is_non_empty() -> None:
+    """Guard against register_all_envs() silently registering nothing."""
+    assert len(_ALL_ENV_IDS) > 50
+
+
+def test_register_all_envs_is_idempotent() -> None:
+    """Repeated register_all_envs() calls must not clobber the suite lists."""
+    import myosuite
+
+    first = {k: list(v) for k, v in myosuite.register_all_envs().items()}
+    second = myosuite.register_all_envs()
+    assert first == second
+    assert len(myosuite.myosuite_env_suite) > 50
+    assert myosuite.myosuite_myobase_suite == first["myobase"]

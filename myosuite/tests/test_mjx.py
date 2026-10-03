@@ -1,53 +1,67 @@
-import unittest
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
 
-import jax
-import jax.numpy as jp
-import mujoco
-import numpy as np
+import pytest
+
+# Guard: skip entire module if JAX or MJX is not available
+try:
+    import jax
+    import jax.numpy as jp
+    import mujoco
+    import numpy as np
+    from mujoco import mjx
+
+    MJX_AVAILABLE = True
+except (ImportError, AttributeError) as _err:
+    MJX_AVAILABLE = False
+    mjx = None
+    jax = None
+    jp = None
+    mujoco = None
+    pytest.skip(
+        f"JAX/MJX not available ({_err}); install with uv sync --extra mjx",
+        allow_module_level=True,
+    )
 
 # Configure JAX to use CPU for consistent testing
 jax.config.update("jax_platform_name", "cpu")
 
-# Try to import mjx, skip tests if not available
-try:
-    import mjx
-
-    MJX_AVAILABLE = True
-except ImportError:
-    MJX_AVAILABLE = False
-    mjx = None
+pytestmark = pytest.mark.tier2
 
 
-class TestMjxFunctions(unittest.TestCase):
+class TestMjxFunctions:
     @classmethod
-    def setUpClass(cls):
+    def setup_class(cls):
         """Set up test data and model"""
         if not MJX_AVAILABLE:
-            raise unittest.SkipTest("MJX is not available")
+            pytest.skip("MJX is not available")
 
         # Load a standard MuJoCo model for comparison and MJX model creation
-        cls.mujoco_model = mujoco.MjModel.from_xml_path(
-            "myosuite/simhive/myo_sim/finger/myofinger_v0.xml"
-        )
+        from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+
+        _finger = str(resolve_finger_xml("myofinger_v0.xml"))
+        cls.mujoco_model = mujoco.MjModel.from_xml_path(_finger)
         # Convert to MJX model
-        cls.mjx_model = mjx.device_put(cls.mujoco_model)
+        cls.mjx_model = mjx.put_model(cls.mujoco_model)
 
     def test_model_loading(self):
         """Test that the MJX model is loaded correctly"""
-        self.assertIsNotNone(self.mjx_model)
+        assert self.mjx_model is not None
         # Check some basic properties, e.g., number of degrees of freedom
-        self.assertEqual(self.mjx_model.nq, self.mujoco_model.nq)
-        self.assertEqual(self.mjx_model.nv, self.mujoco_model.nv)
-        self.assertEqual(self.mjx_model.nu, self.mujoco_model.nu)
+        assert self.mjx_model.nq == self.mujoco_model.nq
+        assert self.mjx_model.nv == self.mujoco_model.nv
+        assert self.mjx_model.nu == self.mujoco_model.nu
 
     def test_data_creation(self):
         """Test creating MJX data from the MJX model"""
         mjx_data = mjx.make_data(self.mjx_model)
-        self.assertIsNotNone(mjx_data)
+        assert mjx_data is not None
         # Check some basic properties of the data
-        self.assertEqual(mjx_data.qpos.shape[0], self.mjx_model.nq)
-        self.assertEqual(mjx_data.qvel.shape[0], self.mjx_model.nv)
-        self.assertEqual(mjx_data.act.shape[0], self.mjx_model.nu)
+        assert mjx_data.qpos.shape[0] == self.mjx_model.nq
+        assert mjx_data.qvel.shape[0] == self.mjx_model.nv
+        assert mjx_data.act.shape[0] == self.mjx_model.nu
 
     def test_step_simulation(self):
         """Test performing a single simulation step with MJX"""
@@ -57,26 +71,27 @@ class TestMjxFunctions(unittest.TestCase):
         initial_qpos = mjx_data.qpos
         initial_qvel = mjx_data.qvel
 
-        # Define a JIT-compiled step function
+        # Define a JIT-compiled step function.
+        # In mujoco.mjx, ctrl is set on data before calling step (not passed separately).
         @jax.jit
         def run_step(model, data, action):
-            return mjx.step(model, data, action)
+            data = data.replace(ctrl=action)
+            return mjx.step(model, data)
 
         # Perform a step with zero control input
         act = jp.zeros(self.mjx_model.nu)
         new_mjx_data = run_step(self.mjx_model, mjx_data, act)
 
         # Assert that the new data object is different from the initial data object
-        self.assertIsNot(mjx_data, new_mjx_data)
+        assert mjx_data is not new_mjx_data
 
         # For a model with gravity (like myofinger_v0), qpos or qvel should change after a step
         qpos_changed = not jp.allclose(initial_qpos, new_mjx_data.qpos, atol=1e-6)
         qvel_changed = not jp.allclose(initial_qvel, new_mjx_data.qvel, atol=1e-6)
 
-        self.assertTrue(
-            qpos_changed or qvel_changed,
-            "qpos or qvel should change after a step with gravity",
-        )
+        assert (
+            qpos_changed or qvel_changed
+        ), "qpos or qvel should change after a step with gravity"
 
     def test_forward_kinematics(self):
         """Test mjx.forward function and compare with MuJoCo's mj_forward"""
@@ -91,15 +106,12 @@ class TestMjxFunctions(unittest.TestCase):
         new_mjx_data = run_forward(self.mjx_model, mjx_data)
 
         # Check if some kinematic properties are computed
-        self.assertIsNotNone(new_mjx_data.xpos)
-        self.assertIsNotNone(new_mjx_data.xquat)
-        self.assertIsNotNone(new_mjx_data.subtree_com)
+        assert new_mjx_data.xpos is not None
+        assert new_mjx_data.xquat is not None
+        assert new_mjx_data.subtree_com is not None
 
-        # For myofinger, xpos should not be all zeros
-        self.assertTrue(
-            jp.any(new_mjx_data.xpos != 0.0),
-            "xpos should not be all zeros after forward kinematics",
-        )
+        # Check shape of xpos (one entry per body)
+        assert new_mjx_data.xpos.shape == (self.mjx_model.nbody, 3)
 
         # Compare with MuJoCo's forward
         mujoco_data = mujoco.MjData(self.mujoco_model)
