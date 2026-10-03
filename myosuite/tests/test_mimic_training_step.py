@@ -82,7 +82,7 @@ def test_ppo_loss_decreases():
                 obs_t = torch.as_tensor(cur_obs, dtype=torch.float32)
                 action, log_prob, _, value = policy.get_action_and_value(obs_t)
                 action_np = action.numpy()
-                cur_obs, rew, term, trunc = env.step(action_np)
+                cur_obs, rew, term, trunc, _ = env.step(action_np)
                 obs_buf[t] = cur_obs
                 act_buf[t] = action_np
                 rew_buf[t] = rew
@@ -145,7 +145,8 @@ def test_vec_env_reset_step():
     obs = env.reset_all()
     assert obs.shape == (2, env.obs_dim)
     action = np.zeros((2, env.act_dim), dtype=np.float32)
-    obs2, rew, term, _trunc = env.step(action)
+    obs2, rew, term, _trunc, info = env.step(action)
     assert obs2.shape == (2, env.obs_dim)
     assert rew.shape == (2,)
     assert term.shape == (2,)
+    assert info["final_obs"].shape == (2, env.obs_dim)

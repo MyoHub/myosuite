@@ -296,7 +296,8 @@ def test_reward_mean_sign_vs_pypi(env_id: str) -> None:
         rewards = []
         for _ in range(_N_STEPS):
             # Fixed action stream (independent of env RNG) so mid-episode
-            # ``reset()`` without seed does not change which actions are applied.
+            # ``reset()`` without seed does not change which actions are applied;
+            # scripts/generate_pypi_challenge_baselines.py records the same one.
             action = action_rng.uniform(
                 env.action_space.low, env.action_space.high, size=env.action_space.shape
             )

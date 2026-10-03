@@ -19,10 +19,12 @@ from mjlab.rl import MjlabOnPolicyRunner, RslRlOnPolicyRunnerCfg, RslRlVecEnvWra
 from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg, load_runner_cls
 from mjlab.tasks.tracking.mdp import MotionCommandCfg
 from mjlab.utils.gpu import select_gpus
-from mjlab.utils.os import dump_yaml, get_checkpoint_path, get_wandb_checkpoint_path
+from mjlab.utils.os import dump_yaml, get_wandb_checkpoint_path
 from mjlab.utils.torch import configure_torch_backends
 from mjlab.utils.wandb import add_wandb_tags
 from mjlab.utils.wrappers import VideoRecorder
+
+from myosuite.utils.checkpoint_utils import resume_checkpoint
 
 
 @dataclass(frozen=True)
@@ -80,19 +82,27 @@ def deterministic_success(runner: MjlabOnPolicyRunner, eval_env) -> float:
         eval_env: ``RslRlVecEnvWrapper`` around a separate env (its state is reset).
 
     Returns:
-        Fraction of finished episodes whose ``success`` metric is 1 at the last step.
+        Fraction of the first ``DETERMINISTIC_EVAL_EPISODES`` episodes of every env
+        whose ``success`` metric is 1 at the last step. Capping the episodes per env
+        (as ``scripts/eval_mjlab_policy.py`` does) keeps envs that fail fast from
+        contributing more episodes than the ones that run to the time limit.
     """
     base = eval_env.unwrapped
     base.reset()
     obs = eval_env.get_observations()
     policy = runner.get_inference_policy(device=base.device)
+    episodes = torch.zeros(base.num_envs, dtype=torch.long, device=base.device)
     finished: list[float] = []
     with torch.no_grad():
         for _ in range(DETERMINISTIC_EVAL_EPISODES * base.max_episode_length):
             obs, _, dones, _ = eval_env.step(policy(obs))
-            for i in dones.nonzero().flatten().tolist():
+            counted = dones.bool() & (episodes < DETERMINISTIC_EVAL_EPISODES)
+            for i in counted.nonzero().flatten().tolist():
                 terms = dict(base.metrics_manager.get_active_iterable_terms(i))
                 finished.append(float(terms["success"][0]))
+            episodes += counted.long()
+            if bool((episodes >= DETERMINISTIC_EVAL_EPISODES).all()):
+                break
     runner.alg.train_mode()  # get_inference_policy switched the models to eval mode
     return float(np.mean(finished)) if finished else 0.0
 
@@ -278,9 +288,9 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
                     f"(run: {run_id}, {cached_str})"
                 )
         else:
-            # Load checkpoint from local filesystem.
-            resume_path = get_checkpoint_path(
-                log_root_path, cfg.agent.load_run, cfg.agent.load_checkpoint
+            # Newest local run of *this* task: env ids share experiment names.
+            resume_path = resume_checkpoint(
+                log_root_path, task_id, cfg.agent.load_run, cfg.agent.load_checkpoint
             )
 
     # Only record videos on rank 0 to avoid multiple workers writing to the same files.

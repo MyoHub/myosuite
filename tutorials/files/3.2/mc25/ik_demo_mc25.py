@@ -76,20 +76,25 @@ class IKTableTennisEnv(TableTennisEnvV0):
                 euler=g.alt.euler,
             )
 
+        # Strip the copy down to the paddle (MjSpec elements are removed with
+        # spec.delete(element); they have no .delete() of their own).
         spec_copy = spec.copy()
-        [k.delete() for k in spec_copy.keys]
-        [t.delete() for t in spec_copy.textures]
-        [m.delete() for m in spec_copy.materials]
-        [t.delete() for t in spec_copy.tendons]
-        [a.delete() for a in spec_copy.actuators]
-        [e.delete() for e in spec_copy.equalities]
-        [s.delete() for s in spec_copy.sensors if "paddle" not in s.name]
-        [a.delete() for a in spec_copy.assets]
-        [m.delete() for m in spec_copy.meshes]
-        [c.delete() for c in spec_copy.cameras]
+        for element in [
+            *spec_copy.keys,
+            *spec_copy.textures,
+            *spec_copy.materials,
+            *spec_copy.tendons,
+            *spec_copy.actuators,
+            *spec_copy.equalities,
+            *(s for s in spec_copy.sensors if "paddle" not in s.name),
+            *spec_copy.meshes,
+            *spec_copy.cameras,
+        ]:
+            spec_copy.delete(element)
+        spec_copy.assets = {}
 
         paddle = spec_copy.body("paddle")
-        paddle.joints[0].delete()
+        spec_copy.delete(paddle.joints[0])
         paddle.pos *= 0
         paddle.alt.euler *= 0
         paddle.quat = [1, 0, 0, 0]
@@ -109,11 +114,11 @@ class IKTableTennisEnv(TableTennisEnvV0):
         spec = super()._preprocess_spec(
             spec, remove_body_collisions, add_left_arm=False
         )
-        spec.keys[0].delete()
+        spec.delete(spec.keys[0])
         spec.actuators[0].name = "interp"
 
         for a in spec.actuators[1:]:
-            a.delete()
+            spec.delete(a)
         return spec
 
 
@@ -208,7 +213,7 @@ with mujoco.viewer.launch_passive(
         mujoco.mj_forward(model, data)
         qvel = np.zeros(model.nv + 6)
         mujoco.mj_differentiatePos(
-            diff_env.sim.model._model,
+            diff_env.unwrapped.model,
             qvel,
             model.opt.timestep,
             rollout[-1]["qpos"],
