@@ -54,6 +54,41 @@ def test_mjlab_twin_samples_the_same_table(env_id: str) -> None:
     assert np.abs(table - target).sum(axis=1).min() < 1e-5
 
 
+def test_mjlab_workspace_table_uses_scene_site_ids() -> None:
+    """The table follows the robot's tip sites when another entity's site comes first.
+
+    The table is built on the scene model, whose site ids are shifted by every site
+    of an entity attached before the robot; entity-local tip ids pick other sites.
+    """
+    pytest.importorskip("mjlab")
+    import mujoco
+    from mjlab.entity import EntityCfg
+    from mjlab.envs import ManagerBasedRlEnv
+    from mjlab.tasks.registry import load_env_cfg
+
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401 (registers twins)
+
+    def _marker_spec() -> mujoco.MjSpec:
+        spec = mujoco.MjSpec()
+        spec.worldbody.add_body(name="marker", pos=[0.5, 0.5, 0.5]).add_site(name="dot")
+        return spec
+
+    env_id = "motorFingerReachRandom-v0"
+    cfg = load_env_cfg(env_id)
+    cfg.scene.num_envs = 1
+    cfg.scene.entities = {"marker": EntityCfg(spec_fn=_marker_spec)} | dict(
+        cfg.scene.entities
+    )
+    mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    command = mj.command_manager.get_term("reach")
+    robot = mj.scene[command.cfg.entity_name]
+    local = [int(i) for i in command._tip_ids]
+    assert [int(robot.indexing.site_ids[i]) for i in local] != local
+    table = gym.make(env_id).unwrapped._workspace_points.reshape(-1, 3)
+    np.testing.assert_allclose(command._points.cpu().numpy(), table, atol=1e-5)
+    mj.close()
+
+
 def test_fixed_and_other_random_reach_envs_keep_box_sampling() -> None:
     for env_id in (
         "myoFingerReachFixed-v0",
