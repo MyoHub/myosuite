@@ -126,6 +126,17 @@ full commit list.
   signal at the 0.8 m initial error), and actions go through the muscle sigmoid on both without a clip. CPU policies trained on these ids need retraining. The mjlab Mimic rewards and deviation
   check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
   stale.
+* **`gym.make` reuses built model specs.** `build_from_recipe` (now with an optional `edit_fn`) and
+  `build_mimic_fullbody_spec` build each spec once per process and give every env a private
+  `MjSpec.copy()` to compile (`ModelBuilder.build_spec`, `cached_spec`, `clear_spec_caches`); the
+  compiled models and rollouts are bit-identical to a fresh build. Measured back to back under the
+  same machine load, a repeated make takes 0.26 s instead of 4.5 s for TableTennis, 0.24 s instead of
+  3.9 s for ChaseTagFBP2, 0.20 s instead of 3.8 s for the Mimic full body, 0.16 s instead of 2.4 s
+  for ArmReach, 0.08 s instead of 0.5 s for the hand recipe envs and 1.6 s instead of 16.3 s for
+  ChaseTagFBVs (four full-body loads per make before); making all 225 ids twice takes 113 s instead
+  of 350 s. The cache holds one spec per model (TableTennis ~165 MiB, ArmReach ~105 MiB, hand
+  ~55 MiB, full body ~6 MiB); set `MYOSUITE_SPEC_CACHE=0` in processes that make a single env, such
+  as vector-env workers.
 
 ### Fixed
 
