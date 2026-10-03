@@ -122,8 +122,8 @@ full commit list.
 * The CPU `myoMimicBimanual-v0` and `myoMimicFullbody-v0` (random targets) are the CPU half of their
   mjlab twins. They observe `[qpos, qvel * ctrl_dt, act, site position, target, target - position]`
   (199 / 684 values, was 137 / 532 with raw `qvel` and a scalar tracking error). The reward is
-  `exp(-20 * mean site error)`, as on mjlab (it was `exp(-2 * error)`), and actions go through the muscle
-  sigmoid. CPU policies trained on these ids need retraining. The mjlab Mimic rewards and deviation
+  `exp(-2 * mean site error)` on both backends (mjlab used `exp(-20 * error)`, which gives almost no
+  signal at the 0.8 m initial error), and actions go through the muscle sigmoid on both without a clip. CPU policies trained on these ids need retraining. The mjlab Mimic rewards and deviation
   check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
   stale.
 

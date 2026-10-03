@@ -80,7 +80,7 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
       (mjlab terms ``qpos``, ``qvel``, ``act`` and ``mimic_site_*``);
     - reward ``exp(-tracking_reward_scale * mean site error)`` (variant config);
     - muscle ctrl ``sigmoid(5 (a - 0.5))`` (mjlab ``sigmoid`` action mode) of the
-      action clipped to the ``[-1, 1]`` action space.
+      action (unclipped, as on mjlab).
 
     Args:
         cfg: Variant config (``default_mimic_config`` / ``default_mimic_fullbody_config``).
@@ -182,13 +182,12 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
         """Advance one control step with sigmoid-mapped muscle controls.
 
         Args:
-            action: Policy action, clipped to the ``[-1, 1]`` action space.
+            action: Policy action; the sigmoid saturates it, there is no clip.
             **kwargs: Ignored compatibility kwargs.
 
         Returns:
             Tuple of (obs, reward, terminated, truncated, info).
         """
-        action = np.clip(action, self.action_space.low, self.action_space.high)
         self.data.ctrl[:] = sigmoid_muscle_activation(action, np)
         self._step_physics()
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)

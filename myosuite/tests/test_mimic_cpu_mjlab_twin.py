@@ -106,7 +106,7 @@ def test_one_step_parity_with_the_mjlab_twin(env_id: str) -> None:
             cpu._obs_dict_to_vec(cpu._get_obs_dict(accessor)),
             atol=1e-5,
         )
-        action = rng.uniform(-1.0, 1.0, cpu.action_space.shape).astype(np.float32)
+        action = rng.uniform(-2.5, 2.5, cpu.action_space.shape).astype(np.float32)
         cpu_obs, cpu_rew, _, _, _ = cpu.step(action)
         mj_obs, mj_rew, _, _, _ = mj.step(torch.as_tensor(action[None]))
         np.testing.assert_allclose(
