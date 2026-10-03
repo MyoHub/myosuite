@@ -220,6 +220,15 @@ full commit list.
 * The `furniture-sim`, `mpl-sim`, `object-sim` and `ycb-sim` git dependencies are gone: the 40 files
   MyoSuite uses (MPL left arm/hand, YCB gelatin box, table texture; 2.9 MB) are bundled under
   `myosuite/envs/myo/assets/`, so every dependency now installs from PyPI.
+* **`pink-noise-rl` is replaced by `colorednoise`.** The Soccer goalkeeper and the ChaseTag opponents
+  draw their velocities from `myosuite.utils.colored_noise.ColoredNoiseProcess` (pink's buffered process
+  on `colorednoise.powerlaw_psd_gaussian`); seeded episodes are bit-identical. `import pink` loaded
+  stable-baselines3, torch and TensorBoard whenever they were installed, and registering the challenge
+  envs imported every `musclemimic` submodule (and `scipy.spatial`); that package now imports its
+  submodules on first use. In a fresh process (Windows, Python 3.12) `import myosuite` takes 0.8 s
+  instead of 1.8 s (475 instead of 785 modules), and `gym.make` + `reset` takes 0.35 s instead of 5.1 s
+  for `myoChallengeSoccerP1-v0` and 0.14 s instead of 4.4 s for `myoChallengeChaseTagP1-v0`, once in
+  every subprocess or vectorized-env worker.
 
 ### Contributors
 
