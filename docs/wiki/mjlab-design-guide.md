@@ -70,6 +70,7 @@ EventTermCfg(
 - Register everything via `ObservationTermCfg`, `RewardTermCfg`, `EventTermCfg`. Never override `_get_observations()` or assemble obs dicts manually.
 - All tensor ops must process all `num_envs` simultaneously — no Python loops over environments.
 - No `.detach().cpu()` inside obs/reward/event functions. Every tensor stays on `env.device` until the manager returns.
+- No host syncs in step-rate functions: no `bool(t.any())`, `.item()`, `int(t)`, `.nonzero()`, boolean-mask indexing, NumPy-array or list indices, or `torch.tensor(...)` / `torch.as_tensor(...)` of host data. Each stalls the CUDA stream once per call. Upload constants once (in a `ManagerTermBase.__init__`) and compute values that several terms share once per step. `myosuite/tests/support/host_sync.py` (`HostSyncCounter`) counts these calls on any device, so a CPU test can guard a GPU hot path; `HostSyncCounter(package_only=True)` counts only MyoSuite's calls (not mjlab's own `reset_buf.nonzero()` in `env.step`).
 
 ---
 
