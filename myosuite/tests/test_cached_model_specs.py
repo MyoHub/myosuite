@@ -164,3 +164,51 @@ def test_distinct_cache_keys_build_distinct_specs() -> None:
     with_fingers = fullbody_model.build_mimic_fullbody_spec(config)[0].compile()
     assert with_fingers.nu > without_fingers.nu
     assert with_fingers.njnt > without_fingers.njnt
+
+
+def test_native_fallback_specs_are_kept_per_disable_fingers() -> None:
+    from ml_collections import config_dict
+
+    from myosuite.core.model_builder import clear_spec_caches
+    from myosuite.integrations.musclemimic import bimanual_model
+
+    clear_spec_caches()
+    for module, build, native in (
+        (fullbody_model, "build_native_mimic_fullbody_spec", "_native_fullbody_spec"),
+        (bimanual_model, "build_native_mimic_bimanual_spec", "_native_bimanual_spec"),
+    ):
+        cfg = config_dict.create(disable_fingers=True)
+        first, second, third = (getattr(module, build)(cfg) for _ in range(3))
+        assert first is not second and second is not third
+        assert getattr(module, native).cache_info().currsize == 1
+        n_actuators = first.compile().nu
+        assert second.compile().nu == third.compile().nu == n_actuators
+        with_fingers = getattr(module, build)(config_dict.create(disable_fingers=False))
+        assert with_fingers.compile().nu > n_actuators
+
+
+def test_bimanual_spec_cache_follows_the_scene_variable(monkeypatch) -> None:
+    pytest.importorskip("musclemimic_models")
+    from ml_collections import config_dict
+
+    from myosuite.integrations.musclemimic import bimanual_model
+
+    bimanual_model._mimic_bimanual_spec.cache_clear()
+    cfg = config_dict.create(disable_fingers=True, model_path=None)
+    monkeypatch.delenv("MYOSUITE_MIMIC_STRICT_UPSTREAM_SCENE", raising=False)
+    bimanual_model.build_mimic_bimanual_spec(cfg)
+    monkeypatch.setenv("MYOSUITE_MIMIC_STRICT_UPSTREAM_SCENE", "1")
+    bimanual_model.build_mimic_bimanual_spec(cfg)
+    assert bimanual_model._mimic_bimanual_spec.cache_info().misses == 2
+
+
+def test_mjlab_tabletennis_full_spec_is_built_once_for_three_calls(monkeypatch) -> None:
+    pytest.importorskip("mjlab")
+    from myosuite.core.model_builder import clear_spec_caches
+    from myosuite.envs.myo.backends.mjlab import register_mjlab_tabletennis as tt
+
+    clear_spec_caches()
+    calls = _count_calls(monkeypatch, tt, "_add_tabletennis_furniture")
+    specs = [tt._table_tennis_full_spec() for _ in range(3)]
+    assert len(calls) == 2  # kept from the second build
+    assert len({id(s) for s in specs}) == 3  # each caller gets its own spec

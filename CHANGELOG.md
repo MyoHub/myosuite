@@ -127,7 +127,8 @@ full commit list.
   check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
   stale.
 * **`gym.make` reuses built model specs.** `build_from_recipe` (now with an optional `edit_fn`) and
-  `build_mimic_fullbody_spec` keep the spec they build and give every later env a private
+  `build_mimic_fullbody_spec`, `build_mimic_bimanual_spec`, the native full-body and bimanual fallbacks and
+  mjlab's TableTennis full spec keep the spec they build and give every later env a private
   `MjSpec.copy()` to compile (`ModelBuilder.build_spec`, `cached_spec`, `clear_spec_caches`); the
   compiled models and rollouts are bit-identical to a fresh build. Recipe specs are kept from their
   second build, so a process that makes an env once (a vector-env worker) uses no extra memory, and

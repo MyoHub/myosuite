@@ -363,7 +363,34 @@ def build_mimic_fullbody_spec(
     return spec, xml_path
 
 
+@cached_spec()
+def _native_fullbody_spec(disable_fingers: bool) -> mujoco.MjSpec:
+    """Native full-body spec, built once per ``disable_fingers`` (the only config input)."""
+    return _build_native_mimic_fullbody_spec(
+        config_dict.create(disable_fingers=disable_fingers)
+    )
+
+
 def build_native_mimic_fullbody_spec(config: config_dict.ConfigDict) -> mujoco.MjSpec:
+    """Build a myo_sim-native Mimic-compatible full-body MjSpec.
+
+    See :func:`_build_native_mimic_fullbody_spec`. The spec is built once per
+    ``disable_fingers`` in a process; every call returns a private copy once it
+    is kept (see :func:`~myosuite.core.model_builder.cached_spec`).
+
+    Args:
+        config: At least ``disable_fingers`` (see
+            :func:`default_mimic_fullbody_config`).
+
+    Returns:
+        Edited, uncompiled MjSpec.
+    """
+    return _native_fullbody_spec(bool(config.disable_fingers))
+
+
+def _build_native_mimic_fullbody_spec(
+    config: config_dict.ConfigDict,
+) -> mujoco.MjSpec:
     """Build a myo_sim-native Mimic-compatible full-body MjSpec.
 
     Applies the same edits as :func:`build_mimic_fullbody_spec` (mimic
