@@ -197,7 +197,7 @@ class ClipTrajectorySource:
         """Number of tracked sites."""
         return int(self.tracked_site_ids.shape[0])
 
-    def update(self, step: torch.Tensor) -> None:
+    def update(self, step: torch.Tensor, *, check_resets: bool = True) -> None:
         """Synchronise internal state with the current per-env step counter.
 
         Must be called once per step before querying :meth:`site_targets`,
@@ -207,6 +207,9 @@ class ClipTrajectorySource:
         Args:
             step: Control steps since each env's last reset, shape ``(N,)``,
                 integer dtype (mjlab ``env.episode_length_buf``).
+            check_resets: ``False`` when *step* is known not to have decreased
+                since the last update (e.g. one ``+= 1``): skips the reset
+                check, a host sync on a GPU.
 
         Raises:
             TypeError: If *step* is a floating-point tensor.
@@ -214,7 +217,10 @@ class ClipTrajectorySource:
         step = _as_steps(step)
         n_envs = int(step.shape[0])
         self._ensure_device(step.device, n_envs)
-        self._detect_and_resample_resets(step)
+        if check_resets:
+            self._detect_and_resample_resets(step)
+        else:
+            self._last_step = step.clone()
 
     def site_targets(self, step: torch.Tensor) -> torch.Tensor:
         """Return ``(N, n_tracked, 3)`` site targets at the current frame.
@@ -581,11 +587,17 @@ class MultiClipTrajectorySource:
         """Number of tracked sites."""
         return int(self.tracked_site_ids.shape[0])
 
-    def update(self, step: torch.Tensor) -> None:
-        """Synchronise the clip bank state with the per-env step counter."""
+    def update(self, step: torch.Tensor, *, check_resets: bool = True) -> None:
+        """Synchronise the clip bank state with the per-env step counter.
+
+        See :meth:`ClipTrajectorySource.update` for *check_resets*.
+        """
         step = _as_steps(step)
         self._ensure_device(step.device, int(step.shape[0]))
-        self._detect_and_resample_resets(step)
+        if check_resets:
+            self._detect_and_resample_resets(step)
+        else:
+            self._last_step = step.clone()
 
     def frame_indices(self, step: torch.Tensor) -> torch.Tensor:
         """Return the current frame index within each env's active clip."""

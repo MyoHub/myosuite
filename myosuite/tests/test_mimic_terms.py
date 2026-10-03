@@ -199,6 +199,29 @@ def test_composite_reward_skips_missing_optional_terms():
     assert result["root_orient"] is None
 
 
+def test_composite_reward_batched_torch_stays_on_device():
+    """Batched (mjlab) input: per-env distance and solved flag, no host read.
+
+    ``mean_site_dist`` was ``float()`` of the mean over the whole batch: one host
+    sync per mjlab step, and a meaningless batch-wide flag.
+    """
+    torch = pytest.importorskip("torch")
+    from myosuite.tests.support.host_sync import HostSyncCounter
+
+    cur = torch.zeros(3, N_SITES, 3)
+    ref = cur.clone()
+    ref[1, :, 0] = 0.5  # env 1 tracks 0.5 m off
+    with HostSyncCounter(package_only=True) as syncs:
+        result = mimic_composite_reward(
+            torch, cur, ref, None, None, None, None, None, None, None, None, None, None
+        )
+    assert syncs.total == 0, syncs.report()
+    torch.testing.assert_close(result["mean_site_dist"], torch.tensor([0.0, 0.5, 0.0]))
+    assert result["solved"].tolist() == [True, False, True]
+    single = mimic_composite_reward(np, _rand_sites(), _rand_sites(), *([None] * 10))
+    assert isinstance(single["mean_site_dist"], float)
+
+
 # ---------------------------------------------------------------------------
 # Monotonicity: larger error → lower reward
 # ---------------------------------------------------------------------------

@@ -942,6 +942,142 @@ class TestMimicMjlabClosures:
 
 
 # ---------------------------------------------------------------------------
+# TestMimicTargetSync: one sync per step phase, never a stale target
+# ---------------------------------------------------------------------------
+
+
+class TestMimicTargetSync:
+    """The closures of one step share one target sync.
+
+    They used to re-sync on every call (about 30 per env step, each a host sync
+    on a GPU); the sync now runs when its inputs change, and the reset check
+    only when the step counter did more than mjlab's per-step increment.
+    """
+
+    _ENTITY, _VARIANT = "robot", "bimanual"
+
+    def _setup(self, cache: dict[str, Any]) -> Any:
+        env = _make_mock_env(t=5 * _CTRL_DT, entity_name=self._ENTITY)
+        env.common_step_counter = 5
+        _mimic_mjlab_cache[_mimic_cache_key(env, self._ENTITY, self._VARIANT)] = cache
+        _sync_mimic_mjlab_targets(env, self._ENTITY, cache)
+        return env
+
+    def _closures(self, src: ClipTrajectorySource) -> list[Any]:
+        args = (self._ENTITY, self._VARIANT)
+        return [
+            _mimic_obs_target(*args),
+            _mimic_obs_err(*args),
+            _mimic_obs_site_pos(*args),
+            _mimic_tracking_reward(*args),
+            _mimic_obs_clip_phase(*args, src.clip, _CTRL_DT),
+            _mimic_obs_clip_ref_qpos(*args, src.clip, _CTRL_DT),
+            _mimic_obs_clip_ref_qvel(*args, src.clip, _CTRL_DT),
+        ]
+
+    @staticmethod
+    def _step(env: Any) -> None:
+        """mjlab's per-step counter update."""
+        env.episode_length_buf += 1
+        env.common_step_counter += 1
+
+    def _assert_current(self, env: Any, src: ClipTrajectorySource) -> None:
+        """Every closure agrees with a direct evaluation of the clip source."""
+        step = env.episode_length_buf
+        target, err, _, _, phase, ref_qpos, ref_qvel = (
+            fn(env) for fn in self._closures(src)
+        )
+        expected = src.site_targets(step).reshape(_N, -1)
+        assert torch.equal(target, expected)
+        assert torch.equal(err, expected)  # mock sites sit at the origin
+        assert torch.equal(phase, src.phase(step))
+        assert torch.equal(ref_qpos, src.ref_qpos(step))
+        assert torch.equal(ref_qvel, src.ref_qvel(step))
+
+    def test_closures_of_a_step_share_one_update(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        src = _make_source()
+        env = self._setup(_make_cache_with_source(src))
+        calls: list[bool] = []
+        real = src.update
+
+        def counting(step: torch.Tensor, **kwargs: Any) -> None:
+            calls.append(kwargs.get("check_resets", True))
+            real(step, **kwargs)
+
+        monkeypatch.setattr(src, "update", counting)
+        for fn in self._closures(src):
+            fn(env)
+        assert calls == []  # synced in _setup, nothing changed since
+        self._step(env)
+        for _ in range(3):
+            for fn in self._closures(src):
+                fn(env)
+        # One update, without the reset check: a plain step cannot start an episode.
+        assert calls == [False]
+        self._assert_current(env, src)
+
+    def test_targets_follow_every_input_change(self) -> None:
+        src = _make_source()
+        env = self._setup(_make_cache_with_source(src))
+        self._assert_current(env, src)
+        self._step(env)
+        self._assert_current(env, src)
+        env.episode_length_buf = env.episode_length_buf + 3  # rsl_rl-style rebind
+        self._assert_current(env, src)
+        src._start_offsets[1] = 7  # in place, as the RSI event does
+        self._assert_current(env, src)
+        src._start_offsets = torch.zeros(_N, dtype=torch.long)
+        self._assert_current(env, src)
+        before = src._start_offsets.clone()
+        torch.manual_seed(0)
+        env.episode_length_buf[2] = 0  # env 2 starts a new episode
+        self._assert_current(env, src)
+        assert torch.equal(src._start_offsets[[0, 1, 3]], before[[0, 1, 3]])
+        # Inference tensors keep no version counter: every call re-syncs.
+        with torch.inference_mode():
+            env.episode_length_buf = torch.full((_N,), 9, dtype=torch.long)
+        self._assert_current(env, src)
+        with torch.inference_mode():
+            env.episode_length_buf[0] = 4
+        self._assert_current(env, src)
+
+    def test_restart_after_a_step_is_detected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A step and a reset between two calls still run the reset check."""
+        src = _make_source()
+        env = self._setup(_make_cache_with_source(src))
+        checks: list[torch.Tensor] = []
+        real = src._detect_and_resample_resets
+
+        def counting(step: torch.Tensor) -> None:
+            checks.append(step.clone())
+            real(step)
+
+        monkeypatch.setattr(src, "_detect_and_resample_resets", counting)
+        self._step(env)
+        env.episode_length_buf[1] = 0  # the env reset after the step
+        _mimic_obs_target(self._ENTITY, self._VARIANT)(env)
+        assert len(checks) == 1 and checks[0].tolist() == [6, 0, 6, 6]
+        self._assert_current(env, src)
+
+    def test_random_targets_resample_only_on_new_episodes(self) -> None:
+        cache = _make_cache_random()
+        env = self._setup(cache)
+        target_fn = _mimic_obs_target(self._ENTITY, self._VARIANT)
+        before = target_fn(env).clone()
+        self._step(env)
+        assert torch.equal(target_fn(env), before)
+        assert torch.equal(cache["last_step"], env.episode_length_buf)
+        env.episode_length_buf[3] = 0  # env 3 starts a new episode
+        after = target_fn(env)
+        assert torch.equal(after[:3], before[:3])
+        assert not torch.equal(after[3], before[3])
+
+
+# ---------------------------------------------------------------------------
 # TestInitialPoseHelpers
 # ---------------------------------------------------------------------------
 

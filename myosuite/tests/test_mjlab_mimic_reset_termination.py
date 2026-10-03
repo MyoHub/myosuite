@@ -381,6 +381,110 @@ def test_clip_frame_follows_cpu_step_counter(
 
 
 # ---------------------------------------------------------------------------
+# Host syncs per step
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("variant", ["fullbody", "bimanual"])
+def test_clip_step_syncs_only_to_detect_resets(
+    variant: str, request: pytest.FixtureRequest
+) -> None:
+    """A step reads no host data, except one reset check on a step that reset an env.
+
+    Every observation, reward and termination term re-synced the clip source
+    (a ``reset_mask.any()`` host read) and indexed sites with a NumPy array (a
+    host-to-device copy): 34 host syncs per step.
+    """
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.tests.support.host_sync import HostSyncCounter
+
+    env, clip = request.getfixturevalue(f"{variant}_env")
+    torch.manual_seed(0)
+    env.reset()
+    source = mimic._resolve_mimic_mjlab_ids(env, _ENTITY[variant], variant)[
+        "clip_source"
+    ]
+    source._start_offsets[0] = int(clip.site_xpos.shape[0]) - 2  # ends at step 2
+    action = torch.zeros(env.num_envs, sum(env.action_manager.action_term_dim))
+    env.step(action)  # sees the offset write: one reset check
+    resets = []
+    for _ in range(4):
+        with HostSyncCounter(package_only=True) as syncs:
+            env.step(action)
+        reset = bool(env.reset_buf.any())
+        resets.append(reset)
+        assert syncs.total <= int(reset), syncs.report()
+    assert resets[0], "env 0 should reach its clip end on the second step"
+
+
+def _reference_lookahead(
+    env: Any, cache: dict[str, Any], entity: str, k: int, stride: int
+) -> Any:
+    """The lookahead observation, one future step at a time (the original loop)."""
+    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        _clip_has_required_indices,
+    )
+
+    source, clip = cache["clip_source"], cache["clip"]
+    step = env.episode_length_buf
+    n = int(step.shape[0])
+    lengths = source.clip_lengths(step)
+    frames = source.frame_indices(step)
+    free_root = not env.scene[entity].is_fixed_base
+    data = env.scene[entity].data.data
+    root = data.qpos[:, :3] if free_root else torch.zeros(n, 3)
+    has_pos = free_root and _clip_has_required_indices(
+        clip.qpos_model_indices, range(3)
+    )
+    has_vel = free_root and _clip_has_required_indices(
+        clip.qvel_model_indices, range(3)
+    )
+    width = source.n_tracked * 3 + 3 * has_pos + 3 * has_vel + 1
+    out = torch.zeros(n, k * width)
+    offset = 0
+    for i in range(1, k + 1):
+        future = (frames + i * stride) % lengths
+        sites = (source.site_targets_at_frames(future) - root[:, None]).reshape(n, -1)
+        out[:, offset : offset + sites.shape[1]] = sites
+        offset += sites.shape[1]
+        if has_pos:
+            out[:, offset : offset + 3] = (
+                source.ref_qpos_at_frames(future)[:, :3] - root
+            )
+            offset += 3
+        if has_vel:
+            out[:, offset : offset + 3] = source.ref_qvel_at_frames(future)[:, :3]
+            offset += 3
+        out[:, offset] = future.float() / torch.clamp(lengths.float() - 1.0, min=1.0)
+        offset += 1
+    return out
+
+
+@pytest.mark.parametrize("variant", ["fullbody", "bimanual"])
+def test_lookahead_matches_the_reference_loop(
+    variant: str, request: pytest.FixtureRequest
+) -> None:
+    """The batched lookahead (its clip part shared by the obs groups) is bit-exact."""
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    env, clip = request.getfixturevalue(f"{variant}_env")
+    torch.manual_seed(1)
+    env.reset()
+    action = torch.zeros(env.num_envs, sum(env.action_manager.action_term_dim))
+    for _ in range(2):
+        env.step(action)
+    entity = _ENTITY[variant]
+    for k, stride in ((2, 3), (5, 20)):
+        fn = mimic._mimic_obs_lookahead(
+            entity, variant, clip, float(env.step_dt), k, stride
+        )
+        out = fn(env)
+        cache = mimic._resolve_mimic_mjlab_ids(env, entity, variant)
+        assert torch.equal(out, _reference_lookahead(env, cache, entity, k, stride))
+        assert torch.equal(fn(env), out)  # the shared clip part is reused
+
+
+# ---------------------------------------------------------------------------
 # SAR tasks
 # ---------------------------------------------------------------------------
 
