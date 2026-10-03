@@ -69,3 +69,50 @@ def test_soccer_longer_active_rollout_improves_return() -> None:
         assert totals[1] > -50.0
     finally:
         env.close()
+
+
+def test_soccer_pain_matches_per_joint_limit_forces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pain takes one J^T f product and equals the old per-joint computation."""
+    import mujoco
+
+    import myosuite  # noqa: F401  (registers the envs)
+    from myosuite.utils import gym
+
+    env = gym.make("myoChallengeSoccerP1-v0")
+    u = env.unwrapped
+    try:
+        env.reset(seed=0)
+        rng = np.random.default_rng(0)
+        space = env.action_space
+        nonzero = 0
+        for _ in range(30):
+            env.step(rng.uniform(space.low, space.high).astype(space.dtype))
+            expected = 0.0
+            for joint in u.JNT_OVEREXT:
+                efc_force = u.data.efc_force.copy()
+                is_limit = u.data.efc_type == mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT
+                efc_force[~is_limit] = 0.0
+                qfrc = np.zeros(u.model.nv)
+                mujoco.mj_mulJacTVec(u.model, u.data, qfrc, efc_force)
+                frc = qfrc[u.model.joint(joint).dofadr].squeeze()
+                expected += np.abs(np.clip(frc, -1000, 1000)) / 1000
+            expected /= len(u.JNT_OVEREXT)
+            pain = u._get_jnt_limit_violation()
+            assert np.asarray(pain).tobytes() == np.asarray(expected).tobytes()
+            nonzero += pain != 0.0
+        assert nonzero > 0
+
+        calls: list[int] = []
+        mul_jac_t_vec = mujoco.mj_mulJacTVec
+
+        def counting(*args: object) -> None:
+            calls.append(1)
+            mul_jac_t_vec(*args)
+
+        monkeypatch.setattr(mujoco, "mj_mulJacTVec", counting)
+        u._get_jnt_limit_violation()
+        assert len(calls) == 1
+    finally:
+        env.close()
