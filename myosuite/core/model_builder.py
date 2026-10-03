@@ -59,12 +59,14 @@ Alternatives
 
 from __future__ import annotations
 
-
+import functools
 import logging
+import os
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeAlias
-from collections.abc import Callable
+from typing import Any, NamedTuple, TypeAlias
+from collections.abc import Callable, Hashable
 
 import numpy as np
 import mujoco
@@ -364,9 +366,10 @@ class ModelBuilder:
         scene features and recommended alternatives for production use.
 
     Records fragment attachments and transform functions lazily.  Every
-    call to :meth:`build` composes and compiles a fresh model (nothing is
-    cached, since callers mutate the returned model and spec), and never
-    modifies the seed or attached specs, so a builder can be built repeatedly.
+    call to :meth:`build_spec` composes a fresh spec, which :meth:`build`
+    compiles (nothing is cached here, since callers mutate the returned model
+    and spec), and never modifies the seed or attached specs, so a builder can
+    be built repeatedly.
 
     Positioning
     -----------
@@ -803,11 +806,24 @@ class ModelBuilder:
         return self.apply_transform(_sarco)
 
     def build(self) -> tuple[mujoco.MjModel, mujoco.MjSpec]:
-        """Compose a fresh spec and compile it into a MjModel.
+        """Compose a fresh spec (see :meth:`build_spec`) and compile it into a MjModel.
 
         Returns:
             Tuple of (MjModel, MjSpec).  The spec is new on every call (a copy
             for :meth:`from_spec` seeds).
+
+        Raises:
+            FileNotFoundError: If a fragment XML cannot be resolved.
+            KeyError: If a named parent body does not exist in the spec.
+        """
+        spec = self.build_spec()
+        return spec.compile(), spec
+
+    def build_spec(self) -> mujoco.MjSpec:
+        """Compose a fresh spec from the seed, fragments, props, transforms and options.
+
+        Returns:
+            The uncompiled MjSpec, new on every call.
 
         Raises:
             FileNotFoundError: If a fragment XML cannot be resolved.
@@ -878,7 +894,7 @@ class ModelBuilder:
                     geom.contype = 0
                     geom.conaffinity = 0
 
-        return spec.compile(), spec
+        return spec
 
 
 def list_recipes() -> list[str]:
@@ -895,11 +911,161 @@ def list_recipes() -> list[str]:
     return sorted(_RECIPES)
 
 
-def build_from_recipe(name: str, **kwargs: Any) -> tuple[mujoco.MjModel, mujoco.MjSpec]:
+# cache_clear of every cached_spec builder, for clear_spec_caches().
+_SPEC_CACHE_CLEARS: list[Callable[[], None]] = []
+
+
+class SpecCacheInfo(NamedTuple):
+    """Statistics of a :func:`cached_spec` builder (``currsize``: specs kept)."""
+
+    hits: int
+    misses: int
+    maxsize: int | None
+    currsize: int
+
+
+def _trim(entries: OrderedDict, maxsize: int | None) -> None:
+    """Evict the least recently used entries beyond *maxsize*."""
+    while maxsize is not None and len(entries) > maxsize:
+        entries.popitem(last=False)
+
+
+def cached_spec(
+    maxsize: int | None = 32,
+    min_uses: int = 2,
+) -> Callable[[Callable[..., mujoco.MjSpec]], Callable[..., mujoco.MjSpec]]:
+    """Memoize a deterministic ``MjSpec`` builder.
+
+    The builder's arguments must capture every input that changes the spec it
+    builds. A spec is kept from the *min_uses*-th build of its arguments on, so
+    with the default of 2 a process that builds a model once (e.g. a vector-env
+    worker making one env) keeps nothing, and one that builds it repeatedly
+    (tests, in-process vector envs, train and eval envs) builds it twice. Every
+    call returns a private spec that callers may edit and compile freely: the
+    fresh build until the spec is kept, a :meth:`mujoco.MjSpec.copy` after.
+    The cache is process-local; calls with unhashable arguments build without
+    it, and setting the environment variable ``MYOSUITE_SPEC_CACHE=0`` disables
+    it.
+
+    Args:
+        maxsize: Most specs kept, least recently used evicted first; ``None``
+            keeps all.
+        min_uses: Builds of an argument set before its spec is kept; 1 keeps
+            the first build (small specs that a process rebuilds anyway).
+
+    Returns:
+        Decorator; the wrapped builder exposes ``cache_info`` and ``cache_clear``.
+
+    Example:
+        >>> @cached_spec()
+        ... def _scene(path: str) -> mujoco.MjSpec:
+        ...     return mujoco.MjSpec.from_file(path)
+    """
+
+    def decorator(
+        build: Callable[..., mujoco.MjSpec],
+    ) -> Callable[..., mujoco.MjSpec]:
+        specs: OrderedDict[Hashable, mujoco.MjSpec] = OrderedDict()
+        builds: OrderedDict[Hashable, int] = OrderedDict()  # keys not kept yet
+        stats = {"hits": 0, "misses": 0}
+
+        def cache_clear() -> None:
+            specs.clear()
+            builds.clear()
+            stats.update(hits=0, misses=0)
+
+        def cache_info() -> SpecCacheInfo:
+            return SpecCacheInfo(stats["hits"], stats["misses"], maxsize, len(specs))
+
+        _SPEC_CACHE_CLEARS.append(cache_clear)
+
+        @functools.wraps(build)
+        def wrapper(*args: Any, **kwargs: Any) -> mujoco.MjSpec:
+            if os.environ.get("MYOSUITE_SPEC_CACHE") == "0":
+                return build(*args, **kwargs)
+            # Typed, as functools.lru_cache(typed=True): 1 and 1.0 differ.
+            key = (
+                args,
+                tuple(kwargs.items()),
+                tuple(map(type, args)),
+                tuple(map(type, kwargs.values())),
+            )
+            try:
+                hash(key)
+            except TypeError:
+                return build(*args, **kwargs)
+            if key in specs:
+                specs.move_to_end(key)
+                stats["hits"] += 1
+                return specs[key].copy()
+            stats["misses"] += 1
+            spec = build(*args, **kwargs)
+            uses = builds.pop(key, 0) + 1
+            if uses < min_uses:
+                builds[key] = uses
+                _trim(builds, maxsize)
+                return spec
+            specs[key] = spec
+            _trim(specs, maxsize)
+            return spec.copy()
+
+        wrapper.cache_info = cache_info  # type: ignore[attr-defined]
+        wrapper.cache_clear = cache_clear  # type: ignore[attr-defined]
+        return wrapper
+
+    return decorator
+
+
+def clear_spec_caches() -> None:
+    """Drop the specs of every :func:`cached_spec` builder, freeing their memory."""
+    for clear in _SPEC_CACHE_CLEARS:
+        clear()
+
+
+def _cwd() -> Path | None:
+    """Working directory, or ``None`` if it no longer exists."""
+    try:
+        return Path.cwd()
+    except FileNotFoundError:
+        return None
+
+
+@cached_spec()
+def _recipe_spec(
+    name: str,
+    recipe_fn: Callable[[ModelBuilder], ModelBuilder],
+    cwd: Path | None,
+    edit_fn: Callable[[mujoco.MjSpec], None] | None,
+    params: tuple[tuple[str, Any], ...],
+) -> mujoco.MjSpec:
+    """Uncompiled spec of recipe *name*, edited by *edit_fn* after a first compile.
+
+    *recipe_fn* tells a re-registered recipe apart, *cwd* the relative asset
+    paths a recipe may write (the TableTennis furniture meshes), *params* the
+    reserved recipe kwargs.
+    """
+    spec = recipe_fn(ModelBuilder()).build_spec()
+    if edit_fn is not None:
+        spec.compile()  # the edit sees a compiled spec, as when envs applied it
+        edit_fn(spec)
+    return spec
+
+
+def build_from_recipe(
+    name: str,
+    edit_fn: Callable[[mujoco.MjSpec], None] | None = None,
+    **kwargs: Any,
+) -> tuple[mujoco.MjModel, mujoco.MjSpec]:
     """Build a model from a named recipe.
+
+    From its second build in a process (same recipe, edit, working directory
+    and kwargs), the spec is kept and every call compiles a private copy of it
+    (see :func:`cached_spec`).
 
     Args:
         name: Recipe name registered via @model_recipe.
+        edit_fn: In-place edit of the compiled recipe spec, e.g. the ``edit_fn``
+            kwarg of an env; built and cached with the recipe.
         **kwargs: Unused; reserved for future recipe parameterisation.
 
     Returns:
@@ -908,7 +1074,7 @@ def build_from_recipe(name: str, **kwargs: Any) -> tuple[mujoco.MjModel, mujoco.
     Example:
         >>> model, spec = build_from_recipe("elbow_standard")
     """
-    recipe_fn = get_recipe(name)
-    builder = ModelBuilder()
-    builder = recipe_fn(builder)
-    return builder.build()
+    spec = _recipe_spec(
+        name, get_recipe(name), _cwd(), edit_fn, tuple(sorted(kwargs.items()))
+    )
+    return spec.compile(), spec
