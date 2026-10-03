@@ -63,10 +63,12 @@ class DictObservationWrapper(RecordConstructorArgs, gym.ObservationWrapper):
     """Expose structured observations as a ``gymnasium.spaces.Dict`` space.
 
     MyoGymnasiumEnv flattens all observation terms into a single ``Box``
-    vector.  This wrapper intercepts each step/reset and re-packages the
-    ``info["obs_dict"]`` into a proper ``Dict`` observation so that
+    vector.  This wrapper re-packages the env's observation dict (the
+    ``info["obs_dict"]`` of each step; recomputed with ``get_obs_dict()`` at
+    reset, whose info carries none) into a proper ``Dict`` observation so that
     modular or hierarchical policies can consume named sub-observations
-    directly without manual slicing.
+    directly without manual slicing.  The ``Dict`` space is built at
+    construction, so vector envs and SB3 see it before the first reset.
 
     The action space and physics are unmodified.
 
@@ -85,46 +87,47 @@ class DictObservationWrapper(RecordConstructorArgs, gym.ObservationWrapper):
     def __init__(self, env: gym.Env) -> None:
         RecordConstructorArgs.__init__(self)
         gym.ObservationWrapper.__init__(self, env)
-        self._dict_space_ready = False
-
-    def _build_dict_space(self, obs_dict: dict[str, np.ndarray]) -> None:
         self.observation_space = gym.spaces.Dict(
             {
                 k: gym.spaces.Box(
-                    low=-np.inf,
-                    high=np.inf,
-                    shape=np.atleast_1d(v).shape,
-                    dtype=np.float32,
+                    low=-np.inf, high=np.inf, shape=v.shape, dtype=np.float32
                 )
-                for k, v in obs_dict.items()
+                for k, v in self._current_obs().items()
             }
         )
-        self._dict_space_ready = True
+
+    @staticmethod
+    def _to_dict_obs(obs_dict: dict[str, Any]) -> dict[str, np.ndarray]:
+        return {
+            k: np.atleast_1d(np.asarray(v, dtype=np.float32))
+            for k, v in obs_dict.items()
+        }
+
+    def _current_obs(self) -> dict[str, np.ndarray]:
+        """Dict observation of the env's current state."""
+        env = self.env.unwrapped
+        # (model, data) also works before an env has built its accessor.
+        return self._to_dict_obs(env.get_obs_dict(env.model, env.data))
+
+    def _info_obs(self, info: dict[str, Any]) -> dict[str, np.ndarray]:
+        """The info's obs dict, else (reset info is empty) the current one."""
+        if "obs_dict" in info:
+            return self._to_dict_obs(info["obs_dict"])
+        return self._current_obs()
 
     def observation(self, obs: np.ndarray) -> dict[str, np.ndarray]:
-        # Called by ObservationWrapper.step(); obs_dict comes from the last step.
-        obs_dict = getattr(self.env.unwrapped, "_last_obs_dict", {})
-        if not self._dict_space_ready and obs_dict:
-            self._build_dict_space(obs_dict)
-        return {k: np.asarray(v, dtype=np.float32) for k, v in obs_dict.items()}
+        """Dict observation of the current state (*obs* is the flat vector)."""
+        return self._current_obs()
 
     def reset(self, **kwargs: Any) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
-        obs, info = self.env.reset(**kwargs)
-        obs_dict = info.get("obs_dict", {})
-        if not self._dict_space_ready and obs_dict:
-            self._build_dict_space(obs_dict)
-        dict_obs = {k: np.asarray(v, dtype=np.float32) for k, v in obs_dict.items()}
-        return dict_obs, info
+        _, info = self.env.reset(**kwargs)
+        return self._info_obs(info), info
 
     def step(
         self, action: Any
     ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
-        obs, reward, terminated, truncated, info = self.env.step(action)
-        obs_dict = info.get("obs_dict", {})
-        if not self._dict_space_ready and obs_dict:
-            self._build_dict_space(obs_dict)
-        dict_obs = {k: np.asarray(v, dtype=np.float32) for k, v in obs_dict.items()}
-        return dict_obs, reward, terminated, truncated, info
+        _, reward, terminated, truncated, info = self.env.step(action)
+        return self._info_obs(info), reward, terminated, truncated, info
 
 
 class ObservationNormalizeWrapper(RecordConstructorArgs, gym.ObservationWrapper):
@@ -207,7 +210,9 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
     Enables perturbation-response experiments — reactive balance, motor
     adaptation, and neuroscience lesion studies — without modifying env
     source code.  Perturbations are injected into MuJoCo's
-    ``data.xfrc_applied`` before each physics substep.
+    ``data.xfrc_applied`` before each physics substep.  Every step the wrapper
+    rewrites the rows of the bodies it perturbs as the sum of the active
+    perturbations (zero once none is active).
 
     A perturbation is a dict with the following keys:
 
@@ -247,6 +252,8 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
         gym.Wrapper.__init__(self, env)
         self._perturbations: list[dict[str, Any]] = []
         self._step_count: int = 0
+        # Bodies whose xfrc_applied row this wrapper has written since reset.
+        self._touched_bodies: set[int] = set()
 
     def add_perturbation(self, perturbation: dict[str, Any]) -> None:
         """Register a perturbation.
@@ -275,6 +282,7 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
 
     def reset(self, **kwargs: Any) -> tuple[Any, dict[str, Any]]:
         self._step_count = 0
+        self._touched_bodies.clear()
         obs, info = self.env.reset(**kwargs)
         # Zero xfrc_applied on reset to prevent carry-over from previous episode.
         env = self.unwrapped
@@ -291,20 +299,23 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
         if data is not None and model is not None:
             import mujoco
 
+            # Rebuild the rows from scratch: perturbations on one body add up,
+            # and one closing window does not cancel the others.
+            for body_id in self._touched_bodies:
+                data.xfrc_applied[body_id] = 0.0
             for p in self._perturbations:
                 end = p["end"]
                 active = p["start"] <= self._step_count and (
                     end == -1 or self._step_count < end
                 )
+                if not active:
+                    continue
                 body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, p["body"])
                 if body_id < 0:
                     continue
-                if active:
-                    data.xfrc_applied[body_id, :3] = p["force"]
-                    data.xfrc_applied[body_id, 3:] = p["torque"]
-                elif end != -1 and self._step_count == end:
-                    # One-shot zero-out when window closes
-                    data.xfrc_applied[body_id, :] = 0.0
+                data.xfrc_applied[body_id, :3] += p["force"]
+                data.xfrc_applied[body_id, 3:] += p["torque"]
+                self._touched_bodies.add(body_id)
 
         result = self.env.step(action)
         self._step_count += 1
