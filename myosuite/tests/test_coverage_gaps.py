@@ -122,6 +122,55 @@ def _fatigue_stepper(backend: str, n: int) -> Any:
 _FATIGUE_CTRL_DTS = (0.01, 0.02, 0.025)
 
 
+def _rest_protocol(n: int = 3) -> np.ndarray:
+    """Target loads at 20 ms: (10 s at 50%, 10 s at 20%, 10 s at rest) x 2."""
+    block = np.repeat([0.5, 0.2, 0.0], 500)
+    return np.tile(np.tile(block, 2)[:, None], (1, n))
+
+
+def _rest_protocol_trace(backend: str, loads: np.ndarray, dt: float = 0.02) -> dict:
+    """MA, MF before and after each step of the uniform-parameter model.
+
+    Starts with MF = 0.3 so that the recovery rate is visible from the start.
+    """
+    from myosuite.core.muscle_conditions import _UNIFORM_PARAMS, TorchFatigueState
+
+    n = loads.shape[1]
+    mf0 = np.full(n, 0.3)
+    if backend == "numpy":
+        cpu = _make_fatigue_model(n)
+        cpu.reset(fatigue_reset_vec=mf0)
+
+        def step(tl: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+            cpu.compute_act(tl.copy(), dt=dt)
+            return cpu.MA.copy(), cpu.MF.copy()
+
+        state = (cpu.MA.copy(), cpu.MF.copy())
+    else:
+        torch = pytest.importorskip("torch")
+        gpu = TorchFatigueState(1, n, **{k: _UNIFORM_PARAMS[k] for k in "FRr"})
+        gpu.reset(fatigue_reset_vec=mf0)
+
+        def step(tl: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+            gpu.step(torch.tensor(tl[None], dtype=torch.float32), dt)
+            return gpu.MA[0].double().numpy(), gpu.MF[0].double().numpy()
+
+        state = (gpu.MA[0].double().numpy(), gpu.MF[0].double().numpy())
+    ma, mf = [state[0]], [state[1]]
+    for tl in loads:
+        new_ma, new_mf = step(tl)
+        ma.append(new_ma)
+        mf.append(new_mf)
+    return {"MA": np.array(ma), "MF": np.array(mf), "dt": dt, **_UNIFORM_PARAMS}
+
+
+def _effective_recovery_multiplier(trace: dict) -> np.ndarray:
+    """``rR / R`` of each step, from ``dMF = (F MA - rR MF) dt``."""
+    ma, mf = trace["MA"], trace["MF"]
+    dmf_dt = np.diff(mf, axis=0) / trace["dt"]
+    return (trace["F"] * ma[:-1] - dmf_dt) / (trace["R"] * mf[:-1])
+
+
 class TestCumulativeFatigue:
     def test_init_compartments(self) -> None:
         f = _make_fatigue_model(6)
@@ -194,10 +243,46 @@ class TestCumulativeFatigue:
             assert np.all(new[~rising] >= tl[~rising] - 1e-3)
             ma = new
 
+    @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    def test_rest_multiplier_applies_only_at_rest(self, backend: str) -> None:
+        """``r`` multiplies recovery only when TL == 0 (Rakshit et al. 2021, Eq. 7).
+
+        On the 20% steps that follow 50% the muscle relaxes (MA >= TL) under a
+        non-zero load, which the model used to treat as rest.
+        """
+        loads = _rest_protocol()
+        trace = _rest_protocol_trace(backend, loads)
+        mult = _effective_recovery_multiplier(trace)
+        rest = loads == 0.0
+        relaxing = (trace["MA"][:-1] >= loads) & ~rest
+        assert relaxing.sum() > 100, "protocol must relax under load"
+        np.testing.assert_allclose(mult[rest], trace["r"], rtol=0.05)
+        np.testing.assert_allclose(mult[~rest], 1.0, atol=0.3)
+
+    @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    def test_negative_command_counts_as_rest(self, backend: str) -> None:
+        """A negative command (``[-1, 1]`` muscle ctrl ranges, clamped to zero
+        excitation by MuJoCo) recovers like TL = 0."""
+        rest = _rest_protocol_trace(backend, np.zeros((100, 3)))
+        negative = _rest_protocol_trace(backend, np.full((100, 3), -1.0))
+        np.testing.assert_allclose(negative["MF"], rest["MF"], atol=1e-7)
+        mult = _effective_recovery_multiplier(negative)
+        np.testing.assert_allclose(mult, negative["r"], rtol=0.05)
+
+    def test_rest_protocol_cpu_matches_torch(self) -> None:
+        """CPU and torch agree on load / relax / rest cycles."""
+        pytest.importorskip("torch")
+        loads = _rest_protocol()
+        cpu = _rest_protocol_trace("numpy", loads)
+        gpu = _rest_protocol_trace("torch", loads)
+        for k in ("MA", "MF"):
+            np.testing.assert_allclose(gpu[k], cpu[k], atol=1e-5, err_msg=k)
+
     def test_sustained_command_fatigue_matches_fine_step(self) -> None:
         # At the 20 ms control step MF must match the same ODE integrated at
-        # the 2 ms physics step. Overshooting MA to TL selected the rest-phase
-        # recovery rate r * R on every other step and under-counted MF (-9%).
+        # the 2 ms physics step. Overshooting MA to TL used to select the
+        # recovery rate r * R (then applied at MA >= TL) on every other step
+        # and under-counted MF (-9%).
         coarse, fine = _make_fatigue_model(1), _make_fatigue_model(1)
         tl = np.full(1, 0.3)
         for _ in range(1500):  # 30 s

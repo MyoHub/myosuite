@@ -41,7 +41,9 @@ def cumulative_fatigue_step(
         TL: Target load (commanded excitation), shape ``(na,)``.
         F: Fatigue coefficient.
         R: Recovery coefficient.
-        r: Recovery multiplier applied while resting (``MA >= TL``).
+        r: Recovery multiplier, applied only at rest: ``r = k if TL = 0``,
+            ``r = 1 if TL > 0`` (Rakshit et al. 2021, Eq. 7). Negative commands
+            (clamped to zero excitation by MuJoCo) also count as rest.
         dt: Step length in seconds.
         tauact: Muscle activation time constants, shape ``(na,)``.
         taudeact: Muscle deactivation time constants, shape ``(na,)``.
@@ -64,8 +66,8 @@ def cumulative_fatigue_step(
     C = jp.where((MA < TL) & (MR <= (TL - MA)), LD * MR, C)
     C = jp.where(MA >= TL, LR * (TL - MA), C)
 
-    # Faster recovery while resting.
-    rR = jp.where(MA >= TL, r * R, R)
+    # Recovery rate: r * R only at rest, TL <= 0 (Rakshit et al. 2021, Eq. 7).
+    rR = jp.where(TL <= 0, r * R, R)
 
     # Clip C(t) so that every compartment stays in [0, 1].
     C_min = jp.maximum(-MA / dt + F * MA, (MR - 1) / dt + rR * MF)

@@ -246,6 +246,15 @@ class CumulativeFatigue:
     for each muscle actuator.  By default uses per-muscle fatigue / recovery
     constants derived from biomechanical functional muscle groups (FMG).
 
+    The recovery multiplier ``r`` acts only at rest, as in Rakshit et al.
+    (2021, Eqs. 1, 3 and 7; their ``k`` is ``r`` here):
+    ``dMR/dt = -C(t) + r(k, TL) x R x MF``,
+    ``dMF/dt = F x MA - r(k, TL) x R x MF`` with
+    ``r = k if TL = 0`` and ``r = 1 if TL > 0``.  Rest is ``TL <= 0``: exactly
+    zero for commands in ``[0, 1]`` (no threshold), plus the negative commands
+    of ``[-1, 1]`` control ranges, which MuJoCo's muscle dynamics clamp to zero
+    excitation.  A command mapped through the muscle sigmoid never reaches it.
+
     Args:
         mj_model: Compiled MuJoCo model.  Used to read muscle actuator
             time constants (tauact / taudeact) and to look up per-muscle
@@ -353,8 +362,8 @@ class CumulativeFatigue:
         mask = self._MA >= self.TL
         C[mask] = LR[mask] * (self.TL[mask] - self._MA[mask])
 
-        # Recovery rate: faster during rest (MA >= TL)
-        rR = np.where(self._MA >= self.TL, self._r * self._R, self._R)
+        # Recovery rate: r * R only at rest, TL <= 0 (Rakshit et al. 2021, Eq. 7)
+        rR = np.where(self.TL <= 0.0, self._r * self._R, self._R)
 
         # Clip C to keep compartments in [0, 1]
         C = np.clip(  # type: ignore[assignment]
@@ -532,7 +541,8 @@ class TorchFatigueState:
         device: Torch device string (e.g. ``"cpu"``, ``"cuda:0"``).
         F: Fatigue rate — scalar or array of length *n_muscles*.
         R: Recovery rate — scalar or array of length *n_muscles*.
-        r: Recovery multiplier (active-phase rate boost) — scalar or array.
+        r: Recovery multiplier, applied only at rest (``TL <= 0``, Rakshit
+            et al. 2021, Eq. 7; see :class:`CumulativeFatigue`) — scalar or array.
     """
 
     def __init__(
@@ -641,10 +651,10 @@ class TorchFatigueState:
         LD = -torch.expm1(-LD * dt) / dt
         LR = -torch.expm1(-LR * dt) / dt
 
-        # Recovery rate: boosted during rest (MA >= TL)
+        # Recovery rate: r * R only at rest, TL <= 0 (Rakshit et al. 2021, Eq. 7)
         rising = self.MA < excitation
         resting = self.MA >= excitation
-        rR = torch.where(resting, self._r * self._R, self._R)
+        rR = torch.where(excitation <= 0.0, self._r * self._R, self._R)
 
         # Transfer rate C (select, not mask-multiply: a NaN excitation then gives
         # C = 0 as on CPU instead of NaN * 0 = NaN poisoning the state).

@@ -16,7 +16,7 @@ The endurance time (ET) is compared with
   Table 2), ``ET = b0 * TL**b1`` (ET in s, TL as a fraction), fitted in log-log
   space to 369 data points from 194 studies.
 
-The recovery multiplier ``r`` only acts when ``MA >= TL``, so a sustained
+The recovery multiplier ``r`` only acts at rest (``TL == 0``), so a sustained
 contraction validates ``F`` and ``R``. See ``docs/source/fatigue_validation.rst``
 for the full table.
 """
