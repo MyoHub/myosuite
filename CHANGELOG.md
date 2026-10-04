@@ -200,6 +200,13 @@ full commit list.
   earlier versions can be removed with `find myosuite -name '.myosuite_resolved_*.xml' -delete`.
 * **Multi-agent envs** (`myoChallengeChaseTagFBVs-v0`) are registered without gymnasium's `TimeLimit`, which
   replaced the per-agent `truncated` dict by a bare `True` on the last step.
+* **Full-body ChaseTag CPU model memory.** `myoChallengeChaseTagFBP2-v0` builds on the `musclemimic_models`
+  MJCF, whose legacy `<size nconmax="2000" njmax="5000">` made MuJoCo reserve a 1.3 GB arena per `MjData`;
+  Windows commits it up front, so every env (e.g. per SubprocVecEnv worker) took 1.5 GB.
+  `build_fullbody_chasetag_spec` now sets an explicit 64 MiB arena (`CHASETAG_FB_ARENA_BYTES`): the measured
+  peak is 0.9 MiB over seeded flat and random-terrain rollouts with falls, 2.6 MiB buried in the terrain
+  heightfield and 5.3 MiB with every contact candidate and joint limit active at once. Commit per `MjData` drops
+  from 1313 to 67 MiB; trajectories are bit-identical, and `nconmax`/`njmax` and the mjlab twin are unchanged.
 * **Experimental MJX backend**: pose targets are matched to joints by name (they were assigned in
   alphabetical order), hand reach tracks each fingertip, every target coordinate has its own random draw, the
   3CC-r fatigue update uses the old state for all deltas, and `FatigueWrapper` keeps the model options. Creating
