@@ -405,6 +405,9 @@ def joint_penalty(
 ) -> dict[str, Any]:
     """Penalty for approaching joint range-of-motion limits.
 
+    Linear in the distance (rad or m) by which each limited hinge/slide joint
+    enters the outer 5 % of its range (``accessor.joint_range()``).
+
     Args:
         accessor: Environment state accessor.
         task_state: Unused; present for uniform call signature.
@@ -412,19 +415,20 @@ def joint_penalty(
         **kwargs: Unused extra keyword arguments.
 
     Returns:
-        Dict with key ``joint_penalty`` (non-positive scalar).
+        Dict with key ``joint_penalty`` (non-positive, one value per env).
     """
     xp = accessor.array_module()
-    ctrl_range = accessor.ctrl_range()
-    qpos = accessor.joint_pos()
-    lo, hi = ctrl_range[:, 0], ctrl_range[:, 1]
+    qpos_ids, ranges = accessor.joint_range()
+    qpos = accessor.joint_pos()[..., qpos_ids]
+    lo, hi = ranges[:, 0], ranges[:, 1]
     margin = 0.05 * (hi - lo)
     # xp.clip(x, 0.0, None) is used in preference to xp.maximum(0.0, x) because
     # torch.maximum requires both arguments to be Tensors, while clip/clamp accept
     # a scalar min bound universally across numpy, jax, and torch.
     violation = xp.sum(
         xp.clip(lo + margin - qpos, 0.0, None)
-        + xp.clip(qpos - (hi - margin), 0.0, None)
+        + xp.clip(qpos - (hi - margin), 0.0, None),
+        axis=-1,
     )
     penalty = -weight * violation
     return {"joint_penalty": penalty, "dense": penalty, "solved": False, "done": False}

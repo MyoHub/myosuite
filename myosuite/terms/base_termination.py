@@ -56,25 +56,24 @@ def joint_limit_violation(
     margin: float = 0.0,
     **kwargs: Any,
 ) -> Any:
-    """Terminate when any joint exceeds its control range.
+    """Terminate when any limited hinge/slide joint leaves its joint range.
 
     Args:
-        accessor: Environment state accessor.
+        accessor: Environment state accessor (``joint_range()`` gives the
+            limited joints and their ``qpos`` indices).
         task_state: Unused; present for uniform call signature.
         margin: Additional margin (radians) beyond the nominal range that
             triggers termination. Default is 0 (hard limit).
         **kwargs: Unused extra keyword arguments.
 
     Returns:
-        Boolean scalar — True if any joint is outside its limits.
+        Boolean, one per env: True if any joint is outside its limits.
     """
     xp = accessor.array_module()
-    ctrl_range = accessor.ctrl_range()
-    qpos = accessor.joint_pos()
-    lo = ctrl_range[:, 0] - margin
-    hi = ctrl_range[:, 1] + margin
-    # Use bitwise | instead of Python `or` so this expression is traceable by JAX JIT.
-    return xp.any(qpos < lo) | xp.any(qpos > hi)
+    qpos_ids, ranges = accessor.joint_range()
+    qpos = accessor.joint_pos()[..., qpos_ids]
+    outside = (qpos < ranges[:, 0] - margin) | (qpos > ranges[:, 1] + margin)
+    return xp.any(outside, axis=-1)
 
 
 def fall_termination(

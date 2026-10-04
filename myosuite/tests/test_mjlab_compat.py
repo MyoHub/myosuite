@@ -115,12 +115,17 @@ def _make_mock_model(nu: int = 6) -> Any:
         nu: Number of actuators.
 
     Returns:
-        A ``SimpleNamespace`` with ``actuator_ctrlrange`` as a numpy array.
+        A ``SimpleNamespace`` with ``actuator_ctrlrange`` and one limited
+        hinge joint (``jnt_*``, range ``[0, 2]``) as numpy arrays.
     """
     import numpy as np
 
     return types.SimpleNamespace(
         actuator_ctrlrange=np.zeros((nu, 2), dtype=np.float64),
+        njnt=1,
+        jnt_type=np.array([3]),
+        jnt_limited=np.array([1]),
+        jnt_range=np.array([[0.0, 2.0]]),
     )
 
 
@@ -308,12 +313,23 @@ class TestTermFunctionsWithTorch:
         result = act_reg(self.accessor, {}, weight=0.01)
         assert torch.all(torch.isfinite(result["dense"]))
 
-    def test_joint_penalty_finite(self) -> None:
-        """joint_penalty must return a finite scalar penalty."""
+    def test_joint_penalty_per_env(self) -> None:
+        """joint_penalty is batched and follows the joint range, not ctrl_range."""
         from myosuite.terms.base_reward import joint_penalty
 
+        # qpos = 0.5, 1.0, 1.5, 2.0 in the joint range [0, 2] (ctrl range [0, 0]);
+        # the outer 5 % starts at 1.9, so only the last env is penalised.
         result = joint_penalty(self.accessor, {}, weight=50.0)
-        assert torch.isfinite(torch.tensor(float(result["dense"])))
+        assert result["dense"].shape == (self.n_envs,)
+        torch.testing.assert_close(result["dense"], torch.tensor([0.0, 0.0, 0.0, -5.0]))
+
+    def test_joint_limit_violation_per_env(self) -> None:
+        """joint_limit_violation flags each env against the joint range."""
+        from myosuite.terms.base_termination import joint_limit_violation
+
+        assert joint_limit_violation(self.accessor, {}).tolist() == [False] * 4
+        tight = joint_limit_violation(self.accessor, {}, margin=-0.05)
+        assert tight.tolist() == [False, False, False, True]
 
     def test_reach_reward_finite(self) -> None:
         """reach_reward must return a finite dense value."""

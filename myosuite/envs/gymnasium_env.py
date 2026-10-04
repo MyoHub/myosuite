@@ -116,47 +116,56 @@ class CpuEnvAccessor:
     def array_module(self) -> types.ModuleType:
         return np
 
+    def joint_range(self) -> tuple[np.ndarray, np.ndarray]:
+        """``(qpos_ids, ranges)`` of the limited hinge/slide joints."""
+        from myosuite.physics.joint_limits import joint_range_from_model
+
+        return joint_range_from_model(self._model)
+
+    def qfrc_actuator(self) -> np.ndarray:
+        """Actuator forces in joint space, shape ``(nv,)``."""
+        return self._data.qfrc_actuator.copy()
+
     # ------------------------------------------------------------------
-    # Muscle kinematics (Biomechanist / Neuroscientist API)
+    # Muscle state (MuJoCo muscles only, in actuator order)
     # ------------------------------------------------------------------
+
+    def _muscle_ids(self) -> np.ndarray:
+        from myosuite.physics.muscle import muscle_columns
+
+        return muscle_columns(self._model)
 
     def muscle_length(self) -> np.ndarray:
-        """Normalised muscle-tendon unit length for all actuators.
+        """Muscle-tendon unit lengths ``actuator_length`` (m), shape ``(n_muscles,)``.
 
-        Returns ``data.actuator_length`` — the total MTU length in metres
-        as computed by MuJoCo's muscle model.  Divide by the optimal fibre
-        length (``model.actuator_user[:, 0]`` in MyoSuite MJCF convention)
-        to obtain the dimensionless fibre-length ratio used in Hill-type
-        force-length curves.
-
-        Returns:
-            Array of shape ``(n_actuators,)`` in metres.
+        :func:`myosuite.physics.muscle.normalized_fiber_length` converts them to
+        the normalised fiber length of MuJoCo's force-length curve.
         """
-        return self._data.actuator_length.copy()
+        return self._data.actuator_length[self._muscle_ids()]
 
     def muscle_velocity(self) -> np.ndarray:
-        """Muscle-tendon unit lengthening velocity for all actuators.
+        """Muscle-tendon unit velocities ``actuator_velocity`` (m/s, + = lengthening).
 
-        Returns ``data.actuator_velocity`` in m/s (positive = lengthening).
-        Divide by ``Vmax * optimal_fibre_length`` to obtain the normalised
-        contraction velocity used in Hill-type force-velocity curves.
-
-        Returns:
-            Array of shape ``(n_actuators,)`` in m/s.
+        MuJoCo muscles have rigid tendons, so this is also the fiber velocity.
         """
-        return self._data.actuator_velocity.copy()
+        return self._data.actuator_velocity[self._muscle_ids()]
 
     def muscle_force(self) -> np.ndarray:
-        """Applied actuator force for all actuators.
+        """Muscle forces ``actuator_force`` (N), shape ``(n_muscles,)``.
 
-        Returns ``data.actuator_force`` in Newtons (positive = shortening
-        force).  For Hill-type muscles this is the total force including
-        active and passive components after pennation projection.
-
-        Returns:
-            Array of shape ``(n_actuators,)`` in N.
+        Active plus passive force; MuJoCo sign convention, tension is negative.
         """
-        return self._data.actuator_force.copy()
+        return self._data.actuator_force[self._muscle_ids()]
+
+    def muscle_params(self) -> Any:
+        """Static :class:`~myosuite.physics.muscle.MuscleParams` of the muscles.
+
+        Read from the model on every call, so runtime edits of the model (e.g.
+        sarcopenia) are seen.
+        """
+        from myosuite.physics.muscle import muscle_params_from_model
+
+        return muscle_params_from_model(self._model)
 
 
 # Design note: MyoGymnasiumEnv intentionally does NOT inherit from

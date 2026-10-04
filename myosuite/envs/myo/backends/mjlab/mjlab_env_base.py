@@ -29,7 +29,17 @@ from typing import TYPE_CHECKING, Any
 from myosuite.core.protocols import EnvAccessor, PhysicsPath
 
 if TYPE_CHECKING:
+    import numpy as np
     import torch
+
+
+def _to_torch(value: np.ndarray, device: Any) -> torch.Tensor:
+    """Static model array as a tensor: integers as long (indices), floats as float32."""
+    import numpy as np
+    import torch
+
+    dtype = torch.long if np.issubdtype(value.dtype, np.integer) else torch.float32
+    return torch.as_tensor(value, dtype=dtype, device=device)
 
 
 class MjlabEnvAccessor(EnvAccessor):
@@ -97,6 +107,45 @@ class MjlabEnvAccessor(EnvAccessor):
         import torch
 
         return torch.as_tensor(self._model.actuator_ctrlrange, dtype=torch.float32)
+
+    def joint_range(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """``(qpos_ids, ranges)`` of the limited hinge/slide joints."""
+        from myosuite.physics.joint_limits import joint_range_from_model
+
+        qpos_ids, ranges = joint_range_from_model(self._model)
+        return _to_torch(qpos_ids, self._data.qpos.device), _to_torch(
+            ranges, self._data.qpos.device
+        )
+
+    def qfrc_actuator(self) -> torch.Tensor:
+        """Actuator forces in joint space, shape ``(N, nv)``."""
+        return self._data.qfrc_actuator
+
+    def _muscle_ids(self) -> torch.Tensor:
+        from myosuite.physics.muscle import muscle_columns
+
+        return _to_torch(muscle_columns(self._model), self._data.qpos.device)
+
+    def muscle_force(self) -> torch.Tensor:
+        """Muscle forces (N, tension < 0), shape ``(N, n_muscles)``."""
+        return self._data.actuator_force[:, self._muscle_ids()]
+
+    def muscle_length(self) -> torch.Tensor:
+        """Muscle-tendon unit lengths (m), shape ``(N, n_muscles)``."""
+        return self._data.actuator_length[:, self._muscle_ids()]
+
+    def muscle_velocity(self) -> torch.Tensor:
+        """Muscle-tendon unit velocities (m/s, + = lengthening), ``(N, n_muscles)``."""
+        return self._data.actuator_velocity[:, self._muscle_ids()]
+
+    def muscle_params(self) -> Any:
+        """Static :class:`~myosuite.physics.muscle.MuscleParams` as torch tensors."""
+        from myosuite.physics.muscle import muscle_params_from_model
+
+        device = self._data.qpos.device
+        return muscle_params_from_model(self._model).map(
+            lambda _, v: _to_torch(v, device)
+        )
 
     def dt(self) -> float:
         """Control timestep in seconds."""
@@ -200,6 +249,69 @@ class MjlabEntityAccessor(EnvAccessor):
             dtype=torch.float32,
             device=self._env.device,
         )
+
+    def joint_range(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """``(qpos_ids, ranges)`` of the limited hinge/slide joints.
+
+        ``qpos_ids`` index the CPU-layout :meth:`joint_pos` (after the free
+        root, if any); ranges come from the nominal model.
+        """
+        from myosuite.physics.joint_limits import joint_range_from_model
+
+        qpos_ids, ranges = joint_range_from_model(
+            self._env.sim.mj_model,
+            self._entity.indexing.joint_ids.cpu().numpy(),
+            qpos_offset=0 if self._entity.is_fixed_base else 7,
+        )
+        return _to_torch(qpos_ids, self._env.device), _to_torch(
+            ranges, self._env.device
+        )
+
+    def qfrc_actuator(self) -> torch.Tensor:
+        """CPU-layout actuator forces in joint space, shape ``(N, nv)``."""
+        import torch
+
+        if self._entity.is_fixed_base:
+            return self._entity.data.qfrc_actuator
+        # The free root's dofs, as in joint_vel(): entity.data covers the joints only.
+        qfrc, index = self._env.sim.data.qfrc_actuator, self._entity.indexing
+        return torch.cat(
+            [qfrc[:, index.free_joint_v_adr.long()], self._entity.data.qfrc_actuator],
+            dim=-1,
+        )
+
+    def _muscle_cols(self) -> torch.Tensor:
+        """Entity actuator columns of the muscles."""
+        from myosuite.physics.muscle import muscle_columns
+
+        ids = self._entity.indexing.ctrl_ids.cpu().numpy()
+        return _to_torch(muscle_columns(self._env.sim.mj_model, ids), self._env.device)
+
+    def _muscle_actuator_ids(self) -> torch.Tensor:
+        """Global actuator ids of the muscles."""
+        return self._entity.indexing.ctrl_ids.long()[self._muscle_cols()]
+
+    def muscle_force(self) -> torch.Tensor:
+        """Muscle forces (N, tension < 0), shape ``(N, n_muscles)``."""
+        return self._entity.data.actuator_force[:, self._muscle_cols()]
+
+    def muscle_length(self) -> torch.Tensor:
+        """Muscle-tendon unit lengths (m), shape ``(N, n_muscles)``."""
+        # accepted: no entity.data API for actuator length — entity.data.data.actuator_length
+        return self._entity.data.data.actuator_length[:, self._muscle_actuator_ids()]
+
+    def muscle_velocity(self) -> torch.Tensor:
+        """Muscle-tendon unit velocities (m/s, + = lengthening), ``(N, n_muscles)``."""
+        # accepted: no entity.data API for actuator velocity — entity.data.data.actuator_velocity
+        return self._entity.data.data.actuator_velocity[:, self._muscle_actuator_ids()]
+
+    def muscle_params(self) -> Any:
+        """Static :class:`~myosuite.physics.muscle.MuscleParams` (nominal model)."""
+        from myosuite.physics.muscle import muscle_params_from_model
+
+        ids = self._entity.indexing.ctrl_ids.cpu().numpy()
+        params = muscle_params_from_model(self._env.sim.mj_model, ids)
+        return params.map(lambda _, v: _to_torch(v, self._env.device))
 
     def dt(self) -> float:
         """Control timestep in seconds."""

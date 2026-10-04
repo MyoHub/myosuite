@@ -26,6 +26,9 @@ class _FakeAccessor:
         self._qvel = np.zeros(nq)
         self._act = np.ones(na) * 0.3
         self._ctrl_range = np.column_stack([np.full(nu, -1.0), np.full(nu, 1.0)])
+        # Joint ranges differ from the actuator ctrl ranges on purpose.
+        self._qpos_ids = np.arange(nq)
+        self._jnt_range = np.column_stack([np.full(nq, -2.0), np.full(nq, 2.0)])
 
     @property
     def physics_path(self):
@@ -53,6 +56,9 @@ class _FakeAccessor:
 
     def ctrl_range(self):
         return self._ctrl_range.copy()
+
+    def joint_range(self):
+        return self._qpos_ids.copy(), self._jnt_range.copy()
 
     def dt(self):
         return 0.01
@@ -163,9 +169,33 @@ def test_joint_penalty_zero_at_centre():
     from myosuite.terms.base_reward import joint_penalty
 
     acc = _FakeAccessor(nu=4)
-    # qpos is 0, ctrl_range is [-1, 1], well within limits
+    # qpos is 0, joint range is [-2, 2], well within limits
     result = joint_penalty(acc, {})
-    assert result["joint_penalty"] <= 0.0
+    assert result["joint_penalty"] == 0.0
+
+
+def test_joint_penalty_uses_joint_ranges_not_ctrl_ranges():
+    """nq != nu: the penalty follows the joint ranges, not the actuator ctrl ranges."""
+    from myosuite.terms.base_reward import joint_penalty
+
+    acc = _FakeAccessor(nq=3, nu=5)
+    acc._qpos = np.array([1.5, 0.0, 0.0])  # outside ctrl range [-1, 1], inside [-2, 2]
+    assert joint_penalty(acc, {})["joint_penalty"] == 0.0
+    # 0.15 into the outer 5 % (0.2) of the range: -50 * 0.15.
+    acc._qpos = np.array([1.95, 0.0, 0.0])
+    assert joint_penalty(acc, {})["joint_penalty"] == pytest.approx(-7.5)
+
+
+def test_joint_penalty_reads_only_limited_joints():
+    """Joints not in joint_range() (free root, unlimited) are never penalised."""
+    from myosuite.terms.base_reward import joint_penalty
+
+    acc = _FakeAccessor(nq=5, nu=2)
+    acc._qpos_ids = np.array([1, 3])
+    acc._jnt_range = np.array([[-2.0, 2.0], [0.0, 1.0]])
+    acc._qpos = np.array([100.0, 0.0, -50.0, 0.98, 7.0])
+    # Only qpos[3] = 0.98 is inside its margin [0.95, 1.0]: -50 * 0.03.
+    assert joint_penalty(acc, {})["joint_penalty"] == pytest.approx(-1.5)
 
 
 # ---------------------------------------------------------------------------
@@ -177,7 +207,7 @@ def test_joint_limit_no_violation():
     from myosuite.terms.base_termination import joint_limit_violation
 
     acc = _FakeAccessor(nq=4, nu=4)
-    # qpos=0, range=[-1,1] — no violation
+    # qpos=0, range=[-2,2] — no violation
     result = joint_limit_violation(acc, {})
     assert not result
 
@@ -186,9 +216,24 @@ def test_joint_limit_violation_detected():
     from myosuite.terms.base_termination import joint_limit_violation
 
     acc = _FakeAccessor(nq=4, nu=4)
-    acc._qpos = np.array([2.0, 0.0, 0.0, 0.0])  # outside range
+    acc._qpos = np.array([2.5, 0.0, 0.0, 0.0])  # outside joint range
     result = joint_limit_violation(acc, {})
     assert result
+
+
+def test_joint_limit_violation_uses_joint_ranges_not_ctrl_ranges():
+    """A pose inside the joint ranges but outside the ctrl ranges is not a violation."""
+    from myosuite.terms.base_termination import joint_limit_violation
+
+    acc = _FakeAccessor(nq=3, nu=5)
+    acc._qpos = np.array([1.5, -1.9, 0.0])
+    assert not joint_limit_violation(acc, {})
+    acc._qpos_ids = np.array([0, 2])
+    acc._jnt_range = np.array([[-2.0, 2.0], [0.0, 0.5]])
+    acc._qpos = np.array([1.5, 50.0, 0.6])  # qpos[1] is unlimited
+    assert joint_limit_violation(acc, {})
+    acc._qpos = np.array([1.5, 50.0, 0.4])
+    assert not joint_limit_violation(acc, {})
 
 
 # ---------------------------------------------------------------------------
@@ -378,17 +423,18 @@ def test_joint_limit_violation_with_margin():
     from myosuite.terms.base_termination import joint_limit_violation
 
     acc = _FakeAccessor(nq=4, nu=4)
-    # qpos=0, range=[-1, 1], margin=1.1 → effective range is [-2.1, 2.1]
-    # qpos=0 is inside → no violation
+    # qpos=2.5, range=[-2, 2], margin=1.1 → effective range is [-3.1, 3.1]
+    acc._qpos = np.array([2.5, 0.0, 0.0, 0.0])
     result = joint_limit_violation(acc, {}, margin=1.1)
-    assert not result, "qpos=0 should not violate limits with large margin"
+    assert not result, "qpos=2.5 should not violate limits with large margin"
 
 
 def test_joint_limit_violation_tight_margin():
     from myosuite.terms.base_termination import joint_limit_violation
 
     acc = _FakeAccessor(nq=4, nu=4)
-    # qpos=0, range=[-1,1], margin=-0.1 → effective range is [-0.9, 0.9]
-    # qpos=0 is still inside → no violation
-    result = joint_limit_violation(acc, {}, margin=-0.1)
-    assert not result
+    # range=[-2, 2], margin=-0.1 → effective range is [-1.9, 1.9]
+    acc._qpos = np.array([0.0, 1.85, 0.0, 0.0])
+    assert not joint_limit_violation(acc, {}, margin=-0.1)
+    acc._qpos = np.array([0.0, 1.95, 0.0, 0.0])
+    assert joint_limit_violation(acc, {}, margin=-0.1)

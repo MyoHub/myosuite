@@ -64,6 +64,40 @@ class EnvAccessor(Protocol):
         """Actuator control range. Shape: (nu, 2) where [:,0] is min, [:,1] is max."""
         ...
 
+    def joint_range(self) -> tuple[Any, Any]:
+        """Ranges of the limited hinge/slide joints.
+
+        Returns:
+            ``(qpos_ids, ranges)``: indices into :meth:`joint_pos`, shape
+            ``(k,)``, and ``[lower, upper]`` ranges, shape ``(k, 2)``. Ball and
+            free joints are not included.
+        """
+        ...
+
+    def qfrc_actuator(self) -> Any:
+        """Actuator forces in joint space (``qfrc_actuator``), :meth:`joint_vel` layout."""
+        ...
+
+    def muscle_force(self) -> Any:
+        """Muscle actuator forces in N, shape ``(n_muscles,)`` or ``(N, n_muscles)``.
+
+        Only MuJoCo muscles (``gaintype`` muscle), in actuator order. MuJoCo
+        sign convention: tension is negative.
+        """
+        ...
+
+    def muscle_length(self) -> Any:
+        """Muscle actuator (MTU) lengths in m, same muscles and order as :meth:`muscle_force`."""
+        ...
+
+    def muscle_velocity(self) -> Any:
+        """Muscle actuator velocities in m/s (positive = lengthening), same order."""
+        ...
+
+    def muscle_params(self) -> Any:
+        """Static :class:`~myosuite.physics.muscle.MuscleParams` of the same muscles."""
+        ...
+
     def dt(self) -> float:
         """Control timestep (ctrl_dt) in seconds."""
         ...
