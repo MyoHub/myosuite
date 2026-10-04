@@ -16,11 +16,15 @@ from gymnasium.utils import EzPickle
 
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
+from myosuite.utils.path_utils import path_obs_series
 from myosuite.utils.reach_workspace import reachable_target_points
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
-from myosuite.terms.base_reward import multi_site_reach_reward
+from myosuite.terms.base_reward import (
+    REACH_SOLVED_DIST_PER_SITE,
+    multi_site_reach_reward,
+)
 
 
 class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
@@ -389,6 +393,59 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         obs = self._obs_dict_to_vec(self.get_obs_dict(self._accessor))
         obs = self._ensure_obs_gymnasium_compliant(obs)
         return obs, {}
+
+    # ── Metrics ────────────────────────────────────────────────────────────
+
+    def get_metrics(self, paths: list[dict], **options: Any) -> dict[str, float]:
+        """Success and movement-quality metrics of reach rollouts, averaged over paths.
+
+        Per path, the fingertip trajectories (``tip_pos``) and targets
+        (``tip_pos + reach_err``) are read from ``env_infos["obs_dict"]``, starting at
+        the reset state (:func:`~myosuite.utils.path_utils.path_obs_series`), and
+        scored by :func:`~myosuite.utils.movement_metrics.point_to_point_metrics` with
+        the task's own success radius (``0.0125 m`` per site on the distance over all
+        sites, as ``solved``). Keys: ``success`` (solved at the final step),
+        ``final_error`` (m), ``time_to_target`` / ``time_to_acquire`` (s after reset),
+        ``target_entries``, ``movement_time`` (s), ``peak_speed`` (m/s),
+        ``time_to_peak_ratio``, ``speed_peaks``, ``ldlj``, ``sparc``, ``straightness``
+        (fingertip metrics averaged over sites) and ``effort`` (mean squared muscle
+        activation; NaN without muscles). Values undefined for a path (e.g. target
+        never entered) are left out of the mean.
+
+        Args:
+            paths: Rollout paths, e.g. the trace of :meth:`examine_policy`; each needs
+                ``env_infos.obs_dict`` with ``tip_pos`` and ``reach_err`` (default
+                ``obs_keys``) and, for the reset sample, ``observations``.
+            **options: ``onset_fraction``, ``dwell_time`` and ``savgol`` of
+                :func:`~myosuite.utils.movement_metrics.point_to_point_metrics`.
+
+        Returns:
+            Metric name to mean value.
+        """
+        # Lazy: scipy.signal/stats load only when metrics are requested.
+        from myosuite.utils.movement_metrics import mean_metrics, point_to_point_metrics
+
+        n_sites = len(self.tip_sids)
+        trials = []
+        for path in paths:
+            obs = path_obs_series(path, ("tip_pos", "reach_err", "act"))
+            if "tip_pos" not in obs or "reach_err" not in obs:
+                raise KeyError(
+                    "get_metrics needs 'tip_pos' and 'reach_err' in env_infos['obs_dict'] "
+                    "(include them in obs_keys)"
+                )
+            tip = obs["tip_pos"].reshape(-1, n_sites, 3)
+            trials.append(
+                point_to_point_metrics(
+                    tip,
+                    tip + obs["reach_err"].reshape(-1, n_sites, 3),
+                    self.dt,
+                    REACH_SOLVED_DIST_PER_SITE * n_sites,
+                    activations=obs.get("act"),
+                    **options,
+                )
+            )
+        return mean_metrics(trials)
 
     # ── Compatibility helpers ──────────────────────────────────────────────
 

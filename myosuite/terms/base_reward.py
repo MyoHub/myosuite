@@ -34,6 +34,8 @@ _POSE_PENALTY_THRESHOLD: float = 2 * math.pi  # penalise wraps > one full rotati
 
 # ── reach_reward ─────────────────────────────────────────────────────────────
 _REACH_BONUS_FAR_MULTIPLIER: float = 2.0  # secondary bonus at 2× threshold
+# multi_site_reach_reward is solved below this distance per tip site (m)
+REACH_SOLVED_DIST_PER_SITE: float = 0.0125
 
 # ── walk_env_reward ───────────────────────────────────────────────────────────
 _WALK_HIP_AMPLITUDE: float = 0.8  # sinusoidal hip target amplitude (rad)
@@ -181,7 +183,7 @@ def multi_site_reach_reward(
     act = accessor.muscle_act()
     na = act.shape[-1]
     act_mag = xp.linalg.norm(act, axis=-1) / na if na else 0.0 * dist
-    near = n_sites * 0.0125
+    near = n_sites * REACH_SOLVED_DIST_PER_SITE
     far = xp.where(
         _xp_asarray(xp, task_state["penalty_active"]), far_th * n_sites, float("inf")
     )

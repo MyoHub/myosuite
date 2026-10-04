@@ -20,6 +20,7 @@ from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleConditionMixin
 from myosuite.terms.base_obs import pose_error_obs
 from myosuite.terms.base_reward import pose_reward
+from myosuite.utils.path_utils import path_obs_series
 
 
 class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
@@ -502,6 +503,55 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         obs = self._obs_dict_to_vec(self.get_obs_dict(self._accessor))
         obs = self._ensure_obs_gymnasium_compliant(obs)
         return obs, {}
+
+    # ── Metrics ────────────────────────────────────────────────────────────
+
+    def get_metrics(self, paths: list[dict], **options: Any) -> dict[str, float]:
+        """Success and movement-quality metrics of pose rollouts, in joint space.
+
+        Per path, the controlled joint angles (the leading ``qpos`` entries covered by
+        ``pose_err``) and their targets (``qpos + pose_err``) are read from
+        ``env_infos["obs_dict"]`` from the reset state on
+        (:func:`~myosuite.utils.path_utils.path_obs_series`) and scored by
+        :func:`~myosuite.utils.movement_metrics.point_to_point_metrics` with radius
+        ``pose_thd`` (the ``solved`` criterion). The keys are those of
+        :meth:`ReachEnvV0.get_metrics <myosuite.envs.myo.tasks.basic.arm.reach.ReachEnvV0.get_metrics>`
+        in joint space: ``final_error`` in rad, ``peak_speed`` in rad/s, and
+        ``ldlj``/``sparc``/``straightness`` of the joint-angle trajectory.
+
+        Args:
+            paths: Rollout paths, e.g. the trace of :meth:`examine_policy`; each needs
+                ``env_infos.obs_dict`` with ``qpos`` and ``pose_err`` (default
+                ``obs_keys``) and, for the reset sample, ``observations``.
+            **options: ``onset_fraction``, ``dwell_time`` and ``savgol`` of
+                :func:`~myosuite.utils.movement_metrics.point_to_point_metrics`.
+
+        Returns:
+            Metric name to mean value.
+        """
+        # Lazy: scipy.signal/stats load only when metrics are requested.
+        from myosuite.utils.movement_metrics import mean_metrics, point_to_point_metrics
+
+        trials = []
+        for path in paths:
+            obs = path_obs_series(path, ("qpos", "pose_err", "act"))
+            if "qpos" not in obs or "pose_err" not in obs:
+                raise KeyError(
+                    "get_metrics needs 'qpos' and 'pose_err' in env_infos['obs_dict'] "
+                    "(include them in obs_keys)"
+                )
+            angles = obs["qpos"][:, : obs["pose_err"].shape[-1]]
+            trials.append(
+                point_to_point_metrics(
+                    angles,
+                    angles + obs["pose_err"],
+                    self.dt,
+                    self.pose_thd,
+                    activations=obs.get("act"),
+                    **options,
+                )
+            )
+        return mean_metrics(trials)
 
     # ── Compatibility helpers ──────────────────────────────────────────────
 
