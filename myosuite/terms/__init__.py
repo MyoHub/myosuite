@@ -47,6 +47,7 @@ from myosuite.terms import (
     base_termination,
     base_event,
     base_action,
+    effort,
 )
 
 __all__ = [
@@ -55,4 +56,5 @@ __all__ = [
     "base_termination",
     "base_event",
     "base_action",
+    "effort",
 ]

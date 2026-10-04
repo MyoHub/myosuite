@@ -24,18 +24,19 @@ Expected mjlab model interface::
 
 from __future__ import annotations
 
+from functools import cached_property
 from typing import TYPE_CHECKING, Any
+
+import numpy as np
 
 from myosuite.core.protocols import EnvAccessor, PhysicsPath
 
 if TYPE_CHECKING:
-    import numpy as np
     import torch
 
 
 def _to_torch(value: np.ndarray, device: Any) -> torch.Tensor:
     """Static model array as a tensor: integers as long (indices), floats as float32."""
-    import numpy as np
     import torch
 
     dtype = torch.long if np.issubdtype(value.dtype, np.integer) else torch.float32
@@ -258,9 +259,11 @@ class MjlabEntityAccessor(EnvAccessor):
         """
         from myosuite.physics.joint_limits import joint_range_from_model
 
+        # Host-side ids from the entity spec (no device sync).
+        joint_ids = [j.id for j in self._entity.indexing.joints]
         qpos_ids, ranges = joint_range_from_model(
             self._env.sim.mj_model,
-            self._entity.indexing.joint_ids.cpu().numpy(),
+            np.asarray(joint_ids, dtype=np.int64),
             qpos_offset=0 if self._entity.is_fixed_base else 7,
         )
         return _to_torch(qpos_ids, self._env.device), _to_torch(
@@ -280,38 +283,58 @@ class MjlabEntityAccessor(EnvAccessor):
             dim=-1,
         )
 
+    @cached_property
+    def _actuator_ids(self) -> np.ndarray:
+        """Global ids of the entity actuators, host-side (no device sync)."""
+        actuators = self._entity.indexing.actuators or ()
+        return np.asarray([a.id for a in actuators], dtype=np.int64)
+
+    @cached_property
     def _muscle_cols(self) -> torch.Tensor:
         """Entity actuator columns of the muscles."""
         from myosuite.physics.muscle import muscle_columns
 
-        ids = self._entity.indexing.ctrl_ids.cpu().numpy()
-        return _to_torch(muscle_columns(self._env.sim.mj_model, ids), self._env.device)
+        cols = muscle_columns(self._env.sim.mj_model, self._actuator_ids)
+        return _to_torch(cols, self._env.device)
 
+    @cached_property
     def _muscle_actuator_ids(self) -> torch.Tensor:
         """Global actuator ids of the muscles."""
-        return self._entity.indexing.ctrl_ids.long()[self._muscle_cols()]
+        from myosuite.physics.muscle import muscle_columns
+
+        ids = self._actuator_ids
+        return _to_torch(
+            ids[muscle_columns(self._env.sim.mj_model, ids)], self._env.device
+        )
 
     def muscle_force(self) -> torch.Tensor:
         """Muscle forces (N, tension < 0), shape ``(N, n_muscles)``."""
-        return self._entity.data.actuator_force[:, self._muscle_cols()]
+        return self._entity.data.actuator_force[:, self._muscle_cols]
 
     def muscle_length(self) -> torch.Tensor:
         """Muscle-tendon unit lengths (m), shape ``(N, n_muscles)``."""
         # accepted: no entity.data API for actuator length — entity.data.data.actuator_length
-        return self._entity.data.data.actuator_length[:, self._muscle_actuator_ids()]
+        return self._entity.data.data.actuator_length[:, self._muscle_actuator_ids]
 
     def muscle_velocity(self) -> torch.Tensor:
         """Muscle-tendon unit velocities (m/s, + = lengthening), ``(N, n_muscles)``."""
         # accepted: no entity.data API for actuator velocity — entity.data.data.actuator_velocity
-        return self._entity.data.data.actuator_velocity[:, self._muscle_actuator_ids()]
+        return self._entity.data.data.actuator_velocity[:, self._muscle_actuator_ids]
 
-    def muscle_params(self) -> Any:
-        """Static :class:`~myosuite.physics.muscle.MuscleParams` (nominal model)."""
+    @cached_property
+    def _muscle_params(self) -> Any:
         from myosuite.physics.muscle import muscle_params_from_model
 
-        ids = self._entity.indexing.ctrl_ids.cpu().numpy()
-        params = muscle_params_from_model(self._env.sim.mj_model, ids)
+        params = muscle_params_from_model(self._env.sim.mj_model, self._actuator_ids)
         return params.map(lambda _, v: _to_torch(v, self._env.device))
+
+    def muscle_params(self) -> Any:
+        """Static :class:`~myosuite.physics.muscle.MuscleParams` (nominal model).
+
+        Cached on the accessor: hold one accessor (e.g. in a ``ManagerTermBase``)
+        to build the tensors once.
+        """
+        return self._muscle_params
 
     def dt(self) -> float:
         """Control timestep in seconds."""

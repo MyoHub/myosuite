@@ -308,8 +308,9 @@ def consumed_endurance(
     the shoulder muscles exert, which balances gravity and the arm's inertia as
     in the paper's Eq. 6. For non-orthogonal shoulder coordinates (e.g. the
     elevation plane / elevation / rotation of the MyoSuite arm) the norm only
-    approximates the magnitude of the 3-D torque; pass only the elevation dof
-    for a single-axis measure.
+    approximates the magnitude of the 3-D torque, and moments on
+    equality-coupled dofs (the arm's ``shoulder1_r2_r``) are not counted unless
+    listed; pass only the elevation dof for a single-axis measure.
 
     ``ce_step = 100 * dt / E(strength_t)`` is the percent of endurance spent
     this step; summed over an episode it is a Miner's-rule accumulation, not the

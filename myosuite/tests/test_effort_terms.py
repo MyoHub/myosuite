@@ -185,10 +185,17 @@ def test_joint_limit_violation_on_floating_base_leg() -> None:
     acc, m = env._accessor, env.model
     env.data.qpos[2] = 50.0  # root height: unlimited
     assert not joint_limit_violation(acc, {})
+    before = joint_penalty(acc, {})["joint_penalty"]
     knee = m.joint("knee_angle_r")
+    q_knee = env.data.qpos[knee.qposadr[0]]
     env.data.qpos[knee.qposadr[0]] = knee.range[0] - 0.1
     assert joint_limit_violation(acc, {})
-    assert joint_penalty(acc, {})["joint_penalty"] < 0.0
+    # The knee now sits 0.1 rad + the 5 % margin below its lower bound.
+    lo, hi = knee.range
+    margin = 0.05 * (hi - lo)
+    old = max(lo + margin - q_knee, 0.0) + max(q_knee - (hi - margin), 0.0)
+    expected = before - 50.0 * (0.1 + margin - old)
+    assert joint_penalty(acc, {})["joint_penalty"] == pytest.approx(expected)
 
 
 # ---------------------------------------------------------------------------
