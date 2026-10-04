@@ -22,7 +22,9 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Per-muscle fatigue parameters (Rakshit et al. 2021, Looft & Frey-Law 2020)
+# Per-muscle fatigue parameters, F and R in 1/s. Muscle-group, sex-specific and
+# joint rows: Rakshit et al. 2021 (J Biomech 127:110695, Table 2). Validated
+# against endurance times in docs/source/fatigue_validation.rst.
 # ---------------------------------------------------------------------------
 
 MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
@@ -86,9 +88,9 @@ MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
         "R": 0.00076,
         "r": 14.85,
     },  # Shoulder values from Looft & Frey-Law 2020 (https://doi.org/10.1016/j.jbiomech.2020.109762)
-    # default: Looft et al. 2018 / Looft & Frey-Law 2020
+    # default: "general" F, R of Frey-Law et al. 2012 (Table 1), r of Looft et al. 2018
     "Default": {"F": 0.00970, "R": 0.00091, "r": 15},
-    # v2.4 fallback params (Looft et al. 2018, r compensated for 0.1 R/F ratio)
+    # v2.4 fallback: elbow F, R of Frey-Law et al. 2012 with R / 10 (r * 10 keeps r * R)
     "Default_v2_4": {"F": 0.00912, "R": 0.1 * 0.00094, "r": 10 * 15},
 }
 
@@ -240,7 +242,7 @@ def apply_sarcopenia_to_model(model: mujoco.MjModel, force_scale: float = 0.5) -
 
 
 class CumulativeFatigue:
-    """3CC-r cumulative fatigue model (Xia & Frey Law 2008, Rakshit et al. 2021).
+    """3CC-r cumulative fatigue model (Xia & Frey Law 2008, Looft et al. 2018).
 
     Tracks the active (MA), fatigued (MF), and resting (MR) compartments
     for each muscle actuator.  By default uses per-muscle fatigue / recovery
