@@ -70,9 +70,11 @@ def test_reach_get_metrics_matches_env_signals():
     assert metrics["final_error"] == pytest.approx(
         np.mean(np.linalg.norm(finals, axis=-1))
     )
-    act = np.concatenate([p["env_infos"]["obs_dict"]["act"][:-1] for p in paths])
+    # Effort is per trial (all samples from the reset), then averaged over trials,
+    # so episodes that terminate early weigh the same as full ones.
+    per_trial = [np.mean(path_obs_series(p, ("act",))["act"] ** 2) for p in paths]
     assert 0.0 < metrics["effort"] <= 1.0
-    assert metrics["effort"] == pytest.approx(np.mean(act**2), rel=0.05)
+    assert metrics["effort"] == pytest.approx(np.mean(per_trial))
     assert metrics["peak_speed"] > 0.0 and metrics["movement_time"] > 0.0
     assert math.isfinite(metrics["ldlj"]) and metrics["straightness"] >= 1.0
 
@@ -81,8 +83,10 @@ def test_reach_metrics_time_to_target_uses_reset_time_base():
     env, trace = _rollouts("myoFingerReachRandom-v0", horizon=40, episodes=1)
     path = trace[0]
     obs = path_obs_series(path, ("tip_pos", "reach_err"))
-    assert len(obs["tip_pos"]) == 41  # reset + 40 steps
+    # Reset + one sample per step; the episode may terminate before the horizon (the
+    # random target depends on the NumPy version's Generator stream).
     dist = np.linalg.norm(path["env_infos"]["obs_dict"]["reach_err"][:-1], axis=-1)
+    assert len(obs["tip_pos"]) == len(dist) + 1 and len(dist) >= 2
     # A radius the finger certainly enters: the mean of its start and closest distance.
     radius = 0.5 * (np.linalg.norm(obs["reach_err"][0]) + dist.min())
     m = point_to_point_metrics(
