@@ -52,8 +52,10 @@ muscle groups (``myosuite/core/muscle_groups.py``) to ``F``, ``R`` and ``r``:
   torque decline in sustained and intermittent isometric contractions. Every
   value matches the published table. ``Toe`` copies ``Ankle``; ``Wrist`` and
   ``Finger`` copy ``Hand``; ``Wrist-Flexor`` is the general handgrip group.
-* ``Shoulder`` cites Looft & Frey-Law (2020) but holds the ``Knee`` numbers
-  (see the findings below).
+* ``Shoulder``: the shoulder fit of Frey-Law et al. (2012, Table 1),
+  F = 0.01820, R = 0.00168, with r = 15, which Looft & Frey-Law (2020) found
+  somewhat better than r = 30 for intermittent shoulder flexion. This row
+  used to hold the ``Knee`` numbers (see the findings below).
 * Muscles without a group, namely hip and hamstring muscles of the leg models
   and every torso muscle, use ``Default``.
 
@@ -426,17 +428,17 @@ Results
      - 17.4 (-68%)
      - 7.6 (-82%)
    * - ``Shoulder``
-     - 0.00825 / 0.00076
+     - 0.01820 / 0.00168
      - Shoulder
-     - 2326 (+131%)
-     - 605 (+114%)
-     - 319 (+137%)
-     - 196 (+146%)
-     - 127 (+141%)
-     - 83.4 (+120%)
-     - 53.0 (+86%)
-     - 30.7 (+37%)
-     - 13.6 (-25%)
+     - 1059 (+5%)
+     - 274 (-3%)
+     - 144 (+7%)
+     - 88.8 (+12%)
+     - 57.7 (+9%)
+     - 37.9 (+0%)
+     - 24.1 (-16%)
+     - 13.9 (-38%)
+     - 6.2 (-66%)
    * - ``Default`` (torso muscles)
      - 0.00970 / 0.00091
      - Trunk
@@ -730,17 +732,18 @@ Findings
   a factor of 2 of the joint curve. This is the band the published fits meet,
   with their worst case being grip at 80% MVC (0.54x). The 90% load is reported
   here but not pinned.
-* ``Default``, ``Default_v2_4``, ``Elbow`` and ``Knee`` / ``Knee-Extensor`` are
-  inside the band. ``Default_v2_4`` falls 51% short at 10% MVC, because its
+* ``Default``, ``Default_v2_4``, ``Elbow``, ``Knee`` / ``Knee-Extensor`` and
+  ``Shoulder`` are inside the band. ``Default_v2_4`` falls 51% short at 10% MVC, because its
   tenfold smaller R lowers the asymptote to 1%. ``Knee`` holds 40-80% longer
   than the knee curve at 20-70% MVC.
-* **Shoulder is far off.** The ``Shoulder`` row equals the Rakshit et al.
-  (2021) ``Knee`` row (F = 0.00825, R = 0.00076, r = 14.85), not a shoulder
-  fit. Its endurance times are 2.1-2.5 times the shoulder curve at 20-60% MVC,
-  which makes the deltoid, rotator-cuff, pectoral and latissimus muscles of
-  the arm, bimanual, relocate, table-tennis and full-body models the least
-  fatigable instead of the most fatigable. The Frey-Law et al. (2012) shoulder
-  fit (F = 0.01820, R = 0.00168) is within 0.62-1.12 times the curve.
+* **Shoulder (fixed).** The ``Shoulder`` row used to equal the Rakshit et al.
+  (2021) ``Knee`` row (F = 0.00825, R = 0.00076, r = 14.85) while citing Looft &
+  Frey-Law (2020). Its endurance times were 2.1-2.5 times the shoulder curve at
+  20-60% MVC (e.g. 127 s instead of 53 s at 50% MVC). That made the deltoid,
+  rotator-cuff, pectoral and latissimus muscles of the arm, bimanual, relocate,
+  table-tennis and full-body models among the least fatigable, where the data
+  rank the shoulder as the most fatigable joint. With the Frey-Law et al. (2012)
+  shoulder fit, the row is within 0.62-1.12 times the curve at 20-80% MVC.
 * **Ankle and Toe** (Rakshit et al. 2021 ankle joint, F = 0.01485, 2.5 times
   the Frey-Law et al. 2012 ankle F) fall 46-58% short of the ankle curve at
   30-70% MVC and 68% short at 80%. That curve is the most fatigue-resistant
@@ -759,8 +762,9 @@ Findings
   dorsal interosseous row (F ≈ R) holds any load below 50% MVC indefinitely but
   fails within 28 s at 60% MVC.
 
-These deviations are reported, not retuned. The regression test marks the
-joint-level ones (``Shoulder``, ``Ankle``, ``Toe``, ``Hand``, ``Wrist``,
+Apart from the ``Shoulder`` row, which copied the wrong row, these deviations
+are reported, not retuned: the rows match their source. The regression test
+marks the joint-level ones (``Ankle``, ``Toe``, ``Hand``, ``Wrist``,
 ``Finger``, ``Wrist-Flexor``) as strict expected failures, so any change to
 these rows shows up.
 

@@ -178,8 +178,6 @@ _HAND = (
     "ET 0.43x the grip curve at 80% MVC (published grip fit: 0.54x)"
 )
 _KNOWN_DEVIATIONS = {
-    "Shoulder": "copies the Knee row (F=0.00825, R=0.00076): ET 2.1-2.5x the "
-    "shoulder curve at 20-60% MVC; Frey-Law et al. (2012) fit F=0.01820, R=0.00168",
     "Ankle": "Rakshit et al. (2021) ankle F=0.01485 is 2.5x the Frey-Law et al. "
     "(2012) ankle F: ET 0.32-0.49x the ankle curve at 60-80% MVC",
     "Toe": "copies the Ankle row",

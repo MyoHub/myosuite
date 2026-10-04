@@ -83,11 +83,9 @@ MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
         "r": 9.10,
     },  # from Hand group (https://doi.org/10.1016/j.jbiomech.2021.110695)
     "Knee": {"F": 0.00825, "R": 0.00076, "r": 14.85},
-    "Shoulder": {
-        "F": 0.00825,
-        "R": 0.00076,
-        "r": 14.85,
-    },  # Shoulder values from Looft & Frey-Law 2020 (https://doi.org/10.1016/j.jbiomech.2020.109762)
+    # F, R: shoulder fit of Frey-Law et al. 2012 (Table 1); r = 15: Looft & Frey-Law
+    # 2020 (https://doi.org/10.1016/j.jbiomech.2020.109762), better than r = 30.
+    "Shoulder": {"F": 0.01820, "R": 0.00168, "r": 15},
     # default: "general" F, R of Frey-Law et al. 2012 (Table 1), r of Looft et al. 2018
     "Default": {"F": 0.00970, "R": 0.00091, "r": 15},
     # v2.4 fallback: elbow F, R of Frey-Law et al. 2012 with R / 10 (r * 10 keeps r * R)
