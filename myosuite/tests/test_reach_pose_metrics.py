@@ -80,11 +80,12 @@ def test_reach_get_metrics_matches_env_signals():
 
 
 def test_reach_metrics_time_to_target_uses_reset_time_base():
-    env, trace = _rollouts("myoFingerReachRandom-v0", horizon=40, episodes=1)
+    # Fixed target: the rollout uses no RNG, so it is the same on every NumPy version
+    # (a random target may lead the finger away and never into the radius below).
+    env, trace = _rollouts("myoFingerReachFixed-v0", horizon=40, episodes=1)
     path = trace[0]
     obs = path_obs_series(path, ("tip_pos", "reach_err"))
-    # Reset + one sample per step; the episode may terminate before the horizon (the
-    # random target depends on the NumPy version's Generator stream).
+    # Reset + one sample per step taken.
     dist = np.linalg.norm(path["env_infos"]["obs_dict"]["reach_err"][:-1], axis=-1)
     assert len(obs["tip_pos"]) == len(dist) + 1 and len(dist) >= 2
     # A radius the finger certainly enters: the mean of its start and closest distance.
