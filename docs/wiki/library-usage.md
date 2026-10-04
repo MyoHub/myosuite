@@ -74,6 +74,10 @@ Never import `quat_math` (numpy) inside a Torch or JAX execution path.
 | Sigmoid (numpy) | `scipy.special.expit` | `1 / (1 + np.exp(-x))` |
 | Layer norm | `torch.nn.functional.layer_norm` | Manual Welford in forward pass |
 | Batched distance | `xp.linalg.norm(batch, axis=-1)` | Python loop over rows |
+| Derivatives of sampled trajectories | `scipy.interpolate.make_interp_spline(...).derivative(k)`; noisy data: `scipy.signal.savgol_filter(..., deriv=k)` | Repeated hand-written finite differences |
+| Peaks of a signal (submovements) | `scipy.signal.find_peaks` | Manual local-maximum loop |
+| Linear fit with R² (Fitts' law, power law) | `scipy.stats.linregress` | `np.polyfit` + hand-computed R² |
+| Movement metrics (MT, LDLJ, SPARC, We, throughput) | `myosuite.utils.movement_metrics` | Per-task re-implementations |
 
 ---
 

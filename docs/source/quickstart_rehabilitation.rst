@@ -108,7 +108,8 @@ See ``tutorials/4.2_Fatigue_Modeling.ipynb`` for plots and recovery dynamics.
 Clinical Metrics
 -----------------
 
-Useful metrics you can extract from any simulation:
+Useful metrics you can extract from any simulation (for reaching and pose tasks,
+:doc:`movement_metrics` adds movement time, smoothness, Fitts' law and effort):
 
 .. code-block:: python
 

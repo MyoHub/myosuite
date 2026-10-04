@@ -85,6 +85,7 @@ Choose your path
    environments
    model_builder
    backend_parity
+   movement_metrics
 
 .. toctree::
    :maxdepth: 1

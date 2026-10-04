@@ -19,8 +19,9 @@ Before any new class, function, or wrapper:
 | Kind of code | Canonical location |
 |---|---|
 | Obs / reward / action / event / termination term functions | `myosuite/terms/` |
-| Physics math (quat, fatigue, min-jerk) | `myosuite/physics/` |
+| Physics math (quat, fatigue, IK) | `myosuite/physics/` |
 | Generic utilities | `myosuite/utils/` |
+| Movement-quality metrics (minimum-jerk reference, smoothness, Fitts' law) | `myosuite/utils/movement_metrics.py` |
 | MuscleMimic helpers | `myosuite/integrations/musclemimic/` |
 | mjlab action/obs/event wiring | `myosuite/envs/myo/backends/mjlab/` |
 

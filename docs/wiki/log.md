@@ -60,3 +60,18 @@ don't get an entry here.
   and each episode starts from `mj_resetData` plus `policy_runner.reset()`.
 - Why: bridged policies drove every muscle at half excitation and dropped the left arm. SAR synergies were fit on
   clip tails with state carried over between episodes. Re-collect cached activations and re-extract synergy models.
+
+## [2026-10-04] feature | Movement-quality metrics for reach and pose tasks (branch: feat/movement-metrics)
+
+- `myosuite/utils/movement_metrics.py`: minimum-jerk reference, speed/path length/straightness, speed-threshold
+  onset/offset and movement time, target entry/dwell/re-entries, time-to-peak ratio and speed peaks, dimensionless
+  jerk/LDLJ and SPARC, Fitts' law (Shannon ID, effective width/distance/IDe, throughput, `MT = a + b ID` regression)
+  and the two-thirds power law; NumPy/SciPy only, each formula cited and validated against analytic or published
+  reference values (`test_movement_metrics.py`).
+- `ReachEnvV0.get_metrics` / `PoseEnvV0.get_metrics` score rollout paths (fingertips / joint space) with the task's
+  own solved radius; `scripts/eval_mjlab_policy.py --movement-metrics` reports the same metrics on CPU and mjlab.
+  Env step/obs/reward are unchanged.
+- `physics/min_jerk.py` (moved in the 2026-04-30 Phase 3 entry above) was deleted in `aa2b2398`; the minimum-jerk
+  reference now lives in `utils/movement_metrics.minimum_jerk`.
+- Why: HCI and motor-control studies use MyoSuite as a user simulator; success and return alone did not measure
+  how a policy moves.

@@ -69,6 +69,12 @@ full commit list.
   pickles (`bb5cf7b`), fatigue tutorial for MyoSuite 3 (`d1eda5c`), trained-policy loader (`5bb6d3a`).
 * Documentation: quickstarts, environment reference, backend parity, baselines, MJX env list,
   "What's new" block, `CHANGELOG.md`.
+* Movement-quality metrics for HCI and motor-control studies (`myosuite.utils.movement_metrics`): minimum-jerk
+  reference, movement time, time to target and dwell, target re-entries, peak speed, time-to-peak ratio, speed
+  peaks, LDLJ, SPARC, straightness, Fitts' law (effective width, IDe, throughput, regression) and the two-thirds
+  power law, validated against analytic and published values. `ReachEnvV0.get_metrics` and
+  `PoseEnvV0.get_metrics` score rollouts; `eval_mjlab_policy.py --movement-metrics` reports them on CPU and
+  mjlab. Docs page `movement_metrics`.
 
 ### Changed
 
