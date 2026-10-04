@@ -2,7 +2,7 @@
 
 ``multi_site_reach_reward`` ends an episode once the tip-target distance (norm over all
 ``k`` sites) exceeds ``far_th * k``, from the second control step on. A reset already
-beyond it ends the episode at step 2 whatever the policy does.
+beyond it ends the episode at step 2 unless the policy closes the gap within two steps.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import myosuite  # noqa: F401
 
 _REACH_EP = "tasks.basic.arm.reach:ReachEnvV0"
 # Hand-reach random targets lie 0.20-0.29 m (over the five tips) from the open hand,
-# beyond far_th * 5 = 0.17 m, so 97% of the resets end at step 2 (also in myosuite 2.x).
+# beyond far_th * 5 = 0.17 m for 97% of the resets (98.5% end at step 2 in myosuite 2.x).
 _KNOWN_FAR_RESETS = {f"myo{c}HandReachRandom-v0" for c in ("", "Sarc", "Fati", "Reaf")}
 _N_SEEDS = 20
 

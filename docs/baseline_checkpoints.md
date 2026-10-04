@@ -23,7 +23,7 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 
 **Not all published policies converged to the standard 95% threshold**, and training for more
 iterations may well reach higher success rates: `myoHandPoseRandom-v0` (36%, plateaued),
-`myoArmReachRandom-v0` (67%), `myoFingerReachRandom-v0` (73%), `motorFingerReachRandom-v0` (94%),
+`myoArmReachRandom-v0` (80%), `myoFingerReachRandom-v0` (73%), `motorFingerReachRandom-v0` (94%),
 `myoLegDirectionalRandom-v0` (54%), `myoLegStandRandom-v0` (34%) and `myoLegHillyTerrainWalk-v0`
 (27%). `myoLegDirectionalRandom-v0` succeeds with exploration noise (99% sampled success) but only about half of the time with the mean
 action; the checkpoint is the best one of the run.
@@ -32,10 +32,13 @@ action; the checkpoint is the best one of the run.
 of which only about 55% lies within the fingertip's workspace, which capped any policy near that. They now
 sample only targets the fingertip can reach, and their policies were retrained.
 
-`myoArmReachRandom-v0` ended 16.5% of its episodes at step 2 whatever the policy did: the targets in the upper
-part of its box lay more than `far_th` = 1.0 m from the hanging fingertip. Its far threshold is now 1.3 m. The
-checkpoint below was trained and evaluated with the old threshold (those episodes count as failures in its
-67.2%) and should be re-evaluated.
+`myoArmReachRandom-v0` started 16.5% of its episodes beyond its far threshold (`far_th` = 1.0 m): the targets in
+the upper part of its box lay more than 1 m from the hanging fingertip, and those episodes ended at step 2 unless
+the policy closed the gap in its first two steps. Its far threshold is now 1.3 m. The checkpoint below was
+trained with the old threshold and re-evaluated with the new one. On the CPU (the same 200 seeds) its
+deterministic success rises from 67.0% to 76.5%: it solves 85% of the targets it used to be cut off from (27%
+before) and is unchanged on the others (74.9%). On mjlab (64 episodes) it reaches 79.7%, against
+71.9% with the old threshold in the same setup.
 
 **Compatibility with the ms3 observation changes.** Policies are tied to the observation contract they
 were trained with. These changes since the first set of checkpoints affect them:
@@ -72,7 +75,7 @@ noticeably (with 64 episodes, differences of a few points are noise). Success ra
 | motorFingerReachFixed-v0     | `model_120.pt`     | 100.0%                        |
 | motorFingerReachRandom-v0    | `model_1999.pt`    | 93.9%                         |
 | myoArmReachFixed-v0          | `model_696.pt`   | 100.0%                        |
-| myoArmReachRandom-v0         | `model_4999.pt`    | 67.2%                         |
+| myoArmReachRandom-v0         | `model_4999.pt`    | 79.7%                         |
 | myoChallengeChaseTagFBP2-v0  | -                  | -                             |
 | myoChallengeTableTennisP0-v0 | -                  | -                             |
 | myoChallengeTableTennisP1-v0 | -                  | -                             |

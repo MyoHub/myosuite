@@ -110,14 +110,17 @@ full commit list.
   55%. `ReachEnvV0(target_sampling="workspace")` (used by these ids and their muscle-condition variants, on CPU
   and mjlab) now draws fingertip positions over the joint ranges that lie inside the box. Policies trained on
   the old targets need retraining; the other reach tasks are unchanged.
-* **`myoArmReachRandom-v0` no longer ends episodes at step 2 because of where the target is.** The fingertip
-  starts with the arm hanging, 0.76 m from the centre of the target box, whose far corners lie up to 1.24 m
-  away. With `far_th=1.0`, 16.5% of the resets (33 of 200 seeds; about 25% in v2.12.2) failed the first far
-  check at step 2 whatever the policy did, so policies never trained on the highest targets. Its `far_th` is
-  now 1.3 m, also for the Sarc/Fati variants and the mjlab twins (which read it from the CPU registration).
-  The target box and the fixed-target ids are unchanged. Workspace sampling would not help, because the whole box is
-  reachable. `test_reach_far_threshold.py` checks that no reach reset starts beyond the far threshold; the
-  hand-reach Random ids still do (97% of resets) and are marked as expected failures.
+* **`myoArmReachRandom-v0` no longer starts episodes beyond its far threshold.** The fingertip starts with
+  the arm hanging, 0.76 m from the centre of the target box, whose far corners lie up to 1.24 m away. With
+  `far_th=1.0`, 16.5% of the resets (33 of 200 seeds; about 25% in v2.12.2) started beyond it. With zero or
+  random actions all of them ended at step 2; the published policy kept only the 9 targets within 4.5 cm of the
+  threshold, by closing the gap in its first two steps. Its `far_th` is now 1.3 m, also for the Sarc/Fati
+  variants and the mjlab twins (which read it from the CPU registration). The target box and the fixed-target
+  ids are unchanged. Workspace sampling would not help, because the whole box is reachable. With the new
+  threshold the published policy's deterministic success rises from 67.0% to 76.5% (CPU, the same 200 seeds):
+  it solves 85% of the targets it was cut off from and is unchanged on the others. `test_reach_far_threshold.py`
+  checks that no reach reset starts beyond the far threshold; the hand-reach Random ids still do (97% of
+  resets) and are marked as expected failures.
 * **Joint velocities are observed as `qvel * ctrl_dt` on every backend** (the CPU task envs already
   did): the directional-leg twin and the MJX pose and reach envs observed raw `qvel`. The previous
   directional-leg checkpoints were retrained. `ElbowPoseTask` (tutorial 4.3) now also observes the
