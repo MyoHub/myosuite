@@ -27,6 +27,9 @@ Every run prints the success rate (share of episodes whose final step is
 "solved"; CPU: ``info["solved"]``, mjlab: the ``Episode_Metrics/success``
 metric that every task twin logs during training too).
 
+    # Reach / pose movement quality (movement time, peak speed, LDLJ, SPARC, ...)
+    python scripts/eval_mjlab_policy.py myoArmReachRandom-v0 --movement-metrics
+
     # Video from a model camera (name or id; -1 = free camera)
     python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN \\
         --video out.mp4 --camera side_view --width 1280 --height 720
@@ -117,6 +120,13 @@ class EvalConfig:
     lookat: tuple[float, float, float] | None = None
     """Free camera only: look-at point in world coordinates (mjlab grid video:
     relative to the grid centre)."""
+    movement_metrics: bool = False
+    """Reach and pose tasks: also report movement-quality metrics
+    (``myosuite.utils.movement_metrics``: time to target, movement time, peak speed,
+    LDLJ, SPARC, straightness, effort, ...). CPU: the env's ``get_metrics``; mjlab: the
+    same per-trial metrics of the recorded fingertip (reach) or joint (pose)
+    trajectories. mjlab then resets finished envs itself so every episode's final
+    state is recorded."""
 
 
 def _resolve_checkpoint(env_id: str, path: Path | None) -> Path:
@@ -854,6 +864,112 @@ def _summary(
         print("success:  n/a (the env reports no 'solved' flag / success metric)")
 
 
+def _movement_summary(metrics: dict[str, float] | None, joint_space: bool) -> None:
+    """Print the movement-quality metrics (``n/a`` for tasks without them)."""
+    if metrics is None:
+        print("movement: n/a (reach and pose tasks only)")
+        return
+    unit = "rad" if joint_space else "m"
+    print(f"movement ({'joint space' if joint_space else 'fingertips'}):")
+    for key, value in metrics.items():
+        suffix = {
+            "final_error": f" {unit}",
+            "peak_speed": f" {unit}/s",
+            "time_to_target": " s",
+            "time_to_acquire": " s",
+            "movement_time": " s",
+        }.get(key, "")
+        print(f"  {key:<20}{value:.4g}{suffix}")
+
+
+def _cpu_movement_task(env) -> bool | None:
+    """``False`` for a reach env, ``True`` (joint space) for a pose env, else ``None``."""
+    from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0
+    from myosuite.envs.myo.tasks.basic.arm.reach import ReachEnvV0
+
+    env = env.unwrapped
+    if isinstance(env, ReachEnvV0):
+        return False
+    return True if isinstance(env, PoseEnvV0) else None
+
+
+class MjlabTrajectoryRecorder:
+    """Per-env trajectories of an mjlab reach or pose task, scored per episode.
+
+    Records the fingertip sites and reach targets (reach) or the commanded joints and
+    their targets (pose), plus the muscle activations, after every step; each finished
+    episode is scored with ``movement_metrics.point_to_point_metrics`` and the task's
+    solved radius, as the CPU env's ``get_metrics`` does.
+
+    Args:
+        env: An mjlab ``ManagerBasedRlEnv`` with a ``reach`` or ``pose`` command.
+    """
+
+    def __init__(self, env) -> None:
+        from myosuite.terms.base_reward import REACH_SOLVED_DIST_PER_SITE
+
+        cmds = env.command_manager
+        self._env = env
+        self.joint_space = "reach" not in cmds.active_terms
+        self._term = cmds.get_term("pose" if self.joint_space else "reach")
+        self._entity = env.scene[self._term.cfg.entity_name]
+        if self.joint_space:
+            self._n = len(self._term.cfg.low)
+            self.radius = float(_mjlab_pose_thd(env))
+        else:
+            self._site_ids, _ = self._entity.find_sites(
+                self._term.cfg.tip_sites, preserve_order=True
+            )
+            self._n = len(self._site_ids)
+            self.radius = REACH_SOLVED_DIST_PER_SITE * self._n
+        self._samples: list[list[tuple[np.ndarray, ...]]] = [
+            [] for _ in range(env.num_envs)
+        ]
+        self.trials: list[dict[str, float]] = []
+
+    @staticmethod
+    def supports(env) -> bool:
+        """Whether *env* has a reach or pose command."""
+        return bool({"reach", "pose"} & set(env.command_manager.active_terms))
+
+    def _state(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """``(positions, targets, activations)`` of all envs."""
+        if self.joint_space:
+            positions = self._entity.data.joint_pos[:, : self._n]
+        else:
+            positions = self._entity.data.site_pos_w[:, self._site_ids]
+        targets = self._term.command.reshape(positions.shape)
+        act = self._env.sim.data.act
+        return positions.cpu().numpy(), targets.cpu().numpy(), act.cpu().numpy()
+
+    def start(self, env_ids: list[int]) -> None:
+        """Begin new episodes of *env_ids* at their current (reset) state."""
+        state = self._state()
+        for i in env_ids:
+            self._samples[i] = [tuple(s[i] for s in state)]
+
+    def record(self) -> None:
+        """Append the current state of every env."""
+        state = self._state()
+        for i, samples in enumerate(self._samples):
+            samples.append(tuple(s[i] for s in state))
+
+    def finish(self, env_id: int) -> None:
+        """Score the episode of *env_id* that ended at the last recorded state."""
+        from myosuite.utils.movement_metrics import point_to_point_metrics
+
+        positions, targets, act = (np.stack(s) for s in zip(*self._samples[env_id]))
+        self.trials.append(
+            point_to_point_metrics(
+                positions,
+                targets,
+                self._env.step_dt,
+                self.radius,
+                activations=act if act.shape[-1] else None,
+            )
+        )
+
+
 def _write_video(cfg: EvalConfig, frames: list[np.ndarray], step_dt: float) -> None:
     import imageio
 
@@ -876,6 +992,7 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path) -> None:
 
     import myosuite  # noqa: F401  (registers the CPU envs)
     from myosuite.utils.rslrl_policy import load_rslrl_policy
+    from myosuite.utils.tensor_utils import stack_tensor_dict_list
 
     cols, rows = _grid_shape(cfg)
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
@@ -902,6 +1019,13 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path) -> None:
     obs = np.stack(
         [env.reset(seed=cfg.seed + i * per_env)[0] for i, env in enumerate(envs)]
     )
+    # --movement-metrics: per-env episode records in the rollout-path layout that
+    # get_metrics reads (reset + post-step observations, post-step obs dicts).
+    joint_space = _cpu_movement_task(envs[0]) if cfg.movement_metrics else None
+    record = joint_space is not None
+    paths: list[dict] = []
+    ep_obs = [[o.copy()] for o in obs]
+    ep_infos: list[list[dict]] = [[] for _ in envs]
     ep_return, ep_length = np.zeros(n_envs), np.zeros(n_envs, dtype=int)
     done_count = np.zeros(n_envs, dtype=int)
     while (done_count < per_env).any():
@@ -910,6 +1034,9 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path) -> None:
             if done_count[i] >= per_env:
                 continue
             obs[i], rew, terminated, truncated, info = env.step(actions[i])
+            if record:
+                ep_obs[i].append(obs[i].copy())
+                ep_infos[i].append(info["obs_dict"])
             ep_return[i] += float(rew)
             ep_length[i] += 1
             if terminated or truncated:
@@ -917,17 +1044,30 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path) -> None:
                 lengths.append(int(ep_length[i]))
                 if "solved" in info:
                     successes.append(float(bool(info["solved"])))
+                if record:
+                    paths.append(
+                        {
+                            "observations": np.stack(ep_obs[i]),
+                            "env_infos": {
+                                "obs_dict": stack_tensor_dict_list(ep_infos[i])
+                            },
+                        }
+                    )
                 ep_return[i], ep_length[i] = 0.0, 0
                 done_count[i] += 1
                 if done_count[i] < per_env:
                     seed = cfg.seed + i * per_env + int(done_count[i])
                     obs[i] = env.reset(seed=seed)[0]
+                    ep_obs[i], ep_infos[i] = [obs[i].copy()], []
         if grid is not None:
             frames.append(grid.render())
     step_dt = getattr(envs[0].unwrapped, "dt", None) or envs[0].unwrapped._ctrl_dt
+    movement = envs[0].unwrapped.get_metrics(paths) if record else None
     for env in envs:
         env.close()
     _summary(returns, lengths, successes)
+    if cfg.movement_metrics:
+        _movement_summary(movement, bool(joint_space))
     if grid is not None:
         grid.close()
         _write_video(cfg, frames, step_dt)
@@ -958,7 +1098,15 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
     env_cfg.scene.num_envs = n_envs
     env_cfg.seed = cfg.seed
+    if cfg.movement_metrics:
+        # Reset finished envs here, after their terminal state has been recorded.
+        env_cfg.auto_reset = False
     env = ManagerBasedRlEnv(cfg=env_cfg, device=device)
+    recorder = (
+        MjlabTrajectoryRecorder(env)
+        if cfg.movement_metrics and MjlabTrajectoryRecorder.supports(env)
+        else None
+    )
     grid = (
         GridRenderer(
             env.sim.mj_model,
@@ -982,6 +1130,8 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
     has_success = "success" in env.metrics_manager.active_terms
 
     obs, _ = env.reset()
+    if recorder is not None:
+        recorder.start(list(range(n_envs)))
     ep_return = torch.zeros(n_envs, device=device)
     ep_length = torch.zeros(n_envs, dtype=torch.long, device=device)
     episodes_done = torch.zeros(n_envs, dtype=torch.long, device=device)
@@ -992,6 +1142,8 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
         for _ in range(per_env * env.max_episode_length):
             act = policy.sample if cfg.stochastic else policy
             obs, rew, terminated, truncated, _ = env.step(act(_actor_obs(obs)))
+            if recorder is not None:
+                recorder.record()
             if grid is not None:
                 frames.append(grid.render())
             recording = episodes_done < per_env
@@ -1000,18 +1152,32 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
             finished = (terminated | truncated) & recording
             returns += ep_return[finished].tolist()
             lengths += ep_length[finished].tolist()
-            if has_success:  # final-step value of the standard success metric
-                for i in finished.nonzero().flatten().tolist():
+            for i in finished.nonzero().flatten().tolist():
+                if has_success:  # final-step value of the standard success metric
                     values = dict(env.metrics_manager.get_active_iterable_terms(i))
                     successes.append(float(values["success"][0]))
+                if recorder is not None:
+                    recorder.finish(i)
             ep_return[finished] = 0.0
             ep_length[finished] = 0
             episodes_done += finished.long()
             if bool((episodes_done >= per_env).all()):
                 break
+            done = (terminated | truncated).nonzero().flatten()
+            if not env_cfg.auto_reset and len(done):
+                obs, _ = env.reset(env_ids=done)
+                if recorder is not None:
+                    recorder.start(done.tolist())
     step_dt = env.step_dt
     env.close()
     _summary(returns, lengths, successes)
+    if cfg.movement_metrics:
+        from myosuite.utils.movement_metrics import mean_metrics
+
+        _movement_summary(
+            None if recorder is None else mean_metrics(recorder.trials),
+            recorder is not None and recorder.joint_space,
+        )
     if grid is not None:
         grid.close()
         _write_video(cfg, frames, step_dt)
