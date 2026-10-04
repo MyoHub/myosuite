@@ -10,11 +10,15 @@ Statistical checks use fixed seeds and a tolerance of five standard errors
 
 from __future__ import annotations
 
+import inspect
+
 import gymnasium as gym
 import numpy as np
 import pytest
+from gymnasium.envs.registration import load_env_creator
 
 import myosuite  # noqa: F401
+from myosuite.envs.gymnasium_env import MOTOR_NOISE_ENV_CLASSES
 from myosuite.terms.base_action import (
     MotorNoiseCfg,
     motor_noise,
@@ -210,6 +214,54 @@ def test_cpu_noise_precedes_fatigue_and_reafferentation(monkeypatch) -> None:
     ctrl = base.data.ctrl
     assert ctrl[base.EIPpos] == 0.0
     assert abs(ctrl[base.EPLpos] - 0.5) > 1e-3  # EIP's noisy command
+
+
+@pytest.mark.parametrize(
+    "env_id",
+    [
+        _ELBOW,
+        "myoChallengeDieReorientP1-v0",
+        "myoHandPenTwirlRandom-v0",
+    ],  # last: subclass
+)
+def test_supported_env_accepts_enabled_noise(env_id: str) -> None:
+    env = gym.make(env_id, motor_noise=MotorNoiseCfg.van_beers_2004())
+    assert env.unwrapped.motor_noise == MotorNoiseCfg.van_beers_2004()
+    env.reset(seed=0)
+    env.step(np.zeros(env.action_space.shape, np.float32))
+    env.close()
+
+
+@pytest.mark.parametrize(
+    "env_id, cls_name",
+    [
+        ("myoChallengeBaodingP1-v1", "BaodingEnv"),
+        ("myoElbowPoseTaskFixed-v0", "ModularTaskEnv"),
+    ],
+)
+def test_unsupported_env_rejects_enabled_noise(env_id: str, cls_name: str) -> None:
+    """An env that would ignore the kwarg raises; None or a disabled cfg is accepted."""
+    with pytest.raises(
+        ValueError, match=rf"{cls_name} does not apply motor_noise.*PoseEnvV0"
+    ):
+        gym.make(env_id, motor_noise={"constant_std": 0.1})
+    for off in (None, {}, MotorNoiseCfg()):
+        gym.make(env_id, motor_noise=off).close()
+
+
+def test_motor_noise_env_classes_match_registry() -> None:
+    """The documented class list is exactly the registered classes that set the flag."""
+    defining = set()
+    for spec in gym.registry.values():
+        entry = spec.entry_point
+        if not (isinstance(entry, str) and entry.startswith("myosuite.")):
+            continue
+        cls = load_env_creator(entry)
+        if getattr(cls, "supports_motor_noise", False):
+            owner = next(k for k in cls.__mro__ if "supports_motor_noise" in vars(k))
+            assert "motor_noise" in inspect.signature(owner.__init__).parameters, owner
+            defining.add(owner.__name__)
+    assert defining == set(MOTOR_NOISE_ENV_CLASSES)
 
 
 def test_cpu_motor_actuators_are_not_noised() -> None:

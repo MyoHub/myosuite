@@ -35,6 +35,8 @@ class LegReachEnvV0(MyoGymnasiumEnv, EzPickle):
     Migrated from walk_v0.ReachEnvV0 (BaseV0). Same obs/reward contract.
     """
 
+    supports_motor_noise = True  # the action pipeline applies motor_noise
+
     DEFAULT_OBS_KEYS = ["qpos", "qvel", "tip_pos", "reach_err"]
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "reach": 1.0,

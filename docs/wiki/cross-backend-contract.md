@@ -103,10 +103,13 @@ human motor noise to muscle excitations. `MotorNoiseCfg.van_beers_2004()` gives 
   excitation to 0.118 (see `docs/source/quickstart_neuroscience.rst`).
 - **Coverage.** CPU: the basic pose, key-turn, object-hold, pen, SAR-reorient, arm/finger/hand
   reach, torso pose, leg stand/walk/terrain envs and the Die-Reorient challenge. mjlab: every
-  twin built with `cpu_reference.action_cfg` (`MyoAction`). Other env classes (the remaining
-  challenge envs, MuscleMimic, the `TaskConfig` envs) do not take the kwarg and silently ignore
-  it; the experimental `ModularTaskEnv` keeps its own `ActuatorGroupSpec.noise` (additive, on the
-  raw action).
+  twin built with `cpu_reference.action_cfg` (`MyoAction`). These classes set
+  `supports_motor_noise = True` (listed in `gymnasium_env.MOTOR_NOISE_ENV_CLASSES`). Any other
+  env class (the remaining challenge envs, MuscleMimic, the `TaskConfig` envs) raises a
+  `ValueError` for an enabled `motor_noise` (`MyoGymnasiumEnv.__new__`), and so does
+  `cpu_reference.cpu_task_spec` for such a registration; `None` or a disabled config is accepted
+  everywhere. The experimental `ModularTaskEnv` keeps its own `ActuatorGroupSpec.noise`
+  (additive, on the raw action).
 
 ---
 

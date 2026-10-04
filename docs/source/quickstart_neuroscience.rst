@@ -251,7 +251,8 @@ Die-Reorient envs, and of their mjlab twins:
 
 with independent draws per muscle and per control step. The noise is applied after the
 action-to-excitation mapping and before fatigue; motor (torque) actuators are not affected.
-It is off by default.
+It is off by default. Envs that do not apply it (the other challenge envs, MuscleMimic, the
+``TaskConfig`` envs) raise a ``ValueError`` instead of ignoring an enabled ``motor_noise``.
 
 .. code-block:: python
 

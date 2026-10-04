@@ -20,6 +20,7 @@ from typing import Any
 import gymnasium as gym
 import mujoco
 import numpy as np
+from gymnasium.envs.registration import load_env_creator
 from mjlab.actuator import XmlActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
@@ -27,6 +28,7 @@ from mjlab.sim import MujocoCfg
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
+from myosuite.envs.gymnasium_env import check_motor_noise_support
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.actions import MyoActionCfg
 from myosuite.terms.base_action import MotorNoiseCfg
 
@@ -93,15 +95,24 @@ def cpu_task_spec(env_id: str) -> CpuTaskSpec:
 
     Returns:
         The frozen registration data.
+
+    Raises:
+        ValueError: If the registration enables ``motor_noise`` on a CPU env
+            class that does not apply it (the twin would not match).
     """
     import myosuite  # noqa: F401, PLC0415  (registers the CPU envs)
 
     spec = gym.spec(env_id)
-    return CpuTaskSpec(
+    task = CpuTaskSpec(
         env_id=env_id,
         kwargs=dict(spec.kwargs),
         max_episode_steps=int(spec.max_episode_steps),
     )
+    if task.motor_noise.enabled:
+        entry = spec.entry_point
+        env_cls = load_env_creator(entry) if isinstance(entry, str) else entry
+        check_motor_noise_support(env_cls, task.motor_noise)
+    return task
 
 
 def build_cpu_spec(task: CpuTaskSpec) -> mujoco.MjSpec:

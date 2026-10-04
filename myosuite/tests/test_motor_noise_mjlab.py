@@ -84,6 +84,34 @@ def test_cpu_registration_configures_twin(noisy_id: str) -> None:
     assert not elbow_pose_env_cfg(_BASE).actions["muscles"].motor_noise.enabled
 
 
+@pytest.mark.parametrize(
+    "noise, raises",
+    [({"constant_std": 0.1}, True), ({"constant_std": 0.0}, False), (None, False)],
+)
+def test_cpu_task_spec_rejects_noise_the_cpu_env_ignores(noise, raises: bool) -> None:
+    """A twin cannot pick up motor_noise from a CPU env class that would ignore it."""
+    base, env_id = (
+        gym.spec("myoChallengeBaodingP1-v1"),
+        "myoChallengeBaodingP1NoiseTest-v1",
+    )
+    registry.register_env(
+        env_id=env_id,
+        entry_point=base.entry_point,
+        max_episode_steps=base.max_episode_steps,
+        kwargs={**base.kwargs, "motor_noise": noise},
+    )
+    try:
+        if raises:
+            with pytest.raises(
+                ValueError, match="BaodingEnv does not apply motor_noise"
+            ):
+                cpu_task_spec(env_id)
+        else:
+            assert not cpu_task_spec(env_id).motor_noise.enabled
+    finally:
+        gym.registry.pop(env_id, None)
+
+
 def test_twin_noise_statistics_and_independence(twin: ManagerBasedRlEnv) -> None:
     torch.manual_seed(0)
     resid = _samples(twin, 0.5) - 0.5  # sigmoid(0.5) = 0.5

@@ -28,6 +28,8 @@ from myosuite.physics.quat_math import euler2quat, mat2euler
 class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Die reorientation task with parity-focused behavior."""
 
+    supports_motor_noise = True  # the action pipeline applies motor_noise
+
     DEFAULT_OBS_KEYS = [
         "hand_qpos_noMD5",
         "hand_qvel",

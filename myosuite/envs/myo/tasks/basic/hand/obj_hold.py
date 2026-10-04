@@ -43,6 +43,8 @@ class ObjHoldFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             dict of its fields); ``None`` disables it.
     """
 
+    supports_motor_noise = True  # the action pipeline applies motor_noise
+
     DEFAULT_OBS_KEYS = ["hand_qpos", "hand_qvel", "obj_pos", "obj_err"]
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "goal_dist": 100.0,

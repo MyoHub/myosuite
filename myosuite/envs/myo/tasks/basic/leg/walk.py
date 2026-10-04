@@ -33,6 +33,8 @@ class LegWalkEnvV0(MyoGymnasiumEnv, EzPickle):
     Migrated from walk_v0.WalkEnvV0 (BaseV0). Same obs/reward contract.
     """
 
+    supports_motor_noise = True  # the action pipeline applies motor_noise
+
     DEFAULT_OBS_KEYS = [
         "qpos_without_xy",
         "qvel",

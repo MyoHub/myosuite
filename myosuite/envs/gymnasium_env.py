@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 import gymnasium as gym
 import numpy as np
 
+from myosuite.terms.base_action import MotorNoiseCfg
 from myosuite.utils.path_utils import evaluate_success as _evaluate_success
 from myosuite.utils.policy_utils import examine_policy as _examine_policy
 
@@ -29,6 +30,45 @@ if TYPE_CHECKING:  # pragma: no cover
     from myosuite.viz.mj_renderer import MJRenderer
 
 _REQUIRED_RWD_KEYS = frozenset({"dense", "done"})
+
+# Env classes that set ``supports_motor_noise`` (their subclasses inherit it);
+# test_motor_noise.py keeps this list in sync with the registered entry points.
+MOTOR_NOISE_ENV_CLASSES = (
+    "PoseEnvV0",
+    "KeyTurnEnvV0",
+    "ObjHoldFixedEnvV0",
+    "PenTwirlFixedEnvV0",
+    "ReorientSAREnvV0",
+    "ReachEnvV0",
+    "TorsoEnvV0",
+    "LegReachEnvV0",
+    "LegWalkEnvV0",
+    "ReorientEnv",
+)
+
+
+def check_motor_noise_support(env_cls: type, motor_noise: Any) -> None:
+    """Raise if an enabled ``motor_noise`` goes to an env class that ignores it.
+
+    Env classes accept ``**kwargs``, so an unsupported kwarg would otherwise be
+    dropped silently. ``None`` or a disabled config is accepted everywhere.
+
+    Args:
+        env_cls: The env class receiving the kwarg.
+        motor_noise: The ``motor_noise`` kwarg (cfg, dict or ``None``).
+
+    Raises:
+        ValueError: If the noise is enabled and ``env_cls`` does not apply it.
+    """
+    if not MotorNoiseCfg.from_value(motor_noise).enabled:
+        return
+    if getattr(env_cls, "supports_motor_noise", False):
+        return
+    raise ValueError(
+        f"{env_cls.__name__} does not apply motor_noise, so it would be ignored. "
+        "Pass None or a disabled MotorNoiseCfg, or use an env class that applies "
+        f"it: {', '.join(MOTOR_NOISE_ENV_CLASSES)} (and their subclasses)."
+    )
 
 
 def _validate_reward_dict(rwd_dict: dict) -> None:
@@ -219,6 +259,13 @@ class MyoGymnasiumEnv(gym.Env):
     """
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 50}
+    # True on classes whose action pipeline applies the ``motor_noise`` kwarg.
+    supports_motor_noise: bool = False
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> MyoGymnasiumEnv:
+        """Reject an enabled ``motor_noise`` kwarg the env class would ignore."""
+        check_motor_noise_support(cls, kwargs.get("motor_noise"))
+        return super().__new__(cls)
 
     def __init__(
         self,

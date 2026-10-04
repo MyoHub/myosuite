@@ -52,6 +52,8 @@ class TorsoEnvV0(MyoGymnasiumEnv, EzPickle):
             dict of its fields); ``None`` disables it.
     """
 
+    supports_motor_noise = True  # the action pipeline applies motor_noise
+
     DEFAULT_OBS_KEYS = ["qpos", "qvel", "pose_err"]
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "pose": 1.0,

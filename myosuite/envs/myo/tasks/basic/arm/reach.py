@@ -59,6 +59,8 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
             dict of its fields); ``None`` disables it.
     """
 
+    supports_motor_noise = True  # the action pipeline applies motor_noise
+
     DEFAULT_OBS_KEYS = ["qpos", "qvel", "tip_pos", "reach_err"]
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
         "reach": 1.0,

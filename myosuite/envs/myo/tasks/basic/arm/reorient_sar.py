@@ -57,6 +57,8 @@ class ReorientSAREnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         ValueError: If ``muscle_condition`` is not a known condition.
     """
 
+    supports_motor_noise = True  # the action pipeline applies motor_noise
+
     DEFAULT_OBS_KEYS = [
         "hand_jnt",
         "obj_pos",
