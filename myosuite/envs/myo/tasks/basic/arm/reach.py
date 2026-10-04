@@ -19,7 +19,11 @@ from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.utils.reach_workspace import reachable_target_points
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.physics.fatigue import CumulativeFatigue
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_action import (
+    MotorNoiseCfg,
+    sample_motor_noise,
+    sigmoid_muscle_activation,
+)
 from myosuite.terms.base_reward import multi_site_reach_reward
 
 
@@ -51,6 +55,8 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
             ``"reafferentation"``.
         fatigue_reset_vec: Initial fatigue state vector.
         fatigue_reset_random: If ``True``, randomise fatigue state on reset.
+        motor_noise: Noise on muscle excitations (:class:`MotorNoiseCfg` or a
+            dict of its fields); ``None`` disables it.
     """
 
     DEFAULT_OBS_KEYS = ["qpos", "qvel", "tip_pos", "reach_err"]
@@ -81,6 +87,7 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         muscle_condition: str = "",
         fatigue_reset_vec=None,
         fatigue_reset_random: bool = False,
+        motor_noise: MotorNoiseCfg | dict | None = None,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -103,6 +110,7 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
             muscle_condition=muscle_condition,
             fatigue_reset_vec=fatigue_reset_vec,
             fatigue_reset_random=fatigue_reset_random,
+            motor_noise=motor_noise,
             **kwargs,
         )
 
@@ -129,6 +137,7 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         self.muscle_condition = muscle_condition
         self.fatigue_reset_vec = fatigue_reset_vec
         self.fatigue_reset_random = fatigue_reset_random
+        self.motor_noise = MotorNoiseCfg.from_value(motor_noise)
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
         self._init_muscle_condition()
 
@@ -241,6 +250,14 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
                 np.mean(ctrl_range, axis=-1)
                 + ctrl * (ctrl_range[:, 1] - ctrl_range[:, 0]) / 2.0
             )
+
+        # Motor noise on muscle excitations (before fatigue); no RNG draw when off.
+        ctrl[self._muscle_act_ind] = sample_motor_noise(
+            ctrl[self._muscle_act_ind],
+            self.motor_noise,
+            self.np_random.standard_normal,
+            np,
+        )
 
         if self.muscle_condition == "fatigue":
             ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(

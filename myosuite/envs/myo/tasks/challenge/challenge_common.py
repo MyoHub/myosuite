@@ -11,7 +11,11 @@ import numpy as np
 
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.physics.fatigue import CumulativeFatigue
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_action import (
+    MotorNoiseCfg,
+    sample_motor_noise,
+    sigmoid_muscle_activation,
+)
 
 
 def solved_step_count(path: dict) -> float:
@@ -51,6 +55,7 @@ class MuscleActionMixin:
     frame_skip: int
     normalize_act: bool
     muscle_condition: str
+    motor_noise: MotorNoiseCfg = MotorNoiseCfg()  # off unless the host env sets it
     fatigue_reset_vec: np.ndarray | None
     fatigue_reset_random: bool
     np_random: np.random.Generator
@@ -94,6 +99,13 @@ class MuscleActionMixin:
         elif self.normalize_act and self.model.nu > 0:
             cr = self.model.actuator_ctrlrange
             ctrl = np.mean(cr, axis=-1) + ctrl * (cr[:, 1] - cr[:, 0]) / 2.0
+        # Motor noise on muscle excitations (before fatigue); no RNG draw when off.
+        ctrl[self._muscle_act_ind] = sample_motor_noise(
+            ctrl[self._muscle_act_ind],
+            self.motor_noise,
+            self.np_random.standard_normal,
+            np,
+        )
         if self.muscle_condition == "fatigue":
             ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
                 ctrl[self._muscle_act_ind]

@@ -22,7 +22,11 @@ from myosuite.core.model_builder import ModelBuilder
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.physics.fatigue import CumulativeFatigue
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_action import (
+    MotorNoiseCfg,
+    sample_motor_noise,
+    sigmoid_muscle_activation,
+)
 
 
 class LegReachEnvV0(MyoGymnasiumEnv, EzPickle):
@@ -60,6 +64,7 @@ class LegReachEnvV0(MyoGymnasiumEnv, EzPickle):
         muscle_condition: str = "",
         fatigue_reset_vec=None,
         fatigue_reset_random: bool = False,
+        motor_noise: MotorNoiseCfg | dict | None = None,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -81,6 +86,7 @@ class LegReachEnvV0(MyoGymnasiumEnv, EzPickle):
             muscle_condition=muscle_condition,
             fatigue_reset_vec=fatigue_reset_vec,
             fatigue_reset_random=fatigue_reset_random,
+            motor_noise=motor_noise,
             **kwargs,
         )
 
@@ -98,6 +104,7 @@ class LegReachEnvV0(MyoGymnasiumEnv, EzPickle):
         self.muscle_condition = muscle_condition
         self.fatigue_reset_vec = fatigue_reset_vec
         self.fatigue_reset_random = fatigue_reset_random
+        self.motor_noise = MotorNoiseCfg.from_value(motor_noise)
 
         self.tip_sids = [self.model.site(s).id for s in target_reach_range]
         self.target_sids = [
@@ -164,6 +171,13 @@ class LegReachEnvV0(MyoGymnasiumEnv, EzPickle):
         elif self.normalize_act and self.model.nu > 0:
             cr = self.model.actuator_ctrlrange
             ctrl = np.mean(cr, axis=-1) + ctrl * (cr[:, 1] - cr[:, 0]) / 2.0
+        # Motor noise on muscle excitations (before fatigue); no RNG draw when off.
+        ctrl[self._muscle_act_ind] = sample_motor_noise(
+            ctrl[self._muscle_act_ind],
+            self.motor_noise,
+            self.np_random.standard_normal,
+            np,
+        )
         if self.muscle_condition == "fatigue":
             ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
                 ctrl[self._muscle_act_ind]

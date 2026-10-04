@@ -21,6 +21,7 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import (
     mean_effort,
     solved_step_count,
 )
+from myosuite.terms.base_action import MotorNoiseCfg
 from myosuite.physics.quat_math import euler2quat, mat2euler
 
 
@@ -65,6 +66,7 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         muscle_condition: str = "",
         fatigue_reset_vec=None,
         fatigue_reset_random: bool = False,
+        motor_noise: MotorNoiseCfg | dict | None = None,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -90,6 +92,7 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             muscle_condition=muscle_condition,
             fatigue_reset_vec=fatigue_reset_vec,
             fatigue_reset_random=fatigue_reset_random,
+            motor_noise=motor_noise,
             **kwargs,
         )
 
@@ -111,6 +114,7 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.muscle_condition = muscle_condition
         self.fatigue_reset_vec = fatigue_reset_vec
         self.fatigue_reset_random = fatigue_reset_random
+        self.motor_noise = MotorNoiseCfg.from_value(motor_noise)
 
         self.target_gid = self.model.geom("target_dice").id
         self.target_default_size = self.model.geom_size[self.target_gid].copy()

@@ -17,6 +17,7 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleConditionMixin
+from myosuite.terms.base_action import MotorNoiseCfg
 from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
     sample_geometry_8,
     sample_geometry_100,
@@ -48,6 +49,8 @@ class ReorientSAREnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             ``"reafferentation"``.
         fatigue_reset_vec: Initial fatigue state passed to the fatigue model.
         fatigue_reset_random: If ``True``, randomise the fatigue state on reset.
+        motor_noise: Noise on muscle excitations (:class:`MotorNoiseCfg` or a
+            dict of its fields); ``None`` disables it.
         **kwargs: ``model_recipe`` and ``render_mode``.
 
     Raises:
@@ -84,6 +87,7 @@ class ReorientSAREnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         muscle_condition: str = "",
         fatigue_reset_vec: np.ndarray | None = None,
         fatigue_reset_random: bool = False,
+        motor_noise: MotorNoiseCfg | dict | None = None,
         **kwargs: Any,
     ) -> None:
         if muscle_condition not in _MUSCLE_CONDITIONS:
@@ -104,6 +108,7 @@ class ReorientSAREnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             muscle_condition=muscle_condition,
             fatigue_reset_vec=fatigue_reset_vec,
             fatigue_reset_random=fatigue_reset_random,
+            motor_noise=motor_noise,
             **kwargs,
         )
         model_recipe = kwargs.pop("model_recipe", None)
@@ -120,6 +125,7 @@ class ReorientSAREnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         self.muscle_condition = muscle_condition
         self.fatigue_reset_vec = fatigue_reset_vec
         self.fatigue_reset_random = fatigue_reset_random
+        self.motor_noise = MotorNoiseCfg.from_value(motor_noise)
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
         self._init_muscle_condition()
 

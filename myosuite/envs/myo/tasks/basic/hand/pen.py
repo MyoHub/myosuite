@@ -17,6 +17,7 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleConditionMixin
+from myosuite.terms.base_action import MotorNoiseCfg
 from myosuite.physics.quat_math import euler2quat
 from myosuite.physics.quat_math import calculate_cosine
 
@@ -39,6 +40,8 @@ class PenTwirlFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             ``"reafferentation"``.
         fatigue_reset_vec: Initial fatigue state vector.
         fatigue_reset_random: If ``True``, randomise fatigue state on reset.
+        motor_noise: Noise on muscle excitations (:class:`MotorNoiseCfg` or a
+            dict of its fields); ``None`` disables it.
     """
 
     DEFAULT_OBS_KEYS = [
@@ -76,6 +79,7 @@ class PenTwirlFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         muscle_condition: str = "",
         fatigue_reset_vec=None,
         fatigue_reset_random: bool = False,
+        motor_noise: MotorNoiseCfg | dict | None = None,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -95,6 +99,7 @@ class PenTwirlFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             muscle_condition=muscle_condition,
             fatigue_reset_vec=fatigue_reset_vec,
             fatigue_reset_random=fatigue_reset_random,
+            motor_noise=motor_noise,
             **kwargs,
         )
 
@@ -112,6 +117,7 @@ class PenTwirlFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         self.muscle_condition = muscle_condition
         self.fatigue_reset_vec = fatigue_reset_vec
         self.fatigue_reset_random = fatigue_reset_random
+        self.motor_noise = MotorNoiseCfg.from_value(motor_noise)
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
         self._init_muscle_condition()
 

@@ -12,15 +12,20 @@ import numpy as np
 
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.physics.fatigue import CumulativeFatigue
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_action import (
+    MotorNoiseCfg,
+    sample_motor_noise,
+    sigmoid_muscle_activation,
+)
 
 
 class MuscleConditionMixin:
     """Shared muscle-condition behaviour of the pose, key-turn, obj-hold, pen and SAR-reorient envs.
 
     The host env provides ``model``, ``data``, ``frame_skip``, ``normalize_act``,
-    ``muscle_condition``, ``fatigue_reset_vec``, ``fatigue_reset_random``,
-    ``np_random``, ``_muscle_act_ind`` and the actuator-name suffix ``_name_sfx``.
+    ``muscle_condition``, ``motor_noise``, ``fatigue_reset_vec``,
+    ``fatigue_reset_random``, ``np_random``, ``_muscle_act_ind`` and the
+    actuator-name suffix ``_name_sfx``.
     """
 
     model: Any
@@ -28,6 +33,7 @@ class MuscleConditionMixin:
     frame_skip: int
     normalize_act: bool
     muscle_condition: str
+    motor_noise: MotorNoiseCfg = MotorNoiseCfg()  # off unless the host env sets it
     fatigue_reset_vec: Any
     fatigue_reset_random: bool
     np_random: np.random.Generator
@@ -80,6 +86,14 @@ class MuscleConditionMixin:
                 np.mean(ctrl_range, axis=-1)
                 + ctrl * (ctrl_range[:, 1] - ctrl_range[:, 0]) / 2.0
             )
+
+        # Motor noise on muscle excitations (before fatigue); no RNG draw when off.
+        ctrl[self._muscle_act_ind] = sample_motor_noise(
+            ctrl[self._muscle_act_ind],
+            self.motor_noise,
+            self.np_random.standard_normal,
+            np,
+        )
 
         if self.muscle_condition == "fatigue":
             ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
