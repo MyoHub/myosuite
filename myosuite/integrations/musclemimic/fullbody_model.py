@@ -64,6 +64,14 @@ FULLBODY_BODY2SITES_FOR_MIMIC = {
     "toes_r": "right_toes_mimic",
 }
 
+# Arena (contacts, constraint rows, solver scratch) of each CPU ``MjData``. The
+# musclemimic_models MJCF declares legacy ``<size nconmax="2000" njmax="5000">``,
+# from which MuJoCo reserves 1.3 GB per MjData (committed up front on Windows).
+# Measured high-water mark with MuJoCo 3.11: 0.48 MiB over seeded rollouts and
+# clip resets, 1.46 MiB with every contact candidate and joint limit active at
+# once (analytic bound 296 contacts / 1176 rows, about 1.6 MiB).
+MIMIC_FULLBODY_ARENA_BYTES = 16 * 2**20
+
 
 def resolve_mimic_fullbody_xml(config: config_dict.ConfigDict) -> str:
     """Return absolute path to the MuscleMimic MyoFullBody MJCF.
@@ -407,6 +415,11 @@ def compile_mimic_fullbody_mjmodel(
 ) -> tuple[mujoco.MjModel, mujoco.MjSpec, str]:
     """Compile a CPU :class:`mujoco.MjModel` matching ``MyoFullBody`` (no MJX).
 
+    The returned spec carries an explicit arena size (``config.arena_memory``,
+    default :data:`MIMIC_FULLBODY_ARENA_BYTES`; ``None`` keeps the MJCF's
+    legacy sizing). ``nconmax``/``njmax`` stay on the model: the MJX Warp path
+    reads ``njmax``, and mjlab sizes its Warp buffers from ``SimulationCfg``.
+
     Args:
         config: At least ``disable_fingers`` and ``sim_dt`` (see
             :func:`default_mimic_fullbody_config`).
@@ -415,6 +428,9 @@ def compile_mimic_fullbody_mjmodel(
         Compiled model, ``MjSpec`` after edits, and resolved XML path.
     """
     spec, xml_path = build_mimic_fullbody_spec(config)
+    arena = getattr(config, "arena_memory", MIMIC_FULLBODY_ARENA_BYTES)
+    if arena is not None:
+        spec.memory = int(arena)
 
     mj_model = spec.compile()
     # Match MuscleMimic ``MyoFullBody`` (CPU): LocoEnv only applies
@@ -433,7 +449,8 @@ def default_mimic_fullbody_config() -> config_dict.ConfigDict:
     (
     :class:`~myosuite.envs.myo.backends.mjx.musclemimic_fullbody_env.MjxMuscleMimicFullbodyEnv`
     ). Extra keys (observation toggles, ``target_site_range``, ``nconmax``)
-    are for that MJX task wrapper.
+    are for that MJX task wrapper. ``arena_memory`` is the per-``MjData``
+    arena in bytes (see :data:`MIMIC_FULLBODY_ARENA_BYTES`).
     """
     tracking = MimicTrackingConfig()
 
@@ -449,6 +466,7 @@ def default_mimic_fullbody_config() -> config_dict.ConfigDict:
         model_disableflags=int(mujoco.mjtDisableBit.mjDSBL_EULERDAMP),
         model_path=None,
         disable_fingers=True,
+        arena_memory=MIMIC_FULLBODY_ARENA_BYTES,
         nconmax=4096,
         enable_joint_pos_observations=True,
         enable_joint_vel_observations=True,
@@ -475,6 +493,7 @@ default_musclemimic_fullbody_config = default_mimic_fullbody_config
 
 __all__ = [
     "FULLBODY_BODY2SITES_FOR_MIMIC",
+    "MIMIC_FULLBODY_ARENA_BYTES",
     "build_mimic_fullbody_spec",
     "resolve_mimic_fullbody_xml",
     "compile_mimic_fullbody_mjmodel",

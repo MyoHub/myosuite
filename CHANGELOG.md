@@ -208,6 +208,15 @@ full commit list.
 * **Tutorial scripts and CI.** The SAR tutorial scripts seed SAC and checkpoint/resume (`--seed`,
   `--play-only`); the 2.3 results depend strongly on the seed. CI runs for PRs into `ms3` and installs the
   `[rl]` extra; the mimic suite no longer comes out empty (it is registered before the challenge suite).
+* **Full-body MuscleMimic CPU model memory.** The `musclemimic_models` MJCF declares the legacy
+  `<size nconmax="2000" njmax="5000">`, from which MuJoCo reserved a 1.3 GB arena per `MjData`; Windows
+  commits it up front, so 16 per-env `MjData` of the mjlab ONNX/Orbax bridge took about 21 GB (64 could not be
+  built) and every CPU `myoMimicFullbody-v0` or clip env (e.g. per SubprocVecEnv worker) took 1.3 GB.
+  `compile_mimic_fullbody_mjmodel` now sets an explicit 16 MiB arena (`arena_memory`,
+  `MIMIC_FULLBODY_ARENA_BYTES`): the measured peak is 0.5 MiB over seeded rollouts and clip resets and 1.5 MiB
+  with every contact candidate and joint limit active at once. Commit per `MjData` drops from 1313 to 19 MiB;
+  trajectories are bit-identical, and `nconmax`/`njmax` (read by the MJX Warp path) and the mjlab Warp buffer
+  sizes are unchanged.
 
 ### Removed
 
