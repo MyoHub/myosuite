@@ -32,6 +32,11 @@ action; the checkpoint is the best one of the run.
 of which only about 55% lies within the fingertip's workspace, which capped any policy near that. They now
 sample only targets the fingertip can reach, and their policies were retrained.
 
+`myoArmReachRandom-v0` ended 16.5% of its episodes at step 2 whatever the policy did: the targets in the upper
+part of its box lay more than `far_th` = 1.0 m from the hanging fingertip. Its far threshold is now 1.3 m. The
+checkpoint below was trained and evaluated with the old threshold (those episodes count as failures in its
+67.2%) and should be re-evaluated.
+
 **Compatibility with the ms3 observation changes.** Policies are tied to the observation contract they
 were trained with. These changes since the first set of checkpoints affect them:
 

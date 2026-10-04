@@ -67,6 +67,11 @@ def edit_fn_arm_reaching(
 
 
 _EP = "myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0"
+# The fingertip starts with the arm hanging, 0.76 m from the centre of the random
+# target box, whose far corners are up to 1.24 m away (1.25 m from myo_sim's IFtip_r).
+# A far threshold of 1.0 m ended 16% of the episodes at step 2 whatever the policy did;
+# 1.3 m also covers the <= 4.3 cm the tip moves before the far check starts.
+_RANDOM_FAR_TH = 1.3
 
 _fixed_kwargs = {
     "model_recipe": "full_arm",
@@ -86,7 +91,7 @@ _random_kwargs = {
         ),
     },
     "normalize_act": True,
-    "far_th": 1.0,
+    "far_th": _RANDOM_FAR_TH,
     "edit_fn": edit_fn_arm_reaching,
 }
 
