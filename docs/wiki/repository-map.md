@@ -19,7 +19,7 @@ tasks/             # working notes: todo.md, lessons.md, reports (not shipped)
 |---|---|
 | `core/` | Registry, config dataclasses, model builder/recipes, muscle conditions |
 | `terms/` | Backend-agnostic pure term functions (obs, reward, action, event, termination) |
-| `physics/` | Biomechanics math — quaternions, fatigue, IK, min-jerk. No backend imports. |
+| `physics/` | Biomechanics math — quaternions, fatigue, IK, min-jerk, MuJoCo muscle curves/params, joint limits. No backend imports. |
 | `envs/` | `gymnasium_env.py` (CPU base), `modular_env.py` (data-driven env), wrappers |
 | `envs/myo/tasks/` | Task definitions organized by collection (`basic/`, `challenge/`, `mimic/`) |
 | `envs/myo/backends/` | `mjx/` (JAX) and `mjlab/` (Warp) execution backends |

@@ -60,3 +60,12 @@ don't get an entry here.
   and each episode starts from `mj_resetData` plus `policy_runner.reset()`.
 - Why: bridged policies drove every muscle at half excitation and dropped the left arm. SAR synergies were fit on
   clip tails with state carried over between episodes. Re-collect cached activations and re-extract synergy models.
+
+## [2026-10-04] feature | effort / ergonomics terms and accessor muscle data (branch: feat/effort-terms)
+
+- `EnvAccessor` gains `muscle_force/length/velocity/params` (MuJoCo muscles only, same order on CPU and mjlab),
+  `joint_range` (limited hinge/slide joints with their `qpos` indices) and `qfrc_actuator`.
+- `myosuite/terms/effort.py`: muscle mechanical power, Umberger 2003/2010 metabolic rate, shoulder Consumed
+  Endurance, 3CC-r fatigue effort, joint-limit discomfort; opt-in mjlab rewards in `mdp.effort`.
+- `joint_penalty` / `joint_limit_violation` use joint ranges (they compared `qpos` with actuator ctrl ranges).
+- Why: effort was activation-only; HCI / ergonomics studies need physiological effort measures on both backends.

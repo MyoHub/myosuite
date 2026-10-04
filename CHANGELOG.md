@@ -62,6 +62,14 @@ full commit list.
   (`eb91414`, `89f23fd`, `e764f74`).
 * Fatigue: episode-persistent and resumable states (`a4b979c`), torch 3CC-r parity (`99e8812`).
 * Arm-reach model edits (thumb frozen, digits under their metacarpals) (`e3e326d`, `f8f9e06`).
+* **Effort and ergonomics terms** (`myosuite.terms.effort`, opt-in: no env weights them):
+  muscle mechanical power, the Umberger et al. (2003) / Umberger (2010) metabolic energy rate
+  (OpenSim `Umberger2010MuscleMetabolicsProbe` algorithm), shoulder Consumed Endurance
+  (Hincapié-Ramos et al., CHI 2014; per step and per episode), effort from the 3CC-r fatigue state and
+  a smooth joint-limit discomfort; mjlab reward wrappers in `mdp.effort` and a read-only
+  `MyoAction.fatigue_state`. `EnvAccessor` gains `muscle_force`, `muscle_length`,
+  `muscle_velocity`, `muscle_params` (MuJoCo muscles only, same order on CPU and mjlab),
+  `joint_range` (limited hinge/slide joints with their `qpos` indices) and `qfrc_actuator`.
 * `GoalSpec(target_type="site_positions")` samples per-episode targets from per-site (x, y, z) ranges on
   CPU and MJX, with an mjlab command helper (`site_position_command_cfg`); `MotionClip` carries optional
   per-frame `weights` (issue #410).
@@ -129,6 +137,11 @@ full commit list.
 
 ### Fixed
 
+* `joint_penalty` and `joint_limit_violation` compared `qpos` (nq) with the actuator ctrl ranges
+  (nu): they raised when nq != nu, used the wrong limits otherwise and reduced over the batch axis
+  on mjlab. They now use the joint ranges of the limited hinge/slide joints and return one value per
+  env (no registered env uses them). `CpuEnvAccessor.muscle_force/length/velocity` return the
+  MuJoCo muscles only (they included motors).
 * RunTrack keyframe joint values clamped to their ranges (#399, `b0514c0`).
 * Walk rotation termination uses the root free-joint quaternion (`aa2dd77`); leg model root/torso
   orientation (`531dba0`); hand composition and reorient hand orientation (`53f17a9`, `3f4bf9d`).

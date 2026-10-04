@@ -77,6 +77,17 @@ Never import `quat_math` (numpy) inside a Torch or JAX execution path.
 
 ---
 
+## myosuite effort / ergonomics
+
+| What you need | Use | Do NOT write |
+|---|---|---|
+| Muscle force / length / velocity / F0, L0 | `accessor.muscle_force()` … `accessor.muscle_params()` | `data.actuator_*` indexing with motors mixed in |
+| MuJoCo force-length curves | `myosuite.physics.muscle.active_force_length`, `passive_force` | A re-derived Hill curve |
+| Joint limits | `accessor.joint_range()` | `ctrl_range()` against `qpos` |
+| Mechanical power, metabolic rate, Consumed Endurance, fatigue effort, joint discomfort | `myosuite.terms.effort.*` (see `writing-term-functions.md`) | Per-task effort formulas |
+
+---
+
 ## pathlib
 
 Always `pathlib.Path`. Never `os.path`.
