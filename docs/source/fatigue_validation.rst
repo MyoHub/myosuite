@@ -28,10 +28,11 @@ integrated exactly over the control step. ``R_r = r R`` when ``MA >= TL`` and
 
 .. note::
 
-   Looft et al. (2018) and Rakshit et al. (2021, Eq. 7) apply the multiplier
-   ``r`` only during rest (``TL = 0``). MyoSuite applies it whenever
-   ``MA >= TL``, as the legacy v2.x model did, so recovery is also boosted
-   whenever the command drops below the active fraction. This does not affect
+   Looft et al. (2018) introduced ``r`` for the rest intervals of intermittent
+   tasks, and Rakshit et al. (2021, Eq. 7) apply it only when ``TL = 0``.
+   MyoSuite applies it whenever ``MA >= TL``, as the legacy v2.x model did, so
+   recovery is also boosted whenever the command drops below the active
+   fraction. This does not affect
    sustained contractions (``MA`` stays just below ``TL``), so it is not covered
    by the validation below.
 
