@@ -28,9 +28,13 @@ from myosuite.integrations.musclemimic.fullbody_local_policy import (  # noqa: E
     FullbodyObsAdapter,
     _relative_site_quantities,
 )
-from myosuite.integrations.musclemimic.mjlab_policy_runner import (  # noqa: E402
+from myosuite.integrations.musclemimic.fullbody_obs_torch import (  # noqa: E402
     TorchFullbodyObsAdapter,
 )
+from myosuite.integrations.musclemimic.fullbody_obs_torch import (  # noqa: E402
+    _relative_site_quantities as _torch_relative_site_quantities,
+)
+from myosuite.tests.support.host_sync import HostSyncCounter  # noqa: E402
 
 pytestmark = pytest.mark.tier1
 
@@ -192,8 +196,7 @@ def test_relative_angular_velocity_matches_cpu_definition() -> None:
         body_rootid=np.zeros(2, int),
     )
     np.testing.assert_allclose(cpu[2][0, :3], [0.0, -1.0, 0.0], atol=1e-7)
-    adapter = object.__new__(TorchFullbodyObsAdapter)
-    torch_out = adapter._relative_site_quantities(
+    torch_out = _torch_relative_site_quantities(
         site_ids=torch.as_tensor(ids),
         site_xpos=torch.as_tensor(site_xpos)[None],
         site_xmat=torch.as_tensor(site_xmat)[None],
@@ -227,6 +230,10 @@ def test_torch_adapter_matches_cpu_adapter(
     expected = np.stack(
         [cpu_adapter.build(d, int(f)) for d, f in zip(states, frames, strict=True)]
     )
-    got = torch_adapter.build(_stack(states), torch.as_tensor(frames)).numpy()
+    batch, frames_t = _stack(states), torch.as_tensor(frames)
+    with HostSyncCounter() as syncs:
+        got_t = torch_adapter.build(batch, frames_t)
+    assert syncs.total == 0, dict(syncs.counts)  # stays on device
+    got = got_t.numpy()
     assert got.shape == expected.shape and got.dtype == np.float32
     np.testing.assert_allclose(got, expected, rtol=1e-5, atol=1e-5)
