@@ -60,6 +60,23 @@ def test_index_tip_site_is_on_the_index_chain() -> None:
     assert not any("3proxph" in n or "thirdmc" in n for n in chain)
 
 
+def test_index_tip_site_is_at_the_fingertip() -> None:
+    """IFtip coincides with myo_sim's fingertip site IFtip_r.
+
+    Regression: IFtip sat at the distph2_r origin (the DIP joint), 1.8 cm short
+    of the fingertip, which is more than the 1.25 cm reach success radius.
+    """
+    _, spec = build_from_recipe("full_arm")
+    edit_fn_arm_reaching(spec)
+    model = spec.compile()
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    tip, ref = model.site("IFtip").id, model.site("IFtip_r").id
+    assert model.site_bodyid[tip] == model.body("distph2_r").id
+    np.testing.assert_allclose(data.site_xpos[tip], data.site_xpos[ref], atol=1e-9)
+    assert np.linalg.norm(model.site_pos[tip]) > 0.015
+
+
 def test_hand_is_rigid_no_thumb_muscles_or_hand_joints() -> None:
     """Only shoulder/elbow/forearm/wrist joints and their muscles remain."""
     _, spec = build_from_recipe("full_arm")

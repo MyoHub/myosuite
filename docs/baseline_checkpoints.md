@@ -51,6 +51,13 @@ were trained with. These changes since the first set of checkpoints affect them:
   TableTennis and MuscleMimic mjlab tasks follow the CPU models; the MuscleMimic bridge maps outputs with
   `clip(a, 0, 1)`. Policies trained on the earlier versions of those tasks must be retrained or
   re-evaluated; the checkpoints in the table are not affected.
+- The arm-reach `IFtip` site sat at the DIP joint, 1.8 cm short of the fingertip, when the
+  `myoArmReach*` checkpoints were evaluated, and it now sits at the fingertip. With the old site, the
+  fingertip itself ended within the 1.25 cm success radius in only 2% of the `myoArmReachRandom-v0`
+  episodes (CPU, 200 seeds), against 67% counted as solved. The checkpoints follow the observed tip, so
+  they reach with the fingertip without retraining: `myoArmReachFixed-v0` stays at 100% and
+  `myoArmReachRandom-v0` scores 64.0% on CPU (67.0% with the old site; the paired difference is not
+  significant, McNemar p = 0.15).
 
 Re-evaluate a checkpoint after any change to an env's observations with
 `python scripts/eval_mjlab_policy.py <env_id> --backend mjlab`; train it again if its success rate drops

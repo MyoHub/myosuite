@@ -22,6 +22,9 @@ def edit_fn_arm_reaching(
 ) -> None:
     spec.stat.extent = _REACH_CAMERA_EXTENT
     spec.stat.center = _REACH_CAMERA_CENTER
+    # myo_sim's fingertip site, read before the edits below (name lookups can go
+    # stale after deletions).
+    tip_pos = spec.site("IFtip_r").pos.copy()
     # Get the positions of each body of each digit. Names carry myo_sim's
     # "_r" (right-side) suffix — this model is built via the "full_arm"
     # recipe (myo_sim.load_spec("myoarm_r")), not the legacy bare-named XML.
@@ -54,7 +57,9 @@ def edit_fn_arm_reaching(
                     spec.delete(a)
             spec.delete(t)
 
-    spec.body("distph2_r").add_site(name="IFtip")
+    # Reach site at the fingertip (IFtip_r), not at the distph2_r origin (the DIP
+    # joint, 1.8 cm proximal). The legacy "IFtip" name is kept.
+    spec.body("distph2_r").add_site(name="IFtip", pos=tip_pos)
 
     # Add a reach target
     spec.body("world").add_site(
