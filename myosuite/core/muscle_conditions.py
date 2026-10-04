@@ -676,21 +676,66 @@ class TorchFatigueState:
     # Reset
     # ------------------------------------------------------------------
 
-    def reset(self, env_ids: Any = None) -> None:
-        """Reset fatigue to unfatigued state for the given environments.
+    def reset(
+        self,
+        env_ids: Any = None,
+        fatigue_reset_vec: Any = None,
+        fatigue_reset_random: bool = False,
+        generator: Any = None,
+    ) -> None:
+        """Reset the fatigue state of the given environments.
+
+        Same three modes as :meth:`CumulativeFatigue.reset`, vectorised over
+        the environments: fresh (``MA = MF = 0``, ``MR = 1``), a fixed fatigued
+        fraction, or a random state drawn independently per env and muscle.
 
         Args:
             env_ids: Indices or slice of environments to reset.  If ``None``,
                 resets all environments.
+            fatigue_reset_vec: If provided, ``MF = fatigue_reset_vec``,
+                ``MR = 1 - fatigue_reset_vec`` and ``MA = 0`` in every reset
+                env.  Shape ``(n_muscles,)``.
+            fatigue_reset_random: If ``True``, draw ``nf, ap ~ U[0, 1)`` and set
+                ``MA = nf * ap``, ``MR = nf * (1 - ap)``, ``MF = 1 - nf``.
+                Cannot be combined with *fatigue_reset_vec*.
+            generator: ``torch.Generator`` for the random state.  Defaults to
+                torch's global generator, which mjlab seeds
+                (``env.reset(seed=...)``).
+
+        Raises:
+            ValueError: If both reset options are given, or the length of
+                *fatigue_reset_vec* is not ``n_muscles``.
         """
-        if env_ids is None:
-            self.MA.zero_()
-            self.MF.zero_()
-            self.MR.fill_(1.0)
+        import torch  # noqa: PLC0415
+
+        rows = slice(None) if env_ids is None else env_ids
+        if fatigue_reset_random:
+            if fatigue_reset_vec is not None:
+                raise ValueError(
+                    "Cannot pass fatigue_reset_vec when fatigue_reset_random=True."
+                )
+            shape = self.MA[rows].shape
+            nf = torch.rand(shape, generator=generator, device=self.MA.device)
+            ap = torch.rand(shape, generator=generator, device=self.MA.device)
+            self.MA[rows] = nf * ap
+            self.MR[rows] = nf * (1.0 - ap)
+            self.MF[rows] = 1.0 - nf
+        elif fatigue_reset_vec is not None:
+            mf = torch.as_tensor(
+                np.asarray(fatigue_reset_vec, dtype=np.float32), device=self.MA.device
+            )
+            if mf.shape != self.MA.shape[1:]:
+                raise ValueError(
+                    f"fatigue_reset_vec length {mf.numel()} != "
+                    f"n_muscles={self.MA.shape[1]}"
+                )
+            self.MA[rows] = 0.0
+            self.MF[rows] = mf
+            self.MR[rows] = 1.0 - mf
         else:
-            self.MA[env_ids] = 0.0
-            self.MF[env_ids] = 0.0
-            self.MR[env_ids] = 1.0
+            self.MA[rows] = 0.0
+            self.MF[rows] = 0.0
+            self.MR[rows] = 1.0
 
     def state_dict(self) -> dict[str, list]:
         """Return serialisable snapshot of the fatigue compartments.

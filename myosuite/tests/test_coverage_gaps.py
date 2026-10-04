@@ -304,6 +304,77 @@ class TestCumulativeFatigue:
         np.testing.assert_allclose(gpu.MA[0].numpy(), cpu.MA, atol=1e-5)
         np.testing.assert_allclose(gpu.MF[0].numpy(), cpu.MF, atol=1e-5)
 
+    def test_torch_reset_vec_matches_cpu(self) -> None:
+        """A fixed fatigue vector resets the chosen envs like the CPU model."""
+        torch = pytest.importorskip("torch")
+        from myosuite.core.muscle_conditions import TorchFatigueState
+
+        cpu = _make_fatigue_model(3)
+        gpu = TorchFatigueState(num_envs=4, n_muscles=3)
+        for _ in range(30):
+            cpu.compute_act(np.full(3, 0.7), dt=0.02)
+            gpu.step(torch.full((4, 3), 0.7), 0.02)
+        before = gpu.MF.clone()
+        vec = np.array([0.1, 0.4, 0.8])
+        cpu.reset(fatigue_reset_vec=vec)
+        gpu.reset(torch.tensor([1, 3]), fatigue_reset_vec=vec)
+        for name in ("MA", "MR", "MF"):
+            got = getattr(gpu, name)[[1, 3]].double().numpy()
+            np.testing.assert_allclose(
+                got, np.tile(getattr(cpu, name), (2, 1)), atol=1e-7
+            )
+        torch.testing.assert_close(gpu.MF[[0, 2]], before[[0, 2]])
+
+    def test_torch_reset_random_matches_cpu_distribution(self) -> None:
+        """Random resets: seeded, per env, and the CPU construction of the state.
+
+        CPU and torch draw from different generators, so the states are compared
+        in distribution: ``MF = 1 - nf`` and ``MA / (MA + MR) = ap`` are uniform.
+        """
+        torch = pytest.importorskip("torch")
+        from myosuite.core.muscle_conditions import TorchFatigueState
+
+        n = 3
+        gpu = TorchFatigueState(num_envs=4000, n_muscles=n)
+        gpu.reset(fatigue_reset_random=True, generator=torch.Generator().manual_seed(0))
+        again = TorchFatigueState(num_envs=4000, n_muscles=n)
+        again.reset(
+            fatigue_reset_random=True, generator=torch.Generator().manual_seed(0)
+        )
+        torch.testing.assert_close(gpu.MF, again.MF)
+        total = (gpu.MA + gpu.MR + gpu.MF).double().numpy()
+        np.testing.assert_allclose(total, 1.0, atol=1e-6)
+        assert len(torch.unique(gpu.MF[:, 0])) > 3900  # one draw per env
+
+        cpu = _make_fatigue_model(n)
+        rng = np.random.default_rng(0)
+        states = []
+        for _ in range(4000):
+            cpu.reset(fatigue_reset_random=True, np_random=rng)
+            states.append((cpu.MA.copy(), cpu.MR.copy(), cpu.MF.copy()))
+        ma, mr, mf = (np.stack(s) for s in zip(*states))
+        q = np.linspace(0.05, 0.95, 19)
+        for cpu_x, gpu_x in (
+            (mf, gpu.MF.double().numpy()),
+            (ma, gpu.MA.double().numpy()),
+            (ma / (ma + mr), (gpu.MA / (gpu.MA + gpu.MR)).double().numpy()),
+        ):
+            np.testing.assert_allclose(
+                np.quantile(gpu_x, q), np.quantile(cpu_x, q), atol=0.02
+            )
+
+    def test_torch_reset_rejects_invalid_options(self) -> None:
+        """Both options at once, or a vector of the wrong length, raise as on CPU."""
+        torch = pytest.importorskip("torch")
+        from myosuite.core.muscle_conditions import TorchFatigueState
+
+        gpu = TorchFatigueState(num_envs=2, n_muscles=3)
+        with pytest.raises(ValueError, match="Cannot pass"):
+            gpu.reset(fatigue_reset_vec=[0.1] * 3, fatigue_reset_random=True)
+        with pytest.raises(ValueError, match="length"):
+            gpu.reset(fatigue_reset_vec=[0.1, 0.2])
+        torch.testing.assert_close(gpu.MR, torch.ones(2, 3))
+
 
 # Three muscles; the first two have non-default activation time constants.
 _FATIGUE_MUSCLE_XML = """
