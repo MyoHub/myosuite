@@ -12,8 +12,10 @@ MuJoCo actuator order and map it to ``ctrl`` as follows:
 2. muscles (model ``na > 0``): ``sigmoid`` on muscle actuators (walk envs:
    used as-is), other actuators keep the clipped action; motors-only models:
    linear map from the action range to ``ctrlrange``;
-3. ``fatigue``: muscle ctrl replaced by the 3CC-r active compartment;
-4. ``reafferentation``: one actuator's command is rerouted to another and the
+3. ``motor_noise``: signal-dependent + constant noise on muscle excitations
+   (``torch.randn``, independent per env and muscle; off by default);
+4. ``fatigue``: muscle ctrl replaced by the 3CC-r active compartment;
+5. ``reafferentation``: one actuator's command is rerouted to another and the
    source is silenced.
 
 mjlab's :class:`~mjlab.envs.mdp.actions.BaseAction` only supports affine maps on
@@ -23,7 +25,8 @@ actuator to its own joint/tendon effort target (wrapped by ``XmlActuatorCfg``).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import functools
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import mujoco
@@ -31,7 +34,11 @@ import torch
 from mjlab.managers.action_manager import ActionTerm, ActionTermCfg
 
 from myosuite.core.muscle_conditions import TorchFatigueState
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_action import (
+    MotorNoiseCfg,
+    sample_motor_noise,
+    sigmoid_muscle_activation,
+)
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
@@ -48,6 +55,7 @@ class MyoActionCfg(ActionTermCfg):
         muscle_fatigue: Apply the 3CC-r fatigue model to muscle ctrl.
         reroute: ``(source, destination)`` actuator names for reafferentation:
             ``ctrl[dst] = ctrl[src]; ctrl[src] = 0``.
+        motor_noise: Noise on muscle excitations, applied before fatigue.
     """
 
     normalize_act: bool = True
@@ -55,6 +63,7 @@ class MyoActionCfg(ActionTermCfg):
     muscle_sigmoid: bool = True
     muscle_fatigue: bool = False
     reroute: tuple[str, str] | None = None
+    motor_noise: MotorNoiseCfg = field(default_factory=MotorNoiseCfg)
 
     def build(self, env: ManagerBasedRlEnv) -> MyoAction:
         return MyoAction(self, env)
@@ -120,6 +129,8 @@ class MyoAction(ActionTerm):
             self._fatigue = TorchFatigueState.from_mj_model(
                 model, num_envs=self.num_envs, device=str(self.device)
             )
+        # Global torch RNG on the sim device, seeded by mjlab (``seed_rng``).
+        self._randn = functools.partial(torch.randn, device=self.device)
 
         self._raw_actions = torch.zeros(
             self.num_envs, self._action_dim, device=self.device
@@ -157,6 +168,10 @@ class MyoAction(ActionTerm):
                 self._ctrl_hi - self._ctrl_lo
             )
 
+        if self.cfg.motor_noise.enabled:
+            ctrl[:, self._muscle_cols] = sample_motor_noise(
+                ctrl[:, self._muscle_cols], self.cfg.motor_noise, self._randn, torch
+            )
         if self._fatigue is not None:
             ctrl[:, self._muscle_cols] = self._fatigue.step(
                 ctrl[:, self._muscle_cols], self._env.step_dt

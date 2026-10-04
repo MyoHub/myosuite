@@ -28,6 +28,7 @@ from mjlab.sim import MujocoCfg
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.actions import MyoActionCfg
+from myosuite.terms.base_action import MotorNoiseCfg
 
 _INTEGRATORS = {
     int(mujoco.mjtIntegrator.mjINT_EULER): "euler",
@@ -67,6 +68,11 @@ class CpuTaskSpec:
     def muscle_condition(self) -> str:
         """``""``, ``"sarcopenia"``, ``"fatigue"`` or ``"reafferentation"``."""
         return str(self.kwargs.get("muscle_condition", ""))
+
+    @property
+    def motor_noise(self) -> MotorNoiseCfg:
+        """Noise on muscle excitations (the CPU ``motor_noise`` kwarg; off by default)."""
+        return MotorNoiseCfg.from_value(self.kwargs.get("motor_noise"))
 
     @property
     def frame_skip(self) -> int:
@@ -454,7 +460,7 @@ def action_cfg(
     action_range: tuple[float, float] = (-1.0, 1.0),
     muscle_sigmoid: bool = True,
 ) -> MyoActionCfg:
-    """CPU action pipeline of *task* (normalization + muscle condition).
+    """CPU action pipeline of *task* (normalization, motor noise, muscle condition).
 
     Reafferentation reroutes EIP's command to EPL and silences EIP (``_r``
     suffix on recipe-built models), exactly as the CPU envs do.
@@ -480,6 +486,7 @@ def action_cfg(
         muscle_sigmoid=muscle_sigmoid,
         muscle_fatigue=task.muscle_condition == "fatigue",
         reroute=reroute,
+        motor_noise=task.motor_noise,
     )
 
 
