@@ -330,6 +330,15 @@ def test_onnx_policy_runs_all_envs_in_one_batch(
         env_indices=range(env.num_envs),
         output_ctrl=True,
     )
+    fed: list[tuple[np.ndarray, np.ndarray]] = []
+    real_run = policy._session.run
+
+    def _capturing_run(names: Any, feeds: dict[str, np.ndarray]) -> Any:
+        out = real_run(names, feeds)
+        fed.append((next(iter(feeds.values())).copy(), out[0].copy()))
+        return out
+
+    policy._session.run = _capturing_run
     dummy = torch.zeros(env.num_envs, 1)
     policy(dummy)  # the first call also resolves the clip source
     with HostSyncCounter() as syncs:
@@ -337,11 +346,19 @@ def test_onnx_policy_runs_all_envs_in_one_batch(
     # cpu + numpy of the obs batch, upload of the actions, the clip-source check.
     assert syncs.counts["cpu"] == 1 and syncs.counts["H2D as_tensor"] == 1
     assert syncs.total <= 4, dict(syncs.counts)
-    expected = actor(policy._build_fullbody_obs_batch()).clamp(-1.0, 1.0)
+    obs_np, raw_np = fed[-1]
+    assert obs_np.shape == (env.num_envs, obs_dim)
     ctrl = torch.as_tensor(model.actuator_ctrlrange, dtype=torch.float32)
-    expected = torch.clamp(expected, ctrl[:, 0], ctrl[:, 1])
+    expected = torch.clamp(
+        torch.from_numpy(raw_np).clamp(-1.0, 1.0), ctrl[:, 0], ctrl[:, 1]
+    )
     assert tuple(action.shape) == (env.num_envs, model.nu)
-    torch.testing.assert_close(action, expected.detach(), rtol=1e-4, atol=1e-5)
+    torch.testing.assert_close(action, expected, rtol=0.0, atol=0.0)
+    # The exported graph matches the torch actor up to float32 kernel order.
+    torch_raw = actor(torch.from_numpy(obs_np)).detach()
+    torch.testing.assert_close(
+        torch.from_numpy(raw_np), torch_raw, rtol=1e-3, atol=1e-4
+    )
 
 
 def _obs_dim(setup: dict[str, Any]) -> int:
