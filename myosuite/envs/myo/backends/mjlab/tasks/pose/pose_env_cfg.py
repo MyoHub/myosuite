@@ -17,7 +17,7 @@ import numpy as np
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
-from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
+from mjlab.managers.observation_manager import ObservationTermCfg
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
@@ -122,10 +122,7 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
         for key in obs_keys
         if key in obs_funcs
     }
-    observations = {
-        "actor": ObservationGroupCfg(terms),
-        "critic": ObservationGroupCfg(dict(terms)),
-    }
+    observations = ref.actor_critic_observations(task, terms)
 
     pose_params = {
         "command_name": COMMAND,

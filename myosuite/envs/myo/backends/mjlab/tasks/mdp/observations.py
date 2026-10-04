@@ -6,9 +6,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import torch
+from mjlab.managers.manager_base import ManagerTermBase
+from mjlab.managers.observation_manager import ObservationTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.utils.lab_api.math import (
     quat_apply,
@@ -17,7 +21,11 @@ from mjlab.utils.lab_api.math import (
     quat_mul,
 )
 
-from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
+from myosuite.core.sensorimotor import FixedLagBuffer
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (
+    MjlabEntityAccessor,
+    normalize_mjlab_env_ids,
+)
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
@@ -25,6 +33,67 @@ if TYPE_CHECKING:
     from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import FreeJointChain
 
 _ROBOT = SceneEntityCfg("robot")
+
+
+@dataclass(kw_only=True)
+class DelayedObservationCfg(ObservationTermCfg):
+    """Observation term ``term_func`` received ``delay_steps`` control steps late.
+
+    Use with ``func=DelayedObservation``; ``params`` are ``term_func``'s.
+
+    Attributes:
+        term_func: The undelayed observation function.
+        delay_steps: Delay in control steps.
+    """
+
+    term_func: Callable[..., torch.Tensor]
+    delay_steps: int
+
+
+class DelayedObservation(ManagerTermBase):
+    """Fixed sensorimotor delay of an observation term (CPU ``SensorimotorCfg``).
+
+    Step ``t`` returns the frame of step ``max(0, t - k)`` since the env's last
+    reset, which fills the history with the reset frame. mjlab's own
+    ``delay_*_lag`` fields are not used: their ``DelayBuffer`` draws from the
+    global torch RNG every step even for a fixed lag (shifting every later
+    random draw), and its partial-reset handling differs between mjlab
+    versions. One frame is stored per control step (``common_step_counter``);
+    a recompute in the same step (``reset(env_ids=...)``) only fills the rows
+    reset since the last frame.
+    """
+
+    def __init__(self, cfg: DelayedObservationCfg, env: ManagerBasedRlEnv) -> None:
+        super().__init__(env)
+        self._func = cfg.term_func
+        self._lag = int(cfg.delay_steps)
+        self._buffer: FixedLagBuffer | None = None
+        self._out: torch.Tensor | None = None
+        self._step = -1
+        self._pending = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+        self._has_pending = False
+
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+        self._pending[normalize_mjlab_env_ids(self._env, env_ids)] = True
+        self._has_pending = True
+
+    def __call__(self, env: ManagerBasedRlEnv, **params: Any) -> torch.Tensor:
+        obs = self._func(env, **params)
+        step = int(env.common_step_counter)
+        if self._buffer is None or self._out is None:
+            self._buffer = FixedLagBuffer(self._lag, obs)
+            self._out, self._step = obs.clone(), step
+            self._has_pending = False
+            return self._out
+        if self._has_pending:  # rows reset since the last frame: history = reset frame
+            rows = self._pending.clone()
+            self._buffer.refill(obs, rows)
+            self._out[rows] = obs[rows]
+            self._pending[:] = False
+            self._has_pending = False
+        if step != self._step:
+            self._out, self._step = self._buffer.push(obs), step
+        return self._out
 
 
 def qpos(env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Tensor:

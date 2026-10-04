@@ -15,7 +15,7 @@ import gymnasium as gym
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
-from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
+from mjlab.managers.observation_manager import ObservationTermCfg
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
@@ -46,11 +46,16 @@ def make_leg_directional_env_cfg(
     del play
     import myosuite  # noqa: F401, PLC0415  (registers the CPU envs)
 
-    config = gym.spec(env_id).kwargs["task_config"]
+    cpu_kwargs = gym.spec(env_id).kwargs
+    config = cpu_kwargs["task_config"]
     reward_extra = config.reward.extra
     task = ref.CpuTaskSpec(
         env_id,
-        {"model_path": config.model, "frame_skip": config.backend.n_substeps},
+        {
+            "model_path": config.model,
+            "frame_skip": config.backend.n_substeps,
+            "sensorimotor": cpu_kwargs.get("sensorimotor"),
+        },
         config.max_episode_steps,
     )
     info = ref.compiled_info(task)
@@ -75,10 +80,7 @@ def make_leg_directional_env_cfg(
         key: ObservationTermCfg(func=obs_funcs[key][0], params=obs_funcs[key][1])
         for key in config.obs.keys
     }
-    observations = {
-        "actor": ObservationGroupCfg(terms),
-        "critic": ObservationGroupCfg(dict(terms)),
-    }
+    observations = ref.actor_critic_observations(task, terms)
     reward_funcs = {
         "heading": (dmdp.heading_term, reward_params),
         "act_reg": (dmdp.act_reg_term, {"asset_cfg": robot}),

@@ -7,6 +7,8 @@
 CPU envs (``PoseEnvV0``, ``ReachEnvV0``, ...) take one action per actuator in
 MuJoCo actuator order and map it to ``ctrl`` as follows:
 
+0. ``SensorimotorCfg.action_delay_steps``: the raw action applied is the one
+   issued that many control steps earlier (raw action 0 after a reset);
 1. clip to the action space (``[-1, 1]``, or ``[0, 1]`` for the leg-walk
    envs, when ``normalize_act``);
 2. muscles (model ``na > 0``): ``sigmoid`` on muscle actuators (walk envs:
@@ -31,6 +33,8 @@ import torch
 from mjlab.managers.action_manager import ActionTerm, ActionTermCfg
 
 from myosuite.core.muscle_conditions import TorchFatigueState
+from myosuite.core.sensorimotor import FixedLagBuffer
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
 if TYPE_CHECKING:
@@ -48,6 +52,8 @@ class MyoActionCfg(ActionTermCfg):
         muscle_fatigue: Apply the 3CC-r fatigue model to muscle ctrl.
         reroute: ``(source, destination)`` actuator names for reafferentation:
             ``ctrl[dst] = ctrl[src]; ctrl[src] = 0``.
+        action_delay_steps: Control steps between the policy action and its
+            application (``SensorimotorCfg.action_delay_steps``).
     """
 
     normalize_act: bool = True
@@ -55,6 +61,7 @@ class MyoActionCfg(ActionTermCfg):
     muscle_sigmoid: bool = True
     muscle_fatigue: bool = False
     reroute: tuple[str, str] | None = None
+    action_delay_steps: int = 0
 
     def build(self, env: ManagerBasedRlEnv) -> MyoAction:
         return MyoAction(self, env)
@@ -125,6 +132,10 @@ class MyoAction(ActionTerm):
             self.num_envs, self._action_dim, device=self.device
         )
         self._processed_actions = torch.zeros_like(self._raw_actions)
+        # Raw actions in flight (sensorimotor action delay), zero after a reset.
+        self._delay: FixedLagBuffer | None = None
+        if cfg.action_delay_steps > 0:
+            self._delay = FixedLagBuffer(cfg.action_delay_steps, self._raw_actions)
 
     @property
     def action_dim(self) -> int:
@@ -132,6 +143,7 @@ class MyoAction(ActionTerm):
 
     @property
     def raw_action(self) -> torch.Tensor:
+        """The policy action of this step (before any sensorimotor delay)."""
         return self._raw_actions
 
     @property
@@ -141,6 +153,8 @@ class MyoAction(ActionTerm):
 
     def process_actions(self, actions: torch.Tensor) -> None:
         self._raw_actions[:] = actions
+        if self._delay is not None:
+            actions = self._delay.push(actions)
         a_lo, a_hi = self.cfg.action_range
         if self.cfg.normalize_act:
             ctrl = torch.clamp(actions, a_lo, a_hi)
@@ -180,6 +194,9 @@ class MyoAction(ActionTerm):
             )
 
     def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+        if self._delay is not None:
+            rows = normalize_mjlab_env_ids(self._env, env_ids)
+            self._delay.refill(torch.zeros_like(self._raw_actions), rows)
         if env_ids is None:
             env_ids = slice(None)
         self._raw_actions[env_ids] = 0.0

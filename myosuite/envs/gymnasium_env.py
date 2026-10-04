@@ -14,13 +14,16 @@ Subclasses implement ``_get_obs_dict()``, ``get_reward_dict()``, and
 
 from __future__ import annotations
 
+import functools
 import types
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import gymnasium as gym
 import numpy as np
 
+from myosuite.core.sensorimotor import CpuSensorimotor, SensorimotorCfg
 from myosuite.utils.path_utils import evaluate_success as _evaluate_success
 from myosuite.utils.policy_utils import examine_policy as _examine_policy
 
@@ -28,6 +31,56 @@ if TYPE_CHECKING:  # pragma: no cover
     from myosuite.viz.mj_renderer import MJRenderer
 
 _REQUIRED_RWD_KEYS = frozenset({"dense", "done"})
+_SENSORIMOTOR_WRAPPED = "__sensorimotor_wrapped__"
+
+
+def _sensorimotor_step(step: Callable[..., Any]) -> Callable[..., Any]:
+    """Run *step* on the delayed action and return the delayed, noisy observation.
+
+    A no-op when the env has no sensorimotor config, and for nested calls
+    (a ``step`` override calling ``super().step``) so the delay applies once.
+    """
+    if getattr(step, _SENSORIMOTOR_WRAPPED, False):
+        return step
+
+    @functools.wraps(step)
+    def wrapper(self: MyoGymnasiumEnv, action: Any, *args: Any, **kwargs: Any) -> Any:
+        sm = getattr(self, "_sensorimotor", None)
+        if sm is None or self._sensorimotor_busy:
+            return step(self, action, *args, **kwargs)
+        self._sensorimotor_busy = True
+        try:
+            obs, reward, terminated, truncated, info = step(
+                self, sm.action(action), *args, **kwargs
+            )
+        finally:
+            self._sensorimotor_busy = False
+        return sm.observe(obs, self.np_random), reward, terminated, truncated, info
+
+    setattr(wrapper, _SENSORIMOTOR_WRAPPED, True)
+    return wrapper
+
+
+def _sensorimotor_reset(reset: Callable[..., Any]) -> Callable[..., Any]:
+    """Run *reset*, then fill the sensorimotor histories (see :func:`_sensorimotor_step`)."""
+    if getattr(reset, _SENSORIMOTOR_WRAPPED, False):
+        return reset
+
+    @functools.wraps(reset)
+    def wrapper(self: MyoGymnasiumEnv, *args: Any, **kwargs: Any) -> Any:
+        sm = getattr(self, "_sensorimotor", None)
+        if sm is None or self._sensorimotor_busy:
+            return reset(self, *args, **kwargs)
+        self._sensorimotor_busy = True
+        try:
+            obs, info = reset(self, *args, **kwargs)
+        finally:
+            self._sensorimotor_busy = False
+        fill = np.zeros(self.action_space.shape, dtype=self.action_space.dtype)
+        return sm.reset(obs, fill, self.np_random), info
+
+    setattr(wrapper, _SENSORIMOTOR_WRAPPED, True)
+    return wrapper
 
 
 def _validate_reward_dict(rwd_dict: dict) -> None:
@@ -183,6 +236,13 @@ class MyoGymnasiumEnv(gym.Env):
     The default step/reset logic handles action clipping, physics stepping,
     obs assembly, and reward extraction.
 
+    Every env accepts a ``sensorimotor`` constructor kwarg
+    (:class:`~myosuite.core.sensorimotor.SensorimotorCfg`, default off). The
+    base class applies it around every subclass ``step``/``reset``: the raw
+    action is delayed before the task's own action mapping, and the returned
+    observation vector is delayed, then noised (``info["obs_dict"]`` and the
+    reward keep the current, noise-free state).
+
     Args:
         frame_skip: Number of MuJoCo substeps per gym step.
         render_mode: Rendering mode passed to gymnasium.Env.
@@ -194,6 +254,30 @@ class MyoGymnasiumEnv(gym.Env):
     """
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 50}
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> MyoGymnasiumEnv:
+        # Read here, so subclasses need not forward the kwarg to __init__.
+        env = super().__new__(cls)
+        cfg = SensorimotorCfg.coerce(kwargs.get("sensorimotor"))
+        env._sensorimotor_cfg = cfg
+        env._sensorimotor = CpuSensorimotor(cfg) if cfg.enabled else None
+        env._sensorimotor_busy = False
+        return env
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        for name, wrap in (
+            ("step", _sensorimotor_step),
+            ("reset", _sensorimotor_reset),
+        ):
+            method = getattr(cls, name)
+            if not getattr(method, _SENSORIMOTOR_WRAPPED, False):
+                setattr(cls, name, wrap(method))
+
+    @property
+    def sensorimotor(self) -> SensorimotorCfg:
+        """Sensorimotor delay / noise config of this env."""
+        return self._sensorimotor_cfg
 
     def __init__(
         self,
@@ -311,6 +395,7 @@ class MyoGymnasiumEnv(gym.Env):
     # Gymnasium interface
     # ------------------------------------------------------------------
 
+    @_sensorimotor_step
     def step(
         self, action: np.ndarray, **kwargs: Any
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
@@ -359,6 +444,7 @@ class MyoGymnasiumEnv(gym.Env):
         rwd_dict = self.get_reward_dict(obs_dict)
         return self._finalize_step(obs_dict, rwd_dict)
 
+    @_sensorimotor_reset
     def reset(
         self,
         seed: int | None = None,

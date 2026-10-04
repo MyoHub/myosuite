@@ -16,5 +16,13 @@ from .events import (  # noqa: F401
     reset_to_cpu_state,
     write_cpu_state,
 )
-from .observations import act, qpos, qpos_chains, qvel, qvel_chains  # noqa: F401
+from .observations import (  # noqa: F401
+    DelayedObservation,
+    DelayedObservationCfg,
+    act,
+    qpos,
+    qpos_chains,
+    qvel,
+    qvel_chains,
+)
 from .terminations import SYNC_TERM, sync_forward  # noqa: F401

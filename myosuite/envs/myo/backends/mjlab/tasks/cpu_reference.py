@@ -6,13 +6,15 @@
 
 The CPU registration (``gymnasium.spec(env_id)``) is the single source of truth
 for every task parameter (model, targets, thresholds, reward weights, frame skip,
-episode length, muscle condition). mjlab task configs read it through these
-helpers instead of restating numbers, so the two backends cannot drift.
+episode length, muscle condition, sensorimotor delay / noise). mjlab task configs
+read it through these helpers instead of restating numbers, so the two backends
+cannot drift.
 """
 
 from __future__ import annotations
 
 import functools
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -23,11 +25,18 @@ import numpy as np
 from mjlab.actuator import XmlActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
+from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
 from mjlab.sim import MujocoCfg
+from mjlab.utils.noise import GaussianNoiseCfg
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
+from myosuite.core.sensorimotor import SensorimotorCfg
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.actions import MyoActionCfg
+from myosuite.envs.myo.backends.mjlab.tasks.mdp.observations import (
+    DelayedObservation,
+    DelayedObservationCfg,
+)
 
 _INTEGRATORS = {
     int(mujoco.mjtIntegrator.mjINT_EULER): "euler",
@@ -67,6 +76,11 @@ class CpuTaskSpec:
     def muscle_condition(self) -> str:
         """``""``, ``"sarcopenia"``, ``"fatigue"`` or ``"reafferentation"``."""
         return str(self.kwargs.get("muscle_condition", ""))
+
+    @property
+    def sensorimotor(self) -> SensorimotorCfg:
+        """Sensorimotor delay / observation noise (default: off)."""
+        return SensorimotorCfg.coerce(self.kwargs.get("sensorimotor"))
 
     @property
     def frame_skip(self) -> int:
@@ -454,7 +468,7 @@ def action_cfg(
     action_range: tuple[float, float] = (-1.0, 1.0),
     muscle_sigmoid: bool = True,
 ) -> MyoActionCfg:
-    """CPU action pipeline of *task* (normalization + muscle condition).
+    """CPU action pipeline of *task* (action delay, normalization, muscle condition).
 
     Reafferentation reroutes EIP's command to EPL and silences EIP (``_r``
     suffix on recipe-built models), exactly as the CPU envs do.
@@ -480,7 +494,58 @@ def action_cfg(
         muscle_sigmoid=muscle_sigmoid,
         muscle_fatigue=task.muscle_condition == "fatigue",
         reroute=reroute,
+        action_delay_steps=task.sensorimotor.action_delay_steps,
     )
+
+
+def actor_critic_observations(
+    task: CpuTaskSpec, terms: dict[str, ObservationTermCfg]
+) -> dict[str, ObservationGroupCfg]:
+    """``actor`` / ``critic`` groups of the CPU observation *terms*.
+
+    The actor sees the CPU policy observation: each term delayed by
+    ``obs_delay_steps``, then noised with ``obs_noise_std`` (mjlab
+    ``GaussianNoiseCfg``, torch RNG). The critic keeps the current, noise-free
+    state.
+
+    Args:
+        task: CPU registration of the task.
+        terms: Undelayed observation terms in CPU order.
+
+    Returns:
+        The observation groups.
+    """
+    sm = task.sensorimotor
+    if not (sm.obs_delay_steps or sm.obs_noise_std):
+        return {
+            "actor": ObservationGroupCfg(terms),
+            "critic": ObservationGroupCfg(dict(terms)),
+        }
+    noise = GaussianNoiseCfg(std=sm.obs_noise_std) if sm.obs_noise_std else None
+    actor: dict[str, ObservationTermCfg] = {}
+    for name, term in terms.items():
+        if term.clip is not None or term.scale is not None or term.history_length:
+            raise ValueError(
+                f"Term {name!r}: clip / scale / history would reorder noise."
+            )
+        if not sm.obs_delay_steps:
+            actor[name] = ObservationTermCfg(
+                func=term.func, params=term.params, noise=noise
+            )
+        elif inspect.isclass(term.func):
+            raise ValueError(f"Term {name!r}: class-based terms cannot be delayed.")
+        else:
+            actor[name] = DelayedObservationCfg(
+                func=DelayedObservation,
+                params=term.params,
+                noise=noise,
+                term_func=term.func,
+                delay_steps=sm.obs_delay_steps,
+            )
+    return {
+        "actor": ObservationGroupCfg(actor, enable_corruption=noise is not None),
+        "critic": ObservationGroupCfg(dict(terms)),
+    }
 
 
 def episode_length_s(max_episode_steps: int, step_dt: float) -> float:
