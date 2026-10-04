@@ -139,6 +139,11 @@ class MyoAction(ActionTerm):
         """The ctrl written to the actuators (after all CPU processing)."""
         return self._processed_actions
 
+    @property
+    def fatigue_state(self) -> TorchFatigueState | None:
+        """The 3CC-r fatigue state (``None`` without ``muscle_fatigue``)."""
+        return self._fatigue
+
     def process_actions(self, actions: torch.Tensor) -> None:
         self._raw_actions[:] = actions
         a_lo, a_hi = self.cfg.action_range

@@ -10,6 +10,13 @@ from .commands import (  # noqa: F401
     UniformVectorCommandCfg,
     site_position_command_cfg,
 )
+from .effort import (  # noqa: F401
+    consumed_endurance_step,
+    fatigue_mf,
+    joint_limit_discomfort,
+    metabolic_energy_rate,
+    muscle_mechanical_power,
+)
 from .events import (  # noqa: F401
     randomize_carry_weight,
     reset_joints_uniform_in_range,
