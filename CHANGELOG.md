@@ -129,6 +129,10 @@ full commit list.
 
 ### Fixed
 
+* **TableTennis from any working directory.** The table, net and paddle meshes and textures were added with
+  paths relative to the working directory, so making a TableTennis env (CPU or mjlab) with the working
+  directory on another drive raised `ValueError: path is on mount ...` on Windows, and an env's spec no
+  longer compiled after a `chdir`. They are absolute now; the compiled models are otherwise unchanged.
 * RunTrack keyframe joint values clamped to their ranges (#399, `b0514c0`).
 * Walk rotation termination uses the root free-joint quaternion (`aa2dd77`); leg model root/torso
   orientation (`531dba0`); hand composition and reorient hand orientation (`53f17a9`, `3f4bf9d`).
