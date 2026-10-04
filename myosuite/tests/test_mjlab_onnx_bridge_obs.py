@@ -330,6 +330,8 @@ def test_onnx_policy_runs_all_envs_in_one_batch(
         env_indices=range(env.num_envs),
         output_ctrl=True,
     )
+    options = policy._session.get_session_options()
+    assert options.get_session_config_entry("session.intra_op.allow_spinning") == "0"
     fed: list[tuple[np.ndarray, np.ndarray]] = []
     real_run = policy._session.run
 

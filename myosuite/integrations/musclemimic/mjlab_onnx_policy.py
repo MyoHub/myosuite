@@ -729,8 +729,15 @@ class FullbodyOnnxMjlabPolicy(_FullbodyMjlabPolicyBridge):
         )
 
         onnx_path = Path(onnx_path)
+        # onnxruntime's spinning intra-op pool starves the torch/warp threads that
+        # share the CPU (CPU torch: 94 -> 29 ms per 256-env call); a batch of one
+        # env gains nothing from extra threads.
+        session_options = ort.SessionOptions()
+        session_options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        if len(self._env_indices) == 1:
+            session_options.intra_op_num_threads = 1
         self._session = ort.InferenceSession(
-            str(onnx_path), providers=["CPUExecutionProvider"]
+            str(onnx_path), session_options, providers=["CPUExecutionProvider"]
         )
         self._input_name = self._session.get_inputs()[0].name
         self._output_name = self._session.get_outputs()[0].name

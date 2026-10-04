@@ -126,6 +126,29 @@ full commit list.
   signal at the 0.8 m initial error), and actions go through the muscle sigmoid on both without a clip. CPU policies trained on these ids need retraining. The mjlab Mimic rewards and deviation
   check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
   stale.
+* **The mjlab MuscleMimic policy bridge builds its observation on the sim device.**
+  `FullbodyOnnxMjlabPolicy` and `FullbodyOrbaxMjlabPolicy` copied each env's state into a CPU `MjData`,
+  ran `mj_forward` and the numpy `FullbodyObsAdapter`, one env at a time (4 host syncs per env; each such
+  `MjData` of the full-body model also reserves a 1.37 GB arena). They now build the
+  batch from mjlab's post-step sim data with `TorchFullbodyObsAdapter` (moved to
+  `musclemimic/fullbody_obs_torch.py`, still importable from `mjlab_policy_runner`): no CPU forward, at most
+  one host sync per call with the Orbax/Torch actor, one host copy each way for onnxruntime. Orbax bridge
+  call on CPU torch at 16/64/256 envs: 90/425/1291 ms before, 4.8/10.7/24.4 ms after (139/523/2062 host
+  syncs before, 1 after). onnxruntime sessions no longer spin their intra-op pool (it starved the torch
+  threads on a shared CPU) and use one thread for a single-env batch.
+  **The observation is now float32 on the device and not bit-identical to the CPU builder.** Fed the same
+  sim arrays, the two builders agree to 1.2e-6 (relative to max(1, |x|)). Against a CPU `mj_forward` of the
+  same state, joint state, excitation/activation, lookahead and phase agree to 1e-6 and mimic-site
+  offsets/angles to 1.5e-6, site velocities to 4e-5 (angular velocities up to 34 rad/s);
+  muscle length, velocity and force agree to float32 rounding except on wrapped tendons where MuJoCo Warp
+  returns other lengths (its float32 inside-sidesite wrap solve falls back on some states, 1–3 mm on 8 tendons
+  per side such as `DELT3`/`PECM1`; rare larger path differences, up to 0.2 m, on outside-sidesite wraps in
+  contorted poses), and the foot touch sensors come from Warp's own collision and contact solve (in-episode
+  p99 12.6 N; up to 734 N on reset poses that start with the feet in the floor). Closed-loop rollouts with
+  either backend give the same tracking error (0.1275 vs 0.1275 m) and termination counts. The batched
+  observation reports what the mjlab simulation itself uses; `obs_backend="cpu"` keeps the previous path for
+  debugging and parity checks. `FullbodyOnnxMjlabPolicy(env_indices=...)` runs several envs with one action
+  each.
 
 ### Fixed
 
@@ -188,6 +211,10 @@ full commit list.
   incomplete bridges unless `allow_partial=True`. The SAR activation collector ranks episodes by mean reward
   and resets its state per episode: recollect SAR datasets and re-extract the synergies, and redo evaluations
   made with the old bridge mapping.
+* **`TorchFullbodyObsAdapter` relative angular velocity**: the batched full-body observation rotated each
+  mimic site's angular velocity by `rel_rot` instead of `rel_rot^T` (the CPU `FullbodyObsAdapter` and
+  upstream loco-mujoco), so its live and lookahead `site_rvel` differed from the observation the MuscleMimic
+  checkpoints were trained on (by up to 8.6 on random states).
 * **Mimic mjlab initial state**: the joint-name keys are anchored (`knee_angle_r` no longer also sets
   `knee_angle_rotation{2,3}_*`) and the keyframe's body-frame root angular velocity is converted to the world
   frame.
