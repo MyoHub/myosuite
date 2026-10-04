@@ -234,6 +234,76 @@ muscle action — a useful model for studying motor adaptation:
        obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
 
 
+Sensorimotor Delay and Sensory Noise
+-------------------------------------
+
+MyoSuite observations are instantaneous by default. Human feedback is not:
+sensory feedback delays are a central constraint of human motor control
+(Franklin & Wolpert, 2011). Corrections to visual errors in aimed movements
+start roughly 100–150 ms after the error is shown (135 ms on average in
+Carlton, 1981), the long-latency stretch response to a proprioceptive
+perturbation appears about 50–100 ms after the stretch (Pruszynski & Scott,
+2012), and muscle force lags its EMG by about 50 ms in the elbow flexors
+(Cavanagh & Komi, 1979). Exact values depend on the task, the modality and the
+measure, so treat these as orders of magnitude.
+
+``SensorimotorCfg`` adds a fixed observation delay, a fixed action delay and
+additive Gaussian observation noise, counted in control steps
+(``ctrl_dt = frame_skip × timestep``, 20 ms for most basic tasks):
+
+.. code-block:: python
+
+   import gymnasium as gym
+   import myosuite
+   from myosuite.core.sensorimotor import SensorimotorCfg
+
+   # ctrl_dt = 0.02 s: feedback 100 ms late, commands applied 40 ms late
+   delay = SensorimotorCfg(obs_delay_steps=5, action_delay_steps=2, obs_noise_std=0.01)
+   env = gym.make('myoElbowPose1D6MRandom-v0', sensorimotor=delay)
+   obs, info = env.reset(seed=0)
+
+* The policy sees the observation of ``obs_delay_steps`` steps ago; after a
+  reset the history holds the reset observation.
+* The policy's raw action is applied ``action_delay_steps`` steps later,
+  before the muscle mapping (so fatigue acts on the delayed command); the first
+  steps after a reset apply the raw action 0.
+* ``obs_noise_std`` is the same standard deviation for every observation
+  element (in that element's units), drawn from the env RNG after the delay.
+* Rewards and ``info["obs_dict"]`` use the true, current state.
+* MyoSuite muscles already have activation dynamics, which produce part of the
+  electromechanical delay; ``action_delay_steps`` adds a pure transport delay.
+
+To train the same delayed task on the GPU, register a CPU variant with the
+``sensorimotor`` kwarg and its mjlab twin; both backends then share the
+semantics described in ``docs/wiki/cross-backend-contract.md``:
+
+.. code-block:: python
+
+   from myosuite.core.registry import register_env
+   from myosuite.envs.myo.backends.mjlab.tasks.pose.config.elbow import (
+       elbow_pose_env_cfg, elbow_pose_ppo_runner_cfg)
+   from myosuite.envs.myo.backends.mjlab.tasks.registration import register_cpu_twins
+
+   base = gym.spec('myoElbowPose1D6MRandom-v0')
+   register_env('myoDelayElbowPose1D6MRandom-v0', entry_point=base.entry_point,
+                max_episode_steps=base.max_episode_steps,
+                kwargs={**base.kwargs, 'sensorimotor': delay})
+   register_cpu_twins(('myoDelayElbowPose1D6MRandom-v0',),
+                      elbow_pose_env_cfg, elbow_pose_ppo_runner_cfg)
+
+References:
+
+* Carlton, L. G. (1981). Processing visual feedback information for movement
+  control. *J. Exp. Psychol. Hum. Percept. Perform.*, 7(5), 1019–1030.
+* Cavanagh, P. R., & Komi, P. V. (1979). Electromechanical delay in human
+  skeletal muscle under concentric and eccentric contractions. *Eur. J. Appl.
+  Physiol.*, 42, 159–163.
+* Franklin, D. W., & Wolpert, D. M. (2011). Computational mechanisms of
+  sensorimotor control. *Neuron*, 72(3), 425–442.
+* Pruszynski, J. A., & Scott, S. H. (2012). Optimal feedback control and the
+  long-latency stretch response. *Exp. Brain Res.*, 218, 341–359.
+
+
 Computed Muscle Control
 ------------------------
 

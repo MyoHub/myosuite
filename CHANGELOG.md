@@ -65,6 +65,12 @@ full commit list.
 * `GoalSpec(target_type="site_positions")` samples per-episode targets from per-site (x, y, z) ranges on
   CPU and MJX, with an mjlab command helper (`site_position_command_cfg`); `MotionClip` carries optional
   per-frame `weights` (issue #410).
+* Sensorimotor delay and sensory noise: `SensorimotorCfg(obs_delay_steps, action_delay_steps,
+  obs_noise_std)` (control steps, off by default) as the `sensorimotor` kwarg of every CPU env and
+  of a registration, which also configures the mjlab twin. The observation is delayed (history
+  filled with the reset observation) and then noised; the raw action is delayed before the
+  muscle mapping (raw 0 right after a reset). Same semantics on both backends, no extra random
+  draws for the delays; see the cross-backend contract.
 * Tutorials: restructured numbered tracks (`5bb6d3a`, `1e61f7e`, `3d1d28c`), SAR tutorials and pretrained
   pickles (`bb5cf7b`), fatigue tutorial for MyoSuite 3 (`d1eda5c`), trained-policy loader (`5bb6d3a`).
 * Documentation: quickstarts, environment reference, backend parity, baselines, MJX env list,

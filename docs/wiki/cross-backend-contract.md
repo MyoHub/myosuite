@@ -67,6 +67,41 @@ Fixed `scale` in `ObservationTermCfg` is exported to JSON and replicated in Type
 
 ---
 
+## Sensorimotor Delay and Observation Noise
+
+`SensorimotorCfg(obs_delay_steps, action_delay_steps, obs_noise_std)`
+(`myosuite/core/sensorimotor.py`, default off) is the `sensorimotor` kwarg of a
+CPU registration (or of `gym.make`). The mjlab twin reads it from the same
+registration through `cpu_reference` (like `muscle_condition`). Counts are
+**control steps**: delay in ms = steps × `ctrl_dt` × 1000 (20 ms per step for
+`ctrl_dt = 0.02 s`). Both backends implement exactly:
+
+| | Semantics | CPU (`MyoGymnasiumEnv`) | mjlab |
+|---|---|---|---|
+| Obs delay `k` | Policy obs at step `t` = obs computed at step `max(0, t − k)` since the last reset; a reset fills the history with the reset obs | Base class wraps every subclass `step`/`reset` (once, also for `.unwrapped` and `super()` chains) and delays the flat obs vector | `DelayedObservation` on every `actor` term; partial resets (`reset(env_ids=...)`) fill only the reset rows |
+| Action delay `k` | Raw policy action of step `t` is applied at step `t + k`, **before** the action → excitation mapping (clip, sigmoid, fatigue, reafferentation, and later motor noise); the first `k` steps after a reset apply the raw action **0** | Delayed before the task's own `step` (clip + `_apply_action`) | `MyoAction.process_actions`, before the same mapping |
+| Obs noise `σ` | i.i.d. `N(0, σ²)` added to every element of the policy obs, **after** the delay (fresh noise every step, also during the reset fill) | `np_random.normal`, drawn only when `σ > 0` | mjlab `GaussianNoiseCfg` on the `actor` terms (`enable_corruption=True`), torch RNG |
+
+- Raw action 0 maps to an excitation of `sigmoid(5 (0 − 0.5)) ≈ 0.076` for
+  sigmoid-mapped muscles, 0 for the leg-walk envs (action space `[0, 1]`, no
+  sigmoid) and the middle of `ctrlrange` for normalized motors.
+- Rewards, terminations, the mjlab `critic` group and CPU `info["obs_dict"]`
+  use the current, noise-free state. mjlab `raw_action` is the policy's
+  undelayed action; `processed_action` is the ctrl actually applied.
+- Delays draw no random numbers on either backend, so enabling a delay does
+  not change any reset, target or noise draw. (mjlab's own
+  `ObservationTermCfg.delay_*_lag` is not used: its `DelayBuffer` draws
+  `torch.randint` every step even for a fixed lag, and mjlab 1.4 and 1.6 handle
+  partial resets differently. Actuator `delay_*_lag` counts physics substeps and
+  acts after the excitation mapping.)
+- Supported by the `cpu_reference` twins (pose, reach, leg stand / walk /
+  directional). Sensorimotor is part of the task, so it stays on in the `play`
+  config.
+- Tests: `test_sensorimotor.py` (CPU), `test_sensorimotor_mjlab.py` (twin and
+  CPU ↔ mjlab index-shift equality).
+
+---
+
 ## Export Checklist
 
 - [ ] Obs term key order identical between mjlab and browser config (assert in `test_mjlab_task_builder.py`)
