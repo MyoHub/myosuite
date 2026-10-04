@@ -520,7 +520,7 @@ def dimensionless_jerk(
     """
     x = _as_2d(positions)
     i0, i1 = (0, len(x) - 1) if segment is None else segment
-    if i1 - i0 < 2:
+    if i1 - i0 < 2 or len(x) < 4:  # a third derivative needs 4 samples
         return math.nan
     window = slice(i0, i1 + 1)
     jerk = derivative(x, dt, 3, savgol)[window]
@@ -808,17 +808,20 @@ def _point_kinematics(
     x: np.ndarray, dt: float, onset_fraction: float, savgol: SavgolParams | None
 ) -> dict[str, float]:
     """Speed-profile and smoothness metrics of one point's trajectory ``(N, d)``."""
-    v = speed(x, dt, savgol)
-    bounds = movement_bounds(v, dt, onset_fraction)
     metrics = {
         "movement_time": math.nan,
-        "peak_speed": float(v.max()),
+        "peak_speed": math.nan,
         "time_to_peak_ratio": math.nan,
-        "speed_peaks": 0.0,
+        "speed_peaks": math.nan,
         "ldlj": math.nan,
         "sparc": math.nan,
         "straightness": math.nan,
     }
+    if len(x) < 2:  # e.g. an episode that terminated at its first step
+        return metrics
+    v = speed(x, dt, savgol)
+    bounds = movement_bounds(v, dt, onset_fraction)
+    metrics.update(peak_speed=float(v.max()), speed_peaks=0.0)
     if bounds is None:
         return metrics
     i0, i1 = bounds.onset_index, bounds.offset_index

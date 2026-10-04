@@ -291,6 +291,15 @@ def test_point_to_point_metrics_on_two_point_minimum_jerk():
     )
 
 
+@pytest.mark.parametrize("n", [1, 2, 3])
+def test_point_to_point_metrics_on_very_short_trials(n):
+    # Episodes can terminate after a step or two; their smoothness is undefined.
+    positions = np.linspace(0.0, 0.01, n)[:, None] * [1.0, 0.0, 0.0]
+    m = mm.point_to_point_metrics(positions, [0.1, 0.0, 0.0], 0.02, 0.01)
+    assert math.isnan(m["ldlj"])
+    assert m["final_error"] == pytest.approx(0.1 - positions[-1, 0])
+
+
 def test_mean_metrics_skips_undefined_values():
     out = mm.mean_metrics(
         [{"a": 1.0, "b": math.nan}, {"a": 3.0, "b": 2.0}, {"a": 2.0, "b": math.nan}]
