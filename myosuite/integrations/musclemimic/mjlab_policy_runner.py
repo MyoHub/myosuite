@@ -497,7 +497,8 @@ class TorchFullbodyObsAdapter:
         rel_lin = torch.einsum(
             "bij,bnj->bni", main_mat, main_vel[:, None, 3:] - other_vel[:, :, 3:]
         )
-        other_ang = torch.einsum("bnik,bnk->bni", rel_rot, other_vel[:, :, :3])
+        # rel_rot^T @ w, as the CPU adapter and upstream loco-mujoco define it.
+        other_ang = torch.einsum("bnki,bnk->bni", rel_rot, other_vel[:, :, :3])
         site_rvel = torch.cat([other_ang - main_vel[:, None, :3], rel_lin], dim=-1)
         return site_rpos, site_rangles, site_rvel
 
