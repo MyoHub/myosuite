@@ -54,6 +54,7 @@ full commit list.
 * **MuscleMimic baseline:** a single-clip walking policy (2B steps; 86% of episodes reach the clip end) on Hugging Face, see `docs/baseline_checkpoints.md`.
 * **Fatigue:** episode-persistent and resumable states, torch 3CC-r parity with the CPU model ([#406], [#421]).
 * **Targets:** `GoalSpec(target_type="site_positions")` samples per-episode targets from per-site ranges on CPU and MJX (mjlab helper `site_position_command_cfg`); `MotionClip` carries optional per-frame `weights` (#410).
+* **Motor noise (optional, off by default):** `MotorNoiseCfg` adds signal-dependent and constant Gaussian noise to muscle excitations (`van_beers_2004()` preset, 0.103 / 0.185); the `motor_noise` kwarg of the basic and Die-Reorient CPU envs reaches their mjlab twins ([#488]).
 * **Tutorials and docs:** numbered tracks with companion files in `tutorials/files/X.Y/`, SAR tutorials and pretrained pickles, a fatigue tutorial, quickstarts, environment reference, backend-parity and baselines pages ([#406], [#454], [#455]).
 
 ### Changed
@@ -173,6 +174,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#485]: https://github.com/MyoHub/myosuite/pull/485
 [#486]: https://github.com/MyoHub/myosuite/pull/486
 [#487]: https://github.com/MyoHub/myosuite/pull/487
+[#488]: https://github.com/MyoHub/myosuite/pull/488
 [#493]: https://github.com/MyoHub/myosuite/pull/493
 [#494]: https://github.com/MyoHub/myosuite/pull/494
 [#496]: https://github.com/MyoHub/myosuite/pull/496

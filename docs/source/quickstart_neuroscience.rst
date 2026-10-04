@@ -234,6 +234,69 @@ muscle action — a useful model for studying motor adaptation:
        obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
 
 
+Motor Noise (Signal-Dependent and Constant)
+--------------------------------------------
+
+Human motor commands are noisy, and the noise grows with the size of the command
+(signal-dependent noise, Harris & Wolpert 1998). This noise produces the speed-accuracy
+trade-off behind Fitts' law, so simulated users of interfaces (Fischer et al. 2021,
+User-in-the-Box by Ikkala et al. 2022) add it to the controls. ``MotorNoiseCfg`` adds it to
+the muscle excitations ``u`` of the pose, reach, key-turn, object-hold, pen, torso, leg and
+Die-Reorient envs, and of their mjlab twins:
+
+.. math::
+
+   u' = \mathrm{clip}\left(u + \sigma_{sd}\, u\, n_1 + \sigma_c\, n_2,\ 0,\ 1\right),
+   \qquad n_1, n_2 \sim \mathcal{N}(0, 1)
+
+with independent draws per muscle and per control step. The noise is applied after the
+action-to-excitation mapping and before fatigue; motor (torque) actuators are not affected.
+It is off by default.
+
+.. code-block:: python
+
+   import gymnasium as gym
+   import myosuite
+   from myosuite.terms.base_action import MotorNoiseCfg
+
+   # Levels 0.103 (signal-dependent) and 0.185 (constant), after van Beers et al. (2004).
+   env = gym.make('myoElbowPose1D6MRandom-v0', motor_noise=MotorNoiseCfg.van_beers_2004())
+   # Any levels, also as a dict (handy in registration kwargs):
+   env = gym.make('myoElbowPose1D6MRandom-v0',
+                  motor_noise={'signal_dependent_std': 0.1, 'constant_std': 0.02})
+   obs, info = env.reset(seed=0)  # the noise comes from the env's seeded np_random
+
+To configure both backends, register an env id with ``motor_noise`` in its kwargs: the mjlab
+twin reads it from the CPU registration like the muscle condition. For a single mjlab config,
+set ``env_cfg.actions["muscles"].motor_noise``. See ``docs/wiki/cross-backend-contract.md``
+for the order of operations and the random streams.
+
+Mind the clip at low excitation: with the van Beers levels a command of ``u = 0.076`` (policy
+output 0 through the sigmoid) is clipped to 0 in 34 % of the steps and its mean rises to 0.118,
+so the constant term also acts as a tonic drive on idle muscles.
+
+The levels are a starting point, not a calibration. They were estimated for human arm
+movements and are applied here to every muscle's excitation once per control step (20 ms in
+most envs). In an open-loop elbow flexion (0.1 s agonist pulse), signal-dependent noise alone
+gives an endpoint SD of about 2.5 % of the movement extent until the joint nears its range
+limit, while the
+constant term at 0.185 adds several centimetres of endpoint spread. Calibrate the levels against
+human variability for your model and control rate.
+
+References:
+
+* Harris, C. M. & Wolpert, D. M. (1998). Signal-dependent noise determines motor planning.
+  *Nature* 394, 780-784. doi:10.1038/29528
+* van Beers, R. J., Haggard, P. & Wolpert, D. M. (2004). The role of execution noise in
+  movement variability. *J. Neurophysiol.* 91, 1050-1063. doi:10.1152/jn.00652.2003
+* Fischer, F., Bachinski, M., Klar, M., Fleig, A. & Müller, J. (2021). Reinforcement learning
+  control of a biomechanical model of the upper extremity. *Sci. Rep.* 11, 14445.
+  doi:10.1038/s41598-021-93760-1 (noise levels 0.103 and 0.185, "following van Beers et al.")
+* Ikkala, A., Fischer, F., Klar, M., Bachinski, M., Fleig, A., Howes, A., Hämäläinen, P.,
+  Müller, J., Murray-Smith, R. & Oulasvirta, A. (2022). Breathing life into biomechanical user
+  models. *UIST '22*. doi:10.1145/3526113.3545689
+
+
 Computed Muscle Control
 ------------------------
 
