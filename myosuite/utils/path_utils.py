@@ -19,6 +19,7 @@ Env contract (for compute_path_rewards and evaluate_success):
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import numpy as np
@@ -114,3 +115,47 @@ def evaluate_success(
         logger.log_kv("success_percentage", success_percentage)
 
     return success_percentage
+
+
+def path_obs_series(path: Mapping, keys: Iterable[str]) -> dict[str, np.ndarray]:
+    """Time series of observation-dict entries of one rollout path, from the reset state.
+
+    Samples ``1..T`` are the post-step values of ``path["env_infos"]["obs_dict"]``.
+    Sample ``0``, the reset state, is recovered from ``path["observations"][0]`` by
+    splitting the flat vector in the key order and sizes of the obs dict (the order
+    ``MyoGymnasiumEnv`` concatenates them in). It is added only when
+    ``path["observations"][1]`` equals the flattened first post-step obs dict, so a
+    normalised or otherwise transformed observation vector is never split. The
+    terminal record :func:`~myosuite.utils.policy_utils.examine_policy` repeats
+    (``env_infos`` as long as ``observations``) is dropped. With the reset sample,
+    sample ``i`` is the state ``i * dt`` after the reset.
+
+    Args:
+        path: A rollout path / trace group with ``env_infos.obs_dict`` (time-stacked
+            arrays) and optionally ``observations``.
+        keys: Obs-dict keys to return; keys missing from the obs dict are skipped.
+
+    Returns:
+        Key to ``(T + 1, ...)`` array (``(T, ...)`` without a usable reset observation).
+    """
+    series = {
+        k: np.asarray(v, dtype=float) for k, v in path["env_infos"]["obs_dict"].items()
+    }
+    n_steps = len(next(iter(series.values())))
+    observations = path.get("observations")
+    if observations is not None and len(observations) >= 2:
+        observations = np.asarray(observations, dtype=float)
+        if len(observations) == n_steps:  # examine_policy's repeated terminal record
+            series = {k: v[:-1] for k, v in series.items()}
+        flat = [v.reshape(len(v), -1) for v in series.values()]
+        first_step = np.concatenate([f[0] for f in flat])
+        if observations.shape[-1] == first_step.size and np.allclose(
+            observations[1], first_step, rtol=1e-6, atol=1e-6
+        ):
+            splits = np.cumsum([f.shape[1] for f in flat])[:-1]
+            reset = np.split(observations[0], splits)
+            series = {
+                k: np.concatenate([r.reshape(1, *v.shape[1:]), v])
+                for (k, v), r in zip(series.items(), reset)
+            }
+    return {k: series[k] for k in keys if k in series}
