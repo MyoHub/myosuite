@@ -509,7 +509,7 @@ def test_metabolic_matches_opensim_reference(env_id: str, version: str) -> None:
 
 
 def _paper_endurance(pct: float) -> float:
-    """Hincapié-Ramos et al. (2014), Eq. 1: E = 1236.5 / (%MVC - 15)^0.618 - 72.5 (s)."""
+    """Hincapié-Ramos et al. (2014), Eqs. 1-2: E = 1236.5 / (%MVC - 15)^0.618 - 72.5 (s)."""
     return 1236.5 / math.pow(pct - 15.0, 0.618) - 72.5
 
 
@@ -529,7 +529,7 @@ def test_endurance_time_formula() -> None:
 def test_consumed_endurance_worked_example() -> None:
     """Holding the arm at 30 % of Max_Torque for 60 s consumes 37.63 % of the endurance.
 
-    CE = interaction time / E(average strength) * 100 (Eq. 2) = 60 / 159.44 * 100.
+    CE = interaction time / E(average strength) * 100 (Eq. 7) = 60 / 159.44 * 100.
     The per-step term at the same torque spends 100 dt / E per step.
     """
     dt, steps = 0.01, 6000

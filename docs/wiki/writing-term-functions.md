@@ -48,7 +48,7 @@ Full protocol: `myosuite/core/protocols.py`. Joint limits come from `joint_range
 |---|---|---|
 | `muscle_mechanical_power` | sum of `abs(F v)` (or positive work only) over the muscles | Berret et al. 2011, PLoS Comput Biol 7:e1002183; Margaria 1968 |
 | `metabolic_energy_rate` | muscle heat + work rate (W), `version="2003"` / `"2010"` | Umberger, Gerritsen & Martin 2003, CMBBE 6:99; Umberger 2010, J R Soc Interface 7:1329; OpenSim `Umberger2010MuscleMetabolicsProbe` (Uchida et al. 2016) |
-| `consumed_endurance`, `endurance_time`, `consumed_endurance_episode` | shoulder torque / Max_Torque, endurance time, CE (%) | Hincapié-Ramos et al. 2014, CHI, Eq. 1-2; Max_Torque 22.94 / 18.57 N m as reported by Li et al. 2024, TOCHI |
+| `consumed_endurance`, `endurance_time`, `consumed_endurance_episode` | shoulder torque / Max_Torque, endurance time, CE (%) | Hincapié-Ramos et al. 2014, CHI, Eqs. 1-2 (endurance), 7 (CE); Max_Torque 22.94 / 18.57 N m as reported by Li et al. 2024, TOCHI |
 | `fatigue_effort` | mean / max fatigued fraction MF, `norm(MA - TL)` | Xia & Frey-Law 2008, J Biomech 41:3046; Looft et al. 2018, J Biomech 77:16 |
 | `joint_limit_discomfort` | smooth squared hinge in the outer `margin` of each joint range | generic form (cf. Marler et al. 2005, SAE 2005-01-2680) |
 

@@ -37,7 +37,9 @@ if TYPE_CHECKING:
 
 # ── Umberger et al. (2003) energetics, as in OpenSim Umberger2010MuscleMetabolicsProbe ──
 UMBERGER_SPECIFIC_TENSION: float = 0.25e6  # Pa; OpenSim default for the muscle mass
-UMBERGER_DENSITY: float = 1059.7  # kg/m^3, fresh mammalian muscle (Ward & Lieber 2005)
+UMBERGER_DENSITY: float = (
+    1059.7  # kg/m^3, mammalian muscle (Mendez & Keys 1960); OpenSim default
+)
 UMBERGER_AEROBIC_FACTOR: float = 1.5  # S: 1.5 mainly aerobic, 1.0 mainly anaerobic
 UMBERGER_FAST_TWITCH_FRACTION: float = 0.5  # OpenSim default (ratio_slow_twitch = 0.5)
 _AM_SLOW: float = 25.0  # W/kg, activation + maintenance heat of slow-twitch fibres
@@ -49,7 +51,7 @@ _LENGTHEN_2003: float = 4.0  # alpha_L / alpha_S(ST), Umberger et al. 2003
 _LENGTHEN_2010: float = 0.3  # alpha_L / alpha_S(ST), Umberger 2010
 _MIN_HEAT_RATE: float = 1.0  # W/kg, minimum heat rate per muscle
 
-# ── Consumed Endurance (Hincapié-Ramos et al. 2014, Eq. 1) ──
+# ── Consumed Endurance (Hincapié-Ramos et al. 2014, Eqs. 1-2) ──
 _CE_THRESHOLD_PCT: float = 15.0  # % of max torque below which endurance is infinite
 _CE_GAIN: float = 1236.5
 _CE_EXPONENT: float = 0.618
@@ -148,10 +150,9 @@ def metabolic_energy_rate(
     """Muscle metabolic energy rate of Umberger, Gerritsen & Martin (2003).
 
     Per muscle (rates in W/kg; Umberger et al. 2003, Comput Methods Biomech
-    Biomed Engin 6(2):99-111, Eqs. for the activation-maintenance heat, the
-    shortening/lengthening heat and the work rate), following the reference
-    implementation ``OpenSim::Umberger2010MuscleMetabolicsProbe`` (Uchida et
-    al. 2016, PLoS One 11(3):e0150378) without fiber recruitment or basal rate:
+    Biomed Engin 6(2):99-111), as in the reference implementation
+    ``OpenSim::Umberger2010MuscleMetabolicsProbe`` (Uchida et al. 2016, PLoS
+    One 11(3):e0150378) without fiber recruitment or basal rate:
 
     - ``A = u`` if ``u > a`` else ``(u + a) / 2`` (excitation ``u``, activation ``a``);
     - activation + maintenance: ``h_AM = S A^0.6 (128 f_FT + 25)``, scaled by
@@ -171,7 +172,10 @@ def metabolic_energy_rate(
     active force-length curve; the active fiber force ``F_CE`` is the muscle
     force minus MuJoCo's passive force; ``vmax_FT`` is the muscle's ``vmax``
     (MyoSuite: 10-15 L0/s) unless *vmax_fast* is given; the muscle mass is
-    ``m = F0 / specific_tension * density * L0``; without
+    ``m = F0 / specific_tension * density * L0``, so the heat terms scale with
+    ``1 / specific_tension``: match it to the model's forces (the default
+    0.25 MPa gives the MyoSuite leg 45 kg of muscle; the 0.6 MPa of Rajagopal
+    et al. 2016, whose forces it uses, gives about 19 kg); without
     ``task_state["muscle_excitation"]`` the excitation equals the activation
     (``A = a``; MuJoCo's activation lags excitation by tau_act = 10 ms /
     tau_deact = 40 ms in MyoSuite models).
@@ -263,15 +267,16 @@ def metabolic_energy_rate(
 def endurance_time(strength: Any, xp: Any) -> Any:
     """Rohmert-type endurance time of Consumed Endurance (Hincapié-Ramos et al. 2014).
 
-    Eq. 1 of Hincapié-Ramos, Guo, Moghadasian & Irani, "Consumed Endurance: a
-    metric to quantify arm fatigue of mid-air interactions", CHI 2014
-    (doi:10.1145/2556288.2557130)::
+    Rohmert's endurance (Eq. 1 of Hincapié-Ramos, Guo, Moghadasian & Irani,
+    "Consumed Endurance: a metric to quantify arm fatigue of mid-air
+    interactions", CHI 2014, doi:10.1145/2556288.2557130), written for the
+    shoulder torque (their Eq. 2; constants as restated by Li et al. 2024)::
 
         E = 1236.5 / (Torque / Max_Torque * 100 - 15) ** 0.618 - 72.5   [s]
 
     Contractions at or below 15 % of the maximum can be held indefinitely
-    (``E = inf``). The strength is clipped to 1, where ``E`` is about 6.9 s
-    (the formula turns negative above ~113 %).
+    (``E = inf``; Eq. 1 is asymptotic at 15 %). The strength is clipped to 1,
+    where ``E`` is about 6.9 s (the formula turns negative above ~113 %).
 
     Args:
         strength: ``Torque / Max_Torque`` (fraction, not percent).
@@ -346,7 +351,7 @@ def consumed_endurance(
 def consumed_endurance_episode(
     shoulder_strength: Any, dt: float, xp: Any
 ) -> dict[str, Any]:
-    """Consumed Endurance of an interaction (Hincapié-Ramos et al. 2014, Eq. 2).
+    """Consumed Endurance of an interaction (Hincapié-Ramos et al. 2014, Eq. 7).
 
     ``CE = interaction_time / E(mean strength) * 100``, with the strength
     ``S = average torque / Max_Torque`` and ``E`` from :func:`endurance_time`.
