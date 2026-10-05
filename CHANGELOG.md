@@ -173,7 +173,7 @@ full commit list.
   observation reports what the mjlab simulation itself uses; `obs_backend="cpu"` keeps the previous path for
   debugging and parity checks. `FullbodyOnnxMjlabPolicy(env_indices=...)` runs several envs with one action
   each.
-* **Performance (speed and memory) improvements (#481, #482, #483).**
+* **Performance (speed and memory) improvements (#481, #482, #483, #486, #487).**
 
 ### Fixed
 
