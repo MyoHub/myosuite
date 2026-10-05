@@ -42,7 +42,7 @@ full commit list.
   analysis, musculoskeletal modelling, MuscleMimic) with companion files in `tutorials/files/X.Y/`;
   documentation by audience, an environment reference, backend-parity and baselines pages, and a
   developer wiki.
-* **Installation.** `uv` installation and CI, Python 3.10–3.14, MuJoCo 3.6 or newer (no upper pin; the mjlab and MJX extras need 3.7+).
+* **Installation.** `uv` installation and CI, Python 3.10–3.14, MuJoCo 3.7 or newer (no official floor, but older versions are not maintained).
 
 ### Added
 
@@ -59,7 +59,7 @@ full commit list.
 ### Changed
 
 * `myo_sim` is a pip package (was a git submodule); hand, arm and torso tasks use the composed models; pinned to 0.2.3 ([#406], [#408]).
-* Basic-suite reward terms run on numpy, JAX and torch ([#406]); Python 3.10-3.14, MuJoCo 3.6 or newer ([#406]).
+* Basic-suite reward terms run on numpy, JAX and torch ([#406]); Python 3.10-3.14, MuJoCo 3.7 or newer ([#406]).
 * **Observations are no longer clipped:** every env declares a float32 `Box(-inf, inf)` (43 envs saturated at ±10). One step contract for every CPU env: float32 observations, validated reward dict, `info` carries the reward components ([#444]).
 * **Observations and rewards read the current state:** `step()` runs `mj_forward`, and the mjlab twins refresh with a full forward before rewards and terminations; 53 envs had observed one-substep-old values. Trajectories are bit-identical except OslRun ([#444]).
 * **Joint velocities are observed as `qvel * ctrl_dt` on every backend**; the directional-leg twin declares the real 5 ms step ([#437], [#449]). `ElbowPoseTask` also observes the pose error (8 to 9 values) ([#433]).
@@ -98,7 +98,7 @@ full commit list.
 
 ### Dependencies
 
-* MuJoCo 3.6 or newer (unpinned above; the mjlab and MJX extras need 3.7+); `myo_sim` 0.2.3 from PyPI; `huggingface_hub` is a base dependency; `wandb`, `orbax-checkpoint`, `jax`/`brax` pins for the mjlab and MJX extras; security bumps of `gitpython`, `urllib3` and `uv.lock`; SPDX license metadata.
+* MuJoCo 3.7 or newer (no official floor, but older versions are not maintained); `myo_sim` 0.2.3 from PyPI; `huggingface_hub` is a base dependency; `wandb`, `orbax-checkpoint`, `jax`/`brax` pins for the mjlab and MJX extras; security bumps of `gitpython`, `urllib3` and `uv.lock`; SPDX license metadata.
 * The `furniture-sim`, `mpl-sim`, `object-sim` and `ycb-sim` git dependencies are gone: the 40 files MyoSuite uses (2.9 MB) are bundled under `myosuite/envs/myo/assets/`, so every dependency installs from PyPI.
 * `pink-noise-rl` is replaced by `colorednoise` (`myosuite.utils.colored_noise.ColoredNoiseProcess`; seeded episodes are bit-identical) ([#480]).
 
@@ -172,6 +172,46 @@ Cheryl Wang and Calder Robbins.
 [#496]: https://github.com/MyoHub/myosuite/pull/496
 [#497]: https://github.com/MyoHub/myosuite/pull/497
 
+## [2.12.2] - 2026-05-06
+* Asset credits updated ([#392]).
+
+## [2.12.1] - 2026-04-23
+* `make_data(naccdmax=...)` enabled; MuJoCo 3.6.0 ([#390]).
+
+## [2.12.0] - 2026-04-23
+* `uv` installation, CI and MJX environment updates ([#387]); PyPI release CI Python version fixed ([#389]).
+
+## [2.11.6] - 2025-11-04
+* Soccer P2: goalkeeper position added to the observations ([#360]).
+
+## [2.11.5] - 2025-10-01
+* Inverse-dynamics tutorial fixed ([#349]).
+
+## [2.11.4] - 2025-09-26
+* Table Tennis P2 hotfix ([#345]).
+
+## [2.11.3] - 2025-09-23
+* MyoChallenge 2025: Table Tennis P2 ([#338]), Soccer P2 ([#339]) and the Phase 2 tasks ([#340]); CI fixes ([#341], [#342], [#343]).
+
+## [2.10.0 - 2.10.3] - 2025-08
+* 2.10.0 (08-11): license update ([#322]), HTML utils ([#321]), `myoArmReachRandom-v0` ([#232]), MyoChallenge 2025 updates ([#325], [#330]: Soccer randomizations and metrics), `version.py` synced with PyPI ([#331]).
+* 2.10.1 - 2.10.3 (08-19): automated CI version bumps only ([#333], [#335], [#336]).
+
+## [2.9.0] - 2025-07-11
+* Tutorials: inverse kinematics ([#298]), OpenSim `.mot` playback on the MyoSkeleton ([#302]), computed-muscle-control elbow ([#301]); minimum Python 3.9 ([#303]).
+* MyoChallenge 2025: Soccer ([#309]), Table Tennis base env ([#308]), MC25 tasks ([#314], [#316]); loco head-site fixes ([#310], [#312]); `import myosuite` before SB3 so envs are registered ([#270]); PyPI release CI ([#315]).
+* v2.8.6 is the same commit as 2.9.0.
+
+## [2.8.0 - 2.8.4] - 2024-09 to 2024-10
+* 2.8.0 (09-23): MyoChallenge 2024 Phase 2 ([#229]) and eval phase ([#223]), locomotion metrics ([#214]) and action-space fix ([#230]), Run Track P2 ([#226]), bimanual variations ([#216]), randomization and OSL changes ([#227]), reflex tutorial fix ([#233]).
+* 2.8.1 (09-27): locomotion observation fixes ([#247], [#248]). 2.8.2 (10-02): hfield observation fixes ([#251], [#252]). 2.8.3 (10-28): object-target proximity threshold ([#258], [#259]), TensorBoard directory for W&B ([#256]). 2.8.4 (10-31): manipulation env fixes ([#262], [#265]).
+
+## [2.7.0] - 2024-09-01
+* MyoSkeleton model ([#217]); MyoChallenge manipulation-track metric ([#213]); `obsvec` matches the observation space ([#205]).
+
+## [2.5.0] - 2024-07-28
+* MyoChallenge 2024 tasks ([#192]); documentation update ([#190]).
+
 ## [2.4.0] - 2024-05-13
 [FEATURE] Added 3CC-r Fatigue Model (#167). Thanks to @fl0fischer
 [FEATURE] Update to MuJoCo 3.1.2 and dm-control 1.0.16 (2bddf8c)
@@ -221,3 +261,60 @@ Cheryl Wang and Calder Robbins.
 ## [1.0.1] - 2022-05-23
 - First Release of MyoSuite.
 - Basic Documentation
+
+[#190]: https://github.com/MyoHub/myosuite/pull/190
+[#192]: https://github.com/MyoHub/myosuite/pull/192
+[#205]: https://github.com/MyoHub/myosuite/pull/205
+[#213]: https://github.com/MyoHub/myosuite/pull/213
+[#214]: https://github.com/MyoHub/myosuite/pull/214
+[#216]: https://github.com/MyoHub/myosuite/pull/216
+[#217]: https://github.com/MyoHub/myosuite/pull/217
+[#223]: https://github.com/MyoHub/myosuite/pull/223
+[#226]: https://github.com/MyoHub/myosuite/pull/226
+[#227]: https://github.com/MyoHub/myosuite/pull/227
+[#229]: https://github.com/MyoHub/myosuite/pull/229
+[#230]: https://github.com/MyoHub/myosuite/pull/230
+[#232]: https://github.com/MyoHub/myosuite/pull/232
+[#233]: https://github.com/MyoHub/myosuite/pull/233
+[#247]: https://github.com/MyoHub/myosuite/pull/247
+[#248]: https://github.com/MyoHub/myosuite/pull/248
+[#251]: https://github.com/MyoHub/myosuite/pull/251
+[#252]: https://github.com/MyoHub/myosuite/pull/252
+[#256]: https://github.com/MyoHub/myosuite/pull/256
+[#258]: https://github.com/MyoHub/myosuite/pull/258
+[#259]: https://github.com/MyoHub/myosuite/pull/259
+[#262]: https://github.com/MyoHub/myosuite/pull/262
+[#265]: https://github.com/MyoHub/myosuite/pull/265
+[#270]: https://github.com/MyoHub/myosuite/pull/270
+[#298]: https://github.com/MyoHub/myosuite/pull/298
+[#301]: https://github.com/MyoHub/myosuite/pull/301
+[#302]: https://github.com/MyoHub/myosuite/pull/302
+[#303]: https://github.com/MyoHub/myosuite/pull/303
+[#308]: https://github.com/MyoHub/myosuite/pull/308
+[#309]: https://github.com/MyoHub/myosuite/pull/309
+[#310]: https://github.com/MyoHub/myosuite/pull/310
+[#312]: https://github.com/MyoHub/myosuite/pull/312
+[#314]: https://github.com/MyoHub/myosuite/pull/314
+[#315]: https://github.com/MyoHub/myosuite/pull/315
+[#316]: https://github.com/MyoHub/myosuite/pull/316
+[#321]: https://github.com/MyoHub/myosuite/pull/321
+[#322]: https://github.com/MyoHub/myosuite/pull/322
+[#325]: https://github.com/MyoHub/myosuite/pull/325
+[#330]: https://github.com/MyoHub/myosuite/pull/330
+[#331]: https://github.com/MyoHub/myosuite/pull/331
+[#333]: https://github.com/MyoHub/myosuite/pull/333
+[#335]: https://github.com/MyoHub/myosuite/pull/335
+[#336]: https://github.com/MyoHub/myosuite/pull/336
+[#338]: https://github.com/MyoHub/myosuite/pull/338
+[#339]: https://github.com/MyoHub/myosuite/pull/339
+[#340]: https://github.com/MyoHub/myosuite/pull/340
+[#341]: https://github.com/MyoHub/myosuite/pull/341
+[#342]: https://github.com/MyoHub/myosuite/pull/342
+[#343]: https://github.com/MyoHub/myosuite/pull/343
+[#345]: https://github.com/MyoHub/myosuite/pull/345
+[#349]: https://github.com/MyoHub/myosuite/pull/349
+[#360]: https://github.com/MyoHub/myosuite/pull/360
+[#387]: https://github.com/MyoHub/myosuite/pull/387
+[#389]: https://github.com/MyoHub/myosuite/pull/389
+[#390]: https://github.com/MyoHub/myosuite/pull/390
+[#392]: https://github.com/MyoHub/myosuite/pull/392
