@@ -520,23 +520,34 @@ def test_challenge_tabletennis_mesh_bodies_no_arm():
 
 @_SKIP_SIMHIVE
 @_SKIP_ASSETS
-def test_challenge_tabletennis_recipe_body_and_mesh_count():
-    """challenge_tabletennis recipe: arm + ball + 3 mesh props."""
-    import myosuite.core.model_recipes  # noqa: F401
-    from myosuite.core.model_builder import build_from_recipe, ModelBuilder
+def test_challenge_tabletennis_recipe_matches_the_legacy_model():
+    """challenge_tabletennis recipe: torso, both arms, legs, table, paddle and ball.
 
-    model_arm, _ = ModelBuilder().attach_fragment("arm").build()
+    nq and nu equal the legacy ``myoarm_tabletennis.xml`` (see the recipe docstring);
+    the paddle and the ball are the free bodies.
+    """
+    import mujoco
+    import myosuite.core.model_recipes  # noqa: F401
+    from myosuite.core.model_builder import build_from_recipe
+
     try:
         model, _ = build_from_recipe("challenge_tabletennis")
     except FileNotFoundError:
         pytest.skip("arm fragment not found; myo_sim not installed")
 
-    # 1 free ball + 3 mesh bodies
-    assert model.nbody == model_arm.nbody + 4
-    # 7 dof per freejoint × 4 free bodies
-    assert model.nq == model_arm.nq + 28
-    # arm fragment brings its own meshes; we added 3 more
-    assert model.nmesh == model_arm.nmesh + 3
+    assert model.nq == 72
+    assert model.nu == 275
+    bodies = {
+        mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, i)
+        for i in range(model.nbody)
+    }
+    assert {"tabletennis_table", "paddle", "pingpong"} <= bodies
+    free = sorted(
+        mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, j)
+        for j in range(model.njnt)
+        if model.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
+    )
+    assert free == ["paddle_freejoint", "pingpong_freejoint"]
 
 
 def _mesh_world_aabb(model, data, geom_name: str):
