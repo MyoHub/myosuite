@@ -232,6 +232,14 @@ full commit list.
   3CC-r fatigue update uses the old state for all deltas, and `FatigueWrapper` keeps the model options. Creating
   an MJX env warns that the backend is experimental and not observation/reward-compatible with the CPU and
   mjlab envs.
+* **Experimental MJX reach**: the far penalty/termination now starts at control step 2, as in CPU `ReachEnvV0`
+  (`data.time > 2 * ctrl_dt`) and its mjlab twin; it started after 2 physics steps (4 ms), i.e. at step 1. MJX
+  and mjlab derive the step from the CPU's float64 time sum with `first_step_after`, now in
+  `myosuite.utils.step_timing`. `MjxFingerReachRandom-v0` had `far_th=0.10` and uniform box targets; it now
+  reads `far_th` (0.35, the `ReachEnvV0` default) and `target_sampling="workspace"` from
+  `myoFingerReachRandom-v0` and samples the same reachable-fingertip table (`MjxReachConfig.target_sampling`).
+  Before, 75% of its episodes ended at step 1 (386 of 512 with zero actions, 387 with random actions); now none
+  ends within 5 steps, since no target lies more than 0.28 m from the start fingertip.
 * **Tutorial scripts and CI.** The SAR tutorial scripts seed SAC and checkpoint/resume (`--seed`,
   `--play-only`); the 2.3 results depend strongly on the seed. CI runs for PRs into `ms3` and installs the
   `[rl]` extra; the mimic suite no longer comes out empty (it is registered before the challenge suite).
