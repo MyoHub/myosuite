@@ -17,8 +17,12 @@ project = "MyoSuite"
 copyright = "Copyright © MyoSuite Authors"
 author = "MyoSuite Authors"
 
-release = "2.13.0"
-version = "2.13"
+_version = {}
+with open(os.path.join(_repo_root, "myosuite", "version.py")) as _f:
+    exec(_f.read(), _version)
+
+release = _version["__version__"]
+version = ".".join(release.split(".")[:2])
 
 # -- General configuration
 
