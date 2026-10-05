@@ -222,6 +222,13 @@ full commit list.
 * **Tutorial scripts and CI.** The SAR tutorial scripts seed SAC and checkpoint/resume (`--seed`,
   `--play-only`); the 2.3 results depend strongly on the seed. CI runs for PRs into `ms3` and installs the
   `[rl]` extra; the mimic suite no longer comes out empty (it is registered before the challenge suite).
+* **Arm-reach tip site at the fingertip.** Since `7532d62`, `edit_fn_arm_reaching` (`myoArmReach{Fixed,Random}-v0`,
+  their Sarc/Fati variants and mjlab twins) placed the `IFtip` reach site at the `distph2_r` origin, the DIP joint,
+  1.8 cm short of the fingertip. That is more than the 1.25 cm success radius, so a "solved" episode could leave
+  the fingertip up to about 3 cm from the target. `IFtip` again sits at myo_sim's fingertip site `IFtip_r`, as
+  before that commit and in v2.12.2. The published `myoArmReachRandom-v0` checkpoint counted 67% of its
+  episodes as solved with the old site, but the fingertip itself ended within the radius in only 2%. With the
+  fixed site, it reaches with the fingertip in 64% of episodes (CPU, 200 seeds, `far_th=1.0`) without retraining.
 
 ### Removed
 
