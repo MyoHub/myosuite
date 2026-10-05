@@ -19,9 +19,32 @@ add minimal comments and descriptions in the code / python files
   **Exception:** `ModularMultiAgentTaskEnv` returns 5-tuples of per-agent dicts — intentional.
 - Use `myo_sim.get_path(...)` / `ModelBuilder` for assets — no hardcoded paths.
 
+### CPU Env Contract
+
+The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `test_reset_reproducibility.py` and `test_runtime_geometry_consistency.py` check them.
+
+- **Step overrides.**
+  - Advance physics with `self._step_physics()`, which runs `mj_step` and then `mj_forward`. Finish with `self._finalize_step(obs_dict, rwd_dict)`.
+  - Never refresh with `mj_kinematics` alone. Muscle length/velocity/force, sensors, contacts and `cvel` would then lag `qpos` by one substep.
+- **Observations are float32 and never clipped.** Declare spaces with `self._unbounded_obs_space(dim)` (see `docs/wiki/cross-backend-contract.md`).
+- **`reset(seed=...)` must fully determine the episode.**
+  - Draw every random quantity from `self.np_random`, including in sub-components: the fatigue reset (`MuscleActionMixin.reset_muscle_condition()`), opponents and terrain.
+  - Never use `np.random.*`, `random.*` or an unseeded `default_rng()`.
+  - Clear all per-episode state: reward dicts, buffers, counters.
+- **Mocap targets.** After `mj_resetData`, write a mocap target into `data.mocap_pos` / `data.mocap_quat`. Writing only `model.body_pos` takes effect at the *next* reset.
+- **Runtime model edits.** After editing a compiled model's `geom_type/size/pos/quat` or `body_mass`, call `myosuite.utils.mujoco_geom_utils.refresh_geom_derived_fields(model, spec, body_ids)`.
+  - Otherwise the collision bounds and inertia go stale, and MuJoCo ≥ 3.8 silently culls contacts against the stale bounds.
+
 ### mjlab Non-Negotiables
 
 > **Read `docs/wiki/mjlab-design-guide.md` and `docs/wiki/library-usage.md` before touching any mjlab file.**
+
+- **Physics options:** build every `MujocoCfg` from the CPU model with `tasks.cpu_reference.mujoco_cfg_from_model()`. mjlab ignores the spec's `<option>` and defaults to `implicitfast`, while every CPU model uses Euler.
+- **Root velocities:** `write_root_state_to_sim` takes a world-frame angular velocity, but a MuJoCo free-joint `qvel[3:6]` is body-frame. Rotate it first.
+- **Joint-name keys:** `InitialStateCfg.joint_pos` keys are regexes, so anchor exact names (`^name$`). Otherwise `knee_angle_r` also matches the knee coupling joints.
+- **Per-episode state** (e.g. a previous distance or rally state) lives on a `ManagerTermBase` with `reset(env_ids)`, not on the env object.
+- **Step order:** mjlab runs termination → reward → reset → `forward()` → observation. Compute per-step derived state once, in the first termination term, before rewards read it. Use `mdp.sync_forward` when rewards or terminations score derived quantities.
+- **Contact buffers:** mujoco-warp does not clear contact rows at or beyond `nacon`; mask them.
 
 - State reads: use `entity.data.*` (e.g. `entity.data.joint_pos`) — never `entity.data.data.*`.
   Accepted exceptions (no stable API equivalent): `data.data.act`, `data.data.cvel`, `data.data.actuator_*`.
@@ -46,6 +69,14 @@ add minimal comments and descriptions in the code / python files
 - Plan non-trivial tasks in `tasks/todo.md` before implementing.
 - After any user correction: update `tasks/lessons.md`.
 - Never mark a task done without proving it works.
+- **Branching and CI.** Branch from `ms3` and open PRs against `ms3`.
+  - Isolated or agent worktrees may start from `main`, so create the branch from `ms3` explicitly.
+  - CI only runs for `main`/`dev`, so a PR into `ms3` gets no CI. Run the Verification block below locally.
+- **Parity baselines.** Regenerate (`scripts/generate_parity_baselines.py --env-id <id>`) only the envs your change intentionally alters.
+  - Generate them only with the package versions CI resolves. CI installs with `uv pip install -e ".[...]"`, which ignores `uv.lock` and picks the latest compatible mujoco/mjlab.
+  - Never skip a case as "non-deterministic" without checking that a replay really differs between processes.
+  - Make sure every tolerance fails on a known-bad mutation.
+- **Registered-env changes.** If a change alters a registered env's observations, actions, dynamics or task distribution, add a CHANGELOG entry and update the compatibility notes in `docs/baseline_checkpoints.md`. Published checkpoints are tied to the old contract.
 - **Never add an AI assistant (e.g. Claude, Anthropic, Cursor, Codex, Gemini) as a commit co-author** — via `Co-Authored-By` trailers or otherwise. This repo's CLA check requires every commit author/co-author to have signed the CLA, and AI tools cannot sign it, so AI co-author trailers break the check. Enforced by the `no-ai-coauthor` `commit-msg` pre-commit hook (`scripts/reject_ai_coauthor.py`); run `pre-commit install` so it is active locally.
 
 ---

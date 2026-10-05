@@ -106,9 +106,18 @@ _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL = 1e-2, 1e-2
 # C MuJoCo can create several, so contact forces (and the muscle forces reacting to them)
 # differ per step: measured up to 1e-2 in velocities and 0.2 in force / 1000.
 _HFIELD_OBS_ATOL, _HFIELD_REW_ATOL = 0.3, 0.1
-# Directional legs start from a falling pose with joint velocities of 5-10 rad/s; float32
-# Warp vs float64 MuJoCo differs by up to 0.2 rad/s (rewards agree to 1e-4).
-_DIRECTIONAL_OBS_ATOL = 0.5
+# Directional legs: one tolerance per actor obs term. Worst gaps over 500 synced random
+# steps (20 action seeds): joint_pos 1.9e-3, joint_vel (qvel * ctrl dt, |obs| <= 0.08)
+# 3.0e-3 and root_planar_vel 2.1e-3 from the falling start pose's contacts (float32 Warp
+# vs float64 MuJoCo); muscle_act 1.2e-7; heading_cmd 0 (synced). A 2x joint_vel scale
+# error, as between c6c0bb0 and cd7ab9e, fails joint_vel.
+_DIRECTIONAL_OBS_TERM_ATOL: dict[str, float] = {
+    "joint_pos": 5e-3,
+    "joint_vel": 5e-3,
+    "muscle_act": 1e-5,
+    "root_planar_vel": 5e-3,
+    "heading_cmd": 1e-6,
+}
 
 
 # Random actions keep most hand, arm and reach states far from their target (the
@@ -118,16 +127,41 @@ _DIRECTIONAL_OBS_ATOL = 0.5
 _NEAR_TARGET_MULTIPLES = (0.5, 1.25, 2.2)
 
 
-def _tolerances(env_id: str) -> tuple[float, float]:
+def _tolerances(env_id: str) -> tuple[float | dict[str, float], float]:
+    """Return (obs atol, reward atol); the obs atol may be per actor obs term."""
     if "Hand" in env_id or "Arm" in env_id:
         return _WARP_WRAP_DIFF_OBS_ATOL, _WARP_WRAP_DIFF_REW_ATOL
     if "TerrainWalk" in env_id:
         return _HFIELD_OBS_ATOL, _HFIELD_REW_ATOL
     if "LegDirectional" in env_id:
-        return _DIRECTIONAL_OBS_ATOL, _CONTACT_REW_ATOL
+        return _DIRECTIONAL_OBS_TERM_ATOL, _CONTACT_REW_ATOL
     if "LegWalk" in env_id:
         return _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL
     return 5e-4, 5e-3
+
+
+def _assert_obs_close(
+    mj: ManagerBasedRlEnv,
+    mj_obs: np.ndarray,
+    cpu_obs: np.ndarray,
+    atol: float | dict[str, float],
+) -> None:
+    """Compare the twin's actor obs with the CPU obs, term by term if atol is a dict."""
+    if not isinstance(atol, dict):
+        np.testing.assert_allclose(mj_obs, cpu_obs, atol=atol)
+        return
+    om = mj.observation_manager
+    start = 0
+    for name, shape in zip(om.active_terms["actor"], om.group_obs_term_dim["actor"]):
+        stop = start + int(np.prod(shape))
+        np.testing.assert_allclose(
+            mj_obs[start:stop],
+            cpu_obs[start:stop],
+            atol=atol[name],
+            err_msg=f"actor obs term {name!r}",
+        )
+        start = stop
+    assert start == cpu_obs.size
 
 
 def _basic_suite_ids(entry_points: tuple[str, ...]) -> list[str]:
@@ -231,7 +265,7 @@ def test_one_step_parity(env_id: str) -> None:
         assert bool(mj_term[0]) == cpu_term
         if cpu_term:
             break
-        np.testing.assert_allclose(mj_obs["actor"][0].numpy(), cpu_obs, atol=obs_atol)
+        _assert_obs_close(mj, mj_obs["actor"][0].numpy(), cpu_obs, obs_atol)
         np.testing.assert_allclose(float(mj_rew[0]), cpu_rew, atol=rew_atol)
         values = dict(mj.metrics_manager.get_active_iterable_terms(0))
         assert bool(values["success"][0]) == bool(cpu_info["solved"])

@@ -19,7 +19,10 @@ from myosuite.core.model_builder import ModelBuilder
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.assets._resolve import warn_torso_pip_calibration_divergence
-from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
+from myosuite.envs.myo.tasks.challenge.challenge_common import (
+    MuscleActionMixin,
+    joint_limit_forces,
+)
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.physics.quat_math import euler2quat, quat2euler
 from myosuite.terms.base_action import sigmoid_muscle_activation
@@ -332,6 +335,9 @@ class SoccerEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         _model_joints = self._joint_names_in_model()
         self.MYO_JOINTS = [j for j in self.MYO_JOINTS if j in _model_joints]
         self.JNT_OVEREXT = [j for j in self.JNT_OVEREXT if j in _model_joints]
+        self._overext_dofadr = self.model.jnt_dofadr[
+            [self.model.joint(j).id for j in self.JNT_OVEREXT]
+        ]
 
         # Toe geom naming flipped from "r_bofoot"/"l_bofoot" (legacy) to
         # "bofoot_r"/"bofoot_l" in the current myo_sim leg model.
@@ -558,25 +564,15 @@ class SoccerEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         """Normalised joint-limit violation force as pain score."""
         if not self.startFlag:
             return -1.0
+        frc = joint_limit_forces(self.model, self.data)[self._overext_dofadr]
         limit_score = 0.0
-        for joint in self.JNT_OVEREXT:
-            limit_score += (
-                np.abs(np.clip(self._get_limitfrc(joint).squeeze(), -1000, 1000)) / 1000
-            )
+        # Sequential sum in JNT_OVEREXT order, as the per-joint loop it replaces.
+        for joint_score in np.abs(np.clip(frc, -1000, 1000)) / 1000:
+            limit_score += joint_score
         return limit_score / len(self.JNT_OVEREXT)
 
     def _joint_names_in_model(self) -> set[str]:
         return {self.model.joint(i).name for i in range(self.model.njnt)}
-
-    def _get_limitfrc(self, joint_name: str) -> np.ndarray:
-        non_jnt_idxs = np.where(
-            self.data.efc_type != mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT
-        )[0]
-        only_jnt_lim = self.data.efc_force.copy()
-        only_jnt_lim[non_jnt_idxs] = 0.0
-        joint_force = np.zeros(self.model.nv)
-        mujoco.mj_mulJacTVec(self.model, self.data, joint_force, only_jnt_lim)
-        return joint_force[self.model.joint(joint_name).dofadr]
 
     # ── Observation helpers ───────────────────────────────────────────────────
 

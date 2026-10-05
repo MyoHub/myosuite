@@ -17,6 +17,8 @@ These tests verify the four functional gaps fixed in the myosuite4 refactor:
 They also guard the silent-corruption fixes: pose/reach targets resolved by
 name and sampled independently per coordinate, 3CC-r compartments conserved,
 and ``FatigueWrapper`` keeping the model options and the env's action mapping.
+The finger reach env checks far targets from the same control step as CPU
+``ReachEnvV0`` and samples its reachable-fingertip table.
 
 The tests in classes 1–3 instantiate real environments (requires myoelbow
 model XML) and are skipped if MJX stack or model files are not available.
@@ -170,6 +172,73 @@ class TestTargetResolution:
         mjx_env_base._warn_experimental_once.cache_clear()
         with pytest.warns(UserWarning, match="experimental"):
             _make_pose_env()
+
+
+# ---------------------------------------------------------------------------
+# 0b. Reach: far check timing and finger targets match CPU ReachEnvV0
+# ---------------------------------------------------------------------------
+
+
+class TestReachMatchesCpu:
+    """``MjxFingerReachRandom-v0`` against CPU ``myoFingerReachRandom-v0``."""
+
+    def test_far_check_first_active_at_cpu_control_step(self):
+        """The check used 2 physics steps (4 ms), so it ended episodes at step 1."""
+        import gymnasium as gym
+        from myosuite.envs.myo.backends.mjx import make
+
+        env = make("MjxFingerReachRandom-v0")
+        state = jax.jit(env.reset)(jax.random.PRNGKey(0))
+        info = dict(state.info)
+        info["targets"] = info["targets"] + jp.array([1.0, 0.0, 0.0])
+        state = state.replace(info=info)
+        step = jax.jit(env.step)
+        mjx_done = []
+        for _ in range(2):
+            state = step(state, jp.zeros(env.action_size))
+            mjx_done.append(bool(state.done))
+
+        cpu = gym.make("myoFingerReachRandom-v0")
+        u = cpu.unwrapped
+        cpu.reset(seed=0)
+        u.model.site_pos[u.target_sids[0]] += np.array([1.0, 0.0, 0.0])
+        action = np.zeros(cpu.action_space.shape, dtype=np.float32)
+        cpu_done = [bool(cpu.step(action)[2]) for _ in range(2)]
+        cpu.close()
+
+        assert cpu_done == [False, True]
+        assert mjx_done == cpu_done
+
+    def test_finger_reach_reads_cpu_registration(self):
+        """far_th was hard-coded to 0.10 (CPU: ReachEnvV0 default 0.35)."""
+        import gymnasium as gym
+        from myosuite.envs.myo.backends.mjx import get_default_config
+
+        cfg = get_default_config("MjxFingerReachRandom-v0")
+        cpu = gym.make("myoFingerReachRandom-v0").unwrapped
+        assert cfg.far_th == cpu.far_th == 0.35
+        assert cfg.target_sampling == cpu.target_sampling == "workspace"
+
+    def test_finger_reach_samples_the_cpu_workspace_table(self):
+        """Targets were drawn uniformly in the box, partly out of reach."""
+        import gymnasium as gym
+        from myosuite.envs.myo.backends.mjx import make
+
+        env = make("MjxFingerReachRandom-v0")
+        table = gym.make("myoFingerReachRandom-v0").unwrapped._workspace_points
+        np.testing.assert_allclose(np.asarray(env._workspace_points), table, atol=1e-6)
+        keys = jax.random.split(jax.random.PRNGKey(0), 200)
+        targets = np.asarray(jax.vmap(env.sample_task)(keys)["targets"])
+        points = table.reshape(-1, 3)
+        for target in targets.reshape(-1, 3):
+            assert np.abs(points - target).sum(axis=1).min() < 1e-6
+        assert len(np.unique(targets.reshape(len(keys), -1), axis=0)) > 150
+
+    def test_unknown_target_sampling_raises(self):
+        from myosuite.envs.myo.backends.mjx import make
+
+        with pytest.raises(ValueError, match="target_sampling"):
+            make("MjxFingerReachRandom-v0", {"target_sampling": "grid"})
 
 
 # ---------------------------------------------------------------------------

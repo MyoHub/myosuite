@@ -580,6 +580,45 @@ def test_action_noise_applied() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Control step timing
+# ---------------------------------------------------------------------------
+
+
+def test_backend_config_rejects_a_control_step_it_does_not_simulate() -> None:
+    BackendConfig(n_substeps=5, ctrl_dt=0.005, sim_dt=0.001)
+    with pytest.raises(ValueError, match="Control step mismatch"):
+        BackendConfig(n_substeps=10, ctrl_dt=0.02, sim_dt=0.001)
+    with pytest.raises(ValueError, match="Control step mismatch"):
+        BackendConfig(n_substeps=0, ctrl_dt=0.0, sim_dt=0.001)
+
+
+@pytest.mark.parametrize("scene", ["flat_floor", ["flat_floor"]])
+def test_cpu_control_step_is_the_simulated_step(scene: str | list[str]) -> None:
+    """A step advances ``ctrl_dt`` and ``joint_vel`` is ``qvel * ctrl_dt``.
+
+    The default backend declares 10 steps of 1 ms. The CPU used to keep the
+    elbow XML timestep (2 ms), simulating 20 ms per step but scaling by 10 ms.
+    """
+    task = _ElbowTask(backend=BackendConfig(), scene=scene)
+    env = ModularTaskEnv(task)
+    env.reset(seed=0)
+    assert env.model.opt.timestep == task.backend.sim_dt
+    obs, *_ = env.step(np.full(env.action_space.shape, 0.5, dtype=np.float32))
+    assert env.data.time == pytest.approx(task.backend.ctrl_dt)
+    nq, nv = env.model.nq, env.model.nv
+    np.testing.assert_allclose(
+        obs[nq : nq + nv], env.data.qvel * env.data.time, rtol=1e-5, atol=1e-8
+    )
+
+
+def test_cpu_env_rejects_a_backend_mutated_out_of_step() -> None:
+    task = _ElbowTask()
+    task.backend.ctrl_dt = 0.02  # bypasses the BackendConfig check
+    with pytest.raises(ValueError, match="Control step mismatch"):
+        ModularTaskEnv(task)
+
+
+# ---------------------------------------------------------------------------
 # MJX modular env smoke (skip if JAX unavailable)
 # ---------------------------------------------------------------------------
 

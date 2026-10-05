@@ -69,24 +69,29 @@ _REWARD_MEAN_RTOL: dict[str, float] = {
 }
 _DEFAULT_REWARD_MEAN_RTOL = 0.80
 
-# Known, unresolved reward-magnitude/sign drift vs the PyPI baseline -- xfail
-# (not a baseline regen, see module docstring) so these are visible without
-# blocking CI. Root cause for Soccer is understood: run_track.py/soccer.py's
-# JNT_OVEREXT list is filtered at runtime to joints the current myo_sim leg
-# model actually has (simplified hinge knee, see the comment next to
-# `self.JNT_OVEREXT = [j for j in self.JNT_OVEREXT if j in _model_joints]`),
-# which shrinks the `pain` penalty (weight -10, the dominant reward term) --
-# consistent with the already-accepted _OBS_SHAPE_DELTA entry for the same
-# envs. ChaseTag and OslRun's sign flips are NOT yet explained; run_track.py's
-# weights are just {"sparse": 1, "solved": 10} (no `pain` contribution), so
-# the divergence must come from goal/termination dynamics differing under
-# the current myo-sim revision -- needs someone with the intended reward
-# scale to say whether that's expected model retuning or a real bug.
+# Known, unresolved reward drift vs the PyPI baseline (not a baseline regen,
+# see module docstring). test_reward_mean_sign_vs_pypi still runs for these
+# under a non-strict xfail, so a fix shows up as XPASS. Measured on ms3 with
+# the CI pins (seed 42):
+# - Soccer P1/P2: the mean flips sign (PyPI -17.2 / -17.0, now +0.31). Root
+#   cause understood: soccer.py's JNT_OVEREXT list is filtered at runtime to
+#   joints the current myo_sim leg model actually has (simplified hinge knee,
+#   see the comment next to
+#   `self.JNT_OVEREXT = [j for j in self.JNT_OVEREXT if j in _model_joints]`),
+#   which shrinks the `pain` penalty (weight -10, the dominant reward term) --
+#   consistent with the already-accepted _OBS_SHAPE_DELTA entry for the same
+#   envs.
+# - ChaseTag P1/P2eval: same sign, but the magnitude is outside tolerance
+#   (PyPI -15.4 / -0.46, now -1.13 / -1.05). NOT yet explained; it must come
+#   from goal/termination dynamics differing under the current myo-sim
+#   revision -- needs someone with the intended reward scale to say whether
+#   that's expected model retuning or a real bug.
+# myoChallengeOslRunFixed-v0 was listed too; it now passes (-0.29 vs PyPI
+# -0.30, tolerance 0.61), so it is checked normally again.
 _KNOWN_REWARD_DRIFT_ENVS = frozenset(
     {
         "myoChallengeChaseTagP1-v0",
         "myoChallengeChaseTagP2eval-v0",
-        "myoChallengeOslRunFixed-v0",
         "myoChallengeSoccerP1-v0",
         "myoChallengeSoccerP2-v0",
     }
@@ -135,11 +140,24 @@ def _load_baseline(env_id: str) -> dict:
     return data
 
 
+def _reward_sign_params() -> list:
+    """Return the baseline env ids, with a non-strict xfail on the known-drift ones."""
+    known_drift = pytest.mark.xfail(
+        reason="known reward drift vs PyPI, see _KNOWN_REWARD_DRIFT_ENVS",
+        raises=AssertionError,
+        strict=False,
+    )
+    return [
+        pytest.param(env_id, marks=known_drift)
+        if env_id in _KNOWN_REWARD_DRIFT_ENVS
+        else env_id
+        for env_id in _collect_env_ids()
+    ]
+
+
 def _make_env(env_id: str):
-    try:
-        return gym.make(env_id)
-    except Exception as exc:
-        pytest.skip(f"Cannot instantiate {env_id}: {exc}")
+    # A construction failure is a regression, so it fails rather than skips.
+    return gym.make(env_id)
 
 
 @pytest.mark.parametrize("env_id", _collect_env_ids())
@@ -278,17 +296,13 @@ def test_reset_returns_2tuple(env_id: str) -> None:
     assert isinstance(info, dict)
 
 
-@pytest.mark.parametrize("env_id", _collect_env_ids())
+@pytest.mark.parametrize("env_id", _reward_sign_params())
 def test_reward_mean_sign_vs_pypi(env_id: str) -> None:
     """Mean reward sign over 200 steps must match the PyPI baseline.
 
     Catches inverted reward implementations while tolerating numerical drift
     from different RNG streams (terrain generation, task sampling).
     """
-    if env_id in _KNOWN_REWARD_DRIFT_ENVS:
-        pytest.xfail(
-            f"{env_id}: known reward-magnitude drift, see _KNOWN_REWARD_DRIFT_ENVS"
-        )
     baseline = _load_baseline(env_id)
     ref_mean = baseline["reward_mean"]
     rtol = _REWARD_MEAN_RTOL.get(env_id, _DEFAULT_REWARD_MEAN_RTOL)
