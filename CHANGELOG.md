@@ -153,6 +153,10 @@ full commit list.
 
 ### Fixed
 
+* **OSL controller** (both inherited from myosuite 2.x): `StateMachine.is_running` returned itself, so reading
+  it recursed until `RecursionError`; it now returns the running flag. `MyoOSLController.set_motor_param`
+  had no value argument and stored the parameter's name, so a set `peak_torque` broke the torque clip; it
+  is now `set_motor_param(joint, act_param, value)`.
 * RunTrack keyframe joint values clamped to their ranges (#399, `b0514c0`).
 * Walk rotation termination uses the root free-joint quaternion (`aa2dd77`); leg model root/torso
   orientation (`531dba0`); hand composition and reorient hand orientation (`53f17a9`, `3f4bf9d`).
