@@ -9,10 +9,7 @@ full commit list.
 
 ### Highlights
 
-* **One task, three execution paths.** The same `env_id` runs on the **CPU** (Gymnasium: playback,
-  debugging, Stable-Baselines3), on **mjlab** (MuJoCo Warp + RSL-RL: thousands of parallel
-  environments on one GPU) and on an **experimental MJX** (JAX) path. CPU and mjlab share the
-  observation, action and timing contract, so a policy trained on the GPU can be replayed on the CPU.
+* **One task, three execution paths, and full GPU support.** The same `env_id` runs on the **CPU** (Gymnasium: playback, debugging, Stable-Baselines3), on **mjlab** (MuJoCo Warp + RSL-RL: thousands of parallel environments on one GPU) and on an **experimental MJX** (JAX) path. Training on the GPU is the big speed-up of this release: one RTX 5090 steps 20,000-38,000 muscle-driven environments per second (full-body MuscleMimic with 354 muscles, 1024 envs: 19.8k steps/s; the 2-billion-step MuscleMimic run finished in about 30 hours), where one CPU thread steps the much smaller hand, leg and arm tasks at about 1,000 steps/s (measured: 1.4k hand reorient, 1.3k leg walk, 0.8k arm reach). CPU and mjlab share the observation, action and timing contract, so a policy trained on the GPU can be replayed on the CPU.
 * **MuscleMimic support.** Full-body and bimanual MuscleMimic environments
   (`myoMimicFullbody-v0`, `myoMuscleMimicFullbody-v0`, `myoMimicBimanual-v0`,
   `myoMuscleMimicBimanual-v0`, `myoFullBodyDirectional-v0`), loaders for the MuscleMimic
