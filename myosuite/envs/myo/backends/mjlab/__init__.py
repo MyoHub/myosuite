@@ -26,6 +26,8 @@ Public API::
 
 from __future__ import annotations
 
+import warnings
+
 from myosuite.envs.myo.backends.mjlab.configs.baoding_cfg import BaodingCfg
 from myosuite.envs.myo.backends.mjlab.configs.elbow_pose_cfg import ElbowPoseCfg
 from myosuite.envs.myo.backends.mjlab.configs.finger_pose_cfg import FingerPoseCfg
@@ -83,6 +85,15 @@ except Exception:
         "myosuite mjlab backend: error during task registration",
         exc_info=True,
     )
+
+# mjlab attaches each entity spec to its scene: the entity's own <option> is dropped (the
+# physics options come from MujocoCfg) and attach reports differing compiler/visual settings.
+# Masses, inertias and timestep are unaffected; hide exactly these two messages.
+for _message in (
+    r"Entity '.*' has non-default <option> fields",
+    r"Attach conflict when attaching",
+):
+    warnings.filterwarnings("ignore", message=_message, category=UserWarning)
 
 __all__ = [
     "REGISTERED_TASKS",
