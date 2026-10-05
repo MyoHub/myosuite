@@ -28,7 +28,7 @@ full commit list.
 * **Training and evaluation tooling.** Shared PPO defaults for muscle tasks, an `Episode_Metrics/success`
   metric on every twin, `train_mjlab.py` that stops early once the deterministic policy succeeds,
   `eval_mjlab_policy.py` (success rate, return, grid videos on both backends), and ready-made
-  policies with evaluation videos in `baselines/`.
+  policies with evaluation videos on Hugging Face (`myohub/myosuite-3-baselines`).
 * **`myo_sim` as a pip package** (replacing the git submodule); models are composed from it and the
   hand, arm and leg orientations were re-calibrated.
 * **Muscle conditions.** A torch fatigue model with CPU parity, episode-persistent and resumable
@@ -49,7 +49,7 @@ full commit list.
 * **mjlab backend and tasks:** pose, reach, torso exosuit, leg (stand, terrain, walk, directional) and Table Tennis twins; `Episode_Metrics/success` on every twin; shared PPO defaults; vectorized Table Tennis contact detection ([#406]).
 * **MyoChallenge suite** as Gymnasium envs: P1 envs, leg-directional and 1v1 ChaseTag, full-body ChaseTag baselines ([#406], [#101]).
 * **MuscleMimic:** full-body and bimanual envs, checkpoint and motion loaders, tutorials 5.1-5.5; multi-clip training (`register_mimic_mjlab_tasks_with_clip` takes several clips); reusable full-body viewer camera `mimic_viewer_cfg` ([#406], [#436], [#475]).
-* **Training and evaluation tools:** `eval_mjlab_policy.py` (CPU/mjlab rollouts, grid videos, `--stochastic`), `train_mjlab.py` early stop on success, default-policy checkpoints and videos in `baselines/` ([#406], [#478]).
+* **Training and evaluation tools:** `eval_mjlab_policy.py` (CPU/mjlab rollouts, grid videos, `--stochastic`), `train_mjlab.py` early stop on success, default-policy checkpoints and videos on Hugging Face (`myohub/myosuite-3-baselines`) ([#406], [#478]).
 * **SAR synergies re-extracted on the current envs** and installed in `tutorials/files/2.3/SAR_pretrained/`; SAR-RL and RL-E2E reach the same success on locomotion, and SAR is not consistently ahead on manipulation (2 of 6 seeds).
 * **MuscleMimic baseline:** a single-clip walking policy (2B steps; 86% of episodes reach the clip end) on Hugging Face, see `docs/baseline_checkpoints.md`.
 * **Fatigue:** episode-persistent and resumable states, torch 3CC-r parity with the CPU model ([#406], [#421]).
