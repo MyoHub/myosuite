@@ -164,16 +164,21 @@ class MyoOSLController:
 
         self.OSL_PARAM_LIST[mode][phase_name][param_type][gain] = value
 
-    def set_motor_param(self, joint, act_param):
-        """
-        Function to set hardware parameters of the actuators
+    def set_motor_param(self, joint: str, act_param: str, value: float) -> None:
+        """Set a hardware parameter of an OSL actuator.
+
+        Args:
+            joint: ``"knee"`` or ``"ankle"``.
+            act_param: ``"gear_ratio"``, ``"peak_torque"`` or ``"control_range"``.
+            value: New value of the parameter (``peak_torque`` bounds the
+                commanded torque in :meth:`get_osl_torque`).
         """
         assert joint in ["knee", "ankle"], f"Joint should be : {['knee', 'ankle']}"
         assert (
             act_param in ["gear_ratio", "peak_torque", "control_range"]
         ), f"Actuator parameter should be : {['gear_ratio', 'peak_torque', 'control_range']}"
 
-        self.HARDWARE[joint][act_param] = act_param
+        self.HARDWARE[joint][act_param] = value
 
     def _update_param_to_state_machine(self):
         "Internal function to update gain paramters into the State Machine"
@@ -189,7 +194,11 @@ class MyoOSLController:
             print("Non-existant joint. Can only be either 'knee' or 'ankle'")
             raise Exception
 
-        state_params = self.STATE_MACHINE.get_current_state.get_variables()
+        if not self.STATE_MACHINE.running:
+            raise RuntimeError("The OSL state machine is not running; call start().")
+        # Read the gains in place: get_current_state and get_variables deep-copy
+        # the whole state graph on every call.
+        state_params = self.STATE_MACHINE.current_state.state_variables
 
         K = state_params[f"{joint}_stiffness"]
         B = state_params[f"{joint}_damping"]
@@ -326,7 +335,7 @@ class State:
 
     def get_variables(self):
         """
-        Getter: State variables
+        Getter: State variables (a deep copy, safe to modify)
         """
         return copy.deepcopy(self.state_variables)
 
@@ -398,16 +407,16 @@ class StateMachine:
             )
 
     @property
-    def is_running(self):
+    def is_running(self) -> bool:
         """
         Boolean to check if State Machine is running
         """
-        return self.is_running
+        return self.running
 
     @property
     def get_current_state(self):
         """
-        Get current state from the State Machine
+        Get current state from the State Machine (a deep copy, safe to modify)
         """
         if self.running:
             return copy.deepcopy(self.current_state)

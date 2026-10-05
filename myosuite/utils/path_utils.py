@@ -92,7 +92,8 @@ def evaluate_success(
         paths: List of path dicts, each with ``env_infos["solved"]``.
         logger: Optional logger exposing ``log_kv(key, value)``; metrics are
             written if provided.
-        successful_steps: Minimum number of solved steps to count as success.
+        successful_steps: A path succeeds when it is solved on more than this
+            many time steps (strict, as in upstream MyoSuite / RoboHive).
 
     Returns:
         Percentage (0–100) of successful paths.

@@ -7,14 +7,18 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import numpy as np
 import pytest
 
 
 pytestmark = pytest.mark.tier1
 
-_SKIP_NO_SIMHIVE = pytest.mark.skipif(
-    not __import__("shutil").which("mujoco") and True,
+# myo_sim provides the fragment XMLs; it is a core dependency, so this only
+# skips in a stripped-down install.
+_REQUIRES_MYO_SIM = pytest.mark.skipif(
+    importlib.util.find_spec("myo_sim") is None,
     reason="Requires myo_sim package to build",
 )
 
@@ -66,70 +70,67 @@ def test_resolve_fragment_path_fallback():
         )
 
 
-@_SKIP_NO_SIMHIVE
+@_REQUIRES_MYO_SIM
 def test_model_builder_build_elbow():
     """ModelBuilder.build() returns (MjModel, MjSpec) for the elbow fragment."""
     import mujoco
     from myosuite.core.model_builder import ModelBuilder
 
-    try:
-        model, spec = ModelBuilder().attach_fragment("elbow").build()
-        assert isinstance(model, mujoco.MjModel)
-        assert model.nq > 0
-    except FileNotFoundError:
-        pytest.skip("Fragment XML not found; myo_sim not installed")
+    model, spec = ModelBuilder().attach_fragment("elbow").build()
+    assert isinstance(model, mujoco.MjModel)
+    assert model.nq > 0
 
 
-@_SKIP_NO_SIMHIVE
+@_REQUIRES_MYO_SIM
 def test_place_fragment_sets_position():
     """place_fragment attaches with a non-zero offset that survives compilation."""
     import mujoco
     from myosuite.core.model_builder import ModelBuilder
 
     target_pos = np.array([0.1, 0.0, 0.5])
-    try:
-        model, spec = ModelBuilder().place_fragment("elbow", pos=target_pos).build()
-        assert isinstance(model, mujoco.MjModel)
-        assert model.nbody > 1
-    except FileNotFoundError:
-        pytest.skip("Fragment XML not found; myo_sim not installed")
+    model_ref, _ = ModelBuilder().attach_fragment("elbow").build()
+    model, spec = ModelBuilder().place_fragment("elbow", pos=target_pos).build()
+    assert isinstance(model, mujoco.MjModel)
+    assert model.nbody == model_ref.nbody > 1
+
+    # Every body's world position is shifted by exactly the offset.
+    data_ref, data = mujoco.MjData(model_ref), mujoco.MjData(model)
+    mujoco.mj_forward(model_ref, data_ref)
+    mujoco.mj_forward(model, data)
+    np.testing.assert_allclose(
+        data.xpos[1:] - data_ref.xpos[1:] - target_pos, 0.0, atol=1e-12
+    )
 
 
-@_SKIP_NO_SIMHIVE
+@_REQUIRES_MYO_SIM
 def test_add_free_body_increases_nq():
     """add_free_body adds 7 dof (freejoint) to the compiled model."""
     from myosuite.core.model_builder import ModelBuilder
 
-    try:
-        model_bare, _ = ModelBuilder().attach_fragment("elbow").build()
-        model_with, _ = (
-            ModelBuilder()
-            .attach_fragment("elbow")
-            .add_free_body("prop", pos=[0.2, 0.0, 0.1])
-            .build()
-        )
-        assert model_with.nq == model_bare.nq + 7
-        assert model_with.nbody == model_bare.nbody + 1
-    except FileNotFoundError:
-        pytest.skip("Fragment XML not found; myo_sim not installed")
+    model_bare, _ = ModelBuilder().attach_fragment("elbow").build()
+    model_with, _ = (
+        ModelBuilder()
+        .attach_fragment("elbow")
+        .add_free_body("prop", pos=[0.2, 0.0, 0.1])
+        .build()
+    )
+    assert model_with.nq == model_bare.nq + 7
+    assert model_with.nbody == model_bare.nbody + 1
 
 
-@_SKIP_NO_SIMHIVE
+@_REQUIRES_MYO_SIM
 def test_multiple_free_bodies():
     """Multiple add_free_body calls each add 7 dof."""
     from myosuite.core.model_builder import ModelBuilder
 
     n_objects = 3
-    try:
-        model_bare, _ = ModelBuilder().attach_fragment("elbow").build()
-        builder = ModelBuilder().attach_fragment("elbow")
-        for i in range(n_objects):
-            builder.add_free_body(f"obj_{i}", pos=[i * 0.1, 0.0, 0.1])
-        model_multi, _ = builder.build()
-        assert model_multi.nq == model_bare.nq + 7 * n_objects
-        assert model_multi.nbody == model_bare.nbody + n_objects
-    except FileNotFoundError:
-        pytest.skip("Fragment XML not found; myo_sim not installed")
+    model_bare, _ = ModelBuilder().attach_fragment("elbow").build()
+    builder = ModelBuilder().attach_fragment("elbow")
+    for i in range(n_objects):
+        builder.add_free_body(f"obj_{i}", pos=[i * 0.1, 0.0, 0.1])
+    model_multi, _ = builder.build()
+    assert model_multi.nq == model_bare.nq + 7 * n_objects
+    assert model_multi.nbody == model_bare.nbody + n_objects
 
 
 def test_model_builder_build_returns_distinct_models():
@@ -271,29 +272,26 @@ def test_add_mesh_body_no_texture_uses_rgba(minimal_mesh):
     assert model.nmat == 1  # but material is still created
 
 
-@_SKIP_NO_SIMHIVE
+@_REQUIRES_MYO_SIM
 def test_add_mesh_body_combined_with_fragment(minimal_mesh, minimal_texture):
     """add_mesh_body works alongside attach_fragment."""
     from myosuite.core.model_builder import ModelBuilder
 
-    try:
-        model_bare, _ = ModelBuilder().attach_fragment("elbow").build()
-        model_with, _ = (
-            ModelBuilder()
-            .attach_fragment("elbow")
-            .add_mesh_body(
-                "prop",
-                mesh_file=minimal_mesh,
-                pos=[0.3, 0.0, 0.1],
-                texture_file=minimal_texture,
-            )
-            .build()
+    model_bare, _ = ModelBuilder().attach_fragment("elbow").build()
+    model_with, _ = (
+        ModelBuilder()
+        .attach_fragment("elbow")
+        .add_mesh_body(
+            "prop",
+            mesh_file=minimal_mesh,
+            pos=[0.3, 0.0, 0.1],
+            texture_file=minimal_texture,
         )
-        assert model_with.nq == model_bare.nq + 7
-        assert model_with.nmesh >= 1
-        assert model_with.ntex >= 1
-    except FileNotFoundError:
-        pytest.skip("Fragment XML not found; myo_sim not installed")
+        .build()
+    )
+    assert model_with.nq == model_bare.nq + 7
+    assert model_with.nmesh >= 1
+    assert model_with.ntex >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -349,11 +347,12 @@ def test_attach_spec_combined_with_free_body():
 
 
 def _myo_sim_has_compose() -> bool:
+    """Return whether myo_sim ships the compose API that the hand recipes use."""
     try:
-        from myo_sim.build.compose import load_right_hand_from_arm_spec  # noqa: F401
+        from myo_sim.build.compose import build_right_hand_from_arm_spec  # noqa: F401
 
         return True
-    except (ImportError, AttributeError):
+    except ImportError:
         return False
 
 
@@ -377,15 +376,20 @@ def test_hand_standard_recipe_via_compose():
 def test_attach_spec_hand_from_arm():
     """attach_spec with myo_sim composed hand produces a model with finger joints."""
     import mujoco
-    from myo_sim.build.compose import load_right_hand_from_arm_spec
+    from myo_sim.build.compose import build_right_hand_from_arm_spec
     from myosuite.core.model_builder import ModelBuilder
 
-    model, _ = (
-        ModelBuilder().attach_spec(load_right_hand_from_arm_spec(), name="hand").build()
-    )
+    hand_spec = build_right_hand_from_arm_spec()
+    assert isinstance(hand_spec, mujoco.MjSpec)
+    model, _ = ModelBuilder().attach_spec(hand_spec, name="hand").build()
     assert isinstance(model, mujoco.MjModel)
-    assert model.nu > 0
-    assert model.njnt > 0
+    # MyoHand: 23 joints driven by 39 muscles, including the finger joints.
+    assert (model.njnt, model.nu) == (23, 39)
+    joint_names = {
+        mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
+        for i in range(model.njnt)
+    }
+    assert {"mcp2_flexion_r", "ip_flexion_r"} <= joint_names
 
 
 @pytest.mark.skipif(
@@ -518,6 +522,156 @@ def test_legacy_hand_recipes_compile_without_wrapper_xml():
         names = [model.joint(i).name for i in range(model.njnt)]
         cmc = [n for n in names if "cmc" in n]
         assert cmc[:2] == ["cmc_abduction", "cmc_flexion"]
+
+
+def _counting_recipe(calls: list[int]):
+    """Recipe building one free box; appends to *calls* on every build."""
+    from myosuite.core.model_builder import ModelBuilder
+
+    def _recipe(b: ModelBuilder) -> ModelBuilder:
+        calls.append(1)
+        return b.add_free_body("box", geom_size=[0.1, 0.1, 0.1])
+
+    return _recipe
+
+
+def test_build_from_recipe_keeps_the_spec_from_its_second_build(monkeypatch):
+    """A recipe is built at most twice per process; each call gets its own spec and model."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    kept = model_builder._recipe_spec.cache_info().currsize
+    model_builder.build_from_recipe("_test_counting")
+    assert model_builder._recipe_spec.cache_info().currsize == kept
+    model_a, spec_a = model_builder.build_from_recipe("_test_counting")
+    spec_a.worldbody.add_body(name="edit_of_a")
+    spec_a.geoms[0].size = [0.5, 0.5, 0.5]
+    model_a.geom_size[:] = 9.0
+    model_b, spec_b = model_builder.build_from_recipe("_test_counting")
+    model_builder.build_from_recipe("_test_counting")
+
+    assert len(calls) == 2
+    assert model_builder._recipe_spec.cache_info().currsize == kept + 1
+    assert spec_b is not spec_a and model_b is not model_a
+    assert spec_b.body("edit_of_a") is None
+    np.testing.assert_array_equal(model_b.geom_size, [[0.1, 0.1, 0.1]])
+    np.testing.assert_array_equal(spec_b.geoms[0].size, [0.1, 0.1, 0.1])
+
+
+def test_build_from_recipe_cache_keys_recipe_and_cwd(monkeypatch, tmp_path):
+    """Re-registering a recipe or changing directory builds the spec again."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    for _ in range(3):
+        model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 2  # kept from the second build on
+    monkeypatch.chdir(tmp_path)
+    model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 3
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 4
+
+
+def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
+    """An edit_fn runs once, on the compiled recipe spec; the plain recipe stays unedited."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    edits: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+
+    def _edit(spec) -> None:
+        edits.append(1)
+        spec.worldbody.add_site(name="edited")
+
+    edited = [
+        model_builder.build_from_recipe("_test_counting", edit_fn=_edit)[0]
+        for _ in range(3)
+    ]
+    plain, _ = model_builder.build_from_recipe("_test_counting")
+    assert len(edits) == 2  # the third edited call is served from the cache
+    assert len(calls) == 3
+    assert [model.nsite for model in edited] == [1, 1, 1]
+    assert plain.nsite == 0
+
+
+def test_spec_cache_opt_out_builds_every_call(monkeypatch):
+    """MYOSUITE_SPEC_CACHE=0 builds the recipe on every call and keeps nothing."""
+    from myosuite.core import model_builder
+
+    monkeypatch.setenv("MYOSUITE_SPEC_CACHE", "0")
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    size = model_builder._recipe_spec.cache_info().currsize
+    for _ in range(3):
+        model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 3
+    assert model_builder._recipe_spec.cache_info().currsize == size
+
+
+def test_cached_spec_unhashable_arguments_and_clear():
+    """Unhashable arguments bypass the cache; clear_spec_caches drops cached specs."""
+    import mujoco
+
+    from myosuite.core.model_builder import cached_spec, clear_spec_caches
+
+    calls: list[object] = []
+
+    @cached_spec(min_uses=1)
+    def _build(size) -> mujoco.MjSpec:
+        calls.append(size)
+        spec = mujoco.MjSpec()
+        spec.worldbody.add_geom(size=list(size))
+        return spec
+
+    _build((0.1, 0.0, 0.0))
+    _build((0.1, 0.0, 0.0))
+    _build([0.2, 0.0, 0.0])
+    _build([0.2, 0.0, 0.0])
+    assert len(calls) == 3
+    clear_spec_caches()
+    _build((0.1, 0.0, 0.0))
+    assert len(calls) == 4
+
+
+def test_cached_spec_keeps_a_spec_from_its_second_build():
+    """A first build is handed over and not kept; the second is kept and copied out."""
+    import mujoco
+
+    from myosuite.core.model_builder import cached_spec
+
+    built: list[mujoco.MjSpec] = []
+
+    @cached_spec(maxsize=1)
+    def _build(name: str) -> mujoco.MjSpec:
+        spec = mujoco.MjSpec()
+        spec.worldbody.add_body(name=name)
+        built.append(spec)
+        return spec
+
+    assert _build("a") is built[0]
+    assert _build.cache_info().currsize == 0
+    second, third = _build("a"), _build("a")
+    assert len(built) == 2 and _build.cache_info().currsize == 1
+    assert second is not built[1] and third is not built[1] and second is not third
+    _build("b")
+    _build("b")  # kept, evicts "a" (maxsize=1)
+    _build("a")
+    assert len(built) == 5
 
 
 def test_motor_finger_recipe_scales_the_motor_gears() -> None:

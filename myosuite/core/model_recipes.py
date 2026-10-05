@@ -787,7 +787,7 @@ def _apply_baoding_inertia_floor(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     (``clavphant``, and siblings using the same "tiny mass + huge inertia"
     joint-constrained idiom) left with a physically-absurd fused inertia
     after the arm-to-hand pruning step removes its stabilizing joints.
-    ``load_right_hand_from_arm_spec()`` doesn't expose the new parameter
+    ``build_right_hand_from_arm_spec()`` doesn't expose the new parameter
     directly, so apply it here via myo_sim's standalone utility instead.
     """
     from myo_sim.build.compose import apply_inertia_floor  # type: ignore[import-untyped]
@@ -1315,17 +1315,14 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     custom inertial/extra-collision-geom/site/freejoint combination the
     paddle and ball need.
 
-    Mesh/texture ``file=`` paths are given relative to ``spec.compiler.
-    meshdir`` (inherited from myo_sim's composed spec, so absolute paths
-    under myosuite's own ``assets/`` need an explicit relative conversion).
+    Mesh/texture ``file=`` paths are absolute: MuJoCo does not prepend
+    ``spec.compiler.meshdir`` to them, so the spec compiles from any working
+    directory and drive (relative paths depended on the working directory).
     """
-    import os
-
     wb = spec.worldbody
-    meshdir = spec.compiler.meshdir
 
-    def _rel(path: Path) -> str:
-        return os.path.relpath(str(path), meshdir)
+    def _abs(path: Path) -> str:
+        return path.resolve().as_posix()
 
     # myo_sim's composed spec names its ground-plane geom "floor" and the
     # right-hand grasp site "S_grasp_r"; TableTennisEnv looks them up as
@@ -1359,27 +1356,27 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     )
 
     spec.add_mesh(
-        name="tabletennis_table", file=_rel(_ASSETS / "tabletennis_table.obj")
+        name="tabletennis_table", file=_abs(_ASSETS / "tabletennis_table.obj")
     )
     spec.add_mesh(
-        name="tabletennis_net_mesh", file=_rel(_ASSETS / "tabletennis_net.obj")
+        name="tabletennis_net_mesh", file=_abs(_ASSETS / "tabletennis_net.obj")
     )
     spec.add_texture(
         name="tabletennis_tex",
         type=mujoco.mjtTexture.mjTEXTURE_2D,
-        file=_rel(_ASSETS / "tabletennis.png"),
+        file=_abs(_ASSETS / "tabletennis.png"),
     )
     tt_mat = spec.add_material(name="tabletennis_mat", specular=0.2, shininess=0.4)
     tt_mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "tabletennis_tex"
 
-    paddle_mesh = spec.add_mesh(name="paddle_mesh", file=_rel(_ASSETS / "paddle.obj"))
+    paddle_mesh = spec.add_mesh(name="paddle_mesh", file=_abs(_ASSETS / "paddle.obj"))
     # Exact mesh inertia re-frames the geom onto principal axes and stands
     # paddle.obj (long in Z) as a stop-sign. Legacy keeps authored axes.
     paddle_mesh.inertia = mujoco.mjtMeshInertia.mjMESH_INERTIA_LEGACY
     spec.add_texture(
         name="paddle_tex",
         type=mujoco.mjtTexture.mjTEXTURE_2D,
-        file=_rel(_ASSETS / "paddle_1k.png"),
+        file=_abs(_ASSETS / "paddle_1k.png"),
     )
     paddle_mat = spec.add_material(name="paddle_mat", specular=0.2, shininess=0.4)
     paddle_mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "paddle_tex"
