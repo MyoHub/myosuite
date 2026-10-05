@@ -597,3 +597,47 @@ def test_deepmimic_reward_root_terms_only_for_free_root(
     _mimic_deepmimic_reward(_ENTITY[variant], variant, clip, float(env.step_dt))(env)
     assert all(arg is not None for arg in seen["root"]) == has_root
     assert all(arg is None for arg in seen["root"]) == (not has_root)
+
+
+def test_fullbody_viewer_follows_the_pelvis_and_keeps_mjlab_defaults_elsewhere() -> (
+    None
+):
+    """The full body gets the tracking camera; the bimanual env keeps mjlab's default."""
+    from mjlab.viewer import ViewerConfig
+
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    full = _make_env("fullbody", _synthetic_clip("fullbody"), num_envs=1)
+    bimanual = _make_env("bimanual", _synthetic_clip("bimanual"), num_envs=1)
+    try:
+        viewer = full.cfg.viewer
+        assert viewer.origin_type == ViewerConfig.OriginType.ASSET_BODY
+        assert (viewer.entity_name, viewer.body_name) == (_ENTITY["fullbody"], "pelvis")
+        # The image size stays at mjlab's default, so existing renders keep their shape.
+        default = ViewerConfig()
+        assert (viewer.width, viewer.height) == (default.width, default.height)
+        assert bimanual.cfg.viewer.origin_type == default.origin_type
+    finally:
+        full.close()
+        bimanual.close()
+    custom = mimic.mimic_viewer_cfg("robot", body_name="head", width=1280, azimuth=10.0)
+    assert (custom.body_name, custom.width, custom.azimuth) == ("head", 1280, 10.0)
+
+
+def test_clip_bank_partial_reset_uses_the_clips_of_the_reset_envs() -> None:
+    """Resetting some envs of a multi-clip bank gathers their reference from their own clips."""
+    clips = (
+        _synthetic_clip("fullbody", n_frames=60),
+        _synthetic_clip("fullbody", n_frames=90),
+        _synthetic_clip("fullbody", n_frames=75),
+    )
+    env = _make_env("fullbody", clips, num_envs=6)
+    try:
+        env.reset()
+        action = torch.zeros(env.num_envs, sum(env.action_manager.action_term_dim))
+        for ids in ([1, 4], [0], [2, 3, 5], [0, 1, 2, 3, 4, 5]):
+            env.step(action)
+            env.reset(env_ids=torch.tensor(ids, device=env.device))
+        assert env.observation_manager.compute_group("actor").shape[0] == env.num_envs
+    finally:
+        env.close()

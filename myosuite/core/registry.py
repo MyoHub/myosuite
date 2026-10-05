@@ -28,6 +28,9 @@ _ENV_REGISTRY: dict[str, dict[str, Any]] = {}
 _MJ_INSTABILITY_WRAPPER_ENTRY_POINT = (
     "myosuite.envs.wrappers:MjInstabilityTerminationWrapper"
 )
+_ATTRIBUTE_FORWARDING_WRAPPER_ENTRY_POINT = (
+    "myosuite.envs.wrappers:AttributeForwardingWrapper"
+)
 
 
 def _append_default_wrappers(
@@ -36,20 +39,16 @@ def _append_default_wrappers(
 ) -> tuple[Any, ...]:
     """Append default wrapper specs while preserving caller-provided wrappers."""
     wrappers = tuple(additional_wrappers or ())
-    if not wrap_mj_instability_termination:
-        return wrappers
-    if any(
-        getattr(spec, "entry_point", None) == _MJ_INSTABILITY_WRAPPER_ENTRY_POINT
-        for spec in wrappers
-    ):
-        return wrappers
-    return wrappers + (
-        WrapperSpec(
-            name="MjInstabilityTerminationWrapper",
-            entry_point=_MJ_INSTABILITY_WRAPPER_ENTRY_POINT,
-            kwargs={},
-        ),
+    # The instability wrapper is the outermost one and forwards public attributes;
+    # without it, a plain forwarding wrapper takes that place.
+    entry_point, name = (
+        (_MJ_INSTABILITY_WRAPPER_ENTRY_POINT, "MjInstabilityTerminationWrapper")
+        if wrap_mj_instability_termination
+        else (_ATTRIBUTE_FORWARDING_WRAPPER_ENTRY_POINT, "AttributeForwardingWrapper")
     )
+    if any(getattr(spec, "entry_point", None) == entry_point for spec in wrappers):
+        return wrappers
+    return wrappers + (WrapperSpec(name=name, entry_point=entry_point, kwargs={}),)
 
 
 def register(env_spec: EnvSpec, **kwargs: Any) -> str:
