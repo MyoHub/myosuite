@@ -26,6 +26,7 @@ import xml.etree.ElementTree as ET
 import mujoco
 from ml_collections import config_dict
 
+from myosuite.core.model_builder import cached_spec
 from myosuite.integrations.musclemimic.bimanual_model import (
     FINGER_JOINT_TOKENS,
     FINGER_MUSCLE_TOKENS,
@@ -63,6 +64,14 @@ FULLBODY_BODY2SITES_FOR_MIMIC = {
     "talus_r": "right_ankle_mimic",
     "toes_r": "right_toes_mimic",
 }
+
+# Arena (contacts, constraint rows, solver scratch) of each CPU ``MjData``. The
+# musclemimic_models MJCF declares legacy ``<size nconmax="2000" njmax="5000">``,
+# from which MuJoCo reserves 1.3 GB per MjData (committed up front on Windows).
+# Measured high-water mark with MuJoCo 3.11: 0.48 MiB over seeded rollouts and
+# clip resets, 1.46 MiB with every contact candidate and joint limit active at
+# once (analytic bound 296 contacts / 1176 rows, about 1.6 MiB).
+MIMIC_FULLBODY_ARENA_BYTES = 16 * 2**20
 
 
 def resolve_mimic_fullbody_xml(config: config_dict.ConfigDict) -> str:
@@ -258,7 +267,7 @@ def _load_spec_with_floor_only_upstream_scene(xml_path: str) -> mujoco.MjSpec:
 
 def _apply_mimic_fullbody_spec_changes(
     spec: mujoco.MjSpec,
-    config: config_dict.ConfigDict,
+    disable_fingers: bool,
     finger_joint_tokens: tuple[str, ...],
     finger_muscle_tokens: tuple[str, ...],
 ) -> mujoco.MjSpec:
@@ -266,17 +275,17 @@ def _apply_mimic_fullbody_spec_changes(
 
     Args:
         spec: Loaded, uncompiled full-body MjSpec.
-        config: At least ``disable_fingers`` (see
-            :func:`default_mimic_fullbody_config`).
+        disable_fingers: Remove the finger joints, muscles and tendons
+            (``config.disable_fingers``, see :func:`default_mimic_fullbody_config`).
         finger_joint_tokens: Finger joint names to remove when
-            ``config.disable_fingers``, in the naming convention of *spec*.
+            *disable_fingers*, in the naming convention of *spec*.
         finger_muscle_tokens: Finger muscle/tendon name substrings to remove,
             in the naming convention of *spec*.
 
     Returns:
         The same spec, edited in place.
     """
-    if config.disable_fingers:
+    if disable_fingers:
         joints_to_remove = [j for j in spec.joints if j.name in finger_joint_tokens]
         for joint in joints_to_remove:
             spec.delete(joint)
@@ -312,6 +321,19 @@ def _apply_mimic_fullbody_spec_changes(
     return spec
 
 
+# Kept from the first load: the edited full body is small (~6 MiB) and an mjlab
+# env construction loads it several times.
+@cached_spec(min_uses=1)
+def _mimic_fullbody_spec(xml_path: str, disable_fingers: bool) -> mujoco.MjSpec:
+    """Edited full-body spec of *xml_path* (absolute), loaded once per process."""
+    # Keep only ground from the upstream MuscleMimic scene, preserving floor
+    # physics/height from that source scene.
+    spec = _load_spec_with_floor_only_upstream_scene(xml_path)
+    return _apply_mimic_fullbody_spec_changes(
+        spec, disable_fingers, FINGER_JOINT_TOKENS, FINGER_MUSCLE_TOKENS
+    )
+
+
 def build_mimic_fullbody_spec(
     config: config_dict.ConfigDict,
 ) -> tuple[mujoco.MjSpec, str]:
@@ -323,7 +345,8 @@ def build_mimic_fullbody_spec(
     ctrlrange) when it isn't. The native fallback is NOT bit-exact parity
     with the external MuscleMimic codebase's model — see
     :func:`build_native_mimic_fullbody_spec` — but is usable without the
-    optional dependency.
+    optional dependency. The MJCF is loaded and edited once per path and
+    ``disable_fingers`` in a process; every call returns a private copy.
 
     Args:
         config: At least ``disable_fingers`` and ``sim_dt`` (see
@@ -342,16 +365,40 @@ def build_mimic_fullbody_spec(
             return build_native_mimic_fullbody_spec(config), "myo_sim:myofullbody"
 
     xml_path = resolve_mimic_fullbody_xml(config)
-    # Keep only ground from the upstream MuscleMimic scene, preserving floor
-    # physics/height from that source scene.
-    spec = _load_spec_with_floor_only_upstream_scene(xml_path)
-    _apply_mimic_fullbody_spec_changes(
-        spec, config, FINGER_JOINT_TOKENS, FINGER_MUSCLE_TOKENS
+    spec = _mimic_fullbody_spec(
+        Path(xml_path).absolute().as_posix(), bool(config.disable_fingers)
     )
     return spec, xml_path
 
 
+@cached_spec()
+def _native_fullbody_spec(disable_fingers: bool) -> mujoco.MjSpec:
+    """Native full-body spec, built once per ``disable_fingers`` (the only config input)."""
+    return _build_native_mimic_fullbody_spec(
+        config_dict.create(disable_fingers=disable_fingers)
+    )
+
+
 def build_native_mimic_fullbody_spec(config: config_dict.ConfigDict) -> mujoco.MjSpec:
+    """Build a myo_sim-native Mimic-compatible full-body MjSpec.
+
+    See :func:`_build_native_mimic_fullbody_spec`. The spec is built once per
+    ``disable_fingers`` in a process; every call returns a private copy once it
+    is kept (see :func:`~myosuite.core.model_builder.cached_spec`).
+
+    Args:
+        config: At least ``disable_fingers`` (see
+            :func:`default_mimic_fullbody_config`).
+
+    Returns:
+        Edited, uncompiled MjSpec.
+    """
+    return _native_fullbody_spec(bool(config.disable_fingers))
+
+
+def _build_native_mimic_fullbody_spec(
+    config: config_dict.ConfigDict,
+) -> mujoco.MjSpec:
     """Build a myo_sim-native Mimic-compatible full-body MjSpec.
 
     Applies the same edits as :func:`build_mimic_fullbody_spec` (mimic
@@ -399,13 +446,20 @@ def build_native_mimic_fullbody_spec(config: config_dict.ConfigDict) -> mujoco.M
         joint_tokens = FINGER_JOINT_TOKENS
         muscle_tokens = FINGER_MUSCLE_TOKENS
 
-    return _apply_mimic_fullbody_spec_changes(spec, config, joint_tokens, muscle_tokens)
+    return _apply_mimic_fullbody_spec_changes(
+        spec, bool(config.disable_fingers), joint_tokens, muscle_tokens
+    )
 
 
 def compile_mimic_fullbody_mjmodel(
     config: config_dict.ConfigDict,
 ) -> tuple[mujoco.MjModel, mujoco.MjSpec, str]:
     """Compile a CPU :class:`mujoco.MjModel` matching ``MyoFullBody`` (no MJX).
+
+    The returned spec carries an explicit arena size (``config.arena_memory``,
+    default :data:`MIMIC_FULLBODY_ARENA_BYTES`; ``None`` keeps the MJCF's
+    legacy sizing). ``nconmax``/``njmax`` stay on the model: the MJX Warp path
+    reads ``njmax``, and mjlab sizes its Warp buffers from ``SimulationCfg``.
 
     Args:
         config: At least ``disable_fingers`` and ``sim_dt`` (see
@@ -415,6 +469,9 @@ def compile_mimic_fullbody_mjmodel(
         Compiled model, ``MjSpec`` after edits, and resolved XML path.
     """
     spec, xml_path = build_mimic_fullbody_spec(config)
+    arena = getattr(config, "arena_memory", MIMIC_FULLBODY_ARENA_BYTES)
+    if arena is not None:
+        spec.memory = int(arena)
 
     mj_model = spec.compile()
     # Match MuscleMimic ``MyoFullBody`` (CPU): LocoEnv only applies
@@ -433,7 +490,8 @@ def default_mimic_fullbody_config() -> config_dict.ConfigDict:
     (
     :class:`~myosuite.envs.myo.backends.mjx.musclemimic_fullbody_env.MjxMuscleMimicFullbodyEnv`
     ). Extra keys (observation toggles, ``target_site_range``, ``nconmax``)
-    are for that MJX task wrapper.
+    are for that MJX task wrapper. ``arena_memory`` is the per-``MjData``
+    arena in bytes (see :data:`MIMIC_FULLBODY_ARENA_BYTES`).
     """
     tracking = MimicTrackingConfig()
 
@@ -449,6 +507,7 @@ def default_mimic_fullbody_config() -> config_dict.ConfigDict:
         model_disableflags=int(mujoco.mjtDisableBit.mjDSBL_EULERDAMP),
         model_path=None,
         disable_fingers=True,
+        arena_memory=MIMIC_FULLBODY_ARENA_BYTES,
         nconmax=4096,
         enable_joint_pos_observations=True,
         enable_joint_vel_observations=True,
@@ -475,6 +534,7 @@ default_musclemimic_fullbody_config = default_mimic_fullbody_config
 
 __all__ = [
     "FULLBODY_BODY2SITES_FOR_MIMIC",
+    "MIMIC_FULLBODY_ARENA_BYTES",
     "build_mimic_fullbody_spec",
     "resolve_mimic_fullbody_xml",
     "compile_mimic_fullbody_mjmodel",

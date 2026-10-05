@@ -32,6 +32,7 @@ Example::
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
@@ -79,21 +80,56 @@ class VariantSpec:
 # ---------------------------------------------------------------------------
 
 
+def check_control_step(n_substeps: int, sim_dt: float, ctrl_dt: float) -> None:
+    """Check that one control step of ``ctrl_dt`` is ``n_substeps`` steps of ``sim_dt``.
+
+    Args:
+        n_substeps: Physics steps per control step.
+        sim_dt: Physics timestep in seconds.
+        ctrl_dt: Control timestep in seconds.
+
+    Raises:
+        ValueError: If ``n_substeps < 1`` or ``n_substeps * sim_dt != ctrl_dt``.
+    """
+    simulated = n_substeps * sim_dt
+    if n_substeps < 1 or not math.isclose(
+        simulated, ctrl_dt, rel_tol=1e-9, abs_tol=1e-12
+    ):
+        raise ValueError(
+            f"Control step mismatch: ctrl_dt={ctrl_dt} s but n_substeps * sim_dt = "
+            f"{n_substeps} * {sim_dt} = {simulated} s. Every backend simulates "
+            "n_substeps steps of sim_dt per control step, so ctrl_dt must equal "
+            "their product."
+        )
+
+
 @dataclass
 class BackendConfig:
     """Physics-backend-specific settings.
+
+    One rule on every backend: a control step is ``n_substeps`` physics steps of
+    ``sim_dt`` (the CPU and MJX envs set the model timestep to ``sim_dt``, mjlab
+    uses ``sim_dt`` and ``ctrl_dt``), so ``ctrl_dt`` must equal
+    ``n_substeps * sim_dt``.  Observations and rewards scaled by the control
+    step (e.g. ``joint_vel``) use ``ctrl_dt``.
 
     Args:
         n_substeps: Number of MuJoCo simulation steps per control step.
         ctrl_dt: Control timestep in seconds.
         sim_dt: Simulation timestep in seconds.
         extra: Additional backend-specific key-value pairs.
+
+    Raises:
+        ValueError: If ``ctrl_dt != n_substeps * sim_dt``.
     """
 
     n_substeps: int = 10
     ctrl_dt: float = 0.01
     sim_dt: float = 0.001
     extra: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        check_control_step(self.n_substeps, self.sim_dt, self.ctrl_dt)
 
 
 @dataclass
@@ -272,7 +308,8 @@ class TaskConfig:
         reward: Reward term and weight specification.
         actuators: List of actuator group specs (one per muscle/motor group).
         fragment_versions: Maps fragment name → expected version integer.
-            CI fails if the installed fragment version does not match.
+            ``scripts/check_fragment_compat.py`` fails if an installed
+            fragment is newer than the declared version.
     """
 
     model: str = "elbow_standard"
@@ -287,8 +324,9 @@ class TaskConfig:
         default_factory=lambda: [ActuatorGroupSpec()]
     )
 
-    # Subclasses declare fragment version constraints here so CI can detect
-    # stale task configs when a fragment XML is updated.
+    # Subclasses declare fragment version constraints here so that
+    # scripts/check_fragment_compat.py can detect stale task configs when a
+    # fragment XML is updated.
     fragment_versions: ClassVar[dict[str, int]] = {}
 
     # Subclasses declare muscle-condition variants here.  Each VariantSpec
