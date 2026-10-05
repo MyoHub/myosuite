@@ -225,9 +225,9 @@ class TestChaseTagVsRegistry:
         Both agents are buried 2 m under the floor with 5 m contact margins and
         10 rad joint margins, so every pair and joint limit is active. At a
         corner every body geom touches the floor and the three corner fence
-        geoms, the most a body can reach (~11 MiB used): >= 2.5x headroom. At
-        the centre every body geom touches all eight fences, which no state
-        reaches (~27 MiB used): it must still fit.
+        geoms, the most a body can reach (~11-15 MiB used, depending on the
+        platform): >= 2.5x headroom. At the centre every body geom touches all
+        eight fences, which no state reaches (~27-36 MiB used): it must still fit.
         """
         require_musclemimic_models()
         import mujoco

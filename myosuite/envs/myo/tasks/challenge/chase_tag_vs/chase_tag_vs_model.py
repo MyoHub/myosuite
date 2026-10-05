@@ -64,8 +64,9 @@ _INVISIBLE_RGBA: list[float] = [0.0, 0.0, 0.0, 0.0]
 # lying and fence-penetrating poses; 11.4 MiB with every geom of both agents
 # touching the floor and the three fence geoms of one corner (the most a body
 # can reach) at the per-pair contact cap; 27 MiB with every geom touching all
-# eight fences (unreachable).
-CHASETAG_VS_FULLBODY_ARENA_BYTES = 32 * 2**20
+# eight fences (unreachable). CI on Windows and macOS (MuJoCo 3.11) measured 15.2 MiB at the
+# corner, so the arena is 64 MiB, like the full-body FBP2 scene: >= 2.5x headroom there.
+CHASETAG_VS_FULLBODY_ARENA_BYTES = 64 * 2**20
 
 # A single-agent spec builder returns the standalone (pre-attach) MjSpec
 # plus its source model's keyframe-0 qpos (or None if it ships no keyframe).
