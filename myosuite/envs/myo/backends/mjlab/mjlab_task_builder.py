@@ -85,8 +85,9 @@ class MyoMuscleActivationActionCfg:
 class MyoMuscleActivationAction:
     """Map policy actions to muscle control targets.
 
-    The default ``sigmoid`` mode uses the same normalisation as WalkEnvV0 on
-    CPU: ``ctrl = sigmoid(5 * (a - 0.5))``.  ``direct`` mode clamps actions to
+    The default ``sigmoid`` mode uses the normalisation of the pose and reach envs
+    on CPU: ``ctrl = sigmoid(5 * (a - 0.5))``. The leg walk envs do not use it:
+    their actions are ``[0, 1]`` activations used as controls directly.  ``direct`` mode clamps actions to
     ``[-1, 1]`` for checkpoint inference paths that already emit MuJoCo controls.
     Both modes write directly to tendon effort targets after resolving the
     actuator-to-tendon mapping from the entity.

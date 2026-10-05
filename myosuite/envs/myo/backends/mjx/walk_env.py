@@ -164,10 +164,10 @@ class MjxWalkEnv(MyoMjxEnvBase):
     def _normalize_action(self, action: jax.Array) -> jax.Array:
         """Clip muscle activations to [0, 1] — matches the CPU env ctrlrange clip.
 
-        ``WalkEnvV0`` (CPU) clips actions to ``ctrlrange [0, 1]`` via MuJoCo.
+        The CPU leg walk env uses actions in ``[0, 1]`` as controls directly.
         We replicate this with a simple clip so that SAR-generated activations
         in [0, 1] are passed through unchanged (instead of the default sigmoid
-        which would squash them to [0.37, 0.63]).
+        which would squash them to [0.076, 0.924]).
 
         Args:
             action: Raw muscle activation vector in [0, 1].

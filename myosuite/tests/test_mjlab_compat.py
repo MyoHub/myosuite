@@ -309,11 +309,11 @@ class TestTermFunctionsWithTorch:
         assert torch.all(torch.isfinite(result["dense"]))
 
     def test_joint_penalty_finite(self) -> None:
-        """joint_penalty must return a finite scalar penalty."""
+        """joint_penalty must return a finite penalty for every env."""
         from myosuite.terms.base_reward import joint_penalty
 
         result = joint_penalty(self.accessor, {}, weight=50.0)
-        assert torch.isfinite(torch.tensor(float(result["dense"])))
+        assert torch.all(torch.isfinite(result["dense"]))
 
     def test_reach_reward_finite(self) -> None:
         """reach_reward must return a finite dense value."""

@@ -29,17 +29,19 @@ Supported source frameworks
 
 Usage
 -----
+    # Run it as a module: started as a file, myosuite/utils/html.py would shadow the
+    # stdlib ``html`` module that torch.onnx needs.
     # Export an SB3 policy (with the VecNormalize stats it was trained behind):
-    python export_onnx.py export --framework sb3 --checkpoint walk_sac.zip \
+    python -m myosuite.utils.export_onnx export --framework sb3 --checkpoint walk_sac.zip \
         --vecnormalize vecnormalize.pkl --obs-dim 243 --act-dim 80 \
         --output walk_policy.onnx
 
     # Export an RSL-RL (mjlab) policy (architecture read from the checkpoint):
-    python export_onnx.py export --framework rslrl --checkpoint walk_ppo.pt \
+    python -m myosuite.utils.export_onnx export --framework rslrl --checkpoint walk_ppo.pt \
         --obs-dim 243 --act-dim 80 --output walk_policy.onnx
 
     # Verify an exported ONNX policy on the CPU env:
-    python export_onnx.py verify --onnx walk_policy.onnx --steps 200
+    python -m myosuite.utils.export_onnx verify --onnx walk_policy.onnx --steps 200
 
 ONNX model interface
 --------------------

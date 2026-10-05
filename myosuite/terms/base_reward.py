@@ -132,10 +132,10 @@ def reach_reward(
     """
     xp = accessor.array_module()
     tip_pos = accessor.site_xpos(task_state["tip_site_ids"])
-    # Use mean tip position when multiple sites are provided
+    # Mean over the site axis only, so a leading env-batch axis is kept
     if tip_pos.ndim > 1:
-        tip_pos = xp.mean(tip_pos, axis=0)
-    dist = xp.linalg.norm(task_state["target_pos"] - tip_pos)
+        tip_pos = xp.mean(tip_pos, axis=-2)
+    dist = xp.linalg.norm(task_state["target_pos"] - tip_pos, axis=-1)
     reach = -dist
     bonus = 1.0 * (dist < reach_thd) + 1.0 * (
         dist < _REACH_BONUS_FAR_MULTIPLIER * reach_thd
@@ -424,7 +424,8 @@ def joint_penalty(
     # a scalar min bound universally across numpy, jax, and torch.
     violation = xp.sum(
         xp.clip(lo + margin - qpos, 0.0, None)
-        + xp.clip(qpos - (hi - margin), 0.0, None)
+        + xp.clip(qpos - (hi - margin), 0.0, None),
+        axis=-1,
     )
     penalty = -weight * violation
     return {"joint_penalty": penalty, "dense": penalty, "solved": False, "done": False}

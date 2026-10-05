@@ -126,7 +126,7 @@ myoFinger  (4 DoF, 5–6 muscles)
      - ✓
 
 Each base environment also exposes ``myoSarc…`` and ``myoFati…`` variants
-(8 total IDs for this model).
+(12 total IDs for this model).
 
 
 myoElbow  (2 DoF, 6 muscles)
@@ -266,7 +266,7 @@ myoHand  (23 DoF, 39 muscles)
 With all three variants each row generates ``myoSarc…``, ``myoFati…``, and
 ``myoReaf…`` IDs.  The full hand environment count is **14 × 4 = 56 IDs**.
 
-**MyoChallenge hand tasks** (no automatic variant registration):
+**MyoChallenge hand tasks** (several also register ``myoSarc…``/``myoFati…`` variants, 40 variant IDs in total):
 
 .. list-table::
    :header-rows: 1
@@ -300,8 +300,8 @@ With all three variants each row generates ``myoSarc…``, ``myoFati…``, and
      - Bimanual object manipulation
 
 
-myoArm  (27 DoF, 63 muscles — hand-free variant: 20 DoF, 32 muscles)
------------------------------------------------------------------------
+myoArm  (hand-free variant used here: 18 DoF, 50 muscles; full arm: 27 DoF, 63 muscles)
+----------------------------------------------------------------------------------------
 
 .. list-table::
    :header-rows: 1
@@ -389,7 +389,7 @@ myoLeg  (10 joints, 20 DoF, 80 muscles)
      - Soccer ball kicking (phase 2)
 
 
-myoTorso  (18 joints, 210 muscles)
+myoTorso  (18 joints, 216 muscles)
 -------------------------------------
 
 .. list-table::
@@ -419,10 +419,9 @@ mjlab (GPU)
 Install ``pip install -e ".[mjlab]"`` (see :doc:`install` for matching the torch
 build to your driver's CUDA version) and train with the CPU ``env_id``::
 
-   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen --env.scene.num-envs 1024
+   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --env.scene.num-envs 1024
 
-Registered mjlab IDs live in
-``myosuite.envs.myo.backends.mjlab.REGISTERED_TASKS``.
+List the registered mjlab IDs with ``mjlab.tasks.registry.list_tasks()``.
 
 
 MJX (experimental)
