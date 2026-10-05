@@ -47,6 +47,11 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import torch
 
+# Re-exported: the batched full-body obs builder used to live in this module.
+from myosuite.integrations.musclemimic.fullbody_obs_torch import (
+    TorchFullbodyObsAdapter,
+)
+
 if TYPE_CHECKING:
     from myosuite.integrations.musclemimic.actor_onnx import OnnxActorSession
     from myosuite.integrations.musclemimic.actor_torch import (
@@ -213,7 +218,7 @@ class MjlabPolicyRunner:
         return torch.clamp(mean + noise * std, -1.0, 1.0)
 
 
-__all__ = ["MjlabPolicyRunner"]
+__all__ = ["MjlabPolicyRunner", "TorchFullbodyObsAdapter"]
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +232,6 @@ try:
 
     import wandb
     from mjlab.rl import MjlabOnPolicyRunner
-    from mjlab.utils.lab_api.math import axis_angle_from_quat, quat_from_matrix
     from tensordict import TensorDict
 
     import torch.nn as nn
@@ -239,7 +243,6 @@ try:
         resolve_checkpoint_ref,
     )
     from myosuite.integrations.musclemimic.fullbody_local_policy import (
-        FullbodyObsAdapter,
         load_local_policy_artifacts,
     )
     from myosuite.utils.onnx_checkpoint import (
@@ -385,242 +388,6 @@ class OnnxCheckpointingMjlabRunner(MjlabOnPolicyRunner):
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()
-
-
-# ---------------------------------------------------------------------------
-# TorchFullbodyObsAdapter — GPU-accelerated fullbody observation builder
-# ---------------------------------------------------------------------------
-
-
-class TorchFullbodyObsAdapter:
-    """Torch port of :class:`~...fullbody_local_policy.FullbodyObsAdapter`.
-
-    Moves all index arrays to *device* at construction time and uses batched
-    Torch operations for the per-step observation build, for GPU-parallel
-    training; CPU path uses the NumPy
-    :class:`~...fullbody_local_policy.FullbodyObsAdapter` directly.
-    """
-
-    def __init__(self, adapter: FullbodyObsAdapter, *, device: torch.device) -> None:
-        self.device = device
-        self._goal = adapter._goal
-        self._obs_flags = dict(adapter._obs_flags)
-        self._traj_len = int(adapter._traj_len)
-        self.goal_dim = int(adapter.goal_dim)
-
-        def _li(v: np.ndarray) -> torch.Tensor:
-            return torch.as_tensor(np.asarray(v, dtype=np.int64), device=device)
-
-        def _lf(v: np.ndarray) -> torch.Tensor:
-            return torch.as_tensor(np.asarray(v, dtype=np.float32), device=device)
-
-        self._root_qpos_idx_full = _li(adapter._root_qpos_idx_full)
-        self._root_qvel_idx_full = _li(adapter._root_qvel_idx_full)
-        self._root_qpos_idx_xyz = _li(adapter._root_qpos_idx_xyz)
-        self._qpos_ind = _li(adapter._qpos_ind)
-        self._qvel_ind = _li(adapter._qvel_ind)
-        self._qpos_non_root_ind = _li(adapter._qpos_non_root_ind)
-        self._qvel_non_root_ind = _li(adapter._qvel_non_root_ind)
-        self._actuator_ids = _li(adapter._actuator_ids)
-        self._touch_sensor_ids = _li(adapter._touch_sensor_ids)
-        self._site_ids = _li(adapter._site_ids)
-        self._traj_site_ids = _li(adapter._traj_site_ids)
-        self._sim_site_bodyid = _li(adapter._sim_site_bodyid)
-        self._sim_body_rootid = _li(adapter._sim_body_rootid)
-        self._traj_site_bodyid = _li(adapter._traj_site_bodyid)
-        self._traj_body_rootid = _li(adapter._traj_body_rootid)
-        self._traj_site_xpos = _lf(adapter._traj_site_xpos)
-        self._traj_site_xmat = _lf(adapter._traj_site_xmat)
-        self._traj_cvel = _lf(adapter._traj_cvel)
-        self._traj_subtree_com = _lf(adapter._traj_subtree_com)
-        self._clip_qpos = _lf(adapter._clip.qpos)
-        self._clip_qvel = (
-            _lf(adapter._clip.qvel) if adapter._clip.qvel is not None else None
-        )
-        sensor_adr = np.asarray(adapter._model.sensor_adr, dtype=np.int64)
-        sensor_dim = np.asarray(adapter._model.sensor_dim, dtype=np.int64)
-        self._touch_sensor_slices = tuple(
-            (int(sensor_adr[int(s)]), int(sensor_adr[int(s)] + sensor_dim[int(s)]))
-            for s in np.asarray(adapter._touch_sensor_ids, dtype=np.int64)
-        )
-
-    def _calc_site_velocities(
-        self,
-        *,
-        site_ids,
-        site_xpos,
-        cvel_parent,
-        subtree_com_root,
-        site_bodyid,
-        body_rootid,
-    ) -> torch.Tensor:
-        parent_body_id = site_bodyid[site_ids]
-        root_body_id = body_rootid[parent_body_id]
-        body_cvel = cvel_parent[:, parent_body_id, :]
-        root_com = subtree_com_root[:, root_body_id, :]
-        rpos = site_xpos[:, site_ids, :] - root_com
-        lin_vel = body_cvel[..., 3:] - torch.cross(rpos, body_cvel[..., :3], dim=-1)
-        return torch.cat([body_cvel[..., :3], lin_vel], dim=-1)
-
-    def _relative_site_quantities(
-        self,
-        *,
-        site_ids,
-        site_xpos,
-        site_xmat,
-        cvel_parent,
-        subtree_com_root,
-        site_bodyid,
-        body_rootid,
-    ):
-        site_vel = self._calc_site_velocities(
-            site_ids=site_ids,
-            site_xpos=site_xpos,
-            cvel_parent=cvel_parent,
-            subtree_com_root=subtree_com_root,
-            site_bodyid=site_bodyid,
-            body_rootid=body_rootid,
-        )
-        main_pos = site_xpos[:, int(site_ids[0].item()), :]
-        main_mat = site_xmat[:, int(site_ids[0].item()), :].reshape(-1, 3, 3)
-        main_vel = site_vel[:, 0, :]
-        other_ids = site_ids[1:]
-        other_pos = site_xpos[:, other_ids, :]
-        other_mat = site_xmat[:, other_ids, :].reshape(site_xmat.shape[0], -1, 3, 3)
-        other_vel = site_vel[:, 1:, :]
-        site_rpos = other_pos - main_pos.unsqueeze(1)
-        rel_rot = torch.einsum("bij,bnjk->bnik", main_mat.transpose(1, 2), other_mat)
-        rel_quat = quat_from_matrix(rel_rot.reshape(-1, 3, 3))
-        site_rangles = axis_angle_from_quat(rel_quat).reshape(
-            rel_rot.shape[0], rel_rot.shape[1], 3
-        )
-        rel_lin = torch.einsum(
-            "bij,bnj->bni", main_mat, main_vel[:, None, 3:] - other_vel[:, :, 3:]
-        )
-        other_ang = torch.einsum("bnik,bnk->bni", rel_rot, other_vel[:, :, :3])
-        site_rvel = torch.cat([other_ang - main_vel[:, None, :3], rel_lin], dim=-1)
-        return site_rpos, site_rangles, site_rvel
-
-    def _traj_goal_obs(self, frame_idx: torch.Tensor) -> torch.Tensor:
-        goal = self._goal
-        batch = int(frame_idx.shape[0])
-        offsets = torch.arange(
-            goal.n_step_lookahead, device=self.device, dtype=torch.long
-        )
-        future = torch.clamp(
-            frame_idx[:, None] + offsets[None, :] * int(goal.n_step_stride),
-            max=self._traj_len - 1,
-        )
-        flat = future.reshape(-1)
-        qpos = self._clip_qpos[flat].reshape(batch, goal.n_step_lookahead, -1)
-        if self._clip_qvel is not None:
-            qvel = self._clip_qvel[flat].reshape(batch, goal.n_step_lookahead, -1)
-        else:
-            qvel = torch.zeros(
-                batch,
-                goal.n_step_lookahead,
-                int(self._qvel_ind.shape[0]),
-                dtype=torch.float32,
-                device=self.device,
-            )
-        site_rpos, site_rangles, site_rvel = self._relative_site_quantities(
-            site_ids=self._traj_site_ids,
-            site_xpos=self._traj_site_xpos[flat],
-            site_xmat=self._traj_site_xmat[flat],
-            cvel_parent=self._traj_cvel[flat],
-            subtree_com_root=self._traj_subtree_com[flat],
-            site_bodyid=self._traj_site_bodyid,
-            body_rootid=self._traj_body_rootid,
-        )
-        site_rpos = site_rpos.reshape(batch, goal.n_step_lookahead, -1)
-        site_rangles = site_rangles.reshape(batch, goal.n_step_lookahead, -1)
-        site_rvel = site_rvel.reshape(batch, goal.n_step_lookahead, -1)
-        if goal.use_concise_lookahead:
-            ref_qpos = self._clip_qpos[frame_idx]
-            ref_root_pos = ref_qpos[:, self._root_qpos_idx_xyz]
-            ref_root_vel = (
-                self._clip_qvel[frame_idx]
-                if self._clip_qvel is not None
-                else torch.zeros(
-                    batch,
-                    int(self._qvel_ind.shape[0]),
-                    dtype=torch.float32,
-                    device=self.device,
-                )
-            )[:, self._root_qvel_idx_full]
-            parts: list[torch.Tensor] = [site_rpos[:, 0, :]]
-            for s in range(1, goal.n_step_lookahead):
-                parts += [
-                    qpos[:, s, :][:, self._root_qpos_idx_xyz] - ref_root_pos,
-                    qvel[:, s, :][:, self._root_qvel_idx_full] - ref_root_vel,
-                    site_rpos[:, s, :],
-                ]
-            return torch.cat(parts, dim=1)
-        return torch.cat(
-            [
-                qpos[:, :, self._qpos_ind].reshape(batch, -1),
-                qvel[:, :, self._qvel_ind].reshape(batch, -1),
-                site_rpos.reshape(batch, -1),
-                site_rangles.reshape(batch, -1),
-                site_rvel.reshape(batch, -1),
-            ],
-            dim=1,
-        )
-
-    def build(self, data: Any, frame_idx: torch.Tensor) -> torch.Tensor:
-        goal = self._goal
-        obs: list[torch.Tensor] = []
-        root_qpos = data.qpos[:, self._root_qpos_idx_full]
-        root_qvel = data.qvel[:, self._root_qvel_idx_full]
-        if self._obs_flags["enable_joint_pos_observations"]:
-            obs.extend([root_qpos[:, 2:], data.qpos[:, self._qpos_non_root_ind]])
-        if self._obs_flags["enable_joint_vel_observations"]:
-            obs.extend([root_qvel, data.qvel[:, self._qvel_non_root_ind]])
-        muscle_blocks: list[torch.Tensor] = []
-        flag_map = [
-            ("enable_muscle_length_observations", data.actuator_length),
-            ("enable_muscle_velocity_observations", data.actuator_velocity),
-            ("enable_muscle_force_observations", data.actuator_force),
-            ("enable_muscle_excitation_observations", data.ctrl),
-            ("enable_muscle_activation_observations", data.act),
-        ]
-        for flag, arr in flag_map:
-            if self._obs_flags[flag]:
-                muscle_blocks.append(arr[:, self._actuator_ids])
-        if muscle_blocks:
-            obs.append(
-                torch.stack(muscle_blocks, dim=2).reshape(data.qpos.shape[0], -1)
-            )
-        if self._touch_sensor_slices:
-            obs.extend(
-                data.sensordata[:, s:e].sum(dim=1, keepdim=True)
-                for s, e in self._touch_sensor_slices
-            )
-        site_rpos, site_rangles, site_rvel = self._relative_site_quantities(
-            site_ids=self._site_ids,
-            site_xpos=data.site_xpos,
-            site_xmat=data.site_xmat,
-            cvel_parent=data.cvel,
-            subtree_com_root=data.subtree_com,
-            site_bodyid=self._sim_site_bodyid,
-            body_rootid=self._sim_body_rootid,
-        )
-        traj_obs = self._traj_goal_obs(frame_idx)
-        goal_parts: list[torch.Tensor] = []
-        if goal.enable_mimic_site_rpos_observations:
-            goal_parts.append(site_rpos.reshape(site_rpos.shape[0], -1))
-        goal_parts += [
-            site_rangles.reshape(site_rangles.shape[0], -1),
-            site_rvel.reshape(site_rvel.shape[0], -1),
-            traj_obs,
-        ]
-        if goal.enable_motion_phase:
-            goal_parts.append(
-                frame_idx.to(dtype=torch.float32).unsqueeze(1)
-                / float(max(self._traj_len, 1))
-            )
-        obs.append(torch.cat(goal_parts, dim=1))
-        return torch.cat(obs, dim=1).to(dtype=torch.float32)
 
 
 # ---------------------------------------------------------------------------
