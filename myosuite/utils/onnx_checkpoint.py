@@ -244,19 +244,42 @@ class OnnxPolicy:
         return None
 
 
+def _cpu_fatigue_models(env: Any) -> list[Any]:
+    """Fatigue models of the CPU envs behind *env*, one entry (or ``None``) per env.
+
+    Looks through gymnasium wrappers and SB3 VecEnvs: ``VecEnvWrapper``s
+    (``VecNormalize``, ...) via ``.venv``, then a ``DummyVecEnv``'s ``.envs``. A
+    ``SubprocVecEnv`` keeps its envs in other processes and yields none.
+    ``MyoGymnasiumEnv`` tasks keep the model in ``muscle_fatigue``, the
+    experimental ``ModularTaskEnv`` in ``_fatigue_model``.
+    """
+    while hasattr(env, "venv"):
+        env = env.venv
+    models = []
+    for sub_env in getattr(env, "envs", None) or [env]:
+        unwrapped = getattr(sub_env, "unwrapped", sub_env)
+        model = getattr(unwrapped, "muscle_fatigue", None)
+        if model is None:
+            model = getattr(unwrapped, "_fatigue_model", None)
+        models.append(model if hasattr(model, "state_dict") else None)
+    return models
+
+
 def get_env_fatigue_state(env: Any) -> dict[str, Any] | None:
     """Extract the current fatigue compartment state from an env's action terms.
 
-    Works for both the mjlab path (``ManagerBasedRlEnv`` with an action manager
-    whose terms expose ``_fatigue``) and the CPU path (``ModularTaskEnv`` with a
-    ``_fatigue_model`` attribute).
+    Works for the mjlab path (``ManagerBasedRlEnv`` with an action manager whose
+    terms expose ``_fatigue``) and the CPU path (``muscle_fatigue`` of a
+    ``MyoGymnasiumEnv`` task, ``_fatigue_model`` of ``ModularTaskEnv``), also
+    behind wrappers and in-process SB3 VecEnvs.
 
     Args:
-        env: Gymnasium-compatible env, possibly wrapped.
+        env: Gymnasium-compatible env, possibly wrapped, or an SB3 VecEnv.
 
     Returns:
-        Dict mapping action-term name → ``{"MA": ..., "MR": ..., "MF": ...}``,
-        or ``None`` when no active fatigue model is found.
+        Dict mapping action-term name → ``{"MA": ..., "MR": ..., "MF": ...}``
+        (CPU: ``"cpu"`` → that dict, or a list with one per VecEnv sub-env), or
+        ``None`` when no active fatigue model is found.
     """
     unwrapped = getattr(env, "unwrapped", env)
     action_manager = getattr(unwrapped, "action_manager", None)
@@ -267,18 +290,22 @@ def get_env_fatigue_state(env: Any) -> dict[str, Any] | None:
             if fatigue is not None:
                 states[term_name] = fatigue.state_dict()
         return states or None
-    # CPU path (ModularTaskEnv)
-    fatigue_model = getattr(unwrapped, "_fatigue_model", None)
-    if fatigue_model is not None:
-        return {"cpu": fatigue_model.state_dict()}
-    return None
+    # CPU path
+    models = _cpu_fatigue_models(env)
+    if not models or any(model is None for model in models):
+        return None
+    cpu_states = [model.state_dict() for model in models]
+    return {"cpu": cpu_states[0] if len(cpu_states) == 1 else cpu_states}
 
 
 def set_env_fatigue_state(env: Any, state: dict[str, Any]) -> None:
     """Restore fatigue compartment state into an env's action terms.
 
+    A CPU state saved from a VecEnv is matched to sub-envs by index (cycled when
+    the env counts differ); a single-env state is loaded into every sub-env.
+
     Args:
-        env: Gymnasium-compatible env, possibly wrapped.
+        env: Gymnasium-compatible env, possibly wrapped, or an SB3 VecEnv.
         state: Dict previously returned by :func:`get_env_fatigue_state`.
     """
     unwrapped = getattr(env, "unwrapped", env)
@@ -293,10 +320,14 @@ def set_env_fatigue_state(env: Any, state: dict[str, Any]) -> None:
             except (KeyError, AttributeError):
                 pass
         return
-    # CPU path (ModularTaskEnv)
-    fatigue_model = getattr(unwrapped, "_fatigue_model", None)
-    if fatigue_model is not None and "cpu" in state:
-        fatigue_model.load_state_dict(state["cpu"])
+    # CPU path
+    cpu_state = state.get("cpu")
+    if cpu_state is None:
+        return
+    cpu_states = cpu_state if isinstance(cpu_state, list) else [cpu_state]
+    for i, model in enumerate(_cpu_fatigue_models(env)):
+        if model is not None:
+            model.load_state_dict(cpu_states[i % len(cpu_states)])
 
 
 def _running_mean_std_state(rms: Any) -> dict[str, Any] | None:

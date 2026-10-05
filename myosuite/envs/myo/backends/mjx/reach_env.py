@@ -17,6 +17,8 @@ Config keys (in addition to ``MyoMjxEnvBase`` defaults):
     ``target_reach_range`` Mapping of site name → ``(lo, hi)`` 3-vectors.
                            Matched by name and kept in model (site id)
                            order; each site needs a ``<name>_target`` site.
+    ``target_sampling``    ``"box"`` (uniform per coordinate) or ``"workspace"``
+                           (reachable tip positions, as CPU ``ReachEnvV0``).
     ``far_th``             Distance threshold (metres) triggering done.
     ``reward_weights``     Sub-dict with ``reach``, ``bonus``, ``penalty``.
 """
@@ -36,7 +38,12 @@ from mujoco import mjx
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEnvBase
 from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_spec
 from myosuite.terms.base_obs import tip_pos_obs
+from myosuite.utils.reach_workspace import reachable_target_points
+from myosuite.utils.step_timing import first_step_after
 from myosuite.utils.target_ranges import resolve_site_target_ranges
+
+# CPU ReachEnvV0 enables the far penalty/termination once data.time > 2 * ctrl_dt.
+_FAR_CHECK_DELAY_STEPS = 2
 
 
 class MjxReachEnv(MyoMjxEnvBase):
@@ -115,6 +122,30 @@ class MjxReachEnv(MyoMjxEnvBase):
         self._n_targets = len(targets.names)
         self._near_th = float(self._n_targets) * 0.0125
 
+        # Far check from the control step at which the CPU's float64 data.time
+        # first exceeds 2 * ctrl_dt. MJX time is float32, so the gate sits half
+        # a control step before that step.
+        step_dt = self._n_substeps * float(config.sim_dt)
+        far_check_step = first_step_after(
+            _FAR_CHECK_DELAY_STEPS * step_dt, float(config.sim_dt), self._n_substeps
+        )
+        self._far_check_time = (far_check_step - 0.5) * step_dt
+
+        sampling = getattr(config, "target_sampling", "box")
+        if sampling not in ("box", "workspace"):
+            raise ValueError(
+                f"target_sampling must be 'box' or 'workspace', got {sampling!r}"
+            )
+        # Workspace sampling draws rows of the same reachable-tip table as the CPU env.
+        self._workspace_points = None
+        if sampling == "workspace":
+            self._workspace_points = jp.asarray(
+                reachable_target_points(
+                    self._mj_model, targets.tip_ids, targets.lo, targets.hi
+                ),
+                dtype=jp.float32,
+            )
+
     def sample_task(self, rng: jax.Array) -> dict[str, jax.Array]:
         """Sample random 3-D target positions for all tracked sites.
 
@@ -123,8 +154,12 @@ class MjxReachEnv(MyoMjxEnvBase):
 
         Returns:
             Dict with ``"targets"``: shape ``(n_sites, 3)`` target positions,
-            one independent uniform draw per coordinate.
+            one independent uniform draw per coordinate (``"box"``) or one
+            reachable tip configuration (``"workspace"``).
         """
+        if self._workspace_points is not None:
+            row = jax.random.randint(rng, (), 0, self._workspace_points.shape[0])
+            return {"targets": self._workspace_points[row]}
         target = jax.random.uniform(
             rng, self._target_lo.shape, minval=self._target_lo, maxval=self._target_hi
         )
@@ -175,7 +210,7 @@ class MjxReachEnv(MyoMjxEnvBase):
         reach_dist = jp.linalg.norm(reach_err, axis=-1)
 
         far_th = jp.where(
-            accessor.data.time > 2.0 * self._mjx_model.opt.timestep,
+            accessor.data.time > self._far_check_time,
             float(self._config.far_th) * self._n_targets,
             jp.inf,
         )

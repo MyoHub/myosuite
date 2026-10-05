@@ -3,6 +3,12 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
+"""JAX quaternion math, ``[w, x, y, z]`` (MuJoCo) convention.
+
+Same API as ``quat_math.py``; the quaternion and vector helpers broadcast over
+leading batch axes (last axis = components).  ``mat2quat`` takes one matrix.
+"""
+
 import jax.numpy as jp
 import jax
 
@@ -12,24 +18,39 @@ _EPS4 = _FLOAT_EPS * 4.0
 
 
 def mul_quat(qa, qb):
-    res = jp.zeros(4)
-    res = res.at[0].set(qa[0] * qb[0] - qa[1] * qb[1] - qa[2] * qb[2] - qa[3] * qb[3])
-    res = res.at[1].set(qa[0] * qb[1] + qa[1] * qb[0] + qa[2] * qb[3] - qa[3] * qb[2])
-    res = res.at[2].set(qa[0] * qb[2] - qa[1] * qb[3] + qa[2] * qb[0] + qa[3] * qb[1])
-    res = res.at[3].set(qa[0] * qb[3] + qa[1] * qb[2] - qa[2] * qb[1] + qa[3] * qb[0])
-    return res
+    """Hamilton product ``qa * qb``."""
+    qa, qb = jp.asarray(qa), jp.asarray(qb)
+    aw, ax, ay, az = qa[..., 0], qa[..., 1], qa[..., 2], qa[..., 3]
+    bw, bx, by, bz = qb[..., 0], qb[..., 1], qb[..., 2], qb[..., 3]
+    return jp.stack(
+        [
+            aw * bw - ax * bx - ay * by - az * bz,
+            aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw,
+        ],
+        axis=-1,
+    )
 
 
 def neg_quat(quat):
-    return jp.array([quat[0], -quat[1], -quat[2], -quat[3]])
+    """Conjugate (the inverse of a unit quaternion)."""
+    return jp.asarray(quat) * jp.array([1.0, -1.0, -1.0, -1.0])
 
 
 def quat2Vel(quat, dt=1):
-    axis = quat[1:].copy()
-    sin_a_2 = jp.sqrt(jp.sum(axis**2))
-    axis = axis / (sin_a_2 + 1e-8)
-    speed = 2 * jp.arctan2(sin_a_2, quat[0]) / dt
-    return speed, axis
+    """Angular velocity that applies rotation *quat* over *dt*, as ``(speed, axis)``.
+
+    ``speed * axis`` equals ``mujoco.mju_quat2Vel`` (rotations by more than pi
+    are taken the short way round).
+    """
+    quat = jp.asarray(quat)
+    axis = quat[..., 1:]
+    sin_a_2 = jp.sqrt(jp.sum(axis**2, axis=-1))
+    axis = axis / (sin_a_2[..., None] + 1e-8)
+    speed = 2 * jp.arctan2(sin_a_2, quat[..., 0])
+    speed = jp.where(speed > jp.pi, speed - 2 * jp.pi, speed)
+    return speed / dt, axis
 
 
 def diff_quat(quat1, quat2):
@@ -43,12 +64,15 @@ def quat_diff_to_vel(quat1, quat2, dt):
 
 
 def axis_angle2quat(axis, angle):
-    c = jp.cos(angle / 2)
-    s = jp.sin(angle / 2)
-    return jp.array([c, s * axis[0], s * axis[1], s * axis[2]])
+    """Quaternion of a rotation by *angle* about the unit vector *axis*."""
+    half = jp.asarray(angle)[..., None] / 2
+    xyz = jp.sin(half) * jp.asarray(axis)
+    w = jp.broadcast_to(jp.cos(half), xyz.shape[:-1] + (1,))
+    return jp.concatenate([w, xyz], axis=-1)
 
 
 def euler2mat(euler):
+    """Intrinsic X-Y'-Z'' Euler angles (scipy ``"XYZ"``) to rotation matrix."""
     euler = jp.asarray(euler, dtype=jp.float32)
     ai, aj, ak = -euler[..., 2], -euler[..., 1], -euler[..., 0]
     si, sj, sk = jp.sin(ai), jp.sin(aj), jp.sin(ak)
@@ -70,6 +94,7 @@ def euler2mat(euler):
 
 
 def euler2quat(euler):
+    """Intrinsic X-Y'-Z'' Euler angles (scipy ``"XYZ"``) to quaternion."""
     euler = jp.asarray(euler, dtype=jp.float32)
     ai, aj, ak = euler[..., 2] / 2, -euler[..., 1] / 2, euler[..., 0] / 2
     si, sj, sk = jp.sin(ai), jp.sin(aj), jp.sin(ak)
@@ -86,6 +111,7 @@ def euler2quat(euler):
 
 
 def mat2euler(mat):
+    """Rotation matrix to intrinsic X-Y'-Z'' Euler angles (scipy ``"XYZ"``)."""
     mat = jp.asarray(mat, dtype=jp.float32)
     cy = jp.sqrt(mat[..., 2, 2] * mat[..., 2, 2] + mat[..., 1, 2] * mat[..., 1, 2])
     condition = cy > _EPS4
@@ -198,62 +224,73 @@ def quat2mat(quat):
 
 
 def rot_vec_mat_t(vec, mat):
-    return jp.array(
+    """Multiply *vec* by the transpose of the rotation matrix *mat*."""
+    vec, mat = jp.asarray(vec), jp.asarray(mat)
+    return jp.stack(
         [
-            mat[0, 0] * vec[0] + mat[1, 0] * vec[1] + mat[2, 0] * vec[2],
-            mat[0, 1] * vec[0] + mat[1, 1] * vec[1] + mat[2, 1] * vec[2],
-            mat[0, 2] * vec[0] + mat[1, 2] * vec[1] + mat[2, 2] * vec[2],
-        ]
+            mat[..., 0, 0] * vec[..., 0]
+            + mat[..., 1, 0] * vec[..., 1]
+            + mat[..., 2, 0] * vec[..., 2],
+            mat[..., 0, 1] * vec[..., 0]
+            + mat[..., 1, 1] * vec[..., 1]
+            + mat[..., 2, 1] * vec[..., 2],
+            mat[..., 0, 2] * vec[..., 0]
+            + mat[..., 1, 2] * vec[..., 1]
+            + mat[..., 2, 2] * vec[..., 2],
+        ],
+        axis=-1,
     )
 
 
 def rot_vec_mat(vec, mat):
-    return jp.array(
+    """Multiply *vec* by the rotation matrix *mat*."""
+    vec, mat = jp.asarray(vec), jp.asarray(mat)
+    return jp.stack(
         [
-            mat[0, 0] * vec[0] + mat[0, 1] * vec[1] + mat[0, 2] * vec[2],
-            mat[1, 0] * vec[0] + mat[1, 1] * vec[1] + mat[1, 2] * vec[2],
-            mat[2, 0] * vec[0] + mat[2, 1] * vec[1] + mat[2, 2] * vec[2],
-        ]
+            mat[..., 0, 0] * vec[..., 0]
+            + mat[..., 0, 1] * vec[..., 1]
+            + mat[..., 0, 2] * vec[..., 2],
+            mat[..., 1, 0] * vec[..., 0]
+            + mat[..., 1, 1] * vec[..., 1]
+            + mat[..., 1, 2] * vec[..., 2],
+            mat[..., 2, 0] * vec[..., 0]
+            + mat[..., 2, 1] * vec[..., 1]
+            + mat[..., 2, 2] * vec[..., 2],
+        ],
+        axis=-1,
     )
 
 
 def rot_vec_quat(vec, quat):
-    mat = quat2mat(quat)
-    return rot_vec_mat(vec, mat)
+    """Rotate *vec* by the quaternion *quat*."""
+    return rot_vec_mat(vec, quat2mat(quat))
 
 
 def quat2euler_intrinsic(quat):
-    w, x, y, z = quat
-    sinr_cosp = 2 * (w * x + y * z)
-    cosr_cosp = 1 - 2 * (x * x + y * y)
-    roll = jp.arctan2(sinr_cosp, cosr_cosp)
+    """Quaternion to ``[roll, pitch, yaw]``, extrinsic x-y-z (scipy ``"xyz"``).
 
-    sinp = 2 * (w * y - z * x)
-    pitch = jp.where(jp.abs(sinp) >= 1, jp.copysign(jp.pi / 2, sinp), jp.arcsin(sinp))
-
-    siny_cosp = 2 * (w * z + x * y)
-    cosy_cosp = 1 - 2 * (y * y + z * z)
-    yaw = jp.arctan2(siny_cosp, cosy_cosp)
-
-    return jp.array([roll, pitch, yaw])
+    Inverse of :func:`intrinsic_euler2quat`; pitch lies in ``[-pi/2, pi/2]``.
+    """
+    quat = jp.asarray(quat)
+    w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
+    roll = jp.arctan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
+    pitch = jp.arcsin(jp.clip(2 * (w * y - z * x), -1.0, 1.0))
+    yaw = jp.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+    return jp.stack([roll, pitch, yaw], axis=-1)
 
 
 def intrinsic_euler2quat(euler):
-    roll, pitch, yaw = euler
-    half_roll = roll * 0.5
-    half_pitch = pitch * 0.5
-    half_yaw = yaw * 0.5
+    """``[roll, pitch, yaw]`` to quaternion, extrinsic x-y-z (scipy ``"xyz"``).
 
-    sin_roll = jp.sin(half_roll)
-    cos_roll = jp.cos(half_roll)
-    sin_pitch = jp.sin(half_pitch)
-    cos_pitch = jp.cos(half_pitch)
-    sin_yaw = jp.sin(half_yaw)
-    cos_yaw = jp.cos(half_yaw)
-
-    w = cos_roll * cos_pitch * cos_yaw + sin_roll * sin_pitch * sin_yaw
-    x = sin_roll * cos_pitch * cos_yaw - cos_roll * sin_pitch * sin_yaw
-    y = cos_roll * sin_pitch * cos_yaw + sin_roll * cos_pitch * sin_yaw
-    z = cos_roll * cos_pitch * sin_yaw - sin_roll * sin_pitch * cos_yaw
-
-    return jp.array([w, x, y, z])
+    Despite the name: roll about the fixed X, then pitch about the fixed Y, then
+    yaw about the fixed Z (equivalently intrinsic Z-Y'-X'').
+    """
+    half = jp.asarray(euler) * 0.5
+    sr, cr = jp.sin(half[..., 0]), jp.cos(half[..., 0])
+    sp, cp = jp.sin(half[..., 1]), jp.cos(half[..., 1])
+    sy, cy = jp.sin(half[..., 2]), jp.cos(half[..., 2])
+    w = cr * cp * cy + sr * sp * sy
+    x = sr * cp * cy - cr * sp * sy
+    y = cr * sp * cy + sr * cp * sy
+    z = cr * cp * sy - sr * sp * cy
+    return jp.stack([w, x, y, z], axis=-1)

@@ -110,6 +110,30 @@ full commit list.
   55%. `ReachEnvV0(target_sampling="workspace")` (used by these ids and their muscle-condition variants, on CPU
   and mjlab) now draws fingertip positions over the joint ranges that lie inside the box. Policies trained on
   the old targets need retraining; the other reach tasks are unchanged.
+* **`myoArmReachRandom-v0` no longer starts episodes beyond its far threshold.** The fingertip starts with
+  the arm hanging, 0.76 m from the centre of the target box, whose far corners lie up to 1.24 m away. With
+  `far_th=1.0`, 16.5% of the resets (33 of 200 seeds; about 25% in v2.12.2) started beyond it. With zero or
+  random actions all of them ended at step 2; the published policy kept only the 9 targets within 4.5 cm of the
+  threshold, by closing the gap in its first two steps. Its `far_th` is now 1.3 m, also for the Sarc/Fati
+  variants and the mjlab twins (which read it from the CPU registration). The target box and the fixed-target
+  ids are unchanged. Workspace sampling would not help, because the whole box is reachable. With the new
+  threshold the published policy's deterministic success rises from 67.0% to 76.5% (CPU, the same 200 seeds):
+  it solves 85% of the targets it was cut off from and is unchanged on the others. `test_reach_far_threshold.py`
+  checks that no reach reset starts beyond the far threshold, on CPU and for the mjlab twins.
+* **`myoHandReachRandom-v0` no longer ends episodes at step 2 unless the policy shuts the hand within 40 ms.**
+  Its target boxes surround the fingertips of the half-flexed pose (every joint at mid-range) that resets used
+  before v0.3 (2022), and `far_th=0.034` was set for that pose. Since v0.3 the hand starts open (`qpos0`),
+  0.14-0.29 m (norm over the five tips) from the targets, so 97% of the resets lay beyond the far threshold of
+  0.17 m. Those episodes ended at the first check (step 2) unless the first two actions closed the hand far
+  enough: 85% of the zero-action and 57% of the random-action episodes ended there (83% and 50% in v2.12.2),
+  which made learning from scratch hard and forced policies to close the hand within the first 40 ms. Its
+  `far_th` is now 0.075 (0.375 m over the five tips, 0.17 m per tip if all are equally off), since the
+  first two actions take the tips at most 0.361 m from the farthest target. This also holds for the Sarc/Fati/Reaf
+  variants, the mjlab twin and the MJX env, which now reads the hand-reach `far_th` from the CPU registration.
+  The open start pose, the target boxes and `myoHandReachFixed-v0` (0.197 m from the open hand, far 0.22 m)
+  are unchanged; restoring the mid-range start would put the fixed targets within 2 cm of the start tips.
+  The published checkpoint learned to close the hand that fast and is unaffected: 96.9% deterministic
+  success on mjlab with either threshold (identical episodes), 92.0% vs 91.8% over 500 CPU episodes.
 * **Joint velocities are observed as `qvel * ctrl_dt` on every backend** (the CPU task envs already
   did): the directional-leg twin and the MJX pose and reach envs observed raw `qvel`. The previous
   directional-leg checkpoints were retrained. `ElbowPoseTask` (tutorial 4.3) now also observes the
@@ -126,18 +150,7 @@ full commit list.
   signal at the 0.8 m initial error), and actions go through the muscle sigmoid on both without a clip. CPU policies trained on these ids need retraining. The mjlab Mimic rewards and deviation
   check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
   stale.
-* **OslRun steps about twice as fast on the CPU.** Python took 72–75% of the step: the OSL
-  controller read its gains through getters that deep-copy the whole state machine (about 260
-  recursive copies per step), `RunTrackEnv` read its observations and OSL inputs with about 200
-  per-name lookups, the pain term computed the joint-limit forces once per joint (Soccer too), and the
-  heightmap built a full rotation matrix to get the yaw. The step now reads the gains in place, gathers
-  with index arrays built once, computes the joint-limit forces once
-  (`challenge_common.joint_limit_forces`) and takes the yaw from `quat_math.quat2yaw`.
-  `myoChallengeOslRunFixed-v0` takes 0.98 ms per step instead of 1.92 ms and the Sarcopenia and
-  Fatigue variants 1.05–1.60 ms instead of 2.75–3.31 ms (Python share 48–52%; median of 12 runs of 300
-  random-action steps, Windows, Python 3.12). Seeded episodes of the OslRun, ChaseTag and Soccer envs
-  are bit-identical, and `obs_dict["hfield"]` is still filled every step. A stopped OSL state machine
-  raises `RuntimeError`.
+* **Performance improvements (#481, #482, #483).**
 
 ### Fixed
 
@@ -200,6 +213,9 @@ full commit list.
   incomplete bridges unless `allow_partial=True`. The SAR activation collector ranks episodes by mean reward
   and resets its state per episode: recollect SAR datasets and re-extract the synergies, and redo evaluations
   made with the old bridge mapping.
+* **ReferenceMotion search.** The NumPy `find_timeslot_in_reference` no longer raises when the time moves backwards after the index cache reached the last frame without a `reset()` (it falls back to a binary search); times before the reference start raise a clear `ValueError`.
+* **Public attributes of wrapped envs.** `gym.make` returns an env wrapped by Gymnasium; since Gymnasium 1.0 `env.mj_render()` and other MyoSuite methods raised `AttributeError` (only `env.unwrapped.mj_render()` worked). The outermost wrapper of every registered env now forwards public attributes to the env again (#378).
+* **Multi-clip Mimic training.** `register_mimic_mjlab_tasks_with_clip` accepts a tuple or list of clips (each env draws its clip and start frame on reset); resetting only some envs of a clip bank gathered the reference with the wrong envs' clip indices and raised an `IndexError` (it showed up as a flaky crash within the first steps).
 * **Mimic mjlab initial state**: the joint-name keys are anchored (`knee_angle_r` no longer also sets
   `knee_angle_rotation{2,3}_*`) and the keyframe's body-frame root angular velocity is converted to the world
   frame.
@@ -217,9 +233,29 @@ full commit list.
   3CC-r fatigue update uses the old state for all deltas, and `FatigueWrapper` keeps the model options. Creating
   an MJX env warns that the backend is experimental and not observation/reward-compatible with the CPU and
   mjlab envs.
+* **Experimental MJX reach**: the far penalty/termination now starts at control step 2, as in CPU `ReachEnvV0`
+  (`data.time > 2 * ctrl_dt`) and its mjlab twin; it started after 2 physics steps (4 ms), i.e. at step 1. MJX
+  and mjlab derive the step from the CPU's float64 time sum with `first_step_after`, now in
+  `myosuite.utils.step_timing`. `MjxFingerReachRandom-v0` had `far_th=0.10` and uniform box targets; it now
+  reads `far_th` (0.35, the `ReachEnvV0` default) and `target_sampling="workspace"` from
+  `myoFingerReachRandom-v0` and samples the same reachable-fingertip table (`MjxReachConfig.target_sampling`).
+  Before, 75% of its episodes ended at step 1 (386 of 512 with zero actions, 387 with random actions); now none
+  ends within 5 steps, since no target lies more than 0.28 m from the start fingertip.
 * **Tutorial scripts and CI.** The SAR tutorial scripts seed SAC and checkpoint/resume (`--seed`,
   `--play-only`); the 2.3 results depend strongly on the seed. CI runs for PRs into `ms3` and installs the
   `[rl]` extra; the mimic suite no longer comes out empty (it is registered before the challenge suite).
+* **Arm-reach tip site at the fingertip.** Since `7532d62`, `edit_fn_arm_reaching` (`myoArmReach{Fixed,Random}-v0`,
+  their Sarc/Fati variants and mjlab twins) placed the `IFtip` reach site at the `distph2_r` origin, the DIP joint,
+  1.8 cm short of the fingertip. That is more than the 1.25 cm success radius, so a "solved" episode could leave
+  the fingertip up to about 3 cm from the target. `IFtip` again sits at myo_sim's fingertip site `IFtip_r`, as
+  before that commit and in v2.12.2. The published `myoArmReachRandom-v0` checkpoint counted 67% of its
+  episodes as solved with the old site, but the fingertip itself ended within the radius in only 2%. With the
+  fixed site, it reaches with the fingertip in 64% of episodes (CPU, 200 seeds, `far_th=1.0`) without retraining.
+* OSL controller bugs inherited from myosuite 2.x fixed (#484). `StateMachine.is_running` returned itself, so reading
+  it recursed until `RecursionError`; it now returns the running flag. `MyoOSLController.set_motor_param`
+  had no value argument and stored the parameter's name, so a set `peak_torque` broke the torque clip; it
+  is now `set_motor_param(joint, act_param, value)`.
+* The TableTennis env now loads meshes and textures from abitrary drives (#485).
 
 ### Removed
 

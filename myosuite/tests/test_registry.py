@@ -163,3 +163,31 @@ def test_register_all_envs_is_idempotent() -> None:
     assert first == second
     assert len(myosuite.myosuite_env_suite) > 50
     assert myosuite.myosuite_myobase_suite == first["myobase"]
+
+
+def test_make_forwards_public_attributes_to_the_env() -> None:
+    """``env.mj_render`` works on the env from ``gym.make`` (gymnasium 1.x dropped the forwarding)."""
+    import gymnasium as gym
+
+    env = gym.make("myoElbowPose1D6MRandom-v0")
+    try:
+        assert callable(env.mj_render)
+        assert env.model is env.unwrapped.model
+        assert not hasattr(env, "no_such_attribute")
+        assert not hasattr(env, "_private_attribute")
+    finally:
+        env.close()
+
+
+def test_envs_without_an_instability_wrapper_get_a_plain_forwarding_wrapper() -> None:
+    import gymnasium as gym
+
+    from myosuite.core.registry import _append_default_wrappers
+    from myosuite.envs.wrappers import AttributeForwardingWrapper
+
+    (spec,) = _append_default_wrappers((), wrap_mj_instability_termination=False)
+    assert spec.entry_point.endswith(":AttributeForwardingWrapper")
+    base = gym.make("myoElbowPose1D6MRandom-v0").unwrapped
+    wrapped = AttributeForwardingWrapper(base)
+    assert callable(wrapped.mj_render)
+    assert not hasattr(wrapped, "_private_attribute")

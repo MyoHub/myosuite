@@ -164,16 +164,21 @@ class MyoOSLController:
 
         self.OSL_PARAM_LIST[mode][phase_name][param_type][gain] = value
 
-    def set_motor_param(self, joint, act_param):
-        """
-        Function to set hardware parameters of the actuators
+    def set_motor_param(self, joint: str, act_param: str, value: float) -> None:
+        """Set a hardware parameter of an OSL actuator.
+
+        Args:
+            joint: ``"knee"`` or ``"ankle"``.
+            act_param: ``"gear_ratio"``, ``"peak_torque"`` or ``"control_range"``.
+            value: New value of the parameter (``peak_torque`` bounds the
+                commanded torque in :meth:`get_osl_torque`).
         """
         assert joint in ["knee", "ankle"], f"Joint should be : {['knee', 'ankle']}"
         assert (
             act_param in ["gear_ratio", "peak_torque", "control_range"]
         ), f"Actuator parameter should be : {['gear_ratio', 'peak_torque', 'control_range']}"
 
-        self.HARDWARE[joint][act_param] = act_param
+        self.HARDWARE[joint][act_param] = value
 
     def _update_param_to_state_machine(self):
         "Internal function to update gain paramters into the State Machine"
@@ -402,11 +407,11 @@ class StateMachine:
             )
 
     @property
-    def is_running(self):
+    def is_running(self) -> bool:
         """
         Boolean to check if State Machine is running
         """
-        return self.is_running
+        return self.running
 
     @property
     def get_current_state(self):
