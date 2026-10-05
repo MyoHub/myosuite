@@ -42,7 +42,7 @@ full commit list.
   analysis, musculoskeletal modelling, MuscleMimic) with companion files in `tutorials/files/X.Y/`;
   documentation by audience, an environment reference, backend-parity and baselines pages, and a
   developer wiki.
-* **Installation.** `uv` installation and CI, Python 3.10–3.14, MuJoCo 3.6.
+* **Installation.** `uv` installation and CI, Python 3.10–3.14, MuJoCo 3.6 or newer (no upper pin; the mjlab and MJX extras need 3.7+).
 
 ### Added
 
@@ -59,7 +59,7 @@ full commit list.
 ### Changed
 
 * `myo_sim` is a pip package (was a git submodule); hand, arm and torso tasks use the composed models; pinned to 0.2.3 ([#406], [#408]).
-* Basic-suite reward terms run on numpy, JAX and torch ([#406]); Python 3.10-3.14, MuJoCo 3.6.0 ([#406]).
+* Basic-suite reward terms run on numpy, JAX and torch ([#406]); Python 3.10-3.14, MuJoCo 3.6 or newer ([#406]).
 * **Observations are no longer clipped:** every env declares a float32 `Box(-inf, inf)` (43 envs saturated at ±10). One step contract for every CPU env: float32 observations, validated reward dict, `info` carries the reward components ([#444]).
 * **Observations and rewards read the current state:** `step()` runs `mj_forward`, and the mjlab twins refresh with a full forward before rewards and terminations; 53 envs had observed one-substep-old values. Trajectories are bit-identical except OslRun ([#444]).
 * **Joint velocities are observed as `qvel * ctrl_dt` on every backend**; the directional-leg twin declares the real 5 ms step ([#437], [#449]). `ElbowPoseTask` also observes the pose error (8 to 9 values) ([#433]).
@@ -98,7 +98,7 @@ full commit list.
 
 ### Dependencies
 
-* MuJoCo 3.6.0; `myo_sim` 0.2.3 from PyPI; `huggingface_hub` is a base dependency; `wandb`, `orbax-checkpoint`, `jax`/`brax` pins for the mjlab and MJX extras; security bumps of `gitpython`, `urllib3` and `uv.lock`; SPDX license metadata.
+* MuJoCo 3.6 or newer (unpinned above; the mjlab and MJX extras need 3.7+); `myo_sim` 0.2.3 from PyPI; `huggingface_hub` is a base dependency; `wandb`, `orbax-checkpoint`, `jax`/`brax` pins for the mjlab and MJX extras; security bumps of `gitpython`, `urllib3` and `uv.lock`; SPDX license metadata.
 * The `furniture-sim`, `mpl-sim`, `object-sim` and `ycb-sim` git dependencies are gone: the 40 files MyoSuite uses (2.9 MB) are bundled under `myosuite/envs/myo/assets/`, so every dependency installs from PyPI.
 * `pink-noise-rl` is replaced by `colorednoise` (`myosuite.utils.colored_noise.ColoredNoiseProcess`; seeded episodes are bit-identical) ([#480]).
 
