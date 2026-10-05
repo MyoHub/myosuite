@@ -153,10 +153,6 @@ full commit list.
 
 ### Fixed
 
-* **OSL controller** (both inherited from myosuite 2.x): `StateMachine.is_running` returned itself, so reading
-  it recursed until `RecursionError`; it now returns the running flag. `MyoOSLController.set_motor_param`
-  had no value argument and stored the parameter's name, so a set `peak_torque` broke the torque clip; it
-  is now `set_motor_param(joint, act_param, value)`.
 * RunTrack keyframe joint values clamped to their ranges (#399, `b0514c0`).
 * Walk rotation termination uses the root free-joint quaternion (`aa2dd77`); leg model root/torso
   orientation (`531dba0`); hand composition and reorient hand orientation (`53f17a9`, `3f4bf9d`).
@@ -254,6 +250,11 @@ full commit list.
   before that commit and in v2.12.2. The published `myoArmReachRandom-v0` checkpoint counted 67% of its
   episodes as solved with the old site, but the fingertip itself ended within the radius in only 2%. With the
   fixed site, it reaches with the fingertip in 64% of episodes (CPU, 200 seeds, `far_th=1.0`) without retraining.
+* OSL controller bugs inherited from myosuite 2.x fixed (#484). `StateMachine.is_running` returned itself, so reading
+  it recursed until `RecursionError`; it now returns the running flag. `MyoOSLController.set_motor_param`
+  had no value argument and stored the parameter's name, so a set `peak_torque` broke the torque clip; it
+  is now `set_motor_param(joint, act_param, value)`.
+* The TableTennis env now loads meshes and textures from abitrary drives (#485).
 
 ### Removed
 
