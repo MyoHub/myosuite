@@ -10,6 +10,9 @@ Available wrappers
 :class:`MjInstabilityTerminationWrapper`
     Converts MuJoCo physics instability warnings into episode termination.
 
+:class:`AttributeForwardingWrapper`
+    Forwards public attributes (e.g. ``mj_render``) to the wrapped env.
+
 :class:`DictObservationWrapper`
     Exposes structured ``Dict`` observations instead of a flat ``Box`` vector.
 
@@ -30,7 +33,34 @@ import numpy as np
 from gymnasium.utils import RecordConstructorArgs
 
 
-class MjInstabilityTerminationWrapper(RecordConstructorArgs, gym.Wrapper):
+class _ForwardPublicAttributes:
+    """Forward public attributes the wrapper lacks to the wrapped env.
+
+    Gymnasium 1.0 dropped this from ``Wrapper``, so ``env.mj_render()`` on the env
+    returned by ``gym.make`` raised ``AttributeError`` (use ``env.unwrapped`` or
+    ``env.get_wrapper_attr(name)``). The outermost wrapper of every registered
+    MyoSuite env restores it. Private names are not forwarded.
+    """
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_") or name == "env":
+            raise AttributeError(name)
+        return self.env.get_wrapper_attr(name)
+
+
+class AttributeForwardingWrapper(
+    _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
+    """Outermost wrapper of envs registered without an instability wrapper."""
+
+    def __init__(self, env: gym.Env):
+        RecordConstructorArgs.__init__(self)
+        gym.Wrapper.__init__(self, env)
+
+
+class MjInstabilityTerminationWrapper(
+    _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
     """Upgrade MuJoCo instability checks into termination after each step."""
 
     def __init__(self, env: gym.Env):
