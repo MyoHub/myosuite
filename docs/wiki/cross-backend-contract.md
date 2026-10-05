@@ -67,6 +67,16 @@ Fixed `scale` in `ObservationTermCfg` is exported to JSON and replicated in Type
 
 ---
 
+## Task Parameters
+
+- mjlab twins read every task parameter (target ranges and sampler, thresholds such as `far_th`, reward
+  weights, episode length) from the CPU registration through `tasks/cpu_reference.py`. Change the CPU
+  registration, never the twin.
+- A reset must not start in a terminal state. For example, a reach task's far threshold must exceed the
+  farthest target its sampler can draw from the start pose (`test_reach_far_threshold.py`, both backends).
+
+---
+
 ## Export Checklist
 
 - [ ] Obs term key order identical between mjlab and browser config (assert in `test_mjlab_task_builder.py`)
