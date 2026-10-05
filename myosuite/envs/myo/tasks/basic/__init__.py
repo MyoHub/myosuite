@@ -582,7 +582,14 @@ _reg(
             ),
         },
         "normalize_act": True,
-        "far_th": 0.034,
+        # The boxes surround the fingertips of the mid-range pose that resets used
+        # before v0.3 (2022), for which 0.034 was set. The hand now starts open
+        # (qpos0), 0.14-0.29 m (norm over the five tips) from the targets: 97% of the
+        # resets started beyond far = 0.034 * 5 = 0.17 m and ended at the first check
+        # (step 2) unless the policy shut the hand within 40 ms. The first two actions
+        # take the tips at most 0.361 m from the farthest target, hence far = 0.375 m
+        # (0.17 m per tip if all five are equally off).
+        "far_th": 0.075,
     },
 )
 

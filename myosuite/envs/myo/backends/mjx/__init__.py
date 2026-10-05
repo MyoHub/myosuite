@@ -186,8 +186,9 @@ _musclemimic_fullbody_config = default_mimic_fullbody_config()
 def _cpu_kwarg(env_id: str, key: str) -> Any:
     """Return a copy of one kwarg of the CPU registration of the same task.
 
-    The pose/reach target ranges are read from the CPU registrations so the
-    joint/site names and ranges of the two backends cannot drift apart.
+    The pose/reach target ranges and the hand-reach far thresholds are read from
+    the CPU registrations so the names, ranges and thresholds of the two backends
+    cannot drift apart.
     """
     return copy.deepcopy(gym.spec(env_id).kwargs[key])
 
@@ -230,7 +231,7 @@ def _cfg_hand_pose_random() -> MjxPoseConfig:
 def _cfg_hand_reach_fixed() -> MjxReachConfig:
     return MjxReachConfig(
         model_path=_HAND_MODEL,
-        far_th=0.044,
+        far_th=_cpu_kwarg("myoHandReachFixed-v0", "far_th"),
         target_reach_range=_cpu_kwarg("myoHandReachFixed-v0", "target_reach_range"),
     )
 
@@ -238,7 +239,7 @@ def _cfg_hand_reach_fixed() -> MjxReachConfig:
 def _cfg_hand_reach_random() -> MjxReachConfig:
     return MjxReachConfig(
         model_path=_HAND_MODEL,
-        far_th=0.034,
+        far_th=_cpu_kwarg("myoHandReachRandom-v0", "far_th"),
         target_reach_range=_cpu_kwarg("myoHandReachRandom-v0", "target_reach_range"),
     )
 
