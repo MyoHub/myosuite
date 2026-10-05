@@ -183,7 +183,7 @@ def _capture_frame(
     points = np.asarray(data.xpos[actor_body_ids], dtype=np.float64)
     camera.lookat[:] = 0.5 * (points.min(axis=0) + points.max(axis=0))
     renderer.update_scene(data, camera=camera, scene_option=scene_option)
-    _tune_mjv_scene_for_rgb(model, renderer.scene)
+    _tune_mjv_scene_for_rgb(renderer.scene)
     frame = np.asarray(renderer.render(), dtype=np.uint8).copy()
     return _overlay(frame, overlay_lines)
 
@@ -306,7 +306,7 @@ def render_one(
         obs, _ = env.reset(seed=int(best["seed"]))
 
         renderer = mujoco.Renderer(model, height=height, width=width)
-        _tune_mjv_scene_for_rgb(model, renderer.scene)
+        _tune_mjv_scene_for_rgb(renderer.scene)
         actor_body_ids = _actor_body_ids(model)
         camera = _actor_camera(data, actor_body_ids)
         scene_option = _scene_option()
