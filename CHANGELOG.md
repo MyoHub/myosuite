@@ -66,6 +66,7 @@ full commit list.
 * **`motorFinger*` envs use motors with four times the stock gear**, so the pose and fixed-reach tasks are learnable ([#451]).
 * **Random finger-reach tasks sample targets the fingertip can reach** (`ReachEnvV0(target_sampling="workspace")`), instead of a box of which only about 55% lies in the workspace ([#452]).
 * **`myoArmReachRandom-v0` and `myoHandReachRandom-v0` no longer start episodes beyond `far_th`:** 16.5% (arm) and 97% (hand) of the resets used to end at step 2. `far_th` is now 1.3 (arm) and 0.075 (hand), also for the variants, the mjlab twins and MJX. The published arm policy rises from 67.0% to 76.5% deterministic success; the hand policy is unaffected ([#494], [#496], [#497]).
+* **Unknown `obs_keys` raise** a `KeyError` listing the available keys (CPU envs and mjlab pose/reach/stand/walk twins; they were silently dropped), and SAR reorient honours `obs_keys`. The Relocate ids observe every hand joint (`hand_qpos` missed `md5_flexion_r`; P1 156 to 157 values), and `hand_qpos_corrected` is available again ([#477]).
 * **`myoChallengeChaseTagFBP2-v0` is one task on both backends** (537-d `chasetag_obs`, 0.01 s control step, CPU rewards on mjlab) ([#456]).
 * **CPU `myoMimicBimanual-v0` and `myoMimicFullbody-v0` are the CPU half of their mjlab twins:** observation `[qpos, qvel * ctrl_dt, act, site position, target, target - position]` (199 / 684 values), `exp(-2 * mean site error)` reward on both backends. CPU policies trained on these ids need retraining ([#475]).
 * **mjlab physics options follow the CPU models** for TableTennis and MuscleMimic ([#457]); **mjlab TableTennis** simulates the CPU scene with once-per-step scoring and per-env randomization ([#458]).
@@ -83,6 +84,7 @@ full commit list.
 * **MuscleMimic mjlab:** resets, terminations, frame index and SAR task configs ([#436]); follow-ups: per-env target resampling, clip-rate check ([#437]); bimanual lookahead without root terms ([#439]); per-env bridge history and normalizer ([#440]); clip end scored against the last frame, `random_start` honoured ([#475]); bridge excitation mapping and name coverage ([#459]); relative angular velocity in `TorchFullbodyObsAdapter` ([#459]); multi-clip resets of partial envs ([#406]); initial-state joint-name keys and root angular velocity ([#406]).
 * **ONNX and SB3 exports** are self-contained and fold `VecNormalize` in ([#427], [#461]); two ONNX-export defects of the mimic MDP ([#407]); `find_checkpoint` skips runs of other envs ([#420]); `eval_mjlab_policy.py` reads the `actor` group ([#445]); `train_mjlab` resume and stop-on-success ([#478]).
 * **TaskConfig control step:** a control step is `n_substeps` steps of `sim_dt` on every backend, `BackendConfig` rejects a different `ctrl_dt`, and the CPU `ModularTaskEnv` sets the timestep to `sim_dt` (it scaled `joint_vel` by a `ctrl_dt` it did not simulate); the reach workspace table uses the scene's site ids ([#476]).
+* **Challenge scoring and targets:** RunTrack and ChaseTag `get_metrics` score a lost episode with the full `maxTime` again, and Baoding, Relocate, Reorient, Bimanual and TableTennis have a legacy-style `get_metrics`; `PoseEnvV0.update_target()` moves the rewarded target with the observed one; Bimanual refreshes the box inertia and rescales the visual box ([#477]).
 * **Wrapped envs forward public attributes** again (`env.mj_render()` after `gym.make`) (#378); the multi-agent env is registered without `TimeLimit` ([#463]); resolved model XML written once ([#462]; files leaked by older versions can be removed with `find myosuite -name '.myosuite_resolved_*.xml' -delete`); `register_all_envs()` is idempotent ([#406]).
 * **ReferenceMotion:** interpolation, ghost-body rendering, `examine_policy` records ([#471]); no error when time moves backwards after the last frame ([#471]).
 * **ModelBuilder options and rebuilds, full-width clips mapped by joint name, fatigue API** ([#473]); quaternion velocity wrap and wrappers ([#474]).
@@ -157,6 +159,7 @@ Cheryl Wang and Calder Robbins.
 [#474]: https://github.com/MyoHub/myosuite/pull/474
 [#475]: https://github.com/MyoHub/myosuite/pull/475
 [#476]: https://github.com/MyoHub/myosuite/pull/476
+[#477]: https://github.com/MyoHub/myosuite/pull/477
 [#478]: https://github.com/MyoHub/myosuite/pull/478
 [#479]: https://github.com/MyoHub/myosuite/pull/479
 [#480]: https://github.com/MyoHub/myosuite/pull/480
