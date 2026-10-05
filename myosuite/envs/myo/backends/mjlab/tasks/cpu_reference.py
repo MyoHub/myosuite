@@ -486,27 +486,3 @@ def action_cfg(
 def episode_length_s(max_episode_steps: int, step_dt: float) -> float:
     """Episode length whose ``ceil(len / step_dt)`` equals *max_episode_steps*."""
     return (max_episode_steps - 0.5) * step_dt
-
-
-def first_step_after(time_s: float, timestep: float, frame_skip: int) -> int:
-    """First control step at which the CPU ``data.time`` exceeds *time_s*.
-
-    CPU envs gate some terms on ``data.time > t`` where ``data.time`` is a
-    float64 sum of ``timestep`` increments; replaying that sum reproduces the
-    exact boundary step instead of relying on float equality.
-
-    Args:
-        time_s: Threshold time in seconds.
-        timestep: Physics timestep.
-        frame_skip: Substeps per control step.
-
-    Returns:
-        Smallest control-step count ``k`` with accumulated time ``> time_s``.
-    """
-    t = 0.0
-    step = 0
-    while t <= time_s:
-        for _ in range(frame_skip):
-            t += timestep
-        step += 1
-    return step

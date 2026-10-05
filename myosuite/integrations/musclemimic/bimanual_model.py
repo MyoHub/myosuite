@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 from ml_collections import config_dict
 import mujoco
 
+from myosuite.core.model_builder import cached_spec
 from myosuite.terms.mimic_reward import MimicTrackingConfig
 
 BODY2SITES_FOR_MIMIC = {
@@ -287,7 +288,33 @@ NATIVE_BIMANUAL_FALLBACK_WARNING = (
 )
 
 
+@cached_spec()
+def _native_bimanual_spec(disable_fingers: bool) -> mujoco.MjSpec:
+    """Native bimanual spec, built once per ``disable_fingers`` (the only config input)."""
+    return _build_native_mimic_bimanual_spec(
+        config_dict.create(disable_fingers=disable_fingers)
+    )
+
+
 def build_native_mimic_bimanual_spec(config: config_dict.ConfigDict) -> mujoco.MjSpec:
+    """Build a myo_sim-native Mimic-compatible bimanual-arms MjSpec.
+
+    See :func:`_build_native_mimic_bimanual_spec`. The spec is built once per
+    ``disable_fingers`` in a process; every call returns a private copy once it
+    is kept (see :func:`~myosuite.core.model_builder.cached_spec`).
+
+    Args:
+        config: Same shape as :func:`default_mimic_config`.
+
+    Returns:
+        Edited, uncompiled MjSpec.
+    """
+    return _native_bimanual_spec(bool(config.disable_fingers))
+
+
+def _build_native_mimic_bimanual_spec(
+    config: config_dict.ConfigDict,
+) -> mujoco.MjSpec:
     """Build a myo_sim-native Mimic-compatible bimanual-arms MjSpec.
 
     Uses myo_sim's own ``myoarms`` composition (passive anatomical torso
@@ -341,6 +368,23 @@ def build_native_mimic_bimanual_spec(config: config_dict.ConfigDict) -> mujoco.M
     return spec
 
 
+@cached_spec()
+def _mimic_bimanual_spec(
+    xml_path: str, strict_scene: bool, disable_fingers: bool
+) -> mujoco.MjSpec:
+    """Edited bimanual spec of *xml_path* (absolute).
+
+    *strict_scene* mirrors ``MYOSUITE_MIMIC_STRICT_UPSTREAM_SCENE``, which
+    :func:`_load_spec_with_default_scene` reads, so a changed variable gets its
+    own entry.
+    """
+    spec = _load_spec_with_default_scene(xml_path)
+    apply_mimic_bimanual_spec_edits(
+        spec, config_dict.create(disable_fingers=disable_fingers)
+    )
+    return spec
+
+
 def build_mimic_bimanual_spec(
     config: config_dict.ConfigDict,
 ) -> tuple[mujoco.MjSpec, str]:
@@ -369,8 +413,11 @@ def build_mimic_bimanual_spec(
             return build_native_mimic_bimanual_spec(config), _NATIVE_BIMANUAL_TAG
 
     xml_path = resolve_mimic_bimanual_xml(config)
-    spec = _load_spec_with_default_scene(xml_path)
-    apply_mimic_bimanual_spec_edits(spec, config)
+    spec = _mimic_bimanual_spec(
+        Path(xml_path).absolute().as_posix(),
+        os.environ.get("MYOSUITE_MIMIC_STRICT_UPSTREAM_SCENE", "0") == "1",
+        bool(config.disable_fingers),
+    )
     return spec, xml_path
 
 
