@@ -3,32 +3,59 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
+"""NumPy quaternion math, ``[w, x, y, z]`` (MuJoCo) convention.
+
+Quaternion and vector helpers broadcast over leading batch axes (last axis =
+components), like the torch and JAX twins in ``quat_math_torch.py`` /
+``quat_math_jax.py``.
+"""
+
 import numpy as np
 
-# For testing whether a number is close to zero
-_FLOAT_EPS = np.finfo(np.float64).eps
+# Near-zero cutoffs (quat2mat norm, mat2euler gimbal lock). Float32 values, as
+# in the torch/JAX twins, so that all three backends take the same branch.
+_FLOAT_EPS = np.finfo(np.float32).eps
 _EPS4 = _FLOAT_EPS * 4.0
+
+_CONJ = np.array([1.0, -1.0, -1.0, -1.0])
 
 
 def mul_quat(qa, qb):
-    res = np.zeros(4)
-    res[0] = qa[0] * qb[0] - qa[1] * qb[1] - qa[2] * qb[2] - qa[3] * qb[3]
-    res[1] = qa[0] * qb[1] + qa[1] * qb[0] + qa[2] * qb[3] - qa[3] * qb[2]
-    res[2] = qa[0] * qb[2] - qa[1] * qb[3] + qa[2] * qb[0] + qa[3] * qb[1]
-    res[3] = qa[0] * qb[3] + qa[1] * qb[2] - qa[2] * qb[1] + qa[3] * qb[0]
-    return res
+    """Hamilton product ``qa * qb``."""
+    qa = np.asarray(qa, dtype=np.float64)
+    qb = np.asarray(qb, dtype=np.float64)
+    aw, ax, ay, az = qa[..., 0], qa[..., 1], qa[..., 2], qa[..., 3]
+    bw, bx, by, bz = qb[..., 0], qb[..., 1], qb[..., 2], qb[..., 3]
+    return np.stack(
+        [
+            aw * bw - ax * bx - ay * by - az * bz,
+            aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw,
+        ],
+        axis=-1,
+    )
 
 
 def neg_quat(quat):
-    return np.array([quat[0], -quat[1], -quat[2], -quat[3]])
+    """Conjugate (the inverse of a unit quaternion)."""
+    return np.asarray(quat, dtype=np.float64) * _CONJ
 
 
 def quat2Vel(quat, dt=1):
-    axis = quat[1:].copy()
-    sin_a_2 = np.sqrt(np.sum(axis**2))
-    axis = axis / (sin_a_2 + 1e-8)
-    speed = 2 * np.arctan2(sin_a_2, quat[0]) / dt
-    return speed, axis
+    """Angular velocity that applies rotation *quat* over *dt*, as ``(speed, axis)``.
+
+    ``speed * axis`` equals ``mujoco.mju_quat2Vel``: rotations by more than pi
+    are taken the short way round, so ``q`` and ``-q`` (the same rotation) give
+    the same velocity.
+    """
+    quat = np.asarray(quat, dtype=np.float64)
+    axis = quat[..., 1:]
+    sin_a_2 = np.sqrt(np.sum(axis**2, axis=-1))
+    axis = axis / (sin_a_2[..., None] + 1e-8)
+    speed = 2 * np.arctan2(sin_a_2, quat[..., 0])
+    speed = speed - 2 * np.pi * (speed > np.pi)
+    return speed / dt, axis
 
 
 def diff_quat(quat1, quat2):
@@ -43,13 +70,15 @@ def quat_diff_to_vel(quat1, quat2, dt):
 
 
 def axis_angle2quat(axis, angle):
-    c = np.cos(angle / 2)
-    s = np.sin(angle / 2)
-    return np.array([c, s * axis[0], s * axis[1], s * axis[2]])
+    """Quaternion of a rotation by *angle* about the unit vector *axis*."""
+    half = np.asarray(angle, dtype=np.float64)[..., None] / 2
+    xyz = np.sin(half) * np.asarray(axis, dtype=np.float64)
+    w = np.broadcast_to(np.cos(half), xyz.shape[:-1] + (1,))
+    return np.concatenate([w, xyz], axis=-1)
 
 
 def euler2mat(euler):
-    """Convert Euler Angles to Rotation Matrix"""
+    """Euler angles to rotation matrix, intrinsic X-Y'-Z'' (scipy ``"XYZ"``)."""
     euler = np.asarray(euler, dtype=np.float64)
     assert euler.shape[-1] == 3, f"Invalid shaped euler {euler}"
 
@@ -73,7 +102,7 @@ def euler2mat(euler):
 
 
 def euler2quat(euler):
-    """Convert Euler Angles to Quaternions"""
+    """Euler angles to quaternion, intrinsic X-Y'-Z'' (scipy ``"XYZ"``)."""
     euler = np.asarray(euler, dtype=np.float64)
     assert euler.shape[-1] == 3, f"Invalid shape euler {euler}"
 
@@ -92,7 +121,7 @@ def euler2quat(euler):
 
 
 def mat2euler(mat):
-    """Convert Rotation Matrix to Euler Angles"""
+    """Rotation matrix to intrinsic X-Y'-Z'' Euler angles (scipy ``"XYZ"``)."""
     mat = np.asarray(mat, dtype=np.float64)
     assert mat.shape[-2:] == (3, 3), f"Invalid shape matrix {mat}"
 
@@ -151,12 +180,12 @@ def mat2quat(mat):
 
 
 def quat2euler(quat):
-    """Convert Quaternion to Euler Angles"""
+    """Quaternion to intrinsic X-Y'-Z'' Euler angles (scipy ``"XYZ"``)."""
     return mat2euler(quat2mat(quat))
 
 
 def quat2mat(quat):
-    """Convert Quaternion to Euler Angles"""
+    """Quaternion to rotation matrix (identity for a near-zero quaternion)."""
     quat = np.asarray(quat, dtype=np.float64)
     assert quat.shape[-1] == 4, f"Invalid shape quat {quat}"
 
@@ -181,106 +210,92 @@ def quat2mat(quat):
     return np.where((Nq > _FLOAT_EPS)[..., np.newaxis, np.newaxis], mat, np.eye(3))
 
 
-# multiply vector by 3D rotation matrix transpose
 def rot_vec_mat_t(vec, mat):
-    return np.array(
+    """Multiply *vec* by the transpose of the rotation matrix *mat*."""
+    vec, mat = np.asarray(vec), np.asarray(mat)
+    return np.stack(
         [
-            mat[0, 0] * vec[0] + mat[1, 0] * vec[1] + mat[2, 0] * vec[2],
-            mat[0, 1] * vec[0] + mat[1, 1] * vec[1] + mat[2, 1] * vec[2],
-            mat[0, 2] * vec[0] + mat[1, 2] * vec[1] + mat[2, 2] * vec[2],
-        ]
+            mat[..., 0, 0] * vec[..., 0]
+            + mat[..., 1, 0] * vec[..., 1]
+            + mat[..., 2, 0] * vec[..., 2],
+            mat[..., 0, 1] * vec[..., 0]
+            + mat[..., 1, 1] * vec[..., 1]
+            + mat[..., 2, 1] * vec[..., 2],
+            mat[..., 0, 2] * vec[..., 0]
+            + mat[..., 1, 2] * vec[..., 1]
+            + mat[..., 2, 2] * vec[..., 2],
+        ],
+        axis=-1,
     )
 
 
-# multiply vector by 3D rotation matrix
 def rot_vec_mat(vec, mat):
-    return np.array(
+    """Multiply *vec* by the rotation matrix *mat*."""
+    vec, mat = np.asarray(vec), np.asarray(mat)
+    return np.stack(
         [
-            mat[0, 0] * vec[0] + mat[0, 1] * vec[1] + mat[0, 2] * vec[2],
-            mat[1, 0] * vec[0] + mat[1, 1] * vec[1] + mat[1, 2] * vec[2],
-            mat[2, 0] * vec[0] + mat[2, 1] * vec[1] + mat[2, 2] * vec[2],
-        ]
+            mat[..., 0, 0] * vec[..., 0]
+            + mat[..., 0, 1] * vec[..., 1]
+            + mat[..., 0, 2] * vec[..., 2],
+            mat[..., 1, 0] * vec[..., 0]
+            + mat[..., 1, 1] * vec[..., 1]
+            + mat[..., 1, 2] * vec[..., 2],
+            mat[..., 2, 0] * vec[..., 0]
+            + mat[..., 2, 1] * vec[..., 1]
+            + mat[..., 2, 2] * vec[..., 2],
+        ],
+        axis=-1,
     )
 
 
-# multiply vector by quat
 def rot_vec_quat(vec, quat):
-    mat = quat2mat(quat)
-    return rot_vec_mat(vec, mat)
+    """Rotate *vec* by the quaternion *quat*."""
+    return rot_vec_mat(vec, quat2mat(quat))
 
 
 def quat2euler_intrinsic(quat):
+    """Quaternion to ``[roll, pitch, yaw]``, the inverse of :func:`intrinsic_euler2quat`.
+
+    Despite the name, the angles are extrinsic x-y-z (scipy ``"xyz"``); pitch
+    lies in ``[-pi/2, pi/2]``.
     """
-    Math func: Intrinsic Euler angles, for euler in body coordinate frame
-    """
-    w, x, y, z = quat
-
-    # Compute sin and cos values
-    sinr_cosp = 2 * (w * x + y * z)
-    cosr_cosp = 1 - 2 * (x * x + y * y)
-
-    # Roll (X-axis rotation)
-    roll = np.arctan2(sinr_cosp, cosr_cosp)
-
-    # Compute sin and cos values
-    sinp = 2 * (w * y - z * x)
-
-    # Pitch (Y-axis rotation)
-    if abs(sinp) >= 1:
-        # Use 90 degrees if out of range
-        pitch = np.copysign(np.pi / 2, sinp)
-    else:
-        pitch = np.arcsin(sinp)
-
-    # Compute sin and cos values
-    siny_cosp = 2 * (w * z + x * y)
-    cosy_cosp = 1 - 2 * (y * y + z * z)
-
-    # Yaw (Z-axis rotation)
-    yaw = np.arctan2(siny_cosp, cosy_cosp)
-
-    return np.array([roll, pitch, yaw])
+    quat = np.asarray(quat, dtype=np.float64)
+    w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
+    roll = np.arctan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
+    # Clip: rounding can push |sin(pitch)| past 1 at the poles (-> +-pi/2).
+    pitch = np.arcsin(np.clip(2 * (w * y - z * x), -1.0, 1.0))
+    yaw = np.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+    return np.stack([roll, pitch, yaw], axis=-1)
 
 
 def intrinsic_euler2quat(euler):
+    """``[roll, pitch, yaw]`` to quaternion.
+
+    Despite the name, this is the extrinsic x-y-z convention (scipy ``"xyz"``):
+    roll about the fixed X axis, then pitch about the fixed Y, then yaw about
+    the fixed Z (equivalently intrinsic Z-Y'-X'': yaw, pitch, roll).
     """
-    Math func: Intrinsic Euler angles (roll, pitch, yaw format) to Quat
-    """
-
-    roll, pitch, yaw = euler
-
-    # Half angles
-    half_roll = roll * 0.5
-    half_pitch = pitch * 0.5
-    half_yaw = yaw * 0.5
-
-    # Compute sin and cos values for half angles
-    sin_roll = np.sin(half_roll)
-    cos_roll = np.cos(half_roll)
-    sin_pitch = np.sin(half_pitch)
-    cos_pitch = np.cos(half_pitch)
-    sin_yaw = np.sin(half_yaw)
-    cos_yaw = np.cos(half_yaw)
-
-    # Compute quaternion
-    w = cos_roll * cos_pitch * cos_yaw + sin_roll * sin_pitch * sin_yaw
-    x = sin_roll * cos_pitch * cos_yaw - cos_roll * sin_pitch * sin_yaw
-    y = cos_roll * sin_pitch * cos_yaw + sin_roll * cos_pitch * sin_yaw
-    z = cos_roll * cos_pitch * sin_yaw - sin_roll * sin_pitch * cos_yaw
-
-    return np.array([w, x, y, z])
+    half = np.asarray(euler, dtype=np.float64) * 0.5
+    sr, cr = np.sin(half[..., 0]), np.cos(half[..., 0])
+    sp, cp = np.sin(half[..., 1]), np.cos(half[..., 1])
+    sy, cy = np.sin(half[..., 2]), np.cos(half[..., 2])
+    w = cr * cp * cy + sr * sp * sy
+    x = sr * cp * cy - cr * sp * sy
+    y = cr * sp * cy + sr * cp * sy
+    z = cr * cp * sy - sr * sp * cy
+    return np.stack([w, x, y, z], axis=-1)
 
 
 def quat_from_euler_xyz_deg(euler_deg: list[float]) -> list[float]:
-    """Convert intrinsic XYZ (roll, pitch, yaw) Euler angles in degrees to quat.
+    """Convert ``[roll, pitch, yaw]`` in degrees to a quaternion.
 
-    Uses ``intrinsic_euler2quat`` — the same convention as the historical
-    half-angle composition used for glove/helmet mesh placement.  Do not use
-    ``euler2quat`` here: that helper follows a different axis ordering used
-    elsewhere in MyoSuite.
+    Uses ``intrinsic_euler2quat``, i.e. extrinsic x-y-z rotations (scipy
+    ``"xyz"``), the convention of the historical half-angle composition used
+    for glove/helmet mesh placement.  Do not use ``euler2quat`` here: that
+    helper is intrinsic X-Y'-Z'' (scipy ``"XYZ"``).
 
     Args:
-        euler_deg: [roll_deg, pitch_deg, yaw_deg] about X, then Y, then Z.
+        euler_deg: [roll_deg, pitch_deg, yaw_deg] about the fixed X, Y, Z axes.
 
     Returns:
         Quaternion as [w, x, y, z].

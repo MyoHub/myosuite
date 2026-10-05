@@ -24,6 +24,7 @@ from mjlab.sim import SimulationCfg
 from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref
 from myosuite.envs.myo.backends.mjlab.tasks.reach import mdp
 from myosuite.envs.myo.tasks.basic.arm.reach import ReachEnvV0
+from myosuite.utils.step_timing import first_step_after
 
 ENTITY = "robot"
 COMMAND = "reach"
@@ -86,7 +87,7 @@ def make_reach_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
     reach_params = {
         "command_name": COMMAND,
         "far_th": float(kw.get("far_th", 0.35)),
-        "penalty_start_step": ref.first_step_after(
+        "penalty_start_step": first_step_after(
             _PENALTY_DELAY_STEPS * (info.opt_timestep * task.frame_skip),
             info.opt_timestep,
             task.frame_skip,

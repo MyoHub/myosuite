@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
 
@@ -10,9 +11,11 @@ import myosuite.utils.onnx_checkpoint as onnx_checkpoint
 from myosuite.utils.onnx_checkpoint import (
     bundle_onnx_with_checkpoint,
     extract_checkpoint_from_onnx,
+    get_env_fatigue_state,
     get_wandb_onnx_checkpoint_path,
     normalize_onnx_checkpoint_name,
     read_onnx_checkpoint_metadata,
+    set_env_fatigue_state,
 )
 
 
@@ -119,3 +122,45 @@ def test_get_wandb_onnx_checkpoint_path_prefers_final_and_normalizes_alias(
     assert aliased_path.name == "model_20.onnx"
     assert was_cached is False
     assert aliased_path.read_bytes() == b"model_20.onnx"
+
+
+_FATIGUE_ENV_ID = "myoFatiElbowPose1D6MRandom-v0"
+
+
+def _fatigued_env(n_steps: int):
+    """CPU fatigue env (state in ``muscle_fatigue``) after ``n_steps`` of full excitation."""
+    from myosuite.utils import gym
+
+    env = gym.make(_FATIGUE_ENV_ID)
+    env.reset(seed=0)
+    for _ in range(n_steps):
+        env.step(env.action_space.high)
+    return env
+
+
+def test_cpu_fatigue_state_round_trips_through_gym_wrappers() -> None:
+    """MyoGymnasiumEnv fatigue used to be invisible (only mjlab / ModularTaskEnv)."""
+    state = get_env_fatigue_state(_fatigued_env(20))
+    assert state is not None and set(state) == {"cpu"}
+    assert max(state["cpu"]["MF"]) > 0.0
+    fresh = _fatigued_env(0)
+    assert get_env_fatigue_state(fresh) != state
+    set_env_fatigue_state(fresh, state)
+    assert get_env_fatigue_state(fresh) == state
+
+
+def test_cpu_fatigue_state_through_sb3_vec_envs() -> None:
+    """OnnxCheckpointCallback falls back to model.env: a (VecNormalize-wrapped) VecEnv."""
+    pytest.importorskip("stable_baselines3")
+    from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+
+    vec = VecNormalize(
+        DummyVecEnv([lambda: _fatigued_env(10), lambda: _fatigued_env(30)])
+    )
+    state = get_env_fatigue_state(vec)
+    assert state is not None and len(state["cpu"]) == 2
+    assert not np.allclose(state["cpu"][0]["MF"], state["cpu"][1]["MF"])
+
+    fresh = VecNormalize(DummyVecEnv([lambda: _fatigued_env(0)] * 2))
+    set_env_fatigue_state(fresh, state)
+    assert get_env_fatigue_state(fresh) == state
