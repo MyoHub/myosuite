@@ -235,6 +235,93 @@ class TestCumulativeFatigue:
         for p in ("F", "R", "r"):
             np.testing.assert_array_equal(getattr(got, p), getattr(want, p), p)
 
+    def test_get_effort_is_distance_to_target_load(self) -> None:
+        """get_effort() (legacy API, JAX twins) is ||MA - TL|| after compute_act."""
+        f = _make_fatigue_model(3)
+        tl = np.array([0.2, 0.6, 1.0])
+        f.compute_act(tl, dt=0.02)
+        assert f.get_effort() == pytest.approx(float(np.linalg.norm(f.MA - tl)))
+        assert f.get_effort() > 0.0
+
+    def test_torch_nan_excitation_does_not_poison_state(self) -> None:
+        """One NaN excitation gives C = 0 on torch as on CPU; the state stays finite."""
+        torch = pytest.importorskip("torch")
+        import mujoco
+        from myosuite.core.muscle_conditions import CumulativeFatigue, TorchFatigueState
+
+        model = mujoco.MjModel.from_xml_string(_FATIGUE_MUSCLE_XML)
+        cpu = CumulativeFatigue(model)
+        gpu = TorchFatigueState.from_mj_model(model, num_envs=2)
+        rng = np.random.default_rng(0)
+        for k in range(40):
+            tl = rng.uniform(0.0, 1.0, cpu.na)
+            if k == 5:
+                tl[0] = np.nan
+            cpu.compute_act(tl.copy(), dt=0.02)
+            gpu.step(torch.tensor(np.stack([tl, np.nan_to_num(tl)])), 0.02)
+            assert bool(torch.isfinite(gpu.MA).all())
+            np.testing.assert_allclose(gpu.MA[0].numpy(), cpu.MA, atol=1e-5)
+            np.testing.assert_allclose(gpu.MF[0].numpy(), cpu.MF, atol=1e-5)
+
+    def test_torch_state_dtype_is_fixed(self) -> None:
+        """A float64 excitation no longer switches the float32 state to float64."""
+        torch = pytest.importorskip("torch")
+        from myosuite.core.muscle_conditions import TorchFatigueState
+
+        f32 = TorchFatigueState(num_envs=1, n_muscles=3)
+        f64 = TorchFatigueState(num_envs=1, n_muscles=3)
+        tl = torch.tensor([[0.2, 0.5, 0.9]], dtype=torch.float64)
+        out = f64.step(tl, 0.02)
+        f32.step(tl.float(), 0.02)
+        assert (
+            f64.MA.dtype == f64.MR.dtype == f64.MF.dtype == out.dtype == torch.float32
+        )
+        torch.testing.assert_close(f64.MA, f32.MA)
+
+    def test_uniform_params_match_across_backends(self) -> None:
+        """use_uniform_params: the v2.4 row and the model's tau on CPU and torch."""
+        torch = pytest.importorskip("torch")
+        import mujoco
+        from myosuite.core.muscle_conditions import (
+            MUSCLE_FATIGUE_PARAMS,
+            CumulativeFatigue,
+            TorchFatigueState,
+        )
+
+        model = mujoco.MjModel.from_xml_string(_FATIGUE_MUSCLE_XML)
+        cpu = CumulativeFatigue(model, use_uniform_params=True)
+        gpu = TorchFatigueState.from_mj_model(model, 1, use_uniform_params=True)
+        v24 = MUSCLE_FATIGUE_PARAMS["Default_v2_4"]
+        for p in ("F", "R", "r"):
+            np.testing.assert_allclose(getattr(cpu, p), v24[p])
+        np.testing.assert_allclose(gpu._tauact.numpy(), model.actuator_dynprm[:, 0])
+        np.testing.assert_allclose(gpu._taudeact.numpy(), model.actuator_dynprm[:, 1])
+        rng = np.random.default_rng(1)
+        for _ in range(200):
+            tl = rng.uniform(0.0, 1.0, cpu.na)
+            cpu.compute_act(tl, dt=0.02)
+            gpu.step(torch.tensor(tl[None], dtype=torch.float32), 0.02)
+        np.testing.assert_allclose(gpu.MA[0].numpy(), cpu.MA, atol=1e-5)
+        np.testing.assert_allclose(gpu.MF[0].numpy(), cpu.MF, atol=1e-5)
+
+
+# Three muscles; the first two have non-default activation time constants.
+_FATIGUE_MUSCLE_XML = """
+<mujoco>
+  <worldbody>
+    <body>
+      <joint name="j" type="hinge" range="-1 1" limited="true"/>
+      <geom size="0.1"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <muscle name="m0" joint="j" timeconst="0.02 0.08"/>
+    <muscle name="m1" joint="j" timeconst="0.005 0.03"/>
+    <muscle name="m2" joint="j"/>
+  </actuator>
+</mujoco>
+"""
+
 
 def _active_muscle_force(model: Any) -> np.ndarray:
     """Active muscle force at qpos0: actuator force at act=1 minus act=0."""
@@ -495,6 +582,31 @@ class TestMakeEnvBackends:
         with patch.dict("sys.modules", {"mujoco_playground": None}):
             with pytest.raises(ImportError, match="mujoco_playground"):
                 make_env("NonExistent-v0", backend="mjx")
+
+    def test_make_env_mjx_forwards_overrides(self) -> None:
+        """Keyword overrides reach mujoco_playground as config_overrides."""
+        import types
+
+        from myosuite.core.registry import make_env
+
+        calls: list[tuple[str, Any]] = []
+
+        def _load(
+            env_id: str, config: Any = None, config_overrides: Any = None
+        ) -> None:
+            calls.append((env_id, config_overrides))
+
+        registry = types.ModuleType("mujoco_playground.registry")
+        registry.load = _load  # type: ignore[attr-defined]
+        playground = types.ModuleType("mujoco_playground")
+        playground.registry = registry  # type: ignore[attr-defined]
+        with patch.dict(
+            "sys.modules",
+            {"mujoco_playground": playground, "mujoco_playground.registry": registry},
+        ):
+            make_env("Task-v0", backend="mjx", num_envs=8)
+            make_env("Task-v0", backend="mjx")
+        assert calls == [("Task-v0", {"num_envs": 8}), ("Task-v0", None)]
 
     def test_make_env_mjlab_import_error(self) -> None:
         from myosuite.core.registry import make_env

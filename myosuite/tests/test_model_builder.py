@@ -520,6 +520,156 @@ def test_legacy_hand_recipes_compile_without_wrapper_xml():
         assert cmc[:2] == ["cmc_abduction", "cmc_flexion"]
 
 
+def _counting_recipe(calls: list[int]):
+    """Recipe building one free box; appends to *calls* on every build."""
+    from myosuite.core.model_builder import ModelBuilder
+
+    def _recipe(b: ModelBuilder) -> ModelBuilder:
+        calls.append(1)
+        return b.add_free_body("box", geom_size=[0.1, 0.1, 0.1])
+
+    return _recipe
+
+
+def test_build_from_recipe_keeps_the_spec_from_its_second_build(monkeypatch):
+    """A recipe is built at most twice per process; each call gets its own spec and model."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    kept = model_builder._recipe_spec.cache_info().currsize
+    model_builder.build_from_recipe("_test_counting")
+    assert model_builder._recipe_spec.cache_info().currsize == kept
+    model_a, spec_a = model_builder.build_from_recipe("_test_counting")
+    spec_a.worldbody.add_body(name="edit_of_a")
+    spec_a.geoms[0].size = [0.5, 0.5, 0.5]
+    model_a.geom_size[:] = 9.0
+    model_b, spec_b = model_builder.build_from_recipe("_test_counting")
+    model_builder.build_from_recipe("_test_counting")
+
+    assert len(calls) == 2
+    assert model_builder._recipe_spec.cache_info().currsize == kept + 1
+    assert spec_b is not spec_a and model_b is not model_a
+    assert spec_b.body("edit_of_a") is None
+    np.testing.assert_array_equal(model_b.geom_size, [[0.1, 0.1, 0.1]])
+    np.testing.assert_array_equal(spec_b.geoms[0].size, [0.1, 0.1, 0.1])
+
+
+def test_build_from_recipe_cache_keys_recipe_and_cwd(monkeypatch, tmp_path):
+    """Re-registering a recipe or changing directory builds the spec again."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    for _ in range(3):
+        model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 2  # kept from the second build on
+    monkeypatch.chdir(tmp_path)
+    model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 3
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 4
+
+
+def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
+    """An edit_fn runs once, on the compiled recipe spec; the plain recipe stays unedited."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    edits: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+
+    def _edit(spec) -> None:
+        edits.append(1)
+        spec.worldbody.add_site(name="edited")
+
+    edited = [
+        model_builder.build_from_recipe("_test_counting", edit_fn=_edit)[0]
+        for _ in range(3)
+    ]
+    plain, _ = model_builder.build_from_recipe("_test_counting")
+    assert len(edits) == 2  # the third edited call is served from the cache
+    assert len(calls) == 3
+    assert [model.nsite for model in edited] == [1, 1, 1]
+    assert plain.nsite == 0
+
+
+def test_spec_cache_opt_out_builds_every_call(monkeypatch):
+    """MYOSUITE_SPEC_CACHE=0 builds the recipe on every call and keeps nothing."""
+    from myosuite.core import model_builder
+
+    monkeypatch.setenv("MYOSUITE_SPEC_CACHE", "0")
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    size = model_builder._recipe_spec.cache_info().currsize
+    for _ in range(3):
+        model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 3
+    assert model_builder._recipe_spec.cache_info().currsize == size
+
+
+def test_cached_spec_unhashable_arguments_and_clear():
+    """Unhashable arguments bypass the cache; clear_spec_caches drops cached specs."""
+    import mujoco
+
+    from myosuite.core.model_builder import cached_spec, clear_spec_caches
+
+    calls: list[object] = []
+
+    @cached_spec(min_uses=1)
+    def _build(size) -> mujoco.MjSpec:
+        calls.append(size)
+        spec = mujoco.MjSpec()
+        spec.worldbody.add_geom(size=list(size))
+        return spec
+
+    _build((0.1, 0.0, 0.0))
+    _build((0.1, 0.0, 0.0))
+    _build([0.2, 0.0, 0.0])
+    _build([0.2, 0.0, 0.0])
+    assert len(calls) == 3
+    clear_spec_caches()
+    _build((0.1, 0.0, 0.0))
+    assert len(calls) == 4
+
+
+def test_cached_spec_keeps_a_spec_from_its_second_build():
+    """A first build is handed over and not kept; the second is kept and copied out."""
+    import mujoco
+
+    from myosuite.core.model_builder import cached_spec
+
+    built: list[mujoco.MjSpec] = []
+
+    @cached_spec(maxsize=1)
+    def _build(name: str) -> mujoco.MjSpec:
+        spec = mujoco.MjSpec()
+        spec.worldbody.add_body(name=name)
+        built.append(spec)
+        return spec
+
+    assert _build("a") is built[0]
+    assert _build.cache_info().currsize == 0
+    second, third = _build("a"), _build("a")
+    assert len(built) == 2 and _build.cache_info().currsize == 1
+    assert second is not built[1] and third is not built[1] and second is not third
+    _build("b")
+    _build("b")  # kept, evicts "a" (maxsize=1)
+    _build("a")
+    assert len(built) == 5
+
+
 def test_motor_finger_recipe_scales_the_motor_gears() -> None:
     """The four motorFinger* envs use the stronger gears (x1/x2 never reached the poses)."""
     import gymnasium as gym
@@ -542,3 +692,100 @@ def test_motor_finger_recipe_scales_the_motor_gears() -> None:
             env.unwrapped.model.actuator_gear[:, 0], stock * _MOTOR_FINGER_GEAR_SCALE
         )
         env.close()
+
+
+_CYLINDER_XML = """
+<mujoco>
+  <option timestep="0.002"/>
+  <worldbody>
+    <body name="link">
+      <joint type="hinge"/>
+      <geom name="cyl" type="cylinder" size="0.05 0.1"/>
+      <geom name="box" type="box" size="0.05 0.05 0.05" pos="0 0 0.2"/>
+    </body>
+  </worldbody>
+</mujoco>
+"""
+
+
+def test_set_timestep_sets_option_timestep():
+    """set_timestep() overrides <option timestep> (it used to crash build())."""
+    from myosuite.core.model_builder import ModelBuilder
+
+    model, spec = ModelBuilder.from_xml_string(_CYLINDER_XML).set_timestep(0.01).build()
+    assert model.opt.timestep == pytest.approx(0.01)
+    assert spec.option.timestep == pytest.approx(0.01)
+
+
+def test_disable_cylinder_contacts_clears_only_cylinders():
+    """disable_cylinder_contacts() zeroes contype/conaffinity of cylinder geoms only."""
+    import mujoco
+
+    from myosuite.core.model_builder import ModelBuilder
+
+    def _add_cylinder_prop(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+        spec.worldbody.add_geom(
+            name="prop", type=mujoco.mjtGeom.mjGEOM_CYLINDER, size=[0.02, 0.02, 0]
+        )
+        return spec
+
+    model, _ = (
+        ModelBuilder.from_xml_string(_CYLINDER_XML)
+        .apply_transform(_add_cylinder_prop)
+        .disable_cylinder_contacts()
+        .build()
+    )
+    for name, enabled in (("cyl", 0), ("prop", 0), ("box", 1)):
+        geom = model.geom(name)
+        assert (int(geom.contype[0]), int(geom.conaffinity[0])) == (enabled, enabled)
+
+
+def test_build_twice_leaves_seed_and_attached_specs_untouched():
+    """build() works on copies: a builder can be built again with the same result."""
+    import mujoco
+
+    from myosuite.core.model_builder import ModelBuilder
+
+    seed = mujoco.MjSpec.from_string(_CYLINDER_XML)
+    child = mujoco.MjSpec.from_string(
+        '<mujoco><worldbody><body name="child"><geom size="0.01"/></body>'
+        "</worldbody></mujoco>"
+    )
+    builder = (
+        ModelBuilder.from_spec(seed)
+        .attach_spec(child, name="child")
+        .add_free_body("ball", pos=[0, 0, 1])
+    )
+    first, _ = builder.build()
+    second, _ = builder.build()  # raised "repeated name 'ball'" before
+    assert [b.name for b in seed.bodies] == ["world", "link"]
+    names = [first.body(i).name for i in range(first.nbody)]
+    assert names == [second.body(i).name for i in range(second.nbody)]
+    assert {"link", "child", "ball"} <= set(names)
+
+
+def test_try_myo_sim_compose_raises_compose_errors(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """A failing compose is raised; only an unavailable builder falls back (logged)."""
+    import sys
+    import types
+
+    from myosuite.core import model_builder
+
+    def _broken() -> None:
+        raise ValueError("bad compose")
+
+    def _unavailable() -> None:
+        raise ModuleNotFoundError("No module named 'myo_sim.build'")
+
+    fake = types.ModuleType("myo_sim")
+    fake.FRAGMENT_SPEC_BUILDERS = {"hand": _broken, "myolegs": _unavailable}
+    monkeypatch.setitem(sys.modules, "myo_sim", fake)
+
+    with pytest.raises(ValueError, match="bad compose"):
+        model_builder._try_myo_sim_compose("hand")
+    with caplog.at_level("WARNING", logger=model_builder.__name__):
+        assert model_builder._try_myo_sim_compose("leg") is None
+    assert "falling back" in caplog.text
+    assert model_builder._try_myo_sim_compose("elbow") is None

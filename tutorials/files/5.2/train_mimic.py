@@ -7,7 +7,8 @@
 
 Implements a self-contained PPO with:
   - Actor-critic MLP (configurable depth/width, SiLU + LayerNorm)
-  - GAE advantage estimation (λ=0.95, γ=0.99)
+  - GAE advantage estimation (λ=0.95, γ=0.99); truncated episodes bootstrap
+    from the value of their last state
   - PPO clip loss (ε=0.2)
   - Entropy bonus
   - DeepMimic composite reward (via MuscleMimicClipEnvV0)
@@ -199,15 +200,23 @@ class VecMimicEnv:
 
     def step(
         self, actions: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+        """Step every env; envs whose episode ended are reset.
+
+        Returns:
+            ``(obs, rew, terminated, truncated, info)``. For an env whose episode
+            ended, ``obs`` is the first observation of its next episode and
+            ``info["final_obs"]`` the last one of the ended episode (which a
+            truncated episode's value target bootstraps from).
+        """
         actions = np.clip(actions, self.act_low, self.act_high)
-        obs_list, rews, terms, truncs = [], [], [], []
+        obs_list, final_list, rews, terms, truncs = [], [], [], [], []
         for i, (env, a) in enumerate(zip(self._envs, actions)):
             o, r, term, trunc, _ = env.step(a)
             self._steps[i] += 1
             trunc = trunc or (self._steps[i] >= self.max_episode_steps)
-            done = term or trunc
-            if done:
+            final_list.append(np.array(o))  # a copy: reset() may reuse the buffer
+            if term or trunc:
                 o, _ = env.reset()
                 self._steps[i] = 0
             obs_list.append(o)
@@ -220,7 +229,53 @@ class VecMimicEnv:
             np.array(rews, dtype=np.float32),
             np.array(terms, dtype=bool),
             np.array(truncs, dtype=bool),
+            {"final_obs": np.stack(final_list)},
         )
+
+
+def compute_gae(
+    rewards: np.ndarray,
+    values: np.ndarray,
+    terminated: np.ndarray,
+    truncated: np.ndarray,
+    final_values: np.ndarray,
+    last_value: np.ndarray,
+    gamma: float,
+    gae_lambda: float,
+) -> np.ndarray:
+    """GAE advantages of a ``(T, n_envs)`` rollout of an auto-resetting vector env.
+
+    A terminated episode bootstraps nothing. A truncated one (time limit, clip end)
+    did not reach a terminal state, so its target bootstraps from the value of the
+    state it was cut at (Pardo et al., 2018, "Time Limits in Reinforcement
+    Learning"): ``final_values[t]``, because ``values[t + 1]`` already belongs to the
+    next episode. Either way the GAE trace stops at the episode boundary.
+
+    Args:
+        rewards: ``r_t``.
+        values: ``V(s_t)``.
+        terminated: The episode ended in a terminal state at step *t*.
+        truncated: The episode was cut at step *t*.
+        final_values: ``V`` of the last observation of the episode cut at step *t*
+            (read where ``truncated & ~terminated``).
+        last_value: ``V`` of the observation after the last step.
+        gamma: Discount factor.
+        gae_lambda: GAE lambda.
+
+    Returns:
+        Advantages, shape ``(T, n_envs)``.
+    """
+    advantages = np.zeros_like(rewards)
+    last_gae = np.zeros_like(last_value)
+    for t in reversed(range(len(rewards))):
+        next_value = values[t + 1] if t + 1 < len(rewards) else last_value
+        next_value = np.where(truncated[t], final_values[t], next_value)
+        next_value = np.where(terminated[t], 0.0, next_value)
+        delta = rewards[t] + gamma * next_value - values[t]
+        same_episode = ~np.logical_or(terminated[t], truncated[t])
+        last_gae = delta + gamma * gae_lambda * same_episode * last_gae
+        advantages[t] = last_gae
+    return advantages
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +348,9 @@ def train(
     obs_buf = np.zeros((rollout_steps, n_envs, env.obs_dim), dtype=np.float32)
     act_buf = np.zeros((rollout_steps, n_envs, env.act_dim), dtype=np.float32)
     rew_buf = np.zeros((rollout_steps, n_envs), dtype=np.float32)
-    done_buf = np.zeros((rollout_steps, n_envs), dtype=np.float32)
+    term_buf = np.zeros((rollout_steps, n_envs), dtype=bool)
+    trunc_buf = np.zeros((rollout_steps, n_envs), dtype=bool)
+    final_val_buf = np.zeros((rollout_steps, n_envs), dtype=np.float32)
     val_buf = np.zeros((rollout_steps, n_envs), dtype=np.float32)
     logp_buf = np.zeros((rollout_steps, n_envs), dtype=np.float32)
 
@@ -316,15 +373,22 @@ def train(
                 obs_t = torch.as_tensor(cur_obs, dtype=torch.float32, device=dev)
                 action, log_prob, _, value = policy.get_action_and_value(obs_t)
                 action_np = action.cpu().numpy()
-                next_obs, rew, term, trunc = env.step(action_np)
+                next_obs, rew, term, trunc, info = env.step(action_np)
                 done = term | trunc
 
                 obs_buf[t] = cur_obs
                 act_buf[t] = action_np
                 rew_buf[t] = rew
-                done_buf[t] = done.astype(np.float32)
+                term_buf[t] = term
+                trunc_buf[t] = trunc
                 val_buf[t] = value.cpu().numpy()
                 logp_buf[t] = log_prob.cpu().numpy()
+                cut = trunc & ~term  # truncated episodes bootstrap from their last obs
+                if cut.any():
+                    final_obs = torch.as_tensor(
+                        info["final_obs"][cut], dtype=torch.float32, device=dev
+                    )
+                    final_val_buf[t, cut] = policy(final_obs)[1].cpu().numpy()
 
                 ep_reward_acc += rew
                 for i in range(n_envs):
@@ -342,13 +406,16 @@ def train(
             last_val = last_val.cpu().numpy()
 
         # ---- GAE advantage ----
-        adv_buf = np.zeros_like(rew_buf)
-        last_gae = np.zeros(n_envs, dtype=np.float32)
-        for t in reversed(range(rollout_steps)):
-            next_val = val_buf[t + 1] if t < rollout_steps - 1 else last_val
-            delta = rew_buf[t] + gamma * next_val * (1 - done_buf[t]) - val_buf[t]
-            last_gae = delta + gamma * gae_lambda * (1 - done_buf[t]) * last_gae
-            adv_buf[t] = last_gae
+        adv_buf = compute_gae(
+            rew_buf,
+            val_buf,
+            term_buf,
+            trunc_buf,
+            final_val_buf,
+            last_val,
+            gamma,
+            gae_lambda,
+        )
         ret_buf = adv_buf + val_buf
 
         # ---- PPO update ----
@@ -419,7 +486,9 @@ def train(
 
 def _parse() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="MuscleMimic PPO training")
-    p.add_argument("--clip", type=Path, default=_default_clip())
+    p.add_argument(
+        "--clip", type=Path, default=None, help="default: $MIMIC_CLIP or the HF clip"
+    )
     p.add_argument("--total_steps", type=int, default=10_000)
     p.add_argument("--n_envs", type=int, default=4)
     p.add_argument("--rollout_steps", type=int, default=128)
@@ -438,7 +507,7 @@ def _parse() -> argparse.Namespace:
 if __name__ == "__main__":
     args = _parse()
     train(
-        clip_path=args.clip,
+        clip_path=args.clip or _default_clip(),  # download only when needed
         total_steps=args.total_steps,
         n_envs=args.n_envs,
         rollout_steps=args.rollout_steps,

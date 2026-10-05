@@ -33,7 +33,7 @@ extensions = [
 ]
 
 try:
-    import sphinx_autoapi  # noqa: F401
+    import autoapi  # noqa: F401  (import name of the sphinx-autoapi package)
 
     extensions.append("autoapi.extension")
 except ImportError:

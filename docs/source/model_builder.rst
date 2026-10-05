@@ -159,6 +159,8 @@ Quick reference
      - Register an arbitrary ``MjSpec → MjSpec`` transform (escape hatch)
    * - ``set_timestep(dt)``
      - Override the simulation timestep (seconds)
+   * - ``disable_cylinder_contacts()``
+     - Set ``contype = conaffinity = 0`` on every cylinder geom
    * - ``apply_sarcopenia(force_scale)``
      - Scale all muscle peak forces (e.g. 0.5 → 50 % of nominal)
    * - ``.build()``

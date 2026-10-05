@@ -36,7 +36,7 @@ dependencies = [
     "osqp",
     "mujoco",
     "Pillow>=10.1.0",
-    "pink-noise-rl",
+    "colorednoise>=2.2.0",
     "packaging",
     "ml-collections>=0.1.1",
     "myo-sim==0.2.3",

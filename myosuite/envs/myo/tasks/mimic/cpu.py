@@ -25,17 +25,19 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
+from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_obs import joint_pos_obs, joint_vel_obs, muscle_act_obs
 from myosuite.terms.mimic_obs import (
     resolve_mimic_site_ids,
     sample_mimic_target_sites,
 )
 from myosuite.terms.mimic_reward import (
     MimicTrackingConfig,
-    compute_mimic_reward,
     compute_mimic_tracking_error,
     mimic_joint_pos_reward,
     mimic_joint_vel_reward,
     mimic_root_vel_reward,
+    mimic_site_tracking_reward,
 )
 
 
@@ -64,10 +66,65 @@ class _MuscleMimicCpuBase(MyoGymnasiumEnv, EzPickle):
         self._target_site_pos: np.ndarray | None = None
         self._target_lo = np.asarray(low, dtype=np.float64)
         self._target_hi = np.asarray(high, dtype=np.float64)
-        # Random-target CPU mimic starts with ~0.8 m site error. reward_scale=20
-        # saturates exp(-20*err)≈0 and hides the learning signal from PPO; use
-        # the denser scale already employed for clip tracking on mjlab.
-        self._tracking_cfg = MimicTrackingConfig(reward_scale=2.0)
+
+    def _resolve_mimic_sites(self, names: tuple[str, ...]) -> np.ndarray:
+        return resolve_mimic_site_ids(self.model, names)
+
+
+class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
+    """Random-target site tracking: the CPU half of the mjlab ``myoMimic*-v0`` tasks.
+
+    Matches ``mimic_mjlab_env._make_mimic_env_cfg`` without a clip:
+
+    - obs ``[qpos, qvel * ctrl_dt, act, site_pos, site_target, site_target - site_pos]``
+      (mjlab terms ``qpos``, ``qvel``, ``act`` and ``mimic_site_*``);
+    - reward ``exp(-tracking_reward_scale * mean site error)`` (variant config);
+    - muscle ctrl ``sigmoid(5 (a - 0.5))`` (mjlab ``sigmoid`` action mode) of the
+      action (unclipped, as on mjlab).
+
+    Args:
+        cfg: Variant config (``default_mimic_config`` / ``default_mimic_fullbody_config``).
+        compile_fn: Model builder returning ``(model, spec, xml_path)`` for *cfg*.
+        site_names: Tracked site names, in target order.
+        seed: Optional RNG seed.
+        frame_skip: Simulation sub-steps per control step.
+        **kwargs: ``mimic_target_low`` / ``mimic_target_high`` box overrides.
+    """
+
+    def __init__(
+        self,
+        cfg: Any,
+        compile_fn: Any,
+        site_names: tuple[str, ...],
+        seed: int | None,
+        frame_skip: int,
+        **kwargs: Any,
+    ) -> None:
+        mt_low = kwargs.pop(
+            "mimic_target_low",
+            tuple(float(x) for x in cfg.target_site_range.low),
+        )
+        mt_high = kwargs.pop(
+            "mimic_target_high",
+            tuple(float(x) for x in cfg.target_site_range.high),
+        )
+        super().__init__(
+            frame_skip=frame_skip,
+            seed=seed,
+            mimic_target_low=mt_low,
+            mimic_target_high=mt_high,
+            **kwargs,
+        )
+        self.model, self._mj_spec, self._xml_path = compile_fn(cfg)
+        self.data = mujoco.MjData(self.model)
+        self._ctrl_dt = float(self.model.opt.timestep * self.frame_skip)
+        self._site_ids = self._resolve_mimic_sites(site_names)
+        self._target_site_pos = np.zeros((len(self._site_ids), 3), dtype=np.float32)
+        self._tracking_cfg = MimicTrackingConfig(
+            reward_scale=float(cfg.tracking_reward_scale),
+            success_threshold=float(cfg.tracking_success_threshold),
+        )
+        self._setup_spaces()
 
     def _setup_spaces(self) -> None:
         ctrl = self.model.actuator_ctrlrange.astype(np.float32)
@@ -76,43 +133,36 @@ class _MuscleMimicCpuBase(MyoGymnasiumEnv, EzPickle):
             high=ctrl[:, 1],
             dtype=np.float32,
         )
-        obs_size = int(self.model.nq + self.model.nv + self.model.na + 1)
-        self.observation_space = spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(obs_size,),
-            dtype=np.float32,
-        )
-
-    def _resolve_mimic_sites(self, names: tuple[str, ...]) -> np.ndarray:
-        return resolve_mimic_site_ids(self.model, names)
+        n_site_values = 3 * 3 * len(self._site_ids)  # pos, target, error
+        obs_size = int(self.model.nq + self.model.nv + self.model.na + n_site_values)
+        self.observation_space = self._unbounded_obs_space(obs_size)
 
     def _get_obs_dict(self, accessor: CpuEnvAccessor) -> dict[str, np.ndarray]:
-        qpos = accessor.joint_pos().astype(np.float32)
-        qvel = accessor.joint_vel().astype(np.float32)
-        act = accessor.muscle_act().astype(np.float32)
         assert self._site_ids is not None
         assert self._target_site_pos is not None
-        track_err = compute_mimic_tracking_error(
-            self.data.site_xpos[self._site_ids],
-            self._target_site_pos,
-        )
+        site_pos = accessor.site_xpos(self._site_ids)
+        target = self._target_site_pos
         return {
-            "qpos": qpos,
-            "qvel": qvel,
-            "act": act,
-            "track_err": np.asarray([track_err], dtype=np.float32),
+            "qpos": joint_pos_obs(accessor),
+            "qvel": joint_vel_obs(accessor),
+            "act": muscle_act_obs(accessor),
+            "mimic_site_pos": site_pos.ravel(),
+            "mimic_site_target": target.ravel(),
+            "mimic_site_err": (target - site_pos).ravel(),
         }
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
-        track_err = float(obs_dict["track_err"][0])
-        solved = bool(track_err < self._tracking_cfg.success_threshold)
-        dense = compute_mimic_reward(track_err, self._tracking_cfg)
+        site_pos = obs_dict["mimic_site_pos"].reshape(-1, 3)
+        target = obs_dict["mimic_site_target"].reshape(-1, 3)
+        track_err = compute_mimic_tracking_error(site_pos, target)
+        dense = mimic_site_tracking_reward(
+            np, site_pos, target, scale=self._tracking_cfg.reward_scale
+        )
         return {
             "track_err": track_err,
-            "dense": dense,
+            "dense": float(dense),
             "sparse": -track_err,
-            "solved": solved,
+            "solved": bool(track_err < self._tracking_cfg.success_threshold),
             "done": False,
         }
 
@@ -126,66 +176,51 @@ class _MuscleMimicCpuBase(MyoGymnasiumEnv, EzPickle):
         )
         return {}
 
+    def step(
+        self, action: np.ndarray, **kwargs: Any
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """Advance one control step with sigmoid-mapped muscle controls.
 
-class MuscleMimicBimanualEnv(_MuscleMimicCpuBase):
+        Args:
+            action: Policy action; the sigmoid saturates it, there is no clip.
+            **kwargs: Ignored compatibility kwargs.
+
+        Returns:
+            Tuple of (obs, reward, terminated, truncated, info).
+        """
+        self.data.ctrl[:] = sigmoid_muscle_activation(action, np)
+        self._step_physics()
+        self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
+        obs_dict = self._get_obs_dict(self._accessor)
+        return self._finalize_step(obs_dict, self.get_reward_dict(obs_dict))
+
+
+class MuscleMimicBimanualEnv(_MuscleMimicTrackingEnv):
     """CPU Gymnasium MuscleMimic bimanual task."""
 
     def __init__(self, seed: int | None = None, frame_skip: int = 5, **kwargs: Any):
-        cfg = default_mimic_config()
-        mt_low = kwargs.pop(
-            "mimic_target_low",
-            tuple(float(x) for x in cfg.target_site_range.low),
-        )
-        mt_high = kwargs.pop(
-            "mimic_target_high",
-            tuple(float(x) for x in cfg.target_site_range.high),
-        )
         super().__init__(
-            frame_skip=frame_skip,
-            seed=seed,
-            mimic_target_low=mt_low,
-            mimic_target_high=mt_high,
+            default_mimic_config(),
+            compile_mimic_bimanual_mjmodel,
+            tuple(BODY2SITES_FOR_MIMIC.values()),
+            seed,
+            frame_skip,
             **kwargs,
         )
-        self.model, self._mj_spec, self._xml_path = compile_mimic_bimanual_mjmodel(cfg)
-        self.data = mujoco.MjData(self.model)
-        self._ctrl_dt = float(self.model.opt.timestep * self.frame_skip)
-        self._site_ids = self._resolve_mimic_sites(tuple(BODY2SITES_FOR_MIMIC.values()))
-        self._target_site_pos = np.zeros(
-            (int(self._site_ids.shape[0]), 3), dtype=np.float32
-        )
-        self._setup_spaces()
 
 
-class MuscleMimicFullbodyEnv(_MuscleMimicCpuBase):
+class MuscleMimicFullbodyEnv(_MuscleMimicTrackingEnv):
     """CPU Gymnasium MuscleMimic full-body task."""
 
     def __init__(self, seed: int | None = None, frame_skip: int = 5, **kwargs: Any):
-        cfg = default_mimic_fullbody_config()
-        mt_low = kwargs.pop(
-            "mimic_target_low",
-            tuple(float(x) for x in cfg.target_site_range.low),
-        )
-        mt_high = kwargs.pop(
-            "mimic_target_high",
-            tuple(float(x) for x in cfg.target_site_range.high),
-        )
         super().__init__(
-            frame_skip=frame_skip,
-            seed=seed,
-            mimic_target_low=mt_low,
-            mimic_target_high=mt_high,
+            default_mimic_fullbody_config(),
+            compile_mimic_fullbody_mjmodel,
+            tuple(FULLBODY_BODY2SITES_FOR_MIMIC.values()),
+            seed,
+            frame_skip,
             **kwargs,
         )
-        self.model, self._mj_spec, self._xml_path = compile_mimic_fullbody_mjmodel(cfg)
-        self.data = mujoco.MjData(self.model)
-        self._ctrl_dt = float(self.model.opt.timestep * self.frame_skip)
-        names = tuple(FULLBODY_BODY2SITES_FOR_MIMIC.values())
-        self._site_ids = self._resolve_mimic_sites(names)
-        self._target_site_pos = np.zeros(
-            (int(self._site_ids.shape[0]), 3), dtype=np.float32
-        )
-        self._setup_spaces()
 
 
 class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
@@ -309,7 +344,10 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
     def _load_circular_clips(self) -> None:
         """Load CW + CCW circular walking clips and precompute phase-matched frames."""
         from huggingface_hub import hf_hub_download
-        from myosuite.core.trajectory_io import load_motion_clip
+        from myosuite.core.trajectory_io import (
+            expand_motion_clip_to_model,
+            load_motion_clip,
+        )
         from pathlib import Path as _Path
 
         _CIRC_FILES = [
@@ -324,11 +362,11 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             p = hf_hub_download(
                 repo_id=self._gait_repo, filename=fname, repo_type="dataset"
             )
-            clips.append(
-                load_motion_clip(
-                    _Path(p), expected_nq=self.model.nq, expected_nv=self.model.nv
-                )
+            clip = load_motion_clip(
+                _Path(p), expected_nq=self.model.nq, expected_nv=self.model.nv
             )
+            # Columns by joint name: qpos/qvel are indexed as model coordinates below.
+            clips.append(expand_motion_clip_to_model(clip, self.model))
         self._circ_clips = clips
 
         def _ang_dist(a: float, b: float) -> float:

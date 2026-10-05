@@ -35,10 +35,6 @@ from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
     ChaseTagVsConfig,
 )
 from myosuite.envs.myo.tasks.challenge.combat_model_meta import CombatModelMetaBase
-from myosuite.integrations.musclemimic.fullbody_model import (
-    build_mimic_fullbody_spec,
-    default_mimic_fullbody_config,
-)
 from myosuite.integrations.musclemimic.two_agent_scene import (
     build_combined_spec,
     default_root_offsets,
@@ -136,6 +132,13 @@ def _build_fullbody_agent_spec(
     config: ChaseTagVsConfig,
 ) -> tuple[mujoco.MjSpec, np.ndarray | None]:
     """Build one standalone MuscleMimic full-body agent spec (+ its standing keyframe)."""
+    # Deferred: env registration imports this module, and the full-body builder
+    # pulls in ml_collections.
+    from myosuite.integrations.musclemimic.fullbody_model import (  # noqa: PLC0415
+        build_mimic_fullbody_spec,
+        default_mimic_fullbody_config,
+    )
+
     fullbody_cfg = default_mimic_fullbody_config()
     fullbody_cfg.sim_dt = config.sim_dt
     spec, _ = build_mimic_fullbody_spec(fullbody_cfg)

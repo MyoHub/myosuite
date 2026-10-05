@@ -7,14 +7,23 @@
 
 mjlab advances MuJoCo-Warp simulation on torch tensors.  The MuscleMimic
 fullbody checkpoint, however, was trained against the upstream MuJoCo CPU
-observation builder.  These wrappers bridge that gap by:
+observation builder (``FullbodyObsAdapter``).  These wrappers bridge that gap:
 
-1. Copying the selected mjlab env state into CPU ``mujoco.MjData`` buffers.
-2. Calling ``mujoco.mj_forward`` so actuator, site, contact, and sensor fields
-   are consistent with the copied state.
-3. Building the checkpoint observation with ``FullbodyObsAdapter``.
-4. Running ONNX or Orbax/Torch actor inference.
-5. Returning a torch action tensor on the mjlab device.
+1. Build the checkpoint observation of every selected env in one batch with
+   ``TorchFullbodyObsAdapter``, from mjlab's sim data on its device.  The bridge
+   is called after ``env.step``/``env.reset``, whose final ``sim.forward()``
+   leaves actuator, site, contact and sensor fields consistent with the state
+   (also for envs that were just reset).  The result is float32: it matches
+   the CPU builder fed the same arrays to float32 rounding, not bitwise, and
+   differs from a CPU ``mj_forward`` of the same state where MuJoCo Warp's
+   own results differ (some wrapped-tendon lengths, contact/touch forces).
+2. Run ONNX (one bulk host copy of the batch) or Orbax/Torch actor inference
+   (stays on device).
+3. Return a torch action tensor on the mjlab device.
+
+``obs_backend="cpu"`` keeps the reference path for debugging and parity checks:
+copy each env's state into a CPU ``mujoco.MjData``, ``mj_forward`` it and build
+its observation with ``FullbodyObsAdapter`` (cost linear in the number of envs).
 
 For faithful checkpoint playback, register the mjlab task with
 ``action_mode="direct"`` and use ``FullbodyOrbaxMjlabPolicy``.  The direct
@@ -41,11 +50,32 @@ if TYPE_CHECKING:
         FullbodyObsAdapter,
         LocalPolicyArtifacts,
     )
+    from myosuite.integrations.musclemimic.fullbody_obs_torch import (
+        TorchFullbodyObsAdapter,
+    )
     from myosuite.core.trajectory_io import MotionClip
 
 logger = logging.getLogger(__name__)
 
 _NormalizationMode = Literal["frozen", "running"]
+# "torch": batched on the mjlab device; "cpu": per-env MjData + mj_forward;
+# "auto": "torch" for a FullbodyObsAdapter, "cpu" for any other (duck-typed) adapter.
+ObsBackend = Literal["auto", "torch", "cpu"]
+# Model fields whose equality makes CPU-model ids valid indices into mjlab sim data.
+_SIM_LAYOUT_FIELDS = (
+    "nq",
+    "nv",
+    "nu",
+    "na",
+    "nsite",
+    "nbody",
+    "nsensordata",
+    "jnt_qposadr",
+    "jnt_dofadr",
+    "site_bodyid",
+    "body_rootid",
+    "sensor_adr",
+)
 
 
 def _unwrap_env(env: Any) -> Any:
@@ -86,29 +116,6 @@ def _to_numpy(value: Any) -> np.ndarray:
     return np.asarray(value)
 
 
-def _batched_row(value: Any, env_idx: int) -> np.ndarray:
-    """Return ``value[env_idx]`` as numpy, supporting mjlab TorchArray fields."""
-    try:
-        return _to_numpy(value[env_idx])
-    except (AttributeError, IndexError, TypeError):
-        return _to_numpy(value)[env_idx]
-
-
-def _copy_field_row(dst: np.ndarray, src_container: Any, env_idx: int) -> None:
-    """Copy one batched field row into ``dst`` when the shapes are compatible."""
-    src = np.asarray(_batched_row(src_container, env_idx), dtype=dst.dtype)
-    if src.shape == dst.shape:
-        dst[...] = src
-        return
-    if src.size == dst.size:
-        dst[...] = src.reshape(dst.shape)
-        return
-    raise ValueError(
-        f"Cannot copy mjlab field row with shape {src.shape} into CPU field "
-        f"with shape {dst.shape}."
-    )
-
-
 def _artifact_tensor(value: Any, device: torch.device) -> torch.Tensor:
     """Convert checkpoint stats to writable float32 tensors on ``device``."""
     return torch.as_tensor(
@@ -118,8 +125,19 @@ def _artifact_tensor(value: Any, device: torch.device) -> torch.Tensor:
     )
 
 
+class _RowView:
+    """Selected env rows of batched sim data, gathered per field on access."""
+
+    def __init__(self, data: Any, rows: torch.Tensor) -> None:
+        self._data = data
+        self._rows = rows
+
+    def __getattr__(self, name: str) -> torch.Tensor:
+        return getattr(self._data, name)[self._rows]
+
+
 class _BatchedObservationHistoryBuffer:
-    """Batched equivalent of upstream single-env observation history."""
+    """Batched equivalent of upstream single-env observation history (torch)."""
 
     def __init__(
         self,
@@ -143,64 +161,52 @@ class _BatchedObservationHistoryBuffer:
             self.state_indices is None or self.goal_indices is None
         ):
             raise ValueError("split_goal=True requires state_indices and goal_indices.")
-        self._buffer: np.ndarray | None = None
+        self._buffer: torch.Tensor | None = None
+        self._split_idx: tuple[torch.Tensor, torch.Tensor] | None = None
 
     def clear(self) -> None:
         self._buffer = None
 
-    def reset(self, obs: np.ndarray) -> np.ndarray:
-        obs = np.asarray(obs, dtype=np.float32)
-        if self.split_goal:
-            assert self.state_indices is not None
-            assert self.goal_indices is not None
-            state_obs = obs[:, self.state_indices]
-            goal_obs = obs[:, self.goal_indices]
-            self._buffer = np.zeros(
-                (obs.shape[0], self.n_steps, state_obs.shape[1]),
-                dtype=obs.dtype,
+    def _split(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """``(state, goal)`` columns of *obs*; goal is ``None`` without split_goal."""
+        if not self.split_goal:
+            return obs, None
+        if self._split_idx is None or self._split_idx[0].device != obs.device:
+            self._split_idx = (
+                torch.as_tensor(self.state_indices, device=obs.device),
+                torch.as_tensor(self.goal_indices, device=obs.device),
             )
-            self._buffer[:, -1, :] = state_obs
-            return np.concatenate(
-                [self._buffer.reshape(obs.shape[0], -1), goal_obs],
-                axis=1,
-            ).astype(np.float32)
+        return obs[:, self._split_idx[0]], obs[:, self._split_idx[1]]
 
-        self._buffer = np.zeros(
-            (obs.shape[0], self.n_steps, obs.shape[1]),
-            dtype=obs.dtype,
-        )
-        self._buffer[:, -1, :] = obs
-        return self._buffer.reshape(obs.shape[0], -1).astype(np.float32)
+    def _output(self, goal: torch.Tensor | None) -> torch.Tensor:
+        assert self._buffer is not None
+        flat = self._buffer.reshape(self._buffer.shape[0], -1)
+        return flat if goal is None else torch.cat([flat, goal], dim=1)
+
+    def reset(self, obs: torch.Tensor | np.ndarray) -> torch.Tensor:
+        state, goal = self._split(torch.as_tensor(obs, dtype=torch.float32))
+        self._buffer = state.new_zeros((state.shape[0], self.n_steps, state.shape[1]))
+        self._buffer[:, -1] = state
+        return self._output(goal)
 
     def step(
-        self, obs: np.ndarray, new_episode: np.ndarray | None = None
-    ) -> np.ndarray:
+        self,
+        obs: torch.Tensor | np.ndarray,
+        new_episode: torch.Tensor | np.ndarray | None = None,
+    ) -> torch.Tensor:
         """Append *obs*; envs flagged in *new_episode* (``(N,)`` bool) restart their history."""
         if self._buffer is None:
             return self.reset(obs)
-        obs = np.asarray(obs, dtype=np.float32)
-        if self.split_goal:
-            assert self.state_indices is not None
-            assert self.goal_indices is not None
-            state_obs = obs[:, self.state_indices]
-            goal_obs = obs[:, self.goal_indices]
-            self._buffer = np.roll(self._buffer, shift=-1, axis=1)
-            self._buffer[:, -1, :] = state_obs
-            self._restart_rows(new_episode)
-            return np.concatenate(
-                [self._buffer.reshape(obs.shape[0], -1), goal_obs],
-                axis=1,
-            ).astype(np.float32)
-
-        self._buffer = np.roll(self._buffer, shift=-1, axis=1)
-        self._buffer[:, -1, :] = obs
-        self._restart_rows(new_episode)
-        return self._buffer.reshape(obs.shape[0], -1).astype(np.float32)
-
-    def _restart_rows(self, new_episode: np.ndarray | None) -> None:
-        """Drop the older frames of the flagged envs (as :meth:`reset` does)."""
-        if new_episode is not None and self._buffer is not None:
-            self._buffer[np.asarray(new_episode, dtype=bool), :-1, :] = 0.0
+        state, goal = self._split(torch.as_tensor(obs, dtype=torch.float32))
+        self._buffer = torch.roll(self._buffer, shifts=-1, dims=1)
+        self._buffer[:, -1] = state
+        if new_episode is not None:
+            # Drop the older frames of the flagged envs (as reset does), sync-free.
+            fresh = torch.as_tensor(
+                new_episode, dtype=torch.bool, device=self._buffer.device
+            )
+            self._buffer[:, :-1].masked_fill_(fresh[:, None, None], 0.0)
+        return self._output(goal)
 
 
 def reset_mjlab_env_to_clip_frame(
@@ -301,16 +307,24 @@ def reset_mjlab_env_to_clip_frame(
         source = cache.get("clip_source")
         if source is not None:
             source._ensure_device(sim_data.qpos.device, n_envs)
-            # Clip frame = (episode step + offset) % T: choose the offset that
-            # puts each env's current step on `frame`.
+            # Clip frame = min(episode step + offset, T - 1): choose the offset that
+            # puts each env's current step on `frame` (negative mid-episode), so
+            # the clip end is reached after T - frame steps.
             step = _mimic_episode_steps(unwrapped)[env_ids]
-            source._start_offsets[env_ids] = (frame - step) % source.n_frames
+            source._start_offsets[env_ids] = frame - step
 
     return frame
 
 
 class _FullbodyMjlabPolicyBridge:
-    """Shared state-sync and observation-building logic for mjlab policies."""
+    """Shared observation-building logic for mjlab policies.
+
+    Observations, history and per-env episode masks are torch tensors on the sim
+    device; only the ``obs_backend="cpu"`` path goes through host memory.
+    """
+
+    # Device index of the selected envs; None selects every env in order.
+    _env_rows: torch.Tensor | None = None
 
     def __init__(
         self,
@@ -330,6 +344,7 @@ class _FullbodyMjlabPolicyBridge:
         split_goal: bool = False,
         goal_indices: np.ndarray | None = None,
         state_indices: np.ndarray | None = None,
+        obs_backend: ObsBackend = "auto",
     ) -> None:
         self._env = env
         self._unwrapped = _unwrap_env(env)
@@ -357,8 +372,11 @@ class _FullbodyMjlabPolicyBridge:
         )
         self._history: _BatchedObservationHistoryBuffer | None = None
         self._history_started = False
-        self._last_steps: np.ndarray | None = None
-        self._new_episode = np.zeros(0, dtype=bool)
+        self._last_steps: torch.Tensor | None = None
+        self._sim_device = torch.device(
+            getattr(self._sim_data().qpos, "device", self._device)
+        )
+        self._new_episode = torch.zeros(0, dtype=torch.bool, device=self._sim_device)
 
         n_envs = self._num_envs()
         if env_indices is None:
@@ -370,16 +388,77 @@ class _FullbodyMjlabPolicyBridge:
                 raise ValueError(f"env_indices out of range for {n_envs} envs: {bad}")
         if not self._env_indices:
             raise ValueError("At least one env index is required for mjlab inference.")
-
-        self._cpu_data = [mujoco.MjData(cpu_model) for _ in self._env_indices]
         self._selected_all = self._env_indices == tuple(range(n_envs))
+        if not self._selected_all:
+            self._env_rows = torch.as_tensor(
+                self._env_indices, dtype=torch.long, device=self._sim_device
+            )
+        ctrl_range = torch.as_tensor(
+            np.asarray(cpu_model.actuator_ctrlrange, dtype=np.float32).reshape(-1, 2),
+            device=self._device,
+        )
+        self._ctrl_lo, self._ctrl_hi = ctrl_range[:, 0], ctrl_range[:, 1]
 
-        if len(self._env_indices) > 16:
-            logger.warning(
-                "%s will CPU-sync %d mjlab envs per policy call; this path is "
-                "intended for playback/debug inference rather than large-batch PPO.",
-                type(self).__name__,
-                len(self._env_indices),
+        self._obs_backend = self._resolve_obs_backend(obs_backend)
+        self._torch_obs: TorchFullbodyObsAdapter | None = None
+        self._cpu_data: list[mujoco.MjData] = []
+        if self._obs_backend == "torch":
+            from myosuite.integrations.musclemimic.fullbody_obs_torch import (
+                TorchFullbodyObsAdapter,
+            )
+
+            self._check_sim_layout()
+            self._torch_obs = TorchFullbodyObsAdapter(
+                obs_adapter, device=self._sim_device
+            )
+        else:
+            self._cpu_data = [mujoco.MjData(cpu_model) for _ in self._env_indices]
+            if len(self._env_indices) > 16:
+                logger.warning(
+                    "%s will CPU-sync %d mjlab envs per policy call "
+                    "(obs_backend='cpu'); this path is meant for debugging and "
+                    "parity checks, not large-batch inference.",
+                    type(self).__name__,
+                    len(self._env_indices),
+                )
+
+    def _resolve_obs_backend(self, obs_backend: str) -> str:
+        from myosuite.integrations.musclemimic.fullbody_local_policy import (
+            FullbodyObsAdapter,
+        )
+
+        if obs_backend not in ("auto", "torch", "cpu"):
+            raise ValueError(
+                f"obs_backend must be 'auto', 'torch' or 'cpu', got {obs_backend!r}."
+            )
+        is_fullbody = isinstance(self._obs_adapter, FullbodyObsAdapter)
+        if obs_backend == "auto":
+            return "torch" if is_fullbody else "cpu"
+        if obs_backend == "torch" and not is_fullbody:
+            raise TypeError(
+                "obs_backend='torch' needs a FullbodyObsAdapter, got "
+                f"{type(self._obs_adapter).__name__}; use obs_backend='cpu'."
+            )
+        return obs_backend
+
+    def _check_sim_layout(self) -> None:
+        """Fail if CPU-model ids would not index mjlab's sim arrays correctly."""
+        sim_model = getattr(getattr(self._unwrapped, "sim", None), "mj_model", None)
+        if sim_model is None:
+            return
+        bad = [
+            name
+            for name in _SIM_LAYOUT_FIELDS
+            if not np.array_equal(
+                np.asarray(getattr(self._cpu_model, name)),
+                np.asarray(getattr(sim_model, name)),
+            )
+        ]
+        if bad:
+            raise ValueError(
+                "cpu_model and the mjlab sim model differ in "
+                f"{', '.join(bad)}; the batched observation indexes sim data with "
+                "cpu_model ids. Pass the scene's model or use obs_backend='cpu'."
             )
 
     def reset(self) -> None:
@@ -469,7 +548,12 @@ class _FullbodyMjlabPolicyBridge:
             logger.debug("Could not resolve mjlab ClipTrajectorySource: %s", err)
         return self._clip_source
 
-    def _current_frame_indices(self) -> np.ndarray:
+    def _rows(self, value: Any) -> Any:
+        """The selected envs' rows of a batched ``(num_envs, ...)`` field."""
+        return value if self._env_rows is None else value[self._env_rows]
+
+    def _current_frame_indices(self) -> torch.Tensor:
+        """``(n_selected,)`` int64 clip frame of each selected env, on the sim device."""
         source = self._trajectory_source()
         if source is not None:
             from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
@@ -479,13 +563,14 @@ class _FullbodyMjlabPolicyBridge:
             # Same integer step counter as the env's clip terms (not float time).
             step = _mimic_episode_steps(self._unwrapped)
             source.update(step)
-            frames = source.frame_indices(step).detach().cpu().numpy().astype(np.int64)
-            return frames[np.asarray(self._env_indices, dtype=np.int64)]
+            return self._rows(source.frame_indices(step))
 
         frame = self._frame_idx % self._frame_count()
-        return np.full((len(self._env_indices),), frame, dtype=np.int64)
+        return torch.full(
+            (len(self._env_indices),), frame, dtype=torch.long, device=self._sim_device
+        )
 
-    def _episode_start_mask(self) -> np.ndarray:
+    def _episode_start_mask(self) -> torch.Tensor:
         """``(n_selected,)`` bool: envs whose episode began since the last call.
 
         Read from each env's own step counter, so an env that resets mid-run
@@ -494,48 +579,56 @@ class _FullbodyMjlabPolicyBridge:
         n = len(self._env_indices)
         steps = getattr(self._unwrapped, "episode_length_buf", None)
         if steps is None:
-            return np.zeros(n, dtype=bool)
-        steps = steps.detach().cpu().numpy()[np.asarray(self._env_indices)]
-        last, self._last_steps = self._last_steps, steps.copy()
+            return torch.zeros(n, dtype=torch.bool, device=self._sim_device)
+        steps = self._rows(steps).clone()
+        last, self._last_steps = self._last_steps, steps
         if last is None:
-            return np.ones(n, dtype=bool)
+            return torch.ones(n, dtype=torch.bool, device=steps.device)
         return (steps < last) | (steps == 0)
 
-    def _sync_env_to_cpu(
-        self, cpu_data: mujoco.MjData, sim_data: Any, env_idx: int
-    ) -> None:
-        for field in ("qpos", "qvel", "ctrl", "act"):
-            if not hasattr(sim_data, field) or not hasattr(cpu_data, field):
-                continue
-            dst = getattr(cpu_data, field)
-            if dst.size:
-                _copy_field_row(dst, getattr(sim_data, field), env_idx)
+    def _raw_obs_batch(self, frames: torch.Tensor) -> torch.Tensor:
+        """``(n_selected, obs_dim)`` float32 observation of the current sim state."""
+        if self._torch_obs is not None:
+            # Raw MuJoCo-layout sim arrays (all entities): the adapter indexes them
+            # with cpu_model ids, checked equal to the sim model's at construction.
+            data = self._sim_data()
+            if self._env_rows is not None:
+                data = _RowView(data, self._env_rows)
+            with torch.no_grad():
+                return self._torch_obs.build(data, frames)
+        return self._cpu_obs_batch(frames)
 
-        if self._cpu_model.nmocap > 0:
-            if hasattr(sim_data, "mocap_pos"):
-                _copy_field_row(cpu_data.mocap_pos, sim_data.mocap_pos, env_idx)
-            if hasattr(sim_data, "mocap_quat"):
-                _copy_field_row(cpu_data.mocap_quat, sim_data.mocap_quat, env_idx)
-
-        mujoco.mj_forward(self._cpu_model, cpu_data)
-
-    def _build_fullbody_obs_batch(self) -> np.ndarray:
+    def _cpu_obs_batch(self, frames: torch.Tensor) -> torch.Tensor:
+        """Reference path: per-env CPU ``mj_forward`` + ``FullbodyObsAdapter``."""
         sim_data = self._sim_data()
-        frame_indices = self._current_frame_indices()
-
+        fields = ["qpos", "qvel", "ctrl", "act"]
+        if self._cpu_model.nmocap > 0:
+            fields += ["mocap_pos", "mocap_quat"]
+        # One host copy per field for all selected envs.
+        rows = {
+            field: _to_numpy(self._rows(getattr(sim_data, field)))
+            for field in fields
+            if hasattr(sim_data, field) and getattr(self._cpu_data[0], field).size
+        }
         obs_batch: list[np.ndarray] = []
-        for cpu_data, env_idx, frame_idx in zip(
-            self._cpu_data, self._env_indices, frame_indices, strict=True
+        for i, (cpu_data, frame) in enumerate(
+            zip(self._cpu_data, _to_numpy(frames), strict=True)
         ):
-            self._sync_env_to_cpu(cpu_data, sim_data, env_idx)
-            obs = self._obs_adapter.build(cpu_data, int(frame_idx))
+            for field, values in rows.items():
+                dst = getattr(cpu_data, field)
+                dst[...] = np.asarray(values[i], dtype=dst.dtype).reshape(dst.shape)
+            mujoco.mj_forward(self._cpu_model, cpu_data)
+            obs = self._obs_adapter.build(cpu_data, int(frame))
             obs_batch.append(np.asarray(obs, dtype=np.float32))
+        return torch.as_tensor(np.stack(obs_batch, axis=0), device=self._sim_device)
 
+    def _build_fullbody_obs_batch(self) -> torch.Tensor:
+        """Policy observation of the selected envs (with history), on the sim device."""
+        raw_obs = self._raw_obs_batch(self._current_frame_indices())
         if self._trajectory_source() is None:
             self._frame_idx += 1
-        raw_obs = np.stack(obs_batch, axis=0).astype(np.float32)
         self._new_episode = self._episode_start_mask()
-        history = self._ensure_history(raw_obs.shape[1])
+        history = self._ensure_history(int(raw_obs.shape[1]))
         if history is None:
             return raw_obs
         if not self._history_started:
@@ -543,47 +636,49 @@ class _FullbodyMjlabPolicyBridge:
             return history.reset(raw_obs)
         return history.step(raw_obs, self._new_episode)
 
-    def _actions_to_tensor(self, action_np: np.ndarray) -> torch.Tensor:
-        action_np = np.asarray(action_np, dtype=np.float32)
-        if action_np.ndim == 1:
-            action_np = action_np[None, :]
-        if action_np.shape[0] != len(self._env_indices):
+    def _actions_to_tensor(self, action: torch.Tensor | np.ndarray) -> torch.Tensor:
+        """Clip policy actions and scatter them into an ``(num_envs, act_dim)`` tensor."""
+        action_t = torch.as_tensor(action, dtype=torch.float32, device=self._device)
+        if action_t.ndim == 1:
+            action_t = action_t[None, :]
+        if action_t.shape[0] != len(self._env_indices):
             raise ValueError(
                 "Policy returned "
-                f"{action_np.shape[0]} actions for {len(self._env_indices)} synced envs."
+                f"{action_t.shape[0]} actions for {len(self._env_indices)} synced envs."
             )
 
-        action_np = np.clip(action_np, -1.0, 1.0)
+        action_t = action_t.clamp(-1.0, 1.0)
         if self._output_ctrl:
-            ctrl_range = np.asarray(
-                self._cpu_model.actuator_ctrlrange, dtype=np.float32
-            )
-            if ctrl_range.shape == (action_np.shape[1], 2):
-                action_np = np.clip(action_np, ctrl_range[:, 0], ctrl_range[:, 1])
+            if self._ctrl_lo.shape[0] == action_t.shape[1]:
+                action_t = torch.clamp(action_t, self._ctrl_lo, self._ctrl_hi)
             else:
-                action_np = np.clip(action_np, 0.0, 1.0)
+                action_t = action_t.clamp(0.0, 1.0)
 
-        action_t = torch.as_tensor(action_np, dtype=torch.float32, device=self._device)
         n_envs = self._num_envs()
         if self._broadcast_single_env and action_t.shape[0] == 1:
             return action_t.expand(n_envs, -1)
         if self._selected_all:
             return action_t
 
+        assert self._env_rows is not None
         full = torch.zeros(
             (n_envs, action_t.shape[1]), dtype=action_t.dtype, device=self._device
         )
-        full[list(self._env_indices)] = action_t
+        full[self._env_rows.to(self._device)] = action_t
         return full
 
 
 class FullbodyOnnxMjlabPolicy(_FullbodyMjlabPolicyBridge):
     """Policy wrapper that bridges mjlab GPU state to a full-body ONNX model.
 
-    This class preserves the previous ONNX wrapper's behaviour by syncing
-    ``env_idx`` and broadcasting that action across all mjlab envs.  Pass
-    ``output_ctrl=True`` only when the mjlab task was registered with
-    ``action_mode="direct"``.
+    By default this preserves the previous ONNX wrapper's behaviour: it builds
+    the observation of ``env_idx`` and broadcasts that action across all mjlab
+    envs.  Pass ``env_indices`` to run those envs as one batch with one action
+    each (the ONNX graph needs a dynamic batch axis).  onnxruntime runs on the
+    CPU, so each call makes one host copy of the observation batch and one
+    device copy of the actions.  Pass ``output_ctrl=True`` only when the mjlab
+    task was registered with ``action_mode="direct"``.  ``obs_backend`` selects
+    the observation builder (see :data:`ObsBackend`).
     """
 
     def __init__(
@@ -596,6 +691,7 @@ class FullbodyOnnxMjlabPolicy(_FullbodyMjlabPolicyBridge):
         device: str | torch.device | None = None,
         env_idx: int = 0,
         *,
+        env_indices: tuple[int, ...] | list[int] | None = None,
         entity_name: str = "mimic_fullbody_robot",
         variant: str = "fullbody",
         ctrl_dt: float | None = None,
@@ -604,6 +700,7 @@ class FullbodyOnnxMjlabPolicy(_FullbodyMjlabPolicyBridge):
         split_goal: bool = False,
         goal_indices: np.ndarray | None = None,
         state_indices: np.ndarray | None = None,
+        obs_backend: ObsBackend = "auto",
     ) -> None:
         try:
             import onnxruntime as ort
@@ -618,21 +715,29 @@ class FullbodyOnnxMjlabPolicy(_FullbodyMjlabPolicyBridge):
             obs_adapter=obs_adapter,
             clip=clip,
             device=device,
-            env_indices=(int(env_idx),),
+            env_indices=(int(env_idx),) if env_indices is None else env_indices,
             entity_name=entity_name,
             variant=variant,
             ctrl_dt=ctrl_dt,
             output_ctrl=output_ctrl,
-            broadcast_single_env=True,
+            broadcast_single_env=env_indices is None,
             len_obs_history=len_obs_history,
             split_goal=split_goal,
             goal_indices=goal_indices,
             state_indices=state_indices,
+            obs_backend=obs_backend,
         )
 
         onnx_path = Path(onnx_path)
+        # onnxruntime's spinning intra-op pool starves the torch/warp threads that
+        # share the CPU (CPU torch: 94 -> 29 ms per 256-env call); a batch of one
+        # env gains nothing from extra threads.
+        session_options = ort.SessionOptions()
+        session_options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        if len(self._env_indices) == 1:
+            session_options.intra_op_num_threads = 1
         self._session = ort.InferenceSession(
-            str(onnx_path), providers=["CPUExecutionProvider"]
+            str(onnx_path), session_options, providers=["CPUExecutionProvider"]
         )
         self._input_name = self._session.get_inputs()[0].name
         self._output_name = self._session.get_outputs()[0].name
@@ -651,14 +756,16 @@ class FullbodyOnnxMjlabPolicy(_FullbodyMjlabPolicyBridge):
     def __call__(self, obs: torch.Tensor) -> torch.Tensor:
         """Build fullbody obs from mjlab state, run ONNX, return env actions."""
         del obs
-        obs_np = self._build_fullbody_obs_batch()
+        policy_obs = self._build_fullbody_obs_batch()
         if (
             isinstance(self._expected_obs_dim, int)
-            and obs_np.shape[1] != self._expected_obs_dim
+            and policy_obs.shape[1] != self._expected_obs_dim
         ):
             raise ValueError(
-                f"Fullbody obs dim {obs_np.shape[1]} != ONNX input {self._expected_obs_dim}."
+                f"Fullbody obs dim {policy_obs.shape[1]} != ONNX input {self._expected_obs_dim}."
             )
+        # onnxruntime (CPU provider) reads host memory: one bulk copy of the batch.
+        obs_np = policy_obs.detach().cpu().numpy()
         action_np = self._session.run(
             [self._output_name],
             {self._input_name: obs_np},
@@ -686,6 +793,9 @@ class FullbodyOrbaxMjlabPolicy(_FullbodyMjlabPolicyBridge):
             ``"frozen"`` uses checkpoint stats as fixed buffers.
         output_ctrl: If ``True`` clips actions through ``cpu_model.ctrlrange`` so
             the returned tensor is already in MuJoCo muscle-control space.
+        obs_backend: Observation builder (see :data:`ObsBackend`).  The default
+            builds a ``FullbodyObsAdapter`` observation batched on the mjlab
+            device; ``"cpu"`` uses one CPU ``mj_forward`` per env (reference).
     """
 
     def __init__(
@@ -709,6 +819,7 @@ class FullbodyOrbaxMjlabPolicy(_FullbodyMjlabPolicyBridge):
         split_goal: bool = False,
         goal_indices: np.ndarray | None = None,
         state_indices: np.ndarray | None = None,
+        obs_backend: ObsBackend = "auto",
     ) -> None:
         if normalization_mode not in ("frozen", "running"):
             raise ValueError(
@@ -745,6 +856,7 @@ class FullbodyOrbaxMjlabPolicy(_FullbodyMjlabPolicyBridge):
             split_goal=split_goal,
             goal_indices=goal_indices,
             state_indices=state_indices,
+            obs_backend=obs_backend,
         )
 
         from myosuite.integrations.musclemimic.actor_torch import (
@@ -816,12 +928,12 @@ class FullbodyOrbaxMjlabPolicy(_FullbodyMjlabPolicyBridge):
 
         Envs that started a new episode first restart from the checkpoint statistics.
         """
-        fresh = torch.as_tensor(self._new_episode, device=self._actor_device)
-        if bool(fresh.any()):
-            mean, var, count = self._init_stats
-            self._run_mean[fresh] = mean
-            self._run_var[fresh] = var
-            self._run_count[fresh] = count
+        fresh = self._new_episode.to(self._actor_device)
+        mean, var, count = self._init_stats
+        # torch.where instead of a boolean-mask write: no host sync.
+        self._run_mean = torch.where(fresh[:, None], mean, self._run_mean)
+        self._run_var = torch.where(fresh[:, None], var, self._run_var)
+        self._run_count = torch.where(fresh, count, self._run_count)
         normalized, self._run_mean, self._run_var, self._run_count = (
             torch_running_mean_std_update_per_env(
                 obs, self._run_mean, self._run_var, self._run_count
@@ -832,26 +944,24 @@ class FullbodyOrbaxMjlabPolicy(_FullbodyMjlabPolicyBridge):
     def __call__(self, obs: torch.Tensor) -> torch.Tensor:
         """Build fullbody obs from mjlab state, run Orbax/Torch, return actions."""
         del obs
-        obs_np = self._build_fullbody_obs_batch()
-        if obs_np.shape[1] != self._artifacts.obs_dim:
+        policy_obs = self._build_fullbody_obs_batch()
+        if policy_obs.shape[1] != self._artifacts.obs_dim:
             raise ValueError(
-                f"Fullbody obs dim {obs_np.shape[1]} != checkpoint {self._artifacts.obs_dim}."
+                f"Fullbody obs dim {policy_obs.shape[1]} != checkpoint {self._artifacts.obs_dim}."
             )
 
         with torch.no_grad():
-            obs_t = torch.as_tensor(
-                obs_np, dtype=torch.float32, device=self._actor_device
-            )
+            obs_t = policy_obs.to(self._actor_device)
             if self._normalization_mode == "running":
                 action = self._actor.forward_normalized(self._normalize_running(obs_t))
             else:
                 action = self._actor(obs_t)
-            action_np = action.detach().cpu().numpy()
-        return self._actions_to_tensor(action_np)
+        return self._actions_to_tensor(action)
 
 
 __all__ = [
     "FullbodyOnnxMjlabPolicy",
     "FullbodyOrbaxMjlabPolicy",
+    "ObsBackend",
     "reset_mjlab_env_to_clip_frame",
 ]

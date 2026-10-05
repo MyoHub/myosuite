@@ -35,12 +35,14 @@ from __future__ import annotations
 
 import dataclasses
 import copy
+import inspect
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
 from etils import epath
+from gymnasium.envs.registration import load_env_creator
 from ml_collections import config_dict
 
 from myosuite.envs.myo.backends.mjx.mjx_env_config import (
@@ -186,10 +188,16 @@ _musclemimic_fullbody_config = default_mimic_fullbody_config()
 def _cpu_kwarg(env_id: str, key: str) -> Any:
     """Return a copy of one kwarg of the CPU registration of the same task.
 
-    The pose/reach target ranges are read from the CPU registrations so the
-    joint/site names and ranges of the two backends cannot drift apart.
+    The pose/reach target ranges and the hand-reach far thresholds are read from
+    the CPU registrations so the names, ranges and thresholds of the two backends
+    cannot drift apart.
     """
-    return copy.deepcopy(gym.spec(env_id).kwargs[key])
+    spec = gym.spec(env_id)
+    if key in spec.kwargs:
+        return copy.deepcopy(spec.kwargs[key])
+    # Unset in the registration: the CPU env's constructor default applies.
+    env_cls = load_env_creator(spec.entry_point)
+    return copy.deepcopy(inspect.signature(env_cls).parameters[key].default)
 
 
 def _cfg_elbow_fixed() -> MjxPoseConfig:
@@ -230,7 +238,7 @@ def _cfg_hand_pose_random() -> MjxPoseConfig:
 def _cfg_hand_reach_fixed() -> MjxReachConfig:
     return MjxReachConfig(
         model_path=_HAND_MODEL,
-        far_th=0.044,
+        far_th=_cpu_kwarg("myoHandReachFixed-v0", "far_th"),
         target_reach_range=_cpu_kwarg("myoHandReachFixed-v0", "target_reach_range"),
     )
 
@@ -238,7 +246,7 @@ def _cfg_hand_reach_fixed() -> MjxReachConfig:
 def _cfg_hand_reach_random() -> MjxReachConfig:
     return MjxReachConfig(
         model_path=_HAND_MODEL,
-        far_th=0.034,
+        far_th=_cpu_kwarg("myoHandReachRandom-v0", "far_th"),
         target_reach_range=_cpu_kwarg("myoHandReachRandom-v0", "target_reach_range"),
     )
 
@@ -246,8 +254,9 @@ def _cfg_hand_reach_random() -> MjxReachConfig:
 def _cfg_finger_reach_random() -> MjxReachConfig:
     return MjxReachConfig(
         model_path=_FINGER_MODEL,
-        far_th=0.10,
+        far_th=_cpu_kwarg("myoFingerReachRandom-v0", "far_th"),
         target_reach_range=_cpu_kwarg("myoFingerReachRandom-v0", "target_reach_range"),
+        target_sampling=_cpu_kwarg("myoFingerReachRandom-v0", "target_sampling"),
     )
 
 

@@ -47,6 +47,7 @@ from myosuite.integrations.musclemimic.fullbody_local_policy import (
 )
 from myosuite.core.trajectory_io import (
     MotionClip,
+    expand_motion_clip_to_model,
     load_motion_clip,
     resolve_motion_path,
 )
@@ -467,10 +468,14 @@ def run_native_playback(parsed: NativePlaybackArgs) -> int:
         parsed.motion_path,
         env_name="MyoFullBody",
     )
-    clip = load_motion_clip(
-        motion_file,
-        expected_nq=model.nq,
-        expected_nv=model.nv,
+    # Map the clip's columns by joint name: the runners index it as model qpos/qvel.
+    clip = expand_motion_clip_to_model(
+        load_motion_clip(
+            motion_file,
+            expected_nq=model.nq,
+            expected_nv=model.nv,
+        ),
+        model,
     )
     n_frames = int(clip.qpos.shape[0])
     n_steps = min(max(1, parsed.n_steps), n_frames)

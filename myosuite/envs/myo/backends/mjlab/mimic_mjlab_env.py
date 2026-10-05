@@ -69,7 +69,7 @@ import numpy as np
 
 from myosuite.core.trajectory_io import MotionClip
 from myosuite.physics.quat_math import quat2mat
-from myosuite.terms.mimic_reward import MimicTrackingConfig
+from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
 
 if TYPE_CHECKING:
     from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
@@ -836,7 +836,7 @@ def _mimic_tracking_reward(
 ) -> Callable[[Any], Any]:
     """Dense reward ``exp(-scale * mean(||target - pos||))`` matching MJX base.
 
-    Works in both random and trajectory modes.
+    Works in both random and trajectory modes; the same term as the CPU twin.
     """
 
     def _fn(env: Any) -> Any:
@@ -849,9 +849,9 @@ def _mimic_tracking_reward(
         assert tgt is not None
         data = env.scene[entity_name].data.data
         pos = data.site_xpos[:, ids, :]
-        err = tgt - pos
-        dist = torch.sqrt(torch.sum(err * err, dim=-1)).mean(dim=-1)  # (N,)
-        return torch.exp(-tracking.reward_scale * dist)
+        return mimic_site_tracking_reward(
+            torch, pos, tgt, scale=tracking.reward_scale
+        )  # (N,)
 
     return _fn
 
@@ -1157,7 +1157,7 @@ def _mimic_rsi_event(
             clip_source._last_step[env_ids_long] = 0
 
         # --- Write root state (pos + quat + lin_vel + ang_vel) ---
-        ref_qpos = clip_source.ref_qpos_at_frames(new_offsets)
+        ref_qpos = clip_source.ref_qpos_at_frames(new_offsets, env_ids_long)
         if ref_qpos is None:
             return
         # Add per-env world origins so the bodies appear in the right place.
@@ -1165,7 +1165,7 @@ def _mimic_rsi_event(
         root_pos = ref_qpos[:, :3].float() + env_origins
         root_quat = ref_qpos[:, 3:7].float()  # (w, x, y, z)
 
-        ref_qvel = clip_source.ref_qvel_at_frames(new_offsets)
+        ref_qvel = clip_source.ref_qvel_at_frames(new_offsets, env_ids_long)
         if ref_qvel is not None:
             # Free-joint qvel holds the world-frame linear but the body-frame
             # angular velocity; write_root_state_to_sim expects both in world.
@@ -1319,6 +1319,40 @@ def _policy_actor_critic_groups(obs_terms: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def mimic_viewer_cfg(
+    entity_name: str, body_name: str = "pelvis", **overrides: Any
+) -> Any:
+    """Viewer camera that follows *body_name* of a full-body Mimic entity.
+
+    A three-quarter side view of the whole body (distance 3.2 m, elevation -6
+    degrees, azimuth 50 degrees). It follows the pelvis, so the walker stays in
+    frame; mjlab's default camera is fixed in the world. The image size is left
+    at mjlab's default; set ``width`` and ``height`` to render larger frames.
+
+    Args:
+        entity_name: Scene entity name (e.g. ``"mimic_fullbody_robot"``).
+        body_name: Body of the entity to track.
+        **overrides: Any other :class:`mjlab.viewer.ViewerConfig` field, e.g.
+            ``width=1280, height=720`` or ``azimuth=120.0``.
+
+    Returns:
+        A :class:`mjlab.viewer.ViewerConfig`.
+    """
+    from mjlab.viewer import ViewerConfig
+
+    kwargs: dict[str, Any] = dict(
+        origin_type=ViewerConfig.OriginType.ASSET_BODY,
+        entity_name=entity_name,
+        body_name=body_name,
+        distance=3.2,
+        elevation=-6.0,
+        azimuth=50.0,
+        lookat=(0.0, 0.0, -0.05),
+    )
+    kwargs.update(overrides)
+    return ViewerConfig(**kwargs)
+
+
 def _make_mimic_env_cfg(
     *,
     _task_id: str,
@@ -1397,6 +1431,10 @@ def _make_mimic_env_cfg(
     from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
         musclemimic_mujoco_cfg,
     )
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp.terminations import (
+        SYNC_TERM,
+        sync_forward,
+    )
 
     _require_supported_reward_mode(reward_mode)
 
@@ -1437,11 +1475,14 @@ def _make_mimic_env_cfg(
     }
     # --- Trajectory-mode extras ---
     if clip is not None:
-        if enable_clip_state_terms and clip.qpos is not None:
+        clip_bank = _normalize_motion_clip_bank(clip)
+        has_clip_qpos = all(c.qpos is not None for c in clip_bank)
+        has_clip_qvel = all(c.qvel is not None for c in clip_bank)
+        if enable_clip_state_terms and has_clip_qpos:
             obs_terms["clip_ref_qpos"] = ObservationTermCfg(
                 func=_mimic_obs_clip_ref_qpos(entity_name, variant, clip, ctrl_dt)
             )
-        if enable_clip_state_terms and clip.qvel is not None:
+        if enable_clip_state_terms and has_clip_qvel:
             obs_terms["clip_ref_qvel"] = ObservationTermCfg(
                 func=_mimic_obs_clip_ref_qvel(entity_name, variant, clip, ctrl_dt)
             )
@@ -1463,6 +1504,9 @@ def _make_mimic_env_cfg(
         ),
     }
     terminations = {
+        # Site positions are derived quantities: refresh them before the reward and
+        # the deviation check score them (the CPU twin runs mj_forward after stepping).
+        SYNC_TERM: TerminationTermCfg(func=sync_forward),
         "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
     }
     if clip is not None:
@@ -1486,7 +1530,7 @@ def _make_mimic_env_cfg(
     # - otherwise restore the compiled model keyframe so auxiliary free joints
     #   (e.g. detached props) do not reset to all zeros
     events: dict[str, Any] = {}
-    if clip is not None and enable_clip_state_terms and clip.qpos is not None:
+    if clip is not None and enable_clip_state_terms and has_clip_qpos:
         events["rsi"] = EventTermCfg(
             func=_mimic_rsi_event(
                 entity_name, variant, clip, ctrl_dt, mj_model=mj_model
@@ -1503,8 +1547,8 @@ def _make_mimic_env_cfg(
         use_deepmimic_reward
         and clip is not None
         and enable_clip_state_terms
-        and clip.qpos is not None
-        and clip.qvel is not None
+        and has_clip_qpos
+        and has_clip_qvel
     ):
         reward_fn = _mimic_deepmimic_reward(entity_name, variant, clip, ctrl_dt)
     else:
@@ -1533,6 +1577,8 @@ def _make_mimic_env_cfg(
     )
     if events:
         env_cfg_kwargs["events"] = events
+    if variant == "fullbody":  # the bimanual body has no pelvis: keep mjlab's camera
+        env_cfg_kwargs["viewer"] = mimic_viewer_cfg(entity_name)
     return ManagerBasedRlEnvCfg(**env_cfg_kwargs)
 
 
@@ -1564,7 +1610,7 @@ def register_mimic_mjlab_tasks(
 def register_mimic_mjlab_tasks_with_clip(
     register_mjlab_task: Callable[..., None],
     rl_cfg_fn: Callable[[], Any],
-    clip: MotionClip,
+    clip: MotionClip | tuple[MotionClip, ...] | list[MotionClip],
     use_deepmimic_reward: bool = True,
     use_lookahead: bool = True,
     use_early_termination: bool = True,
@@ -1589,7 +1635,8 @@ def register_mimic_mjlab_tasks_with_clip(
         register_mjlab_task: mjlab task registry function.
         rl_cfg_fn: Callable returning a default RL runner config.
         clip: Loaded :class:`~myosuite.core.trajectory_io.MotionClip` with
-              ``site_xpos`` populated.
+              ``site_xpos`` populated, or a tuple/list of such clips: every env
+              then draws its clip and start frame on each reset.
         action_mode: Muscle action interpretation. Leave as ``"sigmoid"`` for
             training; use ``"direct"`` for fullbody checkpoint inference.
         reward_mode: Reward composition for the mimic task.  Only ``"mimic"``
@@ -1611,7 +1658,7 @@ def register_mimic_mjlab_tasks_with_clip(
             f"env_reward_weight={env_reward_weight} weights a native task reward, "
             "which the mjlab Mimic tasks do not define."
         )
-    if clip.site_xpos is None:
+    if any(c.site_xpos is None for c in _normalize_motion_clip_bank(clip)):
         raise ValueError(
             "register_mimic_mjlab_tasks_with_clip requires clip.site_xpos; "
             "reload the clip with a file that includes site positions."
@@ -2412,6 +2459,7 @@ def _make_directional_sar_env_cfg(
         terminations=terminations,
         rewards=rewards,
         sim=SimulationCfg(mujoco=musclemimic_mujoco_cfg("fullbody", timestep=sim_dt)),
+        viewer=mimic_viewer_cfg(entity_name),
     )
 
 

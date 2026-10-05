@@ -367,6 +367,7 @@ def _mjlab_onnx_main(
         default_mimic_fullbody_config,
     )
     from myosuite.core.trajectory_io import (
+        expand_motion_clip_to_model,
         load_motion_clip,
         resolve_motion_path,
     )
@@ -389,6 +390,8 @@ def _mjlab_onnx_main(
     try:
         motion_file = resolve_motion_path(motion_path)
         clip = load_motion_clip(motion_file, expected_nq=model.nq, expected_nv=model.nv)
+        # Map the clip's columns by joint name before indexing it as model qpos/qvel.
+        clip = expand_motion_clip_to_model(clip, model)
     except FileNotFoundError as err:
         logger.error("Could not resolve --motion_path %r: %s", motion_path, err)
         return 2

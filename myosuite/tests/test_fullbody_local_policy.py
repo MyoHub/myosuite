@@ -879,6 +879,9 @@ def test_orbax_mjlab_policy_clip_frames_follow_episode_steps() -> None:
             output_ctrl=True,
         )
         policy.reset_env_to_clip_frame(3)
+        # Mid-episode (step 7) at frame 3: 47 frames are left, not a clip end.
+        source = _mimic_mjlab_cache[key]["clip_source"]
+        assert not source.clip_end(env.episode_length_buf).any()
         for _ in range(12):
             policy(torch.zeros((2, 1), dtype=torch.float32))
             env.episode_length_buf += 1

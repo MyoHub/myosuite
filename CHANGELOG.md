@@ -110,6 +110,30 @@ full commit list.
   55%. `ReachEnvV0(target_sampling="workspace")` (used by these ids and their muscle-condition variants, on CPU
   and mjlab) now draws fingertip positions over the joint ranges that lie inside the box. Policies trained on
   the old targets need retraining; the other reach tasks are unchanged.
+* **`myoArmReachRandom-v0` no longer starts episodes beyond its far threshold.** The fingertip starts with
+  the arm hanging, 0.76 m from the centre of the target box, whose far corners lie up to 1.24 m away. With
+  `far_th=1.0`, 16.5% of the resets (33 of 200 seeds; about 25% in v2.12.2) started beyond it. With zero or
+  random actions all of them ended at step 2; the published policy kept only the 9 targets within 4.5 cm of the
+  threshold, by closing the gap in its first two steps. Its `far_th` is now 1.3 m, also for the Sarc/Fati
+  variants and the mjlab twins (which read it from the CPU registration). The target box and the fixed-target
+  ids are unchanged. Workspace sampling would not help, because the whole box is reachable. With the new
+  threshold the published policy's deterministic success rises from 67.0% to 76.5% (CPU, the same 200 seeds):
+  it solves 85% of the targets it was cut off from and is unchanged on the others. `test_reach_far_threshold.py`
+  checks that no reach reset starts beyond the far threshold, on CPU and for the mjlab twins.
+* **`myoHandReachRandom-v0` no longer ends episodes at step 2 unless the policy shuts the hand within 40 ms.**
+  Its target boxes surround the fingertips of the half-flexed pose (every joint at mid-range) that resets used
+  before v0.3 (2022), and `far_th=0.034` was set for that pose. Since v0.3 the hand starts open (`qpos0`),
+  0.14-0.29 m (norm over the five tips) from the targets, so 97% of the resets lay beyond the far threshold of
+  0.17 m. Those episodes ended at the first check (step 2) unless the first two actions closed the hand far
+  enough: 85% of the zero-action and 57% of the random-action episodes ended there (83% and 50% in v2.12.2),
+  which made learning from scratch hard and forced policies to close the hand within the first 40 ms. Its
+  `far_th` is now 0.075 (0.375 m over the five tips, 0.17 m per tip if all are equally off), since the
+  first two actions take the tips at most 0.361 m from the farthest target. This also holds for the Sarc/Fati/Reaf
+  variants, the mjlab twin and the MJX env, which now reads the hand-reach `far_th` from the CPU registration.
+  The open start pose, the target boxes and `myoHandReachFixed-v0` (0.197 m from the open hand, far 0.22 m)
+  are unchanged; restoring the mid-range start would put the fixed targets within 2 cm of the start tips.
+  The published checkpoint learned to close the hand that fast and is unaffected: 96.9% deterministic
+  success on mjlab with either threshold (identical episodes), 92.0% vs 91.8% over 500 CPU episodes.
 * **Joint velocities are observed as `qvel * ctrl_dt` on every backend** (the CPU task envs already
   did): the directional-leg twin and the MJX pose and reach envs observed raw `qvel`. The previous
   directional-leg checkpoints were retrained. `ElbowPoseTask` (tutorial 4.3) now also observes the
@@ -119,6 +143,37 @@ full commit list.
   (2000 steps = 20 s) and flat ground, all on purpose. The mjlab task takes the CPU rewards
   (unscaled by dt), the out-of-bounds lose, the physics options, the keyframe reset and the
   colored-noise opponent. Its distance reward now restarts every episode.
+* The CPU `myoMimicBimanual-v0` and `myoMimicFullbody-v0` (random targets) are the CPU half of their
+  mjlab twins. They observe `[qpos, qvel * ctrl_dt, act, site position, target, target - position]`
+  (199 / 684 values, was 137 / 532 with raw `qvel` and a scalar tracking error). The reward is
+  `exp(-2 * mean site error)` on both backends (mjlab used `exp(-20 * error)`, which gives almost no
+  signal at the 0.8 m initial error), and actions go through the muscle sigmoid on both without a clip. CPU policies trained on these ids need retraining. The mjlab Mimic rewards and deviation
+  check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
+  stale.
+* **The mjlab MuscleMimic policy bridge builds its observation on the sim device.**
+  `FullbodyOnnxMjlabPolicy` and `FullbodyOrbaxMjlabPolicy` copied each env's state into a CPU `MjData`,
+  ran `mj_forward` and the numpy `FullbodyObsAdapter`, one env at a time (4 host syncs per env; each such
+  `MjData` of the full-body model also reserves a 1.37 GB arena). They now build the
+  batch from mjlab's post-step sim data with `TorchFullbodyObsAdapter` (moved to
+  `musclemimic/fullbody_obs_torch.py`, still importable from `mjlab_policy_runner`): no CPU forward, at most
+  one host sync per call with the Orbax/Torch actor, one host copy each way for onnxruntime. Orbax bridge
+  call on CPU torch at 16/64/256 envs: 90/425/1291 ms before, 4.8/10.7/24.4 ms after (139/523/2062 host
+  syncs before, 1 after). onnxruntime sessions no longer spin their intra-op pool (it starved the torch
+  threads on a shared CPU) and use one thread for a single-env batch.
+  **The observation is now float32 on the device and not bit-identical to the CPU builder.** Fed the same
+  sim arrays, the two builders agree to 1.2e-6 (relative to max(1, |x|)). Against a CPU `mj_forward` of the
+  same state, joint state, excitation/activation, lookahead and phase agree to 1e-6 and mimic-site
+  offsets/angles to 1.5e-6, site velocities to 4e-5 (angular velocities up to 34 rad/s);
+  muscle length, velocity and force agree to float32 rounding except on wrapped tendons where MuJoCo Warp
+  returns other lengths (its float32 inside-sidesite wrap solve falls back on some states, 1–3 mm on 8 tendons
+  per side such as `DELT3`/`PECM1`; rare larger path differences, up to 0.2 m, on outside-sidesite wraps in
+  contorted poses), and the foot touch sensors come from Warp's own collision and contact solve (in-episode
+  p99 12.6 N; up to 734 N on reset poses that start with the feet in the floor). Closed-loop rollouts with
+  either backend give the same tracking error (0.1275 vs 0.1275 m) and termination counts. The batched
+  observation reports what the mjlab simulation itself uses; `obs_backend="cpu"` keeps the previous path for
+  debugging and parity checks. `FullbodyOnnxMjlabPolicy(env_indices=...)` runs several envs with one action
+  each.
+* **Performance (speed and memory) improvements (#481, #482, #483, #486, #487).**
 
 ### Fixed
 
@@ -151,6 +206,11 @@ full commit list.
   lookahead observation and DeepMimic reward no longer treat hinge angles as a root, so bimanual mimic
   checkpoints trained before need retraining; the ONNX/Orbax bridge keeps its observation history and
   running normalizer per env.
+* **Mimic clip end and start**: on both backends, the step that truncates at the clip end is scored against
+  the clip's last frame. It read the wrapped frame 0, so a non-looping clip scored about 0 on that step. A
+  mid-episode checkpoint-playback reset to a clip frame no longer counts as a clip end.
+  `MuscleMimicClipEnvV0` takes `random_start` and rejects unknown keyword arguments, so `render_mimic.py`
+  (whose `random_start=False` was silently ignored) renders from frame 0, with the ghost on the env's frame.
 * `reset(seed=...)` reproduces the episode in the challenge envs (state no longer leaks between
   episodes, random fatigue states, Relocate goals, Soccer goalkeeper and rough tracks draw from the
   env seed); the Bimanual start and goal pillars move to the sampled positions; TableTennis and SAR
@@ -176,6 +236,13 @@ full commit list.
   incomplete bridges unless `allow_partial=True`. The SAR activation collector ranks episodes by mean reward
   and resets its state per episode: recollect SAR datasets and re-extract the synergies, and redo evaluations
   made with the old bridge mapping.
+* **`TorchFullbodyObsAdapter` relative angular velocity**: the batched full-body observation rotated each
+  mimic site's angular velocity by `rel_rot` instead of `rel_rot^T` (the CPU `FullbodyObsAdapter` and
+  upstream loco-mujoco), so its live and lookahead `site_rvel` differed from the observation the MuscleMimic
+  checkpoints were trained on (by up to 8.6 on random states).
+* **ReferenceMotion search.** The NumPy `find_timeslot_in_reference` no longer raises when the time moves backwards after the index cache reached the last frame without a `reset()` (it falls back to a binary search); times before the reference start raise a clear `ValueError`.
+* **Public attributes of wrapped envs.** `gym.make` returns an env wrapped by Gymnasium; since Gymnasium 1.0 `env.mj_render()` and other MyoSuite methods raised `AttributeError` (only `env.unwrapped.mj_render()` worked). The outermost wrapper of every registered env now forwards public attributes to the env again (#378).
+* **Multi-clip Mimic training.** `register_mimic_mjlab_tasks_with_clip` accepts a tuple or list of clips (each env draws its clip and start frame on reset); resetting only some envs of a clip bank gathered the reference with the wrong envs' clip indices and raised an `IndexError` (it showed up as a flaky crash within the first steps).
 * **Mimic mjlab initial state**: the joint-name keys are anchored (`knee_angle_r` no longer also sets
   `knee_angle_rotation{2,3}_*`) and the keyframe's body-frame root angular velocity is converted to the world
   frame.
@@ -193,16 +260,33 @@ full commit list.
   3CC-r fatigue update uses the old state for all deltas, and `FatigueWrapper` keeps the model options. Creating
   an MJX env warns that the backend is experimental and not observation/reward-compatible with the CPU and
   mjlab envs.
+* **Experimental MJX reach**: the far penalty/termination now starts at control step 2, as in CPU `ReachEnvV0`
+  (`data.time > 2 * ctrl_dt`) and its mjlab twin; it started after 2 physics steps (4 ms), i.e. at step 1. MJX
+  and mjlab derive the step from the CPU's float64 time sum with `first_step_after`, now in
+  `myosuite.utils.step_timing`. `MjxFingerReachRandom-v0` had `far_th=0.10` and uniform box targets; it now
+  reads `far_th` (0.35, the `ReachEnvV0` default) and `target_sampling="workspace"` from
+  `myoFingerReachRandom-v0` and samples the same reachable-fingertip table (`MjxReachConfig.target_sampling`).
+  Before, 75% of its episodes ended at step 1 (386 of 512 with zero actions, 387 with random actions); now none
+  ends within 5 steps, since no target lies more than 0.28 m from the start fingertip.
 * **Tutorial scripts and CI.** The SAR tutorial scripts seed SAC and checkpoint/resume (`--seed`,
   `--play-only`); the 2.3 results depend strongly on the seed. CI runs for PRs into `ms3` and installs the
   `[rl]` extra; the mimic suite no longer comes out empty (it is registered before the challenge suite).
 * **TaskConfig control step**: a control step is `n_substeps` steps of `sim_dt` on every backend, and
   `BackendConfig` rejects a `ctrl_dt` that differs from their product. The CPU `ModularTaskEnv` kept the XML
   timestep and scaled `joint_vel` by a `ctrl_dt` it did not simulate; it now sets the timestep to `sim_dt`.
-  The registered TaskConfig ids are unchanged. Tutorial 4.3's `ElbowPoseTask` declares the 5 x 2 ms step it
-  ran.
-* The mjlab reach workspace table is built with scene site ids (it used the entity-local ids, which pick
-  other sites when an entity with sites comes before the robot).
+  The registered TaskConfig ids are unchanged.
+* **Arm-reach tip site at the fingertip.** Since `7532d62`, `edit_fn_arm_reaching` (`myoArmReach{Fixed,Random}-v0`,
+  their Sarc/Fati variants and mjlab twins) placed the `IFtip` reach site at the `distph2_r` origin, the DIP joint,
+  1.8 cm short of the fingertip. That is more than the 1.25 cm success radius, so a "solved" episode could leave
+  the fingertip up to about 3 cm from the target. `IFtip` again sits at myo_sim's fingertip site `IFtip_r`, as
+  before that commit and in v2.12.2. The published `myoArmReachRandom-v0` checkpoint counted 67% of its
+  episodes as solved with the old site, but the fingertip itself ended within the radius in only 2%. With the
+  fixed site, it reaches with the fingertip in 64% of episodes (CPU, 200 seeds, `far_th=1.0`) without retraining.
+* OSL controller bugs inherited from myosuite 2.x fixed (#484). `StateMachine.is_running` returned itself, so reading
+  it recursed until `RecursionError`; it now returns the running flag. `MyoOSLController.set_motor_param`
+  had no value argument and stored the parameter's name, so a set `peak_torque` broke the torque clip; it
+  is now `set_motor_param(joint, act_param, value)`.
+* The TableTennis env now loads meshes and textures from abitrary drives (#485).
 
 ### Removed
 
@@ -227,6 +311,15 @@ full commit list.
 * The `furniture-sim`, `mpl-sim`, `object-sim` and `ycb-sim` git dependencies are gone: the 40 files
   MyoSuite uses (MPL left arm/hand, YCB gelatin box, table texture; 2.9 MB) are bundled under
   `myosuite/envs/myo/assets/`, so every dependency now installs from PyPI.
+* **`pink-noise-rl` is replaced by `colorednoise`.** The Soccer goalkeeper and the ChaseTag opponents
+  draw their velocities from `myosuite.utils.colored_noise.ColoredNoiseProcess` (pink's buffered process
+  on `colorednoise.powerlaw_psd_gaussian`); seeded episodes are bit-identical. `import pink` loaded
+  stable-baselines3, torch and TensorBoard whenever they were installed, and registering the challenge
+  envs imported every `musclemimic` submodule (and `scipy.spatial`); that package now imports its
+  submodules on first use. In a fresh process (Windows, Python 3.12) `import myosuite` takes 0.8 s
+  instead of 1.8 s (475 instead of 785 modules), and `gym.make` + `reset` takes 0.35 s instead of 5.1 s
+  for `myoChallengeSoccerP1-v0` and 0.14 s instead of 4.4 s for `myoChallengeChaseTagP1-v0`, once in
+  every subprocess or vectorized-env worker.
 
 ### Contributors
 

@@ -219,67 +219,75 @@ def _expand_state_field(
     return expanded
 
 
+def _resolve_clip_field(
+    values: np.ndarray,
+    model_indices: np.ndarray | None,
+    joint_names: list[str] | None,
+    *,
+    mj_model: Any,
+    field_name: str,
+    use_qvel: bool,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(model-ordered values, model indices of the clip columns)``.
+
+    A full-width field that already carries model indices (positional clips get
+    ``arange`` in :class:`MotionClip`, expanded clips keep theirs) is in model
+    order.  Otherwise the columns are mapped by joint name, at any width, and
+    scattered into the model's default state.
+    """
+    width = int(values.shape[1])
+    expected_width = int(mj_model.nv if use_qvel else mj_model.nq)
+    if width == expected_width and model_indices is not None:
+        return values, np.asarray(model_indices, dtype=np.int32)
+    resolved = _resolve_model_indices(
+        clip_width=width,
+        expected_width=expected_width,
+        joint_names=joint_names,
+        mj_model=mj_model,
+        field_name=field_name,
+        use_qvel=use_qvel,
+    )
+    expanded = _expand_state_field(
+        values, mj_model=mj_model, model_indices=resolved, use_qvel=use_qvel
+    )
+    return expanded, resolved
+
+
 def expand_motion_clip_to_model(
     clip: MotionClip,
     mj_model: Any,
 ) -> MotionClip:
-    """Expand a possibly partial clip to full model qpos/qvel widths.
+    """Map a clip's qpos/qvel columns onto the model by joint name.
 
-    Clips that already match the model widths are returned unchanged apart from
-    having explicit ``*_model_indices`` metadata. Partial clips require
-    ``qpos_names`` / ``qvel_names`` or shared ``joint_names`` metadata naming
-    the modeled joints represented by the reduced arrays.
+    Clips with ``qpos_names`` / ``qvel_names`` or shared ``joint_names``
+    metadata are resolved by name at any width: a full-width clip whose joints
+    are stored in another order is reordered, and a partial clip is expanded
+    to the full model width (missing coordinates take the model's default
+    state).  Clips without names must already be in model order.  The result
+    is idempotent: ``expanded.qpos[:, expanded.qpos_model_indices]`` equals the
+    clip's own columns.
     """
 
-    expanded_qpos = clip.qpos
-    qpos_indices = clip.qpos_model_indices
+    expanded_qpos, qpos_indices = clip.qpos, clip.qpos_model_indices
     if clip.qpos is not None:
-        if int(clip.qpos.shape[1]) == int(mj_model.nq):
-            if qpos_indices is None:
-                qpos_indices = np.arange(int(mj_model.nq), dtype=np.int32)
-            else:
-                qpos_indices = np.asarray(qpos_indices, dtype=np.int32)
-        else:
-            qpos_indices = _resolve_model_indices(
-                clip_width=int(clip.qpos.shape[1]),
-                expected_width=int(mj_model.nq),
-                joint_names=clip.qpos_joint_names,
-                mj_model=mj_model,
-                field_name="qpos",
-                use_qvel=False,
-            )
-            if int(clip.qpos.shape[1]) != int(mj_model.nq):
-                expanded_qpos = _expand_state_field(
-                    clip.qpos,
-                    mj_model=mj_model,
-                    model_indices=qpos_indices,
-                    use_qvel=False,
-                )
-
-    expanded_qvel = clip.qvel
-    qvel_indices = clip.qvel_model_indices
+        expanded_qpos, qpos_indices = _resolve_clip_field(
+            clip.qpos,
+            clip.qpos_model_indices,
+            clip.qpos_joint_names,
+            mj_model=mj_model,
+            field_name="qpos",
+            use_qvel=False,
+        )
+    expanded_qvel, qvel_indices = clip.qvel, clip.qvel_model_indices
     if clip.qvel is not None:
-        if int(clip.qvel.shape[1]) == int(mj_model.nv):
-            if qvel_indices is None:
-                qvel_indices = np.arange(int(mj_model.nv), dtype=np.int32)
-            else:
-                qvel_indices = np.asarray(qvel_indices, dtype=np.int32)
-        else:
-            qvel_indices = _resolve_model_indices(
-                clip_width=int(clip.qvel.shape[1]),
-                expected_width=int(mj_model.nv),
-                joint_names=clip.qvel_joint_names,
-                mj_model=mj_model,
-                field_name="qvel",
-                use_qvel=True,
-            )
-            if int(clip.qvel.shape[1]) != int(mj_model.nv):
-                expanded_qvel = _expand_state_field(
-                    clip.qvel,
-                    mj_model=mj_model,
-                    model_indices=qvel_indices,
-                    use_qvel=True,
-                )
+        expanded_qvel, qvel_indices = _resolve_clip_field(
+            clip.qvel,
+            clip.qvel_model_indices,
+            clip.qvel_joint_names,
+            mj_model=mj_model,
+            field_name="qvel",
+            use_qvel=True,
+        )
 
     return MotionClip(
         qpos=expanded_qpos,
@@ -338,8 +346,10 @@ def load_motion_clip(
 
     Full-width qpos/qvel arrays are accepted as before. Reduced-width arrays are
     also accepted when the NPZ contains ``qpos_names`` / ``qvel_names`` or
-    shared ``joint_names`` metadata; those clips must later be expanded against
-    a concrete MuJoCo model via :func:`expand_motion_clip_to_model`.
+    shared ``joint_names`` metadata.  A clip with such names (at any width)
+    must be resolved against a concrete MuJoCo model via
+    :func:`expand_motion_clip_to_model` before its columns are used as model
+    qpos/qvel.
     """
     npz = np.load(path, allow_pickle=True)
     if "qpos" not in npz.files:

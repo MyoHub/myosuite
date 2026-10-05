@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 class MimicTrackingConfig:
     """Shared tracking constants used across CPU/MJX/mjlab bindings."""
 
-    reward_scale: float = 20.0
+    reward_scale: float = 2.0
     success_threshold: float = 0.04
 
 

@@ -20,15 +20,15 @@ be edited or depended on as an include target.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import mujoco
 import numpy as np
-from ml_collections import config_dict
 
-from myosuite.integrations.musclemimic.fullbody_model import (
-    build_mimic_fullbody_spec,
-    default_mimic_fullbody_config,
-)
 from myosuite.utils.asset_path_resolver import get_sim_asset_root
+
+if TYPE_CHECKING:
+    from ml_collections import config_dict
 
 # A single real mid-gait frame captured from ``myoFullBodyDirectional-v0``'s
 # own reset (seed=0) -- i.e. the actual state distribution
@@ -251,6 +251,16 @@ def _add_standing_keyframe(spec: mujoco.MjSpec) -> None:
     )
 
 
+# Arena (contacts, constraint rows, solver scratch) of each ``MjData``. The
+# reused musclemimic_models MJCF declares legacy ``<size nconmax="2000"
+# njmax="5000">``, from which MuJoCo reserves 1.3 GB per MjData (committed up
+# front on Windows). Measured high-water mark with MuJoCo 3.11 (read after every
+# substep): 0.9 MiB over seeded flat and random-terrain rollouts with falls,
+# 2.6 MiB buried inside the hfield, 5.3 MiB with every contact candidate and
+# joint limit active (5 m margins). Every body geom at the 50-contact hfield cap
+# at once would need about 26 MiB.
+CHASETAG_FB_ARENA_BYTES = 64 * 2**20
+
 # Matches the hfield/geom used by myolegs_chasetag.xml + ChaseTagField.
 _TERRAIN_SIZE = (6.0, 6.0, 1.0, 0.001)
 _TERRAIN_NROW = 100
@@ -383,7 +393,9 @@ def build_fullbody_chasetag_spec(
     full-body model, then grafts on the ChaseTag terrain hfield and mocap
     opponent body so the result satisfies the same scene contract
     :class:`~myosuite.envs.myo.tasks.challenge.chasetag.ChaseTagEnv` expects
-    from ``myolegs_chasetag.xml``.
+    from ``myolegs_chasetag.xml``. The spec carries an explicit arena size
+    (:data:`CHASETAG_FB_ARENA_BYTES`); the base MJCF's legacy
+    ``nconmax``/``njmax`` stay on the model.
 
     Args:
         config: Full-body model config (see
@@ -393,6 +405,13 @@ def build_fullbody_chasetag_spec(
     Returns:
         Uncompiled ``MjSpec`` ready for ``.compile()``.
     """
+    # Deferred: registering the env only needs this module, and the full-body
+    # builder pulls in ml_collections.
+    from myosuite.integrations.musclemimic.fullbody_model import (  # noqa: PLC0415
+        build_mimic_fullbody_spec,
+        default_mimic_fullbody_config,
+    )
+
     cfg = config if config is not None else default_mimic_fullbody_config()
     spec, _xml_path = build_mimic_fullbody_spec(cfg)
     # build_mimic_fullbody_spec returns the *uncompiled* spec, which keeps
@@ -409,6 +428,8 @@ def build_fullbody_chasetag_spec(
     # independent of and in addition to the reset-pose and action-space
     # bugs already fixed.
     spec.option.timestep = float(cfg.sim_dt)
+    # Explicit arena instead of the 1.3 GB derived from the legacy sizes.
+    spec.memory = CHASETAG_FB_ARENA_BYTES
     _add_terrain(spec)
     _add_opponent(spec)
     _add_head_site(spec)
@@ -442,6 +463,7 @@ def build_default_fullbody_chasetag_spec() -> mujoco.MjSpec:
 
 
 __all__ = [
+    "CHASETAG_FB_ARENA_BYTES",
     "build_fullbody_chasetag_spec",
     "compile_fullbody_chasetag_model",
     "build_default_fullbody_chasetag_spec",

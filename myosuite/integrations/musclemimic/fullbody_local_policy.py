@@ -25,7 +25,7 @@ from scipy.spatial.transform import Rotation as np_R
 from myosuite.integrations.musclemimic.running_stats import (
     numpy_running_mean_std_update as running_mean_std_update,
 )
-from myosuite.core.trajectory_io import MotionClip
+from myosuite.core.trajectory_io import MotionClip, expand_motion_clip_to_model
 
 
 def _to_numpy_tree(tree: Any) -> Any:
@@ -116,6 +116,16 @@ _FULLBODY_OBS_FLAG_DEFAULTS: dict[str, bool] = {
     "enable_muscle_activation_observations": True,
     "enable_touch_sensor_observations": True,
 }
+
+# Per-actuator observation fields as (flag, MjData attribute), interleaved per
+# actuator in this order.
+_MUSCLE_OBS_FIELDS: tuple[tuple[str, str], ...] = (
+    ("enable_muscle_length_observations", "actuator_length"),
+    ("enable_muscle_velocity_observations", "actuator_velocity"),
+    ("enable_muscle_force_observations", "actuator_force"),
+    ("enable_muscle_excitation_observations", "ctrl"),
+    ("enable_muscle_activation_observations", "act"),
+)
 
 
 def fullbody_obs_adapter_params_from_metadata(
@@ -457,7 +467,8 @@ class FullbodyObsAdapter:
         goal_params: dict[str, Any] | None = None,
     ) -> None:
         self._model = model
-        self._clip = clip
+        # Map the clip's columns by joint name: features index it as model qpos/qvel.
+        self._clip = expand_motion_clip_to_model(clip, model)
         gp = dict(goal_params or {})
         self._goal = _TrajectoryGoalSpec(
             n_step_lookahead=int(gp.get("n_step_lookahead", 5)),
@@ -514,6 +525,9 @@ class FullbodyObsAdapter:
         self._qvel_non_root_ind = np.concatenate(qvel_non_root).astype(np.int32)
 
         self._actuator_ids = np.arange(model.nu, dtype=np.int32)
+        self._muscle_fields = tuple(
+            field for flag, field in _MUSCLE_OBS_FIELDS if self._obs_flags[flag]
+        )
 
         touch_names = ("r_foot", "r_toes", "l_foot", "l_toes")
         touch_ids: list[int] = []
@@ -523,6 +537,13 @@ class FullbodyObsAdapter:
                 if sid >= 0:
                     touch_ids.append(int(sid))
         self._touch_sensor_ids = np.asarray(touch_ids, dtype=np.int32)
+        self._touch_sensor_slices = tuple(
+            slice(
+                int(model.sensor_adr[sid]),
+                int(model.sensor_adr[sid] + model.sensor_dim[sid]),
+            )
+            for sid in self._touch_sensor_ids
+        )
 
         site_ids: list[int] = []
         for name in self._goal.sites_for_mimic:
@@ -554,6 +575,17 @@ class FullbodyObsAdapter:
         self._sim_site_bodyid = np.asarray(model.site_bodyid, dtype=np.int32)
         self._sim_body_rootid = np.asarray(model.body_rootid, dtype=np.int32)
         self._traj_len = int(self._clip.qpos.shape[0])
+        self._lookahead_offsets = (
+            np.arange(self._goal.n_step_lookahead) * self._goal.n_step_stride
+        )
+        # Lookahead goals depend only on the trajectory frame: mimic-site offsets
+        # from the main site for every frame (concise layout), and each frame's
+        # full relative site quantities memoized on first use (full layout).
+        traj_xpos = self._traj_site_xpos[:, self._traj_site_ids]
+        self._traj_site_rpos = (traj_xpos[:, 1:] - traj_xpos[:, :1]).reshape(
+            traj_xpos.shape[0], 3 * (traj_xpos.shape[1] - 1)
+        )
+        self._traj_site_cache: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
         self.goal_dim = self._compute_goal_dim()
 
     def with_clip(self, clip: MotionClip) -> FullbodyObsAdapter:
@@ -613,95 +645,78 @@ class FullbodyObsAdapter:
         mask[goal_indices] = False
         return np.arange(obs_dim, dtype=int)[mask]
 
-    def _traj_goal_obs(self, frame_idx: int) -> np.ndarray:
-        g = self._goal
-        if g.use_concise_lookahead:
-            ref_idx = int(frame_idx)
-            ref_qpos = np.asarray(self._clip.qpos[ref_idx], dtype=np.float32)
-            ref_qvel = (
-                np.asarray(self._clip.qvel[ref_idx], dtype=np.float32)
-                if self._clip.qvel is not None
-                else np.zeros((self._model.nv,), dtype=np.float32)
-            )
-            ref_root_pos = ref_qpos[self._root_qpos_idx_xyz]
-            ref_root_vel = ref_qvel[self._root_qvel_idx_full]
-
-            goal_site_rpos_all: list[np.ndarray] = []
-            root_pos_deltas: list[np.ndarray] = []
-            root_vel_deltas: list[np.ndarray] = []
-            for step_offset in range(g.n_step_lookahead):
-                future = min(
-                    self._traj_len - 1,
-                    frame_idx + step_offset * g.n_step_stride,
-                )
-                site_rpos, _site_rangles, _site_rvel = _relative_site_quantities(
-                    site_ids=self._traj_site_ids,
-                    site_xpos=self._traj_site_xpos[future],
-                    site_xmat=self._traj_site_xmat[future],
-                    cvel_parent=self._traj_cvel[future],
-                    subtree_com_root=self._traj_subtree_com[future],
-                    site_bodyid=self._traj_site_bodyid,
-                    body_rootid=self._traj_body_rootid,
-                )
-                goal_site_rpos_all.append(site_rpos)
-                if step_offset > 0:
-                    qpos = np.asarray(self._clip.qpos[future], dtype=np.float32)
-                    qvel = (
-                        np.asarray(self._clip.qvel[future], dtype=np.float32)
-                        if self._clip.qvel is not None
-                        else np.zeros((self._model.nv,), dtype=np.float32)
-                    )
-                    root_pos_deltas.append(qpos[self._root_qpos_idx_xyz] - ref_root_pos)
-                    root_vel_deltas.append(
-                        qvel[self._root_qvel_idx_full] - ref_root_vel
-                    )
-
-            comps: list[np.ndarray] = [goal_site_rpos_all[0].reshape(-1)]
-            for i in range(len(root_pos_deltas)):
-                comps.append(root_pos_deltas[i])
-                comps.append(root_vel_deltas[i])
-                comps.append(goal_site_rpos_all[i + 1].reshape(-1))
-            return np.concatenate(comps).astype(np.float32)
-
-        # Full lookahead path (unused by current fullbody config).
-        all_qpos: list[np.ndarray] = []
-        all_qvel: list[np.ndarray] = []
-        all_site_rpos: list[np.ndarray] = []
-        all_site_rangles: list[np.ndarray] = []
-        all_site_rvel: list[np.ndarray] = []
-        for step_offset in range(g.n_step_lookahead):
-            future = min(self._traj_len - 1, frame_idx + step_offset * g.n_step_stride)
-            qpos = np.asarray(self._clip.qpos[future], dtype=np.float32)
-            qvel = (
-                np.asarray(self._clip.qvel[future], dtype=np.float32)
-                if self._clip.qvel is not None
-                else np.zeros((self._model.nv,), dtype=np.float32)
-            )
-            site_rpos, site_rangles, site_rvel = _relative_site_quantities(
+    def _traj_site_quantities(
+        self, frame: int
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Relative site quantities of trajectory *frame*, computed once per frame."""
+        cached = self._traj_site_cache.get(frame)
+        if cached is None:
+            cached = _relative_site_quantities(
                 site_ids=self._traj_site_ids,
-                site_xpos=self._traj_site_xpos[future],
-                site_xmat=self._traj_site_xmat[future],
-                cvel_parent=self._traj_cvel[future],
-                subtree_com_root=self._traj_subtree_com[future],
+                site_xpos=self._traj_site_xpos[frame],
+                site_xmat=self._traj_site_xmat[frame],
+                cvel_parent=self._traj_cvel[frame],
+                subtree_com_root=self._traj_subtree_com[frame],
                 site_bodyid=self._traj_site_bodyid,
                 body_rootid=self._traj_body_rootid,
             )
-            all_qpos.append(qpos[self._qpos_ind])
-            all_qvel.append(qvel[self._qvel_ind])
-            all_site_rpos.append(site_rpos)
-            all_site_rangles.append(site_rangles)
-            all_site_rvel.append(site_rvel)
-        return np.concatenate(
-            [
-                np.concatenate(all_qpos),
-                np.concatenate(all_qvel),
-                np.concatenate(all_site_rpos).reshape(-1),
-                np.concatenate(all_site_rangles).reshape(-1),
-                np.concatenate(all_site_rvel).reshape(-1),
+            self._traj_site_cache[frame] = cached
+        return cached
+
+    def _traj_goal_obs(self, frame_idx: int) -> np.ndarray:
+        g = self._goal
+        future = np.minimum(self._traj_len - 1, frame_idx + self._lookahead_offsets)
+        if g.use_concise_lookahead:
+            # rpos(t), then per later step: root xyz delta, root vel delta, rpos.
+            ref_idx = int(frame_idx)
+            steps = future[1:]
+            qpos = self._clip.qpos
+            ref_root_pos = np.asarray(qpos[ref_idx], dtype=np.float32)[
+                self._root_qpos_idx_xyz
             ]
-        ).astype(np.float32)
+            root_pos = np.asarray(qpos[steps], dtype=np.float32)[
+                :, self._root_qpos_idx_xyz
+            ]
+            if self._clip.qvel is not None:
+                qvel = self._clip.qvel
+                ref_root_vel = np.asarray(qvel[ref_idx], dtype=np.float32)[
+                    self._root_qvel_idx_full
+                ]
+                root_vel = (
+                    np.asarray(qvel[steps], dtype=np.float32)[
+                        :, self._root_qvel_idx_full
+                    ]
+                    - ref_root_vel
+                )
+            else:
+                root_vel = np.zeros(
+                    (steps.size, self._root_qvel_idx_full.size), dtype=np.float32
+                )
+            per_step = np.concatenate(
+                [root_pos - ref_root_pos, root_vel, self._traj_site_rpos[steps]],
+                axis=1,
+            )
+            return np.concatenate(
+                [self._traj_site_rpos[future[0]], per_step.reshape(-1)]
+            )
+
+        # Full lookahead (unused by current fullbody config): all qpos, all qvel,
+        # then all site rpos / rangles / rvel.
+        qpos = np.asarray(self._clip.qpos[future], dtype=np.float32)[:, self._qpos_ind]
+        if self._clip.qvel is not None:
+            qvel = np.asarray(self._clip.qvel[future], dtype=np.float32)[
+                :, self._qvel_ind
+            ]
+        else:
+            qvel = np.zeros((future.size, self._qvel_ind.size), dtype=np.float32)
+        sites = [self._traj_site_quantities(int(f)) for f in future]
+        return np.concatenate(
+            [qpos.reshape(-1), qvel.reshape(-1)]
+            + [np.concatenate([s[k] for s in sites]).reshape(-1) for k in range(3)]
+        )
 
     def build(self, data: mujoco.MjData, frame_idx: int) -> np.ndarray:
+        """Return the flat float32 policy observation of *data* at clip *frame_idx*."""
         g = self._goal
         obs: list[np.ndarray] = []
         root_qpos = np.asarray(data.qpos[self._root_qpos_idx_full], dtype=np.float32)
@@ -713,29 +728,23 @@ class FullbodyObsAdapter:
             obs.append(root_qvel)
             obs.append(np.asarray(data.qvel[self._qvel_non_root_ind], dtype=np.float32))
 
-        for act_idx in self._actuator_ids:
-            if self._obs_flags["enable_muscle_length_observations"]:
-                obs.append(
-                    np.asarray([data.actuator_length[act_idx]], dtype=np.float32)
-                )
-            if self._obs_flags["enable_muscle_velocity_observations"]:
-                obs.append(
-                    np.asarray([data.actuator_velocity[act_idx]], dtype=np.float32)
-                )
-            if self._obs_flags["enable_muscle_force_observations"]:
-                obs.append(np.asarray([data.actuator_force[act_idx]], dtype=np.float32))
-            if self._obs_flags["enable_muscle_excitation_observations"]:
-                obs.append(np.asarray([data.ctrl[act_idx]], dtype=np.float32))
-            if self._obs_flags["enable_muscle_activation_observations"]:
-                obs.append(np.asarray([data.act[act_idx]], dtype=np.float32))
+        if self._muscle_fields:
+            # (nu, n_fields) flattened row-major: the fields interleave per actuator.
+            muscle = np.stack(
+                [getattr(data, f)[self._actuator_ids] for f in self._muscle_fields],
+                axis=1,
+            )
+            obs.append(muscle.astype(np.float32).reshape(-1))
 
-        if self._touch_sensor_ids.size:
+        if self._touch_sensor_slices:
             sens = np.asarray(data.sensordata, dtype=np.float32)
-            for sid in self._touch_sensor_ids:
-                adr = int(self._model.sensor_adr[sid])
-                dim = int(self._model.sensor_dim[sid])
-                val = sens[adr : adr + dim]
-                obs.append(np.asarray([float(np.sum(val))], dtype=np.float32))
+            # np.sum per sensor (at most four) keeps the values exact (-0.0 -> 0.0).
+            obs.append(
+                np.asarray(
+                    [float(np.sum(sens[s])) for s in self._touch_sensor_slices],
+                    dtype=np.float32,
+                )
+            )
 
         site_rpos, site_rangles, site_rvel = _relative_site_quantities(
             site_ids=self._site_ids,

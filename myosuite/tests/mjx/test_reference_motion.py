@@ -4,7 +4,8 @@
 # LICENSE file in the root directory of this source tree.
 
 import glob
-from pathlib import Path
+import os
+import tempfile
 
 import numpy as np
 import pytest
@@ -29,21 +30,26 @@ pytestmark = pytest.mark.tier2
 class TestReferenceMotion:
     @classmethod
     def setup_class(cls):
-        # Path to optional reference-motion fixtures (kept outside package code).
-        cls.data_dir = "./myosuite/envs/myo/myomimic/data/"
-        cls.reference_files = glob.glob(f"{cls.data_dir}*.npz")
-        if not cls.reference_files:
-            pytest.skip(
-                "No reference-motion .npz fixtures found for MJX parity tests",
-                allow_module_level=False,
+        # Synthetic TRACK clips written to a temp dir (the old MyoDM .npz fixtures are gone).
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.data_dir = cls._tmp.name + os.sep
+        rng = np.random.default_rng(0)
+        for name, n_frames in (
+            ("synthetic_clip_a.npz", 101),
+            ("synthetic_clip_b.npz", 61),
+        ):
+            obj = rng.normal(size=(n_frames, 7))
+            obj[:, 3:] /= np.linalg.norm(obj[:, 3:], axis=1, keepdims=True)
+            np.savez(
+                cls.data_dir + name,
+                time=np.round(np.arange(n_frames) * 0.05, 4),
+                robot=rng.normal(size=(n_frames, 29)),
+                robot_vel=rng.normal(size=(n_frames, 29)),
+                object_init=obj[0],
+                object=obj,
             )
-        cls.ignore_files = [
-            f"{cls.data_dir}MyoHand_cylindersmall_lift.npz",
-            f"{cls.data_dir}MyoHand_fryingpan_cook2.npz",
-            f"{cls.data_dir}MyoHand_hand_pass1.npz",
-            f"{cls.data_dir}MyoHand_knife_lift.npz",
-            f"{cls.data_dir}MyoHand_wineglass_drink1.npz",
-        ]
+        cls.reference_files = sorted(glob.glob(f"{cls.data_dir}*.npz"))
+        cls.ignore_files = []
         cls.fixed_ref_data = {
             "time": (0.0, 4.0),
             "robot": np.zeros((1, 29)),
@@ -64,7 +70,11 @@ class TestReferenceMotion:
                 ]
             ),
         }
-        cls.file_path = str(Path(cls.data_dir) / "MyoHand_airplane_fly1.npz")
+        cls.file_path = cls.data_dir + "synthetic_clip_a.npz"
+
+    @classmethod
+    def teardown_class(cls):
+        cls._tmp.cleanup()
 
     def test_load_npz_file(self):
         """Test loading .npz files in both implementations"""

@@ -52,17 +52,15 @@ def _load_policy(checkpoint_path: pathlib.Path, obs_dim: int, act_dim: int):
     return policy
 
 
-def _make_env(clip_path: pathlib.Path, max_episode_steps: int = 1000):
-    """Create MuscleMimicClipEnvV0 for the given clip."""
+def _make_env(clip_path: pathlib.Path):
+    """Create MuscleMimicClipEnvV0 for the given clip, starting at frame 0.
+
+    Episodes end at the clip end (truncation) or on early termination.
+    """
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
     from myosuite.envs.myo.tasks.mimic.clip_env import MuscleMimicClipEnvV0
 
-    return MuscleMimicClipEnvV0(
-        clip_path=clip_path,
-        max_episode_steps=max_episode_steps,
-        frame_skip=5,
-        random_start=False,
-    )
+    return MuscleMimicClipEnvV0(clip_path=clip_path, frame_skip=5, random_start=False)
 
 
 # ── interactive rendering ─────────────────────────────────────────────────────
@@ -115,6 +113,7 @@ def _run_viewer(
                 action_np = action.squeeze(0).numpy()
                 obs, _, term, trunc, _ = env.step(action_np)
                 done = bool(term or trunc)
+                frame = env._current_frame()
             else:
                 # Pure replay: advance clip frame, set qpos/qvel directly
                 T = env._clip_qpos.shape[0]
@@ -124,9 +123,9 @@ def _run_viewer(
                 mujoco.mj_forward(env.model, env.data)
                 obs = env._build_obs()
 
-            # Draw ghost
+            # Draw the ghost at the clip frame the body is tracking
             with viewer.lock():
-                ghost_fn(step_idx, env.model, env.data, viewer.user_scn)
+                ghost_fn(frame, env.model, env.data, viewer.user_scn)
 
             viewer.sync()
             step_idx += 1
@@ -177,6 +176,7 @@ def _export_mp4(
             obs, _, term, trunc, _ = env.step(action_np)
             if term or trunc:
                 obs, _ = env.reset()
+            frame = env._current_frame()
         else:
             T = env._clip_qpos.shape[0]
             frame = step_idx % T
@@ -184,9 +184,9 @@ def _export_mp4(
             env.data.qvel[:] = env._clip_qvel[frame]
             mujoco.mj_forward(env.model, env.data)
 
-        # Ghost geoms into scene
+        # Ghost geoms into scene, at the clip frame the body is tracking
         renderer.update_scene(env.data)
-        ghost_fn(step_idx, env.model, env.data, renderer.scene)
+        ghost_fn(frame, env.model, env.data, renderer.scene)
 
         frames.append(renderer.render())
 

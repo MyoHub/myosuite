@@ -28,6 +28,9 @@ _ENV_REGISTRY: dict[str, dict[str, Any]] = {}
 _MJ_INSTABILITY_WRAPPER_ENTRY_POINT = (
     "myosuite.envs.wrappers:MjInstabilityTerminationWrapper"
 )
+_ATTRIBUTE_FORWARDING_WRAPPER_ENTRY_POINT = (
+    "myosuite.envs.wrappers:AttributeForwardingWrapper"
+)
 
 
 def _append_default_wrappers(
@@ -36,20 +39,16 @@ def _append_default_wrappers(
 ) -> tuple[Any, ...]:
     """Append default wrapper specs while preserving caller-provided wrappers."""
     wrappers = tuple(additional_wrappers or ())
-    if not wrap_mj_instability_termination:
-        return wrappers
-    if any(
-        getattr(spec, "entry_point", None) == _MJ_INSTABILITY_WRAPPER_ENTRY_POINT
-        for spec in wrappers
-    ):
-        return wrappers
-    return wrappers + (
-        WrapperSpec(
-            name="MjInstabilityTerminationWrapper",
-            entry_point=_MJ_INSTABILITY_WRAPPER_ENTRY_POINT,
-            kwargs={},
-        ),
+    # The instability wrapper is the outermost one and forwards public attributes;
+    # without it, a plain forwarding wrapper takes that place.
+    entry_point, name = (
+        (_MJ_INSTABILITY_WRAPPER_ENTRY_POINT, "MjInstabilityTerminationWrapper")
+        if wrap_mj_instability_termination
+        else (_ATTRIBUTE_FORWARDING_WRAPPER_ENTRY_POINT, "AttributeForwardingWrapper")
     )
+    if any(getattr(spec, "entry_point", None) == entry_point for spec in wrappers):
+        return wrappers
+    return wrappers + (WrapperSpec(name=name, entry_point=entry_point, kwargs={}),)
 
 
 def register(env_spec: EnvSpec, **kwargs: Any) -> str:
@@ -249,8 +248,11 @@ def _register_task_mjx(env_id: str, task_config: TaskConfig) -> None:
     def _cfg_fn() -> Any:
         return cfg
 
-    def _env_cls(config: Any) -> MjxModularTaskEnv:
-        return MjxModularTaskEnv(task_config, config_overrides=None)
+    def _env_cls(
+        config: Any, config_overrides: dict[str, Any] | None = None
+    ) -> MjxModularTaskEnv:
+        # The env rebuilds its config from task_config; overrides apply on top.
+        return MjxModularTaskEnv(task_config, config_overrides=config_overrides)
 
     if env_id not in pg_registry._envs:  # type: ignore[attr-defined]
         pg_registry.register_environment(env_id, _env_cls, _cfg_fn)
@@ -311,7 +313,8 @@ def make_env(env_id: str, backend: str = "cpu", **overrides: Any) -> Any:
     Args:
         env_id: Registered environment identifier.
         backend: One of "cpu", "mjx", or "mjlab".
-        **overrides: Keyword arguments forwarded to the env constructor.
+        **overrides: Keyword arguments forwarded to the env constructor (for
+            "mjx", passed to ``mujoco_playground`` as ``config_overrides``).
 
     Returns:
         An environment instance appropriate for the backend.
@@ -328,13 +331,12 @@ def make_env(env_id: str, backend: str = "cpu", **overrides: Any) -> Any:
     elif backend == "mjx":
         try:
             from mujoco_playground import registry as pg_registry
-
-            return pg_registry.load(env_id)
         except ImportError as e:
             raise ImportError(
                 "MJX backend requires mujoco_playground. "
                 "Install with: pip install myosuite[mjx]"
             ) from e
+        return pg_registry.load(env_id, config_overrides=overrides or None)
     elif backend == "mjlab":
         try:
             import mjlab.envs

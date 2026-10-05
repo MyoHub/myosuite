@@ -9,12 +9,14 @@ Each of the N parallel mjlab environments gets its own random starting frame
 that is resampled independently on episode reset.  Frames advance one per
 control step:
 
-    frame[i] = (step[i] + start_offset[i]) % T
+    frame[i] = min(step[i] + start_offset[i], T - 1)
 
 where ``step`` is the integer number of control steps since each env's last
 reset (mjlab's ``env.episode_length_buf``), the counterpart of the CPU twin's
 step counter.  Float32 simulation time is not used: it drifts, and
-``floor(time / ctrl_dt)`` lags the step counter on most steps.
+``floor(time / ctrl_dt)`` lags the step counter on most steps.  The step that
+plays past the last frame is truncated (:meth:`ClipTrajectorySource.clip_end`)
+and scored against the last frame, not a wrapped frame 0.
 
 This gives a diverse distribution of motion phases across the batch while
 keeping each individual episode's targets coherent with the reference clip.
@@ -158,9 +160,13 @@ class ClipTrajectorySource:
         self._last_step = step.clone()
 
     def _frame_indices(self, step: torch.Tensor) -> torch.Tensor:
-        """Return ``(N,)`` frame indices from the per-env step counter."""
+        """Return ``(N,)`` frame indices from the per-env step counter.
+
+        Held at the last frame past the clip end (see :meth:`clip_end`).
+        """
         assert self._start_offsets is not None
-        return (_as_steps(step) + self._start_offsets) % self.n_frames  # (N,)
+        frames = _as_steps(step) + self._start_offsets
+        return frames.clamp(max=self.n_frames - 1)  # (N,)
 
     def clip_end(self, step: torch.Tensor) -> torch.Tensor:
         """``(N,)`` bool: the episode has played past the last frame of its clip."""
@@ -243,8 +249,10 @@ class ClipTrajectorySource:
         idx = self._frame_indices(step)
         return self.ref_qpos_at_frames(idx)  # (N, nq)
 
-    def ref_qpos_at_frames(self, frame_idx: torch.Tensor) -> torch.Tensor | None:
-        """Return reference qpos for explicit frame indices."""
+    def ref_qpos_at_frames(
+        self, frame_idx: torch.Tensor, env_ids: torch.Tensor | None = None
+    ) -> torch.Tensor | None:
+        """Return reference qpos for explicit frame indices (*env_ids* is unused)."""
         if self._qpos_tensor is None:
             return None
         return self._qpos_tensor[frame_idx]
@@ -263,17 +271,19 @@ class ClipTrajectorySource:
         idx = self._frame_indices(step)
         return self.ref_qvel_at_frames(idx)  # (N, nv)
 
-    def ref_qvel_at_frames(self, frame_idx: torch.Tensor) -> torch.Tensor | None:
-        """Return reference qvel for explicit frame indices."""
+    def ref_qvel_at_frames(
+        self, frame_idx: torch.Tensor, env_ids: torch.Tensor | None = None
+    ) -> torch.Tensor | None:
+        """Return reference qvel for explicit frame indices (*env_ids* is unused)."""
         if self._qvel_tensor is None:
             return None
         return self._qvel_tensor[frame_idx]
 
     def phase(self, step: torch.Tensor) -> torch.Tensor:
-        """Return ``(N, 1)`` normalised phase in ``[0, 1]`` along the clip.
+        """Return ``(N, 1)`` normalised phase ``frame / T`` in ``[0, 1)`` along the clip.
 
-        Phase reaches 1.0 at the last frame and wraps back to 0.0, giving the
-        RL policy a continuous signal of progress through the motion cycle.
+        Phase grows by ``1 / T`` per step and holds at ``(T - 1) / T`` from the
+        last frame on, giving the RL policy a signal of progress through the motion.
 
         Args:
             step: Per-env step counter, shape ``(N,)``.
@@ -517,7 +527,8 @@ class MultiClipTrajectorySource:
         assert self._start_offsets is not None
         assert self._clip_lengths is not None
         lengths = self._clip_lengths.index_select(0, self._clip_indices)
-        return (_as_steps(step) + self._start_offsets) % lengths
+        # Held at each clip's last frame past its end (see :meth:`clip_end`).
+        return (_as_steps(step) + self._start_offsets).minimum(lengths - 1)
 
     def clip_end(self, step: torch.Tensor) -> torch.Tensor:
         """``(N,)`` bool: the episode has played past the last frame of its clip."""
@@ -531,10 +542,19 @@ class MultiClipTrajectorySource:
         self,
         bank: tuple[torch.Tensor | None, ...],
         frame_idx: torch.Tensor,
+        env_ids: torch.Tensor | None = None,
     ) -> torch.Tensor | None:
+        """Gather rows of *bank* at *frame_idx* from each env's clip.
+
+        *frame_idx* has one entry per env, or per env of *env_ids* when only those
+        envs are gathered (e.g. the envs of a partial reset).
+        """
         import torch
 
         assert self._clip_indices is not None
+        clip_indices = (
+            self._clip_indices if env_ids is None else self._clip_indices[env_ids]
+        )
         template = next((tensor for tensor in bank if tensor is not None), None)
         if template is None:
             return None
@@ -546,7 +566,7 @@ class MultiClipTrajectorySource:
         for clip_idx, tensor in enumerate(bank):
             if tensor is None:
                 return None
-            mask = self._clip_indices == clip_idx
+            mask = clip_indices == clip_idx
             if mask.any():
                 out[mask] = tensor[frame_idx[mask]]
         return out
@@ -591,17 +611,21 @@ class MultiClipTrajectorySource:
         """Return reference qpos at the current frame."""
         return self.ref_qpos_at_frames(self._frame_indices(step))
 
-    def ref_qpos_at_frames(self, frame_idx: torch.Tensor) -> torch.Tensor | None:
-        """Return reference qpos for explicit frame indices."""
-        return self._gather_from_bank(self._qpos_tensors, frame_idx)  # type: ignore[arg-type]
+    def ref_qpos_at_frames(
+        self, frame_idx: torch.Tensor, env_ids: torch.Tensor | None = None
+    ) -> torch.Tensor | None:
+        """Return reference qpos for explicit frame indices (of *env_ids*, if given)."""
+        return self._gather_from_bank(self._qpos_tensors, frame_idx, env_ids)  # type: ignore[arg-type]
 
     def ref_qvel(self, step: torch.Tensor) -> torch.Tensor | None:
         """Return reference qvel at the current frame."""
         return self.ref_qvel_at_frames(self._frame_indices(step))
 
-    def ref_qvel_at_frames(self, frame_idx: torch.Tensor) -> torch.Tensor | None:
-        """Return reference qvel for explicit frame indices."""
-        return self._gather_from_bank(self._qvel_tensors, frame_idx)  # type: ignore[arg-type]
+    def ref_qvel_at_frames(
+        self, frame_idx: torch.Tensor, env_ids: torch.Tensor | None = None
+    ) -> torch.Tensor | None:
+        """Return reference qvel for explicit frame indices (of *env_ids*, if given)."""
+        return self._gather_from_bank(self._qvel_tensors, frame_idx, env_ids)  # type: ignore[arg-type]
 
     def phase(self, step: torch.Tensor) -> torch.Tensor:
         """Return normalised phase within the active clip for each environment."""
