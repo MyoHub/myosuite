@@ -143,9 +143,16 @@ class TestEditFnArmReaching:
         )
 
     def test_finger_tip_site_is_added(self) -> None:
-        """The index fingertip site sits on the distal index phalanx."""
-        body: Any = self.edited_spec.body("distph2_r")
-        assert any(site.name == "IFtip" for site in body.sites)
+        """The index fingertip site sits on the distal index phalanx, at its tip."""
+
+        def site(spec: mujoco.MjSpec, name: str) -> Any:
+            return next(
+                (s for s in spec.body("distph2_r").sites if s.name == name), None
+            )
+
+        tip = site(self.edited_spec, "IFtip")
+        assert tip is not None
+        assert list(tip.pos) == list(site(self.original_spec, "IFtip_r").pos)
 
     def test_reach_target_is_added(self) -> None:
         """Test if the function adds the 'IFtip_target' site to the world body."""

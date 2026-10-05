@@ -22,18 +22,16 @@ DEFAULT_WINDOW_HEIGHT = 480
 DEFAULT_WINDOW_TITLE = "MyoSuite Viewer"
 
 
-def _tune_mjv_scene_for_rgb(model: mujoco.MjModel, scene: Any) -> None:
+def _tune_mjv_scene_for_rgb(scene: Any) -> None:
     """Align offscreen ``mjvScene`` flags with MuscleMimic-friendly RGB.
 
     Disables shadow, reflection, and skybox rendering flags so dense musculoskeletal
-    geometry does not black out the frame. Zeros all material reflectances on *model* for stable GL.
+    geometry does not black out the frame. Only the scene changes: with reflection
+    off, material reflectance has no effect, so the (physics) model is left as is.
 
     Args:
-        model: MuJoCo model whose ``mat_reflectance`` is cleared when materials exist.
         scene: Scene struct from ``mujoco.Renderer.scene`` after ``update_scene``.
     """
-    if int(model.nmat) > 0:
-        model.mat_reflectance[:] = 0.0
     scene.flags[int(mujoco.mjtRndFlag.mjRND_SHADOW)] = 0
     scene.flags[int(mujoco.mjtRndFlag.mjRND_REFLECTION)] = 0
     scene.flags[int(mujoco.mjtRndFlag.mjRND_SKYBOX)] = 0
@@ -45,7 +43,9 @@ class MJRenderer(Renderer):
     def __init__(self, mj_model, mj_data):
         super().__init__(mj_model, mj_data)
         self._window = None
-        self._renderer = None
+        self._renderer = None  # renderer of the latest offscreen call
+        self._renderers: dict[tuple[int, int], mujoco.Renderer] = {}  # by (w, h)
+        self._scene_option = None
         self._paused = False
         self._user_exit = False
 
@@ -59,9 +59,20 @@ class MJRenderer(Renderer):
             self._user_exit = True
 
     def setup_renderer(self, model, height, width):
-        self._renderer = mujoco.Renderer(model, height=height, width=width)
-        self._scene_option = mujoco.MjvOption()
-        self._update_renderer_settings(self._scene_option)
+        """Select the offscreen renderer for ``width`` x ``height``, creating it once.
+
+        A ``mujoco.Renderer`` has a fixed image size, so one is kept per size
+        (e.g. video frames and visual observations at different resolutions).
+        """
+        size = (int(width), int(height))
+        if size not in self._renderers:
+            self._renderers[size] = mujoco.Renderer(
+                model, height=size[1], width=size[0]
+            )
+        self._renderer = self._renderers[size]
+        if self._scene_option is None:
+            self._scene_option = mujoco.MjvOption()
+            self._update_renderer_settings(self._scene_option)
 
     def render_to_window(self):
         """Renders the Physics object to a window.
@@ -121,8 +132,7 @@ class MJRenderer(Renderer):
             ncam = int(self._mj_model.ncam)
             if ncam == 0 or camera_id >= ncam:
                 camera_id = -1
-        if self._renderer is None:
-            self.setup_renderer(self._mj_model, width=width, height=height)
+        self.setup_renderer(self._mj_model, width=width, height=height)
 
         rgb_arr = None
         dpt_arr = None
@@ -131,7 +141,7 @@ class MJRenderer(Renderer):
             self._renderer.update_scene(
                 self._mj_data, camera=camera_id, scene_option=self._scene_option
             )
-            _tune_mjv_scene_for_rgb(self._mj_model, self._renderer.scene)
+            _tune_mjv_scene_for_rgb(self._renderer.scene)
             rgb_arr = self._renderer.render()
         if depth:
             self._renderer.enable_depth_rendering()
@@ -182,7 +192,8 @@ class MJRenderer(Renderer):
         if self._window is not None:
             self._window.close()
             self._window = None
-        if self._renderer is not None:
-            self._renderer.close()
-            self._renderer = None
+        for renderer in self._renderers.values():
+            renderer.close()
+        self._renderers.clear()
+        self._renderer = None
         super().close()
