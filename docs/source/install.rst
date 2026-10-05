@@ -46,6 +46,13 @@ Verify
 
 On macOS the viewer needs ``mjpython`` instead of ``python``.
 
+.. note::
+
+   Run these commands from a directory that does not directly contain a folder named ``myosuite``, such as
+   the parent of your clone. There Python imports that folder as a namespace package instead of the installed
+   package, and fails with ``ImportError: cannot import name ... from 'myosuite' (unknown location)``, for
+   editable and regular installs alike. Inside the clone, or anywhere else, it works.
+
 Minimal usage
 ~~~~~~~~~~~~~
 

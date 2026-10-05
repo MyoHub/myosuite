@@ -74,6 +74,8 @@ python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --rend
 # macOS viewer: mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --render onscreen
 ```
 
+Run these from a directory that does not directly contain a folder named `myosuite` (for example not the parent of your clone); otherwise Python imports that folder as a namespace package and fails with `cannot import name ... from 'myosuite' (unknown location)`.
+
 ---
 
 ## Quick start
