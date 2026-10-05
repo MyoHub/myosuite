@@ -6,9 +6,7 @@ python -m ipykernel install --user --name=myosuite
 # video playback in notebooks: conda install conda-forge::ffmpeg  (or brew install ffmpeg)
 ```
 
-[ICRA Colab](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q)
-
-On Colab, opening a notebook from GitHub does **not** install the package. Use the ICRA Colab above (it has an install cell), or install locally:
+On Colab, opening a notebook from GitHub does **not** install the package. Add an install cell (for example `!pip install -U myosuite`), or install locally:
 
 ```bash
 # from a clone
