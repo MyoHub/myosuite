@@ -39,7 +39,7 @@ import gymnasium as gym
 import mujoco
 import numpy as np
 
-from myosuite.core.config import GoalSpec, TaskConfig
+from myosuite.core.config import GoalSpec, TaskConfig, check_control_step
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.model_recipes import _MUSCLEMIMIC_NAMES, _musclemimic_build
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
@@ -270,7 +270,6 @@ class ModularTaskEnv(MyoGymnasiumEnv):
             **kwargs,
         )
         self._task_config = task_config
-        self._ctrl_dt = task_config.backend.ctrl_dt
 
         # Resolve obs/reward callables once at construction time
         self._obs_fns: list[tuple[str, Any]] = [
@@ -303,6 +302,8 @@ class ModularTaskEnv(MyoGymnasiumEnv):
                 self.model = base_model
             self._scene_models = None
 
+        # One control step is n_substeps steps of sim_dt, as on MJX and mjlab.
+        self._ctrl_dt = self._apply_backend_timing()
         self.data = mujoco.MjData(self.model)
         self._fatigue_model: Any = None
         self._fatigue_mask: Any = None
@@ -338,23 +339,21 @@ class ModularTaskEnv(MyoGymnasiumEnv):
             high=np.ones(n_actuators, dtype=np.float32),
             dtype=np.float32,
         )
-        self._validate_backend_timing()
 
-    def _validate_backend_timing(self) -> None:
-        """Validate control-step timing when strict alignment is requested."""
-        if not self._task_config.backend.extra.get(
-            "enforce_step_timing_alignment", False
-        ):
-            return
-        expected = float(self._task_config.backend.ctrl_dt)
-        effective = float(self.frame_skip) * float(self.model.opt.timestep)
-        if abs(expected - effective) > 1e-10:
-            raise ValueError(
-                "Backend timing mismatch: ctrl_dt="
-                f"{expected:.6f}, frame_skip*timestep={effective:.6f}. "
-                "Update BackendConfig or model timestep so one control step "
-                "matches the configured control interval."
-            )
+    def _apply_backend_timing(self) -> float:
+        """Set every model's timestep to ``sim_dt`` and return the control step.
+
+        Raises:
+            ValueError: If ``frame_skip * sim_dt`` differs from ``ctrl_dt``.
+        """
+        backend = self._task_config.backend
+        models = [self.model]
+        if self._scene_models:
+            models += [m for m, _ in self._scene_models.values()]
+        for model in models:
+            model.opt.timestep = backend.sim_dt
+        check_control_step(self.frame_skip, backend.sim_dt, backend.ctrl_dt)
+        return float(backend.ctrl_dt)
 
     # ------------------------------------------------------------------
     # MyoGymnasiumEnv interface

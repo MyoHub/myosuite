@@ -23,7 +23,7 @@ import mujoco
 from ml_collections import config_dict
 from mujoco import mjx
 
-from myosuite.core.config import GoalSpec, TaskConfig
+from myosuite.core.config import GoalSpec, TaskConfig, check_control_step
 from myosuite.envs.modular_env import _joint_qpos_width
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEnvBase
 from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_spec
@@ -199,11 +199,13 @@ class MjxModularTaskEnv(MyoMjxEnvBase):
         spec = self._preprocess_spec(spec, impl=impl)
         mj_model = spec.compile()
 
+        # One control step is n_substeps steps of sim_dt, as on the CPU and mjlab.
         mj_model.opt.timestep = config.sim_dt
         self._mj_model = mj_model
         self._mjx_model = mjx.put_model(self._mj_model, impl=impl)
         self._xml_path = ""
-        self._n_substeps = int(config.ctrl_dt / config.sim_dt)
+        self._n_substeps = round(config.ctrl_dt / config.sim_dt)
+        check_control_step(self._n_substeps, config.sim_dt, config.ctrl_dt)
 
     def sample_task(self, rng: jax.Array) -> dict[str, jax.Array]:
         """Sample a new episode goal from the configured GoalSpec.

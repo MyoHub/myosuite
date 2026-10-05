@@ -104,7 +104,9 @@ class WorkspaceReachTargetCommand(ReachTargetCommand):
         self, cfg: WorkspaceReachTargetCommandCfg, env: ManagerBasedRlEnv
     ) -> None:
         super().__init__(cfg, env)
-        sites = [int(i) for i in self._tip_ids]
+        # The table is built on the scene model: map entity-local site ids to scene ids.
+        scene_site_ids = env.scene[cfg.entity_name].indexing.site_ids
+        sites = [int(scene_site_ids[i]) for i in self._tip_ids]
         points = reachable_target_points(
             env.sim.mj_model,
             sites,
