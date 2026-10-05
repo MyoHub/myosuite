@@ -113,6 +113,8 @@ def plot(paths, env=None, fileName_prefix=""):
 
     for path_name, path in paths.items():
         plt.clf()
+        # time axis: env_infos["time"] (RoboHive envs) or the record time (MyoSuite envs)
+        t_axis = path["env_infos"].get("time", path.get("time"))
 
         # observations
         nplt1 = len(path["env_infos"]["obs_dict"].keys())
@@ -125,7 +127,7 @@ def plot(paths, env=None, fileName_prefix=""):
             ax.yaxis.tick_right()
             if path["env_infos"]["obs_dict"][key].ndim < 3:
                 plt.plot(
-                    path["env_infos"]["time"],
+                    t_axis,
                     path["env_infos"]["obs_dict"][key],
                     label=key,
                 )
@@ -138,9 +140,7 @@ def plot(paths, env=None, fileName_prefix=""):
         ax = plt.subplot(nplt2, 2, 2)
         ax.set_prop_cycle(None)
         # h4 = plt.plot(path['env_infos']['time'], env.act_mid + path['actions']*env.act_rng, '-', label='act') # plot scaled actions
-        plt.plot(
-            path["env_infos"]["time"], path["actions"], "-", label="act"
-        )  # plot normalized actions
+        plt.plot(t_axis, path["actions"], "-", label="act")  # plot normalized actions
         plt.ylabel("actions")
         ax.axes.xaxis.set_ticklabels([])
         ax.yaxis.tick_right()
@@ -148,9 +148,7 @@ def plot(paths, env=None, fileName_prefix=""):
         # rewards/ scores
         if "score" in path["env_infos"]:
             ax = plt.subplot(nplt2, 2, 6)
-            plt.plot(
-                path["env_infos"]["time"], path["env_infos"]["score"], label="score"
-            )
+            plt.plot(t_axis, path["env_infos"]["score"], label="score")
             plt.xlabel("time")
             plt.ylabel("score")
             ax.yaxis.tick_right()
@@ -160,7 +158,7 @@ def plot(paths, env=None, fileName_prefix=""):
             ax.set_prop_cycle(None)
             for key in sorted(path["env_infos"]["rwd_dict"].keys()):
                 plt.plot(
-                    path["env_infos"]["time"],
+                    t_axis,
                     path["env_infos"]["rwd_dict"][key],
                     label=key,
                 )
@@ -179,7 +177,7 @@ def plot(paths, env=None, fileName_prefix=""):
             ax.set_prop_cycle(None)
             for key in sorted(env.rwd_keys_wt.keys()):
                 plt.plot(
-                    path["env_infos"]["time"],
+                    t_axis,
                     path["env_infos"]["rwd_dict"][key] * env.rwd_keys_wt[key],
                     label=key,
                 )

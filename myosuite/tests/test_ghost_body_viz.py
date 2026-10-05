@@ -94,6 +94,27 @@ def test_capsule_between_mat9_orthonormal():
     np.testing.assert_allclose(R @ R.T, np.eye(3), atol=1e-7)
 
 
+@pytest.mark.parametrize(
+    "direction",
+    [
+        (0.0, 0.0, 1.0),
+        (0.0, 0.0, -1.0),  # anti-parallel: was -I (det -1)
+        (1.0, 0.0, 0.0),
+        (0.5, 0.0, -0.866),  # 150 deg from +z: was drawn at 30 deg (mirrored)
+        (-0.3, 0.4, -0.2),
+        *np.random.default_rng(7).standard_normal((8, 3)).tolist(),
+    ],
+)
+def test_capsule_axis_follows_segment(direction):
+    """The capsule z-axis points along the segment for every direction, as a proper rotation."""
+    d = np.asarray(direction, dtype=np.float64)
+    p0 = np.array([0.2, -0.1, 1.0])
+    _, mat9, _ = _capsule_between(p0, p0 + d, 0.02)
+    R = mat9.reshape(3, 3)
+    np.testing.assert_allclose(R[:, 2], d / np.linalg.norm(d), atol=1e-9)
+    np.testing.assert_allclose(np.linalg.det(R), 1.0, atol=1e-9)
+
+
 # ── GhostBodyViz init ─────────────────────────────────────────────────────────
 
 
@@ -145,6 +166,98 @@ def test_draw_frame_wraps():
     viz.draw(0, scn1)
     viz.draw(_T, scn2)  # same as frame 0 after modulo
     assert scn1.ngeom == scn2.ngeom
+
+
+def _standing_ghost() -> GhostBodyViz:
+    """Pelvis 2 m from the world origin with a thigh hanging below it."""
+    xpos = np.zeros((_T, 3, 3))
+    xpos[:, 1] = [2.0, 0.0, 1.0]  # pelvis (root, parent = world)
+    xpos[:, 2] = [2.0, 0.0, 0.6]  # thigh (parent = pelvis)
+    return GhostBodyViz(
+        xpos=xpos,
+        xquat=np.tile([1.0, 0.0, 0.0, 0.0], (_T, 3, 1)),
+        parent_ids=np.array([0, 0, 1], dtype=np.int32),
+        visible_body_ids=np.array([1, 2], dtype=np.int32),
+    )
+
+
+def test_repeated_draws_into_uncleared_scene_do_not_accumulate():
+    """viewer.user_scn is passed every frame without a reset (was +4 geoms per frame)."""
+    viz = _minimal_ghost()
+    scn = _fake_user_scn(maxgeom=50)
+    counts = []
+    for step in range(12):
+        viz.draw(step, scn)
+        counts.append(int(scn.ngeom))
+    assert counts == [counts[0]] * 12, counts
+
+
+def _site_markers(si, m, d, scn):
+    """Stand-in for SiteMarkerViz: reset the scene, write two marker spheres."""
+    scn.ngeom = 0
+    for i in range(2):
+        mujoco.mjv_initGeom(
+            scn.geoms[i],
+            mujoco.mjtGeom.mjGEOM_SPHERE,
+            np.full(3, 0.03),
+            np.zeros(3),
+            np.eye(3).flatten(),
+            np.array([1.0, 0.0, 0.0, 1.0]),
+        )
+        scn.ngeom += 1
+
+
+def test_draw_after_site_markers_keeps_both_each_frame():
+    """CombinedViz([site markers, ghost]): markers stay first, ghost follows, no growth."""
+    viz = _minimal_ghost()
+    scn = _fake_user_scn()
+    combined = CombinedViz(callbacks=[_site_markers, viz.as_viz_fn()])
+    combined(0, None, None, scn)
+    first = int(scn.ngeom)
+    assert first > 2
+    for step in range(1, 6):
+        combined(step, None, None, scn)
+        assert scn.ngeom == first
+        for i in range(2):
+            np.testing.assert_allclose(scn.geoms[i].rgba, [1.0, 0.0, 0.0, 1.0])
+
+
+def test_draw_into_rebuilt_scene_appends_after_model_geoms():
+    """Renderer.scene is rebuilt by update_scene each frame: append after its geoms."""
+    model = _minimal_mjmodel(nbody=5)
+    renderer_scene = mujoco.MjvScene(model, maxgeom=100)
+    data = mujoco.MjData(model)
+    viz = _minimal_ghost()
+    counts = []
+    for step in range(4):
+        mujoco.mjv_updateScene(
+            model,
+            data,
+            mujoco.MjvOption(),
+            None,
+            mujoco.MjvCamera(),
+            mujoco.mjtCatBit.mjCAT_ALL,
+            renderer_scene,
+        )
+        n_model = int(renderer_scene.ngeom)
+        viz.draw(step, renderer_scene)
+        counts.append(int(renderer_scene.ngeom) - n_model)
+        assert renderer_scene.geoms[0].objtype == mujoco.mjtObj.mjOBJ_GEOM
+    assert counts == [counts[0]] * 4 and counts[0] > 0
+
+
+def test_root_body_has_no_capsule_to_world_origin():
+    """Only the thigh gets a capsule; none spans origin -> pelvis (was a tether)."""
+    viz = _standing_ghost()
+    scn = _fake_user_scn()
+    viz.draw(0, scn)
+    geoms = [scn.geoms[i] for i in range(scn.ngeom)]
+    capsules = [g for g in geoms if g.type == mujoco.mjtGeom.mjGEOM_CAPSULE]
+    assert len(capsules) == 1
+    np.testing.assert_allclose(capsules[0].pos, [2.0, 0.0, 0.8], atol=1e-6)
+    # the hanging thigh capsule points down (z-axis along pelvis -> thigh)
+    R = np.asarray(capsules[0].mat).reshape(3, 3)
+    np.testing.assert_allclose(R[:, 2], [0.0, 0.0, -1.0], atol=1e-6)
 
 
 # ── as_viz_fn ─────────────────────────────────────────────────────────────────

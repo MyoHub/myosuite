@@ -49,7 +49,6 @@ class Trace:
         self.name = name
         self.root = {name: {}}
         self.trace = self.root[name]
-        self.index = 0
         self.type = TraceType.ROBOHIVE
 
     # Create a group in your logs
@@ -252,29 +251,16 @@ class Trace:
 
     def __iter__(self):
         """
-        Enables iteration over trace's groups. Makes it look like a list of groups
+        Enables iteration over trace's groups. Makes it look like a list of groups.
+        Each loop gets its own iterator, so loops never share a position.
         """
-        return self
-
-    def __next__(self):
-        """
-        Enables iteration over trace's groups. Makes it look like a list of groups
-        """
-        if self.index >= len(self):
-            self.index = 0
-            raise StopIteration
-
-        item = self[self.index]
-        # keys = list(self.trace.keys())
-        # value = self.trace[keys[self.index]]
-        self.index += 1
-        return item
+        return (self.trace[key] for key in list(self.trace.keys()))
 
     def items(self):
         """
         Enables iteration over trace with key-value pairs
         """
-        return zip(self.trace.keys(), self)
+        return ((key, self.trace[key]) for key in list(self.trace.keys()))
 
     # return length
     """
