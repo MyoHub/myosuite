@@ -242,6 +242,14 @@ full commit list.
   before that commit and in v2.12.2. The published `myoArmReachRandom-v0` checkpoint counted 67% of its
   episodes as solved with the old site, but the fingertip itself ended within the radius in only 2%. With the
   fixed site, it reaches with the fingertip in 64% of episodes (CPU, 200 seeds, `far_th=1.0`) without retraining.
+* **`myoChallengeChaseTagFBVs-v0` arena size.** `MjSpec.attach` drops the agents' legacy `nconmax`/`njmax`, so the
+  two-agent full-body scene ran on MuJoCo's implicit default arena (30 MiB with MuJoCo 3.11), which only just held
+  the synthetic state with every body geom touching all eight fences (27 MiB). The scene now sets an explicit
+  32 MiB (`CHASETAG_VS_FULLBODY_ARENA_BYTES`). Measured peaks: 0.65 MiB in seeded env rollouts, also with both
+  agents driven into the fence; 2.2 MiB in contorted, lying and fence-penetrating poses; 11.4 MiB with every geom
+  of both agents at its per-pair contact cap against the floor and the three fence geoms of one corner, the most a
+  body can reach. Trajectories are bit-identical, and the commit per `MjData` grows from 35.7 to 37.5 MiB (per env
+  0.5%). The myoLeg two-agent scene keeps the default.
 
 ### Removed
 
