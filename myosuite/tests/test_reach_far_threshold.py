@@ -14,9 +14,6 @@ import pytest
 import myosuite  # noqa: F401
 
 _REACH_EP = "tasks.basic.arm.reach:ReachEnvV0"
-# Hand-reach random targets lie 0.20-0.29 m (over the five tips) from the open hand,
-# beyond far_th * 5 = 0.17 m for 97% of the resets (98.5% end at step 2 in myosuite 2.x).
-_KNOWN_FAR_RESETS = {f"myo{c}HandReachRandom-v0" for c in ("", "Sarc", "Fati", "Reaf")}
 _N_SEEDS = 20
 
 
@@ -42,20 +39,7 @@ def _farthest_target(u: gym.Env, tip: np.ndarray) -> float:
 
 
 @pytest.mark.tier1
-@pytest.mark.parametrize(
-    "env_id",
-    [
-        pytest.param(
-            env_id,
-            marks=pytest.mark.xfail(
-                strict=True, reason="hand-reach targets start beyond far_th"
-            ),
-        )
-        if env_id in _KNOWN_FAR_RESETS
-        else env_id
-        for env_id in _reach_ids()
-    ],
-)
+@pytest.mark.parametrize("env_id", _reach_ids())
 def test_no_reset_starts_beyond_far_threshold(env_id: str) -> None:
     env = gym.make(env_id)
     u = env.unwrapped
@@ -77,7 +61,9 @@ def test_no_reset_starts_beyond_far_threshold(env_id: str) -> None:
 
 
 @pytest.mark.tier2
-@pytest.mark.parametrize("env_id", ["myoArmReachRandom-v0"])
+@pytest.mark.parametrize(
+    "env_id", ["myoArmReachRandom-v0", "myoHandReachFixed-v0", "myoHandReachRandom-v0"]
+)
 def test_mjlab_twin_resets_within_far_threshold(env_id: str) -> None:
     pytest.importorskip("mjlab")
     torch = pytest.importorskip("torch")
