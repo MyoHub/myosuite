@@ -218,3 +218,72 @@ class TestChaseTagVsRegistry:
         assert "elapsed_s" in info
         assert "score" in info
         env.close()
+
+    def test_fullbody_arena_fits_every_reachable_contact(self) -> None:
+        """The explicit full-body arena holds every contact a body can reach.
+
+        Both agents are buried 2 m under the floor with 5 m contact margins and
+        10 rad joint margins, so every pair and joint limit is active. At a
+        corner every body geom touches the floor and the three corner fence
+        geoms, the most a body can reach (~11 MiB used): >= 2.5x headroom. At
+        the centre every body geom touches all eight fences, which no state
+        reaches (~27 MiB used): it must still fit.
+        """
+        require_musclemimic_models()
+        import mujoco
+
+        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
+            ChaseTagVsConfig,
+        )
+        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_model import (
+            CHASETAG_VS_FULLBODY_ARENA_BYTES,
+            _build_chase_tag_vs_fullbody_spec,
+        )
+
+        spec = _build_chase_tag_vs_fullbody_spec(ChaseTagVsConfig())
+        for geom in spec.geoms:
+            if geom.contype or geom.conaffinity:
+                geom.margin = 5.0
+        for pair in spec.pairs:
+            pair.margin = 5.0
+        for joint in spec.joints:
+            if joint.type != mujoco.mjtJoint.mjJNT_FREE:
+                joint.margin = 10.0
+        worst = spec.compile()
+        assert worst.narena == CHASETAG_VS_FULLBODY_ARENA_BYTES
+        for name in ("a0_floor", "a1_floor"):  # hidden duplicates of the floor
+            worst.geom_contype[worst.geom(name).id] = 0
+            worst.geom_conaffinity[worst.geom(name).id] = 0
+        fences = {
+            worst.geom(f"{kind}{i}").id
+            for kind in ("fence", "corner")
+            for i in (1, 2, 3, 4)
+        }
+        corner = {worst.geom(name).id for name in ("fence2", "fence3", "corner3")}
+        colliders = (worst.geom_contype | worst.geom_conaffinity) > 0
+        body = np.flatnonzero(colliders & (worst.geom_bodyid > 0)).tolist()
+        roots = [
+            worst.jnt_qposadr[j]
+            for j in range(worst.njnt)
+            if worst.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
+        ]
+        data = mujoco.MjData(worst)
+        for xy, touched, headroom in (((5.2, 5.2), corner, 2.5), (None, fences, 1.0)):
+            mujoco.mj_resetData(worst, data)
+            for adr in roots:
+                if xy is not None:
+                    data.qpos[adr : adr + 2] = xy
+                data.qpos[adr + 2] = -2.0
+            # mj_forward: mj_step would auto-reset (and zero maxuse) on a bad qacc.
+            mujoco.mj_forward(worst, data)
+            touching = {
+                tuple(sorted(g)) for g in data.contact.geom[: data.ncon].tolist()
+            }
+            assert {g for pair in touching for g in pair} & fences == touched
+            assert all(tuple(sorted((f, b))) in touching for f in touched for b in body)
+            for warning in (
+                mujoco.mjtWarning.mjWARN_CONTACTFULL,
+                mujoco.mjtWarning.mjWARN_CNSTRFULL,
+            ):
+                assert data.warning[warning].number == 0
+            assert headroom * data.maxuse_arena <= worst.narena
