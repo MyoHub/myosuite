@@ -9,16 +9,14 @@ full commit list.
 
 ### Highlights
 
-* **One task, three execution paths, and full GPU support.** The same `env_id` runs on the **CPU** (Gymnasium: playback, debugging, Stable-Baselines3), on **mjlab** (MuJoCo Warp + RSL-RL: thousands of parallel environments on one GPU) and on an **experimental MJX** (JAX) path. Training on the GPU is the big speed-up of this release: one RTX 5090 steps 20,000-38,000 muscle-driven environments per second (full-body MuscleMimic with 354 muscles, 1024 envs: 19.8k steps/s; the 2-billion-step MuscleMimic run finished in about 30 hours), where one CPU thread steps the much smaller hand, leg and arm tasks at about 1,000 steps/s (measured: 1.4k hand reorient, 1.3k leg walk, 0.8k arm reach). CPU and mjlab share the observation, action and timing contract, so a policy trained on the GPU can be replayed on the CPU.
+* **One task, three execution paths, enabling massive GPU parallelization and training speed-ups.** The same `env_id` runs on the **CPU** (Gymnasium: playback, debugging, Stable-Baselines3), on **mjlab** (MuJoCo Warp + RSL-RL: thousands of parallel environments on one GPU) and on an **experimental MJX** (JAX) path. Training on the GPU is the big speed-up of this release: one RTX 5090 steps 20,000-38,000 muscle-driven environments per second (full-body MuscleMimic with 354 muscles, 1024 envs: 19.8k steps/s; the 2-billion-step MuscleMimic run finished in about 30 hours), where one CPU thread steps the much smaller hand, leg and arm tasks at about 1,000 steps/s (measured: 1.4k hand reorient, 1.3k leg walk, 0.8k arm reach). CPU and mjlab share the observation, action and timing contract, so a policy trained on the GPU can be replayed on the CPU.
+* **Trained baseline policies.** Ready-to-use policies for 36 environments (pose, reach, leg walking, torso and the MuscleMimic full body) with evaluation videos on Hugging Face (`myohub/myosuite-3-baselines`), downloaded automatically by the tutorials and `eval_mjlab_policy.py` and loadable on both the CPU and mjlab backends. Success rates are listed in `docs/baseline_checkpoints.md`.
 * **MuscleMimic support.** Full-body and bimanual MuscleMimic environments
   (`myoMimicFullbody-v0`, `myoMuscleMimicFullbody-v0`, `myoMimicBimanual-v0`,
   `myoMuscleMimicBimanual-v0`, `myoFullBodyDirectional-v0`), loaders for the MuscleMimic
   checkpoints and retargeted motion datasets from Hugging Face, the `myosuite-musclemimic-fullbody-eval`
   tool, and tutorials 5.1–5.5 (load a policy, train on CPU/JAX and with mjlab, directional
   locomotion, SAR).
-* **The full MyoChallenge suite as Gymnasium environments** (21 ids): Baoding, Bimanual, ChaseTag
-  (P1, P2, P2eval, full-body P2, 1v1 full-body), Die Reorient, OSL run, Relocate, Soccer and Table
-  Tennis, with mjlab versions of the ChaseTag full-body and Table Tennis tasks.
 * **Modular task framework.** A new task needs a `TaskSpec`/`EnvSpec`, term functions and a
   `ModelBuilder` recipe, without subclassing an environment class. Term functions (observation, reward,
   action) are backend-agnostic; `ModelBuilder` composes models from fragments, recipes and pre-built
@@ -31,10 +29,13 @@ full commit list.
   metric on every twin, `train_mjlab.py` that stops early once the deterministic policy succeeds,
   `eval_mjlab_policy.py` (success rate, return, grid videos on both backends), and ready-made
   policies with evaluation videos in `baselines/`.
-* **Muscle conditions.** A torch fatigue model with CPU parity, episode-persistent and resumable
-  fatigue states, spec-level sarcopenia and reafferentation.
 * **`myo_sim` as a pip package** (replacing the git submodule); models are composed from it and the
   hand, arm and leg orientations were re-calibrated.
+* **Muscle conditions.** A torch fatigue model with CPU parity, episode-persistent and resumable
+  fatigue states, spec-level sarcopenia and reafferentation.
+* **The full MyoChallenge suite as Gymnasium environments** (21 ids): Baoding, Bimanual, ChaseTag
+  (P1, P2, P2eval, full-body P2, 1v1 full-body), Die Reorient, OSL run, Relocate, Soccer and Table
+  Tennis, with mjlab versions of the ChaseTag full-body and Table Tennis tasks.
 * **Tutorials and documentation.** 20 notebooks in five numbered tracks (basics, training,
   analysis, musculoskeletal modelling, MuscleMimic) with companion files in `tutorials/files/X.Y/`;
   documentation by audience, an environment reference, backend-parity and baselines pages, and a
@@ -49,6 +50,7 @@ full commit list.
 * **MyoChallenge suite** as Gymnasium envs: P1 envs, leg-directional and 1v1 ChaseTag, full-body ChaseTag baselines ([#406], [#101]).
 * **MuscleMimic:** full-body and bimanual envs, checkpoint and motion loaders, tutorials 5.1-5.5; multi-clip training (`register_mimic_mjlab_tasks_with_clip` takes several clips); reusable full-body viewer camera `mimic_viewer_cfg` ([#406], [#436], [#475]).
 * **Training and evaluation tools:** `eval_mjlab_policy.py` (CPU/mjlab rollouts, grid videos, `--stochastic`), `train_mjlab.py` early stop on success, default-policy checkpoints and videos in `baselines/` ([#406], [#478]).
+* **SAR synergies re-extracted on the current envs** and installed in `tutorials/files/2.3/SAR_pretrained/`; SAR-RL and RL-E2E reach the same success on locomotion, and SAR is not consistently ahead on manipulation (2 of 6 seeds).
 * **MuscleMimic baseline:** a single-clip walking policy (2B steps; 86% of episodes reach the clip end) on Hugging Face, see `docs/baseline_checkpoints.md`.
 * **Fatigue:** episode-persistent and resumable states, torch 3CC-r parity with the CPU model ([#406], [#421]).
 * **Targets:** `GoalSpec(target_type="site_positions")` samples per-episode targets from per-site ranges on CPU and MJX (mjlab helper `site_position_command_cfg`); `MotionClip` carries optional per-frame `weights` (#410).
@@ -57,6 +59,7 @@ full commit list.
 ### Changed
 
 * `myo_sim` is a pip package (was a git submodule); hand, arm and torso tasks use the composed models; pinned to 0.2.3 ([#406], [#408]).
+* **Thumb CMC joints in `myo_sim` >= 0.2.0:** the two thumb joints exchange name and range (the first CMC joint is `cmc_flexion` with range -0.78 to 0.7, it was `cmc_abduction` with -0.5 to 0.78). This affects the composed hand of the hand pose, reach and reorient tasks and Relocate; `myoHandKeyTurn*`, `myoHandObjHold*` and `myoHandPenTwirl*` keep the legacy order. The published hand baselines were trained and re-evaluated on the new order.
 * Basic-suite reward terms run on numpy, JAX and torch ([#406]); Python 3.10-3.14, MuJoCo 3.7 or newer ([#406]).
 * **Observations are no longer clipped:** every env declares a float32 `Box(-inf, inf)` (43 envs saturated at ±10). One step contract for every CPU env: float32 observations, validated reward dict, `info` carries the reward components ([#444]).
 * **Observations and rewards read the current state:** `step()` runs `mj_forward`, and the mjlab twins refresh with a full forward before rewards and terminations; 53 envs had observed one-substep-old values. Trajectories are bit-identical except OslRun ([#444]).
@@ -106,6 +109,7 @@ full commit list.
 
 Vittorio Caggiano, Florian Fischer, Balint Hodossy, Vikash Kumar, Tatsuki Tsujimoto, Hyoungseo Son,
 Cheryl Wang, Mark Colley and Calder Robbins.
+A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release essentially builds on!
 
 [#101]: https://github.com/MyoHub/myosuite/pull/101
 [#354]: https://github.com/MyoHub/myosuite/pull/354
