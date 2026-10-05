@@ -121,15 +121,17 @@ def evaluate_success(
 def path_obs_series(path: Mapping, keys: Iterable[str]) -> dict[str, np.ndarray]:
     """Time series of observation-dict entries of one rollout path, from the reset state.
 
-    Samples ``1..T`` are the post-step values of ``path["env_infos"]["obs_dict"]``.
-    Sample ``0``, the reset state, is recovered from ``path["observations"][0]`` by
-    splitting the flat vector in the key order and sizes of the obs dict (the order
-    ``MyoGymnasiumEnv`` concatenates them in). It is added only when
-    ``path["observations"][1]`` equals the flattened first post-step obs dict, so a
-    normalised or otherwise transformed observation vector is never split. The
-    terminal record :func:`~myosuite.utils.policy_utils.examine_policy` repeats
-    (``env_infos`` as long as ``observations``) is dropped. With the reset sample,
-    sample ``i`` is the state ``i * dt`` after the reset.
+    :func:`~myosuite.utils.policy_utils.examine_policy` records are time-aligned:
+    record ``t`` holds the obs dict of state ``s_t``, from the reset state ``s_0`` to
+    the final state, so sample ``i`` is the state ``i * dt`` after the reset.
+
+    Paths in the older post-step layout (``env_infos[t]`` after step ``t + 1``, the
+    terminal record possibly repeated) are realigned: a repeated record is dropped and
+    ``s_0`` is recovered from ``path["observations"][0]`` by splitting the flat vector
+    in the key order and sizes of the obs dict (the order ``MyoGymnasiumEnv``
+    concatenates them in). That layout is recognised only when
+    ``path["observations"][1]`` equals the flattened first obs dict, so a normalised or
+    otherwise transformed observation vector is never split.
 
     Args:
         path: A rollout path / trace group with ``env_infos.obs_dict`` (time-stacked
@@ -137,26 +139,30 @@ def path_obs_series(path: Mapping, keys: Iterable[str]) -> dict[str, np.ndarray]
         keys: Obs-dict keys to return; keys missing from the obs dict are skipped.
 
     Returns:
-        Key to ``(T + 1, ...)`` array (``(T, ...)`` without a usable reset observation).
+        Key to ``(T + 1, ...)`` array (``(T, ...)`` for an old-layout path without a
+        usable reset observation).
     """
     series = {
         k: np.asarray(v, dtype=float) for k, v in path["env_infos"]["obs_dict"].items()
     }
-    n_steps = len(next(iter(series.values())))
     observations = path.get("observations")
     if observations is not None and len(observations) >= 2:
         observations = np.asarray(observations, dtype=float)
-        if len(observations) == n_steps:  # examine_policy's repeated terminal record
-            series = {k: v[:-1] for k, v in series.items()}
         flat = [v.reshape(len(v), -1) for v in series.values()]
-        first_step = np.concatenate([f[0] for f in flat])
-        if observations.shape[-1] == first_step.size and np.allclose(
-            observations[1], first_step, rtol=1e-6, atol=1e-6
-        ):
+        first = np.concatenate([f[0] for f in flat])
+        old_layout = (
+            observations.shape[-1] == first.size
+            and len(observations) in (len(flat[0]), len(flat[0]) + 1)
+            and not np.allclose(observations[0], first, rtol=1e-6, atol=1e-6)
+            and np.allclose(observations[1], first, rtol=1e-6, atol=1e-6)
+        )
+        if old_layout:
+            # Drop the repeated terminal record if present, then prepend s_0.
+            n_post = len(observations) - 1
             splits = np.cumsum([f.shape[1] for f in flat])[:-1]
             reset = np.split(observations[0], splits)
             series = {
-                k: np.concatenate([r.reshape(1, *v.shape[1:]), v])
+                k: np.concatenate([r.reshape(1, *v.shape[1:]), v[:n_post]])
                 for (k, v), r in zip(series.items(), reset)
             }
     return {k: series[k] for k in keys if k in series}

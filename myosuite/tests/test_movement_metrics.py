@@ -309,7 +309,7 @@ def test_mean_metrics_skips_undefined_values():
 
 
 def _trace_like_path(n_steps: int, repeat_terminal: bool, transform=None):
-    """A path laid out like examine_policy's trace (reset obs + post-step infos)."""
+    """A path in the pre-#471 examine_policy layout (reset obs + post-step infos)."""
     tip = np.arange(n_steps + 1, dtype=float)[:, None] * [0.01, 0.0, 0.0]
     err = 0.5 - tip
     flat = np.concatenate([tip, err], axis=1).astype(np.float32)
@@ -332,7 +332,11 @@ def test_path_obs_series_prepends_reset_and_drops_repeated_record(repeat_termina
     np.testing.assert_allclose(series["tip_pos"], tip, atol=1e-7)
 
 
-def test_path_obs_series_skips_transformed_observations():
-    path, tip = _trace_like_path(6, True, transform=lambda o: (o - o.mean()) / o.std())
+def test_path_obs_series_never_splits_transformed_observations():
+    # A normalised observation vector cannot identify the layout: the obs dict is
+    # returned as recorded, never spliced with values split from the vector.
+    path, _ = _trace_like_path(6, True, transform=lambda o: (o - o.mean()) / o.std())
     series = path_obs_series(path, ("tip_pos",))
-    np.testing.assert_allclose(series["tip_pos"], tip[1:])
+    np.testing.assert_array_equal(
+        series["tip_pos"], path["env_infos"]["obs_dict"]["tip_pos"]
+    )

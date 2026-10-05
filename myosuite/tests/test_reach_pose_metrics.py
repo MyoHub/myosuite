@@ -85,16 +85,31 @@ def test_reach_metrics_time_to_target_uses_reset_time_base():
     env, trace = _rollouts("myoFingerReachFixed-v0", horizon=40, episodes=1)
     path = trace[0]
     obs = path_obs_series(path, ("tip_pos", "reach_err"))
-    # Reset + one sample per step taken.
-    dist = np.linalg.norm(path["env_infos"]["obs_dict"]["reach_err"][:-1], axis=-1)
-    assert len(obs["tip_pos"]) == len(dist) + 1 and len(dist) >= 2
+    # examine_policy records are time-aligned: record t is state s_t, s_0 the reset.
+    dist = np.linalg.norm(path["env_infos"]["obs_dict"]["reach_err"], axis=-1)
+    times = np.asarray(path["time"], dtype=float)
+    assert len(obs["tip_pos"]) == len(dist) == len(times) and times[0] == 0.0
     # A radius the finger certainly enters: the mean of its start and closest distance.
-    radius = 0.5 * (np.linalg.norm(obs["reach_err"][0]) + dist.min())
+    radius = 0.5 * (dist[0] + dist.min())
     m = point_to_point_metrics(
         obs["tip_pos"], obs["tip_pos"] + obs["reach_err"], env.dt, radius
     )
-    first_step = int(np.flatnonzero(dist < radius)[0])  # env_infos[i]: after step i + 1
-    assert m["time_to_target"] == pytest.approx((first_step + 1) * env.dt)
+    first = int(np.flatnonzero(dist < radius)[0])
+    assert first > 0
+    assert m["time_to_target"] == pytest.approx(times[first])
+
+
+def test_path_obs_series_realigns_the_old_post_step_layout():
+    # States s_0..s_4 of two obs keys; the pre-#471 examine_policy logged the
+    # post-step obs dict (s_1..s_4) and repeated the last record.
+    states = np.arange(5.0)[:, None] * np.array([1.0, 10.0])
+    aligned = {"a": states[:, :1], "b": states[:, 1:]}
+    post_step = {k: np.concatenate([v[1:], v[-1:]]) for k, v in aligned.items()}
+    for obs_dict in (aligned, post_step):
+        path = {"observations": states, "env_infos": {"obs_dict": obs_dict}}
+        series = path_obs_series(path, ("a", "b"))
+        for key, expected in aligned.items():
+            np.testing.assert_array_equal(series[key], expected)
 
 
 def test_pose_get_metrics_matches_env_signals():
