@@ -119,8 +119,21 @@ full commit list.
   ids are unchanged. Workspace sampling would not help, because the whole box is reachable. With the new
   threshold the published policy's deterministic success rises from 67.0% to 76.5% (CPU, the same 200 seeds):
   it solves 85% of the targets it was cut off from and is unchanged on the others. `test_reach_far_threshold.py`
-  checks that no reach reset starts beyond the far threshold; the hand-reach Random ids still do (97% of
-  resets) and are marked as expected failures.
+  checks that no reach reset starts beyond the far threshold, on CPU and for the mjlab twins.
+* **`myoHandReachRandom-v0` no longer ends episodes at step 2 unless the policy shuts the hand within 40 ms.**
+  Its target boxes surround the fingertips of the half-flexed pose (every joint at mid-range) that resets used
+  before v0.3 (2022), and `far_th=0.034` was set for that pose. Since v0.3 the hand starts open (`qpos0`),
+  0.14-0.29 m (norm over the five tips) from the targets, so 97% of the resets lay beyond the far threshold of
+  0.17 m. Those episodes ended at the first check (step 2) unless the first two actions closed the hand far
+  enough: 85% of the zero-action and 57% of the random-action episodes ended there (83% and 50% in v2.12.2),
+  which made learning from scratch hard and forced policies to close the hand within the first 40 ms. Its
+  `far_th` is now 0.075 (0.375 m over the five tips, 0.17 m per tip if all are equally off), since the
+  first two actions take the tips at most 0.361 m from the farthest target. This also holds for the Sarc/Fati/Reaf
+  variants, the mjlab twin and the MJX env, which now reads the hand-reach `far_th` from the CPU registration.
+  The open start pose, the target boxes and `myoHandReachFixed-v0` (0.197 m from the open hand, far 0.22 m)
+  are unchanged; restoring the mid-range start would put the fixed targets within 2 cm of the start tips.
+  The published checkpoint learned to close the hand that fast and is unaffected: 96.9% deterministic
+  success on mjlab with either threshold (identical episodes), 92.0% vs 91.8% over 500 CPU episodes.
 * **Joint velocities are observed as `qvel * ctrl_dt` on every backend** (the CPU task envs already
   did): the directional-leg twin and the MJX pose and reach envs observed raw `qvel`. The previous
   directional-leg checkpoints were retrained. `ElbowPoseTask` (tutorial 4.3) now also observes the

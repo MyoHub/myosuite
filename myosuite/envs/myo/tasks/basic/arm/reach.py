@@ -38,9 +38,10 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
             target can be reached.
         target_reach_range: Dict ``{site_name: (low_3d, high_3d)}``
             defining the sampling bounds for each target site.
-        far_th: Distance threshold beyond which a penalty is applied
-            (only active after ``2 * dt`` seconds). It must exceed the farthest target
-            from the start tips, or those resets end at the first check.
+        far_th: Per-site failure distance: the episode ends with a penalty once the
+            tip-target distance (norm over all ``k`` sites) exceeds ``far_th * k``
+            (only checked after ``2 * dt`` seconds). ``far_th * k`` must exceed the
+            farthest target from the start tips, or those resets end at the first check.
         obs_keys: Keys to include in the observation vector.
         weighted_reward_keys: Dict ``{reward_key: weight}`` for dense reward.
         normalize_act: If ``True``, action space is ``[-1, 1]``; sigmoid

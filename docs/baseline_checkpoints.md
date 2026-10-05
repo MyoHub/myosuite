@@ -40,6 +40,12 @@ deterministic success rises from 67.0% to 76.5%: it solves 85% of the targets it
 before) and is unchanged on the others (74.9%). On mjlab (64 episodes) it reaches 79.7%, against
 71.9% with the old threshold in the same setup.
 
+`myoHandReachRandom-v0` started 97% of its episodes beyond its far threshold (`far_th` = 0.034, 0.17 m over the
+five fingertips) from the open hand, and those episodes ended at step 2 unless the policy closed the hand within
+the first 40 ms. Its far threshold is now 0.075. The checkpoint below was trained with the old threshold and learned to close the hand
+that fast, so it is not affected: re-evaluated with the new threshold it gives the same 96.9% on mjlab (the
+64 episodes are identical with either threshold) and 92.0% over 500 CPU episodes (91.8% with the old one).
+
 **Compatibility with the ms3 observation changes.** Policies are tied to the observation contract they
 were trained with. These changes since the first set of checkpoints affect them:
 
