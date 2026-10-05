@@ -18,14 +18,22 @@ pytestmark = pytest.mark.tier1
 class _FakeAccessor:
     """Minimal EnvAccessor stub returning fixed numpy arrays."""
 
-    def __init__(self, nq: int = 4, na: int = 6, nu: int = 4) -> None:
+    def __init__(
+        self,
+        nq: int = 4,
+        na: int = 6,
+        nu: int = 4,
+        ctrl_range: tuple[float, float] = (-1.0, 1.0),
+    ) -> None:
         self._nq = nq
         self._na = na
         self._nu = nu
         self._qpos = np.zeros(nq)
         self._qvel = np.zeros(nq)
         self._act = np.ones(na) * 0.3
-        self._ctrl_range = np.column_stack([np.full(nu, -1.0), np.full(nu, 1.0)])
+        self._ctrl_range = np.column_stack(
+            [np.full(nu, ctrl_range[0]), np.full(nu, ctrl_range[1])]
+        )
 
     @property
     def physics_path(self):
@@ -165,7 +173,43 @@ def test_joint_penalty_zero_at_centre():
     acc = _FakeAccessor(nu=4)
     # qpos is 0, ctrl_range is [-1, 1], well within limits
     result = joint_penalty(acc, {})
-    assert result["joint_penalty"] <= 0.0
+    assert result["joint_penalty"] == 0.0
+
+
+# joint_penalty and joint_limit_violation compare qpos (nq values) with the
+# actuator ctrl_range (nu rows). That holds only when every joint has one position
+# actuator whose ctrl_range equals the joint range, which is what the nq == nu,
+# ctrl_range [-1, 1] tests here model. For a muscle model (ctrl_range [0, 1],
+# nq != nu) it is wrong. EnvAccessor has no joint-range accessor yet, so these strict
+# xfails pin the intended behaviour until the terms read joint limits (follow-up).
+# No task uses either term today.
+_COMPARES_QPOS_WITH_CTRL_RANGE = pytest.mark.xfail(
+    strict=True,
+    raises=(AssertionError, ValueError),
+    reason="joint_penalty / joint_limit_violation compare qpos with actuator ctrl_range",
+)
+
+
+@_COMPARES_QPOS_WITH_CTRL_RANGE
+@pytest.mark.parametrize(("nq", "nu"), [(4, 4), (4, 6)])
+def test_joint_penalty_ignores_muscle_ctrl_range(nq: int, nu: int) -> None:
+    """A mid-range joint angle is not penalised because muscle ctrl is in [0, 1]."""
+    from myosuite.terms.base_reward import joint_penalty
+
+    acc = _FakeAccessor(nq=nq, nu=nu, ctrl_range=(0.0, 1.0))
+    acc._qpos = np.full(nq, -0.5)  # inside the joints' [-1, 1] range of motion
+    assert joint_penalty(acc, {})["joint_penalty"] == 0.0
+
+
+@_COMPARES_QPOS_WITH_CTRL_RANGE
+@pytest.mark.parametrize(("nq", "nu"), [(4, 4), (4, 6)])
+def test_joint_limit_violation_ignores_muscle_ctrl_range(nq: int, nu: int) -> None:
+    """A mid-range joint angle is no violation because muscle ctrl is in [0, 1]."""
+    from myosuite.terms.base_termination import joint_limit_violation
+
+    acc = _FakeAccessor(nq=nq, nu=nu, ctrl_range=(0.0, 1.0))
+    acc._qpos = np.full(nq, -0.5)  # inside the joints' [-1, 1] range of motion
+    assert not joint_limit_violation(acc, {})
 
 
 # ---------------------------------------------------------------------------
@@ -378,17 +422,21 @@ def test_joint_limit_violation_with_margin():
     from myosuite.terms.base_termination import joint_limit_violation
 
     acc = _FakeAccessor(nq=4, nu=4)
-    # qpos=0, range=[-1, 1], margin=1.1 → effective range is [-2.1, 2.1]
-    # qpos=0 is inside → no violation
-    result = joint_limit_violation(acc, {}, margin=1.1)
-    assert not result, "qpos=0 should not violate limits with large margin"
+    # range=[-1, 1], margin=1.1 → effective range is [-2.1, 2.1]: 1.5 violates
+    # the nominal range only, so the margin decides.
+    acc._qpos = np.array([1.5, 0.0, 0.0, 0.0])
+    assert joint_limit_violation(acc, {})
+    assert not joint_limit_violation(
+        acc, {}, margin=1.1
+    ), "qpos=1.5 should not violate limits with large margin"
 
 
 def test_joint_limit_violation_tight_margin():
     from myosuite.terms.base_termination import joint_limit_violation
 
     acc = _FakeAccessor(nq=4, nu=4)
-    # qpos=0, range=[-1,1], margin=-0.1 → effective range is [-0.9, 0.9]
-    # qpos=0 is still inside → no violation
-    result = joint_limit_violation(acc, {}, margin=-0.1)
-    assert not result
+    # range=[-1,1], margin=-0.1 → effective range is [-0.9, 0.9]: 0.95 violates
+    # only the narrowed range, so the margin decides.
+    acc._qpos = np.array([0.95, 0.0, 0.0, 0.0])
+    assert not joint_limit_violation(acc, {})
+    assert joint_limit_violation(acc, {}, margin=-0.1)

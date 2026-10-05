@@ -308,7 +308,8 @@ class TaskConfig:
         reward: Reward term and weight specification.
         actuators: List of actuator group specs (one per muscle/motor group).
         fragment_versions: Maps fragment name → expected version integer.
-            CI fails if the installed fragment version does not match.
+            ``scripts/check_fragment_compat.py`` fails if an installed
+            fragment is newer than the declared version.
     """
 
     model: str = "elbow_standard"
@@ -323,8 +324,9 @@ class TaskConfig:
         default_factory=lambda: [ActuatorGroupSpec()]
     )
 
-    # Subclasses declare fragment version constraints here so CI can detect
-    # stale task configs when a fragment XML is updated.
+    # Subclasses declare fragment version constraints here so that
+    # scripts/check_fragment_compat.py can detect stale task configs when a
+    # fragment XML is updated.
     fragment_versions: ClassVar[dict[str, int]] = {}
 
     # Subclasses declare muscle-condition variants here.  Each VariantSpec
