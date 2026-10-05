@@ -394,6 +394,13 @@ class MultiClipTrajectorySource:
     tracked_site_ids: np.ndarray
     ctrl_dt: float
 
+    # Frames of all clips concatenated along time; clip c starts at row
+    # _clip_starts[c], so a gather reads row start + frame (no per-clip mask).
+    _site_bank: torch.Tensor | None = field(default=None, repr=False, init=False)
+    _qpos_bank: torch.Tensor | None = field(default=None, repr=False, init=False)
+    _qvel_bank: torch.Tensor | None = field(default=None, repr=False, init=False)
+    _clip_starts: torch.Tensor | None = field(default=None, repr=False, init=False)
+    # Per-clip views of the banks.
     _site_tensors: tuple[torch.Tensor, ...] | None = field(
         default=None, repr=False, init=False
     )
@@ -468,41 +475,37 @@ class MultiClipTrajectorySource:
             return
 
         self._device = device
-        self._site_tensors = tuple(
-            torch.as_tensor(
-                np.asarray(
-                    clip.site_xpos[:, self.tracked_site_ids, :], dtype=np.float32
-                ),
-                dtype=torch.float32,
-                device=device,
-            )
-            for clip in self.clips
+        lengths = [int(clip.site_xpos.shape[0]) for clip in self.clips]
+
+        def upload(arrays: list[np.ndarray] | None) -> torch.Tensor | None:
+            if arrays is None:
+                return None
+            flat = np.concatenate([np.asarray(a, dtype=np.float32) for a in arrays])
+            return torch.as_tensor(flat, dtype=torch.float32, device=device)
+
+        self._site_bank = upload(
+            [clip.site_xpos[:, self.tracked_site_ids, :] for clip in self.clips]
         )
-        self._qpos_tensors = tuple(
-            None
-            if clip.qpos is None
-            else torch.as_tensor(
-                np.asarray(clip.qpos, dtype=np.float32),
-                dtype=torch.float32,
-                device=device,
-            )
-            for clip in self.clips
+        # __post_init__ checked that all clips agree on qpos / qvel availability.
+        has_qpos = self.clips[0].qpos is not None
+        has_qvel = self.clips[0].qvel is not None
+        self._qpos_bank = upload([c.qpos for c in self.clips] if has_qpos else None)
+        self._qvel_bank = upload([c.qvel for c in self.clips] if has_qvel else None)
+        self._clip_starts = torch.as_tensor(
+            np.cumsum([0] + lengths[:-1]), dtype=torch.long, device=device
         )
-        self._qvel_tensors = tuple(
-            None
-            if clip.qvel is None
-            else torch.as_tensor(
-                np.asarray(clip.qvel, dtype=np.float32),
-                dtype=torch.float32,
-                device=device,
-            )
-            for clip in self.clips
+        self._site_tensors = tuple(self._site_bank.split(lengths))
+        self._qpos_tensors = (
+            tuple(self._qpos_bank.split(lengths))
+            if self._qpos_bank is not None
+            else (None,) * len(self.clips)
         )
-        self._clip_lengths = torch.as_tensor(
-            [int(clip.site_xpos.shape[0]) for clip in self.clips],
-            dtype=torch.long,
-            device=device,
+        self._qvel_tensors = (
+            tuple(self._qvel_bank.split(lengths))
+            if self._qvel_bank is not None
+            else (None,) * len(self.clips)
         )
+        self._clip_lengths = torch.as_tensor(lengths, dtype=torch.long, device=device)
         self._clip_indices, self._start_offsets = self._sample_assignments(
             n_envs, device
         )
@@ -546,36 +549,25 @@ class MultiClipTrajectorySource:
 
     def _gather_from_bank(
         self,
-        bank: tuple[torch.Tensor | None, ...],
+        bank: torch.Tensor | None,
         frame_idx: torch.Tensor,
         env_ids: torch.Tensor | None = None,
     ) -> torch.Tensor | None:
         """Gather rows of *bank* at *frame_idx* from each env's clip.
 
         *frame_idx* has one entry per env, or per env of *env_ids* when only those
-        envs are gathered (e.g. the envs of a partial reset).
+        envs are gathered (e.g. the envs of a partial reset).  Each frame must lie
+        in its env's clip (``[0, clip length)``), as :meth:`frame_indices`
+        returns.  One gather, no host sync.
         """
-        import torch
-
-        assert self._clip_indices is not None
+        if bank is None:
+            return None
+        assert self._clip_indices is not None and self._clip_starts is not None
         clip_indices = (
             self._clip_indices if env_ids is None else self._clip_indices[env_ids]
         )
-        template = next((tensor for tensor in bank if tensor is not None), None)
-        if template is None:
-            return None
-        out = torch.zeros(
-            (frame_idx.shape[0],) + tuple(template.shape[1:]),
-            dtype=template.dtype,
-            device=template.device,
-        )
-        for clip_idx, tensor in enumerate(bank):
-            if tensor is None:
-                return None
-            mask = clip_indices == clip_idx
-            if mask.any():
-                out[mask] = tensor[frame_idx[mask]]
-        return out
+        rows = self._clip_starts.index_select(0, clip_indices) + frame_idx
+        return bank.index_select(0, rows)
 
     @property
     def n_frames(self) -> int:
@@ -615,7 +607,7 @@ class MultiClipTrajectorySource:
 
     def site_targets_at_frames(self, frame_idx: torch.Tensor) -> torch.Tensor:
         """Return tracked-site targets for explicit frame indices."""
-        result = self._gather_from_bank(self._site_tensors, frame_idx)  # type: ignore[arg-type]
+        result = self._gather_from_bank(self._site_bank, frame_idx)
         assert result is not None
         return result
 
@@ -627,7 +619,7 @@ class MultiClipTrajectorySource:
         self, frame_idx: torch.Tensor, env_ids: torch.Tensor | None = None
     ) -> torch.Tensor | None:
         """Return reference qpos for explicit frame indices (of *env_ids*, if given)."""
-        return self._gather_from_bank(self._qpos_tensors, frame_idx, env_ids)  # type: ignore[arg-type]
+        return self._gather_from_bank(self._qpos_bank, frame_idx, env_ids)
 
     def ref_qvel(self, step: torch.Tensor) -> torch.Tensor | None:
         """Return reference qvel at the current frame."""
@@ -637,7 +629,7 @@ class MultiClipTrajectorySource:
         self, frame_idx: torch.Tensor, env_ids: torch.Tensor | None = None
     ) -> torch.Tensor | None:
         """Return reference qvel for explicit frame indices (of *env_ids*, if given)."""
-        return self._gather_from_bank(self._qvel_tensors, frame_idx, env_ids)  # type: ignore[arg-type]
+        return self._gather_from_bank(self._qvel_bank, frame_idx, env_ids)
 
     def phase(self, step: torch.Tensor) -> torch.Tensor:
         """Return normalised phase within the active clip for each environment."""

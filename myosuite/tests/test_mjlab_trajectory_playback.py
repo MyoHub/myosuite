@@ -553,6 +553,32 @@ class TestClipTrajectorySourceBasics:
             np.asarray(src.clips[1].qvel[5], dtype=np.float32),
         )
 
+    def test_multi_clip_gather_is_one_sync_free_read_of_each_envs_clip(self) -> None:
+        """Bank reads (all envs, or the envs of a partial reset) make no host sync.
+
+        The gather looped over the clips with ``mask.any()`` and bool-mask
+        indexing: three host syncs per clip and read.
+        """
+        from myosuite.tests.support.host_sync import HostSyncCounter
+
+        src = _make_multi_clip_source()
+        src.update(torch.zeros(_N, dtype=torch.long))
+        src._clip_indices = torch.tensor([1, 0, 1, 0][:_N], dtype=torch.long)
+        frames = torch.tensor([6, 4, 0, 2][:_N], dtype=torch.long)  # last frames too
+        env_ids = torch.tensor([2, 0], dtype=torch.long)
+        with HostSyncCounter(package_only=True) as syncs:
+            sites = src.site_targets_at_frames(frames)
+            qpos = src.ref_qpos_at_frames(frames)
+            qvel = src.ref_qvel_at_frames(frames)
+            reset_qpos = src.ref_qpos_at_frames(frames[env_ids], env_ids)
+        assert syncs.total == 0, syncs.report()
+        assert qpos is not None and qvel is not None and reset_qpos is not None
+        rows = list(zip(src._clip_indices.tolist(), frames.tolist()))
+        for name, got in (("site_xpos", sites), ("qpos", qpos), ("qvel", qvel)):
+            expected = np.stack([getattr(src.clips[c], name)[f] for c, f in rows])
+            np.testing.assert_array_equal(got.numpy(), expected.astype(np.float32))
+        assert torch.equal(reset_qpos, qpos[env_ids])
+
 
 # ---------------------------------------------------------------------------
 # TestClipTrajectorySourceAdvance
