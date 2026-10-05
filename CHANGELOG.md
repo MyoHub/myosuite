@@ -104,7 +104,7 @@ full commit list.
 ### Contributors
 
 Vittorio Caggiano, Florian Fischer, Balint Hodossy, Vikash Kumar, Tatsuki Tsujimoto, Hyoungseo Son,
-Cheryl Wang and Calder Robbins.
+Cheryl Wang, Mark Colley and Calder Robbins.
 
 [#101]: https://github.com/MyoHub/myosuite/pull/101
 [#354]: https://github.com/MyoHub/myosuite/pull/354
