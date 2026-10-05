@@ -215,6 +215,8 @@ full commit list.
   mimic site's angular velocity by `rel_rot` instead of `rel_rot^T` (the CPU `FullbodyObsAdapter` and
   upstream loco-mujoco), so its live and lookahead `site_rvel` differed from the observation the MuscleMimic
   checkpoints were trained on (by up to 8.6 on random states).
+* **Public attributes of wrapped envs.** `gym.make` returns an env wrapped by Gymnasium; since Gymnasium 1.0 `env.mj_render()` and other MyoSuite methods raised `AttributeError` (only `env.unwrapped.mj_render()` worked). The outermost wrapper of every registered env now forwards public attributes to the env again (#378).
+* **Multi-clip Mimic training.** `register_mimic_mjlab_tasks_with_clip` accepts a tuple or list of clips (each env draws its clip and start frame on reset); resetting only some envs of a clip bank gathered the reference with the wrong envs' clip indices and raised an `IndexError` (it showed up as a flaky crash within the first steps).
 * **Mimic mjlab initial state**: the joint-name keys are anchored (`knee_angle_r` no longer also sets
   `knee_angle_rotation{2,3}_*`) and the keyframe's body-frame root angular velocity is converted to the world
   frame.

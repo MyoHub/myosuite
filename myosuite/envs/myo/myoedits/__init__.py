@@ -54,7 +54,15 @@ def edit_fn_arm_reaching(
                     spec.delete(a)
             spec.delete(t)
 
-    spec.body("distph2_r").add_site(name="IFtip")
+    # Original site name, we'll duplicate the site to match both this site name and the one without the suffix
+    og_site = spec.site("IFtip_r")
+    spec.body("distph2_r").add_site(
+        name="IFtip",
+        size=og_site.size,
+        pos=og_site.pos,
+        rgba=og_site.rgba,
+        type=og_site.type,
+    )
 
     # Add a reach target
     spec.body("world").add_site(
