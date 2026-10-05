@@ -82,6 +82,7 @@ full commit list.
 * **SAR:** reorient actions, muscle conditions and stale geometry ([#434]); mjlab SAR action reaches the muscles ([#424]); PCA whitening undone in `SARTorchTransform` ([#425]); the bridge and activation collector ([#459]); tutorial scripts seed SAC and resume ([#455]).
 * **MuscleMimic mjlab:** resets, terminations, frame index and SAR task configs ([#436]); follow-ups: per-env target resampling, clip-rate check ([#437]); bimanual lookahead without root terms ([#439]); per-env bridge history and normalizer ([#440]); clip end scored against the last frame, `random_start` honoured ([#475]); bridge excitation mapping and name coverage ([#459]); relative angular velocity in `TorchFullbodyObsAdapter` ([#459]); multi-clip resets of partial envs ([#406]); initial-state joint-name keys and root angular velocity ([#406]).
 * **ONNX and SB3 exports** are self-contained and fold `VecNormalize` in ([#427], [#461]); two ONNX-export defects of the mimic MDP ([#407]); `find_checkpoint` skips runs of other envs ([#420]); `eval_mjlab_policy.py` reads the `actor` group ([#445]); `train_mjlab` resume and stop-on-success ([#478]).
+* **TaskConfig control step:** a control step is `n_substeps` steps of `sim_dt` on every backend, `BackendConfig` rejects a different `ctrl_dt`, and the CPU `ModularTaskEnv` sets the timestep to `sim_dt` (it scaled `joint_vel` by a `ctrl_dt` it did not simulate); the reach workspace table uses the scene's site ids ([#476]).
 * **Wrapped envs forward public attributes** again (`env.mj_render()` after `gym.make`) (#378); the multi-agent env is registered without `TimeLimit` ([#463]); resolved model XML written once ([#462]); `register_all_envs()` is idempotent ([#406]).
 * **ReferenceMotion:** interpolation, ghost-body rendering, `examine_policy` records ([#471]); no error when time moves backwards after the last frame ([#471]).
 * **ModelBuilder options and rebuilds, full-width clips mapped by joint name, fatigue API** ([#473]); quaternion velocity wrap and wrappers ([#474]).
@@ -155,6 +156,7 @@ Cheryl Wang and Calder Robbins.
 [#473]: https://github.com/MyoHub/myosuite/pull/473
 [#474]: https://github.com/MyoHub/myosuite/pull/474
 [#475]: https://github.com/MyoHub/myosuite/pull/475
+[#476]: https://github.com/MyoHub/myosuite/pull/476
 [#478]: https://github.com/MyoHub/myosuite/pull/478
 [#479]: https://github.com/MyoHub/myosuite/pull/479
 [#480]: https://github.com/MyoHub/myosuite/pull/480
