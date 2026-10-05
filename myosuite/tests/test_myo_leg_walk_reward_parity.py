@@ -148,9 +148,8 @@ def test_myo_leg_walk_reward_parity_cpu_vs_mjlab() -> None:
     reward_manager = mj_env.reward_manager
 
     for _ in range(num_steps):
-        # Sample normalised actions in [-1, 1] so that both BaseV0 (CPU)
-        # and MyoMuscleActivationAction (mjlab) apply the same sigmoid mapping
-        # to muscle activations.
+        # Sample actions in [-1, 1]; the leg walk envs (CPU and mjlab) clip them to
+        # [0, 1] and use them as muscle activations directly (no sigmoid).
         action = rng.uniform(low=-1.0, high=1.0, size=(act_dim,)).astype(np.float32)
 
         # ----- CPU step -----
@@ -260,13 +259,14 @@ def test_myo_leg_walk_reward_manager_matches_term_functions() -> None:
         obs_mj, r_mj, term_mj, trunc_mj, _ = mj_env.step(action_t)
         del obs_mj
 
-        # Reward buffer from env.step (already dt-scaled).
+        # Reward buffer from env.step (dt-scaled only if the cfg asks for it).
         if hasattr(r_mj, "detach"):
             dense_from_env = float(r_mj[0].detach().cpu().item())
         else:
             dense_from_env = float(r_mj)
 
         step_dt = float(mj_env.step_dt)
+        reward_scale = step_dt if mj_env.cfg.scale_rewards_by_dt else 1.0
 
         # Per-term rates cached during compute (before post-step forward/reset).
         term_values = list(reward_manager.get_active_iterable_terms(0))
@@ -276,7 +276,7 @@ def test_myo_leg_walk_reward_manager_matches_term_functions() -> None:
             term_cfg = reward_manager.get_term_cfg(name)
             if term_cfg.weight == 0.0:
                 continue
-            dense_from_rates += rate * step_dt
+            dense_from_rates += rate * reward_scale
 
         assert np.allclose(
             dense_from_env,

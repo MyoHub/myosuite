@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import gymnasium as gym
+import numpy as np
 from gymnasium.envs.registration import WrapperSpec, registry as _gym_registry
 
 from myosuite.core.config import EnvConfig, TaskConfig
@@ -64,6 +65,17 @@ def register(env_spec: EnvSpec, **kwargs: Any) -> str:
         backends=env_spec.task_spec.backends,
         **kwargs,
     )
+
+
+def _deep_equal(a: Any, b: Any) -> bool:
+    """Equality that also works for dicts, sequences and arrays (``==`` raises on arrays)."""
+    if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
+        return np.array_equal(a, b)
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_deep_equal(a[k], b[k]) for k in a)
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+        return len(a) == len(b) and all(_deep_equal(x, y) for x, y in zip(a, b))
+    return bool(a == b)
 
 
 def register_env(
@@ -123,7 +135,7 @@ def register_env(
         same_spec = (
             existing.entry_point == entry_point
             and existing.max_episode_steps == gym_max_episode_steps
-            and dict(existing.kwargs or {}) == dict(new_kwargs or {})
+            and _deep_equal(dict(existing.kwargs or {}), dict(new_kwargs or {}))
             and tuple(existing.additional_wrappers or ())
             == tuple(kwargs["additional_wrappers"] or ())
         )

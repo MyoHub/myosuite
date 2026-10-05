@@ -14,6 +14,18 @@ from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
 
+def solved_step_count(path: dict) -> float:
+    """Number of steps of a rollout path on which the task was solved."""
+    return float(np.sum(np.asarray(path["env_infos"]["rwd_dict"]["solved"]) * 1.0))
+
+
+def mean_effort(paths: list, key: str = "act_reg", sign: float = -1.0) -> float:
+    """Mean over paths of the per-path mean of ``rwd_dict[key]``, times ``sign``."""
+    return float(
+        sign * np.mean([np.mean(p["env_infos"]["rwd_dict"][key]) for p in paths])
+    )
+
+
 def joint_limit_forces(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray:
     """Generalized forces of the joint-limit constraints alone.
 

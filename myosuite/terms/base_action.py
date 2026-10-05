@@ -13,8 +13,9 @@ to muscle excitation in ``(0, 1)`` via::
 
     excitation = 1 / (1 + exp(-5 * (action - 0.5)))
 
-The sigmoid is centred at 0.5, so a policy output of **0** maps to ≈ 62% excitation
-(not 0%), and **−1** maps to ≈ 7%.  This matches Hill-type muscle resting activation.
+The sigmoid is centred at 0.5, so a policy output of **−1** maps to ≈ 0.06% excitation,
+**0** to ≈ 7.6%, **0.5** to 50% and **+1** to ≈ 92.4%: full (100%) excitation is never
+reached.  This is the legacy MyoSuite mapping.
 
 **Action space vs. ctrl range**: when ``normalize_act=True`` the declared
 ``action_space`` is ``Box([-1, 1]^n)``, but the underlying ``model.actuator_ctrlrange``
@@ -60,8 +61,8 @@ def muscle_normalize_action(accessor: EnvAccessor, action: Any, **kwargs: Any) -
     (numpy), MJX (jax.numpy), and mjlab (torch).
 
     The sigmoid ``σ(5(a − 0.5))`` is the canonical MyoSuite muscle mapping:
-    it is centred at 0.5 so that a zero policy action produces ~50% excitation,
-    matching the resting state of Hill-type muscle models.
+    it is centred at 0.5, so an action of -1 gives ~0.06% excitation, 0 gives ~7.6%
+    and +1 gives ~92.4% (the output range is [0.00055, 0.924], not the full [0, 1]).
 
     Args:
         accessor: Environment state accessor (provides array_module).
@@ -144,16 +145,19 @@ class MuscleActionTerm:
         Args:
             actions: Policy output tensor, shape (N, action_dim).
         """
-        if self.cfg.normalize:
-            xp = getattr(actions, "__module__", "")
-            if "torch" in xp:
-                import torch  # noqa: PLC0415
+        is_torch = "torch" in getattr(actions, "__module__", "")
+        if is_torch:
+            import torch  # noqa: PLC0415
 
-                self._processed = sigmoid_muscle_activation(actions, torch)
-            else:
-                self._processed = sigmoid_muscle_activation(actions, np)
+            xp = torch
         else:
-            self._processed = np.clip(actions, 0, 1)
+            xp = np
+        if self.cfg.normalize:
+            self._processed = sigmoid_muscle_activation(actions, xp)
+        else:
+            self._processed = (
+                torch.clamp(actions, 0, 1) if is_torch else np.clip(actions, 0, 1)
+            )
         if self._fatigue is not None:
             self._processed = self._fatigue.step(self._processed, self.cfg.ctrl_dt)
 

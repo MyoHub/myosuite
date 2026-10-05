@@ -60,7 +60,8 @@ class EvalConfig:
     """Roll out in the CPU gymnasium env or in the mjlab env."""
     episodes: int = 10
     """Without ``--num-cols``/``--num-rows``: CPU runs this many episodes on one
-    env, mjlab runs this many parallel envs (square-ish grid, one episode each)."""
+    env; mjlab runs a square-ish grid with at least this many parallel envs (one
+    episode each, all scored), so ``--episodes 10`` runs 12 envs there."""
     episodes_per_env: int = 1
     """Episodes recorded (and scored) for every parallel env when a grid is set
     (or on mjlab); envs reset between episodes and the video runs until all

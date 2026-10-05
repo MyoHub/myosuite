@@ -629,6 +629,25 @@ For the most common configurations, pre-built recipes are registered via
    model, spec = build_from_recipe("full_arm")           # shoulder + elbow + hand
    # Locomotion: gym.make("myoLegWalk-v0") (walk_standard duplicates leg/OSL meshes)
 
+Hand models and the thumb joint order
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Two hand models are in use, and they differ in the order of the two thumb CMC joints:
+
+* The **composed hand** (``myo_sim`` >= 0.2.0; the ``hand_*`` and ``full_arm`` recipes) is used by the hand pose,
+  reach and reorient tasks, Relocate and the SAR tasks. Its first CMC joint is ``cmc_flexion`` (range -0.78 to
+  0.7) followed by ``cmc_abduction`` (-0.5 to 0.78); the hand joints carry the ``_r`` suffix.
+* The **legacy hand** (``_legacy_hand_builder()``, the release-era ``myohand_*.xml`` files; the ``hand_key``,
+  ``hand_hold`` and ``hand_pen`` recipes) is used by ``myoHandKeyTurn*``, ``myoHandObjHold*`` and
+  ``myoHandPenTwirl*``. It has ``cmc_abduction`` (-0.5 to 0.78) first, then ``cmc_flexion`` (-0.78 to 0.7), without
+  the ``_r`` suffix. These tasks keep it on purpose, because the public NPG policies of MyoSuite 2.x for these
+  contact tasks depend on the joint order (observation and action layout), and a swapped order would make them
+  behave differently.
+
+The ``myo_sim`` refactor of 2026-06 (PR #111, released as 0.2.0) exchanged the names and ranges of the two thumb
+joints; MyoSuite handles it in the pose targets (``tasks/basic/__init__.py``) and checks the order of the legacy
+envs in ``test_hand_recipe_parity.py``. Use joint names, not qpos indices, when you write targets or keyframes.
+
 Register your own recipe to share it across a project:
 
 .. code-block:: python

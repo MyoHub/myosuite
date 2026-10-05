@@ -56,6 +56,18 @@ _AGENT_COLORS: dict[int, list[float]] = {
 }
 _INVISIBLE_RGBA: list[float] = [0.0, 0.0, 0.0, 0.0]
 
+# Arena (contacts, constraint rows, solver scratch) of each full-body two-agent
+# ``MjData``. ``MjSpec.attach`` drops the agents' legacy ``nconmax``/``njmax``,
+# so the scene had MuJoCo's implicit default (30 MiB with MuJoCo 3.11).
+# Measured high-water mark (read after every substep): 0.65 MiB in seeded env
+# rollouts, also with both agents driven into the fence; 2.2 MiB in contorted,
+# lying and fence-penetrating poses; 11.4 MiB with every geom of both agents
+# touching the floor and the three fence geoms of one corner (the most a body
+# can reach) at the per-pair contact cap; 27 MiB with every geom touching all
+# eight fences (unreachable). CI on Windows and macOS (MuJoCo 3.11) measured 15.2 MiB at the
+# corner, so the arena is 64 MiB, like the full-body FBP2 scene: >= 2.5x headroom there.
+CHASETAG_VS_FULLBODY_ARENA_BYTES = 64 * 2**20
+
 # A single-agent spec builder returns the standalone (pre-attach) MjSpec
 # plus its source model's keyframe-0 qpos (or None if it ships no keyframe).
 AgentSpecBuilder = Callable[
@@ -156,6 +168,7 @@ def _build_two_agent_spec(
     model_name: str,
     floor_rgba: list[float],
     site_rgba_by_idx: dict[int, list[float]] | None = None,
+    arena_bytes: int | None = None,
 ) -> tuple[mujoco.MjSpec, np.ndarray | None]:
     """Build the combined two-agent chase-tag ``MjSpec`` for any host model.
 
@@ -171,6 +184,8 @@ def _build_two_agent_spec(
             agent's pelvis tracking site marker. Defaults to fully
             transparent (myoLeg's variant colours its markers red/blue for
             chaser/runner visual debugging; full-body leaves them invisible).
+        arena_bytes: Explicit ``MjData`` arena size (``spec.memory``);
+            ``None`` keeps MuJoCo's default.
 
     Returns:
         Tuple of ``(combined spec, standing keyframe-0 qpos)``. The standing
@@ -195,6 +210,8 @@ def _build_two_agent_spec(
         _add_agent_sensor(spec, prefix)
 
     add_arena(spec)
+    if arena_bytes is not None:
+        spec.memory = arena_bytes
 
     return spec, standing_key_qpos
 
@@ -233,6 +250,7 @@ def _build_model_and_meta(
     floor_rgba: list[float],
     site_rgba_by_idx: dict[int, list[float]] | None = None,
     hide_geoms: tuple[str, ...] = (),
+    arena_bytes: int | None = None,
 ) -> tuple[mujoco.MjModel, mujoco.MjData, ChaseTagVsModelMeta]:
     """Compile a combined two-agent chase-tag scene and extract its metadata.
 
@@ -245,6 +263,7 @@ def _build_model_and_meta(
         hide_geoms: Names of geoms to disable collision on and make fully
             transparent after compilation (e.g. per-agent floor planes that
             duplicate the combined scene's world floor).
+        arena_bytes: See ``_build_two_agent_spec``.
 
     Returns:
         Tuple of (MjModel, MjData, ChaseTagVsModelMeta).
@@ -255,6 +274,7 @@ def _build_model_and_meta(
         model_name=model_name,
         floor_rgba=floor_rgba,
         site_rgba_by_idx=site_rgba_by_idx,
+        arena_bytes=arena_bytes,
     )
     model = spec.compile()
     model.opt.timestep = config.sim_dt
@@ -342,6 +362,7 @@ def _build_chase_tag_vs_fullbody_spec(
         _build_fullbody_agent_spec,
         model_name="chase_tag_vs_fullbody",
         floor_rgba=_FULLBODY_FLOOR_RGBA,
+        arena_bytes=CHASETAG_VS_FULLBODY_ARENA_BYTES,
     )
     return spec
 
@@ -365,4 +386,5 @@ def build_chase_tag_vs_fullbody_model(
         # Per-agent floor planes duplicate the world floor -- disable
         # collision and hide them.
         hide_geoms=_FULLBODY_HIDE_GEOMS,
+        arena_bytes=CHASETAG_VS_FULLBODY_ARENA_BYTES,
     )

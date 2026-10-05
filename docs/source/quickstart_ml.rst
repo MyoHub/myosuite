@@ -60,16 +60,23 @@ Training (CPU)
 
 Walkthrough: ``tutorials/2.1_Train_SB3_Policy.ipynb``.
 
+From the command line (the CPU counterpart of ``scripts/train_mjlab.py``)::
+
+   python scripts/train_sb3.py myoElbowPose1D6MRandom-v0 --timesteps 500000
+
+It supports ``--algo ppo|sac|td3``, ``--n-envs``, ``--normalize`` and ``--tensorboard``, and prints the
+deterministic success rate after training.
+
 
 Training (GPU)
 --------------
 
 Same ``env_id`` as CPU::
 
-   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --render onscreen \
+   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 \
        --agent.max-iterations 1000 --env.scene.num-envs 1024
 
-Replace "onscreen" with "offscreen" when running on a remote, headless machine.
+Add ``--video True`` to record videos during training (it renders offscreen, so it also works on a remote, headless machine).
 The flag ``--agent.max-iterations`` sets the number of PPO update iterations (default is
 task-specific); see ``--help`` for the full flag list, including
 ``--agent.num-steps-per-env`` and ``--env.scene.num-envs``.

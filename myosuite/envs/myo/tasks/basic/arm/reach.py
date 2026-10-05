@@ -278,7 +278,7 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
             "target_pos": target_pos,
             "reach_err": target_pos - tip_pos,
         }
-        return {k: obs[k] for k in self.obs_keys if k in obs}
+        return self._select_obs_keys(obs)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         """Compute the reward dictionary.

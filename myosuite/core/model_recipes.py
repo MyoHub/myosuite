@@ -286,7 +286,9 @@ def _legacy_hand_builder() -> ModelBuilder:
 
     Seeds from the shared ``hand/assets/myohand_{assets,body}.xml`` files plus
     the myo_sim scene via an in-memory MjSpec (no committed task/wrapper XML).
-    Contact-task furniture is added by MjSpec transforms below.
+    Contact-task furniture is added by MjSpec transforms below. Unlike the composed
+    ``myo_sim`` >= 0.2 hand it lists ``cmc_abduction`` before ``cmc_flexion``; the public
+    NPG policies of these tasks depend on that order.
     """
     from myosuite.utils.asset_path_resolver import (
         get_sim_asset_root,

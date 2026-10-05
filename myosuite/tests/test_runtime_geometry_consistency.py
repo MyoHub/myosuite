@@ -11,6 +11,7 @@ fields, and give the same contacts in the same states.
 
 from __future__ import annotations
 
+import types
 from collections.abc import Callable
 
 import mujoco
@@ -132,3 +133,110 @@ def test_episode_geometry_matches_recompiled_model(env_id: str, seed: int) -> No
     for step in range(25):
         assert _contacts(env.model, env.data) == _contacts(ref, env.data), step
         env.step(rng.uniform(env.action_space.low, env.action_space.high))
+
+
+@pytest.mark.parametrize("seed", [0, 3])
+def test_bimanual_first_reset_mass_draw_matches_recompiled_model(seed: int) -> None:
+    """The first reset draws a new box mass but skips the rescale: inertia follows."""
+    env = gym.make("myoChallengeBimanual-v0").unwrapped
+    env.reset(seed=seed)
+    body_ids = (int(env.obj_bid),)
+    _assert_derived_fields_match(env.model, _recompiled(env, body_ids), body_ids)
+
+
+def _bounds_rule(verts: np.ndarray) -> tuple[np.ndarray, float]:
+    """A mesh geom's aabb (center, half size) and rbound, from its (float32) vertices."""
+    lo, hi = verts.min(axis=0), verts.max(axis=0)
+    center, half = (lo + hi) / 2, (hi - lo) / 2
+    return np.concatenate([center, half]), float(np.linalg.norm(np.abs(center) + half))
+
+
+def _world_mesh_model(model: mujoco.MjModel, data: mujoco.MjData, geom: int):
+    """Standalone compile of one mesh geom's current world-space triangles."""
+    mesh = int(model.geom_dataid[geom])
+    adr, num = int(model.mesh_vertadr[mesh]), int(model.mesh_vertnum[mesh])
+    verts = model.mesh_vert[adr : adr + num] @ data.geom_xmat[geom].reshape(3, 3).T
+    fadr, fnum = int(model.mesh_faceadr[mesh]), int(model.mesh_facenum[mesh])
+    spec = mujoco.MjSpec()
+    spec.add_mesh(
+        name="m",
+        uservert=(verts + data.geom_xpos[geom]).ravel(),
+        userface=model.mesh_face[fadr : fadr + fnum].ravel(),
+    )
+    spec.worldbody.add_geom(
+        type=mujoco.mjtGeom.mjGEOM_MESH, meshname="m", contype=0, conaffinity=0
+    )
+    ref = spec.compile()
+    return ref, mujoco.MjData(ref)
+
+
+def test_bimanual_visual_mesh_follows_collision_box() -> None:
+    """The visual box is rescaled with the collision box and stays ray-castable.
+
+    Its vertices are scaled like the box size, its bounding box/sphere follow
+    the compiler's rule and rays hit it where they hit a standalone compile of
+    the same world-space triangles.
+    """
+    env = gym.make("myoChallengeBimanual-v0").unwrapped
+    fresh = env._mj_spec.compile()
+    vis, box = env.obj_gid - 1, env.obj_gid
+    mesh = int(fresh.geom_dataid[vis])
+    adr, num = int(fresh.mesh_vertadr[mesh]), int(fresh.mesh_vertnum[mesh])
+    aabb, rbound = _bounds_rule(fresh.mesh_vert[adr : adr + num])
+    np.testing.assert_allclose(fresh.geom_aabb[vis], aabb, atol=1e-8)
+    assert fresh.geom_rbound[vis] == pytest.approx(rbound, abs=1e-8)
+    # Nominal visual vertices in the box frame (the box has the body's axes).
+    q = fresh.geom_quat[vis]
+    rot = np.zeros(9)
+    mujoco.mju_quat2Mat(rot, q)
+    nominal = (
+        fresh.mesh_vert[adr : adr + num] @ rot.reshape(3, 3).T
+        + fresh.geom_pos[vis]
+        - fresh.geom_pos[box]
+    )
+
+    m, d = env.model, env.data
+    for seed in (0, 1, 2):  # nominal size, then two rescaled boxes
+        env.reset(seed=seed)
+        scales = m.geom_size[box] / fresh.geom_size[box]
+        assert (seed == 0) == np.allclose(scales, 1.0)
+        verts = m.mesh_vert[adr : adr + num]
+        np.testing.assert_allclose(
+            np.ptp(verts, axis=0), np.ptp(nominal, axis=0) * scales
+        )
+        aabb, rbound = _bounds_rule(verts)
+        np.testing.assert_allclose(m.geom_aabb[vis], aabb, atol=1e-8)
+        assert m.geom_rbound[vis] == pytest.approx(rbound, abs=1e-8)
+
+        ref, ref_data = _world_mesh_model(m, d, vis)
+        mujoco.mj_forward(ref, ref_data)
+        group = np.zeros(6, np.uint8)
+        group[m.geom_group[vis]] = 1
+        geom_id = np.zeros(1, np.int32)
+        center = d.geom_xpos[vis]
+        for axis in np.vstack([np.eye(3), -np.eye(3)]):
+            start = center - 0.08 * axis
+            expected = mujoco.mj_ray(ref, ref_data, start, axis, None, 1, -1, geom_id)
+            assert expected > 0
+            got = mujoco.mj_rayMesh(m, d, vis, start, axis)
+            assert got == pytest.approx(expected, abs=1e-6)
+            if axis[2] == 0:  # sideways nothing else is in the way
+                got = mujoco.mj_ray(m, d, start, axis, group, 1, -1, geom_id)
+                assert geom_id[0] == vis and got == pytest.approx(expected, abs=1e-6)
+
+
+def test_bimanual_rescale_uploads_visual_mesh(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A rescaled visual box is pushed to an existing render context."""
+    env = gym.make("myoChallengeBimanual-v0").unwrapped
+    uploads: list[tuple[object, int]] = []
+    monkeypatch.setattr(
+        mujoco, "mjr_uploadMesh", lambda model, con, mesh: uploads.append((con, mesh))
+    )
+    viewer = types.SimpleNamespace(con="context", make_context_current=lambda: None)
+    env._mujoco_renderer = types.SimpleNamespace(
+        _viewers={"rgb_array": viewer}, close=lambda: None
+    )
+    env.reset(seed=0)  # the first reset keeps the nominal size
+    assert uploads == []
+    env.reset(seed=1)
+    assert uploads == [("context", env.obj_mid)]

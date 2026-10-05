@@ -95,7 +95,7 @@ Fixed `scale` in `ObservationTermCfg` is exported to JSON and replicated in Type
 | Task | gym ↔ mjlab obs | gym ↔ mjlab action | mjswan export | Blocker |
 |---|---|---|---|---|
 | Elbow | ✓ 9D | ✓ 6D sigmoid | ✗ | No TypeScript: `pose_err`, `act`, `qvel×ctrl_dt` |
-| Walk | ✓ 403D | ✓ 80D sigmoid | ✗ | No TypeScript: all 12 custom obs terms |
+| Walk | ✓ 403D | ✓ 80D, [0, 1] activations (no sigmoid) | ✗ | No TypeScript: all 12 custom obs terms |
 | TableTennis | ✓ 417D | ~ | ✗ | Custom obs term (no TypeScript) |
 | ChaseTag FBP2 | ✓ 537D (`test_chasetag_fbp2_parity.py`) | ✓ 354D direct | ✗ | No TypeScript: `chasetag_obs` blocks, scripted opponent; ctrl_dt 0.01 s |
 

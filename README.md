@@ -34,7 +34,7 @@ MyoSuite 3 brings the whole suite to fast, scalable training while keeping the s
 - **The complete MyoChallenge suite** as Gymnasium environments: Baoding, Bimanual, Chase Tag, Die Reorient, OSL Run, Relocate, Soccer and Table Tennis.
 - **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared observation, reward and model-building blocks instead of writing an environment class.
 - **Some existing environments changed.** Observations are no longer clipped and are read after a fresh forward step (55 env ids), the `motorFinger*` envs have 4x stronger motors, the Random finger-reach tasks now sample only targets the fingertip can reach, and several reset and seed behaviours were corrected. Policies trained with MyoSuite 2.x or earlier snapshots may need retraining; see [`CHANGELOG.md`](CHANGELOG.md) for the full list.
-- **Ready to use.** Default trained policies (see [`docs/baseline_checkpoints.md`](docs/baseline_checkpoints.md) for the full list and success rates) with evaluation videos, plus updated tutorials from the first rollout to GPU training and MuscleMimic. See the [changelog](CHANGELOG.md) for everything that changed since v2.12.
+- **Ready to use.** Default trained policies on [Hugging Face](https://huggingface.co/myohub/myosuite-3-baselines) (see [`docs/baseline_checkpoints.md`](docs/baseline_checkpoints.md) for the full list and success rates) with evaluation videos, plus updated tutorials from the first rollout to GPU training and MuscleMimic. See the [changelog](CHANGELOG.md) for everything that changed since v2.12.
 
 ---
 
@@ -73,6 +73,8 @@ python -c "import myosuite; print(len(myosuite.myosuite_env_suite), 'envs')"
 python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --render onscreen
 # macOS viewer: mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --render onscreen
 ```
+
+Run these from a directory that does not directly contain a folder named `myosuite` (for example not the parent of your clone); otherwise Python imports that folder as a namespace package and fails with `cannot import name ... from 'myosuite' (unknown location)`.
 
 ---
 
