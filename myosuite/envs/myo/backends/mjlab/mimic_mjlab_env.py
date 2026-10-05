@@ -1319,6 +1319,40 @@ def _policy_actor_critic_groups(obs_terms: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def mimic_viewer_cfg(
+    entity_name: str, body_name: str = "pelvis", **overrides: Any
+) -> Any:
+    """Viewer camera that follows *body_name* of a full-body Mimic entity.
+
+    A three-quarter side view of the whole body (distance 3.2 m, elevation -6
+    degrees, azimuth 50 degrees). It follows the pelvis, so the walker stays in
+    frame; mjlab's default camera is fixed in the world. The image size is left
+    at mjlab's default; set ``width`` and ``height`` to render larger frames.
+
+    Args:
+        entity_name: Scene entity name (e.g. ``"mimic_fullbody_robot"``).
+        body_name: Body of the entity to track.
+        **overrides: Any other :class:`mjlab.viewer.ViewerConfig` field, e.g.
+            ``width=1280, height=720`` or ``azimuth=120.0``.
+
+    Returns:
+        A :class:`mjlab.viewer.ViewerConfig`.
+    """
+    from mjlab.viewer import ViewerConfig
+
+    kwargs: dict[str, Any] = dict(
+        origin_type=ViewerConfig.OriginType.ASSET_BODY,
+        entity_name=entity_name,
+        body_name=body_name,
+        distance=3.2,
+        elevation=-6.0,
+        azimuth=50.0,
+        lookat=(0.0, 0.0, -0.05),
+    )
+    kwargs.update(overrides)
+    return ViewerConfig(**kwargs)
+
+
 def _make_mimic_env_cfg(
     *,
     _task_id: str,
@@ -1540,6 +1574,8 @@ def _make_mimic_env_cfg(
     )
     if events:
         env_cfg_kwargs["events"] = events
+    if variant == "fullbody":  # the bimanual body has no pelvis: keep mjlab's camera
+        env_cfg_kwargs["viewer"] = mimic_viewer_cfg(entity_name)
     return ManagerBasedRlEnvCfg(**env_cfg_kwargs)
 
 
@@ -2419,6 +2455,7 @@ def _make_directional_sar_env_cfg(
         terminations=terminations,
         rewards=rewards,
         sim=SimulationCfg(mujoco=musclemimic_mujoco_cfg("fullbody", timestep=sim_dt)),
+        viewer=mimic_viewer_cfg(entity_name),
     )
 
 
