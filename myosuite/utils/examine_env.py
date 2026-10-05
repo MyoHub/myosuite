@@ -189,16 +189,16 @@ def main(
     success_percentage = env.evaluate_success(paths)
     print(f"Average success over rollouts: {success_percentage}%")
 
-    # save paths
+    # plot paths (before saving: save() closes the trace, flattening its keys)
     time_stamp = time.strftime("%Y%m%d-%H%M%S")
-    if save_paths:
-        file_name = output_dir + "/" + output_name + f"{time_stamp}_trace.h5"
-        paths.save(trace_name=file_name, verify_length=True, f_res=np.float64)
-
-    # plot paths
     if plot_paths:
         file_name = output_dir + "/" + output_name + f"{time_stamp}"
         plotnsave_paths(paths, env=env, fileName_prefix=file_name)
+
+    # save paths
+    if save_paths:
+        file_name = output_dir + "/" + output_name + f"{time_stamp}_trace.h5"
+        paths.save(trace_name=file_name, verify_length=True, f_res=np.float64)
 
     # render visuals keys
     if env.visual_keys and render_visuals:

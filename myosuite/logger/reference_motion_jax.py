@@ -39,14 +39,25 @@ class ReferenceType(enum.Enum):
 
 # Reference motion
 class ReferenceMotion:
-    def __init__(self, reference_data: str | dict, motion_extrapolation: bool = False):
+    def __init__(
+        self,
+        reference_data: str | dict,
+        motion_extrapolation: bool = False,
+        random_key: jax.Array | None = None,
+    ):
         """
         Reference Type
             Fixed  :: N==1, M==1  :: input is <Fixed target dict>
             Random :: N==2, M==2  :: input is <Randomization range dict> :: ind0:low_limit, ind1:high_limit
             Track  :: N>2 or M>2  :: input as <Motion file to be tracked>
+
+        random_key: PRNG key for RANDOM references (default ``PRNGKey(0)``); split
+            on every :meth:`get_reference` call that is not given its own key.
         """
         self.motion_extrapolation = motion_extrapolation
+        self._random_key = (
+            jrandom.PRNGKey(0) if random_key is None else jp.asarray(random_key)
+        )
 
         # load reference
         self.reference = self.load(reference_data)
@@ -183,6 +194,9 @@ class ReferenceMotion:
     def find_timeslot_in_reference(self, time):
         """
         Find the timeslot interval for the provided time in the reference motion.
+
+        Times outside ``[time[0], time[-1]]`` map to the first / last frame: a traced
+        time cannot raise like the NumPy version's range assert.
         """
         time = jp.around(time, _TIME_PRECISION)
 
@@ -202,11 +216,17 @@ class ReferenceMotion:
                 return (self.index_cache + 1, self.index_cache + 1)
 
             def search_index(_):
-                new_index = (
-                    jp.searchsorted(self.reference["time"], time, side="right") - 1
+                ref_time = self.reference["time"]
+                new_index = jp.clip(
+                    jp.searchsorted(ref_time, time, side="right") - 1,
+                    0,
+                    self.horizon - 1,
                 )
+                # exact frame, or outside the clip: hold the nearest end frame
                 return jax.lax.cond(
-                    time == self.reference["time"][new_index],
+                    (time == ref_time[new_index])
+                    | (time < ref_time[0])
+                    | (time > ref_time[-1]),
                     lambda _: (new_index, new_index),
                     lambda _: (new_index, new_index + 1),
                     operand=None,
@@ -247,16 +267,21 @@ class ReferenceMotion:
 
         return result
 
-    def get_reference(self, time):
+    def get_reference(self, time, key: jax.Array | None = None):
         """
         Return the reference at the given time, with linear interpolation if needed.
+
+        key: Optional PRNG key for RANDOM references. Without one, the stored key is
+            split, so successive calls draw new samples.
         """
         if self.type == ReferenceType.FIXED:
             robot_ref = self.reference["robot"][0]
             robot_vel_ref = self.reference["robot_vel"][0]
             object_ref = self.reference["object"][0]
         elif self.type == ReferenceType.RANDOM:
-            rng_key, rng1, rng2 = jrandom.split(jax.random.PRNGKey(0), 3)
+            if key is None:
+                self._random_key, key = jrandom.split(self._random_key)
+            rng_key, rng1, rng2 = jrandom.split(key, 3)
             robot_ref = jrandom.uniform(
                 rng1,
                 shape=self.reference["robot"][
@@ -293,30 +318,33 @@ class ReferenceMotion:
                 robot_vel_ref = (
                     None
                     if self.reference["robot_vel"] is None
-                    else self.reference["robot_vel"][ind]
+                    else self.reference["robot_vel"][
+                        ind if self.robot_horizon > 1 else 0
+                    ]
                 )
                 object_ref = (
                     None
                     if self.reference["object"] is None
-                    else self.reference["object"][ind]
+                    else self.reference["object"][ind if self.object_horizon > 1 else 0]
                 )
                 return robot_ref, robot_vel_ref, object_ref
 
             def interpolate_case(_):
-                # Linearly interpolate between frames to get references
-                blend = time - self.reference["time"][ind] / (
-                    self.reference["time"][ind_next] - self.reference["time"][ind]
-                )
+                # Linearly interpolate between frames: (1-blend)*ref[ind] + blend*ref[ind_next]
+                t_prev = self.reference["time"][ind]
+                dt = self.reference["time"][ind_next] - t_prev
+                # lax.cond traces this branch for exact frames too (dt == 0): keep it finite
+                blend = (time - t_prev) / jp.where(dt > 0, dt, 1.0)
 
                 # robot motion
                 if self.robot_horizon > 1:
-                    robot_ref = (1.0 - blend) ** self.reference["robot"][
+                    robot_ref = (1.0 - blend) * self.reference["robot"][
                         ind
                     ] + blend * self.reference["robot"][ind_next]
                     robot_vel_ref = (
                         None
                         if self.reference["robot_vel"] is None
-                        else (1.0 - blend) ** self.reference["robot_vel"][ind]
+                        else (1.0 - blend) * self.reference["robot_vel"][ind]
                         + blend * self.reference["robot_vel"][ind_next]
                     )
                 else:
