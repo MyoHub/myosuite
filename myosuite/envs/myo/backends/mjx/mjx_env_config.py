@@ -81,6 +81,9 @@ class MjxReachConfig:
         far_th: Distance threshold (metres) triggering episode termination.
         target_reach_range: Mapping of site name → ``(lo_xyz, hi_xyz)``,
             matched to the model by site name (mapping order is ignored).
+        target_sampling: ``"box"`` samples each target uniformly in its box;
+            ``"workspace"`` samples tip positions over the joint ranges that lie
+            in the boxes (as CPU ``ReachEnvV0``).
         reward_weights: Reward component weights.
     """
 
@@ -93,6 +96,7 @@ class MjxReachConfig:
     max_episode_steps: int = 100
     far_th: float = 0.35
     target_reach_range: dict[str, Any] = field(default_factory=dict)
+    target_sampling: str = "box"
     reward_weights: MjxReachRewardWeights = field(default_factory=MjxReachRewardWeights)
 
 

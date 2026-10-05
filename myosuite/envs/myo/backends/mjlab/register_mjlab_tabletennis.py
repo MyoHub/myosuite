@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -38,7 +39,7 @@ from mjlab.sim import SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 from scipy.spatial.transform import Rotation as R
 
-from myosuite.core.model_builder import build_from_recipe
+from myosuite.core.model_builder import build_from_recipe, cached_spec
 from myosuite.core.model_recipes import (
     _add_tabletennis_furniture,
     _tabletennis_body_spec,
@@ -160,8 +161,12 @@ def _tt_actuator_xml_groups() -> tuple[tuple[str, ...], tuple[str, ...]]:
     return tuple(tendons), tuple(positions)
 
 
-def _table_tennis_full_spec() -> mujoco.MjSpec:
+@cached_spec()
+def _full_spec_in(cwd: str) -> mujoco.MjSpec:
     """Build the same torso+arms+legs+furniture spec as the CPU recipe.
+
+    *cwd* only keys the cache: the furniture mesh paths are written relative to
+    the working directory.
 
     Reuses ``model_recipes._tabletennis_body_spec``/``_add_tabletennis_furniture``
     directly (not :func:`build_from_recipe`) so mjlab and CPU always compose
@@ -170,6 +175,15 @@ def _table_tennis_full_spec() -> mujoco.MjSpec:
     second, independently-written composition.
     """
     return _add_tabletennis_furniture(_tabletennis_body_spec())
+
+
+def _table_tennis_full_spec() -> mujoco.MjSpec:
+    """Private copy of the composed full spec (the mjlab entities split it three times).
+
+    Reuses ``model_recipes._tabletennis_body_spec``/``_add_tabletennis_furniture``
+    through :func:`_full_spec_in`, kept per working directory.
+    """
+    return _full_spec_in(os.getcwd())
 
 
 def _table_tennis_spec_fn() -> mujoco.MjSpec:

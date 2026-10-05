@@ -17,7 +17,11 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
+from myosuite.envs.myo.tasks.challenge.challenge_common import (
+    MuscleActionMixin,
+    mean_effort,
+    solved_step_count,
+)
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.physics.quat_math import euler2quat, mat2euler
@@ -107,6 +111,11 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.palm_sid = self.model.site("S_grasp_r").id
         self.object_sid = self.model.site("object_o").id
         self.object_bid = self.model.body("Object").id
+        # The hand joints precede the object's joints (3 slides + 3 hinges).
+        self._obj_qposadr = int(
+            self.model.jnt_qposadr[self.model.body_jntadr[self.object_bid]]
+        )
+        self._obj_dofadr = int(self.model.body_dofadr[self.object_bid])
         self.goal_sid = self.model.site("target_o").id
         self.success_indicator_sid = self.model.site("target_ball").id
         self.goal_bid = self.model.body("target").id
@@ -199,10 +208,13 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         goal_xmat = self.data.site_xmat[self.goal_sid].reshape(3, 3)
         obj_rot = mat2euler(obj_xmat)
         goal_rot = mat2euler(goal_xmat)
+        hand_qpos = qpos[: self._obj_qposadr].copy()
         obs = {
             "time": np.array([accessor.time()]),
-            "hand_qpos": qpos[:-7].copy(),
-            "hand_qvel": (qvel[:-6] * accessor.dt()).copy(),
+            "hand_qpos": hand_qpos,
+            # Legacy relocate_v0 name of the same (all hand joints) slice.
+            "hand_qpos_corrected": hand_qpos,
+            "hand_qvel": (qvel[: self._obj_dofadr] * accessor.dt()).copy(),
             "obj_pos": obj_pos,
             "goal_pos": goal_pos,
             "palm_pos": palm_pos,
@@ -217,9 +229,7 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         return obs
 
     def _obs_dict_to_vec(self, obs_dict: dict[str, np.ndarray]) -> np.ndarray:
-        return np.concatenate(
-            [np.atleast_1d(obs_dict[k]).ravel() for k in self.obs_keys if k in obs_dict]
-        )
+        return self._obs_keys_to_vec(obs_dict)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         reach_dist = float(np.linalg.norm(obs_dict["reach_err"]))
@@ -319,6 +329,20 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
         return self._finalize_step(obs_dict, rwd_dict)
+
+    def get_metrics(self, paths: list, successful_steps: int = 5) -> dict[str, float]:
+        """Success rate and effort over rollout paths (as legacy ``relocate_v0``).
+
+        Args:
+            paths: Rollouts whose ``env_infos`` stack the per-step ``rwd_dict``
+                (``solved``, ``act_reg``).
+            successful_steps: A path succeeds if it was solved on more steps.
+
+        Returns:
+            Dict with ``score`` (fraction of successful paths) and ``effort``.
+        """
+        score = np.mean([solved_step_count(p) > successful_steps for p in paths])
+        return {"score": float(score), "effort": mean_effort(paths)}
 
     def reset(
         self,

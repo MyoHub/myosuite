@@ -111,10 +111,7 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         edit_fn = kwargs.pop("edit_fn", None)
         if model_recipe is not None:
             self._model_recipe = model_recipe
-            self.model, self._mj_spec = build_from_recipe(model_recipe)
-            if edit_fn is not None:
-                edit_fn(self._mj_spec)
-                self.model = self._mj_spec.compile()
+            self.model, self._mj_spec = build_from_recipe(model_recipe, edit_fn=edit_fn)
         else:
             builder = ModelBuilder.from_xml_file(model_path)
             if edit_fn is not None:
@@ -281,7 +278,7 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
             "target_pos": target_pos,
             "reach_err": target_pos - tip_pos,
         }
-        return {k: obs[k] for k in self.obs_keys if k in obs}
+        return self._select_obs_keys(obs)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         """Compute the reward dictionary.

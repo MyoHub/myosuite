@@ -24,7 +24,10 @@ from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.heightfields import TrackField
 from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
-from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
+from myosuite.envs.myo.tasks.challenge.challenge_common import (
+    MuscleActionMixin,
+    joint_limit_forces,
+)
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.physics.quat_math import intrinsic_euler2quat, quat2euler_intrinsic
 from myosuite.terms.base_action import sigmoid_muscle_activation
@@ -327,6 +330,29 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.tendon_len = self.model.tendon_lengthspring.copy()
         self.musc_operating_len = self.model.actuator_gainprm[:, 0:2].copy()
 
+        # ── Index caches: per-step reads gather with these, no name lookups ──
+        bio_jnt = [self.model.joint(j).id for j in self.BIOLOGICAL_JNT]
+        self._bio_qposadr = self.model.jnt_qposadr[bio_jnt]
+        self._bio_dofadr = self.model.jnt_dofadr[bio_jnt]
+        self._bio_act_ids = np.array(
+            [self.model.actuator(a).id for a in self.BIOLOGICAL_ACT]
+        )
+        self._pain_dofadr = self.model.jnt_dofadr[
+            [self.model.joint(j).id for j in self.PAIN_JNT]
+        ]
+        self._grf_adr = self.model.sensor_adr[
+            [self.model.sensor(n).id for n in self.grf_sensor_names]
+        ]
+        osl_knee = self.model.joint("osl_knee_angle_r")
+        osl_ankle = self.model.joint("osl_ankle_angle_r")
+        self._osl_qposadr = (osl_knee.qposadr[0], osl_ankle.qposadr[0])
+        self._osl_dofadr = (osl_knee.dofadr[0], osl_ankle.dofadr[0])
+        self._osl_load_adr = self.model.sensor("r_osl_load").adr[0] + 1
+        self._osl_act_ids = {
+            jnt: self.model.actuator(f"osl_{jnt}_torque_actuator").id
+            for jnt in ("knee", "ankle")
+        }
+
         # ── Reward / obs config ──────────────────────────────────────────────
         self.rwd_keys_wt = dict(weighted_reward_keys)
         self.obs_keys = list(obs_keys)
@@ -392,13 +418,10 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         # Append OSL torques
         self.OSL_CTRL.update(self._get_osl_sens())
         osl_torque = self.OSL_CTRL.get_osl_torque()
-        for jnt in ("knee", "ankle"):
-            act_name = f"osl_{jnt}_torque_actuator"
-            osl_id = self.model.actuator(act_name).id
-            gear = self.model.actuator(act_name).gear[0]
+        for jnt, osl_id in self._osl_act_ids.items():
+            gear = self.model.actuator_gear[osl_id, 0]
             osl_ctrl = osl_torque[jnt] / gear
-            min_ctrl = self.model.actuator(act_name).ctrlrange[0]
-            max_ctrl = self.model.actuator(act_name).ctrlrange[1]
+            min_ctrl, max_ctrl = self.model.actuator_ctrlrange[osl_id]
             osl_ctrl = np.clip(osl_ctrl, min_ctrl, max_ctrl)
             if self.normalize_act:
                 ctrl_mean = (min_ctrl + max_ctrl) / 2.0
@@ -435,9 +458,7 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
     def _obs_dict_to_vec(self, obs_dict: dict[str, np.ndarray]) -> np.ndarray:
         """Flatten only the obs_keys subset of obs_dict to a 1-D vector."""
-        return np.concatenate(
-            [np.atleast_1d(obs_dict[k]).ravel() for k in self.obs_keys if k in obs_dict]
-        )
+        return self._obs_keys_to_vec(obs_dict)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         act_mag = (
@@ -448,12 +469,14 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         pain = self._get_pain(obs_dict)
         score = self._get_score(obs_dict)
         win_cdt = self._win_condition(obs_dict)
-        self._lose_condition(obs_dict)
+        lose_cdt = self._lose_condition(obs_dict)
 
         rwd_dict = collections.OrderedDict(
             (
                 ("act_reg", float(act_mag)),
                 ("pain", pain),
+                # Unweighted; get_metrics scores a lost episode with maxTime.
+                ("lose", lose_cdt),
                 ("sparse", score),
                 ("solved", win_cdt),
                 ("done", self._get_done(obs_dict)),
@@ -563,74 +586,43 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     def _get_pain(self, obs_dict: dict) -> float:
         if not self.startFlag:
             return -1.0
+        frc = joint_limit_forces(self.model, self.data)[self._pain_dofadr]
         pain_score = 0.0
-        for joint in self.PAIN_JNT:
-            pain_score += (
-                np.clip(np.abs(self._get_limitfrc(joint).squeeze()), -1000, 1000) / 1000
-            )
+        # Sequential sum in PAIN_JNT order, as the per-joint loop it replaces.
+        for joint_pain in np.clip(np.abs(frc), -1000, 1000) / 1000:
+            pain_score += joint_pain
         return pain_score / len(self.PAIN_JNT)
-
-    def _get_limitfrc(self, joint_name: str) -> np.ndarray:
-        non_jnt_idxs = np.where(
-            self.data.efc_type != mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT
-        )[0]
-        only_jnt_lim = self.data.efc_force.copy()
-        only_jnt_lim[non_jnt_idxs] = 0.0
-        joint_force = np.zeros(self.model.nv)
-        mujoco.mj_mulJacTVec(self.model, self.data, joint_force, only_jnt_lim)
-        return joint_force[self.model.joint(joint_name).dofadr]
 
     # ── Biological obs helpers ────────────────────────────────────────────────
 
     def _get_internal_qpos(self) -> np.ndarray:
-        return np.array(
-            [self.data.joint(j).qpos[0].copy() for j in self.BIOLOGICAL_JNT]
-        )
+        return self.data.qpos[self._bio_qposadr]
 
     def _get_internal_qvel(self) -> np.ndarray:
-        return (
-            np.array([self.data.joint(j).qvel[0].copy() for j in self.BIOLOGICAL_JNT])
-            * self.dt
-        )
+        return self.data.qvel[self._bio_dofadr] * self.dt
 
     def _get_grf(self) -> np.ndarray:
-        return np.array(
-            [self.data.sensor(n).data[0] for n in self.grf_sensor_names]
-        ).copy()
+        return self.data.sensordata[self._grf_adr]
 
     def _muscle_lengths(self) -> np.ndarray:
-        return np.array(
-            [self.data.actuator(a).length[0].copy() for a in self.BIOLOGICAL_ACT]
-        )
+        return self.data.actuator_length[self._bio_act_ids]
 
     def _muscle_forces(self) -> np.ndarray:
-        return np.clip(
-            np.array(
-                [self.data.actuator(a).force[0].copy() for a in self.BIOLOGICAL_ACT]
-            )
-            / 1000,
-            -100,
-            100,
-        )
+        return np.clip(self.data.actuator_force[self._bio_act_ids] / 1000, -100, 100)
 
     def _muscle_velocities(self) -> np.ndarray:
-        return np.clip(
-            np.array(
-                [self.data.actuator(a).velocity[0].copy() for a in self.BIOLOGICAL_ACT]
-            ),
-            -100,
-            100,
-        )
+        return np.clip(self.data.actuator_velocity[self._bio_act_ids], -100, 100)
 
     # ── OSL controller interface ──────────────────────────────────────────────
 
     def _get_osl_sens(self) -> dict[str, float]:
+        qpos, qvel = self.data.qpos, self.data.qvel
         return {
-            "knee_angle": self.data.joint("osl_knee_angle_r").qpos[0].copy(),
-            "knee_vel": self.data.joint("osl_knee_angle_r").qvel[0].copy(),
-            "ankle_angle": self.data.joint("osl_ankle_angle_r").qpos[0].copy(),
-            "ankle_vel": self.data.joint("osl_ankle_angle_r").qvel[0].copy(),
-            "load": -1.0 * self.data.sensor("r_osl_load").data[1].copy(),
+            "knee_angle": qpos[self._osl_qposadr[0]],
+            "knee_vel": qvel[self._osl_dofadr[0]],
+            "ankle_angle": qpos[self._osl_qposadr[1]],
+            "ankle_vel": qvel[self._osl_dofadr[1]],
+            "load": -1.0 * self.data.sensordata[self._osl_load_adr],
         }
 
     def upload_osl_param(self, dict_of_dict: dict) -> None:
@@ -789,8 +781,26 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     # ── Metrics ───────────────────────────────────────────────────────────────
 
     def get_metrics(self, paths: list) -> dict[str, float]:
+        """Compute aggregate metrics over rollout paths.
+
+        As in legacy ``run_track_v0``, a lost episode (fall or out of bounds)
+        reports the full ``maxTime``, so falling early cannot earn a short time.
+
+        Args:
+            paths: Rollouts whose ``env_infos`` stack the per-step ``obs_dict``
+                and ``rwd_dict`` (``time``, ``model_root_pos``, ``lose``,
+                ``act_reg``, ``pain``).
+
+        Returns:
+            Dict with ``score``, ``time``, ``effort`` and ``pain``.
+        """
         times = np.mean(
-            [np.round(p["env_infos"]["obs_dict"]["time"][-1], 5) for p in paths]
+            [
+                self.maxTime
+                if np.ravel(p["env_infos"]["rwd_dict"]["lose"])[-1]
+                else np.round(np.ravel(p["env_infos"]["obs_dict"]["time"])[-1], 5)
+                for p in paths
+            ]
         )
         score = np.mean(
             [

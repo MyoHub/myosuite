@@ -10,7 +10,7 @@ from enum import Enum
 import numpy as np
 
 from myosuite.viz.mj_renderer import MJRenderer
-from myosuite.physics.quat_math import euler2mat, quat2euler
+from myosuite.physics.quat_math import euler2mat, quat2yaw
 
 
 class TerrainTypes(Enum):
@@ -155,7 +155,7 @@ class HeightField:
         Update heights at grid points around
         model.
         """
-        rot_direction = quat2euler(self.mj_data.qpos[3:7])[2]
+        rot_direction = quat2yaw(self.mj_data.qpos[3:7])
         rot_mat = euler2mat([0, 0, rot_direction])
         # rotate points around z-direction to match model
         points = np.einsum("ij,kj->ik", self.height_points, rot_mat)

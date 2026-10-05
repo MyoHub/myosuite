@@ -77,6 +77,9 @@ class TestFullBodyChaseTagRegistry:
 
     def test_registered_and_runs(self) -> None:
         import myosuite
+        from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
+            CHASETAG_FB_ARENA_BYTES,
+        )
 
         myosuite.register_all_envs()
         assert gym.spec(self.ENV_ID) is not None
@@ -86,6 +89,7 @@ class TestFullBodyChaseTagRegistry:
             model = env.unwrapped.model
             assert model.na == 354, f"expected 354 full-body muscles, got {model.na}"
             assert model.nu == 354
+            assert model.narena == CHASETAG_FB_ARENA_BYTES
             assert model.body("opponent").id is not None
             assert env.unwrapped._pelvis_body_name == "pelvis"
             env.unwrapped.model.body(env.unwrapped._pelvis_body_name)  # resolves ok
@@ -99,6 +103,67 @@ class TestFullBodyChaseTagRegistry:
                 assert np.isfinite(obs).all()
         finally:
             env.close()
+
+    def test_arena_fits_every_contact_and_limit_active(self) -> None:
+        """The explicit arena replaces the 1.3 GB legacy one with >= 10x headroom.
+
+        The worst case puts the body inside a 0.6-1 m tall hfield block (the
+        terrain at its non-FLAT position) with 5 m contact margins and 10 rad
+        joint margins, so every body geom touches the floor and the terrain and
+        both sides of every joint limit are active (~5 MiB used).
+        """
+        import mujoco
+
+        from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
+            CHASETAG_FB_ARENA_BYTES,
+            build_fullbody_chasetag_spec,
+        )
+
+        spec = build_fullbody_chasetag_spec()
+        model = spec.compile()
+        assert model.narena == CHASETAG_FB_ARENA_BYTES
+        # Legacy sizes stay on the model for the MJX Warp path.
+        assert (model.nconmax, model.njmax) == (spec.nconmax, spec.njmax)
+
+        for geom in spec.geoms:
+            if geom.contype or geom.conaffinity:
+                geom.margin = 5.0
+        for pair in spec.pairs:
+            pair.margin = 5.0
+        for joint in spec.joints:
+            if joint.type != mujoco.mjtJoint.mjJNT_FREE:
+                joint.margin = 10.0
+        worst = spec.compile()
+        assert worst.narena == CHASETAG_FB_ARENA_BYTES
+        worst.geom_pos[worst.geom("terrain").id] = 0.0
+        rng = np.random.default_rng(0)
+        worst.hfield_data[:] = rng.uniform(0.6, 1.0, worst.hfield_data.size)
+        colliders = (worst.geom_contype | worst.geom_conaffinity) > 0
+        world = np.flatnonzero(colliders & (worst.geom_bodyid == 0)).tolist()
+        body = np.flatnonzero(colliders & (worst.geom_bodyid > 0)).tolist()
+        hinges = worst.jnt_type != mujoco.mjtJoint.mjJNT_FREE
+        n_limits = int(worst.jnt_limited[hinges].sum())
+        data = mujoco.MjData(worst)
+        for _ in range(3):
+            mujoco.mj_resetData(worst, data)
+            quat = rng.normal(size=4)
+            data.qpos[3:7] = quat / np.linalg.norm(quat)
+            data.qpos[2] = 0.45
+            # mj_forward: mj_step would auto-reset (and zero maxuse) on a bad qacc.
+            mujoco.mj_forward(worst, data)
+            touching = {
+                tuple(sorted(g)) for g in data.contact.geom[: data.ncon].tolist()
+            }
+            assert all((w, b) in touching for w in world for b in body)
+            efc_type = data.efc_type[: data.nefc]
+            limit_rows = efc_type == mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT
+            assert int(limit_rows.sum()) == 2 * n_limits
+            for warning in (
+                mujoco.mjtWarning.mjWARN_CONTACTFULL,
+                mujoco.mjtWarning.mjWARN_CNSTRFULL,
+            ):
+                assert data.warning[warning].number == 0
+            assert 10 * data.maxuse_arena <= worst.narena
 
 
 class TestChaseTagVsRegistry:

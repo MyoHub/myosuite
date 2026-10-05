@@ -44,6 +44,35 @@ STEP_OVERRIDE_IDS = (
 )
 
 
+@pytest.mark.parametrize(
+    "env_id", [e for e in STEP_OVERRIDE_IDS if e != "myoElbowPoseTaskFixed-v0"]
+)
+def test_unknown_obs_key_raises(env_id: str) -> None:
+    """An obs key the env does not compute fails loudly instead of being dropped."""
+    with pytest.raises(KeyError, match="no_such_obs_key"):
+        gym.make(env_id, obs_keys=["no_such_obs_key"])
+
+
+def test_relocate_hand_obs_cover_every_hand_joint() -> None:
+    """hand_qpos/hand_qvel hold every joint except the object's (md5_flexion_r last)."""
+    env = gym.make("myoChallengeRelocateP1-v0").unwrapped
+    try:
+        env.reset(seed=0)
+        m = env.model
+        hand = [j for j in range(m.njnt) if m.jnt_bodyid[j] != env.object_bid]
+        assert m.joint(hand[-1]).name == "md5_flexion_r"
+        obs = env._get_obs_dict(env._accessor)
+        np.testing.assert_array_equal(
+            obs["hand_qpos"], env.data.qpos[m.jnt_qposadr[hand]]
+        )
+        np.testing.assert_array_equal(
+            obs["hand_qvel"], env.data.qvel[m.jnt_dofadr[hand]] * env._ctrl_dt
+        )
+        np.testing.assert_array_equal(obs["hand_qpos_corrected"], obs["hand_qpos"])
+    finally:
+        env.close()
+
+
 @pytest.mark.parametrize("env_id", STEP_OVERRIDE_IDS)
 def test_step_keeps_base_contract(env_id: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """Every step() renders on request and rejects a reward dict without "done"."""

@@ -22,9 +22,11 @@ from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
 from mjlab.sim import SimulationCfg
 
+from myosuite.envs.gymnasium_env import check_obs_keys
 from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref
 from myosuite.envs.myo.backends.mjlab.tasks.reach import mdp
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0
+from myosuite.utils.step_timing import first_step_after
 
 ENTITY = "robot"
 COMMAND = "reach"
@@ -87,10 +89,10 @@ def make_leg_stand_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnv
     obs_keys = list(kw.get("obs_keys", LegReachEnvV0.DEFAULT_OBS_KEYS))
     if info.na > 0 and "act" not in obs_keys:
         obs_keys.append("act")
+    check_obs_keys(obs_keys, obs_funcs, "mjlab stand twin")
     terms = {
         key: ObservationTermCfg(func=obs_funcs[key][0], params=obs_funcs[key][1])
         for key in obs_keys
-        if key in obs_funcs
     }
     observations = {
         "actor": ObservationGroupCfg(terms),
@@ -100,7 +102,7 @@ def make_leg_stand_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnv
     reach_params = {
         "command_name": COMMAND,
         "far_th": float(kw.get("far_th", 0.35)),
-        "penalty_start_step": ref.first_step_after(
+        "penalty_start_step": first_step_after(
             _PENALTY_DELAY_STEPS * (info.opt_timestep * task.frame_skip),
             info.opt_timestep,
             task.frame_skip,
