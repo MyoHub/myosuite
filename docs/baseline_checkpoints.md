@@ -33,6 +33,16 @@ Re-evaluate a checkpoint after any change to an env's observations with
 noticeably (with 64 episodes, differences of a few points are noise). Success rates were measured with
 64 parallel episodes of the deterministic policy.
 
+**Terrain and CPU evaluation.** A deterministic CPU evaluation is a single trajectory. The mjlab twins of the
+rough, hilly and stairs walk tasks bake one terrain into the height field (Warp shares one `hfield_data` between
+worlds), while the CPU envs draw a new terrain at every reset, so CPU and mjlab success rates on these ids
+measure different things. Tiling several height-field patches in one field, one per env, would match the CPU
+distribution; this is not implemented.
+
+**Older policies and datasets.** Policies trained on the earlier CPU `myoChallengeChaseTagFBP2-v0` contract
+(1496-dim observation, 0.02 s control step, random terrain) no longer load, and SAR activation datasets or synergy
+models collected before the MuscleMimic bridge fix (#459) must be recollected.
+
 **`myoChallengeChaseTagFBP2-v0`** (success: the agent tags the opponent) and
 **`myoChallengeTableTennisP{0,1,2}-v0`** have no trained checkpoint available yet to evaluate.
 
