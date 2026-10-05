@@ -22,7 +22,11 @@ from scipy.spatial.transform import Rotation as R
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.assets._resolve import warn_torso_pip_calibration_divergence
-from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
+from myosuite.envs.myo.tasks.challenge.challenge_common import (
+    MuscleActionMixin,
+    mean_effort,
+    solved_step_count,
+)
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.utils.spec_processing import (
     recursive_immobilize,
@@ -171,9 +175,7 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
 
     def _obs_dict_to_vec(self, obs_dict: dict[str, np.ndarray]) -> np.ndarray:
-        return np.concatenate(
-            [np.atleast_1d(obs_dict[k]).ravel() for k in self.obs_keys if k in obs_dict]
-        )
+        return self._obs_keys_to_vec(obs_dict)
 
     def get_sensor_by_name(self, name: str) -> np.ndarray:
         sensor_id = self.model.sensor(name).id
@@ -340,6 +342,21 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.data.qpos[self.ball_posadr : self.ball_posadr + 3] = ball_pos
         self.data.qpos[self.ball_posadr + 3 : self.ball_posadr + 7] = ball_quat
         self.data.qvel[self.ball_dofadr : self.ball_dofadr + 6] = ball_vel
+
+    def get_metrics(self, paths: list, successful_steps: int = 1) -> dict[str, float]:
+        """Success rate and effort over rollout paths (as legacy ``tabletennis_v0``).
+
+        Args:
+            paths: Rollouts whose ``env_infos`` stack the per-step ``rwd_dict``
+                (``solved``, ``act_reg``).
+            successful_steps: A path succeeds if it was solved on at least this
+                many steps.
+
+        Returns:
+            Dict with ``score`` (fraction of successful paths) and ``effort``.
+        """
+        score = np.mean([solved_step_count(p) >= successful_steps for p in paths])
+        return {"score": float(score), "effort": mean_effort(paths)}
 
     def reset(self, seed: int | None = None, options: dict | None = None, **_kwargs):
         gym.Env.reset(self, seed=seed)

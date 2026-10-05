@@ -24,6 +24,7 @@ from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
 from mjlab.sim import SimulationCfg
 
+from myosuite.envs.gymnasium_env import check_obs_keys
 from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref
 from myosuite.envs.myo.backends.mjlab.tasks.pose import mdp
 from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0
@@ -117,10 +118,10 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
     obs_keys = list(kw.get("obs_keys", variant.default_obs_keys))
     if info.na > 0 and "act" not in obs_keys:
         obs_keys.append("act")
+    check_obs_keys(obs_keys, obs_funcs, "mjlab pose twin")
     terms = {
         key: ObservationTermCfg(func=obs_funcs[key][0], params=obs_funcs[key][1])
         for key in obs_keys
-        if key in obs_funcs
     }
     observations = ref.actor_critic_observations(task, terms)
 

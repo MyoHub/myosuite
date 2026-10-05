@@ -167,7 +167,7 @@ class ObjHoldFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             "obj_err": goal_pos - obj_pos,
             "act": accessor.muscle_act(),
         }
-        return {k: obs[k] for k in self.obs_keys if k in obs}
+        return self._select_obs_keys(obs)
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         """Compute the reward dictionary.

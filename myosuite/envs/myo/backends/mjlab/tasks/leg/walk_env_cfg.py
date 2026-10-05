@@ -23,6 +23,7 @@ from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
 from mjlab.sim import SimulationCfg
 
+from myosuite.envs.gymnasium_env import check_obs_keys
 from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref
 from myosuite.envs.myo.backends.mjlab.tasks import mdp
 from myosuite.envs.myo.backends.mjlab.tasks.leg import walk_mdp
@@ -123,10 +124,10 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
     obs_keys = list(kw.get("obs_keys", LegWalkEnvV0.DEFAULT_OBS_KEYS))
     if info.na > 0 and "act" not in obs_keys:
         obs_keys.append("act")
+    check_obs_keys(obs_keys, obs_funcs, "mjlab walk twin")
     terms = {
         key: ObservationTermCfg(func=obs_funcs[key][0], params=obs_funcs[key][1])
         for key in obs_keys
-        if key in obs_funcs
     }
     observations = ref.actor_critic_observations(task, terms)
 

@@ -21,6 +21,7 @@ from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
 from mjlab.sim import SimulationCfg
 
+from myosuite.envs.gymnasium_env import check_obs_keys
 from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref
 from myosuite.envs.myo.backends.mjlab.tasks.reach import mdp
 from myosuite.envs.myo.tasks.basic.arm.reach import ReachEnvV0
@@ -77,10 +78,10 @@ def make_reach_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
     obs_keys = list(kw.get("obs_keys", ReachEnvV0.DEFAULT_OBS_KEYS))
     if info.na > 0 and "act" not in obs_keys:
         obs_keys.append("act")
+    check_obs_keys(obs_keys, obs_funcs, "mjlab reach twin")
     terms = {
         key: ObservationTermCfg(func=obs_funcs[key][0], params=obs_funcs[key][1])
         for key in obs_keys
-        if key in obs_funcs
     }
     observations = ref.actor_critic_observations(task, terms)
 
