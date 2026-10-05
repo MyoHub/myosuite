@@ -6,11 +6,29 @@
 
 from __future__ import annotations
 
+import mujoco
 import numpy as np
 
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
+
+
+def joint_limit_forces(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray:
+    """Generalized forces of the joint-limit constraints alone.
+
+    Args:
+        model: MuJoCo model.
+        data: MuJoCo data holding the constraint forces of the current state.
+
+    Returns:
+        ``J^T f`` over the joint-limit rows of the constraint Jacobian, shape ``(nv,)``.
+    """
+    is_limit = data.efc_type == mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT
+    limit_force = np.where(is_limit, data.efc_force, 0.0)
+    qfrc = np.zeros(model.nv)
+    mujoco.mj_mulJacTVec(model, data, qfrc, limit_force)
+    return qfrc
 
 
 class MuscleActionMixin:

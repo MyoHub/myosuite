@@ -150,7 +150,7 @@ full commit list.
   signal at the 0.8 m initial error), and actions go through the muscle sigmoid on both without a clip. CPU policies trained on these ids need retraining. The mjlab Mimic rewards and deviation
   check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
   stale.
-* **Performance improvements (#481, #482).**
+* **Performance improvements (#481, #482, #483).**
 
 ### Fixed
 

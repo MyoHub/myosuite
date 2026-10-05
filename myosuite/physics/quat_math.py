@@ -10,6 +10,7 @@ components), like the torch and JAX twins in ``quat_math_torch.py`` /
 ``quat_math_jax.py``.
 """
 
+import math
 import numpy as np
 
 # Near-zero cutoffs (quat2mat norm, mat2euler gimbal lock). Float32 values, as
@@ -210,6 +211,36 @@ def quat2mat(quat):
     return np.where((Nq > _FLOAT_EPS)[..., np.newaxis, np.newaxis], mat, np.eye(3))
 
 
+def quat2yaw(quat: np.ndarray) -> np.float64:
+    """Yaw of one quaternion: ``quat2euler(quat)[2]`` without the full conversion.
+
+    Runs only the operations of :func:`quat2mat` and :func:`mat2euler` that the
+    yaw depends on, in the same order and with numpy's ``sum`` and ``arctan2``,
+    so the result is bit-identical; the per-step heightmap needs only the yaw.
+
+    Args:
+        quat: Quaternion ``(w, x, y, z)``, shape ``(4,)``.
+
+    Returns:
+        The yaw angle in radians.
+    """
+    quat = np.asarray(quat, dtype=np.float64)
+    Nq = np.sum(quat * quat, axis=-1)
+    if not Nq > _FLOAT_EPS:  # quat2mat falls back to the identity matrix
+        return -np.arctan2(0.0, 1.0)
+    w, x, y, z = quat.tolist()
+    s = 2.0 / float(Nq)
+    X, Y, Z = x * s, y * s, z * s
+    wX, wZ = w * X, w * Z
+    xX, xY = x * X, x * Y
+    yY, yZ, zZ = y * Y, y * Z, z * Z
+    m12, m22 = yZ - wX, 1.0 - (xX + yY)
+    if math.sqrt(m22 * m22 + m12 * m12) > _EPS4:
+        return -np.arctan2(xY - wZ, 1.0 - (yY + zZ))
+    return -np.arctan2(-(xY + wZ), 1.0 - (xX + zZ))
+
+
+# multiply vector by 3D rotation matrix transpose
 def rot_vec_mat_t(vec, mat):
     """Multiply *vec* by the transpose of the rotation matrix *mat*."""
     vec, mat = np.asarray(vec), np.asarray(mat)
