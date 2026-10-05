@@ -167,3 +167,24 @@ def test_jax_random_draws_new_samples_each_call() -> None:
         cls(data, random_key=jax.random.PRNGKey(3)).get_reference(0.0).robot
     )
     np.testing.assert_array_equal(first, again)
+
+
+def test_numpy_track_search_survives_time_moving_backwards_without_reset() -> None:
+    """The index cache at the last frame used to raise once the time went back."""
+    rng = np.random.default_rng(1)
+    data = _track_data(rng)
+    ref = NumpyReferenceMotion({k: v.copy() for k, v in data.items()})
+    times = data["time"]
+    ref.get_reference(float(times[-1]))  # the cache is now at the last frame
+    for t in (
+        float(times[1]) + 0.01,
+        float(times[-1]),
+        float(times[0]),
+        float(times[2]),
+    ):
+        out = ref.get_reference(t)
+        np.testing.assert_allclose(
+            np.asarray(out.robot), _interp(times, data["robot"], t), atol=1e-9
+        )
+    with pytest.raises(ValueError, match="before the reference start"):
+        ref.find_timeslot_in_reference(float(times[0]) - 1.0)

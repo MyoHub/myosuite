@@ -188,6 +188,7 @@ full commit list.
   incomplete bridges unless `allow_partial=True`. The SAR activation collector ranks episodes by mean reward
   and resets its state per episode: recollect SAR datasets and re-extract the synergies, and redo evaluations
   made with the old bridge mapping.
+* **ReferenceMotion search.** The NumPy `find_timeslot_in_reference` no longer raises when the time moves backwards after the index cache reached the last frame without a `reset()` (it falls back to a binary search); times before the reference start raise a clear `ValueError`.
 * **Public attributes of wrapped envs.** `gym.make` returns an env wrapped by Gymnasium; since Gymnasium 1.0 `env.mj_render()` and other MyoSuite methods raised `AttributeError` (only `env.unwrapped.mj_render()` worked). The outermost wrapper of every registered env now forwards public attributes to the env again (#378).
 * **Multi-clip Mimic training.** `register_mimic_mjlab_tasks_with_clip` accepts a tuple or list of clips (each env draws its clip and start frame on reset); resetting only some envs of a clip bank gathered the reference with the wrong envs' clip indices and raised an `IndexError` (it showed up as a flaky crash within the first steps).
 * **Mimic mjlab initial state**: the joint-name keys are anchored (`knee_angle_r` no longer also sets

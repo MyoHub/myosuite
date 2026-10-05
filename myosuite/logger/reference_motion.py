@@ -234,41 +234,28 @@ class ReferenceMotion:
                 time <= self.reference["time"][-1]
             ), f"Trying to access time (={time}) beyond max reference duration (={self.reference['time'][-1]}) "
 
+        times = self.reference["time"]
         # search locally for index
-        if time == self.reference["time"][self.index_cache]:
-            # print(f"curr match: {time}")
-            return (self.index_cache, self.index_cache)
-
-        elif self.index_cache < (self.horizon - 1):
-            if time == self.reference["time"][self.index_cache + 1]:
-                # print(f"next match: {time}")
-                self.index_cache += 1
+        idx = self.index_cache
+        if time == times[idx]:
+            return (idx, idx)
+        if idx < self.horizon - 1:
+            if time == times[idx + 1]:
+                self.index_cache = idx + 1
                 return (self.index_cache, self.index_cache)
+            if times[idx] < time < times[idx + 1]:
+                return (idx, idx + 1)
 
-            elif (
-                time > self.reference["time"][self.index_cache]
-                and time < self.reference["time"][self.index_cache + 1]
-            ):
-                # print(f"interval match: {time}")
-                return (self.index_cache, self.index_cache + 1)
-            else:
-                print(
-                    f"No result using hueristic search. Attempting sort match: {time}"
-                )
-                self.index_cache = (
-                    np.searchsorted(self.reference["time"], time, side="right") - 1
-                )
-                if time == self.reference["time"][self.index_cache]:
-                    return (self.index_cache, self.index_cache)
-                elif (
-                    time > self.reference["time"][self.index_cache]
-                    and time < self.reference["time"][self.index_cache + 1]
-                ):
-                    return (self.index_cache, self.index_cache + 1)
-                else:
-                    raise ValueError("We shouldn't be in this condition")
-        else:
-            raise ValueError("We shouldn't be in this condition")
+        # cache miss (a jump, or time moving backwards without reset()): binary search
+        if time < times[0]:
+            raise ValueError(
+                f"time (={time}) is before the reference start (={times[0]})"
+            )
+        idx = int(np.searchsorted(times, time, side="right")) - 1
+        self.index_cache = idx
+        if time == times[idx]:
+            return (idx, idx)
+        return (idx, idx + 1)  # times[idx] < time < times[idx + 1]
 
     def reset(self):
         """

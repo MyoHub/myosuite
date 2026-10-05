@@ -50,6 +50,13 @@ def scene() -> tuple[mujoco.MjModel, mujoco.MjData, MJRenderer]:
     renderer.close()
 
 
+def _assert_same_image(a: np.ndarray, b: np.ndarray) -> None:
+    """Two renders of one scene agree up to GPU rounding noise (at most 2 of 255 levels)."""
+    assert a.shape == b.shape
+    diff = np.abs(a.astype(np.int16) - b.astype(np.int16))
+    assert diff.max() <= 2
+
+
 def test_offscreen_frames_follow_requested_size(scene) -> None:
     """Every call honours width/height (the first call's size used to stick)."""
     _, _, renderer = scene
@@ -58,7 +65,7 @@ def test_offscreen_frames_follow_requested_size(scene) -> None:
     again = renderer.render_offscreen(width=320, height=240)
     assert big.shape == (240, 320, 3)
     assert small.shape == (120, 160, 3)
-    np.testing.assert_array_equal(again, big)
+    _assert_same_image(again, big)
 
 
 def test_rgb_render_leaves_model_reflectance_untouched(scene) -> None:
@@ -70,9 +77,7 @@ def test_rgb_render_leaves_model_reflectance_untouched(scene) -> None:
     assert before.max() > 0.0
     # reflection is off in the scene, so zeroing reflectance changes no pixel
     model.mat_reflectance[:] = 0.0
-    np.testing.assert_array_equal(
-        renderer.render_offscreen(width=160, height=120), frame
-    )
+    _assert_same_image(renderer.render_offscreen(width=160, height=120), frame)
 
 
 def test_examine_policy_offscreen_video_is_not_black(monkeypatch, tmp_path) -> None:
