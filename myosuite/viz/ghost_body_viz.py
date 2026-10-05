@@ -19,6 +19,7 @@ Usage::
 
 from __future__ import annotations
 
+import weakref
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -67,26 +68,17 @@ def _capsule_between(
     if length < 1e-6:
         diff = np.array([0.0, 0.0, 1.0])
         length = 1.0
-    z_axis = diff / length
 
-    # Build rotation: align capsule z-axis with segment
-    ref = np.array([0.0, 0.0, 1.0])
-    cross = np.cross(ref, z_axis)
-    cross_norm = float(np.linalg.norm(cross))
-    if cross_norm < 1e-6:
-        # Already aligned (or anti-aligned)
-        mat = np.eye(3) if z_axis[2] > 0 else -np.eye(3)
-        mat = mat.flatten()
-    else:
-        axis = cross / cross_norm
-        angle = float(np.arcsin(min(1.0, cross_norm)))
-        q = np.empty(4)
-        mujoco.mju_axisAngle2Quat(q, axis, angle)
-        mat = np.empty(9)
-        mujoco.mju_quat2Mat(mat, q)
+    # Proper rotation taking +z onto the segment: MuJoCo takes the angle from
+    # atan2(|z x d|, z . d), so segments below the horizontal are not mirrored
+    # and the anti-parallel case is a 180 deg turn rather than -I.
+    q = np.empty(4)
+    mujoco.mju_quatZ2Vec(q, diff / length)
+    mat = np.empty(9)
+    mujoco.mju_quat2Mat(mat, q)
 
     size = np.array([radius, radius, length / 2.0], dtype=np.float64)
-    return centre.astype(np.float64), mat.astype(np.float64), size
+    return centre.astype(np.float64), mat, size
 
 
 # ── main class ───────────────────────────────────────────────────────────────
@@ -142,11 +134,14 @@ class GhostBodyViz:
     _skel_rgba: np.ndarray = field(init=False, repr=False)
     _joint_rgba: np.ndarray = field(init=False, repr=False)
     _T: int = field(init=False, repr=False)
+    # per scene: (first, end) geom slots written by the last draw()
+    _drawn: weakref.WeakKeyDictionary = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._skel_rgba = np.array(self.skeleton_rgba, dtype=np.float64)
         self._joint_rgba = np.array(self.joint_rgba, dtype=np.float64)
         self._T = int(self.xpos.shape[0])
+        self._drawn = weakref.WeakKeyDictionary()
 
     # ------------------------------------------------------------------ #
 
@@ -231,12 +226,35 @@ class GhostBodyViz:
 
     # ------------------------------------------------------------------ #
 
+    def _first_slot(self, user_scn: mujoco.MjvScene) -> int:
+        """Return the scene index this frame's ghost geoms start at.
+
+        A scene nobody cleared since the last draw (``viewer.user_scn``) still
+        ends with this ghost's previous geoms: overwrite them so geoms do not
+        accumulate frame after frame. A scene rebuilt in between
+        (``Renderer.update_scene``, a :class:`SiteMarkerViz` drawn first) is
+        appended to.
+        """
+        n = int(user_scn.ngeom)
+        start, end = self._drawn.get(user_scn, (n, -1))
+        if n == end and start < end:
+            # the slot must still hold a ghost geom, not a rebuilt scene of equal size
+            rgba = np.asarray(user_scn.geoms[start].rgba, dtype=np.float32)
+            if any(
+                np.array_equal(rgba, c.astype(np.float32))
+                for c in (self._skel_rgba, self._joint_rgba)
+            ):
+                return start
+        return n
+
     def draw(self, step_idx: int, user_scn: mujoco.MjvScene) -> None:
         """Draw ghost skeleton geoms into *user_scn* for *step_idx*.
 
-        Appends ghost geoms **after** any existing geoms in the scene so that
-        site markers from :class:`~myosuite.viz.site_marker_viz.SiteMarkerViz`
-        remain visible if used alongside this viz.
+        Writes after the geoms already in the scene, so model geoms
+        (``Renderer.scene`` after ``update_scene``) and site markers from a
+        :class:`~myosuite.viz.site_marker_viz.SiteMarkerViz` drawn first stay
+        visible. The ghost's own geoms from the previous call on the same,
+        uncleared scene (``viewer.user_scn``) are replaced, not duplicated.
 
         Args:
             step_idx: Current control step index.
@@ -247,30 +265,32 @@ class GhostBodyViz:
         if self.position_offset is not None:
             pos_frame = pos_frame + self.position_offset
         max_geoms = int(user_scn.maxgeom)
-        geom_i = int(user_scn.ngeom)  # append after existing geoms
+        start = self._first_slot(user_scn)
+        geom_i = start
 
         for body_id in self.visible_body_ids:
             if geom_i >= max_geoms - 1:
                 break
             parent_id = int(self.parent_ids[body_id])
             p_child = pos_frame[body_id]
-            p_parent = pos_frame[parent_id] if parent_id != body_id else p_child
 
-            # Draw capsule connecting parent to child
-            if np.linalg.norm(p_child - p_parent) > 1e-4:
-                centre, mat9, size = _capsule_between(
-                    p_parent, p_child, self.capsule_radius
-                )
-                mujoco.mjv_initGeom(
-                    user_scn.geoms[geom_i],
-                    mujoco.mjtGeom.mjGEOM_CAPSULE,
-                    size,
-                    centre,
-                    mat9,
-                    self._skel_rgba,
-                )
-                user_scn.ngeom += 1
-                geom_i += 1
+            # Capsule from the parent body; the world body (id 0) is the fixed
+            # origin, not a skeleton joint, so the root gets no capsule.
+            if parent_id != 0:
+                p_parent = pos_frame[parent_id]
+                if np.linalg.norm(p_child - p_parent) > 1e-4:
+                    centre, mat9, size = _capsule_between(
+                        p_parent, p_child, self.capsule_radius
+                    )
+                    mujoco.mjv_initGeom(
+                        user_scn.geoms[geom_i],
+                        mujoco.mjtGeom.mjGEOM_CAPSULE,
+                        size,
+                        centre,
+                        mat9,
+                        self._skel_rgba,
+                    )
+                    geom_i += 1
 
             # Draw joint sphere at body position
             if geom_i < max_geoms:
@@ -286,8 +306,10 @@ class GhostBodyViz:
                     np.eye(3).flatten(),
                     self._joint_rgba,
                 )
-                user_scn.ngeom += 1
                 geom_i += 1
+
+        user_scn.ngeom = geom_i
+        self._drawn[user_scn] = (start, geom_i)
 
     def as_viz_fn(self) -> _GhostVizFn:
         """Return a VizCallback bound to this instance.

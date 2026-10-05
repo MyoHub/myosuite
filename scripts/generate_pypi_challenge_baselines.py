@@ -68,7 +68,8 @@ def _build_venv(venv_dir: Path, pypi_version: str | None) -> Path:
     pkg = f"myosuite=={pypi_version}" if pypi_version else "myosuite"
     print(f"[setup] Installing {pkg} …")
     subprocess.run(
-        [str(python), "-m", "pip", "install", "--quiet", pkg],
+        # numpy < 2: the PyPI releases (e.g. 2.12.2) fail to build SoccerP1/P2 with numpy 2.
+        [str(python), "-m", "pip", "install", "--quiet", pkg, "numpy<2"],
         check=True,
     )
     return python
