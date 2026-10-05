@@ -520,6 +520,156 @@ def test_legacy_hand_recipes_compile_without_wrapper_xml():
         assert cmc[:2] == ["cmc_abduction", "cmc_flexion"]
 
 
+def _counting_recipe(calls: list[int]):
+    """Recipe building one free box; appends to *calls* on every build."""
+    from myosuite.core.model_builder import ModelBuilder
+
+    def _recipe(b: ModelBuilder) -> ModelBuilder:
+        calls.append(1)
+        return b.add_free_body("box", geom_size=[0.1, 0.1, 0.1])
+
+    return _recipe
+
+
+def test_build_from_recipe_keeps_the_spec_from_its_second_build(monkeypatch):
+    """A recipe is built at most twice per process; each call gets its own spec and model."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    kept = model_builder._recipe_spec.cache_info().currsize
+    model_builder.build_from_recipe("_test_counting")
+    assert model_builder._recipe_spec.cache_info().currsize == kept
+    model_a, spec_a = model_builder.build_from_recipe("_test_counting")
+    spec_a.worldbody.add_body(name="edit_of_a")
+    spec_a.geoms[0].size = [0.5, 0.5, 0.5]
+    model_a.geom_size[:] = 9.0
+    model_b, spec_b = model_builder.build_from_recipe("_test_counting")
+    model_builder.build_from_recipe("_test_counting")
+
+    assert len(calls) == 2
+    assert model_builder._recipe_spec.cache_info().currsize == kept + 1
+    assert spec_b is not spec_a and model_b is not model_a
+    assert spec_b.body("edit_of_a") is None
+    np.testing.assert_array_equal(model_b.geom_size, [[0.1, 0.1, 0.1]])
+    np.testing.assert_array_equal(spec_b.geoms[0].size, [0.1, 0.1, 0.1])
+
+
+def test_build_from_recipe_cache_keys_recipe_and_cwd(monkeypatch, tmp_path):
+    """Re-registering a recipe or changing directory builds the spec again."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    for _ in range(3):
+        model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 2  # kept from the second build on
+    monkeypatch.chdir(tmp_path)
+    model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 3
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 4
+
+
+def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
+    """An edit_fn runs once, on the compiled recipe spec; the plain recipe stays unedited."""
+    from myosuite.core import model_builder
+
+    calls: list[int] = []
+    edits: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+
+    def _edit(spec) -> None:
+        edits.append(1)
+        spec.worldbody.add_site(name="edited")
+
+    edited = [
+        model_builder.build_from_recipe("_test_counting", edit_fn=_edit)[0]
+        for _ in range(3)
+    ]
+    plain, _ = model_builder.build_from_recipe("_test_counting")
+    assert len(edits) == 2  # the third edited call is served from the cache
+    assert len(calls) == 3
+    assert [model.nsite for model in edited] == [1, 1, 1]
+    assert plain.nsite == 0
+
+
+def test_spec_cache_opt_out_builds_every_call(monkeypatch):
+    """MYOSUITE_SPEC_CACHE=0 builds the recipe on every call and keeps nothing."""
+    from myosuite.core import model_builder
+
+    monkeypatch.setenv("MYOSUITE_SPEC_CACHE", "0")
+    calls: list[int] = []
+    monkeypatch.setitem(
+        model_builder._RECIPES, "_test_counting", _counting_recipe(calls)
+    )
+    size = model_builder._recipe_spec.cache_info().currsize
+    for _ in range(3):
+        model_builder.build_from_recipe("_test_counting")
+    assert len(calls) == 3
+    assert model_builder._recipe_spec.cache_info().currsize == size
+
+
+def test_cached_spec_unhashable_arguments_and_clear():
+    """Unhashable arguments bypass the cache; clear_spec_caches drops cached specs."""
+    import mujoco
+
+    from myosuite.core.model_builder import cached_spec, clear_spec_caches
+
+    calls: list[object] = []
+
+    @cached_spec(min_uses=1)
+    def _build(size) -> mujoco.MjSpec:
+        calls.append(size)
+        spec = mujoco.MjSpec()
+        spec.worldbody.add_geom(size=list(size))
+        return spec
+
+    _build((0.1, 0.0, 0.0))
+    _build((0.1, 0.0, 0.0))
+    _build([0.2, 0.0, 0.0])
+    _build([0.2, 0.0, 0.0])
+    assert len(calls) == 3
+    clear_spec_caches()
+    _build((0.1, 0.0, 0.0))
+    assert len(calls) == 4
+
+
+def test_cached_spec_keeps_a_spec_from_its_second_build():
+    """A first build is handed over and not kept; the second is kept and copied out."""
+    import mujoco
+
+    from myosuite.core.model_builder import cached_spec
+
+    built: list[mujoco.MjSpec] = []
+
+    @cached_spec(maxsize=1)
+    def _build(name: str) -> mujoco.MjSpec:
+        spec = mujoco.MjSpec()
+        spec.worldbody.add_body(name=name)
+        built.append(spec)
+        return spec
+
+    assert _build("a") is built[0]
+    assert _build.cache_info().currsize == 0
+    second, third = _build("a"), _build("a")
+    assert len(built) == 2 and _build.cache_info().currsize == 1
+    assert second is not built[1] and third is not built[1] and second is not third
+    _build("b")
+    _build("b")  # kept, evicts "a" (maxsize=1)
+    _build("a")
+    assert len(built) == 5
+
+
 def test_motor_finger_recipe_scales_the_motor_gears() -> None:
     """The four motorFinger* envs use the stronger gears (x1/x2 never reached the poses)."""
     import gymnasium as gym
