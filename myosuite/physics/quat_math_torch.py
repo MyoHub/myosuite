@@ -5,9 +5,13 @@
 
 """Torch backend for quaternion math — same API as quat_math.py and quat_math_jax.py.
 
-All functions accept and return torch.Tensor objects.  Quaternion convention:
-[w, x, y, z] throughout, matching MuJoCo and the other backends.
+All functions accept and return torch.Tensor objects and broadcast over leading
+batch axes (last axis = components), e.g. ``(num_envs, 4)`` quaternions in
+mjlab terms.  Quaternion convention: [w, x, y, z] throughout, matching MuJoCo
+and the other backends.
 """
+
+import math
 
 import torch
 
@@ -16,28 +20,37 @@ _EPS4 = _EPS * 4.0
 
 
 def mul_quat(qa: torch.Tensor, qb: torch.Tensor) -> torch.Tensor:
-    """Hamilton product of two unit quaternions."""
+    """Hamilton product ``qa * qb``."""
+    aw, ax, ay, az = qa[..., 0], qa[..., 1], qa[..., 2], qa[..., 3]
+    bw, bx, by, bz = qb[..., 0], qb[..., 1], qb[..., 2], qb[..., 3]
     return torch.stack(
         [
-            qa[0] * qb[0] - qa[1] * qb[1] - qa[2] * qb[2] - qa[3] * qb[3],
-            qa[0] * qb[1] + qa[1] * qb[0] + qa[2] * qb[3] - qa[3] * qb[2],
-            qa[0] * qb[2] - qa[1] * qb[3] + qa[2] * qb[0] + qa[3] * qb[1],
-            qa[0] * qb[3] + qa[1] * qb[2] - qa[2] * qb[1] + qa[3] * qb[0],
-        ]
+            aw * bw - ax * bx - ay * by - az * bz,
+            aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw,
+        ],
+        dim=-1,
     )
 
 
 def neg_quat(quat: torch.Tensor) -> torch.Tensor:
     """Conjugate (inverse for unit quaternions)."""
-    return torch.stack([quat[0], -quat[1], -quat[2], -quat[3]])
+    return quat * quat.new_tensor([1.0, -1.0, -1.0, -1.0])
 
 
 def quat2Vel(quat: torch.Tensor, dt: float = 1) -> tuple[torch.Tensor, torch.Tensor]:
-    axis = quat[1:].clone()
-    sin_a_2 = torch.sqrt(torch.sum(axis**2))
-    axis = axis / (sin_a_2 + 1e-8)
-    speed = 2 * torch.atan2(sin_a_2, quat[0]) / dt
-    return speed, axis
+    """Angular velocity that applies rotation *quat* over *dt*, as ``(speed, axis)``.
+
+    ``speed * axis`` equals ``mujoco.mju_quat2Vel`` (rotations by more than pi
+    are taken the short way round).
+    """
+    axis = quat[..., 1:]
+    sin_a_2 = torch.sqrt(torch.sum(axis**2, dim=-1))
+    axis = axis / (sin_a_2[..., None] + 1e-8)
+    speed = 2 * torch.atan2(sin_a_2, quat[..., 0])
+    speed = torch.where(speed > math.pi, speed - 2 * math.pi, speed)
+    return speed / dt, axis
 
 
 def diff_quat(quat1: torch.Tensor, quat2: torch.Tensor) -> torch.Tensor:
@@ -50,14 +63,16 @@ def quat_diff_to_vel(
     return quat2Vel(diff_quat(quat1, quat2), dt)
 
 
-def axis_angle2quat(axis: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
-    c = torch.cos(angle / 2)
-    s = torch.sin(angle / 2)
-    return torch.stack([c, s * axis[0], s * axis[1], s * axis[2]])
+def axis_angle2quat(axis: torch.Tensor, angle: torch.Tensor | float) -> torch.Tensor:
+    """Quaternion of a rotation by *angle* about the unit vector *axis*."""
+    half = torch.as_tensor(angle, dtype=axis.dtype, device=axis.device)[..., None] / 2
+    xyz = torch.sin(half) * axis
+    w = torch.cos(half).expand(xyz.shape[:-1] + (1,))
+    return torch.cat([w, xyz], dim=-1)
 
 
 def euler2mat(euler: torch.Tensor) -> torch.Tensor:
-    """Extrinsic XYZ Euler angles → rotation matrix."""
+    """Intrinsic X-Y'-Z'' Euler angles (scipy ``"XYZ"``) → rotation matrix."""
     euler = euler.to(torch.float32)
     ai, aj, ak = -euler[..., 2], -euler[..., 1], -euler[..., 0]
     si, sj, sk = torch.sin(ai), torch.sin(aj), torch.sin(ak)
@@ -81,7 +96,7 @@ def euler2mat(euler: torch.Tensor) -> torch.Tensor:
 
 
 def euler2quat(euler: torch.Tensor) -> torch.Tensor:
-    """Extrinsic XYZ Euler angles → unit quaternion."""
+    """Intrinsic X-Y'-Z'' Euler angles (scipy ``"XYZ"``) → unit quaternion."""
     euler = euler.to(torch.float32)
     ai = euler[..., 2] / 2
     aj = -euler[..., 1] / 2
@@ -102,7 +117,7 @@ def euler2quat(euler: torch.Tensor) -> torch.Tensor:
 
 
 def mat2euler(mat: torch.Tensor) -> torch.Tensor:
-    """Rotation matrix → extrinsic XYZ Euler angles."""
+    """Rotation matrix → intrinsic X-Y'-Z'' Euler angles (scipy ``"XYZ"``)."""
     mat = mat.to(torch.float32)
     cy = torch.sqrt(mat[..., 2, 2] ** 2 + mat[..., 1, 2] ** 2)
     condition = cy > _EPS4
@@ -200,57 +215,73 @@ def quat2euler(quat: torch.Tensor) -> torch.Tensor:
 
 
 def rot_vec_mat_t(vec: torch.Tensor, mat: torch.Tensor) -> torch.Tensor:
+    """Multiply *vec* by the transpose of the rotation matrix *mat*."""
     return torch.stack(
         [
-            mat[0, 0] * vec[0] + mat[1, 0] * vec[1] + mat[2, 0] * vec[2],
-            mat[0, 1] * vec[0] + mat[1, 1] * vec[1] + mat[2, 1] * vec[2],
-            mat[0, 2] * vec[0] + mat[1, 2] * vec[1] + mat[2, 2] * vec[2],
-        ]
+            mat[..., 0, 0] * vec[..., 0]
+            + mat[..., 1, 0] * vec[..., 1]
+            + mat[..., 2, 0] * vec[..., 2],
+            mat[..., 0, 1] * vec[..., 0]
+            + mat[..., 1, 1] * vec[..., 1]
+            + mat[..., 2, 1] * vec[..., 2],
+            mat[..., 0, 2] * vec[..., 0]
+            + mat[..., 1, 2] * vec[..., 1]
+            + mat[..., 2, 2] * vec[..., 2],
+        ],
+        dim=-1,
     )
 
 
 def rot_vec_mat(vec: torch.Tensor, mat: torch.Tensor) -> torch.Tensor:
+    """Multiply *vec* by the rotation matrix *mat*."""
     return torch.stack(
         [
-            mat[0, 0] * vec[0] + mat[0, 1] * vec[1] + mat[0, 2] * vec[2],
-            mat[1, 0] * vec[0] + mat[1, 1] * vec[1] + mat[1, 2] * vec[2],
-            mat[2, 0] * vec[0] + mat[2, 1] * vec[1] + mat[2, 2] * vec[2],
-        ]
+            mat[..., 0, 0] * vec[..., 0]
+            + mat[..., 0, 1] * vec[..., 1]
+            + mat[..., 0, 2] * vec[..., 2],
+            mat[..., 1, 0] * vec[..., 0]
+            + mat[..., 1, 1] * vec[..., 1]
+            + mat[..., 1, 2] * vec[..., 2],
+            mat[..., 2, 0] * vec[..., 0]
+            + mat[..., 2, 1] * vec[..., 1]
+            + mat[..., 2, 2] * vec[..., 2],
+        ],
+        dim=-1,
     )
 
 
 def rot_vec_quat(vec: torch.Tensor, quat: torch.Tensor) -> torch.Tensor:
+    """Rotate *vec* by the quaternion *quat*."""
     return rot_vec_mat(vec, quat2mat(quat))
 
 
 def quat2euler_intrinsic(quat: torch.Tensor) -> torch.Tensor:
-    w, x, y, z = quat[0], quat[1], quat[2], quat[3]
-    sinr_cosp = 2 * (w * x + y * z)
-    cosr_cosp = 1 - 2 * (x * x + y * y)
-    roll = torch.atan2(sinr_cosp, cosr_cosp)
-    sinp = 2 * (w * y - z * x)
-    pitch = torch.where(
-        torch.abs(sinp) >= 1,
-        torch.copysign(torch.tensor(torch.pi / 2), sinp),
-        torch.asin(sinp),
-    )
-    siny_cosp = 2 * (w * z + x * y)
-    cosy_cosp = 1 - 2 * (y * y + z * z)
-    yaw = torch.atan2(siny_cosp, cosy_cosp)
-    return torch.stack([roll, pitch, yaw])
+    """Quaternion → ``[roll, pitch, yaw]``, extrinsic x-y-z (scipy ``"xyz"``).
+
+    Inverse of :func:`intrinsic_euler2quat`; pitch lies in ``[-pi/2, pi/2]``.
+    """
+    w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
+    roll = torch.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
+    pitch = torch.asin(torch.clamp(2 * (w * y - z * x), -1.0, 1.0))
+    yaw = torch.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+    return torch.stack([roll, pitch, yaw], dim=-1)
 
 
 def intrinsic_euler2quat(euler: torch.Tensor) -> torch.Tensor:
-    roll, pitch, yaw = euler[0], euler[1], euler[2]
-    hr, hp, hy = roll * 0.5, pitch * 0.5, yaw * 0.5
-    sr, cr = torch.sin(hr), torch.cos(hr)
-    sp, cp = torch.sin(hp), torch.cos(hp)
-    sy, cy = torch.sin(hy), torch.cos(hy)
+    """``[roll, pitch, yaw]`` → quaternion, extrinsic x-y-z (scipy ``"xyz"``).
+
+    Despite the name: roll about the fixed X, then pitch about the fixed Y, then
+    yaw about the fixed Z (equivalently intrinsic Z-Y'-X'').
+    """
+    half = euler * 0.5
+    sr, cr = torch.sin(half[..., 0]), torch.cos(half[..., 0])
+    sp, cp = torch.sin(half[..., 1]), torch.cos(half[..., 1])
+    sy, cy = torch.sin(half[..., 2]), torch.cos(half[..., 2])
     w = cr * cp * cy + sr * sp * sy
     x = sr * cp * cy - cr * sp * sy
     y = cr * sp * cy + sr * cp * sy
     z = cr * cp * sy - sr * sp * cy
-    return torch.stack([w, x, y, z])
+    return torch.stack([w, x, y, z], dim=-1)
 
 
 def calculate_cosine(vec1: torch.Tensor, vec2: torch.Tensor) -> torch.Tensor:
