@@ -203,19 +203,26 @@ uv run play myoMimicFullbody-v0 --wandb-run-path org/project/run-id
 
 ### ONNX policy on mjlab GPU env
 
-`--backend mjlab --onnx` uses the same GPU→CPU sync pattern as
-`NativeMujocoViewer` but applies it to observation building rather than just
-rendering:
-
-```
-GPU step → qpos/qvel[env_idx].cpu().numpy() → mj_forward
-         → FullbodyObsAdapter (2418 dims) → onnxruntime → actions → GPU
-```
-
 mjlab's `myoMimicFullbody-v0` env produces ~684-dim observations — too small
 for the mm-10m-2 model which expects 2418 dims.  `FullbodyOnnxMjlabPolicy`
-rebuilds the full observation by syncing GPU state to CPU after each step,
-exactly as `NativeMujocoViewer` does for rendering.
+(and `FullbodyOrbaxMjlabPolicy`) rebuild the checkpoint observation after each
+step from mjlab's batched sim data, on its device:
+
+```
+GPU step → TorchFullbodyObsAdapter (all selected envs, 2418 dims, float32)
+         → onnxruntime (one host copy of the batch) → actions → GPU
+```
+
+There is no CPU `mj_forward` and no per-env copy.  The observation is float32
+and matches `FullbodyObsAdapter` to float32 rounding on the same sim arrays;
+compared with a CPU `mj_forward` of the same state, muscles on a few wrapped
+tendons and the foot touch sensors can differ (MuJoCo Warp computes them in
+float32 with its own contact solver).  `obs_backend="cpu"` keeps the previous
+path (per-env GPU→CPU copy, `mj_forward`, `FullbodyObsAdapter`) for debugging
+and parity checks; pass `env_indices=range(env.num_envs)` to get one action per
+env instead of broadcasting env 0's.
+
+The CLI's `--onnx` option runs the CPU MuJoCo loop instead (no warp):
 
 ```bash
 uv run myosuite-musclemimic-fullbody-eval \

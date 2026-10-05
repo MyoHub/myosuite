@@ -150,6 +150,30 @@ full commit list.
   signal at the 0.8 m initial error), and actions go through the muscle sigmoid on both without a clip. CPU policies trained on these ids need retraining. The mjlab Mimic rewards and deviation
   check now score the post-step site positions (`mdp.sync_forward`); they read them one physics substep
   stale.
+* **The mjlab MuscleMimic policy bridge builds its observation on the sim device.**
+  `FullbodyOnnxMjlabPolicy` and `FullbodyOrbaxMjlabPolicy` copied each env's state into a CPU `MjData`,
+  ran `mj_forward` and the numpy `FullbodyObsAdapter`, one env at a time (4 host syncs per env; each such
+  `MjData` of the full-body model also reserves a 1.37 GB arena). They now build the
+  batch from mjlab's post-step sim data with `TorchFullbodyObsAdapter` (moved to
+  `musclemimic/fullbody_obs_torch.py`, still importable from `mjlab_policy_runner`): no CPU forward, at most
+  one host sync per call with the Orbax/Torch actor, one host copy each way for onnxruntime. Orbax bridge
+  call on CPU torch at 16/64/256 envs: 90/425/1291 ms before, 4.8/10.7/24.4 ms after (139/523/2062 host
+  syncs before, 1 after). onnxruntime sessions no longer spin their intra-op pool (it starved the torch
+  threads on a shared CPU) and use one thread for a single-env batch.
+  **The observation is now float32 on the device and not bit-identical to the CPU builder.** Fed the same
+  sim arrays, the two builders agree to 1.2e-6 (relative to max(1, |x|)). Against a CPU `mj_forward` of the
+  same state, joint state, excitation/activation, lookahead and phase agree to 1e-6 and mimic-site
+  offsets/angles to 1.5e-6, site velocities to 4e-5 (angular velocities up to 34 rad/s);
+  muscle length, velocity and force agree to float32 rounding except on wrapped tendons where MuJoCo Warp
+  returns other lengths (its float32 inside-sidesite wrap solve falls back on some states, 1–3 mm on 8 tendons
+  per side such as `DELT3`/`PECM1`; rare larger path differences, up to 0.2 m, on outside-sidesite wraps in
+  contorted poses), and the foot touch sensors come from Warp's own collision and contact solve (in-episode
+  p99 12.6 N; up to 734 N on reset poses that start with the feet in the floor). Closed-loop rollouts with
+  either backend give the same tracking error (0.1275 vs 0.1275 m) and termination counts. The batched
+  observation reports what the mjlab simulation itself uses; `obs_backend="cpu"` keeps the previous path for
+  debugging and parity checks. `FullbodyOnnxMjlabPolicy(env_indices=...)` runs several envs with one action
+  each.
+* **Performance (speed and memory) improvements (#481, #482, #483, #486, #487).**
 
 ### Fixed
 
@@ -212,6 +236,10 @@ full commit list.
   incomplete bridges unless `allow_partial=True`. The SAR activation collector ranks episodes by mean reward
   and resets its state per episode: recollect SAR datasets and re-extract the synergies, and redo evaluations
   made with the old bridge mapping.
+* **`TorchFullbodyObsAdapter` relative angular velocity**: the batched full-body observation rotated each
+  mimic site's angular velocity by `rel_rot` instead of `rel_rot^T` (the CPU `FullbodyObsAdapter` and
+  upstream loco-mujoco), so its live and lookahead `site_rvel` differed from the observation the MuscleMimic
+  checkpoints were trained on (by up to 8.6 on random states).
 * **ReferenceMotion search.** The NumPy `find_timeslot_in_reference` no longer raises when the time moves backwards after the index cache reached the last frame without a `reset()` (it falls back to a binary search); times before the reference start raise a clear `ValueError`.
 * **Public attributes of wrapped envs.** `gym.make` returns an env wrapped by Gymnasium; since Gymnasium 1.0 `env.mj_render()` and other MyoSuite methods raised `AttributeError` (only `env.unwrapped.mj_render()` worked). The outermost wrapper of every registered env now forwards public attributes to the env again (#378).
 * **Multi-clip Mimic training.** `register_mimic_mjlab_tasks_with_clip` accepts a tuple or list of clips (each env draws its clip and start frame on reset); resetting only some envs of a clip bank gathered the reference with the wrong envs' clip indices and raised an `IndexError` (it showed up as a flaky crash within the first steps).
@@ -232,6 +260,14 @@ full commit list.
   3CC-r fatigue update uses the old state for all deltas, and `FatigueWrapper` keeps the model options. Creating
   an MJX env warns that the backend is experimental and not observation/reward-compatible with the CPU and
   mjlab envs.
+* **Experimental MJX reach**: the far penalty/termination now starts at control step 2, as in CPU `ReachEnvV0`
+  (`data.time > 2 * ctrl_dt`) and its mjlab twin; it started after 2 physics steps (4 ms), i.e. at step 1. MJX
+  and mjlab derive the step from the CPU's float64 time sum with `first_step_after`, now in
+  `myosuite.utils.step_timing`. `MjxFingerReachRandom-v0` had `far_th=0.10` and uniform box targets; it now
+  reads `far_th` (0.35, the `ReachEnvV0` default) and `target_sampling="workspace"` from
+  `myoFingerReachRandom-v0` and samples the same reachable-fingertip table (`MjxReachConfig.target_sampling`).
+  Before, 75% of its episodes ended at step 1 (386 of 512 with zero actions, 387 with random actions); now none
+  ends within 5 steps, since no target lies more than 0.28 m from the start fingertip.
 * **Tutorial scripts and CI.** The SAR tutorial scripts seed SAC and checkpoint/resume (`--seed`,
   `--play-only`); the 2.3 results depend strongly on the seed. CI runs for PRs into `ms3` and installs the
   `[rl]` extra; the mimic suite no longer comes out empty (it is registered before the challenge suite).
@@ -242,15 +278,11 @@ full commit list.
   before that commit and in v2.12.2. The published `myoArmReachRandom-v0` checkpoint counted 67% of its
   episodes as solved with the old site, but the fingertip itself ended within the radius in only 2%. With the
   fixed site, it reaches with the fingertip in 64% of episodes (CPU, 200 seeds, `far_th=1.0`) without retraining.
-* **Full-body MuscleMimic CPU model memory.** The `musclemimic_models` MJCF declares the legacy
-  `<size nconmax="2000" njmax="5000">`, from which MuJoCo reserved a 1.3 GB arena per `MjData`; Windows
-  commits it up front, so 16 per-env `MjData` of the mjlab ONNX/Orbax bridge took about 21 GB (64 could not be
-  built) and every CPU `myoMimicFullbody-v0` or clip env (e.g. per SubprocVecEnv worker) took 1.3 GB.
-  `compile_mimic_fullbody_mjmodel` now sets an explicit 16 MiB arena (`arena_memory`,
-  `MIMIC_FULLBODY_ARENA_BYTES`): the measured peak is 0.5 MiB over seeded rollouts and clip resets and 1.5 MiB
-  with every contact candidate and joint limit active at once. Commit per `MjData` drops from 1313 to 19 MiB;
-  trajectories are bit-identical, and `nconmax`/`njmax` (read by the MJX Warp path) and the mjlab Warp buffer
-  sizes are unchanged.
+* OSL controller bugs inherited from myosuite 2.x fixed (#484). `StateMachine.is_running` returned itself, so reading
+  it recursed until `RecursionError`; it now returns the running flag. `MyoOSLController.set_motor_param`
+  had no value argument and stored the parameter's name, so a set `peak_torque` broke the torque clip; it
+  is now `set_motor_param(joint, act_param, value)`.
+* The TableTennis env now loads meshes and textures from abitrary drives (#485).
 
 ### Removed
 
