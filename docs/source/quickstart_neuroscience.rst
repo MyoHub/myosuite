@@ -169,9 +169,11 @@ endurance times.
 .. code-block:: python
 
    from myosuite import make_env
+   from myosuite.core.config import EnvConfig
    import numpy as np
 
-   env = make_env('myoFatiElbowPose1D6MFixed-v0')
+   # One 40 s episode: the registered episode is 2 s long, and a reset restores the muscles
+   env = make_env(EnvConfig('myoFatiElbowPose1D6MFixed-v0', max_episode_steps=2000))
    obs, info = env.reset(seed=0)
 
    fatigued = []
@@ -182,9 +184,6 @@ endurance times.
 
        # Fraction of motor units in the fatigued pool (MF), averaged over the muscles
        fatigued.append(env.muscle_fatigue.MF.mean())
-
-       if terminated or truncated:
-           obs, info = env.reset()
 
    print(f"Fatigued fraction: {fatigued[0]:.3f} → {fatigued[-1]:.3f}")
 
