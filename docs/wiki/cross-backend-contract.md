@@ -120,7 +120,7 @@ reach, torso, leg and the MyoChallenge muscle envs; wrapping any other env raise
 stay declarative). A stage is installed **once per env**: a second wrapper of the same kind, or one on an id that
 already registers it (`FatigueWrapper` on `myoFati*`, `ReafferentationWrapper` on `myoReaf*`), raises a `ValueError`;
 `SarcopeniaWrapper` raises it if sarcopenia is already applied to the model (it would scale the forces twice). Wrap the
-base id, or change the installed wrapper's options (`env.motor_noise`, `env.set_fatigue_reset_random(...)`).
+base id, or change the installed wrapper's options (`env.set_motor_noise(...)`, `env.set_fatigue_reset_random(...)`).
 
 The env's own map stays inside the env: `normalize_act` also sets the initial joint pose, so the
 sigmoid is not a wrapper.
@@ -143,7 +143,7 @@ human motor noise to muscle excitations. `MotorNoiseCfg.van_beers_2004()` gives 
   every episode is reseeded. mjlab: `torch.randn` on the sim device from the global torch RNG
   that mjlab seeds (`seed_rng`). The two backends agree in distribution, not sample by sample.
 - **Configuration.** `MotorNoiseWrapper(env, MotorNoiseCfg.van_beers_2004())` on CPU (a cfg or a
-  dict of its fields; assign `env.motor_noise` to change the levels). To configure both backends,
+  dict of its fields; `env.set_motor_noise(...)` changes the levels). To configure both backends,
   register an env id with a `MotorNoiseWrapper` spec: the twin reads it through
   `cpu_reference.action_cfg`. For one mjlab config, set `env_cfg.actions["muscles"].motor_noise`.
 - **Clipping.** Near the bounds the clip rectifies the noise: at `u = 0.076` (policy output 0

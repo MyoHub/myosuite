@@ -32,7 +32,7 @@ stage can be installed **once per env**: a second wrapper of the same kind raise
 ``ValueError`` (the ``myoFati*`` and ``myoReaf*`` ids already contain theirs, so
 wrap the base id to configure it, e.g. ``FatigueWrapper(gym.make(base_id),
 fatigue_reset_random=True)``, or change the options with
-``env.set_fatigue_reset_random(...)`` / ``env.motor_noise = ...``).
+``env.set_fatigue_reset_random(...)`` / ``env.set_motor_noise(...)``).
 
 :class:`MotorNoiseWrapper`
     Signal-dependent + constant Gaussian noise on the muscle excitations.
@@ -362,8 +362,8 @@ class MotorNoiseWrapper(
     Args:
         env: Env whose pipeline runs muscle stages.
         motor_noise: A :class:`~myosuite.terms.base_action.MotorNoiseCfg`, a dict
-            of its fields or ``None`` (off). Assign ``env.motor_noise`` to change
-            the levels during a run.
+            of its fields or ``None`` (off). Call ``env.set_motor_noise(...)`` to
+            change the levels during a run.
     """
 
     def __init__(self, env: gym.Env, motor_noise: Any = None) -> None:
@@ -378,6 +378,16 @@ class MotorNoiseWrapper(
 
     def _pickle_kwargs(self) -> dict[str, Any]:
         return {"motor_noise": self.motor_noise}
+
+    def set_motor_noise(self, motor_noise: Any) -> None:
+        """Change the noise levels (a cfg, a dict of its fields or ``None``: off).
+
+        Unlike assigning ``env.motor_noise``, which only reaches this wrapper when it
+        is the outermost one, the call is forwarded through the wrappers on top.
+        """
+        from myosuite.terms.base_action import MotorNoiseCfg  # noqa: PLC0415
+
+        self.motor_noise = MotorNoiseCfg.from_value(motor_noise)
 
 
 class FatigueWrapper(

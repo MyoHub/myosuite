@@ -345,6 +345,21 @@ def test_wrapped_env_survives_pickle_and_deepcopy() -> None:
         np.testing.assert_array_equal(_rollout(clone, 0), _rollout(env, 0))
 
 
+def test_set_motor_noise_reaches_the_wrapper_under_others() -> None:
+    """``set_motor_noise`` is forwarded; assigning ``env.motor_noise`` on an outer wrapper is not."""
+    env = FatigueWrapper(MotorNoiseWrapper(gym.make(_ELBOW)))
+    quiet = _rollout(env, 0)
+    env.set_motor_noise({"constant_std": 0.05})
+    assert env.env.motor_noise == MotorNoiseCfg(constant_std=0.05)
+    assert not np.array_equal(_rollout(env, 0), quiet)
+    env.set_motor_noise(None)
+    np.testing.assert_array_equal(_rollout(env, 0), quiet)
+    # a plain gymnasium wrapper on top: reach the method with get_wrapper_attr
+    stats = gym.wrappers.RecordEpisodeStatistics(env)
+    stats.get_wrapper_attr("set_motor_noise")({"constant_std": 0.05})
+    assert env.env.motor_noise.enabled
+
+
 # ── custom stages ────────────────────────────────────────────────────────────
 
 _CALLS: list[str] = []
