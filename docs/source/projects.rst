@@ -12,6 +12,8 @@ Projects with Myosuite
     * :ref:`ref_deprl`
     * :ref:`ref_lattic`
     * :ref:`ref_sar`
+    * :ref:`ref_musclemimic`
+    * :ref:`ref_myointeract`
 
 
 .. _myochallenge:
@@ -83,7 +85,7 @@ Please feel free to create a PR for your own project with Myosuite
 MyoDex: A Generalizable Prior for Dexterous Manipulation
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-Link avaiable at `here <https://sites.google.com/view/myodex>`__
+Caggiano, V., Dasari, S., Kumar, V. (2023). *International Conference on Machine Learning (ICML)*. `Paper <https://arxiv.org/abs/2309.03130>`__, `project page <https://sites.google.com/view/myodex>`__
 
 
 
@@ -92,7 +94,7 @@ Link avaiable at `here <https://sites.google.com/view/myodex>`__
 DEP-RL: Embodied Exploration for Reinforcement Learning in Overactuated and Musculoskeletal Systems
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-Link avaiable at `here <https://github.com/martius-lab/depRL>`__
+Schumacher, P., Haeufle, D.F.B., Büchler, D., Schmitt, S., Martius, G. (2023). *International Conference on Learning Representations (ICLR)*. `Paper <https://openreview.net/forum?id=C-xa_D3oTj6>`__, `code <https://github.com/martius-lab/depRL>`__
 
 
 
@@ -101,7 +103,7 @@ Link avaiable at `here <https://github.com/martius-lab/depRL>`__
 Lattice: Latent Exploration for Reinforcement Learning
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-Link avaiable at `here <https://github.com/amathislab/lattice>`__
+Chiappa, A.S., Marin Vargas, A., Huang, A.Z., Mathis, A. (2023). *Advances in Neural Information Processing Systems (NeurIPS)*. `Paper <https://arxiv.org/abs/2305.20065>`__, `code <https://github.com/amathislab/lattice>`__
 
 
 
@@ -111,4 +113,26 @@ SAR: Generalization of Physiological Agility and Dexterity via Synergistic Actio
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-Link avaiable at `here <https://sites.google.com/view/sar-rl>`__
+Berg, C., Caggiano, V., Kumar, V. (2023). *Robotics: Science and Systems (RSS)*. `Paper <https://arxiv.org/abs/2307.03716>`__, `project page <https://sites.google.com/view/sar-rl>`__
+
+
+
+.. _ref_musclemimic:
+
+MuscleMimic: Towards Embodied AI with MuscleMimic: Unlocking full-body musculoskeletal motor learning at scale
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Li, C., Wang, C., Ziliotto, B., Simos, M., Kovecses, J., Durandau, G., Mathis, A. (2026). arXiv:2603.25544.
+`Paper <https://arxiv.org/abs/2603.25544>`__, `code <https://github.com/amathislab/musclemimic>`__. Used for the full-body
+tutorials 5.1-5.5; the motion data and retargeting sources are listed on :doc:`references`.
+
+
+
+.. _ref_myointeract:
+
+MyoInteract: A Framework for Fast Prototyping of Biomechanical HCI Tasks using Reinforcement Learning
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Bhattarai, A., Selder, H., Fischer, F., Fleig, A., Kristensson, P.O. (2026). *ACM Designing Interactive Systems Conference (DIS)*.
+`Paper <https://arxiv.org/abs/2602.15245>`__, `DOI <https://doi.org/10.1145/3800645.3812899>`__. Builds on MyoSuite: designers set up
+interaction tasks, user models and training from a GUI and train muscle-actuated simulated users within minutes.

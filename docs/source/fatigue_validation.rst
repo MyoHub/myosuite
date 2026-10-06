@@ -791,6 +791,7 @@ References
 
 * Xia, T., Frey-Law, L.A. (2008). A theoretical approach for modeling peripheral
   muscle fatigue and recovery. *J Biomech* 41(14), 3046-3052.
+  https://doi.org/10.1016/j.jbiomech.2008.07.013
 * Frey-Law, L.A., Avin, K.G. (2010). Endurance time is joint-specific: a
   modelling and meta-analysis investigation. *Ergonomics* 53(1), 109-129.
   https://doi.org/10.1080/00140130903389068
