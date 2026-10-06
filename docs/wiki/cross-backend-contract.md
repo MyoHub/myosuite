@@ -115,17 +115,19 @@ use a plain `gym.ActionWrapper` on the outside instead.
 mjlab applies the same order in `MyoAction`; `cpu_reference.action_cfg` builds it from the
 registration's wrapper specs, so registering an env id with a wrapper configures both halves. The
 envs that run stages are the basic pose, key-turn, object-hold, pen, SAR-reorient, arm/finger/hand
-reach, torso, leg and the MyoChallenge muscle envs; wrapping any other env raises a `TypeError`
-(for example MuscleMimic and the `TaskConfig` envs, whose `ActuatorGroupSpec.condition` / `noise`
-stay declarative). A stage is installed **once per env**: a second wrapper of the same kind, or one on an id that
+reach, torso, leg, the MyoChallenge muscle envs and the experimental `ModularTaskEnv`; wrapping any other env
+raises a `TypeError` (for example MuscleMimic). A `TaskConfig` holds the task only: it has no `muscle_fatigue`,
+`ActuatorGroupSpec.condition` or `.noise`; its variants (`VariantSpec(features=...)`) register the wrappers like any
+other id. A stage is installed **once per env**: a second wrapper of the same kind, or one on an id that
 already registers it (`FatigueWrapper` on `myoFati*`, `ReafferentationWrapper` on `myoReaf*`), raises a `ValueError`;
 `SarcopeniaWrapper` raises it if sarcopenia is already applied to the model (it would scale the forces twice). Wrap the
 base id, or change the installed wrapper's options (`env.motor_noise`, `env.set_fatigue_reset_random(...)`).
 
 ### One call for every backend: `make_env(EnvConfig(...))`
 
-`myosuite.core.registry.make_env` builds the same env on any backend from an `EnvConfig`
-(`myosuite.core.config`). The registration of the env id gives the defaults; the config overrides them:
+`make_env` is the entry point for building an env: `myosuite.core.registry.make_env` builds the same env on any
+backend from an `EnvConfig` (`myosuite.core.config`). `gym.make(env_id)` remains the CPU path underneath it (and what
+the tutorials use for a plain CPU env). The registration of the env id gives the defaults; the config overrides them:
 
 ```python
 from myosuite.core.config import EnvConfig
@@ -135,6 +137,7 @@ from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper, wrapper_sp
 cfg = EnvConfig(
     "myoElbowPose1D6MRandom-v0",
     max_episode_steps=300,
+    ctrl_dt=0.01,
     features=(wrapper_spec(MotorNoiseWrapper, motor_noise=0.05), wrapper_spec(FatigueWrapper)),
 )
 env = make_env(cfg)                                          # CPU
@@ -145,15 +148,46 @@ envs = make_env(cfg, backend="mjlab", num_envs=4096)         # GPU twin, same no
 |---|---|---|
 | `features` (wrapper specs) | wrappers around `gym.make` | added to the CPU registration the twin is built from |
 | `max_episode_steps` | `gym.make(max_episode_steps=...)` | `episode_length_s` of the twin |
+| `ctrl_dt` (the one timing knob) | `frame_skip = ctrl_dt / model timestep` | `decimation` (twin rebuilt with that `frame_skip`) |
 | `num_envs` | must be 1 | `scene.num_envs` |
-| `task_kwargs` | env constructor kwargs | not applicable |
+| `task_kwargs` | env constructor kwargs | raises (the twin reads the registration) |
 | `backend_options` / `**overrides` | `gym.make` kwargs (`render_mode`, ...) | `device`, ... |
 
-Rules: a feature a backend cannot run raises (`mjx`: `NotImplementedError`; a twin that is not built from the CPU
+`ctrl_dt` must be a whole multiple of the model timestep (`ValueError` otherwise). Rules: a feature a backend cannot
+run raises (`mjx`: only `SarcopeniaWrapper`, a model edit, is supported, the rest raises `NotImplementedError`; a twin that is not built from the CPU
 registration, such as MuscleMimic, ChaseTag or Table Tennis: `NotImplementedError`), it is never dropped silently;
 adding a wrapper the id already registers (`FatigueWrapper` on `myoFati*`) raises a `ValueError` on both backends.
 Harness wrappers (`PerturbationWrapper`, recording, a delay on the raw action) are not features: they are plain
 gymnasium wrappers on the CPU env and are not part of the config.
+
+### Which features run where
+
+By feature (`EnvConfig.features`, or a registered wrapper):
+
+| Feature | CPU env | mjlab twin | MJX (experimental) |
+|---|---|---|---|
+| `MotorNoiseWrapper`, `FatigueWrapper` | yes | yes | no |
+| `ReafferentationWrapper` (hand models with EIP/EPL) | yes | yes | no |
+| `SarcopeniaWrapper` (model edit) | yes | yes | yes |
+| `ExcitationStageWrapper` (portable custom stage) | yes | yes | no |
+| `CtrlStageWrapper` (env-aware custom stage) | yes | no | no |
+
+By env family (the CPU env class runs the stages; the twin rebuilds from the CPU registration, so it takes the features
+of its registration or of `EnvConfig`):
+
+| Env family | CPU env | mjlab twin | Features on the twin |
+|---|---|---|---|
+| Pose and reach (hand, finger, arm, elbow, motor finger), torso, leg walk / stand / terrain, `ModularTaskEnv` ids with a twin | yes | yes | yes |
+| Hand tasks without a twin: key turn, object hold, pen, reorient (SAR, ID, OOD, 100, 8) | yes | no | n/a |
+| MyoChallenge: Baoding, Bimanual, Relocate, Die Reorient, Soccer, OSL run | yes | no | n/a |
+| ChaseTag (single agent) | yes | `myoChallengeChaseTagFBP2-v0` only | no |
+| Table Tennis P0 / P1 / P2 | yes | yes | no |
+| ChaseTag vs. scripted opponent (multi-agent) | no | no | n/a |
+| MuscleMimic (fullbody, bimanual, directional) | no (wrapping raises `TypeError`) | no | n/a |
+
+"No" on a twin means `make_env(..., backend="mjlab")` raises `NotImplementedError` when features are given, and the
+twin of a registered `myoFati*` / `myoSarc*` / `myoReaf*` id does not exist. The counts above are of the ids registered
+at the time of writing; `make_env` is the authority.
 
 The env's own map stays inside the env: `normalize_act` also sets the initial joint pose, so the
 sigmoid is not a wrapper.

@@ -558,17 +558,22 @@ def test_scene_list_env_resets() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_action_noise_applied() -> None:
-    """ActuatorGroupSpec.noise > 0 should perturb actions."""
-    task = _ElbowTask()
-    task.actuators = [ActuatorGroupSpec(noise=1.0)]
-    env = ModularTaskEnv(task)
-    env.reset(seed=42)
-    # Deterministic zero action — if noise applied, ctrl will differ from zeros
-    action = np.zeros(env.action_space.shape, dtype=np.float32)
-    _, _, _, _, info = env.step(action)
-    # Just verify it doesn't crash; noise makes result non-deterministic
-    assert "rwd_dict" in info
+def test_motor_noise_wrapper_perturbs_ctrl() -> None:
+    """A ``MotorNoiseWrapper`` runs on the ModularTaskEnv; a plain env has no noise."""
+    from myosuite.envs.wrappers import MotorNoiseWrapper
+
+    action = np.full(8, 0.5, dtype=np.float32)
+
+    def ctrl_after_step(env) -> np.ndarray:
+        env.reset(seed=42)
+        env.step(action[: env.action_space.shape[0]])
+        return env.unwrapped.data.ctrl.copy()
+
+    plain = ctrl_after_step(ModularTaskEnv(_ElbowTask()))
+    noisy = ctrl_after_step(
+        MotorNoiseWrapper(ModularTaskEnv(_ElbowTask()), {"constant_std": 0.1})
+    )
+    assert not np.allclose(plain, noisy)
 
 
 # ---------------------------------------------------------------------------
@@ -666,52 +671,32 @@ def test_make_modular_mjlab_cfg_basic() -> None:
     assert cfg.action_terms[0].name == "muscles"
 
 
-def test_make_modular_mjlab_cfg_sarcopenia() -> None:
-    from myosuite.envs.myo.backends.mjlab.configs.modular_cfg import (
-        make_modular_mjlab_cfg,
-    )
+def test_task_config_holds_no_features() -> None:
+    """Conditions and noise are features of the env instance, not of the task."""
+    from dataclasses import fields
 
-    task = _ElbowTask()
-    task.actuators = [ActuatorGroupSpec(name="elbow", condition="sarcopenia")]
-    cfg = make_modular_mjlab_cfg(task)
-    assert cfg.action_terms[0].condition == "sarcopenia"
+    from myosuite.core.config import TaskConfig
 
-
-def test_fatigue_condition_enables_fatigue() -> None:
-    """``condition="fatigue"`` on a group enables fatigue like ``muscle_fatigue``."""
-    from myosuite.envs.myo.backends.mjlab.configs.modular_cfg import (
-        make_modular_mjlab_cfg,
-    )
-
-    task = _ElbowTask()
-    assert not task.fatigue_enabled
-    assert not make_modular_mjlab_cfg(task).muscle_fatigue
-    task.actuators = [ActuatorGroupSpec(name="elbow", condition="fatigue")]
-    assert task.fatigue_enabled
-    assert make_modular_mjlab_cfg(task).muscle_fatigue
-    flag = _ElbowTask()
-    flag.muscle_fatigue = True
-    assert flag.fatigue_enabled
-    assert make_modular_mjlab_cfg(flag).muscle_fatigue
+    names = {f.name for f in fields(TaskConfig)} | {
+        f.name for f in fields(ActuatorGroupSpec)
+    }
+    assert not names & {"muscle_fatigue", "condition", "noise"}
+    assert not hasattr(TaskConfig, "fatigue_enabled")
 
 
 @pytest.mark.parametrize(
     "env_id", ["myoFatiElbowPoseTaskFixed-v0", "myoFatiElbowPoseTaskRandom-v0"]
 )
 def test_fati_task_variants_fatigue(env_id: str) -> None:
-    """The ``Fati`` TaskConfig variants fatigue under sustained activation.
-
-    They declare ``ActuatorGroupSpec(condition="fatigue")``, which used to be
-    ignored (only ``TaskConfig.muscle_fatigue`` was read), so they ran unfatigued.
-    """
+    """The ``Fati`` TaskConfig variants (a registered ``FatigueWrapper``) fatigue."""
     import gymnasium as gym
 
     import myosuite  # noqa: F401  (registers the elbow TaskConfig ids)
 
-    env = gym.make(env_id).unwrapped
+    wrapped = gym.make(env_id)
+    env = wrapped.unwrapped
     env.reset(seed=0)
-    fatigue = env._fatigue_model
-    assert fatigue is not None
+    fatigue = env.muscle_fatigue
     action = np.full(env.action_space.shape, 0.8, dtype=np.float32)
     mf = []
     for _ in range(3):
@@ -743,7 +728,7 @@ def test_non_fati_task_variants_do_not_fatigue(env_id: str) -> None:
 
     env = gym.make(env_id).unwrapped
     env.reset(seed=0)
-    assert env._fatigue_model is None
+    assert "fatigue" not in env.ctrl_stages
     action = np.full(env.action_space.shape, 0.8, dtype=np.float32)
     env.step(action)
     np.testing.assert_array_equal(env.data.ctrl, action.astype(np.float64))

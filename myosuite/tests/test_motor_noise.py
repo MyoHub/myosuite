@@ -290,7 +290,7 @@ def test_wrapper_applies_to_the_muscle_envs(env_id: str) -> None:
 def test_wrapper_rejects_envs_without_stages() -> None:
     """An env whose pipeline does not run stages cannot be wrapped (it would be ignored)."""
     with pytest.raises(TypeError, match="does not"):
-        _noisy("myoElbowPoseTaskFixed-v0", {"constant_std": 0.1})
+        MotorNoiseWrapper(gym.make("CartPole-v1"), {"constant_std": 0.1})
 
 
 @pytest.mark.parametrize(

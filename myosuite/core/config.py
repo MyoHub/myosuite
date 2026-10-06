@@ -49,30 +49,35 @@ import numpy as np
 class VariantSpec:
     """Declares a configuration variant of a base task.
 
-    Used in ``TaskConfig.variants`` to auto-register muscle-condition
-    variants (sarcopenia, fatigue, reafferentation) without string-manipulation
-    hacks.  :func:`~myosuite.core.registry.register_task` expands each
-    ``VariantSpec`` into a separate Gymnasium environment registration.
+    Used in ``TaskConfig.variants`` to auto-register variants (for example the
+    muscle conditions sarcopenia, fatigue and reafferentation) without
+    string-manipulation hacks.  :func:`~myosuite.core.registry.register_task`
+    expands each ``VariantSpec`` into a separate Gymnasium environment registration.
 
     Args:
         suffix: Short identifier prepended after the ``"myo"`` prefix in the
             env ID (e.g. ``"Sarc"`` turns ``"myoElbowPose-v0"`` into
             ``"myoSarcElbowPose-v0"``).
         config_delta: Dict of ``TaskConfig`` field overrides to apply on top of
-            the base config (e.g. ``{"actuators": [ActuatorGroupSpec(condition="sarcopenia")]}``).
+            the base config (e.g. ``{"max_episode_steps": 400}``).
+        features: Muscle-command wrappers the variant registers (the same
+            :class:`~gymnasium.envs.registration.WrapperSpec` as
+            ``EnvConfig.features``), e.g. ``condition_wrapper_specs("fatigue")``.
+            CPU registrations only.
 
     Example::
 
         @dataclass
         class ElbowPoseTask(TaskConfig):
             variants: ClassVar[list[VariantSpec]] = [
-                VariantSpec("Sarc", {"actuators": [ActuatorGroupSpec(condition="sarcopenia")]}),
-                VariantSpec("Fati", {"actuators": [ActuatorGroupSpec(condition="fatigue")]}),
+                VariantSpec("Sarc", features=condition_wrapper_specs("sarcopenia")),
+                VariantSpec("Fati", features=condition_wrapper_specs("fatigue")),
             ]
     """
 
     suffix: str
     config_delta: dict[str, Any] = field(default_factory=dict)
+    features: tuple[Any, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +150,10 @@ class EnvConfig:
         backend: ``"cpu"``, ``"mjlab"`` (or the experimental ``"mjx"``).
         num_envs: Parallel envs; ``None`` is one on the CPU, the registered count on mjlab.
         max_episode_steps: Episode length limit before truncation.
+        ctrl_dt: Control timestep in seconds (the single timing knob: physics
+            substeps per control step, ``frame_skip`` or decimation, follow from
+            it and the model timestep). Must be a whole multiple of the model
+            timestep.
         features: Muscle-command features to activate, as
             :class:`~gymnasium.envs.registration.WrapperSpec` (see
             :func:`myosuite.envs.wrappers.wrapper_spec`): noise, fatigue,
@@ -159,6 +168,7 @@ class EnvConfig:
     backend: str = "cpu"
     num_envs: int | None = None
     max_episode_steps: int | None = None
+    ctrl_dt: float | None = None
     features: tuple[Any, ...] = ()
     task_kwargs: dict[str, Any] = field(default_factory=dict)
     backend_options: dict[str, Any] = field(default_factory=dict)
@@ -270,14 +280,16 @@ class RewardSpec:
 
 @dataclass
 class ActuatorGroupSpec:
-    """Describes a group of actuators (muscles or motors) and their condition.
+    """Describes a group of actuators (muscles or motors).
+
+    Physiological conditions and motor noise are not part of the task: they are
+    features of the env instance (``EnvConfig.features``, see
+    :mod:`myosuite.envs.wrappers`).
 
     Args:
         name: Logical group name (e.g. ``"elbow_muscles"``).
         actuator_type: ``"muscle"`` for Hill-type muscles or ``"motor"`` for
             direct torque/position actuators.
-        condition: Physiological condition applied at reset.  One of
-            ``"normal"``, ``"fatigue"``, or ``"sarcopenia"``.
         normalize_actions: If ``True``, actions are passed through a sigmoid
             ``σ(5(a − 0.5))`` to map ``ℝ → (0, 1)`` before being written to
             ``ctrl``.  Set to ``False`` when actions are already in ``[0, 1]``.
@@ -285,9 +297,7 @@ class ActuatorGroupSpec:
 
     name: str = "muscles"
     actuator_type: str = "muscle"
-    condition: str = "normal"
     normalize_actions: bool = True
-    noise: float = 0.0  # Gaussian noise std added to actions
 
 
 @dataclass
@@ -300,12 +310,15 @@ class TaskConfig:
     code duplication::
 
         @dataclass
-        class ElbowPoseSarcopeniaTask(ElbowPoseTask):
-            actuators: list[ActuatorGroupSpec] = field(
-                default_factory=lambda: [
-                    ActuatorGroupSpec(name="elbow_muscles", condition="sarcopenia")
-                ]
+        class ElbowPoseRandomTask(ElbowPoseTask):
+            goal: GoalSpec = field(
+                default_factory=lambda: GoalSpec(randomize=True, range={...})
             )
+
+    A task config holds the task only. Which muscle-command features are active
+    (noise, fatigue, sarcopenia, reafferentation, custom stages) is a property of
+    the env instance: ``EnvConfig.features`` or the registered ``features`` of a
+    :class:`VariantSpec`.
 
     Args:
         model: Named model recipe from ``myosuite.core.model_recipes``
@@ -313,10 +326,6 @@ class TaskConfig:
         scene: Named scene spec from ``myosuite.scenes.library``
             (e.g. ``"flat_floor"``).
         max_episode_steps: Episode length limit before truncation.
-        muscle_fatigue: If ``True``, apply cumulative 3-compartment fatigue
-            dynamics to muscle excitations each control step. An actuator
-            group with ``condition="fatigue"`` does the same (see
-            :attr:`fatigue_enabled`).
         backend: Backend-specific physics settings.
         obs: Observation channel specification.
         goal: Goal sampling and representation specification.
@@ -330,7 +339,6 @@ class TaskConfig:
     model: str = "elbow_standard"
     scene: str | list[str] | Callable = "flat_floor"
     max_episode_steps: int = 200
-    muscle_fatigue: bool = False
     backend: BackendConfig = field(default_factory=BackendConfig)
     obs: ObsSpec = field(default_factory=ObsSpec)
     goal: GoalSpec = field(default_factory=GoalSpec)
@@ -348,14 +356,3 @@ class TaskConfig:
     # causes register_task() to auto-register an additional environment with
     # the config_delta merged on top of the base config.
     variants: ClassVar[list[VariantSpec]] = []
-
-    @property
-    def fatigue_enabled(self) -> bool:
-        """Whether the muscles fatigue: ``muscle_fatigue`` or a ``"fatigue"`` group.
-
-        Actuator groups do not select actuators, so a fatigue group applies the
-        3CC-r model to every muscle actuator of the model.
-        """
-        return self.muscle_fatigue or any(
-            g.condition == "fatigue" for g in self.actuators
-        )

@@ -38,12 +38,13 @@ from typing import Any
 import gymnasium as gym
 import mujoco
 import numpy as np
+from gymnasium.utils import EzPickle
 
 from myosuite.core.config import GoalSpec, TaskConfig, check_control_step
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.model_recipes import _MUSCLEMIMIC_NAMES, _musclemimic_build
-from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
+from myosuite.envs.muscle_stages import CtrlStageHost
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +231,7 @@ def _build_model_from_task_model(
     return build_from_recipe(model_name)
 
 
-class ModularTaskEnv(MyoGymnasiumEnv):
+class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
     """CPU environment fully driven by a :class:`~myosuite.core.config.TaskConfig`.
 
     No subclassing is needed: observation channels, reward terms, and goal
@@ -269,6 +270,9 @@ class ModularTaskEnv(MyoGymnasiumEnv):
             render_mode=render_mode,
             **kwargs,
         )
+        # After the base init, which resets it. Rebuilt from the constructor arguments on
+        # unpickle, which drops the stages that wrappers installed (they install them again).
+        EzPickle.__init__(self, task_config, render_mode=render_mode, **kwargs)
         self._task_config = task_config
 
         # Resolve obs/reward callables once at construction time
@@ -294,28 +298,16 @@ class ModularTaskEnv(MyoGymnasiumEnv):
             first = scene[0]
             self.model, _ = self._scene_models[first]
         else:
-            base_model, base_spec = _build_model_from_task_model(task_config.model)
-            if any(g.condition == "sarcopenia" for g in task_config.actuators):
-                base_spec = apply_sarcopenia_to_spec(base_spec)
-                self.model = base_spec.compile()
-            else:
-                self.model = base_model
+            self.model, _ = _build_model_from_task_model(task_config.model)
             self._scene_models = None
 
         # One control step is n_substeps steps of sim_dt, as on MJX and mjlab.
         self._ctrl_dt = self._apply_backend_timing()
         self.data = mujoco.MjData(self.model)
-        self._fatigue_model: Any = None
-        self._fatigue_mask: Any = None
-        if task_config.fatigue_enabled:
-            from myosuite.core.muscle_conditions import CumulativeFatigue  # noqa: PLC0415
-
-            self._fatigue_model = CumulativeFatigue(
-                self.model, frame_skip=task_config.backend.n_substeps
-            )
-            self._fatigue_mask = (
-                self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
-            )
+        # The muscle entries of ctrl, which the wrapper-installed stages act on.
+        self._muscle_act_ind = np.flatnonzero(
+            self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
+        )
         # Infer observation and action spaces via a dummy forward pass with a
         # goal, which goal-dependent obs terms (e.g. pose_error) need. Only its
         # shape matters, so a separate generator leaves np_random untouched.
@@ -481,8 +473,7 @@ class ModularTaskEnv(MyoGymnasiumEnv):
             # all-zero default.
             mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         mujoco.mj_forward(self.model, self.data)
-        if self._fatigue_model is not None:
-            self._fatigue_model.reset()
+        self._run_reset_stages()
         self._task_state = self.reset_task(self.np_random)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
@@ -493,7 +484,7 @@ class ModularTaskEnv(MyoGymnasiumEnv):
     def step(
         self, action: np.ndarray, **kwargs: Any
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        """Step the environment, optionally applying action noise.
+        """Step the environment; wrapper-installed stages act on the muscle excitations.
 
         Args:
             action: Control action array.
@@ -502,25 +493,11 @@ class ModularTaskEnv(MyoGymnasiumEnv):
         Returns:
             5-tuple ``(obs, reward, terminated, truncated, info)``.
         """
-        noise_std = (
-            max(g.noise for g in self._task_config.actuators)
-            if self._task_config.actuators
-            else 0.0
-        )
-        if noise_std > 0.0:
-            action = action + self.np_random.normal(
-                0.0, noise_std, size=action.shape
-            ).astype(action.dtype)
         _ = kwargs
         action = np.clip(action, self.action_space.low, self.action_space.high)
         self._task_state["last_action"] = action.astype(np.float32, copy=True)
 
-        if self._fatigue_model is not None:
-            action = action.copy()
-            action[self._fatigue_mask], _, _ = self._fatigue_model.compute_act(
-                action[self._fatigue_mask]
-            )
-        self.data.ctrl[:] = action
+        self.data.ctrl[:] = self._run_ctrl_stages(action.copy())
         self._step_physics()
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
