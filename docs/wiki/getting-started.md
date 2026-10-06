@@ -41,6 +41,10 @@ A MyoSuite environment is four things:
 Every env returns the Gymnasium 5-tuple from `step()`:
 `(obs, reward, terminated, truncated, info)`.
 
+Muscle conditions (motor noise, fatigue, sarcopenia, reafferentation) are **not** part of an env class.
+They are wrappers, applied by id (`myoFati…`, `myoSarc…`, `myoReaf…`) or with
+`make_env(EnvConfig(env_id, features=...))`; see `cross-backend-contract.md`.
+
 ### CPU and GPU: two matched halves, not a choice
 
 A task normally exists in **two matched implementations under one `env_id`**
@@ -117,7 +121,10 @@ Follow `adding-a-new-task.md`. In short, build the CPU env first:
 2. Rewrite `_get_obs_dict` / `get_reward_dict` / `reset_task` for your task.
 3. Register it in the suite `__init__.py` with `registry.register_env(...)`.
 4. Add its env ID to `test_registry.py`.
-5. Run the quality gates (below).
+5. To let the env take muscle-command features, keep the stage hooks of `reach.py`
+   (`CtrlStageHost`: `_run_ctrl_stages` before writing `ctrl`, `_run_reset_stages` in `reset`);
+   see `cross-backend-contract.md`.
+6. Run the quality gates (below).
 
 Then, when you need parallel training, add the matched mjlab GPU config under
 the same `env_id` — see the CPU/GPU section in `engineering-standards.md`.
@@ -130,6 +137,7 @@ pytest myosuite/tests/test_registry.py -v
 pytest myosuite/tests/test_parity.py -v
 ```
 
+Branch from `dev` and open the pull request against `dev`; CI runs for pull requests into `main` and `dev`.
 See `CLAUDE.md` for the full gate list. A pre-commit hook blocks imports of the
 deleted `BaseV0`/`env_base.MujocoEnv` classes — if it fires, you copied from an
 old example; use `MyoGymnasiumEnv` instead.
@@ -142,4 +150,5 @@ old example; use `MyoGymnasiumEnv` instead.
 | Understand the two env patterns | `engineering-standards.md` |
 | Write an obs/reward term | `writing-term-functions.md` |
 | Add mjlab GPU support | `mjlab-design-guide.md`, `cross-backend-contract.md` |
+| Use noise, fatigue or other muscle conditions, or build an env on either backend | `cross-backend-contract.md` (`make_env`, `EnvConfig`, which envs take which features) |
 | Use an existing helper | `library-usage.md` |
