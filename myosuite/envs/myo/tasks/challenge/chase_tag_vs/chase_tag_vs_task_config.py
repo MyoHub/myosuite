@@ -13,7 +13,6 @@ Rules match MyoChallenge ``chasetag_v0``:
 
 from __future__ import annotations
 
-import random
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -134,10 +133,16 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     # MultiAgentTaskConfig — episode logic
     # ------------------------------------------------------------------
 
-    def on_reset(self, model=None, data=None, meta=None) -> None:
+    def on_reset(
+        self,
+        model: mujoco.MjModel,
+        data: mujoco.MjData,
+        meta: Any,
+        np_random: np.random.Generator,
+    ) -> None:
         """Sample task role for this episode."""
         if self.task_choice == "random":
-            self.current_task = random.choice(["CHASE", "EVADE"])
+            self.current_task = str(np_random.choice(["CHASE", "EVADE"]))
         else:
             self.current_task = self.task_choice
 
@@ -282,8 +287,14 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
     _gait_T: int = field(default=0, init=False, repr=False, compare=False)
     _model_cache: Any = field(default=None, init=False, repr=False, compare=False)
 
-    def on_reset(self, model=None, data=None, meta=None) -> None:
-        super().on_reset(model=model, data=data, meta=meta)
+    def on_reset(
+        self,
+        model: mujoco.MjModel,
+        data: mujoco.MjData,
+        meta: Any,
+        np_random: np.random.Generator,
+    ) -> None:
+        super().on_reset(model=model, data=data, meta=meta, np_random=np_random)
         if model is not None:
             self._model_cache = model
 

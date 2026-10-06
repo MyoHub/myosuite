@@ -68,6 +68,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from myosuite.core.trajectory_io import MotionClip
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
 from myosuite.physics.quat_math import quat2mat
 from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
 
@@ -657,7 +658,7 @@ def _mimic_obs_qpos(entity_name: str) -> Callable[[Any], Any]:
     """Joint positions ``(N, nq)``."""
 
     def _fn(env: Any) -> Any:
-        return env.scene[entity_name].data.data.qpos.clone()
+        return MjlabEntityAccessor(env, entity_name).joint_pos().clone()
 
     return _fn
 
@@ -666,9 +667,8 @@ def _mimic_obs_qvel(entity_name: str) -> Callable[[Any], Any]:
     """Joint velocities scaled by ctrl_dt, ``(N, nv)``."""
 
     def _fn(env: Any) -> Any:
-        data = env.scene[entity_name].data.data
         ctrl_dt = env.physics_dt * env.cfg.decimation
-        return data.qvel * ctrl_dt
+        return MjlabEntityAccessor(env, entity_name).joint_vel() * ctrl_dt
 
     return _fn
 

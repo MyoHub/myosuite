@@ -153,11 +153,41 @@ def test_moving_simple_body_frame_is_not_moved() -> None:
     np.testing.assert_array_equal(model.geom_aabb, aabb)
 
 
-def test_explicit_inertia_is_rejected() -> None:
+@pytest.mark.parametrize("full_inertia", [False, True])
+def test_explicit_inertia_scales_without_cumulative_drift(full_inertia: bool) -> None:
     spec = mujoco.MjSpec.from_string(_XML)
     body = spec.body("obj")
     body.explicitinertial = True
-    body.mass, body.ipos, body.inertia = 1.0, [0, 0, 0], [1e-3, 1e-3, 1e-3]
+    body.mass, body.ipos = 1.0, [0.01, 0, 0]
+    if full_inertia:
+        body.fullinertia = [1e-3, 2e-3, 2e-3, 1e-4, 0, 0]
+    else:
+        body.inertia = [1e-3, 2e-3, 2e-3]
     model = spec.compile()
-    with pytest.raises(NotImplementedError, match="explicit inertia"):
-        refresh_geom_derived_fields(model, spec, [model.body("obj").id])
+    bid = model.body("obj").id
+    for mass in (0.05, 1.2, 0.5, 1.2):
+        model.body_mass[bid] = mass
+        model.geom("main").size = [0.02, 0.03, 0.04]
+        refresh_geom_derived_fields(model, spec, [bid])
+        ref_spec = spec.copy()
+        ref_body = ref_spec.body("obj")
+        ref_body.mass = mass
+        if full_inertia:
+            ref_body.fullinertia = body.fullinertia * mass
+        else:
+            ref_body.inertia = body.inertia * mass
+        ref_spec.geom("main").size = model.geom("main").size
+        ref = ref_spec.compile()
+        for name in (
+            "geom_aabb",
+            "geom_rbound",
+            "bvh_aabb",
+            "body_inertia",
+            "body_ipos",
+            "body_iquat",
+            "body_invweight0",
+            "dof_invweight0",
+        ):
+            np.testing.assert_allclose(
+                getattr(model, name), getattr(ref, name), atol=1e-12, err_msg=name
+            )
