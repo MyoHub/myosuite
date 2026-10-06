@@ -113,6 +113,8 @@ Train on GPU (same `env_id`, mjlab / RSL-RL):
 python scripts/train_mjlab.py myoElbowPose1D6MFixed-v0 --env.scene.num-envs 1024
 ```
 
+No step count is needed: it runs the task's default number of PPO iterations (`--agent.max-iterations`, 1000 unless the task sets another) and stops early once the deterministic policy reaches 95% success (`--stop-on-success False` turns that off).
+
 The same call builds either backend, and an `EnvConfig` overrides the registered defaults (episode length, control step,
 muscle-command features such as motor noise and fatigue) for both:
 
@@ -121,16 +123,16 @@ from myosuite import make_env
 from myosuite.core.config import EnvConfig
 from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper
 
-env = make_env("myoElbowPose1D6MRandom-v0")                                   # CPU, registered defaults
-envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024)  # GPU twin (needs the mjlab extra)
+env_cpu = make_env("myoElbowPose1D6MRandom-v0")                               # CPU, registered defaults
+env_gpu = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024)  # GPU twin (needs the mjlab extra)
 
 cfg = EnvConfig(
     "myoElbowPose1D6MRandom-v0",
     max_episode_steps=300,
     features=((MotorNoiseWrapper, {"motor_noise": {"constant_std": 0.05}}), FatigueWrapper),
 )
-env = make_env(cfg)                                   # CPU with noise and fatigue
-envs = make_env(cfg, backend="mjlab", num_envs=1024)  # the same on the GPU
+env_cpu = make_env(cfg)                               # CPU with noise and fatigue
+env_gpu = make_env(cfg, backend="mjlab", num_envs=1024)  # the same on the GPU
 ```
 
 Pathological variants use prefixes, not a `Fatigue` infix: `myoSarcElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MFixed-v0`, `myoReafHandPoseRandom-v0`.

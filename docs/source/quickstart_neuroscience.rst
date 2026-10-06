@@ -283,8 +283,8 @@ The same features can be listed in an ``EnvConfig``, which builds the CPU env **
        'myoElbowPose1D6MRandom-v0',
        features=((MotorNoiseWrapper, {'motor_noise': {'constant_std': 0.05}}), FatigueWrapper),
    )
-   env = make_env(cfg)                                   # CPU
-   envs = make_env(cfg, backend='mjlab', num_envs=1024)  # GPU twin with the same noise and fatigue
+   env_cpu = make_env(cfg)                               # CPU
+   env_gpu = make_env(cfg, backend='mjlab', num_envs=1024)  # GPU twin with the same noise and fatigue
 
 Each wrapper can be applied **once** per env: a second ``MotorNoiseWrapper`` raises a ``ValueError``, and so does a
 ``FatigueWrapper`` on a ``myoFati*`` id (which already contains it). Wrap the base id, or change the options of the

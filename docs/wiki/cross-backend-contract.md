@@ -141,8 +141,8 @@ registers every env id. On the CPU it calls `gym.make`, which still works.
 ```python
 from myosuite import make_env
 
-env = make_env("myoElbowPose1D6MRandom-v0")                                    # CPU env
-envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=4096)   # same task on the GPU (mjlab twin)
+env_cpu = make_env("myoElbowPose1D6MRandom-v0")                                # CPU env
+env_gpu = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=4096)   # same task on the GPU (mjlab twin)
 ```
 
 **With an `EnvConfig`**, which overrides the registered defaults for every backend in one place:
@@ -158,8 +158,8 @@ cfg = EnvConfig(
     ctrl_dt=0.01,
     features=((MotorNoiseWrapper, {"motor_noise": {"constant_std": 0.05}}), FatigueWrapper),
 )
-env = make_env(cfg)                                    # CPU, with noise and fatigue
-envs = make_env(cfg, backend="mjlab", num_envs=4096)   # GPU twin, with the same noise and fatigue
+env_cpu = make_env(cfg)                                # CPU, with noise and fatigue
+env_gpu = make_env(cfg, backend="mjlab", num_envs=4096)   # GPU twin, with the same noise and fatigue
 ```
 
 Each entry of `features` is a wrapper class (`FatigueWrapper`), a `(class, kwargs)` pair, or a `WrapperSpec`

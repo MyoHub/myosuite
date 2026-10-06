@@ -102,7 +102,7 @@ From Python, for evaluation or your own training loop, ``make_env`` builds the s
 
    from myosuite import make_env
 
-   envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024, device="cuda:0")
+   env_gpu = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024, device="cuda:0")
 
 Pass an ``EnvConfig`` to override the episode length, the control step or the muscle-command features
 (noise, fatigue, ...) for either backend; see ``docs/wiki/cross-backend-contract.md``.
