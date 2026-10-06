@@ -282,7 +282,7 @@ installed wrapper (``env.set_motor_noise(...)``, ``env.set_fatigue_reset_random(
 
 To add your own stage on the muscle excitations (a filter, a cap, per-muscle gains, ...), subclass
 ``ExcitationStage``: a function of the excitations ``u`` and the array module ``xp`` (numpy on the CPU env, torch on
-mjlab), with an ``order`` and an optional ``reset(env_ids)`` that clears per-episode state:
+mjlab), with an optional ``reset(env_ids)`` that clears per-episode state:
 
 .. code-block:: python
 
@@ -290,16 +290,16 @@ mjlab), with an ``order`` and an optional ``reset(env_ids)`` that clears per-epi
    from myosuite.envs.wrappers import ExcitationStageWrapper
 
    class Cap(ExcitationStage):
-       name, order = 'cap', 35            # runs after fatigue (30), before the reroute (40)
+       name = 'cap'                       # runs after the built-in stages, in installation order
        def __call__(self, u, xp):
            return xp.clip(u, 0.0, 0.8)    # only operations numpy and torch share
 
    env = ExcitationStageWrapper(gym.make('myoElbowPose1D6MRandom-v0'), Cap)
 
-The stage runs on the CPU env and, when the id is registered with the wrapper, on the mjlab twin. The order is a
-priority between 10 (the env's own map) and 100 (the ``ctrl`` write); the built-in stages are noise 20, fatigue 30 and
-reroute 40. Two stages with the same order run in name order and raise a ``StageOrderWarning``, so give each custom
-stage its own order. A stage that needs the env itself (``CtrlStageWrapper``) runs on the CPU only. To act on the raw
+The stage runs on the CPU env and, when the id is registered with the wrapper, on the mjlab twin. The built-in stages
+(noise, fatigue, reroute) run in a fixed order; custom stages run after them, in the order they were added. To insert
+one earlier, set ``order`` to a priority between 10 (the env's own map) and 100 (the ``ctrl`` write); the built-ins are
+noise 20, fatigue 30 and reroute 40. Two stages with the same explicit order raise a ``StageOrderWarning``. A stage that needs the env itself (``CtrlStageWrapper``) runs on the CPU only. To act on the raw
 action instead, use a plain ``gym.ActionWrapper``.
 
 To configure both backends, register an env id with a ``MotorNoiseWrapper`` in its

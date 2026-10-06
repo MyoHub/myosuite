@@ -182,7 +182,7 @@ _STAGED = "myoFatiElbowPose1D6MStageTest-v0"
 
 @pytest.fixture(scope="module")
 def staged_id() -> Iterator[str]:
-    """A fatigue registration with a low-pass stage before fatigue (order 25)."""
+    """A fatigue registration with a low-pass stage (no explicit order: after fatigue)."""
     import functools
 
     from myosuite.envs.muscle_stages import LowPassStage
@@ -215,7 +215,7 @@ def test_registration_configures_the_twin_with_the_stage(staged_id: str) -> None
 
 
 def test_twin_matches_cpu_with_a_stateful_stage(staged_id: str) -> None:
-    """Low-pass (order 25) before fatigue (30): CPU env and twin give the same ctrl."""
+    """Low-pass after fatigue (default order): CPU env and twin give the same ctrl."""
     cfg = elbow_pose_env_cfg(staged_id)
     cfg.scene.num_envs = 3
     twin = ManagerBasedRlEnv(cfg=cfg, device="cpu")
@@ -239,7 +239,7 @@ def test_twin_matches_cpu_with_a_stateful_stage(staged_id: str) -> None:
     term.reset(torch.tensor([1]))
     stage = next(st for st in term._stages if st.name == "lowpass").stage
     assert bool(stage._fresh[1]) and not bool(stage._fresh[0])
-    assert term.stage_names == ("noise", "lowpass", "fatigue")
+    assert term.stage_names == ("noise", "fatigue", "lowpass")
     twin.close()
 
 
@@ -335,3 +335,23 @@ def test_twin_matches_cpu_with_sarcopenia_and_fatigue() -> None:
         twin.close()
     finally:
         gym.registry.pop(env_id, None)
+
+
+def test_twin_custom_stage_order_defaults_to_after_the_builtins() -> None:
+    import functools
+
+    from myosuite.envs.muscle_stages import LowPassStage
+
+    cfg = elbow_pose_env_cfg(_BASE)
+    cfg.scene.num_envs = 2
+    cfg.actions["muscles"].excitation_stages = (
+        functools.partial(LowPassStage, 0.5, "a"),
+        functools.partial(LowPassStage, 0.5, "b"),
+        functools.partial(LowPassStage, 0.5, "early", 15),
+    )
+    env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    try:
+        names = env.action_manager.get_term("muscles").stage_names
+        assert names == ("early", "noise", "a", "b")
+    finally:
+        env.close()

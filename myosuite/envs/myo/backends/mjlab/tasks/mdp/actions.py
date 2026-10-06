@@ -23,7 +23,8 @@ MuJoCo actuator order and map it to ``ctrl`` as follows:
    (fresh, ``fatigue_reset_vec`` or ``fatigue_reset_random``); ``reafferentation``
    (40): one actuator's command is rerouted to another and the source is silenced.
    Portable custom stages (:class:`~myosuite.envs.muscle_stages.ExcitationStage`)
-   run between them at their own order.
+   run after them, in the order of ``excitation_stages`` (an explicit ``order`` inserts
+   one earlier).
 
 mjlab's :class:`~mjlab.envs.mdp.actions.BaseAction` only supports affine maps on
 a single transmission type, so this term writes the processed ctrl of every
@@ -43,6 +44,7 @@ from mjlab.managers.action_manager import ActionTerm, ActionTermCfg
 
 from myosuite.core.muscle_conditions import TorchFatigueState
 from myosuite.envs.muscle_stages import (
+    LATE_ORDER,
     STAGE_ORDER,
     ExcitationStage,
     check_custom_order,
@@ -137,7 +139,9 @@ class _CustomStage(_TermStage):
 
     def __init__(self, term: MyoAction, stage: ExcitationStage) -> None:
         self._term, self.stage = term, stage
-        self.name, self.order = stage.name, stage.order
+        self.name = stage.name
+        self.order = LATE_ORDER if stage.order is None else stage.order
+        self.explicit_order = stage.order
 
     def __call__(self, ctrl: torch.Tensor) -> torch.Tensor:
         cols = self._term._muscle_cols
@@ -166,8 +170,8 @@ class MyoActionCfg(ActionTermCfg):
         motor_noise: Noise on muscle excitations, applied before fatigue.
         excitation_stages: Factories of portable custom stages
             (:class:`~myosuite.envs.muscle_stages.ExcitationStage`) on the muscle
-            excitations; each env scene builds its own instances. They run at
-            their ``order`` between the built-in stages.
+            excitations; each env scene builds its own instances. They run after the
+            built-in stages in list order, or at their explicit ``order``.
     """
 
     normalize_act: bool = True
@@ -301,11 +305,13 @@ class MyoAction(ActionTerm):
                 raise ValueError(
                     f"The stage name {custom.name!r} is taken (built-in or twice)."
                 )
-            check_custom_order(custom.name, custom.order)
-            on = {st.name: st.order for st in stages if st.active()}
-            warn_order_clash(custom.name, custom.order, on, 3)
+            check_custom_order(custom.name, custom.explicit_order)
+            if custom.explicit_order is not None:
+                on = {st.name: st.order for st in stages if st.active()}
+                warn_order_clash(custom.name, custom.order, on, 3)
             stages.append(custom)
-        return sorted(stages, key=lambda st: (st.order, st.name))
+        # Stable: stages of equal order keep the list order.
+        return sorted(stages, key=lambda st: st.order)
 
     @property
     def _fatigue(self) -> TorchFatigueState | None:

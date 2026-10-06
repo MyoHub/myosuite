@@ -429,18 +429,44 @@ def test_custom_stage_validation() -> None:
         env.unwrapped.add_ctrl_stage("fatigue", _record("f"), order=99)
 
 
-def test_same_order_warns_prominently_and_runs_in_name_order() -> None:
+def test_custom_stages_default_to_after_the_builtins_in_installation_order() -> None:
+    import warnings
+
+    from myosuite.envs.wrappers import CtrlStageWrapper
+
+    _CALLS.clear()
+    env = gym.make(_ELBOW)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # no StageOrderWarning without explicit orders
+        env = CtrlStageWrapper(env, _record("second"), name="second")
+        env = CtrlStageWrapper(env, _record("first"), name="first")
+        env = CtrlStageWrapper(env, _record("early"), name="early", order=15)
+        env = FatigueWrapper(MotorNoiseWrapper(env, {"constant_std": 0.01}))
+    # built-ins in their fixed order, custom stages after them in installation order
+    assert env.unwrapped.ctrl_stages == (
+        "early",
+        "noise",
+        "fatigue",
+        "second",
+        "first",
+    )
+    env.reset(seed=0)
+    env.step(np.zeros(env.action_space.shape, np.float32))
+    assert _CALLS == ["early", "second", "first"]
+
+
+def test_same_order_warns_prominently_and_runs_in_installation_order() -> None:
     from myosuite.envs.muscle_stages import StageOrderWarning
     from myosuite.envs.wrappers import CtrlStageWrapper
 
     _CALLS.clear()
     env = CtrlStageWrapper(gym.make(_ELBOW), _record("b"), name="b", order=25)
-    with pytest.warns(StageOrderWarning, match="STAGE ORDER CLASH.*'a', 'b'.*order 25"):
+    with pytest.warns(StageOrderWarning, match="STAGE ORDER CLASH.*'b', 'a'.*order 25"):
         env = CtrlStageWrapper(env, _record("a"), name="a", order=25)
-    assert env.unwrapped.ctrl_stages == ("a", "b")
+    assert env.unwrapped.ctrl_stages == ("b", "a")
     env.reset(seed=0)
     env.step(np.zeros(env.action_space.shape, np.float32))
-    assert _CALLS == ["a", "b"]
+    assert _CALLS == ["b", "a"]
     # the clash with a built-in stage warns as well
     with pytest.warns(StageOrderWarning, match="noise"):
         MotorNoiseWrapper(

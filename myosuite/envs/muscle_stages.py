@@ -5,20 +5,24 @@
 """Ordered muscle-command stages that wrappers install in a CPU env.
 
 An env maps its action to a muscle excitation (sigmoid, or as-is for the walk
-envs) and then runs the installed stages in the order of their numeric priority
-(:data:`STAGE_ORDER`) before writing ``ctrl``:
+envs) and then runs the installed stages before writing ``ctrl``:
 
-``map (10) -> noise (20) -> fatigue (30) -> reroute (40) -> ctrl (100)``
+``map (10) -> noise (20) -> fatigue (30) -> reroute (40) -> custom stages -> ctrl (100)``
 
 No stage is installed by default: a plain env runs only its own map. The
 ``myoFati*`` / ``myoReaf*`` ids and the wrappers install them; noise additionally
-needs a nonzero level. The order is a property of the stage, not of the wrapper nesting, so a stack
+needs a nonzero level. The three built-in stages have a fixed order
+(:data:`STAGE_ORDER`), a property of the stage and not of the wrapper nesting, so a stack
 built in any order behaves the same. The wrappers in
 :mod:`myosuite.envs.wrappers` (``MotorNoiseWrapper``, ``FatigueWrapper``,
 ``ReafferentationWrapper``) install one stage each through
-:meth:`CtrlStageHost.add_ctrl_stage`. A custom stage picks its own ``order`` between
-:data:`MAP_ORDER` and :data:`WRITE_ORDER`; two stages with the same order run in name
-order and trigger a :class:`StageOrderWarning`.
+:meth:`CtrlStageHost.add_ctrl_stage`.
+
+**Custom stages** run after the built-in ones, in the order they were installed (the
+wrapping order, or the order of ``EnvConfig.features``): nothing to configure. Only to
+insert one earlier, give it an explicit ``order`` between :data:`MAP_ORDER` and
+:data:`WRITE_ORDER`; two stages with the same explicit order run in installation order and
+trigger a :class:`StageOrderWarning`.
 
 Two kinds of custom stages exist:
 
@@ -47,6 +51,10 @@ WRITE_ORDER = 100
 STAGE_ORDER: dict[str, int] = {"noise": 20, "fatigue": 30, "reroute": 40}
 """Priorities of the built-in stages (fixed, ascending)."""
 
+LATE_ORDER = 50
+"""Priority of a custom stage without an explicit order: after the built-ins, in the
+order the stages were installed."""
+
 CTRL_STAGE_ORDER: tuple[str, ...] = tuple(STAGE_ORDER)
 """Names of the built-in stages in the order they run."""
 
@@ -59,12 +67,9 @@ warnings.simplefilter("always", StageOrderWarning)  # shown on every occurrence
 
 
 def check_custom_order(name: str, order: float | None) -> None:
-    """Raise unless a custom stage has an order strictly between map and ctrl write."""
+    """Raise if an explicit order is not strictly between map and ctrl write (``None`` is fine)."""
     if order is None:
-        raise ValueError(
-            f"The custom stage {name!r} needs an order between {MAP_ORDER} (the env's "
-            f"map) and {WRITE_ORDER} (the ctrl write); built-in stages: {STAGE_ORDER}."
-        )
+        return
     if not MAP_ORDER < order < WRITE_ORDER:
         raise ValueError(
             f"The order of the custom stage {name!r} must be between {MAP_ORDER} and "
@@ -83,12 +88,12 @@ def warn_order_clash(
         installed: ``{stage name: order}`` of the stages already installed.
         stacklevel: Frame the warning is attributed to.
     """
-    clash = sorted([name, *(n for n, o in installed.items() if o == order)])
+    clash = [*(n for n, o in installed.items() if o == order), name]
     if len(clash) > 1:
         warnings.warn(
-            f"STAGE ORDER CLASH: the stages {clash} all have order {order}. They run in name "
-            f"order ({' -> '.join(clash)}), which is arbitrary; give them distinct orders "
-            f"(built-in orders: {STAGE_ORDER}).",
+            f"STAGE ORDER CLASH: the stages {clash} all have order {order}. They run in the "
+            f"order they were installed ({' -> '.join(clash)}); give them distinct orders "
+            f"(built-in orders: {STAGE_ORDER}; custom stages without an order run after them).",
             StageOrderWarning,
             stacklevel=stacklevel,
         )
@@ -107,11 +112,13 @@ class ExcitationStage:
 
     Attributes:
         name: Unique stage name (not a built-in name).
-        order: Priority strictly between :data:`MAP_ORDER` and :data:`WRITE_ORDER`.
+        order: ``None`` (default): runs after the built-in stages, in installation order;
+            or a priority strictly between :data:`MAP_ORDER` and :data:`WRITE_ORDER` to
+            insert it earlier.
     """
 
     name: str = "stage"
-    order: float = 25
+    order: float | None = None
 
     def __call__(self, u: Any, xp: Any) -> Any:  # pragma: no cover - interface
         raise NotImplementedError
@@ -132,7 +139,7 @@ class LowPassStage(ExcitationStage):
     """
 
     def __init__(
-        self, alpha: float = 0.3, name: str = "lowpass", order: float = 25
+        self, alpha: float = 0.3, name: str = "lowpass", order: float | None = None
     ) -> None:
         if not 0.0 < alpha <= 1.0:
             raise ValueError(f"alpha must be in (0, 1], got {alpha}.")
@@ -200,9 +207,8 @@ class CtrlStageHost:
     def _stages_in_order(
         self,
     ) -> list[tuple[str, tuple[float, CtrlStage, ResetStage | None]]]:
-        return sorted(
-            self._stage_store().items(), key=lambda item: (item[1][0], item[0])
-        )
+        # Stable: stages of equal order keep their installation order.
+        return sorted(self._stage_store().items(), key=lambda item: item[1][0])
 
     def add_ctrl_stage(
         self,
@@ -217,14 +223,15 @@ class CtrlStageHost:
             name: A built-in stage (:data:`STAGE_ORDER`) or a new unique name.
             apply: ``apply(env, ctrl) -> ctrl``.
             reset: Optional per-episode reset of the stage's state.
-            order: Priority of a custom stage, strictly between :data:`MAP_ORDER`
-                and :data:`WRITE_ORDER`. Built-in stages have a fixed priority
-                (omit it). The same order as another installed stage triggers a
-                :class:`StageOrderWarning`; those stages run in name order.
+            order: ``None`` (default) for a custom stage: after the built-in stages, in
+                installation order. Or a priority strictly between :data:`MAP_ORDER`
+                and :data:`WRITE_ORDER` to insert it earlier. Built-in stages have a
+                fixed priority (omit it). The same explicit order as another installed
+                stage triggers a :class:`StageOrderWarning`.
 
         Raises:
-            ValueError: If *name* is already installed, a custom stage has no
-                valid *order*, or a built-in stage gets another order.
+            ValueError: If *name* is already installed, an explicit *order* is out of
+                range, or a built-in stage gets another order.
         """
         store = self._stage_store()
         if name in store:
@@ -239,9 +246,12 @@ class CtrlStageHost:
             order = STAGE_ORDER[name]
         else:
             check_custom_order(name, order)
-        warn_order_clash(
-            name, order, {n: o for n, (o, _, _) in store.items()}, stacklevel=4
-        )
+        if order is None:
+            order = LATE_ORDER
+        else:
+            warn_order_clash(
+                name, order, {n: o for n, (o, _, _) in store.items()}, stacklevel=4
+            )
         store[name] = (order, apply, reset)
 
     def remove_ctrl_stage(self, name: str) -> None:
