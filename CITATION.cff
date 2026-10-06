@@ -1,0 +1,108 @@
+cff-version: 1.2.0
+message: "If you use MyoSuite, please cite the MyoSuite paper (preferred-citation). For the full-body MuscleMimic parts, also cite the MuscleMimic paper (references)."
+title: "MyoSuite"
+type: software
+license: Apache-2.0
+repository-code: "https://github.com/MyoHub/myosuite"
+url: "https://myosuite.readthedocs.io"
+authors:
+  - family-names: Caggiano
+    given-names: Vittorio
+  - family-names: Hodossy
+    given-names: Balint
+  - family-names: Fischer
+    given-names: Florian
+  - family-names: Wang
+    given-names: Cheryl
+  - name: "MyoSuite Team"
+preferred-citation:
+  type: conference-paper
+  title: "MyoSuite -- A contact-rich simulation suite for musculoskeletal motor control"
+  authors:
+    - family-names: Caggiano
+      given-names: Vittorio
+    - family-names: Wang
+      given-names: Huawei
+    - family-names: Durandau
+      given-names: Guillaume
+    - family-names: Sartori
+      given-names: Massimo
+    - family-names: Kumar
+      given-names: Vikash
+  collection-title: "Learning for Dynamics and Control (L4DC)"
+  year: 2022
+  doi: 10.48550/arXiv.2205.13600
+  url: "https://arxiv.org/abs/2205.13600"
+references:
+  - type: article
+    title: "Towards Embodied AI with MuscleMimic: Unlocking full-body musculoskeletal motor learning at scale"
+    authors:
+      - family-names: Li
+        given-names: Chengkun
+      - family-names: Wang
+        given-names: Cheryl
+      - family-names: Ziliotto
+        given-names: Bianca
+      - family-names: Simos
+        given-names: Merkourios
+      - family-names: Kovecses
+        given-names: Jozsef
+      - family-names: Durandau
+        given-names: Guillaume
+      - family-names: Mathis
+        given-names: Alexander
+    journal: "arXiv preprint arXiv:2603.25544"
+    year: 2026
+    url: "https://arxiv.org/abs/2603.25544"
+  - type: conference-paper
+    title: "AMASS: Archive of Motion Capture as Surface Shapes"
+    authors:
+      - family-names: Mahmood
+        given-names: Naureen
+      - family-names: Ghorbani
+        given-names: Nima
+      - family-names: Troje
+        given-names: Nikolaus F.
+      - family-names: Pons-Moll
+        given-names: Gerard
+      - family-names: Black
+        given-names: Michael J.
+    collection-title: "International Conference on Computer Vision (ICCV)"
+    year: 2019
+    url: "https://arxiv.org/abs/1904.03278"
+  - type: article
+    title: "Unifying Representations and Large-Scale Whole-Body Motion Databases for Studying Human Motion"
+    authors:
+      - family-names: Mandery
+        given-names: Christian
+      - family-names: Terlemez
+        given-names: Ömer
+      - family-names: Do
+        given-names: Martin
+      - family-names: Vahrenkamp
+        given-names: Nikolaus
+      - family-names: Asfour
+        given-names: Tamim
+    journal: "IEEE Transactions on Robotics"
+    volume: 32
+    issue: 4
+    start: 796
+    end: 809
+    year: 2016
+    doi: 10.1109/TRO.2016.2572685
+  - type: article
+    title: "Retargeting Matters: General Motion Retargeting for Humanoid Motion Tracking"
+    authors:
+      - family-names: Araújo
+        given-names: João Pedro
+      - family-names: Ze
+        given-names: Yanjie
+      - family-names: Xu
+        given-names: Pei
+      - family-names: Wu
+        given-names: Jiajun
+      - family-names: Liu
+        given-names: C. Karen
+    journal: "arXiv preprint arXiv:2510.02252"
+    year: 2025
+    url: "https://arxiv.org/abs/2510.02252"

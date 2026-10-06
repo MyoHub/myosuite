@@ -1,4 +1,4 @@
-## FMG definitions from Daly et al. 2012 (doi.org/10.1123/japa.21.2.186) for shoulder, wrist, and elbow, from Rakshit et al. (doi.org/10.1016/j.jbiomech.2021.110695) for hand/grip, knee, and ankle, and from https://www.kenhub.com/en/library/anatomy/leg-muscles for legs
+## FMG definitions from Daly et al. 2013 (doi.org/10.1123/japa.21.2.186) for shoulder, wrist, and elbow, from Rakshit et al. (doi.org/10.1016/j.jbiomech.2021.110695) for hand/grip, knee, and ankle, and from https://www.kenhub.com/en/library/anatomy/leg-muscles for legs
 FUNCTIONAL_MUSCLE_GROUPS = {
     "Wrist-Extensor",
     "Wrist-Flexor",
