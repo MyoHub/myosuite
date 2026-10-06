@@ -5,28 +5,49 @@
 """Ordered muscle-command stages that wrappers install in a CPU env.
 
 An env maps its action to a muscle excitation (sigmoid, or as-is for the walk
-envs) and then runs the installed stages in the fixed order of
-:data:`CTRL_STAGE_ORDER` before writing ``ctrl``:
+envs) and then runs the installed stages in the order of their numeric priority
+(:data:`STAGE_ORDER`) before writing ``ctrl``:
 
-``map (env) -> noise -> fatigue -> reroute (reafferentation) -> ctrl``
+``map (10) -> noise (20) -> fatigue (30) -> reroute (40) -> ctrl (100)``
 
 The order is a property of the stage, not of the wrapper nesting, so a stack
 built in any order behaves the same. The wrappers in
 :mod:`myosuite.envs.wrappers` (``MotorNoiseWrapper``, ``FatigueWrapper``,
 ``ReafferentationWrapper``) install one stage each through
-:meth:`CtrlStageHost.add_ctrl_stage`.
+:meth:`CtrlStageHost.add_ctrl_stage`. A custom stage (see ``CtrlStageWrapper``)
+picks its own ``order`` between :data:`MAP_ORDER` and :data:`WRITE_ORDER`; two
+stages with the same order run in name order and trigger a
+:class:`StageOrderWarning`. Custom stages exist on the CPU side only: the mjlab
+``MyoAction`` runs the three built-in stages.
 """
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from typing import Any
 
 import mujoco
 import numpy as np
 
-CTRL_STAGE_ORDER: tuple[str, ...] = ("noise", "fatigue", "reroute")
-"""Stages applied after the env's action-to-excitation map, in this order."""
+MAP_ORDER = 10
+"""Priority of the env's own action-to-excitation map; stages run after it."""
+
+WRITE_ORDER = 100
+"""Priority of the ``ctrl`` write; stages run before it."""
+
+STAGE_ORDER: dict[str, int] = {"noise": 20, "fatigue": 30, "reroute": 40}
+"""Priorities of the built-in stages (fixed, ascending)."""
+
+CTRL_STAGE_ORDER: tuple[str, ...] = tuple(STAGE_ORDER)
+"""Names of the built-in stages in the order they run."""
+
+
+class StageOrderWarning(UserWarning):
+    """Two stages have the same order, so their relative order is only the name order."""
+
+
+warnings.simplefilter("always", StageOrderWarning)  # shown on every occurrence
 
 CtrlStage = Callable[[Any, np.ndarray], np.ndarray]
 """``stage(env, ctrl) -> ctrl``: edits (a copy of) the control vector."""
@@ -64,32 +85,71 @@ class CtrlStageHost:
 
     supports_ctrl_stages = True
 
-    def _stage_store(self) -> dict[str, tuple[CtrlStage, ResetStage | None]]:
+    def _stage_store(self) -> dict[str, tuple[float, CtrlStage, ResetStage | None]]:
         return self.__dict__.setdefault("_ctrl_stage_store", {})
 
+    def _stages_in_order(
+        self,
+    ) -> list[tuple[str, tuple[float, CtrlStage, ResetStage | None]]]:
+        return sorted(
+            self._stage_store().items(), key=lambda item: (item[1][0], item[0])
+        )
+
     def add_ctrl_stage(
-        self, name: str, apply: CtrlStage, reset: ResetStage | None = None
+        self,
+        name: str,
+        apply: CtrlStage,
+        reset: ResetStage | None = None,
+        order: float | None = None,
     ) -> None:
-        """Install a stage; it runs at its position in :data:`CTRL_STAGE_ORDER`.
+        """Install a stage; it runs at its priority, after the env's map.
 
         Args:
-            name: One of :data:`CTRL_STAGE_ORDER`.
+            name: A built-in stage (:data:`STAGE_ORDER`) or a new unique name.
             apply: ``apply(env, ctrl) -> ctrl``.
             reset: Optional per-episode reset of the stage's state.
+            order: Priority of a custom stage, strictly between :data:`MAP_ORDER`
+                and :data:`WRITE_ORDER`. Built-in stages have a fixed priority
+                (omit it). The same order as another installed stage triggers a
+                :class:`StageOrderWarning`; those stages run in name order.
 
         Raises:
-            ValueError: If *name* is unknown or already installed.
+            ValueError: If *name* is already installed, a custom stage has no
+                valid *order*, or a built-in stage gets another order.
         """
-        if name not in CTRL_STAGE_ORDER:
-            raise ValueError(
-                f"Unknown stage {name!r}; expected one of {CTRL_STAGE_ORDER}."
-            )
         store = self._stage_store()
         if name in store:
             raise ValueError(
                 f"The {name!r} stage is already installed on this env; wrap it once."
             )
-        store[name] = (apply, reset)
+        if name in STAGE_ORDER:
+            if order is not None and order != STAGE_ORDER[name]:
+                raise ValueError(
+                    f"The built-in {name!r} stage has the fixed order {STAGE_ORDER[name]}."
+                )
+            order = STAGE_ORDER[name]
+        else:
+            if order is None:
+                raise ValueError(
+                    f"The custom stage {name!r} needs an order between {MAP_ORDER} (the env's "
+                    f"map) and {WRITE_ORDER} (the ctrl write); built-in stages: {STAGE_ORDER}."
+                )
+            if not MAP_ORDER < order < WRITE_ORDER:
+                raise ValueError(
+                    f"The order of the custom stage {name!r} must be between {MAP_ORDER} and "
+                    f"{WRITE_ORDER} (exclusive), got {order}."
+                )
+        ties = sorted(n for n, (o, _, _) in store.items() if o == order)
+        if ties:
+            warnings.warn(
+                f"STAGE ORDER CLASH: the stages {sorted([name, *ties])} all have order {order}. "
+                f"They run in name order ({' -> '.join(sorted([name, *ties]))}), which is "
+                "arbitrary; give them distinct orders "
+                f"(built-in orders: {STAGE_ORDER}).",
+                StageOrderWarning,
+                stacklevel=3,
+            )
+        store[name] = (order, apply, reset)
 
     def remove_ctrl_stage(self, name: str) -> None:
         """Uninstall a stage (no-op if it is not installed)."""
@@ -98,8 +158,7 @@ class CtrlStageHost:
     @property
     def ctrl_stages(self) -> tuple[str, ...]:
         """Names of the installed stages, in the order they run."""
-        store = self._stage_store()
-        return tuple(name for name in CTRL_STAGE_ORDER if name in store)
+        return tuple(name for name, _ in self._stages_in_order())
 
     @property
     def muscle_fatigue(self) -> Any:
@@ -111,7 +170,7 @@ class CtrlStageHost:
         stage = self._stage_store().get("fatigue")
         if stage is None:
             raise AttributeError("muscle_fatigue: no FatigueWrapper on this env")
-        return stage[0].fatigue
+        return stage[1].fatigue
 
     def _stage_muscle_index(self) -> Any:
         """Entries of ``ctrl`` that are muscle excitations."""
@@ -125,18 +184,15 @@ class CtrlStageHost:
 
     def _run_ctrl_stages(self, ctrl: np.ndarray) -> np.ndarray:
         """Apply the installed stages to the excitation vector *ctrl*."""
-        store = self._stage_store()
-        for name in CTRL_STAGE_ORDER:
-            if name in store:
-                ctrl = store[name][0](self, ctrl)
+        for _, (_, apply, _) in self._stages_in_order():
+            ctrl = apply(self, ctrl)
         return ctrl
 
     def _run_reset_stages(self) -> None:
         """Reset the installed stages for a new episode."""
-        store = self._stage_store()
-        for name in CTRL_STAGE_ORDER:
-            if name in store and store[name][1] is not None:
-                store[name][1](self)
+        for _, (_, _, reset) in self._stages_in_order():
+            if reset is not None:
+                reset(self)
 
 
 def noise_stage(get_cfg: Callable[[], Any]) -> CtrlStage:

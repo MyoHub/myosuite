@@ -55,7 +55,7 @@ full commit list.
 * **MuscleMimic baseline:** a single-clip walking policy (2B steps; 86% of episodes reach the clip end) on Hugging Face, see `docs/baseline_checkpoints.md`.
 * **Fatigue:** muscle-group- and sex-specific fatigue parameters from the literature (Rakshit et al. 2021; Frey-Law et al. 2012), episode-persistent and resumable states, torch 3CC-r parity with the CPU model ([#406], [#421], [#491]).
 * **Targets:** `GoalSpec(target_type="site_positions")` samples per-episode targets from per-site ranges on CPU and MJX (mjlab helper `site_position_command_cfg`); `MotionClip` carries optional per-frame `weights` (#410).
-* **Muscle-command wrappers:** `MotorNoiseWrapper` (signal-dependent + constant Gaussian noise on muscle excitations, `MotorNoiseCfg.van_beers_2004()`), `FatigueWrapper`, `ReafferentationWrapper` and `SarcopeniaWrapper`; each installs a stage of the env's action pipeline, run in a fixed order (`map -> noise -> fatigue -> reroute`), also on the mjlab twins ([#488], [#502]).
+* **Muscle-command wrappers:** `MotorNoiseWrapper` (signal-dependent + constant Gaussian noise on muscle excitations, `MotorNoiseCfg.van_beers_2004()`), `FatigueWrapper`, `ReafferentationWrapper` and `SarcopeniaWrapper`; each installs a stage of the env's action pipeline, run by priority (`map -> noise -> fatigue -> reroute`), also on the mjlab twins; `CtrlStageWrapper` adds custom stages at any order, and a clash of two orders raises a `StageOrderWarning` ([#488], [#502]).
 * **Tutorials and docs:** numbered tracks with companion files in `tutorials/files/X.Y/`, SAR tutorials and pretrained pickles, a fatigue tutorial, quickstarts, environment reference, backend-parity and baselines pages ([#406], [#454], [#455]).
 
 ### Changed

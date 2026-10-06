@@ -42,6 +42,10 @@ fatigue_reset_random=True)``, or change the options with
 
 :class:`SarcopeniaWrapper`
     Muscle force reduction applied to the model (``myoSarc*`` envs).
+
+:class:`CtrlStageWrapper`
+    A custom stage on the muscle excitations (filter, rate limit, gains, failures, ...)
+    at an order of your choice, between the env's map and the ``ctrl`` write.
 """
 
 from __future__ import annotations
@@ -473,6 +477,76 @@ _CONDITION_WRAPPERS = {
     "fatigue": "FatigueWrapper",
     "reafferentation": "ReafferentationWrapper",
 }
+
+
+class CtrlStageWrapper(
+    _PicklableStage, _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
+    """A custom stage on the muscle excitations, at an order of your choice.
+
+    The stage runs after the env's action-to-excitation map and before ``ctrl`` is
+    written, between the built-in stages according to its ``order`` (noise 20, fatigue
+    30, reroute 40; the env's map is 10 and the ``ctrl`` write 100). To act on the raw
+    ``[-1, 1]`` action instead, use a plain ``gym.ActionWrapper`` on the outside.
+
+    Two stages with the same order run in name order and raise a
+    :class:`~myosuite.envs.muscle_stages.StageOrderWarning`: give every custom stage its
+    own order. Custom stages exist on the CPU side only; the mjlab ``MyoAction`` runs the
+    built-in ones.
+
+    Example::
+
+        def rate_limit(env, ctrl):
+            idx = env._stage_muscle_index()
+            ctrl[idx] = np.clip(ctrl[idx], 0.0, 0.8)  # cap the excitation
+            return ctrl
+
+        env = CtrlStageWrapper(gym.make("myoElbowPose1D6MRandom-v0"), rate_limit,
+                               name="cap", order=25)  # after noise, before fatigue
+
+    Args:
+        env: Env whose pipeline runs muscle stages.
+        apply: ``apply(env, ctrl) -> ctrl`` with the host env and the excitation vector
+            (edit it in place or return a new one). Use a module-level function so that
+            the wrapped env can be pickled.
+        name: A unique stage name (not one of the built-in names).
+        order: Priority, strictly between 10 and 100.
+        reset: Optional ``reset(env)`` called where the env resets its muscle state.
+
+    Raises:
+        ValueError: If the name is built-in or already installed, or the order is
+            out of range.
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        apply: muscle_stages.CtrlStage,
+        name: str,
+        order: float,
+        reset: muscle_stages.ResetStage | None = None,
+    ) -> None:
+        RecordConstructorArgs.__init__(
+            self, apply=apply, name=name, order=order, reset=reset
+        )
+        gym.Wrapper.__init__(self, env)
+        if name in muscle_stages.STAGE_ORDER:
+            raise ValueError(
+                f"{name!r} is a built-in stage; use its wrapper, or pick another name."
+            )
+        self.stage_name, self.stage_order = name, order
+        self._apply, self._reset = apply, reset
+        _stage_host(env, "CtrlStageWrapper").add_ctrl_stage(
+            name, apply, reset, order=order
+        )
+
+    def _pickle_kwargs(self) -> dict[str, Any]:
+        return {
+            "apply": self._apply,
+            "name": self.stage_name,
+            "order": self.stage_order,
+            "reset": self._reset,
+        }
 
 
 def condition_wrapper_specs(condition: str, **kwargs: Any) -> tuple[WrapperSpec, ...]:

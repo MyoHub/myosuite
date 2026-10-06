@@ -85,13 +85,21 @@ spec. Constructor kwargs `muscle_condition`, `fatigue_reset_vec`, `fatigue_reset
 `motor_noise` no longer exist: an env raises a `TypeError` that names the replacement.
 
 Each wrapper installs one **stage** in the env's action pipeline
-(`myosuite.envs.muscle_stages.CtrlStageHost.add_ctrl_stage`). The stages run in a fixed order, set by
+(`myosuite.envs.muscle_stages.CtrlStageHost.add_ctrl_stage`). The stages run by numeric priority, set by
 the stage and not by the wrapping order:
 
 ```
-clip action -> env map (sigmoid, or as-is for the walk envs, or clipped ctrl when
-normalize_act=False) -> noise -> fatigue -> reroute (reafferentation) -> ctrl
+clip action -> env map (10: sigmoid, or as-is for the walk envs, or clipped ctrl when
+normalize_act=False) -> noise (20) -> fatigue (30) -> reroute (40, reafferentation) -> ctrl (100)
 ```
+
+**Custom stages.** `CtrlStageWrapper(env, apply, name=..., order=...)` adds your own stage on the muscle
+excitations (a filter, a rate limit, per-muscle gains, muscle failure, ...) at any order strictly between 10 and
+100, so before, between or after the built-in ones. `apply(env, ctrl) -> ctrl` should be a module-level function
+(the wrapped env is pickled by some tools). Two stages with the **same order** run in name order and raise a
+`StageOrderWarning` (also for a clash with a built-in order): give every custom stage its own order. To act on the
+raw `[-1, 1]` action (a delay, say), use a plain `gym.ActionWrapper` on the outside instead. Custom stages exist on the
+CPU side only; mjlab's `MyoAction` runs the built-in stages.
 
 mjlab applies the same order in `MyoAction`; `cpu_reference.action_cfg` builds it from the
 registration's wrapper specs, so registering an env id with a wrapper configures both halves. The

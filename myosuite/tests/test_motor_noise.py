@@ -343,3 +343,103 @@ def test_wrapped_env_survives_pickle_and_deepcopy() -> None:
         assert clone.muscle_fatigue is clone.unwrapped.muscle_fatigue
         assert clone.motor_noise == MotorNoiseCfg(constant_std=0.05)
         np.testing.assert_array_equal(_rollout(clone, 0), _rollout(env, 0))
+
+
+# ── custom stages ────────────────────────────────────────────────────────────
+
+_CALLS: list[str] = []
+
+
+def _record(label: str):
+    def apply(env, ctrl):
+        _CALLS.append(label)
+        return ctrl
+
+    return apply
+
+
+def _cap(env, ctrl):
+    """Module-level, so that the wrapped env can be pickled."""
+    idx = env._stage_muscle_index()
+    ctrl[idx] = np.minimum(ctrl[idx], 0.3)
+    return ctrl
+
+
+def _count_resets(env) -> None:
+    _CALLS.append("reset")
+
+
+def test_custom_stages_run_by_priority_between_the_built_in_ones() -> None:
+    from myosuite.envs.wrappers import CtrlStageWrapper
+
+    _CALLS.clear()
+    env = gym.make("myoFatiElbowPose1D6MRandom-v0")
+    # wrapped in the "wrong" order on purpose
+    for name, order in (("late", 50), ("early", 15), ("mid", 25)):
+        env = CtrlStageWrapper(env, _record(name), name=name, order=order)
+    env = MotorNoiseWrapper(env, {"constant_std": 0.01})
+    assert env.unwrapped.ctrl_stages == ("early", "noise", "mid", "fatigue", "late")
+    env.reset(seed=0)
+    env.step(np.zeros(env.action_space.shape, np.float32))
+    assert _CALLS == ["early", "mid", "late"]
+
+
+def test_custom_stage_changes_the_control_and_resets_with_the_env() -> None:
+    from myosuite.envs.wrappers import CtrlStageWrapper
+
+    _CALLS.clear()
+    env = CtrlStageWrapper(
+        gym.make(_ELBOW), _cap, name="cap", order=25, reset=_count_resets
+    )
+    env.reset(seed=0)
+    env.step(np.ones(env.action_space.shape, np.float32))  # sigmoid(1) = 0.92
+    base = env.unwrapped
+    assert base.data.ctrl[base._muscle_act_ind].max() <= 0.3 + 1e-6
+    assert _CALLS == ["reset"]
+
+
+def test_custom_stage_validation() -> None:
+    from myosuite.envs.wrappers import CtrlStageWrapper
+
+    env = gym.make(_ELBOW)
+    for bad in (10, 100, 5, 500):
+        with pytest.raises(ValueError, match="between 10 and 100"):
+            CtrlStageWrapper(env, _record("x"), name="x", order=bad)
+    with pytest.raises(ValueError, match="built-in"):
+        CtrlStageWrapper(env, _record("x"), name="noise", order=25)
+    env = CtrlStageWrapper(env, _record("x"), name="x", order=25)
+    with pytest.raises(ValueError, match="already installed"):
+        CtrlStageWrapper(env, _record("x"), name="x", order=26)
+    with pytest.raises(ValueError, match="fixed order"):
+        env.unwrapped.add_ctrl_stage("fatigue", _record("f"), order=99)
+
+
+def test_same_order_warns_prominently_and_runs_in_name_order() -> None:
+    from myosuite.envs.muscle_stages import StageOrderWarning
+    from myosuite.envs.wrappers import CtrlStageWrapper
+
+    _CALLS.clear()
+    env = CtrlStageWrapper(gym.make(_ELBOW), _record("b"), name="b", order=25)
+    with pytest.warns(StageOrderWarning, match="STAGE ORDER CLASH.*'a', 'b'.*order 25"):
+        env = CtrlStageWrapper(env, _record("a"), name="a", order=25)
+    assert env.unwrapped.ctrl_stages == ("a", "b")
+    env.reset(seed=0)
+    env.step(np.zeros(env.action_space.shape, np.float32))
+    assert _CALLS == ["a", "b"]
+    # the clash with a built-in stage warns as well
+    with pytest.warns(StageOrderWarning, match="noise"):
+        MotorNoiseWrapper(
+            CtrlStageWrapper(gym.make(_ELBOW), _record("c"), name="c", order=20),
+            {"constant_std": 0.01},
+        )
+
+
+def test_custom_stage_survives_pickle() -> None:
+    import pickle
+
+    from myosuite.envs.wrappers import CtrlStageWrapper
+
+    env = CtrlStageWrapper(gym.make(_ELBOW), _cap, name="cap", order=25)
+    clone = pickle.loads(pickle.dumps(env))
+    assert clone.unwrapped.ctrl_stages == ("cap",)
+    np.testing.assert_array_equal(_rollout(clone, 0), _rollout(env, 0))
