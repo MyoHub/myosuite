@@ -72,7 +72,7 @@ class _ForwardPublicAttributes:
     """Forward public attributes the wrapper lacks to the wrapped env.
 
     Gymnasium 1.0 dropped this from ``Wrapper``, so ``env.mj_render()`` on the env
-    returned by ``gym.make`` raised ``AttributeError`` (use ``env.unwrapped`` or
+    returned by ``make_env`` raised ``AttributeError`` (use ``env.unwrapped`` or
     ``env.get_wrapper_attr(name)``). The outermost wrapper of every registered
     MyoSuite env restores it. Private names are not forwarded.
     """
@@ -704,7 +704,7 @@ def apply_features(env: gym.Env, features: Iterable[WrapperSpec]) -> gym.Env:
     """Wrap *env* in the wrappers of *features* (the stage order is fixed, not the list's).
 
     Args:
-        env: A CPU env (as made by ``gym.make``).
+        env: A CPU env (as made by ``make_env``).
         features: Wrapper specs, e.g. from :func:`wrapper_spec`.
 
     Returns:
