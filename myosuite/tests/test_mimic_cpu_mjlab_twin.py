@@ -6,11 +6,13 @@
 
 As in ``test_mjlab_cpu_twins``: the mjlab env is synced to the CPU state and
 target, the observations of that state are compared, both take the same
-action, and observation and reward are compared again.
+action, and observation and reward are compared again. Also: the mjlab step
+makes no avoidable host syncs.
 """
 
 from __future__ import annotations
 
+import copy
 import functools
 from typing import Any
 
@@ -116,3 +118,37 @@ def test_one_step_parity_with_the_mjlab_twin(env_id: str) -> None:
         assert cpu_rew > 0.1
     mj.close()
     cpu.close()
+
+
+def test_random_target_steps_sync_only_to_detect_resets() -> None:
+    """A step reads no host data, except one reset check on a step that reset an env.
+
+    Every observation term (in three groups) and the reward re-checked the
+    targets for an episode restart (a ``reset.any()`` host read) and indexed
+    sites with a NumPy array (a host-to-device copy): 17 host syncs per step.
+    """
+    require_mjlab()
+    require_mujoco_warp()
+    require_musclemimic_models()
+    from mjlab.envs import ManagerBasedRlEnv
+
+    from myosuite.tests.support.host_sync import HostSyncCounter
+
+    # A copy: the mimic term cache is per env cfg.
+    cfg = copy.deepcopy(_registered_play_cfgs()["myoMimicBimanual-v0"])
+    mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    try:
+        mj.reset()
+        mj.episode_length_buf[0] = mj.max_episode_length - 2  # time-out on step 2
+        action = torch.zeros(1, mj.action_manager.total_action_dim)
+        mj.step(action)  # sees the counter write: one reset check
+        resets = []
+        for _ in range(3):
+            with HostSyncCounter(package_only=True) as syncs:
+                mj.step(action)
+            reset = bool(mj.reset_buf.any())
+            resets.append(reset)
+            assert syncs.total <= int(reset), syncs.report()
+        assert resets == [True, False, False]
+    finally:
+        mj.close()

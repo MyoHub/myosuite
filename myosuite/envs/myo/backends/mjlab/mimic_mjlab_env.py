@@ -68,6 +68,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from myosuite.core.trajectory_io import MotionClip
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
 from myosuite.physics.quat_math import quat2mat
 from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
 
@@ -231,7 +232,10 @@ def _clip_has_required_indices(
     return bool(np.isin(required_arr, indices).all())
 
 
-def _select_clip_columns(values: Any, indices: np.ndarray | None) -> Any:
+def _select_clip_columns(
+    values: Any, indices: np.ndarray | None, index: Any | None = None
+) -> Any:
+    """Columns *indices* of *values*; *index* is the same indices as a device tensor."""
     if values is None or indices is None:
         return None
     if values.shape[-1] == int(indices.size) and np.array_equal(
@@ -241,11 +245,22 @@ def _select_clip_columns(values: Any, indices: np.ndarray | None) -> Any:
     if hasattr(values, "index_select") and hasattr(values, "device"):
         import torch
 
-        return values.index_select(
-            1,
-            torch.as_tensor(indices, device=values.device, dtype=torch.long),
-        )
+        if index is None:
+            index = torch.as_tensor(indices, device=values.device, dtype=torch.long)
+        return values.index_select(1, index)
     return values[..., indices]
+
+
+def _clip_columns(
+    cache: dict[str, Any], name: str, values: Any, indices: np.ndarray | None
+) -> Any:
+    """:func:`_select_clip_columns` with the index uploaded once per cache."""
+    import torch
+
+    if values is None or indices is None:
+        return None
+    index = _device_constant(cache, f"{name}_cols", indices, values.device, torch.long)
+    return _select_clip_columns(values, indices, index)
 
 
 # ---------------------------------------------------------------------------
@@ -469,10 +484,115 @@ def _mimic_episode_steps(env: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
+def _tensor_state(tensor: Any) -> tuple[Any, int] | None:
+    """*tensor* with its in-place version counter, or ``None`` if it keeps none.
+
+    Equal states (the same object at the same version) hold equal values: every
+    in-place write bumps the version, as ``torch.utils.checkpoint`` relies on.
+    Inference tensors (and ``None``) keep no version, so they never compare equal.
+    """
+    try:
+        return tensor, tensor._version
+    except (AttributeError, RuntimeError):
+        return None
+
+
+def _target_inputs(env: Any, cache: dict[str, Any]) -> tuple[Any, ...]:
+    """States of the tensors the step's targets derive from.
+
+    The per-env step counter and, in trajectory mode, the clip source's start
+    offsets (and clip indices of a clip bank), which reset events rewrite.
+    """
+    source = cache.get("clip_source")
+    tensors = [_mimic_episode_steps(env)]
+    if source is not None:
+        tensors.append(getattr(source, "_start_offsets", None))
+        if hasattr(source, "_clip_indices"):
+            tensors.append(source._clip_indices)
+    return tuple(_tensor_state(t) for t in tensors)
+
+
+def _same_state(a: tuple[Any, int] | None, b: tuple[Any, int] | None) -> bool:
+    return a is not None and b is not None and a[0] is b[0] and a[1] == b[1]
+
+
+_CURRENT, _STEPPED, _CHANGED = "current", "stepped", "changed"
+
+
+def _target_inputs_change(env: Any, cache: dict[str, Any]) -> str:
+    """How the target inputs changed since the last sync of *cache*.
+
+    ``"current"``: unchanged, the synced targets hold.  ``"stepped"``: only
+    mjlab's per-step ``episode_length_buf += 1`` (one in-place write to the same
+    buffer while ``common_step_counter`` advanced by one), which cannot start
+    an episode.  ``"changed"``: anything else (resets, a replaced buffer, new
+    clip offsets), which needs the reset check.
+    """
+    synced = cache.get("synced_inputs")
+    current = _target_inputs(env, cache)
+    if synced is None or len(current) != len(synced):
+        return _CHANGED
+    if all(_same_state(a, b) for a, b in zip(current, synced)):
+        return _CURRENT
+    step_now, step_then = current[0], synced[0]
+    counter = getattr(env, "common_step_counter", None)
+    synced_counter = cache.get("synced_step_counter")
+    if (
+        all(_same_state(a, b) for a, b in zip(current[1:], synced[1:]))
+        and step_now is not None
+        and step_then is not None
+        and step_now[0] is step_then[0]
+        and step_now[1] == step_then[1] + 1
+        and isinstance(counter, int)
+        and isinstance(synced_counter, int)
+        and counter == synced_counter + 1
+    ):
+        return _STEPPED
+    return _CHANGED
+
+
+def _clip_value(cache: dict[str, Any], name: str, compute: Callable[[], Any]) -> Any:
+    """Clip-only value *name* of the synced step, computed once per target sync.
+
+    The observation groups, the reward and the terminations of a step share it.
+    """
+    values = cache.setdefault("clip_values", {})
+    if name not in values:
+        values[name] = compute()
+    return values[name]
+
+
+def _device_constant(
+    cache: dict[str, Any], name: str, value: Any, device: Any, dtype: Any
+) -> Any:
+    """Host array *value* as a tensor on *device*, uploaded once per cache.
+
+    Indexing a device tensor with a NumPy array, or ``torch.as_tensor`` of one,
+    copies it to the device (a host sync) on every call.
+    """
+    import torch
+
+    consts = cache.setdefault("device_constants", {})
+    tensor = consts.get(name)
+    if tensor is None or tensor.device != torch.device(device):
+        tensor = torch.as_tensor(np.asarray(value), dtype=dtype, device=device)
+        consts[name] = tensor
+    return tensor
+
+
+def _site_index(cache: dict[str, Any], device: Any) -> Any:
+    """``cache["site_ids"]`` (tracked model sites) as a device index."""
+    import torch
+
+    return _device_constant(cache, "site_ids", cache["site_ids"], device, torch.long)
+
+
 def _sync_mimic_mjlab_targets(
     env: Any,
     entity_name: str,
     cache: dict[str, Any],
+    *,
+    check_resets: bool = True,
 ) -> None:
     """Update ``cache["target_torch"]`` for the current step.
 
@@ -484,6 +604,9 @@ def _sync_mimic_mjlab_targets(
         env: mjlab environment instance.
         entity_name: Scene entity name (e.g. ``"mimic_bimanual_robot"``).
         cache: Per-env cache dict produced by :func:`_resolve_mimic_mjlab_ids`.
+        check_resets: ``False`` when the step counter only advanced since the
+            last sync, so no episode can have restarted: skips the reset
+            check (a host sync on a GPU).
     """
     import torch
 
@@ -493,7 +616,7 @@ def _sync_mimic_mjlab_targets(
     if clip_source is not None:
         # --- Trajectory mode: targets come from the MotionClip ---
         step = _mimic_episode_steps(env)  # (N,) int64
-        clip_source.update(step)
+        clip_source.update(step, check_resets=check_resets)
         cache["target_torch"] = clip_source.site_targets(step)  # (N, n_tracked, 3)
     else:
         # --- Random mode: each env resamples when its own episode restarts ---
@@ -505,11 +628,14 @@ def _sync_mimic_mjlab_targets(
             reset = torch.ones(n_env, dtype=torch.bool, device=step.device)
         else:
             reset = step < last
-        if bool(reset.any()):
+        resample = (
+            target is None or last is None or (check_resets and bool(reset.any()))
+        )
+        if resample:
             n_sites = int(cache["site_ids"].shape[0])
             device = data.qpos.device
-            lo = torch.as_tensor(cache["lo"], device=device, dtype=torch.float32)
-            hi = torch.as_tensor(cache["hi"], device=device, dtype=torch.float32)
+            lo = _device_constant(cache, "lo", cache["lo"], device, torch.float32)
+            hi = _device_constant(cache, "hi", cache["hi"], device, torch.float32)
             u = torch.rand((n_env, n_sites, 3), device=device, dtype=torch.float32)
             fresh = lo + (hi - lo) * u
             cache["target_torch"] = (
@@ -518,6 +644,9 @@ def _sync_mimic_mjlab_targets(
                 else torch.where(reset.to(device)[:, None, None], fresh, target)
             )
         cache["last_step"] = step.clone()
+    cache["clip_values"] = {}  # derived from the previous inputs
+    cache["synced_inputs"] = _target_inputs(env, cache)
+    cache["synced_step_counter"] = getattr(env, "common_step_counter", None)
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +666,10 @@ def _resolve_mimic_mjlab_ids(
     On the first call for a given ``(env, entity_name, variant)`` triple the
     cache is populated with model site ids, box bounds, tracking config, and
     (optionally) a :class:`~myosuite.envs.myo.backends.mjlab.clip_trajectory_source.ClipTrajectorySource`.
-    Subsequent calls just synchronise the targets and return the cached dict.
+    Subsequent calls synchronise the targets when their inputs (the step
+    counter, the clip start offsets) changed since the last sync, so the
+    terms of one step phase share one sync instead of each repeating it; the
+    reset check (a host sync on a GPU) is skipped after a plain env step.
 
     Args:
         env: mjlab environment instance.
@@ -556,7 +688,11 @@ def _resolve_mimic_mjlab_ids(
     key = _mimic_cache_key(env, entity_name, variant)
     if key in _mimic_mjlab_cache:
         cache = _mimic_mjlab_cache[key]
-        _sync_mimic_mjlab_targets(env, entity_name, cache)
+        change = _target_inputs_change(env, cache)
+        if change != _CURRENT:
+            _sync_mimic_mjlab_targets(
+                env, entity_name, cache, check_resets=change == _CHANGED
+            )
         return cache
 
     if variant == "bimanual":
@@ -657,7 +793,7 @@ def _mimic_obs_qpos(entity_name: str) -> Callable[[Any], Any]:
     """Joint positions ``(N, nq)``."""
 
     def _fn(env: Any) -> Any:
-        return env.scene[entity_name].data.data.qpos.clone()
+        return MjlabEntityAccessor(env, entity_name).joint_pos().clone()
 
     return _fn
 
@@ -666,9 +802,8 @@ def _mimic_obs_qvel(entity_name: str) -> Callable[[Any], Any]:
     """Joint velocities scaled by ctrl_dt, ``(N, nv)``."""
 
     def _fn(env: Any) -> Any:
-        data = env.scene[entity_name].data.data
         ctrl_dt = env.physics_dt * env.cfg.decimation
-        return data.qvel * ctrl_dt
+        return MjlabEntityAccessor(env, entity_name).joint_vel() * ctrl_dt
 
     return _fn
 
@@ -682,6 +817,21 @@ def _mimic_obs_act(entity_name: str) -> Callable[[Any], Any]:
     return _fn
 
 
+def _tracked_site_pos(env: Any, entity_name: str, cache: dict[str, Any]) -> Any:
+    """World positions of the tracked sites, ``(N, n_tracked, 3)``."""
+    site_xpos = env.scene[entity_name].data.data.site_xpos
+    return site_xpos[:, _site_index(cache, site_xpos.device), :]
+
+
+def _clip_ref(env: Any, cache: dict[str, Any], name: str) -> Any:
+    """``ref_qpos`` / ``ref_qvel`` / ``phase`` / ``clip_end`` of the clip source
+    at the current step (computed once per target sync)."""
+    source = cache["clip_source"]
+    return _clip_value(
+        cache, name, lambda: getattr(source, name)(_mimic_episode_steps(env))
+    )
+
+
 def _mimic_obs_site_pos(
     entity_name: str,
     variant: str,
@@ -691,11 +841,8 @@ def _mimic_obs_site_pos(
     """Current tracked site positions, flattened to ``(N, n_tracked * 3)``."""
 
     def _fn(env: Any) -> Any:
-        ids = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)[
-            "site_ids"
-        ]
-        data = env.scene[entity_name].data.data
-        pos = data.site_xpos[:, ids, :]
+        cache = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)
+        pos = _tracked_site_pos(env, entity_name, cache)
         return pos.reshape(pos.shape[0], -1)
 
     return _fn
@@ -729,12 +876,9 @@ def _mimic_obs_err(
 
     def _fn(env: Any) -> Any:
         cache = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)
-        ids = cache["site_ids"]
         tgt = cache["target_torch"]
         assert tgt is not None
-        data = env.scene[entity_name].data.data
-        pos = data.site_xpos[:, ids, :]
-        err = tgt - pos
+        err = tgt - _tracked_site_pos(env, entity_name, cache)
         return err.reshape(err.shape[0], -1)
 
     return _fn
@@ -767,12 +911,11 @@ def _mimic_obs_clip_ref_qpos(
 
     def _fn(env: Any) -> Any:
         cache = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)
-        clip_source = cache.get("clip_source")
-        if clip_source is None:
+        if cache.get("clip_source") is None:
             raise RuntimeError(
                 "clip_ref_qpos obs requires trajectory mode (clip_source is None)"
             )
-        ref = clip_source.ref_qpos(_mimic_episode_steps(env))
+        ref = _clip_ref(env, cache, "ref_qpos")
         if ref is None:
             raise RuntimeError("clip.qpos is not available in this MotionClip")
         return ref
@@ -790,12 +933,11 @@ def _mimic_obs_clip_ref_qvel(
 
     def _fn(env: Any) -> Any:
         cache = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)
-        clip_source = cache.get("clip_source")
-        if clip_source is None:
+        if cache.get("clip_source") is None:
             raise RuntimeError(
                 "clip_ref_qvel obs requires trajectory mode (clip_source is None)"
             )
-        ref = clip_source.ref_qvel(_mimic_episode_steps(env))
+        ref = _clip_ref(env, cache, "ref_qvel")
         if ref is None:
             raise RuntimeError("clip.qvel is not available in this MotionClip")
         return ref
@@ -813,12 +955,11 @@ def _mimic_obs_clip_phase(
 
     def _fn(env: Any) -> Any:
         cache = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)
-        clip_source = cache.get("clip_source")
-        if clip_source is None:
+        if cache.get("clip_source") is None:
             raise RuntimeError(
                 "clip_phase obs requires trajectory mode (clip_source is None)"
             )
-        return clip_source.phase(_mimic_episode_steps(env))
+        return _clip_ref(env, cache, "phase")
 
     return _fn
 
@@ -844,11 +985,9 @@ def _mimic_tracking_reward(
 
         cache = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)
         tracking: MimicTrackingConfig = cache["tracking"]
-        ids = cache["site_ids"]
         tgt = cache["target_torch"]
         assert tgt is not None
-        data = env.scene[entity_name].data.data
-        pos = data.site_xpos[:, ids, :]
+        pos = _tracked_site_pos(env, entity_name, cache)
         return mimic_site_tracking_reward(
             torch, pos, tgt, scale=tracking.reward_scale
         )  # (N,)
@@ -894,23 +1033,19 @@ def _mimic_deepmimic_reward(
 
         cache = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)
         resolved_clip: MotionClip | None = cache.get("clip")
-        ids = cache["site_ids"]
         tgt_sites = cache["target_torch"]  # (N, n_sites, 3)
         assert tgt_sites is not None
         data = env.scene[entity_name].data.data
-        cur_sites = data.site_xpos[:, ids, :]  # (N, n_sites, 3)
-
-        clip_source: ClipTrajectorySource | None = cache.get("clip_source")
-        step = _mimic_episode_steps(env)
+        cur_sites = _tracked_site_pos(env, entity_name, cache)  # (N, n_sites, 3)
 
         if (
-            clip_source is not None
+            cache.get("clip_source") is not None
             and resolved_clip is not None
             and resolved_clip.qpos is not None
             and resolved_clip.qvel is not None
         ):
-            ref_qpos = clip_source.ref_qpos(step)  # (N, nq)  or None
-            ref_qvel = clip_source.ref_qvel(step)  # (N, nv) or None
+            ref_qpos = _clip_ref(env, cache, "ref_qpos")  # (N, nq)  or None
+            ref_qvel = _clip_ref(env, cache, "ref_qvel")  # (N, nv) or None
         else:
             ref_qpos = None
             ref_qvel = None
@@ -925,10 +1060,10 @@ def _mimic_deepmimic_reward(
         ref_qvel_full = ref_qvel
         qpos_indices = resolved_clip.qpos_model_indices
         qvel_indices = resolved_clip.qvel_model_indices
-        cur_qpos = _select_clip_columns(data.qpos, qpos_indices)
-        cur_qvel = _select_clip_columns(data.qvel, qvel_indices)
-        ref_qpos = _select_clip_columns(ref_qpos_full, qpos_indices)
-        ref_qvel = _select_clip_columns(ref_qvel_full, qvel_indices)
+        cur_qpos = _clip_columns(cache, "qpos", data.qpos, qpos_indices)
+        cur_qvel = _clip_columns(cache, "qvel", data.qvel, qvel_indices)
+        ref_qpos = _clip_columns(cache, "qpos", ref_qpos_full, qpos_indices)
+        ref_qvel = _clip_columns(cache, "qvel", ref_qvel_full, qvel_indices)
 
         # A fixed-base entity (bimanual) has no root: qpos[:7] are hinge angles.
         free_root = not env.scene[entity_name].is_fixed_base
@@ -993,6 +1128,28 @@ def _mimic_obs_lookahead(
         stride: Frame stride between steps.
     """
 
+    def _future(env: Any, clip_source: Any, root_pos: bool, root_vel: bool) -> Any:
+        """Clip part of the lookahead: future sites, root pos/vel and phase."""
+        import torch
+
+        step = _mimic_episode_steps(env)  # (N,)
+        clip_lengths = clip_source.clip_lengths(step)
+        cur_frames = clip_source.frame_indices(step)
+        frames = [(cur_frames + i * stride) % clip_lengths for i in range(1, k + 1)]
+        sites = torch.stack([clip_source.site_targets_at_frames(f) for f in frames], 1)
+        rpos = rvel = None
+        if root_pos and clip_source.ref_qpos(step) is not None:
+            rpos = torch.stack(
+                [clip_source.ref_qpos_at_frames(f)[:, :3] for f in frames], 1
+            )
+        if root_vel and clip_source.ref_qvel(step) is not None:
+            rvel = torch.stack(
+                [clip_source.ref_qvel_at_frames(f)[:, :3].float() for f in frames], 1
+            )
+        last = torch.clamp(clip_lengths.float() - 1.0, min=1.0)
+        phase = torch.stack([f.float() / last for f in frames], 1)
+        return sites, rpos, rvel, phase
+
     def _fn(env: Any) -> Any:
         import torch
 
@@ -1005,17 +1162,14 @@ def _mimic_obs_lookahead(
             raise RuntimeError("lookahead obs requires a resolved MotionClip")
 
         data = env.scene[entity_name].data.data
-        step = _mimic_episode_steps(env)  # (N,)
-        n_envs = int(step.shape[0])
-        device = step.device
-        clip_lengths = clip_source.clip_lengths(step)
-
-        cur_frames = clip_source.frame_indices(step)
+        n_envs = int(_mimic_episode_steps(env).shape[0])
         # Site targets are relative to the root; a fixed base (bimanual) has none, so
         # they stay in the world frame and carry no root terms.
         free_root = not env.scene[entity_name].is_fixed_base
         cur_root_pos = (
-            data.qpos[:, :3] if free_root else torch.zeros(n_envs, 3, device=device)
+            data.qpos[:, :3]
+            if free_root
+            else torch.zeros(n_envs, 3, device=data.qpos.device)
         )
 
         has_root_pos = free_root and _clip_has_required_indices(
@@ -1030,38 +1184,24 @@ def _mimic_obs_lookahead(
             + (3 if has_root_vel else 0)
             + 1  # phase
         )
-        out = torch.zeros(n_envs, k * per_step_dim, device=device, dtype=torch.float32)
-        has_qpos = has_root_pos and clip_source.ref_qpos(step) is not None
-        has_qvel = has_root_vel and clip_source.ref_qvel(step) is not None
-
-        offset = 0
-        for step_i in range(1, k + 1):
-            future_frames = (cur_frames + step_i * stride) % clip_lengths
-            future_sites = clip_source.site_targets_at_frames(future_frames)
-            rel_sites = (future_sites - cur_root_pos.unsqueeze(1)).reshape(n_envs, -1)
-            n_site_dim = rel_sites.shape[1]
-            out[:, offset : offset + n_site_dim] = rel_sites
-            offset += n_site_dim
-            if has_qpos:
-                future_qpos = clip_source.ref_qpos_at_frames(future_frames)
-                assert future_qpos is not None
-                future_rpos = future_qpos[:, :3]
-                delta = (future_rpos - cur_root_pos).float()
-                out[:, offset : offset + 3] = delta
-                offset += 3
-            if has_qvel:
-                future_qvel = clip_source.ref_qvel_at_frames(future_frames)
-                assert future_qvel is not None
-                future_rvel = future_qvel[:, :3].float()
-                out[:, offset : offset + 3] = future_rvel
-                offset += 3
-            phase = future_frames.float() / torch.clamp(
-                clip_lengths.float() - 1.0,
-                min=1.0,
-            )
-            out[:, offset] = phase
-            offset += 1
-
+        # The clip part depends on the step only: shared by the observation groups.
+        sites, rpos, rvel, phase = _clip_value(
+            cache,
+            f"lookahead/{k}/{stride}/{has_root_pos}/{has_root_vel}",
+            lambda: _future(env, clip_source, has_root_pos, has_root_vel),
+        )
+        # Per lookahead step: sites rel. root, [root delta], [root vel], phase.
+        pieces = [(sites - cur_root_pos[:, None, None, :]).reshape(n_envs, k, -1)]
+        if rpos is not None:
+            pieces.append((rpos - cur_root_pos[:, None, :]).float())
+        if rvel is not None:
+            pieces.append(rvel)
+        pieces.append(phase[..., None])
+        out = torch.cat(pieces, dim=-1).reshape(n_envs, -1)
+        # A root term without clip data keeps its width as zero padding at the end.
+        pad = k * per_step_dim - out.shape[1]
+        if pad:
+            out = torch.cat([out, out.new_zeros(n_envs, pad)], dim=1)
         return out
 
     return _fn
@@ -1243,7 +1383,7 @@ def _mimic_early_termination(
 
         cache = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)
         entity = env.scene[entity_name]
-        cur_sites = entity.data.data.site_xpos[:, cache["site_ids"], :]
+        cur_sites = _tracked_site_pos(env, entity_name, cache)
         tgt = cache["target_torch"]
         if tgt is None:
             return torch.zeros(
@@ -1264,7 +1404,7 @@ def _mimic_early_termination(
                 resolved_clip.qpos_model_indices, range(0, 3)
             )
         ):
-            ref_qpos = clip_source.ref_qpos(_mimic_episode_steps(env))
+            ref_qpos = _clip_ref(env, cache, "ref_qpos")
             if ref_qpos is not None:
                 ref_root = ref_qpos[:, :3]
                 cur_root = entity.data.root_link_pos_w
@@ -1279,7 +1419,7 @@ def _mimic_early_termination(
         )
         # Past the clip end the reference is undefined: that is a truncation.
         if clip_source is not None:
-            deviated = deviated & ~clip_source.clip_end(_mimic_episode_steps(env))
+            deviated = deviated & ~_clip_ref(env, cache, "clip_end")
         return deviated
 
     return _fn
@@ -1295,7 +1435,7 @@ def _mimic_clip_end(
 
     def _fn(env: Any) -> Any:
         cache = _resolve_mimic_mjlab_ids(env, entity_name, variant, clip, ctrl_dt)
-        return cache["clip_source"].clip_end(_mimic_episode_steps(env))
+        return _clip_ref(env, cache, "clip_end")
 
     return _fn
 
