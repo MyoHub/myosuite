@@ -489,6 +489,24 @@ def test_low_pass_stage_on_the_cpu_env() -> None:
     np.testing.assert_allclose(base.data.ctrl[idx], u_lo, rtol=1e-5)
 
 
+def test_low_pass_stage_keeps_its_state_on_the_input_device() -> None:
+    """The filter state lives on the excitations' device (CUDA on the GPU twin).
+
+    ``meta`` stands in for CUDA where no GPU is present: a CPU-side flag fails on it the
+    same way.
+    """
+    torch = pytest.importorskip("torch")
+    from myosuite.envs.muscle_stages import LowPassStage
+
+    for device in ("meta", *(("cuda",) if torch.cuda.is_available() else ())):
+        stage = LowPassStage(0.5)
+        u = torch.rand(3, 6, device=device)
+        stage(u, torch)
+        stage.reset(torch.tensor([1], device=device))
+        stage(u, torch)
+        assert stage._y.device == stage._fresh.device == u.device
+
+
 def test_excitation_stage_name_and_pickle() -> None:
     import functools
     import pickle
