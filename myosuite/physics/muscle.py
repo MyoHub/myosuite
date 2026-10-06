@@ -40,7 +40,7 @@ class MuscleParams:
     Arrays are numpy on CPU and torch on mjlab; the order matches
     ``EnvAccessor.muscle_force()`` / ``muscle_length()`` / ``muscle_velocity()``.
 
-    Attributes:
+    Args:
         peak_force: Peak isometric force F0 (N, ``gainprm``); ``force="-1"`` is
             resolved to ``scale / acc0`` as MuJoCo does at runtime.
         optimal_length: Optimal fiber length L0 (m).
