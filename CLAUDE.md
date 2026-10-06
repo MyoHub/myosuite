@@ -28,7 +28,7 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
   - Never refresh with `mj_kinematics` alone. Muscle length/velocity/force, sensors, contacts and `cvel` would then lag `qpos` by one substep.
 - **Observations are float32 and never clipped.** Declare spaces with `self._unbounded_obs_space(dim)` (see `docs/wiki/cross-backend-contract.md`).
 - **`reset(seed=...)` must fully determine the episode.**
-  - Draw every random quantity from `self.np_random`, including in sub-components: the fatigue reset (`MuscleActionMixin.reset_muscle_condition()`), opponents and terrain.
+  - Draw every random quantity from `self.np_random`, including in sub-components: the fatigue reset (`FatigueWrapper`'s stage, run by `CtrlStageHost._run_reset_stages()`), opponents and terrain.
   - Never use `np.random.*`, `random.*` or an unseeded `default_rng()`.
   - Clear all per-episode state: reward dicts, buffers, counters.
 - **Mocap targets.** After `mj_resetData`, write a mocap target into `data.mocap_pos` / `data.mocap_quat`. Writing only `model.body_pos` takes effect at the *next* reset.

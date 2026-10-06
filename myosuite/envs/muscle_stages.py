@@ -142,9 +142,8 @@ class LowPassStage(ExcitationStage):
 
     def __call__(self, u: Any, xp: Any) -> Any:
         if self._y is None:
-            self._y, self._fresh = xp.zeros_like(u), xp.ones(u.shape[:-1], dtype=bool)
-            if u.ndim == 1:
-                self._fresh = xp.ones((), dtype=bool)
+            # one flag per env, on u's device (0-d on the CPU env)
+            self._y, self._fresh = xp.zeros_like(u), xp.ones_like(u[..., 0], dtype=bool)
         fresh = self._fresh[..., None]
         self._y = xp.where(fresh, u, self._y + self.alpha * (u - self._y))
         self._fresh = xp.zeros_like(self._fresh)

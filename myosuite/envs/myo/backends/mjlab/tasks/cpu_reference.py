@@ -92,12 +92,16 @@ class CpuTaskSpec:
         return None
 
     @property
-    def muscle_condition(self) -> str:
-        """``""``, ``"sarcopenia"``, ``"fatigue"`` or ``"reafferentation"``."""
-        for condition, name in _CONDITION_WRAPPERS.items():
-            if self.wrapper_kwargs(name) is not None:
-                return condition
-        return ""
+    def muscle_conditions(self) -> tuple[str, ...]:
+        """Registered conditions (``"sarcopenia"``, ``"fatigue"``, ``"reafferentation"``).
+
+        The condition wrappers compose, so every one of them configures the twin.
+        """
+        return tuple(
+            condition
+            for condition, name in _CONDITION_WRAPPERS.items()
+            if self.wrapper_kwargs(name) is not None
+        )
 
     @property
     def motor_noise(self) -> MotorNoiseCfg:
@@ -530,11 +534,12 @@ def action_cfg(
     Returns:
         The action term config.
     """
+    conditions = task.muscle_conditions
     reroute = None
-    if task.muscle_condition == "reafferentation":
+    if "reafferentation" in conditions:
         sfx = "_r" if task.uses_recipe else ""
         reroute = (f"EIP{sfx}", f"EPL{sfx}")
-    fatigue = task.muscle_condition == "fatigue"
+    fatigue = "fatigue" in conditions
     # The CPU fatigue reset options (only read by the CPU env under fatigue).
     reset_vec, reset_random = task.fatigue_reset if fatigue else (None, False)
     return MyoActionCfg(

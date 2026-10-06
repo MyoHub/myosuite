@@ -278,7 +278,7 @@ It is off by default. Envs whose pipeline does not run wrapper stages (MuscleMim
 
 Each wrapper can be applied **once** per env: a second ``MotorNoiseWrapper`` raises a ``ValueError``, and so does a
 ``FatigueWrapper`` on a ``myoFati*`` id (which already contains it). Wrap the base id, or change the options of the
-installed wrapper (``env.motor_noise = ...``, ``env.set_fatigue_reset_random(...)``).
+installed wrapper (``env.set_motor_noise(...)``, ``env.set_fatigue_reset_random(...)``).
 
 To add your own stage on the muscle excitations (a filter, a cap, per-muscle gains, ...), subclass
 ``ExcitationStage``: a function of the excitations ``u`` and the array module ``xp`` (numpy on the CPU env, torch on

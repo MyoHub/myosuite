@@ -345,6 +345,21 @@ def test_wrapped_env_survives_pickle_and_deepcopy() -> None:
         np.testing.assert_array_equal(_rollout(clone, 0), _rollout(env, 0))
 
 
+def test_set_motor_noise_reaches_the_wrapper_under_others() -> None:
+    """``set_motor_noise`` is forwarded; assigning ``env.motor_noise`` on an outer wrapper is not."""
+    env = FatigueWrapper(MotorNoiseWrapper(gym.make(_ELBOW)))
+    quiet = _rollout(env, 0)
+    env.set_motor_noise({"constant_std": 0.05})
+    assert env.env.motor_noise == MotorNoiseCfg(constant_std=0.05)
+    assert not np.array_equal(_rollout(env, 0), quiet)
+    env.set_motor_noise(None)
+    np.testing.assert_array_equal(_rollout(env, 0), quiet)
+    # a plain gymnasium wrapper on top: reach the method with get_wrapper_attr
+    stats = gym.wrappers.RecordEpisodeStatistics(env)
+    stats.get_wrapper_attr("set_motor_noise")({"constant_std": 0.05})
+    assert env.env.motor_noise.enabled
+
+
 # ── custom stages ────────────────────────────────────────────────────────────
 
 _CALLS: list[str] = []
@@ -472,6 +487,24 @@ def test_low_pass_stage_on_the_cpu_env() -> None:
     env.reset(seed=0)
     env.step(lo)  # the filter state was reset
     np.testing.assert_allclose(base.data.ctrl[idx], u_lo, rtol=1e-5)
+
+
+def test_low_pass_stage_keeps_its_state_on_the_input_device() -> None:
+    """The filter state lives on the excitations' device (CUDA on the GPU twin).
+
+    ``meta`` stands in for CUDA where no GPU is present: a CPU-side flag fails on it the
+    same way.
+    """
+    torch = pytest.importorskip("torch")
+    from myosuite.envs.muscle_stages import LowPassStage
+
+    for device in ("meta", *(("cuda",) if torch.cuda.is_available() else ())):
+        stage = LowPassStage(0.5)
+        u = torch.rand(3, 6, device=device)
+        stage(u, torch)
+        stage.reset(torch.tensor([1], device=device))
+        stage(u, torch)
+        assert stage._y.device == stage._fresh.device == u.device
 
 
 def test_excitation_stage_name_and_pickle() -> None:
