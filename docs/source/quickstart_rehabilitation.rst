@@ -245,6 +245,10 @@ knee, and ankle with 80 muscles.  Useful for:
 For challenge-level locomotion tasks including obstacle courses, see
 ``myoChallengeOslRunRandom-v0`` and ``myoChallengeSoccerP2-v0``.
 
+Testing prosthetic devices with dynamically simulated users, a "virtual gait lab", is the topic of
+Hodossy et al. (2026), *Towards a Virtual Gait Lab: Testing Prosthetics with Dynamically Simulated Users*,
+`IEEE Transactions on Medical Robotics and Bionics <https://ieeexplore.ieee.org/abstract/document/11606461>`__.
+
 
 Sports Tasks
 -------------

@@ -150,26 +150,48 @@ Full-body MuscleMimic playback and training: [`myosuite/integrations/musclemimic
 
 ## Citation
 
+If you use MyoSuite, please cite the MyoSuite paper:
+
 ```bibtex
-@Misc{MyoSuite2026,
-  author =       {Vittorio, Caggiano AND Balint, Hodossy AND Florian, Fischer, AND Cheryl, Wang, AND MyoSuiteTeam},
-  title =        {MyoSuite 3.0 -- A multimodal platform for efficient and scalable musculoskeletal motor control},
-  publisher =    {arXiv},
-  year =         {2026},
-  howpublished = {\url{https://github.com/myohub/myosuite}},
-  doi =          {...},
-  url =          {...},
+@inproceedings{Caggiano2022MyoSuite,
+  title     = {{MyoSuite} -- A contact-rich simulation suite for musculoskeletal motor control},
+  author    = {Caggiano, Vittorio and Wang, Huawei and Durandau, Guillaume and Sartori, Massimo and Kumar, Vikash},
+  booktitle = {Learning for Dynamics and Control (L4DC)},
+  year      = {2022},
+  doi       = {10.48550/ARXIV.2205.13600},
+  url       = {https://arxiv.org/abs/2205.13600},
 }
 ```
 
+For MyoSuite 3 (the GPU backends, the muscle conditions, the MyoChallenge envs), cite it as software:
+
 ```bibtex
-@Misc{MyoSuite2022,
-  author =       {Vittorio, Caggiano AND Huawei, Wang AND Guillaume, Durandau AND Massimo, Sartori AND Vikash, Kumar},
-  title =        {MyoSuite -- A contact-rich simulation suite for musculoskeletal motor control},
-  publisher =    {arXiv},
-  year =         {2022},
+@misc{MyoSuite2026,
+  title        = {{MyoSuite} 3.0 -- A multimodal platform for efficient and scalable musculoskeletal motor control},
+  author       = {Caggiano, Vittorio and Hodossy, Balint and Fischer, Florian and Wang, Cheryl and {MyoSuite Team}},
+  year         = {2026},
   howpublished = {\url{https://github.com/myohub/myosuite}},
-  doi =          {10.48550/ARXIV.2205.13600},
-  url =          {https://arxiv.org/abs/2205.13600},
 }
 ```
+
+If you use the full-body MuscleMimic models, checkpoints, retargeted motions or tutorials 5.1-5.5, also cite:
+
+```bibtex
+@article{Li2026MuscleMimic,
+  title   = {Towards Embodied AI with {MuscleMimic}: Unlocking full-body musculoskeletal motor learning at scale},
+  author  = {Li, Chengkun and Wang, Cheryl and Ziliotto, Bianca and Simos, Merkourios and Kovecses, Jozsef and Durandau, Guillaume and Mathis, Alexander},
+  journal = {arXiv preprint arXiv:2603.25544},
+  year    = {2026},
+}
+```
+
+The motion data behind MuscleMimic comes from [AMASS](https://amass.is.tue.mpg.de) (Mahmood et al., ICCV 2019), whose
+KIT subset (Mandery et al., 2015, 2016) provides the locomotion clips, retargeted with GMR (Araújo et al., 2025). The
+retargeted datasets are for non-commercial research under the AMASS license and ask you to cite AMASS and MuscleMimic.
+
+Further papers use or build on MyoSuite: MyoSim (ICRA 2022), MyoDex (ICML 2023), SAR (RSS 2023), MyoChallenge 2022,
+DEP-RL (ICLR 2023), Lattice (NeurIPS 2023), MyoInteract (DIS 2026, a GUI framework for prototyping
+biomechanical HCI tasks on top of MyoSuite) and the Virtual Gait Lab for testing prosthetics with simulated
+users (IEEE T-MRB 2026). The sources behind the models, the muscle fatigue model, the
+controllers and the motion data are collected in [`docs/source/references.rst`](docs/source/references.rst) (page
+*References* of the documentation); `CITATION.cff` holds the machine-readable citation.

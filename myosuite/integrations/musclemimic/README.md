@@ -27,6 +27,26 @@ BibTeX copy is also shipped at
 }
 ```
 
+## Motion data, retargeting and licenses
+
+The retargeted motions (`amathislab/musclemimic-retargeted`,
+`amathislab/musclemimic-bimanual-retargeted`) are derived from public motion-capture data and were
+retargeted to the MyoFullBody and MyoBimanualArm models with GMR.  When you use them, cite the sources too:
+
+| Source | What it provides | Cite |
+|---|---|---|
+| [AMASS](https://amass.is.tue.mpg.de) | the archive the motions come from (locomotion, transitions, upper limb) | Mahmood et al., ICCV 2019 ([arXiv:1904.03278](https://arxiv.org/abs/1904.03278)) |
+| KIT whole-body human motion database | the KIT clips (e.g. `KIT/314/walking_medium09_poses`) inside AMASS | Mandery et al., ICAR 2015; Mandery et al., IEEE T-RO 32(4), 2016 ([doi:10.1109/TRO.2016.2572685](https://doi.org/10.1109/TRO.2016.2572685)) |
+| GMR (General Motion Retargeting) | retargeting of the human motion to the musculoskeletal models | Araújo et al., 2025 ([arXiv:2510.02252](https://arxiv.org/abs/2510.02252)); MuscleMimic uses the fork [`gmr_plus`](https://github.com/amathislab/gmr_plus) |
+| KINESIS | the KIT training / testing splits (`KIT_KINESIS_*`) | Simos, Chiappa, Mathis, 2025 ([arXiv:2503.14637](https://arxiv.org/abs/2503.14637)) |
+| ULTRA-MoCap | the 208 upper-limb trajectories of the bimanual dataset (`ULTRA_MOCAP_*`) | the [ULTRA-MoCap v1 dataset](https://doi.org/10.6084/m9.figshare.28751156.v1) (Fritsche et al.), CC BY 4.0 |
+
+BibTeX entries of these sources are in `myosuite.integrations.citations` (`get_integration_citation("amass")`,
+`"kit"`, `"gmr"`, `"kinesis"`). **License:** the datasets derived from AMASS are for non-commercial scientific
+research, education or artistic projects under the AMASS license; do not redistribute them. The dataset cards ask you
+to cite AMASS and the MuscleMimic paper in resulting publications. The full reference list is the *References* page of
+the MyoSuite documentation (`docs/source/references.rst`).
+
 Full-body **trajectory playback**, **preview**, and **MJX smoke** are driven by a
 single user-facing entry point:
 
