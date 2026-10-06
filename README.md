@@ -1,9 +1,7 @@
 <!-- =================================================
 # Copyright (c) MyoSuite Authors
-Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= -->
-
-<img src="docs/source/images/MyoSuite%203%20Full%20Color%20Horizontal%20wider.png" width=800>
+<img src="https://github.com/myohub/myosuite/blob/main/docs/source/images/Full%20Color%20Horizontal%20wider.png?raw=true" width=800>
 
 [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 [![PyPI](https://img.shields.io/pypi/v/myosuite)](https://pypi.org/project/MyoSuite/)
@@ -21,9 +19,9 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 
 <img width="1240" alt="TasksALL" src="./docs/source/images/MyoSuiteHeader.png?raw=true">
 
----
 
-## What's new in MyoSuite 3
+<details>
+  <summary><h2>What's new in MyoSuite 3</h2></summary>
 
 MyoSuite 3 brings the whole suite to fast, scalable training while keeping the simple interface you know:
 
@@ -35,8 +33,7 @@ MyoSuite 3 brings the whole suite to fast, scalable training while keeping the s
 - **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared observation, reward and model-building blocks instead of writing an environment class.
 - **Some existing environments changed.** Observations are no longer clipped and are read after a fresh forward step (55 env ids), the `motorFinger*` envs have 4x stronger motors, the Random finger-reach tasks now sample only targets the fingertip can reach, and several reset and seed behaviours were corrected. Policies trained with MyoSuite 2.x or earlier snapshots may need retraining; see [`CHANGELOG.md`](CHANGELOG.md) for the full list.
 - **Ready to use.** Default trained policies on [Hugging Face](https://huggingface.co/myohub/myosuite-3-baselines) (see [`docs/baseline_checkpoints.md`](docs/baseline_checkpoints.md) for the full list and success rates) with evaluation videos, plus updated tutorials from the first rollout to GPU training and MuscleMimic. See the [changelog](CHANGELOG.md) for everything that changed since v2.12.
-
----
+</details>
 
 ## Start here
 
@@ -48,7 +45,6 @@ MyoSuite 3 brings the whole suite to fast, scalable training while keeping the s
 | **Rehab / sports**    | [Rehab guide](docs/source/quickstart_rehabilitation.rst)      |
 | **Changing the code** | [Developer getting started](docs/wiki/getting-started.md)     |
 
----
 
 ## Install
 
@@ -76,7 +72,6 @@ python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --rend
 
 Run these from a directory that does not directly contain a folder named `myosuite` (for example not the parent of your clone); otherwise Python imports that folder as a namespace package and fails with `cannot import name ... from 'myosuite' (unknown location)`.
 
----
 
 ## Quick start
 
@@ -115,7 +110,7 @@ python scripts/train_mjlab.py myoElbowPose1D6MFixed-v0 --env.scene.num-envs 1024
 
 Pathological variants use prefixes, not a `Fatigue` infix: `myoSarcElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MFixed-v0`, `myoReafHandPoseRandom-v0`.
 
----
+
 
 ## Environments
 
@@ -139,7 +134,6 @@ List every registered CPU ID: `python -c "import myosuite; print('\n'.join(myosu
 
 A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/wiki/cross-backend-contract.md)). An MJX (JAX) path also exists; it is **experimental** and not the supported training route.
 
----
 
 ## Tutorials
 
@@ -149,7 +143,6 @@ GPU walk-through: [`tutorials/2.2_Train_MjLab_Policy.ipynb`](tutorials/2.2_Train
 
 Full-body MuscleMimic playback and training: [`myosuite/integrations/musclemimic/README.md`](myosuite/integrations/musclemimic/README.md).
 
----
 
 ## License
 
