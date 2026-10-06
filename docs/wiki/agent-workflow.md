@@ -4,7 +4,7 @@
 
 1. Read [docs/wiki/index.md](index.md), then the relevant thematic page(s).
 2. **Search before writing** — `grep -r "keyword" myosuite/` and check [library-usage.md](library-usage.md). If something similar exists (≥ 80%), extend or import it.
-3. For tasks with 3+ steps or architectural decisions: write a plan to [tasks/todo.md](../../tasks/todo.md) and confirm with the user.
+3. For tasks with 3+ steps or architectural decisions: write a plan to `tasks/todo.md` and confirm with the user.
 
 ## Work Loop
 
@@ -17,7 +17,7 @@
 
 ## After a User Correction
 
-Update [tasks/lessons.md](../../tasks/lessons.md) with the pattern to avoid repeating it.
+Update `tasks/lessons.md` with the pattern to avoid repeating it.
 
 ## Subagent Strategy
 

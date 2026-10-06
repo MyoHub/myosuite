@@ -10,7 +10,6 @@ docs/source/       # Sphinx documentation (quickstarts, environment reference, A
 docs/wiki/         # this developer wiki
 scripts/           # training and evaluation CLIs (train_mjlab, train_sb3, eval_mjlab_policy), parity baselines
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
-tasks/             # working notes: todo.md, lessons.md, reports (local, not tracked)
 .github/           # CI and release workflows
 ```
 
