@@ -245,9 +245,29 @@ def test_stage_order_does_not_depend_on_the_wrapping_order() -> None:
 
 
 def test_a_stage_is_installed_once() -> None:
+    """A second wrapper of the same kind, or one on a registered variant, is rejected."""
     env = _noisy(_ELBOW, {"constant_std": 0.05})
     with pytest.raises(ValueError, match="already installed"):
         MotorNoiseWrapper(env, {"constant_std": 0.1})
+    with pytest.raises(ValueError, match="already installed"):
+        FatigueWrapper(gym.make("myoFatiElbowPose1D6MRandom-v0"))
+
+
+def test_sarcopenia_is_applied_once() -> None:
+    from myosuite.envs.wrappers import SarcopeniaWrapper
+
+    healthy = gym.make(_ELBOW).unwrapped.model.actuator_gainprm[:, 2].copy()
+    env = SarcopeniaWrapper(gym.make(_ELBOW))
+    np.testing.assert_allclose(
+        env.unwrapped.model.actuator_gainprm[:, 2], 0.5 * healthy
+    )
+    with pytest.raises(ValueError, match="already applied"):
+        SarcopeniaWrapper(env)
+    with pytest.raises(ValueError, match="already applied"):
+        SarcopeniaWrapper(gym.make("myoSarcElbowPose1D6MRandom-v0"))
+    np.testing.assert_allclose(
+        env.unwrapped.model.actuator_gainprm[:, 2], 0.5 * healthy
+    )
 
 
 @pytest.mark.parametrize(

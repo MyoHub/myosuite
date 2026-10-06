@@ -98,7 +98,10 @@ registration's wrapper specs, so registering an env id with a wrapper configures
 envs that run stages are the basic pose, key-turn, object-hold, pen, SAR-reorient, arm/finger/hand
 reach, torso, leg and the MyoChallenge muscle envs; wrapping any other env raises a `TypeError`
 (for example MuscleMimic and the `TaskConfig` envs, whose `ActuatorGroupSpec.condition` / `noise`
-stay declarative). A stage is installed once per env.
+stay declarative). A stage is installed **once per env**: a second wrapper of the same kind, or one on an id that
+already registers it (`FatigueWrapper` on `myoFati*`, `ReafferentationWrapper` on `myoReaf*`), raises a `ValueError`;
+`SarcopeniaWrapper` raises it if sarcopenia is already applied to the model (it would scale the forces twice). Wrap the
+base id, or change the installed wrapper's options (`env.motor_noise`, `env.set_fatigue_reset_random(...)`).
 
 The env's own map stays inside the env: `normalize_act` also sets the initial joint pose, so the
 sigmoid is not a wrapper.

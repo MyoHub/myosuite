@@ -276,6 +276,10 @@ It is off by default. Envs whose pipeline does not run wrapper stages (MuscleMim
    from myosuite.envs.wrappers import FatigueWrapper
    env = FatigueWrapper(MotorNoiseWrapper(gym.make('myoElbowPose1D6MRandom-v0'), {'constant_std': 0.05}))
 
+Each wrapper can be applied **once** per env: a second ``MotorNoiseWrapper`` raises a ``ValueError``, and so does a
+``FatigueWrapper`` on a ``myoFati*`` id (which already contains it). Wrap the base id, or change the options of the
+installed wrapper (``env.motor_noise = ...``, ``env.set_fatigue_reset_random(...)``).
+
 To configure both backends, register an env id with a ``MotorNoiseWrapper`` in its
 ``additional_wrappers``: the mjlab twin reads it from the CPU registration like the muscle
 condition. For a single mjlab config, set ``env_cfg.actions["muscles"].motor_noise``. See

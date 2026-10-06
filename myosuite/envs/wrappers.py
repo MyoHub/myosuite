@@ -24,7 +24,12 @@ Muscle-command wrappers
 -----------------------
 These install one ordered stage in the env's action pipeline (see
 :mod:`myosuite.envs.muscle_stages`): ``map (env) -> noise -> fatigue -> reroute
--> ctrl``. The order is fixed by the stage, whatever the wrapping order.
+-> ctrl``. The order is fixed by the stage, whatever the wrapping order. Each
+stage can be installed **once per env**: a second wrapper of the same kind raises a
+``ValueError`` (the ``myoFati*`` and ``myoReaf*`` ids already contain theirs, so
+wrap the base id to configure it, e.g. ``FatigueWrapper(gym.make(base_id),
+fatigue_reset_random=True)``, or change the options with
+``env.set_fatigue_reset_random(...)`` / ``env.motor_noise = ...``).
 
 :class:`MotorNoiseWrapper`
     Signal-dependent + constant Gaussian noise on the muscle excitations.
@@ -434,9 +439,15 @@ class SarcopeniaWrapper(
 ):
     """Sarcopenia: scale the muscle forces of the env's model (applied once, at wrapping).
 
+    Wrap an env once: a second ``SarcopeniaWrapper``, or one on a ``myoSarc*`` id (which
+    already has it), raises a ``ValueError`` instead of scaling the forces twice.
+
     Args:
         env: Env with a compiled ``model``.
         force_scale: Factor on the maximum isometric muscle force.
+
+    Raises:
+        ValueError: If sarcopenia is already applied to the env.
     """
 
     def __init__(self, env: gym.Env, force_scale: float = 0.5) -> None:
@@ -446,8 +457,15 @@ class SarcopeniaWrapper(
 
         RecordConstructorArgs.__init__(self, force_scale=force_scale)
         gym.Wrapper.__init__(self, env)
+        host = env.unwrapped
+        if getattr(host, "_sarcopenia_applied", False):
+            raise ValueError(
+                "Sarcopenia is already applied to this env's model (a myoSarc* id or "
+                "another SarcopeniaWrapper); applying it again would scale the forces twice."
+            )
         self.force_scale = force_scale
-        apply_sarcopenia_to_model(env.unwrapped.model, force_scale=force_scale)
+        apply_sarcopenia_to_model(host.model, force_scale=force_scale)
+        host._sarcopenia_applied = True
 
 
 _CONDITION_WRAPPERS = {
