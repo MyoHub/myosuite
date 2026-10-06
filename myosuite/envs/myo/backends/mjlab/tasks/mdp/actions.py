@@ -91,6 +91,8 @@ class _NoiseStage(_TermStage):
         return self._term.cfg.motor_noise.enabled
 
     def __call__(self, ctrl: torch.Tensor) -> torch.Tensor:
+        if not self.active():  # off: no gather/scatter on the step
+            return ctrl
         cols, term = self._term._muscle_cols, self._term
         ctrl[:, cols] = sample_motor_noise(
             ctrl[:, cols], term.cfg.motor_noise, term._randn, torch
