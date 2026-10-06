@@ -146,10 +146,12 @@ List every registered CPU ID: `python -c "import myosuite; print('\n'.join(myosu
 
 ### Backends
 
-| Backend                       | Use                   | How                                                                    |
-| ----------------------------- | --------------------- | ---------------------------------------------------------------------- |
-| **CPU** (Gymnasium)     | playback, debug, SB3  | `make_env(env_id)`                                                   |
-| **mjlab** (MuJoCo Warp) | parallel GPU training | `pip install -e ".[mjlab]"`, then `scripts/train_mjlab.py <env_id>` or `make_env(env_id, backend="mjlab", num_envs=...)` |
+| Backend | Use | Build an env in Python | Train |
+| --- | --- | --- | --- |
+| **CPU** (Gymnasium) | playback, debug, SB3 | `make_env(env_id)` | Stable-Baselines3 (see Quick start) |
+| **mjlab** (MuJoCo Warp) | parallel GPU training | `make_env(env_id, backend="mjlab", num_envs=...)` | `scripts/train_mjlab.py <env_id>` |
+
+The mjlab backend needs `pip install -e ".[mjlab]"`. `make_env` only builds the env (to step it, evaluate a policy or write your own training loop); `scripts/train_mjlab.py` is the ready-made PPO training script.
 
 A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/wiki/cross-backend-contract.md)). `make_env(EnvConfig(env_id, backend=..., features=...))` builds either half with the same episode length, control step and muscle-command features. An MJX (JAX) path also exists; it is **experimental** and not the supported training route.
 
