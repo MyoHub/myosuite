@@ -20,6 +20,8 @@ Before any new class, function, or wrapper:
 |---|---|
 | Obs / reward / action / event / termination term functions | `myosuite/terms/` |
 | Physics math (quat, fatigue, min-jerk) | `myosuite/physics/` |
+| Muscle noise / fatigue / reafferentation / sarcopenia (wrappers and stages) | `myosuite/envs/wrappers.py`, `myosuite/envs/muscle_stages.py` |
+| Building an env on either backend (`make_env`, `EnvConfig`) | `myosuite/core/registry.py`, `myosuite/core/config.py` |
 | Generic utilities | `myosuite/utils/` |
 | MuscleMimic helpers | `myosuite/integrations/musclemimic/` |
 | mjlab action/obs/event wiring | `myosuite/envs/myo/backends/mjlab/` |
@@ -95,20 +97,25 @@ muscle-activation action mapping, custom init pose). See
 ### GPU side — mjlab `ManagerBasedRlEnvCfg`
 
 The matched GPU implementation is a mjlab (MuJoCo-Warp) `ManagerBasedRlEnvCfg`
-plus a PPO runner config, registered under the **same `env_id`** via
-`register_mjlab_task(...)` in `envs/myo/backends/mjlab/register_mjlab_*.py`
-(e.g. `tasks/leg/walk_env_cfg.py` + `leg_walk_ppo_runner_cfg` for `myoLegWalk-v0`). Train
-it with `scripts/train_mjlab.py`. Read [mjlab-design-guide.md](mjlab-design-guide.md) and
+plus a PPO runner config, registered under the **same `env_id`**. Train it with `scripts/train_mjlab.py`.
+Read [mjlab-design-guide.md](mjlab-design-guide.md) and
 [cross-backend-contract.md](cross-backend-contract.md) before writing one.
 
-The observation manager exposes a single flat `policy` group; the runner config
-must map the actor/critic obs sets to it
-(`obs_groups={"actor": ("policy",), "critic": ("policy",)}`) and size the
-MuJoCo-Warp constraint buffers (`njmax`/`nconmax`) for the task's contact load.
+- **Twins of the CPU envs** (pose, reach, torso, leg): the config is built from the CPU registration
+  (`cpu_reference.cpu_task_spec(env_id)`), so parameters live in one place. A family has an env-config
+  function in `envs/myo/backends/mjlab/tasks/<family>/*_env_cfg.py` (for example
+  `make_leg_walk_env_cfg` for `myoLegWalk-v0`) and registers its ids, including the Sarc/Fati/Reaf
+  variants, with `register_cpu_twins(env_ids, env_cfg_fn, rl_cfg_fn)`. The observation groups are
+  `actor` and `critic`.
+- **Special tasks** (Table Tennis, ChaseTag, MuscleMimic): hand-written configs registered with
+  `register_mjlab_task(...)` in `envs/myo/backends/mjlab/register_mjlab_*.py` and `mimic_mjlab_env.py`.
+  Table Tennis and ChaseTag use a single flat `policy` group, which the runner config maps to the
+  actor and critic (`obs_groups={"actor": ("policy",), "critic": ("policy",)}`).
+- Size the MuJoCo-Warp constraint buffers (`njmax`/`nconmax`) for the task's contact load.
 
 > **Experimental — MJX / `TaskConfig`:** an MJX (JAX/Brax) backend and the
-> data-driven `TaskConfig` + `ModularTaskEnv` path also exist (the elbow
-> reference and a few challenge tasks), reachable via
+> data-driven `TaskConfig` + `ModularTaskEnv` path also exist (the elbow pose
+> and leg directional references and a few challenge tasks), reachable via
 > `register_task(..., backends={"cpu","mjx"})`. **MJX is not guaranteed to be
 > maintained long-term — do not build new work on it.** Prefer CPU
 > (`MyoGymnasiumEnv`) + GPU (mjlab) for anything you need to rely on.
@@ -126,15 +133,20 @@ MuJoCo-Warp constraint buffers (`njmax`/`nconmax`) for the task's contact load.
   `env.unwrapped.<attr>`. The short form `env.<attr>` works only on an env straight from `make_env` or behind
   MyoSuite's own wrappers; third-party wrappers (SB3 `Monitor`, gymnasium's `RecordEpisodeStatistics`, ...) do not
   forward attributes.
+- The full **CPU env contract** (physics step via `_step_physics`, float32 unclipped observations, `reset(seed=...)`
+  fully determining the episode, mocap targets, runtime model edits) and the **mjlab rules** (physics options from
+  the CPU model, root velocities, anchored joint-name regexes, per-episode state, step order, vectorised terms) are
+  in [CLAUDE.md](../../CLAUDE.md); `test_obs_contract.py`, `test_reset_reproducibility.py` and
+  `test_runtime_geometry_consistency.py` check them.
 
 ### Base classes (what actually exists)
 
 | Backend | Status | Role | Base | Registered via |
 |---|---|---|---|---|
 | CPU (Gymnasium) | supported | playback / fine-tune / debug | `myosuite.envs.gymnasium_env.MyoGymnasiumEnv` subclass | `registry.register_env(...)` |
-| mjlab (Warp) | supported | parallel GPU training | mjlab `ManagerBasedRlEnvCfg` + runner cfg | `register_mjlab_task(...)` in `envs/myo/backends/mjlab/register_*.py` |
+| mjlab (Warp) | supported | parallel GPU training | mjlab `ManagerBasedRlEnvCfg` + runner cfg | `register_cpu_twins(...)` (twins of CPU envs, `backends/mjlab/tasks/`) or `register_mjlab_task(...)` (`register_mjlab_*.py`) |
 | MJX (JAX) | experimental | parallel GPU training | `envs/myo/backends/mjx/` env classes (mujoco-playground) | `register_task(..., backends={"mjx"})` from a `TaskConfig` |
-| CPU via `ModularTaskEnv` | experimental | data-driven CPU (elbow ref) | generic `ModularTaskEnv` from a `TaskConfig` | `register_task(..., backends={"cpu"})` |
+| CPU via `ModularTaskEnv` | experimental | data-driven CPU (elbow and leg directional refs) | generic `ModularTaskEnv` from a `TaskConfig` (runs the muscle stages) | `register_task(..., backends={"cpu"})` |
 
 The CPU and mjlab implementations of one task share a single `env_id` and the
 cross-backend contract. **MJX is not guaranteed long-term; don't build new work
@@ -183,9 +195,10 @@ parity is mostly a matter of using the same terms on both sides.
    `_run_reset_stages` in `reset`); see [cross-backend-contract.md](cross-backend-contract.md).
 
 **2. Matched mjlab GPU config (when you need parallel training):**
-6. Add a `ManagerBasedRlEnvCfg` + PPO runner config in
-   `backends/mjlab/register_mjlab_*.py` under the **same `env_id`** (set
-   `obs_groups` and `njmax`/`nconmax` — see the GPU section above).
+6. Add a `ManagerBasedRlEnvCfg` + PPO runner config under the **same `env_id`**: for a twin of a basic
+   CPU env, an env-config function in `backends/mjlab/tasks/<family>/` registered with
+   `register_cpu_twins`; for a special task, `register_mjlab_task` in `backends/mjlab/register_mjlab_*.py`
+   (set `njmax`/`nconmax` — see the GPU section above).
 7. Honour [cross-backend-contract.md](cross-backend-contract.md) (obs order/scale, action mapping,
    `ctrl_dt`) and add a CPU↔mjlab parity test so the two cannot drift. To make the
    twin take features, build its config from the CPU registration
@@ -199,7 +212,7 @@ walked through in [adding-a-new-task.md](adding-a-new-task.md).
 `pytest myosuite/tests/test_parity.py -v` after every env change. CPU parity is
 gated at `atol ≤ 1e-6` (some contact-rich envs are relaxed); regressions block
 PRs. To regenerate a baseline after an
-*intentional* change:
+*intentional* change (with the package versions CI resolves, see [CLAUDE.md](../../CLAUDE.md)):
 
 ```bash
 python scripts/generate_parity_baselines.py --env-id <env-id>
@@ -210,6 +223,8 @@ python scripts/generate_parity_baselines.py --env-id <env-id>
 - Add/update tests for non-trivial behavior changes.
 - `pre-commit run --all-files` must pass.
 - Self-review: smallest change that solves the problem? Searched first? No duplication?
+- A change to a registered env's observations, actions, dynamics or task distribution needs a CHANGELOG entry and a
+  note in `docs/baseline_checkpoints.md`: published checkpoints are tied to the old contract.
 
 ```bash
 pre-commit run --all-files
