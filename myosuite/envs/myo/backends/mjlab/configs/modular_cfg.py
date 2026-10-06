@@ -71,6 +71,8 @@ class ModularMjlabCfg:
             sites). This dataclass only carries the fields; ``site_position_command_cfg``
             (``tasks/mdp/commands.py``) turns a site goal into an mjlab command.
         action_terms: One entry per actuator group.
+        muscle_fatigue: Apply the 3CC-r fatigue model to every muscle
+            (``TaskConfig.fatigue_enabled``).
     """
 
     model_recipe: str = "elbow_standard"
@@ -90,6 +92,7 @@ class ModularMjlabCfg:
     action_terms: list[ModularActionTermEntry] = field(
         default_factory=lambda: [ModularActionTermEntry(name="muscles")]
     )
+    muscle_fatigue: bool = False
 
 
 def make_modular_mjlab_cfg(task_config: TaskConfig) -> ModularMjlabCfg:
@@ -141,4 +144,5 @@ def make_modular_mjlab_cfg(task_config: TaskConfig) -> ModularMjlabCfg:
         goal_randomize=task_config.goal.randomize,
         goal_range=dict(task_config.goal.range),
         action_terms=action_terms,
+        muscle_fatigue=task_config.fatigue_enabled,
     )

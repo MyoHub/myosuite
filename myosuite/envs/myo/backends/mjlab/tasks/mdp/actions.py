@@ -12,7 +12,9 @@ MuJoCo actuator order and map it to ``ctrl`` as follows:
 2. muscles (model ``na > 0``): ``sigmoid`` on muscle actuators (walk envs:
    used as-is), other actuators keep the clipped action; motors-only models:
    linear map from the action range to ``ctrlrange``;
-3. ``fatigue``: muscle ctrl replaced by the 3CC-r active compartment;
+3. ``fatigue``: muscle ctrl replaced by the 3CC-r active compartment, whose
+   state is reset like the CPU env's (fresh, ``fatigue_reset_vec`` or
+   ``fatigue_reset_random``);
 4. ``reafferentation``: one actuator's command is rerouted to another and the
    source is silenced.
 
@@ -46,6 +48,10 @@ class MyoActionCfg(ActionTermCfg):
         action_range: Normalized action space bounds.
         muscle_sigmoid: Map muscle actions through the MyoSuite sigmoid.
         muscle_fatigue: Apply the 3CC-r fatigue model to muscle ctrl.
+        fatigue_reset_vec: CPU ``fatigue_reset_vec``: fatigued fraction ``MF``
+            of each muscle at every reset (``None``: start fresh).
+        fatigue_reset_random: CPU ``fatigue_reset_random``: draw a random
+            fatigue state per env at every reset.
         reroute: ``(source, destination)`` actuator names for reafferentation:
             ``ctrl[dst] = ctrl[src]; ctrl[src] = 0``.
     """
@@ -54,6 +60,8 @@ class MyoActionCfg(ActionTermCfg):
     action_range: tuple[float, float] = (-1.0, 1.0)
     muscle_sigmoid: bool = True
     muscle_fatigue: bool = False
+    fatigue_reset_vec: tuple[float, ...] | None = None
+    fatigue_reset_random: bool = False
     reroute: tuple[str, str] | None = None
 
     def build(self, env: ManagerBasedRlEnv) -> MyoAction:
@@ -185,4 +193,8 @@ class MyoAction(ActionTerm):
         self._raw_actions[env_ids] = 0.0
         self._processed_actions[env_ids] = 0.0
         if self._fatigue is not None:
-            self._fatigue.reset(env_ids)
+            self._fatigue.reset(
+                env_ids,
+                fatigue_reset_vec=self.cfg.fatigue_reset_vec,
+                fatigue_reset_random=self.cfg.fatigue_reset_random,
+            )
