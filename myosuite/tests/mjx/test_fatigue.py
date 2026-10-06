@@ -316,4 +316,58 @@ def test_cumulative_fatigue_step_conserves_and_matches_cpu():
     assert cpu_err < 1e-5, cpu_err
 
 
+def test_rest_multiplier_applies_only_at_rest_jax():
+    """The JAX step boosts recovery by ``r`` only at TL == 0, like the CPU model.
+
+    Rakshit et al. (2021, Eq. 7): ``r = k if TL = 0``, ``1 if TL > 0``. The
+    50% -> 20% -> 0% cycles relax under a non-zero load on the 20% steps.
+    """
+    from myosuite.core.muscle_conditions import _UNIFORM_PARAMS
+    from myosuite.physics.fatigue_jax import cumulative_fatigue_step
+
+    F, R, r = (_UNIFORM_PARAMS[k] for k in "FRr")
+    na, dt = 3, 0.02
+    params = dict(
+        F=jp.float32(F),
+        R=jp.float32(R),
+        r=jp.float32(r),
+        dt=jp.float32(dt),
+        tauact=jp.full(na, 0.01, dtype=jp.float32),
+        taudeact=jp.full(na, 0.04, dtype=jp.float32),
+    )
+    step = jax.jit(
+        lambda ma, mr, mf, tl: cumulative_fatigue_step(ma, mr, mf, tl, **params)
+    )
+    xml = (
+        '<mujoco><worldbody><body><joint name="j"/><geom size="0.1"/></body>'
+        "</worldbody><actuator>"
+        + "".join(
+            f'<general joint="j" dyntype="muscle" dynprm="0.01 0.04" name="m{i}"/>'
+            for i in range(na)
+        )
+        + "</actuator></mujoco>"
+    )
+    cpu = NumpyCumulativeFatigue(
+        mujoco.MjModel.from_xml_string(xml), use_uniform_params=True
+    )
+    cpu.reset(fatigue_reset_vec=np.full(na, 0.3))
+    MA, MR, MF = jp.zeros(na), jp.full(na, 0.7), jp.full(na, 0.3)
+    block = np.repeat([0.5, 0.2, 0.0], 500)
+    mult, rest, cpu_err = [], [], 0.0
+    for tl in np.tile(block, 2):
+        TL = np.full(na, tl)
+        ma, mf = np.asarray(MA, np.float64), np.asarray(MF, np.float64)
+        MA, MR, MF = step(MA, MR, MF, jp.asarray(TL, dtype=jp.float32))
+        dmf_dt = (np.asarray(MF, np.float64) - mf) / dt
+        mult.append((F * ma - dmf_dt) / (R * mf))
+        rest.append(TL == 0.0)
+        cpu_state = np.stack(cpu.compute_act(TL, dt=dt))
+        jax_state = np.stack([np.asarray(MA), np.asarray(MR), np.asarray(MF)])
+        cpu_err = max(cpu_err, float(np.max(np.abs(jax_state - cpu_state))))
+    mult, rest = np.array(mult), np.array(rest)
+    np.testing.assert_allclose(mult[rest], r, rtol=0.05)
+    np.testing.assert_allclose(mult[~rest], 1.0, atol=0.3)
+    assert cpu_err < 2e-5, cpu_err  # float32 vs float64 over 3000 steps
+
+
 #

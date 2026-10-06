@@ -474,7 +474,8 @@ def action_cfg(
     """CPU action pipeline of *task* (normalization, motor noise, muscle condition).
 
     Reafferentation reroutes EIP's command to EPL and silences EIP (``_r``
-    suffix on recipe-built models), exactly as the CPU envs do.
+    suffix on recipe-built models), exactly as the CPU envs do. Fatigue
+    carries the CPU reset options ``fatigue_reset_vec`` / ``fatigue_reset_random``.
 
     Args:
         task: CPU registration of the task.
@@ -490,12 +491,20 @@ def action_cfg(
     if task.muscle_condition == "reafferentation":
         sfx = "_r" if task.uses_recipe else ""
         reroute = (f"EIP{sfx}", f"EPL{sfx}")
+    fatigue = task.muscle_condition == "fatigue"
+    # The CPU fatigue reset options (only read by the CPU env under fatigue).
+    reset_vec = task.kwargs.get("fatigue_reset_vec") if fatigue else None
     return MyoActionCfg(
         entity_name=entity_name,
         normalize_act=bool(task.kwargs.get("normalize_act", True)),
         action_range=action_range,
         muscle_sigmoid=muscle_sigmoid,
-        muscle_fatigue=task.muscle_condition == "fatigue",
+        muscle_fatigue=fatigue,
+        fatigue_reset_vec=(
+            None if reset_vec is None else tuple(float(v) for v in reset_vec)
+        ),
+        fatigue_reset_random=fatigue
+        and bool(task.kwargs.get("fatigue_reset_random", False)),
         reroute=reroute,
         motor_noise=task.motor_noise,
     )

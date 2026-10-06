@@ -301,7 +301,9 @@ class TaskConfig:
             (e.g. ``"flat_floor"``).
         max_episode_steps: Episode length limit before truncation.
         muscle_fatigue: If ``True``, apply cumulative 3-compartment fatigue
-            dynamics to muscle excitations each control step.
+            dynamics to muscle excitations each control step. An actuator
+            group with ``condition="fatigue"`` does the same (see
+            :attr:`fatigue_enabled`).
         backend: Backend-specific physics settings.
         obs: Observation channel specification.
         goal: Goal sampling and representation specification.
@@ -333,6 +335,17 @@ class TaskConfig:
     # causes register_task() to auto-register an additional environment with
     # the config_delta merged on top of the base config.
     variants: ClassVar[list[VariantSpec]] = []
+
+    @property
+    def fatigue_enabled(self) -> bool:
+        """Whether the muscles fatigue: ``muscle_fatigue`` or a ``"fatigue"`` group.
+
+        Actuator groups do not select actuators, so a fatigue group applies the
+        3CC-r model to every muscle actuator of the model.
+        """
+        return self.muscle_fatigue or any(
+            g.condition == "fatigue" for g in self.actuators
+        )
 
     def to_env_config(self, env_id: str = "") -> EnvConfig:
         """Convert to a legacy :class:`EnvConfig` for registry compatibility.

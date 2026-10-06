@@ -307,7 +307,7 @@ class ModularTaskEnv(MyoGymnasiumEnv):
         self.data = mujoco.MjData(self.model)
         self._fatigue_model: Any = None
         self._fatigue_mask: Any = None
-        if task_config.muscle_fatigue:
+        if task_config.fatigue_enabled:
             from myosuite.core.muscle_conditions import CumulativeFatigue  # noqa: PLC0415
 
             self._fatigue_model = CumulativeFatigue(

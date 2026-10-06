@@ -85,6 +85,7 @@ Choose your path
    environments
    model_builder
    backend_parity
+   fatigue_validation
 
 .. toctree::
    :maxdepth: 1

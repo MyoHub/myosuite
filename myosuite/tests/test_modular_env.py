@@ -685,6 +685,78 @@ def test_make_modular_mjlab_cfg_sarcopenia() -> None:
     assert cfg.action_terms[0].condition == "sarcopenia"
 
 
+def test_fatigue_condition_enables_fatigue() -> None:
+    """``condition="fatigue"`` on a group enables fatigue like ``muscle_fatigue``."""
+    from myosuite.envs.myo.backends.mjlab.configs.modular_cfg import (
+        make_modular_mjlab_cfg,
+    )
+
+    task = _ElbowTask()
+    assert not task.fatigue_enabled
+    assert not make_modular_mjlab_cfg(task).muscle_fatigue
+    task.actuators = [ActuatorGroupSpec(name="elbow", condition="fatigue")]
+    assert task.fatigue_enabled
+    assert make_modular_mjlab_cfg(task).muscle_fatigue
+    flag = _ElbowTask()
+    flag.muscle_fatigue = True
+    assert flag.fatigue_enabled
+    assert make_modular_mjlab_cfg(flag).muscle_fatigue
+
+
+@pytest.mark.parametrize(
+    "env_id", ["myoFatiElbowPoseTaskFixed-v0", "myoFatiElbowPoseTaskRandom-v0"]
+)
+def test_fati_task_variants_fatigue(env_id: str) -> None:
+    """The ``Fati`` TaskConfig variants fatigue under sustained activation.
+
+    They declare ``ActuatorGroupSpec(condition="fatigue")``, which used to be
+    ignored (only ``TaskConfig.muscle_fatigue`` was read), so they ran unfatigued.
+    """
+    import gymnasium as gym
+
+    import myosuite  # noqa: F401  (registers the elbow TaskConfig ids)
+
+    env = gym.make(env_id).unwrapped
+    env.reset(seed=0)
+    fatigue = env._fatigue_model
+    assert fatigue is not None
+    action = np.full(env.action_space.shape, 0.8, dtype=np.float32)
+    mf = []
+    for _ in range(3):
+        for _ in range(25):
+            env.step(action)
+        mf.append(fatigue.MF.copy())
+    assert np.all(np.diff(np.stack(mf), axis=0) > 0.0), "MF must grow"
+    # ctrl is the active compartment (cast to the float32 action, as on CPU).
+    np.testing.assert_allclose(env.data.ctrl, fatigue.MA, rtol=1e-6)
+    assert np.all(env.data.ctrl < action)
+    env.reset(seed=0)
+    assert np.all(fatigue.MF == 0.0)
+
+
+@pytest.mark.parametrize(
+    "env_id",
+    [
+        "myoElbowPoseTaskFixed-v0",
+        "myoElbowPoseTaskRandom-v0",
+        "myoSarcElbowPoseTaskFixed-v0",
+        "myoSarcElbowPoseTaskRandom-v0",
+    ],
+)
+def test_non_fati_task_variants_do_not_fatigue(env_id: str) -> None:
+    """The other variants write the clipped action to ``ctrl`` unchanged."""
+    import gymnasium as gym
+
+    import myosuite  # noqa: F401  (registers the elbow TaskConfig ids)
+
+    env = gym.make(env_id).unwrapped
+    env.reset(seed=0)
+    assert env._fatigue_model is None
+    action = np.full(env.action_space.shape, 0.8, dtype=np.float32)
+    env.step(action)
+    np.testing.assert_array_equal(env.data.ctrl, action.astype(np.float64))
+
+
 def test_make_modular_mjlab_cfg_callable_obs() -> None:
     from myosuite.terms.base_obs import joint_pos_obs
 
