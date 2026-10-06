@@ -741,7 +741,8 @@ def _mjlab_velocity_fn(env):
     Read from the parameters of the env's success metric (the walking tasks' solved
     criterion is a velocity match).
     """
-    term = env.metrics_manager.cfg.get("success")
+    metrics = env.metrics_manager.cfg
+    term = metrics.get("success") if metrics else None
     if term is None:
         return None
     params = {
