@@ -165,9 +165,10 @@ gymnasium wrappers on the CPU env and are not part of the config.
 
 ### Which features run where
 
-By feature (`EnvConfig.features`, or a registered wrapper):
+**Table 1: which backend can run each feature.** A feature is a wrapper in `EnvConfig.features` or in an id's
+registration.
 
-| Feature | CPU env | mjlab twin | MJX (experimental) |
+| Feature | Runs on the CPU env | Runs on the mjlab twin | Runs on MJX (experimental) |
 |---|---|---|---|
 | `MotorNoiseWrapper`, `FatigueWrapper` | yes | yes | no |
 | `ReafferentationWrapper` (hand models with EIP/EPL) | yes | yes | no |
@@ -175,10 +176,11 @@ By feature (`EnvConfig.features`, or a registered wrapper):
 | `ExcitationStageWrapper` (portable custom stage) | yes | yes | no |
 | `CtrlStageWrapper` (env-aware custom stage) | yes | no | no |
 
-By env family (the CPU env class runs the stages; the twin rebuilds from the CPU registration, so it takes the features
-of its registration or of `EnvConfig`):
+**Table 2: which envs accept features, per backend.** "Accepts features" means `make_env` can apply the features of
+Table 1 to that env on that backend. The twin is rebuilt from the CPU registration, so it takes the features of the
+registration or of `EnvConfig`.
 
-| Env family | CPU env | mjlab twin | Features on the twin |
+| Env family | CPU env accepts features | mjlab twin exists | mjlab twin accepts features |
 |---|---|---|---|
 | Pose and reach (hand, finger, arm, elbow, motor finger), torso, leg walk / stand / terrain, `ModularTaskEnv` ids with a twin | yes | yes | yes |
 | Hand tasks without a twin: key turn, object hold, pen, reorient (SAR, ID, OOD, 100, 8) | yes | no | n/a |
@@ -188,9 +190,10 @@ of its registration or of `EnvConfig`):
 | ChaseTag vs. scripted opponent (multi-agent) | no | no | n/a |
 | MuscleMimic (fullbody, bimanual, directional) | no (wrapping raises `TypeError`) | no | n/a |
 
-"No" on a twin means `make_env(..., backend="mjlab")` raises `NotImplementedError` when features are given, and the
-twin of a registered `myoFati*` / `myoSarc*` / `myoReaf*` id does not exist. The counts above are of the ids registered
-at the time of writing; `make_env` is the authority.
+Giving features for an env or backend marked "no" raises (`NotImplementedError` from `make_env(..., backend="mjlab")`
+or `"mjx"`, `TypeError` from a wrapper on an env that does not run stages); they are never dropped silently. The
+muscle-condition ids (`myoFati*`, `myoSarc*`, `myoReaf*`) exist as mjlab twins only for the families marked "yes" in the
+last column. `make_env` is the authority.
 
 The env's own map stays inside the env: `normalize_act` also sets the initial joint pose, so the
 sigmoid is not a wrapper.
