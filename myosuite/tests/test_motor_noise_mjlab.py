@@ -237,8 +237,9 @@ def test_twin_matches_cpu_with_a_stateful_stage(staged_id: str) -> None:
         )
     # a per-env reset clears the filter of that env only
     term.reset(torch.tensor([1]))
-    stage = term._stages[0]
+    stage = next(st for st in term._stages if st.name == "lowpass").stage
     assert bool(stage._fresh[1]) and not bool(stage._fresh[0])
+    assert term.stage_names == ("noise", "lowpass", "fatigue")
     twin.close()
 
 

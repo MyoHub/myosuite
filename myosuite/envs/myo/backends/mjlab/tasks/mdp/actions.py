@@ -57,6 +57,94 @@ if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
 
 
+class _TermStage:
+    """A stage of :class:`MyoAction`, on the ctrl of every env, ``(num_envs, n_actuators)``.
+
+    Noise, fatigue, reafferentation and the portable custom stages are all of this
+    kind: the term sorts them by ``order``, runs them in turn and resets them with the
+    envs. (mjlab has no gym wrappers, so the term owns each stage's per-env state.)
+    """
+
+    name: str = ""
+    order: float = 0.0
+
+    def active(self) -> bool:
+        """Whether the stage does anything now (checked when the order is validated)."""
+        return True
+
+    def __call__(self, ctrl: torch.Tensor) -> torch.Tensor:  # pragma: no cover
+        raise NotImplementedError
+
+    def reset(self, env_ids: torch.Tensor | slice) -> None:
+        """Clear the per-env state of the envs *env_ids* (none by default)."""
+
+
+class _NoiseStage(_TermStage):
+    name, order = "noise", STAGE_ORDER["noise"]
+
+    def __init__(self, term: MyoAction) -> None:
+        self._term = term
+
+    def active(self) -> bool:
+        # the level can change at run time (``cfg.motor_noise``); off: no draw at all
+        return self._term.cfg.motor_noise.enabled
+
+    def __call__(self, ctrl: torch.Tensor) -> torch.Tensor:
+        cols, term = self._term._muscle_cols, self._term
+        ctrl[:, cols] = sample_motor_noise(
+            ctrl[:, cols], term.cfg.motor_noise, term._randn, torch
+        )
+        return ctrl
+
+
+class _FatigueStage(_TermStage):
+    name, order = "fatigue", STAGE_ORDER["fatigue"]
+
+    def __init__(self, term: MyoAction, state: TorchFatigueState) -> None:
+        self._term, self.state = term, state
+
+    def __call__(self, ctrl: torch.Tensor) -> torch.Tensor:
+        cols, term = self._term._muscle_cols, self._term
+        ctrl[:, cols] = self.state.step(ctrl[:, cols], term._env.step_dt)
+        return ctrl
+
+    def reset(self, env_ids: torch.Tensor | slice) -> None:
+        cfg = self._term.cfg
+        self.state.reset(
+            env_ids,
+            fatigue_reset_vec=cfg.fatigue_reset_vec,
+            fatigue_reset_random=cfg.fatigue_reset_random,
+        )
+
+
+class _RerouteStage(_TermStage):
+    name, order = "reroute", STAGE_ORDER["reroute"]
+
+    def __init__(self, src: int, dst: int) -> None:
+        self._src, self._dst = src, dst
+
+    def __call__(self, ctrl: torch.Tensor) -> torch.Tensor:
+        ctrl[:, self._dst] = ctrl[:, self._src]
+        ctrl[:, self._src] = 0.0
+        return ctrl
+
+
+class _CustomStage(_TermStage):
+    """A portable :class:`~myosuite.envs.muscle_stages.ExcitationStage` on the muscle columns."""
+
+    def __init__(self, term: MyoAction, stage: ExcitationStage) -> None:
+        self._term, self.stage = term, stage
+        self.name, self.order = stage.name, stage.order
+
+    def __call__(self, ctrl: torch.Tensor) -> torch.Tensor:
+        cols = self._term._muscle_cols
+        ctrl[:, cols] = self.stage(ctrl[:, cols], torch)
+        return ctrl
+
+    def reset(self, env_ids: torch.Tensor | slice) -> None:
+        self.stage.reset(env_ids)
+
+
 @dataclass(kw_only=True)
 class MyoActionCfg(ActionTermCfg):
     """Config for :class:`MyoAction`.
@@ -148,27 +236,10 @@ class MyoAction(ActionTerm):
             names = list(entity.actuator_names)
             self._reroute = (names.index(cfg.reroute[0]), names.index(cfg.reroute[1]))
 
-        self._fatigue: TorchFatigueState | None = None
-        if cfg.muscle_fatigue:
-            self._fatigue = TorchFatigueState.from_mj_model(
-                model, num_envs=self.num_envs, device=str(self.device)
-            )
         # Global torch RNG on the sim device, seeded by mjlab (``seed_rng``).
         self._randn = functools.partial(torch.randn, device=self.device)
 
-        self._stages = [cfg_stage() for cfg_stage in cfg.excitation_stages]
-        self._pipeline = self._build_pipeline()
-        self._stage_resets: list[Callable[[torch.Tensor | slice], None]] = [
-            stage.reset for stage in self._stages
-        ]
-        if self._fatigue is not None:
-            self._stage_resets.append(
-                functools.partial(
-                    self._fatigue.reset,
-                    fatigue_reset_vec=cfg.fatigue_reset_vec,
-                    fatigue_reset_random=cfg.fatigue_reset_random,
-                )
-            )
+        self._stages = self._build_stages(model)
 
         self._raw_actions = torch.zeros(
             self.num_envs, self._action_dim, device=self.device
@@ -206,58 +277,43 @@ class MyoAction(ActionTerm):
                 self._ctrl_hi - self._ctrl_lo
             )
 
-        for step in self._pipeline:
-            ctrl = step(ctrl)
+        for stage in self._stages:
+            ctrl = stage(ctrl)
         self._processed_actions[:] = ctrl
 
-    def _build_pipeline(self) -> list[Callable[[torch.Tensor], torch.Tensor]]:
-        """The stages that are on, sorted by order (built-in and custom)."""
-        cols = self._muscle_cols
-        steps: dict[str, tuple[float, Callable[[torch.Tensor], torch.Tensor]]] = {}
-
-        def noise(ctrl: torch.Tensor) -> torch.Tensor:
-            ctrl[:, cols] = sample_motor_noise(
-                ctrl[:, cols], self.cfg.motor_noise, self._randn, torch
+    def _build_stages(self, model: mujoco.MjModel) -> list[_TermStage]:
+        """The stages that are configured (noise: always, it can be switched on later), by order."""
+        cfg = self.cfg
+        stages: list[_TermStage] = [_NoiseStage(self)]
+        if cfg.muscle_fatigue:
+            state = TorchFatigueState.from_mj_model(
+                model, num_envs=self.num_envs, device=str(self.device)
             )
-            return ctrl
-
-        def fatigue(ctrl: torch.Tensor) -> torch.Tensor:
-            ctrl[:, cols] = self._fatigue.step(ctrl[:, cols], self._env.step_dt)
-            return ctrl
-
-        def reroute(ctrl: torch.Tensor) -> torch.Tensor:
-            src, dst = self._reroute
-            ctrl[:, dst] = ctrl[:, src]
-            ctrl[:, src] = 0.0
-            return ctrl
-
-        # The noise level can change at run time (``cfg.motor_noise``): the step is
-        # always there, and does nothing and draws nothing while it is off.
-        steps["noise"] = (STAGE_ORDER["noise"], noise)
-        if self._fatigue is not None:
-            steps["fatigue"] = (STAGE_ORDER["fatigue"], fatigue)
+            stages.append(_FatigueStage(self, state))
         if self._reroute is not None:
-            steps["reroute"] = (STAGE_ORDER["reroute"], reroute)
-        for stage in self._stages:
-            if stage.name in steps or stage.name in STAGE_ORDER:
+            stages.append(_RerouteStage(*self._reroute))
+        for make_stage in cfg.excitation_stages:
+            custom = _CustomStage(self, make_stage())
+            if custom.name in {st.name for st in stages} | set(STAGE_ORDER):
                 raise ValueError(
-                    f"The stage name {stage.name!r} is taken (built-in or twice)."
+                    f"The stage name {custom.name!r} is taken (built-in or twice)."
                 )
-            on = {
-                n: o
-                for n, (o, _) in steps.items()
-                if n != "noise" or self.cfg.motor_noise.enabled
-            }
-            warn_order_clash(stage.name, stage.order, on, 3)
+            on = {st.name: st.order for st in stages if st.active()}
+            warn_order_clash(custom.name, custom.order, on, 3)
+            stages.append(custom)
+        return sorted(stages, key=lambda st: (st.order, st.name))
 
-            def run(ctrl: torch.Tensor, stage: ExcitationStage = stage) -> torch.Tensor:
-                ctrl[:, cols] = stage(ctrl[:, cols], torch)
-                return ctrl
+    @property
+    def _fatigue(self) -> TorchFatigueState | None:
+        """The fatigue state of the fatigue stage (``None`` without fatigue)."""
+        return next(
+            (st.state for st in self._stages if isinstance(st, _FatigueStage)), None
+        )
 
-            steps[stage.name] = (stage.order, run)
-        return [
-            fn for _, (_, fn) in sorted(steps.items(), key=lambda i: (i[1][0], i[0]))
-        ]
+    @property
+    def stage_names(self) -> tuple[str, ...]:
+        """Names of the stages, in the order they run (noise is a no-op while off)."""
+        return tuple(st.name for st in self._stages)
 
     def apply_actions(self) -> None:
         if len(self._joint_cols):
@@ -276,7 +332,5 @@ class MyoAction(ActionTerm):
             env_ids = slice(None)
         self._raw_actions[env_ids] = 0.0
         self._processed_actions[env_ids] = 0.0
-        # mjlab has no gym wrappers: the term owns the per-env stage state (fatigue
-        # compartments, filters), which mjlab's action manager resets with ``env_ids``.
-        for reset in self._stage_resets:
-            reset(env_ids)
+        for stage in self._stages:
+            stage.reset(env_ids)
