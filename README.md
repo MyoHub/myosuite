@@ -168,7 +168,7 @@ A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract]
 
 ## Tutorials
 
-All notebooks are listed, with what each needs, in the [tutorial index](tutorials/README.md). 
+All notebooks are listed, with what each needs, in the [tutorial index](tutorials/README.md).
 
 Start with [1.1 Get Started](tutorials/1.1_Get_Started.ipynb), then [2.1 Train SB3 Policy](tutorials/2.1_Train_SB3_Policy.ipynb) (CPU).
 
