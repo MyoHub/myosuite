@@ -56,12 +56,12 @@ fatigue_reset_random=True)``, or change the options with
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 import gymnasium as gym
 import numpy as np
-from gymnasium.envs.registration import WrapperSpec
+from gymnasium.envs.registration import WrapperSpec, load_env_creator
 from gymnasium.utils import RecordConstructorArgs
 
 from myosuite.envs import muscle_stages
@@ -633,3 +633,35 @@ def condition_wrapper_specs(condition: str, **kwargs: Any) -> tuple[WrapperSpec,
             name=name, entry_point=f"myosuite.envs.wrappers:{name}", kwargs=kwargs
         ),
     )
+
+
+def wrapper_spec(wrapper: type, **kwargs: Any) -> WrapperSpec:
+    """Spec of a muscle-command wrapper, for ``EnvConfig.features`` or a registration.
+
+    Args:
+        wrapper: A wrapper class of this module (``MotorNoiseWrapper``, ...).
+        **kwargs: Its constructor arguments after the env.
+
+    Returns:
+        The :class:`~gymnasium.envs.registration.WrapperSpec`.
+    """
+    return WrapperSpec(
+        name=wrapper.__name__,
+        entry_point=f"{wrapper.__module__}:{wrapper.__name__}",
+        kwargs=kwargs,
+    )
+
+
+def apply_features(env: gym.Env, features: Iterable[WrapperSpec]) -> gym.Env:
+    """Wrap *env* in the wrappers of *features* (the stage order is fixed, not the list's).
+
+    Args:
+        env: A CPU env (as made by ``gym.make``).
+        features: Wrapper specs, e.g. from :func:`wrapper_spec`.
+
+    Returns:
+        The wrapped env.
+    """
+    for spec in features:
+        env = load_env_creator(spec.entry_point)(env, **(spec.kwargs or {}))
+    return env

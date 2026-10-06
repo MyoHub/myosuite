@@ -122,6 +122,39 @@ already registers it (`FatigueWrapper` on `myoFati*`, `ReafferentationWrapper` o
 `SarcopeniaWrapper` raises it if sarcopenia is already applied to the model (it would scale the forces twice). Wrap the
 base id, or change the installed wrapper's options (`env.motor_noise`, `env.set_fatigue_reset_random(...)`).
 
+### One call for every backend: `make_env(EnvConfig(...))`
+
+`myosuite.core.registry.make_env` builds the same env on any backend from an `EnvConfig`
+(`myosuite.core.config`). The registration of the env id gives the defaults; the config overrides them:
+
+```python
+from myosuite.core.config import EnvConfig
+from myosuite.core.registry import make_env
+from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper, wrapper_spec
+
+cfg = EnvConfig(
+    "myoElbowPose1D6MRandom-v0",
+    max_episode_steps=300,
+    features=(wrapper_spec(MotorNoiseWrapper, motor_noise=0.05), wrapper_spec(FatigueWrapper)),
+)
+env = make_env(cfg)                                          # CPU
+envs = make_env(cfg, backend="mjlab", num_envs=4096)         # GPU twin, same noise + fatigue
+```
+
+| Field | CPU | mjlab |
+|---|---|---|
+| `features` (wrapper specs) | wrappers around `gym.make` | added to the CPU registration the twin is built from |
+| `max_episode_steps` | `gym.make(max_episode_steps=...)` | `episode_length_s` of the twin |
+| `num_envs` | must be 1 | `scene.num_envs` |
+| `task_kwargs` | env constructor kwargs | not applicable |
+| `backend_options` / `**overrides` | `gym.make` kwargs (`render_mode`, ...) | `device`, ... |
+
+Rules: a feature a backend cannot run raises (`mjx`: `NotImplementedError`; a twin that is not built from the CPU
+registration, such as MuscleMimic, ChaseTag or Table Tennis: `NotImplementedError`), it is never dropped silently;
+adding a wrapper the id already registers (`FatigueWrapper` on `myoFati*`) raises a `ValueError` on both backends.
+Harness wrappers (`PerturbationWrapper`, recording, a delay on the raw action) are not features: they are plain
+gymnasium wrappers on the CPU env and are not part of the config.
+
 The env's own map stays inside the env: `normalize_act` also sets the initial joint pose, so the
 sigmoid is not a wrapper.
 
