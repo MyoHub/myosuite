@@ -43,6 +43,9 @@ Work built on MyoSuite
 * Chiappa, A.S., Marin Vargas, A., Huang, A.Z., Mathis, A. (2023). Latent exploration for
   reinforcement learning. *Advances in Neural Information Processing Systems (NeurIPS)*.
   https://arxiv.org/abs/2305.20065
+* Hodossy, B.K., Crotti, M., Pace, A., Catalano, M.G., Aszmann, O.C., Bicchi, A., Farina, D. (2026).
+  Towards a Virtual Gait Lab: Testing Prosthetics with Dynamically Simulated Users. *IEEE Transactions
+  on Medical Robotics and Bionics*. https://ieeexplore.ieee.org/abstract/document/11606461
 * Bhattarai, A., Selder, H., Fischer, F., Fleig, A., Kristensson, P.O. (2026). MyoInteract: A
   framework for fast prototyping of biomechanical HCI tasks using reinforcement learning. *ACM
   Designing Interactive Systems Conference (DIS)*. https://arxiv.org/abs/2602.15245,

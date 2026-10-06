@@ -190,7 +190,8 @@ KIT subset (Mandery et al., 2015, 2016) provides the locomotion clips, retargete
 retargeted datasets are for non-commercial research under the AMASS license and ask you to cite AMASS and MuscleMimic.
 
 Further papers use or build on MyoSuite: MyoSim (ICRA 2022), MyoDex (ICML 2023), SAR (RSS 2023), MyoChallenge 2022,
-DEP-RL (ICLR 2023), Lattice (NeurIPS 2023) and MyoInteract (DIS 2026, a GUI framework for prototyping
-biomechanical HCI tasks on top of MyoSuite). The sources behind the models, the muscle fatigue model, the
+DEP-RL (ICLR 2023), Lattice (NeurIPS 2023), MyoInteract (DIS 2026, a GUI framework for prototyping
+biomechanical HCI tasks on top of MyoSuite) and the Virtual Gait Lab for testing prosthetics with simulated
+users (IEEE T-MRB 2026). The sources behind the models, the muscle fatigue model, the
 controllers and the motion data are collected in [`docs/source/references.rst`](docs/source/references.rst) (page
 *References* of the documentation); `CITATION.cff` holds the machine-readable citation.

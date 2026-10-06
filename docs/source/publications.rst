@@ -18,6 +18,8 @@ Publications
 
 * Chengkun Li, Cheryl Wang, Bianca Ziliotto, Merkourios Simos, Jozsef Kovecses, Guillaume Durandau, Alexander Mathis, `Towards Embodied AI with MuscleMimic: Unlocking full-body musculoskeletal motor learning at scale <https://arxiv.org/abs/2603.25544>`_, *arXiv:2603.25544*, 2026 `<code https://github.com/amathislab/musclemimic>`_
 
+* Balint K. Hodossy, Matteo Crotti, Anna Pace, Manuel G. Catalano, Oskar C. Aszmann, Antonio Bicchi, Dario Farina, `Towards a Virtual Gait Lab: Testing Prosthetics with Dynamically Simulated Users <https://ieeexplore.ieee.org/abstract/document/11606461>`_, *IEEE Transactions on Medical Robotics and Bionics*, 2026.
+
 * Ankit Bhattarai, Hannah Selder, Florian Fischer, Arthur Fleig, Per Ola Kristensson, `MyoInteract: A Framework for Fast Prototyping of Biomechanical HCI Tasks using Reinforcement Learning <https://arxiv.org/abs/2602.15245>`_, *ACM Designing Interactive Systems Conference (DIS)*, 2026 `<doi https://doi.org/10.1145/3800645.3812899>`_
 
 See :doc:`references` for the sources behind the models, the muscle conditions, the controllers and the motion data.
