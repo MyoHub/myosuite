@@ -26,6 +26,8 @@ Musculoskeletal models used by MyoSuite tasks. Registered Gymnasium IDs:
 Models
 ********
 
+The papers and models these are based on are listed on :doc:`references`.
+
 MyoSuite consists of six models: :ref:`myoFinger`, :ref:`myoElbow`, :ref:`myoHand`, :ref:`myoArm`, :ref:`myoLeg`, :ref:`myoTorso` and :ref:`myoArmNoHandMuscles`.
 Using these models, we design a rich collection of tasks ranging across simple reaching movements,
 contact-rich movements involving object-manipulation such as pen-twirling and baoding balls, as well as locomotion behaviors.
@@ -35,7 +37,7 @@ contact-rich movements involving object-manipulation such as pen-twirling and ba
 
 myoFinger
 ==========
-Simplified and intuitive model (based on Xu et al. (2012)[https://ieeexplore.ieee.org/document/6290710]) of a 4 Degree of Freedom (DoF) finger
+Simplified and intuitive model (based on `Xu et al. (2012) <https://doi.org/10.1109/BioRob.2012.6290710>`__) of a 4 Degree of Freedom (DoF) finger
 which is actuated through a series of 5 simplified antagonistic muscle-tendon units.
 We also provide its robotic counterpart with simple torque actuators
 to facilitate the comparative investigation.
@@ -62,7 +64,7 @@ dflx      DIP Flexor
 
 myoElbow
 ===========
-A model of 2 DoF human elbow joint -- based on OpenSim’s default testing arm model (Delp et al. (2007); Seth et al. (2018))
+A model of 2 DoF human elbow joint -- based on OpenSim’s default testing arm model (`Delp et al. (2007) <https://doi.org/10.1109/TBME.2007.901024>`__; `Seth et al. (2018) <https://doi.org/10.1371/journal.pcbi.1006223>`__)
 -- and actuated using multiple agonist/antagonist pairs (3 flexors and 3 extensors).
 
 Details of this model can be found at `myoElbow <https://github.com/MyoHub/myo_sim/tree/main/elbow>`__
@@ -127,9 +129,9 @@ myoLeg
 The 3D dexterous human leg requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
 
 This musculoskeletal model is comprised of 10 joints, 20 DoFs, and 80 muscles-tendon units. This musculoskeletal model takes
-Rajagopal's full body gait model [https://github.com/opensim-org/opensim-models/tree/master/Models/RajagopalModel] as close reference.
+the `Rajagopal full body gait model <https://github.com/opensim-org/opensim-models/tree/master/Models/RajagopalModel>`__ as close reference.
 
-Joints and muscle details can be found in Rajagopal's paper [https://ieeexplore.ieee.org/document/7505900]
+Joints and muscle details can be found in `Rajagopal et al. (2016) <https://ieeexplore.ieee.org/document/7505900>`__.
 
 The model implementation details can be found on our github repo at `myoLeg <https://github.com/MyoHub/myo_sim/tree/main/leg>`__
 
@@ -201,7 +203,7 @@ Model specification can be found on our github repo of `myoArm <https://github.c
 
 myoTorso
 ==========
-The myoTorso mujoco musculoskeletal (MSK) model is generated from: Constrained Lumbar Spine model - 210 [https://simtk.org/projects/lumbarspine] from Opensim.
+The myoTorso mujoco musculoskeletal (MSK) model is generated from the `Constrained Lumbar Spine model - 210 <https://simtk.org/projects/lumbarspine>`__ of OpenSim.
 
 This generated mujoco MSK model has almost identical kinematics, and very similar muscle kinematics (moment arms) and kinetic (forces) properties.
 
