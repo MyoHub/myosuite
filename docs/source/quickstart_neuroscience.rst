@@ -244,9 +244,9 @@ Motor Noise (Signal-Dependent and Constant)
 Human motor commands are noisy, and the noise grows with the size of the command
 (signal-dependent noise, Harris & Wolpert 1998). This noise produces the speed-accuracy
 trade-off behind Fitts' law, so simulated users of interfaces (Fischer et al. 2021,
-User-in-the-Box by Ikkala et al. 2022) add it to the controls. ``MotorNoiseCfg`` adds it to
-the muscle excitations ``u`` of the pose, reach, key-turn, object-hold, pen, torso, leg and
-Die-Reorient envs, and of their mjlab twins:
+User-in-the-Box by Ikkala et al. 2022) add it to the controls. ``MotorNoiseWrapper`` adds it to
+the muscle excitations ``u`` of the muscle envs (pose, reach, key-turn, object-hold, pen, torso, leg
+and the MyoChallenge envs), and the mjlab twins apply it too:
 
 .. math::
 
@@ -255,26 +255,31 @@ Die-Reorient envs, and of their mjlab twins:
 
 with independent draws per muscle and per control step. The noise is applied after the
 action-to-excitation mapping and before fatigue; motor (torque) actuators are not affected.
-It is off by default. Envs that do not apply it (the other challenge envs, MuscleMimic, the
-``TaskConfig`` envs) raise a ``ValueError`` instead of ignoring an enabled ``motor_noise``.
+It is off by default. Envs whose pipeline does not run wrapper stages (MuscleMimic, the
+``TaskConfig`` envs) raise a ``TypeError`` instead of ignoring the wrapper.
 
 .. code-block:: python
 
    import gymnasium as gym
    import myosuite
+   from myosuite.envs.wrappers import MotorNoiseWrapper
    from myosuite.terms.base_action import MotorNoiseCfg
 
    # Levels 0.103 (signal-dependent) and 0.185 (constant), after van Beers et al. (2004).
-   env = gym.make('myoElbowPose1D6MRandom-v0', motor_noise=MotorNoiseCfg.van_beers_2004())
-   # Any levels, also as a dict (handy in registration kwargs):
-   env = gym.make('myoElbowPose1D6MRandom-v0',
-                  motor_noise={'signal_dependent_std': 0.1, 'constant_std': 0.02})
+   env = MotorNoiseWrapper(gym.make('myoElbowPose1D6MRandom-v0'), MotorNoiseCfg.van_beers_2004())
+   # Any levels, also as a dict:
+   env = MotorNoiseWrapper(gym.make('myoElbowPose1D6MRandom-v0'),
+                           {'signal_dependent_std': 0.1, 'constant_std': 0.02})
    obs, info = env.reset(seed=0)  # the noise comes from the env's seeded np_random
 
-To configure both backends, register an env id with ``motor_noise`` in its kwargs: the mjlab
-twin reads it from the CPU registration like the muscle condition. For a single mjlab config,
-set ``env_cfg.actions["muscles"].motor_noise``. See ``docs/wiki/cross-backend-contract.md``
-for the order of operations and the random streams.
+   # Noise and fatigue together: the stage order is fixed (noise, then fatigue), whatever the wrapping order.
+   from myosuite.envs.wrappers import FatigueWrapper
+   env = FatigueWrapper(MotorNoiseWrapper(gym.make('myoElbowPose1D6MRandom-v0'), {'constant_std': 0.05}))
+
+To configure both backends, register an env id with a ``MotorNoiseWrapper`` in its
+``additional_wrappers``: the mjlab twin reads it from the CPU registration like the muscle
+condition. For a single mjlab config, set ``env_cfg.actions["muscles"].motor_noise``. See
+``docs/wiki/cross-backend-contract.md`` for the order of operations and the random streams.
 
 Mind the clip at low excitation: with the van Beers levels a command of ``u = 0.076`` (policy
 output 0 through the sigmoid) is clipped to 0 in 34 % of the steps and its mean rises to 0.118,

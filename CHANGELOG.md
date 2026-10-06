@@ -55,7 +55,7 @@ full commit list.
 * **MuscleMimic baseline:** a single-clip walking policy (2B steps; 86% of episodes reach the clip end) on Hugging Face, see `docs/baseline_checkpoints.md`.
 * **Fatigue:** muscle-group- and sex-specific fatigue parameters from the literature (Rakshit et al. 2021; Frey-Law et al. 2012), episode-persistent and resumable states, torch 3CC-r parity with the CPU model ([#406], [#421], [#491]).
 * **Targets:** `GoalSpec(target_type="site_positions")` samples per-episode targets from per-site ranges on CPU and MJX (mjlab helper `site_position_command_cfg`); `MotionClip` carries optional per-frame `weights` (#410).
-* **Motor noise (optional, off by default):** `MotorNoiseCfg` adds signal-dependent and constant Gaussian noise to muscle excitations (`van_beers_2004()` preset, 0.103 / 0.185); the `motor_noise` kwarg of the basic and Die-Reorient CPU envs reaches their mjlab twins ([#488]).
+* **Muscle-command wrappers:** `MotorNoiseWrapper` (signal-dependent + constant Gaussian noise on muscle excitations, `MotorNoiseCfg.van_beers_2004()`), `FatigueWrapper`, `ReafferentationWrapper` and `SarcopeniaWrapper`; each installs a stage of the env's action pipeline, run in a fixed order (`map -> noise -> fatigue -> reroute`), also on the mjlab twins ([#488], [#502]).
 * **Tutorials and docs:** numbered tracks with companion files in `tutorials/files/X.Y/`, SAR tutorials and pretrained pickles, a fatigue tutorial, quickstarts, environment reference, backend-parity and baselines pages ([#406], [#454], [#455]).
 
 ### Changed
@@ -77,6 +77,7 @@ full commit list.
 * **MuscleMimic bridge builds its observation on the sim device** (`TorchFullbodyObsAdapter`): 20-80x faster, float32, not bit-identical to the CPU builder (agrees to about 1e-6); `obs_backend="cpu"` keeps the old path ([#486]).
 * **Performance and memory:** cached model specs ([#481]), vectorized full-body mimic observation builder ([#482]), faster OslRun step ([#483]), explicit MjData arenas for full-body Mimic and ChaseTag ([#487], [#493]) and the two-agent `myoChallengeChaseTagFBVs-v0` scene ([#498]), `colorednoise` replaces `pink-noise-rl` and `import myosuite` is 2x faster ([#480]).
 * **Fatigue dynamics follow the literature:** the rest multiplier `r` acts only at rest (Rakshit et al. 2021; commands up to `FATIGUE_REST_THRESHOLD = 0.01` count as rest, so sigmoid-mapped muscles can rest) and the `Shoulder` row uses the Frey-Law et al. (2012) fit. Retrain policies on the `myoFati*` envs ([#491]).
+* **The `muscle_condition`, `fatigue_reset_vec`, `fatigue_reset_random` and `motor_noise` env kwargs are replaced by wrappers.** The `myoFati*`, `myoSarc*` and `myoReaf*` ids are unchanged, and rollouts are identical to the kwarg versions. Build a custom stack with `FatigueWrapper(env, fatigue_reset_random=True)` and the other wrappers, and use `env.set_fatigue_reset_random(...)` instead of `env.unwrapped.set_fatigue_reset_random(...)`; the old kwargs raise a `TypeError` that names the replacement ([#502]).
 * Documentation and developer wiki cut down; tutorials simplified for newcomers ([#406]).
 
 ### Fixed
@@ -100,6 +101,7 @@ full commit list.
 
 ### Removed
 
+* `ObservationNormalizeWrapper` (unused; SB3 `VecNormalize` and mjlab's normalizer cover it) ([#502]).
 * The 2.4 DEP-RL tutorial (the 2023 baseline no longer walks on the current envs); MyoReflex Walk is now 2.4 ([#460], [#468]).
 * The myouser-specific mjlab task and helpers (now in the standalone myoInteract repository).
 * The MyoDM suite, Boxing and Saber tasks with their shared code, the `composer` package, the legacy `simhive` copies, `myosuite_init`, placeholder `*Modular-v0` registrations, the Walk Backends demo notebook, the stale examine-rollout script, Colab helpers and the unused console scripts `myosuite-musclemimic-fullbody-parity` and `myosuite-musclemimic-mjx-train` ([#406]).
@@ -184,6 +186,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#496]: https://github.com/MyoHub/myosuite/pull/496
 [#497]: https://github.com/MyoHub/myosuite/pull/497
 [#498]: https://github.com/MyoHub/myosuite/pull/498
+[#502]: https://github.com/MyoHub/myosuite/issues/502
 
 ## [2.12.2] - 2026-05-06
 * Asset credits updated ([#392]).

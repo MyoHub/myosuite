@@ -75,6 +75,34 @@ Fixed `scale` in `ObservationTermCfg` is exported to JSON and replicated in Type
 - A reset must not start in a terminal state. For example, a reach task's far threshold must exceed the
   farthest target its sampler can draw from the start pose (`test_reach_far_threshold.py`, both backends).
 
+## Muscle-command stages (wrappers)
+
+Muscle noise, fatigue and reafferentation are **wrappers** (`myosuite.envs.wrappers`), not env
+kwargs: `MotorNoiseWrapper`, `FatigueWrapper`, `ReafferentationWrapper` (and `SarcopeniaWrapper`,
+which edits the model once). The `myoFati*`, `myoSarc*` and `myoReaf*` ids are registrations of the
+base env with the matching wrapper in `additional_wrappers`; `condition_wrapper_specs(...)` builds the
+spec. Constructor kwargs `muscle_condition`, `fatigue_reset_vec`, `fatigue_reset_random` and
+`motor_noise` no longer exist: an env raises a `TypeError` that names the replacement.
+
+Each wrapper installs one **stage** in the env's action pipeline
+(`myosuite.envs.muscle_stages.CtrlStageHost.add_ctrl_stage`). The stages run in a fixed order, set by
+the stage and not by the wrapping order:
+
+```
+clip action -> env map (sigmoid, or as-is for the walk envs, or clipped ctrl when
+normalize_act=False) -> noise -> fatigue -> reroute (reafferentation) -> ctrl
+```
+
+mjlab applies the same order in `MyoAction`; `cpu_reference.action_cfg` builds it from the
+registration's wrapper specs, so registering an env id with a wrapper configures both halves. The
+envs that run stages are the basic pose, key-turn, object-hold, pen, SAR-reorient, arm/finger/hand
+reach, torso, leg and the MyoChallenge muscle envs; wrapping any other env raises a `TypeError`
+(for example MuscleMimic and the `TaskConfig` envs, whose `ActuatorGroupSpec.condition` / `noise`
+stay declarative). A stage is installed once per env.
+
+The env's own map stays inside the env: `normalize_act` also sets the initial joint pose, so the
+sigmoid is not a wrapper.
+
 ## Motor noise (optional, off by default)
 
 `MotorNoiseCfg(signal_dependent_std, constant_std)` (`myosuite.terms.base_action`) adds
@@ -83,33 +111,22 @@ human motor noise to muscle excitations. `MotorNoiseCfg.van_beers_2004()` gives 
 
 - **Semantics.** `u' = clip(u + σ_sd·u·n1 + σ_c·n2, 0, 1)` with `n1, n2 ~ N(0, 1)` drawn
   independently per muscle and per control step (and per env on mjlab). The sample is held over
-  the `frame_skip` / decimation substeps.
-- **Order.** clip action → action-to-excitation mapping (sigmoid, or as-is for the walk envs, or
-  the clipped ctrl when `normalize_act=False`) → **noise (muscle actuators only; motors are never
-  noised)** → fatigue → reafferentation reroute → `ctrl`. Both backends use the pure term
-  `motor_noise`; the CPU and mjlab outputs match exactly for the same normals.
+  the `frame_skip` / decimation substeps. Motors are never noised.
+- **Order.** After the env's action-to-excitation map and before fatigue (see the stage order
+  above). Both backends use the pure term `motor_noise`; the CPU and mjlab outputs match exactly
+  for the same normals.
 - **RNG.** CPU: the env's `np_random` (seeded by `reset(seed=...)`), drawn only when the noise is
   on, so default rollouts and the RNG stream are unchanged. With noise on, the draws advance
   `np_random`, so later per-episode task samples (targets) differ from the noiseless env unless
   every episode is reseeded. mjlab: `torch.randn` on the sim device from the global torch RNG
   that mjlab seeds (`seed_rng`). The two backends agree in distribution, not sample by sample.
-- **Configuration.** The CPU registration kwarg `motor_noise` (a `MotorNoiseCfg` or a dict of its
-  fields) reaches the twin through `cpu_reference.action_cfg`, like `muscle_condition`, so
-  registering an env id with it configures both halves. Per instance:
-  `gym.make(env_id, motor_noise=...)` on CPU, `env_cfg.actions["muscles"].motor_noise = ...` on
-  mjlab; set both for a matched pair.
+- **Configuration.** `MotorNoiseWrapper(env, MotorNoiseCfg.van_beers_2004())` on CPU (a cfg or a
+  dict of its fields; assign `env.motor_noise` to change the levels). To configure both backends,
+  register an env id with a `MotorNoiseWrapper` spec: the twin reads it through
+  `cpu_reference.action_cfg`. For one mjlab config, set `env_cfg.actions["muscles"].motor_noise`.
 - **Clipping.** Near the bounds the clip rectifies the noise: at `u = 0.076` (policy output 0
   with the sigmoid) the van Beers levels clip 34 % of the samples to 0 and raise the mean
   excitation to 0.118 (see `docs/source/quickstart_neuroscience.rst`).
-- **Coverage.** CPU: the basic pose, key-turn, object-hold, pen, SAR-reorient, arm/finger/hand
-  reach, torso pose, leg stand/walk/terrain envs and the Die-Reorient challenge. mjlab: every
-  twin built with `cpu_reference.action_cfg` (`MyoAction`). These classes set
-  `supports_motor_noise = True` (listed in `gymnasium_env.MOTOR_NOISE_ENV_CLASSES`). Any other
-  env class (the remaining challenge envs, MuscleMimic, the `TaskConfig` envs) raises a
-  `ValueError` for an enabled `motor_noise` (`MyoGymnasiumEnv.__new__`), and so does
-  `cpu_reference.cpu_task_spec` for such a registration; `None` or a disabled config is accepted
-  everywhere. The experimental `ModularTaskEnv` keeps its own `ActuatorGroupSpec.noise`
-  (additive, on the raw action).
 
 ---
 
