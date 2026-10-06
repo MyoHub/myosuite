@@ -470,8 +470,6 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # this, they exist only when myosuite is pip-installed (mjlab's entry point) or
     # something else imported the backend first.
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
-    from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference
-    from myosuite.envs.myo.backends.mjlab.tasks.registration import rebuild_twin_cfg
 
     if config.task_kwargs:
         raise NotImplementedError(
@@ -515,13 +513,21 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
         n_substeps = _substeps(config.ctrl_dt, cfg.sim.mujoco.timestep)
         if n_substeps != cfg.decimation:
             task_kwargs["frame_skip"] = n_substeps
+    # The twin-rebuild modules are imported only when needed: a plain call works with
+    # any mjlab build that provides tasks.registry.
     if config.features or task_kwargs:
+        from myosuite.envs.myo.backends.mjlab.tasks.registration import (  # noqa: PLC0415
+            rebuild_twin_cfg,
+        )
+
         cfg = rebuild_twin_cfg(env_id, config.features, task_kwargs)
 
     num_envs = options.pop("num_envs", None)
     if num_envs is not None and hasattr(cfg, "scene"):
         cfg.scene.num_envs = int(num_envs)
     if config.max_episode_steps is not None:
+        from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference  # noqa: PLC0415
+
         step_dt = cfg.decimation * cfg.sim.mujoco.timestep
         cfg.episode_length_s = cpu_reference.episode_length_s(
             config.max_episode_steps, step_dt
