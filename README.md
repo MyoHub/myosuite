@@ -168,11 +168,13 @@ A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract]
 
 ## Tutorials
 
-See [`tutorials/README.md`](tutorials/README.md). Start with `1.1_Get_Started.ipynb` then `2.1_Train_SB3_Policy.ipynb`.
+All notebooks are listed, with what each needs, in the [tutorial index](tutorials/README.md). Start with [1.1 Get Started](tutorials/1.1_Get_Started.ipynb), then [2.1 Train SB3 Policy](tutorials/2.1_Train_SB3_Policy.ipynb) (CPU).
 
-GPU walk-through: [`tutorials/2.2_Train_MjLab_Policy.ipynb`](tutorials/2.2_Train_MjLab_Policy.ipynb).
+GPU walk-through: [2.2 Train MjLab Policy](tutorials/2.2_Train_MjLab_Policy.ipynb).
 
-Full-body MuscleMimic playback and training: [`myosuite/integrations/musclemimic/README.md`](myosuite/integrations/musclemimic/README.md).
+Muscle conditions (fatigue and more): [4.2 Fatigue Modeling](tutorials/4.2_Fatigue_Modeling.ipynb).
+
+Full-body MuscleMimic: [5.1 Load Policy](tutorials/5.1_Fullbody_Load_Policy.ipynb) (playback) and [5.3 Train with mjlab](tutorials/5.3_Fullbody_Train_MjLab_Policy.ipynb); background, data and checkpoints in the [MuscleMimic README](myosuite/integrations/musclemimic/README.md).
 
 
 ## License
