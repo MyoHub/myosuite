@@ -24,9 +24,13 @@ Never import `numpy`, `jax.numpy`, or `torch` directly. Get the right array libr
 ```python
 def distance_reward(accessor, task_state, *, threshold: float = 0.05, **kwargs):
     xp = accessor.array_module()
-    dist = float(xp.linalg.norm(task_state["target_angles"] - accessor.joint_pos()))
-    return {"dense": -dist, "solved": dist < threshold, "done": False}
+    dist = xp.linalg.norm(task_state["target_angles"] - accessor.joint_pos(), axis=-1)
+    return {"dense": -dist, "solved": dist < threshold, "done": xp.zeros_like(dist, dtype=bool)}
 ```
+
+**Write every term for a batch.** On mjlab the state has a leading dimension of `N` envs (`joint_pos()` is
+`(N, nq)`), on the CPU it does not (`(nq,)`). Reduce over the last axis (`axis=-1`), and never call `float()`,
+`.item()` or loop over envs: `float(norm(...))` on a batch silently collapses all envs into one number.
 
 Access physics state via `accessor.*` only — never `mujoco.MjData` directly:
 
@@ -51,8 +55,9 @@ def pose_tracking_reward(
     accessor, task_state, *, weight=1.0, pose_thd=0.35, **kwargs
 ) -> dict:
     xp = accessor.array_module()
-    dist = float(xp.linalg.norm(task_state["target_angles"] - accessor.joint_pos()))
-    return {"pose_err": dist, "dense": -weight * dist, "solved": dist < pose_thd, "done": False}
+    dist = xp.linalg.norm(task_state["target_angles"] - accessor.joint_pos(), axis=-1)
+    return {"pose_err": dist, "dense": -weight * dist, "solved": dist < pose_thd,
+            "done": xp.zeros_like(dist, dtype=bool)}
 ```
 
 Select terms by name or pass the function. A name `"foo"` resolves to `foo_obs` / `foo_reward` in `myosuite/terms/`;
