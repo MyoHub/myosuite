@@ -154,7 +154,8 @@ envs = make_env(cfg, backend="mjlab", num_envs=4096)         # GPU twin, same no
 | `task_kwargs` | env constructor kwargs | raises (the twin reads the registration) |
 | `backend_options` / `**overrides` | `gym.make` kwargs (`render_mode`, ...) | `device`, ... |
 
-`ctrl_dt` must be a whole multiple of the model timestep (`ValueError` otherwise). Rules: a feature a backend cannot
+`ctrl_dt` must be a whole multiple of the model timestep (`ValueError` otherwise); the `ModularTaskEnv` ids take their
+timing from `task_config.backend`, so `ctrl_dt` raises a `ValueError` for them on both backends. Rules: a feature a backend cannot
 run raises (`mjx`: only `SarcopeniaWrapper`, a model edit, is supported, the rest raises `NotImplementedError`; a twin that is not built from the CPU
 registration, such as MuscleMimic, ChaseTag or Table Tennis: `NotImplementedError`), it is never dropped silently;
 adding a wrapper the id already registers (`FatigueWrapper` on `myoFati*`) raises a `ValueError` on both backends.
