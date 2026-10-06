@@ -23,6 +23,12 @@ Examples::
         --num-cols 4 --num-rows 2 --episodes-per-env 3 --video grid.mp4 \\
         --width 1280 --height 720
 
+Muscle-command features (the ones the checkpoint was trained with, see
+``scripts/train_mjlab.py``) are added with ``--feature NAME[=JSON]``, repeatable::
+
+    python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN \
+        --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'
+
 Every run prints the success rate (share of episodes whose final step is
 "solved"; CPU: ``info["solved"]``, mjlab: the ``Episode_Metrics/success``
 metric that every task twin logs during training too).
@@ -46,6 +52,8 @@ import mujoco
 import numpy as np
 import tyro
 from myosuite import make_env
+from myosuite.core.config import EnvConfig
+from myosuite.utils.feature_cli import parse_feature_args
 
 
 @dataclass(frozen=True)
@@ -872,7 +880,7 @@ def _check_stochastic(cfg: EvalConfig, policy) -> None:
         )
 
 
-def evaluate_cpu(cfg: EvalConfig, checkpoint: Path) -> None:
+def evaluate_cpu(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> None:
     """Roll out ``cols x rows`` CPU envs in lockstep, ``episodes_per_env`` each."""
 
     import myosuite  # noqa: F401  (registers the CPU envs)
@@ -880,7 +888,8 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path) -> None:
 
     cols, rows = _grid_shape(cfg)
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
-    envs = [make_env(cfg.env_id) for _ in range(n_envs)]
+    env_config = EnvConfig(cfg.env_id, features=features)
+    envs = [make_env(env_config) for _ in range(n_envs)]
     policy = load_rslrl_policy(checkpoint, envs[0].action_space.shape[0])
     _check_stochastic(cfg, policy)
     grid = (
@@ -943,7 +952,7 @@ def _actor_obs(obs: Any) -> Any:
     return obs["actor"] if "actor" in obs else obs["policy"]
 
 
-def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
+def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> None:
     """Roll out ``cols x rows`` parallel mjlab envs, ``episodes_per_env`` each."""
     import torch
     from mjlab.envs import ManagerBasedRlEnv
@@ -954,7 +963,14 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
 
     os.environ.setdefault("MUJOCO_GL", "egl")
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    env_cfg = load_env_cfg(cfg.env_id, play=True)
+    if features:
+        from myosuite.envs.myo.backends.mjlab.tasks.registration import (
+            rebuild_twin_cfg,
+        )
+
+        env_cfg = rebuild_twin_cfg(cfg.env_id, features, play=True)
+    else:
+        env_cfg = load_env_cfg(cfg.env_id, play=True)
     cols, rows = _grid_shape(cfg)
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
     env_cfg.scene.num_envs = n_envs
@@ -1019,13 +1035,18 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path) -> None:
 
 
 def main() -> None:
-    cfg = tyro.cli(EvalConfig)
+    # ``--feature NAME[=JSON]`` (repeatable): the muscle-command features of
+    # ``EnvConfig.features`` (use the ones the checkpoint was trained with).
+    features, argv = parse_feature_args(sys.argv[1:])
+    cfg = tyro.cli(EvalConfig, args=argv)
     checkpoint = _resolve_checkpoint(cfg.env_id, cfg.checkpoint)
     print(f"\n\ncheckpoint: {checkpoint}  backend: {cfg.backend}  env: {cfg.env_id}")
+    if features:
+        print("features: " + ", ".join(spec.name for spec in features))
     if cfg.backend == "cpu":
-        evaluate_cpu(cfg, checkpoint)
+        evaluate_cpu(cfg, checkpoint, features)
     else:
-        evaluate_mjlab(cfg, checkpoint)
+        evaluate_mjlab(cfg, checkpoint, features)
 
 
 if __name__ == "__main__":

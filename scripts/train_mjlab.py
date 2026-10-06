@@ -1,4 +1,14 @@
-"""Script to train RL agent with RSL-RL."""
+"""Script to train RL agent with RSL-RL.
+
+Muscle-command features (the ``EnvConfig.features`` of ``make_env``) are added with
+``--feature NAME[=JSON]``, repeatable, before the other flags::
+
+    python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --env.scene.num-envs 1024 \
+        --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'
+
+Names: ``motor-noise``, ``fatigue``, ``sarcopenia``, ``reafferentation`` (see
+``myosuite.utils.feature_cli``). Evaluate the checkpoint with the same ``--feature`` flags.
+"""
 
 import copy
 import logging
@@ -25,6 +35,7 @@ from mjlab.utils.wandb import add_wandb_tags
 from mjlab.utils.wrappers import VideoRecorder
 
 from myosuite.utils.checkpoint_utils import resume_checkpoint
+from myosuite.utils.feature_cli import parse_feature_args
 
 
 @dataclass(frozen=True)
@@ -58,8 +69,16 @@ class TrainConfig:
     gpu_ids: list[int] | Literal["all"] | None = field(default_factory=lambda: [0])
 
     @staticmethod
-    def from_task(task_id: str) -> "TrainConfig":
-        env_cfg = load_env_cfg(task_id)
+    def from_task(task_id: str, features=()) -> "TrainConfig":
+        """The task's default config; *features* (wrapper specs) rebuild the twin with them."""
+        if features:
+            from myosuite.envs.myo.backends.mjlab.tasks.registration import (
+                rebuild_twin_cfg,
+            )
+
+            env_cfg = rebuild_twin_cfg(task_id, features)
+        else:
+            env_cfg = load_env_cfg(task_id)
         agent_cfg = load_rl_cfg(task_id)
         assert isinstance(agent_cfg, RslRlOnPolicyRunnerCfg)
         return TrainConfig(env=env_cfg, agent=agent_cfg)
@@ -422,10 +441,13 @@ def main():
         config=mjlab.TYRO_FLAGS,
     )
 
+    # ``--feature NAME[=JSON]`` (repeatable): the muscle-command features of
+    # ``EnvConfig.features``; see ``myosuite.utils.feature_cli``.
+    features, remaining_args = parse_feature_args(remaining_args)
     args = tyro.cli(
         TrainConfig,
         args=remaining_args,
-        default=TrainConfig.from_task(chosen_task),
+        default=TrainConfig.from_task(chosen_task, features),
         prog=sys.argv[0] + f" {chosen_task}",
         config=mjlab.TYRO_FLAGS,
     )

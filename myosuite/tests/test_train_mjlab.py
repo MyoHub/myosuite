@@ -70,3 +70,75 @@ def test_deterministic_success_counts_the_same_episodes_per_env() -> None:
 
     assert deterministic_success(runner, env) == pytest.approx(0.96)
     assert modes == ["train"]
+
+
+def test_feature_args_become_wrapper_specs() -> None:
+    from myosuite.utils.feature_cli import parse_feature_args
+
+    specs, rest = parse_feature_args(
+        [
+            "--env.scene.num-envs",
+            "8",
+            "--feature",
+            "fatigue",
+            '--feature=motor-noise={"constant_std": 0.05}',
+            "--feature",
+            "sarcopenia",
+            "--agent.max-iterations",
+            "3",
+        ]
+    )
+    assert rest == ["--env.scene.num-envs", "8", "--agent.max-iterations", "3"]
+    assert [s.name for s in specs] == [
+        "FatigueWrapper",
+        "MotorNoiseWrapper",
+        "SarcopeniaWrapper",
+    ]
+    assert specs[1].kwargs == {"motor_noise": {"constant_std": 0.05}}
+    assert specs[2].kwargs == {}
+    # a bare motor-noise uses the van Beers levels
+    (noise,), _ = parse_feature_args(["--feature", "motor-noise"])
+    assert noise.kwargs["motor_noise"] == {
+        "signal_dependent_std": 0.103,
+        "constant_std": 0.185,
+    }
+
+
+@pytest.mark.parametrize(
+    "bad, message",
+    [
+        (["--feature", "nope"], "Unknown feature"),
+        (["--feature", "fatigue=[1]"], "must be an object"),
+        (["--feature", "fatigue={bad"], "invalid JSON"),
+        (["--feature"], "needs a value"),
+    ],
+)
+def test_bad_feature_args_raise(bad: list[str], message: str) -> None:
+    from myosuite.utils.feature_cli import parse_feature_args
+
+    with pytest.raises(ValueError, match=message):
+        parse_feature_args(bad)
+
+
+@pytest.mark.tier2
+def test_train_config_from_task_applies_the_features() -> None:
+    pytest.importorskip("mjlab")
+    import sys
+    from pathlib import Path
+
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+    from myosuite.utils.feature_cli import parse_feature_args
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    import train_mjlab
+
+    env_id = "myoElbowPose1D6MRandom-v0"
+    plain = train_mjlab.TrainConfig.from_task(env_id).env.actions["muscles"]
+    assert not plain.muscle_fatigue and not plain.motor_noise.enabled
+
+    features, _ = parse_feature_args(
+        ["--feature", "fatigue", "--feature", 'motor-noise={"constant_std": 0.05}']
+    )
+    muscles = train_mjlab.TrainConfig.from_task(env_id, features).env.actions["muscles"]
+    assert muscles.muscle_fatigue
+    assert muscles.motor_noise.constant_std == 0.05

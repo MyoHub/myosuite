@@ -177,6 +177,9 @@ Each entry of `features` is a wrapper class (`FatigueWrapper`), a `(class, kwarg
 - `ctrl_dt` must be a whole multiple of the model timestep (`ValueError` otherwise). The `ModularTaskEnv` ids take their
   timing from `task_config.backend`, so `ctrl_dt` raises a `ValueError` for them on both backends.
 - A feature a backend cannot run raises; it is never dropped silently (see the tables below).
+- The training and evaluation scripts take the same features as `--feature NAME[=JSON]` flags
+  (`scripts/train_mjlab.py`, `scripts/eval_mjlab_policy.py`; names `motor-noise`, `fatigue`, `sarcopenia`,
+  `reafferentation`, see `myosuite/utils/feature_cli.py`).
 - Harness wrappers (`PerturbationWrapper`, recording, a delay on the raw action) are not features. They are plain
   gymnasium wrappers on the CPU env and not part of the config.
 
