@@ -317,10 +317,9 @@ For a step-by-step tutorial, please check our :doc:`tutorials` page and :doc:`ba
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
-   env = gym.make("myoChallengeTableTennisP1-v0")
+   env = make_env("myoChallengeTableTennisP1-v0")
    obs, info = env.reset()
    for _ in range(10):
        obs, reward, terminated, truncated, info = env.step(env.action_space.sample())

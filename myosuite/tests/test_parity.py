@@ -30,10 +30,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import myosuite
-from myosuite.utils import gym
-
-myosuite.register_all_envs()
+import myosuite  # noqa: F401
+from myosuite import make_env
 
 
 pytestmark = pytest.mark.tier1
@@ -99,7 +97,7 @@ def test_parity(env_id: str) -> None:
         records: list[dict] = pickle.load(fh)
 
     # A construction failure is a regression, so it fails rather than skips.
-    env = gym.make(env_id)
+    env = make_env(env_id)
     try:
         env.reset()
         current_episode_np_state = None

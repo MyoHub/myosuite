@@ -35,16 +35,10 @@ from myosuite.utils.spec_processing import (
 )
 
 MAX_TIME = 3.0
-MUSCLE_CONDITIONS = ("", "sarcopenia", "fatigue")
 
 
 class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
-    """Native rewrite target for myoChallenge TableTennis.
-
-    Besides the task kwargs, accepts ``muscle_condition`` (one of
-    :data:`MUSCLE_CONDITIONS`) and, for ``"fatigue"``, the
-    ``fatigue_reset_vec`` / ``fatigue_reset_random`` reset options.
-    """
+    """Native rewrite target for myoChallenge TableTennis."""
 
     DEFAULT_OBS_KEYS = [
         "pelvis_pos",
@@ -76,12 +70,6 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         seed: int | None = None,
         **kwargs: Any,
     ) -> None:
-        muscle_condition = kwargs.get("muscle_condition", "")
-        if muscle_condition not in MUSCLE_CONDITIONS:
-            raise ValueError(
-                f"Unsupported muscle_condition {muscle_condition!r}; expected one of "
-                f"{MUSCLE_CONDITIONS}."
-            )
         frame_skip = int(kwargs.get("frame_skip", 10))
         MyoGymnasiumEnv.__init__(
             self, frame_skip=frame_skip, render_mode=kwargs.get("render_mode")
@@ -141,10 +129,6 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.ball_dofadr = self.model.body_dofadr[self.id_info.ball_bid]
         self.ball_posadr = self.model.joint("pingpong_freejoint").qposadr[0]
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
-        self.muscle_condition = muscle_condition
-        self.fatigue_reset_vec = kwargs.get("fatigue_reset_vec")
-        self.fatigue_reset_random = bool(kwargs.get("fatigue_reset_random", False))
-        self.init_muscle_condition()
 
         self.obs_keys = list(kwargs.get("obs_keys", self.DEFAULT_OBS_KEYS))
         self.rwd_keys_wt = kwargs.get(
@@ -303,10 +287,7 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             ctrl[self._muscle_act_ind] = sigmoid_muscle_activation(
                 ctrl[self._muscle_act_ind], np
             )
-        if self.muscle_condition == "fatigue":
-            ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
-                ctrl[self._muscle_act_ind]
-            )
+        ctrl = self._run_ctrl_stages(ctrl)
         return ctrl
 
     def cal_ball_qvel(self, ball_qpos: np.ndarray) -> list[list[float]]:
@@ -397,7 +378,7 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             v_low, v_high = v_bounds[1], v_bounds[0]
             ball_vel = self.np_random.uniform(low=v_low, high=v_high)
             self._init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = ball_vel
-        self.reset_muscle_condition()
+        self._run_reset_stages()
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = reset_qpos_local
         self.data.qvel[:] = self._init_qvel

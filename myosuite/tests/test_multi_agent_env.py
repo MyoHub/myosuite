@@ -23,6 +23,7 @@ from myosuite.envs.multi_agent_modular_env import (
     ModularMultiAgentSingleAgentWrapper,
     ModularMultiAgentTaskEnv,
 )
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -269,7 +270,7 @@ def test_register_task_routes_multi_agent():
     env_id = register_task(cfg, env_id="DummyMultiAgent-test-v0")
     assert env_id == "DummyMultiAgent-test-v0"
 
-    env = gym.make("DummyMultiAgent-test-v0")
+    env = make_env("DummyMultiAgent-test-v0")
     obs, info = env.reset(seed=0)
     assert set(obs) == {"agent_0", "agent_1"}
     env.close()
@@ -281,7 +282,7 @@ _TIME_LIMIT_ENV_ID = "DummyMultiAgentTimeLimit-test-v0"
 def _make_time_limited_env() -> gym.Env:
     """``gym.make`` of the dummy task registered with a 3-step limit."""
     register_task(DummyMultiAgentConfig(max_episode_steps=3), env_id=_TIME_LIMIT_ENV_ID)
-    return gym.make(_TIME_LIMIT_ENV_ID)
+    return make_env(_TIME_LIMIT_ENV_ID)
 
 
 def test_gym_make_keeps_per_agent_dicts_at_the_step_limit():

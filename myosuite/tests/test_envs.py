@@ -13,6 +13,7 @@ import numpy as np
 from flatten_dict import flatten
 
 from myosuite.utils import gym
+from myosuite import make_env
 
 
 pytestmark = pytest.mark.tier2
@@ -72,7 +73,7 @@ class TestEnvs(unittest.TestCase):
                 return
 
         # test init
-        env1w = gym.make(environment_id, seed=input_seed)
+        env1w = make_env(environment_id, seed=input_seed)
         env1 = env1w.unwrapped
         # seed() first so get_input_seed() is set (Gymnasium envs set it in seed(), not __init__)
         env1.seed(input_seed)
@@ -80,8 +81,9 @@ class TestEnvs(unittest.TestCase):
         reset_obs1, *_ = env1.reset()
 
         # Support both legacy (mj_model/mj_data) and Gymnasium (model/data)
-        mj_model = getattr(env1, "mj_model", getattr(env1, "model", None))
-        mj_data = getattr(env1, "mj_data", getattr(env1, "data", None))
+        # (the default of a getattr is evaluated eagerly, which would trigger the deprecated alias)
+        mj_model = env1.model if hasattr(env1, "model") else env1.mj_model
+        mj_data = env1.data if hasattr(env1, "data") else env1.mj_data
         # Size controls from the action space: some envs drive extra actuators internally.
         nu = env1.action_space.shape[0]
 
@@ -165,7 +167,7 @@ class TestEnvs(unittest.TestCase):
         for env_name in env_names:
             print("Testing env: ", env_name)
             # test init
-            env = gym.make(env_name)
+            env = make_env(env_name)
             env.seed(seed)
 
             # test reset

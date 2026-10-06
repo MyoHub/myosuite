@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import pytest
+from myosuite import make_env
 
 
 pytestmark = pytest.mark.tier2
@@ -38,11 +39,9 @@ _CHALLENGE_IDS = (
 @pytest.mark.parametrize("env_id", _CHALLENGE_IDS)
 def test_challenge_gym_registration_contract(env_id: str) -> None:
     """All canonical challenge IDs must remain Gym-constructible."""
-    import gymnasium as gym
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-    env = gym.make(env_id)
+    env = make_env(env_id)
     obs, _ = env.reset(seed=0)
     assert obs is not None
     env.close()

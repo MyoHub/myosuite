@@ -45,12 +45,11 @@ typical of older adults:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env_normal = gym.make('myoElbowPose1D6MRandom-v0')
-   env_sarco  = gym.make('myoSarcElbowPose1D6MRandom-v0')
+   env_normal = make_env('myoElbowPose1D6MRandom-v0')
+   env_sarco  = make_env('myoSarcElbowPose1D6MRandom-v0')
 
    results = {}
    for label, env in [("Normal", env_normal), ("Sarcopenia", env_sarco)]:
@@ -78,11 +77,10 @@ work capacity:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoFatiElbowPose1D6MFixed-v0')
+   env = make_env('myoFatiElbowPose1D6MFixed-v0')
    obs, info = env.reset(seed=0)
 
    force_over_time = []
@@ -114,11 +112,10 @@ Useful metrics you can extract from any simulation:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoLegWalk-v0')
+   env = make_env('myoLegWalk-v0')
    obs, info = env.reset(seed=0)
 
    joint_angles, forces, coms = [], [], []
@@ -164,14 +161,13 @@ as performed in radial nerve palsy rehabilitation:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
    # Normal finger extension
-   env_normal = gym.make('myoFingerPoseRandom-v0')
+   env_normal = make_env('myoFingerPoseRandom-v0')
 
    # Post-surgical — altered muscle routing
-   env_reaff  = gym.make('myoReafHandPoseFixed-v0')
+   env_reaff  = make_env('myoReafHandPoseFixed-v0')
 
    # An RL or reflex controller trained on normal anatomy must re-adapt —
    # useful for studying motor re-learning after surgery.
@@ -185,8 +181,7 @@ between episodes.  A simple example for elbow flexion ROM progression:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
    # Start with a restricted target range, progressively widen it
@@ -197,7 +192,7 @@ between episodes.  A simple example for elbow flexion ROM progression:
    ]
 
    for stage, target_range in enumerate(rom_stages, 1):
-       env = gym.make(
+       env = make_env(
            'myoElbowPose1D6MRandom-v0',
            target_jnt_range=target_range,
        )
@@ -228,10 +223,9 @@ knee, and ankle with 80 muscles.  Useful for:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
-   env = gym.make('myoLegWalk-v0')
+   env = make_env('myoLegWalk-v0')
    obs, info = env.reset(seed=0)
 
    # The reward dictionary includes gait-relevant components

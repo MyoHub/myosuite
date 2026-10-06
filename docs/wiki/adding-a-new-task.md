@@ -92,14 +92,14 @@ subclass to write.
 5. **Verify it actually runs and produces a real signal** — this is the step
    that's easy to skip and easy to get wrong silently:
    ```python
-   import gymnasium as gym
-   env = gym.make("myoFoo-v0")
+   from myosuite import make_env
+   env = make_env("myoFoo-v0")
    obs, info = env.reset()
    obs, rwd, terminated, truncated, info = env.step(env.action_space.sample())
    assert rwd != 0.0  # or whatever a real reward looks like for this task
    ```
    A `TaskConfig` with no `obs`/`reward` override still imports and registers
-   cleanly — `gym.make()` won't tell you it's hollow. Don't leave a task
+   cleanly — `make_env()` won't tell you it's hollow. Don't leave a task
    half-specified and assume someone will fill it in "later"; either finish
    it before merging or don't register it yet.
 

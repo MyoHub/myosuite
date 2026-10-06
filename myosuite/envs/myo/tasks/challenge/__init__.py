@@ -9,6 +9,7 @@ import pathlib
 import numpy as np
 
 import myosuite.core.registry as _registry
+from myosuite.envs.wrappers import condition_wrapper_specs
 from myosuite.envs.myo.assets._resolve import resolve_osl_xml as _resolve_osl_xml
 from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
     build_default_fullbody_chasetag_spec as _build_default_fullbody_chasetag_spec,
@@ -34,13 +35,15 @@ def _reg(env_id, entry_point, max_episode_steps, kwargs):
             env_id="myoSarc" + env_id[3:],
             entry_point=entry_point,
             max_episode_steps=max_episode_steps,
-            kwargs={**kwargs, "muscle_condition": "sarcopenia"},
+            kwargs=kwargs,
+            additional_wrappers=condition_wrapper_specs("sarcopenia"),
         )
         _registry.register_env(
             env_id="myoFati" + env_id[3:],
             entry_point=entry_point,
             max_episode_steps=max_episode_steps,
-            kwargs={**kwargs, "muscle_condition": "fatigue"},
+            kwargs=kwargs,
+            additional_wrappers=condition_wrapper_specs("fatigue"),
         )
 
 

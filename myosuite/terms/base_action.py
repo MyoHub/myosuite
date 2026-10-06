@@ -27,11 +27,20 @@ wrong.  Always check ``env.normalize_act`` before deploying a policy.
 ``accessor.array_module()`` so it runs identically on CPU (numpy), MJX
 (jax.numpy), and mjlab (torch).
 
+Motor noise
+-----------
+``motor_noise`` adds signal-dependent and constant Gaussian noise to muscle
+excitations (``MotorNoiseCfg``, off by default). Both backends apply it after
+the action -> excitation mapping and before fatigue; see
+``docs/wiki/cross-backend-contract.md``.
+
 ``MuscleActionTerm`` is the mjlab (Isaac Lab manager API) integration wrapper.
 """
 
 from __future__ import annotations
 
+import math
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -74,6 +83,135 @@ def muscle_normalize_action(accessor: EnvAccessor, action: Any, **kwargs: Any) -
     """
     xp = accessor.array_module()
     return sigmoid_muscle_activation(action, xp)
+
+
+@dataclass(frozen=True)
+class MotorNoiseCfg:
+    """Gaussian motor noise on muscle excitations (off by default).
+
+    The applied excitation is ``clip(u + signal_dependent_std * u * n1 +
+    constant_std * n2, 0, 1)`` with independent standard normals ``n1, n2`` per
+    muscle, per control step (and per env on mjlab). Signal-dependent noise
+    (Harris & Wolpert 1998) makes the spread grow with the command, the source of
+    the speed-accuracy trade-off; constant noise is independent of it.
+
+    Args:
+        signal_dependent_std: Std of the multiplicative noise (fraction of ``u``).
+        constant_std: Std of the additive noise (excitation units).
+    """
+
+    signal_dependent_std: float = 0.0
+    constant_std: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name in ("signal_dependent_std", "constant_std"):
+            value = float(getattr(self, name))
+            if not math.isfinite(value) or value < 0.0:
+                raise ValueError(f"MotorNoiseCfg.{name} must be finite and >= 0.")
+            object.__setattr__(self, name, value)
+
+    @property
+    def enabled(self) -> bool:
+        """Whether any noise is added."""
+        return self.signal_dependent_std > 0.0 or self.constant_std > 0.0
+
+    @classmethod
+    def van_beers_2004(cls) -> MotorNoiseCfg:
+        """Levels 0.103 (signal-dependent) and 0.185 (constant).
+
+        Fischer et al. (2021, Sci. Rep. 11:14445) take them "following van Beers
+        et al." (2004, J. Neurophysiol. 91:1050-1063); User-in-the-Box (Ikkala et
+        al., UIST 2022) uses the same defaults.
+        """
+        return cls(signal_dependent_std=0.103, constant_std=0.185)
+
+    @classmethod
+    def from_value(
+        cls, value: MotorNoiseCfg | Mapping[str, float] | None
+    ) -> MotorNoiseCfg:
+        """Coerce a registration kwarg (cfg, field dict or ``None``) to a cfg.
+
+        Args:
+            value: ``MotorNoiseCfg``, a dict of its fields, or ``None`` (off).
+
+        Returns:
+            The config.
+        """
+        if value is None:
+            return cls()
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, Mapping):
+            return cls(**value)
+        raise TypeError(
+            f"motor_noise must be a MotorNoiseCfg, a dict or None, got {type(value)!r}."
+        )
+
+
+def motor_noise(
+    excitation: Any,
+    normals_sd: Any,
+    normals_c: Any,
+    signal_dependent_std: float,
+    constant_std: float,
+    xp: Any,
+) -> Any:
+    """Add signal-dependent and constant noise to muscle excitations.
+
+    Pure: the standard normals are drawn by the caller, so numpy and torch give
+    the same result on the same draws.
+
+    Args:
+        excitation: Excitations ``u`` in ``[0, 1]``, any shape.
+        normals_sd: Standard normals for the signal-dependent term, same shape.
+        normals_c: Standard normals for the constant term, same shape.
+        signal_dependent_std: Std of the multiplicative term.
+        constant_std: Std of the additive term.
+        xp: Array module (``numpy``, ``jax.numpy`` or ``torch``).
+
+    Returns:
+        ``clip(u + signal_dependent_std * u * normals_sd + constant_std * normals_c, 0, 1)``.
+    """
+    noisy = (
+        excitation
+        + signal_dependent_std * excitation * normals_sd
+        + constant_std * normals_c
+    )
+    return xp.clip(noisy, 0.0, 1.0)
+
+
+def sample_motor_noise(
+    excitation: Any,
+    cfg: MotorNoiseCfg,
+    standard_normal: Callable[[tuple[int, ...]], Any],
+    xp: Any,
+) -> Any:
+    """Draw fresh normals and apply :func:`motor_noise`; a no-op when disabled.
+
+    A disabled config returns *excitation* unchanged without drawing, so the
+    caller's random stream is untouched.
+
+    Args:
+        excitation: Muscle excitations, any shape (one draw per element).
+        cfg: Noise levels.
+        standard_normal: ``f(shape)`` returning standard normals, e.g.
+            ``np_random.standard_normal`` or ``partial(torch.randn, device=...)``.
+        xp: Array module matching *standard_normal*.
+
+    Returns:
+        The noisy (or unchanged) excitations.
+    """
+    if not cfg.enabled:
+        return excitation
+    normals = standard_normal((2, *excitation.shape))
+    return motor_noise(
+        excitation,
+        normals[0],
+        normals[1],
+        cfg.signal_dependent_std,
+        cfg.constant_std,
+        xp,
+    )
 
 
 @dataclass

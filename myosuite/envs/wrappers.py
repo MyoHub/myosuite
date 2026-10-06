@@ -16,21 +16,56 @@ Available wrappers
 :class:`DictObservationWrapper`
     Exposes structured ``Dict`` observations instead of a flat ``Box`` vector.
 
-:class:`ObservationNormalizeWrapper`
-    Online running-mean/std normalisation of observations (no SB3 dependency).
-
 :class:`PerturbationWrapper`
     Injects scheduled external forces/torques to named bodies for perturbation
     experiments (motor control, reactive balance, neuroscience lesion studies).
+
+Muscle-command wrappers
+-----------------------
+None of them is active by default (a plain env runs only its own map): the
+``myoFati*``, ``myoReaf*`` and ``myoSarc*`` ids register the matching wrapper, and
+noise additionally needs a nonzero level. These install one ordered stage in the
+env's action pipeline (see
+:mod:`myosuite.envs.muscle_stages`): ``map (env) -> noise -> fatigue -> reroute
+-> custom stages -> ctrl``. The built-in order is fixed by the stage, whatever the wrapping
+order; custom stages run after them in installation order. Each
+stage can be installed **once per env**: a second wrapper of the same kind raises a
+``ValueError`` (the ``myoFati*`` and ``myoReaf*`` ids already contain theirs, so
+wrap the base id to configure it, e.g. ``FatigueWrapper(make_env(base_id),
+fatigue_reset_random=True)``, or change the options with
+``env.set_fatigue_reset_random(...)`` / ``env.set_motor_noise(...)``).
+
+:class:`MotorNoiseWrapper`
+    Signal-dependent + constant Gaussian noise on the muscle excitations.
+
+:class:`FatigueWrapper`
+    3CC-r muscle fatigue (``myoFati*`` envs).
+
+:class:`ReafferentationWrapper`
+    EIP command rerouted to EPL (``myoReaf*`` envs).
+
+:class:`SarcopeniaWrapper`
+    Muscle force reduction applied to the model (``myoSarc*`` envs).
+
+:class:`ExcitationStageWrapper`
+    A portable custom stage on the muscle excitations (filter, cap, gains, ...) at an
+    order of your choice; runs on the CPU env and on its mjlab twin.
+
+:class:`CtrlStageWrapper`
+    Like it, but env-aware and CPU only.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from typing import Any
 
 import gymnasium as gym
 import numpy as np
+from gymnasium.envs.registration import WrapperSpec, load_env_creator
 from gymnasium.utils import RecordConstructorArgs
+
+from myosuite.envs import muscle_stages
 
 
 class _ForwardPublicAttributes:
@@ -104,7 +139,7 @@ class DictObservationWrapper(RecordConstructorArgs, gym.ObservationWrapper):
 
     Example::
 
-        env = gym.make("myoElbowPose1D6MRandom-v0")
+        env = make_env("myoElbowPose1D6MRandom-v0")
         env = DictObservationWrapper(env)
         obs, info = env.reset()
         print(list(obs.keys()))  # ['qpos', 'qvel', 'pose_err']
@@ -160,80 +195,6 @@ class DictObservationWrapper(RecordConstructorArgs, gym.ObservationWrapper):
         return self._info_obs(info), reward, terminated, truncated, info
 
 
-class ObservationNormalizeWrapper(RecordConstructorArgs, gym.ObservationWrapper):
-    """Online running-mean / running-std observation normalisation.
-
-    Tracks a Welford running mean and variance over observations.
-    After *warmup* steps the normalised observation
-    ``(obs - mean) / (std + eps)`` is returned; before that the raw
-    observation is returned and statistics are still accumulated.
-
-    Matches the behaviour of ``VecNormalize`` from Stable-Baselines3 for a
-    single environment without requiring SB3 as a dependency.
-
-    Args:
-        env: Wrapped environment.
-        warmup: Steps before normalisation is applied (statistics still collected).
-        clip: Clip normalised observations to ``[-clip, clip]``.
-        eps: Small constant added to std for numerical stability.
-
-    Example::
-
-        env = gym.make("myoElbowPose1D6MRandom-v0")
-        env = ObservationNormalizeWrapper(env, warmup=200)
-        obs, info = env.reset()
-        obs, *_ = env.step(env.action_space.sample())
-    """
-
-    def __init__(
-        self,
-        env: gym.Env,
-        warmup: int = 100,
-        clip: float = 10.0,
-        eps: float = 1e-8,
-    ) -> None:
-        RecordConstructorArgs.__init__(self)
-        gym.ObservationWrapper.__init__(self, env)
-        self._warmup = warmup
-        self._clip = clip
-        self._eps = eps
-        self._n: int = 0
-        self._mean: np.ndarray | None = None
-        self._M2: np.ndarray | None = None
-
-    def _update(self, obs: np.ndarray) -> None:
-        """Welford online update."""
-        x = obs.astype(np.float64)
-        if self._mean is None:
-            self._mean = np.zeros_like(x)
-            self._M2 = np.zeros_like(x)
-        self._n += 1
-        delta = x - self._mean
-        self._mean += delta / self._n
-        self._M2 += delta * (x - self._mean)
-
-    @property
-    def running_mean(self) -> np.ndarray:
-        """Current running mean (float32)."""
-        if self._mean is None:
-            return np.zeros(self.observation_space.shape, dtype=np.float32)
-        return self._mean.astype(np.float32)
-
-    @property
-    def running_std(self) -> np.ndarray:
-        """Current running std (float32)."""
-        if self._n < 2 or self._M2 is None:
-            return np.ones(self.observation_space.shape, dtype=np.float32)
-        return np.sqrt(self._M2 / (self._n - 1) + self._eps).astype(np.float32)
-
-    def observation(self, obs: np.ndarray) -> np.ndarray:
-        self._update(obs)
-        if self._n < self._warmup or self._mean is None:
-            return obs
-        normalised = (obs - self._mean.astype(np.float32)) / self.running_std
-        return np.clip(normalised, -self._clip, self._clip).astype(np.float32)
-
-
 class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
     """Apply scheduled external forces/torques to named bodies at runtime.
 
@@ -255,7 +216,7 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
 
     Example::
 
-        env = gym.make("myoLegWalk-v0")
+        env = make_env("myoLegWalk-v0")
         env = PerturbationWrapper(env)
 
         # Trip: lateral push to pelvis for two steps, starting at step 50
@@ -350,3 +311,405 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
         result = self.env.step(action)
         self._step_count += 1
         return result
+
+
+class _PicklableStage:
+    """Pickle a muscle wrapper as (env, kwargs) and re-install its stage on restore.
+
+    The CPU envs are rebuilt from their constructor arguments when unpickled, which drops
+    the stage the wrapper installed; ``__setstate__`` wraps the restored env again.
+    """
+
+    def _pickle_kwargs(self) -> dict[str, Any]:
+        return dict(self._saved_kwargs)
+
+    def __getstate__(self) -> dict[str, Any]:
+        return {"env": self.env, "kwargs": self._pickle_kwargs()}
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__init__(state["env"], **state["kwargs"])  # type: ignore[misc]
+
+
+def _stage_host(env: gym.Env, wrapper: str) -> Any:
+    """The unwrapped env, which must run wrapper-installed muscle stages."""
+    host = env.unwrapped
+    if not getattr(host, "supports_ctrl_stages", False):
+        raise TypeError(
+            f"{wrapper} needs an env whose action pipeline runs muscle stages; "
+            f"{type(host).__name__} does not (the basic hand/arm/leg/torso envs "
+            "and the MyoChallenge muscle envs do)."
+        )
+    return host
+
+
+class MotorNoiseWrapper(
+    _PicklableStage, _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
+    """Gaussian motor noise on the muscle excitations (off by default).
+
+    The applied excitation is ``clip(u + signal_dependent_std * u * n1 +
+    constant_std * n2, 0, 1)`` with independent standard normals per muscle and
+    control step, drawn from the env's seeded ``np_random`` after the env's
+    action-to-excitation map and before fatigue (see
+    :class:`~myosuite.terms.base_action.MotorNoiseCfg`). A disabled config draws
+    nothing, so the random stream of the env is unchanged.
+
+    Example::
+
+        env = MotorNoiseWrapper(
+            make_env("myoElbowPose1D6MRandom-v0"), MotorNoiseCfg.van_beers_2004()
+        )
+
+    Args:
+        env: Env whose pipeline runs muscle stages.
+        motor_noise: A :class:`~myosuite.terms.base_action.MotorNoiseCfg`, a dict
+            of its fields or ``None`` (off). Call ``env.set_motor_noise(...)`` to
+            change the levels during a run.
+    """
+
+    def __init__(self, env: gym.Env, motor_noise: Any = None) -> None:
+        from myosuite.terms.base_action import MotorNoiseCfg  # noqa: PLC0415
+
+        RecordConstructorArgs.__init__(self, motor_noise=motor_noise)
+        gym.Wrapper.__init__(self, env)
+        self.motor_noise = MotorNoiseCfg.from_value(motor_noise)
+        _stage_host(env, "MotorNoiseWrapper").add_ctrl_stage(
+            "noise", muscle_stages.noise_stage(lambda: self.motor_noise)
+        )
+
+    def _pickle_kwargs(self) -> dict[str, Any]:
+        return {"motor_noise": self.motor_noise}
+
+    def set_motor_noise(self, motor_noise: Any) -> None:
+        """Change the noise levels (a cfg, a dict of its fields or ``None``: off).
+
+        Unlike assigning ``env.motor_noise``, which only reaches this wrapper when it
+        is the outermost one, the call is forwarded through the wrappers on top.
+        """
+        from myosuite.terms.base_action import MotorNoiseCfg  # noqa: PLC0415
+
+        self.motor_noise = MotorNoiseCfg.from_value(motor_noise)
+
+
+class FatigueWrapper(
+    _PicklableStage, _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
+    """3CC-r muscle fatigue on the muscle excitations.
+
+    The fatigue state (``env.muscle_fatigue``, a
+    :class:`~myosuite.physics.fatigue.CumulativeFatigue`) is reset with the env
+    from its seeded ``np_random``, at the place the env reset its muscle state.
+
+    Args:
+        env: Env whose pipeline runs muscle stages.
+        fatigue_reset_vec: Initial fatigue (MF) of every muscle at reset, or ``None``.
+        fatigue_reset_random: Draw a random initial fatigue at reset.
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        fatigue_reset_vec: Any = None,
+        fatigue_reset_random: bool = False,
+    ) -> None:
+        from myosuite.physics.fatigue import CumulativeFatigue  # noqa: PLC0415
+
+        RecordConstructorArgs.__init__(
+            self,
+            fatigue_reset_vec=fatigue_reset_vec,
+            fatigue_reset_random=fatigue_reset_random,
+        )
+        gym.Wrapper.__init__(self, env)
+        host = _stage_host(env, "FatigueWrapper")
+        self.fatigue_reset_vec = fatigue_reset_vec
+        self.fatigue_reset_random = fatigue_reset_random
+        self.muscle_fatigue = CumulativeFatigue(host.model, host.frame_skip, seed=None)
+        apply, reset = muscle_stages.fatigue_stage(
+            self.muscle_fatigue,
+            lambda: (self.fatigue_reset_vec, self.fatigue_reset_random),
+        )
+        host.add_ctrl_stage("fatigue", apply, reset)
+
+    def _pickle_kwargs(self) -> dict[str, Any]:
+        return {
+            "fatigue_reset_vec": self.fatigue_reset_vec,
+            "fatigue_reset_random": self.fatigue_reset_random,
+        }
+
+    def set_fatigue_reset_random(self, fatigue_reset_random: bool) -> None:
+        """Randomise the fatigue state at every reset (or stop doing so)."""
+        self.fatigue_reset_random = fatigue_reset_random
+
+
+class ReafferentationWrapper(
+    _PicklableStage, _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
+    """Reafferentation: the command of EIP drives EPL and EIP is silenced."""
+
+    def __init__(self, env: gym.Env) -> None:
+        RecordConstructorArgs.__init__(self)
+        gym.Wrapper.__init__(self, env)
+        host = _stage_host(env, "ReafferentationWrapper")
+        host.add_ctrl_stage(
+            "reroute",
+            muscle_stages.reroute_stage(host.model, host._stage_actuator_suffix()),
+        )
+
+
+class SarcopeniaWrapper(
+    _PicklableStage, _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
+    """Sarcopenia: scale the muscle forces of the env's model (applied once, at wrapping).
+
+    Wrap an env once: a second ``SarcopeniaWrapper``, or one on a ``myoSarc*`` id (which
+    already has it), raises a ``ValueError`` instead of scaling the forces twice.
+
+    Args:
+        env: Env with a compiled ``model``.
+        force_scale: Factor on the maximum isometric muscle force.
+
+    Raises:
+        ValueError: If sarcopenia is already applied to the env.
+    """
+
+    def __init__(self, env: gym.Env, force_scale: float = 0.5) -> None:
+        from myosuite.core.muscle_conditions import (
+            apply_sarcopenia_to_model,  # noqa: PLC0415
+        )
+
+        RecordConstructorArgs.__init__(self, force_scale=force_scale)
+        gym.Wrapper.__init__(self, env)
+        host = env.unwrapped
+        if getattr(host, "_sarcopenia_applied", False):
+            raise ValueError(
+                "Sarcopenia is already applied to this env's model (a myoSarc* id or "
+                "another SarcopeniaWrapper); applying it again would scale the forces twice."
+            )
+        self.force_scale = force_scale
+        apply_sarcopenia_to_model(host.model, force_scale=force_scale)
+        host._sarcopenia_applied = True
+
+
+_CONDITION_WRAPPERS = {
+    "sarcopenia": "SarcopeniaWrapper",
+    "fatigue": "FatigueWrapper",
+    "reafferentation": "ReafferentationWrapper",
+}
+
+
+class ExcitationStageWrapper(
+    _PicklableStage, _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
+    """A portable custom stage on the muscle excitations: CPU env and mjlab twin.
+
+    The stage is an :class:`~myosuite.envs.muscle_stages.ExcitationStage` (its ``name``
+    and optional ``order`` say where it runs: by default after the built-in stages, in
+    installation order; see :class:`CtrlStageWrapper` for the order scale).
+    It sees the muscle excitations only and is written for numpy and torch, so the same
+    registration configures both backends: the mjlab twin builds the stage from the same
+    factory for every env of the scene. Two stages with the same explicit order raise a
+    :class:`~myosuite.envs.muscle_stages.StageOrderWarning`.
+
+    Example::
+
+        env = ExcitationStageWrapper(
+            make_env("myoElbowPose1D6MRandom-v0"), functools.partial(LowPassStage, 0.3)
+        )
+
+    Args:
+        env: Env whose pipeline runs muscle stages.
+        make_stage: A zero-argument factory (a class, or ``functools.partial``) that
+            returns an :class:`~myosuite.envs.muscle_stages.ExcitationStage`; use a
+            module-level callable so that the wrapped env can be pickled.
+    """
+
+    def __init__(
+        self, env: gym.Env, make_stage: Callable[[], muscle_stages.ExcitationStage]
+    ) -> None:
+        RecordConstructorArgs.__init__(self, make_stage=make_stage)
+        gym.Wrapper.__init__(self, env)
+        stage = make_stage()
+        if stage.name in muscle_stages.STAGE_ORDER:
+            raise ValueError(
+                f"{stage.name!r} is a built-in stage; use its wrapper, or pick another name."
+            )
+        self._make_stage, self.stage = make_stage, stage
+
+        def apply(host: Any, ctrl: np.ndarray) -> np.ndarray:
+            idx = host._stage_muscle_index()
+            ctrl[idx] = stage(ctrl[idx], np)
+            return ctrl
+
+        _stage_host(env, "ExcitationStageWrapper").add_ctrl_stage(
+            stage.name, apply, lambda host: stage.reset(None), order=stage.order
+        )
+
+    def _pickle_kwargs(self) -> dict[str, Any]:
+        return {"make_stage": self._make_stage}
+
+
+class CtrlStageWrapper(
+    _PicklableStage, _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
+    """An env-aware custom stage on the muscle excitations (CPU only).
+
+    The stage runs after the env's action-to-excitation map and the built-in stages
+    (noise 20, fatigue 30, reroute 40), right before ``ctrl`` is written, in the order the
+    custom stages were installed. To insert it earlier give it an explicit ``order`` (the
+    env's map is 10 and the ``ctrl`` write 100). To act on the raw ``[-1, 1]`` action
+    instead, use a plain ``gym.ActionWrapper`` on the outside.
+
+    Two stages with the same explicit order run in installation order and raise a
+    :class:`~myosuite.envs.muscle_stages.StageOrderWarning`. This stage gets the host
+    env and so runs on the CPU only; for a stage that
+    also runs on the mjlab twin, write an
+    :class:`~myosuite.envs.muscle_stages.ExcitationStage` and use
+    :class:`ExcitationStageWrapper`.
+
+    Example::
+
+        def rate_limit(env, ctrl):
+            idx = env._stage_muscle_index()
+            ctrl[idx] = np.clip(ctrl[idx], 0.0, 0.8)  # cap the excitation
+            return ctrl
+
+        env = CtrlStageWrapper(make_env("myoElbowPose1D6MRandom-v0"), rate_limit,
+                               name="cap")  # after the built-in stages; order=25 puts it after noise
+
+    Args:
+        env: Env whose pipeline runs muscle stages.
+        apply: ``apply(env, ctrl) -> ctrl`` with the host env and the excitation vector
+            (edit it in place or return a new one). Use a module-level function so that
+            the wrapped env can be pickled.
+        name: A unique stage name (not one of the built-in names).
+        order: ``None`` (default): after the built-in stages, in installation order; or a
+            priority strictly between 10 and 100 to insert it earlier.
+        reset: Optional ``reset(env)`` called where the env resets its muscle state.
+
+    Raises:
+        ValueError: If the name is built-in or already installed, or an explicit order
+            is out of range.
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        apply: muscle_stages.CtrlStage,
+        name: str,
+        order: float | None = None,
+        reset: muscle_stages.ResetStage | None = None,
+    ) -> None:
+        RecordConstructorArgs.__init__(
+            self, apply=apply, name=name, order=order, reset=reset
+        )
+        gym.Wrapper.__init__(self, env)
+        if name in muscle_stages.STAGE_ORDER:
+            raise ValueError(
+                f"{name!r} is a built-in stage; use its wrapper, or pick another name."
+            )
+        self.stage_name, self.stage_order = name, order
+        self._apply, self._reset = apply, reset
+        _stage_host(env, "CtrlStageWrapper").add_ctrl_stage(
+            name, apply, reset, order=order
+        )
+
+    def _pickle_kwargs(self) -> dict[str, Any]:
+        return {
+            "apply": self._apply,
+            "name": self.stage_name,
+            "order": self.stage_order,
+            "reset": self._reset,
+        }
+
+
+def condition_wrapper_specs(condition: str, **kwargs: Any) -> tuple[WrapperSpec, ...]:
+    """Registration wrapper specs of a muscle condition.
+
+    Args:
+        condition: ``"sarcopenia"``, ``"fatigue"`` or ``"reafferentation"``.
+        **kwargs: Constructor arguments of the wrapper (JSON-serialisable).
+
+    Returns:
+        One :class:`~gymnasium.envs.registration.WrapperSpec`, for the
+        ``additional_wrappers`` of :func:`myosuite.core.registry.register_env`.
+
+    Raises:
+        ValueError: If *condition* is unknown.
+    """
+    if condition not in _CONDITION_WRAPPERS:
+        raise ValueError(
+            f"Unknown muscle condition {condition!r}; expected one of "
+            f"{tuple(_CONDITION_WRAPPERS)}."
+        )
+    name = _CONDITION_WRAPPERS[condition]
+    return (
+        WrapperSpec(
+            name=name, entry_point=f"myosuite.envs.wrappers:{name}", kwargs=kwargs
+        ),
+    )
+
+
+def wrapper_spec(wrapper: type, **kwargs: Any) -> WrapperSpec:
+    """Spec of a muscle-command wrapper, for ``EnvConfig.features`` or a registration.
+
+    Args:
+        wrapper: A wrapper class of this module (``MotorNoiseWrapper``, ...).
+        **kwargs: Its constructor arguments after the env.
+
+    Returns:
+        The :class:`~gymnasium.envs.registration.WrapperSpec`.
+    """
+    return WrapperSpec(
+        name=wrapper.__name__,
+        entry_point=f"{wrapper.__module__}:{wrapper.__name__}",
+        kwargs=kwargs,
+    )
+
+
+def normalize_features(features: Iterable[Any]) -> tuple[WrapperSpec, ...]:
+    """Turn the entries of ``EnvConfig.features`` into wrapper specs.
+
+    Args:
+        features: Each entry is a :class:`~gymnasium.envs.registration.WrapperSpec`, a
+            wrapper class (no arguments), or a ``(wrapper class, kwargs dict)`` pair.
+
+    Returns:
+        The wrapper specs, in the given order.
+
+    Raises:
+        TypeError: If an entry has another form.
+    """
+    specs = []
+    for feature in features:
+        if isinstance(feature, WrapperSpec):
+            specs.append(feature)
+        elif isinstance(feature, type):
+            specs.append(wrapper_spec(feature))
+        elif (
+            isinstance(feature, (tuple, list))
+            and len(feature) == 2
+            and isinstance(feature[0], type)
+            and isinstance(feature[1], dict)
+        ):
+            specs.append(wrapper_spec(feature[0], **feature[1]))
+        else:
+            raise TypeError(
+                "A feature is a WrapperSpec, a wrapper class, or a (wrapper class, "
+                f"kwargs dict) pair; got {feature!r}."
+            )
+    return tuple(specs)
+
+
+def apply_features(env: gym.Env, features: Iterable[WrapperSpec]) -> gym.Env:
+    """Wrap *env* in the wrappers of *features* (the stage order is fixed, not the list's).
+
+    Args:
+        env: A CPU env (as made by ``gym.make``).
+        features: Wrapper specs, e.g. from :func:`wrapper_spec`.
+
+    Returns:
+        The wrapped env.
+    """
+    for spec in features:
+        env = load_env_creator(spec.entry_point)(env, **(spec.kwargs or {}))
+    return env

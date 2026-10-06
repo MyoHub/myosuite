@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 from myosuite.envs.gymnasium_env import MyoGymnasiumEnv
-from myosuite.utils import gym
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -50,12 +50,12 @@ STEP_OVERRIDE_IDS = (
 def test_unknown_obs_key_raises(env_id: str) -> None:
     """An obs key the env does not compute fails loudly instead of being dropped."""
     with pytest.raises(KeyError, match="no_such_obs_key"):
-        gym.make(env_id, obs_keys=["no_such_obs_key"])
+        make_env(env_id, obs_keys=["no_such_obs_key"])
 
 
 def test_relocate_hand_obs_cover_every_hand_joint() -> None:
     """hand_qpos/hand_qvel hold every joint except the object's (md5_flexion_r last)."""
-    env = gym.make("myoChallengeRelocateP1-v0").unwrapped
+    env = make_env("myoChallengeRelocateP1-v0").unwrapped
     try:
         env.reset(seed=0)
         m = env.model
@@ -76,7 +76,7 @@ def test_relocate_hand_obs_cover_every_hand_joint() -> None:
 @pytest.mark.parametrize("env_id", STEP_OVERRIDE_IDS)
 def test_step_keeps_base_contract(env_id: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """Every step() renders on request and rejects a reward dict without "done"."""
-    env = gym.make(env_id).unwrapped
+    env = make_env(env_id).unwrapped
     try:
         env.reset(seed=0)
         action = np.zeros(env.action_space.shape, dtype=np.float32)
@@ -121,7 +121,7 @@ DERIVED_FIELDS = (
 @pytest.mark.parametrize("env_id", STEP_OVERRIDE_IDS)
 def test_step_leaves_derived_quantities_fresh(env_id: str) -> None:
     """After step(), an extra mj_forward changes no derived quantity or contact."""
-    env = gym.make(env_id).unwrapped
+    env = make_env(env_id).unwrapped
     try:
         env.reset(seed=0)
         rng = np.random.default_rng(0)
@@ -175,7 +175,7 @@ def _state_trajectory(env_id: str, n_steps: int = 40) -> np.ndarray:
     """time, qpos, qvel, act and mocap poses after each of ``n_steps`` fixed actions."""
     np.random.seed(0)
     random.seed(0)
-    env = gym.make(env_id).unwrapped
+    env = make_env(env_id).unwrapped
     try:
         env.reset(seed=0)
         rng = np.random.default_rng(0)

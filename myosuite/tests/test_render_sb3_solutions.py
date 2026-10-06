@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -27,13 +28,10 @@ def test_scene_option_hides_internal_wrap_geoms() -> None:
 
 def test_actor_camera_ignores_full_model_extent() -> None:
     """Distant targets must not force the camera far from a MyoArm actor."""
-    import myosuite
+    import myosuite  # noqa: F401
     from scripts.render_sb3_solutions import _actor_body_ids, _actor_camera
 
-    myosuite.register_all_envs()
-    from myosuite.utils import gym
-
-    env = gym.make("myoArmReachFixed-v0")
+    env = make_env("myoArmReachFixed-v0")
     try:
         env.reset(seed=0)
         model = env.unwrapped.model

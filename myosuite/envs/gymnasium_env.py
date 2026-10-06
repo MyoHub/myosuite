@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 import gymnasium as gym
 import numpy as np
 
+from myosuite.envs.muscle_stages import reject_removed_kwargs
 from myosuite.utils.path_utils import evaluate_success as _evaluate_success
 from myosuite.utils.policy_utils import examine_policy as _examine_policy
 
@@ -213,12 +214,17 @@ class MyoGymnasiumEnv(gym.Env):
         render_mode: Rendering mode passed to gymnasium.Env.
 
     Example:
-        >>> env = gym.make("myoElbowPose1D6MRandom-v0")
+        >>> env = make_env("myoElbowPose1D6MRandom-v0")
         >>> obs, info = env.reset(seed=42)
         >>> obs, rwd, terminated, truncated, info = env.step(env.action_space.sample())
     """
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 50}
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> MyoGymnasiumEnv:
+        """Reject the constructor kwargs that wrappers replaced (they would be ignored)."""
+        reject_removed_kwargs(cls, kwargs)
+        return super().__new__(cls)
 
     def __init__(
         self,

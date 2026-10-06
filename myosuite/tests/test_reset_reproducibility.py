@@ -23,6 +23,7 @@ from myosuite.core.muscle_conditions import CumulativeFatigue
 from myosuite.envs.gymnasium_env import CpuEnvAccessor
 from myosuite.envs.heightfields import TrackTypes
 from myosuite.utils import gym
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -63,8 +64,9 @@ def _fati(env_id: str) -> str:
     return "myoFati" + env_id[len("myo") :]
 
 
-# (env_id, gym.make kwargs). The fatigue variants draw a random initial
-# fatigue state, which must come from the env seed too.
+# (env_id, options). ``fatigue_reset_random`` makes the fatigue variants draw a
+# random initial fatigue state, which must come from the env seed too; the other
+# options go to gym.make.
 ROLLOUT_CASES = (
     [(env_id, {}) for env_id in CHALLENGE_IDS]
     + [("myoChallengeSoccerP2-v0", {"goalkeeper_probabilities": (0.0, 1.0, 0.0)})]
@@ -93,6 +95,15 @@ def _restore_global_rng() -> Iterator[None]:
     state = np.random.get_state()
     yield
     np.random.set_state(state)
+
+
+def _make_case(env_id: str, options: dict) -> gym.Env:
+    options = dict(options)
+    random_fatigue = options.pop("fatigue_reset_random", False)
+    env = make_env(env_id, **options)
+    if random_fatigue:
+        env.set_fatigue_reset_random(True)
+    return env
 
 
 def _case_id(case: tuple[str, dict]) -> str:
@@ -131,7 +142,7 @@ def _assert_same(ref: tuple, other: tuple, what: str) -> None:
 )
 def test_same_instance_reset_is_reproducible(env_id: str, kwargs: dict) -> None:
     """reset(seed) -> actions -> reset(seed) -> same actions repeats the episode."""
-    env = gym.make(env_id, **kwargs)
+    env = _make_case(env_id, kwargs)
     try:
         actions = _actions(env)
         # Warm-up reset with another seed: an episode must not depend on the
@@ -152,7 +163,7 @@ def test_fresh_instances_ignore_global_rng(env_id: str, kwargs: dict) -> None:
     trajs = []
     for global_seed in (0, 999):
         np.random.seed(global_seed)
-        env = gym.make(env_id, **kwargs)
+        env = _make_case(env_id, kwargs)
         try:
             trajs.append(_rollout(env, _actions(env)))
         finally:
@@ -163,9 +174,9 @@ def test_fresh_instances_ignore_global_rng(env_id: str, kwargs: dict) -> None:
 @pytest.mark.parametrize("env_id", FATIGUE_IDS)
 def test_reset_restores_fatigue_state(env_id: str) -> None:
     """A driven fatigue model is back at MA=0, MR=1, MF=0 after reset()."""
-    env = gym.make(env_id)
+    env = make_env(env_id)
     try:
-        fatigue = env.unwrapped.muscle_fatigue
+        fatigue = env.muscle_fatigue
         env.reset(seed=SEED)
         action = np.ones(env.action_space.shape, dtype=np.float32)
         for _ in range(N_STEPS):
@@ -183,7 +194,7 @@ def test_reset_restores_fatigue_state(env_id: str) -> None:
 
 def test_fatigue_random_reset_draws_from_given_generator() -> None:
     """reset(np_random=...) uses that generator; without it the own RNG is used."""
-    env = gym.make("myoFatiElbowPose1D6MRandom-v0")
+    env = make_env("myoFatiElbowPose1D6MRandom-v0")
     model = env.unwrapped.model
     env.close()
     a, b = CumulativeFatigue(model, seed=1), CumulativeFatigue(model, seed=2)
@@ -208,7 +219,7 @@ def test_fatigue_random_reset_draws_from_given_generator() -> None:
 )
 def test_relocate_simulates_the_sampled_goal(env_id: str) -> None:
     """The mocap goal of an episode is the pose that episode sampled."""
-    env = gym.make(env_id)
+    env = make_env(env_id)
     u = env.unwrapped
     try:
         for seed in (SEED, SEED + 1):
@@ -225,7 +236,7 @@ def test_relocate_simulates_the_sampled_goal(env_id: str) -> None:
 
 def test_bimanual_reset_builds_obs_from_the_reset_state() -> None:
     """Obs and lift baselines come from the forwarded, teleported reset state."""
-    env = gym.make("myoChallengeBimanual-v0")
+    env = make_env("myoChallengeBimanual-v0")
     u = env.unwrapped
     try:
         u.max_force = 1e3
@@ -249,7 +260,7 @@ def test_bimanual_reset_builds_obs_from_the_reset_state() -> None:
 
 def test_bimanual_success_does_not_end_next_episode() -> None:
     """A solved episode must not make the next episode terminate on step 1."""
-    env = gym.make("myoChallengeBimanual-v0")
+    env = make_env("myoChallengeBimanual-v0")
     u = env.unwrapped
     zero = np.zeros(env.action_space.shape, dtype=np.float32)
     adr = u.model.jnt_qposadr[u.model.body(u.obj_bid).jntadr[0]]
@@ -275,7 +286,7 @@ def test_bimanual_success_does_not_end_next_episode() -> None:
 )
 def test_baoding_reset_places_first_targets(env_id: str) -> None:
     """reset() shows the targets that the first step() aims for."""
-    env = gym.make(env_id)
+    env = make_env(env_id)
     u = env.unwrapped
     sids = [u.target1_sid, u.target2_sid]
     zero = np.zeros(env.action_space.shape, dtype=np.float32)
@@ -293,7 +304,7 @@ def test_baoding_reset_places_first_targets(env_id: str) -> None:
 
 def test_soccer_goalkeeper_noise_matches_episode_speed() -> None:
     """The random-walk noise is scaled by this episode's goalkeeper speed."""
-    env = gym.make("myoChallengeSoccerP2-v0", goalkeeper_probabilities=(0.0, 1.0, 0.0))
+    env = make_env("myoChallengeSoccerP2-v0", goalkeeper_probabilities=(0.0, 1.0, 0.0))
     keeper = env.unwrapped.goalkeeper
     try:
         for seed in (SEED, SEED + 1):
@@ -305,7 +316,7 @@ def test_soccer_goalkeeper_noise_matches_episode_speed() -> None:
 
 def test_rough_track_terrain_ignores_global_rng() -> None:
     """The rough RunTrack terrain is drawn from the env seed only."""
-    env = gym.make("myoChallengeOslRunRandom-v0")
+    env = make_env("myoChallengeOslRunRandom-v0")
     u = env.unwrapped
     try:
         for seed in range(50):
@@ -324,7 +335,7 @@ def test_rough_track_terrain_ignores_global_rng() -> None:
 
 def test_bimanual_pillars_follow_the_sampled_start_and_goal() -> None:
     """The mocap pillars sit at this episode's sampled start/goal, not at the XML centres."""
-    env = gym.make("myoChallengeBimanual-v0")
+    env = make_env("myoChallengeBimanual-v0")
     u = env.unwrapped
     try:
         positions = []

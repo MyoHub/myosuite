@@ -40,6 +40,7 @@ Run
 from __future__ import annotations
 
 import argparse
+from myosuite import make_env
 
 ENV_ID = "myoLegDirectionalForward-v0"
 
@@ -51,7 +52,7 @@ def cpu_demo() -> None:
 
     import myosuite  # noqa: F401 — registers all envs on import
 
-    env = gym.make(ENV_ID)
+    env = make_env(ENV_ID)
     obs, _ = env.reset(seed=0)
     print(f"[CPU] {ENV_ID}: obs dim = {obs.shape[0]}, action dim = {env.action_space.shape[0]}")
 
@@ -84,7 +85,6 @@ def gpu_train(iterations: int) -> None:
 
     import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
 
     # scripts/ is not importable as a package; add it to the path.
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -120,7 +120,7 @@ def cpu_playback(checkpoint: str, episodes: int) -> None:
     import myosuite  # noqa: F401
     from myosuite.utils.checkpoint_utils import load_policy
 
-    env = gym.make(ENV_ID)
+    env = make_env(ENV_ID)
     policy = load_policy(env, Path(checkpoint))  # model_*.pt or its run directory
     for episode in range(episodes):
         obs, _ = env.reset(seed=episode)

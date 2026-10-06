@@ -23,6 +23,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from tqdm import tqdm
 
 from myosuite.utils import gym
+from myosuite import make_env
 
 if "MUJOCO_GL" not in os.environ:
     os.environ["MUJOCO_GL"] = "glfw" if sys.platform == "darwin" else "egl"
@@ -535,12 +536,12 @@ def get_vid(
     frames = []
     if is_sar:
         if syn_nosyn:
-            env = SynNoSynWrapper(gym.make(env_name), ica, pca, normalizer, phi)
+            env = SynNoSynWrapper(make_env(env_name), ica, pca, normalizer, phi)
         else:
-            # env = SynergyWrapper(gym.make(env_name), ica, pca, normalizer, phi)
-            env = SynergyWrapper(gym.make(env_name), ica, pca, normalizer)
+            # env = SynergyWrapper(make_env(env_name), ica, pca, normalizer, phi)
+            env = SynergyWrapper(make_env(env_name), ica, pca, normalizer)
     else:
-        env = gym.make(env_name)
+        env = make_env(env_name)
 
     # First camera the model has (leg models: side_view; hand models: hand_top),
     # else MuJoCo's free camera.

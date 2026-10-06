@@ -12,14 +12,17 @@ helpers instead of restating numbers, so the two backends cannot drift.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import functools
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
 import gymnasium as gym
 import mujoco
 import numpy as np
+from gymnasium.envs.registration import load_env_creator
 from mjlab.actuator import XmlActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
@@ -28,6 +31,48 @@ from mjlab.sim import MujocoCfg
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.actions import MyoActionCfg
+from myosuite.terms.base_action import MotorNoiseCfg
+
+_CONDITION_WRAPPERS = {
+    "sarcopenia": "SarcopeniaWrapper",
+    "fatigue": "FatigueWrapper",
+    "reafferentation": "ReafferentationWrapper",
+}
+_MUSCLE_WRAPPERS = (
+    *_CONDITION_WRAPPERS.values(),
+    "MotorNoiseWrapper",
+    "ExcitationStageWrapper",
+)
+
+# Wrapper specs of the current ``make_env(EnvConfig(features=...))`` call, added to the
+# registered ones by :func:`cpu_task_spec` (every twin factory reads the registration there).
+_FEATURES: contextvars.ContextVar[tuple[Any, ...]] = contextvars.ContextVar(
+    "myosuite_features", default=()
+)
+_KWARGS: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
+    "myosuite_task_kwargs", default={}
+)
+
+
+@contextlib.contextmanager
+def feature_overrides(
+    features: Iterable[Any] = (), task_kwargs: dict[str, Any] | None = None
+) -> Iterator[None]:
+    """Change what every :func:`cpu_task_spec` read inside the block returns.
+
+    Args:
+        features: :class:`~gymnasium.envs.registration.WrapperSpec` of the muscle-command
+            wrappers (``EnvConfig.features``), added to the registered ones.
+        task_kwargs: CPU env constructor kwargs (such as ``frame_skip``) that replace
+            the registered ones.
+    """
+    tokens = (_FEATURES.set(tuple(features)), _KWARGS.set(dict(task_kwargs or {})))
+    try:
+        yield
+    finally:
+        _FEATURES.reset(tokens[0])
+        _KWARGS.reset(tokens[1])
+
 
 _INTEGRATORS = {
     int(mujoco.mjtIntegrator.mjINT_EULER): "euler",
@@ -57,16 +102,52 @@ class CpuTaskSpec:
         env_id: Gymnasium env id shared by both backends.
         kwargs: Constructor kwargs of the CPU env (defaults not included).
         max_episode_steps: CPU ``TimeLimit`` horizon.
+        wrappers: The wrapper specs of the registration; the muscle-command
+            wrappers (:mod:`myosuite.envs.wrappers`) configure the twin's action
+            pipeline.
     """
 
     env_id: str
     kwargs: dict[str, Any]
     max_episode_steps: int
+    wrappers: tuple[Any, ...] = ()
+
+    def wrapper_specs(self, name: str) -> list[dict[str, Any]]:
+        """Constructor kwargs of every registered wrapper called *name*."""
+        return [dict(s.kwargs or {}) for s in self.wrappers if s.name == name]
+
+    def wrapper_kwargs(self, name: str) -> dict[str, Any] | None:
+        """Constructor kwargs of the registered wrapper *name*, or ``None`` if absent."""
+        for spec in self.wrappers:
+            if spec.name == name:
+                return dict(spec.kwargs or {})
+        return None
 
     @property
-    def muscle_condition(self) -> str:
-        """``""``, ``"sarcopenia"``, ``"fatigue"`` or ``"reafferentation"``."""
-        return str(self.kwargs.get("muscle_condition", ""))
+    def muscle_conditions(self) -> tuple[str, ...]:
+        """Registered conditions (``"sarcopenia"``, ``"fatigue"``, ``"reafferentation"``).
+
+        The condition wrappers compose, so every one of them configures the twin.
+        """
+        return tuple(
+            condition
+            for condition, name in _CONDITION_WRAPPERS.items()
+            if self.wrapper_kwargs(name) is not None
+        )
+
+    @property
+    def motor_noise(self) -> MotorNoiseCfg:
+        """Noise on muscle excitations (``MotorNoiseWrapper``; off by default)."""
+        kwargs = self.wrapper_kwargs("MotorNoiseWrapper") or {}
+        return MotorNoiseCfg.from_value(kwargs.get("motor_noise"))
+
+    @property
+    def fatigue_reset(self) -> tuple[Any, bool]:
+        """``(fatigue_reset_vec, fatigue_reset_random)`` of the ``FatigueWrapper``."""
+        kwargs = self.wrapper_kwargs("FatigueWrapper") or {}
+        return kwargs.get("fatigue_reset_vec"), bool(
+            kwargs.get("fatigue_reset_random", False)
+        )
 
     @property
     def frame_skip(self) -> int:
@@ -79,6 +160,20 @@ class CpuTaskSpec:
         return self.kwargs.get("model_recipe") is not None
 
 
+def _with_features(registered: tuple[Any, ...], env_id: str) -> tuple[Any, ...]:
+    """The registered wrapper specs plus the ``EnvConfig.features`` of this call."""
+    added = _FEATURES.get()
+    for spec in added:
+        if spec.name != "ExcitationStageWrapper" and any(
+            r.name == spec.name for r in registered
+        ):
+            raise ValueError(
+                f"{env_id} already has a {spec.name}; apply each wrapper once "
+                "(use the base id, as on the CPU)."
+            )
+    return registered + added
+
+
 def cpu_task_spec(env_id: str) -> CpuTaskSpec:
     """Read the CPU registration of *env_id*.
 
@@ -87,15 +182,29 @@ def cpu_task_spec(env_id: str) -> CpuTaskSpec:
 
     Returns:
         The frozen registration data.
+
+    Raises:
+        ValueError: If the registration has muscle-command wrappers on a CPU env
+            class that does not run them (the twin would not match).
     """
     import myosuite  # noqa: F401, PLC0415  (registers the CPU envs)
 
     spec = gym.spec(env_id)
-    return CpuTaskSpec(
+    task = CpuTaskSpec(
         env_id=env_id,
-        kwargs=dict(spec.kwargs),
+        kwargs={**spec.kwargs, **_KWARGS.get()},
         max_episode_steps=int(spec.max_episode_steps),
+        wrappers=_with_features(tuple(spec.additional_wrappers or ()), env_id),
     )
+    if any(task.wrapper_kwargs(name) is not None for name in _MUSCLE_WRAPPERS):
+        entry = spec.entry_point
+        env_cls = load_env_creator(entry) if isinstance(entry, str) else entry
+        if not getattr(env_cls, "supports_ctrl_stages", False):
+            raise ValueError(
+                f"{env_id} registers muscle-command wrappers on {env_cls.__name__}, "
+                "whose action pipeline does not run them."
+            )
+    return task
 
 
 def build_cpu_spec(task: CpuTaskSpec) -> mujoco.MjSpec:
@@ -123,8 +232,9 @@ def build_cpu_spec(task: CpuTaskSpec) -> mujoco.MjSpec:
 
             builder = builder.apply_transform(_wrap)
         _, spec = builder.build()
-    if task.muscle_condition == "sarcopenia":
-        apply_sarcopenia_to_spec(spec, force_scale=0.5)
+    sarcopenia = task.wrapper_kwargs("SarcopeniaWrapper")
+    if sarcopenia is not None:
+        apply_sarcopenia_to_spec(spec, force_scale=sarcopenia.get("force_scale", 0.5))
     return spec
 
 
@@ -454,7 +564,7 @@ def action_cfg(
     action_range: tuple[float, float] = (-1.0, 1.0),
     muscle_sigmoid: bool = True,
 ) -> MyoActionCfg:
-    """CPU action pipeline of *task* (normalization + muscle condition).
+    """CPU action pipeline of *task* (normalization, motor noise, muscle condition).
 
     Reafferentation reroutes EIP's command to EPL and silences EIP (``_r``
     suffix on recipe-built models), exactly as the CPU envs do. Fatigue
@@ -470,13 +580,14 @@ def action_cfg(
     Returns:
         The action term config.
     """
+    conditions = task.muscle_conditions
     reroute = None
-    if task.muscle_condition == "reafferentation":
+    if "reafferentation" in conditions:
         sfx = "_r" if task.uses_recipe else ""
         reroute = (f"EIP{sfx}", f"EPL{sfx}")
-    fatigue = task.muscle_condition == "fatigue"
+    fatigue = "fatigue" in conditions
     # The CPU fatigue reset options (only read by the CPU env under fatigue).
-    reset_vec = task.kwargs.get("fatigue_reset_vec") if fatigue else None
+    reset_vec, reset_random = task.fatigue_reset if fatigue else (None, False)
     return MyoActionCfg(
         entity_name=entity_name,
         normalize_act=bool(task.kwargs.get("normalize_act", True)),
@@ -486,9 +597,12 @@ def action_cfg(
         fatigue_reset_vec=(
             None if reset_vec is None else tuple(float(v) for v in reset_vec)
         ),
-        fatigue_reset_random=fatigue
-        and bool(task.kwargs.get("fatigue_reset_random", False)),
+        fatigue_reset_random=reset_random,
         reroute=reroute,
+        motor_noise=task.motor_noise,
+        excitation_stages=tuple(
+            spec["make_stage"] for spec in task.wrapper_specs("ExcitationStageWrapper")
+        ),
     )
 
 

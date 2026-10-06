@@ -14,16 +14,17 @@ import numpy as np
 import gymnasium as gym
 from gymnasium.utils import EzPickle
 
-from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
+from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.utils.reach_workspace import reachable_target_points
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
-from myosuite.physics.fatigue import CumulativeFatigue
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_action import (
+    sigmoid_muscle_activation,
+)
 from myosuite.terms.base_reward import multi_site_reach_reward
 
 
-class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
+class ReachEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
     """Reaching task for musculoskeletal (or motor) MuJoCo models.
 
     The agent must move one or more fingertip sites to randomly sampled
@@ -47,10 +48,6 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         normalize_act: If ``True``, action space is ``[-1, 1]``; sigmoid
             (muscles) or linear (motors) denormalisation applied internally.
         frame_skip: Number of MuJoCo substeps per :meth:`step` call.
-        muscle_condition: One of ``""``, ``"sarcopenia"``, ``"fatigue"``,
-            ``"reafferentation"``.
-        fatigue_reset_vec: Initial fatigue state vector.
-        fatigue_reset_random: If ``True``, randomise fatigue state on reset.
     """
 
     DEFAULT_OBS_KEYS = ["qpos", "qvel", "tip_pos", "reach_err"]
@@ -78,9 +75,6 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         weighted_reward_keys: dict[str, float] = DEFAULT_RWD_KEYS_AND_WEIGHTS,
         normalize_act: bool = True,
         frame_skip: int = 10,
-        muscle_condition: str = "",
-        fatigue_reset_vec=None,
-        fatigue_reset_random: bool = False,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -100,9 +94,6 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
             weighted_reward_keys=weighted_reward_keys,
             normalize_act=normalize_act,
             frame_skip=frame_skip,
-            muscle_condition=muscle_condition,
-            fatigue_reset_vec=fatigue_reset_vec,
-            fatigue_reset_random=fatigue_reset_random,
             **kwargs,
         )
 
@@ -125,12 +116,8 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 
-        # ── Muscle condition ───────────────────────────────────────────────
-        self.muscle_condition = muscle_condition
-        self.fatigue_reset_vec = fatigue_reset_vec
-        self.fatigue_reset_random = fatigue_reset_random
+        # ── Muscle actuators (action-pipeline stages come from wrappers)
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
-        self._init_muscle_condition()
 
         # ── Reach target config ────────────────────────────────────────────
         if target_reach_range is None:
@@ -210,19 +197,6 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
 
     # ── Private helpers ────────────────────────────────────────────────────
 
-    def _init_muscle_condition(self) -> None:
-        """Apply the muscle condition to the compiled model."""
-        if self.muscle_condition == "sarcopenia":
-            apply_sarcopenia_to_model(self.model, force_scale=0.5)
-        elif self.muscle_condition == "fatigue":
-            self.muscle_fatigue = CumulativeFatigue(
-                self.model, self.frame_skip, seed=None
-            )
-        elif self.muscle_condition == "reafferentation":
-            sfx = "_r" if hasattr(self, "_model_recipe") else ""
-            self.EPLpos = self.model.actuator(f"EPL{sfx}").id
-            self.EIPpos = self.model.actuator(f"EIP{sfx}").id
-
     def _apply_action(self, action: np.ndarray) -> None:
         """Map action to MuJoCo ctrl and write to data.ctrl.
 
@@ -242,13 +216,7 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
                 + ctrl * (ctrl_range[:, 1] - ctrl_range[:, 0]) / 2.0
             )
 
-        if self.muscle_condition == "fatigue":
-            ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
-                ctrl[self._muscle_act_ind]
-            )
-        elif self.muscle_condition == "reafferentation":
-            ctrl[self.EPLpos] = ctrl[self.EIPpos].copy()
-            ctrl[self.EIPpos] = 0.0
+        ctrl = self._run_ctrl_stages(ctrl)
 
         self.data.ctrl[:] = ctrl
 
@@ -369,12 +337,7 @@ class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
 
         gymnasium.Env.reset(self, seed=seed)
 
-        if self.muscle_condition == "fatigue":
-            self.muscle_fatigue.reset(
-                fatigue_reset_vec=self.fatigue_reset_vec,
-                fatigue_reset_random=self.fatigue_reset_random,
-                np_random=self.np_random,
-            )
+        self._run_reset_stages()
 
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = self._init_qpos

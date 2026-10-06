@@ -34,6 +34,7 @@ from myosuite.envs.myo.assets._resolve import (
     resolve_finger_xml as _resolve_finger_xml,
     resolve_leg_xml as _resolve_leg_xml,
 )
+from myosuite import make_env
 
 # ---------------------------------------------------------------------------
 # Optional-import guard — skip the whole module if MJX is unavailable
@@ -184,7 +185,6 @@ class TestReachMatchesCpu:
 
     def test_far_check_first_active_at_cpu_control_step(self):
         """The check used 2 physics steps (4 ms), so it ended episodes at step 1."""
-        import gymnasium as gym
         from myosuite.envs.myo.backends.mjx import make
 
         env = make("MjxFingerReachRandom-v0")
@@ -198,7 +198,7 @@ class TestReachMatchesCpu:
             state = step(state, jp.zeros(env.action_size))
             mjx_done.append(bool(state.done))
 
-        cpu = gym.make("myoFingerReachRandom-v0")
+        cpu = make_env("myoFingerReachRandom-v0")
         u = cpu.unwrapped
         cpu.reset(seed=0)
         u.model.site_pos[u.target_sids[0]] += np.array([1.0, 0.0, 0.0])
@@ -211,21 +211,19 @@ class TestReachMatchesCpu:
 
     def test_finger_reach_reads_cpu_registration(self):
         """far_th was hard-coded to 0.10 (CPU: ReachEnvV0 default 0.35)."""
-        import gymnasium as gym
         from myosuite.envs.myo.backends.mjx import get_default_config
 
         cfg = get_default_config("MjxFingerReachRandom-v0")
-        cpu = gym.make("myoFingerReachRandom-v0").unwrapped
+        cpu = make_env("myoFingerReachRandom-v0").unwrapped
         assert cfg.far_th == cpu.far_th == 0.35
         assert cfg.target_sampling == cpu.target_sampling == "workspace"
 
     def test_finger_reach_samples_the_cpu_workspace_table(self):
         """Targets were drawn uniformly in the box, partly out of reach."""
-        import gymnasium as gym
         from myosuite.envs.myo.backends.mjx import make
 
         env = make("MjxFingerReachRandom-v0")
-        table = gym.make("myoFingerReachRandom-v0").unwrapped._workspace_points
+        table = make_env("myoFingerReachRandom-v0").unwrapped._workspace_points
         np.testing.assert_allclose(np.asarray(env._workspace_points), table, atol=1e-6)
         keys = jax.random.split(jax.random.PRNGKey(0), 200)
         targets = np.asarray(jax.vmap(env.sample_task)(keys)["targets"])

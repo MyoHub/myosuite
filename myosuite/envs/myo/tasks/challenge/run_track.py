@@ -20,7 +20,6 @@ import gymnasium as gym
 from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder
-from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.heightfields import TrackField
 from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
@@ -28,7 +27,6 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import (
     MuscleActionMixin,
     joint_limit_forces,
 )
-from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.physics.quat_math import intrinsic_euler2quat, quat2euler_intrinsic
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
@@ -55,11 +53,6 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         obs_keys: Observation keys to include.
         weighted_reward_keys: Dict ``{key: weight}`` for dense reward.
         normalize_act: If ``True``, action space is ``[-1, 1]``.
-        muscle_condition: One of ``""``, ``"sarcopenia"``, ``"fatigue"``.
-        fatigue_reset_vec: Fatigued fraction (MF) of each muscle at every
-            reset (``muscle_condition="fatigue"`` only).
-        fatigue_reset_random: If ``True``, draw the fatigue state at each
-            reset from the env's ``np_random``.
         reset_type: One of ``"init"``, ``"random"``, ``"osl_init"``.
         terrain: One of ``"flat"``, ``"hilly"``, ``"rough"``, ``"stairs"``,
             ``"random"``.
@@ -194,9 +187,6 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         obs_keys: list = DEFAULT_OBS_KEYS,
         weighted_reward_keys: dict[str, float] = DEFAULT_RWD_KEYS_AND_WEIGHTS,
         normalize_act: bool = True,
-        muscle_condition: str = "",
-        fatigue_reset_vec: np.ndarray | None = None,
-        fatigue_reset_random: bool = False,
         reset_type: str = "init",
         terrain: str = "random",
         hills_difficulties: tuple = (0, 0),
@@ -223,9 +213,6 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             obs_keys=obs_keys,
             weighted_reward_keys=weighted_reward_keys,
             normalize_act=normalize_act,
-            muscle_condition=muscle_condition,
-            fatigue_reset_vec=fatigue_reset_vec,
-            fatigue_reset_random=fatigue_reset_random,
             reset_type=reset_type,
             terrain=terrain,
             hills_difficulties=hills_difficulties,
@@ -247,15 +234,8 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
         self.dt = self._ctrl_dt
 
-        # ── Muscle condition ────────────────────────────────────────────────
-        self.muscle_condition = muscle_condition
-        self.fatigue_reset_vec = fatigue_reset_vec
-        self.fatigue_reset_random = fatigue_reset_random
+        # ── Muscle actuators (action-pipeline stages come from wrappers)
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
-        if muscle_condition == "sarcopenia":
-            apply_sarcopenia_to_model(self.model, force_scale=0.5)
-        elif muscle_condition == "fatigue":
-            self.muscle_fatigue = CumulativeFatigue(self.model, frame_skip, seed=None)
 
         # ── Task config ─────────────────────────────────────────────────────
         self.reset_type = reset_type
@@ -391,6 +371,10 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
     # ── Action application ────────────────────────────────────────────────────
 
+    def _stage_muscle_index(self) -> np.ndarray:
+        """The muscle commands are the first ``na`` entries of the policy action."""
+        return self._muscle_act_ind[: self.model.na]
+
     def _apply_action(self, mus_action: np.ndarray) -> None:
         """Apply muscle actions + OSL torques to data.ctrl."""
         full_ctrl = np.zeros(self.model.nu)
@@ -407,12 +391,7 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 np.mean(ctrl_range, axis=-1)
                 + ctrl * (ctrl_range[:, 1] - ctrl_range[:, 0]) / 2.0
             )
-        if self.muscle_condition == "fatigue":
-            ctrl[self._muscle_act_ind[: self.model.na]], _, _ = (
-                self.muscle_fatigue.compute_act(
-                    ctrl[self._muscle_act_ind[: self.model.na]]
-                )
-            )
+        ctrl = self._run_ctrl_stages(ctrl)
         full_ctrl[: self.model.na] = ctrl
 
         # Append OSL torques
@@ -530,7 +509,7 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             mujoco.mj_forward(self.model, self.data)
 
         self.OSL_CTRL.start()
-        self.reset_muscle_condition()
+        self._run_reset_stages()
 
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)

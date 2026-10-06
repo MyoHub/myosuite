@@ -9,9 +9,10 @@ from __future__ import annotations
 import mujoco
 import numpy as np
 
-from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
-from myosuite.physics.fatigue import CumulativeFatigue
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.envs.muscle_stages import CtrlStageHost
+from myosuite.terms.base_action import (
+    sigmoid_muscle_activation,
+)
 
 
 def solved_step_count(path: dict) -> float:
@@ -43,44 +44,19 @@ def joint_limit_forces(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray
     return qfrc
 
 
-class MuscleActionMixin:
-    """Shared muscle-condition setup, per-episode reset and action processing."""
+class MuscleActionMixin(CtrlStageHost):
+    """Shared action mapping of the challenge muscle envs.
+
+    Noise, fatigue and reafferentation are wrapper-installed stages that run
+    after the map (:mod:`myosuite.envs.muscle_stages`).
+    """
 
     model: any
     data: any
-    frame_skip: int
     normalize_act: bool
-    muscle_condition: str
-    fatigue_reset_vec: np.ndarray | None
-    fatigue_reset_random: bool
     np_random: np.random.Generator
     action_space: any
     _muscle_act_ind: np.ndarray
-
-    def init_muscle_condition(self) -> None:
-        """Apply configured muscle-condition behavior."""
-        if self.muscle_condition == "sarcopenia":
-            apply_sarcopenia_to_model(self.model, force_scale=0.5)
-        elif self.muscle_condition == "fatigue":
-            self.muscle_fatigue = CumulativeFatigue(
-                self.model, self.frame_skip, seed=None
-            )
-        elif self.muscle_condition == "reafferentation":
-            self.epl_pos = self.model.actuator("EPL").id
-            self.eip_pos = self.model.actuator("EIP").id
-
-    def reset_muscle_condition(self) -> None:
-        """Reset the fatigue state for a new episode (no-op for other conditions).
-
-        Call from ``reset()`` after seeding: a random fatigue state is drawn
-        from the env's ``np_random`` so that ``reset(seed=...)`` reproduces it.
-        """
-        if self.muscle_condition == "fatigue":
-            self.muscle_fatigue.reset(
-                fatigue_reset_vec=self.fatigue_reset_vec,
-                fatigue_reset_random=self.fatigue_reset_random,
-                np_random=self.np_random,
-            )
 
     def apply_action(self, action: np.ndarray) -> None:
         """Project and write control action into MuJoCo ctrl buffer."""
@@ -94,11 +70,5 @@ class MuscleActionMixin:
         elif self.normalize_act and self.model.nu > 0:
             cr = self.model.actuator_ctrlrange
             ctrl = np.mean(cr, axis=-1) + ctrl * (cr[:, 1] - cr[:, 0]) / 2.0
-        if self.muscle_condition == "fatigue":
-            ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
-                ctrl[self._muscle_act_ind]
-            )
-        elif self.muscle_condition == "reafferentation":
-            ctrl[self.epl_pos] = ctrl[self.eip_pos].copy()
-            ctrl[self.eip_pos] = 0.0
+        ctrl = self._run_ctrl_stages(ctrl)
         self.data.ctrl[:] = ctrl

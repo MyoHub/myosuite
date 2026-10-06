@@ -16,6 +16,7 @@ from myosuite.envs.heightfields import ChaseTagField, HeightField, TrackField
 from myosuite.physics.quat_math import euler2mat, quat2euler
 from myosuite.tests.test_envs import assert_close
 from myosuite.utils.asset_path_resolver import resolve_model_xml_path
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier2
 
@@ -162,7 +163,7 @@ def test_obs_dict_keeps_unobserved_heightmap(env_id: str) -> None:
     The PyPI obs-dict keys (test_challenge_pypi_regression) and the challenge
     docs include ``hfield``, so it is computed every step.
     """
-    env = gym.make(env_id)
+    env = make_env(env_id)
     try:
         env.reset(seed=0)
         assert "hfield" not in env.unwrapped.obs_keys

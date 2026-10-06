@@ -25,6 +25,7 @@ from myosuite.utils.target_ranges import (
     resolve_joint_target_ranges,
     resolve_site_target_ranges,
 )
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -53,7 +54,7 @@ _TINY_XML = """
 
 def _cpu_env(env_id: str):
     """Return the unwrapped CPU env and its registered kwargs."""
-    env = gym.make(env_id).unwrapped
+    env = make_env(env_id).unwrapped
     return env, gym.spec(env_id).kwargs
 
 

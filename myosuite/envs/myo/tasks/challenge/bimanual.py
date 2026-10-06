@@ -166,10 +166,6 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.obs_keys.append("act")
 
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
-        self.muscle_condition = kwargs.get("muscle_condition", "")
-        self.fatigue_reset_vec = kwargs.get("fatigue_reset_vec")
-        self.fatigue_reset_random = bool(kwargs.get("fatigue_reset_random", False))
-        self.init_muscle_condition()
 
         self._init_qpos = (
             self.model.key_qpos[2].copy()
@@ -424,13 +420,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 ctrl[self._muscle_act_ind] = sigmoid_muscle_activation(
                     ctrl[self._muscle_act_ind], np
                 )
-        if self.muscle_condition == "fatigue":
-            ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
-                ctrl[self._muscle_act_ind]
-            )
-        elif self.muscle_condition == "reafferentation":
-            ctrl[self.epl_pos] = ctrl[self.eip_pos].copy()
-            ctrl[self.eip_pos] = 0.0
+        ctrl = self._run_ctrl_stages(ctrl)
         return ctrl
 
     def _place_pillars(self) -> None:
@@ -523,7 +513,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.ignore_first_scale = False
         if obj_edited:  # new mass or size: inertia, bounds, mj_setConst constants
             refresh_geom_derived_fields(self.model, self._mj_spec, (self.obj_bid,))
-        self.reset_muscle_condition()
+        self._run_reset_stages()
         if self.model.nkey > 2:
             self._init_qpos = self.model.key_qpos[2].copy()
         mujoco.mj_resetData(self.model, self.data)

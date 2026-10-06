@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -24,12 +25,9 @@ def test_soccer_act_reg_weight_is_not_catastrophic() -> None:
 
 
 def test_soccer_time_cost_is_per_step_not_cumulative() -> None:
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-    from myosuite.utils import gym
-
-    env = gym.make("myoChallengeSoccerP1-v0")
+    env = make_env("myoChallengeSoccerP1-v0")
     try:
         env.reset(seed=0)
         unwrapped = env.unwrapped
@@ -46,12 +44,9 @@ def test_soccer_time_cost_is_per_step_not_cumulative() -> None:
 
 def test_soccer_longer_active_rollout_improves_return() -> None:
     """Regression: act_reg=-100 made longer episodes catastrophically worse."""
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-    from myosuite.utils import gym
-
-    env = gym.make("myoChallengeSoccerP1-v0")
+    env = make_env("myoChallengeSoccerP1-v0")
     try:
         action = np.zeros(env.action_space.shape, dtype=np.float32)
         totals = []
@@ -78,9 +73,8 @@ def test_soccer_pain_matches_per_joint_limit_forces(
     import mujoco
 
     import myosuite  # noqa: F401  (registers the envs)
-    from myosuite.utils import gym
 
-    env = gym.make("myoChallengeSoccerP1-v0")
+    env = make_env("myoChallengeSoccerP1-v0")
     u = env.unwrapped
     try:
         env.reset(seed=0)

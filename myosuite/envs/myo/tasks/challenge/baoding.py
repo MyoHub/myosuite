@@ -16,14 +16,12 @@ import gymnasium as gym
 from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
-from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.challenge.challenge_common import (
     MuscleActionMixin,
     mean_effort,
     solved_step_count,
 )
-from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
@@ -63,9 +61,6 @@ class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         obs_keys: Observation keys.
         weighted_reward_keys: Dict ``{reward_key: weight}`` for dense reward.
         normalize_act: If ``True``, action space is ``[-1, 1]``.
-        muscle_condition: One of ``""``, ``"sarcopenia"``, ``"fatigue"``.
-        fatigue_reset_vec: Initial fatigue state vector.
-        fatigue_reset_random: If ``True``, randomise fatigue state on reset.
     """
 
     DEFAULT_OBS_KEYS = [
@@ -108,9 +103,6 @@ class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         obs_keys: list = DEFAULT_OBS_KEYS,
         weighted_reward_keys: dict[str, float] = DEFAULT_RWD_KEYS_AND_WEIGHTS,
         normalize_act: bool = True,
-        muscle_condition: str = "",
-        fatigue_reset_vec=None,
-        fatigue_reset_random: bool = False,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -136,9 +128,6 @@ class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             obs_keys=obs_keys,
             weighted_reward_keys=weighted_reward_keys,
             normalize_act=normalize_act,
-            muscle_condition=muscle_condition,
-            fatigue_reset_vec=fatigue_reset_vec,
-            fatigue_reset_random=fatigue_reset_random,
             **kwargs,
         )
 
@@ -151,12 +140,8 @@ class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 
-        # ── Muscle condition ───────────────────────────────────────────────
-        self.muscle_condition = muscle_condition
-        self.fatigue_reset_vec = fatigue_reset_vec
-        self.fatigue_reset_random = fatigue_reset_random
+        # ── Muscle actuators (action-pipeline stages come from wrappers)
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
-        self._init_muscle_condition()
 
         # ── Task config ────────────────────────────────────────────────────
         self.task_choice = task_choice
@@ -255,15 +240,6 @@ class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
     # ── Private helpers ────────────────────────────────────────────────────
 
-    def _init_muscle_condition(self) -> None:
-        """Apply the muscle condition to the compiled model."""
-        if self.muscle_condition == "sarcopenia":
-            apply_sarcopenia_to_model(self.model, force_scale=0.5)
-        elif self.muscle_condition == "fatigue":
-            self.muscle_fatigue = CumulativeFatigue(
-                self.model, self.frame_skip, seed=None
-            )
-
     def _apply_action(self, action: np.ndarray) -> None:
         """Map action to MuJoCo ctrl and write to data.ctrl.
 
@@ -283,10 +259,7 @@ class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 + ctrl * (ctrl_range[:, 1] - ctrl_range[:, 0]) / 2.0
             )
 
-        if self.muscle_condition == "fatigue":
-            ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
-                ctrl[self._muscle_act_ind]
-            )
+        ctrl = self._run_ctrl_stages(ctrl)
 
         self.data.ctrl[:] = ctrl
 
@@ -527,7 +500,7 @@ class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         import gymnasium
 
         gymnasium.Env.reset(self, seed=seed)
-        self.reset_muscle_condition()
+        self._run_reset_stages()
 
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = self._init_qpos

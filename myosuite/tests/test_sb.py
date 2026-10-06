@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from myosuite.utils import gym
 import myosuite
+from myosuite import make_env
 
 # SB3 imports matplotlib at module import time; a NumPy 2 / older matplotlib
 # binary mismatch raises AttributeError: _ARRAY_API not found. Defer failure to
@@ -33,12 +33,11 @@ def test_sb3_smoke_for_myochal_envs() -> None:
             f"NumPy/Matplotlib build (install myosuite[rl] with compatible wheels): {_PPO_IMPORT_ERROR}"
         )
     assert PPO is not None
-    myosuite.register_all_envs()
     suite = list(myosuite.myosuite_myochal_suite)
     total = len(suite)
     for i, env_name in enumerate(suite, 1):
         print(f"  [{i}/{total}] {env_name} ...", flush=True)
-        env = gym.make(env_name)
+        env = make_env(env_name)
         try:
             # Force CPU device so this smoke test remains lightweight even when
             # CUDA is available in the environment.

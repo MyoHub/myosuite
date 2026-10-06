@@ -13,6 +13,7 @@ import mujoco
 
 from myosuite.utils import gym
 from myosuite.physics.quat_math import euler2quat, quat2mat
+from myosuite import make_env
 
 
 class MyoLegReflex:
@@ -48,7 +49,7 @@ class MyoLegReflex:
         self.init_dict = self.DEFAULT_INIT_POSE if init_dict is None else init_dict
         self.seed = seed
 
-        self.env = gym.make(
+        self.env = make_env(
             "myoLegWalk-v0",
             normalize_act=False,
             reset_type="init",

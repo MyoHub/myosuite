@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Muscle-condition setup, per-episode reset and action mapping of the basic hand/arm envs."""
+"""Action mapping of the basic hand/arm envs; muscle stages come from wrappers."""
 
 from __future__ import annotations
 
@@ -10,51 +10,25 @@ from typing import Any
 
 import numpy as np
 
-from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
-from myosuite.physics.fatigue import CumulativeFatigue
+from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
 
-class MuscleConditionMixin:
-    """Shared muscle-condition behaviour of the pose, key-turn, obj-hold, pen and SAR-reorient envs.
+class MuscleActionMixin(CtrlStageHost):
+    """Shared action mapping of the pose, key-turn, obj-hold, pen and SAR-reorient envs.
 
-    The host env provides ``model``, ``data``, ``frame_skip``, ``normalize_act``,
-    ``muscle_condition``, ``fatigue_reset_vec``, ``fatigue_reset_random``,
-    ``np_random``, ``_muscle_act_ind`` and the actuator-name suffix ``_name_sfx``.
+    Noise, fatigue and reafferentation are not part of the env: wrappers install
+    them as stages (:mod:`myosuite.envs.muscle_stages`) that run after the map.
+    The host env provides ``model``, ``data``, ``normalize_act``, ``np_random``,
+    ``_muscle_act_ind`` and the actuator-name suffix ``_name_sfx``.
     """
 
     model: Any
     data: Any
-    frame_skip: int
     normalize_act: bool
-    muscle_condition: str
-    fatigue_reset_vec: Any
-    fatigue_reset_random: bool
     np_random: np.random.Generator
     _muscle_act_ind: np.ndarray
     _name_sfx: str
-
-    def _init_muscle_condition(self) -> None:
-        """Apply the muscle condition to the compiled model."""
-        if self.muscle_condition == "sarcopenia":
-            apply_sarcopenia_to_model(self.model, force_scale=0.5)
-        elif self.muscle_condition == "fatigue":
-            self.muscle_fatigue = CumulativeFatigue(
-                self.model, self.frame_skip, seed=None
-            )
-        elif self.muscle_condition == "reafferentation":
-            sfx = self._name_sfx
-            self.EPLpos = self.model.actuator(f"EPL{sfx}").id
-            self.EIPpos = self.model.actuator(f"EIP{sfx}").id
-
-    def _reset_muscle_condition(self) -> None:
-        """Reset the fatigue state for a new episode (drawn from the env RNG)."""
-        if self.muscle_condition == "fatigue":
-            self.muscle_fatigue.reset(
-                fatigue_reset_vec=self.fatigue_reset_vec,
-                fatigue_reset_random=self.fatigue_reset_random,
-                np_random=self.np_random,
-            )
 
     def _apply_action(self, action: np.ndarray) -> None:
         """Map an action to MuJoCo ctrl and write it to ``data.ctrl``.
@@ -81,12 +55,4 @@ class MuscleConditionMixin:
                 + ctrl * (ctrl_range[:, 1] - ctrl_range[:, 0]) / 2.0
             )
 
-        if self.muscle_condition == "fatigue":
-            ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
-                ctrl[self._muscle_act_ind]
-            )
-        elif self.muscle_condition == "reafferentation":
-            ctrl[self.EPLpos] = ctrl[self.EIPpos].copy()
-            ctrl[self.EIPpos] = 0.0
-
-        self.data.ctrl[:] = ctrl
+        self.data.ctrl[:] = self._run_ctrl_stages(ctrl)

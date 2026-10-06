@@ -46,15 +46,15 @@ _REPO_ROOT = Path(__file__).parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import myosuite  # noqa: E402
+import myosuite  # noqa: E402, F401
 from myosuite.utils import gym  # noqa: E402
 from sar_tutorial_utils import (  # noqa: E402
     fit_sac,
     SynergyWrapper,
     get_vid,
 )
+from myosuite import make_env
 
-myosuite.register_all_envs()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -100,7 +100,7 @@ def train(env_name: str, policy_name: str, timesteps: int, seed: str) -> None:
         seed: Seed (as a string) of SAC and the environment, also appended to the output file names.
     """
     log.info("Starting play-phase training on %s for %d steps", env_name, timesteps)
-    env = DummyVecEnv([lambda: Monitor(gym.make(env_name))])
+    env = DummyVecEnv([lambda: Monitor(make_env(env_name))])
     fit_sac(env, policy_name, env_name, seed, timesteps, 1000, CHECKPOINT_EVERY)
     log.info("Play-phase training complete. Model saved.")
 
@@ -131,7 +131,7 @@ def get_activations(
         Array of shape ``(T, n_muscles)`` with concatenated activations.
     """
     log.info("Collecting muscle activations from %s (%d episodes)", env_name, episodes)
-    with gym.make(env_name) as env:
+    with make_env(env_name) as env:
         env.reset()
         model = SAC.load(f"{name}_model_{env_name}_{seed}")
         vec = VecNormalize.load(
@@ -297,7 +297,7 @@ def sar_rl(
     """
     log.info("Starting SAR-RL on %s for %d steps", env_name, timesteps)
     env = DummyVecEnv(
-        [lambda: Monitor(SynergyWrapper(gym.make(env_name), ica, pca, normalizer))]
+        [lambda: Monitor(SynergyWrapper(make_env(env_name), ica, pca, normalizer))]
     )
     fit_sac(env, policy_name, env_name, seed, timesteps, 5000, CHECKPOINT_EVERY)
     log.info("SAR-RL training complete. Model saved.")
@@ -402,7 +402,7 @@ def main(play_only: bool = False) -> None:
 
 def _dry_run() -> None:
     """Load the play env once so students can check the install without training."""
-    env = gym.make(PLAY_ENV)
+    env = make_env(PLAY_ENV)
     obs, info = env.reset(seed=0)
     action_shape = env.action_space.shape
     obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
@@ -425,7 +425,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help=f"gym.make({PLAY_ENV!r}), reset, one random step, then exit.",
+        help=f"make_env({PLAY_ENV!r}), reset, one random step, then exit.",
     )
     parser.add_argument(
         "--seed",

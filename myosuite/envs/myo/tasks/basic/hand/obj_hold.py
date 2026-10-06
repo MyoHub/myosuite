@@ -16,11 +16,11 @@ from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleConditionMixin
+from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleActionMixin
 from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
 
-class ObjHoldFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
+class ObjHoldFixedEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Object-holding task with a fixed goal position.
 
     The agent must hold a free object above a fixed goal marker.
@@ -34,10 +34,6 @@ class ObjHoldFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         weighted_reward_keys: Dict ``{reward_key: weight}`` for dense reward.
         normalize_act: If ``True``, action space is ``[-1, 1]``.
         frame_skip: Number of MuJoCo substeps per :meth:`step` call.
-        muscle_condition: One of ``""``, ``"sarcopenia"``, ``"fatigue"``,
-            ``"reafferentation"``.
-        fatigue_reset_vec: Initial fatigue state vector.
-        fatigue_reset_random: If ``True``, randomise fatigue state on reset.
     """
 
     DEFAULT_OBS_KEYS = ["hand_qpos", "hand_qvel", "obj_pos", "obj_err"]
@@ -62,9 +58,6 @@ class ObjHoldFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         weighted_reward_keys: dict[str, float] = DEFAULT_RWD_KEYS_AND_WEIGHTS,
         normalize_act: bool = True,
         frame_skip: int = 10,
-        muscle_condition: str = "",
-        fatigue_reset_vec=None,
-        fatigue_reset_random: bool = False,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -81,9 +74,6 @@ class ObjHoldFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             weighted_reward_keys=weighted_reward_keys,
             normalize_act=normalize_act,
             frame_skip=frame_skip,
-            muscle_condition=muscle_condition,
-            fatigue_reset_vec=fatigue_reset_vec,
-            fatigue_reset_random=fatigue_reset_random,
             **kwargs,
         )
 
@@ -97,12 +87,8 @@ class ObjHoldFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         self._name_sfx = "" if model_recipe == "hand_hold" else "_r"
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 
-        # ── Muscle condition ───────────────────────────────────────────────
-        self.muscle_condition = muscle_condition
-        self.fatigue_reset_vec = fatigue_reset_vec
-        self.fatigue_reset_random = fatigue_reset_random
+        # ── Muscle actuators (action-pipeline stages come from wrappers)
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
-        self._init_muscle_condition()
 
         # ── Site / body IDs ────────────────────────────────────────────────
         mujoco.mj_forward(self.model, self.data)
@@ -257,7 +243,7 @@ class ObjHoldFixedEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
 
         gymnasium.Env.reset(self, seed=seed)
 
-        self._reset_muscle_condition()
+        self._run_reset_stages()
 
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = self._init_qpos

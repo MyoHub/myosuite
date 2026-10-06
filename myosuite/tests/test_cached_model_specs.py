@@ -17,6 +17,7 @@ from myosuite.core import model_recipes
 from myosuite.core.muscle_conditions import _peak_force
 from myosuite.integrations.musclemimic import fullbody_model
 from myosuite.utils import gym
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -61,7 +62,7 @@ def _assert_same_model(a: mujoco.MjModel, b: mujoco.MjModel) -> None:
 
 
 def _make_model(env_id: str) -> tuple[gym.Env, mujoco.MjModel]:
-    env = gym.make(env_id)
+    env = make_env(env_id)
     return env, env.unwrapped.model
 
 

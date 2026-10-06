@@ -33,6 +33,7 @@ from myosuite.core.config import TaskConfig  # noqa: E402
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (  # noqa: E402
     mujoco_cfg_from_model,
 )
+from myosuite import make_env  # noqa: E402
 
 # Not a twin yet: obs, control step and terrain differ from CPU (fixed separately).
 _NOT_TWINS = {"myoChallengeChaseTagFBP2-v0"}
@@ -67,7 +68,7 @@ def _opt_diff(cpu: Opt, sim: Opt) -> dict[str, tuple]:
 
 
 def _cpu_opt(env_id: str) -> Opt:
-    env = gym.make(env_id)
+    env = make_env(env_id)
     try:
         return _opt_values(env.unwrapped.model)
     finally:

@@ -15,6 +15,7 @@ add minimal comments and descriptions in the code / python files
 - Term functions are pure and backend-agnostic — use `accessor.array_module()` only.
 - Prefer typed `@dataclass` configs over raw dicts / `ConfigDict`.
 - Register via `registry.register_env(...)` (CPU) or `register_mjlab_task(...)` (mjlab) — never `gym.register()` directly.
+- Build envs with `from myosuite import make_env` (`make_env(env_id)`, or `make_env(EnvConfig(...), backend=...)`) — not `gym.make()` — in code, tests, docs and tutorials.
 - Always return 5-tuple from `step()`: `(obs, rwd, terminated, truncated, info)`.
   **Exception:** `ModularMultiAgentTaskEnv` returns 5-tuples of per-agent dicts — intentional.
 - Use `myo_sim.get_path(...)` / `ModelBuilder` for assets — no hardcoded paths.
@@ -28,7 +29,7 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
   - Never refresh with `mj_kinematics` alone. Muscle length/velocity/force, sensors, contacts and `cvel` would then lag `qpos` by one substep.
 - **Observations are float32 and never clipped.** Declare spaces with `self._unbounded_obs_space(dim)` (see `docs/wiki/cross-backend-contract.md`).
 - **`reset(seed=...)` must fully determine the episode.**
-  - Draw every random quantity from `self.np_random`, including in sub-components: the fatigue reset (`MuscleActionMixin.reset_muscle_condition()`), opponents and terrain.
+  - Draw every random quantity from `self.np_random`, including in sub-components: the fatigue reset (`FatigueWrapper`'s stage, run by `CtrlStageHost._run_reset_stages()`), opponents and terrain.
   - Never use `np.random.*`, `random.*` or an unseeded `default_rng()`.
   - Clear all per-episode state: reward dicts, buffers, counters.
 - **Mocap targets.** After `mj_resetData`, write a mocap target into `data.mocap_pos` / `data.mocap_quat`. Writing only `model.body_pos` takes effect at the *next* reset.

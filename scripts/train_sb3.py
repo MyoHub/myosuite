@@ -23,6 +23,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 import gymnasium as gym
 import myosuite  # noqa: F401  (registers the envs)
+from myosuite import make_env
 
 ALGOS = {"ppo": PPO, "sac": SAC, "td3": TD3}
 
@@ -49,7 +50,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def _make_vec_env(env_id: str, n_envs: int, seed: int) -> DummyVecEnv:
     def factory(rank: int):
         def _init() -> gym.Env:
-            env = Monitor(gym.make(env_id))
+            env = Monitor(make_env(env_id))
             env.reset(seed=seed + rank)
             return env
 
@@ -62,7 +63,7 @@ def evaluate(
     model, env_id: str, episodes: int, seed: int, vecnorm=None
 ) -> tuple[float, float]:
     """Mean return and share of episodes solved on the last step (deterministic policy)."""
-    env = gym.make(env_id)
+    env = make_env(env_id)
     returns, solved = [], []
     for ep in range(episodes):
         obs, _ = env.reset(seed=seed + 10_000 + ep)

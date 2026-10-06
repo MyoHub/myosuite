@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from myosuite.tests.support.optional_deps import require_musclemimic_models
+from myosuite import make_env
 
 
 pytestmark = pytest.mark.tier2
@@ -22,11 +23,8 @@ def test_musclemimic_cpu_ids_make_reset_step(env_id: str) -> None:
     """CPU Mimic env IDs should reset and step with finite outputs."""
     require_musclemimic_models()
     import numpy as np
-    import myosuite
-    from myosuite.utils import gym
 
-    myosuite.register_all_envs()
-    env = gym.make(env_id)
+    env = make_env(env_id)
     obs, info = env.reset(seed=0)
     assert obs.size > 0
     assert np.all(np.isfinite(obs))
@@ -63,7 +61,6 @@ def test_musclemimic_cross_backend_tier_a_target() -> None:
     except (ImportError, AttributeError) as exc:
         pytest.skip(f"MJX not importable on this setup: {exc}")
 
-    myosuite.register_all_envs()
     gym_ids = set(myosuite.gym_registry_specs().keys())
     mjx_ids = set(ALL_ENVS)
     mjlab_ids = set(REGISTERED_TASKS)

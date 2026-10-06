@@ -27,11 +27,10 @@ _REPO_ROOT = Path(__file__).parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import myosuite  # noqa: E402
+import myosuite  # noqa: E402, F401
 
 from run_sar_full import SEED, TARGET_ENV, SAR_RL_STEPS, train  # noqa: E402
 
-myosuite.register_all_envs()
 
 logging.basicConfig(
     level=logging.INFO,

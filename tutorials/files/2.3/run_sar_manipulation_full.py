@@ -50,7 +50,7 @@ _REPO_ROOT = Path(__file__).parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import myosuite  # noqa: E402
+import myosuite  # noqa: E402, F401
 from myosuite.utils import gym  # noqa: E402
 from sar_tutorial_utils import SynNoSynWrapper, fit_sac  # noqa: E402
 
@@ -63,8 +63,8 @@ from run_sar_full import (  # noqa: E402
     get_activations,
     train,
 )
+from myosuite import make_env
 
-myosuite.register_all_envs()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -115,7 +115,7 @@ def sar_rl_synnosyn(
         timesteps,
     )
     env = DummyVecEnv(
-        [lambda: Monitor(SynNoSynWrapper(gym.make(env_name), ica, pca, normalizer, phi))]
+        [lambda: Monitor(SynNoSynWrapper(make_env(env_name), ica, pca, normalizer, phi))]
     )
     fit_sac(env, policy_name, env_name, seed, timesteps, 5000, CHECKPOINT_EVERY)
     log.info("SAR-RL training complete. Model saved.")
@@ -199,7 +199,7 @@ def _train_e2e() -> None:
 
 
 def _dry_run() -> None:
-    env = gym.make(PLAY_ENV)
+    env = make_env(PLAY_ENV)
     obs, info = env.reset(seed=0)
     action_shape = env.action_space.shape
     obs, reward, terminated, truncated, info = env.step(env.action_space.sample())

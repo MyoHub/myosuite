@@ -23,6 +23,7 @@ import pytest
 import myosuite  # noqa: F401  (registers the envs)
 from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
 from myosuite.utils import gym
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -32,7 +33,7 @@ N_STEPS = 60
 
 @pytest.fixture(scope="module")
 def env() -> Iterator[gym.Env]:
-    env = gym.make(ENV_ID)
+    env = make_env(ENV_ID)
     yield env
     env.close()
 

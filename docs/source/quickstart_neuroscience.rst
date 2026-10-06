@@ -70,11 +70,10 @@ and Golgi tendon organ (Ib) afferents during a reaching movement:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoElbowPose1D6MRandom-v0')
+   env = make_env('myoElbowPose1D6MRandom-v0')
    obs, info = env.reset(seed=0)
 
    ia_afferent  = []   # velocity-sensitive (muscle spindle primary)
@@ -116,11 +115,10 @@ This example implements a Ia-driven stretch reflex for the elbow:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoElbowPose1D6MRandom-v0', render_mode='human')
+   env = make_env('myoElbowPose1D6MRandom-v0', render_mode='human')
    obs, info = env.reset(seed=0)
    model = env.unwrapped.model
    data  = env.unwrapped.data
@@ -169,11 +167,10 @@ endurance times.
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoFatiElbowPose1D6MFixed-v0')
+   env = make_env('myoFatiElbowPose1D6MFixed-v0')
    obs, info = env.reset(seed=0)
 
    activations = []
@@ -200,12 +197,11 @@ Sarcopenia (Age-Related Muscle Loss)
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
    # Sarcopenia variant: muscles generate only 50 % of peak force
-   env_normal = gym.make('myoElbowPose1D6MRandom-v0')
-   env_sarco  = gym.make('myoSarcElbowPose1D6MRandom-v0')
+   env_normal = make_env('myoElbowPose1D6MRandom-v0')
+   env_sarco  = make_env('myoSarcElbowPose1D6MRandom-v0')
 
    # Compare force output under the same excitation
    for env, label in [(env_normal, 'Normal'), (env_sarco, 'Sarcopenia')]:
@@ -229,13 +225,122 @@ muscle action — a useful model for studying motor adaptation:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
-   env = gym.make('myoReafHandPoseFixed-v0')
+   env = make_env('myoReafHandPoseFixed-v0')
    obs, info = env.reset()
    for _ in range(500):
        obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+
+
+Motor Noise (Signal-Dependent and Constant)
+--------------------------------------------
+
+Human motor commands are noisy, and the noise grows with the size of the command
+(signal-dependent noise, Harris & Wolpert 1998). This noise produces the speed-accuracy
+trade-off behind Fitts' law, so simulated users of interfaces (Fischer et al. 2021,
+User-in-the-Box by Ikkala et al. 2022) add it to the controls. ``MotorNoiseWrapper`` adds it to
+the muscle excitations ``u`` of the muscle envs (pose, reach, key-turn, object-hold, pen, torso, leg
+and the MyoChallenge envs), and the mjlab twins apply it too:
+
+.. math::
+
+   u' = \mathrm{clip}\left(u + \sigma_{sd}\, u\, n_1 + \sigma_c\, n_2,\ 0,\ 1\right),
+   \qquad n_1, n_2 \sim \mathcal{N}(0, 1)
+
+with independent draws per muscle and per control step. The noise is applied after the
+action-to-excitation mapping and before fatigue; motor (torque) actuators are not affected.
+It is off by default. Envs whose pipeline does not run wrapper stages (MuscleMimic, the
+``TaskConfig`` envs) raise a ``TypeError`` instead of ignoring the wrapper.
+
+.. code-block:: python
+
+   from myosuite import make_env
+   from myosuite.envs.wrappers import MotorNoiseWrapper
+   from myosuite.terms.base_action import MotorNoiseCfg
+
+   # Levels 0.103 (signal-dependent) and 0.185 (constant), after van Beers et al. (2004).
+   env = MotorNoiseWrapper(make_env('myoElbowPose1D6MRandom-v0'), MotorNoiseCfg.van_beers_2004())
+   # Any levels, also as a dict:
+   env = MotorNoiseWrapper(make_env('myoElbowPose1D6MRandom-v0'),
+                           {'signal_dependent_std': 0.1, 'constant_std': 0.02})
+   obs, info = env.reset(seed=0)  # the noise comes from the env's seeded np_random
+
+   # Noise and fatigue together: the stage order is fixed (noise, then fatigue), whatever the wrapping order.
+   from myosuite.envs.wrappers import FatigueWrapper
+   env = FatigueWrapper(MotorNoiseWrapper(make_env('myoElbowPose1D6MRandom-v0'), {'constant_std': 0.05}))
+
+The same features can be listed in an ``EnvConfig``, which builds the CPU env **and** the mjlab twin identically
+(the wrappers above work on the CPU env only):
+
+.. code-block:: python
+
+   from myosuite import make_env
+   from myosuite.core.config import EnvConfig
+   from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper
+
+   cfg = EnvConfig(
+       'myoElbowPose1D6MRandom-v0',
+       features=((MotorNoiseWrapper, {'motor_noise': {'constant_std': 0.05}}), FatigueWrapper),
+   )
+   env = make_env(cfg)                                   # CPU
+   envs = make_env(cfg, backend='mjlab', num_envs=1024)  # GPU twin with the same noise and fatigue
+
+Each wrapper can be applied **once** per env: a second ``MotorNoiseWrapper`` raises a ``ValueError``, and so does a
+``FatigueWrapper`` on a ``myoFati*`` id (which already contains it). Wrap the base id, or change the options of the
+installed wrapper (``env.set_motor_noise(...)``, ``env.set_fatigue_reset_random(...)``).
+
+To add your own stage on the muscle excitations (a filter, a cap, per-muscle gains, ...), subclass
+``ExcitationStage``: a function of the excitations ``u`` and the array module ``xp`` (numpy on the CPU env, torch on
+mjlab), with an optional ``reset(env_ids)`` that clears per-episode state:
+
+.. code-block:: python
+
+   from myosuite.envs.muscle_stages import ExcitationStage
+   from myosuite.envs.wrappers import ExcitationStageWrapper
+
+   class Cap(ExcitationStage):
+       name = 'cap'                       # runs after the built-in stages, in installation order
+       def __call__(self, u, xp):
+           return xp.clip(u, 0.0, 0.8)    # only operations numpy and torch share
+
+   env = ExcitationStageWrapper(make_env('myoElbowPose1D6MRandom-v0'), Cap)
+
+The stage runs on the CPU env and, when the id is registered with the wrapper, on the mjlab twin. The built-in stages
+(noise, fatigue, reroute) run in a fixed order; custom stages run after them, in the order they were added. To insert
+one earlier, set ``order`` to a priority between 10 (the env's own map) and 100 (the ``ctrl`` write); the built-ins are
+noise 20, fatigue 30 and reroute 40. Two stages with the same explicit order raise a ``StageOrderWarning``. A stage that needs the env itself (``CtrlStageWrapper``) runs on the CPU only. To act on the raw
+action instead, use a plain ``gym.ActionWrapper``.
+
+To configure both backends, register an env id with a ``MotorNoiseWrapper`` in its
+``additional_wrappers``: the mjlab twin reads it from the CPU registration like the muscle
+condition. For a single mjlab config, set ``env_cfg.actions["muscles"].motor_noise``. See
+``docs/wiki/cross-backend-contract.md`` for the order of operations and the random streams.
+
+Mind the clip at low excitation: with the van Beers levels a command of ``u = 0.076`` (policy
+output 0 through the sigmoid) is clipped to 0 in 34 % of the steps and its mean rises to 0.118,
+so the constant term also acts as a tonic drive on idle muscles.
+
+The levels are a starting point, not a calibration. They were estimated for human arm
+movements and are applied here to every muscle's excitation once per control step (20 ms in
+most envs). In an open-loop elbow flexion (0.1 s agonist pulse), signal-dependent noise alone
+gives an endpoint SD of about 2.5 % of the movement extent until the joint nears its range
+limit, while the
+constant term at 0.185 adds several centimetres of endpoint spread. Calibrate the levels against
+human variability for your model and control rate.
+
+References:
+
+* Harris, C. M. & Wolpert, D. M. (1998). Signal-dependent noise determines motor planning.
+  *Nature* 394, 780-784. doi:10.1038/29528
+* van Beers, R. J., Haggard, P. & Wolpert, D. M. (2004). The role of execution noise in
+  movement variability. *J. Neurophysiol.* 91, 1050-1063. doi:10.1152/jn.00652.2003
+* Fischer, F., Bachinski, M., Klar, M., Fleig, A. & Müller, J. (2021). Reinforcement learning
+  control of a biomechanical model of the upper extremity. *Sci. Rep.* 11, 14445.
+  doi:10.1038/s41598-021-93760-1 (noise levels 0.103 and 0.185, "following van Beers et al.")
+* Ikkala, A., Fischer, F., Klar, M., Bachinski, M., Fleig, A., Howes, A., Hämäläinen, P.,
+  Müller, J., Murray-Smith, R. & Oulasvirta, A. (2022). Breathing life into biomechanical user
+  models. *UIST '22*. doi:10.1145/3526113.3545689
 
 
 Computed Muscle Control
@@ -252,11 +357,10 @@ Recording a Full Neural-Motor Trace
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoElbowPose1D6MRandom-v0')
+   env = make_env('myoElbowPose1D6MRandom-v0')
    obs, info = env.reset(seed=0)
 
    trace = []

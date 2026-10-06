@@ -63,9 +63,6 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         drop_th: float = 0.200,
         normalize_act: bool = True,
         frame_skip: int = 10,
-        muscle_condition: str = "",
-        fatigue_reset_vec=None,
-        fatigue_reset_random: bool = False,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -88,9 +85,6 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             drop_th=drop_th,
             normalize_act=normalize_act,
             frame_skip=frame_skip,
-            muscle_condition=muscle_condition,
-            fatigue_reset_vec=fatigue_reset_vec,
-            fatigue_reset_random=fatigue_reset_random,
             **kwargs,
         )
 
@@ -109,9 +103,6 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.rot_th = rot_th
         self.drop_th = drop_th
         self.normalize_act = normalize_act
-        self.muscle_condition = muscle_condition
-        self.fatigue_reset_vec = fatigue_reset_vec
-        self.fatigue_reset_random = fatigue_reset_random
 
         self.target_gid = self.model.geom("target_dice").id
         self.target_default_size = self.model.geom_size[self.target_gid].copy()
@@ -140,7 +131,6 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.obs_keys.append("act")
 
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
-        self.init_muscle_condition()
 
         self._init_qpos = self.data.qpos.copy()
         self._init_qvel = self.data.qvel.copy()
@@ -289,7 +279,7 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         **_kwargs: Any,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         gym.Env.reset(self, seed=seed)
-        self.reset_muscle_condition()
+        self._run_reset_stages()
         mujoco.mj_resetData(self.model, self.data)
         self._sample_goal_and_object()
         self.data.qpos[:] = self._init_qpos

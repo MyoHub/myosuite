@@ -9,7 +9,7 @@ CPU pattern::
     import myosuite
     myosuite.register_all_envs()
     import gymnasium as gym
-    env = gym.make("myoElbowPose1D6MRandom-v0")
+    env = make_env("myoElbowPose1D6MRandom-v0")
 
 MJX + Brax pattern::
 
@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 
 pytestmark = pytest.mark.tier1
@@ -42,13 +43,12 @@ class TestCpuEntryPoint:
     """Verify the CPU / Gymnasium entry point works end-to-end."""
 
     def test_make_cpu_env(self):
-        """gym.make() succeeds after explicit registration; reset+step return correct shapes."""
+        """make_env() succeeds after explicit registration; reset+step return correct shapes."""
         import myosuite
-        import gymnasium as gym
 
         myosuite.register_all_envs()
 
-        env = gym.make("myoElbowPose1D6MRandom-v0")
+        env = make_env("myoElbowPose1D6MRandom-v0")
         obs, info = env.reset()
 
         assert obs is not None, "reset() returned None obs"

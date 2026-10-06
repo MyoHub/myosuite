@@ -71,8 +71,9 @@ def test_import_myosuite_skips_heavy_modules() -> None:
 def test_colored_noise_envs_skip_rl_frameworks(env_id: str) -> None:
     """make + reset + steps load neither pink, stable-baselines3 nor torch."""
     code = (
-        "import gymnasium as gym, numpy as np, myosuite\n"
-        f"env = gym.make({env_id!r})\n"
+        "import numpy as np\n"
+        "from myosuite import make_env\n"
+        f"env = make_env({env_id!r})\n"
         "env.reset(seed=0)\n"
         "for _ in range(3):\n"
         "    env.step(np.zeros(env.action_space.shape, dtype=np.float32))\n"
