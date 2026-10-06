@@ -7,8 +7,8 @@
 This module provides two levels of configuration:
 
 **Low-level** (Phases 1–4):
-    :class:`BackendConfig` and :class:`EnvConfig` — thin wrappers used by
-    the registry and existing env registrations.
+    :class:`BackendConfig` (timing) and :class:`EnvConfig` (the env instance
+    to build, read by :func:`~myosuite.core.registry.make_env`).
 
 **High-level** (Phase 5 — Modular Task System):
     :class:`ObsSpec`, :class:`GoalSpec`, :class:`RewardSpec`,
@@ -134,21 +134,34 @@ class BackendConfig:
 
 @dataclass
 class EnvConfig:
-    """Top-level environment configuration.
+    """Backend-agnostic description of the env instance to build.
+
+    Pass it to :func:`~myosuite.core.registry.make_env`, which resolves it against
+    the registration of ``env_id`` (the defaults) and builds it on ``backend``.
+    ``None`` means "keep the registered default".
 
     Args:
         env_id: Registered environment identifier (e.g. "myoElbowPose1D6MRandom-v0").
-        model: Named model recipe from myosuite.core.model_recipes.
-        scene: Named scene spec from myosuite.scenes.library.
+        backend: ``"cpu"``, ``"mjlab"`` (or the experimental ``"mjx"``).
+        num_envs: Parallel envs; ``None`` is one on the CPU, the registered count on mjlab.
         max_episode_steps: Episode length limit before truncation.
-        backend: Backend-specific physics configuration.
+        features: Muscle-command features to activate, as
+            :class:`~gymnasium.envs.registration.WrapperSpec` (see
+            :func:`myosuite.envs.wrappers.wrapper_spec`): noise, fatigue,
+            reafferentation, sarcopenia, custom excitation stages. Every backend runs
+            them identically. All are off unless listed here or in the registration.
+        task_kwargs: Task-specific constructor overrides (CPU env kwargs).
+        backend_options: Options of one backend only (``device``, ``render_mode``, ...);
+            nothing portable belongs here.
     """
 
     env_id: str = ""
-    model: str = "elbow_standard"
-    scene: str = "flat_floor"
-    max_episode_steps: int = 200
-    backend: BackendConfig = field(default_factory=BackendConfig)
+    backend: str = "cpu"
+    num_envs: int | None = None
+    max_episode_steps: int | None = None
+    features: tuple[Any, ...] = ()
+    task_kwargs: dict[str, Any] = field(default_factory=dict)
+    backend_options: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -345,24 +358,4 @@ class TaskConfig:
         """
         return self.muscle_fatigue or any(
             g.condition == "fatigue" for g in self.actuators
-        )
-
-    def to_env_config(self, env_id: str = "") -> EnvConfig:
-        """Convert to a legacy :class:`EnvConfig` for registry compatibility.
-
-        Args:
-            env_id: Gymnasium environment ID to embed.
-
-        Returns:
-            An :class:`EnvConfig` with model, scene, and backend fields
-            copied from this task config.  When ``scene`` is not a plain
-            ``str`` (i.e. a list or callable), the legacy field defaults to
-            ``"flat_floor"``.
-        """
-        return EnvConfig(
-            env_id=env_id,
-            model=self.model,
-            scene=self.scene if isinstance(self.scene, str) else "flat_floor",
-            max_episode_steps=self.max_episode_steps,
-            backend=self.backend,
         )

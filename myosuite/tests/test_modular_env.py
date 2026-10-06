@@ -494,14 +494,6 @@ def test_register_env_can_disable_instability_wrapper(
 # ---------------------------------------------------------------------------
 
 
-def test_task_config_to_env_config() -> None:
-    task = _ElbowTask()
-    env_cfg = task.to_env_config("myTest-v0")
-    assert env_cfg.env_id == "myTest-v0"
-    assert env_cfg.model == "elbow_standard"
-    assert env_cfg.max_episode_steps == 50
-
-
 def test_reward_spec_weight_for_default() -> None:
     spec = RewardSpec(terms=["pose"], weights={"pose": 2.5})
     assert spec.weight_for("pose") == pytest.approx(2.5)

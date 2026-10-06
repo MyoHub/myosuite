@@ -82,7 +82,6 @@ def register_env(
     env_id: str,
     entry_point: str,
     max_episode_steps: int = 200,
-    config: EnvConfig | None = None,
     backend_configs: dict[str, Any] | None = None,
     wrap_mj_instability_termination: bool = True,
     time_limit: bool = True,
@@ -98,7 +97,6 @@ def register_env(
         env_id: Gymnasium env id (e.g. "myoElbowPose1D6MRandom-v0").
         entry_point: Python dotted path to the env class.
         max_episode_steps: Episode step limit.
-        config: Optional EnvConfig with model/scene/backend settings.
         backend_configs: Optional per-backend override dicts.
         wrap_mj_instability_termination: Append the default instability wrapper
             so loaded environments convert MuJoCo instability into termination.
@@ -124,7 +122,6 @@ def register_env(
     _ENV_REGISTRY[env_id] = {
         "entry_point": entry_point,
         "max_episode_steps": max_episode_steps,
-        "config": config,
         "backend_configs": backend_configs or {},
         "additional_wrappers": kwargs["additional_wrappers"],
     }
@@ -218,12 +215,10 @@ def register_task(
     # --- Single-agent CPU registration ---
     if "cpu" in backends:
         entry_point = "myosuite.envs.modular_env:ModularTaskEnv"
-        env_cfg = task_config.to_env_config(env_id=env_id)
         register_env(
             env_id=env_id,
             entry_point=entry_point,
             max_episode_steps=task_config.max_episode_steps,
-            config=env_cfg,
             kwargs={"task_config": task_config},
             **kwargs,
         )
@@ -319,86 +314,152 @@ def _register_task_variants(
         )
 
 
-def make_env(env_id: str, backend: str = "cpu", **overrides: Any) -> Any:
+def make_env(
+    env_id: str | EnvConfig, backend: str | None = None, **overrides: Any
+) -> Any:
     """Create an environment on the specified backend.
 
+    One call builds the same env on every backend: the registration of the env id
+    gives the defaults, an :class:`~myosuite.core.config.EnvConfig` overrides them
+    (episode length, ``features`` such as noise or fatigue, task kwargs).
+
     Args:
-        env_id: Registered environment identifier.
-        backend: One of "cpu", "mjx", or "mjlab".
-        **overrides: Keyword arguments forwarded to the env constructor (for
-            "mjx", passed to ``mujoco_playground`` as ``config_overrides``).
+        env_id: Registered environment identifier, or an :class:`EnvConfig`.
+        backend: One of "cpu", "mjx", or "mjlab"; default: ``EnvConfig.backend``
+            ("cpu" for a plain id).
+        **overrides: Backend-specific options, merged over ``EnvConfig.backend_options``
+            and (CPU) ``task_kwargs``: env constructor kwargs on the CPU, ``device``
+            etc. on mjlab, ``config_overrides`` on "mjx".
 
     Returns:
         An environment instance appropriate for the backend.
 
     Raises:
-        ValueError: If the backend is not recognised.
+        ValueError: If the backend is not recognised, or a config field does not
+            apply to it (``num_envs > 1`` on the CPU).
+        NotImplementedError: If ``features`` are given on the experimental "mjx" backend.
 
     Example:
         >>> env = make_env("myoElbowPose1D6MRandom-v0")
-        >>> env = make_env("myoElbowPose1D6MRandom-v0", backend="mjx", num_envs=4096)
+        >>> cfg = EnvConfig(
+        ...     "myoElbowPose1D6MRandom-v0",
+        ...     features=(wrapper_spec(MotorNoiseWrapper, motor_noise=0.05),),
+        ... )
+        >>> env = make_env(cfg)  # CPU
+        >>> envs = make_env(cfg, backend="mjlab", num_envs=4096)
     """
+    config = env_id if isinstance(env_id, EnvConfig) else EnvConfig(env_id=env_id)
+    backend = backend or config.backend
     if backend == "cpu":
-        return gym.make(env_id, **overrides)
+        return _make_cpu(config, overrides)
     elif backend == "mjx":
-        try:
-            from mujoco_playground import registry as pg_registry
-        except ImportError as e:
-            raise ImportError(
-                "MJX backend requires mujoco_playground. "
-                "Install with: pip install myosuite[mjx]"
-            ) from e
-        return pg_registry.load(env_id, config_overrides=overrides or None)
+        return _make_mjx(config, overrides)
     elif backend == "mjlab":
-        try:
-            import mjlab.envs
-        except ImportError as e:
-            raise ImportError(
-                "mjlab backend requires mjlab. "
-                "Install with: pip install myosuite[mjlab]"
-            ) from e
-
-        # Register the MyoSuite twins with mjlab's task registry (idempotent). Without
-        # this, they exist only when myosuite is pip-installed (mjlab's entry point) or
-        # something else imported the backend first.
-        import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
-
-        if hasattr(mjlab.envs, "make"):
-            return mjlab.envs.make(env_id, **overrides)
-
-        # Fallback: mjlab 1.x uses tasks.registry (no envs.make).
-        try:
-            import mjlab.tasks  # noqa: F401 — ensure task packages loaded
-            from mjlab.envs import ManagerBasedRlEnv
-            from mjlab.tasks.registry import load_env_cfg, list_tasks
-        except ImportError as e:
-            raise ImportError(
-                "mjlab 1.x fallback requires mjlab.tasks.registry; "
-                "install a mjlab build that provides mjlab.envs.make or "
-                "ensure MyoSuite tasks are registered with mjlab.tasks.registry"
-            ) from e
-
-        if env_id not in list_tasks():
-            raise ValueError(
-                f"env_id {env_id!r} not in mjlab task registry (list_tasks()): "
-                "it has no mjlab twin (register one with register_mjlab_task())."
-            )
-        cfg = load_env_cfg(env_id)
-
-        # Allow vectorized env count override for mjlab 1.x fallback path.
-        num_envs = overrides.pop("num_envs", None)
-        if num_envs is not None and hasattr(cfg, "scene"):
-            cfg.scene.num_envs = int(num_envs)
-
-        device = overrides.pop("device", None)
-        if device is None:
-            try:
-                import torch
-
-                device = "cuda:0" if torch.cuda.is_available() else "cpu"
-            except Exception:
-                device = "cpu"
-        env_cls = getattr(cfg, "env_cls", ManagerBasedRlEnv)
-        return env_cls(cfg, device=device, **overrides)
+        return _make_mjlab(config, overrides)
     else:
         raise ValueError(f"Unknown backend: {backend!r}. Choose from: cpu, mjx, mjlab")
+
+
+def _make_cpu(config: EnvConfig, overrides: dict[str, Any]) -> Any:
+    from myosuite.envs.wrappers import apply_features
+
+    if config.num_envs not in (None, 1):
+        raise ValueError(
+            f"The CPU backend builds one env, got num_envs={config.num_envs}; use "
+            "backend='mjlab' for parallel envs."
+        )
+    kwargs = {**config.task_kwargs, **config.backend_options, **overrides}
+    if config.max_episode_steps is not None:
+        kwargs["max_episode_steps"] = config.max_episode_steps
+    return apply_features(gym.make(config.env_id, **kwargs), config.features)
+
+
+def _make_mjx(config: EnvConfig, overrides: dict[str, Any]) -> Any:
+    if config.features:
+        raise NotImplementedError(
+            "EnvConfig.features are not supported on the experimental mjx backend."
+        )
+    try:
+        from mujoco_playground import registry as pg_registry
+    except ImportError as e:
+        raise ImportError(
+            "MJX backend requires mujoco_playground. "
+            "Install with: pip install myosuite[mjx]"
+        ) from e
+    options = {**config.backend_options, **overrides}
+    if config.num_envs is not None:
+        options["num_envs"] = config.num_envs
+    return pg_registry.load(config.env_id, config_overrides=options or None)
+
+
+def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
+    try:
+        import mjlab.envs
+    except ImportError as e:
+        raise ImportError(
+            "mjlab backend requires mjlab. Install with: pip install myosuite[mjlab]"
+        ) from e
+
+    # Register the MyoSuite twins with mjlab's task registry (idempotent). Without
+    # this, they exist only when myosuite is pip-installed (mjlab's entry point) or
+    # something else imported the backend first.
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
+    from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference
+    from myosuite.envs.myo.backends.mjlab.tasks.registration import (
+        twin_cfg_with_features,
+    )
+
+    options = {**config.backend_options, **overrides}
+    if config.num_envs is not None:
+        options["num_envs"] = config.num_envs
+    env_id = config.env_id
+
+    if hasattr(mjlab.envs, "make") and not (
+        config.features or config.max_episode_steps is not None
+    ):
+        return mjlab.envs.make(env_id, **options)
+
+    # mjlab 1.x has no envs.make: build the cfg from tasks.registry.
+    try:
+        import mjlab.tasks  # noqa: F401 — ensure task packages loaded
+        from mjlab.envs import ManagerBasedRlEnv
+        from mjlab.tasks.registry import list_tasks, load_env_cfg
+    except ImportError as e:
+        raise ImportError(
+            "mjlab 1.x fallback requires mjlab.tasks.registry; "
+            "install a mjlab build that provides mjlab.envs.make or "
+            "ensure MyoSuite tasks are registered with mjlab.tasks.registry"
+        ) from e
+
+    if env_id not in list_tasks():
+        raise ValueError(
+            f"env_id {env_id!r} not in mjlab task registry (list_tasks()): "
+            "it has no mjlab twin (register one with register_mjlab_task())."
+        )
+    # The registered cfg is built once at import; features rebuild it from the
+    # CPU registration plus the extra wrappers.
+    cfg = (
+        twin_cfg_with_features(env_id, config.features)
+        if config.features
+        else load_env_cfg(env_id)
+    )
+
+    num_envs = options.pop("num_envs", None)
+    if num_envs is not None and hasattr(cfg, "scene"):
+        cfg.scene.num_envs = int(num_envs)
+    if config.max_episode_steps is not None:
+        step_dt = cfg.decimation * cfg.sim.mujoco.timestep
+        cfg.episode_length_s = cpu_reference.episode_length_s(
+            config.max_episode_steps, step_dt
+        )
+
+    device = options.pop("device", None)
+    if device is None:
+        try:
+            import torch
+
+            device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        except Exception:
+            device = "cpu"
+    env_cls = getattr(cfg, "env_cls", ManagerBasedRlEnv)
+    return env_cls(cfg, device=device, **options)
