@@ -40,6 +40,7 @@ from myosuite.core.config import (
     VariantSpec,
 )
 from myosuite.core.registry import register_task
+from myosuite.envs.wrappers import condition_wrapper_specs
 
 
 @dataclass
@@ -81,22 +82,8 @@ class ElbowPoseFixedTask(TaskConfig):
     )
 
     variants: ClassVar[list[VariantSpec]] = [
-        VariantSpec(
-            suffix="Sarc",
-            config_delta={
-                "actuators": [
-                    ActuatorGroupSpec(name="elbow_muscles", condition="sarcopenia")
-                ]
-            },
-        ),
-        VariantSpec(
-            suffix="Fati",
-            config_delta={
-                "actuators": [
-                    ActuatorGroupSpec(name="elbow_muscles", condition="fatigue")
-                ]
-            },
-        ),
+        VariantSpec(suffix="Sarc", features=condition_wrapper_specs("sarcopenia")),
+        VariantSpec(suffix="Fati", features=condition_wrapper_specs("fatigue")),
     ]
 
 
@@ -139,22 +126,8 @@ class ElbowPoseRandomTask(TaskConfig):
     )
 
     variants: ClassVar[list[VariantSpec]] = [
-        VariantSpec(
-            suffix="Sarc",
-            config_delta={
-                "actuators": [
-                    ActuatorGroupSpec(name="elbow_muscles", condition="sarcopenia")
-                ]
-            },
-        ),
-        VariantSpec(
-            suffix="Fati",
-            config_delta={
-                "actuators": [
-                    ActuatorGroupSpec(name="elbow_muscles", condition="fatigue")
-                ]
-            },
-        ),
+        VariantSpec(suffix="Sarc", features=condition_wrapper_specs("sarcopenia")),
+        VariantSpec(suffix="Fati", features=condition_wrapper_specs("fatigue")),
     ]
 
 

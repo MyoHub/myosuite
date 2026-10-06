@@ -132,7 +132,7 @@ List every registered CPU ID: `python -c "import myosuite; print('\n'.join(myosu
 | **CPU** (Gymnasium)     | playback, debug, SB3  | `gym.make(env_id)`                                                   |
 | **mjlab** (MuJoCo Warp) | parallel GPU training | `pip install -e ".[mjlab]"` then `scripts/train_mjlab.py <env_id>` |
 
-A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/wiki/cross-backend-contract.md)). An MJX (JAX) path also exists; it is **experimental** and not the supported training route.
+A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/wiki/cross-backend-contract.md)). `make_env(EnvConfig(env_id, backend=..., features=...))` builds either half with the same episode length, control step and muscle-command features. An MJX (JAX) path also exists; it is **experimental** and not the supported training route.
 
 
 ## Tutorials

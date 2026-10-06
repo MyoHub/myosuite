@@ -46,6 +46,7 @@ def modular_task_config(task_config: TaskConfig) -> config_dict.ConfigDict:
         num_envs=int(extra.get("num_envs", 4096)),
         mjx_impl=extra.get("mjx_impl", None),
         norm_actions=extra.get("norm_actions", True),
+        sarcopenia_force_scale=None,
     )
 
 
@@ -185,14 +186,16 @@ class MjxModularTaskEnv(MyoMjxEnvBase):
             config: Frozen ConfigDict derived from the TaskConfig.
         """
         from myosuite.core.model_builder import build_from_recipe
-        from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
 
         impl = getattr(config, "mjx_impl", None) or None
         mj_model, spec = build_from_recipe(self._task_config.model)
 
-        # Apply physiological conditions declared in actuator groups
-        if any(g.condition == "sarcopenia" for g in self._task_config.actuators):
-            spec = apply_sarcopenia_to_spec(spec)
+        # Sarcopenia is a model edit: the feature of ``EnvConfig.features``.
+        scale = getattr(config, "sarcopenia_force_scale", None)
+        if scale is not None:
+            from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
+
+            spec = apply_sarcopenia_to_spec(spec, force_scale=float(scale))
 
         # Keep MJX JAX backend compatible with plane/mesh/hfield margins and
         # unsupported cylinder/ellipsoid contacts used by modular recipes.

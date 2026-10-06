@@ -49,21 +49,29 @@ _MUSCLE_WRAPPERS = (
 _FEATURES: contextvars.ContextVar[tuple[Any, ...]] = contextvars.ContextVar(
     "myosuite_features", default=()
 )
+_KWARGS: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
+    "myosuite_task_kwargs", default={}
+)
 
 
 @contextlib.contextmanager
-def feature_overrides(features: Iterable[Any]) -> Iterator[None]:
-    """Add wrapper specs to every :func:`cpu_task_spec` read inside the block.
+def feature_overrides(
+    features: Iterable[Any] = (), task_kwargs: dict[str, Any] | None = None
+) -> Iterator[None]:
+    """Change what every :func:`cpu_task_spec` read inside the block returns.
 
     Args:
         features: :class:`~gymnasium.envs.registration.WrapperSpec` of the muscle-command
-            wrappers (``EnvConfig.features``).
+            wrappers (``EnvConfig.features``), added to the registered ones.
+        task_kwargs: CPU env constructor kwargs (such as ``frame_skip``) that replace
+            the registered ones.
     """
-    token = _FEATURES.set(tuple(features))
+    tokens = (_FEATURES.set(tuple(features)), _KWARGS.set(dict(task_kwargs or {})))
     try:
         yield
     finally:
-        _FEATURES.reset(token)
+        _FEATURES.reset(tokens[0])
+        _KWARGS.reset(tokens[1])
 
 
 _INTEGRATORS = {
@@ -184,7 +192,7 @@ def cpu_task_spec(env_id: str) -> CpuTaskSpec:
     spec = gym.spec(env_id)
     task = CpuTaskSpec(
         env_id=env_id,
-        kwargs=dict(spec.kwargs),
+        kwargs={**spec.kwargs, **_KWARGS.get()},
         max_episode_steps=int(spec.max_episode_steps),
         wrappers=_with_features(tuple(spec.additional_wrappers or ()), env_id),
     )

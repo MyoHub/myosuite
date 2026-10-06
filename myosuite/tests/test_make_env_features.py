@@ -58,15 +58,42 @@ def test_max_episode_steps_truncates_on_the_cpu() -> None:
     assert truncated == [False, False, False, True]
 
 
+def test_ctrl_dt_sets_the_substeps_on_the_cpu() -> None:
+    host = make_env(_ID).unwrapped
+    dt = host.model.opt.timestep
+    half = make_env(EnvConfig(_ID, ctrl_dt=host.frame_skip * dt / 2)).unwrapped
+    assert half.frame_skip == host.frame_skip // 2
+    assert half.dt == pytest.approx(host.dt / 2)
+
+
+def test_ctrl_dt_must_be_a_multiple_of_the_timestep() -> None:
+    with pytest.raises(ValueError, match="Control step mismatch"):
+        make_env(EnvConfig(_ID, ctrl_dt=0.0123))
+
+
 def test_cpu_rejects_parallel_envs() -> None:
     with pytest.raises(ValueError, match="one env"):
         make_env(EnvConfig(_ID, num_envs=8))
 
 
-def test_features_are_not_supported_on_mjx() -> None:
+def test_features_other_than_sarcopenia_are_not_supported_on_mjx() -> None:
     cfg = EnvConfig(_ID, features=(wrapper_spec(FatigueWrapper),))
     with pytest.raises(NotImplementedError, match="mjx"):
         make_env(cfg, backend="mjx")
+
+
+def test_mjx_supports_sarcopenia_only() -> None:
+    from myosuite.core.registry import mjx_feature_overrides
+    from myosuite.envs.wrappers import SarcopeniaWrapper
+
+    assert mjx_feature_overrides(()) == {}
+    assert mjx_feature_overrides((wrapper_spec(SarcopeniaWrapper),)) == {
+        "sarcopenia_force_scale": 0.5
+    }
+    assert mjx_feature_overrides(
+        (wrapper_spec(SarcopeniaWrapper, force_scale=0.3),)
+    ) == {"sarcopenia_force_scale": 0.3}
+    assert mjx_feature_overrides((wrapper_spec(FatigueWrapper),)) is None
 
 
 def test_unknown_backend() -> None:
@@ -130,6 +157,25 @@ class TestMjlab:
             features=(wrapper_spec(FatigueWrapper),),
         )
         with pytest.raises(ValueError, match="already has a FatigueWrapper"):
+            make_env(cfg, backend="mjlab", device="cpu")
+
+    def test_ctrl_dt_sets_the_twin_decimation(self) -> None:
+        base = make_env(EnvConfig(_ID, num_envs=1), backend="mjlab", device="cpu")
+        try:
+            decimation, step_dt = base.cfg.decimation, base.step_dt
+        finally:
+            base.close()
+        cfg = EnvConfig(_ID, num_envs=1, ctrl_dt=step_dt / 2)
+        env = make_env(cfg, backend="mjlab", device="cpu")
+        try:
+            assert env.cfg.decimation == decimation // 2
+            assert env.step_dt == pytest.approx(step_dt / 2)
+        finally:
+            env.close()
+
+    def test_task_kwargs_are_not_applicable_to_the_twin(self) -> None:
+        cfg = EnvConfig(_ID, task_kwargs={"frame_skip": 5})
+        with pytest.raises(NotImplementedError, match="task_kwargs"):
             make_env(cfg, backend="mjlab", device="cpu")
 
     def test_max_episode_steps_sets_the_twin_horizon(self) -> None:

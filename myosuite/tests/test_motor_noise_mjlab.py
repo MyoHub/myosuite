@@ -94,7 +94,7 @@ def test_cpu_registration_configures_twin(noisy_id: str) -> None:
 
 def test_cpu_task_spec_rejects_wrappers_the_cpu_env_does_not_run() -> None:
     """A twin cannot pick up muscle wrappers from a CPU env class that would ignore them."""
-    base, env_id = gym.spec("myoElbowPoseTaskFixed-v0"), "myoElbowPoseTaskNoiseTest-v0"
+    base, env_id = gym.spec("myoMimicFullbody-v0"), "myoMimicFullbodyNoiseTest-v0"
     registry.register_env(
         env_id=env_id,
         entry_point=base.entry_point,
@@ -109,7 +109,9 @@ def test_cpu_task_spec_rejects_wrappers_the_cpu_env_does_not_run() -> None:
         ),
     )
     try:
-        with pytest.raises(ValueError, match="ModularTaskEnv.*does not run them"):
+        with pytest.raises(
+            ValueError, match="MuscleMimicFullbodyEnv.*does not run them"
+        ):
             cpu_task_spec(env_id)
     finally:
         gym.registry.pop(env_id, None)

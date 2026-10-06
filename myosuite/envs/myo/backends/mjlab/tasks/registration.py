@@ -34,14 +34,17 @@ def condition_variants(env_id: str) -> list[str]:
 _CFG_FACTORIES: dict[str, Callable[..., ManagerBasedRlEnvCfg]] = {}
 
 
-def twin_cfg_with_features(
-    env_id: str, features: Iterable[Any]
+def rebuild_twin_cfg(
+    env_id: str,
+    features: Iterable[Any] = (),
+    task_kwargs: dict[str, Any] | None = None,
 ) -> ManagerBasedRlEnvCfg:
-    """Rebuild the twin config of *env_id* with extra muscle-command wrappers.
+    """Rebuild the twin config of *env_id* from a modified CPU registration.
 
     Args:
         env_id: A CPU-twin id registered through :func:`register_cpu_twins`.
         features: ``EnvConfig.features`` (wrapper specs) added to the CPU registration.
+        task_kwargs: CPU constructor kwargs (``frame_skip``) replacing the registered ones.
 
     Returns:
         A fresh env config.
@@ -52,9 +55,10 @@ def twin_cfg_with_features(
     factory = _CFG_FACTORIES.get(env_id)
     if factory is None:
         raise NotImplementedError(
-            f"{env_id} is not a CPU twin: its mjlab config cannot take EnvConfig.features."
+            f"{env_id} is not a CPU twin: its mjlab config cannot be rebuilt from "
+            "EnvConfig.features or ctrl_dt."
         )
-    with feature_overrides(features):
+    with feature_overrides(features, task_kwargs):
         return factory(env_id)
 
 
