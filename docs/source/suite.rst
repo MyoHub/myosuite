@@ -42,7 +42,7 @@ which is actuated through a series of 5 simplified antagonistic muscle-tendon un
 We also provide its robotic counterpart with simple torque actuators
 to facilitate the comparative investigation.
 
-Details of this model can be found at `myoFinger <https://github.com/MyoHub/myo_sim/tree/main/finger>`__
+Details of this model can be found at `myoFinger <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/legacy/finger>`__
 
 
 .. image:: images/myoFinger.png
@@ -67,7 +67,7 @@ myoElbow
 A model of 2 DoF human elbow joint -- based on OpenSim’s default testing arm model (`Delp et al. (2007) <https://doi.org/10.1109/TBME.2007.901024>`__; `Seth et al. (2018) <https://doi.org/10.1371/journal.pcbi.1006223>`__)
 -- and actuated using multiple agonist/antagonist pairs (3 flexors and 3 extensors).
 
-Details of this model can be found at `myoElbow <https://github.com/MyoHub/myo_sim/tree/main/elbow>`__
+Details of this model can be found at `myoElbow <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/legacy/elbow>`__
 
 .. image:: images/myoElbow.png
   :height: 200
@@ -90,7 +90,7 @@ myoHand
 The dexterous human hand requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
 This musculoskeletal model is comprised of 29 bones, 23 joints, and 39 muscles-tendon units.
 
-Details of this model can be found at `myoHand <https://github.com/MyoHub/myo_sim/tree/main/hand>`__
+Details of this model can be found at `myoHand <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/arm>`__
 
 .. image:: images/myoHand.png
   :height: 200
@@ -129,11 +129,11 @@ myoLeg
 The 3D dexterous human leg requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
 
 This musculoskeletal model is comprised of 10 joints, 20 DoFs, and 80 muscles-tendon units. This musculoskeletal model takes
-the `Rajagopal full body gait model <https://github.com/opensim-org/opensim-models/tree/master/Models/RajagopalModel>`__ as close reference.
+the `Rajagopal full body gait model <https://github.com/opensim-org/opensim-models/tree/master/Models/Rajagopal>`__ as close reference.
 
 Joints and muscle details can be found in `Rajagopal et al. (2016) <https://ieeexplore.ieee.org/document/7505900>`__.
 
-The model implementation details can be found on our github repo at `myoLeg <https://github.com/MyoHub/myo_sim/tree/main/leg>`__
+The model implementation details can be found on our github repo at `myoLeg <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/leg>`__
 
 .. image:: images/MyoLeg.png
   :height: 200
@@ -191,7 +191,7 @@ The 3D dexterous human arm reaching and manipulation.
 
 This musculoskeletal model is comprised of 27 Degree of Freedom, and 63 muscles-tendon units.
 
-Model specification can be found on our github repo of `myoArm <https://github.com/MyoHub/myo_sim/tree/main/arm>`__
+Model specification can be found on our github repo of `myoArm <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/arm>`__
 
 
 .. image:: images/myoArm.png
@@ -207,7 +207,7 @@ The myoTorso mujoco musculoskeletal (MSK) model is generated from the `Constrain
 
 This generated mujoco MSK model has almost identical kinematics, and very similar muscle kinematics (moment arms) and kinetic (forces) properties.
 
-The model have 210 actuators and 18 joints. Details of this model can be found on our github repo at `myoTorso <https://github.com/MyoHub/myo_sim/tree/main/torso>`__.
+The model have 210 actuators and 18 joints. Details of this model can be found on our github repo at `myoTorso <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/torso>`__.
 
 
  .. image:: images/MyoTorso.png
