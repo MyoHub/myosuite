@@ -95,7 +95,7 @@ class MotorNoiseCfg:
     (Harris & Wolpert 1998) makes the spread grow with the command, the source of
     the speed-accuracy trade-off; constant noise is independent of it.
 
-    Attributes:
+    Args:
         signal_dependent_std: Std of the multiplicative noise (fraction of ``u``).
         constant_std: Std of the additive noise (excitation units).
     """
