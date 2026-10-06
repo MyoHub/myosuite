@@ -77,6 +77,7 @@ def test_walk_tier_a_dense_reward_gate_cpu_vs_mjlab() -> None:
         pytest.skip(f"mjlab unavailable for walk parity gate: {exc}")
 
     import myosuite
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
     from myosuite.core.registry import make_env
     from myosuite.utils import gym
 

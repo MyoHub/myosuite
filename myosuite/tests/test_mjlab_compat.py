@@ -689,6 +689,7 @@ class TestMjlabIntegration:
         import numpy as np
 
         import myosuite
+        import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
 
         myosuite.register_all_envs()
         from myosuite.core.registry import make_env
@@ -741,6 +742,8 @@ class TestMjlabIntegration:
 
     def test_registered_tasks_discoverable(self) -> None:
         """Supported tasks must be discoverable in mjlab task registry."""
+        import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+
         list_tasks = importlib.import_module("mjlab.tasks.registry").list_tasks
 
         discovered = set(list_tasks())
