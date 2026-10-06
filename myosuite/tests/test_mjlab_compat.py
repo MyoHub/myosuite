@@ -951,6 +951,37 @@ def test_import_mjlab_has_no_duplicate_registration_warnings() -> None:
     assert "MyoSuite:> Registering Myo Envs" not in output
 
 
+@pytest.mark.skipif(
+    not (_MJLAB_AVAILABLE and _TORCH_AVAILABLE),
+    reason="mjlab/torch not installed (pip install myosuite[mjlab])",
+)
+def test_make_env_mjlab_registers_the_twins_itself() -> None:
+    """``make_env(backend="mjlab")`` works in a fresh interpreter from a source checkout.
+
+    No earlier import of the mjlab backend and no ``mjlab.tasks`` entry point (which
+    only a pip-installed myosuite provides) are needed.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    code = (
+        f"import sys; sys.path.insert(0, {str(repo)!r})\n"
+        "import myosuite\n"
+        "from myosuite.core.registry import make_env\n"
+        "env = make_env('myoElbowPose1D6MRandom-v0', backend='mjlab', num_envs=1, "
+        "device='cpu')\n"
+        "print('built', type(env).__name__)\n"
+        "env.close()\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(repo),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, (proc.stderr or proc.stdout)[-3000:]
+    assert "built" in proc.stdout
+
+
 def test_mujoco_warp_version_has_sparse_tendon_transmission_fix() -> None:
     """mjlab installs must use MuJoCo-Warp with the sparse tendon fix."""
     from myosuite.tests.support.optional_deps import require_mujoco_warp
