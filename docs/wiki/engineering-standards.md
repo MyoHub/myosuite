@@ -64,8 +64,9 @@ top-to-bottom in one file.
 
 ```python
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
+from myosuite.envs.muscle_stages import CtrlStageHost
 
-class ReachEnvV0(MyoGymnasiumEnv, EzPickle):
+class ReachEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):   # CtrlStageHost: runs muscle-command wrappers
     def __init__(self, model_path, ..., **kwargs):
         MyoGymnasiumEnv.__init__(self, frame_skip=frame_skip, ...)
         # build self.model / self.data, set action_space + observation_space
@@ -121,6 +122,10 @@ MuJoCo-Warp constraint buffers (`njmax`/`nconmax`) for the task's contact load.
 - Term functions are pure and backend-agnostic: use `accessor.array_module()`,
   never import `numpy`/`jax.numpy`/`torch` directly. See `writing-term-functions.md`.
 - Assets via `myo_sim.get_path(...)` / `ModelBuilder` — no hardcoded paths.
+- Read env attributes (`model`, `data`, `muscle_fatigue`, ...) in library code, scripts and tutorials through
+  `env.unwrapped.<attr>`. The short form `env.<attr>` works only on an env straight from `make_env` or behind
+  MyoSuite's own wrappers; third-party wrappers (SB3 `Monitor`, gymnasium's `RecordEpisodeStatistics`, ...) do not
+  forward attributes.
 
 ### Base classes (what actually exists)
 

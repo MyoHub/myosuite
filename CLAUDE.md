@@ -70,9 +70,9 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
 - Plan non-trivial tasks in `tasks/todo.md` before implementing.
 - After any user correction: update `tasks/lessons.md`.
 - Never mark a task done without proving it works.
-- **Branching and CI.** Branch from `ms3` and open PRs against `ms3`.
-  - Isolated or agent worktrees may start from `main`, so create the branch from `ms3` explicitly.
-  - CI only runs for `main`/`dev`, so a PR into `ms3` gets no CI. Run the Verification block below locally.
+- **Branching and CI.** Branch from `dev` and open PRs against `dev`.
+  - Isolated or agent worktrees may start from `main`, so create the branch from `dev` explicitly.
+  - CI runs for pull requests into `main` and `dev`. Run the Verification block below locally before pushing.
 - **Parity baselines.** Regenerate (`scripts/generate_parity_baselines.py --env-id <id>`) only the envs your change intentionally alters.
   - Generate them only with the package versions CI resolves. CI installs with `uv pip install -e ".[...]"`, which ignores `uv.lock` and picks the latest compatible mujoco/mjlab.
   - Never skip a case as "non-deterministic" without checking that a replay really differs between processes.

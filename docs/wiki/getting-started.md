@@ -3,7 +3,7 @@
 New to the MyoSuite codebase? This page takes you from a fresh clone to making
 your first change with confidence. It assumes you can write Python but know
 nothing about this repository. If you only want to *use* MyoSuite (run
-environments, train policies), read the top-level `README.md` instead — this
+environments, train policies), read the top-level [README.md](../../README.md) instead — this
 page is about *changing* the code.
 
 ---
@@ -43,12 +43,12 @@ Every env returns the Gymnasium 5-tuple from `step()`:
 
 Muscle conditions (motor noise, fatigue, sarcopenia, reafferentation) are **not** part of an env class.
 They are wrappers, applied by id (`myoFati…`, `myoSarc…`, `myoReaf…`) or with
-`make_env(EnvConfig(env_id, features=...))`; see `cross-backend-contract.md`.
+`make_env(EnvConfig(env_id, features=...))`; see [cross-backend-contract.md](cross-backend-contract.md).
 
 ### CPU and GPU: two matched halves, not a choice
 
 A task normally exists in **two matched implementations under one `env_id`**
-(see `engineering-standards.md`):
+(see [engineering-standards.md](engineering-standards.md)):
 
 - **CPU** — a `MyoGymnasiumEnv` subclass. One env at a time, easy to read and
   step through. This is where you **play back and fine-tune** a policy, and
@@ -115,7 +115,7 @@ introduced a regression — investigate before committing.
 
 ## 5. Add a new task
 
-Follow `adding-a-new-task.md`. In short, build the CPU env first:
+Follow [adding-a-new-task.md](adding-a-new-task.md). In short, build the CPU env first:
 
 1. Copy `basic/arm/reach.py` (or the closest existing task) to a new file.
 2. Rewrite `_get_obs_dict` / `get_reward_dict` / `reset_task` for your task.
@@ -123,11 +123,11 @@ Follow `adding-a-new-task.md`. In short, build the CPU env first:
 4. Add its env ID to `test_registry.py`.
 5. To let the env take muscle-command features, keep the stage hooks of `reach.py`
    (`CtrlStageHost`: `_run_ctrl_stages` before writing `ctrl`, `_run_reset_stages` in `reset`);
-   see `cross-backend-contract.md`.
+   see [cross-backend-contract.md](cross-backend-contract.md).
 6. Run the quality gates (below).
 
 Then, when you need parallel training, add the matched mjlab GPU config under
-the same `env_id` — see the CPU/GPU section in `engineering-standards.md`.
+the same `env_id` — see the CPU/GPU section in [engineering-standards.md](engineering-standards.md).
 
 ## 6. Quality gates (run before every commit)
 
@@ -138,7 +138,7 @@ pytest myosuite/tests/test_parity.py -v
 ```
 
 Branch from `dev` and open the pull request against `dev`; CI runs for pull requests into `main` and `dev`.
-See `CLAUDE.md` for the full gate list. A pre-commit hook blocks imports of the
+See [CLAUDE.md](../../CLAUDE.md) for the full gate list. A pre-commit hook blocks imports of the
 deleted `BaseV0`/`env_base.MujocoEnv` classes — if it fires, you copied from an
 old example; use `MyoGymnasiumEnv` instead.
 
@@ -146,9 +146,9 @@ old example; use `MyoGymnasiumEnv` instead.
 
 | You want to... | Read |
 |---|---|
-| Find where something lives | `repository-map.md` |
-| Understand the two env patterns | `engineering-standards.md` |
-| Write an obs/reward term | `writing-term-functions.md` |
-| Add mjlab GPU support | `mjlab-design-guide.md`, `cross-backend-contract.md` |
-| Use noise, fatigue or other muscle conditions, or build an env on either backend | `cross-backend-contract.md` (`make_env`, `EnvConfig`, which envs take which features) |
-| Use an existing helper | `library-usage.md` |
+| Find where something lives | [repository-map.md](repository-map.md) |
+| Understand the two env patterns | [engineering-standards.md](engineering-standards.md) |
+| Write an obs/reward term | [writing-term-functions.md](writing-term-functions.md) |
+| Add mjlab GPU support | [mjlab-design-guide.md](mjlab-design-guide.md), [cross-backend-contract.md](cross-backend-contract.md) |
+| Use noise, fatigue or other muscle conditions, or build an env on either backend | [cross-backend-contract.md](cross-backend-contract.md) (`make_env`, `EnvConfig`, which envs take which features) |
+| Use an existing helper | [library-usage.md](library-usage.md) |

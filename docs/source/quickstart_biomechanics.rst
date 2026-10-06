@@ -61,6 +61,13 @@ Running a Forward Simulation
 
    env.close()
 
+.. note::
+
+   ``env.unwrapped`` is the underlying MyoSuite env, which holds ``model``, ``data`` and the state of the
+   muscle conditions. On an env straight from ``make_env`` these attributes also work without ``.unwrapped``,
+   but not behind other wrappers (for example Stable-Baselines3's ``Monitor`` or gymnasium's
+   ``RecordEpisodeStatistics``). Use ``env.unwrapped`` in code that may be wrapped.
+
 
 Extracting Kinematics
 ----------------------
