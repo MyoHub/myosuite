@@ -124,7 +124,7 @@ From the **MyoSuite repo root** (adjust paths). Install
 uv run hf auth login
 uv run myosuite-musclemimic-setup-demo-cache
 
-cd /absolute/path/to/myosuite4
+cd /absolute/path/to/myosuite
 uv run myosuite-musclemimic-fullbody-eval \
   --path hf://amathislab/mm-10m-2 \
   --motion_path KIT/314/walking_medium09_poses \
@@ -172,10 +172,14 @@ uv run myosuite-musclemimic-fullbody-eval --n-steps 32 --seed 0
 uv run myosuite-musclemimic-fullbody-eval --backend mjx --n-steps 32 --seed 0
 ```
 
-**mjlab smoke** (headless GPU training backend; needs `myosuite[mjlab]`):
+**mjlab play** (needs `myosuite[mjlab]`): the mjlab Mimic task is clip-driven, so `--backend mjlab`
+requires `--motion_path`. The remaining flags go to `mjlab play` (`--agent zero`, `--num-envs`,
+`--viewer`, `--video`, `--checkpoint-file` ...; see `--help` with the same arguments). The
+CPU-only flags (`--n_steps`, `--seed`, `--use_mujoco` ...) are consumed and ignored.
 
 ```bash
-uv run myosuite-musclemimic-fullbody-eval --backend mjlab --n-steps 32 --seed 0
+uv run myosuite-musclemimic-fullbody-eval --backend mjlab \
+  --motion_path KIT/314/walking_medium09_poses --agent zero --num-envs 1
 ```
 
 > **Note:** mjlab is a GPU-parallel training backend (MuJoCo Warp / Isaac Lab).
@@ -201,17 +205,21 @@ GPU step → qpos[env_idx].cpu().numpy() → cpu_data.qpos[:] → mj_forward →
 ```
 
 ```bash
-# Zero-action smoke — verify env builds and viewer opens
-uv run myosuite-musclemimic-fullbody-eval --backend mjlab --agent zero
+# Zero-action run — verify the env builds and the viewer opens (needs a display; --motion_path is required)
+uv run myosuite-musclemimic-fullbody-eval --backend mjlab \
+  --motion_path KIT/314/walking_medium09_poses --agent zero
 
 # Random policy
-uv run myosuite-musclemimic-fullbody-eval --backend mjlab --agent random
+uv run myosuite-musclemimic-fullbody-eval --backend mjlab \
+  --motion_path KIT/314/walking_medium09_poses --agent random
 
 # Trained checkpoint (local file)
-uv run myosuite-musclemimic-fullbody-eval --backend mjlab --checkpoint path/to/ckpt.pt
+uv run myosuite-musclemimic-fullbody-eval --backend mjlab \
+  --motion_path KIT/314/walking_medium09_poses --checkpoint path/to/ckpt.pt
 
 # Trained checkpoint from Weights & Biases
-uv run myosuite-musclemimic-fullbody-eval --backend mjlab --wandb-run-path org/project/run-id
+uv run myosuite-musclemimic-fullbody-eval --backend mjlab \
+  --motion_path KIT/314/walking_medium09_poses --wandb-run-path org/project/run-id
 ```
 
 Or call mjlab's `play` CLI directly (task must be registered first):
