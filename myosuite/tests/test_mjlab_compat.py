@@ -982,6 +982,41 @@ def test_make_env_mjlab_registers_the_twins_itself() -> None:
     assert "built" in proc.stdout
 
 
+@pytest.mark.skipif(
+    not (_MJLAB_AVAILABLE and _TORCH_AVAILABLE),
+    reason="mjlab/torch not installed (pip install myosuite[mjlab])",
+)
+def test_train_mjlab_cli_offers_the_myosuite_twins() -> None:
+    """``scripts/train_mjlab.py <MyoSuite id>`` parses from a source checkout.
+
+    The task choice comes from mjlab's registry, which holds the MyoSuite twins only
+    once the backend is imported (or via a pip-installed myosuite's entry point).
+    """
+    import os
+
+    repo = Path(__file__).resolve().parents[2]
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in (str(repo), env.get("PYTHONPATH", "")) if p
+    )
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(repo / "scripts" / "train_mjlab.py"),
+            "myoElbowPose1D6MRandom-v0",
+            "--help",
+        ],
+        cwd=str(repo),
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    output = f"{proc.stdout}\n{proc.stderr}"
+    assert proc.returncode == 0, output[-3000:]
+    assert "invalid choice" not in output.lower()
+
+
 def test_mujoco_warp_version_has_sparse_tendon_transmission_fix() -> None:
     """mjlab installs must use MuJoCo-Warp with the sparse tendon fix."""
     from myosuite.tests.support.optional_deps import require_mujoco_warp
