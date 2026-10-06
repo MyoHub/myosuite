@@ -1,15 +1,16 @@
 Environment Reference
 ======================
 
-* **CPU** — ``make_env(env_id)`` after ``import myosuite``. Playback and SB3.
-* **mjlab** — the same ``env_id`` for GPU training (``scripts/train_mjlab.py``).
+* **CPU** — ``make_env(env_id)`` (``from myosuite import make_env``). Playback and SB3.
+* **mjlab** — the same ``env_id`` for GPU training (``scripts/train_mjlab.py``), or from Python with
+  ``make_env(env_id, backend="mjlab", num_envs=...)``.
 
 List every CPU ID on your install::
 
    python -c "import myosuite; print('\n'.join(myosuite.myosuite_env_suite))"
 
-Tables below are the common CPU IDs. Pathological prefixes (``myoSarc…``,
-``myoFati…``, hand ``myoReaf…``) are auto-registered for ``myo*`` tasks.
+Tables below are the common CPU IDs. Muscle-condition variants (``myoSarc…``, ``myoFati…``,
+hand ``myoReaf…``) are registered for the ``myo*`` tasks; see :ref:`naming-conventions`.
 
 .. contents:: Contents
    :local:
@@ -42,10 +43,17 @@ The mjlab backend registers a twin under the same ``env_id`` for these CPU famil
 
 Variants: ``myoSarc…`` exist for all twins above except ``myoLegDirectional*`` (no CPU
 variant) and the Challenge twins; ``myoFati…`` likewise, and ``myoReaf…`` for the hand
-pose and reach twins. **Not on mjlab yet:** the other Challenge tasks, ``myoElbowPoseTask*``,
-``myoFullBodyDirectional`` and the other MyoMimic/MuscleMimic envs, and the hand manipulation
-families (``myoHandKeyTurn``, ``ObjHold``, ``PenTwirl``, ``Reorient*``) including their
-variants.
+pose and reach twins.
+
+MuscleMimic (``myoMimicFullbody-v0``, ``myoMimicBimanual-v0`` and their SAR variants) has its
+own mjlab implementation. It is not built from the CPU registration and is registered once a
+motion clip is given (``MYOSUITE_MIMIC_CLIP`` or ``register_mimic_mjlab_tasks_with_clip``; see
+tutorials 5.x), and it takes no muscle-command features.
+
+**Not on mjlab yet:** the other Challenge tasks, ``myoChallengeChaseTagFBVs`` (two-agent),
+``myoElbowPoseTask*``, ``myoFullBodyDirectional`` and the hand manipulation families
+(``myoHandKeyTurn``, ``ObjHold``, ``PenTwirl``, ``Reorient*``) including their variants.
+The cross-backend contract lists which envs and backends take which features.
 
 Differences from the CPU env that matter when moving policies between backends:
 
@@ -62,6 +70,8 @@ Differences from the CPU env that matter when moving policies between backends:
   Height-field contacts differ most, because MuJoCo Warp creates at most one
   capsule-hfield contact.
 
+.. _naming-conventions:
+
 Naming Conventions
 -------------------
 
@@ -69,7 +79,12 @@ Base environment IDs follow the pattern::
 
     myo<Model><Task>[Difficulty]-v<N>
 
-Pathological variants are auto-registered for every base ``myo*`` CPU environment:
+Muscle-condition variants are registered for the base ``myo*`` CPU environments. Each variant is
+the base env registered together with the matching wrapper (``SarcopeniaWrapper``,
+``FatigueWrapper``, ``ReafferentationWrapper``), so the same features work on any env that runs
+muscle stages; see :doc:`quickstart_neuroscience` for examples and
+``docs/wiki/cross-backend-contract.md`` for how features are registered and which envs and
+backends support them:
 
 .. list-table::
    :header-rows: 1
@@ -85,7 +100,7 @@ Pathological variants are auto-registered for every base ``myo*`` CPU environmen
      - Cumulative neuromuscular fatigue
      - ``myoFatiHandPoseRandom-v0``
    * - ``myoReaf<…>``
-     - Tendon transfer / reafferentation *(hand envs only)*
+     - Tendon transfer / reafferentation *(all hand envs)*
      - ``myoReafHandPoseFixed-v0``
 
 The suffix ``Fixed`` indicates a fixed (non-random) target;
@@ -129,7 +144,7 @@ Each base environment also exposes ``myoSarc…`` and ``myoFati…`` variants
 (12 total IDs for this model).
 
 
-myoElbow  (2 DoF, 6 muscles)
+myoElbow  (1 DoF, 6 muscles)
 ------------------------------
 
 .. list-table::
@@ -163,6 +178,10 @@ myoElbow  (2 DoF, 6 muscles)
      - ✓
 
 Each row additionally has ``myoSarc…`` and ``myoFati…`` variants (12 total IDs).
+
+Experimental, defined by a ``TaskConfig`` instead of an env class (tutorial 4.3):
+``myoElbowPoseTaskFixed-v0`` and ``myoElbowPoseTaskRandom-v0``, with ``myoSarc…`` and ``myoFati…``
+variants.
 
 
 myoHand  (23 DoF, 39 muscles)
@@ -327,8 +346,8 @@ The arm model used here is the hand-free variant (extrinsic + intrinsic hand
 muscles removed) to isolate reaching without manipulation.
 
 
-myoLeg  (10 joints, 20 DoF, 80 muscles)
-------------------------------------------
+myoLeg  (14 joints plus the 6-DoF free root = 20 DoF, 80 muscles)
+-----------------------------------------------------------------
 
 .. list-table::
    :header-rows: 1
@@ -364,6 +383,21 @@ myoLeg  (10 joints, 20 DoF, 80 muscles)
      - Hardest
      - ✓
      - ✓
+   * - ``myoLegDirectionalForward-v0``
+     - Directional walking — forward
+     - —
+     - —
+     - —
+   * - ``myoLegDirectionalBackward-v0``
+     - Directional walking — backward
+     - —
+     - —
+     - —
+   * - ``myoLegDirectionalRandom-v0``
+     - Directional walking — random direction
+     - —
+     - —
+     - —
 
 **MyoChallenge leg / whole-body tasks:**
 
@@ -412,6 +446,34 @@ myoTorso  (18 joints, 216 muscles)
      - ✓
      - ✓
 
+
+Full body and MuscleMimic
+-------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 40 15
+
+   * - Environment ID
+     - Task
+     - mjlab
+   * - ``myoMimicFullbody-v0`` (also ``myoMuscleMimicFullbody-v0``)
+     - MuscleMimic full-body motion imitation
+     - yes
+   * - ``myoMimicBimanual-v0`` (also ``myoMuscleMimicBimanual-v0``)
+     - MuscleMimic bimanual arm imitation
+     - yes
+   * - ``myoFullBodyDirectional-v0``
+     - Full-body directional locomotion
+     - no
+   * - ``myoChallengeChaseTagFBP2-v0``
+     - Chase-tag, full body, scripted opponent
+     - yes
+   * - ``myoChallengeChaseTagFBVs-v0``
+     - Chase-tag, full body, two agents (1v1)
+     - no
+
+The MuscleMimic and mjlab columns are explained under "GPU (mjlab) coverage" above.
 
 mjlab (GPU)
 -----------

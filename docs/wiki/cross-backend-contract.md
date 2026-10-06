@@ -9,7 +9,7 @@ obvious error.
 
 The **MJX** (JAX) backend is experimental and may not be maintained. Its envs differ in observation order, reward
 weights, thresholds and reset distributions, so MJX-trained policies are not portable. Do not build new work on it
-(limitations: `myosuite/envs/myo/backends/mjx/README.md`).
+(limitations: [myosuite/envs/myo/backends/mjx/README.md](../../myosuite/envs/myo/backends/mjx/README.md)).
 
 ---
 
@@ -36,7 +36,7 @@ weights, thresholds and reset distributions, so MJX-trained policies are not por
 
 | Training class | Browser equivalent | Scaling |
 |---|---|---|
-| `MyoMuscleActivationAction` | `MuscleActionCfg` | `sigmoid(x)` → ctrl ∈ [0, 1] |
+| `MyoAction` (twins of the CPU envs; `MyoMuscleActivationAction` on the `TaskConfig` route) | `MuscleActionCfg` | `sigmoid(x)` → ctrl ∈ [0, 1] (the walk envs use the action as-is in [0, 1]) |
 | `TendonLengthActionCfg` | `JointPositionActionCfg` | `scale × x + default_pos` |
 
 `encoder_bias` in the exported JSON must equal `model.key_qpos[0]` — ensure the XML has a keyframe at index 0 representing the neutral pose.
@@ -46,6 +46,8 @@ weights, thresholds and reset distributions, so MJX-trained policies are not por
 ```
 ctrl_dt = decimation × sim_dt
 ```
+
+On both backends the control step is set with `EnvConfig(env_id, ctrl_dt=...)` (see [Building an env](#building-an-env-make_env)).
 
 mjswan hardcodes decimation as `round(0.02 / model.opt.timestep)` (50 Hz control). Use only timesteps that are integer divisors of 0.02:
 
@@ -141,8 +143,8 @@ registers every env id. On the CPU it calls `gym.make`, which still works.
 ```python
 from myosuite import make_env
 
-env = make_env("myoElbowPose1D6MRandom-v0")                                    # CPU env
-envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=4096)   # same task on the GPU (mjlab twin)
+env_cpu = make_env("myoElbowPose1D6MRandom-v0")                                # CPU env
+env_gpu = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=4096)   # same task on the GPU (mjlab twin)
 ```
 
 **With an `EnvConfig`**, which overrides the registered defaults for every backend in one place:
@@ -158,8 +160,8 @@ cfg = EnvConfig(
     ctrl_dt=0.01,
     features=((MotorNoiseWrapper, {"motor_noise": {"constant_std": 0.05}}), FatigueWrapper),
 )
-env = make_env(cfg)                                    # CPU, with noise and fatigue
-envs = make_env(cfg, backend="mjlab", num_envs=4096)   # GPU twin, with the same noise and fatigue
+env_cpu = make_env(cfg)                                # CPU, with noise and fatigue
+env_gpu = make_env(cfg, backend="mjlab", num_envs=4096)   # GPU twin, with the same noise and fatigue
 ```
 
 Each entry of `features` is a wrapper class (`FatigueWrapper`), a `(class, kwargs)` pair, or a `WrapperSpec`
@@ -177,6 +179,9 @@ Each entry of `features` is a wrapper class (`FatigueWrapper`), a `(class, kwarg
 - `ctrl_dt` must be a whole multiple of the model timestep (`ValueError` otherwise). The `ModularTaskEnv` ids take their
   timing from `task_config.backend`, so `ctrl_dt` raises a `ValueError` for them on both backends.
 - A feature a backend cannot run raises; it is never dropped silently (see the tables below).
+- The training and evaluation scripts take the same features as `--feature NAME[=JSON]` flags
+  (`scripts/train_mjlab.py`, `scripts/eval_mjlab_policy.py`; names `motor-noise`, `fatigue`, `sarcopenia`,
+  `reafferentation`, see `myosuite/utils/feature_cli.py`).
 - Harness wrappers (`PerturbationWrapper`, recording, a delay on the raw action) are not features. They are plain
   gymnasium wrappers on the CPU env and not part of the config.
 
@@ -255,9 +260,11 @@ User-in-the-Box.
 |---|---|---|---|---|
 | Elbow | ✓ 9D | ✓ 6D sigmoid | ✗ | No TypeScript: `pose_err`, `act`, `qvel×ctrl_dt` |
 | Walk | ✓ 403D | ✓ 80D, [0, 1] activations (no sigmoid) | ✗ | No TypeScript: all 12 custom obs terms |
-| TableTennis | ✓ 417D | ~ | ✗ | Custom obs term (no TypeScript) |
+| TableTennis | ✓ 417D | ✓ 275D | ✗ | Custom obs term (no TypeScript) |
 | ChaseTag FBP2 | ✓ 537D (`test_chasetag_fbp2_parity.py`) | ✓ 354D direct | ✗ | No TypeScript: `chasetag_obs` blocks, scripted opponent; ctrl_dt 0.01 s |
 
-All passing parity tests live in `myosuite/tests/test_mjlab_task_builder.py`.
+The parity tests are `test_mjlab_cpu_twins.py` (basic suite, per family: see `docs/source/backend_parity.rst`),
+`test_mjlab_task_builder.py`, `test_chasetag_fbp2_parity.py`, `test_table_tennis_mjlab_parity.py` and
+`test_tabletennis_cpu_mjlab_parity.py`.
 
 **To unblock mjswan export:** either contribute TypeScript obs term implementations to the [mjswan repo](https://github.com/ttktjmt/mjswan), or rewrite mjlab obs functions to use only mjswan built-ins (`joint_pos_rel`, `joint_vel_rel`, etc.) where semantically equivalent.

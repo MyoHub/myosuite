@@ -61,7 +61,9 @@ pip install -e ".[rl]"          # CPU training (Stable-Baselines3)
 
 Or: `uv sync -p 3.10 --extra rl`.
 
-From PyPI: `pip install -U myosuite`. Musculoskeletal models come from the `myo-sim` package; the few MPL/YCB/furniture assets used are bundled — no git submodules.
+From PyPI: `pip install -U myosuite`.
+
+**Models.** The musculoskeletal models ship in the `myo-sim` package, pinned to 0.2.3 and installed from PyPI together with MyoSuite, so no git submodules and no separate model install are needed. The few MPL, YCB and furniture assets the tasks use are bundled in `myosuite/envs/myo/assets/`. Environments compose their models with `ModelBuilder` (see the [model builder guide](docs/source/model_builder.rst)). A different `myo-sim` version can change joints and ranges (the thumb joints did in 0.2.0), so the baseline policies are only valid for the pinned version.
 
 Verify (replace "onscreen" with "offscreen" when running on a remote, headless machine):
 
@@ -110,8 +112,10 @@ python scripts/train_sb3.py myoElbowPose1D6MRandom-v0 --timesteps 500000
 Train on GPU (same `env_id`, mjlab / RSL-RL):
 
 ```bash
-python scripts/train_mjlab.py myoElbowPose1D6MFixed-v0 --env.scene.num-envs 1024
+python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --env.scene.num-envs 1024
 ```
+
+No step count is needed: it runs the task's default number of PPO iterations (`--agent.max-iterations`, 1000 unless the task sets another) and stops early once the deterministic policy reaches 95% success (`--stop-on-success False` turns that off).
 
 The same call builds either backend, and an `EnvConfig` overrides the registered defaults (episode length, control step,
 muscle-command features such as motor noise and fatigue) for both:
@@ -121,19 +125,19 @@ from myosuite import make_env
 from myosuite.core.config import EnvConfig
 from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper
 
-env = make_env("myoElbowPose1D6MRandom-v0")                                   # CPU, registered defaults
-envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024)  # GPU twin (needs the mjlab extra)
+env_cpu = make_env("myoElbowPose1D6MRandom-v0")                               # CPU, registered defaults
+env_gpu = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024)  # GPU twin (needs the mjlab extra)
 
 cfg = EnvConfig(
     "myoElbowPose1D6MRandom-v0",
     max_episode_steps=300,
     features=((MotorNoiseWrapper, {"motor_noise": {"constant_std": 0.05}}), FatigueWrapper),
 )
-env = make_env(cfg)                                   # CPU with noise and fatigue
-envs = make_env(cfg, backend="mjlab", num_envs=1024)  # the same on the GPU
+env_cpu = make_env(cfg)                               # CPU with noise and fatigue
+env_gpu = make_env(cfg, backend="mjlab", num_envs=1024)  # the same on the GPU
 ```
 
-Pathological variants use prefixes, not a `Fatigue` infix: `myoSarcElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MFixed-v0`, `myoReafHandPoseRandom-v0`.
+Muscle-condition variants of an env are separate ids with a prefix: `myoSarcElbowPose1D6MRandom-v0` (sarcopenia), `myoFatiElbowPose1D6MRandom-v0` (fatigue), `myoReafHandPoseRandom-v0` (reafferentation). Each is the base env registered with the matching wrapper; to use these features (noise, fatigue, ...) on any env, or to register your own variant, see the [neuroscience guide](docs/source/quickstart_neuroscience.rst) (examples) and the [cross-backend contract](docs/wiki/cross-backend-contract.md#muscle-command-features-wrappers) (how features are registered and which envs and backends support them).
 
 
 
@@ -141,7 +145,7 @@ Pathological variants use prefixes, not a `Fatigue` infix: `myoSarcElbowPose1D6M
 
 | Body      | Example IDs                                                     |
 | --------- | --------------------------------------------------------------- |
-| Elbow     | `myoElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MFixed-v0` |
+| Elbow     | `myoElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MRandom-v0` |
 | Finger    | `myoFingerPoseRandom-v0`, `myoFingerReachRandom-v0`         |
 | Hand      | `myoHandPoseRandom-v0`, `myoChallengeBaodingP2-v1`          |
 | Arm       | `myoArmReachRandom-v0`                                        |
@@ -164,11 +168,13 @@ A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract]
 
 ## Tutorials
 
-See [`tutorials/README.md`](tutorials/README.md). Start with `1.1_Get_Started.ipynb` then `2.1_Train_SB3_Policy.ipynb`.
+All notebooks are listed, with what each needs, in the [tutorial index](tutorials/README.md). 
 
-GPU walk-through: [`tutorials/2.2_Train_MjLab_Policy.ipynb`](tutorials/2.2_Train_MjLab_Policy.ipynb).
+Start with [1.1 Get Started](tutorials/1.1_Get_Started.ipynb), then [2.1 Train SB3 Policy](tutorials/2.1_Train_SB3_Policy.ipynb) (CPU).
 
-Full-body MuscleMimic playback and training: [`myosuite/integrations/musclemimic/README.md`](myosuite/integrations/musclemimic/README.md).
+GPU walk-through: [2.2 Train MjLab Policy](tutorials/2.2_Train_MjLab_Policy.ipynb).
+
+Full-body MuscleMimic: [5.1 Load Policy](tutorials/5.1_Fullbody_Load_Policy.ipynb) (playback) and [5.3 Train with mjlab](tutorials/5.3_Fullbody_Train_MjLab_Policy.ipynb); background, data and checkpoints in the [MuscleMimic README](myosuite/integrations/musclemimic/README.md).
 
 
 ## License

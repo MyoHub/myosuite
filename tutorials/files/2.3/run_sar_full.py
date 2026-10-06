@@ -47,7 +47,6 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import myosuite  # noqa: E402, F401
-from myosuite.utils import gym  # noqa: E402
 from sar_tutorial_utils import (  # noqa: E402
     fit_sac,
     SynergyWrapper,

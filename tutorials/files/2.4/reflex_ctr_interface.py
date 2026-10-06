@@ -11,7 +11,6 @@ from reflex_ctr import LocoCtrl
 
 import mujoco
 
-from myosuite.utils import gym
 from myosuite.physics.quat_math import euler2quat, quat2mat
 from myosuite import make_env
 

@@ -154,3 +154,21 @@ def test_deprecated_playback_flag_returns_usage_error() -> None:
         code = cli.main(["--playback", "legacy_mode"])
     assert code == 2
     assert "obsolete" in stderr.getvalue().lower()
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--backend", "mjx", "--n-steps", "32", "--seed", "0"],
+        ["--backend=mjx", "--n-steps", "32", "--seed", "0"],
+        ["--n-steps", "32", "--seed", "0"],
+    ],
+)
+def test_mjx_smoke_test_accepts_backend_mjx(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    """``--backend mjx`` (the default) selects the smoke test; its parser must not see it."""
+    seen: list[list[str]] = []
+    monkeypatch.setattr(cli, "_minimal_mjx_main", lambda a: seen.append(a) or 0)
+    assert cli.main(argv) == 0
+    assert seen == [["--n-steps", "32", "--seed", "0"]]

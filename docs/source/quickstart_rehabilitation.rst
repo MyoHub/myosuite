@@ -22,8 +22,10 @@ simulate conditions commonly encountered in clinical practice:
 * **Tendon transfer (reafferentation)** — surgical re-routing of tendons altering the
   muscle-to-joint mapping.
 
-These conditions are built into MyoSuite as environment variants, accessible
-with a single argument — no programming of the physics required.
+These conditions are built into MyoSuite as environment variants (``myoSarc…``, ``myoFati…``,
+``myoReaf…``), accessible with a single id — no programming of the physics required. Each variant is
+the base env registered with a wrapper, so you can also apply a condition with your own parameters
+(for example another sarcopenia severity) to any suitable env; see :doc:`quickstart_neuroscience`.
 
 
 Installation
@@ -54,9 +56,11 @@ typical of older adults:
    results = {}
    for label, env in [("Normal", env_normal), ("Sarcopenia", env_sarco)]:
        obs, info = env.reset(seed=0)
+       rng = np.random.default_rng(0)   # the same action sequence for both
        peak_forces = []
        for _ in range(300):
-           obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+           action = rng.uniform(-1, 1, env.action_space.shape)
+           obs, reward, terminated, truncated, info = env.step(action)
            peak_forces.append(np.abs(env.unwrapped.data.actuator_force).max())
            if terminated or truncated:
                obs, info = env.reset()
@@ -66,6 +70,14 @@ typical of older adults:
    print(f"Peak force — Normal: {results['Normal']:.1f} N")
    print(f"Peak force — Sarcopenia: {results['Sarcopenia']:.1f} N  "
          f"({100*results['Sarcopenia']/results['Normal']:.0f} % of normal)")
+
+The variant fixes the severity at 50 %. To choose it, wrap the base env:
+
+.. code-block:: python
+
+   from myosuite.envs.wrappers import SarcopeniaWrapper
+
+   env_mild = SarcopeniaWrapper(make_env('myoElbowPose1D6MRandom-v0'), force_scale=0.8)  # 80 % of the force
 
 
 Simulating Neuromuscular Fatigue
@@ -78,27 +90,32 @@ work capacity:
 .. code-block:: python
 
    from myosuite import make_env
+   from myosuite.core.config import EnvConfig
    import numpy as np
 
-   env = make_env('myoFatiElbowPose1D6MFixed-v0')
+   # One 60 s episode: the registered episode is 2 s long, and a reset restores the muscles
+   env = make_env(EnvConfig('myoFatiElbowPose1D6MFixed-v0', max_episode_steps=3000))
    obs, info = env.reset(seed=0)
 
-   force_over_time = []
-   # Apply constant 60 % excitation — observe force decline
+   force_over_time, fatigued = [], []
+   # Apply constant 60 % excitation for 60 s
    ctrl_level = np.full(env.action_space.shape, 0.58)  # sigmoid(5 * (0.58 - 0.5)) ≈ 0.60
 
    for step in range(3000):
        obs, reward, terminated, truncated, info = env.step(ctrl_level)
        force_over_time.append(np.abs(env.unwrapped.data.actuator_force).mean())
-       if terminated or truncated:
-           obs, info = env.reset()
+       fatigued.append(env.muscle_fatigue.MF.mean())   # fraction of motor units in the fatigued pool
 
    force = np.array(force_over_time)
-   print(f"Force at start: {force[:50].mean():.2f} N")
-   print(f"Force at end:   {force[-50:].mean():.2f} N  "
+   print(f"Fatigued motor units: {100*fatigued[0]:.1f} % → {100*fatigued[-1]:.1f} %")
+   print(f"Mean muscle force: {force[:50].mean():.0f} N → {force[-50:].mean():.0f} N  "
          f"({100*force[-50:].mean()/force[:50].mean():.0f} % of initial)")
 
    env.close()
+
+After 60 s at 60 % excitation about half of the motor units are fatigued (52 %) and the mean force has
+fallen to about 80 % of its initial value; at the highest excitation the sigmoid allows (0.92) it falls to
+about half. The model's endurance times are compared with published data in :doc:`fatigue_validation`.
 
 See ``tutorials/4.2_Fatigue_Modeling.ipynb`` for plots and recovery dynamics, and
 :doc:`fatigue_validation` for how the model's endurance times compare with
@@ -113,6 +130,7 @@ Useful metrics you can extract from any simulation:
 .. code-block:: python
 
    from myosuite import make_env
+   import mujoco
    import numpy as np
 
    env = make_env('myoLegWalk-v0')
@@ -136,7 +154,9 @@ Useful metrics you can extract from any simulation:
    model = env.unwrapped.model
    print("Joint range of motion (deg):")
    for i in range(model.njnt):
-       rom = np.degrees(np.ptp(joint_angles[:, i]))
+       if model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
+           continue                                   # the root has no joint angle
+       rom = np.degrees(np.ptp(joint_angles[:, model.jnt_qposadr[i]]))
        if rom > 0.1:
            print(f"  {model.joint(i).name:30s}  {rom:.1f}")
 
@@ -163,8 +183,8 @@ as performed in radial nerve palsy rehabilitation:
 
    from myosuite import make_env
 
-   # Normal finger extension
-   env_normal = make_env('myoFingerPoseRandom-v0')
+   # Normal hand
+   env_normal = make_env('myoHandPoseFixed-v0')
 
    # Post-surgical — altered muscle routing
    env_reaff  = make_env('myoReafHandPoseFixed-v0')
@@ -188,7 +208,7 @@ between episodes.  A simple example for elbow flexion ROM progression:
    rom_stages = [
        {"r_elbow_flex": (1.0, 1.5)},   # Stage 1: limited ROM
        {"r_elbow_flex": (0.5, 2.0)},   # Stage 2: moderate ROM
-       {"r_elbow_flex": (0.0, 2.5)},   # Stage 3: full ROM
+       {"r_elbow_flex": (0.0, 2.2)},   # Stage 3: nearly the full ROM (the joint limit is 2.27 rad)
    ]
 
    for stage, target_range in enumerate(rom_stages, 1):
@@ -258,7 +278,7 @@ MyoSuite includes several sports-inspired environments:
    * - ``myoChallengeOslRunRandom-v0``
      - Running on random terrain (prosthetic limb)
    * - ``myoChallengeChaseTagP1-v0``
-     - Whole-body chase task (two agents)
+     - Chase-tag locomotion (phase 1)
    * - ``myoChallengeBaodingP2-v1``
      - Dexterous manipulation — Baoding ball rotation
    * - ``myoChallengeTableTennisP2-v0``

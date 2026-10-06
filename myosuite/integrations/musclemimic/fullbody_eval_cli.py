@@ -62,11 +62,11 @@ class CliModeConfig:
 
 
 def _strip_dispatch_only_flags_for_native_path(argv: list[str]) -> list[str]:
-    """Drop ``--backend`` flags before native playback argparse.
+    """Drop ``--backend`` flags before the native playback and MJX smoke-test parsers.
 
     Top-level dispatch understands ``--backend`` for the no-``--path`` smoke
-    tests, but :mod:`fullbody_native_playback` only accepts MuJoCo playback
-    flags. Passing ``--backend mjlab`` together with ``--path`` is a common
+    tests, but :mod:`fullbody_native_playback` and the MJX smoke test only accept
+    their own flags. Passing ``--backend mjlab`` together with ``--path`` is a common
     copy-paste mistake; strip known values so native playback still runs.
 
     Args:
@@ -748,7 +748,9 @@ def main(argv: list[str] | None = None) -> int:
                 )
             return _path_mode_main(argv)
         return _path_mode_main(argv)
-    return _minimal_mjx_main(argv)
+    # ``--backend mjx`` selects this path (it is the default); the smoke test's own
+    # parser does not know the flag.
+    return _minimal_mjx_main(_strip_dispatch_only_flags_for_native_path(argv))
 
 
 if __name__ == "__main__":

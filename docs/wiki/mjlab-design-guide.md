@@ -14,6 +14,31 @@
 
 ---
 
+## MyoSuite twin rules
+
+A twin of a CPU env is built from the CPU registration (`tasks/cpu_reference.py`, `tasks/registration.py`), so its
+parameters live in one place. On top of the rules above:
+
+- **Physics options.** Build every `MujocoCfg` from the CPU model with `tasks.cpu_reference.mujoco_cfg_from_model()`.
+  mjlab ignores the spec's `<option>` and defaults to `implicitfast`, while every CPU model uses Euler.
+- **Root velocities.** `write_root_state_to_sim` takes a world-frame angular velocity, but a MuJoCo free-joint
+  `qvel[3:6]` is body-frame. Rotate it first.
+- **Joint-name keys.** `InitialStateCfg.joint_pos` keys are regexes: anchor exact names (`^name$`), otherwise
+  `knee_angle_r` also matches the knee coupling joints.
+- **Step order.** mjlab runs termination, then reward, then reset, then `forward()`, then observation. Compute the
+  per-step derived state once, in the first termination term, before the rewards read it, and register
+  `mdp.sync_forward` when rewards or terminations score derived quantities (see the contract page).
+- **Contact buffers.** mujoco-warp does not clear contact rows at or beyond `nacon`: mask them.
+- **Env ids.** Import `normalize_mjlab_env_ids` from `mjlab_env_base`; do not re-implement it.
+- **Specs.** Call `.compile()` on an `MjSpec` before passing it to a function that expects an `MjModel`.
+- **Warp data.** Check that a `wp_data` attribute exists in mujoco-warp before using it; do not assume it by analogy
+  with mujoco-py (`site_xvelp` does not exist, derive it from `cvel`).
+- **Muscle-command stages.** Noise, fatigue, reafferentation and custom stages run inside the twin's action term
+  (`MyoAction`, `tasks/mdp/actions.py`), configured from the CPU registration. Their per-env state lives on the stage
+  objects and is cleared in `reset(env_ids)`; do not special-case a feature elsewhere (see the contract page).
+
+---
+
 ## State Writes — Entity Write API
 
 | What to write | Use | Never |
@@ -139,5 +164,5 @@ If a sensor references a site in one entity and a body in another, strip it from
 
 | Task | Deviation | Reason |
 |---|---|---|
-| Elbow | `MyoMuscleActivationAction` instead of `XmlActuatorCfg` | `XmlMuscleActuatorCfg` removed in mjlab v1.4 |
+| Muscle twins (pose, reach, torso, leg) | `MyoAction` (`tasks/mdp/actions.py`) instead of `XmlActuatorCfg` | `XmlMuscleActuatorCfg` was removed in mjlab v1.4, and `MyoAction` also runs the muscle-command stages |
 | TableTennis | Ball contact labels read the raw contact buffer (`data.contact`, masked by `nacon`) instead of a `ContactSensor` | The labels need "any other contact" (athlete, paddle frame, furniture) next to five specific geoms. A `ContactSensor` has one primary/secondary pair per sensor and no complement, and the buffer read is a single on-device pass, equivalent to the CPU `get_ball_contact_labels` (tested per state) |

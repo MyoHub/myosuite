@@ -96,13 +96,34 @@ exceeds 95% (``--success-threshold``); a checkpoint of that iteration is stored 
 Pass ``--stop-on-success False`` to always train for ``--agent.max-iterations``. The
 early stop only applies to tasks that log a ``success`` metric and to single-GPU runs.
 
+Muscle-command features (motor noise, fatigue, sarcopenia, reafferentation; the ``features`` of an
+``EnvConfig``) are added with the repeatable ``--feature NAME[=JSON]`` flag, for training and for evaluation:
+
+.. code-block:: bash
+
+   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --env.scene.num-envs 1024 \
+       --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'
+   python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint <run> \
+       --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'
+
+Evaluate with the features the policy was trained with. ``motor-noise`` alone uses the van Beers (2004)
+levels; the JSON after ``=`` sets the options of the wrapper (see ``myosuite.utils.feature_cli``). The
+``myoFati…`` / ``myoSarc…`` / ``myoReaf…`` ids give the same conditions without a flag.
+
 From Python, for evaluation or your own training loop, ``make_env`` builds the same task on the GPU:
 
 .. code-block:: python
 
+   import torch
    from myosuite import make_env
 
-   envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024, device="cuda:0")
+   env_gpu = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024, device="cuda:0")
+   obs, _ = env_gpu.reset()          # dict of observation groups: obs["actor"], obs["critic"]
+   action = torch.zeros(1024, env_gpu.action_manager.total_action_dim, device="cuda:0")
+   obs, reward, terminated, time_outs, extras = env_gpu.step(action)   # torch tensors, one row per env
+
+This is a vectorised mjlab env, not a Gymnasium env: observations, rewards and actions are torch tensors with one
+row per env, and finished envs reset themselves.
 
 Pass an ``EnvConfig`` to override the episode length, the control step or the muscle-command features
 (noise, fatigue, ...) for either backend; see ``docs/wiki/cross-backend-contract.md``.
@@ -216,8 +237,9 @@ Starting points:
    make_env("myoSarcElbowPose1D6MRandom-v0")
    make_env("myoFatiElbowPose1D6MFixed-v0")
 
-Pathological prefixes: ``myoSarc…`` (sarcopenia), ``myoFati…`` (fatigue),
-``myoReaf…`` (tendon transfer, hands). See :doc:`environments`.
+Muscle-condition variants: ``myoSarc…`` (sarcopenia), ``myoFati…`` (fatigue), ``myoReaf…``
+(tendon transfer, hands). Each is the base env registered with the matching wrapper, so the same
+features (and motor noise) work on any env; see :doc:`environments` and :doc:`quickstart_neuroscience`.
 
 Pretrained NPG trees under ``myosuite/agents/`` are not shipped. Train your own
 policy, or see ``tutorials/1.2_Load_Policy.ipynb`` (falls back to a random policy

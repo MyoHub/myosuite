@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from myosuite.utils import gym
 from myosuite import make_env
 
 env = make_env("myoElbowPose1D6MRandom-v0", normalize_act=False)

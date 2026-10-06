@@ -8,7 +8,7 @@ Use the library version. Writing a custom re-implementation of a library feature
 
 | What you need | Use | Do NOT write |
 |---|---|---|
-| Muscle actuator from XML | `XmlActuatorCfg` | Custom `*ActionCfg` + `*Action` pair |
+| Motor / position actuators from XML | `XmlActuatorCfg` | Custom `*ActionCfg` + `*Action` pair (muscles: see the exceptions below) |
 | Observation composition | `ObservationTermCfg` + `ObservationManager` | Manual obs dicts in `__init__` |
 | Reward composition | `RewardTermCfg` + `RewardManager` | Inline reward outside term functions |
 | Reset / event logic | `EventTermCfg` + `EventManager` | Custom reset methods on env class |
@@ -21,9 +21,9 @@ Use the library version. Writing a custom re-implementation of a library feature
 | Joint state write | `entity.write_joint_state_to_sim(pos, vel, joint_ids=...)` | `data.qpos[i, adr] = ...` |
 | Ctrl write | `entity.write_ctrl_to_sim(ctrl, ctrl_ids=...)` | `data.ctrl[i, :] = ...` |
 | Per-env task state | `ManagerTermBase` instance attribute + `reset(env_ids)` | Module-level dict keyed by `id(env)` |
-| Resolve env_ids (mjlab≥1.4) | `from mjlab.envs.mdp.events import resolve_env_ids` | Local `_normalize_env_ids` helper |
+| Resolve env_ids (`None` = all envs) | `from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids` (mjlab's `resolve_env_ids`, with a fallback) | Local `_normalize_env_ids` helper |
 
-See `docs/wiki/mjlab-design-guide.md` for the full pattern reference.
+See [docs/wiki/mjlab-design-guide.md](mjlab-design-guide.md) for the full pattern reference.
 
 ---
 
@@ -79,7 +79,7 @@ Never import `quat_math` (numpy) inside a Torch or JAX execution path.
 
 ## pathlib
 
-Always `pathlib.Path`. Never `os.path`.
+Use `pathlib.Path` rather than `os.path`.
 
 | Instead of | Use |
 |---|---|
@@ -99,7 +99,8 @@ These custom implementations exist for documented reasons — do not replace wit
 
 | File | What | Why |
 |---|---|---|
-| `register_mjlab_tasks.py` | `MyoMuscleActivationAction` | Tendon-name mismatch in `_find_targets`; `XmlMuscleActuatorCfg` insufficient |
+| `backends/mjlab/tasks/mdp/actions.py` | `MyoAction` (muscle twins) | `XmlMuscleActuatorCfg` was removed in mjlab 1.4; the term also runs the muscle-command stages (noise, fatigue, reroute, custom) from the CPU registration |
+| `backends/mjlab/mjlab_task_builder.py` | `MyoMuscleActivationAction` | The `TaskConfig` route and downstream packages (myoInteract); tendon-name mismatch in `_find_targets` |
 | `physics/quat_math.py` | entire module | numpy + JAX dual-backend predating `mujoco.mju_*`; used in MJX reward terms |
 | `integrations/musclemimic/running_stats.py` | `RunningMeanStd` | Must match stats embedded in `.pt` checkpoints exactly |
 | `utils/colored_noise.py` | `ColoredNoiseProcess` | pink-noise-rl's buffered process on top of `colorednoise.powerlaw_psd_gaussian`: `import pink` loads stable-baselines3 and torch (seconds per env worker). Bit-identical, golden-tested |

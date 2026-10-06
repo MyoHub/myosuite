@@ -44,7 +44,7 @@ Alternatives
 
 * **Gymnasium entry points** — load a fully-configured challenge env::
 
-      import gymnasium as gym
+      from myosuite import make_env
       env = make_env("myoChallengeBaodingP2-v1")
 
 * **apply_transform escape hatch** — extend ModelBuilder scenes with any

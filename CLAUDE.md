@@ -10,11 +10,11 @@ add minimal comments and descriptions in the code / python files
 
 > **A task has two matched halves under one `env_id`: a CPU `MyoGymnasiumEnv` (playback / fine-tune / debug) and a GPU mjlab `ManagerBasedRlEnvCfg` (parallel training). Reuse term functions and `ModelBuilder` recipes across both. Don't invent a new registration mechanism or backend-specific hack — extend the primitives instead.**
 
-- **Two supported backends only:** CPU = `MyoGymnasiumEnv` subclass, registered via `registry.register_env(...)`; GPU = mjlab `ManagerBasedRlEnvCfg` + runner cfg, registered via `register_mjlab_task(...)`. They share one `env_id` and the cross-backend contract (`docs/wiki/cross-backend-contract.md`).
+- **Two supported backends only:** CPU = `MyoGymnasiumEnv` subclass, registered via `registry.register_env(...)`; GPU = mjlab `ManagerBasedRlEnvCfg` + runner cfg, registered via `register_cpu_twins(...)` (twins of CPU envs) or `register_mjlab_task(...)` (special tasks). They share one `env_id` and the cross-backend contract (`docs/wiki/cross-backend-contract.md`).
 - **MJX (JAX) and the `TaskConfig` / `ModularTaskEnv` route are experimental** — may not be maintained long-term. Don't build new work on them; prefer CPU + mjlab.
 - Term functions are pure and backend-agnostic — use `accessor.array_module()` only.
 - Prefer typed `@dataclass` configs over raw dicts / `ConfigDict`.
-- Register via `registry.register_env(...)` (CPU) or `register_mjlab_task(...)` (mjlab) — never `gym.register()` directly.
+- Register via `registry.register_env(...)` (CPU) or `register_cpu_twins(...)` / `register_mjlab_task(...)` (mjlab) — never `gym.register()` directly.
 - Build envs with `from myosuite import make_env` (`make_env(env_id)`, or `make_env(EnvConfig(...), backend=...)`) — not `gym.make()` — in code, tests, docs and tutorials.
 - Always return 5-tuple from `step()`: `(obs, rwd, terminated, truncated, info)`.
   **Exception:** `ModularMultiAgentTaskEnv` returns 5-tuples of per-agent dicts — intentional.
@@ -69,10 +69,11 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
 
 - Plan non-trivial tasks in `tasks/todo.md` before implementing.
 - After any user correction: update `tasks/lessons.md`.
+  (`tasks/` is git-ignored local scratch space, not part of the repository.)
 - Never mark a task done without proving it works.
-- **Branching and CI.** Branch from `ms3` and open PRs against `ms3`.
-  - Isolated or agent worktrees may start from `main`, so create the branch from `ms3` explicitly.
-  - CI only runs for `main`/`dev`, so a PR into `ms3` gets no CI. Run the Verification block below locally.
+- **Branching and CI.** Branch from `dev` and open PRs against `dev`.
+  - Isolated or agent worktrees may start from `main`, so create the branch from `dev` explicitly.
+  - CI runs for pull requests into `main` and `dev`. Run the Verification block below locally before pushing.
 - **Parity baselines.** Regenerate (`scripts/generate_parity_baselines.py --env-id <id>`) only the envs your change intentionally alters.
   - Generate them only with the package versions CI resolves. CI installs with `uv pip install -e ".[...]"`, which ignores `uv.lock` and picks the latest compatible mujoco/mjlab.
   - Never skip a case as "non-deterministic" without checking that a replay really differs between processes.
@@ -104,6 +105,7 @@ commit `68a77811`) — there is no `test_boxing_registry.py` / `test_saber_env.p
 - `docs/wiki/engineering-standards.md` — architecture rules, checklist for new envs.
 - `docs/wiki/adding-a-new-task.md` — step-by-step worked example for registering a new task; read before adding any new env ID.
 - `docs/wiki/library-usage.md` — approved library feature map; read before writing any helper.
+- `docs/wiki/writing-term-functions.md` — signatures and the batch rule for obs / reward / termination / action terms.
 - `docs/wiki/mjlab-design-guide.md` — canonical mjlab patterns; read before writing any mjlab code.
 - `docs/wiki/cross-backend-contract.md` — obs/action/timing invariants for policy portability.
 - `docs/wiki/repository-map.md` — where everything lives.

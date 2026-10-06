@@ -241,8 +241,6 @@ def _run_cpu_episode(
         Tuple ``(qpos_traj, rewards)`` — numpy arrays of lengths ``T`` and
         ``(T, nq)`` respectively.
     """
-    from myosuite.utils import gym as _myo_gym  # ensure envs registered  # noqa: F401
-
     env = make_env(env_id)
     env.reset(seed=0)
 

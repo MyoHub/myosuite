@@ -3,7 +3,7 @@
 A task has two matched halves under one `env_id`: a **CPU** implementation
 (`MyoGymnasiumEnv`, for playback/fine-tune) and a **GPU** mjlab config
 (`ManagerBasedRlEnvCfg`, for parallel training). **That supported path is
-covered in `engineering-standards.md`** ("CPU and GPU are two matched halves")
+covered in [engineering-standards.md](engineering-standards.md)** ("CPU and GPU are two matched halves")
 — read it first. For the CPU half you copy `envs/myo/tasks/basic/arm/reach.py`;
 for the GPU half you add a mjlab config under the same `env_id`.
 
@@ -16,7 +16,7 @@ for the GPU half you add a mjlab config under the same `env_id`.
 > `MyoGymnasiumEnv` subclass + mjlab config unless you specifically want the
 > data-driven authoring style.
 
-Read `writing-term-functions.md` before writing any new obs/reward term (the
+Read [writing-term-functions.md](writing-term-functions.md) before writing any new obs/reward term (the
 `MyoGymnasiumEnv`, mjlab, and `TaskConfig` routes all share the same term
 functions, which is what keeps CPU and GPU in parity).
 
@@ -78,7 +78,7 @@ subclass to write.
      `(accessor, obs_dict, **kwargs) -> dict` for reward,
      `(accessor, **kwargs) -> dict[str, Any]` for obs. Use
      `accessor.array_module()` only — never import `numpy`/`jax.numpy`/`torch`
-     directly. See `writing-term-functions.md`.
+     directly. See [writing-term-functions.md](writing-term-functions.md).
 
 3. **Write the `@dataclass class FooTask(TaskConfig)`** with concrete,
    non-default `obs`, `goal`, and `reward` fields. See `myosuite/core/config.py`
@@ -128,7 +128,7 @@ subclass to write.
 - If you are using the `TaskConfig` route, don't abandon it midway for a new
   registration file or backend-specific branching — if a `TaskConfig` can't
   express your task, the term-function / recipe primitives are probably missing
-  something; extend those instead (see `engineering-standards.md`'s
+  something; extend those instead (see [engineering-standards.md](engineering-standards.md)'s
   Search-Before-Write section). (Writing a `MyoGymnasiumEnv` subclass for the
   CPU half is *not* on this list — that is the normal alternative to `TaskConfig`
   for the CPU side; you just add the matched mjlab/MJX backend separately.)

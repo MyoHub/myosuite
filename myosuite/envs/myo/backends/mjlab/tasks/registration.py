@@ -38,6 +38,7 @@ def rebuild_twin_cfg(
     env_id: str,
     features: Iterable[Any] = (),
     task_kwargs: dict[str, Any] | None = None,
+    play: bool = False,
 ) -> ManagerBasedRlEnvCfg:
     """Rebuild the twin config of *env_id* from a modified CPU registration.
 
@@ -45,6 +46,7 @@ def rebuild_twin_cfg(
         env_id: A CPU-twin id registered through :func:`register_cpu_twins`.
         features: ``EnvConfig.features`` (wrapper specs) added to the CPU registration.
         task_kwargs: CPU constructor kwargs (``frame_skip``) replacing the registered ones.
+        play: Build the play (evaluation) variant of the config.
 
     Returns:
         A fresh env config.
@@ -59,7 +61,7 @@ def rebuild_twin_cfg(
             "EnvConfig.features or ctrl_dt."
         )
     with feature_overrides(features, task_kwargs):
-        return factory(env_id)
+        return factory(env_id, play=play)
 
 
 def register_cpu_twins(
