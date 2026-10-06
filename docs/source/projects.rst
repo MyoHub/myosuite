@@ -13,6 +13,7 @@ Projects with Myosuite
     * :ref:`ref_lattic`
     * :ref:`ref_sar`
     * :ref:`ref_musclemimic`
+    * :ref:`ref_myointeract`
 
 
 .. _myochallenge:
@@ -124,3 +125,14 @@ MuscleMimic: Towards Embodied AI with MuscleMimic: Unlocking full-body musculosk
 Li, C., Wang, C., Ziliotto, B., Simos, M., Kovecses, J., Durandau, G., Mathis, A. (2026). arXiv:2603.25544.
 `Paper <https://arxiv.org/abs/2603.25544>`__, `code <https://github.com/amathislab/musclemimic>`__. Used for the full-body
 tutorials 5.1-5.5; the motion data and retargeting sources are listed on :doc:`references`.
+
+
+
+.. _ref_myointeract:
+
+MyoInteract: A Framework for Fast Prototyping of Biomechanical HCI Tasks using Reinforcement Learning
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Bhattarai, A., Selder, H., Fischer, F., Fleig, A., Kristensson, P.O. (2026). *ACM Designing Interactive Systems Conference (DIS)*.
+`Paper <https://arxiv.org/abs/2602.15245>`__, `DOI <https://doi.org/10.1145/3800645.3812899>`__. Builds on MyoSuite: designers set up
+interaction tasks, user models and training from a GUI and train muscle-actuated simulated users within minutes.
