@@ -153,7 +153,9 @@ class EnvConfig:
         ctrl_dt: Control timestep in seconds (the single timing knob: physics
             substeps per control step, ``frame_skip`` or decimation, follow from
             it and the model timestep). Must be a whole multiple of the model
-            timestep.
+            timestep. The ``TaskConfig`` envs (``ModularTaskEnv``) take their
+            timing from ``task_config.backend`` and raise a ``ValueError`` on
+            every backend.
         features: Muscle-command features to activate, as
             :class:`~gymnasium.envs.registration.WrapperSpec` (see
             :func:`myosuite.envs.wrappers.wrapper_spec`): noise, fatigue,

@@ -11,7 +11,6 @@ are the CPU ones, so policies transfer between the backends.
 
 from __future__ import annotations
 
-import gymnasium as gym
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
@@ -42,16 +41,28 @@ def make_leg_directional_env_cfg(
 
     Returns:
         The env config.
+
+    Raises:
+        ValueError: If ``make_env`` asks for another ``ctrl_dt``: the timing is part
+            of the task config, as on the CPU.
     """
     del play
     import myosuite  # noqa: F401, PLC0415  (registers the CPU envs)
 
-    config = gym.spec(env_id).kwargs["task_config"]
+    # Read through cpu_task_spec, so EnvConfig.features and overrides reach the twin.
+    cpu = ref.cpu_task_spec(env_id)
+    config = cpu.kwargs["task_config"]
+    frame_skip = int(cpu.kwargs.get("frame_skip", config.backend.n_substeps))
+    if frame_skip != config.backend.n_substeps:
+        raise ValueError(
+            f"{env_id} takes its timing from task_config.backend, so ctrl_dt cannot change."
+        )
     reward_extra = config.reward.extra
     task = ref.CpuTaskSpec(
         env_id,
-        {"model_path": config.model, "frame_skip": config.backend.n_substeps},
+        {"model_path": config.model, "frame_skip": frame_skip},
         config.max_episode_steps,
+        wrappers=cpu.wrappers,
     )
     info = ref.compiled_info(task)
     robot = SceneEntityCfg(ENTITY)

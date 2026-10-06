@@ -26,6 +26,7 @@ from myosuite.envs.wrappers import (
 pytestmark = pytest.mark.tier2
 
 _ID = "myoElbowPose1D6MRandom-v0"
+_DIRECTIONAL = "myoLegDirectionalForward-v0"  # a ModularTaskEnv id with an mjlab twin
 _NOISE = {"signal_dependent_std": 0.1, "constant_std": 0.02}
 
 
@@ -185,3 +186,27 @@ class TestMjlab:
             assert env.max_episode_length == 37
         finally:
             env.close()
+
+    def test_features_reach_a_taskconfig_twin(self) -> None:
+        """The leg-directional twin (a ModularTaskEnv id) is rebuilt with the features too."""
+        from myosuite.envs.myo.backends.mjlab.tasks.registration import (
+            rebuild_twin_cfg,
+        )
+
+        features = (
+            wrapper_spec(MotorNoiseWrapper, motor_noise=_NOISE),
+            wrapper_spec(FatigueWrapper),
+        )
+        action = rebuild_twin_cfg(_DIRECTIONAL, features).actions["muscles"]
+        assert action.motor_noise.signal_dependent_std == 0.1
+        assert action.muscle_fatigue
+        base = rebuild_twin_cfg(_DIRECTIONAL).actions["muscles"]
+        assert not base.motor_noise.enabled and not base.muscle_fatigue
+
+    def test_ctrl_dt_is_refused_for_taskconfig_ids_on_both_backends(self) -> None:
+        """Their timing is part of the task config: no backend changes it silently."""
+        with pytest.raises(ValueError, match="ctrl_dt cannot change"):
+            make_env(EnvConfig(_DIRECTIONAL, ctrl_dt=0.01))
+        cfg = EnvConfig(_DIRECTIONAL, num_envs=1, ctrl_dt=0.01)
+        with pytest.raises(ValueError, match="ctrl_dt cannot change"):
+            make_env(cfg, backend="mjlab", device="cpu")
