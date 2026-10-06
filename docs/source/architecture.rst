@@ -66,5 +66,5 @@ ModelBuilder
 
 ``myosuite.core.model_builder.ModelBuilder`` composes MJCF. Prefer named
 recipes in ``myosuite.core.model_recipes``. For official challenge evals, use
-``gym.make`` — recipes do not fully reproduce every challenge XML.
+``make_env`` — recipes do not fully reproduce every challenge XML.
 See :doc:`model_builder`.

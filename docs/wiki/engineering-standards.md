@@ -172,13 +172,19 @@ parity is mostly a matter of using the same terms on both sides.
 2. Reuse term helpers from `myosuite/terms/` where they fit.
 3. Register with `registry.register_env(...)` in the suite `__init__.py`.
 4. Add the env ID to `test_registry.py`; add a CPU parity baseline.
+5. Muscle noise, fatigue, reafferentation and sarcopenia are **wrappers**, not env
+   kwargs. To let the env take them, run the stages in its action path
+   (`MuscleActionMixin` / `CtrlStageHost`: `_run_ctrl_stages` before writing `ctrl`,
+   `_run_reset_stages` in `reset`); see `cross-backend-contract.md`.
 
 **2. Matched mjlab GPU config (when you need parallel training):**
-5. Add a `ManagerBasedRlEnvCfg` + PPO runner config in
+6. Add a `ManagerBasedRlEnvCfg` + PPO runner config in
    `backends/mjlab/register_mjlab_*.py` under the **same `env_id`** (set
    `obs_groups` and `njmax`/`nconmax` — see the GPU section above).
-6. Honour `cross-backend-contract.md` (obs order/scale, action mapping,
-   `ctrl_dt`) and add a CPU↔mjlab parity test so the two cannot drift.
+7. Honour `cross-backend-contract.md` (obs order/scale, action mapping,
+   `ctrl_dt`) and add a CPU↔mjlab parity test so the two cannot drift. To make the
+   twin take features, build its config from the CPU registration
+   (`cpu_reference.cpu_task_spec`, `register_cpu_twins`).
 
 The experimental data-driven `TaskConfig` route (CPU + MJX from one spec) is
 walked through in `adding-a-new-task.md`.
