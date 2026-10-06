@@ -101,6 +101,12 @@ model = PPO("MlpPolicy", env, device="cpu")
 model.learn(total_timesteps=100_000)
 ```
 
+Or use the ready-made script (PPO, SAC or TD3; saves the model and scores the policy at the end):
+
+```bash
+python scripts/train_sb3.py myoElbowPose1D6MRandom-v0 --timesteps 500000
+```
+
 Train on GPU (same `env_id`, mjlab / RSL-RL):
 
 ```bash

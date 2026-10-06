@@ -257,7 +257,7 @@ according to the equation:
 
 For participants that do not wish to use this normalization feature, it can be done during environment initialization with:
 
-:code:`env = make_env(myoChallengeOslRunFixed-v0”, normalize_act=False)`
+:code:`env = make_env("myoChallengeOslRunFixed-v0", normalize_act=False)`
 
 
 where in this case, the control range of the muscles are set between :math:`[0, 1]` without any normalization performed.

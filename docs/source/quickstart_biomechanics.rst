@@ -249,7 +249,7 @@ Variant environments model common clinical conditions:
 
 .. code-block:: python
 
-   import myosuite, gymnasium as gym
+   from myosuite import make_env
 
    # Sarcopenia: 50 % reduction in peak muscle force
    env = make_env('myoSarcElbowPose1D6MFixed-v0')

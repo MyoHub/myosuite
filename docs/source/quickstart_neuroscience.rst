@@ -255,7 +255,6 @@ It is off by default. Envs whose pipeline does not run wrapper stages (MuscleMim
 
 .. code-block:: python
 
-   import myosuite
    from myosuite import make_env
    from myosuite.envs.wrappers import MotorNoiseWrapper
    from myosuite.terms.base_action import MotorNoiseCfg
