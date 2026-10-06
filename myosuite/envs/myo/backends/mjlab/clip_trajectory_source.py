@@ -558,13 +558,23 @@ class MultiClipTrajectorySource:
         *frame_idx* has one entry per env, or per env of *env_ids* when only those
         envs are gathered (e.g. the envs of a partial reset).  Each frame must lie
         in its env's clip (``[0, clip length)``), as :meth:`frame_indices`
-        returns.  One gather, no host sync.
+        returns; a frame outside it would read a neighbouring clip's rows, so
+        it is checked on the device (raises at once on CPU, a device-side
+        assert on CUDA).  One gather, no host sync.
         """
         if bank is None:
             return None
+        import torch
+
         assert self._clip_indices is not None and self._clip_starts is not None
+        assert self._clip_lengths is not None
         clip_indices = (
             self._clip_indices if env_ids is None else self._clip_indices[env_ids]
+        )
+        lengths = self._clip_lengths.index_select(0, clip_indices)
+        torch._assert_async(
+            ((frame_idx >= 0) & (frame_idx < lengths)).all(),
+            "clip bank read: a frame lies outside its env's clip",
         )
         rows = self._clip_starts.index_select(0, clip_indices) + frame_idx
         return bank.index_select(0, rows)

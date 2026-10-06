@@ -579,6 +579,22 @@ class TestClipTrajectorySourceBasics:
             np.testing.assert_array_equal(got.numpy(), expected.astype(np.float32))
         assert torch.equal(reset_qpos, qpos[env_ids])
 
+    @pytest.mark.parametrize("bad_frame", [5, -1])
+    def test_multi_clip_gather_rejects_a_frame_outside_its_clip(
+        self, bad_frame: int
+    ) -> None:
+        """A frame past its env's clip (or negative) would read a neighbouring
+        clip's rows in the concatenated bank; the gather refuses it."""
+        src = _make_multi_clip_source()
+        src.update(torch.zeros(_N, dtype=torch.long))
+        src._clip_indices = torch.tensor([0, 1, 1, 1][:_N], dtype=torch.long)
+        # Env 0 plays clip 0 (5 frames): frame 5 would be clip 1's first row.
+        frames = torch.tensor([bad_frame, 0, 0, 0][:_N], dtype=torch.long)
+        with pytest.raises(RuntimeError, match="outside its env's clip"):
+            src.site_targets_at_frames(frames)
+        with pytest.raises(RuntimeError, match="outside its env's clip"):
+            src.ref_qpos_at_frames(frames[:1], torch.tensor([0]))
+
 
 # ---------------------------------------------------------------------------
 # TestClipTrajectorySourceAdvance
