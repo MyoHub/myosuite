@@ -16,14 +16,14 @@ import numpy as np
 import pytest
 
 import myosuite  # noqa: F401
-from myosuite.utils import gym
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
 
 def _lost_episode(env_id: str, **kwargs: Any) -> tuple[Any, dict, dict]:
     """Roll out zero actions (the model falls) and stack the infos into a path."""
-    env = gym.make(env_id, **kwargs)
+    env = make_env(env_id, **kwargs)
     env.reset(seed=0)
     infos = []
     terminated = truncated = False
@@ -73,7 +73,7 @@ def _path(**groups: dict[str, Any]) -> dict:
     "env_id", ["myoChallengeRelocateP1-v0", "myoChallengeDieReorientP1-v0"]
 )
 def test_relocate_and_reorient_score_by_solved_steps(env_id: str) -> None:
-    env = gym.make(env_id).unwrapped
+    env = make_env(env_id).unwrapped
     act_reg = np.full(20, -0.25)
     solved = lambda n: np.r_[np.ones(n), np.zeros(20 - n)]  # noqa: E731
     paths = [
@@ -85,7 +85,7 @@ def test_relocate_and_reorient_score_by_solved_steps(env_id: str) -> None:
 
 
 def test_tabletennis_score_needs_one_solved_step() -> None:
-    env = gym.make("myoChallengeTableTennisP0-v0").unwrapped
+    env = make_env("myoChallengeTableTennisP0-v0").unwrapped
     act_reg = np.full(10, -0.5)
     paths = [
         _path(rwd_dict={"solved": np.r_[np.zeros(9), 1.0], "act_reg": act_reg}),
@@ -95,7 +95,7 @@ def test_tabletennis_score_needs_one_solved_step() -> None:
 
 
 def test_baoding_score_is_the_solved_fraction_of_the_horizon() -> None:
-    env = gym.make("myoChallengeBaodingP1-v1")
+    env = make_env("myoChallengeBaodingP1-v1")
     horizon = env.spec.max_episode_steps
     solved = np.zeros(horizon)
     solved[: horizon // 4] = 1.0
@@ -125,7 +125,7 @@ def test_bimanual_score_requires_a_clean_contact_history() -> None:
         ContactTrajIssue.NO_GOAL
     )
 
-    env = gym.make("myoChallengeBimanual-v0").unwrapped
+    env = make_env("myoChallengeBimanual-v0").unwrapped
     base = {
         "obs_dict": {"time": np.linspace(0, 2, n), "max_force": np.linspace(0, 30, n)},
         "rwd_dict": {

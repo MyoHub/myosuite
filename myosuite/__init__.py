@@ -6,7 +6,7 @@
 """MyoSuite package entrypoint.
 
 Importing this module registers all MyoSuite environments with Gymnasium,
-so ``gym.make("myoEnvName-v0")`` works immediately after ``import myosuite``.
+so ``make_env("myoEnvName-v0")`` works immediately after ``import myosuite``.
 """
 
 from __future__ import annotations
@@ -111,12 +111,23 @@ def register_all_envs() -> dict[str, list[str]]:
     return _registered_suites
 
 
+def __getattr__(name: str) -> Any:
+    """Lazy ``from myosuite import make_env`` (the factory lives in ``myosuite.core``)."""
+    if name == "make_env":
+        from myosuite.core.registry import make_env
+
+        return make_env
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 register_all_envs()
+
 
 __all__: list[str] = [
     "__version__",
     "gym_registry_specs",
     "register_all_envs",
+    "make_env",
     "myosuite_env_suite",
     "myosuite_myobase_suite",
     "myosuite_myochal_suite",

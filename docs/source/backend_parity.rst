@@ -7,6 +7,9 @@ trained on GPU can be played back on CPU (verified per family below; treat famil
 marked *experimental* as untested). Details:
 ``docs/wiki/cross-backend-contract.md``.
 
+Which muscle-command features (noise, fatigue, sarcopenia, ...) each env and backend accepts is
+tabulated in the same page ("Which features run where").
+
 Check CPU physics against frozen rollouts::
 
    pytest myosuite/tests/test_parity.py -v

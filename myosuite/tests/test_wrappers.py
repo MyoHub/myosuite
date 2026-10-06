@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from myosuite.envs.wrappers import DictObservationWrapper, PerturbationWrapper
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -89,13 +90,12 @@ def test_cleared_perturbations_stop_being_applied() -> None:
 def test_dict_observation_wrapper_space_and_reset_obs() -> None:
     """The Dict space exists before the first reset and reset returns the dict
     observation of the reset state (it returned {} and kept the flat Box)."""
-    from myosuite.utils import gym
 
     env_id = "myoElbowPose1D6MRandom-v0"
-    flat_env = gym.make(env_id)
+    flat_env = make_env(env_id)
     flat_reset, _ = flat_env.reset(seed=0)
     flat_env.close()
-    env = DictObservationWrapper(gym.make(env_id))
+    env = DictObservationWrapper(make_env(env_id))
     assert isinstance(env.observation_space, gymnasium.spaces.Dict)
 
     obs, _ = env.reset(seed=0)

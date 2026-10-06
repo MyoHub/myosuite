@@ -49,7 +49,6 @@ def _inprocess_table_tennis_ppo_smoke() -> None:
 
     import myosuite
 
-    myosuite.register_all_envs()
     import myosuite.envs.myo.backends.mjlab  # noqa: F401
 
     from mjlab.envs import ManagerBasedRlEnv
@@ -100,7 +99,6 @@ def test_mjlab_table_tennis_task_registered() -> None:
     """Table tennis mjlab modules register and expose P0 env cfg (no Warp sim)."""
     import myosuite
 
-    myosuite.register_all_envs()
     import myosuite.envs.myo.backends.mjlab  # noqa: F401
 
     from mjlab.tasks.registry import load_env_cfg
@@ -125,7 +123,6 @@ def test_mjlab_table_tennis_action_reaches_ctrl(
     """
     import myosuite
 
-    myosuite.register_all_envs()
     import myosuite.envs.myo.backends.mjlab  # noqa: F401
 
     from mjlab.envs import ManagerBasedRlEnv

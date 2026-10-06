@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from myosuite import make_env
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -277,7 +278,6 @@ def render_one(
     import imageio.v2 as imageio
     import mujoco
 
-    from myosuite.utils import gym
     from myosuite.viz.mj_renderer import _tune_mjv_scene_for_rgb
 
     out_path = out_dir / f"{env_id}.mp4"
@@ -290,7 +290,7 @@ def render_one(
 
     ckpt = sweep_dir / env_id / "ppo_final.zip"
     t0 = time.time()
-    env = gym.make(env_id)
+    env = make_env(env_id)
     try:
         uw = env.unwrapped
         model = uw.model
@@ -444,9 +444,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = (args.out_dir or (sweep_dir / "renders")).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    import myosuite
-
-    myosuite.register_all_envs()
+    import myosuite  # noqa: F401
 
     env_ids = _load_pass_env_ids(sweep_dir, args.only)
     print(f"rendering {len(env_ids)} pass envs → {out_dir}", flush=True)

@@ -16,6 +16,7 @@ import myosuite.viz.mj_renderer as mj_renderer
 from myosuite.utils import gym
 from myosuite.utils.path_utils import evaluate_success
 from myosuite.utils.policy_utils import examine_policy
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -133,7 +134,7 @@ def test_offscreen_frames_use_frame_size_and_camera(monkeypatch, tmp_path) -> No
 
 def test_myo_env_observations_match_logged_obs_dict() -> None:
     """On a real env, observations[t] is the obs vector of env_infos.obs_dict[t]."""
-    env = gym.make("myoElbowPose1D6MRandom-v0").unwrapped
+    env = make_env("myoElbowPose1D6MRandom-v0").unwrapped
     env.seed(0)
     env.action_space.seed(0)
     path = examine_policy(env, _ZeroPolicy(env.action_space), horizon=6)["Trial0"]

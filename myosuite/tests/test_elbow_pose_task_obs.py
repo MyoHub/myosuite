@@ -11,12 +11,12 @@ import dataclasses
 import numpy as np
 import pytest
 
-import myosuite
+import myosuite  # noqa: F401
 from myosuite.core.config import ObsSpec
 from myosuite.envs.modular_env import ModularTaskEnv
 from myosuite.utils import gym
+from myosuite import make_env
 
-myosuite.register_all_envs()
 
 pytestmark = pytest.mark.tier1
 
@@ -35,7 +35,7 @@ _OLD_KEYS = ["joint_pos", "joint_vel", "muscle_act"]
 
 @pytest.mark.parametrize("env_id", _RANDOM_IDS)
 def test_random_target_changes_the_observation(env_id: str) -> None:
-    env = gym.make(env_id)
+    env = make_env(env_id)
     first, _ = env.reset(seed=123)
     second, _ = env.reset(seed=124)
     assert not np.array_equal(first, second)
@@ -43,7 +43,7 @@ def test_random_target_changes_the_observation(env_id: str) -> None:
 
 @pytest.mark.parametrize("env_id", _RANDOM_IDS + _FIXED_IDS)
 def test_observation_ends_with_pose_error(env_id: str) -> None:
-    env = gym.make(env_id)
+    env = make_env(env_id)
     unwrapped = env.unwrapped
     obs, _ = env.reset(seed=0)
     # joint_pos (1) + joint_vel (1) + muscle_act (6) + pose_error (1)
@@ -72,7 +72,7 @@ def test_pose_error_only_appends_to_the_old_observation(env_id: str) -> None:
 @pytest.mark.parametrize("env_id", _RANDOM_IDS + _FIXED_IDS)
 def test_joint_velocity_is_scaled_by_the_control_timestep(env_id: str) -> None:
     """The observed velocity is ``qvel * ctrl_dt``, as in the legacy PoseEnvV0 twins."""
-    env = gym.make(env_id)
+    env = make_env(env_id)
     unwrapped = env.unwrapped
     unwrapped.reset(seed=0)
     unwrapped.data.qvel[:] = 0.8  # a known joint velocity

@@ -10,7 +10,7 @@ ModelBuilder *(experimental)*
    exclusions, keyframes, and composite multi-geom objects that ModelBuilder
    does not currently support natively.  **For training or evaluating agents
    against a benchmark, always use the registered Gymnasium entry points**
-   (e.g. ``gym.make("myoChallengeBaodingP2-v1")``) or instantiate the
+   (e.g. ``make_env("myoChallengeBaodingP2-v1")``) or instantiate the
    environment class directly.
 
    ModelBuilder is intended for rapid prototyping, ablation studies, and
@@ -95,10 +95,9 @@ The safest way to get a fully-configured challenge environment:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
-   env = gym.make("myoChallengeBaodingP2-v1")
+   env = make_env("myoChallengeBaodingP2-v1")
    obs, info = env.reset()
    env.close()
    # Also registered: myoChallengeTableTennisP2-v0, myoChallengeSoccerP2-v0,
@@ -521,10 +520,9 @@ the full aerodynamic ball, or set drag via a custom XML include:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
-   env = gym.make("myoChallengeTableTennisP2-v0")
+   env = make_env("myoChallengeTableTennisP2-v0")
    env.close()
 
 Relocate (``myoChallengeRelocateP2-v0``)
@@ -588,7 +586,7 @@ Die Reorient (``myoChallengeDieReorientP2-v0``)
 Hand fragment + a free box stand-in for the die. The 12-capsule textured die
 from the challenge XML is not expressible with ``add_free_body`` (no
 ``imass`` / cube-map texture on ``MjsBody``). Use
-``gym.make("myoChallengeDieReorientP2-v0")`` for the full object.
+``make_env("myoChallengeDieReorientP2-v0")`` for the full object.
 
 .. code-block:: python
 
@@ -627,7 +625,7 @@ For the most common configurations, pre-built recipes are registered via
    model, spec = build_from_recipe("elbow_sarcopenia")   # 50 % muscle force
    model, spec = build_from_recipe("hand_standard")
    model, spec = build_from_recipe("full_arm")           # shoulder + elbow + hand
-   # Locomotion: gym.make("myoLegWalk-v0") (walk_standard duplicates leg/OSL meshes)
+   # Locomotion: make_env("myoLegWalk-v0") (walk_standard duplicates leg/OSL meshes)
 
 Hand models and the thumb joint order
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

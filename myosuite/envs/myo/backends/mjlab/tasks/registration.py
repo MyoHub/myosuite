@@ -7,12 +7,15 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 import gymnasium as gym
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.rl import RslRlOnPolicyRunnerCfg
 from mjlab.tasks.registry import register_mjlab_task
+
+from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import feature_overrides
 
 _log = logging.getLogger(__name__)
 
@@ -26,6 +29,37 @@ def condition_variants(env_id: str) -> list[str]:
         return []
     candidates = (prefix + env_id[3:] for prefix in _CONDITION_PREFIXES)
     return [cid for cid in candidates if cid in gym.registry]
+
+
+_CFG_FACTORIES: dict[str, Callable[..., ManagerBasedRlEnvCfg]] = {}
+
+
+def rebuild_twin_cfg(
+    env_id: str,
+    features: Iterable[Any] = (),
+    task_kwargs: dict[str, Any] | None = None,
+) -> ManagerBasedRlEnvCfg:
+    """Rebuild the twin config of *env_id* from a modified CPU registration.
+
+    Args:
+        env_id: A CPU-twin id registered through :func:`register_cpu_twins`.
+        features: ``EnvConfig.features`` (wrapper specs) added to the CPU registration.
+        task_kwargs: CPU constructor kwargs (``frame_skip``) replacing the registered ones.
+
+    Returns:
+        A fresh env config.
+
+    Raises:
+        NotImplementedError: If the twin is not built from the CPU registration.
+    """
+    factory = _CFG_FACTORIES.get(env_id)
+    if factory is None:
+        raise NotImplementedError(
+            f"{env_id} is not a CPU twin: its mjlab config cannot be rebuilt from "
+            "EnvConfig.features or ctrl_dt."
+        )
+    with feature_overrides(features, task_kwargs):
+        return factory(env_id)
 
 
 def register_cpu_twins(
@@ -54,6 +88,7 @@ def register_cpu_twins(
                     "mjlab: skipping %s (config failed)", env_id, exc_info=True
                 )
                 continue
+            _CFG_FACTORIES[env_id] = env_cfg_fn
             register_mjlab_task(
                 task_id=env_id,
                 env_cfg=env_cfg,

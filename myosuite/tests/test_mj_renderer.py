@@ -11,9 +11,9 @@ import numpy as np
 import pytest
 
 import myosuite.utils.video_io as video_io
-from myosuite.utils import gym
 from myosuite.utils.policy_utils import examine_policy
 from myosuite.viz.mj_renderer import MJRenderer
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier2
 
@@ -87,7 +87,7 @@ def test_examine_policy_offscreen_video_is_not_black(monkeypatch, tmp_path) -> N
         "write_video",
         lambda name, frames, **kw: videos.update({name: frames}),
     )
-    env = gym.make("myoElbowPose1D6MRandom-v0").unwrapped
+    env = make_env("myoElbowPose1D6MRandom-v0").unwrapped
     env.seed(0)
 
     class _Policy:

@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from myosuite.tests.support.optional_deps import require_musclemimic_models
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -52,12 +53,9 @@ class TestLegDirectionalRegistry:
         "env_id", ["myoLegDirectionalForward-v0", "myoLegDirectionalBackward-v0"]
     )
     def test_registered_and_runs(self, env_id: str) -> None:
-        import myosuite
-
-        myosuite.register_all_envs()
         assert gym.spec(env_id) is not None
 
-        env = gym.make(env_id)
+        env = make_env(env_id)
         try:
             obs, info = env.reset(seed=0)
             assert env.observation_space.contains(obs)
@@ -76,15 +74,13 @@ class TestFullBodyChaseTagRegistry:
     ENV_ID = "myoChallengeChaseTagFBP2-v0"
 
     def test_registered_and_runs(self) -> None:
-        import myosuite
         from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
             CHASETAG_FB_ARENA_BYTES,
         )
 
-        myosuite.register_all_envs()
         assert gym.spec(self.ENV_ID) is not None
 
-        env = gym.make(self.ENV_ID)
+        env = make_env(self.ENV_ID)
         try:
             model = env.unwrapped.model
             assert model.na == 354, f"expected 354 full-body muscles, got {model.na}"
@@ -173,13 +169,11 @@ class TestChaseTagVsRegistry:
 
     def test_registered_and_runs(self) -> None:
         require_musclemimic_models()
-        import myosuite
 
-        myosuite.register_all_envs()
         assert gym.spec(self.ENV_ID) is not None
 
         try:
-            env = gym.make(self.ENV_ID)
+            env = make_env(self.ENV_ID)
         except Exception as exc:  # noqa: BLE001
             pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
             return
@@ -198,13 +192,11 @@ class TestChaseTagVsRegistry:
 
     def test_chaser_catching_runner_increases_runner_health(self) -> None:
         """Driving the chaser onto the runner's pelvis should accrue tag pressure."""
-        import myosuite
         from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
             ChaseTagVsTaskConfig,
         )
         from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
 
-        myosuite.register_all_envs()
         env = ModularMultiAgentTaskEnv(ChaseTagVsTaskConfig(agent_separation_m=0.5))
         obs, info = env.reset(seed=0)
         zero_actions = {

@@ -9,17 +9,16 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import myosuite
-from myosuite.utils import gym
+import myosuite  # noqa: F401
+from myosuite import make_env
 
-myosuite.register_all_envs()
 
 pytestmark = pytest.mark.tier1
 
 
 @pytest.mark.parametrize("geometry", ["8", "100", "ID", "OOD"])
 def test_object_rests_in_the_relaxed_hand(geometry: str) -> None:
-    env = gym.make(f"myoHandReorient{geometry}-v0")
+    env = make_env(f"myoHandReorient{geometry}-v0")
     action = np.zeros(env.action_space.shape, dtype=np.float32)
     for seed in range(2):
         env.reset(seed=seed)

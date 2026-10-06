@@ -31,7 +31,7 @@ env's action pipeline (see
 order; custom stages run after them in installation order. Each
 stage can be installed **once per env**: a second wrapper of the same kind raises a
 ``ValueError`` (the ``myoFati*`` and ``myoReaf*`` ids already contain theirs, so
-wrap the base id to configure it, e.g. ``FatigueWrapper(gym.make(base_id),
+wrap the base id to configure it, e.g. ``FatigueWrapper(make_env(base_id),
 fatigue_reset_random=True)``, or change the options with
 ``env.set_fatigue_reset_random(...)`` / ``env.set_motor_noise(...)``).
 
@@ -57,12 +57,12 @@ fatigue_reset_random=True)``, or change the options with
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 import gymnasium as gym
 import numpy as np
-from gymnasium.envs.registration import WrapperSpec
+from gymnasium.envs.registration import WrapperSpec, load_env_creator
 from gymnasium.utils import RecordConstructorArgs
 
 from myosuite.envs import muscle_stages
@@ -139,7 +139,7 @@ class DictObservationWrapper(RecordConstructorArgs, gym.ObservationWrapper):
 
     Example::
 
-        env = gym.make("myoElbowPose1D6MRandom-v0")
+        env = make_env("myoElbowPose1D6MRandom-v0")
         env = DictObservationWrapper(env)
         obs, info = env.reset()
         print(list(obs.keys()))  # ['qpos', 'qvel', 'pose_err']
@@ -216,7 +216,7 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
 
     Example::
 
-        env = gym.make("myoLegWalk-v0")
+        env = make_env("myoLegWalk-v0")
         env = PerturbationWrapper(env)
 
         # Trip: lateral push to pelvis for two steps, starting at step 50
@@ -357,7 +357,7 @@ class MotorNoiseWrapper(
     Example::
 
         env = MotorNoiseWrapper(
-            gym.make("myoElbowPose1D6MRandom-v0"), MotorNoiseCfg.van_beers_2004()
+            make_env("myoElbowPose1D6MRandom-v0"), MotorNoiseCfg.van_beers_2004()
         )
 
     Args:
@@ -513,7 +513,7 @@ class ExcitationStageWrapper(
     Example::
 
         env = ExcitationStageWrapper(
-            gym.make("myoElbowPose1D6MRandom-v0"), functools.partial(LowPassStage, 0.3)
+            make_env("myoElbowPose1D6MRandom-v0"), functools.partial(LowPassStage, 0.3)
         )
 
     Args:
@@ -573,7 +573,7 @@ class CtrlStageWrapper(
             ctrl[idx] = np.clip(ctrl[idx], 0.0, 0.8)  # cap the excitation
             return ctrl
 
-        env = CtrlStageWrapper(gym.make("myoElbowPose1D6MRandom-v0"), rate_limit,
+        env = CtrlStageWrapper(make_env("myoElbowPose1D6MRandom-v0"), rate_limit,
                                name="cap")  # after the built-in stages; order=25 puts it after noise
 
     Args:
@@ -647,3 +647,69 @@ def condition_wrapper_specs(condition: str, **kwargs: Any) -> tuple[WrapperSpec,
             name=name, entry_point=f"myosuite.envs.wrappers:{name}", kwargs=kwargs
         ),
     )
+
+
+def wrapper_spec(wrapper: type, **kwargs: Any) -> WrapperSpec:
+    """Spec of a muscle-command wrapper, for ``EnvConfig.features`` or a registration.
+
+    Args:
+        wrapper: A wrapper class of this module (``MotorNoiseWrapper``, ...).
+        **kwargs: Its constructor arguments after the env.
+
+    Returns:
+        The :class:`~gymnasium.envs.registration.WrapperSpec`.
+    """
+    return WrapperSpec(
+        name=wrapper.__name__,
+        entry_point=f"{wrapper.__module__}:{wrapper.__name__}",
+        kwargs=kwargs,
+    )
+
+
+def normalize_features(features: Iterable[Any]) -> tuple[WrapperSpec, ...]:
+    """Turn the entries of ``EnvConfig.features`` into wrapper specs.
+
+    Args:
+        features: Each entry is a :class:`~gymnasium.envs.registration.WrapperSpec`, a
+            wrapper class (no arguments), or a ``(wrapper class, kwargs dict)`` pair.
+
+    Returns:
+        The wrapper specs, in the given order.
+
+    Raises:
+        TypeError: If an entry has another form.
+    """
+    specs = []
+    for feature in features:
+        if isinstance(feature, WrapperSpec):
+            specs.append(feature)
+        elif isinstance(feature, type):
+            specs.append(wrapper_spec(feature))
+        elif (
+            isinstance(feature, (tuple, list))
+            and len(feature) == 2
+            and isinstance(feature[0], type)
+            and isinstance(feature[1], dict)
+        ):
+            specs.append(wrapper_spec(feature[0], **feature[1]))
+        else:
+            raise TypeError(
+                "A feature is a WrapperSpec, a wrapper class, or a (wrapper class, "
+                f"kwargs dict) pair; got {feature!r}."
+            )
+    return tuple(specs)
+
+
+def apply_features(env: gym.Env, features: Iterable[WrapperSpec]) -> gym.Env:
+    """Wrap *env* in the wrappers of *features* (the stage order is fixed, not the list's).
+
+    Args:
+        env: A CPU env (as made by ``gym.make``).
+        features: Wrapper specs, e.g. from :func:`wrapper_spec`.
+
+    Returns:
+        The wrapped env.
+    """
+    for spec in features:
+        env = load_env_creator(spec.entry_point)(env, **(spec.kwargs or {}))
+    return env

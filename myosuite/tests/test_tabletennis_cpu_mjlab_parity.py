@@ -24,6 +24,7 @@ from myosuite.envs.myo.backends.mjlab import (  # noqa: E402
     register_mjlab_tabletennis as tt_mjlab,
 )
 from myosuite.envs.myo.tasks.challenge import tabletennis as tt_cpu  # noqa: E402
+from myosuite import make_env  # noqa: E402
 
 pytestmark = pytest.mark.tier1
 
@@ -101,14 +102,13 @@ def test_trajectories_cover_every_issue_and_failures_terminate() -> None:
 
 def test_paddle_target_orientation_is_the_keyframe_orientation() -> None:
     """The paddle_quat reward target equals the held paddle's keyframe orientation."""
-    import gymnasium as gym  # noqa: PLC0415
     import numpy as np  # noqa: PLC0415
 
     import myosuite  # noqa: F401, PLC0415
 
     keyframe = np.asarray(tt_mjlab._tt_reference().paddle_pose[3:7])
     mjlab_target = np.asarray(tt_mjlab._tt_reference().init_paddle_quat)
-    env = gym.make("myoChallengeTableTennisP0-v0")
+    env = make_env("myoChallengeTableTennisP0-v0")
     try:
         cpu_target = np.asarray(env.unwrapped.init_paddle_quat)
     finally:

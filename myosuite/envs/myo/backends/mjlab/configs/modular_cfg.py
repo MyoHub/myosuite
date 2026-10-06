@@ -33,17 +33,12 @@ class ModularActionTermEntry:
     Args:
         name: Logical group name.
         actuator_type: ``"muscle"`` or ``"motor"``.
-        condition: Physiological condition (``"normal"``, ``"fatigue"``,
-            ``"sarcopenia"``).
         normalize_actions: Whether to apply sigmoid normalization.
-        noise: Gaussian noise std added to actions.
     """
 
     name: str
     actuator_type: str = "muscle"
-    condition: str = "normal"
     normalize_actions: bool = True
-    noise: float = 0.0
 
 
 @dataclass
@@ -71,8 +66,6 @@ class ModularMjlabCfg:
             sites). This dataclass only carries the fields; ``site_position_command_cfg``
             (``tasks/mdp/commands.py``) turns a site goal into an mjlab command.
         action_terms: One entry per actuator group.
-        muscle_fatigue: Apply the 3CC-r fatigue model to every muscle
-            (``TaskConfig.fatigue_enabled``).
     """
 
     model_recipe: str = "elbow_standard"
@@ -92,7 +85,6 @@ class ModularMjlabCfg:
     action_terms: list[ModularActionTermEntry] = field(
         default_factory=lambda: [ModularActionTermEntry(name="muscles")]
     )
-    muscle_fatigue: bool = False
 
 
 def make_modular_mjlab_cfg(task_config: TaskConfig) -> ModularMjlabCfg:
@@ -114,9 +106,7 @@ def make_modular_mjlab_cfg(task_config: TaskConfig) -> ModularMjlabCfg:
         ModularActionTermEntry(
             name=g.name,
             actuator_type=g.actuator_type,
-            condition=g.condition,
             normalize_actions=g.normalize_actions,
-            noise=g.noise,
         )
         for g in task_config.actuators
     ]
@@ -144,5 +134,4 @@ def make_modular_mjlab_cfg(task_config: TaskConfig) -> ModularMjlabCfg:
         goal_randomize=task_config.goal.randomize,
         goal_range=dict(task_config.goal.range),
         action_terms=action_terms,
-        muscle_fatigue=task_config.fatigue_enabled,
     )

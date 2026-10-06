@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 pytest.importorskip("musclemimic_models", reason="musclemimic_models package required")
 pytest.importorskip("huggingface_hub", reason="huggingface_hub required")
@@ -103,13 +104,12 @@ class TestMuscleMimicFullbodyDirectionalEnv:
         ), f"expected reward breakdown in info, got: {info.keys()}"
 
     def test_gym_make_registration(self):
-        import gymnasium as gym
         from huggingface_hub.errors import HfHubHTTPError
 
         import myosuite  # noqa: F401 — triggers registration
 
         try:
-            env = gym.make("myoFullBodyDirectional-v0")
+            env = make_env("myoFullBodyDirectional-v0")
         except HfHubHTTPError as exc:
             pytest.skip(f"gated HF dataset unavailable ({exc})")
         obs, _ = env.reset()

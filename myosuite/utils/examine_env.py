@@ -10,11 +10,9 @@ import time
 import click
 import numpy as np
 
-from myosuite import register_all_envs
-from myosuite.utils import gym
 from myosuite.utils.path_plotting import plot as plotnsave_paths
+from myosuite.core.registry import make_env
 
-register_all_envs()
 
 DESC = """
 Helper script to examine an environment and associated policy for behaviors; \n
@@ -139,9 +137,9 @@ def main(
     # seed and load environments
     np.random.seed(seed)
     envw = (
-        gym.make(env_name)
+        make_env(env_name)
         if env_args is None
-        else gym.make(env_name, **(eval(env_args)))
+        else make_env(env_name, **(eval(env_args)))
     )
     env = envw.unwrapped
     env.seed(seed)

@@ -11,7 +11,7 @@ Composable MJCF model builder using MuJoCo 3's MjSpec API.
     ModelBuilder is under active development and does **not** yet replicate all
     features of the official MyoChallenge environment XML files.  For production
     training or evaluation against a challenge benchmark, load the environment
-    directly via its registered Gymnasium ID (e.g. ``gym.make("myoChallengeBaodingP2-v1")``)
+    directly via its registered Gymnasium ID (e.g. ``make_env("myoChallengeBaodingP2-v1")``)
     or instantiate the environment class directly.
 
 ModelBuilder is a lazy recipe — it records fragment attachments, prop bodies,
@@ -45,7 +45,7 @@ Alternatives
 * **Gymnasium entry points** — load a fully-configured challenge env::
 
       import gymnasium as gym
-      env = gym.make("myoChallengeBaodingP2-v1")
+      env = make_env("myoChallengeBaodingP2-v1")
 
 * **apply_transform escape hatch** — extend ModelBuilder scenes with any
   MjSpec feature not covered above::

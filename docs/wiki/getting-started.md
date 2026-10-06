@@ -80,10 +80,9 @@ and the action/observation spaces; `_get_obs_dict` builds the observation;
 A good first change is tweaking a reward weight and confirming the effect:
 
 ```python
-import gymnasium as gym
-import myosuite  # registers all envs on import
+from myosuite import make_env
 
-env = gym.make("myoElbowPose1D6MRandom-v0")
+env = make_env("myoElbowPose1D6MRandom-v0")
 obs, info = env.reset(seed=0)
 obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
 print(info["rwd_dict"])     # every reward component, not just the scalar

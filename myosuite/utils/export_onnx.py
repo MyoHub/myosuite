@@ -69,6 +69,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
+from myosuite.core.registry import make_env
 
 if TYPE_CHECKING:
     from stable_baselines3.common.vec_env import VecNormalize
@@ -542,14 +543,13 @@ def verify_onnx_on_cpu(
         Dict with ``total_reward``, ``mean_reward``, ``n_steps``, ``terminated``.
     """
     import onnxruntime as ort
-    import gymnasium as gym
 
     onnx_path = Path(onnx_path)
     sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     input_name = sess.get_inputs()[0].name
     output_name = sess.get_outputs()[0].name
 
-    env = gym.make(env_id)
+    env = make_env(env_id)
     obs, _ = env.reset(seed=seed)
 
     total_reward = 0.0
@@ -600,7 +600,6 @@ def compare_onnx_across_backends(
         ``passed`` (bool).
     """
     import onnxruntime as ort
-    import gymnasium as gym
 
     onnx_path = Path(onnx_path)
     sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
@@ -608,7 +607,7 @@ def compare_onnx_across_backends(
     output_name = sess.get_outputs()[0].name
 
     def _rollout(env_id: str, env_kwargs: dict) -> tuple[np.ndarray, np.ndarray]:
-        env = gym.make(env_id, **env_kwargs)
+        env = make_env(env_id, **env_kwargs)
         obs, _ = env.reset(seed=seed)
         obs_seq, rew_seq = [obs.copy()], []
         for _ in range(n_steps):

@@ -250,22 +250,18 @@ def _cpu_fatigue_models(env: Any) -> list[Any]:
     Looks through gymnasium wrappers and SB3 VecEnvs: ``VecEnvWrapper``s
     (``VecNormalize``, ...) via ``.venv``, then a ``DummyVecEnv``'s ``.envs``. A
     ``SubprocVecEnv`` keeps its envs in other processes and yields none.
-    ``MyoGymnasiumEnv`` tasks keep the model in the ``muscle_fatigue`` attribute
-    of their ``FatigueWrapper``, the experimental ``ModularTaskEnv`` in
-    ``_fatigue_model``.
+    The model is the ``muscle_fatigue`` attribute that the ``FatigueWrapper``
+    installs on the env.
     """
     while hasattr(env, "venv"):
         env = env.venv
     models = []
     for sub_env in getattr(env, "envs", None) or [env]:
-        unwrapped = getattr(sub_env, "unwrapped", sub_env)
         get_attr = getattr(sub_env, "get_wrapper_attr", None)
         try:
             model = get_attr("muscle_fatigue") if get_attr else None
         except AttributeError:
             model = None
-        if model is None:
-            model = getattr(unwrapped, "_fatigue_model", None)
         models.append(model if hasattr(model, "state_dict") else None)
     return models
 
@@ -275,7 +271,7 @@ def get_env_fatigue_state(env: Any) -> dict[str, Any] | None:
 
     Works for the mjlab path (``ManagerBasedRlEnv`` with an action manager whose
     terms expose ``_fatigue``) and the CPU path (``muscle_fatigue`` of a
-    ``MyoGymnasiumEnv`` task, ``_fatigue_model`` of ``ModularTaskEnv``), also
+    ``FatigueWrapper`` of a CPU env), also
     behind wrappers and in-process SB3 VecEnvs.
 
     Args:

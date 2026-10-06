@@ -19,6 +19,7 @@ from PIL import Image
 
 import myosuite
 from myosuite.utils import asset_path_resolver as apr
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -79,17 +80,15 @@ def test_gym_make_twice_writes_no_new_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A second ``gym.make`` of an env whose models are rewritten adds no XML file."""
-    from myosuite.utils import gym
 
-    myosuite.register_all_envs()
     monkeypatch.setattr(apr, "patched_xml_dir", lambda: tmp_path)
 
     def written() -> set[Path]:
         return set(_ASSETS.rglob(".myosuite_resolved_*")) | set(tmp_path.iterdir())
 
-    gym.make("myoTorsoPoseFixed-v0").close()
+    make_env("myoTorsoPoseFixed-v0").close()
     before = written()
-    gym.make("myoTorsoPoseFixed-v0").close()
+    make_env("myoTorsoPoseFixed-v0").close()
     assert written() == before
 
 

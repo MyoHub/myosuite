@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 import myosuite  # noqa: F401
+from myosuite import make_env
 
 _REACH_EP = "tasks.basic.arm.reach:ReachEnvV0"
 _N_SEEDS = 20
@@ -41,7 +42,7 @@ def _farthest_target(u: gym.Env, tip: np.ndarray) -> float:
 @pytest.mark.tier1
 @pytest.mark.parametrize("env_id", _reach_ids())
 def test_no_reset_starts_beyond_far_threshold(env_id: str) -> None:
-    env = gym.make(env_id)
+    env = make_env(env_id)
     u = env.unwrapped
     far = u.far_th * len(u.tip_sids)
     env.reset(seed=0)

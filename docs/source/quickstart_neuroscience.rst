@@ -70,11 +70,10 @@ and Golgi tendon organ (Ib) afferents during a reaching movement:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoElbowPose1D6MRandom-v0')
+   env = make_env('myoElbowPose1D6MRandom-v0')
    obs, info = env.reset(seed=0)
 
    ia_afferent  = []   # velocity-sensitive (muscle spindle primary)
@@ -116,11 +115,10 @@ This example implements a Ia-driven stretch reflex for the elbow:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoElbowPose1D6MRandom-v0', render_mode='human')
+   env = make_env('myoElbowPose1D6MRandom-v0', render_mode='human')
    obs, info = env.reset(seed=0)
    model = env.unwrapped.model
    data  = env.unwrapped.data
@@ -169,11 +167,10 @@ endurance times.
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoFatiElbowPose1D6MFixed-v0')
+   env = make_env('myoFatiElbowPose1D6MFixed-v0')
    obs, info = env.reset(seed=0)
 
    activations = []
@@ -200,12 +197,11 @@ Sarcopenia (Age-Related Muscle Loss)
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
    # Sarcopenia variant: muscles generate only 50 % of peak force
-   env_normal = gym.make('myoElbowPose1D6MRandom-v0')
-   env_sarco  = gym.make('myoSarcElbowPose1D6MRandom-v0')
+   env_normal = make_env('myoElbowPose1D6MRandom-v0')
+   env_sarco  = make_env('myoSarcElbowPose1D6MRandom-v0')
 
    # Compare force output under the same excitation
    for env, label in [(env_normal, 'Normal'), (env_sarco, 'Sarcopenia')]:
@@ -229,10 +225,9 @@ muscle action — a useful model for studying motor adaptation:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
-   env = gym.make('myoReafHandPoseFixed-v0')
+   env = make_env('myoReafHandPoseFixed-v0')
    obs, info = env.reset()
    for _ in range(500):
        obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
@@ -260,21 +255,36 @@ It is off by default. Envs whose pipeline does not run wrapper stages (MuscleMim
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    from myosuite.envs.wrappers import MotorNoiseWrapper
    from myosuite.terms.base_action import MotorNoiseCfg
 
    # Levels 0.103 (signal-dependent) and 0.185 (constant), after van Beers et al. (2004).
-   env = MotorNoiseWrapper(gym.make('myoElbowPose1D6MRandom-v0'), MotorNoiseCfg.van_beers_2004())
+   env = MotorNoiseWrapper(make_env('myoElbowPose1D6MRandom-v0'), MotorNoiseCfg.van_beers_2004())
    # Any levels, also as a dict:
-   env = MotorNoiseWrapper(gym.make('myoElbowPose1D6MRandom-v0'),
+   env = MotorNoiseWrapper(make_env('myoElbowPose1D6MRandom-v0'),
                            {'signal_dependent_std': 0.1, 'constant_std': 0.02})
    obs, info = env.reset(seed=0)  # the noise comes from the env's seeded np_random
 
    # Noise and fatigue together: the stage order is fixed (noise, then fatigue), whatever the wrapping order.
    from myosuite.envs.wrappers import FatigueWrapper
-   env = FatigueWrapper(MotorNoiseWrapper(gym.make('myoElbowPose1D6MRandom-v0'), {'constant_std': 0.05}))
+   env = FatigueWrapper(MotorNoiseWrapper(make_env('myoElbowPose1D6MRandom-v0'), {'constant_std': 0.05}))
+
+The same features can be listed in an ``EnvConfig``, which builds the CPU env **and** the mjlab twin identically
+(the wrappers above work on the CPU env only):
+
+.. code-block:: python
+
+   from myosuite import make_env
+   from myosuite.core.config import EnvConfig
+   from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper
+
+   cfg = EnvConfig(
+       'myoElbowPose1D6MRandom-v0',
+       features=((MotorNoiseWrapper, {'motor_noise': {'constant_std': 0.05}}), FatigueWrapper),
+   )
+   env = make_env(cfg)                                   # CPU
+   envs = make_env(cfg, backend='mjlab', num_envs=1024)  # GPU twin with the same noise and fatigue
 
 Each wrapper can be applied **once** per env: a second ``MotorNoiseWrapper`` raises a ``ValueError``, and so does a
 ``FatigueWrapper`` on a ``myoFati*`` id (which already contains it). Wrap the base id, or change the options of the
@@ -294,7 +304,7 @@ mjlab), with an optional ``reset(env_ids)`` that clears per-episode state:
        def __call__(self, u, xp):
            return xp.clip(u, 0.0, 0.8)    # only operations numpy and torch share
 
-   env = ExcitationStageWrapper(gym.make('myoElbowPose1D6MRandom-v0'), Cap)
+   env = ExcitationStageWrapper(make_env('myoElbowPose1D6MRandom-v0'), Cap)
 
 The stage runs on the CPU env and, when the id is registered with the wrapper, on the mjlab twin. The built-in stages
 (noise, fatigue, reroute) run in a fixed order; custom stages run after them, in the order they were added. To insert
@@ -347,11 +357,10 @@ Recording a Full Neural-Motor Trace
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoElbowPose1D6MRandom-v0')
+   env = make_env('myoElbowPose1D6MRandom-v0')
    obs, info = env.reset(seed=0)
 
    trace = []

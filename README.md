@@ -27,6 +27,7 @@ MyoSuite 3 brings the whole suite to fast, scalable training while keeping the s
 
 - **Much faster learning.** Train with thousands of environments in parallel on a single GPU, then replay the policy on the CPU.
 - **One task, several backends.** The same `env_id` runs on your **CPU** through the standard [Gymnasium](https://gymnasium.farama.org/) interface (to explore, debug and replay policies, or to train with libraries such as Stable-Baselines3), on **mjlab** for massively parallel GPU training, and on an **experimental MJX** (JAX) path.
+- **Muscle conditions as features.** Motor noise, fatigue, sarcopenia and reafferentation are wrappers, not env arguments. `make_env(EnvConfig(env_id, features=...))` applies them identically on the CPU env and the GPU twin, together with the episode length and control step ([cross-backend contract](docs/wiki/cross-backend-contract.md)).
 - **MuscleMimic support.** Run, evaluate and train full-body and bimanual **MuscleMimic** policies, with ready-to-use checkpoints and motion datasets.
 - **Updated musculoskeletal models.** `myo-sim` moved from a moving `dev` branch to a pinned PyPI release (0.2.3) with some model updates, including a torso/pelvis frame fix for the leg models ([myo_sim#132](https://github.com/MyoHub/myo_sim/pull/132)).
 - **The complete MyoChallenge suite** as Gymnasium environments: Baoding, Bimanual, Chase Tag, Die Reorient, OSL Run, Relocate, Soccer and Table Tennis.
@@ -76,10 +77,9 @@ Run these from a directory that does not directly contain a folder named `myosui
 ## Quick start
 
 ```python
-import gymnasium as gym
-import myosuite  # registers environments
+from myosuite import make_env
 
-env = gym.make("myoElbowPose1D6MRandom-v0")
+env = make_env("myoElbowPose1D6MRandom-v0")
 obs, info = env.reset(seed=0)
 for _ in range(1000):
     obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
@@ -94,18 +94,43 @@ Train on CPU:
 
 ```python
 from stable_baselines3 import PPO
-import gymnasium as gym
-import myosuite
+from myosuite import make_env
 
-env = gym.make("myoElbowPose1D6MRandom-v0")
+env = make_env("myoElbowPose1D6MRandom-v0")
 model = PPO("MlpPolicy", env, device="cpu")
 model.learn(total_timesteps=100_000)
+```
+
+Or use the ready-made script (PPO, SAC or TD3; saves the model and scores the policy at the end):
+
+```bash
+python scripts/train_sb3.py myoElbowPose1D6MRandom-v0 --timesteps 500000
 ```
 
 Train on GPU (same `env_id`, mjlab / RSL-RL):
 
 ```bash
 python scripts/train_mjlab.py myoElbowPose1D6MFixed-v0 --env.scene.num-envs 1024
+```
+
+The same call builds either backend, and an `EnvConfig` overrides the registered defaults (episode length, control step,
+muscle-command features such as motor noise and fatigue) for both:
+
+```python
+from myosuite import make_env
+from myosuite.core.config import EnvConfig
+from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper
+
+env = make_env("myoElbowPose1D6MRandom-v0")                                   # CPU, registered defaults
+envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024)  # GPU twin (needs the mjlab extra)
+
+cfg = EnvConfig(
+    "myoElbowPose1D6MRandom-v0",
+    max_episode_steps=300,
+    features=((MotorNoiseWrapper, {"motor_noise": {"constant_std": 0.05}}), FatigueWrapper),
+)
+env = make_env(cfg)                                   # CPU with noise and fatigue
+envs = make_env(cfg, backend="mjlab", num_envs=1024)  # the same on the GPU
 ```
 
 Pathological variants use prefixes, not a `Fatigue` infix: `myoSarcElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MFixed-v0`, `myoReafHandPoseRandom-v0`.
@@ -127,12 +152,14 @@ List every registered CPU ID: `python -c "import myosuite; print('\n'.join(myosu
 
 ### Backends
 
-| Backend                       | Use                   | How                                                                    |
-| ----------------------------- | --------------------- | ---------------------------------------------------------------------- |
-| **CPU** (Gymnasium)     | playback, debug, SB3  | `gym.make(env_id)`                                                   |
-| **mjlab** (MuJoCo Warp) | parallel GPU training | `pip install -e ".[mjlab]"` then `scripts/train_mjlab.py <env_id>` |
+| Backend | Use | Build an env in Python | Train |
+| --- | --- | --- | --- |
+| **CPU** (Gymnasium) | playback, debug, SB3 | `make_env(env_id)` | `scripts/train_sb3.py <env_id>` (PPO, SAC or TD3) |
+| **mjlab** (MuJoCo Warp) | parallel GPU training | `make_env(env_id, backend="mjlab", num_envs=...)` | `scripts/train_mjlab.py <env_id>` |
 
-A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/wiki/cross-backend-contract.md)). An MJX (JAX) path also exists; it is **experimental** and not the supported training route.
+The mjlab backend needs `pip install -e ".[mjlab]"`. `make_env` only builds the env (to step it, evaluate a policy or write your own training loop); `scripts/train_sb3.py` (CPU) and `scripts/train_mjlab.py` (GPU) are the ready-made training scripts.
+
+A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/wiki/cross-backend-contract.md)). `make_env(EnvConfig(env_id, backend=..., features=...))` builds either half with the same episode length, control step and muscle-command features. An MJX (JAX) path also exists; it is **experimental** and not the supported training route.
 
 
 ## Tutorials

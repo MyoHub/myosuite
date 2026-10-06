@@ -41,11 +41,10 @@ Running a Forward Simulation
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoElbowPose1D6MRandom-v0')
+   env = make_env('myoElbowPose1D6MRandom-v0')
    obs, info = env.reset(seed=0)
 
    # Access the underlying MuJoCo model and data
@@ -68,11 +67,10 @@ Extracting Kinematics
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoElbowPose1D6MRandom-v0')
+   env = make_env('myoElbowPose1D6MRandom-v0')
    obs, info = env.reset(seed=0)
 
    records = []
@@ -106,11 +104,10 @@ Extracting Muscle Forces
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
    import numpy as np
 
-   env = gym.make('myoElbowPose1D6MRandom-v0')
+   env = make_env('myoElbowPose1D6MRandom-v0')
    obs, info = env.reset(seed=0)
 
    force_records = []
@@ -252,13 +249,13 @@ Variant environments model common clinical conditions:
 
 .. code-block:: python
 
-   import myosuite, gymnasium as gym
+   from myosuite import make_env
 
    # Sarcopenia: 50 % reduction in peak muscle force
-   env = gym.make('myoSarcElbowPose1D6MFixed-v0')
+   env = make_env('myoSarcElbowPose1D6MFixed-v0')
 
    # Cumulative fatigue: activation history reduces muscle output
-   env = gym.make('myoFatiElbowPose1D6MFixed-v0')
+   env = make_env('myoFatiElbowPose1D6MFixed-v0')
 
 
 Next Steps

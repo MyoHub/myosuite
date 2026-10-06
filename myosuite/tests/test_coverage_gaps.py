@@ -758,7 +758,7 @@ class TestLoadMotionClip:
 
 class TestMakeEnvBackends:
     def test_make_env_mjx_import_error(self) -> None:
-        from myosuite.core.registry import make_env
+        from myosuite import make_env
 
         with patch.dict("sys.modules", {"mujoco_playground": None}):
             with pytest.raises(ImportError, match="mujoco_playground"):
@@ -768,7 +768,7 @@ class TestMakeEnvBackends:
         """Keyword overrides reach mujoco_playground as config_overrides."""
         import types
 
-        from myosuite.core.registry import make_env
+        from myosuite import make_env
 
         calls: list[tuple[str, Any]] = []
 
@@ -790,7 +790,7 @@ class TestMakeEnvBackends:
         assert calls == [("Task-v0", {"num_envs": 8}), ("Task-v0", None)]
 
     def test_make_env_mjlab_import_error(self) -> None:
-        from myosuite.core.registry import make_env
+        from myosuite import make_env
 
         with patch.dict("sys.modules", {"mjlab": None, "mjlab.envs": None}):
             with pytest.raises(ImportError, match="mjlab"):

@@ -42,6 +42,7 @@ from myosuite.envs.modular_env import ModularTaskEnv  # noqa: E402
 from myosuite.envs.wrappers import FatigueWrapper  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0  # noqa: E402
+from myosuite import make_env  # noqa: E402
 
 if sys.platform.startswith("linux"):  # "egl" is an invalid MUJOCO_GL on Windows/macOS
     os.environ.setdefault("MUJOCO_GL", "egl")
@@ -178,7 +179,7 @@ def _basic_suite_ids(entry_points: tuple[str, ...]) -> list[str]:
 def _make_pair(env_id: str) -> tuple[gym.Env, ManagerBasedRlEnv]:
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
 
-    cpu = gym.make(env_id).unwrapped
+    cpu = make_env(env_id).unwrapped
     cpu.reset(seed=0)
     mj = ManagerBasedRlEnv(cfg=load_env_cfg(env_id), device="cpu")
     mj.reset()
@@ -339,7 +340,7 @@ def test_fatigue_torch_matches_numpy() -> None:
     """Batched torch 3CC-r fatigue reproduces the CPU model step by step."""
     import mujoco  # noqa: PLC0415
 
-    model = gym.make("myoFatiElbowPose1D6MRandom-v0").unwrapped.model
+    model = make_env("myoFatiElbowPose1D6MRandom-v0").unwrapped.model
     cpu = CumulativeFatigue(model, frame_skip=10)
     gpu = TorchFatigueState.from_mj_model(model, num_envs=1)
     rng = np.random.default_rng(0)
@@ -371,7 +372,7 @@ def test_twin_fatigue_parameters_match_cpu(env_id: str) -> None:
     """
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
 
-    cpu = gym.make(env_id).muscle_fatigue
+    cpu = make_env(env_id).muscle_fatigue
     mj = ManagerBasedRlEnv(cfg=load_env_cfg(env_id), device="cpu")
     twin = mj.action_manager.get_term("muscles")._fatigue
     assert np.any(cpu.F != MUSCLE_FATIGUE_PARAMS["Default"]["F"])
@@ -420,7 +421,7 @@ def test_twin_fatigue_reset_options_match_cpu(
     )
     cfg = make_pose_env_cfg(env_id)
     cfg.scene.num_envs = 3
-    cpu_env = FatigueWrapper(gym.make("myoElbowPose1D6MRandom-v0"), **extra)
+    cpu_env = FatigueWrapper(make_env("myoElbowPose1D6MRandom-v0"), **extra)
     cpu = cpu_env.unwrapped
     cpu.reset(seed=0)
     mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
@@ -479,7 +480,7 @@ def test_torso_exo_observation_matches_cpu(env_id: str) -> None:
     Both envs start from the same reset and get the same random actions (free run, no
     state sync); the CPU observation layout and values must agree.
     """
-    cpu = gym.make(env_id).unwrapped
+    cpu = make_env(env_id).unwrapped
     obs_cpu, _ = cpu.reset(seed=0)
     mj = ManagerBasedRlEnv(cfg=load_env_cfg(env_id), device="cpu")
     obs_mj = mj.reset()[0]["actor"][0].numpy()

@@ -12,7 +12,7 @@ build_from_recipe(). myosuite/core/__init__.py imports this automatically.
 .. warning::
     **Experimental.**  Challenge recipes are partial scene descriptions; they do
     not achieve full parity with the official challenge XML files.  For training
-    or evaluation, use ``gym.make("<challenge-env-id>")`` instead.
+    or evaluation, use ``make_env("<challenge-env-id>")`` instead.
 
 Challenge environment recipes
 ------------------------------

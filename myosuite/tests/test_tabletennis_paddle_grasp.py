@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier2
 
@@ -22,12 +23,9 @@ PUBLIC_PADDLE_QUAT = np.array([0.699445, -0.105711, 0.698888, -0.105627])
 
 @pytest.fixture(scope="module")
 def tabletennis_env():
-    from myosuite import register_all_envs
+    import myosuite  # noqa: F401
 
-    register_all_envs()
-    import gymnasium as gym
-
-    env = gym.make("myoChallengeTableTennisP0-v0")
+    env = make_env("myoChallengeTableTennisP0-v0")
     yield env
     env.close()
 

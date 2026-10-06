@@ -12,8 +12,10 @@ helpers instead of restating numbers, so the two backends cannot drift.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import functools
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,6 +43,36 @@ _MUSCLE_WRAPPERS = (
     "MotorNoiseWrapper",
     "ExcitationStageWrapper",
 )
+
+# Wrapper specs of the current ``make_env(EnvConfig(features=...))`` call, added to the
+# registered ones by :func:`cpu_task_spec` (every twin factory reads the registration there).
+_FEATURES: contextvars.ContextVar[tuple[Any, ...]] = contextvars.ContextVar(
+    "myosuite_features", default=()
+)
+_KWARGS: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
+    "myosuite_task_kwargs", default={}
+)
+
+
+@contextlib.contextmanager
+def feature_overrides(
+    features: Iterable[Any] = (), task_kwargs: dict[str, Any] | None = None
+) -> Iterator[None]:
+    """Change what every :func:`cpu_task_spec` read inside the block returns.
+
+    Args:
+        features: :class:`~gymnasium.envs.registration.WrapperSpec` of the muscle-command
+            wrappers (``EnvConfig.features``), added to the registered ones.
+        task_kwargs: CPU env constructor kwargs (such as ``frame_skip``) that replace
+            the registered ones.
+    """
+    tokens = (_FEATURES.set(tuple(features)), _KWARGS.set(dict(task_kwargs or {})))
+    try:
+        yield
+    finally:
+        _FEATURES.reset(tokens[0])
+        _KWARGS.reset(tokens[1])
+
 
 _INTEGRATORS = {
     int(mujoco.mjtIntegrator.mjINT_EULER): "euler",
@@ -128,6 +160,20 @@ class CpuTaskSpec:
         return self.kwargs.get("model_recipe") is not None
 
 
+def _with_features(registered: tuple[Any, ...], env_id: str) -> tuple[Any, ...]:
+    """The registered wrapper specs plus the ``EnvConfig.features`` of this call."""
+    added = _FEATURES.get()
+    for spec in added:
+        if spec.name != "ExcitationStageWrapper" and any(
+            r.name == spec.name for r in registered
+        ):
+            raise ValueError(
+                f"{env_id} already has a {spec.name}; apply each wrapper once "
+                "(use the base id, as on the CPU)."
+            )
+    return registered + added
+
+
 def cpu_task_spec(env_id: str) -> CpuTaskSpec:
     """Read the CPU registration of *env_id*.
 
@@ -146,9 +192,9 @@ def cpu_task_spec(env_id: str) -> CpuTaskSpec:
     spec = gym.spec(env_id)
     task = CpuTaskSpec(
         env_id=env_id,
-        kwargs=dict(spec.kwargs),
+        kwargs={**spec.kwargs, **_KWARGS.get()},
         max_episode_steps=int(spec.max_episode_steps),
-        wrappers=tuple(spec.additional_wrappers or ()),
+        wrappers=_with_features(tuple(spec.additional_wrappers or ()), env_id),
     )
     if any(task.wrapper_kwargs(name) is not None for name in _MUSCLE_WRAPPERS):
         entry = spec.entry_point

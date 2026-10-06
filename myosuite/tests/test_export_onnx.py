@@ -19,13 +19,14 @@ import numpy as np
 import pytest
 import torch
 
-import myosuite
+import myosuite  # noqa: F401
 from myosuite.tests.support.sb3_models import (
     ENV_ID as _ENV_ID,
     raw_observations,
     vec_normalized_model,
 )
 from myosuite.utils import gym
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -172,8 +173,7 @@ def test_sb3_onnx_export_matches_predict(
     ort = pytest.importorskip("onnxruntime")
     from myosuite.utils.export_onnx import export_sb3_to_onnx
 
-    myosuite.register_all_envs()
-    env = gym.make(_ENV_ID)
+    env = make_env(_ENV_ID)
     if action_low != -1.0:
         env = gym.wrappers.RescaleAction(
             env, min_action=np.float32(action_low), max_action=np.float32(1.0)
@@ -272,7 +272,7 @@ def test_onnx_checkpoint_callback_bundles_vec_normalize(
     meta = read_onnx_checkpoint_metadata(bundle)
     assert meta["framework"] == f"sb3-{algo_name.lower()}"
     restored = vec_normalize_from_state(
-        meta["metadata"]["vec_normalize"], DummyVecEnv([lambda: gym.make(_ENV_ID)])
+        meta["metadata"]["vec_normalize"], DummyVecEnv([lambda: make_env(_ENV_ID)])
     )
     try:
         for name in ("obs_rms", "ret_rms"):
@@ -308,16 +308,15 @@ def test_vec_normalize_state_round_trips_without_obs_normalization() -> None:
         vec_normalize_from_state,
     )
 
-    myosuite.register_all_envs()
     venv = VecNormalize(
-        DummyVecEnv([lambda: gym.make(_ENV_ID)]), norm_obs=False, gamma=0.9
+        DummyVecEnv([lambda: make_env(_ENV_ID)]), norm_obs=False, gamma=0.9
     )
     venv.ret_rms.mean, venv.ret_rms.var, venv.ret_rms.count = 0.25, 3.5, 42.0
     state = json.loads(json.dumps(get_vec_normalize_state(venv)))
     venv.close()
     assert state["obs_rms"] is None
 
-    restored = vec_normalize_from_state(state, DummyVecEnv([lambda: gym.make(_ENV_ID)]))
+    restored = vec_normalize_from_state(state, DummyVecEnv([lambda: make_env(_ENV_ID)]))
     try:
         assert not restored.norm_obs and restored.norm_reward
         assert restored.gamma == 0.9
