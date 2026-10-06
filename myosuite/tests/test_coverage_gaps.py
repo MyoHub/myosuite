@@ -265,9 +265,7 @@ class TestCumulativeFatigue:
         never reaches zero); above it recovery runs at ``R``."""
         from myosuite.core.muscle_conditions import FATIGUE_REST_THRESHOLD
 
-        below = _rest_protocol_trace(
-            backend, np.full((100, 3), FATIGUE_REST_THRESHOLD)
-        )
+        below = _rest_protocol_trace(backend, np.full((100, 3), FATIGUE_REST_THRESHOLD))
         above = _rest_protocol_trace(
             backend, np.full((100, 3), 2.0 * FATIGUE_REST_THRESHOLD)
         )
