@@ -272,3 +272,66 @@ def test_out_of_range_order_raises_on_the_twin(order: float) -> None:
     )
     with pytest.raises(ValueError, match="between 10 and 100"):
         ManagerBasedRlEnv(cfg=cfg, device="cpu").close()
+
+
+# ── combined conditions ──────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "conditions", [("sarcopenia", "fatigue"), ("fatigue", "reafferentation")]
+)
+def test_twin_takes_every_registered_condition(conditions: tuple[str, ...]) -> None:
+    """The condition wrappers compose on the CPU env, so each one configures the twin."""
+    import dataclasses
+
+    from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import action_cfg
+    from myosuite.envs.wrappers import condition_wrapper_specs
+
+    wrappers = tuple(s for c in conditions for s in condition_wrapper_specs(c))
+    task = dataclasses.replace(cpu_task_spec("myoHandPoseRandom-v0"), wrappers=wrappers)
+    cfg = action_cfg(task, "robot")
+    assert task.muscle_conditions == conditions
+    assert cfg.muscle_fatigue == ("fatigue" in conditions)
+    assert (cfg.reroute == ("EIP_r", "EPL_r")) == ("reafferentation" in conditions)
+
+
+def test_twin_matches_cpu_with_sarcopenia_and_fatigue() -> None:
+    """A sarcopenia + fatigue registration: the twin fatigues like the CPU env."""
+    from myosuite.envs.wrappers import condition_wrapper_specs
+
+    env_id, spec = "myoSarcFatiElbowPose1D6MTest-v0", gym.spec(_BASE)
+    registry.register_env(
+        env_id=env_id,
+        entry_point=spec.entry_point,
+        max_episode_steps=spec.max_episode_steps,
+        kwargs=spec.kwargs,
+        additional_wrappers=(
+            *condition_wrapper_specs("sarcopenia"),
+            *condition_wrapper_specs("fatigue"),
+        ),
+    )
+    try:
+        cfg = elbow_pose_env_cfg(env_id)
+        cfg.scene.num_envs = 2
+        twin = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+        twin.reset()
+        term = twin.action_manager.get_term("muscles")
+        assert term.stage_names == ("noise", "fatigue")
+        cpu = gym.make(env_id)
+        cpu.reset(seed=0)
+        base = cpu.unwrapped
+        assert base.ctrl_stages == ("fatigue",) and base._sarcopenia_applied
+        a = np.ones(cpu.action_space.shape, np.float32)  # sustained effort fatigues
+        for step in range(20):
+            term.process_actions(torch.as_tensor(np.tile(a, (2, 1))))
+            base._apply_action(a)
+            np.testing.assert_allclose(
+                term.processed_action.numpy(),
+                np.tile(base.data.ctrl, (2, 1)),
+                atol=1e-5,
+                err_msg=f"step {step}",
+            )
+        assert base.data.ctrl.max() < float(torch.sigmoid(torch.tensor(2.5)))
+        twin.close()
+    finally:
+        gym.registry.pop(env_id, None)
