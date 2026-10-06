@@ -171,11 +171,12 @@ def _make_mock_env(
 ) -> Any:
     """Build a minimal namespace that mimics the mjlab env + scene layout.
 
-    In real mjlab the physics data is accessed as::
+    The Mimic state observations read the entity API (``entity.data.joint_pos``,
+    ``joint_vel``; the entity is fixed-base here); the other terms read the raw
+    physics arrays, which mjlab nests one level deeper::
 
         env.scene[entity_name].data.data   # → MjData-like object
 
-    The double ``.data`` nesting is an mjlab convention:
     - ``entity.data``      — the entity's simulation-data *holder*
     - ``entity.data.data`` — the actual physics arrays (qpos, qvel, …)
     """
@@ -211,8 +212,10 @@ def _make_mock_env(
         ctrl_range=torch.zeros(na, 2),
     )
     # mjlab double-nesting: entity.data.data → physics
-    data_holder = types.SimpleNamespace(data=physics)
-    entity = types.SimpleNamespace(data=data_holder)
+    data_holder = types.SimpleNamespace(
+        data=physics, joint_pos=physics.qpos, joint_vel=physics.qvel
+    )
+    entity = types.SimpleNamespace(data=data_holder, is_fixed_base=True)
     scene = _MockScene(
         {entity_name: entity},
         env_origins=torch.zeros(n_envs, 3, dtype=torch.float32),
