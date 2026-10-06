@@ -187,6 +187,9 @@ def stop_on_success(
 
 
 def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
+    # Multi-GPU workers run this in fresh processes that skip main().
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
     if cuda_visible == "":
         device = "cpu"
@@ -408,6 +411,8 @@ def main():
     # Parse first argument to choose the task.
     # Import tasks to populate the registry.
     import mjlab.tasks  # noqa: F401
+
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
 
     all_tasks = list_tasks()
     chosen_task, remaining_args = tyro.cli(

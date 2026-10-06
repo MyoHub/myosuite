@@ -358,6 +358,11 @@ def make_env(env_id: str, backend: str = "cpu", **overrides: Any) -> Any:
                 "Install with: pip install myosuite[mjlab]"
             ) from e
 
+        # Register the MyoSuite twins with mjlab's task registry (idempotent). Without
+        # this, they exist only when myosuite is pip-installed (mjlab's entry point) or
+        # something else imported the backend first.
+        import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
+
         if hasattr(mjlab.envs, "make"):
             return mjlab.envs.make(env_id, **overrides)
 
@@ -375,8 +380,8 @@ def make_env(env_id: str, backend: str = "cpu", **overrides: Any) -> Any:
 
         if env_id not in list_tasks():
             raise ValueError(
-                f"env_id {env_id!r} not in mjlab task registry (list_tasks()). "
-                "MyoSuite mjlab tasks must be registered via register_mjlab_task()."
+                f"env_id {env_id!r} not in mjlab task registry (list_tasks()): "
+                "it has no mjlab twin (register one with register_mjlab_task())."
             )
         cfg = load_env_cfg(env_id)
 
