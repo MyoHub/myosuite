@@ -10,7 +10,9 @@ envs) and then runs the installed stages in the order of their numeric priority
 
 ``map (10) -> noise (20) -> fatigue (30) -> reroute (40) -> ctrl (100)``
 
-The order is a property of the stage, not of the wrapper nesting, so a stack
+No stage is installed by default: a plain env runs only its own map. The
+``myoFati*`` / ``myoReaf*`` ids and the wrappers install them; noise additionally
+needs a nonzero level. The order is a property of the stage, not of the wrapper nesting, so a stack
 built in any order behaves the same. The wrappers in
 :mod:`myosuite.envs.wrappers` (``MotorNoiseWrapper``, ``FatigueWrapper``,
 ``ReafferentationWrapper``) install one stage each through

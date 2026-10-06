@@ -84,6 +84,9 @@ base env with the matching wrapper in `additional_wrappers`; `condition_wrapper_
 spec. Constructor kwargs `muscle_condition`, `fatigue_reset_vec`, `fatigue_reset_random` and
 `motor_noise` no longer exist: an env raises a `TypeError` that names the replacement.
 
+**None of the stages is on by default** (a plain env runs only its own map): the `myoFati*`, `myoReaf*` and `myoSarc*` ids
+register the matching wrapper, and noise additionally needs a nonzero level.
+
 Each wrapper installs one **stage** in the env's action pipeline
 (`myosuite.envs.muscle_stages.CtrlStageHost.add_ctrl_stage`). The stages run by numeric priority, set by
 the stage and not by the wrapping order:

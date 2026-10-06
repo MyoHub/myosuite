@@ -12,9 +12,13 @@ MuJoCo actuator order and map it to ``ctrl`` as follows:
 2. muscles (model ``na > 0``): ``sigmoid`` on muscle actuators (walk envs:
    used as-is), other actuators keep the clipped action; motors-only models:
    linear map from the action range to ``ctrlrange``;
-3. the stages, run by priority (``muscle_stages.STAGE_ORDER``): ``motor_noise``
-   (20): signal-dependent + constant noise on muscle excitations (``torch.randn``,
-   independent per env and muscle; off by default); ``fatigue`` (30): muscle ctrl
+3. the stages, run by priority (``muscle_stages.STAGE_ORDER``). **No stage is on
+   by default**: noise needs a level above zero in ``motor_noise``, fatigue
+   ``muscle_fatigue=True``, reafferentation a ``reroute`` pair and a custom stage
+   its factory in ``excitation_stages``; ``cpu_reference.action_cfg`` sets them from
+   the registration's wrappers. ``motor_noise`` (20): signal-dependent + constant
+   noise on muscle excitations (``torch.randn``, independent per env and muscle);
+   ``fatigue`` (30): muscle ctrl
    replaced by the 3CC-r active compartment, whose state is reset like the CPU env's
    (fresh, ``fatigue_reset_vec`` or ``fatigue_reset_random``); ``reafferentation``
    (40): one actuator's command is rerouted to another and the source is silenced.
@@ -154,6 +158,17 @@ class MyoAction(ActionTerm):
 
         self._stages = [cfg_stage() for cfg_stage in cfg.excitation_stages]
         self._pipeline = self._build_pipeline()
+        self._stage_resets: list[Callable[[torch.Tensor | slice], None]] = [
+            stage.reset for stage in self._stages
+        ]
+        if self._fatigue is not None:
+            self._stage_resets.append(
+                functools.partial(
+                    self._fatigue.reset,
+                    fatigue_reset_vec=cfg.fatigue_reset_vec,
+                    fatigue_reset_random=cfg.fatigue_reset_random,
+                )
+            )
 
         self._raw_actions = torch.zeros(
             self.num_envs, self._action_dim, device=self.device
@@ -261,11 +276,7 @@ class MyoAction(ActionTerm):
             env_ids = slice(None)
         self._raw_actions[env_ids] = 0.0
         self._processed_actions[env_ids] = 0.0
-        for stage in self._stages:
-            stage.reset(env_ids)
-        if self._fatigue is not None:
-            self._fatigue.reset(
-                env_ids,
-                fatigue_reset_vec=self.cfg.fatigue_reset_vec,
-                fatigue_reset_random=self.cfg.fatigue_reset_random,
-            )
+        # mjlab has no gym wrappers: the term owns the per-env stage state (fatigue
+        # compartments, filters), which mjlab's action manager resets with ``env_ids``.
+        for reset in self._stage_resets:
+            reset(env_ids)

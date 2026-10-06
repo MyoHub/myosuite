@@ -22,7 +22,10 @@ Available wrappers
 
 Muscle-command wrappers
 -----------------------
-These install one ordered stage in the env's action pipeline (see
+None of them is active by default (a plain env runs only its own map): the
+``myoFati*``, ``myoReaf*`` and ``myoSarc*`` ids register the matching wrapper, and
+noise additionally needs a nonzero level. These install one ordered stage in the
+env's action pipeline (see
 :mod:`myosuite.envs.muscle_stages`): ``map (env) -> noise -> fatigue -> reroute
 -> ctrl``. The order is fixed by the stage, whatever the wrapping order. Each
 stage can be installed **once per env**: a second wrapper of the same kind raises a
