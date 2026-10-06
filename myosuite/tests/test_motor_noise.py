@@ -348,7 +348,7 @@ def test_wrapped_env_survives_pickle_and_deepcopy() -> None:
 
 def test_set_motor_noise_reaches_the_wrapper_under_others() -> None:
     """``set_motor_noise`` is forwarded; assigning ``env.motor_noise`` on an outer wrapper is not."""
-    env = FatigueWrapper(MotorNoiseWrapper(gym.make(_ELBOW)))
+    env = FatigueWrapper(MotorNoiseWrapper(make_env(_ELBOW)))
     quiet = _rollout(env, 0)
     env.set_motor_noise({"constant_std": 0.05})
     assert env.env.motor_noise == MotorNoiseCfg(constant_std=0.05)
@@ -436,7 +436,7 @@ def test_custom_stages_default_to_after_the_builtins_in_installation_order() -> 
     from myosuite.envs.wrappers import CtrlStageWrapper
 
     _CALLS.clear()
-    env = gym.make(_ELBOW)
+    env = make_env(_ELBOW)
     with warnings.catch_warnings():
         warnings.simplefilter("error")  # no StageOrderWarning without explicit orders
         env = CtrlStageWrapper(env, _record("second"), name="second")

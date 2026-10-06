@@ -320,7 +320,7 @@ def test_twin_matches_cpu_with_sarcopenia_and_fatigue() -> None:
         twin.reset()
         term = twin.action_manager.get_term("muscles")
         assert term.stage_names == ("noise", "fatigue")
-        cpu = gym.make(env_id)
+        cpu = make_env(env_id)
         cpu.reset(seed=0)
         base = cpu.unwrapped
         assert base.ctrl_stages == ("fatigue",) and base._sarcopenia_applied
