@@ -92,6 +92,14 @@ MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
     "Default_v2_4": {"F": 0.00912, "R": 0.1 * 0.00094, "r": 10 * 15},
 }
 
+FATIGUE_REST_THRESHOLD = 0.01
+"""Commands ``TL <= FATIGUE_REST_THRESHOLD`` count as rest: recovery runs at ``r R``.
+
+Rakshit et al. (2021, Eq. 7) define rest as a zero command. A command through the muscle
+sigmoid never reaches zero (smallest value 0.00055), so a small threshold makes a relaxed
+muscle count as resting, as a muscle commanded to 0 does.
+"""
+
 _DEFAULT_F = MUSCLE_FATIGUE_PARAMS["Default"]["F"]
 _DEFAULT_R = MUSCLE_FATIGUE_PARAMS["Default"]["R"]
 _DEFAULT_r = MUSCLE_FATIGUE_PARAMS["Default"]["r"]
@@ -250,10 +258,11 @@ class CumulativeFatigue:
     (2021, Eqs. 1, 3 and 7; their ``k`` is ``r`` here):
     ``dMR/dt = -C(t) + r(k, TL) x R x MF``,
     ``dMF/dt = F x MA - r(k, TL) x R x MF`` with
-    ``r = k if TL = 0`` and ``r = 1 if TL > 0``.  Rest is ``TL <= 0``: exactly
-    zero for commands in ``[0, 1]`` (no threshold), plus the negative commands
-    of ``[-1, 1]`` control ranges, which MuJoCo's muscle dynamics clamp to zero
-    excitation.  A command mapped through the muscle sigmoid never reaches it.
+    ``r = k if TL = 0`` and ``r = 1 if TL > 0``.  Rest is
+    ``TL <= FATIGUE_REST_THRESHOLD`` (0.01): a command of (nearly) zero, plus the
+    negative commands of ``[-1, 1]`` control ranges, which MuJoCo's muscle dynamics
+    clamp to zero excitation.  The threshold lets a command mapped through the
+    muscle sigmoid, which never reaches exactly zero, rest.
 
     Args:
         mj_model: Compiled MuJoCo model.  Used to read muscle actuator
@@ -362,8 +371,8 @@ class CumulativeFatigue:
         mask = self._MA >= self.TL
         C[mask] = LR[mask] * (self.TL[mask] - self._MA[mask])
 
-        # Recovery rate: r * R only at rest, TL <= 0 (Rakshit et al. 2021, Eq. 7)
-        rR = np.where(self.TL <= 0.0, self._r * self._R, self._R)
+        # Recovery rate: r * R only at rest (Rakshit et al. 2021, Eq. 7)
+        rR = np.where(self.TL <= FATIGUE_REST_THRESHOLD, self._r * self._R, self._R)
 
         # Clip C to keep compartments in [0, 1]
         C = np.clip(  # type: ignore[assignment]
@@ -541,7 +550,7 @@ class TorchFatigueState:
         device: Torch device string (e.g. ``"cpu"``, ``"cuda:0"``).
         F: Fatigue rate — scalar or array of length *n_muscles*.
         R: Recovery rate — scalar or array of length *n_muscles*.
-        r: Recovery multiplier, applied only at rest (``TL <= 0``, Rakshit
+        r: Recovery multiplier, applied only at rest (``TL <= FATIGUE_REST_THRESHOLD``, Rakshit
             et al. 2021, Eq. 7; see :class:`CumulativeFatigue`) — scalar or array.
     """
 
@@ -651,10 +660,12 @@ class TorchFatigueState:
         LD = -torch.expm1(-LD * dt) / dt
         LR = -torch.expm1(-LR * dt) / dt
 
-        # Recovery rate: r * R only at rest, TL <= 0 (Rakshit et al. 2021, Eq. 7)
+        # Recovery rate: r * R only at rest (Rakshit et al. 2021, Eq. 7)
         rising = self.MA < excitation
         resting = self.MA >= excitation
-        rR = torch.where(excitation <= 0.0, self._r * self._R, self._R)
+        rR = torch.where(
+            excitation <= FATIGUE_REST_THRESHOLD, self._r * self._R, self._R
+        )
 
         # Transfer rate C (select, not mask-multiply: a NaN excitation then gives
         # C = 0 as on CPU instead of NaN * 0 = NaN poisoning the state).

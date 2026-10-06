@@ -260,6 +260,33 @@ class TestCumulativeFatigue:
         np.testing.assert_allclose(mult[~rest], 1.0, atol=0.3)
 
     @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    def test_near_zero_command_counts_as_rest(self, backend: str) -> None:
+        """Commands up to ``FATIGUE_REST_THRESHOLD`` rest (a sigmoid-mapped muscle
+        never reaches zero); above it recovery runs at ``R``."""
+        from myosuite.core.muscle_conditions import FATIGUE_REST_THRESHOLD
+
+        below = _rest_protocol_trace(
+            backend, np.full((100, 3), FATIGUE_REST_THRESHOLD)
+        )
+        above = _rest_protocol_trace(
+            backend, np.full((100, 3), 2.0 * FATIGUE_REST_THRESHOLD)
+        )
+        # skip the first steps, where MA still decays towards the command
+        np.testing.assert_allclose(
+            _effective_recovery_multiplier(below)[30:], below["r"], rtol=0.05
+        )
+        np.testing.assert_allclose(
+            _effective_recovery_multiplier(above)[30:], 1.0, atol=0.3
+        )
+
+    def test_jax_rest_threshold_matches_core(self) -> None:
+        pytest.importorskip("jax")
+        from myosuite.core.muscle_conditions import FATIGUE_REST_THRESHOLD
+        from myosuite.physics import fatigue_jax
+
+        assert fatigue_jax._REST_THRESHOLD == FATIGUE_REST_THRESHOLD
+
+    @pytest.mark.parametrize("backend", ["numpy", "torch"])
     def test_negative_command_counts_as_rest(self, backend: str) -> None:
         """A negative command (``[-1, 1]`` muscle ctrl ranges, clamped to zero
         excitation by MuJoCo) recovers like TL = 0."""

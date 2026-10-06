@@ -27,8 +27,10 @@ integrated exactly over the control step.
 
 The rest-recovery multiplier ``r`` (Looft et al. 2018) follows Rakshit et al.
 (2021, Eq. 7, where it is called ``k``): ``r(k, TL) = k if TL = 0`` and
-``1 if TL > 0``, so ``R_r = r R`` at rest and ``R`` under any load. Rest is a
-command of exactly zero; there is no threshold. Negative commands, which occur
+``1 if TL > 0``, so ``R_r = r R`` at rest and ``R`` under any load. Rakshit et al.
+define rest as a zero command. A command through the muscle sigmoid never reaches
+zero, so MyoSuite counts ``TL <= 0.01``
+(:data:`~myosuite.core.muscle_conditions.FATIGUE_REST_THRESHOLD`) as rest. Negative commands, which occur
 with the ``[-1, 1]`` muscle control range of ``myoFatiChallengeChaseTagFBP2-v0``
 and which MuJoCo's muscle dynamics clamp to zero excitation, also count as rest.
 Earlier versions, including the legacy v2.x model, applied the multiplier
@@ -39,9 +41,9 @@ The rule changes nothing for sustained contractions, so the validation below is
 unaffected. It matters for how a task commands its muscles:
 
 * Envs that map actions through the muscle sigmoid
-  ``1 / (1 + exp(-5 (a - 0.5)))`` never command rest. The smallest excitation is
-  0.00055 at ``a = -1`` (0.076 at ``a = 0``), so these muscles recover at ``R``
-  only. This covers 56 of the 63 registered ``myoFati*`` envs: every pose, reach,
+  ``1 / (1 + exp(-5 (a - 0.5)))`` reach rest at ``a <= -0.42`` (excitation
+  0.01, the threshold); the smallest excitation is 0.00055 at ``a = -1`` and
+  0.076 at ``a = 0``. This covers 56 of the 63 registered ``myoFati*`` envs: every pose, reach,
   key-turn, object-hold, pen, reorient and torso env, ``myoFatiLegStandRandom``
   and every challenge env except the full-body ChaseTag.
 * Envs that pass the action to the muscles directly reach rest at the lower end
@@ -51,10 +53,10 @@ unaffected. It matters for how a task commands its muscles:
   ``myoFatiElbowPoseTask{Fixed,Random}-v0`` (``[0, 1]``) and
   ``myoFatiChallengeChaseTagFBP2-v0`` (``[-1, 1]``, at or below 0).
 
-Under random excitations drawn uniformly from ``[0, 1]`` every 20 ms, which never
-command rest, the mean fatigued fraction after 120 s rises from 0.40 to 0.55
-(``Default`` row), 0.46 to 0.56 (``Elbow``), 0.37 to 0.49 (``Knee``) and 0.53 to
-0.78 (``Shoulder``) compared with the old rule.
+Under random excitations drawn uniformly from ``[0, 1]`` every 20 ms, of which
+1% rest, the mean fatigued fraction after 120 s rises from 0.40 to 0.55
+(``Default`` row), 0.46 to 0.56 (``Elbow``), 0.37 to 0.48 (``Knee``) and 0.53 to
+0.77 (``Shoulder``) compared with the old rule.
 
 Parameters and sources
 ----------------------
