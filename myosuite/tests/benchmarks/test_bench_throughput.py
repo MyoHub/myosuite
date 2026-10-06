@@ -18,6 +18,7 @@ import os
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 
 pytestmark = [pytest.mark.tier3, pytest.mark.slow]
@@ -51,12 +52,9 @@ except ImportError:
 # --- Benchmark 1: CPU (always runs) ---
 def test_bench_cpu_elbow_pose(benchmark):
     """MuJoCo CPU: steps/sec for 1-DOF elbow pose (1 env)."""
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-    import gymnasium as gym
-
-    env = gym.make("myoElbowPose1D6MFixed-v0")
+    env = make_env("myoElbowPose1D6MFixed-v0")
     action = np.zeros(env.action_space.shape, dtype=np.float32)
     env.reset(seed=0)
 
@@ -125,11 +123,9 @@ def test_bench_mjx_elbow_pose(benchmark):
 @pytest.mark.skipif(not _MJLAB_AVAILABLE, reason="mjlab not installed")
 def test_bench_mjlab_elbow_pose(benchmark):
     """mjlab (MuJoCo Warp): steps/sec for 1-DOF elbow pose (1 env)."""
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-
-    from myosuite.core.registry import make_env
+    from myosuite import make_env
 
     try:
         env = make_env("myoElbowPose1D6MFixed-v0", backend="mjlab")
@@ -171,16 +167,13 @@ def _compare_backends() -> None:
     """Print a quick steps/sec table for CPU (and MJX if available)."""
     import time
 
-    import myosuite
-
-    myosuite.register_all_envs()
-    import gymnasium as gym
+    import myosuite  # noqa: F401
 
     targets: dict[str, int] = {"CPU": 2_000, "MJX": 500_000}
     results: dict[str, float] = {}
 
     # CPU
-    env = gym.make("myoElbowPose1D6MFixed-v0")
+    env = make_env("myoElbowPose1D6MFixed-v0")
     action = np.zeros(env.action_space.shape, dtype=np.float32)
     env.reset(seed=0)
     n = 500

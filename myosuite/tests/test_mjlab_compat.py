@@ -691,8 +691,7 @@ class TestMjlabIntegration:
         import myosuite
         import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
 
-        myosuite.register_all_envs()
-        from myosuite.core.registry import make_env
+        from myosuite import make_env
 
         try:
             env = make_env(env_id, backend="mjlab")
@@ -813,10 +812,9 @@ class TestMjlabMimicIntegration:
         """Mimic mjlab tasks must support make→reset→step when registered."""
         import numpy as np
 
-        import myosuite
+        import myosuite  # noqa: F401
 
-        myosuite.register_all_envs()
-        from myosuite.core.registry import make_env
+        from myosuite import make_env
 
         try:
             env = make_env(env_id, backend="mjlab")
@@ -864,7 +862,7 @@ def test_make_env_mjlab_fallback_applies_num_envs_override(
     """Fallback mjlab path must map num_envs override into cfg.scene.num_envs."""
     import sys
 
-    from myosuite.core.registry import make_env
+    from myosuite import make_env
 
     class _Cfg:
         def __init__(self) -> None:
@@ -1030,10 +1028,9 @@ def test_mujoco_warp_version_has_sparse_tendon_transmission_fix() -> None:
 )
 def test_mjlab_parallel_qacc_consistency_zero_state() -> None:
     """Diagnostic: qacc should match across envs for identical zeroed state."""
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-    from myosuite.core.registry import make_env
+    from myosuite import make_env
 
     num_envs = 8
     env = make_env("myoLegWalk-v0", backend="mjlab", num_envs=num_envs, device="cpu")

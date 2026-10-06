@@ -92,6 +92,7 @@ except ImportError:
 
 from myosuite.envs.myo.backends.mjx.pose_env import MjxPoseEnv  # noqa: E402
 from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv  # noqa: E402
+from myosuite import make_env  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -240,10 +241,9 @@ def _run_cpu_episode(
         Tuple ``(qpos_traj, rewards)`` — numpy arrays of lengths ``T`` and
         ``(T, nq)`` respectively.
     """
-    import gymnasium as gym
     from myosuite.utils import gym as _myo_gym  # ensure envs registered  # noqa: F401
 
-    env = gym.make(env_id)
+    env = make_env(env_id)
     env.reset(seed=0)
 
     if override_target_jnt is not None:
@@ -311,10 +311,7 @@ def _run_mjlab_sar_episode(
     """
     import torch
 
-    import myosuite
-
-    myosuite.register_all_envs()
-    from myosuite.core.registry import make_env
+    from myosuite import make_env
 
     env = make_env(env_id, backend="mjlab")
     env.reset(seed=0)

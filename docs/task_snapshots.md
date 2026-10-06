@@ -12,7 +12,7 @@ the **reset frame** — a zero-action rollout drops the object. Locomotion
 frames are a short zero-action settle where that still shows the scene.
 
 Images live in `docs/task_snapshots/`. All obs/action dims and muscle counts
-below were read directly off `gym.make(env_id)` (`model.na` = muscle actuators,
+below were read directly off `make_env(env_id)` (`model.na` = muscle actuators,
 `model.nu` = total actuators including prosthetic / robotic ones).
 
 **mjlab GPU** is registered only for `myoChallengeTableTennisP{0,1,2}-v0`.
@@ -325,7 +325,7 @@ python3 - <<'PY'
 import gymnasium as gym, numpy as np, mujoco, imageio.v2 as imageio
 from myosuite import register_all_envs
 register_all_envs()
-env = gym.make("myoChallengeDieReorientP1-v0")
+env = make_env("myoChallengeDieReorientP1-v0")
 env.reset(seed=0)
 mujoco.mj_forward(env.unwrapped.model, env.unwrapped.data)
 # then MjvCamera + Renderer as below

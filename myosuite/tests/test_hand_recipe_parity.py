@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -243,10 +244,8 @@ def test_hand_sar_adds_sar_object(ref_model):
 def test_hand_env_reset_and_step(env_id):
     """Hand env resets and steps without exception."""
     import myosuite  # noqa: F401 — registers envs
-    from myosuite.utils import gym
 
-    myosuite.register_all_envs()
-    env = gym.make(env_id)
+    env = make_env(env_id)
     obs, _ = env.reset(seed=0)
     assert obs.ndim == 1
     obs2, rwd, term, trunc, info = env.step(env.action_space.sample())
@@ -272,11 +271,9 @@ def test_legacy_hand_task_recipe_compatibility(env_id, recipe, expected_counts):
     """
     import myosuite  # noqa: F401 — registers envs
     from myosuite.core.model_builder import build_from_recipe
-    from myosuite.utils import gym
 
-    myosuite.register_all_envs()
     recipe_model, _ = build_from_recipe(recipe)
-    env = gym.make(env_id)
+    env = make_env(env_id)
     try:
         names = [
             env.unwrapped.model.joint(i).name for i in range(env.unwrapped.model.njnt)

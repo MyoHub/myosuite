@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 
 pytestmark = pytest.mark.tier2
@@ -30,13 +31,10 @@ def _canonical_action(action: np.ndarray) -> np.ndarray:
 @pytest.mark.tier1
 def test_walk_cpu_contract_smoke() -> None:
     """CPU walk env must provide finite obs/reward under canonical actions."""
-    import gymnasium as gym
 
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-
-    env = gym.make("myoLegWalk-v0", reset_type="init")
+    env = make_env("myoLegWalk-v0", reset_type="init")
     obs, _ = env.reset(seed=0)
     assert np.all(np.isfinite(np.asarray(obs)))
 
@@ -78,12 +76,9 @@ def test_walk_tier_a_dense_reward_gate_cpu_vs_mjlab() -> None:
 
     import myosuite
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
-    from myosuite.core.registry import make_env
-    from myosuite.utils import gym
+    from myosuite import make_env
 
-    myosuite.register_all_envs()
-
-    cpu_env = gym.make("myoLegWalk-v0", reset_type="init")
+    cpu_env = make_env("myoLegWalk-v0", reset_type="init")
     cpu_env.reset(seed=0)
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"

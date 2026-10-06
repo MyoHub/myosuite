@@ -26,8 +26,9 @@ from pathlib import Path  # noqa: E402
 import click  # noqa: E402
 import numpy as np  # noqa: E402
 
-from myosuite.utils import gym, tensor_utils  # noqa: E402
+from myosuite.utils import tensor_utils  # noqa: E402
 from myosuite.utils.path_plotting import plot as plotnsave_paths  # noqa: E402
+from myosuite.core.registry import make_env  # noqa: E402
 
 
 @click.command(help=DESC)
@@ -157,9 +158,9 @@ def examine_logs(
     # seed and load environments
     np.random.seed(seed)
     env = (
-        gym.make(env_name)
+        make_env(env_name)
         if env_args is None
-        else gym.make(env_name, **(eval(env_args)))
+        else make_env(env_name, **(eval(env_args)))
     )
     env = env.unwrapped
     env.seed(seed)

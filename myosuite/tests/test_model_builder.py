@@ -11,6 +11,7 @@ import importlib.util
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 
 pytestmark = pytest.mark.tier1
@@ -676,7 +677,6 @@ def test_cached_spec_keeps_a_spec_from_its_second_build():
 
 def test_motor_finger_recipe_scales_the_motor_gears() -> None:
     """The four motorFinger* envs use the stronger gears (x1/x2 never reached the poses)."""
-    import gymnasium as gym
     import mujoco
 
     from myosuite.core.model_recipes import _MOTOR_FINGER_GEAR_SCALE
@@ -691,7 +691,7 @@ def test_motor_finger_recipe_scales_the_motor_gears() -> None:
         "motorFingerReachFixed-v0",
         "motorFingerReachRandom-v0",
     ):
-        env = gym.make(env_id)
+        env = make_env(env_id)
         np.testing.assert_allclose(
             env.unwrapped.model.actuator_gear[:, 0], stock * _MOTOR_FINGER_GEAR_SCALE
         )

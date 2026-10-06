@@ -76,10 +76,9 @@ Run these from a directory that does not directly contain a folder named `myosui
 ## Quick start
 
 ```python
-import gymnasium as gym
-import myosuite  # registers environments
+from myosuite import make_env
 
-env = gym.make("myoElbowPose1D6MRandom-v0")
+env = make_env("myoElbowPose1D6MRandom-v0")
 obs, info = env.reset(seed=0)
 for _ in range(1000):
     obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
@@ -94,10 +93,9 @@ Train on CPU:
 
 ```python
 from stable_baselines3 import PPO
-import gymnasium as gym
-import myosuite
+from myosuite import make_env
 
-env = gym.make("myoElbowPose1D6MRandom-v0")
+env = make_env("myoElbowPose1D6MRandom-v0")
 model = PPO("MlpPolicy", env, device="cpu")
 model.learn(total_timesteps=100_000)
 ```
@@ -129,7 +127,7 @@ List every registered CPU ID: `python -c "import myosuite; print('\n'.join(myosu
 
 | Backend                       | Use                   | How                                                                    |
 | ----------------------------- | --------------------- | ---------------------------------------------------------------------- |
-| **CPU** (Gymnasium)     | playback, debug, SB3  | `gym.make(env_id)`                                                   |
+| **CPU** (Gymnasium)     | playback, debug, SB3  | `make_env(env_id)`                                                   |
 | **mjlab** (MuJoCo Warp) | parallel GPU training | `pip install -e ".[mjlab]"` then `scripts/train_mjlab.py <env_id>` |
 
 A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/wiki/cross-backend-contract.md)). `make_env(EnvConfig(env_id, backend=..., features=...))` builds either half with the same episode length, control step and muscle-command features. An MJX (JAX) path also exists; it is **experimental** and not the supported training route.

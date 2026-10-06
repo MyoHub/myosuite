@@ -10,18 +10,16 @@ from __future__ import annotations
 import time
 
 import pytest
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
 
 def test_relocate_p2eval_reset_bounded() -> None:
     """P2eval used an unbounded ``while ncon > 0`` loop that hung SB3."""
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-    from myosuite.utils import gym
-
-    env = gym.make("myoChallengeRelocateP2eval-v0")
+    env = make_env("myoChallengeRelocateP2eval-v0")
     try:
         t0 = time.perf_counter()
         for seed in range(8):

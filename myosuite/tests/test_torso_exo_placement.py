@@ -12,12 +12,12 @@ in front of the skeleton.
 
 from __future__ import annotations
 
-import gymnasium as gym
 import mujoco
 import numpy as np
 import pytest
 
 import myosuite  # noqa: F401  (registers the CPU envs)
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -41,7 +41,7 @@ def _geom_names(model: mujoco.MjModel, prefix: str) -> list[int]:
 
 
 def test_exo_shell_covers_the_back_of_the_rib_cage() -> None:
-    env = gym.make("myoTorsoExoPoseFixed-v0").unwrapped
+    env = make_env("myoTorsoExoPoseFixed-v0").unwrapped
     env.reset(seed=0)
     model, data = env.model, env.data
     ribs = np.vstack(

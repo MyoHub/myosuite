@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import gymnasium as gym
 import numpy as np
 import pytest
 
 from myosuite.utils.reach_workspace import reachable_target_points
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -16,7 +16,7 @@ _BOX = (np.array([[0.1, -0.1, 0.1]]), np.array([[0.27, 0.1, 0.3]]))
 
 @pytest.mark.parametrize("env_id", _IDS)
 def test_cpu_targets_come_from_the_reachable_table(env_id: str) -> None:
-    env = gym.make(env_id)
+    env = make_env(env_id)
     u = env.unwrapped
     assert u.target_sampling == "workspace"
     points = u._workspace_points.reshape(-1, 3)
@@ -30,7 +30,7 @@ def test_cpu_targets_come_from_the_reachable_table(env_id: str) -> None:
 
 
 def test_table_is_deterministic_and_covers_most_of_the_box() -> None:
-    u = gym.make("motorFingerReachRandom-v0").unwrapped
+    u = make_env("motorFingerReachRandom-v0").unwrapped
     sites = [u.model.site("IFtip").id]
     a = reachable_target_points(u.model, sites, *_BOX)
     b = reachable_target_points(u.model, sites, *_BOX, seed=0)
@@ -84,7 +84,7 @@ def test_mjlab_workspace_table_uses_scene_site_ids() -> None:
     robot = mj.scene[command.cfg.entity_name]
     local = [int(i) for i in command._tip_ids]
     assert [int(robot.indexing.site_ids[i]) for i in local] != local
-    table = gym.make(env_id).unwrapped._workspace_points.reshape(-1, 3)
+    table = make_env(env_id).unwrapped._workspace_points.reshape(-1, 3)
     np.testing.assert_allclose(command._points.cpu().numpy(), table, atol=1e-5)
     mj.close()
 
@@ -95,4 +95,4 @@ def test_fixed_and_other_random_reach_envs_keep_box_sampling() -> None:
         "myoHandReachRandom-v0",
         "myoArmReachRandom-v0",
     ):
-        assert gym.make(env_id).unwrapped.target_sampling == "box"
+        assert make_env(env_id).unwrapped.target_sampling == "box"

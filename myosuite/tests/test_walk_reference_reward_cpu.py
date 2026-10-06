@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 
 pytestmark = pytest.mark.tier2
@@ -23,11 +24,9 @@ pytestmark = pytest.mark.tier2
 @pytest.mark.parametrize("steps", [5])
 def test_walk_reference_reward_matches_cpu(steps: int) -> None:
     """Compare LegWalkEnvV0 reward vs walk_env_reward on CPU."""
-    import gymnasium as gym
 
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
     from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0
     from myosuite.terms.base_reward import walk_env_reward
     from myosuite.envs.gymnasium_env import CpuEnvAccessor
@@ -35,7 +34,7 @@ def test_walk_reference_reward_matches_cpu(steps: int) -> None:
     seed = 0
     rng = np.random.default_rng(seed)
 
-    env = gym.make("myoLegWalk-v0", reset_type="init")
+    env = make_env("myoLegWalk-v0", reset_type="init")
     obs, info = env.reset(seed=seed)
     del obs, info
 

@@ -34,6 +34,7 @@ from myosuite.envs.modular_env import (  # noqa: E402
     _load_reward_fn,
     _sample_goal,
 )
+from myosuite import make_env  # noqa: E402
 
 
 _THREE_HINGE_XML = """
@@ -428,11 +429,10 @@ def test_register_task_idempotent() -> None:
 
 
 def test_register_task_gymnasium_make() -> None:
-    """gym.make() must work after register_task()."""
-    import gymnasium as gym
+    """make_env() must work after register_task()."""
 
     env_id = register_task(_ElbowTask(), env_id="TestElbowGymMake-v0")
-    env = gym.make(env_id)
+    env = make_env(env_id)
     obs, _ = env.reset(seed=0)
     assert obs.shape[0] > 0
     env.close()
@@ -441,10 +441,8 @@ def test_register_task_gymnasium_make() -> None:
 def test_register_task_applies_instability_wrapper_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import gymnasium as gym
-
     env_id = register_task(_ElbowTask(), env_id="TestElbowInstabilityWrapped-v0")
-    env = gym.make(env_id)
+    env = make_env(env_id)
     base_env = env.unwrapped
     env.reset(seed=0)
     monkeypatch.setattr(
@@ -463,8 +461,6 @@ def test_register_task_applies_instability_wrapper_by_default(
 def test_register_env_can_disable_instability_wrapper(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import gymnasium as gym
-
     env_id = "TestElbowInstabilityWrapperOff-v0"
     register_env(
         env_id=env_id,
@@ -473,7 +469,7 @@ def test_register_env_can_disable_instability_wrapper(
         kwargs={"task_config": _ElbowTask()},
         wrap_mj_instability_termination=False,
     )
-    env = gym.make(env_id)
+    env = make_env(env_id)
     base_env = env.unwrapped
     env.reset(seed=0)
     monkeypatch.setattr(
@@ -689,11 +685,10 @@ def test_task_config_holds_no_features() -> None:
 )
 def test_fati_task_variants_fatigue(env_id: str) -> None:
     """The ``Fati`` TaskConfig variants (a registered ``FatigueWrapper``) fatigue."""
-    import gymnasium as gym
 
     import myosuite  # noqa: F401  (registers the elbow TaskConfig ids)
 
-    wrapped = gym.make(env_id)
+    wrapped = make_env(env_id)
     env = wrapped.unwrapped
     env.reset(seed=0)
     fatigue = env.muscle_fatigue
@@ -722,11 +717,10 @@ def test_fati_task_variants_fatigue(env_id: str) -> None:
 )
 def test_non_fati_task_variants_do_not_fatigue(env_id: str) -> None:
     """The other variants write the clipped action to ``ctrl`` unchanged."""
-    import gymnasium as gym
 
     import myosuite  # noqa: F401  (registers the elbow TaskConfig ids)
 
-    env = gym.make(env_id).unwrapped
+    env = make_env(env_id).unwrapped
     env.reset(seed=0)
     assert "fatigue" not in env.ctrl_stages
     action = np.full(env.action_space.shape, 0.8, dtype=np.float32)
@@ -826,7 +820,7 @@ def test_muscle_normalize_action_monotone() -> None:
 
 
 def test_make_env_cpu_returns_env() -> None:
-    from myosuite.core.registry import make_env
+    from myosuite import make_env
 
     register_task(_ElbowTask(), env_id="TestMakeEnv-v0")
     env = make_env("TestMakeEnv-v0", backend="cpu")
@@ -835,7 +829,7 @@ def test_make_env_cpu_returns_env() -> None:
 
 
 def test_make_env_unknown_backend_raises() -> None:
-    from myosuite.core.registry import make_env
+    from myosuite import make_env
 
     with pytest.raises(ValueError, match="Unknown backend"):
         make_env("TestMakeEnv-v0", backend="foobar")

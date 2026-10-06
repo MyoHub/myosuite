@@ -45,6 +45,7 @@ from typing import Any, Literal
 import mujoco
 import numpy as np
 import tyro
+from myosuite import make_env
 
 
 @dataclass(frozen=True)
@@ -873,14 +874,13 @@ def _check_stochastic(cfg: EvalConfig, policy) -> None:
 
 def evaluate_cpu(cfg: EvalConfig, checkpoint: Path) -> None:
     """Roll out ``cols x rows`` CPU envs in lockstep, ``episodes_per_env`` each."""
-    import gymnasium as gym
 
     import myosuite  # noqa: F401  (registers the CPU envs)
     from myosuite.utils.rslrl_policy import load_rslrl_policy
 
     cols, rows = _grid_shape(cfg)
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
-    envs = [gym.make(cfg.env_id) for _ in range(n_envs)]
+    envs = [make_env(cfg.env_id) for _ in range(n_envs)]
     policy = load_rslrl_policy(checkpoint, envs[0].action_space.shape[0])
     _check_stochastic(cfg, policy)
     grid = (

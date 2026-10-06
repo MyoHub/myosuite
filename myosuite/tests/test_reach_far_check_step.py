@@ -7,11 +7,11 @@ The mjlab twin (``penalty_start_step``) and the MJX env (``_far_check_time``, te
 
 from __future__ import annotations
 
-import gymnasium as gym
 import numpy as np
 import pytest
 
 from myosuite.utils.step_timing import first_step_after
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -21,7 +21,7 @@ _IDS = ("myoFingerReachRandom-v0", "motorFingerReachRandom-v0")
 
 def _first_far_termination_step(env_id: str) -> int:
     """Control step of the first termination with the target 1 m from the fingertip."""
-    env = gym.make(env_id)
+    env = make_env(env_id)
     u = env.unwrapped
     env.reset(seed=0)
     u.model.site_pos[u.target_sids[0]] += np.array([1.0, 0.0, 0.0])
@@ -35,7 +35,7 @@ def _first_far_termination_step(env_id: str) -> int:
 
 @pytest.mark.parametrize("env_id", _IDS)
 def test_cpu_far_check_starts_at_first_step_after(env_id: str) -> None:
-    u = gym.make(env_id).unwrapped
+    u = make_env(env_id).unwrapped
     expected = first_step_after(2 * u.dt, u.model.opt.timestep, u.frame_skip)
     assert expected == 2
     assert _first_far_termination_step(env_id) == expected

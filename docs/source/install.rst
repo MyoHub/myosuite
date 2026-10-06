@@ -58,10 +58,9 @@ Minimal usage
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
-   env = gym.make("myoElbowPose1D6MRandom-v0")
+   env = make_env("myoElbowPose1D6MRandom-v0")
    obs, info = env.reset(seed=0)
    obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
    env.close()

@@ -7,7 +7,7 @@ import time
 
 import click
 
-from myosuite.utils import gym
+from myosuite.core.registry import make_env
 
 DESC = """
 Script to render trajectories embeded in the env"
@@ -34,7 +34,7 @@ Script to render trajectories embeded in the env"
     default="onscreen",
 )
 def examine_reference(env_name, horizon, num_playback, render):
-    env = gym.make(env_name)
+    env = make_env(env_name)
 
     # fixed or random reference
     if horizon == 1:

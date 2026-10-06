@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 
 from myosuite.utils import gym
+from myosuite import make_env
 
 
 pytestmark = pytest.mark.tier1
@@ -46,9 +47,6 @@ def _skip_if_hf_gated(env_id: str, exc: Exception) -> None:
 
 def _get_myo_env_ids() -> list[str]:
     """Return all MyoSuite env IDs from the gymnasium registry."""
-    import myosuite
-
-    myosuite.register_all_envs()
 
     return [
         env_id
@@ -61,7 +59,7 @@ def _get_myo_env_ids() -> list[str]:
 def test_env_smoke(env_id: str) -> None:
     """Smoke-test a single environment: reset, step, close."""
     try:
-        env = gym.make(env_id)
+        env = make_env(env_id)
     except Exception as exc:
         pytest.skip(f"Cannot instantiate {env_id}: {exc}")
 
