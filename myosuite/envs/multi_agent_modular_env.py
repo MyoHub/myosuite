@@ -196,6 +196,7 @@ class ModularMultiAgentTaskEnv(gym.Env):
 
         for _ in range(self._n_substeps):
             mujoco.mj_step(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data)
 
         self._step_count += 1
 
