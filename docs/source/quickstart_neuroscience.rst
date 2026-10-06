@@ -181,7 +181,7 @@ endurance times.
        obs, reward, terminated, truncated, info = env.step(ctrl)
 
        # Fraction of motor units in the fatigued pool (MF), averaged over the muscles
-       fatigued.append(env.unwrapped.muscle_fatigue.MF.mean())
+       fatigued.append(env.muscle_fatigue.MF.mean())
 
        if terminated or truncated:
            obs, info = env.reset()
