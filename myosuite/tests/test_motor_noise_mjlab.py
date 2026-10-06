@@ -173,3 +173,86 @@ def test_twin_matches_cpu_distribution(twin: ManagerBasedRlEnv, action: float) -
     cpu_env.close()
     assert min(np.std(cpu), np.std(gpu)) > 0.05  # both noisy
     assert stats.ks_2samp(np.ravel(cpu), gpu).pvalue > 1e-3
+
+
+# ── portable custom stages ───────────────────────────────────────────────────
+
+_STAGED = "myoFatiElbowPose1D6MStageTest-v0"
+
+
+@pytest.fixture(scope="module")
+def staged_id() -> Iterator[str]:
+    """A fatigue registration with a low-pass stage before fatigue (order 25)."""
+    import functools
+
+    from myosuite.envs.muscle_stages import LowPassStage
+
+    spec = gym.spec("myoFatiElbowPose1D6MRandom-v0")
+    registry.register_env(
+        env_id=_STAGED,
+        entry_point=spec.entry_point,
+        max_episode_steps=spec.max_episode_steps,
+        kwargs=spec.kwargs,
+        additional_wrappers=(
+            *spec.additional_wrappers[:-1],
+            WrapperSpec(
+                name="ExcitationStageWrapper",
+                entry_point="myosuite.envs.wrappers:ExcitationStageWrapper",
+                kwargs={"make_stage": functools.partial(LowPassStage, 0.4)},
+            ),
+            spec.additional_wrappers[-1],
+        ),
+    )
+    yield _STAGED
+    gym.registry.pop(_STAGED, None)
+
+
+def test_registration_configures_the_twin_with_the_stage(staged_id: str) -> None:
+    cfg = elbow_pose_env_cfg(staged_id)
+    factories = cfg.actions["muscles"].excitation_stages
+    assert len(factories) == 1 and factories[0]().name == "lowpass"
+    assert not elbow_pose_env_cfg(_BASE).actions["muscles"].excitation_stages
+
+
+def test_twin_matches_cpu_with_a_stateful_stage(staged_id: str) -> None:
+    """Low-pass (order 25) before fatigue (30): CPU env and twin give the same ctrl."""
+    cfg = elbow_pose_env_cfg(staged_id)
+    cfg.scene.num_envs = 3
+    twin = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    twin.reset()
+    term = twin.action_manager.get_term("muscles")
+    cpu = gym.make(staged_id)
+    cpu.reset(seed=0)
+    base = cpu.unwrapped
+    rng = np.random.default_rng(0)
+    for step in range(6):
+        a = rng.uniform(-1.0, 1.0, cpu.action_space.shape).astype(np.float32)
+        term.process_actions(torch.as_tensor(np.tile(a, (3, 1))))
+        base._apply_action(a)
+        np.testing.assert_allclose(
+            term.processed_action.numpy(),
+            np.tile(base.data.ctrl, (3, 1)),
+            atol=1e-5,
+            err_msg=f"step {step}",
+        )
+    # a per-env reset clears the filter of that env only
+    term.reset(torch.tensor([1]))
+    stage = term._stages[0]
+    assert bool(stage._fresh[1]) and not bool(stage._fresh[0])
+    twin.close()
+
+
+def test_same_order_warns_on_the_twin() -> None:
+    import functools
+
+    from myosuite.envs.muscle_stages import LowPassStage, StageOrderWarning
+
+    cfg = elbow_pose_env_cfg(_BASE)
+    cfg.scene.num_envs = 2
+    cfg.actions["muscles"].excitation_stages = (
+        functools.partial(LowPassStage, 0.5, "a", 25),
+        functools.partial(LowPassStage, 0.5, "b", 25),
+    )
+    with pytest.warns(StageOrderWarning, match="STAGE ORDER CLASH.*'a', 'b'"):
+        env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    env.close()

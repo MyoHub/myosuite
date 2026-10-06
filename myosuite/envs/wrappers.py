@@ -43,13 +43,17 @@ fatigue_reset_random=True)``, or change the options with
 :class:`SarcopeniaWrapper`
     Muscle force reduction applied to the model (``myoSarc*`` envs).
 
+:class:`ExcitationStageWrapper`
+    A portable custom stage on the muscle excitations (filter, cap, gains, ...) at an
+    order of your choice; runs on the CPU env and on its mjlab twin.
+
 :class:`CtrlStageWrapper`
-    A custom stage on the muscle excitations (filter, rate limit, gains, failures, ...)
-    at an order of your choice, between the env's map and the ``ctrl`` write.
+    Like it, but env-aware and CPU only.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import gymnasium as gym
@@ -479,10 +483,60 @@ _CONDITION_WRAPPERS = {
 }
 
 
+class ExcitationStageWrapper(
+    _PicklableStage, _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
+    """A portable custom stage on the muscle excitations: CPU env and mjlab twin.
+
+    The stage is an :class:`~myosuite.envs.muscle_stages.ExcitationStage` (its ``name``
+    and ``order`` say where it runs, see :class:`CtrlStageWrapper` for the order scale).
+    It sees the muscle excitations only and is written for numpy and torch, so the same
+    registration configures both backends: the mjlab twin builds the stage from the same
+    factory for every env of the scene. Two stages with the same order raise a
+    :class:`~myosuite.envs.muscle_stages.StageOrderWarning`.
+
+    Example::
+
+        env = ExcitationStageWrapper(
+            gym.make("myoElbowPose1D6MRandom-v0"), functools.partial(LowPassStage, 0.3)
+        )
+
+    Args:
+        env: Env whose pipeline runs muscle stages.
+        make_stage: A zero-argument factory (a class, or ``functools.partial``) that
+            returns an :class:`~myosuite.envs.muscle_stages.ExcitationStage`; use a
+            module-level callable so that the wrapped env can be pickled.
+    """
+
+    def __init__(
+        self, env: gym.Env, make_stage: Callable[[], muscle_stages.ExcitationStage]
+    ) -> None:
+        RecordConstructorArgs.__init__(self, make_stage=make_stage)
+        gym.Wrapper.__init__(self, env)
+        stage = make_stage()
+        if stage.name in muscle_stages.STAGE_ORDER:
+            raise ValueError(
+                f"{stage.name!r} is a built-in stage; use its wrapper, or pick another name."
+            )
+        self._make_stage, self.stage = make_stage, stage
+
+        def apply(host: Any, ctrl: np.ndarray) -> np.ndarray:
+            idx = host._stage_muscle_index()
+            ctrl[idx] = stage(ctrl[idx], np)
+            return ctrl
+
+        _stage_host(env, "ExcitationStageWrapper").add_ctrl_stage(
+            stage.name, apply, lambda host: stage.reset(None), order=stage.order
+        )
+
+    def _pickle_kwargs(self) -> dict[str, Any]:
+        return {"make_stage": self._make_stage}
+
+
 class CtrlStageWrapper(
     _PicklableStage, _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
 ):
-    """A custom stage on the muscle excitations, at an order of your choice.
+    """An env-aware custom stage on the muscle excitations (CPU only), at an order of your choice.
 
     The stage runs after the env's action-to-excitation map and before ``ctrl`` is
     written, between the built-in stages according to its ``order`` (noise 20, fatigue
@@ -491,8 +545,10 @@ class CtrlStageWrapper(
 
     Two stages with the same order run in name order and raise a
     :class:`~myosuite.envs.muscle_stages.StageOrderWarning`: give every custom stage its
-    own order. Custom stages exist on the CPU side only; the mjlab ``MyoAction`` runs the
-    built-in ones.
+    own order. This stage gets the host env and so runs on the CPU only; for a stage that
+    also runs on the mjlab twin, write an
+    :class:`~myosuite.envs.muscle_stages.ExcitationStage` and use
+    :class:`ExcitationStageWrapper`.
 
     Example::
 

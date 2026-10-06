@@ -14,11 +14,17 @@ The order is a property of the stage, not of the wrapper nesting, so a stack
 built in any order behaves the same. The wrappers in
 :mod:`myosuite.envs.wrappers` (``MotorNoiseWrapper``, ``FatigueWrapper``,
 ``ReafferentationWrapper``) install one stage each through
-:meth:`CtrlStageHost.add_ctrl_stage`. A custom stage (see ``CtrlStageWrapper``)
-picks its own ``order`` between :data:`MAP_ORDER` and :data:`WRITE_ORDER`; two
-stages with the same order run in name order and trigger a
-:class:`StageOrderWarning`. Custom stages exist on the CPU side only: the mjlab
-``MyoAction`` runs the three built-in stages.
+:meth:`CtrlStageHost.add_ctrl_stage`. A custom stage picks its own ``order`` between
+:data:`MAP_ORDER` and :data:`WRITE_ORDER`; two stages with the same order run in name
+order and trigger a :class:`StageOrderWarning`.
+
+Two kinds of custom stages exist:
+
+* a **portable** :class:`ExcitationStage` (``ExcitationStageWrapper``) works on the
+  muscle excitations only, written for numpy and torch, and runs on the CPU env and
+  on its mjlab twin;
+* an **env-aware** stage (``CtrlStageWrapper``) gets the host env and runs on the CPU
+  only.
 """
 
 from __future__ import annotations
@@ -48,6 +54,94 @@ class StageOrderWarning(UserWarning):
 
 
 warnings.simplefilter("always", StageOrderWarning)  # shown on every occurrence
+
+
+def warn_order_clash(
+    name: str, order: float, installed: dict[str, float], stacklevel: int = 3
+) -> None:
+    """Warn prominently if *name* has the same *order* as an installed stage.
+
+    Args:
+        name: The stage being installed.
+        order: Its order.
+        installed: ``{stage name: order}`` of the stages already installed.
+        stacklevel: Frame the warning is attributed to.
+    """
+    clash = sorted([name, *(n for n, o in installed.items() if o == order)])
+    if len(clash) > 1:
+        warnings.warn(
+            f"STAGE ORDER CLASH: the stages {clash} all have order {order}. They run in name "
+            f"order ({' -> '.join(clash)}), which is arbitrary; give them distinct orders "
+            f"(built-in orders: {STAGE_ORDER}).",
+            StageOrderWarning,
+            stacklevel=stacklevel,
+        )
+
+
+class ExcitationStage:
+    """Base class of a portable custom stage on the muscle excitations.
+
+    Subclass it and implement ``__call__(u, xp)``: *u* holds the muscle excitations
+    (``(n_muscles,)`` numpy on the CPU env, ``(n_envs, n_muscles)`` torch on mjlab),
+    *xp* is the matching array module (``numpy`` or ``torch``); return the new
+    excitations. Use only operations both modules share (``xp.clip``, ``xp.where``,
+    ``xp.zeros_like``, arithmetic, ...) and no randomness unless it comes from *xp*.
+    Keep state in arrays created from *u* (``xp.zeros_like(u)``) so that it has the right
+    shape and device, and clear it in :meth:`reset`.
+
+    Attributes:
+        name: Unique stage name (not a built-in name).
+        order: Priority strictly between :data:`MAP_ORDER` and :data:`WRITE_ORDER`.
+    """
+
+    name: str = "stage"
+    order: float = 25
+
+    def __call__(self, u: Any, xp: Any) -> Any:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def reset(self, env_ids: Any = None) -> None:
+        """Clear the state of the given envs (``None`` or ``slice(None)``: all)."""
+
+
+class LowPassStage(ExcitationStage):
+    """First-order low-pass filter on the excitations (a portable example stage).
+
+    ``y <- y + alpha (u - y)``; the first step after a reset passes *u* through.
+
+    Args:
+        alpha: Smoothing factor in ``(0, 1]``; ``1`` is no filtering.
+        name: Stage name.
+        order: Stage order.
+    """
+
+    def __init__(
+        self, alpha: float = 0.3, name: str = "lowpass", order: float = 25
+    ) -> None:
+        if not 0.0 < alpha <= 1.0:
+            raise ValueError(f"alpha must be in (0, 1], got {alpha}.")
+        self.alpha, self.name, self.order = alpha, name, order
+        self._y: Any = None
+        self._fresh: Any = None
+
+    def __call__(self, u: Any, xp: Any) -> Any:
+        if self._y is None:
+            self._y, self._fresh = xp.zeros_like(u), xp.ones(u.shape[:-1], dtype=bool)
+            if u.ndim == 1:
+                self._fresh = xp.ones((), dtype=bool)
+        fresh = self._fresh[..., None]
+        self._y = xp.where(fresh, u, self._y + self.alpha * (u - self._y))
+        self._fresh = xp.zeros_like(self._fresh)
+        return self._y.clone() if hasattr(self._y, "clone") else self._y.copy()
+
+    def reset(self, env_ids: Any = None) -> None:
+        if self._fresh is None:
+            return
+        if env_ids is None or (isinstance(env_ids, slice) and env_ids == slice(None)):
+            self._fresh[...] = True
+        else:
+            self._fresh[env_ids] = True
+
 
 CtrlStage = Callable[[Any, np.ndarray], np.ndarray]
 """``stage(env, ctrl) -> ctrl``: edits (a copy of) the control vector."""
@@ -139,16 +233,9 @@ class CtrlStageHost:
                     f"The order of the custom stage {name!r} must be between {MAP_ORDER} and "
                     f"{WRITE_ORDER} (exclusive), got {order}."
                 )
-        ties = sorted(n for n, (o, _, _) in store.items() if o == order)
-        if ties:
-            warnings.warn(
-                f"STAGE ORDER CLASH: the stages {sorted([name, *ties])} all have order {order}. "
-                f"They run in name order ({' -> '.join(sorted([name, *ties]))}), which is "
-                "arbitrary; give them distinct orders "
-                f"(built-in orders: {STAGE_ORDER}).",
-                StageOrderWarning,
-                stacklevel=3,
-            )
+        warn_order_clash(
+            name, order, {n: o for n, (o, _, _) in store.items()}, stacklevel=4
+        )
         store[name] = (order, apply, reset)
 
     def remove_ctrl_stage(self, name: str) -> None:

@@ -12,13 +12,14 @@ MuJoCo actuator order and map it to ``ctrl`` as follows:
 2. muscles (model ``na > 0``): ``sigmoid`` on muscle actuators (walk envs:
    used as-is), other actuators keep the clipped action; motors-only models:
    linear map from the action range to ``ctrlrange``;
-3. ``motor_noise``: signal-dependent + constant noise on muscle excitations
-   (``torch.randn``, independent per env and muscle; off by default);
-4. ``fatigue``: muscle ctrl replaced by the 3CC-r active compartment, whose
-   state is reset like the CPU env's (fresh, ``fatigue_reset_vec`` or
-   ``fatigue_reset_random``);
-5. ``reafferentation``: one actuator's command is rerouted to another and the
-   source is silenced.
+3. the stages, run by priority (``muscle_stages.STAGE_ORDER``): ``motor_noise``
+   (20): signal-dependent + constant noise on muscle excitations (``torch.randn``,
+   independent per env and muscle; off by default); ``fatigue`` (30): muscle ctrl
+   replaced by the 3CC-r active compartment, whose state is reset like the CPU env's
+   (fresh, ``fatigue_reset_vec`` or ``fatigue_reset_random``); ``reafferentation``
+   (40): one actuator's command is rerouted to another and the source is silenced.
+   Portable custom stages (:class:`~myosuite.envs.muscle_stages.ExcitationStage`)
+   run between them at their own order.
 
 mjlab's :class:`~mjlab.envs.mdp.actions.BaseAction` only supports affine maps on
 a single transmission type, so this term writes the processed ctrl of every
@@ -28,6 +29,7 @@ actuator to its own joint/tendon effort target (wrapped by ``XmlActuatorCfg``).
 from __future__ import annotations
 
 import functools
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -36,6 +38,11 @@ import torch
 from mjlab.managers.action_manager import ActionTerm, ActionTermCfg
 
 from myosuite.core.muscle_conditions import TorchFatigueState
+from myosuite.envs.muscle_stages import (
+    STAGE_ORDER,
+    ExcitationStage,
+    warn_order_clash,
+)
 from myosuite.terms.base_action import (
     MotorNoiseCfg,
     sample_motor_noise,
@@ -62,6 +69,10 @@ class MyoActionCfg(ActionTermCfg):
         reroute: ``(source, destination)`` actuator names for reafferentation:
             ``ctrl[dst] = ctrl[src]; ctrl[src] = 0``.
         motor_noise: Noise on muscle excitations, applied before fatigue.
+        excitation_stages: Factories of portable custom stages
+            (:class:`~myosuite.envs.muscle_stages.ExcitationStage`) on the muscle
+            excitations; each env scene builds its own instances. They run at
+            their ``order`` between the built-in stages.
     """
 
     normalize_act: bool = True
@@ -72,6 +83,7 @@ class MyoActionCfg(ActionTermCfg):
     fatigue_reset_random: bool = False
     reroute: tuple[str, str] | None = None
     motor_noise: MotorNoiseCfg = field(default_factory=MotorNoiseCfg)
+    excitation_stages: tuple[Callable[[], ExcitationStage], ...] = ()
 
     def build(self, env: ManagerBasedRlEnv) -> MyoAction:
         return MyoAction(self, env)
@@ -140,6 +152,9 @@ class MyoAction(ActionTerm):
         # Global torch RNG on the sim device, seeded by mjlab (``seed_rng``).
         self._randn = functools.partial(torch.randn, device=self.device)
 
+        self._stages = [cfg_stage() for cfg_stage in cfg.excitation_stages]
+        self._pipeline = self._build_pipeline()
+
         self._raw_actions = torch.zeros(
             self.num_envs, self._action_dim, device=self.device
         )
@@ -176,19 +191,58 @@ class MyoAction(ActionTerm):
                 self._ctrl_hi - self._ctrl_lo
             )
 
-        if self.cfg.motor_noise.enabled:
-            ctrl[:, self._muscle_cols] = sample_motor_noise(
-                ctrl[:, self._muscle_cols], self.cfg.motor_noise, self._randn, torch
+        for step in self._pipeline:
+            ctrl = step(ctrl)
+        self._processed_actions[:] = ctrl
+
+    def _build_pipeline(self) -> list[Callable[[torch.Tensor], torch.Tensor]]:
+        """The stages that are on, sorted by order (built-in and custom)."""
+        cols = self._muscle_cols
+        steps: dict[str, tuple[float, Callable[[torch.Tensor], torch.Tensor]]] = {}
+
+        def noise(ctrl: torch.Tensor) -> torch.Tensor:
+            ctrl[:, cols] = sample_motor_noise(
+                ctrl[:, cols], self.cfg.motor_noise, self._randn, torch
             )
-        if self._fatigue is not None:
-            ctrl[:, self._muscle_cols] = self._fatigue.step(
-                ctrl[:, self._muscle_cols], self._env.step_dt
-            )
-        if self._reroute is not None:
+            return ctrl
+
+        def fatigue(ctrl: torch.Tensor) -> torch.Tensor:
+            ctrl[:, cols] = self._fatigue.step(ctrl[:, cols], self._env.step_dt)
+            return ctrl
+
+        def reroute(ctrl: torch.Tensor) -> torch.Tensor:
             src, dst = self._reroute
             ctrl[:, dst] = ctrl[:, src]
             ctrl[:, src] = 0.0
-        self._processed_actions[:] = ctrl
+            return ctrl
+
+        # The noise level can change at run time (``cfg.motor_noise``): the step is
+        # always there, and does nothing and draws nothing while it is off.
+        steps["noise"] = (STAGE_ORDER["noise"], noise)
+        if self._fatigue is not None:
+            steps["fatigue"] = (STAGE_ORDER["fatigue"], fatigue)
+        if self._reroute is not None:
+            steps["reroute"] = (STAGE_ORDER["reroute"], reroute)
+        for stage in self._stages:
+            if stage.name in steps or stage.name in STAGE_ORDER:
+                raise ValueError(
+                    f"The stage name {stage.name!r} is taken (built-in or twice)."
+                )
+            on = {
+                n: o
+                for n, (o, _) in steps.items()
+                if n != "noise" or self.cfg.motor_noise.enabled
+            }
+            warn_order_clash(stage.name, stage.order, on, 3)
+
+            def run(ctrl: torch.Tensor, stage: ExcitationStage = stage) -> torch.Tensor:
+                ctrl[:, cols] = stage(ctrl[:, cols], torch)
+                return ctrl
+
+            steps[stage.name] = (stage.order, run)
+        return [
+            fn for _, (_, fn) in sorted(steps.items(), key=lambda i: (i[1][0], i[0]))
+        ]
 
     def apply_actions(self) -> None:
         if len(self._joint_cols):
@@ -207,6 +261,8 @@ class MyoAction(ActionTerm):
             env_ids = slice(None)
         self._raw_actions[env_ids] = 0.0
         self._processed_actions[env_ids] = 0.0
+        for stage in self._stages:
+            stage.reset(env_ids)
         if self._fatigue is not None:
             self._fatigue.reset(
                 env_ids,

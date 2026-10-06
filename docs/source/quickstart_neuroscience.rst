@@ -280,11 +280,13 @@ Each wrapper can be applied **once** per env: a second ``MotorNoiseWrapper`` rai
 ``FatigueWrapper`` on a ``myoFati*`` id (which already contains it). Wrap the base id, or change the options of the
 installed wrapper (``env.motor_noise = ...``, ``env.set_fatigue_reset_random(...)``).
 
-To add your own stage on the muscle excitations (a filter, a cap, per-muscle gains, ...), use
-``CtrlStageWrapper(env, apply, name="my_stage", order=25)``. The order is a priority between 10 (the env's own map) and
-100 (the ``ctrl`` write); the built-in stages are noise 20, fatigue 30 and reroute 40. Two stages with the same order
-run in name order and raise a ``StageOrderWarning``, so give each custom stage its own order. Custom stages exist on
-the CPU side only. To act on the raw action instead, use a plain ``gym.ActionWrapper``.
+To add your own stage on the muscle excitations (a filter, a cap, per-muscle gains, ...), subclass
+``ExcitationStage`` (a function of the excitations ``u`` and the array module ``xp``, numpy or torch) and wrap the env
+with ``ExcitationStageWrapper(env, functools.partial(LowPassStage, 0.3))``. It runs on the CPU env and, when the id is
+registered with the wrapper, on the mjlab twin. The order is a priority between 10 (the env's own map) and 100 (the
+``ctrl`` write); the built-in stages are noise 20, fatigue 30 and reroute 40. Two stages with the same order run in name
+order and raise a ``StageOrderWarning``, so give each custom stage its own order. A stage that needs the env itself
+(``CtrlStageWrapper``) runs on the CPU only. To act on the raw action instead, use a plain ``gym.ActionWrapper``.
 
 To configure both backends, register an env id with a ``MotorNoiseWrapper`` in its
 ``additional_wrappers``: the mjlab twin reads it from the CPU registration like the muscle

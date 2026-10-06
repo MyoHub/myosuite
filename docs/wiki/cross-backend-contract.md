@@ -93,13 +93,21 @@ clip action -> env map (10: sigmoid, or as-is for the walk envs, or clipped ctrl
 normalize_act=False) -> noise (20) -> fatigue (30) -> reroute (40, reafferentation) -> ctrl (100)
 ```
 
-**Custom stages.** `CtrlStageWrapper(env, apply, name=..., order=...)` adds your own stage on the muscle
-excitations (a filter, a rate limit, per-muscle gains, muscle failure, ...) at any order strictly between 10 and
-100, so before, between or after the built-in ones. `apply(env, ctrl) -> ctrl` should be a module-level function
-(the wrapped env is pickled by some tools). Two stages with the **same order** run in name order and raise a
-`StageOrderWarning` (also for a clash with a built-in order): give every custom stage its own order. To act on the
-raw `[-1, 1]` action (a delay, say), use a plain `gym.ActionWrapper` on the outside instead. Custom stages exist on the
-CPU side only; mjlab's `MyoAction` runs the built-in stages.
+**Custom stages.** Two kinds, both at any order strictly between 10 and 100 (before, between or after the built-in
+ones):
+
+- **Portable:** subclass `ExcitationStage` (`__call__(u, xp)` on the muscle excitations, written for numpy and torch;
+  `reset(env_ids)` for state; see `LowPassStage`) and add it with `ExcitationStageWrapper(env, factory)`. A CPU env runs
+  it with numpy; the mjlab twin builds the stage from the same factory (registered in `additional_wrappers`, read by
+  `cpu_reference.action_cfg` into `MyoActionCfg.excitation_stages`) and runs it with torch on `(n_envs, n_muscles)`.
+  The factory must be a module-level callable (class or `functools.partial`) because the wrapped env is pickled by some
+  tools. The CPU and the twin agree in `tests/test_motor_noise_mjlab.py`.
+- **Env-aware, CPU only:** `CtrlStageWrapper(env, apply, name=..., order=...)` with `apply(env, ctrl) -> ctrl`
+  (it gets the host env, so it cannot run on mjlab).
+
+Two stages with the **same order** run in name order and raise a `StageOrderWarning` on either backend (also for a
+clash with a built-in order): give every custom stage its own order. To act on the raw `[-1, 1]` action (a delay, say),
+use a plain `gym.ActionWrapper` on the outside instead.
 
 mjlab applies the same order in `MyoAction`; `cpu_reference.action_cfg` builds it from the
 registration's wrapper specs, so registering an env id with a wrapper configures both halves. The

@@ -36,7 +36,11 @@ _CONDITION_WRAPPERS = {
     "fatigue": "FatigueWrapper",
     "reafferentation": "ReafferentationWrapper",
 }
-_MUSCLE_WRAPPERS = (*_CONDITION_WRAPPERS.values(), "MotorNoiseWrapper")
+_MUSCLE_WRAPPERS = (
+    *_CONDITION_WRAPPERS.values(),
+    "MotorNoiseWrapper",
+    "ExcitationStageWrapper",
+)
 
 _INTEGRATORS = {
     int(mujoco.mjtIntegrator.mjINT_EULER): "euler",
@@ -75,6 +79,10 @@ class CpuTaskSpec:
     kwargs: dict[str, Any]
     max_episode_steps: int
     wrappers: tuple[Any, ...] = ()
+
+    def wrapper_specs(self, name: str) -> list[dict[str, Any]]:
+        """Constructor kwargs of every registered wrapper called *name*."""
+        return [dict(s.kwargs or {}) for s in self.wrappers if s.name == name]
 
     def wrapper_kwargs(self, name: str) -> dict[str, Any] | None:
         """Constructor kwargs of the registered wrapper *name*, or ``None`` if absent."""
@@ -541,6 +549,9 @@ def action_cfg(
         fatigue_reset_random=reset_random,
         reroute=reroute,
         motor_noise=task.motor_noise,
+        excitation_stages=tuple(
+            spec["make_stage"] for spec in task.wrapper_specs("ExcitationStageWrapper")
+        ),
     )
 
 

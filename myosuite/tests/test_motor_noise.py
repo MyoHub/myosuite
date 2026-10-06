@@ -443,3 +443,49 @@ def test_custom_stage_survives_pickle() -> None:
     clone = pickle.loads(pickle.dumps(env))
     assert clone.unwrapped.ctrl_stages == ("cap",)
     np.testing.assert_array_equal(_rollout(clone, 0), _rollout(env, 0))
+
+
+# ── portable excitation stages (CPU) ─────────────────────────────────────────
+
+
+def test_low_pass_stage_on_the_cpu_env() -> None:
+    import functools
+
+    from myosuite.envs.muscle_stages import LowPassStage
+    from myosuite.envs.wrappers import ExcitationStageWrapper
+
+    env = ExcitationStageWrapper(gym.make(_ELBOW), functools.partial(LowPassStage, 0.5))
+    assert env.unwrapped.ctrl_stages == ("lowpass",)
+    env.reset(seed=0)
+    base, idx = env.unwrapped, env.unwrapped._muscle_act_ind
+    hi, lo = (
+        np.ones(env.action_space.shape, np.float32),
+        -np.ones(env.action_space.shape, np.float32),
+    )
+    env.step(hi)  # the first step after a reset passes through
+    first = base.data.ctrl[idx].copy()
+    env.step(lo)  # then y = y + 0.5 (u - y)
+    u_lo = 1.0 / (1.0 + np.exp(5.0 * 1.5))
+    np.testing.assert_allclose(
+        base.data.ctrl[idx], first + 0.5 * (u_lo - first), rtol=1e-5
+    )
+    env.reset(seed=0)
+    env.step(lo)  # the filter state was reset
+    np.testing.assert_allclose(base.data.ctrl[idx], u_lo, rtol=1e-5)
+
+
+def test_excitation_stage_name_and_pickle() -> None:
+    import functools
+    import pickle
+
+    from myosuite.envs.muscle_stages import LowPassStage
+    from myosuite.envs.wrappers import ExcitationStageWrapper
+
+    with pytest.raises(ValueError, match="built-in"):
+        ExcitationStageWrapper(
+            gym.make(_ELBOW), functools.partial(LowPassStage, 0.5, "noise")
+        )
+    env = ExcitationStageWrapper(gym.make(_ELBOW), functools.partial(LowPassStage, 0.5))
+    clone = pickle.loads(pickle.dumps(env))
+    assert clone.unwrapped.ctrl_stages == ("lowpass",)
+    np.testing.assert_array_equal(_rollout(clone, 0), _rollout(env, 0))
