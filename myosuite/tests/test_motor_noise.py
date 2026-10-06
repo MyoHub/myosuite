@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Motor noise on muscle excitations: term statistics and CPU env wiring.
+"""Motor noise on muscle excitations: term statistics and the ``MotorNoiseWrapper``.
 
 Statistical checks use fixed seeds and a tolerance of five standard errors
 (SE of a sample SD: ``sigma / sqrt(2 (n - 1))``; of a correlation: ``1 / sqrt(n)``).
@@ -10,15 +10,17 @@ Statistical checks use fixed seeds and a tolerance of five standard errors
 
 from __future__ import annotations
 
-import inspect
-
 import gymnasium as gym
 import numpy as np
 import pytest
 from gymnasium.envs.registration import load_env_creator
 
 import myosuite  # noqa: F401
-from myosuite.envs.gymnasium_env import MOTOR_NOISE_ENV_CLASSES
+from myosuite.envs.wrappers import (
+    FatigueWrapper,
+    MotorNoiseWrapper,
+    ReafferentationWrapper,
+)
 from myosuite.terms.base_action import (
     MotorNoiseCfg,
     motor_noise,
@@ -103,6 +105,10 @@ def test_cfg_coercion_and_validation() -> None:
 _ELBOW = "myoElbowPose1D6MRandom-v0"
 
 
+def _noisy(env_id: str, noise: object, **kwargs: object) -> gym.Env:
+    return MotorNoiseWrapper(gym.make(env_id, **kwargs), noise)
+
+
 def _excitations(env: gym.Env, action: np.ndarray, n: int) -> np.ndarray:
     """``n`` applied muscle excitations (rows) for a constant action."""
     base = env.unwrapped
@@ -116,7 +122,7 @@ def _excitations(env: gym.Env, action: np.ndarray, n: int) -> np.ndarray:
 def test_cpu_noise_is_independent_per_muscle() -> None:
     """Each muscle gets its own draw (a shared draw would give correlation 1)."""
     c, n = 0.05, 3000
-    env = gym.make(_ELBOW, motor_noise={"constant_std": c})
+    env = _noisy(_ELBOW, {"constant_std": c})
     env.reset(seed=0)
     action = np.full(env.action_space.shape, 0.5, np.float32)  # excitation 0.5
     resid = _excitations(env, action, n) - 0.5
@@ -132,7 +138,7 @@ def test_cpu_noise_is_independent_per_muscle() -> None:
 
 def test_cpu_signal_dependent_sd_scales_with_excitation() -> None:
     sd, n = 0.2, 3000
-    env = gym.make(_ELBOW, motor_noise={"signal_dependent_std": sd})
+    env = _noisy(_ELBOW, {"signal_dependent_std": sd})
     env.reset(seed=0)
     for u in (0.25, 0.5):
         action = np.full(env.action_space.shape, 0.5 + np.log(u / (1 - u)) / 5.0)
@@ -161,8 +167,8 @@ def test_cpu_seeded_noisy_rollouts_reproduce() -> None:
     env_id, noise = "myoElbowPose1D6MFixed-v0", MotorNoiseCfg.van_beers_2004()
     clean = gym.make(env_id, **kwargs)
     np.testing.assert_array_equal(_rollout(clean, 3), _rollout(clean, 4))
-    a = gym.make(env_id, motor_noise=noise, **kwargs)
-    b = gym.make(env_id, motor_noise=noise, **kwargs)
+    a = _noisy(env_id, noise, **kwargs)
+    b = _noisy(env_id, noise, **kwargs)
     np.testing.assert_array_equal(_rollout(a, 3), _rollout(b, 3))
     assert not np.array_equal(_rollout(a, 3), _rollout(a, 4))
 
@@ -172,14 +178,12 @@ def test_cpu_seeded_noisy_rollouts_reproduce() -> None:
     [_ELBOW, "myoFingerReachRandom-v0", "myoChallengeDieReorientP1-v0"],
 )
 def test_cpu_noise_off_by_default_and_leaves_rng_untouched(env_id: str) -> None:
-    """Default and explicitly disabled configs roll out identically without drawing."""
+    """No wrapper, or a disabled config, rolls out identically without drawing."""
     ref_env = gym.make(env_id)
-    assert not ref_env.unwrapped.motor_noise.enabled
+    assert "noise" not in ref_env.unwrapped.ctrl_stages
     ref = _rollout(ref_env, 0)
     for off in (None, {}, MotorNoiseCfg()):
-        np.testing.assert_array_equal(
-            _rollout(gym.make(env_id, motor_noise=off), 0), ref
-        )
+        np.testing.assert_array_equal(_rollout(_noisy(env_id, off), 0), ref)
 
     def _rng_moves(env: gym.Env) -> bool:
         env.reset(seed=0)
@@ -188,15 +192,15 @@ def test_cpu_noise_off_by_default_and_leaves_rng_untouched(env_id: str) -> None:
         return env.unwrapped.np_random.bit_generator.state != before
 
     assert not _rng_moves(ref_env)
-    assert _rng_moves(gym.make(env_id, motor_noise={"constant_std": 0.1}))
+    assert _rng_moves(_noisy(env_id, {"constant_std": 0.1}))
 
 
 def test_cpu_noise_precedes_fatigue_and_reafferentation(monkeypatch) -> None:
     """Fatigue receives the noisy excitation; reafferentation reroutes the noisy EIP command."""
-    fati = gym.make("myoFatiElbowPose1D6MRandom-v0", motor_noise={"constant_std": 0.05})
+    fati = _noisy("myoFatiElbowPose1D6MRandom-v0", {"constant_std": 0.05})
     fati.reset(seed=0)
     seen: list[np.ndarray] = []
-    fatigue = fati.unwrapped.muscle_fatigue
+    fatigue = fati.muscle_fatigue
     original = fatigue.compute_act
 
     def _record(excitation: np.ndarray, *args, **kwargs):
@@ -207,13 +211,43 @@ def test_cpu_noise_precedes_fatigue_and_reafferentation(monkeypatch) -> None:
     fati.step(np.full(fati.action_space.shape, 0.5, np.float32))
     assert np.abs(seen[0] - 0.5).max() > 1e-3  # noisy, not sigmoid(0.5) = 0.5
 
-    reaf = gym.make("myoReafHandPoseRandom-v0", motor_noise={"constant_std": 0.05})
+    reaf = _noisy("myoReafHandPoseRandom-v0", {"constant_std": 0.05})
     reaf.reset(seed=0)
     reaf.step(np.full(reaf.action_space.shape, 0.5, np.float32))
     base = reaf.unwrapped
-    ctrl = base.data.ctrl
-    assert ctrl[base.EIPpos] == 0.0
-    assert abs(ctrl[base.EPLpos] - 0.5) > 1e-3  # EIP's noisy command
+    epl, eip = base.model.actuator("EPL_r").id, base.model.actuator("EIP_r").id
+    assert base.data.ctrl[eip] == 0.0
+    assert abs(base.data.ctrl[epl] - 0.5) > 1e-3  # EIP's noisy command
+
+
+def test_stage_order_does_not_depend_on_the_wrapping_order() -> None:
+    """Noise, fatigue and reafferentation run in their fixed order, however wrapped."""
+    cfg = {"constant_std": 0.05}
+    a = ReafferentationWrapper(
+        FatigueWrapper(MotorNoiseWrapper(gym.make("myoHandPoseRandom-v0"), cfg))
+    )
+    b = MotorNoiseWrapper(
+        FatigueWrapper(
+            ReafferentationWrapper(gym.make("myoHandPoseRandom-v0")),
+        ),
+        cfg,
+    )
+    assert (
+        a.unwrapped.ctrl_stages
+        == b.unwrapped.ctrl_stages
+        == (
+            "noise",
+            "fatigue",
+            "reroute",
+        )
+    )
+    np.testing.assert_array_equal(_rollout(a, 0), _rollout(b, 0))
+
+
+def test_a_stage_is_installed_once() -> None:
+    env = _noisy(_ELBOW, {"constant_std": 0.05})
+    with pytest.raises(ValueError, match="already installed"):
+        MotorNoiseWrapper(env, {"constant_std": 0.1})
 
 
 @pytest.mark.parametrize(
@@ -221,52 +255,71 @@ def test_cpu_noise_precedes_fatigue_and_reafferentation(monkeypatch) -> None:
     [
         _ELBOW,
         "myoChallengeDieReorientP1-v0",
-        "myoHandPenTwirlRandom-v0",
-    ],  # last: subclass
+        "myoHandPenTwirlRandom-v0",  # subclass
+        "myoChallengeBaodingP1-v1",
+    ],
 )
-def test_supported_env_accepts_enabled_noise(env_id: str) -> None:
-    env = gym.make(env_id, motor_noise=MotorNoiseCfg.van_beers_2004())
-    assert env.unwrapped.motor_noise == MotorNoiseCfg.van_beers_2004()
+def test_wrapper_applies_to_the_muscle_envs(env_id: str) -> None:
+    env = _noisy(env_id, MotorNoiseCfg.van_beers_2004())
+    assert env.motor_noise == MotorNoiseCfg.van_beers_2004()
     env.reset(seed=0)
     env.step(np.zeros(env.action_space.shape, np.float32))
     env.close()
 
 
+def test_wrapper_rejects_envs_without_stages() -> None:
+    """An env whose pipeline does not run stages cannot be wrapped (it would be ignored)."""
+    with pytest.raises(TypeError, match="does not"):
+        _noisy("myoElbowPoseTaskFixed-v0", {"constant_std": 0.1})
+
+
 @pytest.mark.parametrize(
-    "env_id, cls_name",
+    "env_id, kwarg",
     [
-        ("myoChallengeBaodingP1-v1", "BaodingEnv"),
-        ("myoElbowPoseTaskFixed-v0", "ModularTaskEnv"),
+        (_ELBOW, "motor_noise"),
+        (_ELBOW, "muscle_condition"),
+        ("myoChallengeSoccerP1-v0", "fatigue_reset_random"),
     ],
 )
-def test_unsupported_env_rejects_enabled_noise(env_id: str, cls_name: str) -> None:
-    """An env that would ignore the kwarg raises; None or a disabled cfg is accepted."""
-    with pytest.raises(
-        ValueError, match=rf"{cls_name} does not apply motor_noise.*PoseEnvV0"
-    ):
-        gym.make(env_id, motor_noise={"constant_std": 0.1})
-    for off in (None, {}, MotorNoiseCfg()):
-        gym.make(env_id, motor_noise=off).close()
+def test_removed_constructor_kwargs_raise(env_id: str, kwarg: str) -> None:
+    with pytest.raises(TypeError, match=f"no longer takes '{kwarg}'"):
+        gym.make(
+            env_id, **{kwarg: {"constant_std": 0.1} if kwarg == "motor_noise" else "x"}
+        )
 
 
-def test_motor_noise_env_classes_match_registry() -> None:
-    """The documented class list is exactly the registered classes that set the flag."""
-    defining = set()
+def test_registered_condition_wrappers_sit_on_envs_with_stages() -> None:
+    """Every id registered with a muscle wrapper has an env class that runs the stages."""
+    names = {"SarcopeniaWrapper", "FatigueWrapper", "ReafferentationWrapper"}
+    checked = 0
     for spec in gym.registry.values():
-        entry = spec.entry_point
-        if not (isinstance(entry, str) and entry.startswith("myosuite.")):
+        if not any(w.name in names for w in spec.additional_wrappers or ()):
             continue
-        cls = load_env_creator(entry)
-        if getattr(cls, "supports_motor_noise", False):
-            owner = next(k for k in cls.__mro__ if "supports_motor_noise" in vars(k))
-            assert "motor_noise" in inspect.signature(owner.__init__).parameters, owner
-            defining.add(owner.__name__)
-    assert defining == set(MOTOR_NOISE_ENV_CLASSES)
+        entry = spec.entry_point
+        cls = load_env_creator(entry) if isinstance(entry, str) else entry
+        assert getattr(cls, "supports_ctrl_stages", False), spec.id
+        checked += 1
+    assert checked > 100
 
 
 def test_cpu_motor_actuators_are_not_noised() -> None:
-    noisy = gym.make(
-        "motorFingerPoseFixed-v0", motor_noise=MotorNoiseCfg.van_beers_2004()
-    )
+    noisy = _noisy("motorFingerPoseFixed-v0", MotorNoiseCfg.van_beers_2004())
     clean = gym.make("motorFingerPoseFixed-v0")
     np.testing.assert_array_equal(_rollout(noisy, 0), _rollout(clean, 0))
+
+
+def test_wrapped_env_survives_pickle_and_deepcopy() -> None:
+    """Restoring a wrapped env re-installs its stages (the env is rebuilt from its constructor args)."""
+    import copy
+    import pickle
+
+    env = FatigueWrapper(
+        MotorNoiseWrapper(gym.make(_ELBOW), {"constant_std": 0.05}),
+        fatigue_reset_random=True,
+    )
+    for clone in (pickle.loads(pickle.dumps(env)), copy.deepcopy(env)):
+        assert clone.unwrapped.ctrl_stages == ("noise", "fatigue")
+        assert clone.fatigue_reset_random
+        assert clone.muscle_fatigue is clone.unwrapped.muscle_fatigue
+        assert clone.motor_noise == MotorNoiseCfg(constant_std=0.05)
+        np.testing.assert_array_equal(_rollout(clone, 0), _rollout(env, 0))

@@ -14,6 +14,7 @@ import pytest
 
 import myosuite  # noqa: F401  (registers the envs)
 from myosuite.core.muscle_conditions import _peak_force
+from myosuite.envs.wrappers import ReafferentationWrapper
 from myosuite.envs.myo.tasks.challenge.tabletennis import (
     ContactTrajIssue,
     PingpongContactLabels,
@@ -151,7 +152,13 @@ def test_fatigue_filters_muscle_controls_and_resets(
     np.testing.assert_array_equal(fatigue.MF, 0.0)
 
 
-def test_unknown_muscle_condition_raises() -> None:
-    """A condition TableTennis does not implement must not run the healthy env."""
-    with pytest.raises(ValueError, match="muscle_condition"):
-        gym.make(P0, muscle_condition="reafferentation")
+def test_reafferentation_reroutes_eip_to_epl() -> None:
+    env = ReafferentationWrapper(gym.make(P0))
+    env.reset(seed=0)
+    base = env.unwrapped
+    eip, epl = base.model.actuator("EIP").id, base.model.actuator("EPL").id
+    action = np.full(env.action_space.shape, -1.0, dtype=np.float32)
+    action[eip] = 1.0
+    env.step(action)
+    assert base.data.ctrl[eip] == 0.0
+    assert base.data.ctrl[epl] > 0.9

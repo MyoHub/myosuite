@@ -12,6 +12,7 @@ import pathlib
 import numpy as np
 
 import myosuite.core.registry as _registry
+from myosuite.envs.wrappers import condition_wrapper_specs
 from myosuite.envs.myo.assets._resolve import (
     resolve_elbow_xml as _resolve_elbow_xml,
     resolve_finger_xml as _resolve_finger_xml,
@@ -51,20 +52,23 @@ def _reg(env_id, entry_point, max_episode_steps, kwargs):
             env_id="myoSarc" + env_id[3:],
             entry_point=entry_point,
             max_episode_steps=max_episode_steps,
-            kwargs={**kwargs, "muscle_condition": "sarcopenia"},
+            kwargs=kwargs,
+            additional_wrappers=condition_wrapper_specs("sarcopenia"),
         )
         _registry.register_env(
             env_id="myoFati" + env_id[3:],
             entry_point=entry_point,
             max_episode_steps=max_episode_steps,
-            kwargs={**kwargs, "muscle_condition": "fatigue"},
+            kwargs=kwargs,
+            additional_wrappers=condition_wrapper_specs("fatigue"),
         )
     if env_id[:7] == "myoHand":
         _registry.register_env(
             env_id="myoReaf" + env_id[3:],
             entry_point=entry_point,
             max_episode_steps=max_episode_steps,
-            kwargs={**kwargs, "muscle_condition": "reafferentation"},
+            kwargs=kwargs,
+            additional_wrappers=condition_wrapper_specs("reafferentation"),
         )
 
 

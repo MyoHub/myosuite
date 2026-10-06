@@ -63,8 +63,9 @@ def _fati(env_id: str) -> str:
     return "myoFati" + env_id[len("myo") :]
 
 
-# (env_id, gym.make kwargs). The fatigue variants draw a random initial
-# fatigue state, which must come from the env seed too.
+# (env_id, options). ``fatigue_reset_random`` makes the fatigue variants draw a
+# random initial fatigue state, which must come from the env seed too; the other
+# options go to gym.make.
 ROLLOUT_CASES = (
     [(env_id, {}) for env_id in CHALLENGE_IDS]
     + [("myoChallengeSoccerP2-v0", {"goalkeeper_probabilities": (0.0, 1.0, 0.0)})]
@@ -93,6 +94,15 @@ def _restore_global_rng() -> Iterator[None]:
     state = np.random.get_state()
     yield
     np.random.set_state(state)
+
+
+def _make_case(env_id: str, options: dict) -> gym.Env:
+    options = dict(options)
+    random_fatigue = options.pop("fatigue_reset_random", False)
+    env = gym.make(env_id, **options)
+    if random_fatigue:
+        env.set_fatigue_reset_random(True)
+    return env
 
 
 def _case_id(case: tuple[str, dict]) -> str:
@@ -131,7 +141,7 @@ def _assert_same(ref: tuple, other: tuple, what: str) -> None:
 )
 def test_same_instance_reset_is_reproducible(env_id: str, kwargs: dict) -> None:
     """reset(seed) -> actions -> reset(seed) -> same actions repeats the episode."""
-    env = gym.make(env_id, **kwargs)
+    env = _make_case(env_id, kwargs)
     try:
         actions = _actions(env)
         # Warm-up reset with another seed: an episode must not depend on the
@@ -152,7 +162,7 @@ def test_fresh_instances_ignore_global_rng(env_id: str, kwargs: dict) -> None:
     trajs = []
     for global_seed in (0, 999):
         np.random.seed(global_seed)
-        env = gym.make(env_id, **kwargs)
+        env = _make_case(env_id, kwargs)
         try:
             trajs.append(_rollout(env, _actions(env)))
         finally:
@@ -165,7 +175,7 @@ def test_reset_restores_fatigue_state(env_id: str) -> None:
     """A driven fatigue model is back at MA=0, MR=1, MF=0 after reset()."""
     env = gym.make(env_id)
     try:
-        fatigue = env.unwrapped.muscle_fatigue
+        fatigue = env.muscle_fatigue
         env.reset(seed=SEED)
         action = np.ones(env.action_space.shape, dtype=np.float32)
         for _ in range(N_STEPS):

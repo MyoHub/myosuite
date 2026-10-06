@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 """Motor noise on the mjlab twin: registration wiring, statistics, CPU agreement.
 
-A CPU registration with ``motor_noise`` must configure the twin's ``MyoAction``
+A CPU registration with a ``MotorNoiseWrapper`` must configure the twin's ``MyoAction``
 through ``cpu_reference.action_cfg``; the twin draws independent noise per env
 and per muscle. Tolerances are five standard errors (see ``test_motor_noise``).
 """
@@ -16,6 +16,7 @@ from collections.abc import Iterator
 import gymnasium as gym
 import numpy as np
 import pytest
+from gymnasium.envs.registration import WrapperSpec
 from scipy import stats
 
 pytest.importorskip("mjlab")
@@ -27,6 +28,7 @@ from mjlab.envs import ManagerBasedRlEnv  # noqa: E402
 
 import myosuite  # noqa: E402, F401
 from myosuite.core import registry  # noqa: E402
+from myosuite.envs.wrappers import MotorNoiseWrapper  # noqa: E402
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import cpu_task_spec  # noqa: E402
 from myosuite.envs.myo.backends.mjlab.tasks.pose.config.elbow.env_cfgs import (  # noqa: E402
     elbow_pose_env_cfg,
@@ -48,10 +50,16 @@ def noisy_id() -> Iterator[str]:
         env_id=_NOISY,
         entry_point=spec.entry_point,
         max_episode_steps=spec.max_episode_steps,
-        kwargs={
-            **spec.kwargs,
-            "motor_noise": {"signal_dependent_std": 0.1, "constant_std": 0.03},
-        },
+        kwargs=spec.kwargs,
+        additional_wrappers=(
+            WrapperSpec(
+                name="MotorNoiseWrapper",
+                entry_point="myosuite.envs.wrappers:MotorNoiseWrapper",
+                kwargs={
+                    "motor_noise": {"signal_dependent_std": 0.1, "constant_std": 0.03}
+                },
+            ),
+        ),
     )
     yield _NOISY
     gym.registry.pop(_NOISY, None)
@@ -84,30 +92,25 @@ def test_cpu_registration_configures_twin(noisy_id: str) -> None:
     assert not elbow_pose_env_cfg(_BASE).actions["muscles"].motor_noise.enabled
 
 
-@pytest.mark.parametrize(
-    "noise, raises",
-    [({"constant_std": 0.1}, True), ({"constant_std": 0.0}, False), (None, False)],
-)
-def test_cpu_task_spec_rejects_noise_the_cpu_env_ignores(noise, raises: bool) -> None:
-    """A twin cannot pick up motor_noise from a CPU env class that would ignore it."""
-    base, env_id = (
-        gym.spec("myoChallengeBaodingP1-v1"),
-        "myoChallengeBaodingP1NoiseTest-v1",
-    )
+def test_cpu_task_spec_rejects_wrappers_the_cpu_env_does_not_run() -> None:
+    """A twin cannot pick up muscle wrappers from a CPU env class that would ignore them."""
+    base, env_id = gym.spec("myoElbowPoseTaskFixed-v0"), "myoElbowPoseTaskNoiseTest-v0"
     registry.register_env(
         env_id=env_id,
         entry_point=base.entry_point,
         max_episode_steps=base.max_episode_steps,
-        kwargs={**base.kwargs, "motor_noise": noise},
+        kwargs=base.kwargs,
+        additional_wrappers=(
+            WrapperSpec(
+                name="MotorNoiseWrapper",
+                entry_point="myosuite.envs.wrappers:MotorNoiseWrapper",
+                kwargs={"motor_noise": {"constant_std": 0.1}},
+            ),
+        ),
     )
     try:
-        if raises:
-            with pytest.raises(
-                ValueError, match="BaodingEnv does not apply motor_noise"
-            ):
-                cpu_task_spec(env_id)
-        else:
-            assert not cpu_task_spec(env_id).motor_noise.enabled
+        with pytest.raises(ValueError, match="ModularTaskEnv.*does not run them"):
+            cpu_task_spec(env_id)
     finally:
         gym.registry.pop(env_id, None)
 
@@ -159,7 +162,7 @@ def test_twin_matches_cpu_distribution(twin: ManagerBasedRlEnv, action: float) -
         gpu = _samples(twin, action, n=1000).ravel()
     finally:
         term.cfg.motor_noise = _NOISE
-    cpu_env = gym.make(_BASE, motor_noise=vb)
+    cpu_env = MotorNoiseWrapper(gym.make(_BASE), vb)
     cpu_env.reset(seed=1)
     base = cpu_env.unwrapped
     a = np.full(cpu_env.action_space.shape, action, np.float32)

@@ -15,14 +15,12 @@ import gymnasium as gym
 from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder
-from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.challenge.challenge_common import (
     MuscleActionMixin,
     mean_effort,
     solved_step_count,
 )
-from myosuite.physics.fatigue import CumulativeFatigue
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.physics.quat_math import euler2quat, mat2euler
 from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
@@ -65,9 +63,6 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         drop_th: float = 0.50,
         normalize_act: bool = True,
         frame_skip: int = 10,
-        muscle_condition: str = "",
-        fatigue_reset_vec=None,
-        fatigue_reset_random: bool = False,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -92,9 +87,6 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             drop_th=drop_th,
             normalize_act=normalize_act,
             frame_skip=frame_skip,
-            muscle_condition=muscle_condition,
-            fatigue_reset_vec=fatigue_reset_vec,
-            fatigue_reset_random=fatigue_reset_random,
             **kwargs,
         )
         if target_xyz_range is None or target_rxryrz_range is None:
@@ -131,9 +123,6 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.rot_th = rot_th
         self.drop_th = drop_th
         self.normalize_act = normalize_act
-        self.muscle_condition = muscle_condition
-        self.fatigue_reset_vec = fatigue_reset_vec
-        self.fatigue_reset_random = fatigue_reset_random
 
         self.rwd_keys_wt = weighted_reward_keys or self.DEFAULT_RWD_KEYS_AND_WEIGHTS
         self.obs_keys = list(obs_keys or self.DEFAULT_OBS_KEYS)
@@ -141,7 +130,6 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.obs_keys.append("act")
 
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
-        self._init_muscle_condition()
 
         key_frame_id = 0 if self.obj_xyz_range is None else 1
         self._init_qpos = self.model.key_qpos[key_frame_id].copy()
@@ -167,17 +155,6 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         )
         self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
 
-    def _init_muscle_condition(self) -> None:
-        if self.muscle_condition == "sarcopenia":
-            apply_sarcopenia_to_model(self.model, force_scale=0.5)
-        elif self.muscle_condition == "fatigue":
-            self.muscle_fatigue = CumulativeFatigue(
-                self.model, self.frame_skip, seed=None
-            )
-        elif self.muscle_condition == "reafferentation":
-            self.EPLpos = self.model.actuator("EPL").id
-            self.EIPpos = self.model.actuator("EIP").id
-
     def _apply_action(self, action: np.ndarray) -> None:
         ctrl = np.clip(action, self.action_space.low, self.action_space.high).astype(
             np.float64
@@ -189,13 +166,7 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         elif self.normalize_act and self.model.nu > 0:
             cr = self.model.actuator_ctrlrange
             ctrl = np.mean(cr, axis=-1) + ctrl * (cr[:, 1] - cr[:, 0]) / 2.0
-        if self.muscle_condition == "fatigue":
-            ctrl[self._muscle_act_ind], _, _ = self.muscle_fatigue.compute_act(
-                ctrl[self._muscle_act_ind]
-            )
-        elif self.muscle_condition == "reafferentation":
-            ctrl[self.EPLpos] = ctrl[self.EIPpos].copy()
-            ctrl[self.EIPpos] = 0.0
+        ctrl = self._run_ctrl_stages(ctrl)
         self.data.ctrl[:] = ctrl
 
     def _get_obs_dict(self, accessor: CpuEnvAccessor) -> dict[str, np.ndarray]:
@@ -353,7 +324,7 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         import gymnasium as _gym
 
         _gym.Env.reset(self, seed=seed)
-        self.reset_muscle_condition()
+        self._run_reset_stages()
         mujoco.mj_resetData(self.model, self.data)
         self._task_state = self.reset_task(self.np_random)
         if self.qpos_noise_range is not None:

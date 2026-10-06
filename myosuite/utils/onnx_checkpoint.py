@@ -250,15 +250,20 @@ def _cpu_fatigue_models(env: Any) -> list[Any]:
     Looks through gymnasium wrappers and SB3 VecEnvs: ``VecEnvWrapper``s
     (``VecNormalize``, ...) via ``.venv``, then a ``DummyVecEnv``'s ``.envs``. A
     ``SubprocVecEnv`` keeps its envs in other processes and yields none.
-    ``MyoGymnasiumEnv`` tasks keep the model in ``muscle_fatigue``, the
-    experimental ``ModularTaskEnv`` in ``_fatigue_model``.
+    ``MyoGymnasiumEnv`` tasks keep the model in the ``muscle_fatigue`` attribute
+    of their ``FatigueWrapper``, the experimental ``ModularTaskEnv`` in
+    ``_fatigue_model``.
     """
     while hasattr(env, "venv"):
         env = env.venv
     models = []
     for sub_env in getattr(env, "envs", None) or [env]:
         unwrapped = getattr(sub_env, "unwrapped", sub_env)
-        model = getattr(unwrapped, "muscle_fatigue", None)
+        get_attr = getattr(sub_env, "get_wrapper_attr", None)
+        try:
+            model = get_attr("muscle_fatigue") if get_attr else None
+        except AttributeError:
+            model = None
         if model is None:
             model = getattr(unwrapped, "_fatigue_model", None)
         models.append(model if hasattr(model, "state_dict") else None)

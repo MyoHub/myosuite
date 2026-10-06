@@ -7,6 +7,7 @@
 import mujoco
 
 import myosuite.core.registry as _registry
+from myosuite.envs.wrappers import condition_wrapper_specs
 from myosuite.utils.spec_processing import recursive_immobilize
 import numpy as np
 
@@ -115,11 +116,13 @@ for _env_id, _kw in [
         env_id="myoSarc" + _env_id[3:],
         entry_point=_EP,
         max_episode_steps=150,
-        kwargs={**_kw, "muscle_condition": "sarcopenia"},
+        kwargs=_kw,
+        additional_wrappers=condition_wrapper_specs("sarcopenia"),
     )
     _registry.register_env(
         env_id="myoFati" + _env_id[3:],
         entry_point=_EP,
         max_episode_steps=150,
-        kwargs={**_kw, "muscle_condition": "fatigue"},
+        kwargs=_kw,
+        additional_wrappers=condition_wrapper_specs("fatigue"),
     )

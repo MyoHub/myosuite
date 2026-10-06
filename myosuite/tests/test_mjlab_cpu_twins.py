@@ -17,6 +17,7 @@ import os
 import sys
 
 import gymnasium as gym
+from gymnasium.envs.registration import WrapperSpec
 import mujoco
 import numpy as np
 import pytest
@@ -38,6 +39,7 @@ from myosuite.core.muscle_conditions import (  # noqa: E402
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
 from myosuite.envs.myo.tasks.basic.arm.reach import ReachEnvV0  # noqa: E402
 from myosuite.envs.modular_env import ModularTaskEnv  # noqa: E402
+from myosuite.envs.wrappers import FatigueWrapper  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0  # noqa: E402
 
@@ -369,7 +371,7 @@ def test_twin_fatigue_parameters_match_cpu(env_id: str) -> None:
     """
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
 
-    cpu = gym.make(env_id).unwrapped.muscle_fatigue
+    cpu = gym.make(env_id).muscle_fatigue
     mj = ManagerBasedRlEnv(cfg=load_env_cfg(env_id), device="cpu")
     twin = mj.action_manager.get_term("muscles")._fatigue
     assert np.any(cpu.F != MUSCLE_FATIGUE_PARAMS["Default"]["F"])
@@ -383,10 +385,10 @@ def test_twin_fatigue_parameters_match_cpu(env_id: str) -> None:
 def test_twin_fatigue_reset_options_match_cpu(
     reset: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``fatigue_reset_vec`` / ``fatigue_reset_random`` of the CPU env reach the twin.
+    """``fatigue_reset_vec`` / ``fatigue_reset_random`` of the ``FatigueWrapper`` reach the twin.
 
-    The twin config is derived from the CPU kwargs; here the kwargs go to
-    ``gym.make`` and to the ``cpu_task_spec`` the twin config reads. A fixed vector
+    The twin config is derived from the registered wrapper specs; here the options go
+    to a ``FatigueWrapper`` on the CPU env and to the ``cpu_task_spec`` the twin config reads. A fixed vector
     must give the CPU state in every env (and the CPU ctrl on the next step); a
     random reset draws a valid, seeded state per env (CPU and torch use different
     generators, so the draws themselves differ).
@@ -399,21 +401,27 @@ def test_twin_fatigue_reset_options_match_cpu(
 
     env_id = "myoFatiElbowPose1D6MRandom-v0"
     extra = (
-        {"fatigue_reset_vec": np.linspace(0.1, 0.6, 6)}
+        {"fatigue_reset_vec": np.linspace(0.1, 0.6, 6).tolist()}
         if reset == "vec"
         else {"fatigue_reset_random": True}
     )
     spec = ref.cpu_task_spec(env_id)
+    wrapper = WrapperSpec(
+        name="FatigueWrapper",
+        entry_point="myosuite.envs.wrappers:FatigueWrapper",
+        kwargs=extra,
+    )
     monkeypatch.setattr(
         ref,
         "cpu_task_spec",
         lambda _: ref.CpuTaskSpec(
-            env_id, {**spec.kwargs, **extra}, spec.max_episode_steps
+            env_id, spec.kwargs, spec.max_episode_steps, wrappers=(wrapper,)
         ),
     )
     cfg = make_pose_env_cfg(env_id)
     cfg.scene.num_envs = 3
-    cpu = gym.make(env_id, **extra).unwrapped
+    cpu_env = FatigueWrapper(gym.make("myoElbowPose1D6MRandom-v0"), **extra)
+    cpu = cpu_env.unwrapped
     cpu.reset(seed=0)
     mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
     mj.reset(seed=0)

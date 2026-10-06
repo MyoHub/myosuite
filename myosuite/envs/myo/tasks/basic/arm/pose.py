@@ -17,22 +17,21 @@ from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleConditionMixin
-from myosuite.terms.base_action import MotorNoiseCfg
+from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleActionMixin
 from myosuite.terms.base_obs import pose_error_obs
 from myosuite.terms.base_reward import pose_reward
 
 
-class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
+class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Pose-tracking task for musculoskeletal (or motor) MuJoCo models.
 
     The environment presents a target joint configuration and rewards the
     agent for minimising the angular distance to that target.  Supports
     elbow, finger, and hand models via the ``model_path`` argument.
 
-    Muscle conditions (sarcopenia, fatigue, reafferentation) are applied
-    at construction time via the ``muscle_condition`` kwarg and automatically
-    registered as variant environments via explicit ``_registry.register_env`` calls.
+    Muscle conditions (sarcopenia, fatigue, reafferentation) and motor noise
+    are wrappers (:mod:`myosuite.envs.wrappers`), registered with the
+    ``myoSarc*``, ``myoFati*`` and ``myoReaf*`` variant ids.
 
     Args:
         model_path: Absolute path to the MuJoCo XML model.
@@ -51,18 +50,9 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         normalize_act: If ``True``, action space is ``[-1, 1]``; linear
             denormalisation (motors) or sigmoid (muscles) is applied internally.
         frame_skip: Number of MuJoCo substeps per :meth:`step` call.
-        muscle_condition: One of ``""``, ``"sarcopenia"``, ``"fatigue"``,
-            ``"reafferentation"``.
         weight_bodyname: Body name for random mass perturbation.
         weight_range: ``(min_mass, max_mass)`` for random body mass.
-        fatigue_reset_vec: Initial fatigue state vector (passed to
-            :class:`CumulativeFatigue`).
-        fatigue_reset_random: If ``True``, randomise fatigue state on reset.
-        motor_noise: Noise on muscle excitations (:class:`MotorNoiseCfg` or a
-            dict of its fields); ``None`` disables it.
     """
-
-    supports_motor_noise = True  # the action pipeline applies motor_noise
 
     DEFAULT_OBS_KEYS = ["qpos", "qvel", "pose_err"]
     DEFAULT_RWD_KEYS_AND_WEIGHTS = {
@@ -93,12 +83,8 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         pose_thd: float = 0.35,
         normalize_act: bool = True,
         frame_skip: int = 10,
-        muscle_condition: str = "",
         weight_bodyname: str | None = None,
         weight_range: tuple | None = None,
-        fatigue_reset_vec=None,
-        fatigue_reset_random: bool = False,
-        motor_noise: MotorNoiseCfg | dict | None = None,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -124,12 +110,8 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             pose_thd=pose_thd,
             normalize_act=normalize_act,
             frame_skip=frame_skip,
-            muscle_condition=muscle_condition,
             weight_bodyname=weight_bodyname,
             weight_range=weight_range,
-            fatigue_reset_vec=fatigue_reset_vec,
-            fatigue_reset_random=fatigue_reset_random,
-            motor_noise=motor_noise,
             **kwargs,
         )
 
@@ -144,13 +126,8 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 
-        # ── Muscle condition ──────────────────────────────────────────────
-        self.muscle_condition = muscle_condition
-        self.fatigue_reset_vec = fatigue_reset_vec
-        self.fatigue_reset_random = fatigue_reset_random
-        self.motor_noise = MotorNoiseCfg.from_value(motor_noise)
+        # ── Muscle actuators (action-pipeline stages come from wrappers)
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
-        self._init_muscle_condition()
 
         # ── Target configuration ──────────────────────────────────────────
         self.reset_type = reset_type
@@ -490,8 +467,8 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             self.model.body_mass[bid] = weight
             self.model.geom_size[gid][0] = 0.01 + 2.5 * weight / 100
 
-        # Reset fatigue model
-        self._reset_muscle_condition()
+        # Reset the wrapper-installed muscle stages (fatigue)
+        self._run_reset_stages()
 
         # Reset physics state
         mujoco.mj_resetData(self.model, self.data)
@@ -533,15 +510,3 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
         """Return the current observation vector (legacy compat)."""
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         return self._obs_dict_to_vec(self.get_obs_dict(self._accessor))
-
-    def set_fatigue_reset_random(self, fatigue_reset_random: bool) -> None:
-        """Update the fatigue randomisation flag.
-
-        Args:
-            fatigue_reset_random: If ``True``, randomise fatigue on reset.
-        """
-        if self.muscle_condition != "fatigue":
-            import logging
-
-            logging.warning("This has no effect — no fatigue model is active.")
-        self.fatigue_reset_random = fatigue_reset_random
