@@ -51,7 +51,6 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import myosuite  # noqa: E402, F401
-from myosuite.utils import gym  # noqa: E402
 from sar_tutorial_utils import SynNoSynWrapper, fit_sac  # noqa: E402
 
 # Reuse run_sar_full.py's play-phase trainer and activation/SAR helpers

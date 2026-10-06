@@ -15,11 +15,12 @@ pip install -e .
 pip install git+https://github.com/MyoHub/myosuite.git
 ```
 
-Then import with the public API (not the old `from myosuite.utils import gym` one-liner):
+Then build an env with the public API (importing `myosuite` registers every env id):
 
 ```python
-import gymnasium as gym
-import myosuite  # required — registers env ids
+from myosuite import make_env
+
+env = make_env("myoElbowPose1D6MRandom-v0")
 ```
 
 ## Tutorials by track

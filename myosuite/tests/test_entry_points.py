@@ -8,7 +8,6 @@ CPU pattern::
 
     import myosuite
     myosuite.register_all_envs()
-    import gymnasium as gym
     env = make_env("myoElbowPose1D6MRandom-v0")
 
 MJX + Brax pattern::

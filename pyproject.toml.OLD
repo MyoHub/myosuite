@@ -1,0 +1,81 @@
+
+[project]
+name = "MyoSuite"
+dynamic = ["version"]  # Enable dynamic version
+description = "Musculoskeletal environments simulated in MuJoCo"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache 2.0" }
+authors = [
+    { name = "Vikash Kumar", email = "vikashplus@gmail.com" },
+    { name = "Vittorio Caggiano", email = "caggiano@gmail.com" },
+]
+urls = {Homepage = "https://sites.google.com/view/myosuite"}
+classifiers = [
+    "Programming Language :: Python :: 3.9",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "click",
+    "sk-video",
+    "gymnasium<1.3",
+    "termcolor",
+    "flatten_dict",
+    "h5py",
+    "numpy",
+    "mujoco==3.3.7",
+    "Pillow",
+    "pink-noise-rl",
+    "packaging",
+    "gitpython"
+]
+[project.optional-dependencies]
+examples = ["mink[examples]; python_version > '3.9'"]
+mjx = [
+    "jax>=0.4.20; python_version >= '3.10'",
+    "jaxlib>=0.4.20; python_version >= '3.10'",
+    "brax>=0.10.0; python_version >= '3.10'",
+    "flax>=0.8.0; python_version >= '3.10'",
+    "optax>=0.1.7; python_version >= '3.10'",
+    "ml-collections>=0.1.1; python_version >= '3.10'",
+    "etils[epath]>=1.3.0; python_version >= '3.10'",
+    "playground>=0.0.5; python_version >= '3.10'",
+    "mediapy>=1.2.0; python_version >= '3.10'",
+    "wandb>=0.21.0; python_version >= '3.10'"
+]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=2.0",
+    "sphinx-autodoc-typehints>=2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-xvfb",
+    "pytest-benchmark>=4.0",
+    "black",
+    "isort",
+    "flake8",
+]
+
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = { find = { exclude = ["myosuite.agents"] } }
+py-modules = ["myosuite_init"]
+
+[tool.setuptools.package-data]
+"myosuite" = ["**/*"]
+
+[project.scripts]
+myoapi_init = "myosuite_init:fetch_simhive"
+myoapi_clean = "myosuite_init:clean_simhive"
+
+[tool.setuptools.dynamic]
+version = {attr = "myosuite.version.__version__"}

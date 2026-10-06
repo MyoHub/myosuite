@@ -322,9 +322,8 @@ zero-action settle with the default camera.
 
 ```bash
 python3 - <<'PY'
-import gymnasium as gym, numpy as np, mujoco, imageio.v2 as imageio
-from myosuite import register_all_envs
-register_all_envs()
+import numpy as np, mujoco, imageio.v2 as imageio
+from myosuite import make_env
 env = make_env("myoChallengeDieReorientP1-v0")
 env.reset(seed=0)
 mujoco.mj_forward(env.unwrapped.model, env.unwrapped.data)
