@@ -379,6 +379,71 @@ def test_twin_fatigue_parameters_match_cpu(env_id: str) -> None:
         )
 
 
+@pytest.mark.parametrize("reset", ["vec", "random"])
+def test_twin_fatigue_reset_options_match_cpu(
+    reset: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``fatigue_reset_vec`` / ``fatigue_reset_random`` of the CPU env reach the twin.
+
+    The twin config is derived from the CPU kwargs; here the kwargs go to
+    ``gym.make`` and to the ``cpu_task_spec`` the twin config reads. A fixed vector
+    must give the CPU state in every env (and the CPU ctrl on the next step); a
+    random reset draws a valid, seeded state per env (CPU and torch use different
+    generators, so the draws themselves differ).
+    """
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref  # noqa: PLC0415
+    from myosuite.envs.myo.backends.mjlab.tasks.pose.pose_env_cfg import (  # noqa: PLC0415
+        make_pose_env_cfg,
+    )
+
+    env_id = "myoFatiElbowPose1D6MRandom-v0"
+    extra = (
+        {"fatigue_reset_vec": np.linspace(0.1, 0.6, 6)}
+        if reset == "vec"
+        else {"fatigue_reset_random": True}
+    )
+    spec = ref.cpu_task_spec(env_id)
+    monkeypatch.setattr(
+        ref,
+        "cpu_task_spec",
+        lambda _: ref.CpuTaskSpec(
+            env_id, {**spec.kwargs, **extra}, spec.max_episode_steps
+        ),
+    )
+    cfg = make_pose_env_cfg(env_id)
+    cfg.scene.num_envs = 3
+    cpu = gym.make(env_id, **extra).unwrapped
+    cpu.reset(seed=0)
+    mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    mj.reset(seed=0)
+    twin = mj.action_manager.get_term("muscles")._fatigue
+    state = {k: getattr(twin, k).double().numpy() for k in ("MA", "MR", "MF")}
+    np.testing.assert_allclose(sum(state.values()), 1.0, atol=1e-6)
+
+    if reset == "vec":
+        for k, v in state.items():
+            np.testing.assert_allclose(
+                v, np.tile(getattr(cpu.muscle_fatigue, k), (3, 1)), atol=1e-7
+            )
+        # The ctrl depends only on the action and the fatigue state.
+        action = np.full(cpu.action_space.shape, 0.3, dtype=np.float32)
+        cpu.step(action)
+        mj.step(torch.as_tensor(np.tile(action, (3, 1))))
+        ctrl = mj.action_manager.get_term("muscles").processed_action.numpy()
+        np.testing.assert_allclose(ctrl, np.tile(cpu.data.ctrl, (3, 1)), atol=1e-5)
+    else:
+        assert np.all(cpu.muscle_fatigue.MF > 0.0)
+        assert np.all(state["MF"] > 0.0), "twin reset to a fresh state"
+        assert not np.allclose(state["MF"][0], state["MF"][1])
+        mj.reset(seed=0)
+        np.testing.assert_array_equal(twin.MF.double().numpy(), state["MF"])
+        mj.reset(env_ids=torch.tensor([1]))
+        mf = twin.MF.double().numpy()
+        np.testing.assert_array_equal(mf[[0, 2]], state["MF"][[0, 2]])
+        assert not np.allclose(mf[1], state["MF"][1])
+
+
 def test_every_ported_cpu_env_has_mjlab_twin() -> None:
     """Every basic-suite CPU id of a ported family is registered with mjlab."""
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415

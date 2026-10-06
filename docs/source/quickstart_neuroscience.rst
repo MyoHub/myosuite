@@ -160,8 +160,12 @@ See that notebook for playback of the published Song-Geyer walking gains.
 Neuromuscular Fatigue Modeling
 -------------------------------
 
-MyoSuite implements the **Three-Compartment Fatigue Model** (Liu et al., 2002),
-which tracks active (MA), fatigued (MF), and resting (MR) motor unit pools:
+MyoSuite implements the **three-compartment controller model with a rest-recovery
+multiplier** (3CC-r; Xia & Frey-Law, 2008; Looft et al., 2018), which tracks active
+(MA), fatigued (MF), and resting (MR) motor unit pools. Its per-muscle-group
+parameters come from Frey-Law et al. (2012) and Rakshit et al. (2021); see
+:doc:`fatigue_validation` for their sources and a comparison with measured
+endurance times.
 
 .. code-block:: python
 
@@ -175,7 +179,7 @@ which tracks active (MA), fatigued (MF), and resting (MR) motor unit pools:
    activations = []
    for _ in range(2000):
        # Apply sustained sub-maximal excitation
-       ctrl = np.full(env.action_space.shape, 0.3)  # 30 % excitation
+       ctrl = np.full(env.action_space.shape, 0.3)  # ~27 % excitation after the muscle sigmoid
        obs, reward, terminated, truncated, info = env.step(ctrl)
 
        # Muscle activation reflects the fatigued state

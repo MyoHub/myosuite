@@ -689,6 +689,7 @@ class TestMjlabIntegration:
         import numpy as np
 
         import myosuite
+        import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
 
         myosuite.register_all_envs()
         from myosuite.core.registry import make_env
@@ -741,6 +742,8 @@ class TestMjlabIntegration:
 
     def test_registered_tasks_discoverable(self) -> None:
         """Supported tasks must be discoverable in mjlab task registry."""
+        import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+
         list_tasks = importlib.import_module("mjlab.tasks.registry").list_tasks
 
         discovered = set(list_tasks())
@@ -946,6 +949,72 @@ def test_import_mjlab_has_no_duplicate_registration_warnings() -> None:
     output = f"{proc.stdout}\n{proc.stderr}"
     assert "Overriding environment" not in output
     assert "MyoSuite:> Registering Myo Envs" not in output
+
+
+@pytest.mark.skipif(
+    not (_MJLAB_AVAILABLE and _TORCH_AVAILABLE),
+    reason="mjlab/torch not installed (pip install myosuite[mjlab])",
+)
+def test_make_env_mjlab_registers_the_twins_itself() -> None:
+    """``make_env(backend="mjlab")`` works in a fresh interpreter from a source checkout.
+
+    No earlier import of the mjlab backend and no ``mjlab.tasks`` entry point (which
+    only a pip-installed myosuite provides) are needed.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    code = (
+        f"import sys; sys.path.insert(0, {str(repo)!r})\n"
+        "import myosuite\n"
+        "from myosuite.core.registry import make_env\n"
+        "env = make_env('myoElbowPose1D6MRandom-v0', backend='mjlab', num_envs=1, "
+        "device='cpu')\n"
+        "print('built', type(env).__name__)\n"
+        "env.close()\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(repo),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, (proc.stderr or proc.stdout)[-3000:]
+    assert "built" in proc.stdout
+
+
+@pytest.mark.skipif(
+    not (_MJLAB_AVAILABLE and _TORCH_AVAILABLE),
+    reason="mjlab/torch not installed (pip install myosuite[mjlab])",
+)
+def test_train_mjlab_cli_offers_the_myosuite_twins() -> None:
+    """``scripts/train_mjlab.py <MyoSuite id>`` parses from a source checkout.
+
+    The task choice comes from mjlab's registry, which holds the MyoSuite twins only
+    once the backend is imported (or via a pip-installed myosuite's entry point).
+    """
+    import os
+
+    repo = Path(__file__).resolve().parents[2]
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in (str(repo), env.get("PYTHONPATH", "")) if p
+    )
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(repo / "scripts" / "train_mjlab.py"),
+            "myoElbowPose1D6MRandom-v0",
+            "--help",
+        ],
+        cwd=str(repo),
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    output = f"{proc.stdout}\n{proc.stderr}"
+    assert proc.returncode == 0, output[-3000:]
+    assert "invalid choice" not in output.lower()
 
 
 def test_mujoco_warp_version_has_sparse_tendon_transmission_fix() -> None:

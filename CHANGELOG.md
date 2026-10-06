@@ -31,8 +31,9 @@ full commit list.
   policies with evaluation videos on Hugging Face (`myohub/myosuite-3-baselines`).
 * **`myo_sim` as a pip package** (replacing the git submodule); models are composed from it and the
   hand, arm and leg orientations were re-calibrated.
-* **Muscle conditions.** A torch fatigue model with CPU parity, episode-persistent and resumable
-  fatigue states, spec-level sarcopenia and reafferentation.
+* **Muscle conditions.** Muscle-group- and sex-specific fatigue parameters from the literature, a torch
+  fatigue model with CPU parity, episode-persistent and resumable fatigue states, spec-level sarcopenia
+  and reafferentation.
 * **The full MyoChallenge suite as Gymnasium environments** (21 ids): Baoding, Bimanual, ChaseTag
   (P1, P2, P2eval, full-body P2, 1v1 full-body), Die Reorient, OSL run, Relocate, Soccer and Table
   Tennis, with mjlab versions of the ChaseTag full-body and Table Tennis tasks.
@@ -52,7 +53,7 @@ full commit list.
 * **Training and evaluation tools:** `eval_mjlab_policy.py` (CPU/mjlab rollouts, grid videos, `--stochastic`), `train_mjlab.py` early stop on success, default-policy checkpoints and videos on Hugging Face (`myohub/myosuite-3-baselines`) ([#406], [#478]).
 * **SAR synergies re-extracted on the current envs** and installed in `tutorials/files/2.3/SAR_pretrained/`; SAR-RL and RL-E2E reach the same success on locomotion, and SAR is not consistently ahead on manipulation (2 of 6 seeds).
 * **MuscleMimic baseline:** a single-clip walking policy (2B steps; 86% of episodes reach the clip end) on Hugging Face, see `docs/baseline_checkpoints.md`.
-* **Fatigue:** episode-persistent and resumable states, torch 3CC-r parity with the CPU model ([#406], [#421]).
+* **Fatigue:** muscle-group- and sex-specific fatigue parameters from the literature (Rakshit et al. 2021; Frey-Law et al. 2012), episode-persistent and resumable states, torch 3CC-r parity with the CPU model ([#406], [#421], [#491]).
 * **Targets:** `GoalSpec(target_type="site_positions")` samples per-episode targets from per-site ranges on CPU and MJX (mjlab helper `site_position_command_cfg`); `MotionClip` carries optional per-frame `weights` (#410).
 * **Tutorials and docs:** numbered tracks with companion files in `tutorials/files/X.Y/`, SAR tutorials and pretrained pickles, a fatigue tutorial, quickstarts, environment reference, backend-parity and baselines pages ([#406], [#454], [#455]).
 
@@ -74,6 +75,7 @@ full commit list.
 * **mjlab physics options follow the CPU models** for TableTennis and MuscleMimic ([#457]); **mjlab TableTennis** simulates the CPU scene with once-per-step scoring and per-env randomization ([#458]).
 * **MuscleMimic bridge builds its observation on the sim device** (`TorchFullbodyObsAdapter`): 20-80x faster, float32, not bit-identical to the CPU builder (agrees to about 1e-6); `obs_backend="cpu"` keeps the old path ([#486]).
 * **Performance and memory:** cached model specs ([#481]), vectorized full-body mimic observation builder ([#482]), faster OslRun step ([#483]), explicit MjData arenas for full-body Mimic and ChaseTag ([#487], [#493]) and the two-agent `myoChallengeChaseTagFBVs-v0` scene ([#498]), `colorednoise` replaces `pink-noise-rl` and `import myosuite` is 2x faster ([#480]).
+* **Fatigue dynamics follow the literature:** the rest multiplier `r` acts only at rest (Rakshit et al. 2021; commands up to `FATIGUE_REST_THRESHOLD = 0.01` count as rest, so sigmoid-mapped muscles can rest) and the `Shoulder` row uses the Frey-Law et al. (2012) fit. Retrain policies on the `myoFati*` envs ([#491]).
 * **mjlab walk, Mimic and Table Tennis steps make no host syncs** (GPU stream stalls) in MyoSuite terms, with bit-identical results: walk / terrain twins 34 / 41 per step to 0; Mimic clip mode 33, a 2-clip bank 537 (full body) and random targets 17 to 0 (one reset check on a step that resets an env); Table Tennis P1 / P2 2 / 4 per reset step to 0. `mimic_composite_reward` reports `mean_site_dist` and `solved` per env ([#500]).
 * Documentation and developer wiki cut down; tutorials simplified for newcomers ([#406]).
 
@@ -81,6 +83,7 @@ full commit list.
 
 * **Reach and arm models:** arm-reach `IFtip` site back at the fingertip (it sat 1.8 cm short at the DIP joint since `7532d62`; the published arm policy reaches with the fingertip in 64% of episodes without retraining) ([#406]); thumb frozen and digits kept under their metacarpals ([#406]).
 * **Muscle conditions:** CPU fatigue activation rate and 3CC-r overshoot ([#421]); per-muscle fatigue parameters for prefixed and side-suffixed names ([#430]); automatic peak force under sarcopenia ([#426]); fatigue/sarcopenia parity between CPU and mjlab ([#406]).
+* **Fatigue:** the mjlab twins honour `fatigue_reset_vec` / `fatigue_reset_random`, and `myoFatiElbowPoseTask{Fixed,Random}-v0` now fatigue ([#491]).
 * **Challenge envs:** `reset(seed=...)` reproduces the episode ([#438]); Bimanual pillars at the sampled positions ([#441]); TableTennis and SAR reorient fatigue draws from the env RNG ([#442]); TableTennis termination, relaunch and conditions ([#432]), policy action in mjlab ([#428]) and mesh paths on any drive ([#485]); OSL controller `is_running` and `set_motor_param` ([#484]); RunTrack keyframe clamping ([#399]); ChaseTag fall threshold and opponent fall-through ([#406]).
 * **Terminate on MuJoCo instability** in every CPU env ([#423]).
 * **SAR:** reorient actions, muscle conditions and stale geometry ([#434]); mjlab SAR action reaches the muscles ([#424]); PCA whitening undone in `SARTorchTransform` ([#425]); the bridge and activation collector ([#459]); tutorial scripts seed SAC and resume ([#455]).
@@ -174,6 +177,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#485]: https://github.com/MyoHub/myosuite/pull/485
 [#486]: https://github.com/MyoHub/myosuite/pull/486
 [#487]: https://github.com/MyoHub/myosuite/pull/487
+[#491]: https://github.com/MyoHub/myosuite/pull/491
 [#493]: https://github.com/MyoHub/myosuite/pull/493
 [#494]: https://github.com/MyoHub/myosuite/pull/494
 [#496]: https://github.com/MyoHub/myosuite/pull/496

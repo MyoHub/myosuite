@@ -87,7 +87,7 @@ work capacity:
 
    force_over_time = []
    # Apply constant 60 % excitation — observe force decline
-   ctrl_level = np.full(env.action_space.shape, 0.2)  # maps to ~60 % excitation
+   ctrl_level = np.full(env.action_space.shape, 0.58)  # sigmoid(5 * (0.58 - 0.5)) ≈ 0.60
 
    for step in range(3000):
        obs, reward, terminated, truncated, info = env.step(ctrl_level)
@@ -102,7 +102,9 @@ work capacity:
 
    env.close()
 
-See ``tutorials/4.2_Fatigue_Modeling.ipynb`` for plots and recovery dynamics.
+See ``tutorials/4.2_Fatigue_Modeling.ipynb`` for plots and recovery dynamics, and
+:doc:`fatigue_validation` for how the model's endurance times compare with
+published data.
 
 
 Clinical Metrics
@@ -141,9 +143,9 @@ Useful metrics you can extract from any simulation:
        if rom > 0.1:
            print(f"  {model.joint(i).name:30s}  {rom:.1f}")
 
-   # Metabolic cost proxy: integrated squared muscle activation
-   metabolic_proxy = np.mean(forces**2)
-   print(f"\nMetabolic cost proxy (N²): {metabolic_proxy:.2f}")
+   # Effort proxy: mean squared actuator force (a force measure, not activation)
+   force_sq = np.mean(forces**2)
+   print(f"\nMean squared muscle force (N²): {force_sq:.2f}")
 
    # Walking symmetry: CoM lateral deviation
    if coms.shape[1] >= 2:

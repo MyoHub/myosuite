@@ -22,7 +22,9 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Per-muscle fatigue parameters (Rakshit et al. 2021, Looft & Frey-Law 2020)
+# Per-muscle fatigue parameters, F and R in 1/s. Muscle-group, sex-specific and
+# joint rows: Rakshit et al. 2021 (J Biomech 127:110695, Table 2). Validated
+# against endurance times in docs/source/fatigue_validation.rst.
 # ---------------------------------------------------------------------------
 
 MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
@@ -81,16 +83,22 @@ MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
         "r": 9.10,
     },  # from Hand group (https://doi.org/10.1016/j.jbiomech.2021.110695)
     "Knee": {"F": 0.00825, "R": 0.00076, "r": 14.85},
-    "Shoulder": {
-        "F": 0.00825,
-        "R": 0.00076,
-        "r": 14.85,
-    },  # Shoulder values from Looft & Frey-Law 2020 (https://doi.org/10.1016/j.jbiomech.2020.109762)
-    # default: Looft et al. 2018 / Looft & Frey-Law 2020
+    # F, R: shoulder fit of Frey-Law et al. 2012 (Table 1); r = 15: Looft & Frey-Law
+    # 2020 (https://doi.org/10.1016/j.jbiomech.2020.109762), better than r = 30.
+    "Shoulder": {"F": 0.01820, "R": 0.00168, "r": 15},
+    # default: "general" F, R of Frey-Law et al. 2012 (Table 1), r of Looft et al. 2018
     "Default": {"F": 0.00970, "R": 0.00091, "r": 15},
-    # v2.4 fallback params (Looft et al. 2018, r compensated for 0.1 R/F ratio)
+    # v2.4 fallback: elbow F, R of Frey-Law et al. 2012 with R / 10 (r * 10 keeps r * R)
     "Default_v2_4": {"F": 0.00912, "R": 0.1 * 0.00094, "r": 10 * 15},
 }
+
+FATIGUE_REST_THRESHOLD = 0.01
+"""Commands ``TL <= FATIGUE_REST_THRESHOLD`` count as rest: recovery runs at ``r R``.
+
+Rakshit et al. (2021, Eq. 7) define rest as a zero command. A command through the muscle
+sigmoid never reaches zero (smallest value 0.00055), so a small threshold makes a relaxed
+muscle count as resting, as a muscle commanded to 0 does.
+"""
 
 _DEFAULT_F = MUSCLE_FATIGUE_PARAMS["Default"]["F"]
 _DEFAULT_R = MUSCLE_FATIGUE_PARAMS["Default"]["R"]
@@ -240,11 +248,21 @@ def apply_sarcopenia_to_model(model: mujoco.MjModel, force_scale: float = 0.5) -
 
 
 class CumulativeFatigue:
-    """3CC-r cumulative fatigue model (Xia & Frey Law 2008, Rakshit et al. 2021).
+    """3CC-r cumulative fatigue model (Xia & Frey Law 2008, Looft et al. 2018).
 
     Tracks the active (MA), fatigued (MF), and resting (MR) compartments
     for each muscle actuator.  By default uses per-muscle fatigue / recovery
     constants derived from biomechanical functional muscle groups (FMG).
+
+    The recovery multiplier ``r`` acts only at rest, as in Rakshit et al.
+    (2021, Eqs. 1, 3 and 7; their ``k`` is ``r`` here):
+    ``dMR/dt = -C(t) + r(k, TL) x R x MF``,
+    ``dMF/dt = F x MA - r(k, TL) x R x MF`` with
+    ``r = k if TL = 0`` and ``r = 1 if TL > 0``.  Rest is
+    ``TL <= FATIGUE_REST_THRESHOLD`` (0.01): a command of (nearly) zero, plus the
+    negative commands of ``[-1, 1]`` control ranges, which MuJoCo's muscle dynamics
+    clamp to zero excitation.  The threshold lets a command mapped through the
+    muscle sigmoid, which never reaches exactly zero, rest.
 
     Args:
         mj_model: Compiled MuJoCo model.  Used to read muscle actuator
@@ -353,8 +371,8 @@ class CumulativeFatigue:
         mask = self._MA >= self.TL
         C[mask] = LR[mask] * (self.TL[mask] - self._MA[mask])
 
-        # Recovery rate: faster during rest (MA >= TL)
-        rR = np.where(self._MA >= self.TL, self._r * self._R, self._R)
+        # Recovery rate: r * R only at rest (Rakshit et al. 2021, Eq. 7)
+        rR = np.where(self.TL <= FATIGUE_REST_THRESHOLD, self._r * self._R, self._R)
 
         # Clip C to keep compartments in [0, 1]
         C = np.clip(  # type: ignore[assignment]
@@ -532,7 +550,8 @@ class TorchFatigueState:
         device: Torch device string (e.g. ``"cpu"``, ``"cuda:0"``).
         F: Fatigue rate — scalar or array of length *n_muscles*.
         R: Recovery rate — scalar or array of length *n_muscles*.
-        r: Recovery multiplier (active-phase rate boost) — scalar or array.
+        r: Recovery multiplier, applied only at rest (``TL <= FATIGUE_REST_THRESHOLD``, Rakshit
+            et al. 2021, Eq. 7; see :class:`CumulativeFatigue`) — scalar or array.
     """
 
     def __init__(
@@ -641,10 +660,12 @@ class TorchFatigueState:
         LD = -torch.expm1(-LD * dt) / dt
         LR = -torch.expm1(-LR * dt) / dt
 
-        # Recovery rate: boosted during rest (MA >= TL)
+        # Recovery rate: r * R only at rest (Rakshit et al. 2021, Eq. 7)
         rising = self.MA < excitation
         resting = self.MA >= excitation
-        rR = torch.where(resting, self._r * self._R, self._R)
+        rR = torch.where(
+            excitation <= FATIGUE_REST_THRESHOLD, self._r * self._R, self._R
+        )
 
         # Transfer rate C (select, not mask-multiply: a NaN excitation then gives
         # C = 0 as on CPU instead of NaN * 0 = NaN poisoning the state).
@@ -676,21 +697,66 @@ class TorchFatigueState:
     # Reset
     # ------------------------------------------------------------------
 
-    def reset(self, env_ids: Any = None) -> None:
-        """Reset fatigue to unfatigued state for the given environments.
+    def reset(
+        self,
+        env_ids: Any = None,
+        fatigue_reset_vec: Any = None,
+        fatigue_reset_random: bool = False,
+        generator: Any = None,
+    ) -> None:
+        """Reset the fatigue state of the given environments.
+
+        Same three modes as :meth:`CumulativeFatigue.reset`, vectorised over
+        the environments: fresh (``MA = MF = 0``, ``MR = 1``), a fixed fatigued
+        fraction, or a random state drawn independently per env and muscle.
 
         Args:
             env_ids: Indices or slice of environments to reset.  If ``None``,
                 resets all environments.
+            fatigue_reset_vec: If provided, ``MF = fatigue_reset_vec``,
+                ``MR = 1 - fatigue_reset_vec`` and ``MA = 0`` in every reset
+                env.  Shape ``(n_muscles,)``.
+            fatigue_reset_random: If ``True``, draw ``nf, ap ~ U[0, 1)`` and set
+                ``MA = nf * ap``, ``MR = nf * (1 - ap)``, ``MF = 1 - nf``.
+                Cannot be combined with *fatigue_reset_vec*.
+            generator: ``torch.Generator`` for the random state.  Defaults to
+                torch's global generator, which mjlab seeds
+                (``env.reset(seed=...)``).
+
+        Raises:
+            ValueError: If both reset options are given, or the length of
+                *fatigue_reset_vec* is not ``n_muscles``.
         """
-        if env_ids is None:
-            self.MA.zero_()
-            self.MF.zero_()
-            self.MR.fill_(1.0)
+        import torch  # noqa: PLC0415
+
+        rows = slice(None) if env_ids is None else env_ids
+        if fatigue_reset_random:
+            if fatigue_reset_vec is not None:
+                raise ValueError(
+                    "Cannot pass fatigue_reset_vec when fatigue_reset_random=True."
+                )
+            shape = self.MA[rows].shape
+            nf = torch.rand(shape, generator=generator, device=self.MA.device)
+            ap = torch.rand(shape, generator=generator, device=self.MA.device)
+            self.MA[rows] = nf * ap
+            self.MR[rows] = nf * (1.0 - ap)
+            self.MF[rows] = 1.0 - nf
+        elif fatigue_reset_vec is not None:
+            mf = torch.as_tensor(
+                np.asarray(fatigue_reset_vec, dtype=np.float32), device=self.MA.device
+            )
+            if mf.shape != self.MA.shape[1:]:
+                raise ValueError(
+                    f"fatigue_reset_vec length {mf.numel()} != "
+                    f"n_muscles={self.MA.shape[1]}"
+                )
+            self.MA[rows] = 0.0
+            self.MF[rows] = mf
+            self.MR[rows] = 1.0 - mf
         else:
-            self.MA[env_ids] = 0.0
-            self.MF[env_ids] = 0.0
-            self.MR[env_ids] = 1.0
+            self.MA[rows] = 0.0
+            self.MF[rows] = 0.0
+            self.MR[rows] = 1.0
 
     def state_dict(self) -> dict[str, list]:
         """Return serialisable snapshot of the fatigue compartments.
