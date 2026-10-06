@@ -1,0 +1,777 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+
+"""Bridge related MuJoCo models by shared joint and actuator names."""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import mujoco
+import numpy as np
+
+logger = logging.getLogger(__name__)
+
+# Left-arm muscles: myo_sim names them ``*_l``, musclemimic_models ``*_left``.
+_FULLBODY_LEFT_ARM_MUSCLES: tuple[str, ...] = tuple(
+    "DELT1 DELT2 DELT3 SUPSP INFSP SUBSC TMIN TMAJ PECM1 PECM2 PECM3 LAT1 LAT2 "
+    "LAT3 CORB TRIlong TRIlat TRImed ANC SUP BIClong BICshort BRA BRD ECRL ECRB "
+    "ECU FCR FCU PL PT PQ".split()
+)
+
+#: Known name differences between the myo_sim and musclemimic_models full
+#: bodies, as ``(myo_sim name, musclemimic_models name)``. Each pair is the
+#: same joint (type, axis, range, frame) or muscle (gain, dynamics, length
+#: range). Pairs apply in both directions and only when the exact name is
+#: missing from the other model.
+FULLBODY_NAME_ALIASES: tuple[tuple[str, str], ...] = (
+    ("elbow_flexion_r", "elbow_flex_r"),
+    ("elbow_flexion_l", "elbow_flex_l"),
+    *((f"{muscle}_l", f"{muscle}_left") for muscle in _FULLBODY_LEFT_ARM_MUSCLES),
+)
+
+
+def _object_names(model: mujoco.MjModel, obj: mujoco.mjtObj, count: int) -> list[str]:
+    return [mujoco.mj_id2name(model, obj, i) or "" for i in range(count)]
+
+
+def _alias_lookup(aliases: tuple[tuple[str, str], ...]) -> dict[str, str]:
+    """Return a symmetric ``name -> alias`` map, rejecting ambiguous tables."""
+
+    lookup: dict[str, str] = {}
+    for pair in aliases:
+        for name, alias in (pair, pair[::-1]):
+            if name in lookup:
+                raise ValueError(f"Name {name!r} appears in more than one alias pair.")
+            lookup[name] = alias
+    return lookup
+
+
+def _match_names(
+    source_names: list[str],
+    target_names: list[str],
+    aliases: dict[str, str],
+) -> list[tuple[int, int]]:
+    """Return ``(source_id, target_id)`` pairs matched by exact name, else alias."""
+
+    target_ids = {name: i for i, name in enumerate(target_names) if name}
+    claimed: dict[int, str] = {}
+    pairs: list[tuple[int, int]] = []
+    for source_id, name in enumerate(source_names):
+        target_name = name if name in target_ids else aliases.get(name, "")
+        target_id = target_ids.get(target_name) if name else None
+        if target_id is None:
+            continue
+        if target_id in claimed:
+            raise ValueError(
+                f"Source names {claimed[target_id]!r} and {name!r} both map to "
+                f"target {target_name!r}."
+            )
+        claimed[target_id] = name
+        pairs.append((source_id, target_id))
+    return pairs
+
+
+def _unmatched(names: list[str], matched_ids: set[int]) -> list[str]:
+    return [
+        name or f"<unnamed #{i}>"
+        for i, name in enumerate(names)
+        if i not in matched_ids
+    ]
+
+
+def _joint_qpos_size(jnt_type: int) -> int:
+    return {
+        mujoco.mjtJoint.mjJNT_FREE: 7,
+        mujoco.mjtJoint.mjJNT_BALL: 4,
+        mujoco.mjtJoint.mjJNT_SLIDE: 1,
+        mujoco.mjtJoint.mjJNT_HINGE: 1,
+    }[mujoco.mjtJoint(jnt_type)]
+
+
+def _joint_qvel_size(jnt_type: int) -> int:
+    return {
+        mujoco.mjtJoint.mjJNT_FREE: 6,
+        mujoco.mjtJoint.mjJNT_BALL: 3,
+        mujoco.mjtJoint.mjJNT_SLIDE: 1,
+        mujoco.mjtJoint.mjJNT_HINGE: 1,
+    }[mujoco.mjtJoint(jnt_type)]
+
+
+def _to_numpy_array(value: Any, *, dtype: Any | None = None) -> np.ndarray:
+    """Convert numpy / torch-like values to a numpy array."""
+
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    return np.asarray(value, dtype=dtype)
+
+
+def _unwrap_env_like(env: Any) -> Any:
+    """Return the innermost env-like object by following common wrapper attrs."""
+
+    current = env
+    seen: set[int] = set()
+    while id(current) not in seen:
+        seen.add(id(current))
+        for attr_name in ("unwrapped", "env"):
+            candidate = getattr(current, attr_name, None)
+            if candidate is not None and candidate is not current:
+                current = candidate
+                break
+        else:
+            return current
+    return current
+
+
+@dataclass(frozen=True)
+class SharedModelStateBridge:
+    """Bridge state and actions between related MuJoCo models.
+
+    The bridge matches joints and actuators by MuJoCo name, falling back to
+    ``name_aliases`` where the two models name the same element differently.
+    Shared source state can then be copied into the target model, and
+    target-model policy actions can be projected back into the source model's
+    actuator space.
+
+    Every target joint, target actuator and source actuator must be matched;
+    otherwise target observations would stay at the keyframe, policy outputs
+    would be dropped, or source muscles would sit at the fill value. Source-only
+    joints (e.g. scene objects) are ignored.
+
+    Args:
+        source_model: Runtime model being controlled, such as a task env model.
+        target_model: Model expected by the policy or observation adapter.
+        target_keyframe: Reference keyframe used to initialize target-only state.
+        name_aliases: ``(name, name)`` pairs naming the same joint or actuator
+            in the two models, applied in both directions.
+        allow_partial: Accept unmatched target joints, target actuators or
+            source actuators (they are logged) instead of raising.
+
+    Raises:
+        ValueError: If coverage is incomplete and ``allow_partial`` is False,
+            listing the unmatched names.
+    """
+
+    source_model: mujoco.MjModel
+    target_model: mujoco.MjModel
+    target_keyframe: int = 0
+    name_aliases: tuple[tuple[str, str], ...] = FULLBODY_NAME_ALIASES
+    allow_partial: bool = False
+
+    def __post_init__(self) -> None:
+        aliases = _alias_lookup(self.name_aliases)
+        src, tgt = self.source_model, self.target_model
+        joint, actuator = mujoco.mjtObj.mjOBJ_JOINT, mujoco.mjtObj.mjOBJ_ACTUATOR
+        source_joints = _object_names(src, joint, src.njnt)
+        target_joints = _object_names(tgt, joint, tgt.njnt)
+        source_acts = _object_names(src, actuator, src.nu)
+        target_acts = _object_names(tgt, actuator, tgt.nu)
+        joint_pairs = _match_names(source_joints, target_joints, aliases)
+        act_pairs = _match_names(source_acts, target_acts, aliases)
+        self._check_coverage(
+            {
+                "target joints (left at the target keyframe)": _unmatched(
+                    target_joints, {t for _, t in joint_pairs}
+                ),
+                "target actuators (policy outputs dropped)": _unmatched(
+                    target_acts, {t for _, t in act_pairs}
+                ),
+                "source actuators (set to the fill value)": _unmatched(
+                    source_acts, {s for s, _ in act_pairs}
+                ),
+            }
+        )
+
+        for use_qvel, prefix in ((False, "qpos"), (True, "qvel")):
+            source_idx, target_idx = self._joint_index_arrays(
+                joint_pairs, use_qvel=use_qvel
+            )
+            object.__setattr__(self, f"_source_{prefix}_idx", source_idx)
+            object.__setattr__(self, f"_target_{prefix}_idx", target_idx)
+        object.__setattr__(
+            self,
+            "_source_act_idx",
+            np.asarray([s for s, _ in act_pairs], dtype=np.int32),
+        )
+        object.__setattr__(
+            self,
+            "_target_act_idx",
+            np.asarray([t for _, t in act_pairs], dtype=np.int32),
+        )
+        object.__setattr__(
+            self,
+            "_shared_joint_names",
+            tuple(source_joints[s] for s, _ in joint_pairs),
+        )
+        object.__setattr__(
+            self,
+            "_shared_actuator_names",
+            tuple(source_acts[s] for s, _ in act_pairs),
+        )
+
+        ref_data = mujoco.MjData(self.target_model)
+        if int(self.target_model.nkey) > self.target_keyframe:
+            mujoco.mj_resetDataKeyframe(
+                self.target_model, ref_data, self.target_keyframe
+            )
+        else:
+            mujoco.mj_resetData(self.target_model, ref_data)
+        mujoco.mj_forward(self.target_model, ref_data)
+        object.__setattr__(self, "_target_ref_qpos", np.asarray(ref_data.qpos).copy())
+        object.__setattr__(self, "_target_ref_qvel", np.asarray(ref_data.qvel).copy())
+        object.__setattr__(self, "_target_ref_ctrl", np.asarray(ref_data.ctrl).copy())
+        if getattr(ref_data, "act", None) is not None and int(ref_data.act.size) > 0:
+            object.__setattr__(self, "_target_ref_act", np.asarray(ref_data.act).copy())
+        else:
+            object.__setattr__(self, "_target_ref_act", None)
+
+    @property
+    def shared_joint_names(self) -> tuple[str, ...]:
+        """Return shared joint names in source-model order."""
+
+        return self._shared_joint_names
+
+    @property
+    def shared_actuator_names(self) -> tuple[str, ...]:
+        """Return shared actuator names in source-model order."""
+
+        return self._shared_actuator_names
+
+    def copy_source_into_target(
+        self,
+        source_data: mujoco.MjData,
+        target_data: mujoco.MjData,
+    ) -> None:
+        """Populate *target_data* from *source_data* and run forward dynamics.
+
+        Args:
+            source_data: Live MuJoCo data for ``source_model``.
+            target_data: MuJoCo data for ``target_model`` to be overwritten.
+        """
+
+        self.copy_source_state_into_target(
+            source_qpos=source_data.qpos,
+            source_qvel=source_data.qvel,
+            source_ctrl=source_data.ctrl,
+            source_act=getattr(source_data, "act", None),
+            target_data=target_data,
+        )
+
+    def copy_source_state_into_target(
+        self,
+        *,
+        source_qpos: Any,
+        source_qvel: Any,
+        source_ctrl: Any,
+        source_act: Any | None,
+        target_data: mujoco.MjData,
+    ) -> None:
+        """Populate *target_data* from source state arrays and run forward dynamics."""
+
+        target_data.qpos[:] = self._target_ref_qpos
+        target_data.qvel[:] = self._target_ref_qvel
+        target_data.ctrl[:] = self._target_ref_ctrl
+        if (
+            self._target_ref_act is not None
+            and getattr(target_data, "act", None) is not None
+        ):
+            target_data.act[:] = self._target_ref_act
+
+        if self._source_qpos_idx.size:
+            qpos = _to_numpy_array(source_qpos, dtype=target_data.qpos.dtype).reshape(
+                -1
+            )
+            target_data.qpos[self._target_qpos_idx] = qpos[self._source_qpos_idx]
+        if self._source_qvel_idx.size:
+            qvel = _to_numpy_array(source_qvel, dtype=target_data.qvel.dtype).reshape(
+                -1
+            )
+            target_data.qvel[self._target_qvel_idx] = qvel[self._source_qvel_idx]
+        if self._source_act_idx.size:
+            ctrl = _to_numpy_array(source_ctrl, dtype=target_data.ctrl.dtype).reshape(
+                -1
+            )
+            target_data.ctrl[self._target_act_idx] = ctrl[self._source_act_idx]
+            if (
+                self._target_ref_act is not None
+                and source_act is not None
+                and int(np.asarray(_to_numpy_array(source_act)).size) > 0
+            ):
+                act = _to_numpy_array(source_act, dtype=target_data.act.dtype).reshape(
+                    -1
+                )
+                target_data.act[self._target_act_idx] = act[self._source_act_idx]
+
+        mujoco.mj_forward(self.target_model, target_data)
+
+    def project_target_action_to_source(
+        self,
+        target_action: np.ndarray,
+        *,
+        fill_value: float = 0.0,
+    ) -> np.ndarray:
+        """Project a target-model action vector into source-model actuator space.
+
+        Args:
+            target_action: Action vector in ``target_model`` actuator order.
+            fill_value: Value assigned to source actuators with no target counterpart.
+
+        Returns:
+            Source-space action vector with shape ``(source_model.nu,)``.
+        """
+
+        action = np.asarray(target_action, dtype=np.float32).reshape(-1)
+        if action.shape[0] != int(self.target_model.nu):
+            raise ValueError(
+                "target_action has width "
+                f"{action.shape[0]}, expected {int(self.target_model.nu)}."
+            )
+        projected = np.full((int(self.source_model.nu),), fill_value, dtype=np.float32)
+        if self._source_act_idx.size:
+            projected[self._source_act_idx] = action[self._target_act_idx]
+        return projected
+
+    def _check_coverage(self, unmatched: dict[str, list[str]]) -> None:
+        """Raise (or log, with ``allow_partial``) on unmatched names."""
+
+        report = "; ".join(
+            f"{len(missing)} {kind}: {missing}"
+            for kind, missing in unmatched.items()
+            if missing
+        )
+        if not report:
+            return
+        if not self.allow_partial:
+            raise ValueError(
+                "Source and target models do not cover each other: "
+                f"{report}. Add the missing pairs to name_aliases, or pass "
+                "allow_partial=True if the gap is intended."
+            )
+        logger.warning("Partial model bridge (allow_partial=True): %s", report)
+
+    def _joint_index_arrays(
+        self, joint_pairs: list[tuple[int, int]], *, use_qvel: bool
+    ) -> tuple[np.ndarray, np.ndarray]:
+        source_idx: list[int] = []
+        target_idx: list[int] = []
+        for source_joint_id, target_joint_id in joint_pairs:
+            source_type = int(self.source_model.jnt_type[source_joint_id])
+            target_type = int(self.target_model.jnt_type[target_joint_id])
+            if source_type != target_type:
+                joint_name = mujoco.mj_id2name(
+                    self.source_model, mujoco.mjtObj.mjOBJ_JOINT, source_joint_id
+                )
+                raise ValueError(
+                    f"Joint {joint_name!r} has incompatible types: "
+                    f"{mujoco.mjtJoint(source_type).name} vs {mujoco.mjtJoint(target_type).name}."
+                )
+
+            if use_qvel:
+                width = _joint_qvel_size(source_type)
+                source_start = int(self.source_model.jnt_dofadr[source_joint_id])
+                target_start = int(self.target_model.jnt_dofadr[target_joint_id])
+            else:
+                width = _joint_qpos_size(source_type)
+                source_start = int(self.source_model.jnt_qposadr[source_joint_id])
+                target_start = int(self.target_model.jnt_qposadr[target_joint_id])
+            source_idx.extend(range(source_start, source_start + width))
+            target_idx.extend(range(target_start, target_start + width))
+        return (
+            np.asarray(source_idx, dtype=np.int32),
+            np.asarray(target_idx, dtype=np.int32),
+        )
+
+
+class BridgedPredictPolicy:
+    """Run a target-model ``predict`` policy on source-model MuJoCo state.
+
+    Args:
+        source_model: Runtime model being controlled.
+        target_model: Model expected by the wrapped policy.
+        obs_builder: Callable building the target-model observation from
+            ``(target_data, frame_idx)``.
+        policy: Policy exposing a numpy ``predict(obs)`` method.
+        clip_frame_count: Number of reference frames used by ``obs_builder``.
+        ctrl_dt: Control timestep used to convert simulation time to frame index.
+        source_action_fill: Fill value for unmapped source actuators before any
+            final action transform.
+        source_action_transform: Optional post-processing applied to projected
+            source actions, for example :func:`to_muscle_activations`.
+        target_keyframe: Reference keyframe for target-only state.
+        source_entity_name: Optional scene entity key used by
+            :meth:`predict_from_env` for mjlab environments.
+        source_env_idx: Default batch index used by :meth:`predict_from_env`
+            for batched mjlab environments.
+        source_env: Optional bound env-like object used by :meth:`__call__`.
+        output_device: Optional torch device used by :meth:`__call__` when
+            returning a batched tensor action.
+        name_aliases: Name pairs forwarded to :class:`SharedModelStateBridge`.
+        allow_partial: Forwarded to :class:`SharedModelStateBridge`.
+    """
+
+    def __init__(
+        self,
+        source_model: mujoco.MjModel,
+        target_model: mujoco.MjModel,
+        obs_builder: Any,
+        policy: Any,
+        *,
+        clip_frame_count: int,
+        ctrl_dt: float,
+        source_action_fill: float = 0.0,
+        source_action_transform: Any | None = None,
+        target_keyframe: int = 0,
+        source_entity_name: str | None = None,
+        source_env_idx: int = 0,
+        source_env: Any | None = None,
+        output_device: str | None = None,
+        name_aliases: tuple[tuple[str, str], ...] = FULLBODY_NAME_ALIASES,
+        allow_partial: bool = False,
+    ) -> None:
+        if int(clip_frame_count) <= 0:
+            raise ValueError(
+                f"clip_frame_count must be positive, got {clip_frame_count}."
+            )
+        if float(ctrl_dt) <= 0.0:
+            raise ValueError(f"ctrl_dt must be positive, got {ctrl_dt}.")
+        self._bridge = SharedModelStateBridge(
+            source_model,
+            target_model,
+            target_keyframe=target_keyframe,
+            name_aliases=name_aliases,
+            allow_partial=allow_partial,
+        )
+        self._target_model = target_model
+        self._target_data = mujoco.MjData(target_model)
+        if int(target_model.nkey) > target_keyframe:
+            mujoco.mj_resetDataKeyframe(
+                target_model, self._target_data, target_keyframe
+            )
+        else:
+            mujoco.mj_resetData(target_model, self._target_data)
+        mujoco.mj_forward(target_model, self._target_data)
+        self._obs_builder = obs_builder
+        self._policy = policy
+        self._clip_frame_count = int(clip_frame_count)
+        self._ctrl_dt = float(ctrl_dt)
+        self._source_action_fill = float(source_action_fill)
+        self._source_action_transform = source_action_transform
+        self._source_entity_name = source_entity_name
+        self._source_env_idx = int(source_env_idx)
+        self._source_env = source_env
+        self._output_device = output_device
+
+    @property
+    def bridge(self) -> SharedModelStateBridge:
+        """Return the underlying shared-state bridge."""
+
+        return self._bridge
+
+    def frame_idx_from_time(self, sim_time: float) -> int:
+        """Return the reference-frame index for a source simulation time."""
+
+        return int(round(float(sim_time) / self._ctrl_dt)) % self._clip_frame_count
+
+    def _predict_from_target_state(self, *, frame_idx: int) -> np.ndarray:
+        obs = np.asarray(
+            self._obs_builder(self._target_data, frame_idx),
+            dtype=np.float32,
+        )
+        target_action = np.asarray(self._policy.predict(obs), dtype=np.float32)
+        source_action = self._bridge.project_target_action_to_source(
+            target_action,
+            fill_value=self._source_action_fill,
+        )
+        if self._source_action_transform is None:
+            return source_action
+        return np.asarray(
+            self._source_action_transform(source_action),
+            dtype=np.float32,
+        )
+
+    def predict_from_source_data(self, source_data: mujoco.MjData) -> np.ndarray:
+        """Predict a source-model action from live source MuJoCo state."""
+
+        return self.predict_from_source_state(
+            source_qpos=source_data.qpos,
+            source_qvel=source_data.qvel,
+            source_ctrl=source_data.ctrl,
+            source_act=getattr(source_data, "act", None),
+            sim_time=source_data.time,
+        )
+
+    def predict_from_source_state(
+        self,
+        *,
+        source_qpos: Any,
+        source_qvel: Any,
+        source_ctrl: Any,
+        sim_time: Any,
+        source_act: Any | None = None,
+    ) -> np.ndarray:
+        """Predict a source-model action from raw source state arrays."""
+
+        frame_idx = self.frame_idx_from_time(
+            float(_to_numpy_array(sim_time).reshape(-1)[0])
+        )
+        self._bridge.copy_source_state_into_target(
+            source_qpos=source_qpos,
+            source_qvel=source_qvel,
+            source_ctrl=source_ctrl,
+            source_act=source_act,
+            target_data=self._target_data,
+        )
+        return self._predict_from_target_state(frame_idx=frame_idx)
+
+    def predict_from_env(
+        self,
+        source_env: Any,
+        *,
+        entity_name: str | None = None,
+        env_idx: int | None = None,
+    ) -> np.ndarray:
+        """Predict a source-model action from a CPU or mjlab env-like object."""
+
+        unwrapped = _unwrap_env_like(source_env)
+        if hasattr(unwrapped, "data") and hasattr(unwrapped, "model"):
+            return self.predict_from_source_data(unwrapped.data)
+
+        source_entity_name = entity_name or self._source_entity_name
+        if source_entity_name is not None and hasattr(unwrapped, "scene"):
+            live_data = unwrapped.scene[source_entity_name].data.data
+            live_env_idx = self._source_env_idx if env_idx is None else int(env_idx)
+            return self.predict_from_source_state(
+                source_qpos=live_data.qpos[live_env_idx],
+                source_qvel=live_data.qvel[live_env_idx],
+                source_ctrl=live_data.ctrl[live_env_idx],
+                source_act=(
+                    live_data.act[live_env_idx]
+                    if getattr(live_data, "act", None) is not None
+                    else None
+                ),
+                sim_time=live_data.time[live_env_idx],
+            )
+        raise TypeError(
+            "predict_from_env expected a CPU env with model/data or an mjlab env "
+            "with scene state and a configured source_entity_name."
+        )
+
+    def __call__(self, obs: Any) -> Any:
+        """Return a batched action for a bound env-like source.
+
+        This is a thin compatibility shim for mjlab-style inference loops that
+        expect a callable policy taking an observation argument. The observation
+        is ignored because the bridge reads the live state from ``source_env``.
+        """
+
+        del obs
+        if self._source_env is None:
+            raise TypeError(
+                "__call__ requires source_env to be configured on BridgedPredictPolicy."
+            )
+        action = self.predict_from_env(self._source_env)[None, :]
+        if self._output_device is None:
+            return action
+        import torch
+
+        return torch.as_tensor(
+            action,
+            device=self._output_device,
+            dtype=torch.float32,
+        )
+
+
+class TensorDictPredictPolicyAdapter:
+    """Adapt a callable TensorDict policy to a numpy ``predict(obs)`` API.
+
+    This is useful for reusing mjlab/RSL-RL inference callables with
+    :class:`BridgedPredictPolicy`, which expects the wrapped policy to expose a
+    synchronous ``predict(obs)`` method returning a flat action vector.
+
+    Args:
+        policy: Callable accepting a TensorDict with an ``actor`` observation key.
+        device: Torch device hosting the wrapped policy.
+        obs_key: Observation-group key expected by the wrapped policy.
+    """
+
+    def __init__(
+        self,
+        policy: Any,
+        *,
+        device: str = "cpu",
+        obs_key: str = "actor",
+    ) -> None:
+        self._policy = policy
+        self._device = str(device)
+        self._obs_key = str(obs_key)
+
+    def predict(self, obs: Any) -> np.ndarray:
+        """Return a flat numpy action for one observation vector."""
+
+        import torch
+        from tensordict import TensorDict
+
+        obs_np = _to_numpy_array(obs, dtype=np.float32).reshape(1, -1)
+        obs_tensor = torch.as_tensor(
+            obs_np,
+            device=self._device,
+            dtype=torch.float32,
+        )
+        obs_td = TensorDict(
+            {self._obs_key: obs_tensor},
+            batch_size=[obs_tensor.shape[0]],
+            device=obs_tensor.device,
+        )
+        action = self._policy(obs_td)
+        if isinstance(action, (tuple, list)):
+            if len(action) < 1:
+                raise ValueError("Wrapped policy returned an empty tuple/list action.")
+            action = action[0]
+        return _to_numpy_array(action, dtype=np.float32).reshape(-1)
+
+    def reset(self) -> None:
+        """Forward resets to the wrapped policy when available."""
+
+        reset_fn = getattr(self._policy, "reset", None)
+        if callable(reset_fn):
+            reset_fn()
+
+
+def to_muscle_activations(action: Any) -> np.ndarray:
+    """Map MuscleMimic checkpoint actions to the muscle excitations they produce.
+
+    The MuscleMimic models give every muscle ``ctrlrange=[-1, 1]`` and the
+    policy runners write the action into ``ctrl`` unchanged. MuJoCo's muscle
+    dynamics then clamp ``ctrl`` to ``[0, 1]``, so the excitation seen in
+    training is ``clip(a, 0, 1)``: an output of ``a <= 0`` means "off", not
+    "half on".
+    """
+
+    action_np = _to_numpy_array(action, dtype=np.float32).reshape(-1)
+    return np.clip(action_np, 0.0, 1.0).astype(np.float32)
+
+
+def make_fullbody_checkpoint_bridged_policy(
+    source_model: mujoco.MjModel,
+    policy: Any,
+    *,
+    checkpoint_root: str | Path,
+    motion_path: str | Path,
+    ctrl_dt: float,
+    source_action_fill: float = -1.0,
+    source_action_transform: Any = to_muscle_activations,
+    target_keyframe: int = 0,
+    source_entity_name: str | None = None,
+    source_env_idx: int = 0,
+    source_env: Any | None = None,
+    output_device: str | None = None,
+    policy_device: str | None = None,
+    allow_partial: bool = False,
+) -> BridgedPredictPolicy:
+    """Build a full-body checkpoint bridge around a native env policy.
+
+    The returned policy reads live source-model state, reconstructs the
+    full-body checkpoint observation expected by the wrapped policy, and
+    projects the checkpoint action back into the source model's actuator space.
+    Names are matched with :data:`FULLBODY_NAME_ALIASES`.
+
+    Args:
+        source_model: Native runtime model being controlled.
+        policy: Wrapped policy. Policies exposing ``predict(obs)`` are used
+            directly; callable TensorDict policies are adapted automatically.
+        checkpoint_root: Full-body checkpoint root containing the obs
+            adapter metadata.
+        motion_path: Reference motion clip used by the checkpoint obs adapter.
+        ctrl_dt: Source env control timestep used for frame alignment.
+        source_action_fill: Fill value for source actuators without a mapped
+            checkpoint counterpart.
+        source_action_transform: Optional transform applied after projecting the
+            checkpoint action back into the source actuator space. The default,
+            :func:`to_muscle_activations`, turns it into the ``[0, 1]`` muscle
+            excitation the checkpoint produced in training.
+        target_keyframe: Reference keyframe for the full-body target model.
+        source_entity_name: Optional mjlab scene entity name used by
+            :meth:`BridgedPredictPolicy.predict_from_env`.
+        source_env_idx: Default batched mjlab env index.
+        source_env: Optional bound env-like object used by
+            :meth:`BridgedPredictPolicy.__call__`.
+        output_device: Optional torch output device for batched ``__call__``.
+        policy_device: Optional torch device hosting a callable TensorDict
+            policy. Defaults to ``output_device`` or ``"cpu"``.
+        allow_partial: Accept a source model that does not cover the
+            checkpoint model, e.g. one that keeps the finger muscles (see
+            :class:`SharedModelStateBridge`).
+
+    Returns:
+        A :class:`BridgedPredictPolicy` configured for the full-body checkpoint
+        observation/action contract.
+    """
+
+    from myosuite.integrations.musclemimic.fullbody_checkpoint_io import (
+        resolve_checkpoint_ref,
+    )
+    from myosuite.integrations.musclemimic.fullbody_local_policy import (
+        FullbodyObsAdapter,
+        fullbody_obs_adapter_params_from_metadata,
+        read_checkpoint_config_metadata,
+    )
+    from myosuite.integrations.musclemimic.fullbody_model import (
+        compile_mimic_fullbody_mjmodel,
+        default_mimic_fullbody_config,
+    )
+    from myosuite.core.trajectory_io import load_motion_clip
+
+    resolved_checkpoint = resolve_checkpoint_ref(str(checkpoint_root))
+    metadata = read_checkpoint_config_metadata(Path(resolved_checkpoint.local_path))
+    target_model, _, _ = compile_mimic_fullbody_mjmodel(default_mimic_fullbody_config())
+    clip = load_motion_clip(
+        Path(motion_path),
+        expected_nq=target_model.nq,
+        expected_nv=target_model.nv,
+    )
+    obs_adapter = FullbodyObsAdapter(
+        target_model,
+        clip,
+        fullbody_obs_adapter_params_from_metadata(metadata),
+    )
+    predict_policy = (
+        policy
+        if hasattr(policy, "predict")
+        else TensorDictPredictPolicyAdapter(
+            policy,
+            device=policy_device or output_device or "cpu",
+        )
+    )
+    return BridgedPredictPolicy(
+        source_model=source_model,
+        target_model=target_model,
+        obs_builder=obs_adapter.build,
+        policy=predict_policy,
+        clip_frame_count=int(obs_adapter._traj_len),
+        ctrl_dt=float(ctrl_dt),
+        source_action_fill=float(source_action_fill),
+        source_action_transform=source_action_transform,
+        target_keyframe=int(target_keyframe),
+        source_entity_name=source_entity_name,
+        source_env_idx=int(source_env_idx),
+        source_env=source_env,
+        output_device=output_device,
+        allow_partial=allow_partial,
+    )
+
+
+__all__ = [
+    "FULLBODY_NAME_ALIASES",
+    "BridgedPredictPolicy",
+    "SharedModelStateBridge",
+    "TensorDictPredictPolicyAdapter",
+    "make_fullbody_checkpoint_bridged_policy",
+    "to_muscle_activations",
+]

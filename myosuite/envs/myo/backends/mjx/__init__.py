@@ -1,0 +1,357 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""MyoSuite MJX environments — JAX-accelerated musculoskeletal RL.
+
+Experimental: these envs are not observation- or reward-compatible with the
+CPU/mjlab envs of the same task (see ``README.md`` in this package), and env
+creation warns once about it.
+
+Public API::
+
+    from myosuite.envs.myo.backends.mjx import make
+    env = make("MjxElbowPoseFixed-v0")
+    env = make("MjxLegWalk-v0")
+
+Environment names
+-----------------
+Pose (elbow, finger):
+    ``MjxElbowPoseFixed-v0``, ``MjxElbowPoseRandom-v0``
+    ``MjxFingerPoseFixed-v0``, ``MjxFingerPoseRandom-v0``
+    ``MjxHandPoseRandom-v0``
+Reach (hand):
+    ``MjxHandReachFixed-v0``, ``MjxHandReachRandom-v0``
+Reach (finger):
+    ``MjxFingerReachRandom-v0``
+Walk (leg):
+    ``MjxLegWalk-v0``  — flat-ground locomotion, mirrors ``myoLegWalk-v0``
+Mimic (site tracking):
+    ``MjxMimicBimanual-v0``, ``MjxMimicFullbody-v0``
+    (aliases: ``MjxMuscleMimicBimanual-v0``, ``MjxMuscleMimicFullbody-v0``)
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import copy
+import inspect
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import gymnasium as gym
+from etils import epath
+from gymnasium.envs.registration import load_env_creator
+from ml_collections import config_dict
+
+from myosuite.envs.myo.backends.mjx.mjx_env_config import (
+    MjxPoseConfig,
+    MjxReachConfig,
+    MjxWalkConfig,
+)
+from myosuite.envs.myo.backends.mjx.musclemimic_env import MjxMuscleMimicIOEnv
+from myosuite.envs.myo.backends.mjx.musclemimic_fullbody_env import (
+    MjxMuscleMimicFullbodyEnv,
+)
+from myosuite.envs.myo.backends.mjx.pose_env import MjxPoseEnv
+from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv
+from myosuite.envs.myo.backends.mjx.walk_env import MjxWalkEnv
+from myosuite.envs.myo.assets._resolve import (
+    resolve_elbow_xml as _resolve_elbow_xml,
+    resolve_finger_xml as _resolve_finger_xml,
+    resolve_leg_xml as _resolve_leg_xml,
+)
+from myosuite.integrations.musclemimic.bimanual_model import default_mimic_config
+from myosuite.integrations.musclemimic.fullbody_model import (
+    default_mimic_fullbody_config,
+)
+
+# ---------------------------------------------------------------------------
+# Conversion helper: dataclass → ConfigDict (required by mujoco_playground)
+# ---------------------------------------------------------------------------
+
+
+def _to_config_dict(obj: object) -> object:
+    """Recursively convert a dataclass to a ``ml_collections.ConfigDict``.
+
+    Uses field-level iteration (not ``dataclasses.asdict``) so that non-dataclass
+    values like JAX arrays are passed through unchanged rather than deepcopied.
+    """
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return config_dict.create(
+            **{
+                f.name: _to_config_dict(getattr(obj, f.name))
+                for f in dataclasses.fields(obj)
+            }
+        )
+    return obj
+
+
+# PPO training hyperparameters (shared across envs)
+ppo_config = config_dict.create(
+    num_timesteps=40_000_000,
+    num_evals=16,
+    reward_scaling=0.1,
+    num_eval_envs=128,
+    clipping_epsilon=0.3,
+    normalize_observations=True,
+    action_repeat=1,
+    unroll_length=10,
+    num_minibatches=32,
+    num_updates_per_batch=8,
+    num_resets_per_eval=1,
+    discounting=0.97,
+    learning_rate=3e-4,
+    entropy_cost=0.001,
+    batch_size=512,
+    max_grad_norm=1.0,
+    network_factory=config_dict.create(
+        policy_hidden_layer_sizes=(64, 64, 64),
+        value_hidden_layer_sizes=(64, 64, 64),
+        policy_obs_key="state",
+        value_obs_key="state",
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# Per-environment base model paths
+# ---------------------------------------------------------------------------
+
+_MYOSUITE = epath.Path(epath.resource_path("myosuite"))
+
+_ELBOW_MODEL = _resolve_elbow_xml("myoelbow_1dof6muscles.xml")
+_FINGER_MODEL = _resolve_finger_xml("myofinger_v0.xml")
+
+
+def _default_hand_model_path() -> Path:
+    """Materialize the myo_sim-native "hand_pose" recipe to a real file.
+
+    Mirrors the mjlab backend's ``HandPoseCfg``/``HandReachCfg``, which
+    already switched from the legacy ``myohand_pose.xml`` to this recipe
+    (verified numerically equivalent: 39/39 muscle names match, 0
+    calibration mismatches, nq matches exactly). MJX reads ``model_path``
+    as a plain file, so the recipe's live MjSpec is materialized to disk.
+    """
+    from myosuite.core.model_recipes import materialize_recipe_xml
+
+    return materialize_recipe_xml("hand_pose")
+
+
+_HAND_MODEL = _default_hand_model_path()
+
+# ---------------------------------------------------------------------------
+# Registry + factory
+# ---------------------------------------------------------------------------
+
+ALL_ENVS = [
+    "MjxElbowPoseFixed-v0",
+    "MjxElbowPoseRandom-v0",
+    "MjxFingerPoseFixed-v0",
+    "MjxFingerPoseRandom-v0",
+    "MjxHandPoseRandom-v0",
+    "MjxHandReachFixed-v0",
+    "MjxHandReachRandom-v0",
+    "MjxFingerReachRandom-v0",
+    # Walk (leg) — mirrors myoLegWalk-v0 on the MJX backend
+    "MjxLegWalk-v0",
+    # Mimic site-tracking (bimanual / full-body)
+    "MjxMimicBimanual-v0",
+    "MjxMimicFullbody-v0",
+    "MjxMuscleMimicBimanual-v0",
+    "MjxMuscleMimicFullbody-v0",
+]
+
+# ---------------------------------------------------------------------------
+# Walk env config
+# ---------------------------------------------------------------------------
+
+# Same host model as ``myoLegWalk-v0``. The ellipsoid/cylinder contacts that
+# JAX/XLA cannot handle are stripped by
+# :func:`~myosuite.envs.myo.backends.mjx.mjx_spec_preprocess.preprocess_mjx_spec`
+# when ``mjx_impl`` is not warp.
+_LEG_MODEL = _resolve_leg_xml("myolegs_with_torso.xml")
+
+
+_musclemimic_bimanual_config = default_mimic_config()
+_musclemimic_fullbody_config = default_mimic_fullbody_config()
+
+# ---------------------------------------------------------------------------
+# Per-environment config factories
+#
+# Each _cfg_* function returns a typed dataclass.  make() converts to
+# ConfigDict at the mujoco_playground boundary via _to_config_dict().
+# To add a new MJX env: add a factory and an entry in _MJX_SPECS below.
+# ---------------------------------------------------------------------------
+
+
+def _cpu_kwarg(env_id: str, key: str) -> Any:
+    """Return a copy of one kwarg of the CPU registration of the same task.
+
+    The pose/reach target ranges and the hand-reach far thresholds are read from
+    the CPU registrations so the names, ranges and thresholds of the two backends
+    cannot drift apart.
+    """
+    spec = gym.spec(env_id)
+    if key in spec.kwargs:
+        return copy.deepcopy(spec.kwargs[key])
+    # Unset in the registration: the CPU env's constructor default applies.
+    env_cls = load_env_creator(spec.entry_point)
+    return copy.deepcopy(inspect.signature(env_cls).parameters[key].default)
+
+
+def _cfg_elbow_fixed() -> MjxPoseConfig:
+    return MjxPoseConfig(
+        model_path=_ELBOW_MODEL,
+        target_jnt_range=_cpu_kwarg("myoElbowPose1D6MFixed-v0", "target_jnt_range"),
+    )
+
+
+def _cfg_elbow_random() -> MjxPoseConfig:
+    return MjxPoseConfig(
+        model_path=_ELBOW_MODEL,
+        target_jnt_range=_cpu_kwarg("myoElbowPose1D6MRandom-v0", "target_jnt_range"),
+    )
+
+
+def _cfg_finger_fixed() -> MjxPoseConfig:
+    return MjxPoseConfig(
+        model_path=_FINGER_MODEL,
+        target_jnt_range=_cpu_kwarg("myoFingerPoseFixed-v0", "target_jnt_range"),
+    )
+
+
+def _cfg_finger_random() -> MjxPoseConfig:
+    return MjxPoseConfig(
+        model_path=_FINGER_MODEL,
+        target_jnt_range=_cpu_kwarg("myoFingerPoseRandom-v0", "target_jnt_range"),
+    )
+
+
+def _cfg_hand_pose_random() -> MjxPoseConfig:
+    return MjxPoseConfig(
+        model_path=_HAND_MODEL,
+        target_jnt_range=_cpu_kwarg("myoHandPoseRandom-v0", "target_jnt_range"),
+    )
+
+
+def _cfg_hand_reach_fixed() -> MjxReachConfig:
+    return MjxReachConfig(
+        model_path=_HAND_MODEL,
+        far_th=_cpu_kwarg("myoHandReachFixed-v0", "far_th"),
+        target_reach_range=_cpu_kwarg("myoHandReachFixed-v0", "target_reach_range"),
+    )
+
+
+def _cfg_hand_reach_random() -> MjxReachConfig:
+    return MjxReachConfig(
+        model_path=_HAND_MODEL,
+        far_th=_cpu_kwarg("myoHandReachRandom-v0", "far_th"),
+        target_reach_range=_cpu_kwarg("myoHandReachRandom-v0", "target_reach_range"),
+    )
+
+
+def _cfg_finger_reach_random() -> MjxReachConfig:
+    return MjxReachConfig(
+        model_path=_FINGER_MODEL,
+        far_th=_cpu_kwarg("myoFingerReachRandom-v0", "far_th"),
+        target_reach_range=_cpu_kwarg("myoFingerReachRandom-v0", "target_reach_range"),
+        target_sampling=_cpu_kwarg("myoFingerReachRandom-v0", "target_sampling"),
+    )
+
+
+def _cfg_leg_walk() -> MjxWalkConfig:
+    return MjxWalkConfig(model_path=_LEG_MODEL)
+
+
+# ---------------------------------------------------------------------------
+# Declarative registry: env_name → (EnvClass, config_factory).
+# To add a new MJX env: add one entry here. Do NOT touch make().
+# ---------------------------------------------------------------------------
+
+_MJX_SPECS: dict[str, tuple[type, Callable]] = {
+    "MjxElbowPoseFixed-v0": (MjxPoseEnv, _cfg_elbow_fixed),
+    "MjxElbowPoseRandom-v0": (MjxPoseEnv, _cfg_elbow_random),
+    "MjxFingerPoseFixed-v0": (MjxPoseEnv, _cfg_finger_fixed),
+    "MjxFingerPoseRandom-v0": (MjxPoseEnv, _cfg_finger_random),
+    "MjxHandPoseRandom-v0": (MjxPoseEnv, _cfg_hand_pose_random),
+    "MjxHandReachFixed-v0": (MjxReachEnv, _cfg_hand_reach_fixed),
+    "MjxHandReachRandom-v0": (MjxReachEnv, _cfg_hand_reach_random),
+    "MjxFingerReachRandom-v0": (MjxReachEnv, _cfg_finger_reach_random),
+    "MjxLegWalk-v0": (MjxWalkEnv, _cfg_leg_walk),
+    "MjxMimicBimanual-v0": (
+        MjxMuscleMimicIOEnv,
+        lambda: copy.deepcopy(_musclemimic_bimanual_config),
+    ),
+    "MjxMuscleMimicBimanual-v0": (
+        MjxMuscleMimicIOEnv,
+        lambda: copy.deepcopy(_musclemimic_bimanual_config),
+    ),
+    "MjxMimicFullbody-v0": (
+        MjxMuscleMimicFullbodyEnv,
+        lambda: copy.deepcopy(_musclemimic_fullbody_config),
+    ),
+    "MjxMuscleMimicFullbody-v0": (
+        MjxMuscleMimicFullbodyEnv,
+        lambda: copy.deepcopy(_musclemimic_fullbody_config),
+    ),
+}
+
+
+def make(
+    env_name: str,
+    config_overrides: dict | None = None,
+):
+    """Instantiate a named MJX environment.
+
+    Looks up *env_name* in the declarative ``_MJX_SPECS`` registry and
+    instantiates the environment class with its default config.  To add a new
+    MJX environment, add an entry to ``_MJX_SPECS`` — do **not** add
+    another branch here.
+
+    Typed dataclass configs (pose/reach/walk) are converted to
+    ``ml_collections.ConfigDict`` at this boundary because
+    ``mujoco_playground.MjxEnv`` requires ``config.lock()``.
+
+    Args:
+        env_name: One of the names in ``ALL_ENVS``.
+        config_overrides: Optional dict of config keys to override on the
+            default config before passing to the env constructor.
+
+    Returns:
+        An initialised MJX environment instance.
+
+    Raises:
+        ValueError: If *env_name* is not recognised.
+    """
+    if env_name not in _MJX_SPECS:
+        raise ValueError(f"Unknown MJX env '{env_name}'.  Available: {ALL_ENVS}")
+
+    env_cls, cfg_factory = _MJX_SPECS[env_name]
+    cfg = cfg_factory()
+
+    if config_overrides:
+        if dataclasses.is_dataclass(cfg):
+            cfg = dataclasses.replace(cfg, **config_overrides)
+        else:
+            for k, v in config_overrides.items():
+                cfg[k] = v
+
+    if dataclasses.is_dataclass(cfg):
+        cfg = _to_config_dict(cfg)
+
+    return env_cls(config=cfg)
+
+
+def get_default_config(env_name: str) -> object:
+    """Return the default config for a registered MJX environment.
+
+    Returns a typed dataclass for pose/reach/walk envs, or a
+    ``ml_collections.ConfigDict`` for mimic envs.
+    """
+    if env_name not in _MJX_SPECS:
+        raise ValueError(
+            f"Env '{env_name}' not found. Available: {list(_MJX_SPECS.keys())}"
+        )
+    _, cfg_factory = _MJX_SPECS[env_name]
+    return cfg_factory()

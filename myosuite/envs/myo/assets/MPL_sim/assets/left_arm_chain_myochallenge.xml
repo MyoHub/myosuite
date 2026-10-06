@@ -1,0 +1,26 @@
+<mujocoinclude>
+<!-- LEFT ARM -->
+<body name="prosthesis/Lmpl_attach" pos="0.18 0.1 1.38" euler="1.57 -1.57 0" childclass="MPL_arm">
+	<geom mesh="prosthesis/base_linkL" contype="0" conaffinity="0"/>
+	<body name="prosthesis/Lshoulder_link" pos="0 0 0">
+		<joint axis="0 0 1" name="prosthesis/Lshoulder_fe" range="-0.611 2.792"/>
+		<geom mesh="prosthesis/shoulder_linkL" contype="0" conaffinity="0"/>
+		<body name="prosthesis/Lhumerus_upper_link" pos="0.0016428 0 0">
+			<joint axis="-1 0 0" name="prosthesis/Lshoulder_abad" range="-2.792 0"/>
+			<geom mesh="prosthesis/humerus_upper_linkL" class="MPL_arm_dark" contype="0" conaffinity="0"/>
+			<body name="prosthesis/Lhumerus_lower_link" pos="-0.0016397 -0.15007 -0.013891">
+				<joint axis="0 -1 0" name="prosthesis/Lhumeral_rot" range="-0.524 1.483"/>
+				<geom mesh="prosthesis/humerus_lower_top_linkL"/>
+				<geom mesh="prosthesis/humerus_lower_bottom_linkL"/>
+				<body name="prosthesis/Lforearm_link" pos="0.01 -0.14441 -0.0006524">
+					<joint axis="0 0 1" name="prosthesis/Lelbow" range="0.05 2.356"/>
+					<geom mesh="prosthesis/forearm_linkL" class="MPL_arm_dark"/>
+					<!-- LEFT HAND -->
+					<include file="handL_chain.xml"/>
+				</body>
+			</body>
+		</body>
+	 </body>
+</body>
+
+</mujocoinclude>
