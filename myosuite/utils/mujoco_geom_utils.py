@@ -45,15 +45,16 @@ def refresh_geom_derived_fields(
     and masses. A body welded to the world keeps its compiled inertial frame,
     which does not enter the dynamics.
 
+    Explicit inertias retain their specified shape and scale with body mass.
+
     Args:
         model: Compiled model whose geoms or body masses were edited in place.
         spec: Spec that ``model`` was compiled from.
         body_ids: Ids of the bodies whose geoms or mass were edited.
 
     Raises:
-        NotImplementedError: If a moving body's inertia is not derived from its
-            geoms, a non-primitive geom of the body has mass or collides, the
-            body's set of colliding geoms changed, or the inertial frame of a
+        NotImplementedError: If a non-primitive geom has mass or collides,
+            the body's set of colliding geoms changed, or the inertial frame of a
             body compiled as ``simple`` would move.
     """
     for body_id in body_ids:
@@ -126,16 +127,24 @@ def _refresh_body(model: mujoco.MjModel, spec: mujoco.MjSpec, body_id: int) -> N
                 and src_body.explicitinertial
             )
         ):
-            raise NotImplementedError(f"Body {name!r} has explicit inertia.")
-        # Scale geom densities/masses (NaN mass means density-based) so the
-        # body keeps its current mass, then apply the compiler's bounds.
-        geom_mass = tiny.compile().body_mass[1]
-        if geom_mass <= 0:
-            raise NotImplementedError(f"Body {name!r} has no geom mass.")
-        scale = model.body_mass[body_id] / geom_mass
-        for geom in tiny_geoms:
-            geom.density *= scale
-            geom.mass *= scale
+            tiny_body.explicitinertial = True
+            tiny_body.mass = model.body_mass[body_id]
+            tiny_body.ipos = model.body_ipos[body_id]
+            scale = model.body_mass[body_id] / src_body.mass
+            if np.isfinite(src_body.fullinertia[0]):
+                tiny_body.fullinertia = src_body.fullinertia * scale
+            else:
+                tiny_body.iquat = model.body_iquat[body_id]
+                tiny_body.inertia = src_body.inertia * scale
+        else:
+            # Scale geom masses so the body keeps its current mass.
+            geom_mass = tiny.compile().body_mass[1]
+            if geom_mass <= 0:
+                raise NotImplementedError(f"Body {name!r} has no geom mass.")
+            scale = model.body_mass[body_id] / geom_mass
+            for geom in tiny_geoms:
+                geom.density *= scale
+                geom.mass *= scale
         for option in _INERTIA_BOUND_OPTIONS:
             setattr(tiny.compiler, option, getattr(spec.compiler, option))
     compiled = tiny.compile()
