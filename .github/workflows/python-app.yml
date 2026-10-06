@@ -54,10 +54,8 @@ jobs:
         if: ${{ runner.os == 'macOS' }}
         run: echo "SYSTEM_VERSION_COMPAT=0" >> $GITHUB_ENV
 
-      - name: Checkout repository and submodules
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
