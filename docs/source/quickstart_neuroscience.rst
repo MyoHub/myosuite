@@ -271,6 +271,22 @@ It is off by default. Envs whose pipeline does not run wrapper stages (MuscleMim
    from myosuite.envs.wrappers import FatigueWrapper
    env = FatigueWrapper(MotorNoiseWrapper(make_env('myoElbowPose1D6MRandom-v0'), {'constant_std': 0.05}))
 
+The same features can be listed in an ``EnvConfig``, which builds the CPU env **and** the mjlab twin identically
+(the wrappers above work on the CPU env only):
+
+.. code-block:: python
+
+   from myosuite import make_env
+   from myosuite.core.config import EnvConfig
+   from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper, wrapper_spec
+
+   cfg = EnvConfig(
+       'myoElbowPose1D6MRandom-v0',
+       features=(wrapper_spec(MotorNoiseWrapper, motor_noise={'constant_std': 0.05}), wrapper_spec(FatigueWrapper)),
+   )
+   env = make_env(cfg)                                   # CPU
+   envs = make_env(cfg, backend='mjlab', num_envs=1024)  # GPU twin with the same noise and fatigue
+
 Each wrapper can be applied **once** per env: a second ``MotorNoiseWrapper`` raises a ``ValueError``, and so does a
 ``FatigueWrapper`` on a ``myoFati*`` id (which already contains it). Wrap the base id, or change the options of the
 installed wrapper (``env.set_motor_noise(...)``, ``env.set_fatigue_reset_random(...)``).

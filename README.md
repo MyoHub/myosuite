@@ -106,6 +106,26 @@ Train on GPU (same `env_id`, mjlab / RSL-RL):
 python scripts/train_mjlab.py myoElbowPose1D6MFixed-v0 --env.scene.num-envs 1024
 ```
 
+The same call builds either backend, and an `EnvConfig` overrides the registered defaults (episode length, control step,
+muscle-command features such as motor noise and fatigue) for both:
+
+```python
+from myosuite import make_env
+from myosuite.core.config import EnvConfig
+from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper, wrapper_spec
+
+env = make_env("myoElbowPose1D6MRandom-v0")                                   # CPU, registered defaults
+envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024)  # GPU twin (needs the mjlab extra)
+
+cfg = EnvConfig(
+    "myoElbowPose1D6MRandom-v0",
+    max_episode_steps=300,
+    features=(wrapper_spec(MotorNoiseWrapper, motor_noise={"constant_std": 0.05}), wrapper_spec(FatigueWrapper)),
+)
+env = make_env(cfg)                                   # CPU with noise and fatigue
+envs = make_env(cfg, backend="mjlab", num_envs=1024)  # the same on the GPU
+```
+
 Pathological variants use prefixes, not a `Fatigue` infix: `myoSarcElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MFixed-v0`, `myoReafHandPoseRandom-v0`.
 
 

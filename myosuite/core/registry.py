@@ -382,7 +382,7 @@ def make_env(
         >>> env = make_env("myoElbowPose1D6MRandom-v0")
         >>> cfg = EnvConfig(
         ...     "myoElbowPose1D6MRandom-v0",
-        ...     features=(wrapper_spec(MotorNoiseWrapper, motor_noise=0.05),),
+        ...     features=(wrapper_spec(MotorNoiseWrapper, motor_noise={"constant_std": 0.05}),),
         ... )
         >>> env = make_env(cfg)  # CPU
         >>> envs = make_env(cfg, backend="mjlab", num_envs=4096)

@@ -130,7 +130,19 @@ base id, or change the installed wrapper's options (`env.set_motor_noise(...)`, 
 `make_env` is **the** way to build an env, in the docs, tutorials, scripts and tests: `from myosuite import make_env`
 (importing `myosuite` also registers every env id), then `make_env(env_id)` for a plain CPU env or
 `make_env(EnvConfig(...), backend=...)` for any backend. On the CPU it calls `gym.make` underneath, so `gym.make(env_id)`
-still works, but use `make_env` in new code. The registration of the env id gives the defaults; the config overrides them:
+still works, but use `make_env` in new code.
+
+**By name only** (the registered defaults of the env id; no config needed):
+
+```python
+from myosuite import make_env
+
+env = make_env("myoElbowPose1D6MRandom-v0")                                    # CPU env
+envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=4096)   # the same task on the GPU (mjlab twin)
+```
+
+**With an `EnvConfig`**, which overrides the registered defaults (episode length, control step, muscle-command
+features) in one place for every backend:
 
 ```python
 from myosuite.core.config import EnvConfig
@@ -141,7 +153,7 @@ cfg = EnvConfig(
     "myoElbowPose1D6MRandom-v0",
     max_episode_steps=300,
     ctrl_dt=0.01,
-    features=(wrapper_spec(MotorNoiseWrapper, motor_noise=0.05), wrapper_spec(FatigueWrapper)),
+    features=(wrapper_spec(MotorNoiseWrapper, motor_noise={"constant_std": 0.05}), wrapper_spec(FatigueWrapper)),
 )
 env = make_env(cfg)                                          # CPU
 envs = make_env(cfg, backend="mjlab", num_envs=4096)         # GPU twin, same noise + fatigue
@@ -150,7 +162,7 @@ envs = make_env(cfg, backend="mjlab", num_envs=4096)         # GPU twin, same no
 | Field | CPU | mjlab |
 |---|---|---|
 | `features` (wrapper specs) | wrappers around `gym.make` | added to the CPU registration the twin is built from |
-| `max_episode_steps` | `make_env(max_episode_steps=...)` | `episode_length_s` of the twin |
+| `max_episode_steps` | `gym.make(max_episode_steps=...)` | `episode_length_s` of the twin |
 | `ctrl_dt` (the one timing knob) | `frame_skip = ctrl_dt / model timestep` | `decimation` (twin rebuilt with that `frame_skip`) |
 | `num_envs` | must be 1 | `scene.num_envs` |
 | `task_kwargs` | env constructor kwargs | raises (the twin reads the registration) |
