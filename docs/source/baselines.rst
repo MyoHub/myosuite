@@ -30,7 +30,7 @@ They run on both the CPU and the mjlab backend::
 
    python scripts/eval_mjlab_policy.py myoFingerPoseRandom-v0 --backend cpu
 
-`docs/baseline_checkpoints.md <https://github.com/MyoHub/myosuite/blob/dev/docs/baseline_checkpoints.md>`_
+`docs/baseline_checkpoints.md <https://github.com/MyoHub/myosuite/blob/main/docs/baseline_checkpoints.md>`_
 lists every default-run env id's deterministic success rate; some published policies are
 unconverged snapshots. See :doc:`quickstart_ml` for how success is defined and evaluated.
 

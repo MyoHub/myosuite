@@ -338,7 +338,7 @@ State Machine
 A simple 4-state state machine is created to track the gait phase of the prosthetic leg. Each state contains the gain parameters
 for an impedance controller, which in turn, provides the required torques to the prosthetic actuators. The code for the state machine
 is released together with MyoChallenge. Interested participants are invited to examine the code at
-`myoosl_control <https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/assets/leg/myoosl_control.py>`__
+`myoosl_control <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/assets/leg/myoosl_control.py>`__
 
 
 Default parameters of the impedance controller are taken from `finite_state_machine <https://opensourceleg.readthedocs.io/en/latest/examples/finite_state_machine.html>`__
@@ -377,7 +377,7 @@ we provide a structure that allows 4 sets of state paramters to be uploaded to t
 
 More details of the functions are here below:
 
-- upload_osl_param(dict_of_dict) `upload_osl_param <https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/tasks/challenge/run_track.py>`__
+- upload_osl_param(dict_of_dict) `upload_osl_param <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/tasks/challenge/run_track.py>`__
     - This function expects a dictionary of dictionary containing state parameter values
     - Dictionary overview: top_level_dict[x][y][z][val]
         - top_level_dict[x], where x = [0,1,2,3], which are integers
@@ -386,7 +386,7 @@ More details of the functions are here below:
         - val = {'knee_stiffness', 'knee_damping', 'knee_target_angle', 'ankle_stiffness', 'ankle_damping', 'ankle_target_angle'} *(for gains)* and {'load', 'knee_angle', 'knee_velocity', 'ankle_angle', 'ankle_velocity} *(for thresholds)*
     - Note that not all parameters are used at every state. It is recommended to examine the default structure `here <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/assets/leg/myoosl_control.py#L181>`__ for more information.
 
-- change_osl_mode(mode=0) `change_osl_mode <https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/tasks/challenge/run_track.py>`__
+- change_osl_mode(mode=0) `change_osl_mode <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/tasks/challenge/run_track.py>`__
     - This function changes the paramter set that the OSL state machine currently using. Do note that this change is immediate and the impedance controller will generate torques using the new paramter set at the next timestep.
 
 
