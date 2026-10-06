@@ -129,7 +129,6 @@ class MultiAgentTaskConfig(ABC):
         model: mujoco.MjModel,
         data: mujoco.MjData,
         meta: Any,
-        np_random: np.random.Generator,
     ) -> None:
         """Called after ``mujoco.mj_resetData`` and ``mj_forward``.
 
@@ -140,7 +139,6 @@ class MultiAgentTaskConfig(ABC):
             model: Compiled combined MjModel.
             data: Freshly reset MjData.
             meta: Task-specific index cache.
-            np_random: Environment-seeded generator for episode randomisation.
         """
 
     @abstractmethod

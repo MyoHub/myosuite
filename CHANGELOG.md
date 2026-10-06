@@ -58,8 +58,6 @@ full commit list.
 
 ### Changed
 
-* PR #499 review fixes: multi-agent chase-tag scores the post-integration state and samples roles from the reset seed. Die, Baoding and weighted elbow resets refresh collision bounds and inertia; Mimic mjlab observations use entity-scoped state.
-
 * `myo_sim` is a pip package (was a git submodule); hand, arm and torso tasks use the composed models; pinned to 0.2.3 ([#406], [#408]).
 * **Thumb CMC joints in `myo_sim` >= 0.2.0:** the two thumb joints exchange name and range (the first CMC joint is `cmc_flexion` with range -0.78 to 0.7, it was `cmc_abduction` with -0.5 to 0.78). This affects the composed hand of the hand pose, reach and reorient tasks and Relocate; `myoHandKeyTurn*`, `myoHandObjHold*` and `myoHandPenTwirl*` keep the legacy order. The published hand baselines were trained and re-evaluated on the new order.
 * Basic-suite reward terms run on numpy, JAX and torch ([#406]); Python 3.10-3.14, MuJoCo 3.7 or newer ([#406]).

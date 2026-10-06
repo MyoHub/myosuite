@@ -20,7 +20,6 @@ from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleConditionMixin
 from myosuite.terms.base_obs import pose_error_obs
 from myosuite.terms.base_reward import pose_reward
-from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
 
 class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
@@ -482,7 +481,6 @@ class PoseEnvV0(MuscleConditionMixin, MyoGymnasiumEnv, EzPickle):
             )
             self.model.body_mass[bid] = weight
             self.model.geom_size[gid][0] = 0.01 + 2.5 * weight / 100
-            refresh_geom_derived_fields(self.model, self._mj_spec, (bid,))
 
         # Reset fatigue model
         self._reset_muscle_condition()

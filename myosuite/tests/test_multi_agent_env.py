@@ -151,67 +151,6 @@ def test_step_returns_correct_shapes():
     env.close()
 
 
-def test_scoring_hooks_read_post_integration_state() -> None:
-    """Damage, falls, rewards and observations see the final integrated pose."""
-
-    class DerivedStateConfig(DummyMultiAgentConfig):
-        def compute_damage(self, model, data, meta) -> dict[str, float]:
-            ref = mujoco.MjData(model)
-            mujoco.mj_copyData(ref, model, data)
-            mujoco.mj_forward(model, ref)
-            for field in ("xpos", "geom_xpos", "cvel", "actuator_velocity"):
-                np.testing.assert_allclose(
-                    getattr(data, field), getattr(ref, field), atol=1e-12
-                )
-            return super().compute_damage(model, data, meta)
-
-        def check_fell(self, data, meta, agent_id: str) -> bool:
-            return bool(data.xpos[1, 0] > 0)
-
-        def compute_reward(self, data, meta, agent_id, *args) -> float:
-            return float(data.xpos[1, 0])
-
-        def get_obs(self, model, data, meta, agent_id, health) -> np.ndarray:
-            return data.xpos[1, :2].astype(np.float32)
-
-    env = ModularMultiAgentTaskEnv(DerivedStateConfig())
-    try:
-        env.reset(seed=0)
-        obs, rewards, terminated, _, _ = env.step({a: np.ones(1) for a in env._agents})
-        assert all(terminated.values())
-        for agent in env._agents:
-            assert rewards[agent] == pytest.approx(env.data.qpos[0], abs=1e-12)
-            assert obs[agent][0] == pytest.approx(env.data.qpos[0], abs=1e-10)
-    finally:
-        env.close()
-
-
-@pytest.mark.parametrize("fullbody", [False, True])
-def test_chase_tag_roles_follow_reset_seed(fullbody: bool) -> None:
-    """Both chase-tag reset hooks consume the Gymnasium-seeded generator."""
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
-        ChaseTagVsFullbodySteeredTaskConfig,
-        ChaseTagVsTaskConfig,
-    )
-
-    cfg_type = ChaseTagVsFullbodySteeredTaskConfig if fullbody else ChaseTagVsTaskConfig
-    env = ModularMultiAgentTaskEnv(cfg_type())
-    try:
-        for seed in range(8):
-            first, first_info = env.reset(seed=seed)
-            expected_role = str(np.random.default_rng(seed).choice(["CHASE", "EVADE"]))
-            assert first_info["task"] == expected_role
-            env.reset()
-            second, second_info = env.reset(seed=seed)
-            assert first_info == second_info
-            for agent in first:
-                np.testing.assert_array_equal(first[agent], second[agent])
-        roles = [env.reset()[1]["task"] for _ in range(16)]
-        assert set(roles) == {"CHASE", "EVADE"}
-    finally:
-        env.close()
-
-
 def test_truncation_at_max_steps():
     """Episode truncates after max_episode_steps."""
     cfg = DummyMultiAgentConfig(max_episode_steps=3)

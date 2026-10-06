@@ -43,12 +43,6 @@ _EDITED_BODIES: dict[str, Callable] = {
     "myoChallengeBimanual-v0": lambda env: (env.obj_bid,),
     "myoChallengeRelocateP2-v0": lambda env: (env.object_bid,),
     "myoChallengeRelocateP2eval-v0": lambda env: (env.object_bid,),
-    "myoChallengeDieReorientP1-v0": lambda env: (env.object_bid, env.goal_bid),
-    "myoChallengeDieReorientP2-v0": lambda env: (env.object_bid, env.goal_bid),
-    "myoChallengeBaodingP2-v1": lambda env: (env.object1_bid, env.object2_bid),
-    "myoElbowPose1D6MExoRandom-v0": lambda env: (
-        env.model.body(env.weight_bodyname).id,
-    ),
 }
 
 
@@ -77,14 +71,6 @@ def _recompiled(env, body_ids: tuple[int, ...]) -> mujoco.MjModel:
             geom.quat = model.geom_quat[gid]
     compiled = spec.compile()
     for b in body_ids:
-        if bodies[b].explicitinertial:
-            scale = model.body_mass[b] / bodies[b].mass
-            bodies[b].mass = model.body_mass[b]
-            if np.isfinite(bodies[b].fullinertia[0]):
-                bodies[b].fullinertia *= scale
-            else:
-                bodies[b].inertia *= scale
-            continue
         scale = model.body_mass[b] / compiled.body_mass[b]
         for geom in bodies[b].geoms:
             geom.density *= scale
