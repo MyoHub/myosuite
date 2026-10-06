@@ -44,7 +44,7 @@ distribution; this is not implemented.
 models collected before the MuscleMimic bridge fix (#459) must be recollected.
 
 **MuscleMimic full body (single clip).** `checkpoints/myoMimicFullbody-v0-walking_medium06/model_81380.pt` on the
-Hugging Face repo imitates the clip `KIT/167/walking_medium06` (2.0B steps, 1024 envs, about 30 h on one GPU). It
+Hugging Face repo imitates the clip `KIT/167/walking_medium06` (AMASS / KIT motion capture retargeted with GMR; cite AMASS, KIT and MuscleMimic, see the *References* page; 2.0B steps, 1024 envs, about 30 h on one GPU). It
 is scored by clip completion instead of success: 86% of 576 mean-action episodes from random start frames play to
 the end of the clip (84-88% per run), the rest end on a pose deviation. It is an mjlab-only baseline (no CPU twin: the
 CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and is loaded with `--checkpoint` and
