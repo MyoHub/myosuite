@@ -61,7 +61,9 @@ pip install -e ".[rl]"          # CPU training (Stable-Baselines3)
 
 Or: `uv sync -p 3.10 --extra rl`.
 
-From PyPI: `pip install -U myosuite`. Musculoskeletal models come from the `myo-sim` package; the few MPL/YCB/furniture assets used are bundled — no git submodules.
+From PyPI: `pip install -U myosuite`.
+
+**Models.** The musculoskeletal models ship in the `myo-sim` package, pinned to 0.2.3 and installed from PyPI together with MyoSuite, so no git submodules and no separate model install are needed. The few MPL, YCB and furniture assets the tasks use are bundled in `myosuite/envs/myo/assets/`. Environments compose their models with `ModelBuilder` (see the [model builder guide](docs/source/model_builder.rst)). A different `myo-sim` version can change joints and ranges (the thumb joints did in 0.2.0), so the baseline policies are only valid for the pinned version.
 
 Verify (replace "onscreen" with "offscreen" when running on a remote, headless machine):
 
