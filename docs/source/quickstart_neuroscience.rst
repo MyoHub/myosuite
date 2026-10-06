@@ -30,7 +30,7 @@ The mapping to neuroscience concepts is:
      - ``data.act`` (filtered excitation, 0–1)
      - ``env.unwrapped.data.act``
    * - Muscle force (EMG proxy)
-     - ``data.actuator_force``
+     - ``data.actuator_force`` (N; negative for muscle tension)
      - ``env.unwrapped.data.actuator_force``
    * - Proprioception (joint angle)
      - ``data.qpos`` (rad)
@@ -87,7 +87,7 @@ and Golgi tendon organ (Ib) afferents during a reaching movement:
        # Ia afferent: proportional to tendon velocity (sign preserved)
        ia_afferent.append(d.ten_velocity.copy())
 
-       # II afferent: proportional to tendon length deviation from rest
+       # II afferent: proportional to tendon length (subtract a rest length for the deviation)
        ii_afferent.append(d.ten_length.copy())
 
        # Ib afferent: proportional to actuator (muscle) force
@@ -118,7 +118,8 @@ This example implements a Ia-driven stretch reflex for the elbow:
    from myosuite import make_env
    import numpy as np
 
-   env = make_env('myoElbowPose1D6MRandom-v0', render_mode='human')
+   # add render_mode='human' to watch it (needs a display)
+   env = make_env('myoElbowPose1D6MRandom-v0')
    obs, info = env.reset(seed=0)
    model = env.unwrapped.model
    data  = env.unwrapped.data
@@ -173,20 +174,19 @@ endurance times.
    env = make_env('myoFatiElbowPose1D6MFixed-v0')
    obs, info = env.reset(seed=0)
 
-   activations = []
+   fatigued = []
    for _ in range(2000):
        # Apply sustained sub-maximal excitation
        ctrl = np.full(env.action_space.shape, 0.3)  # ~27 % excitation after the muscle sigmoid
        obs, reward, terminated, truncated, info = env.step(ctrl)
 
-       # Muscle activation reflects the fatigued state
-       activations.append(env.unwrapped.data.act.copy())
+       # Fraction of motor units in the fatigued pool (MF), averaged over the muscles
+       fatigued.append(env.unwrapped.muscle_fatigue.MF.mean())
 
        if terminated or truncated:
            obs, info = env.reset()
 
-   act = np.array(activations)
-   print(f"Activation drift: {act[0].mean():.3f} → {act[-1].mean():.3f}")
+   print(f"Fatigued fraction: {fatigued[0]:.3f} → {fatigued[-1]:.3f}")
 
 For detailed fatigue dynamics and recovery curves, see
 ``tutorials/4.2_Fatigue_Modeling.ipynb``.
@@ -198,20 +198,21 @@ Sarcopenia (Age-Related Muscle Loss)
 .. code-block:: python
 
    from myosuite import make_env
+   import numpy as np
 
    # Sarcopenia variant: muscles generate only 50 % of peak force
    env_normal = make_env('myoElbowPose1D6MRandom-v0')
    env_sarco  = make_env('myoSarcElbowPose1D6MRandom-v0')
 
-   # Compare force output under the same excitation
+   # Compare force output under the same sequence of random actions
    for env, label in [(env_normal, 'Normal'), (env_sarco, 'Sarcopenia')]:
        obs, info = env.reset(seed=0)
+       rng = np.random.default_rng(0)
        forces = []
        for _ in range(200):
-           ctrl = env.action_space.sample()
+           ctrl = rng.uniform(-1, 1, env.action_space.shape)
            obs, reward, terminated, truncated, info = env.step(ctrl)
            forces.append(env.unwrapped.data.actuator_force.copy())
-       import numpy as np
        print(f"{label}: peak force = {max(abs(f).max() for f in forces):.1f} N")
        env.close()
 
@@ -250,8 +251,8 @@ and the MyoChallenge envs), and the mjlab twins apply it too:
 
 with independent draws per muscle and per control step. The noise is applied after the
 action-to-excitation mapping and before fatigue; motor (torque) actuators are not affected.
-It is off by default. Envs whose pipeline does not run wrapper stages (MuscleMimic, the
-``TaskConfig`` envs) raise a ``TypeError`` instead of ignoring the wrapper.
+It is off by default. Envs whose pipeline does not run wrapper stages (for example MuscleMimic)
+raise a ``TypeError`` instead of ignoring the wrapper.
 
 .. code-block:: python
 
@@ -286,6 +287,9 @@ The same features can be listed in an ``EnvConfig``, which builds the CPU env **
    env_cpu = make_env(cfg)                               # CPU
    env_gpu = make_env(cfg, backend='mjlab', num_envs=1024)  # GPU twin with the same noise and fatigue
 
+For GPU training from the command line, ``scripts/train_mjlab.py ... --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'``
+takes the same features (see :doc:`quickstart_ml`).
+
 Each wrapper can be applied **once** per env: a second ``MotorNoiseWrapper`` raises a ``ValueError``, and so does a
 ``FatigueWrapper`` on a ``myoFati*`` id (which already contains it). Wrap the base id, or change the options of the
 installed wrapper (``env.set_motor_noise(...)``, ``env.set_fatigue_reset_random(...)``).
@@ -310,7 +314,7 @@ The stage runs on the CPU env and, when the id is registered with the wrapper, o
 (noise, fatigue, reroute) run in a fixed order; custom stages run after them, in the order they were added. To insert
 one earlier, set ``order`` to a priority between 10 (the env's own map) and 100 (the ``ctrl`` write); the built-ins are
 noise 20, fatigue 30 and reroute 40. Two stages with the same explicit order raise a ``StageOrderWarning``. A stage that needs the env itself (``CtrlStageWrapper``) runs on the CPU only. To act on the raw
-action instead, use a plain ``gym.ActionWrapper``.
+action instead, use a plain ``gymnasium.ActionWrapper``.
 
 To configure both backends, register an env id with a ``MotorNoiseWrapper`` in its
 ``additional_wrappers``: the mjlab twin reads it from the CPU registration like the muscle
