@@ -282,12 +282,10 @@ installed wrapper (``env.motor_noise = ...``, ``env.set_fatigue_reset_random(...
 
 To add your own stage on the muscle excitations (a filter, a cap, per-muscle gains, ...), subclass
 ``ExcitationStage``: a function of the excitations ``u`` and the array module ``xp`` (numpy on the CPU env, torch on
-mjlab), with an ``order`` and an optional ``reset``. ``LowPassStage`` (a first-order filter that smooths the
-excitations over time, shipped as a ready-made example) is written this way:
+mjlab), with an ``order`` and an optional ``reset(env_ids)`` that clears per-episode state:
 
 .. code-block:: python
 
-   import functools
    from myosuite.envs.muscle_stages import ExcitationStage
    from myosuite.envs.wrappers import ExcitationStageWrapper
 
@@ -297,9 +295,6 @@ excitations over time, shipped as a ready-made example) is written this way:
            return xp.clip(u, 0.0, 0.8)    # only operations numpy and torch share
 
    env = ExcitationStageWrapper(gym.make('myoElbowPose1D6MRandom-v0'), Cap)
-   # the shipped example, with its own parameters:
-   # from myosuite.envs.muscle_stages import LowPassStage
-   # env = ExcitationStageWrapper(env, functools.partial(LowPassStage, 0.3))
 
 The stage runs on the CPU env and, when the id is registered with the wrapper, on the mjlab twin. The order is a
 priority between 10 (the env's own map) and 100 (the ``ctrl`` write); the built-in stages are noise 20, fatigue 30 and
