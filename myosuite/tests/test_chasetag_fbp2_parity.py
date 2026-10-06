@@ -215,15 +215,17 @@ def test_reset_matches_cpu_reset(pair) -> None:
 
     opponent = _opponent(mj)
     reset_opponent = mj.event_manager.get_term_cfg("reset_opponent")
+    torch.manual_seed(0)
+    n_draws = 1000
     policies, poses = [], []
-    for _ in range(300):
+    for _ in range(n_draws):
         opponent(mj, torch.arange(2), **reset_opponent.params)
         policies.append(opponent.policy.clone())
         poses.append(opponent.pose.clone())
     policy, pose = torch.cat(policies), torch.cat(poses)
     freq = torch.bincount(policy, minlength=3).double() / policy.numel()
     np.testing.assert_allclose(freq.numpy(), (0.1, 0.45, 0.45), atol=0.05)
-    agent_xy = mj.sim.data.qpos[:, :2].repeat(300, 1)
+    agent_xy = mj.sim.data.qpos[:, :2].repeat(n_draws, 1)
     spawned = policy != 0
     distance = torch.linalg.norm(pose[:, :2] - agent_xy, dim=1)
     assert (distance[spawned] >= 2.0).all()  # min_spawn_distance
