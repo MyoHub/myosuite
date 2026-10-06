@@ -100,7 +100,7 @@ normalize_act=False) -> noise (20) -> fatigue (30) -> reroute (40, reafferentati
 ones):
 
 - **Portable:** subclass `ExcitationStage` (`__call__(u, xp)` on the muscle excitations, written for numpy and torch;
-  `reset(env_ids)` for state; see `LowPassStage`) and add it with `ExcitationStageWrapper(env, factory)`. A CPU env runs
+  `reset(env_ids)` for state; `LowPassStage` is the shipped example, a first-order filter) and add it with `ExcitationStageWrapper(env, factory)`. A CPU env runs
   it with numpy; the mjlab twin builds the stage from the same factory (registered in `additional_wrappers`, read by
   `cpu_reference.action_cfg` into `MyoActionCfg.excitation_stages`) and runs it with torch on `(n_envs, n_muscles)`.
   The factory must be a module-level callable (class or `functools.partial`) because the wrapped env is pickled by some
