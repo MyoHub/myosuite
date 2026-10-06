@@ -127,7 +127,7 @@ class TestMjlab:
         try:
             term = env.action_manager.get_term("muscles")
             assert env.num_envs == 2
-            assert term.stage_names == ("noise", "lowpass", "fatigue")
+            assert term.stage_names == ("noise", "fatigue", "lowpass")
             assert term.cfg.motor_noise.signal_dependent_std == 0.1
             assert term._fatigue is not None
         finally:
