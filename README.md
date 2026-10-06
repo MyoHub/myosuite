@@ -135,7 +135,7 @@ env_cpu = make_env(cfg)                               # CPU with noise and fatig
 env_gpu = make_env(cfg, backend="mjlab", num_envs=1024)  # the same on the GPU
 ```
 
-Pathological variants use prefixes, not a `Fatigue` infix: `myoSarcElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MFixed-v0`, `myoReafHandPoseRandom-v0`.
+Muscle-condition variants of an env are separate ids with a prefix: `myoSarcElbowPose1D6MRandom-v0` (sarcopenia), `myoFatiElbowPose1D6MFixed-v0` (fatigue), `myoReafHandPoseRandom-v0` (reafferentation). Each is the base env registered with the matching wrapper; to use these features (noise, fatigue, ...) on any env, or to register your own variant, see the [neuroscience guide](docs/source/quickstart_neuroscience.rst) (examples) and the [cross-backend contract](docs/wiki/cross-backend-contract.md#muscle-command-features-wrappers) (how features are registered and which envs and backends support them).
 
 
 
