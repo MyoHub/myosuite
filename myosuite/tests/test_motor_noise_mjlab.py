@@ -257,3 +257,18 @@ def test_same_order_warns_on_the_twin() -> None:
     with pytest.warns(StageOrderWarning, match="STAGE ORDER CLASH.*'a', 'b'"):
         env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
     env.close()
+
+
+@pytest.mark.parametrize("order", [10, 5, 100, 150])
+def test_out_of_range_order_raises_on_the_twin(order: float) -> None:
+    import functools
+
+    from myosuite.envs.muscle_stages import LowPassStage
+
+    cfg = elbow_pose_env_cfg(_BASE)
+    cfg.scene.num_envs = 2
+    cfg.actions["muscles"].excitation_stages = (
+        functools.partial(LowPassStage, 0.5, "x", order),
+    )
+    with pytest.raises(ValueError, match="between 10 and 100"):
+        ManagerBasedRlEnv(cfg=cfg, device="cpu").close()

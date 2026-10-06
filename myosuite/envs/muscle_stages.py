@@ -58,6 +58,20 @@ class StageOrderWarning(UserWarning):
 warnings.simplefilter("always", StageOrderWarning)  # shown on every occurrence
 
 
+def check_custom_order(name: str, order: float | None) -> None:
+    """Raise unless a custom stage has an order strictly between map and ctrl write."""
+    if order is None:
+        raise ValueError(
+            f"The custom stage {name!r} needs an order between {MAP_ORDER} (the env's "
+            f"map) and {WRITE_ORDER} (the ctrl write); built-in stages: {STAGE_ORDER}."
+        )
+    if not MAP_ORDER < order < WRITE_ORDER:
+        raise ValueError(
+            f"The order of the custom stage {name!r} must be between {MAP_ORDER} and "
+            f"{WRITE_ORDER} (exclusive), got {order}."
+        )
+
+
 def warn_order_clash(
     name: str, order: float, installed: dict[str, float], stacklevel: int = 3
 ) -> None:
@@ -225,16 +239,7 @@ class CtrlStageHost:
                 )
             order = STAGE_ORDER[name]
         else:
-            if order is None:
-                raise ValueError(
-                    f"The custom stage {name!r} needs an order between {MAP_ORDER} (the env's "
-                    f"map) and {WRITE_ORDER} (the ctrl write); built-in stages: {STAGE_ORDER}."
-                )
-            if not MAP_ORDER < order < WRITE_ORDER:
-                raise ValueError(
-                    f"The order of the custom stage {name!r} must be between {MAP_ORDER} and "
-                    f"{WRITE_ORDER} (exclusive), got {order}."
-                )
+            check_custom_order(name, order)
         warn_order_clash(
             name, order, {n: o for n, (o, _, _) in store.items()}, stacklevel=4
         )

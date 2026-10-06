@@ -45,6 +45,7 @@ from myosuite.core.muscle_conditions import TorchFatigueState
 from myosuite.envs.muscle_stages import (
     STAGE_ORDER,
     ExcitationStage,
+    check_custom_order,
     warn_order_clash,
 )
 from myosuite.terms.base_action import (
@@ -298,6 +299,7 @@ class MyoAction(ActionTerm):
                 raise ValueError(
                     f"The stage name {custom.name!r} is taken (built-in or twice)."
                 )
+            check_custom_order(custom.name, custom.order)
             on = {st.name: st.order for st in stages if st.active()}
             warn_order_clash(custom.name, custom.order, on, 3)
             stages.append(custom)
