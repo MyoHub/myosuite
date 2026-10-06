@@ -47,6 +47,24 @@ def test_cpu_features_equal_the_wrapper_stack() -> None:
     np.testing.assert_array_equal(_rollout(make_env(cfg)), _rollout(ref))
 
 
+def test_features_accept_classes_pairs_and_specs() -> None:
+    from myosuite.envs.wrappers import SarcopeniaWrapper
+
+    spec = wrapper_spec(MotorNoiseWrapper, motor_noise=_NOISE)
+    for entry in (spec, (MotorNoiseWrapper, {"motor_noise": _NOISE})):
+        cfg = EnvConfig(_ID, features=(entry, FatigueWrapper))
+        assert cfg.features == (spec, wrapper_spec(FatigueWrapper))
+    assert EnvConfig(_ID, features=[SarcopeniaWrapper]).features == (
+        wrapper_spec(SarcopeniaWrapper),
+    )
+    with pytest.raises(TypeError, match="wrapper class"):
+        EnvConfig(_ID, features=("FatigueWrapper",))
+    # a config edited after construction is normalized by make_env
+    cfg = EnvConfig(_ID)
+    cfg.features = (FatigueWrapper,)
+    assert "fatigue" in make_env(cfg).unwrapped.ctrl_stages
+
+
 def test_a_plain_id_and_cpu_overrides_still_work() -> None:
     env = make_env(_ID, frame_skip=5)
     assert env.unwrapped.frame_skip == 5

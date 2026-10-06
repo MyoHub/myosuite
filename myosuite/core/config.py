@@ -156,11 +156,13 @@ class EnvConfig:
             timestep. The ``TaskConfig`` envs (``ModularTaskEnv``) take their
             timing from ``task_config.backend`` and raise a ``ValueError`` on
             every backend.
-        features: Muscle-command features to activate, as
+        features: Muscle-command features to activate (noise, fatigue, reafferentation,
+            sarcopenia, custom excitation stages). Each entry is a wrapper class
+            (``FatigueWrapper``), a ``(class, kwargs)`` pair
+            (``(MotorNoiseWrapper, {"motor_noise": {...}})``) or a
             :class:`~gymnasium.envs.registration.WrapperSpec` (see
-            :func:`myosuite.envs.wrappers.wrapper_spec`): noise, fatigue,
-            reafferentation, sarcopenia, custom excitation stages. Every backend runs
-            them identically. All are off unless listed here or in the registration.
+            :func:`myosuite.envs.wrappers.wrapper_spec`); stored as specs. Every backend
+            runs them identically. All are off unless listed here or in the registration.
         task_kwargs: Task-specific constructor overrides (CPU env kwargs).
         backend_options: Options of one backend only (``device``, ``render_mode``, ...);
             nothing portable belongs here.
@@ -174,6 +176,11 @@ class EnvConfig:
     features: tuple[Any, ...] = ()
     task_kwargs: dict[str, Any] = field(default_factory=dict)
     backend_options: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        from myosuite.envs.wrappers import normalize_features  # noqa: PLC0415
+
+        self.features = normalize_features(self.features)
 
 
 # ---------------------------------------------------------------------------

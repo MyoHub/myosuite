@@ -12,6 +12,7 @@ backend-aware factory.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
@@ -21,6 +22,7 @@ from gymnasium.envs.registration import WrapperSpec, registry as _gym_registry
 
 from myosuite.core.config import EnvConfig, TaskConfig, check_control_step
 from myosuite.core.multi_agent_config import MultiAgentTaskConfig
+from myosuite.envs.wrappers import normalize_features
 
 if TYPE_CHECKING:
     from myosuite.core.specs import EnvSpec
@@ -382,12 +384,14 @@ def make_env(
         >>> env = make_env("myoElbowPose1D6MRandom-v0")
         >>> cfg = EnvConfig(
         ...     "myoElbowPose1D6MRandom-v0",
-        ...     features=(wrapper_spec(MotorNoiseWrapper, motor_noise={"constant_std": 0.05}),),
+        ...     features=((MotorNoiseWrapper, {"motor_noise": {"constant_std": 0.05}}),),
         ... )
         >>> env = make_env(cfg)  # CPU
         >>> envs = make_env(cfg, backend="mjlab", num_envs=4096)
     """
     config = env_id if isinstance(env_id, EnvConfig) else EnvConfig(env_id=env_id)
+    # A config edited after construction may hold classes or pairs: normalize again.
+    config = dataclasses.replace(config, features=normalize_features(config.features))
     backend = backend or config.backend
     if backend == "cpu":
         return _make_cpu(config, overrides)

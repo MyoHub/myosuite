@@ -150,17 +150,20 @@ envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=4096)   #
 ```python
 from myosuite import make_env
 from myosuite.core.config import EnvConfig
-from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper, wrapper_spec
+from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper
 
 cfg = EnvConfig(
     "myoElbowPose1D6MRandom-v0",
     max_episode_steps=300,
     ctrl_dt=0.01,
-    features=(wrapper_spec(MotorNoiseWrapper, motor_noise={"constant_std": 0.05}), wrapper_spec(FatigueWrapper)),
+    features=((MotorNoiseWrapper, {"motor_noise": {"constant_std": 0.05}}), FatigueWrapper),
 )
 env = make_env(cfg)                                    # CPU, with noise and fatigue
 envs = make_env(cfg, backend="mjlab", num_envs=4096)   # GPU twin, with the same noise and fatigue
 ```
+
+Each entry of `features` is a wrapper class (`FatigueWrapper`), a `(class, kwargs)` pair, or a `WrapperSpec`
+(`wrapper_spec(cls, **kwargs)`; the `additional_wrappers` of a registration take specs).
 
 | `EnvConfig` field | What it sets | On the CPU env | On the mjlab twin |
 |---|---|---|---|

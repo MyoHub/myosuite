@@ -112,7 +112,7 @@ muscle-command features such as motor noise and fatigue) for both:
 ```python
 from myosuite import make_env
 from myosuite.core.config import EnvConfig
-from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper, wrapper_spec
+from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper
 
 env = make_env("myoElbowPose1D6MRandom-v0")                                   # CPU, registered defaults
 envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024)  # GPU twin (needs the mjlab extra)
@@ -120,7 +120,7 @@ envs = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024)  # 
 cfg = EnvConfig(
     "myoElbowPose1D6MRandom-v0",
     max_episode_steps=300,
-    features=(wrapper_spec(MotorNoiseWrapper, motor_noise={"constant_std": 0.05}), wrapper_spec(FatigueWrapper)),
+    features=((MotorNoiseWrapper, {"motor_noise": {"constant_std": 0.05}}), FatigueWrapper),
 )
 env = make_env(cfg)                                   # CPU with noise and fatigue
 envs = make_env(cfg, backend="mjlab", num_envs=1024)  # the same on the GPU

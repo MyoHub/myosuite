@@ -278,11 +278,11 @@ The same features can be listed in an ``EnvConfig``, which builds the CPU env **
 
    from myosuite import make_env
    from myosuite.core.config import EnvConfig
-   from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper, wrapper_spec
+   from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper
 
    cfg = EnvConfig(
        'myoElbowPose1D6MRandom-v0',
-       features=(wrapper_spec(MotorNoiseWrapper, motor_noise={'constant_std': 0.05}), wrapper_spec(FatigueWrapper)),
+       features=((MotorNoiseWrapper, {'motor_noise': {'constant_std': 0.05}}), FatigueWrapper),
    )
    env = make_env(cfg)                                   # CPU
    envs = make_env(cfg, backend='mjlab', num_envs=1024)  # GPU twin with the same noise and fatigue

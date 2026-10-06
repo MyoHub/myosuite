@@ -666,6 +666,40 @@ def wrapper_spec(wrapper: type, **kwargs: Any) -> WrapperSpec:
     )
 
 
+def normalize_features(features: Iterable[Any]) -> tuple[WrapperSpec, ...]:
+    """Turn the entries of ``EnvConfig.features`` into wrapper specs.
+
+    Args:
+        features: Each entry is a :class:`~gymnasium.envs.registration.WrapperSpec`, a
+            wrapper class (no arguments), or a ``(wrapper class, kwargs dict)`` pair.
+
+    Returns:
+        The wrapper specs, in the given order.
+
+    Raises:
+        TypeError: If an entry has another form.
+    """
+    specs = []
+    for feature in features:
+        if isinstance(feature, WrapperSpec):
+            specs.append(feature)
+        elif isinstance(feature, type):
+            specs.append(wrapper_spec(feature))
+        elif (
+            isinstance(feature, (tuple, list))
+            and len(feature) == 2
+            and isinstance(feature[0], type)
+            and isinstance(feature[1], dict)
+        ):
+            specs.append(wrapper_spec(feature[0], **feature[1]))
+        else:
+            raise TypeError(
+                "A feature is a WrapperSpec, a wrapper class, or a (wrapper class, "
+                f"kwargs dict) pair; got {feature!r}."
+            )
+    return tuple(specs)
+
+
 def apply_features(env: gym.Env, features: Iterable[WrapperSpec]) -> gym.Env:
     """Wrap *env* in the wrappers of *features* (the stage order is fixed, not the list's).
 
