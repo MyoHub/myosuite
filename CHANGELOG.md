@@ -76,6 +76,7 @@ full commit list.
 * **MuscleMimic bridge builds its observation on the sim device** (`TorchFullbodyObsAdapter`): 20-80x faster, float32, not bit-identical to the CPU builder (agrees to about 1e-6); `obs_backend="cpu"` keeps the old path ([#486]).
 * **Performance and memory:** cached model specs ([#481]), vectorized full-body mimic observation builder ([#482]), faster OslRun step ([#483]), explicit MjData arenas for full-body Mimic and ChaseTag ([#487], [#493]) and the two-agent `myoChallengeChaseTagFBVs-v0` scene ([#498]), `colorednoise` replaces `pink-noise-rl` and `import myosuite` is 2x faster ([#480]).
 * **Fatigue dynamics follow the literature:** the rest multiplier `r` acts only at rest (Rakshit et al. 2021; commands up to `FATIGUE_REST_THRESHOLD = 0.01` count as rest, so sigmoid-mapped muscles can rest) and the `Shoulder` row uses the Frey-Law et al. (2012) fit. Retrain policies on the `myoFati*` envs ([#491]).
+* **Randomized die, Baoding P2 and weighted elbow resets refresh collision bounds and inertia** after editing geom sizes and masses (MuJoCo 3.8 and newer cull contacts against stale bounds); the dynamics of these envs differ from earlier builds, so re-evaluate policies and recollect datasets ([#499] review).
 * Documentation and developer wiki cut down; tutorials simplified for newcomers ([#406]).
 
 ### Fixed
@@ -182,6 +183,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#496]: https://github.com/MyoHub/myosuite/pull/496
 [#497]: https://github.com/MyoHub/myosuite/pull/497
 [#498]: https://github.com/MyoHub/myosuite/pull/498
+[#499]: https://github.com/MyoHub/myosuite/pull/499
 
 ## [2.12.2] - 2026-05-06
 * Asset credits updated ([#392]).

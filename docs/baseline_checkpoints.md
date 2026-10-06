@@ -43,6 +43,8 @@ distribution; this is not implemented.
 (1496-dim observation, 0.02 s control step, random terrain) no longer load, and SAR activation datasets or synergy
 models collected before the MuscleMimic bridge fix (#459) must be recollected.
 
+**Collision bounds and inertia of randomized objects.** Die-reorient, Baoding P2 and weighted elbow-pose episodes now use refreshed collision bounds and mass-consistent inertia, so their dynamics can differ from earlier builds; re-evaluate policies and recollect affected datasets.
+
 **MuscleMimic full body (single clip).** `checkpoints/myoMimicFullbody-v0-walking_medium06/model_81380.pt` on the
 Hugging Face repo imitates the clip `KIT/167/walking_medium06` (2.0B steps, 1024 envs, about 30 h on one GPU). It
 is scored by clip completion instead of success: 86% of 576 mean-action episodes from random start frames play to
