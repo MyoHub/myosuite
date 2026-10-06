@@ -110,11 +110,11 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
     obs_funcs = {
         "qpos_without_xy": (walk_mdp.qpos_without_xy, {"asset_cfg": robot}),
         "qvel": (mdp.qvel, {"asset_cfg": robot}),
-        "com_vel": (walk_mdp.com_vel_obs, {}),
-        "torso_angle": (walk_mdp.torso_angle, {"asset_cfg": robot}),
-        "feet_heights": (walk_mdp.feet_heights, {"asset_cfg": robot}),
-        "height": (walk_mdp.height, {}),
-        "feet_rel_positions": (walk_mdp.feet_rel_positions, {"asset_cfg": robot}),
+        "com_vel": (walk_mdp.ComVelocity, {"asset_cfg": robot}),
+        "torso_angle": (walk_mdp.TorsoAngle, {"asset_cfg": robot}),
+        "feet_heights": (walk_mdp.FeetHeights, {"asset_cfg": robot}),
+        "height": (walk_mdp.Height, {"asset_cfg": robot}),
+        "feet_rel_positions": (walk_mdp.FeetRelPositions, {"asset_cfg": robot}),
         "phase_var": (walk_mdp.phase_var, {"hip_period": hip_period}),
         "muscle_length": (walk_mdp.muscle_length, {}),
         "muscle_velocity": (walk_mdp.muscle_velocity, {}),
@@ -146,8 +146,9 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
     terminations = {
         mdp.SYNC_TERM: TerminationTermCfg(func=mdp.sync_forward),
         "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
-        "fallen": TerminationTermCfg(
-            func=walk_mdp.walk_done, params={"walk": walk, "asset_cfg": robot}
+        # Also evaluates the step's reward dict for the reward terms and the metric.
+        walk_mdp.FALLEN_TERM: TerminationTermCfg(
+            func=walk_mdp.WalkDone, params={"walk": walk, "asset_cfg": robot}
         ),
     }
     # Standard success metric (Episode_Metrics/success): the CPU "solved" flag.

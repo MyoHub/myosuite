@@ -381,6 +381,110 @@ def test_clip_frame_follows_cpu_step_counter(
 
 
 # ---------------------------------------------------------------------------
+# Host syncs per step
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("variant", ["fullbody", "bimanual"])
+def test_clip_step_syncs_only_to_detect_resets(
+    variant: str, request: pytest.FixtureRequest
+) -> None:
+    """A step reads no host data, except one reset check on a step that reset an env.
+
+    Every observation, reward and termination term re-synced the clip source
+    (a ``reset_mask.any()`` host read) and indexed sites with a NumPy array (a
+    host-to-device copy): 34 host syncs per step.
+    """
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.tests.support.host_sync import HostSyncCounter
+
+    env, clip = request.getfixturevalue(f"{variant}_env")
+    torch.manual_seed(0)
+    env.reset()
+    source = mimic._resolve_mimic_mjlab_ids(env, _ENTITY[variant], variant)[
+        "clip_source"
+    ]
+    source._start_offsets[0] = int(clip.site_xpos.shape[0]) - 2  # ends at step 2
+    action = torch.zeros(env.num_envs, sum(env.action_manager.action_term_dim))
+    env.step(action)  # sees the offset write: one reset check
+    resets = []
+    for _ in range(4):
+        with HostSyncCounter(package_only=True) as syncs:
+            env.step(action)
+        reset = bool(env.reset_buf.any())
+        resets.append(reset)
+        assert syncs.total <= int(reset), syncs.report()
+    assert resets[0], "env 0 should reach its clip end on the second step"
+
+
+def _reference_lookahead(
+    env: Any, cache: dict[str, Any], entity: str, k: int, stride: int
+) -> Any:
+    """The lookahead observation, one future step at a time (the original loop)."""
+    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        _clip_has_required_indices,
+    )
+
+    source, clip = cache["clip_source"], cache["clip"]
+    step = env.episode_length_buf
+    n = int(step.shape[0])
+    lengths = source.clip_lengths(step)
+    frames = source.frame_indices(step)
+    free_root = not env.scene[entity].is_fixed_base
+    data = env.scene[entity].data.data
+    root = data.qpos[:, :3] if free_root else torch.zeros(n, 3)
+    has_pos = free_root and _clip_has_required_indices(
+        clip.qpos_model_indices, range(3)
+    )
+    has_vel = free_root and _clip_has_required_indices(
+        clip.qvel_model_indices, range(3)
+    )
+    width = source.n_tracked * 3 + 3 * has_pos + 3 * has_vel + 1
+    out = torch.zeros(n, k * width)
+    offset = 0
+    for i in range(1, k + 1):
+        future = (frames + i * stride) % lengths
+        sites = (source.site_targets_at_frames(future) - root[:, None]).reshape(n, -1)
+        out[:, offset : offset + sites.shape[1]] = sites
+        offset += sites.shape[1]
+        if has_pos:
+            out[:, offset : offset + 3] = (
+                source.ref_qpos_at_frames(future)[:, :3] - root
+            )
+            offset += 3
+        if has_vel:
+            out[:, offset : offset + 3] = source.ref_qvel_at_frames(future)[:, :3]
+            offset += 3
+        out[:, offset] = future.float() / torch.clamp(lengths.float() - 1.0, min=1.0)
+        offset += 1
+    return out
+
+
+@pytest.mark.parametrize("variant", ["fullbody", "bimanual"])
+def test_lookahead_matches_the_reference_loop(
+    variant: str, request: pytest.FixtureRequest
+) -> None:
+    """The batched lookahead (its clip part shared by the obs groups) is bit-exact."""
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    env, clip = request.getfixturevalue(f"{variant}_env")
+    torch.manual_seed(1)
+    env.reset()
+    action = torch.zeros(env.num_envs, sum(env.action_manager.action_term_dim))
+    for _ in range(2):
+        env.step(action)
+    entity = _ENTITY[variant]
+    for k, stride in ((2, 3), (5, 20)):
+        fn = mimic._mimic_obs_lookahead(
+            entity, variant, clip, float(env.step_dt), k, stride
+        )
+        out = fn(env)
+        cache = mimic._resolve_mimic_mjlab_ids(env, entity, variant)
+        assert torch.equal(out, _reference_lookahead(env, cache, entity, k, stride))
+        assert torch.equal(fn(env), out)  # the shared clip part is reused
+
+
+# ---------------------------------------------------------------------------
 # SAR tasks
 # ---------------------------------------------------------------------------
 
@@ -639,5 +743,81 @@ def test_clip_bank_partial_reset_uses_the_clips_of_the_reset_envs() -> None:
             env.step(action)
             env.reset(env_ids=torch.tensor(ids, device=env.device))
         assert env.observation_manager.compute_group("actor").shape[0] == env.num_envs
+    finally:
+        env.close()
+
+
+def _assert_envs_read_their_clips(
+    env: Any, entity: str, reset_ids: tuple[int, ...] = ()
+) -> None:
+    """Targets and reference of every env are its own clip's frame (a NumPy gather).
+
+    *reset_ids*: envs just reset by RSI, whose joints must be on that frame.
+    """
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    cache = mimic._resolve_mimic_mjlab_ids(env, entity, "fullbody")
+    source = cache["clip_source"]
+    rows = []
+    for step, clip_id, offset in zip(
+        env.episode_length_buf.tolist(),
+        source._clip_indices.tolist(),
+        source._start_offsets.tolist(),
+    ):
+        clip = source.clips[clip_id]
+        rows.append((clip, min(step + offset, int(clip.site_xpos.shape[0]) - 1)))
+    sites = np.stack([c.site_xpos[f][source.tracked_site_ids] for c, f in rows])
+    np.testing.assert_array_equal(
+        cache["target_torch"].numpy(), sites.astype(np.float32)
+    )
+    for name in ("qpos", "qvel"):
+        expected = np.stack([getattr(c, name)[f] for c, f in rows])
+        got = mimic._clip_ref(env, cache, f"ref_{name}").numpy()
+        np.testing.assert_array_equal(got, expected.astype(np.float32))
+    for i in reset_ids:
+        clip, frame = rows[i]
+        joints = env.scene[entity].data.data.qpos[i, 7:].numpy()
+        np.testing.assert_array_equal(joints, clip.qpos[frame, 7:].astype(np.float32))
+
+
+def test_clip_bank_steps_are_sync_free_and_read_each_envs_clip() -> None:
+    """A clip-bank step makes no host sync (one reset check on a step that resets an
+    env), and every env reads its own clip, after partial resets inside and outside
+    ``env.step``.
+
+    The bank gather looped over the clips with ``mask.any()`` and bool-mask
+    indexing: three host syncs per clip for each of the step's gathers.
+    """
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.tests.support.host_sync import HostSyncCounter
+
+    clips = (
+        _synthetic_clip("fullbody", n_frames=60),
+        _synthetic_clip("fullbody", n_frames=90, joint_pos=_FULLBODY_PIKE),
+    )
+    entity = _ENTITY["fullbody"]
+    env = _make_env("fullbody", clips, num_envs=6)
+    try:
+        torch.manual_seed(0)
+        env.reset()
+        source = mimic._resolve_mimic_mjlab_ids(env, entity, "fullbody")["clip_source"]
+        action = torch.zeros(env.num_envs, sum(env.action_manager.action_term_dim))
+        env.step(action)  # uploads the lazily built device constants once
+        for ids, ending in (((1, 4), 0), ((0, 2, 3), 5)):
+            # Env *ending* reaches its clip end on the second step: a reset in env.step.
+            step = env.episode_length_buf
+            source._start_offsets[ending] = (
+                source.clip_lengths(step)[ending] - step[ending] - 2
+            )
+            env.reset(env_ids=torch.tensor(ids, device=env.device))
+            _assert_envs_read_their_clips(env, entity, ids)
+            resets = []
+            for _ in range(2):
+                with HostSyncCounter(package_only=True) as syncs:
+                    env.step(action)
+                resets.append(bool(env.reset_buf.any()))
+                assert syncs.total <= int(resets[-1]), syncs.report()
+                _assert_envs_read_their_clips(env, entity)
+            assert resets[-1] and env.episode_length_buf[ending] == 0
     finally:
         env.close()

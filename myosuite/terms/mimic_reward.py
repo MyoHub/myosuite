@@ -273,7 +273,9 @@ def mimic_composite_reward(
 
     Returns:
         Dict with individual term rewards, weighted ``dense`` total, and
-        ``solved`` / ``done`` booleans.
+        ``solved`` / ``done`` booleans.  ``mean_site_dist`` and ``solved`` are
+        per batch element: Python scalars for a single (unbatched) state, arrays
+        of the batch shape otherwise (never read back to the host on a GPU).
     """
     r_site = mimic_site_tracking_reward(xp, current_site_pos, ref_site_pos, scales.site)
     dense = weights.site * r_site
@@ -308,9 +310,11 @@ def mimic_composite_reward(
             xp, current_root_quat, ref_root_quat, scales.root_orient
         )
         dense = dense + weights.root_orient * r_rorient
-    # Compute mean site distance for termination / solved check
+    # Mean site distance for the solved check, per batch element.
     diff = current_site_pos - ref_site_pos
-    mean_site_dist = float(xp.sqrt((diff * diff).sum(axis=-1)).mean())
+    mean_site_dist = xp.sqrt((diff * diff).sum(axis=-1)).mean(axis=-1)
+    if getattr(mean_site_dist, "ndim", 0) == 0:
+        mean_site_dist = float(mean_site_dist)
 
     return {
         "site": r_site,
