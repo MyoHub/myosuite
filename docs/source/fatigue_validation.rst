@@ -75,8 +75,7 @@ muscle groups (``myosuite/core/muscle_groups.py``) to ``F``, ``R`` and ``r``:
   ``Finger`` copy ``Hand``; ``Wrist-Flexor`` is the general handgrip group.
 * ``Shoulder``: the shoulder fit of Frey-Law et al. (2012, Table 1),
   F = 0.01820, R = 0.00168, with r = 15, which Looft & Frey-Law (2020) found
-  somewhat better than r = 30 for intermittent shoulder flexion. This row
-  used to hold the ``Knee`` numbers (see the findings below).
+  somewhat better than r = 30 for intermittent shoulder flexion.
 * Muscles without a group, namely hip and hamstring muscles of the leg models
   and every torso muscle, use ``Default``.
 
@@ -757,14 +756,11 @@ Findings
   ``Shoulder`` are inside the band. ``Default_v2_4`` falls 51% short at 10% MVC, because its
   tenfold smaller R lowers the asymptote to 1%. ``Knee`` holds 40-80% longer
   than the knee curve at 20-70% MVC.
-* **Shoulder (fixed).** The ``Shoulder`` row used to equal the Rakshit et al.
-  (2021) ``Knee`` row (F = 0.00825, R = 0.00076, r = 14.85) while citing Looft &
-  Frey-Law (2020). Its endurance times were 2.1-2.5 times the shoulder curve at
-  20-60% MVC (e.g. 127 s instead of 53 s at 50% MVC). That made the deltoid,
+* **Shoulder.** With the Frey-Law et al. (2012) shoulder fit, the ``Shoulder``
+  row is within 0.62-1.12 times the shoulder curve at 20-80% MVC. The deltoid,
   rotator-cuff, pectoral and latissimus muscles of the arm, bimanual, relocate,
-  table-tennis and full-body models among the least fatigable, where the data
-  rank the shoulder as the most fatigable joint. With the Frey-Law et al. (2012)
-  shoulder fit, the row is within 0.62-1.12 times the curve at 20-80% MVC.
+  table-tennis and full-body models therefore fatigue as the data rank the
+  shoulder: the most fatigable joint.
 * **Ankle and Toe** (Rakshit et al. 2021 ankle joint, F = 0.01485, 2.5 times
   the Frey-Law et al. 2012 ankle F) fall 46-58% short of the ankle curve at
   30-70% MVC and 68% short at 80%. That curve is the most fatigue-resistant
@@ -783,8 +779,7 @@ Findings
   dorsal interosseous row (F ≈ R) holds any load below 50% MVC indefinitely but
   fails within 28 s at 60% MVC.
 
-Apart from the ``Shoulder`` row, which copied the wrong row, these deviations
-are reported, not retuned: the rows match their source. The regression test
+These deviations are reported, not retuned: the rows match their source. The regression test
 marks the joint-level ones (``Ankle``, ``Toe``, ``Hand``, ``Wrist``,
 ``Finger``, ``Wrist-Flexor``) as strict expected failures, so any change to
 these rows shows up.
