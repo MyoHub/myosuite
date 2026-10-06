@@ -22,6 +22,7 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import (
     solved_step_count,
 )
 from myosuite.physics.quat_math import euler2quat, mat2euler
+from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
 
 class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
@@ -252,6 +253,9 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             object_gpos
             / abs(object_gpos + 1e-16)
             * (abs(self.object_default_pos) + del_size)
+        )
+        refresh_geom_derived_fields(
+            self.model, self._mj_spec, (self.object_bid, self.goal_bid)
         )
 
     def get_metrics(self, paths: list, successful_steps: int = 5) -> dict[str, float]:

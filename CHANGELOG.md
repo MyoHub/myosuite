@@ -78,6 +78,8 @@ full commit list.
 * **Performance and memory:** cached model specs ([#481]), vectorized full-body mimic observation builder ([#482]), faster OslRun step ([#483]), explicit MjData arenas for full-body Mimic and ChaseTag ([#487], [#493]) and the two-agent `myoChallengeChaseTagFBVs-v0` scene ([#498]), `colorednoise` replaces `pink-noise-rl` and `import myosuite` is 2x faster ([#480]).
 * **Fatigue dynamics follow the literature:** the rest multiplier `r` acts only at rest (Rakshit et al. 2021; commands up to `FATIGUE_REST_THRESHOLD = 0.01` count as rest, so sigmoid-mapped muscles can rest) and the `Shoulder` row uses the Frey-Law et al. (2012) fit. Retrain policies on the `myoFati*` envs ([#491]).
 * **The `muscle_condition`, `fatigue_reset_vec`, `fatigue_reset_random` and `motor_noise` env kwargs are replaced by wrappers.** The `myoFati*`, `myoSarc*` and `myoReaf*` ids are unchanged, and rollouts are identical to the kwarg versions. Build a custom stack with `FatigueWrapper(env, fatigue_reset_random=True)` and the other wrappers, and use `env.set_fatigue_reset_random(...)` instead of `env.unwrapped.set_fatigue_reset_random(...)`; the old kwargs raise a `TypeError` that names the replacement ([#502]).
+* **Randomized die, Baoding P2 and weighted elbow resets refresh collision bounds and inertia** after editing geom sizes and masses (MuJoCo 3.8 and newer cull contacts against stale bounds); the dynamics of these envs differ from earlier builds, so re-evaluate policies and recollect datasets ([#499] review).
+* **mjlab walk, Mimic and Table Tennis steps make no host syncs** (GPU stream stalls) in MyoSuite terms, with bit-identical results: walk / terrain twins 34 / 41 per step to 0; Mimic clip mode 33, a 2-clip bank 537 (full body) and random targets 17 to 0 (one reset check on a step that resets an env); Table Tennis P1 / P2 2 / 4 per reset step to 0. `mimic_composite_reward` reports `mean_site_dist` and `solved` per env ([#500]).
 * Documentation and developer wiki cut down; tutorials simplified for newcomers ([#406]).
 
 ### Fixed
@@ -186,6 +188,8 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#496]: https://github.com/MyoHub/myosuite/pull/496
 [#497]: https://github.com/MyoHub/myosuite/pull/497
 [#498]: https://github.com/MyoHub/myosuite/pull/498
+[#499]: https://github.com/MyoHub/myosuite/pull/499
+[#500]: https://github.com/MyoHub/myosuite/pull/500
 [#502]: https://github.com/MyoHub/myosuite/issues/502
 
 ## [2.12.2] - 2026-05-06

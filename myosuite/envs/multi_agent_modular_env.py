@@ -150,7 +150,7 @@ class ModularMultiAgentTaskEnv(gym.Env):
         self.data.ctrl[:] = 0.0
         mujoco.mj_forward(self.model, self.data)
 
-        self._config.on_reset(self.model, self.data, self._meta)
+        self._config.on_reset(self.model, self.data, self._meta, self.np_random)
 
         self._health = {a: 0.0 for a in self._agents}
         self._step_count = 0
@@ -196,6 +196,7 @@ class ModularMultiAgentTaskEnv(gym.Env):
 
         for _ in range(self._n_substeps):
             mujoco.mj_step(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data)
 
         self._step_count += 1
 

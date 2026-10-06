@@ -23,6 +23,7 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import (
     solved_step_count,
 )
 from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
 
 class Task(enum.Enum):
@@ -403,6 +404,10 @@ class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             )
             self.model.geom_size[self.object2_gid] = np_random.uniform(
                 **self.obj_size_range
+            )
+        if self.obj_mass_range is not None or self.obj_size_range is not None:
+            refresh_geom_derived_fields(
+                self.model, self._mj_spec, (self.object1_bid, self.object2_bid)
             )
 
         # The reset obs shows the targets the first step() aims for.

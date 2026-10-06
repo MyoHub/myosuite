@@ -389,11 +389,41 @@ class _PingpongTrajectory:
         self.own_count = own_count
 
 
-def _sample_ball_lin_vel(pos: torch.Tensor) -> torch.Tensor:
+@dataclass(frozen=True)
+class _BallLaunch:
+    """Launch ranges of the ball on the env device, uploaded once per term.
+
+    Attributes:
+        xyz_low: Lower corner of the sampled launch position; ``None``: keyframe.
+        xyz_high: Upper corner of the sampled launch position.
+        sample_vel: Whether the launch velocity is sampled (``ball_qvel``).
+        table_upper: :data:`_TABLE_UPPER`.
+        table_lower: :data:`_TABLE_LOWER`.
+    """
+
+    xyz_low: torch.Tensor | None
+    xyz_high: torch.Tensor | None
+    sample_vel: bool
+    table_upper: torch.Tensor
+    table_lower: torch.Tensor
+
+
+def _ball_launch(tt_cfg: TableTennisCfg, device: Any) -> _BallLaunch:
+    """The :class:`_BallLaunch` of *tt_cfg* on *device*."""
+    xyz = tt_cfg.ball_xyz_range
+    return _BallLaunch(
+        xyz_low=None if xyz is None else torch.tensor(xyz["low"], device=device),
+        xyz_high=None if xyz is None else torch.tensor(xyz["high"], device=device),
+        sample_vel=bool(tt_cfg.ball_qvel),
+        table_upper=torch.tensor(_TABLE_UPPER, dtype=torch.float32, device=device),
+        table_lower=torch.tensor(_TABLE_LOWER, dtype=torch.float32, device=device),
+    )
+
+
+def _sample_ball_lin_vel(pos: torch.Tensor, launch: _BallLaunch) -> torch.Tensor:
     """CPU ``cal_ball_qvel`` + uniform draw, for every row of *pos*."""
     n, device = pos.shape[0], pos.device
-    upper = torch.tensor(_TABLE_UPPER, dtype=pos.dtype, device=device)
-    lower = torch.tensor(_TABLE_LOWER, dtype=pos.dtype, device=device)
+    upper, lower = launch.table_upper, launch.table_lower
     v_z = torch.rand(n, dtype=pos.dtype, device=device) * 0.2 - 0.1
     a = -0.5 * _GRAVITY
     c = pos[:, 2] - upper[2]
@@ -405,17 +435,16 @@ def _sample_ball_lin_vel(pos: torch.Tensor) -> torch.Tensor:
 
 
 def _ball_launch_state(
-    ball: Any, env_ids: torch.Tensor, tt_cfg: TableTennisCfg
+    ball: Any, env_ids: torch.Tensor, launch: _BallLaunch
 ) -> torch.Tensor:
     """Root state of a (re)launched ball: CPU keyframe or sampled pos/vel."""
     state = ball.data.default_root_state[env_ids].clone()
     n, device = state.shape[0], state.device
-    if tt_cfg.ball_xyz_range is not None:
-        low = torch.tensor(tt_cfg.ball_xyz_range["low"], device=device)
-        high = torch.tensor(tt_cfg.ball_xyz_range["high"], device=device)
+    if launch.xyz_low is not None and launch.xyz_high is not None:
+        low, high = launch.xyz_low, launch.xyz_high
         state[:, :3] = low + torch.rand(n, 3, device=device) * (high - low)
-        if tt_cfg.ball_qvel:
-            state[:, 7:10] = _sample_ball_lin_vel(state[:, :3])
+        if launch.sample_vel:
+            state[:, 7:10] = _sample_ball_lin_vel(state[:, :3], launch)
     return state
 
 
@@ -664,6 +693,7 @@ class TableTennisReset(ManagerTermBase):
         self._arm = env.scene[_TT_ENTITY_NAME]
         self._paddle = env.scene[_TT_PADDLE_ENTITY_NAME]
         self._ball = env.scene[_TT_BALL_ENTITY_NAME]
+        self.launch = _ball_launch(tt_cfg, env.device)
         self._noise: tuple[torch.Tensor, ...] | None = None
         if tt_cfg.qpos_noise_range is not None:
             # CPU: uniform fraction of each joint range, clipped to the raw
@@ -704,7 +734,7 @@ class TableTennisReset(ManagerTermBase):
             self._paddle.data.default_root_state[env_ids], env_ids=env_ids
         )
         self._ball.write_root_state_to_sim(
-            _ball_launch_state(self._ball, env_ids, tt_cfg), env_ids=env_ids
+            _ball_launch_state(self._ball, env_ids, self.launch), env_ids=env_ids
         )
 
 
@@ -712,12 +742,13 @@ def _tt_relaunch_ball(
     env: ManagerBasedRlEnv, env_ids: None, tt_cfg: TableTennisCfg
 ) -> None:
     """Step event: relaunch the ball of envs that go on to their next rally."""
-    del env_ids  # step events cover all envs
+    del env_ids, tt_cfg  # step events cover all envs; launch ranges of tt_reset
     # Host sync; only registered when rally_count > 1.
     ids = _rally_term(env).relaunch.nonzero(as_tuple=False).squeeze(-1)
     if ids.numel():
         ball = env.scene[_TT_BALL_ENTITY_NAME]
-        ball.write_root_state_to_sim(_ball_launch_state(ball, ids, tt_cfg), env_ids=ids)
+        launch = env.event_manager.get_term_cfg("tt_reset").func.launch
+        ball.write_root_state_to_sim(_ball_launch_state(ball, ids, launch), env_ids=ids)
 
 
 def _table_tennis_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
