@@ -29,6 +29,7 @@ from myosuite.envs.myo.tasks.challenge.tabletennis import (  # noqa: E402
     PingpongContactLabels,
     evaluate_pingpong_trajectory,
 )
+from myosuite import make_env  # noqa: E402
 
 _P0, _P2 = "myoChallengeTableTennisP0-v0", "myoChallengeTableTennisP2-v0"
 # Reward of a step that pays ``done`` (-10) is clearly negative; every other
@@ -54,7 +55,7 @@ def p0() -> ManagerBasedRlEnv:
 
 @pytest.fixture(scope="module")
 def cpu_p0() -> gym.Env:
-    env = gym.make(_P0).unwrapped
+    env = make_env(_P0).unwrapped
     env.reset(seed=0)
     return env
 

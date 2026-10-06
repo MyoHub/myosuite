@@ -4,7 +4,7 @@ Architecture
 A task has two matched halves under one ``env_id``:
 
 * **CPU** — :class:`~myosuite.envs.gymnasium_env.MyoGymnasiumEnv`, via
-  ``gym.make(env_id)``. Playback, debug, SB3.
+  ``make_env(env_id)``. Playback, debug, SB3.
 * **GPU** — mjlab ``ManagerBasedRlEnvCfg``, via ``scripts/train_mjlab.py``.
   Parallel training on MuJoCo Warp.
 
@@ -22,7 +22,7 @@ on it.
            ▼                  ▼                  ▼
         CPU Gymnasium      mjlab (Warp)      MJX (experimental)
         MyoGymnasiumEnv    ManagerBasedRlEnv  mujoco_playground
-        gym.make(env_id)   same env_id        Mjx*-v0 / mjx.make()
+        make_env(env_id)   same env_id        Mjx*-v0 / mjx.make()
 
 
 CPU

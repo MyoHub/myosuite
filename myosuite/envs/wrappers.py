@@ -30,7 +30,7 @@ env's action pipeline (see
 -> ctrl``. The order is fixed by the stage, whatever the wrapping order. Each
 stage can be installed **once per env**: a second wrapper of the same kind raises a
 ``ValueError`` (the ``myoFati*`` and ``myoReaf*`` ids already contain theirs, so
-wrap the base id to configure it, e.g. ``FatigueWrapper(gym.make(base_id),
+wrap the base id to configure it, e.g. ``FatigueWrapper(make_env(base_id),
 fatigue_reset_random=True)``, or change the options with
 ``env.set_fatigue_reset_random(...)`` / ``env.motor_noise = ...``).
 
@@ -138,7 +138,7 @@ class DictObservationWrapper(RecordConstructorArgs, gym.ObservationWrapper):
 
     Example::
 
-        env = gym.make("myoElbowPose1D6MRandom-v0")
+        env = make_env("myoElbowPose1D6MRandom-v0")
         env = DictObservationWrapper(env)
         obs, info = env.reset()
         print(list(obs.keys()))  # ['qpos', 'qvel', 'pose_err']
@@ -215,7 +215,7 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
 
     Example::
 
-        env = gym.make("myoLegWalk-v0")
+        env = make_env("myoLegWalk-v0")
         env = PerturbationWrapper(env)
 
         # Trip: lateral push to pelvis for two steps, starting at step 50
@@ -356,7 +356,7 @@ class MotorNoiseWrapper(
     Example::
 
         env = MotorNoiseWrapper(
-            gym.make("myoElbowPose1D6MRandom-v0"), MotorNoiseCfg.van_beers_2004()
+            make_env("myoElbowPose1D6MRandom-v0"), MotorNoiseCfg.van_beers_2004()
         )
 
     Args:
@@ -501,7 +501,7 @@ class ExcitationStageWrapper(
     Example::
 
         env = ExcitationStageWrapper(
-            gym.make("myoElbowPose1D6MRandom-v0"), functools.partial(LowPassStage, 0.3)
+            make_env("myoElbowPose1D6MRandom-v0"), functools.partial(LowPassStage, 0.3)
         )
 
     Args:
@@ -560,7 +560,7 @@ class CtrlStageWrapper(
             ctrl[idx] = np.clip(ctrl[idx], 0.0, 0.8)  # cap the excitation
             return ctrl
 
-        env = CtrlStageWrapper(gym.make("myoElbowPose1D6MRandom-v0"), rate_limit,
+        env = CtrlStageWrapper(make_env("myoElbowPose1D6MRandom-v0"), rate_limit,
                                name="cap", order=25)  # after noise, before fatigue
 
     Args:

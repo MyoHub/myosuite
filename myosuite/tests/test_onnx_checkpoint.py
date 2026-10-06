@@ -17,6 +17,7 @@ from myosuite.utils.onnx_checkpoint import (
     read_onnx_checkpoint_metadata,
     set_env_fatigue_state,
 )
+from myosuite import make_env
 
 
 def test_onnx_checkpoint_bundle_round_trip() -> None:
@@ -129,9 +130,8 @@ _FATIGUE_ENV_ID = "myoFatiElbowPose1D6MRandom-v0"
 
 def _fatigued_env(n_steps: int):
     """CPU fatigue env (state in ``muscle_fatigue``) after ``n_steps`` of full excitation."""
-    from myosuite.utils import gym
 
-    env = gym.make(_FATIGUE_ENV_ID)
+    env = make_env(_FATIGUE_ENV_ID)
     env.reset(seed=0)
     for _ in range(n_steps):
         env.step(env.action_space.high)

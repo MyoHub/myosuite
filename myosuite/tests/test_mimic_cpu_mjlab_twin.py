@@ -22,6 +22,7 @@ from myosuite.tests.support.optional_deps import (
     require_mujoco_warp,
     require_musclemimic_models,
 )
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier2
 
@@ -62,16 +63,13 @@ def test_one_step_parity_with_the_mjlab_twin(env_id: str) -> None:
     require_mjlab()
     require_mujoco_warp()
     require_musclemimic_models()
-    import gymnasium as gym
     from mjlab.envs import ManagerBasedRlEnv
 
-    import myosuite
     from myosuite.envs.gymnasium_env import CpuEnvAccessor
     from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
     from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state
 
-    myosuite.register_all_envs()
-    cpu = gym.make(env_id).unwrapped
+    cpu = make_env(env_id).unwrapped
     cpu.reset(seed=0)
     mj = ManagerBasedRlEnv(cfg=_registered_play_cfgs()[env_id], device="cpu")
     mj.reset()

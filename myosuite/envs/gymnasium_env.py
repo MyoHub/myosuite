@@ -214,7 +214,7 @@ class MyoGymnasiumEnv(gym.Env):
         render_mode: Rendering mode passed to gymnasium.Env.
 
     Example:
-        >>> env = gym.make("myoElbowPose1D6MRandom-v0")
+        >>> env = make_env("myoElbowPose1D6MRandom-v0")
         >>> obs, info = env.reset(seed=42)
         >>> obs, rwd, terminated, truncated, info = env.step(env.action_space.sample())
     """

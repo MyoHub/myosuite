@@ -25,10 +25,9 @@ Environment API
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite  # registers environments
+   from myosuite import make_env
 
-   env = gym.make("myoElbowPose1D6MRandom-v0")
+   env = make_env("myoElbowPose1D6MRandom-v0")
    obs, info = env.reset(seed=42)
 
    for _ in range(1000):
@@ -50,10 +49,9 @@ Training (CPU)
 .. code-block:: python
 
    from stable_baselines3 import PPO
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
-   env = gym.make("myoElbowPose1D6MRandom-v0")
+   env = make_env("myoElbowPose1D6MRandom-v0")
    model = PPO("MlpPolicy", env, verbose=1)
    model.learn(total_timesteps=100_000)
    model.save("ppo_elbow_pose")
@@ -198,15 +196,14 @@ Starting points:
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
-   gym.make("myoElbowPose1D6MRandom-v0")
-   gym.make("myoHandPoseRandom-v0")
-   gym.make("myoLegWalk-v0")
-   gym.make("myoChallengeBaodingP2-v1")
-   gym.make("myoSarcElbowPose1D6MRandom-v0")
-   gym.make("myoFatiElbowPose1D6MFixed-v0")
+   make_env("myoElbowPose1D6MRandom-v0")
+   make_env("myoHandPoseRandom-v0")
+   make_env("myoLegWalk-v0")
+   make_env("myoChallengeBaodingP2-v1")
+   make_env("myoSarcElbowPose1D6MRandom-v0")
+   make_env("myoFatiElbowPose1D6MFixed-v0")
 
 Pathological prefixes: ``myoSarc…`` (sarcopenia), ``myoFati…`` (fatigue),
 ``myoReaf…`` (tendon transfer, hands). See :doc:`environments`.

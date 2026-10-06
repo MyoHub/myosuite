@@ -19,6 +19,7 @@ import numpy as np
 import pytest
 
 from scripts.generate_pypi_challenge_baselines import _INNER_SCRIPT, _venv_python
+from myosuite import make_env
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -46,7 +47,6 @@ def test_baseline_actions_are_the_seeded_stream_the_regression_test_replays(
 ) -> None:
     """The recorded actions are ``default_rng(seed).uniform(low, high)`` draws, as in
     ``test_reward_mean_sign_vs_pypi``, not the never-seeded ``action_space.sample()``."""
-    from myosuite.utils import gym
 
     env_id, n_steps, seed = "myoElbowPose1D6MRandom-v0", 5, 42
     script = tmp_path / "inner.py"
@@ -60,7 +60,7 @@ def test_baseline_actions_are_the_seeded_stream_the_regression_test_replays(
     )
     baseline = pickle.loads((tmp_path / f"{env_id}.pkl").read_bytes())
 
-    env = gym.make(env_id)
+    env = make_env(env_id)
     space = env.action_space
     env.close()
     rng = np.random.default_rng(seed)

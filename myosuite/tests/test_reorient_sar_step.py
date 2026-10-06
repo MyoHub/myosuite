@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import myosuite
+import myosuite  # noqa: F401
 
 from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
     GEOMETRIES_8,
@@ -21,9 +21,7 @@ from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
     sample_geometry_8,
     sample_geometry_100,
 )
-from myosuite.utils import gym
-
-myosuite.register_all_envs()
+from myosuite import make_env
 
 
 pytestmark = pytest.mark.tier2
@@ -109,7 +107,7 @@ def test_geometries_8_and_100_have_four_shapes() -> None:
 
 def test_reorient8_reset_returns_obs_and_info() -> None:
     """myoHandReorient8-v0 reset(seed=...) returns (obs, info); obs in space and finite."""
-    env = gym.make("myoHandReorient8-v0")
+    env = make_env("myoHandReorient8-v0")
     try:
         obs, info = env.reset(seed=0)
         assert isinstance(obs, np.ndarray), "obs should be ndarray"
@@ -124,7 +122,7 @@ def test_reorient8_reset_returns_obs_and_info() -> None:
 
 def test_reorient8_reset_deterministic() -> None:
     """Same seed gives same initial obs."""
-    env = gym.make("myoHandReorient8-v0")
+    env = make_env("myoHandReorient8-v0")
     try:
         obs1, _ = env.reset(seed=99)
         obs2, _ = env.reset(seed=99)
@@ -142,7 +140,7 @@ def test_reorient8_reset_deterministic() -> None:
 
 def test_reorient8_step_returns_five_tuple() -> None:
     """step(action) returns (obs, rwd, terminated, truncated, info) with correct types."""
-    env = gym.make("myoHandReorient8-v0")
+    env = make_env("myoHandReorient8-v0")
     try:
         env.reset(seed=1)
         action = env.action_space.sample()
@@ -160,7 +158,7 @@ def test_reorient8_step_returns_five_tuple() -> None:
 
 def test_reorient8_step_info_contains_rwd_dict() -> None:
     """step() info contains rwd_dict with expected reward keys."""
-    env = gym.make("myoHandReorient8-v0")
+    env = make_env("myoHandReorient8-v0")
     try:
         env.reset(seed=2)
         _, _, _, _, info = env.step(env.action_space.sample())
@@ -189,7 +187,7 @@ def test_reorient8_step_info_contains_rwd_dict() -> None:
 
 def test_reorient8_multiple_steps_finite() -> None:
     """Multiple steps in one episode yield finite obs and reward."""
-    env = gym.make("myoHandReorient8-v0")
+    env = make_env("myoHandReorient8-v0")
     try:
         env.reset(seed=3)
         for _ in range(10):
@@ -204,7 +202,7 @@ def test_reorient8_multiple_steps_finite() -> None:
 
 def test_reorient8_step_obs_in_space() -> None:
     """Each step observation lies within observation_space (after clipping)."""
-    env = gym.make("myoHandReorient8-v0")
+    env = make_env("myoHandReorient8-v0")
     try:
         env.reset(seed=4)
         for _ in range(5):
@@ -218,7 +216,7 @@ def test_reorient8_step_obs_in_space() -> None:
 
 def test_reorient100_reset_and_step_same_contract() -> None:
     """myoHandReorient100-v0 reset and step return same types/shapes as 8-object."""
-    env = gym.make("myoHandReorient100-v0")
+    env = make_env("myoHandReorient100-v0")
     try:
         obs, info = env.reset(seed=5)
         assert obs.ndim == 1 and obs.shape[0] > 0 and isinstance(info, dict)

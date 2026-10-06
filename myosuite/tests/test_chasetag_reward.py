@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -26,12 +27,9 @@ def test_chasetag_default_weights_include_alive() -> None:
 
 def test_chasetag_distance_is_potential_based() -> None:
     """``distance`` must be Δrange, not absolute range (anti-survival bug)."""
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-    from myosuite.utils import gym
-
-    env = gym.make("myoChallengeChaseTagP1-v0")
+    env = make_env("myoChallengeChaseTagP1-v0")
     try:
         env.reset(seed=0)
         unwrapped = env.unwrapped
@@ -54,13 +52,10 @@ def test_chasetag_distance_is_potential_based() -> None:
 
 def test_chasetag_evade_flips_distance_potential() -> None:
     """On EVADE, ``distance`` rewards fleeing (negated Δ range)."""
-    import myosuite
+    import myosuite  # noqa: F401
     from myosuite.envs.myo.tasks.challenge.chasetag import Task
 
-    myosuite.register_all_envs()
-    from myosuite.utils import gym
-
-    env = gym.make("myoChallengeChaseTagP1-v0")
+    env = make_env("myoChallengeChaseTagP1-v0")
     try:
         env.reset(seed=0)
         unwrapped = env.unwrapped
@@ -82,12 +77,9 @@ def test_chasetag_evade_flips_distance_potential() -> None:
 def test_chasetag_alive_requires_upright() -> None:
     """Fallen postures must not earn ``alive`` (EVADE does not end on fall)."""
     import mujoco
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-    from myosuite.utils import gym
-
-    env = gym.make("myoChallengeChaseTagP1-v0")
+    env = make_env("myoChallengeChaseTagP1-v0")
     try:
         env.reset(seed=0)
         unwrapped = env.unwrapped
@@ -109,13 +101,10 @@ def test_chasetag_alive_requires_upright() -> None:
 def test_chasetag_evade_fall_is_lose() -> None:
     """EVADE must terminate on fall (challenge / docs contract)."""
     import mujoco
-    import myosuite
+    import myosuite  # noqa: F401
     from myosuite.envs.myo.tasks.challenge.chasetag import Task
 
-    myosuite.register_all_envs()
-    from myosuite.utils import gym
-
-    env = gym.make("myoChallengeChaseTagP1-v0")
+    env = make_env("myoChallengeChaseTagP1-v0")
     try:
         env.reset(seed=0)
         unwrapped = env.unwrapped
@@ -145,12 +134,9 @@ def test_chasetag_alive_keeps_tag_better_than_timeout() -> None:
 
 def test_chasetag_surviving_beats_immediate_fall_return() -> None:
     """Longer upright rollouts must accumulate more return than instant fall."""
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-    from myosuite.utils import gym
-
-    env = gym.make("myoChallengeChaseTagP1-v0")
+    env = make_env("myoChallengeChaseTagP1-v0")
     try:
         env.reset(seed=1)
         action = np.zeros(env.action_space.shape, dtype=np.float32)

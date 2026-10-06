@@ -38,6 +38,7 @@ from myosuite.envs.myo.tasks.mimic.chasetag_obs import (  # noqa: E402
     CHASETAG_OBS_DIM,
     CHASETAG_OBS_KEYS,
 )
+from myosuite import make_env  # noqa: E402
 
 ENV_ID = "myoChallengeChaseTagFBP2-v0"
 ENTITY = "chasetag_agent"
@@ -73,7 +74,7 @@ def pair() -> tuple[gym.Env, ManagerBasedRlEnv]:
     """The TimeLimit-wrapped CPU env and a 2-env mjlab env (env 0 is synced)."""
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
 
-    cpu_env = gym.make(ENV_ID)
+    cpu_env = make_env(ENV_ID)
     cpu_env.reset(seed=0)
     cfg = load_env_cfg(ENV_ID)
     cfg.scene.num_envs = 2

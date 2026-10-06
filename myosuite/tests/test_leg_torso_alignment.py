@@ -13,10 +13,10 @@ is twisted 90° at the waist — visible on ``myoLegDirectional*-v0`` and
 
 from __future__ import annotations
 
-import gymnasium as gym
 import mujoco
 import numpy as np
 import pytest
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -57,10 +57,9 @@ def _assert_torso_faces_pelvis(model: mujoco.MjModel, data: mujoco.MjData) -> No
 @pytest.mark.parametrize("env_id", [*_DIRECTIONAL_IDS, "myoLegWalk-v0"])
 def test_standing_torso_faces_same_way_as_legs(env_id: str) -> None:
     """Reset pose must not twist the rigid torso 90° relative to the legs."""
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-    env = gym.make(env_id)
+    env = make_env(env_id)
     try:
         env.reset(seed=0)
         unwrapped = env.unwrapped
@@ -79,10 +78,9 @@ def test_soccer_torso_faces_same_way_as_legs() -> None:
     -Y (verified against commit 8b6635b7~1) — deliberately not replicated;
     see tasks/lessons.md. This asserts the internally-consistent choice.
     """
-    import myosuite
+    import myosuite  # noqa: F401
 
-    myosuite.register_all_envs()
-    env = gym.make("myoChallengeSoccerP1-v0")
+    env = make_env("myoChallengeSoccerP1-v0")
     try:
         env.reset(seed=0)
         model = env.unwrapped.model

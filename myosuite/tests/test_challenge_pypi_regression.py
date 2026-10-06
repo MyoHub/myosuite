@@ -41,10 +41,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import myosuite
-from myosuite.utils import gym
+import myosuite  # noqa: F401
+from myosuite import make_env
 
-myosuite.register_all_envs()
 
 pytestmark = pytest.mark.tier2
 
@@ -157,7 +156,7 @@ def _reward_sign_params() -> list:
 
 def _make_env(env_id: str):
     # A construction failure is a regression, so it fails rather than skips.
-    return gym.make(env_id)
+    return make_env(env_id)
 
 
 @pytest.mark.parametrize("env_id", _collect_env_ids())

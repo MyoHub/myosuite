@@ -21,6 +21,7 @@ import os
 
 import numpy as np
 import pytest
+from myosuite import make_env
 
 # By default, extended parity/backends live in Tier 2; individual tests can opt
 # into Tier 1 when needed (e.g. the CPU-only reward dict contract check).
@@ -71,17 +72,14 @@ def test_myo_leg_walk_cpu_rwd_dict_contract() -> None:
     expose the same rwd_dict shape as expected by benchmarks and by the
     CPU vs mjlab parity test. All component values must be finite.
     """
-    import gymnasium as gym
 
-    import myosuite
-
-    myosuite.register_all_envs()
+    import myosuite  # noqa: F401
 
     seed = 0
     num_steps = 10
     rng = np.random.default_rng(seed)
 
-    env = gym.make("myoLegWalk-v0", reset_type="init")
+    env = make_env("myoLegWalk-v0", reset_type="init")
     env.reset(seed=seed)
     act_dim = env.action_space.shape[0]
 
@@ -125,19 +123,17 @@ def test_myo_leg_walk_reward_parity_cpu_vs_mjlab() -> None:
     against the CPU ``dense`` reward.  This provides an explicit regression
     test that the mjlab reward pipeline matches the CPU WalkEnvV0 semantics.
     """
-    import gymnasium as gym
 
     import myosuite
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
 
-    myosuite.register_all_envs()
-    from myosuite.core.registry import make_env
+    from myosuite import make_env
 
     seed = 0
     num_steps = 5
     rng = np.random.default_rng(seed)
 
-    cpu_env = gym.make("myoLegWalk-v0", reset_type="init")
+    cpu_env = make_env("myoLegWalk-v0", reset_type="init")
     obs_cpu, _ = cpu_env.reset(seed=seed)
     del obs_cpu
     act_dim = cpu_env.action_space.shape[0]
@@ -238,8 +234,7 @@ def test_myo_leg_walk_reward_manager_matches_term_functions() -> None:
     import myosuite
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
 
-    myosuite.register_all_envs()
-    from myosuite.core.registry import make_env
+    from myosuite import make_env
 
     seed = 0
     num_steps = 5

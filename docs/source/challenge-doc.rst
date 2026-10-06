@@ -257,7 +257,7 @@ according to the equation:
 
 For participants that do not wish to use this normalization feature, it can be done during environment initialization with:
 
-:code:`env = gym.make(myoChallengeOslRunFixed-v0”, normalize_act=False)`
+:code:`env = make_env(myoChallengeOslRunFixed-v0”, normalize_act=False)`
 
 
 where in this case, the control range of the muscles are set between :math:`[0, 1]` without any normalization performed.
@@ -396,7 +396,7 @@ Testing environment
 To increase the accessibility of the task, two set of testing environment is provided for participants to familiarise themselves with the tasks.
 Please note that the variation parameters are subject to change in the actual evaluation environment.
 
-The two environments are :code:`myoChallengeOslRunRandom-v0` and :code:`myoChallengeOslRunFixed-v0` and can be accessed via :code:`env = gym.make(“myoChallengeOslRunRandom-v0”, normalize_act=False)`
+The two environments are :code:`myoChallengeOslRunRandom-v0` and :code:`myoChallengeOslRunFixed-v0` and can be accessed via :code:`env = make_env(“myoChallengeOslRunRandom-v0”, normalize_act=False)`
 
 The :code:`myoChallengeOslRunFixed-v0` environment is a simplified version of the :code:`myoChallengeOslRunRandom-v0` environment for participants to begin with, with a flat ground, but 100m track
 
@@ -407,7 +407,7 @@ The environment in evaluation will be similar to the :code:`myoChallengeOslRunRa
 Both environments can be customized for ML or non-ML usage. For participants using ML-based methods, the action space can be set to between [-1 to 1] for both training and your submission with the normalize_act
 argument during environment creation. For participants using non-ML based methods, setting normalize_act=False would provide you with the muscle action space to be between [0 to 1]
 
-During training, you can set this option with env = gym.make(env_name, normalize_act=True) for the action space [-1 to 1] and normalize_act=False for action space [0 to 1]
+During training, you can set this option with env = make_env(env_name, normalize_act=True) for the action space [-1 to 1] and normalize_act=False for action space [0 to 1]
 
 
 
@@ -452,10 +452,9 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
 
 .. code-block:: python
 
-   import gymnasium as gym
-   import myosuite
+   from myosuite import make_env
 
-   env = gym.make("myoChallengeBimanual-v0")
+   env = make_env("myoChallengeBimanual-v0")
    obs, info = env.reset()
    for _ in range(10):
        obs, reward, terminated, truncated, info = env.step(env.action_space.sample())

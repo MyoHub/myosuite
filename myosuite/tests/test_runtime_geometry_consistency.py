@@ -18,10 +18,9 @@ import mujoco
 import numpy as np
 import pytest
 
-import myosuite
-from myosuite.utils import gym
+import myosuite  # noqa: F401
+from myosuite import make_env
 
-myosuite.register_all_envs()
 
 pytestmark = pytest.mark.tier1
 
@@ -122,7 +121,7 @@ def _contacts(model: mujoco.MjModel, source: mujoco.MjData) -> list[tuple[int, .
 @pytest.mark.parametrize("seed", [0, 1, 2])
 @pytest.mark.parametrize("env_id", list(_EDITED_BODIES))
 def test_episode_geometry_matches_recompiled_model(env_id: str, seed: int) -> None:
-    env = gym.make(env_id).unwrapped
+    env = make_env(env_id).unwrapped
     env.reset()  # Bimanual skips the object rescale on its first reset.
     env.reset(seed=seed)
     body_ids = tuple(int(b) for b in _EDITED_BODIES[env_id](env))
@@ -138,7 +137,7 @@ def test_episode_geometry_matches_recompiled_model(env_id: str, seed: int) -> No
 @pytest.mark.parametrize("seed", [0, 3])
 def test_bimanual_first_reset_mass_draw_matches_recompiled_model(seed: int) -> None:
     """The first reset draws a new box mass but skips the rescale: inertia follows."""
-    env = gym.make("myoChallengeBimanual-v0").unwrapped
+    env = make_env("myoChallengeBimanual-v0").unwrapped
     env.reset(seed=seed)
     body_ids = (int(env.obj_bid),)
     _assert_derived_fields_match(env.model, _recompiled(env, body_ids), body_ids)
@@ -177,7 +176,7 @@ def test_bimanual_visual_mesh_follows_collision_box() -> None:
     the compiler's rule and rays hit it where they hit a standalone compile of
     the same world-space triangles.
     """
-    env = gym.make("myoChallengeBimanual-v0").unwrapped
+    env = make_env("myoChallengeBimanual-v0").unwrapped
     fresh = env._mj_spec.compile()
     vis, box = env.obj_gid - 1, env.obj_gid
     mesh = int(fresh.geom_dataid[vis])
@@ -227,7 +226,7 @@ def test_bimanual_visual_mesh_follows_collision_box() -> None:
 
 def test_bimanual_rescale_uploads_visual_mesh(monkeypatch: pytest.MonkeyPatch) -> None:
     """A rescaled visual box is pushed to an existing render context."""
-    env = gym.make("myoChallengeBimanual-v0").unwrapped
+    env = make_env("myoChallengeBimanual-v0").unwrapped
     uploads: list[tuple[object, int]] = []
     monkeypatch.setattr(
         mujoco, "mjr_uploadMesh", lambda model, con, mesh: uploads.append((con, mesh))

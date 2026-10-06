@@ -1,7 +1,7 @@
 Environment Reference
 ======================
 
-* **CPU** — ``gym.make(env_id)`` after ``import myosuite``. Playback and SB3.
+* **CPU** — ``make_env(env_id)`` after ``import myosuite``. Playback and SB3.
 * **mjlab** — the same ``env_id`` for GPU training (``scripts/train_mjlab.py``).
 
 List every CPU ID on your install::

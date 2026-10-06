@@ -27,6 +27,7 @@ from myosuite.terms.base_action import (
     sample_motor_noise,
     sigmoid_muscle_activation,
 )
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -106,7 +107,7 @@ _ELBOW = "myoElbowPose1D6MRandom-v0"
 
 
 def _noisy(env_id: str, noise: object, **kwargs: object) -> gym.Env:
-    return MotorNoiseWrapper(gym.make(env_id, **kwargs), noise)
+    return MotorNoiseWrapper(make_env(env_id, **kwargs), noise)
 
 
 def _excitations(env: gym.Env, action: np.ndarray, n: int) -> np.ndarray:
@@ -165,7 +166,7 @@ def test_cpu_seeded_noisy_rollouts_reproduce() -> None:
     """Same seed, same noise; another seed, other noise (this reset ignores the seed)."""
     kwargs = {"reset_type": "init"}  # fixed target, fixed initial pose
     env_id, noise = "myoElbowPose1D6MFixed-v0", MotorNoiseCfg.van_beers_2004()
-    clean = gym.make(env_id, **kwargs)
+    clean = make_env(env_id, **kwargs)
     np.testing.assert_array_equal(_rollout(clean, 3), _rollout(clean, 4))
     a = _noisy(env_id, noise, **kwargs)
     b = _noisy(env_id, noise, **kwargs)
@@ -179,7 +180,7 @@ def test_cpu_seeded_noisy_rollouts_reproduce() -> None:
 )
 def test_cpu_noise_off_by_default_and_leaves_rng_untouched(env_id: str) -> None:
     """No wrapper, or a disabled config, rolls out identically without drawing."""
-    ref_env = gym.make(env_id)
+    ref_env = make_env(env_id)
     assert "noise" not in ref_env.unwrapped.ctrl_stages
     ref = _rollout(ref_env, 0)
     for off in (None, {}, MotorNoiseCfg()):
@@ -224,11 +225,11 @@ def test_stage_order_does_not_depend_on_the_wrapping_order() -> None:
     """Noise, fatigue and reafferentation run in their fixed order, however wrapped."""
     cfg = {"constant_std": 0.05}
     a = ReafferentationWrapper(
-        FatigueWrapper(MotorNoiseWrapper(gym.make("myoHandPoseRandom-v0"), cfg))
+        FatigueWrapper(MotorNoiseWrapper(make_env("myoHandPoseRandom-v0"), cfg))
     )
     b = MotorNoiseWrapper(
         FatigueWrapper(
-            ReafferentationWrapper(gym.make("myoHandPoseRandom-v0")),
+            ReafferentationWrapper(make_env("myoHandPoseRandom-v0")),
         ),
         cfg,
     )
@@ -250,21 +251,21 @@ def test_a_stage_is_installed_once() -> None:
     with pytest.raises(ValueError, match="already installed"):
         MotorNoiseWrapper(env, {"constant_std": 0.1})
     with pytest.raises(ValueError, match="already installed"):
-        FatigueWrapper(gym.make("myoFatiElbowPose1D6MRandom-v0"))
+        FatigueWrapper(make_env("myoFatiElbowPose1D6MRandom-v0"))
 
 
 def test_sarcopenia_is_applied_once() -> None:
     from myosuite.envs.wrappers import SarcopeniaWrapper
 
-    healthy = gym.make(_ELBOW).unwrapped.model.actuator_gainprm[:, 2].copy()
-    env = SarcopeniaWrapper(gym.make(_ELBOW))
+    healthy = make_env(_ELBOW).unwrapped.model.actuator_gainprm[:, 2].copy()
+    env = SarcopeniaWrapper(make_env(_ELBOW))
     np.testing.assert_allclose(
         env.unwrapped.model.actuator_gainprm[:, 2], 0.5 * healthy
     )
     with pytest.raises(ValueError, match="already applied"):
         SarcopeniaWrapper(env)
     with pytest.raises(ValueError, match="already applied"):
-        SarcopeniaWrapper(gym.make("myoSarcElbowPose1D6MRandom-v0"))
+        SarcopeniaWrapper(make_env("myoSarcElbowPose1D6MRandom-v0"))
     np.testing.assert_allclose(
         env.unwrapped.model.actuator_gainprm[:, 2], 0.5 * healthy
     )
@@ -303,7 +304,7 @@ def test_wrapper_rejects_envs_without_stages() -> None:
 )
 def test_removed_constructor_kwargs_raise(env_id: str, kwarg: str) -> None:
     with pytest.raises(TypeError, match=f"no longer takes '{kwarg}'"):
-        gym.make(
+        make_env(
             env_id, **{kwarg: {"constant_std": 0.1} if kwarg == "motor_noise" else "x"}
         )
 
@@ -324,7 +325,7 @@ def test_registered_condition_wrappers_sit_on_envs_with_stages() -> None:
 
 def test_cpu_motor_actuators_are_not_noised() -> None:
     noisy = _noisy("motorFingerPoseFixed-v0", MotorNoiseCfg.van_beers_2004())
-    clean = gym.make("motorFingerPoseFixed-v0")
+    clean = make_env("motorFingerPoseFixed-v0")
     np.testing.assert_array_equal(_rollout(noisy, 0), _rollout(clean, 0))
 
 
@@ -334,7 +335,7 @@ def test_wrapped_env_survives_pickle_and_deepcopy() -> None:
     import pickle
 
     env = FatigueWrapper(
-        MotorNoiseWrapper(gym.make(_ELBOW), {"constant_std": 0.05}),
+        MotorNoiseWrapper(make_env(_ELBOW), {"constant_std": 0.05}),
         fatigue_reset_random=True,
     )
     for clone in (pickle.loads(pickle.dumps(env)), copy.deepcopy(env)):
@@ -373,7 +374,7 @@ def test_custom_stages_run_by_priority_between_the_built_in_ones() -> None:
     from myosuite.envs.wrappers import CtrlStageWrapper
 
     _CALLS.clear()
-    env = gym.make("myoFatiElbowPose1D6MRandom-v0")
+    env = make_env("myoFatiElbowPose1D6MRandom-v0")
     # wrapped in the "wrong" order on purpose
     for name, order in (("late", 50), ("early", 15), ("mid", 25)):
         env = CtrlStageWrapper(env, _record(name), name=name, order=order)
@@ -389,7 +390,7 @@ def test_custom_stage_changes_the_control_and_resets_with_the_env() -> None:
 
     _CALLS.clear()
     env = CtrlStageWrapper(
-        gym.make(_ELBOW), _cap, name="cap", order=25, reset=_count_resets
+        make_env(_ELBOW), _cap, name="cap", order=25, reset=_count_resets
     )
     env.reset(seed=0)
     env.step(np.ones(env.action_space.shape, np.float32))  # sigmoid(1) = 0.92
@@ -401,7 +402,7 @@ def test_custom_stage_changes_the_control_and_resets_with_the_env() -> None:
 def test_custom_stage_validation() -> None:
     from myosuite.envs.wrappers import CtrlStageWrapper
 
-    env = gym.make(_ELBOW)
+    env = make_env(_ELBOW)
     for bad in (10, 100, 5, 500):
         with pytest.raises(ValueError, match="between 10 and 100"):
             CtrlStageWrapper(env, _record("x"), name="x", order=bad)
@@ -419,7 +420,7 @@ def test_same_order_warns_prominently_and_runs_in_name_order() -> None:
     from myosuite.envs.wrappers import CtrlStageWrapper
 
     _CALLS.clear()
-    env = CtrlStageWrapper(gym.make(_ELBOW), _record("b"), name="b", order=25)
+    env = CtrlStageWrapper(make_env(_ELBOW), _record("b"), name="b", order=25)
     with pytest.warns(StageOrderWarning, match="STAGE ORDER CLASH.*'a', 'b'.*order 25"):
         env = CtrlStageWrapper(env, _record("a"), name="a", order=25)
     assert env.unwrapped.ctrl_stages == ("a", "b")
@@ -429,7 +430,7 @@ def test_same_order_warns_prominently_and_runs_in_name_order() -> None:
     # the clash with a built-in stage warns as well
     with pytest.warns(StageOrderWarning, match="noise"):
         MotorNoiseWrapper(
-            CtrlStageWrapper(gym.make(_ELBOW), _record("c"), name="c", order=20),
+            CtrlStageWrapper(make_env(_ELBOW), _record("c"), name="c", order=20),
             {"constant_std": 0.01},
         )
 
@@ -439,7 +440,7 @@ def test_custom_stage_survives_pickle() -> None:
 
     from myosuite.envs.wrappers import CtrlStageWrapper
 
-    env = CtrlStageWrapper(gym.make(_ELBOW), _cap, name="cap", order=25)
+    env = CtrlStageWrapper(make_env(_ELBOW), _cap, name="cap", order=25)
     clone = pickle.loads(pickle.dumps(env))
     assert clone.unwrapped.ctrl_stages == ("cap",)
     np.testing.assert_array_equal(_rollout(clone, 0), _rollout(env, 0))
@@ -454,7 +455,7 @@ def test_low_pass_stage_on_the_cpu_env() -> None:
     from myosuite.envs.muscle_stages import LowPassStage
     from myosuite.envs.wrappers import ExcitationStageWrapper
 
-    env = ExcitationStageWrapper(gym.make(_ELBOW), functools.partial(LowPassStage, 0.5))
+    env = ExcitationStageWrapper(make_env(_ELBOW), functools.partial(LowPassStage, 0.5))
     assert env.unwrapped.ctrl_stages == ("lowpass",)
     env.reset(seed=0)
     base, idx = env.unwrapped, env.unwrapped._muscle_act_ind
@@ -483,9 +484,9 @@ def test_excitation_stage_name_and_pickle() -> None:
 
     with pytest.raises(ValueError, match="built-in"):
         ExcitationStageWrapper(
-            gym.make(_ELBOW), functools.partial(LowPassStage, 0.5, "noise")
+            make_env(_ELBOW), functools.partial(LowPassStage, 0.5, "noise")
         )
-    env = ExcitationStageWrapper(gym.make(_ELBOW), functools.partial(LowPassStage, 0.5))
+    env = ExcitationStageWrapper(make_env(_ELBOW), functools.partial(LowPassStage, 0.5))
     clone = pickle.loads(pickle.dumps(env))
     assert clone.unwrapped.ctrl_stages == ("lowpass",)
     np.testing.assert_array_equal(_rollout(clone, 0), _rollout(env, 0))

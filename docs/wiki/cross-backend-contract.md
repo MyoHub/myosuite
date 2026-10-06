@@ -125,13 +125,14 @@ base id, or change the installed wrapper's options (`env.motor_noise`, `env.set_
 
 ### One call for every backend: `make_env(EnvConfig(...))`
 
-`make_env` is the entry point for building an env: `myosuite.core.registry.make_env` builds the same env on any
-backend from an `EnvConfig` (`myosuite.core.config`). `gym.make(env_id)` remains the CPU path underneath it (and what
-the tutorials use for a plain CPU env). The registration of the env id gives the defaults; the config overrides them:
+`make_env` is **the** way to build an env, in the docs, tutorials, scripts and tests: `from myosuite import make_env`
+(importing `myosuite` also registers every env id), then `make_env(env_id)` for a plain CPU env or
+`make_env(EnvConfig(...), backend=...)` for any backend. On the CPU it calls `gym.make` underneath, so `gym.make(env_id)`
+still works, but use `make_env` in new code. The registration of the env id gives the defaults; the config overrides them:
 
 ```python
 from myosuite.core.config import EnvConfig
-from myosuite.core.registry import make_env
+from myosuite import make_env
 from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper, wrapper_spec
 
 cfg = EnvConfig(
@@ -147,7 +148,7 @@ envs = make_env(cfg, backend="mjlab", num_envs=4096)         # GPU twin, same no
 | Field | CPU | mjlab |
 |---|---|---|
 | `features` (wrapper specs) | wrappers around `gym.make` | added to the CPU registration the twin is built from |
-| `max_episode_steps` | `gym.make(max_episode_steps=...)` | `episode_length_s` of the twin |
+| `max_episode_steps` | `make_env(max_episode_steps=...)` | `episode_length_s` of the twin |
 | `ctrl_dt` (the one timing knob) | `frame_skip = ctrl_dt / model timestep` | `decimation` (twin rebuilt with that `frame_skip`) |
 | `num_envs` | must be 1 | `scene.num_envs` |
 | `task_kwargs` | env constructor kwargs | raises (the twin reads the registration) |

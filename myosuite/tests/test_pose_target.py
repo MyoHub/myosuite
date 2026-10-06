@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 import myosuite  # noqa: F401
-from myosuite.utils import gym
+from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
@@ -32,7 +32,7 @@ def _assign_target(env) -> None:
     ids=["update_target", "_update_target", "assign"],
 )
 def test_reward_scores_the_observed_target(change_target: Callable) -> None:
-    env = gym.make("myoElbowPose1D6MRandom-v0")
+    env = make_env("myoElbowPose1D6MRandom-v0")
     u = env.unwrapped
     env.reset(seed=0)
     old_target = u.target_jnt_value.copy()

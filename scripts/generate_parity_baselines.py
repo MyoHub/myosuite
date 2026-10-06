@@ -35,9 +35,9 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 # Import myosuite at module level to trigger all env registrations
-import myosuite  # noqa: E402
+import myosuite  # noqa: E402, F401
+from myosuite import make_env  # noqa: E402
 
-myosuite.register_all_envs()
 
 BASELINE_DIR = Path(__file__).parent.parent / "myosuite" / "tests" / "parity_baselines"
 DEFAULT_N_STEPS = 200
@@ -82,13 +82,12 @@ def generate_baseline(
     Returns:
         True on success, False on failure.
     """
-    import gymnasium as gym
 
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / f"{env_id}.pkl"
 
     try:
-        env = gym.make(env_id)
+        env = make_env(env_id)
         # Seed the env's internal RNG with the fixed seed for reproducibility.
         # env.reset(seed=seed) does NOT propagate through to env.np_random in
         # the current codebase, so we set np_random.bit_generator.state directly

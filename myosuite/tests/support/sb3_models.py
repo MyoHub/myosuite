@@ -12,8 +12,8 @@ from typing import Any
 import numpy as np
 import pytest
 
-import myosuite
-from myosuite.utils import gym
+import myosuite  # noqa: F401
+from myosuite import make_env
 
 ENV_ID = "myoElbowPose1D6MRandom-v0"
 
@@ -32,9 +32,8 @@ def vec_normalized_model(algo_name: str, env_id: str = ENV_ID) -> tuple[Any, Any
     import torch
     from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
-    myosuite.register_all_envs()
     venv = VecNormalize(
-        DummyVecEnv([lambda: gym.make(env_id)]), norm_reward=False, clip_obs=3.0
+        DummyVecEnv([lambda: make_env(env_id)]), norm_reward=False, clip_obs=3.0
     )
     rng = np.random.default_rng(0)
     obs_dim = venv.observation_space.shape[0]
