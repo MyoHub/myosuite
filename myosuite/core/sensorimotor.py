@@ -35,7 +35,7 @@ import numpy as np
 class SensorimotorCfg:
     """Sensorimotor delay and observation noise of a task (default: off).
 
-    Attributes:
+    Args:
         obs_delay_steps: Control steps between computing an observation and the
             policy receiving it.
         action_delay_steps: Control steps between the policy issuing an action

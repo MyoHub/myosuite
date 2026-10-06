@@ -41,7 +41,7 @@ class DelayedObservationCfg(ObservationTermCfg):
 
     Use with ``func=DelayedObservation``; ``params`` are ``term_func``'s.
 
-    Attributes:
+    Args:
         term_func: The undelayed observation function.
         delay_steps: Delay in control steps.
     """
