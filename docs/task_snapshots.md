@@ -1,8 +1,7 @@
 # Task Snapshots
 
 Representative renders for the **MyoChallenge catalog** registered in this
-repo, plus the elbow / leg-walk / directional tasks from the recent locomotion
-effort. This is **not** the full 200+ env MyoSuite catalog — see
+repo, plus the elbow, leg-walk and directional tasks. This is **not** the full 200+ env MyoSuite catalog — see
 `myosuite/envs/myo/tasks/` for the complete registry.
 
 One image per task family. P1/P2/eval variants share a scene unless noted;
@@ -15,8 +14,9 @@ Images live in `docs/task_snapshots/`. All obs/action dims and muscle counts
 below were read directly off `make_env(env_id)` (`model.na` = muscle actuators,
 `model.nu` = total actuators including prosthetic / robotic ones).
 
-**mjlab GPU** is registered only for `myoChallengeTableTennisP{0,1,2}-v0`.
-Every other challenge ID below is CPU-only.
+Among the challenge IDs below, only `myoChallengeTableTennisP{0,1,2}-v0` has an mjlab
+(GPU) twin; the others are CPU-only. (`myoChallengeChaseTagFBP2-v0`, not snapshotted
+here, also has one.)
 
 ---
 
@@ -29,9 +29,7 @@ Every other challenge ID below is CPU-only.
   in `myosuite/envs/myo/tasks/basic/specs/elbow_pose_spec.py`). Purely a pose-tracking
   reward against the target joint angle shown as the sphere in the image.
 - **Dims**: obs `(9,)`, action `(6,)`, `na=6`, `nu=6`.
-- **Backends**: CPU (`ModularTaskEnv`, experimental route per repo convention) +
-  mjlab GPU registration in `register_mjlab_tasks.py`.
-- **Status**: stable reference task, not touched by this session's bug fixes.
+- **Backends**: CPU (`PoseEnvV0`) + mjlab GPU twin.
 
 ---
 
@@ -44,13 +42,7 @@ Every other challenge ID below is CPU-only.
   `walk_env_reward` term, dominated by `vel_reward` (weight 5.0) — forward CoM
   velocity tracking, with `solved` when `vel_reward >= 1.0`.
 - **Dims**: obs `(403,)`, action `(80,)`, `na=80`, `nu=80`.
-- **Backends**: CPU `MyoGymnasiumEnv` + mjlab GPU (`register_mjlab_tasks.py`).
-- **Status**: this session fixed a GPU reset bug (root literally spawning at the
-  world origin — same bug class as the directional envs, see `fe86695f`). **Known
-  open issue**: the render above still shows an unnamed gray pedestal/cylinder
-  geom (~1.05 m radius) under the character on both CPU and GPU — a separate,
-  still-open visual bug another agent is investigating in parallel; not fixed
-  as part of this doc pass.
+- **Backends**: CPU (`LegWalkEnvV0`) + mjlab GPU twin.
 
 ---
 
@@ -68,14 +60,7 @@ Every other challenge ID below is CPU-only.
     (`randomize_heading=True`); the obs includes `heading_cmd` so the policy must
     learn the command→direction mapping instead of memorizing one direction.
 - **Dims**: obs `(153,)`, action `(80,)`, `na=80`, `nu=80` (all three variants).
-- **Backends**: CPU (`ModularTaskEnv`) + mjlab GPU, registered per-variant in
-  `register_mjlab_tasks.py`.
-- **Status**: reset-pose bug (zero-qpos collapse on CPU, missing `InitialStateCfg`
-  application on GPU) fixed and committed this session. A 400-iteration GPU smoke
-  test on `myoLegDirectionalRandom-v0` confirmed clean convergence once
-  `episode_length_s` was bumped 5.0→20.0 to match `myoLegWalk-v0`'s horizon; a full
-  2h GPU run was in progress as of this writing. Same pedestal-geom visual artifact
-  as `myoLegWalk-v0` is visible in the render above (open, tracked separately).
+- **Backends**: CPU (`ModularTaskEnv`) + mjlab GPU twin, per variant.
 
 ---
 
@@ -134,7 +119,7 @@ Every other challenge ID below is CPU-only.
   - **P2**: joint-init noise, target/object pose ranges, geom size, mass,
     friction.
   - **P2eval**: wider ranges than P2 (eval split).
-- **Dims** (P1): obs `(156,)`, action `(63,)`, `na=63`, `nu=63`.
+- **Dims** (P1): obs `(157,)`, action `(63,)`, `na=63`, `nu=63`.
 - **Backends**: CPU only.
 
 ---
@@ -223,20 +208,7 @@ Every other challenge ID below is CPU-only.
     harder, more randomized variant.
 - **Dims**: obs `(417,)`, action `(275,)`, `na=273`, `nu=275` (all three P-variants
   identical in dimensionality; they differ only in the kwargs above).
-- **Backends**: CPU + mjlab GPU, all three P-variants registered in
-  `register_mjlab_tabletennis.py`.
-- **Status**: reset state now matches public `myoarm_tabletennis.xml` numerically
-  — paddle body pose, compiled geom transform and world mesh AABB all diff to
-  0.0 m / 0.00°, and the public keyframe arm pose already puts the handle inside
-  `S_grasp` (16 mm), so no reset-time snapping is needed or performed. The
-  earlier "paddle in the wrong place" was the **actor**: `pelvis_x`/`pelvis_y`
-  are slide joints on the calibrated root body, whose yaw differs from legacy's
-  `euler="0 0 3.14"`, so the keyframe's `pelvis_x=-0.4205` drove the skeleton
-  0.59 m sideways instead of forward and left the paddle out of reach. Also
-  fixed in the recipe: legacy `<inertial>` / zero-mass collision geoms (the ball
-  was 5 kg, the paddle 1.5 kg), the ground plane sunk to z=−0.4, and the 1280×1080
-  offscreen buffer. Snapshot is the **reset frame** — zero-action steps drop the
-  un-welded paddle out of the relaxed hand, in the public env too.
+- **Backends**: CPU + mjlab GPU twin, all three P-variants.
 
 ---
 
@@ -281,25 +253,7 @@ Every other challenge ID below is CPU-only.
   distance and landing a tag (`ko_health_threshold` damage), the runner for
   evading (`myosuite/terms/multiplayer/chase_tag_vs_reward.py`).
 - **Dims** (per agent, `Dict` obs/action space): obs `(546,)`, action `(354,)`.
-- **Backends**: **CPU only** — no mjlab GPU registration was found for either
-  env_id.
-- **Status**: reset-pose bug (`ModularMultiAgentTaskEnv`'s `mj_resetData()` zeroing
-  qpos with no keyframe fallback) fixed and committed this session.
-  **Overlapping-spawn bug fixed**: both agents previously spawned at identical
-  qpos (`a0_root`/`a1_root` at the same world position), because
-  `two_agent_standing_qpos()` copied each agent's own single-agent standing
-  keyframe verbatim — and free-joint qpos is an *absolute* world pose, so the
-  per-agent `<frame>` translation/rotation `build_combined_spec` applies at
-  the MJCF level had no effect once qpos overrode it. Fixed by threading a
-  per-agent root offset (`default_root_offsets`, matching
-  `build_combined_spec`'s existing placement convention: agent 0 at
-  `[0, +separation_m/2, 0]`, agent 1 at `[0, -separation_m/2, 0]` rotated 180°
-  about Z) through `two_agent_standing_qpos()`. The render above reflects the
-  fix: the two agents are now separated by `config.agent_separation_m` (2 m)
-  and facing each other.
-  Separately, the tutorial `tutorials/5.4_MuscleMimic_Directional_Locomotion.ipynb`
-  documents a "single shared policy" data-collection pipeline for this task that
-  has **no working checkpoint** — its data-collection cell is currently a stub.
+- **Backends**: CPU only (no mjlab twin).
 
 ---
 
