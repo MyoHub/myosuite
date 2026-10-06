@@ -579,6 +579,43 @@ class TestClipTrajectorySourceBasics:
             np.testing.assert_array_equal(got.numpy(), expected.astype(np.float32))
         assert torch.equal(reset_qpos, qpos[env_ids])
 
+    def test_multi_clip_reads_never_cross_into_a_neighbouring_clip(self) -> None:
+        """Past a clip's end, and for wrapped lookahead frames, the bank stays in-clip.
+
+        The clips share one concatenated tensor, so the row of an out-of-range
+        frame would belong to the next clip. Sweep every clip and start offset
+        beyond the end and compare with the per-clip arrays.
+        """
+        src = _make_multi_clip_source()
+        src.update(torch.zeros(_N, dtype=torch.long))
+        lengths = [len(c.site_xpos) for c in src.clips]
+        for clip_idx in (0, 1):
+            for offset in range(lengths[clip_idx]):
+                src._clip_indices = torch.full((_N,), clip_idx, dtype=torch.long)
+                src._start_offsets = torch.full((_N,), offset, dtype=torch.long)
+                clip = src.clips[clip_idx]
+                for k in range(2 * max(lengths)):
+                    step = _steps(k)
+                    frame = min(offset + k, lengths[clip_idx] - 1)
+                    assert src.frame_indices(step).tolist() == [frame] * _N
+                    assert (
+                        src.clip_end(step).tolist()
+                        == [offset + k >= lengths[clip_idx]] * _N
+                    )
+                    for name, got in (
+                        ("site_xpos", src.site_targets(step)),
+                        ("qpos", src.ref_qpos(step)),
+                        ("qvel", src.ref_qvel(step)),
+                    ):
+                        expected = np.asarray(getattr(clip, name)[frame], np.float32)
+                        np.testing.assert_array_equal(got[0].numpy(), expected)
+                    # Lookahead wraps inside the clip (modulo its own length).
+                    ahead = (src.frame_indices(step) + 3) % src.clip_lengths(step)
+                    np.testing.assert_array_equal(
+                        src.site_targets_at_frames(ahead)[0].numpy(),
+                        np.asarray(clip.site_xpos[int(ahead[0])], np.float32),
+                    )
+
 
 # ---------------------------------------------------------------------------
 # TestClipTrajectorySourceAdvance
