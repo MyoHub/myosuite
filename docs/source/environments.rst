@@ -144,7 +144,7 @@ Each base environment also exposes ``myoSarc…`` and ``myoFati…`` variants
 (12 total IDs for this model).
 
 
-myoElbow  (2 DoF, 6 muscles)
+myoElbow  (1 DoF, 6 muscles)
 ------------------------------
 
 .. list-table::
@@ -346,8 +346,8 @@ The arm model used here is the hand-free variant (extrinsic + intrinsic hand
 muscles removed) to isolate reaching without manipulation.
 
 
-myoLeg  (10 joints, 20 DoF, 80 muscles)
-------------------------------------------
+myoLeg  (14 joints plus the 6-DoF free root = 20 DoF, 80 muscles)
+-----------------------------------------------------------------
 
 .. list-table::
    :header-rows: 1

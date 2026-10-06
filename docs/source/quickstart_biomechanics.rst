@@ -99,8 +99,9 @@ Extracting Kinematics
 Extracting Muscle Forces
 -------------------------
 
-``data.actuator_force`` contains the net force/torque each actuator exerts
-(muscle force projected through moment arms, in N or N·m):
+``data.actuator_force`` is the force of each actuator in N. MuJoCo reports a muscle's tension with a
+negative sign, so the peak force of a muscle is the most negative value. The resulting joint torques
+are in ``data.qfrc_actuator``:
 
 .. code-block:: python
 
@@ -121,7 +122,7 @@ Extracting Muscle Forces
    model = env.unwrapped.model
    print("Peak muscle forces (N):")
    for i in range(model.nu):
-       print(f"  {model.actuator(i).name:30s}  {forces[:, i].max():.1f}")
+       print(f"  {model.actuator(i).name:30s}  {-forces[:, i].min():.1f}")
 
    env.close()
 
@@ -175,9 +176,12 @@ The high-level steps are:
 Body Centre of Mass and Ground Reaction Forces
 -----------------------------------------------
 
+Continuing with the ``model`` and ``data`` of the forward simulation above:
+
 .. code-block:: python
 
    import mujoco
+   import numpy as np
 
    mujoco.mj_forward(model, data)
 
@@ -208,7 +212,7 @@ Available Musculoskeletal Models
      - 5–6
      - ``myoFingerPoseRandom-v0``
    * - myoElbow
-     - 2
+     - 1
      - 6
      - ``myoElbowPose1D6MRandom-v0``
    * - myoHand
@@ -223,7 +227,7 @@ Available Musculoskeletal Models
      - 27
      - 63
      - ``myoArmReachRandom-v0``
-   * - myoLeg
+   * - myoLeg (14 joints plus the 6-DoF free root)
      - 20
      - 80
      - ``myoLegWalk-v0``
