@@ -327,11 +327,14 @@ so the constant term also acts as a tonic drive on idle muscles.
 
 The levels are a starting point, not a calibration. They were estimated for human arm
 movements and are applied here to every muscle's excitation once per control step (20 ms in
-most envs). In an open-loop elbow flexion (0.1 s agonist pulse), signal-dependent noise alone
-gives an endpoint SD of about 2.5 % of the movement extent until the joint nears its range
-limit, while the
-constant term at 0.185 adds several centimetres of endpoint spread. Calibrate the levels against
-human variability for your model and control rate.
+most envs). As an example, take an open-loop elbow flexion on ``myoElbowPose1D6MRandom-v0``:
+a 0.1 s pulse on the three flexors (excitation 0.1 to 0.6) from 0.05 rad, then all muscles idle,
+and the peak flexion angle over 0.6 s as the endpoint (400 trials per level, forearm length
+0.27 m). Signal-dependent noise alone (0.103) gives an endpoint SD of 1 to 2 % of the movement
+extent (0.2 to 0.8 cm), and almost none once the joint reaches its range limit. The constant term
+alone (0.185) gives an endpoint SD of 3 to 7.5 cm, because it also drives the idle antagonists.
+With both terms the spread is that of the constant term. Calibrate the levels against human
+variability for your model and control rate.
 
 References:
 
