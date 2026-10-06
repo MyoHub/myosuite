@@ -1,7 +1,7 @@
 """Script to train RL agent with RSL-RL.
 
 Muscle-command features (the ``EnvConfig.features`` of ``make_env``) are added with
-``--feature NAME[=JSON]``, repeatable, before the other flags::
+``--feature NAME[=JSON]`` (repeatable, anywhere after the task id)::
 
     python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --env.scene.num-envs 1024 \
         --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'

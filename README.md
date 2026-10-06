@@ -112,7 +112,7 @@ python scripts/train_sb3.py myoElbowPose1D6MRandom-v0 --timesteps 500000
 Train on GPU (same `env_id`, mjlab / RSL-RL):
 
 ```bash
-python scripts/train_mjlab.py myoElbowPose1D6MFixed-v0 --env.scene.num-envs 1024
+python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --env.scene.num-envs 1024
 ```
 
 No step count is needed: it runs the task's default number of PPO iterations (`--agent.max-iterations`, 1000 unless the task sets another) and stops early once the deterministic policy reaches 95% success (`--stop-on-success False` turns that off).
@@ -137,7 +137,7 @@ env_cpu = make_env(cfg)                               # CPU with noise and fatig
 env_gpu = make_env(cfg, backend="mjlab", num_envs=1024)  # the same on the GPU
 ```
 
-Muscle-condition variants of an env are separate ids with a prefix: `myoSarcElbowPose1D6MRandom-v0` (sarcopenia), `myoFatiElbowPose1D6MFixed-v0` (fatigue), `myoReafHandPoseRandom-v0` (reafferentation). Each is the base env registered with the matching wrapper; to use these features (noise, fatigue, ...) on any env, or to register your own variant, see the [neuroscience guide](docs/source/quickstart_neuroscience.rst) (examples) and the [cross-backend contract](docs/wiki/cross-backend-contract.md#muscle-command-features-wrappers) (how features are registered and which envs and backends support them).
+Muscle-condition variants of an env are separate ids with a prefix: `myoSarcElbowPose1D6MRandom-v0` (sarcopenia), `myoFatiElbowPose1D6MRandom-v0` (fatigue), `myoReafHandPoseRandom-v0` (reafferentation). Each is the base env registered with the matching wrapper; to use these features (noise, fatigue, ...) on any env, or to register your own variant, see the [neuroscience guide](docs/source/quickstart_neuroscience.rst) (examples) and the [cross-backend contract](docs/wiki/cross-backend-contract.md#muscle-command-features-wrappers) (how features are registered and which envs and backends support them).
 
 
 
@@ -145,7 +145,7 @@ Muscle-condition variants of an env are separate ids with a prefix: `myoSarcElbo
 
 | Body      | Example IDs                                                     |
 | --------- | --------------------------------------------------------------- |
-| Elbow     | `myoElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MFixed-v0` |
+| Elbow     | `myoElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MRandom-v0` |
 | Finger    | `myoFingerPoseRandom-v0`, `myoFingerReachRandom-v0`         |
 | Hand      | `myoHandPoseRandom-v0`, `myoChallengeBaodingP2-v1`          |
 | Arm       | `myoArmReachRandom-v0`                                        |
