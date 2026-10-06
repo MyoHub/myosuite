@@ -62,4 +62,4 @@ def test_pose_tracking_reward(mock_cpu_accessor, mock_obs_dict):
 ```
 
 Add a CPU parity test in `test_parity.py` (default `atol=1e-6`). For a GPU
-task, also honour `cross-backend-contract.md` so the mjlab half stays in lockstep.
+task, also honour [cross-backend-contract.md](cross-backend-contract.md) so the mjlab half stays in lockstep.

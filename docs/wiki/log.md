@@ -8,7 +8,7 @@ don't get an entry here.
 
 - Created initial wiki structure (`index`, repository map, standards, workflow, log).
 - Established persistent wiki conventions for LLM-agent navigation and maintenance.
-- Linked wiki usage to agent operating instructions in `CLAUDE.md`.
+- Linked wiki usage to agent operating instructions in [CLAUDE.md](../../CLAUDE.md).
 
 ## [2026-04-30] refactor | full repository reorganization executed (branch: refactor/repo-reorganization)
 
@@ -28,13 +28,13 @@ don't get an entry here.
 - Defined `myosuite/terms/` organized by motor control domain (locomotion, posture, manipulation, reach, combat/).
 - Defined `myosuite/viz/` consolidating renderer/ and scattered viz helpers.
 - Established the core invariant: tasks/ = what, terms/ = how, TaskSpec = join, backend orthogonal.
-- Updated `repository-map.md` and `engineering-standards.md` to reflect the new structure.
+- Updated [repository-map.md](repository-map.md) and [engineering-standards.md](engineering-standards.md) to reflect the new structure.
 - Reorganization plan written to `tasks/reorganization_plan.md`.
 
 ## [2026-04-30] maintenance | moved wiki under docs
 
 - Relocated wiki files from `wiki/` to `docs/wiki/` to keep the repository root cleaner.
-- Updated `CLAUDE.md` mandatory wiki references to point to `docs/wiki/*`.
+- Updated [CLAUDE.md](../../CLAUDE.md) mandatory wiki references to point to `docs/wiki/*`.
 - Updated internal wiki links and workflow instructions to use `docs/wiki/*`.
 
 ## [2026-10-01] breaking | CPU observation contract (branch: fix/observation-contract)
@@ -47,7 +47,7 @@ don't get an entry here.
   twins run `mdp.sync_forward` before rewards/terminations; the CPU-staleness emulation is gone. State
   trajectories are bit-identical except OslRun (its OSL controller reads a load sensor).
 - Why: clipped and stale inputs were silently corrupting training signals; policies trained on them may need
-  retraining. Convention documented in `cross-backend-contract.md` (invariant 1).
+  retraining. Convention documented in [cross-backend-contract.md](cross-backend-contract.md) (invariant 1).
 
 ## [2026-10-02] breaking | MuscleMimic bridge and SAR activation collector (branch: fix/musclemimic-bridge-and-collector)
 

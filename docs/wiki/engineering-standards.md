@@ -1,6 +1,6 @@
 # Engineering Standards
 
-> **Source of truth priority:** code and tests → `CLAUDE.md` → this wiki.
+> **Source of truth priority:** code and tests → [CLAUDE.md](../../CLAUDE.md) → this wiki.
 > If this page disagrees with the code, the code wins — please fix this page.
 
 ## Design Principles
@@ -13,7 +13,7 @@
 
 Before any new class, function, or wrapper:
 1. `grep -r "keyword" myosuite/` — confirm it does not already exist.
-2. Check `library-usage.md` — confirm no library already provides it.
+2. Check [library-usage.md](library-usage.md) — confirm no library already provides it.
 3. If ≥ 80% similar to something existing, extend or import it.
 
 | Kind of code | Canonical location |
@@ -49,7 +49,7 @@ The two share one `env_id` (e.g. `myoLegWalk-v0` is a `MyoGymnasiumEnv` on CPU
 **and** a MuJoCo-Warp task on mjlab) and must satisfy the **cross-backend
 contract** — identical observation order/scaling, action mapping, and control
 timing — so a policy **trained on GPU (mjlab)** runs unchanged when you **play it
-back or fine-tune on CPU**. See `cross-backend-contract.md`; parity is enforced
+back or fine-tune on CPU**. See [cross-backend-contract.md](cross-backend-contract.md); parity is enforced
 by `test_parity.py` (CPU) and the mjlab parity tests.
 
 > Rule of thumb: build the CPU env first, then add the matched mjlab GPU config
@@ -98,8 +98,8 @@ The matched GPU implementation is a mjlab (MuJoCo-Warp) `ManagerBasedRlEnvCfg`
 plus a PPO runner config, registered under the **same `env_id`** via
 `register_mjlab_task(...)` in `envs/myo/backends/mjlab/register_mjlab_*.py`
 (e.g. `tasks/leg/walk_env_cfg.py` + `leg_walk_ppo_runner_cfg` for `myoLegWalk-v0`). Train
-it with `scripts/train_mjlab.py`. Read `mjlab-design-guide.md` and
-`cross-backend-contract.md` before writing one.
+it with `scripts/train_mjlab.py`. Read [mjlab-design-guide.md](mjlab-design-guide.md) and
+[cross-backend-contract.md](cross-backend-contract.md) before writing one.
 
 The observation manager exposes a single flat `policy` group; the runner config
 must map the actor/critic obs sets to it
@@ -120,7 +120,7 @@ MuJoCo-Warp constraint buffers (`njmax`/`nconmax`) for the task's contact load.
 - `step()` returns the 5-tuple `(obs, rwd, terminated, truncated, info)`.
   (`ModularMultiAgentTaskEnv` returns 5-tuples of per-agent dicts — intentional.)
 - Term functions are pure and backend-agnostic: use `accessor.array_module()`,
-  never import `numpy`/`jax.numpy`/`torch` directly. See `writing-term-functions.md`.
+  never import `numpy`/`jax.numpy`/`torch` directly. See [writing-term-functions.md](writing-term-functions.md).
 - Assets via `myo_sim.get_path(...)` / `ModelBuilder` — no hardcoded paths.
 - Read env attributes (`model`, `data`, `muscle_fatigue`, ...) in library code, scripts and tutorials through
   `env.unwrapped.<attr>`. The short form `env.<attr>` works only on an env straight from `make_env` or behind
@@ -180,19 +180,19 @@ parity is mostly a matter of using the same terms on both sides.
 5. Muscle noise, fatigue, reafferentation and sarcopenia are **wrappers**, not env
    kwargs. To let the env take them, run the stages in its action path
    (`MuscleActionMixin` / `CtrlStageHost`: `_run_ctrl_stages` before writing `ctrl`,
-   `_run_reset_stages` in `reset`); see `cross-backend-contract.md`.
+   `_run_reset_stages` in `reset`); see [cross-backend-contract.md](cross-backend-contract.md).
 
 **2. Matched mjlab GPU config (when you need parallel training):**
 6. Add a `ManagerBasedRlEnvCfg` + PPO runner config in
    `backends/mjlab/register_mjlab_*.py` under the **same `env_id`** (set
    `obs_groups` and `njmax`/`nconmax` — see the GPU section above).
-7. Honour `cross-backend-contract.md` (obs order/scale, action mapping,
+7. Honour [cross-backend-contract.md](cross-backend-contract.md) (obs order/scale, action mapping,
    `ctrl_dt`) and add a CPU↔mjlab parity test so the two cannot drift. To make the
    twin take features, build its config from the CPU registration
    (`cpu_reference.cpu_task_spec`, `register_cpu_twins`).
 
 The experimental data-driven `TaskConfig` route (CPU + MJX from one spec) is
-walked through in `adding-a-new-task.md`.
+walked through in [adding-a-new-task.md](adding-a-new-task.md).
 
 ## Parity Policy
 

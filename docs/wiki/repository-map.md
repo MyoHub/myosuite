@@ -1,6 +1,6 @@
 # Repository Map
 
-> **Source of truth priority:** code and tests → `CLAUDE.md` → this wiki.
+> **Source of truth priority:** code and tests → [CLAUDE.md](../../CLAUDE.md) → this wiki.
 
 ## Top-Level
 
@@ -48,7 +48,7 @@ envs/myo/backends/       # GPU implementations (same env_id as the CPU task)
 
 A task's **CPU** env (`tasks/`) and its supported **GPU** implementation
 (`backends/mjlab/`) share one `env_id` and the cross-backend contract — see
-`engineering-standards.md`. Tasks hand-write the CPU `MyoGymnasiumEnv` and the
+[engineering-standards.md](engineering-standards.md). Tasks hand-write the CPU `MyoGymnasiumEnv` and the
 mjlab config separately. (An experimental `TaskConfig` route can instead generate
 a data-driven CPU env plus an MJX backend from one dataclass — elbow reference
 only; MJX is not guaranteed long-term.)
@@ -63,7 +63,7 @@ only; MJX is not guaranteed long-term.)
 | Add/change biomechanics math | `myosuite/physics/` |
 | Add a CPU env (MyoGymnasiumEnv) | `envs/myo/tasks/basic/<effector>/` or `challenge/` |
 | Add the matched mjlab GPU task | `envs/myo/backends/mjlab/register_mjlab_*.py` |
-| Data-driven `TaskConfig` route (experimental) | `envs/myo/tasks/basic/specs/` + `adding-a-new-task.md` |
+| Data-driven `TaskConfig` route (experimental) | `envs/myo/tasks/basic/specs/` + [adding-a-new-task.md](adding-a-new-task.md) |
 | Change the CPU step/reset loop | `myosuite/envs/gymnasium_env.py` |
 
 ## Naming Conventions

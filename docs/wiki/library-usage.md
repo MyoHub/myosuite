@@ -23,7 +23,7 @@ Use the library version. Writing a custom re-implementation of a library feature
 | Per-env task state | `ManagerTermBase` instance attribute + `reset(env_ids)` | Module-level dict keyed by `id(env)` |
 | Resolve env_ids (mjlab≥1.4) | `from mjlab.envs.mdp.events import resolve_env_ids` | Local `_normalize_env_ids` helper |
 
-See `docs/wiki/mjlab-design-guide.md` for the full pattern reference.
+See [docs/wiki/mjlab-design-guide.md](mjlab-design-guide.md) for the full pattern reference.
 
 ---
 

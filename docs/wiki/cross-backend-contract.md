@@ -9,7 +9,7 @@ obvious error.
 
 The **MJX** (JAX) backend is experimental and may not be maintained. Its envs differ in observation order, reward
 weights, thresholds and reset distributions, so MJX-trained policies are not portable. Do not build new work on it
-(limitations: `myosuite/envs/myo/backends/mjx/README.md`).
+(limitations: [myosuite/envs/myo/backends/mjx/README.md](../../myosuite/envs/myo/backends/mjx/README.md)).
 
 ---
 
