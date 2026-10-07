@@ -338,7 +338,7 @@ State Machine
 A simple 4-state state machine is created to track the gait phase of the prosthetic leg. Each state contains the gain parameters
 for an impedance controller, which in turn, provides the required torques to the prosthetic actuators. The code for the state machine
 is released together with MyoChallenge. Interested participants are invited to examine the code at
-`myoosl_control <https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/assets/leg/myoosl_control.py>`__
+`myoosl_control <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/assets/leg/myoosl_control.py>`__
 
 
 Default parameters of the impedance controller are taken from `finite_state_machine <https://opensourceleg.readthedocs.io/en/latest/examples/finite_state_machine.html>`__

@@ -62,7 +62,8 @@ class EvalConfig:
     """Task id (shared by the CPU env and its mjlab twin)."""
     checkpoint: Path | None = None
     """``model_*.pt`` file, or a run directory (latest checkpoint is used). Default: the
-    newest local ``logs/rsl_rl/...`` run, else a local ``baselines/checkpoints/<env_id>``,
+    newest local ``logs/rsl_rl/...`` run (in the working directory or its parents up to the
+    checkout), else a local ``baselines/checkpoints/<env_id>``,
     else the env's default policy downloaded from the Hugging Face baselines repo (see
     ``myosuite.utils.checkpoint_utils.find_checkpoint``)."""
     backend: Literal["cpu", "mjlab"] = "cpu"
@@ -136,7 +137,7 @@ def _resolve_checkpoint(env_id: str, path: Path | None) -> Path:
     if path is None:
         from myosuite.utils.checkpoint_utils import find_checkpoint  # noqa: PLC0415
 
-        found = find_checkpoint(env_id, roots=(Path.cwd(),))
+        found = find_checkpoint(env_id)
         if found is None:
             raise SystemExit(
                 f"No checkpoint for {env_id!r}: no local run, no local baseline, and no "
@@ -741,7 +742,8 @@ def _mjlab_velocity_fn(env):
     Read from the parameters of the env's success metric (the walking tasks' solved
     criterion is a velocity match).
     """
-    term = env.metrics_manager.cfg.get("success")
+    metrics = env.metrics_manager.cfg
+    term = metrics.get("success") if metrics else None
     if term is None:
         return None
     params = {

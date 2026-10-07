@@ -272,20 +272,31 @@ except ImportError:
             )
 
 
+def _actor_obs_groups(actor: torch.nn.Module) -> list[str]:
+    """Observation groups the actor reads: 1D groups, then the image groups of CNN models.
+
+    ``["actor"]`` for legacy models without ``obs_groups``.
+    """
+    groups = list(getattr(actor, "obs_groups", None) or []) + list(
+        getattr(actor, "obs_groups_2d", None) or []
+    )
+    return groups or ["actor"]
+
+
 class _ActorExportWrapper(torch.nn.Module):
-    """Wrap mjlab's Gaussian actor to export a deterministic mean-action ONNX."""
+    """Wrap mjlab's Gaussian actor to export a deterministic mean-action ONNX.
+
+    One ONNX input per observation group, in the actor's ``obs_groups`` order, so actors that read
+    several groups (e.g. proprioception plus camera images) export too.
+    """
 
     def __init__(self, actor: torch.nn.Module) -> None:
         super().__init__()
         self.actor = actor
+        self.groups = _actor_obs_groups(actor)
 
-    def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        # Use the model's own obs_groups so the dummy TensorDict has the right key.
-        # For models with a single group (the common case) this resolves to that
-        # group name (e.g. "proprioception"); fall back to "actor" for legacy models.
-        obs_groups = getattr(self.actor, "obs_groups", None)
-        key = obs_groups[0] if obs_groups and len(obs_groups) == 1 else "actor"
-        obs_td = TensorDict({key: obs}, batch_size=[obs.shape[0]])
+    def forward(self, *obs: torch.Tensor) -> torch.Tensor:
+        obs_td = TensorDict(dict(zip(self.groups, obs)), batch_size=[obs[0].shape[0]])
         return self.actor(obs_td)
 
 
@@ -320,16 +331,32 @@ class OnnxCheckpointingMjlabRunner(MjlabOnPolicyRunner):
         was_training = self.alg.actor.training
         self.alg.actor.eval()
         try:
-            dummy_obs = torch.zeros(
-                1, self._obs_dim, dtype=torch.float32, device=actor_device
-            )
+            if len(wrapper.groups) == 1:
+                # Single group: a flat (batch, obs_dim) input named "obs", as ONNX consumers expect.
+                example = (
+                    torch.zeros(
+                        1, self._obs_dim, dtype=torch.float32, device=actor_device
+                    ),
+                )
+                input_names = ["obs"]
+            else:
+                # Several groups (e.g. vision): example shapes from the env's own observations.
+                current = self.env.get_observations()
+                example = tuple(
+                    torch.zeros_like(
+                        current[g][:1], dtype=torch.float32, device=actor_device
+                    )
+                    for g in wrapper.groups
+                )
+                input_names = list(wrapper.groups)
+            dynamic_axes = {name: {0: "batch"} for name in [*input_names, "action"]}
             torch.onnx.export(
                 wrapper,
-                dummy_obs,
+                example,
                 str(output_path),
-                input_names=["obs"],
+                input_names=input_names,
                 output_names=["action"],
-                dynamic_axes={"obs": {0: "batch"}, "action": {0: "batch"}},
+                dynamic_axes=dynamic_axes,
                 opset_version=17,
                 do_constant_folding=True,
                 dynamo=False,

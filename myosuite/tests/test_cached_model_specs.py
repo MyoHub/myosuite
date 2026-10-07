@@ -16,6 +16,7 @@ import myosuite  # noqa: F401  (registers the envs)
 from myosuite.core import model_recipes
 from myosuite.core.muscle_conditions import _peak_force
 from myosuite.integrations.musclemimic import fullbody_model
+from myosuite.tests.support.model_compare import assert_same_model
 from myosuite.utils import gym
 from myosuite import make_env
 
@@ -38,29 +39,6 @@ def _count_calls(monkeypatch: pytest.MonkeyPatch, module: object, name: str) -> 
     return calls
 
 
-def _arrays(model: mujoco.MjModel) -> dict[str, np.ndarray]:
-    """Every numpy array attribute of *model*."""
-    names = (name for name in dir(model) if not name.startswith("_"))
-    values = {name: getattr(model, name) for name in names}
-    return {k: v for k, v in values.items() if isinstance(v, np.ndarray)}
-
-
-def _assert_same_model(a: mujoco.MjModel, b: mujoco.MjModel) -> None:
-    """Every array attribute and every ``opt``/``stat`` field is identical."""
-    arrays_a, arrays_b = _arrays(a), _arrays(b)
-    assert arrays_a.keys() == arrays_b.keys()
-    for name, value in arrays_a.items():
-        np.testing.assert_array_equal(value, arrays_b[name], err_msg=name)
-    for struct in ("opt", "stat"):
-        for name in dir(getattr(a, struct)):
-            if not name.startswith("_"):
-                np.testing.assert_array_equal(
-                    getattr(getattr(a, struct), name),
-                    getattr(getattr(b, struct), name),
-                    err_msg=f"{struct}.{name}",
-                )
-
-
 def _make_model(env_id: str) -> tuple[gym.Env, mujoco.MjModel]:
     env = make_env(env_id)
     return env, env.unwrapped.model
@@ -78,7 +56,7 @@ def test_tabletennis_builds_the_recipe_twice_for_three_makes(monkeypatch):
     assert len(calls) == 2
     assert models[2] is not models[1]
     for model in models[1:]:
-        _assert_same_model(models[0], model)
+        assert_same_model(models[0], model)
     for env in envs:
         env.close()
 
@@ -104,7 +82,7 @@ def test_chasetag_fb_loads_the_fullbody_once_for_two_makes(monkeypatch):
     env_a, model_a = _make_model(CHASETAG_FB)
     env_b, model_b = _make_model(CHASETAG_FB)
     assert len(calls) == 1
-    _assert_same_model(model_a, model_b)
+    assert_same_model(model_a, model_b)
     env_a.close()
     env_b.close()
 
@@ -125,7 +103,7 @@ def test_cached_makes_share_no_model_or_spec_state(env_id: str) -> None:
     clear_spec_caches()
     env_fresh, model_fresh = _make_model(env_id)
 
-    _assert_same_model(model_b, model_fresh)
+    assert_same_model(model_b, model_fresh)
     assert not np.shares_memory(model_b.geom_size, model_a.geom_size)
     spec_b = env_b.unwrapped._mj_spec
     assert spec_b is not spec_a
@@ -146,7 +124,7 @@ def test_muscle_condition_variant_does_not_reach_the_cached_spec() -> None:
         model_sarc.actuator_gainprm[:, 2], 0.5 * _peak_force(model_base)
     )
     env_again, model_again = _make_model(TT_P0)
-    _assert_same_model(model_base, model_again)
+    assert_same_model(model_base, model_again)
     for env in (env_sarc, env_base, env_again):
         env.close()
 

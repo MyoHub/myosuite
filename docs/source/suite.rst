@@ -42,7 +42,7 @@ which is actuated through a series of 5 simplified antagonistic muscle-tendon un
 We also provide its robotic counterpart with simple torque actuators
 to facilitate the comparative investigation.
 
-Details of this model can be found at `myoFinger <https://github.com/MyoHub/myo_sim/tree/main/finger>`__
+Details of this model can be found at `myoFinger <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/legacy/finger>`__
 
 
 .. image:: images/myoFinger.png
@@ -67,7 +67,7 @@ myoElbow
 A model of 2 DoF human elbow joint -- based on OpenSim’s default testing arm model (`Delp et al. (2007) <https://doi.org/10.1109/TBME.2007.901024>`__; `Seth et al. (2018) <https://doi.org/10.1371/journal.pcbi.1006223>`__)
 -- and actuated using multiple agonist/antagonist pairs (3 flexors and 3 extensors).
 
-Details of this model can be found at `myoElbow <https://github.com/MyoHub/myo_sim/tree/main/elbow>`__
+Details of this model can be found at `myoElbow <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/legacy/elbow>`__
 
 .. image:: images/myoElbow.png
   :height: 200
@@ -90,7 +90,7 @@ myoHand
 The dexterous human hand requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
 This musculoskeletal model is comprised of 29 bones, 23 joints, and 39 muscles-tendon units.
 
-Details of this model can be found at `myoHand <https://github.com/MyoHub/myo_sim/tree/main/hand>`__
+Details of this model can be found at `myoHand <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/arm>`__
 
 .. image:: images/myoHand.png
   :height: 200
@@ -129,11 +129,11 @@ myoLeg
 The 3D dexterous human leg requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
 
 This musculoskeletal model is comprised of 10 joints, 20 DoFs, and 80 muscles-tendon units. This musculoskeletal model takes
-the `Rajagopal full body gait model <https://github.com/opensim-org/opensim-models/tree/master/Models/RajagopalModel>`__ as close reference.
+the `Rajagopal full body gait model <https://github.com/opensim-org/opensim-models/tree/master/Models/Rajagopal>`__ as close reference.
 
 Joints and muscle details can be found in `Rajagopal et al. (2016) <https://ieeexplore.ieee.org/document/7505900>`__.
 
-The model implementation details can be found on our github repo at `myoLeg <https://github.com/MyoHub/myo_sim/tree/main/leg>`__
+The model implementation details can be found on our github repo at `myoLeg <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/leg>`__
 
 .. image:: images/MyoLeg.png
   :height: 200
@@ -191,7 +191,7 @@ The 3D dexterous human arm reaching and manipulation.
 
 This musculoskeletal model is comprised of 27 Degree of Freedom, and 63 muscles-tendon units.
 
-Model specification can be found on our github repo of `myoArm <https://github.com/MyoHub/myo_sim/tree/main/arm>`__
+Model specification can be found on our github repo of `myoArm <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/arm>`__
 
 
 .. image:: images/myoArm.png
@@ -207,7 +207,7 @@ The myoTorso mujoco musculoskeletal (MSK) model is generated from the `Constrain
 
 This generated mujoco MSK model has almost identical kinematics, and very similar muscle kinematics (moment arms) and kinetic (forces) properties.
 
-The model have 210 actuators and 18 joints. Details of this model can be found on our github repo at `myoTorso <https://github.com/MyoHub/myo_sim/tree/main/torso>`__.
+The model have 210 actuators and 18 joints. Details of this model can be found on our github repo at `myoTorso <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/torso>`__.
 
 
  .. image:: images/MyoTorso.png
@@ -470,65 +470,6 @@ Variants:
 .. ========================================
 .. A :ref:`myoArm` model
 
-
-
-.. Non-stationarities task variations
-.. ***********************************
-
-
-.. .. _sarcopenia:
-
-.. Sarcopenia
-.. ==============
-
-.. Sarcopenia is a muscle disorder that occurs commonly in the elderly population (Cruz-Jentoft and Sayer (2019))
-.. and characterized by a reduction in muscle mass or volume.
-.. The peak in grip strength can be reduced up to 50% from age 20 to 40 (Dodds et al. (2016)).
-.. We modeled sarcopenia for each muscle as a reduction of 50% of its maximal isometric force.
-
-
-.. .. _fatigue:
-
-.. Fatigue
-.. ============================
-.. Muscle Fatigue is a short-term (second to minutes) effect that happens after sustained or repetitive voluntary movement
-.. and it has been linked to traumas e.g. cumulative trauma disorder (Chaffin et al. (2006)).
-.. A dynamic muscle fatigue model (Ma et al. (2009)) was integrated into the modeling framework.
-.. This model was based on the idea that different types of muscle fiber that have different contributions
-.. and resistance to fatigue (Vøllestad (1997)).
-.. The current implementation is simplified to consider the same fatigue factor for all muscles and
-.. that muscle can be completely fatigued.
-
-.. .. image:: images/Fatigue.png
-..   :width: 800
-
-
-.. .. _ttransfer:
-
-.. Tendon transfer
-.. =================================
-.. Contrary to muscle fatigue or sarcopenia that occurs to all muscles, tendon transfer surgery can target a single
-.. muscle-tendon unit. Tendon transfer surgery allows redirecting the application point of muscle forces from one joint
-.. DoF to another (see below). It can be used to regain functional control of a joint or limb motion after injury.
-.. One of the current procedures in the hand is the tendon transfer of Extensor Indicis Proprius (EIP) to replace the
-.. Extensor Pollicis Longus (EPL) (Gelb (1995)). Rupture of the EPL can happen after a broken wrist and create a loss of control
-.. of the Thumb extension. We introduce a physical tendon transfer where the EIP application point of the tendon was moved
-.. from the index to the thumb and the EPL was removed (see Figure 3).
-
-.. .. image:: images/tendon_transfer.png
-..   :width: 400
-
-.. .. _exo:
-
-.. Exoskeleton assistance
-.. ======================
-.. Exoskeleton assisted rehabilitation is becoming more and more common practice (Jezernik et al. (2003)) due to its multiple benefit (Nam et al. (2017)).
-.. Modeling of an exoskeleton for the elbow was done via an ideal actuator and the addition of two supports with a weight of 0.101 Kg for the upper arm and 0.111 Kg on the forearm. The assistance given by the exoskeleton was a percentage of the biological joint torque, this was based on the neuromusculoskeletal controller presented in Durandau et al. (2019).
-
-.. .. image:: images/elbow_exo.png
-..   :width: 200
-
-
 .. _task_and_variations:
 
 
@@ -573,9 +514,9 @@ Here are a list of the tasks currently implement in Myosuite. See :ref:`task_var
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
 | Hand Pen Twirl         | ``myoHandPenTwirlRandom-v0``     | Hard            |         ✓             |      ✓                    |          ✓                     |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
-| Die Rotation           | ``myoChallengeDieReorientP1-v1`` | Easy            |         ✓             |      ✓                    |          ✓                     |
+| Die Rotation           | ``myoChallengeDieReorientP1-v0`` | Easy            |         ✓             |      ✓                    |          ✓                     |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
-| Die Rotation           | ``myoChallengeDieReorientP2-v1`` | Hard            |         ✓             |      ✓                    |          ✓                     |
+| Die Rotation           | ``myoChallengeDieReorientP2-v0`` | Hard            |         ✓             |      ✓                    |          ✓                     |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
 | Hand Baoding Balls     | ``myoChallengeBaodingP1-v1``     | Easy            |         ✓             |      ✓                    |          ✓                     |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+

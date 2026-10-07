@@ -3,6 +3,7 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
+import ast
 import os
 import pickle
 import time
@@ -20,9 +21,9 @@ Helper script to examine an environment and associated policy for behaviors; \n
 - save resulting paths as pickle or as 2D plots \n
 - rollout either learned policies or scripted policies (e.g. see RandPolicy class below) \n
 USAGE:\n
-    $ python examine_env.py --env_name door-v1 \n
-    $ python examine_env.py --env_name door-v1 --policy_path myosuite.utils.examine_env.RandPolicy \n
-    $ python examine_env.py --env_name door-v1 --policy_path my_policy.pickle --mode evaluation --episodes 10 \n
+    $ python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 \n
+    $ python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --policy_path myosuite.utils.examine_env.RandPolicy \n
+    $ python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --policy_path my_policy.pickle --mode evaluation --num_episodes 10 \n
 """
 
 
@@ -139,7 +140,7 @@ def main(
     envw = (
         make_env(env_name)
         if env_args is None
-        else make_env(env_name, **(eval(env_args)))
+        else make_env(env_name, **ast.literal_eval(env_args))
     )
     env = envw.unwrapped
     env.seed(seed)

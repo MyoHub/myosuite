@@ -12,7 +12,7 @@ for the GPU half you add a mjlab config under the same `env_id`.
 > optionally, an MJX backend) from a single dataclass instead of a
 > `MyoGymnasiumEnv` subclass. It is **not the primary path** — the MJX backend
 > it can also produce is experimental and may not be maintained long-term, and
-> only the elbow reference plus a few challenge tasks use it. Use a
+> only the elbow pose and leg directional references plus a few challenge tasks use it. Use a
 > `MyoGymnasiumEnv` subclass + mjlab config unless you specifically want the
 > data-driven authoring style.
 
@@ -28,16 +28,23 @@ functions, which is what keeps CPU and GPU in parity).
 fully-working reference — copy its shape, not its specifics:
 
 ```python
+from dataclasses import dataclass, field
+from typing import ClassVar
+
 from myosuite.core.config import (
-    ActuatorGroupSpec, BackendConfig, GoalSpec, ObsSpec, RewardSpec, TaskConfig,
+    ActuatorGroupSpec, BackendConfig, GoalSpec, ObsSpec, RewardSpec, TaskConfig, VariantSpec,
 )
 from myosuite.core.registry import register_task
+from myosuite.envs.wrappers import condition_wrapper_specs
 
 
 @dataclass
 class ElbowPoseFixedTask(TaskConfig):
     model: str = "elbow_standard"          # ModelBuilder recipe name
     max_episode_steps: int = 100
+    backend: BackendConfig = field(        # 10 physics steps of 2 ms: a 20 ms control step
+        default_factory=lambda: BackendConfig(n_substeps=10, ctrl_dt=0.02, sim_dt=0.002)
+    )
     obs: ObsSpec = field(  # observe the goal: pose_error = target - joint_pos
         default_factory=lambda: ObsSpec(keys=["joint_pos", "joint_vel", "muscle_act", "pose_error"])
     )
@@ -52,6 +59,10 @@ class ElbowPoseFixedTask(TaskConfig):
     actuators: list[ActuatorGroupSpec] = field(
         default_factory=lambda: [ActuatorGroupSpec(name="elbow_muscles", normalize_actions=True)]
     )
+    variants: ClassVar[list[VariantSpec]] = [   # also registers myoSarc... and myoFati... ids
+        VariantSpec(suffix="Sarc", features=condition_wrapper_specs("sarcopenia")),
+        VariantSpec(suffix="Fati", features=condition_wrapper_specs("fatigue")),
+    ]
 
 register_task(ElbowPoseFixedTask(), env_id="myoElbowPoseTaskFixed-v0")
 ```
@@ -74,16 +85,21 @@ subclass to write.
      to function `foo_obs`.
    - Reward: `myosuite/terms/base_reward.py` — `RewardSpec.terms` entry
      `"foo"` resolves to function `foo_reward` (or a bare `foo` function).
+   - A term can also be passed as a function instead of a name (see the examples in the term-functions page).
    - If you need a new term, write it there as a pure function:
-     `(accessor, obs_dict, **kwargs) -> dict` for reward,
-     `(accessor, **kwargs) -> dict[str, Any]` for obs. Use
+     `(accessor, task_state, **kwargs) -> dict` for reward (with `dense`, `solved`, `done`),
+     `(accessor, **kwargs) -> array` for obs. Use
      `accessor.array_module()` only — never import `numpy`/`jax.numpy`/`torch`
-     directly. See [writing-term-functions.md](writing-term-functions.md).
+     directly, and write it for a batch of envs. See [writing-term-functions.md](writing-term-functions.md).
 
 3. **Write the `@dataclass class FooTask(TaskConfig)`** with concrete,
    non-default `obs`, `goal`, and `reward` fields. See `myosuite/core/config.py`
    for the full field list (`ObsSpec`, `GoalSpec`, `RewardSpec`,
    `ActuatorGroupSpec`, `BackendConfig`, `VariantSpec`, ...).
+
+   Muscle conditions are not fields of the task: list `variants` (as above) to register the `myoSarc…` / `myoFati…` /
+   `myoReaf…` ids, or apply wrappers with `make_env(EnvConfig(..., features=...))`;
+   see [cross-backend-contract.md](cross-backend-contract.md). `ModularTaskEnv` runs the muscle-command stages.
 
 4. **Call `register_task(FooTask(), env_id="myoFoo-v0")`** once, at module
    import time, in your task's `__init__.py` (or a `specs/` module imported

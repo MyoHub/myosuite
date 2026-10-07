@@ -14,7 +14,7 @@ Model editing is performed via a [ModelEditor](https://github.com/myohub/myosuit
 ## Example usage: myoArmNoHandMuscles
 
 MyoEdits has been used to create a simplified version of the myoArm model in which the muscles and joints of the digits have been removed.
-The [edit_fn](https://github.com/myohub/myosuite/blob/main/myosuite/envs/myo/myoedits/__init__.py#L19) for the myoArmNoHandMuscles model
+The [edit_fn](https://github.com/myohub/myosuite/blob/main/myosuite/envs/myo/myoedits/__init__.py) for the myoArmNoHandMuscles model
 detaches the digit bodies and their associated attachments (e.g. joints and muscles), before adding back simplified digits (a body with a mesh), as well as an index finger tip site.
 The myoArmNoHandMuscles model was used to create a set of [myoArmReach](https://myosuite.readthedocs.io/en/latest/suite.html#arm-reach) environments that allow reaching movements to be studied without the complexity of hand control.
-When [registering the environment](https://github.com/myohub/myosuite/blob/main/myosuite/envs/myo/myoedits/__init__.py#L72), the path to the base XML file is specified along with the edit_fn.
+When [registering the environment](https://github.com/myohub/myosuite/blob/main/myosuite/envs/myo/myoedits/__init__.py), the path to the base XML file is specified along with the edit_fn.

@@ -51,7 +51,7 @@ dependencies = [
     "loop-rate-limiters>=1.2.0",
     # Core registered envs (myoFullBodyDirectional-v0, ChaseTagFBVs) download
     # reference gait clips at runtime via hf_hub_download -- not gated behind
-    # the [musclemimic] extra since these envs are reachable via plain gym.make.
+    # the [musclemimic] extra since these envs are reachable via plain make_env.
     "huggingface_hub>=0.20",
 ]
 [project.optional-dependencies]
@@ -132,7 +132,9 @@ docs = [
 ]
 
 musclemimic = [
-    "musclemimic_models>=1.0.2",
+    # 1.0.6 fixed the left-knee coupling and several muscle wraps; checkpoints trained
+    # on 1.0.5 (amathislab/mm-10m-2) get that model from model_versions.py.
+    "musclemimic_models==1.0.6",
     "huggingface_hub>=0.20",
     "scikit-learn>=1.6.1",
     "joblib>=1.4.0",
@@ -170,7 +172,6 @@ packages = { find = { exclude = ["myosuite.agents", "myosuite.agents.*"] } }
     "physics/**",
     "robot/**",
     "scenes/**",
-    "simhive/**",
     "terms/**",
     "utils/**",
     "viz/**",

@@ -10,14 +10,13 @@ on:
       - "**/README.md"
 
   pull_request:
-    branches: ["main", "dev", "ms3"]
+    branches: ["main", "dev"]
     paths-ignore:
       - "docs/**"
       - "**/README.md"
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   core:
@@ -54,10 +53,8 @@ jobs:
         if: ${{ runner.os == 'macOS' }}
         run: echo "SYSTEM_VERSION_COMPAT=0" >> $GITHUB_ENV
 
-      - name: Checkout repository and submodules
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -87,7 +84,7 @@ jobs:
       - name: Install project and pytest
         run: |
           uv pip install -e ".[mjlab,rl]"
-          uv pip install pytest pytest-xvfb ffmpeg torch ipython musclemimic_models
+          uv pip install pytest pytest-xvfb ffmpeg torch ipython "musclemimic_models==1.0.6"
 
       - name: Pytest tier-1 (fast, backend-agnostic contracts)
         if: ${{ runner.os != 'Linux' }}

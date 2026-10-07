@@ -12,6 +12,7 @@ The **core** and **terms** packages are documented via Sphinx autoapi (see the
 
    wrappers
    muscle_action
+   muscle_stages
    policy_utils
    physics
    quat_math

@@ -8,8 +8,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 _MUSCLEMIMIC_CACHE_ENV_VARS = (
     "MUSCLEMIMIC_CONVERTED_AMASS_PATH",
@@ -80,8 +82,47 @@ BASELINES_REPO_ID = "myohub/myosuite-3-baselines"
 deterministic success reached at least 25% (see that repo's ``checkpoints/README.md``)."""
 
 
+def default_baseline_revision() -> str:
+    """Hugging Face revision (git tag) of the baselines that match this MyoSuite release.
+
+    ``MYOSUITE_BASELINES_REVISION`` overrides it; otherwise ``v<major>.<minor>`` of
+    ``myosuite.__version__`` (for example ``v3.0``).
+    """
+    configured = os.environ.get("MYOSUITE_BASELINES_REVISION")
+    if configured:
+        return configured
+    from myosuite import __version__  # noqa: PLC0415
+
+    return "v" + ".".join(__version__.split(".")[:2])
+
+
+def _download_at_revision(
+    download: Callable[[str], Any], repo_id: str, revision: str | None
+) -> Any | None:
+    """Run ``download(revision)`` for the release tag, then for ``main`` if that tag is missing.
+
+    Prints the repo revision that was used. Returns ``None`` (after printing why) on network,
+    auth or repo errors.
+    """
+    from huggingface_hub.errors import RevisionNotFoundError  # noqa: PLC0415
+
+    wanted = revision or default_baseline_revision()
+    for rev in dict.fromkeys([wanted, "main"]):
+        try:
+            result = download(rev)
+        except RevisionNotFoundError:
+            continue
+        except Exception as err:  # noqa: BLE001  (network / auth / repo errors all mean "no baseline")
+            print(f"Could not download from the {repo_id!r} Hugging Face repo: {err}")
+            return None
+        note = "" if rev == wanted else f" (tag {wanted!r} not found, using the latest)"
+        print(f"Using baselines of {repo_id} at revision {rev!r}{note}")
+        return result
+    return None
+
+
 def download_baseline_checkpoint(
-    env_id: str, repo_id: str = BASELINES_REPO_ID
+    env_id: str, repo_id: str = BASELINES_REPO_ID, revision: str | None = None
 ) -> Path | None:
     """Download env_id's default checkpoint from the baselines Hugging Face repo.
 
@@ -93,6 +134,9 @@ def download_baseline_checkpoint(
     Args:
         env_id: Registered env id.
         repo_id: Hugging Face repo id to download from.
+        revision: Branch or tag of the repo. Defaults to the tag of this release
+            (:func:`default_baseline_revision`), falling back to ``main`` when that tag
+            does not exist (yet).
 
     Returns:
         The local ``checkpoints/<env_id>`` directory, or ``None`` when huggingface_hub is
@@ -103,21 +147,53 @@ def download_baseline_checkpoint(
         from huggingface_hub import snapshot_download
     except ImportError:
         return None
-    try:
-        snapshot_dir = Path(
+    snapshot_dir = _download_at_revision(
+        lambda rev: Path(
             snapshot_download(
                 repo_id=repo_id,
                 repo_type="model",
+                revision=rev,
                 allow_patterns=[f"checkpoints/{env_id}/*"],
             )
-        )
-    except Exception as err:  # noqa: BLE001  (network / auth / repo errors all mean "no baseline")
-        print(f"Could not reach the {repo_id!r} Hugging Face repo: {err}")
+        ),
+        repo_id,
+        revision,
+    )
+    if snapshot_dir is None:
         return None
     local = snapshot_dir / "checkpoints" / env_id
     if not local.is_dir() or not any(local.glob("model_*.pt")):
         return None
     return local
+
+
+def download_baseline_file(
+    filename: str, repo_id: str = BASELINES_REPO_ID, revision: str | None = None
+) -> Path | None:
+    """Download one file of the baselines Hugging Face repo, at the revision of this release.
+
+    For artefacts that are not a registered env's default checkpoint, such as the MuscleMimic
+    single-clip policy ``checkpoints/myoMimicFullbody-v0-walking_medium06/model_81380.pt``.
+
+    Args:
+        filename: Path of the file inside the repo.
+        repo_id: Hugging Face repo id to download from.
+        revision: Branch or tag; defaults as in :func:`download_baseline_checkpoint`.
+
+    Returns:
+        The local file, or ``None`` when huggingface_hub is missing or the download failed.
+    """
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError:
+        return None
+    return _download_at_revision(
+        lambda rev: Path(
+            hf_hub_download(repo_id, filename, repo_type="model", revision=rev)
+        ),
+        repo_id,
+        revision,
+    )
 
 
 def default_musclemimic_cache_root() -> Path:
@@ -138,6 +214,8 @@ def default_musclemimic_cache_root() -> Path:
 
 __all__ = [
     "BASELINES_REPO_ID",
+    "download_baseline_file",
+    "default_baseline_revision",
     "HfRef",
     "default_musclemimic_cache_root",
     "download_baseline_checkpoint",

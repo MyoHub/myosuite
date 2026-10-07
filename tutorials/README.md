@@ -35,7 +35,7 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | 1.2 | [Load Policy](./1.2_Load_Policy.ipynb) — run a policy in a video rollout: your own mjlab/SB3 checkpoint, else the default policy from the Hugging Face baselines ([`myohub/myosuite-3-baselines`](https://huggingface.co/myohub/myosuite-3-baselines); random policy if none is found) | nothing (optional: a checkpoint from 2.1 or 2.2) |
 | **2 — Training** | | |
 | 2.1 | [Train SB3 Policy](./2.1_Train_SB3_Policy.ipynb) — PPO on CPU | `pip install -e ".[rl]"` |
-| 2.2 | [Train MjLab Policy](./2.2_Train_MjLab_Policy.ipynb) — thousands of parallel envs on GPU, playback on CPU | Linux + CUDA, `pip install -e ".[mjlab]"` |
+| 2.2 | [Train MjLab Policy](./2.2_Train_MjLab_Policy.ipynb) — thousands of parallel envs on GPU, playback on CPU | NVIDIA GPU (Linux or Windows), `pip install -e ".[mjlab]"` |
 | 2.3 | [SAR](./2.3_SAR.ipynb) — synergistic action representations | `pip install -e ".[rl]"` (full training is hours; set `MYOSUITE_FULL_SAR=1`) |
 | 2.4 | [MyoReflex Walk](./2.4_MyoReflex_Walk.ipynb) — reflex-based walking baseline | — |
 | **3 — Analysis** | | |

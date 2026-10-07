@@ -10,7 +10,7 @@ full commit list.
 ### Highlights
 
 * **One task, three execution paths, enabling massive GPU parallelization and training speed-ups.** The same `env_id` runs on the **CPU** (Gymnasium: playback, debugging, Stable-Baselines3), on **mjlab** (MuJoCo Warp + RSL-RL: thousands of parallel environments on one GPU) and on an **experimental MJX** (JAX) path. Training on the GPU is the big speed-up of this release: one RTX 5090 steps 20,000-38,000 muscle-driven environments per second (full-body MuscleMimic with 354 muscles, 1024 envs: 19.8k steps/s; the 2-billion-step MuscleMimic run finished in about 30 hours), where one CPU thread steps the much smaller hand, leg and arm tasks at about 1,000 steps/s (measured: 1.4k hand reorient, 1.3k leg walk, 0.8k arm reach). CPU and mjlab share the observation, action and timing contract, so a policy trained on the GPU can be replayed on the CPU.
-* **Trained baseline policies.** Ready-to-use policies for 36 environments (pose, reach, leg walking, torso and the MuscleMimic full body) with evaluation videos on Hugging Face (`myohub/myosuite-3-baselines`), downloaded automatically by the tutorials and `eval_mjlab_policy.py` and loadable on both the CPU and mjlab backends. Success rates are listed in `docs/baseline_checkpoints.md`.
+* **Trained baseline policies.** Ready-to-use policies for 36 environments (pose, reach, leg walking, torso and the MuscleMimic full body) with evaluation videos on Hugging Face (`myohub/myosuite-3-baselines`), downloaded automatically by the tutorials and `eval_mjlab_policy.py` and loadable on both the CPU and mjlab backends. Success rates are listed in `docs/baseline_checkpoints.md`. Each checkpoint folder carries a `manifest.json` with a hash of the env contract (observation and action shapes, control step): MyoSuite warns when a downloaded policy no longer matches its env, and downloads the checkpoints of the repo tag that matches your release (`v3.0`, ...), falling back to `main`.
 * **MuscleMimic support.** Full-body and bimanual MuscleMimic environments
   (`myoMimicFullbody-v0`, `myoMuscleMimicFullbody-v0`, `myoMimicBimanual-v0`,
   `myoMuscleMimicBimanual-v0`, `myoFullBodyDirectional-v0`), loaders for the MuscleMimic
@@ -94,7 +94,7 @@ full commit list.
 * **Reach and arm models:** arm-reach `IFtip` site back at the fingertip (it sat 1.8 cm short at the DIP joint since `7532d62`; the published arm policy reaches with the fingertip in 64% of episodes without retraining) ([#406]); thumb frozen and digits kept under their metacarpals ([#406]).
 * **Muscle conditions:** CPU fatigue activation rate and 3CC-r overshoot ([#421], thanks @M-Colley); per-muscle fatigue parameters for prefixed and side-suffixed names ([#430]); automatic peak force under sarcopenia ([#426]); fatigue/sarcopenia parity between CPU and mjlab ([#406]).
 * **Fatigue:** the mjlab twins honour `fatigue_reset_vec` / `fatigue_reset_random`, and `myoFatiElbowPoseTask{Fixed,Random}-v0` now fatigue ([#491]).
-* **Challenge envs:** `reset(seed=...)` reproduces the episode ([#438]); Bimanual pillars at the sampled positions ([#441]); TableTennis and SAR reorient fatigue draws from the env RNG ([#442]); TableTennis termination, relaunch and conditions ([#432]), policy action in mjlab ([#428], thanks @M-Colley) and mesh paths on any drive ([#485]); OSL controller `is_running` and `set_motor_param` ([#484]); RunTrack keyframe clamping ([#399]); ChaseTag fall threshold and opponent fall-through ([#406]).
+* **Challenge envs:** `reset(seed=...)` reproduces the episode ([#438]); Bimanual pillars at the sampled positions ([#441]); TableTennis and SAR reorient fatigue draws from the env RNG ([#442]); TableTennis termination, relaunch and conditions ([#432]), policy action in mjlab ([#428], thanks @M-Colley) and mesh paths on any drive ([#485]); OSL controller `is_running` and `set_motor_param` ([#484]); RunTrack keyframe clamping ([#399]); ChaseTag fall threshold and opponent fall-through ([#406]). The default `render()` of the Soccer, TableTennis and Bimanual envs shows a model camera that frames the agent (`render_camera`, [#323]). The keyframes of `myoarm_bionic_bimanual.xml`, `myoarm_tabletennis.xml`, `myolegs_soccer.xml` and the ChaseTag FBP2 reset keyframe stay inside the declared joint ranges and ctrlranges (no change to the env resets; [#403], with a regression test over the shipped models).
 * **mjlab twins register themselves:** `make_env(..., backend="mjlab")` and the mjlab CLIs work in a fresh interpreter, without depending on the order in which tests import things ([#501]).
 * **Terminate on MuJoCo instability** in every CPU env ([#423]).
 * **SAR:** reorient actions, muscle conditions and stale geometry ([#434]); mjlab SAR action reaches the muscles ([#424], thanks @M-Colley); PCA whitening undone in `SARTorchTransform` ([#425], thanks @M-Colley); the bridge and activation collector ([#459]); tutorial scripts seed SAC and resume ([#455]).
@@ -115,11 +115,13 @@ full commit list.
 * The 2.4 DEP-RL tutorial (the 2023 baseline no longer walks on the current envs); MyoReflex Walk is now 2.4 ([#460], [#468]).
 * The myouser-specific mjlab task and helpers (now in the standalone myoInteract repository).
 * The MyoDM suite, Boxing and Saber tasks with their shared code, the `composer` package, the legacy `simhive` copies, `myosuite_init`, placeholder `*Modular-v0` registrations, the Walk Backends demo notebook, the stale examine-rollout script, Colab helpers and the unused console scripts `myosuite-musclemimic-fullbody-parity` and `myosuite-musclemimic-mjx-train` ([#406]).
+* The local `myosuite/simhive/` asset override. A leftover pre-3.0 copy shadowed the pip `myo_sim` and broke models whose meshes it lacked; assets now come only from the bundled subsets and pip. To work on a local `myo_sim` checkout, install it in editable mode (`uv pip install -e path/to/myo_sim`).
 
 ### Dependencies
 
 * MuJoCo 3.7 or newer (no official floor, but older versions are not maintained); `myo_sim` 0.2.3 from PyPI; `huggingface_hub` is a base dependency; `wandb`, `orbax-checkpoint`, `jax`/`brax` pins for the mjlab and MJX extras; security bumps of `gitpython`, `urllib3` and `uv.lock`; SPDX license metadata.
 * The `furniture-sim`, `mpl-sim`, `object-sim` and `ycb-sim` git dependencies are gone: the 40 files MyoSuite uses (2.9 MB) are bundled under `myosuite/envs/myo/assets/`, so every dependency installs from PyPI.
+* The `musclemimic` extra pins `musclemimic_models==1.0.6`, which fixes the left knee (two coupling polynomials were negated relative to the right knee, so the left tibia rotated -0.25 rad about its axis at 1 rad of flexion where the right one rotated +0.25 rad) and six muscle wraps. MyoSuite's own full-body baseline (`myoMimicFullbody-v0`, walking_medium06) was trained on 1.0.6. `amathislab/mm-10m-2` was trained on 1.0.5: `model_version="1.0.5"` (or `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5`) rebuilds the 1.0.5 model bit-exactly from the installed package, and the tutorials and the playback / eval CLIs do so for that checkpoint (`model_versions.checkpoint_models_version`, [#520]).
 * `pink-noise-rl` is replaced by `colorednoise` (`myosuite.utils.colored_noise.ColoredNoiseProcess`; seeded episodes are bit-identical) ([#480]).
 
 ### Contributors
@@ -131,6 +133,8 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#101]: https://github.com/MyoHub/myosuite/pull/101
 [#354]: https://github.com/MyoHub/myosuite/pull/354
 [#399]: https://github.com/MyoHub/myosuite/pull/399
+[#323]: https://github.com/MyoHub/myosuite/issues/323
+[#403]: https://github.com/MyoHub/myosuite/issues/403
 [#406]: https://github.com/MyoHub/myosuite/pull/406
 [#407]: https://github.com/MyoHub/myosuite/pull/407
 [#408]: https://github.com/MyoHub/myosuite/pull/408
@@ -205,6 +209,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#504]: https://github.com/MyoHub/myosuite/pull/504
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#509]: https://github.com/MyoHub/myosuite/pull/509
+[#520]: https://github.com/MyoHub/myosuite/pull/520
 
 ## [2.12.2] - 2026-05-06
 * Asset credits updated ([#392]).

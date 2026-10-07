@@ -25,7 +25,6 @@ SKIP_IN_CI_REL = frozenset(
         'tutorials/2.3_SAR.ipynb',
         'tutorials/2.4_MyoReflex_Walk.ipynb',
         'tutorials/4.2_Fatigue_Modeling.ipynb',
-        'tutorials/4.3_Modular_Task_Config.ipynb',
         'tutorials/5.1_Fullbody_Load_Policy.ipynb',
         'tutorials/5.2_Fullbody_Train_Policy.ipynb',
         'tutorials/5.3_Fullbody_Train_MjLab_Policy.ipynb',
@@ -44,6 +43,7 @@ RUN_IN_CI_REL = frozenset(
         'tutorials/3.4_Computed_Muscle_Control.ipynb',
         'tutorials/3.5_Playback_Mot_File.ipynb',
         'tutorials/4.1_Move_Hand_Fingers.ipynb',
+        'tutorials/4.3_Modular_Task_Config.ipynb',
     }
 )
 
