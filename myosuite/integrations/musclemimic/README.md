@@ -529,8 +529,9 @@ for i in range(len(clip.qpos)):
 
 MyoSuite installs `musclemimic_models==1.0.6`, which fixed the left knee (two coupling
 polynomials were negated, so at 1 rad of flexion the left tibia rotated -0.25 rad about its
-axis where the right one rotated +0.25 rad) and six muscle wraps. `amathislab/mm-10m-2` was
-trained on 1.0.5 and falls within 4 s on 1.0.6. `model_version="1.0.5"` in the model config
+axis where the right one rotated +0.25 rad) and six muscle wraps. MyoSuite's own full-body
+baseline (`myoMimicFullbody-v0`, walking_medium06) was trained on 1.0.6. `amathislab/mm-10m-2`
+was trained on 1.0.5 and falls within 4 s on 1.0.6. `model_version="1.0.5"` in the model config
 rebuilds 1.0.5 bit-exactly from the installed package;
 `model_versions.checkpoint_models_version(ref)` returns the release of a published checkpoint,
 and the tutorials and the playback / eval CLIs use it. For envs that build their config
