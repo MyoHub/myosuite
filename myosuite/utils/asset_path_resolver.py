@@ -20,9 +20,11 @@ loads the model.
 Only the main model XML is rewritten; pip-package internal XML files are
 correct as of v0.2.0+ (upstream path fixes applied).
 
-Lookup order per family: a local ``myosuite/simhive/<name>`` checkout, then the
-subsets bundled under ``myosuite/envs/myo/assets/<name>`` (MPL_sim, YCB_sim,
-furniture_sim), then an installed pip package. ``myo_sim`` always comes from pip.
+Lookup order per family: the subsets bundled under
+``myosuite/envs/myo/assets/<name>`` (MPL_sim, YCB_sim, furniture_sim), then an
+installed pip package. ``myo_sim`` always comes from pip; to work on a local
+myo_sim checkout, install it in editable mode (``uv pip install -e <path>``).
+A ``myosuite/simhive/`` folder is not read.
 """
 
 from __future__ import annotations
@@ -74,11 +76,6 @@ def _strip_unsupported_compiler_attrs(tree: ET.ElementTree) -> bool:
     return changed
 
 
-def _local_override_root() -> Path:
-    """Optional local checkout root for sim-asset packages (dev override)."""
-    return Path(__file__).resolve().parents[1] / "simhive"
-
-
 def _installed_package_root(module_name: str) -> Path | None:
     try:
         module = __import__(module_name)
@@ -100,9 +97,7 @@ def _resolve_myo_sim_rel(tail: str) -> Path | None:
     """Resolve a path inside myo_sim.
 
     Order: pip ``models/<tail>`` (current fragments), then MyoSuite bundled
-    shims, then pip ``models/legacy/<tail>``, then a local simhive checkout.
-    A partial ``simhive/myo_sim`` tree must not shadow pip files it does not
-    fully replace.
+    shims, then pip ``models/legacy/<tail>``.
     """
     if not tail:
         return None
@@ -118,22 +113,14 @@ def _resolve_myo_sim_rel(tail: str) -> Path | None:
         legacy = models / "legacy" / tail
         if legacy.exists():
             return legacy
-    local_root = _local_override_root() / "myo_sim"
-    if local_root.exists():
-        for candidate in (local_root / tail, local_root / "legacy" / tail):
-            if candidate.exists():
-                return candidate
     return None
 
 
 def get_sim_asset_root(sim_name: str) -> Path:
-    """Return the root path for a sim-asset family (local override or pip)."""
+    """Return the root path for a sim-asset family (bundled subset or pip)."""
     if sim_name not in _SIM_PACKAGE_MAP:
         raise KeyError(f"Unsupported sim-asset family: {sim_name}")
     module_name, local_dir = _SIM_PACKAGE_MAP[sim_name]
-    local_root = _local_override_root() / local_dir
-    if local_root.exists():
-        return local_root
     # Assets vendored into myosuite (MPL/YCB/furniture subsets) take precedence over pip.
     bundled_root = _MYOSUITE_ASSETS / local_dir
     if sim_name != "myo_sim" and bundled_root.exists():
@@ -147,8 +134,7 @@ def get_sim_asset_root(sim_name: str) -> Path:
             "Unable to resolve myo_sim assets. Install via pip (`pip install myo-sim`)."
         )
     raise FileNotFoundError(
-        f"Unable to resolve sim assets for {sim_name}. "
-        f"Install via pip or place files under {local_root}."
+        f"Unable to resolve sim assets for {sim_name}. Install `{module_name}` via pip."
     )
 
 
@@ -190,7 +176,7 @@ _MYO_SIM_BUNDLED_FALLBACKS: dict[str, Path] = {
 
 
 def _resolve_legacy_submodule_path(include_file: str) -> Path | None:
-    """Map legacy ../../../../simhive/X_sim/... paths to pip or local roots."""
+    """Map legacy ../../../../simhive/X_sim/... paths to bundled or pip roots."""
     posix_parts = PurePosixPath(include_file).parts
     if "simhive" not in posix_parts:
         return None
@@ -217,7 +203,7 @@ def _resolve_legacy_submodule_path(include_file: str) -> Path | None:
 
 
 def _rewrite_relative_package_path(raw: str) -> Path | None:
-    """Map ../furniture_sim/... style paths to pip or local override roots."""
+    """Map ../furniture_sim/... style paths to bundled or pip roots."""
     norm = raw.replace("\\", "/").strip()
     for pref, sim_name in _REL_PACKAGE_PREFIXES:
         if norm.startswith(pref):
@@ -468,7 +454,7 @@ def _absolutize_include(source: Path) -> Path:
                 elem.set(attr, str(resolved))
                 changed = True
             elif attr == "file":
-                # Local checkout not present; try resolving via pip package.
+                # Not next to the include; try the bundled or pip package root.
                 fallback = _rewrite_relative_package_path(raw)
                 if fallback is None:
                     fallback = _resolve_legacy_submodule_path(raw)
