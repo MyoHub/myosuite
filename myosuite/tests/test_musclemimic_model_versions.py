@@ -104,6 +104,20 @@ def test_other_checkpoints_get_the_default(ref: str | None) -> None:
     assert mv.checkpoint_models_version(ref) == mv.DEFAULT_MODELS_VERSION
 
 
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "hf://amathislab/mm-10m-3",
+        "/cache/hub/models--amathislab--mm-10m-3/snapshots/abc/train_state",
+    ],
+)
+def test_mm_10m_3_keeps_1_0_6_even_when_the_default_moves(
+    monkeypatch: pytest.MonkeyPatch, ref: str
+) -> None:
+    monkeypatch.setenv(mv.MODELS_VERSION_ENV_VAR, "1.0.5")
+    assert mv.checkpoint_models_version(ref) == "1.0.6"
+
+
 def test_an_unrecorded_installed_release_is_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
