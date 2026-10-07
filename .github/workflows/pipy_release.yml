@@ -146,7 +146,10 @@ jobs:
         # "current" leaves the files unchanged; only commit a real bump.
         if ! git diff --cached --quiet; then
           git commit -m "chore: bump version to $NEW_VERSION"
-          # Advance both branches to the release commit. Explicit leases bind\n          # the update to the exact remote tips validated above. This safely\n          # reconciles squash/rebase histories while rejecting concurrent pushes.\n          git push --atomic \\\n            --force-with-lease=main:${{ steps.verify-branches.outputs.main_sha }} \\\n            --force-with-lease=dev:${{ steps.verify-branches.outputs.dev_sha }} \\\n            origin HEAD:main HEAD:dev
+          # Advance both branches to the release commit. Explicit leases bind
+          # the update to the exact remote tips validated above. This safely
+          # reconciles squash/rebase histories while rejecting concurrent pushes.
+          git push --atomic --force-with-lease=main:${{ steps.verify-branches.outputs.main_sha }} --force-with-lease=dev:${{ steps.verify-branches.outputs.dev_sha }} origin HEAD:main HEAD:dev
         fi
 
     # 2. Use the `tag name` as `release version`
