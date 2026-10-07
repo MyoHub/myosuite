@@ -13,7 +13,7 @@ page is about *changing* the code.
 ```bash
 # from the repo root
 uv sync -p 3.10 --extra dev     # or: pip install -e ".[dev]"
-# GPU (Linux + CUDA): uv pip install -e ".[mjlab]" --torch-backend=auto
+# GPU (NVIDIA, Linux or Windows): uv pip install -e ".[mjlab]" --torch-backend=auto
 # (picks the torch build for your driver; with pip see docs/source/install.rst)
 
 pytest myosuite/tests/test_registry.py -v

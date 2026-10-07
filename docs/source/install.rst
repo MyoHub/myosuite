@@ -23,7 +23,7 @@ From source
 GPU training (mjlab)
 ~~~~~~~~~~~~~~~~~~~~
 
-Linux with an NVIDIA GPU. The torch and Warp wheels on PyPI are built for the newest CUDA; on an
+An NVIDIA GPU on Linux (tested) or Windows; on macOS mjlab runs on the CPU only. The torch and Warp wheels on PyPI are built for the newest CUDA; on an
 older driver they install but cannot use the GPU. `uv <https://docs.astral.sh/uv/>`_ picks the torch
 build that matches your driver:
 
@@ -35,7 +35,7 @@ build that matches your driver:
 
 On a CUDA 12 driver, also install the CUDA 12 build of Warp from its
 `releases <https://github.com/NVIDIA/warp/releases>`_ (otherwise mjlab fails with
-``Invalid device identifier: cuda:0``), e.g.
+``Invalid device identifier: cuda:0``), e.g. on Linux
 ``pip install --force-reinstall --no-deps https://github.com/NVIDIA/warp/releases/download/v1.18.0/warp_lang-1.18.0+cu12-py3-none-manylinux_2_28_x86_64.whl``.
 
 Musculoskeletal models ship in the ``myo-sim`` pip package; the few MPL, YCB and
