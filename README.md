@@ -55,8 +55,8 @@ Python 3.10–3.14 is supported (the GPU `[mjlab]` extra needs Python ≤3.13). 
 git clone https://github.com/MyoHub/myosuite.git
 cd myosuite
 pip install -e ".[rl]"          # CPU training (Stable-Baselines3)
-# pip install -e ".[mjlab]"     # GPU (Linux + CUDA) -- see docs/source/install.rst
-                                 # for matching the torch build to your driver's CUDA version
+# uv pip install -e ".[mjlab]" --torch-backend=auto   # GPU (NVIDIA, Linux or Windows), picks the torch
+                                 # build for your driver; with pip see docs/source/install.rst
 ```
 
 Or: `uv sync -p 3.10 --extra rl`.

@@ -15,7 +15,7 @@ Installation
 .. code-block:: bash
 
    pip install -e ".[rl]"
-   # GPU (Linux + CUDA): pip install -e ".[mjlab]"
+   # GPU (NVIDIA, Linux or Windows): pip install -e ".[mjlab]"
 
 See :doc:`install` for matching the torch build to your driver's CUDA version.
 

@@ -17,20 +17,26 @@ From source
 
    git clone https://github.com/MyoHub/myosuite.git
    cd myosuite
-   pip install -e .
-   # CPU RL:    pip install -e ".[rl]"
-   # GPU (Linux + CUDA): pip install -e ".[mjlab]"
+   pip install -e ".[rl]"        # CPU training (Stable-Baselines3)
+   # or with uv: uv sync -p 3.10 --extra rl
 
-For GPU, install a torch build matching your driver's CUDA version *before*
-the ``.[mjlab]`` install, e.g. ``pip install torch --index-url
-https://download.pytorch.org/whl/cu128`` (see `pytorch.org/get-started/locally
-<https://pytorch.org/get-started/locally/>`_ for the right tag). Otherwise an
-unconstrained resolve may pick a torch build requiring a newer CUDA runtime
-than your driver supports (or, in some environments, a CPU-only wheel).
+GPU training (mjlab)
+~~~~~~~~~~~~~~~~~~~~
 
-Or with `uv <https://docs.astral.sh/uv/>`_::
+An NVIDIA GPU on Linux (tested) or Windows; on macOS mjlab runs on the CPU only. The torch and Warp wheels on PyPI are built for the newest CUDA; on an
+older driver they install but cannot use the GPU. `uv <https://docs.astral.sh/uv/>`_ picks the torch
+build that matches your driver:
 
-   uv sync -p 3.10 --extra rl
+.. code-block:: bash
+
+   uv pip install -e ".[mjlab]" --torch-backend=auto
+   # with pip: install a matching torch first (nvidia-smi shows the driver's CUDA version), e.g.
+   # pip install torch --index-url https://download.pytorch.org/whl/cu129 && pip install -e ".[mjlab]"
+
+On a CUDA 12 driver, also install the CUDA 12 build of Warp from its
+`releases <https://github.com/NVIDIA/warp/releases>`_ (otherwise mjlab fails with
+``Invalid device identifier: cuda:0``), e.g. on Linux
+``pip install --force-reinstall --no-deps https://github.com/NVIDIA/warp/releases/download/v1.18.0/warp_lang-1.18.0+cu12-py3-none-manylinux_2_28_x86_64.whl``.
 
 Musculoskeletal models ship in the ``myo-sim`` pip package; the few MPL, YCB and
 furniture assets MyoSuite uses are bundled in the package. No git submodule checkout is required.

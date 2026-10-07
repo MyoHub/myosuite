@@ -18,7 +18,7 @@ Muscle-condition IDs:
 * Sarcopenia: ``myoSarcElbowPose1D6MRandom-v0``
 * Tendon transfer (hands): ``myoReafHandKeyTurnFixed-v0``
 
-GPU training (Linux + CUDA)::
+GPU training (NVIDIA GPU, Linux or Windows)::
 
    python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --env.scene.num-envs 1024
 
