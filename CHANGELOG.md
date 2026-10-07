@@ -119,6 +119,7 @@ full commit list.
 
 * MuJoCo 3.7 or newer (no official floor, but older versions are not maintained); `myo_sim` 0.2.3 from PyPI; `huggingface_hub` is a base dependency; `wandb`, `orbax-checkpoint`, `jax`/`brax` pins for the mjlab and MJX extras; security bumps of `gitpython`, `urllib3` and `uv.lock`; SPDX license metadata.
 * The `furniture-sim`, `mpl-sim`, `object-sim` and `ycb-sim` git dependencies are gone: the 40 files MyoSuite uses (2.9 MB) are bundled under `myosuite/envs/myo/assets/`, so every dependency installs from PyPI.
+* The `musclemimic` extra pins `musclemimic_models==1.0.5`. Version 1.0.6 flips the sign of the left-knee coupling polynomials and moves several muscle wraps, and published MuscleMimic checkpoints such as `amathislab/mm-10m-2` fall within 4 s on it.
 * `pink-noise-rl` is replaced by `colorednoise` (`myosuite.utils.colored_noise.ColoredNoiseProcess`; seeded episodes are bit-identical) ([#480]).
 
 ### Contributors

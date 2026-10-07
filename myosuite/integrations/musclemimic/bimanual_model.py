@@ -173,7 +173,7 @@ def resolve_mimic_bimanual_xml(config: config_dict.ConfigDict) -> str:
             "MjxMimicBimanual-v0 needs the same bimanual MJCF as "
             "https://github.com/amathislab/musclemimic (package "
             "`musclemimic_models`). Install with: pip install "
-            "'musclemimic_models>=1.0.2' or pip install "
+            "'musclemimic_models==1.0.5' or pip install "
             "'myosuite[musclemimic]'."
         ) from err
     return get_xml_path("bimanual").as_posix()
@@ -284,7 +284,7 @@ NATIVE_BIMANUAL_FALLBACK_WARNING = (
     "bit-exact parity with the external MuscleMimic codebase's model "
     "(github.com/amathislab/musclemimic) - checkpoints trained against the "
     "real musclemimic_models MJCF are not guaranteed to transfer. Install "
-    "'musclemimic_models>=1.0.2' or 'myosuite[musclemimic]' for exact parity."
+    "'musclemimic_models==1.0.5' or 'myosuite[musclemimic]' for exact parity."
 )
 
 
