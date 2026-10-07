@@ -62,14 +62,13 @@ def test_raw_xml_keyframes_in_range(xml: str) -> None:
     assert keyframe_violations(model) == []
 
 
-# Known exceptions. The full-body keyframes come from the musclemimic_models package; the ChaseTag
-# FBP2 reset keyframe is 1e-4 rad below a limit and kept so that resets stay bit-identical.
+# Known exception: the full-body keyframes come from the musclemimic_models package.
 UPSTREAM = "keyframe values come from the musclemimic_models package"
-KEPT = "reset keyframe 1e-4 rad outside a limit, kept to keep resets bit-identical"
 ENV_IDS = [
     "myoChallengeBimanual-v0",
     "myoChallengeTableTennisP0-v0",
     "myoChallengeSoccerP1-v0",
+    "myoChallengeChaseTagFBP2-v0",
     "myoHandPose1Fixed-v0",
     "myoFingerPoseFixed-v0",
     "myoArmReachFixed-v0",
@@ -77,7 +76,6 @@ ENV_IDS = [
     "myoLegWalk-v0",
     "myoTorsoPoseFixed-v0",
     pytest.param("myoMimicFullbody-v0", marks=pytest.mark.xfail(reason=UPSTREAM)),
-    pytest.param("myoChallengeChaseTagFBP2-v0", marks=pytest.mark.xfail(reason=KEPT)),
 ]
 
 
