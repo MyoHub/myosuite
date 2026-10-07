@@ -47,6 +47,8 @@ def _as_mj_int(value: Any) -> int:
 class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Native Gymnasium implementation for the bimanual challenge task."""
 
+    render_camera = "front_view"  # both arms and the pillars
+
     DEFAULT_OBS_KEYS = [
         "time",
         "myohand_qpos",

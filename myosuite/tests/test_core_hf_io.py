@@ -13,8 +13,10 @@ from pathlib import Path
 import pytest
 
 from myosuite.core.hf_io import (
+    default_baseline_revision,
     default_musclemimic_cache_root,
     download_baseline_checkpoint,
+    download_baseline_file,
     parse_hf_ref,
 )
 
@@ -78,7 +80,9 @@ def test_download_baseline_checkpoint_returns_the_env_directory(
         tmp_path / "checkpoints" / "myoElbowPose1D6MRandom-v0" / "model_200.pt"
     ).write_bytes(b"")
 
-    def fake_snapshot_download(*, repo_id: str, repo_type: str, allow_patterns) -> str:
+    def fake_snapshot_download(
+        *, repo_id: str, repo_type: str, revision: str, allow_patterns
+    ) -> str:
         assert repo_id == "myohub/myosuite-3-baselines"
         assert repo_type == "model"
         assert allow_patterns == ["checkpoints/myoElbowPose1D6MRandom-v0/*"]
@@ -117,3 +121,104 @@ def test_download_baseline_checkpoint_network_error_returns_none(
     monkeypatch.setattr("huggingface_hub.snapshot_download", raises, raising=False)
 
     assert download_baseline_checkpoint("myoElbowPose1D6MRandom-v0") is None
+
+
+def test_default_baseline_revision_follows_the_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tag is v<major>.<minor> of the installed version, unless overridden."""
+    monkeypatch.delenv("MYOSUITE_BASELINES_REVISION", raising=False)
+    monkeypatch.setattr("myosuite.__version__", "3.1.4")
+    assert default_baseline_revision() == "v3.1"
+    monkeypatch.setenv("MYOSUITE_BASELINES_REVISION", "my-branch")
+    assert default_baseline_revision() == "my-branch"
+
+
+def test_download_baseline_checkpoint_falls_back_to_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A release tag that is not on the Hub yet falls back to the main branch."""
+    from huggingface_hub.errors import RevisionNotFoundError
+
+    class MissingTag(RevisionNotFoundError):
+        """RevisionNotFoundError without the HTTP response the Hub client attaches."""
+
+        def __init__(self) -> None:
+            Exception.__init__(self, "no such tag")
+
+    env = tmp_path / "checkpoints" / "myoElbowPose1D6MRandom-v0"
+    env.mkdir(parents=True)
+    (env / "model_200.pt").write_bytes(b"")
+    asked: list[str] = []
+
+    def fake_snapshot_download(*, revision: str, **kwargs) -> str:
+        asked.append(revision)
+        if revision == "v3.0":
+            raise MissingTag()
+        return str(tmp_path)
+
+    monkeypatch.setattr(
+        "huggingface_hub.snapshot_download", fake_snapshot_download, raising=False
+    )
+    monkeypatch.setattr("myosuite.core.hf_io.default_baseline_revision", lambda: "v3.0")
+
+    assert download_baseline_checkpoint("myoElbowPose1D6MRandom-v0") == env
+    assert asked == ["v3.0", "main"]
+
+
+def test_download_baseline_file_uses_the_release_revision(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A single file is fetched at the release tag, and the revision is printed."""
+    target = tmp_path / "model_81380.pt"
+    asked: list[tuple[str, str, str]] = []
+
+    def fake_hf_hub_download(
+        repo_id: str, filename: str, *, repo_type: str, revision: str
+    ) -> str:
+        asked.append((repo_id, filename, revision))
+        return str(target)
+
+    monkeypatch.setattr(
+        "huggingface_hub.hf_hub_download", fake_hf_hub_download, raising=False
+    )
+    monkeypatch.setattr("myosuite.core.hf_io.default_baseline_revision", lambda: "v3.0")
+
+    path = download_baseline_file("checkpoints/x/model_81380.pt")
+
+    assert path == target
+    assert asked == [
+        ("myohub/myosuite-3-baselines", "checkpoints/x/model_81380.pt", "v3.0")
+    ]
+    assert "revision 'v3.0'" in capsys.readouterr().out
+
+
+def test_download_baseline_checkpoint_prints_the_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """When the release tag is missing the message says that the latest revision was used."""
+    from huggingface_hub.errors import RevisionNotFoundError
+
+    class MissingTag(RevisionNotFoundError):
+        """RevisionNotFoundError without the HTTP response the Hub client attaches."""
+
+        def __init__(self) -> None:
+            Exception.__init__(self, "no such tag")
+
+    env = tmp_path / "checkpoints" / "myoElbowPose1D6MRandom-v0"
+    env.mkdir(parents=True)
+    (env / "model_200.pt").write_bytes(b"")
+
+    def fake_snapshot_download(*, revision: str, **kwargs) -> str:
+        if revision != "main":
+            raise MissingTag()
+        return str(tmp_path)
+
+    monkeypatch.setattr(
+        "huggingface_hub.snapshot_download", fake_snapshot_download, raising=False
+    )
+    monkeypatch.setattr("myosuite.core.hf_io.default_baseline_revision", lambda: "v3.0")
+
+    assert download_baseline_checkpoint("myoElbowPose1D6MRandom-v0") == env
+    out = capsys.readouterr().out
+    assert "revision 'main'" in out and "tag 'v3.0' not found" in out

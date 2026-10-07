@@ -167,6 +167,8 @@ class SoccerEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         max_time_sec: Episode time limit (seconds).
     """
 
+    render_camera = "agent_view"  # behind the agent, with the ball in view
+
     DEFAULT_OBS_KEYS = [
         "internal_qpos",
         "internal_qvel",

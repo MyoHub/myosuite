@@ -14,6 +14,7 @@ import pytest
 
 from myosuite.tests.support.sb3_models import raw_observations, vec_normalized_model
 from myosuite.utils.checkpoint_utils import (
+    default_roots,
     find_checkpoint,
     find_vec_normalize,
     load_policy,
@@ -273,3 +274,26 @@ def test_load_policy_normalizes_observations_like_training(
 
     assert np.abs(expected - unnormalized).max() > 1e-2
     np.testing.assert_allclose(policy(raw), expected, atol=1e-6)
+
+
+def test_default_roots_reach_the_checkout_from_a_subdirectory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A notebook started in tutorials/ searches the checkout above it, not only its own folder."""
+    (tmp_path / "myosuite").mkdir()
+    sub = tmp_path / "tutorials"
+    sub.mkdir()
+    monkeypatch.chdir(sub)
+    assert default_roots() == (sub.resolve(), tmp_path.resolve())
+    monkeypatch.chdir(tmp_path)
+    assert default_roots() == (tmp_path.resolve(),)
+
+
+def test_default_roots_outside_a_checkout_is_the_working_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Without a checkout above it (pip install, Colab) only the working directory is searched."""
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    assert default_roots(max_levels=1) == (work.resolve(),)

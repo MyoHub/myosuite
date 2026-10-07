@@ -9,7 +9,7 @@
 ![PyPI - License](https://img.shields.io/pypi/l/myosuite)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/myohub/myosuite/blob/main/docs/CONTRIBUTING.md)
 [![Downloads](https://static.pepy.tech/badge/myosuite)](https://pepy.tech/project/myosuite)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MyoHub/myosuite/blob/main/tutorials/1.1_Get_Started.ipynb)
 [![Slack](https://img.shields.io/badge/Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white)](https://join.slack.com/t/myosuite/shared_invite/zt-1zkpw2zzk-NhVhVlSDxhoMHbzROD8gMA)
 [![Twitter Follow](https://img.shields.io/twitter/follow/MyoSuite?style=social)](https://twitter.com/MyoSuite)
 
@@ -55,8 +55,8 @@ Python 3.10–3.14 is supported (the GPU `[mjlab]` extra needs Python ≤3.13). 
 git clone https://github.com/MyoHub/myosuite.git
 cd myosuite
 pip install -e ".[rl]"          # CPU training (Stable-Baselines3)
-# pip install -e ".[mjlab]"     # GPU (Linux + CUDA) -- see docs/source/install.rst
-                                 # for matching the torch build to your driver's CUDA version
+# uv pip install -e ".[mjlab]" --torch-backend=auto   # GPU (NVIDIA, Linux or Windows), picks the torch
+                                 # build for your driver; with pip see docs/source/install.rst
 ```
 
 Or: `uv sync -p 3.10 --extra rl`.

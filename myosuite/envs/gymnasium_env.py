@@ -221,6 +221,9 @@ class MyoGymnasiumEnv(gym.Env):
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 50}
 
+    render_camera: str | None = None
+    """Name of the model camera ``render()`` shows by default (``None``: the free camera)."""
+
     def __new__(cls, *args: Any, **kwargs: Any) -> MyoGymnasiumEnv:
         """Reject the constructor kwargs that wrappers replaced (they would be ignored)."""
         reject_removed_kwargs(cls, kwargs)
@@ -574,7 +577,12 @@ class MyoGymnasiumEnv(gym.Env):
         Returns:
             Rendered frame (ndarray for ``"rgb_array"``) or ``None``.
         """
-        kwargs = kwargs or {"width": 640, "height": 480, "camera_id": -1}
+        if not kwargs:
+            kwargs = {"width": 640, "height": 480}
+            if self.render_camera is None:
+                kwargs["camera_id"] = -1
+            else:
+                kwargs["camera_name"] = self.render_camera
         if self.render_mode is None:
             return None
         if not hasattr(self, "_mujoco_renderer") or self._mujoco_renderer is None:
