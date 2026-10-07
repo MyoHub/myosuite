@@ -17,34 +17,26 @@ From source
 
    git clone https://github.com/MyoHub/myosuite.git
    cd myosuite
-   pip install -e .
-   # CPU RL:    pip install -e ".[rl]"
-   # GPU (Linux + CUDA): pip install -e ".[mjlab]"
+   pip install -e ".[rl]"        # CPU training (Stable-Baselines3)
+   # or with uv: uv sync -p 3.10 --extra rl
 
-For GPU, the torch build has to match your NVIDIA driver: the default torch wheel on PyPI is built
-for the newest CUDA, and on an older driver it installs fine but cannot use the GPU ("The NVIDIA driver
-on your system is too old"). pip cannot see the driver, so either let `uv <https://docs.astral.sh/uv/>`_
-pick the build for you::
+GPU training (mjlab)
+~~~~~~~~~~~~~~~~~~~~
 
-   uv pip install -e ".[mjlab]" --torch-backend=auto     # or: export UV_TORCH_BACKEND=auto
+Linux with an NVIDIA GPU. The torch and Warp wheels on PyPI are built for the newest CUDA; on an
+older driver they install but cannot use the GPU. `uv <https://docs.astral.sh/uv/>`_ picks the torch
+build that matches your driver:
 
-or install a matching torch *before* the ``.[mjlab]`` install with pip, e.g. ``pip install torch
---index-url https://download.pytorch.org/whl/cu129`` for a CUDA 12.8 / 12.9 driver (``nvidia-smi``
-shows the CUDA version; see `pytorch.org/get-started/locally <https://pytorch.org/get-started/locally/>`_
-for the right tag).
+.. code-block:: bash
 
-``--torch-backend`` covers torch only. ``warp-lang`` (pulled in by mjlab) is built for CUDA 13 on
-PyPI as well; on a CUDA 12 driver it falls back to the CPU and mjlab fails with ``Invalid device
-identifier: cuda:0`` (``python -c "import warp; warp.init()"`` prints "insufficient CUDA driver
-version"). Install the CUDA 12 build of the same version from the
-`Warp releases <https://github.com/NVIDIA/warp/releases>`_::
+   uv pip install -e ".[mjlab]" --torch-backend=auto
+   # with pip: install a matching torch first (nvidia-smi shows the driver's CUDA version), e.g.
+   # pip install torch --index-url https://download.pytorch.org/whl/cu129 && pip install -e ".[mjlab]"
 
-   pip install --force-reinstall --no-deps \
-       https://github.com/NVIDIA/warp/releases/download/v1.18.0/warp_lang-1.18.0+cu12-py3-none-manylinux_2_28_x86_64.whl
-
-Or with `uv <https://docs.astral.sh/uv/>`_::
-
-   uv sync -p 3.10 --extra rl
+On a CUDA 12 driver, also install the CUDA 12 build of Warp from its
+`releases <https://github.com/NVIDIA/warp/releases>`_ (otherwise mjlab fails with
+``Invalid device identifier: cuda:0``), e.g.
+``pip install --force-reinstall --no-deps https://github.com/NVIDIA/warp/releases/download/v1.18.0/warp_lang-1.18.0+cu12-py3-none-manylinux_2_28_x86_64.whl``.
 
 Musculoskeletal models ship in the ``myo-sim`` pip package; the few MPL, YCB and
 furniture assets MyoSuite uses are bundled in the package. No git submodule checkout is required.
