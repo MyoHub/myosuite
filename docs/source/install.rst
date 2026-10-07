@@ -21,12 +21,17 @@ From source
    # CPU RL:    pip install -e ".[rl]"
    # GPU (Linux + CUDA): pip install -e ".[mjlab]"
 
-For GPU, install a torch build matching your driver's CUDA version *before*
-the ``.[mjlab]`` install, e.g. ``pip install torch --index-url
-https://download.pytorch.org/whl/cu128`` (see `pytorch.org/get-started/locally
-<https://pytorch.org/get-started/locally/>`_ for the right tag). Otherwise an
-unconstrained resolve may pick a torch build requiring a newer CUDA runtime
-than your driver supports (or, in some environments, a CPU-only wheel).
+For GPU, the torch build has to match your NVIDIA driver: the default torch wheel on PyPI is built
+for the newest CUDA, and on an older driver it installs fine but cannot use the GPU ("The NVIDIA driver
+on your system is too old"). pip cannot see the driver, so either let `uv <https://docs.astral.sh/uv/>`_
+pick the build for you::
+
+   uv pip install -e ".[mjlab]" --torch-backend=auto     # or: export UV_TORCH_BACKEND=auto
+
+or install a matching torch *before* the ``.[mjlab]`` install with pip, e.g. ``pip install torch
+--index-url https://download.pytorch.org/whl/cu129`` for a CUDA 12.8 / 12.9 driver (``nvidia-smi``
+shows the CUDA version; see `pytorch.org/get-started/locally <https://pytorch.org/get-started/locally/>`_
+for the right tag).
 
 Or with `uv <https://docs.astral.sh/uv/>`_::
 
