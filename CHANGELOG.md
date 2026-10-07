@@ -121,7 +121,7 @@ full commit list.
 
 * MuJoCo 3.7 or newer (no official floor, but older versions are not maintained); `myo_sim` 0.2.3 from PyPI; `huggingface_hub` is a base dependency; `wandb`, `orbax-checkpoint`, `jax`/`brax` pins for the mjlab and MJX extras; security bumps of `gitpython`, `urllib3` and `uv.lock`; SPDX license metadata.
 * The `furniture-sim`, `mpl-sim`, `object-sim` and `ycb-sim` git dependencies are gone: the 40 files MyoSuite uses (2.9 MB) are bundled under `myosuite/envs/myo/assets/`, so every dependency installs from PyPI.
-* The `musclemimic` extra pins `musclemimic_models==1.0.5`. Version 1.0.6 flips the sign of the left-knee coupling polynomials and moves several muscle wraps, and published MuscleMimic checkpoints such as `amathislab/mm-10m-2` fall within 4 s on it.
+* The `musclemimic` extra pins `musclemimic_models==1.0.6`, which fixes the left knee (two coupling polynomials were negated relative to the right knee, so the left tibia rotated -0.25 rad about its axis at 1 rad of flexion where the right one rotated +0.25 rad) and six muscle wraps. MyoSuite's own full-body baseline (`myoMimicFullbody-v0`, walking_medium06) was trained on 1.0.6. `amathislab/mm-10m-2` was trained on 1.0.5: `model_version="1.0.5"` (or `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5`) rebuilds the 1.0.5 model bit-exactly from the installed package, and the tutorials and the playback / eval CLIs do so for that checkpoint (`model_versions.checkpoint_models_version`, [#520]).
 * `pink-noise-rl` is replaced by `colorednoise` (`myosuite.utils.colored_noise.ColoredNoiseProcess`; seeded episodes are bit-identical) ([#480]).
 
 ### Contributors
@@ -208,6 +208,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#501]: https://github.com/MyoHub/myosuite/pull/501
 [#504]: https://github.com/MyoHub/myosuite/pull/504
 [#508]: https://github.com/MyoHub/myosuite/pull/508
+[#520]: https://github.com/MyoHub/myosuite/pull/520
 [#525]: https://github.com/MyoHub/myosuite/pull/525
 
 ## [2.12.2] - 2026-05-06

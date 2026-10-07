@@ -3058,15 +3058,15 @@ wheels = [
 
 [[package]]
 name = "musclemimic-models"
-version = "1.0.5"
+version = "1.0.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mujoco", version = "3.8.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
     { name = "mujoco", version = "3.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/32/18/a28d77211aa40dd75748076864a67824c3af15ac8bb46b6ca3869542f26b/musclemimic_models-1.0.5.tar.gz", hash = "sha256:5118dda883ab08e6dfd687c4c38998d064ed2c210497c36f552777445dfa39f3", size = 4870034, upload-time = "2026-04-19T11:50:00.142Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/4d/50053827b1d4321c35770de0410dc7e680b46323e12a204d32625681c2bc/musclemimic_models-1.0.6.tar.gz", hash = "sha256:84263ad81e2e2c104cc63cd3214a627f19910e4591a1a28a9c15eea6b82f52fb", size = 4870379, upload-time = "2026-09-11T15:30:29.449Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/23/2b/ab89ceca9f1d99b8a4d5525aa96918c91a20c094e6f8b22e4f7daa816a3a/musclemimic_models-1.0.5-py3-none-any.whl", hash = "sha256:32b11b363d104f35e6db5331ef89be9df14e3a2189428f471cbc217377ecf436", size = 4876780, upload-time = "2026-04-19T11:49:57.819Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/bf/deaa309a8af26e759c6ff49340707279b1c814eb4fd2916fb0636bce3d7e/musclemimic_models-1.0.6-py3-none-any.whl", hash = "sha256:88b096fe072bd5d2cfcc88ec43ffef27a73bc5a54e6699d3bda0e92a76a03bea", size = 4876758, upload-time = "2026-09-11T15:30:27.677Z" },
 ]
 
 [[package]]
@@ -3258,7 +3258,7 @@ requires-dist = [
     { name = "mujoco", marker = "extra == 'mjx'", specifier = ">=3.7" },
     { name = "mujoco-mjx", marker = "extra == 'mjx'", specifier = ">=3.7" },
     { name = "mujoco-warp", marker = "python_full_version >= '3.10' and python_full_version < '3.14' and extra == 'mjlab'", specifier = ">=3.7.0" },
-    { name = "musclemimic-models", marker = "extra == 'musclemimic'", specifier = "==1.0.5" },
+    { name = "musclemimic-models", marker = "extra == 'musclemimic'", specifier = "==1.0.6" },
     { name = "myo-sim", specifier = "==0.2.3" },
     { name = "myosuite", extras = ["mjx"], marker = "extra == 'mjx-cuda'" },
     { name = "myosuite", extras = ["musclemimic"], marker = "extra == 'dev'" },

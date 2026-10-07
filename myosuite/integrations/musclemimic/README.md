@@ -244,6 +244,9 @@ uv run play myoMimicFullbody-v0 --wandb-run-path org/project/run-id
 
 ### ONNX policy on mjlab GPU env
 
+mm-10m-2 was trained on `musclemimic_models` 1.0.5: run it with
+`MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5` (see [Model release](#model-release)).
+
 mjlab's `myoMimicFullbody-v0` env produces ~684-dim observations — too small
 for the mm-10m-2 model which expects 2418 dims.  `FullbodyOnnxMjlabPolicy`
 (and `FullbodyOrbaxMjlabPolicy`) rebuild the checkpoint observation after each
@@ -533,6 +536,19 @@ for i in range(len(clip.qpos)):
 | `MYOSUITE_PREVIEW_REEXEC_MJPYTHON` | Internal guard for one-time preview relaunch under `mjpython` on macOS |
 | `MYOSUITE_MUSCLEMIMIC_DISABLE_LOCAL_POLICY` | Set to `1` to force trajectory replay even when local Orbax artifacts are present |
 | `MYOSUITE_MUSCLEMIMIC_USE_UPSTREAM` | Set to `1` to delegate `--path --mujoco_viewer` to upstream `fullbody.eval` instead of the native runner |
+| `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION` | `musclemimic_models` release the models are built as when the config sets no `model_version` (default `1.0.6`; `1.0.5` for checkpoints trained on it) |
+
+### Model release
+
+MyoSuite installs `musclemimic_models==1.0.6`, which fixed the left knee (two coupling
+polynomials were negated, so at 1 rad of flexion the left tibia rotated -0.25 rad about its
+axis where the right one rotated +0.25 rad) and six muscle wraps. MyoSuite's own full-body
+baseline (`myoMimicFullbody-v0`, walking_medium06) was trained on 1.0.6. `amathislab/mm-10m-2`
+was trained on 1.0.5 and falls within 4 s on 1.0.6. `model_version="1.0.5"` in the model config
+rebuilds 1.0.5 bit-exactly from the installed package;
+`model_versions.checkpoint_models_version(ref)` returns the release of a published checkpoint,
+and the tutorials and the playback / eval CLIs use it. For envs that build their config
+internally (e.g. the mjlab Mimic env), set `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5`.
 
 ## Troubleshooting
 
