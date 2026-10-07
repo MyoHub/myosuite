@@ -40,6 +40,8 @@ MAX_TIME = 3.0
 class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Native rewrite target for myoChallenge TableTennis."""
 
+    render_camera = "default"  # the player and the paddle, from the side
+
     DEFAULT_OBS_KEYS = [
         "pelvis_pos",
         "body_qpos",
