@@ -281,12 +281,14 @@ def test_per_axis_scale_moves_everything_with_its_body(name: str) -> None:
         np.testing.assert_allclose(
             scaled.body_pos[b], s(ref.body_parentid[b]) * ref.body_pos[b], atol=1e-12
         )
+    # Plain ints: `numpy int in (enum, ...)` is False with MuJoCo's Linux wheels.
+    skipped = {
+        int(mujoco.mjtGeom.mjGEOM_MESH),
+        int(mujoco.mjtGeom.mjGEOM_PLANE),
+        int(mujoco.mjtGeom.mjGEOM_HFIELD),
+    }
     for g in range(ref.ngeom):
-        if ref.geom_type[g] not in (
-            mujoco.mjtGeom.mjGEOM_MESH,
-            mujoco.mjtGeom.mjGEOM_PLANE,
-            mujoco.mjtGeom.mjGEOM_HFIELD,
-        ):
+        if int(ref.geom_type[g]) not in skipped:
             np.testing.assert_allclose(
                 scaled.geom_pos[g], s(ref.geom_bodyid[g]) * ref.geom_pos[g], atol=1e-12
             )
