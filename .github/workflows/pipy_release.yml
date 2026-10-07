@@ -11,8 +11,8 @@ name: MyoSuite PyPI Release
 on:
   workflow_dispatch:
 
-# Default to read-only. The build/release job gets contents: write only for
-# the branch/tag updates it performs with GITHUB_TOKEN.
+# Default to read-only. The build/release job gets contents: write only to
+# create the release tag; it never mutates main or dev.
 permissions:
   contents: read
 
@@ -23,12 +23,11 @@ concurrency:
 # # Upon running the following instructions
 # # > git tag 0.0.1 # or whatever version you want
 # # > git push origin --tags
-# # The following operations will be run
-# # 1. Update version according to major | minor | patch and use the new version as `tag name`
-# # 2. Use the `tag name` as `release version`
-# # 3. Build the PyPI package by using /myosuite/__init__.py version
-# # 4. Upload the package
-# # 5. Test Upload
+# Release contract:
+# 1. Version changes land through the normal dev -> main PR/CI flow.
+# 2. This workflow releases exactly the version already committed on main.
+# 3. It validates main/dev parity and main freshness, builds, tags, publishes,
+#    then smoke-tests the installed PyPI package.
 
 
 
@@ -39,8 +38,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # The release commit is pushed to main and the wheel is built from the
-      # dispatched ref, so a release must never be cut from another branch.
+      # A release is immutable: cut it only from the current main commit.
       - name: release from main only
         if: github.ref != 'refs/heads/main'
         run: |
@@ -56,7 +54,6 @@ jobs:
           python-version: "3.10"
       - name: get next version and tag
         id: get-next-version-and-tag
-        env:
         run: |
           output=$(python3 .github/release_utils.py --release-type current)
           echo $output
