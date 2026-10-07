@@ -129,3 +129,9 @@ CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and
 **`myoChallengeTableTennisP{0,1,2}-v0`** have no trained checkpoint available yet to evaluate.
 
 </sub>
+
+<sub>
+
+**Manifests and releases.** Every `checkpoints/<env_id>/` folder on the Hugging Face repo has a `manifest.json` with the env id, a hash of the env contract (observation and action shapes, control step), the MyoSuite version and commit, and the success rate above. When a downloaded checkpoint is used, MyoSuite compares that hash with the current env and warns if they differ, because the policy may then not work. The repo is tagged per release (`v3.0`, `v3.1`, ...); `download_baseline_checkpoint` takes the tag of your installed version (`MYOSUITE_BASELINES_REVISION` or the `revision` argument override it) and falls back to `main` when the tag does not exist. Write the manifests of a baselines checkout with `python scripts/write_checkpoint_manifests.py <dir>`.
+
+</sub>

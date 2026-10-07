@@ -80,8 +80,22 @@ BASELINES_REPO_ID = "myohub/myosuite-3-baselines"
 deterministic success reached at least 25% (see that repo's ``checkpoints/README.md``)."""
 
 
+def default_baseline_revision() -> str:
+    """Hugging Face revision (git tag) of the baselines that match this MyoSuite release.
+
+    ``MYOSUITE_BASELINES_REVISION`` overrides it; otherwise ``v<major>.<minor>`` of
+    ``myosuite.__version__`` (for example ``v3.0``).
+    """
+    configured = os.environ.get("MYOSUITE_BASELINES_REVISION")
+    if configured:
+        return configured
+    from myosuite import __version__  # noqa: PLC0415
+
+    return "v" + ".".join(__version__.split(".")[:2])
+
+
 def download_baseline_checkpoint(
-    env_id: str, repo_id: str = BASELINES_REPO_ID
+    env_id: str, repo_id: str = BASELINES_REPO_ID, revision: str | None = None
 ) -> Path | None:
     """Download env_id's default checkpoint from the baselines Hugging Face repo.
 
@@ -93,6 +107,9 @@ def download_baseline_checkpoint(
     Args:
         env_id: Registered env id.
         repo_id: Hugging Face repo id to download from.
+        revision: Branch or tag of the repo. Defaults to the tag of this release
+            (:func:`default_baseline_revision`), falling back to ``main`` when that tag
+            does not exist (yet).
 
     Returns:
         The local ``checkpoints/<env_id>`` directory, or ``None`` when huggingface_hub is
@@ -101,18 +118,28 @@ def download_baseline_checkpoint(
     """
     try:
         from huggingface_hub import snapshot_download
+        from huggingface_hub.errors import RevisionNotFoundError
     except ImportError:
         return None
-    try:
-        snapshot_dir = Path(
-            snapshot_download(
-                repo_id=repo_id,
-                repo_type="model",
-                allow_patterns=[f"checkpoints/{env_id}/*"],
+    revisions = list(dict.fromkeys([revision or default_baseline_revision(), "main"]))
+    snapshot_dir = None
+    for rev in revisions:
+        try:
+            snapshot_dir = Path(
+                snapshot_download(
+                    repo_id=repo_id,
+                    repo_type="model",
+                    revision=rev,
+                    allow_patterns=[f"checkpoints/{env_id}/*"],
+                )
             )
-        )
-    except Exception as err:  # noqa: BLE001  (network / auth / repo errors all mean "no baseline")
-        print(f"Could not reach the {repo_id!r} Hugging Face repo: {err}")
+            break
+        except RevisionNotFoundError:
+            continue
+        except Exception as err:  # noqa: BLE001  (network / auth / repo errors all mean "no baseline")
+            print(f"Could not reach the {repo_id!r} Hugging Face repo: {err}")
+            return None
+    if snapshot_dir is None:
         return None
     local = snapshot_dir / "checkpoints" / env_id
     if not local.is_dir() or not any(local.glob("model_*.pt")):
@@ -138,6 +165,7 @@ def default_musclemimic_cache_root() -> Path:
 
 __all__ = [
     "BASELINES_REPO_ID",
+    "default_baseline_revision",
     "HfRef",
     "default_musclemimic_cache_root",
     "download_baseline_checkpoint",

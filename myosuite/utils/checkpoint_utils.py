@@ -153,6 +153,9 @@ def find_checkpoint(
 
     hf_dir = download_baseline_checkpoint(env_id)
     if hf_dir is not None:
+        from myosuite.utils.checkpoint_manifest import check_contract  # noqa: PLC0415
+
+        check_contract(env_id, hf_dir)
         hf_ckpts = sorted(
             hf_dir.glob("model_*.pt"), key=lambda c: int(c.stem.split("_")[-1])
         )
