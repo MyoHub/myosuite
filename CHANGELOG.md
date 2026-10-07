@@ -93,7 +93,7 @@ full commit list.
 * **Reach and arm models:** arm-reach `IFtip` site back at the fingertip (it sat 1.8 cm short at the DIP joint since `7532d62`; the published arm policy reaches with the fingertip in 64% of episodes without retraining) ([#406]); thumb frozen and digits kept under their metacarpals ([#406]).
 * **Muscle conditions:** CPU fatigue activation rate and 3CC-r overshoot ([#421], thanks @M-Colley); per-muscle fatigue parameters for prefixed and side-suffixed names ([#430]); automatic peak force under sarcopenia ([#426]); fatigue/sarcopenia parity between CPU and mjlab ([#406]).
 * **Fatigue:** the mjlab twins honour `fatigue_reset_vec` / `fatigue_reset_random`, and `myoFatiElbowPoseTask{Fixed,Random}-v0` now fatigue ([#491]).
-* **Challenge envs:** `reset(seed=...)` reproduces the episode ([#438]); Bimanual pillars at the sampled positions ([#441]); TableTennis and SAR reorient fatigue draws from the env RNG ([#442]); TableTennis termination, relaunch and conditions ([#432]), policy action in mjlab ([#428], thanks @M-Colley) and mesh paths on any drive ([#485]); OSL controller `is_running` and `set_motor_param` ([#484]); RunTrack keyframe clamping ([#399]); ChaseTag fall threshold and opponent fall-through ([#406]). The default `render()` of the Soccer, TableTennis and Bimanual envs shows a model camera that frames the agent (`render_camera`, [#323]).
+* **Challenge envs:** `reset(seed=...)` reproduces the episode ([#438]); Bimanual pillars at the sampled positions ([#441]); TableTennis and SAR reorient fatigue draws from the env RNG ([#442]); TableTennis termination, relaunch and conditions ([#432]), policy action in mjlab ([#428], thanks @M-Colley) and mesh paths on any drive ([#485]); OSL controller `is_running` and `set_motor_param` ([#484]); RunTrack keyframe clamping ([#399]); ChaseTag fall threshold and opponent fall-through ([#406]). The default `render()` of the Soccer, TableTennis and Bimanual envs shows a model camera that frames the agent (`render_camera`, [#323]). The keyframes of `myoarm_bionic_bimanual.xml` and `myoarm_tabletennis.xml` stay inside the declared joint ranges and ctrlranges (no change to the env resets; [#403], with a regression test over the shipped models).
 * **mjlab twins register themselves:** `make_env(..., backend="mjlab")` and the mjlab CLIs work in a fresh interpreter, without depending on the order in which tests import things ([#501]).
 * **Terminate on MuJoCo instability** in every CPU env ([#423]).
 * **SAR:** reorient actions, muscle conditions and stale geometry ([#434]); mjlab SAR action reaches the muscles ([#424], thanks @M-Colley); PCA whitening undone in `SARTorchTransform` ([#425], thanks @M-Colley); the bridge and activation collector ([#459]); tutorial scripts seed SAC and resume ([#455]).
@@ -133,6 +133,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#354]: https://github.com/MyoHub/myosuite/pull/354
 [#399]: https://github.com/MyoHub/myosuite/pull/399
 [#323]: https://github.com/MyoHub/myosuite/issues/323
+[#403]: https://github.com/MyoHub/myosuite/issues/403
 [#406]: https://github.com/MyoHub/myosuite/pull/406
 [#407]: https://github.com/MyoHub/myosuite/pull/407
 [#408]: https://github.com/MyoHub/myosuite/pull/408
