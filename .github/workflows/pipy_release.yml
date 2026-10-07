@@ -155,10 +155,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      # Validate and mutate in one step. The atomic push includes no-op
-      # main/dev refspecs guarded by exact leases, so Git rejects the tag if
-      # either branch changes after validation but before the server applies it.
-      - name: Validate tips and create release tag atomically
+      # Revalidate immediately before tagging. Git cannot atomically condition
+      # creation of an unrelated tag on unchanged branch refs without mutating
+      # those refs, so keep this window minimal and never rewrite branches.
+      - name: Revalidate tips and create release tag
         env:
           NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
         run: |
@@ -189,13 +189,15 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
-            git push --atomic \
-              --force-with-lease=main:$main_sha \
-              --force-with-lease=dev:$dev_sha \
-              origin \
-              "$main_sha:refs/heads/main" \
-              "$dev_sha:refs/heads/dev" \
-              "refs/tags/$NEW_TAG"
+            # Fetch once more directly before the push and fail if either tip
+            # changed since validation.
+            current_main=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+            current_dev=$(git ls-remote origin refs/heads/dev | awk '{print $1}')
+            if [ "$current_main" != "$main_sha" ] || [ "$current_dev" != "$dev_sha" ]; then
+              echo "::error::main or dev moved immediately before tagging; aborting release."
+              exit 1
+            fi
+            git push origin "refs/tags/$NEW_TAG"
           fi
 
   publish_to_pypi:
