@@ -18,9 +18,10 @@ on:
         default: 'patch'
         required: true
 
-# Pushes and tags use REPO_TOKEN, so the job token only needs read access.
+# Pushes and tags use REPO_TOKEN. PyPI Trusted Publishing requires an OIDC token.
 permissions:
   contents: read
+  id-token: write
 # # Upon running the following instructions
 # # > git tag 0.0.1 # or whatever version you want
 # # > git push origin --tags
@@ -155,8 +156,6 @@ jobs:
     # 4. Upload the package
     - name: Publish distribution to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        password: ${{ secrets.PYPI_API_TOKEN }}
 
   test_latest_PyPI:
     needs: pypi_package_build_and_release
