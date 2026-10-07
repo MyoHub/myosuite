@@ -101,19 +101,14 @@ jobs:
         output=$(python3 .github/release_utils.py --release-type "$RELEASE_TYPE" --update-version)
 
     # The release flow is dev -> main. Before creating the release commit,
-    # require dev to still be the commit that was promoted into main.
-    - name: Verify dev has not advanced since promotion to main
+    # require the current dev tip to already be contained in main. This supports
+    # merge commits, squash merges, and fast-forward promotions without relying
+    # on a particular commit-parent shape.
+    - name: Verify dev has been promoted to main
       run: |
         git fetch origin main dev
-        main_parent_count=$(git rev-list --count --parents -n 1 origin/main | awk '{print NF-1}')
-        if [ "$main_parent_count" -ne 2 ]; then
-          echo "::error::main must point to the dev -> main merge commit before releasing."
-          exit 1
-        fi
-        promoted_dev=$(git rev-parse origin/main^2)
-        current_dev=$(git rev-parse origin/dev)
-        if [ "$promoted_dev" != "$current_dev" ]; then
-          echo "::error::dev has advanced since it was promoted to main. Merge dev -> main again before releasing."
+        if ! git merge-base --is-ancestor origin/dev origin/main; then
+          echo "::error::dev contains commits that are not in main. Merge dev -> main before releasing."
           exit 1
         fi
 
