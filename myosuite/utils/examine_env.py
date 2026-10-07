@@ -3,6 +3,7 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
+import ast
 import os
 import pickle
 import time
@@ -139,7 +140,7 @@ def main(
     envw = (
         make_env(env_name)
         if env_args is None
-        else make_env(env_name, **(eval(env_args)))
+        else make_env(env_name, **ast.literal_eval(env_args))
     )
     env = envw.unwrapped
     env.seed(seed)

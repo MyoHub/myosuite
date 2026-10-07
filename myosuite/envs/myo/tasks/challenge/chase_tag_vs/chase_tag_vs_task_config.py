@@ -310,7 +310,7 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
                 repo_type="dataset",
             )
         )
-        npz = np.load(path, allow_pickle=True)
+        npz = np.load(path)
         qpos = np.asarray(npz["qpos"], dtype=np.float64)
         qvel = np.asarray(npz["qvel"], dtype=np.float64)
         # Drop root free joint — only local joint-angle style is imitated
