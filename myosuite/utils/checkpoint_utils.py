@@ -104,10 +104,31 @@ def resume_checkpoint(
     )
 
 
+def default_roots(max_levels: int = 4) -> tuple[Path, ...]:
+    """Directories searched for local runs: the working directory and its parents.
+
+    The parents are included up to the MyoSuite checkout (the directory holding
+    ``myosuite/`` or ``.git``), so a notebook started in ``tutorials/`` still finds the
+    ``logs/`` of the checkout. Outside a checkout (a pip install, Colab) it is the working
+    directory only.
+
+    Args:
+        max_levels: Most parent levels to look at.
+
+    Returns:
+        The working directory first, then its parents.
+    """
+    cwd = Path.cwd().resolve()
+    for level, parent in enumerate(cwd.parents[:max_levels], start=1):
+        if (parent / "myosuite").is_dir() or (parent / ".git").exists():
+            return (cwd, *cwd.parents[:level])
+    return (cwd,)
+
+
 def find_checkpoint(
     env_id: str,
     checkpoint: str | Path | None = None,
-    roots: Sequence[Path] = (Path.cwd(),),
+    roots: Sequence[Path] | None = None,
     sb3_zip: str | None = None,
 ) -> Path | None:
     """Locate a trained policy for *env_id*.
@@ -115,7 +136,8 @@ def find_checkpoint(
     Args:
         env_id: Registered env id.
         checkpoint: Explicit checkpoint (returned as is when given).
-        roots: Directories searched for ``logs/rsl_rl/<experiment>/<run>/model_*.pt``
+        roots: Directories searched (default: :func:`default_roots`) for
+            ``logs/rsl_rl/<experiment>/<run>/model_*.pt``
             (newest run and iteration wins; runs whose ``params/env.yaml`` records
             another env id are skipped), then for the repository's default policy
             ``baselines/checkpoints/<env_id>/model_*.pt``, then for *sb3_zip*.
@@ -128,6 +150,7 @@ def find_checkpoint(
     """
     if checkpoint is not None:
         return Path(checkpoint)
+    roots = default_roots() if roots is None else roots
     experiment = mjlab_experiment(env_id)
     for root in roots:
         runs = sorted(
