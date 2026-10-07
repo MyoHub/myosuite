@@ -58,7 +58,7 @@ activations and controls at 0.5), and the bodies, joints, tendons, equality
 constraints and sensors on both sides. Each model is tried twice: as MyoSuite writes
 it, and rewritten by MuJoCo into one plain file with ``-`` in names replaced by ``_``
 (Newton 1.6.1 looks up a spatial tendon's sites by their sanitized names, so it drops
-hyphenated sites). A loss in the second version comes from Newton itself, not from how
+hyphenated sites; `newton#4566 <https://github.com/newton-physics/newton/issues/4566>`_). A loss in the second version comes from Newton itself, not from how
 it reads the file.
 
 Run it on the CPU, in an environment with Newton and without mjlab (the two need
