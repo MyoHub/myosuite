@@ -10,20 +10,13 @@ name: MyoSuite PyPI Release
 #     - '*'
 on:
   workflow_dispatch:
-    inputs:
-      name:
-        description: 'Release Type (current = release version.py as-is, major, minor, patch)'
-        type: choice
-        options: [patch, minor, major, current]
-        default: 'patch'
-        required: true
 
 # Default to read-only. The build/release job gets contents: write only for
 # the branch/tag updates it performs with GITHUB_TOKEN.
 permissions:
   contents: read
 
-# Only one release may mutate main/dev at a time.
+# Only one release may tag/publish at a time.
 concurrency:
   group: pypi-release
   cancel-in-progress: false
@@ -40,7 +33,8 @@ concurrency:
 
 
 jobs:
-  # 1. Update version according to major | minor | patch and use the new version as `tag name`
+  # Resolve the version already committed on main. Version bumps belong in
+  # the normal dev -> main PR flow, where branch protection and CI apply.
   get_next_version:
     runs-on: ubuntu-latest
 
@@ -63,9 +57,8 @@ jobs:
       - name: get next version and tag
         id: get-next-version-and-tag
         env:
-          RELEASE_TYPE: ${{ inputs.name }}  # via env, never spliced into the script
         run: |
-          output=$(python3 .github/release_utils.py --release-type "$RELEASE_TYPE")
+          output=$(python3 .github/release_utils.py --release-type current)
           echo $output
           new_version=$(echo $output | awk '{print $1}')
           new_tag=$(echo $output | awk '{print $2}')
@@ -95,109 +88,78 @@ jobs:
       with:
         python-version: "3.10"
 
-    - name: Install pypa/setuptools
-      run: |
-        pip install build setuptools wheel
+    - name: Install build tooling
+      run: pip install build setuptools wheel
 
-    # update the version number in version.py and uv.lock
-    - name: update version
-      id: update-version
-      env:
-        RELEASE_TYPE: ${{ inputs.name }}
-      run : |
-        echo "current folder = $PWD"
-        echo "current branch = $(git branch --show-current)"
-        output=$(python3 .github/release_utils.py --release-type "$RELEASE_TYPE" --update-version)
-        if [ "$RELEASE_TYPE" = "current" ] && ! git diff --quiet -- myosuite/version.py uv.lock 2>/dev/null; then
-          echo "::error::A current release must not modify version files."
-          exit 1
-        fi
-
-    # The release flow is dev -> main. Promotion may use a merge, squash,
-    # rebase, or fast-forward, so compare repository trees rather than ancestry.
-    # Record the exact remote tips we validated; the push step uses them as
-    # leases so concurrent branch updates cannot be overwritten.
-    - name: Verify dev has been promoted to main
-      if: inputs.name != 'current'
-      id: verify-branches
+    - name: Verify release source is current main and matches dev
       run: |
-        git fetch origin main dev
+        git fetch origin main dev --tags
         main_sha=$(git rev-parse origin/main)
-        dev_sha=$(git rev-parse origin/dev)
         main_tree=$(git rev-parse origin/main^{tree})
         dev_tree=$(git rev-parse origin/dev^{tree})
+
+        if [ "$GITHUB_SHA" != "$main_sha" ]; then
+          echo "::error::main moved after this release was dispatched. Re-run from the latest main."
+          exit 1
+        fi
 
         if [ "$main_tree" != "$dev_tree" ]; then
           echo "::error::main and dev do not contain the same files. Promote dev -> main before releasing."
           exit 1
         fi
 
-        if [ "$GITHUB_SHA" != "$main_sha" ]; then
-          echo "::error::main moved after this release was dispatched. Re-run the release from the latest main."
+        if ! git diff --quiet || ! git diff --cached --quiet; then
+          echo "::error::Release checkout is unexpectedly dirty."
           exit 1
         fi
 
-        echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
-        echo "dev_sha=$dev_sha" >> "$GITHUB_OUTPUT"
+    # Build before creating any tag or publishing anything.
+    - name: Build distributions
+      run: python3 -m build
 
-    # commit and push version.py and uv.lock updates
-    - name: Commit updated version files
-      if: inputs.name != 'current'
+    - name: Verify built package version
       env:
-        NEW_VERSION: ${{ needs.get_next_version.outputs.new_version }}
+        EXPECTED_VERSION: ${{ needs.get_next_version.outputs.new_version }}
       run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add myosuite/version.py
-        # Add uv.lock if it exists (git will only stage if modified)
-        if [ -f uv.lock ]; then
-          git add uv.lock
-        fi
-        # "current" leaves the files unchanged; only commit a real bump.
-        if ! git diff --cached --quiet; then
-          git commit -m "chore: bump version to $NEW_VERSION"
-          # Advance both branches to the release commit. Explicit leases bind
-          # the update to the exact remote tips validated above. This safely
-          # reconciles squash/rebase histories while rejecting concurrent pushes.
-          git push --atomic --force-with-lease=main:${{ steps.verify-branches.outputs.main_sha }} --force-with-lease=dev:${{ steps.verify-branches.outputs.dev_sha }} origin HEAD:main HEAD:dev
-        fi
+        python3 - <<'PY'
+        import glob
+        import zipfile
+        from email.parser import Parser
+        import os
+
+        wheels = glob.glob("dist/*.whl")
+        if len(wheels) != 1:
+            raise SystemExit(f"Expected exactly one wheel, found: {wheels}")
+        with zipfile.ZipFile(wheels[0]) as zf:
+            metadata_name = next(n for n in zf.namelist() if n.endswith(".dist-info/METADATA"))
+            metadata = Parser().parsestr(zf.read(metadata_name).decode())
+        actual = metadata["Version"]
+        expected = os.environ["EXPECTED_VERSION"]
+        if actual != expected:
+            raise SystemExit(f"Built wheel version {actual} != expected {expected}")
+        print(f"Verified wheel version {actual}")
+        PY
 
     - name: Verify release Git authentication
-      run: |
-        if ! git ls-remote origin HEAD >/dev/null; then
-          echo "::error::GITHUB_TOKEN cannot authenticate to this repository."
-          exit 1
-        fi
+      run: git ls-remote origin HEAD >/dev/null
 
-    # 2. Use the `tag name` as `release version`
-    - uses: mukunku/tag-exists-action@78009d2b13e10ba051fe68d8d2f6778a9b2adab3  # v1.4.0
-      id: checkTag
-      with:
-        tag: ${{ needs.get_next_version.outputs.new_tag }}
-
-    - name: Create release tag
+    - name: Create or validate release tag
       env:
         NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
-        TAG_EXISTS: ${{ steps.checkTag.outputs.exists }}
       run: |
-        if [ "$TAG_EXISTS" = "true" ]; then
-          remote_tag=$(git ls-remote --tags origin "refs/tags/$NEW_TAG" | awk '{print $1}')
-          head_sha=$(git rev-parse HEAD)
-          if [ "$remote_tag" != "$head_sha" ]; then
-            echo "::error::Tag $NEW_TAG already exists but does not point to this release commit."
+        head_sha=$(git rev-parse HEAD)
+        if git rev-parse -q --verify "refs/tags/$NEW_TAG" >/dev/null; then
+          tagged_sha=$(git rev-list -n 1 "$NEW_TAG")
+          if [ "$tagged_sha" != "$head_sha" ]; then
+            echo "::error::Tag $NEW_TAG already exists but resolves to $tagged_sha, not $head_sha."
             exit 1
           fi
-          echo "Tag $NEW_TAG already points to this release commit; reusing it."
+          echo "Tag $NEW_TAG already resolves to this release commit; reusing it."
         else
-          git tag "$NEW_TAG"
+          git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
           git push origin "refs/tags/$NEW_TAG"
         fi
 
-
-     # 3. Build the PyPI packeage
-    - name: Build a binary wheel
-      run: >-
-        python3 -m build
     - name: Store the distribution packages
       uses: actions/upload-artifact@v4
       with:
