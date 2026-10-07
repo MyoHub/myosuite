@@ -1,6 +1,7 @@
 # MJX backend (experimental)
 
-> [!NOTE] For most applications, we support using the mjlab implementations for GPU acceleration (`pip install -e ".[mjlab]"`, then`python scripts/train_mjlab.py <env_id>`). MJX is kept for usecases that need end-to-end JAX compilation or TPU compatibility.
+> [!NOTE]
+> For most applications, we support using the mjlab implementations for GPU acceleration (`pip install -e ".[mjlab]"`, then`python scripts/train_mjlab.py <env_id>`). MJX is kept for usecases that need end-to-end JAX compilation or TPU compatibility.
 
 This directory contains [MJX (MuJoCo XLA)](https://mujoco.readthedocs.io/en/stable/mjx.html) and [MJWarp](https://mujoco.readthedocs.io/en/latest/mjwarp/) implementations of MyoSuite environments for accelerated training.
 
