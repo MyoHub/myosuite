@@ -362,6 +362,7 @@ def _run_offscreen_record_loop(
     """Replay clip offscreen and save an MP4."""
     width, height = _resolve_offscreen_render_size(model)
     renderer = mujoco.Renderer(model, height=height, width=width)
+    camera = side_tracking_camera(model, clip)
     site_errors: list[float] = []
     frames: list[np.ndarray] = []
     try:
@@ -370,7 +371,7 @@ def _run_offscreen_record_loop(
             err = _compute_site_tracking_error(model, data, clip, frame_idx)
             if err is not None:
                 site_errors.append(float(err))
-            renderer.update_scene(data)
+            renderer.update_scene(data, camera=camera)
             frames.append(np.asarray(renderer.render(), dtype=np.uint8))
     finally:
         renderer.close()
@@ -402,6 +403,7 @@ def _run_offscreen_policy_record_loop(
     """Run policy rollout offscreen and save an MP4."""
     width, height = _resolve_offscreen_render_size(model)
     renderer = mujoco.Renderer(model, height=height, width=width)
+    camera = side_tracking_camera(model, clip)
     site_errors: list[float] = []
     frames: list[np.ndarray] = []
     try:
@@ -415,7 +417,7 @@ def _run_offscreen_policy_record_loop(
             err = _compute_site_tracking_error(model, data, clip, frame_idx)
             if err is not None:
                 site_errors.append(float(err))
-            renderer.update_scene(data)
+            renderer.update_scene(data, camera=camera)
             frames.append(np.asarray(renderer.render(), dtype=np.uint8))
     finally:
         renderer.close()
@@ -433,6 +435,46 @@ def _run_offscreen_policy_record_loop(
         outputdict={"-r": str(target_fps)},
     )
     return site_errors
+
+
+def side_tracking_camera(
+    model: mujoco.MjModel,
+    clip: MotionClip,
+    distance: float = 3.0,
+    elevation: float = -10.0,
+) -> mujoco.MjvCamera:
+    """Return a camera that tracks the root body from the side.
+
+    The camera follows the body carrying the free root joint and looks at it
+    perpendicular to the clip's net travel direction, so a walk crosses the
+    frame left to right.
+
+    Args:
+        model: Compiled model with a free root joint.
+        clip: Motion clip in model qpos order.
+        distance: Camera distance from the tracked body in metres.
+        elevation: Camera elevation in degrees (negative looks down).
+
+    Returns:
+        A ``mjCAMERA_TRACKING`` camera for ``Renderer.update_scene``.
+    """
+    free_joints = np.flatnonzero(model.jnt_type == mujoco.mjtJoint.mjJNT_FREE)
+    root_joint = int(free_joints[0]) if free_joints.size else 0
+    cam = mujoco.MjvCamera()
+    cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
+    cam.trackbodyid = int(model.jnt_bodyid[root_joint])
+    cam.distance = distance
+    cam.elevation = elevation
+    heading = 0.0
+    if free_joints.size:
+        adr = int(model.jnt_qposadr[root_joint])
+        travel = clip.qpos[-1, adr : adr + 2] - clip.qpos[0, adr : adr + 2]
+        # Clips that barely move keep a +x heading.
+        if np.linalg.norm(travel) > 0.1:
+            heading = float(np.degrees(np.arctan2(travel[1], travel[0])))
+    # Looking 90 deg left of the heading puts the camera on the body's right.
+    cam.azimuth = heading + 90.0
+    return cam
 
 
 def _resolve_offscreen_render_size(
@@ -603,6 +645,8 @@ def run_native_playback(parsed: NativePlaybackArgs) -> int:
     result = runner.run(request, artifacts)
     for warn in result.warnings:
         logger.warning("%s", warn)
+    if parsed.record:
+        print(f"Saved video to {Path(parsed.record_path).expanduser().resolve()}")
     if result.mean_tracking_error is not None:
         logger.info(
             "Native replay mean site-tracking error over %d frames: %.6f",

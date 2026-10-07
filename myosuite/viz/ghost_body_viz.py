@@ -185,7 +185,7 @@ class GhostBodyViz:
         from pathlib import Path
 
         if isinstance(clip_path_or_npz, (str, Path)):
-            npz = np.load(clip_path_or_npz, allow_pickle=True)
+            npz = np.load(clip_path_or_npz)
         else:
             npz = clip_path_or_npz
 

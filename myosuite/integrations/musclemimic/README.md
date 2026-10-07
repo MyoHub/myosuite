@@ -153,7 +153,7 @@ uv run myosuite-musclemimic-fullbody-eval \
 uv run myosuite-musclemimic-fullbody-eval \
   --path hf://amathislab/mm-10m-2 \
   --motion_path KIT/314/walking_medium09_poses \
-  --use_mujoco --record --record_path walk_eval.mp4
+  --use_mujoco --record --record_path walk_eval.mp4 --record_fps 100
 ```
 
 **Preview only** (no HF path):
