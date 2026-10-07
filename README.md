@@ -9,7 +9,7 @@
 ![PyPI - License](https://img.shields.io/pypi/l/myosuite)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/myohub/myosuite/blob/main/docs/CONTRIBUTING.md)
 [![Downloads](https://static.pepy.tech/badge/myosuite)](https://pepy.tech/project/myosuite)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1BY5Qq3R_xI9C0jCbnYuWYNRiDZSehAkC)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MyoHub/myosuite/blob/main/tutorials/1.1_Get_Started.ipynb)
 [![Slack](https://img.shields.io/badge/Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white)](https://join.slack.com/t/myosuite/shared_invite/zt-1zkpw2zzk-NhVhVlSDxhoMHbzROD8gMA)
 [![Twitter Follow](https://img.shields.io/twitter/follow/MyoSuite?style=social)](https://twitter.com/MyoSuite)
 
