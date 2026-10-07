@@ -108,12 +108,17 @@ jobs:
         echo "current folder = $PWD"
         echo "current branch = $(git branch --show-current)"
         output=$(python3 .github/release_utils.py --release-type "$RELEASE_TYPE" --update-version)
+        if [ "$RELEASE_TYPE" = "current" ] && ! git diff --quiet -- myosuite/version.py uv.lock 2>/dev/null; then
+          echo "::error::A current release must not modify version files."
+          exit 1
+        fi
 
     # The release flow is dev -> main. Promotion may use a merge, squash,
     # rebase, or fast-forward, so compare repository trees rather than ancestry.
     # Record the exact remote tips we validated; the push step uses them as
     # leases so concurrent branch updates cannot be overwritten.
     - name: Verify dev has been promoted to main
+      if: inputs.name != 'current'
       id: verify-branches
       run: |
         git fetch origin main dev
@@ -137,6 +142,7 @@ jobs:
 
     # commit and push version.py and uv.lock updates
     - name: Commit updated version files
+      if: inputs.name != 'current'
       env:
         NEW_VERSION: ${{ needs.get_next_version.outputs.new_version }}
       run: |
@@ -156,19 +162,36 @@ jobs:
           git push --atomic --force-with-lease=main:${{ steps.verify-branches.outputs.main_sha }} --force-with-lease=dev:${{ steps.verify-branches.outputs.dev_sha }} origin HEAD:main HEAD:dev
         fi
 
+    - name: Verify release Git authentication
+      run: |
+        if ! git ls-remote origin HEAD >/dev/null; then
+          echo "::error::GITHUB_TOKEN cannot authenticate to this repository."
+          exit 1
+        fi
+
     # 2. Use the `tag name` as `release version`
     - uses: mukunku/tag-exists-action@78009d2b13e10ba051fe68d8d2f6778a9b2adab3  # v1.4.0
       id: checkTag
       with:
         tag: ${{ needs.get_next_version.outputs.new_tag }}
 
-    - name: If Tag does not exists, Create Git Tag
-      if: steps.checkTag.outputs.exists != 'true'
+    - name: Create release tag
       env:
         NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
+        TAG_EXISTS: ${{ steps.checkTag.outputs.exists }}
       run: |
-        git tag "$NEW_TAG"
-        git push origin "$NEW_TAG"
+        if [ "$TAG_EXISTS" = "true" ]; then
+          remote_tag=$(git ls-remote --tags origin "refs/tags/$NEW_TAG" | awk '{print $1}')
+          head_sha=$(git rev-parse HEAD)
+          if [ "$remote_tag" != "$head_sha" ]; then
+            echo "::error::Tag $NEW_TAG already exists but does not point to this release commit."
+            exit 1
+          fi
+          echo "Tag $NEW_TAG already points to this release commit; reusing it."
+        else
+          git tag "$NEW_TAG"
+          git push origin "refs/tags/$NEW_TAG"
+        fi
 
 
      # 3. Build the PyPI packeage
