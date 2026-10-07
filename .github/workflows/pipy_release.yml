@@ -100,22 +100,31 @@ jobs:
         echo "current branch = $(git branch --show-current)"
         output=$(python3 .github/release_utils.py --release-type "$RELEASE_TYPE" --update-version)
 
-    # The release flow is dev -> main. Before creating the release commit,
-    # require dev to still be the commit that was promoted into main.
-    - name: Verify dev has not advanced since promotion to main
+    # The release flow is dev -> main. Promotion may use a merge, squash,
+    # rebase, or fast-forward, so compare repository trees rather than ancestry.
+    # Record the exact remote tips we validated; the push step uses them as
+    # leases so concurrent branch updates cannot be overwritten.
+    - name: Verify dev has been promoted to main
+      id: verify-branches
       run: |
         git fetch origin main dev
-        main_parent_count=$(git rev-list --count --parents -n 1 origin/main | awk '{print NF-1}')
-        if [ "$main_parent_count" -ne 2 ]; then
-          echo "::error::main must point to the dev -> main merge commit before releasing."
+        main_sha=$(git rev-parse origin/main)
+        dev_sha=$(git rev-parse origin/dev)
+        main_tree=$(git rev-parse origin/main^{tree})
+        dev_tree=$(git rev-parse origin/dev^{tree})
+
+        if [ "$main_tree" != "$dev_tree" ]; then
+          echo "::error::main and dev do not contain the same files. Promote dev -> main before releasing."
           exit 1
         fi
-        promoted_dev=$(git rev-parse origin/main^2)
-        current_dev=$(git rev-parse origin/dev)
-        if [ "$promoted_dev" != "$current_dev" ]; then
-          echo "::error::dev has advanced since it was promoted to main. Merge dev -> main again before releasing."
+
+        if [ "$GITHUB_SHA" != "$main_sha" ]; then
+          echo "::error::main moved after this release was dispatched. Re-run the release from the latest main."
           exit 1
         fi
+
+        echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
+        echo "dev_sha=$dev_sha" >> "$GITHUB_OUTPUT"
 
     # commit and push version.py and uv.lock updates
     - name: Commit updated version files
@@ -137,9 +146,10 @@ jobs:
         # "current" leaves the files unchanged; only commit a real bump.
         if ! git diff --cached --quiet; then
           git commit -m "chore: bump version to $NEW_VERSION"
-          # Advance main and dev together to the exact same release commit.
-          # --atomic prevents either branch from moving if the other update fails.
-          git push --atomic origin HEAD:main HEAD:dev
+          # Advance both branches to the release commit. Explicit leases bind
+          # the update to the exact remote tips validated above. This safely
+          # reconciles squash/rebase histories while rejecting concurrent pushes.
+          git push --atomic --force-with-lease=main:${{ steps.verify-branches.outputs.main_sha }} --force-with-lease=dev:${{ steps.verify-branches.outputs.dev_sha }} origin HEAD:main HEAD:dev
         fi
 
     # 2. Use the `tag name` as `release version`
