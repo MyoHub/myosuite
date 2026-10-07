@@ -24,6 +24,10 @@ from ml_collections import config_dict
 import mujoco
 
 from myosuite.core.model_builder import cached_spec
+from myosuite.integrations.musclemimic.model_versions import (
+    apply_models_version,
+    resolve_models_version,
+)
 from myosuite.terms.mimic_reward import MimicTrackingConfig
 
 BODY2SITES_FOR_MIMIC = {
@@ -173,7 +177,7 @@ def resolve_mimic_bimanual_xml(config: config_dict.ConfigDict) -> str:
             "MjxMimicBimanual-v0 needs the same bimanual MJCF as "
             "https://github.com/amathislab/musclemimic (package "
             "`musclemimic_models`). Install with: pip install "
-            "'musclemimic_models==1.0.5' or pip install "
+            "'musclemimic_models==1.0.6' or pip install "
             "'myosuite[musclemimic]'."
         ) from err
     return get_xml_path("bimanual").as_posix()
@@ -284,7 +288,7 @@ NATIVE_BIMANUAL_FALLBACK_WARNING = (
     "bit-exact parity with the external MuscleMimic codebase's model "
     "(github.com/amathislab/musclemimic) - checkpoints trained against the "
     "real musclemimic_models MJCF are not guaranteed to transfer. Install "
-    "'musclemimic_models==1.0.5' or 'myosuite[musclemimic]' for exact parity."
+    "'musclemimic_models==1.0.6' or 'myosuite[musclemimic]' for exact parity."
 )
 
 
@@ -418,6 +422,8 @@ def build_mimic_bimanual_spec(
         os.environ.get("MYOSUITE_MIMIC_STRICT_UPSTREAM_SCENE", "0") == "1",
         bool(config.disable_fingers),
     )
+    if mp is None:
+        apply_models_version(spec, resolve_models_version(config))
     return spec, xml_path
 
 
@@ -574,6 +580,8 @@ def default_mimic_config() -> config_dict.ConfigDict:
         # None: load upstream MuscleMimic MJCF via musclemimic_models (see
         # :func:`resolve_mimic_bimanual_xml`).
         model_path=None,
+        # musclemimic_models release to build (None: see resolve_models_version).
+        model_version=None,
         disable_fingers=True,
         enable_joint_pos_observations=True,
         enable_joint_vel_observations=True,
