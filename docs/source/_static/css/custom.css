@@ -259,7 +259,8 @@ body .rst-content .wy-table-responsive table thead td p {
 }
 
 /* ===== Footer navigation buttons ===== */
-.rst-footer-buttons a {
+.rst-footer-buttons a,
+.rst-footer-buttons a:visited {
   background: var(--myo-dark-teal) !important;  /* white text on dark-teal */
   color: #fff !important;
   border: none !important;
@@ -268,6 +269,7 @@ body .rst-content .wy-table-responsive table thead td p {
 
 .rst-footer-buttons a:hover {
   background: var(--myo-dark) !important;
+  color: #fff !important;
 }
 
 /* ===== Search highlight ===== */

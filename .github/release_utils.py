@@ -1,6 +1,5 @@
 import argparse
 import re
-from typing import Tuple
 
 
 # https://packaging.python.org/guides/single-sourcing-package-version/
@@ -16,11 +15,14 @@ def find_version(version_file_path) -> str:
         raise RuntimeError("Unable to find version tuple.")
 
 
-def get_next_version(release_type) -> Tuple[Tuple[int, int, int], str, str]:
+def get_next_version(release_type) -> tuple[tuple[int, int, int], str, str]:
     current_ver = find_version("myosuite/version.py")
     version_list = [int(x) for x in current_ver.strip("'").split(".")]
     major, minor, patch = version_list[0], version_list[1], version_list[2]
-    if release_type == "patch":
+    if release_type == "current":
+        # Release the version already in version.py (e.g. a hand-set 2.13.0).
+        pass
+    elif release_type == "patch":
         patch += 1
     elif release_type == "minor":
         minor += 1
@@ -31,7 +33,7 @@ def get_next_version(release_type) -> Tuple[Tuple[int, int, int], str, str]:
     else:
         raise ValueError(
             "Incorrect release type specified. "
-            "Acceptable types are major, minor and patch."
+            "Acceptable types are current, major, minor and patch."
         )
 
     new_version_tuple = (major, minor, patch)
@@ -46,7 +48,7 @@ def update_version(new_version_tuple) -> None:
     next version depending on the type of release.
     """
 
-    with open("myosuite/version.py", "r") as reader:
+    with open("myosuite/version.py") as reader:
         current_version_data = reader.read()
     version_match = re.search(
         r"^__version_tuple__ = \(.*\)", current_version_data, re.MULTILINE
@@ -87,7 +89,7 @@ def update_uv_lock_version(lock_file_path: str, new_version: str) -> bool:
 
 
 def main(args):
-    if args.release_type in ["major", "minor", "patch"]:
+    if args.release_type in ["current", "major", "minor", "patch"]:
         new_version_tuple, new_version, new_tag = get_next_version(args.release_type)
     else:
         raise ValueError("Incorrect release type specified")
@@ -110,7 +112,7 @@ if __name__ == "__main__":
         "--release-type",
         type=str,
         required=True,
-        help="type of release = major/minor/patch",
+        help="type of release = current/major/minor/patch",
     )
     parser.add_argument(
         "--update-version",

@@ -1,8 +1,13 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+
 import time
 
 import click
 
-from myosuite.utils import gym
+from myosuite.core.registry import make_env
 
 DESC = """
 Script to render trajectories embeded in the env"
@@ -29,7 +34,7 @@ Script to render trajectories embeded in the env"
     default="onscreen",
 )
 def examine_reference(env_name, horizon, num_playback, render):
-    env = gym.make(env_name)
+    env = make_env(env_name)
 
     # fixed or random reference
     if horizon == 1:

@@ -7,11 +7,13 @@ transparent as possible.
 
 We actively welcome your pull requests.
 
-1. Fork the repo and create your branch from `main`.
+1. Fork the repo and create your branch from `dev`; open the pull request against `dev`.
 2. If you've added code that should be tested, add tests.
-3. If you've changed APIs, update the documentation.
-4. Ensure the test suite passes.
-5. Make sure your code lints.
+3. If you've changed APIs, update the documentation (`docs/README.md` shows how to build it).
+4. Ensure the test suite passes. The checks to run before pushing are listed under
+   *Verification* in `CLAUDE.md`; `docs/wiki/getting-started.md` is the developer onboarding.
+5. Make sure your code lints (`pip install pre-commit && pre-commit install`).
+6. Do not add AI assistants as commit co-authors; every co-author must have signed the CLA.
 
 ## Issues
 

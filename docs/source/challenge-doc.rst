@@ -257,7 +257,7 @@ according to the equation:
 
 For participants that do not wish to use this normalization feature, it can be done during environment initialization with:
 
-:code:`env = gym.make(myoChallengeOslRunFixed-v0”, normalize_act=False)`
+:code:`env = make_env("myoChallengeOslRunFixed-v0", normalize_act=False)`
 
 
 where in this case, the control range of the muscles are set between :math:`[0, 1]` without any normalization performed.
@@ -338,7 +338,7 @@ State Machine
 A simple 4-state state machine is created to track the gait phase of the prosthetic leg. Each state contains the gain parameters
 for an impedance controller, which in turn, provides the required torques to the prosthetic actuators. The code for the state machine
 is released together with MyoChallenge. Interested participants are invited to examine the code at
-`myoosl_control <https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/assets/leg/myoosl_control.py>`__
+`myoosl_control <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/assets/leg/myoosl_control.py>`__
 
 
 Default parameters of the impedance controller are taken from `finite_state_machine <https://opensourceleg.readthedocs.io/en/latest/examples/finite_state_machine.html>`__
@@ -377,7 +377,7 @@ we provide a structure that allows 4 sets of state paramters to be uploaded to t
 
 More details of the functions are here below:
 
-- upload_osl_param(dict_of_dict) `upload_osl_param <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/myochallenge/run_track_v0.py#L717>`__
+- upload_osl_param(dict_of_dict) `upload_osl_param <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/tasks/challenge/run_track.py>`__
     - This function expects a dictionary of dictionary containing state parameter values
     - Dictionary overview: top_level_dict[x][y][z][val]
         - top_level_dict[x], where x = [0,1,2,3], which are integers
@@ -386,7 +386,7 @@ More details of the functions are here below:
         - val = {'knee_stiffness', 'knee_damping', 'knee_target_angle', 'ankle_stiffness', 'ankle_damping', 'ankle_target_angle'} *(for gains)* and {'load', 'knee_angle', 'knee_velocity', 'ankle_angle', 'ankle_velocity} *(for thresholds)*
     - Note that not all parameters are used at every state. It is recommended to examine the default structure `here <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/assets/leg/myoosl_control.py#L181>`__ for more information.
 
-- change_osl_mode(mode=0) `change_osl_mode <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/myochallenge/run_track_v0.py#L725>`__
+- change_osl_mode(mode=0) `change_osl_mode <https://github.com/MyoHub/myosuite/blob/main/myosuite/envs/myo/tasks/challenge/run_track.py>`__
     - This function changes the paramter set that the OSL state machine currently using. Do note that this change is immediate and the impedance controller will generate torques using the new paramter set at the next timestep.
 
 
@@ -396,7 +396,7 @@ Testing environment
 To increase the accessibility of the task, two set of testing environment is provided for participants to familiarise themselves with the tasks.
 Please note that the variation parameters are subject to change in the actual evaluation environment.
 
-The two environments are :code:`myoChallengeOslRunRandom-v0` and :code:`myoChallengeOslRunFixed-v0` and can be accessed via :code:`env = gym.make(“myoChallengeOslRunRandom-v0”, normalize_act=False)`
+The two environments are :code:`myoChallengeOslRunRandom-v0` and :code:`myoChallengeOslRunFixed-v0` and can be accessed via :code:`env = make_env(“myoChallengeOslRunRandom-v0”, normalize_act=False)`
 
 The :code:`myoChallengeOslRunFixed-v0` environment is a simplified version of the :code:`myoChallengeOslRunRandom-v0` environment for participants to begin with, with a flat ground, but 100m track
 
@@ -407,7 +407,7 @@ The environment in evaluation will be similar to the :code:`myoChallengeOslRunRa
 Both environments can be customized for ML or non-ML usage. For participants using ML-based methods, the action space can be set to between [-1 to 1] for both training and your submission with the normalize_act
 argument during environment creation. For participants using non-ML based methods, setting normalize_act=False would provide you with the muscle action space to be between [0 to 1]
 
-During training, you can set this option with env = gym.make(env_name, normalize_act=True) for the action space [-1 to 1] and normalize_act=False for action space [0 to 1]
+During training, you can set this option with env = make_env(env_name, normalize_act=True) for the action space [-1 to 1] and normalize_act=False for action space [0 to 1]
 
 
 
@@ -442,7 +442,7 @@ Challenge Tutorial
 
 This section aims to provide an basics to get start of the challenge.
 
-For a step-by-step tutorial, please check our :ref:`tutorials` page :ref:`use_reinforcement_learning` and :ref:`baselines` page.
+For a step-by-step tutorial, please check our :doc:`tutorials` page and :doc:`baselines` page.
 
 To obtain a more in-depth understanding of the challenge, we have prepared baselines for both of the challenges.
 Links are available for `manipulation <https://colab.research.google.com/drive/1AqC1Y7NkRnb2R1MgjT3n4u02EmSPem88#scrollTo=-mAnRvYjIS4d>`__,
@@ -452,43 +452,20 @@ Links are available for `manipulation <https://colab.research.google.com/drive/1
 
 .. code-block:: python
 
-    from myosuite.utils import gym
-    # Include the locomotion track environment, uncomment to select the manipulation challenge
-    # env = gym.make('myoChallengeOslRunRandom-v0')
-    env = gym.make('myoChallengeBimanual-v0')
+   from myosuite import make_env
 
+   env = make_env("myoChallengeBimanual-v0")
+   obs, info = env.reset()
+   for _ in range(10):
+       obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+       if terminated or truncated:
+           obs, info = env.reset()
+   env.close()
 
-    env.reset()
-
-    # Repeat 1000 time steps
-    for _ in range(1000):
-
-        # Activate mujoco rendering window
-        env.mj_render()
-
-        # Select skin group
-        geom_1_indices = np.where(env.mj_model.geom_group == 1)
-        # Change the alpha value to make it transparent
-        env.mj_model.geom_rgba[geom_1_indices, 3] = 0
-
-
-        # Get observation from the envrionment, details are described in the above docs
-        obs = env.get_obs()
-        current_time = obs['time']
-        #print(current_time)
-
-
-        # Take random actions
-        action = env.action_space.sample()
-
-
-        # Environment provides feedback on action
-        next_obs, reward, terminated, truncated, info = env.step(action)
-
-
-        # Reset training if env is terminated
-        if terminated:
-            next_obs, info = env.reset()
+The interactive MuJoCo window is not part of the Gymnasium ``step()`` loop.
+On macOS open it with ``mjpython`` and ``env.unwrapped.mj_render()`` after
+``import myosuite``. For class notebooks prefer ``render_mode="rgb_array"``
+and ``env.render()``.
 
 
 

@@ -1,0 +1,791 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+
+"""
+Muscle condition helpers: cumulative fatigue, sarcopenia, reafferentation.
+
+These are pure transform functions that modify MuJoCo MjSpec or MjModel
+to represent physiological muscle conditions. They are used by ModelBuilder
+as transform callbacks and by term functions via EnvAccessor.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
+
+if TYPE_CHECKING:
+    import mujoco
+
+
+# ---------------------------------------------------------------------------
+# Per-muscle fatigue parameters, F and R in 1/s. Muscle-group, sex-specific and
+# joint rows: Rakshit et al. 2021 (J Biomech 127:110695, Table 2). Validated
+# against endurance times in docs/source/fatigue_validation.rst.
+# ---------------------------------------------------------------------------
+
+MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
+    "Ankle-Dorsiflexor-F": {"F": 0.00746, "R": 0.00081, "r": 4.97},
+    "Ankle-Dorsiflexor-M": {"F": 0.00725, "R": 0.00096, "r": 10.36},
+    "Ankle-Dorsiflexor": {"F": 0.00828, "R": 0.00204, "r": 7.07},
+    "Ankle-Plantarflexor-F": {"F": 0.00702, "R": 0.00098},
+    "Ankle-Plantarflexor-M": {"F": 0.00683, "R": 0.00093},
+    "Ankle-Plantarflexor": {"F": 0.00695, "R": 0.00096},
+    "Elbow-Extensor-F": {"F": 0.01874, "R": 0.00206, "r": 21.22},
+    "Elbow-Extensor-M": {"F": 0.01269, "R": 0.00085, "r": 30.21},
+    "Elbow-Extensor": {"F": 0.01559, "R": 0.00125, "r": 25.52},
+    "Elbow-Flexor-F": {"F": 0.00965, "R": 0.00197, "r": 6.22},
+    "Elbow-Flexor-M": {"F": 0.01302, "R": 0.00188, "r": 8.99},
+    "Elbow-Flexor": {"F": 0.01703, "R": 0.00494, "r": 4.68},
+    "Hand-Adductor-Pollicis-F": {"F": 0.00476, "R": 0.00093, "r": 6.62},
+    "Hand-Adductor-Pollicis-M": {"F": 0.00586, "R": 0.00202, "r": 1.00},
+    "Hand-Adductor-Pollicis": {"F": 0.00558, "R": 0.00283, "r": 1.00},
+    "Hand-First-Dorsal-Interossei-F": {"F": 0.03999, "R": 0.03983},
+    "Hand-First-Dorsal-Interossei-M": {"F": 0.01637, "R": 0.00360, "r": 3.66},
+    "Hand-First-Dorsal-Interossei": {"F": 0.02686, "R": 0.00656, "r": 3.41},
+    "Wrist-Flexor-F": {
+        "F": 0.01159,
+        "R": 0.00217,
+        "r": 7.39,
+    },  # from Hand G/Grip group (https://doi.org/10.1016/j.jbiomech.2021.110695)
+    "Wrist-Flexor-M": {
+        "F": 0.01238,
+        "R": 0.00178,
+        "r": 8.00,
+    },  # from Hand G/Grip group (https://doi.org/10.1016/j.jbiomech.2021.110695)
+    "Wrist-Flexor": {
+        "F": 0.01235,
+        "R": 0.00135,
+        "r": 12.51,
+    },  # from Hand G/Grip group (https://doi.org/10.1016/j.jbiomech.2021.110695)
+    "Knee-Extensor-F": {"F": 0.01407, "R": 0.00185, "r": 6.32},
+    "Knee-Extensor-M": {"F": 0.01420, "R": 0.00153, "r": 10.96},
+    "Knee-Extensor": {"F": 0.00825, "R": 0.00076, "r": 14.85},
+    "Ankle": {"F": 0.01485, "R": 0.00333, "r": 9.31},
+    "Toe": {
+        "F": 0.01485,
+        "R": 0.00333,
+        "r": 9.31,
+    },  # from Ankle group (https://doi.org/10.1016/j.jbiomech.2021.110695)
+    "Elbow": {"F": 0.01086, "R": 0.00225, "r": 4.93},
+    "Hand": {"F": 0.01227, "R": 0.00134, "r": 9.10},
+    "Wrist": {
+        "F": 0.01227,
+        "R": 0.00134,
+        "r": 9.10,
+    },  # from Hand group (https://doi.org/10.1016/j.jbiomech.2021.110695)
+    "Finger": {
+        "F": 0.01227,
+        "R": 0.00134,
+        "r": 9.10,
+    },  # from Hand group (https://doi.org/10.1016/j.jbiomech.2021.110695)
+    "Knee": {"F": 0.00825, "R": 0.00076, "r": 14.85},
+    # F, R: shoulder fit of Frey-Law et al. 2012 (Table 1); r = 15: Looft & Frey-Law
+    # 2020 (https://doi.org/10.1016/j.jbiomech.2020.109762), better than r = 30.
+    "Shoulder": {"F": 0.01820, "R": 0.00168, "r": 15},
+    # default: "general" F, R of Frey-Law et al. 2012 (Table 1), r of Looft et al. 2018
+    "Default": {"F": 0.00970, "R": 0.00091, "r": 15},
+    # v2.4 fallback: elbow F, R of Frey-Law et al. 2012 with R / 10 (r * 10 keeps r * R)
+    "Default_v2_4": {"F": 0.00912, "R": 0.1 * 0.00094, "r": 10 * 15},
+}
+
+FATIGUE_REST_THRESHOLD = 0.01
+"""Commands ``TL <= FATIGUE_REST_THRESHOLD`` count as rest: recovery runs at ``r R``.
+
+Rakshit et al. (2021, Eq. 7) define rest as a zero command. A command through the muscle
+sigmoid never reaches zero (smallest value 0.00055), so a small threshold makes a relaxed
+muscle count as resting, as a muscle commanded to 0 does.
+"""
+
+_DEFAULT_F = MUSCLE_FATIGUE_PARAMS["Default"]["F"]
+_DEFAULT_R = MUSCLE_FATIGUE_PARAMS["Default"]["R"]
+_DEFAULT_r = MUSCLE_FATIGUE_PARAMS["Default"]["r"]
+# ``use_uniform_params``: the single parameter set of the legacy (<= v2.x)
+# CumulativeFatigue, also hard-coded in the JAX models (physics/fatigue_jax.py).
+_UNIFORM_PARAMS = MUSCLE_FATIGUE_PARAMS["Default_v2_4"]
+
+
+def _muscle_time_constants(mj_model: Any) -> tuple[np.ndarray, np.ndarray]:
+    """Return the ``(tauact, taudeact)`` of the muscle actuators, shape ``(na,)``."""
+    import mujoco as _mujoco  # noqa: PLC0415
+
+    muscle = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
+    dynprm = np.asarray(mj_model.actuator_dynprm)[muscle]
+    return dynprm[:, 0].copy(), dynprm[:, 1].copy()
+
+
+def _muscle_group(name: str) -> str:
+    """Return the functional muscle group of actuator *name*, or ``"Default"``.
+
+    Scene models prefix actuator names (mjlab: ``robot/BIClong``) and some
+    models suffix the side (``ECRL_r``, ``BIClong_l``), while ``MUSCLE_FMG``
+    keys arm and hand muscles without it. Leg muscles are keyed with their
+    side, so the exact name is tried first.
+    """
+    from myosuite.core.muscle_groups import MUSCLE_FMG  # noqa: PLC0415
+
+    base = name.rsplit("/", 1)[-1]
+    for key in (base, base.removesuffix("_r"), base.removesuffix("_l")):
+        if key in MUSCLE_FMG:
+            return MUSCLE_FMG[key]
+    return "Default"
+
+
+def _per_muscle_params(
+    mj_model: Any, sex: str | None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Derive per-muscle F, R, r arrays from MFG lookup.
+
+    Returns arrays of shape ``(na,)`` where ``na`` is the number of muscle
+    actuators in *mj_model*.
+    """
+    import mujoco as _mujoco  # noqa: PLC0415
+
+    muscle_act_ind = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
+    na = int(sum(muscle_act_ind))
+    actuator_names = [
+        mj_model.actuator(i).name for i in range(mj_model.nu) if muscle_act_ind[i]
+    ]
+
+    F_arr = np.zeros(na)
+    R_arr = np.zeros(na)
+    r_arr = np.zeros(na)
+
+    for idx, name in enumerate(actuator_names):
+        mfg = _muscle_group(name)
+        if sex is not None:
+            mfg_sex = f"{mfg}-{sex}"
+            if mfg_sex not in MUSCLE_FATIGUE_PARAMS:
+                mfg_sex = mfg
+        else:
+            mfg_sex = mfg
+        # Walk up to parent group if needed
+        group = mfg_sex if mfg_sex in MUSCLE_FATIGUE_PARAMS else mfg_sex.split("-")[0]
+        if group not in MUSCLE_FATIGUE_PARAMS:
+            group = "Default"
+        p = MUSCLE_FATIGUE_PARAMS[group]
+        F_arr[idx] = p.get("F", _DEFAULT_F)
+        R_arr[idx] = p.get("R", _DEFAULT_R)
+        r_arr[idx] = p.get("r", _DEFAULT_r)
+
+    return F_arr, R_arr, r_arr
+
+
+# ---------------------------------------------------------------------------
+# Sarcopenia helpers
+# ---------------------------------------------------------------------------
+
+
+def _peak_force(model: mujoco.MjModel) -> np.ndarray:
+    """Per-actuator peak force ``gainprm[:, 2]`` as MuJoCo applies it.
+
+    A negative muscle peak force (``force="-1"``) means automatic: MuJoCo
+    uses ``gainprm[3] / acc0`` at runtime, so scaling the stored value would
+    leave the force unchanged.
+    """
+    import mujoco as _mujoco  # noqa: PLC0415
+
+    force = np.array(model.actuator_gainprm[:, 2], dtype=np.float64)
+    auto = (force < 0) & (model.actuator_gaintype == _mujoco.mjtGain.mjGAIN_MUSCLE)
+    if np.any(auto):
+        force[auto] = model.actuator_gainprm[auto, 3] / np.maximum(
+            model.actuator_acc0[auto], _mujoco.mjMINVAL
+        )
+    return force
+
+
+def apply_sarcopenia_to_spec(
+    spec: mujoco.MjSpec, force_scale: float = 0.5
+) -> mujoco.MjSpec:
+    """Scale muscle peak forces to simulate sarcopenia (age-related muscle loss).
+
+    Spec-level equivalent of :func:`apply_sarcopenia_to_model`: scales the
+    *compiled* peak force ``gainprm[2]`` of every actuator. Muscles declared
+    with ``force="-1"`` keep ``gainprm[2] = -1`` after compilation and get
+    their peak force ``scale / acc0`` from the compiled model, so the spec is
+    compiled once to resolve the peak forces, which are then written back
+    explicitly (scaled).
+
+    Args:
+        spec: MuJoCo model spec to modify in-place.
+        force_scale: Fraction of original peak force to retain (0–1).
+
+    Returns:
+        The modified spec (same object, modified in-place).
+
+    Example:
+        >>> import mujoco
+        >>> spec = mujoco.MjSpec.from_file("elbow.xml")
+        >>> apply_sarcopenia_to_spec(spec, force_scale=0.5)
+    """
+    peak_force = _peak_force(spec.compile())
+    for actuator, force in zip(spec.actuators, peak_force, strict=True):
+        actuator.gainprm[2] = float(force) * force_scale
+    return spec
+
+
+def apply_sarcopenia_to_model(model: mujoco.MjModel, force_scale: float = 0.5) -> None:
+    """Scale muscle peak forces on a compiled MjModel in-place.
+
+    Multiplies ``actuator_gainprm[:, 2]`` (the maximum isometric force Fmax)
+    by *force_scale* for every actuator, as the original
+    ``BaseV0.initializeConditions`` does. Muscles declared with
+    ``force="-1"`` are first resolved to their peak force ``scale / acc0``.
+
+    Args:
+        model: Compiled MuJoCo model to modify.
+        force_scale: Fraction of original peak force to retain (0–1).
+    """
+    model.actuator_gainprm[:, 2] = _peak_force(model) * force_scale
+
+
+# ---------------------------------------------------------------------------
+# CumulativeFatigue — 3CC-r model (numpy, CPU)
+# ---------------------------------------------------------------------------
+
+
+class CumulativeFatigue:
+    """3CC-r cumulative fatigue model (Xia & Frey Law 2008, Looft et al. 2018).
+
+    Tracks the active (MA), fatigued (MF), and resting (MR) compartments
+    for each muscle actuator.  By default uses per-muscle fatigue / recovery
+    constants derived from biomechanical functional muscle groups (FMG).
+
+    The recovery multiplier ``r`` acts only at rest, as in Rakshit et al.
+    (2021, Eqs. 1, 3 and 7; their ``k`` is ``r`` here):
+    ``dMR/dt = -C(t) + r(k, TL) x R x MF``,
+    ``dMF/dt = F x MA - r(k, TL) x R x MF`` with
+    ``r = k if TL = 0`` and ``r = 1 if TL > 0``.  Rest is
+    ``TL <= FATIGUE_REST_THRESHOLD`` (0.01): a command of (nearly) zero, plus the
+    negative commands of ``[-1, 1]`` control ranges, which MuJoCo's muscle dynamics
+    clamp to zero excitation.  The threshold lets a command mapped through the
+    muscle sigmoid, which never reaches exactly zero, rest.
+
+    Args:
+        mj_model: Compiled MuJoCo model.  Used to read muscle actuator
+            time constants (tauact / taudeact) and to look up per-muscle
+            fatigue parameters via :data:`MUSCLE_FATIGUE_PARAMS`.
+        frame_skip: Number of physics steps per control step.  Together
+            with ``mj_model.opt.timestep`` this defines the stored ``_dt``
+            used when *dt* is not provided to :meth:`compute_act`.
+        sex: Optional sex specifier (``"F"`` or ``"M"``) selects
+            sex-specific rows in :data:`MUSCLE_FATIGUE_PARAMS`.
+        seed: Random seed for stochastic resets via
+            :meth:`reset(fatigue_reset_random=True)` when no ``np_random``
+            generator is passed to it.
+        use_uniform_params: If ``True``, bypass per-muscle lookup and use
+            the ``"Default_v2_4"`` row of :data:`MUSCLE_FATIGUE_PARAMS` for
+            all muscles: the single F/R/r of the legacy (v2.x) model, which the
+            JAX models in ``physics/fatigue_jax.py`` also use.
+
+    Example:
+        >>> fatigue = CumulativeFatigue(mj_model, frame_skip=5)
+        >>> ma, _, _ = fatigue.compute_act(excitation)
+        >>> # or use the convenience wrapper:
+        >>> eff = fatigue.step(excitation, dt=0.01)
+    """
+
+    def __init__(
+        self,
+        mj_model: Any,
+        frame_skip: int = 1,
+        sex: str | None = None,
+        seed: int | None = None,
+        use_uniform_params: bool = False,
+    ) -> None:
+        self._dt = float(mj_model.opt.timestep) * int(frame_skip)
+        self._tauact, self._taudeact = _muscle_time_constants(mj_model)
+        self.na: int = int(self._tauact.size)
+        self._MA = np.zeros(self.na)
+        self._MR = np.ones(self.na)
+        self._MF = np.zeros(self.na)
+        self.TL = np.zeros(self.na)
+
+        if use_uniform_params:
+            self._F = _UNIFORM_PARAMS["F"] * np.ones(self.na)
+            self._R = _UNIFORM_PARAMS["R"] * np.ones(self.na)
+            self._r = _UNIFORM_PARAMS["r"] * np.ones(self.na)
+        else:
+            self._F, self._R, self._r = _per_muscle_params(mj_model, sex)
+
+        self.seed(seed)
+
+    # ------------------------------------------------------------------
+    # Pipeline interface
+    # ------------------------------------------------------------------
+
+    def step(self, excitation: np.ndarray, dt: float | None = None) -> np.ndarray:
+        """One control-step wrapper: returns effective muscle activation (MA).
+
+        This is the interface used by ``ModularTaskEnv`` and other pipeline
+        callers that just want the effective excitation after fatigue.
+
+        Args:
+            excitation: Commanded muscle excitations, shape ``(na,)``.
+            dt: Control timestep in seconds.  If ``None``, uses ``self._dt``.
+
+        Returns:
+            Effective excitation (= MA after update), shape ``(na,)``.
+        """
+        ma, _, _ = self.compute_act(excitation, dt=dt)
+        return ma
+
+    # ------------------------------------------------------------------
+    # Core 3CC-r dynamics
+    # ------------------------------------------------------------------
+
+    def compute_act(
+        self, act: np.ndarray, dt: float | None = None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Advance fatigue state by one step and return updated compartments.
+
+        Args:
+            act: Target activation (commanded excitation), shape ``(na,)``.
+            dt: Timestep in seconds.  Defaults to ``self._dt``.
+
+        Returns:
+            ``(MA, MR, MF)`` — updated active, resting, and fatigued
+            compartments, each shape ``(na,)``.
+        """
+        _dt = dt if dt is not None else self._dt
+        self.TL = act.copy()
+
+        # Activation/deactivation rates (MuJoCo Hill-type dynamics)
+        LD = 1.0 / (self._tauact * (0.5 + 1.5 * self._MA))
+        LR = (0.5 + 1.5 * self._MA) / self._taudeact
+        # Integrate the first-order approach to TL exactly over _dt: an
+        # explicit Euler step overshoots TL once L * _dt > 1 (LD = 200 /s at
+        # MA = 0 vs 10-25 ms control steps), driving MA above the command.
+        LD = -np.expm1(-LD * _dt) / _dt
+        LR = -np.expm1(-LR * _dt) / _dt
+
+        # Transfer rate C between MR and MA
+        C = np.zeros_like(self._MA)
+        mask = (self._MA < self.TL) & (self._MR > self.TL - self._MA)
+        C[mask] = LD[mask] * (self.TL[mask] - self._MA[mask])
+        mask = (self._MA < self.TL) & (self._MR <= self.TL - self._MA)
+        C[mask] = LD[mask] * self._MR[mask]
+        mask = self._MA >= self.TL
+        C[mask] = LR[mask] * (self.TL[mask] - self._MA[mask])
+
+        # Recovery rate: r * R only at rest (Rakshit et al. 2021, Eq. 7)
+        rR = np.where(self.TL <= FATIGUE_REST_THRESHOLD, self._r * self._R, self._R)
+
+        # Clip C to keep compartments in [0, 1]
+        C = np.clip(  # type: ignore[assignment]
+            C,
+            np.maximum(
+                -self._MA / _dt + self._F * self._MA,
+                (self._MR - 1.0) / _dt + rR * self._MF,
+            ),
+            np.minimum(
+                (1.0 - self._MA) / _dt + self._F * self._MA,
+                self._MR / _dt + rR * self._MF,
+            ),
+        )
+
+        dMA = (C - self._F * self._MA) * _dt
+        dMR = (-C + rR * self._MF) * _dt
+        dMF = (self._F * self._MA - rR * self._MF) * _dt
+        self._MA += dMA
+        self._MR += dMR
+        self._MF += dMF
+
+        return self._MA, self._MR, self._MF
+
+    def get_effort(self) -> float:
+        """Return the effort ``||MA - TL||`` of the last :meth:`compute_act` call.
+
+        Same as the legacy model and the JAX ``get_effort``: how far the active
+        compartment falls short of (or exceeds) the commanded target load.
+        """
+        return float(np.linalg.norm(self._MA - self.TL))
+
+    # ------------------------------------------------------------------
+    # Reset
+    # ------------------------------------------------------------------
+
+    def reset(
+        self,
+        fatigue_reset_vec: np.ndarray | None = None,
+        fatigue_reset_random: bool = False,
+        np_random: np.random.Generator | None = None,
+    ) -> None:
+        """Reset fatigue state.
+
+        Args:
+            fatigue_reset_vec: If provided, set MF to this vector and
+                MR = 1 - fatigue_reset_vec.  Shape ``(na,)``.
+            fatigue_reset_random: If ``True``, sample a random fatigue
+                state.  Cannot be combined with *fatigue_reset_vec*.
+            np_random: Generator for the random state, typically the env's
+                seeded ``np_random`` so that ``env.reset(seed=...)`` is
+                reproducible.  Defaults to the model's own RNG (see
+                :meth:`seed`).
+        """
+        if fatigue_reset_random:
+            if fatigue_reset_vec is not None:
+                raise ValueError(
+                    "Cannot pass fatigue_reset_vec when fatigue_reset_random=True."
+                )
+            rng = self.np_random if np_random is None else np_random
+            nf = rng.random(size=(self.na,))
+            ap = rng.random(size=(self.na,))
+            self._MA = nf * ap
+            self._MR = nf * (1.0 - ap)
+            self._MF = 1.0 - nf
+        elif fatigue_reset_vec is not None:
+            if len(fatigue_reset_vec) != self.na:
+                raise ValueError(
+                    f"fatigue_reset_vec length {len(fatigue_reset_vec)} != na={self.na}"
+                )
+            self._MF = np.asarray(fatigue_reset_vec, dtype=float)  # type: ignore[assignment]
+            self._MR = 1.0 - self._MF  # type: ignore[assignment]
+            self._MA = np.zeros(self.na)
+        else:
+            self._MA[:] = 0.0
+            self._MR[:] = 1.0
+            self._MF[:] = 0.0
+
+    def state_dict(self) -> dict[str, list]:
+        """Return serialisable snapshot of the fatigue compartments.
+
+        Returns:
+            Dict with keys ``"MA"``, ``"MR"``, ``"MF"``, each a flat list of
+            length ``na``.
+        """
+        return {
+            "MA": self._MA.tolist(),
+            "MR": self._MR.tolist(),
+            "MF": self._MF.tolist(),
+        }
+
+    def load_state_dict(self, state: dict[str, list]) -> None:
+        """Restore fatigue compartments from a :meth:`state_dict` snapshot.
+
+        Args:
+            state: Dict produced by :meth:`state_dict`.
+        """
+        self._MA = np.array(state["MA"], dtype=float)  # type: ignore[assignment]
+        self._MR = np.array(state["MR"], dtype=float)  # type: ignore[assignment]
+        self._MF = np.array(state["MF"], dtype=float)  # type: ignore[assignment]
+
+    def seed(self, seed: int | None = None) -> list[int]:
+        """Set random seed used by stochastic reset."""
+        from myosuite.utils import gym  # noqa: PLC0415
+
+        self.input_seed = seed
+        self.np_random, seed = gym.utils.seeding.np_random(seed)
+        return [seed]  # type: ignore[list-item]
+
+    # ------------------------------------------------------------------
+    # Properties (legacy compatibility)
+    # ------------------------------------------------------------------
+
+    @property
+    def n_muscles(self) -> int:
+        return self.na
+
+    @property
+    def MA(self) -> np.ndarray:
+        return self._MA
+
+    @property
+    def MF(self) -> np.ndarray:
+        return self._MF
+
+    @property
+    def MR(self) -> np.ndarray:
+        return self._MR
+
+    @property
+    def F(self) -> np.ndarray:
+        return self._F
+
+    @property
+    def R(self) -> np.ndarray:
+        return self._R
+
+    @property
+    def r(self) -> np.ndarray:
+        return self._r
+
+    # ------------------------------------------------------------------
+    # Legacy coefficient setters
+    # ------------------------------------------------------------------
+
+    def set_FatigueCoefficient(self, F: float | np.ndarray) -> None:
+        self._F = F * np.ones(self.na) if np.isscalar(F) else np.asarray(F)  # type: ignore[assignment, operator]
+
+    def set_RecoveryCoefficient(self, R: float | np.ndarray) -> None:
+        self._R = R * np.ones(self.na) if np.isscalar(R) else np.asarray(R)  # type: ignore[assignment, operator]
+
+    def set_RecoveryMultiplier(self, r: float | np.ndarray) -> None:
+        self._r = r * np.ones(self.na) if np.isscalar(r) else np.asarray(r)  # type: ignore[assignment, operator]
+
+
+# ---------------------------------------------------------------------------
+# TorchFatigueState — batched 3CC-r model (torch, mjlab)
+# ---------------------------------------------------------------------------
+
+
+class TorchFatigueState:
+    """Batched 3CC-r cumulative fatigue state for torch action terms.
+
+    Mirrors :class:`CumulativeFatigue` but operates on torch tensors of shape
+    ``(num_envs, n_muscles)`` so it can be used directly in mjlab action terms
+    without looping over environments.  Uses the same per-muscle
+    :data:`MUSCLE_FATIGUE_PARAMS` and recovery-multiplier dynamics as the
+    numpy class.
+
+    Prefer :meth:`from_mj_model` when a MuJoCo model is available; the plain
+    constructor accepts scalar or per-muscle-array F / R / r.
+
+    Args:
+        num_envs: Number of parallel environments.
+        n_muscles: Number of muscle actuators.
+        device: Torch device string (e.g. ``"cpu"``, ``"cuda:0"``).
+        F: Fatigue rate — scalar or array of length *n_muscles*.
+        R: Recovery rate — scalar or array of length *n_muscles*.
+        r: Recovery multiplier, applied only at rest (``TL <= FATIGUE_REST_THRESHOLD``, Rakshit
+            et al. 2021, Eq. 7; see :class:`CumulativeFatigue`) — scalar or array.
+    """
+
+    def __init__(
+        self,
+        num_envs: int,
+        n_muscles: int,
+        device: str = "cpu",
+        F: float | np.ndarray = _DEFAULT_F,
+        R: float | np.ndarray = _DEFAULT_R,
+        r: float | np.ndarray = _DEFAULT_r,
+        tauact: float | np.ndarray = 0.01,
+        taudeact: float | np.ndarray = 0.04,
+    ) -> None:
+        import torch  # noqa: PLC0415
+
+        def _to_tensor(v: float | np.ndarray) -> Any:
+            arr = np.broadcast_to(np.asarray(v, dtype=np.float32), (n_muscles,)).copy()
+            return torch.tensor(arr, device=device)
+
+        self._F: Any = _to_tensor(F)  # (n_muscles,)
+        self._R: Any = _to_tensor(R)  # (n_muscles,)
+        self._r: Any = _to_tensor(r)  # (n_muscles,)
+        # The state stays float32 whatever the dtype of the excitation.
+        shape = (num_envs, n_muscles)
+        self.MA: Any = torch.zeros(shape, dtype=torch.float32, device=device)
+        self.MF: Any = torch.zeros(shape, dtype=torch.float32, device=device)
+        self.MR: Any = torch.ones(shape, dtype=torch.float32, device=device)
+        self._tauact: Any = _to_tensor(tauact)  # (n_muscles,)
+        self._taudeact: Any = _to_tensor(taudeact)  # (n_muscles,)
+
+    # ------------------------------------------------------------------
+    # Factory
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_mj_model(
+        cls,
+        mj_model: Any,
+        num_envs: int,
+        device: str = "cpu",
+        sex: str | None = None,
+        use_uniform_params: bool = False,
+    ) -> TorchFatigueState:
+        """Build a :class:`TorchFatigueState` from a compiled MuJoCo model.
+
+        Extracts per-muscle F / R / r from :data:`MUSCLE_FATIGUE_PARAMS` via
+        the muscle functional group (MFG) lookup, and the muscle time constants
+        from ``actuator_dynprm`` — the same logic used by
+        :class:`CumulativeFatigue`.
+
+        Args:
+            mj_model: Compiled MuJoCo model (``mujoco.MjModel``).
+            num_envs: Number of parallel environments.
+            device: Torch device string.
+            sex: Optional ``"F"`` / ``"M"`` for sex-specific parameters.
+            use_uniform_params: Use the uniform ``"Default_v2_4"`` F/R/r for
+                every muscle, as :class:`CumulativeFatigue` does.
+        """
+        tauact, taudeact = _muscle_time_constants(mj_model)
+        na = int(tauact.size)
+        if na == 0:
+            return cls(num_envs=num_envs, n_muscles=mj_model.nu, device=device)
+        if use_uniform_params:
+            F_arr = np.full(na, _UNIFORM_PARAMS["F"])
+            R_arr = np.full(na, _UNIFORM_PARAMS["R"])
+            r_arr = np.full(na, _UNIFORM_PARAMS["r"])
+        else:
+            F_arr, R_arr, r_arr = _per_muscle_params(mj_model, sex)
+        return cls(
+            num_envs=num_envs,
+            n_muscles=na,
+            device=device,
+            F=F_arr,
+            R=R_arr,
+            r=r_arr,
+            tauact=tauact,
+            taudeact=taudeact,
+        )
+
+    # ------------------------------------------------------------------
+    # Core step
+    # ------------------------------------------------------------------
+
+    def step(self, excitation: Any, dt: float) -> Any:
+        """Advance fatigue state by one control step.
+
+        Implements the same 3CC-r dynamics as :meth:`CumulativeFatigue.step`.
+
+        Args:
+            excitation: Muscle excitation tensor, shape ``(num_envs, n_muscles)``;
+                cast to the float32 state.
+            dt: Control timestep in seconds.
+
+        Returns:
+            Active compartment ``MA`` (the effective muscle ctrl), same shape as
+            *excitation*.
+        """
+        import torch  # noqa: PLC0415
+
+        excitation = excitation.to(self.MA.dtype)
+
+        # Activation/deactivation rates (MuJoCo Hill-type dynamics)
+        LD = 1.0 / (self._tauact * (0.5 + 1.5 * self.MA))
+        LR = (0.5 + 1.5 * self.MA) / self._taudeact
+        # Exact per-step rates, as in CumulativeFatigue.compute_act.
+        LD = -torch.expm1(-LD * dt) / dt
+        LR = -torch.expm1(-LR * dt) / dt
+
+        # Recovery rate: r * R only at rest (Rakshit et al. 2021, Eq. 7)
+        rising = self.MA < excitation
+        resting = self.MA >= excitation
+        rR = torch.where(
+            excitation <= FATIGUE_REST_THRESHOLD, self._r * self._R, self._R
+        )
+
+        # Transfer rate C (select, not mask-multiply: a NaN excitation then gives
+        # C = 0 as on CPU instead of NaN * 0 = NaN poisoning the state).
+        C = torch.where(
+            rising,
+            LD * torch.minimum(excitation - self.MA, self.MR),
+            torch.where(resting, LR * (excitation - self.MA), torch.zeros_like(LD)),
+        )
+        # Clip C to keep compartments in [0, 1]
+        C = torch.clamp(
+            C,
+            min=torch.maximum(
+                -self.MA / dt + self._F * self.MA, (self.MR - 1.0) / dt + rR * self.MF
+            ),
+            max=torch.minimum(
+                (1.0 - self.MA) / dt + self._F * self.MA, self.MR / dt + rR * self.MF
+            ),
+        )
+        dMA_dt = C - self._F * self.MA
+        dMF_dt = self._F * self.MA - rR * self.MF
+        dMR_dt = -C + rR * self.MF
+        self.MA = self.MA + dMA_dt * dt
+        self.MF = self.MF + dMF_dt * dt
+        self.MR = self.MR + dMR_dt * dt
+        # Same as CPU CumulativeFatigue: the active compartment is the ctrl.
+        return self.MA
+
+    # ------------------------------------------------------------------
+    # Reset
+    # ------------------------------------------------------------------
+
+    def reset(
+        self,
+        env_ids: Any = None,
+        fatigue_reset_vec: Any = None,
+        fatigue_reset_random: bool = False,
+        generator: Any = None,
+    ) -> None:
+        """Reset the fatigue state of the given environments.
+
+        Same three modes as :meth:`CumulativeFatigue.reset`, vectorised over
+        the environments: fresh (``MA = MF = 0``, ``MR = 1``), a fixed fatigued
+        fraction, or a random state drawn independently per env and muscle.
+
+        Args:
+            env_ids: Indices or slice of environments to reset.  If ``None``,
+                resets all environments.
+            fatigue_reset_vec: If provided, ``MF = fatigue_reset_vec``,
+                ``MR = 1 - fatigue_reset_vec`` and ``MA = 0`` in every reset
+                env.  Shape ``(n_muscles,)``.
+            fatigue_reset_random: If ``True``, draw ``nf, ap ~ U[0, 1)`` and set
+                ``MA = nf * ap``, ``MR = nf * (1 - ap)``, ``MF = 1 - nf``.
+                Cannot be combined with *fatigue_reset_vec*.
+            generator: ``torch.Generator`` for the random state.  Defaults to
+                torch's global generator, which mjlab seeds
+                (``env.reset(seed=...)``).
+
+        Raises:
+            ValueError: If both reset options are given, or the length of
+                *fatigue_reset_vec* is not ``n_muscles``.
+        """
+        import torch  # noqa: PLC0415
+
+        rows = slice(None) if env_ids is None else env_ids
+        if fatigue_reset_random:
+            if fatigue_reset_vec is not None:
+                raise ValueError(
+                    "Cannot pass fatigue_reset_vec when fatigue_reset_random=True."
+                )
+            shape = self.MA[rows].shape
+            nf = torch.rand(shape, generator=generator, device=self.MA.device)
+            ap = torch.rand(shape, generator=generator, device=self.MA.device)
+            self.MA[rows] = nf * ap
+            self.MR[rows] = nf * (1.0 - ap)
+            self.MF[rows] = 1.0 - nf
+        elif fatigue_reset_vec is not None:
+            mf = torch.as_tensor(
+                np.asarray(fatigue_reset_vec, dtype=np.float32), device=self.MA.device
+            )
+            if mf.shape != self.MA.shape[1:]:
+                raise ValueError(
+                    f"fatigue_reset_vec length {mf.numel()} != "
+                    f"n_muscles={self.MA.shape[1]}"
+                )
+            self.MA[rows] = 0.0
+            self.MF[rows] = mf
+            self.MR[rows] = 1.0 - mf
+        else:
+            self.MA[rows] = 0.0
+            self.MF[rows] = 0.0
+            self.MR[rows] = 1.0
+
+    def state_dict(self) -> dict[str, list]:
+        """Return serialisable snapshot of the fatigue compartments.
+
+        Returns:
+            Dict with keys ``"MA"``, ``"MR"``, ``"MF"``, each a nested list
+            of shape ``(num_envs, n_muscles)``.
+        """
+        return {
+            "MA": self.MA.cpu().numpy().tolist(),
+            "MR": self.MR.cpu().numpy().tolist(),
+            "MF": self.MF.cpu().numpy().tolist(),
+        }
+
+    def load_state_dict(self, state: dict[str, list]) -> None:
+        """Restore fatigue compartments from a :meth:`state_dict` snapshot.
+
+        Args:
+            state: Dict produced by :meth:`state_dict`.  Shape must be
+                compatible with the current ``(num_envs, n_muscles)`` tensors.
+        """
+        import torch  # noqa: PLC0415
+
+        self.MA.copy_(
+            torch.tensor(state["MA"], dtype=torch.float32, device=self.MA.device)
+        )
+        self.MR.copy_(
+            torch.tensor(state["MR"], dtype=torch.float32, device=self.MR.device)
+        )
+        self.MF.copy_(
+            torch.tensor(state["MF"], dtype=torch.float32, device=self.MF.device)
+        )

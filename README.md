@@ -1,6 +1,5 @@
 <!-- =================================================
 # Copyright (c) MyoSuite Authors
-Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
 ================================================= -->
 <img src="https://github.com/myohub/myosuite/blob/main/docs/source/images/Full%20Color%20Horizontal%20wider.png?raw=true" width=800>
 
@@ -14,128 +13,218 @@ Authors  :: Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gma
 [![Slack](https://img.shields.io/badge/Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white)](https://join.slack.com/t/myosuite/shared_invite/zt-1zkpw2zzk-NhVhVlSDxhoMHbzROD8gMA)
 [![Twitter Follow](https://img.shields.io/twitter/follow/MyoSuite?style=social)](https://twitter.com/MyoSuite)
 
-`MyoSuite` is a collection of musculoskeletal environments and tasks simulated with the [MuJoCo](http://www.mujoco.org/) physics engine and wrapped in the OpenAI ``gym`` API to enable the application of Machine Learning to bio-mechanic control problems.
+**MyoSuite** is a collection of musculoskeletal environments and tasks simulated with the [MuJoCo](http://www.mujoco.org/) physics engine. It serves researchers and practitioners across biomechanics, neuroscience, machine learning, sports medicine, and physical rehabilitation.
+
+[Documentation](https://myosuite.readthedocs.io/en/latest/) · [Tutorials](tutorials/) · [Task list](https://myosuite.readthedocs.io/en/latest/environments.html)
+
+<img width="1240" alt="TasksALL" src="./docs/source/images/MyoSuiteHeader.png?raw=true">
 
 
+<details>
+  <summary><h2>What's new in MyoSuite 3</h2></summary>
 
-[Documentation](https://myosuite.readthedocs.io/en/latest/) | [Tutorials](https://github.com/myohub/myosuite/tree/main/tutorials) | [Task specifications](https://github.com/myohub/myosuite/blob/main/docs/source/suite.rst#tasks)
+MyoSuite 3 brings the whole suite to fast, scalable training while keeping the simple interface you know:
+
+- **Much faster learning.** Train with thousands of environments in parallel on a single GPU, then replay the policy on the CPU.
+- **One task, several backends.** The same `env_id` runs on your **CPU** through the standard [Gymnasium](https://gymnasium.farama.org/) interface (to explore, debug and replay policies, or to train with libraries such as Stable-Baselines3), on **mjlab** for massively parallel GPU training, and on an **experimental MJX** (JAX) path.
+- **Muscle conditions as features.** Motor noise, fatigue, sarcopenia and reafferentation are wrappers, not env arguments. `make_env(EnvConfig(env_id, features=...))` applies them identically on the CPU env and the GPU twin, together with the episode length and control step ([cross-backend contract](docs/wiki/cross-backend-contract.md)).
+- **MuscleMimic support.** Run, evaluate and train full-body and bimanual **MuscleMimic** policies, with ready-to-use checkpoints and motion datasets.
+- **Updated musculoskeletal models.** `myo-sim` moved from a moving `dev` branch to a pinned PyPI release (0.2.3) with some model updates, including a torso/pelvis frame fix for the leg models ([myo_sim#132](https://github.com/MyoHub/myo_sim/pull/132)).
+- **The complete MyoChallenge suite** as Gymnasium environments: Baoding, Bimanual, Chase Tag, Die Reorient, OSL Run, Relocate, Soccer and Table Tennis.
+- **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared observation, reward and model-building blocks instead of writing an environment class.
+- **Some existing environments changed.** Observations are no longer clipped and are read after a fresh forward step (55 env ids), the `motorFinger*` envs have 4x stronger motors, the Random finger-reach tasks now sample only targets the fingertip can reach, and several reset and seed behaviours were corrected. Policies trained with MyoSuite 2.x or earlier snapshots may need retraining; see [`CHANGELOG.md`](CHANGELOG.md) for the full list.
+- **Ready to use.** Default trained policies on [Hugging Face](https://huggingface.co/myohub/myosuite-3-baselines) (see [`docs/baseline_checkpoints.md`](docs/baseline_checkpoints.md) for the full list and success rates) with evaluation videos, plus updated tutorials from the first rollout to GPU training and MuscleMimic. See the [changelog](CHANGELOG.md) for everything that changed since v2.12.
+</details>
+
+## Start here
+
+| I am a…                    | Start here                                                   |
+| --------------------------- | ------------------------------------------------------------ |
+| **ML / RL**           | [ML guide](docs/source/quickstart_ml.rst)                     |
+| **Biomechanics**      | [Biomechanics guide](docs/source/quickstart_biomechanics.rst) |
+| **Neuroscience**      | [Neuroscience guide](docs/source/quickstart_neuroscience.rst) |
+| **Rehab / sports**    | [Rehab guide](docs/source/quickstart_rehabilitation.rst)      |
+| **Changing the code** | [Developer getting started](docs/wiki/getting-started.md)     |
 
 
-Below is an overview of the tasks in the MyoSuite.
+## Install
 
-<img width="1240" alt="TasksALL" src="https://github.com/myohub/myosuite/blob/main/docs/source/images/myoSuite_All.png?raw=true">
+Python 3.10–3.14 is supported (the GPU `[mjlab]` extra needs Python ≤3.13). From source (recommended):
 
-
-
-## Installations
-You will need Python 3.10 or later versions.
-
-### Using uv
-[uv](https://docs.astral.sh/uv/) is a fast Python package manager. Install MyoSuite with:
-``` bash
-uv sync -p 3.10
-```
-
-### Using conda
-It is recommended to use [Miniconda](https://docs.conda.io/en/latest/miniconda.html#latest-miniconda-installer-links) and to create a separate environment with:
-``` bash
-conda create --name myosuite python=3.10
-conda activate myosuite
-pip install -U myosuite
-```
-
-### Using uv (recommended)
-For faster installation, you can use [uv](https://github.com/astral-sh/uv), a fast Python package installer:
-
-``` bash
-# Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Create and activate a virtual environment
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install MyoSuite
-uv pip install -U myosuite
-```
-
-For installation from source with uv:
-``` bash
-git clone --recursive https://github.com/myohub/myosuite.git
+```bash
+git clone https://github.com/MyoHub/myosuite.git
 cd myosuite
-uv pip install -e .
+pip install -e ".[rl]"          # CPU training (Stable-Baselines3)
+# pip install -e ".[mjlab]"     # GPU (Linux + CUDA) -- see docs/source/install.rst
+                                 # for matching the torch build to your driver's CUDA version
 ```
 
-For advanced installation options, see [here](https://myosuite.readthedocs.io/en/latest/install.html#alternative-installing-from-source).
+Or: `uv sync -p 3.10 --extra rl`.
 
-Test your installation using the following command (this will return also a list of all the current environments):
-``` bash
-# With uv:
-uv run python -m myosuite.tests.test_myo
+From PyPI: `pip install -U myosuite`.
 
-# With pip/conda:
-python -m myosuite.tests.test_myo
+**Models.** The musculoskeletal models ship in the `myo-sim` package, pinned to 0.2.3 and installed from PyPI together with MyoSuite, so no git submodules and no separate model install are needed. The few MPL, YCB and furniture assets the tasks use are bundled in `myosuite/envs/myo/assets/`. Environments compose their models with `ModelBuilder` (see the [model builder guide](docs/source/model_builder.rst)). A different `myo-sim` version can change joints and ranges (the thumb joints did in 0.2.0), so the baseline policies are only valid for the pinned version.
+
+Verify (replace "onscreen" with "offscreen" when running on a remote, headless machine):
+
+```bash
+python -c "import myosuite; print(len(myosuite.myosuite_env_suite), 'envs')"
+python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --render onscreen
+# macOS viewer: mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --render onscreen
 ```
 
-
-You can also visualize the environments with random controls using the command below:
-``` bash
-# With uv:
-uv run python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
-
-# With pip/conda:
-python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
-```
-**NOTE:** On MacOS, we moved to mujoco native `launch_passive` which requires that the Python script be run under `mjpython`:
-``` bash
-mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
-```
-
-It is possible to take advantage of the latest MyoSkeleton. Once added (follow the instructions prompted by `uv run myoapi_init` or `python -m myosuite_init`), run:
-``` bash
-# With uv:
-uv run python -m myosuite.utils.examine_sim -s myosuite/simhive/myo_model/myoskeleton/myoskeleton.xml
-
-# With pip/conda:
-python -m myosuite.utils.examine_sim -s myosuite/simhive/myo_model/myoskeleton/myoskeleton.xml
-```
-
-## Examples
-It is possible to create and interface with MyoSuite environments just like any other OpenAI gym environments. For example, to use the `myoElbowPose1D6MRandom-v0` environment, it is possible simply to run: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1zFuNLsrmx42vT4oV8RbnEWtkSJ1xajEo)
+Run these from a directory that does not directly contain a folder named `myosuite` (for example not the parent of your clone); otherwise Python imports that folder as a namespace package and fails with `cannot import name ... from 'myosuite' (unknown location)`.
 
 
+## Quick start
 
 ```python
-from myosuite.utils import gym
-env = gym.make('myoElbowPose1D6MRandom-v0')
-env.reset()
+from myosuite import make_env
+
+env = make_env("myoElbowPose1D6MRandom-v0")
+obs, info = env.reset(seed=0)
 for _ in range(1000):
-  env.mj_render()
-  env.step(env.action_space.sample()) # take a random action
+    obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+    if terminated or truncated:
+        obs, info = env.reset()
 env.close()
 ```
 
-You can find our [tutorials](https://github.com/myohub/myosuite/tree/main/tutorials) on the general features and the **ICRA2023 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KGqZgSYgKXF-vaYC33GR9llDsIW9Rp-q) **ICRA2024 Colab Tutorial** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JwxE7o6Z3bqCT4ewELacJ-Z1SV8xFhKK#scrollTo=QDppGIzHB9Zu)
-on how to load MyoSuite models/tasks, train them, and visualize their outcome. Also, you can find [baselines](https://github.com/myohub/myosuite/tree/main/myosuite/agents) to test some pre-trained policies.
+`info["obs_dict"]` and `info["rwd_dict"]` break down the observation and reward every step.
 
+Train on CPU:
+
+```python
+from stable_baselines3 import PPO
+from myosuite import make_env
+
+env = make_env("myoElbowPose1D6MRandom-v0")
+model = PPO("MlpPolicy", env, device="cpu")
+model.learn(total_timesteps=100_000)
+```
+
+Or use the ready-made script (PPO, SAC or TD3; saves the model and scores the policy at the end):
+
+```bash
+python scripts/train_sb3.py myoElbowPose1D6MRandom-v0 --timesteps 500000
+```
+
+Train on GPU (same `env_id`, mjlab / RSL-RL):
+
+```bash
+python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --env.scene.num-envs 1024
+```
+
+No step count is needed: it runs the task's default number of PPO iterations (`--agent.max-iterations`, 1000 unless the task sets another) and stops early once the deterministic policy reaches 95% success (`--stop-on-success False` turns that off).
+
+The same call builds either backend, and an `EnvConfig` overrides the registered defaults (episode length, control step,
+muscle-command features such as motor noise and fatigue) for both:
+
+```python
+from myosuite import make_env
+from myosuite.core.config import EnvConfig
+from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper
+
+env_cpu = make_env("myoElbowPose1D6MRandom-v0")                               # CPU, registered defaults
+env_gpu = make_env("myoElbowPose1D6MRandom-v0", backend="mjlab", num_envs=1024)  # GPU twin (needs the mjlab extra)
+
+cfg = EnvConfig(
+    "myoElbowPose1D6MRandom-v0",
+    max_episode_steps=300,
+    features=((MotorNoiseWrapper, {"motor_noise": {"constant_std": 0.05}}), FatigueWrapper),
+)
+env_cpu = make_env(cfg)                               # CPU with noise and fatigue
+env_gpu = make_env(cfg, backend="mjlab", num_envs=1024)  # the same on the GPU
+```
+
+Muscle-condition variants of an env are separate ids with a prefix: `myoSarcElbowPose1D6MRandom-v0` (sarcopenia), `myoFatiElbowPose1D6MRandom-v0` (fatigue), `myoReafHandPoseRandom-v0` (reafferentation). Each is the base env registered with the matching wrapper; to use these features (noise, fatigue, ...) on any env, or to register your own variant, see the [neuroscience guide](docs/source/quickstart_neuroscience.rst) (examples) and the [cross-backend contract](docs/wiki/cross-backend-contract.md#muscle-command-features-wrappers) (how features are registered and which envs and backends support them).
+
+
+
+## Environments
+
+| Body      | Example IDs                                                     |
+| --------- | --------------------------------------------------------------- |
+| Elbow     | `myoElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MRandom-v0` |
+| Finger    | `myoFingerPoseRandom-v0`, `myoFingerReachRandom-v0`         |
+| Hand      | `myoHandPoseRandom-v0`, `myoChallengeBaodingP2-v1`          |
+| Arm       | `myoArmReachRandom-v0`                                        |
+| Leg       | `myoLegWalk-v0`, `myoLegDirectionalForward-v0`              |
+| Full body | `myoMimicFullbody-v0`                                         |
+
+List every registered CPU ID: `python -c "import myosuite; print('\n'.join(myosuite.myosuite_env_suite))"`. Annotated catalog: [environments](https://myosuite.readthedocs.io/en/latest/environments.html).
+
+### Backends
+
+| Backend | Use | Build an env in Python | Train |
+| --- | --- | --- | --- |
+| **CPU** (Gymnasium) | playback, debug, SB3 | `make_env(env_id)` | `scripts/train_sb3.py <env_id>` (PPO, SAC or TD3) |
+| **mjlab** (MuJoCo Warp) | parallel GPU training | `make_env(env_id, backend="mjlab", num_envs=...)` | `scripts/train_mjlab.py <env_id>` |
+
+The mjlab backend needs `pip install -e ".[mjlab]"`. `make_env` only builds the env (to step it, evaluate a policy or write your own training loop); `scripts/train_sb3.py` (CPU) and `scripts/train_mjlab.py` (GPU) are the ready-made training scripts.
+
+A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/wiki/cross-backend-contract.md)). `make_env(EnvConfig(env_id, backend=..., features=...))` builds either half with the same episode length, control step and muscle-command features. An MJX (JAX) path also exists; it is **experimental** and not the supported training route.
+
+
+## Tutorials
+
+All notebooks are listed, with what each needs, in the [tutorial index](tutorials/README.md).
+
+Start with [1.1 Get Started](tutorials/1.1_Get_Started.ipynb), then [2.1 Train SB3 Policy](tutorials/2.1_Train_SB3_Policy.ipynb) (CPU).
+
+GPU walk-through: [2.2 Train MjLab Policy](tutorials/2.2_Train_MjLab_Policy.ipynb).
+
+Full-body MuscleMimic: [5.1 Load Policy](tutorials/5.1_Fullbody_Load_Policy.ipynb) (playback) and [5.3 Train with mjlab](tutorials/5.3_Fullbody_Train_MjLab_Policy.ipynb); background, data and checkpoints in the [MuscleMimic README](myosuite/integrations/musclemimic/README.md).
 
 
 ## License
 
-MyoSuite is licensed under the [Apache License](LICENSE).
+[Apache License](LICENSE).
 
 ## Citation
 
-If you find this repository useful in your research, please consider giving a star ⭐ and cite our [arXiv paper](https://arxiv.org/abs/2205.13600)  by using the following BibTeX entrys.
+If you use MyoSuite, please cite the MyoSuite paper:
 
-```BibTeX
-@Misc{MyoSuite2022,
-  author =       {Vittorio, Caggiano AND Huawei, Wang AND Guillaume, Durandau AND Massimo, Sartori AND Vikash, Kumar},
-  title =        {MyoSuite -- A contact-rich simulation suite for musculoskeletal motor control},
-  publisher = {arXiv},
-  year = {2022},
-  howpublished = {\url{https://github.com/myohub/myosuite}},
-  doi = {10.48550/ARXIV.2205.13600},
-  url = {https://arxiv.org/abs/2205.13600},
+```bibtex
+@inproceedings{Caggiano2022MyoSuite,
+  title     = {{MyoSuite} -- A contact-rich simulation suite for musculoskeletal motor control},
+  author    = {Caggiano, Vittorio and Wang, Huawei and Durandau, Guillaume and Sartori, Massimo and Kumar, Vikash},
+  booktitle = {Learning for Dynamics and Control (L4DC)},
+  year      = {2022},
+  doi       = {10.48550/ARXIV.2205.13600},
+  url       = {https://arxiv.org/abs/2205.13600},
 }
 ```
+
+For MyoSuite 3 (the GPU backends, the muscle conditions, the MyoChallenge envs), cite it as software:
+
+```bibtex
+@misc{MyoSuite2026,
+  title        = {{MyoSuite} 3.0 -- A multimodal platform for efficient and scalable musculoskeletal motor control},
+  author       = {Caggiano, Vittorio and Hodossy, Balint and Fischer, Florian and Wang, Cheryl and {MyoSuite Team}},
+  year         = {2026},
+  howpublished = {\url{https://github.com/myohub/myosuite}},
+}
+```
+
+If you use the full-body MuscleMimic models, checkpoints, retargeted motions or tutorials 5.1-5.5, also cite:
+
+```bibtex
+@article{Li2026MuscleMimic,
+  title   = {Towards Embodied AI with {MuscleMimic}: Unlocking full-body musculoskeletal motor learning at scale},
+  author  = {Li, Chengkun and Wang, Cheryl and Ziliotto, Bianca and Simos, Merkourios and Kovecses, Jozsef and Durandau, Guillaume and Mathis, Alexander},
+  journal = {arXiv preprint arXiv:2603.25544},
+  year    = {2026},
+}
+```
+
+The motion data behind MuscleMimic comes from [AMASS](https://amass.is.tue.mpg.de) (Mahmood et al., ICCV 2019), whose
+KIT subset (Mandery et al., 2015, 2016) provides the locomotion clips, retargeted with GMR (Araújo et al., 2025). The
+retargeted datasets are for non-commercial research under the AMASS license and ask you to cite AMASS and MuscleMimic.
+
+Further papers use or build on MyoSuite: MyoSim (ICRA 2022), MyoDex (ICML 2023), SAR (RSS 2023), MyoChallenge 2022,
+DEP-RL (ICLR 2023), Lattice (NeurIPS 2023), MyoInteract (DIS 2026, a GUI framework for prototyping
+biomechanical HCI tasks on top of MyoSuite) and the Virtual Gait Lab for testing prosthetics with simulated
+users (IEEE T-MRB 2026). The sources behind the models, the muscle fatigue model, the
+controllers and the motion data are collected in [`docs/source/references.rst`](docs/source/references.rst) (page
+*References* of the documentation); `CITATION.cff` holds the machine-readable citation.

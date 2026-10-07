@@ -1,0 +1,352 @@
+Sports Medicine & Rehabilitation Quick Start
+=============================================
+
+This guide is for sports medicine practitioners and physical rehabilitation
+researchers who want to use MyoSuite to model pathological conditions,
+assistive devices, and clinical rehabilitation scenarios.
+
+No machine learning background is required.
+
+.. contents:: Contents
+   :local:
+   :depth: 2
+
+Key Concepts
+------------
+
+MyoSuite provides physiologically validated musculoskeletal models that can
+simulate conditions commonly encountered in clinical practice:
+
+* **Sarcopenia** — age-related loss of muscle mass and strength (50 % force reduction).
+* **Cumulative fatigue** — neuromuscular fatigue accumulating during sustained effort.
+* **Tendon transfer (reafferentation)** — surgical re-routing of tendons altering the
+  muscle-to-joint mapping.
+
+These conditions are built into MyoSuite as environment variants (``myoSarc…``, ``myoFati…``,
+``myoReaf…``), accessible with a single id — no programming of the physics required. Each variant is
+the base env registered with a wrapper, so you can also apply a condition with your own parameters
+(for example another sarcopenia severity) to any suitable env; see :doc:`quickstart_neuroscience`.
+
+
+Installation
+------------
+
+.. code-block:: bash
+
+   pip install -U myosuite
+   python -c "import myosuite; print(len(myosuite.myosuite_env_suite), 'envs')"
+
+See :doc:`install` for a from-source install and Python version support.
+
+
+Simulating Sarcopenia
+----------------------
+
+Sarcopenia reduces peak muscle force by 50 %, modelling the strength loss
+typical of older adults:
+
+.. code-block:: python
+
+   from myosuite import make_env
+   import numpy as np
+
+   env_normal = make_env('myoElbowPose1D6MRandom-v0')
+   env_sarco  = make_env('myoSarcElbowPose1D6MRandom-v0')
+
+   results = {}
+   for label, env in [("Normal", env_normal), ("Sarcopenia", env_sarco)]:
+       obs, info = env.reset(seed=0)
+       rng = np.random.default_rng(0)   # the same action sequence for both
+       peak_forces = []
+       for _ in range(300):
+           action = rng.uniform(-1, 1, env.action_space.shape)
+           obs, reward, terminated, truncated, info = env.step(action)
+           peak_forces.append(np.abs(env.unwrapped.data.actuator_force).max())
+           if terminated or truncated:
+               obs, info = env.reset()
+       results[label] = np.max(peak_forces)
+       env.close()
+
+   print(f"Peak force — Normal: {results['Normal']:.1f} N")
+   print(f"Peak force — Sarcopenia: {results['Sarcopenia']:.1f} N  "
+         f"({100*results['Sarcopenia']/results['Normal']:.0f} % of normal)")
+
+The variant fixes the severity at 50 %. To choose it, wrap the base env:
+
+.. code-block:: python
+
+   from myosuite.envs.wrappers import SarcopeniaWrapper
+
+   env_mild = SarcopeniaWrapper(make_env('myoElbowPose1D6MRandom-v0'), force_scale=0.8)  # 80 % of the force
+
+
+Simulating Neuromuscular Fatigue
+----------------------------------
+
+The cumulative fatigue model tracks motor unit pool depletion during
+sustained activation — useful for studying exercise tolerance and
+work capacity:
+
+.. code-block:: python
+
+   from myosuite import make_env
+   from myosuite.core.config import EnvConfig
+   import numpy as np
+
+   # One 60 s episode: the registered episode is 2 s long, and a reset restores the muscles
+   env = make_env(EnvConfig('myoFatiElbowPose1D6MFixed-v0', max_episode_steps=3000))
+   obs, info = env.reset(seed=0)
+
+   force_over_time, fatigued = [], []
+   # Apply constant 60 % excitation for 60 s
+   ctrl_level = np.full(env.action_space.shape, 0.58)  # sigmoid(5 * (0.58 - 0.5)) ≈ 0.60
+
+   for step in range(3000):
+       obs, reward, terminated, truncated, info = env.step(ctrl_level)
+       force_over_time.append(np.abs(env.unwrapped.data.actuator_force).mean())
+       fatigued.append(env.muscle_fatigue.MF.mean())   # fraction of motor units in the fatigued pool
+
+   force = np.array(force_over_time)
+   print(f"Fatigued motor units: {100*fatigued[0]:.1f} % → {100*fatigued[-1]:.1f} %")
+   print(f"Mean muscle force: {force[:50].mean():.0f} N → {force[-50:].mean():.0f} N  "
+         f"({100*force[-50:].mean()/force[:50].mean():.0f} % of initial)")
+
+   env.close()
+
+After 60 s at 60 % excitation about half of the motor units are fatigued (52 %) and the mean force has
+fallen to about 80 % of its initial value; at the highest excitation the sigmoid allows (0.92) it falls to
+about half. The model's endurance times are compared with published data in :doc:`fatigue_validation`.
+
+See ``tutorials/4.2_Fatigue_Modeling.ipynb`` for plots and recovery dynamics, and
+:doc:`fatigue_validation` for how the model's endurance times compare with
+published data.
+
+
+Clinical Metrics
+-----------------
+
+Useful metrics you can extract from any simulation:
+
+.. code-block:: python
+
+   from myosuite import make_env
+   import mujoco
+   import numpy as np
+
+   env = make_env('myoLegWalk-v0')
+   obs, info = env.reset(seed=0)
+
+   joint_angles, forces, coms = [], [], []
+
+   for _ in range(1000):
+       obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+       d = env.unwrapped.data
+       joint_angles.append(d.qpos.copy())
+       forces.append(d.actuator_force.copy())
+       coms.append(d.subtree_com[0].copy())  # whole-body centre of mass
+       if terminated or truncated:
+           obs, info = env.reset()
+
+   joint_angles = np.array(joint_angles)
+   forces       = np.array(forces)
+   coms         = np.array(coms)
+
+   model = env.unwrapped.model
+   print("Joint range of motion (deg):")
+   for i in range(model.njnt):
+       if model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
+           continue                                   # the root has no joint angle
+       rom = np.degrees(np.ptp(joint_angles[:, model.jnt_qposadr[i]]))
+       if rom > 0.1:
+           print(f"  {model.joint(i).name:30s}  {rom:.1f}")
+
+   # Effort proxy: mean squared actuator force (a force measure, not activation)
+   force_sq = np.mean(forces**2)
+   print(f"\nMean squared muscle force (N²): {force_sq:.2f}")
+
+   # Walking symmetry: CoM lateral deviation
+   if coms.shape[1] >= 2:
+       lateral_std = np.std(coms[:, 1])
+       print(f"Lateral CoM std (symmetry): {lateral_std*100:.2f} cm")
+
+   env.close()
+
+
+Simulating Tendon Transfer Surgery
+------------------------------------
+
+The reafferentation variant models a tendon transfer that redirects the
+EIP (extensor indicis proprius) to the EPL (extensor pollicis longus),
+as performed in radial nerve palsy rehabilitation:
+
+.. code-block:: python
+
+   from myosuite import make_env
+
+   # Normal hand
+   env_normal = make_env('myoHandPoseFixed-v0')
+
+   # Post-surgical — altered muscle routing
+   env_reaff  = make_env('myoReafHandPoseFixed-v0')
+
+   # An RL or reflex controller trained on normal anatomy must re-adapt —
+   # useful for studying motor re-learning after surgery.
+
+
+Rehabilitation Progression / Curriculum
+-----------------------------------------
+
+You can simulate progressive rehabilitation by changing the task difficulty
+between episodes.  A simple example for elbow flexion ROM progression:
+
+.. code-block:: python
+
+   from myosuite import make_env
+   import numpy as np
+
+   # Start with a restricted target range, progressively widen it
+   rom_stages = [
+       {"r_elbow_flex": (1.0, 1.5)},   # Stage 1: limited ROM
+       {"r_elbow_flex": (0.5, 2.0)},   # Stage 2: moderate ROM
+       {"r_elbow_flex": (0.0, 2.2)},   # Stage 3: nearly the full ROM (the joint limit is 2.27 rad)
+   ]
+
+   for stage, target_range in enumerate(rom_stages, 1):
+       env = make_env(
+           'myoElbowPose1D6MRandom-v0',
+           target_jnt_range=target_range,
+       )
+       obs, info = env.reset(seed=0)
+       successes = 0
+       for ep in range(20):
+           obs, info = env.reset()
+           for _ in range(200):
+               obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+               if info.get("rwd_dict", {}).get("solved", False):
+                   successes += 1
+                   break
+               if terminated or truncated:
+                   break
+       print(f"Stage {stage}: {successes}/20 episodes solved")
+       env.close()
+
+
+Assessing Walking and Gait
+----------------------------
+
+The ``myoLegWalk-v0`` environment models a full lower limb including hip,
+knee, and ankle with 80 muscles.  Useful for:
+
+* Gait analysis under normal and pathological conditions
+* Exoskeleton assistance simulation
+* Fall risk assessment
+
+.. code-block:: python
+
+   from myosuite import make_env
+
+   env = make_env('myoLegWalk-v0')
+   obs, info = env.reset(seed=0)
+
+   # The reward dictionary includes gait-relevant components
+   for _ in range(100):
+       obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+       rwd = info.get("rwd_dict", {})
+       # Components: 'vel_reward', 'cyclic_hip', 'ref_rot', 'joint_angle_rew', etc.
+
+   env.close()
+
+For challenge-level locomotion tasks including obstacle courses, see
+``myoChallengeOslRunRandom-v0`` and ``myoChallengeSoccerP2-v0``.
+
+Testing prosthetic devices with dynamically simulated users, a "virtual gait lab", is the topic of
+Hodossy et al. (2026), *Towards a Virtual Gait Lab: Testing Prosthetics with Dynamically Simulated Users*,
+`IEEE Transactions on Medical Robotics and Bionics <https://ieeexplore.ieee.org/abstract/document/11606461>`__.
+
+
+Sports Tasks
+-------------
+
+MyoSuite includes several sports-inspired environments:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Environment
+     - Description
+   * - ``myoChallengeOslRunRandom-v0``
+     - Running on random terrain (prosthetic limb)
+   * - ``myoChallengeChaseTagP1-v0``
+     - Chase-tag locomotion (phase 1)
+   * - ``myoChallengeBaodingP2-v1``
+     - Dexterous manipulation — Baoding ball rotation
+   * - ``myoChallengeTableTennisP2-v0``
+     - Arm swing for table-tennis striking
+
+These environments stress specific physical capacities (power, dexterity,
+agility, endurance) and can be used to study sports performance limits.
+
+
+Environment Index for Clinical Research
+-----------------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 20 40
+
+   * - Clinical question
+     - Condition
+     - Environment to use
+   * - Upper-limb strength loss with age
+     - Sarcopenia
+     - ``myoSarcElbowPose1D6MRandom-v0``
+   * - Work capacity under fatigue (elbow)
+     - Cumulative fatigue
+     - ``myoFatiElbowPose1D6MFixed-v0``
+   * - Work capacity under fatigue (hand)
+     - Cumulative fatigue
+     - ``myoFatiHandPoseRandom-v0``
+   * - Post-surgical motor re-learning (hand)
+     - Reafferentation
+     - ``myoReafHandPoseFixed-v0``
+   * - Walking endurance / fall risk
+     - Normal
+     - ``myoLegWalk-v0``
+   * - Walking on uneven ground
+     - Normal
+     - ``myoLegRoughTerrainWalk-v0``
+   * - Stair climbing
+     - Normal
+     - ``myoLegStairTerrainWalk-v0``
+   * - Hand function / dexterity
+     - Normal
+     - ``myoHandPoseRandom-v0``
+   * - Key turning (pinch grip)
+     - Normal
+     - ``myoHandKeyTurnRandom-v0``
+   * - Object grasping & placement
+     - Normal
+     - ``myoChallengeRelocateP1-v0``
+   * - Lumbar spine / back posture
+     - Normal
+     - ``myoTorsoPoseFixed-v0``
+   * - Elbow exoskeleton assistance
+     - Normal + exo
+     - ``myoElbowPose1D6MExoFixed-v0``
+   * - Sarcopenic leg walking
+     - Sarcopenia
+     - ``myoSarcLegWalk-v0``
+
+See :doc:`environments` for the annotated listing. Print every CPU ID with
+``python -c "import myosuite; print('\\n'.join(myosuite.myosuite_env_suite))"``.
+
+
+Next Steps
+----------
+
+* ``tutorials/4.2_Fatigue_Modeling.ipynb`` — detailed fatigue dynamics
+* ``tutorials/3.1_Analyse_Movements.ipynb`` — kinematic analysis
+* ``tutorials/3.3_Inverse_Dynamics.ipynb`` — joint torque estimation
+* :doc:`quickstart_biomechanics` — extract raw simulation data for analysis
+* :doc:`quickstart_neuroscience` — add reflex controllers and sensory models

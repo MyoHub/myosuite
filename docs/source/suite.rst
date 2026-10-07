@@ -1,9 +1,10 @@
 Models and Tasks
-##############################
+================
 
 .. _suite:
 
-Models and tasks are the most important aspects of Myosuite. To provide further, 
+Musculoskeletal models used by MyoSuite tasks. Registered Gymnasium IDs:
+:doc:`environments`.
 
 
 * :ref:`models`
@@ -25,6 +26,8 @@ Models and tasks are the most important aspects of Myosuite. To provide further,
 Models
 ********
 
+The papers and models these are based on are listed on :doc:`references`.
+
 MyoSuite consists of six models: :ref:`myoFinger`, :ref:`myoElbow`, :ref:`myoHand`, :ref:`myoArm`, :ref:`myoLeg`, :ref:`myoTorso` and :ref:`myoArmNoHandMuscles`.
 Using these models, we design a rich collection of tasks ranging across simple reaching movements,
 contact-rich movements involving object-manipulation such as pen-twirling and baoding balls, as well as locomotion behaviors.
@@ -34,12 +37,12 @@ contact-rich movements involving object-manipulation such as pen-twirling and ba
 
 myoFinger
 ==========
-Simplified and intuitive model (based on Xu et al. (2012)[https://ieeexplore.ieee.org/document/6290710]) of a 4 Degree of Freedom (DoF) finger
+Simplified and intuitive model (based on `Xu et al. (2012) <https://doi.org/10.1109/BioRob.2012.6290710>`__) of a 4 Degree of Freedom (DoF) finger
 which is actuated through a series of 5 simplified antagonistic muscle-tendon units.
 We also provide its robotic counterpart with simple torque actuators
 to facilitate the comparative investigation.
 
-Details of this model can be found at `myoFinger <https://github.com/MyoHub/myo_sim/tree/main/finger>`__
+Details of this model can be found at `myoFinger <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/legacy/finger>`__
 
 
 .. image:: images/myoFinger.png
@@ -61,10 +64,10 @@ dflx      DIP Flexor
 
 myoElbow
 ===========
-A model of 2 DoF human elbow joint -- based on OpenSim’s default testing arm model (Delp et al. (2007); Seth et al. (2018))
+A model of 2 DoF human elbow joint -- based on OpenSim’s default testing arm model (`Delp et al. (2007) <https://doi.org/10.1109/TBME.2007.901024>`__; `Seth et al. (2018) <https://doi.org/10.1371/journal.pcbi.1006223>`__)
 -- and actuated using multiple agonist/antagonist pairs (3 flexors and 3 extensors).
 
-Details of this model can be found at `myoElbow <https://github.com/MyoHub/myo_sim/tree/main/elbow>`__
+Details of this model can be found at `myoElbow <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/legacy/elbow>`__
 
 .. image:: images/myoElbow.png
   :height: 200
@@ -87,7 +90,7 @@ myoHand
 The dexterous human hand requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
 This musculoskeletal model is comprised of 29 bones, 23 joints, and 39 muscles-tendon units.
 
-Details of this model can be found at `myoHand <https://github.com/MyoHub/myo_sim/tree/main/hand>`__
+Details of this model can be found at `myoHand <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/arm>`__
 
 .. image:: images/myoHand.png
   :height: 200
@@ -126,11 +129,11 @@ myoLeg
 The 3D dexterous human leg requires coordination of multiple highly redundant muscles, which have complementary and antagonistic effects on various joints.
 
 This musculoskeletal model is comprised of 10 joints, 20 DoFs, and 80 muscles-tendon units. This musculoskeletal model takes
-Rajagopal's full body gait model [https://github.com/opensim-org/opensim-models/tree/master/Models/RajagopalModel] as close reference.
+the `Rajagopal full body gait model <https://github.com/opensim-org/opensim-models/tree/master/Models/Rajagopal>`__ as close reference.
 
-Joints and muscle details can be found in Rajagopal's paper [https://ieeexplore.ieee.org/document/7505900]
+Joints and muscle details can be found in `Rajagopal et al. (2016) <https://ieeexplore.ieee.org/document/7505900>`__.
 
-The model implementation details can be found on our github repo at `myoLeg <https://github.com/MyoHub/myo_sim/tree/main/leg>`__
+The model implementation details can be found on our github repo at `myoLeg <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/leg>`__
 
 .. image:: images/MyoLeg.png
   :height: 200
@@ -161,23 +164,23 @@ glmed3_r        Gluteus medius (posterior)
 glmin1_r        Gluteus minimus (anterior)
 glmin2_r        Gluteus minimus (middle)
 glmin3_r        Gluteus minimus (posterior)
-grac_r          Gracilis 
+grac_r          Gracilis
 iliacus_r       Iliacus
 perbrev_r       Peroneus brevis
 perlong_r       Peroneus longus
-piri_r          Piriformis 
+piri_r          Piriformis
 psoas_r         Psoas
 recfem_r        Rectus femoris
 sart_r          Sartorius
 semimem_r       Semimembranosus
-semiten_r       Semitendinosus 
-soleus_r        Soleus 
+semiten_r       Semitendinosus
+soleus_r        Soleus
 tfl_r           Tensor fascia latae
-tibant_r        Tibialis anterior 
-tibpost_r       Tibialis posterior 
+tibant_r        Tibialis anterior
+tibpost_r       Tibialis posterior
 vasint_r        Vastus intermedius
 vaslat_r        Vastus lateralis
-vasmed_r        Vastus medialis 
+vasmed_r        Vastus medialis
 =============   =================================
 
 .. _myoArm:
@@ -188,7 +191,7 @@ The 3D dexterous human arm reaching and manipulation.
 
 This musculoskeletal model is comprised of 27 Degree of Freedom, and 63 muscles-tendon units.
 
-Model specification can be found on our github repo of `myoArm <https://github.com/MyoHub/myo_sim/tree/main/arm>`__
+Model specification can be found on our github repo of `myoArm <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/arm>`__
 
 
 .. image:: images/myoArm.png
@@ -200,11 +203,11 @@ Model specification can be found on our github repo of `myoArm <https://github.c
 
 myoTorso
 ==========
-The myoTorso mujoco musculoskeletal (MSK) model is generated from: Constrained Lumbar Spine model - 210 [https://simtk.org/projects/lumbarspine] from Opensim.
+The myoTorso mujoco musculoskeletal (MSK) model is generated from the `Constrained Lumbar Spine model - 210 <https://simtk.org/projects/lumbarspine>`__ of OpenSim.
 
 This generated mujoco MSK model has almost identical kinematics, and very similar muscle kinematics (moment arms) and kinetic (forces) properties.
 
-The model have 210 actuators and 18 joints. Details of this model can be found on our github repo at `myoTorso <https://github.com/MyoHub/myo_sim/tree/main/torso>`__.
+The model have 210 actuators and 18 joints. Details of this model can be found on our github repo at `myoTorso <https://github.com/MyoHub/myo_sim/tree/main/myo_sim/models/torso>`__.
 
 
  .. image:: images/MyoTorso.png
@@ -226,7 +229,7 @@ IO        Internal Obliques
 
 myoArmNoHandMuscles
 ===================
-The myoArmNoHandMuscles is the myoArm with the extrinsic and intrinsic hand muscles removed, enabling the study of reaching tasks that have no grasp or object manipulation component. 
+The myoArmNoHandMuscles is the myoArm with the extrinsic and intrinsic hand muscles removed, enabling the study of reaching tasks that have no grasp or object manipulation component.
 
 This musculoskeletal model is comprised of 38 joints and 24 muscle-tendon units.
 
@@ -532,13 +535,13 @@ Variants:
 Task and Variantions
 ************************************
 
-For convenience, Myosuite has implemented a set of muscle decifiencies that currently includes: :ref:`test_muscle_fatigue` , sarcopenia and tendon transfer alongside with the tasks.
+For convenience, Myosuite has implemented a set of muscle deficiencies that currently includes: muscle fatigue , sarcopenia and tendon transfer alongside with the tasks.
 
 Here are a list of the tasks currently implement in Myosuite. See :ref:`task_variation` on how to include the additional features.
 
 
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
-|:ref:`tasks`            | **Environment**                  | **Difficulty**  |:ref:`test_sarcopenia` |:ref:`test_muscle_fatigue` | :ref:`test_tendon_transfer`    |
+|:ref:`tasks`            | **Environment**                  | **Difficulty**  |Sarcopenia             |Muscle Fatigue             | Tendon Transfer                |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
 | Finger Joint Pose      | ``myoFingerPoseFixed-v0``        | Easy            |         ✓             |      ✓                    |                                |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
@@ -570,9 +573,9 @@ Here are a list of the tasks currently implement in Myosuite. See :ref:`task_var
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
 | Hand Pen Twirl         | ``myoHandPenTwirlRandom-v0``     | Hard            |         ✓             |      ✓                    |          ✓                     |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
-| Die Rotation           | ``myoChallengeDieReorientP1-v1`` | Easy            |         ✓             |      ✓                    |          ✓                     |
+| Die Rotation           | ``myoChallengeDieReorientP1-v0`` | Easy            |         ✓             |      ✓                    |          ✓                     |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
-| Die Rotation           | ``myoChallengeDieReorientP2-v1`` | Hard            |         ✓             |      ✓                    |          ✓                     |
+| Die Rotation           | ``myoChallengeDieReorientP2-v0`` | Hard            |         ✓             |      ✓                    |          ✓                     |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
 | Hand Baoding Balls     | ``myoChallengeBaodingP1-v1``     | Easy            |         ✓             |      ✓                    |          ✓                     |
 +------------------------+----------------------------------+-----------------+-----------------------+---------------------------+--------------------------------+
@@ -605,4 +608,3 @@ Variations
   - **Sarcopenia**: myoSarc<Environment> e.g. myoSarcHandPoseFixed-v0
   - **Fatigue**: myoFati<Environment> e.g. myoFatiElbowPose1D6MRandom-v0
   - **TTransfer / Reafferentation**: myoReaf<Environment> e.g. myoReafHandPoseFixed-v0
-

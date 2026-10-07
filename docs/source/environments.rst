@@ -1,0 +1,521 @@
+Environment Reference
+======================
+
+* **CPU** — ``make_env(env_id)`` (``from myosuite import make_env``). Playback and SB3.
+* **mjlab** — the same ``env_id`` for GPU training (``scripts/train_mjlab.py``), or from Python with
+  ``make_env(env_id, backend="mjlab", num_envs=...)``.
+
+List every CPU ID on your install::
+
+   python -c "import myosuite; print('\n'.join(myosuite.myosuite_env_suite))"
+
+Tables below are the common CPU IDs. Muscle-condition variants (``myoSarc…``, ``myoFati…``,
+hand ``myoReaf…``) are registered for the ``myo*`` tasks; see :ref:`naming-conventions`.
+
+.. contents:: Contents
+   :local:
+   :depth: 2
+
+GPU (mjlab) coverage
+---------------------
+
+The mjlab backend registers a twin under the same ``env_id`` for these CPU families
+(``myoSarc…``/``myoFati…``/``myoReaf…`` variants exist where the CPU env has them):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Family
+     - mjlab twins
+   * - Pose
+     - ``myoElbowPose1D6M{Fixed,Random}`` (+ ``Exo``), ``myoFingerPose{Fixed,Random}``,
+       ``myoHandPose{0-9}Fixed``, ``myoHandPose{Fixed,Random}``,
+       ``myoTorsoPoseFixed``, ``myoTorsoExoPoseFixed``, ``motorFingerPose{Fixed,Random}``
+   * - Reach
+     - ``myoArmReach``, ``myoFingerReach``, ``myoHandReach``, ``motorFingerReach``
+       (each ``{Fixed,Random}``)
+   * - Leg
+     - ``myoLegWalk``, ``myoLegDirectional{Forward,Backward,Random}``,
+       ``myoLegStandRandom``, ``myoLeg{Rough,Hilly,Stair}TerrainWalk``
+   * - Challenge
+     - ``myoChallengeChaseTagFBP2``, ``myoChallengeTableTennisP{0,1,2}``
+
+Variants: ``myoSarc…`` exist for all twins above except ``myoLegDirectional*`` (no CPU
+variant) and the Challenge twins; ``myoFati…`` likewise, and ``myoReaf…`` for the hand
+pose and reach twins.
+
+MuscleMimic (``myoMimicFullbody-v0``, ``myoMimicBimanual-v0`` and their SAR variants) has its
+own mjlab implementation. It is not built from the CPU registration and is registered once a
+motion clip is given (``MYOSUITE_MIMIC_CLIP`` or ``register_mimic_mjlab_tasks_with_clip``; see
+tutorials 5.x), and it takes no muscle-command features.
+
+**Not on mjlab yet:** the other Challenge tasks, ``myoChallengeChaseTagFBVs`` (two-agent),
+``myoElbowPoseTask*``, ``myoFullBodyDirectional`` and the hand manipulation families
+(``myoHandKeyTurn``, ``ObjHold``, ``PenTwirl``, ``Reorient*``) including their variants.
+The cross-backend contract lists which envs and backends take which features.
+
+Differences from the CPU env that matter when moving policies between backends:
+
+* **Torso exosuit** (``myoTorsoExoPoseFixed`` and variants) — *experimental*: the two
+  free exosuit bodies are 6-DoF joint chains on mjlab (mjlab allows one freejoint per
+  entity); their ``qpos``/``qvel`` are converted back to the CPU layout, so the
+  observation is the same 296-d vector (matching CPU to ~1e-3 over short rollouts, see
+  ``test_torso_exo_observation_matches_cpu``). Transfer of *trained* policies between
+  the backends has not been tested yet.
+* **Terrain walks:** the terrain is baked into the model with a fixed seed instead of
+  being resampled at each reset (``myoLegRoughTerrainWalk`` uses one fixed sample).
+* Leg locomotion twins (walk, directional, terrain) are step-parity tested like the other
+  twins, with looser tolerances where contacts dominate (see :doc:`backend_parity`).
+  Height-field contacts differ most, because MuJoCo Warp creates at most one
+  capsule-hfield contact.
+
+.. _naming-conventions:
+
+Naming Conventions
+-------------------
+
+Base environment IDs follow the pattern::
+
+    myo<Model><Task>[Difficulty]-v<N>
+
+Muscle-condition variants are registered for the base ``myo*`` CPU environments. Each variant is
+the base env registered together with the matching wrapper (``SarcopeniaWrapper``,
+``FatigueWrapper``, ``ReafferentationWrapper``), so the same features work on any env that runs
+muscle stages; see :doc:`quickstart_neuroscience` for examples and
+``docs/wiki/cross-backend-contract.md`` for how features are registered and which envs and
+backends support them:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 30 45
+
+   * - Prefix pattern
+     - Condition
+     - Example
+   * - ``myoSarc<…>``
+     - Sarcopenia (50 % peak force)
+     - ``myoSarcElbowPose1D6MRandom-v0``
+   * - ``myoFati<…>``
+     - Cumulative neuromuscular fatigue
+     - ``myoFatiHandPoseRandom-v0``
+   * - ``myoReaf<…>``
+     - Tendon transfer / reafferentation *(all hand envs)*
+     - ``myoReafHandPoseFixed-v0``
+
+The suffix ``Fixed`` indicates a fixed (non-random) target;
+``Random`` indicates a randomly sampled target each episode.
+
+
+myoFinger  (4 DoF, 5–6 muscles)
+---------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 15 15 15 15
+
+   * - Environment ID
+     - Task
+     - Diff.
+     - Sarc
+     - Fati
+   * - ``myoFingerReachFixed-v0``
+     - Fingertip reach
+     - Easy
+     - ✓
+     - ✓
+   * - ``myoFingerReachRandom-v0``
+     - Fingertip reach
+     - Hard
+     - ✓
+     - ✓
+   * - ``myoFingerPoseFixed-v0``
+     - Joint pose
+     - Easy
+     - ✓
+     - ✓
+   * - ``myoFingerPoseRandom-v0``
+     - Joint pose
+     - Hard
+     - ✓
+     - ✓
+
+Each base environment also exposes ``myoSarc…`` and ``myoFati…`` variants
+(12 total IDs for this model).
+
+
+myoElbow  (1 DoF, 6 muscles)
+------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 20 10 10 10
+
+   * - Environment ID
+     - Task
+     - Diff.
+     - Sarc
+     - Fati
+   * - ``myoElbowPose1D6MFixed-v0``
+     - Joint pose
+     - Easy
+     - ✓
+     - ✓
+   * - ``myoElbowPose1D6MRandom-v0``
+     - Joint pose
+     - Hard
+     - ✓
+     - ✓
+   * - ``myoElbowPose1D6MExoFixed-v0``
+     - Pose + elbow exoskeleton
+     - Easy
+     - ✓
+     - ✓
+   * - ``myoElbowPose1D6MExoRandom-v0``
+     - Pose + elbow exoskeleton
+     - Hard
+     - ✓
+     - ✓
+
+Each row additionally has ``myoSarc…`` and ``myoFati…`` variants (12 total IDs).
+
+Experimental, defined by a ``TaskConfig`` instead of an env class (tutorial 4.3):
+``myoElbowPoseTaskFixed-v0`` and ``myoElbowPoseTaskRandom-v0``, with ``myoSarc…`` and ``myoFati…``
+variants.
+
+
+myoHand  (23 DoF, 39 muscles)
+-------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 20 10 10 10 10
+
+   * - Environment ID
+     - Task
+     - Diff.
+     - Sarc
+     - Fati
+     - Reaf
+   * - ``myoHandPoseFixed-v0``
+     - 23-DoF joint pose
+     - Easy
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandPoseRandom-v0``
+     - 23-DoF joint pose
+     - Hard
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandReachFixed-v0``
+     - Fingertip spatial reach
+     - Easy
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandReachRandom-v0``
+     - Fingertip spatial reach
+     - Hard
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandKeyTurnFixed-v0``
+     - Key rotation (thumb + index)
+     - Easy
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandKeyTurnRandom-v0``
+     - Key rotation, random init
+     - Hard
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandObjHoldFixed-v0``
+     - Object repositioning (no drop)
+     - Easy
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandObjHoldRandom-v0``
+     - Random object, random target
+     - Hard
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandPenTwirlFixed-v0``
+     - Pen twirl to fixed orientation
+     - Easy
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandPenTwirlRandom-v0``
+     - Pen twirl to random orientation
+     - Hard
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandReorient8-v0``
+     - Reorient 1 of 8 objects
+     - Easy
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandReorient100-v0``
+     - Reorient 1 of 100 objects
+     - Medium
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandReorientID-v0``
+     - Reorient 1 of 1000 (in-domain)
+     - Hard
+     - ✓
+     - ✓
+     - ✓
+   * - ``myoHandReorientOOD-v0``
+     - Reorient 1 of 1000 (out-of-domain)
+     - Hardest
+     - ✓
+     - ✓
+     - ✓
+
+With all three variants each row generates ``myoSarc…``, ``myoFati…``, and
+``myoReaf…`` IDs.  The full hand environment count is **14 × 4 = 56 IDs**.
+
+**MyoChallenge hand tasks** (several also register ``myoSarc…``/``myoFati…`` variants, 40 variant IDs in total):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 55
+
+   * - Environment ID
+     - Task
+   * - ``myoChallengeDieReorientDemo-v0``
+     - Die reorientation demo
+   * - ``myoChallengeDieReorientP1-v0``
+     - Die reorientation (limited goal range)
+   * - ``myoChallengeDieReorientP2-v0``
+     - Die reorientation (full range + friction/size variation)
+   * - ``myoChallengeBaodingP1-v1``
+     - Baoding balls — swap positions
+   * - ``myoChallengeBaodingP2-v1``
+     - Baoding balls — full rotation + size/friction variation
+   * - ``myoChallengeRelocateP1-v0``
+     - Grasp & place object (phase 1)
+   * - ``myoChallengeRelocateP2-v0``
+     - Grasp & place (phase 2, harder)
+   * - ``myoChallengeRelocateP2eval-v0``
+     - Relocate phase 2 — evaluation split
+   * - ``myoChallengeTableTennisP0-v0``
+     - Table tennis swing (warm-up)
+   * - ``myoChallengeTableTennisP1-v0``
+     - Table tennis (phase 1)
+   * - ``myoChallengeTableTennisP2-v0``
+     - Table tennis (phase 2, full task)
+   * - ``myoChallengeBimanual-v0``
+     - Bimanual object manipulation
+
+
+myoArm  (hand-free variant used here: 18 DoF, 50 muscles; full arm: 27 DoF, 63 muscles)
+----------------------------------------------------------------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 35 10 10 10
+
+   * - Environment ID
+     - Task
+     - Diff.
+     - Sarc
+     - Fati
+   * - ``myoArmReachFixed-v0``
+     - Index fingertip reach (fixed)
+     - Easy
+     - ✓
+     - ✓
+   * - ``myoArmReachRandom-v0``
+     - Index fingertip reach (random)
+     - Hard
+     - ✓
+     - ✓
+
+The arm model used here is the hand-free variant (extrinsic + intrinsic hand
+muscles removed) to isolate reaching without manipulation.
+
+
+myoLeg  (14 joints plus the 6-DoF free root = 20 DoF, 80 muscles)
+-----------------------------------------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 35 10 10 10
+
+   * - Environment ID
+     - Task
+     - Diff.
+     - Sarc
+     - Fati
+   * - ``myoLegStandRandom-v0``
+     - Static balance — random init
+     - Easy
+     - ✓
+     - ✓
+   * - ``myoLegWalk-v0``
+     - Flat-ground forward walking
+     - Medium
+     - ✓
+     - ✓
+   * - ``myoLegRoughTerrainWalk-v0``
+     - Walking on rough terrain
+     - Hard
+     - ✓
+     - ✓
+   * - ``myoLegHillyTerrainWalk-v0``
+     - Walking on hilly terrain
+     - Hard
+     - ✓
+     - ✓
+   * - ``myoLegStairTerrainWalk-v0``
+     - Stair climbing
+     - Hardest
+     - ✓
+     - ✓
+   * - ``myoLegDirectionalForward-v0``
+     - Directional walking — forward
+     - —
+     - —
+     - —
+   * - ``myoLegDirectionalBackward-v0``
+     - Directional walking — backward
+     - —
+     - —
+     - —
+   * - ``myoLegDirectionalRandom-v0``
+     - Directional walking — random direction
+     - —
+     - —
+     - —
+
+**MyoChallenge leg / whole-body tasks:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 55
+
+   * - Environment ID
+     - Task
+   * - ``myoChallengeChaseTagP1-v0``
+     - Chase-tag locomotion (phase 1)
+   * - ``myoChallengeChaseTagP2-v0``
+     - Chase-tag (phase 2, two-agent)
+   * - ``myoChallengeChaseTagP2eval-v0``
+     - Chase-tag phase 2 — evaluation split
+   * - ``myoChallengeOslRunFixed-v0``
+     - OSL prosthetic running (fixed terrain)
+   * - ``myoChallengeOslRunRandom-v0``
+     - OSL prosthetic running (random terrain)
+   * - ``myoChallengeSoccerP1-v0``
+     - Soccer ball kicking (phase 1)
+   * - ``myoChallengeSoccerP2-v0``
+     - Soccer ball kicking (phase 2)
+
+
+myoTorso  (18 joints, 216 muscles)
+-------------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 35 10 10 10
+
+   * - Environment ID
+     - Task
+     - Diff.
+     - Sarc
+     - Fati
+   * - ``myoTorsoPoseFixed-v0``
+     - Lumbar spine pose
+     - Fixed
+     - ✓
+     - ✓
+   * - ``myoTorsoExoPoseFixed-v0``
+     - Lumbar spine pose + exoskeleton
+     - Fixed
+     - ✓
+     - ✓
+
+
+Full body and MuscleMimic
+-------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 40 15
+
+   * - Environment ID
+     - Task
+     - mjlab
+   * - ``myoMimicFullbody-v0`` (also ``myoMuscleMimicFullbody-v0``)
+     - MuscleMimic full-body motion imitation
+     - yes
+   * - ``myoMimicBimanual-v0`` (also ``myoMuscleMimicBimanual-v0``)
+     - MuscleMimic bimanual arm imitation
+     - yes
+   * - ``myoFullBodyDirectional-v0``
+     - Full-body directional locomotion
+     - no
+   * - ``myoChallengeChaseTagFBP2-v0``
+     - Chase-tag, full body, scripted opponent
+     - yes
+   * - ``myoChallengeChaseTagFBVs-v0``
+     - Chase-tag, full body, two agents (1v1)
+     - no
+
+The MuscleMimic and mjlab columns are explained under "GPU (mjlab) coverage" above.
+
+mjlab (GPU)
+-----------
+
+Install ``pip install -e ".[mjlab]"`` (see :doc:`install` for matching the torch
+build to your driver's CUDA version) and train with the CPU ``env_id``::
+
+   python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 --env.scene.num-envs 1024
+
+List the registered mjlab IDs with ``mjlab.tasks.registry.list_tasks()``.
+
+
+MJX (experimental)
+------------------
+
+A JAX path exists (``pip install -e ".[mjx]"``,
+``from myosuite.envs.myo.backends.mjx import make``). Do not start new work on
+it; use mjlab for GPU training. The MJX envs are not observation- or
+reward-compatible with the CPU/mjlab envs of the same task, so MJX-trained
+policies do not transfer to them (see the limitations in
+``myosuite/envs/myo/backends/mjx/README.md``).
+
+Supported envs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 78
+
+   * - Family
+     - MJX ids (``make("<id>")``)
+   * - Pose
+     - ``MjxElbowPoseFixed-v0``, ``MjxElbowPoseRandom-v0``, ``MjxFingerPoseFixed-v0``,
+       ``MjxFingerPoseRandom-v0``, ``MjxHandPoseRandom-v0``
+   * - Reach
+     - ``MjxHandReachFixed-v0``, ``MjxHandReachRandom-v0``, ``MjxFingerReachRandom-v0``
+   * - Walk
+     - ``MjxLegWalk-v0`` (flat ground, mirrors ``myoLegWalk-v0``)
+   * - Mimic
+     - ``MjxMimicBimanual-v0``, ``MjxMimicFullbody-v0`` (aliases
+       ``MjxMuscleMimicBimanual-v0``, ``MjxMuscleMimicFullbody-v0``)
+
+MJX ids use the ``Mjx`` prefix and are not the ``myo…`` ids of the CPU and mjlab
+backends; there is no MJX version of the torso, arm, leg terrain/stand/directional
+envs or of the ``myoSarc…``/``myoFati…``/``myoReaf…`` variants. The list is defined in
+``myosuite/envs/myo/backends/mjx/__init__.py``.

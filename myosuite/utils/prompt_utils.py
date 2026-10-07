@@ -1,89 +1,89 @@
-""" =================================================
-Copyright (C) 2018 Vikash Kumar
-Author  :: Vikash Kumar (vikashplus@gmail.com)
-Source  :: https://github.com/vikashplus/robohive
-License :: Under Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-================================================= """
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
 
-"""
-Utility script to help with information verbosity produced by RoboHive
-To control verbosity set env variable ROBOHIVE_VERBOSITY=ALL/INFO/(WARN)/ERROR/ONCE/ALWAYS/SILENT
+"""Verbosity control for MyoSuite output.
+
+Set the ``MYOSUITE_VERBOSITY`` environment variable to one of:
+ALL / INFO / WARN (default) / ERROR / ONCE / ALWAYS / SILENT.
 """
 
-from termcolor import cprint
+from __future__ import annotations
+
 import enum
 import os
 
+from termcolor import cprint
 
-# Define verbosity levels
+
 class Prompt(enum.IntEnum):
-    """Prompt verbosity types"""
-    ALL = 0     # print everything (lowest priority)
-    INFO = 1    # useful info
-    WARN = 2    # warnings (default)
-    ERROR = 3   # errors
-    ONCE = 4    # print: once and higher
-    ALWAYS = 5  # print: only always (highest priority)
-    SILENT = 6  # Supress all prints
+    """Verbosity levels for :func:`prompt`."""
+
+    ALL = 0
+    INFO = 1
+    WARN = 2
+    ERROR = 3
+    ONCE = 4
+    ALWAYS = 5
+    SILENT = 6
 
 
-# Prompt Cache (to track for Prompt.ONCE messages)
-PROMPT_CACHE = []
+_PROMPT_CACHE: list[int] = []
+
+_LEVEL_MAP = {
+    "ALL": Prompt.ALL,
+    "INFO": Prompt.INFO,
+    "WARN": Prompt.WARN,
+    "ERROR": Prompt.ERROR,
+    "ONCE": Prompt.ONCE,
+    "ALWAYS": Prompt.ALWAYS,
+    "SILENT": Prompt.SILENT,
+}
+
+_raw = os.getenv("MYOSUITE_VERBOSITY", "WARN").upper()
+if _raw not in _LEVEL_MAP:
+    raise ValueError(
+        f"Unknown MYOSUITE_VERBOSITY value: {_raw!r}. Choose from {list(_LEVEL_MAP)}"
+    )
+VERBOSE_MODE: Prompt = _LEVEL_MAP[_raw]
 
 
-# Infer verbose mode to be used
-VERBOSE_MODE = os.getenv('ROBOHIVE_VERBOSITY')
-if VERBOSE_MODE==None:
-    VERBOSE_MODE = Prompt.WARN
-else:
-    VERBOSE_MODE = VERBOSE_MODE.upper()
-    if VERBOSE_MODE == 'SILENT':
-        VERBOSE_MODE = Prompt.SILENT
-    elif VERBOSE_MODE == 'ALWAYS':
-        VERBOSE_MODE = Prompt.ALWAYS
-    elif VERBOSE_MODE == 'ERROR':
-        VERBOSE_MODE = Prompt.ERROR
-    elif VERBOSE_MODE == 'WARN':
-        VERBOSE_MODE = Prompt.WARN
-    elif VERBOSE_MODE == 'INFO':
-        VERBOSE_MODE = Prompt.INFO
-    elif VERBOSE_MODE == 'ALL':
-        VERBOSE_MODE = Prompt.ALL
-    else:
-        raise TypeError("Unknown ROBOHIVE_VERBOSITY option")
+def prompt(
+    data: object,
+    color: str | None = None,
+    on_color: str | None = None,
+    flush: bool = False,
+    end: str = "\n",
+    type: Prompt = Prompt.INFO,
+) -> None:
+    """Print *data* if its verbosity *type* meets the current threshold.
 
-
-# Programatically override the verbosity
-def set_prompt_verbosity(verbose_mode:Prompt=Prompt.ALL):
-    global VERBOSE_MODE
-    VERBOSE_MODE = verbose_mode
-
-
-# Print information respecting the verbosty mode
-def prompt(data, color=None, on_color=None, flush=False, end="\n", type:Prompt=Prompt.INFO):
-
-    global PROMPT_CACHE
+    Args:
+        data: Message to print (converted to str if needed).
+        color: Foreground colour passed to :func:`termcolor.cprint`.
+        on_color: Background colour passed to :func:`termcolor.cprint`.
+        flush: Whether to flush stdout immediately.
+        end: Line ending character.
+        type: Verbosity level of this message.
+    """
+    global _PROMPT_CACHE
 
     if type == Prompt.ONCE:
-        data_hash = hash(data)
-        if data_hash in PROMPT_CACHE:
-            type = Prompt.INFO
-        else:
-            PROMPT_CACHE.append(data_hash)
-            type = Prompt.ALWAYS
+        h = hash(str(data))
+        if h in _PROMPT_CACHE:
+            return
+        _PROMPT_CACHE.append(h)
+        type = Prompt.ALWAYS
 
-    # resolve print colors
-    if on_color == None:
-        if type==Prompt.WARN:
+    if on_color is None:
+        if type == Prompt.WARN:
             color = "black"
             on_color = "on_yellow"
-        elif type==Prompt.ERROR:
+        elif type == Prompt.ERROR:
             on_color = "on_red"
 
-    # resolve printing
     if VERBOSE_MODE == Prompt.SILENT:
         return
-    elif type>=VERBOSE_MODE:
-        if not isinstance(data, str):
-            data = data.__str__()
-        cprint(data, color=color, on_color=on_color, flush=flush, end=end)
+    if type >= VERBOSE_MODE:
+        cprint(str(data), color=color, on_color=on_color, flush=flush, end=end)

@@ -1,16 +1,16 @@
-"""=================================================
-# Copyright (c) MyoSuite Authors
-Authors  :: Pierre Schumacher (schumacherpier@gmail.com), Vikash Kumar (vikashplus@gmail.com), Vittorio Caggiano (caggiano@gmail.com)
-================================================="""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
 
 import math
-import os
+import pathlib
 from enum import Enum
 
 import numpy as np
 
-from myosuite.renderer.mj_renderer import MJRenderer
-from myosuite.utils.quat_math import euler2mat, quat2euler
+from myosuite.viz.mj_renderer import MJRenderer
+from myosuite.physics.quat_math import euler2mat, quat2yaw
 
 
 class TerrainTypes(Enum):
@@ -94,7 +94,7 @@ class HeightField:
         :patches_per_side: how many different patches we want, relative to one side length
                            total patch number will be patches_per_side^2
         """
-        assert type(view_distance) is int
+        assert isinstance(view_distance, int)
         self.real_length = real_length
         self.real_width = real_width
         self.mj_model = mj_model
@@ -155,7 +155,7 @@ class HeightField:
         Update heights at grid points around
         model.
         """
-        rot_direction = quat2euler(self.mj_data.qpos[3:7])[2]
+        rot_direction = quat2yaw(self.mj_data.qpos[3:7])
         rot_mat = euler2mat([0, 0, rot_direction])
         # rotate points around z-direction to match model
         points = np.einsum("ij,kj->ik", self.height_points, rot_mat)
@@ -207,7 +207,7 @@ class ChaseTagField(HeightField):
         real_width=12,
         **kwargs,
     ):
-        assert type(patches_per_side) is int
+        assert isinstance(patches_per_side, int)
         super().__init__(
             *args, real_length=real_length, real_width=real_width, **kwargs
         )
@@ -242,7 +242,7 @@ class ChaseTagField(HeightField):
             raise NotImplementedError
 
     def _populate_patches(self):
-        generated_terrains = np.zeros((len(TerrainTypes)))
+        generated_terrains = np.zeros(len(TerrainTypes))
         for i in range(self.patches_per_side):
             for j in range(self.patches_per_side):
                 terrain_type = self.rng.choice(TerrainTypes)
@@ -297,8 +297,9 @@ class ChaseTagField(HeightField):
         """
         Compute data for a special logo terrain.
         """
-        curr_dir = os.path.dirname(__file__)
-        relief = np.load(os.path.join(curr_dir, "myo/assets/myo_relief.npy"))
+        relief = np.load(
+            str(pathlib.Path(__file__).parent / "myo" / "assets" / "myo_relief.npy")
+        )
         normalized_data = (relief - np.min(relief)) / (np.max(relief) - np.min(relief))
         return np.flipud(normalized_data) * self.rng.uniform(
             self.relief_range[0], self.relief_range[1]
@@ -399,9 +400,12 @@ class TrackField(HeightField):
             # random mixed terrain type
             n_patches = 24
             patch_starts = np.arange(0, self.nrow, int(self.nrow // n_patches))
-            terrain_fn = lambda patch_start, patch_end, i: terrain_fn_list[
-                self.rng.choice(n_types)
-            ][0](patch_start, patch_end, i)
+
+            def terrain_fn(patch_start, patch_end, i):
+                return terrain_fn_list[self.rng.choice(n_types)][0](
+                    patch_start, patch_end, i
+                )
+
             self.terrain_type = TrackTypes.MIXED
         else:
             raise ValueError(f"Invalid reset type: {self.reset_type}")
@@ -448,7 +452,7 @@ class TrackField(HeightField):
         Computes a rough terrain patch.
         """
         length = int(patch_end - patch_start)
-        fill_data = np.random.uniform(-1, 1, size=(length, int(self.ncol)))
+        fill_data = self.rng.uniform(-1, 1, size=(length, int(self.ncol)))
         scalar = self.rng.uniform(low=0, high=self.rough_difficulties[i])
         fill_data = (fill_data - np.min(fill_data)) / (
             np.max(fill_data) - np.min(fill_data)
