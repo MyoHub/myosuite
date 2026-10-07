@@ -21,6 +21,11 @@ on:
 # Pushes and tags use REPO_TOKEN, so the default workflow token only needs read access.
 permissions:
   contents: read
+
+# Only one release may mutate main/dev at a time.
+concurrency:
+  group: pypi-release
+  cancel-in-progress: false
 # # Upon running the following instructions
 # # > git tag 0.0.1 # or whatever version you want
 # # > git push origin --tags
@@ -80,6 +85,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        persist-credentials: false
 
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
@@ -130,11 +136,7 @@ jobs:
     - name: Commit updated version files
       env:
         NEW_VERSION: ${{ needs.get_next_version.outputs.new_version }}
-        # REPO_TOKEN reaches git only in the steps that push (git >= 2.31 reads
-        # config from GIT_CONFIG_*), not ~/.gitconfig for the rest of the job.
-        GIT_CONFIG_COUNT: 1
-        GIT_CONFIG_KEY_0: url.https://${{ secrets.REPO_TOKEN }}@github.com.insteadOf
-        GIT_CONFIG_VALUE_0: https://github.com
+        REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -149,7 +151,7 @@ jobs:
           # Advance both branches to the release commit. Explicit leases bind
           # the update to the exact remote tips validated above. This safely
           # reconciles squash/rebase histories while rejecting concurrent pushes.
-          git push --atomic --force-with-lease=main:${{ steps.verify-branches.outputs.main_sha }} --force-with-lease=dev:${{ steps.verify-branches.outputs.dev_sha }} origin HEAD:main HEAD:dev
+          git push --atomic --force-with-lease=main:${{ steps.verify-branches.outputs.main_sha }} --force-with-lease=dev:${{ steps.verify-branches.outputs.dev_sha }} "https://x-access-token:$REPO_TOKEN@github.com/${{ github.repository }}.git" HEAD:main HEAD:dev
         fi
 
     # 2. Use the `tag name` as `release version`
@@ -162,12 +164,10 @@ jobs:
       if: steps.checkTag.outputs.exists != 'true'
       env:
         NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
-        GIT_CONFIG_COUNT: 1
-        GIT_CONFIG_KEY_0: url.https://${{ secrets.REPO_TOKEN }}@github.com.insteadOf
-        GIT_CONFIG_VALUE_0: https://github.com
+        REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
       run: |
         git tag "$NEW_TAG"
-        git push origin "$NEW_TAG"
+        git push "https://x-access-token:$REPO_TOKEN@github.com/${{ github.repository }}.git" "$NEW_TAG"
 
 
      # 3. Build the PyPI packeage
