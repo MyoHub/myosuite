@@ -57,16 +57,19 @@ def keyframe_violations(model: mujoco.MjModel) -> list[str]:
     "xml", ["arm/myoarm_bionic_bimanual.xml", "arm/myoarm_tabletennis.xml"]
 )
 def test_raw_xml_keyframes_in_range(xml: str) -> None:
-    """The raw model files named in #403 satisfy the invariant."""
+    """The raw model files of #403 (and the soccer model) satisfy the invariant."""
     model = mujoco.MjModel.from_xml_path(str(resolve_model_xml_path(ASSETS / xml)))
     assert keyframe_violations(model) == []
 
 
-# Models that come from upstream packages (myo_sim, musclemimic_models) and still violate it.
-UPSTREAM = "keyframe values come from the upstream model package"
+# Known exceptions. The full-body keyframes come from the musclemimic_models package; the ChaseTag
+# FBP2 reset keyframe is 1e-4 rad below a limit and kept so that resets stay bit-identical.
+UPSTREAM = "keyframe values come from the musclemimic_models package"
+KEPT = "reset keyframe 1e-4 rad outside a limit, kept to keep resets bit-identical"
 ENV_IDS = [
     "myoChallengeBimanual-v0",
     "myoChallengeTableTennisP0-v0",
+    "myoChallengeSoccerP1-v0",
     "myoHandPose1Fixed-v0",
     "myoFingerPoseFixed-v0",
     "myoArmReachFixed-v0",
@@ -74,10 +77,7 @@ ENV_IDS = [
     "myoLegWalk-v0",
     "myoTorsoPoseFixed-v0",
     pytest.param("myoMimicFullbody-v0", marks=pytest.mark.xfail(reason=UPSTREAM)),
-    pytest.param("myoChallengeSoccerP1-v0", marks=pytest.mark.xfail(reason=UPSTREAM)),
-    pytest.param(
-        "myoChallengeChaseTagFBP2-v0", marks=pytest.mark.xfail(reason=UPSTREAM)
-    ),
+    pytest.param("myoChallengeChaseTagFBP2-v0", marks=pytest.mark.xfail(reason=KEPT)),
 ]
 
 
