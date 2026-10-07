@@ -155,15 +155,19 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      # Revalidate immediately before the only repository mutation. A normal
-      # push is outside this workflow's concurrency group, so the earlier build
-      # validation alone is not sufficient.
-      - name: Revalidate branch tips
+      # Validate and mutate in one step. The atomic push includes no-op
+      # main/dev refspecs guarded by exact leases, so Git rejects the tag if
+      # either branch changes after validation but before the server applies it.
+      - name: Validate tips and create release tag atomically
+        env:
+          NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
         run: |
           git fetch origin main dev --tags
           main_sha=$(git rev-parse origin/main)
+          dev_sha=$(git rev-parse origin/dev)
           main_tree=$(git rev-parse origin/main^{tree})
           dev_tree=$(git rev-parse origin/dev^{tree})
+          head_sha=$(git rev-parse HEAD)
 
           if [ "$GITHUB_SHA" != "$main_sha" ]; then
             echo "::error::main moved while the release was building. Re-run from the latest main."
@@ -174,11 +178,6 @@ jobs:
             exit 1
           fi
 
-      - name: Create or validate release tag
-        env:
-          NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
-        run: |
-          head_sha=$(git rev-parse HEAD)
           if git rev-parse -q --verify "refs/tags/$NEW_TAG" >/dev/null; then
             tagged_sha=$(git rev-list -n 1 "$NEW_TAG")
             if [ "$tagged_sha" != "$head_sha" ]; then
@@ -190,7 +189,13 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
-            git push origin "refs/tags/$NEW_TAG"
+            git push --atomic \
+              --force-with-lease=main:$main_sha \
+              --force-with-lease=dev:$dev_sha \
+              origin \
+              "$main_sha:refs/heads/main" \
+              "$dev_sha:refs/heads/dev" \
+              "refs/tags/$NEW_TAG"
           fi
 
   publish_to_pypi:
