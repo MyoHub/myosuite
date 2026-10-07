@@ -68,17 +68,17 @@ jobs:
       new_tag: ${{ steps.get-next-version-and-tag.outputs.tag }}
 
   pypi_package_build_and_release:
-    name: Build PyPI wheel
+    name: Validate and build PyPI distributions
     runs-on: ubuntu-latest
     needs: get_next_version
     permissions:
-      contents: write
+      contents: read
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        persist-credentials: true
+        persist-credentials: false
 
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
@@ -137,35 +137,66 @@ jobs:
         print(f"Verified wheel version {actual}")
         PY
 
-    - name: Verify release Git authentication
-      run: git ls-remote origin HEAD >/dev/null
-
-    - name: Create or validate release tag
-      env:
-        NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
-      run: |
-        head_sha=$(git rev-parse HEAD)
-        if git rev-parse -q --verify "refs/tags/$NEW_TAG" >/dev/null; then
-          tagged_sha=$(git rev-list -n 1 "$NEW_TAG")
-          if [ "$tagged_sha" != "$head_sha" ]; then
-            echo "::error::Tag $NEW_TAG already exists but resolves to $tagged_sha, not $head_sha."
-            exit 1
-          fi
-          echo "Tag $NEW_TAG already resolves to this release commit; reusing it."
-        else
-          git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
-          git push origin "refs/tags/$NEW_TAG"
-        fi
-
     - name: Store the distribution packages
       uses: actions/upload-artifact@v4
       with:
         name: python-package-distributions
         path: dist/
+  create_release_tag:
+    name: Validate tips and create release tag
+    runs-on: ubuntu-latest
+    needs: [get_next_version, pypi_package_build_and_release]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      # Revalidate immediately before the only repository mutation. A normal
+      # push is outside this workflow's concurrency group, so the earlier build
+      # validation alone is not sufficient.
+      - name: Revalidate branch tips
+        run: |
+          git fetch origin main dev --tags
+          main_sha=$(git rev-parse origin/main)
+          main_tree=$(git rev-parse origin/main^{tree})
+          dev_tree=$(git rev-parse origin/dev^{tree})
+
+          if [ "$GITHUB_SHA" != "$main_sha" ]; then
+            echo "::error::main moved while the release was building. Re-run from the latest main."
+            exit 1
+          fi
+          if [ "$main_tree" != "$dev_tree" ]; then
+            echo "::error::main and dev diverged while the release was building."
+            exit 1
+          fi
+
+      - name: Create or validate release tag
+        env:
+          NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
+        run: |
+          head_sha=$(git rev-parse HEAD)
+          if git rev-parse -q --verify "refs/tags/$NEW_TAG" >/dev/null; then
+            tagged_sha=$(git rev-list -n 1 "$NEW_TAG")
+            if [ "$tagged_sha" != "$head_sha" ]; then
+              echo "::error::Tag $NEW_TAG already exists but resolves to $tagged_sha, not $head_sha."
+              exit 1
+            fi
+            echo "Tag $NEW_TAG already resolves to this release commit; reusing it."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
+            git push origin "refs/tags/$NEW_TAG"
+          fi
+
   publish_to_pypi:
     name: Publish PyPI wheel
     runs-on: ubuntu-latest
-    needs: pypi_package_build_and_release
+    needs: [pypi_package_build_and_release, create_release_tag]
     permissions:
       contents: read
       id-token: write
