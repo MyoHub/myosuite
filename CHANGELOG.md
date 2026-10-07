@@ -114,6 +114,7 @@ full commit list.
 * The 2.4 DEP-RL tutorial (the 2023 baseline no longer walks on the current envs); MyoReflex Walk is now 2.4 ([#460], [#468]).
 * The myouser-specific mjlab task and helpers (now in the standalone myoInteract repository).
 * The MyoDM suite, Boxing and Saber tasks with their shared code, the `composer` package, the legacy `simhive` copies, `myosuite_init`, placeholder `*Modular-v0` registrations, the Walk Backends demo notebook, the stale examine-rollout script, Colab helpers and the unused console scripts `myosuite-musclemimic-fullbody-parity` and `myosuite-musclemimic-mjx-train` ([#406]).
+* The local `myosuite/simhive/` asset override. A leftover pre-3.0 copy shadowed the pip `myo_sim` and broke models whose meshes it lacked; assets now come only from the bundled subsets and pip. To work on a local `myo_sim` checkout, install it in editable mode (`uv pip install -e path/to/myo_sim`).
 
 ### Dependencies
 

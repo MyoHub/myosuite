@@ -54,6 +54,29 @@ def _write_model(model_dir: Path) -> Path:
     return model
 
 
+def test_simhive_folder_is_not_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``myosuite/simhive/myo_sim`` folder (e.g. a stale pre-3.0 copy) is ignored.
+
+    Assets come from the bundled subsets and pip; a local myo_sim checkout is used
+    through an editable install instead.
+    """
+    package = tmp_path / "myosuite"
+    (package / "simhive" / "myo_sim" / "meshes").mkdir(parents=True)
+    (package / "utils").mkdir()
+    monkeypatch.setattr(
+        apr, "__file__", str(package / "utils" / "asset_path_resolver.py")
+    )
+
+    pip_root = apr._pip_myo_sim_models_root()
+    assert pip_root is not None
+    assert apr.get_sim_asset_root("myo_sim") == pip_root
+    assert apr._resolve_myo_sim_rel("meshes/hat_cervical.stl") == (
+        pip_root / "meshes" / "hat_cervical.stl"
+    )
+
+
 def _resolved_copies(directory: Path) -> list[str]:
     return sorted(p.name for p in directory.glob(".myosuite_resolved_*"))
 

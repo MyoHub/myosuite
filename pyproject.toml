@@ -172,7 +172,6 @@ packages = { find = { exclude = ["myosuite.agents", "myosuite.agents.*"] } }
     "physics/**",
     "robot/**",
     "scenes/**",
-    "simhive/**",
     "terms/**",
     "utils/**",
     "viz/**",
