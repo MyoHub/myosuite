@@ -464,13 +464,18 @@ def _mjlab_onnx_main(
         )
         width = min(1280, offwidth) if offwidth > 0 else 640
         height = min(720, offheight) if offheight > 0 else 480
+        from myosuite.integrations.musclemimic.fullbody_native_playback import (
+            side_tracking_camera,
+        )
+
         renderer = mujoco.Renderer(model, height=height, width=width)
+        camera = side_tracking_camera(model, clip)
         frames: list[np.ndarray] = []
         try:
             for i in range(steps):
                 action = runner.action_for(data, clip, i)
                 runner.step(model, data, action)
-                renderer.update_scene(data)
+                renderer.update_scene(data, camera=camera)
                 frames.append(np.asarray(renderer.render(), dtype=np.uint8))
         finally:
             renderer.close()
@@ -478,7 +483,7 @@ def _mjlab_onnx_main(
         out.parent.mkdir(parents=True, exist_ok=True)
         fps = max(1, int(round(1.0 / float(model.opt.timestep))))
         write_video(str(out), np.asarray(frames), outputdict={"-r": str(fps)})
-        logger.info("Saved %d-frame policy rollout to %s", len(frames), out)
+        print(f"Saved {len(frames)}-frame policy rollout to {out}")
         return 0
 
     # Interactive viewer.

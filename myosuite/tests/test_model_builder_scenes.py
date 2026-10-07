@@ -36,22 +36,14 @@ def _hand_fragment_available() -> bool:
     try:
         import myo_sim  # type: ignore[import-untyped]
 
-        if (myo_sim.MODELS_DIR / "hand" / "myohand_r.xml").exists():
-            return True
+        return (myo_sim.MODELS_DIR / "hand" / "myohand_r.xml").exists()
     except (ImportError, AttributeError):
-        pass
-    return (
-        __import__("pathlib").Path(__file__).parents[1]
-        / "simhive"
-        / "myo_sim"
-        / "hand"
-        / "myohand.xml"
-    ).exists()
+        return False
 
 
 _SKIP = pytest.mark.skipif(
     not _hand_fragment_available(),
-    reason="myo_sim pip package or local override checkout required",
+    reason="myo_sim pip package required",
 )
 
 

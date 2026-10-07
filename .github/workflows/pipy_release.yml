@@ -18,10 +18,9 @@ on:
         default: 'patch'
         required: true
 
+# Pushes and tags use REPO_TOKEN, so the job token only needs read access.
 permissions:
-  contents: write
-  checks: write
-  pull-requests: write
+  contents: read
 # # Upon running the following instructions
 # # > git tag 0.0.1 # or whatever version you want
 # # > git push origin --tags

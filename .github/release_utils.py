@@ -1,4 +1,5 @@
 import argparse
+import ast
 import re
 
 
@@ -9,7 +10,7 @@ def find_version(version_file_path) -> str:
             r"^__version_tuple__ = (.*)", version_file.read(), re.M
         )
         if version_match:
-            ver_tup = eval(version_match.group(1))
+            ver_tup = ast.literal_eval(version_match.group(1))
             ver_str = ".".join([str(x) for x in ver_tup])
             return ver_str
         raise RuntimeError("Unable to find version tuple.")

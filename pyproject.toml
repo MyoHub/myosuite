@@ -132,7 +132,9 @@ docs = [
 ]
 
 musclemimic = [
-    "musclemimic_models>=1.0.2",
+    # 1.0.6 changed the left-knee coupling and several muscle wraps; published
+    # MuscleMimic checkpoints (e.g. amathislab/mm-10m-2) fall on it.
+    "musclemimic_models==1.0.5",
     "huggingface_hub>=0.20",
     "scikit-learn>=1.6.1",
     "joblib>=1.4.0",
@@ -170,7 +172,6 @@ packages = { find = { exclude = ["myosuite.agents", "myosuite.agents.*"] } }
     "physics/**",
     "robot/**",
     "scenes/**",
-    "simhive/**",
     "terms/**",
     "utils/**",
     "viz/**",

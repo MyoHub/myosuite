@@ -127,7 +127,7 @@ def _musclemimic_model_root() -> Path:
     except ImportError as err:
         raise ImportError(
             "MyoTorso + bimanual needs musclemimic_models "
-            "(pip install 'musclemimic_models>=1.0.2' or "
+            "(pip install 'musclemimic_models==1.0.5' or "
             "pip install 'myosuite[musclemimic]')."
         ) from err
     # myofullbody.xml lives in model/body/
@@ -312,7 +312,7 @@ NATIVE_BIMANUAL_FALLBACK_WARNING = (
     "bit-exact parity with the external MuscleMimic codebase's model "
     "(github.com/amathislab/musclemimic) - checkpoints trained against the "
     "real musclemimic_models MJCF are not guaranteed to transfer. Install "
-    "'musclemimic_models>=1.0.2' or 'myosuite[musclemimic]' for exact parity."
+    "'musclemimic_models==1.0.5' or 'myosuite[musclemimic]' for exact parity."
 )
 
 

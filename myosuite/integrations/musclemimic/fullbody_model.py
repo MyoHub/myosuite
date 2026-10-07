@@ -40,7 +40,7 @@ NATIVE_FULLBODY_FALLBACK_WARNING = (
     "applied instead. This is NOT bit-exact parity with the external "
     "MuscleMimic codebase's model (github.com/amathislab/musclemimic) - "
     "checkpoints trained against the real musclemimic_models MJCF are not "
-    "guaranteed to transfer. Install 'musclemimic_models>=1.0.2' or "
+    "guaranteed to transfer. Install 'musclemimic_models==1.0.5' or "
     "'myosuite[musclemimic]' for exact parity."
 )
 
@@ -101,7 +101,7 @@ def resolve_mimic_fullbody_xml(config: config_dict.ConfigDict) -> str:
             "MyoFullBody parity requires the same MJCF as "
             "https://github.com/amathislab/musclemimic (package "
             "`musclemimic_models`). Install with: pip install "
-            "'musclemimic_models>=1.0.2' or pip install "
+            "'musclemimic_models==1.0.5' or pip install "
             "'myosuite[musclemimic]'."
         ) from err
     return get_xml_path("myofullbody").as_posix()

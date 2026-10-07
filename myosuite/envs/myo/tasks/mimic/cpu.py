@@ -331,7 +331,7 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             filename=self._gait_file,
             repo_type="dataset",
         )
-        npz = np.load(path, allow_pickle=True)
+        npz = np.load(path)
         qpos = np.asarray(npz["qpos"], dtype=np.float64)
         qvel = np.asarray(npz["qvel"], dtype=np.float64)
         self._gait_qpos_local = qpos[:, 7:]

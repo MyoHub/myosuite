@@ -79,13 +79,28 @@ class RslRlPolicy(torch.nn.Module):
         return (self.sample(x) if stochastic else self(x)).numpy()
 
 
+class _CfgLoader(yaml.SafeLoader):
+    """SafeLoader that reads ``!!python/*`` tags (e.g. tuples) as plain data."""
+
+
+def _construct_plain(loader: yaml.SafeLoader, _suffix: str, node: yaml.Node) -> Any:
+    if isinstance(node, yaml.SequenceNode):
+        return tuple(loader.construct_sequence(node, deep=True))
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node, deep=True)
+    return loader.construct_scalar(node)
+
+
+_CfgLoader.add_multi_constructor("tag:yaml.org,2002:python/", _construct_plain)
+
+
 def _agent_params(checkpoint: Path) -> dict[str, Any]:
     """``params/agent.yaml`` written by ``scripts/train_mjlab.py`` (if present)."""
     path = checkpoint.parent / "params" / "agent.yaml"
     if not path.exists():
         return {}
     with path.open() as f:
-        return yaml.unsafe_load(f) or {}
+        return yaml.load(f, Loader=_CfgLoader) or {}
 
 
 def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
@@ -102,7 +117,7 @@ def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
         The policy in eval mode on CPU.
     """
     checkpoint = Path(checkpoint)
-    state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    state = torch.load(checkpoint, map_location="cpu", weights_only=True)
     actor_state: dict[str, torch.Tensor] = state["actor_state_dict"]
     actor_cfg = _agent_params(checkpoint).get("actor", {})
 
