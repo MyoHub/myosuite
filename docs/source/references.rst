@@ -135,6 +135,11 @@ the endurance-time sources.
 Motor control, locomotion and synergies
 ---------------------------------------
 
+* Harris, C.M., Wolpert, D.M. (1998). Signal-dependent noise determines motor planning. *Nature*
+  394, 780-784. https://doi.org/10.1038/29528 (signal-dependent motor noise)
+* van Beers, R.J., Haggard, P., Wolpert, D.M. (2004). The role of execution noise in movement
+  variability. *Journal of Neurophysiology* 91(2), 1050-1063. https://doi.org/10.1152/jn.00652.2003
+  (default motor-noise levels, ``MotorNoiseCfg.van_beers_2004()``)
 * Song, S., Geyer, H. (2015). A neural circuitry that emphasizes spinal feedback generates diverse
   behaviours of human locomotion. *The Journal of Physiology* 593(16), 3493-3511.
   https://doi.org/10.1113/JP270228 (reflex walking controller of tutorial 2.4)
@@ -152,6 +157,13 @@ Reinforcement learning and numerics
 * Pardo, F., Tavakoli, A., Levdik, V., Kormushev, P. (2018). Time limits in reinforcement learning.
   *International Conference on Machine Learning (ICML)*. https://arxiv.org/abs/1712.00378
   (truncation handling in ``tutorials/files/5.2/train_mimic.py``)
+* Fischer, F., Bachinski, M., Klar, M., Fleig, A., Müller, J. (2021). Reinforcement learning control
+  of a biomechanical model of the upper extremity. *Scientific Reports* 11, 14445.
+  https://doi.org/10.1038/s41598-021-93760-1 (motor-noise levels 0.103 and 0.185)
+* Ikkala, A., Fischer, F., Klar, M., Bachinski, M., Fleig, A., Howes, A., Hämäläinen, P., Müller, J.,
+  Murray-Smith, R., Oulasvirta, A. (2022). Breathing life into biomechanical user models. *ACM
+  Symposium on User Interface Software and Technology (UIST)*. https://doi.org/10.1145/3526113.3545689
+  (User-in-the-Box; motor noise on the controls)
 * Timmer, J., Koenig, M. (1995). On generating power law noise. *Astronomy & Astrophysics* 300,
   707-710. (colored exploration noise)
 * Buss, S.R. (2004). Introduction to inverse kinematics with Jacobian transpose, pseudoinverse and
