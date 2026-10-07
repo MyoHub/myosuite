@@ -35,6 +35,7 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
+from myosuite.integrations.musclemimic.model_versions import checkpoint_models_version
 from myosuite.integrations.musclemimic.fullbody_local_policy import (
     FullbodyObsAdapter,
     LocalPolicyRunner,
@@ -128,8 +129,10 @@ def parse_native_playback_argv(argv: list[str]) -> NativePlaybackArgs:
     )
 
 
-def _build_model() -> tuple[mujoco.MjModel, str]:
+def _build_model(checkpoint_ref: str | None = None) -> tuple[mujoco.MjModel, str]:
     cfg = default_mimic_fullbody_config()
+    # Step the physics the checkpoint was trained on.
+    cfg.model_version = checkpoint_models_version(checkpoint_ref)
     model, _spec, xml_path = compile_mimic_fullbody_mjmodel(cfg)
     floor_z_offset = float(os.environ.get("MYOSUITE_MIMIC_FLOOR_Z_OFFSET", "0.0"))
     if abs(floor_z_offset) > 0.0:
@@ -505,7 +508,7 @@ def run_native_playback(parsed: NativePlaybackArgs) -> int:
         )
     ckpt = resolve_checkpoint_ref(parsed.checkpoint_path)
     ckpt_diag = describe_checkpoint_dir(ckpt.local_path)
-    model, xml_path = _build_model()
+    model, xml_path = _build_model(parsed.checkpoint_path)
     motion_file = resolve_motion_path(
         parsed.motion_path,
         env_name="MyoFullBody",

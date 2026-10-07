@@ -51,8 +51,12 @@ def fullbody_model() -> mujoco.MjModel:
         compile_mimic_fullbody_mjmodel,
         default_mimic_fullbody_config,
     )
+    from myosuite.integrations.musclemimic.model_versions import (
+        checkpoint_models_version,
+    )
 
     cfg = default_mimic_fullbody_config()
+    cfg.model_version = checkpoint_models_version(_CHECKPOINT_REF)
     model, _spec, _xml = compile_mimic_fullbody_mjmodel(cfg)
     return model
 
