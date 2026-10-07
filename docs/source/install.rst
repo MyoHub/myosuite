@@ -33,6 +33,15 @@ or install a matching torch *before* the ``.[mjlab]`` install with pip, e.g. ``p
 shows the CUDA version; see `pytorch.org/get-started/locally <https://pytorch.org/get-started/locally/>`_
 for the right tag).
 
+``--torch-backend`` covers torch only. ``warp-lang`` (pulled in by mjlab) is built for CUDA 13 on
+PyPI as well; on a CUDA 12 driver it falls back to the CPU and mjlab fails with ``Invalid device
+identifier: cuda:0`` (``python -c "import warp; warp.init()"`` prints "insufficient CUDA driver
+version"). Install the CUDA 12 build of the same version from the
+`Warp releases <https://github.com/NVIDIA/warp/releases>`_::
+
+   pip install --force-reinstall --no-deps \
+       https://github.com/NVIDIA/warp/releases/download/v1.18.0/warp_lang-1.18.0+cu12-py3-none-manylinux_2_28_x86_64.whl
+
 Or with `uv <https://docs.astral.sh/uv/>`_::
 
    uv sync -p 3.10 --extra rl
