@@ -18,10 +18,9 @@ on:
         default: 'patch'
         required: true
 
-# Pushes and tags use REPO_TOKEN. PyPI Trusted Publishing requires an OIDC token.
+# Pushes and tags use REPO_TOKEN, so the default workflow token only needs read access.
 permissions:
   contents: read
-  id-token: write
 # # Upon running the following instructions
 # # > git tag 0.0.1 # or whatever version you want
 # # > git push origin --tags
@@ -73,7 +72,7 @@ jobs:
       new_tag: ${{ steps.get-next-version-and-tag.outputs.tag }}
 
   pypi_package_build_and_release:
-    name: Build and publish PyPI wheel
+    name: Build PyPI wheel
     runs-on: ubuntu-latest
     needs: get_next_version
     steps:
@@ -153,12 +152,25 @@ jobs:
       with:
         name: python-package-distributions
         path: dist/
-    # 4. Upload the package
-    - name: Publish distribution to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+  publish_to_pypi:
+    name: Publish PyPI wheel
+    runs-on: ubuntu-latest
+    needs: pypi_package_build_and_release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download distribution packages
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish distribution to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
 
   test_latest_PyPI:
-    needs: pypi_package_build_and_release
+    needs: publish_to_pypi
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
