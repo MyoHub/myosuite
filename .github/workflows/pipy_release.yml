@@ -98,6 +98,23 @@ jobs:
         echo "current branch = $(git branch --show-current)"
         output=$(python3 .github/release_utils.py --release-type "$RELEASE_TYPE" --update-version)
 
+    # The release flow is dev -> main. Before creating the release commit,
+    # require dev to still be the commit that was promoted into main.
+    - name: Verify dev has not advanced since promotion to main
+      run: |
+        git fetch origin main dev
+        main_parent_count=$(git rev-list --count --parents -n 1 origin/main | awk '{print NF-1}')
+        if [ "$main_parent_count" -ne 2 ]; then
+          echo "::error::main must point to the dev -> main merge commit before releasing."
+          exit 1
+        fi
+        promoted_dev=$(git rev-parse origin/main^2)
+        current_dev=$(git rev-parse origin/dev)
+        if [ "$promoted_dev" != "$current_dev" ]; then
+          echo "::error::dev has advanced since it was promoted to main. Merge dev -> main again before releasing."
+          exit 1
+        fi
+
     # commit and push version.py and uv.lock updates
     - name: Commit updated version files
       env:
@@ -118,12 +135,10 @@ jobs:
         # "current" leaves the files unchanged; only commit a real bump.
         if ! git diff --cached --quiet; then
           git commit -m "chore: bump version to $NEW_VERSION"
-          git push origin HEAD:main  # dispatched on main (first job)
+          # Advance main and dev together to the exact same release commit.
+          # --atomic prevents either branch from moving if the other update fails.
+          git push --atomic origin HEAD:main HEAD:dev
         fi
-
-        # git fetch origin
-        # # Force dev to follow main exactly
-        # git push origin main:dev --force-with-lease
 
     # 2. Use the `tag name` as `release version`
     - uses: mukunku/tag-exists-action@78009d2b13e10ba051fe68d8d2f6778a9b2adab3  # v1.4.0
