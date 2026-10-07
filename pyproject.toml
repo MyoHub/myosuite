@@ -132,9 +132,9 @@ docs = [
 ]
 
 musclemimic = [
-    # 1.0.6 changed the left-knee coupling and several muscle wraps; published
-    # MuscleMimic checkpoints (e.g. amathislab/mm-10m-2) fall on it.
-    "musclemimic_models==1.0.5",
+    # 1.0.6 fixed the left-knee coupling and several muscle wraps; checkpoints trained
+    # on 1.0.5 (amathislab/mm-10m-2) get that model from model_versions.py.
+    "musclemimic_models==1.0.6",
     "huggingface_hub>=0.20",
     "scikit-learn>=1.6.1",
     "joblib>=1.4.0",

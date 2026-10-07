@@ -366,6 +366,9 @@ def _mjlab_onnx_main(
         compile_mimic_fullbody_mjmodel,
         default_mimic_fullbody_config,
     )
+    from myosuite.integrations.musclemimic.model_versions import (
+        checkpoint_models_version,
+    )
     from myosuite.core.trajectory_io import (
         expand_motion_clip_to_model,
         load_motion_clip,
@@ -383,8 +386,10 @@ def _mjlab_onnx_main(
         )
         return 2
 
-    # --- Build CPU model ---
-    model, _, _ = compile_mimic_fullbody_mjmodel(default_mimic_fullbody_config())
+    # --- Build CPU model (the physics the checkpoint was trained on) ---
+    cfg = default_mimic_fullbody_config()
+    cfg.model_version = checkpoint_models_version(path_ref)
+    model, _, _ = compile_mimic_fullbody_mjmodel(cfg)
 
     # --- Load motion clip ---
     try:

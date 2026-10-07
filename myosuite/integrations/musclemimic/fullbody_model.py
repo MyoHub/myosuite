@@ -32,6 +32,10 @@ from myosuite.integrations.musclemimic.bimanual_model import (
     FINGER_MUSCLE_TOKENS,
     _translate_finger_token,
 )
+from myosuite.integrations.musclemimic.model_versions import (
+    apply_models_version,
+    resolve_models_version,
+)
 from myosuite.terms.mimic_reward import MimicTrackingConfig
 
 NATIVE_FULLBODY_FALLBACK_WARNING = (
@@ -40,7 +44,7 @@ NATIVE_FULLBODY_FALLBACK_WARNING = (
     "applied instead. This is NOT bit-exact parity with the external "
     "MuscleMimic codebase's model (github.com/amathislab/musclemimic) - "
     "checkpoints trained against the real musclemimic_models MJCF are not "
-    "guaranteed to transfer. Install 'musclemimic_models==1.0.5' or "
+    "guaranteed to transfer. Install 'musclemimic_models==1.0.6' or "
     "'myosuite[musclemimic]' for exact parity."
 )
 
@@ -101,7 +105,7 @@ def resolve_mimic_fullbody_xml(config: config_dict.ConfigDict) -> str:
             "MyoFullBody parity requires the same MJCF as "
             "https://github.com/amathislab/musclemimic (package "
             "`musclemimic_models`). Install with: pip install "
-            "'musclemimic_models==1.0.5' or pip install "
+            "'musclemimic_models==1.0.6' or pip install "
             "'myosuite[musclemimic]'."
         ) from err
     return get_xml_path("myofullbody").as_posix()
@@ -368,6 +372,8 @@ def build_mimic_fullbody_spec(
     spec = _mimic_fullbody_spec(
         Path(xml_path).absolute().as_posix(), bool(config.disable_fingers)
     )
+    if mp is None:
+        apply_models_version(spec, resolve_models_version(config))
     return spec, xml_path
 
 
@@ -491,7 +497,9 @@ def default_mimic_fullbody_config() -> config_dict.ConfigDict:
     :class:`~myosuite.envs.myo.backends.mjx.musclemimic_fullbody_env.MjxMuscleMimicFullbodyEnv`
     ). Extra keys (observation toggles, ``target_site_range``, ``nconmax``)
     are for that MJX task wrapper. ``arena_memory`` is the per-``MjData``
-    arena in bytes (see :data:`MIMIC_FULLBODY_ARENA_BYTES`).
+    arena in bytes (see :data:`MIMIC_FULLBODY_ARENA_BYTES`). ``model_version``
+    selects the ``musclemimic_models`` release the model is built as (``None``:
+    see :func:`~myosuite.integrations.musclemimic.model_versions.resolve_models_version`).
     """
     tracking = MimicTrackingConfig()
 
@@ -506,6 +514,7 @@ def default_mimic_fullbody_config() -> config_dict.ConfigDict:
         model_ls_iterations=8,
         model_disableflags=int(mujoco.mjtDisableBit.mjDSBL_EULERDAMP),
         model_path=None,
+        model_version=None,
         disable_fingers=True,
         arena_memory=MIMIC_FULLBODY_ARENA_BYTES,
         nconmax=4096,
