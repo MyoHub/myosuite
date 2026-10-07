@@ -42,6 +42,10 @@ from myosuite.integrations.musclemimic.bimanual_model import (
     apply_mimic_bimanual_spec_edits,
     default_mimic_config,
 )
+from myosuite.integrations.musclemimic.model_versions import (
+    apply_models_version,
+    resolve_models_version,
+)
 
 # ``import myosuite`` must not run at module import time: ``myosuite`` executes
 # ``register_all_envs()`` which imports challenge tasks that import this
@@ -127,7 +131,7 @@ def _musclemimic_model_root() -> Path:
     except ImportError as err:
         raise ImportError(
             "MyoTorso + bimanual needs musclemimic_models "
-            "(pip install 'musclemimic_models==1.0.5' or "
+            "(pip install 'musclemimic_models==1.0.6' or "
             "pip install 'myosuite[musclemimic]')."
         ) from err
     # myofullbody.xml lives in model/body/
@@ -312,7 +316,7 @@ NATIVE_BIMANUAL_FALLBACK_WARNING = (
     "bit-exact parity with the external MuscleMimic codebase's model "
     "(github.com/amathislab/musclemimic) - checkpoints trained against the "
     "real musclemimic_models MJCF are not guaranteed to transfer. Install "
-    "'musclemimic_models==1.0.5' or 'myosuite[musclemimic]' for exact parity."
+    "'musclemimic_models==1.0.6' or 'myosuite[musclemimic]' for exact parity."
 )
 
 
@@ -430,6 +434,7 @@ def build_myotorso_bimanual_mimic_spec(
         tmp_legs.unlink(missing_ok=True)
         tmp_leg_assets.unlink(missing_ok=True)
 
+    apply_models_version(spec, resolve_models_version(config))
     apply_mimic_bimanual_spec_edits(spec, config)
     return spec, _MYOTORSO_BIMANUAL_TAG
 
