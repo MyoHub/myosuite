@@ -171,13 +171,6 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
                 name for name in exporter.geom_names if "_tendon" in name
             ),
             "mujoco_version": mujoco.__version__,
-            "background_objects": [
-                exporter._get_geom_name(g)
-                for g in exporter.scene.geoms[: exporter.scene.ngeom]
-                if g.objtype == mujoco.mjtObj.mjOBJ_GEOM
-                and model.geom_bodyid[g.objid] == 0
-                and g.type == mujoco.mjtGeom.mjGEOM_MESH
-            ],
             "plane_objects": [
                 exporter._get_geom_name(g)
                 for g in exporter.scene.geoms[: exporter.scene.ngeom]
@@ -269,9 +262,6 @@ def build_blender_scene(output: Path) -> None:
     tendon = material("Muscle paths", (0.42, 0.025, 0.04, 1), 0.4)
     for obj in bpy.context.scene.objects:
         if obj.type == "MESH":
-            if any(name in obj.name for name in meta.get("background_objects", [])):
-                obj.hide_render = True
-                obj.hide_viewport = True
             for polygon in obj.data.polygons:
                 polygon.use_smooth = True
             if "_tendon" in obj.name:

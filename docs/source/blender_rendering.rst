@@ -1,5 +1,5 @@
 Render a rollout in Blender
-==========================
+===========================
 
 ``scripts/render_blender.py`` exports one CPU episode to animated USD, then
 runs Blender in the background to produce a studio render and editable scene.
@@ -34,9 +34,9 @@ The output contains ``video.mp4`` (or ``preview.png``), ``scene.blend``, the
 folder together: Blender cache paths are relative and images are packed.
 
 Bones and task geometry retain their imported appearance; tendon paths get a
-red material. The studio view hides static world meshes used as scenery and
-excludes static world geometry from camera fitting. Camera fitting samples
-three poses with a margin; check longer clips for framing before final use.
+red material. World-body meshes, including goals and arena fences, remain
+visible. Static world geometry is excluded from camera fitting. Camera fitting
+samples three poses with a margin; check longer clips for framing before final use.
 
 This is a small rendering bridge, not a skin or anatomical-muscle generator.
 Skin/flex models and variable timesteps are rejected. Changes to primitive

@@ -22,7 +22,10 @@ class _Env(gym.Env):
     def __init__(self) -> None:
         self.model = mujoco.MjModel.from_xml_string("""
         <mujoco><option timestep="0.002" gravity="0 0 0"/>
-          <worldbody><body><joint name="slide" type="slide" axis="1 0 0"/>
+          <asset><mesh name="fixture" vertex="0 0 0 .2 0 0 0 .2 0 0 0 .2"/></asset>
+          <worldbody><geom name="goal" type="mesh" mesh="fixture" pos="0 2 0"/>
+          <geom name="fence" type="mesh" mesh="fixture" pos="0 -2 0"/>
+          <body><joint name="slide" type="slide" axis="1 0 0"/>
             <geom name="moving-box" type="box" size=".1 .1 .1"/>
             <site name="anchor" pos="0 0 0"/>
           </body><site name="end" pos="0 1 0"/></worldbody>
@@ -83,13 +86,21 @@ def test_export_preserves_metres_timing_motion_and_valid_names(
     assert stage.GetEndTimeCode() == 4
     assert meta["duration"] == pytest.approx(0.04)
     assert not np.allclose(reference["geom_xpos"][0], reference["geom_xpos"][-1])
-    prim = stage.GetPrimAtPath("/World/Mesh_Xform_moving_box_id0_geom")
+    prim = stage.GetPrimAtPath("/World/Mesh_Xform_moving_box_id2_geom")
     assert prim.IsValid()
     for index in [0, 2, 4]:
         transform = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(index)
         np.testing.assert_allclose(
-            transform.ExtractTranslation(), reference["geom_xpos"][index, 0], atol=1e-7
+            transform.ExtractTranslation(),
+            reference["geom_xpos"][index, env.model.geom("moving-box").id],
+            atol=1e-7,
         )
+    for name in ["goal", "fence"]:
+        geom_id = env.model.geom(name).id
+        prim = stage.GetPrimAtPath(f"/World/Mesh_Xform_{name}_id{geom_id}_geom")
+        assert prim.IsValid()
+        assert UsdGeom.Imageable(prim).ComputeVisibility(0) == "inherited"
+        assert f"{name}_id{geom_id}_geom" not in meta.get("background_objects", [])
     assert meta["tendon_objects"]
     assert all("test_path" in name for name in meta["tendon_objects"])
 
