@@ -10,16 +10,9 @@ name: MyoSuite PyPI Release
 #     - '*'
 on:
   workflow_dispatch:
-    inputs:
-      release_type:
-        description: "Release action: major/minor/patch prepares a version bump on dev; current publishes the version already promoted to main"
-        type: choice
-        options: [patch, minor, major, current]
-        default: patch
-        required: true
 
-# Default to read-only. Only the version-preparation job may advance dev, and
-# only the tag job may create a release tag. main is never mutated here.
+# Default to read-only. Only the tag job gets contents: write. The workflow
+# never updates main or dev.
 permissions:
   contents: read
 
@@ -31,11 +24,11 @@ concurrency:
 # # > git tag 0.0.1 # or whatever version you want
 # # > git push origin --tags
 # Release contract:
-# 1. major/minor/patch prepares that version bump on dev and does not publish.
-# 2. Promote dev -> main through the normal PR/CI flow.
-# 3. current publishes exactly the version already committed on main after
-#    validating main/dev parity and main freshness.
-
+# 1. Version changes happen before this workflow through the normal dev -> main
+#    PR/CI flow. This workflow never changes main or dev.
+# 2. A manual dispatch releases exactly the version already committed on main.
+# 3. It validates main/dev parity, builds the exact version, creates/reuses its
+#    tag on the main commit, publishes to PyPI, then verifies that exact version.
 
 
 jobs:
@@ -59,12 +52,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - name: get next version and tag
+      - name: resolve current version and tag
         id: get-next-version-and-tag
-        env:
-          RELEASE_TYPE: ${{ inputs.release_type }}
         run: |
-          output=$(python3 .github/release_utils.py --release-type "$RELEASE_TYPE")
+          output=$(python3 .github/release_utils.py --release-type current)
           echo $output
           new_version=$(echo $output | awk '{print $1}')
           new_tag=$(echo $output | awk '{print $2}')
@@ -76,70 +67,8 @@ jobs:
       new_version: ${{ steps.get-next-version-and-tag.outputs.version }}
       new_tag: ${{ steps.get-next-version-and-tag.outputs.tag }}
 
-  prepare_version_bump:
-    name: Prepare version bump on dev
-    if: inputs.release_type != 'current'
-    runs-on: ubuntu-latest
-    needs: get_next_version
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout dev
-        uses: actions/checkout@v4
-        with:
-          ref: dev
-          fetch-depth: 0
-          persist-credentials: true
-
-      - name: Verify dev still matches main
-        id: verify
-        run: |
-          git fetch origin main dev
-          main_tree=$(git rev-parse origin/main^{tree})
-          dev_tree=$(git rev-parse origin/dev^{tree})
-          dev_sha=$(git rev-parse origin/dev)
-          if [ "$main_tree" != "$dev_tree" ]; then
-            echo "::error::dev and main already differ. Promote/reconcile them before preparing another release."
-            exit 1
-          fi
-          echo "dev_sha=$dev_sha" >> "$GITHUB_OUTPUT"
-
-      - name: Update version files
-        env:
-          RELEASE_TYPE: ${{ inputs.release_type }}
-          EXPECTED_VERSION: ${{ needs.get_next_version.outputs.new_version }}
-        run: |
-          python3 .github/release_utils.py --release-type "$RELEASE_TYPE" --update-version
-          actual=$(python3 .github/release_utils.py --release-type current | awk '{print $1}')
-          if [ "$actual" != "$EXPECTED_VERSION" ]; then
-            echo "::error::Updated version $actual does not match expected $EXPECTED_VERSION."
-            exit 1
-          fi
-
-      - name: Commit and push version bump to dev
-        env:
-          NEW_VERSION: ${{ needs.get_next_version.outputs.new_version }}
-          EXPECTED_DEV_SHA: ${{ steps.verify.outputs.dev_sha }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add myosuite/version.py
-          if [ -f uv.lock ]; then git add uv.lock; fi
-          if git diff --cached --quiet; then
-            echo "::error::Requested ${{ inputs.release_type }} bump produced no version-file change."
-            exit 1
-          fi
-          git commit -m "chore: bump version to $NEW_VERSION"
-          git push --force-with-lease=refs/heads/dev:$EXPECTED_DEV_SHA origin HEAD:refs/heads/dev
-
-      - name: Promotion required
-        run: |
-          echo "::notice::Prepared version ${{ needs.get_next_version.outputs.new_version }} on dev."
-          echo "::notice::Promote dev to main through the normal PR/CI flow, then dispatch this workflow with release_type=current to publish."
-
   pypi_package_build_and_release:
     name: Validate and build PyPI distributions
-    if: inputs.release_type == 'current'
     runs-on: ubuntu-latest
     needs: get_next_version
     permissions:
