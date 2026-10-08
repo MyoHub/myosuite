@@ -1,7 +1,7 @@
 <!-- =================================================
 # Copyright (c) MyoSuite Authors
 ================================================= -->
-<img src="https://github.com/myohub/myosuite/blob/main/docs/source/images/Full%20Color%20Horizontal%20wider.png?raw=true" width=800>
+<img src="https://raw.githubusercontent.com/MyoHub/myosuite/main/docs/source/images/Full%20Color%20Horizontal%20wider.png" width=800>
 
 [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 [![PyPI](https://img.shields.io/pypi/v/myosuite)](https://pypi.org/project/MyoSuite/)
@@ -17,11 +17,10 @@
 
 [Documentation](https://myosuite.readthedocs.io/en/latest/) · [Tutorials](tutorials/) · [Task list](https://myosuite.readthedocs.io/en/latest/environments.html)
 
-<img width="1240" alt="TasksALL" src="./docs/source/images/MyoSuiteHeader.png?raw=true">
+<img width="1240" alt="MyoSuite tasks" src="https://raw.githubusercontent.com/MyoHub/myosuite/main/docs/source/images/MyoSuiteHeader.png">
 
 
-<details>
-  <summary><h2>What's new in MyoSuite 3</h2></summary>
+## What's new in MyoSuite 3
 
 MyoSuite 3 brings the whole suite to fast, scalable training while keeping the simple interface you know:
 
@@ -34,7 +33,6 @@ MyoSuite 3 brings the whole suite to fast, scalable training while keeping the s
 - **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared observation, reward and model-building blocks instead of writing an environment class.
 - **Some existing environments changed.** Observations are no longer clipped and are read after a fresh forward step (55 env ids), the `motorFinger*` envs have 4x stronger motors, the Random finger-reach tasks now sample only targets the fingertip can reach, and several reset and seed behaviours were corrected. Policies trained with MyoSuite 2.x or earlier snapshots may need retraining; see [`CHANGELOG.md`](CHANGELOG.md) for the full list.
 - **Ready to use.** Default trained policies on [Hugging Face](https://huggingface.co/myohub/myosuite-3-baselines) (see [`docs/baseline_checkpoints.md`](docs/baseline_checkpoints.md) for the full list and success rates) with evaluation videos, plus updated tutorials from the first rollout to GPU training and MuscleMimic. See the [changelog](CHANGELOG.md) for everything that changed since v2.12.
-</details>
 
 ## Start here
 
