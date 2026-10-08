@@ -92,6 +92,7 @@ Choose your path
    :caption: Advanced Features
 
    suite
+   blender_rendering
 
 .. toctree::
    :maxdepth: 1
