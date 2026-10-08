@@ -10,42 +10,35 @@ name: MyoSuite PyPI Release
 #     - '*'
 on:
   workflow_dispatch:
-    inputs:
-      name:
-        description: 'Release Type (current = release version.py as-is, major, minor, patch)'
-        type: choice
-        options: [patch, minor, major, current]
-        default: 'patch'
-        required: true
 
-# Pushes and tags use REPO_TOKEN, so the default workflow token only needs read access.
+# Default to read-only. The build/release job gets contents: write only to
+# create the release tag; it never mutates main or dev.
 permissions:
   contents: read
 
-# Only one release may mutate main/dev at a time.
+# Only one release may tag/publish at a time.
 concurrency:
   group: pypi-release
   cancel-in-progress: false
 # # Upon running the following instructions
 # # > git tag 0.0.1 # or whatever version you want
 # # > git push origin --tags
-# # The following operations will be run
-# # 1. Update version according to major | minor | patch and use the new version as `tag name`
-# # 2. Use the `tag name` as `release version`
-# # 3. Build the PyPI package by using /myosuite/__init__.py version
-# # 4. Upload the package
-# # 5. Test Upload
+# Release contract:
+# 1. Version changes land through the normal dev -> main PR/CI flow.
+# 2. This workflow releases exactly the version already committed on main.
+# 3. It validates main/dev parity and main freshness, builds, tags, publishes,
+#    then smoke-tests the installed PyPI package.
 
 
 
 jobs:
-  # 1. Update version according to major | minor | patch and use the new version as `tag name`
+  # Resolve the version already committed on main. Version bumps belong in
+  # the normal dev -> main PR flow, where branch protection and CI apply.
   get_next_version:
     runs-on: ubuntu-latest
 
     steps:
-      # The release commit is pushed to main and the wheel is built from the
-      # dispatched ref, so a release must never be cut from another branch.
+      # A release is immutable: cut it only from the current main commit.
       - name: release from main only
         if: github.ref != 'refs/heads/main'
         run: |
@@ -61,10 +54,8 @@ jobs:
           python-version: "3.10"
       - name: get next version and tag
         id: get-next-version-and-tag
-        env:
-          RELEASE_TYPE: ${{ inputs.name }}  # via env, never spliced into the script
         run: |
-          output=$(python3 .github/release_utils.py --release-type "$RELEASE_TYPE")
+          output=$(python3 .github/release_utils.py --release-type current)
           echo $output
           new_version=$(echo $output | awk '{print $1}')
           new_tag=$(echo $output | awk '{print $2}')
@@ -77,9 +68,11 @@ jobs:
       new_tag: ${{ steps.get-next-version-and-tag.outputs.tag }}
 
   pypi_package_build_and_release:
-    name: Build PyPI wheel
+    name: Validate and build PyPI distributions
     runs-on: ubuntu-latest
     needs: get_next_version
+    permissions:
+      contents: read
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -92,97 +85,146 @@ jobs:
       with:
         python-version: "3.10"
 
-    - name: Install pypa/setuptools
-      run: |
-        pip install build setuptools wheel
+    - name: Install build tooling
+      run: pip install build setuptools wheel
 
-    # update the version number in version.py and uv.lock
-    - name: update version
-      id: update-version
-      env:
-        RELEASE_TYPE: ${{ inputs.name }}
-      run : |
-        echo "current folder = $PWD"
-        echo "current branch = $(git branch --show-current)"
-        output=$(python3 .github/release_utils.py --release-type "$RELEASE_TYPE" --update-version)
-
-    # The release flow is dev -> main. Promotion may use a merge, squash,
-    # rebase, or fast-forward, so compare repository trees rather than ancestry.
-    # Record the exact remote tips we validated; the push step uses them as
-    # leases so concurrent branch updates cannot be overwritten.
-    - name: Verify dev has been promoted to main
-      id: verify-branches
+    - name: Verify release source is current main and matches dev
       run: |
-        git fetch origin main dev
+        git fetch origin main dev --tags
         main_sha=$(git rev-parse origin/main)
-        dev_sha=$(git rev-parse origin/dev)
         main_tree=$(git rev-parse origin/main^{tree})
         dev_tree=$(git rev-parse origin/dev^{tree})
+
+        if [ "$GITHUB_SHA" != "$main_sha" ]; then
+          echo "::error::main moved after this release was dispatched. Re-run from the latest main."
+          exit 1
+        fi
 
         if [ "$main_tree" != "$dev_tree" ]; then
           echo "::error::main and dev do not contain the same files. Promote dev -> main before releasing."
           exit 1
         fi
 
-        if [ "$GITHUB_SHA" != "$main_sha" ]; then
-          echo "::error::main moved after this release was dispatched. Re-run the release from the latest main."
+        if ! git diff --quiet || ! git diff --cached --quiet; then
+          echo "::error::Release checkout is unexpectedly dirty."
           exit 1
         fi
 
-        echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
-        echo "dev_sha=$dev_sha" >> "$GITHUB_OUTPUT"
+    # Build before creating any tag or publishing anything.
+    - name: Build distributions
+      run: python3 -m build
 
-    # commit and push version.py and uv.lock updates
-    - name: Commit updated version files
+    - name: Verify built package version
       env:
-        NEW_VERSION: ${{ needs.get_next_version.outputs.new_version }}
-        REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
+        EXPECTED_VERSION: ${{ needs.get_next_version.outputs.new_version }}
       run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add myosuite/version.py
-        # Add uv.lock if it exists (git will only stage if modified)
-        if [ -f uv.lock ]; then
-          git add uv.lock
-        fi
-        # "current" leaves the files unchanged; only commit a real bump.
-        if ! git diff --cached --quiet; then
-          git commit -m "chore: bump version to $NEW_VERSION"
-          # Advance both branches to the release commit. Explicit leases bind
-          # the update to the exact remote tips validated above. This safely
-          # reconciles squash/rebase histories while rejecting concurrent pushes.
-          git push --atomic --force-with-lease=main:${{ steps.verify-branches.outputs.main_sha }} --force-with-lease=dev:${{ steps.verify-branches.outputs.dev_sha }} "https://x-access-token:$REPO_TOKEN@github.com/${{ github.repository }}.git" HEAD:main HEAD:dev
-        fi
+        python3 - <<'PY'
+        import glob
+        import zipfile
+        from email.parser import Parser
+        import os
 
-    # 2. Use the `tag name` as `release version`
-    - uses: mukunku/tag-exists-action@78009d2b13e10ba051fe68d8d2f6778a9b2adab3  # v1.4.0
-      id: checkTag
-      with:
-        tag: ${{ needs.get_next_version.outputs.new_tag }}
+        wheels = glob.glob("dist/*.whl")
+        if len(wheels) != 1:
+            raise SystemExit(f"Expected exactly one wheel, found: {wheels}")
+        with zipfile.ZipFile(wheels[0]) as zf:
+            metadata_name = next(n for n in zf.namelist() if n.endswith(".dist-info/METADATA"))
+            metadata = Parser().parsestr(zf.read(metadata_name).decode())
+        actual = metadata["Version"]
+        expected = os.environ["EXPECTED_VERSION"]
+        if actual != expected:
+            raise SystemExit(f"Built wheel version {actual} != expected {expected}")
+        print(f"Verified wheel version {actual}")
+        PY
 
-    - name: If Tag does not exists, Create Git Tag
-      if: steps.checkTag.outputs.exists != 'true'
-      env:
-        NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
-        REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
-      run: |
-        git tag "$NEW_TAG"
-        git push "https://x-access-token:$REPO_TOKEN@github.com/${{ github.repository }}.git" "$NEW_TAG"
-
-
-     # 3. Build the PyPI packeage
-    - name: Build a binary wheel
-      run: >-
-        python3 -m build
     - name: Store the distribution packages
       uses: actions/upload-artifact@v4
       with:
         name: python-package-distributions
         path: dist/
+  create_release_tag:
+    name: Validate tips and create release tag
+    runs-on: ubuntu-latest
+    needs: [get_next_version, pypi_package_build_and_release]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      # GitHub's updateRefs mutation evaluates all beforeOid conditions
+      # server-side and applies all ref updates atomically. main/dev are no-op
+      # freshness guards. The tag is either created conditionally or guarded
+      # as an existing no-op ref on an idempotent retry.
+      - name: Validate tips and create release tag atomically
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
+        run: |
+          git fetch origin main dev --tags
+          main_sha=$(git rev-parse origin/main)
+          dev_sha=$(git rev-parse origin/dev)
+          main_tree=$(git rev-parse origin/main^{tree})
+          dev_tree=$(git rev-parse origin/dev^{tree})
+          head_sha=$(git rev-parse HEAD)
+
+          if [ "$GITHUB_SHA" != "$main_sha" ]; then
+            echo "::error::main moved while the release was building. Re-run from the latest main."
+            exit 1
+          fi
+          if [ "$main_tree" != "$dev_tree" ]; then
+            echo "::error::main and dev diverged while the release was building."
+            exit 1
+          fi
+
+          repo_id=$(gh api graphql \
+            -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){id}}' \
+            -f owner="${GITHUB_REPOSITORY%/*}" \
+            -f name="${GITHUB_REPOSITORY#*/}" \
+            --jq '.data.repository.id')
+
+          zero=0000000000000000000000000000000000000000
+          tag_before="$zero"
+          if git rev-parse -q --verify "refs/tags/$NEW_TAG" >/dev/null; then
+            tagged_sha=$(git rev-list -n 1 "$NEW_TAG")
+            if [ "$tagged_sha" != "$head_sha" ]; then
+              echo "::error::Tag $NEW_TAG already exists but resolves to $tagged_sha, not $head_sha."
+              exit 1
+            fi
+            tag_before=$(git rev-parse "refs/tags/$NEW_TAG")
+            echo "Tag $NEW_TAG already resolves to this release commit; guarding it atomically."
+          fi
+
+          mutation='mutation($repo:ID!,$updates:[RefUpdate!]!){updateRefs(input:{repositoryId:$repo,refUpdates:$updates}){clientMutationId}}'
+          jq -nc \
+            --arg query "$mutation" \
+            --arg repo "$repo_id" \
+            --arg main "$main_sha" \
+            --arg dev "$dev_sha" \
+            --arg tag "refs/tags/$NEW_TAG" \
+            --arg tag_before "$tag_before" \
+            --arg head "$head_sha" \
+            '{
+              query:$query,
+              variables:{
+                repo:$repo,
+                updates:[
+                  {name:"refs/heads/main", beforeOid:$main, afterOid:$main, force:false},
+                  {name:"refs/heads/dev", beforeOid:$dev, afterOid:$dev, force:false},
+                  {name:$tag, beforeOid:$tag_before, afterOid:$head, force:false}
+                ]
+              }
+            }' > /tmp/update-refs.json
+
+          gh api graphql --input /tmp/update-refs.json
+
   publish_to_pypi:
     name: Publish PyPI wheel
     runs-on: ubuntu-latest
-    needs: pypi_package_build_and_release
+    needs: [pypi_package_build_and_release, create_release_tag]
     permissions:
       contents: read
       id-token: write
