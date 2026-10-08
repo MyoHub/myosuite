@@ -18,8 +18,8 @@ on:
         default: patch
         required: true
 
-# Default to read-only. The build/release job gets contents: write only to
-# create the release tag; it never mutates main or dev.
+# Default to read-only. Only the version-preparation job may advance dev, and
+# only the tag job may create a release tag. main is never mutated here.
 permissions:
   contents: read
 
@@ -295,7 +295,9 @@ jobs:
   publish_to_pypi:
     name: Publish PyPI wheel
     runs-on: ubuntu-latest
-    needs: [pypi_package_build_and_release, create_release_tag]
+    needs: [get_next_version, pypi_package_build_and_release, create_release_tag]
+    outputs:
+      release_version: ${{ needs.get_next_version.outputs.new_version }}
     permissions:
       contents: read
       id-token: write
@@ -333,7 +335,19 @@ jobs:
 
 
       - shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.publish_to_pypi.outputs.release_version }}
         run: |
-          echo "Test MyoSuite PyPI wheel"
-          pip install -U myosuite scipy pytest
+          echo "Test exact MyoSuite PyPI release"
+          for attempt in 1 2 3 4 5 6; do
+            if pip install --no-cache-dir "myosuite==$RELEASE_VERSION" scipy pytest; then
+              break
+            fi
+            if [ "$attempt" = 6 ]; then
+              echo "::error::myosuite==$RELEASE_VERSION did not become installable from PyPI."
+              exit 1
+            fi
+            sleep 20
+          done
+          python -c "import myosuite; assert myosuite.__version__ == '$RELEASE_VERSION', myosuite.__version__"
           python -m pytest -o addopts= -p no:cacheprovider --pyargs myosuite.tests.test_myo
