@@ -226,18 +226,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      # GitHub's updateRefs mutation evaluates all beforeOid conditions
-      # server-side and applies all ref updates atomically. main/dev are no-op
-      # freshness guards. The tag is either created conditionally or guarded
-      # as an existing no-op ref on an idempotent retry.
-      - name: Validate tips and create release tag atomically
+      # Revalidate branch state immediately before the only repository write:
+      # creating the release tag. Never submit main/dev as updates, because
+      # protected main rejects even a no-op ref update.
+      - name: Revalidate release source and create tag
         env:
-          GH_TOKEN: ${{ github.token }}
           NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
         run: |
           git fetch origin main dev --tags
           main_sha=$(git rev-parse origin/main)
-          dev_sha=$(git rev-parse origin/dev)
           main_tree=$(git rev-parse origin/main^{tree})
           dev_tree=$(git rev-parse origin/dev^{tree})
           head_sha=$(git rev-parse HEAD)
@@ -251,46 +248,17 @@ jobs:
             exit 1
           fi
 
-          repo_id=$(gh api graphql \
-            -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){id}}' \
-            -f owner="${GITHUB_REPOSITORY%/*}" \
-            -f name="${GITHUB_REPOSITORY#*/}" \
-            --jq '.data.repository.id')
-
-          zero=0000000000000000000000000000000000000000
-          tag_before="$zero"
           if git rev-parse -q --verify "refs/tags/$NEW_TAG" >/dev/null; then
             tagged_sha=$(git rev-list -n 1 "$NEW_TAG")
             if [ "$tagged_sha" != "$head_sha" ]; then
               echo "::error::Tag $NEW_TAG already exists but resolves to $tagged_sha, not $head_sha."
               exit 1
             fi
-            tag_before=$(git rev-parse "refs/tags/$NEW_TAG")
-            echo "Tag $NEW_TAG already resolves to this release commit; guarding it atomically."
+            echo "Tag $NEW_TAG already resolves to this release commit; reusing it."
+          else
+            git tag "$NEW_TAG" "$head_sha"
+            git push origin "refs/tags/$NEW_TAG"
           fi
-
-          mutation='mutation($repo:ID!,$updates:[RefUpdate!]!){updateRefs(input:{repositoryId:$repo,refUpdates:$updates}){clientMutationId}}'
-          jq -nc \
-            --arg query "$mutation" \
-            --arg repo "$repo_id" \
-            --arg main "$main_sha" \
-            --arg dev "$dev_sha" \
-            --arg tag "refs/tags/$NEW_TAG" \
-            --arg tag_before "$tag_before" \
-            --arg head "$head_sha" \
-            '{
-              query:$query,
-              variables:{
-                repo:$repo,
-                updates:[
-                  {name:"refs/heads/main", beforeOid:$main, afterOid:$main, force:false},
-                  {name:"refs/heads/dev", beforeOid:$dev, afterOid:$dev, force:false},
-                  {name:$tag, beforeOid:$tag_before, afterOid:$head, force:false}
-                ]
-              }
-            }' > /tmp/update-refs.json
-
-          gh api graphql --input /tmp/update-refs.json
 
   publish_to_pypi:
     name: Publish PyPI wheel
