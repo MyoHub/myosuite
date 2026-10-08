@@ -1,7 +1,7 @@
 <!-- =================================================
 # Copyright (c) MyoSuite Authors
 ================================================= -->
-<img src="https://github.com/myohub/myosuite/blob/main/docs/source/images/Full%20Color%20Horizontal%20wider.png?raw=true" width=800>
+<img src="https://raw.githubusercontent.com/MyoHub/myosuite/main/docs/source/images/Full%20Color%20Horizontal%20wider.png" width=800>
 
 [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 [![PyPI](https://img.shields.io/pypi/v/myosuite)](https://pypi.org/project/MyoSuite/)
@@ -17,12 +17,10 @@
 
 [Documentation](https://myosuite.readthedocs.io/en/latest/) · [Tutorials](tutorials/) · [Task list](https://myosuite.readthedocs.io/en/latest/environments.html)
 
-<img width="1240" alt="TasksALL" src="./docs/source/images/MyoSuiteHeader.png?raw=true">
+<img width="1240" alt="MyoSuite tasks" src="https://raw.githubusercontent.com/MyoHub/myosuite/main/docs/source/images/MyoSuiteHeader.png">
 
 
-<details>
-  <summary><h2>What's new in MyoSuite 3</h2></summary>
-
+<details> <summary><strong><big>What's new in MyoSuite 3</big></strong></summary>
 MyoSuite 3 brings the whole suite to fast, scalable training while keeping the simple interface you know:
 
 - **Much faster learning.** Train with thousands of environments in parallel on a single GPU, then replay the policy on the CPU.
