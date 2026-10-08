@@ -20,8 +20,7 @@
 <img width="1240" alt="MyoSuite tasks" src="https://raw.githubusercontent.com/MyoHub/myosuite/main/docs/source/images/MyoSuiteHeader.png">
 
 
-## What's new in MyoSuite 3
-
+<details> <summary><strong><big>What's new in MyoSuite 3</big></strong></summary>
 MyoSuite 3 brings the whole suite to fast, scalable training while keeping the simple interface you know:
 
 - **Much faster learning.** Train with thousands of environments in parallel on a single GPU, then replay the policy on the CPU.
@@ -33,6 +32,7 @@ MyoSuite 3 brings the whole suite to fast, scalable training while keeping the s
 - **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared observation, reward and model-building blocks instead of writing an environment class.
 - **Some existing environments changed.** Observations are no longer clipped and are read after a fresh forward step (55 env ids), the `motorFinger*` envs have 4x stronger motors, the Random finger-reach tasks now sample only targets the fingertip can reach, and several reset and seed behaviours were corrected. Policies trained with MyoSuite 2.x or earlier snapshots may need retraining; see [`CHANGELOG.md`](CHANGELOG.md) for the full list.
 - **Ready to use.** Default trained policies on [Hugging Face](https://huggingface.co/myohub/myosuite-3-baselines) (see [`docs/baseline_checkpoints.md`](docs/baseline_checkpoints.md) for the full list and success rates) with evaluation videos, plus updated tutorials from the first rollout to GPU training and MuscleMimic. See the [changelog](CHANGELOG.md) for everything that changed since v2.12.
+</details>
 
 ## Start here
 
