@@ -185,15 +185,22 @@ def download_baseline_file(
     """
     try:
         from huggingface_hub import hf_hub_download
+        from huggingface_hub.errors import EntryNotFoundError
     except ImportError:
         return None
-    return _download_at_revision(
-        lambda rev: Path(
-            hf_hub_download(repo_id, filename, repo_type="model", revision=rev)
-        ),
-        repo_id,
-        revision,
-    )
+
+    def fetch(rev: str) -> Path:
+        path = Path(hf_hub_download(repo_id, filename, repo_type="model", revision=rev))
+        # The folder's manifest.json too, when there is one: it records what the checkpoint
+        # needs (e.g. the musclemimic_models release), next to the file in the local snapshot.
+        manifest = str(Path(filename).parent / "manifest.json").replace("\\", "/")
+        try:
+            hf_hub_download(repo_id, manifest, repo_type="model", revision=rev)
+        except EntryNotFoundError:
+            print(f"No manifest.json next to {filename} at revision {rev!r}.")
+        return path
+
+    return _download_at_revision(fetch, repo_id, revision)
 
 
 def default_musclemimic_cache_root() -> Path:

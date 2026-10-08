@@ -169,7 +169,7 @@ def test_download_baseline_checkpoint_falls_back_to_main(
 def test_download_baseline_file_uses_the_release_revision(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A single file is fetched at the release tag, and the revision is printed."""
+    """A single file (and its folder's manifest) is fetched at the release tag; the revision is printed."""
     target = tmp_path / "model_81380.pt"
     asked: list[tuple[str, str, str]] = []
 
@@ -188,7 +188,8 @@ def test_download_baseline_file_uses_the_release_revision(
 
     assert path == target
     assert asked == [
-        ("myohub/myosuite-3-baselines", "checkpoints/x/model_81380.pt", "v3.0")
+        ("myohub/myosuite-3-baselines", "checkpoints/x/model_81380.pt", "v3.0"),
+        ("myohub/myosuite-3-baselines", "checkpoints/x/manifest.json", "v3.0"),
     ]
     assert "revision 'v3.0'" in capsys.readouterr().out
 
