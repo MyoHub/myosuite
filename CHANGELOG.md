@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Highlights
+
+* **Photorealistic Blender rendering of any MyoSuite rollout ([#540]).** One command turns a CPU rollout of a
+  trained policy (`--checkpoint`) or of random actions (`--random`) into a Cycles render: animated USD export,
+  a studio scene, ivory bones and volumetric muscles that thicken as they shorten and redden with activation.
+
+  ```bash
+  python scripts/render_blender.py --env myoLegWalk-v0 --checkpoint <run> --output leg-render
+  ```
+
+  ![Blender rendering of myoLegWalk-v0](docs/source/images/blender/leg_gait.webp)
+
+  - Muscle volumes measured for the large leg and shoulder muscles (`myosuite.viz.muscle_tubes`), or MuJoCo's
+    thin muscle paths; colour by activation or uniform (`--muscle-color`).
+  - Optional body skin from a MuJoCo `.skn` file (`--skin`, translucent or opaque; `myosuite.viz.skin`), with a
+    bundled full-body skin adapted from MakeHuman/MPFB (CC0 1.0).
+  - Preview, video and export-only modes; the `studio` or the task's own `mujoco` scene; tutorial 3.6.
+  - Needs the optional MuJoCo USD dependencies and a separate Blender installation.
+  - `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy.
+
 ### Added
 
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
@@ -77,7 +97,6 @@ full commit list.
 * **Targets:** `GoalSpec(target_type="site_positions")` samples per-episode targets from per-site ranges on CPU and MJX (mjlab helper `site_position_command_cfg`); `MotionClip` carries optional per-frame `weights` (#410).
 * **Muscle-command wrappers:** `MotorNoiseWrapper` (signal-dependent + constant Gaussian noise on muscle excitations, `MotorNoiseCfg.van_beers_2004()`), `FatigueWrapper`, `ReafferentationWrapper` and `SarcopeniaWrapper`; each installs a stage of the env's action pipeline, run by priority (`map -> noise -> fatigue -> reroute`), also on the mjlab twins; `ExcitationStageWrapper` adds portable custom stages (CPU env and mjlab twin) and `CtrlStageWrapper` env-aware CPU ones; they run after the built-in stages in installation order, or at an explicit `order` to insert one earlier (two equal explicit orders raise a `StageOrderWarning`) ([#488], [#502], [#505]).
 * **`make_env(EnvConfig(...))`:** one call builds an env on the CPU or on the mjlab twin with the same `features` (muscle-command wrappers, built with `wrapper_spec`), `max_episode_steps` and `num_envs`; the old `EnvConfig` fields (`model`, `scene`, `backend` timing) and `TaskConfig.to_env_config` are removed, as was the unused `config=` argument of `register_env`. `EnvConfig.features` takes wrapper classes, `(class, kwargs)` pairs or specs. `ctrl_dt` is the single timing knob (substeps and decimation follow from it; the `ModularTaskEnv` ids refuse it). The leg-directional twins take features and `ctrl_dt` like the CPU env ([#508]). `TaskConfig` no longer carries features: `muscle_fatigue`, `ActuatorGroupSpec.condition` / `.noise` and `TaskConfig.fatigue_enabled` are removed (use the wrappers; `VariantSpec(features=...)` registers them; `ModularTaskEnv` runs the stages, so the Sarc/Fati TaskConfig ids behave as before, but its additive action noise is replaced by `MotorNoiseWrapper`). A plain `make_env(env_id, backend=..., **kwargs)` works as before. The docs, tutorials, scripts and tests use `make_env` instead of `gym.make` ([#506]).
-* **Blender rendering:** `scripts/render_blender.py` (`myosuite.viz.blender_render`) exports a CPU rollout to animated USD and renders a Cycles studio scene with volumetric muscles that thicken as they shorten, sized from measured volumes for the large leg and shoulder muscles (`myosuite.viz.muscle_tubes`) or MuJoCo's thin muscle paths, coloured by activation (MuJoCo viewer colours on paths) or uniformly (`--muscle-color`), ivory bones and a cyclorama; an optional MuJoCo `.skn` body skin (`--skin`, translucent or opaque; `myosuite.viz.skin`; bundled full-body skin adapted from MakeHuman/MPFB, CC0 1.0); `--checkpoint` or `--random`, preview, video and export-only modes; tutorial 3.6. `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy ([#540]).
 * **References and citations:** a References page, `CITATION.cff` and citations for the MuscleMimic motion data (AMASS, KIT, GMR, KINESIS) ([#504]).
 * **Tutorials and docs:** numbered tracks with companion files in `tutorials/files/X.Y/`, SAR tutorials and pretrained pickles, a fatigue tutorial, quickstarts, environment reference, backend-parity and baselines pages ([#406], [#454], [#455]).
 
