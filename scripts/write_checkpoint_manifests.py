@@ -3,7 +3,8 @@
     python scripts/write_checkpoint_manifests.py <baselines dir> [--table docs/baseline_checkpoints.md]
 
 The manifests record the env contract hash (see ``myosuite.utils.checkpoint_manifest``), the MyoSuite
-version and commit, and the deterministic success from the table. Upload the result to the Hugging
+version and commit, the deterministic success from the table and, for envs whose body comes from
+``musclemimic_models``, that release (run with ``myosuite[musclemimic]`` installed, as for training). Upload the result to the Hugging
 Face repo, then tag that commit with the release (for example ``v3.0``).
 """
 

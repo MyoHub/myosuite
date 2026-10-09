@@ -18,6 +18,7 @@ MJCF only; an explicit ``config.model_path`` is built as it is.
 
 from __future__ import annotations
 
+import json
 from importlib.metadata import PackageNotFoundError, version as _dist_version
 import os
 from pathlib import Path
@@ -107,6 +108,13 @@ _MODELS_VALUES: dict[str, dict[str, dict[str, Any]]] = {
 
 SUPPORTED_MODELS_VERSIONS = tuple(_MODELS_VALUES)
 
+# Env ids whose body is built from the musclemimic_models MJCF (MuscleMimic full body and bimanual,
+# directional locomotion, full-body ChaseTag); other envs use MyoSuite's own models.
+_MODELS_ENV_ID = re.compile(r"Mimic|FullBodyDirectional|ChaseTagFB")
+
+# Field of a checkpoint folder's manifest.json that records the release (see env_models_version).
+MANIFEST_FIELD = "musclemimic_models_version"
+
 
 def installed_models_version() -> str | None:
     """Return the installed ``musclemimic_models`` version, or ``None`` if absent."""
@@ -142,6 +150,50 @@ def resolve_models_version(config: Any = None) -> str:
     return requested
 
 
+def uses_musclemimic_models(env_id: str) -> bool:
+    """Whether the env builds its body from the ``musclemimic_models`` MJCF."""
+    return bool(_MODELS_ENV_ID.search(env_id))
+
+
+def env_models_version(env_id: str) -> str | None:
+    """The ``musclemimic_models`` release an env builds its body as, for its checkpoint manifest.
+
+    Args:
+        env_id: Registered env id.
+
+    Returns:
+        :func:`resolve_models_version` for envs built from ``musclemimic_models``, ``None`` for the
+        others.
+
+    Raises:
+        RuntimeError: If the env uses ``musclemimic_models`` but the package is not installed: the
+            env would then build MyoSuite's approximate ``myo_sim`` composition instead.
+    """
+    if not uses_musclemimic_models(env_id):
+        return None
+    if installed_models_version() is None:
+        raise RuntimeError(
+            f"{env_id} builds its body from musclemimic_models, which is not installed; install "
+            "'myosuite[musclemimic]' so the recorded release is the one the env uses."
+        )
+    return resolve_models_version()
+
+
+def _manifest_models_version(ref: str) -> str | None:
+    """The release recorded in the manifest.json of a local checkpoint file or folder, if any."""
+    path = Path(ref)
+    if not ref or not path.exists():
+        return None
+    manifest = (path if path.is_dir() else path.parent) / "manifest.json"
+    if not manifest.is_file():
+        return None
+    try:
+        recorded = json.loads(manifest.read_text()).get(MANIFEST_FIELD)
+    except (OSError, ValueError):
+        return None
+    return recorded if recorded in _MODELS_VALUES else None
+
+
 def checkpoint_models_version(checkpoint_ref: str | Path | None) -> str:
     """Return the ``musclemimic_models`` release a checkpoint was trained on.
 
@@ -151,7 +203,8 @@ def checkpoint_models_version(checkpoint_ref: str | Path | None) -> str:
 
     Returns:
         The release of a published checkpoint in
-        :data:`PUBLISHED_CHECKPOINT_MODELS_VERSIONS`, else :func:`resolve_models_version`.
+        :data:`PUBLISHED_CHECKPOINT_MODELS_VERSIONS`, else the release recorded in the
+        ``manifest.json`` next to a local checkpoint, else :func:`resolve_models_version`.
     """
     ref = str(checkpoint_ref or "").replace("\\", "/")
     for repo_id, models_version in PUBLISHED_CHECKPOINT_MODELS_VERSIONS.items():
@@ -159,7 +212,9 @@ def checkpoint_models_version(checkpoint_ref: str | Path | None) -> str:
         names = (re.escape(repo_id), re.escape("models--" + repo_id.replace("/", "--")))
         if re.search(rf"(^|[/:])({'|'.join(names)})($|[/@])", ref):
             return models_version
-    return resolve_models_version()
+    return (
+        _manifest_models_version(str(checkpoint_ref or "")) or resolve_models_version()
+    )
 
 
 def apply_models_version(spec: mujoco.MjSpec, models_version: str) -> int:
@@ -215,11 +270,14 @@ def _set_models_values(spec: mujoco.MjSpec, models_version: str) -> int:
 
 __all__ = [
     "DEFAULT_MODELS_VERSION",
+    "MANIFEST_FIELD",
     "MODELS_VERSION_ENV_VAR",
     "PUBLISHED_CHECKPOINT_MODELS_VERSIONS",
     "SUPPORTED_MODELS_VERSIONS",
     "apply_models_version",
     "checkpoint_models_version",
+    "env_models_version",
     "installed_models_version",
     "resolve_models_version",
+    "uses_musclemimic_models",
 ]
