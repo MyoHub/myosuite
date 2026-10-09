@@ -11,6 +11,7 @@ The skin is purely visual: it is posed with MuJoCo's linear-blend skinning
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from pathlib import Path
 
 import mujoco
@@ -44,6 +45,26 @@ class Skin:
     bindquat: np.ndarray
     vertid: list[np.ndarray]
     vertweight: list[np.ndarray]
+
+
+# Finger phalanges are "<phalanx><finger>_<side>" in the bundled skin (``midph2_r``) and
+# "<finger><phalanx>_<side>" in musclemimic_models (``2midph_r``); bones bind under either.
+_PHALANX = re.compile(
+    r"^(proxph|midph|distph)(\d)(_[lr])$|^(\d)(proxph|midph|distph)(_[lr])$"
+)
+
+
+def _body_id(model: mujoco.MjModel, name: str) -> int:
+    """Id of the body *name*, else of its phalanx alias (``midph2_r`` <-> ``2midph_r``), else -1."""
+    body = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+    match = _PHALANX.match(name)
+    if body >= 0 or match is None:
+        return body
+    phalanx, finger, side = (
+        (match[1], match[2], match[3]) if match[1] else (match[5], match[4], match[6])
+    )
+    alias = f"{finger}{phalanx}{side}" if match[1] else f"{phalanx}{finger}{side}"
+    return mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, alias)
 
 
 def load_skn(path: Path | str) -> Skin:
@@ -150,13 +171,7 @@ class SkinPose:
         Raises:
             ValueError: Some bone names are not bodies of *model*.
         """
-        ids = np.array(
-            [
-                mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, n)
-                for n in skin.bone_names
-            ],
-            dtype=int,
-        )
+        ids = np.array([_body_id(model, n) for n in skin.bone_names], dtype=int)
         missing = [n for n, i in zip(skin.bone_names, ids) if i < 0]
         if missing:
             raise ValueError(f"Skin bones missing from the model: {missing}")

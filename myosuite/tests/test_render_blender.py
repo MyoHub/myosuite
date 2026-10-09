@@ -329,3 +329,63 @@ def test_invalid_duration_rejected_before_export(seconds: str, tmp_path: Path) -
     with pytest.raises(SystemExit) as exc:
         blender_render.main(argv)
     assert exc.value.code == 2
+
+
+def test_skin_bones_bind_under_either_phalanx_naming() -> None:
+    """``midph2_r`` (bundled skin) binds to ``2midph_r`` (musclemimic_models) and back; unknown bones raise."""
+    from myosuite.viz.skin import Skin, SkinPose
+
+    model = mujoco.MjModel.from_xml_string(
+        "<mujoco><worldbody>"
+        '<body name="pelvis"><geom size="0.1"/>'
+        '<body name="2midph_r"><geom size="0.01"/></body>'
+        '<body name="distph3_l"><geom size="0.01"/></body>'
+        "</body></worldbody></mujoco>"
+    )
+
+    def skin(bones: list[str]) -> Skin:
+        n = len(bones)
+        return Skin(
+            vert=np.zeros((1, 3), np.float32),
+            texcoord=np.zeros((0, 2), np.float32),
+            face=np.zeros((0, 3), np.int32),
+            bone_names=bones,
+            bindpos=np.zeros((n, 3), np.float32),
+            bindquat=np.tile(np.array([1, 0, 0, 0], np.float32), (n, 1)),
+            vertid=[np.zeros(1, np.int32)] * n,
+            vertweight=[np.ones(1, np.float32)] * n,
+        )
+
+    pose = SkinPose.bind(skin(["pelvis", "midph2_r", "3distph_l"]), model)
+    body = lambda name: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)  # noqa: E731
+    assert list(pose.body_ids) == [body("pelvis"), body("2midph_r"), body("distph3_l")]
+    with pytest.raises(ValueError, match="midph9_r"):
+        SkinPose.bind(skin(["pelvis", "midph9_r"]), model)
+
+
+def test_cli_defaults_to_the_newest_checkpoint_and_never_to_random(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without --checkpoint the CLI renders find_checkpoint's policy; with none found it stops (no random fallback)."""
+    import myosuite.utils.checkpoint_utils as checkpoint_utils
+
+    rendered: list[RenderConfig] = []
+    monkeypatch.setattr(
+        blender_render, "render_rollout", lambda config, **kw: rendered.append(config)
+    )
+    found = tmp_path / "logs" / "model_3000.pt"
+    monkeypatch.setattr(checkpoint_utils, "find_checkpoint", lambda env_id: found)
+    blender_render.main(
+        ["--env", "myoLegWalk-v0", "--output", str(tmp_path / "a"), "--export-only"]
+    )
+    assert rendered[-1].checkpoint == found
+
+    blender_render.main(
+        ["--env", "myoLegWalk-v0", "--output", str(tmp_path / "b"), "--random"]
+    )
+    assert rendered[-1].checkpoint is None
+
+    monkeypatch.setattr(checkpoint_utils, "find_checkpoint", lambda env_id: None)
+    with pytest.raises(SystemExit):
+        blender_render.main(["--env", "myoLegWalk-v0", "--output", str(tmp_path / "c")])
+    assert len(rendered) == 2

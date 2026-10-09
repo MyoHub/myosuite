@@ -860,8 +860,13 @@ def main(argv: list[str] | None = None) -> None:
         return
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--env", required=True)
-    source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--checkpoint", type=Path)
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
+        "--checkpoint",
+        type=Path,
+        help="SB3 .zip, RSL-RL .pt or run directory. Default: the newest local run of --env, "
+        "else the published baseline from Hugging Face (find_checkpoint).",
+    )
     source.add_argument(
         "--random", action="store_true", help="Explicit random-action demo."
     )
@@ -906,11 +911,21 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--samples", type=int, default=64, help="Cycles samples.")
     parser.add_argument("--export-only", action="store_true")
     args = parser.parse_args(argv)
+    checkpoint = args.checkpoint
+    if checkpoint is None and not args.random:
+        from myosuite.utils.checkpoint_utils import find_checkpoint  # noqa: PLC0415
+
+        checkpoint = find_checkpoint(args.env)
+        if checkpoint is None:
+            parser.error(
+                f"no checkpoint found for {args.env}: pass --checkpoint, or --random"
+            )
+        print(f"checkpoint: {checkpoint}")
     try:
         config = RenderConfig(
             env=args.env,
             output=args.output,
-            checkpoint=args.checkpoint,
+            checkpoint=checkpoint,
             seed=args.seed,
             seconds=args.seconds,
             fps=args.fps,
