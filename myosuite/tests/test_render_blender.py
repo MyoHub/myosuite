@@ -1,10 +1,11 @@
 # Copyright (c) MyoSuite Authors. All rights reserved.
-# Licensed under the Apache 2 license in the repository root.
-"""Regression checks for USD rollout timing, identifiers and policy failures."""
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Blender renderer: USD rollout timing, identifiers, policy failures, muscle tubes."""
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,7 +14,8 @@ import mujoco
 import numpy as np
 import pytest
 
-from scripts import render_blender
+from myosuite.viz import blender_render, muscle_tubes
+from myosuite.viz.blender_render import RenderConfig
 
 pytestmark = pytest.mark.tier1
 
@@ -55,19 +57,15 @@ class _Env(gym.Env):
         self.closed = True
 
 
-def _args(output: Path, checkpoint: Path | None = None) -> argparse.Namespace:
-    return argparse.Namespace(
+def _config(output: Path, checkpoint: Path | None = None) -> RenderConfig:
+    return RenderConfig(
         env="test",
-        seed=0,
-        checkpoint=checkpoint,
         output=output,
+        checkpoint=checkpoint,
         seconds=0.04,
         fps=50,
-        resolution=[128, 128],
+        resolution=(128, 128),
         preview=True,
-        muscles="volumetric",
-        muscle_scale=1.0,
-        scene="studio",
         samples=16,
     )
 
@@ -83,7 +81,7 @@ def test_export_preserves_metres_timing_motion_and_valid_names(
 
     env = _Env()
     monkeypatch.setattr(myosuite, "make_env", lambda _id: env)
-    meta = render_blender.export_rollout(_args(tmp_path))
+    meta = blender_render.export_rollout(_config(tmp_path))
     stage = Usd.Stage.Open(meta["usd"])
     reference = np.load(tmp_path / "reference.npz")
     assert env.closed
@@ -123,23 +121,23 @@ def test_export_preserves_metres_timing_motion_and_valid_names(
 
 def test_muscle_tube_keeps_its_volume_as_the_path_shortens() -> None:
     """Shortening a path thickens the belly; the enclosed volume is unchanged."""
-    profile = render_blender.radius_profile()
+    profile = muscle_tubes.radius_profile(0.5)
     assert profile.max() == pytest.approx(1.0, abs=1e-2)
-    assert profile[0] == pytest.approx(render_blender.TENDON_RADIUS_RATIO)
-    assert np.argmax(profile) < len(profile) // 2  # belly biased to the origin
+    np.testing.assert_allclose(profile[[0, -1]], muscle_tubes.TENDON_RADIUS_RATIO)
+    assert np.argmax(profile) < len(profile) // 2  # belly towards the origin
     lengths = np.array([0.3, 0.2])
-    radii = render_blender.belly_radius(4e-5, lengths, profile)
+    radii = muscle_tubes.belly_radius(4e-5, lengths, profile)
     assert radii[1] > radii[0]
     np.testing.assert_allclose(
-        render_blender.belly_volume(radii, lengths, profile), 4e-5, rtol=1e-9
+        muscle_tubes.belly_volume(radii, lengths, profile), 4e-5, rtol=1e-9
     )
     for length, radius in zip(lengths, radii):
         centre = np.zeros((len(profile), 3))
         centre[:, 2] = np.linspace(0, length, len(profile))
-        points, counts, indices = render_blender.tube_mesh(centre, radius * profile)
+        points, counts, indices = muscle_tubes.tube_mesh(centre, radius * profile)
         assert counts.sum() == len(indices)
         assert indices.max() == len(points) - 1
-        ring = points[:-2].reshape(len(profile), render_blender.RING_POINTS, 3)
+        ring = points[:-2].reshape(len(profile), muscle_tubes.RING_POINTS, 3)
         np.testing.assert_allclose(
             np.linalg.norm(ring[..., :2], axis=-1),
             np.broadcast_to(radius * profile[:, None], ring.shape[:2]),
@@ -147,10 +145,38 @@ def test_muscle_tube_keeps_its_volume_as_the_path_shortens() -> None:
         )
 
 
+def test_forearm_muscle_volumes_are_anatomical() -> None:
+    """Forearm bellies stay near measured volumes and leave long distal tendons.
+
+    References: Holzbaur et al. 2007, J Biomech 40:742 (adult upper-limb muscle
+    volumes; FDS split evenly over its four compartments).
+    """
+    from myosuite import make_env
+
+    env = make_env("myoHandPoseRandom-v0")
+    try:
+        env.reset(seed=0)
+        model, data = env.unwrapped.model, env.unwrapped.data
+        muscles = muscle_tubes.muscle_actuators(model)
+        path = data.ten_length[model.actuator_trnid[muscles, 0]]
+        peak, fraction = muscle_tubes.muscle_shape(model, path)
+        volume = muscle_tubes.belly_volume(
+            peak, path, muscle_tubes.radius_profile(fraction)
+        )
+    finally:
+        env.close()
+    names = [model.actuator(a).name for a in muscles]
+    for name, measured in {"FCR_r": 17e-6, "FCU_r": 26e-6, "FDS3_r": 14e-6}.items():
+        assert 0.5 < volume[names.index(name)] / measured < 2
+    flexor = names.index("FDS3_r")
+    belly_end = (1 - fraction[flexor]) / 4 + fraction[flexor]
+    assert belly_end < 0.7  # the belly ends in the forearm, a tendon runs to the finger
+
+
 def test_resample_path_is_even_in_arc_length() -> None:
     """Wrap points of uneven spacing become evenly spaced centreline samples."""
     path = np.array([[0, 0, 0], [0.1, 0, 0], [0.1, 0.3, 0.0]])
-    points, length = render_blender.resample_path(path, 9)
+    points, length = muscle_tubes.resample_path(path, 9)
     assert length == pytest.approx(0.4)
     np.testing.assert_allclose(np.linalg.norm(np.diff(points, axis=0), axis=1), 0.05)
 
@@ -174,29 +200,23 @@ def test_checkpoint_symlink_keeps_format_and_rejects_mismatch(
     )
     monkeypatch.setattr(checkpoint_utils, "load_sb3_model", lambda path: model)
     with pytest.raises(ValueError, match="observation/action shapes"):
-        render_blender.export_rollout(_args(tmp_path / "output", checkpoint))
+        blender_render.export_rollout(_config(tmp_path / "output", checkpoint))
     assert env.closed
     assert not (tmp_path / "output" / "render.json").exists()
 
 
 @pytest.mark.parametrize("seconds", ["0", "-1", "nan", "inf"])
-def test_invalid_duration_rejected_before_export(
-    seconds: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_invalid_duration_rejected_before_export(seconds: str, tmp_path: Path) -> None:
     """Non-finite durations must not start an unbounded recording."""
-    monkeypatch.setattr(
-        "sys.argv",
-        [
-            "render_blender.py",
-            "--env",
-            "test",
-            "--random",
-            "--seconds",
-            seconds,
-            "--output",
-            str(tmp_path),
-        ],
-    )
+    argv = [
+        "--env",
+        "test",
+        "--random",
+        "--seconds",
+        seconds,
+        "--output",
+        str(tmp_path),
+    ]
     with pytest.raises(SystemExit) as exc:
-        render_blender.main()
+        blender_render.main(argv)
     assert exc.value.code == 2

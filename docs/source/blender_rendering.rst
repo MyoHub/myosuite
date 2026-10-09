@@ -8,6 +8,18 @@ for a demonstration with random actions; incompatible checkpoints fail instead
 of falling back to random actions. Tutorial ``tutorials/3.6_Blender_Rendering.ipynb``
 walks through an export, the muscle volumes and the render options.
 
+From Python, :class:`myosuite.viz.blender_render.RenderConfig` holds the same settings
+and :func:`myosuite.viz.blender_render.render_rollout` runs the export, Blender and the
+video; the muscle geometry is in :mod:`myosuite.viz.muscle_tubes`.
+
+.. code-block:: python
+
+   from pathlib import Path
+   from myosuite.viz.blender_render import RenderConfig, render_rollout
+
+   render_rollout(RenderConfig(env="myoHandReorient8-v0", output=Path("renders/hand"),
+                               seconds=1, preview=True))
+
 .. list-table::
    :widths: 33 33 33
 
@@ -61,13 +73,24 @@ The default look follows anatomical illustration, after the volumetric muscle
 visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
 
 - **Volumetric muscles** (``--muscles volumetric``). Each tendon-driven muscle
-  becomes a tube along its MuJoCo path, with a fusiform belly over 80% of the
-  path and tendons at 0.3 of the belly radius. Its volume is
-  ``F_max / 300 kPa * L0``, where ``L0`` is the optimal fibre length clamped to
-  5-80% of the path. Bellies are capped at a radius of 10% of the path length.
-  The volume stays constant during the episode, so a shortening muscle
-  thickens. ``--muscle-scale`` multiplies all radii.
-  ``--muscles paths`` keeps MuJoCo's thin tendon paths instead.
+  becomes a tube along its MuJoCo path: a fusiform belly and tendons at 0.2 of
+  the belly radius.
+
+  - The peak cross-section is ``F_max / 1.6 MPa``, a stress fitted to measured
+    cross-sections. MuSkeMo's ``F_max / 300 kPa * L0`` volume assumes
+    anatomical forces and overestimates MyoSuite's forearm muscles 5-15 times.
+  - The belly is as long as the optimal fibre length ``L0``, or longer when its
+    cross-section needs it, as in pennate leg muscles. It covers 40-80% of the
+    path, towards the origin, so finger muscles end in the forearm with long
+    tendons. The peak radius is at most 12% of the belly length.
+  - Forearm volumes are 0.5-1.4 times measured adult volumes (Holzbaur et al.
+    2007). Large pennate leg muscles match (soleus, vastus lateralis). Strap- and
+    fan-shaped leg muscles come out leaner than measured (Handsfield et al. 2014).
+  - The volume stays constant during the episode, so a shortening muscle
+    thickens.
+
+  ``--muscle-scale`` multiplies all radii. ``--muscles paths`` keeps MuJoCo's
+  thin tendon paths instead.
 - **Activation colour.** Muscles shade from a relaxed rose to a deep red as
   their activation rises.
 - **Materials.** Bones (meshes in a kinematic tree that holds muscle
