@@ -38,6 +38,19 @@ video; the muscle geometry is in :mod:`myosuite.viz.muscle_tubes`.
 
 Random-action frames rendered with Blender 5.2 at 64 samples.
 
+.. list-table::
+   :widths: 60 40
+
+   * - .. image:: images/blender/hand_open_close.webp
+     - .. image:: images/blender/leg_gait.webp
+   * - ``myoHandPoseRandom-v0``, driven by a smooth flexor/extensor rhythm:
+       finger flexors thicken and redden as the fist closes.
+     - ``myoLegWalk-v0`` replaying the OpenSim gait of tutorial 3.5 (pelvis
+       held in place). Without a policy, the muscle colour here is a visual
+       proxy: a muscle shows as active while it shortens.
+
+Animations: 2-2.4 s at 30 fps, 720x540 and 40-48 samples, rendered with Blender 5.2.
+
 Install Blender separately and add the USD exporter dependencies to your
 MyoSuite environment. The sandbox validation used MuJoCo 3.15.0 and Blender
 4.5.3 LTS. Tendon tessellation uses MuJoCo's USD exporter internals, so other
@@ -88,6 +101,11 @@ visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
     fan-shaped leg muscles come out leaner than measured (Handsfield et al. 2014).
   - The volume stays constant during the episode, so a shortening muscle
     thickens.
+
+  .. image:: images/blender/hand_before_after.jpg
+
+  Top: the earlier ``F_max / 300 kPa * L0`` volumes; bottom: the current sizes,
+  at the same frames.
 
   ``--muscle-scale`` multiplies all radii. ``--muscles paths`` keeps MuJoCo's
   thin tendon paths instead.
