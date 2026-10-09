@@ -116,6 +116,11 @@ visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
     2007). Most referenced muscles reach their measured volume; broad muscles on
     short paths (vasti, gluteals, adductor magnus) stop at 45-75% under the
     radius limit.
+
+    .. image:: images/blender/large_muscles_before_after.jpg
+
+    ``myoMimicFullbody-v0`` chest and shoulder (top) and hip and thigh
+    (bottom): force-based sizes (before) and measured volumes (after).
   - The volume stays constant during the episode, so a shortening muscle
     thickens.
 
@@ -177,6 +182,36 @@ each frame (:mod:`myosuite.viz.skin`); the simulated model is not changed.
    * - ``--skin-style translucent``
      - ``--skin-style opaque``
      - Translucent skin following a replayed gait.
+
+The same ``.skn`` works outside Blender:
+
+- **Native MuJoCo.** Add it to the model spec; it is purely visual, so the
+  dynamics are unchanged, and MuJoCo's own skinning matches
+  :class:`myosuite.viz.skin.SkinPose` to below a micrometre.
+
+  .. code-block:: python
+
+     spec, _ = build_mimic_fullbody_spec(default_mimic_fullbody_config())
+     skin = spec.add_skin()
+     skin.file, skin.rgba = str(FULLBODY_SKIN), [0.85, 0.7, 0.62, 0.45]
+     model = spec.compile()  # mujoco.Renderer / viewer draw the skin
+
+- **mjviser** does not draw MuJoCo skins. Add the posed skin as a viser mesh
+  under the scene's ``fixed_bodies_frame``, so it follows camera tracking, and
+  refresh its vertices after each update:
+
+  .. code-block:: python
+
+     pose = SkinPose.bind(load_skn("fullbody"), model)
+     mesh = scene.server.scene.add_mesh_simple(
+         f"{scene.fixed_bodies_frame.name}/skin", pose.vertices(data),
+         pose.skin.face, color=(217, 178, 158), opacity=0.45, side="double")
+     # each frame, after scene.update_from_mjdata(data):
+     mesh.vertices = pose.vertices(data)
+
+.. image:: images/blender/skin_native_viser.jpg
+
+The bundled skin in MuJoCo's native renderer (left) and in mjviser (right).
 
 Muscle volumes are a visual estimate, not a fitted anatomical shape, and
 muscle tubes may intersect bones and each other.
