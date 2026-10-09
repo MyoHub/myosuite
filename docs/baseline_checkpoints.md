@@ -59,12 +59,14 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 | myoLegDirectionalForward-v0  | `model_681.pt`   | 100.0%                        |
 | myoLegDirectionalRandom-v0   | `model_2000.pt`  | 53.8%                         |
 | myoLegHillyTerrainWalk-v0    | `model_4999.pt`  | 26.6%                         |
-| myoLegRoughTerrainWalk-v0    | `model_3715.pt`  | 89.1%                         |
+| myoLegRoughTerrainWalk-v0    | `model_4176.pt`  | 91.0%¹                        |
 | myoLegStairTerrainWalk-v0    | -                  | -                             |
 | myoLegStandRandom-v0         | `model_3500.pt`  | 34.1%                         |
-| myoLegWalk-v0                | `model_1355.pt`  | 100.0%                        |
+| myoLegWalk-v0                | `model_3000.pt`  | 100.0%                        |
 | myoTorsoExoPoseFixed-v0      | `model_188.pt`   | 100.0%                        |
 | myoTorsoPoseFixed-v0         | `model_103.pt`   | 100.0%                        |
+
+¹ Resumed on MyoSuite 3.0.0 from a run trained with mjlab 1.3.
 
 ---
 
