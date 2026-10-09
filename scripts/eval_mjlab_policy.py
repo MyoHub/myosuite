@@ -431,15 +431,21 @@ errors are only given for pose tasks."""
 
 
 def _add_floor(
-    scene: mujoco.MjvScene, z: float, half_extent: float, horizon: float
+    scene: mujoco.MjvScene,
+    z: float,
+    half_extent: float,
+    horizon: float,
+    center: tuple[float, float] = (0.0, 0.0),
 ) -> None:
     """Append a light floor plate with a grid, white sky walls and a shadow light.
 
     The plate and walls are far beyond the fog end, so they fade into a white
-    horizon and sky. Grid lines only cover ``half_extent`` around the origin:
-    thin coplanar lines far away z-fight (speckle), and are fogged out anyway.
+    horizon and sky. Grid lines only cover ``half_extent`` around ``center``
+    (a multiple of ``FLOOR_CELL``, so the lines stay put in the world): thin
+    coplanar lines far away z-fight (speckle), and are fogged out anyway.
     """
     eye = np.eye(3).ravel()
+    cx, cy = center
 
     def add(size, pos, rgba) -> None:
         mujoco.mjv_initGeom(
@@ -452,18 +458,18 @@ def _add_floor(
         )
         scene.ngeom += 1
 
-    add([horizon, horizon, 0.005], [0, 0, z - 0.005], FLOOR_RGBA)
+    add([horizon, horizon, 0.005], [cx, cy, z - 0.005], FLOOR_RGBA)
     # Sky: four solid walls (a hollow dome would be back-face culled from inside).
     for sx, sy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
         along_x = sy != 0
         add(
             [horizon if along_x else 5.0, 5.0 if along_x else horizon, horizon],
-            [sx * horizon, sy * horizon, z + horizon - 1.0],
+            [cx + sx * horizon, cy + sy * horizon, z + horizon - 1.0],
             FLOOR_RGBA,
         )
     for c in np.arange(-half_extent, half_extent + 1e-6, FLOOR_CELL):
-        add([half_extent, 0.004, 0.0015], [0, c, z], FLOOR_LINE_RGBA)
-        add([0.004, half_extent, 0.0015], [c, 0, z], FLOOR_LINE_RGBA)
+        add([half_extent, 0.004, 0.0015], [cx, cy + c, z], FLOOR_LINE_RGBA)
+        add([0.004, half_extent, 0.0015], [cx + c, cy, z], FLOOR_LINE_RGBA)
     light = scene.lights[scene.nlight]
     light.headlight = 0
     light.type = mujoco.mjtLightType.mjLIGHT_DIRECTIONAL
@@ -623,6 +629,7 @@ class GridRenderer:
 
     def render(self) -> np.ndarray:
         scene = self._renderer.scene
+        floor_center = (0.0, 0.0)
         if self._sweep is not None:
             self._sweep_camera()
         self._frame += 1
@@ -638,6 +645,11 @@ class GridRenderer:
                     self._data, camera=self._cam, scene_option=self._opt
                 )
                 first = 0
+                if not isinstance(self._cam, mujoco.MjvCamera):
+                    # Model camera (it may track the agent): the floor follows the
+                    # agent's centre of mass, so a walker never leaves it.
+                    com = self._data.subtree_com[0, :2] + offset[:2]
+                    floor_center = tuple(np.round(com / FLOOR_CELL) * FLOOR_CELL)
             else:
                 first = scene.ngeom
                 mujoco.mjv_addGeoms(
@@ -682,7 +694,9 @@ class GridRenderer:
                 )
                 scene.ngeom += 1
         if self._floor_z is not None:
-            _add_floor(scene, self._floor_z, self._floor_half, self._horizon)
+            _add_floor(
+                scene, self._floor_z, self._floor_half, self._horizon, floor_center
+            )
             scene.flags[mujoco.mjtRndFlag.mjRND_SKYBOX] = 0
             scene.flags[mujoco.mjtRndFlag.mjRND_FOG] = 1
             scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = int(self._shadows)
