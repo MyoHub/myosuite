@@ -157,8 +157,8 @@ Body skin
 (`format <https://mujoco.readthedocs.io/en/stable/XMLreference.html#asset-skin>`_)
 as a visual layer. MyoSuite bundles a full-body skin for ``myoMimicFullbody-v0``
 (``--skin fullbody``); any other ``.skn`` binds to a model by body name.
-Credits and license of the bundled skin are in
-``myosuite/viz/assets/CREDITS.md``.
+The bundled skin is adapted from the MakeHuman/MPFB mesh, rig and weights
+(CC0 1.0); see ``myosuite/viz/assets/CREDITS.md``.
 
 .. code-block:: bash
 
