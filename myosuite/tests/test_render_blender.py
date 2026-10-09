@@ -25,6 +25,7 @@ class _Env(gym.Env):
           <asset><mesh name="fixture" vertex="0 0 0 .2 0 0 0 .2 0 0 0 .2"/></asset>
           <worldbody><geom name="goal" type="mesh" mesh="fixture" pos="0 2 0"/>
           <geom name="fence" type="mesh" mesh="fixture" pos="0 -2 0"/>
+          <geom name="room" type="mesh" mesh="fixture" pos="0 0 3" contype="0" conaffinity="0"/>
           <body><joint name="slide" type="slide" axis="1 0 0"/>
             <geom name="moving-box" type="box" size=".1 .1 .1"/>
             <site name="anchor" pos="0 0 0"/>
@@ -86,7 +87,8 @@ def test_export_preserves_metres_timing_motion_and_valid_names(
     assert stage.GetEndTimeCode() == 4
     assert meta["duration"] == pytest.approx(0.04)
     assert not np.allclose(reference["geom_xpos"][0], reference["geom_xpos"][-1])
-    prim = stage.GetPrimAtPath("/World/Mesh_Xform_moving_box_id2_geom")
+    box_id = env.model.geom("moving-box").id
+    prim = stage.GetPrimAtPath(f"/World/Mesh_Xform_moving_box_id{box_id}_geom")
     assert prim.IsValid()
     for index in [0, 2, 4]:
         transform = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(index)
@@ -100,7 +102,10 @@ def test_export_preserves_metres_timing_motion_and_valid_names(
         prim = stage.GetPrimAtPath(f"/World/Mesh_Xform_{name}_id{geom_id}_geom")
         assert prim.IsValid()
         assert UsdGeom.Imageable(prim).ComputeVisibility(0) == "inherited"
-        assert f"{name}_id{geom_id}_geom" not in meta.get("background_objects", [])
+        assert f"{name}_id{geom_id}_geom" not in meta["scenery_objects"]
+        assert f"{name}_id{geom_id}_geom" in meta["static_objects"]
+    room = f"room_id{env.model.geom('room').id}_geom"
+    assert meta["scenery_objects"] == [room]
     assert meta["tendon_objects"]
     assert all("test_path" in name for name in meta["tendon_objects"])
 

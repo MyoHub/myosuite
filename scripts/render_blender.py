@@ -23,12 +23,7 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
     from pxr import Tf, Usd, UsdGeom
 
     from myosuite import make_env
-    from myosuite.utils.checkpoint_utils import (
-        find_vec_normalize,
-        load_sb3_model,
-        load_vec_normalize,
-        sb3_policy,
-    )
+    from myosuite.utils.checkpoint_utils import load_policy
 
     class LightTendon(objects.USDTendon):
         def generate_primitive_mesh(self) -> dict[str, Any]:
@@ -66,31 +61,8 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
                 "Skin/flex export is outside this minimal renderer's scope."
             )
         if args.checkpoint:
-            checkpoint = args.checkpoint.absolute()
-            if not checkpoint.is_file():
-                raise FileNotFoundError(checkpoint)
-            if checkpoint.suffix == ".zip":
-                policy_model = load_sb3_model(checkpoint)
-                if (
-                    policy_model.observation_space.shape != env.observation_space.shape
-                    or policy_model.action_space.shape != env.action_space.shape
-                ):
-                    raise ValueError(
-                        "Checkpoint observation/action shapes do not match the environment."
-                    )
-                stats = find_vec_normalize(checkpoint)
-                policy = sb3_policy(
-                    policy_model, load_vec_normalize(stats) if stats else None
-                )
-            elif checkpoint.suffix == ".pt":
-                from myosuite.utils.rslrl_policy import load_rslrl_policy
-
-                actor = load_rslrl_policy(checkpoint, env.action_space.shape[0])
-
-                def policy(observation: np.ndarray) -> np.ndarray:
-                    return actor.act(np.atleast_2d(observation))[0]
-            else:
-                raise ValueError("Use an SB3 .zip or RSL-RL .pt checkpoint.")
+            # Strict: an unusable checkpoint raises instead of rendering random motion.
+            policy = load_policy(env, args.checkpoint.absolute(), strict=True)
         else:
 
             def policy(observation: np.ndarray) -> np.ndarray:
@@ -136,6 +108,14 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
             done = terminated or truncated
         if len(times) < 2:
             raise ValueError("The episode contains no motion samples.")
+        scene_geoms = exporter.scene.geoms[: exporter.scene.ngeom]
+
+        def _is_static(g: Any) -> bool:
+            return g.type == mujoco.mjtGeom.mjGEOM_PLANE or (
+                g.objtype == mujoco.mjtObj.mjOBJ_GEOM
+                and model.geom_bodyid[g.objid] == 0
+            )
+
         dt = float(np.median(np.diff(times)))
         if not np.allclose(np.diff(times), dt):
             raise ValueError("Variable-step episodes are not supported.")
@@ -171,18 +151,24 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
                 name for name in exporter.geom_names if "_tendon" in name
             ),
             "mujoco_version": mujoco.__version__,
-            "plane_objects": [
+            # Static world geometry: kept in the render, left out of camera fitting.
+            "static_objects": [
+                exporter._get_geom_name(g) for g in scene_geoms if _is_static(g)
+            ],
+            # Visual-only world geometry (room shells, wall props): hidden, since the
+            # studio replaces it. Collidable task geometry (goals, fences) stays.
+            "scenery_objects": [
                 exporter._get_geom_name(g)
-                for g in exporter.scene.geoms[: exporter.scene.ngeom]
-                if g.type == mujoco.mjtGeom.mjGEOM_PLANE
-                or (
-                    g.objtype == mujoco.mjtObj.mjOBJ_GEOM
-                    and model.geom_bodyid[g.objid] == 0
-                )
+                for g in scene_geoms
+                if _is_static(g)
+                and g.objtype == mujoco.mjtObj.mjOBJ_GEOM
+                and g.type != mujoco.mjtGeom.mjGEOM_PLANE
+                and model.geom_contype[g.objid] == 0
+                and model.geom_conaffinity[g.objid] == 0
             ],
         }
         frames = max(1, math.ceil(times[-1] * args.fps - 1e-9))
-        meta["visibility"] = {
+        visibility = {
             prim.GetName(): [
                 UsdGeom.Imageable(prim).ComputeVisibility(f / args.fps / dt)
                 != "invisible"
@@ -193,6 +179,8 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
             and prim.GetParent().GetName() == "World"
             and prim.GetName().startswith("Mesh_Xform_")
         }
+        # Always-visible prims need no keyframes.
+        meta["visibility"] = {k: v for k, v in visibility.items() if not all(v)}
         (out / "render.json").write_text(json.dumps(meta, indent=2) + "\n")
         return meta
     finally:
@@ -226,8 +214,9 @@ def build_blender_scene(output: Path) -> None:
                 if obj.type != "MESH":
                     continue
                 for frame, shown in enumerate(visible):
-                    obj.hide_render = not shown
-                    obj.keyframe_insert("hide_render", frame=frame)
+                    if frame == 0 or shown != visible[frame - 1]:
+                        obj.hide_render = not shown
+                        obj.keyframe_insert("hide_render", frame=frame)
     scene.frame_start = 0
     scene.frame_end = max(0, math.ceil(meta["duration"] * meta["fps"] - 1e-9) - 1)
     scene.render.engine = "CYCLES"
@@ -259,6 +248,10 @@ def build_blender_scene(output: Path) -> None:
         shader.inputs["Roughness"].default_value = roughness
         return mat
 
+    scenery = meta.get("scenery_objects", [])
+    for obj in scene.objects:
+        if any(name in obj.name for name in scenery):
+            obj.hide_render = True
     tendon = material("Muscle paths", (0.42, 0.025, 0.04, 1), 0.4)
     for obj in bpy.context.scene.objects:
         if obj.type == "MESH":
@@ -286,7 +279,7 @@ def build_blender_scene(output: Path) -> None:
         o
         for o in scene.objects
         if o.type == "MESH"
-        and not any(name in o.name for name in meta.get("plane_objects", []))
+        and not any(name in o.name for name in meta.get("static_objects", []))
     ]
     view_points = []
     rotation = camera.rotation_euler.to_matrix()
@@ -331,10 +324,11 @@ def build_blender_scene(output: Path) -> None:
     )
     scene.frame_set(scene.frame_start)
     scene.render.filepath = str(output / "frames" / "frame_")
-    for cache in bpy.data.cache_files:
-        cache.filepath = bpy.path.relpath(cache.filepath, start=str(output))
     bpy.ops.file.pack_all()
-    bpy.ops.wm.save_as_mainfile(filepath=str(output / "scene.blend"), compress=True)
+    # relative_remap stores the USD cache path relative to scene.blend.
+    bpy.ops.wm.save_as_mainfile(
+        filepath=str(output / "scene.blend"), compress=True, relative_remap=True
+    )
     if meta["preview"]:
         scene.render.filepath = str(output / "preview.png")
         bpy.ops.render.render(write_still=True)

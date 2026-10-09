@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -274,6 +275,19 @@ def test_load_policy_normalizes_observations_like_training(
 
     assert np.abs(expected - unnormalized).max() > 1e-2
     np.testing.assert_allclose(policy(raw), expected, atol=1e-6)
+
+
+def test_load_policy_strict_raises_instead_of_random(tmp_path: Path) -> None:
+    """``strict`` turns every random-policy fallback into an error."""
+    env = SimpleNamespace(action_space=None, observation_space=None)
+    with pytest.raises(FileNotFoundError):
+        load_policy(env, None, strict=True)
+    with pytest.raises(FileNotFoundError):
+        load_policy(env, tmp_path / "missing.zip", strict=True)
+    other = tmp_path / "policy.pkl"
+    other.write_bytes(b"")
+    with pytest.raises(ValueError, match="SB3 .zip or RSL-RL .pt"):
+        load_policy(env, other, strict=True)
 
 
 def test_default_roots_reach_the_checkout_from_a_subdirectory(

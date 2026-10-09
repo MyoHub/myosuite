@@ -86,7 +86,7 @@ jobs:
       - name: Install project and pytest
         run: |
           uv pip install -e ".[mjlab,rl]"
-          uv pip install pytest pytest-xvfb ffmpeg torch ipython "musclemimic_models==1.0.6"
+          uv pip install pytest pytest-xvfb ffmpeg torch ipython "musclemimic_models==1.0.6" usd-core
 
       - name: Pytest tier-1 (fast, backend-agnostic contracts)
         if: ${{ runner.os != 'Linux' }}

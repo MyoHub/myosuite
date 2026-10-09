@@ -34,8 +34,10 @@ The output contains ``video.mp4`` (or ``preview.png``), ``scene.blend``, the
 folder together: Blender cache paths are relative and images are packed.
 
 Bones and task geometry retain their imported appearance; tendon paths get a
-red material. World-body meshes, including goals and arena fences, remain
-visible. Static world geometry is excluded from camera fitting. Camera fitting
+red material. Collidable world geometry, such as goals and arena fences, stays
+visible; visual-only world meshes (room shells and wall props, with
+``contype`` and ``conaffinity`` 0) are hidden because the studio replaces them.
+Static world geometry is excluded from camera fitting. Camera fitting
 samples three poses with a margin; check longer clips for framing before final use.
 
 This is a small rendering bridge, not a skin or anatomical-muscle generator.
