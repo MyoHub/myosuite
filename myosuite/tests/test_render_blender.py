@@ -255,6 +255,33 @@ def test_forearm_muscle_volumes_are_anatomical() -> None:
     assert belly_end < 0.7  # the belly ends in the forearm, a tendon runs to the finger
 
 
+def test_large_muscles_take_measured_volumes() -> None:
+    """Hip, thigh, calf and shoulder muscles approach their reference volumes.
+
+    Broad muscles on short paths (vasti, gluteals, adductor magnus) stay under
+    the slenderness cap, so they reach at least 45% of the reference.
+    """
+    from myosuite import make_env
+
+    env = make_env("myoMimicFullbody-v0")
+    try:
+        env.reset(seed=0)
+        model, data = env.unwrapped.model, env.unwrapped.data
+        muscles = muscle_tubes.muscle_actuators(model)
+        path = data.ten_length[model.actuator_trnid[muscles, 0]]
+        peak, fraction = muscle_tubes.muscle_shape(model, path)
+        volume = muscle_tubes.belly_volume(
+            peak, path, muscle_tubes.radius_profile(fraction)
+        )
+    finally:
+        env.close()
+    groups = [muscle_tubes._reference_group(model.actuator(a).name) for a in muscles]
+    for name, reference in muscle_tubes.REFERENCE_VOLUMES.items():
+        side = "_r" if name.islower() else ""
+        total = volume[[g == (name, side) for g in groups]].sum()
+        assert 0.45 < total / reference <= 1.0 + 1e-6, name
+
+
 def test_resample_path_is_even_in_arc_length() -> None:
     """Wrap points of uneven spacing become evenly spaced centreline samples."""
     path = np.array([[0, 0, 0], [0.1, 0, 0], [0.1, 0.3, 0.0]])

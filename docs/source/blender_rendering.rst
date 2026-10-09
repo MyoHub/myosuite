@@ -104,12 +104,18 @@ visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
     cross-sections. MuSkeMo's ``F_max / 300 kPa * L0`` volume assumes
     anatomical forces and overestimates MyoSuite's forearm muscles 5-15 times.
   - The belly is as long as the optimal fibre length ``L0``, or longer when its
-    cross-section needs it, as in pennate leg muscles. It covers 40-80% of the
+    cross-section needs it, as in pennate leg muscles. It covers 40-85% of the
     path, towards the origin, so finger muscles end in the forearm with long
-    tendons. The peak radius is at most 12% of the belly length.
+    tendons. The peak radius is at most 16% of the belly length.
+  - MyoSuite's forces do not scale with anatomical size, so the large hip,
+    thigh, calf and shoulder muscles take measured volumes instead
+    (``muscle_tubes.REFERENCE_VOLUMES``; Handsfield et al. 2014 for the leg,
+    approximate shoulder values after Holzbaur et al. 2007), shared among a
+    muscle's parts by force.
   - Forearm volumes are 0.5-1.4 times measured adult volumes (Holzbaur et al.
-    2007). Large pennate leg muscles match (soleus, vastus lateralis). Strap- and
-    fan-shaped leg muscles come out leaner than measured (Handsfield et al. 2014).
+    2007). Most referenced muscles reach their measured volume; broad muscles on
+    short paths (vasti, gluteals, adductor magnus) stop at 45-75% under the
+    radius limit.
   - The volume stays constant during the episode, so a shortening muscle
     thickens.
 

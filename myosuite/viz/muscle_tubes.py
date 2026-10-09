@@ -9,21 +9,48 @@ visualiser of MuSkeMo (van Bijlert et al.). The peak cross-section is
 ``F_max / CROSS_SECTION_STRESS``, a stress fitted to measured cross-sections of
 forearm and leg muscles: MyoSuite's ``F_max`` are not anatomical forces, so the
 ``F_max / specific tension * L0`` volume would make forearm muscles 5-15x too
-large. The belly is as long as the optimal fibre length, or longer when its
-cross-section needs it (pennate leg muscles), and sits towards the origin, so
-long tendons run distally.
+large. MyoSuite's forces are not proportional to anatomical size either, so the
+large hip, thigh, calf and shoulder muscles take measured volumes instead
+(:data:`REFERENCE_VOLUMES`). The belly is as long as the optimal fibre length,
+or longer when its cross-section needs it (pennate leg muscles), and sits
+towards the origin, so long tendons run distally.
 """
 
 from __future__ import annotations
+
+import re
 
 import mujoco
 import numpy as np
 
 CROSS_SECTION_STRESS = 1.6e6  # N/m^2
-BELLY_FRACTION = (0.4, 0.8)  # belly length as a fraction of the path
-SLENDERNESS = 0.12  # peak radius at most this fraction of the belly length
+BELLY_FRACTION = (0.4, 0.85)  # belly length as a fraction of the path
+SLENDERNESS = 0.16  # peak radius at most this fraction of the belly length
 TENDON_RADIUS_RATIO = 0.2
 PATH_POINTS = 32
+# Adult volumes (m^3) of whole muscles, shared among a muscle's MyoSuite parts
+# (e.g. glmax1-3) in proportion to their forces. Leg: Handsfield et al. 2014,
+# J Biomech 47:631; shoulder: approximate, from Holzbaur et al. 2007, J Biomech
+# 40:742.
+REFERENCE_VOLUMES = {
+    "glmax": 849e-6,
+    "glmed": 323e-6,
+    "addmag": 559e-6,
+    "vaslat": 514e-6,
+    "vasmed": 424e-6,
+    "vasint": 375e-6,
+    "recfem": 237e-6,
+    "semimem": 245e-6,
+    "semiten": 199e-6,
+    "bflh": 192e-6,
+    "tfl": 69e-6,
+    "soleus": 476e-6,
+    "gasmed": 258e-6,
+    "gaslat": 141e-6,
+    "DELT": 275e-6,
+    "PECM": 210e-6,
+    "LAT": 190e-6,
+}
 RING_POINTS = 12
 
 
@@ -74,9 +101,34 @@ def muscle_shape(
     lrange = model.actuator_lengthrange[act]
     l0 = (lrange[:, 1] - lrange[:, 0]) / np.maximum(gain[:, 1] - gain[:, 0], 1e-6)
     radius = np.sqrt(force / (np.pi * CROSS_SECTION_STRESS))
+    # Whole-muscle groups by name, per side: "addmagDist_r" -> ("addmag", "_r").
+    groups = [_reference_group(model.actuator(a).name) for a in act]
+    reference = np.array([REFERENCE_VOLUMES.get(g[0], 0.0) for g in groups])
+    share = np.array([force[[h == g for h in groups]].sum() for g in groups])
+    target = reference * force / np.maximum(share, 1e-9)
+    # Fibre-length belly with the measured volume: r = sqrt(V / (pi * L0)).
+    radius = np.where(
+        target > 0, np.sqrt(target / (np.pi * np.maximum(l0, 1e-3))), radius
+    )
     belly = np.maximum(l0, radius / SLENDERNESS)
     fraction = np.clip(belly / np.maximum(path_lengths, 1e-6), *BELLY_FRACTION)
-    return np.minimum(radius, SLENDERNESS * fraction * path_lengths), fraction
+    peak = np.minimum(radius, SLENDERNESS * fraction * path_lengths)
+    profile = radius_profile(fraction)
+    # Referenced muscles keep their volume whatever belly length they end up with.
+    fitted = belly_radius(target, path_lengths, profile)
+    peak = np.where(
+        target > 0, np.minimum(fitted, SLENDERNESS * fraction * path_lengths), peak
+    )
+    return peak, fraction
+
+
+def _reference_group(name: str) -> tuple[str, str]:
+    side = name[-2:] if name[-2:] in ("_r", "_l") else ""
+    stem = name[: len(name) - len(side)]
+    for key in REFERENCE_VOLUMES:
+        if re.fullmatch(rf"{key}(\d*|Dist|Isch|Mid|Prox)", stem):
+            return key, side
+    return stem, side
 
 
 def resample_path(
