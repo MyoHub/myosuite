@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -96,18 +97,34 @@ def default_baseline_revision() -> str:
     return "v" + ".".join(__version__.split(".")[:2])
 
 
+def baseline_revisions() -> list[str]:
+    """Hugging Face revisions tried for this release, most specific first.
+
+    ``MYOSUITE_BASELINES_REVISION`` alone if set; otherwise the patch tag
+    ``v<major>.<minor>.<patch>`` (for baselines that changed in a patch release, e.g.
+    ``v3.0.1``), then :func:`default_baseline_revision` (``v3.0``).
+    """
+    configured = os.environ.get("MYOSUITE_BASELINES_REVISION")
+    if configured:
+        return [configured]
+    from myosuite import __version__  # noqa: PLC0415
+
+    patch_tag = "v" + ".".join(re.findall(r"\d+", __version__)[:3])
+    return list(dict.fromkeys([patch_tag, default_baseline_revision()]))
+
+
 def _download_at_revision(
     download: Callable[[str], Any], repo_id: str, revision: str | None
 ) -> Any | None:
-    """Run ``download(revision)`` for the release tag, then for ``main`` if that tag is missing.
+    """Run ``download(revision)`` for the release tags, then for ``main`` if none of them exists.
 
     Prints the repo revision that was used. Returns ``None`` (after printing why) on network,
     auth or repo errors.
     """
     from huggingface_hub.errors import RevisionNotFoundError  # noqa: PLC0415
 
-    wanted = revision or default_baseline_revision()
-    for rev in dict.fromkeys([wanted, "main"]):
+    wanted = [revision] if revision else baseline_revisions()
+    for rev in dict.fromkeys([*wanted, "main"]):
         try:
             result = download(rev)
         except RevisionNotFoundError:
@@ -115,7 +132,8 @@ def _download_at_revision(
         except Exception as err:  # noqa: BLE001  (network / auth / repo errors all mean "no baseline")
             print(f"Could not download from the {repo_id!r} Hugging Face repo: {err}")
             return None
-        note = "" if rev == wanted else f" (tag {wanted!r} not found, using the latest)"
+        latest = ", using the latest" if rev == "main" else ""
+        note = "" if rev == wanted[0] else f" (tag {wanted[0]!r} not found{latest})"
         print(f"Using baselines of {repo_id} at revision {rev!r}{note}")
         return result
     return None

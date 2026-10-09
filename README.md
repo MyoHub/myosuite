@@ -15,7 +15,7 @@
 
 **MyoSuite** is a collection of musculoskeletal environments and tasks simulated with the [MuJoCo](http://www.mujoco.org/) physics engine. It serves researchers and practitioners across biomechanics, neuroscience, machine learning, sports medicine, and physical rehabilitation.
 
-[Documentation](https://myosuite.readthedocs.io/en/latest/) · [Tutorials](tutorials/) · [Task list](https://myosuite.readthedocs.io/en/latest/environments.html)
+[Documentation](https://myosuite.readthedocs.io/en/latest/) · [Tutorials](https://github.com/MyoHub/myosuite/tree/dev/tutorials) · [Task list](https://myosuite.readthedocs.io/en/latest/environments.html)
 
 <img width="1240" alt="MyoSuite tasks" src="https://raw.githubusercontent.com/MyoHub/myosuite/main/docs/source/images/MyoSuiteHeader.png">
 
