@@ -389,3 +389,26 @@ def test_cli_defaults_to_the_newest_checkpoint_and_never_to_random(
     with pytest.raises(SystemExit):
         blender_render.main(["--env", "myoLegWalk-v0", "--output", str(tmp_path / "c")])
     assert len(rendered) == 2
+
+
+@pytest.mark.parametrize("preview", [False, True])
+def test_render_rollout_ends_with_the_result_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    preview: bool,
+) -> None:
+    """The last line printed is the absolute path of the video (or of the preview image)."""
+    import myosuite.utils.video_io as video_io
+
+    meta = {"samples": 3, "duration": 0.1, "usd": "x.usdc"}
+    monkeypatch.setattr(blender_render, "export_rollout", lambda config: meta)
+    monkeypatch.setattr(blender_render.subprocess, "run", lambda *a, **kw: None)
+    monkeypatch.setattr(video_io, "write_video", lambda *a, **kw: None)
+    out = tmp_path / "render"
+    blender_render.render_rollout(
+        RenderConfig(env="myoLegWalk-v0", output=out, preview=preview)
+    )
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    expected = out.resolve() / ("preview.png" if preview else "video.mp4")
+    assert last == f"{'Preview' if preview else 'Video'}: {expected}"

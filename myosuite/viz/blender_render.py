@@ -845,6 +845,9 @@ def render_rollout(
             [iio.imread(f)[..., :3] for f in frames],
             fps=config.fps,
         )
+    result = config.output / ("preview.png" if config.preview else "video.mp4")
+    print(f"Blender scene: {(config.output / 'scene.blend').resolve()}")
+    print(f"{'Preview' if config.preview else 'Video'}: {result.resolve()}", flush=True)
     return meta
 
 
