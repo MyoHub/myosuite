@@ -104,7 +104,9 @@ def write_manifest(
         note: Free text (for example how success is scored).
 
     Returns:
-        Path of the written manifest.
+        Path of the written manifest. For envs whose body is built from ``musclemimic_models``
+        it also records that release (``musclemimic_models_version``): its physics differ between
+        releases while the contract does not, and loaders build the recorded one.
     """
     checkpoint_dir = Path(checkpoint_dir)
     contract = env_contract(env_id) if contract is None else contract
@@ -121,6 +123,14 @@ def write_manifest(
         "files": sorted(p.name for p in checkpoint_dir.glob("model_*.pt")),
         "note": note,
     }
+    from myosuite.integrations.musclemimic.model_versions import (
+        MANIFEST_FIELD,
+        env_models_version,
+    )  # noqa: PLC0415
+
+    models_version = env_models_version(env_id)
+    if models_version is not None:
+        manifest[MANIFEST_FIELD] = models_version
     path = checkpoint_dir / MANIFEST_NAME
     path.write_text(json.dumps(manifest, indent=2) + "\n")
     return path

@@ -54,8 +54,8 @@ here, also has one.)
 - **Task**: track a commanded planar heading + speed (`myosuite/envs/myo/tasks/basic/leg/specs/leg_directional_spec.py`).
   Reward = `1.0 * heading + 0.1 * act_reg`, where `heading` rewards CoM velocity
   along `heading_dir` at `target_speed`.
-  - **Forward**: `heading_dir=(0, 1)`, `target_speed=1.2 m/s`, fixed per episode.
-  - **Backward**: `heading_dir=(0, -1)`, `target_speed=1.0 m/s`, fixed per episode.
+  - **Forward**: `heading_dir=(0, -1)`, `target_speed=1.0 m/s`, fixed per episode (the model faces `-y`).
+  - **Backward**: `heading_dir=(0, 1)`, `target_speed=1.2 m/s`, fixed per episode.
   - **Random**: samples a fresh heading from the full unit circle every reset
     (`randomize_heading=True`); the obs includes `heading_cmd` so the policy must
     learn the command→direction mapping instead of memorizing one direction.
