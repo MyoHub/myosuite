@@ -5,7 +5,26 @@ Render a rollout in Blender
 runs Blender in the background to produce a studio render and editable scene.
 It accepts an explicit SB3 ``.zip`` or RSL-RL ``.pt`` checkpoint. Use ``--random``
 for a demonstration with random actions; incompatible checkpoints fail instead
-of falling back to random actions.
+of falling back to random actions. Tutorial ``tutorials/3.6_Blender_Rendering.ipynb``
+walks through an export, the muscle volumes and the render options.
+
+.. list-table::
+   :widths: 33 33 33
+
+   * - .. image:: images/blender/leg.jpg
+     - .. image:: images/blender/hand.jpg
+     - .. image:: images/blender/elbow.jpg
+   * - ``myoLegWalk-v0``
+     - ``myoHandReorient8-v0``
+     - ``myoElbowPose1D6MRandom-v0``
+   * - .. image:: images/blender/tabletennis.jpg
+     - .. image:: images/blender/chasetag.jpg
+     -
+   * - ``myoChallengeTableTennisP1-v0``
+     - ``myoChallengeChaseTagP1-v0`` (``--scene mujoco``)
+     -
+
+Random-action frames rendered with Blender 5.2 at 64 samples.
 
 Install Blender separately and add the USD exporter dependencies to your
 MyoSuite environment. The sandbox validation used MuJoCo 3.15.0 and Blender
