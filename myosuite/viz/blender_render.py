@@ -6,9 +6,9 @@
 
 :func:`export_rollout` runs one episode in ordinary Python and writes the USD
 animation (with volumetric muscles, see :mod:`myosuite.viz.muscle_tubes`).
-:func:`build_blender_scene` runs inside Blender, which executes this file by path,
-so module-level imports are limited to the standard library. ``scripts/render_blender.py``
-is the command-line entry point.
+:func:`build_blender_scene` runs inside Blender, which executes this file by
+path, so module-level imports are limited to the standard library.
+``scripts/render_blender.py`` is the command-line entry point.
 """
 
 from __future__ import annotations
@@ -38,6 +38,9 @@ class RenderConfig:
         resolution: ``(width, height)`` in pixels.
         preview: Render only the first frame.
         muscles: ``"volumetric"`` muscle bellies or MuJoCo's thin ``"paths"``.
+        muscle_color: ``"activation"`` tints each muscle by its activation (on
+            paths with MuJoCo's dark-to-red viewer colours), ``"uniform"``
+            keeps one anatomical red, e.g. for still renders.
         muscle_scale: Multiplier of all muscle radii.
         scene: ``"studio"`` backdrop, or ``"mujoco"`` to keep the task's floor.
         samples: Cycles samples per frame.
@@ -53,6 +56,7 @@ class RenderConfig:
     resolution: tuple[int, int] = (640, 640)
     preview: bool = False
     muscles: str = "volumetric"
+    muscle_color: str = "activation"
     muscle_scale: float = 1.0
     scene: str = "studio"
     samples: int = 64
@@ -72,6 +76,8 @@ class RenderConfig:
             )
         if self.muscles not in ("volumetric", "paths"):
             raise ValueError(f"Unknown muscles mode: {self.muscles}")
+        if self.muscle_color not in ("activation", "uniform"):
+            raise ValueError(f"Unknown muscle colour: {self.muscle_color}")
         if self.scene not in ("studio", "mujoco"):
             raise ValueError(f"Unknown scene: {self.scene}")
 
@@ -157,7 +163,7 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
         option.geomgroup[:3] = 1
         option.sitegroup[:] = 0
         option.tendongroup[:] = 1
-        muscles = muscle_actuators(model) if config.muscles == "volumetric" else []
+        muscles = muscle_actuators(model)
         muscle_tendons = model.actuator_trnid[muscles, 0] if len(muscles) else []
         times, positions, rotations, qposes, paths, activations = [], [], [], [], [], []
         low, high = np.full(3, np.inf), np.full(3, -np.inf)
@@ -171,16 +177,17 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             rotations.append(data.geom_xmat.copy())
             qposes.append(data.qpos.copy())
             # wrap_xpos holds two points per row; ten_wrapadr indexes the points.
-            wrap_points = data.wrap_xpos.reshape(-1, 3)
-            paths.append(
-                [
-                    wrap_points[a : a + n].copy()
-                    for a, n in zip(
-                        data.ten_wrapadr[muscle_tendons],
-                        data.ten_wrapnum[muscle_tendons],
-                    )
-                ]
-            )
+            if config.muscles == "volumetric":
+                wrap_points = data.wrap_xpos.reshape(-1, 3)
+                paths.append(
+                    [
+                        wrap_points[a : a + n].copy()
+                        for a, n in zip(
+                            data.ten_wrapadr[muscle_tendons],
+                            data.ten_wrapnum[muscle_tendons],
+                        )
+                    ]
+                )
             activations.append(
                 data.act[model.actuator_actadr[muscles]].copy() if len(muscles) else []
             )
@@ -217,10 +224,11 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
         stage = Usd.Stage.Open(str(usd))
         stage.SetEndTimeCode(len(times) - 1)
         muscle_names = []
-        if len(muscles):
+        if len(muscles) and config.muscles == "volumetric":
             muscle_names = _write_muscle_tubes(
                 stage, model, muscles, paths, config.muscle_scale
             )
+        if len(muscles):
             np.savez_compressed(
                 out / "muscles.npz", activation=np.asarray(activations, np.float32)
             )
@@ -252,9 +260,15 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             "mujoco_version": mujoco.__version__,
             "scene": config.scene,
             "samples_per_frame": config.samples,
+            "muscles": config.muscles,
+            "muscle_color": config.muscle_color,
+            # Blender object of each muscle: its tube, or its MuJoCo path segments.
+            "muscle_objects": muscle_names
+            or [f"_id{t}_tendon" for t in muscle_tendons],
             # Volumetric muscles replace the exporter's thin tendon segments.
-            "muscle_objects": muscle_names,
-            "replaced_tendons": [f"_id{t}_tendon" for t in muscle_tendons],
+            "replaced_tendons": [f"_id{t}_tendon" for t in muscle_tendons]
+            if muscle_names
+            else [],
             "bone_objects": [
                 exporter._get_geom_name(g)
                 for g in scene_geoms
@@ -387,31 +401,42 @@ EXPOSURE = 0.0
 BACKDROP = (0.16, 0.16, 0.17, 1.0)
 MUSCLE_RELAXED = (0.50, 0.16, 0.15, 1.0)
 MUSCLE_ACTIVE = (0.62, 0.012, 0.02, 1.0)
+MUSCLE_UNIFORM = (0.42, 0.11, 0.10, 1.0)
+# MyoSuite's MuJoCo viewer colouring: activation ** 0.25 from near black to red.
+PATH_RELAXED = (0.05, 0.05, 0.05, 1.0)
+PATH_ACTIVE = (0.95, 0.3, 0.3, 1.0)
+
+
+def _muscle_colour(activation: float, paths: bool) -> tuple[float, ...]:
+    if paths:
+        a = activation**0.25
+        relaxed, active = PATH_RELAXED, PATH_ACTIVE
+    else:
+        a, relaxed, active = activation, MUSCLE_RELAXED, MUSCLE_ACTIVE
+    return tuple(r + (q - r) * a for r, q in zip(relaxed, active))
 
 
 def _animate_activation(output: Path, meta: dict[str, Any], scene: Any) -> None:
-    """Keyframe each muscle's colour from relaxed rose to active red."""
+    """Keyframe each muscle's colour from its activation."""
     import bpy
     import numpy as np
 
     path = output / "muscles.npz"
-    if not path.exists():
+    if meta.get("muscle_color", "activation") != "activation" or not path.exists():
         return
+    paths = meta.get("muscles") == "paths"
     activation = np.load(path)["activation"]  # (samples, muscles)
     times = np.arange(len(activation)) * meta["dt"]
-    for m, name in enumerate(meta["muscle_objects"]):
-        obj = bpy.data.objects.get(name)
-        if obj is None:
-            continue
+    for m, key in enumerate(meta["muscle_objects"]):
+        objects = [o for o in bpy.data.objects if o.type == "MESH" and key in o.name]
         keyed = None
         for frame in range(scene.frame_start, scene.frame_end + 1):
             a = float(np.interp(frame / meta["fps"], times, activation[:, m]))
             if keyed is not None and abs(a - keyed) < 0.03 and frame != scene.frame_end:
                 continue
-            obj.color = tuple(
-                r + (q - r) * a for r, q in zip(MUSCLE_RELAXED, MUSCLE_ACTIVE)
-            )
-            obj.keyframe_insert("color", frame=frame)
+            for obj in objects:
+                obj.color = _muscle_colour(a, paths)
+                obj.keyframe_insert("color", frame=frame)
             keyed = a
 
 
@@ -568,7 +593,11 @@ def build_blender_scene(output: Path) -> None:
         if "_tendon" in obj.name or obj.name.startswith("Muscle_"):
             obj.data.materials.clear()
             obj.data.materials.append(muscle)
-            obj.color = MUSCLE_RELAXED
+            obj.color = (
+                MUSCLE_UNIFORM
+                if meta.get("muscle_color") == "uniform"
+                else _muscle_colour(0.0, meta.get("muscles") == "paths")
+            )
         elif any(name in obj.name for name in bones):
             obj.data.materials.clear()
             obj.data.materials.append(bone)
@@ -760,6 +789,12 @@ def main(argv: list[str] | None = None) -> None:
         help="Volume-scaled muscle bellies, or MuJoCo's thin tendon paths.",
     )
     parser.add_argument(
+        "--muscle-color",
+        choices=["activation", "uniform"],
+        default="activation",
+        help="Tint muscles by activation (MuJoCo colours on paths), or one colour.",
+    )
+    parser.add_argument(
         "--muscle-scale", type=float, default=1.0, help="Muscle radius multiplier."
     )
     parser.add_argument(
@@ -782,6 +817,7 @@ def main(argv: list[str] | None = None) -> None:
             resolution=tuple(args.resolution),
             preview=args.preview,
             muscles=args.muscles,
+            muscle_color=args.muscle_color,
             muscle_scale=args.muscle_scale,
             scene=args.scene,
             samples=args.samples,

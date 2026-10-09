@@ -49,6 +49,17 @@ Random-action frames rendered with Blender 5.2 at 64 samples.
        held in place). Without a policy, the muscle colour here is a visual
        proxy: a muscle shows as active while it shortens.
 
+.. list-table::
+   :widths: 60 40
+
+   * - .. image:: images/blender/hand_paths.webp
+     - .. image:: images/blender/fullbody.jpg
+   * - ``--muscles paths --muscle-color activation``: MuJoCo's thin muscle paths
+       with the colours of MyoSuite's MuJoCo viewer, near black at rest and red
+       when active.
+     - ``myoMimicFullbody-v0`` (354 muscles), a still with
+       ``--muscle-color uniform``.
+
 Animations: 2-2.4 s at 30 fps, 720x540 and 40-48 samples, rendered with Blender 5.2.
 
 Install Blender separately and add the USD exporter dependencies to your
@@ -109,8 +120,11 @@ visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
 
   ``--muscle-scale`` multiplies all radii. ``--muscles paths`` keeps MuJoCo's
   thin tendon paths instead.
-- **Activation colour.** Muscles shade from a relaxed rose to a deep red as
-  their activation rises.
+- **Muscle colour** (``--muscle-color``). ``activation`` (default) tints each
+  muscle by its activation: volumetric muscles from a relaxed rose to a deep
+  red, and ``--muscles paths`` with the colours of MyoSuite's MuJoCo viewer
+  (activation to the power 0.25, from near black to red). ``uniform`` keeps one
+  anatomical red, for still renders.
 - **Materials.** Bones (meshes in a kinematic tree that holds muscle
   attachments) get a waxy ivory shader. Muscles get a glossy, translucent one.
   Task objects keep their MuJoCo colours.

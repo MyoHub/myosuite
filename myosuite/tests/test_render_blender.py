@@ -119,6 +119,40 @@ def test_export_preserves_metres_timing_motion_and_valid_names(
     assert np.load(tmp_path / "muscles.npz")["activation"].shape == (5, 1)
 
 
+def test_path_mode_colours_mujoco_segments_by_activation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Thin paths keep MuJoCo's segments and still record each muscle's activation."""
+    pytest.importorskip("pxr")
+    from dataclasses import replace
+
+    from pxr import Usd
+
+    import myosuite
+
+    env = _Env()
+    monkeypatch.setattr(myosuite, "make_env", lambda _id: env)
+    meta = blender_render.export_rollout(replace(_config(tmp_path), muscles="paths"))
+    tendon = env.model.tendon("test-path").id
+    assert meta["muscle_objects"] == [f"_id{tendon}_tendon"]
+    assert meta["replaced_tendons"] == []
+    assert np.load(tmp_path / "muscles.npz")["activation"].shape == (5, 1)
+    assert not Usd.Stage.Open(meta["usd"]).GetPrimAtPath("/World/Muscles").IsValid()
+
+
+def test_muscle_colours_follow_the_mujoco_viewer_on_paths() -> None:
+    """Paths blend near-black to red with activation ** 0.25; uniform is validated."""
+    colour = blender_render._muscle_colour
+    np.testing.assert_allclose(colour(0.0, paths=True), blender_render.PATH_RELAXED)
+    np.testing.assert_allclose(colour(1.0, paths=True), blender_render.PATH_ACTIVE)
+    halfway = (np.add(blender_render.PATH_RELAXED, blender_render.PATH_ACTIVE)) / 2
+    np.testing.assert_allclose(colour(0.5**4, paths=True), halfway)
+    np.testing.assert_allclose(colour(1.0, paths=False), blender_render.MUSCLE_ACTIVE)
+    RenderConfig(env="x", output=Path("o"), muscle_color="uniform")
+    with pytest.raises(ValueError, match="colour"):
+        RenderConfig(env="x", output=Path("o"), muscle_color="rainbow")
+
+
 def test_muscle_tube_keeps_its_volume_as_the_path_shortens() -> None:
     """Shortening a path thickens the belly; the enclosed volume is unchanged."""
     profile = muscle_tubes.radius_profile(0.5)
