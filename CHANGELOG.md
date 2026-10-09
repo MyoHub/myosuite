@@ -11,6 +11,8 @@ All notable changes to this project are documented in this file.
   (`heading_dir=(0, -1)`, 1.0 m/s) walking forwards. Forward is now `(0, -1)` at 1.0 m/s and Backward `(0, 1)` at
   1.2 m/s; the baseline checkpoints moved with their task definitions (`docs/baseline_checkpoints.md`).
   `myoLegDirectionalRandom-v0` is unchanged.
+* Baseline downloads look for the patch-release tag first (`v3.0.1`), then the minor-release tag (`v3.0`), then
+  `main`, so a patch release can ship changed baselines without changing those of earlier releases.
 
 ## [3.0.0] - unreleased
 
