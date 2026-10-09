@@ -55,8 +55,8 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 | myoHandPoseRandom-v0         | `model_24999.pt` | 35.9%                         |
 | myoHandReachFixed-v0         | `model_97.pt`    | 100.0%                        |
 | myoHandReachRandom-v0        | `model_1912.pt`  | 96.9%                         |
-| myoLegDirectionalBackward-v0 | `model_583.pt`   | 96.9%                         |
-| myoLegDirectionalForward-v0  | `model_681.pt`   | 100.0%                        |
+| myoLegDirectionalBackward-v0 | `model_681.pt`   | 100.0%²                       |
+| myoLegDirectionalForward-v0  | `model_583.pt`   | 96.9%²                        |
 | myoLegDirectionalRandom-v0   | `model_2000.pt`  | 53.8%                         |
 | myoLegHillyTerrainWalk-v0    | `model_4999.pt`  | 26.6%                         |
 | myoLegRoughTerrainWalk-v0    | `model_4176.pt`  | 91.0%¹                        |
@@ -67,6 +67,10 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 | myoTorsoPoseFixed-v0         | `model_103.pt`   | 100.0%                        |
 
 ¹ Resumed on MyoSuite 3.0.0 from a run trained with mjlab 1.3.
+
+² `myoLegDirectionalForward-v0` and `myoLegDirectionalBackward-v0` swapped names after 3.0.0: the model faces `-y`, so the task that
+walks along `-y` is now the forward one. Each checkpoint moved with its task definition; a checkpoint downloaded under the old
+name walks in the opposite direction of the new one.
 
 ---
 
@@ -134,6 +138,6 @@ CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and
 
 <sub>
 
-**Manifests and releases.** Every `checkpoints/<env_id>/` folder on the Hugging Face repo has a `manifest.json` with the env id, a hash of the env contract (observation and action shapes, control step), the MyoSuite version and commit, and the success rate above. When a downloaded checkpoint is used, MyoSuite compares that hash with the current env and warns if they differ, because the policy may then not work. The repo is tagged per release (`v3.0`, `v3.1`, ...); `download_baseline_checkpoint` (one env) and `download_baseline_file` (a single file, such as the MuscleMimic policy) take the tag of your installed version (`MYOSUITE_BASELINES_REVISION` or the `revision` argument override it) and fall back to `main` when the tag does not exist; they print the revision they used. Write the manifests of a baselines checkout with `python scripts/write_checkpoint_manifests.py <dir>`.
+**Manifests and releases.** Every `checkpoints/<env_id>/` folder on the Hugging Face repo has a `manifest.json` with the env id, a hash of the env contract (observation and action shapes, control step), the MyoSuite version and commit, and the success rate above. When a downloaded checkpoint is used, MyoSuite compares that hash with the current env and warns if they differ, because the policy may then not work. The repo is tagged per release (`v3.0`, `v3.1`, ...), and per patch release where baselines changed (`v3.0.1`); `download_baseline_checkpoint` (one env) and `download_baseline_file` (a single file, such as the MuscleMimic policy) take the tag of your installed version, the patch tag first (`v3.0.1`, then `v3.0`; `MYOSUITE_BASELINES_REVISION` or the `revision` argument override it), and fall back to `main` when no tag exists; they print the revision they used. Write the manifests of a baselines checkout with `python scripts/write_checkpoint_manifests.py <dir>`.
 
 </sub>
