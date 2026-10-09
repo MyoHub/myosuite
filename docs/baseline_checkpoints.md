@@ -55,8 +55,8 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 | myoHandPoseRandom-v0         | `model_24999.pt` | 35.9%                         |
 | myoHandReachFixed-v0         | `model_97.pt`    | 100.0%                        |
 | myoHandReachRandom-v0        | `model_1912.pt`  | 96.9%                         |
-| myoLegDirectionalBackward-v0 | `model_583.pt`   | 96.9%                         |
-| myoLegDirectionalForward-v0  | `model_681.pt`   | 100.0%                        |
+| myoLegDirectionalBackward-v0 | `model_681.pt`   | 100.0%²                       |
+| myoLegDirectionalForward-v0  | `model_583.pt`   | 96.9%²                        |
 | myoLegDirectionalRandom-v0   | `model_2000.pt`  | 53.8%                         |
 | myoLegHillyTerrainWalk-v0    | `model_4999.pt`  | 26.6%                         |
 | myoLegRoughTerrainWalk-v0    | `model_3715.pt`  | 89.1%                         |
@@ -65,6 +65,10 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 | myoLegWalk-v0                | `model_1355.pt`  | 100.0%                        |
 | myoTorsoExoPoseFixed-v0      | `model_188.pt`   | 100.0%                        |
 | myoTorsoPoseFixed-v0         | `model_103.pt`   | 100.0%                        |
+
+² `myoLegDirectionalForward-v0` and `myoLegDirectionalBackward-v0` swapped names after 3.0.0: the model faces `-y`, so the task that
+walks along `-y` is now the forward one. Each checkpoint moved with its task definition; a checkpoint downloaded under the old
+name walks in the opposite direction of the new one.
 
 ---
 
