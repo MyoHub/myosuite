@@ -25,22 +25,48 @@ versions require verification.
 
 Use ``--preview`` for one frame, ``--export-only`` to export without Blender,
 ``--fps`` to select the video rate, and ``--resolution WIDTH HEIGHT`` for image
-size. Use a new output directory for each run. Recording stops at episode
+size, and ``--samples`` for Cycles samples per frame (default 64). Use a new
+output directory for each run. Recording stops at episode
 termination, even when ``--seconds`` requests a longer clip.
 
 The output contains ``video.mp4`` (or ``preview.png``), ``scene.blend``, the
 ``usd/`` animation and textures, ``render.json`` settings and visibility, and
-``reference.npz`` with recorded state for verification. Keep the whole output
+``reference.npz`` with recorded state for verification, and ``muscles.npz``
+with muscle activations. Keep the whole output
 folder together: Blender cache paths are relative and images are packed.
 
-Bones and task geometry retain their imported appearance; tendon paths get a
-red material. Collidable world geometry, such as goals and arena fences, stays
+Look
+----
+
+The default look follows anatomical illustration, after the volumetric muscle
+visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
+
+- **Volumetric muscles** (``--muscles volumetric``). Each tendon-driven muscle
+  becomes a tube along its MuJoCo path, with a fusiform belly over 80% of the
+  path and tendons at 0.3 of the belly radius. Its volume is
+  ``F_max / 300 kPa * L0``, where ``L0`` is the optimal fibre length clamped to
+  5-80% of the path. Bellies are capped at a radius of 10% of the path length.
+  The volume stays constant during the episode, so a shortening muscle
+  thickens. ``--muscle-scale`` multiplies all radii.
+  ``--muscles paths`` keeps MuJoCo's thin tendon paths instead.
+- **Activation colour.** Muscles shade from a relaxed rose to a deep red as
+  their activation rises.
+- **Materials.** Bones (meshes in a kinematic tree that holds muscle
+  attachments) get a waxy ivory shader. Muscles get a glossy, translucent one.
+  Task objects keep their MuJoCo colours.
+- **Studio** (``--scene studio``). A seamless backdrop (cyclorama) replaces the
+  task's floor planes. The scene uses warm key, cool fill and rim area
+  lights, and an 85 mm perspective camera. Use ``--scene mujoco`` to keep the
+  task's own floor, for example a soccer pitch or an arena.
+
+Collidable world geometry, such as goals and arena fences, stays
 visible; visual-only world meshes (room shells and wall props, with
 ``contype`` and ``conaffinity`` 0) are hidden because the studio replaces them.
 Static world geometry is excluded from camera fitting. Camera fitting
 samples three poses with a margin; check longer clips for framing before final use.
 
-This is a small rendering bridge, not a skin or anatomical-muscle generator.
+Muscle volumes are a visual estimate, not a fitted anatomical shape, and
+muscle tubes may intersect bones and each other.
 Skin/flex models and variable timesteps are rejected. Changes to primitive
 geometry during an episode are not supported. Output duration rounds up to
 one video frame. A CPU rollout of a GPU-trained policy requires a compatible

@@ -13,6 +13,162 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Volumetric muscles, after MuSkeMo's visualiser (van Bijlert et al.): volume
+# F_max / specific tension * optimal fibre length, a fusiform belly over most of
+# the path and thin tendons at both ends.
+SPECIFIC_TENSION = 3e5  # N/m^2
+BELLY_FRACTION = 0.8
+TENDON_RADIUS_RATIO = 0.3
+BELLY_BIAS = -0.1  # negative shifts the belly towards the origin
+PATH_POINTS = 24
+RING_POINTS = 12
+
+
+def muscle_volumes(model: Any, path_lengths: Any) -> Any:
+    """Muscle volumes (m^3) of the tendon-driven muscle actuators.
+
+    Args:
+        model: Compiled ``MjModel``.
+        path_lengths: Current tendon length of each muscle (m), used to clamp the
+            optimal fibre length to a plausible fraction of its path.
+
+    Returns:
+        Array of volumes, one per entry of :func:`muscle_actuators`.
+    """
+    import numpy as np
+
+    act = muscle_actuators(model)
+    gain = model.actuator_gainprm[act]
+    # A negative force means MuJoCo derives F_max as scale / acc0.
+    force = np.where(
+        gain[:, 2] > 0,
+        gain[:, 2],
+        gain[:, 3] / np.maximum(model.actuator_acc0[act], 1e-10),
+    )
+    lrange = model.actuator_lengthrange[act]
+    l0 = (lrange[:, 1] - lrange[:, 0]) / np.maximum(gain[:, 1] - gain[:, 0], 1e-6)
+    l0 = np.clip(l0, 0.05 * path_lengths, BELLY_FRACTION * path_lengths)
+    return force / SPECIFIC_TENSION * l0
+
+
+def muscle_actuators(model: Any) -> Any:
+    """Indices of muscle actuators that act through a spatial tendon."""
+    import mujoco
+    import numpy as np
+
+    return np.array(
+        [
+            a
+            for a in range(model.nu)
+            if model.actuator_gaintype[a] == mujoco.mjtGain.mjGAIN_MUSCLE
+            and model.actuator_trntype[a] == mujoco.mjtTrn.mjTRN_TENDON
+            and model.tendon_num[model.actuator_trnid[a, 0]] > 1
+            and model.wrap_type[model.tendon_adr[model.actuator_trnid[a, 0]]]
+            == mujoco.mjtWrap.mjWRAP_SITE
+        ],
+        dtype=int,
+    )
+
+
+def resample_path(points: Any, count: int = PATH_POINTS) -> tuple[Any, float]:
+    """Resample a tendon polyline to *count* points evenly spaced by arc length."""
+    import numpy as np
+
+    seg = np.linalg.norm(np.diff(points, axis=0), axis=1)
+    arc = np.concatenate([[0.0], np.cumsum(seg)])
+    target = np.linspace(0.0, arc[-1], count)
+    return np.stack([np.interp(target, arc, points[:, i]) for i in range(3)], 1), arc[
+        -1
+    ]
+
+
+def radius_profile(count: int = PATH_POINTS) -> Any:
+    """Relative radius along the path: tendon, fusiform belly, tendon (peak 1)."""
+    import numpy as np
+
+    s = np.linspace(0.0, 1.0, count)
+    start = (1 - BELLY_FRACTION) / 2 * (1 + 2 * BELLY_BIAS)
+    u = np.clip((s - start) / BELLY_FRACTION, 0.0, 1.0)
+    return TENDON_RADIUS_RATIO + (1 - TENDON_RADIUS_RATIO) * np.sin(np.pi * u)
+
+
+def belly_radius(volume: Any, length: Any, profile: Any) -> Any:
+    """Peak radius so that the tube along *length* encloses *volume*."""
+    import numpy as np
+
+    squared = profile**2
+    mean_square = float(((squared[:-1] + squared[1:]) / 2).mean())
+    return np.sqrt(volume / (np.pi * np.maximum(length, 1e-6) * mean_square))
+
+
+def belly_volume(radius: Any, length: Any, profile: Any) -> Any:
+    """Inverse of :func:`belly_radius`: volume of the tube with peak *radius*."""
+    squared = profile**2
+    return (
+        3.141592653589793
+        * radius**2
+        * length
+        * float(((squared[:-1] + squared[1:]) / 2).mean())
+    )
+
+
+def tube_mesh(centres: Any, radii: Any) -> tuple[Any, Any, Any]:
+    """Vertices of capped tubes around centrelines, with a twist-free frame.
+
+    Args:
+        centres: ``(..., N, 3)`` centreline points.
+        radii: ``(..., N)`` radii.
+
+    Returns:
+        ``(points, face_counts, face_indices)``; points are ``(..., N*K + 2, 3)``,
+        the topology is shared by every leading index.
+    """
+    import numpy as np
+
+    n, k = centres.shape[-2], RING_POINTS
+    tangent = np.gradient(centres, axis=-2)
+    tangent /= np.maximum(np.linalg.norm(tangent, axis=-1, keepdims=True), 1e-12)
+    # Parallel transport of a normal along the path avoids twisting the rings.
+    ref = np.where(
+        np.abs(tangent[..., :1, 2:3]) < 0.9, [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]
+    )
+    normals = [
+        np.cross(np.cross(tangent[..., 0, :], ref[..., 0, :]), tangent[..., 0, :])
+    ]
+    for i in range(1, n):
+        v = (
+            normals[-1]
+            - (normals[-1] * tangent[..., i, :]).sum(-1, keepdims=True)
+            * tangent[..., i, :]
+        )
+        normals.append(v)
+    normal = np.stack(normals, -2)
+    normal /= np.maximum(np.linalg.norm(normal, axis=-1, keepdims=True), 1e-12)
+    binormal = np.cross(tangent, normal)
+    angle = np.linspace(0, 2 * np.pi, k, endpoint=False)
+    ring = (
+        np.cos(angle)[:, None] * normal[..., None, :]
+        + np.sin(angle)[:, None] * binormal[..., None, :]
+    )
+    rings = centres[..., None, :] + radii[..., None, None] * ring  # (..., N, K, 3)
+    points = np.concatenate(
+        [
+            rings.reshape(*rings.shape[:-3], n * k, 3),
+            centres[..., :1, :],
+            centres[..., -1:, :],
+        ],
+        -2,
+    )
+    faces = [
+        [i * k + j, i * k + (j + 1) % k, (i + 1) * k + (j + 1) % k, (i + 1) * k + j]
+        for i in range(n - 1)
+        for j in range(k)
+    ]
+    first, last = n * k, n * k + 1
+    faces += [[first, (j + 1) % k, j] for j in range(k)]
+    faces += [[last, (n - 1) * k + j, (n - 1) * k + (j + 1) % k] for j in range(k)]
+    return points, np.array([len(f) for f in faces]), np.concatenate(faces)
+
 
 def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
     """Export one episode, preserving its control-step timing and task geometry."""
@@ -83,7 +239,9 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
         option.geomgroup[:3] = 1
         option.sitegroup[:] = 0
         option.tendongroup[:] = 1
-        times, positions, rotations, qposes = [], [], [], []
+        muscles = muscle_actuators(model) if args.muscles == "volumetric" else []
+        muscle_tendons = model.actuator_trnid[muscles, 0] if len(muscles) else []
+        times, positions, rotations, qposes, paths, activations = [], [], [], [], [], []
         low, high = np.full(3, np.inf), np.full(3, -np.inf)
         start = float(data.time)
         done = False
@@ -94,6 +252,20 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
             positions.append(data.geom_xpos.copy())
             rotations.append(data.geom_xmat.copy())
             qposes.append(data.qpos.copy())
+            # wrap_xpos holds two points per row; ten_wrapadr indexes the points.
+            wrap_points = data.wrap_xpos.reshape(-1, 3)
+            paths.append(
+                [
+                    wrap_points[a : a + n].copy()
+                    for a, n in zip(
+                        data.ten_wrapadr[muscle_tendons],
+                        data.ten_wrapnum[muscle_tendons],
+                    )
+                ]
+            )
+            activations.append(
+                data.act[model.actuator_actadr[muscles]].copy() if len(muscles) else []
+            )
             for geom in exporter.scene.geoms[: exporter.scene.ngeom]:
                 if geom.type != mujoco.mjtGeom.mjGEOM_PLANE and not (
                     geom.objtype == mujoco.mjtObj.mjOBJ_GEOM
@@ -126,6 +298,14 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
         usd = out / "usd" / "frames" / f"frame_{exporter.frame_count}.usdc"
         stage = Usd.Stage.Open(str(usd))
         stage.SetEndTimeCode(len(times) - 1)
+        muscle_names = []
+        if len(muscles):
+            muscle_names = _write_muscle_tubes(
+                stage, model, muscles, paths, args.muscle_scale
+            )
+            np.savez_compressed(
+                out / "muscles.npz", activation=np.asarray(activations, np.float32)
+            )
         stage.GetRootLayer().Save()
         np.savez_compressed(
             out / "reference.npz",
@@ -134,6 +314,7 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
             geom_xmat=rotations,
             qpos=qposes,
         )
+        anatomy = _anatomy_bodies(model)
         meta = {
             "env": args.env,
             "seed": args.seed,
@@ -151,6 +332,31 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
                 name for name in exporter.geom_names if "_tendon" in name
             ),
             "mujoco_version": mujoco.__version__,
+            "scene": args.scene,
+            "samples_per_frame": args.samples,
+            # Volumetric muscles replace the exporter's thin tendon segments.
+            "muscle_objects": muscle_names,
+            "replaced_tendons": [f"_id{t}_tendon" for t in muscle_tendons],
+            "bone_objects": [
+                exporter._get_geom_name(g)
+                for g in scene_geoms
+                if g.objtype == mujoco.mjtObj.mjOBJ_GEOM
+                and g.type == mujoco.mjtGeom.mjGEOM_MESH
+                and model.geom_bodyid[g.objid] in anatomy
+            ],
+            "plane_objects": [
+                exporter._get_geom_name(g)
+                for g in scene_geoms
+                if g.type == mujoco.mjtGeom.mjGEOM_PLANE
+            ],
+            "floor_height": max(
+                (
+                    float(g.pos[2])
+                    for g in scene_geoms
+                    if g.type == mujoco.mjtGeom.mjGEOM_PLANE
+                ),
+                default=None,
+            ),
             # Static world geometry: kept in the render, left out of camera fitting.
             "static_objects": [
                 exporter._get_geom_name(g) for g in scene_geoms if _is_static(g)
@@ -187,6 +393,140 @@ def export_rollout(args: argparse.Namespace) -> dict[str, Any]:
         env.close()
 
 
+def _anatomy_bodies(model: Any) -> set[int]:
+    """Bodies in any kinematic tree that holds muscle-path sites.
+
+    Their meshes are bones; free task objects (dice, balls, paddles) form trees
+    of their own and keep their colours.
+    """
+    import mujoco
+
+    def root(body: int) -> int:
+        while model.body_parentid[body] != 0:
+            body = int(model.body_parentid[body])
+        return body
+
+    roots = {
+        root(int(model.site_bodyid[model.wrap_objid[w]]))
+        for w in range(model.nwrap)
+        if model.wrap_type[w] == mujoco.mjtWrap.mjWRAP_SITE
+    }
+    return {b for b in range(1, model.nbody) if root(b) in roots}
+
+
+def _write_muscle_tubes(
+    stage: Any, model: Any, muscles: Any, paths: list, scale: float
+) -> list[str]:
+    """Add one animated, volume-preserving tube mesh per muscle to *stage*."""
+    import numpy as np
+    from pxr import Gf, Tf, UsdGeom, Vt
+
+    resampled = [[resample_path(p) for p in frame] for frame in paths]
+    centres = np.array([[c for c, _ in frame] for frame in resampled])  # (T, M, N, 3)
+    lengths = np.array([[n for _, n in frame] for frame in resampled])  # (T, M)
+    profile = radius_profile()
+    volume = muscle_volumes(model, lengths[0])
+    # Cap the slenderness once, at the first frame, so each volume stays constant.
+    cap = np.minimum(belly_radius(volume, lengths[0], profile), 0.1 * lengths[0])
+    volume = np.minimum(volume, belly_volume(cap, lengths[0], profile))
+    peak = belly_radius(volume, lengths, profile) * scale
+    points, counts, indices = tube_mesh(centres, peak[..., None] * profile)
+    UsdGeom.Xform.Define(stage, "/World/Muscles")
+    names = []
+    for m, actuator in enumerate(muscles):
+        name = Tf.MakeValidIdentifier(f"Muscle_{model.actuator(actuator).name}")
+        mesh = UsdGeom.Mesh.Define(stage, f"/World/Muscles/{name}")
+        mesh.CreateFaceVertexCountsAttr(Vt.IntArray(counts.tolist()))
+        mesh.CreateFaceVertexIndicesAttr(Vt.IntArray(indices.tolist()))
+        mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
+        mesh.CreateDisplayColorAttr([Gf.Vec3f(0.6, 0.08, 0.08)])
+        attr = mesh.CreatePointsAttr()
+        for frame in range(points.shape[0]):
+            attr.Set(
+                Vt.Vec3fArray.FromNumpy(points[frame, m].astype(np.float32)), frame
+            )
+        names.append(name)
+    return names
+
+
+# Warm key, cool fill and a rim light that separates the figure from the backdrop:
+# (name, offset from the subject in camera right/forward/up spans, W/m^2, colour).
+STUDIO_LIGHTS = [
+    ("Key", (-1.1, -1.0, 1.4), 60, (1.0, 0.92, 0.82)),
+    ("Fill", (1.4, -1.2, 0.3), 14, (0.82, 0.9, 1.0)),
+    ("Rim", (0.5, 1.4, 1.2), 70, (1.0, 1.0, 1.0)),
+]
+EXPOSURE = 0.0
+BACKDROP = (0.16, 0.16, 0.17, 1.0)
+MUSCLE_RELAXED = (0.50, 0.16, 0.15, 1.0)
+MUSCLE_ACTIVE = (0.62, 0.012, 0.02, 1.0)
+
+
+def _animate_activation(output: Path, meta: dict[str, Any], scene: Any) -> None:
+    """Keyframe each muscle's colour from relaxed rose to active red."""
+    import bpy
+    import numpy as np
+
+    path = output / "muscles.npz"
+    if not path.exists():
+        return
+    activation = np.load(path)["activation"]  # (samples, muscles)
+    times = np.arange(len(activation)) * meta["dt"]
+    for m, name in enumerate(meta["muscle_objects"]):
+        obj = bpy.data.objects.get(name)
+        if obj is None:
+            continue
+        keyed = None
+        for frame in range(scene.frame_start, scene.frame_end + 1):
+            a = float(np.interp(frame / meta["fps"], times, activation[:, m]))
+            if keyed is not None and abs(a - keyed) < 0.03 and frame != scene.frame_end:
+                continue
+            obj.color = tuple(
+                r + (q - r) * a for r, q in zip(MUSCLE_RELAXED, MUSCLE_ACTIVE)
+            )
+            obj.keyframe_insert("color", frame=frame)
+            keyed = a
+
+
+def _add_cyclorama(
+    bpy: Any, center: Any, forward: Any, floor_z: float, span: float, mat: Any
+) -> None:
+    """Seamless studio backdrop: floor curving up into a wall behind the subject."""
+    import math as _math
+
+    from mathutils import Vector
+
+    toward = Vector((-forward.x, -forward.y, 0)).normalized()
+    side = Vector((0, 0, 1)).cross(toward)
+    back, radius, height, front, width = (
+        1.6 * span,
+        span,
+        30 * span,
+        30 * span,
+        80 * span,
+    )
+    profile = [(front, 0.0), (-back + radius, 0.0)]
+    profile += [
+        (-back + radius - radius * _math.sin(t), radius - radius * _math.cos(t))
+        for t in [i / 12 * _math.pi / 2 for i in range(1, 13)]
+    ]
+    profile.append((-back, height))
+    origin = Vector((center.x, center.y, floor_z))
+    verts = [
+        origin + side * x + toward * y + Vector((0, 0, z))
+        for y, z in profile
+        for x in (-width / 2, width / 2)
+    ]
+    faces = [(2 * i, 2 * i + 1, 2 * i + 3, 2 * i + 2) for i in range(len(profile) - 1)]
+    mesh = bpy.data.meshes.new("Cyclorama")
+    mesh.from_pydata([tuple(v) for v in verts], [], faces)
+    for polygon in mesh.polygons:
+        polygon.use_smooth = True
+    mesh.materials.append(mat)
+    obj = bpy.data.objects.new("Cyclorama", mesh)
+    bpy.context.scene.collection.objects.link(obj)
+
+
 def build_blender_scene(output: Path) -> None:
     """Import the exported animation and render a fixed studio composition."""
     import bpy
@@ -220,7 +560,7 @@ def build_blender_scene(output: Path) -> None:
     scene.frame_start = 0
     scene.frame_end = max(0, math.ceil(meta["duration"] * meta["fps"] - 1e-9) - 1)
     scene.render.engine = "CYCLES"
-    scene.cycles.samples = 16 if meta["preview"] else 32
+    scene.cycles.samples = meta.get("samples_per_frame", 64)
     scene.cycles.use_denoising = True
     scene.render.resolution_x, scene.render.resolution_y = meta["resolution"]
     scene.render.resolution_percentage = 100
@@ -228,38 +568,79 @@ def build_blender_scene(output: Path) -> None:
     bpy.context.preferences.filepaths.save_version = 0
     scene.render.image_settings.file_format = "PNG"
     scene.view_settings.view_transform = "AgX"
-    scene.view_settings.exposure = -0.6
+    scene.view_settings.exposure = EXPOSURE
+    for look in ("AgX - Medium High Contrast", "Medium High Contrast"):
+        try:
+            scene.view_settings.look = look
+            break
+        except TypeError:
+            continue
     scene.world = bpy.data.worlds.new("Studio")
     scene.world.use_nodes = True
-    scene.world.node_tree.nodes["Background"].inputs[0].default_value = (
-        0.22,
-        0.24,
-        0.28,
-        1,
-    )
-    scene.world.node_tree.nodes["Background"].inputs[1].default_value = 0.35
+    background = scene.world.node_tree.nodes["Background"]
+    background.inputs[0].default_value = (0.42, 0.43, 0.45, 1)
+    background.inputs[1].default_value = 0.25
 
-    def material(name: str, color: tuple[float, ...], roughness: float) -> Any:
+    def material(
+        name: str, color: tuple[float, ...], roughness: float, **inputs: Any
+    ) -> Any:
         mat = bpy.data.materials.new(name)
         mat.diffuse_color = color
         mat.use_nodes = True
         shader = mat.node_tree.nodes.get("Principled BSDF")
         shader.inputs["Base Color"].default_value = color
         shader.inputs["Roughness"].default_value = roughness
+        for key, value in inputs.items():
+            socket = shader.inputs.get(key.replace("_", " "))
+            if socket is not None:  # input names differ across Blender versions
+                socket.default_value = value
         return mat
 
-    scenery = meta.get("scenery_objects", [])
+    # Waxy ivory bone and glossy, translucent muscle, as in anatomical renders.
+    bone = material(
+        "Bone",
+        (0.80, 0.73, 0.60, 1),
+        0.45,
+        Subsurface_Weight=0.2,
+        Subsurface_Radius=(1.0, 0.7, 0.45),
+        Subsurface_Scale=0.004,
+        Coat_Weight=0.15,
+    )
+    muscle = material(
+        "Muscle",
+        MUSCLE_RELAXED,
+        0.32,
+        Subsurface_Weight=0.3,
+        Subsurface_Radius=(1.0, 0.25, 0.15),
+        Subsurface_Scale=0.006,
+        Coat_Weight=0.4,
+        Coat_Roughness=0.12,
+    )
+    # Per-object colour drives the muscle tint, so one material shows activation.
+    nodes, links = muscle.node_tree.nodes, muscle.node_tree.links
+    info = nodes.new("ShaderNodeObjectInfo")
+    links.new(info.outputs["Color"], nodes["Principled BSDF"].inputs["Base Color"])
+
+    hidden = meta.get("scenery_objects", []) + meta.get("replaced_tendons", [])
+    if meta.get("scene", "studio") == "studio":
+        hidden += meta.get("plane_objects", [])
+    bones = meta.get("bone_objects", [])
     for obj in scene.objects:
-        if any(name in obj.name for name in scenery):
+        if any(name in obj.name for name in hidden):
             obj.hide_render = True
-    tendon = material("Muscle paths", (0.42, 0.025, 0.04, 1), 0.4)
-    for obj in bpy.context.scene.objects:
-        if obj.type == "MESH":
-            for polygon in obj.data.polygons:
-                polygon.use_smooth = True
-            if "_tendon" in obj.name:
-                obj.data.materials.clear()
-                obj.data.materials.append(tendon)
+        if obj.type != "MESH":
+            continue
+        for polygon in obj.data.polygons:
+            polygon.use_smooth = True
+        if "_tendon" in obj.name or obj.name.startswith("Muscle_"):
+            obj.data.materials.clear()
+            obj.data.materials.append(muscle)
+            obj.color = MUSCLE_RELAXED
+        elif any(name in obj.name for name in bones):
+            obj.data.materials.clear()
+            obj.data.materials.append(bone)
+    _animate_activation(output, meta, scene)
+
     low, high = (Vector(v) for v in meta["bounds"])
     center = (low + high) / 2
     span = max((high - low).length, 0.3)
@@ -267,13 +648,14 @@ def build_blender_scene(output: Path) -> None:
     bpy.ops.object.camera_add()
     camera = bpy.context.object
     camera.name = "Studio camera"
-    camera.data.type = "ORTHO"
-    camera.data.ortho_scale = span * 1.15 / min(1, aspect)
-    camera.location = center + Vector((1.3, -1.7, 1.0)).normalized() * span * 3
+    camera.data.lens = 85
+    camera.data.sensor_width = 36
+    view = Vector((1.3, -1.7, 0.75)).normalized()
+    camera.location = center + view * span * 3
     camera.rotation_euler = (
         (center - camera.location).to_track_quat("-Z", "Y").to_euler()
     )
-    camera.data.clip_end = max(100, span * 20)
+    camera.data.clip_end = max(100, span * 40)
     scene.camera = camera
     anatomy = [
         o
@@ -292,36 +674,63 @@ def build_blender_scene(output: Path) -> None:
             for corner in o.bound_box
         )
     if view_points:
+        # Fit the perspective camera: distance so both extents fit with a margin.
         vlow = Vector(tuple(min(p[i] for p in view_points) for i in range(3)))
         vhigh = Vector(tuple(max(p[i] for p in view_points) for i in range(3)))
         target = rotation @ ((vlow + vhigh) / 2)
-        camera.location += target - center
-        camera.data.ortho_scale = (
-            max(vhigh.y - vlow.y, (vhigh.x - vlow.x) / aspect) * 1.2
+        half_tan = camera.data.sensor_width / 2 / camera.data.lens
+        tan_x, tan_y = (
+            (half_tan, half_tan / aspect)
+            if aspect >= 1
+            else (
+                half_tan * aspect,
+                half_tan,
+            )
         )
-    for name, direction, power in [
-        ("Key", (1, -1, 2), 500),
-        ("Fill", (-1, -0.5, 1), 200),
-        ("Rim", (0, 1, 1.5), 400),
-    ]:
-        bpy.ops.object.light_add(
-            type="AREA", location=center + Vector(direction) * span
+        distance = (
+            1.18 * max((vhigh.x - vlow.x) / 2 / tan_x, (vhigh.y - vlow.y) / 2 / tan_y)
+            + (vhigh.z - vlow.z) / 2
         )
+        camera.location = target + view * distance
+        center = target
+    forward = (center - camera.location).normalized()
+    right = forward.cross(Vector((0, 0, 1))).normalized()
+    for name, offset, power, color in STUDIO_LIGHTS:
+        location = (
+            center
+            + (right * offset[0] + forward * offset[1] + Vector((0, 0, offset[2])))
+            * span
+        )
+        bpy.ops.object.light_add(type="AREA", location=location)
         light = bpy.context.object
         light.name = name
         light.data.energy = power * span**2
+        light.data.color = color
         light.data.shape = "DISK"
-        light.data.size = span * 1.2
+        light.data.size = span * 1.1
         light.rotation_euler = (
             (center - light.location).to_track_quat("-Z", "Y").to_euler()
         )
-    bpy.ops.mesh.primitive_plane_add(
-        size=span * 200, location=(center.x, center.y, low.z - span * 0.01)
-    )
-    bpy.context.object.name = "Studio floor"
-    bpy.context.object.data.materials.append(
-        material("Floor", (0.12, 0.14, 0.17, 1), 0.85)
-    )
+    floor_z = meta.get("floor_height")
+    if floor_z is None:
+        floor_z = low.z - 0.01 * span
+    if meta.get("scene", "studio") == "studio":
+        _add_cyclorama(
+            bpy,
+            center,
+            forward,
+            floor_z,
+            span,
+            material("Backdrop", BACKDROP, 0.8),
+        )
+    else:
+        bpy.ops.mesh.primitive_plane_add(
+            size=span * 200, location=(center.x, center.y, floor_z - span * 0.01)
+        )
+        bpy.context.object.name = "Studio floor"
+        bpy.context.object.data.materials.append(
+            material("Floor", (0.12, 0.14, 0.17, 1), 0.85)
+        )
     scene.frame_set(scene.frame_start)
     scene.render.filepath = str(output / "frames" / "frame_")
     bpy.ops.file.pack_all()
@@ -355,6 +764,22 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--blender", default="blender")
     parser.add_argument("--preview", action="store_true")
+    parser.add_argument(
+        "--muscles",
+        choices=["volumetric", "paths"],
+        default="volumetric",
+        help="Volume-scaled muscle bellies, or MuJoCo's thin tendon paths.",
+    )
+    parser.add_argument(
+        "--muscle-scale", type=float, default=1.0, help="Muscle radius multiplier."
+    )
+    parser.add_argument(
+        "--scene",
+        choices=["studio", "mujoco"],
+        default="studio",
+        help="Studio backdrop, or keep the task's own floor (e.g. a soccer pitch).",
+    )
+    parser.add_argument("--samples", type=int, default=64, help="Cycles samples.")
     parser.add_argument("--export-only", action="store_true")
     args = parser.parse_args()
     if (
@@ -362,8 +787,10 @@ def main() -> None:
         or args.seconds <= 0
         or args.fps <= 0
         or min(args.resolution) <= 0
+        or args.samples <= 0
+        or not args.muscle_scale > 0
     ):
-        parser.error("Seconds, FPS and resolution must be positive.")
+        parser.error("Seconds, FPS, resolution, samples and scale must be positive.")
     if (args.output / "render.json").exists():
         parser.error("Choose a new output directory to avoid mixing runs.")
     meta = export_rollout(args)

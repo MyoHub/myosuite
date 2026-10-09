@@ -28,10 +28,11 @@ class _Env(gym.Env):
           <geom name="room" type="mesh" mesh="fixture" pos="0 0 3" contype="0" conaffinity="0"/>
           <body><joint name="slide" type="slide" axis="1 0 0"/>
             <geom name="moving-box" type="box" size=".1 .1 .1"/>
+            <geom name="bone" type="mesh" mesh="fixture" contype="0" conaffinity="0"/>
             <site name="anchor" pos="0 0 0"/>
           </body><site name="end" pos="0 1 0"/></worldbody>
           <tendon><spatial name="test-path"><site site="anchor"/><site site="end"/></spatial></tendon>
-          <actuator><motor joint="slide"/></actuator>
+          <actuator><motor joint="slide"/><muscle name="flexor" tendon="test-path" lengthrange="0.9 1.3" force="10"/></actuator>
         </mujoco>""")
         self.data = mujoco.MjData(self.model)
         self.action_space = gym.spaces.Box(-1.0, 1.0, (1,), dtype=np.float32)
@@ -64,6 +65,10 @@ def _args(output: Path, checkpoint: Path | None = None) -> argparse.Namespace:
         fps=50,
         resolution=[128, 128],
         preview=True,
+        muscles="volumetric",
+        muscle_scale=1.0,
+        scene="studio",
+        samples=16,
     )
 
 
@@ -108,6 +113,46 @@ def test_export_preserves_metres_timing_motion_and_valid_names(
     assert meta["scenery_objects"] == [room]
     assert meta["tendon_objects"]
     assert all("test_path" in name for name in meta["tendon_objects"])
+    bone_id = env.model.geom("bone").id
+    assert meta["bone_objects"] == [f"bone_id{bone_id}_geom"]
+    assert meta["muscle_objects"] == ["Muscle_flexor"]
+    tube = UsdGeom.Mesh(stage.GetPrimAtPath("/World/Muscles/Muscle_flexor"))
+    assert tube.GetPointsAttr().GetNumTimeSamples() == 5
+    assert np.load(tmp_path / "muscles.npz")["activation"].shape == (5, 1)
+
+
+def test_muscle_tube_keeps_its_volume_as_the_path_shortens() -> None:
+    """Shortening a path thickens the belly; the enclosed volume is unchanged."""
+    profile = render_blender.radius_profile()
+    assert profile.max() == pytest.approx(1.0, abs=1e-2)
+    assert profile[0] == pytest.approx(render_blender.TENDON_RADIUS_RATIO)
+    assert np.argmax(profile) < len(profile) // 2  # belly biased to the origin
+    lengths = np.array([0.3, 0.2])
+    radii = render_blender.belly_radius(4e-5, lengths, profile)
+    assert radii[1] > radii[0]
+    np.testing.assert_allclose(
+        render_blender.belly_volume(radii, lengths, profile), 4e-5, rtol=1e-9
+    )
+    for length, radius in zip(lengths, radii):
+        centre = np.zeros((len(profile), 3))
+        centre[:, 2] = np.linspace(0, length, len(profile))
+        points, counts, indices = render_blender.tube_mesh(centre, radius * profile)
+        assert counts.sum() == len(indices)
+        assert indices.max() == len(points) - 1
+        ring = points[:-2].reshape(len(profile), render_blender.RING_POINTS, 3)
+        np.testing.assert_allclose(
+            np.linalg.norm(ring[..., :2], axis=-1),
+            np.broadcast_to(radius * profile[:, None], ring.shape[:2]),
+            rtol=1e-6,
+        )
+
+
+def test_resample_path_is_even_in_arc_length() -> None:
+    """Wrap points of uneven spacing become evenly spaced centreline samples."""
+    path = np.array([[0, 0, 0], [0.1, 0, 0], [0.1, 0.3, 0.0]])
+    points, length = render_blender.resample_path(path, 9)
+    assert length == pytest.approx(0.4)
+    np.testing.assert_allclose(np.linalg.norm(np.diff(points, axis=0), axis=1), 0.05)
 
 
 def test_checkpoint_symlink_keeps_format_and_rejects_mismatch(
