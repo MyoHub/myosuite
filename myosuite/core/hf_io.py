@@ -45,7 +45,7 @@ def parse_hf_ref(path: str) -> HfRef:
     parts = raw.split("/")
     if len(parts) < 2:
         raise ValueError(
-            "hf:// path must include owner/repo, e.g. hf://amathislab/mm-10m-2"
+            "hf:// path must include owner/repo, e.g. hf://amathislab/mm-10m-3"
         )
     repo_id = "/".join(parts[:2])
     subpath = "/".join(parts[2:])

@@ -5,7 +5,7 @@
 
 """Collect (obs, action) pairs for BC-training a directional locomotion policy.
 
-Rolls the ``amathislab/mm-10m-2`` MuscleMimic teacher (via
+Rolls the ``amathislab/mm-10m-3`` MuscleMimic teacher (via
 :class:`~myosuite.integrations.musclemimic.fullbody_local_policy.LocalPolicyRunner`)
 through circular walking clips that continuously sweep every compass
 direction.  At each simulation step records:
@@ -132,7 +132,7 @@ def load_teacher_runner(
     seed: int = 0,
     frame_skip: int = 5,
 ) -> LocalPolicyRunner:
-    """Load the ``amathislab/mm-10m-2``-style teacher for local CPU rollout.
+    """Load the ``amathislab/mm-10m-3``-style teacher for local CPU rollout.
 
     Args:
         checkpoint_root: Local directory containing the downloaded Orbax

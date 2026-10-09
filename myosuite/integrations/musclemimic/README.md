@@ -126,7 +126,7 @@ uv run myosuite-musclemimic-setup-demo-cache
 
 cd /absolute/path/to/myosuite
 uv run myosuite-musclemimic-fullbody-eval \
-  --path hf://amathislab/mm-10m-2 \
+  --path hf://amathislab/mm-10m-3 \
   --motion_path KIT/314/walking_medium09_poses \
   --use_mujoco \
   --stochastic \
@@ -141,7 +141,7 @@ position at each frame. To disable:
 
 ```bash
 uv run myosuite-musclemimic-fullbody-eval \
-  --path hf://amathislab/mm-10m-2 \
+  --path hf://amathislab/mm-10m-3 \
   --motion_path KIT/314/walking_medium09_poses \
   --use_mujoco --mujoco_viewer --n_steps 1000 \
   --no_show_targets
@@ -151,7 +151,7 @@ uv run myosuite-musclemimic-fullbody-eval \
 
 ```bash
 uv run myosuite-musclemimic-fullbody-eval \
-  --path hf://amathislab/mm-10m-2 \
+  --path hf://amathislab/mm-10m-3 \
   --motion_path KIT/314/walking_medium09_poses \
   --use_mujoco --record --record_path walk_eval.mp4 --record_fps 100
 ```
@@ -231,11 +231,11 @@ uv run play myoMimicFullbody-v0 --wandb-run-path org/project/run-id
 
 ### ONNX policy on mjlab GPU env
 
-mm-10m-2 was trained on `musclemimic_models` 1.0.5: run it with
-`MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5` (see [Model release](#model-release)).
+mm-10m-3 was trained on `musclemimic_models` 1.0.6, the default. The older mm-10m-2 was trained on
+1.0.5: run it with `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5` (see [Model release](#model-release)).
 
 mjlab's `myoMimicFullbody-v0` env produces ~684-dim observations — too small
-for the mm-10m-2 model which expects 2418 dims.  `FullbodyOnnxMjlabPolicy`
+for the mm-10m-3 model which expects 2418 dims.  `FullbodyOnnxMjlabPolicy`
 (and `FullbodyOrbaxMjlabPolicy`) rebuild the checkpoint observation after each
 step from mjlab's batched sim data, on its device:
 
@@ -258,9 +258,9 @@ The CLI's `--onnx` option runs the CPU MuJoCo loop instead (no warp):
 ```bash
 uv run myosuite-musclemimic-fullbody-eval \
   --backend mjlab \
-  --path hf://amathislab/mm-10m-2 \
+  --path hf://amathislab/mm-10m-3 \
   --motion_path KIT/314/walking_medium09_poses \
-  --onnx mm-10m-2.onnx
+  --onnx mm-10m-3.onnx
 ```
 
 `--path` is optional but recommended — it provides the `goal_params` metadata
@@ -305,7 +305,7 @@ policy = FullbodyOnnxMjlabPolicy(
     env=env_wrapped,
     cpu_model=cpu_model,
     obs_adapter=obs_adapter,
-    onnx_path="mm-10m-2.onnx",
+    onnx_path="mm-10m-3.onnx",
     clip=clip,
 )
 
@@ -420,11 +420,11 @@ cross-backend playback, deployment, or regression testing.
 # Requires: orbax-checkpoint, torch (CPU-only is sufficient)
 uv run myosuite-export-onnx export \
   --framework orbax \
-  --checkpoint hf://amathislab/mm-10m-2 \
-  --output mm-10m-2.onnx
+  --checkpoint hf://amathislab/mm-10m-3 \
+  --output mm-10m-3.onnx
 ```
 
-This produces a single `mm-10m-2.onnx` file (~38 MB) with the following interface:
+This produces a single `mm-10m-3.onnx` file (~38 MB) with the following interface:
 
 | | Name | Shape | Dtype |
 |---|---|---|---|
@@ -440,7 +440,7 @@ observations directly.  Actions are clipped to `[-1, 1]`.
 import onnxruntime as ort
 import numpy as np
 
-sess = ort.InferenceSession("mm-10m-2.onnx", providers=["CPUExecutionProvider"])
+sess = ort.InferenceSession("mm-10m-3.onnx", providers=["CPUExecutionProvider"])
 
 obs = np.zeros((1, 2418), dtype=np.float32)   # your observation vector
 action = sess.run(["action"], {"obs": obs})[0]  # shape (1, 354)
@@ -456,22 +456,22 @@ inference time.
 
 ```bash
 uv run myosuite-musclemimic-fullbody-eval \
-  --path hf://amathislab/mm-10m-2 \
+  --path hf://amathislab/mm-10m-3 \
   --motion_path KIT/314/walking_medium09_poses \
   --use_mujoco --mujoco_viewer \
   --n_steps 1000 --eval_seed 0 \
-  --onnx mm-10m-2.onnx
+  --onnx mm-10m-3.onnx
 ```
 
 **Video recording (headless, works everywhere):**
 
 ```bash
 uv run myosuite-musclemimic-fullbody-eval \
-  --path hf://amathislab/mm-10m-2 \
+  --path hf://amathislab/mm-10m-3 \
   --motion_path KIT/314/walking_medium09_poses \
   --use_mujoco --record --record_path onnx_walk.mp4 \
   --n_steps 1000 --eval_seed 0 \
-  --onnx mm-10m-2.onnx
+  --onnx mm-10m-3.onnx
 ```
 
 **Programmatic usage:**
@@ -497,7 +497,7 @@ clip = load_motion_clip(motion_file, expected_nq=model.nq, expected_nv=model.nv)
 # goal_params from the checkpoint's config/metadata (or {} for defaults)
 obs_adapter = FullbodyObsAdapter(model=model, clip=clip, goal_params={})
 runner = OnnxPolicyRunner(
-    onnx_path="mm-10m-2.onnx",
+    onnx_path="mm-10m-3.onnx",
     obs_dim=2418,
     action_dim=354,
     obs_adapter=obs_adapter,
@@ -512,7 +512,7 @@ for i in range(len(clip.qpos)):
 
 > **Why not use the ONNX model directly with mjlab's env?**
 > mjlab's `myoMimicFullbody-v0` env produces ~684-dim observations
-> (qpos + qvel + act + site positions), while the mm-10m-2 ONNX model expects
+> (qpos + qvel + act + site positions), while the mm-10m-3 ONNX model expects
 > 2418-dim observations built by `FullbodyObsAdapter`. Using the ONNX model
 > requires the CPU-based playback path with `FullbodyObsAdapter`.
 
