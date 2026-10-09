@@ -347,12 +347,12 @@ def test_download_baseline_file_follows_the_same_tags(
 ) -> None:
     """A single file falls back from the patch tag to the minor tag, like a checkpoint folder."""
     target = tmp_path / "model_81380.pt"
-    asked: list[str] = []
+    asked: list[tuple[str, str]] = []
 
     def fake_hf_hub_download(
         repo_id: str, filename: str, *, repo_type: str, revision: str
     ) -> str:
-        asked.append(revision)
+        asked.append((filename, revision))
         if revision == "v3.0.1":
             raise _missing_tag_error()
         return str(target)
@@ -365,4 +365,8 @@ def test_download_baseline_file_follows_the_same_tags(
     )
 
     assert download_baseline_file("checkpoints/x/model_81380.pt") == target
-    assert asked == ["v3.0.1", "v3.0"]
+    # Only the requested file counts (a manifest next to it may be fetched as well).
+    assert [rev for name, rev in asked if name.endswith("model_81380.pt")] == [
+        "v3.0.1",
+        "v3.0",
+    ]
