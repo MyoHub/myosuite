@@ -28,7 +28,7 @@ class _Env(gym.Env):
           <worldbody><geom name="goal" type="mesh" mesh="fixture" pos="0 2 0"/>
           <geom name="fence" type="mesh" mesh="fixture" pos="0 -2 0"/>
           <geom name="room" type="mesh" mesh="fixture" pos="0 0 3" contype="0" conaffinity="0"/>
-          <body><joint name="slide" type="slide" axis="1 0 0"/>
+          <body name="carriage"><joint name="slide" type="slide" axis="1 0 0"/>
             <geom name="moving-box" type="box" size=".1 .1 .1"/>
             <geom name="bone" type="mesh" mesh="fixture" contype="0" conaffinity="0"/>
             <site name="anchor" pos="0 0 0"/>
@@ -138,6 +138,54 @@ def test_path_mode_colours_mujoco_segments_by_activation(
     assert meta["replaced_tendons"] == []
     assert np.load(tmp_path / "muscles.npz")["activation"].shape == (5, 1)
     assert not Usd.Stage.Open(meta["usd"]).GetPrimAtPath("/World/Muscles").IsValid()
+
+
+def test_skin_is_exported_as_an_animated_mesh_that_follows_its_bone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A .skn bound to the moving body becomes one animated, UV-mapped USD mesh."""
+    pytest.importorskip("pxr")
+    import struct
+    from dataclasses import replace
+
+    from pxr import Usd, UsdGeom
+
+    import myosuite
+
+    vert = np.array([[0, 0, 0], [0.1, 0, 0], [0, 0.1, 0]], np.float32)
+    skn = tmp_path / "skin.skn"
+    skn.write_bytes(
+        struct.pack("4i", 3, 3, 1, 1)
+        + vert.tobytes()
+        + np.zeros((3, 2), np.float32).tobytes()
+        + np.arange(3, dtype=np.int32).tobytes()
+        + b"carriage".ljust(40, b"\0")
+        + np.array([0, 0, 0, 1, 0, 0, 0], np.float32).tobytes()
+        + struct.pack("i", 3)
+        + np.arange(3, dtype=np.int32).tobytes()
+        + np.ones(3, np.float32).tobytes()
+    )
+    env = _Env()
+    monkeypatch.setattr(myosuite, "make_env", lambda _id: env)
+    out = tmp_path / "out"
+    meta = blender_render.export_rollout(
+        replace(_config(out), skin=skn, skin_style="opaque")
+    )
+    stage = Usd.Stage.Open(meta["usd"])
+    mesh = UsdGeom.Mesh(stage.GetPrimAtPath("/World/Skin/Skin"))
+    assert meta["skin_objects"] == ["Skin"] and meta["skin_style"] == "opaque"
+    points = mesh.GetPointsAttr()
+    assert points.GetNumTimeSamples() == 5
+    qpos = np.load(out / "reference.npz")["qpos"][:, 0]
+    for frame in (0, 4):
+        np.testing.assert_allclose(
+            np.array(points.Get(frame)), vert + [qpos[frame], 0, 0], atol=1e-6
+        )
+    assert UsdGeom.PrimvarsAPI(mesh).GetPrimvar("st").IsDefined()
+    with pytest.raises(ValueError, match="skin style"):
+        RenderConfig(env="x", output=Path("o"), skin_style="glass")
+    with pytest.raises(ValueError, match="alpha"):
+        RenderConfig(env="x", output=Path("o"), skin_alpha=0)
 
 
 def test_muscle_colours_follow_the_mujoco_viewer_on_paths() -> None:

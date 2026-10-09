@@ -25,7 +25,7 @@ tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
 | `envs/myo/backends/` | `mjx/` (JAX) and `mjlab/` (Warp) execution backends |
 | `envs/myo/myoedits/` | Model-editing helpers and the registered edit variants |
 | `utils/` | Generic helpers — dict, xml, path, tensor, onnx export, plotting. No domain math. |
-| `viz/` | Rendering and visualization; `blender_render.py` (USD export and Blender studio scene) and `muscle_tubes.py` (volumetric muscle geometry) |
+| `viz/` | Rendering and visualization; `blender_render.py` (USD export and Blender studio scene), `muscle_tubes.py` (volumetric muscle geometry) and `skin.py` (`.skn` body skin; bundled skin in `assets/`) |
 | `integrations/` | Third-party integrations (musclemimic) |
 | `logger/` | Rollout logging / grouped datasets |
 | `scenes/` | Scene assembly helpers |

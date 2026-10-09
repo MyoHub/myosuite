@@ -43,6 +43,12 @@ class RenderConfig:
             keeps one anatomical red, e.g. for still renders.
         muscle_scale: Multiplier of all muscle radii.
         scene: ``"studio"`` backdrop, or ``"mujoco"`` to keep the task's floor.
+        skin: ``.skn`` body skin, or ``"fullbody"`` for the bundled one; ``None``
+            renders no skin.
+        skin_style: ``"translucent"`` skin over muscles and bones, or ``"opaque"``
+            skin that hides them.
+        skin_alpha: Opacity of the translucent skin.
+        skin_inflate: Offset of the skin along its normals (m).
         samples: Cycles samples per frame.
         blender: Blender executable.
     """
@@ -59,6 +65,10 @@ class RenderConfig:
     muscle_color: str = "activation"
     muscle_scale: float = 1.0
     scene: str = "studio"
+    skin: Path | str | None = None
+    skin_style: str = "translucent"
+    skin_alpha: float = 0.3
+    skin_inflate: float = 0.0
     samples: int = 64
     blender: str = "blender"
 
@@ -80,6 +90,10 @@ class RenderConfig:
             raise ValueError(f"Unknown muscle colour: {self.muscle_color}")
         if self.scene not in ("studio", "mujoco"):
             raise ValueError(f"Unknown scene: {self.scene}")
+        if self.skin_style not in ("translucent", "opaque"):
+            raise ValueError(f"Unknown skin style: {self.skin_style}")
+        if not 0 < self.skin_alpha <= 1:
+            raise ValueError("Skin alpha must be in (0, 1].")
 
 
 def export_rollout(config: RenderConfig) -> dict[str, Any]:
@@ -104,6 +118,7 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
     from myosuite import make_env
     from myosuite.utils.checkpoint_utils import load_policy
     from myosuite.viz.muscle_tubes import muscle_actuators
+    from myosuite.viz.skin import SkinPose, load_skn
 
     class LightTendon(objects.USDTendon):
         def generate_primitive_mesh(self) -> dict[str, Any]:
@@ -148,6 +163,11 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             def policy(observation: np.ndarray) -> np.ndarray:
                 return env.action_space.sample()
 
+        skin = (
+            SkinPose.bind(load_skn(config.skin), model, config.skin_inflate)
+            if config.skin is not None
+            else None
+        )
         out = config.output.resolve()
         out.mkdir(parents=True, exist_ok=True)
         exporter = NamedUSDExporter(
@@ -166,6 +186,7 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
         muscles = muscle_actuators(model)
         muscle_tendons = model.actuator_trnid[muscles, 0] if len(muscles) else []
         times, positions, rotations, qposes, paths, activations = [], [], [], [], [], []
+        skin_frames = []
         low, high = np.full(3, np.inf), np.full(3, -np.inf)
         start = float(data.time)
         done = False
@@ -191,6 +212,10 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             activations.append(
                 data.act[model.actuator_actadr[muscles]].copy() if len(muscles) else []
             )
+            if skin is not None:
+                skin_frames.append(skin.vertices(data))
+                low = np.minimum(low, skin_frames[-1].min(0))
+                high = np.maximum(high, skin_frames[-1].max(0))
             for geom in exporter.scene.geoms[: exporter.scene.ngeom]:
                 if geom.type != mujoco.mjtGeom.mjGEOM_PLANE and not (
                     geom.objtype == mujoco.mjtObj.mjOBJ_GEOM
@@ -228,6 +253,11 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             muscle_names = _write_muscle_tubes(
                 stage, model, muscles, paths, config.muscle_scale
             )
+        skin_names = (
+            _write_skin(stage, skin.skin, np.asarray(skin_frames))
+            if skin is not None
+            else []
+        )
         if len(muscles):
             np.savez_compressed(
                 out / "muscles.npz", activation=np.asarray(activations, np.float32)
@@ -261,6 +291,9 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             "scene": config.scene,
             "samples_per_frame": config.samples,
             "muscles": config.muscles,
+            "skin_objects": skin_names,
+            "skin_style": config.skin_style,
+            "skin_alpha": config.skin_alpha,
             "muscle_color": config.muscle_color,
             # Blender object of each muscle: its tube, or its MuJoCo path segments.
             "muscle_objects": muscle_names
@@ -390,6 +423,27 @@ def _write_muscle_tubes(
     return names
 
 
+def _write_skin(stage: Any, skin: Any, frames: Any) -> list[str]:
+    """Add the posed skin to *stage* as one animated mesh with UVs."""
+    import numpy as np
+    from pxr import Gf, Sdf, UsdGeom, Vt
+
+    UsdGeom.Xform.Define(stage, "/World/Skin")
+    mesh = UsdGeom.Mesh.Define(stage, "/World/Skin/Skin")
+    mesh.CreateFaceVertexCountsAttr(Vt.IntArray([3] * len(skin.face)))
+    mesh.CreateFaceVertexIndicesAttr(Vt.IntArray(skin.face.ravel().tolist()))
+    mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
+    mesh.CreateDisplayColorAttr([Gf.Vec3f(*SKIN_COLOR[:3])])
+    if len(skin.texcoord):
+        UsdGeom.PrimvarsAPI(mesh).CreatePrimvar(
+            "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex
+        ).Set(Vt.Vec2fArray.FromNumpy(skin.texcoord.astype(np.float32)))
+    attr = mesh.CreatePointsAttr()
+    for frame, points in enumerate(frames):
+        attr.Set(Vt.Vec3fArray.FromNumpy(points), frame)
+    return ["Skin"]
+
+
 # Warm key, cool fill and a rim light that separates the figure from the backdrop:
 # (name, offset from the subject in camera right/forward/up spans, W/m^2, colour).
 STUDIO_LIGHTS = [
@@ -399,12 +453,15 @@ STUDIO_LIGHTS = [
 ]
 EXPOSURE = 0.0
 BACKDROP = (0.16, 0.16, 0.17, 1.0)
+# Darker studio behind a pale skin, so its silhouette and the anatomy stand out.
+SKIN_BACKDROP = (0.006, 0.0065, 0.008, 1.0)
 MUSCLE_RELAXED = (0.50, 0.16, 0.15, 1.0)
 MUSCLE_ACTIVE = (0.62, 0.012, 0.02, 1.0)
 MUSCLE_UNIFORM = (0.42, 0.11, 0.10, 1.0)
 # MyoSuite's MuJoCo viewer colouring: activation ** 0.25 from near black to red.
 PATH_RELAXED = (0.05, 0.05, 0.05, 1.0)
 PATH_ACTIVE = (0.95, 0.3, 0.3, 1.0)
+SKIN_COLOR = (0.72, 0.62, 0.58, 1.0)
 
 
 def _muscle_colour(activation: float, paths: bool) -> tuple[float, ...]:
@@ -527,7 +584,8 @@ def build_blender_scene(output: Path) -> None:
     scene.render.image_settings.file_format = "PNG"
     scene.view_settings.view_transform = "AgX"
     scene.view_settings.exposure = EXPOSURE
-    for look in ("AgX - Medium High Contrast", "Medium High Contrast"):
+    contrast = "High" if meta.get("skin_objects") else "Medium High"
+    for look in (f"AgX - {contrast} Contrast", f"{contrast} Contrast"):
         try:
             scene.view_settings.look = look
             break
@@ -579,18 +637,50 @@ def build_blender_scene(output: Path) -> None:
     info = nodes.new("ShaderNodeObjectInfo")
     links.new(info.outputs["Color"], nodes["Principled BSDF"].inputs["Base Color"])
 
+    skin_objects = meta.get("skin_objects", [])
+    opaque_skin = bool(skin_objects) and meta.get("skin_style") == "opaque"
+    skin = material(
+        "Skin",
+        SKIN_COLOR,
+        0.5,
+        Subsurface_Weight=0.6 if opaque_skin else 0.15,
+        Subsurface_Radius=(1.0, 0.45, 0.3),
+        Subsurface_Scale=0.008,
+        Coat_Weight=0.1,
+    )
+    if skin_objects and not opaque_skin:
+        # X-ray look: clear where the skin faces the camera, denser at the
+        # silhouette, so the outline reads and the anatomy stays visible.
+        alpha = meta.get("skin_alpha", 0.3)
+        nodes, links = skin.node_tree.nodes, skin.node_tree.links
+        facing = nodes.new("ShaderNodeLayerWeight")
+        facing.inputs["Blend"].default_value = 0.35
+        ramp = nodes.new("ShaderNodeMapRange")
+        ramp.inputs["To Min"].default_value = 0.2 * alpha
+        ramp.inputs["To Max"].default_value = min(1.0, 3 * alpha)
+        links.new(facing.outputs["Facing"], ramp.inputs["Value"])
+        links.new(ramp.outputs["Result"], nodes["Principled BSDF"].inputs["Alpha"])
     hidden = meta.get("scenery_objects", []) + meta.get("replaced_tendons", [])
+    if opaque_skin:
+        # Occluded anyway; hiding them keeps bones from poking through the skin.
+        hidden += meta.get("muscle_objects", []) + meta.get("bone_objects", [])
+        hidden += meta.get("tendon_objects", [])
     if meta.get("scene", "studio") == "studio":
         hidden += meta.get("plane_objects", [])
     bones = meta.get("bone_objects", [])
     for obj in scene.objects:
         if any(name in obj.name for name in hidden):
+            # Drop visibility keyframes, which would otherwise unhide it.
+            obj.animation_data_clear()
             obj.hide_render = True
         if obj.type != "MESH":
             continue
         for polygon in obj.data.polygons:
             polygon.use_smooth = True
-        if "_tendon" in obj.name or obj.name.startswith("Muscle_"):
+        if any(obj.name.startswith(name) for name in skin_objects):
+            obj.data.materials.clear()
+            obj.data.materials.append(skin)
+        elif "_tendon" in obj.name or obj.name.startswith("Muscle_"):
             obj.data.materials.clear()
             obj.data.materials.append(muscle)
             obj.color = (
@@ -682,7 +772,7 @@ def build_blender_scene(output: Path) -> None:
             forward,
             floor_z,
             span,
-            material("Backdrop", BACKDROP, 0.8),
+            material("Backdrop", SKIN_BACKDROP if skin_objects else BACKDROP, 0.8),
         )
     else:
         bpy.ops.mesh.primitive_plane_add(
@@ -803,6 +893,16 @@ def main(argv: list[str] | None = None) -> None:
         default="studio",
         help="Studio backdrop, or keep the task's own floor (e.g. a soccer pitch).",
     )
+    parser.add_argument(
+        "--skin", help='Body skin: a MuJoCo .skn file, or "fullbody" (bundled).'
+    )
+    parser.add_argument(
+        "--skin-style", choices=["translucent", "opaque"], default="translucent"
+    )
+    parser.add_argument("--skin-alpha", type=float, default=0.3)
+    parser.add_argument(
+        "--skin-inflate", type=float, default=0.0, help="Skin normal offset (m)."
+    )
     parser.add_argument("--samples", type=int, default=64, help="Cycles samples.")
     parser.add_argument("--export-only", action="store_true")
     args = parser.parse_args(argv)
@@ -820,6 +920,10 @@ def main(argv: list[str] | None = None) -> None:
             muscle_color=args.muscle_color,
             muscle_scale=args.muscle_scale,
             scene=args.scene,
+            skin=args.skin,
+            skin_style=args.skin_style,
+            skin_alpha=args.skin_alpha,
+            skin_inflate=args.skin_inflate,
             samples=args.samples,
             blender=args.blender,
         )

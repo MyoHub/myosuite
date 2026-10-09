@@ -139,9 +139,42 @@ visible; visual-only world meshes (room shells and wall props, with
 Static world geometry is excluded from camera fitting. Camera fitting
 samples three poses with a margin; check longer clips for framing before final use.
 
+Body skin
+---------
+
+``--skin`` adds a MuJoCo ``.skn`` skin
+(`format <https://mujoco.readthedocs.io/en/stable/XMLreference.html#asset-skin>`_)
+as a visual layer. MyoSuite bundles a full-body skin for ``myoMimicFullbody-v0``
+(``--skin fullbody``); any other ``.skn`` binds to a model by body name.
+Credits and license of the bundled skin are in
+``myosuite/viz/assets/CREDITS.md``.
+
+.. code-block:: bash
+
+   python scripts/render_blender.py --env myoMimicFullbody-v0 --random \
+       --output fullbody-skin --preview --skin fullbody --skin-style translucent
+
+- ``--skin-style translucent`` (default) shows muscles and bones through the
+  skin; ``--skin-alpha`` sets its opacity (default 0.3).
+- ``--skin-style opaque`` shows only the skin and hides the anatomy beneath it.
+- ``--skin-inflate`` offsets the skin along its normals, in metres.
+
+The skin is posed with MuJoCo's linear-blend skinning from the body poses of
+each frame (:mod:`myosuite.viz.skin`); the simulated model is not changed.
+
+.. list-table::
+   :widths: 33 33 34
+
+   * - .. image:: images/blender/skin_translucent.jpg
+     - .. image:: images/blender/skin_opaque.jpg
+     - .. image:: images/blender/skin_gait.webp
+   * - ``--skin-style translucent``
+     - ``--skin-style opaque``
+     - Translucent skin following a replayed gait.
+
 Muscle volumes are a visual estimate, not a fitted anatomical shape, and
 muscle tubes may intersect bones and each other.
-Skin/flex models and variable timesteps are rejected. Changes to primitive
+Models with their own skins or flexes, and variable timesteps, are rejected. Changes to primitive
 geometry during an episode are not supported. Output duration rounds up to
 one video frame. A CPU rollout of a GPU-trained policy requires a compatible
 CPU task contract.
