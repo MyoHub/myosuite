@@ -10,6 +10,7 @@ reward, termination and route progress are compared.
 from __future__ import annotations
 
 import numpy as np
+import mujoco
 import pytest
 
 pytest.importorskip("mjlab")
@@ -137,3 +138,32 @@ def test_fall_fails_on_both(pair) -> None:
             break
     assert info["failed"]
     np.testing.assert_allclose(float(mj_rew[0]), cpu_rew, atol=REW_ATOL)
+
+
+def _slower_scene(spec: mujoco.MjSpec) -> None:
+    spec.option.timestep = 0.004
+
+
+def test_instance_overrides_share_one_id() -> None:
+    from myosuite.core.config import EnvConfig
+    from myosuite.envs.waypoint import WaypointTaskCfg
+
+    task = WaypointTaskCfg(waypoints=((0.0, -1.0),), arrival_radius=0.12)
+    config = EnvConfig(
+        ENV_ID,
+        task_kwargs={"task": task, "edit_fn": _slower_scene},
+        ctrl_dt=0.012,
+        max_episode_steps=20,
+    )
+    cpu = make_env(config)
+    mj = make_env(config, backend="mjlab", num_envs=2, device="cpu")
+    route = mj.command_manager.get_term(COMMAND)
+    assert route.task == cpu.unwrapped.task == task
+    assert mj.step_dt == pytest.approx(cpu.unwrapped._ctrl_dt)
+    assert mj.max_episode_length == 20
+    mj.reset()
+    np.testing.assert_allclose(route.waypoints.numpy(), [[[0.0, -1.0]], [[0.0, -1.0]]])
+    # Defaults are unchanged for the next instance.
+    assert make_env(ENV_ID).unwrapped.task.waypoints is None
+    cpu.close()
+    mj.close()

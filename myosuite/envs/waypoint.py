@@ -208,6 +208,7 @@ class WaypointEnv(MyoGymnasiumEnv):
         initial_qvel: ArrayLike | None = None,
         frame_skip: int = 5,
         render_mode: str | None = None,
+        seed: int | None = None,
     ) -> None:
         if (
             isinstance(frame_skip, bool)
@@ -226,6 +227,7 @@ class WaypointEnv(MyoGymnasiumEnv):
         if site_id < 0:
             raise ValueError(f"No site {self.task.site_name!r} in the model")
         super().__init__(frame_skip=int(frame_skip), render_mode=render_mode)
+        self.seed(seed)
         self.model, self.data = model, mujoco.MjData(model)
         self._ctrl_dt = model.opt.timestep * self.frame_skip
         self.metadata = {

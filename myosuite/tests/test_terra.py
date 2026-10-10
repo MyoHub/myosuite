@@ -11,15 +11,15 @@ import pytest
 
 from myosuite.core.model_builder import build_from_recipe
 from myosuite.core.trajectory_io import MotionClip
-from myosuite.integrations.terra import (
+from myosuite.integrations.musclemimic import (
     MIMIC_SITES,
-    TerraObsCfg,
-    TerraObservation,
-    TerraPolicy,
+    TerrainObsCfg,
+    TerrainObservation,
+    TerrainPolicy,
     TerrainHeights,
     compose_waypoint_reference,
 )
-from myosuite.integrations.terra.reference import ReferenceMotion
+from myosuite.integrations.musclemimic.reference_motion import ReferenceMotion
 
 pytestmark = pytest.mark.tier1
 
@@ -98,8 +98,8 @@ def _reference(model: mujoco.MjModel, data: mujoco.MjData) -> ReferenceMotion:
 
 
 def test_config_is_read_and_checked() -> None:
-    cfg = TerraObsCfg.from_config(CONFIG)
-    assert cfg == TerraObsCfg()
+    cfg = TerrainObsCfg.from_config(CONFIG)
+    assert cfg == TerrainObsCfg()
     bad = {
         "experiment": {
             **CONFIG["experiment"],
@@ -110,7 +110,7 @@ def test_config_is_read_and_checked() -> None:
         }
     }
     with pytest.raises(ValueError):
-        TerraObsCfg.from_config(bad)
+        TerrainObsCfg.from_config(bad)
 
 
 def test_terrain_heights_hit_only_terrain(model: mujoco.MjModel) -> None:
@@ -128,7 +128,7 @@ def test_observation_layout(model: mujoco.MjModel) -> None:
     data.qpos[:], data.qvel[:] = ref.qpos[0], ref.qvel[0]
     data.ctrl[:] = 0.3
     mujoco.mj_forward(model, data)
-    observe = TerraObservation(model)
+    observe = TerrainObservation(model)
     obs = observe(data, ref, 0)
     nq, nv, nu = model.nq, model.nv, model.nu
     goal = (nq - 2) + nv + 2 + 3 * 16 + 7 * 10
@@ -166,7 +166,7 @@ def test_reference_follows_route_and_terrain(model: mujoco.MjModel) -> None:
     np.testing.assert_allclose(np.linalg.norm(ref.qpos[:, 3:7], axis=1), 1, atol=1e-9)
 
 
-def _random_policy(obs_dim: int, nu: int, rng: np.random.Generator) -> TerraPolicy:
+def _random_policy(obs_dim: int, nu: int, rng: np.random.Generator) -> TerrainPolicy:
     def dense(n_in: int, n_out: int) -> dict:
         return {
             "kernel": rng.normal(0, 1 / np.sqrt(n_in), (n_in, n_out)).astype(
@@ -188,11 +188,11 @@ def _random_policy(obs_dim: int, nu: int, rng: np.random.Generator) -> TerraPoli
         "output": dense(32, nu),
     }
     params = {"actor": actor, "log_std": np.full(nu, np.log(0.1), np.float32)}
-    return TerraPolicy(
+    return TerrainPolicy(
         params,
         rng.normal(size=obs_dim).astype(np.float32),
         np.ones(obs_dim, np.float32),
-        TerraObsCfg(),
+        TerrainObsCfg(),
     )
 
 
@@ -202,7 +202,7 @@ def test_policy_inference_drives_the_env(model: mujoco.MjModel) -> None:
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
     ref = _reference(model, data)
-    observe = TerraObservation(model)
+    observe = TerrainObservation(model)
     rng = np.random.default_rng(0)
     policy = _random_policy(observe(data, ref, 0).size, model.nu, rng)
     env = WaypointEnv(
@@ -228,9 +228,9 @@ def test_policy_inference_drives_the_env(model: mujoco.MjModel) -> None:
     reason="needs musclemimic_models",
 )
 def test_terra_actor() -> None:
-    from myosuite.integrations.terra import terra_fullbody_spec
+    from myosuite.integrations.musclemimic import build_terrain_fullbody_spec
 
-    spec = terra_fullbody_spec(_scene)
+    spec = build_terrain_fullbody_spec(_scene)
     model = spec.compile()
     assert model.opt.iterations == 4 and model.opt.ls_iterations == 8
     assert model.opt.disableflags & mujoco.mjtDisableBit.mjDSBL_EULERDAMP
@@ -241,7 +241,7 @@ def test_terra_actor() -> None:
     # musclemimic_models 1.0.5 knee coupling (fixed with the opposite sign in 1.0.6).
     eq = model.eq("knee_angle_translation2_constraint_l")
     assert eq.data[1] < 0
-    TerraObservation(model)
+    TerrainObservation(model)
 
 
 @pytest.mark.skipif(
@@ -257,14 +257,17 @@ def test_matches_upstream_terra_rollout() -> None:
     from pathlib import Path
 
     from myosuite.envs.waypoint import WaypointEnv, WaypointTaskCfg
-    from myosuite.integrations.terra import TerraController, terra_fullbody_spec
+    from myosuite.integrations.musclemimic import (
+        TerrainController,
+        build_terrain_fullbody_spec,
+    )
 
     up = np.load(Path(__file__).parent / "data" / "terra_upstream_obs.npz")
-    model = terra_fullbody_spec().compile()
+    model = build_terrain_fullbody_spec().compile()
     ref = ReferenceMotion.from_states(model, up["ref_qpos"], 0.01, MIMIC_SITES)
 
     class Replay:
-        obs_cfg = TerraObsCfg()
+        obs_cfg = TerrainObsCfg()
         seen: list = []
 
         def act(self, obs: np.ndarray, rng: object = None) -> np.ndarray:
@@ -279,7 +282,7 @@ def test_matches_upstream_terra_rollout() -> None:
         initial_qvel=ref.qvel[0],
     )
     env.reset(seed=0)
-    controller = TerraController(policy, model, ref, env.frame_skip)
+    controller = TerrainController(policy, model, ref, env.frame_skip)
     for qpos in up["qpos"]:
         np.testing.assert_allclose(env.data.qpos, qpos, atol=1e-6)
         env.step(controller(env.data))

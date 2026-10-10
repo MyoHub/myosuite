@@ -2,7 +2,7 @@
 
 `myosuite/tests/data/terra_upstream_obs.npz` holds a short TERRA rollout computed by the upstream
 TERRA / MuscleMimic code; `myosuite/tests/test_terra.py` replays it through
-`myosuite.integrations.terra` and requires the same states and observations.
+`myosuite.integrations.musclemimic` and requires the same states and observations.
 
 Regenerate it after a change to the TERRA actor or observation:
 

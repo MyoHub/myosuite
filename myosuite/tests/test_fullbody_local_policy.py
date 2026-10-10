@@ -1208,3 +1208,41 @@ def test_orbax_mjlab_policy_matches_local_cpu_running_inference() -> None:
 
     assert local_adapter.frames == [0, 1]
     assert mjlab_adapter.frames == [0, 1]
+
+
+def test_checkpoint_loader_selects_training_seed(tmp_path, monkeypatch) -> None:
+    from myosuite.integrations.musclemimic.fullbody_local_policy import (
+        load_local_policy_artifacts,
+    )
+
+    def batched(tree):
+        if isinstance(tree, dict):
+            return {key: batched(value) for key, value in tree.items()}
+        return np.stack([tree, tree + 1])
+
+    state = {
+        "params": batched(_toy_params(5, 4, 2)),
+        "run_stats": {
+            "RunningMeanStd_0": {
+                "mean": np.stack([np.zeros(5), np.ones(5)]),
+                "var": np.stack([np.ones(5), np.full(5, 2)]),
+                "count": np.array([10, 20]),
+            }
+        },
+    }
+    (tmp_path / "train_state").mkdir()
+    monkeypatch.setitem(
+        sys.modules,
+        "orbax.checkpoint",
+        SimpleNamespace(
+            StandardCheckpointer=lambda: SimpleNamespace(restore=lambda path: state)
+        ),
+    )
+    artifacts = load_local_policy_artifacts(tmp_path, seed=1)
+    assert artifacts.obs_dim == 5 and artifacts.action_dim == 2
+    np.testing.assert_array_equal(artifacts.obs_mean, np.ones(5))
+    np.testing.assert_array_equal(artifacts.obs_var, np.full(5, 2))
+    assert artifacts.obs_count == 20
+    np.testing.assert_array_equal(
+        artifacts.params["actor"]["output"]["bias"], np.full(2, 1.25)
+    )
