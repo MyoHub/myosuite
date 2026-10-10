@@ -5,7 +5,8 @@
 """Volumetric muscle tubes along MuJoCo tendon paths.
 
 Each muscle becomes a fusiform belly with thin tendons, after the volumetric
-visualiser of MuSkeMo (van Bijlert et al.). The peak cross-section is
+visualiser of MuSkeMo (van Bijlert 2024; an independent implementation, no MuSkeMo
+code is used, see ``viz/assets/CREDITS.md``). The peak cross-section is
 ``F_max / CROSS_SECTION_STRESS``, a stress fitted to measured cross-sections of
 forearm and leg muscles: MyoSuite's ``F_max`` are not anatomical forces, so the
 ``F_max / specific tension * L0`` volume would make forearm muscles 5-15x too

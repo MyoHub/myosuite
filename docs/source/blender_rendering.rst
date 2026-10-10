@@ -216,6 +216,19 @@ The same ``.skn`` works outside Blender:
      - ``ViserSkin`` in mjviser, following a hip, knee, shoulder and elbow
        swing.
 
+Acknowledgements
+----------------
+
+The volumetric look is inspired by the muscle visualiser of
+`MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_ (P. A. van Bijlert,
+bioRxiv 2024, `doi:10.1101/2024.12.10.627828
+<https://doi.org/10.1101/2024.12.10.627828>`_), which measures muscle volumes
+with the ``calc_volume`` node shared by bebop_artist on
+`Blender Stack Exchange <https://blender.stackexchange.com/a/325516>`_
+(CC BY-SA 4.0). MyoSuite uses no code from either: the muscle tubes and their
+closed-form volumes are an independent implementation
+(:mod:`myosuite.viz.muscle_tubes`). See ``myosuite/viz/assets/CREDITS.md``.
+
 Muscle volumes are a visual estimate, not a fitted anatomical shape, and
 muscle tubes may intersect bones and each other.
 Models with their own skins or flexes, and variable timesteps, are rejected. Changes to primitive
