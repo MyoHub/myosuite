@@ -580,3 +580,10 @@ The observation layout, model corrections and evaluation settings are adapted fr
 [TERRA-4B checkpoint](https://huggingface.co/merc-s/TERRA-4B) retains its upstream
 license and attribution. Please credit and cite TERRA as directed by its model card,
 as well as MuscleMimic and the motion dataset used.
+
+`plan_waypoint_reference` generates a reference from a neutral pose, terrain-height
+callback and explicit jump segments, returning the existing `MotionClip`. Tutorial
+4.4 contains the tested scene and parameters; it requires no motion dataset or
+Hugging Face token. Preserve the generated velocities through
+`motion_clip_from_states(..., qvel=...)` when replaying a procedural reference.
+The tutorial checks contact-defined jumps separately from path completion.

@@ -2,21 +2,23 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Reference motions for TERRA: a walking clip laid along a waypoint route.
+"""Waypoint references using the shared MuscleMimic motion container.
 
-TERRA tracks a full-body reference; it does not plan. :func:`compose_waypoint_reference`
-is a simple planner: it loops one gait cycle of a straight walking clip, steers it
-along a smoothed path through the waypoints and lifts the root by the terrain height
-under it. Feet are not re-targeted onto steps, so it suits small steps and gaps only.
+The procedural planner fits ankle and toe targets to terrain and accepts explicit
+jump segments. The clip composer retains a simple option for gentle terrain.
+Neither planner discovers obstacles or guarantees a feasible arbitrary route.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import mujoco
 import numpy as np
 from scipy.spatial.transform import Rotation, Slerp
+from scipy.ndimage import gaussian_filter1d
+from scipy.optimize import least_squares
 
 from myosuite.core.trajectory_io import (
     MotionClip,
@@ -176,3 +178,312 @@ def compose_waypoint_reference(
     out[:, 2] = cycle[phase, 2] + np.interp(s_t, arc, ground_path)
     out[:, 3:7] = _quat_mul(_yaw_quat(yaw_path + yaw_rel[phase]), tilt[phase])
     return motion_clip_from_states(model, out, dt, sites)
+
+
+@dataclass(frozen=True)
+class GaitParameters:
+    speed: float = 0.25
+    cycle_s: float = 1.2
+    swing_fraction: float = 0.4
+    clearance: float = 0.12
+    pelvis_height: float = 0.96
+    jump_flight_s: float = 0.45
+    jump_crouch: float = 0.14
+    jump_tuck: float = 0.16
+    second_jump_tuck: float = 0.10
+
+    def __post_init__(self) -> None:
+        """Reject invalid timing and nonfinite planning parameters."""
+        values = (
+            self.speed,
+            self.cycle_s,
+            self.swing_fraction,
+            self.clearance,
+            self.pelvis_height,
+            self.jump_flight_s,
+            self.jump_crouch,
+            self.jump_tuck,
+            self.second_jump_tuck,
+        )
+        if (
+            not np.isfinite(values).all()
+            or min(self.speed, self.cycle_s, self.pelvis_height, self.jump_flight_s)
+            <= 0
+            or not 0 < self.swing_fraction < 1
+            or min(
+                self.clearance, self.jump_crouch, self.jump_tuck, self.second_jump_tuck
+            )
+            < 0
+        ):
+            raise ValueError(
+                "Gait timing and clearance parameters must be finite and valid"
+            )
+
+
+def _coupling_projection(model: mujoco.MjModel, q: np.ndarray) -> None:
+    """Apply the model's own polynomial joint constraints to an offline pose."""
+    ids = np.flatnonzero(model.eq_type == mujoco.mjtEq.mjEQ_JOINT)
+    first, second = model.eq_obj1id[ids], model.eq_obj2id[ids]
+    c = model.eq_data[ids, :5]
+    for _ in range(2):
+        source = np.where(second >= 0, q[model.jnt_qposadr[np.maximum(second, 0)]], 0.0)
+        q[model.jnt_qposadr[first]] = c[:, 0] + source * (
+            c[:, 1] + source * (c[:, 2] + source * (c[:, 3] + source * c[:, 4]))
+        )
+
+
+def _yaw_matrix(yaw: float) -> np.ndarray:
+    """Use MuJoCo quaternion conversion for a world-Z heading."""
+    quat = np.array([np.cos(yaw / 2), 0.0, 0.0, np.sin(yaw / 2)])
+    matrix = np.empty(9)
+    mujoco.mju_quat2Mat(matrix, quat)
+    return matrix.reshape(3, 3)
+
+
+def plan_waypoint_reference(
+    model: mujoco.MjModel,
+    waypoints: np.ndarray,
+    height_at: Callable[[tuple[float, float]], float],
+    initial_qpos: np.ndarray,
+    *,
+    sites: tuple[str, ...],
+    jump_segments: tuple[int, ...] = (),
+    parameters: GaitParameters = GaitParameters(),
+) -> tuple[MotionClip, dict]:
+    """Generate a 100 Hz terrain-aware walking/jumping reference offline.
+
+    Args:
+        model: Calibrated full-body model.
+        waypoints: XY route including the starting point.
+        height_at: Terrain height at a world XY point.
+        initial_qpos: Starting model pose.
+        sites: Ordered sites for shared reference kinematics.
+        jump_segments: Route-segment indices with explicit jumps (at most two).
+        parameters: Gait and jump timing/clearance settings.
+
+    Returns:
+        Existing MotionClip and planner diagnostics.
+    """
+    m, d = model, mujoco.MjData(model)
+    base = np.asarray(initial_qpos, dtype=float).copy()
+    d.qpos[:] = base
+    mujoco.mj_forward(m, d)
+    ankle_ids = [m.site(f"ankle_{s}").id for s in ("r", "l")]
+    toe_ids = [m.site(f"toe_{s}").id for s in ("r", "l")]
+    offsets = [d.site_xpos[s].copy() - base[:3] for s in ankle_ids]
+    toe_vectors = [
+        d.site_xpos[t].copy() - d.site_xpos[a] for a, t in zip(ankle_ids, toe_ids)
+    ]
+    spawn_surface = height_at(tuple(base[:2]))
+    ankle_z = [float(d.site_xpos[s, 2] - spawn_surface) for s in ankle_ids]
+    route = np.asarray(waypoints, dtype=float)
+    if (
+        route.ndim != 2
+        or route.shape[1] != 2
+        or len(route) < 2
+        or not np.isfinite(route).all()
+        or np.any(np.linalg.norm(np.diff(route, axis=0), axis=1) <= 1e-8)
+    ):
+        raise ValueError("Route needs finite, distinct consecutive XY waypoints")
+    if any(i < 0 or i >= len(route) - 1 for i in jump_segments):
+        raise ValueError("Jump indices must name route segments")
+    if len(jump_segments) > 2:
+        raise ValueError("This reference recipe supports at most two jumps")
+    times = [0.0, 0.8]
+    positions = [route[0], route[0]]
+    jumps = []
+    for i, (a, b) in enumerate(zip(route[:-1], route[1:])):
+        if i in jump_segments:
+            start = times[-1]
+            duration = parameters.jump_flight_s
+            launch, landing = a + 0.18 * (b - a), b + 0.18 * (a - b)
+            times.extend(
+                [
+                    start + 1.7,
+                    start + 2.0,
+                    start + 2.0 + duration,
+                    start + 2.7 + duration,
+                    start + 3.2 + duration,
+                ]
+            )
+            positions.extend([a, launch, landing, landing, b])
+            jumps.append((start + 2.0, start + 2.0 + duration))
+        else:
+            length = np.linalg.norm(b - a)
+            times.append(times[-1] + length / parameters.speed)
+            positions.append(b)
+            if i + 1 < len(route) - 1:
+                before, after = b - a, route[i + 2] - b
+                if np.dot(before, after) < 0.8 * np.linalg.norm(
+                    before
+                ) * np.linalg.norm(after):
+                    times.append(times[-1] + 0.8)
+                    positions.append(b)
+    times.append(times[-1] + 1.0)
+    positions.append(route[-1])
+    t = np.arange(int(np.ceil(times[-1] * 100)) + 1) * 0.01
+    root = np.stack(
+        [np.interp(t, times, np.asarray(positions)[:, j]) for j in range(2)], axis=1
+    )
+    root = gaussian_filter1d(root, 6, axis=0, mode="nearest")
+    velocity = np.gradient(root, 0.01, axis=0)
+    heading = np.arctan2(velocity[:, 0], -velocity[:, 1])
+    previous = 0.0
+    for i in range(len(heading)):
+        if np.linalg.norm(velocity[i]) < 0.01:
+            heading[i] = previous
+        else:
+            previous = heading[i]
+    heading = gaussian_filter1d(np.unwrap(heading), 20)
+    surface = np.asarray([height_at(tuple(xy)) for xy in root])
+    surface = gaussian_filter1d(surface, 15)
+    root_z = surface + parameters.pelvis_height
+    root_z[:80] = np.linspace(base[2], root_z[80], 80)
+    flight = np.zeros(len(t), dtype=bool)
+    for begin, end in jumps:
+        initial = int(round((begin - 0.5) * 100))
+        launch_height = height_at(tuple(root[initial]))
+        pre = (t >= begin - 0.5) & (t < begin)
+        root_z[pre] = (
+            launch_height
+            + parameters.pelvis_height
+            - parameters.jump_crouch * np.sin(np.pi * (t[pre] - begin + 0.5) / 0.5)
+        )
+        mask = (t >= begin) & (t <= end)
+        flight |= mask
+        tau = t[mask] - begin
+        root_z[mask] = (
+            launch_height
+            + parameters.pelvis_height
+            + 0.5 * 9.81 * tau * (end - begin - tau)
+        )
+        post = (t > end) & (t <= end + 0.7)
+        landing_height = height_at(
+            tuple(root[min(len(t) - 1, int(round((end + 0.3) * 100)))])
+        )
+        root_z[post] = (
+            landing_height
+            + parameters.pelvis_height
+            - 0.04 * np.sin(np.pi * (t[post] - end) / 0.7) ** 2
+        )
+    q = np.repeat(base[None, :], len(t), axis=0)
+    q[:, :2] = root
+    q[:, 2] = root_z
+    q[:, 3:7] = np.stack(
+        [np.cos(heading / 2), np.zeros(len(t)), np.zeros(len(t)), np.sin(heading / 2)],
+        axis=1,
+    )
+    leg_addresses = []
+    for side in ("r", "l"):
+        names = [
+            f"{n}_{side}"
+            for n in (
+                "hip_flexion",
+                "hip_adduction",
+                "hip_rotation",
+                "knee_angle",
+                "ankle_angle",
+                "subtalar_angle",
+            )
+        ]
+        ids = [m.joint(n).id for n in names]
+        leg_addresses.append(
+            (np.asarray([m.jnt_qposadr[j] for j in ids]), m.jnt_range[ids].T)
+        )
+
+    def foot_at(time: float, side: int) -> tuple[np.ndarray, float]:
+        idx = int(np.clip(round(time * 100), 0, len(t) - 1))
+        r = _yaw_matrix(heading[idx])
+        p = np.r_[root[idx], 0.0] + r @ np.r_[offsets[side][:2], 0.0]
+        p[2] = height_at(tuple(p[:2])) + ankle_z[side]
+        return p, heading[idx]
+
+    targets = np.zeros((len(t), 2, 3))
+    foot_yaw = np.zeros((len(t), 2))
+    for i, time in enumerate(t):
+        for side in range(2):
+            phase_time = max(0.0, time - 0.8) + side * parameters.cycle_s / 2
+            cycle = int(phase_time // parameters.cycle_s)
+            phase = phase_time / parameters.cycle_s - cycle
+            last = 0.8 + cycle * parameters.cycle_s - side * parameters.cycle_s / 2
+            last = max(0.0, last)
+            future = last + parameters.cycle_s
+            a, ya = foot_at(last, side)
+            b, yb = foot_at(future, side)
+            if time < 0.8 or phase < 1 - parameters.swing_fraction:
+                p, yaw = a, ya
+            else:
+                f = (phase - 1 + parameters.swing_fraction) / parameters.swing_fraction
+                smooth = f * f * (3 - 2 * f)
+                p = a + smooth * (b - a)
+                p[2] += parameters.clearance * np.sin(np.pi * f)
+                yaw = ya + smooth * (yb - ya)
+            for jump_index, (begin, end) in enumerate(jumps):
+                if begin - 2.0 <= time < begin:
+                    p, yaw = foot_at(begin - 1.0, side)
+                elif begin <= time <= end:
+                    a, ya = foot_at(begin - 1.0, side)
+                    b, yb = foot_at(end, side)
+                    f = (time - begin) / (end - begin)
+                    smooth = f * f * (3 - 2 * f)
+                    p, yaw = a + smooth * (b - a), ya + smooth * (yb - ya)
+                    tuck = (
+                        parameters.jump_tuck
+                        if jump_index == 0
+                        else parameters.second_jump_tuck
+                    )
+                    p[2] = (
+                        root_z[i]
+                        - parameters.pelvis_height
+                        + ankle_z[side]
+                        + tuck * np.sin(np.pi * (time - begin) / (end - begin))
+                    )
+                elif end < time <= end + 0.7:
+                    p, yaw = foot_at(end, side)
+            targets[i, side], foot_yaw[i, side] = p, yaw
+    knots = np.unique(np.r_[np.arange(0, len(t), 5), len(t) - 1])
+    residuals = []
+    previous_legs = [base[a].copy() for a, _ in leg_addresses]
+    for i in knots:
+        d.qpos[:] = q[i]
+        for side, (address, bounds) in enumerate(leg_addresses):
+            toe_target = (
+                targets[i, side] + _yaw_matrix(foot_yaw[i, side]) @ toe_vectors[side]
+            )
+
+            def error(x: np.ndarray) -> np.ndarray:
+                d.qpos[address] = x
+                _coupling_projection(m, d.qpos)
+                mujoco.mj_kinematics(m, d)
+                return np.r_[
+                    (d.site_xpos[ankle_ids[side]] - targets[i, side]) * 10,
+                    (d.site_xpos[toe_ids[side]] - toe_target) * 10,
+                    0.005 * (x - previous_legs[side]),
+                ]
+
+            initial = np.clip(previous_legs[side], bounds[0] + 1e-7, bounds[1] - 1e-7)
+            result = least_squares(
+                error, initial, bounds=bounds, max_nfev=35, ftol=1e-5, xtol=1e-5
+            )
+            q[i, address] = result.x
+            previous_legs[side] = result.x
+            residuals.append(float(np.linalg.norm(error(result.x)[:6]) / 10))
+        _coupling_projection(m, q[i])
+    for j in range(7, m.nq):
+        q[:, j] = np.interp(t, t[knots], q[knots, j])
+    for pose in q:
+        _coupling_projection(m, pose)
+    v = np.zeros((len(q), m.nv))
+    for i in range(len(q) - 1):
+        mujoco.mj_differentiatePos(m, v[i], 0.01, q[i], q[i + 1])
+    v[-1] = v[-2]
+    clip = motion_clip_from_states(m, q, 0.01, sites, qvel=v)
+    return clip, {
+        "duration_s": float(t[-1]),
+        "jump_windows_s": jumps,
+        "max_foot_ik_error_m": max(residuals),
+        "mean_foot_ik_error_m": float(np.mean(residuals)),
+        "foot_targets": targets,
+        "root_surface": surface,
+        "flight_reference": flight,
+    }

@@ -137,6 +137,8 @@ _EXPORTS_BY_MODULE: dict[str, tuple[str, ...]] = {
     ),
     "myosuite.integrations.musclemimic.reference_motion": (
         "compose_waypoint_reference",
+        "plan_waypoint_reference",
+        "GaitParameters",
     ),
     "myosuite.core.playback_contract": (
         "PlaybackArtifacts",
@@ -198,6 +200,8 @@ __all__ += [
     "TerrainController",
     "download_terrain_checkpoint",
     "compose_waypoint_reference",
+    "plan_waypoint_reference",
+    "GaitParameters",
 ]
 
 
