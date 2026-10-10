@@ -20,6 +20,7 @@ from myosuite.integrations.musclemimic import (
 )
 from myosuite.core.trajectory_io import motion_clip_from_states
 from myosuite.integrations.musclemimic.fullbody_local_policy import (
+    FullbodyStateAdapter,
     LocalPolicyArtifacts,
     LocalPolicyRunner,
 )
@@ -30,7 +31,7 @@ pytestmark = pytest.mark.tier1
 CONFIG = {
     "experiment": {
         "env_params": {
-            "use_egocentric_root_observations": False,
+            "use_egocentric_root_observations": True,
             "enable_global_root_position_observation": False,
             "preserve_trajectory_root_xy": True,
             "enable_heightmap_observations": True,
@@ -47,11 +48,9 @@ CONFIG = {
             "enable_muscle_force_observations": False,
             "enable_muscle_excitation_observations": True,
             "enable_muscle_activation_observations": True,
-            "goal_type": "TerraGoal",
+            "goal_type": "TerraFullBodyTrackingGoal",
             "goal_params": {
-                "enable_future_reference_observations": True,
-                "future_reference_stride": 10,
-                "future_reference_horizon": 100,
+                "lookahead_steps": [1, 20, 40, 60, 80],
                 "sites_for_mimic": list(MIMIC_SITES),
             },
         }
@@ -108,7 +107,7 @@ def test_config_is_read_and_checked() -> None:
             **CONFIG["experiment"],
             "env_params": {
                 **CONFIG["experiment"]["env_params"],
-                "use_egocentric_root_observations": True,
+                "goal_type": "TerraGoal",
             },
         }
     }
@@ -134,19 +133,17 @@ def test_observation_layout(model: mujoco.MjModel) -> None:
     observe = TerrainObservation(model)
     obs = observe(data, ref, 0)
     nq, nv, nu = model.nq, model.nv, model.nu
-    goal = (nq - 2) + nv + 2 + 3 * 16 + 7 * 10
+    goal = 452
     assert (
-        obs.shape == ((nq - 2) + nv + 2 * nu + 4 + 121 + goal,)
+        obs.shape == ((nq - 3) + nv + 2 * nu + 4 + 121 + goal,)
         and obs.dtype == np.float32
     )
-    np.testing.assert_allclose(obs[: nq - 2], data.qpos[2:], rtol=1e-6)
-    muscle = obs[nq - 2 + nv : nq - 2 + nv + 2 * nu]
+    assert obs[0] == np.float32(data.qpos[2])
+    np.testing.assert_allclose(obs[1:4], [0, 0, -1], atol=1e-6)
+    muscle = obs[nq - 3 + nv : nq - 3 + nv + 2 * nu]
     np.testing.assert_allclose(
         muscle[0::2], 0.3, rtol=1e-6
     )  # excitation, then activation
-    g = obs[-goal:]
-    # The simulated state is the reference frame: no root or site error.
-    np.testing.assert_allclose(g[(nq - 2) + nv : (nq - 2) + nv + 2 + 48], 0, atol=1e-5)
     # Heights relative to the pelvis: flat floor at the start, about -pelvis height.
     hm = obs[-goal - 121 : -goal]
     assert np.allclose(hm, -data.xpos[model.body("pelvis").id, 2], atol=1e-6)
@@ -265,8 +262,8 @@ def test_terra_actor() -> None:
 def test_matches_upstream_terra_rollout() -> None:
     """Same states and observations as TERRA's own env (``scripts/terra_parity``).
 
-    The fixture is a 15-step rollout of upstream TERRA/MuscleMimic code with fixed
-    actions, observing the post-``mj_step`` data as TERRA did in training.
+    The older compact-goal fixture checks physics and the shared physical state
+    prefix; its obsolete goal is excluded. Tracking goals use a separate fixture.
     """
     from pathlib import Path
 
@@ -283,9 +280,24 @@ def test_matches_upstream_terra_rollout() -> None:
     class Replay:
         obs_adapter = TerrainObservation(model, reference=ref)
         seen: list = []
+        state_adapter = FullbodyStateAdapter(
+            model,
+            {
+                "enable_muscle_length_observations": False,
+                "enable_muscle_velocity_observations": False,
+                "enable_muscle_force_observations": False,
+            },
+        )
 
         def action_for(self, data, clip, frame_idx):
-            self.seen.append(self.obs_adapter.build(data, frame_idx))
+            self.seen.append(
+                np.concatenate(
+                    [
+                        self.state_adapter.build_state(data),
+                        self.obs_adapter.heightmap(data),
+                    ]
+                )
+            )
             return up["actions"][len(self.seen) - 1]
 
     policy = Replay()
@@ -308,7 +320,9 @@ def test_matches_upstream_terra_rollout() -> None:
     )  # newtons
     rest = np.ones(seen.shape[1], bool)
     rest[touch] = False
-    np.testing.assert_allclose(seen[:, rest], up["obs"][:, rest], atol=1e-4)
+    np.testing.assert_allclose(
+        seen[:, rest], up["obs"][:, : seen.shape[1]][:, rest], atol=1e-4
+    )
 
 
 def test_tracking_checkpoint_layout(model):
@@ -356,4 +370,27 @@ def test_invalid_reference_inputs_are_rejected(model, dt, route, stationary):
             dt,
             lambda xy: np.zeros(len(xy)),
             MIMIC_SITES,
+        )
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("musclemimic_models") is None,
+    reason="needs musclemimic_models",
+)
+def test_tracking_goals_match_pinned_upstream_assembly() -> None:
+    from pathlib import Path
+    from myosuite.integrations.musclemimic import build_terrain_fullbody_spec
+
+    fixture = np.load(Path(__file__).parent / "data" / "terra_tracking_goals.npz")
+    model = build_terrain_fullbody_spec(disabled_contact_pairs=()).compile()
+    ref = motion_clip_from_states(model, fixture["ref_qpos"], 0.01, MIMIC_SITES)
+    observe = TerrainObservation(model)
+    data = mujoco.MjData(model)
+    for qpos, qvel, frame, expected in zip(
+        fixture["qpos"], fixture["qvel"], fixture["frames"], fixture["goals"]
+    ):
+        data.qpos[:], data.qvel[:] = qpos, qvel
+        mujoco.mj_forward(model, data)
+        np.testing.assert_allclose(
+            observe.goal(data, ref, int(frame)), expected, atol=1e-6, rtol=1e-6
         )

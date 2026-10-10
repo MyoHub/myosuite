@@ -38,7 +38,9 @@ def download_terrain_checkpoint(cache_dir: str | Path | None = None) -> Path:
     from huggingface_hub import snapshot_download  # noqa: PLC0415
 
     root = Path(
-        snapshot_download(TERRA_REPO, revision=TERRA_REVISION, cache_dir=cache_dir)
+        snapshot_download(
+            TERRA_REPO, revision=TERRA_REVISION, cache_dir=cache_dir, token=False
+        )
     )
     return root / TERRA_CHECKPOINT if (root / TERRA_CHECKPOINT).is_dir() else root
 
