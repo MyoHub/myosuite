@@ -11,11 +11,18 @@ on:
       - "**/README.md"
 
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: ["main", "dev"]
     paths-ignore:
       - "docs/**"
       - ".github/**"
       - "**/README.md"
+
+# github.ref is refs/pull/<number>/merge on a pull request, so two PRs that
+# share a branch name do not cancel each other. On a push it is the branch ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -23,6 +30,8 @@ permissions:
 jobs:
   core:
     name: Core (${{ matrix.os }}, py${{ matrix.python-version }})
+    # A draft pull request skips this job. ready_for_review runs it when marked ready.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
 
     defaults:
       run:
@@ -37,16 +46,14 @@ jobs:
           - ubuntu-latest
           - windows-latest
         python-version: ["3.10"]
-        # 3.12 and 3.14 run on Linux only: they exercise the full suite, and the risks they
-        # guard (dependency resolution, Python-level incompatibilities) are OS-independent.
-        # 3.12 matters specifically because NumPy resolves to >=2.3 there (3.10 still resolves
-        # 2.2.x, which only deprecates rather than removes implicit shape-(1,)-array-to-scalar
-        # conversion -- the exact class of bug the ``_as_mj_int``-style guards in
-        # myosuite/envs/myo/tasks/challenge/ exist for). The [mjlab] extra resolves to torch +
-        # warp-lang here, since mjlab caps itself at <3.14 upstream.
+        # Only the minimum and maximum supported Pythons. 3.10 is the floor and
+        # still resolves NumPy 2.2.x (which deprecates, rather than removes,
+        # implicit shape-(1,)-array-to-scalar conversion). 3.14 is the ceiling
+        # and runs on Linux only: the full suite there covers dependency
+        # resolution and Python-level incompatibilities, including NumPy >=2.3,
+        # which are OS-independent. The [mjlab] extra resolves to torch +
+        # warp-lang on the 3.10 Linux job; mjlab caps itself at <3.14.
         include:
-          - os: ubuntu-latest
-            python-version: "3.12"
           - os: ubuntu-latest
             python-version: "3.14"
 

@@ -137,7 +137,7 @@ pytest myosuite/tests/test_registry.py -v
 pytest myosuite/tests/test_parity.py -v
 ```
 
-Branch from `dev` and open the pull request against `dev`; CI runs for pull requests into `main` and `dev`.
+Branch from `dev` and open the pull request against `dev`. CI runs for non-draft pull requests into `main` and `dev`, on Python 3.10 (macOS, Ubuntu, Windows) and 3.14 (Ubuntu). A draft pull request does not run CI until it is marked ready.
 See [CLAUDE.md](../../CLAUDE.md) for the full gate list. A pre-commit hook blocks imports of the
 deleted `BaseV0`/`env_base.MujocoEnv` classes — if it fires, you copied from an
 old example; use `MyoGymnasiumEnv` instead.
