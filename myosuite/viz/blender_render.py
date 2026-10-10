@@ -514,23 +514,23 @@ def _rest_poses(model: Any, geoms: dict[str, int]) -> dict[str, list[float]]:
 def _muscle_chains(
     model: Any, muscles: Any, geoms: dict[str, int]
 ) -> list[dict[str, Any]]:
-    """Each muscle's path sites at ``qpos0`` and the bone that carries each site.
+    """Each muscle's path sites at ``qpos0`` and the bones that carry them.
 
-    A site's bone is a bone mesh of its body, else of the nearest ancestor with
-    one (the patella site follows the patella, a pelvis site the pelvis).
+    A site is carried by the bone meshes of its body, else of the nearest ancestor
+    with some (the patella site by the patella, a rib site by all thorax meshes).
     """
     import mujoco
 
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
-    body_bone = {}
+    body_bones: dict[int, list[str]] = {}
     for name, g in geoms.items():
-        body_bone.setdefault(int(model.geom_bodyid[g]), name)
+        body_bones.setdefault(int(model.geom_bodyid[g]), []).append(name)
 
-    def bone_of(body: int) -> str | None:
-        while body and body not in body_bone:
+    def bones_of(body: int) -> list[str] | None:
+        while body and body not in body_bones:
             body = int(model.body_parentid[body])
-        return body_bone.get(body)
+        return body_bones.get(body)
 
     chains = []
     for actuator in muscles:
@@ -541,14 +541,15 @@ def _muscle_chains(
             for w in range(adr, adr + num)
             if model.wrap_type[w] == mujoco.mjtWrap.mjWRAP_SITE
         ]
-        bones = [bone_of(int(model.site_bodyid[s])) for s in sites]
-        if len(sites) >= 2 and None not in bones:
+        carriers = [bones_of(int(model.site_bodyid[s])) for s in sites]
+        if len(sites) >= 2 and None not in carriers:
+            bones = sorted({n for c in carriers for n in c})
             chains.append({"points": data.site_xpos[sites].tolist(), "bones": bones})
     return chains
 
 
 def _chains_by_index(meta: dict[str, Any], bones: list[str]) -> list[tuple[Any, Any]]:
-    """``muscle_chains`` with each site's bone name replaced by its index in *bones*."""
+    """``muscle_chains`` with bone names replaced by their indices in *bones*."""
     import numpy as np
 
     index = {name: i for i, name in enumerate(bones)}
@@ -593,8 +594,10 @@ def _muscle_weights(
 
     With *chains*, a vertex within 6 cm of muscle paths weighs only the bones those
     muscles attach to (within its piece's regions), nearest first, so a hand
-    tendon never follows a leg and an elbow bends smoothly. The weights are finally
-    smoothed over the mesh, so neighbouring muscles blend without seams.
+    tendon never follows a leg and an elbow bends smoothly. A vertex within 2.5 cm
+    of a bone of its piece's regions is fixed to that bone (ribcage muscle stays on
+    the ribs); the others are smoothed over the mesh between these anchors, so
+    muscles bridging a joint blend without seams.
 
     Args:
         points: ``(V, 3)`` mesh vertices in the rest pose.
@@ -602,7 +605,7 @@ def _muscle_weights(
         bone_points: ``(P, 3)`` bone surface samples in the rest pose.
         bone_owner: ``(P,)`` bone index of each sample.
         bone_limb: Region of each bone, see :func:`_limb`.
-        chains: ``(site points, site bone indices)`` per muscle, see
+        chains: ``(site points, attached bone indices)`` per muscle, see
             :func:`_muscle_chains`.
         k: Nearest bone samples per vertex.
 
@@ -663,8 +666,8 @@ def _muscle_weights(
         region = np.array([regions.index(r) for r in bone_limb])
         follows = (dense @ np.eye(len(regions))[region]) > 0
         attached = np.zeros((len(chains), nbone), bool)
-        for j, (_, site_bones) in enumerate(chains):
-            attached[j, site_bones] = True
+        for j, (_, bones) in enumerate(chains):
+            attached[j, bones] = True
         starts = np.concatenate([c[:-1] for c, _ in chains])
         span = np.concatenate([c[1:] for c, _ in chains]) - starts
         owner = np.repeat(np.arange(len(chains)), [len(c) - 1 for c, _ in chains])
@@ -672,6 +675,8 @@ def _muscle_weights(
         squared = (bone_points**2).sum(1)
         pool = min(64, len(bone_points))
         restricted = np.zeros_like(dense)
+        nearest_bone = np.full(len(points), -1)
+        nearest_dist = np.full(len(points), np.inf)
         for start in range(0, len(points), 128):
             chunk = points[start : start + 128]
             t = np.clip(((chunk[:, None] - starts) * span).sum(-1) / length2, 0, 1)
@@ -687,6 +692,16 @@ def _muscle_weights(
             idx = np.argpartition(d2, pool - 1, axis=1)[:, :pool].copy()
             dist = np.sqrt(np.maximum(np.take_along_axis(d2, idx, 1), 0))
             owners = bone_owner[idx]
+            # The nearest bone of the piece's regions anchors tissue lying on it.
+            regional = np.where(
+                np.take_along_axis(follows[start : start + 128][:, region], owners, 1),
+                dist,
+                np.inf,
+            )
+            pick = regional.argmin(1)
+            rows = np.arange(len(chunk))
+            nearest_bone[start : start + 128] = owners[rows, pick]
+            nearest_dist[start : start + 128] = regional[rows, pick]
             dist[~np.take_along_axis(allowed, owners, 1)] = np.inf
             order = np.argsort(dist, 1)[:, :k]
             dist = np.take_along_axis(dist, order, 1)
@@ -698,11 +713,19 @@ def _muscle_weights(
             )
         found = restricted.sum(1) > 0
         dense[found] = restricted[found] / restricted[found].sum(1, keepdims=True)
-    # Smooth over the mesh so neighbouring vertices of different muscles blend.
+    # Tissue lying on a bone (within 2.5 cm) is fixed to it: ribcage muscle stays on
+    # the ribs however the arm swings. The rest is smoothed over the mesh between
+    # these anchors, so muscles bridging a joint blend without seams.
     edges = np.asarray(edges, int).reshape(-1, 2)
     degree = np.bincount(edges.ravel(), minlength=len(points)).astype(np.float32)
+    anchored = np.zeros(len(points), bool)
+    if chains:
+        anchored = nearest_dist < 0.025
+        dense[anchored] = 0
+        dense[np.flatnonzero(anchored), nearest_bone[anchored]] = 1
+    fixed = dense[anchored].copy()
     used = np.flatnonzero(dense.any(0))
-    for _ in range(12):
+    for _ in range(30):
         for b in used:
             column = dense[:, b]
             neighbours = np.bincount(
@@ -713,6 +736,7 @@ def _muscle_weights(
                 0.5 * column + 0.5 * neighbours / np.maximum(degree, 1),
                 column,
             )
+        dense[anchored] = fixed
     strongest = dense.argmax(1)
     dense[dense < 0.03] = 0
     dense[np.arange(len(points)), strongest] += dense.sum(1) == 0

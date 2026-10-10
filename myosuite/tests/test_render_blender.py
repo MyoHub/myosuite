@@ -400,8 +400,8 @@ def test_muscle_weights_blend_across_a_joint_but_never_across_limbs() -> None:
 
 
 def test_muscle_weights_follow_their_muscles_bones_and_keep_to_their_limb() -> None:
-    """Near a femur-tibia muscle path a vertex blends those two bones by proximity;
-    a hand piece next to that path keeps its hand."""
+    """Tissue on the femur or tibia follows that bone and blends across the knee;
+    a hand piece next to the leg path keeps its hand."""
     z = np.linspace(0, 0.4, 20)
     bone_points = np.concatenate(
         [
@@ -412,14 +412,11 @@ def test_muscle_weights_follow_their_muscles_bones_and_keep_to_their_limb() -> N
     )
     owner = np.repeat(np.arange(3), 20)
     limbs = ["leg_r", "leg_r", "arm_r"]
-    # One muscle path with sites on the femur (z=0.3, 0.05) and the tibia (z=-0.3).
+    # One muscle path with sites on the femur and the tibia.
     chains = [
-        (
-            np.array([[0.02, 0, 0.3], [0.02, 0, 0.05], [0.02, 0, -0.3]]),
-            np.array([0, 0, 1]),
-        )
+        (np.array([[0.02, 0, 0.3], [0.02, 0, 0.05], [0.02, 0, -0.3]]), np.array([0, 1]))
     ]
-    muscle = np.c_[np.full(9, 0.03), np.zeros(9), np.linspace(-0.25, 0.25, 9)]
+    muscle = np.c_[np.full(9, 0.02), np.zeros(9), np.linspace(-0.25, 0.25, 9)]
     hand = np.c_[np.full(5, 0.045), np.zeros(5), np.linspace(0.16, 0.2, 5)]
     points = np.concatenate([muscle, hand])
     edges = [(i, i + 1) for i in [*range(8), *range(9, 13)]]
@@ -429,11 +426,33 @@ def test_muscle_weights_follow_their_muscles_bones_and_keep_to_their_limb() -> N
     weights = np.zeros((len(points), 3))
     np.add.at(weights, (vertex, bone), weight)
     np.testing.assert_allclose(weights.sum(1), 1)
-    assert weights[8, 0] > 0.8  # upper thigh: femur
-    assert weights[0, 1] > 0.8  # below the knee: tibia
-    assert np.all(np.diff(weights[:9, 1]) <= 0)  # tibia share falls up the thigh
+    assert weights[8, 0] == pytest.approx(1)  # on the femur: femur
+    assert weights[0, 1] == pytest.approx(1)  # on the tibia: tibia
+    assert np.all(np.diff(weights[:9, 1]) <= 1e-6)  # tibia share falls up the thigh
     assert not weights[:9, 2].any()  # the muscle never follows the hand
     assert not weights[9:, :2].any()  # the hand never follows the leg path
+
+
+def test_muscle_weights_keep_tissue_on_the_ribs_when_an_arm_path_passes() -> None:
+    """Muscle lying on the thorax stays on it although arm muscle paths pass close by;
+    only tissue away from the bones blends towards the humerus."""
+    ribs = np.c_[np.zeros(30), np.linspace(-0.15, 0.15, 30), np.zeros(30)]
+    humerus = np.c_[np.full(30, 0.12), np.zeros(30), np.linspace(0.0, 0.3, 30)]
+    bone_points = np.concatenate([ribs, humerus])
+    owner = np.repeat([0, 1], 30)
+    limbs = ["trunk", "arm_r"]
+    # An arm muscle path (humerus only) passing 3 cm over the ribs.
+    chains = [(np.array([[0.03, -0.1, 0.0], [0.12, 0.0, 0.2]]), np.array([1]))]
+    sheet = np.c_[np.linspace(0.01, 0.11, 11), np.zeros(11), np.linspace(0.0, 0.1, 11)]
+    edges = [(i, i + 1) for i in range(10)]
+    vertex, bone, weight = blender_render._muscle_weights(
+        sheet, edges, bone_points, owner, limbs, chains
+    )
+    weights = np.zeros((len(sheet), 2))
+    np.add.at(weights, (vertex, bone), weight)
+    assert weights[0, 0] == pytest.approx(1)  # on the ribs: thorax only
+    assert weights[-1, 1] == pytest.approx(1)  # on the humerus: humerus only
+    assert 0 < weights[5, 1] < 1  # in between: a blend
 
 
 def test_export_records_bone_rest_poses_for_a_muscle_mesh(
