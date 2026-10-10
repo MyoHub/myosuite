@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Strip or reject commit messages that attribute authorship to AI assistants.
+"""Strip AI attribution trailers and reject an AI commit author.
 
-The CLA check requires every author/co-author to have signed the CLA. AI
-tools cannot sign it, so Co-Authored-By (and similar) trailers for Cursor,
-Claude, Codex, Gemini, etc. break CI. Soft guidance in CLAUDE.md is not
-enough — some tools inject these trailers after the message is composed.
+The CLA check requires every author and co-author to have signed the CLA.
+AI tools cannot sign it, so a commit whose Author or Committer is Cursor
+Agent (or another AI identity), and Co-Authored-By trailers for Cursor,
+Claude, Codex, Gemini, etc., break CI. Soft guidance in CLAUDE.md is not
+enough — some tools set the author identity or inject trailers after the
+message is composed.
 
 Only known AI identities are matched (the names and addresses the tools sign
 with, see ``_AI_PRODUCT`` / ``_AI_NAME`` / ``_AI_EMAIL``), so people who merely
@@ -20,6 +22,7 @@ Modes:
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -89,6 +92,34 @@ def _names_ai(value: str) -> bool:
     )
 
 
+def _configured_idents() -> list[str]:
+    """Return ``git var`` author and committer idents, when git can resolve them.
+
+    ``git var GIT_AUTHOR_IDENT`` includes the timestamp. :func:`_names_ai` only
+    reads the name and the address inside ``<>``.
+    """
+    idents: list[str] = []
+    for var in ("GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"):
+        try:
+            proc = subprocess.run(
+                ["git", "var", var],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            continue
+        line = proc.stdout.strip()
+        if proc.returncode == 0 and line:
+            idents.append(line)
+    return idents
+
+
+def _author_hits(idents: list[str]) -> list[str]:
+    """Return idents whose name or email is a known AI identity."""
+    return [ident for ident in idents if _names_ai(ident)]
+
+
 def _is_ai_line(line: str) -> bool:
     """Whether *line* is an AI co-author / attribution trailer or footer."""
     line = line.rstrip("\r\n")
@@ -149,34 +180,51 @@ def main(argv: list[str]) -> int:
         return 2
 
     hits = _hits(text)
-    if not hits:
+    author_hits = _author_hits(_configured_idents())
+    if not hits and not author_hits:
         return 0
 
     # Report undecodable bytes / emoji as escapes rather than crash the hook.
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(errors="backslashreplace")
-    report = "\n".join(f"  {line}" for line in hits)
-    if strip:
+    if strip and hits:
         try:
             path.write_bytes(_strip(text).encode("utf-8", "surrogateescape"))
         except OSError as exc:
             print(f"reject_ai_coauthor: cannot write {path}: {exc}", file=sys.stderr)
             return 2
         print(
-            "reject_ai_coauthor: stripped AI attribution trailer(s):\n" + report,
+            "reject_ai_coauthor: stripped AI attribution trailer(s):\n"
+            + "\n".join(f"  {line}" for line in hits),
             file=sys.stderr,
         )
+        hits = []
+    if not hits and not author_hits:
         return 0
 
-    print(
-        "ERROR: AI assistant co-author / attribution trailers are forbidden.\n"
-        "This repo's CLA check requires every commit author/co-author to have\n"
-        "signed the CLA; AI tools cannot sign it.\n"
-        "\n"
-        "Remove these line(s) from the commit message and retry:\n" + report + "\n\n"
-        "Also turn off Cursor Settings → Agents → Attribution if it is on.",
-        file=sys.stderr,
-    )
+    parts: list[str] = [
+        "ERROR: an AI assistant cannot author this commit or be named in it.",
+        "This repo's CLA check requires every commit author and co-author to",
+        "have signed the CLA; AI tools cannot sign it.",
+        "",
+    ]
+    if author_hits:
+        parts.append(
+            "Author and Committer must be the human who signed the CLA, not:\n"
+            + "\n".join(f"  {ident}" for ident in author_hits)
+        )
+        parts.append(
+            "Set git user.name and user.email to that person before committing."
+        )
+    if hits:
+        parts.append(
+            "Remove these line(s) from the commit message and retry:\n"
+            + "\n".join(f"  {line}" for line in hits)
+        )
+        parts.append(
+            "Also turn off Cursor Settings → Agents → Attribution if it is on."
+        )
+    print("\n".join(parts) + "\n", file=sys.stderr)
     return 1
 
 

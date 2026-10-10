@@ -79,7 +79,7 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
   - Never skip a case as "non-deterministic" without checking that a replay really differs between processes.
   - Make sure every tolerance fails on a known-bad mutation.
 - **Registered-env changes.** If a change alters a registered env's observations, actions, dynamics or task distribution, add a CHANGELOG entry and update the compatibility notes in `docs/baseline_checkpoints.md`. Published checkpoints are tied to the old contract.
-- **Never add an AI assistant (e.g. Claude, Anthropic, Cursor, Codex, Gemini) as a commit co-author** — via `Co-Authored-By` trailers or otherwise. This repo's CLA check requires every commit author/co-author to have signed the CLA, and AI tools cannot sign it, so AI co-author trailers break the check. Enforced by the `no-ai-coauthor` `commit-msg` pre-commit hook (`scripts/reject_ai_coauthor.py`); run `pre-commit install` so it is active locally.
+- **Never author a commit as an AI assistant, and never add one as a co-author.** `Author` and `Committer` must be the human who signed the CLA — not `Cursor Agent`, `cursoragent@cursor.com`, or any other AI identity. Do not add `Co-Authored-By` (or similar) trailers for Claude, Anthropic, Cursor, Codex, Gemini, or other AI tools. AI tools cannot sign the CLA, so an AI author or co-author fails the check. Enforced by the `no-ai-coauthor` `commit-msg` hook (`scripts/reject_ai_coauthor.py`), which rejects both an AI `Author`/`Committer` and AI attribution lines; run `pre-commit install` so it is active locally.
 
 ---
 
