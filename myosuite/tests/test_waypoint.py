@@ -251,3 +251,39 @@ def test_terms_batch_matches_single() -> None:
     np.testing.assert_allclose(
         select_waypoints(np, batch, index[:, None])[1, 0], batch[1, 2]
     )
+
+
+def test_registered_scene_override_and_seed(tmp_path) -> None:
+    import pickle
+
+    from myosuite import make_env
+    from myosuite.core.config import EnvConfig
+
+    path = tmp_path / "slider.xml"
+    path.write_text(SLIDER)
+    cfg = EnvConfig(
+        "myoFullBodyWaypoint-v0",
+        task_kwargs={
+            "model_path": str(path),
+            "task": WaypointTaskCfg(
+                site_name="tip", waypoints=((0.3, 0.0),), arrival_radius=0.02
+            ),
+            "frame_skip": 1,
+        },
+    )
+    env = make_env(cfg, seed=1234)
+    assert env.unwrapped.model.nq == 2
+    assert env.unwrapped.task.arrival_radius == 0.02
+    obs, _ = env.reset(seed=1234)
+    restored = pickle.loads(pickle.dumps(env))
+    np.testing.assert_array_equal(restored.reset(seed=1234)[0], obs)
+    compiled = make_env(
+        "myoFullBodyWaypoint-v0",
+        model=env.unwrapped.model,
+        task=env.unwrapped.task,
+        seed=1234,
+    )
+    np.testing.assert_array_equal(compiled.reset(seed=1234)[0], obs)
+    env.close()
+    restored.close()
+    compiled.close()

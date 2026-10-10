@@ -11,7 +11,6 @@ with a fixed ``log_std``. Actions are muscle controls in ``[-1, 1]``.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,9 +18,16 @@ from typing import Any
 import mujoco
 import numpy as np
 
-from myosuite.integrations.musclemimic.fullbody_local_policy import _actor_forward
-from myosuite.integrations.terra.observation import TerraObsCfg, TerraObservation
-from myosuite.integrations.terra.reference import ReferenceMotion
+from myosuite.integrations.musclemimic.fullbody_local_policy import (
+    _actor_forward,
+    load_local_policy_artifacts,
+    read_checkpoint_config_metadata,
+)
+from myosuite.integrations.musclemimic.terrain_observation import (
+    TerrainObsCfg,
+    TerrainObservation,
+)
+from myosuite.integrations.musclemimic.reference_motion import ReferenceMotion
 
 TERRA_REPO = "merc-s/TERRA-4B"
 # Tested release revision of the TERRA-4B model card (training seed 0, update 24416).
@@ -29,7 +35,7 @@ TERRA_REVISION = "b89a604d0687549f2678bb1b6a436dea058cd8b9"
 TERRA_CHECKPOINT = "checkpoint_24416"
 
 
-def download_terra_checkpoint(cache_dir: str | Path | None = None) -> Path:
+def download_terrain_checkpoint(cache_dir: str | Path | None = None) -> Path:
     """Download TERRA-4B at the pinned revision; returns the ``checkpoint_*`` folder."""
     from huggingface_hub import snapshot_download  # noqa: PLC0415
 
@@ -40,7 +46,7 @@ def download_terra_checkpoint(cache_dir: str | Path | None = None) -> Path:
 
 
 @dataclass(frozen=True)
-class TerraPolicy:
+class TerrainPolicy:
     """Frozen TERRA actor.
 
     Attributes:
@@ -53,7 +59,7 @@ class TerraPolicy:
     params: dict[str, Any]
     obs_mean: np.ndarray
     obs_var: np.ndarray
-    obs_cfg: TerraObsCfg
+    obs_cfg: TerrainObsCfg
 
     @property
     def obs_dim(self) -> int:
@@ -66,25 +72,20 @@ class TerraPolicy:
         return int(np.asarray(self.params["log_std"]).shape[-1])
 
     @classmethod
-    def load(cls, checkpoint: str | Path, seed: int = 0) -> TerraPolicy:
+    def load(cls, checkpoint: str | Path, seed: int = 0) -> TerrainPolicy:
         """Load a ``checkpoint_*`` folder (``train_state`` Orbax item, ``config`` JSON).
 
         Needs ``orbax-checkpoint`` (and therefore JAX) to read the Orbax item.
         """
-        import orbax.checkpoint as ocp  # noqa: PLC0415
-
         root = Path(checkpoint)
-        config = json.loads((root / "config" / "metadata").read_text(encoding="utf-8"))
-        state = ocp.StandardCheckpointer().restore(
-            str((root / "train_state").absolute())
+        config = read_checkpoint_config_metadata(root)
+        artifacts = load_local_policy_artifacts(root, seed=seed)
+        return cls(
+            artifacts.params,
+            artifacts.obs_mean,
+            artifacts.obs_var,
+            TerrainObsCfg.from_config(config),
         )
-        params = _to_numpy(state["params"])
-        stats = _to_numpy(state["run_stats"]["RunningMeanStd_0"])
-        mean, var = stats["mean"], stats["var"]
-        if mean.ndim == 2:  # leading training-seed axis
-            params = _index_tree(params, seed)
-            mean, var = mean[seed], var[seed]
-        return cls(params, mean, var, TerraObsCfg.from_config(config))
 
     def act(
         self, obs: np.ndarray, rng: np.random.Generator | None = None
@@ -103,19 +104,7 @@ class TerraPolicy:
         return np.clip(action, -1.0, 1.0)
 
 
-def _to_numpy(tree: Any) -> Any:
-    if isinstance(tree, dict):
-        return {k: _to_numpy(v) for k, v in tree.items()}
-    return np.asarray(tree, dtype=np.float32)
-
-
-def _index_tree(tree: Any, index: int) -> Any:
-    if isinstance(tree, dict):
-        return {k: _index_tree(v, index) for k, v in tree.items()}
-    return tree[index]
-
-
-class TerraController:
+class TerrainController:
     """TERRA acting in an env that steps ``frame_skip`` substeps per action.
 
     TERRA observed the data right after ``mj_step`` (contacts, touch and site
@@ -133,14 +122,14 @@ class TerraController:
 
     def __init__(
         self,
-        policy: TerraPolicy,
+        policy: TerrainPolicy,
         model: mujoco.MjModel,
         reference: ReferenceMotion,
         frame_skip: int,
         rng: np.random.Generator | None = None,
     ) -> None:
         self.policy, self.reference, self.rng = policy, reference, rng
-        self.observe = TerraObservation(model, policy.obs_cfg)
+        self.observe = TerrainObservation(model, policy.obs_cfg)
         self._model, self._frame_skip = model, frame_skip
         self._shadow = mujoco.MjData(model)
         self._frame = 0

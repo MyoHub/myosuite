@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 """TERRA's policy observation, rebuilt from MuJoCo data and a reference motion.
 
-Layout (``terra.rl.environment._TerraObservationLayout`` + ``terra.rl.observations
+Layout (``terra.rl.environment._TerrainObservationLayout`` + ``terra.rl.observations
 .TerraGoal``, with the TERRA-4B settings):
 
 1. root ``z`` and quaternion, then every other joint position;
@@ -26,8 +26,8 @@ from typing import Any
 import mujoco
 import numpy as np
 
-from myosuite.integrations.terra.actor import TERRAIN_GROUP
-from myosuite.integrations.terra.reference import ReferenceMotion
+from myosuite.integrations.musclemimic.fullbody_model import TERRAIN_GROUP
+from myosuite.integrations.musclemimic.reference_motion import ReferenceMotion
 
 MIMIC_SITES = (
     "pelvis_mimic",
@@ -53,7 +53,7 @@ ANKLE_SITES = ("left_ankle_mimic", "right_ankle_mimic")
 
 
 @dataclass(frozen=True)
-class TerraObsCfg:
+class TerrainObsCfg:
     """Observation settings of a TERRA checkpoint (``experiment.env_params``).
 
     Attributes:
@@ -75,7 +75,7 @@ class TerraObsCfg:
     future_horizon: int = 100
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> TerraObsCfg:
+    def from_config(cls, config: dict[str, Any]) -> TerrainObsCfg:
         """Settings saved in a checkpoint's ``config`` (raises on an unsupported layout)."""
         env = config["experiment"]["env_params"]
         goal = env["goal_params"]
@@ -149,11 +149,11 @@ class TerrainHeights:
         return heights
 
 
-class TerraObservation:
+class TerrainObservation:
     """Builds the TERRA policy observation for a model with the TERRA actor."""
 
-    def __init__(self, model: mujoco.MjModel, cfg: TerraObsCfg | None = None) -> None:
-        self.cfg = cfg or TerraObsCfg()
+    def __init__(self, model: mujoco.MjModel, cfg: TerrainObsCfg | None = None) -> None:
+        self.cfg = cfg or TerrainObsCfg()
         self._model = model
         self._heights = TerrainHeights(model)
         root = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "root")

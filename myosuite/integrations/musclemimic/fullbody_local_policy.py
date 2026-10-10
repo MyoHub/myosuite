@@ -238,9 +238,11 @@ def has_local_policy_artifacts(checkpoint_root: Path) -> bool:
     return (p / "train_state").is_dir() and (p / "config" / "metadata").exists()
 
 
-def load_local_policy_artifacts(checkpoint_root: Path) -> LocalPolicyArtifacts:
+def load_local_policy_artifacts(
+    checkpoint_root: Path, seed: int = 0
+) -> LocalPolicyArtifacts:
     """Load policy parameters and normalization stats from Orbax artifacts."""
-    p = Path(checkpoint_root)
+    p = Path(checkpoint_root).absolute()
     train_state_dir = p / "train_state"
     if not train_state_dir.is_dir():
         raise FileNotFoundError(f"train_state directory missing: {train_state_dir}")
@@ -258,6 +260,17 @@ def load_local_policy_artifacts(checkpoint_root: Path) -> LocalPolicyArtifacts:
     obs_mean = np.asarray(run_stats["mean"], dtype=np.float32)
     obs_var = np.asarray(run_stats["var"], dtype=np.float32)
     obs_count = np.asarray(run_stats.get("count", 1e-6), dtype=np.float32)
+    if obs_mean.ndim == 2:
+
+        def select(tree: Any) -> Any:
+            if isinstance(tree, dict):
+                return {key: select(value) for key, value in tree.items()}
+            return tree[seed]
+
+        params = select(params)
+        obs_mean, obs_var = obs_mean[seed], obs_var[seed]
+        if obs_count.ndim:
+            obs_count = obs_count[seed]
     actor = params["actor"]
     if "output" in actor:
         action_dim = int(np.asarray(actor["output"]["bias"]).shape[0])

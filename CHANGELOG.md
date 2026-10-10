@@ -12,7 +12,8 @@ All notable changes to this project are documented in this file.
   `myosuite.envs.waypoint.WaypointEnv` takes any scene (`model_recipe`/`model_path` plus an `MjSpec` `edit_fn`, or a
   compiled model) and a typed `WaypointTaskCfg`; the goal terms (`myosuite.terms.waypoint`) are shared with the twin.
   The `musclemimic_fullbody` recipe now builds through `build_from_recipe` (its spec carries the CPU timestep).
-* **TERRA-4B in MyoSuite** (`myosuite.integrations.terra`): the TERRA actor, its observation (heightmap, reference
+* **Waypoint instance overrides:** customize `myoFullBodyWaypoint-v0` through `EnvConfig.task_kwargs` on CPU and mjlab without registering course IDs. XML scenes replace the default recipe; seeded construction is supported.
+* **Terrain tracking in MuscleMimic**, credited to TERRA-4B (`myosuite.integrations.musclemimic`): the TERRA actor, its observation (heightmap, reference
   goal) and NumPy inference, plus a planner that walks a clip along waypoints. Tutorial 4.4 drives TERRA through a
   programmatic obstacle course.
 

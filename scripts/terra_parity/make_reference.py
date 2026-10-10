@@ -10,18 +10,18 @@ import mujoco
 import numpy as np
 
 from myosuite.core.trajectory_io import MotionClip
-from myosuite.integrations.terra import (
+from myosuite.integrations.musclemimic import (
     MIMIC_SITES,
     TerrainHeights,
     compose_waypoint_reference,
-    terra_fullbody_spec,
+    build_terrain_fullbody_spec,
 )
 
 FRAMES = 120  # 15 control steps plus TERRA's 100-frame lookahead
 
 
 def main(out: str) -> None:
-    model = terra_fullbody_spec().compile()
+    model = build_terrain_fullbody_spec().compile()
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
     t = np.arange(500) / 100

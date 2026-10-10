@@ -90,6 +90,12 @@ def make_waypoint_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
     """
     del play
     cpu = ref.cpu_task_spec(env_id)
+    if cpu.kwargs.get("model") is not None:
+        raise ValueError(
+            "mjlab requires model_path or model_recipe, not a compiled model"
+        )
+    if cpu.kwargs.get("model_path") is not None:
+        cpu = dataclasses.replace(cpu, kwargs={**cpu.kwargs, "model_recipe": None})
     task_cfg: WaypointTaskCfg = cpu.kwargs.get("task") or WaypointTaskCfg()
     # Raw controls clipped to the control range, as WaypointEnv.step.
     task = dataclasses.replace(
