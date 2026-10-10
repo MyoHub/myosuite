@@ -47,6 +47,19 @@ research, education or artistic projects under the AMASS license; do not redistr
 to cite AMASS and the MuscleMimic paper in resulting publications. The full reference list is the *References* page of
 the MyoSuite documentation (`docs/source/references.rst`).
 
+### Retargeting your own SMPL motion
+
+To put other SMPL-family motions (your own AMASS download, or fits of your own capture) on MyoFullBody, use
+MuscleMimic's GMR fork [`gmr_plus`](https://github.com/amathislab/gmr_plus) (MIT). It fits the SMPL shape and a global
+scale to the model's T-pose, then solves inverse kinematics with the model's coupled joints as equality constraints;
+its README lists the supported inputs. Load the result with `load_motion_clip` and `expand_motion_clip_to_model`
+(`myosuite.core.trajectory_io`). For a body scaled to a subject (see the *Body scaling* page), retarget against the
+scaled model's MJCF (`spec.to_xml()`), since clips are fitted to one body size.
+
+SMPL, SMPL-H, SMPL-X and AMASS are licensed for non-commercial use without redistribution, and so is the code of the
+`smplx` package. MyoSuite therefore never ships them, nor anything derived from them: download the model files and
+motions yourself, and keep the retargeted clips (and policies trained on them) under the same terms.
+
 Full-body **trajectory playback**, **preview**, and **MJX smoke** are driven by a
 single user-facing entry point:
 
