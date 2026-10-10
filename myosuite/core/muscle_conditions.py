@@ -434,9 +434,11 @@ class CumulativeFatigue:
             rng = self.np_random if np_random is None else np_random
             nf = rng.random(size=(self.na,))
             ap = rng.random(size=(self.na,))
-            self._MA = nf * ap
-            self._MR = nf * (1.0 - ap)
-            self._MF = 1.0 - nf
+            # Write in place. Rebinding ``1.0 - nf`` is typed as an N-D array
+            # union, which mypy rejects for these 1-D buffers.
+            self._MA[:] = nf * ap
+            self._MR[:] = nf * (1.0 - ap)
+            self._MF[:] = 1.0 - nf
         elif fatigue_reset_vec is not None:
             if len(fatigue_reset_vec) != self.na:
                 raise ValueError(
