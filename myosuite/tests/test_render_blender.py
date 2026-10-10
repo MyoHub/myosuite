@@ -399,6 +399,43 @@ def test_muscle_weights_blend_across_a_joint_but_never_across_limbs() -> None:
     )  # hip: pelvis + femur
 
 
+def test_muscle_weights_follow_their_muscles_bones_and_keep_to_their_limb() -> None:
+    """Near a femur-tibia muscle path a vertex blends those two bones by proximity;
+    a hand piece next to that path keeps its hand."""
+    z = np.linspace(0, 0.4, 20)
+    bone_points = np.concatenate(
+        [
+            np.c_[np.zeros(20), np.zeros(20), z],  # femur
+            np.c_[np.zeros(20), np.zeros(20), -z],  # tibia
+            np.c_[np.full(20, 0.06), np.zeros(20), 0.15 + z / 8],  # hand
+        ]
+    )
+    owner = np.repeat(np.arange(3), 20)
+    limbs = ["leg_r", "leg_r", "arm_r"]
+    # One muscle path with sites on the femur (z=0.3, 0.05) and the tibia (z=-0.3).
+    chains = [
+        (
+            np.array([[0.02, 0, 0.3], [0.02, 0, 0.05], [0.02, 0, -0.3]]),
+            np.array([0, 0, 1]),
+        )
+    ]
+    muscle = np.c_[np.full(9, 0.03), np.zeros(9), np.linspace(-0.25, 0.25, 9)]
+    hand = np.c_[np.full(5, 0.045), np.zeros(5), np.linspace(0.16, 0.2, 5)]
+    points = np.concatenate([muscle, hand])
+    edges = [(i, i + 1) for i in [*range(8), *range(9, 13)]]
+    vertex, bone, weight = blender_render._muscle_weights(
+        points, edges, bone_points, owner, limbs, chains
+    )
+    weights = np.zeros((len(points), 3))
+    np.add.at(weights, (vertex, bone), weight)
+    np.testing.assert_allclose(weights.sum(1), 1)
+    assert weights[8, 0] > 0.8  # upper thigh: femur
+    assert weights[0, 1] > 0.8  # below the knee: tibia
+    assert np.all(np.diff(weights[:9, 1]) <= 0)  # tibia share falls up the thigh
+    assert not weights[:9, 2].any()  # the muscle never follows the hand
+    assert not weights[9:, :2].any()  # the hand never follows the leg path
+
+
 def test_export_records_bone_rest_poses_for_a_muscle_mesh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -421,6 +458,11 @@ def test_export_records_bone_rest_poses_for_a_muscle_mesh(
     rest = np.asarray(meta["bone_rest"][f"bone_id{bone}_geom"]).reshape(4, 4)
     np.testing.assert_allclose(rest[:3, 3], data.geom_xpos[bone])
     np.testing.assert_allclose(rest[:3, :3], data.geom_xmat[bone].reshape(3, 3))
+    # The fixture's path ends on a world site, which no bone carries: no chain.
+    assert meta["muscle_chains"] == []
+    flexor = env.model.actuator("flexor").id
+    geoms = {f"bone_id{bone}_geom": bone}
+    assert blender_render._muscle_chains(env.model, [flexor], geoms) == []
 
 
 @pytest.mark.parametrize("seconds", ["0", "-1", "nan", "inf"])

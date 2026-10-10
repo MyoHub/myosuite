@@ -232,9 +232,11 @@ the model; the simulated model is not changed.
   are BodyParts3D muscles posed on ``myoMimicFullbody-v0``. They are downloaded
   from the Hugging Face dataset ``myohub/myosuite-assets`` on first use and
   cached, so they fit the full-body envs only.
-- Any ``.glb`` modelled in a model's rest pose (``qpos0``) works too: its
-  ``Muscle*`` meshes (or all meshes) are bound to the nearest bones, a whole
-  piece to one limb, so a hand next to the thigh never follows the femur.
+- Each vertex near a muscle path blends the bones of the two path sites around
+  it, so a muscle follows its origin and insertion and bends only where its
+  path crosses a joint; a piece never follows a second limb, so a hand next to
+  the thigh never follows the femur. Any ``.glb`` modelled in a model's rest
+  pose (``qpos0``) works too (its ``Muscle*`` meshes, or all meshes).
 - The meshes keep one muscle colour: they do not change with activation or
   bulge as muscles shorten, unlike the tubes.
 
