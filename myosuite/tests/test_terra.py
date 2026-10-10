@@ -15,11 +15,14 @@ from myosuite.integrations.musclemimic import (
     MIMIC_SITES,
     TerrainObsCfg,
     TerrainObservation,
-    TerrainPolicy,
     TerrainHeights,
     compose_waypoint_reference,
 )
-from myosuite.integrations.musclemimic.reference_motion import ReferenceMotion
+from myosuite.core.trajectory_io import motion_clip_from_states
+from myosuite.integrations.musclemimic.fullbody_local_policy import (
+    LocalPolicyArtifacts,
+    LocalPolicyRunner,
+)
 
 pytestmark = pytest.mark.tier1
 
@@ -84,7 +87,7 @@ def _walk_clip(model: mujoco.MjModel, frames: int = 400) -> MotionClip:
     )
 
 
-def _reference(model: mujoco.MjModel, data: mujoco.MjData) -> ReferenceMotion:
+def _reference(model: mujoco.MjModel, data: mujoco.MjData) -> MotionClip:
     heights = TerrainHeights(model)
     return compose_waypoint_reference(
         model,
@@ -166,7 +169,9 @@ def test_reference_follows_route_and_terrain(model: mujoco.MjModel) -> None:
     np.testing.assert_allclose(np.linalg.norm(ref.qpos[:, 3:7], axis=1), 1, atol=1e-9)
 
 
-def _random_policy(obs_dim: int, nu: int, rng: np.random.Generator) -> TerrainPolicy:
+def _random_policy(
+    obs_dim: int, nu: int, rng: np.random.Generator
+) -> LocalPolicyRunner:
     def dense(n_in: int, n_out: int) -> dict:
         return {
             "kernel": rng.normal(0, 1 / np.sqrt(n_in), (n_in, n_out)).astype(
@@ -188,11 +193,18 @@ def _random_policy(obs_dim: int, nu: int, rng: np.random.Generator) -> TerrainPo
         "output": dense(32, nu),
     }
     params = {"actor": actor, "log_std": np.full(nu, np.log(0.1), np.float32)}
-    return TerrainPolicy(
-        params,
-        rng.normal(size=obs_dim).astype(np.float32),
-        np.ones(obs_dim, np.float32),
-        TerrainObsCfg(),
+    return LocalPolicyRunner(
+        LocalPolicyArtifacts(
+            params,
+            rng.normal(size=obs_dim).astype(np.float32),
+            np.ones(obs_dim, np.float32),
+            np.array(1e9, np.float32),
+            obs_dim,
+            nu,
+        ),
+        stochastic=True,
+        seed=0,
+        update_normalizer=False,
     )
 
 
@@ -214,13 +226,15 @@ def test_policy_inference_drives_the_env(model: mujoco.MjModel) -> None:
     env.reset(seed=0)
     np.testing.assert_array_equal(env.data.qvel, ref.qvel[0])
     for step in range(3):
-        mean = policy.act(observe(env.data, ref, step))
-        action = policy.act(observe(env.data, ref, step), rng)
+        policy.stochastic = False
+        mean = policy.action_from_obs(observe(env.data, ref, step))
+        policy.stochastic = True
+        action = policy.action_from_obs(observe(env.data, ref, step))
         assert action.shape == (model.nu,) and np.all(np.abs(action) <= 1)
         assert not np.array_equal(mean, action)
         env.step(action)
     with pytest.raises(ValueError):
-        policy.act(np.zeros(3))
+        policy.action_from_obs(np.zeros(3))
 
 
 @pytest.mark.skipif(
@@ -263,15 +277,15 @@ def test_matches_upstream_terra_rollout() -> None:
     )
 
     up = np.load(Path(__file__).parent / "data" / "terra_upstream_obs.npz")
-    model = build_terrain_fullbody_spec().compile()
-    ref = ReferenceMotion.from_states(model, up["ref_qpos"], 0.01, MIMIC_SITES)
+    model = build_terrain_fullbody_spec(disabled_contact_pairs=()).compile()
+    ref = motion_clip_from_states(model, up["ref_qpos"], 0.01, MIMIC_SITES)
 
     class Replay:
-        obs_cfg = TerrainObsCfg()
+        obs_adapter = TerrainObservation(model, reference=ref)
         seen: list = []
 
-        def act(self, obs: np.ndarray, rng: object = None) -> np.ndarray:
-            self.seen.append(obs)
+        def action_for(self, data, clip, frame_idx):
+            self.seen.append(self.obs_adapter.build(data, frame_idx))
             return up["actions"][len(self.seen) - 1]
 
     policy = Replay()
@@ -295,3 +309,51 @@ def test_matches_upstream_terra_rollout() -> None:
     rest = np.ones(seen.shape[1], bool)
     rest[touch] = False
     np.testing.assert_allclose(seen[:, rest], up["obs"][:, rest], atol=1e-4)
+
+
+def test_tracking_checkpoint_layout(model):
+    from copy import deepcopy
+
+    config = deepcopy(CONFIG)
+    params = config["experiment"]["env_params"]
+    params["goal_type"] = "TerraFullBodyTrackingGoal"
+    params["use_egocentric_root_observations"] = True
+    params["goal_params"]["lookahead_steps"] = [1, 20, 40, 60, 80]
+    cfg = TerrainObsCfg.from_config(config)
+    ref = motion_clip_from_states(
+        model, np.repeat(model.qpos0[None], 100, axis=0), 0.01, MIMIC_SITES
+    )
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    obs = TerrainObservation(model, cfg)(data, ref, 0)
+    # 204 immediate errors plus four 62-component future targets.
+    goal = obs[-452:]
+    assert obs.size == (model.nq - 3) + model.nv + 2 * model.nu + 4 + 121 + 452
+    np.testing.assert_allclose(goal[:204], 0, atol=1e-6)
+    np.testing.assert_allclose(goal[264:266], [0.2, 1])
+    np.testing.assert_allclose(TerrainObservation(model, cfg)(data, ref, 99)[-1], 0)
+
+
+@pytest.mark.parametrize(
+    "dt,route,stationary",
+    [
+        (0, [[0, -1]], False),
+        (0.01, [], False),
+        (0.01, [[0, -1], [0, -1]], False),
+        (0.01, [[0, -1]], True),
+    ],
+)
+def test_invalid_reference_inputs_are_rejected(model, dt, route, stationary):
+    clip = _walk_clip(model)
+    if stationary:
+        clip.qpos[:, :2] = 0
+    with pytest.raises(ValueError):
+        compose_waypoint_reference(
+            model,
+            clip,
+            np.zeros(2),
+            np.asarray(route),
+            dt,
+            lambda xy: np.zeros(len(xy)),
+            MIMIC_SITES,
+        )

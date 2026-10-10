@@ -13,76 +13,17 @@ under it. Feet are not re-targeted onto steps, so it suits small steps and gaps 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 
 import mujoco
 import numpy as np
+from scipy.spatial.transform import Rotation, Slerp
 
-from myosuite.core.trajectory_io import MotionClip, expand_motion_clip_to_model
-
-
-@dataclass(frozen=True)
-class ReferenceMotion:
-    """Reference states at the control rate, with the site positions TERRA observes.
-
-    Attributes:
-        qpos: ``(T, nq)`` positions.
-        qvel: ``(T, nv)`` velocities.
-        site_xpos: ``(T, S, 3)`` positions of the observed mimic sites (TERRA order).
-        ankle_xpos: ``(T, 2, 3)`` left and right ankle mimic sites.
-    """
-
-    qpos: np.ndarray
-    qvel: np.ndarray
-    site_xpos: np.ndarray
-    ankle_xpos: np.ndarray
-
-    @property
-    def num_frames(self) -> int:
-        """Number of frames."""
-        return int(self.qpos.shape[0])
-
-    @classmethod
-    def from_states(
-        cls,
-        model: mujoco.MjModel,
-        qpos: np.ndarray,
-        dt: float,
-        sites: tuple[str, ...],
-        ankles: tuple[str, str] = ("left_ankle_mimic", "right_ankle_mimic"),
-    ) -> ReferenceMotion:
-        """Reference of a ``qpos`` sequence: ``qvel`` and sites as TERRA's trajectory handler.
-
-        ``qvel`` is the forward difference at the first frame, the mean of the adjacent
-        differences inside and the backward difference at the last frame
-        (``loco_mujoco`` ``recompute_trajectory_velocities``). Both are rounded to
-        float32, as TERRA's trajectories: borderline contacts depend on it.
-        """
-        qpos = np.asarray(qpos, dtype=np.float32).astype(float)
-        step = np.zeros((max(len(qpos) - 1, 0), model.nv))
-        for t in range(len(qpos) - 1):
-            mujoco.mj_differentiatePos(model, step[t], dt, qpos[t], qpos[t + 1])
-        qvel = np.zeros((len(qpos), model.nv))
-        if len(qpos) > 1:
-            qvel[0], qvel[-1] = step[0], step[-1]
-            qvel[1:-1] = 0.5 * (step[:-1] + step[1:])
-        qvel = qvel.astype(np.float32).astype(float)
-        ids = [
-            mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, n)
-            for n in (*sites, *ankles)
-        ]
-        data = mujoco.MjData(model)
-        xpos = np.zeros((len(qpos), len(ids), 3))
-        for t, q in enumerate(qpos):
-            data.qpos[:] = q
-            mujoco.mj_kinematics(model, data)
-            xpos[t] = data.site_xpos[ids]
-        return cls(qpos, qvel, xpos[:, : len(sites)], xpos[:, len(sites) :])
-
-
-def _yaw(quat: np.ndarray) -> np.ndarray:
-    w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
-    return np.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+from myosuite.core.trajectory_io import (
+    MotionClip,
+    expand_motion_clip_to_model,
+    motion_clip_from_states,
+)
+from myosuite.physics.quat_math import quat2yaw
 
 
 def _yaw_quat(yaw: np.ndarray) -> np.ndarray:
@@ -140,7 +81,7 @@ def compose_waypoint_reference(
     corner_radius: float = 0.3,
     overshoot: float = 0.5,
     bridge: float = 0.3,
-) -> ReferenceMotion:
+) -> MotionClip:
     """Walk *clip* along the route ``start -> waypoints`` at the clip's own speed.
 
     Args:
@@ -161,19 +102,42 @@ def compose_waypoint_reference(
     Returns:
         The reference, starting at the route start facing the first waypoint.
     """
+    if not np.isfinite(dt) or dt <= 0 or skip < 0 or min_cycle <= 0:
+        raise ValueError("dt and min_cycle must be positive; skip must be non-negative")
+    route = np.vstack(
+        [
+            np.asarray(start_xy, float).reshape(1, 2),
+            np.asarray(waypoints, float).reshape(-1, 2),
+        ]
+    )
+    if (
+        len(route) < 2
+        or not np.isfinite(route).all()
+        or np.any(np.linalg.norm(np.diff(route, axis=0), axis=1) <= 1e-8)
+    ):
+        raise ValueError("Route needs finite, distinct consecutive waypoints")
     clip = expand_motion_clip_to_model(clip, model)
     qpos = np.asarray(clip.qpos, dtype=float)
     if clip.frequency_hz and abs(clip.frequency_hz * dt - 1) > 1e-6:
         t_src = np.arange(len(qpos)) / clip.frequency_hz
         t_dst = np.arange(0, t_src[-1], dt)
+        quaternions = qpos[:, 3:7].copy()
         qpos = np.column_stack(
             [np.interp(t_dst, t_src, qpos[:, k]) for k in range(qpos.shape[1])]
         )
-        qpos[:, 3:7] /= np.linalg.norm(qpos[:, 3:7], axis=1, keepdims=True)
+        qpos[:, 3:7] = np.roll(
+            Slerp(t_src, Rotation.from_quat(np.roll(quaternions, -1, axis=1)))(
+                t_dst
+            ).as_quat(),
+            1,
+            axis=1,
+        )
     a, b = gait_cycle(qpos, skip, min_cycle)
     cycle = qpos[a:b]
     step_xy = qpos[b, :2] - qpos[a, :2]
     speed = np.linalg.norm(step_xy) / ((b - a) * dt)
+    if not np.isfinite(speed) or speed <= 1e-8:
+        raise ValueError("Walking clip must make forward progress")
     heading = np.arctan2(step_xy[1], step_xy[0])
     # Root offsets in the clip's walking frame (lateral sway, height) and yaw about it.
     c, s = np.cos(-heading), np.sin(-heading)
@@ -182,10 +146,10 @@ def compose_waypoint_reference(
     lateral = s * rel[:, 0] + c * rel[:, 1]
     progress = np.arange(b - a) * (np.linalg.norm(step_xy) / (b - a))
     sway = along - progress
-    yaw_rel = np.unwrap(_yaw(cycle[:, 3:7])) - heading
-    tilt = _quat_mul(_yaw_quat(-_yaw(cycle[:, 3:7])), cycle[:, 3:7])
+    clip_yaw = np.array([quat2yaw(q) for q in cycle[:, 3:7]])
+    yaw_rel = np.unwrap(clip_yaw) - heading
+    tilt = _quat_mul(_yaw_quat(-clip_yaw), cycle[:, 3:7])
 
-    route = np.vstack([np.asarray(start_xy, float)[None], np.asarray(waypoints, float)])
     end = route[-1] + overshoot * (route[-1] - route[-2]) / np.linalg.norm(
         route[-1] - route[-2]
     )
@@ -211,4 +175,4 @@ def compose_waypoint_reference(
     out[:, :2] = xy
     out[:, 2] = cycle[phase, 2] + np.interp(s_t, arc, ground_path)
     out[:, 3:7] = _quat_mul(_yaw_quat(yaw_path + yaw_rel[phase]), tilt[phase])
-    return ReferenceMotion.from_states(model, out, dt, sites)
+    return motion_clip_from_states(model, out, dt, sites)
