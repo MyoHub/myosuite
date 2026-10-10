@@ -328,6 +328,101 @@ def test_checkpoint_symlink_keeps_format_and_rejects_mismatch(
     assert not (tmp_path / "output" / "render.json").exists()
 
 
+def test_muscle_mesh_option_checks_env_and_downloads_on_use(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Atlas meshes fit the full body only and come from the Hugging Face dataset."""
+    import huggingface_hub
+
+    with pytest.raises(ValueError, match="myoMimicFullbody"):
+        RenderConfig(env="myoLegWalk-v0", output=tmp_path, muscle_mesh="atlas")
+    with pytest.raises(ValueError, match="not found"):
+        RenderConfig(env="test", output=tmp_path, muscle_mesh=str(tmp_path / "x.glb"))
+    RenderConfig(env="myoMimicFullbody-v0", output=tmp_path, muscle_mesh="atlas-hd")
+    calls = []
+
+    def download(**kwargs: str) -> str:
+        calls.append(kwargs)
+        return str(tmp_path / "cached.glb")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
+    assert blender_render._resolve_muscle_mesh("atlas-hd") == tmp_path / "cached.glb"
+    assert calls == [
+        {
+            "repo_id": "myohub/myosuite-assets",
+            "filename": "muscles/fullbody_muscles.glb",
+            "repo_type": "dataset",
+        }
+    ]
+    assert blender_render._resolve_muscle_mesh("own.glb") == Path("own.glb")
+
+    def offline(**kwargs: str) -> str:
+        raise OSError("offline")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", offline)
+    with pytest.raises(RuntimeError, match="myohub/myosuite-assets"):
+        blender_render._resolve_muscle_mesh("atlas")
+
+
+def test_muscle_weights_blend_across_a_joint_but_never_across_limbs() -> None:
+    """Thigh muscles blend femur and tibia; a hand piece by the thigh keeps its hand."""
+    z = np.linspace(0, 0.4, 20)
+    bone_points = np.concatenate(
+        [
+            np.c_[np.zeros(20), np.zeros(20), z],  # femur
+            np.c_[np.zeros(20), np.zeros(20), -z],  # tibia
+            np.c_[np.full(20, 0.06), np.zeros(20), 0.15 + z / 8],  # hand
+            np.c_[np.full(20, -0.06), np.zeros(20), 0.5 + z / 4],  # pelvis
+        ]
+    )
+    owner = np.repeat(np.arange(4), 20)
+    limbs = [
+        blender_render._limb(n) for n in ("femur_r", "tibia_r", "2proxph_r", "pelvis")
+    ]
+    assert limbs == ["leg_r", "leg_r", "arm_r", "trunk"]
+    thigh = np.c_[np.full(9, 0.02), np.zeros(9), np.linspace(-0.1, 0.3, 9)]
+    hand = np.c_[np.full(5, 0.04), np.zeros(5), np.linspace(0.16, 0.2, 5)]
+    hip = np.c_[np.linspace(-0.05, 0.05, 5), np.zeros(5), np.full(5, 0.45)]
+    points = np.concatenate([thigh, hand, hip])
+    edges = [(i, i + 1) for i in [*range(8), *range(9, 13), *range(14, 18)]]
+    vertex, bone, weight = blender_render._muscle_weights(
+        points, edges, bone_points, owner, limbs
+    )
+    weights = np.zeros((len(points), 4))
+    np.add.at(weights, (vertex, bone), weight)
+    np.testing.assert_allclose(weights.sum(1), 1)
+    assert 0.3 < weights[2, 0] < 0.7  # at the knee: femur and tibia
+    assert not weights[:9, 2].any()  # the thigh never follows the hand
+    assert not weights[9:14, :2].any()  # the hand never follows the leg
+    assert (
+        weights[14:, 3].min() > 0.5 and weights[14:, 0].max() > 0
+    )  # hip: pelvis + femur
+
+
+def test_export_records_bone_rest_poses_for_a_muscle_mesh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Muscle meshes bind at qpos0, whatever pose the episode starts in."""
+    pytest.importorskip("pxr")
+    import myosuite
+
+    env = _Env()
+    monkeypatch.setattr(myosuite, "make_env", lambda _id: env)
+    glb = tmp_path / "muscles.glb"
+    glb.write_bytes(b"glTF")
+    config = RenderConfig(
+        **{**vars(_config(tmp_path / "out")), "muscle_mesh": str(glb)}
+    )
+    meta = blender_render.export_rollout(config)
+    assert (tmp_path / "out" / meta["muscle_mesh"]).read_bytes() == b"glTF"
+    data = mujoco.MjData(env.model)
+    mujoco.mj_forward(env.model, data)
+    bone = env.model.geom("bone").id
+    rest = np.asarray(meta["bone_rest"][f"bone_id{bone}_geom"]).reshape(4, 4)
+    np.testing.assert_allclose(rest[:3, 3], data.geom_xpos[bone])
+    np.testing.assert_allclose(rest[:3, :3], data.geom_xmat[bone].reshape(3, 3))
+
+
 @pytest.mark.parametrize("seconds", ["0", "-1", "nan", "inf"])
 def test_invalid_duration_rejected_before_export(seconds: str, tmp_path: Path) -> None:
     """Non-finite durations must not start an unbounded recording."""

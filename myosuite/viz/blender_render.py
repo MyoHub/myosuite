@@ -16,12 +16,22 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+
+# Anatomical muscle meshes (BodyParts3D, CC BY 4.0) on the Hugging Face Hub, posed
+# on myoMimicFullbody-v0's rest pose; see viz/assets/CREDITS.md.
+MUSCLE_MESH_REPO = "myohub/myosuite-assets"
+MUSCLE_MESHES = {
+    "atlas": "muscles/fullbody_muscles_light.glb",
+    "atlas-hd": "muscles/fullbody_muscles.glb",
+}
 
 
 @dataclass
@@ -52,6 +62,10 @@ class RenderConfig:
         skin_texture: Colour image for the skin, in the skin's UV layout (the
             bundled skin uses MakeHuman's); ``None`` keeps the plain skin tone.
         skin_inflate: Offset of the skin along its normals (m).
+        muscle_mesh: Anatomical muscle meshes drawn in place of the tubes and
+            deformed by the bones: ``"atlas"`` (light) or ``"atlas-hd"``
+            (BodyParts3D, downloaded from Hugging Face on first use, full body
+            only), or a ``.glb`` in the model's rest pose; ``None`` keeps the tubes.
         samples: Cycles samples per frame.
         blender: Blender executable.
     """
@@ -73,6 +87,7 @@ class RenderConfig:
     skin_alpha: float = 0.3
     skin_texture: Path | None = None
     skin_inflate: float = 0.0
+    muscle_mesh: str | None = None
     samples: int = 64
     blender: str = "blender"
 
@@ -103,6 +118,13 @@ class RenderConfig:
                 raise ValueError("A skin texture needs a skin.")
             if not Path(self.skin_texture).is_file():
                 raise ValueError(f"Skin texture not found: {self.skin_texture}")
+        if self.muscle_mesh in MUSCLE_MESHES:
+            if not self.env.startswith("myoMimicFullbody"):
+                raise ValueError(
+                    f"--muscle-mesh {self.muscle_mesh} fits myoMimicFullbody envs only."
+                )
+        elif self.muscle_mesh is not None and not Path(self.muscle_mesh).is_file():
+            raise ValueError(f"Muscle mesh not found: {self.muscle_mesh}")
 
 
 def export_rollout(config: RenderConfig) -> dict[str, Any]:
@@ -280,6 +302,13 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             qpos=qposes,
         )
         anatomy = _anatomy_bodies(model)
+        bone_geoms = {
+            exporter._get_geom_name(g): int(g.objid)
+            for g in scene_geoms
+            if g.objtype == mujoco.mjtObj.mjOBJ_GEOM
+            and g.type == mujoco.mjtGeom.mjGEOM_MESH
+            and model.geom_bodyid[g.objid] in anatomy
+        }
         meta = {
             "env": config.env,
             "seed": config.seed,
@@ -312,13 +341,10 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             "replaced_tendons": [f"_id{t}_tendon" for t in muscle_tendons]
             if muscle_names
             else [],
-            "bone_objects": [
-                exporter._get_geom_name(g)
-                for g in scene_geoms
-                if g.objtype == mujoco.mjtObj.mjOBJ_GEOM
-                and g.type == mujoco.mjtGeom.mjGEOM_MESH
-                and model.geom_bodyid[g.objid] in anatomy
-            ],
+            "bone_objects": list(bone_geoms),
+            "muscle_mesh": _copy_muscle_mesh(config, out),
+            # Bone poses at qpos0, the rest pose the muscle meshes are modelled in.
+            "bone_rest": _rest_poses(model, bone_geoms) if config.muscle_mesh else {},
             "plane_objects": [
                 exporter._get_geom_name(g)
                 for g in scene_geoms
@@ -431,6 +457,224 @@ def _write_muscle_tubes(
             )
         names.append(name)
     return names
+
+
+def _resolve_muscle_mesh(spec: str) -> Path:
+    """Local path of a muscle mesh, downloading ``"atlas"``/``"atlas-hd"`` if needed.
+
+    Raises:
+        RuntimeError: The Hugging Face download failed.
+    """
+    if spec not in MUSCLE_MESHES:
+        return Path(spec)
+    from huggingface_hub import hf_hub_download
+
+    try:
+        return Path(
+            hf_hub_download(
+                repo_id=MUSCLE_MESH_REPO,
+                filename=MUSCLE_MESHES[spec],
+                repo_type="dataset",
+            )
+        )
+    except Exception as err:
+        raise RuntimeError(
+            f"Could not download {MUSCLE_MESHES[spec]} from the Hugging Face dataset "
+            f"{MUSCLE_MESH_REPO}: {err}"
+        ) from err
+
+
+def _copy_muscle_mesh(config: RenderConfig, out: Path) -> str | None:
+    """Put the muscle mesh next to the scene; returns its file name there."""
+    if config.muscle_mesh is None:
+        return None
+    shutil.copyfile(_resolve_muscle_mesh(config.muscle_mesh), out / "muscle_mesh.glb")
+    return "muscle_mesh.glb"
+
+
+def _rest_poses(model: Any, geoms: dict[str, int]) -> dict[str, list[float]]:
+    """Row-major 4x4 world matrix of each named geom at ``qpos0``."""
+    import mujoco
+    import numpy as np
+
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    poses = {}
+    for name, g in geoms.items():
+        pose = np.eye(4)
+        pose[:3, :3] = data.geom_xmat[g].reshape(3, 3)
+        pose[:3, 3] = data.geom_xpos[g]
+        poses[name] = pose.ravel().tolist()
+    return poses
+
+
+_LEG = re.compile(r"femur|tibia|fibula|patella|talus|foot|calcn|toes")
+_ARM = re.compile(
+    r"humer|ulna|radius|lunate|scaphoid|pisiform|triquetrum|capitate|trapez"
+    r"|hamate|mc|ph|thumb|clavicle|scapula"
+)
+
+
+def _limb(name: str) -> str:
+    """Body region of a bone object: ``"leg_r"``, ``"arm_l"``, ... or ``"trunk"``."""
+    side = "_l" if re.search(r"_l(_|$)", name) else "_r"
+    if _LEG.search(name):
+        return "leg" + side
+    return "arm" + side if _ARM.search(name) else "trunk"
+
+
+def _muscle_weights(
+    points: Any,
+    edges: Any,
+    bone_points: Any,
+    bone_owner: Any,
+    bone_limb: list[str],
+    k: int = 16,
+) -> tuple[Any, Any, Any]:
+    """Skinning weights of mesh vertices to the bones (numpy only, runs in Blender).
+
+    Each vertex weighs its ``k`` nearest bone points by inverse squared distance.
+    A connected piece of the mesh then keeps its main region (a limb side or the
+    trunk), plus the trunk or a limb holding at least 15% of its weight, but never a
+    second limb: a hand muscle hanging by the thigh never follows the femur, while
+    a pectoral follows both the thorax and the humerus.
+
+    Args:
+        points: ``(V, 3)`` mesh vertices in the rest pose.
+        edges: ``(E, 2)`` vertex index pairs.
+        bone_points: ``(P, 3)`` bone surface samples in the rest pose.
+        bone_owner: ``(P,)`` bone index of each sample.
+        bone_limb: Region of each bone, see :func:`_limb`.
+        k: Nearest bone samples per vertex.
+
+    Returns:
+        ``(vertex, bone, weight)`` arrays; weights of each vertex sum to one.
+    """
+    import numpy as np
+
+    points = np.asarray(points, np.float64)
+    bone_points = np.asarray(bone_points, np.float64)
+    nbone = len(bone_limb)
+    k = min(k, len(bone_points))
+    near, dist = [], []
+    squared = (bone_points**2).sum(1)
+    for start in range(0, len(points), 512):
+        chunk = points[start : start + 512]
+        d2 = (chunk**2).sum(1)[:, None] + squared - 2 * chunk @ bone_points.T
+        idx = np.argpartition(d2, k - 1, axis=1)[:, :k]
+        near.append(idx)
+        dist.append(np.sqrt(np.maximum(np.take_along_axis(d2, idx, 1), 0)))
+    near, dist = np.concatenate(near), np.concatenate(dist)
+    vertex = np.repeat(np.arange(len(points)), k)
+    bone = np.asarray(bone_owner)[near].ravel()
+    raw = (1.0 / np.maximum(dist, 1e-3) ** 2).ravel()
+    key, inverse = np.unique(vertex * nbone + bone, return_inverse=True)
+    weight = np.bincount(inverse, raw)
+    vertex, bone = key // nbone, key % nbone
+    weight /= np.bincount(vertex, weight, len(points))[vertex]
+    # Connected pieces by union-find over the edges.
+    parent = np.arange(len(points))
+
+    def find(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for a, b in np.asarray(edges, int):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+    piece = np.unique([find(a) for a in range(len(points))], return_inverse=True)[1]
+    regions = sorted(set(bone_limb))
+    region = np.array([regions.index(r) for r in bone_limb])[bone]
+    share = np.zeros((piece.max() + 1, len(regions)))
+    np.add.at(share, (piece[vertex], region), weight)
+    share /= share.sum(1, keepdims=True)
+    main = share.argmax(1)
+    trunk = np.array([r == "trunk" for r in regions])
+    # The main region, plus the trunk for limb pieces (hip, shoulder) or limbs for
+    # trunk pieces (pectoral); never a second limb.
+    allowed = (share >= 0.15) & (trunk | trunk[main][:, None])
+    allowed[np.arange(len(main)), main] = True
+    weight = weight * allowed[piece[vertex], region]
+    weight[weight < 0.03] = 0
+    total = np.bincount(vertex, weight, len(points))
+    # A vertex left without weight follows its piece's main bone.
+    by_bone = np.zeros((piece.max() + 1, nbone))
+    np.add.at(by_bone, (piece[vertex], bone), weight)
+    empty = np.flatnonzero(total == 0)
+    vertex = np.concatenate([vertex, empty])
+    bone = np.concatenate([bone, by_bone[piece[empty]].argmax(1)])
+    weight = np.concatenate([weight, np.ones(len(empty))])
+    keep = weight > 0
+    vertex, bone, weight = vertex[keep], bone[keep], weight[keep]
+    weight /= np.bincount(vertex, weight, len(points))[vertex]
+    return vertex, bone, weight
+
+
+def _add_muscle_mesh(
+    output: Path, meta: dict[str, Any], scene: Any, material: Any
+) -> None:
+    """Import the muscle meshes and let the bone objects deform them (runs in Blender)."""
+    import bpy
+    import numpy as np
+    from mathutils import Matrix
+
+    bones, bone_points, bone_owner = [], [], []
+    for name, pose in meta["bone_rest"].items():
+        obj = bpy.data.objects.get(f"Mesh_{name}")
+        if obj is None:
+            continue
+        rest = np.asarray(pose).reshape(4, 4)
+        local = np.zeros(3 * len(obj.data.vertices))
+        obj.data.vertices.foreach_get("co", local)
+        local = local.reshape(-1, 3)[:: max(1, len(obj.data.vertices) // 400)]
+        bone_points.append(local @ rest[:3, :3].T + rest[:3, 3])
+        bone_owner.append(np.full(len(local), len(bones)))
+        bones.append((name, obj, Matrix(rest.tolist())))
+    rig = bpy.data.objects.new("MuscleRig", bpy.data.armatures.new("MuscleRig"))
+    scene.collection.objects.link(rig)
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode="EDIT")
+    for name, _, rest in bones:
+        edit = rig.data.edit_bones.new(name)
+        edit.tail = (0, 0.02, 0)
+        edit.matrix = rest
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for name, obj, _ in bones:
+        rig.pose.bones[name].constraints.new("COPY_TRANSFORMS").target = obj
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=str(output / meta["muscle_mesh"]))
+    imported = [o for o in bpy.data.objects if o not in before]
+    meshes = [o for o in imported if o.type == "MESH"]
+    named = [o for o in meshes if o.name.startswith("Muscle")]
+    for obj in imported:
+        if obj not in (named or meshes):
+            bpy.data.objects.remove(obj)
+    bone_points, bone_owner = np.concatenate(bone_points), np.concatenate(bone_owner)
+    limbs = [_limb(name) for name, _, _ in bones]
+    for obj in named or meshes:
+        mesh = obj.data
+        points = np.zeros(3 * len(mesh.vertices))
+        mesh.vertices.foreach_get("co", points)
+        world = np.array(obj.matrix_world)
+        points = points.reshape(-1, 3) @ world[:3, :3].T + world[:3, 3]
+        edges = np.zeros(2 * len(mesh.edges), int)
+        mesh.edges.foreach_get("vertices", edges)
+        vertex, bone, weight = _muscle_weights(
+            points, edges.reshape(-1, 2), bone_points, bone_owner, limbs
+        )
+        for b in np.unique(bone):
+            group = obj.vertex_groups.new(name=bones[b][0])
+            for v, w in zip(vertex[bone == b], weight[bone == b]):
+                group.add([int(v)], float(w), "REPLACE")
+        obj.modifiers.new("Bones", "ARMATURE").object = rig
+        mesh.materials.clear()
+        mesh.materials.append(material)
+        obj.color = MUSCLE_UNIFORM
+        for polygon in mesh.polygons:
+            polygon.use_smooth = True
 
 
 def _copy_skin_texture(config: RenderConfig, out: Path) -> str | None:
@@ -695,6 +939,8 @@ def build_blender_scene(output: Path) -> None:
         links.new(facing.outputs["Facing"], ramp.inputs["Value"])
         links.new(ramp.outputs["Result"], nodes["Principled BSDF"].inputs["Alpha"])
     hidden = meta.get("scenery_objects", []) + meta.get("replaced_tendons", [])
+    if meta.get("muscle_mesh"):
+        hidden += meta.get("muscle_objects", [])
     if opaque_skin:
         # Occluded anyway; hiding them keeps bones from poking through the skin.
         hidden += meta.get("muscle_objects", []) + meta.get("bone_objects", [])
@@ -726,6 +972,8 @@ def build_blender_scene(output: Path) -> None:
             obj.data.materials.clear()
             obj.data.materials.append(bone)
     _animate_activation(output, meta, scene)
+    if meta.get("muscle_mesh"):
+        _add_muscle_mesh(output, meta, scene, muscle)
 
     low, high = (Vector(v) for v in meta["bounds"])
     center = (low + high) / 2
@@ -950,6 +1198,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--skin-inflate", type=float, default=0.0, help="Skin normal offset (m)."
     )
+    parser.add_argument(
+        "--muscle-mesh",
+        help='Anatomical muscle meshes instead of tubes: "atlas", "atlas-hd" '
+        "(downloaded from Hugging Face, full body only) or a rest-pose .glb.",
+    )
     parser.add_argument("--samples", type=int, default=64, help="Cycles samples.")
     parser.add_argument("--export-only", action="store_true")
     args = parser.parse_args(argv)
@@ -982,6 +1235,7 @@ def main(argv: list[str] | None = None) -> None:
             skin_alpha=args.skin_alpha,
             skin_texture=args.skin_texture,
             skin_inflate=args.skin_inflate,
+            muscle_mesh=args.muscle_mesh,
             samples=args.samples,
             blender=args.blender,
         )

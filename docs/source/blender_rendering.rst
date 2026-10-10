@@ -216,6 +216,37 @@ The same ``.skn`` works outside Blender:
      - ``ViserSkin`` in mjviser, following a hip, knee, shoulder and elbow
        swing.
 
+Anatomical muscle meshes
+------------------------
+
+``--muscle-mesh`` draws anatomical muscle surfaces in place of the tubes. Blender
+binds them to the animated bones with an armature, so they follow any motion of
+the model; the simulated model is not changed.
+
+.. code-block:: bash
+
+   python scripts/render_blender.py --env myoMimicFullbody-v0 --random \
+       --output fullbody-atlas --preview --muscle-mesh atlas
+
+- ``atlas`` (1.6 MB, ~50k vertices) and ``atlas-hd`` (14.7 MB, ~334k vertices)
+  are BodyParts3D muscles posed on ``myoMimicFullbody-v0``. They are downloaded
+  from the Hugging Face dataset ``myohub/myosuite-assets`` on first use and
+  cached, so they fit the full-body envs only.
+- Any ``.glb`` modelled in a model's rest pose (``qpos0``) works too: its
+  ``Muscle*`` meshes (or all meshes) are bound to the nearest bones, a whole
+  piece to one limb, so a hand next to the thigh never follows the femur.
+- The meshes keep one muscle colour: they do not change with activation or
+  bulge as muscles shorten, unlike the tubes.
+
+.. image:: images/blender/atlas_muscles.jpg
+
+Thigh and chest of ``myoMimicFullbody-v0``: volumetric tubes and ``--muscle-mesh
+atlas``. The meshes are from BodyParts3D, © The Database Center for Life Science
+(DBCLS), CC BY 4.0 (Mitsuhashi et al., Nucleic Acids Res. 2009,
+`doi:10.1093/nar/gkn613 <https://doi.org/10.1093/nar/gkn613>`_), obtained through
+`human-atlas <https://github.com/ashemag/human-atlas>`_ (MIT); see
+``myosuite/viz/assets/CREDITS.md``.
+
 Acknowledgements
 ----------------
 
