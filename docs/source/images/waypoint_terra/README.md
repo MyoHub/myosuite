@@ -19,3 +19,23 @@ MuscleMimic runner but does not establish arbitrary-course completion.
 TERRA credit: <https://github.com/amathislab/terra> and
 <https://huggingface.co/merc-s/TERRA-4B>. Walking data retains its original
 AMASS/KIT licensing and Hugging Face access requirements.
+
+## Reconstructed procedural reference
+
+The new tutorial generates terrain-aware ankle/toe IK instead of repeating the KIT
+walking clip. A complete local run with MuJoCo 3.11.0, NumPy 2.3.5 and seed 0
+completed 9/9 waypoints in 38.1 s. Both contact-defined jumps had 0.14 s of airtime
+and recovered bilateral support; all 13 solids were contacted, with no beam-stage
+floor contact. It uses a 12 cm arrival radius, an explicit origin spawn and a 16 cm
+second-jump tuck with the unchanged shared NumPy policy runner.
+
+[Verified procedural-course JPEG](terra_reconstructed_course_preview.jpg) ·
+[MP4, lightweight 5 fps preview](terra_reconstructed_course.mp4) ·
+[Contact verification](terra_reconstructed_verification.json)
+
+These assets are the new local run. The older course assets above remain labelled
+as a failed Colab attempt. The historical JAX demonstration used a 10 cm second
+tuck: that reference regenerated exactly and its recorded controls replayed all
+nine goals in 37.93 s. A matched reference does not imply identical fresh actions
+between JAX and NumPy. This is one tuned course and seed, not arbitrary-path
+robustness. The procedural reference needs no gated dataset or HF token.

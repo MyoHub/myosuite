@@ -1,0 +1,16 @@
+{
+  "course_verified": true,
+  "waypoints": 9,
+  "beam_floor_contacts": 0,
+  "all_solids_contacted": true,
+  "jumps": [
+    {
+      "airtime_s": 0.14,
+      "bilateral_support": true
+    },
+    {
+      "airtime_s": 0.14,
+      "bilateral_support": true
+    }
+  ]
+}
