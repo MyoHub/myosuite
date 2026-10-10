@@ -13,7 +13,7 @@ import mujoco
 import numpy as np
 import pytest
 
-from myosuite.viz.skin import FULLBODY_SKIN, SkinPose, load_skn
+from myosuite.viz.skin import FULLBODY_SKIN, SkinPose, ViserSkin, load_skn
 
 pytestmark = pytest.mark.tier1
 
@@ -120,3 +120,30 @@ def test_bundled_fullbody_skin_parses() -> None:
     assert len(skin.bone_names) == 58 and {"pelvis", "head", "toes_r"} <= set(
         skin.bone_names
     )
+
+
+def test_viser_skin_follows_the_scene_frame_and_pose(tmp_path: Path) -> None:
+    """The mjviser mesh sits under the scene's body frame and tracks the pose."""
+    from types import SimpleNamespace
+
+    path = tmp_path / "box.skn"
+    write_skn(path, _bones())
+    model, data = _posed(path, 0.0)
+    calls = {}
+
+    def add_mesh_simple(name, vertices, faces, **kwargs):
+        calls.update(name=name, faces=faces, **kwargs)
+        return SimpleNamespace(vertices=vertices)
+
+    scene = SimpleNamespace(
+        server=SimpleNamespace(scene=SimpleNamespace(add_mesh_simple=add_mesh_simple)),
+        fixed_bodies_frame=SimpleNamespace(name="/fixed_bodies"),
+    )
+    pose = SkinPose.bind(load_skn(path), model)
+    skin = ViserSkin(scene, pose, data, opacity=0.3)
+    assert calls["name"] == "/fixed_bodies/skin" and calls["opacity"] == 0.3
+    np.testing.assert_array_equal(calls["faces"], pose.skin.face)
+    data.qpos[-1] += 0.5
+    mujoco.mj_forward(model, data)
+    skin.update(data)
+    np.testing.assert_allclose(skin.mesh.vertices, pose.vertices(data))

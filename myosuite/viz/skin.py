@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 from pathlib import Path
+from typing import Any
 
 import mujoco
 import numpy as np
@@ -210,3 +211,53 @@ class SkinPose:
         for i in range(3):
             np.add.at(normal, self.skin.face[:, i], face_normal)
         return normal / np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
+
+
+class ViserSkin:
+    """A posed skin drawn in an mjviser scene, which does not draw MuJoCo skins.
+
+    Example::
+
+        skin = ViserSkin(scene, SkinPose.bind(load_skn("fullbody"), model), data)
+        # each frame, after scene.update_from_mjdata(data):
+        skin.update(data)
+    """
+
+    def __init__(
+        self,
+        scene: Any,
+        pose: SkinPose,
+        data: mujoco.MjData,
+        *,
+        color: tuple[int, int, int] = (217, 178, 158),
+        opacity: float = 0.45,
+        name: str = "skin",
+    ) -> None:
+        """Add the skin mesh to *scene*.
+
+        Args:
+            scene: ``mjviser.scene.ViserMujocoScene`` of the bound model.
+            pose: Skin bound to the scene's model.
+            data: Current simulation state.
+            color: RGB colour, 0-255.
+            opacity: Mesh opacity, 0-1.
+            name: Node name under the scene's body frame.
+        """
+        self.pose = pose
+        # Under mjviser's body frame, so the skin follows camera tracking.
+        self.mesh = scene.server.scene.add_mesh_simple(
+            f"{scene.fixed_bodies_frame.name}/{name}",
+            pose.vertices(data),
+            pose.skin.face,
+            color=color,
+            opacity=opacity,
+            side="double",
+        )
+
+    def update(self, data: mujoco.MjData) -> None:
+        """Re-pose the mesh from *data*.
+
+        Args:
+            data: Simulation state after ``mj_forward`` / ``mj_step``.
+        """
+        self.mesh.vertices = self.pose.vertices(data)

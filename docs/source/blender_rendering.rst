@@ -196,22 +196,25 @@ The same ``.skn`` works outside Blender:
      skin.file, skin.rgba = str(FULLBODY_SKIN), [0.85, 0.7, 0.62, 0.45]
      model = spec.compile()  # mujoco.Renderer / viewer draw the skin
 
-- **mjviser** does not draw MuJoCo skins. Add the posed skin as a viser mesh
-  under the scene's ``fixed_bodies_frame``, so it follows camera tracking, and
-  refresh its vertices after each update:
+- **mjviser** does not draw MuJoCo skins. :class:`myosuite.viz.skin.ViserSkin`
+  adds the posed skin as a mesh under the scene's body frame, so it follows
+  camera tracking; update it after each scene update:
 
   .. code-block:: python
 
-     pose = SkinPose.bind(load_skn("fullbody"), model)
-     mesh = scene.server.scene.add_mesh_simple(
-         f"{scene.fixed_bodies_frame.name}/skin", pose.vertices(data),
-         pose.skin.face, color=(217, 178, 158), opacity=0.45, side="double")
+     skin = ViserSkin(scene, SkinPose.bind(load_skn("fullbody"), model), data)
      # each frame, after scene.update_from_mjdata(data):
-     mesh.vertices = pose.vertices(data)
+     skin.update(data)
 
-.. image:: images/blender/skin_native_viser.jpg
+.. list-table::
+   :widths: 60 40
 
-The bundled skin in MuJoCo's native renderer (left) and in mjviser (right).
+   * - .. image:: images/blender/skin_native_viser.jpg
+     - .. image:: images/blender/skin_viser.webp
+   * - The bundled skin in MuJoCo's native renderer (left) and in mjviser
+       (right).
+     - ``ViserSkin`` in mjviser, following a hip, knee, shoulder and elbow
+       swing.
 
 Muscle volumes are a visual estimate, not a fitted anatomical shape, and
 muscle tubes may intersect bones and each other.
