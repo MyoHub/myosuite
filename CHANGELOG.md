@@ -20,6 +20,7 @@ All notable changes to this project are documented in this file.
     thin muscle paths; colour by activation or uniform (`--muscle-color`).
   - Optional body skin from a MuJoCo `.skn` file (`--skin`, translucent or opaque; `myosuite.viz.skin`), with a
     bundled full-body skin adapted from MakeHuman/MPFB (CC0 1.0); `ViserSkin` draws it in mjviser.
+    `--skin-texture` puts a colour image on the skin (the bundled skin takes textures in MakeHuman's UV layout).
   - Preview, video and export-only modes; the `studio` or the task's own `mujoco` scene; tutorial 3.6.
   - Needs the optional MuJoCo USD dependencies and a separate Blender installation.
   - `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy.

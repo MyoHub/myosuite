@@ -157,7 +157,7 @@ def test_skin_is_exported_as_an_animated_mesh_that_follows_its_bone(
     skn.write_bytes(
         struct.pack("4i", 3, 3, 1, 1)
         + vert.tobytes()
-        + np.zeros((3, 2), np.float32).tobytes()
+        + np.array([[0, 0], [1, 0.25], [0.5, 1]], np.float32).tobytes()
         + np.arange(3, dtype=np.int32).tobytes()
         + b"carriage".ljust(40, b"\0")
         + np.array([0, 0, 0, 1, 0, 0, 0], np.float32).tobytes()
@@ -165,11 +165,13 @@ def test_skin_is_exported_as_an_animated_mesh_that_follows_its_bone(
         + np.arange(3, dtype=np.int32).tobytes()
         + np.ones(3, np.float32).tobytes()
     )
+    texture = tmp_path / "Tone.PNG"
+    texture.write_bytes(b"not decoded at export")
     env = _Env()
     monkeypatch.setattr(myosuite, "make_env", lambda _id: env)
     out = tmp_path / "out"
     meta = blender_render.export_rollout(
-        replace(_config(out), skin=skn, skin_style="opaque")
+        replace(_config(out), skin=skn, skin_style="opaque", skin_texture=texture)
     )
     stage = Usd.Stage.Open(meta["usd"])
     mesh = UsdGeom.Mesh(stage.GetPrimAtPath("/World/Skin/Skin"))
@@ -181,7 +183,19 @@ def test_skin_is_exported_as_an_animated_mesh_that_follows_its_bone(
         np.testing.assert_allclose(
             np.array(points.Get(frame)), vert + [qpos[frame], 0, 0], atol=1e-6
         )
-    assert UsdGeom.PrimvarsAPI(mesh).GetPrimvar("st").IsDefined()
+    # UVs with V up (the .skn stores it down the image); the texture travels with the scene.
+    np.testing.assert_allclose(
+        np.array(UsdGeom.PrimvarsAPI(mesh).GetPrimvar("st").Get()),
+        [[0, 1], [1, 0.75], [0.5, 0]],
+    )
+    assert meta["skin_texture"] == "skin_texture.png"
+    assert (out / "skin_texture.png").read_bytes() == texture.read_bytes()
+    with pytest.raises(ValueError, match="needs a skin"):
+        RenderConfig(env="x", output=Path("o"), skin_texture=texture)
+    with pytest.raises(ValueError, match="not found"):
+        RenderConfig(
+            env="x", output=Path("o"), skin="fullbody", skin_texture=tmp_path / "no.png"
+        )
     with pytest.raises(ValueError, match="skin style"):
         RenderConfig(env="x", output=Path("o"), skin_style="glass")
     with pytest.raises(ValueError, match="alpha"):

@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -48,6 +49,8 @@ class RenderConfig:
         skin_style: ``"translucent"`` skin over muscles and bones, or ``"opaque"``
             skin that hides them.
         skin_alpha: Opacity of the translucent skin.
+        skin_texture: Colour image for the skin, in the skin's UV layout (the
+            bundled skin uses MakeHuman's); ``None`` keeps the plain skin tone.
         skin_inflate: Offset of the skin along its normals (m).
         samples: Cycles samples per frame.
         blender: Blender executable.
@@ -68,6 +71,7 @@ class RenderConfig:
     skin: Path | str | None = None
     skin_style: str = "translucent"
     skin_alpha: float = 0.3
+    skin_texture: Path | None = None
     skin_inflate: float = 0.0
     samples: int = 64
     blender: str = "blender"
@@ -94,6 +98,11 @@ class RenderConfig:
             raise ValueError(f"Unknown skin style: {self.skin_style}")
         if not 0 < self.skin_alpha <= 1:
             raise ValueError("Skin alpha must be in (0, 1].")
+        if self.skin_texture is not None:
+            if self.skin is None:
+                raise ValueError("A skin texture needs a skin.")
+            if not Path(self.skin_texture).is_file():
+                raise ValueError(f"Skin texture not found: {self.skin_texture}")
 
 
 def export_rollout(config: RenderConfig) -> dict[str, Any]:
@@ -294,6 +303,7 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             "skin_objects": skin_names,
             "skin_style": config.skin_style,
             "skin_alpha": config.skin_alpha,
+            "skin_texture": _copy_skin_texture(config, out),
             "muscle_color": config.muscle_color,
             # Blender object of each muscle: its tube, or its MuJoCo path segments.
             "muscle_objects": muscle_names
@@ -423,6 +433,16 @@ def _write_muscle_tubes(
     return names
 
 
+def _copy_skin_texture(config: RenderConfig, out: Path) -> str | None:
+    """Put the skin texture next to the scene; returns its file name there."""
+    if config.skin_texture is None:
+        return None
+    source = Path(config.skin_texture)
+    name = f"skin_texture{source.suffix.lower()}"
+    shutil.copyfile(source, out / name)
+    return name
+
+
 def _write_skin(stage: Any, skin: Any, frames: Any) -> list[str]:
     """Add the posed skin to *stage* as one animated mesh with UVs."""
     import numpy as np
@@ -437,7 +457,12 @@ def _write_skin(stage: Any, skin: Any, frames: Any) -> list[str]:
     if len(skin.texcoord):
         UsdGeom.PrimvarsAPI(mesh).CreatePrimvar(
             "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex
-        ).Set(Vt.Vec2fArray.FromNumpy(skin.texcoord.astype(np.float32)))
+        ).Set(
+            # .skn stores V down the image, USD (and Blender) up.
+            Vt.Vec2fArray.FromNumpy(
+                (skin.texcoord * [1, -1] + [0, 1]).astype(np.float32)
+            )
+        )
     attr = mesh.CreatePointsAttr()
     for frame, points in enumerate(frames):
         attr.Set(Vt.Vec3fArray.FromNumpy(points), frame)
@@ -639,15 +664,22 @@ def build_blender_scene(output: Path) -> None:
 
     skin_objects = meta.get("skin_objects", [])
     opaque_skin = bool(skin_objects) and meta.get("skin_style") == "opaque"
+    textured = bool(skin_objects) and bool(meta.get("skin_texture"))
     skin = material(
         "Skin",
         SKIN_COLOR,
         0.5,
-        Subsurface_Weight=0.6 if opaque_skin else 0.15,
+        # A texture carries the skin tone itself; strong scattering would tint it.
+        Subsurface_Weight=0.2 if textured else 0.6 if opaque_skin else 0.15,
         Subsurface_Radius=(1.0, 0.45, 0.3),
         Subsurface_Scale=0.008,
         Coat_Weight=0.1,
     )
+    if textured:
+        nodes, links = skin.node_tree.nodes, skin.node_tree.links
+        image = nodes.new("ShaderNodeTexImage")
+        image.image = bpy.data.images.load(str(output / meta["skin_texture"]))
+        links.new(image.outputs["Color"], nodes["Principled BSDF"].inputs["Base Color"])
     if skin_objects and not opaque_skin:
         # X-ray look: clear where the skin faces the camera, denser at the
         # silhouette, so the outline reads and the anatomy stays visible.
@@ -909,6 +941,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--skin-alpha", type=float, default=0.3)
     parser.add_argument(
+        "--skin-texture",
+        type=Path,
+        help="Colour image for the skin, in its UV layout (use with --skin-style opaque).",
+    )
+    parser.add_argument(
         "--skin-inflate", type=float, default=0.0, help="Skin normal offset (m)."
     )
     parser.add_argument("--samples", type=int, default=64, help="Cycles samples.")
@@ -941,6 +978,7 @@ def main(argv: list[str] | None = None) -> None:
             skin=args.skin,
             skin_style=args.skin_style,
             skin_alpha=args.skin_alpha,
+            skin_texture=args.skin_texture,
             skin_inflate=args.skin_inflate,
             samples=args.samples,
             blender=args.blender,
