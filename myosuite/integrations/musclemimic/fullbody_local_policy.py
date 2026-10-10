@@ -25,7 +25,11 @@ from scipy.spatial.transform import Rotation as np_R
 from myosuite.integrations.musclemimic.running_stats import (
     numpy_running_mean_std_update as running_mean_std_update,
 )
-from myosuite.core.trajectory_io import MotionClip, expand_motion_clip_to_model
+from myosuite.core.trajectory_io import (
+    MotionClip,
+    expand_motion_clip_to_model,
+    read_npz_names,
+)
 
 
 def _to_numpy_tree(tree: Any) -> Any:
@@ -553,14 +557,14 @@ class FullbodyObsAdapter:
             site_ids.append(int(sid))
         self._site_ids = np.asarray(site_ids, dtype=np.int32)
 
-        npz = np.load(self._clip.source_path, allow_pickle=True)
+        npz = np.load(self._clip.source_path, allow_pickle=False)
         self._traj_site_xpos = np.asarray(npz["site_xpos"], dtype=np.float32)
         self._traj_site_xmat = np.asarray(npz["site_xmat"], dtype=np.float32)
         self._traj_cvel = np.asarray(npz["cvel"], dtype=np.float32)
         self._traj_subtree_com = np.asarray(npz["subtree_com"], dtype=np.float32)
         self._traj_site_bodyid = np.asarray(npz["site_bodyid"], dtype=np.int32)
         self._traj_body_rootid = np.asarray(npz["body_rootid"], dtype=np.int32)
-        traj_site_names = tuple(str(x) for x in np.asarray(npz["site_names"]))
+        traj_site_names = tuple(read_npz_names(npz, "site_names"))
         name_to_traj_idx = {name: i for i, name in enumerate(traj_site_names)}
         try:
             self._traj_site_ids = np.asarray(

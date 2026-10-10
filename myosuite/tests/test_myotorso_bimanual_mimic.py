@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 
 import mujoco
 import pytest
@@ -16,27 +17,13 @@ from myosuite.integrations.musclemimic.bimanual_model import (
 )
 from myosuite.integrations.musclemimic.myotorso_bimanual_model import (
     build_myotorso_bimanual_mimic_spec,
+    build_native_myotorso_bimanual_mimic_spec,
     compile_myotorso_bimanual_mimic_mjmodel,
     save_myotorso_bimanual_mimic_xml,
 )
 from myosuite.tests.support.optional_deps import require_musclemimic_models
 
-# myotorso_bimanual_model.py's asset paths (e.g.
-# "../myo_sim/torso/assets/myotorso_assets.xml") don't match the actual
-# musclemimic_models PyPI package layout (meshes live flat under
-# musclemimic_models/model/meshes/, not model/torso/assets/meshes/) on any
-# published version (checked 1.0.4, 1.0.5, 1.0.6) -- this is a real,
-# permanent bug in the integration code, not a version-drift issue. Needs
-# someone with the intended package layout to fix the path resolution.
-pytestmark = pytest.mark.xfail(
-    reason=(
-        "myotorso_bimanual_model.py's hardcoded torso/assets paths don't "
-        "match musclemimic_models' actual PyPI layout on any published "
-        "version (1.0.4-1.0.6) -- ValueError opening .../torso/assets/"
-        "meshes/lumbar*.stl, which doesn't exist there."
-    ),
-    strict=False,
-)
+pytestmark = pytest.mark.tier1
 
 
 def _config():
@@ -69,10 +56,12 @@ def test_myotorso_bimanual_mimic_spec_compiles() -> None:
 
 
 def test_myotorso_bimanual_mimic_native_spec_compiles() -> None:
-    """myo_sim-native fallback should compile with dual arms + torso + legs."""
-    spec, tag = build_myotorso_bimanual_mimic_spec(_config())
-    assert tag == "myo_sim:myotorso_arms"
-    m = spec.compile()
+    """myo_sim-native fallback should compile with dual arms + torso + legs.
+
+    Built directly: with musclemimic_models installed, the auto-selecting
+    builder never takes the fallback.
+    """
+    m = build_native_myotorso_bimanual_mimic_spec(_config()).compile()
     assert m.nq >= 48
     assert mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "torso") >= 0
     assert mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "humerus_r") >= 0
@@ -90,14 +79,10 @@ def test_myotorso_bimanual_mimic_mjmodel_solver_options() -> None:
     assert mj.opt.iterations == int(cfg.model_iterations)
 
 
-def test_myotorso_bimanual_mimic_saved_xml_loads() -> None:
-    """Monolithic MyoTorso+bimanual MJCF compiles from pip package location."""
+def test_myotorso_bimanual_mimic_saved_xml_loads(tmp_path: Path) -> None:
+    """The monolithic MyoTorso+bimanual MJCF written to disk compiles on its own."""
     require_musclemimic_models()
-    from myosuite.utils.asset_path_resolver import get_sim_asset_root
-
-    xml = get_sim_asset_root("myo_sim") / "myotorso_bimanual_mimic.xml"
-    if not xml.is_file():
-        save_myotorso_bimanual_mimic_xml()
+    xml = save_myotorso_bimanual_mimic_xml(tmp_path / "myotorso_bimanual_mimic.xml")
     assert xml.is_file(), f"missing {xml}"
     m = mujoco.MjModel.from_xml_path(str(xml))
     assert m.nq >= 48
