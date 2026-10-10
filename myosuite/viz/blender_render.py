@@ -609,7 +609,9 @@ def build_blender_scene(output: Path) -> None:
     scene.render.image_settings.file_format = "PNG"
     scene.view_settings.view_transform = "AgX"
     scene.view_settings.exposure = EXPOSURE
-    contrast = "High" if meta.get("skin_objects") else "Medium High"
+    # High contrast makes the plain skin's silhouette read; it would oversaturate a texture.
+    plain_skin = meta.get("skin_objects") and not meta.get("skin_texture")
+    contrast = "High" if plain_skin else "Medium High"
     for look in (f"AgX - {contrast} Contrast", f"{contrast} Contrast"):
         try:
             scene.view_settings.look = look
@@ -669,8 +671,8 @@ def build_blender_scene(output: Path) -> None:
         "Skin",
         SKIN_COLOR,
         0.5,
-        # A texture carries the skin tone itself; strong scattering would tint it.
-        Subsurface_Weight=0.2 if textured else 0.6 if opaque_skin else 0.15,
+        # A texture carries the skin tone itself; the reddish scattering would tint it.
+        Subsurface_Weight=0.0 if textured else 0.6 if opaque_skin else 0.15,
         Subsurface_Radius=(1.0, 0.45, 0.3),
         Subsurface_Scale=0.008,
         Coat_Weight=0.1,
