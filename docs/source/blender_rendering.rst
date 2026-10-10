@@ -240,6 +240,14 @@ the model; the simulated model is not changed.
 
 .. image:: images/blender/atlas_muscles.jpg
 
+.. list-table::
+   :widths: 40 60
+
+   * - .. image:: images/blender/atlas_gait.webp
+     - .. image:: images/blender/atlas_closeup.webp
+   * - ``--muscle-mesh atlas`` following a replayed gait.
+     - Thigh and chest close-ups of the same gait.
+
 Thigh and chest of ``myoMimicFullbody-v0``: volumetric tubes and ``--muscle-mesh
 atlas``. The meshes are from BodyParts3D, © The Database Center for Life Science
 (DBCLS), CC BY 4.0 (Mitsuhashi et al., Nucleic Acids Res. 2009,
