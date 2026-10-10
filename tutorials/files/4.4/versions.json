@@ -1,0 +1,11 @@
+{
+  "myosuite_repo": "ccb4fc4cb2fd6a92aac94bdc5081c13d94bc42b8",
+  "terra_repo": "db9d0d694f776c9de56b8cb3fc3ab48804bd57a1",
+  "musclemimic_repo": "f1c2dbfd0d8e31d306b2c4e2369aecdc7bc21993",
+  "checkpoint": {
+    "repository": "merc-s/TERRA-4B",
+    "revision": "b89a604d0687549f2678bb1b6a436dea058cd8b9",
+    "directory": "checkpoint_24416",
+    "weights_included": false
+  }
+}

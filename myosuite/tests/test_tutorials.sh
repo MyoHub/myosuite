@@ -44,6 +44,7 @@ RUN_IN_CI_REL = frozenset(
         'tutorials/3.5_Playback_Mot_File.ipynb',
         'tutorials/4.1_Move_Hand_Fingers.ipynb',
         'tutorials/4.3_Modular_Task_Config.ipynb',
+        'tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb',
     }
 )
 
