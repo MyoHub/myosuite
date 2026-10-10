@@ -458,9 +458,14 @@ __all__ = [
 
 
 def motion_clip_from_states(
-    model: Any, qpos: np.ndarray, dt: float, sites: tuple[str, ...]
+    model: Any,
+    qpos: np.ndarray,
+    dt: float,
+    sites: tuple[str, ...],
+    *,
+    qvel: np.ndarray | None = None,
 ) -> MotionClip:
-    """Build an in-memory clip with central-difference velocities and site kinematics."""
+    """Build site kinematics; supplied qvel preserves the reference states exactly."""
     import mujoco  # noqa: PLC0415
 
     if not np.isfinite(dt) or dt <= 0:
@@ -472,7 +477,13 @@ def motion_clip_from_states(
         or not np.isfinite(qpos).all()
     ):
         raise ValueError("qpos must contain finite model states")
-    qpos = np.asarray(qpos, dtype=np.float32).astype(float)
+    supplied_qvel = qvel is not None
+    if qvel is not None and (
+        np.asarray(qvel).shape != (len(qpos), model.nv) or not np.isfinite(qvel).all()
+    ):
+        raise ValueError("qvel must contain finite velocities matching qpos")
+    original_qvel = qvel
+    qpos = np.asarray(qpos, dtype=float if supplied_qvel else np.float32).astype(float)
     step = np.zeros((max(len(qpos) - 1, 0), model.nv))
     for t in range(len(qpos) - 1):
         mujoco.mj_differentiatePos(model, step[t], dt, qpos[t], qpos[t + 1])
@@ -480,7 +491,11 @@ def motion_clip_from_states(
     if len(qpos) > 1:
         qvel[0], qvel[-1] = step[0], step[-1]
         qvel[1:-1] = 0.5 * (step[:-1] + step[1:])
-    qvel = qvel.astype(np.float32).astype(float)
+    qvel = (
+        np.asarray(original_qvel, dtype=float).copy()
+        if supplied_qvel
+        else qvel.astype(np.float32).astype(float)
+    )
     ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, n) for n in sites]
     if min(ids, default=0) < 0:
         raise ValueError("Reference site is missing from model")
