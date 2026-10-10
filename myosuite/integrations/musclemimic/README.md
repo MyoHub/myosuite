@@ -566,3 +566,24 @@ Requires valid `--path`, resolvable `--motion_path`, and
 Programmatic Mimic envs (`myoMimic*`, MJX, mjlab) live in the main package and
 tests; this README intentionally documents only the **`myosuite-musclemimic-fullbody-eval`**
 CLI for end-user playback and smoke.
+
+## Terrain tracking (TERRA-4B)
+
+Terrain-aware tracking uses the existing MuscleMimic checkpoint loader and NumPy
+actor inference via `LocalPolicyRunner` with frozen normalization.
+`TerrainObservation` reuses `FullbodyStateAdapter` and adds the checkpoint-specific
+heightmap and reference goal; `TerrainController` drives an ordinary waypoint env.
+See [tutorial 4.4](../../../tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb).
+
+The observation layout, model corrections and evaluation settings are adapted from
+[TERRA](https://github.com/amathislab/terra); the pretrained
+[TERRA-4B checkpoint](https://huggingface.co/merc-s/TERRA-4B) retains its upstream
+license and attribution. Please credit and cite TERRA as directed by its model card,
+as well as MuscleMimic and the motion dataset used.
+
+`plan_waypoint_reference` generates a reference from a neutral pose, terrain-height
+callback and explicit jump segments, returning the existing `MotionClip`. Tutorial
+4.4 contains the tested scene and parameters; it requires no motion dataset or
+Hugging Face token. Preserve the generated velocities through
+`motion_clip_from_states(..., qvel=...)` when replaying a procedural reference.
+The tutorial checks contact-defined jumps separately from path completion.

@@ -48,6 +48,7 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | 4.1 | [Move Hand Fingers](./4.1_Move_Hand_Fingers.ipynb) | — |
 | 4.2 | [Fatigue Modeling](./4.2_Fatigue_Modeling.ipynb) | — |
 | 4.3 | [Modular Task Config](./4.3_Modular_Task_Config.ipynb) — **experimental**; prefer the `TaskSpec` / `ModelBuilder` workflow (`docs/wiki/adding-a-new-task.md`) | — |
+| 4.4 | [Programmatic Waypoint Tasks](./4.4_Programmatic_Waypoint_Tasks.ipynb) — scene + actor + ordered waypoints (`myoFullBodyWaypoint-v0`), with optional TERRA-4B policy playback | `.[musclemimic]` + `orbax-checkpoint`; downloads public TERRA-4B; generates its terrain reference locally |
 | **5 — MuscleMimic** | | |
 | 5.1 | [Fullbody Load Policy](./5.1_Fullbody_Load_Policy.ipynb) | [integration README](../myosuite/integrations/musclemimic/README.md) |
 | 5.2 | [Fullbody Train Policy](./5.2_Fullbody_Train_Policy.ipynb) — CPU PPO and ghost-body rendering | as 5.1 |

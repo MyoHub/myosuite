@@ -189,3 +189,30 @@ def test_motion_clip_weights_must_match_the_frame_count() -> None:
             site_names=None,
             weights=np.ones(5),
         )
+
+
+def test_supplied_reference_velocity_preserves_states_and_site_kinematics() -> None:
+    """A procedural reference must keep its velocities and unrounded poses."""
+    from myosuite.core.trajectory_io import motion_clip_from_states
+
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><body><joint type="hinge"/>'
+        '<geom size="0.1"/><site name="tip" pos="1 0 0"/>'
+        "</body></worldbody></mujoco>"
+    )
+    poses = np.array([[0.123456789012], [0.223456789012]])
+    velocities = np.array([[2.0], [3.0]])
+    clip = motion_clip_from_states(model, poses, 0.01, ("tip",), qvel=velocities)
+    np.testing.assert_array_equal(clip.qpos, poses)
+    np.testing.assert_array_equal(clip.qvel, velocities)
+    data = mujoco.MjData(model)
+    for frame in range(2):
+        data.qpos[:] = poses[frame]
+        data.qvel[:] = velocities[frame]
+        mujoco.mj_forward(model, data)
+        velocity = np.zeros(6)
+        mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_SITE, 0, velocity, 0)
+        np.testing.assert_array_equal(clip.site_xpos[frame, 0], data.site_xpos[0])
+        np.testing.assert_array_equal(clip.site_velocity[frame, 0], velocity)
+    with pytest.raises(ValueError, match="qvel"):
+        motion_clip_from_states(model, poses, 0.01, ("tip",), qvel=np.zeros((1, 1)))
