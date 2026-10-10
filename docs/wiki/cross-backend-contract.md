@@ -207,6 +207,7 @@ features of that registration or of the `EnvConfig`.
 | Key turn, object hold, pen, reorient (SAR, ID, OOD, 100, 8) | yes | no | - |
 | MyoChallenge Baoding, Bimanual, Relocate, Die Reorient, Soccer, OSL run | yes | no | - |
 | ChaseTag, single agent | yes | only `myoChallengeChaseTagFBP2-v0` | no |
+| Waypoint (`myoFullBodyWaypoint-v0`, `WaypointEnv`) | no | yes | no |
 | Table Tennis P0, P1, P2 | yes | yes | no |
 | ChaseTag against a scripted opponent (multi-agent) | no | no | - |
 | MuscleMimic (fullbody, bimanual, directional) | no | yes, registered separately (own implementation) | no |

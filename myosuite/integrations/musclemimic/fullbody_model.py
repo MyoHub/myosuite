@@ -479,11 +479,11 @@ def compile_mimic_fullbody_mjmodel(
     if arena is not None:
         spec.memory = int(arena)
 
-    mj_model = spec.compile()
     # Match MuscleMimic ``MyoFullBody`` (CPU): LocoEnv only applies
     # ``timestep`` via ``model_option_conf``, not solver iterations /
-    # disableflags (those are MJX tuning).
-    mj_model.opt.timestep = float(config.sim_dt)
+    # disableflags (those are MJX tuning). Set on the spec, so it compiles alike.
+    spec.option.timestep = float(config.sim_dt)
+    mj_model = spec.compile()
     return mj_model, spec, xml_path
 
 
