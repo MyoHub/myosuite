@@ -44,6 +44,7 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | 3.3 | [Inverse Dynamics](./3.3_Inverse_Dynamics.ipynb) | `osqp` |
 | 3.4 | [Computed Muscle Control](./3.4_Computed_Muscle_Control.ipynb) | — |
 | 3.5 | [Playback Mot File](./3.5_Playback_Mot_File.ipynb) — OpenSim `.mot` playback | — |
+| 3.6 | [Blender Rendering](./3.6_Blender_Rendering.ipynb) — studio renders of a rollout with volumetric muscles | `pip install usd-core`, [Blender](https://www.blender.org/download/) 4.5+ |
 | **4 — Modelling and conditions** | | |
 | 4.1 | [Move Hand Fingers](./4.1_Move_Hand_Fingers.ipynb) | — |
 | 4.2 | [Fatigue Modeling](./4.2_Fatigue_Modeling.ipynb) | — |
