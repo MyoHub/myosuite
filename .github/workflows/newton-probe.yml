@@ -1,0 +1,50 @@
+# Measures how much of each MyoSuite model survives NVIDIA Newton's MJCF import
+# (scripts/newton_compat_probe.py). Manual runs only; not part of CI.
+name: Newton probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      newton_version:
+        description: "Newton version to install from PyPI"
+        required: true
+        default: "1.6.1"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      # The [sim] extra brings mujoco and mujoco-warp, which SolverMuJoCo needs.
+      # No [mjlab]: mjlab and Newton pin different mujoco-warp versions.
+      - name: Install Newton, MuscleMimic models and MyoSuite
+        env:
+          NEWTON_VERSION: ${{ inputs.newton_version }}
+        run: |
+          uv venv --python 3.12
+          uv pip install "newton[sim]==${NEWTON_VERSION}" "musclemimic_models==1.0.6" -e .
+
+      - name: Run the probe
+        run: |
+          .venv/bin/python scripts/newton_compat_probe.py --out newton_probe
+          cat newton_probe/newton_probe.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: newton-probe-${{ inputs.newton_version }}
+          path: newton_probe/

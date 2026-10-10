@@ -54,6 +54,7 @@ Arm recipes
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from pathlib import Path
 
 import mujoco
@@ -65,7 +66,12 @@ from myosuite.core.model_builder import ModelBuilder, build_from_recipe, model_r
 _ASSETS = Path(__file__).parent.parent / "envs" / "myo" / "assets"
 
 
-def materialize_recipe_xml(name: str, dest: Path | None = None) -> Path:
+def materialize_recipe_xml(
+    name: str,
+    dest: Path | None = None,
+    *,
+    edit_fn: Callable[[mujoco.MjSpec], None] | None = None,
+) -> Path:
     """Write a recipe-built spec to a standalone MJCF file on disk.
 
     Some consumers (e.g. external packages like ``mjlab``, which read a
@@ -82,15 +88,23 @@ def materialize_recipe_xml(name: str, dest: Path | None = None) -> Path:
     Args:
         name: Recipe name registered via ``@model_recipe``.
         dest: Output path. Default: an OS temp directory
-            (``<tempdir>/myosuite_recipes/<name>.xml``).
+            (``<tempdir>/myosuite_recipes/<name>.xml``); required with *edit_fn*.
+        edit_fn: In-place edit of the recipe spec, applied as an env applies
+            its ``edit_fn`` kwarg (see :func:`build_from_recipe`).
 
     Returns:
         Absolute path to the written file.
+
+    Raises:
+        ValueError: If *edit_fn* is given without *dest* (the default path
+            holds the unedited recipe).
     """
+    if edit_fn is not None and dest is None:
+        raise ValueError("edit_fn needs an explicit dest.")
     import myo_sim  # type: ignore[import-untyped]
     from myo_sim.build.compose import sanitize_spec_xml  # type: ignore[import-untyped]
 
-    model, spec = build_from_recipe(name)
+    model, spec = build_from_recipe(name, edit_fn=edit_fn)
     xml = sanitize_spec_xml(
         spec.to_xml(), asset_dir=str(myo_sim.MODELS_DIR), model=model
     )
