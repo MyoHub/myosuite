@@ -182,6 +182,8 @@ def compose_waypoint_reference(
 
 @dataclass(frozen=True)
 class GaitParameters:
+    """Gait settings; ``second_jump_crouch=None`` reuses ``jump_crouch``."""
+
     speed: float = 0.25
     cycle_s: float = 1.2
     swing_fraction: float = 0.4
@@ -191,9 +193,15 @@ class GaitParameters:
     jump_crouch: float = 0.14
     jump_tuck: float = 0.16
     second_jump_tuck: float = 0.10
+    second_jump_crouch: float | None = None
 
     def __post_init__(self) -> None:
         """Reject invalid timing and nonfinite planning parameters."""
+        second_crouch = (
+            self.jump_crouch
+            if self.second_jump_crouch is None
+            else self.second_jump_crouch
+        )
         values = (
             self.speed,
             self.cycle_s,
@@ -204,6 +212,7 @@ class GaitParameters:
             self.jump_crouch,
             self.jump_tuck,
             self.second_jump_tuck,
+            second_crouch,
         )
         if (
             not np.isfinite(values).all()
@@ -211,7 +220,11 @@ class GaitParameters:
             <= 0
             or not 0 < self.swing_fraction < 1
             or min(
-                self.clearance, self.jump_crouch, self.jump_tuck, self.second_jump_tuck
+                self.clearance,
+                self.jump_crouch,
+                second_crouch,
+                self.jump_tuck,
+                self.second_jump_tuck,
             )
             < 0
         ):
@@ -340,14 +353,17 @@ def plan_waypoint_reference(
     root_z = surface + parameters.pelvis_height
     root_z[:80] = np.linspace(base[2], root_z[80], 80)
     flight = np.zeros(len(t), dtype=bool)
-    for begin, end in jumps:
+    for jump_index, (begin, end) in enumerate(jumps):
         initial = int(round((begin - 0.5) * 100))
         launch_height = height_at(tuple(root[initial]))
+        crouch = parameters.jump_crouch
+        if jump_index > 0 and parameters.second_jump_crouch is not None:
+            crouch = parameters.second_jump_crouch
         pre = (t >= begin - 0.5) & (t < begin)
         root_z[pre] = (
             launch_height
             + parameters.pelvis_height
-            - parameters.jump_crouch * np.sin(np.pi * (t[pre] - begin + 0.5) / 0.5)
+            - crouch * np.sin(np.pi * (t[pre] - begin + 0.5) / 0.5)
         )
         mask = (t >= begin) & (t <= end)
         flight |= mask

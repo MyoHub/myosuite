@@ -572,7 +572,8 @@ CLI for end-user playback and smoke.
 Terrain-aware tracking uses the existing MuscleMimic checkpoint loader and NumPy
 actor inference via `LocalPolicyRunner` with frozen normalization.
 `TerrainObservation` reuses `FullbodyStateAdapter` and adds the checkpoint-specific
-heightmap and reference goal; `TerrainController` drives an ordinary waypoint env.
+heightmap and reference goal. Call `policy.action_for(data, reference, step)`
+and pass the resulting muscle controls to an ordinary waypoint env.
 See [tutorial 4.4](../../../tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb).
 
 The observation layout, model corrections and evaluation settings are adapted from
@@ -587,3 +588,7 @@ callback and explicit jump segments, returning the existing `MotionClip`. Tutori
 Hugging Face token. Preserve the generated velocities through
 `motion_clip_from_states(..., qvel=...)` when replaying a procedural reference.
 The tutorial checks contact-defined jumps separately from path completion.
+
+Set `GaitParameters(second_jump_crouch=...)` to tune the second takeoff
+independently. Its default `None` reuses `jump_crouch`, preserving historical
+reference arrays exactly. This changes the reference, not the policy runner.
