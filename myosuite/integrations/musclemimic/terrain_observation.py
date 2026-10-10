@@ -6,8 +6,7 @@
 
 The physical state is built by MuscleMimic's shared FullbodyStateAdapter.
 Only the terrain heightmap and checkpoint-specific reference goal are added here.
-The pinned TERRA-4B release uses egocentric root state and full-body tracking errors;
-the earlier compact TerraGoal layout is retained for the upstream replay fixture.
+The pinned TERRA-4B release uses egocentric root state and full-body tracking errors.
 """
 
 from __future__ import annotations
@@ -28,8 +27,6 @@ from myosuite.physics.quat_math import quat2yaw
 from myosuite.core.trajectory_io import MotionClip
 
 MIMIC_SITES = tuple(FULLBODY_BODY2SITES_FOR_MIMIC.values())
-TOUCH_SENSORS = ("r_foot", "r_toes", "l_foot", "l_toes")
-ANKLE_SITES = ("left_ankle_mimic", "right_ankle_mimic")
 
 
 @dataclass(frozen=True)
@@ -42,8 +39,7 @@ class TerrainObsCfg:
         resolution: Heightmap spacing in metres.
         forward_offset: Forward shift of the grid in metres.
         grid_body: Body the grid is centred on.
-        future_stride: Frames between future cues.
-        future_horizon: Last future frame.
+        lookahead_steps: Future reference offsets in control steps.
     """
 
     sites: tuple[str, ...] = MIMIC_SITES
@@ -51,9 +47,6 @@ class TerrainObsCfg:
     resolution: float = 0.1
     forward_offset: float = 0.0
     grid_body: str = "pelvis"
-    future_stride: int = 10
-    future_horizon: int = 100
-    tracking: bool = False
     lookahead_steps: tuple[int, ...] = (1, 20, 40, 60, 80)
 
     @classmethod
@@ -61,10 +54,9 @@ class TerrainObsCfg:
         """Settings saved in a checkpoint's ``config`` (raises on an unsupported layout)."""
         env = config["experiment"]["env_params"]
         goal = env["goal_params"]
-        tracking = env.get("goal_type") == "TerraFullBodyTrackingGoal"
         expected = {
-            "goal_type": "TerraFullBodyTrackingGoal" if tracking else "TerraGoal",
-            "use_egocentric_root_observations": tracking,
+            "goal_type": "TerraFullBodyTrackingGoal",
+            "use_egocentric_root_observations": True,
             "enable_global_root_position_observation": False,
             "preserve_trajectory_root_xy": True,
             "enable_heightmap_observations": True,
@@ -78,8 +70,6 @@ class TerrainObsCfg:
             "enable_muscle_activation_observations": True,
         }
         wrong = {k: env.get(k) for k, v in expected.items() if env.get(k, v) != v}
-        if not goal.get("enable_future_reference_observations", False):
-            wrong["enable_future_reference_observations"] = False
         exp = config["experiment"]
         for key in ("actor_obs_group", "use_moe"):
             if exp.get(key):
@@ -87,7 +77,7 @@ class TerrainObsCfg:
         if wrong or int(exp.get("len_obs_history", 1) or 1) != 1:
             raise ValueError(f"Unsupported TERRA observation settings: {wrong}")
         steps = tuple(goal.get("lookahead_steps", (1, 20, 40, 60, 80)))
-        if tracking and (
+        if (
             not steps
             or steps[0] != 1
             or any(a >= b for a, b in zip(steps, steps[1:]))
@@ -95,15 +85,12 @@ class TerrainObsCfg:
         ):
             raise ValueError("Unsupported tracking lookahead settings")
         return cls(
-            tracking=tracking,
             lookahead_steps=steps,
             sites=tuple(goal["sites_for_mimic"]),
             grid=(int(env["heightmap_grid_rows"]), int(env["heightmap_grid_cols"])),
             resolution=float(env["heightmap_grid_resolution"]),
             forward_offset=float(env.get("heightmap_grid_forward_offset", 0.0)),
             grid_body=str(env.get("heightmap_body_name") or "pelvis"),
-            future_stride=int(goal["future_reference_stride"]),
-            future_horizon=int(goal["future_reference_horizon"]),
         )
 
 
@@ -156,7 +143,6 @@ class TerrainObservation:
                 "The TERRA actor's first joint must be the free joint 'root'"
             )
         self._sites = np.array([self._site(n) for n in self.cfg.sites])
-        self._ref_ankles = [self.cfg.sites.index(n) for n in ANKLE_SITES]
         self._state = FullbodyStateAdapter(
             model,
             {
@@ -164,7 +150,7 @@ class TerrainObservation:
                 "enable_muscle_velocity_observations": False,
                 "enable_muscle_force_observations": False,
             },
-            egocentric_root=self.cfg.tracking,
+            egocentric_root=True,
         )
         self._grid_body = mujoco.mj_name2id(
             model, mujoco.mjtObj.mjOBJ_BODY, self.cfg.grid_body
@@ -177,9 +163,6 @@ class TerrainObservation:
                 ((i - (rows - 1) / 2) * res + self.cfg.forward_offset).ravel(),
                 ((j - (cols - 1) / 2) * res).ravel(),
             ]
-        )
-        self._offsets = np.arange(
-            self.cfg.future_stride, self.cfg.future_horizon + 1, self.cfg.future_stride
         )
 
     def _site(self, name: str) -> int:
@@ -198,36 +181,6 @@ class TerrainObservation:
             [x + c * g[:, 0] - s * g[:, 1], y + s * g[:, 0] + c * g[:, 1]]
         )
         return self._heights(data, world) - z
-
-    def goal(self, data: mujoco.MjData, ref: MotionClip, frame: int) -> np.ndarray:
-        """TerraGoal of reference *frame*."""
-        if self.cfg.tracking:
-            return self._tracking_goal(data, ref, frame)
-        frame = int(np.clip(frame, 0, ref.num_frames - 1))
-        sim_sites = data.site_xpos[self._sites]
-        ref_sites = ref.site_xpos[frame]
-        sim_rpos = sim_sites[1:] - sim_sites[0]
-        ref_rpos = ref_sites[1:] - ref_sites[0]
-        future = np.clip(frame + self._offsets, 0, ref.num_frames - 1)
-        root_now = ref.qpos[frame, 2]
-        cues = [
-            np.concatenate(
-                [
-                    [ref.qpos[f, 2] - root_now],
-                    (ref.site_xpos[f, self._ref_ankles] - ref.qpos[f, :3]).ravel(),
-                ]
-            )
-            for f in future
-        ]
-        return np.concatenate(
-            [
-                ref.qpos[frame, 2:],
-                ref.qvel[frame],
-                ref.qpos[frame, :2] - data.qpos[:2],
-                (ref_rpos - sim_rpos).ravel(),
-                np.concatenate(cues),
-            ]
-        )
 
     @staticmethod
     def _rotation(quat: np.ndarray) -> np.ndarray:
@@ -252,12 +205,11 @@ class TerrainObservation:
         error = target @ np.swapaxes(current, -1, -2)
         return Rotation.from_matrix(heading.T @ error @ heading).as_rotvec()
 
-    def _tracking_goal(
-        self, data: mujoco.MjData, ref: MotionClip, frame: int
-    ) -> np.ndarray:
+    def goal(self, data: mujoco.MjData, ref: MotionClip, frame: int) -> np.ndarray:
+        """Build immediate tracking errors and bounded future-reference targets."""
         if ref.site_xmat is None or ref.site_velocity is None:
             raise ValueError(
-                "Tracking observations need MotionClip.from_states kinematics"
+                "Tracking observations need motion_clip_from_states kinematics"
             )
         heading = self._heading(data.qpos[3:7])
         rotation = self._rotation(data.qpos[3:7])
