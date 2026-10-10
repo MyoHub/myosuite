@@ -582,6 +582,10 @@ def apply_terrain_model_fixes(spec: mujoco.MjSpec) -> mujoco.MjSpec:
 
 def build_terrain_fullbody_spec(
     scene_fn: Callable[[mujoco.MjSpec], object] | None = None,
+    *,
+    disabled_contact_pairs: tuple[tuple[str, str], ...] = (
+        ("humerus_l_coll", "thorax_coll1"),
+    ),
 ) -> mujoco.MjSpec:
     """Edited TERRA actor spec, plus an optional scene edit (terrain in :data:`TERRAIN_GROUP`).
 
@@ -599,6 +603,10 @@ def build_terrain_fullbody_spec(
     cfg.model_version = TERRA_MODELS_VERSION
     spec, _ = build_mimic_fullbody_spec(cfg)
     apply_terrain_model_fixes(spec)
+    disabled = {frozenset(pair) for pair in disabled_contact_pairs}
+    for pair in list(spec.pairs):
+        if frozenset((pair.geomname1, pair.geomname2)) in disabled:
+            spec.delete(pair)
     spec.option.timestep = float(cfg.sim_dt)
     spec.option.iterations = 4
     spec.option.ls_iterations = 8

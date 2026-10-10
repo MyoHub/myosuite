@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from myosuite.core.trajectory_io import MotionClip
 from myosuite.integrations.musclemimic.fullbody_local_policy import (
@@ -1231,13 +1232,11 @@ def test_checkpoint_loader_selects_training_seed(tmp_path, monkeypatch) -> None:
         },
     }
     (tmp_path / "train_state").mkdir()
-    monkeypatch.setitem(
-        sys.modules,
-        "orbax.checkpoint",
-        SimpleNamespace(
-            StandardCheckpointer=lambda: SimpleNamespace(restore=lambda path: state)
-        ),
+    checkpoint = SimpleNamespace(
+        StandardCheckpointer=lambda: SimpleNamespace(restore=lambda path: state)
     )
+    monkeypatch.setitem(sys.modules, "orbax", SimpleNamespace(checkpoint=checkpoint))
+    monkeypatch.setitem(sys.modules, "orbax.checkpoint", checkpoint)
     artifacts = load_local_policy_artifacts(tmp_path, seed=1)
     assert artifacts.obs_dim == 5 and artifacts.action_dim == 2
     np.testing.assert_array_equal(artifacts.obs_mean, np.ones(5))
@@ -1246,3 +1245,53 @@ def test_checkpoint_loader_selects_training_seed(tmp_path, monkeypatch) -> None:
     np.testing.assert_array_equal(
         artifacts.params["actor"]["output"]["bias"], np.full(2, 1.25)
     )
+
+
+@pytest.mark.parametrize("update_normalizer", [False, True])
+def test_direct_policy_action_matches_trace_and_advances_once(
+    update_normalizer: bool,
+) -> None:
+    artifacts = LocalPolicyArtifacts(
+        params=_toy_params(obs_dim=8, hidden_dim=6, action_dim=4),
+        obs_mean=np.linspace(-0.2, 0.3, 8, dtype=np.float32),
+        obs_var=np.linspace(0.8, 1.4, 8, dtype=np.float32),
+        obs_count=np.asarray(7.0, dtype=np.float32),
+        obs_dim=8,
+        action_dim=4,
+    )
+    direct = LocalPolicyRunner(
+        artifacts, stochastic=True, seed=17, update_normalizer=update_normalizer
+    )
+    traced = LocalPolicyRunner(
+        artifacts, stochastic=True, seed=17, update_normalizer=update_normalizer
+    )
+    data = SimpleNamespace(
+        qpos=np.array([0.25, -0.5], dtype=np.float32),
+        qvel=np.array([0.1, -0.2], dtype=np.float32),
+        act=np.array([0.05, 0.1, 0.15, 0.2], dtype=np.float32),
+    )
+    clip = MotionClip(
+        qpos=np.zeros((3, 2), dtype=np.float32),
+        qvel=None,
+        site_xpos=None,
+        site_names=None,
+    )
+    for frame in range(3):
+        trace = traced.action_trace_for(data, clip, frame)
+        np.testing.assert_array_equal(
+            direct.action_from_obs(trace.policy_obs), trace.action
+        )
+        np.testing.assert_array_equal(direct._run_mean, trace.run_mean_after)
+        np.testing.assert_array_equal(direct._run_var, trace.run_var_after)
+        np.testing.assert_array_equal(direct._run_count, trace.run_count_after)
+        if not update_normalizer:
+            np.testing.assert_array_equal(trace.run_mean_after, artifacts.obs_mean)
+            np.testing.assert_array_equal(trace.run_var_after, artifacts.obs_var)
+            np.testing.assert_array_equal(trace.run_count_after, artifacts.obs_count)
+            np.testing.assert_allclose(
+                trace.norm_obs,
+                (trace.policy_obs - artifacts.obs_mean)
+                / np.sqrt(artifacts.obs_var + 1e-8),
+            )
+    with pytest.raises(ValueError, match="expects 8 observations"):
+        direct.action_from_obs(np.zeros(7))

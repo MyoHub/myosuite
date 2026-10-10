@@ -131,12 +131,11 @@ _EXPORTS_BY_MODULE: dict[str, tuple[str, ...]] = {
         "TerrainHeights",
     ),
     "myosuite.integrations.musclemimic.terrain_policy": (
-        "TerrainPolicy",
+        "load_terrain_policy",
         "TerrainController",
         "download_terrain_checkpoint",
     ),
     "myosuite.integrations.musclemimic.reference_motion": (
-        "ReferenceMotion",
         "compose_waypoint_reference",
     ),
     "myosuite.core.playback_contract": (
@@ -195,10 +194,9 @@ __all__ += [
     "TerrainObsCfg",
     "TerrainObservation",
     "TerrainHeights",
-    "TerrainPolicy",
+    "load_terrain_policy",
     "TerrainController",
     "download_terrain_checkpoint",
-    "ReferenceMotion",
     "compose_waypoint_reference",
 ]
 

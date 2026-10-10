@@ -11,15 +11,13 @@ with a fixed ``log_std``. Actions are muscle controls in ``[-1, 1]``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import mujoco
 import numpy as np
 
 from myosuite.integrations.musclemimic.fullbody_local_policy import (
-    _actor_forward,
+    LocalPolicyRunner,
     load_local_policy_artifacts,
     read_checkpoint_config_metadata,
 )
@@ -27,7 +25,7 @@ from myosuite.integrations.musclemimic.terrain_observation import (
     TerrainObsCfg,
     TerrainObservation,
 )
-from myosuite.integrations.musclemimic.reference_motion import ReferenceMotion
+from myosuite.core.trajectory_io import MotionClip
 
 TERRA_REPO = "merc-s/TERRA-4B"
 # Tested release revision of the TERRA-4B model card (training seed 0, update 24416).
@@ -45,63 +43,24 @@ def download_terrain_checkpoint(cache_dir: str | Path | None = None) -> Path:
     return root / TERRA_CHECKPOINT if (root / TERRA_CHECKPOINT).is_dir() else root
 
 
-@dataclass(frozen=True)
-class TerrainPolicy:
-    """Frozen TERRA actor.
-
-    Attributes:
-        params: Actor parameters (``params["actor"]``, ``params["log_std"]``).
-        obs_mean: Normalizer mean.
-        obs_var: Normalizer variance.
-        obs_cfg: Observation settings saved with the checkpoint.
-    """
-
-    params: dict[str, Any]
-    obs_mean: np.ndarray
-    obs_var: np.ndarray
-    obs_cfg: TerrainObsCfg
-
-    @property
-    def obs_dim(self) -> int:
-        """Observation size the network expects."""
-        return int(self.obs_mean.shape[-1])
-
-    @property
-    def action_dim(self) -> int:
-        """Number of muscle controls."""
-        return int(np.asarray(self.params["log_std"]).shape[-1])
-
-    @classmethod
-    def load(cls, checkpoint: str | Path, seed: int = 0) -> TerrainPolicy:
-        """Load a ``checkpoint_*`` folder (``train_state`` Orbax item, ``config`` JSON).
-
-        Needs ``orbax-checkpoint`` (and therefore JAX) to read the Orbax item.
-        """
-        root = Path(checkpoint)
-        config = read_checkpoint_config_metadata(root)
-        artifacts = load_local_policy_artifacts(root, seed=seed)
-        return cls(
-            artifacts.params,
-            artifacts.obs_mean,
-            artifacts.obs_var,
-            TerrainObsCfg.from_config(config),
-        )
-
-    def act(
-        self, obs: np.ndarray, rng: np.random.Generator | None = None
-    ) -> np.ndarray:
-        """Muscle controls for *obs*: the mean, or a sample when *rng* is given."""
-        obs = np.asarray(obs, dtype=np.float32)
-        if obs.shape != (self.obs_dim,):
-            raise ValueError(
-                f"TERRA expects {self.obs_dim} observations, got {obs.shape}"
-            )
-        norm = (obs - self.obs_mean) / np.sqrt(self.obs_var + 1e-8)
-        action = _actor_forward(self.params, norm.astype(np.float32))
-        if rng is not None:
-            std = np.exp(np.asarray(self.params["log_std"], dtype=np.float32))
-            action = action + std * rng.standard_normal(action.shape).astype(np.float32)
-        return np.clip(action, -1.0, 1.0)
+def load_terrain_policy(
+    checkpoint: str | Path,
+    model: mujoco.MjModel,
+    reference: MotionClip,
+    *,
+    seed: int = 0,
+    stochastic: bool = False,
+) -> LocalPolicyRunner:
+    """Load TERRA through the MuscleMimic runner with its saved observation layout."""
+    root = Path(checkpoint)
+    cfg = TerrainObsCfg.from_config(read_checkpoint_config_metadata(root))
+    return LocalPolicyRunner(
+        load_local_policy_artifacts(root),
+        stochastic=stochastic,
+        seed=seed,
+        obs_adapter=TerrainObservation(model, cfg, reference),
+        update_normalizer=False,
+    )
 
 
 class TerrainController:
@@ -117,19 +76,17 @@ class TerrainController:
         model: The env's model (TERRA actor plus scene).
         reference: Reference motion at the control rate.
         frame_skip: Physics substeps per control step of the env.
-        rng: Sample actions with this generator (``None``: mean actions).
     """
 
     def __init__(
         self,
-        policy: TerrainPolicy,
+        policy: LocalPolicyRunner,
         model: mujoco.MjModel,
-        reference: ReferenceMotion,
+        reference: MotionClip,
         frame_skip: int,
-        rng: np.random.Generator | None = None,
     ) -> None:
-        self.policy, self.reference, self.rng = policy, reference, rng
-        self.observe = TerrainObservation(model, policy.obs_cfg)
+        self.policy, self.reference = policy, reference
+        self.observe = policy.obs_adapter
         self._model, self._frame_skip = model, frame_skip
         self._shadow = mujoco.MjData(model)
         self._frame = 0
@@ -137,6 +94,7 @@ class TerrainController:
     def reset(self) -> None:
         """Start a new episode at reference frame 0."""
         self._frame = 0
+        self.policy.reset()
 
     def __call__(self, data: mujoco.MjData) -> np.ndarray:
         """Muscle controls for the env state *data*; call once per env step."""
@@ -154,9 +112,11 @@ class TerrainController:
         else:
             mujoco.mj_step(self._model, self._shadow, self._frame_skip)
             source = self._shadow
-        action = self.policy.act(
-            self.observe(source, self.reference, self._frame), self.rng
-        )
+        if not np.allclose(
+            source.qpos, data.qpos, atol=1e-7, rtol=0
+        ) or not np.allclose(source.qvel, data.qvel, atol=1e-7, rtol=0):
+            mujoco.mj_copyData(source, self._model, data)
+        action = self.policy.action_for(source, self.reference, self._frame)
         mujoco.mj_copyData(self._shadow, self._model, data)
         lo, hi = self._model.actuator_ctrlrange.T
         self._shadow.ctrl[:] = np.clip(action, lo, hi)

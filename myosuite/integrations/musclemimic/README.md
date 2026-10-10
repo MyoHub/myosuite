@@ -570,8 +570,9 @@ CLI for end-user playback and smoke.
 ## Terrain tracking (TERRA-4B)
 
 Terrain-aware tracking uses the existing MuscleMimic checkpoint loader and NumPy
-actor inference. `TerrainObservation` supplies the checkpoint-specific heightmap,
-touch and reference cues; `TerrainController` drives an ordinary waypoint env.
+actor inference via `LocalPolicyRunner` with frozen normalization.
+`TerrainObservation` reuses `FullbodyStateAdapter` and adds the checkpoint-specific
+heightmap and reference goal; `TerrainController` drives an ordinary waypoint env.
 See [tutorial 4.4](../../../tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb).
 
 The observation layout, model corrections and evaluation settings are adapted from
