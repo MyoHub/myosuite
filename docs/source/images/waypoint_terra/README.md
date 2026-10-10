@@ -39,3 +39,9 @@ tuck: that reference regenerated exactly and its recorded controls replayed all
 nine goals in 37.93 s. A matched reference does not imply identical fresh actions
 between JAX and NumPy. This is one tuned course and seed, not arbitrary-path
 robustness. The procedural reference needs no gated dataset or HF token.
+
+Fresh procedural-reference Colab validation completed 9/9 goals in 38.2 s but
+failed the strict first-jump check: it stepped across that gap. The second jump
+had 0.12 s airtime; all solids were contacted and there were no beam-stage floor
+contacts. The local verified video above passes both jumps. Larger first tuck
+and a single BLAS thread did not establish equivalent Colab jump behavior.
