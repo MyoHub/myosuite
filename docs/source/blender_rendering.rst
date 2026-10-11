@@ -306,7 +306,7 @@ anatomy stayed inside the camera throughout those clips. These checks do not
 establish compatibility with every environment or policy success rates.
 
 Reference skeletons and custom policies
---------------------------------------
+---------------------------------------
 
 Reuse ``GhostBodyViz`` for a desired motion without adding a simulated body.
 ``from_motion_clip`` computes body poses once from full-model ``MotionClip.qpos``.
