@@ -379,7 +379,7 @@ def test_muscle_weights_blend_across_a_joint_but_never_across_limbs() -> None:
     limbs = [
         blender_render._limb(n) for n in ("femur_r", "tibia_r", "2proxph_r", "pelvis")
     ]
-    assert limbs == ["leg_r", "leg_r", "arm_r", "trunk"]
+    assert limbs == ["leg_r", "leg_r", "arm_r", "pelvis"]
     thigh = np.c_[np.full(9, 0.02), np.zeros(9), np.linspace(-0.1, 0.3, 9)]
     hand = np.c_[np.full(5, 0.04), np.zeros(5), np.linspace(0.16, 0.2, 5)]
     hip = np.c_[np.linspace(-0.05, 0.05, 5), np.zeros(5), np.full(5, 0.45)]

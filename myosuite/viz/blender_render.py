@@ -568,11 +568,38 @@ _ARM = re.compile(
 
 
 def _limb(name: str) -> str:
-    """Body region of a bone object: ``"leg_r"``, ``"arm_l"``, ... or ``"trunk"``."""
+    """Body region of a bone object: ``"leg_r"``, ``"arm_l"``, ..., ``"pelvis"`` or
+    ``"trunk"`` (thorax, spine and head)."""
     side = "_l" if re.search(r"_l(_|$)", name) else "_r"
     if _LEG.search(name):
         return "leg" + side
-    return "arm" + side if _ARM.search(name) else "trunk"
+    if _ARM.search(name):
+        return "arm" + side
+    return "pelvis" if re.search(r"pelvis|sacrum", name) else "trunk"
+
+
+def _regions_followed(regions: list[str], main: Any, share: Any) -> Any:
+    """Regions each mesh piece may follow, from its main region and weight shares.
+
+    Limbs hang from the axial skeleton: an arm piece always follows the trunk
+    (thorax, spine) and a leg piece the pelvis, so muscle lying on the back stays
+    on the ribs while the arm moves. An axial piece follows both axial regions and
+    any limb holding >= 15% of its weight (pectoral, gluteals). A piece never
+    follows a second limb, and an arm never the pelvis, so a hand hanging by the
+    hip stays with the hand.
+    """
+    import numpy as np
+
+    kind = np.array([r.split("_")[0] for r in regions])
+    axial = np.isin(kind, ["trunk", "pelvis"])
+    allowed = np.zeros(share.shape, bool)
+    allowed[np.arange(len(main)), main] = True
+    main_kind = kind[main][:, None]
+    allowed |= (main_kind == "arm") & (kind == "trunk")
+    allowed |= (main_kind == "leg") & (kind == "pelvis")
+    allowed |= (main_kind == "leg") & (kind == "trunk") & (share >= 0.15)
+    allowed |= np.isin(main_kind, ["trunk", "pelvis"]) & (axial | (share >= 0.15))
+    return allowed
 
 
 def _muscle_weights(
@@ -587,10 +614,9 @@ def _muscle_weights(
     """Skinning weights of mesh vertices to the bones (numpy only, runs in Blender).
 
     Each vertex weighs its ``k`` nearest bone points by inverse squared distance.
-    A connected piece of the mesh then keeps its main region (a limb side or the
-    trunk), plus the trunk or a limb holding at least 15% of its weight, but never a
-    second limb: a hand muscle hanging by the thigh never follows the femur, while
-    a pectoral follows both the thorax and the humerus.
+    A connected piece of the mesh then keeps to the regions it may follow (see
+    :func:`_regions_followed`): a hand muscle hanging by the thigh never follows the
+    femur, back muscle stays on the ribs, a pectoral follows thorax and humerus.
 
     With *chains*, a vertex within 6 cm of muscle paths weighs only the bones those
     muscles attach to (within its piece's regions), nearest first, so a hand
@@ -641,11 +667,7 @@ def _muscle_weights(
     np.add.at(share, (piece[vertex], region), weight)
     share /= share.sum(1, keepdims=True)
     main = share.argmax(1)
-    trunk = np.array([r == "trunk" for r in regions])
-    # The main region, plus the trunk for limb pieces (hip, shoulder) or limbs for
-    # trunk pieces (pectoral); never a second limb.
-    allowed = (share >= 0.15) & (trunk | trunk[main][:, None])
-    allowed[np.arange(len(main)), main] = True
+    allowed = _regions_followed(regions, main, share)
     weight = weight * allowed[piece[vertex], region]
     weight[weight < 0.03] = 0
     total = np.bincount(vertex, weight, len(points))
@@ -702,6 +724,8 @@ def _muscle_weights(
             rows = np.arange(len(chunk))
             nearest_bone[start : start + 128] = owners[rows, pick]
             nearest_dist[start : start + 128] = regional[rows, pick]
+            # The bone the tissue lies on always weighs in (back over the ribs).
+            allowed[rows, owners[rows, pick]] |= np.isfinite(regional[rows, pick])
             dist[~np.take_along_axis(allowed, owners, 1)] = np.inf
             order = np.argsort(dist, 1)[:, :k]
             dist = np.take_along_axis(dist, order, 1)
@@ -720,7 +744,8 @@ def _muscle_weights(
     degree = np.bincount(edges.ravel(), minlength=len(points)).astype(np.float32)
     anchored = np.zeros(len(points), bool)
     if chains:
-        anchored = nearest_dist < 0.025
+        axial = np.isin([r.split("_")[0] for r in bone_limb], ["trunk", "pelvis"])
+        anchored = nearest_dist < np.where(axial[nearest_bone], 0.04, 0.025)
         dense[anchored] = 0
         dense[np.flatnonzero(anchored), nearest_bone[anchored]] = 1
     fixed = dense[anchored].copy()
