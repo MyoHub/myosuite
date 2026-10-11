@@ -66,6 +66,7 @@ class RenderConfig:
             deformed by the bones: ``"atlas"`` (light) or ``"atlas-hd"``
             (BodyParts3D, downloaded from Hugging Face on first use, full body
             only), or a ``.glb`` in the model's rest pose; ``None`` keeps the tubes.
+            Authored vertex groups use exported bone-geom names and are preserved.
         samples: Cycles samples per frame.
         blender: Blender executable.
     """
@@ -797,6 +798,24 @@ def _nearest_bone_weights(
     return vertex, bone, weight
 
 
+def _binding_targets(names: list[str], targets: list[str]) -> list[str]:
+    """Resolve authored bone names when exported geom IDs change between scenes."""
+    by_name: dict[str, list[str]] = {}
+    for target in targets:
+        by_name.setdefault(re.sub(r"_id\d+_geom$", "", target), []).append(target)
+    result = []
+    for name in names:
+        matches = (
+            [name]
+            if name in targets
+            else by_name.get(re.sub(r"_id\d+_geom$", "", name), [])
+        )
+        if len(matches) != 1:
+            raise ValueError(f"Unknown or ambiguous authored muscle bone: {name}")
+        result.append(matches[0])
+    return result
+
+
 def _add_muscle_mesh(
     output: Path, meta: dict[str, Any], scene: Any, material: Any
 ) -> None:
@@ -850,18 +869,31 @@ def _add_muscle_mesh(
         points = points.reshape(-1, 3) @ world[:3, :3].T + world[:3, 3]
         edges = np.zeros(2 * len(mesh.edges), int)
         mesh.edges.foreach_get("vertices", edges)
-        vertex, bone, weight = _muscle_weights(
-            points,
-            edges.reshape(-1, 2),
-            bone_points,
-            bone_owner,
-            limbs,
-            _chains_by_index(meta, [name for name, _, _ in bones]),
-        )
-        for b in np.unique(bone):
-            group = obj.vertex_groups.new(name=bones[b][0])
-            for v, w in zip(vertex[bone == b], weight[bone == b]):
-                group.add([int(v)], float(w), "REPLACE")
+        # Authored bindings take precedence over proximity-based weights.
+        if obj.vertex_groups:
+            targets = _binding_targets(
+                [g.name for g in obj.vertex_groups], list(rig.pose.bones.keys())
+            )
+            if any(not v.groups for v in mesh.vertices):
+                raise ValueError(f"Invalid authored muscle binding: {obj.name}")
+            for group, target in zip(obj.vertex_groups, targets):
+                group.name = target
+        else:
+            vertex, bone, weight = _muscle_weights(
+                points,
+                edges.reshape(-1, 2),
+                bone_points,
+                bone_owner,
+                limbs,
+                _chains_by_index(meta, [name for name, _, _ in bones]),
+            )
+            for b in np.unique(bone):
+                group = obj.vertex_groups.new(name=bones[b][0])
+                for v, w in zip(vertex[bone == b], weight[bone == b]):
+                    group.add([int(v)], float(w), "REPLACE")
+        for modifier in list(obj.modifiers):
+            if modifier.type == "ARMATURE":
+                obj.modifiers.remove(modifier)
         obj.modifiers.new("Bones", "ARMATURE").object = rig
         mesh.materials.clear()
         mesh.materials.append(material)

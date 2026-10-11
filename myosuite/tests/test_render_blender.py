@@ -582,3 +582,20 @@ def test_render_rollout_ends_with_the_result_path(
     last = capsys.readouterr().out.strip().splitlines()[-1]
     expected = out.resolve() / ("preview.png" if preview else "video.mp4")
     assert last == f"{'Preview' if preview else 'Video'}: {expected}"
+
+
+def test_authored_binding_survives_scene_geom_renumbering() -> None:
+    assert blender_render._binding_targets(
+        ["humerus_r_id14_geom", "torso_geom_13_id20_geom"],
+        ["humerus_r_id27_geom", "torso_geom_13_id33_geom"],
+    ) == ["humerus_r_id27_geom", "torso_geom_13_id33_geom"]
+
+
+@pytest.mark.parametrize(
+    "targets", [["ulna_r_id2_geom"], ["humerus_r_id2_geom", "humerus_r_id3_geom"]]
+)
+def test_authored_binding_rejects_unknown_or_ambiguous_bones(
+    targets: list[str],
+) -> None:
+    with pytest.raises(ValueError, match="Unknown or ambiguous"):
+        blender_render._binding_targets(["humerus_r_id1_geom"], targets)

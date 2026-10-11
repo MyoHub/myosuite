@@ -282,3 +282,35 @@ random-action hand motion (0.18 seconds). Saved Blender scenes matched MuJoCo
 body-geometry positions at two timestamps to within 6.1e-8 metres; visible
 anatomy stayed inside the camera throughout those clips. These checks do not
 establish compatibility with every environment or policy success rates.
+
+
+Authored muscle binding
+----------------------
+
+The :download:`weighted full-body atlas <images/blender/fullbody_muscles_bound.glb>`
+contains explicit bone weights. Download it, then use the existing file option::
+
+   python scripts/render_blender.py --env myoMimicFullbody-v0 \
+       --muscle-mesh /path/to/fullbody_muscles_bound.glb --preview
+
+Add your usual checkpoint and motion options to render a solution. The renderer
+preserves authored weights, resolves bone names across scene geom renumbering,
+and rejects unknown or incomplete bindings. Unbound GLBs still use automatic
+binding.
+
+The weights reuse MyoSuite's full-body skin, with transfer restricted by connected
+anatomical regions and smoothing within each piece. This is visual skinning,
+not biomechanical muscle deformation. Region assignments are approximate because
+the merged atlas has lost its individual muscle labels. This asset was checked
+with a walking reference with arm swing and an isolated shoulder/elbow sweep;
+validation across a wider range of poses remains necessary.
+
+In the isolated sweep, maximum relative edge stretch dropped from 205% to 1.2%
+for unactuated tissue and from 140% to 73% for actuated tissue. These are worst-edge
+measurements, not measures of anatomical accuracy. The reference playback is not
+a trained policy rollout.
+
+This derivative uses the existing BodyParts3D geometry (DBCLS, CC BY 4.0, via
+human-atlas) and MakeHuman/MPFB body skin weights (CC0). It retains the source
+credits listed above. The GLB is a documentation download, outside the Python
+package; the correction requires selecting this weighted asset.
