@@ -813,7 +813,11 @@ def _add_muscle_mesh(
         rest = np.asarray(pose).reshape(4, 4)
         local = np.zeros(3 * len(obj.data.vertices))
         obj.data.vertices.foreach_get("co", local)
-        local = local.reshape(-1, 3)[:: max(1, len(obj.data.vertices) // 400)]
+        area = np.zeros(len(obj.data.polygons))
+        obj.data.polygons.foreach_get("area", area)
+        # About one sample per cm2, so a large ribcage is sampled as densely as an arm.
+        count = max(400, int(area.sum() * 1e4))
+        local = local.reshape(-1, 3)[:: max(1, len(obj.data.vertices) // count)]
         bone_points.append(local @ rest[:3, :3].T + rest[:3, 3])
         bone_owner.append(np.full(len(local), len(bones)))
         bones.append((name, obj, Matrix(rest.tolist())))
