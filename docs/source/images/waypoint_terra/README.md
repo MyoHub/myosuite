@@ -56,4 +56,10 @@ reference at its true world position: the still is at 3 s, the animation covers
 2–4 s. This illustrates desired postures, not a new policy rollout or solution.
 The tutorial's `SHOW_REFERENCE_GHOST` option instead overlays the current
 reference frame on the controlled rollout; the optional Blender export keeps
-that overlay and its color in an editable scene. Both reuse `GhostBodyViz`.
+that overlay and its color in an editable scene. Both reuse `GhostBodyViz` with `bone_meshes=True`: the actual anatomical bone
+meshes are posed from the reference. Wrapping and collision surfaces stay hidden
+by preserving their original geom groups; contact physics is unchanged.
+
+[Blender bone-ghost JPEG](reference_ghost_blender_preview.jpg) is a short zero-action
+rendering check, with the reference at 3 s. It demonstrates the shared bone
+meshes and hidden helper surfaces, not a policy solution.

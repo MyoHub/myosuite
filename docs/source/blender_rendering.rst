@@ -310,6 +310,8 @@ Reference skeletons and custom policies
 
 Reuse ``GhostBodyViz`` for a desired motion without adding a simulated body.
 ``from_motion_clip`` computes body poses once from full-model ``MotionClip.qpos``.
+Set ``bone_meshes=True`` to reuse the model's anatomical bone meshes instead
+of joint markers and capsules. The reference changes their poses, not their shape.
 For a MuJoCo image, call ``ghost.draw(frame, renderer.scene)`` after
 ``renderer.update_scene(...)`` and before ``renderer.render()``.
 
@@ -324,7 +326,7 @@ The overlay retains its color and animation in the editable Blender scene.
 
    from myosuite.viz.ghost_body_viz import GhostBodyViz
 
-   ghost = GhostBodyViz.from_motion_clip(reference, env.unwrapped.model)
+   ghost = GhostBodyViz.from_motion_clip(reference, env.unwrapped.model, bone_meshes=True)
    render_rollout(config, env=env, policy=action, viz_fn=ghost.as_viz_fn())
 
 Tutorial ``4.4_Programmatic_Waypoint_Tasks.ipynb`` shows a reference snapshot,
