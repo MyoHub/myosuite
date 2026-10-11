@@ -285,7 +285,7 @@ establish compatibility with every environment or policy success rates.
 
 
 Authored muscle binding
-----------------------
+-----------------------
 
 The :download:`weighted full-body atlas <images/blender/fullbody_muscles_bound.glb>`
 contains explicit bone weights. Download it, then use the existing file option::
@@ -293,22 +293,28 @@ contains explicit bone weights. Download it, then use the existing file option::
    python scripts/render_blender.py --env myoMimicFullbody-v0 \
        --muscle-mesh /path/to/fullbody_muscles_bound.glb --preview
 
-Add your usual checkpoint and motion options to render a solution. The renderer
-preserves authored weights, resolves bone names across scene geom renumbering,
-and rejects unknown or incomplete bindings. Unbound GLBs still use automatic
-binding.
+Add your usual checkpoint and motion options to render a solution. Each authored
+bone is matched to the scene bone at its rest position, because geom names differ
+between model builds; an unmatched or incomplete binding is rejected. Unbound GLBs
+use automatic binding only.
 
-The weights reuse MyoSuite's full-body skin, with transfer restricted by connected
-anatomical regions and smoothing within each piece. This is visual skinning,
-not biomechanical muscle deformation. Region assignments are approximate because
-the merged atlas has lost its individual muscle labels. This asset was checked
-with a walking reference with arm swing and an isolated shoulder/elbow sweep;
-validation across a wider range of poses remains necessary.
+The authored weights reuse MyoSuite's full-body skin. They keep back and flank
+muscle on the ribs while the arms swing, but on their own they leave shoulder and
+arm muscle behind when an arm rises. So the renderer uses them for muscle pieces
+that lie mostly on the trunk and pelvis, restricted to the regions each piece may
+follow, and keeps the automatic weights for limb muscles.
 
-In the isolated sweep, maximum relative edge stretch dropped from 205% to 1.2%
-for unactuated tissue and from 140% to 73% for actuated tissue. These are worst-edge
-measurements, not measures of anatomical accuracy. The reference playback is not
-a trained policy rollout.
+Measured over a walking reference and an arms-overhead clip, compared with the
+automatic weights alone:
+
+- back tissue moving more than 1 cm off the ribcage in the walk: 1,249 to 304
+  vertices for unactuated tissue, 742 to 726 for actuated tissue;
+- edges stretched or crushed more than 2x with the arms overhead: 2,650 to 425
+  (unactuated), 1,154 to 692 (actuated).
+
+This is visual skinning, not biomechanical muscle deformation, and the reference
+playback is not a trained policy rollout. Region assignments are approximate
+because the merged atlas has lost its individual muscle labels.
 
 This derivative uses the existing BodyParts3D geometry (DBCLS, CC BY 4.0, via
 human-atlas) and MakeHuman/MPFB body skin weights (CC0). It retains the source

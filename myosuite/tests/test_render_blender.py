@@ -584,18 +584,45 @@ def test_render_rollout_ends_with_the_result_path(
     assert last == f"{'Preview' if preview else 'Video'}: {expected}"
 
 
-def test_authored_binding_survives_scene_geom_renumbering() -> None:
-    assert blender_render._binding_targets(
-        ["humerus_r_id14_geom", "torso_geom_13_id20_geom"],
-        ["humerus_r_id27_geom", "torso_geom_13_id33_geom"],
-    ) == ["humerus_r_id27_geom", "torso_geom_13_id33_geom"]
+def test_authored_binding_matches_bones_by_rest_position() -> None:
+    # Another model build: other side naming and swapped phalanx IDs.
+    joints = {
+        "l_femur_id5_geom": [0.1, 0.0, 0.8],
+        "_distph_r_id9_geom": [0.3, 0.0, 0.9],
+        "_distph_r_id8_geom": [0.3, 0.02, 0.9],
+    }
+    bones = {
+        "femur_l_id7_geom": [0.1, 0.001, 0.8],
+        "_distph_r_id8_geom": [0.3, 0.0, 0.9],
+        "_distph_r_id9_geom": [0.3, 0.02, 0.9],
+    }
+    assert blender_render._binding_targets(joints, bones) == {
+        "l_femur_id5_geom": "femur_l_id7_geom",
+        "_distph_r_id9_geom": "_distph_r_id8_geom",
+        "_distph_r_id8_geom": "_distph_r_id9_geom",
+    }
 
 
 @pytest.mark.parametrize(
-    "targets", [["ulna_r_id2_geom"], ["humerus_r_id2_geom", "humerus_r_id3_geom"]]
+    "joints",
+    [{"a": [0.0, 0.0, 0.1]}, {"a": [0.0, 0.0, 0.0], "b": [0.001, 0.0, 0.0]}],
 )
-def test_authored_binding_rejects_unknown_or_ambiguous_bones(
-    targets: list[str],
+def test_authored_binding_rejects_unmatched_or_shared_bones(
+    joints: dict[str, list[float]],
 ) -> None:
-    with pytest.raises(ValueError, match="Unknown or ambiguous"):
-        blender_render._binding_targets(["humerus_r_id1_geom"], targets)
+    with pytest.raises(ValueError, match="scene bone"):
+        blender_render._binding_targets(joints, {"femur_r_id1_geom": [0.0, 0.0, 0.0]})
+
+
+def test_merge_authored_keeps_limb_pieces_and_axial_regions() -> None:
+    limbs = ["trunk", "arm_r", "leg_l"]
+    # Piece 0 (vertices 0-1) lies on the arm; piece 1 (vertices 2-3) on the trunk.
+    proximity = np.array([[0, 1, 0], [0.2, 0.8, 0], [1, 0, 0], [0.9, 0.1, 0]], float)
+    authored = np.array([[1, 0, 0], [1, 0, 0], [0.5, 0, 0.5], [0, 0, 1]], float)
+    merged = blender_render._merge_authored(
+        authored, proximity, [[0, 1], [2, 3]], limbs
+    )
+    assert np.allclose(merged[:2], proximity[:2])
+    # The trunk piece follows the arm (10% share is below 15%) or leg never.
+    assert np.allclose(merged[2], [1, 0, 0])
+    assert np.allclose(merged[3], proximity[3])

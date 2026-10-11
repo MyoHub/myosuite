@@ -66,7 +66,8 @@ class RenderConfig:
             deformed by the bones: ``"atlas"`` (light) or ``"atlas-hd"``
             (BodyParts3D, downloaded from Hugging Face on first use, full body
             only), or a ``.glb`` in the model's rest pose; ``None`` keeps the tubes.
-            Authored vertex groups use exported bone-geom names and are preserved.
+            A skinned ``.glb``'s weights are used for axial muscles (matched to the
+            bones by rest position); limb muscles keep the proximity weights.
         samples: Cycles samples per frame.
         blender: Blender executable.
     """
@@ -603,6 +604,62 @@ def _regions_followed(regions: list[str], main: Any, share: Any) -> Any:
     return allowed
 
 
+def _pieces(count: int, edges: Any) -> Any:
+    """Connected piece index of each of *count* vertices, by union-find over *edges*."""
+    import numpy as np
+
+    parent = np.arange(count)
+
+    def find(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for a, b in np.asarray(edges, int).reshape(-1, 2):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+    return np.unique([find(a) for a in range(count)], return_inverse=True)[1]
+
+
+def _merge_authored(
+    authored: Any, proximity: Any, edges: Any, bone_limb: list[str]
+) -> Any:
+    """Authored weights for axial muscles, proximity weights for limb muscles.
+
+    Authored (skin-transferred) weights keep back and flank muscle on the ribs
+    while the arms swing, but leave shoulder and arm muscle behind when an arm
+    rises. So a mesh piece whose proximity weights lie mostly on a limb keeps
+    them; the other pieces take their authored weights, restricted to the
+    regions they may follow (see :func:`_regions_followed`).
+
+    Args:
+        authored: ``(V, B)`` authored weights.
+        proximity: ``(V, B)`` weights from :func:`_muscle_weights`.
+        edges: ``(E, 2)`` vertex index pairs.
+        bone_limb: Region of each bone, see :func:`_limb`.
+
+    Returns:
+        ``(V, B)`` weights; each row sums to one.
+    """
+    import numpy as np
+
+    piece = _pieces(len(proximity), edges)
+    regions = sorted(set(bone_limb))
+    one_hot = np.eye(len(regions))[[regions.index(r) for r in bone_limb]]
+    share = np.zeros((piece.max() + 1, len(regions)))
+    np.add.at(share, piece, proximity @ one_hot)
+    share /= np.maximum(share.sum(1, keepdims=True), 1e-12)
+    main = share.argmax(1)
+    allowed = _regions_followed(regions, main, share) @ one_hot.T > 0
+    merged = authored * allowed[piece]
+    total = merged.sum(1, keepdims=True)
+    merged = np.where(total > 1e-6, merged / np.maximum(total, 1e-12), proximity)
+    limb = np.array([regions[r].startswith(("arm", "leg")) for r in main])[piece]
+    return np.where(limb[:, None], proximity, merged)
+
+
 def _muscle_weights(
     points: Any,
     edges: Any,
@@ -648,20 +705,7 @@ def _muscle_weights(
     vertex, bone, weight = _nearest_bone_weights(
         points, bone_points, bone_owner, nbone, k
     )
-    # Connected pieces by union-find over the edges.
-    parent = np.arange(len(points))
-
-    def find(a: int) -> int:
-        while parent[a] != a:
-            parent[a] = parent[parent[a]]
-            a = parent[a]
-        return a
-
-    for a, b in np.asarray(edges, int):
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
-    piece = np.unique([find(a) for a in range(len(points))], return_inverse=True)[1]
+    piece = _pieces(len(points), edges)
     regions = sorted(set(bone_limb))
     region = np.array([regions.index(r) for r in bone_limb])[bone]
     share = np.zeros((piece.max() + 1, len(regions)))
@@ -798,21 +842,38 @@ def _nearest_bone_weights(
     return vertex, bone, weight
 
 
-def _binding_targets(names: list[str], targets: list[str]) -> list[str]:
-    """Resolve authored bone names when exported geom IDs change between scenes."""
-    by_name: dict[str, list[str]] = {}
-    for target in targets:
-        by_name.setdefault(re.sub(r"_id\d+_geom$", "", target), []).append(target)
-    result = []
-    for name in names:
-        matches = (
-            [name]
-            if name in targets
-            else by_name.get(re.sub(r"_id\d+_geom$", "", name), [])
-        )
-        if len(matches) != 1:
-            raise ValueError(f"Unknown or ambiguous authored muscle bone: {name}")
-        result.append(matches[0])
+def _binding_targets(
+    joints: dict[str, Any], bones: dict[str, Any], tolerance: float = 0.005
+) -> dict[str, str]:
+    """Scene bone of each authored joint, matched by rest position.
+
+    Geom names and IDs differ between model builds (``l_femur`` / ``femur_l``,
+    renumbered phalanges), so each joint takes the scene bone at its bind position.
+
+    Args:
+        joints: Rest position of each authored joint (vertex group).
+        bones: Rest position of each scene bone.
+        tolerance: Largest allowed distance in metres.
+
+    Returns:
+        Scene bone name per joint name.
+
+    Raises:
+        ValueError: A joint has no bone within *tolerance*, or two share one.
+    """
+    import numpy as np
+
+    names = list(bones)
+    rest = np.array([bones[n] for n in names], float).reshape(-1, 3)
+    result: dict[str, str] = {}
+    for joint, position in joints.items():
+        distance = np.linalg.norm(rest - np.asarray(position, float), axis=1)
+        nearest = int(distance.argmin()) if len(names) else -1
+        if nearest < 0 or distance[nearest] > tolerance:
+            raise ValueError(f"No scene bone at authored muscle bone: {joint}")
+        result[joint] = names[nearest]
+    if len(set(result.values())) < len(result):
+        raise ValueError("Authored muscle bones match the same scene bone")
     return result
 
 
@@ -854,6 +915,13 @@ def _add_muscle_mesh(
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=str(output / meta["muscle_mesh"]))
     imported = [o for o in bpy.data.objects if o not in before]
+    # Bind positions of authored joints, before the imported armature is removed.
+    joints = {
+        bone.name: np.array(o.matrix_world @ bone.head_local)
+        for o in imported
+        if o.type == "ARMATURE"
+        for bone in o.data.bones
+    }
     meshes = [o for o in imported if o.type == "MESH"]
     named = [o for o in meshes if o.name.startswith("Muscle")]
     for obj in imported:
@@ -869,28 +937,39 @@ def _add_muscle_mesh(
         points = points.reshape(-1, 3) @ world[:3, :3].T + world[:3, 3]
         edges = np.zeros(2 * len(mesh.edges), int)
         mesh.edges.foreach_get("vertices", edges)
-        # Authored bindings take precedence over proximity-based weights.
+        vertex, bone, weight = _muscle_weights(
+            points,
+            edges.reshape(-1, 2),
+            bone_points,
+            bone_owner,
+            limbs,
+            _chains_by_index(meta, [name for name, _, _ in bones]),
+        )
         if obj.vertex_groups:
             targets = _binding_targets(
-                [g.name for g in obj.vertex_groups], list(rig.pose.bones.keys())
+                {g.name: joints[g.name] for g in obj.vertex_groups if g.name in joints},
+                {name: np.array(rest.translation) for name, _, rest in bones},
             )
-            if any(not v.groups for v in mesh.vertices):
+            if len(targets) < len(obj.vertex_groups) or any(
+                not v.groups for v in mesh.vertices
+            ):
                 raise ValueError(f"Invalid authored muscle binding: {obj.name}")
-            for group, target in zip(obj.vertex_groups, targets):
-                group.name = target
-        else:
-            vertex, bone, weight = _muscle_weights(
-                points,
-                edges.reshape(-1, 2),
-                bone_points,
-                bone_owner,
-                limbs,
-                _chains_by_index(meta, [name for name, _, _ in bones]),
-            )
-            for b in np.unique(bone):
-                group = obj.vertex_groups.new(name=bones[b][0])
-                for v, w in zip(vertex[bone == b], weight[bone == b]):
-                    group.add([int(v)], float(w), "REPLACE")
+            index = {name: i for i, (name, _, _) in enumerate(bones)}
+            column = [index[targets[g.name]] for g in obj.vertex_groups]
+            authored = np.zeros((len(mesh.vertices), len(bones)))
+            for v in mesh.vertices:
+                for g in v.groups:
+                    authored[v.index, column[g.group]] += g.weight
+            proximity = np.zeros_like(authored)
+            np.add.at(proximity, (vertex, bone), weight)
+            merged = _merge_authored(authored, proximity, edges, limbs)
+            vertex, bone = np.nonzero(merged > 1e-4)
+            weight = merged[vertex, bone]
+            obj.vertex_groups.clear()
+        for b in np.unique(bone):
+            group = obj.vertex_groups.new(name=bones[b][0])
+            for v, w in zip(vertex[bone == b], weight[bone == b]):
+                group.add([int(v)], float(w), "REPLACE")
         for modifier in list(obj.modifiers):
             if modifier.type == "ARMATURE":
                 obj.modifiers.remove(modifier)
