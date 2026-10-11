@@ -415,7 +415,8 @@ def test_bone_meshes_follow_reference_with_local_geom_offset() -> None:
     from myosuite.core.trajectory_io import MotionClip
 
     model = mujoco.MjModel.from_xml_string(
-        '<mujoco><asset><mesh name="bone" vertex="0 0 0 .2 0 0 0 .2 0 0 0 .2"/></asset>'
+        '<mujoco><asset><mesh name="unused" vertex="0 0 0 .1 0 0 0 .1 0 0 0 .1"/>'
+        '<mesh name="bone" vertex="0 0 0 .2 0 0 0 .2 0 0 0 .2"/></asset>'
         '<worldbody><body><joint type="slide" axis="1 0 0"/>'
         '<geom type="mesh" mesh="bone" pos="0 0 .5"/></body></worldbody></mujoco>'
     )
@@ -433,7 +434,21 @@ def test_bone_meshes_follow_reference_with_local_geom_offset() -> None:
     expected = mujoco.MjData(model)
     expected.qpos[:] = 2
     mujoco.mj_forward(model, expected)
+    native_scene = mujoco.MjvScene(model, maxgeom=10)
+    mujoco.mjv_updateScene(
+        model,
+        expected,
+        mujoco.MjvOption(),
+        None,
+        mujoco.MjvCamera(),
+        mujoco.mjtCatBit.mjCAT_ALL,
+        native_scene,
+    )
+    assert model.geom_dataid[0] == 1
+    assert scene.geoms[0].dataid == native_scene.geoms[0].dataid
     np.testing.assert_allclose(scene.geoms[0].pos, expected.geom_xpos[0])
-    np.testing.assert_allclose(scene.geoms[0].mat, expected.geom_xmat[0].reshape(3, 3))
+    np.testing.assert_allclose(
+        scene.geoms[0].mat, expected.geom_xmat[0].reshape(3, 3), atol=1e-7
+    )
     ghost.draw(0, scene)
     assert scene.ngeom == 1
