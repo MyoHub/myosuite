@@ -45,3 +45,15 @@ failed the strict first-jump check: it stepped across that gap. The second jump
 had 0.12 s airtime; all solids were contacted and there were no beam-stage floor
 contacts. The local verified video above passes both jumps. Larger first tuck
 and a single BLAS thread did not establish equivalent Colab jump behavior.
+
+## Reference ghost
+
+[Reference skeleton JPEG](reference_ghost_preview.jpg) ·
+[Reference-only animation, 5 fps](reference_ghost.mp4)
+
+The actor stays at the initial pose. The blue skeleton uses the procedural
+reference at its true world position: the still is at 3 s, the animation covers
+2–4 s. This illustrates desired postures, not a new policy rollout or solution.
+The tutorial's `SHOW_REFERENCE_GHOST` option instead overlays the current
+reference frame on the controlled rollout; the optional Blender export keeps
+that overlay and its color in an editable scene. Both reuse `GhostBodyViz`.

@@ -22,6 +22,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from collections.abc import Callable
 
 
 # Anatomical muscle meshes (BodyParts3D, CC BY 4.0) on the Hugging Face Hub, posed
@@ -146,11 +147,20 @@ class RenderConfig:
             raise ValueError(f"Muscle mesh not found: {self.muscle_mesh}")
 
 
-def export_rollout(config: RenderConfig) -> dict[str, Any]:
+def export_rollout(
+    config: RenderConfig,
+    *,
+    env: Any | None = None,
+    policy: Callable | None = None,
+    viz_fn: Callable | None = None,
+) -> dict[str, Any]:
     """Export one episode to animated USD, keeping its control-step timing.
 
     Args:
         config: Render settings.
+        env: Optional configured environment, reset but left open for its owner.
+        policy: Optional observation-to-action callback, overriding the checkpoint.
+        viz_fn: Optional ``(step, model, data, scene)`` visualization callback.
 
     Returns:
         The metadata also written to ``render.json`` for the Blender stage.
@@ -180,7 +190,18 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             return parts
 
     class NamedUSDExporter(USDExporter):
+        def _update_scene(self, data: Any, **kwargs: Any) -> None:
+            super()._update_scene(data, **kwargs)
+            if viz_fn is not None:
+                start = self.scene.ngeom
+                viz_fn(self.frame_count - 1, self.model, data, self.scene)
+                for index in range(start, self.scene.ngeom):
+                    self.scene.geoms[index].objtype = mujoco.mjtObj.mjOBJ_UNKNOWN
+                    self.scene.geoms[index].objid = index - start
+
         def _get_geom_name(self, geom: Any) -> str:
+            if geom.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN:
+                return f"Overlay_{geom.objid}"
             return Tf.MakeValidIdentifier(super()._get_geom_name(geom))
 
         def _load_geom(self, geom: Any) -> None:
@@ -196,7 +217,9 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             )
             self.geom_names.add(name)
 
-    env = make_env(config.env)
+    owns_env = env is None
+    supplied_policy = policy is not None
+    env = make_env(config.env) if owns_env else env
     try:
         obs, _ = env.reset(seed=config.seed)
         env.action_space.seed(config.seed)
@@ -219,13 +242,14 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
                 raise ValueError(f"Motion clip has no frequency: {config.motion}")
             data.qpos[:] = clip.qpos[0]
             data.qvel[:] = 0
-        if config.checkpoint:
-            # Strict: an unusable checkpoint raises instead of rendering random motion.
-            policy = load_policy(env, config.checkpoint.absolute(), strict=True)
-        else:
+        if policy is None:
+            if config.checkpoint:
+                # Strict: an unusable checkpoint raises instead of rendering random motion.
+                policy = load_policy(env, config.checkpoint.absolute(), strict=True)
+            else:
 
-            def policy(observation: np.ndarray) -> np.ndarray:
-                return env.action_space.sample()
+                def policy(observation: np.ndarray) -> np.ndarray:
+                    return env.action_space.sample()
 
         skin = (
             SkinPose.bind(load_skin(config.skin, model), model, config.skin_inflate)
@@ -369,7 +393,13 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             "seed": config.seed,
             "checkpoint": str(config.checkpoint) if config.checkpoint else None,
             "motion_source": (
-                "motion" if clip else "checkpoint" if config.checkpoint else "random"
+                "motion"
+                if clip
+                else "callable"
+                if supplied_policy
+                else "checkpoint"
+                if config.checkpoint
+                else "random"
             ),
             "usd": str(usd),
             "dt": dt,
@@ -448,7 +478,8 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
         (out / "render.json").write_text(json.dumps(meta, indent=2) + "\n")
         return meta
     finally:
-        env.close()
+        if owns_env:
+            env.close()
 
 
 def _anatomy_bodies(model: Any) -> set[int]:
@@ -1150,7 +1181,13 @@ def build_blender_scene(output: Path) -> None:
 
 
 def render_rollout(
-    config: RenderConfig, export_only: bool = False, blender_log: Path | None = None
+    config: RenderConfig,
+    export_only: bool = False,
+    blender_log: Path | None = None,
+    *,
+    env: Any | None = None,
+    policy: Callable | None = None,
+    viz_fn: Callable | None = None,
 ) -> dict[str, Any]:
     """Export a rollout, render it in a separate Blender process and write the video.
 
@@ -1158,13 +1195,16 @@ def render_rollout(
         config: Render settings.
         export_only: Stop after the USD export.
         blender_log: File for Blender's console output (default: this process's).
+        env: Optional configured environment (see ``export_rollout``).
+        policy: Optional observation-to-action callback.
+        viz_fn: Optional visualization callback, also exported to Blender.
 
     Returns:
         The export metadata (see :func:`export_rollout`).
     """
     if (config.output / "render.json").exists():
         raise FileExistsError("Choose a new output directory to avoid mixing runs.")
-    meta = export_rollout(config)
+    meta = export_rollout(config, env=env, policy=policy, viz_fn=viz_fn)
     print(
         f"Exported {meta['samples']} samples, {meta['duration']:.3f}s to {meta['usd']}",
         flush=True,

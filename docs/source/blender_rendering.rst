@@ -304,3 +304,28 @@ random-action hand motion (0.18 seconds). Saved Blender scenes matched MuJoCo
 body-geometry positions at two timestamps to within 6.1e-8 metres; visible
 anatomy stayed inside the camera throughout those clips. These checks do not
 establish compatibility with every environment or policy success rates.
+
+Reference skeletons and custom policies
+--------------------------------------
+
+Reuse ``GhostBodyViz`` for a desired motion without adding a simulated body.
+``from_motion_clip`` computes body poses once from full-model ``MotionClip.qpos``.
+For a MuJoCo image, call ``ghost.draw(frame, renderer.scene)`` after
+``renderer.update_scene(...)`` and before ``renderer.render()``.
+
+The Python exporter also accepts an existing ``env``, an observation-to-action
+``policy`` callback, and the same viewer ``viz_fn``. It resets the supplied env
+with the configured seed and leaves it open. Visualization callbacks receive
+control-step indices starting at zero, must only edit the scene, and should
+append geometry in a stable order so USD objects retain their identity.
+The overlay retains its color and animation in the editable Blender scene.
+
+.. code-block:: python
+
+   from myosuite.viz.ghost_body_viz import GhostBodyViz
+
+   ghost = GhostBodyViz.from_motion_clip(reference, env.unwrapped.model)
+   render_rollout(config, env=env, policy=action, viz_fn=ghost.as_viz_fn())
+
+Tutorial ``4.4_Programmatic_Waypoint_Tasks.ipynb`` shows a reference snapshot,
+an optional live overlay and a TERRA export using the shared policy runner.
