@@ -652,6 +652,21 @@ def test_bone_overlay_exports_original_mesh_not_another_geometry(
     from myosuite.viz.ghost_body_viz import GhostBodyViz
 
     env = _Env()
+    env.model = mujoco.MjModel.from_xml_string("""
+        <mujoco><option timestep=".002" gravity="0 0 0"/>
+          <asset>
+            <mesh name="decoy" vertex="0 0 0 .1 0 0 0 .1 0 0 0 .1"/>
+            <mesh name="anatomy" vertex="0 0 0 .2 0 0 0 .3 0 0 0 .4"/>
+          </asset>
+          <worldbody><geom type="mesh" mesh="decoy" pos="0 2 0"/>
+            <body><joint name="slide" type="slide" axis="1 0 0"/>
+              <geom name="bone" type="mesh" mesh="anatomy"/>
+            </body>
+          </worldbody>
+          <actuator><motor joint="slide"/><motor joint="slide"/></actuator>
+        </mujoco>
+    """)
+    env.data = mujoco.MjData(env.model)
     ghost = GhostBodyViz.from_motion_clip(
         MotionClip(qpos=np.ones((5, 1)), qvel=None, site_xpos=None, site_names=None),
         env.model,
