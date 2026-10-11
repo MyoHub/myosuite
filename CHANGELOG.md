@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Highlights
+
+* **Photorealistic Blender rendering of any MyoSuite rollout ([#540]).** One command turns a CPU rollout of a
+  trained policy (`--checkpoint`) or of random actions (`--random`) into a Cycles render: animated USD export,
+  a studio scene, ivory bones and volumetric muscles that thicken as they shorten and redden with activation.
+
+  ```bash
+  python scripts/render_blender.py --env myoLegWalk-v0 --checkpoint <run> --output leg-render
+  ```
+
+  ![Blender rendering of myoLegWalk-v0](docs/source/images/blender/leg_gait.webp)
+
+  - Muscle volumes measured for the large leg and shoulder muscles (`myosuite.viz.muscle_tubes`), or MuJoCo's
+    thin muscle paths; colour by activation or uniform (`--muscle-color`).
+  - Optional body skin from a MuJoCo `.skn` file (`--skin`, translucent or opaque; `myosuite.viz.skin`), with a
+    bundled full-body skin adapted from MakeHuman/MPFB (CC0 1.0); `ViserSkin` draws it in mjviser.
+    `--skin-texture` puts a colour image on the skin (the bundled skin takes textures in MakeHuman's UV layout).
+  - Anatomical muscle meshes in place of the tubes (`--muscle-mesh atlas|atlas-hd|PATH.glb`): BodyParts3D
+    muscles (CC BY 4.0) downloaded from the Hugging Face dataset `myohub/myosuite-assets` on first use and
+    bound to the animated bones in Blender (full-body envs).
+  - Preview, video and export-only modes; the `studio` or the task's own `mujoco` scene; tutorial 3.6.
+  - Needs the optional MuJoCo USD dependencies and a separate Blender installation.
+  - `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy.
+
 ### Added
 
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
@@ -18,7 +42,7 @@ All notable changes to this project are documented in this file.
 * Baseline downloads look for the patch-release tag first (`v3.0.1`), then the minor-release tag (`v3.0`), then
   `main`, so a patch release can ship changed baselines without changing those of earlier releases.
 
-## [3.0.0] - unreleased
+## [3.0.0] - 2026-10-07
 
 Changes since the last official release, **v2.12.2** (2026-05-06). `git log v2.12.2..v3.0.0` has the
 full commit list.
@@ -224,6 +248,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#504]: https://github.com/MyoHub/myosuite/pull/504
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#520]: https://github.com/MyoHub/myosuite/pull/520
+[#540]: https://github.com/MyoHub/myosuite/pull/540
 
 ## [2.12.2] - 2026-05-06
 * Asset credits updated ([#392]).
