@@ -63,3 +63,9 @@ by preserving their original geom groups; contact physics is unchanged.
 [Blender bone-ghost JPEG](reference_ghost_blender_preview.jpg) is a short zero-action
 rendering check, with the reference at 3 s. It demonstrates the shared bone
 meshes and hidden helper surfaces, not a policy solution.
+
+The tutorial uses a matte neutral floor, muted blue course surfaces and a softer
+sky gradient. The optional Blender export uses the existing `studio` preset for
+soft lighting and shadows. These presentation settings leave collision geometry,
+reference generation and policy inputs unchanged; 408 nonvisual model arrays
+and 30 matched simulation steps were verified identical.
