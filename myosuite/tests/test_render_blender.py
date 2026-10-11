@@ -641,3 +641,44 @@ def test_reference_overlay_exports_separately_without_changing_physics(
         np.load(tmp_path / "plain/reference.npz") as plain,
     ):
         np.testing.assert_array_equal(overlay["qpos"], plain["qpos"])
+
+
+def test_bone_overlay_exports_original_mesh_not_another_geometry(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
+    from myosuite.core.trajectory_io import MotionClip
+    from myosuite.viz.ghost_body_viz import GhostBodyViz
+
+    env = _Env()
+    ghost = GhostBodyViz.from_motion_clip(
+        MotionClip(qpos=np.ones((5, 1)), qvel=None, site_xpos=None, site_names=None),
+        env.model,
+        bone_meshes=True,
+    )
+    meta = blender_render.export_rollout(
+        _config(tmp_path),
+        env=env,
+        policy=lambda obs: np.zeros(2),
+        viz_fn=ghost.as_viz_fn(),
+    )
+    stage = Usd.Stage.Open(meta["usd"])
+    original = next(
+        p
+        for p in stage.Traverse()
+        if p.GetTypeName() == "Mesh" and p.GetName().startswith("Mesh_bone_id")
+    )
+    overlay = stage.GetPrimAtPath("/World/Mesh_Xform_Overlay_0/Mesh_Overlay_0")
+    assert overlay.IsValid()
+    np.testing.assert_array_equal(
+        UsdGeom.Mesh(original).GetPointsAttr().Get(),
+        UsdGeom.Mesh(overlay).GetPointsAttr().Get(),
+    )
+    pose = UsdGeom.Xformable(overlay).ComputeLocalToWorldTransform(0)
+    expected = mujoco.MjData(env.model)
+    expected.qpos[:] = 1
+    mujoco.mj_forward(env.model, expected)
+    np.testing.assert_allclose(
+        pose.ExtractTranslation(), expected.geom_xpos[env.model.geom("bone").id]
+    )

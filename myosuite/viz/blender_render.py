@@ -186,6 +186,21 @@ def export_rollout(
             return Tf.MakeValidIdentifier(super()._get_geom_name(geom))
 
         def _load_geom(self, geom: Any) -> None:
+            if (
+                geom.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN
+                and geom.type == mujoco.mjtGeom.mjGEOM_MESH
+            ):
+                name = self._get_geom_name(geom)
+                self.geom_refs[name] = objects.USDMesh(
+                    stage=self.stage,
+                    model=self.model,
+                    geom=geom,
+                    obj_name=name,
+                    dataid=geom.dataid // 2,
+                    rgba=geom.rgba,
+                )
+                self.geom_names.add(name)
+                return
             if geom.objtype != mujoco.mjtObj.mjOBJ_TENDON:
                 super()._load_geom(geom)
                 return

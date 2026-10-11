@@ -409,3 +409,31 @@ def test_draw_capsule_reaches_both_joints() -> None:
     assert capsule.type == mujoco.mjtGeom.mjGEOM_CAPSULE
     np.testing.assert_allclose(capsule.size, [0.018, 0.018, 0.5])
     np.testing.assert_allclose(capsule.pos, [0, 0, 0.5])
+
+
+def test_bone_meshes_follow_reference_with_local_geom_offset() -> None:
+    from myosuite.core.trajectory_io import MotionClip
+
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><asset><mesh name="bone" vertex="0 0 0 .2 0 0 0 .2 0 0 0 .2"/></asset>'
+        '<worldbody><body><joint type="slide" axis="1 0 0"/>'
+        '<geom type="mesh" mesh="bone" pos="0 0 .5"/></body></worldbody></mujoco>'
+    )
+    ghost = GhostBodyViz.from_motion_clip(
+        MotionClip(
+            qpos=np.array([[0.0], [2.0]]), qvel=None, site_xpos=None, site_names=None
+        ),
+        model,
+        bone_meshes=True,
+    )
+    scene = _fake_user_scn()
+    ghost.draw(1, scene)
+    assert scene.ngeom == 1
+    assert scene.geoms[0].type == mujoco.mjtGeom.mjGEOM_MESH
+    expected = mujoco.MjData(model)
+    expected.qpos[:] = 2
+    mujoco.mj_forward(model, expected)
+    np.testing.assert_allclose(scene.geoms[0].pos, expected.geom_xpos[0])
+    np.testing.assert_allclose(scene.geoms[0].mat, expected.geom_xmat[0].reshape(3, 3))
+    ghost.draw(0, scene)
+    assert scene.ngeom == 1
