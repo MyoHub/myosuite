@@ -22,12 +22,13 @@ from __future__ import annotations
 import weakref
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+from collections.abc import Mapping
 
 import mujoco
 import numpy as np
 
 if TYPE_CHECKING:
-    pass
+    from myosuite.core.trajectory_io import MotionClip
 
 
 # ── geometry helpers ────────────────────────────────────────────────────────
@@ -146,9 +147,38 @@ class GhostBodyViz:
     # ------------------------------------------------------------------ #
 
     @classmethod
+    def from_motion_clip(
+        cls, clip: MotionClip, model: mujoco.MjModel, **kwargs: object
+    ) -> GhostBodyViz:
+        """Build a reference skeleton from joint poses using offline kinematics.
+
+        Args:
+            clip: Full-model joint poses, shaped ``(T, model.nq)``.
+            model: Model whose joints and bodies match the reference.
+            **kwargs: Styling and frame options accepted by ``from_clip_and_model``.
+
+        Returns:
+            Ghost with cached body poses; no live simulation state is modified.
+
+        Raises:
+            ValueError: The clip is empty or does not contain full-model poses.
+        """
+        qpos = np.asarray(clip.qpos)
+        if qpos.ndim != 2 or qpos.shape[1] != model.nq or len(qpos) == 0:
+            raise ValueError("Ghost reference requires nonempty full-model qpos.")
+        data = mujoco.MjData(model)
+        xpos = np.empty((len(qpos), model.nbody, 3))
+        xquat = np.empty((len(qpos), model.nbody, 4))
+        for frame, pose in enumerate(qpos):
+            data.qpos[:] = pose
+            mujoco.mj_kinematics(model, data)
+            xpos[frame], xquat[frame] = data.xpos, data.xquat
+        return cls.from_clip_and_model({"xpos": xpos, "xquat": xquat}, model, **kwargs)
+
+    @classmethod
     def from_clip_and_model(
         cls,
-        clip_path_or_npz: str | np.lib.npyio.NpzFile,
+        clip_path_or_npz: str | np.lib.npyio.NpzFile | Mapping[str, np.ndarray],
         model: mujoco.MjModel,
         *,
         skeleton_rgba: tuple[float, float, float, float] = (0.3, 0.6, 1.0, 0.35),
@@ -285,7 +315,7 @@ class GhostBodyViz:
                     mujoco.mjv_initGeom(
                         user_scn.geoms[geom_i],
                         mujoco.mjtGeom.mjGEOM_CAPSULE,
-                        size,
+                        np.array([size[0], size[2], 0.0]),
                         centre,
                         mat9,
                         self._skel_rgba,

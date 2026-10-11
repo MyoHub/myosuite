@@ -572,7 +572,7 @@ def test_render_rollout_ends_with_the_result_path(
     import myosuite.utils.video_io as video_io
 
     meta = {"samples": 3, "duration": 0.1, "usd": "x.usdc"}
-    monkeypatch.setattr(blender_render, "export_rollout", lambda config: meta)
+    monkeypatch.setattr(blender_render, "export_rollout", lambda config, **kwargs: meta)
     monkeypatch.setattr(blender_render.subprocess, "run", lambda *a, **kw: None)
     monkeypatch.setattr(video_io, "write_video", lambda *a, **kw: None)
     out = tmp_path / "render"
@@ -582,3 +582,62 @@ def test_render_rollout_ends_with_the_result_path(
     last = capsys.readouterr().out.strip().splitlines()[-1]
     expected = out.resolve() / ("preview.png" if preview else "video.mp4")
     assert last == f"{'Preview' if preview else 'Video'}: {expected}"
+
+
+def test_reference_overlay_exports_separately_without_changing_physics(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
+
+    from myosuite.core.trajectory_io import MotionClip
+    from myosuite.viz.ghost_body_viz import CombinedViz, GhostBodyViz
+
+    env = _Env()
+    poses = np.arange(5, dtype=float).reshape(-1, 1) * 0.1 + 1
+    ghost = GhostBodyViz.from_motion_clip(
+        MotionClip(qvel=None, site_xpos=None, site_names=None, qpos=poses),
+        env.model,
+        joint_rgba=(0.1, 0.5, 1, 0.8),
+    )
+
+    shifted = GhostBodyViz.from_motion_clip(
+        MotionClip(qpos=poses, qvel=None, site_xpos=None, site_names=None),
+        env.model,
+        position_offset=np.array([0, 1, 0]),
+    )
+
+    def action(observation: np.ndarray) -> np.ndarray:
+        return np.zeros(2)
+
+    meta = blender_render.export_rollout(
+        _config(tmp_path / "ghost"),
+        env=env,
+        policy=action,
+        viz_fn=CombinedViz([ghost.as_viz_fn(), shifted.as_viz_fn()]),
+    )
+    assert not env.closed
+    assert meta["motion_source"] == "callable"
+    stage = Usd.Stage.Open(meta["usd"])
+    prim = stage.GetPrimAtPath("/World/Mesh_Xform_Overlay_0")
+    assert prim.IsValid()
+    for index in [0, 2, 4]:
+        transform = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(index)
+        np.testing.assert_allclose(transform.ExtractTranslation(), ghost.xpos[index, 1])
+    second = stage.GetPrimAtPath("/World/Mesh_Xform_Overlay_1")
+    assert second.IsValid()
+    np.testing.assert_allclose(
+        UsdGeom.Xformable(second).ComputeLocalToWorldTransform(4).ExtractTranslation(),
+        ghost.xpos[4, 1] + [0, 1, 0],
+    )
+    shader = stage.GetPrimAtPath("/World/_materials/Material_Overlay_0/Principled_BSDF")
+    np.testing.assert_allclose(
+        shader.GetAttribute("inputs:diffuseColor").Get(), [0.1, 0.5, 1], atol=5e-4
+    )
+    assert shader.GetAttribute("inputs:opacity").Get() == pytest.approx(0.8, abs=5e-4)
+    blender_render.export_rollout(_config(tmp_path / "plain"), env=env, policy=action)
+    with (
+        np.load(tmp_path / "ghost/reference.npz") as overlay,
+        np.load(tmp_path / "plain/reference.npz") as plain,
+    ):
+        np.testing.assert_array_equal(overlay["qpos"], plain["qpos"])
