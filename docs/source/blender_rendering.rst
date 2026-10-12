@@ -228,15 +228,15 @@ the model; the simulated model is not changed.
    python scripts/render_blender.py --env myoMimicFullbody-v0 --random \
        --output fullbody-atlas --preview --muscle-mesh atlas
 
-- ``atlas`` (1.6 MB, ~50k vertices) and ``atlas-hd`` (14.7 MB, ~334k vertices)
-  are BodyParts3D muscles posed on ``myoMimicFullbody-v0``. They are downloaded
-  from the Hugging Face dataset ``myohub/myosuite-assets`` on first use and
-  cached, so they fit the full-body envs only.
-- Each vertex near a muscle path blends the bones of the two path sites around
-  it, so a muscle follows its origin and insertion and bends only where its
-  path crosses a joint; a piece never follows a second limb, so a hand next to
-  the thigh never follows the femur. Any ``.glb`` modelled in a model's rest
-  pose (``qpos0``) works too (its ``Muscle*`` meshes, or all meshes).
+- ``atlas`` (10 MB, ~260k vertices) and ``atlas-hd`` (27 MB, ~700k vertices)
+  hold 416 BodyParts3D muscles, one mesh each, in the rest pose (``qpos0``) of
+  ``myoMimicFullbody-v0``. They are downloaded from the Hugging Face dataset
+  ``myohub/myosuite-assets`` on first use and cached, so they fit the full-body
+  envs only.
+- Each muscle carries its own bone weights and follows only the bones it
+  attaches to, so a back muscle never follows the arm and a hand muscle never
+  follows the thigh. Any skinned ``.glb`` modelled in a model's rest pose works
+  too: its bones are matched to the model's bone geoms by rest position.
 - The meshes keep one muscle colour: they do not change with activation or
   bulge as muscles shorten, unlike the tubes.
 

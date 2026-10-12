@@ -16,8 +16,9 @@
 
 ## Anatomical muscle meshes (`--muscle-mesh atlas` / `atlas-hd`)
 
-- **What:** muscle surfaces of the whole body (`fullbody_muscles.glb`, ~334k vertices, and a
-  decimated `fullbody_muscles_light.glb`), posed on the rest pose of `myoMimicFullbody-v0`.
+- **What:** 416 muscle surfaces of the whole body, one mesh each (`fullbody_atlas.glb`, ~700k
+  vertices, and a decimated `fullbody_atlas_light.glb`), in the rest pose of `myoMimicFullbody-v0`,
+  each skinned to the bones it attaches to.
 - **Where:** not in this repository or the wheel; downloaded on first use from the Hugging Face
   dataset [`myohub/myosuite-assets`](https://huggingface.co/datasets/myohub/myosuite-assets)
   (`muscles/`).
@@ -26,8 +27,8 @@
   et al. *BodyParts3D: 3D structure database for anatomical concepts.* Nucleic Acids Res.
   2009;37:D782-5. [doi:10.1093/nar/gkn613](https://doi.org/10.1093/nar/gkn613). Obtained through
   [human-atlas](https://github.com/ashemag/human-atlas) (MIT licence).
-- **Changes:** posed on the MyoSuite full-body skeleton, merged into two meshes
-  (`Muscles_actuated`, `Muscles_no_actuator`), and decimated for the light copy.
+- **Changes:** posed on the MyoSuite full-body skeleton, each muscle weighted in Blender to the bones
+  it attaches to, and decimated for the light copy.
 - **Used by:** `myosuite.viz.blender_render` (`RenderConfig.muscle_mesh`, `--muscle-mesh`).
 
 ## Acknowledgements (ideas only, no code used)

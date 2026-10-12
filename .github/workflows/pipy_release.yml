@@ -28,7 +28,8 @@ concurrency:
 #    PR/CI flow. This workflow never changes main or dev.
 # 2. A manual dispatch releases exactly the version already committed on main.
 # 3. It validates main/dev parity, builds the exact version, creates/reuses its
-#    tag on the main commit, publishes to PyPI, then verifies that exact version.
+#    tag on the main commit, creates the GitHub Release for that tag (generated
+#    notes), publishes to PyPI, then verifies that exact version.
 
 
 jobs:
@@ -143,11 +144,12 @@ jobs:
         name: python-package-distributions
         path: dist/
   create_release_tag:
-    name: Validate tips and create release tag
+    name: Validate tips, create release tag and GitHub Release
     runs-on: ubuntu-latest
     needs: [get_next_version, pypi_package_build_and_release]
     permissions:
       contents: write
+      pull-requests: read
     steps:
       - name: Checkout release commit
         uses: actions/checkout@v4
@@ -155,12 +157,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      # Revalidate branch state immediately before the only repository write:
-      # creating the release tag. Never submit main/dev as updates, because
-      # protected main rejects even a no-op ref update.
-      - name: Revalidate release source and create tag
+      # Revalidate branch state immediately before the only repository writes:
+      # the release tag and its GitHub Release. Never submit main/dev as
+      # updates, because protected main rejects even a no-op ref update.
+      - name: Revalidate release source, create tag and GitHub Release
         env:
           NEW_TAG: ${{ needs.get_next_version.outputs.new_tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           git fetch origin main dev --tags
           main_sha=$(git rev-parse origin/main)
@@ -187,6 +190,16 @@ jobs:
           else
             git tag "$NEW_TAG" "$head_sha"
             git push origin "refs/tags/$NEW_TAG"
+          fi
+
+          if gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "GitHub Release $NEW_TAG already exists; leaving it."
+          else
+            gh release create "$NEW_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$head_sha" \
+              --title "$NEW_TAG" \
+              --generate-notes
           fi
 
   publish_to_pypi:
