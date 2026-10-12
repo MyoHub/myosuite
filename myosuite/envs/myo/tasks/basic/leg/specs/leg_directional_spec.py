@@ -10,11 +10,15 @@ minimal — its only purpose is to pretrain a general locomotion policy whose
 weights can be used to warm-start the two-agent ``myoChallengeChaseTagFBVs-v0``
 task (see ``myosuite/envs/myo/tasks/challenge/chase_tag_vs/``).
 
+The model faces world ``-y`` at reset (as in ``myoLegWalk-v0``), so walking forward
+means ``heading_dir=(0, -1)``. Until 3.0.0 the two names were swapped; the
+definitions (and the trained baselines) kept their content and swapped names.
+
 Registered environments
 ------------------------
 CPU (Gymnasium):
-    ``myoLegDirectionalForward-v0``  — heading_dir=(0, 1), target_speed=1.2 m/s
-    ``myoLegDirectionalBackward-v0`` — heading_dir=(0, -1), target_speed=1.0 m/s
+    ``myoLegDirectionalForward-v0``  — heading_dir=(0, -1), target_speed=1.0 m/s
+    ``myoLegDirectionalBackward-v0`` — heading_dir=(0, 1), target_speed=1.2 m/s
 
 These run via :class:`~myosuite.envs.modular_env.ModularTaskEnv` and are
 therefore fully driven by the ``TaskConfig`` — no subclassing required.
@@ -64,7 +68,7 @@ class LegDirectionalForwardTask(TaskConfig):
                 "root_planar_vel",
                 "heading_cmd",
             ],
-            extra={"heading_dir": (0.0, 1.0)},
+            extra={"heading_dir": (0.0, -1.0)},
         )
     )
     goal: GoalSpec = field(default_factory=lambda: GoalSpec(target_type="joint_angles"))
@@ -72,7 +76,7 @@ class LegDirectionalForwardTask(TaskConfig):
         default_factory=lambda: RewardSpec(
             terms=["heading", "act_reg"],
             weights={"heading": 1.0, "act_reg": 0.1},
-            extra={"heading_dir": (0.0, 1.0), "target_speed": 1.2},
+            extra={"heading_dir": (0.0, -1.0), "target_speed": 1.0},
         )
     )
     actuators: list[ActuatorGroupSpec] = field(
@@ -98,14 +102,14 @@ class LegDirectionalBackwardTask(LegDirectionalForwardTask):
                 "root_planar_vel",
                 "heading_cmd",
             ],
-            extra={"heading_dir": (0.0, -1.0)},
+            extra={"heading_dir": (0.0, 1.0)},
         )
     )
     reward: RewardSpec = field(
         default_factory=lambda: RewardSpec(
             terms=["heading", "act_reg"],
             weights={"heading": 1.0, "act_reg": 0.1},
-            extra={"heading_dir": (0.0, -1.0), "target_speed": 1.0},
+            extra={"heading_dir": (0.0, 1.0), "target_speed": 1.2},
         )
     )
 
@@ -124,6 +128,18 @@ class LegDirectionalRandomTask(LegDirectionalForwardTask):
     Registered as ``myoLegDirectionalRandom-v0`` on import.
     """
 
+    obs: ObsSpec = field(
+        default_factory=lambda: ObsSpec(
+            keys=[
+                "joint_pos",
+                "joint_vel",
+                "muscle_act",
+                "root_planar_vel",
+                "heading_cmd",
+            ],
+            extra={"heading_dir": (0.0, 1.0)},  # fallback; overridden per episode
+        )
+    )
     reward: RewardSpec = field(
         default_factory=lambda: RewardSpec(
             terms=["heading", "act_reg"],

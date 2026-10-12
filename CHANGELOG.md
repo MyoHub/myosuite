@@ -2,7 +2,51 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.0.0] - unreleased
+## [Unreleased]
+
+### Highlights
+
+* **Photorealistic Blender rendering of any MyoSuite rollout ([#540]).** One command turns a CPU rollout of a
+  trained policy (`--checkpoint`) or of random actions (`--random`) into a Cycles render: animated USD export,
+  a studio scene, ivory bones and volumetric muscles that thicken as they shorten and redden with activation.
+
+  ```bash
+  python scripts/render_blender.py --env myoLegWalk-v0 --checkpoint <run> --output leg-render
+  ```
+
+  ![Blender rendering of myoLegWalk-v0](docs/source/images/blender/leg_gait.webp)
+
+  - Muscle volumes measured for the large leg and shoulder muscles (`myosuite.viz.muscle_tubes`), or MuJoCo's
+    thin muscle paths; colour by activation or uniform (`--muscle-color`).
+  - Optional body skin from a MuJoCo `.skn` file (`--skin`, translucent or opaque; `myosuite.viz.skin`), with a
+    bundled full-body skin adapted from MakeHuman/MPFB (CC0 1.0) and fitted over the muscle atlas; `ViserSkin` draws it in mjviser.
+    `--skin-texture` puts a colour image on the skin (the bundled skin takes textures in MakeHuman's UV layout).
+  - Anatomical muscle meshes in place of the tubes (`--muscle-mesh atlas|atlas-hd|PATH.glb`): 416 BodyParts3D
+    muscles (CC BY 4.0), each weighted to the bones it attaches to, downloaded from the Hugging Face dataset
+    `myohub/myosuite-assets` on first use (full-body envs).
+  - Preview, video and export-only modes; the `studio` or the task's own `mujoco` scene; tutorial 3.6.
+  - Needs the optional MuJoCo USD dependencies and a separate Blender installation.
+  - `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy.
+
+### Added
+
+* **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
+
+### Changed
+
+* `myoLegDirectionalForward-v0` and `myoLegDirectionalBackward-v0` swapped names. The leg model faces `-y`, so the
+  old "forward" task (`heading_dir=(0, 1)`, 1.2 m/s) trained walking backwards and the old "backward" task
+  (`heading_dir=(0, -1)`, 1.0 m/s) walking forwards. Forward is now `(0, -1)` at 1.0 m/s and Backward `(0, 1)` at
+  1.2 m/s; the baseline checkpoints moved with their task definitions (`docs/baseline_checkpoints.md`).
+  `myoLegDirectionalRandom-v0` is unchanged.
+* Baseline downloads look for the patch-release tag first (`v3.0.1`), then the minor-release tag (`v3.0`), then
+  `main`, so a patch release can ship changed baselines without changing those of earlier releases.
+
+### Fixed
+
+* **Motion clips load without pickle:** `load_motion_clip`, the CPU Mimic clip env and the full-body observation adapter open `.npz` files with `allow_pickle=False` (unpickling a downloaded file can run code). Names stored as bytes now read as text instead of `"b'name'"`, and a pickled name array is refused with instructions for re-saving it. SAR synergy metadata is written as strings, and older folders still load ([#522]).
+
+## [3.0.0] - 2026-10-07
 
 Changes since the last official release, **v2.12.2** (2026-05-06). `git log v2.12.2..v3.0.0` has the
 full commit list.
@@ -98,7 +142,6 @@ full commit list.
 * **Terminate on MuJoCo instability** in every CPU env ([#423]).
 * **SAR:** reorient actions, muscle conditions and stale geometry ([#434]); mjlab SAR action reaches the muscles ([#424], thanks @M-Colley); PCA whitening undone in `SARTorchTransform` ([#425], thanks @M-Colley); the bridge and activation collector ([#459]); tutorial scripts seed SAC and resume ([#455]).
 * **MuscleMimic mjlab:** resets, terminations, frame index and SAR task configs ([#436]); follow-ups: per-env target resampling, clip-rate check ([#437]); bimanual lookahead without root terms ([#439]); per-env bridge history and normalizer ([#440]); clip end scored against the last frame, `random_start` honoured ([#475]); bridge excitation mapping and name coverage ([#459]); relative angular velocity in `TorchFullbodyObsAdapter` ([#459]); multi-clip resets of partial envs ([#406]); initial-state joint-name keys and root angular velocity ([#406]).
-* **Motion clips load without pickle:** `load_motion_clip`, the CPU Mimic clip env and the full-body observation adapter open `.npz` files with `allow_pickle=False` (unpickling a downloaded file can run code). Names stored as bytes now read as text instead of `"b'name'"`, and a pickled name array is refused with instructions for re-saving it. SAR synergy metadata is written as strings, and older folders still load ([#522]).
 * **ONNX and SB3 exports** are self-contained and fold `VecNormalize` in ([#427], [#461]); two ONNX-export defects of the mimic MDP ([#407]); `find_checkpoint` skips runs of other envs ([#420]); `eval_mjlab_policy.py` reads the `actor` group ([#445]); `train_mjlab` resume and stop-on-success ([#478]).
 * **TaskConfig control step:** a control step is `n_substeps` steps of `sim_dt` on every backend, `BackendConfig` rejects a different `ctrl_dt`, and the CPU `ModularTaskEnv` sets the timestep to `sim_dt` (it scaled `joint_vel` by a `ctrl_dt` it did not simulate); the reach workspace table uses the scene's site ids ([#476]).
 * **Challenge scoring and targets:** RunTrack and ChaseTag `get_metrics` score a lost episode with the full `maxTime` again, and Baoding, Relocate, Reorient, Bimanual and TableTennis have a legacy-style `get_metrics`; `PoseEnvV0.update_target()` moves the rewarded target with the observed one; Bimanual refreshes the box inertia and rescales the visual box ([#477]).
@@ -210,6 +253,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#520]: https://github.com/MyoHub/myosuite/pull/520
 [#522]: https://github.com/MyoHub/myosuite/pull/522
+[#540]: https://github.com/MyoHub/myosuite/pull/540
 
 ## [2.12.2] - 2026-05-06
 * Asset credits updated ([#392]).
