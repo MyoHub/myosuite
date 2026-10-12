@@ -626,3 +626,26 @@ def test_merge_authored_keeps_limb_pieces_and_axial_regions() -> None:
     # The trunk piece follows the arm (10% share is below 15%) or leg never.
     assert np.allclose(merged[2], [1, 0, 0])
     assert np.allclose(merged[3], proximity[3])
+
+
+def test_bound_atlas_uses_existing_huggingface_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import huggingface_hub
+
+    calls = []
+    asset = tmp_path / "fullbody_muscles_bound.glb"
+
+    def download(**kwargs: str) -> str:
+        calls.append(kwargs)
+        return str(asset)
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
+    assert blender_render._resolve_muscle_mesh("atlas-bound") == asset
+    assert calls == [
+        {
+            "repo_id": "myohub/myosuite-assets",
+            "filename": "muscles/fullbody_muscles_bound.glb",
+            "repo_type": "dataset",
+        }
+    ]

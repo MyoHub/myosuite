@@ -31,6 +31,7 @@ MUSCLE_MESH_REPO = "myohub/myosuite-assets"
 MUSCLE_MESHES = {
     "atlas": "muscles/fullbody_muscles_light.glb",
     "atlas-hd": "muscles/fullbody_muscles.glb",
+    "atlas-bound": "muscles/fullbody_muscles_bound.glb",
 }
 
 
@@ -63,7 +64,7 @@ class RenderConfig:
             bundled skin uses MakeHuman's); ``None`` keeps the plain skin tone.
         skin_inflate: Offset of the skin along its normals (m).
         muscle_mesh: Anatomical muscle meshes drawn in place of the tubes and
-            deformed by the bones: ``"atlas"`` (light) or ``"atlas-hd"``
+            deformed by the bones: ``"atlas"`` (light), ``"atlas-hd"`` or ``"atlas-bound"``
             (BodyParts3D, downloaded from Hugging Face on first use, full body
             only), or a ``.glb`` in the model's rest pose; ``None`` keeps the tubes.
             A skinned ``.glb``'s weights are used for axial muscles (matched to the
@@ -1504,7 +1505,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--muscle-mesh",
-        help='Anatomical muscle meshes instead of tubes: "atlas", "atlas-hd" '
+        help='Anatomical muscle meshes instead of tubes: "atlas", "atlas-hd", "atlas-bound" '
         "(downloaded from Hugging Face, full body only) or a rest-pose .glb.",
     )
     parser.add_argument("--samples", type=int, default=64, help="Cycles samples.")

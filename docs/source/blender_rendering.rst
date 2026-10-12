@@ -287,11 +287,13 @@ establish compatibility with every environment or policy success rates.
 Authored muscle binding
 -----------------------
 
-The :download:`weighted full-body atlas <images/blender/fullbody_muscles_bound.glb>`
-contains explicit bone weights. Download it, then use the existing file option::
+The `weighted full-body atlas
+<https://huggingface.co/datasets/myohub/myosuite-assets/blob/main/muscles/fullbody_muscles_bound.glb>`_
+contains explicit bone weights. The existing Hugging Face downloader caches it
+on first use::
 
    python scripts/render_blender.py --env myoMimicFullbody-v0 \
-       --muscle-mesh /path/to/fullbody_muscles_bound.glb --preview
+       --muscle-mesh atlas-bound --preview
 
 Add your usual checkpoint and motion options to render a solution. Each authored
 bone is matched to the scene bone at its rest position, because geom names differ
@@ -318,5 +320,5 @@ because the merged atlas has lost its individual muscle labels.
 
 This derivative uses the existing BodyParts3D geometry (DBCLS, CC BY 4.0, via
 human-atlas) and MakeHuman/MPFB body skin weights (CC0). It retains the source
-credits listed above. The GLB is a documentation download, outside the Python
-package; the correction requires selecting this weighted asset.
+credits listed above. The GLB is stored on Hugging Face, outside the Git repository and Python
+package; the correction requires selecting ``atlas-bound``.
