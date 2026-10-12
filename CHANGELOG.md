@@ -2,7 +2,48 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.0.0] - unreleased
+## [Unreleased]
+
+### Highlights
+
+* **Photorealistic Blender rendering of any MyoSuite rollout ([#540]).** One command turns a CPU rollout of a
+  trained policy (`--checkpoint`) or of random actions (`--random`) into a Cycles render: animated USD export,
+  a studio scene, ivory bones and volumetric muscles that thicken as they shorten and redden with activation.
+
+  ```bash
+  python scripts/render_blender.py --env myoLegWalk-v0 --checkpoint <run> --output leg-render
+  ```
+
+  ![Blender rendering of myoLegWalk-v0](docs/source/images/blender/leg_gait.webp)
+
+  - Muscle volumes measured for the large leg and shoulder muscles (`myosuite.viz.muscle_tubes`), or MuJoCo's
+    thin muscle paths; colour by activation or uniform (`--muscle-color`).
+  - Optional body skin from a MuJoCo `.skn` file (`--skin`, translucent or opaque; `myosuite.viz.skin`), with a
+    bundled full-body skin adapted from MakeHuman/MPFB (CC0 1.0) and fitted over the muscle atlas; `ViserSkin` draws it in mjviser.
+    `--skin-texture` puts a colour image on the skin (the bundled skin takes textures in MakeHuman's UV layout).
+  - Anatomical muscle meshes in place of the tubes (`--muscle-mesh atlas|atlas-hd|PATH.glb`): 416 BodyParts3D
+    muscles (CC BY 4.0), each weighted to the bones it attaches to, downloaded from the Hugging Face dataset
+    `myohub/myosuite-assets` on first use (full-body envs).
+  - Preview, video and export-only modes; the `studio` or the task's own `mujoco` scene; tutorial 3.6.
+  - Needs the optional MuJoCo USD dependencies and a separate Blender installation.
+  - `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy.
+
+### Added
+
+* **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
+* **Newton compatibility probe:** `scripts/newton_compat_probe.py` measures how much of each MyoSuite model survives NVIDIA Newton's MJCF import (actuators, muscle length ranges and forces, joints, tendons, equalities), as written and after a plain MuJoCo rewrite; a manual *Newton probe* workflow runs it for a chosen Newton version. On Newton 1.6.1 none of six models converts as written (#368, [#531]).
+
+### Changed
+
+* `myoLegDirectionalForward-v0` and `myoLegDirectionalBackward-v0` swapped names. The leg model faces `-y`, so the
+  old "forward" task (`heading_dir=(0, 1)`, 1.2 m/s) trained walking backwards and the old "backward" task
+  (`heading_dir=(0, -1)`, 1.0 m/s) walking forwards. Forward is now `(0, -1)` at 1.0 m/s and Backward `(0, 1)` at
+  1.2 m/s; the baseline checkpoints moved with their task definitions (`docs/baseline_checkpoints.md`).
+  `myoLegDirectionalRandom-v0` is unchanged.
+* Baseline downloads look for the patch-release tag first (`v3.0.1`), then the minor-release tag (`v3.0`), then
+  `main`, so a patch release can ship changed baselines without changing those of earlier releases.
+
+## [3.0.0] - 2026-10-07
 
 Changes since the last official release, **v2.12.2** (2026-05-06). `git log v2.12.2..v3.0.0` has the
 full commit list.
@@ -61,7 +102,6 @@ full commit list.
 * **Targets:** `GoalSpec(target_type="site_positions")` samples per-episode targets from per-site ranges on CPU and MJX (mjlab helper `site_position_command_cfg`); `MotionClip` carries optional per-frame `weights` (#410).
 * **Muscle-command wrappers:** `MotorNoiseWrapper` (signal-dependent + constant Gaussian noise on muscle excitations, `MotorNoiseCfg.van_beers_2004()`), `FatigueWrapper`, `ReafferentationWrapper` and `SarcopeniaWrapper`; each installs a stage of the env's action pipeline, run by priority (`map -> noise -> fatigue -> reroute`), also on the mjlab twins; `ExcitationStageWrapper` adds portable custom stages (CPU env and mjlab twin) and `CtrlStageWrapper` env-aware CPU ones; they run after the built-in stages in installation order, or at an explicit `order` to insert one earlier (two equal explicit orders raise a `StageOrderWarning`) ([#488], [#502], [#505]).
 * **`make_env(EnvConfig(...))`:** one call builds an env on the CPU or on the mjlab twin with the same `features` (muscle-command wrappers, built with `wrapper_spec`), `max_episode_steps` and `num_envs`; the old `EnvConfig` fields (`model`, `scene`, `backend` timing) and `TaskConfig.to_env_config` are removed, as was the unused `config=` argument of `register_env`. `EnvConfig.features` takes wrapper classes, `(class, kwargs)` pairs or specs. `ctrl_dt` is the single timing knob (substeps and decimation follow from it; the `ModularTaskEnv` ids refuse it). The leg-directional twins take features and `ctrl_dt` like the CPU env ([#508]). `TaskConfig` no longer carries features: `muscle_fatigue`, `ActuatorGroupSpec.condition` / `.noise` and `TaskConfig.fatigue_enabled` are removed (use the wrappers; `VariantSpec(features=...)` registers them; `ModularTaskEnv` runs the stages, so the Sarc/Fati TaskConfig ids behave as before, but its additive action noise is replaced by `MotorNoiseWrapper`). A plain `make_env(env_id, backend=..., **kwargs)` works as before. The docs, tutorials, scripts and tests use `make_env` instead of `gym.make` ([#506]).
-* **Newton compatibility probe:** `scripts/newton_compat_probe.py` measures how much of each MyoSuite model survives NVIDIA Newton's MJCF import (actuators, muscle length ranges and forces, joints, tendons, equalities), as written and after a plain MuJoCo rewrite; a manual *Newton probe* workflow runs it for a chosen Newton version. On Newton 1.6.1 none of six models converts as written (#368, [#531]).
 * **References and citations:** a References page, `CITATION.cff` and citations for the MuscleMimic motion data (AMASS, KIT, GMR, KINESIS) ([#504]).
 * **Tutorials and docs:** numbered tracks with companion files in `tutorials/files/X.Y/`, SAR tutorials and pretrained pickles, a fatigue tutorial, quickstarts, environment reference, backend-parity and baselines pages ([#406], [#454], [#455]).
 
@@ -210,6 +250,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#520]: https://github.com/MyoHub/myosuite/pull/520
 [#531]: https://github.com/MyoHub/myosuite/pull/531
+[#540]: https://github.com/MyoHub/myosuite/pull/540
 
 ## [2.12.2] - 2026-05-06
 * Asset credits updated ([#392]).
