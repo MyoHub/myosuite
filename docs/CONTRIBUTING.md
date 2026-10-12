@@ -13,7 +13,7 @@ We actively welcome your pull requests.
 4. Ensure the test suite passes. The checks to run before pushing are listed under
    *Verification* in `CLAUDE.md`; `docs/wiki/getting-started.md` is the developer onboarding.
 5. Make sure your code lints (`pip install pre-commit && pre-commit install`).
-6. Do not add AI assistants as commit co-authors; every co-author must have signed the CLA.
+6. Do not author a commit as an AI assistant, and do not add one as a co-author. `Author` and `Committer` must be a person who has signed the CLA.
 
 ## Issues
 

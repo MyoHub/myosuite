@@ -2,7 +2,48 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.0.0] - unreleased
+## [Unreleased]
+
+### Highlights
+
+* **Photorealistic Blender rendering of any MyoSuite rollout ([#540]).** One command turns a CPU rollout of a
+  trained policy (`--checkpoint`) or of random actions (`--random`) into a Cycles render: animated USD export,
+  a studio scene, ivory bones and volumetric muscles that thicken as they shorten and redden with activation.
+
+  ```bash
+  python scripts/render_blender.py --env myoLegWalk-v0 --checkpoint <run> --output leg-render
+  ```
+
+  ![Blender rendering of myoLegWalk-v0](docs/source/images/blender/leg_gait.webp)
+
+  - Muscle volumes measured for the large leg and shoulder muscles (`myosuite.viz.muscle_tubes`), or MuJoCo's
+    thin muscle paths; colour by activation or uniform (`--muscle-color`).
+  - Optional body skin from a MuJoCo `.skn` file (`--skin`, translucent or opaque; `myosuite.viz.skin`), with a
+    bundled full-body skin adapted from MakeHuman/MPFB (CC0 1.0) and fitted over the muscle atlas; `ViserSkin` draws it in mjviser.
+    `--skin-texture` puts a colour image on the skin (the bundled skin takes textures in MakeHuman's UV layout).
+  - Anatomical muscle meshes in place of the tubes (`--muscle-mesh atlas|atlas-hd|PATH.glb`): 416 BodyParts3D
+    muscles (CC BY 4.0), each weighted to the bones it attaches to, downloaded from the Hugging Face dataset
+    `myohub/myosuite-assets` on first use (full-body envs).
+  - Preview, video and export-only modes; the `studio` or the task's own `mujoco` scene; tutorial 3.6.
+  - Needs the optional MuJoCo USD dependencies and a separate Blender installation.
+  - `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy.
+
+### Added
+
+* **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
+
+### Changed
+
+* `myoLegDirectionalForward-v0` and `myoLegDirectionalBackward-v0` swapped names. The leg model faces `-y`, so the
+  old "forward" task (`heading_dir=(0, 1)`, 1.2 m/s) trained walking backwards and the old "backward" task
+  (`heading_dir=(0, -1)`, 1.0 m/s) walking forwards. Forward is now `(0, -1)` at 1.0 m/s and Backward `(0, 1)` at
+  1.2 m/s; the baseline checkpoints moved with their task definitions (`docs/baseline_checkpoints.md`).
+  `myoLegDirectionalRandom-v0` is unchanged.
+* Baseline downloads look for the patch-release tag first (`v3.0.1`), then the minor-release tag (`v3.0`), then
+  `main`, so a patch release can ship changed baselines without changing those of earlier releases.
+* **Memory-lean mjlab clip bank for large motion datasets.** Unchanged results by default: clips upload one at a time (no host copy of the whole bank), a new env count and `make_init_state_fn` reuse the uploaded bank, and `load_motion_clip(..., dtype=np.float32)` halves the host memory. Opt-in with `MotionClipBank(clips, ClipBankCfg(...))`: `store_qvel=False` derives the reference qvel from the previous qpos frame (`mj_differentiatePos`, the MuscleMimic clips' convention; check other data with `qvel_derivation_error`), and `dtype="float16"` stores the sites around a float32 centroid with a measured `storage_error`. Both together (qpos stays float32 under a derived qvel) bring the full-body bank from 912 to 470 bytes per frame (29 to 15 GiB for 95 h at 100 Hz) with exact qpos ([#509]).
+
+## [3.0.0] - 2026-10-07
 
 Changes since the last official release, **v2.12.2** (2026-05-06). `git log v2.12.2..v3.0.0` has the
 full commit list.
@@ -86,7 +127,6 @@ full commit list.
 * **The `muscle_condition`, `fatigue_reset_vec`, `fatigue_reset_random` and `motor_noise` env kwargs are replaced by wrappers.** The `myoFati*`, `myoSarc*` and `myoReaf*` ids are unchanged, and rollouts are identical to the kwarg versions. Build a custom stack with `FatigueWrapper(env, fatigue_reset_random=True)` and the other wrappers, and use `env.set_fatigue_reset_random(...)` instead of `env.unwrapped.set_fatigue_reset_random(...)`; the old kwargs raise a `TypeError` that names the replacement ([#502], [#505]).
 * **Randomized die, Baoding P2 and weighted elbow resets refresh collision bounds and inertia** after editing geom sizes and masses (MuJoCo 3.8 and newer cull contacts against stale bounds); the dynamics of these envs differ from earlier builds, so re-evaluate policies and recollect datasets ([#499] review).
 * **mjlab walk, Mimic and Table Tennis steps make no host syncs** (GPU stream stalls) in MyoSuite terms, with bit-identical results: walk / terrain twins 34 / 41 per step to 0; Mimic clip mode 33, a 2-clip bank 537 (full body) and random targets 17 to 0 (one reset check on a step that resets an env); Table Tennis P1 / P2 2 / 4 per reset step to 0. `mimic_composite_reward` reports `mean_site_dist` and `solved` per env ([#500]).
-* **Memory-lean mjlab clip bank for large motion datasets.** Unchanged results by default: clips upload one at a time (no host copy of the whole bank), a new env count and `make_init_state_fn` reuse the uploaded bank, and `load_motion_clip(..., dtype=np.float32)` halves the host memory. Opt-in with `MotionClipBank(clips, ClipBankCfg(...))`: `store_qvel=False` derives the reference qvel from the previous qpos frame (`mj_differentiatePos`, the MuscleMimic clips' convention; check other data with `qvel_derivation_error`), and `dtype="float16"` stores the sites around a float32 centroid with a measured `storage_error`. Both together (qpos stays float32 under a derived qvel) bring the full-body bank from 912 to 470 bytes per frame (29 to 15 GiB for 95 h at 100 Hz) with exact qpos ([#509]).
 * Documentation and developer wiki cut down; tutorials simplified for newcomers ([#406]).
 
 ### Fixed
@@ -210,6 +250,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#509]: https://github.com/MyoHub/myosuite/pull/509
 [#520]: https://github.com/MyoHub/myosuite/pull/520
+[#540]: https://github.com/MyoHub/myosuite/pull/540
 
 ## [2.12.2] - 2026-05-06
 * Asset credits updated ([#392]).
