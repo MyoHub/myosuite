@@ -350,7 +350,7 @@ def test_muscle_mesh_option_checks_env_and_downloads_on_use(
     assert calls == [
         {
             "repo_id": "myohub/myosuite-assets",
-            "filename": "muscles/fullbody_muscles.glb",
+            "filename": "muscles/fullbody_atlas.glb",
             "repo_type": "dataset",
         }
     ]
@@ -362,97 +362,6 @@ def test_muscle_mesh_option_checks_env_and_downloads_on_use(
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", offline)
     with pytest.raises(RuntimeError, match="myohub/myosuite-assets"):
         blender_render._resolve_muscle_mesh("atlas")
-
-
-def test_muscle_weights_blend_across_a_joint_but_never_across_limbs() -> None:
-    """Thigh muscles blend femur and tibia; a hand piece by the thigh keeps its hand."""
-    z = np.linspace(0, 0.4, 20)
-    bone_points = np.concatenate(
-        [
-            np.c_[np.zeros(20), np.zeros(20), z],  # femur
-            np.c_[np.zeros(20), np.zeros(20), -z],  # tibia
-            np.c_[np.full(20, 0.06), np.zeros(20), 0.15 + z / 8],  # hand
-            np.c_[np.full(20, -0.06), np.zeros(20), 0.5 + z / 4],  # pelvis
-        ]
-    )
-    owner = np.repeat(np.arange(4), 20)
-    limbs = [
-        blender_render._limb(n) for n in ("femur_r", "tibia_r", "2proxph_r", "pelvis")
-    ]
-    assert limbs == ["leg_r", "leg_r", "arm_r", "pelvis"]
-    thigh = np.c_[np.full(9, 0.02), np.zeros(9), np.linspace(-0.1, 0.3, 9)]
-    hand = np.c_[np.full(5, 0.04), np.zeros(5), np.linspace(0.16, 0.2, 5)]
-    hip = np.c_[np.linspace(-0.05, 0.05, 5), np.zeros(5), np.full(5, 0.45)]
-    points = np.concatenate([thigh, hand, hip])
-    edges = [(i, i + 1) for i in [*range(8), *range(9, 13), *range(14, 18)]]
-    vertex, bone, weight = blender_render._muscle_weights(
-        points, edges, bone_points, owner, limbs
-    )
-    weights = np.zeros((len(points), 4))
-    np.add.at(weights, (vertex, bone), weight)
-    np.testing.assert_allclose(weights.sum(1), 1)
-    assert 0.3 < weights[2, 0] < 0.7  # at the knee: femur and tibia
-    assert not weights[:9, 2].any()  # the thigh never follows the hand
-    assert not weights[9:14, :2].any()  # the hand never follows the leg
-    assert (
-        weights[14:, 3].min() > 0.5 and weights[14:, 0].max() > 0
-    )  # hip: pelvis + femur
-
-
-def test_muscle_weights_follow_their_muscles_bones_and_keep_to_their_limb() -> None:
-    """Tissue on the femur or tibia follows that bone and blends across the knee;
-    a hand piece next to the leg path keeps its hand."""
-    z = np.linspace(0, 0.4, 20)
-    bone_points = np.concatenate(
-        [
-            np.c_[np.zeros(20), np.zeros(20), z],  # femur
-            np.c_[np.zeros(20), np.zeros(20), -z],  # tibia
-            np.c_[np.full(20, 0.06), np.zeros(20), 0.15 + z / 8],  # hand
-        ]
-    )
-    owner = np.repeat(np.arange(3), 20)
-    limbs = ["leg_r", "leg_r", "arm_r"]
-    # One muscle path with sites on the femur and the tibia.
-    chains = [
-        (np.array([[0.02, 0, 0.3], [0.02, 0, 0.05], [0.02, 0, -0.3]]), np.array([0, 1]))
-    ]
-    muscle = np.c_[np.full(9, 0.02), np.zeros(9), np.linspace(-0.25, 0.25, 9)]
-    hand = np.c_[np.full(5, 0.045), np.zeros(5), np.linspace(0.16, 0.2, 5)]
-    points = np.concatenate([muscle, hand])
-    edges = [(i, i + 1) for i in [*range(8), *range(9, 13)]]
-    vertex, bone, weight = blender_render._muscle_weights(
-        points, edges, bone_points, owner, limbs, chains
-    )
-    weights = np.zeros((len(points), 3))
-    np.add.at(weights, (vertex, bone), weight)
-    np.testing.assert_allclose(weights.sum(1), 1)
-    assert weights[8, 0] == pytest.approx(1)  # on the femur: femur
-    assert weights[0, 1] == pytest.approx(1)  # on the tibia: tibia
-    assert np.all(np.diff(weights[:9, 1]) <= 1e-6)  # tibia share falls up the thigh
-    assert not weights[:9, 2].any()  # the muscle never follows the hand
-    assert not weights[9:, :2].any()  # the hand never follows the leg path
-
-
-def test_muscle_weights_keep_tissue_on_the_ribs_when_an_arm_path_passes() -> None:
-    """Muscle lying on the thorax stays on it although arm muscle paths pass close by;
-    only tissue away from the bones blends towards the humerus."""
-    ribs = np.c_[np.zeros(30), np.linspace(-0.15, 0.15, 30), np.zeros(30)]
-    humerus = np.c_[np.full(30, 0.12), np.zeros(30), np.linspace(0.0, 0.3, 30)]
-    bone_points = np.concatenate([ribs, humerus])
-    owner = np.repeat([0, 1], 30)
-    limbs = ["trunk", "arm_r"]
-    # An arm muscle path (humerus only) passing 3 cm over the ribs.
-    chains = [(np.array([[0.03, -0.1, 0.0], [0.12, 0.0, 0.2]]), np.array([1]))]
-    sheet = np.c_[np.linspace(0.01, 0.11, 11), np.zeros(11), np.linspace(0.0, 0.1, 11)]
-    edges = [(i, i + 1) for i in range(10)]
-    vertex, bone, weight = blender_render._muscle_weights(
-        sheet, edges, bone_points, owner, limbs, chains
-    )
-    weights = np.zeros((len(sheet), 2))
-    np.add.at(weights, (vertex, bone), weight)
-    assert weights[0, 0] == pytest.approx(1)  # on the ribs: thorax only
-    assert weights[-1, 1] == pytest.approx(1)  # on the humerus: humerus only
-    assert 0 < weights[5, 1] < 1  # in between: a blend
 
 
 def test_export_records_bone_rest_poses_for_a_muscle_mesh(
@@ -477,11 +386,6 @@ def test_export_records_bone_rest_poses_for_a_muscle_mesh(
     rest = np.asarray(meta["bone_rest"][f"bone_id{bone}_geom"]).reshape(4, 4)
     np.testing.assert_allclose(rest[:3, 3], data.geom_xpos[bone])
     np.testing.assert_allclose(rest[:3, :3], data.geom_xmat[bone].reshape(3, 3))
-    # The fixture's path ends on a world site, which no bone carries: no chain.
-    assert meta["muscle_chains"] == []
-    flexor = env.model.actuator("flexor").id
-    geoms = {f"bone_id{bone}_geom": bone}
-    assert blender_render._muscle_chains(env.model, [flexor], geoms) == []
 
 
 @pytest.mark.parametrize("seconds", ["0", "-1", "nan", "inf"])
@@ -612,40 +516,3 @@ def test_authored_binding_rejects_unmatched_or_shared_bones(
 ) -> None:
     with pytest.raises(ValueError, match="scene bone"):
         blender_render._binding_targets(joints, {"femur_r_id1_geom": [0.0, 0.0, 0.0]})
-
-
-def test_merge_authored_keeps_limb_pieces_and_axial_regions() -> None:
-    limbs = ["trunk", "arm_r", "leg_l"]
-    # Piece 0 (vertices 0-1) lies on the arm; piece 1 (vertices 2-3) on the trunk.
-    proximity = np.array([[0, 1, 0], [0.2, 0.8, 0], [1, 0, 0], [0.9, 0.1, 0]], float)
-    authored = np.array([[1, 0, 0], [1, 0, 0], [0.5, 0, 0.5], [0, 0, 1]], float)
-    merged = blender_render._merge_authored(
-        authored, proximity, [[0, 1], [2, 3]], limbs
-    )
-    assert np.allclose(merged[:2], proximity[:2])
-    # The trunk piece follows the arm (10% share is below 15%) or leg never.
-    assert np.allclose(merged[2], [1, 0, 0])
-    assert np.allclose(merged[3], proximity[3])
-
-
-def test_bound_atlas_uses_existing_huggingface_cache(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import huggingface_hub
-
-    calls = []
-    asset = tmp_path / "fullbody_muscles_bound.glb"
-
-    def download(**kwargs: str) -> str:
-        calls.append(kwargs)
-        return str(asset)
-
-    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
-    assert blender_render._resolve_muscle_mesh("atlas-bound") == asset
-    assert calls == [
-        {
-            "repo_id": "myohub/myosuite-assets",
-            "filename": "muscles/fullbody_muscles_bound.glb",
-            "repo_type": "dataset",
-        }
-    ]

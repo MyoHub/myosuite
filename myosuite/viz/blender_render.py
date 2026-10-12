@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import re
 import shutil
 import subprocess
 import sys
@@ -29,9 +28,8 @@ from typing import Any
 # on myoMimicFullbody-v0's rest pose; see viz/assets/CREDITS.md.
 MUSCLE_MESH_REPO = "myohub/myosuite-assets"
 MUSCLE_MESHES = {
-    "atlas": "muscles/fullbody_muscles_light.glb",
-    "atlas-hd": "muscles/fullbody_muscles.glb",
-    "atlas-bound": "muscles/fullbody_muscles_bound.glb",
+    "atlas": "muscles/fullbody_atlas_light.glb",
+    "atlas-hd": "muscles/fullbody_atlas.glb",
 }
 
 
@@ -64,11 +62,11 @@ class RenderConfig:
             bundled skin uses MakeHuman's); ``None`` keeps the plain skin tone.
         skin_inflate: Offset of the skin along its normals (m).
         muscle_mesh: Anatomical muscle meshes drawn in place of the tubes and
-            deformed by the bones: ``"atlas"`` (light), ``"atlas-hd"`` or ``"atlas-bound"``
-            (BodyParts3D, downloaded from Hugging Face on first use, full body
-            only), or a ``.glb`` in the model's rest pose; ``None`` keeps the tubes.
-            A skinned ``.glb``'s weights are used for axial muscles (matched to the
-            bones by rest position); limb muscles keep the proximity weights.
+            deformed by the bones: ``"atlas"`` (light) or ``"atlas-hd"``
+            (BodyParts3D, one mesh per muscle weighted to its own bones,
+            downloaded from Hugging Face on first use, full body only), or a
+            skinned ``.glb`` in the model's rest pose, its bones matched to the
+            model's bone geoms by rest position; ``None`` keeps the tubes.
         samples: Cycles samples per frame.
         blender: Blender executable.
     """
@@ -348,9 +346,6 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             "muscle_mesh": _copy_muscle_mesh(config, out),
             # Bone poses at qpos0, the rest pose the muscle meshes are modelled in.
             "bone_rest": _rest_poses(model, bone_geoms) if config.muscle_mesh else {},
-            "muscle_chains": _muscle_chains(model, muscles, bone_geoms)
-            if config.muscle_mesh
-            else [],
             "plane_objects": [
                 exporter._get_geom_name(g)
                 for g in scene_geoms
@@ -514,335 +509,6 @@ def _rest_poses(model: Any, geoms: dict[str, int]) -> dict[str, list[float]]:
     return poses
 
 
-def _muscle_chains(
-    model: Any, muscles: Any, geoms: dict[str, int]
-) -> list[dict[str, Any]]:
-    """Each muscle's path sites at ``qpos0`` and the bones that carry them.
-
-    A site is carried by the bone meshes of its body, else of the nearest ancestor
-    with some (the patella site by the patella, a rib site by all thorax meshes).
-    """
-    import mujoco
-
-    data = mujoco.MjData(model)
-    mujoco.mj_forward(model, data)
-    body_bones: dict[int, list[str]] = {}
-    for name, g in geoms.items():
-        body_bones.setdefault(int(model.geom_bodyid[g]), []).append(name)
-
-    def bones_of(body: int) -> list[str] | None:
-        while body and body not in body_bones:
-            body = int(model.body_parentid[body])
-        return body_bones.get(body)
-
-    chains = []
-    for actuator in muscles:
-        tendon = model.actuator_trnid[actuator, 0]
-        adr, num = model.tendon_adr[tendon], model.tendon_num[tendon]
-        sites = [
-            int(model.wrap_objid[w])
-            for w in range(adr, adr + num)
-            if model.wrap_type[w] == mujoco.mjtWrap.mjWRAP_SITE
-        ]
-        carriers = [bones_of(int(model.site_bodyid[s])) for s in sites]
-        if len(sites) >= 2 and None not in carriers:
-            bones = sorted({n for c in carriers for n in c})
-            chains.append({"points": data.site_xpos[sites].tolist(), "bones": bones})
-    return chains
-
-
-def _chains_by_index(meta: dict[str, Any], bones: list[str]) -> list[tuple[Any, Any]]:
-    """``muscle_chains`` with bone names replaced by their indices in *bones*."""
-    import numpy as np
-
-    index = {name: i for i, name in enumerate(bones)}
-    return [
-        (np.asarray(c["points"]), np.array([index[n] for n in c["bones"]]))
-        for c in meta.get("muscle_chains", [])
-        if all(n in index for n in c["bones"])
-    ]
-
-
-_LEG = re.compile(r"femur|tibia|fibula|patella|talus|foot|calcn|toes")
-_ARM = re.compile(
-    r"humer|ulna|radius|lunate|scaphoid|pisiform|triquetrum|capitate|trapez"
-    r"|hamate|mc|ph|thumb|clavicle|scapula"
-)
-
-
-def _limb(name: str) -> str:
-    """Body region of a bone object: ``"leg_r"``, ``"arm_l"``, ..., ``"pelvis"`` or
-    ``"trunk"`` (thorax, spine and head)."""
-    side = "_l" if re.search(r"_l(_|$)", name) else "_r"
-    if _LEG.search(name):
-        return "leg" + side
-    if _ARM.search(name):
-        return "arm" + side
-    return "pelvis" if re.search(r"pelvis|sacrum", name) else "trunk"
-
-
-def _regions_followed(regions: list[str], main: Any, share: Any) -> Any:
-    """Regions each mesh piece may follow, from its main region and weight shares.
-
-    Limbs hang from the axial skeleton: an arm piece always follows the trunk
-    (thorax, spine) and a leg piece the pelvis, so muscle lying on the back stays
-    on the ribs while the arm moves. An axial piece follows both axial regions and
-    any limb holding >= 15% of its weight (pectoral, gluteals). A piece never
-    follows a second limb, and an arm never the pelvis, so a hand hanging by the
-    hip stays with the hand.
-    """
-    import numpy as np
-
-    kind = np.array([r.split("_")[0] for r in regions])
-    axial = np.isin(kind, ["trunk", "pelvis"])
-    allowed = np.zeros(share.shape, bool)
-    allowed[np.arange(len(main)), main] = True
-    main_kind = kind[main][:, None]
-    allowed |= (main_kind == "arm") & (kind == "trunk")
-    allowed |= (main_kind == "leg") & (kind == "pelvis")
-    allowed |= (main_kind == "leg") & (kind == "trunk") & (share >= 0.15)
-    allowed |= np.isin(main_kind, ["trunk", "pelvis"]) & (axial | (share >= 0.15))
-    return allowed
-
-
-def _pieces(count: int, edges: Any) -> Any:
-    """Connected piece index of each of *count* vertices, by union-find over *edges*."""
-    import numpy as np
-
-    parent = np.arange(count)
-
-    def find(a: int) -> int:
-        while parent[a] != a:
-            parent[a] = parent[parent[a]]
-            a = parent[a]
-        return a
-
-    for a, b in np.asarray(edges, int).reshape(-1, 2):
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
-    return np.unique([find(a) for a in range(count)], return_inverse=True)[1]
-
-
-def _merge_authored(
-    authored: Any, proximity: Any, edges: Any, bone_limb: list[str]
-) -> Any:
-    """Authored weights for axial muscles, proximity weights for limb muscles.
-
-    Authored (skin-transferred) weights keep back and flank muscle on the ribs
-    while the arms swing, but leave shoulder and arm muscle behind when an arm
-    rises. So a mesh piece whose proximity weights lie mostly on a limb keeps
-    them; the other pieces take their authored weights, restricted to the
-    regions they may follow (see :func:`_regions_followed`).
-
-    Args:
-        authored: ``(V, B)`` authored weights.
-        proximity: ``(V, B)`` weights from :func:`_muscle_weights`.
-        edges: ``(E, 2)`` vertex index pairs.
-        bone_limb: Region of each bone, see :func:`_limb`.
-
-    Returns:
-        ``(V, B)`` weights; each row sums to one.
-    """
-    import numpy as np
-
-    piece = _pieces(len(proximity), edges)
-    regions = sorted(set(bone_limb))
-    one_hot = np.eye(len(regions))[[regions.index(r) for r in bone_limb]]
-    share = np.zeros((piece.max() + 1, len(regions)))
-    np.add.at(share, piece, proximity @ one_hot)
-    share /= np.maximum(share.sum(1, keepdims=True), 1e-12)
-    main = share.argmax(1)
-    allowed = _regions_followed(regions, main, share) @ one_hot.T > 0
-    merged = authored * allowed[piece]
-    total = merged.sum(1, keepdims=True)
-    merged = np.where(total > 1e-6, merged / np.maximum(total, 1e-12), proximity)
-    limb = np.array([regions[r].startswith(("arm", "leg")) for r in main])[piece]
-    return np.where(limb[:, None], proximity, merged)
-
-
-def _muscle_weights(
-    points: Any,
-    edges: Any,
-    bone_points: Any,
-    bone_owner: Any,
-    bone_limb: list[str],
-    chains: list[tuple[Any, Any]] | None = None,
-    k: int = 16,
-) -> tuple[Any, Any, Any]:
-    """Skinning weights of mesh vertices to the bones (numpy only, runs in Blender).
-
-    Each vertex weighs its ``k`` nearest bone points by inverse squared distance.
-    A connected piece of the mesh then keeps to the regions it may follow (see
-    :func:`_regions_followed`): a hand muscle hanging by the thigh never follows the
-    femur, back muscle stays on the ribs, a pectoral follows thorax and humerus.
-
-    With *chains*, a vertex within 6 cm of muscle paths weighs only the bones those
-    muscles attach to (within its piece's regions), nearest first, so a hand
-    tendon never follows a leg and an elbow bends smoothly. A vertex within 2.5 cm
-    of a bone of its piece's regions is fixed to that bone (ribcage muscle stays on
-    the ribs); the others are smoothed over the mesh between these anchors, so
-    muscles bridging a joint blend without seams.
-
-    Args:
-        points: ``(V, 3)`` mesh vertices in the rest pose.
-        edges: ``(E, 2)`` vertex index pairs.
-        bone_points: ``(P, 3)`` bone surface samples in the rest pose.
-        bone_owner: ``(P,)`` bone index of each sample.
-        bone_limb: Region of each bone, see :func:`_limb`.
-        chains: ``(site points, attached bone indices)`` per muscle, see
-            :func:`_muscle_chains`.
-        k: Nearest bone samples per vertex.
-
-    Returns:
-        ``(vertex, bone, weight)`` arrays; weights of each vertex sum to one.
-    """
-    import numpy as np
-
-    points = np.asarray(points, np.float64)
-    bone_points = np.asarray(bone_points, np.float64)
-    bone_owner = np.asarray(bone_owner)
-    nbone = len(bone_limb)
-    vertex, bone, weight = _nearest_bone_weights(
-        points, bone_points, bone_owner, nbone, k
-    )
-    piece = _pieces(len(points), edges)
-    regions = sorted(set(bone_limb))
-    region = np.array([regions.index(r) for r in bone_limb])[bone]
-    share = np.zeros((piece.max() + 1, len(regions)))
-    np.add.at(share, (piece[vertex], region), weight)
-    share /= share.sum(1, keepdims=True)
-    main = share.argmax(1)
-    allowed = _regions_followed(regions, main, share)
-    weight = weight * allowed[piece[vertex], region]
-    weight[weight < 0.03] = 0
-    total = np.bincount(vertex, weight, len(points))
-    # A vertex left without weight follows its piece's main bone.
-    by_bone = np.zeros((piece.max() + 1, nbone))
-    np.add.at(by_bone, (piece[vertex], bone), weight)
-    empty = np.flatnonzero(total == 0)
-    vertex = np.concatenate([vertex, empty])
-    bone = np.concatenate([bone, by_bone[piece[empty]].argmax(1)])
-    weight = np.concatenate([weight, np.ones(len(empty))])
-    dense = np.zeros((len(points), nbone), np.float32)
-    np.add.at(dense, (vertex, bone), weight)
-    if chains:
-        # Near muscle paths, a vertex follows only the bones those muscles attach to,
-        # within the regions its piece already follows: the nearest of those bones
-        # weigh in, so a hand tendon never takes a leg bone and an elbow stays smooth.
-        regions = sorted(set(bone_limb))
-        region = np.array([regions.index(r) for r in bone_limb])
-        follows = (dense @ np.eye(len(regions))[region]) > 0
-        attached = np.zeros((len(chains), nbone), bool)
-        for j, (_, bones) in enumerate(chains):
-            attached[j, bones] = True
-        starts = np.concatenate([c[:-1] for c, _ in chains])
-        span = np.concatenate([c[1:] for c, _ in chains]) - starts
-        owner = np.repeat(np.arange(len(chains)), [len(c) - 1 for c, _ in chains])
-        length2 = np.maximum((span**2).sum(1), 1e-12)
-        squared = (bone_points**2).sum(1)
-        pool = min(64, len(bone_points))
-        restricted = np.zeros_like(dense)
-        nearest_bone = np.full(len(points), -1)
-        nearest_dist = np.full(len(points), np.inf)
-        for start in range(0, len(points), 128):
-            chunk = points[start : start + 128]
-            t = np.clip(((chunk[:, None] - starts) * span).sum(-1) / length2, 0, 1)
-            d = np.linalg.norm(chunk[:, None] - (starts + t[..., None] * span), axis=-1)
-            near = np.zeros((len(chunk), len(chains)), bool)
-            rows, segments = np.nonzero(d < 0.06)
-            near[rows, owner[segments]] = True
-            muscles = (near.astype(np.float32) @ attached.astype(np.float32)) > 0
-            allowed = follows[start : start + 128][:, region] & np.where(
-                muscles.any(1, keepdims=True), muscles, True
-            )
-            d2 = (chunk**2).sum(1)[:, None] + squared - 2 * chunk @ bone_points.T
-            idx = np.argpartition(d2, pool - 1, axis=1)[:, :pool].copy()
-            dist = np.sqrt(np.maximum(np.take_along_axis(d2, idx, 1), 0))
-            owners = bone_owner[idx]
-            # The nearest bone of the piece's regions anchors tissue lying on it.
-            regional = np.where(
-                np.take_along_axis(follows[start : start + 128][:, region], owners, 1),
-                dist,
-                np.inf,
-            )
-            pick = regional.argmin(1)
-            rows = np.arange(len(chunk))
-            nearest_bone[start : start + 128] = owners[rows, pick]
-            nearest_dist[start : start + 128] = regional[rows, pick]
-            # The bone the tissue lies on always weighs in (back over the ribs).
-            allowed[rows, owners[rows, pick]] |= np.isfinite(regional[rows, pick])
-            dist[~np.take_along_axis(allowed, owners, 1)] = np.inf
-            order = np.argsort(dist, 1)[:, :k]
-            dist = np.take_along_axis(dist, order, 1)
-            owners = np.take_along_axis(owners, order, 1)
-            weight = np.where(np.isfinite(dist), 1 / np.maximum(dist, 1e-3) ** 2, 0)
-            rows = np.repeat(np.arange(len(chunk)), owners.shape[1])
-            np.add.at(
-                restricted[start : start + 128], (rows, owners.ravel()), weight.ravel()
-            )
-        found = restricted.sum(1) > 0
-        dense[found] = restricted[found] / restricted[found].sum(1, keepdims=True)
-    # Tissue lying on a bone (within 2.5 cm) is fixed to it: ribcage muscle stays on
-    # the ribs however the arm swings. The rest is smoothed over the mesh between
-    # these anchors, so muscles bridging a joint blend without seams.
-    edges = np.asarray(edges, int).reshape(-1, 2)
-    degree = np.bincount(edges.ravel(), minlength=len(points)).astype(np.float32)
-    anchored = np.zeros(len(points), bool)
-    if chains:
-        axial = np.isin([r.split("_")[0] for r in bone_limb], ["trunk", "pelvis"])
-        anchored = nearest_dist < np.where(axial[nearest_bone], 0.04, 0.025)
-        dense[anchored] = 0
-        dense[np.flatnonzero(anchored), nearest_bone[anchored]] = 1
-    fixed = dense[anchored].copy()
-    used = np.flatnonzero(dense.any(0))
-    for _ in range(30):
-        for b in used:
-            column = dense[:, b]
-            neighbours = np.bincount(
-                edges[:, 0], column[edges[:, 1]], len(points)
-            ) + np.bincount(edges[:, 1], column[edges[:, 0]], len(points))
-            dense[:, b] = np.where(
-                degree > 0,
-                0.5 * column + 0.5 * neighbours / np.maximum(degree, 1),
-                column,
-            )
-        dense[anchored] = fixed
-    strongest = dense.argmax(1)
-    dense[dense < 0.03] = 0
-    dense[np.arange(len(points)), strongest] += dense.sum(1) == 0
-    dense /= dense.sum(1, keepdims=True)
-    vertex, bone = np.nonzero(dense)
-    return vertex, bone, dense[vertex, bone].astype(np.float64)
-
-
-def _nearest_bone_weights(
-    points: Any, bone_points: Any, bone_owner: Any, nbone: int, k: int
-) -> tuple[Any, Any, Any]:
-    """Inverse-square weights of each point to the owners of its k nearest samples."""
-    import numpy as np
-
-    k = min(k, len(bone_points))
-    near, dist = [], []
-    squared = (bone_points**2).sum(1)
-    for start in range(0, len(points), 128):
-        chunk = points[start : start + 128]
-        d2 = (chunk**2).sum(1)[:, None] + squared - 2 * chunk @ bone_points.T
-        # A copy, so the full argpartition result is freed with the chunk.
-        idx = np.argpartition(d2, k - 1, axis=1)[:, :k].copy()
-        near.append(idx)
-        dist.append(np.sqrt(np.maximum(np.take_along_axis(d2, idx, 1), 0)))
-    near, dist = np.concatenate(near), np.concatenate(dist)
-    vertex = np.repeat(np.arange(len(points)), k)
-    bone = bone_owner[near].ravel()
-    raw = (1.0 / np.maximum(dist, 1e-3) ** 2).ravel()
-    key, inverse = np.unique(vertex * nbone + bone, return_inverse=True)
-    weight = np.bincount(inverse, raw)
-    vertex, bone = key // nbone, key % nbone
-    weight /= np.bincount(vertex, weight, len(points))[vertex]
-    return vertex, bone, weight
-
-
 def _binding_targets(
     joints: dict[str, Any], bones: dict[str, Any], tolerance: float = 0.005
 ) -> dict[str, str]:
@@ -881,27 +547,21 @@ def _binding_targets(
 def _add_muscle_mesh(
     output: Path, meta: dict[str, Any], scene: Any, material: Any
 ) -> None:
-    """Import the muscle meshes and let the bone objects deform them (runs in Blender)."""
+    """Import the skinned muscle meshes and drive their bones by the bone objects.
+
+    Runs in Blender. Each authored bone is matched by rest position to a bone
+    geom, whose animated object it then copies, so each muscle keeps its own
+    weights.
+    """
     import bpy
     import numpy as np
     from mathutils import Matrix
 
-    bones, bone_points, bone_owner = [], [], []
+    bones = []
     for name, pose in meta["bone_rest"].items():
         obj = bpy.data.objects.get(f"Mesh_{name}")
-        if obj is None:
-            continue
-        rest = np.asarray(pose).reshape(4, 4)
-        local = np.zeros(3 * len(obj.data.vertices))
-        obj.data.vertices.foreach_get("co", local)
-        area = np.zeros(len(obj.data.polygons))
-        obj.data.polygons.foreach_get("area", area)
-        # About one sample per cm2, so a large ribcage is sampled as densely as an arm.
-        count = max(400, int(area.sum() * 1e4))
-        local = local.reshape(-1, 3)[:: max(1, len(obj.data.vertices) // count)]
-        bone_points.append(local @ rest[:3, :3].T + rest[:3, 3])
-        bone_owner.append(np.full(len(local), len(bones)))
-        bones.append((name, obj, Matrix(rest.tolist())))
+        if obj is not None:
+            bones.append((name, obj, Matrix(np.asarray(pose).reshape(4, 4).tolist())))
     rig = bpy.data.objects.new("MuscleRig", bpy.data.armatures.new("MuscleRig"))
     scene.collection.objects.link(rig)
     bpy.context.view_layer.objects.active = rig
@@ -916,61 +576,32 @@ def _add_muscle_mesh(
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=str(output / meta["muscle_mesh"]))
     imported = [o for o in bpy.data.objects if o not in before]
-    # Bind positions of authored joints, before the imported armature is removed.
     joints = {
         bone.name: np.array(o.matrix_world @ bone.head_local)
         for o in imported
         if o.type == "ARMATURE"
         for bone in o.data.bones
     }
-    meshes = [o for o in imported if o.type == "MESH"]
-    named = [o for o in meshes if o.name.startswith("Muscle")]
+    targets = _binding_targets(
+        joints, {name: np.array(rest.translation) for name, _, rest in bones}
+    )
+    # The glTF importer adds a mesh as the display shape of its bones.
+    shapes = {
+        b.custom_shape for o in imported if o.type == "ARMATURE" for b in o.pose.bones
+    }
+    meshes = [o for o in imported if o.type == "MESH" and o not in shapes]
     for obj in imported:
-        if obj not in (named or meshes):
+        if obj not in meshes:
             bpy.data.objects.remove(obj)
-    bone_points, bone_owner = np.concatenate(bone_points), np.concatenate(bone_owner)
-    limbs = [_limb(name) for name, _, _ in bones]
-    for obj in named or meshes:
+    for obj in meshes:
         mesh = obj.data
-        points = np.zeros(3 * len(mesh.vertices))
-        mesh.vertices.foreach_get("co", points)
-        world = np.array(obj.matrix_world)
-        points = points.reshape(-1, 3) @ world[:3, :3].T + world[:3, 3]
-        edges = np.zeros(2 * len(mesh.edges), int)
-        mesh.edges.foreach_get("vertices", edges)
-        vertex, bone, weight = _muscle_weights(
-            points,
-            edges.reshape(-1, 2),
-            bone_points,
-            bone_owner,
-            limbs,
-            _chains_by_index(meta, [name for name, _, _ in bones]),
-        )
-        if obj.vertex_groups:
-            targets = _binding_targets(
-                {g.name: joints[g.name] for g in obj.vertex_groups if g.name in joints},
-                {name: np.array(rest.translation) for name, _, rest in bones},
-            )
-            if len(targets) < len(obj.vertex_groups) or any(
-                not v.groups for v in mesh.vertices
-            ):
-                raise ValueError(f"Invalid authored muscle binding: {obj.name}")
-            index = {name: i for i, (name, _, _) in enumerate(bones)}
-            column = [index[targets[g.name]] for g in obj.vertex_groups]
-            authored = np.zeros((len(mesh.vertices), len(bones)))
-            for v in mesh.vertices:
-                for g in v.groups:
-                    authored[v.index, column[g.group]] += g.weight
-            proximity = np.zeros_like(authored)
-            np.add.at(proximity, (vertex, bone), weight)
-            merged = _merge_authored(authored, proximity, edges, limbs)
-            vertex, bone = np.nonzero(merged > 1e-4)
-            weight = merged[vertex, bone]
-            obj.vertex_groups.clear()
-        for b in np.unique(bone):
-            group = obj.vertex_groups.new(name=bones[b][0])
-            for v, w in zip(vertex[bone == b], weight[bone == b]):
-                group.add([int(v)], float(w), "REPLACE")
+        if not obj.vertex_groups or any(not v.groups for v in mesh.vertices):
+            raise ValueError(f"Muscle mesh {obj.name} is not skinned to the bones")
+        # Two passes, so a new name never collides with a group not yet renamed.
+        for group in obj.vertex_groups:
+            group.name = "_" + group.name
+        for group in obj.vertex_groups:
+            group.name = targets[group.name[1:]]
         for modifier in list(obj.modifiers):
             if modifier.type == "ARMATURE":
                 obj.modifiers.remove(modifier)
@@ -1505,8 +1136,8 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--muscle-mesh",
-        help='Anatomical muscle meshes instead of tubes: "atlas", "atlas-hd", "atlas-bound" '
-        "(downloaded from Hugging Face, full body only) or a rest-pose .glb.",
+        help='Anatomical muscle meshes instead of tubes: "atlas", "atlas-hd" '
+        "(downloaded from Hugging Face, full body only) or a skinned rest-pose .glb.",
     )
     parser.add_argument("--samples", type=int, default=64, help="Cycles samples.")
     parser.add_argument("--export-only", action="store_true")

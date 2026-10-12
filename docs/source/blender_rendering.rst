@@ -228,15 +228,15 @@ the model; the simulated model is not changed.
    python scripts/render_blender.py --env myoMimicFullbody-v0 --random \
        --output fullbody-atlas --preview --muscle-mesh atlas
 
-- ``atlas`` (1.6 MB, ~50k vertices) and ``atlas-hd`` (14.7 MB, ~334k vertices)
-  are BodyParts3D muscles posed on ``myoMimicFullbody-v0``. They are downloaded
-  from the Hugging Face dataset ``myohub/myosuite-assets`` on first use and
-  cached, so they fit the full-body envs only.
-- Each vertex near a muscle path blends the bones of the two path sites around
-  it, so a muscle follows its origin and insertion and bends only where its
-  path crosses a joint; a piece never follows a second limb, so a hand next to
-  the thigh never follows the femur. Any ``.glb`` modelled in a model's rest
-  pose (``qpos0``) works too (its ``Muscle*`` meshes, or all meshes).
+- ``atlas`` (10 MB, ~260k vertices) and ``atlas-hd`` (27 MB, ~700k vertices)
+  hold 416 BodyParts3D muscles, one mesh each, in the rest pose (``qpos0``) of
+  ``myoMimicFullbody-v0``. They are downloaded from the Hugging Face dataset
+  ``myohub/myosuite-assets`` on first use and cached, so they fit the full-body
+  envs only.
+- Each muscle carries its own bone weights and follows only the bones it
+  attaches to, so a back muscle never follows the arm and a hand muscle never
+  follows the thigh. Any skinned ``.glb`` modelled in a model's rest pose works
+  too: its bones are matched to the model's bone geoms by rest position.
 - The meshes keep one muscle colour: they do not change with activation or
   bulge as muscles shorten, unlike the tubes.
 
@@ -282,43 +282,3 @@ random-action hand motion (0.18 seconds). Saved Blender scenes matched MuJoCo
 body-geometry positions at two timestamps to within 6.1e-8 metres; visible
 anatomy stayed inside the camera throughout those clips. These checks do not
 establish compatibility with every environment or policy success rates.
-
-
-Authored muscle binding
------------------------
-
-The `weighted full-body atlas
-<https://huggingface.co/datasets/myohub/myosuite-assets/blob/main/muscles/fullbody_muscles_bound.glb>`_
-contains explicit bone weights. The existing Hugging Face downloader caches it
-on first use::
-
-   python scripts/render_blender.py --env myoMimicFullbody-v0 \
-       --muscle-mesh atlas-bound --preview
-
-Add your usual checkpoint and motion options to render a solution. Each authored
-bone is matched to the scene bone at its rest position, because geom names differ
-between model builds; an unmatched or incomplete binding is rejected. Unbound GLBs
-use automatic binding only.
-
-The authored weights reuse MyoSuite's full-body skin. They keep back and flank
-muscle on the ribs while the arms swing, but on their own they leave shoulder and
-arm muscle behind when an arm rises. So the renderer uses them for muscle pieces
-that lie mostly on the trunk and pelvis, restricted to the regions each piece may
-follow, and keeps the automatic weights for limb muscles.
-
-Measured over a walking reference and an arms-overhead clip, compared with the
-automatic weights alone:
-
-- back tissue moving more than 1 cm off the ribcage in the walk: 1,249 to 304
-  vertices for unactuated tissue, 742 to 726 for actuated tissue;
-- edges stretched or crushed more than 2x with the arms overhead: 2,650 to 425
-  (unactuated), 1,154 to 692 (actuated).
-
-This is visual skinning, not biomechanical muscle deformation, and the reference
-playback is not a trained policy rollout. Region assignments are approximate
-because the merged atlas has lost its individual muscle labels.
-
-This derivative uses the existing BodyParts3D geometry (DBCLS, CC BY 4.0, via
-human-atlas) and MakeHuman/MPFB body skin weights (CC0). It retains the source
-credits listed above. The GLB is stored on Hugging Face, outside the Git repository and Python
-package; the correction requires selecting ``atlas-bound``.
