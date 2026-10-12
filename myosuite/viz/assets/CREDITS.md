@@ -8,7 +8,10 @@
   [MPFB](https://github.com/makehumancommunity/mpfb2) mesh, rig and weights, released under
   [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
 - **Adaptation:** the bones are bound to the bodies of the MyoSuite full-body model
-  ([myo_sim](https://github.com/MyoHub/myo_sim), `myoMimicFullbody-v0`).
+  ([myo_sim](https://github.com/MyoHub/myo_sim), `myoMimicFullbody-v0`), and the rest shape of the
+  trunk and limbs is fitted over the anatomical muscle atlas below: the skin is pulled in by at most
+  2 cm where it floats more than 15 mm above the muscles, pushed out to cover them by about 4 mm,
+  and then relaxed so that no triangle folds over; head, hands and feet keep their modelled shape.
 - **Contributed by:** Vittorio Caggiano, for the MyoSuite authors.
 - **License:** the CC0 source places no restrictions on reuse; the adapted file is distributed
   with MyoSuite under the repository's Apache-2.0 license ([LICENSE](../../../LICENSE)).
