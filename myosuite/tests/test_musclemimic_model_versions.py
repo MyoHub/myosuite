@@ -11,6 +11,8 @@ either release from the installed one; checkpoints trained on 1.0.5 get 1.0.5.
 
 from __future__ import annotations
 
+import json
+
 import mujoco
 import numpy as np
 import pytest
@@ -201,3 +203,58 @@ def test_arm_and_torso_models_follow_the_release(installed: str, builder: str) -
         if (back := spec.geom("back_cylinder_l")) is not None:
             assert back.size[0] == recorded["geom_size0"]["back_cylinder_l"]
         assert spec.geom("DELT1hh_ellipsoid_DELT1") is not None
+
+
+@pytest.mark.parametrize(
+    "env_id, uses",
+    [
+        ("myoMimicFullbody-v0", True),
+        ("myoMuscleMimicBimanual-v0", True),
+        ("myoFullBodyDirectional-v0", True),
+        ("myoChallengeChaseTagFBP2-v0", True),
+        ("myoFatiChallengeChaseTagFBP2-v0", True),
+        ("myoChallengeBimanual-v0", False),
+        ("myoTorsoPoseFixed-v0", False),
+        ("myoHandReachFixed-v0", False),
+    ],
+)
+def test_envs_built_from_musclemimic_models(env_id: str, uses: bool) -> None:
+    assert mv.uses_musclemimic_models(env_id) is uses
+
+
+def test_checkpoint_manifest_records_the_release_the_loaders_use(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from myosuite.utils.checkpoint_manifest import read_manifest, write_manifest
+
+    monkeypatch.setattr(mv, "installed_models_version", lambda: "1.0.6")
+    monkeypatch.setenv(
+        mv.MODELS_VERSION_ENV_VAR, "1.0.5"
+    )  # the release the env builds now
+    mimic, other = tmp_path / "mimic", tmp_path / "other"
+    for folder in (mimic, other):
+        folder.mkdir()
+        (folder / "model_1.pt").write_bytes(b"")
+    write_manifest(mimic, "myoMimicFullbody-v0", contract={})
+    write_manifest(other, "myoHandReachFixed-v0", contract={})
+    assert read_manifest(mimic)[mv.MANIFEST_FIELD] == "1.0.5"
+    assert mv.MANIFEST_FIELD not in read_manifest(other)
+
+    monkeypatch.delenv(mv.MODELS_VERSION_ENV_VAR)  # default 1.0.6; the manifest wins
+    assert mv.checkpoint_models_version(mimic / "model_1.pt") == "1.0.5"
+    assert mv.checkpoint_models_version(mimic) == "1.0.5"
+    assert (
+        mv.checkpoint_models_version(other / "model_1.pt") == mv.DEFAULT_MODELS_VERSION
+    )
+
+
+def test_an_unknown_release_in_a_manifest_is_ignored(tmp_path) -> None:
+    (tmp_path / "manifest.json").write_text(json.dumps({mv.MANIFEST_FIELD: "9.9.9"}))
+    assert mv.checkpoint_models_version(tmp_path) == mv.DEFAULT_MODELS_VERSION
+
+
+def test_manifest_refuses_the_myo_sim_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mv, "installed_models_version", lambda: None)
+    with pytest.raises(RuntimeError, match="not installed"):
+        mv.env_models_version("myoMimicFullbody-v0")
+    assert mv.env_models_version("myoHandReachFixed-v0") is None

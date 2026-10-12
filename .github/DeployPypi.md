@@ -42,4 +42,4 @@ conda remove --name test_myosuite --all
 
 ### Create a newly tagged release
 
-Visit [this page](https://github.com/MyoHub/myosuite/tags) and create the newly tagged release.
+The `MyoSuite PyPI Release` workflow creates the GitHub Release for the tag it pushes, with auto-generated notes. A tag made by hand still needs a release from [the tags page](https://github.com/MyoHub/myosuite/tags).
