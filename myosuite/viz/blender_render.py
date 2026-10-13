@@ -658,37 +658,35 @@ def _add_muscle_mesh(
         }
         for obj in authored
     }
-    for index, rest_poses in enumerate(meta["muscle_rigs"]):
-        bones = []
+    for rest_poses in meta["muscle_rigs"]:
+        bones = {}
         for name, pose in rest_poses.items():
             obj = bpy.data.objects.get(f"Mesh_{name}")
             if obj is not None:
-                rest = Matrix(np.asarray(pose).reshape(4, 4).tolist())
-                bones.append((name, obj, rest))
+                bones[name] = (obj, Matrix(np.asarray(pose).reshape(4, 4).tolist()))
+        targets = _binding_targets(
+            joints,
+            {name: np.array(rest.translation) for name, (_, rest) in bones.items()},
+        )
+        # The rig's bones carry the authored joint names: vertex group names live
+        # in the mesh data, which the muscles of all bodies share.
         rig = bpy.data.objects.new("MuscleRig", bpy.data.armatures.new("MuscleRig"))
         scene.collection.objects.link(rig)
         bpy.context.view_layer.objects.active = rig
         bpy.ops.object.mode_set(mode="EDIT")
-        for name, _, rest in bones:
-            edit = rig.data.edit_bones.new(name)
+        for joint, name in targets.items():
+            edit = rig.data.edit_bones.new(joint)
             edit.tail = (0, 0.02, 0)
-            edit.matrix = rest
+            edit.matrix = bones[name][1]
         bpy.ops.object.mode_set(mode="OBJECT")
-        for name, obj, _ in bones:
-            rig.pose.bones[name].constraints.new("COPY_TRANSFORMS").target = obj
-        targets = _binding_targets(
-            joints, {name: np.array(rest.translation) for name, _, rest in bones}
-        )
+        for joint, name in targets.items():
+            constraint = rig.pose.bones[joint].constraints.new("COPY_TRANSFORMS")
+            constraint.target = bones[name][0]
         for source in authored:
             if not used[source] <= set(targets):
                 continue
             obj = source.copy()  # the copies of all bodies share the mesh data
             scene.collection.objects.link(obj)
-            # Two passes, so a new name never collides with a group not yet renamed.
-            for group in obj.vertex_groups:
-                group.name = "_" + group.name
-            for group in obj.vertex_groups:
-                group.name = targets.get(group.name[1:], group.name)
             for modifier in list(obj.modifiers):
                 if modifier.type == "ARMATURE":
                     obj.modifiers.remove(modifier)
