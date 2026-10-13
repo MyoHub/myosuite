@@ -23,7 +23,8 @@ All notable changes to this project are documented in this file.
     `--skin-texture` puts a colour image on the skin (the bundled skin takes textures in MakeHuman's UV layout).
   - Anatomical muscle meshes in place of the tubes (`--muscle-mesh atlas|atlas-hd|PATH.glb`): 416 BodyParts3D
     muscles (CC BY 4.0), each weighted to the bones it attaches to, downloaded from the Hugging Face dataset
-    `myohub/myosuite-assets` on first use (full-body envs).
+    `myohub/myosuite-assets` on first use. They bind to every body that draws the full body's bone meshes: arm and
+    hand models get the muscles whose bones they have, several bodies in one model one set each (`--muscle-mesh-env`).
   - Preview, video and export-only modes; the `studio` or the task's own `mujoco` scene; tutorial 3.6.
   - Needs the optional MuJoCo USD dependencies and a separate Blender installation.
   - `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy.
