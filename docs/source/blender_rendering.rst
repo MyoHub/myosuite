@@ -177,6 +177,20 @@ The bundled skin is adapted from the MakeHuman/MPFB mesh, rig and weights
 The skin is posed with MuJoCo's linear-blend skinning from the body poses of
 each frame (:mod:`myosuite.viz.skin`); the simulated model is not changed.
 
+**Editing the blend weights.** ``scripts/skin_glb.py`` writes a skin as a rigged
+``.glb`` in the model's rest pose (one joint per bone, named after its body;
+:mod:`myosuite.viz.skin_glb`). Paint its weights in Blender and read it back:
+
+.. code-block:: bash
+
+   python scripts/skin_glb.py export skin.glb                # the bundled skin
+   # Blender: File > Import > glTF 2.0; Weight Paint; File > Export > glTF 2.0 (.glb),
+   # with Data > Armature > "Include All Bone Influences" (the skin uses up to 8 per vertex)
+   python scripts/skin_glb.py import skin_edited.glb skin.skn
+
+``--skin`` also takes the edited ``.glb`` directly. Keep the mesh in the rest pose
+and the joint names unchanged: each joint binds to the body of its name at ``qpos0``.
+
 .. list-table::
    :widths: 33 33 34
 

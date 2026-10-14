@@ -60,7 +60,8 @@ class RenderConfig:
             keeps one anatomical red, e.g. for still renders.
         muscle_scale: Multiplier of all muscle radii.
         scene: ``"studio"`` backdrop, or ``"mujoco"`` to keep the task's floor.
-        skin: ``.skn`` body skin, or ``"fullbody"`` for the bundled one; ``None``
+        skin: ``.skn`` body skin, a rigged ``.glb`` skin in the model's rest pose
+            (:mod:`myosuite.viz.skin_glb`), or ``"fullbody"`` for the bundled one; ``None``
             renders no skin.
         skin_style: ``"translucent"`` skin over muscles and bones, or ``"opaque"``
             skin that hides them.
@@ -167,7 +168,7 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
     from myosuite import make_env
     from myosuite.utils.checkpoint_utils import load_policy
     from myosuite.viz.muscle_tubes import muscle_actuators
-    from myosuite.viz.skin import SkinPose, load_skn
+    from myosuite.viz.skin import SkinPose, load_skin
 
     class LightTendon(objects.USDTendon):
         def generate_primitive_mesh(self) -> dict[str, Any]:
@@ -227,7 +228,7 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
                 return env.action_space.sample()
 
         skin = (
-            SkinPose.bind(load_skn(config.skin), model, config.skin_inflate)
+            SkinPose.bind(load_skin(config.skin, model), model, config.skin_inflate)
             if config.skin is not None
             else None
         )
@@ -1264,7 +1265,8 @@ def main(argv: list[str] | None = None) -> None:
         help="Studio backdrop, or keep the task's own floor (e.g. a soccer pitch).",
     )
     parser.add_argument(
-        "--skin", help='Body skin: a MuJoCo .skn file, or "fullbody" (bundled).'
+        "--skin",
+        help='Body skin: a MuJoCo .skn file, a rigged .glb skin, or "fullbody" (bundled).',
     )
     parser.add_argument(
         "--skin-style", choices=["translucent", "opaque"], default="translucent"
