@@ -40,6 +40,7 @@ from myosuite.envs.myo.backends.mjlab.configs.musclemimic_bimanual_cfg import (
 from myosuite.envs.myo.backends.mjlab.configs.musclemimic_fullbody_cfg import (
     MuscleMimicFullbodyCfg,
 )
+from myosuite.envs.myo.backends.mjlab.configs.halloween_cfg import HalloweenCfg
 from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTennisCfg
 from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEnvAccessor
@@ -66,6 +67,7 @@ REGISTERED_TASKS: dict[str, type] = {
     "myoMimicFullbody-v0": MuscleMimicFullbodyCfg,
     "myoMuscleMimicBimanual-v0": MuscleMimicBimanualCfg,
     "myoMuscleMimicFullbody-v0": MuscleMimicFullbodyCfg,
+    "myoHalloween-v0": HalloweenCfg,
 }
 
 # Register with mjlab.tasks.registry when mjlab loads this package (entry point).
