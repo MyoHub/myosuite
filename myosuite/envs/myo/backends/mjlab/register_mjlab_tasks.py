@@ -63,6 +63,9 @@ from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
     register_table_tennis_mjlab_tasks,
 )
+from myosuite.envs.myo.backends.mjlab.register_mjlab_halloween import (
+    register_halloween_mjlab_task,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from mjlab.envs import ManagerBasedRlEnv
@@ -814,6 +817,7 @@ def register_mjlab_tasks() -> None:
     # myoLegDirectional* are CPU twins registered by the tasks package.
 
     register_table_tennis_mjlab_tasks()
+    register_halloween_mjlab_task()
 
     # --- ChaseTag full-body vs. scripted opponent (mjlab half of CPU FBP2) ---
     try:
