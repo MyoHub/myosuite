@@ -1,0 +1,3 @@
+export function predictThreat({pumpkinPos,pumpkinVel,bodyTargets,gravity=[0,0,-9.81],horizon=1.5,dt=.02,hitRadius=.18}){for(let t=0;t<=horizon;t+=dt){const p=ballistic(pumpkinPos,pumpkinVel,gravity,t);for(const target of bodyTargets){const d=distance(p,target.position),radius=hitRadius+(target.radius??.12);if(d<=radius)return{threat:true,bodyPart:target.name,distance:d,ttc:t,point:p,target}}}return noThreat()}
+export function noThreat(){return{threat:false,bodyPart:null,distance:Infinity,ttc:Infinity,point:null,target:null}}
+const ballistic=(p,v,g,t)=>p.map((x,i)=>x+v[i]*t+.5*g[i]*t*t),distance=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
