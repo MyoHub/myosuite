@@ -108,22 +108,48 @@ def write_skin_glb(skin: Skin, model: mujoco.MjModel, path: Path | str) -> None:
         )
     indices = add(skin.face.astype(np.uint32).ravel(), "SCALAR", 5125, 34963)
 
-    ids = pose.body_ids
-    nodes, inverse_bind = [], []
+    ids = list(pose.body_ids)
+    worlds, inverse_bind = [], []
     for b in ids:
-        name = model.body(b).name  # the model's own name (phalanx aliases resolved)
-        rot = _TO_GLTF @ data.xmat[b].reshape(3, 3) @ _TO_GLTF.T
-        pos = _TO_GLTF @ data.xpos[b]
-        w = np.zeros(4)
-        mujoco.mju_mat2Quat(w, rot.ravel())
-        nodes.append(
-            {"name": name, "translation": pos.tolist(), "rotation": [*w[1:], w[0]]}
-        )
         world = np.eye(4)
-        world[:3, :3], world[:3, 3] = rot, pos
+        world[:3, :3] = _TO_GLTF @ data.xmat[b].reshape(3, 3) @ _TO_GLTF.T
+        world[:3, 3] = _TO_GLTF @ data.xpos[b]
+        worlds.append(world)
         inverse_bind.append(np.linalg.inv(world).T.ravel())  # column-major
     ibm = add(np.array(inverse_bind, np.float32), "MAT4", 5126)
-    nodes.append({"name": "Skeleton", "children": list(range(nbone))})
+    # Chain the bones along the body tree, so the rig poses like a skeleton.
+    parents = []
+    for b in ids:
+        p = model.body_parentid[b]
+        while p > 0 and p not in ids:
+            p = model.body_parentid[p]
+        parents.append(ids.index(p) if p > 0 else -1)
+    nodes = []
+    for i, b in enumerate(ids):
+        local = (
+            worlds[i]
+            if parents[i] < 0
+            else np.linalg.inv(worlds[parents[i]]) @ worlds[i]
+        )
+        w = np.zeros(4)
+        mujoco.mju_mat2Quat(w, local[:3, :3].ravel())
+        nodes.append(
+            {
+                "name": model.body(
+                    b
+                ).name,  # the model's own name (phalanx aliases resolved)
+                "translation": local[:3, 3].tolist(),
+                "rotation": [*w[1:], w[0]],
+            }
+            | (
+                {"children": [c for c, p in enumerate(parents) if p == i]}
+                if i in parents
+                else {}
+            )
+        )
+    nodes.append(
+        {"name": "Skeleton", "children": [i for i, p in enumerate(parents) if p < 0]}
+    )
     nodes.append({"name": "Skin", "mesh": 0, "skin": 0})
     gltf = {
         "asset": {"version": "2.0", "generator": "myosuite.viz.skin_glb"},
