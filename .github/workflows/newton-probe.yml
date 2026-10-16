@@ -8,7 +8,7 @@ on:
       newton_version:
         description: "Newton version to install from PyPI"
         required: true
-        default: "1.6.1"
+        default: "1.7.0"
         type: string
 
 permissions:

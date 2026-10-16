@@ -57,15 +57,15 @@ ranges that changed, how far the muscle forces moved (at the default pose, with 
 activations and controls at 0.5), and the bodies, joints, tendons, equality
 constraints and sensors on both sides. Each model is tried twice: as MyoSuite writes
 it, and rewritten by MuJoCo into one plain file with ``-`` in names replaced by ``_``
-(Newton 1.6.1 looks up a spatial tendon's sites by their sanitized names, so it drops
-hyphenated sites; `newton#4566 <https://github.com/newton-physics/newton/issues/4566>`_). A loss in the second version comes from Newton itself, not from how
+(Newton 1.6.1 and 1.7.0 look up a spatial tendon's sites by their sanitized names, so they
+drop hyphenated sites; `newton#4566 <https://github.com/newton-physics/newton/issues/4566>`_). A loss in the second version comes from Newton itself, not from how
 it reads the file.
 
 Run it on the CPU, in an environment with Newton and without mjlab (the two need
 different ``mujoco-warp`` versions)::
 
    uv venv --python 3.12 .venv-newton
-   uv pip install --python .venv-newton "newton[sim]==1.6.1" "musclemimic_models==1.0.6" -e .
+   uv pip install --python .venv-newton "newton[sim]==1.7.0" "musclemimic_models==1.0.6" -e .
    .venv-newton/bin/python scripts/newton_compat_probe.py --out newton_probe
 
 It prints a table and writes ``newton_probe/newton_probe.md`` and
