@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MyoHalloween — Pumpkin Dodge</title>
+  <style>
+    html,body{margin:0;height:100%;background:#090b12;color:#f5f5f0;font-family:system-ui,sans-serif;overflow:hidden}
+    #hud{position:absolute;z-index:2;top:16px;left:16px;background:#111827dd;padding:12px 14px;border-radius:12px;backdrop-filter:blur(8px)}
+    button{margin-right:6px;padding:8px 12px;border:0;border-radius:8px;cursor:pointer}
+    button.active{outline:2px solid #fff}
+    #status{margin-top:8px;font-size:13px;opacity:.8}
+    #view{width:100vw;height:100vh;display:block;touch-action:none}
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div><strong>MyoHalloween</strong> — Pumpkin Dodge</div>
+    <div style="margin-top:8px">
+      <button id="manual" class="active">Manual</button>
+      <button id="auto">Auto</button>
+    </div>
+    <div id="status">Drag and release to throw a pumpkin.</div>
+  </div>
+  <canvas id="view"></canvas>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
