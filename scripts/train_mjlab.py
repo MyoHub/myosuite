@@ -48,6 +48,15 @@ class TrainConfig:
     video_interval: int = 2000
     enable_nan_guard: bool = False
     reward_scale: float = 1.0
+    dynsyn_groups: str | None = None
+    """DynSyn (He et al., ICML 2024): muscle groups from ``scripts/dynsyn_groups.py``. The policy
+    then commands one action per group plus a bounded correction per muscle."""
+    dynsyn_start_steps: float = 5e7
+    """Environment steps (all envs together) before DynSyn's per-muscle corrections start."""
+    dynsyn_ramp_steps: float = 1e8
+    """Environment steps over which the correction bound grows to ``dynsyn_max_amplitude``."""
+    dynsyn_max_amplitude: float = 0.1
+    """Largest relative correction of a muscle's group action (0 keeps the groups only)."""
     """Multiplies the weight of every reward term (e.g. ``0.1`` shrinks returns and the
     value loss, as in the myoInteract tasks). Applied on top of
     ``--env.scale-rewards-by-dt``; ``1.0`` leaves the task's rewards unchanged."""
@@ -227,6 +236,19 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
 
     cfg.agent.seed = seed
     cfg.env.seed = seed
+    if cfg.dynsyn_groups is not None:
+        from myosuite.core.dynsyn import DynSynGroups
+        from myosuite.envs.myo.backends.mjlab.dynsyn_action import apply_dynsyn
+
+        apply_dynsyn(
+            cfg.env,
+            DynSynGroups.load(cfg.dynsyn_groups),
+            cfg.dynsyn_start_steps,
+            cfg.dynsyn_ramp_steps,
+            cfg.dynsyn_max_amplitude,
+        )
+        if rank == 0:
+            print(f"[INFO] DynSyn action groups from {cfg.dynsyn_groups}.")
     if cfg.reward_scale != 1.0:
         for term in cfg.env.rewards.values():
             term.weight *= cfg.reward_scale
