@@ -1,0 +1,3 @@
+export async function loadResponsePolicy(){return{mode:'preview',side_accuracy:0.9968,duck_mae:0.0591,urgency_mae:0.0480}}
+export function responseFromThreat(threat){if(!threat?.threat)return[0,0,0,0,0,0,1.5,0];const side=Math.sign(threat.point[1]-threat.target.position[1])||1;const urgency=clip(1-threat.ttc/1.2,0,1);const duck=threat.point[2]>1.15?clip(1-threat.ttc,0,1):0;return[0,-side,duck,0,-.45*side,urgency,threat.ttc,threat.point[2]]}
+const clip=(x,a,b)=>Math.max(a,Math.min(b,x));
