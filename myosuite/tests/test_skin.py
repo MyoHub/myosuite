@@ -21,7 +21,7 @@ from myosuite.viz.skin import (
     load_skn,
     save_skn,
 )
-from myosuite.viz.skin_glb import read_skin_glb, write_skin_glb
+from myosuite.viz.skin_glb import main, read_skin_glb, write_skin_glb
 
 pytestmark = pytest.mark.tier1
 
@@ -204,3 +204,11 @@ def test_bundled_skin_survives_the_glb_round_trip(tmp_path: Path) -> None:
         SkinPose.bind(skin, model).vertices(data),
         atol=1e-4,
     )
+
+
+def test_command_line_exports_and_imports_the_bundled_skin(tmp_path: Path) -> None:
+    main(["export", str(tmp_path / "skin.glb")])
+    main(["import", str(tmp_path / "skin.glb"), str(tmp_path / "skin.skn")])
+    back, skin = load_skn(tmp_path / "skin.skn"), load_skn("fullbody")
+    assert back.face.tolist() == skin.face.tolist()
+    np.testing.assert_allclose(back.vert, skin.vert, atol=1e-6)

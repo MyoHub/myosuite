@@ -11,10 +11,16 @@ it back with :func:`read_skin_glb` (or ``load_skin``) and save it with ``save_sk
 Vertices, faces and UVs come from the file; each joint binds to the body of its
 name at ``qpos0``, so the mesh must stay modelled in that pose. A ``.skn`` bound
 at ``qpos0`` (like the bundled skin) survives the round trip unchanged.
+
+From the command line::
+
+    python -m myosuite.viz.skin_glb export skin.glb                # bundled skin -> .glb
+    python -m myosuite.viz.skin_glb import skin_edited.glb skin.skn
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import struct
 from pathlib import Path
@@ -299,3 +305,43 @@ def read_skin_glb(path: Path | str, model: mujoco.MjModel) -> Skin:
         [np.flatnonzero(weight[:, b]).astype(np.int32) for b in used],
         [weight[weight[:, b] > 0, b].astype(np.float32) for b in used],
     )
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Command-line entry point: ``export`` a skin to ``.glb`` or ``import`` one back.
+
+    Args:
+        argv: Arguments without the program name; defaults to ``sys.argv[1:]``.
+    """
+    from myosuite import make_env
+    from myosuite.viz.skin import load_skn, save_skn
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--env", default="myoMimicFullbody-v0", help="Model the skin binds to."
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+    export = sub.add_parser("export", help=".skn -> rigged .glb in the rest pose")
+    export.add_argument("output", type=Path)
+    export.add_argument(
+        "--skin", default="fullbody", help='.skn file, or "fullbody" (bundled).'
+    )
+    load = sub.add_parser("import", help="rigged .glb -> .skn")
+    load.add_argument("glb", type=Path)
+    load.add_argument("output", type=Path)
+    args = parser.parse_args(argv)
+
+    env = make_env(args.env)
+    try:
+        model = env.unwrapped.model
+        if args.command == "export":
+            write_skin_glb(load_skn(args.skin), model, args.output)
+        else:
+            save_skn(read_skin_glb(args.glb, model), args.output)
+    finally:
+        env.close()
+    print(f"wrote {args.output}")
+
+
+if __name__ == "__main__":
+    main()
