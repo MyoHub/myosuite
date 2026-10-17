@@ -589,3 +589,56 @@ def test_muscle_rigs_of_a_file_are_the_rendered_models_own_rest_pose(
         blender_render._rest_poses(model, bones)
     ]
     assert blender_render._muscle_rigs(_config(tmp_path), model, bones) == []
+
+
+def test_motion_clip_is_replayed_frame_by_frame_at_its_own_rate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A named qpos clip drives the export instead of a policy, at the clip's rate."""
+    pytest.importorskip("pxr")
+    import myosuite
+
+    clip = tmp_path / "clip.npz"
+    np.savez(
+        clip,
+        qpos=np.linspace(0, 0.3, 6)[:, None],
+        joint_names=np.array(["slide"]),
+        frequency=50.0,
+    )
+    monkeypatch.setattr(myosuite, "make_env", lambda _id: _Env())
+    config = RenderConfig(
+        env="test",
+        output=tmp_path / "out",
+        motion=clip,
+        seconds=1,
+        fps=50,
+        preview=True,
+    )
+    meta = blender_render.export_rollout(config)
+    reference = np.load(tmp_path / "out" / "reference.npz")
+    assert meta["motion_source"] == "motion"
+    assert not np.load(tmp_path / "out" / "muscles.npz")["activation"].any()
+    assert meta["dt"] == pytest.approx(0.02)
+    np.testing.assert_allclose(reference["qpos"][:, 0], np.linspace(0, 0.3, 6))
+    back = tmp_path / "back.npz"  # sliding back to 0 shortens the muscle path
+    np.savez(
+        back,
+        qpos=np.linspace(0.3, 0, 6)[:, None],
+        joint_names=np.array(["slide"]),
+        frequency=50.0,
+    )
+    blender_render.export_rollout(
+        RenderConfig(
+            env="test",
+            output=tmp_path / "proxy",
+            motion=back,
+            motion_activation=True,
+            seconds=1,
+            fps=50,
+            preview=True,
+        )
+    )
+    proxy = np.load(tmp_path / "proxy" / "muscles.npz")["activation"][:, 0]
+    assert proxy[0] == 0 and proxy[1:].min() > 0
+    with pytest.raises(ValueError, match="not both"):
+        RenderConfig(env="test", output=tmp_path, motion=clip, checkpoint=clip)

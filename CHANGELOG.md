@@ -23,6 +23,9 @@ All notable changes to this project are documented in this file.
     The bundled skin is smooth in motion: a slimmer forearm and wrist that rotate with the muscles under them, and
     shoulder weights that keep the skin from folding as the arm is raised or rotated.
     `--skin-texture` puts a colour image on the skin (the bundled skin takes textures in MakeHuman's UV layout).
+    `python -m myosuite.viz.skin_glb` round-trips a skin through a rigged `.glb` to paint its blend weights in Blender;
+    `--skin` also takes the `.glb`. Its bones are chained along the body tree, so the
+    rig poses like a skeleton in Blender.
   - Anatomical muscle meshes in place of the tubes (`--muscle-mesh atlas|atlas-hd|PATH.glb`): 416 BodyParts3D
     muscles (CC BY 4.0), each weighted to the bones it attaches to, downloaded from the Hugging Face dataset
     `myohub/myosuite-assets` on first use. They bind to every body that draws the full body's bone meshes: arm and
