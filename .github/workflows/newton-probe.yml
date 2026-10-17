@@ -1,0 +1,66 @@
+# Measures how much of each MyoSuite model survives NVIDIA Newton's MJCF import
+# (scripts/newton_compat_probe.py). Runs on the release pull request (dev into
+# main) and by hand. It reports and never fails the run.
+name: Newton probe
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      newton_version:
+        description: "Newton version to install from PyPI (empty: the latest)"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    # Pull requests: only a release (dev into main) from this repository, not a draft.
+    if: github.event_name != 'pull_request' || (github.head_ref == 'dev' && github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      # The [sim] extra brings mujoco and mujoco-warp, which SolverMuJoCo needs.
+      # No [mjlab]: mjlab and Newton pin different mujoco-warp versions.
+      - name: Install Newton, MuscleMimic models and MyoSuite
+        env:
+          NEWTON_VERSION: ${{ inputs.newton_version }}
+        run: |
+          uv venv --python 3.12
+          uv pip install "newton[sim]${NEWTON_VERSION:+==$NEWTON_VERSION}" "musclemimic_models==1.0.6" -e .
+
+      - name: Newton version
+        id: newton
+        run: |
+          version=$(.venv/bin/python -c "import importlib.metadata as m; print(m.version('newton'))")
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Run the probe
+        run: |
+          .venv/bin/python scripts/newton_compat_probe.py --out newton_probe
+          cat newton_probe/newton_probe.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: newton-probe-${{ steps.newton.outputs.version }}
+          path: newton_probe/
