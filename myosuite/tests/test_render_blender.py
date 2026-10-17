@@ -331,11 +331,10 @@ def test_checkpoint_symlink_keeps_format_and_rejects_mismatch(
 def test_muscle_mesh_option_checks_env_and_downloads_on_use(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Atlas meshes fit the full body only and come from the Hugging Face dataset."""
+    """Atlas meshes come from the Hugging Face dataset; any env may ask for them."""
     import huggingface_hub
 
-    with pytest.raises(ValueError, match="myoMimicFullbody"):
-        RenderConfig(env="myoLegWalk-v0", output=tmp_path, muscle_mesh="atlas")
+    RenderConfig(env="myoArmReachRandom-v0", output=tmp_path, muscle_mesh="atlas")
     with pytest.raises(ValueError, match="not found"):
         RenderConfig(env="test", output=tmp_path, muscle_mesh=str(tmp_path / "x.glb"))
     RenderConfig(env="myoMimicFullbody-v0", output=tmp_path, muscle_mesh="atlas-hd")
@@ -383,7 +382,8 @@ def test_export_records_bone_rest_poses_for_a_muscle_mesh(
     data = mujoco.MjData(env.model)
     mujoco.mj_forward(env.model, data)
     bone = env.model.geom("bone").id
-    rest = np.asarray(meta["bone_rest"][f"bone_id{bone}_geom"]).reshape(4, 4)
+    (rig,) = meta["muscle_rigs"]
+    rest = np.asarray(rig[f"bone_id{bone}_geom"]).reshape(4, 4)
     np.testing.assert_allclose(rest[:3, 3], data.geom_xpos[bone])
     np.testing.assert_allclose(rest[:3, :3], data.geom_xmat[bone].reshape(3, 3))
 
@@ -511,8 +511,81 @@ def test_authored_binding_matches_bones_by_rest_position() -> None:
     "joints",
     [{"a": [0.0, 0.0, 0.1]}, {"a": [0.0, 0.0, 0.0], "b": [0.001, 0.0, 0.0]}],
 )
-def test_authored_binding_rejects_unmatched_or_shared_bones(
+def test_authored_binding_rejects_no_match_or_shared_bones(
     joints: dict[str, list[float]],
 ) -> None:
     with pytest.raises(ValueError, match="scene bone"):
         blender_render._binding_targets(joints, {"femur_r_id1_geom": [0.0, 0.0, 0.0]})
+
+
+def test_authored_binding_leaves_out_joints_of_missing_bones() -> None:
+    """An arm has no femur: its joint is left out, the others bind."""
+    joints = {"humerus": [0.0, 0.0, 1.4], "femur": [0.0, 0.0, 0.8]}
+    bones = {"humerus_id3_geom": [0.0, 0.0, 1.4]}
+    assert blender_render._binding_targets(joints, bones) == {
+        "humerus": "humerus_id3_geom"
+    }
+
+
+_BODY = """
+<mujoco><asset><mesh name="{p}femur" vertex="0 0 0 .1 0 0 0 .1 0 0 0 .1"/>
+  <mesh name="{p}tibia" vertex="0 0 0 .2 0 0 0 .1 0 0 0 .1"/></asset>
+  <worldbody><body name="{p}thigh" pos="{x} 0 1">
+    <joint name="{p}hip" type="hinge" axis="0 1 0" ref="{ref}"/>
+    <geom name="{p}femur" type="mesh" mesh="{p}femur"/>{shank}
+  </body></worldbody></mujoco>"""
+_SHANK = """<body name="{p}shank" pos="0 0 -.4">
+      <geom name="{p}tibia" type="mesh" mesh="{p}tibia"/></body>"""
+
+
+def _bones(model: mujoco.MjModel) -> dict[str, int]:
+    return {
+        model.geom(g).name: g for g in range(model.ngeom) if model.geom_dataid[g] >= 0
+    }
+
+
+def test_muscle_rigs_follow_the_reference_body_by_bone_mesh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Copies and partial bodies bind in the reference's rest pose, not their own."""
+    body = lambda p, x, ref, shank=True: mujoco.MjModel.from_xml_string(  # noqa: E731
+        _BODY.format(p=p, x=x, ref=ref, shank=_SHANK.format(p=p) if shank else "")
+    )
+    reference = body("", 0, 0)
+    monkeypatch.setattr(blender_render, "_muscle_mesh_reference", lambda _: reference)
+    expected = blender_render._rest_poses(reference, _bones(reference))
+    config = RenderConfig(env="other", output=tmp_path, muscle_mesh="atlas")
+
+    partial = body("", 3, 0.5, shank=False)  # elsewhere, another rest angle, no shank
+    assert blender_render._muscle_rigs(config, partial, _bones(partial)) == [
+        {"femur": expected["femur"]}
+    ]
+
+    spec = mujoco.MjSpec()
+    for i in range(2):
+        copy = mujoco.MjSpec.from_string(
+            _BODY.format(p="", x=i, ref=0, shank=_SHANK.format(p=""))
+        )
+        spec.attach(copy, frame=spec.worldbody.add_frame(), prefix=f"w{i}_")
+    two = spec.compile()
+    assert blender_render._muscle_rigs(config, two, _bones(two)) == [
+        {f"w{i}_femur": expected["femur"], f"w{i}_tibia": expected["tibia"]}
+        for i in range(2)
+    ]
+
+    with pytest.raises(ValueError, match="No bone"):
+        blender_render._muscle_rigs(config, _Env().model, {"bone": 4})
+
+
+def test_muscle_rigs_of_a_file_are_the_rendered_models_own_rest_pose(
+    tmp_path: Path,
+) -> None:
+    glb = tmp_path / "own.glb"
+    glb.write_bytes(b"glTF")
+    model = _Env().model
+    bones = {"bone": model.geom("bone").id}
+    config = RenderConfig(env="test", output=tmp_path, muscle_mesh=str(glb))
+    assert blender_render._muscle_rigs(config, model, bones) == [
+        blender_render._rest_poses(model, bones)
+    ]
+    assert blender_render._muscle_rigs(_config(tmp_path), model, bones) == []
