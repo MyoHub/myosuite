@@ -4,10 +4,9 @@
 # LICENSE file in the root directory of this source tree.
 """Register ``myoHalloween-v0`` for MJLab GPU training.
 
-MJLab requires each Entity to contain at most one free joint.  The Halloween
-CPU model is intentionally a single MuJoCo model (full body + free pumpkin),
-but the MJLab scene therefore represents the character and projectile as two
-entities.  Scene composition restores their physical interaction/contact.
+MJLab requires each Entity to contain at most one free joint. The Halloween
+CPU model remains full body + free pumpkin, while MJLab represents the
+character and projectile as separate entities and composes them into one scene.
 """
 
 from __future__ import annotations
@@ -33,6 +32,9 @@ from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 from mjlab.viewer.viewer_config import ViewerConfig
 
+from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+    _init_state_from_model as _mimic_init_state_from_model,
+)
 from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import MyoMuscleActivationActionCfg
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM, sync_forward
 from myosuite.envs.myo.tasks.halloween.halloween_model import (
@@ -46,7 +48,6 @@ from myosuite.integrations.musclemimic.fullbody_model import (
 )
 
 logger = logging.getLogger(__name__)
-
 _TASK_ID = "myoHalloween-v0"
 _ROBOT = "halloween_fullbody"
 _PUMPKIN = "halloween_pumpkin"
@@ -97,8 +98,8 @@ def _muscle_and_tendon_names(model: mujoco.MjModel) -> tuple[tuple[str, ...], tu
     return tuple(muscles), tuple(tendons)
 
 
-def _init_state_from_model(model: mujoco.MjModel) -> EntityCfg.InitialStateCfg:
-    q = np.asarray(model.key_qpos[0] if model.nkey else model.qpos0, dtype=np.float64)
+def _pumpkin_init_state(model: mujoco.MjModel) -> EntityCfg.InitialStateCfg:
+    q = np.asarray(model.qpos0, dtype=np.float64)
     return EntityCfg.InitialStateCfg(
         pos=(float(q[0]), float(q[1]), float(q[2])),
         rot=(float(q[3]), float(q[4]), float(q[5]), float(q[6])),
@@ -204,11 +205,11 @@ def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0) -> Ma
     robot_cfg = EntityCfg(
         spec_fn=_build_robot_spec,
         articulation=articulation,
-        init_state=_init_state_from_model(robot_model),
+        init_state=_mimic_init_state_from_model(robot_model),
     )
     pumpkin_cfg = EntityCfg(
         spec_fn=_build_pumpkin_spec,
-        init_state=_init_state_from_model(pumpkin_model),
+        init_state=_pumpkin_init_state(pumpkin_model),
     )
     scene = SceneCfg(num_envs=num_envs, entities={_ROBOT: robot_cfg, _PUMPKIN: pumpkin_cfg})
 
@@ -240,9 +241,7 @@ def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0) -> Ma
         "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
         "fallen": TerminationTermCfg(func=_term_fallen(_ROBOT), time_out=False),
     }
-    events = {
-        "throw_pumpkin": EventTermCfg(func=_event_reset_and_throw(throw_speed), mode="reset")
-    }
+    events = {"throw_pumpkin": EventTermCfg(func=_event_reset_and_throw(throw_speed), mode="reset")}
     return ManagerBasedRlEnvCfg(
         scene=scene,
         decimation=max(1, int(round(_CTRL_DT / _SIM_DT))),
