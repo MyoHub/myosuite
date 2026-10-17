@@ -31,7 +31,7 @@ All notable changes to this project are documented in this file.
 ### Added
 
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
-* **Newton compatibility probe:** `scripts/newton_compat_probe.py` measures how much of each MyoSuite model survives NVIDIA Newton's MJCF import (actuators, muscle length ranges and forces, joints, tendons, equalities), as written and after a plain MuJoCo rewrite; a manual *Newton probe* workflow runs it for a chosen Newton version. On Newton 1.7.0 none of six models converts as written; the elbow and hand convert, with muscle forces within 1e-4, once names are sanitized and attributes made explicit (#368, [#531]).
+* **Newton compatibility probe:** `scripts/newton_compat_probe.py` measures how much of each MyoSuite model survives NVIDIA Newton's MJCF import (actuators, muscle length ranges and forces, joints, tendons, equalities), as written and after a plain MuJoCo rewrite; a *Newton probe* workflow runs it on the release pull request into main and, by hand, for a chosen Newton version. On Newton 1.7.0 none of six models converts as written; the elbow and hand convert, with muscle forces within 1e-4, once names are sanitized and attributes made explicit (#368, [#531]).
 
 ### Changed
 

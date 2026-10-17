@@ -70,7 +70,9 @@ different ``mujoco-warp`` versions)::
 
 It prints a table and writes ``newton_probe/newton_probe.md`` and
 ``newton_probe.json``. ``--strict`` makes it exit with an error when a model fails
-to load or convert, loses actuators, or changes a muscle force. The *Newton probe*
-GitHub workflow runs the same command for a chosen Newton version when started by
-hand (Actions > Newton probe > Run workflow) and keeps the report as a download. It
-is not part of CI.
+to load or convert, loses actuators, or changes a muscle force.
+The *Newton probe* GitHub workflow runs the same command on the release pull request
+(`dev` into `main`, not as a draft) with the latest Newton, and when started by hand
+for a chosen version (Actions > Newton probe > Run workflow). It keeps the report as a
+download and in the run summary, and never fails the run: the probe reports, it does
+not gate the release.
