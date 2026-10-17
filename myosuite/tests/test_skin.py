@@ -207,8 +207,19 @@ def test_bundled_skin_survives_the_glb_round_trip(tmp_path: Path) -> None:
 
 
 def test_command_line_exports_and_imports_the_bundled_skin(tmp_path: Path) -> None:
+    """The .glb is written at the model's rest pose, so compare posed vertices."""
+    from myosuite import make_env
+
     main(["export", str(tmp_path / "skin.glb")])
     main(["import", str(tmp_path / "skin.glb"), str(tmp_path / "skin.skn")])
     back, skin = load_skn(tmp_path / "skin.skn"), load_skn("fullbody")
     assert back.face.tolist() == skin.face.tolist()
-    np.testing.assert_allclose(back.vert, skin.vert, atol=1e-6)
+    env = make_env("myoMimicFullbody-v0")
+    model, data = env.unwrapped.model, env.unwrapped.data
+    env.reset(seed=1)
+    np.testing.assert_allclose(
+        SkinPose.bind(back, model).vertices(data),
+        SkinPose.bind(skin, model).vertices(data),
+        atol=1e-4,
+    )
+    env.close()
