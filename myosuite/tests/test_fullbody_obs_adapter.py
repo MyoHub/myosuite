@@ -384,3 +384,22 @@ def test_lookahead_frames_are_not_recomputed_per_step(
     assert _calls_of(lambda: full.build(data, 5)) == 1 + 3
     assert _calls_of(lambda: full.build(data, 6)) == 1 + 1
     assert _calls_of(lambda: full.build(data, 5)) == 1
+
+
+def test_egocentric_state_preserves_world_heading_invariance() -> None:
+    model = _toy_model(3)
+    data = mujoco.MjData(model)
+    flags = {flag: False for flag in _MUSCLE_FLAGS}
+    flags["enable_touch_sensor_observations"] = False
+    adapter = fbl.FullbodyStateAdapter(model, flags, egocentric_root=True)
+    data.qpos[:3] = [0.3, -0.2, 0.9]
+    data.qvel[:6] = [0.7, -0.2, 0.1, 0.3, -0.1, 0.4]
+    mujoco.mj_forward(model, data)
+    expected = adapter.build_state(data)
+    # A ninety-degree world yaw rotates world linear velocity, while MuJoCo's
+    # free-joint angular velocity remains in the body frame.
+    data.qpos[3:7] = [np.sqrt(0.5), 0, 0, np.sqrt(0.5)]
+    data.qvel[:3] = [0.2, 0.7, 0.1]
+    mujoco.mj_forward(model, data)
+    np.testing.assert_allclose(adapter.build_state(data), expected, atol=1e-7)
+    assert adapter.build_state(data).dtype == np.float32
