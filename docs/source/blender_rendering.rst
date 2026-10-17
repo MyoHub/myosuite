@@ -231,8 +231,12 @@ the model; the simulated model is not changed.
 - ``atlas`` (10 MB, ~260k vertices) and ``atlas-hd`` (27 MB, ~700k vertices)
   hold 416 BodyParts3D muscles, one mesh each, in the rest pose (``qpos0``) of
   ``myoMimicFullbody-v0``. They are downloaded from the Hugging Face dataset
-  ``myohub/myosuite-assets`` on first use and cached, so they fit the full-body
-  envs only.
+  ``myohub/myosuite-assets`` on first use and cached.
+- They fit every model that draws the full body's bone meshes: an arm or hand
+  model gets the muscles whose bones it has (a muscle that also attaches to a
+  missing bone is left out), and each of several bodies in one model gets its own
+  set. ``--muscle-mesh-env`` names the env a ``.glb`` of your own is modelled on
+  when that is not the rendered one.
 - Each muscle carries its own bone weights and follows only the bones it
   attaches to, so a back muscle never follows the arm and a hand muscle never
   follows the thigh. Any skinned ``.glb`` modelled in a model's rest pose works
@@ -282,30 +286,3 @@ random-action hand motion (0.18 seconds). Saved Blender scenes matched MuJoCo
 body-geometry positions at two timestamps to within 6.1e-8 metres; visible
 anatomy stayed inside the camera throughout those clips. These checks do not
 establish compatibility with every environment or policy success rates.
-
-Reference skeletons and custom policies
----------------------------------------
-
-Reuse ``GhostBodyViz`` for a desired motion without adding a simulated body.
-``from_motion_clip`` computes body poses once from full-model ``MotionClip.qpos``.
-Set ``bone_meshes=True`` to reuse the model's anatomical bone meshes instead
-of joint markers and capsules. The reference changes their poses, not their shape.
-For a MuJoCo image, call ``ghost.draw(frame, renderer.scene)`` after
-``renderer.update_scene(...)`` and before ``renderer.render()``.
-
-The Python exporter also accepts an existing ``env``, an observation-to-action
-``policy`` callback, and the same viewer ``viz_fn``. It resets the supplied env
-with the configured seed and leaves it open. Visualization callbacks receive
-control-step indices starting at zero, must only edit the scene, and should
-append geometry in a stable order so USD objects retain their identity.
-The overlay retains its color and animation in the editable Blender scene.
-
-.. code-block:: python
-
-   from myosuite.viz.ghost_body_viz import GhostBodyViz
-
-   ghost = GhostBodyViz.from_motion_clip(reference, env.unwrapped.model, bone_meshes=True)
-   render_rollout(config, env=env, policy=action, viz_fn=ghost.as_viz_fn())
-
-Tutorial ``4.4_Programmatic_Waypoint_Tasks.ipynb`` shows a reference snapshot,
-an optional live overlay and a TERRA export using the shared policy runner.

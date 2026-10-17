@@ -19,27 +19,19 @@ All notable changes to this project are documented in this file.
   - Muscle volumes measured for the large leg and shoulder muscles (`myosuite.viz.muscle_tubes`), or MuJoCo's
     thin muscle paths; colour by activation or uniform (`--muscle-color`).
   - Optional body skin from a MuJoCo `.skn` file (`--skin`, translucent or opaque; `myosuite.viz.skin`), with a
-    bundled full-body skin adapted from MakeHuman/MPFB (CC0 1.0); `ViserSkin` draws it in mjviser.
+    bundled full-body skin adapted from MakeHuman/MPFB (CC0 1.0) and fitted over the muscle atlas; `ViserSkin` draws it in mjviser.
+    The bundled skin is smooth in motion: a slimmer forearm and wrist that rotate with the muscles under them, and
+    shoulder weights that keep the skin from folding as the arm is raised or rotated.
     `--skin-texture` puts a colour image on the skin (the bundled skin takes textures in MakeHuman's UV layout).
   - Anatomical muscle meshes in place of the tubes (`--muscle-mesh atlas|atlas-hd|PATH.glb`): 416 BodyParts3D
     muscles (CC BY 4.0), each weighted to the bones it attaches to, downloaded from the Hugging Face dataset
-    `myohub/myosuite-assets` on first use (full-body envs).
+    `myohub/myosuite-assets` on first use. They bind to every body that draws the full body's bone meshes: arm and
+    hand models get the muscles whose bones they have, several bodies in one model one set each (`--muscle-mesh-env`).
   - Preview, video and export-only modes; the `studio` or the task's own `mujoco` scene; tutorial 3.6.
   - Needs the optional MuJoCo USD dependencies and a separate Blender installation.
   - `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy.
 
 ### Added
-
-* **`myoFullBodyWaypoint-v0`: ordered waypoints for the MyoFullBody, on the CPU and on mjlab.** A random 4-waypoint
-  route is drawn at every reset; the reward pays progress toward the active waypoint, +1 per arrival and -10 on a fall
-  (so ending early never pays); the observation has no world `x, y` and gives the next waypoints in the heading frame.
-  `myosuite.envs.waypoint.WaypointEnv` takes any scene (`model_recipe`/`model_path` plus an `MjSpec` `edit_fn`, or a
-  compiled model) and a typed `WaypointTaskCfg`; the goal terms (`myosuite.terms.waypoint`) are shared with the twin.
-  The `musclemimic_fullbody` recipe now builds through `build_from_recipe` (its spec carries the CPU timestep).
-* **Waypoint instance overrides:** customize `myoFullBodyWaypoint-v0` through `EnvConfig.task_kwargs` on CPU and mjlab without registering course IDs. XML scenes replace the default recipe; seeded construction is supported.
-* **Terrain tracking in MuscleMimic**, credited to TERRA-4B (`myosuite.integrations.musclemimic`): the TERRA actor, its observation (heightmap, reference
-  goal) and NumPy inference, plus a planner that walks a clip along waypoints. Tutorial 4.4 drives TERRA through a
-  programmatic obstacle course.
 
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
 
