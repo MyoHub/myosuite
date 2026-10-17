@@ -40,7 +40,10 @@ class BoneGhostBodyViz(GhostBodyViz):
 
         for geom_id in range(model.ngeom):
             body = int(model.geom_bodyid[geom_id])
-            if model.geom_type[geom_id] != mujoco.mjtGeom.mjGEOM_MESH or body not in visible:
+            if (
+                model.geom_type[geom_id] != mujoco.mjtGeom.mjGEOM_MESH
+                or body not in visible
+            ):
                 continue
             if geom_i >= max_geoms:
                 break
