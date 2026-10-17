@@ -543,6 +543,14 @@ class DynSynWrapper(RecordConstructorArgs, gym.ActionWrapper):
             max_amplitude,
         )
         self.num_envs, self.env_steps = num_envs, 0
+        if max_amplitude == 0:  # groups only: one action per group
+            box = env.action_space
+            self.action_space = gym.spaces.Box(
+                low=float(np.min(box.low)),
+                high=float(np.max(box.high)),
+                shape=(len(self.groups.groups),),
+                dtype=box.dtype,
+            )
 
     @property
     def amplitude(self) -> float:

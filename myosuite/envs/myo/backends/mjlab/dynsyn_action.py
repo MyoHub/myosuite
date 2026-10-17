@@ -85,13 +85,16 @@ class DynSynAction:
                 "The DynSyn groups were made for other actuators than this action term's "
                 f"({len(cfg.groups.muscle_names)} vs {len(names)}); run scripts/dynsyn_groups.py for this task."
             )
-        self._raw = torch.zeros(
-            (env.num_envs, self._base.action_dim), device=env.device
+        # Without corrections (max_amplitude 0) the policy has one action per group only: action
+        # dimensions that do nothing would still drift and inflate PPO's KL estimate.
+        self._dim = (
+            len(cfg.groups.groups) if cfg.max_amplitude == 0 else self._base.action_dim
         )
+        self._raw = torch.zeros((env.num_envs, self._dim), device=env.device)
 
     @property
     def action_dim(self) -> int:
-        return self._base.action_dim
+        return self._dim
 
     @property
     def raw_action(self) -> Any:

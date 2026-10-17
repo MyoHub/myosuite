@@ -56,7 +56,7 @@ class TrainConfig:
     dynsyn_ramp_steps: float = 1e8
     """Environment steps over which the correction bound grows to ``dynsyn_max_amplitude``."""
     dynsyn_max_amplitude: float = 0.1
-    """Largest relative correction of a muscle's group action (0 keeps the groups only)."""
+    """Largest relative correction of a muscle's group action (0: groups only, one action per group)."""
     """Multiplies the weight of every reward term (e.g. ``0.1`` shrinks returns and the
     value loss, as in the myoInteract tasks). Applied on top of
     ``--env.scale-rewards-by-dt``; ``1.0`` leaves the task's rewards unchanged."""

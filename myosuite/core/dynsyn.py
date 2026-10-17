@@ -228,7 +228,8 @@ def expand_actions(
 
     Args:
         actions: ``(..., n_muscles)``: first one action per group, then one correction
-            per non-representative muscle (in group order).
+            per non-representative muscle (in group order); ``(..., n_groups)``
+            when ``amplitude`` is 0 (groups only).
         groups: Groups as in :class:`DynSynGroups`.
         amplitude: Correction bound (:func:`weight_amplitude`).
         xp: ``numpy`` or ``torch``.

@@ -111,3 +111,15 @@ def test_mjlab_action_term(walk_groups):
     term = env.action_manager.get_term("muscles")
     assert term.action_dim == 80 and term.amplitude == pytest.approx(0.1)
     env.close()
+
+
+def test_groups_only_reduces_the_action_space(walk_groups):
+    from myosuite import make_env
+    from myosuite.envs.wrappers import DynSynWrapper
+
+    path, groups = walk_groups
+    env = DynSynWrapper(make_env("myoLegWalk-v0"), str(path), 0, 0, max_amplitude=0)
+    assert env.action_space.shape == (len(groups),)
+    env.reset(seed=0)
+    env.step(env.action_space.sample())
+    env.close()
