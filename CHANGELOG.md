@@ -20,10 +20,13 @@ All notable changes to this project are documented in this file.
     thin muscle paths; colour by activation or uniform (`--muscle-color`).
   - Optional body skin from a MuJoCo `.skn` file (`--skin`, translucent or opaque; `myosuite.viz.skin`), with a
     bundled full-body skin adapted from MakeHuman/MPFB (CC0 1.0) and fitted over the muscle atlas; `ViserSkin` draws it in mjviser.
+    The bundled skin is smooth in motion: a slimmer forearm and wrist that rotate with the muscles under them, and
+    shoulder weights that keep the skin from folding as the arm is raised or rotated.
     `--skin-texture` puts a colour image on the skin (the bundled skin takes textures in MakeHuman's UV layout).
   - Anatomical muscle meshes in place of the tubes (`--muscle-mesh atlas|atlas-hd|PATH.glb`): 416 BodyParts3D
     muscles (CC BY 4.0), each weighted to the bones it attaches to, downloaded from the Hugging Face dataset
-    `myohub/myosuite-assets` on first use (full-body envs).
+    `myohub/myosuite-assets` on first use. They bind to every body that draws the full body's bone meshes: arm and
+    hand models get the muscles whose bones they have, several bodies in one model one set each (`--muscle-mesh-env`).
   - Preview, video and export-only modes; the `studio` or the task's own `mujoco` scene; tutorial 3.6.
   - Needs the optional MuJoCo USD dependencies and a separate Blender installation.
   - `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy.

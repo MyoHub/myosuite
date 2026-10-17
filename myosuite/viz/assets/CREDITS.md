@@ -12,6 +12,9 @@
   trunk and limbs is fitted over the anatomical muscle atlas below: the skin is pulled in by at most
   2 cm where it floats more than 15 mm above the muscles, pushed out to cover them by about 4 mm,
   and then relaxed so that no triangle folds over; head, hands and feet keep their modelled shape.
+  The fit keeps only the smooth part of these changes over the original surface; the forearm is
+  wrapped closer and takes the blend weights of the atlas muscles under it, the shoulder weights are
+  smoothed so the skin stays smooth as the arm moves, and the abdomen keeps a flattened contour.
 - **Contributed by:** Vittorio Caggiano, for the MyoSuite authors.
 - **License:** the CC0 source places no restrictions on reuse; the adapted file is distributed
   with MyoSuite under the repository's Apache-2.0 license ([LICENSE](../../../LICENSE)).

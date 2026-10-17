@@ -231,8 +231,12 @@ the model; the simulated model is not changed.
 - ``atlas`` (10 MB, ~260k vertices) and ``atlas-hd`` (27 MB, ~700k vertices)
   hold 416 BodyParts3D muscles, one mesh each, in the rest pose (``qpos0``) of
   ``myoMimicFullbody-v0``. They are downloaded from the Hugging Face dataset
-  ``myohub/myosuite-assets`` on first use and cached, so they fit the full-body
-  envs only.
+  ``myohub/myosuite-assets`` on first use and cached.
+- They fit every model that draws the full body's bone meshes: an arm or hand
+  model gets the muscles whose bones it has (a muscle that also attaches to a
+  missing bone is left out), and each of several bodies in one model gets its own
+  set. ``--muscle-mesh-env`` names the env a ``.glb`` of your own is modelled on
+  when that is not the rendered one.
 - Each muscle carries its own bone weights and follows only the bones it
   attaches to, so a back muscle never follows the arm and a hand muscle never
   follows the thigh. Any skinned ``.glb`` modelled in a model's rest pose works
