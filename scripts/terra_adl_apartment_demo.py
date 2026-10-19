@@ -30,7 +30,7 @@ from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz
 
 
 def main() -> None:
-    seed = int(os.environ.get("TERRA_SEED", "0"))
+    seed = int(os.environ.get("TERRA_SEED", "3"))
     stochastic = os.environ.get("TERRA_STOCHASTIC", "1") != "0"
     out = Path(os.environ.get("TERRA_ADL_OUT", "terra_adl_outputs"))
     out.mkdir(parents=True, exist_ok=True)
@@ -46,14 +46,13 @@ def main() -> None:
     direction = route[1] - route[0]
     spawn_yaw = float(np.arctan2(direction[0], -direction[1]))
     initial_qpos[3:7] = [np.cos(spawn_yaw / 2), 0.0, 0.0, np.sin(spawn_yaw / 2)]
-    parameters = GaitParameters()
     reference, planner = plan_waypoint_reference(
         model,
         route,
         lambda xy: float(heights(data, [xy])[0]),
         initial_qpos,
         sites=MIMIC_SITES,
-        parameters=parameters,
+        parameters=GaitParameters(),
     )
 
     checkpoint = (
@@ -68,7 +67,7 @@ def main() -> None:
         site_name="pelvis_mimic",
         waypoints=tuple(map(tuple, route[1:])),
         arrival_radius=0.45,
-        min_site_height=0.5,
+        min_site_height=0.35,
         reward=WaypointRewardCfg(),
     )
     env = make_env(
