@@ -30,6 +30,8 @@ from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz
 
 
 def main() -> None:
+    seed = int(os.environ.get("TERRA_SEED", "0"))
+    stochastic = os.environ.get("TERRA_STOCHASTIC", "1") != "0"
     out = Path(os.environ.get("TERRA_ADL_OUT", "terra_adl_outputs"))
     out.mkdir(parents=True, exist_ok=True)
 
@@ -44,7 +46,7 @@ def main() -> None:
     direction = route[1] - route[0]
     spawn_yaw = float(np.arctan2(direction[0], -direction[1]))
     initial_qpos[3:7] = [np.cos(spawn_yaw / 2), 0.0, 0.0, np.sin(spawn_yaw / 2)]
-    parameters = GaitParameters()  # Same conservative gait recipe as tutorial 4.4.
+    parameters = GaitParameters()
     reference, planner = plan_waypoint_reference(
         model,
         route,
@@ -59,11 +61,13 @@ def main() -> None:
         if "TERRA_CHECKPOINT" in os.environ
         else download_terrain_checkpoint()
     )
-    policy = load_terrain_policy(checkpoint, model, reference, stochastic=False, seed=0)
+    policy = load_terrain_policy(
+        checkpoint, model, reference, stochastic=stochastic, seed=seed
+    )
     task = WaypointTaskCfg(
         site_name="pelvis_mimic",
         waypoints=tuple(map(tuple, route[1:])),
-        arrival_radius=0.3,
+        arrival_radius=0.45,
         min_site_height=0.5,
         reward=WaypointRewardCfg(),
     )
@@ -76,7 +80,7 @@ def main() -> None:
         frame_skip=5,
         render_mode="rgb_array",
     )
-    env.reset(seed=0)
+    env.reset(seed=seed)
     base = env.unwrapped
 
     option = mujoco.MjvOption()
@@ -121,6 +125,8 @@ def main() -> None:
     imageio.mimsave(video, frames, fps=4, macro_block_size=1)
     imageio.imwrite(preview, frames[len(frames) // 2], quality=90)
     result = {
+        "seed": seed,
+        "stochastic": stochastic,
         "reference_frames": reference.num_frames,
         "reference_duration_s": planner["duration_s"],
         "executed_steps": step + 1,
