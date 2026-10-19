@@ -18,6 +18,7 @@ from myosuite.envs.waypoint import WaypointTaskCfg
 from myosuite.integrations.musclemimic import (
     GaitParameters,
     MIMIC_SITES,
+    TerrainController,
     TerrainHeights,
     build_terrain_fullbody_spec,
     download_terrain_checkpoint,
@@ -30,7 +31,7 @@ from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz
 
 
 def main() -> None:
-    seed = int(os.environ.get("TERRA_SEED", "3"))
+    seed = int(os.environ.get("TERRA_SEED", "0"))
     stochastic = os.environ.get("TERRA_STOCHASTIC", "1") != "0"
     out = Path(os.environ.get("TERRA_ADL_OUT", "terra_adl_outputs"))
     out.mkdir(parents=True, exist_ok=True)
@@ -43,16 +44,15 @@ def main() -> None:
 
     initial_qpos = model.qpos0.copy()
     initial_qpos[:2] = route[0]
-    direction = route[1] - route[0]
-    spawn_yaw = float(np.arctan2(direction[0], -direction[1]))
-    initial_qpos[3:7] = [np.cos(spawn_yaw / 2), 0.0, 0.0, np.sin(spawn_yaw / 2)]
+    # Keep TERRA's native root orientation. The apartment plan is rotated so
+    # the first route segment follows the checkpoint's native forward heading.
     reference, planner = plan_waypoint_reference(
         model,
         route,
         lambda xy: float(heights(data, [xy])[0]),
         initial_qpos,
         sites=MIMIC_SITES,
-        parameters=GaitParameters(speed=0.10, cycle_s=1.2, clearance=0.12),
+        parameters=GaitParameters(speed=0.25, cycle_s=1.2, clearance=0.12),
     )
 
     checkpoint = (
@@ -63,6 +63,7 @@ def main() -> None:
     policy = load_terrain_policy(
         checkpoint, model, reference, stochastic=stochastic, seed=seed
     )
+    controller = TerrainController(policy, model, reference, frame_skip=5)
     task = WaypointTaskCfg(
         site_name="pelvis_mimic",
         waypoints=tuple(map(tuple, route[1:])),
@@ -81,6 +82,7 @@ def main() -> None:
     )
     env.reset(seed=seed)
     base = env.unwrapped
+    controller.reset()
 
     option = mujoco.MjvOption()
     option.geomgroup[:] = 0
@@ -90,7 +92,7 @@ def main() -> None:
     option.sitegroup[:] = 0
     option.tendongroup[:] = 1
     ghost = BoneGhostBodyViz.from_motion_clip(
-        reference, model, bone_meshes=True, skeleton_rgba=(0.20, 0.70, 1.0, 0.32)
+        reference, model, bone_meshes=True, skeleton_rgba=(0.20, 0.70, 1.0, 0.28)
     )
 
     frames: list[np.ndarray] = []
@@ -99,9 +101,7 @@ def main() -> None:
     min_pelvis_height = float("inf")
     with mujoco.Renderer(model, 540, 960, max_geom=model.ngeom + 512) as renderer:
         for step in range(reference.num_frames - 1):
-            _, _, terminated, truncated, info = base.step(
-                policy.action_for(base.data, reference, step)
-            )
+            _, _, terminated, truncated, info = base.step(controller(base.data))
             pelvis_height = float(base.data.site("pelvis_mimic").xpos[2])
             min_pelvis_height = min(min_pelvis_height, pelvis_height)
             if step % render_stride == 0:
@@ -112,7 +112,7 @@ def main() -> None:
                 camera.azimuth = 150
                 camera.elevation = -12
                 renderer.update_scene(base.data, camera=camera, scene_option=option)
-                ghost.draw(min(step + 80, reference.num_frames - 1), renderer.scene)
+                ghost.draw(min(step + 60, reference.num_frames - 1), renderer.scene)
                 frames.append(renderer.render().copy())
             if terminated or truncated:
                 break
