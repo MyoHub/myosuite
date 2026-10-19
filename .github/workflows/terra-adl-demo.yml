@@ -1,0 +1,35 @@
+name: TERRA ADL demo
+
+on:
+  pull_request:
+    paths:
+      - "myosuite/integrations/musclemimic/adl_apartment.py"
+      - "scripts/terra_adl_apartment_demo.py"
+      - ".github/workflows/terra-adl-demo.yml"
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      MUJOCO_GL: egl
+      TERRA_ADL_OUT: terra_adl_outputs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install demo dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[musclemimic]" "imageio[ffmpeg]"
+      - name: Run TERRA apartment rollout
+        run: python scripts/terra_adl_apartment_demo.py
+      - name: Upload motion and rendering
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terra-adl-apartment
+          path: terra_adl_outputs/
+          if-no-files-found: warn
