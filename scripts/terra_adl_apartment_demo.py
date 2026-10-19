@@ -44,8 +44,6 @@ def main() -> None:
 
     initial_qpos = model.qpos0.copy()
     initial_qpos[:2] = route[0]
-    # Keep TERRA's native root orientation. The apartment plan is rotated so
-    # the first route segment follows the checkpoint's native forward heading.
     reference, planner = plan_waypoint_reference(
         model,
         route,
@@ -55,14 +53,8 @@ def main() -> None:
         parameters=GaitParameters(speed=0.25, cycle_s=1.2, clearance=0.12),
     )
 
-    checkpoint = (
-        Path(os.environ["TERRA_CHECKPOINT"])
-        if "TERRA_CHECKPOINT" in os.environ
-        else download_terrain_checkpoint()
-    )
-    policy = load_terrain_policy(
-        checkpoint, model, reference, stochastic=stochastic, seed=seed
-    )
+    checkpoint = Path(os.environ["TERRA_CHECKPOINT"]) if "TERRA_CHECKPOINT" in os.environ else download_terrain_checkpoint()
+    policy = load_terrain_policy(checkpoint, model, reference, stochastic=stochastic, seed=seed)
     controller = TerrainController(policy, model, reference, frame_skip=5)
     task = WaypointTaskCfg(
         site_name="pelvis_mimic",
@@ -72,13 +64,9 @@ def main() -> None:
         reward=WaypointRewardCfg(),
     )
     env = make_env(
-        "myoFullBodyWaypoint-v0",
-        model=model,
-        task=task,
-        initial_qpos=initial_qpos,
-        initial_qvel=np.zeros(model.nv),
-        frame_skip=5,
-        render_mode="rgb_array",
+        "myoFullBodyWaypoint-v0", model=model, task=task,
+        initial_qpos=initial_qpos, initial_qvel=np.zeros(model.nv),
+        frame_skip=5, render_mode="rgb_array",
     )
     env.reset(seed=seed)
     base = env.unwrapped
@@ -91,15 +79,13 @@ def main() -> None:
     option.geomgroup[3] = 1
     option.sitegroup[:] = 0
     option.tendongroup[:] = 1
-    ghost = BoneGhostBodyViz.from_motion_clip(
-        reference, model, bone_meshes=True, skeleton_rgba=(0.20, 0.70, 1.0, 0.28)
-    )
+    ghost = BoneGhostBodyViz.from_motion_clip(reference, model, bone_meshes=True, skeleton_rgba=(0.20, 0.70, 1.0, 0.28))
 
     frames: list[np.ndarray] = []
     render_stride = 10
     info: dict = {"next_waypoint": 0, "solved": False, "failed": False}
     min_pelvis_height = float("inf")
-    with mujoco.Renderer(model, 540, 960, max_geom=model.ngeom + 512) as renderer:
+    with mujoco.Renderer(model, 360, 640, max_geom=model.ngeom + 512) as renderer:
         for step in range(reference.num_frames - 1):
             _, _, terminated, truncated, info = base.step(controller(base.data))
             pelvis_height = float(base.data.site("pelvis_mimic").xpos[2])
@@ -124,19 +110,12 @@ def main() -> None:
     imageio.mimsave(video, frames, fps=10, macro_block_size=1)
     imageio.imwrite(preview, frames[len(frames) // 2], quality=92)
     result = {
-        "seed": seed,
-        "stochastic": stochastic,
-        "reference_frames": reference.num_frames,
-        "reference_duration_s": planner["duration_s"],
-        "executed_steps": step + 1,
-        "waypoints_reached": int(info["next_waypoint"]),
-        "waypoints_total": len(route) - 1,
-        "solved": bool(info["solved"]),
-        "failed": bool(info["failed"]),
-        "min_pelvis_height": min_pelvis_height,
-        "final_root_xyz": final_root.tolist(),
-        "video": str(video),
-        "preview": str(preview),
+        "seed": seed, "stochastic": stochastic,
+        "reference_frames": reference.num_frames, "reference_duration_s": planner["duration_s"],
+        "executed_steps": step + 1, "waypoints_reached": int(info["next_waypoint"]),
+        "waypoints_total": len(route) - 1, "solved": bool(info["solved"]),
+        "failed": bool(info["failed"]), "min_pelvis_height": min_pelvis_height,
+        "final_root_xyz": final_root.tolist(), "video": str(video), "preview": str(preview),
     }
     (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
