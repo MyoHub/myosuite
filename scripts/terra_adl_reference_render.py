@@ -51,7 +51,7 @@ def main() -> None:
 
     frames = []
     stride = 10
-    with mujoco.Renderer(model, 540, 960) as renderer:
+    with mujoco.Renderer(model, 360, 640) as renderer:
         for step in range(0, reference.num_frames, stride):
             data.qpos[:] = reference.qpos[step]
             if reference.qvel is not None:
