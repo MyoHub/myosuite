@@ -29,11 +29,14 @@ def _box(
     group: int = FURNITURE_GROUP,
     collide: bool = True,
 ) -> None:
+    # Rotate the architectural plan 180 degrees so entry motion starts along
+    # TERRA's native -Y forward heading; this avoids an artificial spawn turn.
+    world_pos = (-pos[0], -pos[1], pos[2])
     spec.worldbody.add_geom(
         name=name,
         type=mujoco.mjtGeom.mjGEOM_BOX,
         group=group,
-        pos=pos,
+        pos=world_pos,
         size=size,
         contype=1 if collide else 0,
         conaffinity=1 if collide else 0,
@@ -44,11 +47,7 @@ def _box(
 
 
 def adl_apartment_scene(spec: mujoco.MjSpec) -> None:
-    """Add a furnished split-level home with unambiguous TERRA terrain rays.
-
-    Traversable floors and stairs are group 2. Furniture and walls are physical
-    group-3 geoms, so the policy does not mistake a table or bed for floor height.
-    """
+    """Add a furnished split-level home with unambiguous TERRA terrain rays."""
     for geom in spec.geoms:
         if geom.type == mujoco.mjtGeom.mjGEOM_PLANE:
             geom.group = TERRAIN_GROUP
@@ -126,10 +125,10 @@ def adl_route() -> np.ndarray:
     """Continuous route: entry, kitchen, stairs, bed, downstairs, sofa."""
     stair_end = STAIR_Y0 + STAIR_COUNT * STAIR_RUN
     stair_mid = STAIR_Y0 + 0.5 * STAIR_COUNT * STAIR_RUN
-    return np.array(
+    canonical = np.array(
         [
             [0.0, -5.0],
-            [-0.6, -3.4],
+            [0.0, -3.4],
             [-0.7, -1.0],
             [1.0, -1.0],
             [2.8, -2.0],
@@ -149,3 +148,5 @@ def adl_route() -> np.ndarray:
         ],
         dtype=float,
     )
+    canonical[:, :2] *= -1
+    return canonical
