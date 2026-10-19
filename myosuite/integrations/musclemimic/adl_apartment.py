@@ -67,10 +67,11 @@ def adl_apartment_scene(spec: mujoco.MjSpec) -> None:
     _box(spec, "wall_front_r", (3.9, -5.6, 1.25), (1.3, 0.08, 1.25), wall)
 
     _box(spec, "sofa", (-1.25, -2.2, 0.42), (0.55, 1.15, 0.42), fabric)
-    _box(spec, "coffee_table", (0.15, -2.4, 0.22), (0.55, 0.38, 0.22), wood)
+    # Keep a clear walking aisle through the room; furniture remains physical.
+    _box(spec, "coffee_table", (-1.5, -0.2, 0.22), (0.55, 0.38, 0.22), wood)
     _box(spec, "dining_table", (1.2, -3.8, 0.38), (0.8, 0.55, 0.38), wood)
     for i, (x, y) in enumerate(
-        ((0.2, -3.8), (2.2, -3.8), (1.2, -3.0), (1.2, -4.6))
+        ((-1.5, -3.8), (2.2, -3.8), (1.2, -3.0), (1.2, -4.6))
     ):
         _box(spec, f"dining_chair_{i}", (x, y, 0.42), (0.25, 0.25, 0.42), wood)
 
@@ -122,31 +123,28 @@ def adl_apartment_scene(spec: mujoco.MjSpec) -> None:
 
 
 def adl_route() -> np.ndarray:
-    """Continuous route: entry, kitchen, stairs, bed, downstairs, sofa."""
+    """Clear aisle from entry through kitchen, stairs, bedroom and back."""
     stair_end = STAIR_Y0 + STAIR_COUNT * STAIR_RUN
     stair_mid = STAIR_Y0 + 0.5 * STAIR_COUNT * STAIR_RUN
-    canonical = np.array(
+    # World coordinates.  The first legs deliberately follow TERRA's native -Y
+    # heading and avoid all furniture; the scene, not the controller, is novel.
+    return np.array(
         [
-            [0.0, -5.0],
-            [0.0, -3.4],
-            [-0.7, -1.0],
-            [1.0, -1.0],
-            [2.8, -2.0],
-            [3.0, -3.0],
-            [3.0, -2.0],
-            [3.0, 0.35],
-            [3.0, stair_mid],
-            [3.0, stair_end + 0.25],
-            [1.5, stair_end + 1.0],
-            [0.25, stair_end + 1.35],
-            [1.5, stair_end + 1.0],
-            [3.0, stair_end + 0.25],
-            [3.0, stair_mid],
-            [3.0, 0.35],
-            [1.2, -0.8],
-            [-0.4, -1.4],
+            [0.0, 5.0],
+            [0.0, 3.4],
+            [0.0, 1.0],
+            [-2.8, 1.0],
+            [-3.0, -0.35],
+            [-3.0, -stair_mid],
+            [-3.0, -(stair_end + 0.25)],
+            [-1.5, -(stair_end + 1.0)],
+            [-1.0, -(stair_end + 1.35)],
+            [-1.5, -(stair_end + 1.0)],
+            [-3.0, -(stair_end + 0.25)],
+            [-3.0, -stair_mid],
+            [-3.0, -0.35],
+            [-1.2, 0.8],
+            [0.0, 1.0],
         ],
         dtype=float,
     )
-    canonical[:, :2] *= -1
-    return canonical
