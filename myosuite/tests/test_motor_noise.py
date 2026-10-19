@@ -254,6 +254,26 @@ def test_a_stage_is_installed_once() -> None:
         FatigueWrapper(make_env("myoFatiElbowPose1D6MRandom-v0"))
 
 
+def test_fixed_fatigue_reset_replays_identically() -> None:
+    """A previous episode must not mutate the wrapper's fixed fatigue state."""
+    base = make_env(_ELBOW)
+    initial = np.full(base.unwrapped.model.na, 0.4)
+    env = FatigueWrapper(base, fatigue_reset_vec=initial)
+    try:
+        traces = []
+        for _ in range(2):
+            env.reset(seed=0)
+            trace = []
+            for _ in range(20):
+                obs, *_ = env.step(np.full(env.action_space.shape, 0.7, np.float32))
+                trace.append(np.concatenate([obs, env.unwrapped.data.ctrl]))
+            traces.append(trace)
+        np.testing.assert_array_equal(traces[0], traces[1])
+        np.testing.assert_array_equal(initial, np.full(initial.shape, 0.4))
+    finally:
+        env.close()
+
+
 def test_sarcopenia_is_applied_once() -> None:
     from myosuite.envs.wrappers import SarcopeniaWrapper
 

@@ -444,7 +444,7 @@ class CumulativeFatigue:
                 raise ValueError(
                     f"fatigue_reset_vec length {len(fatigue_reset_vec)} != na={self.na}"
                 )
-            self._MF = np.asarray(fatigue_reset_vec, dtype=float)  # type: ignore[assignment]
+            self._MF = np.array(fatigue_reset_vec, dtype=float, copy=True)  # type: ignore[assignment]
             self._MR = 1.0 - self._MF  # type: ignore[assignment]
             self._MA = np.zeros(self.na)
         else:

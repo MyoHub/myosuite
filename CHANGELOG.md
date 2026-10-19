@@ -48,6 +48,12 @@ All notable changes to this project are documented in this file.
 * Baseline downloads look for the patch-release tag first (`v3.0.1`), then the minor-release tag (`v3.0`), then
   `main`, so a patch release can ship changed baselines without changing those of earlier releases.
 
+### Fixed
+
+* CPU fatigue resets copy a fixed NumPy `fatigue_reset_vec` instead of using it as the mutable fatigue
+  compartment. Stepping no longer changes the configured initial state, repeated seeded episodes replay
+  identically, and read-only reset vectors work. Default fresh/random resets are unchanged.
+
 ## [3.0.0] - 2026-10-07
 
 Changes since the last official release, **v2.12.2** (2026-05-06). `git log v2.12.2..v3.0.0` has the
