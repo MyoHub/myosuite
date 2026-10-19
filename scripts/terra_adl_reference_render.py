@@ -50,8 +50,8 @@ def main() -> None:
     option.tendongroup[:] = 1
 
     frames = []
-    stride = 50
-    with mujoco.Renderer(model, 360, 640) as renderer:
+    stride = 10
+    with mujoco.Renderer(model, 540, 960) as renderer:
         for step in range(0, reference.num_frames, stride):
             data.qpos[:] = reference.qpos[step]
             if reference.qvel is not None:
@@ -59,17 +59,17 @@ def main() -> None:
             mujoco.mj_forward(model, data)
             camera = mujoco.MjvCamera()
             camera.lookat[:] = data.qpos[:3]
-            camera.lookat[2] += 0.55
-            camera.distance = 5.0
-            camera.azimuth = 135
-            camera.elevation = -18
+            camera.lookat[2] += 0.35
+            camera.distance = 3.2
+            camera.azimuth = 150
+            camera.elevation = -12
             renderer.update_scene(data, camera=camera, scene_option=option)
             frames.append(renderer.render().copy())
 
     video = out / "myofullbody_adl_reference.mp4"
     preview = out / "myofullbody_adl_reference_preview.jpg"
-    imageio.mimsave(video, frames, fps=2, macro_block_size=1)
-    imageio.imwrite(preview, frames[len(frames) // 2], quality=92)
+    imageio.mimsave(video, frames, fps=10, macro_block_size=1)
+    imageio.imwrite(preview, frames[len(frames) // 2], quality=94)
     result = {
         "kind": "planned_reference_not_policy_rollout",
         "frames": reference.num_frames,
