@@ -52,7 +52,7 @@ def main() -> None:
         lambda xy: float(heights(data, [xy])[0]),
         initial_qpos,
         sites=MIMIC_SITES,
-        parameters=GaitParameters(),
+        parameters=GaitParameters(speed=0.10, cycle_s=1.2, clearance=0.12),
     )
 
     checkpoint = (
@@ -67,7 +67,7 @@ def main() -> None:
         site_name="pelvis_mimic",
         waypoints=tuple(map(tuple, route[1:])),
         arrival_radius=0.45,
-        min_site_height=0.35,
+        min_site_height=0.4,
         reward=WaypointRewardCfg(),
     )
     env = make_env(
@@ -94,7 +94,7 @@ def main() -> None:
     )
 
     frames: list[np.ndarray] = []
-    render_stride = 25
+    render_stride = 50
     info: dict = {"next_waypoint": 0, "solved": False, "failed": False}
     min_pelvis_height = float("inf")
     with mujoco.Renderer(model, 360, 640, max_geom=model.ngeom + 512) as renderer:
@@ -112,7 +112,7 @@ def main() -> None:
                 camera.azimuth = 135
                 camera.elevation = -18
                 renderer.update_scene(base.data, camera=camera, scene_option=option)
-                ghost.draw(min(step + 40, reference.num_frames - 1), renderer.scene)
+                ghost.draw(min(step + 80, reference.num_frames - 1), renderer.scene)
                 frames.append(renderer.render().copy())
             if terminated or truncated:
                 break
@@ -121,7 +121,7 @@ def main() -> None:
     env.close()
     video = out / "terra_adl_apartment.mp4"
     preview = out / "terra_adl_apartment_preview.jpg"
-    imageio.mimsave(video, frames, fps=4, macro_block_size=1)
+    imageio.mimsave(video, frames, fps=2, macro_block_size=1)
     imageio.imwrite(preview, frames[len(frames) // 2], quality=90)
     result = {
         "seed": seed,
