@@ -44,6 +44,14 @@ def main() -> None:
 
     initial_qpos = model.qpos0.copy()
     initial_qpos[:2] = route[0]
+    direction = route[1] - route[0]
+    spawn_yaw = float(np.arctan2(direction[0], -direction[1]))
+    initial_qpos[3:7] = [
+        np.cos(spawn_yaw / 2),
+        0.0,
+        0.0,
+        np.sin(spawn_yaw / 2),
+    ]
     parameters = GaitParameters(speed=0.32, cycle_s=1.15, clearance=0.13)
     reference, planner = plan_waypoint_reference(
         model,
