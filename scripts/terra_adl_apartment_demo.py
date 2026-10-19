@@ -26,7 +26,17 @@ from myosuite.integrations.musclemimic import (
 )
 from myosuite.integrations.musclemimic.adl_apartment import adl_apartment_scene, adl_route
 from myosuite.terms.waypoint import WaypointRewardCfg
-from myosuite.viz.ghost_body_viz import GhostBodyViz
+from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz
+
+
+def _hide_wrap_geoms(model: mujoco.MjModel, scene: mujoco.MjvScene) -> None:
+    """Hide only tendon wrapping objects; keep anatomical bone meshes visible."""
+    for geom in scene.geoms[: scene.ngeom]:
+        if geom.objtype != mujoco.mjtObj.mjOBJ_GEOM or geom.objid < 0:
+            continue
+        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, geom.objid) or ""
+        if "wrap" in name.lower():
+            geom.rgba[3] = 0.0
 
 
 def main() -> None:
@@ -68,21 +78,15 @@ def main() -> None:
     env.reset(seed=seed)
     base = env.unwrapped
 
-    # Rendering is intentionally independent of locomotion. Group 0 contains the
-    # actor's collision/wrapping surfaces, so hide it and show the anatomical
-    # meshes (group 1), traversable apartment (2) and furniture (3).
+    # Keep every model geom group visible, then suppress wrapping objects by name.
+    # This preserves the full anatomical bone meshes instead of hiding their group.
     option = mujoco.MjvOption()
-    option.geomgroup[:] = 0
-    option.geomgroup[1] = option.geomgroup[2] = option.geomgroup[3] = 1
+    option.geomgroup[:] = 1
     option.sitegroup[:] = 0
     option.tendongroup[:] = 1
-    # A simple capsule/joint reference is more legible than translucent duplicate
-    # anatomy and avoids mesh-ID/render-order ambiguity.
-    ghost = GhostBodyViz.from_motion_clip(
-        reference, model, bone_meshes=False,
-        skeleton_rgba=(0.95, 0.95, 0.95, 0.55),
-        joint_rgba=(1.0, 1.0, 1.0, 0.72),
-        capsule_radius=0.012, joint_radius=0.017,
+    ghost = BoneGhostBodyViz.from_motion_clip(
+        reference, model, bone_meshes=True,
+        skeleton_rgba=(0.55, 0.82, 1.0, 0.30),
     )
 
     frames = []
@@ -103,6 +107,7 @@ def main() -> None:
                 cam.azimuth = 150
                 cam.elevation = -12
                 renderer.update_scene(base.data, camera=cam, scene_option=option)
+                _hide_wrap_geoms(model, renderer.scene)
                 ghost.draw(min(controller._frame + 50, reference.num_frames - 1), renderer.scene)
                 frames.append(renderer.render().copy())
 
