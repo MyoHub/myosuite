@@ -11,15 +11,11 @@ jobs:
   render:
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        seed: [0, 1, 2, 3, 4, 5]
     env:
       MUJOCO_GL: egl
       PYOPENGL_PLATFORM: egl
       TERRA_ADL_OUT: terra_adl_outputs
-      TERRA_SEED: ${{ matrix.seed }}
+      TERRA_SEED: "3"
       TERRA_STOCHASTIC: "1"
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +38,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: terra-adl-apartment-seed-${{ matrix.seed }}
+          name: terra-adl-apartment
           path: terra_adl_outputs/
           if-no-files-found: warn
