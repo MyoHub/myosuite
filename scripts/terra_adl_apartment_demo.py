@@ -24,12 +24,9 @@ from myosuite.integrations.musclemimic import (
     load_terrain_policy,
     plan_waypoint_reference,
 )
-from myosuite.integrations.musclemimic.adl_apartment import (
-    adl_apartment_scene,
-    adl_route,
-)
+from myosuite.integrations.musclemimic.adl_apartment import adl_apartment_scene, adl_route
 from myosuite.terms.waypoint import WaypointRewardCfg
-from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz
+from myosuite.viz.ghost_body_viz import GhostBodyViz
 
 
 def main() -> None:
@@ -38,8 +35,6 @@ def main() -> None:
     out = Path(os.environ.get("TERRA_ADL_OUT", "terra_adl_outputs"))
     out.mkdir(parents=True, exist_ok=True)
 
-    # Keep the apartment different from the tutorial only at the scene/route layer.
-    # Actor, reference planner, policy runner and controller are the tutorial path.
     route = adl_route()
     model = build_terrain_fullbody_spec(adl_apartment_scene).compile()
     probe = mujoco.MjData(model)
@@ -51,22 +46,11 @@ def main() -> None:
     q0[:2] = route[0]
     gait = GaitParameters(speed=0.25, cycle_s=1.2, clearance=0.12)
     reference, planner = plan_waypoint_reference(
-        model,
-        route,
-        height,
-        q0,
-        sites=MIMIC_SITES,
-        parameters=gait,
+        model, route, height, q0, sites=MIMIC_SITES, parameters=gait
     )
 
-    checkpoint = (
-        Path(os.environ["TERRA_CHECKPOINT"])
-        if "TERRA_CHECKPOINT" in os.environ
-        else download_terrain_checkpoint()
-    )
-    policy = load_terrain_policy(
-        checkpoint, model, reference, stochastic=stochastic, seed=seed
-    )
+    checkpoint = Path(os.environ["TERRA_CHECKPOINT"]) if "TERRA_CHECKPOINT" in os.environ else download_terrain_checkpoint()
+    policy = load_terrain_policy(checkpoint, model, reference, stochastic=stochastic, seed=seed)
     controller = TerrainController(policy, model, reference, frame_skip=5)
     controller.reset()
 
@@ -78,34 +62,32 @@ def main() -> None:
         reward=WaypointRewardCfg(),
     )
     env = make_env(
-        "myoFullBodyWaypoint-v0",
-        model=model,
-        task=task,
-        initial_qpos=q0,
-        initial_qvel=np.zeros(model.nv),
-        frame_skip=5,
-        render_mode="rgb_array",
+        "myoFullBodyWaypoint-v0", model=model, task=task, initial_qpos=q0,
+        initial_qvel=np.zeros(model.nv), frame_skip=5, render_mode="rgb_array",
     )
     env.reset(seed=seed)
     base = env.unwrapped
 
+    # Rendering is intentionally independent of locomotion. Group 0 contains the
+    # actor's collision/wrapping surfaces, so hide it and show the anatomical
+    # meshes (group 1), traversable apartment (2) and furniture (3).
     option = mujoco.MjvOption()
     option.geomgroup[:] = 0
-    option.geomgroup[0] = option.geomgroup[2] = option.geomgroup[3] = 1
+    option.geomgroup[1] = option.geomgroup[2] = option.geomgroup[3] = 1
     option.sitegroup[:] = 0
     option.tendongroup[:] = 1
-    ghost = BoneGhostBodyViz.from_motion_clip(
-        reference,
-        model,
-        bone_meshes=True,
-        skeleton_rgba=(0.20, 0.70, 1.0, 0.28),
+    # A simple capsule/joint reference is more legible than translucent duplicate
+    # anatomy and avoids mesh-ID/render-order ambiguity.
+    ghost = GhostBodyViz.from_motion_clip(
+        reference, model, bone_meshes=False,
+        skeleton_rgba=(0.95, 0.95, 0.95, 0.55),
+        joint_rgba=(1.0, 1.0, 1.0, 0.72),
+        capsule_radius=0.012, joint_radius=0.017,
     )
 
     frames = []
     info = {"next_waypoint": 0, "solved": False, "failed": False}
     min_h = float("inf")
-    # Reference is 100 Hz while one env action advances five 2 ms substeps: one
-    # controller call per reference frame, exactly as in the waypoint tutorial.
     max_steps = min(reference.num_frames + 300, 20000)
     with mujoco.Renderer(model, 360, 640, max_geom=model.ngeom + 1024) as renderer:
         for step in range(max_steps):
@@ -121,10 +103,7 @@ def main() -> None:
                 cam.azimuth = 150
                 cam.elevation = -12
                 renderer.update_scene(base.data, camera=cam, scene_option=option)
-                ghost.draw(
-                    min(controller._frame + 50, reference.num_frames - 1),
-                    renderer.scene,
-                )
+                ghost.draw(min(controller._frame + 50, reference.num_frames - 1), renderer.scene)
                 frames.append(renderer.render().copy())
 
             if info["solved"] or terminated or truncated:
@@ -137,20 +116,13 @@ def main() -> None:
     imageio.mimsave(video, frames, fps=10, macro_block_size=1)
     imageio.imwrite(preview, frames[len(frames) // 2], quality=92)
     result = {
-        "seed": seed,
-        "controller": "terra_tutorial_continuous_reference",
-        "stochastic": stochastic,
-        "reference_frames": reference.num_frames,
-        "reference_duration_s": planner["duration_s"],
-        "executed_steps": step + 1,
-        "waypoints_reached": int(info["next_waypoint"]),
-        "waypoints_total": len(route) - 1,
-        "solved": bool(info["solved"]),
-        "failed": bool(info["failed"]),
-        "min_pelvis_height": min_h,
-        "final_root_xyz": final.tolist(),
-        "video": str(video),
-        "preview": str(preview),
+        "seed": seed, "controller": "terra_tutorial_continuous_reference",
+        "stochastic": stochastic, "reference_frames": reference.num_frames,
+        "reference_duration_s": planner["duration_s"], "executed_steps": step + 1,
+        "waypoints_reached": int(info["next_waypoint"]), "waypoints_total": len(route) - 1,
+        "solved": bool(info["solved"]), "failed": bool(info["failed"]),
+        "min_pelvis_height": min_h, "final_root_xyz": final.tolist(),
+        "video": str(video), "preview": str(preview),
     }
     (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
