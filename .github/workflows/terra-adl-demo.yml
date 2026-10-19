@@ -1,7 +1,9 @@
 name: TERRA ADL demo
 
 on:
-  pull_request:
+  push:
+    branches:
+      - "feat/terra-adl-apartment"
     paths:
       - "myosuite/integrations/musclemimic/adl_apartment.py"
       - "scripts/terra_adl_apartment_demo.py"
@@ -16,7 +18,7 @@ jobs:
       MUJOCO_GL: egl
       PYOPENGL_PLATFORM: egl
       TERRA_ADL_OUT: terra_adl_outputs
-      TERRA_SEED: "3"
+      TERRA_SEED: "0"
       TERRA_STOCHASTIC: "1"
     steps:
       - uses: actions/checkout@v4
