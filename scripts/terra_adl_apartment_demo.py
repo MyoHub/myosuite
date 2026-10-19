@@ -24,10 +24,7 @@ from myosuite.integrations.musclemimic import (
     load_terrain_policy,
     plan_waypoint_reference,
 )
-from myosuite.integrations.musclemimic.adl_apartment import (
-    adl_apartment_scene,
-    adl_route,
-)
+from myosuite.integrations.musclemimic.adl_apartment import adl_apartment_scene, adl_route
 from myosuite.terms.waypoint import WaypointRewardCfg
 from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz
 
@@ -46,13 +43,8 @@ def main() -> None:
     initial_qpos[:2] = route[0]
     direction = route[1] - route[0]
     spawn_yaw = float(np.arctan2(direction[0], -direction[1]))
-    initial_qpos[3:7] = [
-        np.cos(spawn_yaw / 2),
-        0.0,
-        0.0,
-        np.sin(spawn_yaw / 2),
-    ]
-    parameters = GaitParameters(speed=0.32, cycle_s=1.15, clearance=0.13)
+    initial_qpos[3:7] = [np.cos(spawn_yaw / 2), 0.0, 0.0, np.sin(spawn_yaw / 2)]
+    parameters = GaitParameters()  # Same conservative gait recipe as tutorial 4.4.
     reference, planner = plan_waypoint_reference(
         model,
         route,
@@ -67,11 +59,11 @@ def main() -> None:
         if "TERRA_CHECKPOINT" in os.environ
         else download_terrain_checkpoint()
     )
-    policy = load_terrain_policy(checkpoint, model, reference, stochastic=True, seed=0)
+    policy = load_terrain_policy(checkpoint, model, reference, stochastic=False, seed=0)
     task = WaypointTaskCfg(
         site_name="pelvis_mimic",
         waypoints=tuple(map(tuple, route[1:])),
-        arrival_radius=0.22,
+        arrival_radius=0.3,
         min_site_height=0.5,
         reward=WaypointRewardCfg(),
     )
@@ -85,6 +77,7 @@ def main() -> None:
         render_mode="rgb_array",
     )
     env.reset(seed=0)
+    base = env.unwrapped
 
     option = mujoco.MjvOption()
     option.geomgroup[:] = 0
@@ -94,35 +87,34 @@ def main() -> None:
     option.sitegroup[:] = 0
     option.tendongroup[:] = 0
     ghost = BoneGhostBodyViz.from_motion_clip(
-        reference,
-        model,
-        bone_meshes=True,
-        skeleton_rgba=(0.20, 0.70, 1.0, 0.18),
+        reference, model, bone_meshes=True, skeleton_rgba=(0.20, 0.70, 1.0, 0.18)
     )
 
     frames: list[np.ndarray] = []
     render_stride = 25
     info: dict = {"next_waypoint": 0, "solved": False, "failed": False}
+    min_pelvis_height = float("inf")
     with mujoco.Renderer(model, 360, 640, max_geom=model.ngeom + 512) as renderer:
         for step in range(reference.num_frames - 1):
-            _, _, terminated, truncated, info = env.step(
-                policy.action_for(env.unwrapped.data, reference, step)
+            _, _, terminated, truncated, info = base.step(
+                policy.action_for(base.data, reference, step)
             )
+            pelvis_height = float(base.data.site("pelvis_mimic").xpos[2])
+            min_pelvis_height = min(min_pelvis_height, pelvis_height)
             if step % render_stride == 0:
                 camera = mujoco.MjvCamera()
-                camera.lookat[:] = env.unwrapped.data.qpos[:3]
+                camera.lookat[:] = base.data.qpos[:3]
                 camera.lookat[2] += 0.6
                 camera.distance = 5.2
                 camera.azimuth = 135
                 camera.elevation = -18
-                renderer.update_scene(
-                    env.unwrapped.data, camera=camera, scene_option=option
-                )
+                renderer.update_scene(base.data, camera=camera, scene_option=option)
                 ghost.draw(min(step + 40, reference.num_frames - 1), renderer.scene)
                 frames.append(renderer.render().copy())
             if terminated or truncated:
                 break
 
+    final_root = base.data.qpos[:3].copy()
     env.close()
     video = out / "terra_adl_apartment.mp4"
     preview = out / "terra_adl_apartment_preview.jpg"
@@ -136,6 +128,8 @@ def main() -> None:
         "waypoints_total": len(route) - 1,
         "solved": bool(info["solved"]),
         "failed": bool(info["failed"]),
+        "min_pelvis_height": min_pelvis_height,
+        "final_root_xyz": final_root.tolist(),
         "video": str(video),
         "preview": str(preview),
     }
