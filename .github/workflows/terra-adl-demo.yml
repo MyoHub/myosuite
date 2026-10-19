@@ -5,6 +5,7 @@ on:
     paths:
       - "myosuite/integrations/musclemimic/adl_apartment.py"
       - "scripts/terra_adl_apartment_demo.py"
+      - "scripts/terra_adl_reference_render.py"
       - ".github/workflows/terra-adl-demo.yml"
 
 jobs:
@@ -32,6 +33,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[musclemimic]" "imageio[ffmpeg]"
           python -m pip install "mujoco==3.11.0" "numpy==2.3.5" "scipy==1.16.3" "jax==0.10.2" "jaxlib==0.10.2" "orbax-checkpoint==0.12.7"
+      - name: Render complete planned MyoFullBody motion
+        run: python scripts/terra_adl_reference_render.py
       - name: Run TERRA apartment rollout
         run: python scripts/terra_adl_apartment_demo.py
       - name: Upload motion and rendering
