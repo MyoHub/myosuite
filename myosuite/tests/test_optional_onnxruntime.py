@@ -28,17 +28,27 @@ pytestmark = pytest.mark.tier1
 def test_default_runtime_markers_preserve_supported_versions(version: str) -> None:
     config = tomllib.loads((Path(__file__).parents[2] / "pyproject.toml").read_text())
     dependencies = [Requirement(value) for value in config["project"]["dependencies"]]
-    active = [dependency for dependency in dependencies
-              if dependency.name == "onnxruntime"
-              and dependency.marker.evaluate({"python_version": version})]
+    active = [
+        dependency
+        for dependency in dependencies
+        if dependency.name == "onnxruntime"
+        and dependency.marker.evaluate({"python_version": version})
+    ]
     assert len(active) == (0 if version == "3.15" else 1)
     if active:
         assert active[0].specifier.contains("1.20.1" if version < "3.14" else "1.31.0")
-    extra = [Requirement(value) for value in config["project"]["optional-dependencies"]["onnx"]]
-    assert any(dependency.marker.evaluate({"python_version": version}) for dependency in extra)
+    extra = [
+        Requirement(value)
+        for value in config["project"]["optional-dependencies"]["onnx"]
+    ]
+    assert any(
+        dependency.marker.evaluate({"python_version": version}) for dependency in extra
+    )
 
 
-def test_native_cpu_environment_does_not_import_onnxruntime(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_native_cpu_environment_does_not_import_onnxruntime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setitem(sys.modules, "onnxruntime", None)
     env = make_env("myoElbowPose1D6MRandom-v0")
     try:
@@ -51,7 +61,9 @@ def test_native_cpu_environment_does_not_import_onnxruntime(monkeypatch: pytest.
         env.close()
 
 
-def test_missing_runtime_explains_optional_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_runtime_explains_optional_extra(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setitem(sys.modules, "onnxruntime", None)
     with pytest.raises(ImportError, match=r"myosuite\[onnx\]"):
         require_onnxruntime()
