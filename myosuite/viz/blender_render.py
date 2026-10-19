@@ -43,6 +43,12 @@ class RenderConfig:
         output: New output directory.
         checkpoint: SB3 ``.zip`` or RSL-RL ``.pt``/run directory; ``None`` drives
             the env with random actions.
+        motion: ``.npz`` motion clip with ``qpos`` (e.g. MuscleMimic's retargeted
+            clips; columns matched by joint name when it has ``joint_names``),
+            replayed kinematically instead of a policy; muscles stay at rest.
+        motion_activation: With ``motion``, tint the muscles by a visual proxy
+            of activation that rises while a muscle shortens (not a muscle
+            model estimate).
         seed: Episode seed.
         seconds: Clip length; recording also stops when the episode ends.
         fps: Video frame rate.
@@ -54,7 +60,8 @@ class RenderConfig:
             keeps one anatomical red, e.g. for still renders.
         muscle_scale: Multiplier of all muscle radii.
         scene: ``"studio"`` backdrop, or ``"mujoco"`` to keep the task's floor.
-        skin: ``.skn`` body skin, or ``"fullbody"`` for the bundled one; ``None``
+        skin: ``.skn`` body skin, a rigged ``.glb`` skin in the model's rest pose
+            (:mod:`myosuite.viz.skin_glb`), or ``"fullbody"`` for the bundled one; ``None``
             renders no skin.
         skin_style: ``"translucent"`` skin over muscles and bones, or ``"opaque"``
             skin that hides them.
@@ -78,6 +85,8 @@ class RenderConfig:
     env: str
     output: Path
     checkpoint: Path | None = None
+    motion: Path | None = None
+    motion_activation: bool = False
     seed: int = 0
     seconds: float = 3.0
     fps: int = 30
@@ -109,6 +118,11 @@ class RenderConfig:
             raise ValueError(
                 "Seconds, FPS, resolution, samples and scale must be positive."
             )
+        if self.motion is not None:
+            if self.checkpoint is not None:
+                raise ValueError("Pass a checkpoint or a motion clip, not both.")
+            if not Path(self.motion).is_file():
+                raise ValueError(f"Motion clip not found: {self.motion}")
         if self.muscles not in ("volumetric", "paths"):
             raise ValueError(f"Unknown muscles mode: {self.muscles}")
         if self.muscle_color not in ("activation", "uniform"):
@@ -154,7 +168,7 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
     from myosuite import make_env
     from myosuite.utils.checkpoint_utils import load_policy
     from myosuite.viz.muscle_tubes import muscle_actuators
-    from myosuite.viz.skin import SkinPose, load_skn
+    from myosuite.viz.skin import SkinPose, load_skin
 
     class LightTendon(objects.USDTendon):
         def generate_primitive_mesh(self) -> dict[str, Any]:
@@ -191,6 +205,20 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             raise ValueError(
                 "Skin/flex export is outside this minimal renderer's scope."
             )
+        clip = None
+        if config.motion is not None:
+            from myosuite.core.trajectory_io import (
+                expand_motion_clip_to_model,
+                load_motion_clip,
+            )
+
+            clip = expand_motion_clip_to_model(
+                load_motion_clip(Path(config.motion), model.nq, model.nv), model
+            )
+            if not clip.frequency_hz:
+                raise ValueError(f"Motion clip has no frequency: {config.motion}")
+            data.qpos[:] = clip.qpos[0]
+            data.qvel[:] = 0
         if config.checkpoint:
             # Strict: an unusable checkpoint raises instead of rendering random motion.
             policy = load_policy(env, config.checkpoint.absolute(), strict=True)
@@ -200,7 +228,7 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
                 return env.action_space.sample()
 
         skin = (
-            SkinPose.bind(load_skn(config.skin), model, config.skin_inflate)
+            SkinPose.bind(load_skin(config.skin, model), model, config.skin_inflate)
             if config.skin is not None
             else None
         )
@@ -223,11 +251,26 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
         muscle_tendons = model.actuator_trnid[muscles, 0] if len(muscles) else []
         times, positions, rotations, qposes, paths, activations = [], [], [], [], [], []
         skin_frames = []
+        previous = None  # muscle lengths of the last sample (motion activation)
         low, high = np.full(3, np.inf), np.full(3, -np.inf)
         start = float(data.time)
         done = False
         while True:
             mujoco.mj_forward(model, data)
+            if clip is not None and config.motion_activation and len(muscles):
+                # Proxy: activation follows the shortening speed (lengths/s).
+                length = data.ten_length[muscle_tendons].copy()
+                adr = model.actuator_actadr[muscles]
+                if times:
+                    speed = (
+                        (previous - length)
+                        * clip.frequency_hz
+                        / np.maximum(length, 1e-3)
+                    )
+                    data.act[adr] += (np.clip(speed / 1.5, 0, 1) - data.act[adr]) * 0.35
+                else:
+                    data.act[adr] = 0
+                previous = length
             exporter.update_scene(data, scene_option=option)
             times.append(float(data.time) - start)
             positions.append(data.geom_xpos.copy())
@@ -262,6 +305,13 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
                     high = np.maximum(high, geom.pos + radius)
             if done or times[-1] >= config.seconds - 1e-9:
                 break
+            if clip is not None:
+                # Kinematic replay at the clip's own frame rate.
+                frame = len(times)
+                data.time = start + frame / clip.frequency_hz
+                data.qpos[:] = clip.qpos[frame]
+                done = frame == len(clip.qpos) - 1
+                continue
             obs, _, terminated, truncated, _ = env.step(policy(obs))
             done = terminated or truncated
         if len(times) < 2:
@@ -318,7 +368,9 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             "env": config.env,
             "seed": config.seed,
             "checkpoint": str(config.checkpoint) if config.checkpoint else None,
-            "motion_source": "checkpoint" if config.checkpoint else "random",
+            "motion_source": (
+                "motion" if clip else "checkpoint" if config.checkpoint else "random"
+            ),
             "usd": str(usd),
             "dt": dt,
             "duration": times[-1],
@@ -1174,6 +1226,16 @@ def main(argv: list[str] | None = None) -> None:
     source.add_argument(
         "--random", action="store_true", help="Explicit random-action demo."
     )
+    source.add_argument(
+        "--motion",
+        type=Path,
+        help="Motion clip .npz with qpos (e.g. MuscleMimic), replayed kinematically.",
+    )
+    parser.add_argument(
+        "--motion-activation",
+        action="store_true",
+        help="With --motion, tint muscles by a shortening-speed proxy of activation.",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--seconds", type=float, default=3)
     parser.add_argument("--fps", type=int, default=30)
@@ -1203,7 +1265,8 @@ def main(argv: list[str] | None = None) -> None:
         help="Studio backdrop, or keep the task's own floor (e.g. a soccer pitch).",
     )
     parser.add_argument(
-        "--skin", help='Body skin: a MuJoCo .skn file, or "fullbody" (bundled).'
+        "--skin",
+        help='Body skin: a MuJoCo .skn file, a rigged .glb skin, or "fullbody" (bundled).',
     )
     parser.add_argument(
         "--skin-style", choices=["translucent", "opaque"], default="translucent"
@@ -1231,7 +1294,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--export-only", action="store_true")
     args = parser.parse_args(argv)
     checkpoint = args.checkpoint
-    if checkpoint is None and not args.random:
+    if checkpoint is None and not args.random and args.motion is None:
         from myosuite.utils.checkpoint_utils import find_checkpoint  # noqa: PLC0415
 
         checkpoint = find_checkpoint(args.env)
@@ -1245,6 +1308,8 @@ def main(argv: list[str] | None = None) -> None:
             env=args.env,
             output=args.output,
             checkpoint=checkpoint,
+            motion=args.motion,
+            motion_activation=args.motion_activation,
             seed=args.seed,
             seconds=args.seconds,
             fps=args.fps,

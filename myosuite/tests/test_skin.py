@@ -13,7 +13,15 @@ import mujoco
 import numpy as np
 import pytest
 
-from myosuite.viz.skin import FULLBODY_SKIN, SkinPose, ViserSkin, load_skn
+from myosuite.viz.skin import (
+    FULLBODY_SKIN,
+    SkinPose,
+    ViserSkin,
+    load_skin,
+    load_skn,
+    save_skn,
+)
+from myosuite.viz.skin_glb import main, read_skin_glb, write_skin_glb
 
 pytestmark = pytest.mark.tier1
 
@@ -147,3 +155,71 @@ def test_viser_skin_follows_the_scene_frame_and_pose(tmp_path: Path) -> None:
     mujoco.mj_forward(model, data)
     skin.update(data)
     np.testing.assert_allclose(skin.mesh.vertices, pose.vertices(data))
+
+
+def test_save_skn_round_trips(tmp_path: Path) -> None:
+    write_skn(tmp_path / "a.skn", _bones())
+    save_skn(load_skn(tmp_path / "a.skn"), tmp_path / "b.skn")
+    assert (tmp_path / "a.skn").read_bytes() == (tmp_path / "b.skn").read_bytes()
+
+
+def test_glb_skin_round_trip_poses_like_the_skn(tmp_path: Path) -> None:
+    """.skn -> rigged .glb -> skin: same mesh, weights and posed vertices.
+
+    Exact for a skin bound at the rest pose, like the bundled one.
+    """
+    path = tmp_path / "box.skn"
+    bones = _bones()
+    bones["lower"] = ([0, 0, -0.4], [1, 0, 0, 0], *bones["lower"][2:])
+    write_skn(path, bones)
+    model, data = _posed(path, 0.0)
+    skin = load_skn(path)
+    write_skin_glb(skin, model, tmp_path / "box.glb")
+    back = load_skin(tmp_path / "box.glb", model)
+    assert back.face.tolist() == skin.face.tolist()
+    np.testing.assert_allclose(
+        SkinPose.bind(back, model).vertices(data),
+        SkinPose.bind(skin, model).vertices(data),
+        atol=1e-5,
+    )
+    with pytest.raises(ValueError, match="needs the model"):
+        load_skin(tmp_path / "box.glb")
+
+
+def test_bundled_skin_survives_the_glb_round_trip(tmp_path: Path) -> None:
+    from myosuite import make_env
+
+    env = make_env("myoMimicFullbody-v0")
+    model, data = env.unwrapped.model, env.unwrapped.data
+    env.reset(seed=1)
+    skin = load_skn("fullbody")
+    write_skin_glb(skin, model, tmp_path / "fullbody.glb")
+    back = read_skin_glb(tmp_path / "fullbody.glb", model)
+    env.close()
+    assert len(back.vert) == len(skin.vert) and len(back.bone_names) == len(
+        skin.bone_names
+    )
+    np.testing.assert_allclose(
+        SkinPose.bind(back, model).vertices(data),
+        SkinPose.bind(skin, model).vertices(data),
+        atol=1e-4,
+    )
+
+
+def test_command_line_exports_and_imports_the_bundled_skin(tmp_path: Path) -> None:
+    """The .glb is written at the model's rest pose, so compare posed vertices."""
+    from myosuite import make_env
+
+    main(["export", str(tmp_path / "skin.glb")])
+    main(["import", str(tmp_path / "skin.glb"), str(tmp_path / "skin.skn")])
+    back, skin = load_skn(tmp_path / "skin.skn"), load_skn("fullbody")
+    assert back.face.tolist() == skin.face.tolist()
+    env = make_env("myoMimicFullbody-v0")
+    model, data = env.unwrapped.model, env.unwrapped.data
+    env.reset(seed=1)
+    np.testing.assert_allclose(
+        SkinPose.bind(back, model).vertices(data),
+        SkinPose.bind(skin, model).vertices(data),
+        atol=1e-4,
+    )
+    env.close()

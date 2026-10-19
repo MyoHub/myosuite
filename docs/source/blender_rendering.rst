@@ -5,8 +5,12 @@ Render a rollout in Blender
 runs Blender in the background to produce a studio render and editable scene.
 It accepts an explicit SB3 ``.zip`` or RSL-RL ``.pt`` checkpoint. Use ``--random``
 for a demonstration with random actions; incompatible checkpoints fail instead
-of falling back to random actions. Tutorial ``tutorials/3.6_Blender_Rendering.ipynb``
-walks through an export, the muscle volumes and the render options.
+of falling back to random actions. ``--motion CLIP.npz`` replays a motion clip
+with ``qpos`` instead (e.g. a MuscleMimic retargeted clip on ``myoMimicFullbody-v0``,
+columns matched by joint name); its muscles stay at rest, or with
+``--motion-activation`` take a visual proxy of activation that rises while a muscle
+shortens. Tutorial ``tutorials/3.6_Blender_Rendering.ipynb`` walks through an export,
+the muscle volumes and the render options.
 
 From Python, :class:`myosuite.viz.blender_render.RenderConfig` holds the same settings
 and :func:`myosuite.viz.blender_render.render_rollout` runs the export, Blender and the
@@ -172,6 +176,20 @@ The bundled skin is adapted from the MakeHuman/MPFB mesh, rig and weights
 
 The skin is posed with MuJoCo's linear-blend skinning from the body poses of
 each frame (:mod:`myosuite.viz.skin`); the simulated model is not changed.
+
+**Editing the blend weights.** ``python -m myosuite.viz.skin_glb`` writes a skin as a rigged
+``.glb`` in the model's rest pose (one joint per bone, named after its body;
+:mod:`myosuite.viz.skin_glb`). Paint its weights in Blender and read it back:
+
+.. code-block:: bash
+
+   python -m myosuite.viz.skin_glb export skin.glb            # the bundled skin
+   # Blender: File > Import > glTF 2.0; Weight Paint; File > Export > glTF 2.0 (.glb),
+   # with Data > Armature > "Include All Bone Influences" (the skin uses up to 8 per vertex)
+   python -m myosuite.viz.skin_glb import skin_edited.glb skin.skn
+
+``--skin`` also takes the edited ``.glb`` directly. Keep the mesh in the rest pose
+and the joint names unchanged: each joint binds to the body of its name at ``qpos0``.
 
 .. list-table::
    :widths: 33 33 34
