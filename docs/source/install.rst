@@ -11,7 +11,7 @@ From PyPI
    pip install -U myosuite
 
 Python 3.15 CPU environments
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Native CPU environment construction and stepping do not require ONNX Runtime.
 On Python 3.15 it is therefore an optional dependency, installed explicitly with
