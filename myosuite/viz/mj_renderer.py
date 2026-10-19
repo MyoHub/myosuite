@@ -185,6 +185,13 @@ class MJRenderer(Renderer):
                 renderer.flags[mujoco.mjtVisFlag.mjVIS_ACTUATOR] = value
                 renderer.flags[mujoco.mjtVisFlag.mjVIS_ACTIVATION] = value
 
+    def invalidate_offscreen(self) -> None:
+        """Release cached offscreen contexts so runtime asset edits are reloaded."""
+        for renderer in self._renderers.values():
+            renderer.close()
+        self._renderers.clear()
+        self._renderer = None
+
     def close(self) -> None:
         """Cleans up any resources being used by the renderer."""
         if self._closed:
@@ -192,8 +199,5 @@ class MJRenderer(Renderer):
         if self._window is not None:
             self._window.close()
             self._window = None
-        for renderer in self._renderers.values():
-            renderer.close()
-        self._renderers.clear()
-        self._renderer = None
+        self.invalidate_offscreen()
         super().close()
