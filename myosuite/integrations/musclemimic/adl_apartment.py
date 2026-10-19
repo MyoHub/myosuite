@@ -11,8 +11,6 @@ import numpy as np
 
 TERRAIN_GROUP = 2
 FURNITURE_GROUP = 3
-# A 1.4 m split level keeps individual risers at 10 cm. The previous 17 cm
-# residential risers were far outside the 6 cm stair regime of the TERRA tutorial.
 FLOOR_HEIGHT = 1.40
 STAIR_COUNT = 14
 STAIR_RISE = FLOOR_HEIGHT / STAIR_COUNT
@@ -21,20 +19,19 @@ STAIR_X = 3.0
 STAIR_Y0 = 0.65
 
 
-def _material(spec, name, rgb1, rgb2):
-    """Create a small procedural checker material; no external assets required."""
+def _material(spec, name, rgb1, rgb2, texrepeat):
+    """Create a high-contrast tiled procedural material without external assets."""
     spec.add_texture(
-        name=f"{name}_tex",
-        type=mujoco.mjtTexture.mjTEXTURE_2D,
-        builtin=mujoco.mjtBuiltin.mjBUILTIN_CHECKER,
-        rgb1=rgb1,
-        rgb2=rgb2,
-        width=128,
-        height=128,
+        name=f"{name}_tex", type=mujoco.mjtTexture.mjTEXTURE_2D,
+        builtin=mujoco.mjtBuiltin.mjBUILTIN_CHECKER, rgb1=rgb1, rgb2=rgb2,
+        width=256, height=256,
     )
     textures = [""] * int(mujoco.mjtTextureRole.mjNTEXROLE)
     textures[int(mujoco.mjtTextureRole.mjTEXROLE_RGB)] = f"{name}_tex"
-    spec.add_material(name=f"{name}_mat", textures=textures, rgba=[1, 1, 1, 1])
+    spec.add_material(
+        name=f"{name}_mat", textures=textures, rgba=[1, 1, 1, 1],
+        texrepeat=texrepeat, texuniform=True,
+    )
     return f"{name}_mat"
 
 
@@ -58,10 +55,10 @@ def adl_apartment_scene(spec: mujoco.MjSpec) -> None:
             geom.rgba = [0.72, 0.66, 0.56, 1.0]
             geom.friction = [0.8, 0.005, 0.0001]
 
-    wood_mat = _material(spec, "adl_wood", [0.30, 0.14, 0.06], [0.55, 0.31, 0.14])
-    stone_mat = _material(spec, "adl_stone", [0.58, 0.58, 0.55], [0.78, 0.78, 0.74])
-    fabric_mat = _material(spec, "adl_fabric", [0.18, 0.24, 0.28], [0.34, 0.42, 0.46])
-    mattress_mat = _material(spec, "adl_mattress", [0.82, 0.80, 0.73], [0.94, 0.92, 0.86])
+    wood_mat = _material(spec, "adl_wood", [0.22, 0.08, 0.025], [0.68, 0.38, 0.12], [5, 2])
+    stone_mat = _material(spec, "adl_stone", [0.38, 0.40, 0.42], [0.84, 0.84, 0.80], [4, 4])
+    fabric_mat = _material(spec, "adl_fabric", [0.10, 0.18, 0.24], [0.38, 0.55, 0.62], [8, 8])
+    mattress_mat = _material(spec, "adl_mattress", [0.68, 0.67, 0.61], [0.98, 0.96, 0.88], [10, 10])
 
     wall = (0.84, 0.82, 0.78, 1.0)
     white = (1.0, 1.0, 1.0, 1.0)
@@ -100,8 +97,6 @@ def adl_route() -> np.ndarray:
     """Clear aisle from entry through kitchen, stairs, bedroom and back."""
     stair_end = STAIR_Y0 + STAIR_COUNT * STAIR_RUN
     stair_mid = STAIR_Y0 + 0.5 * STAIR_COUNT * STAIR_RUN
-    # Keep direction changes close to the <=46 degree turns used by the registered
-    # waypoint task instead of asking TERRA for a single 90-degree corner.
     return np.array([
         [0.0, 5.0], [0.0, 3.4], [0.0, 1.0],
         [-0.7, 0.7], [-1.4, 0.0], [-2.2, -0.35], [-3.0, -0.35],
