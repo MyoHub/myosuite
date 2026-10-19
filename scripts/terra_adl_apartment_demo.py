@@ -66,8 +66,8 @@ def main() -> None:
     task = WaypointTaskCfg(
         site_name="pelvis_mimic",
         waypoints=tuple(map(tuple, route[1:])),
-        arrival_radius=0.45,
-        min_site_height=0.4,
+        arrival_radius=0.55,
+        min_site_height=0.30,
         reward=WaypointRewardCfg(),
     )
     env = make_env(
@@ -88,16 +88,16 @@ def main() -> None:
     option.geomgroup[2] = 1
     option.geomgroup[3] = 1
     option.sitegroup[:] = 0
-    option.tendongroup[:] = 0
+    option.tendongroup[:] = 1
     ghost = BoneGhostBodyViz.from_motion_clip(
-        reference, model, bone_meshes=True, skeleton_rgba=(0.20, 0.70, 1.0, 0.18)
+        reference, model, bone_meshes=True, skeleton_rgba=(0.20, 0.70, 1.0, 0.32)
     )
 
     frames: list[np.ndarray] = []
-    render_stride = 50
+    render_stride = 10
     info: dict = {"next_waypoint": 0, "solved": False, "failed": False}
     min_pelvis_height = float("inf")
-    with mujoco.Renderer(model, 360, 640, max_geom=model.ngeom + 512) as renderer:
+    with mujoco.Renderer(model, 540, 960, max_geom=model.ngeom + 512) as renderer:
         for step in range(reference.num_frames - 1):
             _, _, terminated, truncated, info = base.step(
                 policy.action_for(base.data, reference, step)
@@ -107,10 +107,10 @@ def main() -> None:
             if step % render_stride == 0:
                 camera = mujoco.MjvCamera()
                 camera.lookat[:] = base.data.qpos[:3]
-                camera.lookat[2] += 0.6
-                camera.distance = 5.2
-                camera.azimuth = 135
-                camera.elevation = -18
+                camera.lookat[2] += 0.35
+                camera.distance = 3.2
+                camera.azimuth = 150
+                camera.elevation = -12
                 renderer.update_scene(base.data, camera=camera, scene_option=option)
                 ghost.draw(min(step + 80, reference.num_frames - 1), renderer.scene)
                 frames.append(renderer.render().copy())
@@ -121,8 +121,8 @@ def main() -> None:
     env.close()
     video = out / "terra_adl_apartment.mp4"
     preview = out / "terra_adl_apartment_preview.jpg"
-    imageio.mimsave(video, frames, fps=2, macro_block_size=1)
-    imageio.imwrite(preview, frames[len(frames) // 2], quality=90)
+    imageio.mimsave(video, frames, fps=10, macro_block_size=1)
+    imageio.imwrite(preview, frames[len(frames) // 2], quality=92)
     result = {
         "seed": seed,
         "stochastic": stochastic,
