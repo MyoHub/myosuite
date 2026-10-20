@@ -208,6 +208,22 @@ class TestCumulativeFatigue:
         assert np.all(f.MF == 0.0)
         assert np.all(f.MR == 1.0)
 
+    @pytest.mark.parametrize("read_only", [False, True])
+    def test_fixed_reset_vector_is_not_mutated(self, read_only: bool) -> None:
+        """Stepping one fatigue model must not change its reusable reset input."""
+        f = _make_fatigue_model(3)
+        initial = np.array([0.2, 0.4, 0.6])
+        expected = initial.copy()
+        if read_only:
+            initial.setflags(write=False)
+        f.reset(fatigue_reset_vec=initial)
+        for _ in range(20):
+            f.step(np.full(3, 0.8), dt=0.02)
+        assert not np.array_equal(f.MF, expected), "the model must update its state"
+        np.testing.assert_array_equal(initial, expected)
+        f.reset(fatigue_reset_vec=initial)
+        np.testing.assert_array_equal(f.MF, expected)
+
     def test_custom_rates(self) -> None:
         f = _make_fatigue_model(2)
         f.set_FatigueCoefficient(0.1)

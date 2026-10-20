@@ -3,6 +3,11 @@
 Every mjlab-registered env id with a default `scripts/train_mjlab.py` run (Sarc/Fati/Reaf
 muscle-condition variants excluded here; they use the same checkpoint as their base env).
 
+CPU fatigue experiments using a fixed NumPy `fatigue_reset_vec` now retain that initial state across
+episodes. Previously, stepping mutated the reset vector, so repeated episodes could start with different
+fatigue despite the same seed. Re-evaluate results from that configuration; the default resets and the
+base-env checkpoints listed here are unaffected.
+
 **Deterministic success** = success rate of the mean-action policy, measured with
 `scripts/eval_mjlab_policy.py --backend mjlab` (the GPU backend; the same checkpoints are also
 loadable on the CPU backend, but the column was not measured there).
