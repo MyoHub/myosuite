@@ -23,13 +23,13 @@ The mapping to neuroscience concepts is:
    * - Neuroscience term
      - MyoSuite / MuJoCo equivalent
      - How to access
-   * - Neural drive (motor command)
+   * - Muscle excitation (proportional to neural drive)
      - ``data.ctrl`` (muscle excitation, 0–1)
      - ``env.unwrapped.data.ctrl``
    * - Muscle activation
      - ``data.act`` (filtered excitation, 0–1)
      - ``env.unwrapped.data.act``
-   * - Muscle force (EMG proxy)
+   * - Muscle force
      - ``data.actuator_force`` (N; negative for muscle tension)
      - ``env.unwrapped.data.actuator_force``
    * - Proprioception (joint angle)
@@ -69,41 +69,47 @@ The following example records signals analogous to muscle spindle (Ia, II)
 and Golgi tendon organ (Ib) afferents during a reaching movement:
 
 .. code-block:: python
+    from myosuite import make_env
+    import numpy as np
 
-   from myosuite import make_env
-   import numpy as np
+    # Create environment without automatic resets
+    env = make_env('myoElbowPose1D6MRandom-v0', max_episode_steps=-1)
+    obs, info = env.reset(seed=0)
 
-   env = make_env('myoElbowPose1D6MRandom-v0')
-   obs, info = env.reset(seed=0)
+    ia_afferent  = []   # velocity-sensitive (muscle spindle primary)
+    ii_afferent  = []   # length-sensitive  (muscle spindle secondary)
+    ib_afferent  = []   # force-sensitive   (Golgi tendon organ)
 
-   ia_afferent  = []   # velocity-sensitive (muscle spindle primary)
-   ii_afferent  = []   # length-sensitive  (muscle spindle secondary)
-   ib_afferent  = []   # force-sensitive   (Golgi tendon organ)
 
-   for _ in range(500):
-       obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
-       d = env.unwrapped.data
+    # We'll apply a sinusoidal flexion-extension motion pattern
+    movement_frequency = 0.5  # Hz
+    excitation_scale = 2
 
-       # Ia afferent: proportional to tendon velocity (sign preserved)
-       ia_afferent.append(d.ten_velocity.copy())
+    # Calling env.step advances the physics sim multiple times, ctrl_dt is the amount of total time that passes
+    env_timestep = env.unwrapped._ctrl_dt
+    for i in range(500):
+        excitation = np.sin(2*np.pi*movement_frequency*i*env_timestep) * env.unwrapped.data.ten_J * excitation_scale
+        obs, reward, terminated, truncated, info = env.step(excitation)
+        d = env.unwrapped.data
 
-       # II afferent: proportional to tendon length (subtract a rest length for the deviation)
-       ii_afferent.append(d.ten_length.copy())
+        # Ia afferent: proportional to tendon velocity (sign preserved)
+        ia_afferent.append(d.ten_velocity.copy())
 
-       # Ib afferent: proportional to actuator (muscle) force
-       ib_afferent.append(np.abs(d.actuator_force.copy()))
+        # II afferent: proportional to tendon length (subtract a rest length for the deviation)
+        ii_afferent.append(d.ten_length.copy())
 
-       if terminated or truncated:
-           obs, info = env.reset()
+        # Ib afferent: proportional to actuator (muscle) force
+        ib_afferent.append(np.abs(d.actuator_force.copy()))
 
-   ia  = np.array(ia_afferent)
-   ii  = np.array(ii_afferent)
-   ib  = np.array(ib_afferent)
-   print(f"Ia range:  {ia.min():.3f} – {ia.max():.3f} (tendon velocity units)")
-   print(f"II range:  {ii.min():.3f} – {ii.max():.3f} (tendon length units)")
-   print(f"Ib range:  {ib.min():.3f} – {ib.max():.3f} N")
+    ia  = np.array(ia_afferent)
+    ii  = np.array(ii_afferent)
+    ib  = np.array(ib_afferent)
 
-   env.close()
+    print(f"Ia range:  {ia.min():.3f} – {ia.max():.3f} (tendon velocity units)")
+    print(f"II range:  {ii.min():.3f} – {ii.max():.3f} (tendon length units)")
+    print(f"Ib range:  {ib.min():.3f} – {ib.max():.3f} N")
+
+    env.close()
 
 
 Implementing a Stretch-Reflex Controller
@@ -119,14 +125,15 @@ This example implements a Ia-driven stretch reflex for the elbow:
    import numpy as np
 
    # add render_mode='human' to watch it (needs a display)
-   env = make_env('myoElbowPose1D6MRandom-v0')
+   env = make_env('myoElbowPose1D6MRandom-v0', normalize_act=False)
    obs, info = env.reset(seed=0)
    model = env.unwrapped.model
    data  = env.unwrapped.data
 
    # Map joint index → actuator indices that flex / extend it
    # (inspect model.actuator_trnid to build this automatically)
-   GAIN = 0.5   # reflex gain
+   GAIN = 0.2   # reflex gain
+   scaled_gains = GAIN*np.where(data.ten_J>0, 1., -1.)  # sign based on flexor or extensor
 
    for step in range(1000):
        # Ia-like signal: joint velocity (positive = extension)
@@ -135,17 +142,9 @@ This example implements a Ia-driven stretch reflex for the elbow:
        # Simple monosynaptic stretch reflex:
        # Flexors activate when joint extends (negative velocity → positive cmd)
        # Extensors activate when joint flexes (positive velocity → positive cmd)
-       n_act = model.nu
-       ctrl = np.zeros(n_act)
-       for i in range(n_act):
-           # Crude mapping: first half = flexors, second half = extensors
-           half = n_act // 2
-           if i < half:
-               ctrl[i] = np.clip(-GAIN * joint_vel[0], 0, 1)
-           else:
-               ctrl[i] = np.clip( GAIN * joint_vel[0], 0, 1)
+       ctrl = np.clip(scaled_gains * joint_vel, 0, 1)
 
-       obs, reward, terminated, truncated, info = env.step(ctrl * 2 - 1)  # map [0,1]→[-1,1]
+       obs, reward, terminated, truncated, info = env.step(ctrl)
        if terminated or truncated:
            obs, info = env.reset()
 
