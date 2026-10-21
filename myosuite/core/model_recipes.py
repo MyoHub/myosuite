@@ -59,7 +59,12 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from myosuite.core.model_builder import ModelBuilder, build_from_recipe, model_recipe
+from myosuite.core.model_builder import (
+    ModelBuilder,
+    build_from_recipe,
+    model_recipe,
+    register_spec_recipe,
+)
 
 # Root of the myosuite package — used to locate asset files.
 _ASSETS = Path(__file__).parent.parent / "envs" / "myo" / "assets"
@@ -1793,3 +1798,9 @@ for _mm_name in _MUSCLEMIMIC_NAMES:
             )
 
     _make_mm_recipe(_name)
+
+# The full-body spec compiles to the same model as _musclemimic_build (its timestep is
+# set on the spec), so build_from_recipe and the mjlab twins can use it directly.
+register_spec_recipe(
+    "musclemimic_fullbody", lambda: _musclemimic_build("musclemimic_fullbody")[1]
+)

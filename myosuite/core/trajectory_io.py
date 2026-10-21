@@ -40,6 +40,12 @@ class MotionClip:
     frequency_hz: float | None = None
     source_path: Path | None = None
     weights: np.ndarray | None = None
+    site_xmat: np.ndarray | None = None
+    site_velocity: np.ndarray | None = None
+
+    @property
+    def num_frames(self) -> int:
+        return int(self.qpos.shape[0])
 
     def __post_init__(self) -> None:
         if self.weights is not None:
@@ -301,6 +307,8 @@ def expand_motion_clip_to_model(
         frequency_hz=clip.frequency_hz,
         source_path=clip.source_path,
         weights=clip.weights,
+        site_xmat=clip.site_xmat,
+        site_velocity=clip.site_velocity,
     )
 
 
@@ -441,8 +449,76 @@ def check_clip_rate(
 
 __all__ = [
     "MotionClip",
+    "motion_clip_from_states",
     "check_clip_rate",
     "expand_motion_clip_to_model",
     "load_motion_clip",
     "resolve_motion_path",
 ]
+
+
+def motion_clip_from_states(
+    model: Any,
+    qpos: np.ndarray,
+    dt: float,
+    sites: tuple[str, ...],
+    *,
+    qvel: np.ndarray | None = None,
+) -> MotionClip:
+    """Build site kinematics; supplied qvel preserves the reference states exactly."""
+    import mujoco  # noqa: PLC0415
+
+    if not np.isfinite(dt) or dt <= 0:
+        raise ValueError("dt must be finite and positive")
+    if (
+        np.asarray(qpos).ndim != 2
+        or np.asarray(qpos).shape[1] != model.nq
+        or len(qpos) == 0
+        or not np.isfinite(qpos).all()
+    ):
+        raise ValueError("qpos must contain finite model states")
+    supplied_qvel = qvel is not None
+    if qvel is not None and (
+        np.asarray(qvel).shape != (len(qpos), model.nv) or not np.isfinite(qvel).all()
+    ):
+        raise ValueError("qvel must contain finite velocities matching qpos")
+    original_qvel = qvel
+    qpos = np.asarray(qpos, dtype=float if supplied_qvel else np.float32).astype(float)
+    step = np.zeros((max(len(qpos) - 1, 0), model.nv))
+    for t in range(len(qpos) - 1):
+        mujoco.mj_differentiatePos(model, step[t], dt, qpos[t], qpos[t + 1])
+    qvel = np.zeros((len(qpos), model.nv))
+    if len(qpos) > 1:
+        qvel[0], qvel[-1] = step[0], step[-1]
+        qvel[1:-1] = 0.5 * (step[:-1] + step[1:])
+    qvel = (
+        np.asarray(original_qvel, dtype=float).copy()
+        if supplied_qvel
+        else qvel.astype(np.float32).astype(float)
+    )
+    ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, n) for n in sites]
+    if min(ids, default=0) < 0:
+        raise ValueError("Reference site is missing from model")
+    data = mujoco.MjData(model)
+    xpos = np.zeros((len(qpos), len(sites), 3))
+    xmat = np.zeros((len(qpos), len(sites), 3, 3))
+    velocity = np.zeros((len(qpos), len(sites), 6))
+    for t, q in enumerate(qpos):
+        data.qpos[:] = q
+        data.qvel[:] = qvel[t]
+        mujoco.mj_forward(model, data)
+        xpos[t] = data.site_xpos[ids]
+        xmat[t] = data.site_xmat[ids[: len(sites)]].reshape(-1, 3, 3)
+        for j, sid in enumerate(ids[: len(sites)]):
+            mujoco.mj_objectVelocity(
+                model, data, mujoco.mjtObj.mjOBJ_SITE, sid, velocity[t, j], 0
+            )
+    return MotionClip(
+        qpos=qpos,
+        qvel=qvel,
+        site_xpos=xpos[:, : len(sites)],
+        site_names=list(sites),
+        frequency_hz=1 / dt,
+        site_xmat=xmat,
+        site_velocity=velocity,
+    )

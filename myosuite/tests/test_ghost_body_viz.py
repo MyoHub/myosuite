@@ -366,3 +366,89 @@ def test_make_ghost_viz_fn(clip_npz_path: Path):
     scn = _fake_user_scn()
     fn(0, None, None, scn)
     assert scn.ngeom >= 0
+
+
+def test_motion_clip_kinematics_preserve_live_state() -> None:
+    from myosuite.core.trajectory_io import MotionClip
+
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><body><joint type="slide" axis="1 0 0"/>'
+        '<geom size=".1"/><body pos="0 0 1"><geom size=".1"/></body>'
+        "</body></worldbody></mujoco>"
+    )
+    live = mujoco.MjData(model)
+    live.qpos[:] = 7
+    mujoco.mj_forward(model, live)
+    before = live.xpos.copy()
+    clip = MotionClip(
+        qvel=None, site_xpos=None, site_names=None, qpos=np.array([[0.0], [2.0]])
+    )
+    ghost = GhostBodyViz.from_motion_clip(clip, model)
+    np.testing.assert_allclose(ghost.xpos[:, 2], [[0, 0, 1], [2, 0, 1]])
+    np.testing.assert_array_equal(live.xpos, before)
+    np.testing.assert_array_equal(live.qpos, [7])
+    with pytest.raises(ValueError, match="full-model qpos"):
+        GhostBodyViz.from_motion_clip(
+            MotionClip(
+                qvel=None, site_xpos=None, site_names=None, qpos=np.zeros((1, 2))
+            ),
+            model,
+        )
+
+
+def test_draw_capsule_reaches_both_joints() -> None:
+    ghost = GhostBodyViz(
+        xpos=np.array([[[0, 0, 0], [0, 0, 0], [0, 0, 1]]], dtype=float),
+        xquat=np.tile([1.0, 0, 0, 0], (1, 3, 1)),
+        parent_ids=np.array([0, 0, 1]),
+        visible_body_ids=np.array([2]),
+    )
+    scene = _fake_user_scn()
+    ghost.draw(0, scene)
+    capsule = scene.geoms[0]
+    assert capsule.type == mujoco.mjtGeom.mjGEOM_CAPSULE
+    np.testing.assert_allclose(capsule.size, [0.018, 0.018, 0.5])
+    np.testing.assert_allclose(capsule.pos, [0, 0, 0.5])
+
+
+def test_bone_meshes_follow_reference_with_local_geom_offset() -> None:
+    from myosuite.core.trajectory_io import MotionClip
+
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><asset><mesh name="unused" vertex="0 0 0 .1 0 0 0 .1 0 0 0 .1"/>'
+        '<mesh name="bone" vertex="0 0 0 .2 0 0 0 .2 0 0 0 .2"/></asset>'
+        '<worldbody><body><joint type="slide" axis="1 0 0"/>'
+        '<geom type="mesh" mesh="bone" pos="0 0 .5"/></body></worldbody></mujoco>'
+    )
+    ghost = GhostBodyViz.from_motion_clip(
+        MotionClip(
+            qpos=np.array([[0.0], [2.0]]), qvel=None, site_xpos=None, site_names=None
+        ),
+        model,
+        bone_meshes=True,
+    )
+    scene = _fake_user_scn()
+    ghost.draw(1, scene)
+    assert scene.ngeom == 1
+    assert scene.geoms[0].type == mujoco.mjtGeom.mjGEOM_MESH
+    expected = mujoco.MjData(model)
+    expected.qpos[:] = 2
+    mujoco.mj_forward(model, expected)
+    native_scene = mujoco.MjvScene(model, maxgeom=10)
+    mujoco.mjv_updateScene(
+        model,
+        expected,
+        mujoco.MjvOption(),
+        None,
+        mujoco.MjvCamera(),
+        mujoco.mjtCatBit.mjCAT_ALL,
+        native_scene,
+    )
+    assert model.geom_dataid[0] == 1
+    assert scene.geoms[0].dataid == native_scene.geoms[0].dataid
+    np.testing.assert_allclose(scene.geoms[0].pos, expected.geom_xpos[0])
+    np.testing.assert_allclose(
+        scene.geoms[0].mat, expected.geom_xmat[0].reshape(3, 3), atol=1e-7
+    )
+    ghost.draw(0, scene)
+    assert scene.ngeom == 1
