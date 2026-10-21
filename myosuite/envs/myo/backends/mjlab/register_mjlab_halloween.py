@@ -111,6 +111,8 @@ _HIT_MARGIN = 0.11      # body link origins sit inside the body: a hit is the pu
 _FALLEN_Z = 0.6         # pelvis height below which the character has fallen
 _FALLEN_HEAD_Z = 0.9    # head height below which the character has fallen (folding over at the hips)
 _THROW_EVERY_S = (1.5, 3.0)
+_THROW_EASY = 1.6           # flight-time factor of the first throws of a training run (slower, easier to dodge)
+_THROW_RAMP_STEPS = 48_000  # env steps (2000 PPO iterations of 24) over which the factor decays to 1
 _EPISODE_S = 6.0
 
 
@@ -229,7 +231,8 @@ def _event_throw(throw_speed: float = 1.0):
         target[:, 2] += rnd(0.25, 0.55)
         start = target.clone()
         start[:, 1] += sides * 1.6
-        flight = rnd(0.55, 0.75) / float(throw_speed)
+        easy = 1.0 + (_THROW_EASY - 1.0) * max(0.0, 1.0 - env.common_step_counter / _THROW_RAMP_STEPS)
+        flight = rnd(0.55, 0.75) * easy / float(throw_speed)
         state = torch.zeros(n, 13, device=env.device)
         state[:, :3] = start
         state[:, 3] = 1.0
