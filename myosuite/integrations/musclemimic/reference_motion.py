@@ -266,6 +266,7 @@ def plan_waypoint_reference(
     heading_rad: float | None = None,
     planted_holds: bool = False,
     squat_windows_s: tuple[tuple[float, float, float], ...] = (),
+    footstep_windows_s: tuple[tuple[int, float, float, float], ...] = (),
 ) -> tuple[MotionClip, dict]:
     """Generate a 100 Hz terrain-aware walking/jumping reference offline.
 
@@ -281,6 +282,7 @@ def plan_waypoint_reference(
         heading_rad: Fixed facing direction, or follow the route when None.
         planted_holds: Keep feet planted when their consecutive targets coincide.
         squat_windows_s: Start, end and pelvis lowering depth for each squat.
+        footstep_windows_s: Side (0 right, 1 left), swing start/end, target time.
 
     Returns:
         Existing MotionClip and planner diagnostics.
@@ -460,6 +462,24 @@ def plan_waypoint_reference(
 
     targets = np.zeros((len(t), 2, 3))
     foot_yaw = np.zeros((len(t), 2))
+    previous_end = {0: 0.0, 1: 0.0}
+    for side, begin, end, target_time in footstep_windows_s:
+        if (
+            side not in (0, 1)
+            or not np.isfinite((begin, end, target_time)).all()
+            or begin < 0
+            or end <= begin
+            or target_time < 0
+            or max(end, target_time) > t[-1]
+        ):
+            raise ValueError(
+                "Footstep windows need a valid side, swing and target time"
+            )
+        if begin < previous_end[side]:
+            raise ValueError(
+                "Footstep windows must be ordered and not overlap per foot"
+            )
+        previous_end[side] = end
     for i, time in enumerate(t):
         for side in range(2):
             phase_time = max(0.0, time - 0.8) + side * parameters.cycle_s / 2
@@ -479,6 +499,21 @@ def plan_waypoint_reference(
                 if not planted_holds or np.linalg.norm(b - a) > 1e-5:
                     p[2] += parameters.clearance * np.sin(np.pi * f)
                 yaw = ya + smooth * (yb - ya)
+            if footstep_windows_s:
+                p, yaw = foot_at(0.0, side)
+                for foot_side, begin, end, target_time in footstep_windows_s:
+                    if foot_side != side or time < begin:
+                        continue
+                    b, yb = foot_at(target_time, side)
+                    if time >= end:
+                        p, yaw = b, yb
+                    else:
+                        f = (time - begin) / (end - begin)
+                        smooth = f * f * (3 - 2 * f)
+                        p = p + smooth * (b - p)
+                        p[2] += parameters.clearance * np.sin(np.pi * f)
+                        yaw += smooth * (yb - yaw)
+                        break
             for jump_index, (begin, end) in enumerate(jumps):
                 if begin - 2.0 <= time < begin:
                     p, yaw = foot_at(begin - 1.0, side)
