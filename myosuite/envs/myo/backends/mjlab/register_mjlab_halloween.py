@@ -109,6 +109,7 @@ def _pumpkin_init_state(model: mujoco.MjModel) -> EntityCfg.InitialStateCfg:
 _PUMPKIN_RADIUS = 0.09
 _HIT_MARGIN = 0.11      # body link origins sit inside the body: a hit is the pumpkin this close to one
 _FALLEN_Z = 0.6         # pelvis height below which the character has fallen
+_FALLEN_HEAD_Z = 0.9    # head height below which the character has fallen (folding over at the hips)
 _THROW_EVERY_S = (1.5, 3.0)
 _EPISODE_S = 6.0
 
@@ -163,10 +164,23 @@ def _reward_lateral_dodge(robot: str, pumpkin: str):
     return _fn
 
 
+def _head_pos(env: Any, entity: str) -> torch.Tensor:
+    ent = env.scene[entity]
+    return ent.data.body_link_pos_w[:, ent.find_bodies("^head$")[0][0]]
+
+
 def _reward_upright(entity: str):
+    """Head height (0 at 1.0 m, 1 from 1.5 m up): a high pelvis alone does not count."""
     def _fn(env: Any) -> torch.Tensor:
-        z = env.scene[entity].data.root_link_pos_w[:, 2]
-        return (z - 0.5).clamp(min=0.0, max=0.6)
+        return ((_head_pos(env, entity)[:, 2] - 1.0) / 0.5).clamp(min=0.0, max=1.0)
+    return _fn
+
+
+def _reward_posture(entity: str):
+    """Head above the pelvis: cosine between the pelvis-to-head direction and world up."""
+    def _fn(env: Any) -> torch.Tensor:
+        v = _head_pos(env, entity) - env.scene[entity].data.root_link_pos_w
+        return (v[:, 2] / v.norm(dim=-1).clamp(min=1e-6)).clamp(min=0.0)
     return _fn
 
 
@@ -178,7 +192,7 @@ def _reward_alive(_entity: str):
 
 def _term_fallen(entity: str):
     def _fn(env: Any) -> torch.Tensor:
-        return env.scene[entity].data.root_link_pos_w[:, 2] < _FALLEN_Z
+        return (env.scene[entity].data.root_link_pos_w[:, 2] < _FALLEN_Z) | (_head_pos(env, entity)[:, 2] < _FALLEN_HEAD_Z)
     return _fn
 
 
@@ -266,6 +280,7 @@ def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0) -> Ma
     rewards = {
         "alive": RewardTermCfg(func=_reward_alive(_ROBOT), weight=1.0),
         "upright": RewardTermCfg(func=_reward_upright(_ROBOT), weight=2.0),
+        "posture": RewardTermCfg(func=_reward_posture(_ROBOT), weight=1.0),
         "dodge": RewardTermCfg(func=_reward_lateral_dodge(_ROBOT, _PUMPKIN), weight=3.0),
     }
     terminations = {
@@ -307,7 +322,7 @@ def _halloween_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             hidden_dims=(512, 256, 128),
             activation="elu",
             obs_normalization=True,
-            distribution_cfg={"class_name": "GaussianDistribution", "init_std": 0.5, "std_type": "scalar"},
+            distribution_cfg={"class_name": "GaussianDistribution", "init_std": 0.2, "std_type": "scalar"},
         ),
         critic=RslRlModelCfg(hidden_dims=(512, 256, 128), activation="elu", obs_normalization=True),
         algorithm=RslRlPpoAlgorithmCfg(
