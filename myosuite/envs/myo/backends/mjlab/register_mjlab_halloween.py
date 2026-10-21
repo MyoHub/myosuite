@@ -35,7 +35,9 @@ from mjlab.viewer.viewer_config import ViewerConfig
 from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
     _init_state_from_model as _mimic_init_state_from_model,
 )
-from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import MyoMuscleActivationActionCfg
+from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
+    MyoMuscleActivationActionCfg,
+)
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM, sync_forward
 from myosuite.envs.myo.tasks.halloween.halloween_model import (
     compile_halloween_model,
@@ -86,14 +88,20 @@ def _build_pumpkin_spec() -> mujoco.MjSpec:
     return spec
 
 
-def _muscle_and_tendon_names(model: mujoco.MjModel) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def _muscle_and_tendon_names(
+    model: mujoco.MjModel,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     muscles: list[str] = []
     tendons: list[str] = []
     for i in range(model.nu):
         name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or f"act_{i}"
         muscles.append(name)
         tid = int(model.actuator_trnid[i, 0])
-        tname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_TENDON, tid) if tid >= 0 else None
+        tname = (
+            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_TENDON, tid)
+            if tid >= 0
+            else None
+        )
         tendons.append(tname or name)
     return tuple(muscles), tuple(tendons)
 
@@ -107,64 +115,91 @@ def _pumpkin_init_state(model: mujoco.MjModel) -> EntityCfg.InitialStateCfg:
 
 
 _PUMPKIN_RADIUS = 0.09
-_HIT_MARGIN = 0.11      # body link origins sit inside the body: a hit is the pumpkin this close to one
-_FALLEN_Z = 0.6         # pelvis height below which the character has fallen
-_FALLEN_HEAD_Z = 0.9    # head height below which the character has fallen (folding over at the hips)
+_HIT_MARGIN = 0.11  # body link origins sit inside the body: a hit is the pumpkin this close to one
+_FALLEN_Z = 0.6  # pelvis height below which the character has fallen
+_FALLEN_HEAD_Z = (
+    0.9  # head height below which the character has fallen (folding over at the hips)
+)
 _THROW_EVERY_S = (1.5, 3.0)
-_THROW_EASY = 1.6           # flight-time factor of the first throws of a training run (slower, easier to dodge)
-_THROW_RAMP_STEPS = 48_000  # env steps (2000 PPO iterations of 24) over which the factor decays to 1
+_THROW_EASY = 1.6  # flight-time factor of the first throws of a training run (slower, easier to dodge)
+_THROW_RAMP_STEPS = (
+    48_000  # env steps (2000 PPO iterations of 24) over which the factor decays to 1
+)
 _EPISODE_S = 6.0
 
 
 def _obs_root(entity: str):
     """Pelvis height, orientation and body-frame velocities."""
+
     def _fn(env: Any) -> torch.Tensor:
         d = env.scene[entity].data
-        return torch.cat([d.root_link_pos_w[:, 2:3], d.root_link_quat_w, d.root_link_lin_vel_b, d.root_link_ang_vel_b], dim=-1)
+        return torch.cat(
+            [
+                d.root_link_pos_w[:, 2:3],
+                d.root_link_quat_w,
+                d.root_link_lin_vel_b,
+                d.root_link_ang_vel_b,
+            ],
+            dim=-1,
+        )
+
     return _fn
 
 
 def _obs_joint_pos(entity: str):
     def _fn(env: Any) -> torch.Tensor:
         return env.scene[entity].data.joint_pos
+
     return _fn
 
 
 def _obs_joint_vel(entity: str):
     def _fn(env: Any) -> torch.Tensor:
         return env.scene[entity].data.joint_vel
+
     return _fn
 
 
 def _obs_act(entity: str):
     def _fn(env: Any) -> torch.Tensor:
-        return env.scene[entity].data.data.act   # no stable API equivalent (accepted exception)
+        return env.scene[
+            entity
+        ].data.data.act  # no stable API equivalent (accepted exception)
+
     return _fn
 
 
 def _obs_pumpkin_rel(robot: str, pumpkin: str):
     """Pumpkin position relative to the pelvis and its velocity (world frame)."""
+
     def _fn(env: Any) -> torch.Tensor:
         root = env.scene[robot].data.root_link_pos_w
         p = env.scene[pumpkin].data
         return torch.cat([p.root_link_pos_w - root, p.root_link_lin_vel_w], dim=-1)
+
     return _fn
 
 
 def _pumpkin_clearance(env: Any) -> torch.Tensor:
     """Distance from the pumpkin's centre to the nearest body link origin of the character."""
-    links = env.scene[_ROBOT].data.body_link_pos_w                      # (envs, bodies, 3)
+    links = env.scene[_ROBOT].data.body_link_pos_w  # (envs, bodies, 3)
     pumpkin = env.scene[_PUMPKIN].data.root_link_pos_w[:, None, :]
     return (links - pumpkin).norm(dim=-1).min(dim=-1).values
 
 
 def _reward_dodge(robot: str, pumpkin: str):
     """Clearance from the body while the pumpkin is close (1 when it is far or at the hit distance + 0.3 m)."""
+
     def _fn(env: Any) -> torch.Tensor:
         p = env.scene[pumpkin].data.root_link_pos_w
-        near = (p[:, :2] - env.scene[robot].data.root_link_pos_w[:, :2]).norm(dim=-1) < 1.0
-        score = ((_pumpkin_clearance(env) - _PUMPKIN_RADIUS - _HIT_MARGIN) / 0.3).clamp(min=0.0, max=1.0)
+        near = (p[:, :2] - env.scene[robot].data.root_link_pos_w[:, :2]).norm(
+            dim=-1
+        ) < 1.0
+        score = ((_pumpkin_clearance(env) - _PUMPKIN_RADIUS - _HIT_MARGIN) / 0.3).clamp(
+            min=0.0, max=1.0
+        )
         return torch.where(near, score, torch.ones_like(score))
+
     return _fn
 
 
@@ -175,28 +210,36 @@ def _head_pos(env: Any, entity: str) -> torch.Tensor:
 
 def _reward_upright(entity: str):
     """Head height (0 at 1.0 m, 1 from 1.5 m up): a high pelvis alone does not count."""
+
     def _fn(env: Any) -> torch.Tensor:
         return ((_head_pos(env, entity)[:, 2] - 1.0) / 0.5).clamp(min=0.0, max=1.0)
+
     return _fn
 
 
 def _reward_posture(entity: str):
     """Head above the pelvis: cosine between the pelvis-to-head direction and world up."""
+
     def _fn(env: Any) -> torch.Tensor:
         v = _head_pos(env, entity) - env.scene[entity].data.root_link_pos_w
         return (v[:, 2] / v.norm(dim=-1).clamp(min=1e-6)).clamp(min=0.0)
+
     return _fn
 
 
 def _reward_alive(_entity: str):
     def _fn(env: Any) -> torch.Tensor:
         return torch.ones(env.num_envs, device=env.device, dtype=torch.float32)
+
     return _fn
 
 
 def _term_fallen(entity: str):
     def _fn(env: Any) -> torch.Tensor:
-        return (env.scene[entity].data.root_link_pos_w[:, 2] < _FALLEN_Z) | (_head_pos(env, entity)[:, 2] < _FALLEN_HEAD_Z)
+        return (env.scene[entity].data.root_link_pos_w[:, 2] < _FALLEN_Z) | (
+            _head_pos(env, entity)[:, 2] < _FALLEN_HEAD_Z
+        )
+
     return _fn
 
 
@@ -208,9 +251,15 @@ def _term_hit(env: Any) -> torch.Tensor:
 def _event_park_pumpkin(env: Any, env_ids: Any) -> None:
     """Reset: the pumpkin waits on the ground far away until the first throw."""
     pumpkin = env.scene[_PUMPKIN]
-    ids = torch.arange(env.num_envs, device=env.device) if env_ids is None else torch.as_tensor(env_ids, device=env.device)
+    ids = (
+        torch.arange(env.num_envs, device=env.device)
+        if env_ids is None
+        else torch.as_tensor(env_ids, device=env.device)
+    )
     state = torch.zeros(len(ids), 13, device=env.device)
-    state[:, :3] = env.scene.env_origins[ids] + torch.tensor(_PARK_POS, device=env.device)
+    state[:, :3] = env.scene.env_origins[ids] + torch.tensor(
+        _PARK_POS, device=env.device
+    )
     state[:, 3] = 1.0
     pumpkin.write_root_state_to_sim(state, env_ids=ids)
 
@@ -218,8 +267,13 @@ def _event_park_pumpkin(env: Any, env_ids: Any) -> None:
 def _event_throw(throw_speed: float = 1.0, easy_start: float = _THROW_EASY):
     """Interval event: throw the pumpkin from the character's left or right (world y) so that it arrives at the
     upper body (chest to head height, slightly off-centre) after 0.55-0.75 s / throw_speed: standing still is a hit."""
+
     def _fn(env: Any, env_ids: Any) -> None:
-        ids = torch.arange(env.num_envs, device=env.device) if env_ids is None else torch.as_tensor(env_ids, device=env.device)
+        ids = (
+            torch.arange(env.num_envs, device=env.device)
+            if env_ids is None
+            else torch.as_tensor(env_ids, device=env.device)
+        )
         if ids.numel() == 0:
             return
         n = len(ids)
@@ -231,19 +285,26 @@ def _event_throw(throw_speed: float = 1.0, easy_start: float = _THROW_EASY):
         target[:, 2] += rnd(0.25, 0.55)
         start = target.clone()
         start[:, 1] += sides * 1.6
-        easy = 1.0 + (easy_start - 1.0) * max(0.0, 1.0 - env.common_step_counter / _THROW_RAMP_STEPS)
+        easy = 1.0 + (easy_start - 1.0) * max(
+            0.0, 1.0 - env.common_step_counter / _THROW_RAMP_STEPS
+        )
         flight = rnd(0.55, 0.75) * easy / float(throw_speed)
         state = torch.zeros(n, 13, device=env.device)
         state[:, :3] = start
         state[:, 3] = 1.0
         state[:, 7:10] = (target - start) / flight[:, None]
-        state[:, 9] += 9.81 * flight / 2          # ballistic arc back to the start height at the target
+        state[:, 9] += (
+            9.81 * flight / 2
+        )  # ballistic arc back to the start height at the target
         state[:, 11] = sides * 2.5
         env.scene[_PUMPKIN].write_root_state_to_sim(state, env_ids=ids)
+
     return _fn
 
 
-def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0, curriculum: bool = True) -> ManagerBasedRlEnvCfg:
+def make_halloween_env_cfg(
+    *, num_envs: int = 1, throw_speed: float = 1.0, curriculum: bool = True
+) -> ManagerBasedRlEnvCfg:
     """Build the MJLab config with robot and projectile as separate entities."""
     robot_model = _build_robot_spec().compile()
     pumpkin_model = _build_pumpkin_spec().compile()
@@ -266,7 +327,9 @@ def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0, curri
         spec_fn=_build_pumpkin_spec,
         init_state=_pumpkin_init_state(pumpkin_model),
     )
-    scene = SceneCfg(num_envs=num_envs, entities={_ROBOT: robot_cfg, _PUMPKIN: pumpkin_cfg})
+    scene = SceneCfg(
+        num_envs=num_envs, entities={_ROBOT: robot_cfg, _PUMPKIN: pumpkin_cfg}
+    )
 
     obs_terms = {
         "root": ObservationTermCfg(func=_obs_root(_ROBOT)),
@@ -302,7 +365,11 @@ def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0, curri
     # The pumpkin waits after a reset, then is thrown again and again: stand first, then dodge each throw.
     events = {
         "park_pumpkin": EventTermCfg(func=_event_park_pumpkin, mode="reset"),
-        "throw_pumpkin": EventTermCfg(func=_event_throw(throw_speed, _THROW_EASY if curriculum else 1.0), mode="interval", interval_range_s=_THROW_EVERY_S),
+        "throw_pumpkin": EventTermCfg(
+            func=_event_throw(throw_speed, _THROW_EASY if curriculum else 1.0),
+            mode="interval",
+            interval_range_s=_THROW_EVERY_S,
+        ),
     }
     return ManagerBasedRlEnvCfg(
         scene=scene,
@@ -333,21 +400,28 @@ def _halloween_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             activation="elu",
             obs_normalization=True,
             # capped noise: with clipped activations a large std acts as extra activation and the mean action fails alone
-            distribution_cfg={"class_name": "GaussianDistribution", "init_std": 0.2, "std_type": "scalar", "std_range": (0.01, 0.2)},
+            distribution_cfg={
+                "class_name": "GaussianDistribution",
+                "init_std": 0.2,
+                "std_type": "scalar",
+                "std_range": (0.01, 0.2),
+            },
         ),
-        critic=RslRlModelCfg(hidden_dims=(512, 256, 128), activation="elu", obs_normalization=True),
+        critic=RslRlModelCfg(
+            hidden_dims=(512, 256, 128), activation="elu", obs_normalization=True
+        ),
         algorithm=RslRlPpoAlgorithmCfg(
             value_loss_coef=1.0,
             use_clipped_value_loss=True,
             clip_param=0.2,
-            entropy_coef=0.0,                # the entropy bonus drove the std to its cap
+            entropy_coef=0.0,  # the entropy bonus drove the std to its cap
             num_learning_epochs=5,
             num_mini_batches=4,
             learning_rate=3.0e-4,
             schedule="adaptive",
             gamma=0.99,
             lam=0.95,
-            desired_kl=0.03,                 # 0.01 held muscle-driven tasks at the learning-rate floor
+            desired_kl=0.03,  # 0.01 held muscle-driven tasks at the learning-rate floor
             max_grad_norm=1.0,
         ),
         num_steps_per_env=24,
@@ -361,7 +435,9 @@ def register_halloween_mjlab_task() -> None:
         register_mjlab_task(
             task_id=_TASK_ID,
             env_cfg=make_halloween_env_cfg(num_envs=1),
-            play_env_cfg=make_halloween_env_cfg(num_envs=1, curriculum=False),   # playback: full-speed throws
+            play_env_cfg=make_halloween_env_cfg(
+                num_envs=1, curriculum=False
+            ),  # playback: full-speed throws
             rl_cfg=_halloween_ppo_runner_cfg(),
             runner_cls=None,
         )
