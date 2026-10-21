@@ -149,6 +149,7 @@ class TerrainObservation:
                 "enable_muscle_length_observations": False,
                 "enable_muscle_velocity_observations": False,
                 "enable_muscle_force_observations": False,
+                "exclude_non_actor_joints": True,
             },
             egocentric_root=True,
         )

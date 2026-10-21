@@ -504,7 +504,14 @@ class FullbodyStateAdapter:
         qvel_indices: list[np.ndarray] = []
         qpos_non_root: list[np.ndarray] = []
         qvel_non_root: list[np.ndarray] = []
+        # Keep scene objects out of the trained actor joint feature layout.
+        actor_root = int(model.body_rootid[model.jnt_bodyid[root_jid]])
         for jid in range(model.njnt):
+            if (
+                flags.get("exclude_non_actor_joints", False)
+                and int(model.body_rootid[model.jnt_bodyid[jid]]) != actor_root
+            ):
+                continue
             jtype = int(model.jnt_type[jid])
             qpos_size = _joint_qpos_size(jtype)
             qvel_size = _joint_qvel_size(jtype)
