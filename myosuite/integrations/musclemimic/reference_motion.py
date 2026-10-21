@@ -262,6 +262,10 @@ def plan_waypoint_reference(
     sites: tuple[str, ...],
     jump_segments: tuple[int, ...] = (),
     parameters: GaitParameters = GaitParameters(),
+    segment_durations_s: tuple[float, ...] | None = None,
+    heading_rad: float | None = None,
+    planted_holds: bool = False,
+    squat_windows_s: tuple[tuple[float, float, float], ...] = (),
 ) -> tuple[MotionClip, dict]:
     """Generate a 100 Hz terrain-aware walking/jumping reference offline.
 
@@ -273,6 +277,10 @@ def plan_waypoint_reference(
         sites: Ordered sites for shared reference kinematics.
         jump_segments: Route-segment indices with explicit jumps (at most two).
         parameters: Gait and jump timing/clearance settings.
+        segment_durations_s: Positive durations for non-jump segments, including holds.
+        heading_rad: Fixed facing direction, or follow the route when None.
+        planted_holds: Keep feet planted when their consecutive targets coincide.
+        squat_windows_s: Start, end and pelvis lowering depth for each squat.
 
     Returns:
         Existing MotionClip and planner diagnostics.
@@ -295,13 +303,25 @@ def plan_waypoint_reference(
         or route.shape[1] != 2
         or len(route) < 2
         or not np.isfinite(route).all()
-        or np.any(np.linalg.norm(np.diff(route, axis=0), axis=1) <= 1e-8)
     ):
         raise ValueError("Route needs finite, distinct consecutive XY waypoints")
     if any(i < 0 or i >= len(route) - 1 for i in jump_segments):
         raise ValueError("Jump indices must name route segments")
     if len(jump_segments) > 2:
         raise ValueError("This reference recipe supports at most two jumps")
+    if segment_durations_s is not None and (
+        len(segment_durations_s) != len(route) - 1
+        or not np.isfinite(segment_durations_s).all()
+        or min(segment_durations_s) <= 0
+    ):
+        raise ValueError(
+            "Segment durations must be finite, positive and match the route"
+        )
+    if heading_rad is not None and not np.isfinite(heading_rad):
+        raise ValueError("Heading must be finite")
+    for i, distance in enumerate(np.linalg.norm(np.diff(route, axis=0), axis=1)):
+        if distance <= 1e-8 and i not in jump_segments and segment_durations_s is None:
+            raise ValueError("Stationary segments need an explicit duration")
     times = [0.0, 0.8]
     positions = [route[0], route[0]]
     jumps = []
@@ -323,7 +343,12 @@ def plan_waypoint_reference(
             jumps.append((start + 2.0, start + 2.0 + duration))
         else:
             length = np.linalg.norm(b - a)
-            times.append(times[-1] + length / parameters.speed)
+            duration = (
+                length / parameters.speed
+                if segment_durations_s is None
+                else segment_durations_s[i]
+            )
+            times.append(times[-1] + duration)
             positions.append(b)
             if i + 1 < len(route) - 1:
                 before, after = b - a, route[i + 2] - b
@@ -348,10 +373,29 @@ def plan_waypoint_reference(
         else:
             previous = heading[i]
     heading = gaussian_filter1d(np.unwrap(heading), 20)
+    if heading_rad is not None:
+        heading[:] = heading_rad
     surface = np.asarray([height_at(tuple(xy)) for xy in root])
     surface = gaussian_filter1d(surface, 15)
     root_z = surface + parameters.pelvis_height
     root_z[:80] = np.linspace(base[2], root_z[80], 80)
+    for begin, end, depth in squat_windows_s:
+        if (
+            not np.isfinite((begin, end, depth)).all()
+            or begin < 0.8
+            or end <= begin
+            or end > t[-1]
+            or not 0 < depth < parameters.pelvis_height
+        ):
+            raise ValueError("Squat windows need valid start, end and positive depth")
+        if any(
+            begin < landing + 0.7 and end > launch - 2.0 for launch, landing in jumps
+        ):
+            raise ValueError(
+                "Squat windows must not overlap jump preparation or landing"
+            )
+        mask = (t >= begin) & (t <= end)
+        root_z[mask] -= depth * np.sin(np.pi * (t[mask] - begin) / (end - begin)) ** 2
     flight = np.zeros(len(t), dtype=bool)
     for jump_index, (begin, end) in enumerate(jumps):
         initial = int(round((begin - 0.5) * 100))
@@ -432,7 +476,8 @@ def plan_waypoint_reference(
                 f = (phase - 1 + parameters.swing_fraction) / parameters.swing_fraction
                 smooth = f * f * (3 - 2 * f)
                 p = a + smooth * (b - a)
-                p[2] += parameters.clearance * np.sin(np.pi * f)
+                if not planted_holds or np.linalg.norm(b - a) > 1e-5:
+                    p[2] += parameters.clearance * np.sin(np.pi * f)
                 yaw = ya + smooth * (yb - ya)
             for jump_index, (begin, end) in enumerate(jumps):
                 if begin - 2.0 <= time < begin:

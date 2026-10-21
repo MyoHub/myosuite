@@ -88,6 +88,8 @@ class TerrainController:
         frame_skip: int,
     ) -> None:
         self.policy, self.reference = policy, reference
+        self._actor_nq = reference.qpos.shape[1]
+        self._actor_nv = reference.qvel.shape[1]
         self.observe = policy.obs_adapter
         self._model, self._frame_skip = model, frame_skip
         self._shadow = mujoco.MjData(model)
@@ -115,8 +117,16 @@ class TerrainController:
             mujoco.mj_step(self._model, self._shadow, self._frame_skip)
             source = self._shadow
         if not np.allclose(
-            source.qpos, data.qpos, atol=1e-7, rtol=0
-        ) or not np.allclose(source.qvel, data.qvel, atol=1e-7, rtol=0):
+            source.qpos[: self._actor_nq],
+            data.qpos[: self._actor_nq],
+            atol=1e-7,
+            rtol=0,
+        ) or not np.allclose(
+            source.qvel[: self._actor_nv],
+            data.qvel[: self._actor_nv],
+            atol=1e-7,
+            rtol=0,
+        ):
             mujoco.mj_copyData(source, self._model, data)
         action = self.policy.action_for(source, self.reference, self._frame)
         mujoco.mj_copyData(self._shadow, self._model, data)
