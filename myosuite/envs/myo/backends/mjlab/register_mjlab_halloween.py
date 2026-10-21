@@ -215,7 +215,7 @@ def _event_park_pumpkin(env: Any, env_ids: Any) -> None:
     pumpkin.write_root_state_to_sim(state, env_ids=ids)
 
 
-def _event_throw(throw_speed: float = 1.0):
+def _event_throw(throw_speed: float = 1.0, easy_start: float = _THROW_EASY):
     """Interval event: throw the pumpkin from the character's left or right (world y) so that it arrives at the
     upper body (chest to head height, slightly off-centre) after 0.55-0.75 s / throw_speed: standing still is a hit."""
     def _fn(env: Any, env_ids: Any) -> None:
@@ -231,7 +231,7 @@ def _event_throw(throw_speed: float = 1.0):
         target[:, 2] += rnd(0.25, 0.55)
         start = target.clone()
         start[:, 1] += sides * 1.6
-        easy = 1.0 + (_THROW_EASY - 1.0) * max(0.0, 1.0 - env.common_step_counter / _THROW_RAMP_STEPS)
+        easy = 1.0 + (easy_start - 1.0) * max(0.0, 1.0 - env.common_step_counter / _THROW_RAMP_STEPS)
         flight = rnd(0.55, 0.75) * easy / float(throw_speed)
         state = torch.zeros(n, 13, device=env.device)
         state[:, :3] = start
@@ -243,7 +243,7 @@ def _event_throw(throw_speed: float = 1.0):
     return _fn
 
 
-def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0) -> ManagerBasedRlEnvCfg:
+def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0, curriculum: bool = True) -> ManagerBasedRlEnvCfg:
     """Build the MJLab config with robot and projectile as separate entities."""
     robot_model = _build_robot_spec().compile()
     pumpkin_model = _build_pumpkin_spec().compile()
@@ -302,7 +302,7 @@ def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0) -> Ma
     # The pumpkin waits after a reset, then is thrown again and again: stand first, then dodge each throw.
     events = {
         "park_pumpkin": EventTermCfg(func=_event_park_pumpkin, mode="reset"),
-        "throw_pumpkin": EventTermCfg(func=_event_throw(throw_speed), mode="interval", interval_range_s=_THROW_EVERY_S),
+        "throw_pumpkin": EventTermCfg(func=_event_throw(throw_speed, _THROW_EASY if curriculum else 1.0), mode="interval", interval_range_s=_THROW_EVERY_S),
     }
     return ManagerBasedRlEnvCfg(
         scene=scene,
@@ -361,7 +361,7 @@ def register_halloween_mjlab_task() -> None:
         register_mjlab_task(
             task_id=_TASK_ID,
             env_cfg=make_halloween_env_cfg(num_envs=1),
-            play_env_cfg=make_halloween_env_cfg(num_envs=1),
+            play_env_cfg=make_halloween_env_cfg(num_envs=1, curriculum=False),   # playback: full-speed throws
             rl_cfg=_halloween_ppo_runner_cfg(),
             runner_cls=None,
         )
