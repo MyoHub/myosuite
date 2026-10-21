@@ -156,11 +156,13 @@ def _pumpkin_clearance(env: Any) -> torch.Tensor:
     return (links - pumpkin).norm(dim=-1).min(dim=-1).values
 
 
-def _reward_lateral_dodge(robot: str, pumpkin: str):
+def _reward_dodge(robot: str, pumpkin: str):
+    """Clearance from the body while the pumpkin is close (1 when it is far or at the hit distance + 0.3 m)."""
     def _fn(env: Any) -> torch.Tensor:
-        root_y = env.scene[robot].data.root_link_pos_w[:, 1]
-        pumpkin_y = env.scene[pumpkin].data.root_link_pos_w[:, 1]
-        return (root_y - pumpkin_y).abs().clamp(max=1.5)
+        p = env.scene[pumpkin].data.root_link_pos_w
+        near = (p[:, :2] - env.scene[robot].data.root_link_pos_w[:, :2]).norm(dim=-1) < 1.0
+        score = ((_pumpkin_clearance(env) - _PUMPKIN_RADIUS - _HIT_MARGIN) / 0.3).clamp(min=0.0, max=1.0)
+        return torch.where(near, score, torch.ones_like(score))
     return _fn
 
 
@@ -206,29 +208,34 @@ def _event_park_pumpkin(env: Any, env_ids: Any) -> None:
     pumpkin = env.scene[_PUMPKIN]
     ids = torch.arange(env.num_envs, device=env.device) if env_ids is None else torch.as_tensor(env_ids, device=env.device)
     state = torch.zeros(len(ids), 13, device=env.device)
-    state[:, :3] = torch.tensor(_PARK_POS, device=env.device)
+    state[:, :3] = env.scene.env_origins[ids] + torch.tensor(_PARK_POS, device=env.device)
     state[:, 3] = 1.0
     pumpkin.write_root_state_to_sim(state, env_ids=ids)
 
 
 def _event_throw(throw_speed: float = 1.0):
-    """Interval event: throw the pumpkin at the character from its left or right (world y)."""
+    """Interval event: throw the pumpkin from the character's left or right (world y) so that it arrives at the
+    upper body (chest to head height, slightly off-centre) after 0.55-0.75 s / throw_speed: standing still is a hit."""
     def _fn(env: Any, env_ids: Any) -> None:
         ids = torch.arange(env.num_envs, device=env.device) if env_ids is None else torch.as_tensor(env_ids, device=env.device)
         if ids.numel() == 0:
             return
+        n = len(ids)
+        rnd = lambda lo, hi: lo + (hi - lo) * torch.rand(n, device=env.device)  # noqa: E731
         root = env.scene[_ROBOT].data.root_link_pos_w[ids]
-        sides = torch.where(torch.rand(len(ids), device=env.device) < 0.5, -1.0, 1.0)
-        spd = float(throw_speed)
-        state = torch.zeros(len(ids), 13, device=env.device)
-        state[:, 0] = root[:, 0] + 0.35
-        state[:, 1] = root[:, 1] + sides * 1.55
-        state[:, 2] = root[:, 2].clamp(min=0.85)
+        sides = torch.where(torch.rand(n, device=env.device) < 0.5, -1.0, 1.0)
+        target = root.clone()
+        target[:, 0] += rnd(-0.08, 0.08)
+        target[:, 2] += rnd(0.25, 0.55)
+        start = target.clone()
+        start[:, 1] += sides * 1.6
+        flight = rnd(0.55, 0.75) / float(throw_speed)
+        state = torch.zeros(n, 13, device=env.device)
+        state[:, :3] = start
         state[:, 3] = 1.0
-        state[:, 7] = 0.15 * spd
-        state[:, 8] = -sides * 3.6 * spd
-        state[:, 9] = 0.35 * spd
-        state[:, 11] = sides * 2.5 * spd
+        state[:, 7:10] = (target - start) / flight[:, None]
+        state[:, 9] += 9.81 * flight / 2          # ballistic arc back to the start height at the target
+        state[:, 11] = sides * 2.5
         env.scene[_PUMPKIN].write_root_state_to_sim(state, env_ids=ids)
     return _fn
 
@@ -281,7 +288,7 @@ def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0) -> Ma
         "alive": RewardTermCfg(func=_reward_alive(_ROBOT), weight=1.0),
         "upright": RewardTermCfg(func=_reward_upright(_ROBOT), weight=2.0),
         "posture": RewardTermCfg(func=_reward_posture(_ROBOT), weight=1.0),
-        "dodge": RewardTermCfg(func=_reward_lateral_dodge(_ROBOT, _PUMPKIN), weight=3.0),
+        "dodge": RewardTermCfg(func=_reward_dodge(_ROBOT, _PUMPKIN), weight=1.0),
     }
     terminations = {
         SYNC_TERM: TerminationTermCfg(func=sync_forward),
