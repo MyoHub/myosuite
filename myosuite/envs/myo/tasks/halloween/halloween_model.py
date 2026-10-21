@@ -140,25 +140,26 @@ def throw_pumpkin(
     *,
     side: float,
     speed: float = 1.0,
+    x_offset: float = 0.0,
+    height: float = 0.4,
+    flight: float = 0.65,
 ) -> None:
-    """Launch the free pumpkin from the character's left (``side<0``) or right.
+    """Launch the free pumpkin from the character's left (``side<0``) or right at its upper body.
 
-    Lateral axis is world **Y** (same as MuscleMimic dodge goal injection).
+    Lateral axis is world **Y** (same as MuscleMimic dodge goal injection). The pumpkin starts 1.6 m to the side and
+    reaches the point ``x_offset`` ahead of and ``height`` above the pelvis after ``flight / speed`` seconds (the mjlab
+    task draws ``x_offset`` in [-0.08, 0.08], ``height`` in [0.25, 0.55] and ``flight`` in [0.55, 0.75]).
     """
     adr = pumpkin_qposadr(model)
     dadr = pumpkin_dofadr(model)
     s = -1.0 if side < 0 else 1.0
-    spd = float(np.clip(speed, 0.5, 2.0))
-    root_y = float(data.qpos[1])
-    root_z = max(0.85, float(data.qpos[2]))
-    data.qpos[adr : adr + 3] = [
-        float(data.qpos[0]) + 0.35,
-        root_y + s * 1.55,
-        root_z,
-    ]
+    t = flight / float(np.clip(speed, 0.5, 2.0))
+    target = np.array([data.qpos[0] + x_offset, data.qpos[1], data.qpos[2] + height])
+    start = target + [0.0, s * 1.6, 0.0]
+    data.qpos[adr : adr + 3] = start
     data.qpos[adr + 3 : adr + 7] = [1.0, 0.0, 0.0, 0.0]
-    data.qvel[dadr : dadr + 3] = [0.15 * spd, -s * 3.6 * spd, 0.35 * spd]
-    data.qvel[dadr + 3 : dadr + 6] = [0.0, s * 2.5 * spd, 0.0]
+    data.qvel[dadr : dadr + 3] = (target - start) / t + [0.0, 0.0, 9.81 * t / 2]
+    data.qvel[dadr + 3 : dadr + 6] = [0.0, s * 2.5, 0.0]
 
 
 def pumpkin_body_contact_frames(
