@@ -106,43 +106,66 @@ def _pumpkin_init_state(model: mujoco.MjModel) -> EntityCfg.InitialStateCfg:
     )
 
 
-def _obs_qpos(entity: str):
+_PUMPKIN_RADIUS = 0.09
+_HIT_MARGIN = 0.11      # body link origins sit inside the body: a hit is the pumpkin this close to one
+_FALLEN_Z = 0.6         # pelvis height below which the character has fallen
+_THROW_EVERY_S = (1.5, 3.0)
+_EPISODE_S = 6.0
+
+
+def _obs_root(entity: str):
+    """Pelvis height, orientation and body-frame velocities."""
     def _fn(env: Any) -> torch.Tensor:
-        return env.scene[entity].data.qpos
+        d = env.scene[entity].data
+        return torch.cat([d.root_link_pos_w[:, 2:3], d.root_link_quat_w, d.root_link_lin_vel_b, d.root_link_ang_vel_b], dim=-1)
     return _fn
 
 
-def _obs_qvel(entity: str):
+def _obs_joint_pos(entity: str):
     def _fn(env: Any) -> torch.Tensor:
-        return env.scene[entity].data.qvel
+        return env.scene[entity].data.joint_pos
+    return _fn
+
+
+def _obs_joint_vel(entity: str):
+    def _fn(env: Any) -> torch.Tensor:
+        return env.scene[entity].data.joint_vel
     return _fn
 
 
 def _obs_act(entity: str):
     def _fn(env: Any) -> torch.Tensor:
-        return env.scene[entity].data.act
+        return env.scene[entity].data.data.act   # no stable API equivalent (accepted exception)
     return _fn
 
 
 def _obs_pumpkin_rel(robot: str, pumpkin: str):
+    """Pumpkin position relative to the pelvis and its velocity (world frame)."""
     def _fn(env: Any) -> torch.Tensor:
-        root = env.scene[robot].data.qpos[:, :3]
-        pdata = env.scene[pumpkin].data
-        return torch.cat([pdata.qpos[:, :3] - root, pdata.qvel[:, :3]], dim=-1)
+        root = env.scene[robot].data.root_link_pos_w
+        p = env.scene[pumpkin].data
+        return torch.cat([p.root_link_pos_w - root, p.root_link_lin_vel_w], dim=-1)
     return _fn
+
+
+def _pumpkin_clearance(env: Any) -> torch.Tensor:
+    """Distance from the pumpkin's centre to the nearest body link origin of the character."""
+    links = env.scene[_ROBOT].data.body_link_pos_w                      # (envs, bodies, 3)
+    pumpkin = env.scene[_PUMPKIN].data.root_link_pos_w[:, None, :]
+    return (links - pumpkin).norm(dim=-1).min(dim=-1).values
 
 
 def _reward_lateral_dodge(robot: str, pumpkin: str):
     def _fn(env: Any) -> torch.Tensor:
-        root_y = env.scene[robot].data.qpos[:, 1]
-        pumpkin_y = env.scene[pumpkin].data.qpos[:, 1]
+        root_y = env.scene[robot].data.root_link_pos_w[:, 1]
+        pumpkin_y = env.scene[pumpkin].data.root_link_pos_w[:, 1]
         return (root_y - pumpkin_y).abs().clamp(max=1.5)
     return _fn
 
 
 def _reward_upright(entity: str):
     def _fn(env: Any) -> torch.Tensor:
-        z = env.scene[entity].data.qpos[:, 2]
+        z = env.scene[entity].data.root_link_pos_w[:, 2]
         return (z - 0.5).clamp(min=0.0, max=0.6)
     return _fn
 
@@ -155,36 +178,44 @@ def _reward_alive(_entity: str):
 
 def _term_fallen(entity: str):
     def _fn(env: Any) -> torch.Tensor:
-        return env.scene[entity].data.qpos[:, 2] < 0.35
+        return env.scene[entity].data.root_link_pos_w[:, 2] < _FALLEN_Z
     return _fn
 
 
-def _event_reset_and_throw(throw_speed: float = 1.0):
+def _term_hit(env: Any) -> torch.Tensor:
+    """The pumpkin reached the character's body."""
+    return _pumpkin_clearance(env) < _PUMPKIN_RADIUS + _HIT_MARGIN
+
+
+def _event_park_pumpkin(env: Any, env_ids: Any) -> None:
+    """Reset: the pumpkin waits on the ground far away until the first throw."""
+    pumpkin = env.scene[_PUMPKIN]
+    ids = torch.arange(env.num_envs, device=env.device) if env_ids is None else torch.as_tensor(env_ids, device=env.device)
+    state = torch.zeros(len(ids), 13, device=env.device)
+    state[:, :3] = torch.tensor(_PARK_POS, device=env.device)
+    state[:, 3] = 1.0
+    pumpkin.write_root_state_to_sim(state, env_ids=ids)
+
+
+def _event_throw(throw_speed: float = 1.0):
+    """Interval event: throw the pumpkin at the character from its left or right (world y)."""
     def _fn(env: Any, env_ids: Any) -> None:
-        robot = env.scene[_ROBOT].data
-        pumpkin = env.scene[_PUMPKIN].data
-        if env_ids is None:
-            idx = torch.arange(env.num_envs, device=env.device, dtype=torch.long)
-        else:
-            idx = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
-        sides = torch.where(
-            torch.rand(idx.shape, device=env.device) < 0.5,
-            -torch.ones(idx.shape, device=env.device),
-            torch.ones(idx.shape, device=env.device),
-        )
-        root = robot.qpos[idx, :3]
+        ids = torch.arange(env.num_envs, device=env.device) if env_ids is None else torch.as_tensor(env_ids, device=env.device)
+        if ids.numel() == 0:
+            return
+        root = env.scene[_ROBOT].data.root_link_pos_w[ids]
+        sides = torch.where(torch.rand(len(ids), device=env.device) < 0.5, -1.0, 1.0)
         spd = float(throw_speed)
-        pumpkin.qpos[idx, 0] = root[:, 0] + 0.35
-        pumpkin.qpos[idx, 1] = root[:, 1] + sides * 1.55
-        pumpkin.qpos[idx, 2] = root[:, 2].clamp(min=0.85)
-        pumpkin.qpos[idx, 3] = 1.0
-        pumpkin.qpos[idx, 4:7] = 0.0
-        pumpkin.qvel[idx, 0] = 0.15 * spd
-        pumpkin.qvel[idx, 1] = -sides * 3.6 * spd
-        pumpkin.qvel[idx, 2] = 0.35 * spd
-        pumpkin.qvel[idx, 3] = 0.0
-        pumpkin.qvel[idx, 4] = sides * 2.5 * spd
-        pumpkin.qvel[idx, 5] = 0.0
+        state = torch.zeros(len(ids), 13, device=env.device)
+        state[:, 0] = root[:, 0] + 0.35
+        state[:, 1] = root[:, 1] + sides * 1.55
+        state[:, 2] = root[:, 2].clamp(min=0.85)
+        state[:, 3] = 1.0
+        state[:, 7] = 0.15 * spd
+        state[:, 8] = -sides * 3.6 * spd
+        state[:, 9] = 0.35 * spd
+        state[:, 11] = sides * 2.5 * spd
+        env.scene[_PUMPKIN].write_root_state_to_sim(state, env_ids=ids)
     return _fn
 
 
@@ -214,8 +245,9 @@ def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0) -> Ma
     scene = SceneCfg(num_envs=num_envs, entities={_ROBOT: robot_cfg, _PUMPKIN: pumpkin_cfg})
 
     obs_terms = {
-        "qpos": ObservationTermCfg(func=_obs_qpos(_ROBOT)),
-        "qvel": ObservationTermCfg(func=_obs_qvel(_ROBOT)),
+        "root": ObservationTermCfg(func=_obs_root(_ROBOT)),
+        "joint_pos": ObservationTermCfg(func=_obs_joint_pos(_ROBOT)),
+        "joint_vel": ObservationTermCfg(func=_obs_joint_vel(_ROBOT)),
         "act": ObservationTermCfg(func=_obs_act(_ROBOT)),
         "pumpkin_rel": ObservationTermCfg(func=_obs_pumpkin_rel(_ROBOT, _PUMPKIN)),
     }
@@ -240,12 +272,17 @@ def make_halloween_env_cfg(*, num_envs: int = 1, throw_speed: float = 1.0) -> Ma
         SYNC_TERM: TerminationTermCfg(func=sync_forward),
         "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
         "fallen": TerminationTermCfg(func=_term_fallen(_ROBOT), time_out=False),
+        "hit": TerminationTermCfg(func=_term_hit, time_out=False),
     }
-    events = {"throw_pumpkin": EventTermCfg(func=_event_reset_and_throw(throw_speed), mode="reset")}
+    # The pumpkin waits after a reset, then is thrown again and again: stand first, then dodge each throw.
+    events = {
+        "park_pumpkin": EventTermCfg(func=_event_park_pumpkin, mode="reset"),
+        "throw_pumpkin": EventTermCfg(func=_event_throw(throw_speed), mode="interval", interval_range_s=_THROW_EVERY_S),
+    }
     return ManagerBasedRlEnvCfg(
         scene=scene,
         decimation=max(1, int(round(_CTRL_DT / _SIM_DT))),
-        episode_length_s=float(_MAX_EPISODE_STEPS) * _CTRL_DT,
+        episode_length_s=_EPISODE_S,
         observations=observations,
         actions=actions,
         rewards=rewards,
