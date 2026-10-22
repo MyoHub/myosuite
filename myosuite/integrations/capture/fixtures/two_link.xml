@@ -1,0 +1,28 @@
+<mujoco model="Apache-2.0 analytic marker-retargeting fixture">
+  <compiler angle="radian"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .01"/>
+    <body name="pelvis" pos="0 0 .98">
+      <freejoint name="root"/>
+      <geom type="sphere" size=".05" mass="2"/>
+      <site name="root_marker"/>
+      <site name="pelvis_front" pos=".1 0 0"/>
+      <site name="pelvis_side" pos="0 .1 0"/>
+      <body name="thigh">
+        <joint name="hip" axis="0 1 0" range="-.5 .5"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.5" size=".025" mass="1"/>
+        <site name="knee_marker" pos="0 0 -.5"/>
+        <body name="shank" pos="0 0 -.5">
+          <joint name="knee" axis="0 1 0" range="0 1"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".02" mass="1"/>
+          <site name="ankle_marker" pos="0 0 -.4"/>
+          <body name="foot" pos="0 0 -.4">
+            <geom name="sole" type="box" pos=".06 0 -.04" size=".12 .06 .04" mass=".5"/>
+            <site name="toe_marker" pos=".18 0 -.04"/>
+            <site name="heel_marker" pos="-.06 0 -.04"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

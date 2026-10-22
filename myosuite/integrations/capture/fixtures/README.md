@@ -1,0 +1,18 @@
+All files in this directory were authored for MyoSuite and are distributed under
+the repository's Apache-2.0 licence. They contain no captured person, external
+body model, SMPL vertex index, or third-party dataset content.
+
+The independent analytic source has a 0.60 m thigh and 0.36 m shank. The nominal
+target has 0.50 m and 0.40 m links, so the known local-z factors are 1.20 and 0.90.
+The heel-to-toe distance is 0.24 m in both. Static coordinates are millimetres.
+The motion uses hip angle a, knee angle -a, root x = 0.60 sin(a), and
+root z = 0.60 cos(a) + 0.36 + 0.08; the flat sole stays planted at world z = 0.
+These coordinates were evaluated directly from those formulas, independently
+of the target's forward kinematics.
+
+`missing_marker.json` removes KNEE; `wrong_units.json` intentionally labels the
+millimetre coordinates as metres; `wrong_frame.json` supplies a wrong proper
+lab-to-model rotation. The latter two must be rejected by calibrated scaling.
+
+This two-link mechanism exercises data flow and catches use of a nominal target.
+It does not validate physiological anatomy, noisy marker placement or dynamics.

@@ -232,10 +232,12 @@ Where subject scale factors come from:
 * **AddBiomechanics** publishes scaled Rajagopal models and motions of 273
   subjects (over 70 hours) under CC BY 4.0
   (`dataset <https://addbiomechanics.org/download_data.html>`__).
-* **An SMPL body fit**, through virtual markers placed on SMPL vertices and the
-  Scale Tool (e.g. Bittner et al., Sensors 2022). SMPL, SMPL-X, the ``smplx``
-  package code and AMASS are licensed for non-commercial use without
-  redistribution, so MyoSuite does not ship them or anything derived from them.
+* **User-provided virtual markers**, including independently licensed body-fit
+  outputs, through the optional labelled-marker adapter in :doc:`capture_scaling`.
+  SMPL-Model, ``smplx`` and AMASS have restrictive licences; the separate
+  SMPL-Body subset has a CC BY licence. Those permissions have different scopes.
+  MyoSuite ships independently authored synthetic markers and no third-party
+  model assets or marker-index definitions.
 
 Limits
 ------

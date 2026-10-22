@@ -85,6 +85,7 @@ Choose your path
    environments
    model_builder
    body_scaling
+   capture_scaling
    backend_parity
    fatigue_validation
 
