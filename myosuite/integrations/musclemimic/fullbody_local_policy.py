@@ -986,7 +986,7 @@ class OnnxPolicyRunner:
         )
 
         runner = OnnxPolicyRunner(
-            onnx_path="mm-10m-2.onnx",
+            onnx_path="mm-10m-3.onnx",
             obs_dim=2418,
             action_dim=354,
             obs_adapter=adapter,   # FullbodyObsAdapter instance
