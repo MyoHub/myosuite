@@ -41,3 +41,49 @@ Every twin must log the ``Episode_Metrics/success`` metric (checked for all envs
 
 MJX is experimental; do not treat MJX numerical match as a merge gate for new
 tasks.
+
+Newton compatibility probe
+--------------------------
+
+`NVIDIA Newton <https://github.com/newton-physics/newton>`_ is not a MyoSuite backend.
+``scripts/newton_compat_probe.py`` measures how much of a MyoSuite model survives
+Newton's MJCF import, so the gap can be followed across Newton releases.
+
+For the elbow, hand, arm and leg env models and the MuscleMimic full-body and
+bimanual models, the probe compiles the model with MuJoCo, imports the same file
+into Newton, converts it back to MuJoCo with Newton's ``SolverMuJoCo`` and compares
+the two. It reports the actuators and muscles that were lost, the muscle length
+ranges that changed, how far the muscle forces moved (at the default pose, with all
+activations and controls at 0.5), and the bodies, joints, tendons, equality
+constraints and sensors on both sides. Each model is tried twice: as MyoSuite writes
+it, and rewritten by MuJoCo into one plain file with ``-`` in names replaced by ``_``
+(Newton 1.6.1 and 1.7.0 look up a spatial tendon's sites by their sanitized names, so they
+drop hyphenated sites; `newton#4566 <https://github.com/newton-physics/newton/issues/4566>`_).
+The rewrite also removes geoms using MuJoCo's binary ``.msh`` meshes, which
+Newton cannot read. The normalized comparison uses that modified model as its
+reference; it does not establish that normalization preserved every property of
+the authored model. Remaining differences can originate in either Newton's
+importer or its conversion.
+
+Run it on the CPU, in an environment with Newton and without mjlab (the two need
+different ``mujoco-warp`` versions)::
+
+   uv venv --python 3.12 .venv-newton
+   uv pip install --python .venv-newton "newton[sim]==1.7.0" "musclemimic_models==1.0.6" -e .
+   .venv-newton/bin/python scripts/newton_compat_probe.py --out newton_probe
+
+It prints a table and writes ``newton_probe/newton_probe.md`` and
+``newton_probe.json``. ``--strict`` makes it exit with an error when a model fails
+to load or convert, loses named elements or muscles, or changes the measured
+structure, options, muscle length ranges or forces. Non-finite values fail the
+comparison. Tolerances must be finite and non-negative. A converted model with
+differences is labelled ``differences`` rather than ``ok``.
+The *Newton probe* GitHub workflow runs the same command on the release pull request
+(`dev` into `main`, not as a draft) with the latest Newton, and when started by hand
+for a chosen version (Actions > Newton probe > Run workflow). It keeps the report as a
+download and in the run summary. Installation and execution failures also produce
+a summary and logs; the job is allowed to fail and does not gate the release.
+
+The probe measures model conversion and forces at one pose on CPU MuJoCo. It
+does not run Newton's GPU solver, trajectories, policy playback or training.
+Newton remains outside MyoSuite's supported CPU and mjlab backends.

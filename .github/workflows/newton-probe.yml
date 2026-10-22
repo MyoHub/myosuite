@@ -1,0 +1,84 @@
+# Measures how much of each MyoSuite model survives NVIDIA Newton's MJCF import
+# (scripts/newton_compat_probe.py). Runs on the release pull request (dev into
+# main) and by hand. It reports and never fails the run.
+name: Newton probe
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      newton_version:
+        description: "Newton version to install from PyPI (empty: the latest)"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    # Pull requests: only a release (dev into main) from this repository, not a draft.
+    if: github.event_name != 'pull_request' || (github.head_ref == 'dev' && github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      # The [sim] extra brings mujoco and mujoco-warp, which SolverMuJoCo needs.
+      # No [mjlab]: mjlab and Newton pin different mujoco-warp versions.
+      - name: Install Newton, MuscleMimic models and MyoSuite
+        id: install
+        env:
+          NEWTON_VERSION: ${{ inputs.newton_version }}
+        run: |
+          mkdir -p newton_probe
+          uv venv --python 3.12
+          uv pip install "newton[sim]${NEWTON_VERSION:+==$NEWTON_VERSION}" "musclemimic_models==1.0.6" -e . 2>&1 | tee newton_probe/install.log
+
+      - name: Newton version
+        id: newton
+        run: |
+          version=$(.venv/bin/python -c "import importlib.metadata as m; print(m.version('newton'))")
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Run the probe
+        id: probe
+        run: |
+          .venv/bin/python scripts/newton_compat_probe.py --strict --out newton_probe 2>&1 | tee newton_probe/probe.log
+
+      - name: Publish report or execution failure
+        if: always()
+        env:
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          PROBE_OUTCOME: ${{ steps.probe.outcome }}
+        run: |
+          mkdir -p newton_probe
+          if test -f newton_probe/newton_probe.md; then
+            cat newton_probe/newton_probe.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '# Newton probe did not produce a report\n\nInstall: %s; probe: %s. See the run logs and artifact.\n' "$INSTALL_OUTCOME" "$PROBE_OUTCOME" | tee newton_probe/execution_failure.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          printf '\nThis probe is informational and does not gate the release.\n' >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: newton-probe-${{ steps.newton.outputs.version }}
+          path: newton_probe/
+          if-no-files-found: warn
