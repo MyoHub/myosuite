@@ -215,11 +215,14 @@ def _body_scales(
         per_body = {name: _factors(s) for name, s in scales.items()}
     else:
         # A segment missing from *scales* stays unscaled, as in OpenSim.
-        starts = {
-            body: _factors(scales.get(segment, 1.0))
-            for segment, first_bodies in segments.items()
-            for body in first_bodies
-        }
+        starts = {}
+        for segment, first_bodies in segments.items():
+            for start_body in first_bodies:
+                if start_body in starts:
+                    raise ValueError(
+                        f"Body {start_body!r} starts more than one segment."
+                    )
+                starts[start_body] = _factors(scales.get(segment, 1.0))
         missing = set(starts) - names
         if missing:
             raise KeyError(f"Segment bodies not in the model: {sorted(missing)}")
@@ -326,11 +329,14 @@ def _scale_geometry(
 ) -> dict[str, float]:
     """Scale positions and sizes; return slide joint -> translation factor."""
     slide = {}
+    slide_qpos: dict[int, float] = {}
     mesh_scales: dict[str, np.ndarray] = {}
-    for body in spec.bodies[1:]:
+    for body_index, body in enumerate(spec.bodies[1:], start=1):
         parent_s = body_scales.get(body.parent.name, _UNIT) if body.parent else _UNIT
         body_rot = _frame_rot(spec, body.frame) @ _rot(_quat(spec, body))
-        for joint in body.joints:
+        body_id = ref.body(body.name).id if body.name else body_index
+        joint_ids = np.flatnonzero(ref.jnt_bodyid == body_id)
+        for joint, joint_id in zip(body.joints, joint_ids, strict=True):
             if joint.type == mujoco.mjtJoint.mjJNT_SLIDE:
                 axis = (
                     body_rot
@@ -339,7 +345,9 @@ def _scale_geometry(
                 )
                 factor = float(np.linalg.norm(parent_s * axis) / np.linalg.norm(axis))
                 if factor != 1.0:
-                    slide[joint.name] = factor
+                    if joint.name:
+                        slide[joint.name] = factor
+                    slide_qpos[int(ref.jnt_qposadr[joint_id])] = factor
                     joint.range = np.asarray(joint.range) * factor
                     joint.ref *= factor
                     joint.springref *= factor
@@ -367,7 +375,7 @@ def _scale_geometry(
     for name, factors in mesh_scales.items():
         mesh = spec.mesh(name)
         mesh.scale = np.asarray(mesh.scale) * factors
-    _scale_keyframes(spec, ref, slide)
+    _scale_keyframes(spec, ref, slide_qpos)
     return slide
 
 
@@ -422,13 +430,12 @@ def _radial_factor(s: np.ndarray, axis: np.ndarray, frame_rot: np.ndarray) -> fl
 
 
 def _scale_keyframes(
-    spec: mujoco.MjSpec, ref: mujoco.MjModel, slide: Mapping[str, float]
+    spec: mujoco.MjSpec, ref: mujoco.MjModel, slide: Mapping[int, float]
 ) -> None:
     for index, key in enumerate(spec.keys):
         qpos = ref.key_qpos[index].copy()
-        for name, factor in slide.items():
-            if name:
-                qpos[ref.jnt_qposadr[ref.joint(name).id]] *= factor
+        for address, factor in slide.items():
+            qpos[address] *= factor
         key.qpos = qpos
 
 

@@ -156,6 +156,16 @@ def test_partial_keyframe_scales_slide_values() -> None:
     np.testing.assert_allclose(spec.compile().key_qpos, [[0.4, 0]])
 
 
+def test_unnamed_slide_keyframes_use_coordinate_addresses() -> None:
+    spec = mujoco.MjSpec.from_string("""<mujoco><worldbody>
+        <body name="parent"><geom size=".1"/>
+        <body name="child"><joint type="slide" axis="1 0 0"/>
+        <joint type="slide" axis="0 1 0"/><geom size=".1"/></body></body></worldbody>
+        <keyframe><key qpos=".2 .3"/></keyframe></mujoco>""")
+    scale_bodies(spec, {"parent": [2, 3, 1]})
+    np.testing.assert_allclose(spec.compile().key_qpos, [[0.4, 0.9]])
+
+
 def _matched_pose(
     ref: mujoco.MjModel, scaled: mujoco.MjModel, s: float, rng: np.random.Generator
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -477,6 +487,15 @@ def test_invalid_mass_or_force_is_rejected_before_mutating_the_model(
 def test_invalid_mass_mode_is_rejected_even_without_scaling() -> None:
     with pytest.raises(ValueError, match="mass must be"):
         scale_bodies(_simple_body(), {}, mass="invalid")
+
+
+def test_ambiguous_segments_cannot_depend_on_mapping_order() -> None:
+    with pytest.raises(ValueError, match="more than one segment"):
+        scale_bodies(
+            _simple_body(),
+            {"a": 1.1, "b": 1.2},
+            segments={"a": ("thigh",), "b": ("thigh",)},
+        )
 
 
 @pytest.mark.parametrize("factor", [1.0, 1.2])
