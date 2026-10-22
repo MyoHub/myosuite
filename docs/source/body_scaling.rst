@@ -242,6 +242,11 @@ reset and step alike, other tasks refuse ``scales``, and manifests record and
 check the subject. ``test_body_scaling_skin.py`` checks segment-local skin
 scaling and the fidelity of ``.skn``/GLB exports.
 
+The :doc:`opensim_scaling_validation` compares the OpenSim-file route of
+``scale_model`` with OpenSim's own ``ModelScaler`` on a pinned Rajagopal model.
+It reports where the two differ (nominal conversion, child joint offsets,
+inertia approximations, wrap shapes) and does not establish solver equivalence.
+
 Remaining work is tracked in issues:
 `OpenSim biomechanical validation <https://github.com/MyoHub/myosuite/issues/560>`__
 and `optional estimation/retargeting adapters <https://github.com/MyoHub/myosuite/issues/562>`__.
