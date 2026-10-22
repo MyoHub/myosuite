@@ -25,11 +25,11 @@ Example:\n
 @click.option("-s", "--sim_path", type=str, help="environment to load", required=False)
 def main(sim_path, env_name):
     if sim_path is None and env_name is None:
-      raise ValueError("Must provide either a path to an environment or a sim_path")
+        raise ValueError("Must provide either a path to an environment or a sim_path")
     if sim_path is not None:
-      model = MjModel.from_xml_path(sim_path)
+        model = MjModel.from_xml_path(sim_path)
     else:
-      model = make_env(env_name).model
+        model = make_env(env_name).model
     data = MjData(model)
 
     viewer.launch(model, data)

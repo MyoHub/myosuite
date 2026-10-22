@@ -20,6 +20,10 @@ Each body gets per-axis scale factors in its own frame (OpenSim's convention):
 The topology (joints, actuators, sites, tendons) does not change, so the
 observation and action spaces of an env stay the same.
 
+Rotated geoms use the scale along each of their own axes. Anisotropic scaling
+can introduce shear, which primitive sizes and mesh scale factors approximate.
+Spheres and cylinder radii use OpenSim's arithmetic mean convention.
+
 Scale factors can come from an OpenSim Scale Tool result, e.g. a model scaled by
 AddBiomechanics or a ScaleSet file (:func:`read_opensim_scales`). Segment names
 of the Rajagopal model map onto MyoSuite bodies with
@@ -158,6 +162,11 @@ def scale_bodies(
         NotImplementedError: For a mesh shared by geoms needing different
             scales, or a connect/weld equality or height field on a scaled body.
     """
+    if mass not in ("volume", "keep"):
+        raise ValueError(f"mass must be 'volume' or 'keep', got {mass!r}.")
+    for name, value in (("total_mass", total_mass), ("force_scale", force_scale)):
+        if value is not None and (not np.isfinite(value) or value <= 0):
+            raise ValueError(f"{name} must be finite and positive, got {value}.")
     body_scales = _body_scales(spec, scales, segments)
     if not body_scales and total_mass is None and force_scale == 1.0:
         return spec
@@ -199,7 +208,9 @@ def _body_scales(
     segments: Mapping[str, Sequence[str]] | None,
 ) -> dict[str, np.ndarray]:
     """Body name -> per-axis factors, for bodies with a factor other than one."""
-    names = {b.name for b in spec.bodies}
+    names = {b.name for b in spec.bodies[1:]}
+    # Validate even unused segments, so malformed estimates cannot pass silently.
+    scales = {name: _factors(scale) for name, scale in scales.items()}
     if segments is None:
         per_body = {name: _factors(s) for name, s in scales.items()}
     else:
@@ -231,8 +242,8 @@ def _body_scales(
 
 def _factors(scale: float | ArrayLike) -> np.ndarray:
     factors = np.broadcast_to(np.asarray(scale, dtype=float), (3,)).copy()
-    if np.any(factors <= 0):
-        raise ValueError(f"Scale factors must be positive, got {factors}.")
+    if not np.all(np.isfinite(factors)) or np.any(factors <= 0):
+        raise ValueError(f"Scale factors must be finite and positive, got {factors}.")
     return factors
 
 
@@ -321,7 +332,11 @@ def _scale_geometry(
         body_rot = _frame_rot(spec, body.frame) @ _rot(_quat(spec, body))
         for joint in body.joints:
             if joint.type == mujoco.mjtJoint.mjJNT_SLIDE:
-                axis = body_rot @ np.asarray(joint.axis, dtype=float)
+                axis = (
+                    body_rot
+                    @ _frame_rot(spec, joint.frame)
+                    @ np.asarray(joint.axis, dtype=float)
+                )
                 factor = float(np.linalg.norm(parent_s * axis) / np.linalg.norm(axis))
                 if factor != 1.0:
                     slide[joint.name] = factor
@@ -376,7 +391,7 @@ def _scale_geom(
         raise NotImplementedError(f"Cannot scale geom {geom.name!r} of type {kind}.")
     if not np.isnan(geom.fromto[0]):
         ends = np.asarray(geom.fromto, dtype=float).reshape(2, 3)
-        geom.size[0] *= _radial_factor(s, frame_rot @ (ends[1] - ends[0]))
+        geom.size[0] *= _radial_factor(s, ends[0] - ends[1], frame_rot)
         _scale_placement(spec, geom, s)
         return
     _scale_placement(spec, geom, s)
@@ -389,9 +404,9 @@ def _scale_geom(
                 "give each its own mesh asset."
             )
     elif kind == mujoco.mjtGeom.mjGEOM_SPHERE:
-        geom.size[0] *= float(np.prod(factors) ** (1 / 3))
+        geom.size[0] *= float(np.mean(s))
     elif kind in (mujoco.mjtGeom.mjGEOM_CAPSULE, mujoco.mjtGeom.mjGEOM_CYLINDER):
-        geom.size[0] *= float(np.sqrt(factors[0] * factors[1]))
+        geom.size[0] *= float(np.mean(factors[:2]))
         geom.size[1] *= float(factors[2])
     elif kind in (mujoco.mjtGeom.mjGEOM_BOX, mujoco.mjtGeom.mjGEOM_ELLIPSOID):
         geom.size = np.asarray(geom.size) * factors
@@ -399,23 +414,18 @@ def _scale_geom(
         geom.size[:2] = np.asarray(geom.size[:2]) * factors[:2]
 
 
-def _radial_factor(s: np.ndarray, axis: np.ndarray) -> float:
-    """Geometric mean scale of two directions perpendicular to *axis*."""
-    axis = axis / np.linalg.norm(axis)
-    helper = np.eye(3)[np.argmin(np.abs(axis))]
-    u = np.cross(axis, helper)
-    u /= np.linalg.norm(u)
-    v = np.cross(axis, u)
-    return float(np.sqrt(np.linalg.norm(s * u) * np.linalg.norm(s * v)))
+def _radial_factor(s: np.ndarray, axis: np.ndarray, frame_rot: np.ndarray) -> float:
+    """Mean transverse scale using MuJoCo's orientation for a ``fromto`` geom."""
+    quat = np.zeros(4)
+    mujoco.mju_quatZ2Vec(quat, axis)
+    return float(np.mean(_axis_factors(s, frame_rot @ _rot(quat))[:2]))
 
 
 def _scale_keyframes(
     spec: mujoco.MjSpec, ref: mujoco.MjModel, slide: Mapping[str, float]
 ) -> None:
-    for key in spec.keys:
-        qpos = np.asarray(key.qpos, dtype=float)
-        if qpos.size != ref.nq:
-            continue
+    for index, key in enumerate(spec.keys):
+        qpos = ref.key_qpos[index].copy()
         for name, factor in slide.items():
             if name:
                 qpos[ref.jnt_qposadr[ref.joint(name).id]] *= factor
@@ -434,6 +444,17 @@ def _scale_inertia(
         raise ValueError(f"mass must be 'volume' or 'keep', got {mass!r}.")
     # Compiled body ids, matched by name (unnamed bodies keep their list position).
     ids = [ref.body(b.name).id if b.name else i for i, b in enumerate(spec.bodies)]
+    if spec.compiler.settotalmass > 0:
+        # Preserve the compiled distribution before disabling renormalization.
+        for body, i in zip(spec.bodies[1:], ids[1:]):
+            _set_inertial(
+                body,
+                ref.body_mass[i],
+                ref.body_ipos[i],
+                ref.body_inertia[i],
+                ref.body_iquat[i],
+            )
+        spec.compiler.settotalmass = -1
     new_mass = ref.body_mass.copy()
     for body, i in zip(spec.bodies[1:], ids[1:]):
         s = body_scales.get(body.name)

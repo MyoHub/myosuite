@@ -87,6 +87,14 @@ def _leg() -> mujoco.MjSpec:
     return mujoco.MjSpec.from_string(LEG_XML)
 
 
+def _simple_body() -> mujoco.MjSpec:
+    return mujoco.MjSpec.from_string(
+        """<mujoco><worldbody><body name="thigh"><joint/>
+          <geom type="sphere" size="0.1"/>
+        </body></worldbody></mujoco>"""
+    )
+
+
 def _myoleg() -> mujoco.MjSpec:
     import myosuite  # noqa: F401, PLC0415  (registers the envs)
     from myosuite.utils import gym  # noqa: PLC0415
@@ -115,6 +123,37 @@ MODELS: dict[str, Callable[[], mujoco.MjSpec]] = {
     "myoleg": _myoleg,
     "fullbody": _fullbody,
 }
+
+
+@pytest.mark.parametrize(
+    "mass,total,expected",
+    [
+        ("volume", None, [80, 20]),
+        ("keep", None, [10, 20]),
+        ("volume", 50, [40, 10]),
+        ("keep", 60, [20, 40]),
+    ],
+)
+def test_compiler_total_mass_is_resolved_before_scaling(
+    mass: str,
+    total: float | None,
+    expected: list[float],
+) -> None:
+    spec = mujoco.MjSpec.from_string("""<mujoco><compiler settotalmass="30"/>
+        <worldbody><body name="a"><geom size=".1" mass="1"/></body>
+        <body name="b"><geom size=".1" mass="2"/></body></worldbody></mujoco>""")
+    scale_bodies(spec, {"a": 2}, mass=mass, total_mass=total)
+    np.testing.assert_allclose(spec.compile().body_mass[1:], expected)
+
+
+def test_partial_keyframe_scales_slide_values() -> None:
+    spec = mujoco.MjSpec.from_string("""<mujoco><worldbody>
+        <body name="parent"><geom size=".1"/>
+        <body name="child"><joint name="slide" type="slide" axis="1 0 0"/>
+        <joint name="hinge"/><geom size=".1"/></body></body></worldbody>
+        <keyframe><key qpos=".2"/></keyframe></mujoco>""")
+    scale_bodies(spec, {"parent": 2})
+    np.testing.assert_allclose(spec.compile().key_qpos, [[0.4, 0]])
 
 
 def _matched_pose(
@@ -258,6 +297,70 @@ def test_slide_joints_couplings_and_keyframes_scale_with_the_parent() -> None:
     )
 
 
+def test_slide_joint_axis_resolves_nested_frames() -> None:
+    spec = mujoco.MjSpec.from_string(
+        """<mujoco><worldbody><body name="parent">
+          <geom type="sphere" size="0.1"/>
+          <body name="child" euler="10 25 -15">
+            <frame euler="0 0 35"><frame euler="15 -20 45">
+              <joint name="slide" type="slide" axis="1 0 0"
+                range="-0.1 0.2" ref="0.01" springref="0.02"/>
+            </frame></frame>
+            <geom type="sphere" size="0.1"/>
+          </body>
+        </body></worldbody></mujoco>"""
+    )
+    ref = spec.copy().compile()
+    factors = np.array([1.7, 1.1, 0.8])
+    axis = _rot(ref.body("child").quat) @ ref.joint("slide").axis
+    expected = np.linalg.norm(factors * axis)
+    scaled = scale_bodies(spec, {"parent": factors}).compile()
+    np.testing.assert_allclose(scaled.jnt_range, ref.jnt_range * expected)
+    np.testing.assert_allclose(scaled.qpos0, ref.qpos0 * expected)
+    np.testing.assert_allclose(scaled.qpos_spring, ref.qpos_spring * expected)
+
+
+@pytest.mark.parametrize("euler", ["0 0 0", "0 0 45", "20 35 10"])
+def test_sphere_radius_uses_opensim_mean_independent_of_orientation(euler: str) -> None:
+    spec = mujoco.MjSpec.from_string(
+        f"""<mujoco><worldbody><body name="body"><joint/>
+          <geom name="sphere" type="sphere" size="0.1" euler="{euler}"/>
+        </body></worldbody></mujoco>"""
+    )
+    factors = np.array([2.0, 1.0, 0.8])
+    model = scale_bodies(spec, {"body": factors}).compile()
+    np.testing.assert_allclose(model.geom("sphere").size[0], 0.1 * factors.mean())
+
+
+@pytest.mark.parametrize("kind", ["cylinder", "capsule"])
+@pytest.mark.parametrize(
+    "placement",
+    ['euler="20 35 10" size="0.1 0.2"', 'fromto="0 0 0 0.2 0.3 0.4" size="0.1"'],
+)
+def test_cylinder_radius_uses_opensim_transverse_mean(
+    kind: str, placement: str
+) -> None:
+    spec = mujoco.MjSpec.from_string(
+        f"""<mujoco><worldbody><body name="body"><joint/>
+          <frame euler="10 25 30">
+            <geom name="geom" type="{kind}" {placement}/>
+          </frame>
+        </body></worldbody></mujoco>"""
+    )
+    ref = spec.copy().compile()
+    factors = np.array([2.0, 1.0, 0.8])
+    local_factors = np.linalg.norm(
+        factors[:, None] * _rot(ref.geom("geom").quat), axis=0
+    )
+    model = scale_bodies(spec, {"body": factors}).compile()
+    np.testing.assert_allclose(
+        model.geom("geom").size[0], ref.geom("geom").size[0] * local_factors[:2].mean()
+    )
+    np.testing.assert_allclose(
+        model.geom("geom").size[1], ref.geom("geom").size[1] * local_factors[2]
+    )
+
+
 @pytest.mark.parametrize("name", list(MODELS))
 def test_per_axis_scale_moves_everything_with_its_body(name: str) -> None:
     spec = MODELS[name]()
@@ -345,6 +448,41 @@ def test_unsupported_cases_are_refused() -> None:
     )
     with pytest.raises(NotImplementedError, match="connect/weld"):
         scale_bodies(connected, {"shank": 1.1})
+
+
+@pytest.mark.parametrize("factor", [0.0, -1.0, np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("segments", [None, {"unused": ("thigh",)}])
+def test_invalid_factors_are_rejected_before_mutating_the_model(
+    factor: float, segments: dict[str, tuple[str, ...]] | None
+) -> None:
+    spec = _simple_body()
+    before = _model_bytes(spec.copy().compile())
+    with pytest.raises(ValueError, match="finite and positive"):
+        scale_bodies(spec, {"thigh": [1.0, factor, 1.0]}, segments=segments)
+    assert _model_bytes(spec.copy().compile()) == before
+
+
+@pytest.mark.parametrize("name", ["total_mass", "force_scale"])
+@pytest.mark.parametrize("value", [0.0, -1.0, np.nan, np.inf, -np.inf])
+def test_invalid_mass_or_force_is_rejected_before_mutating_the_model(
+    name: str, value: float
+) -> None:
+    spec = _simple_body()
+    before = _model_bytes(spec.copy().compile())
+    with pytest.raises(ValueError, match=f"{name} must be finite and positive"):
+        scale_bodies(spec, {"thigh": 1.2}, **{name: value})
+    assert _model_bytes(spec.copy().compile()) == before
+
+
+def test_invalid_mass_mode_is_rejected_even_without_scaling() -> None:
+    with pytest.raises(ValueError, match="mass must be"):
+        scale_bodies(_simple_body(), {}, mass="invalid")
+
+
+@pytest.mark.parametrize("factor", [1.0, 1.2])
+def test_world_body_cannot_be_scaled(factor: float) -> None:
+    with pytest.raises(KeyError, match="world"):
+        scale_bodies(_simple_body(), {"world": factor})
 
 
 def test_model_builder_scale_bodies_matches_the_function() -> None:
