@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "scope": "Pipeline smoke run; one PPO iteration and one resumed iteration do not establish walking performance.",
+  "license": "Apache-2.0; synthetic markers, no captured human data",
+  "env_id": "myoLegWalk-v0",
+  "reproduce": "python -m myosuite.integrations.capture.leg_workflow --stage all --output tasks/subject-leg-smoke --gpu-python <cuda-python>",
+  "python": "3.12.10",
+  "dependencies": {
+    "torch": "2.14.1+cu132",
+    "mujoco": "3.11.0",
+    "mujoco-warp": "3.11.0",
+    "mjlab": "1.6.0",
+    "rsl-rl-lib": "5.4.2",
+    "myo-sim": "0.2.3",
+    "numpy": "2.5.4",
+    "onnx": "1.23.2",
+    "onnxruntime": "1.20.1"
+  },
+  "workflow_sha256": "0de2dd3b742f178c3965668007ff99d1eadb8a0e2dab0f135f7b454d95b28dd3",
+  "synthetic_factors": {
+    "femur_r": 1.05,
+    "tibia_r": 1.03,
+    "femur_l": 1.04,
+    "tibia_l": 1.02
+  },
+  "estimated_factors": {
+    "femur_r": [
+      1.05,
+      1.05,
+      1.05
+    ],
+    "tibia_r": [
+      1.0299999999999998,
+      1.0299999999999998,
+      1.0299999999999998
+    ],
+    "femur_l": [
+      1.04,
+      1.04,
+      1.04
+    ],
+    "tibia_l": [
+      1.02,
+      1.02,
+      1.02
+    ]
+  },
+  "capture_quality": {
+    "marker_rms_m": 4.6178705595000155e-08,
+    "marker_max_m": 1.5112953024684758e-07,
+    "sole_penetration_max_m": 0.0,
+    "converged_frames": 3,
+    "frames": 3,
+    "equality_error_max": 1.0273466034518486e-07
+  },
+  "training": {
+    "initial": {
+      "device": "NVIDIA GeForce RTX 4050 Laptop GPU",
+      "torch_version": "2.14.1+cu132",
+      "num_envs": 2,
+      "rollout_steps_per_env": 4,
+      "updates_in_this_stage": 1,
+      "checkpoint": "runs/initial/model_0.pt"
+    },
+    "resumed": {
+      "device": "NVIDIA GeForce RTX 4050 Laptop GPU",
+      "torch_version": "2.14.1+cu132",
+      "num_envs": 2,
+      "rollout_steps_per_env": 4,
+      "updates_in_this_stage": 1,
+      "checkpoint": "runs/resumed/model_0.pt",
+      "resumed_from": "runs/initial/model_0.pt",
+      "actor_parameter_change_max": 0.000133514404296875
+    }
+  },
+  "cpu_replay": {
+    "native": {
+      "steps": 20,
+      "reward_sum": 175.80038317470866,
+      "completed_episodes": 0
+    },
+    "onnx": {
+      "steps": 20,
+      "reward_sum": 175.8003867746756,
+      "completed_episodes": 0
+    }
+  },
+  "native_onnx_action_error_max": 1.4901161193847656e-07,
+  "mismatch_rejections": [
+    "nominal morphology: .pt",
+    "nominal morphology: .onnx",
+    "different subject task: .pt",
+    "different subject task: .onnx"
+  ],
+  "identity": {
+    "reference_model_digest": "36a9050484ef4f054b77987663b6318b7fce949378e6d2503131ea9d45497890",
+    "model_digest": "653d6dba76b85d786ba9fd198e4b137e3be4fbae69140cb873667809c788dbe4",
+    "task_digest": "92252a15f1ae31f40149105d1e905af8e17fcc2d1b230e40e5c447715b94bee1",
+    "feature_digest": "6cc3c75f5eb74079006714ae8c67595a4e7392ff473b548c1d07f7b25cfee0e8"
+  }
+}
