@@ -393,6 +393,15 @@ def make_env(
     # A config edited after construction may hold classes or pairs: normalize again.
     config = dataclasses.replace(config, features=normalize_features(config.features))
     backend = backend or config.backend
+    if config.subject is not None and backend in ("cpu", "mjlab"):
+        from gymnasium.envs.registration import load_env_creator
+
+        entry = gym.spec(config.env_id).entry_point
+        cls = load_env_creator(entry) if isinstance(entry, str) else entry
+        if not getattr(cls, "supports_subject_model", False):
+            raise NotImplementedError(
+                f"{config.env_id} has no paired subject-model construction."
+            )
     if backend == "cpu":
         return _make_cpu(config, overrides)
     elif backend == "mjx":
@@ -420,14 +429,6 @@ def _make_cpu(config: EnvConfig, overrides: dict[str, Any]) -> Any:
         )
     kwargs = {**config.task_kwargs, **config.backend_options, **overrides}
     if config.subject is not None:
-        from gymnasium.envs.registration import load_env_creator
-
-        entry = gym.spec(config.env_id).entry_point
-        cls = load_env_creator(entry) if isinstance(entry, str) else entry
-        if not getattr(cls, "supports_subject_model", False):
-            raise NotImplementedError(
-                f"{config.env_id} has no paired subject-model construction."
-            )
         kwargs["subject"] = config.subject
     if config.max_episode_steps is not None:
         kwargs["max_episode_steps"] = config.max_episode_steps

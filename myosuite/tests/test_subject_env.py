@@ -127,9 +127,18 @@ def test_subject_reset_pose_is_aligned_and_nominal_registration_unchanged() -> N
         c.close()
 
 
-def test_unsupported_subject_task_is_rejected() -> None:
+@pytest.mark.parametrize("backend", ["cpu", "mjlab"])
+@pytest.mark.parametrize(
+    "env_id",
+    [
+        "myoElbowPose1D6MRandom-v0",
+        "myoLegDirectionalForward-v0",
+        "myoLegRoughTerrainWalk-v0",
+    ],
+)
+def test_unsupported_subject_task_is_rejected(backend: str, env_id: str) -> None:
     with pytest.raises(NotImplementedError, match="paired"):
-        make_env(EnvConfig("myoElbowPose1D6MRandom-v0", subject=subject_config()))
+        make_env(EnvConfig(env_id, subject=subject_config()), backend=backend)
     with pytest.raises(NotImplementedError, match="CPU and mjlab"):
         make_env(EnvConfig(ENV_ID, subject=subject_config()), backend="mjx")
 
