@@ -305,13 +305,42 @@ def load_policy(env: Any, checkpoint: Path | None, strict: bool = False) -> Poli
     if strict:
         if checkpoint is None or not checkpoint.exists():
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint}")
-        if not checkpoint.is_dir() and checkpoint.suffix not in (".zip", ".pt"):
+        if not checkpoint.is_dir() and checkpoint.suffix not in (
+            ".zip",
+            ".pt",
+            ".onnx",
+        ):
             raise ValueError(
                 "Use an SB3 .zip or RSL-RL .pt checkpoint (or run directory)."
             )
     if checkpoint is None:
         print("No checkpoint found; using a random policy.")
         return random_policy
+    from myosuite.utils.checkpoint_manifest import check_contract
+
+    env_id = getattr(getattr(env, "spec", None), "id", "unknown")
+    compatible = check_contract(
+        env_id,
+        checkpoint
+        if checkpoint.is_dir() or checkpoint.suffix == ".onnx"
+        else checkpoint.parent,
+        env=env,
+        strict=strict,
+    )
+    if not compatible:
+        raise ValueError(
+            "Checkpoint is incompatible with the environment; refusing policy loading."
+        )
+    if checkpoint.suffix == ".onnx":
+        from myosuite.integrations.musclemimic.actor_onnx import load_onnx_session
+
+        session = load_onnx_session(checkpoint)
+
+        def onnx_policy(obs: np.ndarray) -> np.ndarray:
+            values = np.atleast_2d(np.asarray(obs, dtype=np.float32))
+            return session.act(values)[0]
+
+        return onnx_policy
     if checkpoint.suffix == ".zip":  # Stable-Baselines3
         try:
             model = load_sb3_model(checkpoint)

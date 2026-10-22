@@ -39,6 +39,8 @@ from typing import Any, ClassVar
 
 import numpy as np
 
+from myosuite.core.subject_env import SubjectEnvConfig
+
 
 # ---------------------------------------------------------------------------
 # Variant specification (Phase 2 — declarative muscle condition variants)
@@ -166,6 +168,7 @@ class EnvConfig:
         task_kwargs: Task-specific constructor overrides (CPU env kwargs).
         backend_options: Options of one backend only (``device``, ``render_mode``, ...);
             nothing portable belongs here.
+        subject: Shared morphology and explicit task settings for supported twins.
     """
 
     env_id: str = ""
@@ -176,6 +179,7 @@ class EnvConfig:
     features: tuple[Any, ...] = ()
     task_kwargs: dict[str, Any] = field(default_factory=dict)
     backend_options: dict[str, Any] = field(default_factory=dict)
+    subject: SubjectEnvConfig | None = None
 
     def __post_init__(self) -> None:
         from myosuite.envs.wrappers import normalize_features  # noqa: PLC0415

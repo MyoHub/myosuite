@@ -15,8 +15,9 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import functools
+import json
 from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import gymnasium as gym
@@ -30,6 +31,12 @@ from mjlab.sim import MujocoCfg
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
+from myosuite.core.subject_env import (
+    SubjectEnvConfig,
+    build_subject_env_model,
+    with_subject_features,
+)
+from myosuite.core.subject_model import model_digest
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.actions import MyoActionCfg
 from myosuite.terms.base_action import MotorNoiseCfg
 
@@ -207,7 +214,9 @@ def cpu_task_spec(env_id: str) -> CpuTaskSpec:
     return task
 
 
-def build_cpu_spec(task: CpuTaskSpec) -> mujoco.MjSpec:
+def _build_cpu_spec_and_metadata(
+    task: CpuTaskSpec,
+) -> tuple[mujoco.MjSpec, dict[str, Any] | None]:
     """Build the same ``MjSpec`` the CPU env compiles, plus its muscle condition.
 
     Args:
@@ -231,11 +240,24 @@ def build_cpu_spec(task: CpuTaskSpec) -> mujoco.MjSpec:
                 return spec
 
             builder = builder.apply_transform(_wrap)
-        _, spec = builder.build()
+        if kwargs.get("subject") is not None:
+            spec = builder.build_spec()
+        else:
+            _, spec = builder.build()
+    metadata = None
+    subject = kwargs.get("subject")
+    if subject is not None:
+        built = build_subject_env_model(spec, subject)
+        spec, metadata = built.spec, built.metadata
     sarcopenia = task.wrapper_kwargs("SarcopeniaWrapper")
     if sarcopenia is not None:
         apply_sarcopenia_to_spec(spec, force_scale=sarcopenia.get("force_scale", 0.5))
-    return spec
+    return spec, metadata
+
+
+def build_cpu_spec(task: CpuTaskSpec) -> mujoco.MjSpec:
+    """Build a fresh CPU-equivalent spec, including its subject and conditions."""
+    return _build_cpu_spec_and_metadata(task)[0]
 
 
 @dataclass(frozen=True)
@@ -255,21 +277,33 @@ class CompiledModelInfo:
     actuator_names: tuple[str, ...]
     actuator_targets: dict[int, tuple[str, ...]]
     na: int
+    subject_metadata: dict[str, Any] | None = None
 
 
 def _model_key(task: CpuTaskSpec) -> tuple[Any, ...]:
     """Cache key: models only differ by path/recipe/edit_fn (not by condition)."""
     kw = task.kwargs
-    return (kw.get("model_path"), kw.get("model_recipe"), kw.get("edit_fn"))
+    key = (kw.get("model_path"), kw.get("model_recipe"), kw.get("edit_fn"))
+    subject = kw.get("subject")
+    if subject is None:
+        return key
+    source_task = CpuTaskSpec(
+        task.env_id, {k: v for k, v in kw.items() if k != "subject"}, 0
+    )
+    source_digest = model_digest(build_cpu_spec(source_task).compile())
+    return (*key, json.dumps(subject.to_dict(), sort_keys=True), source_digest)
 
 
 @functools.cache
 def _compiled_info(key: tuple[Any, ...]) -> CompiledModelInfo:
-    model_path, model_recipe, edit_fn = key
+    model_path, model_recipe, edit_fn = key[:3]
     kwargs = {"model_path": model_path, "model_recipe": model_recipe}
     if edit_fn is not None:
         kwargs["edit_fn"] = edit_fn
-    model = build_cpu_spec(CpuTaskSpec("", kwargs, 0)).compile()
+    if len(key) > 3:
+        kwargs["subject"] = SubjectEnvConfig.from_dict(json.loads(key[3]))
+    spec, metadata = _build_cpu_spec_and_metadata(CpuTaskSpec("", kwargs, 0))
+    model = spec.compile()
     return CompiledModelInfo(
         opt_timestep=float(model.opt.timestep),
         mujoco_cfg=mujoco_cfg_from_model(model),
@@ -284,6 +318,7 @@ def _compiled_info(key: tuple[Any, ...]) -> CompiledModelInfo:
         actuator_names=tuple(model.actuator(i).name for i in range(model.nu)),
         actuator_targets=_actuator_targets(model),
         na=int(model.na),
+        subject_metadata=metadata,
     )
 
 
@@ -321,7 +356,15 @@ def _cpu_init_qpos(model: mujoco.MjModel) -> np.ndarray:
 
 def compiled_info(task: CpuTaskSpec) -> CompiledModelInfo:
     """Compiled-model constants of *task* (cached per model)."""
-    return _compiled_info(_model_key(task))
+    info = _compiled_info(_model_key(task))
+    if info.subject_metadata is not None:
+        return replace(
+            info,
+            subject_metadata=with_subject_features(
+                info.subject_metadata, task.wrappers
+            ),
+        )
+    return info
 
 
 def mujoco_cfg_from_model(

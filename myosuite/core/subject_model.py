@@ -19,6 +19,7 @@ from numpy.typing import ArrayLike
 
 from myosuite.core.body_scaling import _body_scales, _factors, _frame_rot, scale_bodies
 from myosuite.core.model_builder import ModelBuilder
+from myosuite.physics.geometry import primitive_support_extent
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,22 @@ class ScaleEstimate:
     source: str = "unspecified"
     confidence: float | None = None
     warnings: tuple[str, ...] = ()
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> ScaleEstimate:
+        return self
+
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        return (
+            type(self),
+            (
+                dict(self.factors),
+                self.height_m,
+                self.mass_kg,
+                self.source,
+                self.confidence,
+                self.warnings,
+            ),
+        )
 
     def __post_init__(self) -> None:
         factors = {}
@@ -149,25 +166,15 @@ def _geom_bottom(model: mujoco.MjModel, data: mujoco.MjData, index: int) -> floa
     kind = int(model.geom_type[index])
     size = model.geom_size[index]
     vertical = data.geom_xmat[index].reshape(3, 3)[2]
-    if kind == mujoco.mjtGeom.mjGEOM_SPHERE:
-        extent = size[0]
-    elif kind == mujoco.mjtGeom.mjGEOM_CAPSULE:
-        extent = size[0] + size[1] * abs(vertical[2])
-    elif kind == mujoco.mjtGeom.mjGEOM_CYLINDER:
-        extent = size[1] * abs(vertical[2]) + size[0] * np.linalg.norm(vertical[:2])
-    elif kind == mujoco.mjtGeom.mjGEOM_BOX:
-        extent = np.abs(vertical) @ size
-    elif kind == mujoco.mjtGeom.mjGEOM_ELLIPSOID:
-        extent = np.linalg.norm(vertical * size)
-    elif kind == mujoco.mjtGeom.mjGEOM_MESH:
+    if kind == int(mujoco.mjtGeom.mjGEOM_MESH):
         mesh = int(model.geom_dataid[index])
         start, count = model.mesh_vertadr[mesh], model.mesh_vertnum[mesh]
         return float(
             data.geom_xpos[index, 2]
             + np.min(model.mesh_vert[start : start + count] @ vertical)
         )
-    else:
-        raise NotImplementedError(f"Unsupported sole geom type {kind}.")
+    shape = mujoco.mjtGeom(kind).name.removeprefix("mjGEOM_").lower()
+    extent = primitive_support_extent(shape, size, vertical, np)
     return float(data.geom_xpos[index, 2] - extent)
 
 
@@ -188,6 +195,21 @@ class SubjectModelConfig:
     mass: Literal["volume", "keep"] = "volume"
     force_scale: float = 1.0
     ground: GroundAlignment | None = None
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> SubjectModelConfig:
+        return self
+
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        return (
+            type(self),
+            (
+                self.estimate,
+                None if self.segments is None else dict(self.segments),
+                self.mass,
+                self.force_scale,
+                self.ground,
+            ),
+        )
 
     def __post_init__(self) -> None:
         if self.mass not in ("volume", "keep"):

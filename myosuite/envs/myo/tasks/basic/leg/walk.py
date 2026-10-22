@@ -19,6 +19,12 @@ import gymnasium as gym
 from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder
+from myosuite.core.subject_env import (
+    SubjectEnvConfig,
+    build_subject_env_model,
+    subject_metadata,
+)
+from myosuite.core.subject_model import align_root_to_ground
 from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.terms.base_reward import locomotion_solved, walk_env_reward
@@ -57,6 +63,7 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         Vittorio Caggiano, Huawei Wang, Guillaume Durandau, Massimo Sartori, Vikash Kumar
         L4DC-2019 | https://sites.google.com/view/myosuite
     """
+    supports_subject_model = True
 
     def __init__(
         self,
@@ -74,8 +81,13 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         target_rot: np.ndarray | None = None,
         normalize_act: bool = True,
         frame_skip: int = 10,
+        subject: SubjectEnvConfig | None = None,
         **kwargs: Any,
     ) -> None:
+        if subject is not None and reset_type != "init":
+            raise NotImplementedError(
+                "Subject resets use an explicit keyframe and per-joint offsets."
+            )
         MyoGymnasiumEnv.__init__(
             self, frame_skip=frame_skip, render_mode=kwargs.get("render_mode")
         )
@@ -96,10 +108,20 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             target_rot=target_rot,
             normalize_act=normalize_act,
             frame_skip=frame_skip,
+            subject=subject,
             **kwargs,
         )
 
-        self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
+        builder = ModelBuilder.from_xml_file(model_path)
+        self.subject_config = subject
+        self.subject_model_metadata = None
+        if subject is None:
+            self.model, self._mj_spec = builder.build()
+        else:
+            built = build_subject_env_model(builder, subject)
+            self.model, self._mj_spec = built.model, built.spec
+            self.subject_model_metadata = built.metadata
+            min_height = subject.min_height
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 
@@ -402,11 +424,25 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         if self.reset_type == "random":
             qpos, qvel = self._get_randomized_initial_state()
         elif self.reset_type == "init":
-            qpos = self.model.key_qpos[2].copy()
-            qvel = self.model.key_qvel[2].copy()
+            keyframe = (
+                2 if self.subject_config is None else self.subject_config.reset_keyframe
+            )
+            qpos = self.model.key_qpos[keyframe].copy()
+            qvel = self.model.key_qvel[keyframe].copy()
         else:
             qpos = self._init_qpos.copy()
             qvel = self._init_qvel.copy()
+        if self.subject_config is not None:
+            for name, (lo, hi) in self.subject_config.joint_offsets.items():
+                joint = self.model.joint(name)
+                address = int(joint.qposadr[0])
+                qpos[address] += self.np_random.uniform(lo, hi)
+                if joint.limited[0]:
+                    qpos[address] = np.clip(qpos[address], *joint.range)
+            if self.subject_config.joint_offsets:
+                qpos, _ = align_root_to_ground(
+                    self.model, self.subject_config.model.ground, qpos
+                )
         self.data.qpos[:] = qpos
         self.data.qvel[:] = qvel
         mujoco.mj_forward(self.model, self.data)
@@ -414,7 +450,11 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
         obs = self._ensure_obs_gymnasium_compliant(obs)
-        return obs, {}
+        return obs, (
+            {}
+            if self.subject_model_metadata is None
+            else {"subject_model": subject_metadata(self)}
+        )
 
     @property
     def dt(self) -> float:
@@ -426,6 +466,8 @@ class LegTerrainEnvV0(LegWalkEnvV0):
 
     Migrated from walk_v0.TerrainEnvV0 (BaseV0). Same obs/reward + knee done.
     """
+
+    supports_subject_model = False
 
     def __init__(
         self,

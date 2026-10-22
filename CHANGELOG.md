@@ -6,6 +6,14 @@ All notable changes to this project are documented in this file.
 
 ### Highlights
 
+* **Subject-specific paired leg environments.** `myoLegWalk-v0` accepts a typed
+  `EnvConfig.subject` recipe on CPU and mjlab, including ground alignment,
+  explicit fall/contact settings, retargeted reset poses and seeded joint
+  offsets. Training, resume, evaluation and ONNX policy loading carry and check
+  the actual subject and feature identity. Nominal registrations retain their
+  existing contract; nominal checkpoints do not transfer to a subject without
+  matching provenance.
+
 * **Photorealistic Blender rendering of any MyoSuite rollout ([#540]).** One command turns a CPU rollout of a
   trained policy (`--checkpoint`) or of random actions (`--random`) into a Cycles render: animated USD export,
   a studio scene, ivory bones and volumetric muscles that thicken as they shorten and redden with activation.

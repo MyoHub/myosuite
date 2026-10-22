@@ -178,9 +178,52 @@ inertia or contacts. Record and check morphology as well as the policy contract:
 
 A nominal or unrecorded checkpoint used with a subject, a different subject, or
 a subject checkpoint used with nominal morphology warns and returns ``False``;
-``strict=True`` raises. Call this before loading a policy in a custom subject
-workflow. A matching digest identifies construction; it does not establish
-biomechanical accuracy or successful policy transfer.
+``strict=True`` raises. A matching digest identifies construction; it does not
+establish biomechanical accuracy or successful policy transfer.
+
+Registered subject environments and policies
+--------------------------------------------
+
+``myoLegWalk-v0`` accepts the same typed subject recipe on CPU and mjlab. Other
+tasks reject subject recipes until their paired task settings are implemented.
+Choose the fall threshold, reset keyframe, sole collision margin and reset
+offsets explicitly; these task settings are not inferred from body proportions.
+
+.. code-block:: python
+
+    import json
+    from pathlib import Path
+    from myosuite import make_env
+    from myosuite.core.config import EnvConfig
+    from myosuite.core.subject_env import SubjectEnvConfig
+
+    recipe = SubjectEnvConfig(
+        model=subject_config,  # SubjectModelConfig with explicit GroundAlignment
+        min_height=0.8,
+        reset_keyframe=2,
+        contact_margin=0.001,
+        joint_offsets={"hip_rotation_r": (-0.01, 0.01)},
+    )
+    Path("subject.json").write_text(json.dumps(recipe.to_dict(), indent=2))
+    cpu = make_env(EnvConfig("myoLegWalk-v0", subject=recipe))
+    gpu = make_env(EnvConfig("myoLegWalk-v0", subject=recipe),
+                   backend="mjlab", device="cuda:0", num_envs=2)
+
+``reset_qpos`` and ``reset_qvel`` optionally select a retargeted initial state
+in the built model's coordinate order. The reset pose is aligned using the
+named sole geoms after fitting and after any randomized joint offsets. Both
+backends expose construction provenance in reset information as
+``info["subject_model"]``; partial resets leave other environments' state intact.
+
+Training and evaluation accept ``--subject subject.json``. Training records the
+actual instance contract, recipe and feature configuration in its manifest.
+Resume and evaluation check those identities before loading weights. The same
+automatic check is performed by ``load_policy(env, checkpoint, strict=True)``.
+Exported ONNX files carry the manifest, including when native weights are bundled
+and subsequently extracted. Custom trainers should call
+``write_manifest(checkpoint_dir, env_id, env=env)`` with their actual instance.
+The checks include morphology, reset/task settings, feature parameters,
+observations, actions and control timing.
 
 Where subject scale factors come from:
 
@@ -234,7 +277,7 @@ checkpoint rejection and named-joint replay on a scaled MyoFullBody.
 ``test_body_scaling_skin.py`` checks segment-local skin scaling and explicit
 ``.skn``/GLB export fidelity on synthetic and bundled skins.
 
-Remaining integration work is tracked explicitly:
+Integration evidence and follow-up review are tracked explicitly:
 `OpenSim biomechanical validation <https://github.com/MyoHub/myosuite/issues/560>`__,
 `registered CPU/mjlab and policy plumbing <https://github.com/MyoHub/myosuite/issues/561>`__,
 and `optional estimation/retargeting adapters <https://github.com/MyoHub/myosuite/issues/562>`__.

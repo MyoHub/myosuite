@@ -49,6 +49,7 @@ def walk_params(
 ) -> walk_mdp.WalkParams:
     """Constants of the CPU ``LegWalkEnvV0`` registration of *task*."""
     kw = task.kwargs
+    subject = kw.get("subject")
     target_rot = kw.get("target_rot")
     if target_rot is None:  # CPU: the root orientation of keyframe 0
         target_rot = info.key_qpos[0][3:7]
@@ -71,7 +72,9 @@ def walk_params(
             float(kw.get("target_x_vel", 0.0)),
             float(kw.get("target_y_vel", 1.2)),
         ),
-        min_height=float(kw.get("min_height", 0.8)),
+        min_height=float(
+            subject.min_height if subject is not None else kw.get("min_height", 0.8)
+        ),
         max_rot=float(kw.get("max_rot", 0.8)),
         hip_period=int(kw.get("hip_period", 100)),
         knee_margin=_KNEE_MARGIN if kw.get("terrain") else None,
@@ -94,9 +97,15 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
     del play
     task = ref.cpu_task_spec(env_id)
     kw = task.kwargs
+    subject = kw.get("subject")
+    if subject is not None and kw.get("terrain"):
+        raise NotImplementedError(
+            "Subject terrain tasks require an explicit terrain morphology contract."
+        )
     if kw.get("reset_type", "init") != "init":
         raise NotImplementedError("Only reset_type='init' is ported.")
     info = ref.compiled_info(task)
+    reset_keyframe = 2 if subject is None else subject.reset_keyframe
     robot = SceneEntityCfg(ENTITY)
     if kw.get("terrain"):  # height field baked in (see terrain.py)
         model_edit = functools.partial(
@@ -171,18 +180,44 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
             mode="reset",
             params={
                 "asset_cfg": robot,
-                "qpos": info.key_qpos[2],
-                "qvel": info.key_qvel[2],
+                "qpos": info.key_qpos[reset_keyframe],
+                "qvel": info.key_qvel[reset_keyframe],
+                **(
+                    {"joint_offsets": dict(subject.joint_offsets)}
+                    if subject is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "ground": {
+                            "sole_geoms": subject.model.ground.sole_geoms,
+                            "ground_height": subject.model.ground.ground_height,
+                            "clearance": subject.model.ground.clearance,
+                        }
+                    }
+                    if subject is not None
+                    else {}
+                ),
             },
         ),
     }
+    if subject is not None:
+        from myosuite.envs.myo.backends.mjlab.tasks.mdp.events import subject_provenance
+
+        events["subject_provenance"] = EventTermCfg(
+            func=subject_provenance,
+            mode="reset",
+            params={"metadata": info.subject_metadata},
+        )
 
     step_dt = info.opt_timestep * task.frame_skip
     return ManagerBasedRlEnvCfg(
         scene=SceneCfg(
             entities={
                 ENTITY: ref.robot_entity_cfg(
-                    task, init_qpos=info.key_qpos[2], spec_edits=(model_edit,)
+                    task,
+                    init_qpos=info.key_qpos[reset_keyframe],
+                    spec_edits=(model_edit,),
                 )
             },
             num_envs=1,

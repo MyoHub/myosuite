@@ -217,6 +217,9 @@ def export_sb3_to_onnx(
     wrapper = _DeterministicWrapper(model.policy, algo_name, obs_stats)
     wrapper.eval()
     _export_policy(wrapper, obs_dim, output, opset)
+    from myosuite.utils.onnx_checkpoint import embed_checkpoint_manifest
+
+    embed_checkpoint_manifest(output, checkpoint)
     log.info(
         "Exported SB3 policy → %s  (obs_dim=%d, act_dim=%d, VecNormalize folded: %s)",
         output,
@@ -262,6 +265,9 @@ def export_rslrl_to_onnx(
         raise ValueError(f"--obs-dim {obs_dim} != checkpoint input size {expected}")
 
     _export_policy(policy, obs_dim, output, opset)
+    from myosuite.utils.onnx_checkpoint import embed_checkpoint_manifest
+
+    embed_checkpoint_manifest(output, checkpoint)
     log.info(
         "Exported RSL-RL policy → %s  (obs_dim=%d, act_dim=%d)",
         output,
