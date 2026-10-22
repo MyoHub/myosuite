@@ -6,6 +6,14 @@ All notable changes to this project are documented in this file.
 
 ### Highlights
 
+* **Subject-specific paired leg environments.** `myoLegWalk-v0` accepts a typed
+  `EnvConfig.subject` recipe on CPU and mjlab, including ground alignment,
+  explicit fall/contact settings, retargeted reset poses and seeded joint
+  offsets. Training, resume, evaluation and ONNX policy loading carry and check
+  the actual subject and feature identity. Nominal registrations retain their
+  existing contract; nominal checkpoints do not transfer to a subject without
+  matching provenance.
+
 * **Photorealistic Blender rendering of any MyoSuite rollout ([#540]).** One command turns a CPU rollout of a
   trained policy (`--checkpoint`) or of random actions (`--random`) into a Cycles render: animated USD export,
   a studio scene, ivory bones and volumetric muscles that thicken as they shorten and redden with activation.
@@ -37,6 +45,7 @@ All notable changes to this project are documented in this file.
 ### Added
 
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
+* **Body scaling:** `myosuite.core.body_scaling.scale_bodies` (and `ModelBuilder.scale_bodies`) scales a musculoskeletal model to a subject with OpenSim-style rules: per-axis factors per body; muscle fibre and tendon slack lengths follow the muscle-tendon length in the default pose; mass by volume or kept, optionally rescaled to a total. `read_opensim_scales` reads a ScaleSet or a scaled `.osim` (e.g. from AddBiomechanics), and Rajagopal segment mappings cover MyoLeg and the MuscleMimic MyoFullBody. One factor is an exact similarity (tested on MyoLeg and MyoFullBody). `ScaleEstimate` and `build_subject_model` add immutable inputs, deterministic provenance, root/sole alignment and explicit checkpoint morphology validation. Skin influences support segment-local anisotropic scaling; incompatible `.skn`/GLB exports require approximation opt-in. Named-joint replay on a scaled full body is tested. Registered envs retain their nominal morphology; retarget motion against the scaled target before use. Retargeting your own SMPL motion with GMR-Fit is documented, with the license rules (#166, [#525]).
 
 ### Changed
 
@@ -254,6 +263,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#504]: https://github.com/MyoHub/myosuite/pull/504
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#520]: https://github.com/MyoHub/myosuite/pull/520
+[#525]: https://github.com/MyoHub/myosuite/pull/525
 [#540]: https://github.com/MyoHub/myosuite/pull/540
 
 ## [2.12.2] - 2026-05-06

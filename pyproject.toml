@@ -55,6 +55,7 @@ dependencies = [
     "huggingface_hub>=0.20",
 ]
 [project.optional-dependencies]
+capture = ["ezc3d>=1.5"]
 # Reinforcement learning training with Stable-Baselines3
 rl = [
     "stable-baselines3>=2.7.1",

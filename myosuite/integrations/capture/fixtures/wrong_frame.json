@@ -1,0 +1,193 @@
+{
+  "license": "Apache-2.0",
+  "trial": {
+    "labels": [
+      "ROOT",
+      "PELVIS_FRONT",
+      "PELVIS_SIDE",
+      "KNEE",
+      "ANKLE",
+      "TOE",
+      "HEEL"
+    ],
+    "positions": [
+      [
+        [
+          0,
+          0,
+          1040
+        ],
+        [
+          100,
+          0,
+          1040
+        ],
+        [
+          0,
+          100,
+          1040
+        ],
+        [
+          0,
+          0,
+          440
+        ],
+        [
+          0,
+          0,
+          80
+        ],
+        [
+          180,
+          0,
+          40
+        ],
+        [
+          -60,
+          0,
+          40
+        ]
+      ],
+      [
+        [
+          0,
+          0,
+          1040
+        ],
+        [
+          100,
+          0,
+          1040
+        ],
+        [
+          0,
+          100,
+          1040
+        ],
+        [
+          0,
+          0,
+          440
+        ],
+        [
+          0,
+          0,
+          80
+        ],
+        [
+          180,
+          0,
+          40
+        ],
+        [
+          -60,
+          0,
+          40
+        ]
+      ],
+      [
+        [
+          0,
+          0,
+          1040
+        ],
+        [
+          100,
+          0,
+          1040
+        ],
+        [
+          0,
+          100,
+          1040
+        ],
+        [
+          0,
+          0,
+          440
+        ],
+        [
+          0,
+          0,
+          80
+        ],
+        [
+          180,
+          0,
+          40
+        ],
+        [
+          -60,
+          0,
+          40
+        ]
+      ]
+    ],
+    "units": "mm",
+    "rotation_to_model": [
+      [
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        -1
+      ],
+      [
+        0,
+        1,
+        0
+      ]
+    ],
+    "source": "MyoSuite Apache-2.0 analytic two-link fixture",
+    "confidence": 0.98,
+    "uncertainty_m": 0.002,
+    "frequency_hz": 10
+  },
+  "measurements": [
+    {
+      "segment": "thigh",
+      "marker_pair": [
+        "ROOT",
+        "KNEE"
+      ],
+      "reference_length_m": 0.5,
+      "axis": "z",
+      "expected_direction_model": [
+        0,
+        0,
+        -1
+      ]
+    },
+    {
+      "segment": "shank",
+      "marker_pair": [
+        "KNEE",
+        "ANKLE"
+      ],
+      "reference_length_m": 0.4,
+      "axis": "z",
+      "expected_direction_model": [
+        0,
+        0,
+        -1
+      ]
+    },
+    {
+      "segment": "foot",
+      "marker_pair": [
+        "HEEL",
+        "TOE"
+      ],
+      "reference_length_m": 0.24,
+      "axis": "x",
+      "expected_direction_model": [
+        1,
+        0,
+        0
+      ]
+    }
+  ]
+}

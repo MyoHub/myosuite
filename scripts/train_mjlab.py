@@ -36,6 +36,8 @@ from mjlab.utils.wrappers import VideoRecorder
 
 from myosuite.utils.checkpoint_utils import resume_checkpoint
 from myosuite.utils.feature_cli import parse_feature_args
+from myosuite.core.subject_env import parse_subject_args, subject_metadata
+from myosuite.utils.checkpoint_manifest import check_contract, write_manifest
 
 
 @dataclass(frozen=True)
@@ -69,14 +71,16 @@ class TrainConfig:
     gpu_ids: list[int] | Literal["all"] | None = field(default_factory=lambda: [0])
 
     @staticmethod
-    def from_task(task_id: str, features=()) -> "TrainConfig":
+    def from_task(task_id: str, features=(), subject=None) -> "TrainConfig":
         """The task's default config; *features* (wrapper specs) rebuild the twin with them."""
-        if features:
+        if features or subject is not None:
             from myosuite.envs.myo.backends.mjlab.tasks.registration import (
                 rebuild_twin_cfg,
             )
 
-            env_cfg = rebuild_twin_cfg(task_id, features)
+            env_cfg = rebuild_twin_cfg(
+                task_id, features, {} if subject is None else {"subject": subject}
+            )
         else:
             env_cfg = load_env_cfg(task_id)
         agent_cfg = load_rl_cfg(task_id)
@@ -345,12 +349,22 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
     runner.add_git_repo_to_log(__file__)
     if resume_path is not None:
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
+        check_contract(task_id, resume_path.parent, env=env, strict=True)
         runner.load(str(resume_path))
 
     # Only write config files from rank 0 to avoid race conditions.
     if rank == 0:
         dump_yaml(log_dir / "params" / "env.yaml", env_cfg)
         dump_yaml(log_dir / "params" / "agent.yaml", agent_cfg)
+        write_manifest(log_dir, task_id, env=env)
+        metadata = subject_metadata(env)
+        if metadata is not None:
+            import json
+
+            (log_dir / "params" / "subject.json").write_text(
+                json.dumps(metadata["subject_env_config"], indent=2) + "\n",
+                encoding="utf-8",
+            )
 
     if cfg.stop_on_success:
         if getattr(runner, "is_distributed", False):
@@ -369,6 +383,9 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
         )
     except SuccessReached:
         runner.logger.stop_logging_writer()
+    finally:
+        if rank == 0:
+            write_manifest(log_dir, task_id, env=env)
 
     env.close()
 
@@ -444,10 +461,11 @@ def main():
     # ``--feature NAME[=JSON]`` (repeatable): the muscle-command features of
     # ``EnvConfig.features``; see ``myosuite.utils.feature_cli``.
     features, remaining_args = parse_feature_args(remaining_args)
+    subject, remaining_args = parse_subject_args(remaining_args)
     args = tyro.cli(
         TrainConfig,
         args=remaining_args,
-        default=TrainConfig.from_task(chosen_task, features),
+        default=TrainConfig.from_task(chosen_task, features, subject),
         prog=sys.argv[0] + f" {chosen_task}",
         config=mjlab.TYRO_FLAGS,
     )

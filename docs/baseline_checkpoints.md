@@ -21,6 +21,17 @@ directly::
 (pass `--checkpoint <run directory>` instead to use a checkpoint you trained yourself). Resume a
 run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.load-run <run> --env.scene.num-envs 4096`.
 
+Subject-scaled models change dynamics even when observation/action shapes agree.
+Published nominal checkpoints are not validated for another morphology.
+`EnvConfig("myoLegWalk-v0", subject=...)` supplies one subject recipe to CPU and
+mjlab; training/evaluation accept `--subject subject.json`. Subject training,
+resume, `load_policy` and ONNX export automatically record or check morphology,
+task/reset settings and feature parameters. Custom trainers should record
+`write_manifest(..., env=env)` and call `check_contract(..., env=env, strict=True)`
+before loading weights. Missing or different subject metadata is rejected even
+when observation/action shapes agree. Nominal registrations keep their existing
+contract. See the body-scaling guide.
+
 | Env                          | Checkpoint         | Deterministic success (mjlab) |
 | ---------------------------- | ------------------ | ----------------------------- |
 | motorFingerPoseFixed-v0      | `model_267.pt`   | 100.0%                        |

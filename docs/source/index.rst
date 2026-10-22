@@ -84,6 +84,9 @@ Choose your path
    architecture
    environments
    model_builder
+   body_scaling
+   capture_scaling
+   subject_leg_workflow
    backend_parity
    fatigue_validation
 

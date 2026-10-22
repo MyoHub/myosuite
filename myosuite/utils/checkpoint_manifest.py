@@ -13,9 +13,12 @@ import subprocess
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import myosuite
+
+if TYPE_CHECKING:
+    from myosuite.core.subject_model import SubjectModel
 
 MANIFEST_NAME = "manifest.json"
 SCHEMA_VERSION = 1
@@ -42,25 +45,39 @@ def env_contract(env_id: str) -> dict[str, Any]:
 
     env = make_env(env_id)
     try:
-        unwrapped = env.unwrapped
-        dt = next(
-            (
-                getattr(unwrapped, a)
-                for a in ("dt", "_ctrl_dt")
-                if hasattr(unwrapped, a)
-            ),
-            None,
-        )
-        contract: dict[str, Any] = {
-            "obs_shape": _shape(env.observation_space),
-            "action_shape": _shape(env.action_space),
-            "ctrl_dt": None if dt is None else round(float(dt), 6),
-        }
-        if hasattr(unwrapped, "obs_keys"):
-            contract["obs_keys"] = list(unwrapped.obs_keys)
-        return contract
+        return contract_from_env(env)
     finally:
         env.close()
+
+
+def contract_from_env(env: Any) -> dict[str, Any]:
+    """Describe the actual CPU or mjlab instance, including timing overrides."""
+    host = getattr(env, "unwrapped", env)
+    dt = next(
+        (
+            getattr(host, name)
+            for name in ("dt", "_ctrl_dt", "step_dt")
+            if hasattr(host, name)
+        ),
+        None,
+    )
+    if hasattr(host, "single_observation_space"):
+        obs_space = host.single_observation_space
+        group = "actor" if "actor" in obs_space.spaces else "policy"
+        observation = obs_space.spaces[group]
+        action = host.single_action_space
+        keys = list(host.cfg.observations[group].terms)
+    else:
+        observation, action = env.observation_space, env.action_space
+        keys = getattr(host, "obs_keys", None)
+    contract = {
+        "obs_shape": _shape(observation),
+        "action_shape": _shape(action),
+        "ctrl_dt": None if dt is None else round(float(dt), 6),
+    }
+    if keys is not None:
+        contract["obs_keys"] = list(keys)
+    return contract
 
 
 def contract_hash(contract: dict[str, Any]) -> str:
@@ -92,6 +109,8 @@ def write_manifest(
     success: float | None = None,
     steps: int | None = None,
     note: str | None = None,
+    subject_model: SubjectModel | None = None,
+    env: Any | None = None,
 ) -> Path:
     """Write ``manifest.json`` into a checkpoint folder.
 
@@ -102,6 +121,8 @@ def write_manifest(
         success: Deterministic success rate in percent, if measured.
         steps: Environment steps the policy was trained for, if known.
         note: Free text (for example how success is scored).
+        subject_model: Built subject whose morphology provenance is recorded.
+        env: Actual CPU/mjlab instance; its contract and subject are recorded automatically.
 
     Returns:
         Path of the written manifest. For envs whose body is built from ``musclemimic_models``
@@ -109,7 +130,12 @@ def write_manifest(
         releases while the contract does not, and loaders build the recorded one.
     """
     checkpoint_dir = Path(checkpoint_dir)
-    contract = env_contract(env_id) if contract is None else contract
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    contract = (
+        (env_contract(env_id) if env is None else contract_from_env(env))
+        if contract is None
+        else contract
+    )
     manifest = {
         "schema": SCHEMA_VERSION,
         "env_id": env_id,
@@ -131,6 +157,14 @@ def write_manifest(
     models_version = env_models_version(env_id)
     if models_version is not None:
         manifest[MANIFEST_FIELD] = models_version
+    if subject_model is not None:
+        manifest["subject_model"] = subject_model.metadata
+    elif env is not None:
+        from myosuite.core.subject_env import subject_metadata
+
+        metadata = subject_metadata(env)
+        if metadata is not None:
+            manifest["subject_model"] = metadata
     path = checkpoint_dir / MANIFEST_NAME
     path.write_text(json.dumps(manifest, indent=2) + "\n")
     return path
@@ -138,32 +172,71 @@ def write_manifest(
 
 def read_manifest(checkpoint_dir: str | Path) -> dict[str, Any] | None:
     """Return the manifest of a checkpoint folder, or ``None`` if it has none."""
+    if Path(checkpoint_dir).suffix == ".onnx" and Path(checkpoint_dir).is_file():
+        from myosuite.utils.onnx_checkpoint import read_onnx_manifest
+
+        return read_onnx_manifest(checkpoint_dir)
     path = Path(checkpoint_dir) / MANIFEST_NAME
     return json.loads(path.read_text()) if path.is_file() else None
 
 
-def check_contract(env_id: str, checkpoint_dir: str | Path) -> bool:
+def check_contract(
+    env_id: str,
+    checkpoint_dir: str | Path,
+    *,
+    subject_model: SubjectModel | None = None,
+    strict: bool = False,
+    env: Any | None = None,
+) -> bool:
     """Warn when a checkpoint's recorded contract differs from the current env.
 
     Args:
         env_id: Registered env id the checkpoint is about to be used on.
         checkpoint_dir: Folder with the checkpoint and its manifest.
+        subject_model: Current subject, or None for nominal morphology.
+        strict: Raise ValueError instead of warning on morphology or contract mismatch.
+        env: Actual CPU/mjlab instance; its subject and contract are checked automatically.
 
     Returns:
-        ``False`` when the contract hashes differ, ``True`` otherwise (also when the folder
-        has no manifest, or the manifest records no contract, as for the MuscleMimic policy).
+        ``False`` for a morphology or contract mismatch. With nominal morphology,
+        a missing manifest/contract retains the legacy ``True`` result.
     """
     manifest = read_manifest(checkpoint_dir)
+    recorded = None if manifest is None else manifest.get("subject_model")
+    expected = None if subject_model is None else subject_model.metadata
+    if env is not None:
+        from myosuite.core.subject_env import subject_metadata
+
+        expected = subject_metadata(env)
+    fields = ("model_digest", "task_digest", "feature_digest")
+    if any(
+        (None if recorded is None else recorded.get(key))
+        != (None if expected is None else expected.get(key))
+        for key in fields
+    ):
+        message = (
+            f"The checkpoint for {env_id} has incompatible or unrecorded subject "
+            "morphology. Nominal-policy results do not establish subject-specific "
+            "validity; retrain or explicitly validate the policy on this model."
+        )
+        if strict:
+            raise ValueError(message)
+        warnings.warn(message, stacklevel=2)
+        return False
     if manifest is None or not manifest.get("contract"):
         return True
-    current = contract_hash(env_contract(env_id))
+    current = contract_hash(
+        env_contract(env_id) if env is None else contract_from_env(env)
+    )
     if current == manifest["contract_hash"]:
         return True
-    warnings.warn(
+    message = (
         f"The checkpoint for {env_id} was trained on contract {manifest['contract_hash']} "
         f"(MyoSuite {manifest.get('myosuite_version')}), but the env now has {current}: "
         "observations, actions or control step changed, so the policy may not work. "
-        "Retrain it or use the checkpoint release that matches your MyoSuite version.",
-        stacklevel=2,
+        "Retrain it or use the checkpoint release that matches your MyoSuite version."
     )
+    if strict:
+        raise ValueError(message)
+    warnings.warn(message, stacklevel=2)
     return False

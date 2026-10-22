@@ -393,6 +393,15 @@ def make_env(
     # A config edited after construction may hold classes or pairs: normalize again.
     config = dataclasses.replace(config, features=normalize_features(config.features))
     backend = backend or config.backend
+    if config.subject is not None and backend in ("cpu", "mjlab"):
+        from gymnasium.envs.registration import load_env_creator
+
+        entry = gym.spec(config.env_id).entry_point
+        cls = load_env_creator(entry) if isinstance(entry, str) else entry
+        if not getattr(cls, "supports_subject_model", False):
+            raise NotImplementedError(
+                f"{config.env_id} has no paired subject-model construction."
+            )
     if backend == "cpu":
         return _make_cpu(config, overrides)
     elif backend == "mjx":
@@ -419,6 +428,8 @@ def _make_cpu(config: EnvConfig, overrides: dict[str, Any]) -> Any:
             "backend='mjlab' for parallel envs."
         )
     kwargs = {**config.task_kwargs, **config.backend_options, **overrides}
+    if config.subject is not None:
+        kwargs["subject"] = config.subject
     if config.max_episode_steps is not None:
         kwargs["max_episode_steps"] = config.max_episode_steps
     env = gym.make(config.env_id, **kwargs)
@@ -433,10 +444,20 @@ def _make_cpu(config: EnvConfig, overrides: dict[str, Any]) -> Any:
                 raise ValueError(
                     f"{config.env_id} does not take frame_skip, so ctrl_dt cannot change."
                 ) from e
-    return apply_features(env, config.features)
+    env = apply_features(env, config.features)
+    if config.subject is not None:
+        from myosuite.core.subject_env import with_subject_features
+
+        env.unwrapped.subject_model_metadata = with_subject_features(
+            env.unwrapped.subject_model_metadata,
+            (*gym.spec(config.env_id).additional_wrappers, *config.features),
+        )
+    return env
 
 
 def _make_mjx(config: EnvConfig, overrides: dict[str, Any]) -> Any:
+    if config.subject is not None:
+        raise NotImplementedError("Subject morphology is supported on CPU and mjlab.")
     feature_options = mjx_feature_overrides(config.features)
     if feature_options is None:
         raise NotImplementedError(
@@ -485,6 +506,7 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
         config.features
         or config.max_episode_steps is not None
         or config.ctrl_dt is not None
+        or config.subject is not None
     ):
         return mjlab.envs.make(env_id, **options)
 
@@ -509,6 +531,8 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # the CPU registration (extra wrappers, ``frame_skip``).
     cfg = load_env_cfg(env_id)
     task_kwargs: dict[str, Any] = {}
+    if config.subject is not None:
+        task_kwargs["subject"] = config.subject
     if config.ctrl_dt is not None:
         n_substeps = _substeps(config.ctrl_dt, cfg.sim.mujoco.timestep)
         if n_substeps != cfg.decimation:

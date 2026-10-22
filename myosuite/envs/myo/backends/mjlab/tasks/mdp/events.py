@@ -6,7 +6,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+import re
+import copy
+import mujoco
 
 import torch
 from mjlab.managers.event_manager import EventTermCfg, requires_model_fields
@@ -14,6 +17,8 @@ from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
+from myosuite.physics.quat_math_torch import quat2mat
+from myosuite.physics.geometry import primitive_support_extent
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
@@ -89,14 +94,35 @@ def write_cpu_state(
             relative to the env origin.
         qvel: CPU-layout velocities, shape ``(k, nv)``.
     """
-    idx = env.scene[entity_name].indexing
+    entity = env.scene[entity_name]
+    idx = entity.indexing
     q_adr = torch.sort(torch.cat([idx.free_joint_q_adr, idx.joint_q_adr]).long())[0]
     v_adr = torch.sort(torch.cat([idx.free_joint_v_adr, idx.joint_v_adr]).long())[0]
-    qpos = qpos.clone()
+    if not len(q_adr):
+        return
+    q_base, v_base = q_adr[0], v_adr[0]
     if len(idx.free_joint_q_adr):
-        qpos[:, :3] += env.scene.env_origins[env_ids]
-    env.sim.data.qpos[env_ids[:, None], q_adr] = qpos
-    env.sim.data.qvel[env_ids[:, None], v_adr] = qvel
+        root = torch.cat((qpos[:, :7], qvel[:, :6]), dim=-1)
+        root[:, :3] += env.scene.env_origins[env_ids]
+        root[:, 10:13] = torch.einsum(
+            "nij,nj->ni", quat2mat(root[:, 3:7]), qvel[:, 3:6]
+        )
+        entity.write_root_state_to_sim(root, env_ids=env_ids)
+    if len(idx.joint_q_adr):
+        entity.write_joint_state_to_sim(
+            qpos[:, idx.joint_q_adr.long() - q_base],
+            qvel[:, idx.joint_v_adr.long() - v_base],
+            env_ids=env_ids,
+        )
+
+
+def subject_provenance(
+    env: ManagerBasedRlEnv, env_ids: torch.Tensor | None, metadata: dict[str, Any]
+) -> None:
+    """Expose static construction provenance in every full or partial reset."""
+    del env_ids
+    env.subject_model_metadata = copy.deepcopy(metadata)
+    env.extras["subject_model"] = copy.deepcopy(metadata)
 
 
 class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
@@ -110,7 +136,8 @@ class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
     def __init__(self, cfg: EventTermCfg, env: ManagerBasedRlEnv) -> None:
         super().__init__(env)
         p = cfg.params
-        idx = env.scene[p["asset_cfg"].name].indexing
+        entity = env.scene[p["asset_cfg"].name]
+        idx = entity.indexing
         self._qpos = torch.tensor(p["qpos"], dtype=torch.float32, device=env.device)
         self._qvel = torch.tensor(p["qvel"], dtype=torch.float32, device=env.device)
         model = env.sim.mj_model
@@ -124,6 +151,60 @@ class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
             model.jnt_range[joints], dtype=torch.float32, device=env.device
         )
         self._lo, self._hi = rng[:, 0], rng[:, 1]
+        offsets = p.get("joint_offsets", {})
+        local_joints, _ = (
+            entity.find_joints(
+                [f"^{re.escape(name)}$" for name in offsets], preserve_order=True
+            )
+            if offsets
+            else ([], [])
+        )
+        selected = idx.joint_ids[local_joints].tolist()
+        self._offset_adr = torch.tensor(
+            [int(model.jnt_qposadr[j]) - base for j in selected],
+            dtype=torch.long,
+            device=env.device,
+        )
+        self._offset_lo = torch.tensor(
+            [offsets[name][0] for name in offsets], device=env.device
+        )
+        self._offset_hi = torch.tensor(
+            [offsets[name][1] for name in offsets], device=env.device
+        )
+        self._limited = torch.tensor(
+            model.jnt_limited[selected], dtype=torch.bool, device=env.device
+        )
+        self._ranges = torch.tensor(
+            model.jnt_range[selected], dtype=torch.float32, device=env.device
+        )
+        ground = p.get("ground")
+        self._ground = ground
+        if ground is not None:
+            local, _ = entity.find_geoms(
+                [f"^{re.escape(name)}$" for name in ground["sole_geoms"]],
+                preserve_order=True,
+            )
+            self._sole_ids = idx.geom_ids[local].long()
+            self._sole_shapes = [
+                mujoco.mjtGeom(int(kind)).name.removeprefix("mjGEOM_").lower()
+                for kind in model.geom_type[self._sole_ids.cpu().numpy()]
+            ]
+            self._sole_sizes = torch.tensor(
+                model.geom_size[self._sole_ids.cpu().numpy()],
+                device=env.device,
+                dtype=torch.float32,
+            )
+            self._sole_vertices = {}
+            for index, geom_id in enumerate(self._sole_ids.cpu().tolist()):
+                if self._sole_shapes[index] == "mesh":
+                    mesh_id = int(model.geom_dataid[geom_id])
+                    start = int(model.mesh_vertadr[mesh_id])
+                    count = int(model.mesh_vertnum[mesh_id])
+                    self._sole_vertices[index] = torch.tensor(
+                        model.mesh_vert[start : start + count],
+                        device=env.device,
+                        dtype=torch.float32,
+                    )
 
     def __call__(
         self,
@@ -133,9 +214,23 @@ class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
         qpos: tuple[float, ...],
         qvel: tuple[float, ...],
         joint_noise: tuple[float, float] | None = None,
+        joint_offsets: dict[str, tuple[float, float]] | None = None,
+        ground: dict[str, Any] | None = None,
     ) -> None:
         env_ids = normalize_mjlab_env_ids(env, env_ids)
         q = self._qpos.repeat(len(env_ids), 1)
+        if joint_offsets:
+            noise = self._offset_lo + (self._offset_hi - self._offset_lo) * torch.rand(
+                len(env_ids),
+                len(self._offset_adr),
+                device=env.device,
+            )
+            values = q[:, self._offset_adr] + noise
+            q[:, self._offset_adr] = torch.where(
+                self._limited,
+                torch.clamp(values, self._ranges[:, 0], self._ranges[:, 1]),
+                values,
+            )
         if joint_noise is not None and joint_noise[1] > joint_noise[0]:
             lo, hi = joint_noise
             noise = lo + (hi - lo) * torch.rand(
@@ -147,3 +242,39 @@ class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
         write_cpu_state(
             env, asset_cfg.name, env_ids, q, self._qvel.repeat(len(env_ids), 1)
         )
+        if joint_offsets and ground is not None:
+            env.sim.forward()
+            vertical = env.sim.data.geom_xmat[env_ids][:, self._sole_ids].reshape(
+                len(env_ids), -1, 3, 3
+            )[:, :, 2]
+            extents = []
+            for index, shape in enumerate(self._sole_shapes):
+                if shape == "mesh":
+                    vertices = self._sole_vertices[index]
+                    extents.append(
+                        -torch.amin(
+                            torch.sum(
+                                vertices[None] * vertical[:, index, None],
+                                dim=-1,
+                            ),
+                            dim=-1,
+                        )
+                    )
+                else:
+                    extents.append(
+                        primitive_support_extent(
+                            shape, self._sole_sizes[index], vertical[:, index], torch
+                        )
+                    )
+            bottoms = env.sim.data.geom_xpos[env_ids][
+                :, self._sole_ids, 2
+            ] - torch.stack(extents, dim=-1)
+            target = (
+                ground["ground_height"]
+                + ground["clearance"]
+                + env.scene.env_origins[env_ids, 2]
+            )
+            q[:, 2] += target - torch.min(bottoms, dim=-1).values
+            write_cpu_state(
+                env, asset_cfg.name, env_ids, q, self._qvel.repeat(len(env_ids), 1)
+            )

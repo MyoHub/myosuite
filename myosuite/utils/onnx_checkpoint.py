@@ -31,6 +31,7 @@ except ImportError:  # wandb is optional; only get_wandb_onnx_checkpoint_path ne
 
 _BUNDLE_META_KEY = "myosuite.checkpoint_bundle.v1.meta"
 _BUNDLE_PAYLOAD_KEY = "myosuite.checkpoint_bundle.v1.payload_gzip_base64"
+_MANIFEST_KEY = "myosuite.manifest.v1"
 _FATIGUE_STATE_KEY = "fatigue_state"
 _VEC_NORMALIZE_KEY = "vec_normalize"
 _MODEL_STEP_ONNX_RE = re.compile(r"^model_(\d+)\.onnx$")
@@ -43,6 +44,32 @@ def _load_model_props(onnx_path: Path) -> tuple[Any, dict[str, str]]:
     model = onnx.load(str(onnx_path), load_external_data=False)
     props = {entry.key: entry.value for entry in model.metadata_props}
     return model, props
+
+
+def embed_checkpoint_manifest(
+    onnx_path: str | Path, checkpoint_path: str | Path
+) -> None:
+    """Copy checkpoint provenance into an inference-only ONNX export."""
+    import onnx
+    from myosuite.utils.checkpoint_manifest import read_manifest
+
+    manifest = read_manifest(Path(checkpoint_path).parent)
+    if manifest is None:
+        return
+    model, props = _load_model_props(Path(onnx_path))
+    props[_MANIFEST_KEY] = json.dumps(manifest, sort_keys=True)
+    onnx.helper.set_model_props(model, props)
+    onnx.save_model(model, str(onnx_path), save_as_external_data=False)
+
+
+def read_onnx_manifest(onnx_path: str | Path) -> dict[str, Any] | None:
+    """Read exported morphology/contract provenance, including checkpoint bundles."""
+    _, props = _load_model_props(Path(onnx_path))
+    if _MANIFEST_KEY in props:
+        return json.loads(props[_MANIFEST_KEY])
+    if _BUNDLE_META_KEY in props:
+        return json.loads(props[_BUNDLE_META_KEY]).get("checkpoint_manifest")
+    return None
 
 
 def bundle_onnx_with_checkpoint(
@@ -80,6 +107,12 @@ def bundle_onnx_with_checkpoint(
         "checkpoint_sha256": hashlib.sha256(payload).hexdigest(),
         "metadata": metadata or {},
     }
+    from myosuite.utils.checkpoint_manifest import read_manifest
+
+    manifest = read_manifest(checkpoint.parent)
+    if manifest is not None:
+        meta["checkpoint_manifest"] = manifest
+        props[_MANIFEST_KEY] = json.dumps(manifest, sort_keys=True)
     props[_BUNDLE_META_KEY] = json.dumps(meta, sort_keys=True)
     props[_BUNDLE_PAYLOAD_KEY] = base64.b64encode(gzip.compress(payload)).decode(
         "ascii"
@@ -137,6 +170,16 @@ def extract_checkpoint_from_onnx(
         destination = Path(output_path)
 
     destination.parent.mkdir(parents=True, exist_ok=True)
+    manifest = meta.get("checkpoint_manifest")
+    if manifest is not None:
+        manifest_path = destination.parent / "manifest.json"
+        if manifest_path.exists() and json.loads(manifest_path.read_text()) != manifest:
+            raise ValueError(
+                "Extraction destination has a different checkpoint manifest."
+            )
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+        )
     destination.write_bytes(payload)
     return destination.resolve(), meta, temp_dir
 
