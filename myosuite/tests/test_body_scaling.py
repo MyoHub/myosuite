@@ -517,6 +517,72 @@ def test_model_builder_scale_bodies_matches_the_function() -> None:
     )
 
 
+@pytest.mark.parametrize("name", ["leg", "myoleg"])
+def test_precompiled_mesh_scaling_has_fresh_bounds_and_bvh(name: str) -> None:
+    fresh, compiled = MODELS[name](), MODELS[name]()
+    compiled.compile()
+    factors = (
+        {"thigh": (0.8, 0.9, 1.1)} if name == "leg" else {"femur_r": (1.02, 1.07, 0.98)}
+    )
+    expected = scale_bodies(fresh, factors).compile()
+    actual = scale_bodies(compiled, factors).compile()
+    for field in (
+        "mesh_vert",
+        "geom_size",
+        "geom_aabb",
+        "geom_rbound",
+        "bvh_aabb",
+        "bvh_nodeid",
+    ):
+        np.testing.assert_array_equal(
+            getattr(actual, field), getattr(expected, field), err_msg=field
+        )
+    assert _model_bytes(actual) == _model_bytes(expected)
+
+
+def test_mesh_recreation_preserves_authored_data_and_names() -> None:
+    spec = _leg()
+    mesh = spec.mesh("cube")
+    mesh.refpos = [0.01, -0.02, 0.03]
+    mesh.refquat = [0.9238795325112867, 0.0, 0.0, 0.3826834323650898]
+    mesh.scale = [1.1, 0.9, 1.2]
+    mesh.smoothnormal = False
+    mesh.maxhullvert = 6
+    mesh.info = "authored mesh provenance"
+    fields = (
+        "name",
+        "classname",
+        "file",
+        "content_type",
+        "refpos",
+        "refquat",
+        "inertia",
+        "smoothnormal",
+        "maxhullvert",
+        "uservert",
+        "usernormal",
+        "userface",
+        "usertexcoord",
+        "userfacenormal",
+        "userfacetexcoord",
+        "material",
+        "info",
+    )
+    before = {field: np.array(getattr(mesh, field), copy=True) for field in fields}
+    original_scale = mesh.scale.copy()
+    spec.compile()
+    scale_bodies(spec, {"thigh": (0.8, 0.9, 1.1)})
+    replacement = spec.mesh("cube")
+    assert replacement is not None
+    assert spec.geom("thigh_mesh").meshname == "cube"
+    for field in fields:
+        np.testing.assert_array_equal(
+            getattr(replacement, field), before[field], err_msg=field
+        )
+    np.testing.assert_allclose(replacement.scale, original_scale * [0.8, 0.9, 1.1])
+    spec.compile()
+
+
 def test_rajagopal_segments_map_onto_myofullbody() -> None:
     spec = _fullbody()
     scales = _body_scales(

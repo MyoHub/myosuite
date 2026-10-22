@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 import xml.etree.ElementTree as ET
 
 import mujoco
@@ -373,10 +373,63 @@ def _scale_geometry(
             f"Meshes {sorted(shared)} are also used by unscaled bodies; give each its own mesh asset."
         )
     for name, factors in mesh_scales.items():
-        mesh = spec.mesh(name)
-        mesh.scale = np.asarray(mesh.scale) * factors
+        _rescale_mesh(spec, name, factors)
     _scale_keyframes(spec, ref, slide_qpos)
     return slide
+
+
+def _rescale_mesh(spec: mujoco.MjSpec, name: str, factors: np.ndarray) -> None:
+    """Recreate an edited mesh so precompiled bounds cannot survive its new scale."""
+    mesh = spec.mesh(name)
+    if mesh.plugin.active:
+        raise NotImplementedError(f"Cannot scale plugin-generated mesh {name!r}.")
+    # MuJoCo 3.11--3.15 retains private mesh AABB extrema after recompilation.
+    # Copy authored fields, not XML or compiled vertices/principal-axis frames.
+    attributes: dict[str, Any] = {}
+    arrays = {
+        "refpos",
+        "refquat",
+        "scale",
+        "uservert",
+        "usernormal",
+        "usertexcoord",
+        "userface",
+        "userfacenormal",
+        "userfacetexcoord",
+        "usernode",
+        "usertet",
+    }
+    for field in (
+        "name",
+        "content_type",
+        "file",
+        "refpos",
+        "refquat",
+        "scale",
+        "inertia",
+        "smoothnormal",
+        "needsdf",
+        "maxhullvert",
+        "uservert",
+        "usernormal",
+        "usertexcoord",
+        "userface",
+        "userfacenormal",
+        "userfacetexcoord",
+        "usernode",
+        "usertet",
+        "material",
+        "octree_maxdepth",
+        "info",
+    ):
+        if hasattr(mesh, field):
+            value = getattr(mesh, field)
+            attributes[field] = np.array(value, copy=True) if field in arrays else value
+    attributes["scale"] *= factors
+    classname = mesh.classname
+    spec.delete(mesh)
+    replacement = spec.add_mesh(**attributes)
+    replacement.classname = classname
 
 
 def _scale_placement(spec: mujoco.MjSpec, element, s: np.ndarray) -> None:
