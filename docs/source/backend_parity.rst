@@ -87,3 +87,5 @@ a summary and logs; the job is allowed to fail and does not gate the release.
 The probe measures model conversion and forces at one pose on CPU MuJoCo. It
 does not run Newton's GPU solver, trajectories, policy playback or training.
 Newton remains outside MyoSuite's supported CPU and mjlab backends.
+Remaining conversion blockers and the acceptance criteria for further validation
+are tracked in `#563 <https://github.com/MyoHub/myosuite/issues/563>`_.
