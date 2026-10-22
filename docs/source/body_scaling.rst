@@ -234,7 +234,11 @@ checkpoint rejection and named-joint replay on a scaled MyoFullBody.
 ``test_body_scaling_skin.py`` checks segment-local skin scaling and explicit
 ``.skn``/GLB export fidelity on synthetic and bundled skins.
 
+The :doc:`opensim_scaling_validation` records a reproducible external comparison
+with a licensed Rajagopal model, full provenance, geometry/muscle curves and
+mutation-sensitive increment bounds. It measures substantial nominal model and
+nonuniform muscle/inertia differences; it does not establish solver equivalence.
+
 Remaining integration work is tracked explicitly:
-`OpenSim biomechanical validation <https://github.com/MyoHub/myosuite/issues/560>`__,
 `registered CPU/mjlab and policy plumbing <https://github.com/MyoHub/myosuite/issues/561>`__,
 and `optional estimation/retargeting adapters <https://github.com/MyoHub/myosuite/issues/562>`__.

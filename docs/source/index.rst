@@ -85,6 +85,7 @@ Choose your path
    environments
    model_builder
    body_scaling
+   opensim_scaling_validation
    backend_parity
    fatigue_validation
 
