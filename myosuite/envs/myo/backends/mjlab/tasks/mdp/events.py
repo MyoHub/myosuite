@@ -100,7 +100,7 @@ def write_cpu_state(
     v_adr = torch.sort(torch.cat([idx.free_joint_v_adr, idx.joint_v_adr]).long())[0]
     if not len(q_adr):
         return
-    q_base, v_base = int(q_adr[0]), int(v_adr[0])
+    q_base, v_base = q_adr[0], v_adr[0]
     if len(idx.free_joint_q_adr):
         root = torch.cat((qpos[:, :7], qvel[:, :6]), dim=-1)
         root[:, :3] += env.scene.env_origins[env_ids]
