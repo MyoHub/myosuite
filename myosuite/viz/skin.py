@@ -10,13 +10,18 @@ The skin is purely visual: it is posed with MuJoCo's linear-blend skinning
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import re
+import warnings
 from pathlib import Path
 from typing import Any
 
 import mujoco
 import numpy as np
+from numpy.typing import ArrayLike
+
+from myosuite.core.body_scaling import _factors
 
 # Bundled full-body skin; source and license in assets/CREDITS.md.
 FULLBODY_SKIN = Path(__file__).parent / "assets" / "myofullbody.skn"
@@ -193,7 +198,13 @@ def _quat_to_mat(q: np.ndarray) -> np.ndarray:
 class SkinPose:
     """A skin bound to a model's bodies; poses its vertices from ``MjData``."""
 
-    def __init__(self, skin: Skin, body_ids: np.ndarray, inflate: float) -> None:
+    def __init__(
+        self,
+        skin: Skin,
+        body_ids: np.ndarray,
+        inflate: float,
+        body_scales: np.ndarray | None = None,
+    ) -> None:
         self.skin, self.body_ids, self.inflate = skin, body_ids, inflate
         self._bone = np.concatenate(
             [np.full(len(v), b) for b, v in enumerate(skin.vertid)]
@@ -210,27 +221,118 @@ class SkinPose:
             bind_rot[self._bone],
             skin.vert[self._vert] - skin.bindpos[self._bone],
         )
+        if body_scales is not None:
+            self._local *= body_scales[self._bone]
 
     @classmethod
-    def bind(cls, skin: Skin, model: mujoco.MjModel, inflate: float = 0.0) -> SkinPose:
+    def bind(
+        cls,
+        skin: Skin,
+        model: mujoco.MjModel,
+        inflate: float = 0.0,
+        *,
+        body_scales: Mapping[str, float | ArrayLike] | None = None,
+    ) -> SkinPose:
         """Bind *skin* bones to the bodies of the same name.
 
         Args:
             skin: Parsed skin.
             model: Compiled model whose bodies drive the skin.
             inflate: Offset of every vertex along its normal (m).
+            body_scales: Applied per-body factors in each body's own frame.
+                Pass the resolved body-name mapping used to scale *model*,
+                including inherited segment factors. Omitted bodies use one.
+                The skin must describe the unscaled model's bind pose. Factors
+                scale every influence's local vertex offset; the scaled model
+                supplies the bone positions and orientations. Factors cannot
+                be recovered from bone motion alone.
 
         Returns:
             The bound skin.
 
         Raises:
             ValueError: Some bone names are not bodies of *model*.
+            KeyError: A scale names a body absent from *model*.
         """
         ids = np.array([_body_id(model, n) for n in skin.bone_names], dtype=int)
         missing = [n for n, i in zip(skin.bone_names, ids) if i < 0]
         if missing:
             raise ValueError(f"Skin bones missing from the model: {missing}")
-        return cls(skin, ids, inflate)
+        factors = None
+        if body_scales is not None:
+            unknown = [
+                name
+                for name in body_scales
+                if mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name) < 0
+            ]
+            if unknown:
+                raise KeyError(f"Scale bodies missing from the model: {unknown}")
+            resolved = {name: _factors(s) for name, s in body_scales.items()}
+            factors = np.array(
+                [resolved.get(model.body(int(i)).name, np.ones(3)) for i in ids]
+            )
+        return cls(skin, ids, inflate, factors)
+
+    def bake(self, model: mujoco.MjModel, *, allow_approximate: bool = False) -> Skin:
+        """Bake the rest-pose mesh and bind frames for ``.skn`` / ``.glb`` export.
+
+        Segment scaling keeps separate local offsets for a shared vertex's
+        influences. File formats with one common bind vertex cannot always
+        preserve those offsets. Export is exact only when the influences agree
+        at rest, as with a uniformly scaled skin originally bound at ``qpos0``.
+        Inflation is not baked; pass it again when binding the exported skin.
+
+        Args:
+            model: The model this pose binds to.
+            allow_approximate: Bake a weighted rest mesh despite disagreeing
+                influences, warning that subsequent articulated poses differ.
+
+        Returns:
+            The common bind mesh with *model*'s rest-pose bone frames.
+
+        Raises:
+            ValueError: Body bindings differ or export would be approximate
+                without explicit opt-in.
+        """
+        ids = np.array([_body_id(model, n) for n in self.skin.bone_names], dtype=int)
+        if not np.array_equal(ids, self.body_ids):
+            raise ValueError("Bake needs the model this skin pose binds to.")
+        data = mujoco.MjData(model)
+        mujoco.mj_forward(model, data)
+        world = self._influence_vertices(data)
+        vert = self._blend_vertices(world)
+        used = self._weight > 0
+        if not np.allclose(world[used], vert[self._vert[used]], rtol=1e-6, atol=2e-6):
+            message = (
+                "This skin's segment-local offsets cannot be represented by one "
+                "bind vertex in .skn/.glb. Baking a common rest mesh changes "
+                "articulated poses; retain SkinPose for exact scaling."
+            )
+            if not allow_approximate:
+                raise ValueError(message)
+            warnings.warn(message, UserWarning, stacklevel=2)
+        return Skin(
+            vert.astype(np.float32),
+            self.skin.texcoord.copy(),
+            self.skin.face.copy(),
+            self.skin.bone_names.copy(),
+            data.xpos[self.body_ids].astype(np.float32),
+            data.xquat[self.body_ids].astype(np.float32),
+            [ids.copy() for ids in self.skin.vertid],
+            [weights.copy() for weights in self.skin.vertweight],
+        )
+
+    def _influence_vertices(self, data: mujoco.MjData) -> np.ndarray:
+        rot = data.xmat[self.body_ids].reshape(-1, 3, 3)[self._bone]
+        return (
+            np.einsum("nij,nj->ni", rot, self._local)
+            + data.xpos[self.body_ids][self._bone]
+        )
+
+    def _blend_vertices(self, world: np.ndarray) -> np.ndarray:
+        vert = np.zeros((len(self.skin.vert), 3))
+        np.add.at(vert, self._vert, self._weight[:, None] * world)
+        return vert
 
     def vertices(self, data: mujoco.MjData) -> np.ndarray:
         """Posed skin vertices after ``mj_forward`` / ``mj_step``.
@@ -241,11 +343,7 @@ class SkinPose:
         Returns:
             ``(V, 3)`` float32 world-frame vertices.
         """
-        rot = _quat_to_mat(data.xquat[self.body_ids])[self._bone]
-        world = np.einsum("nij,nj->ni", rot, self._local)
-        world += data.xpos[self.body_ids][self._bone]
-        vert = np.zeros((len(self.skin.vert), 3))
-        np.add.at(vert, self._vert, self._weight[:, None] * world)
+        vert = self._blend_vertices(self._influence_vertices(data))
         if self.inflate:
             vert += self.inflate * self.normals(vert)
         return vert.astype(np.float32)

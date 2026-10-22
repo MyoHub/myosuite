@@ -69,6 +69,7 @@ The following example records signals analogous to muscle spindle (Ia, II)
 and Golgi tendon organ (Ib) afferents during a reaching movement:
 
 .. code-block:: python
+
     from myosuite import make_env
     import numpy as np
 

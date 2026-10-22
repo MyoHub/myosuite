@@ -66,7 +66,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NamedTuple, TypeAlias
-from collections.abc import Callable, Hashable
+from collections.abc import Callable, Hashable, Mapping, Sequence
 
 import numpy as np
 import mujoco
@@ -804,6 +804,28 @@ class ModelBuilder:
             return apply_sarcopenia_to_spec(spec, force_scale=force_scale)
 
         return self.apply_transform(_sarco)
+
+    def scale_bodies(
+        self,
+        scales: Mapping[str, float | Sequence[float]],
+        **kwargs: Any,
+    ) -> ModelBuilder:
+        """Scale bodies to a subject, as OpenSim's Scale Tool does.
+
+        Args:
+            scales: Body (or segment) name -> one factor or ``(sx, sy, sz)``.
+            **kwargs: ``segments``, ``mass``, ``total_mass`` and ``force_scale``
+                of :func:`myosuite.core.body_scaling.scale_bodies`.
+
+        Returns:
+            Self, for method chaining.
+        """
+        from myosuite.core.body_scaling import scale_bodies
+
+        def _scale(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+            return scale_bodies(spec, scales, **kwargs)
+
+        return self.apply_transform(_scale)
 
     def build(self) -> tuple[mujoco.MjModel, mujoco.MjSpec]:
         """Compose a fresh spec (see :meth:`build_spec`) and compile it into a MjModel.
