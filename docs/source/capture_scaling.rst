@@ -1,5 +1,5 @@
 Scale estimation and target-specific retargeting
-===============================================
+================================================
 
 The optional ``myosuite.integrations.capture`` integration converts labelled
 static-marker measurements to :class:`~myosuite.core.subject_model.ScaleEstimate`.
@@ -56,7 +56,7 @@ calibrated confidence interval for the reconstructed anatomy. Soft-tissue motion
 marker offsets and pose errors can bias length measurements.
 
 Retarget after construction
---------------------------
+---------------------------
 
 Build and align the target first, then solve its marker positions. Retargeting
 changes joint and root coordinates by fitting source Cartesian observations to
@@ -111,7 +111,7 @@ feasibility, muscle forces, joint moments and dynamic balance need additional
 validation. Missing observations are excluded, not scored as zero error.
 
 Licensed runnable example
-------------------------
+-------------------------
 
 .. code-block:: bash
 
@@ -135,7 +135,7 @@ must be rejected, and a missing-marker fixture must omit only affected scales.
 The generated C3D round-trip test runs when the optional capture extra is present.
 
 User-provided virtual markers and licences
------------------------------------------
+------------------------------------------
 
 ``virtual_marker_trial`` accepts labelled coordinates and requires
 ``definition_source`` and ``definition_license`` strings. The same static adapter
