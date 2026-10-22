@@ -1,0 +1,22 @@
+{
+  "meaning": "Bounds on the additional cross-solver scaling difference after subtracting nominal conversion error. These characterize the fixed synthetic pose grid, not general biomechanical equivalence or clinical accuracy.",
+  "justification": "Round measured maxima upward with a small numerical margin. Every metric bound is exercised against a 5% tibia-factor error, an anisotropic femur-axis swap, or a 3% muscle lengthrange error. Nominal conversion errors remain separately reported. The torque bounds cover only the six listed muscles at activation one.",
+  "uniform": {
+    "joint_centres_m": 0.0013,
+    "sole_points_m": 0.0013,
+    "sole_floor_offset_m": 0.0013,
+    "moment_arms_m": 0.001,
+    "normalized_fibre_length": 0.0001,
+    "normalized_tendon_force": 0.0001,
+    "torque_nm": 10.0
+  },
+  "anisotropic": {
+    "joint_centres_m": 0.0005,
+    "sole_points_m": 0.0005,
+    "sole_floor_offset_m": 0.0005,
+    "moment_arms_m": 0.001,
+    "normalized_fibre_length": 0.085,
+    "normalized_tendon_force": 0.12,
+    "torque_nm": 16.0
+  }
+}
