@@ -20,7 +20,7 @@ Each model is probed from two inputs:
 * ``normalized``: the same model rewritten by MuJoCo (``MjSpec.to_xml``) as one
   explicit file: no includes or default classes, absolute asset paths, ``-`` in
   names replaced by ``_``, and without the geoms of MuJoCo ``.msh`` meshes
-  (MyoSuite's scene backdrop and logo), which Newton's mesh loader cannot read.
+  (MyoSuite's scene backdrop and logo), which Newton 1.7.0 cannot read.
   Remaining differences can still originate in Newton's importer or conversion.
 
 Both inputs are imported with ``add_mjcf(ctrl_direct=True)``: MyoSuite drives every

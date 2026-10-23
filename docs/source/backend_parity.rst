@@ -60,7 +60,7 @@ it, and rewritten by MuJoCo into one plain file with ``-`` in names replaced by 
 (Newton 1.6.1 and 1.7.0 look up a spatial tendon's sites by their sanitized names, so they
 drop hyphenated sites; `newton#4566 <https://github.com/newton-physics/newton/issues/4566>`_).
 The rewrite also removes geoms using MuJoCo's binary ``.msh`` meshes, which
-Newton cannot read. The normalized comparison uses that modified model as its
+Newton 1.7.0 cannot read (upstream PR 4903 adds support). The normalized comparison uses that modified model as its
 reference; it does not establish that normalization preserved every property of
 the authored model. Remaining differences can originate in either Newton's
 importer or its conversion.
@@ -89,3 +89,11 @@ does not run Newton's GPU solver, trajectories, policy playback or training.
 Newton remains outside MyoSuite's supported CPU and mjlab backends.
 Remaining conversion blockers and the acceptance criteria for further validation
 are tracked in `#563 <https://github.com/MyoHub/myosuite/issues/563>`_.
+
+The separate manual trajectory diagnostic, matched CPU/CUDA measurements, source
+identity maps and upstream fixes are recorded in :doc:`newton_validation`.
+
+.. toctree::
+   :hidden:
+
+   newton_validation

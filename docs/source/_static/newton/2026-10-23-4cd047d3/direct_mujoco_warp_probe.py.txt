@@ -1,0 +1,203 @@
+"""Direct authored MuJoCo -> MuJoCo-Warp trajectory comparison, without Newton."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import time
+from typing import Any
+
+import mujoco
+import mujoco_warp
+import numpy as np
+import warp as wp
+
+from scripts.newton_compat_probe import authored_xml, _version
+
+
+def run_case(
+    model_id: str, variant: str, poses: int, steps: int, device: str, out: Path
+) -> dict[str, Any]:
+    result: dict[str, Any] = {"model": model_id, "variant": variant}
+    try:
+        source = authored_xml(model_id, out)
+        model = mujoco.MjModel.from_xml_path(str(source))
+        result["source_xml"] = str(source)
+        result["source_disableflags"] = int(model.opt.disableflags)
+        if variant in ("ccd-disabled", "contacts-disabled"):
+            model.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_NATIVECCD) | int(
+                mujoco.mjtDisableBit.mjDSBL_MULTICCD
+            )
+        if variant == "contacts-disabled":
+            model.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_CONTACT)
+        result["compared_disableflags"] = int(model.opt.disableflags)
+        result["geometry_margins_changed"] = False
+        result["geometry_margin_max_m"] = float(model.geom_margin.max(initial=0))
+        result["nu"] = model.nu
+        result["nq"] = model.nq
+        with wp.ScopedDevice(device):
+            gpu_model = mujoco_warp.put_model(model)
+            outcomes = []
+            for pose in range(poses):
+                cpu_data = mujoco.MjData(model)
+                if pose:
+                    for joint in range(model.njnt):
+                        if model.jnt_type[joint] not in (
+                            mujoco.mjtJoint.mjJNT_SLIDE,
+                            mujoco.mjtJoint.mjJNT_HINGE,
+                        ):
+                            continue
+                        width = (
+                            float(np.ptp(model.jnt_range[joint]))
+                            if model.jnt_limited[joint]
+                            else 1.0
+                        )
+                        cpu_data.qpos[model.jnt_qposadr[joint]] += min(
+                            0.01, width * 0.005
+                        ) * np.sin(joint + 0.3)
+                gpu_data = mujoco_warp.put_data(
+                    model, cpu_data, nworld=1, nconmax=2048, njmax=8192
+                )
+                max_qpos, max_force, first_step, first_failure = 0.0, 0.0, None, None
+                largest_joint = ""
+                max_cpu_contacts = 0
+                final_cpu_contacts = 0
+                max_overflow = 0
+                for step in range(steps):
+                    command = 0.15 + 0.1 * np.sin(
+                        np.arange(model.nu) * 0.3 + step * 0.1
+                    )
+                    cpu_data.ctrl[:] = command
+                    gpu_data.ctrl.assign(command[None].astype(np.float32))
+                    mujoco.mj_step(model, cpu_data)
+                    mujoco_warp.step(gpu_model, gpu_data)
+                    wp.synchronize_device(device)
+                    gpu_qpos = gpu_data.qpos.numpy()[0]
+                    gpu_force = gpu_data.actuator_force.numpy()[0]
+                    max_overflow = max(
+                        max_overflow, int(np.max(gpu_data.overflow.numpy(), initial=0))
+                    )
+                    errors = np.abs(gpu_qpos - cpu_data.qpos)
+                    qpos_error = float(errors.max(initial=0))
+                    if first_step is None:
+                        first_step = qpos_error
+                    if qpos_error > max_qpos:
+                        pos = int(np.argmax(errors))
+                        joint = int(
+                            np.searchsorted(model.jnt_qposadr, pos, side="right") - 1
+                        )
+                        largest_joint = model.joint(joint).name
+                    max_qpos = max(max_qpos, qpos_error)
+                    max_force = max(
+                        max_force,
+                        float(
+                            np.max(
+                                np.abs(gpu_force - cpu_data.actuator_force), initial=0
+                            )
+                        ),
+                    )
+                    passed = bool(
+                        np.allclose(gpu_qpos, cpu_data.qpos, rtol=1e-4, atol=1e-4)
+                    ) and bool(
+                        np.allclose(
+                            gpu_force, cpu_data.actuator_force, rtol=1e-3, atol=0.05
+                        )
+                    )
+                    if not passed and first_failure is None:
+                        first_failure = step + 1
+                    max_cpu_contacts = max(max_cpu_contacts, cpu_data.ncon)
+                    final_cpu_contacts = cpu_data.ncon
+                outcomes.append(
+                    {
+                        "pose": pose,
+                        "first_step_qpos_error": first_step,
+                        "trajectory_max_qpos_error": max_qpos,
+                        "largest_qpos_error_joint": largest_joint,
+                        "trajectory_max_force_error": max_force,
+                        "first_failing_step": first_failure,
+                        "trajectory_within_bounds": first_failure is None,
+                        "max_cpu_contacts": max_cpu_contacts,
+                        "final_cpu_contacts": final_cpu_contacts,
+                        "max_overflow": max_overflow,
+                    }
+                )
+            result["poses"] = outcomes
+            result["passed"] = all(p["trajectory_within_bounds"] for p in outcomes)
+    except Exception as exc:
+        result["error"] = {"type": type(exc).__name__, "message": str(exc)}
+        result["passed"] = False
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=[
+            "myoArmReachRandom-v0",
+            "musclemimic:bimanual",
+            "myoHandPoseRandom-v0",
+        ],
+    )
+    parser.add_argument(
+        "--variants",
+        nargs="+",
+        choices=["authored", "ccd-disabled", "contacts-disabled"],
+        default=["authored", "ccd-disabled", "contacts-disabled"],
+    )
+    parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--poses", type=int, default=2)
+    parser.add_argument("--steps", type=int, default=128)
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args()
+    args.out.mkdir(parents=True, exist_ok=True)
+    results = []
+    started = time.perf_counter()
+    for model in args.models:
+        for variant in args.variants:
+            print(f"Direct MuJoCo-Warp {model} {variant}", flush=True)
+            result = run_case(
+                model, variant, args.poses, args.steps, args.device, args.out
+            )
+            results.append(result)
+            print(json.dumps(result), flush=True)
+            (args.out / "direct_mujoco_warp.json").write_text(
+                json.dumps(
+                    {
+                        "versions": {
+                            package: _version(package)
+                            for package in (
+                                "mujoco",
+                                "mujoco-warp",
+                                "warp-lang",
+                                "musclemimic-models",
+                                "myosuite",
+                            )
+                        },
+                        "seconds": time.perf_counter() - started,
+                        "settings": {
+                            "device": args.device,
+                            "poses": args.poses,
+                            "steps": args.steps,
+                            "qpos_rtol": 1e-4,
+                            "qpos_atol": 1e-4,
+                            "force_rtol": 1e-3,
+                            "force_atol_N": 0.05,
+                            "nconmax": 2048,
+                            "njmax": 8192,
+                            "conversion": "direct authored MjModel via mujoco_warp.put_model/put_data; no Newton import",
+                        },
+                        "cases": results,
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
