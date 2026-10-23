@@ -1,0 +1,51 @@
+from pathlib import Path
+import collections
+import contextlib
+import io
+import mujoco
+import newton
+import numpy as np
+from scripts.newton_compat_probe import authored_xml
+from scripts.newton_dynamics_probe import _joint_mapping
+
+p = authored_xml('myoLegWalk-v0', Path(__file__).parent)
+ref = mujoco.MjModel.from_xml_path(str(p))
+with contextlib.redirect_stdout(io.StringIO()):
+    b = newton.ModelBuilder()
+    b.add_mjcf(str(p), ctrl_direct=True)
+    model = b.finalize(device='cpu')
+    solver = newton.solvers.SolverMuJoCo(model, use_mujoco_cpu=True)
+converted = solver.mj_model
+qmap, _ = _joint_mapping(ref, model, solver)
+matches = {}
+for cg in range(converted.ngeom):
+    name = converted.geom(cg).name.rsplit('/', 1)[-1].rsplit('_', 1)[0]
+    try:
+        matches[cg] = ref.geom(name).id
+    except KeyError:
+        pass
+print('matched_named_geoms', len(matches))
+for field in ('geom_type','geom_contype','geom_conaffinity','geom_gap','geom_margin','geom_condim','geom_priority','geom_friction','geom_solref','geom_solimp'):
+    rows = [(ref.geom(rg).name, getattr(ref,field)[rg].tolist(),getattr(converted,field)[cg].tolist()) for cg,rg in matches.items() if not np.allclose(getattr(ref,field)[rg],getattr(converted,field)[cg], atol=1e-7,rtol=1e-6)]
+    print('named_differences',field,len(rows),rows[:10])
+root = int(np.flatnonzero(ref.jnt_type == mujoco.mjtJoint.mjJNT_FREE)[0])
+rootz = int(ref.jnt_qposadr[root])+2
+for delta in (0, -.04, -.055, -.06, -.08):
+    rd,cd=mujoco.MjData(ref),mujoco.MjData(converted)
+    rd.qpos[rootz] += delta
+    cd.qpos[:] = rd.qpos[qmap]
+    mujoco.mj_forward(ref,rd)
+    mujoco.mj_forward(converted,cd)
+    def contacts(m,d,source):
+        rows=[]
+        for c in d.contact:
+            names=[]
+            for g in c.geom:
+                names.append(ref.geom(matches[int(g)]).name if source and int(g) in matches else m.geom(int(g)).name)
+            rows.append((tuple(sorted(names)),float(c.dist)))
+        return rows
+    rr,cc=contacts(ref,rd,False),contacts(converted,cd,True)
+    rh=collections.Counter(x[0] for x in rr)
+    ch=collections.Counter(x[0] for x in cc)
+    pair_distance_error = max((abs(a-b) for pair in rh for a,b in zip(sorted(x[1] for x in rr if x[0]==pair),sorted(x[1] for x in cc if x[0]==pair))),default=0)
+    print('lowered',delta,'ncon',rd.ncon,cd.ncon,'pairs_identical',rh==ch,'pair_diff',rh-ch,ch-rh,'max_distance_error',pair_distance_error,'distance_extrema',[(min((x[1] for x in rows),default=0),max((x[1] for x in rows),default=0)) for rows in (rr,cc)])

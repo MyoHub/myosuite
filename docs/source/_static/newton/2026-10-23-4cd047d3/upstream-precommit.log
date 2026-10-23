@@ -1,0 +1,16 @@
+check for added large files...................................................Passed
+check for case conflicts......................................................Passed
+check illegal windows names...............................(no files to check)Skipped
+check json....................................................................Passed
+check for merge conflicts.....................................................Passed
+check for broken symlinks.................................(no files to check)Skipped
+check toml....................................................................Passed
+check yaml....................................................................Passed
+debug statements (python).....................................................Passed
+detect private key............................................................Passed
+ruff (legacy alias)...........................................................Passed
+ruff format...................................................................Passed
+uv-lock.......................................................................Passed
+typos.........................................................................Passed
+check warp array syntax.......................................................Passed
+use patch_sys_module instead of patch.dict(sys.modules).......................Passed

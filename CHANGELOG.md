@@ -37,6 +37,7 @@ All notable changes to this project are documented in this file.
 ### Added
 
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
+* **Newton compatibility diagnostics:** the release/manual informational conversion probe is supplemented by matched CPU/CUDA trajectories, source identity maps, mutation checks and versioned reports. [Newton PR 4903](https://github.com/newton-physics/newton/pull/4903) fixes the reproduced importer/converter gaps; all twelve authored/normalized cases retain measured structure. Strict name/force comparisons and several trajectory cases still fail, with follow-ups in [Newton issue 4904](https://github.com/newton-physics/newton/issues/4904), [MuJoCo-Warp issue 1835](https://github.com/google-deepmind/mujoco_warp/issues/1835) and [#563]. Newton remains outside the supported CPU and mjlab backends (#368, [#531]).
 
 ### Changed
 
@@ -254,6 +255,8 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#504]: https://github.com/MyoHub/myosuite/pull/504
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#520]: https://github.com/MyoHub/myosuite/pull/520
+[#531]: https://github.com/MyoHub/myosuite/pull/531
+[#563]: https://github.com/MyoHub/myosuite/issues/563
 [#540]: https://github.com/MyoHub/myosuite/pull/540
 
 ## [2.12.2] - 2026-05-06
