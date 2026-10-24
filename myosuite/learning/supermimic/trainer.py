@@ -164,7 +164,7 @@ class SuperMimicTrainer:
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.wm.parameters(), self.cfg.wm.grad_clip)
             self.opt_wm.step()
-            losses.append(float(loss))
+            losses.append(float(loss.detach()))
         return sum(losses) / max(len(losses), 1)
 
     # ------------------------------------------------------------------ imagination
@@ -409,17 +409,19 @@ class SuperMimicTrainer:
 
 @torch.no_grad()
 def evaluate_policy(env: Any, actor: Any, steps: int) -> dict[str, float]:
-    """Mean env reward per step, early terminations per 1000 steps and episode length of a deterministic actor.
+    """Mean env reward per step, early terminations per 1000 steps, episode length and muscle control of a deterministic actor.
 
     Starts from the env's RSI reset; episodes that end are reset by the env and continue.
     """
     env.reset()
     obs = env.obs_buf["actor"]
-    rew_sum = 0.0
+    rew_sum = ctrl_sum = 0.0
     terms = 0
     ends = 0
     for _ in range(steps):
-        obs, rew, term, trunc, _ = env.step(actor(obs))
+        a = actor(obs)
+        ctrl_sum += float(_sigmoid_ctrl(a).mean())
+        obs, rew, term, trunc, _ = env.step(a)
         obs = obs["actor"]
         rew_sum += float(rew.mean())
         terms += int(term.sum())
@@ -429,4 +431,5 @@ def evaluate_policy(env: Any, actor: Any, steps: int) -> dict[str, float]:
         "reward_per_step": rew_sum / steps,
         "terminations_per_1k_steps": 1000.0 * terms / (n * steps),
         "mean_episode_len": n * steps / max(ends, 1),
+        "mean_ctrl": ctrl_sum / steps,
     }
