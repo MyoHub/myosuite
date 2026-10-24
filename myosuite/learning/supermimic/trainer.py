@@ -53,6 +53,10 @@ class SuperMimicCfg:
     critic_epochs: int = 5
     critic_minibatches: int = 4
     elementwise_clip: float = 0.1
+    # Barrier on raw actions beyond |a - 0.5| > band, where the sigmoid control saturates
+    # and BPTT gradients vanish (0 disables it).
+    saturation_penalty: float = 0.0
+    saturation_band: float = 1.0
     max_hours: float = 12.0
     max_sim_steps: float = 2e9
     eval_every: int = 500
@@ -177,26 +181,29 @@ class SuperMimicTrainer:
     ) -> tuple[torch.Tensor, ...]:
         """Actor + world model + analytic heads for one imagined step (compiled as one graph)."""
         h = self.heads
-        s = self.wm.step(s, _sigmoid_ctrl(self.actor(obs)))
+        a = self.actor(obs)
+        sat = torch.relu((a - 0.5).abs() - self.cfg.saturation_band).square().mean(-1)
+        s = self.wm.step(s, _sigmoid_ctrl(a))
         f = f + 1
         qpos, qvel, act = self.spec.split(s)
         sites = h.kin.site_pos(qpos)
         r = h.reward(qpos, qvel, f, sites)
         d = h.termination_prob(qpos, f, sites)
-        return s, f, r, d, h.observation(qpos, qvel, act, f, sites)
+        return s, f, r, d, sat, h.observation(qpos, qvel, act, f, sites)
 
     def imagine(self) -> dict[str, torch.Tensor]:
         """Differentiable H-step rollout of the actor through the frozen world model."""
         cfg, h = self.cfg, self.heads
         s, f = self.buffer.sample_starts(cfg.imag_batch)
         ended = h.clip_end(f)
-        obs_l, rew_l, dhat_l, live_l, end_l = [], [], [], [], []
+        obs_l, rew_l, dhat_l, live_l, end_l, sat_l = [], [], [], [], [], []
         obs = self._obs(s, f)
         for _ in range(cfg.horizon):
             obs_l.append(obs)
             live_l.append((~ended).float())
-            s, f, r, d, obs = self._step(s, f, obs)
+            s, f, r, d, sat, obs = self._step(s, f, obs)
             rew_l.append(r)
+            sat_l.append(sat)
             dhat_l.append(d)
             just = h.clip_end(f) & ~ended
             end_l.append(just.float())
@@ -210,6 +217,7 @@ class SuperMimicTrainer:
             "dhat": st(dhat_l),
             "live": st(live_l),
             "just_ended": st(end_l),
+            "saturation": st(sat_l),
         }
 
     def update_actor_critic(self) -> dict[str, float]:
@@ -240,7 +248,8 @@ class SuperMimicTrainer:
             disc *= g
             J = J + disc * c * v[t + 1] * just[t]
         J = J + disc * c * v[H] * live[H]
-        loss = -J.mean() / H
+        sat = roll["saturation"].mean()
+        loss = -J.mean() / H + cfg.saturation_penalty * sat
         self.opt_actor.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.actor.mlp.parameters(), 1.0)
@@ -277,6 +286,7 @@ class SuperMimicTrainer:
         surv = torch.cumprod(1 - d, 0)[-1]
         return {
             "imag_return": float(J.mean()),
+            "action_saturation": float(sat),
             "imag_reward": float((r * live[:H]).sum() / live[:H].sum()),
             "imag_survival": float(surv.mean()),
             "critic_loss": closs,
