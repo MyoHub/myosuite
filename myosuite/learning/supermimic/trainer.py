@@ -57,6 +57,7 @@ class SuperMimicCfg:
     # and BPTT gradients vanish (0 disables it).
     saturation_penalty: float = 0.0
     saturation_band: float = 1.0
+    actor_hidden: tuple[int, ...] = (256, 256, 128)
     max_hours: float = 12.0
     max_sim_steps: float = 2e9
     eval_every: int = 500
@@ -103,7 +104,7 @@ class SuperMimicTrainer:
             model, self.spec, self.env.cfg.decimation, self.env.physics_dt, cfg.wm
         ).to(dev)
         obs_dim = self.env.obs_buf["actor"].shape[-1]
-        self.actor = Actor(obs_dim, model.nu).to(dev)
+        self.actor = Actor(obs_dim, model.nu, cfg.actor_hidden).to(dev)
         self.critic = Critic(obs_dim, 1.0 / (1.0 - cfg.gamma)).to(dev)
         if cfg.init_actor:
             self.actor = Actor.from_rsl_rl(cfg.init_actor, dev)
