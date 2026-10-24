@@ -100,7 +100,7 @@ class SuperMimicTrainer:
         ).to(dev)
         obs_dim = self.env.obs_buf["actor"].shape[-1]
         self.actor = Actor(obs_dim, model.nu).to(dev)
-        self.critic = Critic(obs_dim).to(dev)
+        self.critic = Critic(obs_dim, 1.0 / (1.0 - cfg.gamma)).to(dev)
         if cfg.init_actor:
             self.actor = Actor.from_rsl_rl(cfg.init_actor, dev)
         if cfg.init_world_model:

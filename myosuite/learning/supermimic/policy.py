@@ -107,12 +107,19 @@ def _from_rsl_rl_keys(sd: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
 
 
 class Critic(nn.Module):
-    """Value MLP on normalised features."""
+    """Value MLP on normalised features, bounded to ``[0, v_max]``.
 
-    def __init__(self, in_dim: int, hidden: tuple[int, ...] = (512, 512, 256)) -> None:
+    With rewards in ``[0, 1]`` no return exceeds ``1 / (1 - gamma)``; the bound keeps
+    the actor's bootstrap term from chasing values the critic extrapolates off-data.
+    """
+
+    def __init__(
+        self, in_dim: int, v_max: float, hidden: tuple[int, ...] = (512, 512, 256)
+    ) -> None:
         super().__init__()
+        self.v_max = v_max
         self.normalizer = Normalizer(in_dim)
         self.mlp = mlp([in_dim, *hidden, 1])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.mlp(self.normalizer(x)).squeeze(-1)
+        return self.v_max * torch.sigmoid(self.mlp(self.normalizer(x)).squeeze(-1))
