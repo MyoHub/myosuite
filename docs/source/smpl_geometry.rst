@@ -165,7 +165,7 @@ Relationship to issue 166 and SKEL
 `Issue 166 <https://github.com/MyoHub/myosuite/issues/166>`_ asks about porting
 SMPL through SKEL/OpenSim into MyoSuite. The `SKEL project
 <https://skel.is.tue.mpg.de/>`_ provides a biomechanical body representation;
-its separate `SMPL2AddBiomechanics workflow
+its separate `SMPL2AddBiomechanics project
 <https://github.com/MarilynKeller/SMPL2AddBiomechanics>`_ exports virtual markers
 and fits an OpenSim model through AddBiomechanics, producing scaled ``.osim``
 and ``.mot`` outputs.
