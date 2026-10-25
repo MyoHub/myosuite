@@ -1,6 +1,9 @@
 Body scaling
 ============
 
+For user-provided SMPL-family geometry and external marker trajectories, see
+:doc:`smpl_geometry`; for labelled capture, see :doc:`capture_scaling`.
+
 :func:`myosuite.core.body_scaling.scale_bodies` scales a musculoskeletal model to a
 subject with the rules of OpenSim's Scale Tool. Each body gets per-axis factors
 ``(sx, sy, sz)`` in its own frame, or one factor for all three axes.

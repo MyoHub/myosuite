@@ -4,8 +4,9 @@ Scale estimation and target-specific retargeting
 The optional ``myosuite.integrations.capture`` integration converts labelled
 static-marker measurements to :class:`~myosuite.core.subject_model.ScaleEstimate`.
 It does not import capture or body-shape packages in the core. Arrays and the
-bundled synthetic example need only MyoSuite's existing dependencies; reading a
-real C3D file additionally needs ``pip install "myosuite[capture]"``.
+bundled synthetic example and TRC imports need only MyoSuite's existing
+dependencies; reading a real C3D file additionally needs
+``pip install "myosuite[capture]"``.
 
 Labelled static trials
 ----------------------
@@ -160,3 +161,6 @@ The primary licences have distinct scopes (reviewed 2026-10-23):
 
 No redistribution grant was established for a third-party SMPL virtual-marker
 definition, so the integration requires user-supplied definitions instead.
+
+See :doc:`smpl_geometry` for extraction from user-provided body-model vertices,
+OpenSim TRC imports and primary data sources for broader subject validation.
