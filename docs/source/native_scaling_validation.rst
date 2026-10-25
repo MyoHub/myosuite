@@ -8,6 +8,10 @@ scaling core. Source originals remain local. The validation command publishes
 only aggregate errors and hashes: no meshes, joint trajectories, qpos, shape
 coefficients, individual scale factors or demographic records are included.
 
+For configurable targets, fixed-base arms and complete local trial interchange,
+use :doc:`capture_workflow`. The historical MyoLeg benchmark below remains a
+specific validation protocol rather than the general target interface.
+
 Native source inputs
 --------------------
 
@@ -17,6 +21,9 @@ workflow and an explicit calibrated rotation, rate, model identity and licence.
 The adapter labels the 24 BSM-order output rows using ``model.bone_names``.
 The tested model's separate ``joints_name`` field contains 22 SMPL-order names
 and is deliberately not used. No third-party vertex indices are bundled.
+SKEL and BioAmass readers declare ``point_semantics="model_origin"``; raw
+AddBiomechanics markers declare ``"surface_marker"``. Each accepts an optional
+caller-supplied ``subject_id`` retained with local provenance.
 
 .. code-block:: python
 
@@ -80,16 +87,21 @@ with :doc:`capture_scaling` and :doc:`body_scaling`.
 Reproduce the model-origin comparison
 -------------------------------------
 
-After local native evaluation, export a pickle-free local NPZ of calibrated
-model-world metre positions. Keep this coordinate file with the licensed input;
+After local native evaluation, export a pickle-free local NPZ of marker
+coordinates with their original units, calibrated transform, semantics and
+complete reader provenance. Keep this file with the licensed input;
 it is not a redistributable fixture merely because it was exported as NumPy.
 
 .. code-block:: python
 
-    np.savez_compressed(
-        "local_native_origins.npz", positions=trial.in_model_frame(),
-        labels=np.array(trial.labels), frequency_hz=trial.frequency_hz,
-    )
+    from myosuite.integrations.capture.trial_io import save_marker_trial
+
+    save_marker_trial(trial, "local_native_origins.npz")
+
+The historical command accepts these versioned trials and preserves their units
+and transforms. It requires the declared point kind to match its chosen protocol.
+Legacy NPZ inputs with calibrated metre ``positions``, ``labels`` and
+``frequency_hz`` remain supported under the historical explicit input contract.
 
 For the evaluated CMU01 sequence, use calibration frames 0--2 and the fixed
 held-out indices 50, 150, ..., 2650. These span most of the 2,751-frame sequence
@@ -191,13 +203,19 @@ rounded to a conventional rate. All 74 held-out bilateral span observations
 were finite. The source GRF flags do not validate this marker-only experiment's
 forces or dynamics.
 
-Export the measured marker trial locally as above, optionally retaining its
-integer source ``missing_grf`` status array (zero means source GRF-valid), then
-reproduce that fixed span check with:
+Export the measured marker trial locally as above, then reproduce the fixed
+span check with:
 
 .. code-block:: bash
 
     python -m myosuite.integrations.capture.native_validation --protocol lateral-shank --trial local_measured_markers.npz --source-label "your source/version" --definition-license "your local output terms" --output measured_span_metrics.json
+
+Versioned files retain the reader's source GRF reasons in local metadata. The
+historical benchmark's legacy NPZ also contains integer ``missing_grf`` values
+(zero means source GRF-valid), which supply its reported status counts. The
+span report explicitly marks GRF count availability false when that typed
+status array is absent; retained reason strings are not guessed as numeric codes.
+The span check does not establish force validity from marker fit alone.
 
 The raw AddBiomechanics sources were acquired selectively from the official core
 archive with ZIP CRC/SHA checks. The Windows analysis used the pinned upstream

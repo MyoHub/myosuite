@@ -32,6 +32,7 @@ from myosuite.integrations.capture.retargeting import (
     motion_diagnostics,
     retarget_markers,
 )
+from myosuite.integrations.capture.trial_io import load_marker_trial
 
 _BODIES = ("pelvis",) + tuple(
     f"{body}_{side}"
@@ -42,6 +43,41 @@ _BODIES = ("pelvis",) + tuple(
 
 def _scalars(values: dict[str, Any]) -> dict[str, float]:
     return {key: float(value) for key, value in values.items() if np.isscalar(value)}
+
+
+def _load_validation_trial(
+    path: Path,
+    *,
+    source_label: str,
+    definition_license: str,
+    point_semantics: str,
+) -> tuple[MarkerTrial, np.ndarray | None]:
+    with np.load(path, allow_pickle=False) as archive:
+        versioned = bool({"schema_version", "metadata_json"} & set(archive.files))
+        if not versioned:
+            trial = MarkerTrial(
+                tuple(archive["labels"].tolist()),
+                archive["positions"],
+                "m",
+                np.eye(3),
+                source_label,
+                frequency_hz=float(archive["frequency_hz"]),
+                definition_source="legacy calibrated native-validation NPZ contract",
+                definition_license=definition_license,
+                point_semantics=point_semantics,
+            )
+            reasons = (
+                np.asarray(archive["missing_grf"])
+                if "missing_grf" in archive.files
+                else None
+            )
+            return trial, reasons
+    trial = load_marker_trial(path)
+    if trial.point_semantics != point_semantics:
+        raise ValueError(
+            f"Validation requires point_semantics={point_semantics!r}; got {trial.point_semantics!r}."
+        )
+    return trial, None
 
 
 def validate_native_origins(
@@ -58,8 +94,8 @@ def validate_native_origins(
     """Measure scaled-target fitting against an explicit nominal-fit control.
 
     Args:
-        path: Local, pickle-free NPZ of evaluated ``positions`` in calibrated
-            model-world metres, ``labels`` and ``frequency_hz``. Points must be
+        path: Versioned local marker trial or legacy pickle-free NPZ of evaluated
+            ``positions`` in model-world metres, ``labels`` and ``frequency_hz``. Points must be
             native skeletal/body origins corresponding to the named MyoLeg
             body frames, not skin landmarks labelled as internal centres.
         source_label: Public source/version label for the aggregate report.
@@ -80,10 +116,19 @@ def validate_native_origins(
     or dynamics. Temporal held-out frames are not a subject-disjoint benchmark.
     """
     path = Path(path).resolve()
-    with np.load(path, allow_pickle=False) as archive:
-        positions = np.asarray(archive["positions"], dtype=float)
-        labels = tuple(archive["labels"].tolist())
-        frequency = float(archive["frequency_hz"])
+    base_trial, _ = _load_validation_trial(
+        path,
+        source_label=source_label,
+        definition_license=definition_license,
+        point_semantics="model_origin",
+    )
+    positions = np.asarray(base_trial.positions)
+    labels = base_trial.labels
+    frequency = base_trial.frequency_hz
+    if frequency is None:
+        raise ValueError(
+            "Native validation requires a positive trial sampling frequency."
+        )
     if not source_label.strip() or not definition_license.strip():
         raise ValueError("A source label and definition licence are required.")
     missing = set(_BODIES) - set(labels)
@@ -111,16 +156,6 @@ def validate_native_origins(
     spacing = np.diff(heldout_frames)
     if not len(spacing) or spacing[0] <= 0 or not np.all(spacing == spacing[0]):
         raise ValueError("Held-out frames must have one positive uniform spacing.")
-    base_trial = MarkerTrial(
-        labels,
-        positions,
-        "m",
-        np.eye(3),
-        source_label,
-        frequency_hz=frequency,
-        definition_source="native model skeletal/body origins; explicit source-to-target correspondence",
-        definition_license=definition_license,
-    )
     with make_env("myoLegWalk-v0") as env:
         spec = env.unwrapped._mj_spec.copy()
     for body in _BODIES:
@@ -277,29 +312,23 @@ def validate_lateral_shank_spans(
     Returns aggregate span errors, never source samples or individual factors.
     """
     path = Path(path).resolve()
-    with np.load(path, allow_pickle=False) as archive:
-        positions = np.asarray(archive["positions"], dtype=float)
-        labels = tuple(archive["labels"].tolist())
-        frequency = float(archive["frequency_hz"])
-        reasons = (
-            np.asarray(archive["missing_grf"])
-            if "missing_grf" in archive.files
-            else None
+    trial, reasons = _load_validation_trial(
+        path,
+        source_label=source_label,
+        definition_license=definition_license,
+        point_semantics="surface_marker",
+    )
+    positions = trial.in_model_frame()
+    labels = trial.labels
+    frequency = trial.frequency_hz
+    if frequency is None:
+        raise ValueError(
+            "Native validation requires a positive trial sampling frequency."
         )
     if len(positions) <= 10:
         raise ValueError("The lateral-shank protocol requires more than ten frames.")
     if not definition_license.strip():
         raise ValueError("A definition licence is required.")
-    trial = MarkerTrial(
-        labels,
-        positions,
-        "m",
-        np.eye(3),
-        source_label,
-        frequency_hz=frequency,
-        definition_source="Lencioni/Tiziana lateral condyle and lateral malleolus markers",
-        definition_license=definition_license,
-    )
     with make_env("myoLegWalk-v0") as env:
         spec = env.unwrapped._mj_spec.copy()
     model = spec.compile()
@@ -327,7 +356,7 @@ def validate_lateral_shank_spans(
             )
         )
     estimate = estimate_marker_scales(
-        replace(trial, positions=positions[:3]), measurements
+        replace(trial, positions=np.asarray(trial.positions)[:3]), measurements
     )
     target = build_subject_model(spec, SubjectModelConfig(estimate.estimate))
     target_data = mujoco.MjData(target.model)
@@ -369,6 +398,7 @@ def validate_lateral_shank_spans(
         "scaled_heldout_span_max_m": float(np.nanmax(np.abs(scaled_error))),
         "evaluation_scope": "measured surface-marker span consistency; not joint-centre length or full-body retargeting",
         "runtime": {"mujoco": mujoco.__version__, "numpy": np.__version__},
+        "source_grf_status_available": reasons is not None,
     }
     if reasons is not None:
         if reasons.shape != (len(positions),) or not np.issubdtype(

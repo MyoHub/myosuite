@@ -38,6 +38,8 @@ class MarkerTrial:
     frequency_hz: float | None = None
     definition_source: str | None = None
     definition_license: str | None = None
+    point_semantics: str = "unspecified"
+    subject_id: str | None = None
 
     def __post_init__(self) -> None:
         labels = tuple(self.labels)
@@ -73,6 +75,15 @@ class MarkerTrial:
             raise ValueError("translation_to_model_m must be a finite 3-vector.")
         if not isinstance(self.source, str) or not self.source.strip():
             raise ValueError("A source identifier is required.")
+        if (
+            not isinstance(self.point_semantics, str)
+            or not self.point_semantics.strip()
+        ):
+            raise ValueError("point_semantics must be a nonempty string.")
+        if self.subject_id is not None and (
+            not isinstance(self.subject_id, str) or not self.subject_id.strip()
+        ):
+            raise ValueError("subject_id must be a nonempty string or None.")
         if self.confidence is not None and (
             not np.isfinite(self.confidence) or not 0 <= self.confidence <= 1
         ):
@@ -114,6 +125,8 @@ class MarkerTrial:
             else float(self.frequency_hz),
             "definition_source": self.definition_source,
             "definition_license": self.definition_license,
+            "point_semantics": self.point_semantics,
+            "subject_id": self.subject_id,
         }
 
 

@@ -53,6 +53,8 @@ def read_trc(
     uncertainty_m: float | None = None,
     definition_source: str | None = None,
     definition_license: str | None = None,
+    point_semantics: str = "unspecified",
+    subject_id: str | None = None,
 ) -> MarkerTrial:
     """Read uniformly sampled, tab-delimited OpenSim TRC marker coordinates.
 
@@ -64,6 +66,8 @@ def read_trc(
         uncertainty_m: Optional source-reported coordinate uncertainty.
         definition_source: Optional origin of the marker definitions.
         definition_license: Optional source-reported terms for those definitions.
+        point_semantics: Caller-declared point kind; never inferred from TRC labels.
+        subject_id: Optional caller-supplied identity for local provenance.
 
     Returns:
         A trial for scale estimation or target-specific retargeting. Empty cells
@@ -156,6 +160,8 @@ def read_trc(
         frequency_hz=rate,
         definition_source=definition_source,
         definition_license=definition_license,
+        point_semantics=point_semantics,
+        subject_id=subject_id,
         _trc_json=json.dumps(
             {
                 "sha256": hashlib.sha256(raw).hexdigest(),

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -18,12 +19,20 @@ from myosuite.integrations.capture.native_sources import (
     read_bioamass,
     skel_joint_trial,
 )
-from myosuite.integrations.capture.native_validation import validate_native_origins
+from myosuite.integrations.capture.markers import MarkerTrial
+from myosuite.integrations.capture.native_validation import (
+    _load_validation_trial,
+    validate_native_origins,
+)
+from myosuite.integrations.capture import native_validation
+from myosuite.integrations.capture.trial_io import load_marker_trial, save_marker_trial
 
 pytestmark = pytest.mark.tier1
 
 
-def test_skel_native_output_uses_bone_order_and_batches_without_asset_loading() -> None:
+def test_skel_native_output_uses_bone_order_and_batches_without_asset_loading(
+    tmp_path: Path,
+) -> None:
     torch = pytest.importorskip("torch")
 
     class Model:
@@ -58,12 +67,19 @@ def test_skel_native_output_uses_bone_order_and_batches_without_asset_loading() 
         model_source="independently authored native model substitute",
         definition_license="Apache-2.0",
         batch_size=2,
+        subject_id="authored-skeleton",
     )
     assert trial.labels == ("pelvis", "knee")
     np.testing.assert_allclose(trial.positions[2], [[2, 0, 0], [2.5, 1, 0.6]])
     assert trial.metadata()["native_source"]["joint_order"] == "model.bone_names"
     assert trial.metadata()["native_source"]["frames"] == 3
     json.dumps(trial.metadata(), allow_nan=False)
+    assert trial.point_semantics == "model_origin"
+    assert trial.subject_id == "authored-skeleton"
+    assert (
+        load_marker_trial(save_marker_trial(trial, tmp_path / "skel.npz")).metadata()
+        == trial.metadata()
+    )
 
 
 def test_addbiomechanics_raw_marker_window_preserves_absence_and_quality(
@@ -125,6 +141,7 @@ def test_addbiomechanics_raw_marker_window_preserves_absence_and_quality(
         definition_source="authored markers",
         definition_license="Apache-2.0",
         stride=2,
+        subject_id="authored-capture",
     )
     assert trial.labels == ("A", "B")
     assert trial.frequency_hz == 50
@@ -137,6 +154,12 @@ def test_addbiomechanics_raw_marker_window_preserves_absence_and_quality(
     assert trial.metadata()["native_source"]["source_mass_kg"] == 65
     assert trial.metadata()["native_source"]["source_height_m"] is None
     json.dumps(trial.metadata(), allow_nan=False)
+    assert trial.point_semantics == "surface_marker"
+    assert trial.subject_id == "authored-capture"
+    assert (
+        load_marker_trial(save_marker_trial(trial, tmp_path / "markers.npz")).metadata()
+        == trial.metadata()
+    )
 
 
 def test_b3d_without_local_source_is_rejected_before_native_import(
@@ -194,6 +217,7 @@ def test_native_opensim_child_joint_origins_honor_degree_motion(tmp_path: Path) 
         rotation_to_model=np.eye(3),
         definition_source="independently authored two-link origins",
         definition_license="Apache-2.0",
+        subject_id="authored-opensim",
     )
     np.testing.assert_allclose(
         trial.positions[:, 1], [[0, -0.5, 0], [0.5, 0, 0]], atol=1e-10
@@ -201,6 +225,8 @@ def test_native_opensim_child_joint_origins_honor_degree_motion(tmp_path: Path) 
     assert trial.frequency_hz == 100
     assert trial.metadata()["native_source"]["motion_in_degrees"]
     assert len(trial.metadata()["native_source"]["model_sha256"]) == 64
+    assert trial.point_semantics == "model_origin"
+    assert trial.subject_id == "authored-opensim"
 
 
 def test_native_validation_rejects_an_unrelated_joint_label_order(
@@ -241,3 +267,111 @@ def test_native_validation_keeps_calibration_frames_out_of_evaluation(
             definition_license="Apache-2.0",
             heldout_frames=(0, 10, 20),
         )
+
+
+def test_versioned_validation_bridge_preserves_units_transform_semantics_and_identity(
+    tmp_path: Path,
+) -> None:
+    trial = MarkerTrial(
+        ("A", "B"),
+        np.array([[[0, 0, 0], [0, 40, 0]]]),
+        "cm",
+        [[0, -1, 0], [1, 0, 0], [0, 0, 1]],
+        "authored source",
+        translation_to_model_m=(0.1, 0.2, 0.3),
+        frequency_hz=100,
+        point_semantics="model_origin",
+        subject_id="authored-subject",
+        definition_source="authored definitions",
+        definition_license="Apache-2.0",
+    )
+    path = save_marker_trial(trial, tmp_path / "trial.npz")
+    restored, reasons = _load_validation_trial(
+        path,
+        source_label="public label",
+        definition_license="public terms",
+        point_semantics="model_origin",
+    )
+    np.testing.assert_allclose(restored.in_model_frame(), trial.in_model_frame())
+    assert restored.metadata() == trial.metadata()
+    assert reasons is None
+    with pytest.raises(ValueError, match="point_semantics"):
+        _load_validation_trial(
+            path,
+            source_label="public label",
+            definition_license="public terms",
+            point_semantics="surface_marker",
+        )
+
+
+def test_lateral_shank_cli_accepts_versioned_and_legacy_inputs_without_native_assets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import mujoco
+
+    spec = mujoco.MjSpec.from_string("""<mujoco><worldbody>
+      <body name="tibia_r"><geom type="sphere" size=".03"/>
+        <site name="LFC_r"/><site name="LMAL_r" pos="0 -.5 0"/></body>
+      <body name="tibia_l" pos=".2 0 0"><geom type="sphere" size=".03"/>
+        <site name="LFC_l"/><site name="LMAL_l" pos="0 -.5 0"/></body>
+      </worldbody></mujoco>""")
+
+    @contextmanager
+    def environment(name: str) -> Any:
+        assert name == "myoLegWalk-v0"
+        yield SimpleNamespace(unwrapped=SimpleNamespace(_mj_spec=spec))
+
+    monkeypatch.setattr(native_validation, "make_env", environment)
+    points = np.array([[[0, 0, 0], [0, -600, 0], [200, 0, 0], [200, -400, 0]]] * 14)
+    trial = MarkerTrial(
+        ("RxLatCon", "RxLatMal", "LxLatCon", "LxLatMal"),
+        points,
+        "mm",
+        [[0, -1, 0], [1, 0, 0], [0, 0, 1]],
+        "authored markers",
+        translation_to_model_m=(0.1, -0.2, 0.3),
+        frequency_hz=100,
+        point_semantics="surface_marker",
+        definition_license="Apache-2.0",
+    )
+    versioned = save_marker_trial(trial, tmp_path / "versioned.npz")
+    legacy = tmp_path / "legacy.npz"
+    np.savez(
+        legacy,
+        positions=trial.in_model_frame(),
+        labels=trial.labels,
+        frequency_hz=100,
+        missing_grf=np.zeros(len(points), dtype=int),
+    )
+    reports = []
+    for source in (versioned, legacy):
+        output = tmp_path / (source.stem + ".json")
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "native_validation",
+                "--trial",
+                str(source),
+                "--protocol",
+                "lateral-shank",
+                "--source-label",
+                "authored-test",
+                "--definition-license",
+                "Apache-2.0",
+                "--output",
+                str(output),
+            ],
+        )
+        native_validation.main()
+        reports.append(json.loads(output.read_text()))
+    for report in reports:
+        assert report["heldout_frame_count"] == 4
+        assert report["estimated_scale_axes"] == 2
+        assert report["nominal_heldout_span_rms_m"] == pytest.approx(0.1)
+        assert report["scaled_heldout_span_rms_m"] < 1e-12
+    assert reports[0]["source_grf_status_available"] is False
+    assert "source_grf_valid_frame_count" not in reports[0]
+    assert reports[1]["source_grf_status_available"] is True
+    assert reports[1]["source_grf_valid_frame_count"] == 14

@@ -94,6 +94,8 @@ def vertex_marker_trial(
     frequency_hz: float | None = None,
     confidence: float | None = None,
     uncertainty_m: float | None = None,
+    point_semantics: str = "surface_vertex",
+    subject_id: str | None = None,
 ) -> MarkerTrial:
     """Extract markers from static or animated user-provided body-model vertices.
 
@@ -109,6 +111,8 @@ def vertex_marker_trial(
         frequency_hz: Motion sampling frequency, required by retargeting.
         confidence: Optional source-reported confidence.
         uncertainty_m: Optional source-reported coordinate uncertainty.
+        point_semantics: Caller-declared point kind; defaults to surface vertices.
+        subject_id: Optional caller-supplied identity for local provenance.
 
     Returns:
         A marker trial accepted by scale estimation and target-specific IK.
@@ -144,6 +148,8 @@ def vertex_marker_trial(
         uncertainty_m=uncertainty_m,
         definition_source=definitions.definition_source,
         definition_license=definitions.definition_license,
+        point_semantics=point_semantics,
+        subject_id=subject_id,
     )
     return _VertexMarkerTrial(
         **{field.name: getattr(trial, field.name) for field in fields(MarkerTrial)},

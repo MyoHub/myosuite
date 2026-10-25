@@ -183,6 +183,7 @@ packages = { find = { exclude = ["myosuite.agents", "myosuite.agents.*"] } }
 "myosuite" = ["envs/myo/backends/mjx/*.png", "**/__pycache__/*", "**/*.pyc"]
 
 [project.scripts]
+myosuite-capture = "myosuite.integrations.capture.workflow:main"
 myosuite-export-onnx = "myosuite.utils.export_onnx:main"
 # MuscleMimic full-body: native --path trajectory playback, preview, or MJX smoke.
 myosuite-musclemimic-fullbody-eval = "myosuite.integrations.musclemimic.fullbody_eval_cli:main"

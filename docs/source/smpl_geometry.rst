@@ -6,6 +6,8 @@ User-owned body geometry and marker trials feed :doc:`capture_scaling` and
 
 For native SKEL/BioAmass/AddBiomechanics inputs and measured scaling checks,
 see :doc:`native_scaling_validation`.
+For configurable target protocols, fixed-base arms and provenance-preserving
+local trial files, see :doc:`capture_workflow`.
 
 See the :download:`source-specific licence and attribution notices <../../THIRD_PARTY_DATA.md>`
 for external inputs and published validation results.
@@ -60,6 +62,19 @@ NaN vertices propagate as missing markers. Surface markers require matching
 target surface sites or a calibrated anatomical offset; they do not directly
 measure hip, knee or other internal joint centres.
 
+Vertex imports default to ``point_semantics="surface_vertex"``; supply another
+explicit point kind only when the definitions establish it. The optional
+``subject_id`` and all vertex-definition metadata survive a local interchange:
+
+.. code-block:: python
+
+    from myosuite.integrations.capture.trial_io import save_marker_trial
+
+    save_marker_trial(motion_trial, "local_motion_trial.npz")
+
+These local trial files retain the original units, calibrated frame, source
+terms and definition indices. They remain subject to the source permissions.
+
 Use ``result.estimate`` with ``SubjectModelConfig`` and
 ``build_subject_model``. Then fit ``motion_trial`` to sites on the **constructed
 target** with ``retarget_markers``, passing ``scale_evidence=result.evidence``.
@@ -85,6 +100,8 @@ the existing estimator and retargeter without loading a body-model package:
         "subject_static.trc", rotation_to_model=np.eye(3),
         definition_source="my exported marker protocol/version",
         definition_license="terms applying to those marker definitions",
+        point_semantics="surface_marker",  # Explicitly verified for this export.
+        subject_id="my-local-subject-id",
     )
     result = estimate_marker_scales(trial, measurements)
     print(trial.metadata()["trc"])
@@ -102,6 +119,10 @@ declared rate and does not resample or infer labels.
 The trial retains the source rate, original frame/time range, header and exact
 file SHA-256. Definition terms are source-reported and do not certify permission
 to redistribute a dataset.
+TRC defaults to ``point_semantics="unspecified"`` because file labels alone do
+not establish whether the points are surface markers or inferred model origins.
+Declare the appropriate kind when using an explicit target protocol, then use
+``save_marker_trial`` to preserve the TRC header, source hash and point metadata.
 
 Data that strengthens validation
 --------------------------------

@@ -88,6 +88,7 @@ Choose your path
    capture_scaling
    smpl_geometry
    native_scaling_validation
+   capture_workflow
    subject_leg_workflow
    backend_parity
    fatigue_validation

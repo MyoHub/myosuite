@@ -28,6 +28,7 @@ from myosuite.integrations.capture.retargeting import (
     load_retargeted_clip,
     retarget_markers,
 )
+from myosuite.integrations.capture.trial_io import load_marker_trial, save_marker_trial
 
 pytestmark = pytest.mark.tier1
 TOPOLOGY = "MyoSuite independently authored analytic vertices v1"
@@ -64,6 +65,7 @@ def test_vertex_geometry_scales_builds_retargets_and_preserves_provenance(
         source="independently authored static geometry",
     )
     assert np.asarray(trial.positions).shape == (1, len(definitions.indices), 3)
+    assert trial.point_semantics == "surface_vertex"
     result = estimate_marker_scales(
         trial, [SegmentMeasurement(**row) for row in payload["measurements"]]
     )
@@ -116,7 +118,9 @@ def test_vertex_geometry_scales_builds_retargets_and_preserves_provenance(
     json.dumps(result.evidence, allow_nan=False)
 
 
-def test_vertex_units_frame_and_source_uncertainty_reuse_trial_contract() -> None:
+def test_vertex_units_frame_and_source_uncertainty_reuse_trial_contract(
+    tmp_path: Path,
+) -> None:
     vertices, definitions, _ = _fixture_vertices()
     rotation = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
     translation = np.array([0.3, 0.4, 0.5])
@@ -132,6 +136,8 @@ def test_vertex_units_frame_and_source_uncertainty_reuse_trial_contract() -> Non
         frequency_hz=120,
         confidence=0.9,
         uncertainty_m=0.003,
+        point_semantics="surface_marker",
+        subject_id="authored-surface",
     )
     expected = json.loads((FIXTURES / "static_trial.json").read_text())["trial"]
     np.testing.assert_allclose(
@@ -141,6 +147,10 @@ def test_vertex_units_frame_and_source_uncertainty_reuse_trial_contract() -> Non
     assert trial.metadata()["confidence"] == 0.9
     assert trial.metadata()["uncertainty_m"] == 0.003
     assert trial.frequency_hz == 120
+    assert trial.point_semantics == "surface_marker"
+    assert trial.subject_id == "authored-surface"
+    restored = load_marker_trial(save_marker_trial(trial, tmp_path / "vertices.npz"))
+    assert restored.metadata() == trial.metadata()
     with pytest.raises(ValueError, match="proper orthonormal"):
         replace(trial, rotation_to_model=np.diag([-1, 1, 1]))
 

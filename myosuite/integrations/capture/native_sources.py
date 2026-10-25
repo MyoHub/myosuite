@@ -84,6 +84,7 @@ def skel_joint_trial(
     batch_size: int = 64,
     confidence: float | None = None,
     uncertainty_m: float | None = None,
+    subject_id: str | None = None,
 ) -> MarkerTrial:
     """Evaluate an externally loaded SKEL model without distributing its assets.
 
@@ -102,6 +103,7 @@ def skel_joint_trial(
         batch_size: Positive maximum number of frames per native evaluation.
         confidence: Optional source-reported confidence.
         uncertainty_m: Optional source-reported coordinate uncertainty.
+        subject_id: Optional caller-supplied identity retained only as provenance.
 
     Returns:
         A marker trial labelled in the upstream BSM bone order. SKEL's separate
@@ -164,6 +166,8 @@ def skel_joint_trial(
         uncertainty_m=uncertainty_m,
         definition_source=model_source,
         definition_license=definition_license,
+        point_semantics="model_origin",
+        subject_id=subject_id,
         _source_evidence=json.dumps(
             {
                 "adapter": "upstream-skel-joints",
@@ -186,6 +190,7 @@ def read_addbiomechanics(
     num_frames: int | None = None,
     stride: int = 1,
     translation_to_model_m: ArrayLike = (0.0, 0.0, 0.0),
+    subject_id: str | None = None,
 ) -> MarkerTrial:
     """Read raw measured markers through the optional official Nimble B3D reader.
 
@@ -260,6 +265,8 @@ def read_addbiomechanics(
         frequency_hz=1 / (timestep * stride),
         definition_source=definition_source,
         definition_license=definition_license,
+        point_semantics="surface_marker",
+        subject_id=subject_id,
         _source_evidence=json.dumps(evidence),
     )
 
@@ -277,6 +284,7 @@ def read_bioamass(
     num_frames: int | None = None,
     stride: int = 1,
     translation_to_model_m: ArrayLike = (0.0, 0.0, 0.0),
+    subject_id: str | None = None,
 ) -> MarkerTrial:
     """Evaluate local BioAmass/OpenSim motion using the native OpenSim library.
 
@@ -378,5 +386,7 @@ def read_bioamass(
         frequency_hz=1 / (period * stride),
         definition_source=definition_source,
         definition_license=definition_license,
+        point_semantics="model_origin",
+        subject_id=subject_id,
         _source_evidence=json.dumps(evidence),
     )

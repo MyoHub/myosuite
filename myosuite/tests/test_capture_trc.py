@@ -24,6 +24,7 @@ from myosuite.integrations.capture import (
 )
 from myosuite.integrations.capture.example import FIXTURES, MARKER_SITES
 from myosuite.integrations.capture.retargeting import retarget_markers
+from myosuite.integrations.capture.trial_io import load_marker_trial, save_marker_trial
 
 pytestmark = pytest.mark.tier1
 
@@ -81,6 +82,22 @@ def test_real_format_metadata_calibration_and_scale_evidence(tmp_path: Path) -> 
     assert evidence["end_time_s"] == 10.02
     assert result.evidence["trial"]["definition_license"] == "Apache-2.0"
     json.dumps(result.evidence, allow_nan=False)
+    assert trial.point_semantics == "unspecified"
+
+
+def test_trc_caller_semantics_and_identity_survive_local_interchange(
+    tmp_path: Path,
+) -> None:
+    trial = read_trc(
+        _write(tmp_path / "markers.trc"),
+        rotation_to_model=np.eye(3),
+        point_semantics="surface_marker",
+        subject_id="authored-trc",
+    )
+    restored = load_marker_trial(save_marker_trial(trial, tmp_path / "trial.npz"))
+    assert restored.metadata() == trial.metadata()
+    assert restored.point_semantics == "surface_marker"
+    assert restored.subject_id == "authored-trc"
 
 
 def test_missing_cells_do_not_shift_marker_coordinates(tmp_path: Path) -> None:
