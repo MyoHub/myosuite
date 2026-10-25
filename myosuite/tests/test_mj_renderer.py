@@ -25,6 +25,7 @@ _XML = """
   </asset>
   <worldbody>
     <light pos="0 0 3" dir="0 0 -1"/>
+    <camera name="fixed" pos="0 -3 2" xyaxes="1 0 0 0 .5 1"/>
     <geom type="plane" size="2 2 .1" material="mirror"/>
     <body pos="0 0 .5"><freejoint/><geom type="sphere" size=".2" rgba="0 1 0 1"/></body>
   </worldbody>
@@ -118,6 +119,38 @@ def test_mesh_upload_refreshes_every_cached_offscreen_size(
     finally:
         fresh.close()
         env.close()
+
+
+@pytest.mark.parametrize("camera_id", [-1, None, 100])
+def test_offscreen_free_camera_follows_updated_settings(scene, camera_id) -> None:
+    """Free-camera settings apply to every output mode, including cached renderers."""
+    _, _, renderer = scene
+    renderer.set_free_camera_settings(
+        azimuth=0, elevation=-25, distance=1, lookat=[0, 0, 0.5]
+    )
+    before = renderer.render_offscreen(
+        width=160, height=120, camera_id=camera_id, depth=True, segmentation=True
+    )
+    renderer.set_free_camera_settings(
+        azimuth=125, elevation=-60, distance=3, lookat=[0.7, 0.4, 0.2]
+    )
+    after = renderer.render_offscreen(
+        width=160, height=120, camera_id=camera_id, depth=True, segmentation=True
+    )
+    for old, new in zip(before, after, strict=True):
+        assert not np.array_equal(old, new)
+
+
+@pytest.mark.parametrize("camera_id", [0, "fixed"])
+def test_offscreen_fixed_camera_ignores_free_camera_settings(scene, camera_id) -> None:
+    """A named or indexed model camera retains its own view."""
+    _, _, renderer = scene
+    before = renderer.render_offscreen(width=160, height=120, camera_id=camera_id)
+    renderer.set_free_camera_settings(
+        azimuth=125, elevation=-60, distance=3, lookat=[0.7, 0.4, 0.2]
+    )
+    after = renderer.render_offscreen(width=160, height=120, camera_id=camera_id)
+    _assert_same_image(before, after)
 
 
 def test_examine_policy_offscreen_video_is_not_black(monkeypatch, tmp_path) -> None:
