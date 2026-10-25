@@ -183,8 +183,257 @@ Primary sources reviewed on 2026-10-25 provide complementary evidence:
      - UK Biobank application and Tier 3 access are required. Model/software
        licences are separate; these are not freely redistributable fixtures.
 
-For the immediate reference workflow, use the pinned BoneHub VSD cases and
-reviewed landmarks to assess segment-length variation. The open tibia-fibula SSM
-is a stronger next candidate for studying nonuniform shape changes. Fitting its
-shape modes, changing joint frames or replacing muscle attachments needs its
-own validation rather than treating arbitrary mesh deformation as body scaling.
+For the reference workflow, use the pinned BoneHub VSD cases and reviewed
+landmarks to assess segment-length variation. The tibia-fibula landmark adapter
+below adds real, corresponding measurements. Nonlinear shape modes, new joint
+frames and muscle attachments require separate validation.
+
+Named tibia-fibula landmarks
+----------------------------------------
+
+``myosuite.integrations.keast`` reads explicit ``label,x,y,z`` CSV coordinates
+and provides a hash-pinned local reference for Keast, Bonacci and Fox's archive
+version 4. The archive contains a mean reference from 30 CT subjects and
+separate landmark observations from 35 MRI subjects supplied by Nolte et al.
+The six palpable labels used here are lateral/medial condyle (LC/MC),
+lateral/medial malleolus (LM/MM), tibial tuberosity (TT) and fibula head (FH).
+
+.. code-block:: python
+
+    from pathlib import Path
+    import numpy as np
+    from myosuite.integrations.keast import KeastReference, read_named_landmarks
+    from myosuite.core.subject_model import SubjectModelConfig, build_subject_model
+
+    source = KeastReference(Path("local-anatomy-data"))
+    # Explicit opt-in: downloads 550.6 MB, extracts under 40 KB of landmarks.
+    source.prepare()
+    # Reuse an existing source archive: source.prepare("SSM-tibia-V3.zip").
+    target = read_named_landmarks(
+        "reviewed_tibia_r_body_local.csv", units="m",
+        rotation_to_model=np.eye(3), source="my unscaled target tibia_r",
+        definition_source="reviewed LC/MC/LM/MM/TT/FH protocol and target version",
+        definition_license="terms for my annotations",
+    )
+    result = source.estimate_scales(
+        "C01RTF", target, segment="tibia_r", units="mm",
+        rotation_to_model=np.eye(3), max_rms_m=0.01,
+    )
+    # spec is the exact unscaled target whose body-local landmarks were reviewed.
+    subject = build_subject_model(spec, SubjectModelConfig(result.estimate))
+
+The target CSV must express the corresponding points in **that body's local
+axes**, in its unscaled geometry. Names alone do not establish correspondence
+to MyoLeg sites. The source's mean shape frame is not automatically MyoLeg's
+frame. The adapter estimates scale and a proper rigid pose from
+the full 3D correspondences through the shared landmark fitter; it does not use
+mesh bounding-box ends as joint centres. The example's 10 mm residual admission
+threshold is illustrative and does not establish anatomical accuracy. The
+conservative default is ``mode="isotropic"``; independent axis factors require
+explicit ``mode="anisotropic"`` and evidence favouring the added complexity. Annotation
+uncertainty was not provided with the source CSVs and is not invented here.
+
+The output is the existing ``ScaleEstimate`` plus reference/observation hashes,
+source definitions and residual evidence, compatible with the shared subject
+model construction used by CPU and mjlab. Missing labels are explicit NaN rows;
+insufficient or degenerate geometry is rejected by the fitter. The source data
+cover right tibias/fibulas; left-sided correspondences need their own calibration.
+
+Only code, checksum metadata and derivative validation reports are distributed.
+Source archives, CSV coordinates, meshes and MAT model arrays remain in the
+user's local cache. ``prepare`` verifies the full source SHA-256 before selective
+extraction; modified cached CSVs are refused. Retain both Keast et al.
+(DOI ``10.7717/peerj.14708``) and Nolte et al.
+(DOI ``10.1016/j.jbiomech.2016.09.005``) attribution when using these data.
+
+Real anatomy validation
+------------------------
+
+Reproduce the optional benchmark using an existing archive or explicit download:
+
+.. code-block:: bash
+
+    python scripts/validate_keast_scaling.py --data-root local-anatomy-data --download --output outputs/keast_report.json --plot outputs/keast_report.png
+
+The benchmark fits six palpable points per MRI subject against the 30-subject
+CT mean, and evaluates six **withheld border fractions**. Raw T1/T2/... and
+F1/F2/... names identify digitized polyline samples whose positions/counts differ
+between subjects. They are not anatomical correspondences. The adapter instead
+linearly interpolates T25/T50/T75 at 25/50/75% of the MC-to-MM longitudinal
+distance, and F25/F50/F75 at the corresponding FH-to-LM fractions, using each
+subject's anatomically defined proximal axis. No extrapolation or surface
+snapping occurs. The source paper's MATLAB reconstruction uses a different
+landmark set and surface snapping; this benchmark does not reproduce that SSM
+experiment.
+
+All 35 MRI subjects are separate from the CT reference population, and border
+points are not passed to the scale optimizer. Their fractions share the fitted
+endpoint landmarks, so the evaluation quantities are correlated. No population
+hyperparameters were fitted to these 35 subjects. The reference frame places
+the origin at the condyle midpoint, +y proximally from the malleolar midpoint,
++x toward the tuberosity after removing its y component, and +z right-handed.
+Both this frame and the interpolation are checked for rigid-frame invariance
+and differing polyline sample counts with independently authored fixtures.
+
+.. list-table:: Mean RMS error over six withheld border positions
+   :header-rows: 1
+   :widths: 42 28 30
+
+   * - Method
+     - Mean RMS (mm)
+     - Worst subject RMS (mm)
+   * - Nominal mean, rigid pose only
+     - 10.012
+     - 17.398
+   * - MC-to-MM length on the longitudinal axis
+     - 6.908
+     - 11.689
+   * - Isotropic landmark fit
+     - 6.725
+     - 11.836
+   * - Three-axis landmark fit
+     - 6.641
+     - 12.119
+
+Three-axis scaling reduces mean error by 33.7% relative to nominal, 3.9%
+relative to one measured length, and 1.2% relative to isotropic fitting. It
+improves 29/35 subjects over nominal, 20/35 over a single length and 18/35 over
+isotropic fitting. Regressions are retained: the worst subject error is higher
+than the isotropic result. More parameters do not guarantee better anatomy;
+choose model complexity using additional correspondences and application-specific
+validation, not the evaluation subject's withheld error.
+
+Descriptive 95% paired-subject Student-t intervals for the three-axis mean RMS
+delta are -3.370 mm [-4.591, -2.150] versus nominal, -0.266 mm [-0.574, +0.041]
+versus one length and -0.083 mm [-0.342, +0.176] versus isotropic fitting. These
+intervals assume independent subject deltas within this selected cohort and
+do not establish representative population uncertainty. They do not demonstrate
+a reliable improvement over the simpler scaling fits. The adapter therefore
+keeps isotropic fitting as its default, with anisotropic fitting available for
+applications that validate its added information.
+
+.. image:: _static/anatomy_scaling/keast_validation.png
+   :alt: Mean withheld-border errors and per-subject isotropic versus three-axis errors.
+
+The :download:`per-subject derivative report <../../myosuite/tests/data/anatomy_scaling/keast_landmark_validation.json>`
+retains every fitted factor and error, including regressions, plus source hashes
+and the complete protocol. This validates affine landmark geometry only.
+Joint-centre placement, nonlinear bone shape, muscle paths, moment arms,
+contacts and dynamics need their own checks after target construction.
+
+Denver tissue geometry and volume constraints
+------------------------------------------------------------
+
+The original Denver Visible Human release adds muscles, cartilage and ligaments
+to the same two donors used by BoneHub. ``DenverReference`` reads user-provided
+final-STL and metadata ZIP archives locally. It verifies donor/side identities
+inside both archives and compares enclosed mesh volumes with the independently
+published final-volume tables. Reading these XLSX tables uses read-only
+``openpyxl``; no source workbook or surface is rewritten or redistributed.
+
+.. code-block:: bash
+
+    pip install "myosuite[anatomy]"
+
+.. code-block:: python
+
+    from pathlib import Path
+    from myosuite.integrations.denver import DenverReference
+
+    reference = DenverReference(
+        Path("vhf_final_stl.zip"), Path("vhf_metadata.zip"), "VHF",
+    )
+    summary = reference.summarize_geometry("VHF_Right_Bone_Tibia_smooth.stl")
+    print(summary.volume_m3, summary.surface_area_m2)
+    print(summary.relative_volume_error, summary.metadata())
+
+Mesh coordinates are interpreted in the source millimetres and converted to SI
+measures. A 0.1% mesh-versus-table volume discrepancy limit detects pairing or
+unit errors; this is not an anatomical accuracy threshold. Open, inconsistently
+wound or inward-facing surfaces supply no usable enclosed volume. Source archive
+and individual member hashes remain available in the runtime evidence.
+
+An independent volume and longitudinal length can improve a length-only recipe
+by constraining transverse **area**. They cannot identify width and depth
+separately. The following explicit assumption assigns equal transverse factors:
+
+.. code-block:: python
+
+    from myosuite.integrations.denver import (
+        VolumeScaleConstraint, volume_constrained_scale_estimate,
+    )
+
+    # Supply compatible target geometry, a separately measured length factor,
+    # and the target-local axis. The illustrative y axis is not inferred here.
+    constraint = VolumeScaleConstraint(
+        subject_id="reviewed-subject", segment="tibia_r",
+        reference_volume_m3=measured_reference_volume_m3,
+        observed_volume_m3=measured_subject_volume_m3,
+        longitudinal_factor=measured_length_factor, axis="y",
+        reference_source="reviewed target geometry and hash",
+        observed_source="reviewed subject geometry and hash",
+    )
+    result = volume_constrained_scale_estimate(
+        constraint, assume_equal_transverse=True,
+    )
+
+Each transverse factor becomes ``sqrt(volume_ratio / longitudinal_factor)``.
+The resulting ``ScaleEstimate`` feeds the existing subject builder. Use matched
+tissue definitions and a calibrated target body axis; an individual muscle or
+bone volume is not automatically a body-mass or strength measurement. This
+constraint supplies neither a muscle fibre/tendon parameter nor evidence that
+the two transverse dimensions actually scale equally.
+
+.. code-block:: bash
+
+    python scripts/validate_denver_geometry.py --female-mesh vhf_final_stl.zip --female-metadata vhf_metadata.zip --male-mesh vhm_final_stl.zip --male-metadata vhm_metadata.zip --output outputs/denver_validation.json
+
+The default command emits only aggregate source-volume checks. An optional
+constraint demonstration requires **both** ``--longitudinal-factor`` and
+``--axis`` explicitly; neither is inferred or assigned a default. Equality of
+the constructed volume ratio is a mathematical consistency check, not an
+independent anatomical validation.
+
+The :download:`derived Denver report <../../myosuite/tests/data/denver_geometry/validation.json>`
+records the actual 256 STL files, 128 per donor: 76 muscles, 28 bones, 16 cartilage
+and 8 ligaments each. These particular archives contain no fat surfaces. Of the
+256 meshes, 255 provide consistently wound usable enclosed volumes; one female
+cartilage mesh is excluded. The admitted volumes agree with published tables
+within ``1.35e-7`` relative error. The committed report contains aggregate
+measures, quality exclusions and hashes, without source STL files, source
+workbooks, per-geometry source-volume rows or an assumed length-factor example.
+
+VSD cohort geometry reference
+----------------------------------------
+
+``scripts/validate_vsd_geometry.py`` uses the right tibia meshes from all 20
+source-complete VSD cases to derive a small population plausibility reference.
+Source quality is checked before admitting geometry. Closed, consistently wound,
+outward-facing meshes provide solid enclosed volume and geometric spans along
+the volume-inertia principal axes. The largest span is a pure outer-mesh
+descriptor; it is **not** a joint-centre distance or an anatomical segment length.
+
+.. code-block:: bash
+
+    python scripts/validate_vsd_geometry.py --data-root local-vsd-data --units mm --download --output outputs/vsd_tibia_summary.json
+
+Downloads are explicit and pinned through ``BoneHubVsdReference``. Omit
+``--download`` to use the cache; missing cases appear in coverage counts.
+``--cases`` can select a subset, whose coverage remains explicit. Units must be
+confirmed by the caller. The benchmark's original 20 meshes occupy about 30 MB
+locally; they are not distributed with MyoSuite.
+
+All 20 requested meshes passed the source-completeness and enclosed-volume
+checks. Median enclosed solid volume is 352.280 cubic centimetres. The
+dimensionless volume divided by largest principal span cubed has median
+``0.005552`` and 5th--95th percentiles ``0.004934``--``0.007011``. Such summaries
+can flag implausible reference geometry or dimensional/unit mistakes during
+inspection. They are not automatically applied as patient measurements,
+population priors, scale factors or strength parameters, and this selected
+cadaveric cohort does not establish a representative human distribution.
+
+The :download:`derived VSD cohort report <../../myosuite/tests/data/anatomy_scaling/vsd_tibia_population_summary.json>`
+contains aggregate quantiles, coverage, source file hashes and the precise
+geometric protocol. It contains no vertices, centroids, per-person geometry
+values or raw anthropometry. Source attribution and CC BY-NC-SA 4.0 terms are
+retained for the derived VSD report separately from the software licence.

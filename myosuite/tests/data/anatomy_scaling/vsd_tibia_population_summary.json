@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "dataset": "BoneHub/vsd-lower-extremities-seg",
+  "revision": "85214b5a182b980a7869b57efba89a59a2445875",
+  "source_url": "https://huggingface.co/datasets/BoneHub/vsd-lower-extremities-seg/tree/85214b5a182b980a7869b57efba89a59a2445875",
+  "source_license": "CC-BY-NC-SA-4.0; original assets remain local",
+  "report_license": "CC-BY-NC-SA-4.0",
+  "attribution": "Alavi and Asseln (2026), doi:10.57967/hf/10471; Fischer (2023), doi:10.1038/s41597-023-02669-z",
+  "source_units_confirmed": "mm",
+  "environment": {
+    "numpy": "2.5.4",
+    "trimesh": "4.12.2"
+  },
+  "bone": "Tibia_R",
+  "coverage": {
+    "requested": 20,
+    "source_complete_and_volume_usable": 20,
+    "excluded_counts": {}
+  },
+  "geometry_protocol": "Solid-volume inertia principal axes; sorted spans of projected mesh vertices. Span is not joint-centre or segment length.",
+  "volume_m3": {
+    "minimum": 0.00023422207052810044,
+    "q05": 0.00023707545292768088,
+    "q25": 0.0002597451744393506,
+    "median": 0.0003522799694212265,
+    "q75": 0.00039134934954208753,
+    "q95": 0.00042675301288266416,
+    "maximum": 0.0004818556918569298
+  },
+  "principal_axis_spans_m": {
+    "largest": {
+      "minimum": 0.3446450171069257,
+      "q05": 0.3483084601513491,
+      "q25": 0.3651958237008653,
+      "median": 0.37932732995377005,
+      "q75": 0.4037966860150885,
+      "q95": 0.43510991062320536,
+      "maximum": 0.44043505543048433
+    },
+    "middle": {
+      "minimum": 0.06822509852472608,
+      "q05": 0.06908148334850697,
+      "q25": 0.07387541978689315,
+      "median": 0.07925162820225415,
+      "q75": 0.0830236038002175,
+      "q95": 0.08538810218070089,
+      "maximum": 0.08631198639343596
+    },
+    "smallest": {
+      "minimum": 0.050960376342111646,
+      "q05": 0.05253649763666669,
+      "q25": 0.057043133986905574,
+      "median": 0.06385416682886838,
+      "q75": 0.06733358885930389,
+      "q95": 0.07123033682342715,
+      "maximum": 0.07592408636360393
+    }
+  },
+  "volume_over_long_span_cubed": {
+    "minimum": 0.004692965932279698,
+    "q05": 0.004933646505980499,
+    "q25": 0.005245099501329447,
+    "median": 0.005552236359519864,
+    "q75": 0.006008091827641157,
+    "q95": 0.007011074179950557,
+    "maximum": 0.007465993246851193
+  },
+  "sources": [
+    {
+      "case": "001",
+      "bone": "Tibia_R",
+      "mesh_sha256": "ce774f27bacd6c3c594f6fa5811b092600261b0a2ce51eb84b303f2ca34dfcf8",
+      "metadata_sha256": "dd95e9c50d7e1c831cd4c529edf6513a2e638c543f989553f0dac7319902e197",
+      "admitted": true
+    },
+    {
+      "case": "002",
+      "bone": "Tibia_R",
+      "mesh_sha256": "eafd4d482ce95174c2badc66c625b245f8c5348a38b779282b69ca5d6c046ef7",
+      "metadata_sha256": "87f94f5df76afb5d0969fb33ce86f24c25b7194ff5229d35465b2763945c1b49",
+      "admitted": true
+    },
+    {
+      "case": "003",
+      "bone": "Tibia_R",
+      "mesh_sha256": "1f82b79aad757e4dc554388ed68acb1de7c4caeff337f5a6925d96385dea6e83",
+      "metadata_sha256": "6ba6e2b3fb6508842b2fff459e7364c8f5dcb75901aa1e0f0a6ef27f2c545f28",
+      "admitted": true
+    },
+    {
+      "case": "004",
+      "bone": "Tibia_R",
+      "mesh_sha256": "39a6f6ec2eafca1721b9ea7772bfb2981c5b89f3c18bb2568a4673cd5cd652b7",
+      "metadata_sha256": "38b9ca851b9a4af1ae846e835d70cadd05c29819fe87477bdb383800055ecac7",
+      "admitted": true
+    },
+    {
+      "case": "005",
+      "bone": "Tibia_R",
+      "mesh_sha256": "fb08acb6151e04fcf957f040efa54582a357113be58ebd026a1a602b574dcb35",
+      "metadata_sha256": "2f1e3095b996f804234688528cb55e66662a8e9e2487638b8a632e1c50022c98",
+      "admitted": true
+    },
+    {
+      "case": "006",
+      "bone": "Tibia_R",
+      "mesh_sha256": "f5eaabc6d7da24aace96b26557c84dc3fc56049529e1b9c69ccf2439590c8f73",
+      "metadata_sha256": "a4c9acc6194c86ec55252e40fdd5e74624a6527303d5474d361ac6335f8f22ad",
+      "admitted": true
+    },
+    {
+      "case": "007",
+      "bone": "Tibia_R",
+      "mesh_sha256": "a67bc12f3370d0afded1379e3f2ec23aa40ce9ba9fb1a0c3d65a31cf0a8e7645",
+      "metadata_sha256": "e214cc69bf656d467b9663ecc557624271e026924f1fa9b8dd33cc0bea0a2fbb",
+      "admitted": true
+    },
+    {
+      "case": "008",
+      "bone": "Tibia_R",
+      "mesh_sha256": "3382a0aad7386b9d61c07f51a344d776d837434e6b4c686b5cd46c3b6c4f2d77",
+      "metadata_sha256": "6d2122b19f006d1110d8f14448a85e7135624fb7f39100b92cfcb7ad47ebf612",
+      "admitted": true
+    },
+    {
+      "case": "009",
+      "bone": "Tibia_R",
+      "mesh_sha256": "33503ea85c3cc5f4cb3bf3718ea6d98a33d572627cb01fd15ab883aa623c2359",
+      "metadata_sha256": "89fb7035da45548d260e30b8eee14952ae4e90cb077e48d2c1fb72a340dd8b95",
+      "admitted": true
+    },
+    {
+      "case": "010",
+      "bone": "Tibia_R",
+      "mesh_sha256": "bc52cb33cfc8943907ec446b2f1bef91082c6cd94d187a88a2c488ffe18387d0",
+      "metadata_sha256": "84fe8b67ba09c60b03b3bae2954bd1d2ddf3ebe957adbd357b4463830e485749",
+      "admitted": true
+    },
+    {
+      "case": "011",
+      "bone": "Tibia_R",
+      "mesh_sha256": "85dbd8a7e7df161e0ce912d16fb5a6fa583587a24f0510c7262ed0a4229d616c",
+      "metadata_sha256": "99dba3339e46f87759e8655c219af1acdb767f72d8e6c55b226dda40c904f3aa",
+      "admitted": true
+    },
+    {
+      "case": "012",
+      "bone": "Tibia_R",
+      "mesh_sha256": "66578323c0576f04ea5f62eb385580ac1a50703022cffe70e2e853d82b71939e",
+      "metadata_sha256": "b7448043d92ae62acb50becafe652e8052540ac0384142d597708e94b0c78172",
+      "admitted": true
+    },
+    {
+      "case": "014",
+      "bone": "Tibia_R",
+      "mesh_sha256": "cc22df7ca87c6a2371948c3e4de3c5905ad9f887b7a3ff80567d44e31a3112ac",
+      "metadata_sha256": "8ea6c85b3dd127ea0137d7b8a06854eff44ee194f9578484fcdfc2b284b46324",
+      "admitted": true
+    },
+    {
+      "case": "015",
+      "bone": "Tibia_R",
+      "mesh_sha256": "352bf20e4b93ad44a98b9c24812edf0f6a06bced616185f70db1666057ceb7fa",
+      "metadata_sha256": "c7af5ede03a04105dc6413e047bad301233082a9c8f080f161b9caa92426b797",
+      "admitted": true
+    },
+    {
+      "case": "016",
+      "bone": "Tibia_R",
+      "mesh_sha256": "54e5f833bdb1970ac31a265dc2dee0427efe6bf8bb873aed00ec72515ee8af93",
+      "metadata_sha256": "b835aa120124db0991c3fe820f465a071ec8f5b0e8107c7c92c6cc1090150c4a",
+      "admitted": true
+    },
+    {
+      "case": "017",
+      "bone": "Tibia_R",
+      "mesh_sha256": "25800ea70989afc61ac3bb5187ac149fd943e7fc4b1e290756e24fe216fd5e36",
+      "metadata_sha256": "ba2f6d6cdf789dcc537d4794fe03811484961c9ee08419d375bac52e350e74bd",
+      "admitted": true
+    },
+    {
+      "case": "019",
+      "bone": "Tibia_R",
+      "mesh_sha256": "41984ed97ba71f455bdb95e4f15db56f90094607262e7b13cb715662741e74a2",
+      "metadata_sha256": "a22863c2c378c8e9489048da1e12b54754716dcdd2fa1ee82cabc9887ecd7bf8",
+      "admitted": true
+    },
+    {
+      "case": "020",
+      "bone": "Tibia_R",
+      "mesh_sha256": "4819bb526eed791906ce743c1a44bbf1889ef6d313355cb509efbe19e461d4d5",
+      "metadata_sha256": "4279454101ba080a10140a5f25fee7904e36a8e66495fc0faea23330008edb2c",
+      "admitted": true
+    },
+    {
+      "case": "024",
+      "bone": "Tibia_R",
+      "mesh_sha256": "d5279a3df576eb561237abd2f626d72ab1af5ac2cdb011f1bf8e65e9c3983411",
+      "metadata_sha256": "42f35d1681e6b7cd3be46d9bce88a3fe6bca99e2fde0179863a5a5319333e1b6",
+      "admitted": true
+    },
+    {
+      "case": "027",
+      "bone": "Tibia_R",
+      "mesh_sha256": "22f05bb1c7dc46fedc09f3b9a9a1b392608e68f04ab17d9f905a53c11369001c",
+      "metadata_sha256": "78d8b71f7ff7f1f05c68f58762ddabc4ae7b087d40caa6b5f707ead28f5efe12",
+      "admitted": true
+    }
+  ],
+  "limitations": [
+    "The 20 source-complete cadaveric cases are not a representative population distribution.",
+    "These are outer mesh/solid-volume descriptors, not cortical density, anatomical segment lengths or individual measurements.",
+    "No factors, strength parameters, patient-specific estimates or automatically applied priors are derived from these quantiles."
+  ]
+}

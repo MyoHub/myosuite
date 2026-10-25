@@ -1137,6 +1137,15 @@ wheels = [
 ]
 
 [[package]]
+name = "et-xmlfile"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/38/af70d7ab1ae9d4da450eeec1fa3918940a5fafb9055e934af8d6eb0c2313/et_xmlfile-2.0.0.tar.gz", hash = "sha256:dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54", size = 17234, upload-time = "2024-10-25T17:25:40.039Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/8b/5fe2cc11fee489817272089c4203e679c63b570a5aaeb18d852ae3cbba6a/et_xmlfile-2.0.0-py3-none-any.whl", hash = "sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa", size = 18059, upload-time = "2024-10-25T17:25:39.051Z" },
+]
+
+[[package]]
 name = "etils"
 version = "1.13.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3166,6 +3175,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+anatomy = [
+    { name = "openpyxl" },
+    { name = "trimesh" },
+]
 capture = [
     { name = "ezc3d" },
 ]
@@ -3316,6 +3329,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "onnxruntime", marker = "python_full_version < '3.14'", specifier = "<1.21" },
     { name = "onnxruntime", marker = "python_full_version >= '3.14'", specifier = ">=1.24.1" },
+    { name = "openpyxl", marker = "extra == 'anatomy'", specifier = ">=3.1" },
     { name = "optax", marker = "python_full_version >= '3.10' and sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=0.1.7" },
     { name = "orbax-checkpoint", marker = "python_full_version >= '3.10' and sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=0.11.22,<0.11.24" },
     { name = "osqp" },
@@ -3337,12 +3351,13 @@ requires-dist = [
     { name = "tensorboard", marker = "extra == 'rl'", specifier = ">=2.20.0" },
     { name = "termcolor" },
     { name = "torch", marker = "python_full_version >= '3.10' and extra == 'mjlab'", specifier = ">=2.13.0" },
+    { name = "trimesh", marker = "extra == 'anatomy'", specifier = ">=4.0" },
     { name = "wandb", marker = "python_full_version >= '3.10' and python_full_version < '3.14' and extra == 'mjlab'", specifier = ">=0.22.3,<0.29.0" },
     { name = "wandb", marker = "python_full_version >= '3.10' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=0.21.0" },
     { name = "wandb", marker = "extra == 'rl'", specifier = ">=0.25.0" },
     { name = "warp-lang", marker = "python_full_version >= '3.10' and extra == 'mjlab'", specifier = ">=1.12.0" },
 ]
-provides-extras = ["capture", "rl", "examples", "mjlab", "mjx", "mjx-cuda", "docs", "musclemimic", "dev"]
+provides-extras = ["capture", "anatomy", "rl", "examples", "mjlab", "mjx", "mjx-cuda", "docs", "musclemimic", "dev"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest-cov", specifier = ">=7.1.0" }]
@@ -4004,6 +4019,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e7/2b/538fdeb0e25bed5d7e0f954af5710543e2629499fb74381afc3333f8a8ae/onnxscript-0.6.2.tar.gz", hash = "sha256:abb2e6f464db40c9b8c7fbb3e64cca04cf3f4495e67c4eda5eac17b784191ce3", size = 590865, upload-time = "2026-02-10T22:53:39.638Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/66/56/e6b179397497ab93266b6eb00743403a6a699a29063a423c4a14595d3db9/onnxscript-0.6.2-py3-none-any.whl", hash = "sha256:20e3c3fd1da19b3655549d5455a2df719db47374fe430e01e865ae69127c37b9", size = 689064, upload-time = "2026-02-10T22:53:41.663Z" },
+]
+
+[[package]]
+name = "openpyxl"
+version = "3.1.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "et-xmlfile" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3d/f9/88d94a75de065ea32619465d2f77b29a0469500e99012523b91cc4141cd1/openpyxl-3.1.5.tar.gz", hash = "sha256:cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050", size = 186464, upload-time = "2024-06-28T14:03:44.161Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl", hash = "sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2", size = 250910, upload-time = "2024-06-28T14:03:41.161Z" },
 ]
 
 [[package]]

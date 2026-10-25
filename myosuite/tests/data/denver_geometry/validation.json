@@ -1,0 +1,189 @@
+{
+  "schema": 1,
+  "protocol": "Independent mesh-volume versus published-volume cross-check",
+  "environment": {
+    "numpy": "2.5.4",
+    "trimesh": "4.12.2",
+    "openpyxl": "3.1.5"
+  },
+  "subjects": {
+    "VHF": {
+      "source": {
+        "dataset": "University of Denver Visible Human final tissue geometry",
+        "subject": "VHF",
+        "url": "https://digitalcommons.du.edu/visiblehuman/",
+        "attribution": "Andreassen et al. (2023), https://doi.org/10.1038/s41597-022-01905-2",
+        "geometry_license": "CC-BY-4.0",
+        "mesh_archive_sha256": "9886eda040f6087bbb65182530f8bd262be456f366b155025c12b3dc56da774e",
+        "metadata_archive_sha256": "520a06cd4e54b887d937450868e27fa22f93fb79782a6751af0e19c15bdab755",
+        "mesh_units": "mm",
+        "published_volume_units": "mm^3",
+        "limitations": [
+          "Same two Visible Human donors as BoneHub; not an independent cohort.",
+          "Tissue surfaces do not establish muscle fibre, tendon or force parameters.",
+          "Volume and one length identify transverse area only, not separate widths."
+        ]
+      },
+      "geometry_count": 128,
+      "side_counts": {
+        "Left": 65,
+        "Right": 63
+      },
+      "tissues": {
+        "Bone": {
+          "geometries": 28,
+          "watertight": 28,
+          "winding_consistent": 28,
+          "usable_enclosed_volumes": 28,
+          "total_surface_area_m2": 0.4740445168352035,
+          "total_usable_volume_m3": 0.002876840090865785,
+          "published_volume_relative_error": {
+            "compared": 28,
+            "median": 1.3810611929822474e-12,
+            "p95": 7.720689236727485e-12,
+            "maximum": 8.300449019976664e-11
+          }
+        },
+        "Cartilage": {
+          "geometries": 16,
+          "watertight": 16,
+          "winding_consistent": 15,
+          "usable_enclosed_volumes": 15,
+          "total_surface_area_m2": 0.05360009154504725,
+          "total_usable_volume_m3": 4.8480422879913795e-05,
+          "published_volume_relative_error": {
+            "compared": 15,
+            "median": 4.286461342929448e-11,
+            "p95": 3.855377968063897e-09,
+            "maximum": 1.2174967296943268e-08
+          }
+        },
+        "Ligament": {
+          "geometries": 8,
+          "watertight": 8,
+          "winding_consistent": 8,
+          "usable_enclosed_volumes": 8,
+          "total_surface_area_m2": 0.00921627264187456,
+          "total_usable_volume_m3": 1.3932719934686251e-05,
+          "published_volume_relative_error": {
+            "compared": 8,
+            "median": 3.725736535332364e-11,
+            "p95": 1.6900105302604501e-10,
+            "maximum": 1.8473088388175061e-10
+          }
+        },
+        "Muscle": {
+          "geometries": 76,
+          "watertight": 76,
+          "winding_consistent": 76,
+          "usable_enclosed_volumes": 76,
+          "total_surface_area_m2": 1.6011180175870747,
+          "total_usable_volume_m3": 0.010328839121105932,
+          "published_volume_relative_error": {
+            "compared": 76,
+            "median": 2.3342806820841472e-12,
+            "p95": 3.519678692476441e-11,
+            "maximum": 4.925390085346086e-08
+          }
+        }
+      },
+      "excluded_volume_geometries": [
+        {
+          "geometry": "VHF_Left_Cartilage_PelvisAcetabulum_smooth.stl",
+          "watertight": true,
+          "winding_consistent": false,
+          "member_sha256": "4940474031323660ac4e078914ae6da582eec3f566508fc6961010fda7a69a83"
+        }
+      ]
+    },
+    "VHM": {
+      "source": {
+        "dataset": "University of Denver Visible Human final tissue geometry",
+        "subject": "VHM",
+        "url": "https://digitalcommons.du.edu/visiblehuman/",
+        "attribution": "Andreassen et al. (2023), https://doi.org/10.1038/s41597-022-01905-2",
+        "geometry_license": "CC-BY-4.0",
+        "mesh_archive_sha256": "e461ece6f1365fb8499b235192b28d2000f3996c48c6b2903682c1c0396ce83a",
+        "metadata_archive_sha256": "120f3e79aaf29834587b8b30ddbb1a721d6f1317b303b842d2354d5f0857ee3b",
+        "mesh_units": "mm",
+        "published_volume_units": "mm^3",
+        "limitations": [
+          "Same two Visible Human donors as BoneHub; not an independent cohort.",
+          "Tissue surfaces do not establish muscle fibre, tendon or force parameters.",
+          "Volume and one length identify transverse area only, not separate widths."
+        ]
+      },
+      "geometry_count": 128,
+      "side_counts": {
+        "Left": 65,
+        "Right": 63
+      },
+      "tissues": {
+        "Bone": {
+          "geometries": 28,
+          "watertight": 28,
+          "winding_consistent": 28,
+          "usable_enclosed_volumes": 28,
+          "total_surface_area_m2": 0.5670263898257495,
+          "total_usable_volume_m3": 0.0037038883450924895,
+          "published_volume_relative_error": {
+            "compared": 28,
+            "median": 3.0067084493342078e-12,
+            "p95": 2.7446355517881e-09,
+            "maximum": 4.257093022203286e-09
+          }
+        },
+        "Cartilage": {
+          "geometries": 16,
+          "watertight": 16,
+          "winding_consistent": 16,
+          "usable_enclosed_volumes": 16,
+          "total_surface_area_m2": 0.06998044751768795,
+          "total_usable_volume_m3": 7.433847614706766e-05,
+          "published_volume_relative_error": {
+            "compared": 16,
+            "median": 1.9250963443645247e-11,
+            "p95": 4.333301460595708e-08,
+            "maximum": 1.3437547923541923e-07
+          }
+        },
+        "Ligament": {
+          "geometries": 8,
+          "watertight": 8,
+          "winding_consistent": 8,
+          "usable_enclosed_volumes": 8,
+          "total_surface_area_m2": 0.011815885405989074,
+          "total_usable_volume_m3": 1.916355505783847e-05,
+          "published_volume_relative_error": {
+            "compared": 8,
+            "median": 2.313137871121875e-11,
+            "p95": 5.369577740297246e-11,
+            "maximum": 6.289076879582441e-11
+          }
+        },
+        "Muscle": {
+          "geometries": 76,
+          "watertight": 76,
+          "winding_consistent": 76,
+          "usable_enclosed_volumes": 76,
+          "total_surface_area_m2": 2.5609259592587694,
+          "total_usable_volume_m3": 0.023634803511555825,
+          "published_volume_relative_error": {
+            "compared": 76,
+            "median": 2.68138418290383e-13,
+            "p95": 8.068401949309363e-10,
+            "maximum": 1.4323645339028718e-08
+          }
+        }
+      },
+      "excluded_volume_geometries": []
+    }
+  },
+  "redistribution": "Derived aggregates and source hashes only; no STL or source spreadsheet data.",
+  "limitations": [
+    "The two donors are the same Visible Human subjects used by BoneHub.",
+    "Archive coverage is counted from actual files; other release assets may differ.",
+    "Volume consistency does not validate transverse anatomy, muscle forces or dynamics.",
+    "Equal transverse factors are an explicit assumption, not two measured widths."
+  ]
+}

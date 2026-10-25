@@ -49,7 +49,14 @@ All notable changes to this project are documented in this file.
   fiducials feed the existing scale estimator with explicit units and LPS/RAS
   calibration, retaining dataset/annotation licences, source case identity and
   quality limitations. A guide compares complementary population and tissue
-  datasets. Reference meshes are not bundled or substituted into nominal models.
+  datasets. Optional anatomy readers now add local Keast landmarks and Denver
+  tissue-volume constraints. Shared uncertainty-weighted 3D correspondence fitting
+  supports explicit isotropic or anisotropic estimates. Derived reports retain
+  all 35 independent Keast cases, 20 source-complete VSD tibias and 256 Denver
+  tissue checks, including regressions and rejected geometry. Keast defaults to
+  isotropic fitting because its three-axis advantage is small and uncertain.
+  Source archives, geometry, landmark coordinates and motion stay local; only
+  permitted derived calibration/validation results and provenance are published.
 
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
 * **Body scaling:** `myosuite.core.body_scaling.scale_bodies` (and `ModelBuilder.scale_bodies`) scales a musculoskeletal model to a subject with OpenSim-style rules: per-axis factors per body; muscle fibre and tendon slack lengths follow the muscle-tendon length in the default pose; mass by volume or kept, optionally rescaled to a total. `read_opensim_scales` reads a ScaleSet or a scaled `.osim` (e.g. from AddBiomechanics), and Rajagopal segment mappings cover MyoLeg and the MuscleMimic MyoFullBody. One factor is an exact similarity (tested on MyoLeg and MyoFullBody). `ScaleEstimate` and `build_subject_model` add immutable inputs, deterministic provenance, root/sole alignment and explicit checkpoint morphology validation. Skin influences support segment-local anisotropic scaling; incompatible `.skn`/GLB exports require approximation opt-in. Named-joint replay on a scaled full body is tested. Registered envs retain their nominal morphology; retarget motion against the scaled target before use. Retargeting your own SMPL motion with GMR-Fit is documented, with the license rules (#166, [#525]).

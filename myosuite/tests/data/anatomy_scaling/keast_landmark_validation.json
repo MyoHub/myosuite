@@ -1,0 +1,1771 @@
+{
+  "schema": 2,
+  "source": "https://doi.org/10.6084/m9.figshare.20454462.v4",
+  "attribution": "Keast, Bonacci and Fox (2023), doi:10.7717/peerj.14708; Nolte et al. (2016), doi:10.1016/j.jbiomech.2016.09.005",
+  "source_license": "CC-BY-4.0 source archive; source files remain local",
+  "report_license": "CC-BY-4.0",
+  "reference_sha256": "6849597f318c6d3fd5eebb901bac737aa59103e6c774f08dad8678eed1295a18",
+  "archive_sha256": "a9b07f1d6cfbdca3480f0e1d9735095d5e3fb1ce4532f192f501b8e02716e7e7",
+  "fitter_source_sha256": "04479431c3ba4f522a34935d2dbe8ddbb8390ef18c91247157c5d3be1cc93481",
+  "environment": {
+    "numpy": "2.5.4",
+    "scipy": "1.16.3"
+  },
+  "reference_cohort": "30 CT training subjects; mean reference",
+  "evaluation_cohort": "independent Nolte MRI subjects; no fitting of population hyperparameters",
+  "frame_protocol": "origin condyle midpoint; y proximal; x anterior toward tuberosity; z right handed; not automatically a target body frame",
+  "fit_landmarks": [
+    "LC",
+    "MC",
+    "LM",
+    "MM",
+    "TT",
+    "FH"
+  ],
+  "border_protocol": "Piecewise-linear T25/T50/T75 percent MC-to-MM and F25/F50/F75 percent FH-to-LM longitudinal fractions, projected onto each subject's anatomical proximal axis. Raw T/F sample indices are not correspondences. No surface snapping or extrapolation.",
+  "fit_settings": {
+    "loss": "linear",
+    "scale_bounds": [
+      0.5,
+      2.0
+    ]
+  },
+  "scope": "Withheld border geometry only; fractions share fitted endpoints and are correlated. Not full-surface, joint-centre, muscle or dynamics validation; this does not reproduce the source SSM reconstruction experiment.",
+  "paired_interval_assumptions": "Descriptive Student-t intervals over per-subject paired RMS differences; assume independent subject deltas in this selected 35-person cohort, not a representative population sample. Source annotation measurement uncertainty is not supplied or inferred.",
+  "summary": {
+    "nominal": {
+      "mean_heldout_rms_m": 0.010011885127389323,
+      "median_heldout_rms_m": 0.009139764635978643,
+      "worst_heldout_rms_m": 0.017398399661303642
+    },
+    "single_length": {
+      "mean_heldout_rms_m": 0.006907853706785046,
+      "median_heldout_rms_m": 0.006487188258641649,
+      "worst_heldout_rms_m": 0.01168905795421472
+    },
+    "isotropic": {
+      "mean_heldout_rms_m": 0.006724743761239348,
+      "median_heldout_rms_m": 0.006439321189297978,
+      "worst_heldout_rms_m": 0.011836362664752867
+    },
+    "anisotropic": {
+      "mean_heldout_rms_m": 0.0066414970744915576,
+      "median_heldout_rms_m": 0.006330889620844344,
+      "worst_heldout_rms_m": 0.012119406828753336
+    }
+  },
+  "anisotropic_comparisons": {
+    "nominal": {
+      "improved_subjects": 29,
+      "regressed_subjects": 6,
+      "mean_delta_m": -0.0033703880528977667,
+      "worst_delta_m": 0.0015173091596316713,
+      "mean_delta_95pct_t_interval_m": [
+        -0.00459089434250577,
+        -0.002149881763289763
+      ]
+    },
+    "single_length": {
+      "improved_subjects": 20,
+      "regressed_subjects": 15,
+      "mean_delta_m": -0.0002663566322934888,
+      "worst_delta_m": 0.0014730017492388245,
+      "mean_delta_95pct_t_interval_m": [
+        -0.000573583511445358,
+        4.0870246858380397e-05
+      ]
+    },
+    "isotropic": {
+      "improved_subjects": 18,
+      "regressed_subjects": 17,
+      "mean_delta_m": -8.324668674779064e-05,
+      "worst_delta_m": 0.0012654788614664273,
+      "mean_delta_95pct_t_interval_m": [
+        -0.00034249210308897563,
+        0.00017599872959339437
+      ]
+    }
+  },
+  "subjects": [
+    {
+      "case": "C01RTF",
+      "source_sha256": "5b0fabe6e9ac07147cfe2b94580e7417c05e168d9356695e921fadb9063a7987",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.0059890889638036515,
+          "heldout_rms_m": 0.009139764635978643,
+          "heldout_max_m": 0.01495600870525466
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.03719179768192,
+            1.0
+          ],
+          "fit_rms_m": 0.0038993436606799565,
+          "heldout_rms_m": 0.008698363252792262,
+          "heldout_max_m": 0.015179918495675957
+        },
+        "isotropic": {
+          "factors": [
+            1.0272895761749583,
+            1.0272895761749583,
+            1.0272895761749583
+          ],
+          "fit_rms_m": 0.003514467142821221,
+          "heldout_rms_m": 0.008207733482295029,
+          "heldout_max_m": 0.014380246804857034
+        },
+        "anisotropic": {
+          "factors": [
+            0.9715850413072068,
+            1.0277705650442948,
+            1.028842307205966
+          ],
+          "fit_rms_m": 0.003396821240765878,
+          "heldout_rms_m": 0.008681085898546886,
+          "heldout_max_m": 0.015022789890944438
+        }
+      }
+    },
+    {
+      "case": "C02RTF",
+      "source_sha256": "859f46a91d354627c99bb5c8e3f3209cdbe89d7b2847ccf2e05b99d82539788d",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.022197843583159096,
+          "heldout_rms_m": 0.01351595579134534,
+          "heldout_max_m": 0.019966993074589285
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.8943649101004745,
+            1.0
+          ],
+          "fit_rms_m": 0.007188370123215798,
+          "heldout_rms_m": 0.006724113621931395,
+          "heldout_max_m": 0.009785839576399403
+        },
+        "isotropic": {
+          "factors": [
+            0.8782975085663633,
+            0.8782975085663633,
+            0.8782975085663633
+          ],
+          "fit_rms_m": 0.0050008754221225775,
+          "heldout_rms_m": 0.004981050981870159,
+          "heldout_max_m": 0.007546584577724342
+        },
+        "anisotropic": {
+          "factors": [
+            0.8487685982756576,
+            0.8782677029215725,
+            0.8876214769004269
+          ],
+          "fit_rms_m": 0.004969935290210869,
+          "heldout_rms_m": 0.004801823243921803,
+          "heldout_max_m": 0.007029017678958992
+        }
+      }
+    },
+    {
+      "case": "C03RTF",
+      "source_sha256": "683de86a3e232ec0a6599e7a1490b28c253f784e870130324b221f442166f23c",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.005139787112607302,
+          "heldout_rms_m": 0.006665362149726189,
+          "heldout_max_m": 0.009937147299841116
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.9931983948370664,
+            1.0
+          ],
+          "fit_rms_m": 0.005226686028813036,
+          "heldout_rms_m": 0.006673084284286646,
+          "heldout_max_m": 0.009954529435138845
+        },
+        "isotropic": {
+          "factors": [
+            0.9998166716818505,
+            0.9998166716818505,
+            0.9998166716818505
+          ],
+          "fit_rms_m": 0.005139683862682677,
+          "heldout_rms_m": 0.006667366628252467,
+          "heldout_max_m": 0.009943219114288767
+        },
+        "anisotropic": {
+          "factors": [
+            0.8954401783072108,
+            0.9987721968006431,
+            1.0605451973938482
+          ],
+          "fit_rms_m": 0.004483195598216176,
+          "heldout_rms_m": 0.005883358507239867,
+          "heldout_max_m": 0.009122772286108416
+        }
+      }
+    },
+    {
+      "case": "C04RTF",
+      "source_sha256": "d3eb125e3e7c7d7444a45f1bc3aa06f859a62eac9786d6fe1083a7685889b0a1",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.005084697947385332,
+          "heldout_rms_m": 0.0054692661551541365,
+          "heldout_max_m": 0.00722237436209013
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.0044634819126472,
+            1.0
+          ],
+          "fit_rms_m": 0.004957140135439459,
+          "heldout_rms_m": 0.005416566662494377,
+          "heldout_max_m": 0.007172807895520882
+        },
+        "isotropic": {
+          "factors": [
+            1.0046147655349467,
+            1.0046147655349467,
+            1.0046147655349467
+          ],
+          "fit_rms_m": 0.005018131148290109,
+          "heldout_rms_m": 0.005390868080822098,
+          "heldout_max_m": 0.007070235285745292
+        },
+        "anisotropic": {
+          "factors": [
+            0.8650403573917066,
+            1.0070328158715958,
+            0.9722394073102728
+          ],
+          "fit_rms_m": 0.00432421885391011,
+          "heldout_rms_m": 0.005612822368434488,
+          "heldout_max_m": 0.00820935481648086
+        }
+      }
+    },
+    {
+      "case": "C05RTF",
+      "source_sha256": "98b4fae0e97c084bf37b2a434f6f33b3c32d343411497a47bef06a938e6a9ada",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.02453316457889018,
+          "heldout_rms_m": 0.014591840289456485,
+          "heldout_max_m": 0.022765815948713738
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.8701280073707602,
+            1.0
+          ],
+          "fit_rms_m": 0.006742109063638707,
+          "heldout_rms_m": 0.0069300682592003775,
+          "heldout_max_m": 0.009106490173989986
+        },
+        "isotropic": {
+          "factors": [
+            0.8632193619534033,
+            0.8632193619534033,
+            0.8632193619534033
+          ],
+          "fit_rms_m": 0.0033260093367452645,
+          "heldout_rms_m": 0.006135602783502904,
+          "heldout_max_m": 0.008659079518524949
+        },
+        "anisotropic": {
+          "factors": [
+            0.7780155927370751,
+            0.8643976377837581,
+            0.8523491246705769
+          ],
+          "fit_rms_m": 0.0029989815829500745,
+          "heldout_rms_m": 0.006350828436674533,
+          "heldout_max_m": 0.009227746335342062
+        }
+      }
+    },
+    {
+      "case": "C06RTF",
+      "source_sha256": "1f8628cd1a3df2d852df575239b734c517c33830b3eec59f2d49368748e1b8c1",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.024658556735431325,
+          "heldout_rms_m": 0.015167092292160535,
+          "heldout_max_m": 0.023495682885895278
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.8845105792898869,
+            1.0
+          ],
+          "fit_rms_m": 0.00853501644913429,
+          "heldout_rms_m": 0.006487188258641649,
+          "heldout_max_m": 0.007114795994993359
+        },
+        "isotropic": {
+          "factors": [
+            0.8712265115160135,
+            0.8712265115160135,
+            0.8712265115160135
+          ],
+          "fit_rms_m": 0.009185776389569585,
+          "heldout_rms_m": 0.007869052211180762,
+          "heldout_max_m": 0.011073740265076093
+        },
+        "anisotropic": {
+          "factors": [
+            0.846473548713764,
+            0.8656272999826543,
+            1.0445723331387389
+          ],
+          "fit_rms_m": 0.007354875573369287,
+          "heldout_rms_m": 0.006104361586014877,
+          "heldout_max_m": 0.008169436970347563
+        }
+      }
+    },
+    {
+      "case": "C07RTF",
+      "source_sha256": "ee6b4dbcad857a2009b8450d088db04490fe5af88cd754d54ed6f264bb80781a",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.007672282250440417,
+          "heldout_rms_m": 0.005718772731123662,
+          "heldout_max_m": 0.007876853294346703
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.9735320640716152,
+            1.0
+          ],
+          "fit_rms_m": 0.005949279780641407,
+          "heldout_rms_m": 0.005022115248172662,
+          "heldout_max_m": 0.007771320727183437
+        },
+        "isotropic": {
+          "factors": [
+            0.9729683014901567,
+            0.9729683014901567,
+            0.9729683014901567
+          ],
+          "fit_rms_m": 0.00598235547385001,
+          "heldout_rms_m": 0.005178472642365965,
+          "heldout_max_m": 0.008317326488299864
+        },
+        "anisotropic": {
+          "factors": [
+            0.8233109889682233,
+            0.9721245596323139,
+            1.0406392366749515
+          ],
+          "fit_rms_m": 0.005028327648933612,
+          "heldout_rms_m": 0.005980975969573692,
+          "heldout_max_m": 0.010103187712945988
+        }
+      }
+    },
+    {
+      "case": "C08RTF",
+      "source_sha256": "357026bf717a75725b47602b80cddd784336ee4a9009bebe8afd687c6f070e4d",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.0052820848499840435,
+          "heldout_rms_m": 0.005008066611645758,
+          "heldout_max_m": 0.0067624847791697374
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.9932152830398917,
+            1.0
+          ],
+          "fit_rms_m": 0.004623984822334101,
+          "heldout_rms_m": 0.004784448911249158,
+          "heldout_max_m": 0.00681263041346358
+        },
+        "isotropic": {
+          "factors": [
+            0.9817112270561269,
+            0.9817112270561269,
+            0.9817112270561269
+          ],
+          "fit_rms_m": 0.004163871708491974,
+          "heldout_rms_m": 0.004413642437705666,
+          "heldout_max_m": 0.006598099701848885
+        },
+        "anisotropic": {
+          "factors": [
+            0.8896741328616997,
+            0.9807202251290557,
+            1.0373401130357693
+          ],
+          "fit_rms_m": 0.0035019078659632996,
+          "heldout_rms_m": 0.0035793228371209696,
+          "heldout_max_m": 0.005033440585281278
+        }
+      }
+    },
+    {
+      "case": "C09RTF",
+      "source_sha256": "fc777bfa559892ed16ea5fa1e6ea84cd22c0aee017b694cb2f7572ef0b5b8d98",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.01725107984386758,
+          "heldout_rms_m": 0.010450728662480691,
+          "heldout_max_m": 0.01527491149357498
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.9077047026073556,
+            1.0
+          ],
+          "fit_rms_m": 0.006085135717157573,
+          "heldout_rms_m": 0.005818076440073514,
+          "heldout_max_m": 0.007617882717273106
+        },
+        "isotropic": {
+          "factors": [
+            0.9053976031118388,
+            0.9053976031118388,
+            0.9053976031118388
+          ],
+          "fit_rms_m": 0.0038701345964851385,
+          "heldout_rms_m": 0.004030709903158751,
+          "heldout_max_m": 0.0058333831974609444
+        },
+        "anisotropic": {
+          "factors": [
+            0.7396596671282513,
+            0.9073208418464411,
+            0.8950771083508395
+          ],
+          "fit_rms_m": 0.002740735306053786,
+          "heldout_rms_m": 0.002677691590197619,
+          "heldout_max_m": 0.0038101528035574474
+        }
+      }
+    },
+    {
+      "case": "C10RTF",
+      "source_sha256": "ff2a8c555b54582795ed6a2f1a8da3955c01f4a40c4b5c63354ade8f41370d9b",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.010243096971623438,
+          "heldout_rms_m": 0.007083218928277334,
+          "heldout_max_m": 0.00842538599829283
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.968429917072056,
+            1.0
+          ],
+          "fit_rms_m": 0.006815114615064481,
+          "heldout_rms_m": 0.005834907786559236,
+          "heldout_max_m": 0.0073002658125570965
+        },
+        "isotropic": {
+          "factors": [
+            0.9538046387070365,
+            0.9538046387070365,
+            0.9538046387070365
+          ],
+          "fit_rms_m": 0.006126223944850704,
+          "heldout_rms_m": 0.005749933506303424,
+          "heldout_max_m": 0.00795347119274763
+        },
+        "anisotropic": {
+          "factors": [
+            0.7501276905601065,
+            0.9536561014084096,
+            1.0156988277757393
+          ],
+          "fit_rms_m": 0.004819137014061145,
+          "heldout_rms_m": 0.004499527926345007,
+          "heldout_max_m": 0.007432841384878469
+        }
+      }
+    },
+    {
+      "case": "C11RTF",
+      "source_sha256": "ff661aa043455dff30228814a5d4a1437c6742eaae782ee9800885f37a90f494",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.014352836407393287,
+          "heldout_rms_m": 0.011629193682137379,
+          "heldout_max_m": 0.014027816291343153
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.9309095260445843,
+            1.0
+          ],
+          "fit_rms_m": 0.006855155198870289,
+          "heldout_rms_m": 0.00960047617804379,
+          "heldout_max_m": 0.012886234040250405
+        },
+        "isotropic": {
+          "factors": [
+            0.9237442505213184,
+            0.9237442505213184,
+            0.9237442505213184
+          ],
+          "fit_rms_m": 0.004729975084817946,
+          "heldout_rms_m": 0.008625837970981095,
+          "heldout_max_m": 0.011154432343552617
+        },
+        "anisotropic": {
+          "factors": [
+            0.8229546476426269,
+            0.9275666177426966,
+            0.8384373074250382
+          ],
+          "fit_rms_m": 0.003444393831816885,
+          "heldout_rms_m": 0.007861930283203065,
+          "heldout_max_m": 0.009345318057161885
+        }
+      }
+    },
+    {
+      "case": "C12RTF",
+      "source_sha256": "46496ad931b590f1a2036a48005a03cbce0dc07a6954cf1478f6df399654e246",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.02507513944716668,
+          "heldout_rms_m": 0.014053024487437855,
+          "heldout_max_m": 0.021042062607573072
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.8755198717866817,
+            1.0
+          ],
+          "fit_rms_m": 0.00835131243936112,
+          "heldout_rms_m": 0.005688042618461005,
+          "heldout_max_m": 0.00762072088022168
+        },
+        "isotropic": {
+          "factors": [
+            0.8617116976120957,
+            0.8617116976120957,
+            0.8617116976120957
+          ],
+          "fit_rms_m": 0.004985230409461286,
+          "heldout_rms_m": 0.004439465583178819,
+          "heldout_max_m": 0.005372388102627908
+        },
+        "anisotropic": {
+          "factors": [
+            0.713878476085188,
+            0.8636991597776523,
+            0.8444621198043926
+          ],
+          "fit_rms_m": 0.0043109184409636,
+          "heldout_rms_m": 0.004875033649934735,
+          "heldout_max_m": 0.0071792950435105125
+        }
+      }
+    },
+    {
+      "case": "C13RTF",
+      "source_sha256": "3395f781fb41a5c8420294474e97971e92331ad13690cc183bbbe84355ae0572",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.029337326194141592,
+          "heldout_rms_m": 0.016806897861631476,
+          "heldout_max_m": 0.027488525355191192
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.8467561302792217,
+            1.0
+          ],
+          "fit_rms_m": 0.0062838273858031105,
+          "heldout_rms_m": 0.005144763130246895,
+          "heldout_max_m": 0.007136885457944608
+        },
+        "isotropic": {
+          "factors": [
+            0.8366564867322461,
+            0.8366564867322461,
+            0.8366564867322461
+          ],
+          "fit_rms_m": 0.004255616887104871,
+          "heldout_rms_m": 0.0052363750341152815,
+          "heldout_max_m": 0.007199332950396921
+        },
+        "anisotropic": {
+          "factors": [
+            0.7174710371110367,
+            0.8349123966269367,
+            0.9222486099705401
+          ],
+          "fit_rms_m": 0.0027190136356370653,
+          "heldout_rms_m": 0.005052847336246364,
+          "heldout_max_m": 0.007833904364227161
+        }
+      }
+    },
+    {
+      "case": "C14RTF",
+      "source_sha256": "7556b3b93b140861d14e0c9655ea84137651f697a290949a1e8378a28d113701",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.01343586797961711,
+          "heldout_rms_m": 0.010986336025206636,
+          "heldout_max_m": 0.016354431896361155
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.0608988726412434,
+            1.0
+          ],
+          "fit_rms_m": 0.008783174605236836,
+          "heldout_rms_m": 0.008768389937880873,
+          "heldout_max_m": 0.015113196324897143
+        },
+        "isotropic": {
+          "factors": [
+            1.061799956924144,
+            1.061799956924144,
+            1.061799956924144
+          ],
+          "fit_rms_m": 0.007740419634286086,
+          "heldout_rms_m": 0.00823245726794105,
+          "heldout_max_m": 0.014067335826376688
+        },
+        "anisotropic": {
+          "factors": [
+            0.9646971381048525,
+            1.0584027413760997,
+            1.19028921913233
+          ],
+          "fit_rms_m": 0.0064386871197874805,
+          "heldout_rms_m": 0.008373952763843456,
+          "heldout_max_m": 0.014633282873910435
+        }
+      }
+    },
+    {
+      "case": "C15RTF",
+      "source_sha256": "41fdd849176b3ffc99745ae396790bb08376a4fe8df3423ee808cace551e587c",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.0181468363244337,
+          "heldout_rms_m": 0.009887415551159894,
+          "heldout_max_m": 0.013817001156995454
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.9101762378003588,
+            1.0
+          ],
+          "fit_rms_m": 0.008389806323895,
+          "heldout_rms_m": 0.0052495164423899555,
+          "heldout_max_m": 0.008818536981504246
+        },
+        "isotropic": {
+          "factors": [
+            0.9039953441768929,
+            0.9039953441768929,
+            0.9039953441768929
+          ],
+          "fit_rms_m": 0.006184282228780051,
+          "heldout_rms_m": 0.004301270253131459,
+          "heldout_max_m": 0.007627844581962441
+        },
+        "anisotropic": {
+          "factors": [
+            0.6804146086678541,
+            0.9076233338620522,
+            0.8592008011154244
+          ],
+          "fit_rms_m": 0.004728127125603467,
+          "heldout_rms_m": 0.004953646844331376,
+          "heldout_max_m": 0.006672339596678689
+        }
+      }
+    },
+    {
+      "case": "C16RTF",
+      "source_sha256": "8d5077452bb5212aa4fb3e4e1e17c2aaa1151e236e092c55e441adc443a82075",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.02430405766968225,
+          "heldout_rms_m": 0.016985266698102377,
+          "heldout_max_m": 0.024323546552338357
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.8634494622646404,
+            1.0
+          ],
+          "fit_rms_m": 0.00672766174718908,
+          "heldout_rms_m": 0.010378413937890707,
+          "heldout_max_m": 0.0118899665410672
+        },
+        "isotropic": {
+          "factors": [
+            0.8681097922541052,
+            0.8681097922541052,
+            0.8681097922541052
+          ],
+          "fit_rms_m": 0.0064316278641070885,
+          "heldout_rms_m": 0.011122406745478467,
+          "heldout_max_m": 0.013654757028907298
+        },
+        "anisotropic": {
+          "factors": [
+            0.7267812423639501,
+            0.865772166393406,
+            0.977451750326588
+          ],
+          "fit_rms_m": 0.004975255826049134,
+          "heldout_rms_m": 0.010237884043192277,
+          "heldout_max_m": 0.013478253330866259
+        }
+      }
+    },
+    {
+      "case": "C17RTF",
+      "source_sha256": "b88f72fc191d4cea1b9a491e534987ccdd3d9ca71f39dc1b8eaa48c0b00f3c18",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.012036512776037124,
+          "heldout_rms_m": 0.007615017518265635,
+          "heldout_max_m": 0.011197746213775504
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.9379091711246853,
+            1.0
+          ],
+          "fit_rms_m": 0.0052039441378618065,
+          "heldout_rms_m": 0.004478042977798545,
+          "heldout_max_m": 0.007941384471111278
+        },
+        "isotropic": {
+          "factors": [
+            0.9417736566725643,
+            0.9417736566725643,
+            0.9417736566725643
+          ],
+          "fit_rms_m": 0.006149340388063184,
+          "heldout_rms_m": 0.0052261710626633675,
+          "heldout_max_m": 0.008218394425700916
+        },
+        "anisotropic": {
+          "factors": [
+            0.8876646077285839,
+            0.9375557100453145,
+            1.0825367692999919
+          ],
+          "fit_rms_m": 0.004165734975870671,
+          "heldout_rms_m": 0.0039440215154559945,
+          "heldout_max_m": 0.005726058399552042
+        }
+      }
+    },
+    {
+      "case": "C18RTF",
+      "source_sha256": "d1cb61757e390465202301c05de96dd212f8b62a447b1c19962da1794823d85f",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.007453843969891767,
+          "heldout_rms_m": 0.006254942060550689,
+          "heldout_max_m": 0.008728465719020327
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.0306494900342884,
+            1.0
+          ],
+          "fit_rms_m": 0.006890164335931208,
+          "heldout_rms_m": 0.005706852362559231,
+          "heldout_max_m": 0.008648720153563546
+        },
+        "isotropic": {
+          "factors": [
+            1.0187859764493377,
+            1.0187859764493377,
+            1.0187859764493377
+          ],
+          "fit_rms_m": 0.0066644636278975706,
+          "heldout_rms_m": 0.00552566932946538,
+          "heldout_max_m": 0.008058073329992107
+        },
+        "anisotropic": {
+          "factors": [
+            0.8474139676955746,
+            1.0197065673278862,
+            1.0398699471873654
+          ],
+          "fit_rms_m": 0.006039237788272838,
+          "heldout_rms_m": 0.006725127282329632,
+          "heldout_max_m": 0.009104683569085737
+        }
+      }
+    },
+    {
+      "case": "C19RTF",
+      "source_sha256": "1c75edc35f71b55ebd9b1424d189aa9905c923127c914f010cc71c7d8de3b04d",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.007928913092742301,
+          "heldout_rms_m": 0.006260157093044779,
+          "heldout_max_m": 0.010353683540074765
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.9843441164062333,
+            1.0
+          ],
+          "fit_rms_m": 0.0074325389406254515,
+          "heldout_rms_m": 0.006304464503437626,
+          "heldout_max_m": 0.010049919147204331
+        },
+        "isotropic": {
+          "factors": [
+            0.9845621834923888,
+            0.9845621834923888,
+            0.9845621834923888
+          ],
+          "fit_rms_m": 0.007439187321004579,
+          "heldout_rms_m": 0.006511987391210023,
+          "heldout_max_m": 0.010298659369890804
+        },
+        "anisotropic": {
+          "factors": [
+            0.8510494832828845,
+            0.9841480877083196,
+            1.034717560130223
+          ],
+          "fit_rms_m": 0.00695988420627271,
+          "heldout_rms_m": 0.00777746625267645,
+          "heldout_max_m": 0.011364167041526171
+        }
+      }
+    },
+    {
+      "case": "C20RTF",
+      "source_sha256": "cd47c714e9c3a2e940fce569163c50a0e5ec4d0bfa39a91efcf317d4a69819d0",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.008352919814919335,
+          "heldout_rms_m": 0.008715786182220428,
+          "heldout_max_m": 0.011538967541919926
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.0368993319668236,
+            1.0
+          ],
+          "fit_rms_m": 0.005996759320517356,
+          "heldout_rms_m": 0.007890671451823428,
+          "heldout_max_m": 0.009995586269173816
+        },
+        "isotropic": {
+          "factors": [
+            1.03232635618215,
+            1.03232635618215,
+            1.03232635618215
+          ],
+          "fit_rms_m": 0.0060639257858263506,
+          "heldout_rms_m": 0.007891409555787873,
+          "heldout_max_m": 0.010733583330817184
+        },
+        "anisotropic": {
+          "factors": [
+            0.835391091179949,
+            1.0336145437804258,
+            1.0496875455504213
+          ],
+          "fit_rms_m": 0.005136842672367989,
+          "heldout_rms_m": 0.0077377135083594685,
+          "heldout_max_m": 0.010240489580878495
+        }
+      }
+    },
+    {
+      "case": "C21RTF",
+      "source_sha256": "411e65afc9c66c2366baf4e977f87f960ef209d116864cc96c0bef88b20ad288",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.016479384985034016,
+          "heldout_rms_m": 0.010006236542688217,
+          "heldout_max_m": 0.015299619661412007
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.913674170013333,
+            1.0
+          ],
+          "fit_rms_m": 0.00672472928387024,
+          "heldout_rms_m": 0.006415126482407361,
+          "heldout_max_m": 0.008551797270266302
+        },
+        "isotropic": {
+          "factors": [
+            0.9116860691802734,
+            0.9116860691802734,
+            0.9116860691802734
+          ],
+          "fit_rms_m": 0.005027198791297631,
+          "heldout_rms_m": 0.005950106990048821,
+          "heldout_max_m": 0.006839653722156267
+        },
+        "anisotropic": {
+          "factors": [
+            0.7890350406172515,
+            0.9136281331924359,
+            0.8886906627397123
+          ],
+          "fit_rms_m": 0.004536653790438855,
+          "heldout_rms_m": 0.005830103281333893,
+          "heldout_max_m": 0.008035831315267812
+        }
+      }
+    },
+    {
+      "case": "C22RTF",
+      "source_sha256": "f64fd82da3a3b6983aa20eb1b09fdf631c699c55d951c4ec11e33fdc5c375cdf",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.029291126155222162,
+          "heldout_rms_m": 0.017398399661303642,
+          "heldout_max_m": 0.026735930132261828
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.8455744242502529,
+            1.0
+          ],
+          "fit_rms_m": 0.008273688884449107,
+          "heldout_rms_m": 0.008306229514055283,
+          "heldout_max_m": 0.011077826946513016
+        },
+        "isotropic": {
+          "factors": [
+            0.8386144878033951,
+            0.8386144878033951,
+            0.8386144878033951
+          ],
+          "fit_rms_m": 0.005956536833142994,
+          "heldout_rms_m": 0.008765475806148252,
+          "heldout_max_m": 0.011212172335608794
+        },
+        "anisotropic": {
+          "factors": [
+            0.6854054970359417,
+            0.8384358895645522,
+            0.8871425812057676
+          ],
+          "fit_rms_m": 0.00523373930823597,
+          "heldout_rms_m": 0.008408371450303665,
+          "heldout_max_m": 0.012018878146614216
+        }
+      }
+    },
+    {
+      "case": "C23RTF",
+      "source_sha256": "20e40594d0884b586ca25e13b08bff53efc10dede91572b1e9f247ab4076cb4f",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.011084951881572202,
+          "heldout_rms_m": 0.008139217282787999,
+          "heldout_max_m": 0.010432670545722401
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.9506646407220342,
+            1.0
+          ],
+          "fit_rms_m": 0.005751487764638876,
+          "heldout_rms_m": 0.006494238874804231,
+          "heldout_max_m": 0.009682399326973012
+        },
+        "isotropic": {
+          "factors": [
+            0.9473010339603867,
+            0.9473010339603867,
+            0.9473010339603867
+          ],
+          "fit_rms_m": 0.005930847124595285,
+          "heldout_rms_m": 0.007336821312706571,
+          "heldout_max_m": 0.011173564173829763
+        },
+        "anisotropic": {
+          "factors": [
+            0.807749171722781,
+            0.9452667258187312,
+            1.0470857834566227
+          ],
+          "fit_rms_m": 0.0045731582069821804,
+          "heldout_rms_m": 0.006963500096767191,
+          "heldout_max_m": 0.010480459854330177
+        }
+      }
+    },
+    {
+      "case": "C24RTF",
+      "source_sha256": "07948efca717411e99a945b7821158a393f4b8b68973369b19cebc8edd5ae881",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.024105431028724693,
+          "heldout_rms_m": 0.014143637116945376,
+          "heldout_max_m": 0.020742365914284765
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.906508512364482,
+            1.0
+          ],
+          "fit_rms_m": 0.011476756968767604,
+          "heldout_rms_m": 0.008248199973043513,
+          "heldout_max_m": 0.01053662422994405
+        },
+        "isotropic": {
+          "factors": [
+            0.8730663991650387,
+            0.8730663991650387,
+            0.8730663991650387
+          ],
+          "fit_rms_m": 0.008500765933830414,
+          "heldout_rms_m": 0.0069235143404772275,
+          "heldout_max_m": 0.00940721581512346
+        },
+        "anisotropic": {
+          "factors": [
+            0.6130770370733872,
+            0.8739541462624575,
+            0.9195776432945244
+          ],
+          "fit_rms_m": 0.00727679869477715,
+          "heldout_rms_m": 0.007520383044019202,
+          "heldout_max_m": 0.01193402139003505
+        }
+      }
+    },
+    {
+      "case": "C25RTF",
+      "source_sha256": "c1f8184a62dc8973378a324a54de76212868e8f1c9de0b3febd8adc17a3a647e",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.010979621580546085,
+          "heldout_rms_m": 0.007756975101285118,
+          "heldout_max_m": 0.01009088911915364
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.0675372479190108,
+            1.0
+          ],
+          "fit_rms_m": 0.008977591382039216,
+          "heldout_rms_m": 0.00633069574773016,
+          "heldout_max_m": 0.008134984735548734
+        },
+        "isotropic": {
+          "factors": [
+            1.038667972167244,
+            1.038667972167244,
+            1.038667972167244
+          ],
+          "fit_rms_m": 0.008563554111681276,
+          "heldout_rms_m": 0.006531796668529226,
+          "heldout_max_m": 0.009162193521270501
+        },
+        "anisotropic": {
+          "factors": [
+            0.7041066985854917,
+            1.0436336343337946,
+            0.9851877000926312
+          ],
+          "fit_rms_m": 0.006289982584281478,
+          "heldout_rms_m": 0.006065605997696683,
+          "heldout_max_m": 0.00918715630464568
+        }
+      }
+    },
+    {
+      "case": "C26RTF",
+      "source_sha256": "9df162961f62eb7e6cafc291453ebdb71ff2654255f4c3b754036f4448bbf06c",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.013393080879591379,
+          "heldout_rms_m": 0.012784624037093505,
+          "heldout_max_m": 0.01693297957184181
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.0764108874731544,
+            1.0
+          ],
+          "fit_rms_m": 0.007304197794304515,
+          "heldout_rms_m": 0.010920588971256725,
+          "heldout_max_m": 0.012795563624770896
+        },
+        "isotropic": {
+          "factors": [
+            1.0616141063042792,
+            1.0616141063042792,
+            1.0616141063042792
+          ],
+          "fit_rms_m": 0.007713007358236253,
+          "heldout_rms_m": 0.010926277158319762,
+          "heldout_max_m": 0.012465382416185196
+        },
+        "anisotropic": {
+          "factors": [
+            0.773443496470603,
+            1.0655095488534603,
+            1.0267403610505696
+          ],
+          "fit_rms_m": 0.006016645358820916,
+          "heldout_rms_m": 0.011050070512986098,
+          "heldout_max_m": 0.015219853778749775
+        }
+      }
+    },
+    {
+      "case": "C27RTF",
+      "source_sha256": "00c2ad24cdd9d60a429688cd8606b5bd8afeb837b920adc6ee7efe97476a7fe6",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.0070825161013346105,
+          "heldout_rms_m": 0.00733649514624008,
+          "heldout_max_m": 0.00939385118917317
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.0098174981836339,
+            1.0
+          ],
+          "fit_rms_m": 0.007264758000317877,
+          "heldout_rms_m": 0.007275883398877795,
+          "heldout_max_m": 0.00960217410906533
+        },
+        "isotropic": {
+          "factors": [
+            0.9979809724795597,
+            0.9979809724795597,
+            0.9979809724795597
+          ],
+          "fit_rms_m": 0.007073422263324617,
+          "heldout_rms_m": 0.007335856593479247,
+          "heldout_max_m": 0.009342094627694794
+        },
+        "anisotropic": {
+          "factors": [
+            0.8013737665127285,
+            1.0005835025541945,
+            0.9761283189473556
+          ],
+          "fit_rms_m": 0.006256140455407301,
+          "heldout_rms_m": 0.0062856287134325775,
+          "heldout_max_m": 0.010600633541378877
+        }
+      }
+    },
+    {
+      "case": "C28RTF",
+      "source_sha256": "386b94e13c64336d8f65ca81f92088d4c88329854a354a894322a96413a14598",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.006304876004241288,
+          "heldout_rms_m": 0.008640120126874373,
+          "heldout_max_m": 0.012778762947573333
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.0125132286298109,
+            1.0
+          ],
+          "fit_rms_m": 0.006974799806650078,
+          "heldout_rms_m": 0.008722638068132105,
+          "heldout_max_m": 0.012968086923620444
+        },
+        "isotropic": {
+          "factors": [
+            0.9945307184940609,
+            0.9945307184940609,
+            0.9945307184940609
+          ],
+          "fit_rms_m": 0.006229512898318291,
+          "heldout_rms_m": 0.008658283469469341,
+          "heldout_max_m": 0.012769378255902214
+        },
+        "anisotropic": {
+          "factors": [
+            0.8095592465876142,
+            0.9945237756989111,
+            1.0470836543678448
+          ],
+          "fit_rms_m": 0.005223890689955283,
+          "heldout_rms_m": 0.00881772828397722,
+          "heldout_max_m": 0.01484444816775634
+        }
+      }
+    },
+    {
+      "case": "C29RTF",
+      "source_sha256": "7ff45280caaf7c17e5d2ffae2d24e0032da0562f70ff586ec962dc5917210cee",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.015432311770607329,
+          "heldout_rms_m": 0.0077264808767284875,
+          "heldout_max_m": 0.012575440881013629
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.940922413737778,
+            1.0
+          ],
+          "fit_rms_m": 0.00901203211093596,
+          "heldout_rms_m": 0.0038197465718896716,
+          "heldout_max_m": 0.006845963523107104
+        },
+        "isotropic": {
+          "factors": [
+            0.9243794393334502,
+            0.9243794393334502,
+            0.9243794393334502
+          ],
+          "fit_rms_m": 0.007587585222604902,
+          "heldout_rms_m": 0.0033582378554206597,
+          "heldout_max_m": 0.005119158289387234
+        },
+        "anisotropic": {
+          "factors": [
+            0.7369338786030057,
+            0.9266824216163783,
+            0.90882917624576
+          ],
+          "fit_rms_m": 0.006922893138548403,
+          "heldout_rms_m": 0.004484200706664196,
+          "heldout_max_m": 0.0060417224281200015
+        }
+      }
+    },
+    {
+      "case": "C30RTF",
+      "source_sha256": "ccb5c5d80542759ccb6c71ed27957cdd75fe6544b44be95e70efe499a3302dcc",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.01697730818550217,
+          "heldout_rms_m": 0.010765422472838843,
+          "heldout_max_m": 0.01664519741322386
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.107520244157361,
+            1.0
+          ],
+          "fit_rms_m": 0.008946793131265918,
+          "heldout_rms_m": 0.005869400128521497,
+          "heldout_max_m": 0.007804715905021986
+        },
+        "isotropic": {
+          "factors": [
+            1.0815037851937923,
+            1.0815037851937923,
+            1.0815037851937923
+          ],
+          "fit_rms_m": 0.008857337886733353,
+          "heldout_rms_m": 0.006316379531396532,
+          "heldout_max_m": 0.0083763662027086
+        },
+        "anisotropic": {
+          "factors": [
+            0.8197205236575034,
+            1.0858028125748944,
+            1.0275129179186766
+          ],
+          "fit_rms_m": 0.007520494124954705,
+          "heldout_rms_m": 0.00612992662077311,
+          "heldout_max_m": 0.008157170810908602
+        }
+      }
+    },
+    {
+      "case": "C31RTF",
+      "source_sha256": "29b43bd03386e08d54d3f5979cf831c5272ce104c758e0c58499e308ae21cf46",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.006690543782687434,
+          "heldout_rms_m": 0.006372251144451497,
+          "heldout_max_m": 0.008712475747076561
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.992793951697243,
+            1.0
+          ],
+          "fit_rms_m": 0.006447692175914337,
+          "heldout_rms_m": 0.006339025070886652,
+          "heldout_max_m": 0.008625505126258273
+        },
+        "isotropic": {
+          "factors": [
+            0.9873633473346861,
+            0.9873633473346861,
+            0.9873633473346861
+          ],
+          "fit_rms_m": 0.006302431963273404,
+          "heldout_rms_m": 0.006439321189297978,
+          "heldout_max_m": 0.008910635677050685
+        },
+        "anisotropic": {
+          "factors": [
+            0.7310448029082748,
+            0.9891449926483483,
+            1.0065972652747648
+          ],
+          "fit_rms_m": 0.004707961458469201,
+          "heldout_rms_m": 0.006987003755229133,
+          "heldout_max_m": 0.011282751787637175
+        }
+      }
+    },
+    {
+      "case": "C32RTF",
+      "source_sha256": "fb18aa89ffb3aeeb910481a12da4ff0ee99d87c0eada63aa1073a91ae36149e7",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.009732931757444416,
+          "heldout_rms_m": 0.01254711181141118,
+          "heldout_max_m": 0.015669983971759192
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.0416204227630392,
+            1.0
+          ],
+          "fit_rms_m": 0.006583239165352386,
+          "heldout_rms_m": 0.01168905795421472,
+          "heldout_max_m": 0.01604612909818621
+        },
+        "isotropic": {
+          "factors": [
+            1.040062918898521,
+            1.040062918898521,
+            1.040062918898521
+          ],
+          "fit_rms_m": 0.006636575104680442,
+          "heldout_rms_m": 0.011836362664752867,
+          "heldout_max_m": 0.015700410030961294
+        },
+        "anisotropic": {
+          "factors": [
+            0.7624510168861919,
+            1.0412324961883566,
+            1.0835476767380583
+          ],
+          "fit_rms_m": 0.004692420259995898,
+          "heldout_rms_m": 0.012119406828753336,
+          "heldout_max_m": 0.019162693316160148
+        }
+      }
+    },
+    {
+      "case": "C33RTF",
+      "source_sha256": "f0df6789ecb00307710576a1d2dcf52391960f3a1c35b23cffb9f29e5f598041",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.005583164577770287,
+          "heldout_rms_m": 0.007132592340571558,
+          "heldout_max_m": 0.007954318901212966
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            1.0214543042739992,
+            1.0
+          ],
+          "fit_rms_m": 0.005698459871217037,
+          "heldout_rms_m": 0.0069837345001380925,
+          "heldout_max_m": 0.007923631055776991
+        },
+        "isotropic": {
+          "factors": [
+            1.0088708207753112,
+            1.0088708207753112,
+            1.0088708207753112
+          ],
+          "fit_rms_m": 0.005355997734530544,
+          "heldout_rms_m": 0.007012092733390145,
+          "heldout_max_m": 0.007612756312253694
+        },
+        "anisotropic": {
+          "factors": [
+            0.8234741704824183,
+            1.0097526200437694,
+            1.0350798622572888
+          ],
+          "fit_rms_m": 0.004374036041452099,
+          "heldout_rms_m": 0.006987721129972786,
+          "heldout_max_m": 0.009383469169049311
+        }
+      }
+    },
+    {
+      "case": "C34RTF",
+      "source_sha256": "161cedb0c550ac2a9da9ed03b77678b8073df9d41cee0c19a583661feb891c03",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.017545138137734194,
+          "heldout_rms_m": 0.010914942841276113,
+          "heldout_max_m": 0.01692517874048767
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.9075161785911486,
+            1.0
+          ],
+          "fit_rms_m": 0.005334960463247058,
+          "heldout_rms_m": 0.006546799825970403,
+          "heldout_max_m": 0.008359599901970511
+        },
+        "isotropic": {
+          "factors": [
+            0.9082962987141653,
+            0.9082962987141653,
+            0.9082962987141653
+          ],
+          "fit_rms_m": 0.006501095882872549,
+          "heldout_rms_m": 0.006288052619370198,
+          "heldout_max_m": 0.008453707003088139
+        },
+        "anisotropic": {
+          "factors": [
+            0.8766147885177472,
+            0.9038229706420943,
+            1.050312755750612
+          ],
+          "fit_rms_m": 0.004668501989800342,
+          "heldout_rms_m": 0.0067604357208085,
+          "heldout_max_m": 0.009808082277820193
+        }
+      }
+    },
+    {
+      "case": "C35RTF",
+      "source_sha256": "628f633ad14a03ef4b8497b4c613d8ff80401ea581c734ca971818b0c3dc510a",
+      "fit_count": 6,
+      "heldout_count": 6,
+      "methods": {
+        "nominal": {
+          "factors": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "fit_rms_m": 0.011886300093799502,
+          "heldout_rms_m": 0.006747367549024429,
+          "heldout_max_m": 0.008912048383019967
+        },
+        "single_length": {
+          "factors": [
+            1.0,
+            0.9648913810312328,
+            1.0
+          ],
+          "fit_rms_m": 0.010106036058350032,
+          "heldout_rms_m": 0.006214948389615064,
+          "heldout_max_m": 0.008894611364132754
+        },
+        "isotropic": {
+          "factors": [
+            0.9576158870969628,
+            0.9576158870969628,
+            0.9576158870969628
+          ],
+          "fit_rms_m": 0.009195368815480722,
+          "heldout_rms_m": 0.005949969859160303,
+          "heldout_max_m": 0.00786339129410236
+        },
+        "anisotropic": {
+          "factors": [
+            0.6375389591138338,
+            0.9642066654982091,
+            0.8514396092277269
+          ],
+          "fit_rms_m": 0.006662510880548652,
+          "heldout_rms_m": 0.006330889620844344,
+          "heldout_max_m": 0.008853758784432921
+        }
+      }
+    }
+  ]
+}

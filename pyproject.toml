@@ -56,6 +56,7 @@ dependencies = [
 ]
 [project.optional-dependencies]
 capture = ["ezc3d>=1.5"]
+anatomy = ["trimesh>=4.0", "openpyxl>=3.1"]
 # Reinforcement learning training with Stable-Baselines3
 rl = [
     "stable-baselines3>=2.7.1",
