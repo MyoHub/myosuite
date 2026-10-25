@@ -70,13 +70,44 @@ class MarkerRetargetResult:
         return path
 
 
+def _validate_root_selection(
+    model: mujoco.MjModel,
+    free_joint: str | None,
+    sole_geoms: Sequence[str],
+    root_marker: str | None,
+    ground_height_m: float = 0.0,
+) -> tuple[int | None, list[int]]:
+    if not np.isfinite(ground_height_m):
+        raise ValueError("ground_height_m must be finite.")
+    if free_joint is None:
+        if sole_geoms or root_marker is not None or ground_height_m != 0:
+            raise ValueError(
+                "Sole/root/ground diagnostics require an explicit free_joint."
+            )
+        return None, []
+    joint = model.joint(free_joint)
+    if int(joint.type[0]) != mujoco.mjtJoint.mjJNT_FREE:
+        raise ValueError("free_joint must identify a free root joint.")
+    root_body = int(joint.bodyid[0])
+    geoms = [model.geom(name).id for name in sole_geoms]
+    for geom in geoms:
+        body = int(model.geom_bodyid[geom])
+        while body and body != root_body:
+            body = int(model.body_parentid[body])
+        if body != root_body:
+            raise ValueError(
+                "Sole geometry must belong to the selected free-root tree."
+            )
+    return root_body, geoms
+
+
 def motion_diagnostics(
     model: mujoco.MjModel,
     clip: MotionClip,
     trial: MarkerTrial,
     marker_sites: Mapping[str, str],
     *,
-    free_joint: str,
+    free_joint: str | None = None,
     sole_geoms: Sequence[str] = (),
     root_marker: str | None = None,
     ground_height_m: float = 0.0,
@@ -87,7 +118,10 @@ def motion_diagnostics(
 
     Contact labels are geometric heuristics, not measured forces. ``root_marker``
     must represent the free body's origin to make root tracking error meaningful.
-    Missing marker observations are excluded from residual summaries.
+    Missing marker observations are excluded from residual summaries. Without
+    ``free_joint``, root/sole diagnostics are unavailable: their arrays are empty
+    and root tracking/penetration scalar errors are omitted. Without selected
+    sole geoms, penetration remains unknown even when a root is tracked.
     """
     if not marker_sites or not np.isfinite(ground_height_m):
         raise ValueError("Marker mapping and finite ground height are required.")
@@ -100,36 +134,32 @@ def motion_diagnostics(
         raise ValueError(
             "Clip/trial frame counts and positive clip frequency must agree."
         )
-    joint = model.joint(free_joint)
-    if int(joint.type[0]) != mujoco.mjtJoint.mjJNT_FREE:
-        raise ValueError("free_joint must identify a free root joint.")
-    root_body = int(joint.bodyid[0])
+    root_body, geoms = _validate_root_selection(
+        model, free_joint, sole_geoms, root_marker, ground_height_m
+    )
     labels = [trial.labels.index(label) for label in marker_sites]
     sites = [model.site(name).id for name in marker_sites.values()]
-    geoms = [model.geom(name).id for name in sole_geoms]
-    for geom in geoms:
-        body = int(model.geom_bodyid[geom])
-        while body and body != root_body:
-            body = int(model.body_parentid[body])
-        if body != root_body:
-            raise ValueError(
-                "Sole geometry must belong to the selected free-root tree."
-            )
     data = mujoco.MjData(model)
     errors, bottoms, roots, centres = [], [], [], []
+    equality_errors = []
     for frame in clip.qpos:
         data.qpos[:] = frame
         mujoco.mj_forward(model, data)
+        equality = data.efc_pos[: data.nefc][
+            data.efc_type[: data.nefc] == int(mujoco.mjtConstraint.mjCNSTR_EQUALITY)
+        ]
+        equality_errors.append(float(np.max(np.abs(equality), initial=0.0)))
         errors.append(data.site_xpos[sites].copy())
         bottoms.append([_geom_bottom(model, data, geom) for geom in geoms])
-        roots.append(data.xpos[root_body].copy())
+        if root_body is not None:
+            roots.append(data.xpos[root_body].copy())
         centres.append(data.geom_xpos[geoms].copy())
     marker_errors = np.linalg.norm(np.array(errors) - points[:, labels], axis=2)
     finite_errors = marker_errors[np.isfinite(marker_errors)]
     if not len(finite_errors):
         raise ValueError("No valid marker observations remain for diagnostics.")
     bottom = np.array(bottoms)
-    root = np.array(roots)
+    root = np.array(roots).reshape(-1, 3)
     speed = np.zeros_like(bottom)
     if len(clip.qpos) > 1 and len(geoms):
         speed = np.linalg.norm(
@@ -143,10 +173,14 @@ def motion_diagnostics(
         "marker_rms_m": float(np.sqrt(np.mean(finite_errors**2))),
         "marker_max_m": float(finite_errors.max()),
         "sole_bottom_m": bottom,
-        "sole_penetration_max_m": float(np.max(ground_height_m - bottom, initial=0.0)),
         "contact_labels": contacts,
         "root_trajectory_m": root,
+        "equality_error_max": max(equality_errors),
     }
+    if geoms:
+        diagnostics["sole_penetration_max_m"] = float(
+            np.max(ground_height_m - bottom, initial=0.0)
+        )
     if root_marker is not None:
         expected = points[:, trial.labels.index(root_marker)]
         valid = np.all(np.isfinite(expected), axis=1)
@@ -164,7 +198,7 @@ def retarget_markers(
     marker_sites: Mapping[str, str],
     *,
     frequency_hz: float | None = None,
-    free_joint: str,
+    free_joint: str | None = None,
     sole_geoms: Sequence[str] = (),
     root_marker: str | None = None,
     joint_names: Sequence[str] | None = None,
@@ -190,6 +224,9 @@ def retarget_markers(
         raise ValueError("A finite positive motion frequency is required.")
     if not marker_sites or len(set(marker_sites.values())) != len(marker_sites):
         raise ValueError("A nonempty one-to-one marker-to-site mapping is required.")
+    _validate_root_selection(
+        model, free_joint, sole_geoms, root_marker, ground_height_m
+    )
     names = [model.joint(index).name for index in range(model.njnt)]
     if any(not name for name in names):
         raise ValueError("Named motion export requires every model joint to be named.")
@@ -258,7 +295,6 @@ def retarget_markers(
     )
     diagnostics["converged_frames"] = int(sum(success))
     diagnostics["frames"] = len(poses)
-    diagnostics["equality_error_max"] = max(equality_errors)
     provenance = {
         "schema": 1,
         "method": "simultaneous marker IK on scaled target",
@@ -267,10 +303,19 @@ def retarget_markers(
         "marker_sha256": hashlib.sha256(
             np.asarray(trial.positions).tobytes()
         ).hexdigest(),
+        "fitted_qpos_sha256": hashlib.sha256(qpos.tobytes()).hexdigest(),
+        "fitted_frequency_hz": float(frequency),
         "marker_sites": dict(marker_sites),
         "joint_names": joint_names,
         "tolerance_m": tolerance_m,
         "free_joint": free_joint,
+        "root_mode": "free_root"
+        if free_joint is not None
+        else (
+            "fixed_base"
+            if not np.any(model.jnt_type == mujoco.mjtJoint.mjJNT_FREE)
+            else "untracked"
+        ),
         "sole_geoms": list(sole_geoms),
         "ground_height_m": ground_height_m,
         "contact_definition": {
@@ -279,6 +324,11 @@ def retarget_markers(
             "kind": "geometric heuristic",
         },
         "scale_evidence": None if scale_evidence is None else dict(scale_evidence),
+        "solver_summary": {
+            "converged_frames": int(sum(success)),
+            "frames": len(poses),
+            "equality_error_max": max(equality_errors),
+        },
     }
     return MarkerRetargetResult(clip, diagnostics, provenance)
 

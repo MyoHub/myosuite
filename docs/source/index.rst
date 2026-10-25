@@ -87,6 +87,7 @@ Choose your path
    body_scaling
    capture_scaling
    bonehub_reference
+   capture_workflow
    subject_leg_workflow
    backend_parity
    fatigue_validation

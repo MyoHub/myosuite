@@ -194,9 +194,13 @@ frames and muscle attachments require separate validation.
 Named tibia-fibula landmarks
 ----------------------------------------
 
-``myosuite.integrations.keast`` reads explicit ``label,x,y,z`` CSV coordinates
-and provides a hash-pinned local reference for Keast, Bonacci and Fox's archive
-version 4. The archive contains a mean reference from 30 CT subjects and
+The generic ``myosuite.integrations.capture.read_named_landmarks`` reader accepts
+explicit ``label,x,y,z`` CSV coordinates. See :doc:`capture_workflow` for portable
+local trials, reusable target protocols and aggregate validation exports.
+``myosuite.integrations.keast`` provides a hash-pinned local reference for Keast,
+Bonacci and Fox's archive version 4. Its earlier ``read_named_landmarks`` import
+remains available for compatibility. The archive contains a mean reference from
+30 CT subjects and
 separate landmark observations from 35 MRI subjects supplied by Nolte et al.
 The six palpable labels used here are lateral/medial condyle (LC/MC),
 lateral/medial malleolus (LM/MM), tibial tuberosity (TT) and fibula head (FH).
@@ -205,7 +209,8 @@ lateral/medial malleolus (LM/MM), tibial tuberosity (TT) and fibula head (FH).
 
     from pathlib import Path
     import numpy as np
-    from myosuite.integrations.keast import KeastReference, read_named_landmarks
+    from myosuite.integrations.capture import read_named_landmarks
+    from myosuite.integrations.keast import KeastReference
     from myosuite.core.subject_model import SubjectModelConfig, build_subject_model
 
     source = KeastReference(Path("local-anatomy-data"))
@@ -217,6 +222,7 @@ lateral/medial malleolus (LM/MM), tibial tuberosity (TT) and fibula head (FH).
         rotation_to_model=np.eye(3), source="my unscaled target tibia_r",
         definition_source="reviewed LC/MC/LM/MM/TT/FH protocol and target version",
         definition_license="terms for my annotations",
+        point_semantics="anatomical_landmark",
     )
     result = source.estimate_scales(
         "C01RTF", target, segment="tibia_r", units="mm",
@@ -233,14 +239,34 @@ the full 3D correspondences through the shared landmark fitter; it does not use
 mesh bounding-box ends as joint centres. The example's 10 mm residual admission
 threshold is illustrative and does not establish anatomical accuracy. The
 conservative default is ``mode="isotropic"``; independent axis factors require
-explicit ``mode="anisotropic"`` and evidence favouring the added complexity. Annotation
-uncertainty was not provided with the source CSVs and is not invented here.
+explicit ``mode="anisotropic"`` and evidence favouring the added complexity.
+
+Annotation uncertainty was not provided with the source CSVs and is not invented
+here. If an independent annotation assessment supplies an observed-coordinate
+standard deviation, pass ``uncertainty_m`` to ``estimate_scales`` in **metres**;
+it supplies the observation weights and is retained in the source evidence.
+The default ``None`` retains equal weights. A supplied
+``reference_trial.uncertainty_m`` is recorded separately with an explicit warning:
+the fitter conditions on the reference geometry and does not propagate its
+uncertainty. It is not substituted for missing observation uncertainty or
+combined into a scalar weight. Residual errors and fit conditioning are
+diagnostics, not parameter confidence intervals.
 
 The output is the existing ``ScaleEstimate`` plus reference/observation hashes,
 source definitions and residual evidence, compatible with the shared subject
 model construction used by CPU and mjlab. Missing labels are explicit NaN rows;
 insufficient or degenerate geometry is rejected by the fitter. The source data
 cover right tibias/fibulas; left-sided correspondences need their own calibration.
+
+Full trial files and ``result.evidence`` are local workflow artifacts. Rigid
+alignments and point residuals can reconstruct observations when combined with
+a reference; do not publish them through an unrestricted metadata dump. The
+generic ``aggregate_validation_report`` and ``write_aggregate_report`` helpers
+described in :doc:`capture_workflow` retain approved scalar diagnostics and
+source attribution while excluding coordinates, alignments, residual vectors
+and individual factors. Even an aggregate export requires a separate review of
+the applicable source publication rights. Converting or saving local inputs
+does not grant redistribution permission.
 
 Only code, checksum metadata and derivative validation reports are distributed.
 Source archives, CSV coordinates, meshes and MAT model arrays remain in the

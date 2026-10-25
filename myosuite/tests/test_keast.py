@@ -207,11 +207,12 @@ def test_pinned_cases_and_units_are_explicit(tmp_path: Path, case: str) -> None:
         reference.read_landmarks("mean", units="m", rotation_to_model=np.eye(3))
 
 
+@pytest.mark.parametrize("observed_uncertainty", [None, 0.003])
 def test_case_adapter_fits_target_local_factors_and_builds_subject(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, observed_uncertainty: float | None
 ) -> None:
     reference = KeastReference(tmp_path)
-    target = _trial()
+    target = replace(_trial(), uncertainty_m=0.001)
     factors = np.array([1.1, 0.9, 1.05])
     rotation = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
     points = target.in_model_frame()[0] * factors @ rotation.T + [2, 3, 4]
@@ -241,6 +242,7 @@ def test_case_adapter_fits_target_local_factors_and_builds_subject(
         rotation_to_model=np.eye(3),
         mode="anisotropic",
         max_rms_m=1e-5,
+        uncertainty_m=observed_uncertainty,
     )
     np.testing.assert_allclose(result.estimate.factors["tibia_r"], factors, atol=1e-7)
     assert (
@@ -248,6 +250,14 @@ def test_case_adapter_fits_target_local_factors_and_builds_subject(
         == hashlib.sha256(path.read_bytes()).hexdigest()
     )
     assert result.evidence["reference_trial"]["source"] == target.source
+    assert result.evidence["observed_trial"]["uncertainty_m"] == observed_uncertainty
+    assert result.evidence["reference_trial"]["uncertainty_m"] == 0.001
+    assert "not propagated" in result.evidence["reference_uncertainty_policy"]
+    supplied = result.evidence["segments"][0]["uncertainty_m"]
+    if observed_uncertainty is None:
+        assert supplied is None
+    else:
+        np.testing.assert_allclose(supplied, observed_uncertainty)
     spec = mujoco.MjSpec.from_string(
         '<mujoco><worldbody><body name="tibia_r"><geom name="bone" type="box" size=".02 .5 .03" mass="1"/></body></worldbody></mujoco>'
     )

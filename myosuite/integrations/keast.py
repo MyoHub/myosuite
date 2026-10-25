@@ -4,9 +4,7 @@
 
 from __future__ import annotations
 
-import csv
 import hashlib
-import io
 import json
 import re
 import shutil
@@ -15,11 +13,12 @@ import zipfile
 from dataclasses import dataclass, replace
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 from numpy.typing import ArrayLike
 
+from myosuite.integrations.capture.landmarks import read_named_landmarks
 from myosuite.integrations.capture.markers import MarkerScaleResult, MarkerTrial
 
 PALPABLE_LANDMARKS = ("LC", "MC", "LM", "MM", "TT", "FH")
@@ -29,68 +28,6 @@ _MANIFEST = json.loads(
     .read_text("utf-8")
 )
 _MEAN_PATH = "ShapeModels/tibia-fibula/tibiaFibulaShapeModel_mean.csv"
-
-
-@dataclass(frozen=True)
-class _LandmarkTrial(MarkerTrial):
-    _evidence_json: str = "{}"
-
-    def metadata(self) -> dict[str, Any]:
-        return {**super().metadata(), "landmark_csv": json.loads(self._evidence_json)}
-
-
-def read_named_landmarks(
-    path: str | Path,
-    *,
-    units: Literal["m", "cm", "mm"],
-    rotation_to_model: ArrayLike,
-    source: str,
-    definition_source: str,
-    definition_license: str,
-    translation_to_model_m: ArrayLike = (0.0, 0.0, 0.0),
-    uncertainty_m: float | None = None,
-) -> MarkerTrial:
-    """Read headerless ``label,x,y,z`` anatomy coordinates with explicit units.
-
-    Empty coordinates and NaN remain missing. The caller supplies anatomical
-    definitions, their source-reported terms and a calibrated proper rotation.
-    File identity is retained; no joint centres or landmark labels are inferred.
-    """
-    for name, value in (
-        ("definition_source", definition_source),
-        ("definition_license", definition_license),
-    ):
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(f"{name} must be supplied.")
-    path = Path(path).resolve()
-    raw = path.read_bytes()
-    labels, positions = [], []
-    for row in csv.reader(io.StringIO(raw.decode("utf-8-sig"))):
-        if not row or not any(value.strip() for value in row):
-            continue
-        if len(row) != 4:
-            raise ValueError("Landmark CSV rows must contain label,x,y,z.")
-        labels.append(row[0].strip())
-        try:
-            positions.append(
-                [float(value) if value.strip() else np.nan for value in row[1:]]
-            )
-        except ValueError as exc:
-            raise ValueError("Landmark coordinates must be numeric or empty.") from exc
-    return _LandmarkTrial(
-        labels=tuple(labels),
-        positions=np.asarray(positions)[None],
-        units=units,
-        rotation_to_model=rotation_to_model,
-        source=source,
-        translation_to_model_m=translation_to_model_m,
-        uncertainty_m=uncertainty_m,
-        definition_source=definition_source,
-        definition_license=definition_license,
-        _evidence_json=json.dumps(
-            {"path": str(path), "sha256": hashlib.sha256(raw).hexdigest()}
-        ),
-    )
 
 
 def tibial_landmark_frame(trial: MarkerTrial) -> tuple[np.ndarray, np.ndarray]:
@@ -286,6 +223,8 @@ class KeastReference:
             source=f"https://doi.org/10.6084/m9.figshare.20454462.v4; {relative}",
             definition_source="Keast, Bonacci and Fox (2023), doi:10.7717/peerj.14708; Nolte et al. (2016), doi:10.1016/j.jbiomech.2016.09.005",
             definition_license="CC-BY-4.0 source dataset; retain Keast and Nolte attribution",
+            point_semantics="anatomical_landmark",
+            subject_id=None if case == "mean" else f"Keast-v4:{case}",
         )
         evidence = trial.metadata()["landmark_csv"]
         if evidence["sha256"] != _MANIFEST["files"][relative]:
@@ -318,6 +257,7 @@ class KeastReference:
         labels: tuple[str, ...] = PALPABLE_LANDMARKS,
         mode: Literal["anisotropic", "isotropic"] = "isotropic",
         max_rms_m: float | None = None,
+        uncertainty_m: float | None = None,
     ) -> MarkerScaleResult:
         """Fit one real case to reviewed landmarks in the unscaled target frame.
 
@@ -325,7 +265,9 @@ class KeastReference:
         points expressed in the target body's local axes. A source mean-frame
         fit is not automatically transferable to a MuJoCo body. Missing labels
         become NaN rows and are handled explicitly by the shared estimator.
-        Source annotation uncertainty is not reported and remains unspecified.
+        ``uncertainty_m`` is an optional source-reported observed-coordinate SD
+        in metres. Unknown observed uncertainty retains equal weights. Reference
+        uncertainty is recorded separately and is not propagated by this fitter.
         Choose a residual admission threshold for the intended application.
         Isotropic fitting is conservative by default; three independent factors
         require explicit selection and application-specific validation.
@@ -338,7 +280,10 @@ class KeastReference:
         if len(reference_trial.positions) != 1:
             raise ValueError("Reference anatomy must contain exactly one static frame.")
         observed = self.read_landmarks(
-            case, units=units, rotation_to_model=rotation_to_model
+            case,
+            units=units,
+            rotation_to_model=rotation_to_model,
+            uncertainty_m=uncertainty_m,
         )
         reference_points = dict(
             zip(reference_trial.labels, reference_trial.in_model_frame()[0])
@@ -359,12 +304,19 @@ class KeastReference:
                     ),
                     reference_source=reference_trial.source,
                     observed_source=observed.source,
+                    uncertainty_m=observed.uncertainty_m,
                 )
             ],
             mode=mode,
             loss="linear",
             max_rms_m=max_rms_m,
         )
+        if reference_trial.uncertainty_m is not None:
+            note = "Reference coordinate uncertainty is recorded but not propagated; weights use observed uncertainty only."
+            result = MarkerScaleResult(
+                replace(result.estimate, warnings=(*result.estimate.warnings, note)),
+                {**result.evidence, "reference_uncertainty_policy": note},
+            )
         result.evidence["reference_trial"] = reference_trial.metadata()
         result.evidence["observed_trial"] = observed.metadata()
         return result
