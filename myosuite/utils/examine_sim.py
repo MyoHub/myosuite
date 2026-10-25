@@ -15,17 +15,21 @@ Vizualize model in the MuJoCo "Simulate" viewer. No policy or environment logic 
     - Loads an MJCF if provided in --sim_path\n
     - Otherwise you can specify a MyoSuite env via --env_name\n
 Example:\n
-    - python utils/examine_sim.py --sim_path envs/arms/franka/assets/franka_reach_v0.xml"\n
-    - python utils/examine_sim.py --env_name myoElbowPose1D6MRandom-v0"\n
+    - python -m myosuite.utils.examine_sim --sim_path path/to/model.xml\n
+    - python -m myosuite.utils.examine_sim --env_name myoElbowPose1D6MRandom-v0\n
 """
 
 
 @click.command(help=DESC)
-@click.option("-s", "--env_name", type=str, help="environment to load", required=False)
-@click.option("-s", "--sim_path", type=str, help="environment to load", required=False)
+@click.option(
+    "-e", "--env_name", type=str, help="MyoSuite env id to load", required=False
+)
+@click.option(
+    "-s", "--sim_path", type=str, help="path to an MJCF model", required=False
+)
 def main(sim_path, env_name):
     if sim_path is None and env_name is None:
-        raise ValueError("Must provide either a path to an environment or a sim_path")
+        raise click.UsageError("Provide --sim_path or --env_name")
     if sim_path is not None:
         model = MjModel.from_xml_path(sim_path)
     else:
