@@ -132,6 +132,11 @@ class MJRenderer(Renderer):
             ncam = int(self._mj_model.ncam)
             if ncam == 0 or camera_id >= ncam:
                 camera_id = -1
+        camera = camera_id
+        if camera_id == -1 and self._camera_settings:
+            camera = mujoco.MjvCamera()
+            mujoco.mjv_defaultFreeCamera(self._mj_model, camera)
+            self._update_camera_properties(camera)
         self.setup_renderer(self._mj_model, width=width, height=height)
 
         rgb_arr = None
@@ -139,21 +144,21 @@ class MJRenderer(Renderer):
         seg_arr = None
         if rgb:
             self._renderer.update_scene(
-                self._mj_data, camera=camera_id, scene_option=self._scene_option
+                self._mj_data, camera=camera, scene_option=self._scene_option
             )
             _tune_mjv_scene_for_rgb(self._renderer.scene)
             rgb_arr = self._renderer.render()
         if depth:
             self._renderer.enable_depth_rendering()
             self._renderer.update_scene(
-                self._mj_data, camera=camera_id, scene_option=self._scene_option
+                self._mj_data, camera=camera, scene_option=self._scene_option
             )
             dpt_arr = self._renderer.render()
             self._renderer.disable_depth_rendering()
         if segmentation:
             self._renderer.enable_segmentation_rendering()
             self._renderer.update_scene(
-                self._mj_data, camera=camera_id, scene_option=self._scene_option
+                self._mj_data, camera=camera, scene_option=self._scene_option
             )
             seg_arr = self._renderer.render()
             self._renderer.disable_segmentation_rendering()
@@ -185,6 +190,13 @@ class MJRenderer(Renderer):
                 renderer.flags[mujoco.mjtVisFlag.mjVIS_ACTUATOR] = value
                 renderer.flags[mujoco.mjtVisFlag.mjVIS_ACTIVATION] = value
 
+    def invalidate_offscreen(self) -> None:
+        """Release cached offscreen contexts so runtime asset edits are reloaded."""
+        for renderer in self._renderers.values():
+            renderer.close()
+        self._renderers.clear()
+        self._renderer = None
+
     def close(self) -> None:
         """Cleans up any resources being used by the renderer."""
         if self._closed:
@@ -192,8 +204,5 @@ class MJRenderer(Renderer):
         if self._window is not None:
             self._window.close()
             self._window = None
-        for renderer in self._renderers.values():
-            renderer.close()
-        self._renderers.clear()
-        self._renderer = None
+        self.invalidate_offscreen()
         super().close()
