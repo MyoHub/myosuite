@@ -11,9 +11,15 @@
       "source": {
         "dataset": "University of Denver Visible Human final tissue geometry",
         "subject": "VHF",
-        "url": "https://digitalcommons.du.edu/visiblehuman/",
-        "attribution": "Andreassen et al. (2023), https://doi.org/10.1038/s41597-022-01905-2",
+        "url": "https://digitalcommons.du.edu/visiblehuman/1/",
+        "attribution": "Andreassen, Hume, Hamilton, Walker, Higinbotham and Shelburne (2023), Three Dimensional Lower Extremity Musculoskeletal Geometry of the Visible Human Female and Male, https://doi.org/10.1038/s41597-022-01905-2; Andreassen, Hume, Hamilton, Higinbotham and Shelburne (2022), An Automated Process for 2D and 3D Finite Element Overclosure and Gap Adjustment using Radial Basis Function Networks, https://doi.org/10.48550/arXiv.2209.06948",
         "geometry_license": "CC-BY-4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "source_dataset_doi": "https://doi.org/10.56902/COB.vh.2022.0",
+        "subject_dataset_doi": "https://doi.org/10.56902/COB.vh.2022.1",
+        "source_disclaimer": "Source data are provided as-is without warranty; see the source page's Liability Agreement.",
+        "source_disclaimer_url": "https://digitalcommons.du.edu/visiblehuman/1/",
+        "changes": "Local STL measures converted from millimetres to SI and compared with published volumes; no source surface or workbook is rewritten.",
         "mesh_archive_sha256": "9886eda040f6087bbb65182530f8bd262be456f366b155025c12b3dc56da774e",
         "metadata_archive_sha256": "520a06cd4e54b887d937450868e27fa22f93fb79782a6751af0e19c15bdab755",
         "mesh_units": "mm",
@@ -100,9 +106,15 @@
       "source": {
         "dataset": "University of Denver Visible Human final tissue geometry",
         "subject": "VHM",
-        "url": "https://digitalcommons.du.edu/visiblehuman/",
-        "attribution": "Andreassen et al. (2023), https://doi.org/10.1038/s41597-022-01905-2",
+        "url": "https://digitalcommons.du.edu/visiblehuman/2/",
+        "attribution": "Andreassen, Hume, Hamilton, Walker, Higinbotham and Shelburne (2023), Three Dimensional Lower Extremity Musculoskeletal Geometry of the Visible Human Female and Male, https://doi.org/10.1038/s41597-022-01905-2; Andreassen, Hume, Hamilton, Higinbotham and Shelburne (2022), An Automated Process for 2D and 3D Finite Element Overclosure and Gap Adjustment using Radial Basis Function Networks, https://doi.org/10.48550/arXiv.2209.06948",
         "geometry_license": "CC-BY-4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "source_dataset_doi": "https://doi.org/10.56902/COB.vh.2022.0",
+        "subject_dataset_doi": "https://doi.org/10.56902/COB.vh.2022.2",
+        "source_disclaimer": "Source data are provided as-is without warranty; see the source page's Liability Agreement.",
+        "source_disclaimer_url": "https://digitalcommons.du.edu/visiblehuman/2/",
+        "changes": "Local STL measures converted from millimetres to SI and compared with published volumes; no source surface or workbook is rewritten.",
         "mesh_archive_sha256": "e461ece6f1365fb8499b235192b28d2000f3996c48c6b2903682c1c0396ce83a",
         "metadata_archive_sha256": "120f3e79aaf29834587b8b30ddbb1a721d6f1317b303b842d2354d5f0857ee3b",
         "mesh_units": "mm",
@@ -185,5 +197,8 @@
     "Archive coverage is counted from actual files; other release assets may differ.",
     "Volume consistency does not validate transverse anatomy, muscle forces or dynamics.",
     "Equal transverse factors are an explicit assumption, not two measured widths."
-  ]
+  ],
+  "report_license": "CC-BY-4.0",
+  "report_license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "changes": "Computed aggregate geometry measures, volume discrepancies and quality exclusions from the cited local source archives; source surfaces and spreadsheet rows are not redistributed."
 }

@@ -118,6 +118,9 @@ def run_validation(
     report = {
         "schema": 1,
         "protocol": "Independent mesh-volume versus published-volume cross-check",
+        "report_license": "CC-BY-4.0",
+        "report_license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "changes": "Computed aggregate geometry measures, volume discrepancies and quality exclusions from the cited local source archives; source surfaces and spreadsheet rows are not redistributed.",
         "environment": {
             "numpy": np.__version__,
             "trimesh": version("trimesh"),

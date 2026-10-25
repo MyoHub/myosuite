@@ -91,6 +91,12 @@ def test_local_geometry_is_measured_in_si_against_independent_volume_metadata(
     source = summary.metadata()
     assert source["subject"] == "VHF"
     assert source["geometry_license"] == "CC-BY-4.0"
+    assert source["license_url"] == "https://creativecommons.org/licenses/by/4.0/"
+    assert "10.1038/s41597-022-01905-2" in source["attribution"]
+    assert "10.48550/arXiv.2209.06948" in source["attribution"]
+    assert source["source_dataset_doi"].endswith("10.56902/COB.vh.2022.0")
+    assert source["subject_dataset_doi"].endswith("10.56902/COB.vh.2022.1")
+    assert source["url"] == "https://digitalcommons.du.edu/visiblehuman/1/"
     assert (
         len(source["mesh_archive_sha256"])
         == len(source["metadata_archive_sha256"])

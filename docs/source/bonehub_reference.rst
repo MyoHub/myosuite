@@ -4,6 +4,9 @@ BoneHub anatomical references
 Reviewed bone landmarks enter the existing :doc:`capture_scaling` and
 :doc:`body_scaling` pipelines. The same subject recipe serves CPU and mjlab.
 
+See the :download:`source-specific licence and attribution notices <../../THIRD_PARTY_DATA.md>`
+for external inputs and separately licensed validation assets.
+
 BoneHub reference data
 ----------------------
 
@@ -437,3 +440,15 @@ contains aggregate quantiles, coverage, source file hashes and the precise
 geometric protocol. It contains no vertices, centroids, per-person geometry
 values or raw anthropometry. Source attribution and CC BY-NC-SA 4.0 terms are
 retained for the derived VSD report separately from the software licence.
+
+The VSD numerical summary in this section and its downloadable JSON report are
+adaptations under `CC BY-NC-SA 4.0
+<https://creativecommons.org/licenses/by-nc-sa/4.0/>`_, separately from the
+Apache-2.0 implementation. Credit Alavi and Asseln (2026),
+`doi:10.57967/hf/10471 <https://doi.org/10.57967/hf/10471>`_, and Fischer (2023),
+`doi:10.1038/s41597-023-02669-z <https://doi.org/10.1038/s41597-023-02669-z>`_.
+The changes are computed cohort geometry summaries and quality checks.
+Sources and summaries are supplied without warranties; see the licence's
+`legal terms <https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.en>`_.
+No endorsement is implied. The repository's ``THIRD_PARTY_DATA.md`` inventories
+the separate report and plot licences and full source attribution.

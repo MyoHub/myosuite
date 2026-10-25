@@ -137,6 +137,10 @@ def validate(
         "source_url": f"https://huggingface.co/datasets/{VSD_DATASET_ID}/tree/{VSD_PINNED_REVISION}",
         "source_license": "CC-BY-NC-SA-4.0; original assets remain local",
         "report_license": "CC-BY-NC-SA-4.0",
+        "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "license_legalcode_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.en",
+        "derived_changes": "Computed aggregate mesh-volume and principal-span quantiles, quality coverage and source hashes; no source meshes or per-case geometric measurements are distributed.",
+        "disclaimer": "Sources and report are provided without warranties; no source-author endorsement is implied. See the linked legal terms.",
         "attribution": "Alavi and Asseln (2026), doi:10.57967/hf/10471; Fischer (2023), doi:10.1038/s41597-023-02669-z",
         "source_units_confirmed": units,
         "environment": {

@@ -25,7 +25,16 @@ _GEOMETRY = re.compile(
     r"(?P<tissue>Bone|Muscle|Cartilage|Ligament|Fat)_(?P<label>.+)_smooth\.stl"
 )
 _SOURCE = "https://digitalcommons.du.edu/visiblehuman/"
-_CITATION = "Andreassen et al. (2023), https://doi.org/10.1038/s41597-022-01905-2"
+_CITATION = (
+    "Andreassen, Hume, Hamilton, Walker, Higinbotham and Shelburne (2023), "
+    "Three Dimensional Lower Extremity Musculoskeletal Geometry of the Visible "
+    "Human Female and Male, https://doi.org/10.1038/s41597-022-01905-2; "
+    "Andreassen, Hume, Hamilton, Higinbotham and Shelburne (2022), "
+    "An Automated Process for 2D and 3D Finite Element Overclosure and Gap "
+    "Adjustment using Radial Basis Function Networks, "
+    "https://doi.org/10.48550/arXiv.2209.06948"
+)
+_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
 
 
 def _file_hash(path: Path) -> str:
@@ -225,12 +234,20 @@ class DenverReference:
     def metadata(self) -> dict[str, Any]:
         """Return source identity and hashes without exposing source surfaces/tables."""
         self._check_unchanged()
+        subject_record = 1 if self.subject == "VHF" else 2
+        subject_url = f"{_SOURCE}{subject_record}/"
         return {
             "dataset": "University of Denver Visible Human final tissue geometry",
             "subject": self.subject,
-            "url": _SOURCE,
+            "url": subject_url,
             "attribution": _CITATION,
             "geometry_license": "CC-BY-4.0",
+            "license_url": _LICENSE_URL,
+            "source_dataset_doi": "https://doi.org/10.56902/COB.vh.2022.0",
+            "subject_dataset_doi": f"https://doi.org/10.56902/COB.vh.2022.{subject_record}",
+            "source_disclaimer": "Source data are provided as-is without warranty; see the source page's Liability Agreement.",
+            "source_disclaimer_url": subject_url,
+            "changes": "Local STL measures converted from millimetres to SI and compared with published volumes; no source surface or workbook is rewritten.",
             "mesh_archive_sha256": self._hashes[0],
             "metadata_archive_sha256": self._hashes[1],
             "mesh_units": "mm",
