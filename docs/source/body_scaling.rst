@@ -1,6 +1,9 @@
 Body scaling
 ============
 
+For reviewed landmarks from Visible Human and VSD anatomy, see
+:doc:`bonehub_reference`.
+
 :func:`myosuite.core.body_scaling.scale_bodies` scales a musculoskeletal model to a
 subject with the rules of OpenSim's Scale Tool. Each body gets per-axis factors
 ``(sx, sy, sz)`` in its own frame, or one factor for all three axes.

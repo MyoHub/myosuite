@@ -160,3 +160,6 @@ The primary licences have distinct scopes (reviewed 2026-10-23):
 
 No redistribution grant was established for a third-party SMPL virtual-marker
 definition, so the integration requires user-supplied definitions instead.
+
+See :doc:`bonehub_reference` for reviewed anatomical landmarks from pinned
+Visible Human and VSD reference meshes, including source identity and quality.
