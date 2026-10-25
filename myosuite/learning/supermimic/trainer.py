@@ -123,6 +123,7 @@ class SuperMimicTrainer:
         self.updates = 0
         self.sim_steps = 0
         self.elapsed = 0.0
+        self.best_eval = -math.inf
         self.ep_reward = torch.zeros(cfg.num_envs, device=dev)
         self.ep_len = torch.zeros(cfg.num_envs, device=dev)
         self.done_stats: list[tuple[float, float]] = []
@@ -330,6 +331,7 @@ class SuperMimicTrainer:
                 "updates": self.updates,
                 "sim_steps": self.sim_steps,
                 "elapsed": self.elapsed,
+                "best_eval": self.best_eval,
                 "cfg": asdict(self.cfg),
             },
             self.out / f"ckpt_{name}.pt",
@@ -354,6 +356,7 @@ class SuperMimicTrainer:
             ck["sim_steps"],
             ck["elapsed"],
         )
+        self.best_eval = ck.get("best_eval", -math.inf)
 
     # ------------------------------------------------------------------ main loop
     def train(self) -> None:
@@ -394,6 +397,10 @@ class SuperMimicTrainer:
                     }
                     if self.updates % cfg.eval_every == 0:
                         rec.update({f"eval_{k}": v for k, v in self.evaluate().items()})
+                        # Keep the best-eval policy: runs can decay after their peak.
+                        if rec["eval_reward_per_step"] > self.best_eval:
+                            self.best_eval = rec["eval_reward_per_step"]
+                            self.save("best")
                     log.write(json.dumps(rec) + "\n")
                     log.flush()
                     self.done_stats = self.done_stats[-500:]
