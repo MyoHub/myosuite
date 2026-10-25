@@ -7,6 +7,61 @@ It does not import capture or body-shape packages in the core. Arrays and the
 bundled synthetic example need only MyoSuite's existing dependencies; reading a
 real C3D file additionally needs ``pip install "myosuite[capture]"``.
 
+Three-dimensional anatomical correspondences
+--------------------------------------------
+
+When several corresponding landmarks are available on a segment, fit its local
+length, width and depth jointly instead of assigning one distance to each axis.
+``myosuite.integrations.capture.landmark_scaling`` supplies a separate opt-in
+fitter; the existing distance estimator retains its defaults.
+
+.. code-block:: python
+
+    from myosuite.integrations.capture.landmark_scaling import (
+        LandmarkCorrespondences, fit_landmark_scales,
+    )
+
+    correspondence = LandmarkCorrespondences(
+        subject_id="my-subject", segment="tibia_r", labels=landmark_labels,
+        reference_positions_m=target_local_landmarks,
+        observed_positions_m=subject_landmarks,
+        reference_source="unscaled target and landmark protocol/version",
+        observed_source="subject annotation and acquisition/version",
+        uncertainty_m=source_coordinate_standard_deviation_m,
+    )
+    result = fit_landmark_scales(
+        [correspondence], loss="soft_l1", max_rms_m=0.005,
+    )
+    # Build and align the target from result.estimate before retargeting motion.
+
+Arrays contain one three-dimensional position per labelled anatomical location,
+in metres. Reference coordinates must use the target segment's **local axes**;
+the solver estimates a separate proper rigid pose for the observations. That
+pose aligns measurements and does not change target joint frames. Four or more
+noncoplanar correspondences are required for three independent factors. An
+explicit ``mode="isotropic"`` instead needs three noncollinear points. Missing
+points are omitted; insufficient or ill-conditioned geometry fails rather than
+inventing unconstrained scale axes. Several segments must identify the same
+observed subject; different people cannot be pooled into one subject estimate.
+
+The optional uncertainties are source-reported coordinate standard deviations,
+not confidence scores. Unknown uncertainty uses equal weights. ``robust_scale_m``
+sets an explicit algorithmic residual scale for robust fitting when uncertainty
+is unknown; it is not an estimated anatomical confidence interval. Robust losses
+reduce isolated coordinate outliers but cannot correct a biased landmark
+definition. Repeated motion frames share anatomical/skin bias and must not be
+stacked as independent anatomy observations.
+
+Evidence records source and coordinate hashes, the fitted pose and factors,
+residuals, omitted points, rank and conditioning. The example's 5 mm admission
+bound is illustrative, not a universal validity threshold. A fit without an
+explicit physical threshold returns a warning. Use withheld landmarks and
+subject-disjoint evaluation to choose a method: a lower fitting error alone
+does not show that anisotropic scaling improves unseen anatomy. Keep population
+atlases, subject measurements and measured motion/forces in distinct evidence
+roles. Preserve the original source data locally and publish only permitted
+derived calibration and validation results.
+
 Labelled static trials
 ----------------------
 
