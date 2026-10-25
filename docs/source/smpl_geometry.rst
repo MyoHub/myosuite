@@ -4,6 +4,12 @@ SMPL geometry and marker imports
 User-owned body geometry and marker trials feed :doc:`capture_scaling` and
 :doc:`body_scaling` before target-specific retargeting.
 
+For native SKEL/BioAmass/AddBiomechanics inputs and measured scaling checks,
+see :doc:`native_scaling_validation`.
+
+See the :download:`source-specific licence and attribution notices <../../THIRD_PARTY_DATA.md>`
+for external inputs and published validation results.
+
 Continue a user-owned SMPL fit
 ------------------------------
 

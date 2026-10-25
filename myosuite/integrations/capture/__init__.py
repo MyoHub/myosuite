@@ -10,6 +10,11 @@ from myosuite.integrations.capture.markers import (
 )
 from myosuite.integrations.capture.vertices import VertexMarkerSet, vertex_marker_trial
 from myosuite.integrations.capture.trc import read_trc
+from myosuite.integrations.capture.native_sources import (
+    read_addbiomechanics,
+    read_bioamass,
+    skel_joint_trial,
+)
 
 __all__ = [
     "MarkerScaleResult",
@@ -19,6 +24,9 @@ __all__ = [
     "estimate_marker_scales",
     "read_c3d",
     "read_trc",
+    "read_addbiomechanics",
+    "read_bioamass",
+    "skel_joint_trial",
     "virtual_marker_trial",
     "vertex_marker_trial",
 ]

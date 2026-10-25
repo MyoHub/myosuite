@@ -6,7 +6,7 @@ description = "Musculoskeletal environments simulated in MuJoCo"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "THIRD_PARTY_DATA.md"]
 authors = [
     { name = "Vittorio Caggiano", email = "caggiano@gmail.com" },
     { name = "Balint Hodossy", email = "hodossy@gmail.com" },

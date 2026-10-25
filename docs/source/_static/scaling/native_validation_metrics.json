@@ -1,0 +1,333 @@
+{
+  "schema": 1,
+  "publication_policy": "aggregate errors, counts, protocol and hashes only; all original data, model assets, coordinate exports, individual factors and trajectories remain local",
+  "independence": "SKEL and BioAmass are the same CMU01 subject/source motion; temporal held-out validation only",
+  "native_evaluation": {
+    "skel": {
+      "code_revision": "c32cf16581295bff19399379efe5b776d707cd95",
+      "model_version": "1.1.1 (distributed in skel_models_v1.1.zip)",
+      "torch_version": "2.11.0+cu130; CPU evaluation",
+      "point_order": "model.bone_names; 24 BSM skeletal origins",
+      "model_sha256": "5da67c629475e2bf8cf564763e3454e61f1e15f7793f1c9d99359f3d728b6066",
+      "motion_sha256": "e4a73eaccc5cca9e30cb19289128c592d09101cb9c7b6d18a71f5446d0e348b5",
+      "license_url": "https://skel.is.tue.mpg.de/license.html"
+    },
+    "bioamass": {
+      "release": "v1.0",
+      "reader": "native OpenSim 4.6-2026-03-31-d6972f9e6; Python 3.11.17",
+      "model_sha256": "6db19b5e0b6220215dae11ec1b716f987530d6cbd29421a5bd9b1814b4f3dbc6",
+      "motion_sha256": "3520b34f89b484d074f0d30f3b8cbd8ce687be4f51830df6ed7bbcf4e21c9047",
+      "point_definition": "native OpenSim body-frame origins; angular units and native assembly retained",
+      "license_urls": [
+        "https://skel.is.tue.mpg.de/license.html",
+        "https://amass.is.tue.mpg.de/license.html"
+      ]
+    },
+    "addbiomechanics": {
+      "release": "core 1.0",
+      "archive_url": "http://archive.simtk.org/addbiomechanics/addbiomechanics.zip",
+      "archive_member": "train/With_Arm/Tiziana2019_Formatted_With_Arm/Subject40/Subject40.b3d",
+      "b3d_sha256": "01e6b23c575b94974261756390129ba3e44f10149d239d0e98313eb29d6e08cf",
+      "extraction": "HTTP selective ranges; ZIP CRC verified; pinned official SubjectOnDisk.proto analysis-only extraction on Windows",
+      "nimble_schema_revision": "c405b056fc35068027e03e0c384e84e12870b475",
+      "production_reader": "optional official Nimble SubjectOnDisk on a supported platform; not installed in this Windows environment",
+      "attribution": "AddBiomechanics core 1.0, Werling et al.; Lencioni2019, archived as Tiziana2019",
+      "license": "CC-BY-4.0; user policy keeps original sources local"
+    }
+  },
+  "reports": {
+    "skel": {
+      "schema": 1,
+      "source": "SKEL 1.1.1 CMU01 full-span native body origins",
+      "local_coordinate_export_sha256": "c62c012f563af8153216e20d5548ae3933edb834306a260ef39a0dd7def12ba4",
+      "calibration_frames": 3,
+      "heldout_frames": 27,
+      "requested_scale_axes": 7,
+      "estimated_scale_axes": 7,
+      "omitted_scale_measurements": 0,
+      "marker_tolerance_m": 0.02,
+      "point_semantics": "native model origins, not measured anatomical joint centres",
+      "evaluation_scope": "one representation/subject; temporal held-out frames; no dynamic validation",
+      "ground_plane_assumption_m": 0.0,
+      "source_floor_measured": false,
+      "scaled_target": {
+        "marker_rms_m": 0.006131892387477063,
+        "marker_max_m": 0.040456161205012504,
+        "sole_penetration_max_m": 0.07511737968932997,
+        "root_tracking_rms_m": 0.0020405959892187526,
+        "converged_frames": 25.0,
+        "frames": 27.0,
+        "equality_error_max": 0.00023870342473172879
+      },
+      "nominal_target": {
+        "marker_rms_m": 0.02843721109856538,
+        "marker_max_m": 0.044138096611011694,
+        "sole_penetration_max_m": 0.0699142623582199,
+        "root_tracking_rms_m": 0.03204751567838039,
+        "converged_frames": 0.0,
+        "frames": 27.0,
+        "equality_error_max": 0.0005881613074752705
+      },
+      "nominal_fit_replayed_on_scaled": {
+        "marker_rms_m": 0.04442548756161415,
+        "marker_max_m": 0.08046716707067536,
+        "sole_penetration_max_m": 0.12809862988276377,
+        "root_tracking_rms_m": 0.03204751567838039
+      },
+      "geometric_contact_geom_frames": 23,
+      "sole_geom_count": 10,
+      "scaled_marker_rms_improvement_over_negative": 7.244988129984583,
+      "geometric_ground_projection": {
+        "marker_rms_m": 0.0791866286654352,
+        "marker_max_m": 0.23823925329593063,
+        "sole_penetration_max_m": 1.457167719820518e-16,
+        "root_tracking_rms_m": 0.07986687672416748,
+        "within_marker_tolerance": false,
+        "method": "root-height geometry postprocess only; no refitting or dynamic/contact solve",
+        "lowers_airborne_frames": true
+      },
+      "raise_only_nonpenetration_projection": {
+        "marker_rms_m": 0.030371264460316044,
+        "marker_max_m": 0.09042089155611763,
+        "sole_penetration_max_m": 1.457167719820518e-16,
+        "root_tracking_rms_m": 0.03009155318805463,
+        "within_marker_tolerance": false,
+        "method": "root-height geometry postprocess only; no refitting or dynamic/contact solve",
+        "lowers_airborne_frames": false
+      },
+      "calibration_frame_indices": [
+        0,
+        1,
+        2
+      ],
+      "heldout_frame_indices": [
+        50,
+        150,
+        250,
+        350,
+        450,
+        550,
+        650,
+        750,
+        850,
+        950,
+        1050,
+        1150,
+        1250,
+        1350,
+        1450,
+        1550,
+        1650,
+        1750,
+        1850,
+        1950,
+        2050,
+        2150,
+        2250,
+        2350,
+        2450,
+        2550,
+        2650
+      ],
+      "max_evaluations_per_frame": 200,
+      "runtime": {
+        "mujoco": "3.17.0",
+        "numpy": "2.5.4"
+      },
+      "source_frame_count": 2751,
+      "source_frequency_hz": 120.0
+    },
+    "bioamass": {
+      "schema": 1,
+      "source": "BioAmass CMU01 full-span native OpenSim body origins",
+      "local_coordinate_export_sha256": "180cf28f12208a90ee66aba73aa9fe2fa876f7590933c851122c0b444d96da0d",
+      "calibration_frames": 3,
+      "heldout_frames": 27,
+      "requested_scale_axes": 7,
+      "estimated_scale_axes": 7,
+      "omitted_scale_measurements": 0,
+      "marker_tolerance_m": 0.02,
+      "point_semantics": "native model origins, not measured anatomical joint centres",
+      "evaluation_scope": "one representation/subject; temporal held-out frames; no dynamic validation",
+      "ground_plane_assumption_m": 0.0,
+      "source_floor_measured": false,
+      "scaled_target": {
+        "marker_rms_m": 0.005070982983498802,
+        "marker_max_m": 0.010130454927079377,
+        "sole_penetration_max_m": 0.07543513645976391,
+        "root_tracking_rms_m": 0.008585269767928482,
+        "converged_frames": 27.0,
+        "frames": 27.0,
+        "equality_error_max": 7.351752631248052e-05
+      },
+      "nominal_target": {
+        "marker_rms_m": 0.022792688785558412,
+        "marker_max_m": 0.038777774943159087,
+        "sole_penetration_max_m": 0.0613418618345664,
+        "root_tracking_rms_m": 0.018411519753714883,
+        "converged_frames": 0.0,
+        "frames": 27.0,
+        "equality_error_max": 0.00034677765830088775
+      },
+      "nominal_fit_replayed_on_scaled": {
+        "marker_rms_m": 0.02879849580560167,
+        "marker_max_m": 0.04046488654928444,
+        "sole_penetration_max_m": 0.09487648666603449,
+        "root_tracking_rms_m": 0.018411519753714883
+      },
+      "geometric_contact_geom_frames": 8,
+      "sole_geom_count": 10,
+      "scaled_marker_rms_improvement_over_negative": 5.67907561498692,
+      "geometric_ground_projection": {
+        "marker_rms_m": 0.07281921899385813,
+        "marker_max_m": 0.22738067795096678,
+        "sole_penetration_max_m": 1.3877787807814457e-16,
+        "root_tracking_rms_m": 0.07606564625998387,
+        "within_marker_tolerance": false,
+        "method": "root-height geometry postprocess only; no refitting or dynamic/contact solve",
+        "lowers_airborne_frames": true
+      },
+      "raise_only_nonpenetration_projection": {
+        "marker_rms_m": 0.01983299419099369,
+        "marker_max_m": 0.07985498300186111,
+        "sole_penetration_max_m": 6.245004513516506e-17,
+        "root_tracking_rms_m": 0.0186117328941803,
+        "within_marker_tolerance": false,
+        "method": "root-height geometry postprocess only; no refitting or dynamic/contact solve",
+        "lowers_airborne_frames": false
+      },
+      "calibration_frame_indices": [
+        0,
+        1,
+        2
+      ],
+      "heldout_frame_indices": [
+        50,
+        150,
+        250,
+        350,
+        450,
+        550,
+        650,
+        750,
+        850,
+        950,
+        1050,
+        1150,
+        1250,
+        1350,
+        1450,
+        1550,
+        1650,
+        1750,
+        1850,
+        1950,
+        2050,
+        2150,
+        2250,
+        2350,
+        2450,
+        2550,
+        2650
+      ],
+      "max_evaluations_per_frame": 200,
+      "runtime": {
+        "mujoco": "3.17.0",
+        "numpy": "2.5.4"
+      },
+      "source_frame_count": 2751,
+      "source_frequency_hz": 120.0
+    },
+    "addbiomechanics": {
+      "schema": 1,
+      "source": "AddBiomechanics core 1.0 Lencioni2019 train Subject40",
+      "local_coordinate_export_sha256": "053cf4d8d32210b1f2b59e05515161c738939ec50d93b57fb3e5a8d25819bf4a",
+      "calibration_frame_indices": [
+        0,
+        1,
+        2
+      ],
+      "heldout_first_frame": 10,
+      "heldout_frame_count": 37,
+      "source_frame_count": 47,
+      "source_marker_count": 29,
+      "source_frequency_hz": 61.30434782608696,
+      "finite_marker_fraction": 1.0,
+      "finite_heldout_span_count": 74,
+      "missing_heldout_span_count": 0,
+      "estimated_scale_axes": 2,
+      "unmeasured_segments": "remain nominal; no height-based inferred factors",
+      "nominal_heldout_span_rms_m": 0.1057560017560297,
+      "scaled_heldout_span_rms_m": 0.004638520664150433,
+      "scaled_heldout_span_max_m": 0.0116389187579799,
+      "evaluation_scope": "measured surface-marker span consistency; not joint-centre length or full-body retargeting",
+      "runtime": {
+        "mujoco": "3.17.0",
+        "numpy": "2.5.4"
+      },
+      "source_grf_valid_frame_count": 18,
+      "source_grf_other_frame_count": 29
+    }
+  },
+  "publication_scope": "Scalar scientific findings, hashes and experimental protocol, with research-publication citations; no licence grant for source assets, models, trajectories, fitted coordinates, marker definitions or subject-model derivatives.",
+  "license_audit": {
+    "checked_on": "2026-10-25",
+    "skel_code_and_weights_terms": "https://skel.is.tue.mpg.de/license.html",
+    "amass_terms": "https://amass.is.tue.mpg.de/license.html",
+    "bioamass_scope": "BSM fits to SMPL sequences from AMASS; applicable SKEL/AMASS and underlying-source rights remain relevant. No separate licence/readme file was present in either supplied source archive.",
+    "smpl_model_terms": "https://smpl.is.tue.mpg.de/modellicense.html",
+    "smpl_body_terms": "https://smpl.is.tue.mpg.de/bodylicense.html",
+    "smpl_body_scope": "Separate CC BY 4.0 grant for SMPL-Body subset excluding shape blendshapes/tools; does not clear AMASS motion or SKEL/BioAmass rights.",
+    "addbiomechanics_release": "https://addbiomechanics.org/download_data.html",
+    "lencioni_data_terms": "Data Records section at https://www.nature.com/articles/s41597-019-0323-z specifies CC BY 4.0 for deidentified source data.",
+    "addbiomechanics_changes": "Computed calibration and temporal held-out surface-marker span errors; original trials and individual factors remain local.",
+    "cc_by_4_terms": "https://creativecommons.org/licenses/by/4.0/",
+    "independent_code_scope": "Native wrappers and validation protocol contain no copied upstream implementation, model coefficients, regressors or third-party vertex-index set."
+  },
+  "citations": {
+    "skel2023": {
+      "authors": "Marilyn Keller, Keenon Werling, Soyong Shin, Scott Delp, Sergi Pujades, C. Karen Liu, Michael J. Black",
+      "title": "From Skin to Skeleton: Towards Biomechanically Accurate 3D Digital Humans",
+      "year": 2023,
+      "venue": "ACM Transactions on Graphics 42(6), 253:1-253:15; SIGGRAPH Asia",
+      "url": "https://doi.org/10.1145/3618381"
+    },
+    "smpl2015": {
+      "authors": "Matthew Loper, Naureen Mahmood, Javier Romero, Gerard Pons-Moll, Michael J. Black",
+      "title": "SMPL: A Skinned Multi-Person Linear Model",
+      "year": 2015,
+      "venue": "ACM Transactions on Graphics 34(6), 248:1-248:16; SIGGRAPH Asia",
+      "url": "https://smpl.is.tue.mpg.de/"
+    },
+    "amass2019": {
+      "authors": "Naureen Mahmood, Nima Ghorbani, Nikolaus F. Troje, Gerard Pons-Moll, Michael J. Black",
+      "title": "AMASS: Archive of Motion Capture as Surface Shapes",
+      "year": 2019,
+      "venue": "ICCV, pp. 5442-5451",
+      "url": "https://amass.is.tue.mpg.de/"
+    },
+    "addbiomechanics2024": {
+      "authors": "Keenon Werling et al.",
+      "title": "AddBiomechanics Dataset: Capturing the Physics of Human Motion at Scale",
+      "conference": "ECCV 2024",
+      "proceedings_year": 2025,
+      "pages": "490-508",
+      "url": "https://doi.org/10.1007/978-3-031-73223-2_27"
+    },
+    "lencioni2019": {
+      "authors": "Tiziana Lencioni, Ilaria Carpinella, Marco Rabuffetti, Alberto Marzegan, Maurizio Ferrarin",
+      "title": "Human kinematic, kinetic and EMG data during different walking and stair ascending and descending tasks",
+      "year": 2019,
+      "venue": "Scientific Data 6, 309",
+      "url": "https://doi.org/10.1038/s41597-019-0323-z"
+    },
+    "addbiomechanics2023": {
+      "authors": "Keenon Werling, Nicholas A. Bianco, Michael Raitor, Jessica Stingel, Jennifer L. Hicks, Steven H. Collins, Scott L. Delp, C. Karen Liu",
+      "title": "AddBiomechanics: Automating model scaling, inverse kinematics, and inverse dynamics from human motion data through sequential optimization",
+      "year": 2023,
+      "venue": "PLOS ONE 18(11), e0295152",
+      "url": "https://doi.org/10.1371/journal.pone.0295152"
+    }
+  },
+  "cmu_acknowledgement": "The underlying motion data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217. Original CMU terms do not override AMASS/SKEL fitted-asset restrictions."
+}
