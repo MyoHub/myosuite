@@ -45,6 +45,7 @@ class TorchKinematics(torch.nn.Module):
         site_ids: Sites whose world positions :meth:`site_pos` returns.
         prune: Only compute the bodies on the paths from the root to the
             selected sites (others keep the identity pose).
+        extra_bodies: Bodies kept by ``prune`` in addition to the sites' bodies.
     """
 
     def __init__(
@@ -52,6 +53,7 @@ class TorchKinematics(torch.nn.Module):
         model: mujoco.MjModel,
         site_ids: np.ndarray | None = None,
         prune: bool = False,
+        extra_bodies: tuple[int, ...] = (),
     ) -> None:
         super().__init__()
         if np.any(model.jnt_type == mujoco.mjtJoint.mjJNT_BALL):
@@ -75,7 +77,7 @@ class TorchKinematics(torch.nn.Module):
         keep = set(range(nbody))
         if prune:
             keep = set()
-            for b in model.site_bodyid[ids]:
+            for b in [*model.site_bodyid[ids], *extra_bodies]:
                 while b > 0:
                     keep.add(int(b))
                     b = model.body_parentid[b]

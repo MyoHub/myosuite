@@ -317,3 +317,57 @@ def test_gradient_agreement_runs() -> None:
     assert (
         out["grad_norm_ratio_median"] < 1e-6
     )  # zero-initialised head: no control dependence yet
+
+
+def test_grouped_actor_exports_a_per_muscle_actor(tmp_path: Any) -> None:
+    """A grouped actor copies each group's action to its muscles; its export is an ordinary actor."""
+    from myosuite.learning.supermimic.policy import Actor
+
+    groups = [[0, 3], [1], [4, 2, 5]]
+    actor = Actor(7, 6, (16,), groups)
+    obs = torch.randn(4, 7)
+    out = actor(obs)
+    for g in groups:
+        for m in g[1:]:
+            torch.testing.assert_close(out[:, m], out[:, g[0]])
+    torch.save({"actor_state_dict": actor.rsl_rl_state_dict()}, tmp_path / "ck.pt")
+    plain = Actor.from_rsl_rl(tmp_path / "ck.pt")
+    assert plain.groups is None
+    torch.testing.assert_close(plain(obs), out)
+
+
+def test_posture_errors_and_smoothed_site_reward() -> None:
+    """Posture errors vanish on the clip; the smoothed site reward has a finite gradient there."""
+    from myosuite.learning.supermimic.heads import MimicClip, MimicHeads
+    from myosuite.learning.supermimic.kinematics import TorchKinematics
+
+    _, _, model, sites = _variant("fullbody")
+    ids = np.array([model.site(n).id for n in sites])
+    trunk = int(model.body("torso").id)
+    kin = TorchKinematics(model, ids, prune=True, extra_bodies=(trunk,))
+    clip = _synthetic_clip(model, sites, n_frames=4)
+    q = torch.tensor(clip.qpos, dtype=torch.float32)
+    mclip = MimicClip(
+        sites=kin.site_pos(q),
+        qpos=q,
+        qvel=torch.tensor(clip.qvel, dtype=torch.float32),
+        qpos_cols=torch.arange(model.nq),
+        qvel_cols=torch.arange(model.nv),
+        root_pos=True,
+        root_quat=True,
+        root_vel=True,
+    )
+    heads = MimicHeads(kin, mclip, 0.01, trunk_body=trunk, trunk_err_threshold=0.5)
+    frame = torch.arange(4)
+    pelvis, tr = heads.posture_errors(q, frame)
+    assert float(pelvis.max()) < 1e-3 and float(tr.max()) < 1e-3
+    qpos = q.clone().requires_grad_(True)
+    heads.reward(qpos, mclip.qvel, frame).sum().backward()
+    assert bool(torch.isfinite(qpos.grad).all())
+    # Tilting the trunk joints raises the trunk error and the termination probability.
+    bent = q.clone()
+    bent[:, int(model.jnt_qposadr[model.joint("flex_extension").id])] += 1.0
+    assert float(heads.posture_errors(bent, frame)[1].min()) > 0.3
+    assert float(heads.termination_prob(bent, frame).min()) > float(
+        heads.termination_prob(q, frame).max()
+    )

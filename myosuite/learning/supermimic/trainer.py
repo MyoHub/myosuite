@@ -75,6 +75,18 @@ class SuperMimicCfg:
         True  # TF32 matmuls (process-wide torch setting) for the world model and actor
     )
     init_actor: str = ""
+    # DynSyn groups file (scripts/dynsyn_groups.py): the actor outputs one action per group.
+    action_groups: str = ""
+    # Posture shaping inside imagination only (the env's reward and termination stay the metric):
+    imag_site_err_threshold: float = (
+        1.0  # mean site error (m) that terminates an imagined rollout
+    )
+    imag_trunk_err_threshold_deg: float = (
+        0.0  # trunk orientation error that terminates (0: off)
+    )
+    posture_weight: float = (
+        0.0  # weight of exp(-angle / 0.2 rad) for pelvis and trunk orientation
+    )
     init_world_model: str = ""
     resume: str = ""
     seed: int = 0
@@ -103,7 +115,12 @@ class SuperMimicTrainer:
         self.env = make_mimic_env(cfg.clip, cfg.num_envs, dev, seed=cfg.seed)
         self.env.reset()
         self.io = MimicEnvIO(self.env)
-        self.heads = MimicHeads.from_env(self.env, "mimic_fullbody_robot")
+        self.heads = MimicHeads.from_env(
+            self.env,
+            "mimic_fullbody_robot",
+            site_err_threshold=cfg.imag_site_err_threshold,
+            trunk_err_threshold=math.radians(cfg.imag_trunk_err_threshold_deg),
+        )
         model = _musclemimic_cpu_model("fullbody")
         axis = forward_axis_from_quat(self.heads.clip.qpos[0, 3:7].cpu())
         self.spec = StateSpec(
@@ -113,8 +130,23 @@ class SuperMimicTrainer:
             model, self.spec, self.env.cfg.decimation, self.env.physics_dt, cfg.wm
         ).to(dev)
         obs_dim = self.env.obs_buf["actor"].shape[-1]
-        self.actor = Actor(obs_dim, model.nu, cfg.actor_hidden).to(dev)
-        self.critic = Critic(obs_dim, 1.0 / (1.0 - cfg.gamma)).to(dev)
+        groups = None
+        if cfg.action_groups:
+            from myosuite.core.dynsyn import DynSynGroups
+
+            g = DynSynGroups.load(cfg.action_groups)
+            term = self.env.action_manager.get_term("muscles")
+            names = [n.split("/")[-1] for n in term.cfg.actuator_names]
+            if list(g.muscle_names) != names:
+                raise ValueError(
+                    f"{cfg.action_groups} was made for other muscles than this env's action term"
+                )
+            groups = g.groups
+        self.actor = Actor(obs_dim, model.nu, cfg.actor_hidden, groups).to(dev)
+        # Rewards are in [0, 1 + posture_weight], so no return exceeds this bound.
+        self.critic = Critic(
+            obs_dim, (1.0 + cfg.posture_weight) / (1.0 - cfg.gamma)
+        ).to(dev)
         if cfg.init_actor:
             self.actor = Actor.from_rsl_rl(cfg.init_actor, dev)
         if cfg.init_world_model:
@@ -199,6 +231,10 @@ class SuperMimicTrainer:
         qpos, qvel, act = self.spec.split(s)
         sites = h.kin.site_pos(qpos)
         r = h.reward(qpos, qvel, f, sites)
+        if self.cfg.posture_weight > 0:
+            pelvis, trunk = h.posture_errors(qpos, f)
+            posture = 0.5 * (torch.exp(-pelvis / 0.2) + torch.exp(-trunk / 0.2))
+            r = r + self.cfg.posture_weight * posture
         d = h.termination_prob(qpos, f, sites)
         return s, f, r, d, sat, h.observation(qpos, qvel, act, f, sites)
 
@@ -347,6 +383,7 @@ class SuperMimicTrainer:
         torch.save(
             {
                 "actor_state_dict": self.actor.rsl_rl_state_dict(),
+                "actor_native": self.actor.state_dict(),  # per-group weights of a grouped actor
                 "critic": self.critic.state_dict(),
                 "wm": self.wm.state_dict(),
                 "opt_wm": self.opt_wm.state_dict(),
@@ -364,12 +401,15 @@ class SuperMimicTrainer:
     def load(self, path: str) -> None:
         """Resume from :meth:`save` output (the replay buffer refills during warm-up)."""
         ck = torch.load(path, map_location=self.cfg.device, weights_only=False)
-        self.actor.load_state_dict(
-            {
-                ("distribution_std" if k == "distribution.std_param" else k): v
-                for k, v in ck["actor_state_dict"].items()
-            }
-        )
+        if "actor_native" in ck:
+            self.actor.load_state_dict(ck["actor_native"])
+        else:
+            self.actor.load_state_dict(
+                {
+                    ("distribution_std" if k == "distribution.std_param" else k): v
+                    for k, v in ck["actor_state_dict"].items()
+                }
+            )
         self.critic.load_state_dict(ck["critic"])
         self.wm.load_state_dict(ck["wm"])
         self.opt_wm.load_state_dict(ck["opt_wm"])

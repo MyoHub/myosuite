@@ -61,6 +61,10 @@ class MimicHeads(torch.nn.Module):
         root_err_threshold: Termination threshold of the root error (m).
         soft_termination_width: Width (m) of the sigmoid around each threshold
             that :meth:`termination_prob` uses.
+        trunk_body: Body whose orientation :meth:`posture_errors` compares (must be
+            computed by ``kinematics``); ``-1`` disables the trunk terms.
+        trunk_err_threshold: Trunk orientation error (rad) at which
+            :meth:`termination_prob` terminates; ``0`` disables it (the env has no such rule).
     """
 
     def __init__(
@@ -73,6 +77,8 @@ class MimicHeads(torch.nn.Module):
         site_err_threshold: float = 1.0,
         root_err_threshold: float = 0.3,
         soft_termination_width: float = 0.02,
+        trunk_body: int = -1,
+        trunk_err_threshold: float = 0.0,
     ) -> None:
         super().__init__()
         self.kin = kinematics
@@ -83,6 +89,8 @@ class MimicHeads(torch.nn.Module):
         self.site_thr = site_err_threshold
         self.root_thr = root_err_threshold
         self.soft_w = soft_termination_width
+        self.trunk = trunk_body
+        self.trunk_thr = trunk_err_threshold
         self._last = max(clip.n_frames - 1, 1)
 
     def frame_index(self, frame: torch.Tensor) -> torch.Tensor:
@@ -146,21 +154,42 @@ class MimicHeads(torch.nn.Module):
         f = self.frame_index(frame)
         sites = self.kin.site_pos(qpos) if sites is None else sites
         ref_q, ref_v = c.qpos[f], c.qvel[f]
+        # The site and root-position terms take a plain sqrt of the distance, whose gradient
+        # is NaN at zero error: pass the reference for them here and add smoothed versions below.
         out = mimic_composite_reward(
             torch,
-            sites,
+            c.sites[f],
             c.sites[f],
             qpos.index_select(-1, c.qpos_cols),
             ref_q.index_select(-1, c.qpos_cols),
             qvel.index_select(-1, c.qvel_cols),
             ref_v.index_select(-1, c.qvel_cols),
-            qpos[..., :3] if c.root_pos else None,
-            ref_q[..., :3] if c.root_pos else None,
+            None,
+            None,
             qvel[..., :3] if c.root_vel else None,
             ref_v[..., :3] if c.root_vel else None,
             None,
             None,
         )
+        # Same values as mimic_site_tracking_reward / mimic_root_pos_reward up to a 0.1 mm
+        # smoothing of the distances.
+        d = sites - c.sites[f]
+        site = torch.exp(
+            -DEFAULT_SCALES.site * torch.sqrt((d * d).sum(-1) + 1e-8).mean(-1)
+        )
+        out["dense"] = out["dense"] + DEFAULT_WEIGHTS.site * (site - out["site"])
+        out["site"] = site
+        for key in (
+            "mean_site_dist",
+            "solved",
+        ):  # computed on the reference above: meaningless here
+            out.pop(key, None)
+        if c.root_pos:
+            r = qpos[..., :3] - ref_q[..., :3]
+            out["root_pos"] = torch.exp(
+                -DEFAULT_SCALES.root_pos * torch.sqrt((r * r).sum(-1) + 1e-8)
+            )
+            out["dense"] = out["dense"] + DEFAULT_WEIGHTS.root_pos * out["root_pos"]
         if c.root_quat:
             # Same value as mimic_root_orient_reward (2 acos|dot|), but finite gradient at 0.
             angle = rotvec_from_quat(
@@ -200,6 +229,24 @@ class MimicHeads(torch.nn.Module):
         )
         return dead & ~self.clip_end(frame)
 
+    def posture_errors(
+        self, qpos: torch.Tensor, frame: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Pelvis (root) and trunk orientation errors against the clip, in rad."""
+        f = self.frame_index(frame)
+        ref = self.clip.qpos[f]
+        pelvis = rotvec_from_quat(
+            mul_quat(neg_quat(ref[..., 3:7]), qpos[..., 3:7])
+        ).norm(dim=-1)
+        if self.trunk < 0:
+            return pelvis, torch.zeros_like(pelvis)
+        _, qa = self.kin.body_poses(qpos)
+        _, qr = self.kin.body_poses(ref)
+        trunk = rotvec_from_quat(
+            mul_quat(neg_quat(qr[..., self.trunk, :]), qa[..., self.trunk, :])
+        ).norm(dim=-1)
+        return pelvis, trunk
+
     def termination_prob(
         self, qpos: torch.Tensor, frame: torch.Tensor, sites: torch.Tensor | None = None
     ) -> torch.Tensor:
@@ -215,6 +262,11 @@ class MimicHeads(torch.nn.Module):
             root_err = torch.sqrt((r * r).sum(-1) + 1e-12)
             alive = alive * (
                 1 - torch.sigmoid((root_err - self.root_thr) / self.soft_w)
+            )
+        if self.trunk_thr > 0 and self.trunk >= 0:
+            _, trunk = self.posture_errors(qpos, frame)
+            alive = alive * (
+                1 - torch.sigmoid((trunk - self.trunk_thr) / (5 * self.soft_w))
             )
         return (1 - alive) * (~self.clip_end(frame)).float()
 
@@ -255,8 +307,12 @@ class MimicHeads(torch.nn.Module):
             root_quat=has(qcols, (3, 7)),
             root_vel=has(vcols, (0, 3)),
         )
+        model = _musclemimic_cpu_model(variant)
+        trunk = int(model.body("torso").id) if variant == "fullbody" else -1
+        extra = (trunk,) if trunk >= 0 else ()
         kin = TorchKinematics(
-            _musclemimic_cpu_model(variant), cache["site_ids"], prune=True
+            model, cache["site_ids"], prune=True, extra_bodies=extra
         ).to(dev)
         ctrl_dt = env.physics_dt * env.cfg.decimation
+        kwargs.setdefault("trunk_body", trunk)
         return cls(kin, mclip, ctrl_dt, **kwargs)

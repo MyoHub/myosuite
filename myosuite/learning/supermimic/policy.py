@@ -55,23 +55,38 @@ def mlp(dims: list[int], act: type[nn.Module] = nn.ELU) -> nn.Sequential:
 class Actor(nn.Module):
     """Normalised-observation MLP producing raw env actions.
 
+    With ``groups`` (DynSyn muscle groups, groups only) the network outputs one action
+    per group and every muscle takes its group's action
+    (:func:`myosuite.core.dynsyn.expand_actions`).
+
     Args:
         obs_dim: Observation width.
-        act_dim: Action width.
+        act_dim: Action width (muscles).
         hidden: Hidden layer widths.
+        groups: Optional muscle groups (indices into the ``act_dim`` muscles).
     """
 
     def __init__(
-        self, obs_dim: int, act_dim: int, hidden: tuple[int, ...] = (256, 256, 128)
+        self,
+        obs_dim: int,
+        act_dim: int,
+        hidden: tuple[int, ...] = (256, 256, 128),
+        groups: list[list[int]] | None = None,
     ) -> None:
         super().__init__()
+        self.groups = groups
         self.obs_normalizer = Normalizer(obs_dim)
-        self.mlp = mlp([obs_dim, *hidden, act_dim])
+        self.mlp = mlp([obs_dim, *hidden, len(groups) if groups else act_dim])
         # rsl_rl stores a Gaussian std next to the mean network; kept for checkpoint compatibility.
         self.distribution_std = nn.Parameter(torch.ones(act_dim), requires_grad=False)
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        return self.mlp(self.obs_normalizer(obs))
+        out = self.mlp(self.obs_normalizer(obs))
+        if self.groups:
+            from myosuite.core.dynsyn import expand_actions
+
+            out = expand_actions(out, self.groups, 0.0, torch)
+        return out
 
     @classmethod
     def from_rsl_rl(cls, path: str | Path, device: str | torch.device = "cpu") -> Actor:
@@ -92,10 +107,32 @@ class Actor(nn.Module):
         return actor
 
     def rsl_rl_state_dict(self) -> dict[str, torch.Tensor]:
-        """State dict in rsl_rl ``MLPModel`` key layout (for the existing playback tools)."""
+        """State dict in rsl_rl ``MLPModel`` key layout (for the existing playback tools).
+
+        A grouped actor is saved with the group expansion folded into its last layer,
+        i.e. as an ordinary per-muscle actor.
+        """
+        sd = dict(self.state_dict())
+        if self.groups:
+            from myosuite.core.dynsyn import expand_actions
+
+            n = len(self.groups)
+            # Column m of the expansion of the identity is the one-hot group of muscle m.
+            group_of = expand_actions(torch.eye(n), self.groups, 0.0, torch).argmax(0)
+            last = max(
+                int(k.split(".")[1])
+                for k in sd
+                if k.startswith("mlp.") and k.endswith(".weight")
+            )
+            sd[f"mlp.{last}.weight"] = sd[f"mlp.{last}.weight"][
+                group_of.to(sd[f"mlp.{last}.weight"].device)
+            ]
+            sd[f"mlp.{last}.bias"] = sd[f"mlp.{last}.bias"][
+                group_of.to(sd[f"mlp.{last}.bias"].device)
+            ]
         return {
             ("distribution.std_param" if k == "distribution_std" else k): v
-            for k, v in self.state_dict().items()
+            for k, v in sd.items()
         }
 
 
