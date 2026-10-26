@@ -4,6 +4,9 @@
 # LICENSE file in the root directory of this source tree.
 """SuperMimic training loop (paper Algorithm A.1) on an mjlab Mimic env.
 
+Adapted from SuperMimic-Reproduced (MIT, Copyright (c) 2026 Yuxi Liu); see
+``LICENSE-SuperMimic-Reproduced.txt`` in this package.
+
 Each iteration steps the simulator once with the current policy plus control
 noise and stores the transition. Every ``1 / utd`` iterations the world model is
 fitted on k-step windows, then the actor is improved by backpropagation through

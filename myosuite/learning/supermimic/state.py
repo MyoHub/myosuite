@@ -4,6 +4,9 @@
 # LICENSE file in the root directory of this source tree.
 """World-model state layout for free-root muscle models.
 
+Adapted from SuperMimic-Reproduced (MIT, Copyright (c) 2026 Yuxi Liu); see
+``LICENSE-SuperMimic-Reproduced.txt`` in this package.
+
 State ``s = [qpos (nq) | qvel (nv) | act (na)]`` in MuJoCo layout, root first
 (free joint: ``qvel[3:6]`` is the body-frame angular velocity).
 

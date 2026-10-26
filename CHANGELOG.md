@@ -36,6 +36,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **SuperMimic for MuscleMimic (experimental, `myosuite.learning.supermimic`).** A differentiable world model plus a BPTT actor-critic (after Liao et al., arXiv:2610.28480, and its MIT-licensed reproduction) for `myoMimicFullbody-v0` on mjlab. Muscle activation dynamics, forward kinematics, joint couplings and the task's observation, reward and termination are analytic and differentiable; only the mechanics are learned. On one walking clip it reaches 3.50 reward per step after 51M simulator steps; PPO reached 3.0 after about 1B steps and 3.84 after 1.97B. Scripts in `scripts/supermimic/`. Single clip, free-root full body only for now. No registered env changes.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
 
 ### Changed

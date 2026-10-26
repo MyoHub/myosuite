@@ -9,4 +9,7 @@ reproduction (github.com/CuboiLeo/SuperMimic-Reproduced, Copyright (c) 2026 Yuxi
 to the MuscleMimic tasks on the mjlab backend. The world model integrates muscle
 activation dynamics analytically and learns only the mechanics; observations,
 rewards and terminations are analytic heads shared with the env's term functions.
+
+The adapted parts keep the reproduction's MIT notice: see
+``LICENSE-SuperMimic-Reproduced.txt`` in this package.
 """
