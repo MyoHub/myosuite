@@ -40,6 +40,13 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+* **Fatigue groups for every muscle of the bundled models.** `_muscle_group` now also strips MuscleMimic's
+  `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent scenes and an `R:`/`L:` side prefix, and the 108
+  lumbar and abdominal muscles of MyoTorso and the MuscleMimic torso map to a new `Trunk` group with the trunk fit of
+  Frey-Law et al. (2012), F = 0.00755, R = 0.00075, r = 15. Before, the MuscleMimic left arm (32 muscles, 63 with
+  fingers), all 708 muscles of `myoChallengeChaseTagFBVs-v0` and all torso muscles fell back to `Default`, so the two
+  arms fatigued differently. Changes the fatigue dynamics of the `myoFati*` torso, table-tennis, soccer and full-body
+  ChaseTag variants (`docs/baseline_checkpoints.md`).
 * `myoLegDirectionalForward-v0` and `myoLegDirectionalBackward-v0` swapped names. The leg model faces `-y`, so the
   old "forward" task (`heading_dir=(0, 1)`, 1.2 m/s) trained walking backwards and the old "backward" task
   (`heading_dir=(0, -1)`, 1.0 m/s) walking forwards. Forward is now `(0, -1)` at 1.0 m/s and Backward `(0, 1)` at

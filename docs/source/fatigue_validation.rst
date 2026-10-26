@@ -78,8 +78,11 @@ muscle groups (``myosuite/core/muscle_groups.py``) to ``F``, ``R`` and ``r``:
 * ``Shoulder``: the shoulder fit of Frey-Law et al. (2012, Table 1),
   F = 0.01820, R = 0.00168, with r = 15, which Looft & Frey-Law (2020) found
   somewhat better than r = 30 for intermittent shoulder flexion.
-* Muscles without a group, namely hip and hamstring muscles of the leg models
-  and every torso muscle, use ``Default``.
+* ``Trunk`` (the lumbar and abdominal muscles of MyoTorso and the MuscleMimic torso):
+  the trunk fit of Frey-Law et al. (2012, Table 1), F = 0.00755, R = 0.00075, with
+  r = 15 as for ``Default`` (no trunk ``r`` has been fitted).
+* Hip and hamstring muscles of the leg models have groups without a row of their own
+  (``Hip-*``, ``Thigh-Hamstring``) and use ``Default``.
 
 Method
 ------
@@ -461,18 +464,18 @@ Results
      - 24.1 (-16%)
      - 13.9 (-38%)
      - 6.2 (-66%)
-   * - ``Default`` (torso muscles)
-     - 0.00970 / 0.00091
+   * - ``Trunk``
+     - 0.00755 / 0.00075
      - Trunk
-     - 2045 (-52%)
-     - 517 (-41%)
-     - 272 (-22%)
-     - 167 (-8%)
-     - 108 (-1%)
-     - 71.0 (-2%)
-     - 45.1 (-11%)
-     - 26.1 (-31%)
-     - 11.5 (-60%)
+     - 2995 (-29%)
+     - 675 (-23%)
+     - 352 (+1%)
+     - 215 (+18%)
+     - 140 (+28%)
+     - 91.4 (+26%)
+     - 58.1 (+14%)
+     - 33.6 (-11%)
+     - 14.8 (-49%)
 
 .. list-table:: MyoSuite muscle-group and sex-specific rows (Rakshit et al. 2021) against the joint curve
    :header-rows: 1
@@ -770,10 +773,10 @@ Findings
 * **Hand, Wrist, Finger and Wrist-Flexor** are within 16% of the grip curve at
   20-50% MVC and fall 57% short at 80% MVC, where the published grip fit falls
   46% short.
-* **Torso muscles** use ``Default``. Against the trunk curve it is within the
-  band but 41% short at 20% MVC. The Frey-Law et al. (2012) trunk fit would
-  hold longer. Hip and hamstring muscles also use ``Default``. Frey-Law &
-  Avin (2010) have no hip curve, and this is what the general fit is for.
+* **Torso muscles** use the ``Trunk`` row, the Frey-Law et al. (2012) trunk
+  fit: within 29% of the trunk curve at 10-80% MVC (``Default`` was 41% short
+  at 20% MVC). Hip and hamstring muscles use ``Default``. Frey-Law & Avin
+  (2010) have no hip curve, and this is what the general fit is for.
 * The muscle-group and sex-specific rows have no matching empirical curves, so
   they are compared with their joint curve for information only. Single
   muscles deviate most: the adductor pollicis rows hold 2.0-3.5 times longer

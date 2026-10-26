@@ -120,6 +120,16 @@ models collected before the MuscleMimic bridge fix (#459) must be recollected.
 
 <sub>
 
+**Fatigue parameters of torso, MuscleMimic and two-agent muscles.** The `myoFati*` variants of the torso,
+table-tennis, soccer and full-body ChaseTag envs now fatigue their lumbar and abdominal muscles with the `Trunk` row
+(they used `Default`), and the left arm of the MuscleMimic models and every muscle of two-agent scenes now get their
+muscle group's row. The checkpoints above (base envs) are unchanged; fatigue results of these variants from earlier
+builds are not comparable.
+
+</sub>
+
+<sub>
+
 **MuscleMimic full body (single clip).** `checkpoints/myoMimicFullbody-v0-walking_medium06/model_81380.pt` on the
 Hugging Face repo imitates the clip `KIT/167/walking_medium06` (AMASS / KIT motion capture retargeted with GMR; cite AMASS, KIT and MuscleMimic, see the *References* page; 2.0B steps, 1024 envs, about 30 h on one GPU). It
 is scored by clip completion instead of success: 86% of 576 mean-action episodes from random start frames play to

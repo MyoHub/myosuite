@@ -13,6 +13,7 @@ as transform callbacks and by term functions via EnvAccessor.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -23,8 +24,10 @@ if TYPE_CHECKING:
 
 # ---------------------------------------------------------------------------
 # Per-muscle fatigue parameters, F and R in 1/s. Muscle-group, sex-specific and
-# joint rows: Rakshit et al. 2021 (J Biomech 127:110695, Table 2). Validated
-# against endurance times in docs/source/fatigue_validation.rst.
+# joint rows: Rakshit et al. 2021 (J Biomech 127:110695, Table 2); Default,
+# Shoulder and Trunk: Frey-Law et al. 2012 (J Biomech 45:1803, Table 1). Rows
+# without "r" use Default's r = 15. Validated against endurance times in
+# docs/source/fatigue_validation.rst.
 # ---------------------------------------------------------------------------
 
 MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
@@ -86,6 +89,9 @@ MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
     # F, R: shoulder fit of Frey-Law et al. 2012 (Table 1); r = 15: Looft & Frey-Law
     # 2020 (https://doi.org/10.1016/j.jbiomech.2020.109762), better than r = 30.
     "Shoulder": {"F": 0.01820, "R": 0.00168, "r": 15},
+    # lumbar and abdominal muscles: trunk F, R of Frey-Law et al. 2012 (Table 1); r = 15
+    # as for Default (Looft et al. 2018 and Looft & Frey-Law 2020 fit no trunk r)
+    "Trunk": {"F": 0.00755, "R": 0.00075, "r": 15},
     # default: "general" F, R of Frey-Law et al. 2012 (Table 1), r of Looft et al. 2018
     "Default": {"F": 0.00970, "R": 0.00091, "r": 15},
     # v2.4 fallback: elbow F, R of Frey-Law et al. 2012 with R / 10 (r * 10 keeps r * R)
@@ -120,14 +126,16 @@ def _muscle_time_constants(mj_model: Any) -> tuple[np.ndarray, np.ndarray]:
 def _muscle_group(name: str) -> str:
     """Return the functional muscle group of actuator *name*, or ``"Default"``.
 
-    Scene models prefix actuator names (mjlab: ``robot/BIClong``) and some
-    models suffix the side (``ECRL_r``, ``BIClong_l``), while ``MUSCLE_FMG``
-    keys arm and hand muscles without it. Leg muscles are keyed with their
-    side, so the exact name is tried first.
+    Scene models prefix actuator names (mjlab: ``robot/BIClong``), two-agent scenes
+    prefix the agent (``a0_BIClong``), and models mark the side in several ways
+    (``ECRL_r``, ``rect_abd_l``, MuscleMimic's ``BIClong_left``, ``R:ECRL``), while
+    ``MUSCLE_FMG`` keys arm, hand and torso muscles without it. Leg muscles are keyed
+    with their side, so the exact name is tried first.
     """
     from myosuite.core.muscle_groups import MUSCLE_FMG  # noqa: PLC0415
 
-    base = name.rsplit("/", 1)[-1]
+    base = re.sub(r"^a\d+_", "", name.rsplit("/", 1)[-1])
+    base = base.removeprefix("R:").removeprefix("L:").removesuffix("_left")
     for key in (base, base.removesuffix("_r"), base.removesuffix("_l")):
         if key in MUSCLE_FMG:
             return MUSCLE_FMG[key]
