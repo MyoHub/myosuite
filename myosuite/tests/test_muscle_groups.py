@@ -35,6 +35,8 @@ _MUSCLEMIMIC = importlib.util.find_spec("musclemimic_models") is not None
         ("QL_post_I.2-L3_l", "Trunk"),
         ("Ps_L5_VB_r", "Trunk"),  # spinal psoas fascicle
         ("psoas_r", "Hip-Flexor"),  # leg psoas
+        ("PT", "Elbow-Pronator"),
+        ("APL", "Wrist-Extensor"),
         ("unknown_muscle", "Default"),
     ],
 )
@@ -43,14 +45,10 @@ def test_muscle_group_name_rules(name: str, group: str) -> None:
 
 
 def test_groups_are_declared_and_resolve_to_a_row() -> None:
-    """Every assigned group is declared and has a row of its own or of its parent joint.
-
-    ``Hip-*`` and ``Thigh-Hamstring`` have no row (documented Default fallback).
-    """
+    """Every assigned group is declared and has a row of its own or of its parent joint."""
     assert set(MUSCLE_FMG.values()) <= FUNCTIONAL_MUSCLE_GROUPS
     rowless = {g for g in set(MUSCLE_FMG.values()) if g not in MUSCLE_FATIGUE_PARAMS}
-    unresolved = {g for g in rowless if g.split("-")[0] not in MUSCLE_FATIGUE_PARAMS}
-    assert {g.split("-")[0] for g in unresolved} == {"Hip", "Thigh"}
+    assert {g for g in rowless if g.split("-")[0] not in MUSCLE_FATIGUE_PARAMS} == set()
 
 
 _MODELS = [

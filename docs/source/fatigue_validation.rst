@@ -81,8 +81,15 @@ muscle groups (``myosuite/core/muscle_groups.py``) to ``F``, ``R`` and ``r``:
 * ``Trunk`` (the lumbar and abdominal muscles of MyoTorso and the MuscleMimic torso):
   the trunk fit of Frey-Law et al. (2012, Table 1), F = 0.00755, R = 0.00075, with
   r = 15 as for ``Default`` (no trunk ``r`` has been fitted).
-* Hip and hamstring muscles of the leg models have groups without a row of their own
-  (``Hip-*``, ``Thigh-Hamstring``) and use ``Default``.
+* ``Thigh-Hamstring``: no knee-flexor fit has been published. The row is the knee fit
+  of Frey-Law et al. (2012, Table 1), F = 0.01500, R = 0.00149, with r = 15 (Looft et
+  al. 2018, Table 4), the joint-level knee parameters Yang et al. (2025) use for the
+  knee flexors and extensors.
+* ``Hip`` (every ``Hip-*`` group): no hip-specific fit has been published, and Yang
+  et al. (2025) use the general fit for the hip; the row repeats ``Default``.
+* Forearm rotators (``SUP``, ``PT``, ``PQ``: groups ``Elbow-Supinator`` and
+  ``Elbow-Pronator``) use the joint-level ``Elbow`` row; no pronation or supination
+  fit has been published.
 
 Method
 ------
@@ -452,6 +459,18 @@ Results
      - 30.4 (-58%)
      - 17.4 (-68%)
      - 7.6 (-82%)
+   * - ``Thigh-Hamstring``
+     - 0.01500 / 0.00149
+     - Knee
+     - 1508 (+3%)
+     - 340 (-15%)
+     - 177 (-5%)
+     - 108 (-0%)
+     - 70.3 (-1%)
+     - 46.0 (-9%)
+     - 29.2 (-23%)
+     - 16.9 (-43%)
+     - 7.5 (-68%)
    * - ``Shoulder``
      - 0.01820 / 0.00168
      - Shoulder
@@ -775,8 +794,9 @@ Findings
   46% short.
 * **Torso muscles** use the ``Trunk`` row, the Frey-Law et al. (2012) trunk
   fit: within 29% of the trunk curve at 10-80% MVC (``Default`` was 41% short
-  at 20% MVC). Hip and hamstring muscles use ``Default``. Frey-Law & Avin
-  (2010) have no hip curve, and this is what the general fit is for.
+  at 20% MVC). Hamstrings use the Frey-Law et al. (2012) knee fit, within 23%
+  of the knee curve at 10-70% MVC (43% short at 80%, as the published fit). Hip muscles use the general fit: Frey-Law &
+  Avin (2010) have no hip curve, and this is what the general fit is for.
 * The muscle-group and sex-specific rows have no matching empirical curves, so
   they are compared with their joint curve for information only. Single
   muscles deviate most: the adductor pollicis rows hold 2.0-3.5 times longer
@@ -813,3 +833,6 @@ References
   sex-specific parameters for a three-compartment controller muscle fatigue
   model applied to isometric contractions. *J Biomech* 127, 110695.
   https://doi.org/10.1016/j.jbiomech.2021.110695
+* Yang, J., Rakshit, R., Barman, S., Xiang, Y. (2025). A four-compartment
+  controller model of muscle fatigue for static and dynamic tasks. *Front Physiol*
+  16, 1518847. https://doi.org/10.3389/fphys.2025.1518847

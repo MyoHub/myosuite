@@ -25,7 +25,8 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Per-muscle fatigue parameters, F and R in 1/s. Muscle-group, sex-specific and
 # joint rows: Rakshit et al. 2021 (J Biomech 127:110695, Table 2); Default,
-# Shoulder and Trunk: Frey-Law et al. 2012 (J Biomech 45:1803, Table 1). Rows
+# Shoulder, Trunk, Thigh-Hamstring and Hip: Frey-Law et al. 2012 (J Biomech
+# 45:1803, Table 1) with r of Looft et al. 2018 (J Biomech 77:16, Table 4). Rows
 # without "r" use Default's r = 15. Validated against endurance times in
 # docs/source/fatigue_validation.rst.
 # ---------------------------------------------------------------------------
@@ -89,6 +90,13 @@ MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
     # F, R: shoulder fit of Frey-Law et al. 2012 (Table 1); r = 15: Looft & Frey-Law
     # 2020 (https://doi.org/10.1016/j.jbiomech.2020.109762), better than r = 30.
     "Shoulder": {"F": 0.01820, "R": 0.00168, "r": 15},
+    # hamstrings: no knee-flexor fit is published; the knee fit of Frey-Law et al. 2012
+    # (Table 1) with r = 15 of Looft et al. 2018 (Table 4), the joint-level knee parameters
+    # Yang et al. 2025 (Front Physiol 16:1518847) use for the knee flexors and extensors
+    "Thigh-Hamstring": {"F": 0.01500, "R": 0.00149, "r": 15},
+    # hip muscles: no hip-specific fit is published (Yang et al. 2025 use the general fit);
+    # the "general" F, R of Frey-Law et al. 2012 (Table 1), r of Looft et al. 2018
+    "Hip": {"F": 0.00970, "R": 0.00091, "r": 15},
     # lumbar and abdominal muscles: trunk F, R of Frey-Law et al. 2012 (Table 1); r = 15
     # as for Default (Looft et al. 2018 and Looft & Frey-Law 2020 fit no trunk r)
     "Trunk": {"F": 0.00755, "R": 0.00075, "r": 15},

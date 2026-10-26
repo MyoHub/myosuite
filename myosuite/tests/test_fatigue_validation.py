@@ -73,6 +73,8 @@ JOINT_ROWS = {
     "Toe": "Ankle",
     "Shoulder": "Shoulder",
     "Trunk": "Trunk",
+    "Thigh-Hamstring": "Knee",
+    "Hip": "General",  # Frey-Law & Avin (2010) have no hip curve
 }
 
 DT = 0.02  # control step of the myoFati* envs; ET is 1e2-1e3 s

@@ -6,6 +6,10 @@ FUNCTIONAL_MUSCLE_GROUPS = {
     "Elbow-Flexor",
     "Shoulder-Adductor",
     "Shoulder-Abductor",
+    "Shoulder-External-Rotator",  # rotator cuff; resolves to the Shoulder row
+    "Shoulder-Internal-Rotator",
+    "Elbow-Pronator",  # forearm rotators (radioulnar joints); resolve to the Elbow row
+    "Elbow-Supinator",
     "Ankle-Dorsiflexor",
     "Ankle-Plantarflexor",
     "Hand-Adductor-Pollicis",
@@ -34,9 +38,9 @@ MUSCLE_FMG = {
     "DELT2": "Shoulder-Abductor",
     "DELT3": "Shoulder-Abductor",
     "SUPSP": "Shoulder-Abductor",
-    "INFSP": "Shoulder-Abductor",
-    "SUBSC": "Shoulder-Abductor",
-    "TMIN": "Shoulder-Adductor",
+    "INFSP": "Shoulder-External-Rotator",
+    "SUBSC": "Shoulder-Internal-Rotator",
+    "TMIN": "Shoulder-External-Rotator",
     "TMAJ": "Shoulder-Adductor",
     "PECM1": "Shoulder-Adductor",
     "PECM2": "Shoulder-Adductor",
@@ -49,7 +53,7 @@ MUSCLE_FMG = {
     "TRIlat": "Elbow-Extensor",
     "TRImed": "Elbow-Extensor",
     "ANC": "Elbow-Extensor",
-    "SUP": "Elbow-Extensor",
+    "SUP": "Elbow-Supinator",  # acts on pro_sup only, no elbow flexion moment
     "BIClong": "Elbow-Flexor",
     "BICshort": "Elbow-Flexor",
     "BRA": "Elbow-Flexor",
@@ -60,8 +64,8 @@ MUSCLE_FMG = {
     "FCR": "Wrist-Flexor",
     "FCU": "Wrist-Flexor",
     "PL": "Wrist-Flexor",
-    "PT": "Elbow-Flexor",
-    "PQ": "Wrist-Flexor",  # FMG chosen based on proximity to FDP and FPL
+    "PT": "Elbow-Pronator",  # mainly pronation (moment arm 6x its elbow flexion one)
+    "PQ": "Elbow-Pronator",  # acts on pro_sup only
     "FDS5": "Wrist-Flexor",
     "FDS4": "Wrist-Flexor",
     "FDS3": "Wrist-Flexor",
@@ -79,7 +83,7 @@ MUSCLE_FMG = {
     "EPL": "Wrist-Extensor",
     "EPB": "Wrist-Extensor",
     "FPL": "Wrist-Flexor",
-    "APL": "Wrist-Flexor",
+    "APL": "Wrist-Extensor",  # deep extensor compartment, with EPL and EPB
     "OP": "Hand-Thenar",
     "RI2": "Hand-First-Dorsal-Interossei",  # "Hand-Interossei"
     "LU_RB2": "Hand-Lumbricals",

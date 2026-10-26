@@ -120,10 +120,10 @@ models collected before the MuscleMimic bridge fix (#459) must be recollected.
 
 <sub>
 
-**Fatigue parameters of torso, MuscleMimic and two-agent muscles.** The `myoFati*` variants of the torso,
-table-tennis, soccer and full-body ChaseTag envs now fatigue their lumbar and abdominal muscles with the `Trunk` row
-(they used `Default`), and the left arm of the MuscleMimic models and every muscle of two-agent scenes now get their
-muscle group's row. The checkpoints above (base envs) are unchanged; fatigue results of these variants from earlier
+**Fatigue parameters of torso, hamstring, forearm and two-agent muscles.** In the `myoFati*` variants, lumbar and
+abdominal muscles use the new `Trunk` row and hamstrings the `Thigh-Hamstring` row (both used `Default`), the forearm
+rotators `SUP`/`PT`/`PQ` the `Elbow` row and `APL` the wrist-extensor row, and the left arm of the MuscleMimic models
+and every muscle of two-agent scenes get their muscle group's row. The checkpoints above (base envs) are unchanged; fatigue results of these variants from earlier
 builds are not comparable.
 
 </sub>
