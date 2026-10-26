@@ -21,6 +21,7 @@ import torch
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import _musclemimic_cpu_model
 from myosuite.learning.supermimic.env_io import Rollout, make_mimic_env
 from myosuite.learning.supermimic.heads import MimicHeads
+from myosuite.learning.supermimic.metrics import gradient_agreement
 from myosuite.learning.supermimic.policy import Actor
 from myosuite.learning.supermimic.state import StateSpec, forward_axis_from_quat
 from myosuite.learning.supermimic.world_model import (
@@ -141,6 +142,18 @@ def main() -> None:
     p.add_argument("--eval-every", type=int, default=1000)
     p.add_argument("--horizon", type=int, default=32)
     p.add_argument("--device", default="cuda:0")
+    p.add_argument(
+        "--init",
+        type=Path,
+        help="start from this world_model.pt (with --steps 0: evaluate only)",
+    )
+    p.add_argument(
+        "--grad-check-starts",
+        type=int,
+        default=16,
+        help="starts of the final gradient check (0: skip)",
+    )
+    p.add_argument("--tf32", action=argparse.BooleanOptionalAction, default=True)
     a = p.parse_args()
     dev = a.device
     torch.manual_seed(0)
@@ -167,6 +180,8 @@ def main() -> None:
         project_couplings=not a.no_couplings,
     )
     wm = WorldModel(model, spec, env.cfg.decimation, env.physics_dt, cfg).to(dev)
+    if a.init:
+        wm.load_state_dict(torch.load(a.init, map_location=dev)["wm"])
     actor = Actor.from_rsl_rl(a.checkpoint, dev)
     train_s = WindowSampler(tr.state, tr.ctrl, tr.done, a.window)
     eval_s = WindowSampler(ev.state, ev.ctrl, ev.done, a.window)
@@ -175,7 +190,7 @@ def main() -> None:
         flush=True,
     )
     opt = torch.optim.Adam(wm.parameters(), lr=a.lr)
-    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cuda.matmul.allow_tf32 = a.tf32
     log = []
     t0 = time.time()
     rec = {"step": 0, **open_loop_eval(wm, eval_s)}
@@ -207,6 +222,19 @@ def main() -> None:
                 a.out / "world_model.pt",
             )
             (a.out / "log.json").write_text(json.dumps(log, indent=1))
+
+    if a.grad_check_starts > 0:
+        # World-model action gradients vs MuJoCo finite differences on held-out windows.
+        g = torch.Generator(device=eval_s.starts.device).manual_seed(1)
+        s0, u, _ = eval_s.sample(a.grad_check_starts, g)
+        model.opt.timestep = env.physics_dt
+        rec = {
+            "step": a.steps,
+            **gradient_agreement(wm, model, s0, u, env.cfg.decimation),
+        }
+        log.append(rec)
+        print(json.dumps(rec), flush=True)
+        (a.out / "log.json").write_text(json.dumps(log, indent=1))
 
 
 if __name__ == "__main__":

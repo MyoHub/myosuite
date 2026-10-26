@@ -219,6 +219,7 @@ def test_heads_match_the_mjlab_env_terms() -> None:
         mj_model=model,
         mimic_reward_weight=5.0,
     )
+    env_cfg.seed = 0
     env = ManagerBasedRlEnv(cfg=env_cfg, device="cpu")
     try:
         env.reset()
@@ -231,11 +232,16 @@ def test_heads_match_the_mjlab_env_terms() -> None:
         for _ in range(4):
             s0 = io.state()
             action = torch.rand(env.num_envs, model.nu, generator=g)
-            obs, rew, term, _, _ = env.step(action)
+            obs, rew, term, trunc, _ = env.step(action)
             s, f = io.state(), io.frame()
             qpos, qvel, act = s[:, :nq], s[:, nq : nq + nv], s[:, nq + nv :]
+            # An env that ended this step was reset: its state no longer follows s0.
+            live = ~(term | trunc)
             torch.testing.assert_close(
-                act, act_step(s0[:, nq + nv :], io.ctrl(action)), atol=1e-6, rtol=0
+                act[live],
+                act_step(s0[:, nq + nv :], io.ctrl(action))[live],
+                atol=1e-6,
+                rtol=0,
             )
             torch.testing.assert_close(
                 heads.observation(qpos, qvel, act, f), obs["actor"], atol=1e-5, rtol=0
@@ -250,3 +256,64 @@ def test_heads_match_the_mjlab_env_terms() -> None:
             assert bool(((soft > 0.5) == env_term).all())
     finally:
         env.close()
+
+
+def test_kinematic_tracking_errors() -> None:
+    from myosuite.learning.supermimic.metrics import LEG_JOINTS, KinematicTracking
+
+    _, _, model, _ = _variant("fullbody")
+    pose = torch.tensor(
+        model.key_qpos[0] if model.nkey else model.qpos0, dtype=torch.float64
+    )
+    t = torch.linspace(0.0, 1.0, 20, dtype=torch.float64)
+    clip = pose.repeat(20, 1)
+    adr = [int(model.jnt_qposadr[model.joint(n).id]) for n in LEG_JOINTS]
+    clip[:, adr] += (
+        0.3 * torch.sin(6.0 * t)[:, None]
+    )  # moving reference, so correlations are defined
+    track = KinematicTracking(model, clip)
+    frames = torch.arange(20)
+    track.update(clip, frames, torch.ones(20, dtype=torch.bool))
+    out = track.summary()
+    assert out["leg_rmse_deg"] < 1e-6 and abs(out["leg_corr"] - 1.0) < 1e-6
+    assert out["pelvis_tilt_err_deg"] < 1e-6 and out["trunk_tilt_err_deg"] < 1e-6
+    # A constant 0.1 rad offset on every leg joint: RMSE 5.73 deg, correlation still 1.
+    track.reset()
+    shifted = clip.clone()
+    shifted[:, adr] += 0.1
+    track.update(shifted, frames, torch.ones(20, dtype=torch.bool))
+    out = track.summary()
+    assert (
+        abs(out["leg_rmse_deg"] - np.degrees(0.1)) < 1e-6
+        and abs(out["leg_corr"] - 1.0) < 1e-6
+    )
+    # Invalid envs are ignored.
+    track.reset()
+    track.update(shifted, frames, torch.zeros(20, dtype=torch.bool))
+    assert track.summary() == {}
+
+
+def test_gradient_agreement_runs() -> None:
+    """The gradient check runs end to end; an untrained world model ignores the controls."""
+    from myosuite.learning.supermimic.metrics import gradient_agreement
+    from myosuite.learning.supermimic.state import StateSpec
+    from myosuite.learning.supermimic.world_model import WorldModel, WorldModelCfg
+
+    _, _, model, _ = _variant("fullbody")
+    spec = StateSpec(model.nq, model.nv, model.na, 0.01, torch.tensor([1.0, 0.0, 0.0]))
+    wm = WorldModel(model, spec, 5, 0.002, WorldModelCfg(hidden=(32,)))
+    pose = model.key_qpos[0] if model.nkey else model.qpos0
+    s0 = torch.zeros(2, spec.dim)
+    s0[:, : model.nq] = torch.tensor(pose, dtype=torch.float32)
+    u = torch.full((2, 2, model.nu), 0.3)
+    dt = model.opt.timestep  # the model is cached for the whole module
+    model.opt.timestep = 0.002
+    try:
+        out = gradient_agreement(wm, model, s0, u, 5, n_dirs=3)
+    finally:
+        model.opt.timestep = dt
+    assert set(out) == {"grad_cos_median", "grad_cos_mean", "grad_norm_ratio_median"}
+    assert all(np.isfinite(v) for v in out.values())
+    assert (
+        out["grad_norm_ratio_median"] < 1e-6
+    )  # zero-initialised head: no control dependence yet

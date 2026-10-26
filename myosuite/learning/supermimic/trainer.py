@@ -28,6 +28,7 @@ import torch
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import _musclemimic_cpu_model
 from myosuite.learning.supermimic.env_io import MimicEnvIO, make_mimic_env
 from myosuite.learning.supermimic.heads import MimicHeads
+from myosuite.learning.supermimic.metrics import KinematicTracking
 from myosuite.learning.supermimic.policy import Actor, Critic
 from myosuite.learning.supermimic.replay import ReplayBuffer
 from myosuite.learning.supermimic.state import StateSpec, forward_axis_from_quat
@@ -66,8 +67,13 @@ class SuperMimicCfg:
     eval_every: int = 500
     eval_envs: int = 128
     eval_steps: int = 500
+    # Checkpoint kept as ckpt_best.pt: highest "reward" or lowest leg joint-angle RMSE ("leg_rmse").
+    best_metric: str = "reward"
     save_every: int = 1000
     compile: bool = True
+    tf32: bool = (
+        True  # TF32 matmuls (process-wide torch setting) for the world model and actor
+    )
     init_actor: str = ""
     init_world_model: str = ""
     resume: str = ""
@@ -91,7 +97,7 @@ class SuperMimicTrainer:
         self.cfg = cfg
         dev = cfg.device
         torch.manual_seed(cfg.seed)
-        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cuda.matmul.allow_tf32 = cfg.tf32
         self.out = Path(cfg.out)
         self.out.mkdir(parents=True, exist_ok=True)
         self.env = make_mimic_env(cfg.clip, cfg.num_envs, dev, seed=cfg.seed)
@@ -318,7 +324,22 @@ class SuperMimicTrainer:
                 cfg.clip, cfg.eval_envs, cfg.device, seed=cfg.seed + 1000
             )
             self._eval_env.reset()
-        return evaluate_policy(self._eval_env, self.actor, cfg.eval_steps)
+            model = _musclemimic_cpu_model("fullbody")
+            self._eval_io = MimicEnvIO(self._eval_env)
+            self._eval_tracking = KinematicTracking(model, self.heads.clip.qpos)
+        return evaluate_policy(
+            self._eval_env,
+            self.actor,
+            cfg.eval_steps,
+            self._eval_tracking,
+            self._eval_io,
+        )
+
+    def _eval_score(self, rec: dict[str, Any]) -> float:
+        """Higher is better; the metric that picks ``ckpt_best.pt``."""
+        if self.cfg.best_metric == "leg_rmse":
+            return -rec.get("eval_leg_rmse_deg", math.inf)
+        return rec["eval_reward_per_step"]
 
     # ------------------------------------------------------------------ checkpoints
     def save(self, name: str = "latest") -> None:
@@ -401,8 +422,8 @@ class SuperMimicTrainer:
                     if self.updates % cfg.eval_every == 0:
                         rec.update({f"eval_{k}": v for k, v in self.evaluate().items()})
                         # Keep the best-eval policy: runs can decay after their peak.
-                        if rec["eval_reward_per_step"] > self.best_eval:
-                            self.best_eval = rec["eval_reward_per_step"]
+                        if self._eval_score(rec) > self.best_eval:
+                            self.best_eval = self._eval_score(rec)
                             self.save("best")
                     log.write(json.dumps(rec) + "\n")
                     log.flush()
@@ -429,12 +450,22 @@ class SuperMimicTrainer:
 
 
 @torch.no_grad()
-def evaluate_policy(env: Any, actor: Any, steps: int) -> dict[str, float]:
+def evaluate_policy(
+    env: Any,
+    actor: Any,
+    steps: int,
+    tracking: KinematicTracking | None = None,
+    io: MimicEnvIO | None = None,
+) -> dict[str, float]:
     """Mean env reward per step, early terminations per 1000 steps, episode length and muscle control of a deterministic actor.
 
     Starts from the env's RSI reset; episodes that end are reset by the env and continue.
+    With ``tracking`` (and the env's ``io``), joint-angle and tilt errors against the
+    clip are added for every step that did not end an episode.
     """
     env.reset()
+    if tracking is not None:
+        tracking.reset()
     obs = env.obs_buf["actor"]
     rew_sum = ctrl_sum = 0.0
     terms = 0
@@ -447,10 +478,16 @@ def evaluate_policy(env: Any, actor: Any, steps: int) -> dict[str, float]:
         rew_sum += float(rew.mean())
         terms += int(term.sum())
         ends += int((term | trunc).sum())
+        if tracking is not None and io is not None:
+            frame = io.frame()
+            valid = ~(term | trunc) & ~io.source.clip_end(env.episode_length_buf)
+            tracking.update(io.state()[:, : tracking.clip_qpos.shape[1]], frame, valid)
     n = env.num_envs
+    extra = tracking.summary() if tracking is not None else {}
     return {
         "reward_per_step": rew_sum / steps,
         "terminations_per_1k_steps": 1000.0 * terms / (n * steps),
         "mean_episode_len": n * steps / max(ends, 1),
         "mean_ctrl": ctrl_sum / steps,
+        **extra,
     }
