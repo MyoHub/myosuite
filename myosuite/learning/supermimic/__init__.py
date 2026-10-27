@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""SuperMimic for muscle models: a differentiable world model plus BPTT actor-critic.
+"""myoSuperMimic: SuperMimic for muscle models, a differentiable world model plus BPTT actor-critic.
 
 Adapted from SuperMimic (Liao et al., arXiv:2610.28480) and its MIT-licensed
 reproduction (github.com/CuboiLeo/SuperMimic-Reproduced, Copyright (c) 2026 Yuxi Liu)
