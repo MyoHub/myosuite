@@ -46,9 +46,9 @@ os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 from pathlib import Path
 import json
 
-import av
 import numpy as np
 from myosuite import make_env
+from myosuite.utils.video_io import write_video
 from myosuite.integrations.musclemimic import download_terrain_checkpoint
 from myosuite.integrations.musclemimic.halloween import (
     COMMANDS,
@@ -116,39 +116,33 @@ print("Available commands:", COMMANDS)
 #
 # `terminated` means a hit, fall, or completed curriculum; `truncated` means the
 # external episode time limit was reached. We inspect the metrics in section 5.
-# Frames are encoded directly to MP4 to avoid retaining hundreds of images in RAM.
+# Collect frames, then use MyoSuite's video helper to save this short clip.
+# At 640 × 480, the example keeps about 550 MB of frames in memory.
 
 # %%
 video_path = OUTPUT / "avoidance.mp4"
 root_positions = []
 timestamps = []
+frames = []
 control_steps = round(1 / (VIDEO_FPS * task.dt))
 last_launch = 0
 try:
-    env.render()  # Initialize the graphics context before opening the video encoder.
-    with av.open(str(video_path), mode="w") as video:
-        stream = video.add_stream("libx264", rate=VIDEO_FPS)
-        stream.width, stream.height = 640, 480
-        stream.pix_fmt = "yuv420p"
-        stream.codec_context.thread_count = 1
-        for step in range(3000):
-            muscle_actions = controller(task.data, info)
-            obs, reward, terminated, truncated, info = env.step(muscle_actions)
-            timestamps.append(task.data.time)
-            root_positions.append(task.data.qpos[:3].copy())
-            if info["halloween"]["launch_id"] != last_launch:
-                last_launch = info["halloween"]["launch_id"]
-                print(f"Pumpkin {last_launch} launched at {task.data.time:.2f} s")
-            if step % control_steps == 0:
-                frame = av.VideoFrame.from_ndarray(env.render(), format="rgb24")
-                for packet in stream.encode(frame):
-                    video.mux(packet)
-            if terminated or truncated:
-                break
-        for packet in stream.encode():  # Flush the final encoded frames.
-            video.mux(packet)
+    for step in range(3000):
+        muscle_actions = controller(task.data, info)
+        obs, reward, terminated, truncated, info = env.step(muscle_actions)
+        timestamps.append(task.data.time)
+        root_positions.append(task.data.qpos[:3].copy())
+        if info["halloween"]["launch_id"] != last_launch:
+            last_launch = info["halloween"]["launch_id"]
+            print(f"Pumpkin {last_launch} launched at {task.data.time:.2f} s")
+        if step % control_steps == 0:
+            frames.append(env.render())
+        if terminated or truncated:
+            break
 finally:
     env.close()
+write_video(video_path, frames, fps=VIDEO_FPS)
+del frames
 print("Saved video:", video_path.resolve())
 
 # %% [markdown]

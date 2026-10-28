@@ -9,5 +9,4 @@ jaxlib==0.10.2
 orbax-checkpoint==0.12.7
 huggingface_hub==1.32.0
 socksio
-av==19.0.2
 Pillow==12.2.0
