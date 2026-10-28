@@ -347,7 +347,7 @@ def make_halloween_env_cfg(
             entity_name=_ROBOT,
             actuator_names=muscles,
             tendon_names=tendons,
-            action_mode="direct",
+            action_mode="excitation",
         )
     }
     rewards = {

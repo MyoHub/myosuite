@@ -11,6 +11,8 @@ All notable changes to this project are documented in this file.
 - Copy MuJoCo physics options into MJLab (Euler), enable explicit pumpkin/body
   collision pairs, and terminate only on physical contact (including substep history).
   Link-origin distance remains reward shaping, not a collision detector.
+- Match action clipping to [0, 1] excitation on both backends (MJLab previously
+  used the [-1, 1] `direct` mode).
 - Default throws run at full speed on both backends. The former training-only
   easy-start curriculum is opt-in with `curriculum=True`.
 - The frozen-TERRA selector tutorial is a separate high-level controller and

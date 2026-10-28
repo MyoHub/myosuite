@@ -153,3 +153,19 @@ CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and
 **Manifests and releases.** Every `checkpoints/<env_id>/` folder on the Hugging Face repo has a `manifest.json` with the env id, a hash of the env contract (observation and action shapes, control step), the MyoSuite version and commit, and the success rate above. When a downloaded checkpoint is used, MyoSuite compares that hash with the current env and warns if they differ, because the policy may then not work. The repo is tagged per release (`v3.0`, `v3.1`, ...), and per patch release where baselines changed (`v3.0.1`); `download_baseline_checkpoint` (one env) and `download_baseline_file` (a single file, such as the MuscleMimic policy) take the tag of your installed version, the patch tag first (`v3.0.1`, then `v3.0`; `MYOSUITE_BASELINES_REVISION` or the `revision` argument override it), and fall back to `main` when no tag exists; they print the revision they used. Write the manifests of a baselines checkout with `python scripts/write_checkpoint_manifests.py <dir>`.
 
 </sub>
+
+## Halloween compatibility
+
+`myoHalloween-v0` has no published baseline checkpoint. Earlier experimental runs
+used proximity-based hits, [-1, 1] direct actions, MJLab's implicitfast default, and a training-only
+slow-throw curriculum. Those metrics/checkpoints are not compatible with the
+physical-contact/Euler contract introduced here. Re-evaluate or retrain them.
+The default contract has 535 observations, 354 direct excitations, 0.01 s control
+steps, 0.002 s physics substeps and a six-second time limit. Curriculum is opt-in.
+
+The MyoHalloween frozen-TERRA demo uses a learned four-command selector with
+13 high-level inputs, a calibrated motion decoder, a distinct smaller-projectile
+upper-body curriculum, and TERRA-4B muscle inference. Its success rates do not
+measure the raw-muscle training environment. Until TERRA merges, install the
+pinned `feat/programmatic-waypoint-tasks` revision documented in the tutorial.
+See [Halloween distribution notes](halloween.md).
