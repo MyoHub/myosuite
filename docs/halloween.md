@@ -13,6 +13,11 @@ while TERRA is awaiting review. This branch includes the pending TERRA integrati
 Use Python 3.12+; CPU inference is sufficient. Rendering is verified with EGL on
 Linux/Colab. The environment itself performs no network access.
 
+The student pins also respect Colab’s preinstalled Numba, Datasets, Diffusers,
+and Gradio requirements: NumPy 2.2.6, Hugging Face Hub 1.32.0, and Pillow 12.2.0.
+After running an older install cell, use **Runtime → Disconnect and delete runtime**
+before running the updated notebook so imported binary libraries are not stale.
+
 ```python
 from myosuite import make_env
 from myosuite.integrations.musclemimic import download_terrain_checkpoint

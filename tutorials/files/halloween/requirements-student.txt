@@ -1,13 +1,13 @@
 myosuite[musclemimic] @ git+https://github.com/MyoHub/myosuite.git@8da042ada54ea907b7790874f0f9947a66002180
 mujoco==3.11.0
-numpy==2.5.4
+numpy==2.2.6
 scipy==1.18.1
 scikit-learn==1.9.1
 joblib==1.6.0
 jax==0.10.2
 jaxlib==0.10.2
 orbax-checkpoint==0.12.7
-huggingface_hub==2.2.0
+huggingface_hub==1.32.0
 socksio
 av==19.0.2
-Pillow
+Pillow==12.2.0
