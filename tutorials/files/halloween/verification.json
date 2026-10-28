@@ -1,0 +1,59 @@
+{
+  "python_completed": true,
+  "notebook_code_cells_executed": 11,
+  "notebook_execution": "IPython, in-process; host forbids Jupyter socket binding",
+  "setup_cell_executed": true,
+  "metrics_identical": true,
+  "trajectory_arrays_identical": true,
+  "events": [
+    {
+      "throw": 1,
+      "command": "left",
+      "body_contacts": 0,
+      "min_surface_distance_m": 0.059993796205552105,
+      "min_pelvis_height_m": 0.8949430891582714,
+      "max_home_distance_m": 0.3227547848060442,
+      "final_home_distance_m": 0.021873754914959385,
+      "recovered": true
+    },
+    {
+      "throw": 2,
+      "command": "right",
+      "body_contacts": 0,
+      "min_surface_distance_m": 0.034248163707390186,
+      "min_pelvis_height_m": 0.8936793343187521,
+      "max_home_distance_m": 0.3243375238044869,
+      "final_home_distance_m": 0.0176887502936795,
+      "recovered": true
+    },
+    {
+      "throw": 3,
+      "command": "right",
+      "body_contacts": 0,
+      "min_surface_distance_m": 0.09169714165932752,
+      "min_pelvis_height_m": 0.8939074054941866,
+      "max_home_distance_m": 0.3382396929981499,
+      "final_home_distance_m": 0.04956255185721146,
+      "recovered": true
+    }
+  ],
+  "videos": [
+    {
+      "frames": 598,
+      "width": 640,
+      "height": 480,
+      "fps": 25,
+      "duration_s": 23.92
+    },
+    {
+      "frames": 598,
+      "width": 640,
+      "height": 480,
+      "fps": 25,
+      "duration_s": 23.92
+    }
+  ],
+  "script_bytes": 19038,
+  "embedded_program_payloads": false,
+  "private_repository_access_required": false
+}
