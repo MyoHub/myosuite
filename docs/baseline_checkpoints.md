@@ -169,3 +169,12 @@ upper-body curriculum, and TERRA-4B muscle inference. Its success rates do not
 measure the raw-muscle training environment. Until TERRA merges, install the
 pinned `feat/programmatic-waypoint-tasks` revision documented in the tutorial.
 See [Halloween distribution notes](halloween.md).
+
+### Halloween TERRA showcase profile
+
+`myoHalloween-v0` retains its default CPU/MJLab benchmark contract. The optional
+CPU `profile="terra"` uses the calibrated TERRA model, settled reset state and
+frontal showcase curriculum. It keeps 354 muscle actions and 535 observations,
+but its physical distribution differs; raw benchmark checkpoints do not transfer
+by assumption. Use the separate `HalloweenController`, reset it with each task
+reset, and allow 3000 steps. See [the task documentation](halloween.md).

@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Halloween environment and lesson refactor
+
+- Add an opt-in CPU `profile="terra"` to `myoHalloween-v0`, retaining the default
+  benchmark and its CPU/MJLab contract. The environment owns settled reset,
+  frontal pumpkin scheduling, physical contacts and recovery metrics.
+- Move learned command selection/reference decoding into `HalloweenController`,
+  using the existing TERRA runner. No policy downloads happen during task creation.
+- Simplify Python/Colab lessons to the public factory/reset/step/render interface.
+  The validated seed-2027 actor trajectory remains identical across all 2390 frames.
+
 ### Halloween task contract
 
 - Register `myoHalloween-v0` on CPU as well as MJLab: 535 float32 observations,

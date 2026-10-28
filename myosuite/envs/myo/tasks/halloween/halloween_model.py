@@ -12,11 +12,14 @@ appended to the mimic full-body spec (robot free joint addresses stay at 0).
 from __future__ import annotations
 
 from pathlib import Path
+import json
+from functools import partial
 
 import mujoco
 import numpy as np
 from ml_collections import config_dict
 
+from myosuite.envs.myo.tasks.halloween.config import HALLOWEEN
 from myosuite.integrations.musclemimic.fullbody_model import (
     build_mimic_fullbody_spec,
     default_mimic_fullbody_config,
@@ -32,65 +35,135 @@ PUMPKIN_MESH = "pumpkin_mesh"
 
 # Kenney Food Kit OBJ is Y-up, ~0.42 m wide. Scale + rotate into MuJoCo Z-up.
 _MESH_SCALE = 0.55
-_COLLISION_RADIUS = 0.09
-_PARK_POS = np.array([6.5, 6.5, 0.15], dtype=np.float64)
+_COLLISION_RADIUS = HALLOWEEN.pumpkin_radius
+_PARK_POS = np.array(HALLOWEEN.park_pos, dtype=np.float64)
 
 
-def _add_pumpkin(spec: mujoco.MjSpec) -> None:
+def add_pumpkin_contact_pairs(
+    spec: mujoco.MjSpec,
+    *,
+    pumpkin_geom: str = PUMPKIN_COLLISION_GEOM,
+    robot_prefix: str = "",
+) -> None:
+    """Enable projectile contacts with every collidable actor geom, including explicit-only pairs."""
+    paired = {name for pair in spec.pairs for name in (pair.geomname1, pair.geomname2)}
+    for body in spec.bodies:
+        if (
+            not body.name
+            or body.name == PUMPKIN_BODY
+            or (robot_prefix and not body.name.startswith(robot_prefix))
+        ):
+            continue
+        for geom in body.geoms:
+            if (
+                geom.name != pumpkin_geom
+                and geom.name
+                and (geom.name in paired or geom.contype or geom.conaffinity)
+            ):
+                spec.add_pair(geomname1=pumpkin_geom, geomname2=geom.name)
+
+
+def _add_pumpkin(spec: mujoco.MjSpec, *, terrain: bool = False) -> None:
     """Append a free-joint pumpkin with sphere collision and Kenney visual mesh."""
-    if not PUMPKIN_OBJ.is_file():
+    if not terrain and not PUMPKIN_OBJ.is_file():
         raise FileNotFoundError(
             f"Missing Kenney CC0 pumpkin mesh at {PUMPKIN_OBJ}. "
             "Expected myosuite/envs/myo/assets/halloween/pumpkin.obj"
         )
 
-    # Absolute path: do not touch compiler.meshdir (fullbody assets own it).
-    # Texture map_Kd Textures/colormap.png resolves relative to the OBJ directory.
-    spec.add_mesh(
-        name=PUMPKIN_MESH,
-        file=str(PUMPKIN_OBJ.resolve()),
-        scale=[_MESH_SCALE, _MESH_SCALE, _MESH_SCALE],
-    )
+    if not terrain:
+        spec.add_mesh(
+            name=PUMPKIN_MESH,
+            file=str(PUMPKIN_OBJ.resolve()),
+            scale=[_MESH_SCALE, _MESH_SCALE, _MESH_SCALE],
+        )
 
-    body = spec.worldbody.add_body(name=PUMPKIN_BODY, pos=list(_PARK_POS))
+    radius = 0.065 if terrain else _COLLISION_RADIUS
+    position = [8, 0, 0.5] if terrain else list(_PARK_POS)
+    body = spec.worldbody.add_body(
+        name=PUMPKIN_BODY, pos=position, gravcomp=int(terrain)
+    )
     body.add_freejoint(name=PUMPKIN_JOINT)
 
     collision = body.add_geom(
         name=PUMPKIN_COLLISION_GEOM,
         type=mujoco.mjtGeom.mjGEOM_SPHERE,
-        size=[_COLLISION_RADIUS, 0.0, 0.0],
-        rgba=[1.0, 0.45, 0.05, 1.0],
-        mass=0.35,
+        size=[radius, 0.0, 0.0],
+        rgba=[1, 0.28, 0.015, 1] if terrain else [1.0, 0.45, 0.05, 1.0],
+        mass=0.25 if terrain else HALLOWEEN.pumpkin_mass,
     )
     collision.contype = 1
     collision.conaffinity = 1
-    collision.condim = 3
-    collision.friction = [0.9, 0.1, 0.01]
-    collision.solref = [0.02, 1.0]
-    collision.solimp = [0.9, 0.95, 0.001, 0.5, 2.0]
+    if terrain:
+        collision.friction = [0.7, 0.01, 0.001]
+        for j in range(8):
+            angle = j * np.pi / 4
+            body.add_geom(
+                type=mujoco.mjtGeom.mjGEOM_ELLIPSOID,
+                pos=[0.28 * radius * np.cos(angle), 0.28 * radius * np.sin(angle), 0],
+                size=[0.78 * radius, 0.78 * radius, 0.92 * radius],
+                mass=0,
+                contype=0,
+                conaffinity=0,
+                rgba=[0.9, 0.19, 0.008, 1],
+            )
+        body.add_geom(
+            type=mujoco.mjtGeom.mjGEOM_CAPSULE,
+            pos=[0, 0, radius + 0.005],
+            size=[0.009, 0.018, 0],
+            mass=0,
+            contype=0,
+            conaffinity=0,
+            rgba=[0.18, 0.28, 0.05, 1],
+        )
+    else:
+        collision.condim = 3
+        collision.friction = [0.9, 0.1, 0.01]
+        collision.solref = [0.02, 1.0]
+        collision.solimp = [0.9, 0.95, 0.001, 0.5, 2.0]
 
-    # OBJ Y-up → MuJoCo Z-up (rotate −90° about X) on the visual geom.
-    visual = body.add_geom(
-        name=PUMPKIN_VISUAL_GEOM,
-        type=mujoco.mjtGeom.mjGEOM_MESH,
-        meshname=PUMPKIN_MESH,
-        contype=0,
-        conaffinity=0,
-        group=1,
-        rgba=[1.0, 0.45, 0.05, 1.0],
-        quat=[0.70710678, 0.70710678, 0.0, 0.0],
-    )
-    visual.density = 0.0
+        # OBJ Y-up → MuJoCo Z-up (rotate −90° about X) on the visual geom.
+        visual = body.add_geom(
+            name=PUMPKIN_VISUAL_GEOM,
+            type=mujoco.mjtGeom.mjGEOM_MESH,
+            meshname=PUMPKIN_MESH,
+            contype=0,
+            conaffinity=0,
+            group=1,
+            rgba=[1.0, 0.45, 0.05, 1.0],
+            quat=[0.70710678, 0.70710678, 0.0, 0.0],
+        )
+        visual.density = 0.0
 
 
 def build_halloween_spec(
     config: config_dict.ConfigDict | None = None,
+    *,
+    profile: str = "benchmark",
 ) -> mujoco.MjSpec:
     """Build uncompiled MyoFullBody + pumpkin ``MjSpec``."""
+    if profile not in ("benchmark", "terra"):
+        raise ValueError("profile must be 'benchmark' or 'terra'")
+    if profile == "terra":
+        if config is not None:
+            raise ValueError("The terra profile uses the calibrated TERRA model config")
+        from myosuite.integrations.musclemimic import build_terrain_fullbody_spec
+
+        spec = build_terrain_fullbody_spec(partial(_add_pumpkin, terrain=True))
+        add_pumpkin_contact_pairs(spec)
+        state = json.loads((ASSET_DIR / "terra_initial_state.json").read_text())
+        spec.add_key(
+            name="halloween_ready",
+            qpos=state["qpos"] + [8, 0, 0.5, 1, 0, 0, 0],
+            qvel=state["qvel"] + [0] * 6,
+            act=state["act"],
+        )
+        return spec
     cfg = config if config is not None else default_mimic_fullbody_config()
     spec, _xml_path = build_mimic_fullbody_spec(cfg)
     spec.option.timestep = float(cfg.sim_dt)
     _add_pumpkin(spec)
+    add_pumpkin_contact_pairs(spec)
     return spec
 
 
@@ -101,13 +174,15 @@ def build_default_halloween_spec() -> mujoco.MjSpec:
 
 def compile_halloween_model(
     config: config_dict.ConfigDict | None = None,
+    *,
+    profile: str = "benchmark",
 ) -> tuple[mujoco.MjModel, mujoco.MjSpec, str]:
     """Compile the Halloween scene.
 
     Returns:
         ``(model, spec, label)``.
     """
-    spec = build_halloween_spec(config)
+    spec = build_halloween_spec(config, profile=profile)
     return spec.compile(), spec, "myohalloween:in_memory"
 
 
