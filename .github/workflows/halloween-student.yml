@@ -1,0 +1,44 @@
+name: Halloween student dependencies
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - 'tutorials/4.5_Halloween_Avoidance*'
+      - 'tutorials/files/halloween/requirements-student.txt'
+      - '.github/workflows/halloween-student.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  colab-package-compatibility:
+    name: Colab package compatibility (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Create the student environment
+        run: |
+          uv venv --python 3.12 .venv-student
+          uv pip install --python .venv-student/bin/python pip
+      - name: Install the reported Colab packages first
+        run: |
+          .venv-student/bin/python -m pip install \
+            numba==0.61.2 datasets==4.8.5 gradio==6.30.0 diffusers==0.41.0
+      - name: Install the lesson and check the entire environment
+        run: |
+          .venv-student/bin/python -m pip install \
+            -r tutorials/files/halloween/requirements-student.txt
+          .venv-student/bin/python -m pip check
+      - name: Import the resolved scientific and Colab packages
+        run: |
+          .venv-student/bin/python - <<'PY'
+          import numpy, jax, scipy, huggingface_hub, PIL
+          import numba, datasets, gradio, diffusers
+          print('NumPy:', numpy.__version__)
+          print('Hugging Face Hub:', huggingface_hub.__version__)
+          print('Pillow:', PIL.__version__)
+          PY

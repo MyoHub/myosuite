@@ -73,5 +73,30 @@
     "required_core_suite": "passed; 324 cases collected, expected skips/xfails",
     "pre_commit": "passed"
   },
-  "scope": "CPU TERRA profile only; default CPU/MJLab benchmark unchanged; CUDA not validated"
+  "scope": "CPU TERRA profile only; default CPU/MJLab benchmark unchanged; CUDA not validated",
+  "colab_dependency_compatibility": {
+    "tutorial_revision": "b634c141f2eeebc7acc8f371bbade1b3db37b11e",
+    "python": "3.12.14",
+    "preinstalled": {
+      "numba": "0.61.2",
+      "datasets": "4.8.5",
+      "gradio": "6.30.0",
+      "diffusers": "0.41.0"
+    },
+    "resolved": {
+      "numpy": "2.2.6",
+      "huggingface_hub": "1.32.0",
+      "Pillow": "12.2.0",
+      "jax": "0.10.2"
+    },
+    "reported_conflicts_reproduced": true,
+    "pip_check_after_install": "No broken requirements found.",
+    "execution": "all 7 notebook code cells in a fresh IPython process, CPU/EGL",
+    "resolver_warning_in_executed_notebook": false,
+    "all_three_throws_avoided": true,
+    "body_contacts": 0,
+    "all_recovered": true,
+    "video_frames": 598,
+    "video_sha256": "cfbccb469b425bb8a5ef485124b356ecfa0f8ef90db83b2179813c6b4223c10c"
+  }
 }
