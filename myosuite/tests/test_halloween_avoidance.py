@@ -72,6 +72,33 @@ def test_info_does_not_mutate_task(env):
     assert np.max(np.abs(env.unwrapped.avoidance.home)) < 1
 
 
+@pytest.mark.parametrize("profile", ["benchmark", "terra"])
+def test_constructor_seed_and_pickle_round_trip(profile):
+    import pickle
+
+    kwargs = dict(profile=profile, seed=1234, render_mode="rgb_array")
+    if profile == "terra":
+        kwargs["avoidance_config"] = replace(AvoidanceConfig(), between_wait_steps=60)
+    with make_env("myoHalloween-v0", **kwargs) as original:
+        assert original.unwrapped.get_input_seed() == 1234
+        obs, _ = original.reset()
+        action = np.full(354, 0.01, dtype=np.float32)
+        expected = original.step(action)
+        with pickle.loads(pickle.dumps(original)) as restored:
+            assert restored.unwrapped.profile == profile
+            assert restored.unwrapped.render_mode == "rgb_array"
+            assert restored.unwrapped.get_input_seed() == 1234
+            assert restored.action_space == original.action_space
+            assert restored.observation_space == original.observation_space
+            reset_obs, _ = restored.reset()
+            np.testing.assert_array_equal(obs, reset_obs)
+            actual = restored.step(action)
+            np.testing.assert_array_equal(expected[0], actual[0])
+            assert expected[1:4] == actual[1:4]
+            if profile == "terra":
+                assert restored.unwrapped.avoidance.config == kwargs["avoidance_config"]
+
+
 def test_tutorial_sources_match():
     import json
     from pathlib import Path

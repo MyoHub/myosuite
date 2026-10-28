@@ -8,6 +8,7 @@ from typing import Any, ClassVar
 import mujoco
 import numpy as np
 from gymnasium import spaces
+from gymnasium.utils import EzPickle
 
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.halloween.config import HALLOWEEN, AvoidanceConfig
@@ -22,7 +23,7 @@ from myosuite.envs.myo.tasks.halloween.halloween_model import (
 from myosuite.terms.halloween import halloween_scores
 
 
-class HalloweenEnv(MyoGymnasiumEnv):
+class HalloweenEnv(MyoGymnasiumEnv, EzPickle):
     """Full-body muscle actions with seeded ballistic pumpkins and real hit scoring."""
 
     metadata: ClassVar[dict[str, Any]] = {
@@ -39,8 +40,20 @@ class HalloweenEnv(MyoGymnasiumEnv):
         render_mode: str | None = None,
         profile: str = "benchmark",
         avoidance_config: AvoidanceConfig | None = None,
+        seed: int | None = None,
     ) -> None:
         super().__init__(frame_skip=frame_skip, render_mode=render_mode)
+        EzPickle.__init__(
+            self,
+            frame_skip=frame_skip,
+            throw_speed=throw_speed,
+            curriculum=curriculum,
+            render_mode=render_mode,
+            profile=profile,
+            avoidance_config=avoidance_config,
+            seed=seed,
+        )
+        self.seed(seed)
         if frame_skip != 5:
             raise ValueError("Halloween uses 5 x 2 ms substeps on both backends")
         if not np.isfinite(throw_speed) or not 0.5 <= throw_speed <= 2.0:
