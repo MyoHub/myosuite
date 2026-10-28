@@ -55,6 +55,9 @@ class HalloweenEnv(MyoGymnasiumEnv):
         self.model, self._mj_spec, self._xml_path = compile_halloween_model(
             profile=profile
         )
+        if profile == "terra":
+            self.model.vis.quality.numslices = 8
+            self.model.vis.quality.numstacks = 4
         self.data = mujoco.MjData(self.model)
         self.avoidance = (
             AvoidanceTask(self.model, self.data, avoidance_config or AvoidanceConfig())
@@ -115,6 +118,16 @@ class HalloweenEnv(MyoGymnasiumEnv):
 
     def render(self, **kwargs: Any) -> np.ndarray | None:
         """Render the fixed showcase camera, or the benchmark's standard view."""
+        if self.avoidance is not None and self.render_mode == "rgb_array":
+            if self._mj_renderer_compat is None:
+                from myosuite.viz.mj_renderer import MJRenderer
+
+                self._mj_renderer_compat = MJRenderer(self.model, self.data)
+                # The shared renderer adds 2 m to its distance setting.
+                self._mj_renderer_compat.set_free_camera_settings(
+                    lookat=[0, -0.6, 1.35], distance=2.8, azimuth=115, elevation=-10
+                )
+            return self._mj_renderer_compat.render_offscreen(**kwargs)
         if self.avoidance is not None and not kwargs:
             kwargs = dict(
                 width=640,
