@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run the tutorial TERRA-4B pipeline through the furnished ADL apartment."""
+
 from __future__ import annotations
 
 import json
@@ -24,7 +25,10 @@ from myosuite.integrations.musclemimic import (
     load_terrain_policy,
     plan_waypoint_reference,
 )
-from myosuite.integrations.musclemimic.adl_apartment import adl_apartment_scene, adl_route
+from myosuite.integrations.musclemimic.adl_apartment import (
+    adl_apartment_scene,
+    adl_route,
+)
 from myosuite.terms.waypoint import WaypointRewardCfg
 from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz
 
@@ -50,7 +54,9 @@ def main() -> None:
     probe = mujoco.MjData(model)
     mujoco.mj_forward(model, probe)
     heights = TerrainHeights(model, top=12.0)
-    height = lambda xy: float(heights(probe, [xy])[0])
+
+    def height(xy):
+        return float(heights(probe, [xy])[0])
 
     q0 = model.qpos0.copy()
     q0[:2] = route[0]
@@ -59,8 +65,14 @@ def main() -> None:
         model, route, height, q0, sites=MIMIC_SITES, parameters=gait
     )
 
-    checkpoint = Path(os.environ["TERRA_CHECKPOINT"]) if "TERRA_CHECKPOINT" in os.environ else download_terrain_checkpoint()
-    policy = load_terrain_policy(checkpoint, model, reference, stochastic=stochastic, seed=seed)
+    checkpoint = (
+        Path(os.environ["TERRA_CHECKPOINT"])
+        if "TERRA_CHECKPOINT" in os.environ
+        else download_terrain_checkpoint()
+    )
+    policy = load_terrain_policy(
+        checkpoint, model, reference, stochastic=stochastic, seed=seed
+    )
     controller = TerrainController(policy, model, reference, frame_skip=5)
     controller.reset()
 
@@ -72,8 +84,13 @@ def main() -> None:
         reward=WaypointRewardCfg(),
     )
     env = make_env(
-        "myoFullBodyWaypoint-v0", model=model, task=task, initial_qpos=q0,
-        initial_qvel=np.zeros(model.nv), frame_skip=5, render_mode="rgb_array",
+        "myoFullBodyWaypoint-v0",
+        model=model,
+        task=task,
+        initial_qpos=q0,
+        initial_qvel=np.zeros(model.nv),
+        frame_skip=5,
+        render_mode="rgb_array",
     )
     env.reset(seed=seed)
     base = env.unwrapped
@@ -85,7 +102,9 @@ def main() -> None:
     option.sitegroup[:] = 0
     option.tendongroup[:] = 1
     ghost = BoneGhostBodyViz.from_motion_clip(
-        reference, model, bone_meshes=True,
+        reference,
+        model,
+        bone_meshes=True,
         skeleton_rgba=(0.55, 0.82, 1.0, 0.30),
     )
 
@@ -108,7 +127,10 @@ def main() -> None:
                 cam.elevation = -12
                 renderer.update_scene(base.data, camera=cam, scene_option=option)
                 _hide_wrap_geoms(model, renderer.scene)
-                ghost.draw(min(controller._frame + 50, reference.num_frames - 1), renderer.scene)
+                ghost.draw(
+                    min(controller._frame + 50, reference.num_frames - 1),
+                    renderer.scene,
+                )
                 frames.append(renderer.render().copy())
 
             if info["solved"] or terminated or truncated:
@@ -121,13 +143,20 @@ def main() -> None:
     imageio.mimsave(video, frames, fps=10, macro_block_size=1)
     imageio.imwrite(preview, frames[len(frames) // 2], quality=92)
     result = {
-        "seed": seed, "controller": "terra_tutorial_continuous_reference",
-        "stochastic": stochastic, "reference_frames": reference.num_frames,
-        "reference_duration_s": planner["duration_s"], "executed_steps": step + 1,
-        "waypoints_reached": int(info["next_waypoint"]), "waypoints_total": len(route) - 1,
-        "solved": bool(info["solved"]), "failed": bool(info["failed"]),
-        "min_pelvis_height": min_h, "final_root_xyz": final.tolist(),
-        "video": str(video), "preview": str(preview),
+        "seed": seed,
+        "controller": "terra_tutorial_continuous_reference",
+        "stochastic": stochastic,
+        "reference_frames": reference.num_frames,
+        "reference_duration_s": planner["duration_s"],
+        "executed_steps": step + 1,
+        "waypoints_reached": int(info["next_waypoint"]),
+        "waypoints_total": len(route) - 1,
+        "solved": bool(info["solved"]),
+        "failed": bool(info["failed"]),
+        "min_pelvis_height": min_h,
+        "final_root_xyz": final.tolist(),
+        "video": str(video),
+        "preview": str(preview),
     }
     (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))

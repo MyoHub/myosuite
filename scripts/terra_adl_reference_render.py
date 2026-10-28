@@ -19,7 +19,10 @@ from myosuite.integrations.musclemimic import (
     build_terrain_fullbody_spec,
     plan_waypoint_reference,
 )
-from myosuite.integrations.musclemimic.adl_apartment import adl_apartment_scene, adl_route
+from myosuite.integrations.musclemimic.adl_apartment import (
+    adl_apartment_scene,
+    adl_route,
+)
 
 
 def main() -> None:

@@ -68,6 +68,34 @@ def _scene(spec: mujoco.MjSpec) -> None:
     )
 
 
+@pytest.mark.parametrize("nested", [False, True])
+def test_checkpoint_download_allows_implicit_hub_auth(monkeypatch, tmp_path, nested):
+    pytest.importorskip("huggingface_hub")
+    from myosuite.integrations.musclemimic.terrain_policy import (
+        TERRA_CHECKPOINT,
+        TERRA_REPO,
+        TERRA_REVISION,
+        download_terrain_checkpoint,
+    )
+
+    checkpoint = tmp_path / TERRA_CHECKPOINT if nested else tmp_path
+    checkpoint.mkdir(exist_ok=True)
+    calls = []
+
+    def snapshot_download(*args, **kwargs):
+        calls.append((args, kwargs))
+        return str(tmp_path)
+
+    monkeypatch.setattr("huggingface_hub.snapshot_download", snapshot_download)
+    assert download_terrain_checkpoint(tmp_path / "cache") == checkpoint
+    assert calls == [
+        (
+            (TERRA_REPO,),
+            {"revision": TERRA_REVISION, "cache_dir": tmp_path / "cache"},
+        )
+    ]
+
+
 @pytest.fixture(scope="module")
 def model() -> mujoco.MjModel:
     # Layout only: the native MyoFullBody has the TERRA actor's joints, sites and sensors.

@@ -13,6 +13,7 @@ import mujoco
 import numpy as np
 import pytest
 
+from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz
 from myosuite.viz.ghost_body_viz import (
     CombinedViz,
     GhostBodyViz,
@@ -411,7 +412,10 @@ def test_draw_capsule_reaches_both_joints() -> None:
     np.testing.assert_allclose(capsule.pos, [0, 0, 0.5])
 
 
-def test_bone_meshes_follow_reference_with_local_geom_offset() -> None:
+@pytest.mark.parametrize("viz_class", [GhostBodyViz, BoneGhostBodyViz])
+def test_bone_meshes_follow_reference_with_local_geom_offset(
+    viz_class: type[GhostBodyViz],
+) -> None:
     from myosuite.core.trajectory_io import MotionClip
 
     model = mujoco.MjModel.from_xml_string(
@@ -420,7 +424,7 @@ def test_bone_meshes_follow_reference_with_local_geom_offset() -> None:
         '<worldbody><body><joint type="slide" axis="1 0 0"/>'
         '<geom type="mesh" mesh="bone" pos="0 0 .5"/></body></worldbody></mujoco>'
     )
-    ghost = GhostBodyViz.from_motion_clip(
+    ghost = viz_class.from_motion_clip(
         MotionClip(
             qpos=np.array([[0.0], [2.0]]), qvel=None, site_xpos=None, site_names=None
         ),

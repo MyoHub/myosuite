@@ -34,13 +34,11 @@ TERRA_CHECKPOINT = "checkpoint_24416"
 
 
 def download_terrain_checkpoint(cache_dir: str | Path | None = None) -> Path:
-    """Download TERRA-4B at the pinned revision; returns the ``checkpoint_*`` folder."""
+    """Download pinned TERRA-4B, honoring optional Hub/Colab authentication."""
     from huggingface_hub import snapshot_download  # noqa: PLC0415
 
     root = Path(
-        snapshot_download(
-            TERRA_REPO, revision=TERRA_REVISION, cache_dir=cache_dir, token=False
-        )
+        snapshot_download(TERRA_REPO, revision=TERRA_REVISION, cache_dir=cache_dir)
     )
     return root / TERRA_CHECKPOINT if (root / TERRA_CHECKPOINT).is_dir() else root
 
