@@ -14,7 +14,11 @@ permissions:
 
 jobs:
   colab-package-compatibility:
-    name: Colab package compatibility (Python 3.12)
+    name: Colab package compatibility (Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.13']
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -22,7 +26,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Create the student environment
         run: |
-          uv venv --python 3.12 .venv-student
+          uv venv --python "${{ matrix.python }}" .venv-student
           uv pip install --python .venv-student/bin/python pip
       - name: Install the reported Colab packages first
         run: |

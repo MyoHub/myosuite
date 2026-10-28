@@ -97,6 +97,18 @@
     "body_contacts": 0,
     "all_recovered": true,
     "video_frames": 598,
-    "video_sha256": "cfbccb469b425bb8a5ef485124b356ecfa0f8ef90db83b2179813c6b4223c10c"
+    "video_sha256": "cfbccb469b425bb8a5ef485124b356ecfa0f8ef90db83b2179813c6b4223c10c",
+    "also_verified_python_3_13": {
+      "python": "3.13.16",
+      "pip_check": "No broken requirements found.",
+      "notebook_code_cells_executed": 7,
+      "resolver_warning": false,
+      "all_three_throws_avoided": true,
+      "body_contacts": 0,
+      "all_recovered": true,
+      "root_trajectory_identical_to_python_3_12": true,
+      "video_frames": 598,
+      "video_sha256": "cfbccb469b425bb8a5ef485124b356ecfa0f8ef90db83b2179813c6b4223c10c"
+    }
   }
 }
