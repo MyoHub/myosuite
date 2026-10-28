@@ -18,6 +18,19 @@ and Gradio requirements: NumPy 2.2.6, Hugging Face Hub 1.32.0, and Pillow 12.2.0
 After running an older install cell, use **Runtime → Disconnect and delete runtime**
 before running the updated notebook so imported binary libraries are not stale.
 
+## Hugging Face account and `HF_TOKEN` (recommended)
+
+The [TERRA-4B checkpoint](https://huggingface.co/merc-s/TERRA-4B) is public: you can run this lesson without an account or token. Signing in is recommended for higher download limits, especially on shared Colab connections.
+
+1. [Create a free Hugging Face account](https://huggingface.co/join) and sign in.
+2. Open [Access Tokens](https://huggingface.co/settings/tokens), select **Create new token**, and create a **Read** token. Write/admin permissions are unnecessary.
+3. In Colab, click the **key icon (Secrets)** in the left sidebar. Add a secret named exactly **`HF_TOKEN`**, paste the token into its value, and enable **Notebook access** for this notebook.
+4. Do this **before running the download cells**. The Hugging Face Hub library reads the Colab secret automatically. If you already attempted a download before adding/enabling the secret, restart the runtime and rerun the cells in order.
+
+Keep the token in Secrets; do not paste it into a code cell or print it. A missing/disabled secret still permits anonymous access to the public checkpoint; if you get a rate-limit error, enable the secret and retry after the limit resets. If a token is rejected, replace it with a valid Read token or disable/remove the invalid secret and restart for anonymous access.
+
+For local Python, set the **`HF_TOKEN` environment variable before starting Python**, or run `hf auth login` once. See the [official token guide](https://huggingface.co/docs/hub/security-tokens) and [download limits](https://huggingface.co/docs/hub/rate-limits). This lesson does not require access to gated motion datasets.
+
 ```python
 from myosuite import make_env
 from myosuite.integrations.musclemimic import download_terrain_checkpoint
