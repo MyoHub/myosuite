@@ -1,14 +1,21 @@
 {
-  "python_completed": true,
-  "notebook_code_cells_executed": 11,
-  "notebook_execution": "IPython, in-process; host forbids Jupyter socket binding",
-  "setup_cell_executed": true,
-  "metrics_identical": true,
-  "trajectory_arrays_identical": true,
+  "environment": "myoHalloween-v0",
+  "profile": "terra",
+  "package_revision": "8da042ada54ea907b7790874f0f9947a66002180",
+  "python": "3.12.14",
+  "seed": 2027,
+  "control_steps": 2390,
+  "original_vs_registered_actor_max_abs_error": {
+    "qpos": 0.0,
+    "qvel": 0.0,
+    "act": 0.0
+  },
+  "python_vs_clean_installed_notebook_root_identical": true,
+  "notebook_code_cells_executed_including_install": 7,
+  "clean_install_verified": "8da042ada54ea907b7790874f0f9947a66002180",
   "events": [
     {
       "throw": 1,
-      "command": "left",
       "body_contacts": 0,
       "min_surface_distance_m": 0.059993796205552105,
       "min_pelvis_height_m": 0.8949430891582714,
@@ -18,7 +25,6 @@
     },
     {
       "throw": 2,
-      "command": "right",
       "body_contacts": 0,
       "min_surface_distance_m": 0.034248163707390186,
       "min_pelvis_height_m": 0.8936793343187521,
@@ -28,7 +34,6 @@
     },
     {
       "throw": 3,
-      "command": "right",
       "body_contacts": 0,
       "min_surface_distance_m": 0.09169714165932752,
       "min_pelvis_height_m": 0.8939074054941866,
@@ -37,23 +42,36 @@
       "recovered": true
     }
   ],
-  "videos": [
-    {
-      "frames": 598,
-      "width": 640,
-      "height": 480,
-      "fps": 25,
-      "duration_s": 23.92
-    },
-    {
-      "frames": 598,
-      "width": 640,
-      "height": 480,
-      "fps": 25,
-      "duration_s": 23.92
+  "idle_negative_control": {
+    "step": 164,
+    "time": 1.6400000000000012,
+    "hit": true,
+    "fallen": false,
+    "contacts": 1,
+    "current_event": {
+      "throw": 1,
+      "body_contacts": 1,
+      "min_surface_distance_m": -0.00027779600589987463,
+      "min_pelvis_height_m": 0.9105193838371938,
+      "max_home_distance_m": 0.01150281149903673,
+      "final_home_distance_m": 0.01150281149903673,
+      "recovered": true
     }
-  ],
-  "script_bytes": 19038,
-  "embedded_program_payloads": false,
-  "private_repository_access_required": false
+  },
+  "video": {
+    "frames": 598,
+    "width": 640,
+    "height": 480,
+    "fps": 25,
+    "duration_s": 23.92,
+    "decoded": true,
+    "visually_inspected": true
+  },
+  "checks": {
+    "halloween_tests_passed": 16,
+    "optional_mjlab_tests_skipped": 4,
+    "required_core_suite": "passed; 324 cases collected, expected skips/xfails",
+    "pre_commit": "passed"
+  },
+  "scope": "CPU TERRA profile only; default CPU/MJLab benchmark unchanged; CUDA not validated"
 }

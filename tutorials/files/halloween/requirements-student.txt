@@ -1,4 +1,4 @@
-myosuite[musclemimic] @ git+https://github.com/MyoHub/myosuite.git@efd21d219cbaad891612f48891b685ea1b465c69
+myosuite[musclemimic] @ git+https://github.com/MyoHub/myosuite.git@8da042ada54ea907b7790874f0f9947a66002180
 mujoco==3.11.0
 numpy==2.5.4
 scipy==1.18.1
