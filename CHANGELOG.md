@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Halloween task contract
+
+- Register `myoHalloween-v0` on CPU as well as MJLab: 535 float32 observations,
+  354 direct muscle excitations, 100 Hz control / 500 Hz physics, six-second episodes.
+- Copy MuJoCo physics options into MJLab (Euler), enable explicit pumpkin/body
+  collision pairs, and terminate only on physical contact (including substep history).
+  Link-origin distance remains reward shaping, not a collision detector.
+- Default throws run at full speed on both backends. The former training-only
+  easy-start curriculum is opt-in with `curriculum=True`.
+- The frozen-TERRA selector tutorial is a separate high-level controller and
+  curriculum; its weights are not raw-muscle `myoHalloween-v0` checkpoints.
+
 ### Highlights
 
 * **Photorealistic Blender rendering of any MyoSuite rollout ([#540]).** One command turns a CPU rollout of a
