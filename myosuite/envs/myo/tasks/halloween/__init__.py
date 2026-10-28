@@ -1,25 +1,10 @@
-# Copyright (c) MyoSuite Authors. All rights reserved.
-#
-# This source code is licensed under the Apache 2 license found in the
-# LICENSE file in the root directory of this source tree.
-"""MyoHalloween: muscle-driven pumpkin dodge on MyoFullBody."""
+"""Register the CPU Halloween muscle-action environment."""
 
-from myosuite.envs.myo.tasks.halloween.halloween_model import (
-    ASSET_DIR,
-    PUMPKIN_BODY,
-    PUMPKIN_JOINT,
-    build_default_halloween_spec,
-    build_halloween_spec,
-    compile_halloween_model,
-    throw_pumpkin,
+from myosuite.core.registry import register_env
+
+register_env(
+    env_id="myoHalloween-v0",
+    entry_point="myosuite.envs.myo.tasks.halloween.cpu:HalloweenEnv",
+    max_episode_steps=600,
+    kwargs={"frame_skip": 5},
 )
-
-__all__ = [
-    "ASSET_DIR",
-    "PUMPKIN_BODY",
-    "PUMPKIN_JOINT",
-    "build_default_halloween_spec",
-    "build_halloween_spec",
-    "compile_halloween_model",
-    "throw_pumpkin",
-]

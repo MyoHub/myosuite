@@ -29,18 +29,23 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 from mjlab.scene import SceneCfg
-from mjlab.sim import MujocoCfg, SimulationCfg
+from mjlab.sensor import ContactMatch, ContactSensorCfg
+from mjlab.sim import SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 from mjlab.viewer.viewer_config import ViewerConfig
 
 from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
     _init_state_from_model as _mimic_init_state_from_model,
 )
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
 from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
     MyoMuscleActivationActionCfg,
 )
+from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import mujoco_cfg_from_model
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM, sync_forward
+from myosuite.envs.myo.tasks.halloween.config import HALLOWEEN
 from myosuite.envs.myo.tasks.halloween.halloween_model import (
+    add_pumpkin_contact_pairs,
     compile_halloween_model,
     park_pumpkin,
     throw_pumpkin,
@@ -49,15 +54,15 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     build_mimic_fullbody_spec,
     default_mimic_fullbody_config,
 )
+from myosuite.terms.halloween import halloween_scores
 
 logger = logging.getLogger(__name__)
 _TASK_ID = "myoHalloween-v0"
 _ROBOT = "halloween_fullbody"
 _PUMPKIN = "halloween_pumpkin"
-_SIM_DT = 0.002
-_CTRL_DT = 0.01
-_MAX_EPISODE_STEPS = 500
-_PARK_POS = (6.5, 6.5, 0.15)
+_SIM_DT = HALLOWEEN.sim_dt
+_CTRL_DT = HALLOWEEN.ctrl_dt
+_PARK_POS = HALLOWEEN.park_pos
 
 
 def _build_robot_spec() -> mujoco.MjSpec:
@@ -76,9 +81,9 @@ def _build_pumpkin_spec() -> mujoco.MjSpec:
     geom = body.add_geom(
         name="pumpkin_collision",
         type=mujoco.mjtGeom.mjGEOM_SPHERE,
-        size=[0.09, 0.0, 0.0],
+        size=[HALLOWEEN.pumpkin_radius, 0.0, 0.0],
         rgba=[1.0, 0.45, 0.05, 1.0],
-        mass=0.35,
+        mass=HALLOWEEN.pumpkin_mass,
     )
     geom.contype = 1
     geom.conaffinity = 1
@@ -115,18 +120,14 @@ def _pumpkin_init_state(model: mujoco.MjModel) -> EntityCfg.InitialStateCfg:
     )
 
 
-_PUMPKIN_RADIUS = 0.09
-_HIT_MARGIN = 0.11  # body link origins sit inside the body: a hit is the pumpkin this close to one
-_FALLEN_Z = 0.6  # pelvis height below which the character has fallen
-_FALLEN_HEAD_Z = (
-    0.9  # head height below which the character has fallen (folding over at the hips)
-)
-_THROW_EVERY_S = (1.5, 3.0)
-_THROW_EASY = 1.6  # flight-time factor of the first throws of a training run (slower, easier to dodge)
-_THROW_RAMP_STEPS = (
-    48_000  # env steps (2000 PPO iterations of 24) over which the factor decays to 1
-)
-_EPISODE_S = 6.0
+_PUMPKIN_RADIUS = HALLOWEEN.pumpkin_radius
+_HIT_MARGIN = 0.11  # Distance shaping only; physical contacts determine hits.
+_FALLEN_Z = HALLOWEEN.fall_pelvis_z
+_FALLEN_HEAD_Z = HALLOWEEN.fall_head_z
+_THROW_EVERY_S = HALLOWEEN.throw_interval_s
+_THROW_EASY = HALLOWEEN.easy_start
+_THROW_RAMP_STEPS = HALLOWEEN.ramp_steps
+_EPISODE_S = HALLOWEEN.episode_s
 
 
 def _obs_root(entity: str):
@@ -213,7 +214,12 @@ def _reward_upright(entity: str):
     """Head height (0 at 1.0 m, 1 from 1.5 m up): a high pelvis alone does not count."""
 
     def _fn(env: Any) -> torch.Tensor:
-        return ((_head_pos(env, entity)[:, 2] - 1.0) / 0.5).clamp(min=0.0, max=1.0)
+        return halloween_scores(
+            torch,
+            env.scene[entity].data.root_link_pos_w,
+            _head_pos(env, entity),
+            _pumpkin_clearance(env),
+        )["upright"]
 
     return _fn
 
@@ -222,8 +228,12 @@ def _reward_posture(entity: str):
     """Head above the pelvis: cosine between the pelvis-to-head direction and world up."""
 
     def _fn(env: Any) -> torch.Tensor:
-        v = _head_pos(env, entity) - env.scene[entity].data.root_link_pos_w
-        return (v[:, 2] / v.norm(dim=-1).clamp(min=1e-6)).clamp(min=0.0)
+        return halloween_scores(
+            torch,
+            env.scene[entity].data.root_link_pos_w,
+            _head_pos(env, entity),
+            _pumpkin_clearance(env),
+        )["posture"]
 
     return _fn
 
@@ -245,18 +255,15 @@ def _term_fallen(entity: str):
 
 
 def _term_hit(env: Any) -> torch.Tensor:
-    """The pumpkin reached the character's body."""
-    return _pumpkin_clearance(env) < _PUMPKIN_RADIUS + _HIT_MARGIN
+    """Retain physical pumpkin/body collisions across all five substeps."""
+    contacts = env.scene["pumpkin_body_contact"].data
+    return contacts.force_history.norm(dim=-1).amax(dim=(-1, -2)) > 0
 
 
 def _event_park_pumpkin(env: Any, env_ids: Any) -> None:
     """Reset: the pumpkin waits on the ground far away until the first throw."""
     pumpkin = env.scene[_PUMPKIN]
-    ids = (
-        torch.arange(env.num_envs, device=env.device)
-        if env_ids is None
-        else torch.as_tensor(env_ids, device=env.device)
-    )
+    ids = normalize_mjlab_env_ids(env, env_ids)
     state = torch.zeros(len(ids), 13, device=env.device)
     state[:, :3] = env.scene.env_origins[ids] + torch.tensor(
         _PARK_POS, device=env.device
@@ -270,15 +277,14 @@ def _event_throw(throw_speed: float = 1.0, easy_start: float = _THROW_EASY):
     upper body (chest to head height, slightly off-centre) after 0.55-0.75 s / throw_speed: standing still is a hit."""
 
     def _fn(env: Any, env_ids: Any) -> None:
-        ids = (
-            torch.arange(env.num_envs, device=env.device)
-            if env_ids is None
-            else torch.as_tensor(env_ids, device=env.device)
-        )
+        ids = normalize_mjlab_env_ids(env, env_ids)
         if ids.numel() == 0:
             return
         n = len(ids)
-        rnd = lambda lo, hi: lo + (hi - lo) * torch.rand(n, device=env.device)  # noqa: E731
+
+        def rnd(lo, hi):
+            return lo + (hi - lo) * torch.rand(n, device=env.device)
+
         root = env.scene[_ROBOT].data.root_link_pos_w[ids]
         sides = torch.where(torch.rand(n, device=env.device) < 0.5, -1.0, 1.0)
         target = root.clone()
@@ -303,10 +309,18 @@ def _event_throw(throw_speed: float = 1.0, easy_start: float = _THROW_EASY):
     return _fn
 
 
+def _scene_contacts(spec: mujoco.MjSpec) -> None:
+    add_pumpkin_contact_pairs(
+        spec, pumpkin_geom=f"{_PUMPKIN}/pumpkin_collision", robot_prefix=f"{_ROBOT}/"
+    )
+
+
 def make_halloween_env_cfg(
-    *, num_envs: int = 1, throw_speed: float = 1.0, curriculum: bool = True
+    *, num_envs: int = 1, throw_speed: float = 1.0, curriculum: bool = False
 ) -> ManagerBasedRlEnvCfg:
     """Build the MJLab config with robot and projectile as separate entities."""
+    if not np.isfinite(throw_speed) or not 0.5 <= throw_speed <= 2.0:
+        raise ValueError("throw_speed must be finite and between 0.5 and 2.0")
     robot_model = _build_robot_spec().compile()
     pumpkin_model = _build_pumpkin_spec().compile()
     muscles, tendons = _muscle_and_tendon_names(robot_model)
@@ -329,7 +343,25 @@ def make_halloween_env_cfg(
         init_state=_pumpkin_init_state(pumpkin_model),
     )
     scene = SceneCfg(
-        num_envs=num_envs, entities={_ROBOT: robot_cfg, _PUMPKIN: pumpkin_cfg}
+        num_envs=num_envs,
+        entities={_ROBOT: robot_cfg, _PUMPKIN: pumpkin_cfg},
+        spec_fn=_scene_contacts,
+        sensors=(
+            ContactSensorCfg(
+                name="pumpkin_body_contact",
+                primary=ContactMatch(
+                    mode="geom", pattern="^pumpkin_collision$", entity=_PUMPKIN
+                ),
+                secondary=ContactMatch(
+                    mode="subtree",
+                    pattern=robot_model.body(int(robot_model.jnt_bodyid[0])).name,
+                    entity=_ROBOT,
+                ),
+                fields=("found", "force"),
+                reduce="maxforce",
+                history_length=5,
+            ),
+        ),
     )
 
     obs_terms = {
@@ -377,14 +409,16 @@ def make_halloween_env_cfg(
     }
     return ManagerBasedRlEnvCfg(
         scene=scene,
-        decimation=max(1, int(round(_CTRL_DT / _SIM_DT))),
+        decimation=max(1, round(_CTRL_DT / _SIM_DT)),
         episode_length_s=_EPISODE_S,
         observations=observations,
         actions=actions,
         rewards=rewards,
         terminations=terminations,
         events=events,
-        sim=SimulationCfg(mujoco=MujocoCfg(timestep=_SIM_DT), njmax=512, nconmax=256),
+        sim=SimulationCfg(
+            mujoco=mujoco_cfg_from_model(robot_model), njmax=512, nconmax=256
+        ),
         viewer=ViewerConfig(
             lookat=(0.0, 0.0, 0.9),
             distance=3.2,
@@ -446,15 +480,18 @@ def register_halloween_mjlab_task() -> None:
             runner_cls=None,
         )
     except ValueError:
-        pass
+        from mjlab.tasks.registry import list_tasks
+
+        if _TASK_ID not in list_tasks():
+            raise
     except Exception:
         logger.warning("mjlab: failed to register %s", _TASK_ID, exc_info=True)
 
 
 __all__ = [
-    "make_halloween_env_cfg",
-    "register_halloween_mjlab_task",
     "compile_halloween_model",
-    "throw_pumpkin",
+    "make_halloween_env_cfg",
     "park_pumpkin",
+    "register_halloween_mjlab_task",
+    "throw_pumpkin",
 ]
