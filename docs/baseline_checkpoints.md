@@ -162,6 +162,9 @@ slow-throw curriculum. Those metrics/checkpoints are not compatible with the
 physical-contact/Euler contract introduced here. Re-evaluate or retrain them.
 The default contract has 535 observations, 354 direct excitations, 0.01 s control
 steps, 0.002 s physics substeps and a six-second time limit. Curriculum is opt-in.
+MJLab episode resets honor the configured entity initial state, including offset
+spawns. The default spawn is unchanged; earlier runs with customized initial
+poses that fell back to model `qpos0` should be re-evaluated.
 
 The MyoHalloween frozen-TERRA demo uses a learned four-command selector with
 13 high-level inputs, a calibrated motion decoder, a distinct smaller-projectile

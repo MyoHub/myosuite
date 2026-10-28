@@ -16,6 +16,9 @@ All notable changes to this project are documented in this file.
 
 ### Halloween task contract
 
+- Restore configured MJLab robot root/joint state on every episode reset before
+  parking the pumpkin, including customized spawn poses. Reuse MJLab’s reset primitive.
+
 - Register `myoHalloween-v0` on CPU as well as MJLab: 535 float32 observations,
   354 direct muscle excitations, 100 Hz control / 500 Hz physics, six-second episodes.
 - Copy MuJoCo physics options into MJLab (Euler), enable explicit pumpkin/body

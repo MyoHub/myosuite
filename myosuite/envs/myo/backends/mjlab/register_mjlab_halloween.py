@@ -21,6 +21,7 @@ from mjlab.actuator import XmlActuatorCfg as _XmlWrappedActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.envs import ManagerBasedRlEnvCfg
+from mjlab.envs.mdp import events as mdp_events
 from mjlab.envs.mdp import terminations as mdp_terminations
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
@@ -364,6 +365,9 @@ def make_halloween_env_cfg(
     }
     # The pumpkin waits after a reset, then is thrown again and again: stand first, then dodge each throw.
     events = {
+        "reset_scene_to_default": EventTermCfg(
+            func=mdp_events.reset_scene_to_default, mode="reset"
+        ),
         "park_pumpkin": EventTermCfg(func=_event_park_pumpkin, mode="reset"),
         "throw_pumpkin": EventTermCfg(
             func=_event_throw(throw_speed, _THROW_EASY if curriculum else 1.0),
