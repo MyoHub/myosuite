@@ -73,8 +73,19 @@ muscle groups (``myosuite/core/muscle_groups.py``) to ``F``, ``R`` and ``r``:
 * Joint-level rows (``Ankle``, ``Elbow``, ``Hand``, ``Knee``) and the
   muscle-group and sex-specific rows: Rakshit et al. (2021, Table 2), fitted to
   torque decline in sustained and intermittent isometric contractions. Every
-  value matches the published table. ``Toe`` copies ``Ankle``; ``Wrist`` and
+  value matches the published table, and every F/R ratio matches their Table 3.
+  Their ``k`` is ``r``; groups without a fitted ``k`` (plantarflexors, female
+  first dorsal interosseous) use r = 15. ``Toe`` copies ``Ankle``; ``Wrist`` and
   ``Finger`` copy ``Hand``; ``Wrist-Flexor`` is the general handgrip group.
+  The joint rows are the "combined sexes, combined FMGs" column: separate fits
+  to the pooled data of a joint, not averages of its group rows. That is why
+  ``Elbow`` (F = 0.01086) lies below both elbow groups and ``Ankle``
+  (F = 0.01485) about twice above both ankle groups: F and R move together, and
+  the joint F/R (4.82 elbow, 4.46 ankle) lies between those of the groups. The
+  combined-sex group rows are likewise separate fits, so they need not lie
+  between the female and male rows (``Knee-Extensor`` F = 0.00825 against
+  0.01407 and 0.01420). ``Knee`` equals ``Knee-Extensor`` because the only knee
+  data were knee-extension data (Rakshit et al. 2021, Section 3).
 * ``Shoulder``: the shoulder fit of Frey-Law et al. (2012, Table 1),
   F = 0.01820, R = 0.00168, with r = 15, which Looft & Frey-Law (2020) found
   somewhat better than r = 30 for intermittent shoulder flexion.
@@ -84,7 +95,8 @@ muscle groups (``myosuite/core/muscle_groups.py``) to ``F``, ``R`` and ``r``:
 * ``Thigh-Hamstring``: no knee-flexor fit has been published. The row is the knee fit
   of Frey-Law et al. (2012, Table 1), F = 0.01500, R = 0.00149, with r = 15 (Looft et
   al. 2018, Table 4), the joint-level knee parameters Yang et al. (2025) use for the
-  knee flexors and extensors.
+  knee flexors and extensors. Rakshit et al.'s ``Knee`` row is fitted to
+  knee-extension data only, so the hamstrings do not use it.
 * ``Hip`` (every ``Hip-*`` group): no hip-specific fit has been published, and Yang
   et al. (2025) use the general fit for the hip; the row repeats ``Default``.
 * Forearm rotators (``SUP``, ``PT``, ``PQ``: groups ``Elbow-Supinator`` and

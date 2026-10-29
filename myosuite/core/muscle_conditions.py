@@ -24,7 +24,11 @@ if TYPE_CHECKING:
 
 # ---------------------------------------------------------------------------
 # Per-muscle fatigue parameters, F and R in 1/s. Muscle-group, sex-specific and
-# joint rows: Rakshit et al. 2021 (J Biomech 127:110695, Table 2); Default,
+# joint rows: Rakshit et al. 2021 (J Biomech 127:110695, Table 2, p. 5; their k is
+# r, "-" there means no r). Joint rows (Ankle, Elbow, Hand, Knee) are the "combined
+# sexes, combined FMGs" column: separate fits to the pooled data, not averages of
+# the group rows. Knee equals Knee-Extensor because only knee-extensor data
+# existed (Section 3). Default,
 # Shoulder, Trunk, Thigh-Hamstring and Hip: Frey-Law et al. 2012 (J Biomech
 # 45:1803, Table 1) with r of Looft et al. 2018 (J Biomech 77:16, Table 4). Rows
 # without "r" use Default's r = 15. Validated against endurance times in
