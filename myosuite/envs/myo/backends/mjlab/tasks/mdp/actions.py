@@ -293,8 +293,9 @@ class MyoAction(ActionTerm):
         cfg = self.cfg
         stages: list[_TermStage] = [_NoiseStage(self)]
         if cfg.muscle_fatigue:
-            state = TorchFatigueState.from_mj_model(
-                model, num_envs=self.num_envs, device=str(self.device)
+            ids = self._entity.indexing.ctrl_ids[self._muscle_cols].cpu().numpy()
+            state = TorchFatigueState.from_mj_model(  # one column per muscle col
+                model, num_envs=self.num_envs, device=str(self.device), muscles=ids
             )
             stages.append(_FatigueStage(self, state))
         if self._reroute is not None:

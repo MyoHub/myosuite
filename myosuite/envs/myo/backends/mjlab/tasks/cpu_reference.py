@@ -586,6 +586,8 @@ def action_cfg(
         sfx = "_r" if task.uses_recipe else ""
         reroute = (f"EIP{sfx}", f"EPL{sfx}")
     fatigue = "fatigue" in conditions
+    if fatigue and (task.wrapper_kwargs("FatigueWrapper") or {}).get("muscles"):
+        raise NotImplementedError("FatigueWrapper(muscles=...) is CPU-only for now")
     # The CPU fatigue reset options (only read by the CPU env under fatigue).
     reset_vec, reset_random = task.fatigue_reset if fatigue else (None, False)
     return MyoActionCfg(
