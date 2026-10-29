@@ -220,13 +220,9 @@ def load_onnx_session(
         ImportError: If ``onnxruntime`` is not installed.
         FileNotFoundError: If *path* does not exist.
     """
-    try:
-        import onnxruntime as ort
-    except ImportError as err:
-        raise ImportError(
-            "onnxruntime is required to load ONNX actors: "
-            "pip install onnxruntime  (CPU)  or  onnxruntime-gpu  (CUDA)"
-        ) from err
+    from myosuite.utils.onnxruntime_utils import require_onnxruntime
+
+    ort = require_onnxruntime()
 
     path = Path(path)
     if not path.exists():
@@ -278,10 +274,9 @@ def load_onnx_session_from_bytes(
     Returns:
         :class:`OnnxActorSession` ready for inference.
     """
-    try:
-        import onnxruntime as ort
-    except ImportError as err:
-        raise ImportError("onnxruntime is required: pip install onnxruntime") from err
+    from myosuite.utils.onnxruntime_utils import require_onnxruntime
+
+    ort = require_onnxruntime()
 
     if providers is None:
         available = ort.get_available_providers()

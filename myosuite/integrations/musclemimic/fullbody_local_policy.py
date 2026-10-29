@@ -1010,13 +1010,9 @@ class OnnxPolicyRunner:
     state_indices: np.ndarray | None = None
 
     def __post_init__(self) -> None:
-        try:
-            import onnxruntime as ort
-        except ImportError as err:
-            raise ImportError(
-                "onnxruntime is required for OnnxPolicyRunner. "
-                "Install with: pip install onnxruntime"
-            ) from err
+        from myosuite.utils.onnxruntime_utils import require_onnxruntime
+
+        ort = require_onnxruntime()
         self._session = ort.InferenceSession(
             str(self.onnx_path),
             providers=["CPUExecutionProvider"],

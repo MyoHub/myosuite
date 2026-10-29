@@ -418,7 +418,7 @@ class CumulativeFatigue:
 
         Args:
             fatigue_reset_vec: If provided, set MF to this vector and
-                MR = 1 - fatigue_reset_vec.  Shape ``(na,)``.
+                MR = 1 - fatigue_reset_vec. Shape ``(na,)``. The vector is copied.
             fatigue_reset_random: If ``True``, sample a random fatigue
                 state.  Cannot be combined with *fatigue_reset_vec*.
             np_random: Generator for the random state, typically the env's
@@ -444,7 +444,7 @@ class CumulativeFatigue:
                 raise ValueError(
                     f"fatigue_reset_vec length {len(fatigue_reset_vec)} != na={self.na}"
                 )
-            self._MF = np.asarray(fatigue_reset_vec, dtype=float)  # type: ignore[assignment]
+            self._MF = np.array(fatigue_reset_vec, dtype=float, copy=True)  # type: ignore[assignment]
             self._MR = 1.0 - self._MF  # type: ignore[assignment]
             self._MA = np.zeros(self.na)
         else:

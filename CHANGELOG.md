@@ -20,10 +20,16 @@ All notable changes to this project are documented in this file.
     thin muscle paths; colour by activation or uniform (`--muscle-color`).
   - Optional body skin from a MuJoCo `.skn` file (`--skin`, translucent or opaque; `myosuite.viz.skin`), with a
     bundled full-body skin adapted from MakeHuman/MPFB (CC0 1.0) and fitted over the muscle atlas; `ViserSkin` draws it in mjviser.
+    The bundled skin is smooth in motion: a slimmer forearm and wrist that rotate with the muscles under them, and
+    shoulder weights that keep the skin from folding as the arm is raised or rotated.
     `--skin-texture` puts a colour image on the skin (the bundled skin takes textures in MakeHuman's UV layout).
+    `python -m myosuite.viz.skin_glb` round-trips a skin through a rigged `.glb` to paint its blend weights in Blender;
+    `--skin` also takes the `.glb`. Its bones are chained along the body tree, so the
+    rig poses like a skeleton in Blender.
   - Anatomical muscle meshes in place of the tubes (`--muscle-mesh atlas|atlas-hd|PATH.glb`): 416 BodyParts3D
     muscles (CC BY 4.0), each weighted to the bones it attaches to, downloaded from the Hugging Face dataset
-    `myohub/myosuite-assets` on first use (full-body envs).
+    `myohub/myosuite-assets` on first use. They bind to every body that draws the full body's bone meshes: arm and
+    hand models get the muscles whose bones they have, several bodies in one model one set each (`--muscle-mesh-env`).
   - Preview, video and export-only modes; the `studio` or the task's own `mujoco` scene; tutorial 3.6.
   - Needs the optional MuJoCo USD dependencies and a separate Blender installation.
   - `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy.
@@ -45,6 +51,7 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 * **Motion clips load without pickle:** `load_motion_clip`, the CPU Mimic clip env and the full-body observation adapter open `.npz` files with `allow_pickle=False` (unpickling a downloaded file can run code). Names stored as bytes now read as text instead of `"b'name'"`, and a pickled name array is refused with instructions for re-saving it. SAR synergy metadata is written as strings, and older folders still load ([#522]).
+* Fixed initial fatigue arrays retain their requested values across CPU episodes. `CumulativeFatigue.reset` copies `fatigue_reset_vec` into owned state. Stepping previously mutated writable NumPy arrays supplied by callers and failed on read-only arrays.
 
 ## [3.0.0] - 2026-10-07
 

@@ -628,9 +628,7 @@ class MyoGymnasiumEnv(gym.Env):
             return
         if compat._window is not None:
             compat._window.update_mesh(mesh_id)
-        if compat._renderer is not None:
-            compat._renderer.close()
-            compat._renderer = None
+        compat.invalidate_offscreen()
 
     # ------------------------------------------------------------------
     # MujocoEnv-compatible utility helpers

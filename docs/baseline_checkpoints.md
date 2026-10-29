@@ -72,6 +72,8 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 walks along `-y` is now the forward one. Each checkpoint moved with its task definition; a checkpoint downloaded under the old
 name walks in the opposite direction of the new one.
 
+CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` now reuse the requested initial fatigue in every episode. Earlier versions mutated that array during stepping, which changed later episodes. Reevaluate checkpoints measured with this configuration.
+
 ---
 
 <sub>

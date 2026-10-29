@@ -27,6 +27,7 @@ from typing import Any
 # Anatomical muscle meshes (BodyParts3D, CC BY 4.0) on the Hugging Face Hub, posed
 # on myoMimicFullbody-v0's rest pose; see viz/assets/CREDITS.md.
 MUSCLE_MESH_REPO = "myohub/myosuite-assets"
+MUSCLE_MESH_ENV = "myoMimicFullbody-v0"  # the body the atlas is modelled on
 MUSCLE_MESHES = {
     "atlas": "muscles/fullbody_atlas_light.glb",
     "atlas-hd": "muscles/fullbody_atlas.glb",
@@ -42,6 +43,12 @@ class RenderConfig:
         output: New output directory.
         checkpoint: SB3 ``.zip`` or RSL-RL ``.pt``/run directory; ``None`` drives
             the env with random actions.
+        motion: ``.npz`` motion clip with ``qpos`` (e.g. MuscleMimic's retargeted
+            clips; columns matched by joint name when it has ``joint_names``),
+            replayed kinematically instead of a policy; muscles stay at rest.
+        motion_activation: With ``motion``, tint the muscles by a visual proxy
+            of activation that rises while a muscle shortens (not a muscle
+            model estimate).
         seed: Episode seed.
         seconds: Clip length; recording also stops when the episode ends.
         fps: Video frame rate.
@@ -53,7 +60,8 @@ class RenderConfig:
             keeps one anatomical red, e.g. for still renders.
         muscle_scale: Multiplier of all muscle radii.
         scene: ``"studio"`` backdrop, or ``"mujoco"`` to keep the task's floor.
-        skin: ``.skn`` body skin, or ``"fullbody"`` for the bundled one; ``None``
+        skin: ``.skn`` body skin, a rigged ``.glb`` skin in the model's rest pose
+            (:mod:`myosuite.viz.skin_glb`), or ``"fullbody"`` for the bundled one; ``None``
             renders no skin.
         skin_style: ``"translucent"`` skin over muscles and bones, or ``"opaque"``
             skin that hides them.
@@ -64,9 +72,12 @@ class RenderConfig:
         muscle_mesh: Anatomical muscle meshes drawn in place of the tubes and
             deformed by the bones: ``"atlas"`` (light) or ``"atlas-hd"``
             (BodyParts3D, one mesh per muscle weighted to its own bones,
-            downloaded from Hugging Face on first use, full body only), or a
-            skinned ``.glb`` in the model's rest pose, its bones matched to the
-            model's bone geoms by rest position; ``None`` keeps the tubes.
+            downloaded from Hugging Face on first use), or a skinned ``.glb``,
+            its bones matched to bone geoms by rest position; ``None`` keeps
+            the tubes. Every body in the scene that shares bone meshes with
+            ``muscle_mesh_env`` gets the muscles whose bones it has.
+        muscle_mesh_env: Env in whose rest pose the muscle meshes are modelled;
+            ``None``: the full body for the atlas, the rendered env for a file.
         samples: Cycles samples per frame.
         blender: Blender executable.
     """
@@ -74,6 +85,8 @@ class RenderConfig:
     env: str
     output: Path
     checkpoint: Path | None = None
+    motion: Path | None = None
+    motion_activation: bool = False
     seed: int = 0
     seconds: float = 3.0
     fps: int = 30
@@ -89,6 +102,7 @@ class RenderConfig:
     skin_texture: Path | None = None
     skin_inflate: float = 0.0
     muscle_mesh: str | None = None
+    muscle_mesh_env: str | None = None
     samples: int = 64
     blender: str = "blender"
 
@@ -104,6 +118,11 @@ class RenderConfig:
             raise ValueError(
                 "Seconds, FPS, resolution, samples and scale must be positive."
             )
+        if self.motion is not None:
+            if self.checkpoint is not None:
+                raise ValueError("Pass a checkpoint or a motion clip, not both.")
+            if not Path(self.motion).is_file():
+                raise ValueError(f"Motion clip not found: {self.motion}")
         if self.muscles not in ("volumetric", "paths"):
             raise ValueError(f"Unknown muscles mode: {self.muscles}")
         if self.muscle_color not in ("activation", "uniform"):
@@ -119,12 +138,11 @@ class RenderConfig:
                 raise ValueError("A skin texture needs a skin.")
             if not Path(self.skin_texture).is_file():
                 raise ValueError(f"Skin texture not found: {self.skin_texture}")
-        if self.muscle_mesh in MUSCLE_MESHES:
-            if not self.env.startswith("myoMimicFullbody"):
-                raise ValueError(
-                    f"--muscle-mesh {self.muscle_mesh} fits myoMimicFullbody envs only."
-                )
-        elif self.muscle_mesh is not None and not Path(self.muscle_mesh).is_file():
+        if (
+            self.muscle_mesh is not None
+            and self.muscle_mesh not in MUSCLE_MESHES
+            and not Path(self.muscle_mesh).is_file()
+        ):
             raise ValueError(f"Muscle mesh not found: {self.muscle_mesh}")
 
 
@@ -150,7 +168,7 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
     from myosuite import make_env
     from myosuite.utils.checkpoint_utils import load_policy
     from myosuite.viz.muscle_tubes import muscle_actuators
-    from myosuite.viz.skin import SkinPose, load_skn
+    from myosuite.viz.skin import SkinPose, load_skin
 
     class LightTendon(objects.USDTendon):
         def generate_primitive_mesh(self) -> dict[str, Any]:
@@ -187,6 +205,20 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             raise ValueError(
                 "Skin/flex export is outside this minimal renderer's scope."
             )
+        clip = None
+        if config.motion is not None:
+            from myosuite.core.trajectory_io import (
+                expand_motion_clip_to_model,
+                load_motion_clip,
+            )
+
+            clip = expand_motion_clip_to_model(
+                load_motion_clip(Path(config.motion), model.nq, model.nv), model
+            )
+            if not clip.frequency_hz:
+                raise ValueError(f"Motion clip has no frequency: {config.motion}")
+            data.qpos[:] = clip.qpos[0]
+            data.qvel[:] = 0
         if config.checkpoint:
             # Strict: an unusable checkpoint raises instead of rendering random motion.
             policy = load_policy(env, config.checkpoint.absolute(), strict=True)
@@ -196,7 +228,7 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
                 return env.action_space.sample()
 
         skin = (
-            SkinPose.bind(load_skn(config.skin), model, config.skin_inflate)
+            SkinPose.bind(load_skin(config.skin, model), model, config.skin_inflate)
             if config.skin is not None
             else None
         )
@@ -219,11 +251,26 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
         muscle_tendons = model.actuator_trnid[muscles, 0] if len(muscles) else []
         times, positions, rotations, qposes, paths, activations = [], [], [], [], [], []
         skin_frames = []
+        previous = None  # muscle lengths of the last sample (motion activation)
         low, high = np.full(3, np.inf), np.full(3, -np.inf)
         start = float(data.time)
         done = False
         while True:
             mujoco.mj_forward(model, data)
+            if clip is not None and config.motion_activation and len(muscles):
+                # Proxy: activation follows the shortening speed (lengths/s).
+                length = data.ten_length[muscle_tendons].copy()
+                adr = model.actuator_actadr[muscles]
+                if times:
+                    speed = (
+                        (previous - length)
+                        * clip.frequency_hz
+                        / np.maximum(length, 1e-3)
+                    )
+                    data.act[adr] += (np.clip(speed / 1.5, 0, 1) - data.act[adr]) * 0.35
+                else:
+                    data.act[adr] = 0
+                previous = length
             exporter.update_scene(data, scene_option=option)
             times.append(float(data.time) - start)
             positions.append(data.geom_xpos.copy())
@@ -258,6 +305,13 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
                     high = np.maximum(high, geom.pos + radius)
             if done or times[-1] >= config.seconds - 1e-9:
                 break
+            if clip is not None:
+                # Kinematic replay at the clip's own frame rate.
+                frame = len(times)
+                data.time = start + frame / clip.frequency_hz
+                data.qpos[:] = clip.qpos[frame]
+                done = frame == len(clip.qpos) - 1
+                continue
             obs, _, terminated, truncated, _ = env.step(policy(obs))
             done = terminated or truncated
         if len(times) < 2:
@@ -314,7 +368,9 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             "env": config.env,
             "seed": config.seed,
             "checkpoint": str(config.checkpoint) if config.checkpoint else None,
-            "motion_source": "checkpoint" if config.checkpoint else "random",
+            "motion_source": (
+                "motion" if clip else "checkpoint" if config.checkpoint else "random"
+            ),
             "usd": str(usd),
             "dt": dt,
             "duration": times[-1],
@@ -344,8 +400,8 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             else [],
             "bone_objects": list(bone_geoms),
             "muscle_mesh": _copy_muscle_mesh(config, out),
-            # Bone poses at qpos0, the rest pose the muscle meshes are modelled in.
-            "bone_rest": _rest_poses(model, bone_geoms) if config.muscle_mesh else {},
+            # Per body in the scene: its bones' poses in the muscle meshes' rest pose.
+            "muscle_rigs": _muscle_rigs(config, model, bone_geoms),
             "plane_objects": [
                 exporter._get_geom_name(g)
                 for g in scene_geoms
@@ -509,6 +565,67 @@ def _rest_poses(model: Any, geoms: dict[str, int]) -> dict[str, list[float]]:
     return poses
 
 
+def _muscle_mesh_reference(env_id: str) -> Any:
+    """Model of the env whose rest pose the muscle meshes are modelled in."""
+    import myosuite
+
+    env = myosuite.make_env(env_id)
+    try:
+        return env.unwrapped.model
+    finally:
+        env.close()
+
+
+def _muscle_rigs(
+    config: RenderConfig, model: Any, bone_geoms: dict[str, int]
+) -> list[dict[str, list[float]]]:
+    """Per body in the scene, the muscle-mesh rest pose of each of its bones.
+
+    The meshes are modelled on one body at ``qpos0``. A bone of the scene is
+    that body's bone when it draws the same mesh, also under a name prefix
+    (copies of a body in one model) and in a model with only part of the bones
+    (an arm). Its pose in the reference is its rest pose, wherever the scene
+    puts it.
+
+    Args:
+        config: Render configuration (``muscle_mesh``, ``muscle_mesh_env``).
+        model: Scene model.
+        bone_geoms: Exported name and geom ID of each bone geom in the scene.
+
+    Returns:
+        One ``{bone name: row-major 4x4 rest pose}`` per body; empty without a
+        muscle mesh.
+
+    Raises:
+        ValueError: No bone of the scene matches the reference body.
+    """
+    if config.muscle_mesh is None:
+        return []
+    bundled = config.muscle_mesh in MUSCLE_MESHES
+    env_id = config.muscle_mesh_env or (MUSCLE_MESH_ENV if bundled else None)
+    if env_id is None or env_id == config.env:
+        return [_rest_poses(model, bone_geoms)]
+    reference = _muscle_mesh_reference(env_id)
+    rest = _rest_poses(
+        reference,
+        {
+            reference.mesh(reference.geom_dataid[g]).name: g
+            for g in range(reference.ngeom)
+            if reference.geom_dataid[g] >= 0
+        },
+    )
+    by_length = sorted(rest, key=len, reverse=True)
+    rigs: dict[str, dict[str, list[float]]] = {}
+    for name, g in bone_geoms.items():
+        mesh = model.mesh(model.geom_dataid[g]).name
+        match = next((r for r in by_length if mesh.endswith(r)), None)
+        if match is not None:
+            rigs.setdefault(mesh[: len(mesh) - len(match)], {})[name] = rest[match]
+    if not rigs:
+        raise ValueError(f"No bone of {config.env} draws a bone mesh of {env_id}.")
+    return list(rigs.values())
+
+
 def _binding_targets(
     joints: dict[str, Any], bones: dict[str, Any], tolerance: float = 0.005
 ) -> dict[str, str]:
@@ -516,6 +633,7 @@ def _binding_targets(
 
     Geom names and IDs differ between model builds (``l_femur`` / ``femur_l``,
     renumbered phalanges), so each joint takes the scene bone at its bind position.
+    A joint without a bone there is left out: the scene's body lacks that bone.
 
     Args:
         joints: Rest position of each authored joint (vertex group).
@@ -523,10 +641,10 @@ def _binding_targets(
         tolerance: Largest allowed distance in metres.
 
     Returns:
-        Scene bone name per joint name.
+        Scene bone name per joint name, for the joints that have one.
 
     Raises:
-        ValueError: A joint has no bone within *tolerance*, or two share one.
+        ValueError: No joint has a bone within *tolerance*, or two share one.
     """
     import numpy as np
 
@@ -534,11 +652,14 @@ def _binding_targets(
     rest = np.array([bones[n] for n in names], float).reshape(-1, 3)
     result: dict[str, str] = {}
     for joint, position in joints.items():
+        if not names:
+            break
         distance = np.linalg.norm(rest - np.asarray(position, float), axis=1)
-        nearest = int(distance.argmin()) if len(names) else -1
-        if nearest < 0 or distance[nearest] > tolerance:
-            raise ValueError(f"No scene bone at authored muscle bone: {joint}")
-        result[joint] = names[nearest]
+        nearest = int(distance.argmin())
+        if distance[nearest] <= tolerance:
+            result[joint] = names[nearest]
+    if not result:
+        raise ValueError("No scene bone at any authored muscle bone")
     if len(set(result.values())) < len(result):
         raise ValueError("Authored muscle bones match the same scene bone")
     return result
@@ -551,28 +672,13 @@ def _add_muscle_mesh(
 
     Runs in Blender. Each authored bone is matched by rest position to a bone
     geom, whose animated object it then copies, so each muscle keeps its own
-    weights.
+    weights. Every body in the scene gets its own rig and its own muscles (the
+    mesh data is shared); a muscle with a bone the body lacks is left out.
     """
     import bpy
     import numpy as np
     from mathutils import Matrix
 
-    bones = []
-    for name, pose in meta["bone_rest"].items():
-        obj = bpy.data.objects.get(f"Mesh_{name}")
-        if obj is not None:
-            bones.append((name, obj, Matrix(np.asarray(pose).reshape(4, 4).tolist())))
-    rig = bpy.data.objects.new("MuscleRig", bpy.data.armatures.new("MuscleRig"))
-    scene.collection.objects.link(rig)
-    bpy.context.view_layer.objects.active = rig
-    bpy.ops.object.mode_set(mode="EDIT")
-    for name, _, rest in bones:
-        edit = rig.data.edit_bones.new(name)
-        edit.tail = (0, 0.02, 0)
-        edit.matrix = rest
-    bpy.ops.object.mode_set(mode="OBJECT")
-    for name, obj, _ in bones:
-        rig.pose.bones[name].constraints.new("COPY_TRANSFORMS").target = obj
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=str(output / meta["muscle_mesh"]))
     imported = [o for o in bpy.data.objects if o not in before]
@@ -582,35 +688,64 @@ def _add_muscle_mesh(
         if o.type == "ARMATURE"
         for bone in o.data.bones
     }
-    targets = _binding_targets(
-        joints, {name: np.array(rest.translation) for name, _, rest in bones}
-    )
     # The glTF importer adds a mesh as the display shape of its bones.
     shapes = {
         b.custom_shape for o in imported if o.type == "ARMATURE" for b in o.pose.bones
     }
-    meshes = [o for o in imported if o.type == "MESH" and o not in shapes]
-    for obj in imported:
-        if obj not in meshes:
-            bpy.data.objects.remove(obj)
-    for obj in meshes:
+    authored = [o for o in imported if o.type == "MESH" and o not in shapes]
+    for obj in authored:
         mesh = obj.data
         if not obj.vertex_groups or any(not v.groups for v in mesh.vertices):
             raise ValueError(f"Muscle mesh {obj.name} is not skinned to the bones")
-        # Two passes, so a new name never collides with a group not yet renamed.
-        for group in obj.vertex_groups:
-            group.name = "_" + group.name
-        for group in obj.vertex_groups:
-            group.name = targets[group.name[1:]]
-        for modifier in list(obj.modifiers):
-            if modifier.type == "ARMATURE":
-                obj.modifiers.remove(modifier)
-        obj.modifiers.new("Bones", "ARMATURE").object = rig
         mesh.materials.clear()
         mesh.materials.append(material)
-        obj.color = MUSCLE_UNIFORM
         for polygon in mesh.polygons:
             polygon.use_smooth = True
+    used = {
+        obj: {
+            obj.vertex_groups[g.group].name
+            for v in obj.data.vertices
+            for g in v.groups
+            if g.weight > 0
+        }
+        for obj in authored
+    }
+    for rest_poses in meta["muscle_rigs"]:
+        bones = {}
+        for name, pose in rest_poses.items():
+            obj = bpy.data.objects.get(f"Mesh_{name}")
+            if obj is not None:
+                bones[name] = (obj, Matrix(np.asarray(pose).reshape(4, 4).tolist()))
+        targets = _binding_targets(
+            joints,
+            {name: np.array(rest.translation) for name, (_, rest) in bones.items()},
+        )
+        # The rig's bones carry the authored joint names: vertex group names live
+        # in the mesh data, which the muscles of all bodies share.
+        rig = bpy.data.objects.new("MuscleRig", bpy.data.armatures.new("MuscleRig"))
+        scene.collection.objects.link(rig)
+        bpy.context.view_layer.objects.active = rig
+        bpy.ops.object.mode_set(mode="EDIT")
+        for joint, name in targets.items():
+            edit = rig.data.edit_bones.new(joint)
+            edit.tail = (0, 0.02, 0)
+            edit.matrix = bones[name][1]
+        bpy.ops.object.mode_set(mode="OBJECT")
+        for joint, name in targets.items():
+            constraint = rig.pose.bones[joint].constraints.new("COPY_TRANSFORMS")
+            constraint.target = bones[name][0]
+        for source in authored:
+            if not used[source] <= set(targets):
+                continue
+            obj = source.copy()  # the copies of all bodies share the mesh data
+            scene.collection.objects.link(obj)
+            for modifier in list(obj.modifiers):
+                if modifier.type == "ARMATURE":
+                    obj.modifiers.remove(modifier)
+            obj.modifiers.new("Bones", "ARMATURE").object = rig
+            obj.color = MUSCLE_UNIFORM
+    for obj in imported:
+        bpy.data.objects.remove(obj)
 
 
 def _copy_skin_texture(config: RenderConfig, out: Path) -> str | None:
@@ -1091,6 +1226,16 @@ def main(argv: list[str] | None = None) -> None:
     source.add_argument(
         "--random", action="store_true", help="Explicit random-action demo."
     )
+    source.add_argument(
+        "--motion",
+        type=Path,
+        help="Motion clip .npz with qpos (e.g. MuscleMimic), replayed kinematically.",
+    )
+    parser.add_argument(
+        "--motion-activation",
+        action="store_true",
+        help="With --motion, tint muscles by a shortening-speed proxy of activation.",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--seconds", type=float, default=3)
     parser.add_argument("--fps", type=int, default=30)
@@ -1120,7 +1265,8 @@ def main(argv: list[str] | None = None) -> None:
         help="Studio backdrop, or keep the task's own floor (e.g. a soccer pitch).",
     )
     parser.add_argument(
-        "--skin", help='Body skin: a MuJoCo .skn file, or "fullbody" (bundled).'
+        "--skin",
+        help='Body skin: a MuJoCo .skn file, a rigged .glb skin, or "fullbody" (bundled).',
     )
     parser.add_argument(
         "--skin-style", choices=["translucent", "opaque"], default="translucent"
@@ -1137,13 +1283,18 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--muscle-mesh",
         help='Anatomical muscle meshes instead of tubes: "atlas", "atlas-hd" '
-        "(downloaded from Hugging Face, full body only) or a skinned rest-pose .glb.",
+        "(downloaded from Hugging Face) or a skinned rest-pose .glb.",
+    )
+    parser.add_argument(
+        "--muscle-mesh-env",
+        help="Env in whose rest pose the muscle meshes are modelled (default: "
+        f"{MUSCLE_MESH_ENV} for the atlas, the rendered env for a .glb).",
     )
     parser.add_argument("--samples", type=int, default=64, help="Cycles samples.")
     parser.add_argument("--export-only", action="store_true")
     args = parser.parse_args(argv)
     checkpoint = args.checkpoint
-    if checkpoint is None and not args.random:
+    if checkpoint is None and not args.random and args.motion is None:
         from myosuite.utils.checkpoint_utils import find_checkpoint  # noqa: PLC0415
 
         checkpoint = find_checkpoint(args.env)
@@ -1157,6 +1308,8 @@ def main(argv: list[str] | None = None) -> None:
             env=args.env,
             output=args.output,
             checkpoint=checkpoint,
+            motion=args.motion,
+            motion_activation=args.motion_activation,
             seed=args.seed,
             seconds=args.seconds,
             fps=args.fps,
@@ -1172,6 +1325,7 @@ def main(argv: list[str] | None = None) -> None:
             skin_texture=args.skin_texture,
             skin_inflate=args.skin_inflate,
             muscle_mesh=args.muscle_mesh,
+            muscle_mesh_env=args.muscle_mesh_env,
             samples=args.samples,
             blender=args.blender,
         )
