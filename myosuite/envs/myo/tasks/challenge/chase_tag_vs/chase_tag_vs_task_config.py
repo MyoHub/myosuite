@@ -81,6 +81,7 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     r_win_bonus: float = 1.0
     r_loss_penalty: float = -1.0
     r_fall_penalty: float = -5.0
+    r_opponent_fall_bonus: float = 5.0  # the episode then ends with score 0
     r_survival_per_step: float = 0.01
     r_act_reg: float = -0.001
     r_chaser_proximity: float = 0.5

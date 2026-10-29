@@ -166,7 +166,7 @@ def chase_tag_dense_reward(
     """
     r = config.r_survival_per_step + config.r_act_reg * act_sq_sum
     r = r + config.r_fall_penalty * self_fell
-    r = r - config.r_fall_penalty * opponent_fell  # opponent falling is good for us
+    r = r + config.r_opponent_fall_bonus * opponent_fell
     proximity = xp.where(
         is_chaser, config.r_chaser_proximity, config.r_runner_proximity
     )
