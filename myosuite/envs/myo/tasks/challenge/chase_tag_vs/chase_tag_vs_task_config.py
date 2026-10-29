@@ -69,34 +69,10 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     observe_own_muscles: bool = True
     observe_opponent_pelvis: bool = True
     observe_role: bool = True
-    observe_hfield: bool = False
-    observe_obstacles: bool = False
 
-    # --- Terrain (MyoChallenge 2023 P2 heightfield; FLAT keeps the 1v1 floor) ---
-    terrain: str = "FLAT"  # "FLAT" | "random"
-    hills_range: tuple[float, float] = (0.03, 0.23)
-    rough_range: tuple[float, float] = (0.05, 0.1)
-    relief_range: tuple[float, float] = (0.1, 0.3)
-
-    # --- Discrete obstacles (pool of static boxes; 0 slots = none) ---
-    n_obstacle_slots: int = 0
-    n_obstacles_range: tuple[int, int] = (0, 0)
-    obstacle_half_xy_range: tuple[float, float] = (0.25, 0.4)
-    obstacle_height_range: tuple[float, float] = (1.0, 1.5)
-    obstacle_min_agent_dist_m: float = 1.5
-    obstacle_min_separation_m: float = 1.5
-    arena_half_extent_m: float = 5.5
-
+    # "FLAT" (default) or "random" (2023 P2 3x3 heightfield + four corner boxes).
+    terrain: str = "FLAT"
     _heightfield: Any = field(default=None, init=False, repr=False, compare=False)
-    _obstacle_xy: np.ndarray | None = field(
-        default=None, init=False, repr=False, compare=False
-    )
-    _obstacle_height: np.ndarray | None = field(
-        default=None, init=False, repr=False, compare=False
-    )
-    _obstacle_active: np.ndarray | None = field(
-        default=None, init=False, repr=False, compare=False
-    )
 
     @property
     def max_episode_steps(self) -> int:
@@ -168,79 +144,32 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
         meta: Any,
         np_random: np.random.Generator,
     ) -> None:
-        """Sample task role, terrain, and obstacles for this episode."""
+        """Sample task role (and 2023 P2 terrain when ``terrain != "FLAT"``)."""
         if self.task_choice == "random":
             self.current_task = str(np_random.choice(["CHASE", "EVADE"]))
         else:
             self.current_task = self.task_choice
-        self._reset_terrain_and_obstacles(model, data, meta, np_random)
+        if self.terrain == "FLAT":
+            return
+        from myosuite.envs.heightfields import ChaseTagField
 
-    def _reset_terrain_and_obstacles(
-        self,
-        model: mujoco.MjModel,
-        data: mujoco.MjData,
-        meta: Any,
-        np_random: np.random.Generator,
-    ) -> None:
-        """Sample the 2023 P2 heightfield and place discrete box obstacles."""
-        spawn_xy = np.array(
-            [
-                data.site_xpos[meta.site_ids[agent_id]["pelvis_site"]][:2]
-                for agent_id in ("agent_0", "agent_1")
-            ],
-            dtype=np.float64,
-        )
-        if self.terrain != "FLAT":
-            if self._heightfield is None:
-                from myosuite.envs.heightfields import ChaseTagField
-
-                self._heightfield = ChaseTagField(
-                    mj_model=model,
-                    mj_data=data,
-                    rng=np_random,
-                    rough_range=self.rough_range,
-                    hills_range=self.hills_range,
-                    relief_range=self.relief_range,
-                )
-            self._heightfield.sample(np_random)
-            terrain_gid = getattr(meta, "terrain_geom_id", -1)
-            if terrain_gid >= 0:
-                model.geom_rgba[terrain_gid, 3] = 1.0
-                model.geom_pos[terrain_gid] = [0.0, 0.0, 0.0]
-            for xy in spawn_xy:
-                self._heightfield.flatten_xy_patch(float(xy[0]), float(xy[1]))
-        else:
-            self._heightfield = None
-            terrain_gid = getattr(meta, "terrain_geom_id", -1)
-            if terrain_gid >= 0:
-                model.geom_rgba[terrain_gid, 3] = 0.0
-                model.geom_pos[terrain_gid] = [0.0, 0.0, -10.0]
-
-        geom_ids = list(getattr(meta, "obstacle_geom_ids", []) or [])
-        if geom_ids:
-            from myosuite.envs.myo.tasks.challenge.chase_tag_vs.obstacles import (
-                place_obstacles,
+        if self._heightfield is None:
+            self._heightfield = ChaseTagField(
+                mj_model=model,
+                mj_data=data,
+                rng=np_random,
+                hills_range=(0.03, 0.23),
+                rough_range=(0.05, 0.1),
+                relief_range=(0.1, 0.3),
             )
-
-            self._obstacle_xy, self._obstacle_height, self._obstacle_active = (
-                place_obstacles(
-                    model,
-                    np_random,
-                    geom_ids,
-                    spawn_xy,
-                    n_range=self.n_obstacles_range,
-                    half_xy_range=self.obstacle_half_xy_range,
-                    height_range=self.obstacle_height_range,
-                    min_agent_dist_m=self.obstacle_min_agent_dist_m,
-                    min_separation_m=self.obstacle_min_separation_m,
-                    arena_half_extent_m=self.arena_half_extent_m,
-                    heightfield=self._heightfield,
-                )
-            )
-        else:
-            self._obstacle_xy = np.zeros((0, 2), dtype=np.float64)
-            self._obstacle_height = np.zeros(0, dtype=np.float64)
-            self._obstacle_active = np.zeros(0, dtype=bool)
+        self._heightfield.sample(np_random)
+        gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "terrain")
+        if gid >= 0:
+            model.geom_rgba[gid, 3] = 1.0
+            model.geom_pos[gid] = [0.0, 0.0, 0.0]
+        for agent_id in ("agent_0", "agent_1"):
+            xy = data.site_xpos[meta.site_ids[agent_id]["pelvis_site"]][:2]
+            self._heightfield.flatten_agent_patch(xy)
         mujoco.mj_forward(model, data)
 
     def get_obs(self, model, data, meta, agent_id: str, health=None) -> np.ndarray:
@@ -461,16 +390,6 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
 
 @dataclass
 class ChaseTagVsFullbodySteeredP2TaskConfig(ChaseTagVsFullbodySteeredTaskConfig):
-    """2023 P2 terrain (3x3 hills/rough/relief) plus discrete box obstacles.
-
-    Observation layout is the steered 1v1 vector plus a 100-d egocentric
-    heightmap and 6x3 obstacle features (relative XY + height). Live
-    ``myoChallengeChaseTagFBVs-v0`` stays on the FLAT parent class so the
-    546-d ONNX contract is unchanged.
-    """
+    """Same 1v1 contract as FBVs, with 2023 P2 heightfield + four corner boxes."""
 
     terrain: str = "random"
-    n_obstacle_slots: int = 6
-    n_obstacles_range: tuple[int, int] = (2, 5)
-    observe_hfield: bool = True
-    observe_obstacles: bool = True

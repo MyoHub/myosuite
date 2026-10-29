@@ -85,10 +85,6 @@ class ChaseTagVsModelMeta(CombatModelMetaBase):
     """
 
     pelvis_body_id: dict[str, int] = field(default_factory=dict)
-    head_site_id: dict[str, int] = field(default_factory=dict)
-    talus_body_id: dict[str, tuple[int, int]] = field(default_factory=dict)
-    terrain_geom_id: int = -1
-    obstacle_geom_ids: list[int] = field(default_factory=list)
 
 
 def _add_agent_pelvis_site(
@@ -110,26 +106,6 @@ def _add_agent_sensor(spec: mujoco.MjSpec, prefix: str) -> None:
         objtype=mujoco.mjtObj.mjOBJ_SITE,
         objname=f"{prefix}pelvis_site",
     )
-
-
-def _maybe_add_head_sites(spec: mujoco.MjSpec) -> None:
-    """Add a ``{prefix}head`` site on each agent's head body when missing.
-
-    Leg-only hosts already ship a ``head`` site (prefixed on attach). The
-    full-body mimic model only has ``head_mimic``; non-flat fall detection
-    needs a site at the head body origin, matching FBP2's ``_add_head_site``.
-    """
-    existing = {s.name for s in spec.sites}
-    for prefix in _AGENT_PREFIXES.values():
-        site_name = f"{prefix}head"
-        if site_name in existing:
-            continue
-        try:
-            body = spec.body(f"{prefix}head")
-        except Exception:  # noqa: BLE001
-            continue
-        body.add_site(name=site_name, group=4, size=[0.02, 0, 0], pos=[0, 0, 0])
-        existing.add(site_name)
 
 
 def _leg_standing_key_qpos(leg_xml: str) -> np.ndarray | None:
@@ -240,26 +216,20 @@ def _build_two_agent_spec(
         )
 
         _add_terrain(spec)
-        _maybe_add_head_sites(spec)
-    if config.n_obstacle_slots > 0:
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.obstacles import (  # noqa: PLC0415
-            add_obstacle_geoms,
-        )
-
-        add_obstacle_geoms(spec, config.n_obstacle_slots)
+        for i, (x, y) in enumerate(
+            ((3.0, 3.0), (3.0, -3.0), (-3.0, 3.0), (-3.0, -3.0))
+        ):
+            g = spec.worldbody.add_geom(name=f"obstacle_{i}")
+            g.type = mujoco.mjtGeom.mjGEOM_BOX
+            g.size = [0.3, 0.3, 0.6]
+            g.pos = [x, y, 0.6]
+            g.rgba = [0.55, 0.32, 0.18, 1.0]
+            g.contype = 1
+            g.conaffinity = 1
     if arena_bytes is not None:
         spec.memory = arena_bytes
 
     return spec, standing_key_qpos
-
-
-def _lookup_id(model: mujoco.MjModel, obj_type: int, names: tuple[str, ...]) -> int:
-    """Return the first matching MuJoCo id in *names*, or ``-1`` if none exist."""
-    for name in names:
-        idx = mujoco.mj_name2id(model, obj_type, name)
-        if idx >= 0:
-            return int(idx)
-    return -1
 
 
 def _extract_meta(
@@ -279,23 +249,6 @@ def _extract_meta(
         meta.sensor_adr[agent_id] = extract_sensor_addrs(
             model, prefix, ("pelvis_site",)
         )
-        meta.head_site_id[agent_id] = _lookup_id(
-            model,
-            mujoco.mjtObj.mjOBJ_SITE,
-            (f"{prefix}head", f"{prefix}head_mimic"),
-        )
-        meta.talus_body_id[agent_id] = (
-            _lookup_id(model, mujoco.mjtObj.mjOBJ_BODY, (f"{prefix}talus_l",)),
-            _lookup_id(model, mujoco.mjtObj.mjOBJ_BODY, (f"{prefix}talus_r",)),
-        )
-    meta.terrain_geom_id = _lookup_id(model, mujoco.mjtObj.mjOBJ_GEOM, ("terrain",))
-    obstacle_ids: list[int] = []
-    for i in range(32):
-        gid = _lookup_id(model, mujoco.mjtObj.mjOBJ_GEOM, (f"obstacle_{i}",))
-        if gid < 0:
-            break
-        obstacle_ids.append(gid)
-    meta.obstacle_geom_ids = obstacle_ids
     meta.standing_qpos = two_agent_standing_qpos(
         model,
         meta.jnt_ids,

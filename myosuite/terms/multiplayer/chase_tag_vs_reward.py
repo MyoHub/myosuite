@@ -72,23 +72,9 @@ def is_fallen(
     agent_id: str,
     config: ChaseTagVsConfig,
 ) -> bool:
-    """Return True if *agent_id* has fallen.
-
-    On FLAT terrain this is the absolute pelvis-z test. On random heightfield
-    terrain it uses 2023 P2 head–foot clearance so standing on a hill is not
-    scored as a fall.
-    """
-    if getattr(config, "terrain", "FLAT") == "FLAT":
-        pelvis_pos = data.site_xpos[meta.site_ids[agent_id]["pelvis_site"]]
-        return pelvis_fall_termination(pelvis_pos, config.fall_pelvis_z_threshold)
-    head_sid = getattr(meta, "head_site_id", {}).get(agent_id, -1)
-    talus = getattr(meta, "talus_body_id", {}).get(agent_id, (-1, -1))
-    if head_sid < 0 or talus[0] < 0 or talus[1] < 0:
-        pelvis_pos = data.site_xpos[meta.site_ids[agent_id]["pelvis_site"]]
-        return pelvis_fall_termination(pelvis_pos, config.fall_pelvis_z_threshold)
-    head_z = float(data.site_xpos[head_sid, 2])
-    foot_z = 0.5 * (float(data.xpos[talus[0], 2]) + float(data.xpos[talus[1], 2]))
-    return (head_z - foot_z) < 0.2
+    """Return True if *agent_id*'s pelvis is below the fall threshold."""
+    pelvis_pos = data.site_xpos[meta.site_ids[agent_id]["pelvis_site"]]
+    return pelvis_fall_termination(pelvis_pos, config.fall_pelvis_z_threshold)
 
 
 def get_score(time: float, task: str, config: ChaseTagVsConfig) -> float:

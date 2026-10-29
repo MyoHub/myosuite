@@ -540,7 +540,6 @@ try:
     _register_task(
         _ChaseTagVsFullbodySteeredTaskConfig(), env_id="myoChallengeChaseTagFBVs-v0"
     )
-
     _register_task(
         _ChaseTagVsFullbodySteeredP2TaskConfig(),
         env_id="myoChallengeChaseTagFBVsP2-v0",
