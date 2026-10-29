@@ -250,7 +250,20 @@ class TestChaseTagVsRegistry:
                 ]
                 assert np.allclose(patch, 0.0)
             for i in range(4):
-                assert model.geom(f"obstacle_{i}").id >= 0
+                gid = model.geom(f"obstacle_{i}").id
+                assert gid >= 0
+                assert model.geom_contype[gid] and model.geom_conaffinity[gid]
+            # Drop agent_0 onto the (3, 3) box and require agent–obstacle contacts.
+            obs_gid = model.geom("obstacle_0").id
+            qadr = int(model.jnt_qposadr[env.unwrapped._meta.jnt_ids["agent_0"][0]])
+            env.unwrapped.data.qpos[qadr : qadr + 3] = [3.0, 3.0, 0.92]
+            mujoco.mj_forward(model, env.unwrapped.data)
+            hit = {
+                tuple(sorted((int(g1), int(g2))))
+                for g1, g2 in env.unwrapped.data.contact.geom[: env.unwrapped.data.ncon]
+                if obs_gid in (int(g1), int(g2))
+            }
+            assert hit, "obstacle_0 should collide with the agent"
         finally:
             env.close()
 
