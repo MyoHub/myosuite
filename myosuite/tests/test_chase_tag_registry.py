@@ -211,6 +211,65 @@ class TestChaseTagVsRegistry:
         assert "score" in info
         env.close()
 
+    def test_p2_env_is_registered(self) -> None:
+        assert gym.spec("myoChallengeChaseTagFBVsP2-v0") is not None
+
+    def test_random_terrain_and_obstacles_on_leg(self) -> None:
+        """MyoChallenge 2023 P2 heightfield + box obstacles on the 1v1 leg host."""
+        import mujoco
+
+        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+            ChaseTagVsTaskConfig,
+        )
+        from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
+
+        flat = ModularMultiAgentTaskEnv(ChaseTagVsTaskConfig())
+        try:
+            flat_obs, _ = flat.reset(seed=0)
+            flat_dim = int(flat_obs["agent_0"].shape[0])
+            terrain_id = mujoco.mj_name2id(
+                flat.unwrapped.model, mujoco.mjtObj.mjOBJ_GEOM, "terrain"
+            )
+            assert terrain_id < 0
+        finally:
+            flat.close()
+
+        cfg = ChaseTagVsTaskConfig(
+            terrain="random",
+            n_obstacle_slots=6,
+            n_obstacles_range=(2, 5),
+            observe_hfield=True,
+            observe_obstacles=True,
+        )
+        env = ModularMultiAgentTaskEnv(cfg)
+        try:
+            obs, info = env.reset(seed=0)
+            model = env.unwrapped.model
+            assert mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "terrain") >= 0
+            assert np.ptp(model.hfield_data) > 0
+            assert int(obs["agent_0"].shape[0]) == flat_dim + 100 + 18
+            hf = env.unwrapped._config._heightfield
+            assert hf is not None
+            for agent_id in ("agent_0", "agent_1"):
+                xy = env.unwrapped.data.site_xpos[
+                    env.unwrapped._meta.site_ids[agent_id]["pelvis_site"]
+                ][:2]
+                i, j = hf.patch_index(float(xy[0]), float(xy[1]))
+                patch = hf.hfield.data[
+                    i * hf.patch_size : (i + 1) * hf.patch_size,
+                    j * hf.patch_size : (j + 1) * hf.patch_size,
+                ]
+                assert np.allclose(patch, 0.0)
+            n_up = sum(
+                1
+                for i in range(6)
+                if model.geom_pos[model.geom(f"obstacle_{i}").id, 2] > 0
+            )
+            assert 2 <= n_up <= 5
+            assert info["task"] in ("CHASE", "EVADE")
+        finally:
+            env.close()
+
     def test_fullbody_arena_fits_every_reachable_contact(self) -> None:
         """The explicit full-body arena holds every contact a body can reach.
 

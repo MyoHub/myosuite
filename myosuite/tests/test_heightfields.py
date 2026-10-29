@@ -61,6 +61,33 @@ def _create_trackfield(seed: int) -> TrackField:
     )
 
 
+def test_flatten_xy_patch_zeros_the_containing_patch() -> None:
+    field = _create_chasetagfield(0)
+    field.sample()
+    assert np.ptp(field.hfield.data) > 0
+    field.flatten_xy_patch(0.0, 0.0)
+    i, j = field.patch_index(0.0, 0.0)
+    patch = field.hfield.data[
+        i * field.patch_size : (i + 1) * field.patch_size,
+        j * field.patch_size : (j + 1) * field.patch_size,
+    ]
+    assert np.allclose(patch, 0.0)
+
+
+def test_get_heightmap_obs_explicit_pose_matches_qpos() -> None:
+    field = _create_chasetagfield(0)
+    field.sample()
+    qpos = field.mj_data.qpos
+    qpos[:2] = [0.4, -0.3]
+    quat = np.array([np.cos(0.3), 0.0, 0.0, np.sin(0.3)])
+    qpos[3:7] = quat / np.linalg.norm(quat)
+    implicit = field.get_heightmap_obs()
+    from myosuite.physics.quat_math import quat2yaw
+
+    explicit = field.get_heightmap_obs(pos=qpos[:2], yaw=quat2yaw(qpos[3:7]))
+    np.testing.assert_array_equal(implicit, explicit)
+
+
 def test_chasetagfield() -> None:
     seed = 42
     heightfield = _create_chasetagfield(seed)

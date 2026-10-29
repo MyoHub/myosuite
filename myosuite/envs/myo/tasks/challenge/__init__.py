@@ -533,15 +533,22 @@ _reg(
 try:
     from myosuite.core.registry import register_task as _register_task
     from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+        ChaseTagVsFullbodySteeredP2TaskConfig as _ChaseTagVsFullbodySteeredP2TaskConfig,
         ChaseTagVsFullbodySteeredTaskConfig as _ChaseTagVsFullbodySteeredTaskConfig,
     )
 
     _register_task(
         _ChaseTagVsFullbodySteeredTaskConfig(), env_id="myoChallengeChaseTagFBVs-v0"
     )
+
+    _register_task(
+        _ChaseTagVsFullbodySteeredP2TaskConfig(),
+        env_id="myoChallengeChaseTagFBVsP2-v0",
+    )
     del (
         _register_task,
         _ChaseTagVsFullbodySteeredTaskConfig,
+        _ChaseTagVsFullbodySteeredP2TaskConfig,
     )
 except Exception as _e:  # noqa: BLE001
     import warnings as _w

@@ -106,13 +106,18 @@ class HeightField:
         self.rng = rng
         self.view_distance = view_distance
 
-    def get_heightmap_obs(self):
-        """
-        Get heightmap observation.
+    def get_heightmap_obs(self, pos=None, yaw=None):
+        """Get the 10x10 egocentric heightmap, flattened to shape ``(100,)``.
+
+        Args:
+            pos: Optional world-frame ``[x, y]`` or ``[x, y, z]`` of the
+                sampling origin. Defaults to ``qpos[:3]`` (single-agent root).
+            yaw: Optional heading (rad) of the sampling frame. Defaults to
+                the yaw of ``qpos[3:7]``.
         """
         if self.heightmap_window is None:
             self.heightmap_window = np.zeros((10, 10))
-        self._measure_height()
+        self._measure_height(pos=pos, yaw=yaw)
         return self.heightmap_window[:].flatten().copy()
 
     def cart2map(self, points_1: list, points_2: list):
@@ -150,19 +155,28 @@ class HeightField:
         points[:, 1] = grid_y.flatten()
         self.height_points = points
 
-    def _measure_height(self):
+    def _measure_height(self, pos=None, yaw=None):
         """
         Update heights at grid points around
         model.
         """
-        rot_direction = quat2yaw(self.mj_data.qpos[3:7])
-        rot_mat = euler2mat([0, 0, rot_direction])
+        if yaw is None:
+            yaw = quat2yaw(self.mj_data.qpos[3:7])
+        if pos is None:
+            origin = self.mj_data.qpos[:3]
+        else:
+            origin = np.asarray(pos, dtype=float).reshape(-1)
+            if origin.size == 2:
+                origin = np.array([origin[0], origin[1], 0.0], dtype=float)
+            else:
+                origin = origin[:3]
+        rot_mat = euler2mat([0, 0, yaw])
         # rotate points around z-direction to match model
         points = np.einsum("ij,kj->ik", self.height_points, rot_mat)
         # increase point spacing
         points = points * self.view_distance
         # translate points to model frame
-        self.points = points + (self.mj_data.qpos[:3])
+        self.points = points + origin
         # get x and y points
         px = self.points[:, 0]
         py = self.points[:, 1]
@@ -218,16 +232,29 @@ class ChaseTagField(HeightField):
         self.patch_size = int(self.nrow / patches_per_side)
         self._populate_patches()
 
+    def flatten_xy_patch(self, x: float, y: float) -> None:
+        """Turn the 3x3-patch that contains world ``(x, y)`` into flat ground."""
+        pos = self.cart2map(np.asarray(x).reshape(1, -1), np.asarray(y).reshape(1, -1))
+        i = int(pos[0].squeeze()) // self.patch_size
+        j = int(pos[1].squeeze()) // self.patch_size
+        i = int(np.clip(i, 0, self.patches_per_side - 1))
+        j = int(np.clip(j, 0, self.patches_per_side - 1))
+        self._fill_patch(i, j, terrain_type=TerrainTypes.FLAT)
+
     def flatten_agent_patch(self, qpos):
         """
         Turn terrain in the patch around the agent to flat.
         """
-        # convert position to map position
-        pos = self.cart2map(qpos[0].reshape(1, -1), qpos[1].reshape(1, -1))
-        # get patch that belongs to the position
-        i = pos[0].squeeze() // self.patch_size
-        j = pos[1].squeeze() // self.patch_size
-        self._fill_patch(i, j, terrain_type=TerrainTypes.FLAT)
+        self.flatten_xy_patch(qpos[0], qpos[1])
+
+    def patch_index(self, x: float, y: float) -> tuple[int, int]:
+        """Return the ``(i, j)`` patch index that contains world ``(x, y)``."""
+        pos = self.cart2map(np.asarray(x).reshape(1, -1), np.asarray(y).reshape(1, -1))
+        i = int(pos[0].squeeze()) // self.patch_size
+        j = int(pos[1].squeeze()) // self.patch_size
+        i = int(np.clip(i, 0, self.patches_per_side - 1))
+        j = int(np.clip(j, 0, self.patches_per_side - 1))
+        return i, j
 
     def _compute_patch_data(self, terrain_type):
         if terrain_type.name == "FLAT":

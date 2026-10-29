@@ -74,3 +74,20 @@ class ChaseTagVsConfig:
     observe_own_muscles: bool = True
     observe_opponent_pelvis: bool = True
     observe_role: bool = True
+    observe_hfield: bool = False
+    observe_obstacles: bool = False
+
+    # --- Terrain (MyoChallenge 2023 P2 heightfield; FLAT keeps the 1v1 floor) ---
+    terrain: str = "FLAT"  # "FLAT" | "random"
+    hills_range: tuple[float, float] = (0.03, 0.23)
+    rough_range: tuple[float, float] = (0.05, 0.1)
+    relief_range: tuple[float, float] = (0.1, 0.3)
+
+    # --- Discrete obstacles (pool of static boxes; 0 slots = none) ---
+    n_obstacle_slots: int = 0
+    n_obstacles_range: tuple[int, int] = (0, 0)
+    obstacle_half_xy_range: tuple[float, float] = (0.25, 0.4)
+    obstacle_height_range: tuple[float, float] = (1.0, 1.5)
+    obstacle_min_agent_dist_m: float = 1.5
+    obstacle_min_separation_m: float = 1.5
+    arena_half_extent_m: float = 5.5
