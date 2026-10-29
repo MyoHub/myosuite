@@ -62,6 +62,11 @@ All notable changes to this project are documented in this file.
 * Baseline downloads look for the patch-release tag first (`v3.0.1`), then the minor-release tag (`v3.0`), then
   `main`, so a patch release can ship changed baselines without changing those of earlier releases.
 
+### Fixed
+
+* **Motion clips load without pickle:** `load_motion_clip`, the CPU Mimic clip env and the full-body observation adapter open `.npz` files with `allow_pickle=False` (unpickling a downloaded file can run code). Names stored as bytes now read as text instead of `"b'name'"`, and a pickled name array is refused with instructions for re-saving it. SAR synergy metadata is written as strings, and older folders still load ([#522]).
+* Fixed initial fatigue arrays retain their requested values across CPU episodes. `CumulativeFatigue.reset` copies `fatigue_reset_vec` into owned state. Stepping previously mutated writable NumPy arrays supplied by callers and failed on read-only arrays.
+
 ## [3.0.0] - 2026-10-07
 
 Changes since the last official release, **v2.12.2** (2026-05-06). `git log v2.12.2..v3.0.0` has the
@@ -268,6 +273,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#504]: https://github.com/MyoHub/myosuite/pull/504
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#520]: https://github.com/MyoHub/myosuite/pull/520
+[#522]: https://github.com/MyoHub/myosuite/pull/522
 [#540]: https://github.com/MyoHub/myosuite/pull/540
 
 ## [2.12.2] - 2026-05-06

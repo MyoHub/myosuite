@@ -47,6 +47,20 @@ def test_cpu_features_equal_the_wrapper_stack() -> None:
     np.testing.assert_array_equal(_rollout(make_env(cfg)), _rollout(ref))
 
 
+def test_fixed_fatigue_array_repeats_the_seeded_episode() -> None:
+    initial = np.full(6, 0.3)
+    cfg = EnvConfig(
+        _ID, features=(wrapper_spec(FatigueWrapper, fatigue_reset_vec=initial),)
+    )
+    env = make_env(cfg)
+    try:
+        first = _rollout(env)
+        np.testing.assert_array_equal(_rollout(env), first)
+        np.testing.assert_array_equal(initial, np.full(6, 0.3))
+    finally:
+        env.close()
+
+
 def test_features_accept_classes_pairs_and_specs() -> None:
     from myosuite.envs.wrappers import SarcopeniaWrapper
 
