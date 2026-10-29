@@ -34,6 +34,7 @@ from mjlab.utils.torch import configure_torch_backends
 from mjlab.utils.wandb import add_wandb_tags
 from mjlab.utils.wrappers import VideoRecorder
 
+from myosuite.envs.myo.backends.mjlab.tasks.mdp.self_play import install_self_play
 from myosuite.utils.checkpoint_utils import resume_checkpoint
 from myosuite.utils.feature_cli import parse_feature_args
 
@@ -54,7 +55,8 @@ class TrainConfig:
     stop_on_success: bool = True
     """Stop the run as soon as the logged ``Episode_Metrics/success`` rate of an
     iteration exceeds ``--success-threshold``; a checkpoint of that iteration is stored
-    first. Has no effect for tasks without a ``success`` metric or with several GPUs."""
+    first. Has no effect for tasks without a ``success`` metric, with several GPUs or in
+    self-play (winning against the learner's own snapshots does not solve the task)."""
     success_threshold: float = 0.95
     """Success rate (0-1) above which ``--stop-on-success`` ends the run."""
     success_deterministic: bool = True
@@ -352,7 +354,14 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
         dump_yaml(log_dir / "params" / "env.yaml", env_cfg)
         dump_yaml(log_dir / "params" / "agent.yaml", agent_cfg)
 
-    if cfg.stop_on_success:
+    # Two-player twins: the opponent plays frozen snapshots of the learner.
+    self_play = install_self_play(runner) is not None
+    if self_play:
+        print("[INFO] Self-play: the opponent plays snapshots of the learner.")
+
+    if cfg.stop_on_success and self_play:
+        print("[INFO] --stop-on-success is ignored in self-play.")
+    elif cfg.stop_on_success:
         if getattr(runner, "is_distributed", False):
             print("[WARNING] --stop-on-success is ignored with several GPUs.")
         else:

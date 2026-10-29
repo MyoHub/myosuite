@@ -13,8 +13,8 @@ Rules match MyoChallenge ``chasetag_v0``:
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import mujoco
@@ -22,6 +22,28 @@ import numpy as np
 
 from myosuite.core.multi_agent_config import MultiAgentTaskConfig
 from myosuite.terms.multiplayer.chase_tag_vs_reward import CHASER_ID, RUNNER_ID
+
+
+@functools.cache
+def gait_clip_local(repo_id: str, filename: str) -> tuple[np.ndarray, np.ndarray]:
+    """Joint positions and velocities of a gait clip without the root (cached).
+
+    Args:
+        repo_id: Hugging Face dataset holding the clip.
+        filename: Clip file (``.npz`` with ``qpos`` / ``qvel``) in the dataset.
+
+    Returns:
+        ``(qpos[:, 7:], qvel[:, 6:])`` as read-only float64 arrays; only the
+        local joint-angle style is imitated.
+    """
+    from huggingface_hub import hf_hub_download  # noqa: PLC0415
+
+    path = hf_hub_download(repo_id=repo_id, filename=filename, repo_type="dataset")
+    npz = np.load(path)
+    qpos = np.asarray(npz["qpos"], dtype=np.float64)[:, 7:]
+    qvel = np.asarray(npz["qvel"], dtype=np.float64)[:, 6:]
+    qpos.flags.writeable = qvel.flags.writeable = False
+    return qpos, qvel
 
 
 @dataclass
@@ -301,22 +323,10 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
     def _ensure_gait_clip(self) -> None:
         if self._gait_qpos_local is not None:
             return
-        from huggingface_hub import hf_hub_download
-
-        path = Path(
-            hf_hub_download(
-                repo_id=self.gait_clip_repo,
-                filename=self.gait_clip_filename,
-                repo_type="dataset",
-            )
+        self._gait_qpos_local, self._gait_qvel_local = gait_clip_local(
+            self.gait_clip_repo, self.gait_clip_filename
         )
-        npz = np.load(path)
-        qpos = np.asarray(npz["qpos"], dtype=np.float64)
-        qvel = np.asarray(npz["qvel"], dtype=np.float64)
-        # Drop root free joint — only local joint-angle style is imitated
-        self._gait_qpos_local = qpos[:, 7:]
-        self._gait_qvel_local = qvel[:, 6:]
-        self._gait_T = int(qpos.shape[0])
+        self._gait_T = int(self._gait_qpos_local.shape[0])
 
     def compute_reward(
         self,

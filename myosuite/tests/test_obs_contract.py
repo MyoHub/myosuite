@@ -34,6 +34,7 @@ STEP_OVERRIDE_IDS = (
     "myoChallengeBaodingP1-v1",
     "myoChallengeBimanual-v0",
     "myoChallengeChaseTagP1-v0",
+    "myoChallengeChaseTagFBVsTrain-v0",  # fixed FBVs observation (no obs_keys)
     "myoChallengeDieReorientP1-v0",
     "myoChallengeOslRunFixed-v0",
     "myoChallengeRelocateP1-v0",
@@ -45,7 +46,12 @@ STEP_OVERRIDE_IDS = (
 
 
 @pytest.mark.parametrize(
-    "env_id", [e for e in STEP_OVERRIDE_IDS if e != "myoElbowPoseTaskFixed-v0"]
+    "env_id",
+    [
+        e
+        for e in STEP_OVERRIDE_IDS
+        if e not in ("myoElbowPoseTaskFixed-v0", "myoChallengeChaseTagFBVsTrain-v0")
+    ],
 )
 def test_unknown_obs_key_raises(env_id: str) -> None:
     """An obs key the env does not compute fails loudly instead of being dropped."""
@@ -157,6 +163,7 @@ DYNAMICS_IDS = (
     "myoChallengeBaodingP1-v1",
     "myoChallengeBimanual-v0",
     "myoChallengeChaseTagP1-v0",
+    "myoChallengeChaseTagFBVsTrain-v0",
     "myoChallengeRelocateP1-v0",
     "myoChallengeSoccerP1-v0",
     "myoChallengeTableTennisP0-v0",
