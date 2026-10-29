@@ -13,6 +13,7 @@ as transform callbacks and by term functions via EnvAccessor.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -108,12 +109,34 @@ _DEFAULT_r = MUSCLE_FATIGUE_PARAMS["Default"]["r"]
 _UNIFORM_PARAMS = MUSCLE_FATIGUE_PARAMS["Default_v2_4"]
 
 
-def _muscle_time_constants(mj_model: Any) -> tuple[np.ndarray, np.ndarray]:
-    """Return the ``(tauact, taudeact)`` of the muscle actuators, shape ``(na,)``."""
+def _muscle_ids(
+    mj_model: Any, muscles: Sequence[int | str] | None = None
+) -> np.ndarray:
+    """Actuator ids of *muscles* (ids or names), default every muscle in model order.
+
+    Raises:
+        ValueError: If an entry is not a muscle actuator.
+    """
     import mujoco as _mujoco  # noqa: PLC0415
 
-    muscle = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
-    dynprm = np.asarray(mj_model.actuator_dynprm)[muscle]
+    is_muscle = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
+    if muscles is None:
+        return np.flatnonzero(is_muscle)
+    ids = np.array(
+        [mj_model.actuator(m).id if isinstance(m, str) else int(m) for m in muscles],
+        dtype=int,
+    )
+    if not is_muscle[ids].all():
+        raise ValueError(f"not muscle actuators: {ids[~is_muscle[ids]].tolist()}")
+    return ids
+
+
+def _muscle_time_constants(
+    mj_model: Any, ids: np.ndarray | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the ``(tauact, taudeact)`` of the muscle actuators *ids* (default all)."""
+    ids = _muscle_ids(mj_model) if ids is None else ids
+    dynprm = np.asarray(mj_model.actuator_dynprm)[ids]
     return dynprm[:, 0].copy(), dynprm[:, 1].copy()
 
 
@@ -135,20 +158,16 @@ def _muscle_group(name: str) -> str:
 
 
 def _per_muscle_params(
-    mj_model: Any, sex: str | None
+    mj_model: Any, sex: str | None, ids: np.ndarray | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Derive per-muscle F, R, r arrays from MFG lookup.
 
-    Returns arrays of shape ``(na,)`` where ``na`` is the number of muscle
-    actuators in *mj_model*.
+    Returns arrays of shape ``(na,)``, one entry per muscle actuator in *ids*
+    (default: every muscle actuator of *mj_model*).
     """
-    import mujoco as _mujoco  # noqa: PLC0415
-
-    muscle_act_ind = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
-    na = int(sum(muscle_act_ind))
-    actuator_names = [
-        mj_model.actuator(i).name for i in range(mj_model.nu) if muscle_act_ind[i]
-    ]
+    ids = _muscle_ids(mj_model) if ids is None else ids
+    na = int(ids.size)
+    actuator_names = [mj_model.actuator(int(i)).name for i in ids]
 
     F_arr = np.zeros(na)
     R_arr = np.zeros(na)
@@ -280,6 +299,8 @@ class CumulativeFatigue:
             the ``"Default_v2_4"`` row of :data:`MUSCLE_FATIGUE_PARAMS` for
             all muscles: the single F/R/r of the legacy (v2.x) model, which the
             JAX models in ``physics/fatigue_jax.py`` also use.
+        muscles: Muscle actuators to track (ids or names), in the order the
+            excitations are passed; default every muscle in model order.
 
     Example:
         >>> fatigue = CumulativeFatigue(mj_model, frame_skip=5)
@@ -295,9 +316,11 @@ class CumulativeFatigue:
         sex: str | None = None,
         seed: int | None = None,
         use_uniform_params: bool = False,
+        muscles: Sequence[int | str] | None = None,
     ) -> None:
         self._dt = float(mj_model.opt.timestep) * int(frame_skip)
-        self._tauact, self._taudeact = _muscle_time_constants(mj_model)
+        self.muscle_ids = _muscle_ids(mj_model, muscles)  # actuator ids, state order
+        self._tauact, self._taudeact = _muscle_time_constants(mj_model, self.muscle_ids)
         self.na: int = int(self._tauact.size)
         self._MA = np.zeros(self.na)
         self._MR = np.ones(self.na)
@@ -309,7 +332,9 @@ class CumulativeFatigue:
             self._R = _UNIFORM_PARAMS["R"] * np.ones(self.na)
             self._r = _UNIFORM_PARAMS["r"] * np.ones(self.na)
         else:
-            self._F, self._R, self._r = _per_muscle_params(mj_model, sex)
+            self._F, self._R, self._r = _per_muscle_params(
+                mj_model, sex, self.muscle_ids
+            )
 
         self.seed(seed)
 
@@ -596,6 +621,7 @@ class TorchFatigueState:
         device: str = "cpu",
         sex: str | None = None,
         use_uniform_params: bool = False,
+        muscles: Sequence[int | str] | None = None,
     ) -> TorchFatigueState:
         """Build a :class:`TorchFatigueState` from a compiled MuJoCo model.
 
@@ -611,8 +637,11 @@ class TorchFatigueState:
             sex: Optional ``"F"`` / ``"M"`` for sex-specific parameters.
             use_uniform_params: Use the uniform ``"Default_v2_4"`` F/R/r for
                 every muscle, as :class:`CumulativeFatigue` does.
+            muscles: Muscle actuators to track (ids or names), in column order;
+                default every muscle in model order.
         """
-        tauact, taudeact = _muscle_time_constants(mj_model)
+        ids = _muscle_ids(mj_model, muscles)
+        tauact, taudeact = _muscle_time_constants(mj_model, ids)
         na = int(tauact.size)
         if na == 0:
             return cls(num_envs=num_envs, n_muscles=mj_model.nu, device=device)
@@ -621,7 +650,7 @@ class TorchFatigueState:
             R_arr = np.full(na, _UNIFORM_PARAMS["R"])
             r_arr = np.full(na, _UNIFORM_PARAMS["r"])
         else:
-            F_arr, R_arr, r_arr = _per_muscle_params(mj_model, sex)
+            F_arr, R_arr, r_arr = _per_muscle_params(mj_model, sex, ids)
         return cls(
             num_envs=num_envs,
             n_muscles=na,
