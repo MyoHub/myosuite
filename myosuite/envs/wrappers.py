@@ -406,7 +406,7 @@ class FatigueWrapper(
         fatigue_reset_random: Draw a random initial fatigue at reset.
         muscles: Fatigue only these muscle actuators (names or ids; the rest
             pass unchanged), indexing the env's actuator ``ctrl``. Default:
-            the env's muscle excitations (CPU only for now).
+            the env's muscle excitations. The mjlab twin fatigues the same muscles.
     """
 
     def __init__(
