@@ -490,6 +490,92 @@ class SarcopeniaWrapper(
         host._sarcopenia_applied = True
 
 
+class DynSynWrapper(RecordConstructorArgs, gym.ActionWrapper):
+    """DynSyn actions on a CPU env (He et al., ICML 2024; see :mod:`myosuite.core.dynsyn`).
+
+    The policy commands one action per muscle group, then a bounded correction per
+    other muscle; the bound grows from ``start_steps`` over ``ramp_steps`` env steps.
+    The mjlab equivalent is ``scripts/train_mjlab.py --dynsyn-groups``.
+
+    Args:
+        env: Env whose actions are its model's actuators, in model order.
+        groups: JSON file from ``scripts/dynsyn_groups.py``.
+        start_steps: Env steps (summed over ``num_envs`` copies) before corrections start.
+        ramp_steps: Env steps over which the bound grows to ``max_amplitude``.
+        max_amplitude: Largest relative correction (0.1 in the paper).
+        num_envs: Number of parallel copies of this env, so the schedule counts all steps.
+
+    Raises:
+        ValueError: If the groups were made for other actuators.
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        groups: str,
+        start_steps: float,
+        ramp_steps: float,
+        max_amplitude: float = 0.1,
+        num_envs: int = 1,
+    ) -> None:
+        from myosuite.core.dynsyn import DynSynGroups  # noqa: PLC0415
+
+        RecordConstructorArgs.__init__(
+            self,
+            groups=groups,
+            start_steps=start_steps,
+            ramp_steps=ramp_steps,
+            max_amplitude=max_amplitude,
+            num_envs=num_envs,
+        )
+        gym.ActionWrapper.__init__(self, env)
+        self.groups = DynSynGroups.load(groups)
+        model = env.unwrapped.model
+        names = [model.actuator(i).name.split("/")[-1] for i in range(model.nu)]
+        if names != list(self.groups.muscle_names):
+            raise ValueError(
+                "The DynSyn groups were made for other actuators than this env's "
+                f"({len(self.groups.muscle_names)} vs {len(names)})."
+            )
+        self.start_steps, self.ramp_steps, self.max_amplitude = (
+            start_steps,
+            ramp_steps,
+            max_amplitude,
+        )
+        self.num_envs, self.env_steps = num_envs, 0
+        if max_amplitude == 0:  # groups only: one action per group
+            box = env.action_space
+            self.action_space = gym.spaces.Box(
+                low=float(np.min(box.low)),
+                high=float(np.max(box.high)),
+                shape=(len(self.groups.groups),),
+                dtype=box.dtype,
+            )
+
+    @property
+    def amplitude(self) -> float:
+        """Current correction bound."""
+        from myosuite.core.dynsyn import weight_amplitude  # noqa: PLC0415
+
+        return weight_amplitude(
+            self.env_steps * self.num_envs,
+            self.start_steps,
+            self.ramp_steps,
+            self.max_amplitude,
+        )
+
+    def action(self, action: np.ndarray) -> np.ndarray:
+        from myosuite.core.dynsyn import expand_actions  # noqa: PLC0415
+
+        return expand_actions(
+            np.asarray(action, dtype=np.float64), self.groups.groups, self.amplitude, np
+        ).astype(np.asarray(action).dtype)
+
+    def step(self, action: np.ndarray):
+        self.env_steps += 1
+        return super().step(action)
+
+
 _CONDITION_WRAPPERS = {
     "sarcopenia": "SarcopeniaWrapper",
     "fatigue": "FatigueWrapper",
