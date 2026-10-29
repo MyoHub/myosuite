@@ -45,6 +45,10 @@ All notable changes to this project are documented in this file.
   - Opponent: on mjlab, frozen snapshots of the learner (self-play; `scripts/train_mjlab.py` adds a snapshot every
     50 iterations) or a fixed checkpoint; on the CPU, any policy (`opponent_policy=` callable, `.onnx` or `.pt`).
     Evaluation is a mirror match.
+  - Training starts both players as the tutorial 5.4 walker the 5.6 Colab submits: the actor
+    (`DirectionalWalkerActor`) is a fixed 546 -> 528 adapter in front of the 5.4 network, so snapshots and the
+    ONNX export carry the adapter. A mirror match then lasts ~1.4 s instead of ~0.4 s from a random init
+    (`--agent.actor.walker-checkpoint ""`). `load_rslrl_policy` / `export_rslrl_to_onnx` rebuild such actors.
   - FBVs itself is unchanged (its reward terms now share backend-agnostic functions with the twin).
   - No muscle-condition variants: the two bodies share one model.
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.

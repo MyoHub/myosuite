@@ -4,26 +4,56 @@
 # LICENSE file in the root directory of this source tree.
 """RL configuration of the ChaseTag train env (one full-body player, 354 muscles)."""
 
+from dataclasses import dataclass
+from pathlib import Path
+
 from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
+
+import myosuite
+
+# The tutorial 5.4 directional walker the 5.6 ChaseTag Colab submits (in a checkout).
+WALKER_CHECKPOINT = (
+    Path(myosuite.__file__).resolve().parents[1]
+    / "tutorials"
+    / "files"
+    / "5.6"
+    / "policy_bc_best.pt"
+)
+
+
+@dataclass
+class DirectionalWalkerActorCfg(RslRlModelCfg):
+    """Actor = fixed 546 -> 528 adapter + the 5.4 walker network (``DirectionalWalkerActor``).
+
+    Attributes:
+        walker_checkpoint: 5.4 checkpoint the actor starts from; ``""`` starts
+            the same network from a random init.
+        hidden: Width of the 5.4 network.
+        layers: Linear layers of its trunk.
+    """
+
+    class_name: str = "myosuite.integrations.musclemimic.directional_walker_actor:DirectionalWalkerActor"
+    walker_checkpoint: str = str(WALKER_CHECKPOINT)
+    hidden: int = 512
+    layers: int = 6
 
 
 def chasetag_vs_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-    """PPO config of ``myoChallengeChaseTagFBVsTrain-v0`` (self-play).
+    """PPO config of ``myoChallengeChaseTagFBVsTrain-v0``: self-play from the 5.4 walker.
 
-    Settings of the full-body Halloween task: the action noise is capped
-    (``std_range``) and gets no entropy bonus, because with excitations clipped
-    to ``[0, 1]`` a large std acts as extra activation and the mean action then
-    fails alone (MyoHub/myosuite#566); ``desired_kl`` 0.03 keeps the adaptive
-    learning rate off its floor.
+    Both players start as the walker the 5.6 Colab submits (it walks ~1.4 s in
+    a mirror match; a random init falls in ~0.4 s). Fine-tuning settings: a
+    small capped action noise without entropy bonus (with excitations clipped
+    to ``[0, 1]`` a large std acts as extra activation, MyoHub/myosuite#566),
+    and a low learning rate with ``desired_kl`` 0.01 so the first updates
+    against a fresh critic do not undo the walker.
     """
     return RslRlOnPolicyRunnerCfg(
-        actor=RslRlModelCfg(
-            hidden_dims=(512, 256, 128),
-            activation="elu",
-            obs_normalization=True,
+        actor=DirectionalWalkerActorCfg(
+            obs_normalization=False,
             distribution_cfg={
                 "class_name": "GaussianDistribution",
-                "init_std": 0.2,
+                "init_std": 0.1,
                 "std_type": "scalar",
                 "std_range": (0.01, 0.2),
             },
@@ -38,11 +68,11 @@ def chasetag_vs_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             entropy_coef=0.0,
             num_learning_epochs=5,
             num_mini_batches=4,
-            learning_rate=3.0e-4,
+            learning_rate=1.0e-4,
             schedule="adaptive",
             gamma=0.99,
             lam=0.95,
-            desired_kl=0.03,
+            desired_kl=0.01,
             max_grad_norm=1.0,
         ),
         experiment_name="myo_chasetag_fbvs_train",
