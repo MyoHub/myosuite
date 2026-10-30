@@ -20,6 +20,20 @@ add minimal comments and descriptions in the code / python files
   **Exception:** `ModularMultiAgentTaskEnv` returns 5-tuples of per-agent dicts — intentional.
 - Use `myo_sim.get_path(...)` / `ModelBuilder` for assets — no hardcoded paths.
 
+### Training and Learning Code
+
+See #580. Training algorithms and experimental learning methods belong outside the installable `myosuite` package.
+
+- Put method-specific training code under top-level `training/<method>/`, not `myosuite/`.
+- Each method should be a self-contained Python project with its own `pyproject.toml`, dependencies, tests, README, and optional lockfile.
+- Do not add method-specific training dependencies to the root MyoSuite `pyproject.toml`.
+- Keep generally reusable runtime functionality in `myosuite/` (environments, task/reward contracts, simulation/backend utilities, lightweight inference/integration interfaces).
+- Keep trainers, optimizers, replay buffers, world-model training, experiment configs, and algorithm-specific evaluation under `training/`.
+- Training projects may be installed independently, e.g. `pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=training/<method>"`.
+- Do not assume different training methods can share one environment; use separate virtual environments when dependencies conflict.
+
+> **MyoSuite defines the simulation and task contract; training methods consume that contract.**
+
 ### CPU Env Contract
 
 The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `test_reset_reproducibility.py` and `test_runtime_geometry_consistency.py` check them.
