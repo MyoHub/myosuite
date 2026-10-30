@@ -62,7 +62,9 @@ def make_env(seed: int = 0, angle: float | None = None):
                 ],
                 dtype=np.float64,
             )
-            heading_r = float(mimic_root_vel_reward(np, cur_vel3, target_vel3, scale=1.0))
+            heading_r = float(
+                mimic_root_vel_reward(np, cur_vel3, target_vel3, scale=1.0)
+            )
             cur_speed = float(np.linalg.norm(cur_vel3))
             excess = max(0.0, cur_speed - self._target_speed * 1.05)
             act = obs_dict["act"]
@@ -89,9 +91,7 @@ def make_env(seed: int = 0, angle: float | None = None):
                 "done": fell,
             }
 
-    env = ScratchDirectionalEnv(
-        seed=seed, target_speed=0.65, w_jpos=0.0, w_jvel=0.0
-    )
+    env = ScratchDirectionalEnv(seed=seed, target_speed=0.65, w_jpos=0.0, w_jvel=0.0)
     if angle is not None:
         env._angle_override = float(angle)
     return env
@@ -119,12 +119,18 @@ class Critic(nn.Module):
         super().__init__()
         hid = 512
         self.q1 = nn.Sequential(
-            nn.Linear(OBS_DIM + ACT_DIM, hid), nn.SiLU(),
-            nn.Linear(hid, hid), nn.SiLU(), nn.Linear(hid, 1),
+            nn.Linear(OBS_DIM + ACT_DIM, hid),
+            nn.SiLU(),
+            nn.Linear(hid, hid),
+            nn.SiLU(),
+            nn.Linear(hid, 1),
         )
         self.q2 = nn.Sequential(
-            nn.Linear(OBS_DIM + ACT_DIM, hid), nn.SiLU(),
-            nn.Linear(hid, hid), nn.SiLU(), nn.Linear(hid, 1),
+            nn.Linear(OBS_DIM + ACT_DIM, hid),
+            nn.SiLU(),
+            nn.Linear(hid, hid),
+            nn.SiLU(),
+            nn.Linear(hid, 1),
         )
 
     def forward(self, obs: torch.Tensor, act: torch.Tensor):
@@ -185,8 +191,11 @@ def eval_dirs(
         obs, _ = env.reset(seed=seed)
         start = env.data.qpos[:2].copy()
         n, ret, alive = 0, 0.0, True
+        mean = getattr(actor, "obs_mean", None)
+        var = getattr(actor, "obs_var", None)
         for _ in range(steps):
-            obs, r, term, trunc, _ = env.step(act_np(actor, obs, device)[0])
+            net_obs = obs if mean is None else (obs - mean) / np.sqrt(var + 1e-8)
+            obs, r, term, trunc, _ = env.step(act_np(actor, net_obs, device)[0])
             ret += float(r)
             n += 1
             if term or trunc:
@@ -226,8 +235,29 @@ def train(
         p.requires_grad_(False)
     a_opt = torch.optim.Adam(actor.parameters(), lr=1e-4)
     c_opt = torch.optim.Adam(critic.parameters(), lr=3e-4)
-    use_amp = device.type == "cuda"
-    scaler = torch.amp.GradScaler("cuda" if use_amp else "cpu", enabled=use_amp)
+    # fp16 AMP overflows on unnormalized 528-d muscle obs (T4 Colab went NaN).
+    use_amp = False
+    scaler = torch.amp.GradScaler(
+        "cuda" if device.type == "cuda" else "cpu", enabled=False
+    )
+    obs_mean = np.zeros(OBS_DIM, np.float32)
+    obs_var = np.ones(OBS_DIM, np.float32)
+    obs_count = np.float32(1e-4)
+
+    def _norm_obs(x: np.ndarray, update: bool = True) -> np.ndarray:
+        nonlocal obs_mean, obs_var, obs_count
+        x = np.asarray(x, np.float32)
+        if update:
+            batch = x.reshape(-1, OBS_DIM)
+            bmean, bvar, bn = batch.mean(0), batch.var(0), np.float32(batch.shape[0])
+            delta = bmean - obs_mean
+            tot = obs_count + bn
+            obs_mean = obs_mean + delta * bn / tot
+            obs_var = (
+                obs_var * obs_count + bvar * bn + delta**2 * obs_count * bn / tot
+            ) / tot
+            obs_count = tot
+        return (x - obs_mean) / np.sqrt(obs_var + 1e-8)
 
     explore, tgt_noise, gamma, tau, pfreq = 0.08, 0.02, 0.99, 0.01, 4
     if smoke:
@@ -243,11 +273,20 @@ def train(
     collected = updates = 0
     last_q = last_pi = 0.0
     t0 = last = time.time()
-    print(f"train smoke={smoke} steps={steps} envs={n_envs} device={device} amp={use_amp}")
+    print(
+        "DEPRECATED homemade TD3; use python -m myosuite_fasttd3 "
+        "myoMimicFullbody-v0 --backend mjlab"
+    )
+    print(
+        f"train smoke={smoke} steps={steps} envs={n_envs} device={device} amp={use_amp}"
+    )
+    obs = _norm_obs(obs)
 
     while collected < steps:
         raw = act_np(actor, obs, device)
-        act = np.clip(raw + explore * np.random.randn(*raw.shape).astype(np.float32), 0, 1)
+        act = np.clip(
+            raw + explore * np.random.randn(*raw.shape).astype(np.float32), 0, 1
+        )
         nxt = np.zeros_like(obs)
         rew = np.zeros(n_envs, np.float32)
         done = np.zeros(n_envs, np.float32)
@@ -258,7 +297,8 @@ def train(
             if d:
                 nobs, _ = env.reset()
                 nxt[i] = nobs
-        buf.add(obs, act, rew, nxt, done)
+        nxt = _norm_obs(nxt)
+        buf.add(obs, act, np.clip(rew, -10.0, 10.0), nxt, done)
         obs = nxt
         collected += n_envs
 
@@ -267,9 +307,13 @@ def train(
                 o, a, r, n, d = buf.sample(min(batch, buf.size), device)
                 with torch.autocast("cuda", enabled=use_amp):
                     with torch.no_grad():
-                        na = (ta(n) + tgt_noise * torch.randn_like(a).clamp(-0.06, 0.06)).clamp(0, 1)
+                        na = (
+                            ta(n) + tgt_noise * torch.randn_like(a).clamp(-0.06, 0.06)
+                        ).clamp(0, 1)
                         q1t, q2t = tc(n, na)
-                        target = r + (1.0 - d) * gamma * torch.min(q1t, q2t)
+                        target = (r + (1.0 - d) * gamma * torch.min(q1t, q2t)).clamp(
+                            -50.0, 50.0
+                        )
                     q1, q2 = critic(o, a)
                     c_loss = F.mse_loss(q1, target) + F.mse_loss(q2, target)
                 c_opt.zero_grad(set_to_none=True)
@@ -310,8 +354,13 @@ def train(
         env.close()
     out.mkdir(parents=True, exist_ok=True)
     ckpt = out / ("smoke.pt" if smoke else "fasttd3_scratch.pt")
-    torch.save({"actor": actor.state_dict()}, ckpt)
+    torch.save(
+        {"actor": actor.state_dict(), "obs_mean": obs_mean, "obs_var": obs_var},
+        ckpt,
+    )
     print("saved", ckpt)
+    actor.obs_mean = obs_mean
+    actor.obs_var = obs_var
     if not math.isfinite(last_q):
         raise RuntimeError(f"non-finite critic loss: {last_q}")
     if not smoke and last_pi == 0.0:
@@ -319,7 +368,9 @@ def train(
     return actor
 
 
-def render_east(actor: nn.Module, device: torch.device, path: Path, frames: int = 80) -> Path:
+def render_east(
+    actor: nn.Module, device: torch.device, path: Path, frames: int = 80
+) -> Path:
     import imageio
     import mujoco
 
@@ -332,8 +383,11 @@ def render_east(actor: nn.Module, device: torch.device, path: Path, frames: int 
     obs, _ = env.reset(seed=0)
     imgs = []
     actor.eval()
+    mean = getattr(actor, "obs_mean", None)
+    var = getattr(actor, "obs_var", None)
     for _ in range(frames):
-        obs, _, term, trunc, _ = env.step(act_np(actor, obs, device)[0])
+        net_obs = obs if mean is None else (obs - mean) / np.sqrt(var + 1e-8)
+        obs, _, term, trunc, _ = env.step(act_np(actor, net_obs, device)[0])
         cam.lookat[:2] = env.data.qpos[:2]
         renderer.update_scene(env.data, camera=cam)
         imgs.append(np.asarray(renderer.render(), dtype=np.uint8))
@@ -351,8 +405,12 @@ def render_east(actor: nn.Module, device: torch.device, path: Path, frames: int 
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--smoke", action="store_true", help="CPU plumbing test (default if no --train)")
-    p.add_argument("--train", action="store_true", help="Full run; requires GPU unless --force-cpu")
+    p.add_argument(
+        "--smoke", action="store_true", help="CPU plumbing test (default if no --train)"
+    )
+    p.add_argument(
+        "--train", action="store_true", help="Full run; requires GPU unless --force-cpu"
+    )
     p.add_argument("--force-cpu", action="store_true")
     p.add_argument("--steps", type=int, default=0)
     p.add_argument("--n-envs", type=int, default=0)
@@ -369,7 +427,12 @@ def main() -> None:
     n_envs = args.n_envs or (1 if smoke else 8)
     batch = args.batch or (64 if smoke else 1024)
     actor = train(
-        steps=steps, n_envs=n_envs, batch=batch, device=device, out=args.out, smoke=smoke
+        steps=steps,
+        n_envs=n_envs,
+        batch=batch,
+        device=device,
+        out=args.out,
+        smoke=smoke,
     )
     labels = ["E", "N"] if smoke else LABELS
     eval_dirs(actor, device, labels=labels, steps=40 if smoke else 120)

@@ -117,6 +117,18 @@ def test_fast_td3_official_actor_critic_forward():
     assert q1.shape == (2, 11) and q2.shape == (2, 11)
 
 
+def test_parse_args_colab_gpu_defaults():
+    from myosuite_fasttd3.train import parse_args
+
+    args = parse_args(
+        ["myoMimicFullbody-v0", "--num-envs", "8", "--total-timesteps", "200000"]
+    )
+    assert args.amp is False
+    assert args.v_min == -250.0 and args.v_max == 250.0
+    assert args.learning_starts == 4096 // 8
+    assert args.max_grad_norm == 1.0
+
+
 def test_train_fasttd3_cli_help():
     env = dict(os.environ)
     env["PYTHONPATH"] = _pythonpath()

@@ -73,13 +73,15 @@ class TrainArgs:
     critic_hidden: int = 1024
     init_scale: float = 0.01
     num_atoms: int = 101
-    v_min: float = -10.0
-    v_max: float = 10.0
+    # HumanoidBench FastTD3 support; mimic returns sit well inside this.
+    v_min: float = -250.0
+    v_max: float = 250.0
     policy_noise: float = 0.001
     noise_clip: float = 0.5
     std_min: float = 0.001
     std_max: float = 0.4
     weight_decay: float = 0.1
+    max_grad_norm: float = 1.0
     sim_type: str = ""
     sim_dimension: int = 64
     actor_seq_len: int = 8
@@ -112,6 +114,14 @@ def parse_args(argv: list[str] | None = None) -> TrainArgs:
     )
     p.add_argument("--out", type=Path, default=Path("runs/fasttd3"))
     p.add_argument("--seed", type=int, default=1)
+    p.add_argument("--learning-starts", type=int, default=None)
+    p.add_argument("--v-min", type=float, default=None)
+    p.add_argument("--v-max", type=float, default=None)
+    p.add_argument(
+        "--amp",
+        action="store_true",
+        help="bf16 AMP only (ignored on T4 / GPUs without bf16; fp16 overflows)",
+    )
     p.add_argument("--no-unit-interval-actions", action="store_true")
     p.add_argument(
         "--clip",
@@ -149,6 +159,17 @@ def parse_args(argv: list[str] | None = None) -> TrainArgs:
         args.batch_size = ns.batch_size
     if ns.no_unit_interval_actions:
         args.unit_interval_actions = False
+    if ns.v_min is not None:
+        args.v_min = ns.v_min
+    if ns.v_max is not None:
+        args.v_max = ns.v_max
+    if ns.amp:
+        args.amp = True
+    if ns.learning_starts is not None:
+        args.learning_starts = ns.learning_starts
+    elif not args.smoke:
+        # Official FastTD3 uses 10 steps at 128+ envs. Few Colab envs need more.
+        args.learning_starts = max(10, 4096 // max(args.num_envs, 1))
     return args
 
 
@@ -167,7 +188,15 @@ def train(args: TrainArgs) -> Path:
 
     torch.manual_seed(args.seed)
     device = pick_device(args.device)
-    amp_enabled = bool(args.amp and device.type == "cuda")
+    bf16 = device.type == "cuda" and bool(
+        getattr(torch.cuda, "is_bf16_supported", lambda: False)()
+    )
+    amp_enabled = bool(args.amp and bf16)
+    if args.amp and device.type == "cuda" and not bf16:
+        print(
+            "AMP ignored: this GPU has no bf16 (T4 fp16 overflows on muscle obs)",
+            flush=True,
+        )
     amp_device_type = "cuda" if device.type == "cuda" else "cpu"
     amp_dtype = torch.bfloat16
     scaler = GradScaler(enabled=False)
@@ -295,9 +324,11 @@ def train(args: TrainArgs) -> Path:
         q_opt.zero_grad(set_to_none=True)
         scaler.scale(q_loss).backward()
         scaler.unscale_(q_opt)
+        if args.max_grad_norm > 0:
+            torch.nn.utils.clip_grad_norm_(qnet.parameters(), args.max_grad_norm)
         scaler.step(q_opt)
         scaler.update()
-        return {"qf_loss": q_loss.detach()}
+        return {"qf_loss": q_loss.detach(), "qf": q1v.detach().mean()}
 
     def update_actor(data: TensorDict) -> dict[str, torch.Tensor]:
         with autocast(
@@ -316,6 +347,8 @@ def train(args: TrainArgs) -> Path:
         actor_opt.zero_grad(set_to_none=True)
         scaler.scale(a_loss).backward()
         scaler.unscale_(actor_opt)
+        if args.max_grad_norm > 0:
+            torch.nn.utils.clip_grad_norm_(actor.parameters(), args.max_grad_norm)
         scaler.step(actor_opt)
         scaler.update()
         return {"actor_loss": a_loss.detach()}
@@ -334,11 +367,13 @@ def train(args: TrainArgs) -> Path:
         critic_obs = None
     dones = None
     t0 = time.time()
-    last_q = last_pi = 0.0
+    last_q = last_pi = last_qv = 0.0
     print(
         f"FastTD3 env={args.env_id} backend={args.backend} device={device} "
         f"n_obs={n_obs} n_act={n_act} asymmetric={envs.asymmetric_obs} "
-        f"envs={envs.num_envs} steps={args.total_timesteps} smoke={args.smoke}",
+        f"envs={envs.num_envs} steps={args.total_timesteps} smoke={args.smoke} "
+        f"amp={amp_enabled} v=[{args.v_min:g},{args.v_max:g}] "
+        f"learn_start={args.learning_starts}",
         flush=True,
     )
     try:
@@ -399,6 +434,7 @@ def train(args: TrainArgs) -> Path:
                         )
                     logs = update_critic(data)
                     last_q = float(logs["qf_loss"])
+                    last_qv = float(logs["qf"])
                     if args.num_updates > 1:
                         if u % args.policy_frequency == 1:
                             last_pi = float(update_actor(data)["actor_loss"])
@@ -409,9 +445,14 @@ def train(args: TrainArgs) -> Path:
                 fps = (step + 1) * envs.num_envs / max(time.time() - t0, 1e-6)
                 print(
                     f"t={step + 1}/{args.total_timesteps} fps={fps:.0f} "
-                    f"q={last_q:.3f} pi={last_pi:.3f} r={float(rewards.mean()):.3f}",
+                    f"qloss={last_q:.3f} q={last_qv:.3f} pi={last_pi:.3f} "
+                    f"r={float(rewards.mean()):.3f}",
                     flush=True,
                 )
+                if step >= args.learning_starts and not math.isfinite(last_q):
+                    raise RuntimeError(
+                        f"non-finite critic loss {last_q} at step {step + 1}"
+                    )
 
         args.out.mkdir(parents=True, exist_ok=True)
         ckpt = args.out / f"{args.env_id}_{'smoke' if args.smoke else 'final'}.pt"
