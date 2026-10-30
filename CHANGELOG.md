@@ -51,6 +51,9 @@ All notable changes to this project are documented in this file.
     (`--agent.actor.walker-checkpoint ""`). `load_rslrl_policy` / `export_rslrl_to_onnx` rebuild such actors.
   - FBVs itself is unchanged (its reward terms now share backend-agnostic functions with the twin).
   - No muscle-condition variants: the two bodies share one model.
+  - Tutorial 5.6 (ChaseTag Colab): step 5 trains in this env (FBP2's 537-d observation does not fit a submission),
+    the baseline note says the shipped walker falls after ~1.5 s, and the optional cell plays the ONNX file as both
+    players for a few episodes, prints how each ended with the score, and records the first one until it ends.
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
 
