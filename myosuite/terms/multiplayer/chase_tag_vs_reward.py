@@ -166,7 +166,10 @@ def chase_tag_dense_reward(
     Returns:
         Reward, shaped like the inputs.
     """
-    r = config.r_survival_per_step + config.r_act_reg * act_sq_sum
+    survival = config.r_survival_per_step
+    if config.r_chaser_survival_per_step is not None:
+        survival = xp.where(is_chaser, config.r_chaser_survival_per_step, survival)
+    r = survival + config.r_act_reg * act_sq_sum
     r = r + config.r_fall_penalty * self_fell
     r = r + config.r_opponent_fall_bonus * opponent_fell
     proximity = xp.where(

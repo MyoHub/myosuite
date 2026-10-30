@@ -69,6 +69,9 @@ class ChaseTagVsConfig:
     # episode ends with score 0, so training for the score sets it to 0.
     r_opponent_fall_bonus: float = 5.0
     r_survival_per_step: float = 0.01  # small per-step alive reward
+    # Per-step reward of the chaser (None: r_survival_per_step, as FBVs). A tag ends the
+    # episode, so a survival reward for the chaser makes tagging cost it the remaining steps.
+    r_chaser_survival_per_step: float | None = None
     r_act_reg: float = -0.001  # L2 on muscle activations
     # Proximity shaping (chaser closes, runner escapes)
     r_chaser_proximity: float = 0.5

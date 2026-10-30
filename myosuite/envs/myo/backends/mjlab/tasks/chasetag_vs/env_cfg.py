@@ -189,6 +189,10 @@ def make_chasetag_vs_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlE
         for k in reward_fields
         if k.startswith("r_") or k in ("tag_radius_m", "fall_pelvis_z_threshold")
     }
+    if (
+        chase_tag["r_chaser_survival_per_step"] is None
+    ):  # a float, settable from the CLI
+        chase_tag["r_chaser_survival_per_step"] = config.r_survival_per_step
     steering = {
         "clip_repo": config.gait_clip_repo,
         "clip_file": config.gait_clip_filename,
