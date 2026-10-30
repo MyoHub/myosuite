@@ -117,6 +117,16 @@ def test_fast_td3_official_actor_critic_forward():
     assert q1.shape == (2, 11) and q2.shape == (2, 11)
 
 
+def test_train_args_smoke_preset():
+    from myosuite_fasttd3.train import TrainArgs, apply_run_preset
+
+    args = apply_run_preset(TrainArgs(env_id="myoMimicFullbody-v0", smoke=True))
+    assert args.backend == "cpu"
+    assert args.device == "cpu"
+    assert args.num_envs == 2 and args.total_timesteps == 8
+    assert args.amp is False
+
+
 def test_parse_args_colab_gpu_defaults():
     from myosuite_fasttd3.train import parse_args
 

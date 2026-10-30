@@ -140,17 +140,6 @@ def parse_args(argv: list[str] | None = None) -> TrainArgs:
     )
     if ns.smoke:
         args.smoke = True
-        args.num_envs = 2
-        args.total_timesteps = 8
-        args.batch_size = 64
-        args.buffer_size = 64
-        args.learning_starts = 2
-        args.num_updates = 1
-        args.actor_hidden = 64
-        args.critic_hidden = 64
-        args.num_atoms = 11
-        args.compile = False
-        args.amp = False
     if ns.num_envs is not None:
         args.num_envs = ns.num_envs
     if ns.total_timesteps is not None:
@@ -182,7 +171,30 @@ def pick_device(requested: str) -> torch.device:
     return torch.device("cpu")
 
 
+def apply_run_preset(args: TrainArgs) -> TrainArgs:
+    """Fill smoke sizes so notebooks can pass ``TrainArgs(env_id=..., smoke=True)``."""
+    if not args.smoke:
+        return args
+    args.num_envs = 2
+    args.total_timesteps = 8
+    args.batch_size = 64
+    args.buffer_size = 64
+    args.learning_starts = 2
+    args.num_updates = 1
+    args.actor_hidden = 64
+    args.critic_hidden = 64
+    args.num_atoms = 11
+    args.compile = False
+    args.amp = False
+    if not args.device:
+        args.device = "cpu"
+    if args.backend == "auto":
+        args.backend = "cpu"
+    return args
+
+
 def train(args: TrainArgs) -> Path:
+    apply_run_preset(args)
     Actor, Critic, EmpiricalNormalization, SimpleReplayBuffer = _require_fast_td3()
     from myosuite_fasttd3.env import make_fast_td3_env
 
