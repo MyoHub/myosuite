@@ -274,6 +274,34 @@ class TestSaveLoadRoundtrip(unittest.TestCase):
         loaded_enc = encode_activations(loaded, acts)
         np.testing.assert_allclose(original_enc, loaded_enc, rtol=1e-5, atol=1e-6)
 
+    def test_metadata_is_written_without_pickle(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import save_synergy_model
+
+        with tempfile.TemporaryDirectory() as tmp:
+            save_synergy_model(self.model, tmp)
+            with np.load(Path(tmp) / "metadata.npz", allow_pickle=False) as meta:
+                clips = [str(c) for c in meta["source_clips"]]
+        self.assertEqual(clips, ["clip.npz"])
+
+    def test_loads_metadata_written_with_an_object_array(self) -> None:
+        """Synergy folders saved before 3.0 (source_clips as objects) still load."""
+        from myosuite.integrations.musclemimic.sar_extraction import (
+            load_synergy_model,
+            save_synergy_model,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            save_synergy_model(self.model, tmp)
+            np.savez(
+                Path(tmp) / "metadata.npz",
+                n_synergies=np.array(self.model.n_synergies, dtype=np.int32),
+                n_muscles=np.array(self.model.n_muscles, dtype=np.int32),
+                vaf=np.array(self.model.vaf, dtype=np.float32),
+                source_clips=np.array(self.model.source_clips, dtype=object),
+            )
+            loaded = load_synergy_model(tmp)
+        self.assertEqual(loaded.source_clips, ["clip.npz"])
+
     def test_load_raises_on_missing_file(self) -> None:
         from myosuite.integrations.musclemimic.sar_extraction import load_synergy_model
 
