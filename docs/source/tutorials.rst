@@ -10,7 +10,7 @@ Notebooks are numbered ``<track>.<number>``; extra files of ``X.Y`` live in ``tu
 2. **Training** — ``2.1_Train_SB3_Policy`` (PPO, CPU), ``2.2_Train_MjLab_Policy`` (GPU), ``2.3_SAR``, ``2.4_MyoReflex_Walk``
 3. **Analysis** — ``3.1_Analyse_Movements``, ``3.2_Inverse_Kinematics``, ``3.3_Inverse_Dynamics``, ``3.4_Computed_Muscle_Control``, ``3.5_Playback_Mot_File``, ``3.6_Blender_Rendering`` (studio renders with volumetric muscles, :doc:`blender_rendering`)
 4. **Modelling and conditions** — ``4.1_Move_Hand_Fingers``, ``4.2_Fatigue_Modeling``, ``4.3_Modular_Task_Config``
-5. **MuscleMimic** — ``5.1_Fullbody_Load_Policy``, ``5.2_Fullbody_Train_Policy``, ``5.3_Fullbody_Train_MjLab_Policy``, ``5.4_MuscleMimic_Directional_Locomotion``, ``5.5_MuscleMimic_SAR``, ``5.6_ChaseTag_MyoChallenge``, ``5.7_FastTD3_Directional_From_Scratch`` (``training/fasttd3``)
+5. **MuscleMimic** — ``5.1_Fullbody_Load_Policy``, ``5.2_Fullbody_Train_Policy``, ``5.3_Fullbody_Train_MjLab_Policy``, ``5.4_MuscleMimic_Directional_Locomotion``, ``5.5_MuscleMimic_SAR``, ``5.6_ChaseTag_MyoChallenge``, ``5.7_FastTD3_From_Scratch`` (``training/fasttd3``)
 
 Muscle-condition IDs:
 
