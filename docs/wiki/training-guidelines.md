@@ -29,6 +29,19 @@ pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=trainin
 
 Use separate virtual environments when dependency stacks conflict.
 
+## Attribution and licensing
+
+Training methods adapted from or based on external research or code must preserve appropriate attribution.
+
+- Credit the original paper and authors in the method's README, with links to the publication and source repository when available.
+- Preserve copyright, license, and attribution notices required by the upstream license.
+- Clearly distinguish upstream/adapted code from new MyoSuite-specific implementation.
+- Include upstream license files or notices when required.
+- Verify that the upstream license permits the intended use and redistribution.
+- Do not present an adapted or reproduced method as an original MyoSuite method.
+
+Agents must check attribution and license requirements before adding or modifying externally derived training code.
+
 ## Boundary
 
 Keep in `myosuite/`:
