@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""FastTD3 mjlab adapter: official FastTD3 networks + MuscleMimic / pose twins."""
+"""Official FastTD3 on MyoSuite CPU gym and mjlab twins."""
 
 from __future__ import annotations
 
@@ -13,52 +13,45 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.tier2
+_PKG = Path(__file__).resolve().parents[1]
+_REPO = _PKG.parent.parent
 
-_REPO = Path(__file__).resolve().parents[2]
 
-
-def _has_mjlab() -> bool:
+def _has(name: str) -> bool:
     try:
         import importlib.util
 
-        return importlib.util.find_spec("mjlab") is not None
+        return importlib.util.find_spec(name) is not None
     except Exception:
         return False
 
 
-def _has_fast_td3() -> bool:
-    try:
-        import importlib.util
-
-        return importlib.util.find_spec("fast_td3") is not None
-    except Exception:
-        return False
-
-
-_MJLAB = _has_mjlab()
-_FASTTD3 = _has_fast_td3()
-_MJLAB_SKIP = pytest.mark.skipif(
-    not _MJLAB, reason="mjlab not installed (pip install myosuite[mjlab])"
-)
+_MJLAB = _has("mjlab")
+_FASTTD3 = _has("fast_td3")
+_MJLAB_SKIP = pytest.mark.skipif(not _MJLAB, reason="mjlab not installed")
 _FASTTD3_SKIP = pytest.mark.skipif(
-    not _FASTTD3, reason="FastTD3 not installed (pip install myosuite[fasttd3])"
+    not _FASTTD3, reason="FastTD3 not installed (pip install -e training/fasttd3)"
 )
+
+
+def _pythonpath() -> str:
+    return os.pathsep.join(
+        p for p in (str(_PKG), str(_REPO), os.environ.get("PYTHONPATH", "")) if p
+    )
 
 
 def _run_train(
     env_id: str, out: Path, timeout: int, backend: str = "mjlab"
 ) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(
-        p for p in (str(_REPO), env.get("PYTHONPATH", "")) if p
-    )
+    env["PYTHONPATH"] = _pythonpath()
     env.setdefault("JAX_PLATFORMS", "cpu")
     env.setdefault("HF_HUB_OFFLINE", "1")
     return subprocess.run(
         [
             sys.executable,
-            str(_REPO / "scripts" / "train_fasttd3.py"),
+            "-m",
+            "myosuite_fasttd3",
             env_id,
             "--smoke",
             "--backend",
@@ -92,6 +85,7 @@ def _assert_train_ok(proc: subprocess.CompletedProcess[str]) -> None:
 def test_fast_td3_official_actor_critic_forward():
     from fast_td3.fast_td3 import Actor, Critic
 
+    torch = pytest.importorskip("torch")
     actor = Actor(
         n_obs=8,
         n_act=4,
@@ -115,7 +109,7 @@ def test_fast_td3_official_actor_critic_forward():
         seq_len=2,
         device="cpu",
     )
-    obs = __import__("torch").zeros(2, 8)
+    obs = torch.zeros(2, 8)
     act = actor(obs)
     assert act.shape == (2, 4)
     assert float(act.detach().min()) >= -1.0 and float(act.detach().max()) <= 1.0
@@ -125,11 +119,9 @@ def test_fast_td3_official_actor_critic_forward():
 
 def test_train_fasttd3_cli_help():
     env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(
-        p for p in (str(_REPO), env.get("PYTHONPATH", "")) if p
-    )
+    env["PYTHONPATH"] = _pythonpath()
     proc = subprocess.run(
-        [sys.executable, str(_REPO / "scripts" / "train_fasttd3.py"), "--help"],
+        [sys.executable, "-m", "myosuite_fasttd3", "--help"],
         cwd=str(_REPO),
         env=env,
         check=False,
@@ -162,7 +154,6 @@ def test_train_fasttd3_mimic_fullbody_smoke(tmp_path: Path):
 
 @_FASTTD3_SKIP
 def test_train_fasttd3_mimic_cpu_smoke(tmp_path: Path):
-    """Colab CPU path: official FastTD3 on Gymnasium mimic, no Warp, no HF."""
     pytest.importorskip("musclemimic_models")
     out = tmp_path / "mimic_cpu"
     proc = _run_train("myoMimicFullbody-v0", out, timeout=180, backend="cpu")

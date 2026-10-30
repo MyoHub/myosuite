@@ -144,13 +144,6 @@ musclemimic = [
     "scikit-learn>=1.6.1",
     "joblib>=1.4.0",
 ]
-# Official FastTD3 (distributional TD3) on mjlab twins:
-#   pip install -e ".[mjlab,fasttd3]"
-#   python scripts/train_fasttd3.py myoMimicFullbody-v0 --smoke
-fasttd3 = [
-    "fast_td3 @ git+https://github.com/younggyoseo/FastTD3.git@229ed59bbf43ea2f7a2d5d90d1076314839944d7",
-    "tensordict>=0.5",
-]
 
 dev = [
     "myosuite[rl]",
@@ -203,6 +196,8 @@ myosuite-musclemimic-setup-demo-cache = "myosuite.integrations.musclemimic.setup
 [tool.pytest.ini_options]
 # Default: run only fast tests (unit-test compatible). Use: pytest -m slow for slow tests.
 addopts = ["-m", "not slow"]
+# Method trainers own their tests under training/<method>/ (PR #581).
+norecursedirs = ["training"]
 markers = [
     "tier1: Fast core unit/contract/regression tests for main CI.",
     "tier2: Extended backend/parity/backend tests (MJX, mjlab, SAR, heavy env-specific checks).",

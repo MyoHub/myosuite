@@ -3,20 +3,20 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Train official FastTD3 on a MyoSuite mjlab twin (MuscleMimic included).
+"""Train official FastTD3 on a MyoSuite env (CPU gym or mjlab twin).
 
-Uses Actor / Critic / SimpleReplayBuffer from
-https://github.com/younggyoseo/FastTD3 (distributional critic, CDQ, n-step,
-obs-norm). The mjlab env is wrapped by ``FastTD3MjlabEnv``.
+Update loop adapted from https://github.com/younggyoseo/FastTD3 (MIT).
+MyoSuite env wrappers live in ``myosuite_fasttd3.env``.
 
 Install::
 
-    pip install -e ".[mjlab,fasttd3]"
+    pip install -e .[musclemimic]
+    pip install -e training/fasttd3
 
 Examples::
 
-    python scripts/train_fasttd3.py myoMimicFullbody-v0 --smoke
-    python scripts/train_fasttd3.py myoMimicFullbody-v0 --num-envs 1024
+    python -m myosuite_fasttd3 myoMimicFullbody-v0 --smoke --backend cpu
+    python -m myosuite_fasttd3 myoMimicFullbody-v0 --backend mjlab --num-envs 1024
 """
 
 from __future__ import annotations
@@ -35,9 +35,11 @@ import torch.optim as optim
 from tensordict import TensorDict
 from torch.amp import GradScaler, autocast
 
-_REPO = Path(__file__).resolve().parent.parent
-if str(_REPO) not in sys.path:
-    sys.path.insert(0, str(_REPO))
+_PKG = Path(__file__).resolve().parent.parent
+_REPO = _PKG.parent.parent
+for _path in (_REPO, _PKG):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 
 def _require_fast_td3():
@@ -46,7 +48,7 @@ def _require_fast_td3():
         from fast_td3.fast_td3_utils import EmpiricalNormalization, SimpleReplayBuffer
     except ImportError as exc:
         raise ImportError(
-            "FastTD3 is not installed. pip install -e '.[fasttd3]' "
+            "FastTD3 is not installed. pip install -e training/fasttd3 "
             "(git+https://github.com/younggyoseo/FastTD3.git)."
         ) from exc
     return Actor, Critic, EmpiricalNormalization, SimpleReplayBuffer
@@ -161,7 +163,7 @@ def pick_device(requested: str) -> torch.device:
 
 def train(args: TrainArgs) -> Path:
     Actor, Critic, EmpiricalNormalization, SimpleReplayBuffer = _require_fast_td3()
-    from myosuite.envs.myo.backends.mjlab.fast_td3_env import make_fast_td3_env
+    from myosuite_fasttd3.env import make_fast_td3_env
 
     torch.manual_seed(args.seed)
     device = pick_device(args.device)

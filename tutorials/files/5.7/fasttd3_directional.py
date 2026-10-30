@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Deprecated homemade TD3 loop.
 
-Official FastTD3 on mjlab MuscleMimic lives in ``scripts/train_fasttd3.py``
-(younggyoseo/FastTD3 Actor / Critic / SimpleReplayBuffer). Use that instead.
+Official FastTD3 lives in ``training/fasttd3``
+(``python -m myosuite_fasttd3 myoMimicFullbody-v0 --smoke --backend cpu``). Use that instead.
 """
 
 from __future__ import annotations

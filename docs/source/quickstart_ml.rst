@@ -130,16 +130,14 @@ Pass an ``EnvConfig`` to override the episode length, the control step or the mu
 
 Walk-through: ``tutorials/2.2_Train_MjLab_Policy.ipynb``.
 
-Off-policy FastTD3 (official `younggyoseo/FastTD3`_ networks, mjlab parallel sim)::
+Off-policy FastTD3 lives in ``training/fasttd3/`` (not the installable ``myosuite`` extra). Official `younggyoseo/FastTD3`_ networks::
 
-   pip install -e ".[mjlab,fasttd3]"
-   python scripts/train_fasttd3.py myoMimicFullbody-v0 --smoke
-   python scripts/train_fasttd3.py myoMimicFullbody-v0 --num-envs 1024
-   python scripts/train_fasttd3.py myoMimicFullbody-v0 --clip walk.npz --num-envs 1024
+   pip install -e ".[musclemimic]"
+   pip install -e training/fasttd3
+   python -m myosuite_fasttd3 myoMimicFullbody-v0 --smoke --backend cpu
+   python -m myosuite_fasttd3 myoMimicFullbody-v0 --backend mjlab --num-envs 1024
 
-``--smoke`` is a short CPU/GPU plumbing run. Muscle activations are mapped from
-FastTD3's ``tanh`` ``[-1, 1]`` into ``[0, 1]`` inside the mjlab wrapper.
-Without ``--clip``, MuscleMimic uses random site targets (no Hugging Face download).
+``--backend cpu`` is Gymnasium (no Warp). ``--smoke`` is a short plumbing run.
 
 .. _younggyoseo/FastTD3: https://github.com/younggyoseo/FastTD3
 

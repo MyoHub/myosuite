@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Wrap a MyoSuite mjlab env in the FastTD3 IsaacLab-style vector API.
+"""Wrap MyoSuite CPU / mjlab envs in the FastTD3 IsaacLab-style vector API.
 
 FastTD3 (https://github.com/younggyoseo/FastTD3) expects:
 
