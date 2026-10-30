@@ -41,6 +41,20 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+* **Fatigue groups and parameters for every muscle of the bundled models.**
+  - `_muscle_group` now also strips MuscleMimic's `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent
+    scenes and an `R:`/`L:` side prefix. Before, the MuscleMimic left arm (32 muscles, 63 with fingers) and all 708
+    muscles of `myoChallengeChaseTagFBVs-v0` fell back to `Default`, so the two arms fatigued differently.
+  - New rows, each cited in `MUSCLE_FATIGUE_PARAMS` and `docs/source/fatigue_validation.rst`: `Trunk` for the 108
+    lumbar and abdominal muscles of MyoTorso and the MuscleMimic torso (Frey-Law et al. 2012 trunk fit),
+    `Thigh-Hamstring` (Frey-Law et al. 2012 knee fit with r = 15 of Looft et al. 2018; no knee-flexor fit is
+    published) and `Hip` (the general fit, now explicit: no hip fit is published, Yang et al. 2025).
+  - Regrouped: the forearm rotators `SUP`, `PT`, `PQ` (were elbow extensor, elbow flexor, wrist flexor) use the
+    joint-level `Elbow` row; `APL` is a wrist extensor (was flexor); the rotator cuff is labelled as rotators (no
+    numeric change).
+  - Changes the fatigue dynamics of `myoFati*` envs with torso, hamstring, forearm-rotator or `APL` muscles: torso,
+    table tennis, soccer, full-body ChaseTag, leg walk/stand, arm reach, bimanual, relocate and the hand envs
+    (`docs/baseline_checkpoints.md`).
 * `myoLegDirectionalForward-v0` and `myoLegDirectionalBackward-v0` swapped names. The leg model faces `-y`, so the
   old "forward" task (`heading_dir=(0, 1)`, 1.2 m/s) trained walking backwards and the old "backward" task
   (`heading_dir=(0, -1)`, 1.0 m/s) walking forwards. Forward is now `(0, -1)` at 1.0 m/s and Backward `(0, 1)` at
