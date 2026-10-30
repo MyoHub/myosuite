@@ -110,8 +110,10 @@ class FastTD3GymEnv:
         seed: int = 1,
         unit_interval_actions: bool = True,
         clip_path: str | None = None,
+        max_episode_steps: int | None = None,
     ) -> None:
         del clip_path  # CPU random-target mimic does not take a clip.
+        from gymnasium.wrappers import TimeLimit
         from myosuite.core.registry import make_env
 
         if device is None:
@@ -119,7 +121,12 @@ class FastTD3GymEnv:
         self.device = torch.device(device)
         self.env_id = env_id
         self.unit_interval_actions = unit_interval_actions
-        self._envs = [make_env(env_id) for _ in range(int(num_envs))]
+        self._envs = []
+        for _ in range(int(num_envs)):
+            env = make_env(env_id)
+            if max_episode_steps is not None:
+                env = TimeLimit(env, max_episode_steps=int(max_episode_steps))
+            self._envs.append(env)
         obs_rows = []
         for i, env in enumerate(self._envs):
             obs, _ = env.reset(seed=int(seed) + i)
@@ -132,7 +139,8 @@ class FastTD3GymEnv:
         self.num_privileged_obs = 0
         spec = getattr(self._envs[0], "spec", None)
         self.max_episode_steps = int(
-            getattr(spec, "max_episode_steps", None)
+            max_episode_steps
+            or getattr(spec, "max_episode_steps", None)
             or getattr(self._envs[0], "_max_episode_steps", None)
             or 1000
         )
@@ -194,6 +202,7 @@ def make_fast_td3_env(
     seed: int = 1,
     unit_interval_actions: bool = True,
     clip_path: str | None = None,
+    max_episode_steps: int | None = None,
 ) -> FastTD3GymEnv | FastTD3MjlabEnv:
     """Build a FastTD3 vector env. ``auto`` is mjlab on CUDA, CPU gym otherwise."""
     if backend == "auto":
@@ -206,6 +215,7 @@ def make_fast_td3_env(
             seed=seed,
             unit_interval_actions=unit_interval_actions,
             clip_path=clip_path,
+            max_episode_steps=max_episode_steps,
         )
     if backend != "mjlab":
         raise ValueError(f"backend must be auto, cpu, or mjlab; got {backend!r}")

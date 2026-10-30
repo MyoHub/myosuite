@@ -96,6 +96,7 @@ class TrainArgs:
     device: str = ""
     clip: Path | None = None
     backend: str = "auto"
+    max_episode_steps: int | None = None
 
 
 def parse_args(argv: list[str] | None = None) -> TrainArgs:
@@ -129,6 +130,12 @@ def parse_args(argv: list[str] | None = None) -> TrainArgs:
         default=None,
         help="Motion clip for MuscleMimic trajectory mode (else random targets)",
     )
+    p.add_argument(
+        "--max-episode-steps",
+        type=int,
+        default=None,
+        help="CPU TimeLimit override (more resets; default is the gym spec)",
+    )
     ns = p.parse_args(argv)
     args = TrainArgs(
         env_id=ns.env_id,
@@ -159,6 +166,8 @@ def parse_args(argv: list[str] | None = None) -> TrainArgs:
     elif not args.smoke:
         # Official FastTD3 uses 10 steps at 128+ envs. Few Colab envs need more.
         args.learning_starts = max(10, 4096 // max(args.num_envs, 1))
+    if ns.max_episode_steps is not None:
+        args.max_episode_steps = ns.max_episode_steps
     return args
 
 
@@ -221,6 +230,7 @@ def train(args: TrainArgs) -> Path:
         seed=args.seed,
         unit_interval_actions=args.unit_interval_actions,
         clip_path=str(args.clip) if args.clip is not None else None,
+        max_episode_steps=args.max_episode_steps,
     )
     n_obs, n_act = envs.num_obs, envs.num_actions
     n_critic = n_obs if not envs.asymmetric_obs else envs.num_privileged_obs
@@ -379,13 +389,14 @@ def train(args: TrainArgs) -> Path:
         critic_obs = None
     dones = None
     t0 = time.time()
-    last_q = last_pi = last_qv = 0.0
+    last_q = last_pi = last_qv = ema_r = 0.0
     print(
         f"FastTD3 env={args.env_id} backend={args.backend} device={device} "
         f"n_obs={n_obs} n_act={n_act} asymmetric={envs.asymmetric_obs} "
         f"envs={envs.num_envs} steps={args.total_timesteps} smoke={args.smoke} "
         f"amp={amp_enabled} v=[{args.v_min:g},{args.v_max:g}] "
-        f"learn_start={args.learning_starts}",
+        f"learn_start={args.learning_starts}"
+        + (f" ep={args.max_episode_steps}" if args.max_episode_steps else ""),
         flush=True,
     )
     try:
@@ -430,6 +441,8 @@ def train(args: TrainArgs) -> Path:
                 critic_obs = next_critic
             rb.extend(transition)
             obs = next_obs
+            step_r = float(rewards.mean())
+            ema_r = step_r if step == 0 else (0.95 * ema_r + 0.05 * step_r)
             if step >= args.learning_starts:
                 for u in range(args.num_updates):
                     data = rb.sample(max(1, args.batch_size // envs.num_envs))
@@ -453,12 +466,13 @@ def train(args: TrainArgs) -> Path:
                     elif step % args.policy_frequency == 0:
                         last_pi = float(update_actor(data)["actor_loss"])
                     soft_update()
-            if step == args.total_timesteps - 1 or (step + 1) % 10 == 0:
+            log_every = 10 if args.smoke else 50
+            if step == args.total_timesteps - 1 or (step + 1) % log_every == 0:
                 fps = (step + 1) * envs.num_envs / max(time.time() - t0, 1e-6)
                 print(
                     f"t={step + 1}/{args.total_timesteps} fps={fps:.0f} "
                     f"qloss={last_q:.3f} q={last_qv:.3f} pi={last_pi:.3f} "
-                    f"r={float(rewards.mean()):.3f}",
+                    f"r={step_r:.3f} ema_r={ema_r:.3f}",
                     flush=True,
                 )
                 if step >= args.learning_starts and not math.isfinite(last_q):

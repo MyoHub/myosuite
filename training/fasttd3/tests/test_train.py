@@ -137,6 +137,28 @@ def test_parse_args_colab_gpu_defaults():
     assert args.v_min == -250.0 and args.v_max == 250.0
     assert args.learning_starts == 4096 // 8
     assert args.max_grad_norm == 1.0
+    assert (
+        parse_args(
+            ["myoMimicFullbody-v0", "--max-episode-steps", "80"]
+        ).max_episode_steps
+        == 80
+    )
+
+
+@_FASTTD3_SKIP
+def test_cpu_env_respects_max_episode_steps():
+    torch = pytest.importorskip("torch")
+    from myosuite_fasttd3.env import FastTD3GymEnv
+
+    env = FastTD3GymEnv(
+        "myoElbowPose1D6MRandom-v0", num_envs=1, seed=0, max_episode_steps=5
+    )
+    env.reset()
+    info = {"time_outs": torch.zeros(1)}
+    for _ in range(5):
+        _obs, _rew, _dones, info = env.step(torch.zeros(1, env.num_actions))
+    env.close()
+    assert int(info["time_outs"][0]) == 1
 
 
 def test_train_fasttd3_cli_help():
