@@ -19,20 +19,7 @@ add minimal comments and descriptions in the code / python files
 - Always return 5-tuple from `step()`: `(obs, rwd, terminated, truncated, info)`.
   **Exception:** `ModularMultiAgentTaskEnv` returns 5-tuples of per-agent dicts — intentional.
 - Use `myo_sim.get_path(...)` / `ModelBuilder` for assets — no hardcoded paths.
-
-### Training and Learning Code
-
-See #580. Training algorithms and experimental learning methods belong outside the installable `myosuite` package.
-
-- Put method-specific training code under top-level `training/<method>/`, not `myosuite/`.
-- Each method should be a self-contained Python project with its own `pyproject.toml`, dependencies, tests, README, and optional lockfile.
-- Do not add method-specific training dependencies to the root MyoSuite `pyproject.toml`.
-- Keep generally reusable runtime functionality in `myosuite/` (environments, task/reward contracts, simulation/backend utilities, lightweight inference/integration interfaces).
-- Keep trainers, optimizers, replay buffers, world-model training, experiment configs, and algorithm-specific evaluation under `training/`.
-- Training projects may be installed independently, e.g. `pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=training/<method>"`.
-- Do not assume different training methods can share one environment; use separate virtual environments when dependencies conflict.
-
-> **MyoSuite defines the simulation and task contract; training methods consume that contract.**
+- **Training/learning implementations:** read `docs/wiki/training-guidelines.md` before adding trainers, world models, algorithm-specific evaluation, or method-specific dependencies.
 
 ### CPU Env Contract
 
@@ -122,4 +109,5 @@ commit `68a77811`) — there is no `test_boxing_registry.py` / `test_saber_env.p
 - `docs/wiki/writing-term-functions.md` — signatures and the batch rule for obs / reward / termination / action terms.
 - `docs/wiki/mjlab-design-guide.md` — canonical mjlab patterns; read before writing any mjlab code.
 - `docs/wiki/cross-backend-contract.md` — obs/action/timing invariants for policy portability.
+- `docs/wiki/training-guidelines.md` — placement and dependency-isolation rules for training/learning methods.
 - `docs/wiki/repository-map.md` — where everything lives.
