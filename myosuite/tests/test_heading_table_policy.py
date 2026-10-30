@@ -65,7 +65,6 @@ def test_load_directional_policy_raw_actor() -> None:
 
 def test_heading_table_onnx_fbvs_wrap(table_ckpt: Path, tmp_path: Path) -> None:
     pytest.importorskip("onnx")
-    from myosuite.envs.myo.tasks.mimic.policy import ActorCritic
 
     class FbvsWalker(torch.nn.Module):
         def __init__(self, walker: torch.nn.Module) -> None:
@@ -129,4 +128,3 @@ def test_heading_table_onnx_fbvs_wrap(table_ckpt: Path, tmp_path: Path) -> None:
     act = wrap(dummy)
     assert act.shape == (1, 354)
     assert torch.isfinite(act).all()
-    _ = ActorCritic  # imported for checkpoint compatibility in other tests

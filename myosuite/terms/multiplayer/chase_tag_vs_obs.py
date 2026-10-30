@@ -28,11 +28,6 @@ from myosuite.terms.opponent_relative_obs import relative_pose_obs
 CHASER_ID = "agent_0"
 RUNNER_ID = "agent_1"
 
-# One FBVs agent's observation: qpos(89) + qvel(88) + act(354) + pelvis(6)
-# + opponent-relative(7) + role(2). The submission env and the single-learner
-# training env both use this layout; FBP2's 537-d chasetag_obs does not.
-FBVS_AGENT_OBS_DIM = 546
-
 
 def own_kinematics_obs(
     model: mujoco.MjModel,

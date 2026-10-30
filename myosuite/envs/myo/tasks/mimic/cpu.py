@@ -235,16 +235,11 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
     episode reset, then held fixed for the episode. The agent observes it as a
     2-D unit vector appended to the standard kinematic obs.
 
-    Physics defaults to the process ``musclemimic_models`` release (1.0.6).
-    The public teacher ``amathislab/mm-10m-2`` was trained on 1.0.5 and falls
-    here; a student must be adapted or trained on this body.
-
     Registered as ``myoFullBodyDirectional-v0``.
     """
 
     DEFAULT_GAIT_REPO = "amathislab/musclemimic-retargeted"
     DEFAULT_GAIT_FILE = "MyoFullBody/gmr/KIT/167/walking_medium06_poses.npz"
-    TEACHER_CHECKPOINT_REF = "hf://amathislab/mm-10m-2"
 
     def __init__(
         self,
@@ -479,10 +474,7 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             )
         )
 
-        # Heading command is world-frame (cos θ, sin θ). ``root_vel_xy`` in
-        # the observation is body-frame, so the reward must read world qvel
-        # rather than that obs slot — otherwise East is the only heading
-        # whose body-frame forward velocity matches the command.
+        # Command is world-frame; obs root_vel_xy is body-frame.
         cur_vel3 = np.array(
             [float(self.data.qvel[0]), float(self.data.qvel[1]), 0.0],
             dtype=np.float64,

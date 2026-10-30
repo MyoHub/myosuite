@@ -169,12 +169,7 @@ _HEADING_DIRS = torch.tensor(
 
 
 class HeadingTablePolicy(nn.Module):
-    """1.0.5 ActorCritic plus a left-leg bias table indexed by heading command.
-
-    musclemimic_models 1.0.6 flips two left-knee couplings. A constant 40-d
-    offset on the left-leg muscles, one per compass octant, restores the
-    5.4 gait on that body. ``obs[..., 520:522]`` is the world heading.
-    """
+    """528-d walker: ActorCritic mean plus a left-leg bias per heading octant."""
 
     def __init__(self, ac: ActorCritic, table: torch.Tensor) -> None:
         super().__init__()
@@ -184,9 +179,7 @@ class HeadingTablePolicy(nn.Module):
         self.register_buffer("table", torch.as_tensor(table, dtype=torch.float32))
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        # Match the search-time actor: do not pre-clamp the BC mean. The env
-        # clips the action space; clamping here before the left-leg bias
-        # reverses some headings.
+        # Do not pre-clamp the BC mean; the env clips actions.
         base = self.actor_mean(self.trunk(obs))
         heading = obs[:, 520:522]
         idx = torch.argmax(heading @ self.dirs.T, dim=-1)

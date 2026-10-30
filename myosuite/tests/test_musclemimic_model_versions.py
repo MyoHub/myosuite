@@ -214,7 +214,6 @@ def test_arm_and_torso_models_follow_the_release(installed: str, builder: str) -
         ("myoChallengeChaseTagFBP2-v0", True),
         ("myoFatiChallengeChaseTagFBP2-v0", True),
         ("myoChallengeChaseTagFBVs-v0", True),
-        ("myoChallengeChaseTagFBVsTrain-v0", True),
         ("myoChallengeBimanual-v0", False),
         ("myoTorsoPoseFixed-v0", False),
         ("myoHandReachFixed-v0", False),
@@ -230,10 +229,6 @@ def test_directional_env_records_the_default_release(installed: str) -> None:
     )
     assert (
         mv.env_models_version("myoChallengeChaseTagFBVs-v0")
-        == mv.DEFAULT_MODELS_VERSION
-    )
-    assert (
-        mv.env_models_version("myoChallengeChaseTagFBVsTrain-v0")
         == mv.DEFAULT_MODELS_VERSION
     )
     assert (

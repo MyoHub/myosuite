@@ -6,11 +6,6 @@
 empirically better-performing alternative that reuses the directional
 policy's own heading channel instead.
 
-**Not the submission contract.** Submissions play ``myoChallengeChaseTagFBVs-v0``
-(546-d per agent). Fine-tune in ``myoChallengeChaseTagFBVsTrain-v0``, whose
-observation is byte-identical to one FBVs agent. This 537-dim layout is only
-``myoChallengeChaseTagFBP2-v0`` (see https://github.com/MyoHub/myosuite/issues/576).
-
 **Not the same contract as** :class:`~myosuite.integrations.musclemimic.bc_directional_collector`
 / ``MuscleMimicFullbodyDirectionalEnv``'s pure-locomotion obs. The 537-dim
 layout is the observation of ``myoChallengeChaseTagFBP2-v0`` on both backends:
