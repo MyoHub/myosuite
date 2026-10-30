@@ -23,6 +23,11 @@ This mirrors the collection pattern in
 ``LocalPolicyRunner`` + clip-rollout idiom), but records ``(obs, action)``
 teacher-imitation pairs instead of filtered activation-only sequences.
 
+The compiled ``model`` must be the ``musclemimic_models`` release the teacher
+was trained on (1.0.5 for ``amathislab/mm-10m-2``). The 1.0.6 default used by
+other full-body envs makes that teacher fall within a few seconds; see
+:func:`~myosuite.integrations.musclemimic.model_versions.checkpoint_models_version`.
+
 Requires ``orbax-checkpoint`` (Linux only per this repo's ``pyproject.toml``
 platform markers) to load the teacher checkpoint's Orbax artifacts. Run this
 module on Linux (e.g. a Modal CPU container) — it cannot run on macOS/darwin

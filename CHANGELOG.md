@@ -36,6 +36,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **`myoChallengeChaseTagFBVsTrain-v0`:** single-learner training env whose 546-d observation is byte-identical to one `myoChallengeChaseTagFBVs-v0` agent ([#576](https://github.com/MyoHub/myosuite/issues/576)). Learner is `agent_0`; the opponent is a standing full-body body scripted in XY so pelvis height and velocity match the 1v1 game, not FBP2's floor-level mocap. Tutorial 5.6 fine-tunes here and exports 546 → 354 with no wrapper. `myoChallengeChaseTagFBVs-v0` is unchanged. An mjlab twin of this env is not registered yet.
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
 
@@ -51,6 +52,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+* **Tutorial 5.4 directional locomotion and full-body ChaseTag use musclemimic_models 1.0.6.** `myoFullBodyDirectional-v0` and `myoChallengeChaseTagFBVs-v0` / `FBP2` follow the package default. The public teacher `amathislab/mm-10m-2` was trained on 1.0.5 and still falls here; Colab Run-all loads the shipped `HeadingTablePolicy` (`tutorials/files/5.6/policy_heading_table.pt`: 5.4 student plus a per-heading left-leg bias). Tutorial 5.6 exports that walker 546 → 354. The heading reward compares world-frame root velocity to the world-frame command instead of the body-frame `root_vel_xy` observation. Tutorial 5.6 plays local 1v1 matches to the episode end and prints the score.
 * **Motion clips load without pickle:** `load_motion_clip`, the CPU Mimic clip env and the full-body observation adapter open `.npz` files with `allow_pickle=False` (unpickling a downloaded file can run code). Names stored as bytes now read as text instead of `"b'name'"`, and a pickled name array is refused with instructions for re-saving it. SAR synergy metadata is written as strings, and older folders still load ([#522]).
 * Fixed initial fatigue arrays retain their requested values across CPU episodes. `CumulativeFatigue.reset` copies `fatigue_reset_vec` into owned state. Stepping previously mutated writable NumPy arrays supplied by callers and failed on read-only arrays.
 

@@ -539,6 +539,16 @@ try:
     _register_task(
         _ChaseTagVsFullbodySteeredTaskConfig(), env_id="myoChallengeChaseTagFBVs-v0"
     )
+    _registry.register_env(
+        env_id="myoChallengeChaseTagFBVsTrain-v0",
+        entry_point=(
+            "myosuite.envs.myo.tasks.challenge.chase_tag_vs"
+            ".chase_tag_vs_train_env:ChaseTagFbvsTrainEnv"
+        ),
+        max_episode_steps=2000,
+        time_limit=False,
+        kwargs={},
+    )
     del (
         _register_task,
         _ChaseTagVsFullbodySteeredTaskConfig,

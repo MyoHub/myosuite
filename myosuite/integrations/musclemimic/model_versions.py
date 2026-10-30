@@ -162,8 +162,9 @@ def env_models_version(env_id: str) -> str | None:
         env_id: Registered env id.
 
     Returns:
-        :func:`resolve_models_version` for envs built from ``musclemimic_models``, ``None`` for the
-        others.
+        :func:`resolve_models_version` for ``musclemimic_models`` envs
+        (1.0.6 unless ``MYOSUITE_MUSCLEMIMIC_MODELS_VERSION`` overrides),
+        ``None`` for the rest.
 
     Raises:
         RuntimeError: If the env uses ``musclemimic_models`` but the package is not installed: the
