@@ -36,6 +36,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **Official FastTD3 on mjlab twins**, including MuscleMimic (`myoMimicFullbody-v0`). `pip install -e ".[mjlab,fasttd3]"` then `python scripts/train_fasttd3.py myoMimicFullbody-v0 --smoke`. Uses younggyoseo/FastTD3 Actor / distributional Critic / SimpleReplayBuffer; tanh `[-1, 1]` maps to muscle `[0, 1]`. `--backend cpu` is the Colab smoke path (Gymnasium, no Warp, no Hugging Face).
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
 

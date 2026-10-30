@@ -8,7 +8,7 @@
 myosuite/          # core package (see below)
 docs/source/       # Sphinx documentation (quickstarts, environment reference, API)
 docs/wiki/         # this developer wiki
-scripts/           # training, evaluation and rendering CLIs (train_mjlab, train_sb3, eval_mjlab_policy, render_blender), parity baselines
+scripts/           # training, evaluation and rendering CLIs (train_mjlab, train_fasttd3, train_sb3, eval_mjlab_policy, render_blender), parity baselines
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
 .github/           # CI and release workflows
 ```

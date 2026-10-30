@@ -166,7 +166,7 @@ List every registered CPU ID: `python -c "import myosuite; print('\n'.join(myosu
 | Backend | Use | Build an env in Python | Train |
 | --- | --- | --- | --- |
 | **CPU** (Gymnasium) | playback, debug, SB3 | `make_env(env_id)` | `scripts/train_sb3.py <env_id>` (PPO, SAC or TD3) |
-| **mjlab** (MuJoCo Warp) | parallel GPU training | `make_env(env_id, backend="mjlab", num_envs=...)` | `scripts/train_mjlab.py <env_id>` |
+| **mjlab** (MuJoCo Warp) | parallel GPU training | `make_env(env_id, backend="mjlab", num_envs=...)` | `scripts/train_mjlab.py <env_id>` (PPO) or `scripts/train_fasttd3.py <env_id>` (official FastTD3; `pip install -e ".[mjlab,fasttd3]"`) |
 
 The mjlab backend needs `pip install -e ".[mjlab]"`. `make_env` only builds the env (to step it, evaluate a policy or write your own training loop); `scripts/train_sb3.py` (CPU) and `scripts/train_mjlab.py` (GPU) are the ready-made training scripts.
 
