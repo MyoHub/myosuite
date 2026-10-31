@@ -70,6 +70,10 @@ import numpy as np
 from myosuite.core.trajectory_io import MotionClip
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
 from myosuite.physics.quat_math import quat2mat
+from myosuite.terms.base_action import (
+    MUSCLE_SATURATION_MARGIN,
+    muscle_saturation_bounds,
+)
 from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
 
 if TYPE_CHECKING:
@@ -1571,6 +1575,10 @@ def _make_mimic_env_cfg(
     from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
         musclemimic_mujoco_cfg,
     )
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp.saturation import (
+        SATURATION_TERM,
+        muscle_saturation_metric,
+    )
     from myosuite.envs.myo.backends.mjlab.tasks.mdp.terminations import (
         SYNC_TERM,
         sync_forward,
@@ -1709,6 +1717,7 @@ def _make_mimic_env_cfg(
         actions=actions,
         terminations=terminations,
         rewards=rewards,
+        metrics={SATURATION_TERM: muscle_saturation_metric()},
         sim=SimulationCfg(
             mujoco=musclemimic_mujoco_cfg(variant, timestep=sim_dt),
             njmax=512,
@@ -2143,6 +2152,24 @@ class SARMuscleActivationAction:
         with with_no_grad:
             self._processed_actions[:] = self._sar(self._raw_actions)
 
+    def muscle_action_bounds(
+        self, margin: float = MUSCLE_SATURATION_MARGIN
+    ) -> tuple[Any, float, float]:
+        """Muscle excitations and their saturation bounds.
+
+        The policy acts on synergies, so this returns the excitations, which the
+        SAR transform clamps to ``[0, 1]``: the saturation mask is exact, while
+        the penalty's excess beyond the bounds is at most *margin*.
+
+        Args:
+            margin: See :func:`~myosuite.terms.base_action.muscle_saturation_bounds`.
+
+        Returns:
+            ``(excitations, lo, hi)``, excitations of shape ``(num_envs, n_muscles)``.
+        """
+        lo, hi = muscle_saturation_bounds(sigmoid=False, margin=margin)
+        return self._processed_actions, lo, hi
+
     def apply_actions(self) -> None:
         """Write muscle activations as the effort targets of the muscle tendons."""
         self._entity.set_tendon_effort_target(
@@ -2528,6 +2555,10 @@ def _make_directional_sar_env_cfg(
     from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
         musclemimic_mujoco_cfg,
     )
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp.saturation import (
+        SATURATION_TERM,
+        muscle_saturation_metric,
+    )
 
     decimation = max(1, round(ctrl_dt / sim_dt))
 
@@ -2598,6 +2629,7 @@ def _make_directional_sar_env_cfg(
         actions=actions,
         terminations=terminations,
         rewards=rewards,
+        metrics={SATURATION_TERM: muscle_saturation_metric()},
         sim=SimulationCfg(mujoco=musclemimic_mujoco_cfg("fullbody", timestep=sim_dt)),
         viewer=mimic_viewer_cfg(entity_name),
     )

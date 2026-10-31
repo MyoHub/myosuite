@@ -164,6 +164,8 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
             reduce="last",
         )
     }
+    if info.na > 0:
+        metrics[mdp.SATURATION_TERM] = mdp.muscle_saturation_metric()
     # CPU reset_type "init": keyframe 2 (qpos and qvel).
     events = {
         "reset_scene_to_default": EventTermCfg(

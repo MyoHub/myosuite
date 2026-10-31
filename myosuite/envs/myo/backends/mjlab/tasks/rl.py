@@ -65,6 +65,7 @@ def myo_ppo_runner_cfg(
     num_mini_batches: int = 8,
     clip_param: float = 0.3,
     gamma: float = 0.97,
+    desired_kl: float = 0.01,
 ) -> RslRlOnPolicyRunnerCfg:
     """PPO runner config shared by all pose and reach tasks.
 
@@ -101,6 +102,9 @@ def myo_ppo_runner_cfg(
         num_mini_batches: Minibatches per epoch.
         clip_param: PPO clipping epsilon.
         gamma: Discount factor.
+        desired_kl: KL target of the adaptive learning-rate schedule. The KL of a
+            diagonal Gaussian sums over the action dimensions, so with many
+            muscles the default allows only a small change per muscle.
 
     Returns:
         The runner config.
@@ -128,7 +132,7 @@ def myo_ppo_runner_cfg(
             schedule="adaptive",
             gamma=gamma,
             lam=0.95,
-            desired_kl=0.01,
+            desired_kl=desired_kl,
             max_grad_norm=1.0,
         ),
         experiment_name=experiment_name,

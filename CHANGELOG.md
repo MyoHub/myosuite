@@ -36,6 +36,13 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **Muscle saturation metric and opt-in penalty on mjlab ([#566]).** Every muscle task logs `Episode_Metrics/muscle_saturation`:
+  - It is the fraction of muscle commands whose excitation is within 0.05 of 0 or 1, or whose action is clamped. There the action map is flat, so the policy gradient through the action vanishes and exploration only switches muscles on or off.
+  - During training the actions include the exploration noise. `scripts/eval_mjlab_policy.py` also prints the value for the evaluated policy.
+  - `scripts/train_mjlab.py --saturation-penalty W` adds a reward term `muscle_saturation` with weight `-W`: the mean squared distance of the muscle actions beyond those bounds. It is off by default, and no registered task's reward changes.
+  - The muscle action terms report their actions and saturation bounds through `muscle_action_bounds(margin)`. The bounds come from `myosuite.terms.base_action.muscle_saturation_bounds`.
+  - `myo_ppo_runner_cfg` takes `desired_kl` (default unchanged, 0.01).
+  - The table-tennis action term now stores the unclamped policy action as `raw_action`; the ctrl is unchanged.
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
 
