@@ -66,6 +66,7 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 * **Motion clips load without pickle:** `load_motion_clip`, the CPU Mimic clip env and the full-body observation adapter open `.npz` files with `allow_pickle=False` (unpickling a downloaded file can run code). Names stored as bytes now read as text instead of `"b'name'"`, and a pickled name array is refused with instructions for re-saving it. SAR synergy metadata is written as strings, and older folders still load ([#522]).
+* **Resampled terrain is drawn in every renderer:** the rough/hilly/stairs leg walks, ChaseTag and RunTrack upload the terrain heightfield to the live renderers after each reset (`MyoGymnasiumEnv._upload_hfield_to_renderers`). Render contexts copy heightfields when they are created, so the `mj_render()` window, `render()` frames and cached offscreen videos showed the first episode's terrain while the physics used the new one ([#307]). Observations and dynamics are unchanged.
 * Fixed initial fatigue arrays retain their requested values across CPU episodes. `CumulativeFatigue.reset` copies `fatigue_reset_vec` into owned state. Stepping previously mutated writable NumPy arrays supplied by callers and failed on read-only arrays.
 
 ## [3.0.0] - 2026-10-07
@@ -266,6 +267,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#497]: https://github.com/MyoHub/myosuite/pull/497
 [#498]: https://github.com/MyoHub/myosuite/pull/498
 [#499]: https://github.com/MyoHub/myosuite/pull/499
+[#307]: https://github.com/MyoHub/myosuite/issues/307
 [#500]: https://github.com/MyoHub/myosuite/pull/500
 [#502]: https://github.com/MyoHub/myosuite/issues/502
 [#505]: https://github.com/MyoHub/myosuite/pull/505

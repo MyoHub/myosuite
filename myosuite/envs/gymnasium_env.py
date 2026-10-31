@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import types
 import warnings
-from collections.abc import Collection, Iterable
+from collections.abc import Callable, Collection, Iterable
 from typing import TYPE_CHECKING, Any
 
 import gymnasium as gym
@@ -619,15 +619,35 @@ class MyoGymnasiumEnv(gym.Env):
         """
         import mujoco
 
+        self._upload_asset_to_renderers(mujoco.mjr_uploadMesh, "update_mesh", mesh_id)
+
+    def _upload_hfield_to_renderers(self, hfield_id: int) -> None:
+        """Show an in-place edit of ``model.hfield_data`` in the live renderers.
+
+        Same contract as :meth:`_upload_mesh_to_renderers`, for heightfields:
+        terrain resampled at reset is otherwise drawn as the first episode's.
+
+        Args:
+            hfield_id: Id of the edited heightfield.
+        """
+        import mujoco
+
+        self._upload_asset_to_renderers(
+            mujoco.mjr_uploadHField, "update_hfield", hfield_id
+        )
+
+    def _upload_asset_to_renderers(
+        self, upload: Callable[..., None], window_update: str, asset_id: int
+    ) -> None:
         renderer = getattr(self, "_mujoco_renderer", None)
         for viewer in getattr(renderer, "_viewers", {}).values():
             viewer.make_context_current()
-            mujoco.mjr_uploadMesh(self.model, viewer.con, mesh_id)
+            upload(self.model, viewer.con, asset_id)
         compat = getattr(self, "_mj_renderer_compat", None)
         if compat is None:
             return
         if compat._window is not None:
-            compat._window.update_mesh(mesh_id)
+            getattr(compat._window, window_update)(asset_id)
         compat.invalidate_offscreen()
 
     # ------------------------------------------------------------------
