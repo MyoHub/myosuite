@@ -27,7 +27,10 @@ Each body gets per-axis scale factors in its own frame (OpenSim's convention):
   coupling satisfied, as OpenSim assembles it. MuJoCo derives both from
   ``lengthrange``, so ``lengthrange`` is scaled by that ratio;
 * mass scales with volume (``sx * sy * sz``) and peak muscle force is kept
-  (OpenSim does not scale strength); ``total_mass`` then rescales the subject.
+  (OpenSim does not scale strength); ``total_mass`` then rescales the subject;
+* a free-floating subject is raised or lowered in ``qpos0`` and in each keyframe
+  separately, so that its lowest collision point keeps the height it has in
+  the unscaled model in that pose (on the floor, or as far above it).
 
 The topology (joints, actuators, sites, tendons) does not change, so the
 observation and action spaces of an env stay the same.
@@ -96,6 +99,18 @@ _MYOFULLBODY_SEGMENTS: _Segments = {
 
 _ORIENT = mujoco.mjtOrientation
 _UNIT = np.ones(3)
+# Geom types whose lowest point root alignment can find.
+_SUPPORTED = {
+    int(t)
+    for t in (
+        mujoco.mjtGeom.mjGEOM_SPHERE,
+        mujoco.mjtGeom.mjGEOM_CAPSULE,
+        mujoco.mjtGeom.mjGEOM_CYLINDER,
+        mujoco.mjtGeom.mjGEOM_BOX,
+        mujoco.mjtGeom.mjGEOM_ELLIPSOID,
+        mujoco.mjtGeom.mjGEOM_MESH,
+    )
+}
 
 
 def scale_model(
@@ -260,6 +275,85 @@ def _scale_bodies(
             actuator.gainprm[2] = peak_force[i]
             if int(ref.actuator_biastype[i]) == int(mujoco.mjtBias.mjBIAS_MUSCLE):
                 actuator.biasprm[2] = peak_force[i]
+    _align_roots(spec, ref, scaled, body_scales)
+
+
+def _align_roots(
+    spec: mujoco.MjSpec,
+    ref: mujoco.MjModel,
+    scaled: mujoco.MjModel,
+    body_scales: Mapping[str, np.ndarray],
+) -> None:
+    """Keep each pose's lowest contact point at its unscaled height.
+
+    For every free-floating tree with a scaled body, the root height of
+    ``qpos0`` (through the root body's position) and of each keyframe changes
+    on its own, so that the tree's lowest collision geom is as high as in the
+    unscaled model in that pose. Keyframes differ from ``qpos0`` (MyoLeg's
+    stand lower), so one offset for all of them would sink some into the floor.
+    """
+    keys, aligned = scaled.key_qpos.copy(), False
+    for joint in range(scaled.njnt):
+        if int(scaled.jnt_type[joint]) != int(mujoco.mjtJoint.mjJNT_FREE):
+            continue
+        root = int(scaled.jnt_bodyid[joint])
+        tree = np.flatnonzero(scaled.body_rootid == root)
+        if not any(scaled.body(int(b)).name in body_scales for b in tree):
+            continue
+        geoms = [
+            g
+            for g in range(scaled.ngeom)
+            if scaled.body_rootid[scaled.geom_bodyid[g]] == root
+            and (scaled.geom_contype[g] or scaled.geom_conaffinity[g])
+            and int(scaled.geom_type[g]) in _SUPPORTED
+        ]
+        if not geoms:
+            continue
+        lift = _lowest(ref, ref.qpos0, geoms) - _lowest(scaled, scaled.qpos0, geoms)
+        name = scaled.body(root).name
+        body = spec.body(name) if name else spec.bodies[root]
+        # qpos0 of a free joint is its body's pose, given in the parent frame.
+        offset = _frame_rot(spec, body.frame).T @ np.array([0.0, 0.0, lift])
+        body.pos = np.asarray(body.pos) + offset
+        height = int(scaled.jnt_qposadr[joint]) + 2
+        for k in range(scaled.nkey):
+            nominal = _lowest(ref, ref.key_qpos[k], geoms)
+            keys[k, height] += nominal - _lowest(scaled, scaled.key_qpos[k], geoms)
+        aligned = True
+    if aligned:
+        for key, qpos in zip(spec.keys, keys):
+            key.qpos = qpos
+
+
+def _lowest(model: mujoco.MjModel, qpos: np.ndarray, geoms: Sequence[int]) -> float:
+    """World height of the lowest point of *geoms* in the pose *qpos*."""
+    data = mujoco.MjData(model)
+    data.qpos[:] = qpos
+    mujoco.mj_kinematics(model, data)  # geom poses are all this needs
+    return min(_geom_bottom(model, data, g) for g in geoms)
+
+
+def _geom_bottom(model: mujoco.MjModel, data: mujoco.MjData, index: int) -> float:
+    """World height of the lowest point of geom *index*, after kinematics."""
+    kind = int(model.geom_type[index])
+    size = model.geom_size[index]
+    up = data.geom_xmat[index].reshape(3, 3)[2]  # world z in the geom's frame
+    if kind == int(mujoco.mjtGeom.mjGEOM_MESH):
+        mesh = int(model.geom_dataid[index])
+        start, count = model.mesh_vertadr[mesh], model.mesh_vertnum[mesh]
+        vertices = model.mesh_vert[start : start + count]
+        return float(data.geom_xpos[index, 2] + np.min(vertices @ up))
+    if kind == int(mujoco.mjtGeom.mjGEOM_SPHERE):
+        extent = size[0]
+    elif kind == int(mujoco.mjtGeom.mjGEOM_CAPSULE):
+        extent = size[0] + size[1] * abs(up[2])
+    elif kind == int(mujoco.mjtGeom.mjGEOM_CYLINDER):
+        extent = size[1] * abs(up[2]) + size[0] * np.hypot(up[0], up[1])
+    elif kind == int(mujoco.mjtGeom.mjGEOM_BOX):
+        extent = np.abs(up) @ size
+    else:  # ellipsoid
+        extent = np.linalg.norm(up * size)
+    return float(data.geom_xpos[index, 2] - extent)
 
 
 def _assembled_qpos(model: mujoco.MjModel) -> np.ndarray:

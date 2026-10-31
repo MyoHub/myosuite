@@ -26,6 +26,7 @@ from myosuite.core.body_scaling import (
     _MYOLEG_SEGMENTS,
     _body_scales,
     _frame_rot,
+    _geom_bottom,
     _model_digest,
     _quat,
     _read_opensim_scales,
@@ -423,8 +424,15 @@ def test_per_axis_scale_moves_everything_with_its_body(name: str) -> None:
             scaled.jnt_pos[j], s(ref.jnt_bodyid[j]) * ref.jnt_pos[j], atol=1e-12
         )
     for b in range(1, ref.nbody):
+        # A free root only moves up or down, to keep its ground clearance.
+        free = ref.body_jntnum[b] > 0 and int(ref.jnt_type[ref.body_jntadr[b]]) == int(
+            mujoco.mjtJoint.mjJNT_FREE
+        )
+        axes = slice(0, 2) if free else slice(0, 3)
         np.testing.assert_allclose(
-            scaled.body_pos[b], s(ref.body_parentid[b]) * ref.body_pos[b], atol=1e-12
+            scaled.body_pos[b, axes],
+            (s(ref.body_parentid[b]) * ref.body_pos[b])[axes],
+            atol=1e-12,
         )
     # Plain ints: `numpy int in (enum, ...)` is False with MuJoCo's Linux wheels.
     skipped = {
@@ -516,6 +524,119 @@ def test_mass_scales_with_volume_and_strength_is_kept() -> None:
     # force="-1": the peak force comes from the mass, so scaling must freeze it first.
     same = scale_model(_leg(), {"thigh": 1.2, "shank": 1.2})
     np.testing.assert_allclose(_peak_force(same), _peak_force(ref))
+
+
+# qpos0 floats 5 cm, "stand" touches the floor, "tilted" sinks a tilted sole 8.5 cm.
+GROUND_XML = """<mujoco><worldbody>
+<geom name="floor" type="plane" size="2 2 .01"/>
+<body name="root" pos="0 0 1.1"><freejoint name="root_free"/>
+<geom type="sphere" size=".1" mass="2"/>
+<body name="foot" pos="0 0 -1"><joint name="ankle" axis="0 1 0"/>
+<geom name="sole" type="box" size=".1 .2 .05" mass="1"/>
+</body></body></worldbody>
+<keyframe>
+<key name="stand" qpos="0 0 1.05 1 0 0 0 0"/>
+<key name="tilted" qpos="0.3 0 1.0 1 0 0 0 0.4"/>
+</keyframe></mujoco>"""
+
+
+def _clearance(model: mujoco.MjModel, qpos: np.ndarray, floor: str) -> float:
+    """Signed distance of the subject's collision geoms to the floor (MuJoCo's collider)."""
+    data = mujoco.MjData(model)
+    data.qpos[:] = qpos
+    mujoco.mj_kinematics(model, data)
+    plane = model.geom(floor).id
+    return min(
+        mujoco.mj_geomDistance(model, data, g, plane, 10.0, None)
+        for g in range(model.ngeom)
+        if model.geom_bodyid[g] > 0
+        and (model.geom_contype[g] or model.geom_conaffinity[g])
+    )
+
+
+@pytest.mark.parametrize(
+    "scales", [{"root": 1.2, "foot": (1.1, 1.3, 1.25)}, {"foot": 0.8}]
+)
+def test_every_pose_keeps_its_nominal_ground_clearance(
+    scales: dict[str, float | tuple[float, float, float]],
+) -> None:
+    """qpos0 and each keyframe are aligned on their own, not by qpos0's offset."""
+    spec = mujoco.MjSpec.from_string(GROUND_XML)
+    ref = spec.copy().compile()
+    model = scale_model(spec, scales)
+    poses = [(ref.qpos0, model.qpos0), *zip(ref.key_qpos, model.key_qpos)]
+    for nominal, scaled in poses:
+        assert _clearance(model, scaled, "floor") == pytest.approx(
+            _clearance(ref, nominal, "floor"), abs=1e-9
+        )
+        # Only the root height changes.
+        np.testing.assert_array_equal(np.delete(scaled, 2), np.delete(nominal, 2))
+
+
+def test_myoleg_keyframes_stand_where_the_nominal_ones_do() -> None:
+    spec = _myoleg()
+    ref = spec.copy().compile()
+    model = scale_model(spec, {b.name: 1.1 for b in spec.bodies[1:]})
+    poses = [(ref.qpos0, model.qpos0), *zip(ref.key_qpos, model.key_qpos)]
+    for nominal, scaled in poses:
+        assert _clearance(model, scaled, "floor") == pytest.approx(
+            _clearance(ref, nominal, "floor"), abs=1e-6
+        )
+
+
+def test_root_alignment_works_in_nested_rotated_frames() -> None:
+    spec = mujoco.MjSpec.from_string("""<mujoco><worldbody>
+        <geom name="floor" type="plane" size="2 2 .01"/>
+        <frame pos=".1 .2 .3" euler="20 30 40"><frame pos=".1 .1 .1" euler="-10 20 30">
+        <body name="root" pos="0 0 1"><freejoint/>
+        <geom name="sole" type="box" size=".1 .2 .3"/>
+        </body></frame></frame></worldbody></mujoco>""")
+    ref = spec.copy().compile()
+    model = scale_model(spec, {"root": (1.2, 0.9, 1.1)})
+    assert _clearance(model, model.qpos0, "floor") == pytest.approx(
+        _clearance(ref, ref.qpos0, "floor"), abs=1e-9
+    )
+    np.testing.assert_allclose(model.qpos0[:2], ref.qpos0[:2], atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    "kind,size,euler,extent",
+    [
+        ("sphere", ".1", "0 0 0", 0.1),
+        ("capsule", ".1 .2", "0 0 0", 0.3),
+        ("cylinder", ".1 .2", "0 0 0", 0.2),
+        ("ellipsoid", ".1 .2 .3", "0 0 0", 0.3),
+        ("box", ".1 .2 .3", "0 0 0", 0.3),
+        ("capsule", ".1 .2", "0 45 0", 0.1 + 0.2 / np.sqrt(2)),
+        ("cylinder", ".1 .2", "0 45 0", 0.3 / np.sqrt(2)),
+        ("ellipsoid", ".1 .2 .3", "0 45 0", np.sqrt(0.05)),
+        ("box", ".1 .2 .3", "0 45 0", 0.4 / np.sqrt(2)),
+    ],
+)
+def test_geom_bottom_is_the_support_of_each_shape(
+    kind: str, size: str, euler: str, extent: float
+) -> None:
+    model = mujoco.MjModel.from_xml_string(f"""<mujoco><worldbody>
+        <body pos="0 0 1"><freejoint/>
+        <geom type="{kind}" size="{size}" euler="{euler}"/>
+        </body></worldbody></mujoco>""")
+    data = mujoco.MjData(model)
+    mujoco.mj_kinematics(model, data)
+    assert _geom_bottom(model, data, 0) == pytest.approx(1 - extent)
+
+
+def test_geom_bottom_uses_the_transformed_mesh_vertices() -> None:
+    model = mujoco.MjModel.from_xml_string("""<mujoco><asset><mesh name="tetra"
+        vertex="0 0 0 1 0 0 0 2 0 0 0 3"/></asset><worldbody>
+        <body pos="0 0 1"><freejoint/>
+        <geom type="mesh" mesh="tetra" pos="0 0 -.2" euler="0 45 0"/>
+        </body></worldbody></mujoco>""")
+    data = mujoco.MjData(model)
+    mujoco.mj_kinematics(model, data)
+    # The authored vertex (1, 0, 0) is lowest after rotating about y.
+    assert _geom_bottom(model, data, 0) == pytest.approx(
+        1 - 0.2 - 1 / np.sqrt(2), abs=2e-7
+    )
 
 
 def _leg_in_scene(with_agent: bool) -> mujoco.MjSpec:
