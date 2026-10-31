@@ -13,9 +13,9 @@ import numpy as np
 import pytest
 
 from myosuite.core.body_scaling import (
-    RAJAGOPAL_MYOFULLBODY_SEGMENTS,
+    _MYOFULLBODY_SEGMENTS,
     _body_scales,
-    scale_bodies,
+    scale_model,
 )
 from myosuite.viz.skin import Skin, SkinPose, load_skin, load_skn, save_skn
 from myosuite.viz.skin_glb import read_skin_glb, write_skin_glb
@@ -91,7 +91,7 @@ def test_anisotropic_scaling_uses_each_bones_local_frame(tmp_path: Path) -> None
     skin = load_skn(tmp_path / "source.skn")
     before = skin.vert.copy(), skin.bindpos.copy(), skin.bindquat.copy()
     factors = {"upper": np.array([1.4, 0.8, 1.2]), "lower": np.array([0.9, 1.3, 1.6])}
-    scaled = scale_bodies(spec, factors).compile()
+    scaled = scale_model(spec, factors)
     pose = SkinPose.bind(skin, scaled, body_scales=factors)
     for qpos in (None, (0.6, -0.8)):
         data = _data(scaled, qpos)
@@ -112,7 +112,7 @@ def test_uniform_scaling_survives_skn_and_glb_exports(tmp_path: Path) -> None:
     spec = mujoco.MjSpec.from_string(_XML)
     skin = _skin(spec.copy().compile())
     factors = {"upper": 1.25, "lower": 1.25}
-    model = scale_bodies(spec, factors).compile()
+    model = scale_model(spec, factors)
     pose = SkinPose.bind(skin, model, body_scales=factors)
     baked = pose.bake(model)
     rest = _data(model)
@@ -134,7 +134,7 @@ def test_inexact_export_requires_explicit_opt_in(tmp_path: Path) -> None:
     spec = mujoco.MjSpec.from_string(_XML)
     skin = _skin(spec.copy().compile())
     factors = {"upper": [1.4, 0.8, 1.2], "lower": [0.9, 1.3, 1.6]}
-    model = scale_bodies(spec, factors).compile()
+    model = scale_model(spec, factors)
     pose = SkinPose.bind(skin, model, body_scales=factors)
     with pytest.raises(ValueError, match="cannot be represented"):
         pose.bake(model)
@@ -173,10 +173,9 @@ def test_bundled_skin_uses_resolved_segment_scales(tmp_path: Path) -> None:
 
     spec = _fullbody()
     reference = spec.copy().compile()
-    segments = RAJAGOPAL_MYOFULLBODY_SEGMENTS
     scales = {"torso": [1.1, 0.9, 1.2], "hand_r": 0.85, "femur_r": [1.2, 0.8, 1.1]}
-    resolved = _body_scales(spec, scales, segments)
-    scaled = scale_bodies(spec, scales, segments=segments).compile()
+    resolved = _body_scales(spec, scales, _MYOFULLBODY_SEGMENTS)
+    scaled = scale_model(spec, resolved)
     skin = load_skn("fullbody")
     pose = SkinPose.bind(skin, scaled, body_scales=resolved)
     source_pose = SkinPose.bind(skin, reference)

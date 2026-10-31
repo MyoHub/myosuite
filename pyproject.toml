@@ -77,6 +77,8 @@ examples = [
     "mink; python_version >= '3.10' and python_version < '3.14'",
     "mink>=1.3.0; python_version >= '3.14'",
 ]
+# Read .c3d marker files in myosuite.core.retargeting.retarget.
+capture = ["ezc3d>=1.5"]
 mjlab = [
     "torch>=2.13.0; python_version >= '3.10'",
     "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14'",

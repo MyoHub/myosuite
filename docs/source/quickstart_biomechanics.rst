@@ -157,13 +157,32 @@ observed acceleration:
 Inverse Kinematics
 -------------------
 
-See ``tutorials/3.2_Inverse_Kinematics.ipynb`` for an IK solver built on top of
-`MINK <https://github.com/kevinzakka/mink>`_:
+``solve_ik`` places sites at target positions and ``wxyz`` orientations on any
+compiled model. It respects joint ranges, keeps equality-coupled joints tied and
+raises ``IKError`` for targets out of reach (``strict=False`` returns the closest
+pose):
 
-.. code-block:: bash
+.. code-block:: python
 
-   pip install -e ".[examples]"   # install mink
-   python tutorials/files/3.2/inverse_kinematics.py
+   from myosuite.physics.inverse_kinematics import solve_ik
+
+   qpos = solve_ik(model, {"S_grasp": [0.2, 0.1, 0.4]})
+   qpos = solve_ik(model, {"S_grasp": (target_pos, target_quat)}, joints=["elbow_flexion"])
+
+``retarget`` fits a marker trajectory (a ``.trc`` or ``.c3d`` file, or arrays in
+metres) frame by frame and returns a ``MotionClip`` with the per-frame marker
+error and sole height in ``clip.metadata``:
+
+.. code-block:: python
+
+   from myosuite.core.retargeting import retarget
+
+   clip = retarget(model, "trial.trc", sites={"RHJC": "hip_r"})
+
+See ``tutorials/3.2_Inverse_Kinematics.ipynb`` and
+``tutorials/3.7_Marker_Retargeting.ipynb``. For realtime differential IK, the
+3.2 viewer script uses `mink <https://github.com/kevinzakka/mink>`_
+(``pip install -e ".[examples]"``; ``python tutorials/files/3.2/inverse_kinematics.py``).
 
 
 Replaying OpenSim Motion Files

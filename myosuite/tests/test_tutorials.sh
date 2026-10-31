@@ -42,6 +42,7 @@ RUN_IN_CI_REL = frozenset(
         'tutorials/3.3_Inverse_Dynamics.ipynb',
         'tutorials/3.4_Computed_Muscle_Control.ipynb',
         'tutorials/3.5_Playback_Mot_File.ipynb',
+        'tutorials/3.7_Marker_Retargeting.ipynb',
         'tutorials/4.1_Move_Hand_Fingers.ipynb',
         'tutorials/4.3_Modular_Task_Config.ipynb',
     }

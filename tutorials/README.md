@@ -40,11 +40,12 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | 2.4 | [MyoReflex Walk](./2.4_MyoReflex_Walk.ipynb) — reflex-based walking baseline | — |
 | **3 — Analysis** | | |
 | 3.1 | [Analyse Movements](./3.1_Analyse_Movements.ipynb) — kinematics and synergies | `pip install stable-baselines3 scikit-learn` |
-| 3.2 | [Inverse Kinematics](./3.2_Inverse_Kinematics.ipynb) | `pip install "myosuite[examples]"` (mink) |
+| 3.2 | [Inverse Kinematics](./3.2_Inverse_Kinematics.ipynb) — pose a site with `solve_ik` | — (optional mink cell: `pip install "myosuite[examples]"`) |
 | 3.3 | [Inverse Dynamics](./3.3_Inverse_Dynamics.ipynb) | `osqp` |
 | 3.4 | [Computed Muscle Control](./3.4_Computed_Muscle_Control.ipynb) | — |
 | 3.5 | [Playback Mot File](./3.5_Playback_Mot_File.ipynb) — OpenSim `.mot` playback | — |
 | 3.6 | [Blender Rendering](./3.6_Blender_Rendering.ipynb) — studio renders of a rollout with volumetric muscles | `pip install usd-core`, [Blender](https://www.blender.org/download/) 4.5+ |
+| 3.7 | [Marker Retargeting](./3.7_Marker_Retargeting.ipynb) — marker trajectories to a `MotionClip` with `retarget` | — (`.c3d` files: `pip install "myosuite[capture]"`) |
 | **4 — Modelling and conditions** | | |
 | 4.1 | [Move Hand Fingers](./4.1_Move_Hand_Fingers.ipynb) | — |
 | 4.2 | [Fatigue Modeling](./4.2_Fatigue_Modeling.ipynb) | — |
@@ -74,11 +75,12 @@ The models come from the `myo-sim` package, which MyoSuite pins to 0.2.3 on PyPI
 
 The `.[dev]` extra is only for development (tests and linters), not for models. Do not install a different `myo-sim` version unless you intend to retrain: the baseline policies in the tutorials are tied to 0.2.3.
 
-## Inverse kinematics
+## Inverse kinematics and retargeting
 
 ```bash
-python tutorials/files/3.2/inverse_kinematics.py --no-viewer
-# interactive (macOS): mjpython tutorials/files/3.2/inverse_kinematics.py
+python tutorials/files/3.2/inverse_kinematics.py --no-viewer   # solve_ik check, no GUI
+# interactive mink viewer (macOS): mjpython tutorials/files/3.2/inverse_kinematics.py
+python tutorials/files/3.7/marker_retargeting.py                 # retarget check
 ```
 
 SAR full training (notebook 2.3) is hours of SB3. The notebook skips those cells unless `MYOSUITE_FULL_SAR=1`. Precomputed-SAR cells still run. Check the install with:

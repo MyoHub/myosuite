@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +26,8 @@ class MotionClip:
 
     ``weights`` is an optional per-frame weight ``(T,)`` (e.g. to down-weight noisy
     frames of a hand-authored trajectory); nothing in MyoSuite reads it, it only
-    travels with the clip.
+    travels with the clip. ``metadata`` likewise travels with the clip, e.g. the
+    per-frame marker error that :func:`myosuite.core.retargeting.retarget` records.
     """
 
     qpos: np.ndarray
@@ -40,6 +41,7 @@ class MotionClip:
     frequency_hz: float | None = None
     source_path: Path | None = None
     weights: np.ndarray | None = None
+    metadata: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.weights is not None:
@@ -332,6 +334,7 @@ def expand_motion_clip_to_model(
         frequency_hz=clip.frequency_hz,
         source_path=clip.source_path,
         weights=clip.weights,
+        metadata=clip.metadata,
     )
 
 
