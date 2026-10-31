@@ -39,17 +39,17 @@ pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=trainin
 ## Run
 
 ```bash
-python -m myosuite_fasttd3 myoMimicFullbody-v0 --smoke --backend cpu
-python -m myosuite_fasttd3 myoMimicFullbody-v0 --backend mjlab --num-envs 1024
+python -m myosuite_fasttd3 myoFullBodyDirectional-v0 --smoke --backend cpu
+python -m myosuite_fasttd3 myoFullBodyDirectional-v0 --backend mjlab --num-envs 64
 # or:
-train-fasttd3 myoMimicFullbody-v0 --smoke --backend cpu
+train-fasttd3 myoFullBodyDirectional-v0 --smoke --backend cpu
 ```
 
-`--backend cpu` is Gymnasium (Colab smoke, no Warp, no Hugging Face clip).
-`--backend mjlab` is the Warp twin. `--clip walk.npz` switches MuscleMimic to
+`--backend cpu` is Gymnasium (Colab smoke, no Warp). `--backend mjlab` is the
+heading-only Warp twin. `--clip walk.npz` is only for `myoMimicFullbody-v0`
 trajectory mode. Muscle activations map FastTD3 `tanh` `[-1, 1]` to `[0, 1]`.
 
-Colab T4: `--backend mjlab --num-envs 64 --max-episode-steps 80 --fall-z 0.65` and leave AMP off. Random-target `myoMimicFullbody-v0` never ends on a fall; without those flags the buffer is mostly corpses. The Warp extra is **mjlab 1.6 + MuJoCo 3.11** (not 3.17). `--amp` is bf16-only
+Colab T4: `--backend mjlab --num-envs 64` and leave AMP off. The Warp extra is **mjlab 1.6 + MuJoCo 3.11** (not 3.17). `--amp` is bf16-only
 (A100/H100). fp16 AMP on unnormalized muscle observations overflows.
 
 ## Tests

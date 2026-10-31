@@ -833,6 +833,22 @@ def register_mjlab_tasks() -> None:
             "mjlab: failed to register myoChallengeChaseTagFBP2-v0", exc_info=True
         )
 
+    try:
+        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+            default_mimic_clip_on_policy_runner_cfg,
+        )
+        from myosuite.envs.myo.backends.mjlab.tasks.fullbody.directional_mjlab import (
+            register_fullbody_directional_mjlab,
+        )
+
+        register_fullbody_directional_mjlab(
+            register_mjlab_task, default_mimic_clip_on_policy_runner_cfg
+        )
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "mjlab: failed to register myoFullBodyDirectional-v0", exc_info=True
+        )
+
 
 def bootstrap_myosuite_mjlab_registry(
     *,

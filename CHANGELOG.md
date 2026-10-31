@@ -42,7 +42,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
-* **`myoFullBodyDirectional-v0` is heading-only.** Reward is commanded planar velocity, survival, and action regularisation. The gait-clip style terms and Hugging Face downloads are gone; reset is the standing keyframe, rotated to the heading. Observation size is unchanged (528). ChaseTag FBVs is unchanged.
+* **`myoFullBodyDirectional-v0` is heading-only.** Reward is commanded planar velocity, survival, and action regularisation. The gait-clip style terms and Hugging Face downloads are gone; reset is the standing keyframe, rotated to the heading. Observation size is unchanged (528). ChaseTag FBVs is unchanged. The mjlab twin (`backend="mjlab"`) is the same MDP (no clip).
 * **Fatigue groups and parameters for every muscle of the bundled models.**
   - `_muscle_group` now also strips MuscleMimic's `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent
     scenes and an `R:`/`L:` side prefix. Before, the MuscleMimic left arm (32 muscles, 63 with fingers) and all 708

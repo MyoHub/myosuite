@@ -43,6 +43,7 @@ _MIMIC_IDS = frozenset(
         "myoMuscleMimicBimanual-v0",
     }
 )
+_DIRECTIONAL_ID = "myoFullBodyDirectional-v0"
 
 
 def ensure_mjlab_twin(env_id: str, clip_path: str | None = None) -> None:
@@ -64,6 +65,18 @@ def ensure_mjlab_twin(env_id: str, clip_path: str | None = None) -> None:
         or os.environ.get("MIMIC_CLIP")
     )
     if env_id in list_tasks() and not raw:
+        return
+    if env_id == _DIRECTIONAL_ID:
+        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+            default_mimic_clip_on_policy_runner_cfg,
+        )
+        from myosuite.envs.myo.backends.mjlab.tasks.fullbody.directional_mjlab import (
+            register_fullbody_directional_mjlab,
+        )
+
+        register_fullbody_directional_mjlab(
+            register_mjlab_task, default_mimic_clip_on_policy_runner_cfg
+        )
         return
     if env_id not in _MIMIC_IDS:
         return
