@@ -8,7 +8,6 @@
   [MPFB](https://github.com/makehumancommunity/mpfb2) mesh, rig and weights, released under
   [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
 - **Adaptation:** the bones are bound to the bodies of the MyoSuite full-body model
-<<<<<<< HEAD
   ([myo_sim](https://github.com/MyoHub/myo_sim), `myoMimicFullbody-v0`), and the rest shape of the
   trunk and limbs is fitted over the anatomical muscle atlas below: the skin is pulled in by at most
   2 cm where it floats more than 15 mm above the muscles, pushed out to cover them by about 4 mm,
@@ -16,21 +15,11 @@
   The fit keeps only the smooth part of these changes over the original surface; the forearm is
   wrapped closer and takes the blend weights of the atlas muscles under it, the shoulder weights are
   smoothed so the skin stays smooth as the arm moves, and the abdomen keeps a flattened contour.
-=======
-  ([myo_sim](https://github.com/MyoHub/myo_sim), `myoMimicFullbody-v0`).
->>>>>>> ccc3a2e (Ship fullbody skin assets and CC0 zombie diffuse.)
 - **Contributed by:** Vittorio Caggiano, for the MyoSuite authors.
 - **License:** the CC0 source places no restrictions on reuse; the adapted file is distributed
   with MyoSuite under the repository's Apache-2.0 license ([LICENSE](../../../LICENSE)).
 - **Used by:** `myosuite.viz.skin` (`load_skn("fullbody")`) and `scripts/render_blender.py --skin fullbody`.
 
-<<<<<<< HEAD
-## Anatomical muscle meshes (`--muscle-mesh atlas` / `atlas-hd`)
-
-- **What:** 416 muscle surfaces of the whole body, one mesh each (`fullbody_atlas.glb`, ~700k
-  vertices, and a decimated `fullbody_atlas_light.glb`), in the rest pose of `myoMimicFullbody-v0`,
-  each skinned to the bones it attaches to.
-=======
 ## `zombie_diffuse.jpg`
 
 - **What:** Diffuse albedo for `myofullbody.skn` (MakeHuman body UV layout), ~1536² JPEG.
@@ -45,9 +34,9 @@
 
 ## Anatomical muscle meshes (`--muscle-mesh atlas` / `atlas-hd`)
 
-- **What:** muscle surfaces of the whole body (`fullbody_muscles.glb`, ~334k vertices, and a
-  decimated `fullbody_muscles_light.glb`), posed on the rest pose of `myoMimicFullbody-v0`.
->>>>>>> ccc3a2e (Ship fullbody skin assets and CC0 zombie diffuse.)
+- **What:** 416 muscle surfaces of the whole body, one mesh each (`fullbody_atlas.glb`, ~700k
+  vertices, and a decimated `fullbody_atlas_light.glb`), in the rest pose of `myoMimicFullbody-v0`,
+  each skinned to the bones it attaches to.
 - **Where:** not in this repository or the wheel; downloaded on first use from the Hugging Face
   dataset [`myohub/myosuite-assets`](https://huggingface.co/datasets/myohub/myosuite-assets)
   (`muscles/`).
@@ -56,13 +45,8 @@
   et al. *BodyParts3D: 3D structure database for anatomical concepts.* Nucleic Acids Res.
   2009;37:D782-5. [doi:10.1093/nar/gkn613](https://doi.org/10.1093/nar/gkn613). Obtained through
   [human-atlas](https://github.com/ashemag/human-atlas) (MIT licence).
-<<<<<<< HEAD
 - **Changes:** posed on the MyoSuite full-body skeleton, each muscle weighted in Blender to the bones
   it attaches to, and decimated for the light copy.
-=======
-- **Changes:** posed on the MyoSuite full-body skeleton, merged into two meshes
-  (`Muscles_actuated`, `Muscles_no_actuator`), and decimated for the light copy.
->>>>>>> ccc3a2e (Ship fullbody skin assets and CC0 zombie diffuse.)
 - **Used by:** `myosuite.viz.blender_render` (`RenderConfig.muscle_mesh`, `--muscle-mesh`).
 
 ## Acknowledgements (ideas only, no code used)
