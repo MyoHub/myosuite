@@ -14,6 +14,20 @@ driver 610.60. The upstream branch is unreleased; reproducing these results with
 the next released Newton remains pending in
 `MyoSuite issue 563 <https://github.com/MyoHub/myosuite/issues/563>`_.
 
+Upstream status, 2026-10-31
+---------------------------
+
+PR 4903 has been split. `Newton PR 5029 <https://github.com/newton-physics/newton/pull/5029>`_
+(joint equality endpoints and partial ``polycoef``) and
+`Newton PR 5030 <https://github.com/newton-physics/newton/pull/5030>`_
+(partial vector attributes) carry the import fixes onto Newton main
+``2e20d82d``. With both, the conversion probe again converts all twelve cases
+with every muscle and length range and the static force errors listed below.
+Body masses of the elbow and bimanual models, the integrator and the sensors
+still differ: the mesh inertia, compiler bound, option, geom gap, multi-CCD and
+CPU margin changes of PR 4903 alter Newton defaults and are not part of those
+two PRs. The trajectory tables below were measured with all of PR 4903 applied.
+
 Conversion and names
 --------------------
 
@@ -167,20 +181,11 @@ its report incrementally and exits with status 1 when any case fails the bounds.
 It is a manual diagnostic; the release/manual conversion workflow remains
 informational and does not run these GPU trajectories.
 
-Versioned evidence, with dependency metadata, source revision and SHA-256 hashes:
-
-* :download:`Manifest <_static/newton/2026-10-23-4cd047d3/manifest.json>`
-* :download:`All twelve conversion cases (JSON) <_static/newton/2026-10-23-4cd047d3/conversion.json>`
-  and :download:`table (Markdown) <_static/newton/2026-10-23-4cd047d3/conversion.md>`
-* :download:`Six CPU trajectories and identity maps <_static/newton/2026-10-23-4cd047d3/cpu-trajectories.json>`
-* :download:`Six CUDA trajectories and identity maps <_static/newton/2026-10-23-4cd047d3/cuda-trajectories.json>`
-* :download:`Direct MuJoCo-Warp results <_static/newton/2026-10-23-4cd047d3/direct-warp.json>`
-  and :download:`reproduction script (save as .py) <_static/newton/2026-10-23-4cd047d3/direct_mujoco_warp_probe.py.txt>`
-* :download:`Contact audit <_static/newton/2026-10-23-4cd047d3/contact-audit.log>`
-  and :download:`audit script (save as .py) <_static/newton/2026-10-23-4cd047d3/newton_contact_audit.py.txt>`
-* :download:`Upstream test log <_static/newton/2026-10-23-4cd047d3/upstream-tests.log>`,
-  :download:`pre-commit log <_static/newton/2026-10-23-4cd047d3/upstream-precommit.log>`
-  and :download:`baseline failure <_static/newton/2026-10-23-4cd047d3/baseline-gap-regression.log>`
+The reports themselves are not stored in the repository. The commands above
+regenerate every table on this page, with dependency metadata and the source
+revision in each JSON report, and the release workflow
+(``.github/workflows/newton-probe.yml``) uploads its conversion report as the
+``newton-probe-<version>`` run artifact.
 
 The focused upstream suite ran 118 tests with 6 optional-USD skips; all executed
 tests and pre-commit hooks passed. New regressions fail on the unmodified
