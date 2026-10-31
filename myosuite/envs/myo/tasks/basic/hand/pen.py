@@ -112,6 +112,10 @@ class PenTwirlFixedEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.obj_b_sid = self.model.site("object_bottom").id
         self.tar_t_sid = self.model.site("target_top").id
         self.tar_b_sid = self.model.site("target_bottom").id
+        # Optional success indicator (-1 for models without it).
+        self.success_indicator_sid = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_SITE, "target_ball"
+        )
 
         self.pen_length = float(
             np.linalg.norm(
@@ -236,6 +240,10 @@ class PenTwirlFixedEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         rwd_dict["dense"] = float(
             np.sum([wt * rwd_dict[key] for key, wt in self.rwd_keys_wt.items()])
         )
+        if self.success_indicator_sid >= 0:
+            self.model.site_rgba[self.success_indicator_sid, :2] = (
+                np.array([0, 2]) if rwd_dict["solved"] else np.array([2, 0])
+            )
         return rwd_dict
 
     def reset_task(self, np_random: np.random.Generator) -> dict[str, Any]:

@@ -455,14 +455,15 @@ def _hand_hold(b: ModelBuilder) -> ModelBuilder:
 
 def _add_pen_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     """Add pen object + target body + eps_ball site to a hand spec."""
-    # eps_ball site in worldbody
+    # eps_ball: the pen's position goal and drop radius. Hidden by default
+    # (group 4); target_ball on the target pen shows success instead.
     eps = spec.worldbody.add_site()
     eps.name = "eps_ball"
     eps.type = mujoco.mjtGeom.mjGEOM_SPHERE
     eps.pos = [-0.230, -0.530, 1.445]
     eps.size = [0.075, 0.075, 0.075]
     eps.rgba = [1.0, 1.0, 0.0, 0.5]
-    eps.group = 1
+    eps.group = 4
 
     # Object (pen) body
     pen_body = spec.worldbody.add_body()
@@ -600,6 +601,14 @@ def _add_pen_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     ts_bot.size = [0.005, 0.005, 0.005]
     ts_bot.pos = [0.0, 0.0, -0.065]
     ts_bot.rgba = [0.2, 0.8, 0.2, 1.0]
+
+    # Success indicator on the target, as in the die reorientation task;
+    # the env colours it green while solved and red otherwise.
+    ts_ball = tgt_body.add_site()
+    ts_ball.name = "target_ball"
+    ts_ball.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    ts_ball.size = [0.045, 0.045, 0.045]
+    ts_ball.rgba = [2.0, 0.0, 0.2, 0.1]
 
     return spec
 

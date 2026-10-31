@@ -207,7 +207,9 @@ def test_hand_pen_adds_pen_object(ref_model):
 
     m, _ = build_from_recipe("hand_pen")
     site_names = {m.site(i).name for i in range(m.nsite)}
-    assert {"object_top", "object_bottom", "eps_ball"}.issubset(site_names)
+    assert {"object_top", "object_bottom", "eps_ball", "target_ball"}.issubset(
+        site_names
+    )
     assert m.njnt == ref_model.njnt + 6  # 3 slide + 3 hinge joints for pen
 
 
@@ -259,7 +261,7 @@ def test_hand_env_reset_and_step(env_id):
     [
         ("myoHandKeyTurnFixed-v0", "hand_keyturn", (40, 101, 330)),
         ("myoHandObjHoldFixed-v0", "hand_hold", (40, 99, 330)),
-        ("myoHandPenTwirlFixed-v0", "hand_pen", (41, 106, 333)),
+        ("myoHandPenTwirlFixed-v0", "hand_pen", (41, 106, 334)),
     ],
 )
 def test_legacy_hand_task_recipe_compatibility(env_id, recipe, expected_counts):
