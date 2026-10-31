@@ -197,9 +197,11 @@ Where subject scale factors come from:
 Limits
 ------
 
-* Per-axis factors assume MyoSuite body frames aligned with the OpenSim ones,
-  which holds for the converted MyoLeg and MyoFullBody bodies. One factor per
-  body is always safe.
+* Body frames are not all aligned with OpenSim's (x anterior, y up, z right):
+  MyoLeg's ``root`` and ``torso`` and MyoFullBody's ``Full Body`` are z-up.
+  Factors read from an OpenSim file are permuted onto each body's own axes;
+  factors given per body are in that body's frame. One factor per body is
+  always safe.
 * Anisotropic scaling of a rotated primitive can require shear which MuJoCo's
   primitive shapes cannot represent. Their dimensions use axis-scale
   approximations (spheres use the mean body factor; cylinders average transverse

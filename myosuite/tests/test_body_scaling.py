@@ -625,7 +625,9 @@ def test_invalid_factors_are_rejected(factor: float) -> None:
         scale_model(_simple_body(), {"thigh": [1.0, factor, 1.0]})
     # Malformed segment factors cannot pass silently, even for unused segments.
     with pytest.raises(ValueError, match="finite and positive"):
-        _body_scales(_simple_body(), {"unused": factor}, {"thigh": ("thigh",)})
+        _body_scales(
+            _simple_body(), {"unused": factor}, {"thigh": (("thigh",), (0, 1, 2))}
+        )
 
 
 @pytest.mark.parametrize("value", [0.0, -1.0, np.nan, np.inf, -np.inf])
@@ -639,7 +641,7 @@ def test_ambiguous_segments_cannot_depend_on_mapping_order() -> None:
         _body_scales(
             _simple_body(),
             {"a": 1.1, "b": 1.2},
-            {"a": ("thigh",), "b": ("thigh",)},
+            {"a": (("thigh",), (0, 1, 2)), "b": (("thigh",), (0, 1, 2))},
         )
 
 
@@ -766,7 +768,7 @@ def test_opensim_file_scales_the_mapped_bodies(tmp_path: Path) -> None:
     by_body = scale_model(
         spec,
         {
-            **{b: 1.0 for bodies in _MYOLEG_SEGMENTS.values() for b in bodies},
+            **{b: 1.0 for bodies, _ in _MYOLEG_SEGMENTS.values() for b in bodies},
             **_body_scales(spec, segments, _MYOLEG_SEGMENTS),
         },
         total_mass=70,
@@ -775,6 +777,82 @@ def test_opensim_file_scales_the_mapped_bodies(tmp_path: Path) -> None:
     np.testing.assert_allclose(by_file.body_mass.sum(), 70)
     with pytest.raises(ValueError, match="No OpenSim segment mapping"):
         scale_model(_leg(), path)
+
+
+def _body_frame_extent(model: mujoco.MjModel, body: str) -> np.ndarray:
+    """Extent of a body's mesh vertices along the body's own axes."""
+    data = mujoco.MjData(model)
+    mujoco.mj_kinematics(model, data)
+    b = model.body(body).id
+    points = []
+    for g in np.flatnonzero(
+        (model.geom_bodyid == b) & (model.geom_type == mujoco.mjtGeom.mjGEOM_MESH)
+    ):
+        mesh = model.geom_dataid[g]
+        start, count = model.mesh_vertadr[mesh], model.mesh_vertnum[mesh]
+        world = (
+            model.mesh_vert[start : start + count] @ data.geom_xmat[g].reshape(3, 3).T
+            + data.geom_xpos[g]
+        )
+        points.append((world - data.xpos[b]) @ data.xmat[b].reshape(3, 3))
+    return np.ptp(np.concatenate(points), axis=0)
+
+
+def test_opensim_factors_land_on_the_right_axes_of_z_up_bodies(
+    tmp_path: Path,
+) -> None:
+    """OpenSim frames are y-up; MyoLeg's root and torso are z-up with a lateral y."""
+    spec = _myoleg()
+    ref = spec.copy().compile()
+    # OpenSim (x anterior, y up, z right): a 20% taller torso.
+    taller = scale_model(
+        spec, _scale_set(tmp_path / "taller.xml", {"torso": (1.0, 1.2, 1.0)})
+    )
+    np.testing.assert_allclose(  # mesh vertices are float32
+        _body_frame_extent(taller, "torso") / _body_frame_extent(ref, "torso"),
+        [1.0, 1.0, 1.2],
+        rtol=1e-6,
+    )
+    pelvis = (1.1, 1.2, 1.3)
+    resolved = _body_scales(
+        spec, {"pelvis": pelvis, "torso": (1.0, 1.2, 1.0)}, _MYOLEG_SEGMENTS
+    )
+    np.testing.assert_array_equal(resolved["root"], [1.1, 1.3, 1.2])
+    np.testing.assert_array_equal(resolved["pelvis"], pelvis)  # y-up like OpenSim
+    np.testing.assert_array_equal(resolved["torso"], [1.0, 1.0, 1.2])
+
+
+def test_myofullbody_root_takes_the_pelvis_factors_on_its_own_axes() -> None:
+    spec = _fullbody()
+    pelvis = (1.1, 1.2, 1.3)
+    resolved = _body_scales(spec, {"pelvis": pelvis}, _MYOFULLBODY_SEGMENTS)
+    np.testing.assert_array_equal(resolved["Full Body"], [1.3, 1.1, 1.2])
+    for body in ("sacrum", "pelvis"):
+        np.testing.assert_array_equal(resolved[body], pelvis)
+
+
+@pytest.mark.parametrize(
+    "name,segments",
+    [("myoleg", _MYOLEG_SEGMENTS), ("fullbody", _MYOFULLBODY_SEGMENTS)],
+)
+def test_segment_axis_maps_match_the_model_frames(
+    name: str, segments: dict[str, tuple[tuple[str, ...], tuple[int, int, int]]]
+) -> None:
+    """Each first body's axes lie along the OpenSim axes its map names.
+
+    The femur frame is OpenSim's (its hip offset is Rajagopal's).
+    """
+    model = MODELS[name]().compile()
+    data = mujoco.MjData(model)
+    mujoco.mj_kinematics(model, data)
+    opensim = data.xmat[model.body("femur_r").id].reshape(3, 3)
+    for segment, (bodies, axes) in segments.items():
+        for body in bodies:
+            rot = opensim.T @ data.xmat[model.body(body).id].reshape(3, 3)
+            np.testing.assert_allclose(
+                np.abs(rot).max(axis=0), 1.0, atol=1e-5, err_msg=segment
+            )
+            assert tuple(np.argmax(np.abs(rot), axis=0)) == axes, segment
 
 
 SCALE_SET = """<OpenSimDocument Version="40000">

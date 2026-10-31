@@ -11,7 +11,9 @@ argument is
   own axes; or
 * the path of an OpenSim scale file: a ScaleSet, or a model scaled by the Scale
   Tool (e.g. by AddBiomechanics). Its segments are those of the Rajagopal model
-  and are mapped onto the bodies of MyoLeg or the MuscleMimic MyoFullBody.
+  and are mapped onto the bodies of MyoLeg or the MuscleMimic MyoFullBody. Not
+  every body frame is OpenSim's y-up frame (MyoLeg's root and torso are z-up),
+  so each segment's factors are permuted onto every body's own axes.
 
 Each body gets per-axis scale factors in its own frame (OpenSim's convention):
 
@@ -58,28 +60,38 @@ _LEG_SEGMENTS = (
     "toes",
 )
 
-# Rajagopal model segment -> first body of that segment in MyoLeg
-# (``myolegs_with_torso``). Every body takes its nearest mapped ancestor's scale.
-_MYOLEG_SEGMENTS: dict[str, tuple[str, ...]] = {
-    "pelvis": ("root",),
-    "torso": ("torso",),
-    **{f"{seg}_{side}": (f"{seg}_{side}",) for seg in _LEG_SEGMENTS for side in "rl"},
-}
+# A segment's first bodies and, for each of their axes, the OpenSim axis it lies
+# along (OpenSim frames: x anterior, y up, z to the right). Every other body
+# takes its nearest mapped ancestor's factors, turned into its own frame.
+_Segments = dict[str, tuple[tuple[str, ...], tuple[int, int, int]]]
+_OPENSIM_AXES = (0, 1, 2)
+_Z_UP = (0, 2, 1)  # x anterior, y lateral, z up
 
-# Rajagopal model segment -> first body of that segment in the MuscleMimic
-# MyoFullBody. The lumbar spine, thorax, shoulder girdle and head follow
-# ``torso``; the 27 hand bodies follow ``hand``.
-_MYOFULLBODY_SEGMENTS: dict[str, tuple[str, ...]] = {
-    "pelvis": ("Full Body",),
-    "torso": ("lumbar5",),
-    **{f"{seg}_{side}": (f"{seg}_{side}",) for seg in _LEG_SEGMENTS for side in "rl"},
+# Rajagopal model segments in MyoLeg (``myolegs_with_torso``). Its root and
+# torso are z-up; the pelvis below the root and the legs use OpenSim's frames.
+_MYOLEG_SEGMENTS: _Segments = {
+    "pelvis": (("root",), _Z_UP),
+    "torso": (("torso",), _Z_UP),
     **{
-        f"{seg}_{side}": (f"{seg}_{side}",)
-        for seg in ("humerus", "ulna", "radius")
+        f"{seg}_{side}": ((f"{seg}_{side}",), _OPENSIM_AXES)
+        for seg in _LEG_SEGMENTS
         for side in "rl"
     },
-    "hand_r": ("lunate_r",),
-    "hand_l": ("lunate_l",),
+}
+
+# Rajagopal model segments in the MuscleMimic MyoFullBody. The lumbar spine,
+# thorax, shoulder girdle and head follow ``torso``; the 27 hand bodies follow
+# ``hand``. Its root body ("Full Body") is z-up with a lateral x.
+_MYOFULLBODY_SEGMENTS: _Segments = {
+    "pelvis": (("Full Body",), (2, 0, 1)),
+    "torso": (("lumbar5",), _OPENSIM_AXES),
+    **{
+        f"{seg}_{side}": ((f"{seg}_{side}",), _OPENSIM_AXES)
+        for seg in (*_LEG_SEGMENTS, "humerus", "ulna", "radius")
+        for side in "rl"
+    },
+    "hand_r": (("lunate_r",), _OPENSIM_AXES),
+    "hand_l": (("lunate_l",), _OPENSIM_AXES),
 }
 
 _ORIENT = mujoco.mjtOrientation
@@ -134,14 +146,14 @@ def _scale_spec(
         segments = _segments_for(spec)
         body_scales = _body_scales(spec, _read_opensim_scales(scales), segments)
         # The segment bodies define the subject, even those left unscaled.
-        subject = set().union(*segments.values())
+        subject = {body for bodies, _ in segments.values() for body in bodies}
     else:
         body_scales = _body_scales(spec, scales, None)
         subject = set(scales)
     _scale_bodies(spec, body_scales, subject, total_mass)
 
 
-def _segments_for(spec: mujoco.MjSpec) -> Mapping[str, tuple[str, ...]]:
+def _segments_for(spec: mujoco.MjSpec) -> _Segments:
     """The Rajagopal segment mapping whose first bodies are all in *spec*.
 
     MyoFullBody also has bodies named like MyoLeg's (``root``, ``torso``), so
@@ -151,7 +163,7 @@ def _segments_for(spec: mujoco.MjSpec) -> Mapping[str, tuple[str, ...]]:
     tables = [
         table
         for table in (_MYOFULLBODY_SEGMENTS, _MYOLEG_SEGMENTS)
-        if all(body in names for bodies in table.values() for body in bodies)
+        if all(body in names for bodies, _ in table.values() for body in bodies)
     ]
     if not tables:
         raise ValueError(
@@ -285,13 +297,15 @@ def _assembled_qpos(model: mujoco.MjModel) -> np.ndarray:
 def _body_scales(
     spec: mujoco.MjSpec,
     scales: Mapping[str, float | ArrayLike],
-    segments: Mapping[str, Sequence[str]] | None,
+    segments: Mapping[str, tuple[Sequence[str], Sequence[int]]] | None,
 ) -> dict[str, np.ndarray]:
     """Body name -> per-axis factors, for bodies with a factor other than one.
 
-    With *segments* (segment -> first bodies), each body takes the factors of
-    its nearest ancestor (or itself) that starts a segment; a segment missing
-    from *scales* stays unscaled, and segments the mapping lacks are ignored.
+    With *segments* (segment -> first bodies and their OpenSim axes), the
+    segment's factors are permuted onto each first body's axes, and every body
+    below takes the factors of its nearest such ancestor, turned into its own
+    frame (at ``qpos0``). A segment missing from *scales* stays unscaled, and
+    segments the mapping lacks are ignored.
     """
     names = {b.name for b in spec.bodies[1:]}
     # Validate even unused segments, so malformed estimates cannot pass silently.
@@ -301,31 +315,50 @@ def _body_scales(
     else:
         # A segment missing from *scales* stays unscaled, as in OpenSim.
         starts = {}
-        for segment, first_bodies in segments.items():
+        for segment, (first_bodies, axes) in segments.items():
+            factors = _factors(scales.get(segment, 1.0))[list(axes)]
             for start_body in first_bodies:
                 if start_body in starts:
                     raise ValueError(
                         f"Body {start_body!r} starts more than one segment."
                     )
-                starts[start_body] = _factors(scales.get(segment, 1.0))
+                starts[start_body] = factors
         missing = set(starts) - names
         if missing:
             raise KeyError(f"Segment bodies not in the model: {sorted(missing)}")
         per_body = {}
         for body in spec.bodies[1:]:
-            ancestor = body
+            # Rotation from the segment's first body to *body*, at qpos0.
+            ancestor, rot = body, np.eye(3)
             while ancestor.name not in starts and ancestor.parent is not None:
+                turn = _frame_rot(spec, ancestor.frame) @ _rot(_quat(spec, ancestor))
+                rot = turn @ rot
                 ancestor = ancestor.parent
             if ancestor.name in starts:
                 if not body.name:
                     raise ValueError(
                         f"An unnamed body below {ancestor.name!r} cannot be scaled."
                     )
-                per_body[body.name] = starts[ancestor.name]
+                per_body[body.name] = _turned_factors(starts[ancestor.name], rot)
     unknown = set(per_body) - names
     if unknown:
         raise KeyError(f"Bodies not in the model: {sorted(unknown)}")
     return {name: s for name, s in per_body.items() if not np.array_equal(s, _UNIT)}
+
+
+def _turned_factors(s: np.ndarray, rot: np.ndarray) -> np.ndarray:
+    """Factors along the axes of a frame rotated by *rot* from the frame of *s*.
+
+    Frames that differ by a signed axis permutation, up to a tilt below about
+    0.8 degrees (MyoFullBody's root is 0.06 degrees off), swap the factors
+    exactly; other rotations take the scale along each axis, dropping shear.
+    """
+    if np.ptp(s) == 0:
+        return s.copy()
+    axes = np.argmax(np.abs(rot), axis=0)
+    if np.allclose(np.abs(rot[axes, np.arange(3)]), 1.0, rtol=0, atol=1e-4):
+        return s[axes]
+    return _axis_factors(s, rot)
 
 
 def _factors(scale: float | ArrayLike) -> np.ndarray:
