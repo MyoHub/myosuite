@@ -213,6 +213,16 @@ def test_hand_pen_adds_pen_object(ref_model):
     assert m.njnt == ref_model.njnt + 6  # 3 slide + 3 hinge joints for pen
 
 
+def test_hand_pen_success_indicator_on_target_pen():
+    """Pen twirl shows success on the target pen and hides the position goal (issue 136)."""
+    import myosuite.core.model_recipes  # noqa: F401
+    from myosuite.core.model_builder import build_from_recipe
+
+    m, _ = build_from_recipe("hand_pen")
+    assert m.site_bodyid[m.site("target_ball").id] == m.body("target").id
+    assert m.site_group[m.site("eps_ball").id] == 4
+
+
 @_SKIP
 def test_hand_sar_adds_sar_object(ref_model):
     """hand_sar recipe adds 6-DOF SAR object with success site."""
