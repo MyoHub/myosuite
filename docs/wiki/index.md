@@ -10,6 +10,7 @@
 | [mjlab-design-guide.md](mjlab-design-guide.md) | Before writing any mjlab backend code |
 | [cross-backend-contract.md](cross-backend-contract.md) | Before exporting a policy across backends |
 | [writing-term-functions.md](writing-term-functions.md) | Writing obs/reward/action term functions |
+| [biomech-prior-integration.md](biomech-prior-integration.md) | Proposed offline gait-prior evaluation and optional CPU/mjlab reward |
 | [agent-workflow.md](agent-workflow.md) | Required agent workflow and subagent strategy |
 | [log.md](log.md) | Append-only log of PRs to `dev` with new features / critical changes |
 
