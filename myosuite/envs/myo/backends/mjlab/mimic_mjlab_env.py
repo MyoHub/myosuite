@@ -2709,29 +2709,36 @@ def register_directional_walk_sar(
 def default_mimic_clip_on_policy_runner_cfg(**kwargs) -> Any:
     """Return mjlab PPO runner defaults tuned for clip-mode MuscleMimic.
 
-    Hyperparameters and network width match the spirit of
-    ``tutorials/files/5.2/train_mimic.py`` (256×4 MLP, lower LR, lower entropy,
-    fixed LR schedule, observation normalization, advantage norm per
-    minibatch) while remaining compatible with ``MjlabOnPolicyRunner``.
+    Actor and critic are (256, 256, 128) ELU MLPs with running observation
+    normalization. PPO runs 4 epochs x 4 minibatches per iteration, clip 0.2,
+    learning rate 3e-4 on the adaptive (KL) schedule, and normalizes advantages
+    over the whole batch, not per minibatch. The action std starts at 0.5, is
+    capped to ``MUSCLE_STD_RANGE`` and gets a small entropy bonus
+    (``MUSCLE_ENTROPY_COEF``); see
+    :func:`~myosuite.envs.myo.backends.mjlab.tasks.rl.muscle_gaussian_distribution_cfg`.
 
     Pass as ``rl_cfg_fn`` to :func:`register_mimic_mjlab_tasks_with_clip`
     instead of ``lambda: RslRlOnPolicyRunnerCfg()`` for better sample
     efficiency on the high-dimensional mimic observation.
+
+    Args:
+        **kwargs: Fields of :class:`~mjlab.rl.RslRlOnPolicyRunnerCfg` to set.
 
     Returns:
         A configured :class:`~mjlab.rl.RslRlOnPolicyRunnerCfg` instance.
     """
     from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
+    from myosuite.envs.myo.backends.mjlab.tasks.rl import (
+        MUSCLE_ENTROPY_COEF,
+        muscle_gaussian_distribution_cfg,
+    )
+
     actor = RslRlModelCfg(
         hidden_dims=(256, 256, 128),
         activation="elu",
         obs_normalization=True,
-        distribution_cfg={
-            "class_name": "GaussianDistribution",
-            "init_std": 1.0,
-            "std_type": "scalar",
-        },
+        distribution_cfg=muscle_gaussian_distribution_cfg(),
     )
     critic = RslRlModelCfg(
         hidden_dims=(256, 256, 128),
@@ -2744,7 +2751,7 @@ def default_mimic_clip_on_policy_runner_cfg(**kwargs) -> Any:
         num_mini_batches=4,
         learning_rate=3e-4,
         schedule="adaptive",
-        entropy_coef=0.01,
+        entropy_coef=MUSCLE_ENTROPY_COEF,
         clip_param=0.2,
         value_loss_coef=1.0,
         normalize_advantage_per_mini_batch=False,

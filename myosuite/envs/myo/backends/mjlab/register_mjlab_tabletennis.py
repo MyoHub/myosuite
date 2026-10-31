@@ -48,6 +48,10 @@ from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM, sync_forward
 from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTennisCfg
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import mujoco_cfg_from_model
+from myosuite.envs.myo.backends.mjlab.tasks.rl import (
+    MUSCLE_ENTROPY_COEF,
+    muscle_gaussian_distribution_cfg,
+)
 from myosuite.envs.myo.tasks.challenge.tabletennis import (
     ContactTrajIssue,
 )
@@ -762,11 +766,7 @@ def _table_tennis_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             hidden_dims=(256, 128, 64),
             activation="elu",
             obs_normalization=True,
-            distribution_cfg={
-                "class_name": "GaussianDistribution",
-                "init_std": 1.0,
-                "std_type": "scalar",
-            },
+            distribution_cfg=muscle_gaussian_distribution_cfg(),
         ),
         critic=RslRlModelCfg(
             hidden_dims=(256, 128, 64),
@@ -778,7 +778,7 @@ def _table_tennis_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             value_loss_coef=1.0,
             use_clipped_value_loss=True,
             clip_param=0.2,
-            entropy_coef=0.01,
+            entropy_coef=MUSCLE_ENTROPY_COEF,
             num_learning_epochs=4,
             num_mini_batches=4,
             learning_rate=3e-4,
