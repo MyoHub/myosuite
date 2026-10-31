@@ -107,7 +107,10 @@ def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
     """Rebuild the deterministic actor of an RSL-RL checkpoint.
 
     Layer sizes are read from the weights; the activation comes from the run's
-    ``params/agent.yaml`` (default ``elu``).
+    ``params/agent.yaml`` (default ``elu``). If that file gives the actor's
+    ``distribution_cfg.std_range``, the std used by :meth:`RslRlPolicy.sample` is
+    clamped to it, as in training (the saved parameter can lie just outside the
+    range); without one the checkpoint's std is used as is.
 
     Args:
         checkpoint: ``model_*.pt`` from an mjlab training run.
@@ -153,4 +156,8 @@ def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
         std = actor_state["distribution.std_param"]
     elif "distribution.log_std_param" in actor_state:
         std = actor_state["distribution.log_std_param"].exp()
+    std_range = (actor_cfg.get("distribution_cfg") or {}).get("std_range")
+    if std is not None and std_range is not None:
+        # Same bounds as rsl_rl's GaussianDistribution (lower limit 1e-6).
+        std = std.clamp(max(float(std_range[0]), 1e-6), float(std_range[1]))
     return RslRlPolicy(mlp, normalizer, action_dim, std).eval()

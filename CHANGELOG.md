@@ -41,19 +41,31 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
-* **mjlab PPO defaults of the muscle tasks cap the action std ([#566]).**
-  - The muscle runner configs build their Gaussian policy from the new `muscle_gaussian_distribution_cfg()`
-    (`tasks/rl.py`), which clamps the std to `std_range=(0.05, 1.0)` with rsl_rl's own `std_range`. These are
-    `myo_ppo_runner_cfg` (pose, reach, leg, torso), `default_mimic_clip_on_policy_runner_cfg` (MuscleMimic), ChaseTag
-    FBP2, table tennis and the elbow benchmark config.
-  - MuscleMimic, ChaseTag, table tennis and the elbow config also start at std 0.5 (was 1.0) and use an entropy
-    bonus of 0.001 (was 0.01), the values pose and reach already used (`MUSCLE_ENTROPY_COEF`).
-  - Why: once a muscle's control saturates, the return no longer depends on its std. The entropy bonus is then the
-    only gradient on the std, and Adam raises it by about the learning rate per update, whatever the coefficient is.
-    That is 0.16 per 1000 iterations at the adaptive schedule's 1e-5 floor. A 2B-step `myoMimicFullbody-v0` run
-    ended at std 14, with 99 % of controls saturated (bang-bang).
+* **mjlab PPO defaults of the muscle tasks bound the action std ([#566]).**
+  - The runner configs build their Gaussian policy from the new `muscle_gaussian_distribution_cfg()` (`tasks/rl.py`),
+    which keeps the std in `std_range=(0.05, 1.0)` with `ProjectedGaussianDistribution` (`tasks/distribution.py`).
+    It projects the std parameter onto the range before every forward pass. Unlike rsl_rl's own `std_range` clamp,
+    which has no gradient at or beyond a bound, this keeps the std trainable at the bounds. The checkpoint key
+    (`distribution.std_param`) is unchanged, and `init_std` must lie strictly inside the range.
+  - These configs are `myo_ppo_runner_cfg` (pose, reach, leg, torso, and the motor-driven `motorFinger*` tasks, whose
+    actions are clipped to [-1, 1] before the linear map to `ctrlrange`), `default_mimic_clip_on_policy_runner_cfg`
+    (MuscleMimic, and the SAR tasks of tutorial 5.5 that register with it), ChaseTag FBP2, table tennis and the elbow
+    benchmark config.
+  - MuscleMimic (with those SAR tasks), ChaseTag, table tennis and the elbow config also start at std 0.5 (was 1.0)
+    and use an entropy bonus of 0.001 (was 0.01), the values pose and reach already used (`MUSCLE_ENTROPY_COEF`).
+  - Pose, reach, leg, torso and `motorFinger*` training changes too, since their std was unbounded before. In a
+    `myoElbowPose1D6MRandom-v0` run without the bound, the smallest std fell below 0.05 after 220 iterations, with the
+    return already flat, so longer runs now train partly at the floor.
+  - Why: once a control saturates, its return no longer depends on its std, and the entropy bonus is the only
+    systematic gradient left on it. Adam normalizes the gradient's scale, so the std rises by up to the learning rate
+    per update. The noise of PPO's surrogate gradient makes the rise smaller: in a simulation of saturated muscles at
+    the MuscleMimic minibatch size (6144 samples), 0.49 of the learning rate with entropy 0.01 and 0.06 with 0.001. A
+    2B-step `myoMimicFullbody-v0` run (entropy 0.01) ended at std 14, with 99 % of controls saturated. The bound
+    limits this drift; it does not by itself prevent saturated (bang-bang) controls.
   - Training defaults only. Observations, actions and dynamics are unchanged, and published checkpoints load and
-    evaluate as before. Retraining with the new defaults can give different policies (`docs/baseline_checkpoints.md`).
+    evaluate as before. `load_rslrl_policy` (`eval_mjlab_policy.py --stochastic`) clamps the std to the run's
+    `std_range` when its `params/agent.yaml` gives one, as in training. Retraining with the new defaults can give
+    different policies (`docs/baseline_checkpoints.md`).
   - The MuscleMimic config's docstring now describes its actual settings.
 
 * **Fatigue groups and parameters for every muscle of the bundled models.**
