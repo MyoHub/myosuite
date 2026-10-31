@@ -63,6 +63,14 @@ from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
     register_table_tennis_mjlab_tasks,
 )
+from myosuite.envs.myo.backends.mjlab.tasks.mdp.saturation import (
+    SATURATION_TERM,
+    muscle_saturation_metric,
+)
+from myosuite.envs.myo.backends.mjlab.tasks.rl import (
+    MUSCLE_ENTROPY_COEF,
+    muscle_gaussian_distribution_cfg,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from mjlab.envs import ManagerBasedRlEnv
@@ -187,7 +195,7 @@ def _make_elbow_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
             actuator_names=muscle_names,
         ),
     }
-    return mjlab_env_cfg_from_task_config(
+    env_cfg = mjlab_env_cfg_from_task_config(
         cfg=cfg,
         spec_fn=_elbow_spec_fn,
         entity_name=_ELBOW_ENTITY_NAME,
@@ -202,6 +210,8 @@ def _make_elbow_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         num_envs=1,
         decimation=10,
     )
+    env_cfg.metrics[SATURATION_TERM] = muscle_saturation_metric()
+    return env_cfg
 
 
 def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
@@ -211,11 +221,7 @@ def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             hidden_dims=(64, 64),
             activation="elu",
             obs_normalization=True,
-            distribution_cfg={
-                "class_name": "GaussianDistribution",
-                "init_std": 1.0,
-                "std_type": "scalar",
-            },
+            distribution_cfg=muscle_gaussian_distribution_cfg(),
         ),
         critic=RslRlModelCfg(
             hidden_dims=(64, 64),
@@ -227,7 +233,7 @@ def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             value_loss_coef=1.0,
             use_clipped_value_loss=True,
             clip_param=0.2,
-            entropy_coef=0.01,
+            entropy_coef=MUSCLE_ENTROPY_COEF,
             num_learning_epochs=2,
             num_mini_batches=1,
             learning_rate=3e-4,
@@ -727,7 +733,8 @@ def _make_chasetag_fbp2_env_cfg(num_envs: int = 128) -> ManagerBasedRlEnvCfg:
         ),
     }
     metrics = {
-        "success": MetricsTermCfg(func=_chasetag_tagged, params=win, reduce="last")
+        "success": MetricsTermCfg(func=_chasetag_tagged, params=win, reduce="last"),
+        SATURATION_TERM: muscle_saturation_metric(),
     }
     entity = EntityCfg(
         spec_fn=_chasetag_spec_fn,
@@ -769,11 +776,7 @@ def _chasetag_ppo_runner_cfg(
             hidden_dims=(512, 256, 128),
             activation="elu",
             obs_normalization=True,
-            distribution_cfg={
-                "class_name": "GaussianDistribution",
-                "init_std": 1.0,
-                "std_type": "scalar",
-            },
+            distribution_cfg=muscle_gaussian_distribution_cfg(),
         ),
         critic=RslRlModelCfg(
             hidden_dims=(512, 256, 128),
@@ -785,7 +788,7 @@ def _chasetag_ppo_runner_cfg(
             value_loss_coef=1.0,
             use_clipped_value_loss=True,
             clip_param=0.2,
-            entropy_coef=0.01,
+            entropy_coef=MUSCLE_ENTROPY_COEF,
             num_learning_epochs=4,
             num_mini_batches=4,
             learning_rate=3e-4,

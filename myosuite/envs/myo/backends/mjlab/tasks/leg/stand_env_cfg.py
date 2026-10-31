@@ -136,6 +136,8 @@ def make_leg_stand_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnv
             reduce="last",
         )
     }
+    if info.na > 0:
+        metrics[mdp.SATURATION_TERM] = mdp.muscle_saturation_metric()
 
     # CPU reset: keyframe 0 (qpos and qvel), with the first qpos entry of every
     # joint perturbed by U(joint_random_range) and clipped to the joint range.

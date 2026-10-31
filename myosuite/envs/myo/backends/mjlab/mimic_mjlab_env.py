@@ -70,6 +70,10 @@ import numpy as np
 from myosuite.core.trajectory_io import MotionClip
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
 from myosuite.physics.quat_math import quat2mat
+from myosuite.terms.base_action import (
+    MUSCLE_SATURATION_MARGIN,
+    muscle_saturation_bounds,
+)
 from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
 
 if TYPE_CHECKING:
@@ -1571,6 +1575,10 @@ def _make_mimic_env_cfg(
     from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
         musclemimic_mujoco_cfg,
     )
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp.saturation import (
+        SATURATION_TERM,
+        muscle_saturation_metric,
+    )
     from myosuite.envs.myo.backends.mjlab.tasks.mdp.terminations import (
         SYNC_TERM,
         sync_forward,
@@ -1709,6 +1717,7 @@ def _make_mimic_env_cfg(
         actions=actions,
         terminations=terminations,
         rewards=rewards,
+        metrics={SATURATION_TERM: muscle_saturation_metric()},
         sim=SimulationCfg(
             mujoco=musclemimic_mujoco_cfg(variant, timestep=sim_dt),
             njmax=512,
@@ -2143,6 +2152,24 @@ class SARMuscleActivationAction:
         with with_no_grad:
             self._processed_actions[:] = self._sar(self._raw_actions)
 
+    def muscle_action_bounds(
+        self, margin: float = MUSCLE_SATURATION_MARGIN
+    ) -> tuple[Any, float, float]:
+        """Muscle excitations and their saturation bounds.
+
+        The policy acts on synergies, so this returns the excitations, which the
+        SAR transform clamps to ``[0, 1]``: the saturation mask is exact, while
+        the penalty's excess beyond the bounds is at most *margin*.
+
+        Args:
+            margin: See :func:`~myosuite.terms.base_action.muscle_saturation_bounds`.
+
+        Returns:
+            ``(excitations, lo, hi)``, excitations of shape ``(num_envs, n_muscles)``.
+        """
+        lo, hi = muscle_saturation_bounds(sigmoid=False, margin=margin)
+        return self._processed_actions, lo, hi
+
     def apply_actions(self) -> None:
         """Write muscle activations as the effort targets of the muscle tendons."""
         self._entity.set_tendon_effort_target(
@@ -2528,6 +2555,10 @@ def _make_directional_sar_env_cfg(
     from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
         musclemimic_mujoco_cfg,
     )
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp.saturation import (
+        SATURATION_TERM,
+        muscle_saturation_metric,
+    )
 
     decimation = max(1, round(ctrl_dt / sim_dt))
 
@@ -2598,6 +2629,7 @@ def _make_directional_sar_env_cfg(
         actions=actions,
         terminations=terminations,
         rewards=rewards,
+        metrics={SATURATION_TERM: muscle_saturation_metric()},
         sim=SimulationCfg(mujoco=musclemimic_mujoco_cfg("fullbody", timestep=sim_dt)),
         viewer=mimic_viewer_cfg(entity_name),
     )
@@ -2709,29 +2741,36 @@ def register_directional_walk_sar(
 def default_mimic_clip_on_policy_runner_cfg(**kwargs) -> Any:
     """Return mjlab PPO runner defaults tuned for clip-mode MuscleMimic.
 
-    Hyperparameters and network width match the spirit of
-    ``tutorials/files/5.2/train_mimic.py`` (256×4 MLP, lower LR, lower entropy,
-    fixed LR schedule, observation normalization, advantage norm per
-    minibatch) while remaining compatible with ``MjlabOnPolicyRunner``.
+    Actor and critic are (256, 256, 128) ELU MLPs with running observation
+    normalization. PPO runs 4 epochs x 4 minibatches per iteration, clip 0.2,
+    learning rate 3e-4 on the adaptive (KL) schedule, and normalizes advantages
+    over the whole batch, not per minibatch. The action std starts at 0.5, is
+    capped to ``MUSCLE_STD_RANGE`` and gets a small entropy bonus
+    (``MUSCLE_ENTROPY_COEF``); see
+    :func:`~myosuite.envs.myo.backends.mjlab.tasks.rl.muscle_gaussian_distribution_cfg`.
 
     Pass as ``rl_cfg_fn`` to :func:`register_mimic_mjlab_tasks_with_clip`
     instead of ``lambda: RslRlOnPolicyRunnerCfg()`` for better sample
     efficiency on the high-dimensional mimic observation.
+
+    Args:
+        **kwargs: Fields of :class:`~mjlab.rl.RslRlOnPolicyRunnerCfg` to set.
 
     Returns:
         A configured :class:`~mjlab.rl.RslRlOnPolicyRunnerCfg` instance.
     """
     from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
+    from myosuite.envs.myo.backends.mjlab.tasks.rl import (
+        MUSCLE_ENTROPY_COEF,
+        muscle_gaussian_distribution_cfg,
+    )
+
     actor = RslRlModelCfg(
         hidden_dims=(256, 256, 128),
         activation="elu",
         obs_normalization=True,
-        distribution_cfg={
-            "class_name": "GaussianDistribution",
-            "init_std": 1.0,
-            "std_type": "scalar",
-        },
+        distribution_cfg=muscle_gaussian_distribution_cfg(),
     )
     critic = RslRlModelCfg(
         hidden_dims=(256, 256, 128),
@@ -2744,7 +2783,7 @@ def default_mimic_clip_on_policy_runner_cfg(**kwargs) -> Any:
         num_mini_batches=4,
         learning_rate=3e-4,
         schedule="adaptive",
-        entropy_coef=0.01,
+        entropy_coef=MUSCLE_ENTROPY_COEF,
         clip_param=0.2,
         value_loss_coef=1.0,
         normalize_advantage_per_mini_batch=False,

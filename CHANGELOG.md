@@ -36,10 +36,32 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **Muscle saturation metric and opt-in penalty on mjlab ([#566]).** Every muscle task logs `Episode_Metrics/muscle_saturation`:
+  - It is the fraction of muscle commands whose excitation is within 0.05 of 0 or 1, or whose action is clamped. There the action map is flat, so the policy gradient through the action vanishes and exploration only switches muscles on or off.
+  - During training the actions include the exploration noise. `scripts/eval_mjlab_policy.py` also prints the value for the evaluated policy.
+  - `scripts/train_mjlab.py --saturation-penalty W` adds a reward term `muscle_saturation` with weight `-W`: the mean squared distance of the muscle actions beyond those bounds. It is off by default, and no registered task's reward changes.
+  - The muscle action terms report their actions and saturation bounds through `muscle_action_bounds(margin)`. The bounds come from `myosuite.terms.base_action.muscle_saturation_bounds`.
+  - `myo_ppo_runner_cfg` takes `desired_kl` (default unchanged, 0.01).
+  - The table-tennis action term now stores the unclamped policy action as `raw_action`; the ctrl is unchanged.
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
 
 ### Changed
+
+* **mjlab PPO defaults of the muscle tasks cap the action std ([#566]).**
+  - The muscle runner configs build their Gaussian policy from the new `muscle_gaussian_distribution_cfg()`
+    (`tasks/rl.py`), which clamps the std to `std_range=(0.05, 1.0)` with rsl_rl's own `std_range`. These are
+    `myo_ppo_runner_cfg` (pose, reach, leg, torso), `default_mimic_clip_on_policy_runner_cfg` (MuscleMimic), ChaseTag
+    FBP2, table tennis and the elbow benchmark config.
+  - MuscleMimic, ChaseTag, table tennis and the elbow config also start at std 0.5 (was 1.0) and use an entropy
+    bonus of 0.001 (was 0.01), the values pose and reach already used (`MUSCLE_ENTROPY_COEF`).
+  - Why: once a muscle's control saturates, the return no longer depends on its std. The entropy bonus is then the
+    only gradient on the std, and Adam raises it by about the learning rate per update, whatever the coefficient is.
+    That is 0.16 per 1000 iterations at the adaptive schedule's 1e-5 floor. A 2B-step `myoMimicFullbody-v0` run
+    ended at std 14, with 99 % of controls saturated (bang-bang).
+  - Training defaults only. Observations, actions and dynamics are unchanged, and published checkpoints load and
+    evaluate as before. Retraining with the new defaults can give different policies (`docs/baseline_checkpoints.md`).
+  - The MuscleMimic config's docstring now describes its actual settings.
 
 * **Fatigue groups and parameters for every muscle of the bundled models.**
   - `_muscle_group` now also strips MuscleMimic's `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent
@@ -278,6 +300,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#520]: https://github.com/MyoHub/myosuite/pull/520
 [#522]: https://github.com/MyoHub/myosuite/pull/522
 [#540]: https://github.com/MyoHub/myosuite/pull/540
+[#566]: https://github.com/MyoHub/myosuite/issues/566
 
 ## [2.12.2] - 2026-05-06
 * Asset credits updated ([#392]).

@@ -218,6 +218,16 @@ class TestSARMuscleActivationAction(unittest.TestCase):
     def test_raw_action_shape(self) -> None:
         self.assertEqual(self.action.raw_action.shape, (4, N_SYN))
 
+    def test_muscle_action_bounds_are_on_the_excitations(self) -> None:
+        import torch
+
+        from myosuite.terms.base_action import muscle_saturation_bounds
+
+        self.action.process_actions(torch.randn(4, N_SYN))
+        acts, lo, hi = self.action.muscle_action_bounds()
+        self.assertIs(acts, self.action._processed_actions)
+        self.assertEqual((lo, hi), muscle_saturation_bounds(sigmoid=False))
+
     def test_wrong_actuator_count_raises(self) -> None:
         from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
             SARMuscleActivationActionCfg,

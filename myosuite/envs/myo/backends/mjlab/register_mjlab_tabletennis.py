@@ -45,13 +45,26 @@ from myosuite.core.model_recipes import (
     _tabletennis_body_spec,
 )
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
-from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM, sync_forward
+from myosuite.envs.myo.backends.mjlab.tasks.mdp import (
+    SATURATION_TERM,
+    SYNC_TERM,
+    muscle_saturation_metric,
+    sync_forward,
+)
 from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTennisCfg
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import mujoco_cfg_from_model
+from myosuite.envs.myo.backends.mjlab.tasks.rl import (
+    MUSCLE_ENTROPY_COEF,
+    muscle_gaussian_distribution_cfg,
+)
 from myosuite.envs.myo.tasks.challenge.tabletennis import (
     ContactTrajIssue,
 )
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_action import (
+    MUSCLE_SATURATION_MARGIN,
+    muscle_saturation_bounds,
+    sigmoid_muscle_activation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -499,9 +512,23 @@ class TableTennisMixedCtrlAction(ActionTerm):
     def raw_action(self) -> Any:
         return self._raw_actions
 
+    def muscle_action_bounds(
+        self, margin: float = MUSCLE_SATURATION_MARGIN
+    ) -> tuple[torch.Tensor, float, float]:
+        """Policy actions of the muscles and their saturation bounds.
+
+        Args:
+            margin: See :func:`~myosuite.terms.base_action.muscle_saturation_bounds`.
+
+        Returns:
+            ``(actions, lo, hi)``, actions of shape ``(num_envs, n_muscles)``.
+        """
+        lo, hi = muscle_saturation_bounds(sigmoid=True, clip=(-1.0, 1.0), margin=margin)
+        return self._raw_actions[:, self._muscle_cols], lo, hi
+
     def process_actions(self, actions: Any) -> None:
-        a = torch.clamp(actions.to(self.device), -1.0, 1.0)
-        self._raw_actions[:] = a
+        self._raw_actions[:] = actions.to(self.device)
+        a = torch.clamp(self._raw_actions, -1.0, 1.0)
         m = self._muscle_mask[None, :].expand_as(a)
         ctrl = torch.where(
             m, sigmoid_muscle_activation(a, torch), self._mid + a * self._half
@@ -762,11 +789,7 @@ def _table_tennis_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             hidden_dims=(256, 128, 64),
             activation="elu",
             obs_normalization=True,
-            distribution_cfg={
-                "class_name": "GaussianDistribution",
-                "init_std": 1.0,
-                "std_type": "scalar",
-            },
+            distribution_cfg=muscle_gaussian_distribution_cfg(),
         ),
         critic=RslRlModelCfg(
             hidden_dims=(256, 128, 64),
@@ -778,7 +801,7 @@ def _table_tennis_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             value_loss_coef=1.0,
             use_clipped_value_loss=True,
             clip_param=0.2,
-            entropy_coef=0.01,
+            entropy_coef=MUSCLE_ENTROPY_COEF,
             num_learning_epochs=4,
             num_mini_batches=4,
             learning_rate=3e-4,
@@ -919,6 +942,7 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
         actions=actions,
         terminations=terminations,
         rewards=rewards,
+        metrics={SATURATION_TERM: muscle_saturation_metric()},
         events=events,
         sim=SimulationCfg(
             # Physics options of the CPU model (same recipe).
