@@ -861,11 +861,13 @@ class LocalPolicyRunner:
         frame_idx: int,
         *,
         obs_adapter: FullbodyObsAdapter | None = None,
+        history_idx: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         adapter = obs_adapter if obs_adapter is not None else self.obs_adapter
+        hist = frame_idx if history_idx is None else history_idx
         if adapter is not None:
             raw_obs = adapter.build(data, frame_idx)
-            policy_obs = self._apply_history(raw_obs, frame_idx)
+            policy_obs = self._apply_history(raw_obs, hist)
             if policy_obs.shape[0] != self.artifacts.obs_dim:
                 raise ValueError(
                     "Upstream obs adapter dim mismatch: "
@@ -888,18 +890,25 @@ class LocalPolicyRunner:
         frame_idx: int,
         *,
         obs_adapter: FullbodyObsAdapter | None = None,
+        history_idx: int | None = None,
     ) -> LocalPolicyActionTrace:
         """Return action and intermediate tensors for one inference step.
 
         This method intentionally mutates the runner exactly like
         :meth:`action_for`: history, running mean/std, and stochastic RNG state
         advance once.
+
+        Args:
+            history_idx: Monotonic step used only for observation-history
+                wrap detection. Defaults to *frame_idx*. Pass an increasing
+                counter when the goal frame loops so history is not reset.
         """
         raw_obs, policy_obs = self._build_policy_obs(
             data,
             clip,
             frame_idx,
             obs_adapter=obs_adapter,
+            history_idx=history_idx,
         )
         mean_before = self._run_mean.copy()
         var_before = self._run_var.copy()
@@ -938,12 +947,14 @@ class LocalPolicyRunner:
         frame_idx: int,
         *,
         obs_adapter: FullbodyObsAdapter | None = None,
+        history_idx: int | None = None,
     ) -> np.ndarray:
         return self.action_trace_for(
             data,
             clip,
             frame_idx,
             obs_adapter=obs_adapter,
+            history_idx=history_idx,
         ).action
 
     def step(

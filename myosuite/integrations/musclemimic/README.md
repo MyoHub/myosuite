@@ -72,6 +72,26 @@ This integration **does not** read or require anything under the MyoSuite
 - **Without `--path`** and short `--n-steps`:** optional MJX smoke on
   `MjxMimicFullbody-v0` where the MJX extra is installed (see CLI `--help`).
 
+### ChaseTag 1v1 steered teacher
+
+`ChaseTagSteeredPair` drives both FBVs agents with the clip-conditioned
+`mm-10m-2` teacher. The chaser’s walk clip faces the opponent; the runner’s
+faces away. RSI is optional and does not change the scored 546-d observation.
+
+```python
+import os
+os.environ["MYOSUITE_MUSCLEMIMIC_MODELS_VERSION"] = "1.0.5"
+
+from myosuite import make_env
+from myosuite.integrations.musclemimic.steered_teacher import ChaseTagSteeredPair
+
+env = make_env("myoChallengeChaseTagFBVs-v0")
+pair = ChaseTagSteeredPair.create(teacher_root, env.unwrapped.model, env.unwrapped._meta, clips, shadow)
+obs, info = env.reset()
+pair.reset(env.unwrapped.model, env.unwrapped.data, env.unwrapped._meta, info["task"])
+acts = pair.actions(env.unwrapped.model, env.unwrapped.data, env.unwrapped._meta, info["task"], step)
+```
+
 ### Demo motion cache (Hugging Face)
 
 **No upstream MuscleMimic package** for cache setup — only `huggingface_hub`:

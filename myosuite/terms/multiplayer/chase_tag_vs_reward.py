@@ -28,6 +28,8 @@ from myosuite.terms.mimic_reward import (
     mimic_joint_vel_reward,
     mimic_root_vel_reward,
 )
+from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
+from myosuite.terms.multiplayer.heading import role_heading_xy
 
 CHASER_ID = "agent_0"
 RUNNER_ID = "agent_1"
@@ -121,7 +123,7 @@ def compute_agent_reward(
     Returns:
         Scalar reward.
     """
-    is_chaser = agent_id == CHASER_ID if task == "CHASE" else agent_id == RUNNER_ID
+    is_chaser = agent_is_chaser(agent_id, task)
 
     r = config.r_survival_per_step
     r += config.r_act_reg * float(np.sum(actions**2))
@@ -212,11 +214,7 @@ def compute_gait_steering_reward(
 
     own_pos = data.site_xpos[meta.site_ids[agent_id]["pelvis_site"]]
     opp_pos = data.site_xpos[meta.site_ids[opponent_id]["pelvis_site"]]
-    rel_xy = (opp_pos - own_pos)[:2]
-    dist = float(np.linalg.norm(rel_xy))
-    direction = rel_xy / dist if dist > 1e-6 else np.zeros(2)
-    if not pursue:
-        direction = -direction
+    direction = role_heading_xy(own_pos[:2], opp_pos[:2], pursue=pursue)
     target_vel = np.array(
         [target_speed * direction[0], target_speed * direction[1], 0.0]
     )
