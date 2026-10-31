@@ -532,6 +532,7 @@ class LegTerrainEnvV0(LegWalkEnvV0):
                 normalized_data.reshape(100, 100) * scalar, [0, 1]
             ).reshape(10000)
         tid = self.model.geom("terrain").id
+        self._upload_hfield_to_renderers(int(self.model.geom_dataid[tid]))
         self.model.geom_rgba[tid, 3] = 1.0
         self.model.geom_pos[tid] = np.array([0.0, 0.0, 0.0])
         self.model.geom_contype[tid] = 1

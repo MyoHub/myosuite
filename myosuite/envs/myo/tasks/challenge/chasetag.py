@@ -885,9 +885,10 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     def _maybe_flatten_agent_patch(self, qpos: np.ndarray) -> None:
         if self.heightfield is not None:
             self.heightfield.flatten_agent_patch(qpos)
-            renderer = getattr(self, "_mujoco_renderer", None)
-            if renderer is not None and getattr(renderer, "_window", None) is not None:
-                renderer._window.update_hfield(0)
+            # Runs after this reset's terrain sample, so one upload covers both edits.
+            self._upload_hfield_to_renderers(
+                int(self.model.geom_dataid[self.model.geom("terrain").id])
+            )
 
     # ── Reset state helpers ───────────────────────────────────────────────────
 
