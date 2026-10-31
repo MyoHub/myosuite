@@ -36,6 +36,7 @@ See [docs/wiki/mjlab-design-guide.md](mjlab-design-guide.md) for the full patter
 | Contact force | `mujoco.mj_contactForce` | Manual contact struct field access |
 | Body/site/joint ID | `mujoco.mj_name2id` | Hardcoded integer indices |
 | Jacobian | `mujoco.mj_jacBody`, `mj_jacSite` | Manual Jacobian computation |
+| Site IK / marker fitting | `myosuite.physics.inverse_kinematics.solve_ik`, `myosuite.core.retargeting.retarget` | Per-task IK loops or finite-difference Jacobians |
 
 **Unified dispatcher (preferred for new code):**
 
