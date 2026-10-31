@@ -15,10 +15,10 @@ dependencies = [
 
 [project.optional-dependencies]
 mjlab = [
-    "mjlab>=1.4.0",
-    "mujoco>=3.13.0",
-    "mujoco-warp>=3.8.0",
-    "warp-lang>=1.12.0",
+    "mjlab>=1.6.0,<1.7",
+    "mujoco>=3.11.0,<3.12",
+    "mujoco-warp>=3.11.0,<3.12",
+    "warp-lang>=1.14.0",
 ]
 mimic = [
     "musclemimic_models==1.0.6",

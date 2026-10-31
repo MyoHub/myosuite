@@ -79,11 +79,12 @@ examples = [
 ]
 mjlab = [
     "torch>=2.13.0; python_version >= '3.10'",
-    "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14'",
-    # mujoco-warp 3.8+ reads MjModel.nflexevpair (MuJoCo 3.8+); 3.17 needs >=3.13.
-    "mujoco>=3.13.0; python_version >= '3.10' and python_version < '3.14'",
-    "mujoco-warp>=3.8.0; python_version >= '3.10' and python_version < '3.14'",
-    "warp-lang>=1.12.0; python_version >= '3.10'",
+    "mjlab>=1.6.0,<1.7; python_version >= '3.10' and python_version < '3.14'",
+    # mjlab 1.6 pins mujoco~=3.11 / mujoco-warp~=3.11. Do not float to
+    # mujoco-warp 3.17 (needs mujoco>=3.13) or pip cannot resolve.
+    "mujoco>=3.11.0,<3.12; python_version >= '3.10' and python_version < '3.14'",
+    "mujoco-warp>=3.11.0,<3.12; python_version >= '3.10' and python_version < '3.14'",
+    "warp-lang>=1.14.0; python_version >= '3.10'",
     # mjlab's own rsl_rl dependency (rsl-rl-lib) still passes the deprecated
     # wandb.Settings(start_method=...) kwarg; wandb>=0.29.0 rewrote Settings to
     # reject unknown fields there, so an unpinned resolve breaks
