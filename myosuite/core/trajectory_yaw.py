@@ -112,6 +112,15 @@ def clip_natural_yaw(qpos: np.ndarray, qvel: np.ndarray | None) -> float:
     return heading_from_xy(mean)
 
 
+def pingpong_frame(t: int, n: int) -> int:
+    """Frame index that walks forward then reverse so a clip never wraps."""
+    if n <= 1:
+        return 0
+    cycle = 2 * (n - 1)
+    k = int(t) % cycle
+    return k if k < n else cycle - k
+
+
 def heading_from_xy(xy: np.ndarray) -> float:
     v = np.asarray(xy, dtype=np.float64)
     return float(np.arctan2(float(v[1]), float(v[0])))

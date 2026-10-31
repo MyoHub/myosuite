@@ -26,6 +26,7 @@ import numpy as np
 from myosuite.core.trajectory_io import MotionClip, load_motion_clip
 from myosuite.core.trajectory_yaw import (
     clip_natural_yaw,
+    pingpong_frame,
     write_rotated_clip_npz,
 )
 from myosuite.integrations.musclemimic.bc_directional_collector import (
@@ -46,7 +47,6 @@ from myosuite.terms.multiplayer.heading import (
     compass_index,
     compass_label,
     heading_yaw,
-    step_compass,
 )
 
 AGENTS: tuple[str, str] = ("agent_0", "agent_1")
@@ -95,6 +95,7 @@ class SteeredTeacher:
     shadow_data: mujoco.MjData
     heading: str = "E"
     t: int = 0
+    pingpong: bool = True
 
     def __post_init__(self) -> None:
         base = self.runner.obs_adapter
@@ -139,15 +140,16 @@ class SteeredTeacher:
         self.runner.reset()
 
     def set_heading(self, heading: str) -> bool:
+        """Switch the goal clip. Does not teleport the body or reset history."""
         if heading == self.heading:
             return False
         self.heading = heading
         self.runner.obs_adapter = self.adapters[heading]
-        self.runner.reset()
         return True
 
     def goal_frame(self) -> int:
-        return self.t % int(self.clip.qpos.shape[0])
+        n = int(self.clip.qpos.shape[0])
+        return pingpong_frame(self.t, n) if self.pingpong else self.t % n
 
     def action(self, fbvs_data: mujoco.MjData, amap: AgentShadowMap) -> np.ndarray:
         copy_agent_to_shadow(fbvs_data, self.shadow_data, amap)
@@ -164,12 +166,17 @@ class SteeredTeacher:
 
 @dataclass
 class ChaseTagSteeredPair:
-    """Two :class:`SteeredTeacher`s: chaser toward opponent, runner away."""
+    """Two :class:`SteeredTeacher`s: chaser toward opponent, runner away.
+
+    ``track_alpha`` blends each agent toward the current clip frame before
+    the teacher acts. ``1`` is kinematic playback; ``0`` is teacher-only
+    (falls on some headings). A value in between keeps the gait continuous
+    instead of snapping joints every few hundred milliseconds.
+    """
 
     walkers: dict[str, SteeredTeacher]
     maps: dict[str, AgentShadowMap]
-    rsi_chaser: int = 40
-    rsi_runner: int = 80
+    track_alpha: float = 0.45
 
     @classmethod
     def create(
@@ -180,8 +187,7 @@ class ChaseTagSteeredPair:
         clips: dict[str, MotionClip],
         shadow_model: mujoco.MjModel,
         *,
-        rsi_chaser: int = 40,
-        rsi_runner: int = 80,
+        track_alpha: float = 0.45,
     ) -> ChaseTagSteeredPair:
         maps = {
             agent: build_agent_shadow_map(
@@ -196,12 +202,7 @@ class ChaseTagSteeredPair:
             agent: SteeredTeacher.create(teacher_root, shadow_model, clips, seed=i)
             for i, agent in enumerate(AGENTS)
         }
-        return cls(
-            walkers=walkers,
-            maps=maps,
-            rsi_chaser=rsi_chaser,
-            rsi_runner=rsi_runner,
-        )
+        return cls(walkers=walkers, maps=maps, track_alpha=float(track_alpha))
 
     def reset(
         self, model: mujoco.MjModel, data: mujoco.MjData, meta: Any, task: str
@@ -227,8 +228,20 @@ class ChaseTagSteeredPair:
         task: str,
         step: int,
     ) -> dict[str, np.ndarray]:
-        if step > 0:
-            self._rsi_and_steer(model, data, meta, task, step)
+        if self.track_alpha > 0.0:
+            for agent, walker in self.walkers.items():
+                frame = walker.goal_frame()
+                write_clip_pose(
+                    data,
+                    self.maps[agent],
+                    walker.clip.qpos[frame],
+                    _clip_qvel(walker.clip, frame),
+                    keep_xy=True,
+                    keep_yaw=False,
+                    act=None,
+                    alpha=self.track_alpha,
+                )
+            mujoco.mj_forward(model, data)
         return {
             agent: walker.action(data, self.maps[agent])
             for agent, walker in self.walkers.items()
@@ -241,42 +254,3 @@ class ChaseTagSteeredPair:
         opp = data.site_xpos[meta.site_ids[OPPONENT[agent]]["pelvis_site"]][:2]
         v = aim_heading_xy(me, opp, pursue=agent_is_chaser(agent, task))
         return compass_label(compass_index(heading_yaw(v)))
-
-    def _rsi_and_steer(
-        self,
-        model: mujoco.MjModel,
-        data: mujoco.MjData,
-        meta: Any,
-        task: str,
-        step: int,
-    ) -> None:
-        for agent, walker in self.walkers.items():
-            period = (
-                self.rsi_chaser if agent_is_chaser(agent, task) else self.rsi_runner
-            )
-            if step % period == 0:
-                want = self._desired_label(data, meta, agent, task)
-                nxt = compass_label(
-                    step_compass(walker.idx, COMPASS_LABELS.index(want))
-                )
-                turned = walker.set_heading(nxt)
-                fr = walker.goal_frame()
-                write_clip_pose(
-                    data,
-                    self.maps[agent],
-                    walker.clip.qpos[fr],
-                    _clip_qvel(walker.clip, fr),
-                    keep_xy=True,
-                    keep_yaw=not turned,
-                )
-            elif step % self.rsi_chaser == 0:
-                fr = walker.goal_frame()
-                write_clip_pose(
-                    data,
-                    self.maps[agent],
-                    walker.clip.qpos[fr],
-                    _clip_qvel(walker.clip, fr),
-                    keep_xy=True,
-                    keep_yaw=True,
-                )
-        mujoco.mj_forward(model, data)

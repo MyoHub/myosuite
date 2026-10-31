@@ -305,6 +305,29 @@ def copy_agent_to_shadow(
         shadow_data.act[:] = fbvs_data.act[amap.act_idx]
 
 
+def _nlerp_quat(q0: np.ndarray, q1: np.ndarray, alpha: float) -> np.ndarray:
+    """Normalized lerp; flips *q1* so the blend takes the short arc."""
+    a = np.asarray(q0, dtype=np.float64)
+    b = np.asarray(q1, dtype=np.float64)
+    if float(np.dot(a, b)) < 0.0:
+        b = -b
+    out = (1.0 - alpha) * a + alpha * b
+    n = float(np.linalg.norm(out))
+    return out / n if n > 1e-12 else a
+
+
+def _blend_qpos(dst: np.ndarray, src: np.ndarray, alpha: float) -> None:
+    """Lerp *dst* toward *src*. Width 4/7 is a quaternion (ball / free)."""
+    w = int(dst.shape[0])
+    if w == 7:
+        dst[:3] = (1.0 - alpha) * dst[:3] + alpha * src[:3]
+        dst[3:7] = _nlerp_quat(dst[3:7], src[3:7], alpha)
+    elif w == 4:
+        dst[:] = _nlerp_quat(dst, src, alpha)
+    else:
+        dst[:] = (1.0 - alpha) * dst + alpha * src
+
+
 def write_clip_pose(
     fbvs_data: mujoco.MjData,
     amap: AgentShadowMap,
@@ -313,6 +336,8 @@ def write_clip_pose(
     *,
     keep_xy: bool = True,
     keep_yaw: bool = False,
+    act: float | np.ndarray | None = 0.05,
+    alpha: float = 1.0,
 ) -> None:
     """Write a single-agent clip frame onto one FBVs agent.
 
@@ -324,17 +349,36 @@ def write_clip_pose(
         keep_xy: Keep the agent's current root XY (spawn / mid-episode).
         keep_yaw: Keep the agent's current root yaw and rotate clip planar
             velocity into that frame (RSI without a heading change).
+        act: Muscle activation written on this agent (``0.05`` matches a
+            standing overlay). ``None`` leaves ``act`` unchanged.
+        alpha: Blend toward the clip (``1`` snaps, ``0`` is a no-op). A
+            per-step value in ``(0, 1)`` tracks the gait without a pop.
     """
+    alpha = float(np.clip(alpha, 0.0, 1.0))
+    if alpha <= 0.0:
+        return
     fa, sa, _ = amap.qpos_pairs[0]
     xy = fbvs_data.qpos[fa : fa + 2].copy() if keep_xy else None
     yaw = (
         float(quat_math.quat2yaw(fbvs_data.qpos[fa + 3 : fa + 7])) if keep_yaw else None
     )
     clip_yaw = float(quat_math.quat2yaw(clip_qpos[sa + 3 : sa + 7]))
-    for fadr, sadr, w in amap.qpos_pairs:
-        fbvs_data.qpos[fadr : fadr + w] = clip_qpos[sadr : sadr + w]
-    for fadr, sadr, w in amap.qvel_pairs:
-        fbvs_data.qvel[fadr : fadr + w] = clip_qvel[sadr : sadr + w]
+    if alpha >= 1.0:
+        for fadr, sadr, w in amap.qpos_pairs:
+            fbvs_data.qpos[fadr : fadr + w] = clip_qpos[sadr : sadr + w]
+        for fadr, sadr, w in amap.qvel_pairs:
+            fbvs_data.qvel[fadr : fadr + w] = clip_qvel[sadr : sadr + w]
+    else:
+        for fadr, sadr, w in amap.qpos_pairs:
+            _blend_qpos(
+                fbvs_data.qpos[fadr : fadr + w],
+                clip_qpos[sadr : sadr + w],
+                alpha,
+            )
+        for fadr, sadr, w in amap.qvel_pairs:
+            fbvs_data.qvel[fadr : fadr + w] = (1.0 - alpha) * fbvs_data.qvel[
+                fadr : fadr + w
+            ] + alpha * clip_qvel[sadr : sadr + w]
     if xy is not None:
         fbvs_data.qpos[fa : fa + 2] = xy
     if yaw is not None:
@@ -348,6 +392,13 @@ def write_clip_pose(
         lin = quat_math.rot_vec_quat(lin, qz)
         fbvs_data.qvel[fva] = lin[0]
         fbvs_data.qvel[fva + 1] = lin[1]
+    if (
+        act is not None
+        and fbvs_data.act is not None
+        and fbvs_data.act.size
+        and amap.act_idx.size
+    ):
+        fbvs_data.act[amap.act_idx] = act
 
 
 def default_root_offsets(

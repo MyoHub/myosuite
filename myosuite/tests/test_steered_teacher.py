@@ -14,6 +14,7 @@ import pytest
 
 from myosuite.core.trajectory_yaw import (
     clip_natural_yaw,
+    pingpong_frame,
     rotate_xy,
     write_rotated_clip_npz,
     yaw_quat,
@@ -36,6 +37,13 @@ from myosuite.terms.multiplayer.heading import (
 )
 
 pytestmark = pytest.mark.tier1
+
+
+def test_pingpong_frame_is_continuous_at_the_ends() -> None:
+    n = 5
+    seq = [pingpong_frame(t, n) for t in range(12)]
+    assert seq == [0, 1, 2, 3, 4, 3, 2, 1, 0, 1, 2, 3]
+    assert pingpong_frame(0, 1) == 0
 
 
 def test_agent_is_chaser_matches_task_roles() -> None:
@@ -185,3 +193,21 @@ def test_write_clip_pose_keeps_xy_and_optional_yaw() -> None:
         np.pi / 2, abs=1e-5
     )
     assert fd.qvel[amap.qvel_pairs[0][0] + 1] == pytest.approx(0.4, abs=1e-5)
+
+
+def test_write_clip_pose_alpha_blends_hinge() -> None:
+    fbvs, shadow = _tiny_pair_models()
+    fd = mujoco.MjData(fbvs)
+    amap = build_agent_shadow_map(fbvs, shadow, "a0_", [0])
+    knee = amap.qpos_pairs[1][0]
+    fd.qpos[knee] = 0.0
+    clip_qpos = np.zeros(shadow.nq)
+    clip_qpos[3] = 1.0
+    clip_qpos[7] = 0.4
+    clip_qvel = np.zeros(shadow.nv)
+    write_clip_pose(fd, amap, clip_qpos, clip_qvel, alpha=0.0, act=None)
+    assert fd.qpos[knee] == pytest.approx(0.0)
+    write_clip_pose(fd, amap, clip_qpos, clip_qvel, alpha=0.5, act=None)
+    assert fd.qpos[knee] == pytest.approx(0.2)
+    write_clip_pose(fd, amap, clip_qpos, clip_qvel, alpha=1.0, act=None)
+    assert fd.qpos[knee] == pytest.approx(0.4)

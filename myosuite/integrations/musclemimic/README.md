@@ -76,7 +76,9 @@ This integration **does not** read or require anything under the MyoSuite
 
 `ChaseTagSteeredPair` drives both FBVs agents with the clip-conditioned
 `mm-10m-2` teacher. The chaser’s walk clip faces the opponent; the runner’s
-faces away. RSI is optional and does not change the scored 546-d observation.
+faces away. Each step blends toward the current clip frame
+(``track_alpha``, default 0.45) so the gait stays continuous — no
+mid-episode joint teleport. The scored 546-d observation is unchanged.
 
 ```python
 import os
