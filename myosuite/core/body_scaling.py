@@ -215,9 +215,19 @@ def _scale_bodies(
     ref_tendon_length = ref_data.ten_length.copy()
     peak_force = _peak_force(ref)
 
+    # Refuse before the first edit, so a refused scaling leaves *spec* intact.
     _check_equalities(spec, body_scales)
-    slide = _scale_geometry(spec, ref, body_scales)
-    _scale_inertia(spec, ref, body_scales, total_mass, subject)
+    mesh_scales = _mesh_scales(spec, body_scales)
+    # Compiled body ids, matched by name (unnamed bodies keep their list position).
+    ids = [ref.body(b.name).id if b.name else i for i, b in enumerate(spec.bodies)]
+    rescaled = None
+    if total_mass is not None:
+        rescaled = _subject_bodies(spec, ref, ids, subject)
+        if not any(ref.body_mass[i] > 0 for _, i in rescaled):
+            raise ValueError("total_mass needs a subject body with mass.")
+
+    slide = _scale_geometry(spec, ref, body_scales, mesh_scales)
+    _scale_inertia(spec, ref, ids, body_scales, total_mass, rescaled)
     _scale_joint_couplings(spec, slide)
 
     scaled = spec.copy().compile()
@@ -366,13 +376,55 @@ def _axis_factors(s: np.ndarray, rot: np.ndarray) -> np.ndarray:
     return np.linalg.norm(np.diag(s) @ rot, axis=0)
 
 
+def _mesh_scales(
+    spec: mujoco.MjSpec, body_scales: Mapping[str, np.ndarray]
+) -> dict[str, np.ndarray]:
+    """Mesh -> scale along its own axes; refuses geometry that cannot be scaled.
+
+    Edits nothing, so it runs before the first edit of a scaling.
+    """
+    mesh_scales: dict[str, np.ndarray] = {}
+    for geom in spec.geoms:
+        s = body_scales.get(geom.parent.name)
+        if s is None:
+            continue
+        if geom.type in (mujoco.mjtGeom.mjGEOM_HFIELD, mujoco.mjtGeom.mjGEOM_SDF):
+            raise NotImplementedError(
+                f"Cannot scale geom {geom.name!r} of type {geom.type}."
+            )
+        if geom.type == mujoco.mjtGeom.mjGEOM_MESH:
+            rot = _frame_rot(spec, geom.frame) @ _rot(_quat(spec, geom))
+            factors = _axis_factors(s, rot)
+            previous = mesh_scales.setdefault(geom.meshname, factors)
+            if not np.allclose(previous, factors):
+                raise NotImplementedError(
+                    f"Mesh {geom.meshname!r} is shared by geoms needing different "
+                    "scales; give each its own mesh asset."
+                )
+    shared = {
+        g.meshname
+        for g in spec.geoms
+        if g.type == mujoco.mjtGeom.mjGEOM_MESH and g.parent.name not in body_scales
+    } & set(mesh_scales)
+    if shared:
+        raise NotImplementedError(
+            f"Meshes {sorted(shared)} are also used by unscaled bodies; give each its own mesh asset."
+        )
+    for name in mesh_scales:
+        if spec.mesh(name).plugin.active:
+            raise NotImplementedError(f"Cannot scale plugin-generated mesh {name!r}.")
+    return mesh_scales
+
+
 def _scale_geometry(
-    spec: mujoco.MjSpec, ref: mujoco.MjModel, body_scales: Mapping[str, np.ndarray]
+    spec: mujoco.MjSpec,
+    ref: mujoco.MjModel,
+    body_scales: Mapping[str, np.ndarray],
+    mesh_scales: Mapping[str, np.ndarray],
 ) -> dict[str, float]:
     """Scale positions and sizes; return slide joint -> translation factor."""
     slide = {}
     slide_qpos: dict[int, float] = {}
-    mesh_scales: dict[str, np.ndarray] = {}
     for body_index, body in enumerate(spec.bodies[1:], start=1):
         parent_s = body_scales.get(body.parent.name, _UNIT) if body.parent else _UNIT
         body_rot = _frame_rot(spec, body.frame) @ _rot(_quat(spec, body))
@@ -404,16 +456,7 @@ def _scale_geometry(
             _scale_placement(spec, site, s)
             site.size = np.asarray(site.size) * float(np.prod(s) ** (1 / 3))
         for geom in body.geoms:
-            _scale_geom(spec, geom, s, mesh_scales)
-    shared = {
-        g.meshname
-        for g in spec.geoms
-        if g.type == mujoco.mjtGeom.mjGEOM_MESH and g.parent.name not in body_scales
-    } & set(mesh_scales)
-    if shared:
-        raise NotImplementedError(
-            f"Meshes {sorted(shared)} are also used by unscaled bodies; give each its own mesh asset."
-        )
+            _scale_geom(spec, geom, s)
     for name, factors in mesh_scales.items():
         _rescale_mesh(spec, name, factors)
     _scale_keyframes(spec, ref, slide_qpos)
@@ -423,8 +466,6 @@ def _scale_geometry(
 def _rescale_mesh(spec: mujoco.MjSpec, name: str, factors: np.ndarray) -> None:
     """Recreate an edited mesh so precompiled bounds cannot survive its new scale."""
     mesh = spec.mesh(name)
-    if mesh.plugin.active:
-        raise NotImplementedError(f"Cannot scale plugin-generated mesh {name!r}.")
     # MuJoCo 3.11--3.15 retains private mesh AABB extrema after recompilation.
     # Copy authored fields, not XML or compiled vertices/principal-axis frames.
     attributes: dict[str, Any] = {}
@@ -485,13 +526,10 @@ def _scale_placement(spec: mujoco.MjSpec, element: Any, s: np.ndarray) -> None:
         )
 
 
-def _scale_geom(
-    spec: mujoco.MjSpec, geom: Any, s: np.ndarray, mesh_scales: dict[str, np.ndarray]
-) -> None:
+def _scale_geom(spec: mujoco.MjSpec, geom: Any, s: np.ndarray) -> None:
+    """Scale a primitive's size and place; meshes are rescaled by :func:`_rescale_mesh`."""
     frame_rot = _frame_rot(spec, geom.frame)
     kind = geom.type
-    if kind in (mujoco.mjtGeom.mjGEOM_HFIELD, mujoco.mjtGeom.mjGEOM_SDF):
-        raise NotImplementedError(f"Cannot scale geom {geom.name!r} of type {kind}.")
     if not np.isnan(geom.fromto[0]):
         ends = np.asarray(geom.fromto, dtype=float).reshape(2, 3)
         geom.size[0] *= _radial_factor(s, ends[0] - ends[1], frame_rot)
@@ -499,14 +537,7 @@ def _scale_geom(
         return
     _scale_placement(spec, geom, s)
     factors = _axis_factors(s, frame_rot @ _rot(_quat(spec, geom)))
-    if kind == mujoco.mjtGeom.mjGEOM_MESH:
-        previous = mesh_scales.setdefault(geom.meshname, factors)
-        if not np.allclose(previous, factors):
-            raise NotImplementedError(
-                f"Mesh {geom.meshname!r} is shared by geoms needing different scales; "
-                "give each its own mesh asset."
-            )
-    elif kind == mujoco.mjtGeom.mjGEOM_SPHERE:
+    if kind == mujoco.mjtGeom.mjGEOM_SPHERE:
         geom.size[0] *= float(np.mean(s))
     elif kind in (mujoco.mjtGeom.mjGEOM_CAPSULE, mujoco.mjtGeom.mjGEOM_CYLINDER):
         geom.size[0] *= float(np.mean(factors[:2]))
@@ -537,13 +568,21 @@ def _scale_keyframes(
 def _scale_inertia(
     spec: mujoco.MjSpec,
     ref: mujoco.MjModel,
+    ids: Sequence[int],
     body_scales: Mapping[str, np.ndarray],
     total_mass: float | None,
-    subject: set[str],
+    subject_bodies: Sequence[tuple[mujoco.MjsBody, int]] | None,
 ) -> None:
-    """Scale mass (by volume) and inertia of scaled bodies; rescale the subject."""
-    # Compiled body ids, matched by name (unnamed bodies keep their list position).
-    ids = [ref.body(b.name).id if b.name else i for i, b in enumerate(spec.bodies)]
+    """Scale mass (by volume) and inertia of scaled bodies; rescale the subject.
+
+    Args:
+        spec: Model to edit.
+        ref: The compiled model before scaling.
+        ids: Compiled id of each body of *spec*.
+        body_scales: Body name -> factors other than one.
+        total_mass: Target mass of *subject_bodies* (kg), or None.
+        subject_bodies: Bodies (with ids) that *total_mass* rescales.
+    """
     if spec.compiler.settotalmass > 0:
         # Preserve the compiled distribution before disabling renormalization.
         for body, i in zip(spec.bodies[1:], ids[1:]):
@@ -564,14 +603,10 @@ def _scale_inertia(
         new_mass[i] = m * np.prod(s)
         inertia, iquat = _scaled_inertia(ref, i, s, new_mass[i] / m if m > 0 else 0.0)
         _set_inertial(body, new_mass[i], s * ref.body_ipos[i], inertia, iquat)
-    if total_mass is None:
+    if total_mass is None or subject_bodies is None:
         return
-    bodies = _subject_bodies(spec, ref, ids, subject)
-    subject_mass = sum(new_mass[i] for _, i in bodies)
-    if subject_mass <= 0:
-        raise ValueError("total_mass needs a subject body with mass.")
-    k = total_mass / subject_mass
-    for body, i in bodies:
+    k = total_mass / sum(new_mass[i] for _, i in subject_bodies)
+    for body, i in subject_bodies:
         if new_mass[i] > 0:
             if body.name not in body_scales:
                 _set_inertial(

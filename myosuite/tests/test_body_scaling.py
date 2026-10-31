@@ -524,6 +524,52 @@ def test_unsupported_cases_are_refused() -> None:
         scale_model(connected, {"shank": 1.1})
 
 
+HFIELD_XML = """<mujoco><asset><hfield name="h" nrow="3" ncol="3" size="1 1 .1 .1"/></asset>
+<worldbody><body name="a"><geom size=".1"/></body>
+<body name="b" pos="0 0 1"><geom type="hfield" hfield="h"/></body></worldbody></mujoco>"""
+
+TWO_AGENTS_XML = """<mujoco><compiler settotalmass="30"/><worldbody>
+<body name="a"><freejoint/><geom size=".1" mass="1"/></body>
+<body name="b" pos="1 0 0"><freejoint/><geom size=".1" mass="2"/></body>
+</worldbody></mujoco>"""
+
+
+def _shared_mesh_leg() -> mujoco.MjSpec:
+    spec = _leg()
+    spec.body("shank").add_geom(type=mujoco.mjtGeom.mjGEOM_MESH, meshname="cube")
+    return spec
+
+
+@pytest.mark.parametrize(
+    "make,scales,total_mass,error",
+    [
+        (_shared_mesh_leg, {"thigh": 1.1}, None, NotImplementedError),
+        (_shared_mesh_leg, {"thigh": 1.1, "shank": 1.2}, None, NotImplementedError),
+        (
+            lambda: mujoco.MjSpec.from_string(HFIELD_XML),
+            {"a": 1.1, "b": 1.1},
+            None,
+            NotImplementedError,
+        ),
+        (lambda: mujoco.MjSpec.from_string(TWO_AGENTS_XML), {}, 50.0, ValueError),
+    ],
+    ids=["mesh-also-unscaled", "mesh-scaled-twice", "height-field", "ambiguous-mass"],
+)
+def test_refused_scaling_leaves_the_spec_unchanged(
+    make: Callable[[], mujoco.MjSpec],
+    scales: dict[str, float],
+    total_mass: float | None,
+    error: type[Exception],
+) -> None:
+    """Everything that can refuse a scaling is checked before the first edit."""
+    spec = make()
+    xml, before = spec.to_xml(), _model_bytes(spec.copy().compile())
+    with pytest.raises(error):
+        _scale_spec(spec, scales, total_mass=total_mass)
+    assert spec.to_xml() == xml
+    assert _model_bytes(spec.copy().compile()) == before
+
+
 @pytest.mark.parametrize("factor", [0.0, -1.0, np.nan, np.inf, -np.inf])
 def test_invalid_factors_are_rejected(factor: float) -> None:
     with pytest.raises(ValueError, match="finite and positive"):
