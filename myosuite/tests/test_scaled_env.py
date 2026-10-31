@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import mujoco
@@ -17,6 +18,11 @@ from myosuite.core.body_scaling import scale_model
 from myosuite.core.config import EnvConfig
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.utils import gym
+from myosuite.utils.checkpoint_manifest import (
+    check_contract,
+    read_manifest,
+    write_manifest,
+)
 
 pytestmark = pytest.mark.tier1
 
@@ -159,3 +165,35 @@ def test_tasks_without_a_subject_model_refuse_scales(env_id: str) -> None:
 def test_mjx_refuses_scales() -> None:
     with pytest.raises(NotImplementedError, match="cpu and mjlab"):
         make_env(ENV_ID, backend="mjx", scales=SCALES)
+
+
+def test_manifest_records_the_subject_and_a_strict_check_rejects_another(
+    tmp_path: Path,
+) -> None:
+    write_manifest(tmp_path, ENV_ID, scales=SCALES, total_mass=70.0)
+    subject = read_manifest(tmp_path)["subject"]
+    assert subject["scales"] == SCALES and subject["total_mass"] == 70.0
+    assert len(subject["model_digest"]) == 64
+    assert check_contract(ENV_ID, tmp_path, scales=SCALES, total_mass=70.0, strict=True)
+    # The same body written differently is the same subject.
+    same = {"femur_r": np.array([1.02, 1.07, 0.98]), "tibia_l": [1.04] * 3}
+    assert check_contract(ENV_ID, tmp_path, scales=same, total_mass=70.0, strict=True)
+    other = {"femur_r": 1.03}
+    with pytest.raises(ValueError, match="bodies differ"):
+        check_contract(ENV_ID, tmp_path, scales=other, strict=True)
+    with pytest.warns(UserWarning, match="bodies differ"):
+        assert not check_contract(ENV_ID, tmp_path, scales=other)
+    with pytest.raises(ValueError, match="nominal body"):  # subject policy, nominal env
+        check_contract(ENV_ID, tmp_path, strict=True)
+
+
+def test_nominal_checkpoints_are_checked_as_before(tmp_path: Path) -> None:
+    write_manifest(tmp_path, ENV_ID)
+    assert "subject" not in read_manifest(tmp_path)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert check_contract(ENV_ID, tmp_path)
+        assert check_contract(ENV_ID, tmp_path, strict=True)
+        assert check_contract(ENV_ID, tmp_path / "no_manifest")
+    with pytest.raises(ValueError, match="nominal body"):  # nominal policy, subject env
+        check_contract(ENV_ID, tmp_path, scales=SCALES, strict=True)
