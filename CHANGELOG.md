@@ -44,11 +44,26 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
-* **Body scaling:** `myosuite.core.body_scaling.scale_bodies` (and `ModelBuilder.scale_bodies`) scales a musculoskeletal model to a subject with OpenSim-style rules: per-axis factors per body; muscle fibre and tendon slack lengths follow the muscle-tendon length in the default pose; mass by volume or kept, optionally rescaled to a total. `read_opensim_scales` reads a ScaleSet or a scaled `.osim` (e.g. from AddBiomechanics), and Rajagopal segment mappings cover MyoLeg and the MuscleMimic MyoFullBody. One factor is an exact similarity (tested on MyoLeg and MyoFullBody). `ScaleEstimate` and `build_subject_model` add immutable inputs, deterministic provenance, root/sole alignment and explicit checkpoint morphology validation. Skin influences support segment-local anisotropic scaling; incompatible `.skn`/GLB exports require approximation opt-in. Named-joint replay on a scaled full body is tested. Registered envs retain their nominal morphology; retarget motion against the scaled target before use. Retargeting your own SMPL motion with GMR-Fit is documented, with the license rules (#166, [#525]).
+* **Body scaling:** `myosuite.core.body_scaling.scale_bodies` (and `ModelBuilder.scale_bodies`) scales a musculoskeletal model to a subject with OpenSim-style rules: per-axis factors per body; muscle fibre and tendon slack lengths follow the muscle-tendon length in the default pose; mass by volume or kept, optionally rescaled to the subject's total (static scenery and other agents in a composed scene keep their mass). `read_opensim_scales` reads a ScaleSet or a scaled `.osim` (e.g. from AddBiomechanics), and Rajagopal segment mappings cover MyoLeg and the MuscleMimic MyoFullBody. One factor is an exact similarity (tested on MyoLeg and MyoFullBody). `ScaleEstimate` and `build_subject_model` add immutable inputs, deterministic provenance, root/sole alignment and explicit checkpoint morphology validation. Skin influences support segment-local anisotropic scaling; incompatible `.skn`/GLB exports require approximation opt-in. Named-joint replay on a scaled full body is tested. Registered envs retain their nominal morphology; retarget motion against the scaled target before use. Retargeting your own SMPL motion with GMR-Fit is documented, with the license rules (#166, [#525]).
 
 ### Changed
 
+* **Fatigue groups and parameters for every muscle of the bundled models.**
+  - `_muscle_group` now also strips MuscleMimic's `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent
+    scenes and an `R:`/`L:` side prefix. Before, the MuscleMimic left arm (32 muscles, 63 with fingers) and all 708
+    muscles of `myoChallengeChaseTagFBVs-v0` fell back to `Default`, so the two arms fatigued differently.
+  - New rows, each cited in `MUSCLE_FATIGUE_PARAMS` and `docs/source/fatigue_validation.rst`: `Trunk` for the 108
+    lumbar and abdominal muscles of MyoTorso and the MuscleMimic torso (Frey-Law et al. 2012 trunk fit),
+    `Thigh-Hamstring` (Frey-Law et al. 2012 knee fit with r = 15 of Looft et al. 2018; no knee-flexor fit is
+    published) and `Hip` (the general fit, now explicit: no hip fit is published, Yang et al. 2025).
+  - Regrouped: the forearm rotators `SUP`, `PT`, `PQ` (were elbow extensor, elbow flexor, wrist flexor) use the
+    joint-level `Elbow` row; `APL` is a wrist extensor (was flexor); the rotator cuff is labelled as rotators (no
+    numeric change).
+  - Changes the fatigue dynamics of `myoFati*` envs with torso, hamstring, forearm-rotator or `APL` muscles: torso,
+    table tennis, soccer, full-body ChaseTag, leg walk/stand, arm reach, bimanual, relocate and the hand envs
+    (`docs/baseline_checkpoints.md`).
 * `myoLegDirectionalForward-v0` and `myoLegDirectionalBackward-v0` swapped names. The leg model faces `-y`, so the
   old "forward" task (`heading_dir=(0, 1)`, 1.2 m/s) trained walking backwards and the old "backward" task
   (`heading_dir=(0, -1)`, 1.0 m/s) walking forwards. Forward is now `(0, -1)` at 1.0 m/s and Backward `(0, 1)` at
@@ -56,6 +71,11 @@ All notable changes to this project are documented in this file.
   `myoLegDirectionalRandom-v0` is unchanged.
 * Baseline downloads look for the patch-release tag first (`v3.0.1`), then the minor-release tag (`v3.0`), then
   `main`, so a patch release can ship changed baselines without changing those of earlier releases.
+
+### Fixed
+
+* **Motion clips load without pickle:** `load_motion_clip`, the CPU Mimic clip env and the full-body observation adapter open `.npz` files with `allow_pickle=False` (unpickling a downloaded file can run code). Names stored as bytes now read as text instead of `"b'name'"`, and a pickled name array is refused with instructions for re-saving it. SAR synergy metadata is written as strings, and older folders still load ([#522]).
+* Fixed initial fatigue arrays retain their requested values across CPU episodes. `CumulativeFatigue.reset` copies `fatigue_reset_vec` into owned state. Stepping previously mutated writable NumPy arrays supplied by callers and failed on read-only arrays.
 
 ## [3.0.0] - 2026-10-07
 
@@ -263,6 +283,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#504]: https://github.com/MyoHub/myosuite/pull/504
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#520]: https://github.com/MyoHub/myosuite/pull/520
+[#522]: https://github.com/MyoHub/myosuite/pull/522
 [#525]: https://github.com/MyoHub/myosuite/pull/525
 [#540]: https://github.com/MyoHub/myosuite/pull/540
 

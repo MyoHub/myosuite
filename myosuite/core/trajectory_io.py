@@ -80,6 +80,37 @@ class MotionClip:
             )
 
 
+def read_npz_names(npz: np.lib.npyio.NpzFile, key: str) -> list[str]:
+    """Return the names stored under *key* of an NPZ opened without pickle.
+
+    Motion files often come from downloads, so they are opened with
+    ``allow_pickle=False``: names must be a string (or bytes) array, and a
+    pickled object array is refused instead of unpickled.
+
+    Args:
+        npz: File returned by ``np.load(path, allow_pickle=False)``.
+        key: Key of the name array.
+
+    Returns:
+        The names as ``str`` (bytes are decoded as UTF-8).
+
+    Raises:
+        ValueError: If *key* holds a pickled object array.
+    """
+    try:
+        raw = np.asarray(npz[key]).reshape(-1)
+    except ValueError as err:
+        if "allow_pickle" not in str(err):
+            raise
+        source = getattr(getattr(npz, "zip", None), "filename", None) or "the file"
+        raise ValueError(
+            f"{key!r} in {source} is a pickled object array, and motion files are "
+            "loaded without pickle. Re-save the names as strings: "
+            f"np.savez(..., {key}=np.asarray(names, dtype=str))."
+        ) from err
+    return [n.decode() if isinstance(n, bytes) else str(n) for n in raw.tolist()]
+
+
 def _decode_name_list(
     npz: np.lib.npyio.NpzFile,
     candidate_keys: tuple[str, ...],
@@ -87,7 +118,7 @@ def _decode_name_list(
     for key in candidate_keys:
         if key not in npz.files:
             continue
-        values = [str(name) for name in np.asarray(npz[key]).reshape(-1).tolist()]
+        values = read_npz_names(npz, key)
         if not values:
             raise ValueError(f"Motion file metadata key {key!r} is empty.")
         return values
@@ -351,7 +382,7 @@ def load_motion_clip(
     :func:`expand_motion_clip_to_model` before its columns are used as model
     qpos/qvel.
     """
-    npz = np.load(path, allow_pickle=True)
+    npz = np.load(path, allow_pickle=False)
     if "qpos" not in npz.files:
         raise KeyError(f"Motion file missing required key 'qpos': {path}")
     qpos = np.asarray(npz["qpos"], dtype=np.float64)
@@ -380,7 +411,7 @@ def load_motion_clip(
     site_names: list[str] | None = None
     if "site_names" in npz.files:
         try:
-            site_names = [str(n) for n in npz["site_names"]]
+            site_names = read_npz_names(npz, "site_names")
         except Exception as exc:
             import warnings
 
@@ -444,5 +475,6 @@ __all__ = [
     "check_clip_rate",
     "expand_motion_clip_to_model",
     "load_motion_clip",
+    "read_npz_names",
     "resolve_motion_path",
 ]

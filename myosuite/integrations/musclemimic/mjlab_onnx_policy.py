@@ -702,12 +702,9 @@ class FullbodyOnnxMjlabPolicy(_FullbodyMjlabPolicyBridge):
         state_indices: np.ndarray | None = None,
         obs_backend: ObsBackend = "auto",
     ) -> None:
-        try:
-            import onnxruntime as ort
-        except ImportError as err:
-            raise ImportError(
-                "onnxruntime is required. Install with: pip install onnxruntime"
-            ) from err
+        from myosuite.utils.onnxruntime_utils import require_onnxruntime
+
+        ort = require_onnxruntime()
 
         super().__init__(
             env=env,
