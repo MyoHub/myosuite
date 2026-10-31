@@ -107,6 +107,7 @@ _EXPORTS_BY_MODULE: dict[str, tuple[str, ...]] = {
         "save_myotorso_bimanual_mimic_xml",
     ),
     "myosuite.integrations.musclemimic.fullbody_model": (
+        "build_terrain_fullbody_spec",
         "FULLBODY_BODY2SITES_FOR_MIMIC",
         "build_mimic_fullbody_spec",
         "build_native_mimic_fullbody_spec",
@@ -122,6 +123,22 @@ _EXPORTS_BY_MODULE: dict[str, tuple[str, ...]] = {
         "NativePlaybackArgs",
         "parse_native_playback_argv",
         "run_native_playback",
+    ),
+    "myosuite.integrations.musclemimic.terrain_observation": (
+        "MIMIC_SITES",
+        "TerrainObsCfg",
+        "TerrainObservation",
+        "TerrainHeights",
+    ),
+    "myosuite.integrations.musclemimic.terrain_policy": (
+        "load_terrain_policy",
+        "TerrainController",
+        "download_terrain_checkpoint",
+    ),
+    "myosuite.integrations.musclemimic.reference_motion": (
+        "compose_waypoint_reference",
+        "plan_waypoint_reference",
+        "GaitParameters",
     ),
     "myosuite.core.playback_contract": (
         "PlaybackArtifacts",
@@ -171,6 +188,20 @@ __all__ = [
     "default_musclemimic_fullbody_config",
     "resolve_musclemimic_bimanual_xml",
     "resolve_musclemimic_fullbody_xml",
+]
+
+__all__ += [
+    "build_terrain_fullbody_spec",
+    "MIMIC_SITES",
+    "TerrainObsCfg",
+    "TerrainObservation",
+    "TerrainHeights",
+    "load_terrain_policy",
+    "TerrainController",
+    "download_terrain_checkpoint",
+    "compose_waypoint_reference",
+    "plan_waypoint_reference",
+    "GaitParameters",
 ]
 
 

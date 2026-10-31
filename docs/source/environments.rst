@@ -38,6 +38,8 @@ The mjlab backend registers a twin under the same ``env_id`` for these CPU famil
    * - Leg
      - ``myoLegWalk``, ``myoLegDirectional{Forward,Backward,Random}``,
        ``myoLegStandRandom``, ``myoLeg{Rough,Hilly,Stair}TerrainWalk``
+   * - Full body
+     - ``myoFullBodyWaypoint``
    * - Challenge
      - ``myoChallengeChaseTagFBP2``, ``myoChallengeTableTennisP{0,1,2}``
 
@@ -466,6 +468,9 @@ Full body and MuscleMimic
    * - ``myoFullBodyDirectional-v0``
      - Full-body directional locomotion
      - no
+   * - ``myoFullBodyWaypoint-v0``
+     - Full-body walking through random ordered waypoints (tutorial 4.4: custom scenes, TERRA-4B)
+     - yes
    * - ``myoChallengeChaseTagFBP2-v0``
      - Chase-tag, full body, scripted opponent
      - yes

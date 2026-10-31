@@ -476,7 +476,7 @@ def test_render_rollout_ends_with_the_result_path(
     import myosuite.utils.video_io as video_io
 
     meta = {"samples": 3, "duration": 0.1, "usd": "x.usdc"}
-    monkeypatch.setattr(blender_render, "export_rollout", lambda config: meta)
+    monkeypatch.setattr(blender_render, "export_rollout", lambda config, **kwargs: meta)
     monkeypatch.setattr(blender_render.subprocess, "run", lambda *a, **kw: None)
     monkeypatch.setattr(video_io, "write_video", lambda *a, **kw: None)
     out = tmp_path / "render"
@@ -642,3 +642,118 @@ def test_motion_clip_is_replayed_frame_by_frame_at_its_own_rate(
     assert proxy[0] == 0 and proxy[1:].min() > 0
     with pytest.raises(ValueError, match="not both"):
         RenderConfig(env="test", output=tmp_path, motion=clip, checkpoint=clip)
+
+
+def test_reference_overlay_exports_separately_without_changing_physics(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
+
+    from myosuite.core.trajectory_io import MotionClip
+    from myosuite.viz.ghost_body_viz import CombinedViz, GhostBodyViz
+
+    env = _Env()
+    poses = np.arange(5, dtype=float).reshape(-1, 1) * 0.1 + 1
+    ghost = GhostBodyViz.from_motion_clip(
+        MotionClip(qvel=None, site_xpos=None, site_names=None, qpos=poses),
+        env.model,
+        joint_rgba=(0.1, 0.5, 1, 0.8),
+    )
+
+    shifted = GhostBodyViz.from_motion_clip(
+        MotionClip(qpos=poses, qvel=None, site_xpos=None, site_names=None),
+        env.model,
+        position_offset=np.array([0, 1, 0]),
+    )
+
+    def action(observation: np.ndarray) -> np.ndarray:
+        return np.zeros(2)
+
+    meta = blender_render.export_rollout(
+        _config(tmp_path / "ghost"),
+        env=env,
+        policy=action,
+        viz_fn=CombinedViz([ghost.as_viz_fn(), shifted.as_viz_fn()]),
+    )
+    assert not env.closed
+    assert meta["motion_source"] == "callable"
+    stage = Usd.Stage.Open(meta["usd"])
+    prim = stage.GetPrimAtPath("/World/Mesh_Xform_Overlay_0")
+    assert prim.IsValid()
+    for index in [0, 2, 4]:
+        transform = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(index)
+        np.testing.assert_allclose(transform.ExtractTranslation(), ghost.xpos[index, 1])
+    second = stage.GetPrimAtPath("/World/Mesh_Xform_Overlay_1")
+    assert second.IsValid()
+    np.testing.assert_allclose(
+        UsdGeom.Xformable(second).ComputeLocalToWorldTransform(4).ExtractTranslation(),
+        ghost.xpos[4, 1] + [0, 1, 0],
+    )
+    shader = stage.GetPrimAtPath("/World/_materials/Material_Overlay_0/Principled_BSDF")
+    np.testing.assert_allclose(
+        shader.GetAttribute("inputs:diffuseColor").Get(), [0.1, 0.5, 1], atol=5e-4
+    )
+    assert shader.GetAttribute("inputs:opacity").Get() == pytest.approx(0.8, abs=5e-4)
+    blender_render.export_rollout(_config(tmp_path / "plain"), env=env, policy=action)
+    with (
+        np.load(tmp_path / "ghost/reference.npz") as overlay,
+        np.load(tmp_path / "plain/reference.npz") as plain,
+    ):
+        np.testing.assert_array_equal(overlay["qpos"], plain["qpos"])
+
+
+def test_bone_overlay_exports_original_mesh_not_another_geometry(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
+    from myosuite.core.trajectory_io import MotionClip
+    from myosuite.viz.ghost_body_viz import GhostBodyViz
+
+    env = _Env()
+    env.model = mujoco.MjModel.from_xml_string("""
+        <mujoco><option timestep=".002" gravity="0 0 0"/>
+          <asset>
+            <mesh name="decoy" vertex="0 0 0 .1 0 0 0 .1 0 0 0 .1"/>
+            <mesh name="anatomy" vertex="0 0 0 .2 0 0 0 .3 0 0 0 .4"/>
+          </asset>
+          <worldbody><geom type="mesh" mesh="decoy" pos="0 2 0"/>
+            <body><joint name="slide" type="slide" axis="1 0 0"/>
+              <geom name="bone" type="mesh" mesh="anatomy"/>
+            </body>
+          </worldbody>
+          <actuator><motor joint="slide"/><motor joint="slide"/></actuator>
+        </mujoco>
+    """)
+    env.data = mujoco.MjData(env.model)
+    ghost = GhostBodyViz.from_motion_clip(
+        MotionClip(qpos=np.ones((5, 1)), qvel=None, site_xpos=None, site_names=None),
+        env.model,
+        bone_meshes=True,
+    )
+    meta = blender_render.export_rollout(
+        _config(tmp_path),
+        env=env,
+        policy=lambda obs: np.zeros(2),
+        viz_fn=ghost.as_viz_fn(),
+    )
+    stage = Usd.Stage.Open(meta["usd"])
+    original = next(
+        p
+        for p in stage.Traverse()
+        if p.GetTypeName() == "Mesh" and p.GetName().startswith("Mesh_bone_id")
+    )
+    overlay = stage.GetPrimAtPath("/World/Mesh_Xform_Overlay_0/Mesh_Overlay_0")
+    assert overlay.IsValid()
+    np.testing.assert_array_equal(
+        UsdGeom.Mesh(original).GetPointsAttr().Get(),
+        UsdGeom.Mesh(overlay).GetPointsAttr().Get(),
+    )
+    pose = UsdGeom.Xformable(overlay).ComputeLocalToWorldTransform(0)
+    expected = mujoco.MjData(env.model)
+    expected.qpos[:] = 1
+    mujoco.mj_forward(env.model, expected)
+    np.testing.assert_allclose(
+        pose.ExtractTranslation(), expected.geom_xpos[env.model.geom("bone").id]
+    )
