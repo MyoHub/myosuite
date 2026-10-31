@@ -75,10 +75,13 @@ This integration **does not** read or require anything under the MyoSuite
 ### ChaseTag 1v1 steered teacher
 
 `ChaseTagSteeredPair` drives both FBVs agents with the clip-conditioned
-`mm-10m-2` teacher. The chaser’s walk clip faces the opponent; the runner’s
-faces away. Each step blends toward the current clip frame
-(``track_alpha``, default 0.45) so the gait stays continuous — no
-mid-episode joint teleport. The scored 546-d observation is unchanged.
+`mm-10m-2` teacher. Both agents look at each other; the chaser walks
+toward the opponent and the runner walks away. Headings turn off the
+±6 m fence so they stay inside the arena. Each step blends toward
+the current clip frame (``track_alpha``, default 0.45) so the gait stays
+continuous — no mid-episode joint teleport. The scored 546-d observation
+is unchanged. Playback: tutorial 5.7. Expert pairs: ``training/chasetag_teacher``.
+A 546 → 354 student is 5.4 / 5.6 / ``myoChallengeChaseTagFBVsTrain-v0``.
 
 ```python
 import os

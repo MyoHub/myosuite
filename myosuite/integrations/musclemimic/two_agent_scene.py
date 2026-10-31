@@ -336,6 +336,8 @@ def write_clip_pose(
     *,
     keep_xy: bool = True,
     keep_yaw: bool = False,
+    face_yaw: float | None = None,
+    travel_yaw: float | None = None,
     act: float | np.ndarray | None = 0.05,
     alpha: float = 1.0,
 ) -> None:
@@ -349,6 +351,10 @@ def write_clip_pose(
         keep_xy: Keep the agent's current root XY (spawn / mid-episode).
         keep_yaw: Keep the agent's current root yaw and rotate clip planar
             velocity into that frame (RSI without a heading change).
+        face_yaw: If set, write this root yaw (overrides ``keep_yaw``).
+        travel_yaw: If set, rotate clip planar velocity onto this heading
+            (can differ from ``face_yaw``, e.g. a runner who looks at the
+            chaser but walks away).
         act: Muscle activation written on this agent (``0.05`` matches a
             standing overlay). ``None`` leaves ``act`` unchanged.
         alpha: Blend toward the clip (``1`` snaps, ``0`` is a no-op). A
@@ -358,11 +364,22 @@ def write_clip_pose(
     if alpha <= 0.0:
         return
     fa, sa, _ = amap.qpos_pairs[0]
+    fva, sva, _ = amap.qvel_pairs[0]
     xy = fbvs_data.qpos[fa : fa + 2].copy() if keep_xy else None
-    yaw = (
-        float(quat_math.quat2yaw(fbvs_data.qpos[fa + 3 : fa + 7])) if keep_yaw else None
-    )
+    if face_yaw is not None:
+        yaw = float(face_yaw)
+    elif keep_yaw:
+        yaw = float(quat_math.quat2yaw(fbvs_data.qpos[fa + 3 : fa + 7]))
+    else:
+        yaw = None
     clip_yaw = float(quat_math.quat2yaw(clip_qpos[sa + 3 : sa + 7]))
+    clip_lin = np.array(
+        [float(clip_qvel[sva]), float(clip_qvel[sva + 1]), 0.0], dtype=np.float64
+    )
+    if float(np.hypot(clip_lin[0], clip_lin[1])) > 1e-6:
+        clip_travel = float(np.arctan2(clip_lin[1], clip_lin[0]))
+    else:
+        clip_travel = clip_yaw
     if alpha >= 1.0:
         for fadr, sadr, w in amap.qpos_pairs:
             fbvs_data.qpos[fadr : fadr + w] = clip_qpos[sadr : sadr + w]
@@ -387,9 +404,12 @@ def write_clip_pose(
         fbvs_data.qpos[fa + 3 : fa + 7] = quat_math.mul_quat(
             qz, clip_qpos[sa + 3 : sa + 7]
         )
-        fva, sva, _ = amap.qvel_pairs[0]
-        lin = np.array([float(clip_qvel[sva]), float(clip_qvel[sva + 1]), 0.0])
-        lin = quat_math.rot_vec_quat(lin, qz)
+    want_travel = float(travel_yaw) if travel_yaw is not None else yaw
+    if want_travel is not None:
+        qz_v = quat_math.axis_angle2quat(
+            np.array([0.0, 0.0, 1.0]), want_travel - clip_travel
+        )
+        lin = quat_math.rot_vec_quat(clip_lin, qz_v)
         fbvs_data.qvel[fva] = lin[0]
         fbvs_data.qvel[fva + 1] = lin[1]
     if (

@@ -27,8 +27,11 @@ from myosuite.integrations.musclemimic.two_agent_scene import (
 from myosuite.physics import quat_math
 from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
 from myosuite.terms.multiplayer.heading import (
+    ARENA_LIM_M,
     COMPASS_LABELS,
     aim_heading_xy,
+    body_yaw,
+    clamp_arena_xy,
     compass_index,
     heading_yaw,
     role_heading_xy,
@@ -58,6 +61,7 @@ def test_role_heading_points_toward_or_away() -> None:
     opp = np.array([2.0, 0.0])
     toward = role_heading_xy(me, opp, pursue=True)
     away = role_heading_xy(me, opp, pursue=False)
+    assert body_yaw(toward) == pytest.approx(heading_yaw(toward) + np.pi / 2)
     assert toward[0] == pytest.approx(1.0)
     assert away[0] == pytest.approx(-1.0)
     assert compass_index(heading_yaw(toward)) == COMPASS_LABELS.index("E")
@@ -84,6 +88,23 @@ def test_wall_repulsion_pushes_inward() -> None:
         margin=1.5,
     )
     assert aimed[0] < 0.0
+
+
+def test_aim_heading_does_not_walk_through_the_fence() -> None:
+    assert ARENA_LIM_M == 6.0
+    flee = aim_heading_xy(
+        np.array([0.0, -5.8]),
+        np.array([0.0, -3.0]),
+        pursue=False,
+    )
+    assert flee[1] >= 0.0
+    chase = aim_heading_xy(
+        np.array([5.7, 0.0]),
+        np.array([8.0, 0.0]),
+        pursue=True,
+    )
+    assert chase[0] <= 0.0
+    assert clamp_arena_xy(np.array([7.0, -7.0]))[0] < ARENA_LIM_M
 
 
 def test_write_rotated_clip_npz_turns_root_xy(tmp_path: Path) -> None:
@@ -193,6 +214,32 @@ def test_write_clip_pose_keeps_xy_and_optional_yaw() -> None:
         np.pi / 2, abs=1e-5
     )
     assert fd.qvel[amap.qvel_pairs[0][0] + 1] == pytest.approx(0.4, abs=1e-5)
+
+
+def test_write_clip_pose_face_and_travel_can_differ() -> None:
+    fbvs, shadow = _tiny_pair_models()
+    fd = mujoco.MjData(fbvs)
+    amap = build_agent_shadow_map(fbvs, shadow, "a0_", [0])
+    fa, _, _ = amap.qpos_pairs[0]
+    fd.qpos[fa : fa + 2] = [0.0, 1.0]
+    clip_qpos = np.zeros(shadow.nq)
+    clip_qpos[3] = 1.0
+    clip_qvel = np.zeros(shadow.nv)
+    clip_qvel[0] = 0.5
+    write_clip_pose(
+        fd,
+        amap,
+        clip_qpos,
+        clip_qvel,
+        keep_xy=True,
+        face_yaw=-np.pi / 2,
+        travel_yaw=np.pi / 2,
+    )
+    assert quat_math.quat2yaw(fd.qpos[fa + 3 : fa + 7]) == pytest.approx(
+        -np.pi / 2, abs=1e-5
+    )
+    assert fd.qvel[amap.qvel_pairs[0][0]] == pytest.approx(0.0, abs=1e-5)
+    assert fd.qvel[amap.qvel_pairs[0][0] + 1] == pytest.approx(0.5, abs=1e-5)
 
 
 def test_write_clip_pose_alpha_blends_hinge() -> None:

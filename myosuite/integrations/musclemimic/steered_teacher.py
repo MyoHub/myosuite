@@ -44,9 +44,14 @@ from myosuite.terms.multiplayer.heading import (
     COMPASS_LABELS,
     COMPASS_STEP,
     aim_heading_xy,
+    body_yaw,
+    clamp_arena_xy,
     compass_index,
     compass_label,
     heading_yaw,
+    role_heading_xy,
+    step_compass,
+    wall_repulsion,
 )
 
 AGENTS: tuple[str, str] = ("agent_0", "agent_1")
@@ -166,7 +171,8 @@ class SteeredTeacher:
 
 @dataclass
 class ChaseTagSteeredPair:
-    """Two :class:`SteeredTeacher`s: chaser toward opponent, runner away.
+    """Two :class:`SteeredTeacher`s: they look at each other; chaser walks
+    toward the opponent, runner walks away.
 
     ``track_alpha`` blends each agent toward the current clip frame before
     the teacher acts. ``1`` is kinematic playback; ``0`` is teacher-only
@@ -204,20 +210,55 @@ class ChaseTagSteeredPair:
         }
         return cls(walkers=walkers, maps=maps, track_alpha=float(track_alpha))
 
+    @classmethod
+    def load(
+        cls,
+        fbvs_env: Any,
+        *,
+        teacher_root: Path | None = None,
+        clips_dir: Path | None = None,
+        track_alpha: float = 0.45,
+    ) -> ChaseTagSteeredPair:
+        """Download ``mm-10m-2`` and compass clips, then :meth:`create`."""
+        from huggingface_hub import hf_hub_download, snapshot_download
+
+        from myosuite.integrations.musclemimic.fullbody_model import (
+            compile_mimic_fullbody_mjmodel,
+            default_mimic_fullbody_config,
+        )
+        from myosuite.integrations.musclemimic.model_versions import (
+            checkpoint_models_version,
+        )
+
+        raw = fbvs_env.unwrapped
+        root = Path(teacher_root or snapshot_download(repo_id="amathislab/mm-10m-2"))
+        cfg = default_mimic_fullbody_config()
+        cfg.model_version = checkpoint_models_version("hf://amathislab/mm-10m-2")
+        shadow, _, _ = compile_mimic_fullbody_mjmodel(cfg)
+        src = Path(
+            hf_hub_download(
+                repo_id="amathislab/musclemimic-retargeted",
+                filename=DEFAULT_WALK,
+                repo_type="dataset",
+            )
+        )
+        cache = Path(
+            clips_dir or (Path.home() / ".cache" / "myosuite" / "compass_walk")
+        )
+        clips = ensure_compass_clips(
+            src, cache, expected_nq=shadow.nq, expected_nv=shadow.nv
+        )
+        return cls.create(
+            root, raw.model, raw._meta, clips, shadow, track_alpha=track_alpha
+        )
+
     def reset(
         self, model: mujoco.MjModel, data: mujoco.MjData, meta: Any, task: str
     ) -> None:
         for agent, walker in self.walkers.items():
-            lab = self._desired_label(data, meta, agent, task)
-            walker.reset(lab)
-            write_clip_pose(
-                data,
-                self.maps[agent],
-                walker.clip.qpos[0],
-                _clip_qvel(walker.clip, 0),
-                keep_xy=True,
-                keep_yaw=False,
-            )
+            face, travel = self._aim(data, meta, agent, task)
+            walker.reset(compass_label(compass_index(heading_yaw(travel))))
+            self._track_pose(data, agent, walker, face, travel, alpha=1.0)
         mujoco.mj_forward(model, data)
 
     def actions(
@@ -228,29 +269,65 @@ class ChaseTagSteeredPair:
         task: str,
         step: int,
     ) -> dict[str, np.ndarray]:
-        if self.track_alpha > 0.0:
-            for agent, walker in self.walkers.items():
-                frame = walker.goal_frame()
-                write_clip_pose(
+        for agent, walker in self.walkers.items():
+            face, travel = self._aim(data, meta, agent, task)
+            want = compass_index(heading_yaw(travel))
+            walker.set_heading(compass_label(step_compass(walker.idx, want)))
+            if self.track_alpha > 0.0:
+                self._track_pose(
                     data,
-                    self.maps[agent],
-                    walker.clip.qpos[frame],
-                    _clip_qvel(walker.clip, frame),
-                    keep_xy=True,
-                    keep_yaw=False,
-                    act=None,
+                    agent,
+                    walker,
+                    face,
+                    travel,
                     alpha=self.track_alpha,
+                    act=None,
                 )
+        if self.track_alpha > 0.0:
             mujoco.mj_forward(model, data)
         return {
             agent: walker.action(data, self.maps[agent])
             for agent, walker in self.walkers.items()
         }
 
-    def _desired_label(
+    def _aim(
         self, data: mujoco.MjData, meta: Any, agent: str, task: str
-    ) -> str:
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Look at the opponent; walk toward (chaser) or away (runner).
+
+        Near a fence, look along the travel heading so a wall turn is not a
+        sidestep through the panel.
+        """
         me = data.site_xpos[meta.site_ids[agent]["pelvis_site"]][:2]
         opp = data.site_xpos[meta.site_ids[OPPONENT[agent]]["pelvis_site"]][:2]
-        v = aim_heading_xy(me, opp, pursue=agent_is_chaser(agent, task))
-        return compass_label(compass_index(heading_yaw(v)))
+        face = role_heading_xy(me, opp, pursue=True)
+        travel = aim_heading_xy(me, opp, pursue=agent_is_chaser(agent, task))
+        if float(np.linalg.norm(wall_repulsion(me))) > 1e-6:
+            face = travel
+        return face, travel
+
+    def _track_pose(
+        self,
+        data: mujoco.MjData,
+        agent: str,
+        walker: SteeredTeacher,
+        face: np.ndarray,
+        travel: np.ndarray,
+        *,
+        alpha: float,
+        act: float | None = 0.05,
+    ) -> None:
+        frame = 0 if alpha >= 1.0 else walker.goal_frame()
+        write_clip_pose(
+            data,
+            self.maps[agent],
+            walker.clip.qpos[frame],
+            _clip_qvel(walker.clip, frame),
+            keep_xy=True,
+            face_yaw=body_yaw(face),
+            travel_yaw=heading_yaw(travel),
+            act=act,
+            alpha=alpha,
+        )
+        fa = self.maps[agent].qpos_pairs[0][0]
+        data.qpos[fa : fa + 2] = clamp_arena_xy(data.qpos[fa : fa + 2])
