@@ -743,6 +743,8 @@ def _resolve_mimic_mjlab_ids(
             raise ValueError("ctrl_dt must be provided when clip is given")
         from myosuite.core.trajectory_io import expand_motion_clip_to_model
         from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
+            ClipBankCfg,
+            ClipJointLayout,
             ClipTrajectorySource,
             MultiClipTrajectorySource,
         )
@@ -756,7 +758,9 @@ def _resolve_mimic_mjlab_ids(
         )
         resolved_clip = resolved_clips[0]
         tracked_site_ids = np.arange(len(site_names), dtype=np.int64)
-        if len(resolved_clips) == 1:
+        # A MotionClipBank carries its device storage; a lean one always uses the bank.
+        bank_cfg = getattr(clip_bank, "bank_cfg", None) or ClipBankCfg()
+        if len(resolved_clips) == 1 and bank_cfg.exact:
             clip_source = ClipTrajectorySource(
                 clip=resolved_clip,
                 tracked_site_ids=tracked_site_ids,
@@ -767,6 +771,8 @@ def _resolve_mimic_mjlab_ids(
                 clips=resolved_clips,
                 tracked_site_ids=tracked_site_ids,
                 ctrl_dt=ctrl_dt,
+                bank_cfg=bank_cfg,
+                joint_layout=ClipJointLayout.from_model(mj_model),
             )
 
     _mimic_mjlab_cache[key] = dict(
