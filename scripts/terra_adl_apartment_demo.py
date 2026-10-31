@@ -9,13 +9,13 @@ from pathlib import Path
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
-import imageio.v2 as imageio
-import mujoco
-import numpy as np
+import imageio.v2 as imageio  # noqa: E402
+import mujoco  # noqa: E402
+import numpy as np  # noqa: E402
 
-from myosuite import make_env
-from myosuite.envs.waypoint import WaypointTaskCfg
-from myosuite.integrations.musclemimic import (
+from myosuite import make_env  # noqa: E402
+from myosuite.envs.waypoint import WaypointTaskCfg  # noqa: E402
+from myosuite.integrations.musclemimic import (  # noqa: E402
     GaitParameters,
     MIMIC_SITES,
     TerrainController,
@@ -25,12 +25,12 @@ from myosuite.integrations.musclemimic import (
     load_terrain_policy,
     plan_waypoint_reference,
 )
-from myosuite.integrations.musclemimic.adl_apartment import (
+from myosuite.integrations.musclemimic.adl_apartment import (  # noqa: E402
     adl_apartment_scene,
     adl_route,
 )
-from myosuite.terms.waypoint import WaypointRewardCfg
-from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz
+from myosuite.terms.waypoint import WaypointRewardCfg  # noqa: E402
+from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz  # noqa: E402
 
 
 def _hide_wrap_geoms(model: mujoco.MjModel, scene: mujoco.MjvScene) -> None:

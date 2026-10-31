@@ -9,17 +9,17 @@ from pathlib import Path
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
-import imageio.v2 as imageio
-import mujoco
+import imageio.v2 as imageio  # noqa: E402
+import mujoco  # noqa: E402
 
-from myosuite.integrations.musclemimic import (
+from myosuite.integrations.musclemimic import (  # noqa: E402
     GaitParameters,
     MIMIC_SITES,
     TerrainHeights,
     build_terrain_fullbody_spec,
     plan_waypoint_reference,
 )
-from myosuite.integrations.musclemimic.adl_apartment import (
+from myosuite.integrations.musclemimic.adl_apartment import (  # noqa: E402
     adl_apartment_scene,
     adl_route,
 )
