@@ -209,6 +209,10 @@ Limits
   its own inertia approximations; external validation is still required.
 * The world body, and so the free root's position and keyframe root heights, are
   not scaled; a task starting from a standing pose must set the scaled height.
+* OpenSim scales a joint's offset in the child body with the child's factors;
+  here a child body's position, which includes that offset, scales with the
+  parent's. They agree when the offset is zero or the two factors are equal;
+  at MyoLeg's knee, femur and tibia factors of 1.05 and 1.0 differ by 0.32 mm.
 * A motion clip fits one body size: retarget clips against the scaled model.
 * The model's ``boundmass`` and ``boundinertia`` floors still apply to tiny bodies.
 * Meshes shared by bodies scaled differently, connect/weld equalities on scaled

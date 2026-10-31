@@ -38,6 +38,12 @@ observation and action spaces of an env stay the same.
 Rotated geoms use the scale along each of their own axes. Anisotropic scaling
 can introduce shear, which primitive sizes and mesh scale factors approximate.
 Spheres and cylinder radii use OpenSim's arithmetic mean convention.
+
+One convention differs from OpenSim's. OpenSim scales a joint's offset in the
+child body (its child frame) with the child's factors; here a child body's
+position, which includes that offset, scales with the parent's. The two agree
+when the offset is zero or both bodies have the same factors; for MyoLeg's knee
+with femur and tibia factors of 1.05 and 1.0 they differ by 0.32 mm.
 """
 
 from __future__ import annotations
