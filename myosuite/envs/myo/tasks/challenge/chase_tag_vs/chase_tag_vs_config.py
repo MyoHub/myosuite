@@ -63,6 +63,9 @@ class ChaseTagVsConfig:
     r_win_bonus: float = 1.0  # one-shot bonus on win (tag or survive)
     r_loss_penalty: float = -1.0  # one-shot penalty on loss
     r_fall_penalty: float = -5.0  # one-shot penalty for falling
+    # One-shot reward when the opponent falls (FBVs: -r_fall_penalty). The
+    # episode ends with score 0, so training for the score sets it to 0.
+    r_opponent_fall_bonus: float = 5.0
     r_survival_per_step: float = 0.01  # small per-step alive reward
     r_act_reg: float = -0.001  # L2 on muscle activations
     # Proximity shaping (chaser closes, runner escapes)

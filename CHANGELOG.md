@@ -36,6 +36,24 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **`myoChallengeChaseTagFBVsTrain-v0`: train a ChaseTag player on the GPU.** `myoChallengeChaseTagFBVs-v0` seen
+  from `agent_0`, with `agent_1` played inside the env. The model, reset, role draw, rules, reward and score are
+  FBVs's, and the observation is an FBVs player's 546-d one, so a trained policy exports as a MyoChallenge
+  submission as-is (`export_rslrl_to_onnx(..., obs_dim=546, act_dim=354)`, no adapter).
+  - CPU env and mjlab twin under one id. For the same actions the CPU env is bit-identical to FBVs; the twin
+    matches the CPU env term by term and step by step (`test_chasetag_fbvs_train*.py`).
+  - Opponent: on mjlab, frozen snapshots of the learner (self-play; `scripts/train_mjlab.py` adds a snapshot every
+    50 iterations) or a fixed checkpoint; on the CPU, any policy (`opponent_policy=` callable, `.onnx` or `.pt`).
+    Evaluation is a mirror match.
+  - Training starts both players as the tutorial 5.4 walker the 5.6 Colab submits: the actor
+    (`DirectionalWalkerActor`) is a fixed 546 -> 528 adapter in front of the 5.4 network, so snapshots and the
+    ONNX export carry the adapter. A mirror match then lasts ~1.4 s instead of ~0.4 s from a random init
+    (`--agent.actor.walker-checkpoint ""`). `load_rslrl_policy` / `export_rslrl_to_onnx` rebuild such actors.
+  - FBVs itself is unchanged (its reward terms now share backend-agnostic functions with the twin).
+  - No muscle-condition variants: the two bodies share one model.
+  - Tutorial 5.6 (ChaseTag Colab): step 5 trains in this env (FBP2's 537-d observation does not fit a submission),
+    the baseline note says the shipped walker falls after ~1.5 s, and the optional cell plays the ONNX file as both
+    players for a few episodes, prints how each ended with the score, and records the first one until it ends.
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
 

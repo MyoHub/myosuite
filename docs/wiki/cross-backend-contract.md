@@ -208,7 +208,8 @@ features of that registration or of the `EnvConfig`.
 | MyoChallenge Baoding, Bimanual, Relocate, Die Reorient, Soccer, OSL run | yes | no | - |
 | ChaseTag, single agent | yes | only `myoChallengeChaseTagFBP2-v0` | no |
 | Table Tennis P0, P1, P2 | yes | yes | no |
-| ChaseTag against a scripted opponent (multi-agent) | no | no | - |
+| ChaseTag 1v1, both players (`myoChallengeChaseTagFBVs-v0`, multi-agent) | no | no | - |
+| ChaseTag 1v1, one player vs. an in-env opponent (`myoChallengeChaseTagFBVsTrain-v0`) | no | yes | no |
 | MuscleMimic (fullbody, bimanual, directional) | no | yes, registered separately (own implementation) | no |
 
 Unsupported combinations raise: `NotImplementedError` from `make_env` on mjlab or MJX, `TypeError` from a wrapper on an
