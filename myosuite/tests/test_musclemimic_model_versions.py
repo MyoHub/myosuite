@@ -213,6 +213,7 @@ def test_arm_and_torso_models_follow_the_release(installed: str, builder: str) -
         ("myoFullBodyDirectional-v0", True),
         ("myoChallengeChaseTagFBP2-v0", True),
         ("myoFatiChallengeChaseTagFBP2-v0", True),
+        ("myoChallengeChaseTagFBVs-v0", True),
         ("myoChallengeBimanual-v0", False),
         ("myoTorsoPoseFixed-v0", False),
         ("myoHandReachFixed-v0", False),
@@ -220,6 +221,21 @@ def test_arm_and_torso_models_follow_the_release(installed: str, builder: str) -
 )
 def test_envs_built_from_musclemimic_models(env_id: str, uses: bool) -> None:
     assert mv.uses_musclemimic_models(env_id) is uses
+
+
+def test_directional_env_records_the_default_release(installed: str) -> None:
+    assert (
+        mv.env_models_version("myoFullBodyDirectional-v0") == mv.DEFAULT_MODELS_VERSION
+    )
+    assert (
+        mv.env_models_version("myoChallengeChaseTagFBVs-v0")
+        == mv.DEFAULT_MODELS_VERSION
+    )
+    assert (
+        mv.env_models_version("myoChallengeChaseTagFBP2-v0")
+        == mv.DEFAULT_MODELS_VERSION
+    )
+    assert mv.env_models_version("myoMimicFullbody-v0") == mv.DEFAULT_MODELS_VERSION
 
 
 def test_checkpoint_manifest_records_the_release_the_loaders_use(
