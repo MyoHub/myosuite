@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 import mujoco
 import numpy as np
+
+from myosuite.physics import quat_math
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +218,207 @@ _JOINT_QPOS_WIDTH: dict[int, int] = {
     int(mujoco.mjtJoint.mjJNT_SLIDE): 1,
     int(mujoco.mjtJoint.mjJNT_HINGE): 1,
 }
+
+_JOINT_QVEL_WIDTH: dict[int, int] = {
+    int(mujoco.mjtJoint.mjJNT_FREE): 6,
+    int(mujoco.mjtJoint.mjJNT_BALL): 3,
+    int(mujoco.mjtJoint.mjJNT_SLIDE): 1,
+    int(mujoco.mjtJoint.mjJNT_HINGE): 1,
+}
+
+
+@dataclass(frozen=True)
+class AgentShadowMap:
+    """Address map from one prefixed FBVs agent onto an unprefixed shadow model."""
+
+    qpos_pairs: tuple[tuple[int, int, int], ...]
+    qvel_pairs: tuple[tuple[int, int, int], ...]
+    act_idx: np.ndarray
+    prefix: str
+
+
+def build_agent_shadow_map(
+    fbvs_model: mujoco.MjModel,
+    shadow_model: mujoco.MjModel,
+    prefix: str,
+    act_indices: np.ndarray | list[int],
+) -> AgentShadowMap:
+    """Map every shadow joint onto the same joint name under *prefix* in *fbvs_model*.
+
+    Args:
+        fbvs_model: Combined two-agent model (names like ``a0_root``).
+        shadow_model: Single-agent MuscleMimic model (names like ``root``).
+        prefix: Agent prefix (``a0_`` / ``a1_``).
+        act_indices: FBVs actuator indices for this agent.
+
+    Returns:
+        Address pairs for qpos, qvel, and actuators.
+    """
+    qpos_pairs: list[tuple[int, int, int]] = []
+    qvel_pairs: list[tuple[int, int, int]] = []
+    for sj in range(shadow_model.njnt):
+        sname = mujoco.mj_id2name(shadow_model, mujoco.mjtObj.mjOBJ_JOINT, sj)
+        if sname is None:
+            raise RuntimeError(f"shadow joint {sj} has no name")
+        fj = mujoco.mj_name2id(fbvs_model, mujoco.mjtObj.mjOBJ_JOINT, prefix + sname)
+        if fj < 0:
+            raise RuntimeError(f"missing FBVs joint {prefix}{sname}")
+        jt = int(shadow_model.jnt_type[sj])
+        qpos_pairs.append(
+            (
+                int(fbvs_model.jnt_qposadr[fj]),
+                int(shadow_model.jnt_qposadr[sj]),
+                _JOINT_QPOS_WIDTH[jt],
+            )
+        )
+        qvel_pairs.append(
+            (
+                int(fbvs_model.jnt_dofadr[fj]),
+                int(shadow_model.jnt_dofadr[sj]),
+                _JOINT_QVEL_WIDTH[jt],
+            )
+        )
+    return AgentShadowMap(
+        qpos_pairs=tuple(qpos_pairs),
+        qvel_pairs=tuple(qvel_pairs),
+        act_idx=np.asarray(act_indices, dtype=int),
+        prefix=prefix,
+    )
+
+
+def copy_agent_to_shadow(
+    fbvs_data: mujoco.MjData,
+    shadow_data: mujoco.MjData,
+    amap: AgentShadowMap,
+) -> None:
+    """Copy one FBVs agent's qpos/qvel/act onto the shadow ``MjData``."""
+    for fa, sa, w in amap.qpos_pairs:
+        shadow_data.qpos[sa : sa + w] = fbvs_data.qpos[fa : fa + w]
+    for fa, sa, w in amap.qvel_pairs:
+        shadow_data.qvel[sa : sa + w] = fbvs_data.qvel[fa : fa + w]
+    if (
+        shadow_data.act is not None
+        and fbvs_data.act is not None
+        and shadow_data.act.size
+        and fbvs_data.act.size
+    ):
+        shadow_data.act[:] = fbvs_data.act[amap.act_idx]
+
+
+def _nlerp_quat(q0: np.ndarray, q1: np.ndarray, alpha: float) -> np.ndarray:
+    """Normalized lerp; flips *q1* so the blend takes the short arc."""
+    a = np.asarray(q0, dtype=np.float64)
+    b = np.asarray(q1, dtype=np.float64)
+    if float(np.dot(a, b)) < 0.0:
+        b = -b
+    out = (1.0 - alpha) * a + alpha * b
+    n = float(np.linalg.norm(out))
+    return out / n if n > 1e-12 else a
+
+
+def _blend_qpos(dst: np.ndarray, src: np.ndarray, alpha: float) -> None:
+    """Lerp *dst* toward *src*. Width 4/7 is a quaternion (ball / free)."""
+    w = int(dst.shape[0])
+    if w == 7:
+        dst[:3] = (1.0 - alpha) * dst[:3] + alpha * src[:3]
+        dst[3:7] = _nlerp_quat(dst[3:7], src[3:7], alpha)
+    elif w == 4:
+        dst[:] = _nlerp_quat(dst, src, alpha)
+    else:
+        dst[:] = (1.0 - alpha) * dst + alpha * src
+
+
+def write_clip_pose(
+    fbvs_data: mujoco.MjData,
+    amap: AgentShadowMap,
+    clip_qpos: np.ndarray,
+    clip_qvel: np.ndarray,
+    *,
+    keep_xy: bool = True,
+    keep_yaw: bool = False,
+    face_yaw: float | None = None,
+    travel_yaw: float | None = None,
+    act: float | np.ndarray | None = 0.05,
+    alpha: float = 1.0,
+) -> None:
+    """Write a single-agent clip frame onto one FBVs agent.
+
+    Args:
+        fbvs_data: Combined two-agent ``MjData``.
+        amap: Address map from :func:`build_agent_shadow_map`.
+        clip_qpos: Shadow-model qpos frame.
+        clip_qvel: Shadow-model qvel frame.
+        keep_xy: Keep the agent's current root XY (spawn / mid-episode).
+        keep_yaw: Keep the agent's current root yaw and rotate clip planar
+            velocity into that frame (RSI without a heading change).
+        face_yaw: If set, write this root yaw (overrides ``keep_yaw``).
+        travel_yaw: If set, rotate clip planar velocity onto this heading
+            (can differ from ``face_yaw``, e.g. a runner who looks at the
+            chaser but walks away).
+        act: Muscle activation written on this agent (``0.05`` matches a
+            standing overlay). ``None`` leaves ``act`` unchanged.
+        alpha: Blend toward the clip (``1`` snaps, ``0`` is a no-op). A
+            per-step value in ``(0, 1)`` tracks the gait without a pop.
+    """
+    alpha = float(np.clip(alpha, 0.0, 1.0))
+    if alpha <= 0.0:
+        return
+    fa, sa, _ = amap.qpos_pairs[0]
+    fva, sva, _ = amap.qvel_pairs[0]
+    xy = fbvs_data.qpos[fa : fa + 2].copy() if keep_xy else None
+    if face_yaw is not None:
+        yaw = float(face_yaw)
+    elif keep_yaw:
+        yaw = float(quat_math.quat2yaw(fbvs_data.qpos[fa + 3 : fa + 7]))
+    else:
+        yaw = None
+    clip_yaw = float(quat_math.quat2yaw(clip_qpos[sa + 3 : sa + 7]))
+    clip_lin = np.array(
+        [float(clip_qvel[sva]), float(clip_qvel[sva + 1]), 0.0], dtype=np.float64
+    )
+    if float(np.hypot(clip_lin[0], clip_lin[1])) > 1e-6:
+        clip_travel = float(np.arctan2(clip_lin[1], clip_lin[0]))
+    else:
+        clip_travel = clip_yaw
+    if alpha >= 1.0:
+        for fadr, sadr, w in amap.qpos_pairs:
+            fbvs_data.qpos[fadr : fadr + w] = clip_qpos[sadr : sadr + w]
+        for fadr, sadr, w in amap.qvel_pairs:
+            fbvs_data.qvel[fadr : fadr + w] = clip_qvel[sadr : sadr + w]
+    else:
+        for fadr, sadr, w in amap.qpos_pairs:
+            _blend_qpos(
+                fbvs_data.qpos[fadr : fadr + w],
+                clip_qpos[sadr : sadr + w],
+                alpha,
+            )
+        for fadr, sadr, w in amap.qvel_pairs:
+            fbvs_data.qvel[fadr : fadr + w] = (1.0 - alpha) * fbvs_data.qvel[
+                fadr : fadr + w
+            ] + alpha * clip_qvel[sadr : sadr + w]
+    if xy is not None:
+        fbvs_data.qpos[fa : fa + 2] = xy
+    if yaw is not None:
+        dpsi = yaw - clip_yaw
+        qz = quat_math.axis_angle2quat(np.array([0.0, 0.0, 1.0]), dpsi)
+        fbvs_data.qpos[fa + 3 : fa + 7] = quat_math.mul_quat(
+            qz, clip_qpos[sa + 3 : sa + 7]
+        )
+    want_travel = float(travel_yaw) if travel_yaw is not None else yaw
+    if want_travel is not None:
+        qz_v = quat_math.axis_angle2quat(
+            np.array([0.0, 0.0, 1.0]), want_travel - clip_travel
+        )
+        lin = quat_math.rot_vec_quat(clip_lin, qz_v)
+        fbvs_data.qvel[fva] = lin[0]
+        fbvs_data.qvel[fva + 1] = lin[1]
+    if (
+        act is not None
+        and fbvs_data.act is not None
+        and fbvs_data.act.size
+        and amap.act_idx.size
+    ):
+        fbvs_data.act[amap.act_idx] = act
 
 
 def default_root_offsets(

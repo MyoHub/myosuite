@@ -333,17 +333,14 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
             data, meta, agent_id, damage_delivered, health, actions, fell, ko
         )
         self._ensure_gait_clip()
+        from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
         from myosuite.terms.multiplayer.chase_tag_vs_reward import (
-            CHASER_ID,
             compute_gait_steering_reward,
         )
 
         frame = int(round(data.time / self.ctrl_dt)) % self._gait_T
         opp = self.opponent_id(agent_id)
-        # Determine whether this agent is the chaser given the current task
-        is_chaser = (agent_id == CHASER_ID and self.current_task == "CHASE") or (
-            agent_id != CHASER_ID and self.current_task == "EVADE"
-        )
+        is_chaser = agent_is_chaser(agent_id, self.current_task)
         steering_dense, _ = compute_gait_steering_reward(
             model=self._model_cache,
             data=data,
