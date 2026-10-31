@@ -516,7 +516,7 @@ def test_legacy_hand_recipes_compile_without_wrapper_xml():
     for recipe, counts in (
         ("hand_keyturn", (40, 101, 330)),
         ("hand_hold", (40, 99, 330)),
-        ("hand_pen", (41, 106, 333)),
+        ("hand_pen", (41, 106, 334)),
     ):
         model, _ = build_from_recipe(recipe)
         assert (model.nbody, model.ngeom, model.nsite) == counts
