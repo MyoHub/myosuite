@@ -139,9 +139,10 @@ def test_compiler_total_mass_is_resolved_before_scaling(
     total: float | None,
     expected: list[float],
 ) -> None:
+    # One kinematic tree, so total_mass rescales both bodies.
     spec = mujoco.MjSpec.from_string("""<mujoco><compiler settotalmass="30"/>
-        <worldbody><body name="a"><geom size=".1" mass="1"/></body>
-        <body name="b"><geom size=".1" mass="2"/></body></worldbody></mujoco>""")
+        <worldbody><body name="a"><geom size=".1" mass="1"/>
+        <body name="b"><geom size=".1" mass="2"/></body></body></worldbody></mujoco>""")
     scale_bodies(spec, {"a": 2}, mass=mass, total_mass=total)
     np.testing.assert_allclose(spec.compile().body_mass[1:], expected)
 
@@ -438,6 +439,41 @@ def test_mass_options_and_strength() -> None:
     np.testing.assert_allclose(_peak_force(stronger), 1.5 * _peak_force(ref))
     same = scale_bodies(_leg(), {"thigh": 1.2, "shank": 1.2}).compile()
     np.testing.assert_allclose(_peak_force(same), _peak_force(ref))
+
+
+def _leg_in_scene(with_agent: bool) -> mujoco.MjSpec:
+    """The leg next to a heavy static prop and, optionally, a free-floating agent."""
+    spec = _leg()
+    spec.worldbody.add_body(name="prop", pos=[1, 0, 0]).add_geom(
+        type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.2, 0.2, 0.2], mass=40.0
+    )
+    if with_agent:
+        agent = spec.worldbody.add_body(name="agent", pos=[-1, 0, 1])
+        agent.add_freejoint()
+        agent.add_geom(type=mujoco.mjtGeom.mjGEOM_SPHERE, size=[0.1, 0, 0], mass=60.0)
+    return spec
+
+
+@pytest.mark.parametrize(
+    "scales,with_agent",
+    [({"thigh": 1.2}, True), ({"thigh": 1.0}, True), ({}, False)],
+)
+def test_total_mass_rescales_only_the_subject(
+    scales: dict[str, float], with_agent: bool
+) -> None:
+    """Static scenery and other agents in a composed scene keep their mass."""
+    spec = _leg_in_scene(with_agent)
+    ref = spec.copy().compile()
+    model = scale_bodies(spec, scales, total_mass=7.5).compile()
+    subject = [model.body(name).id for name in ("thigh", "shank")]
+    np.testing.assert_allclose(model.body_mass[subject].sum(), 7.5)
+    for name in ("prop", "agent") if with_agent else ("prop",):
+        np.testing.assert_allclose(model.body(name).mass, ref.body(name).mass)
+
+
+def test_total_mass_without_a_named_subject_must_be_unambiguous() -> None:
+    with pytest.raises(ValueError, match="ambiguous"):
+        scale_bodies(_leg_in_scene(with_agent=True), {}, total_mass=7.5)
 
 
 def test_unsupported_cases_are_refused() -> None:
