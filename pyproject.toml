@@ -43,7 +43,7 @@ dependencies = [
     # onnxruntime <=1.23.2 is the last line shipping cp310 wheels and >=1.24.1 the
     # first shipping cp314, so no single version spans 3.10-3.14; split by marker.
     "onnxruntime<1.21; python_version < '3.14'",
-    "onnxruntime>=1.24.1; python_version >= '3.14'",
+    "onnxruntime>=1.24.1; python_version >= '3.14' and python_version < '3.15'",
     "scikit-learn>=1.7.2",
     "joblib>=1.5.3",
     "matplotlib>=3.10.8",
@@ -57,6 +57,11 @@ dependencies = [
 [project.optional-dependencies]
 capture = ["ezc3d>=1.5"]
 anatomy = ["trimesh>=4.0", "openpyxl>=3.1"]
+# ONNX Runtime has no cp315 wheels yet. Native CPU environments do not use it.
+onnx = [
+    "onnxruntime<1.21; python_version < '3.14'",
+    "onnxruntime>=1.24.1; python_version >= '3.14'",
+]
 # Reinforcement learning training with Stable-Baselines3
 rl = [
     "stable-baselines3>=2.7.1",

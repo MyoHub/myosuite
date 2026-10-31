@@ -135,6 +135,19 @@ def align_root_to_ground(
     Uses actual primitive/mesh support points, after forward kinematics. All
     selected geoms must descend from the named free root. Contact margins and
     task termination thresholds remain explicit task parameters in metres.
+
+    Args:
+        model: Compiled model holding the free root and sole geoms.
+        alignment: Free root, sole geoms, ground height and clearance.
+        qpos: Pose to align; ``model.qpos0`` if omitted.
+
+    Returns:
+        The aligned qpos (only the free root's z changes) and the z offset
+        added to it, in metres.
+
+    Raises:
+        ValueError: If the joint is not a free joint, *qpos* has the wrong
+            shape or is not finite, or a sole geom is outside the root's tree.
     """
     joint = model.joint(alignment.free_joint)
     if joint.type[0] != mujoco.mjtJoint.mjJNT_FREE:
@@ -265,6 +278,12 @@ def model_digest(model: mujoco.MjModel) -> str:
 
     The binary format is version-specific; provenance records MuJoCo's version
     and a different version conservatively counts as a different morphology.
+
+    Args:
+        model: Compiled model to hash.
+
+    Returns:
+        Hex SHA-256 of the MuJoCo version and the model's binary (``mj_saveModel``).
     """
     buffer = np.empty(mujoco.mj_sizeModel(model), dtype=np.uint8)
     mujoco.mj_saveModel(model, None, buffer)
@@ -298,6 +317,22 @@ def build_subject_model(
     Build this target first, then retarget motion and bind skins against it.
     The returned metadata can be stored with clips/checkpoints or cache entries.
     It includes both the input model identity and resolved per-body factors.
+
+    Args:
+        source: Nominal model, as a spec (copied) or a :class:`ModelBuilder`.
+        config: Scale estimate, segment mapping, mass rule, strength factor and
+            optional ground alignment.
+
+    Returns:
+        The scaled model and spec, with provenance metadata: config and its
+        digest, reference and scaled model digests, MuJoCo version, resolved
+        body factors and the root z offset.
+
+    Raises:
+        KeyError: If a scaled body or segment start is not in the model.
+        ValueError: For invalid scale, mass or alignment inputs (see
+            :func:`~myosuite.core.body_scaling.scale_bodies` and
+            :func:`align_root_to_ground`).
     """
     spec = source.build_spec() if isinstance(source, ModelBuilder) else source.copy()
     reference = spec.copy().compile()
