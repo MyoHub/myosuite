@@ -30,12 +30,15 @@ class DirectionalWalkerActorCfg(RslRlModelCfg):
             the same network from a random init.
         hidden: Width of the 5.4 network.
         layers: Linear layers of its trunk.
+        body_frame_heading: Heading relative to the walking direction (the 5.4
+            observation has no yaw, so a world-frame heading cannot be steered).
     """
 
     class_name: str = "myosuite.integrations.musclemimic.directional_walker_actor:DirectionalWalkerActor"
     walker_checkpoint: str = str(WALKER_CHECKPOINT)
     hidden: int = 512
     layers: int = 6
+    body_frame_heading: bool = True
 
 
 def chasetag_vs_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:

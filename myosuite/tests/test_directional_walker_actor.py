@@ -31,6 +31,7 @@ CLASS = (
     "myosuite.integrations.musclemimic.directional_walker_actor:DirectionalWalkerActor"
 )
 N_ACT = 354
+HEADING = 520  # heading_cmd in the 528-d directional observation
 
 
 def _walker_checkpoint():
@@ -76,7 +77,11 @@ def _actor(checkpoint: str) -> DirectionalWalkerActor:
 
 
 def test_adapter_is_the_chasetag_heading_directional_obs() -> None:
-    """Same 528 numbers as ``chasetag_heading_directional_obs`` on the player's own state."""
+    """World frame: same 528 numbers as ``chasetag_heading_directional_obs``.
+
+    Body frame (default): the same, with the heading relative to the walking
+    direction (pelvis yaw - 90 deg).
+    """
     import mujoco  # noqa: PLC0415
 
     from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (  # noqa: PLC0415
@@ -96,7 +101,7 @@ def test_adapter_is_the_chasetag_heading_directional_obs() -> None:
     require_musclemimic_models()
     single = _build_fullbody_agent_spec(ChaseTagVsConfig())[0].compile()
     data = mujoco.MjData(single)
-    adapter = FbvsDirectionalAdapter()
+    world, body = FbvsDirectionalAdapter(False), FbvsDirectionalAdapter()
     env = make_env(ENV_ID, opponent_policy=lambda o: np.full(N_ACT, 0.1))
     u = env.unwrapped
     try:
@@ -104,7 +109,7 @@ def test_adapter_is_the_chasetag_heading_directional_obs() -> None:
         for seed in (0, 1, 2, 3):
             obs, info = env.reset(seed=seed)
             rng = np.random.default_rng(seed)
-            for _ in range(20):
+            for step in range(20):
                 for agent, view in ((LEARNER, obs), (OPPONENT, u.opponent_obs)):
                     qs, vs = u.player_slices(agent)
                     other, _ = u.player_slices(
@@ -117,8 +122,17 @@ def test_adapter_is_the_chasetag_heading_directional_obs() -> None:
                     expected = chasetag_heading_directional_obs(
                         single, data, u.data.qpos[other][:2], evade=evade
                     )
-                    got = adapter(torch.as_tensor(view)[None])[0].numpy()
-                    np.testing.assert_allclose(got, expected, atol=1e-5)
+                    view_t = torch.as_tensor(view)[None]
+                    np.testing.assert_allclose(world(view_t)[0], expected, atol=1e-5)
+                    w, x, y, z = data.qpos[3:7]
+                    yaw = np.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+                    theta = np.arctan2(expected[HEADING + 1], expected[HEADING])
+                    theta -= yaw - np.pi / 2
+                    expected[HEADING : HEADING + 2] = np.cos(theta), np.sin(theta)
+                    np.testing.assert_allclose(body(view_t)[0], expected, atol=1e-5)
+                    if step == 0:  # the players spawn facing each other
+                        ahead = expected[HEADING] if not evade else -expected[HEADING]
+                        assert ahead > 0.99
                 obs, _, term, _, info = env.step(rng.uniform(0.0, 0.3, N_ACT))
                 if term:
                     break
@@ -156,7 +170,17 @@ def test_checkpoint_loads_and_exports_as_a_546_to_354_player(tmp_path) -> None:
     run = tmp_path / "run"
     (run / "params").mkdir(parents=True)
     with (run / "params" / "agent.yaml").open("w") as f:
-        yaml.safe_dump({"actor": {"class_name": CLASS, "hidden": 512, "layers": 6}}, f)
+        yaml.safe_dump(
+            {
+                "actor": {
+                    "class_name": CLASS,
+                    "hidden": 512,
+                    "layers": 6,
+                    "body_frame_heading": True,
+                }
+            },
+            f,
+        )
     torch.save({"actor_state_dict": actor.state_dict()}, run / "model_0.pt")
 
     policy = load_rslrl_policy(run / "model_0.pt", N_ACT)

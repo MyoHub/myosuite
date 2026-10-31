@@ -7,7 +7,11 @@
 :class:`FbvsDirectionalAdapter` turns an FBVs player's 546-d observation into
 the 528-d directional observation of ``_directional_obs``, with the heading
 pointed at the opponent (chaser) or away from it (runner), as
-``chasetag_heading_directional_obs``. :class:`DirectionalWalkerActor` is an
+``chasetag_heading_directional_obs``. That observation gives the heading as a
+world-frame angle but no pelvis yaw, so a player cannot tell where the heading
+lies relative to its body; by default the adapter therefore gives the heading
+relative to the walking direction (pelvis yaw - 90 deg), so straight ahead is
+``[1, 0]``, as for the 5.4 walker at heading 0. :class:`DirectionalWalkerActor` is an
 RSL-RL actor made of that fixed adapter and the 5.4 network (6-layer
 SiLU+LayerNorm, :class:`~myosuite.envs.myo.tasks.mimic.policy.ActorCritic`),
 optionally loaded from a 5.4 checkpoint, so PPO fine-tunes one 546 -> 354
@@ -18,6 +22,7 @@ exports) carry it.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import torch
@@ -37,9 +42,17 @@ class FbvsDirectionalAdapter(nn.Module):
     FBVs layout: ``qpos`` 0:89 (root 0:7), ``qvel`` 89:177 (root 89:95), ``act``
     177:531, own pelvis 531:537, opponent ``[rel_pos, rel_vel, dist]`` 537:544,
     role 544:546 (``[1, 0]`` chaser).
+
+    Args:
+        body_frame_heading: Heading relative to the walking direction
+            (``False``: the world-frame angle of ``chasetag_heading_directional_obs``).
     """
 
     in_dim = FBVS_OBS_DIM
+
+    def __init__(self, body_frame_heading: bool = True) -> None:
+        super().__init__()
+        self.body_frame_heading = body_frame_heading
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         w, x, y, z = obs[..., 3], obs[..., 4], obs[..., 5], obs[..., 6]
@@ -50,6 +63,8 @@ class FbvsDirectionalAdapter(nn.Module):
         # Heading toward the opponent as chaser, away from it as runner.
         sign = torch.where(obs[..., 544] > 0.5, 1.0, -1.0)
         theta = torch.atan2(sign * obs[..., 538], sign * obs[..., 537])
+        if self.body_frame_heading:
+            theta = theta - yaw + 0.5 * math.pi  # walking direction = yaw - 90 deg
         roll = torch.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
         pitch = torch.asin(torch.clamp(2.0 * (w * y - z * x), -1.0, 1.0))
         tail = torch.stack(
@@ -107,6 +122,8 @@ class DirectionalWalkerActor(MLPModel):
         walker_checkpoint: 5.4 checkpoint to start from (``""``: random init).
         hidden: Width of the 5.4 network.
         layers: Linear layers of its trunk.
+        body_frame_heading: Heading relative to the walking direction (see
+            :class:`FbvsDirectionalAdapter`).
     """
 
     def __init__(
@@ -122,6 +139,7 @@ class DirectionalWalkerActor(MLPModel):
         walker_checkpoint: str = "",
         hidden: int = 512,
         layers: int = 6,
+        body_frame_heading: bool = True,
     ) -> None:
         del hidden_dims, activation
         if obs_normalization:
@@ -131,7 +149,7 @@ class DirectionalWalkerActor(MLPModel):
         )
         if self.obs_dim != FBVS_OBS_DIM:
             raise ValueError(f"Expected the {FBVS_OBS_DIM}-d FBVs observation.")
-        self.obs_normalizer = FbvsDirectionalAdapter()
+        self.obs_normalizer = FbvsDirectionalAdapter(body_frame_heading)
         self.mlp = WalkerNet(output_dim, hidden, layers)
         if walker_checkpoint:
             self.mlp.load_walker(walker_checkpoint)
@@ -140,7 +158,10 @@ class DirectionalWalkerActor(MLPModel):
     def deterministic_modules(
         actor_state: dict[str, torch.Tensor], actor_cfg: dict[str, Any]
     ) -> tuple[nn.Module, nn.Module]:
-        """``(net, adapter)`` of a trained checkpoint, for ``load_rslrl_policy``."""
+        """``(net, adapter)`` of a trained checkpoint, for ``load_rslrl_policy``.
+
+        A config without ``body_frame_heading`` predates the option: world frame.
+        """
         out_dim = actor_state["mlp.actor_mean.weight"].shape[0]
         net = WalkerNet(
             out_dim, actor_cfg.get("hidden", 512), actor_cfg.get("layers", 6)
@@ -152,4 +173,4 @@ class DirectionalWalkerActor(MLPModel):
                 if k.startswith("mlp.")
             }
         )
-        return net, FbvsDirectionalAdapter()
+        return net, FbvsDirectionalAdapter(actor_cfg.get("body_frame_heading", False))
