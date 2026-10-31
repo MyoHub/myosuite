@@ -1,9 +1,35 @@
 Body scaling
 ============
 
-:func:`myosuite.core.body_scaling.scale_bodies` scales a musculoskeletal model to a
-subject with the rules of OpenSim's Scale Tool. Each body gets per-axis factors
-``(sx, sy, sz)`` in its own frame, or one factor for all three axes.
+Two calls scale a musculoskeletal model to a subject.
+:func:`myosuite.core.body_scaling.scale_model` returns a scaled copy of a model,
+using the rules of OpenSim's Scale Tool. ``make_env(env_id, scales=...,
+total_mass=...)`` builds a task for that subject, on the CPU and on mjlab.
+
+.. code-block:: python
+
+    import mujoco
+    from myosuite import make_env
+    from myosuite.core.body_scaling import scale_model
+
+    spec = mujoco.MjSpec.from_file("myolegs_with_torso.xml")
+
+    # One factor per body, or three along the body's own axes.
+    model = scale_model(spec, {"femur_r": 1.08, "tibia_r": (1.0, 0.96, 1.0)})
+    # An OpenSim ScaleSet, or a model scaled by the Scale Tool or AddBiomechanics.
+    model = scale_model(spec, "subject_scale.xml", total_mass=72.0)
+    # Points on a body (in its frame) and the same points measured on the subject.
+    model = scale_model(spec, {"femur_r": (model_points, measured_points)})
+
+    env = make_env("myoLegWalk-v0", scales={"femur_r": 1.08}, total_mass=72.0)
+
+``scale_model`` never changes the spec it is given. Joints, actuators, sites and
+tendons stay the same, so an env's observation and action spaces do not change.
+
+The rules
+---------
+
+Each body gets factors ``(sx, sy, sz)`` along its own axes, as in OpenSim:
 
 * Everything a body carries scales with that body: geoms, meshes, sites (muscle
   path points), joint anchors, wrapping geoms, cameras, lights and the inertial
@@ -11,212 +37,179 @@ subject with the rules of OpenSim's Scale Tool. Each body gets per-axis factors
 * Slide-joint translations, their ranges and their polynomial couplings (the
   knee's) scale with the parent body along the joint axis.
 * Every muscle's optimal fibre length and tendon slack length scale by the change
-  of its muscle-tendon length in the default pose, as in OpenSim. MuJoCo derives
-  both from ``lengthrange``, so that is what changes.
-* Mass scales with volume (``sx * sy * sz``) or is kept, and can be rescaled to a
-  total. Peak muscle force is kept, as OpenSim does, unless ``force_scale`` is
-  given.
+  of its muscle-tendon length in the default pose. That pose is ``qpos0`` with
+  every joint coupling satisfied, as OpenSim assembles it; MyoLeg's ``qpos0``
+  leaves the patella 5 cm off its knee coupling. MuJoCo derives both lengths from
+  ``lengthrange``, so that is what changes.
+* Mass scales with volume (``sx * sy * sz``). Peak muscle force is kept, as in
+  OpenSim. ``total_mass`` then rescales the subject's masses to a total.
+* A free-floating subject is raised or lowered separately in ``qpos0`` and in
+  each keyframe, so that its lowest collision point keeps the height it has in
+  the unscaled model in that pose. A keyframe that stood on the floor still
+  does, and one that floated above it floats as high.
 
-Joints, actuators, sites and tendons stay the same, so an env's observation and
-action spaces do not change.
+The three forms of ``scales``
+-----------------------------
 
-.. code-block:: python
+**Factors per body.** One factor, or three along the body's own axes. A body
+not named keeps its size; a body named with a factor of one counts as part of
+the subject for ``total_mass``.
 
-    from myosuite.core.body_scaling import scale_bodies
-    from myosuite.core.model_builder import ModelBuilder
+**An OpenSim scale file.** A ScaleSet (``<Scale><segment>...<scales>``), or a
+scaled ``.osim`` model whose geometry carries the applied ``scale_factors``.
+The segments are those of the Rajagopal model, which MyoLeg was built from.
+They are mapped onto MyoLeg or the MuscleMimic MyoFullBody, whichever the spec
+is. Each body takes the factors of its segment: the lumbar spine, thorax,
+shoulder girdle and head of MyoFullBody follow ``torso``, and its 27 hand bodies
+follow ``hand``. A segment missing from the file stays unscaled, as in OpenSim.
 
-    # One factor per body, or per axis in the body's frame.
-    scale_bodies(spec, {"femur_r": (1.0, 1.08, 1.0), "tibia_r": 1.05})
-    model = spec.compile()
+OpenSim frames are y-up (x anterior, z to the right). MyoLeg's ``root`` and
+``torso`` and MyoFullBody's ``Full Body`` are z-up, so each segment's factors
+are permuted onto every body's own axes: a 20% taller torso is 20% taller, not
+wider.
 
-    # Or in a ModelBuilder chain.
-    model, spec = (
-        ModelBuilder.from_spec(spec)
-        .scale_bodies({"femur_r": 1.08}, mass="keep", total_mass=72.0)
-        .build()
-    )
+**Point correspondences.** ``(model_points, measured_points)`` are two ``(n, 3)``
+arrays. The first holds points on the body in its own frame in the unscaled
+model: markers, named landmarks or mesh vertices. The second holds the same
+points measured on the subject, in metres, in any frame (a lab frame, say).
+Each body is fitted on its own:
 
-Scale factors from OpenSim
---------------------------
+* Points that span all three directions (four or more) give three factors.
+  They are fitted by least squares, with a rotation between the frames.
+* Two points (a marker pair) give one factor, the ratio of their distances, as
+  OpenSim's marker pairs do. Points on a plane give one factor, the ratio of
+  their spreads.
 
-:func:`~myosuite.core.body_scaling.read_opensim_scales` reads the factors of an
-OpenSim Scale Tool result: a ScaleSet file, or a scaled ``.osim`` model, whose
-bodies carry the applied factors on their geometry. Its segment names are those of
-the OpenSim model. For the Rajagopal model, which MyoLeg was built from, two
-mappings assign every MyoSuite body to a segment:
+Rows with NaN (missing markers) are skipped. A fitted factor outside 0.5 to 2 is
+refused, since it usually means millimetres or mismatched points; pass the
+factors directly if they are meant.
 
-.. code-block:: python
-
-    from myosuite.core.body_scaling import (
-        RAJAGOPAL_MYOFULLBODY_SEGMENTS,
-        read_opensim_scales,
-        scale_bodies,
-    )
-
-    scales = read_opensim_scales("subject_scaled.osim")
-    scale_bodies(spec, scales, segments=RAJAGOPAL_MYOFULLBODY_SEGMENTS)
-
-With ``segments``, each body takes the factors of its nearest ancestor that starts
-a segment, so the lumbar spine, thorax and shoulder girdle of the MuscleMimic
-MyoFullBody follow ``torso`` and the 27 hand bodies follow ``hand``. A segment
-missing from the scale set stays unscaled, as in OpenSim.
-``RAJAGOPAL_MYOLEG_SEGMENTS`` does the same for MyoLeg.
-
-Subject construction and provenance
------------------------------------
-
-Use the source-neutral subject builder when factors come from an external tool.
-It copies an existing ``MjSpec`` or builds a fresh ``ModelBuilder`` recipe; the
-source is unchanged. This construction API is shared model infrastructure, not
-a replacement for the registered CPU/mjlab environment factory.
-
-.. code-block:: python
-
-    from myosuite.core.subject_model import (
-        ScaleEstimate, SubjectModelConfig, build_subject_model,
-    )
-
-    estimate = ScaleEstimate(
-        factors=read_opensim_scales("subject_scales.xml"),
-        height_m=1.78, mass_kg=72.0, source="subject_scales.xml",
-        confidence=0.9, warnings=("No hand markers were available",),
-    )
-    config = SubjectModelConfig(
-        estimate, segments=RAJAGOPAL_MYOFULLBODY_SEGMENTS, mass="keep",
-    )
-    subject = build_subject_model(spec, config)
-    model, scaled_spec = subject.model, subject.spec
-
-``height_m`` records evidence; it does not infer factors. ``mass_kg`` sets total
-mass. BVH, C3D and shape-fitting adapters can produce the same ``ScaleEstimate``
-without introducing their dependencies into the scaling core. Factors and
-segment mappings are copied to prevent later input mutation changing a recipe.
-
-``config.digest`` is a canonical SHA-256 of the versioned recipe, independent of
-mapping order and scalar versus three-axis factor syntax. ``subject.metadata``
-is JSON-serializable and records the complete recipe, its digest, resolved body
-factors, input and output compiled-model digests, MuJoCo version and root offset.
-Cache by input-model digest and config digest together. Compiled-model hashes
-include assets and are conservatively specific to the MuJoCo version. Rebuild
-metadata after any subsequent model edits.
-
-Root and ground alignment
--------------------------
-
-Scaling leaves the free root's world position unchanged. For a standing neutral
-pose, name the root and sole collision geoms explicitly:
-
-.. code-block:: python
-
-    from dataclasses import replace
-    from myosuite.core.subject_model import GroundAlignment, align_root_to_ground
-
-    # Replace these names with the root/sole names in your model.
-    ground = GroundAlignment("root_free", ("sole_right", "sole_left"), clearance=0.002)
-    subject = build_subject_model(spec, replace(config, ground=ground))
-
-    # For a different initial pose, align it explicitly without mutating the model.
-    qpos, root_offset = align_root_to_ground(subject.model, ground, initial_qpos)
-
-The builder aligns the lowest selected collision point using primitive or mesh
-geometry in the neutral ``qpos0`` pose. It changes the free root's initial world-z
-translation and shifts all keyframes by the same offset. Keyframes with other
-leg poses and frames in a retargeted clip may need their own alignment. Ground
-height and clearance are world metres; all sole geoms must belong to that root's
-tree. Planes, heightfields and SDF sole geoms are refused. This is kinematic
-placement, not a guarantee of balance or a contact-settling simulation.
-
-Collision margins, contact detection tolerances and fall/height thresholds are
-task parameters in metres. Review them against the new neutral pose; no universal
-factor can update them correctly for arbitrary segment scales. A custom task
-must feed the same scaled recipe, initial pose and thresholds to its CPU and
-mjlab implementations. Registered tasks retain their nominal morphology.
-
-Skins and retargeted motion
+A subject in an environment
 ---------------------------
 
-Construct and align the target first, then retarget the source motion against
-that target. Named-joint ``MotionClip`` columns can be mapped with
-``expand_motion_clip_to_model(clip, subject.model)`` and replayed through
-``mj_forward``. Matching joint names and widths only verifies topology; replaying
-a nominal clip is not retargeting. Recompute root translations, slide coordinates,
-marker trajectories and contact labels for the scaled target. Store the subject
-metadata alongside the resulting clip.
+``scales`` and ``total_mass`` are ordinary task kwargs. Pass them to ``make_env``
+or in ``EnvConfig.task_kwargs``. The task builds its model from them, and its
+mjlab twin builds the same model from the same registration:
 
-Bind the bundled skin with explicit resolved body factors. Moving bones alone
-does not scale the offsets of their attached vertices:
+.. code-block:: python
+
+    from myosuite import make_env
+    from myosuite.core.config import EnvConfig
+
+    cpu = make_env("myoLegWalk-v0", scales="subject_scale.xml", total_mass=72.0)
+    gpu = make_env(
+        EnvConfig("myoLegWalk-v0", task_kwargs={"scales": "subject_scale.xml"}),
+        backend="mjlab",
+        num_envs=4096,
+    )
+
+* ``myoLegWalk-v0`` takes a subject, and so do its muscle-condition variants
+  ``myoSarcLegWalk-v0`` and ``myoFatiLegWalk-v0``. Any other task raises
+  ``NotImplementedError`` from its own constructor, on both backends. The
+  terrain walks fix a knee threshold for the nominal body, so they refuse too.
+* Without ``scales`` and ``total_mass``, every env is built exactly as before.
+* The reset keyframe keeps its nominal ground clearance, and both backends
+  reset to the same pose.
+* Thresholds in metres stay task parameters, for example the fall height
+  ``min_height`` (0.8 m). On the CPU, pass it with the scales. The mjlab
+  backend takes only ``scales`` and ``total_mass`` as task kwargs; any other
+  needs its own registration.
+
+Mass
+----
+
+``total_mass`` rescales the subject's bodies, keeping their mass distribution
+after the volume scaling. The subject is every kinematic tree that holds a body
+named in ``scales``, or one of the mapped segment bodies of an OpenSim file.
+With no named body it is the model's single articulated tree. Static scenery and
+other agents in a composed scene keep their mass. Several articulated trees and
+no named body is an error: name a body of the subject, with a factor of one if
+need be.
+
+Skins
+-----
+
+Bind the bundled skin with the factors each body was scaled by. Moving bones
+alone does not scale the offsets of their attached vertices:
 
 .. code-block:: python
 
     from myosuite.viz.skin import SkinPose, load_skn
 
-    pose = SkinPose.bind(load_skn("fullbody"), subject.model,
-                         body_scales=subject.body_scales)
+    # fullbody_spec: the MuscleMimic MyoFullBody, which the bundled skin fits.
+    factors = {"femur_r": (1.0, 1.08, 1.0), "tibia_r": 1.05}
+    model = scale_model(fullbody_spec, factors)
+    pose = SkinPose.bind(load_skn("fullbody"), model, body_scales=factors)
     # pose.vertices(data) follows the scaled model in any pose.
 
-The poser scales each bone influence in its own bind frame, including
-anisotropic factors. Standard ``.skn`` and rigged GLB store one common bind vertex
-per vertex. When differently scaled influences disagree, those formats cannot
-represent the exact deformation in every pose. ``pose.bake(subject.model)`` and
-``write_skin_glb(pose, subject.model, path)`` reject such exports by default.
-Explicit ``allow_approximate=True`` bakes the rest shape and warns that deformation
-may differ. Even the bundled skin has small existing bind inconsistencies, so it
-may require this opt-in. Compatible uniform synthetic skins round-trip exactly.
+The poser scales each bone influence in its own bind frame, anisotropic factors
+included. Standard ``.skn`` and rigged GLB files store one bind vertex per
+vertex. When differently scaled influences disagree, those formats cannot
+represent the exact deformation in every pose, so ``pose.bake(model)`` and
+``write_skin_glb(pose, model, path)`` refuse such exports. With
+``allow_approximate=True`` they bake the rest shape and warn that the
+deformation may differ. The bundled skin has small bind inconsistencies of its
+own, so it may need this. Uniformly scaled skins round-trip exactly.
 
-Checkpoint compatibility
-------------------------
+Checkpoints
+-----------
 
-Unchanged spaces do not establish policy validity after changing muscle paths,
-inertia or contacts. Record and check morphology as well as the policy contract:
+A policy trained on a subject records it with its checkpoint. Check it before
+loading the policy on another body:
 
 .. code-block:: python
 
     from myosuite.utils.checkpoint_manifest import check_contract, write_manifest
 
-    write_manifest(checkpoint_dir, env_id, subject_model=subject)
-    check_contract(env_id, checkpoint_dir, subject_model=subject, strict=True)
+    write_manifest(run_dir, "myoLegWalk-v0", scales=scales, total_mass=72.0)
+    check_contract("myoLegWalk-v0", run_dir, scales=scales, total_mass=72.0, strict=True)
 
-A nominal or unrecorded checkpoint used with a subject, a different subject, or
-a subject checkpoint used with nominal morphology warns and returns ``False``;
-``strict=True`` raises. Call this before loading a policy in a custom subject
-workflow. A matching digest identifies construction; it does not establish
-biomechanical accuracy or successful policy transfer.
+The manifest records the ``scales``, ``total_mass`` and a digest of the compiled
+model. The digest hashes the model's numbers but not its file paths, so it
+matches across folders and machines. A checkpoint whose subject's digest differs
+from the env's raises with ``strict=True``. This includes a subject checkpoint
+on the nominal body, and the reverse. Without ``strict``, it warns and returns
+``False``. Nominal envs and checkpoints are checked as before. A matching digest
+identifies the body, not biomechanical accuracy or successful transfer.
 
-Where subject scale factors come from:
+Where scale factors come from
+-----------------------------
 
 * **Markers and the OpenSim Scale Tool**, from motion capture or
   `OpenCap <https://www.opencap.ai>`__ (Apache-2.0).
 * **AddBiomechanics** publishes scaled Rajagopal models and motions of 273
   subjects (over 70 hours) under CC BY 4.0
   (`dataset <https://addbiomechanics.org/download_data.html>`__).
-* **An SMPL body fit**, through virtual markers placed on SMPL vertices and the
-  Scale Tool (e.g. Bittner et al., Sensors 2022). SMPL, SMPL-X, the ``smplx``
-  package code and AMASS are licensed for non-commercial use without
-  redistribution, so MyoSuite does not ship them or anything derived from them.
+* **An SMPL body fit**, through virtual markers placed on SMPL vertices (e.g.
+  Bittner et al., Sensors 2022). Pass the vertices and the model points as
+  point correspondences. SMPL, SMPL-X, the ``smplx`` package code and AMASS are
+  licensed for non-commercial use without redistribution, so MyoSuite does not
+  ship them or anything derived from them.
 
 Limits
 ------
 
-* Body frames are not all aligned with OpenSim's (x anterior, y up, z right):
-  MyoLeg's ``root`` and ``torso`` and MyoFullBody's ``Full Body`` are z-up.
-  Factors read from an OpenSim file are permuted onto each body's own axes;
-  factors given per body are in that body's frame. One factor per body is
-  always safe.
-* Anisotropic scaling of a rotated primitive can require shear which MuJoCo's
+* Factors given per body are in that body's frame. Factors from an OpenSim file
+  are permuted onto each body's axes; a body rotated from its segment by
+  something other than an axis permutation takes the scale along each of its
+  axes. One factor per body is always safe.
+* Anisotropic scaling of a rotated primitive can require shear, which MuJoCo's
   primitive shapes cannot represent. Their dimensions use axis-scale
-  approximations (spheres use the mean body factor; cylinders average transverse
-  factors). Inertias use an affine mass-distribution transform. OpenSim uses
-  its own inertia approximations; external validation is still required.
-* The world body, and so the free root's position and keyframe root heights, are
-  not scaled; a task starting from a standing pose must set the scaled height.
-* OpenSim scales a joint's offset in the child body with the child's factors;
-  here a child body's position, which includes that offset, scales with the
-  parent's. They agree when the offset is zero or the two factors are equal;
-  at MyoLeg's knee, femur and tibia factors of 1.05 and 1.0 differ by 0.32 mm.
+  approximations: spheres use the mean body factor, and cylinders average the
+  transverse factors. Inertias use an affine mass-distribution transform.
+  OpenSim uses its own inertia approximations, so external validation is still
+  needed.
+* OpenSim scales a joint's offset in the child body with the child's factors.
+  Here a child body's position, which includes that offset, scales with the
+  parent's. They agree when the offset is zero or the two factors are equal; at
+  MyoLeg's knee, femur and tibia factors of 1.05 and 1.0 differ by 0.32 mm.
+* The world body is not scaled: a free root keeps its horizontal position, and
+  only the root height of each pose changes (see the rules).
 * A motion clip fits one body size: retarget clips against the scaled model.
 * The model's ``boundmass`` and ``boundinertia`` floors still apply to tiny bodies.
 * Meshes shared by bodies scaled differently, connect/weld equalities on scaled
-  bodies and height fields are refused with an error.
+  bodies, height fields and plugin meshes are refused before the model is
+  edited.
 
 Tests
 -----
@@ -225,22 +218,26 @@ Tests
 rotated frames, every orientation type, a wrapping tendon, a coupled slide joint,
 an automatic peak force), MyoLeg and the MuscleMimic MyoFullBody:
 
-* one factor ``s`` for every body is an exact similarity: in a matched pose every
-  site, tendon and muscle length grows by ``s``, every muscle force is unchanged,
-  mass grows by ``s**3`` and inertia by ``s**5``;
-* random per-axis factors move every site, joint anchor, geom and child body with
-  its body's frame;
-* muscle forces in the default pose do not change under any factors (the
-  OpenSim length rule);
-* factors of one leave the compiled model bit-identical.
+* One factor ``s`` for every body is an exact similarity. In a matched pose
+  every site, tendon and muscle length grows by ``s`` and every muscle force is
+  unchanged. Mass grows by ``s**3`` and inertia by ``s**5``.
+* Random per-axis factors move every site, joint anchor, geom and child body with
+  its body's frame.
+* Muscle forces in the assembled default pose do not change under any factors
+  (the OpenSim length rule).
+* Each OpenSim segment's axis map matches the model frames.
+* Every pose keeps its ground clearance, measured with MuJoCo's own geom distance.
+* The model digest ignores asset paths.
+* Point correspondences recover known factors.
+* A refused scaling leaves the spec untouched, and factors of one leave the
+  compiled model bit-identical.
 
-``test_subject_model.py`` additionally checks cross-process digest stability,
-source immutability, subject mass, primitive ground support, keyframe alignment,
-checkpoint rejection and named-joint replay on a scaled MyoFullBody.
-``test_body_scaling_skin.py`` checks segment-local skin scaling and explicit
-``.skn``/GLB export fidelity on synthetic and bundled skins.
+``test_scaled_env.py`` and ``test_scaled_env_mjlab.py`` check the subject envs:
+nominal envs stay bit-identical, the twin builds the CPU model, both backends
+reset and step alike, other tasks refuse ``scales``, and manifests record and
+check the subject. ``test_body_scaling_skin.py`` checks segment-local skin
+scaling and the fidelity of ``.skn``/GLB exports.
 
-Remaining integration work is tracked explicitly:
-`OpenSim biomechanical validation <https://github.com/MyoHub/myosuite/issues/560>`__,
-`registered CPU/mjlab and policy plumbing <https://github.com/MyoHub/myosuite/issues/561>`__,
+Remaining work is tracked in issues:
+`OpenSim biomechanical validation <https://github.com/MyoHub/myosuite/issues/560>`__
 and `optional estimation/retargeting adapters <https://github.com/MyoHub/myosuite/issues/562>`__.

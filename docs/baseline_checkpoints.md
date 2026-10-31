@@ -21,11 +21,13 @@ directly::
 (pass `--checkpoint <run directory>` instead to use a checkpoint you trained yourself). Resume a
 run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.load-run <run> --env.scene.num-envs 4096`.
 
-Subject-scaled models change dynamics even when observation/action shapes agree.
-Published nominal checkpoints are not validated for another morphology. Custom
-subject workflows must record `write_manifest(..., subject_model=subject)` and call
-`check_contract(..., subject_model=subject, strict=True)` before loading a policy;
-missing or different morphology metadata is rejected. See the body-scaling guide.
+A body scaled to a subject (`make_env(env_id, scales=..., total_mass=...)`) changes the
+dynamics even though the observation and action shapes stay the same. The published
+checkpoints are trained on the nominal body. A policy trained on a subject should record it
+with `write_manifest(..., scales=..., total_mass=...)` and be checked with
+`check_contract(..., scales=..., total_mass=..., strict=True)` before loading. A different
+or unrecorded body is then rejected. Nominal checkpoints are checked as before. See the
+body-scaling guide.
 
 | Env                          | Checkpoint         | Deterministic success (mjlab) |
 | ---------------------------- | ------------------ | ----------------------------- |
