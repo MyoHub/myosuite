@@ -139,9 +139,10 @@ def test_compiler_total_mass_is_resolved_before_scaling(
     total: float | None,
     expected: list[float],
 ) -> None:
+    # One kinematic tree, so total_mass rescales both bodies.
     spec = mujoco.MjSpec.from_string("""<mujoco><compiler settotalmass="30"/>
-        <worldbody><body name="a"><geom size=".1" mass="1"/></body>
-        <body name="b"><geom size=".1" mass="2"/></body></worldbody></mujoco>""")
+        <worldbody><body name="a"><geom size=".1" mass="1"/>
+        <body name="b"><geom size=".1" mass="2"/></body></body></worldbody></mujoco>""")
     scale_bodies(spec, {"a": 2}, mass=mass, total_mass=total)
     np.testing.assert_allclose(spec.compile().body_mass[1:], expected)
 
@@ -440,6 +441,41 @@ def test_mass_options_and_strength() -> None:
     np.testing.assert_allclose(_peak_force(same), _peak_force(ref))
 
 
+def _leg_in_scene(with_agent: bool) -> mujoco.MjSpec:
+    """The leg next to a heavy static prop and, optionally, a free-floating agent."""
+    spec = _leg()
+    spec.worldbody.add_body(name="prop", pos=[1, 0, 0]).add_geom(
+        type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.2, 0.2, 0.2], mass=40.0
+    )
+    if with_agent:
+        agent = spec.worldbody.add_body(name="agent", pos=[-1, 0, 1])
+        agent.add_freejoint()
+        agent.add_geom(type=mujoco.mjtGeom.mjGEOM_SPHERE, size=[0.1, 0, 0], mass=60.0)
+    return spec
+
+
+@pytest.mark.parametrize(
+    "scales,with_agent",
+    [({"thigh": 1.2}, True), ({"thigh": 1.0}, True), ({}, False)],
+)
+def test_total_mass_rescales_only_the_subject(
+    scales: dict[str, float], with_agent: bool
+) -> None:
+    """Static scenery and other agents in a composed scene keep their mass."""
+    spec = _leg_in_scene(with_agent)
+    ref = spec.copy().compile()
+    model = scale_bodies(spec, scales, total_mass=7.5).compile()
+    subject = [model.body(name).id for name in ("thigh", "shank")]
+    np.testing.assert_allclose(model.body_mass[subject].sum(), 7.5)
+    for name in ("prop", "agent") if with_agent else ("prop",):
+        np.testing.assert_allclose(model.body(name).mass, ref.body(name).mass)
+
+
+def test_total_mass_without_a_named_subject_must_be_unambiguous() -> None:
+    with pytest.raises(ValueError, match="ambiguous"):
+        scale_bodies(_leg_in_scene(with_agent=True), {}, total_mass=7.5)
+
+
 def test_unsupported_cases_are_refused() -> None:
     with pytest.raises(KeyError, match="nope"):
         scale_bodies(_leg(), {"nope": 1.1})
@@ -515,6 +551,72 @@ def test_model_builder_scale_bodies_matches_the_function() -> None:
     np.testing.assert_array_equal(
         model.actuator_lengthrange, direct.actuator_lengthrange
     )
+
+
+@pytest.mark.parametrize("name", ["leg", "myoleg"])
+def test_precompiled_mesh_scaling_has_fresh_bounds_and_bvh(name: str) -> None:
+    fresh, compiled = MODELS[name](), MODELS[name]()
+    compiled.compile()
+    factors = (
+        {"thigh": (0.8, 0.9, 1.1)} if name == "leg" else {"femur_r": (1.02, 1.07, 0.98)}
+    )
+    expected = scale_bodies(fresh, factors).compile()
+    actual = scale_bodies(compiled, factors).compile()
+    for field in (
+        "mesh_vert",
+        "geom_size",
+        "geom_aabb",
+        "geom_rbound",
+        "bvh_aabb",
+        "bvh_nodeid",
+    ):
+        np.testing.assert_array_equal(
+            getattr(actual, field), getattr(expected, field), err_msg=field
+        )
+    assert _model_bytes(actual) == _model_bytes(expected)
+
+
+def test_mesh_recreation_preserves_authored_data_and_names() -> None:
+    spec = _leg()
+    mesh = spec.mesh("cube")
+    mesh.refpos = [0.01, -0.02, 0.03]
+    mesh.refquat = [0.9238795325112867, 0.0, 0.0, 0.3826834323650898]
+    mesh.scale = [1.1, 0.9, 1.2]
+    mesh.smoothnormal = False
+    mesh.maxhullvert = 6
+    mesh.info = "authored mesh provenance"
+    fields = (
+        "name",
+        "classname",
+        "file",
+        "content_type",
+        "refpos",
+        "refquat",
+        "inertia",
+        "smoothnormal",
+        "maxhullvert",
+        "uservert",
+        "usernormal",
+        "userface",
+        "usertexcoord",
+        "userfacenormal",
+        "userfacetexcoord",
+        "material",
+        "info",
+    )
+    before = {field: np.array(getattr(mesh, field), copy=True) for field in fields}
+    original_scale = mesh.scale.copy()
+    spec.compile()
+    scale_bodies(spec, {"thigh": (0.8, 0.9, 1.1)})
+    replacement = spec.mesh("cube")
+    assert replacement is not None
+    assert spec.geom("thigh_mesh").meshname == "cube"
+    for field in fields:
+        np.testing.assert_array_equal(
+            getattr(replacement, field), before[field], err_msg=field
+        )
+    np.testing.assert_allclose(replacement.scale, original_scale * [0.8, 0.9, 1.1])
+    spec.compile()
 
 
 def test_rajagopal_segments_map_onto_myofullbody() -> None:

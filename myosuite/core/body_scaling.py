@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 import xml.etree.ElementTree as ET
 
 import mujoco
@@ -148,9 +148,12 @@ def scale_bodies(
             the mapping lacks (e.g. arms for MyoLeg) are ignored.
         mass: ``"volume"`` scales each body's mass with its volume
             (``sx * sy * sz``); ``"keep"`` keeps it.
-        total_mass: Rescale all body masses to this total (kg) afterwards.
-            ``mass="keep"`` with ``total_mass`` is OpenSim's "preserve mass
-            distribution".
+        total_mass: Rescale the subject's body masses to this total (kg)
+            afterwards. The subject is every kinematic tree holding a body
+            named in *scales* (or a segment's first body), whatever its
+            factor, or else the model's one articulated tree; static scenery
+            and other agents keep their mass. ``mass="keep"`` with
+            ``total_mass`` is OpenSim's "preserve mass distribution".
         force_scale: Factor on every muscle's peak force.
 
     Returns:
@@ -181,7 +184,9 @@ def scale_bodies(
 
     _check_equalities(spec, body_scales)
     slide = _scale_geometry(spec, ref, body_scales)
-    _scale_inertia(spec, ref, body_scales, mass, total_mass)
+    # Bodies the caller names define the subject, even with a factor of one.
+    subject = set(scales) if segments is None else set().union(*segments.values())
+    _scale_inertia(spec, ref, body_scales, mass, total_mass, subject)
     _scale_joint_couplings(spec, slide)
 
     scaled = spec.copy().compile()
@@ -373,10 +378,63 @@ def _scale_geometry(
             f"Meshes {sorted(shared)} are also used by unscaled bodies; give each its own mesh asset."
         )
     for name, factors in mesh_scales.items():
-        mesh = spec.mesh(name)
-        mesh.scale = np.asarray(mesh.scale) * factors
+        _rescale_mesh(spec, name, factors)
     _scale_keyframes(spec, ref, slide_qpos)
     return slide
+
+
+def _rescale_mesh(spec: mujoco.MjSpec, name: str, factors: np.ndarray) -> None:
+    """Recreate an edited mesh so precompiled bounds cannot survive its new scale."""
+    mesh = spec.mesh(name)
+    if mesh.plugin.active:
+        raise NotImplementedError(f"Cannot scale plugin-generated mesh {name!r}.")
+    # MuJoCo 3.11--3.15 retains private mesh AABB extrema after recompilation.
+    # Copy authored fields, not XML or compiled vertices/principal-axis frames.
+    attributes: dict[str, Any] = {}
+    arrays = {
+        "refpos",
+        "refquat",
+        "scale",
+        "uservert",
+        "usernormal",
+        "usertexcoord",
+        "userface",
+        "userfacenormal",
+        "userfacetexcoord",
+        "usernode",
+        "usertet",
+    }
+    for field in (
+        "name",
+        "content_type",
+        "file",
+        "refpos",
+        "refquat",
+        "scale",
+        "inertia",
+        "smoothnormal",
+        "needsdf",
+        "maxhullvert",
+        "uservert",
+        "usernormal",
+        "usertexcoord",
+        "userface",
+        "userfacenormal",
+        "userfacetexcoord",
+        "usernode",
+        "usertet",
+        "material",
+        "octree_maxdepth",
+        "info",
+    ):
+        if hasattr(mesh, field):
+            value = getattr(mesh, field)
+            attributes[field] = np.array(value, copy=True) if field in arrays else value
+    attributes["scale"] *= factors
+    classname = mesh.classname
+    spec.delete(mesh)
+    replacement = spec.add_mesh(**attributes)
+    replacement.classname = classname
 
 
 def _scale_placement(spec: mujoco.MjSpec, element, s: np.ndarray) -> None:
@@ -445,8 +503,9 @@ def _scale_inertia(
     body_scales: Mapping[str, np.ndarray],
     mass: str,
     total_mass: float | None,
+    subject: set[str],
 ) -> None:
-    """Scale mass and inertia of scaled bodies (and rescale all to *total_mass*)."""
+    """Scale mass and inertia of scaled bodies (and rescale the subject to *total_mass*)."""
     if mass not in ("volume", "keep"):
         raise ValueError(f"mass must be 'volume' or 'keep', got {mass!r}.")
     # Compiled body ids, matched by name (unnamed bodies keep their list position).
@@ -473,8 +532,12 @@ def _scale_inertia(
         _set_inertial(body, new_mass[i], s * ref.body_ipos[i], inertia, iquat)
     if total_mass is None:
         return
-    k = total_mass / new_mass[1:].sum()
-    for body, i in zip(spec.bodies[1:], ids[1:]):
+    bodies = _subject_bodies(spec, ref, ids, subject)
+    subject_mass = sum(new_mass[i] for _, i in bodies)
+    if subject_mass <= 0:
+        raise ValueError("total_mass needs a subject body with mass.")
+    k = total_mass / subject_mass
+    for body, i in bodies:
         if new_mass[i] > 0:
             if body.name not in body_scales:
                 _set_inertial(
@@ -486,6 +549,32 @@ def _scale_inertia(
                 )
             body.mass *= k
             body.inertia = _on_triangle(np.asarray(body.inertia) * k)
+
+
+def _subject_bodies(
+    spec: mujoco.MjSpec,
+    ref: mujoco.MjModel,
+    ids: Sequence[int],
+    subject: set[str],
+) -> list[tuple[mujoco.MjsBody, int]]:
+    """Bodies whose mass *total_mass* sets, with their compiled ids.
+
+    The subject is every kinematic tree (child of the world body) holding a
+    body named in *subject*, or, if none is named, the one tree with a joint.
+    Static scenery and other agents in a composed scene keep their mass.
+    """
+    roots = ref.body_rootid
+    pairs = list(zip(spec.bodies[1:], ids[1:]))
+    trees = {roots[i] for body, i in pairs if body.name in subject}
+    if not trees:
+        trees = {roots[i] for i in range(1, ref.nbody) if ref.body_dofnum[i] > 0}
+        if len(trees) > 1:
+            names = sorted(ref.body(int(r)).name for r in trees)
+            raise ValueError(
+                f"total_mass is ambiguous: several articulated trees {names}; "
+                "name a body of the subject in scales (a factor of 1 is fine)."
+            )
+    return [(body, i) for body, i in pairs if roots[i] in trees]
 
 
 def _scaled_inertia(
