@@ -217,6 +217,9 @@ def make_chasetag_vs_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlE
             func=ct.pursuer_fell, params={"threshold": fall}
         ),
         "tagged": TerminationTermCfg(func=ct.tagged, params={"radius": radius}),
+        # Rare contact blow-ups between the two bodies: reset that env instead of
+        # passing NaN observations to the learner (CPU MuJoCo resets itself).
+        "nan": TerminationTermCfg(func=mdp_terminations.nan_detection),
     }
     events = {
         ct.MATCH_TERM: EventTermCfg(func=ct.Match, mode="reset"),
