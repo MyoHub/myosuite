@@ -464,7 +464,7 @@ Full body and MuscleMimic
      - MuscleMimic bimanual arm imitation
      - yes
    * - ``myoFullBodyDirectional-v0``
-     - Full-body directional locomotion
+     - Full-body directional locomotion (heading command; no motion clip)
      - no
    * - ``myoChallengeChaseTagFBP2-v0``
      - Chase-tag, full body, scripted opponent

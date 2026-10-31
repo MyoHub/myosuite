@@ -36,62 +36,10 @@ def get_device(smoke: bool) -> torch.device:
 
 def make_env(seed: int = 0, angle: float | None = None):
     from myosuite.envs.myo.tasks.mimic.cpu import MuscleMimicFullbodyDirectionalEnv
-    from myosuite.terms.mimic_reward import mimic_root_vel_reward
 
-    class ScratchDirectionalEnv(MuscleMimicFullbodyDirectionalEnv):
-        """Same 528-d physics/obs; no gated KIT clips (from-scratch RL)."""
-
-        def _load_gait_clip(self) -> None:
-            self._gait_qpos_local = None
-            self._gait_qvel_local = None
-            self._gait_T = 1
-
-        def _load_circular_clips(self) -> None:
-            self._circ_clips = None
-
-        def get_reward_dict(self, obs_dict):
-            cur_vel3 = np.array(
-                [float(self.data.qvel[0]), float(self.data.qvel[1]), 0.0],
-                dtype=np.float64,
-            )
-            target_vel3 = np.array(
-                [
-                    self._target_speed * float(self._heading_dir[0]),
-                    self._target_speed * float(self._heading_dir[1]),
-                    0.0,
-                ],
-                dtype=np.float64,
-            )
-            heading_r = float(
-                mimic_root_vel_reward(np, cur_vel3, target_vel3, scale=1.0)
-            )
-            cur_speed = float(np.linalg.norm(cur_vel3))
-            excess = max(0.0, cur_speed - self._target_speed * 1.05)
-            act = obs_dict["act"]
-            act_reg = -float(np.square(act).mean()) if act.size > 0 else 0.0
-            pelvis_z = float(self.data.site_xpos[self._pelvis_site_id, 2])
-            fell = pelvis_z < self._fall_pelvis_z
-            upright = pelvis_z >= self._upright_pelvis_z
-            heading_r_gated = heading_r if upright else 0.0
-            survival_r = 1.0 if upright else 0.0
-            dense = (
-                self._w_heading * heading_r_gated
-                + self._w_act_reg * act_reg
-                + self._w_survival * survival_r
-                - 5.0 * excess * excess
-            )
-            return {
-                "gait_jpos": 0.0,
-                "gait_jvel": 0.0,
-                "heading": heading_r_gated,
-                "survival": survival_r,
-                "dense": dense,
-                "sparse": heading_r_gated,
-                "solved": heading_r_gated > 0.8,
-                "done": fell,
-            }
-
-    env = ScratchDirectionalEnv(seed=seed, target_speed=0.65, w_jpos=0.0, w_jvel=0.0)
+    env = MuscleMimicFullbodyDirectionalEnv(
+        seed=seed, target_speed=0.65, angle_override=angle
+    )
     if angle is not None:
         env._angle_override = float(angle)
     return env

@@ -34,8 +34,6 @@ from myosuite.terms.mimic_obs import (
 from myosuite.terms.mimic_reward import (
     MimicTrackingConfig,
     compute_mimic_tracking_error,
-    mimic_joint_pos_reward,
-    mimic_joint_vel_reward,
     mimic_root_vel_reward,
     mimic_site_tracking_reward,
 )
@@ -224,40 +222,35 @@ class MuscleMimicFullbodyEnv(_MuscleMimicTrackingEnv):
 
 
 class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
-    """Single-agent MuscleMimic full-body env with gait-style + heading reward.
+    """Full-body directional walk: heading command, no motion clip.
 
-    Drops keypoint/site tracking entirely. Instead:
-    - Imitates local joint angles/velocities from a reference gait clip (style).
-    - Rewards root velocity aligned with a commanded heading direction (steering).
-
-    The commanded heading is sampled uniformly from the unit circle at each
-    episode reset, then held fixed for the episode. The agent observes it as a
-    2-D unit vector appended to the standard kinematic obs.
+    Reward is heading-aligned root velocity (upright-gated), survival, and
+    light action regularisation. There is no joint-style / DeepMimic term and
+    no Hugging Face clip. Observation stays the 528-d locomotion contract
+    (local q/v, act, body-frame root vel, heading, orientation).
 
     Registered as ``myoFullBodyDirectional-v0``.
     """
-
-    DEFAULT_GAIT_REPO = "amathislab/musclemimic-retargeted"
-    DEFAULT_GAIT_FILE = "MyoFullBody/gmr/KIT/167/walking_medium06_poses.npz"
 
     def __init__(
         self,
         seed: int | None = None,
         frame_skip: int = 5,
         target_speed: float = 0.7,
-        w_jpos: float = 0.15,
-        w_jvel: float = 0.05,
-        w_heading: float = 0.6,
-        w_act_reg: float = 0.005,
+        w_heading: float = 1.0,
+        w_act_reg: float = 0.1,
         w_act_smooth: float = 0.0,
         w_survival: float = 0.2,
         upright_pelvis_z: float = 0.85,
         fall_pelvis_z: float = 0.6,
-        gait_clip_repo: str = DEFAULT_GAIT_REPO,
-        gait_clip_filename: str = DEFAULT_GAIT_FILE,
         angle_override: float | None = None,
         **kwargs: Any,
     ) -> None:
+        # Older call sites passed gait-clip / style weights. Ignore them.
+        kwargs.pop("w_jpos", None)
+        kwargs.pop("w_jvel", None)
+        kwargs.pop("gait_clip_repo", None)
+        kwargs.pop("gait_clip_filename", None)
         super().__init__(
             frame_skip=frame_skip,
             seed=seed,
@@ -265,22 +258,17 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             mimic_target_high=(1.0,),
             **kwargs,
         )
-        # Record this class's own ctor args; the base would replay fixed mimic bounds.
         EzPickle.__init__(
             self,
             seed=seed,
             frame_skip=frame_skip,
             target_speed=target_speed,
-            w_jpos=w_jpos,
-            w_jvel=w_jvel,
             w_heading=w_heading,
             w_act_reg=w_act_reg,
             w_act_smooth=w_act_smooth,
             w_survival=w_survival,
             upright_pelvis_z=upright_pelvis_z,
             fall_pelvis_z=fall_pelvis_z,
-            gait_clip_repo=gait_clip_repo,
-            gait_clip_filename=gait_clip_filename,
             angle_override=angle_override,
             **kwargs,
         )
@@ -290,8 +278,6 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
         self._ctrl_dt = float(self.model.opt.timestep * self.frame_skip)
 
         self._target_speed = target_speed
-        self._w_jpos = w_jpos
-        self._w_jvel = w_jvel
         self._w_heading = w_heading
         self._w_act_reg = w_act_reg
         self._w_act_smooth = w_act_smooth
@@ -299,92 +285,12 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
         self._prev_act: np.ndarray | None = None
         self._upright_pelvis_z = upright_pelvis_z
         self._fall_pelvis_z = fall_pelvis_z
-
-        self._gait_qpos_local: np.ndarray | None = None
-        self._gait_qvel_local: np.ndarray | None = None
-        self._gait_T: int = 0
-        self._gait_repo = gait_clip_repo
-        self._gait_file = gait_clip_filename
-
-        # Circular clip state for phase-matched initialization
-        self._circ_clips: list[Any] | None = None
-        self._circ_best_frames: dict[
-            int, tuple[int, int]
-        ] = {}  # angle_sector -> (clip_idx, frame)
-
         self._heading_dir = np.array([0.0, 1.0], dtype=np.float32)
         self._angle_override: float | None = angle_override
-        self._pelvis_site_id: int = -1
-
-        self._load_gait_clip()
-        self._load_circular_clips()
         self._pelvis_site_id = int(
             mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "pelvis_mimic")
         )
         self._setup_directional_spaces()
-
-    def _load_gait_clip(self) -> None:
-        from huggingface_hub import hf_hub_download
-
-        path = hf_hub_download(
-            repo_id=self._gait_repo,
-            filename=self._gait_file,
-            repo_type="dataset",
-        )
-        npz = np.load(path)
-        qpos = np.asarray(npz["qpos"], dtype=np.float64)
-        qvel = np.asarray(npz["qvel"], dtype=np.float64)
-        self._gait_qpos_local = qpos[:, 7:]
-        self._gait_qvel_local = qvel[:, 6:]
-        # Full qpos/qvel for initialization (skip first 30 frames = standing/transition)
-        self._gait_qpos_full = qpos[30:]
-        self._gait_qvel_full = qvel[30:]
-        self._gait_T = int(qpos.shape[0])
-
-    def _load_circular_clips(self) -> None:
-        """Load CW + CCW circular walking clips and precompute phase-matched frames."""
-        from huggingface_hub import hf_hub_download
-        from myosuite.core.trajectory_io import (
-            expand_motion_clip_to_model,
-            load_motion_clip,
-        )
-        from pathlib import Path as _Path
-
-        _CIRC_FILES = [
-            "MyoFullBody/gmr/KIT/4/WalkInClockwiseCircle01_poses.npz",
-            # CCW08 covers E (err=0.2°, spd=1.01) vs CCW04 (err=0.5°, spd=0.60).
-            # Switching to CCW08 also lets argmin pick CW01 for SW/S (spd>0.94)
-            # instead of CCW04 (spd=0.60), fixing the two weakest eval sectors.
-            "MyoFullBody/gmr/KIT/4/WalkInCounterClockwiseCircle08_poses.npz",
-        ]
-        clips = []
-        for fname in _CIRC_FILES:
-            p = hf_hub_download(
-                repo_id=self._gait_repo, filename=fname, repo_type="dataset"
-            )
-            clip = load_motion_clip(
-                _Path(p), expected_nq=self.model.nq, expected_nv=self.model.nv
-            )
-            # Columns by joint name: qpos/qvel are indexed as model coordinates below.
-            clips.append(expand_motion_clip_to_model(clip, self.model))
-        self._circ_clips = clips
-
-        def _ang_dist(a: float, b: float) -> float:
-            return abs((a - b + 180) % 360 - 180)
-
-        for angle_deg in range(0, 360, 5):
-            best_fi, best_ci, best_err = 0, 0, 999.0
-            for ci, clip in enumerate(clips):
-                spd = np.linalg.norm(clip.qvel[:, :2], axis=1)
-                angles = np.rad2deg(np.arctan2(clip.qvel[:, 1], clip.qvel[:, 0]))
-                dists = np.array([_ang_dist(float(a), angle_deg) for a in angles])
-                dists[spd < 0.35] = 999.0
-                fi = int(np.argmin(dists))
-                if dists[fi] < best_err:
-                    best_err = float(dists[fi])
-                    best_fi = fi
-                    best_ci = ci
-            self._circ_best_frames[angle_deg] = (best_ci, best_fi)
 
     def _setup_directional_spaces(self) -> None:
         ctrl = self.model.actuator_ctrlrange.astype(np.float32)
@@ -450,26 +356,8 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
         }
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
-        assert self._gait_qpos_local is not None
-        frame = int(round(self.data.time / self._ctrl_dt)) % self._gait_T
-
-        jpos_r = float(
-            mimic_joint_pos_reward(
-                np,
-                obs_dict["qpos_local"].astype(np.float64),
-                self._gait_qpos_local[frame],
-            )
-        )
-        jvel_r = float(
-            mimic_joint_vel_reward(
-                np,
-                obs_dict["qvel_local"].astype(np.float64),
-                self._gait_qvel_local[frame],
-            )
-        )
-
         cur_vel3 = np.array(
-            [obs_dict["root_vel_xy"][0], obs_dict["root_vel_xy"][1], 0.0],
+            [float(self.data.qvel[0]), float(self.data.qvel[1]), 0.0],
             dtype=np.float64,
         )
         target_vel3 = np.array(
@@ -481,9 +369,7 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             dtype=np.float64,
         )
         heading_r = float(mimic_root_vel_reward(np, cur_vel3, target_vel3, scale=1.0))
-        # Penalise speed that exceeds target to prevent runaway acceleration.
-        cur_speed = float(np.linalg.norm(cur_vel3))
-        # Strong quadratic penalty from 1.05× target_speed — prevents runaway gait.
+        cur_speed = float(np.linalg.norm(cur_vel3[:2]))
         excess = max(0.0, cur_speed - self._target_speed * 1.05)
         overspeed_penalty = excess * excess
 
@@ -498,23 +384,17 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
         pelvis_z = float(self.data.site_xpos[self._pelvis_site_id, 2])
         fell = pelvis_z < self._fall_pelvis_z
         upright = pelvis_z >= self._upright_pelvis_z
-
-        # Gate heading reward on being upright — prevents learning to fall forward
         heading_r_gated = heading_r if upright else 0.0
         survival_r = 1.0 if upright else 0.0
 
         dense = (
-            self._w_jpos * jpos_r
-            + self._w_jvel * jvel_r
-            + self._w_heading * heading_r_gated
+            self._w_heading * heading_r_gated
             + self._w_act_reg * act_reg
             + self._w_act_smooth * act_smooth
             + self._w_survival * survival_r
             - 5.0 * overspeed_penalty
         )
         return {
-            "gait_jpos": jpos_r,
-            "gait_jvel": jvel_r,
             "heading": heading_r_gated,
             "survival": survival_r,
             "dense": dense,
@@ -531,60 +411,26 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             angle = float(np_random.uniform(0.0, 2.0 * np.pi))
         self._heading_dir = np.array([np.cos(angle), np.sin(angle)], dtype=np.float32)
 
-        if self._circ_clips is not None:
-            # Phase-matched init: pick the clip frame closest to commanded heading,
-            # ±5-frame jitter. Uses circular clips which naturally cover all directions.
-            angle_deg = int(round(np.rad2deg(angle))) % 360
-            sector = (angle_deg // 5) * 5
-            ci, fi = self._circ_best_frames.get(sector, (0, 0))
-            jitter = int(np_random.integers(-5, 6))
-            fi = (fi + jitter) % self._circ_clips[ci].qpos.shape[0]
-            self.data.qpos[:] = self._circ_clips[ci].qpos[fi]
-            self.data.qvel[:] = self._circ_clips[ci].qvel[fi]
+        if self.model.nkey > 0:
+            mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
+        self.data.qvel[:] = 0.0
 
-            # Rotate body to face commanded heading.
-            # Body forward = pelvis X axis. At rest (yaw=0), pelvis X ≈ -Y (South).
-            # For angle=0 (East), pelvis X must point East → target_yaw = +π/2.
-            cur_yaw = self._pelvis_yaw(self.data.qpos)
-            target_yaw = angle + np.pi / 2.0
-            delta = target_yaw - cur_yaw
-            half = delta / 2.0
-            rw, rx, ry, rz = float(np.cos(half)), 0.0, 0.0, float(np.sin(half))
-            ow, ox, oy, oz = (
-                float(self.data.qpos[3]),
-                float(self.data.qpos[4]),
-                float(self.data.qpos[5]),
-                float(self.data.qpos[6]),
-            )
-            self.data.qpos[3] = rw * ow - rx * ox - ry * oy - rz * oz
-            self.data.qpos[4] = rw * ox + rx * ow + ry * oz - rz * oy
-            self.data.qpos[5] = rw * oy - rx * oz + ry * ow + rz * ox
-            self.data.qpos[6] = rw * oz + rx * oy - ry * ox + rz * ow
-            # Rotate root velocity to match new body orientation
-            vx, vy = float(self.data.qvel[0]), float(self.data.qvel[1])
-            c, s = float(np.cos(delta)), float(np.sin(delta))
-            self.data.qvel[0] = c * vx - s * vy
-            self.data.qvel[1] = s * vx + c * vy
-        else:
-            # Fallback: start from gait clip frame-0 with zero root velocity
-            if self._gait_qpos_local is not None:
-                self.data.qpos[7:] = self._gait_qpos_local[0]
-            if self._gait_qvel_local is not None:
-                self.data.qvel[6:] = self._gait_qvel_local[0]
-            # Pelvis X = forward = -Y at rest → target_yaw = angle + π/2 for East
-            half = (angle + np.pi / 2.0) / 2.0
-            orig = self.data.qpos[3:7].copy()
-            rw, rx, ry, rz = float(np.cos(half)), 0.0, 0.0, float(np.sin(half))
-            ow, ox, oy, oz = (
-                float(orig[0]),
-                float(orig[1]),
-                float(orig[2]),
-                float(orig[3]),
-            )
-            self.data.qpos[3] = rw * ow - rx * ox - ry * oy - rz * oz
-            self.data.qpos[4] = rw * ox + rx * ow + ry * oz - rz * oy
-            self.data.qpos[5] = rw * oy - rx * oz + ry * ow + rz * ox
-            self.data.qpos[6] = rw * oz + rx * oy - ry * ox + rz * ow
+        # Body forward = pelvis X. At rest (yaw=0) that is world -Y, so East
+        # (angle=0) needs target_yaw = +π/2.
+        cur_yaw = self._pelvis_yaw(self.data.qpos)
+        target_yaw = angle + np.pi / 2.0
+        half = (target_yaw - cur_yaw) / 2.0
+        rw, rx, ry, rz = float(np.cos(half)), 0.0, 0.0, float(np.sin(half))
+        ow, ox, oy, oz = (
+            float(self.data.qpos[3]),
+            float(self.data.qpos[4]),
+            float(self.data.qpos[5]),
+            float(self.data.qpos[6]),
+        )
+        self.data.qpos[3] = rw * ow - rx * ox - ry * oy - rz * oz
+        self.data.qpos[4] = rw * ox + rx * ow + ry * oz - rz * oy
+        self.data.qpos[5] = rw * oy - rx * oz + ry * ow + rz * ox
+        self.data.qpos[6] = rw * oz + rx * oy - ry * ox + rz * ow
 
         if self.model.na > 0:
             self.data.act[:] = 0.05
