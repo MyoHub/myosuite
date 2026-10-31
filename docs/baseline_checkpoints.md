@@ -143,6 +143,18 @@ CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and
 
 <sub>
 
+**Capped action std in the PPO defaults (#566).** The mjlab PPO configs of the muscle tasks now clamp the policy's
+action std to [0.05, 1.0]. MuscleMimic, ChaseTag FBP2 and table tennis also start at std 0.5 and use an entropy bonus of
+0.001 (were 1.0 and 0.01). The checkpoints above were trained with the earlier defaults. They still load, and
+`eval_mjlab_policy.py` scores them as before, with or without `--stochastic`: the cap adds no parameter, and the
+evaluation samples with the checkpoint's own std. Resuming training from one of them clamps a std above 1 to 1 (the
+MuscleMimic run of #566 ended at 14). A run with the new defaults is a new training setup, so its policy and success
+rate can differ from the published ones.
+
+</sub>
+
+<sub>
+
 **`myoChallengeChaseTagFBP2-v0`** (success: the agent tags the opponent) and
 **`myoChallengeTableTennisP{0,1,2}-v0`** have no trained checkpoint available yet to evaluate.
 

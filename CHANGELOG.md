@@ -41,6 +41,21 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+* **mjlab PPO defaults of the muscle tasks cap the action std ([#566]).**
+  - The muscle runner configs build their Gaussian policy from the new `muscle_gaussian_distribution_cfg()`
+    (`tasks/rl.py`), which clamps the std to `std_range=(0.05, 1.0)` with rsl_rl's own `std_range`. These are
+    `myo_ppo_runner_cfg` (pose, reach, leg, torso), `default_mimic_clip_on_policy_runner_cfg` (MuscleMimic), ChaseTag
+    FBP2, table tennis and the elbow benchmark config.
+  - MuscleMimic, ChaseTag, table tennis and the elbow config also start at std 0.5 (was 1.0) and use an entropy
+    bonus of 0.001 (was 0.01), the values pose and reach already used (`MUSCLE_ENTROPY_COEF`).
+  - Why: once a muscle's control saturates, the return no longer depends on its std. The entropy bonus is then the
+    only gradient on the std, and Adam raises it by about the learning rate per update, whatever the coefficient is.
+    That is 0.16 per 1000 iterations at the adaptive schedule's 1e-5 floor. A 2B-step `myoMimicFullbody-v0` run
+    ended at std 14, with 99 % of controls saturated (bang-bang).
+  - Training defaults only. Observations, actions and dynamics are unchanged, and published checkpoints load and
+    evaluate as before. Retraining with the new defaults can give different policies (`docs/baseline_checkpoints.md`).
+  - The MuscleMimic config's docstring now describes its actual settings.
+
 * **Fatigue groups and parameters for every muscle of the bundled models.**
   - `_muscle_group` now also strips MuscleMimic's `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent
     scenes and an `R:`/`L:` side prefix. Before, the MuscleMimic left arm (32 muscles, 63 with fingers) and all 708
@@ -276,6 +291,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#520]: https://github.com/MyoHub/myosuite/pull/520
 [#522]: https://github.com/MyoHub/myosuite/pull/522
 [#540]: https://github.com/MyoHub/myosuite/pull/540
+[#566]: https://github.com/MyoHub/myosuite/issues/566
 
 ## [2.12.2] - 2026-05-06
 * Asset credits updated ([#392]).

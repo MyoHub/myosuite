@@ -6,7 +6,49 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
+
+# Bounds of the policy's action std (pre-mapping action units) for muscle tasks.
+MUSCLE_STD_RANGE: tuple[float, float] = (0.05, 1.0)
+# PPO entropy bonus for muscle tasks.
+MUSCLE_ENTROPY_COEF: float = 0.001
+
+
+def muscle_gaussian_distribution_cfg(
+    init_std: float = 0.5,
+    std_range: tuple[float, float] = MUSCLE_STD_RANGE,
+) -> dict[str, Any]:
+    """rsl_rl ``GaussianDistribution`` config for muscle actions, with a capped std.
+
+    The muscle action mappings (``sigmoid(5 (a - 0.5))``, or a clamp to the
+    control range) saturate within about one unit of their centre, so a std above
+    1 only switches muscles fully on or off. Once a muscle saturates, its return
+    no longer depends on the std. The entropy bonus is then the only gradient on
+    the std, and Adam steps it up by about the learning rate on every update,
+    whatever ``entropy_coef`` is. On ``myoMimicFullbody-v0`` this raised the std
+    from 1 to 14 over 80k iterations, giving bang-bang controls
+    (MyoHub/myosuite#566). ``std_range`` clamps the std that rsl_rl samples
+    with. The clamp has no gradient outside the range, so a std that reaches a
+    bound stays there.
+
+    ``std_type`` stays ``"scalar"``: ``"log"`` renames the checkpoint parameter
+    (``distribution.log_std_param``), and published checkpoints would not load.
+
+    Args:
+        init_std: Initial std.
+        std_range: ``(min, max)`` bounds of the std.
+
+    Returns:
+        The ``distribution_cfg`` of an :class:`~mjlab.rl.RslRlModelCfg`.
+    """
+    return {
+        "class_name": "GaussianDistribution",
+        "init_std": init_std,
+        "std_type": "scalar",
+        "std_range": std_range,
+    }
 
 
 def myo_ppo_runner_cfg(
@@ -14,7 +56,8 @@ def myo_ppo_runner_cfg(
     hidden_dims: tuple[int, ...] = (128, 128, 128, 128),
     max_iterations: int = 1000,
     init_std: float = 0.5,
-    entropy_coef: float = 0.001,
+    entropy_coef: float = MUSCLE_ENTROPY_COEF,
+    std_range: tuple[float, float] = MUSCLE_STD_RANGE,
     obs_normalization: bool = True,
     critic_hidden_dims: tuple[int, ...] = (256, 256, 256, 256),
     num_steps_per_env: int = 24,
@@ -33,9 +76,9 @@ def myo_ppo_runner_cfg(
 
     Defaults avoid a runaway-stochastic policy (observed: action std 1 -> 5.8,
     entropy 49 -> 102 and the adaptive learning rate collapsing on the arm-reach
-    task): a moderate initial action std, a small entropy bonus, and running
-    observation normalization (raw observations mix radians, metres and [0, 1]
-    activations).
+    task): a moderate initial action std, a small entropy bonus, a capped std
+    (see :func:`muscle_gaussian_distribution_cfg`), and running observation
+    normalization (raw observations mix radians, metres and [0, 1] activations).
 
     The normalizer statistics are saved in the checkpoint and frozen at
     evaluation; ``load_rslrl_policy`` / ``export_rslrl_to_onnx`` fold them into
@@ -50,6 +93,7 @@ def myo_ppo_runner_cfg(
         max_iterations: Default PPO iterations (``--agent.max-iterations``).
         init_std: Initial std of the Gaussian policy (pre-sigmoid action units).
         entropy_coef: PPO entropy bonus coefficient.
+        std_range: ``(min, max)`` bounds of the Gaussian policy's std.
         obs_normalization: Running mean/std normalization of actor and critic inputs.
         critic_hidden_dims: Critic MLP sizes.
         num_steps_per_env: Rollout length per env and PPO iteration.
@@ -66,11 +110,7 @@ def myo_ppo_runner_cfg(
             hidden_dims=hidden_dims,
             activation="elu",
             obs_normalization=obs_normalization,
-            distribution_cfg={
-                "class_name": "GaussianDistribution",
-                "init_std": init_std,
-                "std_type": "scalar",
-            },
+            distribution_cfg=muscle_gaussian_distribution_cfg(init_std, std_range),
         ),
         critic=RslRlModelCfg(
             hidden_dims=critic_hidden_dims,
