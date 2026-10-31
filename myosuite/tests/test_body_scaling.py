@@ -20,11 +20,13 @@ from pathlib import Path
 import mujoco
 import numpy as np
 import pytest
+from scipy.spatial.transform import Rotation
 
 from myosuite.core.body_scaling import (
     _MYOFULLBODY_SEGMENTS,
     _MYOLEG_SEGMENTS,
     _body_scales,
+    _fit_points,
     _frame_rot,
     _geom_bottom,
     _model_digest,
@@ -974,6 +976,65 @@ def test_segment_axis_maps_match_the_model_frames(
                 np.abs(rot).max(axis=0), 1.0, atol=1e-5, err_msg=segment
             )
             assert tuple(np.argmax(np.abs(rot), axis=0)) == axes, segment
+
+
+def _measured(points: np.ndarray, factors: float | np.ndarray) -> np.ndarray:
+    """Points scaled along the body axes, then seen from a rotated, shifted lab."""
+    lab = Rotation.from_rotvec([0.3, -0.5, 1.2])
+    return lab.apply(np.asarray(points) * factors) + [0.4, -0.2, 1.1]
+
+
+def test_points_spanning_three_directions_give_three_factors() -> None:
+    """Markers on a body, measured in a lab frame, recover the body's factors."""
+    points = np.random.default_rng(3).uniform(-0.1, 0.1, (6, 3))
+    factors = np.array([1.08, 0.95, 1.12])
+    by_points = scale_model(_leg(), {"thigh": (points, _measured(points, factors))})
+    by_factors = scale_model(_leg(), {"thigh": factors})
+    np.testing.assert_allclose(by_points.site_pos, by_factors.site_pos, atol=1e-9)
+    np.testing.assert_allclose(by_points.geom_size, by_factors.geom_size, atol=1e-9)
+    np.testing.assert_allclose(
+        by_points.actuator_lengthrange, by_factors.actuator_lengthrange, rtol=1e-8
+    )
+
+
+def test_a_marker_pair_or_planar_points_give_one_factor() -> None:
+    points = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, -0.4], [0.05, 0.0, -0.2]])
+    measured = _measured(points, 1.07)
+    expected = scale_model(_leg(), {"thigh": 1.07})
+    # Two points: the ratio of their distances, as OpenSim's marker pairs.
+    for count in (2, 3):
+        model = scale_model(_leg(), {"thigh": (points[:count], measured[:count])})
+        np.testing.assert_allclose(model.site_pos, expected.site_pos, atol=1e-12)
+    np.testing.assert_allclose(
+        _fit_points("thigh", points[:2], measured[:2] + [0.0, 0.0, 0.01]),
+        np.full(3, 1.07),
+    )
+
+
+def test_point_and_factor_entries_mix() -> None:
+    points = np.random.default_rng(4).uniform(-0.1, 0.1, (5, 3))
+    measured = _measured(points, [1.1, 1.0, 0.9])
+    fitted = _fit_points("thigh", points, measured)
+    np.testing.assert_allclose(fitted, [1.1, 1.0, 0.9])
+    mixed = scale_model(_leg(), {"thigh": (points, measured), "shank": 1.05})
+    direct = scale_model(_leg(), {"thigh": fitted, "shank": 1.05})
+    assert _model_bytes(mixed) == _model_bytes(direct)
+
+
+def test_missing_points_are_skipped_and_unfit_points_refused() -> None:
+    points = np.random.default_rng(5).uniform(-0.1, 0.1, (6, 3))
+    measured = _measured(points, [1.1, 1.0, 0.9])
+    missing = measured.copy()
+    missing[0] = np.nan  # an occluded marker
+    np.testing.assert_allclose(_fit_points("thigh", points, missing), [1.1, 1.0, 0.9])
+    with pytest.raises(ValueError, match="metres"):  # measured in millimetres
+        scale_model(_leg(), {"thigh": (points, 1000 * measured)})
+    with pytest.raises(ValueError, match="shape"):
+        scale_model(_leg(), {"thigh": (points, measured[:3])})
+    with pytest.raises(ValueError, match="two or more"):
+        scale_model(_leg(), {"thigh": (points[:1], measured[:1])})
+    with pytest.raises(ValueError, match="NaN"):
+        scale_model(_leg(), {"thigh": (points, np.where(missing > 0, np.inf, 0.0))})
 
 
 SCALE_SET = """<OpenSimDocument Version="40000">
