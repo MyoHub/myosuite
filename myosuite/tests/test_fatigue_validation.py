@@ -72,6 +72,9 @@ JOINT_ROWS = {
     "Ankle": "Ankle",
     "Toe": "Ankle",
     "Shoulder": "Shoulder",
+    "Trunk": "Trunk",
+    "Thigh-Hamstring": "Knee",
+    "Hip": "General",  # Frey-Law & Avin (2010) have no hip curve
 }
 
 DT = 0.02  # control step of the myoFati* envs; ET is 1e2-1e3 s
@@ -196,8 +199,6 @@ def _cases() -> list:
         if row in _KNOWN_DEVIATIONS:
             marks = pytest.mark.xfail(reason=_KNOWN_DEVIATIONS[row], strict=True)
         cases.append(pytest.param(row, joint, id=f"{row}-vs-{joint}", marks=marks))
-    # Torso muscles are not in MUSCLE_FMG and fall back to Default.
-    cases.append(pytest.param("Default", "Trunk", id="Default-vs-Trunk"))
     return cases
 
 

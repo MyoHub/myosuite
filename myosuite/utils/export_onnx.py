@@ -542,7 +542,9 @@ def verify_onnx_on_cpu(
     Returns:
         Dict with ``total_reward``, ``mean_reward``, ``n_steps``, ``terminated``.
     """
-    import onnxruntime as ort
+    from myosuite.utils.onnxruntime_utils import require_onnxruntime
+
+    ort = require_onnxruntime()
 
     onnx_path = Path(onnx_path)
     sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
@@ -599,7 +601,9 @@ def compare_onnx_across_backends(
         Dict with ``max_obs_diff_cpu_mjx``, ``max_rew_diff_cpu_mjx``, and
         ``passed`` (bool).
     """
-    import onnxruntime as ort
+    from myosuite.utils.onnxruntime_utils import require_onnxruntime
+
+    ort = require_onnxruntime()
 
     onnx_path = Path(onnx_path)
     sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
