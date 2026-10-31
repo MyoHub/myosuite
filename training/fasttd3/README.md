@@ -49,7 +49,7 @@ train-fasttd3 myoMimicFullbody-v0 --smoke --backend cpu
 `--backend mjlab` is the Warp twin. `--clip walk.npz` switches MuscleMimic to
 trajectory mode. Muscle activations map FastTD3 `tanh` `[-1, 1]` to `[0, 1]`.
 
-Colab T4: `--backend mjlab --num-envs 64` and leave AMP off. `--amp` is bf16-only
+Colab T4: `--backend mjlab --num-envs 64` and leave AMP off. The Warp extra needs **MuJoCo ≥ 3.13** (`nflexevpair`). `--amp` is bf16-only
 (A100/H100). fp16 AMP on unnormalized muscle observations overflows.
 
 ## Tests
