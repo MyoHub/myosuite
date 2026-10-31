@@ -1,22 +1,64 @@
 {
-  "meaning": "Bounds on the additional cross-solver scaling difference after subtracting nominal conversion error. These characterize the fixed synthetic pose grid, not general biomechanical equivalence or clinical accuracy.",
-  "justification": "Round measured maxima upward with a small numerical margin. Every metric bound is exercised against a 5% tibia-factor error, an anisotropic femur-axis swap, or a 3% muscle lengthrange error. Nominal conversion errors remain separately reported. The torque bounds cover only the six listed muscles at activation one.",
+  "meaning": "Bounds on the scaling discrepancy between scale_model's OpenSim-file route and OpenSim's ModelScaler, after removing the nominal conversion error. One factor s: (m_s - o_s) - s^k (m_n - o_n), which is zero for two exact similarities (k = 1 for lengths, moment arms and torque, 0 for normalized fibre length and force). Several factors: (m_s - m_n) - (o_s - o_n). They characterize the fixed synthetic pose grid, not biomechanical equivalence or clinical accuracy.",
+  "justification": "Uniform bounds are about 1.5 times the measured maxima (OpenSim's moment-arm and muscle-equilibrium noise), with a 1 nm floor for positions, which agree to 4e-16 m. Anisotropic bounds are 8 to 16% above the measured maxima; the 0.357 mm position discrepancy is the documented child joint offset convention. Every bound rejects each mutation listed for it under covers (by at least 25%). No cross-model bound sees the mutations under regression_only, so the MyoSuite self-regression must reject them.",
+  "mutations": {
+    "<segment>_<x|y|z>": "That segment's factor along one OpenSim axis times 1.05.",
+    "tibia_r_xyz": "All three tibia_r factors times 1.05.",
+    "femur_r_swap_xy": "femur_r's x and y factors swapped.",
+    "lengthrange": "The six muscles' lengthrange times 1.03 after scaling."
+  },
   "uniform": {
-    "joint_centres_m": 0.0013,
-    "sole_points_m": 0.0013,
-    "sole_floor_offset_m": 0.0013,
-    "moment_arms_m": 0.001,
-    "normalized_fibre_length": 0.0001,
-    "normalized_tendon_force": 0.0001,
-    "torque_nm": 10.0
+    "joint_centres_m": 1e-09,
+    "sole_points_m": 1e-09,
+    "sole_floor_offset_m": 1e-09,
+    "moment_arms_m": 4e-06,
+    "normalized_fibre_length": 8e-06,
+    "normalized_tendon_force": 1.4e-05,
+    "torque_nm": 0.012
   },
   "anisotropic": {
-    "joint_centres_m": 0.0005,
-    "sole_points_m": 0.0005,
-    "sole_floor_offset_m": 0.0005,
-    "moment_arms_m": 0.001,
-    "normalized_fibre_length": 0.085,
-    "normalized_tendon_force": 0.12,
-    "torque_nm": 16.0
+    "joint_centres_m": 0.0004,
+    "sole_points_m": 0.0004,
+    "sole_floor_offset_m": 0.0004,
+    "moment_arms_m": 0.0008,
+    "normalized_fibre_length": 0.022,
+    "normalized_tendon_force": 0.019,
+    "torque_nm": 3.6
+  },
+  "pelvis_wrap_dimensions_m": 1e-08,
+  "self_regression": {
+    "rtol": 1e-07,
+    "atol": 1e-09,
+    "atol_by_record": {
+      "torque_nm": 1e-06,
+      "body_inertia_kgm2": 1e-08,
+      "torso_inertia_kgm2": 1e-08
+    }
+  },
+  "covers": {
+    "uniform": {
+      "joint_centres_m": ["tibia_r_xyz","pelvis_x","pelvis_y","pelvis_z","femur_r_x","femur_r_y","femur_r_z","tibia_r_x","tibia_r_y"],
+      "sole_points_m": ["tibia_r_xyz","pelvis_x","pelvis_y","pelvis_z","femur_r_x","femur_r_y","femur_r_z","tibia_r_x","tibia_r_y","talus_r_x","talus_r_y","talus_r_z"],
+      "sole_floor_offset_m": ["tibia_r_xyz","pelvis_y","femur_r_x","femur_r_y","femur_r_z","tibia_r_x","tibia_r_y","talus_r_x","talus_r_y","talus_r_z"],
+      "moment_arms_m": ["tibia_r_xyz","pelvis_x","pelvis_y","pelvis_z","femur_r_x","femur_r_y","femur_r_z","tibia_r_x","tibia_r_y","tibia_r_z","patella_r_x","patella_r_y","patella_r_z","talus_r_x","talus_r_y","talus_r_z","calcn_r_x","calcn_r_y","calcn_r_z"],
+      "normalized_fibre_length": ["tibia_r_xyz","lengthrange","pelvis_x","pelvis_y","pelvis_z","femur_r_x","femur_r_y","femur_r_z","tibia_r_x","tibia_r_y","tibia_r_z","patella_r_x","patella_r_y","patella_r_z","talus_r_x","talus_r_y","talus_r_z","calcn_r_x","calcn_r_y","calcn_r_z"],
+      "normalized_tendon_force": ["tibia_r_xyz","lengthrange","pelvis_x","pelvis_y","pelvis_z","femur_r_x","femur_r_y","femur_r_z","tibia_r_x","tibia_r_y","tibia_r_z","patella_r_x","patella_r_y","patella_r_z","talus_r_x","talus_r_y","talus_r_z","calcn_r_x","calcn_r_y","calcn_r_z"],
+      "torque_nm": ["tibia_r_xyz","lengthrange","pelvis_x","pelvis_y","pelvis_z","femur_r_x","femur_r_y","femur_r_z","tibia_r_x","tibia_r_y","tibia_r_z","patella_r_x","patella_r_y","patella_r_z","talus_r_x","talus_r_y","talus_r_z","calcn_r_x","calcn_r_y","calcn_r_z"],
+      "pelvis_wrap_dimensions_m": ["pelvis_x","pelvis_y","pelvis_z"]
+    },
+    "anisotropic": {
+      "joint_centres_m": ["tibia_r_xyz","femur_r_swap_xy","pelvis_x","pelvis_y","pelvis_z","femur_r_x","femur_r_y","tibia_r_x","tibia_r_y"],
+      "sole_points_m": ["tibia_r_xyz","femur_r_swap_xy","pelvis_x","pelvis_y","pelvis_z","femur_r_x","femur_r_y","tibia_r_x","tibia_r_y","talus_r_x","talus_r_y"],
+      "sole_floor_offset_m": ["tibia_r_xyz","femur_r_swap_xy","pelvis_y","femur_r_x","femur_r_y","tibia_r_x","tibia_r_y","talus_r_x","talus_r_y"],
+      "moment_arms_m": ["tibia_r_xyz","femur_r_swap_xy","pelvis_x","pelvis_y","pelvis_z","femur_r_x","femur_r_y","tibia_r_x","tibia_r_y","patella_r_x","patella_r_y","talus_r_x","calcn_r_x"],
+      "normalized_fibre_length": ["femur_r_swap_xy","lengthrange","femur_r_y","patella_r_y"],
+      "normalized_tendon_force": ["tibia_r_xyz","femur_r_swap_xy","lengthrange","femur_r_y","tibia_r_y"],
+      "torque_nm": ["tibia_r_xyz","femur_r_swap_xy","lengthrange","pelvis_x","femur_r_x","femur_r_y","tibia_r_y","patella_r_y","talus_r_x","talus_r_y","calcn_r_y"],
+      "pelvis_wrap_dimensions_m": ["pelvis_x","pelvis_y","pelvis_z"]
+    }
+  },
+  "regression_only": {
+    "uniform": ["torso_x","torso_y","torso_z"],
+    "anisotropic": ["femur_r_z","tibia_r_z","patella_r_z","talus_r_z","calcn_r_z","torso_x","torso_y","torso_z"]
   }
 }
