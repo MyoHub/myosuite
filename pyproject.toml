@@ -35,7 +35,10 @@ dependencies = [
     "pandas",
     "osqp",
     "mujoco",
-    "Pillow>=10.1.0",
+    # 13.0.0 is the first Pillow release that clears the current advisories, and it
+    # requires Python >=3.11. 3.10 stays on the newest Pillow that still installs.
+    "Pillow>=13.0.0; python_version >= '3.11'",
+    "Pillow>=10.1.0; python_version < '3.11'",
     "colorednoise>=2.2.0",
     "packaging",
     "ml-collections>=0.1.1",
@@ -151,14 +154,14 @@ dev = [
     "pytest>=9.0.3",
     "pytest-xvfb",
     "pytest-benchmark>=4.0",
-    "black",
+    "black>=26.10.1",
     "isort",
     "flake8",
 ]
 
 
 [build-system]
-requires = ["setuptools>=83", "wheel"]
+requires = ["setuptools>=84.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -229,11 +232,17 @@ extend-exclude = ["tutorials"]
 # while orbax-checkpoint wants jax>=0.6; MJX is opt-in and not part of `[dev]`.
 constraint-dependencies = [
     "torch>=2.13.0",
+    "certifi>=2026.10.18",
     "cryptography>=48.0.1",
     "idna>=3.15",
     "lxml>=6.1.0",
-    "msgpack>=1.2.1",
+    # filelock 4.2.1 clears the current advisories and requires Python >=3.11.
+    # Later 3.x releases add advisories and still do not clear the old ones.
+    "filelock>=4.2.5; python_version >= '3.11'",
+    "filelock>=3.25.2,<3.28; python_version < '3.11'",
+    "gitpython>=3.2.1",
+    "msgpack>=1.2.3",
     "paramiko>=5.0.0",
-    "setuptools>=83.0.0",
+    "setuptools>=84.1.0",
     "urllib3>=2.7.0",
 ]
