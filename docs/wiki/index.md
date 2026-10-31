@@ -10,6 +10,7 @@
 | [mjlab-design-guide.md](mjlab-design-guide.md) | Before writing any mjlab backend code |
 | [cross-backend-contract.md](cross-backend-contract.md) | Before exporting a policy across backends |
 | [writing-term-functions.md](writing-term-functions.md) | Writing obs/reward/action term functions |
+| [training-guidelines.md](training-guidelines.md) | Before adding training/learning methods or dependencies |
 | [agent-workflow.md](agent-workflow.md) | Required agent workflow and subagent strategy |
 | [log.md](log.md) | Append-only log of PRs to `dev` with new features / critical changes |
 
