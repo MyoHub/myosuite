@@ -43,17 +43,28 @@ def _rest(model: mujoco.MjModel) -> mujoco.MjData:
     return data
 
 
-def write_skin_glb(skin: Skin, model: mujoco.MjModel, path: Path | str) -> None:
+def write_skin_glb(
+    skin: Skin | SkinPose,
+    model: mujoco.MjModel,
+    path: Path | str,
+    *,
+    allow_approximate: bool = False,
+) -> None:
     """Write *skin* as a rigged ``.glb`` in *model*'s rest pose.
 
     Args:
-        skin: Parsed skin.
+        skin: Parsed skin, or a pose with explicit body scaling.
         model: Model whose bodies the skin bones are named after.
         path: Output ``.glb`` file.
+        allow_approximate: Allow a weighted common bind mesh when segment-local
+            offsets cannot be represented exactly; see :meth:`SkinPose.bake`.
 
     Raises:
-        ValueError: Some bone names are not bodies of *model*.
+        ValueError: Some bone names are not bodies of *model*, or the common
+            bind mesh cannot preserve the pose's offsets exactly.
     """
+    if isinstance(skin, SkinPose):
+        skin = skin.bake(model, allow_approximate=allow_approximate)
     pose = SkinPose.bind(skin, model)
     data = _rest(model)
     vert = pose.vertices(data).astype(np.float64)
