@@ -16,7 +16,7 @@ from typing import Any
 import mujoco
 import numpy as np
 
-from scripts.newton_compat_probe import (
+from newton_compat_probe import (
     DEFAULT_MODELS,
     _PACKAGES,
     _captured,

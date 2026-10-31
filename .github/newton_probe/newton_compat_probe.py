@@ -32,8 +32,8 @@ labels. Everything runs on the CPU.
 
 Usage::
 
-    python scripts/newton_compat_probe.py --out newton_probe
-    python scripts/newton_compat_probe.py --models myoElbowPose1D6MRandom-v0 --strict
+    python .github/newton_probe/newton_compat_probe.py --out newton_probe
+    python .github/newton_probe/newton_compat_probe.py --models myoElbowPose1D6MRandom-v0 --strict
 
 Exit codes: 0, or with ``--strict`` 1 when a probed model fails to import with its
 meshes or to convert, loses a named element or muscle, or changes the measured
@@ -657,7 +657,7 @@ def render(report: dict[str, Any]) -> str:
         "",
         "Cells read MuJoCo reference -> Newton. `authored` is the MJCF MyoSuite loads; "
         "`normalized` is MuJoCo's explicit rewrite of it "
-        "(see `scripts/newton_compat_probe.py`). "
+        "(see `.github/newton_probe/newton_compat_probe.py`). "
         "*no meshes*: Newton failed to load the meshes and the model was imported "
         "without them.",
         "",

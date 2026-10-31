@@ -56,7 +56,7 @@ Raw names are not counted as preserved by the strict probe.
 Matched trajectories
 --------------------
 
-``scripts/newton_dynamics_probe.py`` compares the original authored native CPU
+``.github/newton_probe/newton_dynamics_probe.py`` compares the original authored native CPU
 model with Newton's converted CPU MuJoCo or CUDA MuJoCo-Warp solver. It uses
 the default pose and a deterministic small scalar-joint perturbation, identical
 sinusoidal muscle controls, and 128 steps at the authored timestep. The bounds
@@ -172,9 +172,9 @@ Use a separate environment for Newton and install the exact upstream revision::
 
    uv venv --python 3.12 .venv-newton
    uv pip install --python .venv-newton "newton[sim] @ git+https://github.com/M-Colley/newton.git@4cd047d3d4095c0b19786469f1a5041d049d703e" "musclemimic_models==1.0.6" -e .
-   .venv-newton/bin/python -m scripts.newton_compat_probe --strict --out newton_conversion
-   .venv-newton/bin/python -m scripts.newton_dynamics_probe --engine cpu --device cpu --poses 2 --steps 128 --newton-revision 4cd047d3d4095c0b19786469f1a5041d049d703e --out newton_cpu
-   .venv-newton/bin/python -m scripts.newton_dynamics_probe --engine warp --device cuda:0 --poses 2 --steps 128 --newton-revision 4cd047d3d4095c0b19786469f1a5041d049d703e --out newton_cuda
+   .venv-newton/bin/python .github/newton_probe/newton_compat_probe.py --strict --out newton_conversion
+   .venv-newton/bin/python .github/newton_probe/newton_dynamics_probe.py --engine cpu --device cpu --poses 2 --steps 128 --newton-revision 4cd047d3d4095c0b19786469f1a5041d049d703e --out newton_cpu
+   .venv-newton/bin/python .github/newton_probe/newton_dynamics_probe.py --engine warp --device cuda:0 --poses 2 --steps 128 --newton-revision 4cd047d3d4095c0b19786469f1a5041d049d703e --out newton_cuda
 
 On Windows use ``.venv-newton/Scripts/python.exe``. The numerical harness writes
 its report incrementally and exits with status 1 when any case fails the bounds.

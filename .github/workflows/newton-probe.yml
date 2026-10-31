@@ -1,5 +1,5 @@
 # Measures how much of each MyoSuite model survives NVIDIA Newton's MJCF import
-# (scripts/newton_compat_probe.py). Runs on the release pull request (dev into
+# (.github/newton_probe/newton_compat_probe.py). Runs on the release pull request (dev into
 # main) and by hand. It reports and never fails the run.
 name: Newton probe
 
@@ -60,7 +60,7 @@ jobs:
       - name: Run the probe
         id: probe
         run: |
-          .venv/bin/python scripts/newton_compat_probe.py --strict --out newton_probe 2>&1 | tee newton_probe/probe.log
+          .venv/bin/python .github/newton_probe/newton_compat_probe.py --strict --out newton_probe 2>&1 | tee newton_probe/probe.log
 
       - name: Publish report or execution failure
         if: always()

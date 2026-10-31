@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,7 +10,11 @@ import mujoco
 import numpy as np
 import pytest
 
-from scripts import newton_dynamics_probe as probe
+# The probes are maintainer scripts next to their workflow, not package modules.
+sys.path.insert(
+    0, str(Path(__file__).resolve().parents[2] / ".github" / "newton_probe")
+)
+import newton_dynamics_probe as probe  # noqa: E402
 
 pytestmark = pytest.mark.tier1
 

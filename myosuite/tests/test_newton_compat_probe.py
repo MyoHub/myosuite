@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import json
 import logging
 from pathlib import Path
@@ -11,7 +12,11 @@ import mujoco
 import numpy as np
 import pytest
 
-from scripts import newton_compat_probe as probe
+# The probes are maintainer scripts next to their workflow, not package modules.
+sys.path.insert(
+    0, str(Path(__file__).resolve().parents[2] / ".github" / "newton_probe")
+)
+import newton_compat_probe as probe  # noqa: E402
 
 pytestmark = pytest.mark.tier1
 

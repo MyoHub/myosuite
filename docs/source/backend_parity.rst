@@ -46,7 +46,7 @@ Newton compatibility probe
 --------------------------
 
 `NVIDIA Newton <https://github.com/newton-physics/newton>`_ is not a MyoSuite backend.
-``scripts/newton_compat_probe.py`` measures how much of a MyoSuite model survives
+``.github/newton_probe/newton_compat_probe.py`` measures how much of a MyoSuite model survives
 Newton's MJCF import, so the gap can be followed across Newton releases.
 
 For the elbow, hand, arm and leg env models and the MuscleMimic full-body and
@@ -70,7 +70,7 @@ different ``mujoco-warp`` versions)::
 
    uv venv --python 3.12 .venv-newton
    uv pip install --python .venv-newton "newton[sim]==1.7.0" "musclemimic_models==1.0.6" -e .
-   .venv-newton/bin/python scripts/newton_compat_probe.py --out newton_probe
+   .venv-newton/bin/python .github/newton_probe/newton_compat_probe.py --out newton_probe
 
 It prints a table and writes ``newton_probe/newton_probe.md`` and
 ``newton_probe.json``. ``--strict`` makes it exit with an error when a model fails
