@@ -239,9 +239,10 @@ class SkinPose:
             skin: Parsed skin.
             model: Compiled model whose bodies drive the skin.
             inflate: Offset of every vertex along its normal (m).
-            body_scales: Applied per-body factors in each body's own frame.
-                Pass the resolved body-name mapping used to scale *model*,
-                including inherited segment factors. Omitted bodies use one.
+            body_scales: Applied per-body factors in each body's own frame:
+                the body factors *model* was scaled with
+                (:func:`~myosuite.core.body_scaling.scale_model`), one entry per
+                scaled body. Omitted bodies use one.
                 The skin must describe the unscaled model's bind pose. Factors
                 scale every influence's local vertex offset; the scaled model
                 supplies the bone positions and orientations. Factors cannot

@@ -161,7 +161,8 @@ def scale_model(
             OpenSim file for a model without a segment mapping, or a
             ``total_mass`` whose subject is ambiguous.
         NotImplementedError: For a mesh shared by geoms needing different
-            scales, or a connect/weld equality or height field on a scaled body.
+            scales, or a connect/weld equality, height field, SDF or plugin mesh
+            on a scaled body. Nothing is scaled then.
     """
     spec = spec.copy()
     _scale_spec(spec, scales, total_mass=total_mass)
