@@ -1023,6 +1023,28 @@ def test_model_digest_tracks_the_morphology() -> None:
     assert _model_digest(scale_model(changed, {"root": 1.1, "foot": 1.2})) != scaled
 
 
+TETRA_OBJ = "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 1\nf 1 3 2\nf 1 2 4\nf 1 4 3\nf 2 3 4\n"
+
+
+def test_model_digest_does_not_depend_on_where_the_assets_are(tmp_path: Path) -> None:
+    """MyoSuite resolves mesh files to absolute paths, which compiled models store."""
+    models = []
+    for folder in ("a", "a/much/deeper/folder/on/another/machine"):
+        root = tmp_path / folder
+        root.mkdir(parents=True)
+        meshes = ""
+        for name in ("tetra", "tetra_long_name"):
+            (root / f"{name}.obj").write_text(TETRA_OBJ)
+            meshes += f'<mesh name="{name}" file="{(root / name).as_posix()}.obj"/>'
+        spec = mujoco.MjSpec.from_string(f"""<mujoco><asset>{meshes}</asset>
+            <worldbody><body name="root" pos="0 0 1"><freejoint/>
+            <geom type="mesh" mesh="tetra"/><geom type="mesh" mesh="tetra_long_name"/>
+            </body></worldbody></mujoco>""")
+        models.append(scale_model(spec, {"root": 1.1}))
+    assert models[0].paths != models[1].paths
+    assert _model_digest(models[0]) == _model_digest(models[1])
+
+
 def test_model_digest_is_stable_across_processes() -> None:
     code = (
         "import mujoco; from myosuite.core.body_scaling import _model_digest; "

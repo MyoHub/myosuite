@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
 import xml.etree.ElementTree as ET
 
@@ -900,10 +900,44 @@ def _scale_tendons(spec: mujoco.MjSpec, ratio: np.ndarray) -> None:
 
 
 def _model_digest(model: mujoco.MjModel) -> str:
-    """Hex SHA-256 of the MuJoCo version and the model's binary (``mj_saveModel``)."""
-    buffer = np.empty(mujoco.mj_sizeModel(model), dtype=np.uint8)
-    mujoco.mj_saveModel(model, None, buffer)
-    return hashlib.sha256(mujoco.__version__.encode() + buffer.tobytes()).hexdigest()
+    """Hex SHA-256 of a compiled model's contents, without asset file paths.
+
+    The model's binary (``mj_saveModel``) holds the paths of its mesh, skin,
+    height-field and texture files, absolute for MyoSuite's resolved assets, so
+    the same morphology hashed differently on another machine. This hashes
+    every array, size, name and option instead, except ``paths``, ``npaths``,
+    the ``*_pathadr`` addresses into them and ``nbuffer``, the allocation size
+    that includes them. Floats are hashed exactly.
+    """
+    digest = hashlib.sha256()
+    for name, value in _model_fields(model):
+        digest.update(name.encode())
+        digest.update(value)
+    return digest.hexdigest()
+
+
+def _model_fields(obj: Any, prefix: str = "") -> Iterator[tuple[str, bytes]]:
+    """Name and bytes of every path-free field of a model or one of its structs."""
+    for name in sorted(dir(obj)):
+        if name.startswith("_") or name in ("paths", "npaths", "nbuffer"):
+            continue
+        if name.endswith("_pathadr"):
+            continue
+        value = getattr(obj, name)
+        if callable(value):
+            continue
+        if isinstance(value, np.ndarray):
+            array = np.ascontiguousarray(value)
+            yield (
+                prefix + name,
+                f"{array.dtype}{array.shape}".encode() + array.tobytes(),
+            )
+        elif isinstance(value, bytes):
+            yield prefix + name, value
+        elif isinstance(value, (bool, int, float)):
+            yield prefix + name, repr(value).encode()
+        elif type(value).__module__.startswith("mujoco"):  # opt, vis, stat
+            yield from _model_fields(value, f"{prefix}{name}.")
 
 
 __all__ = ["scale_model"]
