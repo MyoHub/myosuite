@@ -143,6 +143,7 @@ def test_parse_args_colab_gpu_defaults():
         ).max_episode_steps
         == 80
     )
+    assert parse_args(["myoMimicFullbody-v0", "--fall-z", "0.65"]).fall_z == 0.65
 
 
 @_FASTTD3_SKIP

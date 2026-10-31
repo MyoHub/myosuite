@@ -111,6 +111,7 @@ class FastTD3GymEnv:
         unit_interval_actions: bool = True,
         clip_path: str | None = None,
         max_episode_steps: int | None = None,
+        fall_z: float | None = None,
     ) -> None:
         del clip_path  # CPU random-target mimic does not take a clip.
         from gymnasium.wrappers import TimeLimit
@@ -121,6 +122,7 @@ class FastTD3GymEnv:
         self.device = torch.device(device)
         self.env_id = env_id
         self.unit_interval_actions = unit_interval_actions
+        self.fall_z = fall_z
         self._envs = []
         for _ in range(int(num_envs)):
             env = make_env(env_id)
@@ -166,6 +168,10 @@ class FastTD3GymEnv:
         obs_rows, rewards, dones, truncs = [], [], [], []
         for i, env in enumerate(self._envs):
             obs, rew, terminated, truncated, _info = env.step(act[i])
+            if self.fall_z is not None and env.unwrapped.data.qpos.size > 2:
+                root_z = float(env.unwrapped.data.qpos[2])
+                if root_z < self.fall_z:
+                    terminated = True
             done = bool(terminated) or bool(truncated)
             if done:
                 obs, _ = env.reset()
@@ -203,6 +209,7 @@ def make_fast_td3_env(
     unit_interval_actions: bool = True,
     clip_path: str | None = None,
     max_episode_steps: int | None = None,
+    fall_z: float | None = None,
 ) -> FastTD3GymEnv | FastTD3MjlabEnv:
     """Build a FastTD3 vector env. ``auto`` is mjlab on CUDA, CPU gym otherwise."""
     if backend == "auto":
@@ -216,6 +223,7 @@ def make_fast_td3_env(
             unit_interval_actions=unit_interval_actions,
             clip_path=clip_path,
             max_episode_steps=max_episode_steps,
+            fall_z=fall_z,
         )
     if backend != "mjlab":
         raise ValueError(f"backend must be auto, cpu, or mjlab; got {backend!r}")
@@ -226,6 +234,8 @@ def make_fast_td3_env(
         seed=seed,
         unit_interval_actions=unit_interval_actions,
         clip_path=clip_path,
+        max_episode_steps=max_episode_steps,
+        fall_z=fall_z,
     )
 
 
@@ -241,6 +251,8 @@ class FastTD3MjlabEnv:
         seed: int = 1,
         unit_interval_actions: bool = True,
         clip_path: str | None = None,
+        max_episode_steps: int | None = None,
+        fall_z: float | None = None,
     ) -> None:
         from myosuite.core.registry import make_env
 
@@ -253,7 +265,11 @@ class FastTD3MjlabEnv:
         )
         self.env_id = env_id
         self.unit_interval_actions = unit_interval_actions
+        self.clip_path = clip_path
+        self.fall_z = fall_z
         self.num_envs = int(self.env.num_envs)
+        if max_episode_steps is not None:
+            self.env.max_episode_length = int(max_episode_steps)
         self.max_episode_steps = int(self.env.max_episode_length)
         self.num_actions = int(self.env.action_manager.total_action_dim)
         obs0, _ = self.env.reset(seed=seed)
@@ -281,7 +297,9 @@ class FastTD3MjlabEnv:
     def reset(self, random_start_init: bool = True) -> torch.Tensor:
         obs_dict, _ = self.env.reset()
         obs, _ = self._split_obs(obs_dict)
-        if random_start_init:
+        # Random start is clip RSI. Without a clip it only burns the time
+        # limit and leaves most workers mid-fall.
+        if random_start_init and self.clip_path:
             high = max(int(self.max_episode_steps), 1)
             self.env.episode_length_buf = torch.randint_like(
                 self.env.episode_length_buf, high=high
@@ -303,6 +321,12 @@ class FastTD3MjlabEnv:
             env_act = (actions.clamp(-1.0, 1.0) + 1.0) * 0.5
         obs_dict, rew, terminated, truncated, extras = self.env.step(env_act)
         obs, critic = self._split_obs(obs_dict)
+        fallen = self._fallen_mask()
+        if fallen is not None:
+            terminated = terminated | fallen
+            buf = getattr(self.env, "episode_length_buf", None)
+            if buf is not None and bool(fallen.any()):
+                buf[fallen] = int(self.max_episode_steps)
         dones = (terminated | truncated).to(dtype=torch.long)
         info = {
             "time_outs": truncated,
@@ -314,6 +338,21 @@ class FastTD3MjlabEnv:
         if extras:
             info["extras"] = extras
         return obs, rew, dones, info
+
+    def _fallen_mask(self) -> torch.Tensor | None:
+        if self.fall_z is None:
+            return None
+        scene = getattr(self.env, "scene", None)
+        entities = getattr(scene, "entities", None)
+        if not entities:
+            return None
+        for entity in entities.values():
+            data = getattr(entity, "data", None)
+            pos = getattr(data, "root_link_pos_w", None) if data is not None else None
+            if pos is None:
+                continue
+            return pos[:, 2] < float(self.fall_z)
+        return None
 
     def close(self) -> None:
         close = getattr(self.env, "close", None)

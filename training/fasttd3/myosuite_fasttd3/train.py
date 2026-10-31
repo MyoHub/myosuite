@@ -97,6 +97,8 @@ class TrainArgs:
     clip: Path | None = None
     backend: str = "auto"
     max_episode_steps: int | None = None
+    resume: Path | None = None
+    fall_z: float | None = None
 
 
 def parse_args(argv: list[str] | None = None) -> TrainArgs:
@@ -136,6 +138,15 @@ def parse_args(argv: list[str] | None = None) -> TrainArgs:
         default=None,
         help="CPU TimeLimit override (more resets; default is the gym spec)",
     )
+    p.add_argument(
+        "--resume", type=Path, default=None, help="Load actor/critic from a .pt"
+    )
+    p.add_argument(
+        "--fall-z",
+        type=float,
+        default=None,
+        help="CPU: terminate when root qpos[2] drops below this (full-body fall)",
+    )
     ns = p.parse_args(argv)
     args = TrainArgs(
         env_id=ns.env_id,
@@ -168,6 +179,10 @@ def parse_args(argv: list[str] | None = None) -> TrainArgs:
         args.learning_starts = max(10, 4096 // max(args.num_envs, 1))
     if ns.max_episode_steps is not None:
         args.max_episode_steps = ns.max_episode_steps
+    if ns.resume is not None:
+        args.resume = ns.resume
+    if ns.fall_z is not None:
+        args.fall_z = ns.fall_z
     return args
 
 
@@ -231,9 +246,17 @@ def train(args: TrainArgs) -> Path:
         unit_interval_actions=args.unit_interval_actions,
         clip_path=str(args.clip) if args.clip is not None else None,
         max_episode_steps=args.max_episode_steps,
+        fall_z=args.fall_z,
     )
     n_obs, n_act = envs.num_obs, envs.num_actions
     n_critic = n_obs if not envs.asymmetric_obs else envs.num_privileged_obs
+    resume_blob = None
+    if args.resume:
+        resume_blob = torch.load(args.resume, map_location=device, weights_only=True)
+        args.actor_hidden = int(resume_blob["actor"]["net.0.weight"].shape[0])
+        args.critic_hidden = int(resume_blob["qnet"]["qnet1.net.0.weight"].shape[0])
+        if "q_support" in resume_blob["qnet"]:
+            args.num_atoms = int(resume_blob["qnet"]["q_support"].shape[0])
     actor_kw = dict(
         n_obs=n_obs,
         n_act=n_act,
@@ -295,6 +318,25 @@ def train(args: TrainArgs) -> Path:
         gamma=args.gamma,
         device=device,
     )
+    if resume_blob is not None:
+        actor_sd = dict(resume_blob["actor"])
+        if tuple(actor_sd["noise_scales"].shape) != tuple(actor.noise_scales.shape):
+            actor_sd.pop("noise_scales")
+            actor.load_state_dict(actor_sd, strict=False)
+        else:
+            actor.load_state_dict(actor_sd)
+        qnet.load_state_dict(resume_blob["qnet"])
+        qnet_target.load_state_dict(resume_blob["qnet"])
+        if args.obs_normalization and isinstance(resume_blob.get("obs_norm"), dict):
+            if resume_blob["obs_norm"]:
+                obs_norm.load_state_dict(resume_blob["obs_norm"])
+        try:
+            from tensordict import from_module as _from_module
+
+            _from_module(actor).data.to_module(actor_detach)
+        except Exception:
+            pass
+        print(f"resumed {args.resume}", flush=True)
     action_low, action_high = -1.0, 1.0
 
     def update_critic(data: TensorDict) -> dict[str, torch.Tensor]:
@@ -396,7 +438,8 @@ def train(args: TrainArgs) -> Path:
         f"envs={envs.num_envs} steps={args.total_timesteps} smoke={args.smoke} "
         f"amp={amp_enabled} v=[{args.v_min:g},{args.v_max:g}] "
         f"learn_start={args.learning_starts}"
-        + (f" ep={args.max_episode_steps}" if args.max_episode_steps else ""),
+        + (f" ep={args.max_episode_steps}" if args.max_episode_steps else "")
+        + (f" fall_z={args.fall_z:g}" if args.fall_z is not None else ""),
         flush=True,
     )
     try:
