@@ -20,6 +20,18 @@
   with MyoSuite under the repository's Apache-2.0 license ([LICENSE](../../../LICENSE)).
 - **Used by:** `myosuite.viz.skin` (`load_skn("fullbody")`) and `scripts/render_blender.py --skin fullbody`.
 
+## `zombie_diffuse.jpg`
+
+- **What:** Diffuse albedo for `myofullbody.skn` (MakeHuman body UV layout), ~1536² JPEG.
+- **Source:** [naim_abbassi zombie Skin](http://www.makehumancommunity.org/skin/zombie_skin.html)
+  from MakeHuman Community asset pack `skins03`, released under
+  [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+- **Author:** naim_abbassi.
+- **Changes:** resized/recompressed for web delivery; UVs unchanged.
+- **Used by:** `myosuite.viz.skin.FULLBODY_ZOMBIE_DIFFUSE` (MyoHalloween mjswan overlay).
+- **Note:** MetaHuman / Epic content is intentionally not used (redistribution
+  outside Unreal Engine is not permitted).
+
 ## Anatomical muscle meshes (`--muscle-mesh atlas` / `atlas-hd`)
 
 - **What:** 416 muscle surfaces of the whole body, one mesh each (`fullbody_atlas.glb`, ~700k

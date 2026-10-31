@@ -19,10 +19,10 @@ import math
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 
 
 # Anatomical muscle meshes (BodyParts3D, CC BY 4.0) on the Hugging Face Hub, posed
@@ -158,9 +158,6 @@ def export_rollout(
 
     Args:
         config: Render settings.
-        env: Optional configured environment, reset but left open for its owner.
-        policy: Optional observation-to-action callback, overriding the checkpoint.
-        viz_fn: Optional ``(step, model, data, scene)`` visualization callback.
 
     Returns:
         The metadata also written to ``render.json`` for the Blender stage.
@@ -1210,16 +1207,17 @@ def render_rollout(
         config: Render settings.
         export_only: Stop after the USD export.
         blender_log: File for Blender's console output (default: this process's).
-        env: Optional configured environment (see ``export_rollout``).
-        policy: Optional observation-to-action callback.
-        viz_fn: Optional visualization callback, also exported to Blender.
 
     Returns:
         The export metadata (see :func:`export_rollout`).
     """
     if (config.output / "render.json").exists():
         raise FileExistsError("Choose a new output directory to avoid mixing runs.")
-    meta = export_rollout(config, env=env, policy=policy, viz_fn=viz_fn)
+    meta = (
+        export_rollout(config, env=env, policy=policy, viz_fn=viz_fn)
+        if env is not None or policy is not None or viz_fn is not None
+        else export_rollout(config)
+    )
     print(
         f"Exported {meta['samples']} samples, {meta['duration']:.3f}s to {meta['usd']}",
         flush=True,

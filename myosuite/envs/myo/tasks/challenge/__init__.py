@@ -548,3 +548,6 @@ except Exception as _e:  # noqa: BLE001
 
     _w.warn(f"Chase-tag VS env not registered: {_e}", stacklevel=1)
     del _e, _w
+
+# Halloween shares the challenge suite, with a matched MJLab registration.
+import myosuite.envs.myo.tasks.halloween  # noqa: F401, E402
