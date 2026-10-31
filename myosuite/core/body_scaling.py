@@ -202,6 +202,20 @@ def _is_point_pair(value: object) -> TypeGuard[tuple[ArrayLike, ArrayLike]]:
     )
 
 
+def _plain_scales(
+    scales: Mapping[str, Any] | str | os.PathLike[str],
+) -> dict[str, Any] | str:
+    """*scales* as JSON data that :func:`scale_model` accepts back unchanged."""
+    if isinstance(scales, (str, os.PathLike)):
+        return os.fspath(scales)
+    return {
+        body: [np.asarray(v, dtype=float).tolist() for v in value]
+        if _is_point_pair(value)
+        else np.asarray(value, dtype=float).tolist()
+        for body, value in scales.items()
+    }
+
+
 def _fit_points(
     body: str, model_points: ArrayLike, measured_points: ArrayLike
 ) -> np.ndarray:

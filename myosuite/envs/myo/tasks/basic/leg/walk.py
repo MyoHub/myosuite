@@ -11,6 +11,8 @@ Preserves identical obs/reward schema and semantics for parity.
 from __future__ import annotations
 
 import collections
+import os
+from collections.abc import Mapping
 from typing import Any
 
 import mujoco
@@ -18,6 +20,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium.utils import EzPickle
 
+from myosuite.core.body_scaling import _scale_spec
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
@@ -29,7 +32,14 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
     """Locomotion task for the musculoskeletal leg model.
 
     Migrated from walk_v0.WalkEnvV0 (BaseV0). Same obs/reward contract.
+
+    ``scales`` and ``total_mass`` build the model for a subject with
+    :func:`myosuite.core.body_scaling.scale_model` (the mjlab twin builds the
+    same model). Spaces are unchanged; the reset keyframe keeps its nominal
+    ground clearance. Fall threshold ``min_height`` stays a task parameter.
     """
+
+    supports_scales = True
 
     DEFAULT_OBS_KEYS = [
         "qpos_without_xy",
@@ -74,6 +84,8 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         target_rot: np.ndarray | None = None,
         normalize_act: bool = True,
         frame_skip: int = 10,
+        scales: Mapping[str, Any] | str | os.PathLike[str] | None = None,
+        total_mass: float | None = None,
         **kwargs: Any,
     ) -> None:
         MyoGymnasiumEnv.__init__(
@@ -96,10 +108,20 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             target_rot=target_rot,
             normalize_act=normalize_act,
             frame_skip=frame_skip,
+            scales=scales,
+            total_mass=total_mass,
             **kwargs,
         )
 
-        self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
+        builder = ModelBuilder.from_xml_file(model_path)
+        if scales is None and total_mass is None:
+            self.model, self._mj_spec = builder.build()
+        else:
+            self._mj_spec = builder.build_spec()
+            _scale_spec(
+                self._mj_spec, {} if scales is None else scales, total_mass=total_mass
+            )
+            self.model = self._mj_spec.compile()
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 
@@ -425,7 +447,11 @@ class LegTerrainEnvV0(LegWalkEnvV0):
     """Terrain locomotion (rough/hilly/stairs); extends LegWalkEnvV0.
 
     Migrated from walk_v0.TerrainEnvV0 (BaseV0). Same obs/reward + knee done.
+    Its knee threshold (0.61 m) is fixed for the nominal body, so it takes no
+    ``scales``.
     """
+
+    supports_scales = False
 
     def __init__(
         self,

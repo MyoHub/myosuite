@@ -224,9 +224,20 @@ class MyoGymnasiumEnv(gym.Env):
     render_camera: str | None = None
     """Name of the model camera ``render()`` shows by default (``None``: the free camera)."""
 
+    supports_scales: bool = False
+    """Whether the env builds its model for a subject from ``scales``/``total_mass``
+    (:func:`myosuite.core.body_scaling.scale_model`); its mjlab twin must too."""
+
     def __new__(cls, *args: Any, **kwargs: Any) -> MyoGymnasiumEnv:
-        """Reject the constructor kwargs that wrappers replaced (they would be ignored)."""
+        """Reject constructor kwargs the env would ignore (replaced or unsupported)."""
         reject_removed_kwargs(cls, kwargs)
+        if not cls.supports_scales and any(
+            kwargs.get(name) is not None for name in ("scales", "total_mass")
+        ):
+            raise NotImplementedError(
+                f"{cls.__name__} does not build its model for a subject; it takes "
+                "no scales or total_mass."
+            )
         return super().__new__(cls)
 
     def __init__(

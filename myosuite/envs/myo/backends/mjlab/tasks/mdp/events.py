@@ -14,6 +14,7 @@ from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
+from myosuite.physics.quat_math_torch import quat2mat
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
@@ -81,6 +82,10 @@ def write_cpu_state(
 ) -> None:
     """Write CPU-layout ``qpos`` / ``qvel`` (free root first) of one entity.
 
+    Goes through the Entity write API. A free joint's ``qvel[3:6]`` is a
+    body-frame angular velocity, while ``write_root_state_to_sim`` takes it in
+    the world frame, so it is rotated first.
+
     Args:
         env: The environment.
         entity_name: Scene entity key.
@@ -89,14 +94,26 @@ def write_cpu_state(
             relative to the env origin.
         qvel: CPU-layout velocities, shape ``(k, nv)``.
     """
-    idx = env.scene[entity_name].indexing
-    q_adr = torch.sort(torch.cat([idx.free_joint_q_adr, idx.joint_q_adr]).long())[0]
-    v_adr = torch.sort(torch.cat([idx.free_joint_v_adr, idx.joint_v_adr]).long())[0]
-    qpos = qpos.clone()
+    entity = env.scene[entity_name]
+    idx = entity.indexing
+    q_adr = torch.cat([idx.free_joint_q_adr, idx.joint_q_adr]).long()
+    if not len(q_adr):  # a fixed entity without joints
+        return
+    v_adr = torch.cat([idx.free_joint_v_adr, idx.joint_v_adr]).long()
+    q_base, v_base = q_adr.min(), v_adr.min()
     if len(idx.free_joint_q_adr):
-        qpos[:, :3] += env.scene.env_origins[env_ids]
-    env.sim.data.qpos[env_ids[:, None], q_adr] = qpos
-    env.sim.data.qvel[env_ids[:, None], v_adr] = qvel
+        root = torch.cat((qpos[:, :7], qvel[:, :6]), dim=-1)
+        root[:, :3] += env.scene.env_origins[env_ids]
+        root[:, 10:13] = torch.einsum(
+            "nij,nj->ni", quat2mat(root[:, 3:7]), qvel[:, 3:6]
+        )
+        entity.write_root_state_to_sim(root, env_ids=env_ids)
+    if len(idx.joint_q_adr):
+        entity.write_joint_state_to_sim(
+            qpos[:, idx.joint_q_adr.long() - q_base],
+            qvel[:, idx.joint_v_adr.long() - v_base],
+            env_ids=env_ids,
+        )
 
 
 class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
