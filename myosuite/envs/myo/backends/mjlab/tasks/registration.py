@@ -45,7 +45,8 @@ def rebuild_twin_cfg(
     Args:
         env_id: A CPU-twin id registered through :func:`register_cpu_twins`.
         features: ``EnvConfig.features`` (wrapper specs) added to the CPU registration.
-        task_kwargs: CPU constructor kwargs (``frame_skip``) replacing the registered ones.
+        task_kwargs: CPU constructor kwargs (``frame_skip``, the subject's
+            ``scales`` and ``total_mass``) replacing the registered ones.
         play: Build the play (evaluation) variant of the config.
 
     Returns:
@@ -58,7 +59,7 @@ def rebuild_twin_cfg(
     if factory is None:
         raise NotImplementedError(
             f"{env_id} is not a CPU twin: its mjlab config cannot be rebuilt from "
-            "EnvConfig.features or ctrl_dt."
+            "EnvConfig.features, ctrl_dt, scales or total_mass."
         )
     with feature_overrides(features, task_kwargs):
         return factory(env_id, play=play)

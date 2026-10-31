@@ -15,8 +15,12 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import functools
+import hashlib
+import json
+import os
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
@@ -28,6 +32,7 @@ from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.sim import MujocoCfg
 
+from myosuite.core.body_scaling import _plain_scales, _scale_spec
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.actions import MyoActionCfg
@@ -159,6 +164,11 @@ class CpuTaskSpec:
         """Whether the model comes from a ``ModelBuilder`` recipe (``_r`` names)."""
         return self.kwargs.get("model_recipe") is not None
 
+    @property
+    def is_subject(self) -> bool:
+        """Whether the model is scaled to a subject (``scales`` / ``total_mass``)."""
+        return any(self.kwargs.get(k) is not None for k in ("scales", "total_mass"))
+
 
 def _with_features(registered: tuple[Any, ...], env_id: str) -> tuple[Any, ...]:
     """The registered wrapper specs plus the ``EnvConfig.features`` of this call."""
@@ -186,6 +196,8 @@ def cpu_task_spec(env_id: str) -> CpuTaskSpec:
     Raises:
         ValueError: If the registration has muscle-command wrappers on a CPU env
             class that does not run them (the twin would not match).
+        NotImplementedError: For ``scales`` / ``total_mass`` on a task whose CPU
+            env does not build its model for a subject.
     """
     import myosuite  # noqa: F401, PLC0415  (registers the CPU envs)
 
@@ -196,14 +208,19 @@ def cpu_task_spec(env_id: str) -> CpuTaskSpec:
         max_episode_steps=int(spec.max_episode_steps),
         wrappers=_with_features(tuple(spec.additional_wrappers or ()), env_id),
     )
+    entry = spec.entry_point
+    env_cls = load_env_creator(entry) if isinstance(entry, str) else entry
     if any(task.wrapper_kwargs(name) is not None for name in _MUSCLE_WRAPPERS):
-        entry = spec.entry_point
-        env_cls = load_env_creator(entry) if isinstance(entry, str) else entry
         if not getattr(env_cls, "supports_ctrl_stages", False):
             raise ValueError(
                 f"{env_id} registers muscle-command wrappers on {env_cls.__name__}, "
                 "whose action pipeline does not run them."
             )
+    if task.is_subject and not getattr(env_cls, "supports_scales", False):
+        raise NotImplementedError(
+            f"{env_id} ({env_cls.__name__}) does not build its model for a "
+            "subject; it takes no scales or total_mass."
+        )
     return task
 
 
@@ -231,7 +248,13 @@ def build_cpu_spec(task: CpuTaskSpec) -> mujoco.MjSpec:
                 return spec
 
             builder = builder.apply_transform(_wrap)
-        _, spec = builder.build()
+        # A subject is scaled before compiling, as the CPU env does.
+        spec = builder.build_spec() if task.is_subject else builder.build()[1]
+    if task.is_subject:
+        scales = kwargs.get("scales")
+        _scale_spec(
+            spec, {} if scales is None else scales, total_mass=kwargs.get("total_mass")
+        )
     sarcopenia = task.wrapper_kwargs("SarcopeniaWrapper")
     if sarcopenia is not None:
         apply_sarcopenia_to_spec(spec, force_scale=sarcopenia.get("force_scale", 0.5))
@@ -258,17 +281,30 @@ class CompiledModelInfo:
 
 
 def _model_key(task: CpuTaskSpec) -> tuple[Any, ...]:
-    """Cache key: models only differ by path/recipe/edit_fn (not by condition)."""
+    """Cache key: models differ by path/recipe/edit_fn and subject (not condition)."""
     kw = task.kwargs
-    return (kw.get("model_path"), kw.get("model_recipe"), kw.get("edit_fn"))
+    key = (kw.get("model_path"), kw.get("model_recipe"), kw.get("edit_fn"))
+    if not task.is_subject:
+        return key
+    scales = kw.get("scales")
+    plain = None if scales is None else _plain_scales(scales)
+    # A scale file is keyed by its contents too, so an edited file is reread.
+    digest = (
+        hashlib.sha256(Path(scales).read_bytes()).hexdigest()
+        if isinstance(scales, (str, os.PathLike))
+        else None
+    )
+    return (*key, json.dumps(plain, sort_keys=True), digest, kw.get("total_mass"))
 
 
 @functools.cache
 def _compiled_info(key: tuple[Any, ...]) -> CompiledModelInfo:
-    model_path, model_recipe, edit_fn = key
+    model_path, model_recipe, edit_fn = key[:3]
     kwargs = {"model_path": model_path, "model_recipe": model_recipe}
     if edit_fn is not None:
         kwargs["edit_fn"] = edit_fn
+    if len(key) > 3:  # a subject (see _model_key)
+        kwargs["scales"], kwargs["total_mass"] = json.loads(key[3]), key[5]
     model = build_cpu_spec(CpuTaskSpec("", kwargs, 0)).compile()
     return CompiledModelInfo(
         opt_timestep=float(model.opt.timestep),

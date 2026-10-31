@@ -38,6 +38,15 @@ All notable changes to this project are documented in this file.
 
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
+* **Body scaling:** `myosuite.core.body_scaling.scale_model(spec, scales, *, total_mass=None)` returns a copy of a model scaled to a subject with the rules of OpenSim's Scale Tool. `scales` is one of three forms:
+  - body -> one factor or three along the body's axes;
+  - the path of an OpenSim ScaleSet or scaled `.osim`. Its Rajagopal segments map onto MyoLeg or the MuscleMimic MyoFullBody, permuted onto each body's axes, since MyoLeg's root and torso are z-up;
+  - body -> `(model_points, measured_points)`, fitted per body. A marker pair, landmarks and vertices all take this form.
+
+  Muscle fibre and tendon slack lengths follow the muscle-tendon length in the default pose with every joint coupling assembled. Mass scales with volume, and `total_mass` rescales only the subject's trees. A free-floating subject keeps each pose's ground clearance. One factor is an exact similarity (tested on MyoLeg and MyoFullBody).
+  `make_env("myoLegWalk-v0", scales=..., total_mass=...)` (or `EnvConfig.task_kwargs`) builds the same subject model on the CPU and on mjlab. Other tasks raise `NotImplementedError`, and envs without `scales` are unchanged. `write_manifest` and `check_contract` take `scales` and `total_mass`. The manifest then records them with a path-free model digest, and `strict=True` rejects a checkpoint for another body.
+  Skin influences support segment-local anisotropic scaling; `.skn`/GLB exports that cannot keep it need an approximation opt-in. Retargeting your own SMPL motion with GMR-Fit is documented, with the license rules (#166, [#525]).
+* **Inverse kinematics and marker retargeting:** `myosuite.physics.inverse_kinematics.solve_ik(model, targets)` returns the `qpos` that places one or more sites at target positions and/or `wxyz` orientations on any `MjModel`: damped least squares on the analytic `mj_jacSite` and equality-constraint Jacobians, stepped with `mj_integratePos` (ball and free joints included). Hinge and slide joints stay within `jnt_range`, equality-coupled joints stay tied, `joints=` restricts which joints move, and unreachable targets raise `IKError` (`strict=False` returns the closest pose). It replaces `qpos_from_site_pose`, which still works but emits a `DeprecationWarning`. `retarget(model, markers)` (importable from `myosuite.core.body_scaling` next to `scale_model`) fits a `.trc` or `.c3d` file (`.c3d` needs the new `capture` extra, `ezc3d`) or marker arrays frame by frame and returns a `MotionClip`; its new `metadata` field holds the per-frame marker error and sole height. Markers named like sites need no map, NaN samples are skipped, and a free-root clip is shifted so its sole touches the ground. Tutorial 3.2 uses `solve_ik` (mink stays as an optional cell); new tutorial 3.7 retargets a two-link arm ([#525]).
 
 ### Changed
 
@@ -277,6 +286,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#520]: https://github.com/MyoHub/myosuite/pull/520
 [#522]: https://github.com/MyoHub/myosuite/pull/522
+[#525]: https://github.com/MyoHub/myosuite/pull/525
 [#540]: https://github.com/MyoHub/myosuite/pull/540
 
 ## [2.12.2] - 2026-05-06
