@@ -10,6 +10,24 @@ From PyPI
 
    pip install -U myosuite
 
+Python 3.15 CPU environments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Native CPU environment construction and stepping do not require ONNX Runtime.
+On Python 3.15 it is therefore an optional dependency, installed explicitly with
+``pip install 'myosuite[onnx]'`` when using ONNX policy inference or verification.
+The default dependencies on Python 3.10–3.14 are unchanged.
+
+As of October 19, 2026, ONNX Runtime publishes no Python 3.15 wheels, including
+in its official nightly feed. Use Python 3.14 for ONNX features until compatible
+builds are available; the CPU environment path remains usable independently.
+Other native packages still need compatible builds: h5py provides Python 3.15
+wheels through its maintainer-supported
+`nightly index <https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/h5py/>`_,
+and PyTorch CPU wheels are available from its
+`official CPU index <https://download.pytorch.org/whl/cpu/>`_. Pin any nightly
+artifacts used for reproducible environments.
+
 From source
 ~~~~~~~~~~~
 

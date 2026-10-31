@@ -36,10 +36,25 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
 
 ### Changed
 
+* **Fatigue groups and parameters for every muscle of the bundled models.**
+  - `_muscle_group` now also strips MuscleMimic's `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent
+    scenes and an `R:`/`L:` side prefix. Before, the MuscleMimic left arm (32 muscles, 63 with fingers) and all 708
+    muscles of `myoChallengeChaseTagFBVs-v0` fell back to `Default`, so the two arms fatigued differently.
+  - New rows, each cited in `MUSCLE_FATIGUE_PARAMS` and `docs/source/fatigue_validation.rst`: `Trunk` for the 108
+    lumbar and abdominal muscles of MyoTorso and the MuscleMimic torso (Frey-Law et al. 2012 trunk fit),
+    `Thigh-Hamstring` (Frey-Law et al. 2012 knee fit with r = 15 of Looft et al. 2018; no knee-flexor fit is
+    published) and `Hip` (the general fit, now explicit: no hip fit is published, Yang et al. 2025).
+  - Regrouped: the forearm rotators `SUP`, `PT`, `PQ` (were elbow extensor, elbow flexor, wrist flexor) use the
+    joint-level `Elbow` row; `APL` is a wrist extensor (was flexor); the rotator cuff is labelled as rotators (no
+    numeric change).
+  - Changes the fatigue dynamics of `myoFati*` envs with torso, hamstring, forearm-rotator or `APL` muscles: torso,
+    table tennis, soccer, full-body ChaseTag, leg walk/stand, arm reach, bimanual, relocate and the hand envs
+    (`docs/baseline_checkpoints.md`).
 * `myoLegDirectionalForward-v0` and `myoLegDirectionalBackward-v0` swapped names. The leg model faces `-y`, so the
   old "forward" task (`heading_dir=(0, 1)`, 1.2 m/s) trained walking backwards and the old "backward" task
   (`heading_dir=(0, -1)`, 1.0 m/s) walking forwards. Forward is now `(0, -1)` at 1.0 m/s and Backward `(0, 1)` at
@@ -47,6 +62,12 @@ All notable changes to this project are documented in this file.
   `myoLegDirectionalRandom-v0` is unchanged.
 * Baseline downloads look for the patch-release tag first (`v3.0.1`), then the minor-release tag (`v3.0`), then
   `main`, so a patch release can ship changed baselines without changing those of earlier releases.
+
+### Fixed
+
+* **Motion clips load without pickle:** `load_motion_clip`, the CPU Mimic clip env and the full-body observation adapter open `.npz` files with `allow_pickle=False` (unpickling a downloaded file can run code). Names stored as bytes now read as text instead of `"b'name'"`, and a pickled name array is refused with instructions for re-saving it. SAR synergy metadata is written as strings, and older folders still load ([#522]).
+* **Resampled terrain is drawn in every renderer:** the rough/hilly/stairs leg walks, ChaseTag and RunTrack upload the terrain heightfield to the live renderers after each reset (`MyoGymnasiumEnv._upload_hfield_to_renderers`). Render contexts copy heightfields when they are created, so the `mj_render()` window, `render()` frames and cached offscreen videos showed the first episode's terrain while the physics used the new one ([#307]). Observations and dynamics are unchanged.
+* Fixed initial fatigue arrays retain their requested values across CPU episodes. `CumulativeFatigue.reset` copies `fatigue_reset_vec` into owned state. Stepping previously mutated writable NumPy arrays supplied by callers and failed on read-only arrays.
 
 ## [3.0.0] - 2026-10-07
 
@@ -246,6 +267,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#497]: https://github.com/MyoHub/myosuite/pull/497
 [#498]: https://github.com/MyoHub/myosuite/pull/498
 [#499]: https://github.com/MyoHub/myosuite/pull/499
+[#307]: https://github.com/MyoHub/myosuite/issues/307
 [#500]: https://github.com/MyoHub/myosuite/pull/500
 [#502]: https://github.com/MyoHub/myosuite/issues/502
 [#505]: https://github.com/MyoHub/myosuite/pull/505
@@ -254,6 +276,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#504]: https://github.com/MyoHub/myosuite/pull/504
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#520]: https://github.com/MyoHub/myosuite/pull/520
+[#522]: https://github.com/MyoHub/myosuite/pull/522
 [#540]: https://github.com/MyoHub/myosuite/pull/540
 
 ## [2.12.2] - 2026-05-06
