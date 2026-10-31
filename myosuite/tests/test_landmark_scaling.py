@@ -69,10 +69,12 @@ def test_pose_origin_and_rigid_observation_frame_do_not_change_factors() -> None
     case = _case()
     shift = np.array([30.0, -20.0, 70.0])
     rotation = Rotation.from_rotvec([1.1, 0.4, -0.3])
+    # Copy: the case freezes its arrays and SciPy's apply can reject read-only input.
+    observed = rotation.apply(np.array(case.observed_positions_m)) + shift
     moved = replace(
         case,
         reference_positions_m=np.asarray(case.reference_positions_m) + shift,
-        observed_positions_m=rotation.apply(case.observed_positions_m) + shift,
+        observed_positions_m=observed,
     )
     original, transformed = (fit_landmark_scales([value]) for value in (case, moved))
     np.testing.assert_allclose(
