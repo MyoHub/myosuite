@@ -439,10 +439,32 @@ def test_per_axis_scale_moves_everything_with_its_body(name: str) -> None:
             )
 
 
-@pytest.mark.parametrize("name", list(MODELS))
+def _coupled_leg() -> mujoco.MjSpec:
+    """The leg with a knee coupling that ``qpos0`` violates, like MyoLeg's patella."""
+    spec = _leg()
+    spec.equalities[0].data[0] = 0.02  # knee_tx = 2 cm + ... at knee = 0
+    return spec
+
+
+def _assembled(model: mujoco.MjModel) -> np.ndarray:
+    """``qpos0`` with each joint coupling ``q1 - q1_0 = sum c_k (q2 - q2_0)^k`` met."""
+    q = model.qpos0.copy()
+    for i in range(model.neq):
+        if model.eq_type[i] == mujoco.mjtEq.mjEQ_JOINT and model.eq_active0[i]:
+            first = model.jnt_qposadr[model.eq_obj1id[i]]
+            second = model.jnt_qposadr[model.eq_obj2id[i]]
+            offset = q[second] - model.qpos0[second]
+            q[first] = model.qpos0[first] + np.polynomial.polynomial.polyval(
+                offset, model.eq_data[i, :5]
+            )
+    return q
+
+
+@pytest.mark.parametrize("name", [*MODELS, "coupled_leg"])
 def test_muscles_keep_their_force_in_the_default_pose(name: str) -> None:
-    """OpenSim rule: fibre and tendon slack length follow the muscle-tendon length at qpos0."""
-    spec = MODELS[name]()
+    """OpenSim rule: fibre and tendon slack length follow the muscle-tendon length
+    in the default pose, assembled so that every joint coupling holds."""
+    spec = _coupled_leg() if name == "coupled_leg" else MODELS[name]()
     ref = spec.copy().compile()
     rng = np.random.default_rng(2)
     scaled = scale_model(
@@ -451,10 +473,37 @@ def test_muscles_keep_their_force_in_the_default_pose(name: str) -> None:
     forces = []
     for model in (ref, scaled):
         data = mujoco.MjData(model)
+        data.qpos[:] = _assembled(model)
         data.act[:] = 0.5
         mujoco.mj_forward(model, data)
+        equality = data.efc_type == mujoco.mjtConstraint.mjCNSTR_EQUALITY
+        np.testing.assert_allclose(data.efc_pos[equality], 0, atol=1e-12)
         forces.append(data.actuator_force.copy())
     np.testing.assert_allclose(forces[1], forces[0], rtol=1e-9, atol=1e-9)
+
+
+def test_myoleg_quadriceps_lengths_are_measured_with_the_patella_assembled() -> None:
+    """MyoLeg's qpos0 leaves the patella 5 cm off its knee coupling, which skewed
+    the quadriceps' fibre and tendon slack lengths."""
+    spec = _myoleg()
+    ref = spec.copy().compile()
+    beta = ref.eq("knee_angle_beta_translation1_constraint_r")
+    assert abs(beta.data[0]) > 0.05  # qpos0 violates this coupling by 5 cm
+    scaled = scale_model(spec, {"femur_r": 1.12, "tibia_r": 0.95})
+    lengths = []
+    for model in (ref, scaled):
+        data = mujoco.MjData(model)
+        data.qpos[:] = _assembled(model)
+        mujoco.mj_forward(model, data)
+        lengths.append(data.actuator_length.copy())
+    for name in ("recfem_r", "vasint_r", "vaslat_r", "vasmed_r"):
+        i = ref.actuator(name).id
+        np.testing.assert_allclose(
+            scaled.actuator_lengthrange[i] / ref.actuator_lengthrange[i],
+            lengths[1][i] / lengths[0][i],
+            rtol=1e-12,
+            err_msg=name,
+        )
 
 
 def test_mass_scales_with_volume_and_strength_is_kept() -> None:

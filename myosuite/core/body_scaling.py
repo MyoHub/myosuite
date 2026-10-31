@@ -21,8 +21,9 @@ Each body gets per-axis scale factors in its own frame (OpenSim's convention):
 * slide-joint translations, their ranges and their joint couplings scale with
   the parent body along the joint axis;
 * every muscle's optimal fibre length and tendon slack length scale by the change
-  of its muscle-tendon length in the default pose (``qpos0``). MuJoCo derives
-  both from ``lengthrange``, so ``lengthrange`` is scaled by that ratio;
+  of its muscle-tendon length in the default pose: ``qpos0`` with every joint
+  coupling satisfied, as OpenSim assembles it. MuJoCo derives both from
+  ``lengthrange``, so ``lengthrange`` is scaled by that ratio;
 * mass scales with volume (``sx * sy * sz``) and peak muscle force is kept
   (OpenSim does not scale strength); ``total_mass`` then rescales the subject.
 
@@ -210,6 +211,7 @@ def _scale_bodies(
     # Compile copies only: compiling *spec* itself would freeze its frames.
     ref = spec.copy().compile()
     ref_data = mujoco.MjData(ref)
+    ref_data.qpos[:] = _assembled_qpos(ref)
     mujoco.mj_forward(ref, ref_data)
     ref_actuator_length = ref_data.actuator_length.copy()
     ref_tendon_length = ref_data.ten_length.copy()
@@ -232,6 +234,7 @@ def _scale_bodies(
 
     scaled = spec.copy().compile()
     data = mujoco.MjData(scaled)
+    data.qpos[:] = _assembled_qpos(scaled)
     mujoco.mj_forward(scaled, data)
     tendon_ratio = _ratio(data.ten_length, ref_tendon_length)
     _scale_tendons(spec, tendon_ratio)
@@ -245,6 +248,38 @@ def _scale_bodies(
             actuator.gainprm[2] = peak_force[i]
             if int(ref.actuator_biastype[i]) == int(mujoco.mjtBias.mjBIAS_MUSCLE):
                 actuator.biasprm[2] = peak_force[i]
+
+
+def _assembled_qpos(model: mujoco.MjModel) -> np.ndarray:
+    """``qpos0`` with every active joint coupling satisfied.
+
+    MuJoCo couples ``q1 - q1_0 = sum_k c_k (q2 - q2_0)^k``, which ``qpos0`` can
+    violate when ``c_0 != 0`` (MyoLeg's patella sits 5 cm off its knee
+    coupling). OpenSim measures muscles in the default pose with its coupled
+    coordinates on their functions, so the length ratios are taken here.
+    """
+    q = model.qpos0.copy()
+    couplings = [
+        i
+        for i in range(model.neq)
+        if model.eq_type[i] == mujoco.mjtEq.mjEQ_JOINT and model.eq_active0[i]
+    ]
+    # A chain of couplings (q1 driven by a coupled q2) settles in this many passes.
+    for _ in range(len(couplings)):
+        previous = q.copy()
+        for i in couplings:
+            first = model.jnt_qposadr[model.eq_obj1id[i]]
+            second = model.eq_obj2id[i]
+            offset = 0.0
+            if second >= 0:
+                address = model.jnt_qposadr[second]
+                offset = q[address] - model.qpos0[address]
+            q[first] = model.qpos0[first] + np.polynomial.polynomial.polyval(
+                offset, model.eq_data[i, :5]
+            )
+        if np.array_equal(q, previous):
+            break
+    return q
 
 
 def _body_scales(
