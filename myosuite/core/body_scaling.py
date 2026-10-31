@@ -63,6 +63,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from myosuite.core.muscle_conditions import _peak_force
+from myosuite.core.retargeting import retarget
 
 _LEG_SEGMENTS = (
     "femur",
@@ -1065,4 +1066,4 @@ def _model_fields(obj: Any, prefix: str = "") -> Iterator[tuple[str, bytes]]:
             yield from _model_fields(value, f"{prefix}{name}.")
 
 
-__all__ = ["scale_model"]
+__all__ = ["retarget", "scale_model"]
