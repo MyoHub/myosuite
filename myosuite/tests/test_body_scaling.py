@@ -12,6 +12,8 @@ everything a body carries with that body's frame.
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -20,17 +22,20 @@ import numpy as np
 import pytest
 
 from myosuite.core.body_scaling import (
-    RAJAGOPAL_MYOFULLBODY_SEGMENTS,
-    RAJAGOPAL_MYOLEG_SEGMENTS,
+    _MYOFULLBODY_SEGMENTS,
+    _MYOLEG_SEGMENTS,
     _body_scales,
     _frame_rot,
+    _model_digest,
     _quat,
+    _read_opensim_scales,
     _rot,
-    read_opensim_scales,
-    scale_bodies,
+    _scale_spec,
+    _segments_for,
+    scale_model,
 )
-from myosuite.core.model_builder import ModelBuilder
 from myosuite.core.muscle_conditions import _peak_force
+from myosuite.core.trajectory_io import MotionClip, expand_motion_clip_to_model
 from myosuite.tests.support.optional_deps import require_musclemimic_models
 
 pytestmark = pytest.mark.tier1
@@ -82,6 +87,17 @@ LEG_XML = """
 </mujoco>
 """
 
+# A free-floating two-body subject: a root and a foot with a sole box.
+STANDING_XML = """<mujoco><worldbody>
+<geom name="ground" type="plane" size="2 2 .01"/>
+<body name="root" pos="0 0 1"><freejoint name="root_free"/>
+<geom type="sphere" size=".1" mass="2"/>
+<body name="foot" pos="0 0 -1"><joint name="ankle" axis="0 1 0"/>
+<geom name="sole" type="box" size=".1 .2 .05" mass="1"/>
+</body></body></worldbody>
+<keyframe><key name="stand" qpos="0 0 1 1 0 0 0 0"/></keyframe>
+</mujoco>"""
+
 
 def _leg() -> mujoco.MjSpec:
     return mujoco.MjSpec.from_string(LEG_XML)
@@ -125,17 +141,25 @@ MODELS: dict[str, Callable[[], mujoco.MjSpec]] = {
 }
 
 
+def _scale_set(path: Path, scales: dict[str, tuple[float, float, float]]) -> Path:
+    """Write an OpenSim ScaleSet with one ``<Scale>`` per segment."""
+    rows = "".join(
+        f"<Scale name='{name}'><scales>{' '.join(map(str, values))}</scales>"
+        f"<segment>{name}</segment><apply>true</apply></Scale>"
+        for name, values in scales.items()
+    )
+    path.write_text(
+        "<OpenSimDocument Version='40000'><ScaleSet name='subject'><objects>"
+        f"{rows}</objects></ScaleSet></OpenSimDocument>"
+    )
+    return path
+
+
 @pytest.mark.parametrize(
-    "mass,total,expected",
-    [
-        ("volume", None, [80, 20]),
-        ("keep", None, [10, 20]),
-        ("volume", 50, [40, 10]),
-        ("keep", 60, [20, 40]),
-    ],
+    "total,expected",
+    [(None, [80, 20]), (50, [40, 10])],
 )
 def test_compiler_total_mass_is_resolved_before_scaling(
-    mass: str,
     total: float | None,
     expected: list[float],
 ) -> None:
@@ -143,8 +167,8 @@ def test_compiler_total_mass_is_resolved_before_scaling(
     spec = mujoco.MjSpec.from_string("""<mujoco><compiler settotalmass="30"/>
         <worldbody><body name="a"><geom size=".1" mass="1"/>
         <body name="b"><geom size=".1" mass="2"/></body></body></worldbody></mujoco>""")
-    scale_bodies(spec, {"a": 2}, mass=mass, total_mass=total)
-    np.testing.assert_allclose(spec.compile().body_mass[1:], expected)
+    model = scale_model(spec, {"a": 2}, total_mass=total)
+    np.testing.assert_allclose(model.body_mass[1:], expected)
 
 
 def test_partial_keyframe_scales_slide_values() -> None:
@@ -153,8 +177,7 @@ def test_partial_keyframe_scales_slide_values() -> None:
         <body name="child"><joint name="slide" type="slide" axis="1 0 0"/>
         <joint name="hinge"/><geom size=".1"/></body></body></worldbody>
         <keyframe><key qpos=".2"/></keyframe></mujoco>""")
-    scale_bodies(spec, {"parent": 2})
-    np.testing.assert_allclose(spec.compile().key_qpos, [[0.4, 0]])
+    np.testing.assert_allclose(scale_model(spec, {"parent": 2}).key_qpos, [[0.4, 0]])
 
 
 def test_unnamed_slide_keyframes_use_coordinate_addresses() -> None:
@@ -163,8 +186,8 @@ def test_unnamed_slide_keyframes_use_coordinate_addresses() -> None:
         <body name="child"><joint type="slide" axis="1 0 0"/>
         <joint type="slide" axis="0 1 0"/><geom size=".1"/></body></body></worldbody>
         <keyframe><key qpos=".2 .3"/></keyframe></mujoco>""")
-    scale_bodies(spec, {"parent": [2, 3, 1]})
-    np.testing.assert_allclose(spec.compile().key_qpos, [[0.4, 0.9]])
+    model = scale_model(spec, {"parent": [2, 3, 1]})
+    np.testing.assert_allclose(model.key_qpos, [[0.4, 0.9]])
 
 
 def _matched_pose(
@@ -200,9 +223,18 @@ def _model_bytes(model: mujoco.MjModel) -> bytes:
 def test_no_scale_leaves_the_model_bit_identical(name: str) -> None:
     spec = MODELS[name]()
     before = _model_bytes(spec.copy().compile())
-    scale_bodies(spec, {})
-    scale_bodies(spec, {b.name: 1.0 for b in spec.bodies[1:] if b.name})
+    assert _model_bytes(scale_model(spec, {})) == before
+    ones = {b.name: 1.0 for b in spec.bodies[1:] if b.name}
+    assert _model_bytes(scale_model(spec, ones)) == before
     assert _model_bytes(spec.compile()) == before
+
+
+@pytest.mark.parametrize("name", ["leg", "myoleg"])
+def test_the_callers_spec_is_not_changed(name: str) -> None:
+    spec = MODELS[name]()
+    before = _model_bytes(spec.copy().compile())
+    scale_model(spec, {b.name: 1.1 for b in spec.bodies[1:] if b.name}, total_mass=50)
+    assert _model_bytes(spec.copy().compile()) == before
 
 
 @pytest.mark.parametrize("name", list(MODELS))
@@ -239,7 +271,7 @@ def test_resolved_orientations_match_the_compiler(name: str) -> None:
 def test_uniform_scale_is_an_exact_similarity(name: str) -> None:
     spec, s = MODELS[name](), 1.1
     ref = spec.copy().compile()
-    scaled = scale_bodies(spec, {b.name: s for b in spec.bodies[1:]}).compile()
+    scaled = scale_model(spec, {b.name: s for b in spec.bodies[1:]})
     for attr in ("nq", "nv", "nu", "nsite", "ntendon", "nbody", "neq"):
         assert getattr(scaled, attr) == getattr(ref, attr), attr
 
@@ -292,9 +324,8 @@ def test_uniform_scale_is_an_exact_similarity(name: str) -> None:
 def test_slide_joints_couplings_and_keyframes_scale_with_the_parent() -> None:
     spec = _leg()
     ref = spec.copy().compile()
-    scaled = scale_bodies(
-        spec, {"thigh": (1.2, 1.0, 1.0)}
-    ).compile()  # knee_tx slides along thigh x
+    # knee_tx slides along thigh x.
+    scaled = scale_model(spec, {"thigh": (1.2, 1.0, 1.0)})
     knee_tx = ref.joint("knee_tx")
     np.testing.assert_allclose(
         scaled.jnt_range[knee_tx.id], 1.2 * ref.jnt_range[knee_tx.id]
@@ -325,7 +356,7 @@ def test_slide_joint_axis_resolves_nested_frames() -> None:
     factors = np.array([1.7, 1.1, 0.8])
     axis = _rot(ref.body("child").quat) @ ref.joint("slide").axis
     expected = np.linalg.norm(factors * axis)
-    scaled = scale_bodies(spec, {"parent": factors}).compile()
+    scaled = scale_model(spec, {"parent": factors})
     np.testing.assert_allclose(scaled.jnt_range, ref.jnt_range * expected)
     np.testing.assert_allclose(scaled.qpos0, ref.qpos0 * expected)
     np.testing.assert_allclose(scaled.qpos_spring, ref.qpos_spring * expected)
@@ -339,7 +370,7 @@ def test_sphere_radius_uses_opensim_mean_independent_of_orientation(euler: str) 
         </body></worldbody></mujoco>"""
     )
     factors = np.array([2.0, 1.0, 0.8])
-    model = scale_bodies(spec, {"body": factors}).compile()
+    model = scale_model(spec, {"body": factors})
     np.testing.assert_allclose(model.geom("sphere").size[0], 0.1 * factors.mean())
 
 
@@ -363,7 +394,7 @@ def test_cylinder_radius_uses_opensim_transverse_mean(
     local_factors = np.linalg.norm(
         factors[:, None] * _rot(ref.geom("geom").quat), axis=0
     )
-    model = scale_bodies(spec, {"body": factors}).compile()
+    model = scale_model(spec, {"body": factors})
     np.testing.assert_allclose(
         model.geom("geom").size[0], ref.geom("geom").size[0] * local_factors[:2].mean()
     )
@@ -378,7 +409,7 @@ def test_per_axis_scale_moves_everything_with_its_body(name: str) -> None:
     ref = spec.copy().compile()
     rng = np.random.default_rng(1)
     factors = {b.name: rng.uniform(0.8, 1.25, 3) for b in spec.bodies[1:]}
-    scaled = scale_bodies(spec, factors).compile()
+    scaled = scale_model(spec, factors)
 
     def s(body_id: int) -> np.ndarray:
         return factors.get(ref.body(body_id).name, np.ones(3))
@@ -414,9 +445,9 @@ def test_muscles_keep_their_force_in_the_default_pose(name: str) -> None:
     spec = MODELS[name]()
     ref = spec.copy().compile()
     rng = np.random.default_rng(2)
-    scaled = scale_bodies(
+    scaled = scale_model(
         spec, {b.name: rng.uniform(0.85, 1.2, 3) for b in spec.bodies[1:]}
-    ).compile()
+    )
     forces = []
     for model in (ref, scaled):
         data = mujoco.MjData(model)
@@ -426,18 +457,15 @@ def test_muscles_keep_their_force_in_the_default_pose(name: str) -> None:
     np.testing.assert_allclose(forces[1], forces[0], rtol=1e-9, atol=1e-9)
 
 
-def test_mass_options_and_strength() -> None:
+def test_mass_scales_with_volume_and_strength_is_kept() -> None:
     ref = _leg().compile()
-    keep = scale_bodies(_leg(), {"thigh": 1.2}, mass="keep").compile()
-    np.testing.assert_allclose(keep.body_mass, ref.body_mass)
-    total = scale_bodies(_leg(), {"thigh": 1.2}, total_mass=7.5).compile()
+    model = scale_model(_leg(), {"thigh": 1.2})
+    thigh = ref.body("thigh").id
+    np.testing.assert_allclose(model.body_mass[thigh], 1.2**3 * ref.body_mass[thigh])
+    total = scale_model(_leg(), {"thigh": 1.2}, total_mass=7.5)
     np.testing.assert_allclose(total.body_mass.sum(), 7.5)
     # force="-1": the peak force comes from the mass, so scaling must freeze it first.
-    stronger = scale_bodies(
-        _leg(), {"thigh": 1.2, "shank": 1.2}, force_scale=1.5
-    ).compile()
-    np.testing.assert_allclose(_peak_force(stronger), 1.5 * _peak_force(ref))
-    same = scale_bodies(_leg(), {"thigh": 1.2, "shank": 1.2}).compile()
+    same = scale_model(_leg(), {"thigh": 1.2, "shank": 1.2})
     np.testing.assert_allclose(_peak_force(same), _peak_force(ref))
 
 
@@ -464,7 +492,7 @@ def test_total_mass_rescales_only_the_subject(
     """Static scenery and other agents in a composed scene keep their mass."""
     spec = _leg_in_scene(with_agent)
     ref = spec.copy().compile()
-    model = scale_bodies(spec, scales, total_mass=7.5).compile()
+    model = scale_model(spec, scales, total_mass=7.5)
     subject = [model.body(name).id for name in ("thigh", "shank")]
     np.testing.assert_allclose(model.body_mass[subject].sum(), 7.5)
     for name in ("prop", "agent") if with_agent else ("prop",):
@@ -473,18 +501,18 @@ def test_total_mass_rescales_only_the_subject(
 
 def test_total_mass_without_a_named_subject_must_be_unambiguous() -> None:
     with pytest.raises(ValueError, match="ambiguous"):
-        scale_bodies(_leg_in_scene(with_agent=True), {}, total_mass=7.5)
+        scale_model(_leg_in_scene(with_agent=True), {}, total_mass=7.5)
 
 
 def test_unsupported_cases_are_refused() -> None:
     with pytest.raises(KeyError, match="nope"):
-        scale_bodies(_leg(), {"nope": 1.1})
+        scale_model(_leg(), {"nope": 1.1})
     with pytest.raises(ValueError, match="positive"):
-        scale_bodies(_leg(), {"thigh": (1.0, 0.0, 1.0)})
+        scale_model(_leg(), {"thigh": (1.0, 0.0, 1.0)})
     shared = _leg()
     shared.body("shank").add_geom(type=mujoco.mjtGeom.mjGEOM_MESH, meshname="cube")
     with pytest.raises(NotImplementedError, match="cube"):
-        scale_bodies(shared, {"thigh": 1.1})
+        scale_model(shared, {"thigh": 1.1})
     connected = _leg()
     connected.add_equality(
         type=mujoco.mjtEq.mjEQ_CONNECT,
@@ -493,64 +521,37 @@ def test_unsupported_cases_are_refused() -> None:
         name2="world",
     )
     with pytest.raises(NotImplementedError, match="connect/weld"):
-        scale_bodies(connected, {"shank": 1.1})
+        scale_model(connected, {"shank": 1.1})
 
 
 @pytest.mark.parametrize("factor", [0.0, -1.0, np.nan, np.inf, -np.inf])
-@pytest.mark.parametrize("segments", [None, {"unused": ("thigh",)}])
-def test_invalid_factors_are_rejected_before_mutating_the_model(
-    factor: float, segments: dict[str, tuple[str, ...]] | None
-) -> None:
-    spec = _simple_body()
-    before = _model_bytes(spec.copy().compile())
+def test_invalid_factors_are_rejected(factor: float) -> None:
     with pytest.raises(ValueError, match="finite and positive"):
-        scale_bodies(spec, {"thigh": [1.0, factor, 1.0]}, segments=segments)
-    assert _model_bytes(spec.copy().compile()) == before
+        scale_model(_simple_body(), {"thigh": [1.0, factor, 1.0]})
+    # Malformed segment factors cannot pass silently, even for unused segments.
+    with pytest.raises(ValueError, match="finite and positive"):
+        _body_scales(_simple_body(), {"unused": factor}, {"thigh": ("thigh",)})
 
 
-@pytest.mark.parametrize("name", ["total_mass", "force_scale"])
 @pytest.mark.parametrize("value", [0.0, -1.0, np.nan, np.inf, -np.inf])
-def test_invalid_mass_or_force_is_rejected_before_mutating_the_model(
-    name: str, value: float
-) -> None:
-    spec = _simple_body()
-    before = _model_bytes(spec.copy().compile())
-    with pytest.raises(ValueError, match=f"{name} must be finite and positive"):
-        scale_bodies(spec, {"thigh": 1.2}, **{name: value})
-    assert _model_bytes(spec.copy().compile()) == before
-
-
-def test_invalid_mass_mode_is_rejected_even_without_scaling() -> None:
-    with pytest.raises(ValueError, match="mass must be"):
-        scale_bodies(_simple_body(), {}, mass="invalid")
+def test_invalid_total_mass_is_rejected(value: float) -> None:
+    with pytest.raises(ValueError, match="total_mass must be finite and positive"):
+        scale_model(_simple_body(), {"thigh": 1.2}, total_mass=value)
 
 
 def test_ambiguous_segments_cannot_depend_on_mapping_order() -> None:
     with pytest.raises(ValueError, match="more than one segment"):
-        scale_bodies(
+        _body_scales(
             _simple_body(),
             {"a": 1.1, "b": 1.2},
-            segments={"a": ("thigh",), "b": ("thigh",)},
+            {"a": ("thigh",), "b": ("thigh",)},
         )
 
 
 @pytest.mark.parametrize("factor", [1.0, 1.2])
 def test_world_body_cannot_be_scaled(factor: float) -> None:
     with pytest.raises(KeyError, match="world"):
-        scale_bodies(_simple_body(), {"world": factor})
-
-
-def test_model_builder_scale_bodies_matches_the_function() -> None:
-    model, _ = (
-        ModelBuilder.from_spec(_leg())
-        .scale_bodies({"thigh": (1.1, 1.0, 0.9)}, mass="keep")
-        .build()
-    )
-    direct = scale_bodies(_leg(), {"thigh": (1.1, 1.0, 0.9)}, mass="keep").compile()
-    np.testing.assert_array_equal(model.site_pos, direct.site_pos)
-    np.testing.assert_array_equal(
-        model.actuator_lengthrange, direct.actuator_lengthrange
-    )
+        scale_model(_simple_body(), {"world": factor})
 
 
 @pytest.mark.parametrize("name", ["leg", "myoleg"])
@@ -560,8 +561,8 @@ def test_precompiled_mesh_scaling_has_fresh_bounds_and_bvh(name: str) -> None:
     factors = (
         {"thigh": (0.8, 0.9, 1.1)} if name == "leg" else {"femur_r": (1.02, 1.07, 0.98)}
     )
-    expected = scale_bodies(fresh, factors).compile()
-    actual = scale_bodies(compiled, factors).compile()
+    expected = scale_model(fresh, factors)
+    actual = scale_model(compiled, factors)
     for field in (
         "mesh_vert",
         "geom_size",
@@ -607,7 +608,7 @@ def test_mesh_recreation_preserves_authored_data_and_names() -> None:
     before = {field: np.array(getattr(mesh, field), copy=True) for field in fields}
     original_scale = mesh.scale.copy()
     spec.compile()
-    scale_bodies(spec, {"thigh": (0.8, 0.9, 1.1)})
+    _scale_spec(spec, {"thigh": (0.8, 0.9, 1.1)})
     replacement = spec.mesh("cube")
     assert replacement is not None
     assert spec.geom("thigh_mesh").meshname == "cube"
@@ -619,12 +620,13 @@ def test_mesh_recreation_preserves_authored_data_and_names() -> None:
     spec.compile()
 
 
-def test_rajagopal_segments_map_onto_myofullbody() -> None:
+def test_rajagopal_segments_map_onto_myofullbody(tmp_path: Path) -> None:
     spec = _fullbody()
+    assert _segments_for(spec) is _MYOFULLBODY_SEGMENTS
     scales = _body_scales(
         spec,
         {"torso": 1.1, "hand_r": 0.9, "femur_r": (1.0, 1.2, 1.0), "humerus_l": 1.05},
-        RAJAGOPAL_MYOFULLBODY_SEGMENTS,
+        _MYOFULLBODY_SEGMENTS,
     )
     np.testing.assert_array_equal(scales["lumbar5"], [1.1] * 3)
     np.testing.assert_array_equal(
@@ -640,9 +642,10 @@ def test_rajagopal_segments_map_onto_myofullbody() -> None:
         if b.name in scales and np.array_equal(scales[b.name], [0.9] * 3)
     ]
     assert len(hand) == 27 and "lunate_r" in hand
-    model = scale_bodies(
-        spec, {"torso": 1.1, "hand_r": 0.9}, segments=RAJAGOPAL_MYOFULLBODY_SEGMENTS
-    ).compile()
+    path = _scale_set(
+        tmp_path / "scales.xml", {"torso": (1.1,) * 3, "hand_r": (0.9,) * 3}
+    )
+    model = scale_model(spec, path)
     data = mujoco.MjData(model)
     for _ in range(200):
         mujoco.mj_step(model, data)
@@ -651,12 +654,32 @@ def test_rajagopal_segments_map_onto_myofullbody() -> None:
 
 def test_rajagopal_segments_cover_myoleg() -> None:
     spec = _myoleg()
+    assert _segments_for(spec) is _MYOLEG_SEGMENTS
     scales = _body_scales(
-        spec, {seg: 1.1 for seg in RAJAGOPAL_MYOLEG_SEGMENTS}, RAJAGOPAL_MYOLEG_SEGMENTS
+        spec, {seg: 1.1 for seg in _MYOLEG_SEGMENTS}, _MYOLEG_SEGMENTS
     )
     assert set(scales) == {b.name for b in spec.bodies[1:]}
     # Arms are not part of MyoLeg: their factors are ignored.
-    assert _body_scales(spec, {"humerus_r": 1.3}, RAJAGOPAL_MYOLEG_SEGMENTS) == {}
+    assert _body_scales(spec, {"humerus_r": 1.3}, _MYOLEG_SEGMENTS) == {}
+
+
+def test_opensim_file_scales_the_mapped_bodies(tmp_path: Path) -> None:
+    spec = _myoleg()
+    segments = {"femur_r": (1.04, 1.08, 1.02), "tibia_l": (0.97,) * 3}
+    path = _scale_set(tmp_path / "scales.xml", segments)
+    by_file = scale_model(spec, path, total_mass=70)
+    by_body = scale_model(
+        spec,
+        {
+            **{b: 1.0 for bodies in _MYOLEG_SEGMENTS.values() for b in bodies},
+            **_body_scales(spec, segments, _MYOLEG_SEGMENTS),
+        },
+        total_mass=70,
+    )
+    assert _model_bytes(by_file) == _model_bytes(by_body)
+    np.testing.assert_allclose(by_file.body_mass.sum(), 70)
+    with pytest.raises(ValueError, match="No OpenSim segment mapping"):
+        scale_model(_leg(), path)
 
 
 SCALE_SET = """<OpenSimDocument Version="40000">
@@ -686,13 +709,74 @@ def _osim(femur: str, tibia: str) -> str:
 def test_read_opensim_scales(tmp_path: Path) -> None:
     scale_set = tmp_path / "scale_set.xml"
     scale_set.write_text(SCALE_SET)
-    scales = read_opensim_scales(scale_set)
+    scales = _read_opensim_scales(scale_set)
     assert set(scales) == {"femur_r"}  # apply=false is skipped
     np.testing.assert_allclose(scales["femur_r"], [1.1, 1.2, 1.3])
 
-    scaled, generic = tmp_path / "scaled.osim", tmp_path / "generic.osim"
+    scaled = tmp_path / "scaled.osim"
     scaled.write_text(_osim("1.05 1.05 1.05", "2 2 2"))
-    generic.write_text(_osim("1 1 1", "2 2 2"))
-    np.testing.assert_allclose(read_opensim_scales(scaled)["femur_r"], [1.05] * 3)
-    relative = read_opensim_scales(scaled, reference=generic)
-    np.testing.assert_allclose(relative["tibia_r"], [1.0] * 3)
+    np.testing.assert_allclose(_read_opensim_scales(scaled)["femur_r"], [1.05] * 3)
+    np.testing.assert_allclose(_read_opensim_scales(scaled)["tibia_r"], [2] * 3)
+
+
+def test_model_digest_tracks_the_morphology() -> None:
+    source = mujoco.MjSpec.from_string(STANDING_XML)
+    scaled = _model_digest(scale_model(source, {"root": 1.1, "foot": 1.2}))
+    same = _model_digest(scale_model(source, {"foot": [1.2] * 3, "root": [1.1] * 3}))
+    assert scaled == same
+    changed = mujoco.MjSpec.from_string(STANDING_XML)
+    changed.geom("sole").size[0] *= 2
+    assert _model_digest(scale_model(changed, {"root": 1.1, "foot": 1.2})) != scaled
+
+
+def test_model_digest_is_stable_across_processes() -> None:
+    code = (
+        "import mujoco; from myosuite.core.body_scaling import _model_digest; "
+        f"print(_model_digest(mujoco.MjSpec.from_string({STANDING_XML!r}).compile()))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], text=True, capture_output=True, check=True
+    )
+    expected = _model_digest(mujoco.MjSpec.from_string(STANDING_XML).compile())
+    assert result.stdout.splitlines()[-1] == expected
+
+
+def test_named_motion_replays_on_scaled_fullbody() -> None:
+    source = _fullbody()
+    nominal = source.copy().compile()
+    model = scale_model(source, {"femur_r": 1.08})
+    assert (model.nq, model.nv, model.nu, model.ntendon) == (
+        nominal.nq,
+        nominal.nv,
+        nominal.nu,
+        nominal.ntendon,
+    )
+    names = [model.joint(i).name for i in range(model.njnt)]
+    assert names == [nominal.joint(i).name for i in range(nominal.njnt)]
+    # A clip authored against the new target, stored in reversed named-joint order.
+    qpos = np.repeat(model.qpos0[None], 3, axis=0)
+    hinge = next(
+        i for i in range(model.njnt) if model.jnt_type[i] == mujoco.mjtJoint.mjJNT_HINGE
+    )
+    qpos[:, model.jnt_qposadr[hinge]] += [0, 0.01, 0.02]
+    indices = []
+    for i in reversed(range(model.njnt)):
+        start = int(model.jnt_qposadr[i])
+        stop = int(model.jnt_qposadr[i + 1]) if i + 1 < model.njnt else model.nq
+        indices.extend(range(start, stop))
+    clip = MotionClip(
+        qpos=qpos[:, indices],
+        qvel=None,
+        site_xpos=None,
+        site_names=None,
+        qpos_joint_names=list(reversed(names)),
+        frequency_hz=100,
+    )
+    replay = expand_motion_clip_to_model(clip, model)
+    np.testing.assert_allclose(replay.qpos, qpos)
+    data = mujoco.MjData(model)
+    for frame in replay.qpos:
+        data.qpos[:] = frame
+        mujoco.mj_forward(model, data)
+        assert np.all(np.isfinite(data.site_xpos))
+        assert np.all(np.isfinite(data.actuator_length))

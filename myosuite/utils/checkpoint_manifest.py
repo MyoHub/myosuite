@@ -13,12 +13,9 @@ import subprocess
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import myosuite
-
-if TYPE_CHECKING:
-    from myosuite.core.subject_model import SubjectModel
 
 MANIFEST_NAME = "manifest.json"
 SCHEMA_VERSION = 1
@@ -95,7 +92,6 @@ def write_manifest(
     success: float | None = None,
     steps: int | None = None,
     note: str | None = None,
-    subject_model: SubjectModel | None = None,
 ) -> Path:
     """Write ``manifest.json`` into a checkpoint folder.
 
@@ -106,7 +102,6 @@ def write_manifest(
         success: Deterministic success rate in percent, if measured.
         steps: Environment steps the policy was trained for, if known.
         note: Free text (for example how success is scored).
-        subject_model: Built subject whose morphology provenance is recorded.
 
     Returns:
         Path of the written manifest. For envs whose body is built from ``musclemimic_models``
@@ -136,8 +131,6 @@ def write_manifest(
     models_version = env_models_version(env_id)
     if models_version is not None:
         manifest[MANIFEST_FIELD] = models_version
-    if subject_model is not None:
-        manifest["subject_model"] = subject_model.metadata
     path = checkpoint_dir / MANIFEST_NAME
     path.write_text(json.dumps(manifest, indent=2) + "\n")
     return path
@@ -149,40 +142,18 @@ def read_manifest(checkpoint_dir: str | Path) -> dict[str, Any] | None:
     return json.loads(path.read_text()) if path.is_file() else None
 
 
-def check_contract(
-    env_id: str,
-    checkpoint_dir: str | Path,
-    *,
-    subject_model: SubjectModel | None = None,
-    strict: bool = False,
-) -> bool:
+def check_contract(env_id: str, checkpoint_dir: str | Path) -> bool:
     """Warn when a checkpoint's recorded contract differs from the current env.
 
     Args:
         env_id: Registered env id the checkpoint is about to be used on.
         checkpoint_dir: Folder with the checkpoint and its manifest.
-        subject_model: Current subject, or None for nominal morphology.
-        strict: Raise ValueError instead of warning on a morphology mismatch.
 
     Returns:
-        ``False`` for a morphology or contract mismatch. With nominal morphology,
-        a missing manifest/contract retains the legacy ``True`` result.
+        ``False`` when the contract hashes differ, ``True`` otherwise (also when the folder
+        has no manifest, or the manifest records no contract, as for the MuscleMimic policy).
     """
     manifest = read_manifest(checkpoint_dir)
-    recorded = None if manifest is None else manifest.get("subject_model")
-    expected = None if subject_model is None else subject_model.metadata
-    if (None if recorded is None else recorded.get("model_digest")) != (
-        None if expected is None else expected.get("model_digest")
-    ):
-        message = (
-            f"The checkpoint for {env_id} has incompatible or unrecorded subject "
-            "morphology. Nominal-policy results do not establish subject-specific "
-            "validity; retrain or explicitly validate the policy on this model."
-        )
-        if strict:
-            raise ValueError(message)
-        warnings.warn(message, stacklevel=2)
-        return False
     if manifest is None or not manifest.get("contract"):
         return True
     current = contract_hash(env_contract(env_id))

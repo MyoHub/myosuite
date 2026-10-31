@@ -4,6 +4,15 @@
 # LICENSE file in the root directory of this source tree.
 """Scale a musculoskeletal model to a subject, as OpenSim's Scale Tool does.
 
+:func:`scale_model` returns a scaled, compiled copy of a model. Its ``scales``
+argument is
+
+* a mapping of body name to one factor, or to three factors along the body's
+  own axes; or
+* the path of an OpenSim scale file: a ScaleSet, or a model scaled by the Scale
+  Tool (e.g. by AddBiomechanics). Its segments are those of the Rajagopal model
+  and are mapped onto the bodies of MyoLeg or the MuscleMimic MyoFullBody.
+
 Each body gets per-axis scale factors in its own frame (OpenSim's convention):
 
 * everything a body carries (geoms, meshes, sites, joint anchors, cameras,
@@ -14,8 +23,8 @@ Each body gets per-axis scale factors in its own frame (OpenSim's convention):
 * every muscle's optimal fibre length and tendon slack length scale by the change
   of its muscle-tendon length in the default pose (``qpos0``). MuJoCo derives
   both from ``lengthrange``, so ``lengthrange`` is scaled by that ratio;
-* peak muscle force is kept (OpenSim does not scale strength) unless
-  ``force_scale`` is given.
+* mass scales with volume (``sx * sy * sz``) and peak muscle force is kept
+  (OpenSim does not scale strength); ``total_mass`` then rescales the subject.
 
 The topology (joints, actuators, sites, tendons) does not change, so the
 observation and action spaces of an env stay the same.
@@ -23,18 +32,14 @@ observation and action spaces of an env stay the same.
 Rotated geoms use the scale along each of their own axes. Anisotropic scaling
 can introduce shear, which primitive sizes and mesh scale factors approximate.
 Spheres and cylinder radii use OpenSim's arithmetic mean convention.
-
-Scale factors can come from an OpenSim Scale Tool result, e.g. a model scaled by
-AddBiomechanics or a ScaleSet file (:func:`read_opensim_scales`). Segment names
-of the Rajagopal model map onto MyoSuite bodies with
-:data:`RAJAGOPAL_MYOLEG_SEGMENTS` and :data:`RAJAGOPAL_MYOFULLBODY_SEGMENTS`.
 """
 
 from __future__ import annotations
 
+import hashlib
+import os
 from collections.abc import Mapping, Sequence
-from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 import xml.etree.ElementTree as ET
 
 import mujoco
@@ -52,18 +57,18 @@ _LEG_SEGMENTS = (
     "toes",
 )
 
-#: Rajagopal model segment -> first body of that segment in MyoLeg
-#: (``myolegs_with_torso``). Every body takes its nearest mapped ancestor's scale.
-RAJAGOPAL_MYOLEG_SEGMENTS: dict[str, tuple[str, ...]] = {
+# Rajagopal model segment -> first body of that segment in MyoLeg
+# (``myolegs_with_torso``). Every body takes its nearest mapped ancestor's scale.
+_MYOLEG_SEGMENTS: dict[str, tuple[str, ...]] = {
     "pelvis": ("root",),
     "torso": ("torso",),
     **{f"{seg}_{side}": (f"{seg}_{side}",) for seg in _LEG_SEGMENTS for side in "rl"},
 }
 
-#: Rajagopal model segment -> first body of that segment in the MuscleMimic
-#: MyoFullBody. The lumbar spine, thorax, shoulder girdle and head follow
-#: ``torso``; the 27 hand bodies follow ``hand``.
-RAJAGOPAL_MYOFULLBODY_SEGMENTS: dict[str, tuple[str, ...]] = {
+# Rajagopal model segment -> first body of that segment in the MuscleMimic
+# MyoFullBody. The lumbar spine, thorax, shoulder girdle and head follow
+# ``torso``; the 27 hand bodies follow ``hand``.
+_MYOFULLBODY_SEGMENTS: dict[str, tuple[str, ...]] = {
     "pelvis": ("Full Body",),
     "torso": ("lumbar5",),
     **{f"{seg}_{side}": (f"{seg}_{side}",) for seg in _LEG_SEGMENTS for side in "rl"},
@@ -80,30 +85,89 @@ _ORIENT = mujoco.mjtOrientation
 _UNIT = np.ones(3)
 
 
-def read_opensim_scales(
-    path: str | Path, reference: str | Path | None = None
-) -> dict[str, np.ndarray]:
-    """Read per-segment scale factors from an OpenSim file.
-
-    Accepts a ScaleSet (``<Scale><segment>…<scales>sx sy sz</scales>``, as in a
-    Scale Tool setup or result) or a scaled model (``.osim``), whose bodies carry
-    the applied factors as their geometry's ``scale_factors``.
+def scale_model(
+    spec: mujoco.MjSpec,
+    scales: Mapping[str, float | ArrayLike] | str | os.PathLike[str],
+    *,
+    total_mass: float | None = None,
+) -> mujoco.MjModel:
+    """Scale a copy of *spec* to a subject and compile it.
 
     Args:
-        path: ScaleSet XML or scaled ``.osim`` model.
-        reference: The unscaled model, when its geometry already has scale
-            factors other than one; the result is divided by them.
+        spec: Nominal model; it is not changed.
+        scales: Body name -> one factor or ``(sx, sy, sz)`` along that body's
+            axes; or the path of an OpenSim ScaleSet or scaled ``.osim`` model,
+            for MyoLeg or the MuscleMimic MyoFullBody.
+        total_mass: Rescale the subject's body masses to this total (kg). The
+            subject is every kinematic tree holding a body named in *scales*
+            (a factor of one counts), or else the model's one articulated tree;
+            static scenery and other agents keep their mass.
 
     Returns:
-        Segment name -> ``(sx, sy, sz)`` in the segment's own frame.
+        The compiled scaled model. With no factor other than one and no
+        ``total_mass`` it equals ``spec.compile()``.
+
+    Raises:
+        KeyError: If a body is not in the model.
+        ValueError: For factors or a ``total_mass`` that are not finite and
+            positive, an OpenSim file for a model without a segment mapping, or
+            a ``total_mass`` whose subject is ambiguous.
+        NotImplementedError: For a mesh shared by geoms needing different
+            scales, or a connect/weld equality or height field on a scaled body.
     """
-    scales = _scale_set(ET.parse(path).getroot()) or _model_scales(
-        ET.parse(path).getroot()
-    )
-    if reference is not None:
-        base = _model_scales(ET.parse(reference).getroot())
-        scales = {name: s / base.get(name, _UNIT) for name, s in scales.items()}
-    return scales
+    spec = spec.copy()
+    _scale_spec(spec, scales, total_mass=total_mass)
+    return spec.compile()
+
+
+def _scale_spec(
+    spec: mujoco.MjSpec,
+    scales: Mapping[str, float | ArrayLike] | str | os.PathLike[str],
+    *,
+    total_mass: float | None = None,
+) -> None:
+    """Scale *spec* in place (see :func:`scale_model`)."""
+    if total_mass is not None and (not np.isfinite(total_mass) or total_mass <= 0):
+        raise ValueError(f"total_mass must be finite and positive, got {total_mass}.")
+    if isinstance(scales, (str, os.PathLike)):
+        segments = _segments_for(spec)
+        body_scales = _body_scales(spec, _read_opensim_scales(scales), segments)
+        # The segment bodies define the subject, even those left unscaled.
+        subject = set().union(*segments.values())
+    else:
+        body_scales = _body_scales(spec, scales, None)
+        subject = set(scales)
+    _scale_bodies(spec, body_scales, subject, total_mass)
+
+
+def _segments_for(spec: mujoco.MjSpec) -> Mapping[str, tuple[str, ...]]:
+    """The Rajagopal segment mapping whose first bodies are all in *spec*.
+
+    MyoFullBody also has bodies named like MyoLeg's (``root``, ``torso``), so
+    the mapping with the most segments wins.
+    """
+    names = {b.name for b in spec.bodies[1:]}
+    tables = [
+        table
+        for table in (_MYOFULLBODY_SEGMENTS, _MYOLEG_SEGMENTS)
+        if all(body in names for bodies in table.values() for body in bodies)
+    ]
+    if not tables:
+        raise ValueError(
+            "No OpenSim segment mapping fits this model (MyoLeg and MyoFullBody "
+            "have one); pass per-body factors instead."
+        )
+    return max(tables, key=len)
+
+
+def _read_opensim_scales(path: str | os.PathLike[str]) -> dict[str, np.ndarray]:
+    """Segment name -> ``(sx, sy, sz)`` from a ScaleSet or a scaled ``.osim`` model.
+
+    A scaled model carries the applied factors as its geometry's
+    ``scale_factors`` (one for the unscaled Rajagopal model).
+    """
+    root = ET.parse(path).getroot()
+    return _scale_set(root) or _model_scales(root)
 
 
 def _scale_set(root: ET.Element) -> dict[str, np.ndarray]:
@@ -126,53 +190,22 @@ def _model_scales(root: ET.Element) -> dict[str, np.ndarray]:
     return scales
 
 
-def scale_bodies(
+def _scale_bodies(
     spec: mujoco.MjSpec,
-    scales: Mapping[str, float | ArrayLike],
-    *,
-    segments: Mapping[str, Sequence[str]] | None = None,
-    mass: Literal["volume", "keep"] = "volume",
-    total_mass: float | None = None,
-    force_scale: float = 1.0,
-) -> mujoco.MjSpec:
-    """Scale bodies of *spec* in place (see the module docstring for the rules).
+    body_scales: Mapping[str, np.ndarray],
+    subject: set[str],
+    total_mass: float | None,
+) -> None:
+    """Scale *spec* in place by resolved per-body factors.
 
     Args:
-        spec: Model to edit; edited in place and returned.
-        scales: Body name (or segment name with *segments*) -> one factor or
-            per-axis factors ``(sx, sy, sz)`` in that body's frame.
-        segments: Segment -> its first bodies (e.g.
-            :data:`RAJAGOPAL_MYOFULLBODY_SEGMENTS`). Each body then takes the
-            scale of its nearest ancestor (or itself) that starts a segment, and
-            a segment missing from *scales* stays unscaled. Segments of *scales*
-            the mapping lacks (e.g. arms for MyoLeg) are ignored.
-        mass: ``"volume"`` scales each body's mass with its volume
-            (``sx * sy * sz``); ``"keep"`` keeps it.
-        total_mass: Rescale the subject's body masses to this total (kg)
-            afterwards. The subject is every kinematic tree holding a body
-            named in *scales* (or a segment's first body), whatever its
-            factor, or else the model's one articulated tree; static scenery
-            and other agents keep their mass. ``mass="keep"`` with
-            ``total_mass`` is OpenSim's "preserve mass distribution".
-        force_scale: Factor on every muscle's peak force.
-
-    Returns:
-        The edited spec. With no factor other than one, no ``total_mass`` and
-        ``force_scale=1`` it is left untouched.
-
-    Raises:
-        KeyError: If a body (or a segment's first body) is not in the model.
-        NotImplementedError: For a mesh shared by geoms needing different
-            scales, or a connect/weld equality or height field on a scaled body.
+        spec: Model to edit.
+        body_scales: Body name -> factors other than one, in that body's frame.
+        subject: Body names whose kinematic trees ``total_mass`` rescales.
+        total_mass: Target mass of the subject (kg), or None.
     """
-    if mass not in ("volume", "keep"):
-        raise ValueError(f"mass must be 'volume' or 'keep', got {mass!r}.")
-    for name, value in (("total_mass", total_mass), ("force_scale", force_scale)):
-        if value is not None and (not np.isfinite(value) or value <= 0):
-            raise ValueError(f"{name} must be finite and positive, got {value}.")
-    body_scales = _body_scales(spec, scales, segments)
-    if not body_scales and total_mass is None and force_scale == 1.0:
-        return spec
+    if not body_scales and total_mass is None:
+        return
 
     # Compile copies only: compiling *spec* itself would freeze its frames.
     ref = spec.copy().compile()
@@ -184,9 +217,7 @@ def scale_bodies(
 
     _check_equalities(spec, body_scales)
     slide = _scale_geometry(spec, ref, body_scales)
-    # Bodies the caller names define the subject, even with a factor of one.
-    subject = set(scales) if segments is None else set().union(*segments.values())
-    _scale_inertia(spec, ref, body_scales, mass, total_mass, subject)
+    _scale_inertia(spec, ref, body_scales, total_mass, subject)
     _scale_joint_couplings(spec, slide)
 
     scaled = spec.copy().compile()
@@ -200,11 +231,10 @@ def scale_bodies(
             continue
         actuator.lengthrange = ref.actuator_lengthrange[i] * muscle_ratio[i]
         # MuJoCo derives an automatic peak force from the (now scaled) mass.
-        if force_scale != 1.0 or ref.actuator_gainprm[i, 2] < 0:
-            actuator.gainprm[2] = peak_force[i] * force_scale
+        if ref.actuator_gainprm[i, 2] < 0:
+            actuator.gainprm[2] = peak_force[i]
             if int(ref.actuator_biastype[i]) == int(mujoco.mjtBias.mjBIAS_MUSCLE):
-                actuator.biasprm[2] = peak_force[i] * force_scale
-    return spec
+                actuator.biasprm[2] = peak_force[i]
 
 
 def _body_scales(
@@ -212,7 +242,12 @@ def _body_scales(
     scales: Mapping[str, float | ArrayLike],
     segments: Mapping[str, Sequence[str]] | None,
 ) -> dict[str, np.ndarray]:
-    """Body name -> per-axis factors, for bodies with a factor other than one."""
+    """Body name -> per-axis factors, for bodies with a factor other than one.
+
+    With *segments* (segment -> first bodies), each body takes the factors of
+    its nearest ancestor (or itself) that starts a segment; a segment missing
+    from *scales* stays unscaled, and segments the mapping lacks are ignored.
+    """
     names = {b.name for b in spec.bodies[1:]}
     # Validate even unused segments, so malformed estimates cannot pass silently.
     scales = {name: _factors(scale) for name, scale in scales.items()}
@@ -262,7 +297,7 @@ def _ratio(new: np.ndarray, old: np.ndarray) -> np.ndarray:
     return ratio
 
 
-def _quat(spec: mujoco.MjSpec, element) -> np.ndarray:
+def _quat(spec: mujoco.MjSpec, element: Any) -> np.ndarray:
     """Orientation of *element* in its parent frame, resolving euler/axisangle/…"""
     alt, quat = element.alt, np.zeros(4)
     kind = int(alt.type)
@@ -299,7 +334,7 @@ def _rot(quat: np.ndarray) -> np.ndarray:
     return mat.reshape(3, 3)
 
 
-def _frame_pose(spec: mujoco.MjSpec, frame) -> tuple[np.ndarray, np.ndarray]:
+def _frame_pose(spec: mujoco.MjSpec, frame: Any) -> tuple[np.ndarray, np.ndarray]:
     """Origin and rotation of a (possibly nested) frame in its body's coordinates."""
     if frame is None:
         return np.zeros(3), np.eye(3)
@@ -309,12 +344,14 @@ def _frame_pose(spec: mujoco.MjSpec, frame) -> tuple[np.ndarray, np.ndarray]:
     )
 
 
-def _frame_rot(spec: mujoco.MjSpec, frame) -> np.ndarray:
+def _frame_rot(spec: mujoco.MjSpec, frame: Any) -> np.ndarray:
     """Rotation of a (possibly nested) frame in its body's coordinates."""
     return _frame_pose(spec, frame)[1]
 
 
-def _scaled_point(spec: mujoco.MjSpec, frame, s: np.ndarray, point) -> np.ndarray:
+def _scaled_point(
+    spec: mujoco.MjSpec, frame: Any, s: np.ndarray, point: ArrayLike
+) -> np.ndarray:
     """A point given in *frame* coordinates, moved as its body scales by ``diag(s)``.
 
     Frames themselves are left alone: MuJoCo ignores edits of a frame's position
@@ -437,7 +474,7 @@ def _rescale_mesh(spec: mujoco.MjSpec, name: str, factors: np.ndarray) -> None:
     replacement.classname = classname
 
 
-def _scale_placement(spec: mujoco.MjSpec, element, s: np.ndarray) -> None:
+def _scale_placement(spec: mujoco.MjSpec, element: Any, s: np.ndarray) -> None:
     """Scale the position, or the ``fromto`` end points, of a geom or site."""
     if np.isnan(element.fromto[0]):
         element.pos = _scaled_point(spec, element.frame, s, element.pos)
@@ -449,7 +486,7 @@ def _scale_placement(spec: mujoco.MjSpec, element, s: np.ndarray) -> None:
 
 
 def _scale_geom(
-    spec: mujoco.MjSpec, geom, s: np.ndarray, mesh_scales: dict[str, np.ndarray]
+    spec: mujoco.MjSpec, geom: Any, s: np.ndarray, mesh_scales: dict[str, np.ndarray]
 ) -> None:
     frame_rot = _frame_rot(spec, geom.frame)
     kind = geom.type
@@ -501,13 +538,10 @@ def _scale_inertia(
     spec: mujoco.MjSpec,
     ref: mujoco.MjModel,
     body_scales: Mapping[str, np.ndarray],
-    mass: str,
     total_mass: float | None,
     subject: set[str],
 ) -> None:
-    """Scale mass and inertia of scaled bodies (and rescale the subject to *total_mass*)."""
-    if mass not in ("volume", "keep"):
-        raise ValueError(f"mass must be 'volume' or 'keep', got {mass!r}.")
+    """Scale mass (by volume) and inertia of scaled bodies; rescale the subject."""
     # Compiled body ids, matched by name (unnamed bodies keep their list position).
     ids = [ref.body(b.name).id if b.name else i for i, b in enumerate(spec.bodies)]
     if spec.compiler.settotalmass > 0:
@@ -527,7 +561,7 @@ def _scale_inertia(
         if s is None:
             continue
         m = ref.body_mass[i]
-        new_mass[i] = m * np.prod(s) if mass == "volume" else m
+        new_mass[i] = m * np.prod(s)
         inertia, iquat = _scaled_inertia(ref, i, s, new_mass[i] / m if m > 0 else 0.0)
         _set_inertial(body, new_mass[i], s * ref.body_ipos[i], inertia, iquat)
     if total_mass is None:
@@ -595,7 +629,7 @@ def _scaled_inertia(
     return inertia, iquat
 
 
-def _on_triangle(moments) -> np.ndarray:
+def _on_triangle(moments: ArrayLike) -> np.ndarray:
     """Undo rounding past the triangle inequality ``I_i <= I_j + I_k``.
 
     A flat body sits exactly on it; one rounding step over makes MuJoCo's
@@ -609,7 +643,13 @@ def _on_triangle(moments) -> np.ndarray:
     return moments
 
 
-def _set_inertial(body, mass: float, ipos, inertia, iquat) -> None:
+def _set_inertial(
+    body: mujoco.MjsBody,
+    mass: float,
+    ipos: ArrayLike,
+    inertia: ArrayLike,
+    iquat: ArrayLike,
+) -> None:
     body.explicitinertial = True
     body.mass = float(mass)
     body.ipos = np.asarray(ipos, dtype=float)
@@ -662,9 +702,11 @@ def _scale_tendons(spec: mujoco.MjSpec, ratio: np.ndarray) -> None:
             eq.data[:5] = [a * c / b**k for k, c in enumerate(eq.data[:5])]
 
 
-__all__ = [
-    "RAJAGOPAL_MYOFULLBODY_SEGMENTS",
-    "RAJAGOPAL_MYOLEG_SEGMENTS",
-    "read_opensim_scales",
-    "scale_bodies",
-]
+def _model_digest(model: mujoco.MjModel) -> str:
+    """Hex SHA-256 of the MuJoCo version and the model's binary (``mj_saveModel``)."""
+    buffer = np.empty(mujoco.mj_sizeModel(model), dtype=np.uint8)
+    mujoco.mj_saveModel(model, None, buffer)
+    return hashlib.sha256(mujoco.__version__.encode() + buffer.tobytes()).hexdigest()
+
+
+__all__ = ["scale_model"]
