@@ -84,7 +84,12 @@ def _site_pose(
 
 
 def _angle(qa: np.ndarray, qb: np.ndarray) -> float:
-    return 2 * np.arccos(min(1.0, abs(float(qa @ qb))))
+    # atan2 of the relative rotation keeps the resolution that arccos of a dot
+    # product near 1 loses (its smallest nonzero angle is about 3e-8 rad).
+    conj, rel = np.empty(4), np.empty(4)
+    mujoco.mju_negQuat(conj, qb)
+    mujoco.mju_mulQuat(rel, qa, conj)
+    return 2 * float(np.arctan2(np.linalg.norm(rel[1:]), abs(rel[0])))
 
 
 def test_position_target_recovers_the_planar_angles() -> None:
