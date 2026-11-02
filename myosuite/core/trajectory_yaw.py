@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -49,13 +50,36 @@ def _rotate_cvel(cvel: np.ndarray, yaw: float) -> np.ndarray:
     return out
 
 
+def _load_clip_npz(path: Path) -> dict[str, Any]:
+    """Load a motion NPZ without unpickling object arrays."""
+    try:
+        with np.load(path, allow_pickle=False) as npz:
+            data = {key: np.array(npz[key], copy=True) for key in npz.files}
+    except ValueError as err:
+        if "allow_pickle" not in str(err):
+            raise
+        raise ValueError(
+            f"{path} contains a pickled object array; motion files are "
+            "loaded without pickle."
+        ) from err
+    for key, arr in data.items():
+        if arr.dtype.hasobject:
+            raise ValueError(
+                f"{key!r} in {path} is an object array; motion files cannot "
+                "contain pickled metadata."
+            )
+    return data
+
+
 def write_rotated_clip_npz(src: Path, dst: Path, yaw: float) -> Path:
     """Write *dst* as *src* yaw-rotated about the first-frame root XY.
 
-    Rotates free-joint ``qpos``/``qvel``, plus ``site_xpos``, ``site_xmat``,
-    ``subtree_com``, and ``cvel`` when those keys are present so a
+    Rotates free-joint ``qpos`` and world-frame linear ``qvel``, plus
+    ``site_xpos``, ``site_xmat``, ``subtree_com``, and ``cvel`` when those
+    keys are present so a
     :class:`~myosuite.integrations.musclemimic.fullbody_local_policy.FullbodyObsAdapter`
-    can reload the file.
+    can reload the file. MuJoCo free-joint angular velocity stays in the
+    body frame and is not rotated.
 
     Args:
         src: Source motion NPZ.
@@ -67,7 +91,7 @@ def write_rotated_clip_npz(src: Path, dst: Path, yaw: float) -> Path:
     """
     src = Path(src)
     dst = Path(dst)
-    data = dict(np.load(src, allow_pickle=True))
+    data = _load_clip_npz(src)
     qpos = np.array(data["qpos"], copy=True, dtype=np.float64)
     origin = qpos[0, :2].copy()
     qz = yaw_quat(yaw)
@@ -80,10 +104,6 @@ def write_rotated_clip_npz(src: Path, dst: Path, yaw: float) -> Path:
         lin[:, :2] = qvel[:, :2]
         lin = quat_math.rot_vec_quat(lin, qz)
         qvel[:, :2] = lin[:, :2]
-        ang = np.zeros((qvel.shape[0], 3), dtype=np.float64)
-        ang[:, :2] = qvel[:, 3:5]
-        ang = quat_math.rot_vec_quat(ang, qz)
-        qvel[:, 3:5] = ang[:, :2]
         data["qvel"] = qvel
     for key in ("site_xpos", "subtree_com"):
         if key in data:

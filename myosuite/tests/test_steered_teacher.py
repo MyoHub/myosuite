@@ -107,6 +107,21 @@ def test_aim_heading_does_not_walk_through_the_fence() -> None:
     assert clamp_arena_xy(np.array([7.0, -7.0]))[0] < ARENA_LIM_M
 
 
+_UNPICKLED: list[str] = []
+
+
+def _record_unpickling(tag: str) -> str:
+    _UNPICKLED.append(tag)
+    return tag
+
+
+class _Tripwire:
+    """Records a call when unpickled, where a malicious pickle would run code."""
+
+    def __reduce__(self):
+        return (_record_unpickling, ("unpickled",))
+
+
 def test_write_rotated_clip_npz_turns_root_xy(tmp_path: Path) -> None:
     t = 4
     qpos = np.zeros((t, 7), dtype=np.float64)
@@ -114,6 +129,8 @@ def test_write_rotated_clip_npz_turns_root_xy(tmp_path: Path) -> None:
     qpos[:, 0] = np.linspace(0.0, 1.0, t)
     qvel = np.zeros((t, 6), dtype=np.float64)
     qvel[:, 0] = 0.5
+    qvel[:, 3] = 0.1
+    qvel[:, 4] = -0.2
     src = tmp_path / "walk.npz"
     np.savez(src, qpos=qpos, qvel=qvel)
     dst = write_rotated_clip_npz(src, tmp_path / "walk_N.npz", np.pi / 2)
@@ -121,7 +138,27 @@ def test_write_rotated_clip_npz_turns_root_xy(tmp_path: Path) -> None:
     assert rot["qpos"][-1, 1] == pytest.approx(1.0, abs=1e-6)
     assert rot["qpos"][-1, 0] == pytest.approx(0.0, abs=1e-6)
     assert rot["qvel"][0, 1] == pytest.approx(0.5, abs=1e-6)
+    assert rot["qvel"][0, 3] == pytest.approx(0.1, abs=1e-6)
+    assert rot["qvel"][0, 4] == pytest.approx(-0.2, abs=1e-6)
     assert clip_natural_yaw(qpos, qvel) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_write_rotated_clip_npz_never_unpickles(tmp_path: Path) -> None:
+    src = tmp_path / "pickled.npz"
+    qpos = np.zeros((2, 7), dtype=np.float64)
+    qpos[:, 3] = 1.0
+    np.savez(
+        src,
+        qpos=qpos,
+        qvel=np.zeros((2, 6), dtype=np.float64),
+        extra=np.array([_Tripwire()], dtype=object),
+    )
+    _UNPICKLED.clear()
+    with pytest.raises(ValueError, match="pickled object array"):
+        write_rotated_clip_npz(src, tmp_path / "out.npz", 0.0)
+    assert _UNPICKLED == []
+    np.load(src, allow_pickle=True)["extra"]
+    assert _UNPICKLED == ["unpickled"]
 
 
 def test_rotate_xy_about_origin() -> None:
