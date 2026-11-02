@@ -23,22 +23,24 @@ import pytest
 from scipy.spatial.transform import Rotation
 
 from myosuite.core.body_scaling import (
-    _MYOFULLBODY_SEGMENTS,
-    _MYOLEG_SEGMENTS,
     _body_scales,
     _fit_points,
     _frame_rot,
     _geom_bottom,
     _model_digest,
     _quat,
-    _read_opensim_scales,
     _rot,
     _scale_spec,
-    _segments_for,
     scale_model,
 )
 from myosuite.core.muscle_conditions import _peak_force
 from myosuite.core.trajectory_io import MotionClip, expand_motion_clip_to_model
+from myosuite.integrations.opensim_interop import (
+    _MYOFULLBODY_SEGMENTS,
+    _MYOLEG_SEGMENTS,
+    _read_opensim_scales,
+    _segments_for,
+)
 from myosuite.tests.support.optional_deps import require_musclemimic_models
 
 pytestmark = pytest.mark.tier1
