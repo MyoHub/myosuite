@@ -25,7 +25,7 @@ Follow the training guidelines proposed in [MyoSuite #581](https://github.com/My
   - later, an optional reward term that calls a scorer supplied by the training project.
 
   The package gains no PyTorch dependency and no checkpoint.
-- **Attribution and licensing.** The README credits the BiomechPriorVAE authors and paper. The reviewed upstream revision has no licence file, so the code and checkpoint terms must be settled with the authors before anything is adapted into `training/`.
+- **Attribution and licensing.** The README credits the BiomechPriorVAE authors and paper. Upstream is MIT-licensed since [88cd6e4b](https://github.com/gambimar/BiomechPriorVAE/commit/88cd6e4ba467b0de8b143d651af1ba6395a043dd) (2026-11-02). The licence covers the code and the published 50-feature checkpoint and scaler (`result/model/`). Code adapted into `training/` keeps the upstream copyright and permission notice.
 
 ## Feature contract
 
@@ -40,7 +40,7 @@ The published network takes 50 features: 23 non-root joint positions, their 23 v
 
 The feature specification should be a typed dataclass under a future `myosuite/integrations/biomech_prior/` package, the only part of this proposal inside the installable package. It must define joint order, signs, offsets, units, force axes, body-mass normalization and missing-feature behavior. Reject unsupported layouts explicitly. Matching names alone does not establish equivalent anatomical coordinates.
 
-The artifact manifest should also identify the architecture, scaler, training version and decoder variance floor. Corrected upstream normalization and KL reduction affect newly trained models, so publish new checkpoint/scaler pairs together. Resolve code and checkpoint redistribution terms before bundling either: the reviewed BiomechPriorVAE revision has no license file or separate checkpoint terms.
+The artifact manifest should also identify the architecture, scaler, training version and decoder variance floor. Corrected upstream normalization and KL reduction affect newly trained models, so publish new checkpoint/scaler pairs together. A redistributed checkpoint or scaler carries the upstream MIT notice. The terms of the training data (AddBiomechanics) are separate; check them before publishing newly trained checkpoints.
 
 Match the upstream inference objective: standardize the input, encode it and decode the latent mean deterministically. Unscale the decoded mean with the paired scaler and the decoded variance with its squared scale, floor that physical variance at `1e-6`, and average Gaussian NLL over features for each state. Do not sample the latent variable or add the training KL term during evaluation. Averaging standardized-space NLL would define a different score.
 
