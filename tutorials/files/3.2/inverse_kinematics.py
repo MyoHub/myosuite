@@ -6,9 +6,8 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 # MyoArm with a mocap target body, for tutorial 3.2.
 #
 # Importing this module builds `model` and `data`; posing a site needs only
-# MyoSuite's solve_ik. The interactive viewer drives the arm with mink
-# (adapted from https://github.com/kevinzakka/mink/examples), which is optional:
-#   pip install "myosuite[examples]"
+# MyoSuite's solve_ik, which runs on mink. The interactive viewer drives the arm
+# with mink directly (adapted from https://github.com/kevinzakka/mink/examples).
 #
 # Headless check (solve_ik):
 #   python tutorials/files/3.2/inverse_kinematics.py --no-viewer
@@ -93,7 +92,7 @@ def _run_viewer() -> None:
             end_effector_task.set_target(T_wt)
 
             for _ in range(20):
-                vel = mink.solve_ik(configuration, tasks, rate.dt, "quadprog", 1e-3)
+                vel = mink.solve_ik(configuration, tasks, rate.dt, "daqp", 1e-3)
                 configuration.integrate_inplace(vel, rate.dt)
                 err = end_effector_task.compute_error(configuration)
                 if np.linalg.norm(err[:3]) <= 1e-4 and np.linalg.norm(err[3:]) <= 1e-4:

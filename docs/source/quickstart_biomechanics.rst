@@ -180,9 +180,9 @@ error and sole height in ``clip.metadata``:
    clip = retarget(model, "trial.trc", sites={"RHJC": "hip_r"})
 
 See ``tutorials/3.2_Inverse_Kinematics.ipynb`` and
-``tutorials/3.7_Marker_Retargeting.ipynb``. For realtime differential IK, the
-3.2 viewer script uses `mink <https://github.com/kevinzakka/mink>`_
-(``pip install -e ".[examples]"``; ``python tutorials/files/3.2/inverse_kinematics.py``).
+``tutorials/3.7_Marker_Retargeting.ipynb``. ``solve_ik`` runs on
+`mink <https://github.com/kevinzakka/mink>`_, which the 3.2 viewer script also uses
+directly for realtime differential IK (``python tutorials/files/3.2/inverse_kinematics.py``).
 
 
 Replaying OpenSim Motion Files

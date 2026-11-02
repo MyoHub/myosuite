@@ -40,7 +40,7 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | 2.4 | [MyoReflex Walk](./2.4_MyoReflex_Walk.ipynb) — reflex-based walking baseline | — |
 | **3 — Analysis** | | |
 | 3.1 | [Analyse Movements](./3.1_Analyse_Movements.ipynb) — kinematics and synergies | `pip install stable-baselines3 scikit-learn` |
-| 3.2 | [Inverse Kinematics](./3.2_Inverse_Kinematics.ipynb) — pose a site with `solve_ik` | — (optional mink cell: `pip install "myosuite[examples]"`) |
+| 3.2 | [Inverse Kinematics](./3.2_Inverse_Kinematics.ipynb) — pose a site with `solve_ik` | — |
 | 3.3 | [Inverse Dynamics](./3.3_Inverse_Dynamics.ipynb) | `osqp` |
 | 3.4 | [Computed Muscle Control](./3.4_Computed_Muscle_Control.ipynb) | — |
 | 3.5 | [Playback Mot File](./3.5_Playback_Mot_File.ipynb) — OpenSim `.mot` playback | — |
