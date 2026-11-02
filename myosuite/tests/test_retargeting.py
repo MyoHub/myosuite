@@ -172,6 +172,27 @@ def test_free_root_motion_and_ground_placement() -> None:
     )
 
 
+def test_each_frame_can_be_grounded() -> None:
+    """ground_each_frame puts every frame's sole on z = 0 and leaves the joints alone."""
+    model, truth, markers = _leg_motion()
+    kept = retarget(model, markers, fps=RATE, ground_sites=[])
+    grounded = retarget(model, markers, fps=RATE, ground_each_frame=True)
+    offset = grounded.metadata["ground_offset"]
+    assert offset.shape == (len(truth),)
+    np.testing.assert_allclose(grounded.metadata["sole_height"], 0.0, atol=1e-9)
+    soles = [_box_bottom(model, q, "sole") for q in grounded.qpos]
+    np.testing.assert_allclose(soles, 0.0, atol=1e-9)
+    np.testing.assert_allclose(grounded.qpos[:, 2], kept.qpos[:, 2] + offset)
+    np.testing.assert_allclose(grounded.qpos[:, 7:], kept.qpos[:, 7:])
+    np.testing.assert_allclose(
+        grounded.site_xpos[..., 2], kept.site_xpos[..., 2] + offset[:, None]
+    )
+    # The root's vertical velocity follows the grounded heights.
+    np.testing.assert_allclose(
+        grounded.qvel[:, 2], np.gradient(grounded.qpos[:, 2], 1 / RATE), atol=1e-9
+    )
+
+
 def test_fixed_base_is_not_shifted() -> None:
     model = mujoco.MjModel.from_xml_string(PLANAR)
     _, markers = _planar_motion(10)

@@ -85,6 +85,7 @@ Choose your path
    environments
    model_builder
    body_scaling
+   fmpose3d
    backend_parity
    fatigue_validation
 
