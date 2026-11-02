@@ -63,19 +63,23 @@ is. Each body takes the factors of its segment: the lumbar spine, thorax,
 shoulder girdle and head of MyoFullBody follow ``torso``, and its 27 hand bodies
 follow ``hand``. A segment missing from the file stays unscaled, as in OpenSim.
 
-OpenSim frames are y-up (x anterior, z to the right). MyoLeg's ``root`` and
-``torso`` and MyoFullBody's ``Full Body`` are z-up, so each segment's factors
-are permuted onto every body's own axes: a 20% taller torso is 20% taller, not
-wider.
+Parsing the scale file converts between the axis conventions of OpenSim
+(y-up: x anterior, z to the right) and MuJoCo (z-up). It does so body by body,
+because the converted models kept OpenSim's frames on most bodies: only
+MyoLeg's ``root`` and ``torso`` and MyoFullBody's ``Full Body`` are z-up. Each
+segment's factors are permuted onto its body's own axes. A 20% taller torso is
+therefore 20% taller, not wider, and the y-up leg bodies take their factors
+unchanged.
 
 **Point correspondences.** ``(model_points, measured_points)`` are two ``(n, 3)``
 arrays. The first holds points on the body in its own frame in the unscaled
 model: markers, named landmarks or mesh vertices. The second holds the same
-points measured on the subject, in metres, in any frame (a lab frame, say).
-Each body is fitted on its own:
+points measured on the subject, in metres, in any right-handed frame (a lab
+frame, say). That frame may be y-up or z-up, since the fit includes the rotation
+between the two frames. Each body is fitted on its own:
 
-* Points that span all three directions (four or more) give three factors.
-  They are fitted by least squares, with a rotation between the frames.
+* Points that span all three directions (four or more) give three factors,
+  fitted by least squares.
 * Two points (a marker pair) give one factor, the ratio of their distances, as
   OpenSim's marker pairs do. Points on a plane give one factor, the ratio of
   their spreads.

@@ -11,8 +11,8 @@ argument is
   own axes;
 * a mapping of body name to ``(model_points, measured_points)``: points on the
   body in its own frame (markers, named landmarks, mesh vertices) and where
-  they were measured on the subject, in any frame. Each body is fitted on its
-  own; or
+  they were measured on the subject, in any right-handed frame (y-up or
+  z-up). Each body is fitted on its own; or
 * the path of an OpenSim scale file: a ScaleSet, or a model scaled by the Scale
   Tool (e.g. by AddBiomechanics). Its segments are those of the Rajagopal model
   and are mapped onto the bodies of MyoLeg or the MuscleMimic MyoFullBody. Not
@@ -141,7 +141,8 @@ def scale_model(
         scales: Body name -> one factor or ``(sx, sy, sz)`` along that body's
             axes, or -> ``(model_points, measured_points)``, two ``(n, 3)``
             arrays: points on the body in its frame and the same points
-            measured on the subject (metres, any frame, NaN rows ignored).
+            measured on the subject (metres, any right-handed frame, NaN rows
+            ignored).
             Points spanning all three directions (at least four) give three
             factors; two points (a marker pair) or points on a plane give one,
             the ratio of their spreads. Or the path of an OpenSim ScaleSet or

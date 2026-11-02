@@ -1011,6 +1011,19 @@ def test_a_marker_pair_or_planar_points_give_one_factor() -> None:
     )
 
 
+def test_measured_points_may_be_y_up_or_z_up() -> None:
+    """The fit includes a rotation, so an OpenSim (y-up) and a MuJoCo (z-up) lab agree."""
+    points = np.random.default_rng(6).uniform(-0.1, 0.1, (6, 3))
+    y_up = _measured(points, [1.08, 0.95, 1.12])
+    z_up = y_up @ np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]).T
+    np.testing.assert_allclose(_fit_points("thigh", points, z_up), [1.08, 0.95, 1.12])
+    np.testing.assert_allclose(
+        _fit_points("thigh", points[:2], z_up[:2]),
+        _fit_points("thigh", points[:2], y_up[:2]),
+        rtol=1e-12,
+    )
+
+
 def test_point_and_factor_entries_mix() -> None:
     points = np.random.default_rng(4).uniform(-0.1, 0.1, (5, 3))
     measured = _measured(points, [1.1, 1.0, 0.9])
