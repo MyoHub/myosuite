@@ -120,8 +120,17 @@ def fallen(env: ManagerBasedRlEnv, player: int, threshold: float) -> torch.Tenso
 
 
 def pelvis_distance(env: ManagerBasedRlEnv) -> torch.Tensor:
-    """3-D distance between the pelvises (CPU ``_pelvis_distance``), (N,)."""
-    return torch.linalg.norm(pelvis_pos(env, 1) - pelvis_pos(env, 0), dim=1)
+    """Planar pelvis distance (CPU ``_pelvis_distance``), (N,)."""
+    return torch.linalg.norm(
+        pelvis_pos(env, 1)[:, :2] - pelvis_pos(env, 0)[:, :2], dim=1
+    )
+
+
+def pursuer_fell(env: ManagerBasedRlEnv, threshold: float) -> torch.Tensor:
+    """Bool (N,): the current chaser's pelvis is below *threshold*."""
+    return (fallen(env, 0, threshold) & is_chaser(env, 0)) | (
+        fallen(env, 1, threshold) & is_chaser(env, 1)
+    )
 
 
 def tagged(env: ManagerBasedRlEnv, radius: float) -> torch.Tensor:
@@ -198,12 +207,14 @@ class ChaseTagReward(ManagerTermBase):
         del params
         config = self._config
         threshold = config.fall_pelvis_z_threshold
+        learner_chases = is_chaser(env, 0)
+        chaser_down = pursuer_fell(env, threshold).float()
         return chase_tag_dense_reward(
             torch,
-            is_chaser=is_chaser(env, 0),
+            is_chaser=learner_chases,
             tagged=tagged(env, config.tag_radius_m).float(),
-            self_fell=fallen(env, 0, threshold).float(),
-            opponent_fell=fallen(env, 1, threshold).float(),
+            self_fell=chaser_down * learner_chases.float(),
+            opponent_fell=chaser_down * (~learner_chases).float(),
             act_sq_sum=(_learner_action(env) ** 2).sum(dim=1),
             dist=pelvis_distance(env),
             config=config,
@@ -264,25 +275,35 @@ def elapsed_s(env: ManagerBasedRlEnv) -> torch.Tensor:
     return env.episode_length_buf * env.step_dt
 
 
-def learner_won(env: ManagerBasedRlEnv, radius: float, max_time: float) -> torch.Tensor:
-    """Bool (N,): the learner tagged as chaser, or survived the episode as runner."""
+def learner_won(
+    env: ManagerBasedRlEnv, radius: float, max_time: float, threshold: float
+) -> torch.Tensor:
+    """Bool (N,): the learner tagged as chaser, or won as runner (timeout / pursuer fall)."""
     tag = tagged(env, radius)
     chase = is_chaser(env, 0)
-    survived = ~tag & (elapsed_s(env) >= max_time - 1e-6)
+    survived = ~tag & (
+        (elapsed_s(env) >= max_time - 1e-6) | pursuer_fell(env, threshold)
+    )
     return (tag & chase) | (survived & ~chase)
 
 
-def score(env: ManagerBasedRlEnv, radius: float, max_time: float) -> torch.Tensor:
+def score(
+    env: ManagerBasedRlEnv, radius: float, max_time: float, threshold: float
+) -> torch.Tensor:
     """FBVs ``info["score"]`` of the learner (CPU ``get_info``), (N,).
 
-    Non-zero once the episode is won by either side: ``1 - t / T`` as chaser,
-    ``t / T`` as runner.
+    Non-zero only when the learner won: ``1 - t / T`` as chaser, ``t / T`` as
+    runner (timeout or pursuer fall).
     """
     tag = tagged(env, radius)
+    chase = is_chaser(env, 0)
+    evade_win = ~tag & (
+        (elapsed_s(env) >= max_time - 1e-6) | pursuer_fell(env, threshold)
+    )
+    won = (tag & chase) | (evade_win & ~chase)
     t = torch.round(elapsed_s(env) * 1e4) / 1e4
-    over = tag | (~tag & (elapsed_s(env) >= max_time - 1e-6))
-    value = torch.where(is_chaser(env, 0), 1.0 - t / max_time, t / max_time)
-    return torch.where(over, value, torch.zeros_like(value))
+    value = torch.where(chase, 1.0 - t / max_time, t / max_time)
+    return torch.where(won, value, torch.zeros_like(value))
 
 
 # ── Action: learner muscles, opponent muscles from the opponent policy ───────

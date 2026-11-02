@@ -4,9 +4,11 @@
 # LICENSE file in the root directory of this source tree.
 """``ChaseTagVsTaskConfig`` — ``MultiAgentTaskConfig`` for the 1v1 chase-tag task.
 
-Rules match MyoChallenge ``chasetag_v0``:
-- Binary tag at distance ≤ tag_radius_m ends the episode.
-- Evade win: runner survives maxTime seconds.
+1v1 rules:
+- Tag (planar pelvis distance ≤ tag_radius_m) → chaser wins, episode ends.
+- Time-up with no tag → runner wins.
+- Pursuer falls → chase fails, episode ends (runner wins).
+- Runner falls → play continues; the pursuer can still tag.
 - Sparse score: ``1 - t/maxTime`` (chase win) or ``t/maxTime`` (evade win).
 - Roles (CHASE/EVADE) randomised each episode when ``task_choice="random"``.
 """
@@ -179,6 +181,16 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
 
         return is_fallen(data, meta, agent_id, self)
 
+    def episode_is_over(
+        self,
+        fell: dict[str, bool],
+        ko: dict[str, bool],
+    ) -> bool:
+        """Tag or pursuer fall ends the match; a runner fall does not."""
+        chaser = self._actual_chaser_id()
+        runner = self._actual_runner_id()
+        return bool(fell.get(chaser)) or bool(ko.get(runner))
+
     def _actual_chaser_id(self) -> str:
         """Return the agent ID that is chasing this episode."""
         return CHASER_ID if self.current_task == "CHASE" else RUNNER_ID
@@ -221,16 +233,18 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     ) -> float:
         from myosuite.terms.multiplayer.chase_tag_vs_reward import compute_agent_reward
 
-        opp = self.opponent_id(agent_id)
         tagged = ko[self._actual_runner_id()]  # runner KO ↔ tag event
+        chaser = self._actual_chaser_id()
+        chaser_fell = bool(fell.get(chaser))
+        # Only the pursuer's fall is terminal. A downed runner is still in play.
         return compute_agent_reward(
             data=data,
             meta=meta,
             agent_id=agent_id,
             task=self.current_task,
             tagged=tagged,
-            self_fell=fell[agent_id],
-            opponent_fell=fell[opp],
+            self_fell=chaser_fell if agent_id == chaser else False,
+            opponent_fell=chaser_fell if agent_id != chaser else False,
             actions=actions,
             config=self,
         )
@@ -246,9 +260,14 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
         step_count: int,
     ) -> dict[str, Any]:
         elapsed = step_count * self.ctrl_dt
-        tagged = ko[self._actual_runner_id()]
-        runner_survived = (not tagged) and elapsed >= self.maxTime
-        won = tagged or runner_survived
+        tagged = bool(ko.get(self._actual_runner_id()))
+        chaser_fell = bool(fell.get(self._actual_chaser_id()))
+        timeout = elapsed >= self.maxTime
+        chase_win = tagged
+        evade_win = (not tagged) and (timeout or chaser_fell)
+        won = (self.current_task == "CHASE" and chase_win) or (
+            self.current_task == "EVADE" and evade_win
+        )
         from myosuite.terms.multiplayer.chase_tag_vs_reward import get_score
 
         score = get_score(elapsed, self.current_task, self) if won else 0.0
@@ -258,6 +277,7 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
             "elapsed_s": elapsed,
             "score": score,
             "fell": dict(fell),
+            "chaser_fell": chaser_fell,
         }
 
 

@@ -268,16 +268,18 @@ class ChaseTagVsTrainEnv(MyoGymnasiumEnv):
         )
         chaser = cfg.current_task == "CHASE"
         tagged = bool(info["tagged"])
-        survived = not tagged and info["elapsed_s"] >= cfg.maxTime
+        chaser_fell = bool(info.get("chaser_fell"))
+        survived = not tagged and (info["elapsed_s"] >= cfg.maxTime or chaser_fell)
         return {
             "dense": reward,
-            "done": any(fell.values()) or any(ko.values()),
+            "done": cfg.episode_is_over(fell, ko),
             "solved": (tagged and chaser) or (survived and not chaser),
             "score": info["score"],
             "tagged": tagged,
             "chaser": chaser,
             "learner_fell": fell[LEARNER],
             "opponent_fell": fell[OPPONENT],
+            "chaser_fell": chaser_fell,
             "elapsed_s": info["elapsed_s"],
         }
 

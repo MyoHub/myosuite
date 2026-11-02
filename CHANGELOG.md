@@ -59,6 +59,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+* **ChaseTag 1v1 (`myoChallengeChaseTagFBVs-v0`) win conditions.** Tag (planar pelvis distance ≤ 0.5 m) or a pursuer fall ends the episode; timeout with no tag is a runner win. A runner fall does not stop play — the pursuer can still tag the body on the ground. Boxing/fencing still end on any fall. P1 ChaseTag is unchanged. The train env (`myoChallengeChaseTagFBVsTrain-v0`) uses the same rules.
 * `myoLegDirectionalForward-v0` and `myoLegDirectionalBackward-v0` swapped names. The leg model faces `-y`, so the
   old "forward" task (`heading_dir=(0, 1)`, 1.2 m/s) trained walking backwards and the old "backward" task
   (`heading_dir=(0, -1)`, 1.0 m/s) walking forwards. Forward is now `(0, -1)` at 1.0 m/s and Backward `(0, 1)` at

@@ -206,14 +206,11 @@ def make_chasetag_vs_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlE
             func=ct.GaitSteeringReward, weight=1.0, params=steering
         ),
     }
-    # FBVs: the episode ends when either player falls, or at the tag.
+    # FBVs: tag or pursuer fall ends the episode; a runner fall does not.
     terminations = {
         "time_out": TerminationTermCfg(func=mdp_terminations.time_out, time_out=True),
-        "learner_fell": TerminationTermCfg(
-            func=ct.fallen, params={"player": 0, "threshold": fall}
-        ),
-        "opponent_fell": TerminationTermCfg(
-            func=ct.fallen, params={"player": 1, "threshold": fall}
+        "pursuer_fell": TerminationTermCfg(
+            func=ct.pursuer_fell, params={"threshold": fall}
         ),
         "tagged": TerminationTermCfg(func=ct.tagged, params={"radius": radius}),
     }
@@ -232,7 +229,7 @@ def make_chasetag_vs_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlE
             for name, (adr, _, _) in zip(ct.PLAYERS, players, strict=True)
         },
     }
-    won = {"radius": radius, "max_time": config.maxTime}
+    won = {"radius": radius, "max_time": config.maxTime, "threshold": fall}
     metrics = {
         "success": MetricsTermCfg(func=ct.learner_won, params=won, reduce="last"),
         "score": MetricsTermCfg(func=ct.score, params=won, reduce="last"),

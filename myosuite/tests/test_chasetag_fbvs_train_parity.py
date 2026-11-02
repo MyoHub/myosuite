@@ -331,25 +331,34 @@ def _metrics(mj: ManagerBasedRlEnv) -> dict[str, float]:
     return {k: float(v[0]) for k, v in mj.metrics_manager.get_active_iterable_terms(0)}
 
 
-@pytest.mark.parametrize("case", ["tag", "learner_fell", "opponent_fell"])
+@pytest.mark.parametrize("case", ["tag", "pursuer_fell", "runner_fell"])
 def test_termination_and_score_parity(pair, case: str) -> None:
-    """A tag or either player's fall ends the episode on both, with the same score."""
+    """Tag or pursuer fall ends the episode on both; a runner fall does not."""
     cpu_env, mj = pair
     cpu = cpu_env.unwrapped
     for seed in (4, 5):  # one CHASE and one EVADE episode
         cpu.reset(seed=seed)
         q_learner, _ = cpu.player_slices(LEARNER)
         q_opp, _ = cpu.player_slices(OPPONENT)
+        chaser = LEARNER if cpu.task_config.current_task == "CHASE" else OPPONENT
+        runner = OPPONENT if chaser == LEARNER else LEARNER
         if case == "tag":
             cpu.data.qpos[q_opp.start + 1] = cpu.data.qpos[q_learner.start + 1] - 0.3
-        else:
-            q = q_learner if case == "learner_fell" else q_opp
+            expect_term = True
+        elif case == "pursuer_fell":
+            q, _ = cpu.player_slices(chaser)
             cpu.data.qpos[q.start + 2] = 0.5
+            expect_term = True
+        else:
+            q, _ = cpu.player_slices(runner)
+            cpu.data.qpos[q.start + 2] = 0.5
+            expect_term = False
         _sync(cpu, mj)
         action = np.zeros(N_ACT, dtype=np.float32)
         _, cpu_rew, cpu_term, _, info = cpu.step(action)
         _, mj_rew, mj_term, _, _ = mj.step(torch.as_tensor(np.stack([action, action])))
-        assert cpu_term and bool(mj_term[0])
+        assert bool(cpu_term) is expect_term
+        assert bool(mj_term[0]) is expect_term
         assert info["tagged"] == (case == "tag")
         np.testing.assert_allclose(float(mj_rew[0]), cpu_rew, atol=_STEP_REW_ATOL)
         metrics = _metrics(mj)
