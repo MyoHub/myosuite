@@ -330,6 +330,9 @@ class _IKProblem:
         if not dofs:
             raise ValueError("No movable joint is selected.")
         self._dofs = np.array(dofs, dtype=int)
+        self._address = np.array([a for a, _, _ in self._limited], dtype=int)
+        self._low = np.array([low for _, low, _ in self._limited])
+        self._high = np.array([high for _, _, high in self._limited])
         # mink bounds every limited joint, and a held joint whose seed is out of
         # range would make the QP infeasible. mink reads the bounds when its
         # objects are built, so such joints are unbounded only meanwhile.
@@ -385,8 +388,7 @@ class _IKProblem:
         keeps the coupling tight when the targets are out of reach.
         """
         q = seed.copy()
-        for address, low, high in self._limited:
-            q[address] = np.clip(q[address], low, high)
+        q[self._address] = np.clip(q[self._address], self._low, self._high)
         self._update(q)
         self.equality = self._equality_task()
         if self.equality is not None and self.equality_weight > 1.0:
@@ -486,7 +488,9 @@ class _IKProblem:
 
         A step that does not lower the cost is solved again with four times the
         damping, which turns it towards the gradient; an accepted step divides
-        the damping by three.
+        the damping by three. Descent ends when the cost vanishes or a step
+        shrinks below 1e-9 (radians or metres): a relative cost change would
+        stop slow fits to out-of-reach targets early.
         """
         model, damping = self.model, 1e-3
         cost = self.cost()
@@ -509,14 +513,18 @@ class _IKProblem:
             q = self.configuration.q
             trial = q.copy()
             mujoco.mj_integratePos(model, trial, velocity, 1.0)
+            # mink keeps the ranges up to rounding; clipping keeps them exactly.
+            trial[self._address] = np.clip(trial[self._address], self._low, self._high)
             self._update(trial)
             trial_cost = self.cost()
+            converged = np.max(np.abs(velocity)) <= 1e-9
             if trial_cost >= cost:
                 self._update(q)
                 self._anchor()
+                if converged:
+                    break
                 damping *= 4.0
                 continue
-            converged = cost - trial_cost <= 1e-10 * cost
             cost, damping = trial_cost, max(damping / 3.0, 1e-12)
             if converged:
                 break

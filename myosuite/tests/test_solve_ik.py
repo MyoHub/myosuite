@@ -169,6 +169,19 @@ def test_unreachable_target_raises_or_returns_the_closest_pose() -> None:
     )
 
 
+def test_out_of_reach_fits_converge_to_the_closest_point() -> None:
+    # A large residual converges linearly; descent must not stop on a small cost change.
+    model = _planar()
+    for target in ([0.6, 0.8, 0.0], [-0.3, 0.9, 0.0], [0.0, -1.2, 0.0]):
+        target = np.array(target)
+        closest = solve_ik(model, {"hand": target}, strict=False, max_iters=400)
+        np.testing.assert_allclose(
+            _site_pose(model, closest, "hand")[0],
+            0.55 * target / np.linalg.norm(target),
+            atol=1e-8,
+        )
+
+
 def test_a_stalled_seed_is_retried_from_mid_range() -> None:
     model = _planar()
     target = [0.4, 0.0, 0.0]  # straight back along the stretched (singular) arm
