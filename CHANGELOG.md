@@ -43,6 +43,7 @@ All notable changes to this project are documented in this file.
 ### Changed
 
 * **ChaseTag 1v1 (`myoChallengeChaseTagFBVs-v0`) win conditions.** Tag (planar pelvis distance ≤ 0.5 m) or a pursuer fall ends the episode; timeout with no tag is a runner win. A runner fall does not stop play — the pursuer can still tag the body on the ground. Boxing/fencing still end on any fall. P1 ChaseTag is unchanged.
+* **ChaseTag FBVs pins `musclemimic_models` 1.0.5.** The scored 1v1 body matches `amathislab/mm-10m-2` / the 5.4 walker. The 1.0.6 heading-table walker ([#579](https://github.com/MyoHub/myosuite/pull/579)) is only for paths forced onto 1.0.6.
 * **Fatigue groups and parameters for every muscle of the bundled models.**
   - `_muscle_group` now also strips MuscleMimic's `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent
     scenes and an `R:`/`L:` side prefix. Before, the MuscleMimic left arm (32 muscles, 63 with fingers) and all 708
