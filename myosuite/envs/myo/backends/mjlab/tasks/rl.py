@@ -87,7 +87,7 @@ def myo_ppo_runner_cfg(
     num_mini_batches: int = 8,
     clip_param: float = 0.3,
     gamma: float = 0.97,
-    desired_kl: float = 0.01,
+    desired_kl: float = 0.03,
 ) -> RslRlOnPolicyRunnerCfg:
     """PPO runner config shared by all pose and reach tasks.
 
@@ -129,8 +129,13 @@ def myo_ppo_runner_cfg(
         clip_param: PPO clipping epsilon.
         gamma: Discount factor.
         desired_kl: KL target of the adaptive learning-rate schedule. The KL of a
-            diagonal Gaussian sums over the action dimensions, so with many
-            muscles the default allows only a small change per muscle.
+            diagonal Gaussian sums over the action dimensions, so a target fixed
+            for few actions allows only a small change per muscle. With 0.01 the
+            learning rate sat at its 1e-5 floor for 65% of the iterations on
+            ``myoLegWalk-v0`` (80 muscles) and 91% on ``myoArmReachRandom-v0``
+            (50 muscles); with 0.03, 1% and 20%. In 3 seeds of 3000 iterations,
+            0.03 solved leg walk in 3/3 runs (0.01: 0/3) and raised arm-reach
+            success from 76% to 90% (MyoHub/myosuite#566).
 
     Returns:
         The runner config.

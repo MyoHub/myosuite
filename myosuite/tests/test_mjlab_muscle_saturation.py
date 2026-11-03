@@ -17,7 +17,7 @@ pytest.importorskip("mjlab")
 pytestmark = pytest.mark.tier2
 
 from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg  # noqa: E402
-from mjlab.tasks.registry import list_tasks, load_env_cfg  # noqa: E402
+from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg  # noqa: E402
 
 import myosuite.envs.myo.backends.mjlab  # noqa: E402, F401
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (  # noqa: E402
@@ -133,3 +133,9 @@ def test_penalty_is_opt_in() -> None:
     mdp.add_muscle_saturation_penalty(cfg, 1.0)
     with pytest.raises(ValueError, match="already"):
         mdp.add_muscle_saturation_penalty(cfg, 1.0)
+
+
+@pytest.mark.parametrize("task_id", ["myoLegWalk-v0", "myoArmReachRandom-v0"])
+def test_ab_tasks_use_desired_kl_003(task_id: str) -> None:
+    """The KL target the #566 A/B selected (0.01 kept the learning rate at its floor)."""
+    assert load_rl_cfg(task_id).algorithm.desired_kl == 0.03
