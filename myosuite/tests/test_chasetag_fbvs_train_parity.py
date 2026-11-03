@@ -417,6 +417,10 @@ def test_opponent_modes_and_submission_export(tmp_path) -> None:
     agent = load_rl_cfg(ENV_ID)
     agent.num_steps_per_env = 4
     agent.logger = "tensorboard"
+    # This checks the plumbing only: on 4-sample minibatches the normal step size
+    # can overflow PPO's ratio (exp of a sum over 354 muscles) and give NaN.
+    agent.algorithm.learning_rate = 1e-7
+    agent.algorithm.schedule = "fixed"
     runner = MjlabOnPolicyRunner(env, dataclasses.asdict(agent), str(tmp_path), "cpu")
     try:
         pool = install_self_play(runner)

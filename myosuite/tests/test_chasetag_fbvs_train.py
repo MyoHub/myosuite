@@ -120,7 +120,8 @@ def test_tag_ends_the_episode_with_the_fbvs_score(seed: int) -> None:
         assert steps == 1 and info["tagged"]
         chaser = info["task"] == "CHASE"
         assert info["solved"] == chaser and info["chaser"] == chaser
-        assert info["score"] == pytest.approx(1 - 0.01 / 20 if chaser else 0.01 / 20)
+        # Only the winner scores: a tagged runner gets 0.
+        assert info["score"] == pytest.approx(1 - 0.01 / 20 if chaser else 0.0)
     finally:
         train.close()
         fbvs.close()
