@@ -49,6 +49,8 @@ All notable changes to this project are documented in this file.
     (`DirectionalWalkerActor`) is a fixed 546 -> 528 adapter in front of the 5.4 network, so snapshots and the
     ONNX export carry the adapter. A mirror match then lasts ~1.4 s instead of ~0.4 s from a random init
     (`--agent.actor.walker-checkpoint ""`). `load_rslrl_policy` / `export_rslrl_to_onnx` rebuild such actors.
+    The adapter gives the heading relative to the walking direction: the 5.4 observation has no pelvis yaw, so a
+    world-frame heading cannot be steered and chaser and runner look the same (`body_frame_heading=False` keeps it).
   - FBVs itself is unchanged (its reward terms now share backend-agnostic functions with the twin).
   - No muscle-condition variants: the two bodies share one model.
   - Tutorial 5.6 (ChaseTag Colab): step 5 trains in this env (FBP2's 537-d observation does not fit a submission),
