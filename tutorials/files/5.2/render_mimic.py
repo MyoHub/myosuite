@@ -80,7 +80,8 @@ def _run_viewer(
         print("mujoco.viewer not available — cannot open interactive window.")
         return
 
-    import torch
+    if policy is not None:
+        import torch
 
     obs, _ = env.reset()
     step_idx = 0
