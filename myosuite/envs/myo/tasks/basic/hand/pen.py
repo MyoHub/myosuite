@@ -240,10 +240,7 @@ class PenTwirlFixedEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         rwd_dict["dense"] = float(
             np.sum([wt * rwd_dict[key] for key, wt in self.rwd_keys_wt.items()])
         )
-        if self.success_indicator_sid >= 0:
-            self.model.site_rgba[self.success_indicator_sid, :2] = (
-                np.array([0, 2]) if rwd_dict["solved"] else np.array([2, 0])
-            )
+        self._set_success_indicator(self.success_indicator_sid, rwd_dict["solved"])
         return rwd_dict
 
     def reset_task(self, np_random: np.random.Generator) -> dict[str, Any]:
