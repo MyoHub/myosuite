@@ -140,6 +140,13 @@ def _build_leg_agent_spec(
     return spec, standing_key_qpos
 
 
+# Scored ChaseTag (and FBVsTrain) uses the 1.0.5 body that mm-10m-2 / the 5.4
+# walker were trained on. MyoSuite's default musclemimic release is 1.0.6; that
+# body needs the #579 heading-table walker and is only for non-competition paths
+# that explicitly force it.
+CHASETAG_VS_MODELS_VERSION = "1.0.5"
+
+
 def _build_fullbody_agent_spec(
     config: ChaseTagVsConfig,
 ) -> tuple[mujoco.MjSpec, np.ndarray | None]:
@@ -153,6 +160,7 @@ def _build_fullbody_agent_spec(
 
     fullbody_cfg = default_mimic_fullbody_config()
     fullbody_cfg.sim_dt = config.sim_dt
+    fullbody_cfg.model_version = CHASETAG_VS_MODELS_VERSION
     spec, _ = build_mimic_fullbody_spec(fullbody_cfg)
     standalone_model = spec.compile()
     standing_key_qpos = (
