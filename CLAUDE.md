@@ -19,6 +19,7 @@ add minimal comments and descriptions in the code / python files
 - Always return 5-tuple from `step()`: `(obs, rwd, terminated, truncated, info)`.
   **Exception:** `ModularMultiAgentTaskEnv` returns 5-tuples of per-agent dicts — intentional.
 - Use `myo_sim.get_path(...)` / `ModelBuilder` for assets — no hardcoded paths.
+- **Training/learning implementations:** read `docs/wiki/training-guidelines.md` before adding trainers, world models, algorithm-specific evaluation, or method-specific dependencies.
 
 ### CPU Env Contract
 
@@ -108,4 +109,5 @@ commit `68a77811`) — there is no `test_boxing_registry.py` / `test_saber_env.p
 - `docs/wiki/writing-term-functions.md` — signatures and the batch rule for obs / reward / termination / action terms.
 - `docs/wiki/mjlab-design-guide.md` — canonical mjlab patterns; read before writing any mjlab code.
 - `docs/wiki/cross-backend-contract.md` — obs/action/timing invariants for policy portability.
+- `docs/wiki/training-guidelines.md` — placement and dependency-isolation rules for training/learning methods.
 - `docs/wiki/repository-map.md` — where everything lives.
