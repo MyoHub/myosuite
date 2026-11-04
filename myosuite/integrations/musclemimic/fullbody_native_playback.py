@@ -106,7 +106,7 @@ def parse_native_playback_argv(argv: list[str]) -> NativePlaybackArgs:
         type=str,
         default=None,
         help=(
-            "Path to an exported ONNX policy file (e.g. mm-10m-2.onnx). "
+            "Path to an exported ONNX policy file (e.g. mm-10m-3.onnx). "
             "When provided, ONNX inference replaces the Orbax/numpy local policy. "
             "Obs normalization must be baked into the ONNX graph "
             "(as produced by: export_onnx.py export --framework orbax …)."
