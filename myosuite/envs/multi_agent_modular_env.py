@@ -194,6 +194,8 @@ class ModularMultiAgentTaskEnv(gym.Env):
             idx = self._config.act_indices(self._meta, agent_id)
             self.data.ctrl[idx] = act
 
+        self._config.pre_physics_step(self.model, self.data, self._meta)
+
         for _ in range(self._n_substeps):
             mujoco.mj_step(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)

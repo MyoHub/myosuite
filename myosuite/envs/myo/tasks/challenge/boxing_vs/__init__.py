@@ -17,7 +17,10 @@ Or via Gymnasium (after ``register_all_envs()``)::
     env = gym.make("myoChallengeBoxingVs-v0")
 """
 
-from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_config import BoxingVsConfig
+from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_config import (
+    BoxingVsConfig,
+    boxing_vs_level1_config,
+)
 from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_env import (
     BoxingVsEnv,
     BoxingVsSingleAgentWrapper,
@@ -35,4 +38,5 @@ __all__ = [
     "BoxingVsModelMeta",
     "BoxingVsSingleAgentWrapper",
     "BoxingVsTaskConfig",
+    "boxing_vs_level1_config",
 ]

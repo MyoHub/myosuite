@@ -261,6 +261,10 @@ class BoxingVsEnv(gym.Env):
         """Control timestep in seconds."""
         return self._config.ctrl_dt
 
+    def set_shaping_alpha(self, alpha: float) -> None:
+        """Set the reward-v1 shaping multiplier (anneal 1 -> 0 during training)."""
+        self._base_env._config.shaping_alpha = float(alpha)  # pylint: disable=protected-access
+
     @property
     def visual_keys(self) -> list[str]:
         """No visual observation keys (required by examine_env.py)."""

@@ -143,6 +143,24 @@ class MultiAgentTaskConfig(ABC):
             np_random: Environment-seeded generator for episode randomisation.
         """
 
+    def pre_physics_step(
+        self,
+        model: mujoco.MjModel,
+        data: mujoco.MjData,
+        meta: Any,
+    ) -> None:
+        """Called once per control step after actions are written to ``ctrl``
+        and before the physics substeps.
+
+        Override to drive a scripted/kinematic agent (e.g. hold a dummy in
+        place).  Default implementation does nothing.
+
+        Args:
+            model: Compiled combined MjModel.
+            data: MjData with this step's controls applied.
+            meta: Task-specific index cache.
+        """
+
     @abstractmethod
     def get_obs(
         self,

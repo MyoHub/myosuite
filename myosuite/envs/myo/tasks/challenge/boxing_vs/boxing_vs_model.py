@@ -14,14 +14,17 @@ and obs/reward term functions so there is no name-based lookup at runtime.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 import mujoco
+import numpy as np
 
 from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_config import BoxingVsConfig
 from myosuite.envs.myo.tasks.challenge.combat_model_meta import CombatModelMetaBase
 from myosuite.envs.myo.tasks.challenge.boxing_visuals import (
     BOXING_RING_MESH,
+    GLOVE_POS,
     RING_POS,
     RING_SCALE,
     add_helmet,
@@ -80,6 +83,40 @@ _ARM_JOINT_TOKENS: tuple[str, ...] = (
     "flexion_r",
 )
 
+# --- Cross-agent collisions (``config.cross_agent_collisions``) ---
+# Bit 1 = floor, bit 2 = agent 0, bit 4 = agent 1.  A geom collides with
+# another if (contype_a & conaffinity_b) or (contype_b & conaffinity_a).
+#   floor           contype=1 conaffinity=1  (unchanged)
+#   agent 0         contype=2 conaffinity=5  -> floor + agent 1, not itself
+#   agent 1         contype=4 conaffinity=3  -> floor + agent 0, not itself
+#   fingers (both)  contype=0 conaffinity=1  -> floor only
+# Explicit <pair> contacts inside each agent are not affected by masks.
+AGENT_COLLISION_MASKS: dict[int, tuple[int, int]] = {0: (2, 5), 1: (4, 3)}
+FINGER_COLLISION_MASK: tuple[int, int] = (0, 1)
+_FINGER_BODY_RE = re.compile(r"(mc|proxph|midph|distph|thumb)_[rl]$")
+
+# Zone codes of an opponent geom touched by a glove.
+ZONE_NONE, ZONE_HEAD, ZONE_BODY, ZONE_BLOCK = 0, 1, 2, 3
+ZONE_NAMES: dict[int, str] = {ZONE_HEAD: "head", ZONE_BODY: "body", ZONE_BLOCK: "block"}
+_ZONE_BODIES: dict[int, tuple[str, ...]] = {
+    ZONE_HEAD: ("head",),
+    ZONE_BODY: ("thorax", "torso"),
+    ZONE_BLOCK: (
+        "humerus_r",
+        "humerus_l",
+        "ulna_r",
+        "ulna_l",
+        "radius_r",
+        "radius_l",
+    ),
+}
+GLOVE_COLLISION_GEOM = "glove_col_{side}"
+_VISUAL_GEAR_GEOMS: tuple[str, ...] = (
+    "boxing_glove_r",
+    "boxing_glove_l",
+    "boxing_helmet",
+)
+
 
 # ---------------------------------------------------------------------------
 # Metadata dataclass
@@ -105,9 +142,16 @@ class BoxingVsModelMeta(CombatModelMetaBase):
             ``"pelvis_site"``.
         sensor_adr: Per-agent dict of {name_suffix → first sensordata index};
             suffixes are ``"fist_r_vel"``, ``"fist_l_vel"``, ``"pelvis_site_vel"``.
+        geom_agent: Per-geom owner (0, 1, or -1 for world geoms).
+        geom_zone: Per-geom ``ZONE_*`` code used to classify glove contacts.
+        glove_geom_ids: ``{agent_id: {"r": geom_id, "l": geom_id}}`` of the
+            glove collision spheres (empty without cross-agent collisions).
     """
 
     pelvis_body_id: dict[str, int] = field(default_factory=dict)
+    geom_agent: np.ndarray | None = None
+    geom_zone: np.ndarray | None = None
+    glove_geom_ids: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -212,8 +256,95 @@ def _extract_meta(
         meta.sensor_adr[agent_id] = extract_sensor_addrs(
             model, prefix, ("fist_r", "fist_l", "pelvis_site")
         )
+        gloves = {}
+        for side in ("r", "l"):
+            gid = mujoco.mj_name2id(
+                model,
+                mujoco.mjtObj.mjOBJ_GEOM,
+                f"{prefix}{GLOVE_COLLISION_GEOM.format(side=side)}",
+            )
+            if gid >= 0:
+                gloves[side] = int(gid)
+        if gloves:
+            meta.glove_geom_ids[agent_id] = gloves
 
+    meta.geom_agent, meta.geom_zone = _geom_tables(model, meta)
     return meta
+
+
+def _geom_tables(
+    model: mujoco.MjModel, meta: BoxingVsModelMeta
+) -> tuple[np.ndarray, np.ndarray]:
+    """Per-geom owner agent (0/1/-1) and zone code for glove-contact scoring."""
+    geom_agent = np.full(model.ngeom, -1, dtype=np.int32)
+    geom_zone = np.full(model.ngeom, ZONE_NONE, dtype=np.int32)
+    body_zone: dict[int, int] = {}
+    body_agent: dict[int, int] = {}
+    for idx, prefix in enumerate(_AGENT_PREFIXES.values()):
+        for b in range(model.nbody):
+            name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, b) or ""
+            if not name.startswith(prefix):
+                continue
+            body_agent[b] = idx
+            short = name[len(prefix) :]
+            for zone, bodies in _ZONE_BODIES.items():
+                if short in bodies:
+                    body_zone[b] = zone
+    for g in range(model.ngeom):
+        b = int(model.geom_bodyid[g])
+        geom_agent[g] = body_agent.get(b, -1)
+        geom_zone[g] = body_zone.get(b, ZONE_NONE)
+    for gloves in meta.glove_geom_ids.values():
+        for gid in gloves.values():
+            geom_zone[gid] = ZONE_BLOCK  # an opponent glove blocks
+    return geom_agent, geom_zone
+
+
+def _make_visual_gear_massless(agent_spec: mujoco.MjSpec) -> None:
+    """Give the visual glove/helmet meshes zero density (no added mass)."""
+    for geom in agent_spec.geoms:
+        if (geom.name or "") in _VISUAL_GEAR_GEOMS:
+            geom.density = 0.0
+
+
+def _setup_agent_collisions(
+    agent_spec: mujoco.MjSpec, agent_idx: int, config: BoxingVsConfig
+) -> None:
+    """Apply the cross-agent collision masks and add glove collision spheres.
+
+    Must run on the per-agent spec *before* attachment (geoms added to the
+    combined spec would inherit an unprefixed default material).
+    """
+    contype, conaffinity = AGENT_COLLISION_MASKS[agent_idx]
+    for body in agent_spec.bodies:
+        is_finger = bool(_FINGER_BODY_RE.search(body.name or ""))
+        for geom in body.geoms:
+            if geom.contype == 0 and geom.conaffinity == 0:
+                continue  # visual-only geom
+            if is_finger:
+                geom.contype, geom.conaffinity = FINGER_COLLISION_MASK
+            else:
+                geom.contype, geom.conaffinity = contype, conaffinity
+    radius = float(getattr(config, "glove_collision_radius_m", 0.05))
+    solref = list(getattr(config, "glove_solref", (0.02, 1.0)))
+    for side in ("r", "l"):
+        pos = [
+            GLOVE_POS[0],
+            GLOVE_POS[1],
+            GLOVE_POS[2] if side == "r" else -GLOVE_POS[2],
+        ]
+        agent_spec.body(f"lunate_{side}").add_geom(
+            name=GLOVE_COLLISION_GEOM.format(side=side),
+            type=mujoco.mjtGeom.mjGEOM_SPHERE,
+            size=[radius, 0.0, 0.0],
+            pos=pos,
+            contype=contype,
+            conaffinity=conaffinity,
+            density=0.0,
+            solref=solref,
+            group=3,
+            rgba=[0.0, 1.0, 0.0, 0.0],
+        )
 
 
 def _replace_floor_visual_with_boxing_ring(spec: mujoco.MjSpec) -> None:
@@ -263,6 +394,10 @@ def _build_boxing_vs_spec(config: BoxingVsConfig) -> mujoco.MjSpec:
         colors = _AGENT_COLORS[idx]
         replace_hand_visuals_with_gloves(agent_spec, rgba=colors["glove"])
         add_helmet(agent_spec, rgba=colors["helmet"])
+        if getattr(config, "massless_visual_gear", False):
+            _make_visual_gear_massless(agent_spec)
+        if getattr(config, "cross_agent_collisions", False):
+            _setup_agent_collisions(agent_spec, idx, config)
 
     spec = build_combined_spec(
         agent0_spec,
