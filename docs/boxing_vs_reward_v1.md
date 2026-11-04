@@ -23,6 +23,16 @@ shaping out, call `vec_env.env_method("set_shaping_alpha", alpha)` from a callba
 (`train_sb3.py` keeps it at 1). Expect a policy trained from scratch to mostly learn
 to not fall at first.
 
+To watch a trained model (side view, step / return / hits drawn on the frames):
+
+```bash
+uv run python scripts/record_sb3_video.py myoChallengeBoxingVsLevel1-v0            # logs/sb3/<env>/model.zip
+uv run python scripts/record_sb3_video.py myoChallengeBoxingVsLevel1-v0 --policy zero   # the env alone
+```
+
+Videos are written to `logs/videos/<env_id>/` (git-ignored, share them on the drive).
+Options: `--model`, `--episodes`, `--speed 0.5` (slow motion), `--azimuth/--elevation/--distance`.
+
 ## Quick start in Python (Level 1: learner = `agent_0` vs a dummy)
 
 ```python
