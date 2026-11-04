@@ -68,10 +68,15 @@ r = r_hit · (damage dealt − damage received)                 # never annealed
 | `r_alive` | 0.01 | 0 on the step you fall |
 | `r_reach` | 1.0 | per metre the closest fist gets closer to a target zone (potential difference, clipped ±0.1 m/step) |
 | `r_facing` | 0.01 | per step |
-| `r_effort` | −0.1 | on the **clipped** command, mean over muscles |
+| `r_effort` | −0.01 | on the **clipped** command, mean over muscles; keep \|r_effort\| ≤ r_alive (see below) |
 | fall | ±5 | I fall: `r_self_fall_penalty`; opponent falls within `knockdown_window_s` (1 s) of my hit: `r_fall_bonus`; opponent slips: 0; both fall: `r_double_fall_penalty` each |
 
 `fall_reward_mode="attributed"` also works with the legacy reward.
+
+Why `r_effort` is small: the pretrained policy averages ~0.5 activation. With
+`r_effort = −0.1`, one full standing round scored −12.9 (effort −21.4 vs alive +5,
+facing +3.9), worse than falling at once (−5), so the agent would learn to fall. With
+|r_effort| ≤ r_alive a standing step can never be net negative (checked by a test).
 
 ## Contact-based hits (`hit_detection="contact"`)
 

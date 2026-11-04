@@ -444,7 +444,7 @@ def test_v1_terms_and_annealing():
     terms = v1_reward_terms(config=cfg, **kwargs)
     assert terms["hit_dealt"] == 2.0 and terms["hit_received"] == -0.5
     assert terms["alive"] == 0.01 and terms["reach"] == pytest.approx(0.05)
-    assert terms["effort"] == pytest.approx(-0.1 * 0.25)
+    assert terms["effort"] == pytest.approx(-0.01 * 0.25)
     cfg.shaping_alpha = 0.0
     terms = v1_reward_terms(config=cfg, **kwargs)
     assert terms["alive"] == terms["reach"] == terms["facing"] == 0.0
@@ -460,6 +460,14 @@ def test_set_shaping_alpha(level1_env):
         assert info["reward/facing/agent_0"] == 0.0
     finally:
         level1_env.set_shaping_alpha(1.0)
+
+
+def test_standing_always_pays_more_than_effort_costs():
+    """Even at full activation, one standing step must not be net negative,
+    otherwise falling early (ending the episode) becomes the best strategy."""
+    cfg = boxing_vs_level1_config()
+    worst_effort = cfg.r_effort * effort_mean_sq(np.ones(N_ACT))
+    assert cfg.r_alive + worst_effort >= 0.0
 
 
 def test_effort_uses_clipped_actions():

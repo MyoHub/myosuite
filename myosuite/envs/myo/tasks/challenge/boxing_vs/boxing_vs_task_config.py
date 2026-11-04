@@ -125,7 +125,7 @@ class BoxingVsTaskConfig(MultiAgentTaskConfig):
     r_alive: float = 0.01
     r_reach: float = 1.0
     r_facing: float = 0.01
-    r_effort: float = -0.1
+    r_effort: float = -0.01
     reset_pose: str = "default"
     reset_clip_path: str = (
         "boxing_motions/MyoFullBody/gmr/Transitions_mocap/mazen_c3d/"

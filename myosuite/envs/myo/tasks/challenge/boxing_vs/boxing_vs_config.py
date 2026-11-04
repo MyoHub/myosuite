@@ -121,7 +121,10 @@ class BoxingVsConfig:
     r_alive: float = 0.01  # per step while standing
     r_reach: float = 1.0  # per metre the closest fist gets closer to a target
     r_facing: float = 0.01  # per step x cos(angle between heading and opponent)
-    r_effort: float = -0.1  # x mean(clip(action, 0, 1) ** 2)
+    # x mean(clip(action, 0, 1) ** 2).  Keep |r_effort| <= r_alive so standing
+    # never costs more than it earns (the pretrained policy averages ~0.5
+    # activation: with -0.1 a full round cost ~-21 and falling at once paid more).
+    r_effort: float = -0.01
 
     # --- Reset / opponent ---
     # "default": model rest pose.  "clip": joint angles and root height/tilt
