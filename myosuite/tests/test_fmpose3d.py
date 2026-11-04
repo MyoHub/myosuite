@@ -18,6 +18,8 @@ from myosuite.core.body_scaling import _assembled_qpos
 from myosuite.core.trajectory_io import MotionClip
 from myosuite.integrations.fmpose3d import (
     _LEVEL_CAMERA,
+    _TRUNK_BACK,
+    _TRUNK_HEIGHT,
     H36M_JOINTS,
     _joints_in,
     _with_sites,
@@ -37,6 +39,12 @@ LEVEL = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]])
 FMPOSE3D_DEMO_ROTATION = np.array(
     [0.1407056450843811, -0.1500701755285263, -0.755240797996521, 0.6223280429840088]
 )
+# Where FMPose3D puts Human3.6M's root and thorax, as (up the trunk, forward) in
+# metres from the hip and shoulder midpoints. Measured on its demo runner: the
+# root 9-22 mm up, the thorax (a neck-base point) 43-53 mm up and 24-28 mm forward.
+H36M_ROOT = (0.015, 0.0)
+H36M_THORAX = (0.045, 0.025)
+HALF_SHOULDERS = 0.17  # for MyoLeg, which has no shoulder sites
 
 # A stride-like swing of both legs, with the knees flexed so that hip rotation shows.
 LEG_MOTION: Motion = {
@@ -127,9 +135,10 @@ def _fake_fmpose3d(
 ) -> np.ndarray:
     """FMPose3D-like poses of *model*: root-relative, in *camera*'s frame.
 
-    The hips (with their legs) sit *widen* further out, as Human3.6M's do, and
-    every bone is *stretch* times as long. *camera* is the camera-to-world
-    rotation.
+    The root and thorax sit where FMPose3D puts them (``H36M_ROOT``,
+    ``H36M_THORAX``), the hips (with their legs) sit *widen* further out, as
+    Human3.6M's do, and every bone is *stretch* times as long. *camera* is the
+    camera-to-world rotation.
     """
     data = mujoco.MjData(model)
     poses = np.full((len(qpos), len(H36M_JOINTS), 3), np.nan)
@@ -140,6 +149,20 @@ def _fake_fmpose3d(
             site = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "h36m_" + joint)
             if site >= 0:
                 poses[frame, index] = data.site_xpos[site]
+    at = H36M_JOINTS.index
+    left = poses[:, at("l_hip")] - poses[:, at("r_hip")]
+    if np.isnan(poses[:, at("r_shoulder")]).all():  # MyoLeg: around its trunk point
+        side = HALF_SHOULDERS * left / np.linalg.norm(left, axis=1, keepdims=True)
+        poses[:, at("r_shoulder")] = poses[:, at("thorax")] - side
+        poses[:, at("l_shoulder")] = poses[:, at("thorax")] + side
+    hips = 0.5 * (poses[:, at("r_hip")] + poses[:, at("l_hip")])
+    shoulders = 0.5 * (poses[:, at("r_shoulder")] + poses[:, at("l_shoulder")])
+    up = shoulders - hips
+    up /= np.linalg.norm(up, axis=1, keepdims=True)
+    forward = np.cross(left, up)
+    forward /= np.linalg.norm(forward, axis=1, keepdims=True)
+    poses[:, at("hip")] = hips + H36M_ROOT[0] * up + H36M_ROOT[1] * forward
+    poses[:, at("thorax")] = shoulders + H36M_THORAX[0] * up + H36M_THORAX[1] * forward
     poses -= poses[:, :1]
     lateral = (
         poses[:, H36M_JOINTS.index("l_hip")] - poses[:, H36M_JOINTS.index("r_hip")]
@@ -257,6 +280,20 @@ def test_myofullbody_arms_and_legs_round_trip() -> None:
     assert not held & {*LEG_MOTION, *ARM_MOTION, "lat_bending", "axial_rotation"}
 
 
+def test_myoleg_trunk_point_is_myofullbody_shoulder_midpoint() -> None:
+    model = _fullbody().compile()
+    data = mujoco.MjData(model)
+    data.qpos[:] = _assembled_qpos(model)
+    mujoco.mj_kinematics(model, data)
+    x = {b: data.body(b).xpos for b in ("femur_r", "femur_l", "humerus_r", "humerus_l")}
+    up = 0.5 * (x["humerus_r"] + x["humerus_l"]) - 0.5 * (x["femur_r"] + x["femur_l"])
+    forward = np.cross(x["femur_l"] - x["femur_r"], [0.0, 0.0, 1.0])
+    assert up[2] == pytest.approx(_TRUNK_HEIGHT, abs=1e-3)
+    assert -up @ forward / np.linalg.norm(forward) == pytest.approx(
+        _TRUNK_BACK, abs=1e-3
+    )
+
+
 def test_results_arrays_and_npz_files_agree(tmp_path: Path) -> None:
     spec = _myoleg()
     truth_model = _with_sites(spec, _joints_in(spec), None, None)
@@ -277,6 +314,18 @@ def test_results_arrays_and_npz_files_agree(tmp_path: Path) -> None:
     # A level camera needs no vertical estimate: its own frame keeps the body upright.
     model, level = retarget_fmpose3d(spec, result, fps=FPS, upright=False)
     assert _root_tilt(model, level.qpos, "root").max() < 0.5
+
+
+def test_root_and_thorax_joints_are_not_used() -> None:
+    """FMPose3D synthesises them; the hip and shoulder midpoints stand in."""
+    spec = _myoleg()
+    truth_model = _with_sites(spec, _joints_in(spec), None, None)
+    poses = _fake_fmpose3d(truth_model, _motion(truth_model, LEG_MOTION, 4), LEVEL)
+    _, clip = retarget_fmpose3d(spec, poses, fps=FPS)
+    blanked = poses.copy()
+    blanked[:, [H36M_JOINTS.index("hip"), H36M_JOINTS.index("thorax")]] = np.nan
+    _, same = retarget_fmpose3d(spec, blanked, fps=FPS)
+    np.testing.assert_array_equal(same.qpos, clip.qpos)
 
 
 def test_world_frame_poses_from_the_demo(tmp_path: Path) -> None:
@@ -326,10 +375,12 @@ def test_bad_inputs_are_refused(tmp_path: Path) -> None:
         retarget_fmpose3d(pelvis_only, np.zeros((17, 3)))
     truth_model = _with_sites(spec, _joints_in(spec), None, None)
     poses = _fake_fmpose3d(truth_model, _motion(truth_model, LEG_MOTION, 2), LEVEL)
-    no_thorax = poses.copy()
-    no_thorax[:, H36M_JOINTS.index("thorax")] = np.nan
+    no_shoulders = poses.copy()
+    no_shoulders[
+        :, [H36M_JOINTS.index("r_shoulder"), H36M_JOINTS.index("l_shoulder")]
+    ] = np.nan
     with pytest.raises(ValueError, match="upright=False"):
-        retarget_fmpose3d(spec, no_thorax, fps=FPS)
+        retarget_fmpose3d(spec, no_shoulders, fps=FPS)
     with pytest.raises(ValueError, match="valid_frames_mask"):
         retarget_fmpose3d(
             spec, SimpleNamespace(poses_3d=poses, valid_frames_mask=np.ones(3, bool))

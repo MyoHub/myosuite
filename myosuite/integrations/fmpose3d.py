@@ -17,6 +17,8 @@ Each frame is rebuilt with the model's segment lengths along FMPose3D's segment
 directions before :func:`~myosuite.core.retargeting.retarget` fits it. One
 camera fixes directions far better than lengths, and Human3.6M's hip joints sit
 about 0.13 m either side of the pelvis, wider than the models' hip centres.
+Human3.6M's root and thorax are replaced by the midpoints of its hip and
+shoulder joints first, the points the models mark.
 """
 
 from __future__ import annotations
@@ -57,7 +59,8 @@ H36M_JOINTS = (
 _INDEX = {name: i for i, name in enumerate(H36M_JOINTS)}
 
 # Joint -> (body carrying its site, bodies whose mean origin locates the site).
-# Spine, nose and head are left out: FMPose3D synthesises them from the hips,
+# "hip" and "thorax" mark the midpoints of the hip and shoulder centres. Spine,
+# nose and head are left out: FMPose3D synthesises them from the hips,
 # shoulders and face in its 2D stage, and the models have no matching point.
 _CENTRES: dict[str, tuple[str, tuple[str, ...]]] = {
     "hip": ("pelvis", ("femur_r", "femur_l")),
@@ -67,7 +70,7 @@ _CENTRES: dict[str, tuple[str, tuple[str, ...]]] = {
     "l_knee": ("tibia_l", ("tibia_l",)),
     "r_ankle": ("talus_r", ("talus_r",)),
     "l_ankle": ("talus_l", ("talus_l",)),
-    "thorax": ("thorax", ("thorax",)),
+    "thorax": ("thorax", ("humerus_r", "humerus_l")),
     "r_shoulder": ("humerus_r", ("humerus_r",)),
     "l_shoulder": ("humerus_l", ("humerus_l",)),
     "r_elbow": ("ulna_r", ("ulna_r",)),
@@ -76,11 +79,16 @@ _CENTRES: dict[str, tuple[str, tuple[str, ...]]] = {
     "l_wrist": ("lunate_l", ("lunate_l",)),
 }
 _LEGS = ("hip", "r_hip", "r_knee", "r_ankle", "l_hip", "l_knee", "l_ankle")
+# Human3.6M's root and thorax, which FMPose3D synthesises in its 2D stage, are
+# replaced by these midpoints. Its thorax is a neck-base point about 4 cm above
+# and 3 cm in front of the shoulder centres, and its root sits above the hip
+# centres; taken as given, they misplaced MyoFullBody's shoulders by 3 cm.
+_MIDPOINTS = {"hip": ("r_hip", "l_hip"), "thorax": ("r_shoulder", "l_shoulder")}
 # MyoLeg's trunk is one body with its pelvis, without a thorax. Its thorax site
-# goes where MyoFullBody's thorax origin is at qpos0: 0.56 m above the hip
-# centres and 0.028 m behind them. Only its direction from the hips is fitted,
+# goes where MyoFullBody's shoulder midpoint is at qpos0: 0.553 m above the hip
+# centres and 0.044 m behind them. Only its direction from the hips is fitted,
 # which sets the pelvis tilt the hips alone leave open.
-_TRUNK_HEIGHT, _TRUNK_BACK = 0.56, 0.028
+_TRUNK_HEIGHT, _TRUNK_BACK = 0.553, 0.044
 # Joints held at the seed, with the joints coupled to them, although they move
 # a site. MyoFullBody's lumbar flexion: the hip and thorax joints cannot tell it
 # from pelvis tilt, and left free it drifts against pelvis tilt and hip flexion
@@ -136,14 +144,20 @@ def retarget_fmpose3d(
     lengths along their own segment directions, and fitted by
     :func:`~myosuite.core.retargeting.retarget` to joint-centre sites added to
     a copy of *spec* (``h36m_<joint>``): the hip centres and their midpoint,
-    the knees, the ankles, a trunk point and, on MyoFullBody, the shoulders,
-    elbows and wrists.
+    the knees, the ankles, a trunk point between the shoulders and, on
+    MyoFullBody, the shoulders, elbows and wrists. Human3.6M's root and thorax
+    are replaced by the midpoints of its hip and shoulder joints, which the
+    ``hip`` and ``thorax`` sites mark.
 
-    * With *upright* the median hip-to-thorax direction is turned to the
-      model's trunk direction at its seed pose, which assumes the trunk is
-      upright on average, as in walking. Otherwise the vertical is that of a
-      level camera, or FMPose3D's own world frame.
+    * With *upright* the median direction from the hip midpoint to the
+      shoulder midpoint is turned to the model's at its seed pose, which
+      assumes the trunk is upright on average, as in walking. Otherwise the
+      vertical is that of a level camera, or FMPose3D's own world frame.
     * The first valid frame is turned to face the way the model faces.
+    * MyoFullBody's shoulder centres follow the arms through its shoulder
+      girdle, so it is fitted twice: the second time with the trunk and
+      shoulder lengths of the first fit's poses and, with *upright*, with
+      the trunk's own axis upright on average.
     * FMPose3D poses are root-relative, so the clip has no horizontal travel.
       With *ground_each_frame* every frame's lowest sole point is put on the
       ground, which assumes a foot is down in every frame; otherwise the
@@ -181,7 +195,7 @@ def retarget_fmpose3d(
 
     Raises:
         ValueError: For poses that are not the 17 human joints, a spec without
-            MyoLeg's leg bodies, or *upright* without hip and thorax joints.
+            MyoLeg's leg bodies, or *upright* without hip and shoulder joints.
     """
     positions, valid, rate, inferred = _load_poses(poses)
     frame = frame or inferred
@@ -199,27 +213,50 @@ def retarget_fmpose3d(
     }
 
     positions = np.where(valid[:, None, None], positions, np.nan)
+    for joint, (right, left) in _MIDPOINTS.items():
+        positions[:, _INDEX[joint]] = 0.5 * (
+            positions[:, _INDEX[right]] + positions[:, _INDEX[left]]
+        )
     rotation = _LEVEL_CAMERA if frame == "camera" else np.eye(3)
     world = positions @ rotation.T
     if upright:
-        tilt = _z_to(_median_trunk(world)).T
+        tilt = _z_to(
+            _median_trunk(world[:, _INDEX["thorax"]] - world[:, _INDEX["hip"]])
+        ).T
         world, rotation = world @ tilt.T, tilt @ rotation
     yaw = _heading(world, centres)
     world, rotation = world @ yaw.T, yaw @ rotation
     if upright and "thorax" in centres:  # lean as the model's trunk does at its seed
         lean = _z_to(centres["thorax"] - centres["hip"])
         world, rotation = world @ lean.T, lean @ rotation
-    targets = _rebuild(world, joints, centres)
-    shift = centres["hip"] - targets["hip"]  # every frame over the seed's pelvis
     free, held = _free_joints(model)
-    clip = retarget(
-        model,
-        {_SITE_PREFIX + joint: path + shift for joint, path in targets.items()},
-        fps=fps if fps is not None else rate,
-        joints=free,
-        qpos=seed,
-        ground_each_frame=ground_each_frame,
-    )
+
+    def fit(paths: dict[str, np.ndarray]) -> MotionClip:
+        shift = centres["hip"] - paths["hip"]  # every frame over the seed's pelvis
+        return retarget(
+            model,
+            {_SITE_PREFIX + joint: path + shift for joint, path in paths.items()},
+            fps=fps if fps is not None else rate,
+            joints=free,
+            qpos=seed,
+            ground_each_frame=ground_each_frame,
+        )
+
+    targets = _rebuild(world, joints, centres)
+    clip = fit(targets)
+    if "r_shoulder" in joints:  # refit with the girdle of the fitted arms
+        lengths, drift = _girdle(model, clip.qpos)
+        targets = _rebuild(world, joints, centres, lengths)
+        if upright:  # the trunk's own axis is upright, not the shoulder midpoint's
+            trunk = targets["thorax"] - drift - targets["hip"]
+            turn = (
+                _z_to(centres["thorax"] - centres["hip"])
+                @ _z_to(_median_trunk(trunk)).T
+            )
+            world, rotation, drift = world @ turn.T, turn @ rotation, drift @ turn.T
+            targets = _rebuild(world, joints, centres, lengths)
+        targets["thorax"] = targets["thorax"] - drift
+        clip = fit(targets)
     clip.metadata["fmpose3d"] = {
         "rotation": rotation,
         "frame": frame,
@@ -369,14 +406,13 @@ def _free_joints(model: mujoco.MjModel) -> tuple[list[str] | None, list[str]]:
     return free, [names[j] for j in sorted(held)]
 
 
-def _median_trunk(world: np.ndarray) -> np.ndarray:
-    """Median direction from the hip to the thorax joint."""
-    trunk = world[:, _INDEX["thorax"]] - world[:, _INDEX["hip"]]
+def _median_trunk(trunk: np.ndarray) -> np.ndarray:
+    """Median direction of the trunk vectors ``(T, 3)``, hips to shoulders."""
     norms = np.linalg.norm(trunk, axis=1)
     usable = np.isfinite(norms) & (norms > 0)
     if not usable.any():
         raise ValueError(
-            "upright=True needs finite hip and thorax joints; pass upright=False."
+            "upright=True needs finite hip and shoulder joints; pass upright=False."
         )
     return np.median(trunk[usable] / norms[usable, None], axis=0)
 
@@ -405,9 +441,16 @@ def _heading(world: np.ndarray, centres: Mapping[str, np.ndarray]) -> np.ndarray
 
 
 def _rebuild(
-    world: np.ndarray, joints: list[str], centres: Mapping[str, np.ndarray]
+    world: np.ndarray,
+    joints: list[str],
+    centres: Mapping[str, np.ndarray],
+    lengths: Mapping[tuple[str, str], np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
-    """Joint paths with the model's segment lengths along the poses' directions."""
+    """Joint paths with the model's segment lengths along the poses' directions.
+
+    *lengths* gives per-frame lengths ``(T,)`` for some segments; the others
+    keep their seed lengths.
+    """
     targets = {"hip": world[:, _INDEX["hip"]].copy()}
     for parent, child in _SEGMENTS:
         if parent not in targets or child not in joints:
@@ -416,6 +459,39 @@ def _rebuild(
         norm = np.linalg.norm(direction, axis=1, keepdims=True)
         with np.errstate(divide="ignore", invalid="ignore"):
             unit = np.where(norm > 0, direction / norm, np.nan)
-        length = np.linalg.norm(centres[child] - centres[parent])
+        if lengths is not None and (parent, child) in lengths:
+            length = lengths[(parent, child)][:, None]
+        else:
+            length = np.linalg.norm(centres[child] - centres[parent])
         targets[child] = targets[parent] + length * unit
     return targets
+
+
+def _girdle(
+    model: mujoco.MjModel, qpos: np.ndarray
+) -> tuple[dict[tuple[str, str], np.ndarray], np.ndarray]:
+    """Trunk and shoulder lengths at each pose, and the shoulder midpoint's offset.
+
+    MyoFullBody's shoulder centres follow the arms through the shoulder girdle,
+    24 mm against the thorax at 1 rad of elevation. So the length from the hip
+    midpoint to the shoulder midpoint, the half shoulder widths and the offset
+    of the shoulder midpoint from the thorax site change with the pose.
+    """
+    data = mujoco.MjData(model)
+    sites = {
+        joint: model.site(_SITE_PREFIX + joint).id
+        for joint in ("hip", "thorax", "r_shoulder", "l_shoulder")
+    }
+    xpos = np.zeros((len(qpos), len(sites), 3))
+    for frame, q in enumerate(qpos):
+        data.qpos[:] = q
+        mujoco.mj_kinematics(model, data)
+        xpos[frame] = data.site_xpos[list(sites.values())]
+    hip, thorax, right, left = np.moveaxis(xpos, 1, 0)
+    middle = 0.5 * (right + left)
+    lengths = {
+        ("hip", "thorax"): np.linalg.norm(middle - hip, axis=1),
+        ("thorax", "r_shoulder"): np.linalg.norm(right - middle, axis=1),
+        ("thorax", "l_shoulder"): np.linalg.norm(left - middle, axis=1),
+    }
+    return lengths, middle - thorax
