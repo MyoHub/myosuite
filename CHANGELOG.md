@@ -58,11 +58,27 @@ All notable changes to this project are documented in this file.
     players for a few episodes, prints how each ended with the score, and records the first one until it ends.
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
+* **Newton compatibility diagnostics:** the release/manual informational conversion probe is supplemented by matched CPU/CUDA trajectories, source identity maps, mutation checks and versioned reports. [Newton PR 5029](https://github.com/newton-physics/newton/pull/5029) and [Newton PR 5030](https://github.com/newton-physics/newton/pull/5030) fix the joint equality and partial vector import gaps on Newton main, so all twelve authored/normalized cases convert with every muscle and length range; the default changes for masses, options, contacts and margins remain in [Newton PR 4903](https://github.com/newton-physics/newton/pull/4903). Strict name/force comparisons and several trajectory cases still fail, with follow-ups in [Newton issue 4904](https://github.com/newton-physics/newton/issues/4904), [MuJoCo-Warp issue 1835](https://github.com/google-deepmind/mujoco_warp/issues/1835) and [#563]. Newton remains outside the supported CPU and mjlab backends (#368, [#531]).
 
 ### Changed
 
 * **ChaseTag 1v1 (`myoChallengeChaseTagFBVs-v0`) win conditions.** Tag (planar pelvis distance ≤ 0.5 m) or a pursuer fall ends the episode; timeout with no tag is a runner win. A runner fall does not stop play — the pursuer can still tag the body on the ground. Boxing/fencing still end on any fall. P1 ChaseTag is unchanged. The train env (`myoChallengeChaseTagFBVsTrain-v0`) uses the same rules.
 * **ChaseTag FBVs / FBVsTrain pin `musclemimic_models` 1.0.5.** Same body as `amathislab/mm-10m-2` / the 5.4 walker. Use the 1.0.6 heading-table walker ([#579](https://github.com/MyoHub/myosuite/pull/579)) only when forced onto 1.0.6.
+* **Dependency floors.** `filelock` is at least 4.2.5 on Python 3.11 and newer, and stays on 3.25.2 for Python 3.10 (4.x requires 3.11, and later 3.x releases add advisories). `certifi`, `gitpython`, `msgpack`, `setuptools`, and `black` move to releases that clear current advisories. Pillow stays `>=10.1.0,<13`: 13.0.0 is the first release that clears the image advisories, and current gradio still requires `pillow<13`.
+* **Fatigue groups and parameters for every muscle of the bundled models.**
+  - `_muscle_group` now also strips MuscleMimic's `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent
+    scenes and an `R:`/`L:` side prefix. Before, the MuscleMimic left arm (32 muscles, 63 with fingers) and all 708
+    muscles of `myoChallengeChaseTagFBVs-v0` fell back to `Default`, so the two arms fatigued differently.
+  - New rows, each cited in `MUSCLE_FATIGUE_PARAMS` and `docs/source/fatigue_validation.rst`: `Trunk` for the 108
+    lumbar and abdominal muscles of MyoTorso and the MuscleMimic torso (Frey-Law et al. 2012 trunk fit),
+    `Thigh-Hamstring` (Frey-Law et al. 2012 knee fit with r = 15 of Looft et al. 2018; no knee-flexor fit is
+    published) and `Hip` (the general fit, now explicit: no hip fit is published, Yang et al. 2025).
+  - Regrouped: the forearm rotators `SUP`, `PT`, `PQ` (were elbow extensor, elbow flexor, wrist flexor) use the
+    joint-level `Elbow` row; `APL` is a wrist extensor (was flexor); the rotator cuff is labelled as rotators (no
+    numeric change).
+  - Changes the fatigue dynamics of `myoFati*` envs with torso, hamstring, forearm-rotator or `APL` muscles: torso,
+    table tennis, soccer, full-body ChaseTag, leg walk/stand, arm reach, bimanual, relocate and the hand envs
+    (`docs/baseline_checkpoints.md`).
 * `myoLegDirectionalForward-v0` and `myoLegDirectionalBackward-v0` swapped names. The leg model faces `-y`, so the
   old "forward" task (`heading_dir=(0, 1)`, 1.2 m/s) trained walking backwards and the old "backward" task
   (`heading_dir=(0, -1)`, 1.0 m/s) walking forwards. Forward is now `(0, -1)` at 1.0 m/s and Backward `(0, 1)` at
@@ -74,6 +90,8 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 * **Motion clips load without pickle:** `load_motion_clip`, the CPU Mimic clip env and the full-body observation adapter open `.npz` files with `allow_pickle=False` (unpickling a downloaded file can run code). Names stored as bytes now read as text instead of `"b'name'"`, and a pickled name array is refused with instructions for re-saving it. SAR synergy metadata is written as strings, and older folders still load ([#522]).
+* **Pen twirl shows success on the target pen:** `myoHandPenTwirlFixed-v0` / `myoHandPenTwirlRandom-v0` add a `target_ball` site on the target pen that turns green while the task is solved and red otherwise, as in die reorientation. The yellow `eps_ball` (the pen's position goal and drop radius) moves to the hidden site group 4, so it no longer covers the pen being twirled ([#136]). Observations, rewards and dynamics are unchanged; the model gains one site.
+* **Resampled terrain is drawn in every renderer:** the rough/hilly/stairs leg walks, ChaseTag and RunTrack upload the terrain heightfield to the live renderers after each reset (`MyoGymnasiumEnv._upload_hfield_to_renderers`). Render contexts copy heightfields when they are created, so the `mj_render()` window, `render()` frames and cached offscreen videos showed the first episode's terrain while the physics used the new one ([#307]). Observations and dynamics are unchanged.
 * Fixed initial fatigue arrays retain their requested values across CPU episodes. `CumulativeFatigue.reset` copies `fatigue_reset_vec` into owned state. Stepping previously mutated writable NumPy arrays supplied by callers and failed on read-only arrays.
 
 ## [3.0.0] - 2026-10-07
@@ -274,6 +292,8 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#497]: https://github.com/MyoHub/myosuite/pull/497
 [#498]: https://github.com/MyoHub/myosuite/pull/498
 [#499]: https://github.com/MyoHub/myosuite/pull/499
+[#136]: https://github.com/MyoHub/myosuite/issues/136
+[#307]: https://github.com/MyoHub/myosuite/issues/307
 [#500]: https://github.com/MyoHub/myosuite/pull/500
 [#502]: https://github.com/MyoHub/myosuite/issues/502
 [#505]: https://github.com/MyoHub/myosuite/pull/505
@@ -282,6 +302,8 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#504]: https://github.com/MyoHub/myosuite/pull/504
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#520]: https://github.com/MyoHub/myosuite/pull/520
+[#531]: https://github.com/MyoHub/myosuite/pull/531
+[#563]: https://github.com/MyoHub/myosuite/issues/563
 [#522]: https://github.com/MyoHub/myosuite/pull/522
 [#540]: https://github.com/MyoHub/myosuite/pull/540
 

@@ -6,6 +6,10 @@ FUNCTIONAL_MUSCLE_GROUPS = {
     "Elbow-Flexor",
     "Shoulder-Adductor",
     "Shoulder-Abductor",
+    "Shoulder-External-Rotator",  # rotator cuff; resolves to the Shoulder row
+    "Shoulder-Internal-Rotator",
+    "Elbow-Pronator",  # forearm rotators (radioulnar joints); resolve to the Elbow row
+    "Elbow-Supinator",
     "Ankle-Dorsiflexor",
     "Ankle-Plantarflexor",
     "Hand-Adductor-Pollicis",
@@ -25,6 +29,7 @@ FUNCTIONAL_MUSCLE_GROUPS = {
     "Hip-Lateral-Rotator",
     "Hip-Adductor",
     "Thigh-Hamstring",  # most of them are responsible for knee flexion and hip extension
+    "Trunk",  # lumbar and abdominal muscles (MyoTorso, MuscleMimic torso)
     "Finger",  # used for myoFinger's joint torque actuators (see https://myosuite.readthedocs.io/en/latest/suite.html#myofinger)
 }
 
@@ -33,9 +38,9 @@ MUSCLE_FMG = {
     "DELT2": "Shoulder-Abductor",
     "DELT3": "Shoulder-Abductor",
     "SUPSP": "Shoulder-Abductor",
-    "INFSP": "Shoulder-Abductor",
-    "SUBSC": "Shoulder-Abductor",
-    "TMIN": "Shoulder-Adductor",
+    "INFSP": "Shoulder-External-Rotator",
+    "SUBSC": "Shoulder-Internal-Rotator",
+    "TMIN": "Shoulder-External-Rotator",
     "TMAJ": "Shoulder-Adductor",
     "PECM1": "Shoulder-Adductor",
     "PECM2": "Shoulder-Adductor",
@@ -48,7 +53,7 @@ MUSCLE_FMG = {
     "TRIlat": "Elbow-Extensor",
     "TRImed": "Elbow-Extensor",
     "ANC": "Elbow-Extensor",
-    "SUP": "Elbow-Extensor",
+    "SUP": "Elbow-Supinator",  # acts on pro_sup only, no elbow flexion moment
     "BIClong": "Elbow-Flexor",
     "BICshort": "Elbow-Flexor",
     "BRA": "Elbow-Flexor",
@@ -59,8 +64,8 @@ MUSCLE_FMG = {
     "FCR": "Wrist-Flexor",
     "FCU": "Wrist-Flexor",
     "PL": "Wrist-Flexor",
-    "PT": "Elbow-Flexor",
-    "PQ": "Wrist-Flexor",  # FMG chosen based on proximity to FDP and FPL
+    "PT": "Elbow-Pronator",  # mainly pronation (moment arm 6x its elbow flexion one)
+    "PQ": "Elbow-Pronator",  # acts on pro_sup only
     "FDS5": "Wrist-Flexor",
     "FDS4": "Wrist-Flexor",
     "FDS3": "Wrist-Flexor",
@@ -78,7 +83,7 @@ MUSCLE_FMG = {
     "EPL": "Wrist-Extensor",
     "EPB": "Wrist-Extensor",
     "FPL": "Wrist-Flexor",
-    "APL": "Wrist-Flexor",
+    "APL": "Wrist-Extensor",  # deep extensor compartment, with EPL and EPB
     "OP": "Hand-Thenar",
     "RI2": "Hand-First-Dorsal-Interossei",  # "Hand-Interossei"
     "LU_RB2": "Hand-Lumbricals",
@@ -178,3 +183,55 @@ MUSCLE_FMG = {
     "vasmed_l": "Knee-Extensor",
     "vasmed_r": "Knee-Extensor",
 }
+
+# Lumbar and abdominal muscles of MyoTorso and the MuscleMimic torso, keyed without the
+# side (``_r``/``_l``). Each acts only on the lumbar and abdominal joints; the ``Ps_*``
+# psoas fascicles of the spine are distinct from the leg models' ``psoas_r``/``psoas_l``.
+_TRUNK_MUSCLES = (
+    "rect_abd",
+    "ercspn",
+    "extobl",
+    "intobl",
+    *(f"EO{i}" for i in range(1, 7)),
+    *(f"IO{i}" for i in range(1, 7)),
+    *(f"IL_L{i}" for i in range(1, 5)),
+    *(f"IL_R{i}" for i in range(5, 13)),
+    *(f"LTpT_T{i}" for i in range(1, 13)),
+    *(f"LTpT_R{i}" for i in range(4, 13)),
+    *(f"LTpL_L{i}" for i in range(1, 6)),
+    "QL_post_I.1-L3",
+    "QL_post_I.2-L2",
+    "QL_post_I.2-L3",
+    "QL_post_I.2-L4",
+    "QL_post_I.3-L1",
+    "QL_post_I.3-L2",
+    "QL_post_I.3-L3",
+    "QL_mid_L2-12.1",
+    "QL_mid_L3-12.1",
+    "QL_mid_L3-12.2",
+    "QL_mid_L3-12.3",
+    "QL_mid_L4-12.3",
+    "QL_ant_I.2-12.1",
+    "QL_ant_I.2-T12",
+    "QL_ant_I.3-12.1",
+    "QL_ant_I.3-12.2",
+    "QL_ant_I.3-12.3",
+    "QL_ant_I.3-T12",
+    *(
+        f"MF_m{i}{s}"
+        for i in range(1, 6)
+        for s in ("s", "t.1", "t.2", "t.3", ".laminar")
+    ),
+    "Ps_L1_VB",
+    "Ps_L1_TP",
+    "Ps_L1_L2_IVD",
+    "Ps_L2_TP",
+    "Ps_L2_L3_IVD",
+    "Ps_L3_TP",
+    "Ps_L3_L4_IVD",
+    "Ps_L4_TP",
+    "Ps_L4_L5_IVD",
+    "Ps_L5_TP",
+    "Ps_L5_VB",
+)
+MUSCLE_FMG.update(dict.fromkeys(_TRUNK_MUSCLES, "Trunk"))

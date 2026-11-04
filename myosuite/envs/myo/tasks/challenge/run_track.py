@@ -630,6 +630,9 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     def _maybe_sample_terrain(self) -> None:
         if self.trackfield is not None:
             self.trackfield.sample(self.np_random)
+            self._upload_hfield_to_renderers(
+                int(self.model.geom_dataid[self.model.geom("terrain").id])
+            )
             self.model.geom_rgba[self.model.geom("terrain").id][-1] = 1.0
             self.model.geom_pos[self.model.geom("terrain").id] = np.array([0, 0, 0.005])
         else:
