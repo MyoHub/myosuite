@@ -30,6 +30,7 @@ from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref
 from myosuite.envs.myo.backends.mjlab.tasks import mdp
 from myosuite.envs.myo.backends.mjlab.tasks.waypoint import mdp as wmdp
 from myosuite.envs.waypoint import (
+    DEFAULT_MODEL_RECIPE,
     RootLayout,
     WaypointTaskCfg,
     heading_yaw,
@@ -93,6 +94,10 @@ def make_waypoint_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
     if cpu.kwargs.get("model") is not None:
         raise ValueError(
             "mjlab requires model_path or model_recipe, not a compiled model"
+        )
+    if not cpu.kwargs.get("model_path") and not cpu.kwargs.get("model_recipe"):
+        cpu = dataclasses.replace(
+            cpu, kwargs={**cpu.kwargs, "model_recipe": DEFAULT_MODEL_RECIPE}
         )
     if cpu.kwargs.get("model_path") is not None:
         cpu = dataclasses.replace(cpu, kwargs={**cpu.kwargs, "model_recipe": None})

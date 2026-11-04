@@ -287,3 +287,22 @@ def test_registered_scene_override_and_seed(tmp_path) -> None:
     env.close()
     restored.close()
     compiled.close()
+
+
+def test_registered_default_recipe_is_owned_by_env(monkeypatch, model) -> None:
+    from myosuite import make_env
+    from myosuite.envs import waypoint
+
+    recipes = []
+
+    def build(recipe, edit_fn):
+        recipes.append(recipe)
+        return model, None
+
+    monkeypatch.setattr(waypoint, "build_from_recipe", build)
+    env = make_env("myoFullBodyWaypoint-v0", task=WaypointTaskCfg(site_name="tip"))
+    try:
+        env.reset(seed=0)
+        assert recipes == [waypoint.DEFAULT_MODEL_RECIPE]
+    finally:
+        env.close()

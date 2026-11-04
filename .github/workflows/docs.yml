@@ -8,7 +8,7 @@ on:
       - "myosuite/**"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: ["main", "dev"]
+    branches: ["main", "dev", "feat/programmatic-waypoint-tasks"]
     paths:
       - "docs/**"
       - "myosuite/**"

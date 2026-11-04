@@ -81,8 +81,8 @@ _registry.register_env(
     env_id="myoFullBodyWaypoint-v0",
     entry_point="myosuite.envs.waypoint:WaypointEnv",
     max_episode_steps=1500,
+    mjlab_task_kwargs=True,
     kwargs={
-        "model_recipe": "musclemimic_fullbody",
         "task": FULLBODY_WAYPOINT_TASK,
         "frame_skip": 5,
     },
