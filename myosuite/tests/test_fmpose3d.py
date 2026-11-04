@@ -105,8 +105,12 @@ def _coupled(model: mujoco.MjModel, qpos: np.ndarray) -> np.ndarray:
     return q
 
 
-def _motion(model: mujoco.MjModel, motion: Motion, frames: int = 20) -> np.ndarray:
-    """Truth ``qpos`` per frame: the assembled seed with *motion* applied."""
+def _motion(model: mujoco.MjModel, motion: Motion, frames: int = 19) -> np.ndarray:
+    """Truth ``qpos`` per frame: the assembled seed with *motion* applied.
+
+    19 frames put t = 1/3 and 2/3 on the grid, where the right knee is at
+    0.8 rad and its coupled knee rotation leaves its own range.
+    """
     t = np.linspace(0.0, 1.0, frames)
     qpos = np.repeat(_assembled_qpos(model)[None], frames, axis=0)
     for name, angle in motion.items():
@@ -213,7 +217,7 @@ def test_myoleg_angles_survive_the_camera_wide_hips_and_long_bones() -> None:
     truth = _motion(truth_model, LEG_MOTION)
     poses = _fake_fmpose3d(truth_model, truth, _turned_pitched_camera())
     model, clip = retarget_fmpose3d(spec, poses, fps=FPS)
-    _assert_every_joint(model, clip, truth, tol_deg=1.0)
+    _assert_every_joint(model, clip, truth, tol_deg=0.5)
     # The 15 degree camera pitch is gone: the trunk leans as the model's does.
     assert _root_tilt(model, clip.qpos, "root").max() < 0.5
     np.testing.assert_allclose(clip.metadata["sole_height"], 0.0, atol=1e-9)
@@ -244,7 +248,7 @@ def test_myofullbody_arms_and_legs_round_trip() -> None:
     truth = _motion(truth_model, {**LEG_MOTION, **ARM_MOTION}, frames=12)
     poses = _fake_fmpose3d(truth_model, truth, _turned_pitched_camera())
     model, clip = retarget_fmpose3d(spec, poses, fps=FPS)
-    _assert_every_joint(model, clip, truth, tol_deg=1.5)
+    _assert_every_joint(model, clip, truth, tol_deg=0.5)
     assert len(clip.metadata["fmpose3d"]["joints"]) == 14
     assert _root_tilt(model, clip.qpos, "Full Body").max() < 0.5
     held = set(clip.metadata["fmpose3d"]["held"])
@@ -286,7 +290,7 @@ def test_world_frame_poses_from_the_demo(tmp_path: Path) -> None:
     )
     model, clip = retarget_fmpose3d(spec, tmp_path / "0000_3D.npz", upright=False)
     assert clip.metadata["fmpose3d"]["frame"] == "world" and len(clip.qpos) == 1
-    _assert_every_joint(model, clip, truth, tol_deg=1.0)
+    _assert_every_joint(model, clip, truth, tol_deg=0.5)
 
 
 def test_subject_scales_are_applied_first() -> None:
@@ -307,7 +311,7 @@ def test_subject_scales_are_applied_first() -> None:
         )
 
     assert thigh(model) == pytest.approx(1.1 * thigh(nominal), rel=1e-9)
-    _assert_every_joint(model, clip, truth, tol_deg=1.0)
+    _assert_every_joint(model, clip, truth, tol_deg=0.5)
 
 
 def test_bad_inputs_are_refused(tmp_path: Path) -> None:

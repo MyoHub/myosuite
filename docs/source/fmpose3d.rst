@@ -76,10 +76,9 @@ What the joints determine
 
 ``myosuite/tests/test_fmpose3d.py`` checks this on synthetic poses of both models
 with a camera turned 120 degrees and pitched 15 degrees, hips 5.5 cm wider and every
-bone 10% longer. Every joint angle comes back within 1 degree on MyoLeg and 1.5
-degrees on MyoFullBody, and the held joints keep the seed pose exactly. With 1 cm
-of noise on the joints, hip rotation reaches its limits where the knee is nearly
-straight.
+bone 10% longer. Every joint angle comes back within 0.5 degrees on both models,
+and the held joints keep the seed pose exactly. With 1 cm of noise on the joints,
+hip rotation reaches its limits where the knee is nearly straight.
 
 Citation
 --------
