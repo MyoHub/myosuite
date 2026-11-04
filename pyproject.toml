@@ -42,7 +42,7 @@ dependencies = [
     "colorednoise>=2.2.0",
     "packaging",
     "ml-collections>=0.1.1",
-    "myo-sim==0.2.3",
+    "myo-sim==0.2.4",
     # onnxruntime <=1.23.2 is the last line shipping cp310 wheels and >=1.24.1 the
     # first shipping cp314, so no single version spans 3.10-3.14; split by marker.
     "onnxruntime<1.21; python_version < '3.14'",

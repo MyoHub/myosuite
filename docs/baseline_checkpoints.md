@@ -122,6 +122,12 @@ models collected before the MuscleMimic bridge fix (#459) must be recollected.
 
 <sub>
 
+**Motor finger gears.** With `myo_sim` 0.2.4 the `motorFinger*` envs use the gears of `motorfinger_v0.xml` as they are, 160/80/80/160/160 (`extn`, `adabR`, `adabL`, `mflx`, `dflx`), and MyoSuite no longer scales them. Checkpoints trained on the earlier 80/20/20/40/40 no longer apply. Their observations, actions and control step are unchanged, so they still load and the env contract hash in `manifest.json` does not warn about them: use the checkpoints of the release that matches your MyoSuite version.
+
+</sub>
+
+<sub>
+
 **Fatigue parameters of torso, hamstring, forearm and two-agent muscles.** In the `myoFati*` variants, lumbar and
 abdominal muscles use the new `Trunk` row and hamstrings the `Thigh-Hamstring` row (both used `Default`), the forearm
 rotators `SUP`/`PT`/`PQ` the `Elbow` row and `APL` the wrist-extensor row, and the left arm of the MuscleMimic models
