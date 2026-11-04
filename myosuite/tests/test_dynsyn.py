@@ -92,8 +92,7 @@ def test_cpu_wrapper_steps(walk_groups):
 
 def test_mjlab_action_term(walk_groups):
     torch = pytest.importorskip("torch")
-    if not torch.cuda.is_available():
-        pytest.skip("mjlab needs a GPU here")
+    pytest.importorskip("mjlab")
     import mjlab.tasks  # noqa: F401
     from mjlab.envs import ManagerBasedRlEnv
     from mjlab.tasks.registry import load_env_cfg
@@ -105,11 +104,15 @@ def test_mjlab_action_term(walk_groups):
     cfg = load_env_cfg("myoLegWalk-v0")
     cfg.scene.num_envs = 2
     apply_dynsyn(cfg, DynSynGroups.load(path), start_steps=0, ramp_steps=1)
-    env = ManagerBasedRlEnv(cfg=cfg, device="cuda:0")
+    env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
     env.reset()
-    env.step(torch.full((2, 80), 0.3, device="cuda:0"))
+    actions = torch.full((2, 80), 0.3)
+    env.step(actions)  # the bound is still 0 here; 2 env steps later it is full
+    env.step(actions)
     term = env.action_manager.get_term("muscles")
     assert term.action_dim == 80 and term.amplitude == pytest.approx(0.1)
+    expected = expand_actions(actions, groups, 0.1, torch)
+    torch.testing.assert_close(term.processed_action, expected)
     env.close()
 
 
