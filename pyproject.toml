@@ -35,10 +35,10 @@ dependencies = [
     "pandas",
     "osqp",
     "mujoco",
-    # 13.0.0 is the first Pillow release that clears the current advisories, and it
-    # requires Python >=3.11. 3.10 stays on the newest Pillow that still installs.
-    "Pillow>=13.0.0; python_version >= '3.11'",
-    "Pillow>=10.1.0; python_version < '3.11'",
+    # 13.0.0 clears the current image advisories, but gradio 6.31.0 still
+    # requires pillow<13. A Colab install that also has gradio, or a tutorial
+    # that pins Pillow 12.2.0, cannot resolve against a 13 floor.
+    "Pillow>=10.1.0,<13",
     "colorednoise>=2.2.0",
     "packaging",
     "ml-collections>=0.1.1",
