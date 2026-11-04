@@ -64,18 +64,22 @@ What the joints determine
 * **Fitted:** hip flexion, adduction and rotation (the last needs a bent knee), knee
   flexion and trunk lean. On MyoFullBody also lumbar bending and rotation, the
   shoulder angles and elbow flexion; humeral rotation needs a bent elbow.
-* **Held at the seed pose:** the ankle, subtalar and toe joints, forearm rotation
-  and the wrist (Human3.6M has no foot or hand points), and MyoFullBody's lumbar
-  flexion, which the joints cannot tell from pelvis tilt. A forward lean of the
-  trunk shows as pelvis tilt.
+* **Held at the seed pose:** the ankle, subtalar and toe joints and the wrist,
+  which move none of the joints (Human3.6M has no foot or hand points); forearm
+  rotation, which moves the wrist joint by only 14 mm per radian; and
+  MyoFullBody's lumbar flexion, which the joints cannot tell from pelvis tilt. A
+  forward lean of the trunk shows as pelvis tilt. ``clip.metadata["fmpose3d"]["held"]``
+  lists the held joints.
 * **Not available:** horizontal travel. The poses are root-relative, so a walk is
   fitted in place. The spine, nose and head joints are not used: FMPose3D
   synthesises them from other keypoints in its 2D stage.
 
 ``myosuite/tests/test_fmpose3d.py`` checks this on synthetic poses of both models
 with a camera turned 120 degrees and pitched 15 degrees, hips 5.5 cm wider and every
-bone 10% longer. The joint angles come back within 1 degree on MyoLeg and 1.5
-degrees on MyoFullBody.
+bone 10% longer. Every joint angle comes back within 1 degree on MyoLeg and 1.5
+degrees on MyoFullBody, and the held joints keep the seed pose exactly. With 1 cm
+of noise on the joints, hip rotation reaches its limits where the knee is nearly
+straight.
 
 Citation
 --------

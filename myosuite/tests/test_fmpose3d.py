@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from myosuite.core.body_scaling import _assembled_qpos
+from myosuite.core.trajectory_io import MotionClip
 from myosuite.integrations.fmpose3d import (
     _LEVEL_CAMERA,
     H36M_JOINTS,
@@ -173,13 +174,24 @@ def _root_tilt(model: mujoco.MjModel, qpos: np.ndarray, body: str) -> np.ndarray
     return np.rad2deg(np.arccos(np.clip(tilt, -1.0, 1.0)))
 
 
-def _assert_angles(
-    model: mujoco.MjModel, got: np.ndarray, truth: np.ndarray, names, tol_deg: float
+def _assert_every_joint(
+    model: mujoco.MjModel, clip: MotionClip, truth: np.ndarray, tol_deg: float
 ) -> None:
-    for name in names:
+    """Every hinge joint comes back within *tol_deg*; held joints keep the seed."""
+    for joint in range(model.njnt):
+        if model.jnt_type[joint] == mujoco.mjtJoint.mjJNT_HINGE:
+            address = model.jnt_qposadr[joint]
+            np.testing.assert_allclose(
+                clip.qpos[:, address],
+                truth[:, address],
+                atol=np.deg2rad(tol_deg),
+                err_msg=model.joint(joint).name,
+            )
+    seed = _assembled_qpos(model)
+    for name in clip.metadata["fmpose3d"]["held"]:
         address = model.jnt_qposadr[model.joint(name).id]
         np.testing.assert_allclose(
-            got[:, address], truth[:, address], atol=np.deg2rad(tol_deg), err_msg=name
+            clip.qpos[:, address], seed[address], rtol=0, atol=1e-9, err_msg=name
         )
 
 
@@ -201,12 +213,18 @@ def test_myoleg_angles_survive_the_camera_wide_hips_and_long_bones() -> None:
     truth = _motion(truth_model, LEG_MOTION)
     poses = _fake_fmpose3d(truth_model, truth, _turned_pitched_camera())
     model, clip = retarget_fmpose3d(spec, poses, fps=FPS)
-    _assert_angles(model, clip.qpos, truth, LEG_MOTION, tol_deg=1.0)
+    _assert_every_joint(model, clip, truth, tol_deg=1.0)
     # The 15 degree camera pitch is gone: the trunk leans as the model's does.
     assert _root_tilt(model, clip.qpos, "root").max() < 0.5
     np.testing.assert_allclose(clip.metadata["sole_height"], 0.0, atol=1e-9)
     meta = clip.metadata["fmpose3d"]
     assert meta["frame"] == "camera" and meta["valid_frames"].all()
+    # No point moves the foot joints; the patella follows the free knee.
+    assert set(meta["held"]) == {
+        f"{joint}_{side}"
+        for joint in ("ankle_angle", "subtalar_angle", "mtp_angle")
+        for side in "rl"
+    }
     assert set(meta["joints"]) == {
         "hip",
         "r_hip",
@@ -226,9 +244,13 @@ def test_myofullbody_arms_and_legs_round_trip() -> None:
     truth = _motion(truth_model, {**LEG_MOTION, **ARM_MOTION}, frames=12)
     poses = _fake_fmpose3d(truth_model, truth, _turned_pitched_camera())
     model, clip = retarget_fmpose3d(spec, poses, fps=FPS)
-    _assert_angles(model, clip.qpos, truth, {**LEG_MOTION, **ARM_MOTION}, tol_deg=1.5)
+    _assert_every_joint(model, clip, truth, tol_deg=1.5)
     assert len(clip.metadata["fmpose3d"]["joints"]) == 14
     assert _root_tilt(model, clip.qpos, "Full Body").max() < 0.5
+    held = set(clip.metadata["fmpose3d"]["held"])
+    assert {"flex_extension", "L1_L2_FE", "pro_sup_r", "pro_sup_l"} <= held
+    assert {"deviation_r", "flexion_l", "ankle_angle_l", "mtp_angle_r"} <= held
+    assert not held & {*LEG_MOTION, *ARM_MOTION, "lat_bending", "axial_rotation"}
 
 
 def test_results_arrays_and_npz_files_agree(tmp_path: Path) -> None:
@@ -264,7 +286,7 @@ def test_world_frame_poses_from_the_demo(tmp_path: Path) -> None:
     )
     model, clip = retarget_fmpose3d(spec, tmp_path / "0000_3D.npz", upright=False)
     assert clip.metadata["fmpose3d"]["frame"] == "world" and len(clip.qpos) == 1
-    _assert_angles(model, clip.qpos, truth, LEG_MOTION, tol_deg=1.0)
+    _assert_every_joint(model, clip, truth, tol_deg=1.0)
 
 
 def test_subject_scales_are_applied_first() -> None:
@@ -285,7 +307,7 @@ def test_subject_scales_are_applied_first() -> None:
         )
 
     assert thigh(model) == pytest.approx(1.1 * thigh(nominal), rel=1e-9)
-    _assert_angles(model, clip.qpos, truth, LEG_MOTION, tol_deg=1.0)
+    _assert_every_joint(model, clip, truth, tol_deg=1.0)
 
 
 def test_bad_inputs_are_refused(tmp_path: Path) -> None:

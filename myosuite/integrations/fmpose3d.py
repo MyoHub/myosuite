@@ -81,10 +81,13 @@ _LEGS = ("hip", "r_hip", "r_knee", "r_ankle", "l_hip", "l_knee", "l_ankle")
 # centres and 0.028 m behind them. Only its direction from the hips is fitted,
 # which sets the pelvis tilt the hips alone leave open.
 _TRUNK_HEIGHT, _TRUNK_BACK = 0.56, 0.028
-# MyoFullBody's lumbar flexion, held at the seed with the joints coupled to it:
-# the hip and thorax joints cannot tell it from pelvis tilt, and left free it
-# drifts against pelvis tilt and hip flexion from frame to frame.
-_HELD = ("flex_extension",)
+# Joints held at the seed, with the joints coupled to them, although they move
+# a site. MyoFullBody's lumbar flexion: the hip and thorax joints cannot tell it
+# from pelvis tilt, and left free it drifts against pelvis tilt and hip flexion
+# from frame to frame. Forearm rotation: it moves the wrist point by 14 mm per
+# radian in any pose, so 1 cm of noise turns it by 40 degrees. Joints that move
+# no site (ankle, subtalar, toes, wrist) are held as well; see _free_joints.
+_HELD = ("flex_extension", "pro_sup_r", "pro_sup_l")
 # Segments rebuilt from the root outwards, as (parent joint, child joint).
 _SEGMENTS = (
     ("hip", "r_hip"),
@@ -145,11 +148,12 @@ def retarget_fmpose3d(
       With *ground_each_frame* every frame's lowest sole point is put on the
       ground, which assumes a foot is down in every frame; otherwise the
       pelvis keeps its height and the clip is lifted as a whole.
-    * Human3.6M has no foot or hand points, so the ankle, subtalar, toe,
-      forearm and wrist joints keep the seed pose. MyoFullBody's lumbar
-      flexion is held there too: the joints cannot tell it from pelvis tilt,
-      so a forward lean of the trunk shows as pelvis tilt, as on MyoLeg. The
-      axial rotation of a straight limb is also left open.
+    * Joints that move none of the sites keep the seed pose: Human3.6M has no
+      foot or hand points, so the ankle, subtalar and toe joints and the
+      wrist stay put. So does forearm rotation, which barely moves the wrist
+      point, and MyoFullBody's lumbar flexion: the joints cannot tell it from
+      pelvis tilt, so a forward lean of the trunk shows as pelvis tilt, as on
+      MyoLeg. The axial rotation of a straight limb is also left open.
 
     Args:
         spec: MyoLeg or MuscleMimic MyoFullBody spec; it is not changed.
@@ -172,7 +176,8 @@ def retarget_fmpose3d(
         The model with the ``h36m_*`` sites (scaled if asked; its ``qpos``
         layout is that of *spec*) and the clip. Its ``metadata`` holds
         retarget's entries and ``fmpose3d``: the rotation from the input
-        frame, the frame, the fitted joints and the valid frames.
+        frame, the frame, the fitted Human3.6M joints, the model joints held
+        at the seed pose (``held``) and the valid frames.
 
     Raises:
         ValueError: For poses that are not the 17 human joints, a spec without
@@ -206,11 +211,12 @@ def retarget_fmpose3d(
         world, rotation = world @ lean.T, lean @ rotation
     targets = _rebuild(world, joints, centres)
     shift = centres["hip"] - targets["hip"]  # every frame over the seed's pelvis
+    free, held = _free_joints(model)
     clip = retarget(
         model,
         {_SITE_PREFIX + joint: path + shift for joint, path in targets.items()},
         fps=fps if fps is not None else rate,
-        joints=_free_joints(model),
+        joints=free,
         qpos=seed,
         ground_each_frame=ground_each_frame,
     )
@@ -218,6 +224,7 @@ def retarget_fmpose3d(
         "rotation": rotation,
         "frame": frame,
         "joints": list(targets),
+        "held": held,
         "valid_frames": valid,
     }
     return model, clip
@@ -319,18 +326,35 @@ def _with_sites(
     return scale_model(edited, {} if scales is None else scales, total_mass=total_mass)
 
 
-def _free_joints(model: mujoco.MjModel) -> list[str] | None:
-    """Every joint but the held ones and those coupled to them (``None``: all)."""
-    held = {
-        model.joint(name).id
-        for name in _HELD
-        if mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name) >= 0
-    }
+def _free_joints(model: mujoco.MjModel) -> tuple[list[str] | None, list[str]]:
+    """Joints the fit may move (``None``: all) and the joints held at the seed.
+
+    Held are the joints of ``_HELD``, every joint that moves no ``h36m_*``
+    site (its body is no strict ancestor of a site's body: the ankle and wrist
+    joints, whose sites sit at their own centres, and everything distal to
+    them), and the joints coupled to a held joint. A joint coupled to a free
+    joint moves with it.
+    """
     couplings = [
         (int(model.eq_obj1id[e]), int(model.eq_obj2id[e]))
         for e in range(model.neq)
         if model.eq_type[e] == mujoco.mjtEq.mjEQ_JOINT and model.eq_active0[e]
     ]
+    followers = {follower for follower, leader in couplings if leader >= 0}
+    moving = set()  # strict ancestors of the bodies carrying the sites
+    for site in range(model.nsite):
+        if not model.site(site).name.startswith(_SITE_PREFIX):
+            continue
+        body = int(model.body_parentid[model.site_bodyid[site]])
+        while body > 0 and body not in moving:
+            moving.add(body)
+            body = int(model.body_parentid[body])
+    held = {
+        joint
+        for joint in range(model.njnt)
+        if joint not in followers
+        and (model.joint(joint).name in _HELD or model.jnt_bodyid[joint] not in moving)
+    }
     grown = True
     while grown:  # a coupled joint (obj1) follows its leader (obj2)
         grown = False
@@ -339,8 +363,10 @@ def _free_joints(model: mujoco.MjModel) -> list[str] | None:
                 held.add(follower)
                 grown = True
     if not held:
-        return None
-    return [model.joint(j).name for j in range(model.njnt) if j not in held]
+        return None, []
+    names = [model.joint(j).name for j in range(model.njnt)]
+    free = [names[j] for j in range(model.njnt) if j not in held]
+    return free, [names[j] for j in sorted(held)]
 
 
 def _median_trunk(world: np.ndarray) -> np.ndarray:
