@@ -72,6 +72,26 @@ def _planar(elbow_max: float = 2.5) -> mujoco.MjModel:
     return mujoco.MjModel.from_xml_string(PLANAR.format(elbow_max=elbow_max))
 
 
+def _myoleg() -> mujoco.MjModel:
+    import myosuite  # noqa: F401, PLC0415  (registers the envs)
+    from myosuite.utils import gym  # noqa: PLC0415
+    from myosuite.utils.asset_path_resolver import resolve_model_xml_path  # noqa: PLC0415
+
+    path = resolve_model_xml_path(gym.spec("myoLegWalk-v0").kwargs["model_path"])
+    return mujoco.MjModel.from_xml_path(str(path))
+
+
+def _couple(model: mujoco.MjModel, qpos: np.ndarray) -> None:
+    """Set each coupled follower from its leader (MuJoCo's polynomial of qpos0 offsets)."""
+    for e in range(model.neq):
+        joint = model.eq_type[e] == mujoco.mjtEq.mjEQ_JOINT
+        if joint and model.eq_active0[e] and model.eq_obj2id[e] >= 0:
+            follower = model.jnt_qposadr[model.eq_obj1id[e]]
+            leader = model.jnt_qposadr[model.eq_obj2id[e]]
+            offset = (qpos[leader] - model.qpos0[leader]) ** np.arange(5)
+            qpos[follower] = model.qpos0[follower] + model.eq_data[e, :5] @ offset
+
+
 def _site_pose(
     model: mujoco.MjModel, qpos: np.ndarray, site: str
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -154,6 +174,34 @@ def test_coupled_joint_stays_tied_to_its_leader() -> None:
     # Out of reach, the closest pose keeps the coupling nearly exact.
     far = solve_ik(model, {"tip": [2.0, 0.0, 0.0]}, strict=False)
     assert tie(far) < 1e-4
+
+
+def test_coupled_followers_may_leave_their_range() -> None:
+    # Near 0.8 rad of knee flexion, MyoLeg's knee rotation follows the knee past
+    # its own range; the range must not stop the knee.
+    leg = _myoleg()
+    truth = leg.qpos0.copy()
+    truth[leg.joint("knee_angle_r").qposadr[0]] = 0.8
+    _couple(leg, truth)
+    rotation = leg.joint("knee_angle_rotation2_r")
+    assert truth[rotation.qposadr[0]] > rotation.range[1]
+    below = {leg.body(name).id for name in ("tibia_r", "talus_r", "calcn_r", "toes_r")}
+    data = mujoco.MjData(leg)
+    data.qpos[:] = truth
+    mujoco.mj_kinematics(leg, data)
+    targets = {
+        leg.site(s).name: data.site_xpos[s].copy()
+        for s in range(leg.nsite)
+        if leg.site_bodyid[s] in below
+    }
+    leg_joints = ["hip_flexion_r", "hip_adduction_r", "hip_rotation_r", "knee_angle_r"]
+    qpos = solve_ik(leg, targets, joints=[*leg_joints, "ankle_angle_r"], tol=1e-7)
+    knee = qpos[leg.joint("knee_angle_r").qposadr[0]]
+    assert abs(knee - 0.8) < np.deg2rad(0.05)
+    data.qpos[:] = qpos
+    mujoco.mj_kinematics(leg, data)
+    for name, target in targets.items():
+        np.testing.assert_allclose(data.site(name).xpos, target, atol=1e-4)
 
 
 def test_unreachable_target_raises_or_returns_the_closest_pose() -> None:

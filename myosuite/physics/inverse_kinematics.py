@@ -106,9 +106,12 @@ def solve_ik(
       first pass weighs these costs like the targets, which avoids getting
       stuck with coupled joints at their limits. Flex equalities are ignored.
     * Selected hinge and slide coordinates stay in ``jnt_range``; a seed outside
-      it is clipped. mink 1.3 and later bound a limited ball joint's cone to
-      first order, so the result may leave the cone slightly; earlier releases
-      leave it unbounded.
+      it is clipped. Joints that follow another through a joint equality are
+      set by the coupling instead and are not range-limited: a coupling can
+      leave its follower's range (MyoLeg's knee does), and the range would
+      then stop the leader. mink 1.3 and later bound a limited ball joint's
+      cone to first order, so the result may leave the cone slightly; earlier
+      releases leave it unbounded.
     * The fit is local. A seed with straight, limit-bound joints (such as
       ``qpos0`` of the arm models) can stall, so by default an unreached
       target is solved again from the middle of the joint ranges and the
@@ -315,6 +318,25 @@ class _IKProblem:
         rot_weight: float,
         equality_weight: float,
     ) -> None:
+        disabled = model.opt.disableflags & (
+            mujoco.mjtDisableBit.mjDSBL_EQUALITY
+            | mujoco.mjtDisableBit.mjDSBL_CONSTRAINT
+        )
+        # A joint that follows another through a joint equality is set by the
+        # coupling, not by its range: a coupling can leave the follower's range
+        # (MyoLeg's knee rotation by 0.0003 rad), and the range would then stop
+        # the leader. Simulation treats both as soft constraints.
+        followers = (
+            set()
+            if disabled
+            else {
+                int(model.eq_obj1id[e])
+                for e in range(model.neq)
+                if model.eq_type[e] == _EQ_JOINT
+                and model.eq_active0[e]
+                and model.eq_obj2id[e] >= 0
+            }
+        )
         moving: set[int] = set()
         dofs: list[int] = []
         self._limited: list[tuple[int, float, float]] = []  # qpos adr, range
@@ -324,7 +346,8 @@ class _IKProblem:
                 low, high = (float(v) for v in model.jnt_range[joint])
                 if high <= low:  # a locked joint cannot move
                     continue
-                self._limited.append((int(model.jnt_qposadr[joint]), low, high))
+                if joint not in followers:
+                    self._limited.append((int(model.jnt_qposadr[joint]), low, high))
             moving.add(joint)
             dofs.extend(range(dof, dof + {_FREE: 6, _BALL: 3}.get(kind, 1)))
         if not dofs:
@@ -335,7 +358,8 @@ class _IKProblem:
         self._high = np.array([high for _, _, high in self._limited])
         # mink bounds every limited joint, and a held joint whose seed is out of
         # range would make the QP infeasible. mink reads the bounds when its
-        # objects are built, so such joints are unbounded only meanwhile.
+        # objects are built, so such joints and the followers are unbounded
+        # only meanwhile.
         held = [
             j
             for j in range(model.njnt)
@@ -346,7 +370,7 @@ class _IKProblem:
         self.model = model
         limited = model.jnt_limited.copy()
         try:
-            model.jnt_limited[held] = 0
+            model.jnt_limited[sorted(followers.union(held))] = 0
             self.configuration = mink.Configuration(model)
             self.limits = [mink.ConfigurationLimit(model, gain=1.0)]
         finally:
@@ -369,10 +393,6 @@ class _IKProblem:
         self.equality_weight = equality_weight
         self.equality: mink.EqualityConstraintTask | None = None
         self._equality_ids: list[int] = []
-        disabled = model.opt.disableflags & (
-            mujoco.mjtDisableBit.mjDSBL_EQUALITY
-            | mujoco.mjtDisableBit.mjDSBL_CONSTRAINT
-        )
         # mink before 1.4 leaves tendon lengths stale in Configuration.update.
         self._tendon_equality = not disabled and any(
             model.eq_type[e] == _EQ_TENDON and model.eq_active0[e]
