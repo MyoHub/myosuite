@@ -29,6 +29,10 @@ pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=trainin
 
 Use separate virtual environments when dependency stacks conflict.
 
+## Existing training entry points and extras
+
+`scripts/train_mjlab.py`, `scripts/train_sb3.py`, and the root `rl` and `mjlab` extras stay in their current locations. This guideline does not require moving or removing them. Any future migration should be proposed and reviewed separately, preserving supported training commands and dependency installation paths. New method-specific trainers and dependencies follow the `training/<method>/` layout above.
+
 ## Attribution and licensing
 
 Training methods adapted from or based on external research or code must preserve appropriate attribution.
@@ -47,6 +51,7 @@ Agents must check attribution and license requirements before adding or modifyin
 Keep in `myosuite/`:
 
 - environments and tasks
+- default per-task runner configurations registered with their environments through `register_cpu_twins` / `register_mjlab_task` (for example, `myo_ppo_runner_cfg` in `myosuite/envs/myo/backends/mjlab/tasks/rl.py`)
 - observation, reward, and termination contracts
 - simulation/backend functionality
 - reusable biomechanical/runtime functionality
@@ -57,7 +62,7 @@ Keep in `training/`:
 - trainers and optimizers
 - replay buffers
 - world-model training
-- experiment configuration
+- method-specific experiment configuration and overrides beyond the registered task defaults
 - algorithm-specific evaluation
 - other method-specific learning code
 
