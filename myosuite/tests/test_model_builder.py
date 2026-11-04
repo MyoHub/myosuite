@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -793,3 +794,19 @@ def test_try_myo_sim_compose_raises_compose_errors(
         assert model_builder._try_myo_sim_compose("leg") is None
     assert "falling back" in caplog.text
     assert model_builder._try_myo_sim_compose("elbow") is None
+
+
+@_REQUIRES_MYO_SIM
+def test_materialize_recipe_xml_applies_edit_fn(tmp_path: Path) -> None:
+    """materialize_recipe_xml writes the recipe as an env's edit_fn changes it."""
+    import mujoco
+
+    from myosuite.core.model_recipes import materialize_recipe_xml
+
+    def _add_site(spec: mujoco.MjSpec) -> None:
+        spec.worldbody.add_site(name="edit_fn_site")
+
+    path = materialize_recipe_xml("hand_pose", tmp_path / "hand.xml", edit_fn=_add_site)
+    mujoco.MjModel.from_xml_path(str(path)).site("edit_fn_site")  # KeyError if lost
+    with pytest.raises(ValueError, match="explicit dest"):
+        materialize_recipe_xml("hand_pose", edit_fn=_add_site)
