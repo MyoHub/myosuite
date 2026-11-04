@@ -105,12 +105,14 @@ class _NoiseStage(_TermStage):
 class _FatigueStage(_TermStage):
     name, order = "fatigue", STAGE_ORDER["fatigue"]
 
-    def __init__(self, term: MyoAction, state: TorchFatigueState) -> None:
-        self._term, self.state = term, state
+    def __init__(
+        self, term: MyoAction, state: TorchFatigueState, cols: torch.Tensor
+    ) -> None:
+        self._term, self.state, self._cols = term, state, cols
 
     def __call__(self, ctrl: torch.Tensor) -> torch.Tensor:
-        cols, term = self._term._muscle_cols, self._term
-        ctrl[:, cols] = self.state.step(ctrl[:, cols], term._env.step_dt)
+        cols = self._cols  # the fatigued muscles' ctrl columns, in state order
+        ctrl[:, cols] = self.state.step(ctrl[:, cols], self._term._env.step_dt)
         return ctrl
 
     def reset(self, env_ids: torch.Tensor | slice) -> None:
@@ -165,6 +167,10 @@ class MyoActionCfg(ActionTermCfg):
             of each muscle at every reset (``None``: start fresh).
         fatigue_reset_random: CPU ``fatigue_reset_random``: draw a random
             fatigue state per env at every reset.
+        fatigue_muscles: CPU ``FatigueWrapper(muscles=...)``: fatigue only these
+            muscle actuators, as names or actuator columns of the entity (the CPU
+            actuator ids of a twin); the others pass unchanged. ``None``: every
+            muscle.
         reroute: ``(source, destination)`` actuator names for reafferentation:
             ``ctrl[dst] = ctrl[src]; ctrl[src] = 0``.
         motor_noise: Noise on muscle excitations, applied before fatigue.
@@ -180,6 +186,7 @@ class MyoActionCfg(ActionTermCfg):
     muscle_fatigue: bool = False
     fatigue_reset_vec: tuple[float, ...] | None = None
     fatigue_reset_random: bool = False
+    fatigue_muscles: tuple[str | int, ...] | None = None
     reroute: tuple[str, str] | None = None
     motor_noise: MotorNoiseCfg = field(default_factory=MotorNoiseCfg)
     excitation_stages: tuple[Callable[[], ExcitationStage], ...] = ()
@@ -293,10 +300,12 @@ class MyoAction(ActionTerm):
         cfg = self.cfg
         stages: list[_TermStage] = [_NoiseStage(self)]
         if cfg.muscle_fatigue:
-            state = TorchFatigueState.from_mj_model(
-                model, num_envs=self.num_envs, device=str(self.device)
+            cols = self._fatigue_cols()
+            ids = self._entity.indexing.ctrl_ids[cols].cpu().numpy()
+            state = TorchFatigueState.from_mj_model(  # one state column per col
+                model, num_envs=self.num_envs, device=str(self.device), muscles=ids
             )
-            stages.append(_FatigueStage(self, state))
+            stages.append(_FatigueStage(self, state, cols))
         if self._reroute is not None:
             stages.append(_RerouteStage(*self._reroute))
         for make_stage in cfg.excitation_stages:
@@ -312,6 +321,15 @@ class MyoAction(ActionTerm):
             stages.append(custom)
         # Stable: stages of equal order keep the list order.
         return sorted(stages, key=lambda st: st.order)
+
+    def _fatigue_cols(self) -> torch.Tensor:
+        """Ctrl columns of the fatigued muscles (``cfg.fatigue_muscles``, default all)."""
+        muscles = self.cfg.fatigue_muscles
+        if muscles is None:
+            return self._muscle_cols
+        names = list(self._entity.actuator_names)
+        cols = [names.index(m) if isinstance(m, str) else int(m) for m in muscles]
+        return torch.tensor(cols, dtype=torch.long, device=self.device)
 
     @property
     def _fatigue(self) -> TorchFatigueState | None:

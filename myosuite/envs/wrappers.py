@@ -404,6 +404,9 @@ class FatigueWrapper(
         env: Env whose pipeline runs muscle stages.
         fatigue_reset_vec: Initial fatigue (MF) of every muscle at reset, or ``None``.
         fatigue_reset_random: Draw a random initial fatigue at reset.
+        muscles: Fatigue only these muscle actuators (names or ids; the rest
+            pass unchanged), indexing the env's actuator ``ctrl``. Default:
+            the env's muscle excitations. The mjlab twin fatigues the same muscles.
     """
 
     def __init__(
@@ -411,6 +414,7 @@ class FatigueWrapper(
         env: gym.Env,
         fatigue_reset_vec: Any = None,
         fatigue_reset_random: bool = False,
+        muscles: Any = None,
     ) -> None:
         from myosuite.physics.fatigue import CumulativeFatigue  # noqa: PLC0415
 
@@ -418,15 +422,20 @@ class FatigueWrapper(
             self,
             fatigue_reset_vec=fatigue_reset_vec,
             fatigue_reset_random=fatigue_reset_random,
+            muscles=muscles,
         )
         gym.Wrapper.__init__(self, env)
         host = _stage_host(env, "FatigueWrapper")
         self.fatigue_reset_vec = fatigue_reset_vec
         self.fatigue_reset_random = fatigue_reset_random
-        self.muscle_fatigue = CumulativeFatigue(host.model, host.frame_skip, seed=None)
+        self.muscles = muscles
+        self.muscle_fatigue = CumulativeFatigue(
+            host.model, host.frame_skip, seed=None, muscles=muscles
+        )
         apply, reset = muscle_stages.fatigue_stage(
             self.muscle_fatigue,
             lambda: (self.fatigue_reset_vec, self.fatigue_reset_random),
+            index=None if muscles is None else self.muscle_fatigue.muscle_ids,
         )
         host.add_ctrl_stage("fatigue", apply, reset)
 
@@ -434,6 +443,7 @@ class FatigueWrapper(
         return {
             "fatigue_reset_vec": self.fatigue_reset_vec,
             "fatigue_reset_random": self.fatigue_reset_random,
+            "muscles": self.muscles,
         }
 
     def set_fatigue_reset_random(self, fatigue_reset_random: bool) -> None:

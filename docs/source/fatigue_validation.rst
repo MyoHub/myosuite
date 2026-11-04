@@ -73,13 +73,35 @@ muscle groups (``myosuite/core/muscle_groups.py``) to ``F``, ``R`` and ``r``:
 * Joint-level rows (``Ankle``, ``Elbow``, ``Hand``, ``Knee``) and the
   muscle-group and sex-specific rows: Rakshit et al. (2021, Table 2), fitted to
   torque decline in sustained and intermittent isometric contractions. Every
-  value matches the published table. ``Toe`` copies ``Ankle``; ``Wrist`` and
+  value matches the published table, and every F/R ratio matches their Table 3.
+  Their ``k`` is ``r``; groups without a fitted ``k`` (plantarflexors, female
+  first dorsal interosseous) use r = 15. ``Toe`` copies ``Ankle``; ``Wrist`` and
   ``Finger`` copy ``Hand``; ``Wrist-Flexor`` is the general handgrip group.
+  The joint rows are the "combined sexes, combined FMGs" column: separate fits
+  to the pooled data of a joint, not averages of its group rows. That is why
+  ``Elbow`` (F = 0.01086) lies below both elbow groups and ``Ankle``
+  (F = 0.01485) about twice above both ankle groups: F and R move together, and
+  the joint F/R (4.82 elbow, 4.46 ankle) lies between those of the groups. The
+  combined-sex group rows are likewise separate fits, so they need not lie
+  between the female and male rows (``Knee-Extensor`` F = 0.00825 against
+  0.01407 and 0.01420). ``Knee`` equals ``Knee-Extensor`` because the only knee
+  data were knee-extension data (Rakshit et al. 2021, Section 3).
 * ``Shoulder``: the shoulder fit of Frey-Law et al. (2012, Table 1),
   F = 0.01820, R = 0.00168, with r = 15, which Looft & Frey-Law (2020) found
   somewhat better than r = 30 for intermittent shoulder flexion.
-* Muscles without a group, namely hip and hamstring muscles of the leg models
-  and every torso muscle, use ``Default``.
+* ``Trunk`` (the lumbar and abdominal muscles of MyoTorso and the MuscleMimic torso):
+  the trunk fit of Frey-Law et al. (2012, Table 1), F = 0.00755, R = 0.00075, with
+  r = 15 as for ``Default`` (no trunk ``r`` has been fitted).
+* ``Thigh-Hamstring``: no knee-flexor fit has been published. The row is the knee fit
+  of Frey-Law et al. (2012, Table 1), F = 0.01500, R = 0.00149, with r = 15 (Looft et
+  al. 2018, Table 4), the joint-level knee parameters Yang et al. (2025) use for the
+  knee flexors and extensors. Rakshit et al.'s ``Knee`` row is fitted to
+  knee-extension data only, so the hamstrings do not use it.
+* ``Hip`` (every ``Hip-*`` group): no hip-specific fit has been published, and Yang
+  et al. (2025) use the general fit for the hip; the row repeats ``Default``.
+* Forearm rotators (``SUP``, ``PT``, ``PQ``: groups ``Elbow-Supinator`` and
+  ``Elbow-Pronator``) use the joint-level ``Elbow`` row; no pronation or supination
+  fit has been published.
 
 Method
 ------
@@ -449,6 +471,18 @@ Results
      - 30.4 (-58%)
      - 17.4 (-68%)
      - 7.6 (-82%)
+   * - ``Thigh-Hamstring``
+     - 0.01500 / 0.00149
+     - Knee
+     - 1508 (+3%)
+     - 340 (-15%)
+     - 177 (-5%)
+     - 108 (-0%)
+     - 70.3 (-1%)
+     - 46.0 (-9%)
+     - 29.2 (-23%)
+     - 16.9 (-43%)
+     - 7.5 (-68%)
    * - ``Shoulder``
      - 0.01820 / 0.00168
      - Shoulder
@@ -461,18 +495,18 @@ Results
      - 24.1 (-16%)
      - 13.9 (-38%)
      - 6.2 (-66%)
-   * - ``Default`` (torso muscles)
-     - 0.00970 / 0.00091
+   * - ``Trunk``
+     - 0.00755 / 0.00075
      - Trunk
-     - 2045 (-52%)
-     - 517 (-41%)
-     - 272 (-22%)
-     - 167 (-8%)
-     - 108 (-1%)
-     - 71.0 (-2%)
-     - 45.1 (-11%)
-     - 26.1 (-31%)
-     - 11.5 (-60%)
+     - 2995 (-29%)
+     - 675 (-23%)
+     - 352 (+1%)
+     - 215 (+18%)
+     - 140 (+28%)
+     - 91.4 (+26%)
+     - 58.1 (+14%)
+     - 33.6 (-11%)
+     - 14.8 (-49%)
 
 .. list-table:: MyoSuite muscle-group and sex-specific rows (Rakshit et al. 2021) against the joint curve
    :header-rows: 1
@@ -770,9 +804,10 @@ Findings
 * **Hand, Wrist, Finger and Wrist-Flexor** are within 16% of the grip curve at
   20-50% MVC and fall 57% short at 80% MVC, where the published grip fit falls
   46% short.
-* **Torso muscles** use ``Default``. Against the trunk curve it is within the
-  band but 41% short at 20% MVC. The Frey-Law et al. (2012) trunk fit would
-  hold longer. Hip and hamstring muscles also use ``Default``. Frey-Law &
+* **Torso muscles** use the ``Trunk`` row, the Frey-Law et al. (2012) trunk
+  fit: within 29% of the trunk curve at 10-80% MVC (``Default`` was 41% short
+  at 20% MVC). Hamstrings use the Frey-Law et al. (2012) knee fit, within 23%
+  of the knee curve at 10-70% MVC (43% short at 80%, as the published fit). Hip muscles use the general fit: Frey-Law &
   Avin (2010) have no hip curve, and this is what the general fit is for.
 * The muscle-group and sex-specific rows have no matching empirical curves, so
   they are compared with their joint curve for information only. Single
@@ -810,3 +845,6 @@ References
   sex-specific parameters for a three-compartment controller muscle fatigue
   model applied to isometric contractions. *J Biomech* 127, 110695.
   https://doi.org/10.1016/j.jbiomech.2021.110695
+* Yang, J., Rakshit, R., Barman, S., Xiang, Y. (2025). A four-compartment
+  controller model of muscle fatigue for static and dynamic tasks. *Front Physiol*
+  16, 1518847. https://doi.org/10.3389/fphys.2025.1518847

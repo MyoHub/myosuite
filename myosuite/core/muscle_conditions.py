@@ -13,6 +13,8 @@ as transform callbacks and by term functions via EnvAccessor.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -23,8 +25,15 @@ if TYPE_CHECKING:
 
 # ---------------------------------------------------------------------------
 # Per-muscle fatigue parameters, F and R in 1/s. Muscle-group, sex-specific and
-# joint rows: Rakshit et al. 2021 (J Biomech 127:110695, Table 2). Validated
-# against endurance times in docs/source/fatigue_validation.rst.
+# joint rows: Rakshit et al. 2021 (J Biomech 127:110695, Table 2, p. 5; their k is
+# r, "-" there means no r). Joint rows (Ankle, Elbow, Hand, Knee) are the "combined
+# sexes, combined FMGs" column: separate fits to the pooled data, not averages of
+# the group rows. Knee equals Knee-Extensor because only knee-extensor data
+# existed (Section 3). Default,
+# Shoulder, Trunk, Thigh-Hamstring and Hip: Frey-Law et al. 2012 (J Biomech
+# 45:1803, Table 1) with r of Looft et al. 2018 (J Biomech 77:16, Table 4). Rows
+# without "r" use Default's r = 15. Validated against endurance times in
+# docs/source/fatigue_validation.rst.
 # ---------------------------------------------------------------------------
 
 MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
@@ -86,6 +95,16 @@ MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
     # F, R: shoulder fit of Frey-Law et al. 2012 (Table 1); r = 15: Looft & Frey-Law
     # 2020 (https://doi.org/10.1016/j.jbiomech.2020.109762), better than r = 30.
     "Shoulder": {"F": 0.01820, "R": 0.00168, "r": 15},
+    # hamstrings: no knee-flexor fit is published; the knee fit of Frey-Law et al. 2012
+    # (Table 1) with r = 15 of Looft et al. 2018 (Table 4), the joint-level knee parameters
+    # Yang et al. 2025 (Front Physiol 16:1518847) use for the knee flexors and extensors
+    "Thigh-Hamstring": {"F": 0.01500, "R": 0.00149, "r": 15},
+    # hip muscles: no hip-specific fit is published (Yang et al. 2025 use the general fit);
+    # the "general" F, R of Frey-Law et al. 2012 (Table 1), r of Looft et al. 2018
+    "Hip": {"F": 0.00970, "R": 0.00091, "r": 15},
+    # lumbar and abdominal muscles: trunk F, R of Frey-Law et al. 2012 (Table 1); r = 15
+    # as for Default (Looft et al. 2018 and Looft & Frey-Law 2020 fit no trunk r)
+    "Trunk": {"F": 0.00755, "R": 0.00075, "r": 15},
     # default: "general" F, R of Frey-Law et al. 2012 (Table 1), r of Looft et al. 2018
     "Default": {"F": 0.00970, "R": 0.00091, "r": 15},
     # v2.4 fallback: elbow F, R of Frey-Law et al. 2012 with R / 10 (r * 10 keeps r * R)
@@ -108,26 +127,50 @@ _DEFAULT_r = MUSCLE_FATIGUE_PARAMS["Default"]["r"]
 _UNIFORM_PARAMS = MUSCLE_FATIGUE_PARAMS["Default_v2_4"]
 
 
-def _muscle_time_constants(mj_model: Any) -> tuple[np.ndarray, np.ndarray]:
-    """Return the ``(tauact, taudeact)`` of the muscle actuators, shape ``(na,)``."""
+def _muscle_ids(
+    mj_model: Any, muscles: Sequence[int | str] | None = None
+) -> np.ndarray:
+    """Actuator ids of *muscles* (ids or names), default every muscle in model order.
+
+    Raises:
+        ValueError: If an entry is not a muscle actuator.
+    """
     import mujoco as _mujoco  # noqa: PLC0415
 
-    muscle = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
-    dynprm = np.asarray(mj_model.actuator_dynprm)[muscle]
+    is_muscle = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
+    if muscles is None:
+        return np.flatnonzero(is_muscle)
+    ids = np.array(
+        [mj_model.actuator(m).id if isinstance(m, str) else int(m) for m in muscles],
+        dtype=int,
+    )
+    if not is_muscle[ids].all():
+        raise ValueError(f"not muscle actuators: {ids[~is_muscle[ids]].tolist()}")
+    return ids
+
+
+def _muscle_time_constants(
+    mj_model: Any, ids: np.ndarray | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the ``(tauact, taudeact)`` of the muscle actuators *ids* (default all)."""
+    ids = _muscle_ids(mj_model) if ids is None else ids
+    dynprm = np.asarray(mj_model.actuator_dynprm)[ids]
     return dynprm[:, 0].copy(), dynprm[:, 1].copy()
 
 
 def _muscle_group(name: str) -> str:
     """Return the functional muscle group of actuator *name*, or ``"Default"``.
 
-    Scene models prefix actuator names (mjlab: ``robot/BIClong``) and some
-    models suffix the side (``ECRL_r``, ``BIClong_l``), while ``MUSCLE_FMG``
-    keys arm and hand muscles without it. Leg muscles are keyed with their
-    side, so the exact name is tried first.
+    Scene models prefix actuator names (mjlab: ``robot/BIClong``), two-agent scenes
+    prefix the agent (``a0_BIClong``), and models mark the side in several ways
+    (``ECRL_r``, ``rect_abd_l``, MuscleMimic's ``BIClong_left``, ``R:ECRL``), while
+    ``MUSCLE_FMG`` keys arm, hand and torso muscles without it. Leg muscles are keyed
+    with their side, so the exact name is tried first.
     """
     from myosuite.core.muscle_groups import MUSCLE_FMG  # noqa: PLC0415
 
-    base = name.rsplit("/", 1)[-1]
+    base = re.sub(r"^a\d+_", "", name.rsplit("/", 1)[-1])
+    base = base.removeprefix("R:").removeprefix("L:").removesuffix("_left")
     for key in (base, base.removesuffix("_r"), base.removesuffix("_l")):
         if key in MUSCLE_FMG:
             return MUSCLE_FMG[key]
@@ -135,20 +178,16 @@ def _muscle_group(name: str) -> str:
 
 
 def _per_muscle_params(
-    mj_model: Any, sex: str | None
+    mj_model: Any, sex: str | None, ids: np.ndarray | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Derive per-muscle F, R, r arrays from MFG lookup.
 
-    Returns arrays of shape ``(na,)`` where ``na`` is the number of muscle
-    actuators in *mj_model*.
+    Returns arrays of shape ``(na,)``, one entry per muscle actuator in *ids*
+    (default: every muscle actuator of *mj_model*).
     """
-    import mujoco as _mujoco  # noqa: PLC0415
-
-    muscle_act_ind = mj_model.actuator_dyntype == _mujoco.mjtDyn.mjDYN_MUSCLE
-    na = int(sum(muscle_act_ind))
-    actuator_names = [
-        mj_model.actuator(i).name for i in range(mj_model.nu) if muscle_act_ind[i]
-    ]
+    ids = _muscle_ids(mj_model) if ids is None else ids
+    na = int(ids.size)
+    actuator_names = [mj_model.actuator(int(i)).name for i in ids]
 
     F_arr = np.zeros(na)
     R_arr = np.zeros(na)
@@ -280,6 +319,8 @@ class CumulativeFatigue:
             the ``"Default_v2_4"`` row of :data:`MUSCLE_FATIGUE_PARAMS` for
             all muscles: the single F/R/r of the legacy (v2.x) model, which the
             JAX models in ``physics/fatigue_jax.py`` also use.
+        muscles: Muscle actuators to track (ids or names), in the order the
+            excitations are passed; default every muscle in model order.
 
     Example:
         >>> fatigue = CumulativeFatigue(mj_model, frame_skip=5)
@@ -295,9 +336,11 @@ class CumulativeFatigue:
         sex: str | None = None,
         seed: int | None = None,
         use_uniform_params: bool = False,
+        muscles: Sequence[int | str] | None = None,
     ) -> None:
         self._dt = float(mj_model.opt.timestep) * int(frame_skip)
-        self._tauact, self._taudeact = _muscle_time_constants(mj_model)
+        self.muscle_ids = _muscle_ids(mj_model, muscles)  # actuator ids, state order
+        self._tauact, self._taudeact = _muscle_time_constants(mj_model, self.muscle_ids)
         self.na: int = int(self._tauact.size)
         self._MA = np.zeros(self.na)
         self._MR = np.ones(self.na)
@@ -309,7 +352,9 @@ class CumulativeFatigue:
             self._R = _UNIFORM_PARAMS["R"] * np.ones(self.na)
             self._r = _UNIFORM_PARAMS["r"] * np.ones(self.na)
         else:
-            self._F, self._R, self._r = _per_muscle_params(mj_model, sex)
+            self._F, self._R, self._r = _per_muscle_params(
+                mj_model, sex, self.muscle_ids
+            )
 
         self.seed(seed)
 
@@ -418,7 +463,7 @@ class CumulativeFatigue:
 
         Args:
             fatigue_reset_vec: If provided, set MF to this vector and
-                MR = 1 - fatigue_reset_vec.  Shape ``(na,)``.
+                MR = 1 - fatigue_reset_vec. Shape ``(na,)``. The vector is copied.
             fatigue_reset_random: If ``True``, sample a random fatigue
                 state.  Cannot be combined with *fatigue_reset_vec*.
             np_random: Generator for the random state, typically the env's
@@ -444,7 +489,7 @@ class CumulativeFatigue:
                 raise ValueError(
                     f"fatigue_reset_vec length {len(fatigue_reset_vec)} != na={self.na}"
                 )
-            self._MF = np.asarray(fatigue_reset_vec, dtype=float)  # type: ignore[assignment]
+            self._MF = np.array(fatigue_reset_vec, dtype=float, copy=True)  # type: ignore[assignment]
             self._MR = 1.0 - self._MF  # type: ignore[assignment]
             self._MA = np.zeros(self.na)
         else:
@@ -596,6 +641,7 @@ class TorchFatigueState:
         device: str = "cpu",
         sex: str | None = None,
         use_uniform_params: bool = False,
+        muscles: Sequence[int | str] | None = None,
     ) -> TorchFatigueState:
         """Build a :class:`TorchFatigueState` from a compiled MuJoCo model.
 
@@ -611,8 +657,11 @@ class TorchFatigueState:
             sex: Optional ``"F"`` / ``"M"`` for sex-specific parameters.
             use_uniform_params: Use the uniform ``"Default_v2_4"`` F/R/r for
                 every muscle, as :class:`CumulativeFatigue` does.
+            muscles: Muscle actuators to track (ids or names), in column order;
+                default every muscle in model order.
         """
-        tauact, taudeact = _muscle_time_constants(mj_model)
+        ids = _muscle_ids(mj_model, muscles)
+        tauact, taudeact = _muscle_time_constants(mj_model, ids)
         na = int(tauact.size)
         if na == 0:
             return cls(num_envs=num_envs, n_muscles=mj_model.nu, device=device)
@@ -621,7 +670,7 @@ class TorchFatigueState:
             R_arr = np.full(na, _UNIFORM_PARAMS["R"])
             r_arr = np.full(na, _UNIFORM_PARAMS["r"])
         else:
-            F_arr, R_arr, r_arr = _per_muscle_params(mj_model, sex)
+            F_arr, R_arr, r_arr = _per_muscle_params(mj_model, sex, ids)
         return cls(
             num_envs=num_envs,
             n_muscles=na,

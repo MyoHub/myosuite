@@ -26,7 +26,7 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
-from myosuite.core.trajectory_io import check_clip_rate
+from myosuite.core.trajectory_io import check_clip_rate, read_npz_names
 from myosuite.physics.running_stats import RunningMeanStd, normalize, update
 from myosuite.terms.mimic_obs import (
     mimic_lookahead_obs,
@@ -117,8 +117,7 @@ def _decode_joint_names(
     for key in candidate_keys:
         if key not in npz.files:
             continue
-        raw = np.asarray(npz[key]).reshape(-1)
-        names = tuple(str(name) for name in raw.tolist())
+        names = tuple(read_npz_names(npz, key))
         if not names:
             raise ValueError(f"Clip metadata key {key!r} is empty.")
         return names
@@ -325,7 +324,7 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
 
         # Load clip
         clip_path = Path(clip_path)
-        npz = np.load(clip_path, allow_pickle=True)
+        npz = np.load(clip_path, allow_pickle=False)
         if (
             "qpos" not in npz.files
             or "qvel" not in npz.files

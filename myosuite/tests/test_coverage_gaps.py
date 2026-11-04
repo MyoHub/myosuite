@@ -208,6 +208,19 @@ class TestCumulativeFatigue:
         assert np.all(f.MF == 0.0)
         assert np.all(f.MR == 1.0)
 
+    @pytest.mark.parametrize("readonly", [False, True])
+    def test_reset_vector_remains_owned_by_caller(self, readonly: bool) -> None:
+        f = _make_fatigue_model(3)
+        initial = np.full(3, 0.3)
+        initial.setflags(write=not readonly)
+        f.reset(fatigue_reset_vec=initial)
+        for _ in range(100):
+            f.step(np.ones(3), dt=0.02)
+        np.testing.assert_array_equal(initial, np.full(3, 0.3))
+        assert not np.shares_memory(f.MF, initial)
+        f.reset(fatigue_reset_vec=initial)
+        np.testing.assert_array_equal(f.MF, initial)
+
     def test_custom_rates(self) -> None:
         f = _make_fatigue_model(2)
         f.set_FatigueCoefficient(0.1)

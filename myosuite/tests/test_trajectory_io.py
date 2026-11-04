@@ -20,6 +20,29 @@ from myosuite.core.trajectory_io import (
     resolve_motion_path,
 )
 
+_UNPICKLED: list[str] = []
+
+
+def _record_unpickling(tag: str) -> str:
+    _UNPICKLED.append(tag)
+    return tag
+
+
+class _Tripwire:
+    """Records a call when unpickled, where a malicious pickle would run code."""
+
+    def __reduce__(self):
+        return (_record_unpickling, ("unpickled",))
+
+
+def _write_tripwire_clip(path: Path, key: str) -> None:
+    np.savez(
+        path,
+        qpos=np.zeros((2, 1)),
+        site_xpos=np.zeros((2, 1, 3)),
+        **{key: np.array([_Tripwire()], dtype=object)},
+    )
+
 
 def _write_motion(path: Path, nq: int, nv: int) -> None:
     frames = 4
@@ -142,6 +165,50 @@ def test_motion_clip_weights_load_and_survive_expansion(tmp_path: Path) -> None:
     expanded = expand_motion_clip_to_model(clip, model)
     assert expanded.qpos.shape == (4, 2)
     np.testing.assert_allclose(expanded.weights, clip.weights)
+
+
+@pytest.mark.parametrize("key", ["joint_names", "site_names"])
+def test_load_motion_clip_never_unpickles(tmp_path: Path, key: str) -> None:
+    """A downloaded clip with a pickled name array is refused, not executed."""
+    p = tmp_path / "pickled.npz"
+    _write_tripwire_clip(p, key)
+    _UNPICKLED.clear()
+    if key == "joint_names":
+        with pytest.raises(ValueError, match="Re-save the names as strings"):
+            load_motion_clip(p, expected_nq=1, expected_nv=1)
+    else:
+        with pytest.warns(UserWarning, match="pickled object array"):
+            clip = load_motion_clip(p, expected_nq=1, expected_nv=1)
+        assert clip.site_names is None
+    assert _UNPICKLED == []
+    np.load(p, allow_pickle=True)[key]  # what the loader used to do
+    assert _UNPICKLED == ["unpickled"]
+
+
+def test_mimic_clip_env_names_never_unpickle(tmp_path: Path) -> None:
+    from myosuite.envs.myo.tasks.mimic.clip_env import _decode_joint_names
+
+    p = tmp_path / "pickled.npz"
+    _write_tripwire_clip(p, "joint_names")
+    _UNPICKLED.clear()
+    with pytest.raises(ValueError, match="Re-save the names as strings"):
+        _decode_joint_names(np.load(p, allow_pickle=False), ("joint_names",))
+    assert _UNPICKLED == []
+
+
+def test_names_stored_as_bytes_are_decoded(tmp_path: Path) -> None:
+    """Bytes names read as text (str() used to give "b'joint_a'")."""
+    p = tmp_path / "bytes.npz"
+    np.savez(
+        p,
+        qpos=np.zeros((2, 1)),
+        qpos_joint_names=np.array([b"joint_a"]),
+        site_xpos=np.zeros((2, 1, 3)),
+        site_names=np.array([b"site_a"]),
+    )
+    clip = load_motion_clip(p, expected_nq=2, expected_nv=2)
+    assert clip.qpos_joint_names == ["joint_a"]
+    assert clip.site_names == ["site_a"]
 
 
 def test_expand_motion_clip_maps_full_width_clip_by_name(tmp_path: Path) -> None:

@@ -319,17 +319,19 @@ def noise_stage(get_cfg: Callable[[], Any]) -> CtrlStage:
 
 
 def fatigue_stage(
-    fatigue: Any, get_reset: Callable[[], tuple[Any, bool]]
+    fatigue: Any, get_reset: Callable[[], tuple[Any, bool]], index: Any = None
 ) -> tuple[CtrlStage, ResetStage]:
     """3CC-r fatigue on the muscle excitations and its per-episode reset.
 
     Args:
         fatigue: A :class:`~myosuite.physics.fatigue.CumulativeFatigue`.
         get_reset: Returns ``(fatigue_reset_vec, fatigue_reset_random)``.
+        index: Entries of ``ctrl`` the fatigue state tracks (default: the env's
+            muscle excitations, :meth:`_stage_muscle_index`).
     """
 
     def apply(env: Any, ctrl: np.ndarray) -> np.ndarray:
-        idx = env._stage_muscle_index()
+        idx = env._stage_muscle_index() if index is None else index
         ctrl[idx], _, _ = fatigue.compute_act(ctrl[idx])
         return ctrl
 
