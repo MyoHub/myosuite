@@ -596,3 +596,27 @@ _registry.register_env(
     wrap_mj_instability_termination=False,
 )
 
+# Level 1: single-agent BoxingVs (learner agent_0 vs a standing dummy), reward v1.
+# See docs/boxing_vs_reward_v1.md.
+_registry.register_env(
+    env_id="myoChallengeBoxingVsLevel1-v0",
+    entry_point=(
+        "myosuite.envs.myo.tasks.challenge.boxing_vs."
+        "boxing_vs_env:make_boxing_vs_level1_env"
+    ),
+    max_episode_steps=500,
+    time_limit=False,
+    # The factory already returns this wrapper; gymnasium checks it is declared.
+    additional_wrappers=(
+        WrapperSpec(
+            name="BoxingVsSingleAgentWrapper",
+            entry_point=(
+                "myosuite.envs.myo.tasks.challenge.boxing_vs."
+                "boxing_vs_env:BoxingVsSingleAgentWrapper"
+            ),
+            kwargs=None,
+        ),
+    ),
+    wrap_mj_instability_termination=False,
+)
+

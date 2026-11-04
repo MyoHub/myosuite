@@ -6,7 +6,24 @@ dummy opponent. **Every default reproduces the old behaviour exactly** (checked:
 identical rewards, observations and info on seeded rollouts). Observations are
 unchanged (603-D per agent).
 
-## Quick start (Level 1: learner = `agent_0` vs a dummy)
+## Train right away (Level 1: learner vs a standing dummy)
+
+`myoChallengeBoxingVsLevel1-v0` is a normal single-agent env (603-D obs, 354 muscle
+actions in [0, 1]) built from the preset below, so the usual script works:
+
+```bash
+uv run python scripts/train_sb3.py myoChallengeBoxingVsLevel1-v0 --timesteps 1000000 --normalize
+```
+
+Smoke-tested: SB3 `check_env` passes and a PPO run trains, saves and evaluates
+(~125 steps/s on a laptop CPU, i.e. ~2 h per million steps; `train_sb3.py` uses a
+`DummyVecEnv`, so `--n-envs` does not run envs in parallel). Override any config field from Python with
+`make_env("myoChallengeBoxingVsLevel1-v0", agent_separation_m=0.5)`. To fade the
+shaping out, call `vec_env.env_method("set_shaping_alpha", alpha)` from a callback
+(`train_sb3.py` keeps it at 1). Expect a policy trained from scratch to mostly learn
+to not fall at first.
+
+## Quick start in Python (Level 1: learner = `agent_0` vs a dummy)
 
 ```python
 from myosuite.envs.myo.tasks.challenge.boxing_vs import (
@@ -98,7 +115,7 @@ rounds, egocentric observations for self-play.
 
 ## Tests
 
-`uv run python -m pytest myosuite/tests/test_boxing_vs_reward_v1.py` (27 tests, ~10 s):
+`uv run python -m pytest myosuite/tests/test_boxing_vs_reward_v1.py` (28 tests, ~15 s):
 legacy defaults, masks, masses, real glove impacts on the head/body (one event per
 punch, slow touch and leaning score nothing), synthetic block / glove-glove / cooldown
 cases, falls, annealing, reset seeding, dummy.

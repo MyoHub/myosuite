@@ -24,6 +24,7 @@ from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_config import (
 from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_env import (
     BoxingVsEnv,
     BoxingVsSingleAgentWrapper,
+    make_boxing_vs_level1_env,
 )
 from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_model import (
     BoxingVsModelMeta,
@@ -39,4 +40,5 @@ __all__ = [
     "BoxingVsSingleAgentWrapper",
     "BoxingVsTaskConfig",
     "boxing_vs_level1_config",
+    "make_boxing_vs_level1_env",
 ]

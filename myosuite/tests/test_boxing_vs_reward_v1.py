@@ -504,6 +504,23 @@ def test_dummy_is_held_and_never_falls(level1_env):
     assert np.linalg.norm(d.site_xpos[pel] - z0) < 0.01
 
 
+def test_level1_registered_single_agent_env():
+    from myosuite import make_env
+
+    env = make_env("myoChallengeBoxingVsLevel1-v0", agent_separation_m=0.5)
+    try:
+        assert env.observation_space.shape == (603,)
+        assert env.action_space.shape == (N_ACT,)
+        assert env.unwrapped._config.agent_separation_m == 0.5  # pylint: disable=protected-access
+        obs, _ = env.reset(seed=0)
+        obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+        assert obs.shape == (603,) and isinstance(reward, float)
+        assert isinstance(terminated, bool) and isinstance(truncated, bool)
+        assert "reward/hit_dealt/agent_0" in info
+    finally:
+        env.close()
+
+
 def test_level1_info_has_all_terms(level1_env):
     _, info = level1_env.reset(seed=0)
     for name in (

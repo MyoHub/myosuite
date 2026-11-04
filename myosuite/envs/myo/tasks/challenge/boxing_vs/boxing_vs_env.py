@@ -38,7 +38,10 @@ import numpy as np
 
 from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
 from myosuite.envs.multi_agent_modular_env import ModularMultiAgentSingleAgentWrapper
-from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_config import BoxingVsConfig
+from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_config import (
+    BoxingVsConfig,
+    boxing_vs_level1_config,
+)
 from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_model import AGENTS
 from myosuite.envs.myo.tasks.challenge.boxing_vs.boxing_vs_task_config import (
     BoxingVsTaskConfig,
@@ -415,6 +418,35 @@ class BoxingVsSingleAgentWrapper(ModularMultiAgentSingleAgentWrapper):
     ) -> None:
         """Backward-compatible alias around the modular single-agent wrapper."""
         super().__init__(env=env, agent_id=agent_id, opponent_policy=opponent_policy)
+
+
+# ---------------------------------------------------------------------------
+# Factory: Level 1 — single-agent BoxingVs, learner vs a standing dummy
+# ---------------------------------------------------------------------------
+
+
+def make_boxing_vs_level1_env(
+    render_mode: str | None = None, **config_overrides: Any
+) -> gym.Env:
+    """Single-agent BoxingVs for Level 1 (registered as ``myoChallengeBoxingVsLevel1-v0``).
+
+    The learner controls ``agent_0`` (354 muscles, 603-D observation); ``agent_1``
+    is a dummy held standing in its start pose.  Uses
+    :func:`boxing_vs_level1_config` (contact hits, reward v1, clip start pose,
+    reset noise); any of its fields can be overridden, e.g.
+    ``make_env("myoChallengeBoxingVsLevel1-v0", agent_separation_m=0.5)``.
+
+    Anneal the reward-v1 shaping during training with
+    ``env.unwrapped.set_shaping_alpha(alpha)`` (or
+    ``vec_env.env_method("set_shaping_alpha", alpha)``).
+    """
+    base = BoxingVsEnv(
+        config=boxing_vs_level1_config(**config_overrides), render_mode=render_mode
+    )
+    dummy_action = np.zeros(base.action_space["agent_1"].shape, dtype=np.float32)
+    return BoxingVsSingleAgentWrapper(
+        base, agent_id="agent_0", opponent_policy=lambda _obs: dummy_action
+    )
 
 
 # ---------------------------------------------------------------------------
