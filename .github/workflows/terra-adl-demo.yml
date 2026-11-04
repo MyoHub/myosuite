@@ -1,14 +1,7 @@
 name: TERRA ADL demo
 
 on:
-  push:
-    branches:
-      - "feat/terra-adl-apartment"
-    paths:
-      - "myosuite/integrations/musclemimic/adl_apartment.py"
-      - "scripts/terra_adl_apartment_demo.py"
-      - "scripts/terra_adl_reference_render.py"
-      - ".github/workflows/terra-adl-demo.yml"
+  workflow_dispatch:
 
 jobs:
   render:

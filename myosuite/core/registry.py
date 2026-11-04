@@ -88,6 +88,7 @@ def register_env(
     backend_configs: dict[str, Any] | None = None,
     wrap_mj_instability_termination: bool = True,
     time_limit: bool = True,
+    mjlab_task_kwargs: bool = False,
     **kwargs: Any,
 ) -> None:
     """Register an environment for the CPU (Gymnasium) path.
@@ -108,6 +109,8 @@ def register_env(
             itself, such as the multi-agent env, whose per-agent ``truncated``
             dict ``TimeLimit`` would replace with a bare ``True``; the limit is
             then only recorded here.
+        mjlab_task_kwargs: Whether the mjlab twin supports constructor overrides
+            through ``EnvConfig.task_kwargs`` when rebuilt from the CPU registration.
         **kwargs: Additional keyword arguments forwarded to gym.register().
 
     Example:
@@ -126,6 +129,7 @@ def register_env(
         "entry_point": entry_point,
         "max_episode_steps": max_episode_steps,
         "backend_configs": backend_configs or {},
+        "mjlab_task_kwargs": mjlab_task_kwargs,
         "additional_wrappers": kwargs["additional_wrappers"],
     }
     gym_max_episode_steps = max_episode_steps if time_limit else None
@@ -419,12 +423,6 @@ def _make_cpu(config: EnvConfig, overrides: dict[str, Any]) -> Any:
             "backend='mjlab' for parallel envs."
         )
     kwargs = {**config.task_kwargs, **config.backend_options, **overrides}
-    if (
-        gym.spec(config.env_id).entry_point == "myosuite.envs.waypoint:WaypointEnv"
-        and (kwargs.get("model_path") is not None or kwargs.get("model") is not None)
-        and "model_recipe" not in kwargs
-    ):
-        kwargs["model_recipe"] = None
     if config.max_episode_steps is not None:
         kwargs["max_episode_steps"] = config.max_episode_steps
     env = gym.make(config.env_id, **kwargs)
@@ -477,8 +475,8 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # something else imported the backend first.
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
 
-    if config.task_kwargs and (
-        gym.spec(config.env_id).entry_point != "myosuite.envs.waypoint:WaypointEnv"
+    if config.task_kwargs and not _ENV_REGISTRY.get(config.env_id, {}).get(
+        "mjlab_task_kwargs", False
     ):
         raise NotImplementedError(
             "EnvConfig.task_kwargs are CPU env constructor kwargs; the mjlab twin reads "

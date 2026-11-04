@@ -36,6 +36,8 @@ from myosuite.terms.waypoint import (
     waypoint_targets_obs,
 )
 
+DEFAULT_MODEL_RECIPE = "musclemimic_fullbody"
+
 OBS_KEYS = ("qpos", "qvel", "act", "waypoint_targets")
 
 
@@ -180,7 +182,8 @@ class WaypointEnv(MyoGymnasiumEnv):
         model: Compiled scene and actor (CPU only). Otherwise built from
             ``model_recipe`` / ``model_path`` and ``edit_fn``, as the mjlab twin does.
         task: Goal, reward and reset settings.
-        model_recipe: ``ModelBuilder`` recipe name (e.g. ``"musclemimic_fullbody"``).
+        model_recipe: ``ModelBuilder`` recipe name; defaults to MyoFullBody when
+            no compiled model or MJCF path is supplied.
         model_path: MJCF path (alternative to a recipe).
         edit_fn: In-place ``MjSpec`` edit adding the scene (terrain, obstacles).
         initial_qpos: Reset pose; default keyframe 0, else ``qpos0``.
@@ -217,6 +220,8 @@ class WaypointEnv(MyoGymnasiumEnv):
         ):
             raise ValueError("frame_skip must be a positive integer")
         if model is None:
+            if model_recipe is None and model_path is None:
+                model_recipe = DEFAULT_MODEL_RECIPE
             model = build_model(model_recipe, model_path, edit_fn)
         elif model_recipe is not None or model_path is not None or edit_fn is not None:
             raise ValueError("Pass a compiled model or a model source, not both")
