@@ -72,6 +72,31 @@ This integration **does not** read or require anything under the MyoSuite
 - **Without `--path`** and short `--n-steps`:** optional MJX smoke on
   `MjxMimicFullbody-v0` where the MJX extra is installed (see CLI `--help`).
 
+### ChaseTag 1v1 steered teacher
+
+`ChaseTagSteeredPair` drives both FBVs agents with the clip-conditioned
+`mm-10m-2` teacher. Both agents look at each other; the chaser walks
+toward the opponent and the runner walks away. Headings turn off the
+±6 m fence so they stay inside the arena. Each step blends toward
+the current clip frame (``track_alpha``, default 0.45) so the gait stays
+continuous — no mid-episode joint teleport. The scored 546-d observation
+is unchanged. Playback: tutorial 5.7. Expert pairs: ``training/chasetag_teacher``.
+A 546 → 354 student is 5.4 / 5.6 / ``myoChallengeChaseTagFBVsTrain-v0``.
+
+```python
+import os
+os.environ["MYOSUITE_MUSCLEMIMIC_MODELS_VERSION"] = "1.0.5"
+
+from myosuite import make_env
+from myosuite.integrations.musclemimic.steered_teacher import ChaseTagSteeredPair
+
+env = make_env("myoChallengeChaseTagFBVs-v0")
+pair = ChaseTagSteeredPair.create(teacher_root, env.unwrapped.model, env.unwrapped._meta, clips, shadow)
+obs, info = env.reset()
+pair.reset(env.unwrapped.model, env.unwrapped.data, env.unwrapped._meta, info["task"])
+acts = pair.actions(env.unwrapped.model, env.unwrapped.data, env.unwrapped._meta, info["task"], step)
+```
+
 ### Demo motion cache (Hugging Face)
 
 **No upstream MuscleMimic package** for cache setup — only `huggingface_hub`:
@@ -566,3 +591,29 @@ Requires valid `--path`, resolvable `--motion_path`, and
 Programmatic Mimic envs (`myoMimic*`, MJX, mjlab) live in the main package and
 tests; this README intentionally documents only the **`myosuite-musclemimic-fullbody-eval`**
 CLI for end-user playback and smoke.
+
+## Terrain tracking (TERRA-4B)
+
+Terrain-aware tracking uses the existing MuscleMimic checkpoint loader and NumPy
+actor inference via `LocalPolicyRunner` with frozen normalization.
+`TerrainObservation` reuses `FullbodyStateAdapter` and adds the checkpoint-specific
+heightmap and reference goal. Call `policy.action_for(data, reference, step)`
+and pass the resulting muscle controls to an ordinary waypoint env.
+See [tutorial 4.4](../../../tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb).
+
+The observation layout, model corrections and evaluation settings are adapted from
+[TERRA](https://github.com/amathislab/terra); the pretrained
+[TERRA-4B checkpoint](https://huggingface.co/merc-s/TERRA-4B) retains its upstream
+license and attribution. Please credit and cite TERRA as directed by its model card,
+as well as MuscleMimic and the motion dataset used.
+
+`plan_waypoint_reference` generates a reference from a neutral pose, terrain-height
+callback and explicit jump segments, returning the existing `MotionClip`. Tutorial
+4.4 contains the tested scene and parameters; it requires no motion dataset or
+Hugging Face token. Preserve the generated velocities through
+`motion_clip_from_states(..., qvel=...)` when replaying a procedural reference.
+The tutorial checks contact-defined jumps separately from path completion.
+
+Set `GaitParameters(second_jump_crouch=...)` to tune the second takeoff
+independently. Its default `None` reuses `jump_crouch`, preserving historical
+reference arrays exactly. This changes the reference, not the policy runner.

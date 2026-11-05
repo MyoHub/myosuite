@@ -75,6 +75,7 @@ logger = logging.getLogger(__name__)
 
 # Registry of named model recipes (populated by @model_recipe decorator)
 _RECIPES: dict[str, Callable] = {}
+_SPEC_RECIPES: dict[str, Callable[[], mujoco.MjSpec]] = {}
 
 _IDENTITY_QUAT: np.ndarray = np.array([1.0, 0.0, 0.0, 0.0])
 _ZERO_POS: np.ndarray = np.zeros(3)
@@ -141,6 +142,15 @@ def model_recipe(name: str) -> Callable:
         return fn
 
     return decorator
+
+
+def register_spec_recipe(name: str, spec_fn: Callable[[], mujoco.MjSpec]) -> None:
+    """Let recipe *name* build its ``MjSpec`` with *spec_fn* instead of a ``ModelBuilder``.
+
+    For models compiled outside the builder (MuscleMimic full body); the name must be
+    registered with :func:`model_recipe` too, so it is listed.
+    """
+    _SPEC_RECIPES[name] = spec_fn
 
 
 def get_recipe(name: str) -> Callable:
@@ -1044,7 +1054,8 @@ def _recipe_spec(
     paths a recipe may write (the TableTennis furniture meshes), *params* the
     reserved recipe kwargs.
     """
-    spec = recipe_fn(ModelBuilder()).build_spec()
+    spec_fn = _SPEC_RECIPES.get(name)
+    spec = spec_fn() if spec_fn is not None else recipe_fn(ModelBuilder()).build_spec()
     if edit_fn is not None:
         spec.compile()  # the edit sees a compiled spec, as when envs applied it
         edit_fn(spec)

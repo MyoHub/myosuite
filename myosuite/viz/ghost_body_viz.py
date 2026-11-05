@@ -22,12 +22,13 @@ from __future__ import annotations
 import weakref
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+from collections.abc import Mapping
 
 import mujoco
 import numpy as np
 
 if TYPE_CHECKING:
-    pass
+    from myosuite.core.trajectory_io import MotionClip
 
 
 # ── geometry helpers ────────────────────────────────────────────────────────
@@ -109,6 +110,7 @@ class GhostBodyViz:
         joint_radius: Radius of joint spheres in metres.
         frame_offset: Frame offset applied to each ``step_idx`` lookup.
         ctrl_dt_ratio: Ratio of env ctrl_dt to clip frame_dt for frame indexing.
+        bone_model: Optional model for rendering anatomical meshes instead of markers.
         position_offset: Optional ``(3,)`` world-space translation applied to all
             ghost positions.  Use e.g. ``np.array([0, 1, 0])`` to place the ghost
             1 m to the side of the physics body when doing reference replay (both
@@ -129,6 +131,7 @@ class GhostBodyViz:
     position_offset: np.ndarray | None = (
         None  # (3,) world-space shift for all ghost positions
     )
+    bone_model: mujoco.MjModel | None = field(default=None, repr=False)
 
     # pre-built arrays (set in __post_init__)
     _skel_rgba: np.ndarray = field(init=False, repr=False)
@@ -146,9 +149,38 @@ class GhostBodyViz:
     # ------------------------------------------------------------------ #
 
     @classmethod
+    def from_motion_clip(
+        cls, clip: MotionClip, model: mujoco.MjModel, **kwargs: object
+    ) -> GhostBodyViz:
+        """Build a reference skeleton from joint poses using offline kinematics.
+
+        Args:
+            clip: Full-model joint poses, shaped ``(T, model.nq)``.
+            model: Model whose joints and bodies match the reference.
+            **kwargs: Styling and frame options accepted by ``from_clip_and_model``.
+
+        Returns:
+            Ghost with cached body poses; no live simulation state is modified.
+
+        Raises:
+            ValueError: The clip is empty or does not contain full-model poses.
+        """
+        qpos = np.asarray(clip.qpos)
+        if qpos.ndim != 2 or qpos.shape[1] != model.nq or len(qpos) == 0:
+            raise ValueError("Ghost reference requires nonempty full-model qpos.")
+        data = mujoco.MjData(model)
+        xpos = np.empty((len(qpos), model.nbody, 3))
+        xquat = np.empty((len(qpos), model.nbody, 4))
+        for frame, pose in enumerate(qpos):
+            data.qpos[:] = pose
+            mujoco.mj_kinematics(model, data)
+            xpos[frame], xquat[frame] = data.xpos, data.xquat
+        return cls.from_clip_and_model({"xpos": xpos, "xquat": xquat}, model, **kwargs)
+
+    @classmethod
     def from_clip_and_model(
         cls,
-        clip_path_or_npz: str | np.lib.npyio.NpzFile,
+        clip_path_or_npz: str | np.lib.npyio.NpzFile | Mapping[str, np.ndarray],
         model: mujoco.MjModel,
         *,
         skeleton_rgba: tuple[float, float, float, float] = (0.3, 0.6, 1.0, 0.35),
@@ -158,6 +190,7 @@ class GhostBodyViz:
         frame_offset: int = 0,
         ctrl_dt_ratio: int = 1,
         position_offset: np.ndarray | None = None,
+        bone_meshes: bool = False,
     ) -> GhostBodyViz:
         """Build a :class:`GhostBodyViz` from a .npz clip file and MuJoCo model.
 
@@ -178,6 +211,7 @@ class GhostBodyViz:
             position_offset: Optional ``(3,)`` world-space shift applied to all
                 ghost positions.  Pass e.g. ``np.array([0, 1, 0])`` to place the
                 ghost 1 m to the side for side-by-side reference replay.
+            bone_meshes: Draw the model's bone meshes instead of capsules and joints.
 
         Returns:
             Configured :class:`GhostBodyViz` instance.
@@ -211,6 +245,7 @@ class GhostBodyViz:
         )
 
         return cls(
+            bone_model=model if bone_meshes else None,
             xpos=xpos,
             xquat=xquat,
             parent_ids=parent_ids,
@@ -268,6 +303,41 @@ class GhostBodyViz:
         start = self._first_slot(user_scn)
         geom_i = start
 
+        if self.bone_model is not None:
+            model = self.bone_model
+            position, quaternion = np.empty(3), np.empty(4)
+            for geom_id in range(model.ngeom):
+                body = int(model.geom_bodyid[geom_id])
+                if (
+                    model.geom_type[geom_id] != mujoco.mjtGeom.mjGEOM_MESH
+                    or body not in self.visible_body_ids
+                ):
+                    continue
+                if geom_i >= max_geoms:
+                    break
+                mujoco.mju_mulPose(
+                    position,
+                    quaternion,
+                    pos_frame[body],
+                    self.xquat[frame, body],
+                    model.geom_pos[geom_id],
+                    model.geom_quat[geom_id],
+                )
+                geom = user_scn.geoms[geom_i]
+                mujoco.mjv_initGeom(
+                    geom,
+                    mujoco.mjtGeom.mjGEOM_MESH,
+                    model.geom_size[geom_id],
+                    position,
+                    _quat_to_mat9(quaternion),
+                    self._skel_rgba,
+                )
+                geom.dataid = 2 * int(model.geom_dataid[geom_id])
+                geom_i += 1
+            user_scn.ngeom = geom_i
+            self._drawn[user_scn] = (start, geom_i)
+            return
+
         for body_id in self.visible_body_ids:
             if geom_i >= max_geoms - 1:
                 break
@@ -285,7 +355,7 @@ class GhostBodyViz:
                     mujoco.mjv_initGeom(
                         user_scn.geoms[geom_i],
                         mujoco.mjtGeom.mjGEOM_CAPSULE,
-                        size,
+                        np.array([size[0], size[2], 0.0]),
                         centre,
                         mat9,
                         self._skel_rgba,
