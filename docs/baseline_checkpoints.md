@@ -150,6 +150,21 @@ CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and
 
 <sub>
 
+**`myoChallengeChaseTagFBVs-v0`** (the scored 1v1 game, CPU only). `tutorials/files/5.6/chasetag_fbvs_baseline.onnx` plays one player, 546 -> 354, in either role. It is a starting point: it reaches and tags a player that does nothing, but it falls within about 7 s and does not yet stay up for the whole game. Measured with action noise 0.02 and 12 episodes per role, identical within rounding on myo_sim 0.2.3 and 0.2.4 and close on MuJoCo 3.17 (mujoco 3.11 below):
+
+| Match | Tags | Chaser falls | Mean length | Fell at (median) |
+|---|---:|---:|---:|---|
+| Chases a player that does nothing, as player A | 12/12 | 0 | 3.0 s | - |
+| Chases a player that does nothing, as player B | 12/12 | 0 | 3.6 s | - |
+| Against itself, A chases | 11/12 | 1 | 5.6 s | runner 1.7 s |
+| Against itself, B chases | 0/12 | 12 | 7.1 s | runner 5.5 s, chaser 6.7 s |
+
+It was fine-tuned with self-play on `myofullbody` (4,000 iterations, 2048 envs) from a policy that descends from the behaviour-cloned tutorial 5.4 walker (`policy_bc_best.pt`, a student of MuscleMimic `amathislab/mm-10m-2`), so it is not trained from scratch on this body. Observations and actions match the game; only the dynamics of `myofullbody` were new to it. Policies trained on `musclemimic_models` do not carry over reliably: moving between releases 1.0.6 and 1.0.5 of that body already took a similar policy to 0 tags.
+
+</sub>
+
+<sub>
+
 **Manifests and releases.** Every `checkpoints/<env_id>/` folder on the Hugging Face repo has a `manifest.json` with the env id, a hash of the env contract (observation and action shapes, control step), the MyoSuite version and commit, and the success rate above. When a downloaded checkpoint is used, MyoSuite compares that hash with the current env and warns if they differ, because the policy may then not work. The repo is tagged per release (`v3.0`, `v3.1`, ...), and per patch release where baselines changed (`v3.0.1`); `download_baseline_checkpoint` (one env) and `download_baseline_file` (a single file, such as the MuscleMimic policy) take the tag of your installed version, the patch tag first (`v3.0.1`, then `v3.0`; `MYOSUITE_BASELINES_REVISION` or the `revision` argument override it), and fall back to `main` when no tag exists; they print the revision they used. Write the manifests of a baselines checkout with `python scripts/write_checkpoint_manifests.py <dir>`.
 
 </sub>

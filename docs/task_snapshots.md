@@ -235,9 +235,9 @@ here, also has one.)
 
 ![chase tag vs](task_snapshots/chasetag_vs.png)
 
-- **MSK model**: registers a MuscleMimic **full-body** model per agent (legs +
-  torso + arms, 354 muscles/agent → `na=708`, `nu=708` total across both agents,
-  203 bodies), via `chase_tag_vs_fullbody_model.py`. A myoLeg-only variant exists
+- **MSK model**: registers myo_sim's **`myofullbody`** per agent without the fingers
+  (legs + torso + arms, 354 muscles/agent → `na=708`, `nu=708` total across both
+  agents). A myoLeg-only variant exists
   in code (`chase_tag_vs_model.py`, docstring: "same host model used by
   `LegWalkEnvV0`") but is **not** wired to this env_id — it backs the
   unregistered base `ChaseTagVsTaskConfig`, exercised directly by
@@ -252,6 +252,7 @@ here, also has one.)
   (role sampled per episode); the chaser is rewarded for closing pelvis-to-pelvis
   distance and landing a tag (`ko_health_threshold` damage), the runner for
   evading (`myosuite/terms/multiplayer/chase_tag_vs_reward.py`).
+- **Baseline**: `tutorials/files/5.6/chasetag_fbvs_baseline.onnx` (`docs/baseline_checkpoints.md`).
 - **Dims** (per agent, `Dict` obs/action space): obs `(546,)`, action `(354,)`.
 - **Backends**: CPU only (no mjlab twin).
 
