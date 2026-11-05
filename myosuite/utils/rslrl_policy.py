@@ -48,7 +48,9 @@ class RslRlPolicy(torch.nn.Module):
         self.mlp = mlp
         self.normalizer = normalizer
         self.action_dim = action_dim
-        self.obs_dim = next(
+        # An input module that changes the width (e.g. an observation adapter)
+        # names the observation size it takes as ``in_dim``.
+        self.obs_dim = getattr(normalizer, "in_dim", None) or next(
             m.in_features for m in mlp.modules() if isinstance(m, torch.nn.Linear)
         )
         self.register_buffer("std", None if std is None else std.flatten().clone())
@@ -93,6 +95,11 @@ def _construct_plain(loader: yaml.SafeLoader, _suffix: str, node: yaml.Node) -> 
 
 _CfgLoader.add_multi_constructor("tag:yaml.org,2002:python/", _construct_plain)
 
+# Actor recognised by its weight names when the run's agent.yaml is missing.
+_WALKER_ACTOR = (
+    "myosuite.integrations.musclemimic.directional_walker_actor:DirectionalWalkerActor"
+)
+
 
 def _agent_params(checkpoint: Path) -> dict[str, Any]:
     """``params/agent.yaml`` written by ``scripts/train_mjlab.py`` (if present)."""
@@ -107,7 +114,9 @@ def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
     """Rebuild the deterministic actor of an RSL-RL checkpoint.
 
     Layer sizes are read from the weights; the activation comes from the run's
-    ``params/agent.yaml`` (default ``elu``).
+    ``params/agent.yaml`` (default ``elu``). An actor class other than
+    ``MLPModel`` (``actor.class_name`` there) rebuilds its own modules through
+    its ``deterministic_modules(actor_state, actor_cfg)``.
 
     Args:
         checkpoint: ``model_*.pt`` from an mjlab training run.
@@ -120,6 +129,22 @@ def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
     actor_state: dict[str, torch.Tensor] = state["actor_state_dict"]
     actor_cfg = _agent_params(checkpoint).get("actor", {})
+    std = None
+    if "distribution.std_param" in actor_state:
+        std = actor_state["distribution.std_param"]
+    elif "distribution.log_std_param" in actor_state:
+        std = actor_state["distribution.log_std_param"].exp()
+    class_name = actor_cfg.get("class_name")
+    if class_name is None:  # no params/agent.yaml next to the checkpoint
+        walker = "mlp.actor_mean.weight" in actor_state
+        class_name = _WALKER_ACTOR if walker else "MLPModel"
+    if class_name != "MLPModel":
+        from rsl_rl.utils import resolve_callable  # noqa: PLC0415
+
+        net, adapter = resolve_callable(class_name).deterministic_modules(
+            actor_state, actor_cfg
+        )
+        return RslRlPolicy(net, adapter, action_dim, std).eval()
 
     linear = sorted(
         (k for k in actor_state if k.startswith("mlp.") and k.endswith(".weight")),
@@ -148,9 +173,4 @@ def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
         )
     else:
         normalizer = torch.nn.Identity()
-    std = None
-    if "distribution.std_param" in actor_state:
-        std = actor_state["distribution.std_param"]
-    elif "distribution.log_std_param" in actor_state:
-        std = actor_state["distribution.log_std_param"].exp()
     return RslRlPolicy(mlp, normalizer, action_dim, std).eval()

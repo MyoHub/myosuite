@@ -30,6 +30,7 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 | myoArmReachFixed-v0          | `model_696.pt`   | 100.0%                        |
 | myoArmReachRandom-v0         | `model_4999.pt`  | 79.7%                         |
 | myoChallengeChaseTagFBP2-v0  | -                  | -                             |
+| myoChallengeChaseTagFBVsTrain-v0 | -              | -                             |
 | myoChallengeTableTennisP0-v0 | -                  | -                             |
 | myoChallengeTableTennisP1-v0 | -                  | -                             |
 | myoChallengeTableTennisP2-v0 | -                  | -                             |

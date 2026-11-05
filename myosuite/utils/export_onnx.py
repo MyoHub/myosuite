@@ -257,7 +257,7 @@ def export_rslrl_to_onnx(
 
     output = Path(output)
     policy = load_rslrl_policy(checkpoint, act_dim)
-    expected = next(policy.mlp.parameters()).shape[1]
+    expected = policy.obs_dim
     if expected != obs_dim:
         raise ValueError(f"--obs-dim {obs_dim} != checkpoint input size {expected}")
 

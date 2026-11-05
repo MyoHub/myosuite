@@ -548,3 +548,14 @@ except Exception as _e:  # noqa: BLE001
 
     _w.warn(f"Chase-tag VS env not registered: {_e}", stacklevel=1)
     del _e, _w
+
+# One FBVs player (agent_0) against an opponent the env drives: the same
+# model, rules, reward and 546-d observation, so a policy trained here is a
+# MyoChallenge submission as-is. CPU half of the mjlab task with the same id
+# (tasks/chasetag_vs). No muscle-condition variants: two bodies share the model.
+_registry.register_env(
+    env_id="myoChallengeChaseTagFBVsTrain-v0",
+    entry_point="myosuite.envs.myo.tasks.challenge.chase_tag_vs.train_env:ChaseTagVsTrainEnv",
+    max_episode_steps=2000,
+    kwargs={},
+)

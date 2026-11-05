@@ -908,6 +908,9 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> Non
     envs = [make_env(env_config) for _ in range(n_envs)]
     policy = load_rslrl_policy(checkpoint, envs[0].action_space.shape[0])
     _check_stochastic(cfg, policy)
+    for env in envs:  # two-player envs (ChaseTag train): a mirror match
+        if hasattr(env.unwrapped, "set_opponent_policy"):
+            env.unwrapped.set_opponent_policy(policy.act)
     grid = (
         GridRenderer(
             envs[0].unwrapped.model,
@@ -1012,6 +1015,14 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
         device
     )
     _check_stochastic(cfg, policy)
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp.self_play import (  # noqa: PLC0415
+        find_opponent_pool,
+    )
+
+    pool = find_opponent_pool(env)
+    if pool is not None:  # self-play twin: the policy also plays the opponent
+        pool.add(policy)
+        print("[INFO] Self-play task: the policy plays both players (mirror match).")
     has_success = "success" in env.metrics_manager.active_terms
 
     obs, _ = env.reset()

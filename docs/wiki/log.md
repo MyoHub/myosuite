@@ -60,3 +60,14 @@ don't get an entry here.
   and each episode starts from `mj_resetData` plus `policy_runner.reset()`.
 - Why: bridged policies drove every muscle at half excitation and dropped the left arm. SAR synergies were fit on
   clip tails with state carried over between episodes. Re-collect cached activations and re-extract synergy models.
+
+## [2026-10-29] feature | ChaseTag train env with an mjlab twin (branch: feature/chasetag-fbvs-train)
+
+- New `myoChallengeChaseTagFBVsTrain-v0`: one player of `myoChallengeChaseTagFBVs-v0` (the MyoChallenge
+  2026 game) against an opponent the env plays; CPU `ChaseTagVsTrainEnv` + mjlab twin (`tasks/chasetag_vs`,
+  two entities, `opponent` observation group) under one id.
+- Why: FBVs is the scored game but had no GPU twin, and `myoChallengeChaseTagFBP2-v0` has a different (537-d)
+  observation, so policies trained there needed an adapter and saw different opponent inputs at submission time
+  (MyoHub/myosuite#576). Same 546-d observation here, so a trained policy is a submission as-is.
+- Self-play: generic frozen-snapshot pool (`tasks/mdp/self_play.py`), hooked into `scripts/train_mjlab.py`;
+  evaluation is a mirror match. FBVs reward terms became backend-agnostic functions (FBVs bit-identical).

@@ -39,7 +39,8 @@ The mjlab backend registers a twin under the same ``env_id`` for these CPU famil
      - ``myoLegWalk``, ``myoLegDirectional{Forward,Backward,Random}``,
        ``myoLegStandRandom``, ``myoLeg{Rough,Hilly,Stair}TerrainWalk``
    * - Challenge
-     - ``myoChallengeChaseTagFBP2``, ``myoChallengeTableTennisP{0,1,2}``
+     - ``myoChallengeChaseTagFBP2``, ``myoChallengeChaseTagFBVsTrain``,
+       ``myoChallengeTableTennisP{0,1,2}``
 
 Variants: ``myoSarc…`` exist for all twins above except ``myoLegDirectional*`` (no CPU
 variant) and the Challenge twins; ``myoFati…`` likewise, and ``myoReaf…`` for the hand
@@ -50,7 +51,8 @@ own mjlab implementation. It is not built from the CPU registration and is regis
 motion clip is given (``MYOSUITE_MIMIC_CLIP`` or ``register_mimic_mjlab_tasks_with_clip``; see
 tutorials 5.x), and it takes no muscle-command features.
 
-**Not on mjlab yet:** the other Challenge tasks, ``myoChallengeChaseTagFBVs`` (two-agent),
+**Not on mjlab yet:** the other Challenge tasks, ``myoChallengeChaseTagFBVs`` (two-agent; train one of its
+players on mjlab with ``myoChallengeChaseTagFBVsTrain``),
 ``myoElbowPoseTask*``, ``myoFullBodyDirectional`` and the hand manipulation families
 (``myoHandKeyTurn``, ``ObjHold``, ``PenTwirl``, ``Reorient*``) including their variants.
 The cross-backend contract lists which envs and backends take which features.
@@ -472,6 +474,9 @@ Full body and MuscleMimic
    * - ``myoChallengeChaseTagFBVs-v0``
      - Chase-tag, full body, two agents (1v1)
      - no
+   * - ``myoChallengeChaseTagFBVsTrain-v0``
+     - One FBVs player (same 546-d observation) vs. an opponent the env plays (self-play on mjlab)
+     - yes
 
 The MuscleMimic and mjlab columns are explained under "GPU (mjlab) coverage" above.
 

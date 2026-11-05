@@ -36,12 +36,33 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **`myoChallengeChaseTagFBVsTrain-v0`: train a ChaseTag player on the GPU.** `myoChallengeChaseTagFBVs-v0` seen
+  from `agent_0`, with `agent_1` played inside the env. The model, reset, role draw, rules, reward and score are
+  FBVs's, and the observation is an FBVs player's 546-d one, so a trained policy exports as a MyoChallenge
+  submission as-is (`export_rslrl_to_onnx(..., obs_dim=546, act_dim=354)`, no adapter).
+  - CPU env and mjlab twin under one id. For the same actions the CPU env is bit-identical to FBVs; the twin
+    matches the CPU env term by term and step by step (`test_chasetag_fbvs_train*.py`).
+  - Opponent: on mjlab, frozen snapshots of the learner (self-play; `scripts/train_mjlab.py` adds a snapshot every
+    50 iterations) or a fixed checkpoint; on the CPU, any policy (`opponent_policy=` callable, `.onnx` or `.pt`).
+    Evaluation is a mirror match.
+  - Training starts both players as the tutorial 5.4 walker the 5.6 Colab submits: the actor
+    (`DirectionalWalkerActor`) is a fixed 546 -> 528 adapter in front of the 5.4 network, so snapshots and the
+    ONNX export carry the adapter. A mirror match then lasts ~1.4 s instead of ~0.4 s from a random init
+    (`--agent.actor.walker-checkpoint ""`). `load_rslrl_policy` / `export_rslrl_to_onnx` rebuild such actors.
+    The adapter gives the heading relative to the walking direction: the 5.4 observation has no pelvis yaw, so a
+    world-frame heading cannot be steered and chaser and runner look the same (`body_frame_heading=False` keeps it).
+  - FBVs itself is unchanged (its reward terms now share backend-agnostic functions with the twin).
+  - No muscle-condition variants: the two bodies share one model.
+  - Tutorial 5.6 (ChaseTag Colab): step 5 trains in this env (FBP2's 537-d observation does not fit a submission),
+    the baseline note says the shipped walker falls after ~1.5 s, and the optional cell plays the ONNX file as both
+    players for a few episodes, prints how each ended with the score, and records the first one until it ends.
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **Checkpoint manifests record the `musclemimic_models` release** for envs whose body comes from that package (MuscleMimic, full-body directional locomotion, full-body ChaseTag). Releases differ in physics but not in the env contract, so the contract hash cannot tell them apart; `checkpoint_models_version()` now reads the release from a local checkpoint's `manifest.json`, and `download_baseline_file` fetches the folder's manifest with the file. Manifests without the field, and code that ignores it, behave as before.
 * **Newton compatibility diagnostics:** the release/manual informational conversion probe is supplemented by matched CPU/CUDA trajectories, source identity maps, mutation checks and versioned reports. [Newton PR 5029](https://github.com/newton-physics/newton/pull/5029) and [Newton PR 5030](https://github.com/newton-physics/newton/pull/5030) fix the joint equality and partial vector import gaps on Newton main, so all twelve authored/normalized cases convert with every muscle and length range; the default changes for masses, options, contacts and margins remain in [Newton PR 4903](https://github.com/newton-physics/newton/pull/4903). Strict name/force comparisons and several trajectory cases still fail, with follow-ups in [Newton issue 4904](https://github.com/newton-physics/newton/issues/4904), [MuJoCo-Warp issue 1835](https://github.com/google-deepmind/mujoco_warp/issues/1835) and [#563]. Newton remains outside the supported CPU and mjlab backends (#368, [#531]).
 
 ### Changed
 
+* **ChaseTag 1v1 (`myoChallengeChaseTagFBVs-v0`) win conditions.** Tag (planar pelvis distance ≤ 0.5 m) or a pursuer fall ends the episode; timeout with no tag is a runner win. A runner fall does not stop play — the pursuer can still tag the body on the ground. Boxing/fencing still end on any fall. P1 ChaseTag is unchanged. The train env (`myoChallengeChaseTagFBVsTrain-v0`) uses the same rules.
 * **Dependency floors.** `filelock` is at least 4.2.5 on Python 3.11 and newer, and stays on 3.25.2 for Python 3.10 (4.x requires 3.11, and later 3.x releases add advisories). `certifi`, `gitpython`, `msgpack`, `setuptools`, and `black` move to releases that clear current advisories. Pillow stays `>=10.1.0,<13`: 13.0.0 is the first release that clears the image advisories, and current gradio still requires `pillow<13`.
 * **Fatigue groups and parameters for every muscle of the bundled models.**
   - `_muscle_group` now also strips MuscleMimic's `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent

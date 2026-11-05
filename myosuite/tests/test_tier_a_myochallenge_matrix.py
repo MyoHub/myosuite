@@ -28,6 +28,7 @@ _CHALLENGE_IDS = (
     "myoChallengeChaseTagP2-v0",
     "myoChallengeChaseTagP2eval-v0",
     "myoChallengeChaseTagFBP2-v0",
+    "myoChallengeChaseTagFBVsTrain-v0",
     "myoChallengeDieReorientDemo-v0",
     "myoChallengeDieReorientP1-v0",
     "myoChallengeDieReorientP2-v0",

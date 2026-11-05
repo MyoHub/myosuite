@@ -70,6 +70,7 @@ def _fati(env_id: str) -> str:
 ROLLOUT_CASES = (
     [(env_id, {}) for env_id in CHALLENGE_IDS]
     + [("myoChallengeSoccerP2-v0", {"goalkeeper_probabilities": (0.0, 1.0, 0.0)})]
+    + [("myoChallengeChaseTagFBVsTrain-v0", {})]  # no muscle-condition variants
     + [(_fati(env_id), {"fatigue_reset_random": True}) for env_id in CHALLENGE_IDS]
     + [(env_id, {"fatigue_reset_random": True}) for env_id in BASIC_FATIGUE_IDS]
 )

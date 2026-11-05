@@ -4,17 +4,19 @@
 # LICENSE file in the root directory of this source tree.
 """``ChaseTagVsTaskConfig`` — ``MultiAgentTaskConfig`` for the 1v1 chase-tag task.
 
-Rules match MyoChallenge ``chasetag_v0``:
-- Binary tag at distance ≤ tag_radius_m ends the episode.
-- Evade win: runner survives maxTime seconds.
+1v1 rules:
+- Tag (planar pelvis distance ≤ tag_radius_m) → chaser wins, episode ends.
+- Time-up with no tag → runner wins.
+- Pursuer falls → chase fails, episode ends (runner wins).
+- Runner falls → play continues; the pursuer can still tag.
 - Sparse score: ``1 - t/maxTime`` (chase win) or ``t/maxTime`` (evade win).
 - Roles (CHASE/EVADE) randomised each episode when ``task_choice="random"``.
 """
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import mujoco
@@ -22,6 +24,28 @@ import numpy as np
 
 from myosuite.core.multi_agent_config import MultiAgentTaskConfig
 from myosuite.terms.multiplayer.chase_tag_vs_reward import CHASER_ID, RUNNER_ID
+
+
+@functools.cache
+def gait_clip_local(repo_id: str, filename: str) -> tuple[np.ndarray, np.ndarray]:
+    """Joint positions and velocities of a gait clip without the root (cached).
+
+    Args:
+        repo_id: Hugging Face dataset holding the clip.
+        filename: Clip file (``.npz`` with ``qpos`` / ``qvel``) in the dataset.
+
+    Returns:
+        ``(qpos[:, 7:], qvel[:, 6:])`` as read-only float64 arrays; only the
+        local joint-angle style is imitated.
+    """
+    from huggingface_hub import hf_hub_download  # noqa: PLC0415
+
+    path = hf_hub_download(repo_id=repo_id, filename=filename, repo_type="dataset")
+    npz = np.load(path)
+    qpos = np.asarray(npz["qpos"], dtype=np.float64)[:, 7:]
+    qvel = np.asarray(npz["qvel"], dtype=np.float64)[:, 6:]
+    qpos.flags.writeable = qvel.flags.writeable = False
+    return qpos, qvel
 
 
 @dataclass
@@ -59,7 +83,9 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     r_win_bonus: float = 1.0
     r_loss_penalty: float = -1.0
     r_fall_penalty: float = -5.0
+    r_opponent_fall_bonus: float = 5.0  # the episode then ends with score 0
     r_survival_per_step: float = 0.01
+    r_chaser_survival_per_step: float | None = None  # None: r_survival_per_step
     r_act_reg: float = -0.001
     r_chaser_proximity: float = 0.5
     r_runner_proximity: float = -0.5
@@ -156,6 +182,16 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
 
         return is_fallen(data, meta, agent_id, self)
 
+    def episode_is_over(
+        self,
+        fell: dict[str, bool],
+        ko: dict[str, bool],
+    ) -> bool:
+        """Tag or pursuer fall ends the match; a runner fall does not."""
+        chaser = self._actual_chaser_id()
+        runner = self._actual_runner_id()
+        return bool(fell.get(chaser)) or bool(ko.get(runner))
+
     def _actual_chaser_id(self) -> str:
         """Return the agent ID that is chasing this episode."""
         return CHASER_ID if self.current_task == "CHASE" else RUNNER_ID
@@ -198,16 +234,18 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     ) -> float:
         from myosuite.terms.multiplayer.chase_tag_vs_reward import compute_agent_reward
 
-        opp = self.opponent_id(agent_id)
         tagged = ko[self._actual_runner_id()]  # runner KO ↔ tag event
+        chaser = self._actual_chaser_id()
+        chaser_fell = bool(fell.get(chaser))
+        # Only the pursuer's fall is terminal. A downed runner is still in play.
         return compute_agent_reward(
             data=data,
             meta=meta,
             agent_id=agent_id,
             task=self.current_task,
             tagged=tagged,
-            self_fell=fell[agent_id],
-            opponent_fell=fell[opp],
+            self_fell=chaser_fell if agent_id == chaser else False,
+            opponent_fell=chaser_fell if agent_id != chaser else False,
             actions=actions,
             config=self,
         )
@@ -223,9 +261,14 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
         step_count: int,
     ) -> dict[str, Any]:
         elapsed = step_count * self.ctrl_dt
-        tagged = ko[self._actual_runner_id()]
-        runner_survived = (not tagged) and elapsed >= self.maxTime
-        won = tagged or runner_survived
+        tagged = bool(ko.get(self._actual_runner_id()))
+        chaser_fell = bool(fell.get(self._actual_chaser_id()))
+        timeout = elapsed >= self.maxTime
+        chase_win = tagged
+        evade_win = (not tagged) and (timeout or chaser_fell)
+        won = (self.current_task == "CHASE" and chase_win) or (
+            self.current_task == "EVADE" and evade_win
+        )
         from myosuite.terms.multiplayer.chase_tag_vs_reward import get_score
 
         score = get_score(elapsed, self.current_task, self) if won else 0.0
@@ -235,6 +278,7 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
             "elapsed_s": elapsed,
             "score": score,
             "fell": dict(fell),
+            "chaser_fell": chaser_fell,
         }
 
 
@@ -301,22 +345,10 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
     def _ensure_gait_clip(self) -> None:
         if self._gait_qpos_local is not None:
             return
-        from huggingface_hub import hf_hub_download
-
-        path = Path(
-            hf_hub_download(
-                repo_id=self.gait_clip_repo,
-                filename=self.gait_clip_filename,
-                repo_type="dataset",
-            )
+        self._gait_qpos_local, self._gait_qvel_local = gait_clip_local(
+            self.gait_clip_repo, self.gait_clip_filename
         )
-        npz = np.load(path)
-        qpos = np.asarray(npz["qpos"], dtype=np.float64)
-        qvel = np.asarray(npz["qvel"], dtype=np.float64)
-        # Drop root free joint — only local joint-angle style is imitated
-        self._gait_qpos_local = qpos[:, 7:]
-        self._gait_qvel_local = qvel[:, 6:]
-        self._gait_T = int(qpos.shape[0])
+        self._gait_T = int(self._gait_qpos_local.shape[0])
 
     def compute_reward(
         self,

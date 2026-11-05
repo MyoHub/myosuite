@@ -13,12 +13,14 @@ from dataclasses import dataclass
 class ChaseTagVsConfig:
     """All hyperparameters for the 1v1 chase-tag scene/reward.
 
-    Rules (matching MyoChallenge)
-    -----------------------------
-    Roles are assigned each episode: the **chaser** must tag (come within
-    ``tag_radius_m`` of) the **runner** before ``maxTime`` seconds elapse.
-    A binary tag at distance ≤ ``tag_radius_m`` ends the episode immediately.
-    Roles can alternate each episode (``task_choice="random"``) or be fixed.
+    Rules
+    -----
+    Roles are assigned each episode. The **chaser** wins by tagging (planar
+    pelvis distance within ``tag_radius_m``, including a runner on the ground).
+    The **runner** wins if the clock hits ``maxTime`` with no tag, or if the
+    pursuer falls. A runner fall does not end the episode; the pursuer can
+    still tag. Roles can alternate each episode (``task_choice="random"``)
+    or be fixed.
 
     Score
     -----
@@ -63,7 +65,13 @@ class ChaseTagVsConfig:
     r_win_bonus: float = 1.0  # one-shot bonus on win (tag or survive)
     r_loss_penalty: float = -1.0  # one-shot penalty on loss
     r_fall_penalty: float = -5.0  # one-shot penalty for falling
+    # One-shot reward when the opponent falls (FBVs: -r_fall_penalty). The
+    # episode ends with score 0, so training for the score sets it to 0.
+    r_opponent_fall_bonus: float = 5.0
     r_survival_per_step: float = 0.01  # small per-step alive reward
+    # Per-step reward of the chaser (None: r_survival_per_step, as FBVs). A tag ends the
+    # episode, so a survival reward for the chaser makes tagging cost it the remaining steps.
+    r_chaser_survival_per_step: float | None = None
     r_act_reg: float = -0.001  # L2 on muscle activations
     # Proximity shaping (chaser closes, runner escapes)
     r_chaser_proximity: float = 0.5
