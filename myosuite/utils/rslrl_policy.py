@@ -124,9 +124,7 @@ def trained_dynsyn(checkpoint: str | Path) -> TrainedDynSyn | None:
     with path.open() as f:
         env = yaml.load(f, Loader=_CfgLoader)
     term = next(
-        t
-        for t in env["actions"].values()
-        if isinstance(t, dict) and "start_steps" in t
+        t for t in env["actions"].values() if isinstance(t, dict) and "start_steps" in t
     )
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
     counter = (state.get("infos") or {}).get("env_state", {}).get("common_step_counter")
