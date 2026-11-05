@@ -25,7 +25,7 @@ from myosuite.integrations.musclemimic import (  # noqa: E402
     load_terrain_policy,
     plan_waypoint_reference,
 )
-from myosuite.integrations.musclemimic.adl_apartment import (  # noqa: E402
+from examples.terra_adl.apartment import (  # noqa: E402
     adl_apartment_scene,
     adl_route,
 )
@@ -118,7 +118,7 @@ def main() -> None:
             _, _, terminated, truncated, info = base.step(action)
             min_h = min(min_h, float(base.data.site("pelvis_mimic").xpos[2]))
 
-            if step % 10 == 0:
+            if step % 20 == 0:
                 cam = mujoco.MjvCamera()
                 cam.lookat[:] = base.data.qpos[:3]
                 cam.lookat[2] += 0.35
@@ -128,7 +128,7 @@ def main() -> None:
                 renderer.update_scene(base.data, camera=cam, scene_option=option)
                 _hide_wrap_geoms(model, renderer.scene)
                 ghost.draw(
-                    min(controller._frame + 50, reference.num_frames - 1),
+                    min(step + 1, reference.num_frames - 1),
                     renderer.scene,
                 )
                 frames.append(renderer.render().copy())
@@ -140,7 +140,7 @@ def main() -> None:
     env.close()
     video = out / "terra_adl_apartment.mp4"
     preview = out / "terra_adl_apartment_preview.jpg"
-    imageio.mimsave(video, frames, fps=10, macro_block_size=1)
+    imageio.mimsave(video, frames, fps=5, macro_block_size=1)
     imageio.imwrite(preview, frames[len(frames) // 2], quality=92)
     result = {
         "seed": seed,
