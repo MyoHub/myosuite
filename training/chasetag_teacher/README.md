@@ -24,7 +24,7 @@ Do not change the scored 546-d observation.
 | [#578](https://github.com/MyoHub/myosuite/pull/578) | `myoChallengeChaseTagFBVsTrain-v0` self-play |
 | [#587](https://github.com/MyoHub/myosuite/pull/587) | `ChaseTagSteeredPair` teacher + this student package |
 
-Scored ChaseTag / FBVs pins **`musclemimic_models` 1.0.5** (`mm-10m-2` / 5.4 walker). Set `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5` for local rolls.
+`mm-10m-2` / the 5.4 walker were trained on **`musclemimic_models` 1.0.5**. Set `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5` for local rolls.
 
 ## Install
 

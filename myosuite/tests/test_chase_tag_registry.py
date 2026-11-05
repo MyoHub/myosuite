@@ -304,34 +304,6 @@ def _overlap_xy(env, mover: str, target: str) -> None:
     mujoco.mj_forward(env.model, env.data)
 
 
-def test_fullbody_chasetag_pins_models_version_1_0_5(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Scored FBVs rebuilds musclemimic_models 1.0.5 even if the default is 1.0.6."""
-    require_musclemimic_models()
-    import mujoco
-
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
-        ChaseTagVsConfig,
-    )
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_model import (
-        CHASETAG_VS_MODELS_VERSION,
-        _build_chase_tag_vs_fullbody_spec,
-    )
-    from myosuite.integrations.musclemimic import model_versions as mv
-
-    assert CHASETAG_VS_MODELS_VERSION == "1.0.5"
-    # Env var must not override the scored ChaseTag pin.
-    monkeypatch.setenv(mv.MODELS_VERSION_ENV_VAR, "1.0.6")
-    model = _build_chase_tag_vs_fullbody_spec(ChaseTagVsConfig()).compile()
-    eq = mujoco.mj_name2id(
-        model, mujoco.mjtObj.mjOBJ_EQUALITY, "a0_knee_angle_rotation3_constraint_l"
-    )
-    assert eq >= 0
-    # 1.0.5 left-knee coef1 is negative; 1.0.6 flips the sign.
-    assert float(model.eq_data[eq, 1]) == pytest.approx(-0.369499, rel=0, abs=1e-6)
-
-
 class TestChaseTagVsRules:
     """1v1: tag or pursuer-fall ends the match; a runner fall does not."""
 
