@@ -159,14 +159,14 @@ def test_spaces_timing_physics_and_reward_terms_match(pair) -> None:
 
     assert cpu.frame_skip == cfg.decimation == 5
     assert cpu.dt == pytest.approx(mj.step_dt) == pytest.approx(0.01)
-    assert cpu_env.spec.max_episode_steps == mj.max_episode_length == 2000
-    assert cpu_env.spec.max_episode_steps * cpu.dt == pytest.approx(20.0)
-    # CHASE also loses at data.time >= maxTime; the float64 time after the
-    # last step is still below it, so the horizon is a truncation on both.
+    assert cpu_env.spec.max_episode_steps == mj.max_episode_length == 1000
+    assert cpu_env.spec.max_episode_steps * cpu.dt == pytest.approx(10.0)
+    # CHASE also loses past maxTime; the float64 time after the last step is
+    # within rounding of it, so the horizon is a truncation on both.
     time = 0.0
     for _ in range(cpu_env.spec.max_episode_steps * cpu.frame_skip):
         time += cpu.model.opt.timestep
-    assert time < cpu.maxTime
+    assert time == pytest.approx(cpu.maxTime, abs=1e-10)
 
     assert cfg.sim.mujoco == mujoco_cfg_from_model(cpu.model)
     for field in (
@@ -322,7 +322,7 @@ def test_termination_parity(pair, case: str) -> None:
 
 
 def test_horizon_is_a_truncation_on_both(pair) -> None:
-    """The 2000th step (20 s) truncates without the CHASE time-limit penalty."""
+    """The 1000th step (10 s) truncates without the CHASE time-limit penalty."""
     cpu_env, mj = pair
     cpu = cpu_env.unwrapped
     cpu_env.reset(seed=4)

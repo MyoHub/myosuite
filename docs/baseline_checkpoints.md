@@ -150,13 +150,13 @@ CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and
 
 <sub>
 
-**`myoChallengeChaseTagFBVs-v0`** (the scored 1v1 game, CPU only). `tutorials/files/5.6/chasetag_fbvs_baseline.onnx` plays one player, 546 -> 354, in either role. It is a starting point: it reaches and tags a player that does nothing, but it falls within about 7 s and does not yet stay up for the whole game. Measured with action noise 0.02 and 12 episodes per role, identical within rounding on myo_sim 0.2.3 and 0.2.4 and close on MuJoCo 3.17 (mujoco 3.11 below):
+**`myoChallengeChaseTagFBVs-v0`** (the scored 1v1 game, CPU only). `tutorials/files/5.6/chasetag_fbvs_baseline.onnx` plays one player, 546 -> 354, in either role. It is a starting point: it reaches and tags a player that does nothing, but it often falls before the 10 s limit: at about 6.7 s as a chaser against itself. Measured with action noise 0.02 and 12 episodes per role, on myo_sim 0.2.4 and MuJoCo 3.11; myo_sim 0.2.3 and MuJoCo 3.17 gave the same tags and falls:
 
 | Match | Tags | Chaser falls | Mean length | Fell at (median) |
 |---|---:|---:|---:|---|
 | Chases a player that does nothing, as player A | 12/12 | 0 | 3.0 s | - |
 | Chases a player that does nothing, as player B | 12/12 | 0 | 3.6 s | - |
-| Against itself, A chases | 11/12 | 1 | 5.6 s | runner 1.7 s |
+| Against itself, A chases | 11/12 | 0 | 5.2 s | runner 1.7 s |
 | Against itself, B chases | 0/12 | 12 | 7.1 s | runner 5.5 s, chaser 6.7 s |
 
 It was fine-tuned with self-play on `myofullbody` (4,000 iterations, 2048 envs) from a policy that descends from the behaviour-cloned tutorial 5.4 walker (`policy_bc_best.pt`, a student of MuscleMimic `amathislab/mm-10m-2`), so it is not trained from scratch on this body. Observations and actions match the game; only the dynamics of `myofullbody` were new to it. Policies trained on `musclemimic_models` do not carry over reliably: moving between releases 1.0.6 and 1.0.5 of that body already took a similar policy to 0 tags.

@@ -38,8 +38,8 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     matching the MyoChallenge evaluation protocol.
     """
 
-    # --- Episode / timing (MyoChallenge: 20 s) ---
-    maxTime: float = 20.0
+    # --- Episode / timing ---
+    maxTime: float = 10.0
     ctrl_dt: float = 0.01
     sim_dt: float = 0.002
 
