@@ -63,7 +63,6 @@ All notable changes to this project are documented in this file.
 ### Changed
 
 * **ChaseTag 1v1 (`myoChallengeChaseTagFBVs-v0`) win conditions.** Tag (planar pelvis distance ≤ 0.5 m) or a pursuer fall ends the episode; timeout with no tag is a runner win. A runner fall does not stop play — the pursuer can still tag the body on the ground. Boxing/fencing still end on any fall. P1 ChaseTag is unchanged. The train env (`myoChallengeChaseTagFBVsTrain-v0`) uses the same rules.
-* **ChaseTag FBVs / FBVsTrain pin `musclemimic_models` 1.0.5.** Same body as `amathislab/mm-10m-2` / the 5.4 walker. Use the 1.0.6 heading-table walker ([#579](https://github.com/MyoHub/myosuite/pull/579)) only when forced onto 1.0.6.
 * **Dependency floors.** `filelock` is at least 4.2.5 on Python 3.11 and newer, and stays on 3.25.2 for Python 3.10 (4.x requires 3.11, and later 3.x releases add advisories). `certifi`, `gitpython`, `msgpack`, `setuptools`, and `black` move to releases that clear current advisories. Pillow stays `>=10.1.0,<13`: 13.0.0 is the first release that clears the image advisories, and current gradio still requires `pillow<13`.
 * **Fatigue groups and parameters for every muscle of the bundled models.**
   - `_muscle_group` now also strips MuscleMimic's `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent
