@@ -7,8 +7,10 @@
 Muscles whose lengths change together under random joint motion form one group.
 The policy then commands one action per group plus a small, state-dependent
 correction per muscle, whose bound grows during training (see
-:func:`weight_amplitude`). Written from the paper's description; where the paper
-leaves something open, the docstrings say what is used here.
+:func:`weight_amplitude`). Follows the paper; where it leaves something open, the
+docstrings say what is used here. The form and scale of the correction and the defaults
+of :func:`synergy_groups` follow the authors' reference implementation
+(github.com/Beanpow/DynSyn), which was read while writing this.
 
 The grouping runs on a CPU ``MjModel``; the action mapping is backend-agnostic
 (``torch`` or ``numpy``).
@@ -129,11 +131,13 @@ def record_muscle_lengths(
 
 
 def length_similarity(lengths: np.ndarray, segment: int = 100) -> np.ndarray:
-    """Mean cosine similarity of the normalised muscle lengths over short segments.
+    """Mean correlation of the muscle length changes over short segments.
 
-    The paper's Eq. 2 averages the cosine similarity of the trajectory segments. It gives
-    no number of segments and no normalisation; the segment length and the min-max
-    normalisation are this implementation's choices.
+    The paper's Eq. 2 averages the cosine similarity of the trajectory segments, and its
+    text calls this the correlation between length changes. Each segment is centred here,
+    which makes the cosine that correlation. Without centring, two positive lengths that
+    drift slowly within a segment have a cosine near 1 even if they don't change together.
+    The paper gives no segment length; this one is this implementation's choice.
 
     Args:
         lengths: ``(steps, n_muscles)``; ``steps`` is cut to a multiple of ``segment``.
@@ -142,15 +146,16 @@ def length_similarity(lengths: np.ndarray, segment: int = 100) -> np.ndarray:
     Returns:
         ``(n_muscles, n_muscles)`` similarity in ``[0, 1]``.
     """
-    lo, hi = lengths.min(0), lengths.max(0)
-    x = (lengths - lo) / np.maximum(hi - lo, 1e-12)
-    n = len(x) // segment * segment
-    x = x[:n].reshape(n // segment, segment, -1)
+    n = len(lengths) // segment * segment
+    x = lengths[:n].reshape(n // segment, segment, -1)
+    x = x - x.mean(1, keepdims=True)
     norm = np.linalg.norm(x, axis=1, keepdims=True)
     cos = np.einsum("smi,smj->sij", x, x) / (
         np.einsum("sai,saj->sij", norm, norm) + 1e-12
     )
-    return cos.mean(0)
+    similarity = np.clip(cos.mean(0), 0.0, 1.0)
+    np.fill_diagonal(similarity, 1.0)  # also for a muscle that doesn't move
+    return similarity
 
 
 def k_medoids(
@@ -250,7 +255,7 @@ def weight_amplitude(
     ``min(max(k (t - a), 0), kappa)`` with ``a = start``, ``k = max_amp / ramp`` and
     ``kappa = max_amp``. The paper's Eq. 6 prints ``k t + a``, but says the corrections
     start at ``a`` and lists a positive ``a``, so this reads it as ``k (t - a)``. The paper
-    gives no value of ``kappa``; the default here is this implementation's choice.
+    gives no value of ``kappa``; the default of 0.1 follows the authors' reference implementation.
     """
     if ramp <= 0:
         return max_amp if env_steps >= start else 0.0
@@ -274,8 +279,8 @@ def expand_actions(
     the excitations, the two are the same.
 
     Eq. 5 is printed as ``IS(a_G) * clip(kappa w, -c, c)``. Here the correction is relative
-    to the group's action (``1 + clip(...)``), so a bound of 0 gives the group's action, as
-    the paper's text describes.
+    to the group's action (``1 + clip(...)``), as in the authors' reference implementation,
+    so a bound of 0 gives the group's action, as the paper's text describes.
 
     Args:
         actions: ``(..., n_muscles)``: first one action per group, then one correction

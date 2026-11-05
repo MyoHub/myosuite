@@ -12,6 +12,7 @@ from myosuite.core.dynsyn import (
     DynSynGroups,
     expand_actions,
     k_medoids,
+    length_similarity,
     synergy_groups,
     weight_amplitude,
 )
@@ -369,3 +370,32 @@ def test_both_backends_command_the_same_muscles(task):
     np.testing.assert_allclose(twin, expected, atol=1e-5)
     env.close()
     cpu.close()
+
+
+def test_similarity_measures_length_changes_not_slow_drift() -> None:
+    """Muscles that only share a slow drift within segments must not look alike."""
+    rng = np.random.default_rng(0)
+    steps, segment = 2000, 100
+    drift = np.linspace(0.0, 0.01, segment)
+    a = np.concatenate(
+        [
+            0.3 + rng.uniform() * 0.1 + drift + 1e-3 * rng.standard_normal(segment)
+            for _ in range(20)
+        ]
+    )
+    b = np.concatenate(
+        [
+            0.3 + rng.uniform() * 0.1 - drift + 1e-3 * rng.standard_normal(segment)
+            for _ in range(20)
+        ]
+    )
+    together = a + 0.5
+    noise_free = np.stack([a, b, together], axis=1)[:steps]
+    similarity = length_similarity(noise_free, segment=segment)
+    assert similarity[0, 2] == pytest.approx(1.0)
+    assert similarity[0, 1] < 0.05
+    # A muscle that doesn't move has no correlation with anything, and no NaN.
+    still = np.stack([a, np.full(len(a), 0.3)], axis=1)
+    similarity = length_similarity(still, segment=segment)
+    assert np.isfinite(similarity).all()
+    assert similarity[1, 1] == 1.0
