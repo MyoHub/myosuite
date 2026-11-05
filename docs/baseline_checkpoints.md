@@ -58,7 +58,7 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 | myoLegDirectionalBackward-v0 | `model_681.pt`   | 100.0%²                       |
 | myoLegDirectionalForward-v0  | `model_583.pt`   | 96.9%²                        |
 | myoLegDirectionalRandom-v0   | `model_2000.pt`  | 53.8%                         |
-| myoLegHillyTerrainWalk-v0    | `model_4999.pt`  | 26.6%                         |
+| myoLegHillyTerrainWalk-v0    | `model_4999.pt`  | 15.3%³                        |
 | myoLegRoughTerrainWalk-v0    | `model_4176.pt`  | 91.0%¹                        |
 | myoLegStairTerrainWalk-v0    | -                  | -                             |
 | myoLegStandRandom-v0         | `model_3500.pt`  | 34.1%                         |
@@ -72,6 +72,9 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 walks along `-y` is now the forward one. Each checkpoint moved with its task definition; a checkpoint downloaded under the old
 name walks in the opposite direction of the new one.
 
+³ Mean of seeds 1-3 with 256 episodes each. The earlier 26.6% was a single draw of 64 episodes; the twin bakes one terrain per seed,
+so one draw varies a lot. The released 3.0.0 code gives 18.4, 19.9 and 14.1% on the same seeds, so the change is not a regression.
+
 CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` now reuse the requested initial fatigue in every episode. Earlier versions mutated that array during stepping, which changed later episodes. Reevaluate checkpoints measured with this configuration.
 
 ---
@@ -82,7 +85,7 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 iterations may well reach higher success rates: `myoHandPoseRandom-v0` (36%, plateaued),
 `myoArmReachRandom-v0` (80%), `myoFingerReachRandom-v0` (73%),
 `myoLegDirectionalRandom-v0` (54%), `myoLegStandRandom-v0` (34%) and `myoLegHillyTerrainWalk-v0`
-(27%). `myoLegDirectionalRandom-v0` succeeds with exploration noise (99% sampled success) but only about half of the time with the mean
+(15%). `myoLegDirectionalRandom-v0` succeeds with exploration noise (99% sampled success) but only about half of the time with the mean
 action; the checkpoint is the best one of the run.
 
 </sub>
