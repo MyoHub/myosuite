@@ -47,7 +47,7 @@ class DynSynActionCfg:
         groups: Groups over ``base``'s muscles (:class:`DynSynGroups`).
         start_steps: Environment steps (all envs together) before corrections start.
         ramp_steps: Environment steps from zero to the full correction bound.
-        max_amplitude: Full correction bound (0.1 in the paper).
+        max_amplitude: Full correction bound.
         step_offset: Added to this env's steps in the schedule.
         frozen: Ignore this env's steps: the bound stays at ``step_offset``'s value.
     """
@@ -136,7 +136,13 @@ class DynSynAction:
 
         self._raw[:] = actions.to(self._raw.device)
         self._base.process_actions(
-            expand_actions(self._raw, self.cfg.groups.groups, self.amplitude, torch)
+            expand_actions(
+                self._raw,
+                self.cfg.groups.groups,
+                self.amplitude,
+                torch,
+                self.cfg.max_amplitude,
+            )
         )
 
     def apply_actions(self) -> None:

@@ -515,7 +515,8 @@ class DynSynWrapper(RecordConstructorArgs, gym.ActionWrapper):
         groups: JSON file from ``scripts/dynsyn_groups.py``, or loaded groups.
         start_steps: Env steps (summed over ``num_envs`` copies) before corrections start.
         ramp_steps: Env steps over which the bound grows to ``max_amplitude``.
-        max_amplitude: Largest relative correction (0.1 in the paper).
+        max_amplitude: Largest relative correction of the action (before the env's
+            sigmoid, see :func:`myosuite.core.dynsyn.expand_actions`).
         num_envs: Number of parallel copies of this env, so the schedule counts all steps.
         step_offset: Added to this env's steps in the schedule (continuing a training).
         frozen: Ignore this env's steps: the bound stays at ``step_offset``'s value.
@@ -591,7 +592,11 @@ class DynSynWrapper(RecordConstructorArgs, gym.ActionWrapper):
         from myosuite.core.dynsyn import expand_actions  # noqa: PLC0415
 
         return expand_actions(
-            np.asarray(action, dtype=np.float64), self.groups.groups, self.amplitude, np
+            np.asarray(action, dtype=np.float64),
+            self.groups.groups,
+            self.amplitude,
+            np,
+            self.max_amplitude,
         ).astype(np.asarray(action).dtype)
 
     def step(self, action: np.ndarray):

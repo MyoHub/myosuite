@@ -39,6 +39,19 @@ def test_expand_actions_groups_and_bounds():
     np.testing.assert_allclose(corrected[0, [4, 5]], [2.0 * 0.95, 2.0])
 
 
+def test_max_amplitude_above_the_default_is_reached():
+    a = np.array([[1.0, 1.0, 1.0, 30.0, 30.0, 30.0]])
+    out = expand_actions(a, GROUPS, 0.3, np, kappa=0.3)
+    np.testing.assert_allclose(out[0, [2, 4, 5]], 1.3)
+
+
+def test_correction_scales_the_action_not_the_excitation():
+    # A saturated positive correction: lower on a negative action, none on 0, higher on a positive one.
+    a = np.array([[-0.5, 0.0, 0.5, 30.0, 30.0, 30.0]])
+    out = expand_actions(a, [[0, 3], [1, 4], [2, 5]], 0.1, np)
+    np.testing.assert_allclose(out[0, 3:], [-0.55, 0.0, 0.55])
+
+
 def test_weight_amplitude_schedule():
     assert weight_amplitude(0, 100, 200) == 0.0
     assert weight_amplitude(100, 100, 200) == 0.0
@@ -307,3 +320,52 @@ def test_resume_refuses_contradicting_groups(walk_groups, trained_run, tmp_path)
     plain = _write_run(tmp_path / "plain", _walk_cfg(2), counter=100)
     with pytest.raises(ValueError, match="trained without DynSyn"):
         _resolve_dynsyn(cfg, plain, 0)
+
+
+@pytest.mark.parametrize("task", ["myoElbowPose1D6MRandom-v0", "myoLegWalk-v0"])
+def test_both_backends_command_the_same_muscles(task):
+    """Same DynSyn action, same muscle commands; the sigmoid comes after the correction."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("mjlab")
+    import mjlab.tasks  # noqa: F401
+    from mjlab.envs import ManagerBasedRlEnv
+    from mjlab.tasks.registry import load_env_cfg
+
+    from myosuite import make_env
+    from myosuite.envs.myo.backends.mjlab.dynsyn_action import (
+        action_actuator_names,
+        apply_dynsyn,
+        dynsyn_term,
+    )
+    from myosuite.envs.wrappers import DynSynWrapper
+    from myosuite.terms.base_action import sigmoid_muscle_activation
+
+    cpu = make_env(task)
+    model = cpu.unwrapped.model
+    names = [model.actuator(i).name for i in range(model.nu)]
+    groups = DynSynGroups(
+        groups=[list(range(3)), list(range(3, model.nu))], muscle_names=names
+    )
+    cpu = DynSynWrapper(cpu, groups, 0, 0, 0.2, step_offset=1, frozen=True)
+    cpu.reset(seed=0)
+    action = np.full(model.nu, 2.0, dtype=np.float32)  # saturated corrections
+    action[:2] = [0.4, 0.2]
+    cpu.step(action)
+
+    cfg = load_env_cfg(task)
+    cfg.scene.num_envs = 1
+    sigmoid = cfg.actions["muscles"].muscle_sigmoid
+    apply_dynsyn(cfg, groups, 0, 0, 0.2, step_offset=1, frozen=True)
+    env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    env.reset()
+    env.step(torch.as_tensor(action)[None])
+    term = dynsyn_term(env)
+    assert action_actuator_names(term, env) == names
+    twin = term.processed_action[0].numpy()
+    np.testing.assert_allclose(twin, cpu.unwrapped.data.ctrl, atol=1e-5)
+
+    raw = expand_actions(action[None], groups.groups, 0.2, np, kappa=0.2)[0]
+    expected = sigmoid_muscle_activation(raw, np) if sigmoid else raw
+    np.testing.assert_allclose(twin, expected, atol=1e-5)
+    env.close()
+    cpu.close()

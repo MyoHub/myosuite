@@ -60,7 +60,8 @@ class TrainConfig:
     dynsyn_ramp_steps: float = 1e8
     """Environment steps over which the correction bound grows to ``dynsyn_max_amplitude``."""
     dynsyn_max_amplitude: float = 0.1
-    """Largest relative correction of a muscle's group action (0: groups only, one action per group)."""
+    """Largest relative correction of a muscle's group action, before the task's sigmoid (0: groups
+    only, one action per group)."""
     stop_on_success: bool = True
     """Stop the run as soon as the logged ``Episode_Metrics/success`` rate of an
     iteration exceeds ``--success-threshold``; a checkpoint of that iteration is stored
