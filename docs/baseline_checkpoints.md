@@ -23,10 +23,10 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 
 | Env                          | Checkpoint         | Deterministic success (mjlab) |
 | ---------------------------- | ------------------ | ----------------------------- |
-| motorFingerPoseFixed-v0      | `model_267.pt`   | 100.0%                        |
-| motorFingerPoseRandom-v0     | `model_152.pt`   | 100.0%                        |
-| motorFingerReachFixed-v0     | `model_120.pt`   | 100.0%                        |
-| motorFingerReachRandom-v0    | `model_1999.pt`  | 93.9%                         |
+| motorFingerPoseFixed-v0      | `model_107.pt`     | 100.0%                        |
+| motorFingerPoseRandom-v0     | `model_1090.pt`    | 99.7%                         |
+| motorFingerReachFixed-v0     | `model_134.pt`     | 100.0%                        |
+| motorFingerReachRandom-v0    | `model_156.pt`     | 97.5%                         |
 | myoArmReachFixed-v0          | `model_696.pt`   | 100.0%                        |
 | myoArmReachRandom-v0         | `model_4999.pt`  | 79.7%                         |
 | myoChallengeChaseTagFBP2-v0  | -                  | -                             |
@@ -80,7 +80,7 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 
 **Not all published policies converged to the standard 95% threshold**, and training for more
 iterations may well reach higher success rates: `myoHandPoseRandom-v0` (36%, plateaued),
-`myoArmReachRandom-v0` (80%), `myoFingerReachRandom-v0` (73%), `motorFingerReachRandom-v0` (94%),
+`myoArmReachRandom-v0` (80%), `myoFingerReachRandom-v0` (73%),
 `myoLegDirectionalRandom-v0` (54%), `myoLegStandRandom-v0` (34%) and `myoLegHillyTerrainWalk-v0`
 (27%). `myoLegDirectionalRandom-v0` succeeds with exploration noise (99% sampled success) but only about half of the time with the mean
 action; the checkpoint is the best one of the run.
@@ -122,7 +122,7 @@ models collected before the MuscleMimic bridge fix (#459) must be recollected.
 
 <sub>
 
-**Motor finger gears.** With `myo_sim` 0.2.4 the `motorFinger*` envs use the gears of `motorfinger_v0.xml` as they are, 160/80/80/160/160 (`extn`, `adabR`, `adabL`, `mflx`, `dflx`), and MyoSuite no longer scales them. Checkpoints trained on the earlier 80/20/20/40/40 no longer apply. Their observations, actions and control step are unchanged, so they still load and the env contract hash in `manifest.json` does not warn about them: use the checkpoints of the release that matches your MyoSuite version.
+**Motor finger gears.** With `myo_sim` 0.2.4 the `motorFinger*` envs use the gears of `motorfinger_v0.xml` as they are, 160/80/80/160/160 (`extn`, `adabR`, `adabL`, `mflx`, `dflx`), and MyoSuite no longer scales them. Checkpoints trained on the earlier 80/20/20/40/40 no longer apply. Their observations, actions and control step are unchanged, so they still load and the env contract hash in `manifest.json` does not warn about them: use the checkpoints of the release that matches your MyoSuite version. The four `motorFinger*` rows are means over seeds 0-2 with 256 episodes each.
 
 </sub>
 
