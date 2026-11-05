@@ -58,7 +58,7 @@ fatigue_reset_random=True)``, or change the options with
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import gymnasium as gym
 import numpy as np
@@ -66,6 +66,9 @@ from gymnasium.envs.registration import WrapperSpec, load_env_creator
 from gymnasium.utils import RecordConstructorArgs
 
 from myosuite.envs import muscle_stages
+
+if TYPE_CHECKING:
+    from myosuite.core.dynsyn import DynSynGroups
 
 
 class _ForwardPublicAttributes:
@@ -509,11 +512,13 @@ class DynSynWrapper(RecordConstructorArgs, gym.ActionWrapper):
 
     Args:
         env: Env whose actions are its model's actuators, in model order.
-        groups: JSON file from ``scripts/dynsyn_groups.py``.
+        groups: JSON file from ``scripts/dynsyn_groups.py``, or loaded groups.
         start_steps: Env steps (summed over ``num_envs`` copies) before corrections start.
         ramp_steps: Env steps over which the bound grows to ``max_amplitude``.
         max_amplitude: Largest relative correction (0.1 in the paper).
         num_envs: Number of parallel copies of this env, so the schedule counts all steps.
+        step_offset: Added to this env's steps in the schedule (continuing a training).
+        frozen: Ignore this env's steps: the bound stays at ``step_offset``'s value.
 
     Raises:
         ValueError: If the groups were made for other actuators.
@@ -522,11 +527,13 @@ class DynSynWrapper(RecordConstructorArgs, gym.ActionWrapper):
     def __init__(
         self,
         env: gym.Env,
-        groups: str,
+        groups: str | DynSynGroups,
         start_steps: float,
         ramp_steps: float,
         max_amplitude: float = 0.1,
         num_envs: int = 1,
+        step_offset: float = 0.0,
+        frozen: bool = False,
     ) -> None:
         from myosuite.core.dynsyn import DynSynGroups  # noqa: PLC0415
 
@@ -537,9 +544,13 @@ class DynSynWrapper(RecordConstructorArgs, gym.ActionWrapper):
             ramp_steps=ramp_steps,
             max_amplitude=max_amplitude,
             num_envs=num_envs,
+            step_offset=step_offset,
+            frozen=frozen,
         )
         gym.ActionWrapper.__init__(self, env)
-        self.groups = DynSynGroups.load(groups)
+        self.groups = (
+            groups if isinstance(groups, DynSynGroups) else DynSynGroups.load(groups)
+        )
         model = env.unwrapped.model
         names = [model.actuator(i).name.split("/")[-1] for i in range(model.nu)]
         if names != list(self.groups.muscle_names):
@@ -553,6 +564,7 @@ class DynSynWrapper(RecordConstructorArgs, gym.ActionWrapper):
             max_amplitude,
         )
         self.num_envs, self.env_steps = num_envs, 0
+        self.step_offset, self.frozen = step_offset, frozen
         if max_amplitude == 0:  # groups only: one action per group
             box = env.action_space
             self.action_space = gym.spaces.Box(
@@ -567,8 +579,9 @@ class DynSynWrapper(RecordConstructorArgs, gym.ActionWrapper):
         """Current correction bound."""
         from myosuite.core.dynsyn import weight_amplitude  # noqa: PLC0415
 
+        steps = 0 if self.frozen else self.env_steps * self.num_envs
         return weight_amplitude(
-            self.env_steps * self.num_envs,
+            self.step_offset + steps,
             self.start_steps,
             self.ramp_steps,
             self.max_amplitude,

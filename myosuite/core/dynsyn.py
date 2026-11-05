@@ -50,6 +50,34 @@ class DynSynGroups:
         return DynSynGroups(**json.loads(Path(path).read_text()))
 
 
+@dataclass
+class TrainedDynSyn:
+    """DynSyn setup of a training run at one of its checkpoints.
+
+    Attributes:
+        groups: The run's muscle groups.
+        start_steps: Environment steps before the corrections start.
+        ramp_steps: Environment steps from zero to the full correction bound.
+        max_amplitude: Full correction bound (0: groups only).
+        env_steps: Environment steps of the schedule at the checkpoint.
+        saved_counter: The env's step counter stored in the checkpoint.
+    """
+
+    groups: DynSynGroups
+    start_steps: float
+    ramp_steps: float
+    max_amplitude: float
+    env_steps: float
+    saved_counter: int = 0
+
+    @property
+    def amplitude(self) -> float:
+        """Correction bound the checkpoint was trained with."""
+        return weight_amplitude(
+            self.env_steps, self.start_steps, self.ramp_steps, self.max_amplitude
+        )
+
+
 def record_muscle_lengths(
     model: mujoco.MjModel,
     actuator_ids: np.ndarray,

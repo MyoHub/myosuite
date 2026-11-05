@@ -20,6 +20,8 @@ import torch
 import yaml
 from rsl_rl.modules import MLP, EmpiricalNormalization
 
+from myosuite.core.dynsyn import DynSynGroups, TrainedDynSyn
+
 
 class RslRlPolicy(torch.nn.Module):
     """RSL-RL actor: ``mlp(normalizer(obs))`` -> action mean (deterministic).
@@ -103,7 +105,51 @@ def _agent_params(checkpoint: Path) -> dict[str, Any]:
         return yaml.load(f, Loader=_CfgLoader) or {}
 
 
-def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
+def trained_dynsyn(checkpoint: str | Path) -> TrainedDynSyn | None:
+    """DynSyn setup of the run that wrote a checkpoint.
+
+    ``params/env.yaml`` holds the action term, so the groups and the schedule; the
+    checkpoint holds the env's step counter (mjlab's runner stores it).
+
+    Args:
+        checkpoint: ``model_*.pt`` in its run directory.
+
+    Returns:
+        The setup, or ``None`` if the run did not use DynSyn or has no ``params/env.yaml``.
+    """
+    checkpoint = Path(checkpoint)
+    path = checkpoint.parent / "params" / "env.yaml"
+    if not path.is_file() or "DynSynActionCfg" not in path.read_text(errors="replace"):
+        return None
+    with path.open() as f:
+        env = yaml.load(f, Loader=_CfgLoader)
+    term = next(
+        t
+        for t in env["actions"].values()
+        if isinstance(t, dict) and "start_steps" in t
+    )
+    state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    counter = (state.get("infos") or {}).get("env_state", {}).get("common_step_counter")
+    if counter is None:
+        print(f"{checkpoint} stores no step count: using the full DynSyn bound.")
+    steps = (
+        float("inf")
+        if counter is None
+        else counter * env["scene"]["num_envs"] + term.get("step_offset", 0.0)
+    )
+    return TrainedDynSyn(
+        groups=DynSynGroups(**term["groups"]),
+        start_steps=term["start_steps"],
+        ramp_steps=term["ramp_steps"],
+        max_amplitude=term["max_amplitude"],
+        env_steps=steps,
+        saved_counter=counter or 0,
+    )
+
+
+def load_rslrl_policy(
+    checkpoint: str | Path, action_dim: int, dynsyn_applied: bool = False
+) -> RslRlPolicy:
     """Rebuild the deterministic actor of an RSL-RL checkpoint.
 
     Layer sizes are read from the weights; the activation comes from the run's
@@ -112,11 +158,23 @@ def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
     Args:
         checkpoint: ``model_*.pt`` from an mjlab training run.
         action_dim: Action dimension of the env the policy will drive.
+        dynsyn_applied: The env applies the run's DynSyn setup (:func:`trained_dynsyn`).
 
     Returns:
         The policy in eval mode on CPU.
+
+    Raises:
+        ValueError: The run used DynSyn and ``dynsyn_applied`` is not set: its actions
+            are group actions and corrections, not one action per muscle.
     """
     checkpoint = Path(checkpoint)
+    if not dynsyn_applied and trained_dynsyn(checkpoint) is not None:
+        raise ValueError(
+            f"{checkpoint} was trained with DynSyn: its actions are group actions and "
+            "corrections, not one action per muscle. Evaluate it with "
+            "scripts/eval_mjlab_policy.py, which applies them, or wrap the env in "
+            "DynSynWrapper and pass dynsyn_applied=True."
+        )
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
     actor_state: dict[str, torch.Tensor] = state["actor_state_dict"]
     actor_cfg = _agent_params(checkpoint).get("actor", {})

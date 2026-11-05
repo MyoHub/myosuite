@@ -13,7 +13,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from myosuite.core.dynsyn import DynSynGroups, expand_actions, weight_amplitude
+from myosuite.core.dynsyn import (
+    DynSynGroups,
+    TrainedDynSyn,
+    expand_actions,
+    weight_amplitude,
+)
 from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
     MyoMuscleActivationActionCfg,
 )
@@ -43,6 +48,8 @@ class DynSynActionCfg:
         start_steps: Environment steps (all envs together) before corrections start.
         ramp_steps: Environment steps from zero to the full correction bound.
         max_amplitude: Full correction bound (0.1 in the paper).
+        step_offset: Added to this env's steps in the schedule.
+        frozen: Ignore this env's steps: the bound stays at ``step_offset``'s value.
     """
 
     def __init__(
@@ -53,6 +60,8 @@ class DynSynActionCfg:
         start_steps: float,
         ramp_steps: float,
         max_amplitude: float = 0.1,
+        step_offset: float = 0.0,
+        frozen: bool = False,
     ) -> None:
         self.base, self.groups = base, groups
         self.start_steps, self.ramp_steps, self.max_amplitude = (
@@ -60,6 +69,7 @@ class DynSynActionCfg:
             ramp_steps,
             max_amplitude,
         )
+        self.step_offset, self.frozen = step_offset, frozen
 
     def build(self, env: Any) -> DynSynAction:
         return DynSynAction(self, env)
@@ -91,6 +101,7 @@ class DynSynAction:
             len(cfg.groups.groups) if cfg.max_amplitude == 0 else self._base.action_dim
         )
         self._raw = torch.zeros((env.num_envs, self._dim), device=env.device)
+        self.schedule_source: DynSynAction | None = None
 
     @property
     def action_dim(self) -> int:
@@ -101,11 +112,23 @@ class DynSynAction:
         return self._raw
 
     @property
-    def amplitude(self) -> float:
-        """Current correction bound, from the environment steps taken so far."""
+    def env_steps(self) -> float:
+        """Environment steps of the correction schedule."""
+        if self.schedule_source is not None:
+            return self.schedule_source.env_steps
+        if self.cfg.frozen:
+            return self.cfg.step_offset
         steps = float(self._env.common_step_counter) * self._env.num_envs
+        return self.cfg.step_offset + steps
+
+    @property
+    def amplitude(self) -> float:
+        """Current correction bound."""
         return weight_amplitude(
-            steps, self.cfg.start_steps, self.cfg.ramp_steps, self.cfg.max_amplitude
+            self.env_steps,
+            self.cfg.start_steps,
+            self.cfg.ramp_steps,
+            self.cfg.max_amplitude,
         )
 
     def process_actions(self, actions: Any) -> None:
@@ -145,8 +168,19 @@ def apply_dynsyn(
     start_steps: float,
     ramp_steps: float,
     max_amplitude: float = 0.1,
+    step_offset: float = 0.0,
+    frozen: bool = False,
 ) -> None:
     """Replace the env config's muscle action term by its DynSyn version (in place).
+
+    Args:
+        env_cfg: Env config to change.
+        groups: Groups over the term's muscles.
+        start_steps: Environment steps before corrections start.
+        ramp_steps: Environment steps from zero to the full correction bound.
+        max_amplitude: Full correction bound.
+        step_offset: Added to the env's steps in the schedule.
+        frozen: Keep the bound at ``step_offset``'s value (evaluation).
 
     Raises:
         ValueError: The config has no muscle action term, or more than one.
@@ -163,4 +197,38 @@ def apply_dynsyn(
         start_steps=start_steps,
         ramp_steps=ramp_steps,
         max_amplitude=max_amplitude,
+        step_offset=step_offset,
+        frozen=frozen,
     )
+
+
+def apply_trained_dynsyn(
+    env_cfg: Any, trained: TrainedDynSyn, frozen: bool = False
+) -> None:
+    """Apply a training run's DynSyn setup, with the bound at its checkpoint's value.
+
+    Args:
+        env_cfg: Env config to change.
+        trained: From :func:`myosuite.utils.rslrl_policy.trained_dynsyn`.
+        frozen: Keep the bound there (evaluation). Otherwise training goes on from
+            there, also with another ``num_envs``: the runner restores the step counter
+            when it loads the checkpoint, and the offset makes up the difference.
+    """
+    restored = 0 if frozen else trained.saved_counter * env_cfg.scene.num_envs
+    apply_dynsyn(
+        env_cfg,
+        trained.groups,
+        trained.start_steps,
+        trained.ramp_steps,
+        trained.max_amplitude,
+        step_offset=trained.env_steps - restored,
+        frozen=frozen,
+    )
+
+
+def dynsyn_term(env: Any) -> DynSynAction | None:
+    """The env's :class:`DynSynAction`, if it has one."""
+    for name, term in env.cfg.actions.items():
+        if isinstance(term, DynSynActionCfg):
+            return env.action_manager.get_term(name)
+    return None
