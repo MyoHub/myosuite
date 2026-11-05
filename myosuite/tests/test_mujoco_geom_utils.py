@@ -76,14 +76,22 @@ def _recompiled(spec: mujoco.MjSpec) -> mujoco.MjModel:
     return spec.compile()
 
 
+def _mujoco_version() -> tuple[int, int]:
+    major, minor = mujoco.__version__.split(".")[:2]
+    return int(major), int(minor)
+
+
 def _arrays(model: mujoco.MjModel) -> dict[str, np.ndarray]:
     fields = {
         k: v
         for k in dir(model)
         if not k.startswith("_") and isinstance(v := getattr(model, k), np.ndarray)
     }
-    for k in ("meaninertia", "meanmass", "meansize", "extent", "center"):
-        fields[f"stat.{k}"] = np.asarray(getattr(model.stat, k))
+    # From MuJoCo 3.17 model statistics are resolved at compile time only, so mj_setConst
+    # leaves them as compiled, and the solvers no longer read stat.meaninertia.
+    if _mujoco_version() < (3, 17):
+        for k in ("meaninertia", "meanmass", "meansize", "extent", "center"):
+            fields[f"stat.{k}"] = np.asarray(getattr(model.stat, k))
     return fields
 
 

@@ -59,7 +59,7 @@ def refresh_geom_derived_fields(
     """
     for body_id in body_ids:
         _refresh_body(model, spec, int(body_id))
-    # mj_setConst recomputes every statistic; keep those the model file sets.
+    # Before MuJoCo 3.17 mj_setConst recomputes every statistic; keep those the model file sets.
     user_stats = {
         name: np.copy(getattr(model.stat, name))
         for name in _STATISTICS

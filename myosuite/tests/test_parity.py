@@ -27,20 +27,38 @@ from __future__ import annotations
 import pickle
 from pathlib import Path
 
+import mujoco
 import numpy as np
 import pytest
 
 import myosuite  # noqa: F401
 from myosuite import make_env
 
-
 pytestmark = pytest.mark.tier1
 
 BASELINE_DIR = Path(__file__).parent / "parity_baselines"
 
+
+def _mujoco_version() -> tuple[int, int]:
+    major, minor = mujoco.__version__.split(".")[:2]
+    return int(major), int(minor)
+
+
 # Per-env obs atol overrides of the strict 1e-6 default; each needs a reason.
 # Every replay is deterministic on one machine (bit-identical in-process and
 # across processes); the margins cover drift between platforms and machines.
+# Baselines made before MuJoCo 3.16, whose physics differs from it on. A bisection of MuJoCo
+# 3.11 to 3.17 shows no change above tolerance up to 3.15. The causes, each checked with a
+# replay: 3.16 stops double-counting height-field margins and changes tendon wrapping near
+# onset, and 3.17 adds multicontact for geoms with positive margins. These need baselines
+# per MuJoCo version once CI runs a newer one.
+CHANGED_IN_MUJOCO_3_16 = {
+    "myoChallengeBaodingP2-v1",
+    "myoChallengeRelocateP1-v0",
+    "myoHandReorient8-v0",
+    "myoLegRoughTerrainWalk-v0",
+}
+
 RELAXED_OBS_ATOL: dict[str, float] = {
     # Cross-platform MuJoCo minor drift (arm64 vs x86_64) for these tasks. The
     # finger baselines hold one episode only (see the generator's
@@ -91,6 +109,10 @@ def _get_baseline_env_ids() -> list[str]:
 @pytest.mark.parametrize("env_id", _get_baseline_env_ids())
 def test_parity(env_id: str) -> None:
     """Replay frozen action sequence and assert numerical parity."""
+    if env_id in CHANGED_IN_MUJOCO_3_16 and _mujoco_version() >= (3, 16):
+        pytest.skip(
+            f"The {env_id} baseline predates the physics changes of MuJoCo 3.16 and 3.17."
+        )
     pkl_path = BASELINE_DIR / f"{env_id}.pkl"
 
     with open(pkl_path, "rb") as fh:
@@ -120,14 +142,14 @@ def test_parity(env_id: str) -> None:
                 err_msg=f"{env_id} step {i}: obs mismatch",
             )
             rwd_atol = RELAXED_RWD_ATOL.get(env_id, 1e-6)
-            assert (
-                abs(rwd - rec["rwd"]) < rwd_atol
-            ), f"{env_id} step {i}: reward mismatch (got {rwd}, expected {rec['rwd']})"
-            assert (
-                terminated == rec["terminated"]
-            ), f"{env_id} step {i}: terminated mismatch"
-            assert (
-                truncated == rec["truncated"]
-            ), f"{env_id} step {i}: truncated mismatch"
+            assert abs(rwd - rec["rwd"]) < rwd_atol, (
+                f"{env_id} step {i}: reward mismatch (got {rwd}, expected {rec['rwd']})"
+            )
+            assert terminated == rec["terminated"], (
+                f"{env_id} step {i}: terminated mismatch"
+            )
+            assert truncated == rec["truncated"], (
+                f"{env_id} step {i}: truncated mismatch"
+            )
     finally:
         env.close()
