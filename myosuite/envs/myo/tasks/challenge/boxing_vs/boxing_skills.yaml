@@ -1,0 +1,153 @@
+# Boxing skill library: frame ranges of the mazen_c3d mocap clips.
+# Source of truth for scripts/boxing_skills.py (cut / render). Edit a range, re-run cut.
+# kind = menu group the high-level policy chooses from; variants in a group are
+# interchangeable. Punch ranges come from 'boxing_skills.py detect' (cuts at minima
+# of the combined hand reach); the rest were picked from the signal plots.
+# Dropped after review: punch_R_running2 (running clip 252-292, arms fall into a run).
+skills:
+  guard:
+    clip: punchboxing_push_poses
+    frames: [41, 42]
+    pad: 49
+    kind: guard
+    note: static guard pose held 0.5 s (start pose of the push-clip punches)
+  punch_R_push1:
+    clip: punchboxing_push_poses
+    frames: [45, 90]
+    kind: punch_R
+    note: peak 72, reach 0.61 m, 3.8 m/s
+  punch_L_push1:
+    clip: punchboxing_push_poses
+    frames: [90, 120]
+    kind: punch_L
+    note: peak 101, reach 0.55 m, 3.7 m/s
+  punch_R_push2:
+    clip: punchboxing_push_poses
+    frames: [120, 154]
+    kind: punch_R
+    note: peak 136, reach 0.62 m, 3.2 m/s
+  punch_R_stand1:
+    clip: punchboxing_stand_poses
+    frames: [43, 83]
+    kind: punch_R
+    note: peak 65, reach 0.54 m, 4.0 m/s
+  punch_L_stand1:
+    clip: punchboxing_stand_poses
+    frames: [83, 113]
+    kind: punch_L
+    note: peak 96, reach 0.47 m, 3.4 m/s
+  punch_R_stand2:
+    clip: punchboxing_stand_poses
+    frames: [113, 146]
+    kind: punch_R
+    note: peak 128, reach 0.55 m, 4.2 m/s
+  punch_R_walk1:
+    clip: punchboxing_walk_poses
+    frames: [52, 78]
+    kind: punch_R
+    note: peak 69, reach 0.5 m, 3.4 m/s
+  punch_L_walk1:
+    clip: punchboxing_walk_poses
+    frames: [78, 105]
+    kind: punch_L
+    note: peak 90, reach 0.48 m, 3.2 m/s
+  punch_R_walk2:
+    clip: punchboxing_walk_poses
+    frames: [105, 127]
+    kind: punch_R
+    note: peak 116, reach 0.54 m, 4.0 m/s
+  punch_L_walk2:
+    clip: punchboxing_walk_poses
+    frames: [127, 156]
+    kind: punch_L
+    note: peak 139, reach 0.49 m, 3.1 m/s
+  punch_R_walk3:
+    clip: punchboxing_walk_poses
+    frames: [156, 183]
+    kind: punch_R
+    note: peak 169, reach 0.57 m, 4.2 m/s
+  punch_R_kick1:
+    clip: punchboxing_kick_poses
+    frames: [36, 76]
+    kind: punch_R
+    note: peak 63, reach 0.58 m, 4.3 m/s
+  punch_L_kick1:
+    clip: punchboxing_kick_poses
+    frames: [76, 105]
+    kind: punch_L
+    note: peak 88, reach 0.56 m, 3.9 m/s
+  punch_R_kick2:
+    clip: punchboxing_kick_poses
+    frames: [105, 137]
+    kind: punch_R
+    note: peak 119, reach 0.58 m, 3.7 m/s
+  punch_L_kick2:
+    clip: punchboxing_kick_poses
+    frames: [137, 170]
+    kind: punch_L
+    note: peak 153, reach 0.6 m, 3.8 m/s; trimmed at 170, arms start dropping after
+  punch_R_jumpinplace1:
+    clip: punchboxing_jumpinplace_poses
+    frames: [59, 93]
+    kind: punch_R
+    note: peak 81, reach 0.53 m, 3.3 m/s
+  punch_L_jumpinplace1:
+    clip: punchboxing_jumpinplace_poses
+    frames: [93, 121]
+    kind: punch_L
+    note: peak 106, reach 0.48 m, 2.6 m/s
+  punch_R_jumpinplace2:
+    clip: punchboxing_jumpinplace_poses
+    frames: [121, 150]
+    kind: punch_R
+    note: peak 135, reach 0.56 m, 3.6 m/s
+  punch_L_jumpinplace2:
+    clip: punchboxing_jumpinplace_poses
+    frames: [150, 177]
+    kind: punch_L
+    note: peak 159, reach 0.49 m, 3.6 m/s
+  punch_R_running1:
+    clip: punchboxing_running_poses
+    frames: [195, 223]
+    kind: punch_R
+    note: peak 214, reach 0.51 m, 4.4 m/s
+  punch_L_running1:
+    clip: punchboxing_running_poses
+    frames: [223, 252]
+    kind: punch_L
+    note: peak 235, reach 0.56 m, 4.1 m/s
+  one_two_push:
+    clip: punchboxing_push_poses
+    frames: [45, 120]
+    kind: combo
+    note: right then left (punch_R_push1 + punch_L_push1)
+  flurry_kick:
+    clip: punchboxing_kick_poses
+    frames: [36, 170]
+    kind: combo
+    note: R-L-R-L flurry in place, 1.4 s
+  step_back_running:
+    clip: punchboxing_running_poses
+    frames: [70, 166]
+    kind: step_back
+    note: two steps backward (~0.6 m), hands at chest height, not a tight guard
+  step_fwd:
+    clip: punchboxing_walk_poses
+    frames: [240, 348]
+    kind: step_fwd
+    note: two walking steps forward (~1.4 m), arms down, not in guard
+  step_back:
+    clip: punchboxing_walk_poses
+    frames: [465, 576]
+    kind: step_back
+    note: two walking steps backward, arms down, not in guard
+  lunge_push:
+    clip: punchboxing_push_poses
+    frames: [155, 250]
+    kind: special
+    note: step in and two-handed shove; ends bent forward, not in guard
+  kick_R:
+    clip: punchboxing_kick_poses
+    frames: [185, 300]
+    kind: special
+    note: right high kick (ankle to ~1.4 m) stepping forward
