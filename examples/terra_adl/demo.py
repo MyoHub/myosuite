@@ -25,7 +25,7 @@ from myosuite.integrations.musclemimic import (  # noqa: E402
     load_terrain_policy,
     plan_waypoint_reference,
 )
-from examples.terra_adl.apartment import (  # noqa: E402
+from apartment import (  # noqa: E402
     adl_apartment_scene,
     adl_route,
 )
