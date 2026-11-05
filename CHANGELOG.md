@@ -42,6 +42,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+* **`mujoco<4` and `mujoco-warp<4`.** MuJoCo 4 changes how spatial tendons use side sites, which moves some muscle paths in the models, so this release stays on MuJoCo 3.
 * **`motorFinger*` motor gears come from `myo_sim` 0.2.4.** `myo-sim` moves to 0.2.4, whose `motorfinger_v0.xml` has gears of 160/80/80/160/160 (`extn`, `adabR`, `adabL`, `mflx`, `dflx`). The `motor_finger` recipe loads that XML as it is and no longer scales it, so the four `motorFinger*` envs go from 80/20/20/40/40 to these gears. Their dynamics change while observations, actions and control step stay the same; checkpoints trained on the earlier gears no longer apply (`docs/baseline_checkpoints.md`).
 * **Dependency floors.** `filelock` is at least 4.2.5 on Python 3.11 and newer, and stays on 3.25.2 for Python 3.10 (4.x requires 3.11, and later 3.x releases add advisories). `certifi`, `gitpython`, `msgpack`, `setuptools`, and `black` move to releases that clear current advisories. Pillow stays `>=10.1.0,<13`: 13.0.0 is the first release that clears the image advisories, and current gradio still requires `pillow<13`.
 * **Fatigue groups and parameters for every muscle of the bundled models.**
