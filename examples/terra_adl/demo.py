@@ -33,16 +33,6 @@ from myosuite.terms.waypoint import WaypointRewardCfg  # noqa: E402
 from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz  # noqa: E402
 
 
-def _hide_wrap_geoms(model: mujoco.MjModel, scene: mujoco.MjvScene) -> None:
-    """Hide only tendon wrapping objects; keep anatomical bone meshes visible."""
-    for geom in scene.geoms[: scene.ngeom]:
-        if geom.objtype != mujoco.mjtObj.mjOBJ_GEOM or geom.objid < 0:
-            continue
-        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, geom.objid) or ""
-        if "wrap" in name.lower():
-            geom.rgba[3] = 0.0
-
-
 def main() -> None:
     seed = int(os.environ.get("TERRA_SEED", "0"))
     stochastic = os.environ.get("TERRA_STOCHASTIC", "1") != "0"
@@ -98,9 +88,11 @@ def main() -> None:
     # Keep every model geom group visible, then suppress wrapping objects by name.
     # This preserves the full anatomical bone meshes instead of hiding their group.
     option = mujoco.MjvOption()
-    option.geomgroup[:] = 1
+    # Match tutorial 4.4: bones and scene in groups 0–2; wraps/proxies hidden.
+    option.geomgroup[:] = 0
+    option.geomgroup[:3] = 1
     option.sitegroup[:] = 0
-    option.tendongroup[:] = 1
+    option.tendongroup[:] = 0
     ghost = BoneGhostBodyViz.from_motion_clip(
         reference,
         model,
@@ -126,7 +118,6 @@ def main() -> None:
                 cam.azimuth = 150
                 cam.elevation = -12
                 renderer.update_scene(base.data, camera=cam, scene_option=option)
-                _hide_wrap_geoms(model, renderer.scene)
                 ghost.draw(
                     min(step + 1, reference.num_frames - 1),
                     renderer.scene,
