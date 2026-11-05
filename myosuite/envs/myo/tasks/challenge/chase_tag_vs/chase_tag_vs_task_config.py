@@ -260,7 +260,7 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
 
 @dataclass
 class ChaseTagVsFullbodyTaskConfig(ChaseTagVsTaskConfig):
-    """Chase-tag on the MuscleMimic full-body model instead of myoLeg-only.
+    """Chase-tag on myo_sim's ``myofullbody`` instead of myoLeg-only.
 
     Identical hyperparameters and reward/obs term functions to
     :class:`ChaseTagVsTaskConfig` — only the model builder differs.

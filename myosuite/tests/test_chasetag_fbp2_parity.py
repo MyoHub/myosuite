@@ -62,8 +62,10 @@ _STEP_ATOL = {
     "role": 0.0,
 }
 _STEP_MEDIAN_ATOL = 1e-3  # a block that is merely bounded (e.g. zeros) fails this
-# Blocks whose median float32/solver noise between MuJoCo versions exceeds the default.
-_STEP_MEDIAN_ATOL_BY_KEY = {"orientation": 2e-3}
+# Blocks whose median float32/solver noise exceeds the default. Orientation stays near 1e-4,
+# with rare single-step spikes on any body: up to 0.0105 on the MuscleMimic body and 0.0071
+# on myofullbody over seeds 2-6, with matching contact sets.
+_STEP_MEDIAN_ATOL_BY_KEY = {"orientation": 1e-2}
 _STEP_REW_ATOL = 1e-3
 # Same state, no physics: term functions must agree to float32 precision.
 _TERM_ATOL = 1e-5

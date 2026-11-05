@@ -109,8 +109,8 @@ _MODELS_VALUES: dict[str, dict[str, dict[str, Any]]] = {
 SUPPORTED_MODELS_VERSIONS = tuple(_MODELS_VALUES)
 
 # Env ids whose body is built from the musclemimic_models MJCF (MuscleMimic full body and bimanual,
-# directional locomotion, full-body ChaseTag); other envs use MyoSuite's own models.
-_MODELS_ENV_ID = re.compile(r"Mimic|FullBodyDirectional|ChaseTagFB")
+# directional locomotion); other envs use MyoSuite's own models.
+_MODELS_ENV_ID = re.compile(r"Mimic|FullBodyDirectional")
 
 # Field of a checkpoint folder's manifest.json that records the release (see env_models_version).
 MANIFEST_FIELD = "musclemimic_models_version"

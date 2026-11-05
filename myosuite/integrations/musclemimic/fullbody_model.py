@@ -377,7 +377,7 @@ def build_mimic_fullbody_spec(
     return spec, xml_path
 
 
-@cached_spec()
+@cached_spec(min_uses=1)
 def _native_fullbody_spec(disable_fingers: bool) -> mujoco.MjSpec:
     """Native full-body spec, built once per ``disable_fingers`` (the only config input)."""
     return _build_native_mimic_fullbody_spec(
@@ -431,17 +431,10 @@ def _build_native_mimic_fullbody_spec(
 
     spec = myo_sim.load_spec("myofullbody")
     if config.disable_fingers:
-        model = spec.compile()
-        import mujoco as _mujoco
-
-        joint_pool = frozenset(
-            _mujoco.mj_id2name(model, _mujoco.mjtObj.mjOBJ_JOINT, i) or ""
-            for i in range(model.njnt)
-        )
-        actuator_pool = frozenset(
-            _mujoco.mj_id2name(model, _mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
-            for i in range(model.nu)
-        )
+        # From the spec: compiling here would leave its sizes stale after the deletions,
+        # and MjSpec.attach checks keyframes against those.
+        joint_pool = frozenset(joint.name for joint in spec.joints)
+        actuator_pool = frozenset(actuator.name for actuator in spec.actuators)
         joint_tokens = tuple(
             _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
         )
