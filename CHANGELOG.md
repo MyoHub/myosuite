@@ -6,6 +6,11 @@ All notable changes to this project are documented in this file.
 
 ### Highlights
 
+* **MyoChallenge 2026: ChaseTag quickstart (tutorial 5.6).** A Colab for invited teams: register at
+  [mc26.myosuite.org](https://mc26.myosuite.org), export the tutorial 5.4 walker to ONNX, submit one player that
+  plays both chase and evade (546 observations, 354 muscle activations) and watch the result on the website.
+  It can also load and render `myoChallengeChaseTagFBVs-v0`.
+
 * **Photorealistic Blender rendering of any MyoSuite rollout ([#540]).** One command turns a CPU rollout of a
   trained policy (`--checkpoint`) or of random actions (`--random`) into a Cycles render: animated USD export,
   a studio scene, ivory bones and volumetric muscles that thicken as they shorten and redden with activation.
