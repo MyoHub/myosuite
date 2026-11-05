@@ -12,7 +12,7 @@ on:
 
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: ["main", "dev", "feat/programmatic-waypoint-tasks"]
+    branches: ["main", "dev"]
     paths-ignore:
       - "docs/**"
       - ".github/**"
