@@ -83,7 +83,8 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
   - Enforced by the `no-model-weights` pre-commit hook. The three legacy tutorial checkpoints it exempts are to be migrated; don't add to that list.
 - **Branching and CI.** Branch from `dev` and open PRs against `dev`.
   - Isolated or agent worktrees may start from `main`, so create the branch from `dev` explicitly.
-  - CI runs for non-draft pull requests into `main` and `dev` (a draft stays quiet until it is marked ready). Tests cover the minimum and maximum supported Python: 3.10 on macOS, Ubuntu, and Windows, and 3.14 on Ubuntu. Run the Verification block below locally before pushing.
+  - CI runs for non-draft pull requests into `main` and `dev` (a draft stays quiet until it is marked ready) that touch code; docs, markdown, `training/` and tooling-config changes skip it. Run the Verification block below locally before pushing.
+  - A PR into `dev` runs Ubuntu / Python 3.10, and the tutorials only when it touches `tutorials/`. The push to `dev` after a merge, release PRs into `main` and the nightly run cover the full matrix: 3.10 on macOS, Ubuntu and Windows, 3.14 on Ubuntu, the tutorials, and (nightly) the `slow` tests.
 - **Parity baselines.** Regenerate (`scripts/generate_parity_baselines.py --env-id <id>`) only the envs your change intentionally alters.
   - Generate them only with the package versions CI resolves. CI installs with `uv pip install -e ".[...]"`, which ignores `uv.lock` and picks the latest compatible mujoco/mjlab.
   - Never skip a case as "non-deterministic" without checking that a replay really differs between processes.
