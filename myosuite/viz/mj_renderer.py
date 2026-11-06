@@ -37,6 +37,43 @@ def _tune_mjv_scene_for_rgb(scene: Any) -> None:
     scene.flags[int(mujoco.mjtRndFlag.mjRND_SKYBOX)] = 0
 
 
+def _sport_mjv_scene(scene: Any) -> None:
+    """Style an RGB scene without editing its shared model or simulation data."""
+    for geom in scene.geoms[: scene.ngeom]:
+        if geom.type in (mujoco.mjtGeom.mjGEOM_PLANE, mujoco.mjtGeom.mjGEOM_HFIELD):
+            geom.rgba[:3] = [0.055, 0.12, 0.19]
+            if hasattr(geom, "texid"):
+                geom.texid = -1
+            geom.matid = -1
+            geom.reflectance = 0.0
+            geom.specular = 0.1
+    forward = np.asarray(scene.camera[0].forward)
+    right = np.cross(forward, scene.camera[0].up)
+    down = np.array([0.0, 0.0, -1.0])
+    lights = [
+        (0.5 * forward + down, [0.65, 0.65, 0.65]),
+        (0.5 * right + down, [0.22, 0.07, 0.015]),
+        (-0.5 * right + down, [0.015, 0.14, 0.24]),
+    ]
+    scene.nlight = len(lights)
+    for index, (direction, color) in enumerate(lights):
+        light = scene.lights[index]
+        light.type = mujoco.mjtLightType.mjLIGHT_DIRECTIONAL
+        light.texid = -1
+        light.intensity = 1.0
+        light.headlight = False
+        light.castshadow = index == 0
+        light.pos[:] = [0.0, 0.0, 5.0]
+        light.dir[:] = direction / np.linalg.norm(direction)
+        light.ambient[:] = 0.5 if index == 0 else 0.0
+        light.diffuse[:] = color
+        light.specular[:] = 0.08
+        light.attenuation[:] = [1.0, 0.0, 0.0]
+        light.cutoff = 180.0
+        light.exponent = 0.0
+    scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = 1
+
+
 class MJRenderer(Renderer):
     """Renders Mujoco Physics objects."""
 
@@ -114,6 +151,8 @@ class MJRenderer(Renderer):
         segmentation: bool = False,
         camera_id: int | str = -1,
         device_id=-1,
+        *,
+        scene: str = "default",
     ) -> np.ndarray:
         """Renders the camera view as a numpy array of pixels.
 
@@ -122,10 +161,14 @@ class MJRenderer(Renderer):
             height: The viewport height (pixels).
             mode: The rendering mode.
             camera_id: The ID of the camera to render from. By default uses the free camera.
+            scene: ``"default"`` or ``"sport"`` RGB styling. Depth and segmentation
+                retain the model's geometry and camera in either case.
 
         Returns:
             A numpy array of the pixels.
         """
+        if scene not in ("default", "sport"):
+            raise ValueError(f"Unknown offscreen scene: {scene}")
         if camera_id is None:
             camera_id = -1
         if isinstance(camera_id, int) and camera_id >= 0:
@@ -147,6 +190,8 @@ class MJRenderer(Renderer):
                 self._mj_data, camera=camera, scene_option=self._scene_option
             )
             _tune_mjv_scene_for_rgb(self._renderer.scene)
+            if scene == "sport":
+                _sport_mjv_scene(self._renderer.scene)
             rgb_arr = self._renderer.render()
         if depth:
             self._renderer.enable_depth_rendering()
