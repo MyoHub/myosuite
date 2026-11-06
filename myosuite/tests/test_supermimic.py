@@ -371,3 +371,77 @@ def test_posture_errors_and_smoothed_site_reward() -> None:
     assert float(heads.termination_prob(bent, frame).min()) > float(
         heads.termination_prob(q, frame).max()
     )
+
+
+def test_median_row_clip_is_identity_forward_and_clips_backward() -> None:
+    """Rows of the action gradient above kappa x median are scaled to it; the probe counts them."""
+    from myosuite.learning.supermimic.grad_clip import clip_rows_to_median
+
+    x = torch.randn(6, 4, requires_grad=True)
+    probe = torch.zeros((), requires_grad=True)
+    y = clip_rows_to_median(x, 3.0, probe)
+    torch.testing.assert_close(y, x)
+    g = torch.ones(6, 4)
+    g[2] *= 10.0  # norm 20 against a median of 2: clipped to 6
+    y.backward(g)
+    torch.testing.assert_close(x.grad[2].norm(), torch.tensor(6.0))
+    torch.testing.assert_close(x.grad[[0, 1, 3, 4, 5]], g[[0, 1, 3, 4, 5]])
+    torch.testing.assert_close(probe.grad, torch.tensor(1.0 / 6.0))
+    # A zero median clips nothing.
+    x2 = torch.randn(3, 2, requires_grad=True)
+    g2 = torch.zeros(3, 2)
+    g2[0] = 5.0
+    clip_rows_to_median(x2, 3.0).backward(g2)
+    torch.testing.assert_close(x2.grad, g2)
+
+
+def test_ema_update() -> None:
+    """Parameters move by (1 - decay) toward the actor; normaliser statistics are copied."""
+    from myosuite.learning.supermimic.policy import Actor, ema_update
+
+    actor, ema = Actor(5, 3, (8,)), Actor(5, 3, (8,))
+    old = [p.clone() for p in ema.parameters()]
+    actor.obs_normalizer.update(torch.randn(10, 5) + 2.0)
+    ema_update(ema, actor, 0.9)
+    for pe, po, p in zip(ema.parameters(), old, actor.parameters()):
+        torch.testing.assert_close(pe, 0.9 * po + 0.1 * p)
+    torch.testing.assert_close(ema.obs_normalizer._mean, actor.obs_normalizer._mean)
+    assert int(ema.obs_normalizer.count) == 10
+
+
+def test_trainer_checkpoint_round_trip(tmp_path: Any) -> None:
+    """save/load restore the averaged actor; ckpt_ema.pt loads as an ordinary actor."""
+    require_mjlab()
+    import copy
+
+    from myosuite.learning.supermimic.policy import Actor, Critic
+    from myosuite.learning.supermimic.trainer import SuperMimicCfg, SuperMimicTrainer
+
+    def bare(out: Any) -> Any:
+        # The checkpoint parts of a trainer, without an env or world model.
+        tr = object.__new__(SuperMimicTrainer)
+        tr.cfg = SuperMimicCfg(out=str(out), device="cpu")
+        tr.out = out
+        tr.actor = Actor(5, 6, (8,), [[0, 3], [1, 2], [4, 5]])
+        tr.actor_ema = copy.deepcopy(tr.actor)
+        tr.critic = Critic(5, 100.0, (8,))
+        tr.wm = torch.nn.Linear(2, 2)
+        tr.opt_wm = torch.optim.Adam(tr.wm.parameters())
+        tr.opt_actor = torch.optim.Adam(tr.actor.mlp.parameters())
+        tr.opt_critic = torch.optim.Adam(tr.critic.mlp.parameters())
+        tr.updates, tr.sim_steps, tr.elapsed, tr.best_eval = 7, 70, 1.0, 0.5
+        return tr
+
+    a = bare(tmp_path)
+    with torch.no_grad():
+        for p in a.actor_ema.parameters():
+            p.add_(1.0)
+    a.save("latest")
+    a.save_ema()
+    b = bare(tmp_path)
+    b.load(str(tmp_path / "ckpt_latest.pt"))
+    obs = torch.randn(4, 5)
+    torch.testing.assert_close(b.actor_ema(obs), a.actor_ema(obs))
+    torch.testing.assert_close(b.actor(obs), a.actor(obs))
+    exported = Actor.from_rsl_rl(tmp_path / "ckpt_ema.pt")
+    torch.testing.assert_close(exported(obs), a.actor_ema(obs))

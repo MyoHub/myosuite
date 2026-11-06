@@ -21,7 +21,10 @@ import torch
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import _musclemimic_cpu_model
 from myosuite.learning.supermimic.env_io import Rollout, make_mimic_env
 from myosuite.learning.supermimic.heads import MimicHeads
-from myosuite.learning.supermimic.metrics import gradient_agreement
+from myosuite.learning.supermimic.metrics import (
+    gradient_agreement,
+    world_model_drift,
+)
 from myosuite.learning.supermimic.policy import Actor
 from myosuite.learning.supermimic.state import StateSpec, forward_axis_from_quat
 from myosuite.learning.supermimic.world_model import (
@@ -65,62 +68,6 @@ def open_loop_eval(
         f"err_{sampler.k}": float(per_step[-1]),
         "err_mean": float(per_step.mean()),
         **{f"k_{k}": v for k, v in group_errors(wm.spec, e[-1]).items()},
-    }
-
-
-@torch.no_grad()
-def closed_loop_eval(
-    wm: WorldModel,
-    heads: MimicHeads,
-    actor: Actor,
-    ro: Rollout,
-    noise: torch.Tensor,
-    horizon: int,
-) -> dict[str, float]:
-    """Recording policy in the world model vs the (deterministic) recorded sim rollout."""
-    sp = wm.spec
-    envs = torch.nonzero(noise == 0).flatten()
-    T = ro.ctrl.shape[0]
-    d = ro.done[:, envs].float()
-    csum = torch.cat([torch.zeros_like(d[:1]), d.cumsum(0)], 0)
-    starts = [t for t in range(0, T - horizon, horizon)]
-    sim_r, wm_r, site_div = [], [], []
-    for t0 in starts:
-        ok = (csum[t0 + horizon, :] - csum[t0, :]) == 0
-        e = envs[ok]
-        if len(e) == 0:
-            continue
-        s = ro.state[t0, e]
-        f = ro.frame[t0, e]
-        r_wm, div = [], []
-        for t in range(horizon):
-            qpos, qvel, act = sp.split(s)
-            ctrl = torch.sigmoid(
-                5.0 * (actor(heads.observation(qpos, qvel, act, f)) - 0.5)
-            )
-            s = wm.step(s, ctrl)
-            f = f + 1
-            r_wm.append(heads.reward(s[:, : sp.nq], s[:, sp.nq : sp.nq + sp.nv], f))
-            s_sim = ro.state[t0 + t + 1, e]
-            div.append(
-                (
-                    heads.kin.site_pos(s[:, : sp.nq])
-                    - heads.kin.site_pos(s_sim[:, : sp.nq])
-                )
-                .norm(dim=-1)
-                .mean(-1)
-            )
-        sim_r.append(ro.reward[t0 : t0 + horizon, e] / 5.0)
-        wm_r.append(torch.stack(r_wm))
-        site_div.append(torch.stack(div))
-    sim_r, wm_r, site_div = (torch.cat(x, 1) for x in (sim_r, wm_r, site_div))
-    return {
-        "closed_sim_reward": float(sim_r.mean()),
-        "closed_wm_reward": float(wm_r.mean()),
-        "closed_reward_abs_err": float((sim_r - wm_r).abs().mean()),
-        "closed_site_div_mid_m": float(site_div[horizon // 2 - 1].mean()),
-        "closed_site_div_end_m": float(site_div[-1].mean()),
-        "closed_windows": int(sim_r.shape[1]),
     }
 
 
@@ -210,7 +157,16 @@ def main() -> None:
                 **open_loop_eval(wm, eval_s),
             }
             if step % (5 * a.eval_every) == 0 or step == a.steps:
-                rec.update(closed_loop_eval(wm, heads, actor, ev, ev_noise, a.horizon))
+                rec.update(
+                    world_model_drift(
+                        wm,
+                        heads,
+                        actor,
+                        ev,
+                        a.horizon,
+                        envs=torch.nonzero(ev_noise == 0).flatten(),
+                    )
+                )
             log.append(rec)
             print(json.dumps(rec), flush=True)
             torch.save(

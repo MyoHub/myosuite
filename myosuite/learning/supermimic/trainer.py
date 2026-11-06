@@ -12,12 +12,18 @@ noise and stores the transition. Every ``1 / utd`` iterations the world model is
 fitted on k-step windows, then the actor is improved by backpropagation through
 ``horizon`` imagined steps (analytic reward, soft survival, critic bootstrap) and
 the critic is fitted to lambda-returns of the same imagined rollouts.
+
+A Polyak-averaged copy of the actor (``ema_decay``) is evaluated next to it and
+exported as ``ckpt_ema.pt``; ``ckpt_final.pt`` is the actor at the end of training.
+``ckpt_best.pt`` is picked on the training evaluation, so its score is biased upward.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import math
+import shutil
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -27,9 +33,15 @@ import torch
 
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import _musclemimic_cpu_model
 from myosuite.learning.supermimic.env_io import MimicEnvIO, make_mimic_env
+from myosuite.learning.supermimic.grad_clip import clip_rows_to_median
 from myosuite.learning.supermimic.heads import MimicHeads
 from myosuite.learning.supermimic.metrics import KinematicTracking
-from myosuite.learning.supermimic.policy import Actor, Critic
+from myosuite.learning.supermimic.policy import (
+    Actor,
+    Critic,
+    actor_checkpoint,
+    ema_update,
+)
 from myosuite.learning.supermimic.replay import ReplayBuffer
 from myosuite.learning.supermimic.state import StateSpec, forward_axis_from_quat
 from myosuite.learning.supermimic.world_model import WorldModel, WorldModelCfg
@@ -57,6 +69,10 @@ class SuperMimicCfg:
     critic_epochs: int = 5
     critic_minibatches: int = 4
     elementwise_clip: float = 0.1
+    # Clip each sample's dJ/da_t to this multiple of the batch median norm (0: off).
+    act_grad_clip: float = 0.0
+    # Polyak average of the actor, evaluated and exported next to it.
+    ema_decay: float = 0.999
     # Barrier on raw actions beyond |a - 0.5| > band, where the sigmoid control saturates
     # and BPTT gradients vanish (0 disables it).
     saturation_penalty: float = 0.0
@@ -67,7 +83,8 @@ class SuperMimicCfg:
     eval_every: int = 500
     eval_envs: int = 128
     eval_steps: int = 500
-    # Checkpoint kept as ckpt_best.pt: highest "reward" or lowest leg joint-angle RMSE ("leg_rmse").
+    # Checkpoint kept as ckpt_best.pt: highest "reward" or lowest leg joint-angle RMSE
+    # ("leg_rmse") on the training evaluation (a selection, so its score is optimistic).
     best_metric: str = "reward"
     save_every: int = 1000
     compile: bool = True
@@ -149,6 +166,7 @@ class SuperMimicTrainer:
         ).to(dev)
         if cfg.init_actor:
             self.actor = Actor.from_rsl_rl(cfg.init_actor, dev)
+        self.actor_ema = copy.deepcopy(self.actor).requires_grad_(False)
         if cfg.init_world_model:
             self.wm.load_state_dict(
                 torch.load(cfg.init_world_model, map_location=dev)["wm"]
@@ -220,11 +238,17 @@ class SuperMimicTrainer:
         return self.heads.observation(qpos, qvel, act, f)
 
     def _imag_step(
-        self, s: torch.Tensor, f: torch.Tensor, obs: torch.Tensor
+        self,
+        s: torch.Tensor,
+        f: torch.Tensor,
+        obs: torch.Tensor,
+        probe: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, ...]:
         """Actor + world model + analytic heads for one imagined step (compiled as one graph)."""
         h = self.heads
         a = self.actor(obs)
+        if self.cfg.act_grad_clip > 0:
+            a = clip_rows_to_median(a, self.cfg.act_grad_clip, probe)
         sat = torch.relu((a - 0.5).abs() - self.cfg.saturation_band).square().mean(-1)
         s = self.wm.step(s, _sigmoid_ctrl(a))
         f = f + 1
@@ -238,17 +262,23 @@ class SuperMimicTrainer:
         d = h.termination_prob(qpos, f, sites)
         return s, f, r, d, sat, h.observation(qpos, qvel, act, f, sites)
 
-    def imagine(self) -> dict[str, torch.Tensor]:
+    def imagine(self) -> dict[str, Any]:
         """Differentiable H-step rollout of the actor through the frozen world model."""
         cfg, h = self.cfg, self.heads
         s, f = self.buffer.sample_starts(cfg.imag_batch)
         ended = h.clip_end(f)
         obs_l, rew_l, dhat_l, live_l, end_l, sat_l = [], [], [], [], [], []
         obs = self._obs(s, f)
+        # Its gradient sums the per-step fractions of clipped action gradients.
+        probe = (
+            torch.zeros((), device=s.device, requires_grad=True)
+            if cfg.act_grad_clip > 0
+            else None
+        )
         for _ in range(cfg.horizon):
             obs_l.append(obs)
             live_l.append((~ended).float())
-            s, f, r, d, sat, obs = self._step(s, f, obs)
+            s, f, r, d, sat, obs = self._step(s, f, obs, probe)
             rew_l.append(r)
             sat_l.append(sat)
             dhat_l.append(d)
@@ -265,6 +295,7 @@ class SuperMimicTrainer:
             "live": st(live_l),
             "just_ended": st(end_l),
             "saturation": st(sat_l),
+            "clip_probe": probe,
         }
 
     def update_actor_critic(self) -> dict[str, float]:
@@ -304,6 +335,13 @@ class SuperMimicTrainer:
             if p.grad is not None:
                 p.grad.clamp_(-cfg.elementwise_clip, cfg.elementwise_clip)
         self.opt_actor.step()
+        ema_update(self.actor_ema, self.actor, cfg.ema_decay)
+        probe = roll["clip_probe"]
+        clip_stats = (
+            {"act_grad_clip_frac": float(probe.grad) / H}
+            if probe is not None and probe.grad is not None
+            else {}
+        )
 
         # Critic (paper Eq. 3): lambda-returns of the detached rollout, fitted with fixed targets.
         with torch.no_grad():
@@ -338,6 +376,7 @@ class SuperMimicTrainer:
             "imag_survival": float(surv.mean()),
             "critic_loss": closs,
             "value": float(v[0].mean()),
+            **clip_stats,
         }
 
     def _set_lr(self) -> None:
@@ -352,8 +391,8 @@ class SuperMimicTrainer:
 
     # ------------------------------------------------------------------ evaluation
     @torch.no_grad()
-    def evaluate(self) -> dict[str, float]:
-        """Deterministic actor from RSI starts: mean reward per step, terminations, sim/WM gap."""
+    def evaluate(self, actor: Actor | None = None) -> dict[str, float]:
+        """Deterministic *actor* (default: the trained one) from RSI starts, see :func:`evaluate_policy`."""
         cfg = self.cfg
         if self._eval_env is None:
             self._eval_env = make_mimic_env(
@@ -365,7 +404,7 @@ class SuperMimicTrainer:
             self._eval_tracking = KinematicTracking(model, self.heads.clip.qpos)
         return evaluate_policy(
             self._eval_env,
-            self.actor,
+            self.actor if actor is None else actor,
             cfg.eval_steps,
             self._eval_tracking,
             self._eval_io,
@@ -379,11 +418,11 @@ class SuperMimicTrainer:
 
     # ------------------------------------------------------------------ checkpoints
     def save(self, name: str = "latest") -> None:
-        """Actor (rsl_rl layout), critic, world model, optimisers and counters."""
+        """Actor (rsl_rl layout), its average, critic, world model, optimisers and counters."""
         torch.save(
             {
-                "actor_state_dict": self.actor.rsl_rl_state_dict(),
-                "actor_native": self.actor.state_dict(),  # per-group weights of a grouped actor
+                **actor_checkpoint(self.actor),
+                "actor_ema_native": self.actor_ema.state_dict(),
                 "critic": self.critic.state_dict(),
                 "wm": self.wm.state_dict(),
                 "opt_wm": self.opt_wm.state_dict(),
@@ -398,6 +437,17 @@ class SuperMimicTrainer:
             self.out / f"ckpt_{name}.pt",
         )
 
+    def save_ema(self) -> None:
+        """The averaged actor alone as ``ckpt_ema.pt``, loadable like any actor checkpoint."""
+        torch.save(
+            {
+                **actor_checkpoint(self.actor_ema),
+                "updates": self.updates,
+                "sim_steps": self.sim_steps,
+            },
+            self.out / "ckpt_ema.pt",
+        )
+
     def load(self, path: str) -> None:
         """Resume from :meth:`save` output (the replay buffer refills during warm-up)."""
         ck = torch.load(path, map_location=self.cfg.device, weights_only=False)
@@ -410,6 +460,10 @@ class SuperMimicTrainer:
                     for k, v in ck["actor_state_dict"].items()
                 }
             )
+        if "actor_ema_native" in ck:
+            self.actor_ema.load_state_dict(ck["actor_ema_native"])
+        else:
+            self.actor_ema.load_state_dict(self.actor.state_dict())
         self.critic.load_state_dict(ck["critic"])
         self.wm.load_state_dict(ck["wm"])
         self.opt_wm.load_state_dict(ck["opt_wm"])
@@ -461,6 +515,12 @@ class SuperMimicTrainer:
                     }
                     if self.updates % cfg.eval_every == 0:
                         rec.update({f"eval_{k}": v for k, v in self.evaluate().items()})
+                        rec.update(
+                            {
+                                f"eval_ema_{k}": v
+                                for k, v in self.evaluate(self.actor_ema).items()
+                            }
+                        )
                         # Keep the best-eval policy: runs can decay after their peak.
                         if self._eval_score(rec) > self.best_eval:
                             self.best_eval = self._eval_score(rec)
@@ -471,6 +531,7 @@ class SuperMimicTrainer:
                     t_sim = t_upd = 0.0
                 if self.updates % cfg.save_every == 0:
                     self.save()
+                    self.save_ema()
             self.elapsed = time.time() - start
             if (
                 self.elapsed > cfg.max_hours * 3600
@@ -478,12 +539,16 @@ class SuperMimicTrainer:
             ):
                 break
         self.save()
+        shutil.copyfile(self.out / "ckpt_latest.pt", self.out / "ckpt_final.pt")
+        self.save_ema()
         rec = {
             "updates": self.updates,
             "sim_steps": self.sim_steps,
             "hours": self.elapsed / 3600,
             "final": True,
+            "best_eval_score": self.best_eval,
             **{f"eval_{k}": v for k, v in self.evaluate().items()},
+            **{f"eval_ema_{k}": v for k, v in self.evaluate(self.actor_ema).items()},
         }
         log.write(json.dumps(rec) + "\n")
         log.close()

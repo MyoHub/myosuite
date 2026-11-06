@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Evaluation metrics beyond the task reward: joint-angle tracking and world-model gradient agreement."""
+"""Evaluation metrics beyond the task reward: joint-angle tracking, world-model drift and gradient agreement."""
 
 from __future__ import annotations
 
@@ -210,3 +210,93 @@ def gradient_agreement(
         "grad_cos_mean": float(np.mean(cos)),
         "grad_norm_ratio_median": float(np.median(ratio)),
     }
+
+
+@torch.no_grad()
+def world_model_drift(
+    wm: Any,
+    heads: Any,
+    actor: Any,
+    rollout: Any,
+    horizon: int,
+    envs: torch.Tensor | None = None,
+    report_steps: tuple[int, ...] = (),
+) -> dict[str, float]:
+    """A policy in the world model against its recorded simulator rollout from the same states.
+
+    Windows of *horizon* steps start every *horizon* steps of the recording; windows
+    that contain an episode end are skipped. In the closed loop the actor acts on the
+    world model's own states, as in imagination; in the replay the world model gets
+    the recorded controls. Drift is the mean distance of the tracked sites.
+
+    Args:
+        wm: :class:`~myosuite.learning.supermimic.world_model.WorldModel`.
+        heads: :class:`~myosuite.learning.supermimic.heads.MimicHeads` of the env.
+        actor: Raw-action policy that recorded *rollout* without noise.
+        rollout: :class:`~myosuite.learning.supermimic.env_io.Rollout`.
+        horizon: Window length.
+        envs: Recorded envs to use (default: all).
+        report_steps: Steps (1-based) at which drift and the mean reward so far are reported.
+
+    Returns:
+        Closed-loop rewards and site drift (mid and end of the window), plus per
+        reported step ``k``: ``closed_site_drift_k_m``, ``replay_site_drift_k_m``,
+        ``wm_reward_k`` and ``sim_reward_k`` (mean reward over steps ``1..k``).
+    """
+    sp = wm.spec
+    envs = torch.arange(rollout.ctrl.shape[1]) if envs is None else envs
+    envs = envs.to(rollout.ctrl.device)
+    T = rollout.ctrl.shape[0]
+    d = rollout.done[:, envs].float()
+    csum = torch.cat([torch.zeros_like(d[:1]), d.cumsum(0)], 0)
+    sim_r, wm_r, closed, replay = [], [], [], []
+    for t0 in range(0, T - horizon + 1, horizon):
+        e = envs[(csum[t0 + horizon] - csum[t0]) == 0]
+        if len(e) == 0:
+            continue
+        s = s_rep = rollout.state[t0, e]
+        f = rollout.frame[t0, e]
+        r_wm, div, div_rep = [], [], []
+        for t in range(horizon):
+            qpos, qvel, act = sp.split(s)
+            ctrl = torch.sigmoid(
+                5.0 * (actor(heads.observation(qpos, qvel, act, f)) - 0.5)
+            )
+            s = wm.step(s, ctrl)
+            s_rep = wm.step(s_rep, rollout.ctrl[t0 + t, e].float())
+            f = f + 1
+            r_wm.append(heads.reward(s[:, : sp.nq], s[:, sp.nq : sp.nq + sp.nv], f))
+            sim_sites = heads.kin.site_pos(rollout.state[t0 + t + 1, e, : sp.nq])
+            div.append(
+                (heads.kin.site_pos(s[:, : sp.nq]) - sim_sites).norm(dim=-1).mean(-1)
+            )
+            div_rep.append(
+                (heads.kin.site_pos(s_rep[:, : sp.nq]) - sim_sites)
+                .norm(dim=-1)
+                .mean(-1)
+            )
+        sim_r.append(rollout.reward[t0 : t0 + horizon, e] / 5.0)
+        wm_r.append(torch.stack(r_wm))
+        closed.append(torch.stack(div))
+        replay.append(torch.stack(div_rep))
+    if not sim_r:
+        return {"closed_windows": 0}
+    sim_r, wm_r, closed, replay = (
+        torch.cat(x, 1) for x in (sim_r, wm_r, closed, replay)
+    )
+    out = {
+        "closed_sim_reward": float(sim_r.mean()),
+        "closed_wm_reward": float(wm_r.mean()),
+        "closed_reward_abs_err": float((sim_r - wm_r).abs().mean()),
+        "closed_site_div_mid_m": float(closed[horizon // 2 - 1].mean()),
+        "closed_site_div_end_m": float(closed[-1].mean()),
+        "closed_windows": int(sim_r.shape[1]),
+    }
+    for k in report_steps:
+        if k > horizon:
+            continue
+        out[f"closed_site_drift_{k}_m"] = float(closed[k - 1].mean())
+        out[f"replay_site_drift_{k}_m"] = float(replay[k - 1].mean())
+        out[f"wm_reward_{k}"] = float(wm_r[:k].mean())
+        out[f"sim_reward_{k}"] = float(sim_r[:k].mean())
+    return out

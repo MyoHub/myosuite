@@ -136,6 +136,29 @@ class Actor(nn.Module):
         }
 
 
+def actor_checkpoint(actor: Actor) -> dict[str, dict[str, torch.Tensor]]:
+    """Actor weights in rsl_rl layout (``actor_state_dict``) and native layout (``actor_native``)."""
+    return {
+        "actor_state_dict": actor.rsl_rl_state_dict(),
+        "actor_native": actor.state_dict(),  # per-group weights of a grouped actor
+    }
+
+
+@torch.no_grad()
+def ema_update(ema: nn.Module, model: nn.Module, decay: float) -> None:
+    """Polyak-average *model*'s parameters into *ema*; copy its buffers (normaliser statistics).
+
+    Args:
+        ema: Averaged copy, updated in place.
+        model: Module being trained.
+        decay: Weight of the old average, e.g. 0.999.
+    """
+    for pe, p in zip(ema.parameters(), model.parameters()):
+        pe.lerp_(p, 1.0 - decay)
+    for be, b in zip(ema.buffers(), model.buffers()):
+        be.copy_(b)
+
+
 def _from_rsl_rl_keys(sd: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
     return {
         ("distribution_std" if k == "distribution.std_param" else k): v
