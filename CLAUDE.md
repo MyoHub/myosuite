@@ -75,6 +75,7 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
 - **Small PRs.** One concern per PR: a fix, a refactor, a task, or a doc change — not several at once.
   - Split unrelated changes into separate PRs, even when found together. Land prerequisites first and rebase; never carry another open PR's commits.
   - Keep a PR reviewable in one sitting (aim for < ~500 changed lines excluding generated files); split larger work into a sequence.
+  - Exception: release PRs into `main` (`dev` → `main`) bundle already-reviewed small PRs and can be as large as the release needs. Don't add new, unreviewed changes in them.
 - **Model weights live on Hugging Face, not in git.** Never commit `.pt`, `.pth`, `.onnx`, `.ckpt` or `.safetensors` files — not in `myosuite/`, `tutorials/`, `docs/` or `training/`.
   - Upload them to a MyoHub Hugging Face repo and download at a pinned revision (tag or commit): `myosuite.core.hf_io` for baselines, otherwise `hf_hub_download(..., revision=...)`. Never download from `main` unpinned.
   - Enforced by the `no-model-weights` pre-commit hook. The three legacy tutorial checkpoints it exempts are to be migrated; don't add to that list.
