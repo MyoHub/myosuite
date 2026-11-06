@@ -492,7 +492,11 @@ class TestChaseTagFullbodyBody:
 
         from myosuite.core.hf_io import download_baseline_file
 
-        path = download_baseline_file("onnx/chasetag_fbvs_baseline.onnx")
+        # Pinned to the Hugging Face commit that added the file (#594).
+        path = download_baseline_file(
+            "onnx/chasetag_fbvs_baseline.onnx",
+            revision="ed40fb4f0a53470ff2106ba5dc2f93f4fd7e68d8",
+        )
         if path is None:
             pytest.skip("baseline ONNX unavailable (no network?)")
         session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])

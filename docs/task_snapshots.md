@@ -252,7 +252,7 @@ here, also has one.)
   (role sampled per episode); the chaser is rewarded for closing pelvis-to-pelvis
   distance and landing a tag (`ko_health_threshold` damage), the runner for
   evading (`myosuite/terms/multiplayer/chase_tag_vs_reward.py`).
-- **Baseline**: `onnx/chasetag_fbvs_baseline.onnx` in the `myohub/myosuite-3-baselines` Hugging Face repo (`myosuite.core.hf_io.download_baseline_file`) (`docs/baseline_checkpoints.md`).
+- **Baseline**: `onnx/chasetag_fbvs_baseline.onnx` in the `myohub/myosuite-3-baselines` Hugging Face repo at revision `ed40fb4f0a53` (`myosuite.core.hf_io.download_baseline_file`) (`docs/baseline_checkpoints.md`).
 - **Dims** (per agent, `Dict` obs/action space): obs `(546,)`, action `(354,)`.
 - **Backends**: CPU only (no mjlab twin).
 
