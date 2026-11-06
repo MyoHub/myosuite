@@ -40,7 +40,7 @@ from myosuite.envs.myo.backends.mjlab.configs.musclemimic_bimanual_cfg import (
 from myosuite.envs.myo.backends.mjlab.configs.musclemimic_fullbody_cfg import (
     MuscleMimicFullbodyCfg,
 )
-from myosuite.envs.myo.backends.mjlab.configs.halloween_cfg import HalloweenCfg
+from myosuite.envs.myo.tasks.halloween.config import HalloweenConfig as HalloweenCfg
 from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTennisCfg
 from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEnvAccessor

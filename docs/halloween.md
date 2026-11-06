@@ -7,9 +7,9 @@ The separate `HalloweenController` selects references and calls the existing
 
 ## Run the working TERRA example
 
-Install the feature revision pinned by
-[`requirements-student.txt`](../tutorials/files/halloween/requirements-student.txt)
-while TERRA is awaiting review. This branch includes the pending TERRA integration.
+Install the version pinned by
+[`requirements-student.txt`](../tutorials/files/halloween/requirements-student.txt).
+The waypoint/TERRA integration is already available on `dev`.
 Use Python 3.12 or 3.13 for the pinned student environment; CPU inference is sufficient. Rendering is verified with EGL on
 Linux/Colab. The environment itself performs no network access.
 

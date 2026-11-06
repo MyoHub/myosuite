@@ -154,29 +154,9 @@ CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and
 
 </sub>
 
-## Halloween compatibility
+## MyoHalloween
 
-`myoHalloween-v0` has no published baseline checkpoint. Earlier experimental runs
-used proximity-based hits, [-1, 1] direct actions, MJLab's implicitfast default, and a training-only
-slow-throw curriculum. Those metrics/checkpoints are not compatible with the
-physical-contact/Euler contract introduced here. Re-evaluate or retrain them.
-The default contract has 535 observations, 354 direct excitations, 0.01 s control
-steps, 0.002 s physics substeps and a six-second time limit. Curriculum is opt-in.
-MJLab episode resets honor the configured entity initial state, including offset
-spawns. The default spawn is unchanged; earlier runs with customized initial
-poses that fell back to model `qpos0` should be re-evaluated.
-
-The MyoHalloween frozen-TERRA demo uses a learned four-command selector with
-13 high-level inputs, a calibrated motion decoder, a distinct smaller-projectile
-upper-body curriculum, and TERRA-4B muscle inference. Its success rates do not
-measure the raw-muscle training environment.
-See [Halloween distribution notes](halloween.md).
-
-### Halloween TERRA showcase profile
-
-`myoHalloween-v0` retains its default CPU/MJLab benchmark contract. The optional
-CPU `profile="terra"` uses the calibrated TERRA model, settled reset state and
-frontal showcase curriculum. It keeps 354 muscle actions and 535 observations,
-but its physical distribution differs; raw benchmark checkpoints do not transfer
-by assumption. Use the separate `HalloweenController`, reset it with each task
-reset, and allow 3000 steps. See [the task documentation](halloween.md).
+`myoHalloween-v0` has no published trained baseline. The CPU/MJLab benchmark uses
+354 muscle excitations and physical pumpkin contacts. The optional TERRA showcase
+uses a different projectile distribution; its results are not benchmark scores.
+See [task and tutorial details](halloween.md).
