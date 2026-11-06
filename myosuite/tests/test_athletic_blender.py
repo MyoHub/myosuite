@@ -12,8 +12,6 @@ import math
 import mujoco
 import pytest
 
-pytestmark = pytest.mark.tier2
-
 from myosuite.envs.myo.athletic.blender import (
     RING_LANES,
     STUDIO_LIGHTS,
@@ -23,6 +21,8 @@ from myosuite.envs.myo.athletic.blender import (
     running_ring_paths,
     write_stage,
 )
+
+pytestmark = pytest.mark.tier2
 
 _XML = """
 <mujoco>
@@ -108,3 +108,15 @@ def test_elastic_render_does_not_launch_blender(tmp_path, monkeypatch):
     )
     with pytest.raises(NotImplementedError, match="elastic"):
         render_athletic("sprint", tmp_path, tendons="elastic")
+
+
+def test_stage_meta_keeps_lights_sized_to_the_body(tmp_path):
+    """Ring meshes must not be in the body span used for studio lamp size."""
+    model = mujoco.MjModel.from_xml_string(_XML)
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    snap = (data.geom_xpos.copy(), data.geom_xmat.copy(), data.qpos[:3].copy())
+    meta = write_stage(model, [snap], tmp_path, up_axis="z", fps=30, preview=True)
+    # The exported stage only contains body geoms; the oval is built in Blender.
+    assert meta["track"]["kind"] == "ring"
+    assert all("Lane" not in name and name != "Track" for name in meta["geoms"])

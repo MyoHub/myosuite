@@ -4,9 +4,10 @@
 # LICENSE file in the root directory of this source tree.
 """Modular athletic task×model×tendon×backend factory.
 
-``make_athletic("sprint")`` is myofullbody with rigid tendons.
-``render_athletic("sprint", out)`` renders that episode in Blender with the
-studio light rig.
+``make_athletic("sprint")`` is myofullbody with rigid tendons
+(``myoFullbodySprint-v0``). ``tendons="elastic"`` selects the matching
+``…Elastic-v0`` id. ``render_athletic("sprint", out)`` renders that episode
+in Blender with the studio light rig and the running ring.
 """
 
 from __future__ import annotations

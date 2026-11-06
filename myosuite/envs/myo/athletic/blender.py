@@ -130,7 +130,9 @@ def running_ring_paths(
             pts.append((half + radius * math.cos(ang), radius * math.sin(ang)))
         return pts
 
-    def outward(pts: list[tuple[float, float]]) -> list[tuple[float, float, float, float]]:
+    def outward(
+        pts: list[tuple[float, float]],
+    ) -> list[tuple[float, float, float, float]]:
         framed = []
         n = len(pts)
         for i, (x, y) in enumerate(pts):
@@ -150,11 +152,18 @@ def running_ring_paths(
         framed = outward(samples(radius))
         left, right = [], []
         for x, y, nx, ny in framed:
-            left.append(world(x - nx * RING_LINE_WIDTH / 2, y - ny * RING_LINE_WIDTH / 2, 0.012))
-            right.append(world(x + nx * RING_LINE_WIDTH / 2, y + ny * RING_LINE_WIDTH / 2, 0.012))
+            left.append(
+                world(x - nx * RING_LINE_WIDTH / 2, y - ny * RING_LINE_WIDTH / 2, 0.012)
+            )
+            right.append(
+                world(x + nx * RING_LINE_WIDTH / 2, y + ny * RING_LINE_WIDTH / 2, 0.012)
+            )
         lines.append((left, right))
     inner = [world(x, y, 0.004) for x, y in samples(RING_INNER_RADIUS)]
-    outer = [world(x, y, 0.004) for x, y in samples(RING_INNER_RADIUS + RING_LANES * RING_LANE_WIDTH)]
+    outer = [
+        world(x, y, 0.004)
+        for x, y in samples(RING_INNER_RADIUS + RING_LANES * RING_LANE_WIDTH)
+    ]
     center = world(0.0, 0.0, 1.1)
     return {
         "lines": lines,
@@ -165,7 +174,9 @@ def running_ring_paths(
     }
 
 
-def _camera_offsets(up_axis: str) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+def _camera_offsets(
+    up_axis: str,
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """Three-quarter camera and look offsets in the plant's world frame."""
     if up_axis == "y":
         # Sprinter faces +X. Sit in front and to the side, above the pelvis.
@@ -179,9 +190,10 @@ def _safe_name(name: str, gid: int) -> str:
     return cleaned or f"geom_{gid}"
 
 
-def _primitive(kind: str, size: Any) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int]]]:
+def _primitive(
+    kind: str, size: Any
+) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int]]]:
     """Low-poly geom in its local frame. ``size`` is MuJoCo's geom size."""
-    import numpy as np
 
     def sphere(radius: float, n: int = 10) -> tuple[list, list]:
         verts = []
@@ -212,9 +224,21 @@ def _primitive(kind: str, size: Any) -> tuple[list[tuple[float, float, float]], 
         return sphere(radius)
     if kind == "box":
         x, y, z = (float(v) for v in size[:3])
-        corners = [(sx * x, sy * y, sz * z) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]
+        corners = [
+            (sx * x, sy * y, sz * z)
+            for sx in (-1, 1)
+            for sy in (-1, 1)
+            for sz in (-1, 1)
+        ]
         # Faces as two triangles, outward-ish.
-        quads = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+        quads = [
+            (0, 1, 3, 2),
+            (4, 6, 7, 5),
+            (0, 4, 5, 1),
+            (2, 3, 7, 6),
+            (0, 2, 6, 4),
+            (1, 5, 7, 3),
+        ]
         faces = [(*q[:3],) for q in quads] + [(q[0], q[2], q[3]) for q in quads]
         return corners, faces
     half = float(size[1]) if len(size) > 1 else radius
@@ -246,7 +270,9 @@ def _primitive(kind: str, size: Any) -> tuple[list[tuple[float, float, float]], 
     return verts, faces
 
 
-def _geom_surface(model: Any, gid: int) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int]]] | None:
+def _geom_surface(
+    model: Any, gid: int
+) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int]]] | None:
     """Mesh or primitive for one geom, or ``None`` when the body already has a mesh."""
     import mujoco
     import numpy as np
@@ -264,8 +290,14 @@ def _geom_surface(model: Any, gid: int) -> tuple[list[tuple[float, float, float]
         fn = int(model.mesh_facenum[mesh_id])
         if vn == 0 or fn == 0:
             return None
-        verts = [(float(x), float(y), float(z)) for x, y, z in np.asarray(model.mesh_vert[v0 : v0 + vn])]
-        faces = [tuple(int(i) for i in face) for face in np.asarray(model.mesh_face[f0 : f0 + fn])]
+        verts = [
+            (float(x), float(y), float(z))
+            for x, y, z in np.asarray(model.mesh_vert[v0 : v0 + vn])
+        ]
+        faces = [
+            tuple(int(i) for i in face)
+            for face in np.asarray(model.mesh_face[f0 : f0 + fn])
+        ]
         return verts, faces
     names = {
         int(mujoco.mjtGeom.mjGEOM_SPHERE): "sphere",
@@ -283,7 +315,11 @@ def _bodies_with_mesh(model: Any) -> set[int]:
     import mujoco
 
     mesh = int(mujoco.mjtGeom.mjGEOM_MESH)
-    return {int(model.geom_bodyid[g]) for g in range(model.ngeom) if int(model.geom_type[g]) == mesh}
+    return {
+        int(model.geom_bodyid[g])
+        for g in range(model.ngeom)
+        if int(model.geom_type[g]) == mesh
+    }
 
 
 def write_stage(
@@ -387,7 +423,6 @@ def render_athletic(
     *,
     model: str | None = None,
     tendons: str = "rigid",
-    plant: str | None = None,
     lighting: LightingName = DEFAULT_LIGHTING,
     seconds: float = 2.0,
     fps: int = 30,
@@ -409,7 +444,7 @@ def render_athletic(
 
     if seconds <= 0 or fps <= 0 or min(resolution) <= 0 or samples <= 0:
         raise ValueError("seconds, fps, resolution and samples must be positive")
-    bundle = athletic_bundle(task, model, tendons, plant=plant)  # type: ignore[arg-type]
+    bundle = athletic_bundle(task, model, tendons)  # type: ignore[arg-type]
     ensure_tendons_applied(bundle)
     lighting_spec(lighting)
 
@@ -421,6 +456,8 @@ def render_athletic(
     )
 
     out = Path(output)
+    # CPU ModularTaskEnv so the stage does not need a GPU mjlab build. The
+    # task_config already carries model, tendons, and the variant's sim_dt.
     env = AthleticModularTaskEnv(task_config_from_bundle(bundle))
     try:
         env.reset(seed=seed)
@@ -443,7 +480,7 @@ def render_athletic(
             for _ in range(steps_per_frame):
                 env.step(env.action_space.sample())
             snap()
-        write_stage(
+        meta = write_stage(
             env.model,
             snapshots,
             out,
@@ -454,6 +491,10 @@ def render_athletic(
             resolution=resolution,
             lighting=lighting,
         )
+        meta["env_id"] = bundle.env_id()
+        meta["model"] = bundle.plant.key
+        meta["tendons"] = bundle.tendons
+        (out / "render.json").write_text(json.dumps(meta))
     finally:
         env.close()
 
@@ -519,14 +560,20 @@ def build_blender_scene(output: Path) -> None:
     except AttributeError:
         bpy.ops.import_scene.obj(filepath=str(output / "geoms.obj"))
 
-    bone = _material(bpy, "Bone", (0.82, 0.74, 0.62, 1), 0.42, subsurface=0.18, coat=0.12)
+    bone = _material(
+        bpy, "Bone", (0.82, 0.74, 0.62, 1), 0.42, subsurface=0.18, coat=0.12
+    )
     muscle = _material(
         bpy, "Muscle", (0.55, 0.14, 0.12, 1), 0.32, subsurface=0.35, coat=0.35
     )
     for obj in list(bpy.data.objects):
         if obj.type != "MESH":
             continue
-        mat = muscle if "muscle" in obj.name.lower() or "tendon" in obj.name.lower() else bone
+        mat = (
+            muscle
+            if "muscle" in obj.name.lower() or "tendon" in obj.name.lower()
+            else bone
+        )
         obj.data.materials.clear()
         obj.data.materials.append(mat)
         for poly in obj.data.polygons:
@@ -563,6 +610,11 @@ def build_blender_scene(output: Path) -> None:
     track.track_axis = "TRACK_NEGATIVE_Z"
     track.up_axis = "UP_Y"
     scene.camera = camera
+    # Body bounds before the oval: the ring would otherwise inflate the
+    # span and wash the figure with oversized area lights.
+    body_meshes = [o for o in bpy.data.objects if o.type == "MESH"]
+    low, high = _bounds(body_meshes)
+    span = max((high - low).length, 0.4)
     if meta.get("track", {}).get("kind") == "ring":
         _add_running_ring(bpy, meta)
         _frame_running_ring(bpy, camera, meta)
@@ -570,13 +622,13 @@ def build_blender_scene(output: Path) -> None:
     # Lamp positions are in the camera frame of the reset pose, then parented
     # to the pelvis so the same modelling follows the runner.
     bpy.context.view_layer.update()
-    forward = (look.matrix_world.translation - camera.matrix_world.translation).normalized()
+    forward = (
+        look.matrix_world.translation - camera.matrix_world.translation
+    ).normalized()
     right = forward.cross(Vector((0, 0, 1)))
     if right.length < 1e-6:
         right = Vector((1, 0, 0))
     right.normalize()
-    low, high = _bounds([o for o in bpy.data.objects if o.type == "MESH"])
-    span = max((high - low).length, 0.4)
     for spec in rig["lights"]:
         offset = Vector(spec["offset"])
         location = right * offset.x + forward * offset.y + Vector((0, 0, offset.z))
@@ -656,7 +708,15 @@ def _prefer_cycles_gpu(bpy: Any) -> None:
     scene.cycles.device = "CPU"
 
 
-def _material(bpy: Any, name: str, color: tuple, roughness: float, *, subsurface: float, coat: float) -> Any:
+def _material(
+    bpy: Any,
+    name: str,
+    color: tuple,
+    roughness: float,
+    *,
+    subsurface: float,
+    coat: float,
+) -> Any:
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     shader = mat.node_tree.nodes.get("Principled BSDF")
@@ -683,7 +743,9 @@ def _matrix(bpy: Any, flat: list[float]) -> Any:
 def _bounds(objects: list[Any]) -> tuple[Any, Any]:
     from mathutils import Vector
 
-    points = [obj.matrix_world @ Vector(corner) for obj in objects for corner in obj.bound_box]
+    points = [
+        obj.matrix_world @ Vector(corner) for obj in objects for corner in obj.bound_box
+    ]
     low = Vector(tuple(min(p[i] for p in points) for i in range(3)))
     high = Vector(tuple(max(p[i] for p in points) for i in range(3)))
     return low, high
@@ -711,7 +773,9 @@ def _frame_running_ring(bpy: Any, camera: Any, meta: dict[str, Any]) -> None:
     """Pull back so the oval and its lane lines fill the frame."""
     from mathutils import Vector
 
-    center = Vector(running_ring_paths(tuple(meta["pelvis"][0]), meta["track"]["up_axis"])["center"])
+    center = Vector(
+        running_ring_paths(tuple(meta["pelvis"][0]), meta["track"]["up_axis"])["center"]
+    )
     aim = bpy.data.objects.new("Ring center", None)
     bpy.context.scene.collection.objects.link(aim)
     aim.location = center
@@ -730,7 +794,13 @@ def _frame_running_ring(bpy: Any, camera: Any, meta: dict[str, Any]) -> None:
     bpy.context.view_layer.update()
 
 
-def _ribbon(bpy: Any, name: str, left: list[tuple[float, float, float]], right: list[tuple[float, float, float]], mat: Any) -> None:
+def _ribbon(
+    bpy: Any,
+    name: str,
+    left: list[tuple[float, float, float]],
+    right: list[tuple[float, float, float]],
+    mat: Any,
+) -> None:
     n = len(left)
     verts = list(left) + list(right)
     faces = []
@@ -802,7 +872,9 @@ def _cyclorama(bpy: Any, low: Any, high: Any, forward: Any) -> None:
     faces = [(2 * i, 2 * i + 1, 2 * i + 3, 2 * i + 2) for i in range(len(profile) - 1)]
     mesh = bpy.data.meshes.new("Cyclorama")
     mesh.from_pydata([tuple(v) for v in verts], [], faces)
-    mat = _material(bpy, "Backdrop", (0.045, 0.046, 0.05, 1), 0.85, subsurface=0.0, coat=0.0)
+    mat = _material(
+        bpy, "Backdrop", (0.045, 0.046, 0.05, 1), 0.85, subsurface=0.0, coat=0.0
+    )
     for polygon in mesh.polygons:
         polygon.use_smooth = True
     mesh.materials.append(mat)
@@ -814,7 +886,9 @@ def main(argv: list[str] | None = None) -> None:
     """Blender entry. ``blender --python this_file -- --stage DIR``."""
     argv = sys.argv[1:] if argv is None else argv
     if "--stage" not in argv:
-        raise SystemExit("usage: blender --background --python blender.py -- --stage DIR")
+        raise SystemExit(
+            "usage: blender --background --python blender.py -- --stage DIR"
+        )
     build_blender_scene(Path(argv[argv.index("--stage") + 1]))
 
 

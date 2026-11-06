@@ -24,6 +24,10 @@ SPRINT_LAMBDA_MUSCLE_PASSIVE: float = 0.0
 SPRINT_CTRL_DT: float = 1.0 / 30.0
 SPRINT_SIM_DT: float = 1e-4
 SPRINT_N_SUBSTEPS: int = int(round(SPRINT_CTRL_DT / SPRINT_SIM_DT))  # 333
+# Series-elastic tendons need a tighter step than rigid mjMUSCLE. Keep the
+# same control rate; n_substeps follows. Tune when the plugin lands.
+ELASTIC_SIM_DT: float = 5e-5
+ELASTIC_N_SUBSTEPS: int = int(round(SPRINT_CTRL_DT / ELASTIC_SIM_DT))  # 666
 
 SPRINT_FALL_HEIGHT: float = 0.6  # metres; Bolt WarpSprintEnv MIN_ROOT_HEIGHT
 SPRINT_ALIVE_BONUS: float = 0.0  # Bolt has no explicit alive term; keep 0
