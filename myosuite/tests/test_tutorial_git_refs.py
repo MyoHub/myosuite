@@ -53,7 +53,7 @@ def test_ref_patterns_catch_a_feature_branch() -> None:
 def test_tutorial_refs_are_main_or_dev(notebook: Path) -> None:
     if not _TUTORIALS.is_dir():
         pytest.skip("needs a source checkout")
-    cells = json.loads(notebook.read_text())["cells"]
+    cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
     text = "\n".join("".join(cell["source"]) for cell in cells)
     bad = _refs(text) - _ALLOWED
     assert not bad, f"{notebook.name} points at branches {sorted(bad)}; use main or dev"
