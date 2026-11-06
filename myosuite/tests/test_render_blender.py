@@ -148,6 +148,17 @@ def test_sport_graphics_export_animation_without_affecting_camera_bounds(
     last = np.array(transform.ComputeLocalToWorldTransform(1).ExtractTranslation())
     np.testing.assert_allclose(last - first, [0.25, 0, 0], atol=1e-6)
     assert "Sport_0" in meta["static_objects"]
+    court_meshes = [
+        UsdGeom.Mesh(prim)
+        for prim in stage.Traverse()
+        if prim.GetTypeName() == "Mesh" and prim.GetName().startswith("Mesh_Sport_")
+    ]
+    assert len(court_meshes) == 194
+    assert (
+        sum(len(mesh.GetFaceVertexIndicesAttr().Get()) // 3 for mesh in court_meshes)
+        <= 2_500
+    )
+    assert all(len(mesh.GetPointsAttr().Get()) <= 8 for mesh in court_meshes)
     assert max(abs(np.array(meta["bounds"])).ravel()) < 2
     np.testing.assert_array_equal(
         np.load(tmp_path / "export/reference.npz")["qpos"], poses

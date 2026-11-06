@@ -156,6 +156,9 @@ visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
   its arc; out-of-focus LED bars, a stage spot through thin haze, shallow
   depth of field, bloom and a vignette give it a broadcast look. The haze
   makes renders slower than the studio preset.
+  In Blender, the 194 court strokes use lightweight box meshes (2,328
+  triangles total). The depth-of-field target follows the midpoint of the
+  two identity markers throughout the animation.
   Camera fitting still samples the recorded poses. The light
   colours are fixed scene accents, independent of agent roles and muscle
   activation. For a chase-tag preview from a recorded joint-state clip:
