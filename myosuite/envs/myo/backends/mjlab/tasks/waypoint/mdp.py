@@ -20,11 +20,13 @@ from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (
 )
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.commands import RESAMPLE_ON_RESET_ONLY
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.events import write_cpu_state
-from myosuite.envs.waypoint import WaypointTaskCfg, heading_yaw, qpos_obs
+from myosuite.envs.waypoint import WaypointTaskCfg
 from myosuite.terms.base_obs import joint_vel_obs, muscle_act_obs
 from myosuite.terms.waypoint import (
     distance_to_next,
+    heading_yaw,
     perturb_qpos,
+    qpos_obs,
     sample_route,
     waypoint_progress,
     waypoint_reward,

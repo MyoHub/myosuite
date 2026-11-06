@@ -28,8 +28,9 @@ from myosuite.terms.waypoint import (
     WaypointRewardCfg,
     WaypointRouteCfg,
     distance_to_next,
+    heading_yaw,
     perturb_qpos,
-    quat_yaw,
+    qpos_obs,
     sample_route,
     waypoint_progress,
     waypoint_reward,
@@ -123,18 +124,6 @@ class RootLayout:
                 if model.jnt_limited[j]:
                     low[adr], high[adr] = model.jnt_range[j]
         return cls(bool(free), mask, low, high)
-
-
-def qpos_obs(qpos: Any, has_free_root: bool) -> Any:
-    """``qpos`` without the world ``x, y`` of a free root (translation invariant)."""
-    return qpos[..., 2:] if has_free_root else qpos
-
-
-def heading_yaw(xp: Any, qpos: Any, has_free_root: bool) -> Any:
-    """Yaw of the free root, or zero (world frame) without one."""
-    if has_free_root:
-        return quat_yaw(xp, qpos[..., 3:7])
-    return 0 * qpos[..., 0]
 
 
 def initial_state(

@@ -26,18 +26,17 @@ from myosuite.integrations.musclemimic.two_agent_scene import (
 )
 from myosuite.physics import quat_math
 from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
-from myosuite.terms.multiplayer.heading import (
+from myosuite.integrations.musclemimic.steering import (
     ARENA_LIM_M,
     COMPASS_LABELS,
     aim_heading_xy,
     body_yaw,
     clamp_arena_xy,
     compass_index,
-    heading_yaw,
-    role_heading_xy,
     step_compass,
     wall_repulsion,
 )
+from myosuite.terms.multiplayer.heading import heading_yaw, role_heading_xy
 
 pytestmark = pytest.mark.tier1
 
