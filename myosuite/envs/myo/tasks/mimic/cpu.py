@@ -25,6 +25,7 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
+from myosuite.integrations.musclemimic.model_versions import resolve_models_version
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.terms.base_obs import joint_pos_obs, joint_vel_obs, muscle_act_obs
 from myosuite.terms.mimic_obs import (
@@ -256,6 +257,7 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
         gait_clip_repo: str = DEFAULT_GAIT_REPO,
         gait_clip_filename: str = DEFAULT_GAIT_FILE,
         angle_override: float | None = None,
+        model_version: str | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -265,6 +267,7 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             mimic_target_high=(1.0,),
             **kwargs,
         )
+        resolved_model_version = model_version or resolve_models_version()
         # Record this class's own ctor args; the base would replay fixed mimic bounds.
         EzPickle.__init__(
             self,
@@ -282,9 +285,12 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             gait_clip_repo=gait_clip_repo,
             gait_clip_filename=gait_clip_filename,
             angle_override=angle_override,
+            model_version=resolved_model_version,
             **kwargs,
         )
         cfg = default_mimic_fullbody_config()
+        cfg.model_version = resolved_model_version
+        self._model_version = resolved_model_version
         self.model, self._mj_spec, self._xml_path = compile_mimic_fullbody_mjmodel(cfg)
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * self.frame_skip)
@@ -468,8 +474,9 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             )
         )
 
+        # Command is world-frame; obs root_vel_xy is body-frame.
         cur_vel3 = np.array(
-            [obs_dict["root_vel_xy"][0], obs_dict["root_vel_xy"][1], 0.0],
+            [float(self.data.qvel[0]), float(self.data.qvel[1]), 0.0],
             dtype=np.float64,
         )
         target_vel3 = np.array(

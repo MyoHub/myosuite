@@ -35,8 +35,10 @@ logger = logging.getLogger(__name__)
 class ModularMultiAgentTaskEnv(gym.Env):
     """Two-agent simultaneous-step environment driven by :class:`MultiAgentTaskConfig`.
 
-    Both agents act each step; the episode ends when any agent falls, is KO'd,
-    or the step limit is reached. The env truncates itself at
+    Both agents act each step; the episode ends when
+    :meth:`~myosuite.core.multi_agent_config.MultiAgentTaskConfig.episode_is_over`
+    is true (default: any fall or KO) or the step limit is reached. The env
+    truncates itself at
     :attr:`max_episode_steps`, so ``register_task`` registers it without
     gymnasium's ``TimeLimit`` (which would replace the per-agent ``truncated``
     dict with a bare ``True``).
@@ -218,7 +220,7 @@ class ModularMultiAgentTaskEnv(gym.Env):
             a: self._config.check_fell(self.data, self._meta, a) for a in self._agents
         }
         ko = {a: self._health[a] >= ko_thresh for a in self._agents}
-        episode_over = any(fell.values()) or any(ko.values())
+        episode_over = self._config.episode_is_over(fell, ko)
 
         terminated = {a: episode_over for a in self._agents}
         truncated = {

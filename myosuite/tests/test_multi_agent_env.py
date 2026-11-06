@@ -225,6 +225,22 @@ def test_truncation_at_max_steps():
     env.close()
 
 
+def test_default_episode_is_over_any_fall_or_ko():
+    """Boxing/fencing keep the default: any fall or KO ends the match."""
+    cfg = DummyMultiAgentConfig()
+    fell_one = {"agent_0": True, "agent_1": False}
+    ko_none = {"agent_0": False, "agent_1": False}
+    assert cfg.episode_is_over(fell_one, ko_none) is True
+    assert cfg.episode_is_over({"agent_0": False, "agent_1": False}, ko_none) is False
+    assert (
+        cfg.episode_is_over(
+            {"agent_0": False, "agent_1": False},
+            {"agent_0": False, "agent_1": True},
+        )
+        is True
+    )
+
+
 def test_ko_terminates_episode():
     """Episode terminates when any agent's health reaches ko_threshold."""
 
