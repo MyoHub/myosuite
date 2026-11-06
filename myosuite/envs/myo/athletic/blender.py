@@ -81,9 +81,9 @@ def _camera_offsets(up_axis: str) -> tuple[tuple[float, float, float], tuple[flo
     """Three-quarter camera and look offsets in the plant's world frame."""
     if up_axis == "y":
         # Sprinter faces +X. Sit in front and to the side, above the pelvis.
-        return (1.5, 1.15, 3.8), (0.4, 0.2, 0.0)
-    # Fullbody faces −X, Z up.
-    return (-1.4, -3.8, 1.2), (-0.3, 0.0, 0.25)
+        return (2.2, 1.6, 5.6), (0.4, 0.2, 0.0)
+    # Fullbody faces −X, Z up. Far enough for a 50 mm full-body frame.
+    return (-2.0, -5.6, 1.5), (-0.2, 0.0, 0.15)
 
 
 def _safe_name(name: str, gid: int) -> str:
@@ -228,6 +228,10 @@ def write_stage(
     mesh_kind = int(mujoco.mjtGeom.mjGEOM_MESH)
     chosen: list[tuple[int, str, list, list]] = []
     for gid in range(int(model.ngeom)):
+        # Groups 0–2 are the visible skeleton. Group 3+ holds muscle-wrap
+        # spheres and collision capsules, which are not part of the render.
+        if int(model.geom_group[gid]) > 2:
+            continue
         kind = int(model.geom_type[gid])
         body = int(model.geom_bodyid[gid])
         if kind != mesh_kind and body in mesh_bodies:
@@ -254,11 +258,9 @@ def write_stage(
     for xpos, xmat, root in snapshots:
         mats = []
         for gid, _name, _verts, _faces in chosen:
+            # mesh_vert is already in the geom frame. geom_size on a compiled
+            # mesh is the half-extent, not a second scale.
             rotation = np.asarray(xmat[gid], dtype=float).reshape(3, 3)
-            if int(model.geom_type[gid]) == mesh_kind:
-                scale = np.asarray(model.geom_size[gid], dtype=float).copy()
-                scale[scale == 0] = 1.0
-                rotation = rotation @ np.diag(scale)
             matrix = np.eye(4)
             matrix[:3, :3] = rotation
             matrix[:3, 3] = np.asarray(xpos[gid], dtype=float)
@@ -402,6 +404,7 @@ def build_blender_scene(output: Path) -> None:
     scene.cycles.use_denoising = True
     if hasattr(scene.cycles, "use_light_tree"):
         scene.cycles.use_light_tree = True
+    _prefer_cycles_gpu(bpy)
     scene.render.fps = int(meta["fps"])
     scene.render.resolution_x, scene.render.resolution_y = meta["resolution"]
     scene.render.resolution_percentage = 100
@@ -433,15 +436,26 @@ def build_blender_scene(output: Path) -> None:
         for poly in obj.data.polygons:
             poly.use_smooth = True
 
+    names = meta["geoms"]
+    # Pose the reset frame before measuring the body. Imported vertices sit in
+    # geom-local space, so lights sized from that pile miss the skeleton.
+    for name, flat in zip(names, meta["frames"][0]):
+        obj = bpy.data.objects.get(name)
+        if obj is None:
+            continue
+        obj.matrix_world = _matrix(bpy, flat)
+    bpy.context.view_layer.update()
+
     subject = bpy.data.objects.new("Subject", None)
     scene.collection.objects.link(subject)
+    subject.location = Vector(meta["pelvis"][0])
     look = bpy.data.objects.new("Look", None)
     scene.collection.objects.link(look)
     look.parent = subject
     look.location = Vector(meta["look_offset"])
 
     camera_data = bpy.data.cameras.new("Studio")
-    camera_data.lens = 85
+    camera_data.lens = 50
     camera_data.sensor_width = 36
     camera_data.clip_end = 200
     camera = bpy.data.objects.new("Studio camera", camera_data)
@@ -492,7 +506,6 @@ def build_blender_scene(output: Path) -> None:
     background.inputs[1].default_value = float(rig["world_strength"])
 
     _cyclorama(bpy, low, high, forward)
-    names = meta["geoms"]
     scene.frame_start = 0
     scene.frame_end = 0 if meta["preview"] else max(0, len(meta["frames"]) - 1)
     for frame, (mats, pelvis) in enumerate(zip(meta["frames"], meta["pelvis"])):
@@ -517,6 +530,26 @@ def build_blender_scene(output: Path) -> None:
     else:
         scene.render.filepath = str(output / "frames" / "frame_")
         bpy.ops.render.render(animation=True)
+
+
+def _prefer_cycles_gpu(bpy: Any) -> None:
+    """Use Metal or CUDA when Blender can see a GPU. CPU remains the fallback."""
+    scene = bpy.context.scene
+    prefs = bpy.context.preferences.addons["cycles"].preferences
+    for device_type in ("METAL", "CUDA", "OPTIX", "HIP", "ONEAPI"):
+        try:
+            prefs.compute_device_type = device_type
+        except TypeError:
+            continue
+        prefs.get_devices()
+        gpus = [d for d in prefs.devices if d.type != "CPU"]
+        if not gpus:
+            continue
+        for device in prefs.devices:
+            device.use = device.type != "CPU"
+        scene.cycles.device = "GPU"
+        return
+    scene.cycles.device = "CPU"
 
 
 def _material(bpy: Any, name: str, color: tuple, roughness: float, *, subsurface: float, coat: float) -> Any:
@@ -560,16 +593,18 @@ def _cyclorama(bpy: Any, low: Any, high: Any, forward: Any) -> None:
     span = max((high - low).length, 0.4)
     toward = Vector((-forward.x, -forward.y, 0)).normalized()
     side = Vector((0, 0, 1)).cross(toward).normalized()
-    radius = span
-    profile = [(2.5 * span, 0.0), (-1.2 * span + radius, 0.0)]
+    radius = 1.4 * span
+    wall = 14 * span
+    profile = [(6 * span, 0.0), (-1.4 * span + radius, 0.0)]
     profile += [
         (
-            -1.2 * span + radius - radius * math.sin(t),
+            -1.4 * span + radius - radius * math.sin(t),
             radius - radius * math.cos(t),
         )
-        for t in [i / 8 * math.pi / 2 for i in range(1, 9)]
+        for t in [i / 24 * math.pi / 2 for i in range(1, 25)]
     ]
-    width = 12 * span
+    profile.append((profile[-1][0], wall))
+    width = 30 * span
     origin = Vector((center.x, center.y, low.z - 0.01))
     verts = [
         origin + side * x + toward * y + Vector((0, 0, z))
@@ -580,6 +615,8 @@ def _cyclorama(bpy: Any, low: Any, high: Any, forward: Any) -> None:
     mesh = bpy.data.meshes.new("Cyclorama")
     mesh.from_pydata([tuple(v) for v in verts], [], faces)
     mat = _material(bpy, "Backdrop", (0.045, 0.046, 0.05, 1), 0.85, subsurface=0.0, coat=0.0)
+    for polygon in mesh.polygons:
+        polygon.use_smooth = True
     mesh.materials.append(mat)
     obj = bpy.data.objects.new("Cyclorama", mesh)
     bpy.context.scene.collection.objects.link(obj)
