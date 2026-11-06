@@ -704,8 +704,10 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         rwd_dict["dense"] = float(
             np.sum([wt * rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
         )
-        self.model.site_rgba[self.success_indicator_sid, :] = (
-            np.array([0, 2, 0, 0.2]) if rwd_dict["solved"] else np.array([2, 0, 0, 0])
+        self._set_success_indicator(self.success_indicator_sid, rwd_dict["solved"])
+        # The indicator around the opponent shows only once it is tagged.
+        self.model.site_rgba[self.success_indicator_sid, 3] = (
+            0.2 if rwd_dict["solved"] else 0.0
         )
         return rwd_dict
 
@@ -885,9 +887,10 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     def _maybe_flatten_agent_patch(self, qpos: np.ndarray) -> None:
         if self.heightfield is not None:
             self.heightfield.flatten_agent_patch(qpos)
-            renderer = getattr(self, "_mujoco_renderer", None)
-            if renderer is not None and getattr(renderer, "_window", None) is not None:
-                renderer._window.update_hfield(0)
+            # Runs after this reset's terrain sample, so one upload covers both edits.
+            self._upload_hfield_to_renderers(
+                int(self.model.geom_dataid[self.model.geom("terrain").id])
+            )
 
     # ── Reset state helpers ───────────────────────────────────────────────────
 
