@@ -74,18 +74,19 @@ class SuperMimicCfg:
     critic_epochs: int = 5
     critic_minibatches: int = 4
     elementwise_clip: float = 0.1
-    # Clip each sample's dJ/da_t to this multiple of the batch median norm (0: off).
     act_grad_clip: float = 0.0
-    # Polyak average of the actor, evaluated and exported next to it.
+    """Clip each sample's dJ/da_t to this multiple of the batch median norm (0: off)."""
     ema_decay: float = 0.999
-    # PODS-style actor update: regress onto u_t + eta * dJ/du_t instead of one Adam step.
+    """Polyak average of the actor, evaluated and exported next to it."""
     pods: bool = False
-    pods_step: float = 0.03  # RMS target step in excitation units, annealed with the lr
+    """PODS-style actor update: regress onto u_t + eta * dJ/du_t instead of one Adam step."""
+    pods_step: float = 0.03
+    """RMS target step in excitation units, annealed with the learning rate."""
     pods_minibatches: int = 8
     pods_epochs: int = 1
-    # Barrier on raw actions beyond |a - 0.5| > band, where the sigmoid control saturates
-    # and BPTT gradients vanish (0 disables it).
     saturation_penalty: float = 0.0
+    """Barrier on raw actions beyond |a - 0.5| > band, where the sigmoid control saturates
+    and BPTT gradients vanish (0 disables it)."""
     saturation_band: float = 1.0
     actor_hidden: tuple[int, ...] = (256, 256, 128)
     max_hours: float = 12.0
@@ -93,9 +94,9 @@ class SuperMimicCfg:
     eval_every: int = 500
     eval_envs: int = 128
     eval_steps: int = 500
-    # Checkpoint kept as ckpt_best.pt: highest "reward" or lowest leg joint-angle RMSE
-    # ("leg_rmse") on the training evaluation (a selection, so its score is optimistic).
     best_metric: str = "reward"
+    """Checkpoint kept as ckpt_best.pt: highest "reward" or lowest leg joint-angle RMSE
+    ("leg_rmse") on the training evaluation (a selection, so its score is optimistic)."""
     save_every: int = 1000
     compile: bool = True
     tf32: bool = (
