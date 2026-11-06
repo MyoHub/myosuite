@@ -143,6 +143,26 @@ CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and
 
 <sub>
 
+**Bounded action std in the PPO defaults (#566).** The mjlab PPO configs of the muscle tasks and of `motorFinger*`
+(whose actions are clipped before the linear map to `ctrlrange`) now keep the policy's action std in [0.05, 1.0]. The
+std parameter is projected onto that range before every forward pass and stays trainable at the bounds. MuscleMimic
+(with the SAR tasks of tutorial 5.5, which register with its config), ChaseTag FBP2, table tennis and the elbow config
+also start at std 0.5 and use an entropy bonus of 0.001 (were 1.0 and 0.01). The bound limits the drift of the std of
+saturated controls (up to the learning rate per update, less with the noise of PPO's surrogate gradient); it does not
+by itself prevent saturated (bang-bang) controls. The checkpoints above were trained with the earlier, unbounded
+defaults. They still load, and `eval_mjlab_policy.py` scores them as before, with or without `--stochastic`: the bound
+adds no parameter, and a run whose `params/agent.yaml` has no `std_range` is sampled with the checkpoint's own std
+(runs trained with the bound are sampled with the std clamped to their range, as in training). Resuming training from
+one of them projects a std above 1 to 1 on the first update (the MuscleMimic run of #566 ended at 14), and the std stays
+trainable. A run with the new defaults is a new training setup, so its policy and success rate can differ from the
+published ones. This includes pose, reach, leg, torso and `motorFinger*`, whose std was unbounded before (an elbow-pose
+run without the bound took its smallest std below 0.05 after 220 iterations). The run times and results quoted in
+tutorial 5.5 were measured with the earlier defaults.
+
+</sub>
+
+<sub>
+
 **`myoChallengeChaseTagFBP2-v0`** (success: the agent tags the opponent) and
 **`myoChallengeTableTennisP{0,1,2}-v0`** have no trained checkpoint available yet to evaluate.
 
@@ -150,7 +170,7 @@ CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and
 
 <sub>
 
-**`myoChallengeChaseTagFBVs-v0`** (the scored 1v1 game, CPU only). `tutorials/files/5.6/chasetag_fbvs_baseline.onnx` plays one player, 546 -> 354, in either role. It is a starting point: it reaches and tags a player that does nothing, but it often falls before the 10 s limit: at about 6.7 s as a chaser against itself. Measured with action noise 0.02 and 12 episodes per role, on myo_sim 0.2.4 and MuJoCo 3.11; myo_sim 0.2.3 and MuJoCo 3.17 gave the same tags and falls:
+**`myoChallengeChaseTagFBVs-v0`** (the scored 1v1 game, CPU only). `onnx/chasetag_fbvs_baseline.onnx` in the `myohub/myosuite-3-baselines` Hugging Face repo (`myosuite.core.hf_io.download_baseline_file`) plays one player, 546 -> 354, in either role. It is a starting point: it reaches and tags a player that does nothing, but it often falls before the 10 s limit: at about 6.7 s as a chaser against itself. Measured with action noise 0.02 and 12 episodes per role, on myo_sim 0.2.4 and MuJoCo 3.11; myo_sim 0.2.3 and MuJoCo 3.17 gave the same tags and falls:
 
 | Match | Tags | Chaser falls | Mean length | Fell at (median) |
 |---|---:|---:|---:|---|

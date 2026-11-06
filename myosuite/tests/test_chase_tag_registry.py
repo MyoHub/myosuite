@@ -491,12 +491,11 @@ class TestChaseTagFullbodyBody:
     def test_baseline_policy_tags_an_idle_player(self) -> None:
         import onnxruntime as ort
 
-        path = (
-            Path(__file__).resolve().parents[2]
-            / "tutorials/files/5.6/chasetag_fbvs_baseline.onnx"
-        )
-        if not path.is_file():
-            pytest.skip("needs a source checkout")
+        from myosuite.core.hf_io import download_baseline_file
+
+        path = download_baseline_file("onnx/chasetag_fbvs_baseline.onnx")
+        if path is None:
+            pytest.skip("baseline ONNX unavailable (no network?)")
         session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
         name = session.get_inputs()[0].name
         env = make_env("myoChallengeChaseTagFBVs-v0")
