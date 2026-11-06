@@ -152,6 +152,10 @@ visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
   dark perimeter and a low 45 mm camera with a slight roll. Chase-tag exports
   include sparse court lines and broken identity arcs following both agents.
   The arcs are decorative, not tag radii, paths or performance data.
+  The court is glossy, with a soft team glow under each agent that follows
+  its arc; out-of-focus LED bars, a stage spot through thin haze, shallow
+  depth of field, bloom and a vignette give it a broadcast look. The haze
+  makes renders slower than the studio preset.
   Camera fitting still samples the recorded poses. The light
   colours are fixed scene accents, independent of agent roles and muscle
   activation. For a chase-tag preview from a recorded joint-state clip:
@@ -172,8 +176,8 @@ samples three poses with a margin; check longer clips for framing before final u
    :alt: Chase-tag Blender rendering with studio and sport scene presets
 
    Studio (left) and sport (right), using the same staged Breakaway pose and
-   each preset's camera and lighting. Blender 4.3.2, Cycles, 48 samples;
-   uniform muscle colour, not measured activation.
+   each preset's camera and lighting. Blender 5.2, Cycles, 48 samples; atlas
+   muscle meshes in a uniform colour, not measured activation.
 
 Reproduce the Breakaway still from the repository root:
 
@@ -181,22 +185,15 @@ Reproduce the Breakaway still from the repository root:
 
    python scripts/render_blender.py --env myoChallengeChaseTagFBVs-v0 \
        --motion docs/source/images/rendering/chase_tag_breakaway.npz \
-       --scene sport --muscles paths --muscle-color uniform \
+       --scene sport --muscle-mesh atlas --muscle-color uniform \
        --seconds 0.0333333333 --resolution 1280 720 --samples 48 \
        --preview --output renders/breakaway
 
-With ``--muscle-mesh atlas`` in place of ``--muscles paths``, the anatomical
-muscle meshes (see *Anatomical muscle meshes* below) are drawn on both agents in the
-sport red. They follow the bones, so the shoulder paths, which fold back in
-extreme arm poses, are not shown:
-
-.. code-block:: bash
-
-   python scripts/render_blender.py --env myoChallengeChaseTagFBVs-v0 \
-       --motion docs/source/images/rendering/chase_tag_breakaway.npz \
-       --scene sport --muscle-mesh atlas --muscle-color uniform \
-       --seconds 0.0333333333 --resolution 1280 720 --samples 48 \
-       --preview --output renders/breakaway-atlas
+The anatomical muscle meshes (see *Anatomical muscle meshes* below) follow the
+bones and take the sport red. With ``--muscles paths`` in place of
+``--muscle-mesh atlas`` the muscles are drawn along their MuJoCo paths instead;
+in extreme arm poses such as this one, the shoulder paths fold back on
+themselves.
 
 The supplied clip holds a hand-staged pose for two samples at 30 Hz, with
 joint couplings and tendon paths recomputed in MuJoCo. It is a composition

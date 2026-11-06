@@ -792,3 +792,12 @@ def test_bone_overlay_exports_original_mesh_not_another_geometry(
     np.testing.assert_allclose(
         pose.ExtractTranslation(), expected.geom_xpos[env.model.geom("bone").id]
     )
+
+
+def test_circle_centre_finds_an_arcs_agent_position() -> None:
+    """The team glow is centred on the identity arc, which spans under a full turn."""
+    angles = np.linspace(0.08, 0.85, 20) * 2 * np.pi
+    points = np.column_stack(
+        (1.2 + 0.46 * np.cos(angles), -0.3 + 0.46 * np.sin(angles), np.zeros(20))
+    )
+    np.testing.assert_allclose(blender_render._circle_centre(points), (1.2, -0.3))
