@@ -57,6 +57,20 @@ repos:
             myosuite/envs/myo/myoedits/.*
           )$
 
+      # Guard: model weights are hosted on Hugging Face (see CLAUDE.md), not in git.
+      # The exempt files are legacy tutorial checkpoints awaiting migration.
+      - id: no-model-weights
+        name: Block model weight files (host them on Hugging Face)
+        language: fail
+        entry: 'Model weights belong on Hugging Face at a pinned revision, not in git (see CLAUDE.md):'
+        files: \.(pt|pth|onnx|ckpt|safetensors)$
+        exclude: >-
+          (?x)^tutorials/files/(
+            5\.2/mimic_policy_demo\.pt|
+            5\.6/policy_bc_best\.pt|
+            5\.6/policy_heading_table\.pt
+          )$
+
       # Guard: AI Co-Authored-By trailers break the CLA check. Soft docs in
       # CLAUDE.md are not enough — Cursor/Codex/etc. inject trailers after the
       # message is composed. Strip on prepare-commit-msg; reject on commit-msg.

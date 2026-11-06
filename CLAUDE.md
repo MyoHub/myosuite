@@ -72,6 +72,12 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
 - After any user correction: update `tasks/lessons.md`.
   (`tasks/` is git-ignored local scratch space, not part of the repository.)
 - Never mark a task done without proving it works.
+- **Small PRs.** One concern per PR: a fix, a refactor, a task, or a doc change — not several at once.
+  - Split unrelated changes into separate PRs, even when found together. Land prerequisites first and rebase; never carry another open PR's commits.
+  - Keep a PR reviewable in one sitting (aim for < ~500 changed lines excluding generated files); split larger work into a sequence.
+- **Model weights live on Hugging Face, not in git.** Never commit `.pt`, `.pth`, `.onnx`, `.ckpt` or `.safetensors` files — not in `myosuite/`, `tutorials/`, `docs/` or `training/`.
+  - Upload them to a MyoHub Hugging Face repo and download at a pinned revision (tag or commit): `myosuite.core.hf_io` for baselines, otherwise `hf_hub_download(..., revision=...)`. Never download from `main` unpinned.
+  - Enforced by the `no-model-weights` pre-commit hook. The three legacy tutorial checkpoints it exempts are to be migrated; don't add to that list.
 - **Branching and CI.** Branch from `dev` and open PRs against `dev`.
   - Isolated or agent worktrees may start from `main`, so create the branch from `dev` explicitly.
   - CI runs for non-draft pull requests into `main` and `dev` (a draft stays quiet until it is marked ready). Tests cover the minimum and maximum supported Python: 3.10 on macOS, Ubuntu, and Windows, and 3.14 on Ubuntu. Run the Verification block below locally before pushing.
