@@ -16,11 +16,13 @@ from myosuite.integrations.musclemimic.fullbody_local_policy import _restore_on_
 
 pytestmark = pytest.mark.tier2
 
+# orbax-checkpoint and jax are optional (MuscleMimic extras); CI's base install has neither.
+ocp = pytest.importorskip("orbax.checkpoint")
+jnp = pytest.importorskip("jax.numpy")
+
 
 def _save_with_foreign_device(path: Path) -> dict[str, np.ndarray]:
     """Save a small checkpoint, then rename its device as another JAX would."""
-    jnp = pytest.importorskip("jax.numpy")
-    ocp = pytest.importorskip("orbax.checkpoint")
     tree = {"params": {"w": np.arange(6.0).reshape(2, 3)}, "step": np.asarray(3)}
     checkpointer = ocp.StandardCheckpointer()
     checkpointer.save(
@@ -39,16 +41,12 @@ def _save_with_foreign_device(path: Path) -> dict[str, np.ndarray]:
 
 
 def test_plain_restore_fails_on_a_foreign_device_name(tmp_path: Path) -> None:
-    import orbax.checkpoint as ocp
-
     _save_with_foreign_device(tmp_path / "ckpt")
     with pytest.raises(ValueError, match="NOT_A_DEVICE_7"):
         ocp.StandardCheckpointer().restore(str(tmp_path / "ckpt"))
 
 
 def test_restore_on_cpu_ignores_the_saved_device_name(tmp_path: Path) -> None:
-    import orbax.checkpoint as ocp
-
     tree = _save_with_foreign_device(tmp_path / "ckpt")
     restored = _restore_on_cpu(ocp.StandardCheckpointer(), str(tmp_path / "ckpt"))
     np.testing.assert_array_equal(
