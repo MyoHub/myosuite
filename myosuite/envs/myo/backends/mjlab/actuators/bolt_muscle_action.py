@@ -25,7 +25,7 @@ WarpBackend uses, myo_sim/tests -- ad hoc verification script, not yet a committ
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import torch
 
@@ -143,6 +143,14 @@ class BoltMuscleActionCfg(ActionTermCfg):
     """Muscle + native-actuator activation to set right after the first-call equilibrate() (matching
     Bolt's own StartingStateHelper -- see BoltMuscleAction.process_actions()). None (default) leaves
     activation at whatever equilibrate() itself produced (0). Bolt's own reset uses 0.5."""
+
+    tendons: Literal["rigid", "elastic"] = "rigid"
+    """Series element requested by the athletic API.
+
+    ``rigid`` matches the actuator as it runs today. ``elastic`` is the
+    series-elastic plugin path; the athletic factory rejects it until the
+    element is applied, so a constructed env never silently stays rigid.
+    """
 
     def build(self, env: "ManagerBasedRlEnv") -> BoltMuscleAction:
         return BoltMuscleAction(self, env)
