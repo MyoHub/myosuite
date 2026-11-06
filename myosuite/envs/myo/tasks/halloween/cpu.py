@@ -111,6 +111,7 @@ class HalloweenEnv(MyoGymnasiumEnv, EzPickle):
             park_pumpkin(self.model, self.data)
         self._hit = False
         self._contact_count = 0
+        self._common_steps = 0  # The optional curriculum is episode-local.
         if self.avoidance is not None:
             self.avoidance.reset(np_random)
         else:

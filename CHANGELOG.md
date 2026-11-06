@@ -4,6 +4,33 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Halloween environment and lesson refactor
+
+- Add an opt-in CPU `profile="terra"` to `myoHalloween-v0`, retaining the default
+  benchmark and its CPU/MJLab contract. The environment owns settled reset,
+  frontal pumpkin scheduling, physical contacts and recovery metrics.
+- Move learned command selection/reference decoding into `HalloweenController`,
+  using the existing TERRA runner. No policy downloads happen during task creation.
+- Simplify Python/Colab lessons to the public factory/reset/step/render interface.
+  The validated seed-2027 actor trajectory remains identical across all 2390 frames.
+
+### Halloween task contract
+
+- Restore configured MJLab robot root/joint state on every episode reset before
+  parking the pumpkin, including customized spawn poses. Reuse MJLab’s reset primitive.
+
+- Register `myoHalloween-v0` on CPU as well as MJLab: 535 float32 observations,
+  354 direct muscle excitations, 100 Hz control / 500 Hz physics, six-second episodes.
+- Copy MuJoCo physics options into MJLab (Euler), enable explicit pumpkin/body
+  collision pairs, and terminate only on physical contact (including substep history).
+  Link-origin distance remains reward shaping, not a collision detector.
+- Match action clipping to [0, 1] excitation on both backends (MJLab previously
+  used the [-1, 1] `direct` mode).
+- Default throws run at full speed on both backends. The former training-only
+  easy-start curriculum is opt-in with `curriculum=True`.
+- The frozen-TERRA selector tutorial is a separate high-level controller and
+  curriculum; its weights are not raw-muscle `myoHalloween-v0` checkpoints.
+
 ### Highlights
 
 * **Photorealistic Blender rendering of any MyoSuite rollout ([#540]).** One command turns a CPU rollout of a

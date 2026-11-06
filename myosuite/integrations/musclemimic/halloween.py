@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from myosuite.envs.myo.tasks.halloween.cpu import HalloweenEnv
 
 COMMANDS = ("idle", "left", "right", "squat")
-ASSET_REVISION = "8842a86052d46be13b489a1e755bd265bcbc78ae"
+ASSET_REVISION = "59e61e86059f86f71488d9de41cff893b5b69703"
 ASSET_URL = f"https://raw.githubusercontent.com/MyoHub/myosuite/{ASSET_REVISION}/tutorials/files/halloween/"
 HASHES = {
     "motion_decoder.npz": "b3f9a27ed5a9b3dd64f0efb8671eb5954fe1c0ce1ed681e3e5ba339d2468b78c",

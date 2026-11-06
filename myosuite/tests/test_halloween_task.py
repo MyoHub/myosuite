@@ -125,6 +125,24 @@ def test_cpu_registration_seed_and_contract():
         env.close()
 
 
+def test_cpu_curriculum_seeded_reset():
+    import numpy as np
+
+    from myosuite import make_env
+
+    env = make_env("myoHalloween-v0", curriculum=True)
+    try:
+        first, _ = env.reset(seed=123)
+        deadline = env.unwrapped._next_throw
+        env.unwrapped._common_steps = 137
+        second, _ = env.reset(seed=123)
+        np.testing.assert_array_equal(first, second)
+        assert env.unwrapped._next_throw == deadline
+        assert env.unwrapped._common_steps == 0
+    finally:
+        env.close()
+
+
 def test_proximity_does_not_count_as_hit():
     import numpy as np
 

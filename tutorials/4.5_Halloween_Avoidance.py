@@ -10,7 +10,7 @@
 # Python 3.12 environment and run this file. A GPU is optional. The first run
 # downloads the public TERRA checkpoint; later runs reuse its cache.
 #
-# [Task and API documentation](https://github.com/MyoHub/myosuite/blob/feature/myohalloween-task/docs/halloween.md)
+# [Task and API documentation](https://github.com/MyoHub/myosuite/blob/dev/docs/halloween.md)
 # · [Try the browser demo](https://spooky.myosuite.org/)
 
 # %% [markdown]
