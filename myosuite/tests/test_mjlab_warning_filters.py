@@ -10,6 +10,10 @@ import sys
 _SCRIPT = """
 import warnings
 import myosuite.envs.myo.backends.mjlab  # installs the filters
+
+import pytest
+
+pytestmark = pytest.mark.tier2
 warnings.warn("Entity 'robot' has non-default <option> fields (timestep) that will not be propagated", UserWarning)
 warnings.warn("Attach conflict when attaching 'A' to 'mjlab scene', policy is 'warning'", UserWarning)
 warnings.warn("Entity 'robot' has something else", UserWarning)

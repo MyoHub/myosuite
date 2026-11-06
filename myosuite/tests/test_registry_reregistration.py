@@ -9,9 +9,12 @@ import importlib
 
 import gymnasium as gym
 import numpy as np
+import pytest
 
 import myosuite  # noqa: F401  (registers the envs)
 from myosuite.core.registry import _deep_equal
+
+pytestmark = pytest.mark.tier2
 
 
 def test_deep_equal_handles_arrays_and_nesting() -> None:

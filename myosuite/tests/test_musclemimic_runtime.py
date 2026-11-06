@@ -20,6 +20,8 @@ from myosuite.integrations.musclemimic.runtime import (
     resolve_musclemimic_root_from_env,
 )
 
+pytestmark = pytest.mark.tier2
+
 
 def test_resolve_musclemimic_root_from_env_unset(
     monkeypatch: pytest.MonkeyPatch,

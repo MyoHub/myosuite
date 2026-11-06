@@ -20,6 +20,8 @@ from myosuite.core.trajectory_io import (
     resolve_motion_path,
 )
 
+pytestmark = pytest.mark.tier2
+
 _UNPICKLED: list[str] = []
 
 
