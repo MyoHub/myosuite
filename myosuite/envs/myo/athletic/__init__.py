@@ -5,10 +5,17 @@
 """Modular athletic task×model×tendon×backend factory.
 
 ``make_athletic("sprint")`` is myofullbody with rigid tendons.
+``render_athletic("sprint", out)`` renders that episode in Blender with the
+studio light rig.
 """
 
 from __future__ import annotations
 
+from myosuite.envs.myo.athletic.blender import (
+    DEFAULT_LIGHTING,
+    STUDIO_LIGHTS,
+    render_athletic,
+)
 from myosuite.envs.myo.athletic.catalog import (
     PLANTS,
     TASKS,
@@ -26,13 +33,16 @@ from myosuite.envs.myo.athletic.specs import (
 
 __all__ = [
     "AthleticBundle",
+    "DEFAULT_LIGHTING",
     "DEFAULT_MODEL",
     "DEFAULT_TENDONS",
-    "PlantSpec",
-    "TaskSpec",
     "PLANTS",
+    "PlantSpec",
+    "STUDIO_LIGHTS",
     "TASKS",
+    "TaskSpec",
     "athletic_bundle",
     "make_athletic",
     "register_athletic_matrix",
+    "render_athletic",
 ]
