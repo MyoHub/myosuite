@@ -25,22 +25,12 @@ from myosuite.integrations.musclemimic import (  # noqa: E402
     load_terrain_policy,
     plan_waypoint_reference,
 )
-from myosuite.integrations.musclemimic.adl_apartment import (  # noqa: E402
+from apartment import (  # noqa: E402
     adl_apartment_scene,
     adl_route,
 )
 from myosuite.terms.waypoint import WaypointRewardCfg  # noqa: E402
 from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz  # noqa: E402
-
-
-def _hide_wrap_geoms(model: mujoco.MjModel, scene: mujoco.MjvScene) -> None:
-    """Hide only tendon wrapping objects; keep anatomical bone meshes visible."""
-    for geom in scene.geoms[: scene.ngeom]:
-        if geom.objtype != mujoco.mjtObj.mjOBJ_GEOM or geom.objid < 0:
-            continue
-        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, geom.objid) or ""
-        if "wrap" in name.lower():
-            geom.rgba[3] = 0.0
 
 
 def main() -> None:
@@ -98,9 +88,11 @@ def main() -> None:
     # Keep every model geom group visible, then suppress wrapping objects by name.
     # This preserves the full anatomical bone meshes instead of hiding their group.
     option = mujoco.MjvOption()
-    option.geomgroup[:] = 1
+    # Match tutorial 4.4: bones and scene in groups 0–2; wraps/proxies hidden.
+    option.geomgroup[:] = 0
+    option.geomgroup[:3] = 1
     option.sitegroup[:] = 0
-    option.tendongroup[:] = 1
+    option.tendongroup[:] = 0
     ghost = BoneGhostBodyViz.from_motion_clip(
         reference,
         model,
@@ -118,7 +110,7 @@ def main() -> None:
             _, _, terminated, truncated, info = base.step(action)
             min_h = min(min_h, float(base.data.site("pelvis_mimic").xpos[2]))
 
-            if step % 10 == 0:
+            if step % 20 == 0:
                 cam = mujoco.MjvCamera()
                 cam.lookat[:] = base.data.qpos[:3]
                 cam.lookat[2] += 0.35
@@ -126,9 +118,8 @@ def main() -> None:
                 cam.azimuth = 150
                 cam.elevation = -12
                 renderer.update_scene(base.data, camera=cam, scene_option=option)
-                _hide_wrap_geoms(model, renderer.scene)
                 ghost.draw(
-                    min(controller._frame + 50, reference.num_frames - 1),
+                    min(step + 1, reference.num_frames - 1),
                     renderer.scene,
                 )
                 frames.append(renderer.render().copy())
@@ -140,7 +131,7 @@ def main() -> None:
     env.close()
     video = out / "terra_adl_apartment.mp4"
     preview = out / "terra_adl_apartment_preview.jpg"
-    imageio.mimsave(video, frames, fps=10, macro_block_size=1)
+    imageio.mimsave(video, frames, fps=5, macro_block_size=1)
     imageio.imwrite(preview, frames[len(frames) // 2], quality=92)
     result = {
         "seed": seed,

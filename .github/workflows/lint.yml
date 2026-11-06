@@ -5,7 +5,7 @@ on:
     branches: [main, dev]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main, dev, feat/programmatic-waypoint-tasks]
+    branches: [main, dev]
 
 # github.ref is refs/pull/<number>/merge on a pull request, so two PRs that
 # share a branch name do not cancel each other. On a push it is the branch ref.
