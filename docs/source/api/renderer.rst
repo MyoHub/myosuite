@@ -38,6 +38,12 @@ mode. To use its original appearance, override the task setting at construction:
 Other tasks and interactive viewers keep their existing defaults. Choose frame
 dimensions within the model's offscreen framebuffer.
 
+.. figure:: ../images/rendering/sport_mujoco.jpg
+   :alt: Chase-tag offscreen rendering with default and sport scene styling
+
+   Default (left) and sport (right), with the same standing pose and camera.
+   Rendered with MuJoCo 3.17.0.
+
 .. automodule:: myosuite.viz.renderer
    :members:
    :undoc-members:

@@ -165,6 +165,13 @@ visible; visual-only world meshes (room shells and wall props, with
 Static world geometry is excluded from camera fitting. Camera fitting
 samples three poses with a margin; check longer clips for framing before final use.
 
+.. figure:: images/rendering/sport_blender.jpg
+   :alt: Chase-tag Blender rendering with studio and sport scene presets
+
+   Studio (left) and sport (right), using the same held standing pose and
+   each preset's camera and lighting. Blender 4.3.2, Cycles, 32 samples;
+   uniform muscle colour, not measured activation.
+
 Body skin
 ---------
 
