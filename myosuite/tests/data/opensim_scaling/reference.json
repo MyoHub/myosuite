@@ -213,11 +213,11 @@
       "platform": "Windows-11-10.0.26300-SP0",
       "code_sha256_lf": {
         "scripts/validate_opensim_scaling.py": "e2c38397fcd7a89d34723c9c6216ad4b77f413f48b825c2fa753dc0e4273b546",
-        "myosuite/core/body_scaling.py": "4b7fd89e12aa8f8802977cdc2b7419b138edef7ef7b6e04f85139e5569c66048"
+        "myosuite/core/body_scaling.py": "7b3e86d667d433b37c3391412b7abcf7e5cd80fbdb37da4720f6fb4743323d26"
       },
       "python_version": "3.12.9",
       "mujoco_version": "3.11.0",
-      "myo_sim_version": "0.2.3",
+      "myo_sim_version": "0.2.4",
       "myosuite_version": "3.0.0"
     },
     "inertia_probe": {
