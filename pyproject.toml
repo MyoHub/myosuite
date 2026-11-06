@@ -125,7 +125,9 @@ mjx = [
     "imageio>=2.31.0; python_version >= '3.10' and sys_platform != 'win32'",
     "wandb>=0.21.0; python_version >= '3.10' and sys_platform != 'win32'",
 	"mujoco>=3.7",
-	"mujoco-mjx>=3.7",
+	# mujoco-mjx 4 requires mujoco-core 4, which installs a second `mujoco` module
+	# over MuJoCo 3 (core caps mujoco<4), so `mujoco.mjx` fails to import.
+	"mujoco-mjx>=3.7,<4",
 ]
 # CUDA-enabled MJX stack for GPU.
 # Install with: uv sync --extra mjx-cuda
