@@ -60,7 +60,8 @@ class RenderConfig:
             paths with MuJoCo's dark-to-red viewer colours), ``"uniform"``
             keeps one anatomical red, e.g. for still renders.
         muscle_scale: Multiplier of all muscle radii.
-        scene: ``"studio"`` backdrop, or ``"mujoco"`` to keep the task's floor.
+        scene: ``"studio"`` backdrop, ``"mujoco"`` task floor, or ``"sport"``
+            navy floor with orange/cyan rim lights and a lower camera.
         skin: ``.skn`` body skin, a rigged ``.glb`` skin in the model's rest pose
             (:mod:`myosuite.viz.skin_glb`), or ``"fullbody"`` for the bundled one; ``None``
             renders no skin.
@@ -128,7 +129,7 @@ class RenderConfig:
             raise ValueError(f"Unknown muscles mode: {self.muscles}")
         if self.muscle_color not in ("activation", "uniform"):
             raise ValueError(f"Unknown muscle colour: {self.muscle_color}")
-        if self.scene not in ("studio", "mujoco"):
+        if self.scene not in ("studio", "mujoco", "sport"):
             raise ValueError(f"Unknown scene: {self.scene}")
         if self.skin_style not in ("translucent", "opaque"):
             raise ValueError(f"Unknown skin style: {self.skin_style}")
@@ -837,6 +838,12 @@ STUDIO_LIGHTS = [
     ("Fill", (1.4, -1.2, 0.3), 14, (0.82, 0.9, 1.0)),
     ("Rim", (0.5, 1.4, 1.2), 70, (1.0, 1.0, 1.0)),
 ]
+SPORT_LIGHTS = [
+    ("Key", (-0.7, -1.0, 1.2), 45, (1.0, 0.93, 0.82)),
+    ("Fill", (1.0, -1.0, 0.7), 10, (0.8, 0.9, 1.0)),
+    ("Orange rim", (-1.0, 0.6, 0.8), 35, (1.0, 0.2, 0.025)),
+    ("Cyan rim", (1.0, 0.6, 0.8), 45, (0.015, 0.5, 1.0)),
+]
 EXPOSURE = 0.0
 BACKDROP = (0.16, 0.16, 0.17, 1.0)
 # Darker studio behind a pale skin, so its silhouette and the anatomy stand out.
@@ -934,6 +941,7 @@ def build_blender_scene(output: Path) -> None:
     from mathutils import Vector
 
     meta = json.loads((output / "render.json").read_text())
+    sport = meta.get("scene") == "sport"
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
     scene.render.fps = meta["fps"]
@@ -969,7 +977,7 @@ def build_blender_scene(output: Path) -> None:
     bpy.context.preferences.filepaths.save_version = 0
     scene.render.image_settings.file_format = "PNG"
     scene.view_settings.view_transform = "AgX"
-    scene.view_settings.exposure = EXPOSURE
+    scene.view_settings.exposure = -0.9 if sport else EXPOSURE
     # High contrast makes the plain skin's silhouette read; it would oversaturate a texture.
     plain_skin = meta.get("skin_objects") and not meta.get("skin_texture")
     contrast = "High" if plain_skin else "Medium High"
@@ -982,8 +990,10 @@ def build_blender_scene(output: Path) -> None:
     scene.world = bpy.data.worlds.new("Studio")
     scene.world.use_nodes = True
     background = scene.world.node_tree.nodes["Background"]
-    background.inputs[0].default_value = (0.42, 0.43, 0.45, 1)
-    background.inputs[1].default_value = 0.25
+    background.inputs[0].default_value = (
+        (0.008, 0.015, 0.025, 1) if sport else (0.42, 0.43, 0.45, 1)
+    )
+    background.inputs[1].default_value = 0.15 if sport else 0.25
 
     def material(
         name: str, color: tuple[float, ...], roughness: float, **inputs: Any
@@ -999,6 +1009,10 @@ def build_blender_scene(output: Path) -> None:
             if socket is not None:  # input names differ across Blender versions
                 socket.default_value = value
         return mat
+
+    sport_floor = (
+        material("Sport floor", (0.009, 0.022, 0.04, 1), 0.46) if sport else None
+    )
 
     # Waxy ivory bone and glossy, translucent muscle, as in anatomical renders.
     bone = material(
@@ -1088,6 +1102,9 @@ def build_blender_scene(output: Path) -> None:
         elif any(name in obj.name for name in bones):
             obj.data.materials.clear()
             obj.data.materials.append(bone)
+        elif sport and any(name in obj.name for name in meta.get("plane_objects", [])):
+            obj.data.materials.clear()
+            obj.data.materials.append(sport_floor)
     _animate_activation(output, meta, scene)
     if meta.get("muscle_mesh"):
         _add_muscle_mesh(output, meta, scene, muscle)
@@ -1099,9 +1116,9 @@ def build_blender_scene(output: Path) -> None:
     bpy.ops.object.camera_add()
     camera = bpy.context.object
     camera.name = "Studio camera"
-    camera.data.lens = 85
+    camera.data.lens = 50 if sport else 85
     camera.data.sensor_width = 36
-    view = Vector((1.3, -1.7, 0.75)).normalized()
+    view = Vector((1.3, -1.7, 0.35 if sport else 0.75)).normalized()
     camera.location = center + view * span * 3
     camera.rotation_euler = (
         (center - camera.location).to_track_quat("-Z", "Y").to_euler()
@@ -1146,7 +1163,7 @@ def build_blender_scene(output: Path) -> None:
         center = target
     forward = (center - camera.location).normalized()
     right = forward.cross(Vector((0, 0, 1))).normalized()
-    for name, offset, power, color in STUDIO_LIGHTS:
+    for name, offset, power, color in SPORT_LIGHTS if sport else STUDIO_LIGHTS:
         location = (
             center
             + (right * offset[0] + forward * offset[1] + Vector((0, 0, offset[2])))
@@ -1179,7 +1196,7 @@ def build_blender_scene(output: Path) -> None:
         )
         bpy.context.object.name = "Studio floor"
         bpy.context.object.data.materials.append(
-            material("Floor", (0.12, 0.14, 0.17, 1), 0.85)
+            sport_floor if sport else material("Floor", (0.12, 0.14, 0.17, 1), 0.85)
         )
     scene.frame_set(scene.frame_start)
     scene.render.filepath = str(output / "frames" / "frame_")
@@ -1315,9 +1332,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--scene",
-        choices=["studio", "mujoco"],
+        choices=["studio", "mujoco", "sport"],
         default="studio",
-        help="Studio backdrop, or keep the task's own floor (e.g. a soccer pitch).",
+        help="Studio backdrop, original task floor, or a navy sport court with rim lights.",
     )
     parser.add_argument(
         "--skin",
