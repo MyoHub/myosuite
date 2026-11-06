@@ -16,6 +16,11 @@ the critic is fitted to lambda-returns of the same imagined rollouts.
 A Polyak-averaged copy of the actor (``ema_decay``) is evaluated next to it and
 exported as ``ckpt_ema.pt``; ``ckpt_final.pt`` is the actor at the end of training.
 ``ckpt_best.pt`` is picked on the training evaluation, so its score is biased upward.
+
+With ``pods`` the actor step is PODS-style (after NablaMimic): the window gradient
+gives per-step control targets ``u_t + eta * dJ/du_t``, with ``eta`` set so the RMS
+target step is ``pods_step`` excitation units (annealed with the learning rate), and
+the actor regresses onto them for ``pods_minibatches`` minibatches per epoch.
 """
 
 from __future__ import annotations
@@ -33,7 +38,7 @@ import torch
 
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import _musclemimic_cpu_model
 from myosuite.learning.supermimic.env_io import MimicEnvIO, make_mimic_env
-from myosuite.learning.supermimic.grad_clip import clip_rows_to_median
+from myosuite.learning.supermimic.grad_clip import clip_rows, clip_rows_to_median
 from myosuite.learning.supermimic.heads import MimicHeads
 from myosuite.learning.supermimic.metrics import KinematicTracking
 from myosuite.learning.supermimic.policy import (
@@ -73,6 +78,12 @@ class SuperMimicCfg:
     """Clip each sample's dJ/da_t to this multiple of the batch median norm (0: off)."""
     ema_decay: float = 0.999
     """Polyak average of the actor, evaluated and exported next to it."""
+    pods: bool = False
+    """PODS-style actor update: regress onto u_t + eta * dJ/du_t instead of one Adam step."""
+    pods_step: float = 0.03
+    """RMS target step in excitation units, annealed with the learning rate."""
+    pods_minibatches: int = 8
+    pods_epochs: int = 1
     saturation_penalty: float = 0.0
     """Barrier on raw actions beyond |a - 0.5| > band, where the sigmoid control saturates
     and BPTT gradients vanish (0 disables it)."""
@@ -115,6 +126,23 @@ def _sigmoid_ctrl(a: torch.Tensor) -> torch.Tensor:
     return torch.sigmoid(5.0 * (a - 0.5))
 
 
+def pods_targets(
+    ctrl: torch.Tensor, grad: torch.Tensor, rms_step: float
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Control targets ``ctrl + eta * grad`` in ``[0, 1]``.
+
+    Args:
+        ctrl: ``(..., nu)`` muscle controls of the rollout.
+        grad: Ascent direction dJ/du of the same shape.
+        rms_step: RMS size of the step ``eta * grad`` in excitation units.
+
+    Returns:
+        The targets and ``eta``.
+    """
+    eta = rms_step / grad.square().mean().sqrt().clamp_min(1e-12)
+    return (ctrl + eta * grad).clamp(0.0, 1.0), eta
+
+
 class SuperMimicTrainer:
     """World model + BPTT actor-critic on ``myoMimicFullbody-v0``.
 
@@ -147,6 +175,7 @@ class SuperMimicTrainer:
             model, self.spec, self.env.cfg.decimation, self.env.physics_dt, cfg.wm
         ).to(dev)
         obs_dim = self.env.obs_buf["actor"].shape[-1]
+        self.nu = model.nu
         groups = None
         if cfg.action_groups:
             from myosuite.core.dynsyn import DynSynGroups
@@ -243,14 +272,21 @@ class SuperMimicTrainer:
         f: torch.Tensor,
         obs: torch.Tensor,
         probe: torch.Tensor | None = None,
+        shift: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, ...]:
-        """Actor + world model + analytic heads for one imagined step (compiled as one graph)."""
+        """Actor + world model + analytic heads for one imagined step (compiled as one graph).
+
+        A zero *shift* added to the control exposes dJ/du_t as its gradient (PODS).
+        """
         h = self.heads
         a = self.actor(obs)
-        if self.cfg.act_grad_clip > 0:
+        if self.cfg.act_grad_clip > 0 and shift is None:
             a = clip_rows_to_median(a, self.cfg.act_grad_clip, probe)
         sat = torch.relu((a - 0.5).abs() - self.cfg.saturation_band).square().mean(-1)
-        s = self.wm.step(s, _sigmoid_ctrl(a))
+        u = _sigmoid_ctrl(a)
+        if shift is not None:
+            u = u + shift
+        s = self.wm.step(s, u)
         f = f + 1
         qpos, qvel, act = self.spec.split(s)
         sites = h.kin.site_pos(qpos)
@@ -260,7 +296,7 @@ class SuperMimicTrainer:
             posture = 0.5 * (torch.exp(-pelvis / 0.2) + torch.exp(-trunk / 0.2))
             r = r + self.cfg.posture_weight * posture
         d = h.termination_prob(qpos, f, sites)
-        return s, f, r, d, sat, h.observation(qpos, qvel, act, f, sites)
+        return s, f, r, d, sat, h.observation(qpos, qvel, act, f, sites), u.detach()
 
     def imagine(self) -> dict[str, Any]:
         """Differentiable H-step rollout of the actor through the frozen world model."""
@@ -272,13 +308,21 @@ class SuperMimicTrainer:
         # Its gradient sums the per-step fractions of clipped action gradients.
         probe = (
             torch.zeros((), device=s.device, requires_grad=True)
-            if cfg.act_grad_clip > 0
+            if cfg.act_grad_clip > 0 and not cfg.pods
             else None
         )
+        shifts, ctrl_l = [], []
         for _ in range(cfg.horizon):
             obs_l.append(obs)
             live_l.append((~ended).float())
-            s, f, r, d, sat, obs = self._step(s, f, obs, probe)
+            shift = None
+            if cfg.pods:
+                shift = torch.zeros(
+                    s.shape[0], self.nu, device=s.device, requires_grad=True
+                )
+                shifts.append(shift)
+            s, f, r, d, sat, obs, u = self._step(s, f, obs, probe, shift)
+            ctrl_l.append(u)
             rew_l.append(r)
             sat_l.append(sat)
             dhat_l.append(d)
@@ -296,6 +340,8 @@ class SuperMimicTrainer:
             "just_ended": st(end_l),
             "saturation": st(sat_l),
             "clip_probe": probe,
+            "ctrl": st(ctrl_l),
+            "ctrl_shift": shifts,
         }
 
     def update_actor_critic(self) -> dict[str, float]:
@@ -328,13 +374,17 @@ class SuperMimicTrainer:
         J = J + disc * c * v[H] * live[H]
         sat = roll["saturation"].mean()
         loss = -J.mean() / H + cfg.saturation_penalty * sat
-        self.opt_actor.zero_grad(set_to_none=True)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.actor.mlp.parameters(), 1.0)
-        for p in self.actor.mlp.parameters():
-            if p.grad is not None:
-                p.grad.clamp_(-cfg.elementwise_clip, cfg.elementwise_clip)
-        self.opt_actor.step()
+        if cfg.pods:
+            pods_stats = self._pods_update(loss, roll)
+        else:
+            pods_stats = {}
+            self.opt_actor.zero_grad(set_to_none=True)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.actor.mlp.parameters(), 1.0)
+            for p in self.actor.mlp.parameters():
+                if p.grad is not None:
+                    p.grad.clamp_(-cfg.elementwise_clip, cfg.elementwise_clip)
+            self.opt_actor.step()
         ema_update(self.actor_ema, self.actor, cfg.ema_decay)
         probe = roll["clip_probe"]
         clip_stats = (
@@ -377,14 +427,56 @@ class SuperMimicTrainer:
             "critic_loss": closs,
             "value": float(v[0].mean()),
             **clip_stats,
+            **pods_stats,
         }
+
+    def _pods_update(
+        self, loss: torch.Tensor, roll: dict[str, Any]
+    ) -> dict[str, float]:
+        """Regress the actor onto per-step control targets ``u_t + eta * dJ/du_t``."""
+        cfg = self.cfg
+        H = cfg.horizon
+        grads = torch.autograd.grad(loss, roll["ctrl_shift"])
+        g = -torch.stack(grads)  # (H, B, nu) ascent direction of J
+        stats: dict[str, float] = {}
+        if cfg.act_grad_clip > 0:
+            g, frac = clip_rows(g, cfg.act_grad_clip)
+            stats["act_grad_clip_frac"] = float(frac)
+        step = cfg.pods_step * self._lr_scale()
+        target, eta = pods_targets(roll["ctrl"], g, step)
+        live = roll["live"][:H].reshape(-1)
+        keep = live > 0
+        obs = roll["obs"][:H].detach().reshape(-1, roll["obs"].shape[-1])[keep]
+        target = target.reshape(-1, target.shape[-1])[keep]
+        n = obs.shape[0]
+        reg = torch.zeros((), device=obs.device)
+        for _ in range(cfg.pods_epochs):
+            for idx in torch.randperm(n, device=obs.device).chunk(cfg.pods_minibatches):
+                reg = (
+                    (_sigmoid_ctrl(self.actor(obs[idx])) - target[idx]).square().mean()
+                )
+                self.opt_actor.zero_grad(set_to_none=True)
+                reg.backward()
+                torch.nn.utils.clip_grad_norm_(self.actor.mlp.parameters(), 1.0)
+                self.opt_actor.step()
+        return {
+            **stats,
+            "pods_eta": float(eta),
+            "pods_step": step,
+            "pods_regression_loss": float(reg),
+        }
+
+    def _lr_scale(self) -> float:
+        """Cosine decay from 1 to ``lr_final_frac`` over ``lr_decay_updates``."""
+        cfg = self.cfg
+        frac = min(self.updates / max(cfg.lr_decay_updates, 1), 1.0)
+        return cfg.lr_final_frac + (1 - cfg.lr_final_frac) * 0.5 * (
+            1 + math.cos(math.pi * frac)
+        )
 
     def _set_lr(self) -> None:
         cfg = self.cfg
-        frac = min(self.updates / max(cfg.lr_decay_updates, 1), 1.0)
-        scale = cfg.lr_final_frac + (1 - cfg.lr_final_frac) * 0.5 * (
-            1 + math.cos(math.pi * frac)
-        )
+        scale = self._lr_scale()
         for opt in (self.opt_wm, self.opt_actor, self.opt_critic):
             for group in opt.param_groups:
                 group["lr"] = cfg.lr * scale

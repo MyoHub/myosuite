@@ -40,14 +40,15 @@ def clip_rows(g: torch.Tensor, kappa: float) -> tuple[torch.Tensor, torch.Tensor
     """Scale rows of *g* whose norm exceeds ``kappa`` x the median row norm down to it.
 
     Args:
-        g: ``(..., n)`` gradient rows.
+        g: ``(..., B, n)`` gradient rows; the median is taken over the ``B`` rows of
+            each leading index (e.g. per imagined step).
         kappa: Threshold relative to the median row norm (a zero median clips nothing).
 
     Returns:
         The clipped rows and the fraction of rows that were clipped.
     """
     norm = g.norm(dim=-1)
-    thr = kappa * norm.median()
+    thr = kappa * norm.median(dim=-1, keepdim=True).values
     clipped = (norm > thr) & (thr > 0)
     scale = torch.where(clipped, thr / norm.clamp_min(1e-30), torch.ones_like(norm))
     return g * scale[..., None], clipped.float().mean()
