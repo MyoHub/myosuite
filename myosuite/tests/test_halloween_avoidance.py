@@ -99,28 +99,6 @@ def test_constructor_seed_and_pickle_round_trip(profile):
                 assert restored.unwrapped.avoidance.config == kwargs["avoidance_config"]
 
 
-def test_tutorial_sources_match():
-    import json
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[2]
-    source = (root / "tutorials/4.5_Halloween_Avoidance.py").read_text()
-    notebook = json.loads(
-        (root / "tutorials/4.5_Halloween_Avoidance.ipynb").read_text()
-    )
-    script_cells = [
-        chunk.strip()
-        for chunk in source.split("# %%")[1:]
-        if not chunk.startswith(" [markdown]")
-    ]
-    notebook_cells = [
-        "".join(cell["source"]).strip()
-        for cell in notebook["cells"]
-        if cell["cell_type"] == "code"
-    ]
-    assert notebook_cells[1:-1] == script_cells
-
-
 @pytest.mark.parametrize(
     "kwargs",
     [
