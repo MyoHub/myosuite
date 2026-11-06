@@ -52,9 +52,8 @@ def test_54_does_not_load_raw_state_dict_on_shipped_ckpt(nb54: dict) -> None:
     )
 
 
-def test_56_export_handles_heading_table(nb56: dict) -> None:
+def test_56_exports_through_the_library(nb56: dict) -> None:
+    # Checkpoint formats (heading table, raw 528, FBVs 546) are tested in test_fbvs_player.py.
     src = _src(nb56)
-    assert 'get("kind") == "heading_table"' in src
+    assert "export_fbvs_onnx" in src
     assert "policy_heading_table.pt" in src
-    assert "HeadingTablePolicy" in src
-    assert "obs[:, 544:546]" in src or "role" in src
