@@ -207,6 +207,7 @@ markers = [
     "tier3: Performance, tutorials, and legacy integration tests.",
     "slow: Slow-running tests (benchmarks, long rollouts, or heavy external deps).",
     "legacy: Tests that exercise deprecated BaseV0/env_base paths or legacy-style APIs.",
+    "mjlab: Tests in modules that use mjlab / MuJoCo Warp (set by conftest.py; CI runs them in their own job).",
 ]
 # A test module with no explicit `pytestmark = pytest.mark.tierN` is defaulted to
 # tier2 by myosuite/tests/conftest.py (with a warning), so `-m tierN` never
