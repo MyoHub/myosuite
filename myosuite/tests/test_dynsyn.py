@@ -184,6 +184,7 @@ def _write_run(run: Path, cfg, counter: int, n_actions: int = 80) -> Path:
 @pytest.fixture
 def trained_run(walk_groups, tmp_path) -> Path:
     """Checkpoint of a 2-env DynSyn run after 100 env steps: bound 0.1 * 200 / 1000."""
+    pytest.importorskip("mjlab")
     from myosuite.envs.myo.backends.mjlab.dynsyn_action import apply_dynsyn
 
     cfg = _walk_cfg(2)
