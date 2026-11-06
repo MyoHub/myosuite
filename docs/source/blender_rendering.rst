@@ -147,6 +147,17 @@ visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
   task's floor planes. The scene uses warm key, cool fill and rim area
   lights, and an 85 mm perspective camera. Use ``--scene mujoco`` to keep the
   task's own floor, for example a soccer pitch or an arena.
+- **Sport** (``--scene sport``). Keeps the task geometry and gives floor planes
+  a navy material, with orange/cyan rim lights, a dark background and a lower
+  50 mm camera. Camera fitting still samples the recorded poses. The light
+  colours are fixed scene accents, independent of agent roles and muscle
+  activation. For a chase-tag preview from a recorded joint-state clip:
+
+  .. code-block:: bash
+
+     python scripts/render_blender.py --env myoChallengeChaseTagFBVs-v0 \
+       --motion chase.npz --scene sport --muscles paths --muscle-color uniform \
+       --resolution 1920 1080 --preview --output chase-sport
 
 Collidable world geometry, such as goals and arena fences, stays
 visible; visual-only world meshes (room shells and wall props, with
