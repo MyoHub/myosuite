@@ -623,7 +623,9 @@ def test_reward_mode_reaches_the_env_cfg_builder() -> None:
         clip=clip,
         reward_mode="MIMIC",
     )["myoMimicFullbody-v0"]["env_cfg"]
-    assert list(cfg.rewards) == ["tracking"]
+    # The co-contraction cost is registered with weight 0 (off; logged as a metric).
+    assert list(cfg.rewards) == ["tracking", "wasted_torque"]
+    assert cfg.rewards["wasted_torque"].weight == 0.0
     assert list(cfg.terminations) == [
         "sync_forward",
         "time_out",
