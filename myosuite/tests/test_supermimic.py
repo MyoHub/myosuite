@@ -445,3 +445,31 @@ def test_trainer_checkpoint_round_trip(tmp_path: Any) -> None:
     torch.testing.assert_close(b.actor(obs), a.actor(obs))
     exported = Actor.from_rsl_rl(tmp_path / "ckpt_ema.pt")
     torch.testing.assert_close(exported(obs), a.actor_ema(obs))
+
+
+def test_pods_targets_take_a_fixed_rms_step() -> None:
+    """Targets move along dJ/du by the requested RMS step and stay valid controls."""
+    require_mjlab()
+    from myosuite.learning.supermimic.trainer import pods_targets
+
+    u = torch.full((3, 4, 5), 0.5)
+    g = torch.randn(3, 4, 5) * 1e3
+    target, eta = pods_targets(u, g, 0.03)
+    step = target - u
+    torch.testing.assert_close(step.square().mean().sqrt(), torch.tensor(0.03))
+    torch.testing.assert_close(step, eta * g)
+    sat, _ = pods_targets(torch.ones(2, 3), torch.ones(2, 3), 0.1)
+    assert float(sat.max()) == 1.0
+
+
+def test_clip_rows_uses_a_median_per_step() -> None:
+    """With a leading step axis each step's rows are clipped against that step's median."""
+    from myosuite.learning.supermimic.grad_clip import clip_rows
+
+    g = torch.ones(2, 4, 3)
+    g[1] *= 100.0  # a larger but uniform step: nothing to clip
+    g[0, 0] *= 10.0
+    out, frac = clip_rows(g, 3.0)
+    torch.testing.assert_close(out[1], g[1])
+    torch.testing.assert_close(out[0, 0].norm(), torch.tensor(3.0 * 3.0**0.5))
+    torch.testing.assert_close(frac, torch.tensor(1.0 / 8.0))
