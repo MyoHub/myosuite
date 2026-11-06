@@ -165,7 +165,9 @@ requires = ["setuptools>=84.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = { find = { exclude = ["myosuite.agents", "myosuite.agents.*"] } }
+# Ship only the myosuite package: without `include`, setuptools also installs the
+# repo's docs/, scripts/, training/ and tutorials/ as top-level packages.
+packages = { find = { include = ["myosuite", "myosuite.*"], exclude = ["myosuite.agents", "myosuite.agents.*"] } }
 
 [tool.setuptools.package-data]
 "myosuite" = [
