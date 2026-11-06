@@ -54,18 +54,29 @@ Arm recipes
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from pathlib import Path
 
 import mujoco
 import numpy as np
 
-from myosuite.core.model_builder import ModelBuilder, build_from_recipe, model_recipe
+from myosuite.core.model_builder import (
+    ModelBuilder,
+    build_from_recipe,
+    model_recipe,
+    register_spec_recipe,
+)
 
 # Root of the myosuite package — used to locate asset files.
 _ASSETS = Path(__file__).parent.parent / "envs" / "myo" / "assets"
 
 
-def materialize_recipe_xml(name: str, dest: Path | None = None) -> Path:
+def materialize_recipe_xml(
+    name: str,
+    dest: Path | None = None,
+    *,
+    edit_fn: Callable[[mujoco.MjSpec], None] | None = None,
+) -> Path:
     """Write a recipe-built spec to a standalone MJCF file on disk.
 
     Some consumers (e.g. external packages like ``mjlab``, which read a
@@ -82,15 +93,23 @@ def materialize_recipe_xml(name: str, dest: Path | None = None) -> Path:
     Args:
         name: Recipe name registered via ``@model_recipe``.
         dest: Output path. Default: an OS temp directory
-            (``<tempdir>/myosuite_recipes/<name>.xml``).
+            (``<tempdir>/myosuite_recipes/<name>.xml``); required with *edit_fn*.
+        edit_fn: In-place edit of the recipe spec, applied as an env applies
+            its ``edit_fn`` kwarg (see :func:`build_from_recipe`).
 
     Returns:
         Absolute path to the written file.
+
+    Raises:
+        ValueError: If *edit_fn* is given without *dest* (the default path
+            holds the unedited recipe).
     """
+    if edit_fn is not None and dest is None:
+        raise ValueError("edit_fn needs an explicit dest.")
     import myo_sim  # type: ignore[import-untyped]
     from myo_sim.build.compose import sanitize_spec_xml  # type: ignore[import-untyped]
 
-    model, spec = build_from_recipe(name)
+    model, spec = build_from_recipe(name, edit_fn=edit_fn)
     xml = sanitize_spec_xml(
         spec.to_xml(), asset_dir=str(myo_sim.MODELS_DIR), model=model
     )
@@ -455,14 +474,15 @@ def _hand_hold(b: ModelBuilder) -> ModelBuilder:
 
 def _add_pen_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     """Add pen object + target body + eps_ball site to a hand spec."""
-    # eps_ball site in worldbody
+    # eps_ball: the pen's position goal and drop radius. Hidden by default
+    # (group 4); target_ball on the target pen shows success instead.
     eps = spec.worldbody.add_site()
     eps.name = "eps_ball"
     eps.type = mujoco.mjtGeom.mjGEOM_SPHERE
     eps.pos = [-0.230, -0.530, 1.445]
     eps.size = [0.075, 0.075, 0.075]
     eps.rgba = [1.0, 1.0, 0.0, 0.5]
-    eps.group = 1
+    eps.group = 4
 
     # Object (pen) body
     pen_body = spec.worldbody.add_body()
@@ -600,6 +620,14 @@ def _add_pen_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     ts_bot.size = [0.005, 0.005, 0.005]
     ts_bot.pos = [0.0, 0.0, -0.065]
     ts_bot.rgba = [0.2, 0.8, 0.2, 1.0]
+
+    # Success indicator on the target, as in the die reorientation task;
+    # the env colours it green while solved and red otherwise.
+    ts_ball = tgt_body.add_site()
+    ts_ball.name = "target_ball"
+    ts_ball.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    ts_ball.size = [0.045, 0.045, 0.045]
+    ts_ball.rgba = [2.0, 0.0, 0.2, 0.1]
 
     return spec
 
@@ -1793,3 +1821,9 @@ for _mm_name in _MUSCLEMIMIC_NAMES:
             )
 
     _make_mm_recipe(_name)
+
+# The full-body spec compiles to the same model as _musclemimic_build (its timestep is
+# set on the spec), so build_from_recipe and the mjlab twins can use it directly.
+register_spec_recipe(
+    "musclemimic_fullbody", lambda: _musclemimic_build("musclemimic_fullbody")[1]
+)

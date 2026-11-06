@@ -7,7 +7,10 @@
 Muscles whose lengths change together under random joint motion form one group.
 The policy then commands one action per group plus a small, state-dependent
 correction per muscle, whose bound grows during training (see
-:func:`weight_amplitude`). Written from the paper's description.
+:func:`weight_amplitude`). Follows the paper; where it leaves something open, the
+docstrings say what is used here. The form and scale of the correction and the defaults
+of :func:`synergy_groups` follow the authors' reference implementation
+(github.com/Beanpow/DynSyn), which was read while writing this.
 
 The grouping runs on a CPU ``MjModel``; the action mapping is backend-agnostic
 (``torch`` or ``numpy``).
@@ -48,6 +51,34 @@ class DynSynGroups:
     def load(path: str | Path) -> DynSynGroups:
         """Read groups written by :meth:`save`."""
         return DynSynGroups(**json.loads(Path(path).read_text()))
+
+
+@dataclass
+class TrainedDynSyn:
+    """DynSyn setup of a training run at one of its checkpoints.
+
+    Attributes:
+        groups: The run's muscle groups.
+        start_steps: Environment steps before the corrections start.
+        ramp_steps: Environment steps from zero to the full correction bound.
+        max_amplitude: Full correction bound (0: groups only).
+        env_steps: Environment steps of the schedule at the checkpoint.
+        saved_counter: The env's step counter stored in the checkpoint.
+    """
+
+    groups: DynSynGroups
+    start_steps: float
+    ramp_steps: float
+    max_amplitude: float
+    env_steps: float
+    saved_counter: int = 0
+
+    @property
+    def amplitude(self) -> float:
+        """Correction bound the checkpoint was trained with."""
+        return weight_amplitude(
+            self.env_steps, self.start_steps, self.ramp_steps, self.max_amplitude
+        )
 
 
 def record_muscle_lengths(
@@ -100,7 +131,13 @@ def record_muscle_lengths(
 
 
 def length_similarity(lengths: np.ndarray, segment: int = 100) -> np.ndarray:
-    """Mean cosine similarity of the normalised muscle lengths over short segments.
+    """Mean correlation of the muscle length changes over short segments.
+
+    The paper's Eq. 2 averages the cosine similarity of the trajectory segments, and its
+    text calls this the correlation between length changes. Each segment is centred here,
+    which makes the cosine that correlation. Without centring, two positive lengths that
+    drift slowly within a segment have a cosine near 1 even if they don't change together.
+    The paper gives no segment length; this one is this implementation's choice.
 
     Args:
         lengths: ``(steps, n_muscles)``; ``steps`` is cut to a multiple of ``segment``.
@@ -109,15 +146,16 @@ def length_similarity(lengths: np.ndarray, segment: int = 100) -> np.ndarray:
     Returns:
         ``(n_muscles, n_muscles)`` similarity in ``[0, 1]``.
     """
-    lo, hi = lengths.min(0), lengths.max(0)
-    x = (lengths - lo) / np.maximum(hi - lo, 1e-12)
-    n = len(x) // segment * segment
-    x = x[:n].reshape(n // segment, segment, -1)
+    n = len(lengths) // segment * segment
+    x = lengths[:n].reshape(n // segment, segment, -1)
+    x = x - x.mean(1, keepdims=True)
     norm = np.linalg.norm(x, axis=1, keepdims=True)
     cos = np.einsum("smi,smj->sij", x, x) / (
         np.einsum("sai,saj->sij", norm, norm) + 1e-12
     )
-    return cos.mean(0)
+    similarity = np.clip(cos.mean(0), 0.0, 1.0)
+    np.fill_diagonal(similarity, 1.0)  # also for a muscle that doesn't move
+    return similarity
 
 
 def k_medoids(
@@ -213,8 +251,11 @@ def weight_amplitude(
 ) -> float:
     """Bound of the per-muscle corrections after ``env_steps`` environment steps.
 
-    Zero until ``start``, then linear to ``max_amp`` over ``ramp`` steps (the paper's
-    ``min(max(k (t - a), 0), 0.1)`` with ``a = start`` and ``k = max_amp / ramp``).
+    Zero until ``start``, then linear to ``max_amp`` over ``ramp`` steps:
+    ``min(max(k (t - a), 0), kappa)`` with ``a = start``, ``k = max_amp / ramp`` and
+    ``kappa = max_amp``. The paper's Eq. 6 prints ``k t + a``, but says the corrections
+    start at ``a`` and lists a positive ``a``, so this reads it as ``k (t - a)``. The paper
+    gives no value of ``kappa``; the default of 0.1 follows the authors' reference implementation.
     """
     if ramp <= 0:
         return max_amp if env_steps >= start else 0.0
@@ -222,9 +263,24 @@ def weight_amplitude(
 
 
 def expand_actions(
-    actions: Any, groups: list[list[int]], amplitude: float, xp: Any
+    actions: Any,
+    groups: list[list[int]],
+    amplitude: float,
+    xp: Any,
+    kappa: float = 0.1,
 ) -> Any:
     """Per-muscle actions from DynSyn actions.
+
+    As in the paper (Eq. 5-7, with the sigmoid of Appendix C.1 applied afterwards), the
+    correction scales the policy's action, not the excitation. On tasks with MyoSuite's
+    sigmoid, a relative change of the action is therefore not the same relative change
+    of the excitation: an action of 0 gets no correction, and on a negative action a
+    positive correction lowers the excitation. On the leg-walk tasks, whose actions are
+    the excitations, the two are the same.
+
+    Eq. 5 is printed as ``IS(a_G) * clip(kappa w, -c, c)``. Here the correction is relative
+    to the group's action (``1 + clip(...)``), as in the authors' reference implementation,
+    so a bound of 0 gives the group's action, as the paper's text describes.
 
     Args:
         actions: ``(..., n_muscles)``: first one action per group, then one correction
@@ -233,10 +289,12 @@ def expand_actions(
         groups: Groups as in :class:`DynSynGroups`.
         amplitude: Correction bound (:func:`weight_amplitude`).
         xp: ``numpy`` or ``torch``.
+        kappa: Scale of the corrections, the full bound of :func:`weight_amplitude`.
 
     Returns:
         ``(..., n_muscles)`` actions in muscle order: each muscle takes its group's
-        action, scaled by ``1 + clip(0.1 tanh(w), -amplitude, amplitude)``.
+        action, scaled by ``1 + clip(kappa tanh(w), -amplitude, amplitude)``. The env
+        clips them to its action range afterwards (the paper's Eq. 7).
     """
     n_groups = len(groups)
     group_of = [0] * sum(len(g) for g in groups)
@@ -249,6 +307,6 @@ def expand_actions(
     out = group_actions[..., group_of] * 1.0
     if corrected and amplitude > 0:
         w = actions[..., n_groups:]
-        scale = 1.0 + xp.clip(0.1 * xp.tanh(w), -amplitude, amplitude)
+        scale = 1.0 + xp.clip(kappa * xp.tanh(w), -amplitude, amplitude)
         out[..., corrected] = out[..., corrected] * scale
     return out
