@@ -6,6 +6,11 @@ All notable changes to this project are documented in this file.
 
 ### Highlights
 
+* **MyoChallenge 2026: ChaseTag quickstart (tutorial 5.6).** A Colab for invited teams: register at
+  [mc26.myosuite.org](https://mc26.myosuite.org), export the tutorial 5.4 walker to ONNX, submit one player that
+  plays both chase and evade (546 observations, 354 muscle activations) and watch the result on the website.
+  It can also load and render `myoChallengeChaseTagFBVs-v0`.
+
 * **Photorealistic Blender rendering of any MyoSuite rollout ([#540]).** One command turns a CPU rollout of a
   trained policy (`--checkpoint`) or of random actions (`--random`) into a Cycles render: animated USD export,
   a studio scene, ivory bones and volumetric muscles that thicken as they shorten and redden with activation.
@@ -54,6 +59,9 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+* **`myoFingerReachRandom-v0` and `motorFingerReachRandom-v0` targets on MuJoCo 3.12 and newer.** The table of reachable targets checked joint types with a comparison that is always false from MuJoCo 3.12, so no joint was sampled and every target sat at the fingertip's start. Both envs, on the CPU and in mjlab, now sample the full table on every version.
+* **`mujoco<4` and `mujoco-warp<4`.** MuJoCo 4 changes how spatial tendons use side sites, which moves some muscle paths in the models, so this release stays on MuJoCo 3.
+* **`motorFinger*` motor gears come from `myo_sim` 0.2.4.** `myo-sim` moves to 0.2.4, whose `motorfinger_v0.xml` has gears of 160/80/80/160/160 (`extn`, `adabR`, `adabL`, `mflx`, `dflx`). The `motor_finger` recipe loads that XML as it is and no longer scales it, so the four `motorFinger*` envs go from 80/20/20/40/40 to these gears. Their dynamics change while observations, actions and control step stay the same; checkpoints trained on the earlier gears no longer apply (`docs/baseline_checkpoints.md`).
 * **ChaseTag 1v1 (`myoChallengeChaseTagFBVs-v0`) win conditions.** Tag (planar pelvis distance ≤ 0.5 m) or a pursuer fall ends the episode; timeout with no tag is a runner win. A runner fall does not stop play — the pursuer can still tag the body on the ground. Boxing/fencing still end on any fall. P1 ChaseTag is unchanged.
 * **Dependency floors.** `filelock` is at least 4.2.5 on Python 3.11 and newer, and stays on 3.25.2 for Python 3.10 (4.x requires 3.11, and later 3.x releases add advisories). `certifi`, `gitpython`, `msgpack`, `setuptools`, and `black` move to releases that clear current advisories. Pillow stays `>=10.1.0,<13`: 13.0.0 is the first release that clears the image advisories, and current gradio still requires `pillow<13`.
 * **mjlab PPO defaults of the muscle tasks bound the action std ([#566]).**

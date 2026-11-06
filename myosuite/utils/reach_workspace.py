@@ -12,7 +12,7 @@ import mujoco
 import numpy as np
 
 _N_SAMPLES = 100_000
-_JOINT_TYPES = (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE)
+_JOINT_TYPES = (int(mujoco.mjtJoint.mjJNT_HINGE), int(mujoco.mjtJoint.mjJNT_SLIDE))
 _CACHE: dict[tuple, np.ndarray] = {}
 
 
@@ -66,7 +66,7 @@ def reachable_target_points(
         rng = np.random.default_rng(seed)
         qpos = np.tile(model.qpos0, (n_samples, 1))
         for j in range(model.njnt):
-            if model.jnt_limited[j] and model.jnt_type[j] in _JOINT_TYPES:
+            if model.jnt_limited[j] and int(model.jnt_type[j]) in _JOINT_TYPES:
                 lo, hi = model.jnt_range[j]
                 qpos[:, model.jnt_qposadr[j]] = rng.uniform(lo, hi, n_samples)
         data = mujoco.MjData(model)

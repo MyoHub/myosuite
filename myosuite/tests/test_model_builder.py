@@ -676,16 +676,16 @@ def test_cached_spec_keeps_a_spec_from_its_second_build():
     assert len(built) == 5
 
 
-def test_motor_finger_recipe_scales_the_motor_gears() -> None:
-    """The four motorFinger* envs use the stronger gears (x1/x2 never reached the poses)."""
+def test_motor_finger_recipe_uses_the_xml_gears() -> None:
+    """The four motorFinger* envs use the gears of the myo_sim XML, unscaled."""
     import mujoco
 
-    from myosuite.core.model_recipes import _MOTOR_FINGER_GEAR_SCALE
     from myosuite.envs.myo.assets._resolve import resolve_finger_xml
 
-    stock = mujoco.MjModel.from_xml_path(
+    xml_gears = mujoco.MjModel.from_xml_path(
         str(resolve_finger_xml("motorfinger_v0.xml"))
     ).actuator_gear[:, 0]
+    np.testing.assert_array_equal(xml_gears, [160, 80, 80, 160, 160])
     for env_id in (
         "motorFingerPoseFixed-v0",
         "motorFingerPoseRandom-v0",
@@ -693,8 +693,8 @@ def test_motor_finger_recipe_scales_the_motor_gears() -> None:
         "motorFingerReachRandom-v0",
     ):
         env = make_env(env_id)
-        np.testing.assert_allclose(
-            env.unwrapped.model.actuator_gear[:, 0], stock * _MOTOR_FINGER_GEAR_SCALE
+        np.testing.assert_array_equal(
+            env.unwrapped.model.actuator_gear[:, 0], xml_gears
         )
         env.close()
 

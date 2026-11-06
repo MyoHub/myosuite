@@ -34,7 +34,7 @@ dependencies = [
     "scipy",
     "pandas",
     "osqp",
-    "mujoco",
+    "mujoco<4",
     # 13.0.0 clears the current image advisories, but gradio 6.31.0 still
     # requires pillow<13. A Colab install that also has gradio, or a tutorial
     # that pins Pillow 12.2.0, cannot resolve against a 13 floor.
@@ -42,7 +42,7 @@ dependencies = [
     "colorednoise>=2.2.0",
     "packaging",
     "ml-collections>=0.1.1",
-    "myo-sim==0.2.3",
+    "myo-sim==0.2.4",
     # onnxruntime <=1.23.2 is the last line shipping cp310 wheels and >=1.24.1 the
     # first shipping cp314, so no single version spans 3.10-3.14; split by marker.
     "onnxruntime<1.21; python_version < '3.14'",
@@ -83,7 +83,7 @@ examples = [
 mjlab = [
     "torch>=2.13.0; python_version >= '3.10'",
     "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14'",
-    "mujoco-warp>=3.7.0; python_version >= '3.10' and python_version < '3.14'",
+    "mujoco-warp>=3.7.0,<4; python_version >= '3.10' and python_version < '3.14'",
     "warp-lang>=1.12.0; python_version >= '3.10'",
     # mjlab's own rsl_rl dependency (rsl-rl-lib) still passes the deprecated
     # wandb.Settings(start_method=...) kwarg; wandb>=0.29.0 rewrote Settings to

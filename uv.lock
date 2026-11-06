@@ -2539,10 +2539,10 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ipython", version = "8.39.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "ipython", version = "9.10.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
-    { name = "ipython", version = "9.12.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and python_full_version < '3.14') or (python_full_version >= '3.12' and sys_platform != 'win32')" },
+    { name = "ipython", version = "9.12.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and python_full_version < '3.14') or (python_full_version >= '3.14' and sys_platform != 'win32')" },
     { name = "matplotlib" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and python_full_version < '3.14') or (python_full_version >= '3.11' and sys_platform != 'win32')" },
+    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and python_full_version < '3.14') or (python_full_version >= '3.14' and sys_platform != 'win32')" },
     { name = "pillow" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b3/eb/8a0499fb1a2f373f97e2b4df91797507c3971c42c59f1610bed090c57ddc/mediapy-1.2.6.tar.gz", hash = "sha256:2c866cfa0a170213f771b1dd5584a2e82d8d0dc0fa94982f83e29aae27e49c83", size = 28143, upload-time = "2026-02-03T10:29:31.104Z" }
@@ -3123,7 +3123,7 @@ wheels = [
 
 [[package]]
 name = "myo-sim"
-version = "0.2.3"
+version = "0.2.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mujoco", version = "3.8.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
@@ -3131,9 +3131,9 @@ dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/1a/34fa58eb53317a2568aa544fa7d532ff89548a16ad28f709e963faa34783/myo_sim-0.2.3.tar.gz", hash = "sha256:be70eb57521fb912940fd39801ea7e5a06355e0c4501432bc24983e910e5962b", size = 15676229, upload-time = "2026-09-16T02:58:32.442Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9f/8c/2a2176b2bc9f6e963a8398db05573ad704bd90b1eddb4af7b1b5cbc2c158/myo_sim-0.2.4.tar.gz", hash = "sha256:5e766579fa4e92c8155a6bd8ccf344acc2ae49335fd13429f471d7c314c2151b", size = 15688330, upload-time = "2026-11-05T17:08:16.261Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/60/85/2bd153a69ccb65d1f47b3d4a5bd636ece428519111a8f8aeb7140417cfe8/myo_sim-0.2.3-py3-none-any.whl", hash = "sha256:259eb2bb9bbd7a484b18de3be4951562789b90a568713ff2ac19b100392c6ce3", size = 15717280, upload-time = "2026-09-16T02:58:29.174Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/a0/9bd0ad1e8b2777799739206338731ec5b5c3263a30b1cb0a75ba9bba1dac/myo_sim-0.2.4-py3-none-any.whl", hash = "sha256:d7a121c5a8623ba6663b6645e8f9e78300b2b1f214f485f6f65e0020fab51a97", size = 15722272, upload-time = "2026-11-05T17:08:13.583Z" },
 ]
 
 [[package]]
@@ -3310,12 +3310,12 @@ requires-dist = [
     { name = "mjviser", specifier = ">=0.0.14" },
     { name = "ml-collections", specifier = ">=0.1.1" },
     { name = "ml-collections", marker = "python_full_version >= '3.10' and sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=0.1.1" },
-    { name = "mujoco" },
+    { name = "mujoco", specifier = "<4" },
     { name = "mujoco", marker = "extra == 'mjx'", specifier = ">=3.7" },
     { name = "mujoco-mjx", marker = "extra == 'mjx'", specifier = ">=3.7" },
-    { name = "mujoco-warp", marker = "python_full_version >= '3.10' and python_full_version < '3.14' and extra == 'mjlab'", specifier = ">=3.7.0" },
+    { name = "mujoco-warp", marker = "python_full_version >= '3.10' and python_full_version < '3.14' and extra == 'mjlab'", specifier = ">=3.7.0,<4" },
     { name = "musclemimic-models", marker = "extra == 'musclemimic'", specifier = "==1.0.6" },
-    { name = "myo-sim", specifier = "==0.2.3" },
+    { name = "myo-sim", specifier = "==0.2.4" },
     { name = "myosuite", extras = ["mjx"], marker = "extra == 'mjx-cuda'" },
     { name = "myosuite", extras = ["musclemimic"], marker = "extra == 'dev'" },
     { name = "myosuite", extras = ["rl"], marker = "extra == 'dev'" },
