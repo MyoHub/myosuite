@@ -227,15 +227,10 @@ def test_directional_env_records_the_default_release(installed: str) -> None:
     assert (
         mv.env_models_version("myoFullBodyDirectional-v0") == mv.DEFAULT_MODELS_VERSION
     )
-    assert (
-        mv.env_models_version("myoChallengeChaseTagFBVs-v0")
-        == mv.DEFAULT_MODELS_VERSION
-    )
-    assert (
-        mv.env_models_version("myoChallengeChaseTagFBP2-v0")
-        == mv.DEFAULT_MODELS_VERSION
-    )
     assert mv.env_models_version("myoMimicFullbody-v0") == mv.DEFAULT_MODELS_VERSION
+    # Full-body ChaseTag builds myo_sim's myofullbody, so it records no release.
+    assert mv.env_models_version("myoChallengeChaseTagFBVs-v0") is None
+    assert mv.env_models_version("myoChallengeChaseTagFBP2-v0") is None
 
 
 def test_checkpoint_manifest_records_the_release_the_loaders_use(
