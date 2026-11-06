@@ -207,6 +207,18 @@ class MultiAgentTaskConfig(ABC):
         """
         return False
 
+    def episode_is_over(
+        self,
+        fell: dict[str, bool],
+        ko: dict[str, bool],
+    ) -> bool:
+        """Return ``True`` when the competitive episode should terminate.
+
+        Default: any fall or any KO. Chase-tag overrides this so a runner
+        fall does not end the match.
+        """
+        return any(fell.values()) or any(ko.values())
+
     def opponent_id(self, agent_id: str) -> str:
         """Return the opponent id for a 2-agent task.
 

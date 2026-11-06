@@ -50,6 +50,8 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | 4.1 | [Move Hand Fingers](./4.1_Move_Hand_Fingers.ipynb) | — |
 | 4.2 | [Fatigue Modeling](./4.2_Fatigue_Modeling.ipynb) | — |
 | 4.3 | [Modular Task Config](./4.3_Modular_Task_Config.ipynb) — **experimental**; prefer the `TaskSpec` / `ModelBuilder` workflow (`docs/wiki/adding-a-new-task.md`) | — |
+| 4.4 | [Programmatic Waypoint Tasks](./4.4_Programmatic_Waypoint_Tasks.ipynb) — scene + actor + ordered waypoints (`myoFullBodyWaypoint-v0`), with optional TERRA-4B policy playback; [Open in Colab](https://colab.research.google.com/github/MyoHub/myosuite/blob/main/tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb) ([pending-branch preview](https://colab.research.google.com/github/MyoHub/myosuite/blob/feat/programmatic-waypoint-tasks/tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb)) | `.[musclemimic]` + `orbax-checkpoint`; downloads public TERRA-4B; generates its terrain reference locally |
+| 4.4 ADL | [Optional furnished apartment extension](./files/4.4/adl_apartment/README.md) — a standalone TERRA policy walkthrough; **not run in CI** | manual/Colab execution; public TERRA checkpoint and rendering dependencies |
 | **5 — MuscleMimic** | | |
 | 5.1 | [Fullbody Load Policy](./5.1_Fullbody_Load_Policy.ipynb) | [integration README](../myosuite/integrations/musclemimic/README.md) |
 | 5.2 | [Fullbody Train Policy](./5.2_Fullbody_Train_Policy.ipynb) — CPU PPO and ghost-body rendering | as 5.1 |
@@ -57,11 +59,12 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | 5.4 | [MuscleMimic Directional Locomotion](./5.4_MuscleMimic_Directional_Locomotion.ipynb) ([Colab](https://colab.research.google.com/drive/1lc64D9YS8mmqz00-p161syndTUbffrg2)) | — |
 | 5.5 | [MuscleMimic SAR](./5.5_MuscleMimic_SAR.ipynb) | as 5.1 |
 | 5.6 | [ChaseTag MyoChallenge](./5.6_ChaseTag_MyoChallenge.ipynb) ([Colab](https://colab.research.google.com/github/MyoHub/myosuite/blob/dev/tutorials/5.6_ChaseTag_MyoChallenge.ipynb)) — register, export 5.4 walker to ONNX, submit | — |
+| 5.7 | [ChaseTag 1v1 steered teacher](./5.7_ChaseTag_Steered_Teacher.ipynb) — play scored FBVs with `ChaseTagSteeredPair` | `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5`; train/submit stays in 5.4 / 5.6 / [#578](https://github.com/MyoHub/myosuite/pull/578) |
 
 Defaults that keep the notebooks quick: 3.3 and 3.4 use the first 80 trajectory frames
 (set `FULL_ID = True` for the full CSV); 5.2 trains 256 PPO steps (`MYOSUITE_FULL_MIMIC=1`
 for the 50k demo); 5.3 skips Warp env creation on macOS / CPU; 5.4 stays in `QUICK_MODE`
-unless `MYOSUITE_FULL_BC=1`.
+unless `MYOSUITE_FULL_BC=1`; 5.7 stays at 200 steps unless `MYOSUITE_FULL_1V1=1`.
 
 ## Rendering
 
@@ -71,9 +74,9 @@ Headless video on Linux often needs `MUJOCO_GL=egl`; on macOS use `MUJOCO_GL=glf
 
 ## Models
 
-The models come from the `myo-sim` package, which MyoSuite pins to 0.2.3 on PyPI and installs automatically. A plain `pip install myosuite` or `pip install -e .` therefore gives the same XML assets the notebooks use; no extra install step is needed. The few MPL, YCB and furniture assets are bundled in `myosuite/envs/myo/assets/`.
+The models come from the `myo-sim` package, which MyoSuite pins to 0.2.4 on PyPI and installs automatically. A plain `pip install myosuite` or `pip install -e .` therefore gives the same XML assets the notebooks use; no extra install step is needed. The few MPL, YCB and furniture assets are bundled in `myosuite/envs/myo/assets/`.
 
-The `.[dev]` extra is only for development (tests and linters), not for models. Do not install a different `myo-sim` version unless you intend to retrain: the baseline policies in the tutorials are tied to 0.2.3.
+The `.[dev]` extra is only for development (tests and linters), not for models. Do not install a different `myo-sim` version unless you intend to retrain: the baseline policies in the tutorials are tied to 0.2.4.
 
 ## Inverse kinematics and retargeting
 
