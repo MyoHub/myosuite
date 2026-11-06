@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 import mujoco
 import pytest
@@ -14,10 +15,12 @@ import pytest
 pytestmark = pytest.mark.tier2
 
 from myosuite.envs.myo.athletic.blender import (
+    RING_LANES,
     STUDIO_LIGHTS,
     WORLD_STRENGTH,
     lighting_spec,
     render_athletic,
+    running_ring_paths,
     write_stage,
 )
 
@@ -75,8 +78,25 @@ def test_stage_exports_visual_mesh_and_studio_lights(tmp_path):
     ]
     saved = json.loads((tmp_path / "render.json").read_text())
     assert saved["camera_offset"][2] > 0  # Z-up fullbody
+    assert saved["track"]["kind"] == "ring"
+    assert saved["track"]["n_lanes"] == RING_LANES
     assert len(saved["frames"]) == 2
     assert len(saved["frames"][0]) == 2
+
+
+def test_running_ring_draws_a_line_on_every_lane_boundary():
+    ring = running_ring_paths((0.0, 0.1, 1.0), "z")
+    assert len(ring["lines"]) == RING_LANES + 1
+    inner = ring["rubber"][0]
+    outer = ring["rubber"][1]
+    assert len(inner) == len(outer) > 80
+    # The outer curb sits farther from the infield centre than the inner curb.
+    cx, cy, _ = ring["center"]
+
+    def span(pts: list[tuple[float, float, float]]) -> float:
+        return max(math.hypot(p[0] - cx, p[1] - cy) for p in pts)
+
+    assert span(outer) > span(inner) + 1.0
 
 
 def test_elastic_render_does_not_launch_blender(tmp_path, monkeypatch):

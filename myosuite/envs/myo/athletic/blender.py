@@ -77,6 +77,94 @@ def lighting_spec(name: LightingName = DEFAULT_LIGHTING) -> dict[str, Any]:
     }
 
 
+# Athletic oval: rubber ring, white lane lines, grass infield. Same colours as the
+# MuJoCo sprint track. Compact enough that a still frame shows the whole ring
+# and the runner standing in the inside lane.
+RING_LANE_WIDTH = 1.22
+RING_LANES = 8
+RING_INNER_RADIUS = 6.5
+RING_STRAIGHT = 12.0
+RING_LINE_WIDTH = 0.05
+RUBBER_COLOR = (0.62, 0.24, 0.15, 1.0)
+LINE_COLOR = (0.95, 0.95, 0.95, 1.0)
+GRASS_COLOR = (0.22, 0.34, 0.18, 1.0)
+
+
+def running_ring_paths(
+    pelvis: tuple[float, float, float],
+    up_axis: str = "z",
+) -> dict[str, Any]:
+    """World-space polylines for the oval, one per lane boundary.
+
+    The runner stands in the inside lane of the home straight. Fullbody runs
+    toward −X (Z up); the sprinter runs toward +X (Y up). The infield sits on
+    the far side of that straight.
+    """
+    half = RING_STRAIGHT / 2
+    runner_local = (half - 1.5, -(RING_INNER_RADIUS + 0.5 * RING_LANE_WIDTH))
+    sign = 1.0 if up_axis == "z" else -1.0
+    px, py, pz = pelvis
+    side0 = py if up_axis == "z" else pz
+
+    def world(x: float, y: float, z: float) -> tuple[float, float, float]:
+        wx = px + sign * (x - runner_local[0])
+        ws = side0 + (y - runner_local[1])
+        if up_axis == "z":
+            return (wx, ws, z)
+        return (wx, z, ws)
+
+    def samples(radius: float) -> list[tuple[float, float]]:
+        n_straight, n_bend = 28, 40
+        pts: list[tuple[float, float]] = []
+        for i in range(n_straight):
+            t = i / n_straight
+            pts.append((half - t * RING_STRAIGHT, -radius))
+        for i in range(n_bend):
+            ang = -math.pi / 2 - (i / n_bend) * math.pi
+            pts.append((-half + radius * math.cos(ang), radius * math.sin(ang)))
+        for i in range(n_straight):
+            t = i / n_straight
+            pts.append((-half + t * RING_STRAIGHT, radius))
+        for i in range(n_bend):
+            ang = math.pi / 2 - (i / n_bend) * math.pi
+            pts.append((half + radius * math.cos(ang), radius * math.sin(ang)))
+        return pts
+
+    def outward(pts: list[tuple[float, float]]) -> list[tuple[float, float, float, float]]:
+        framed = []
+        n = len(pts)
+        for i, (x, y) in enumerate(pts):
+            x0, y0 = pts[(i - 1) % n]
+            x2, y2 = pts[(i + 1) % n]
+            tx, ty = x2 - x0, y2 - y0
+            nx, ny = -ty, tx
+            if nx * x + ny * y < 0:
+                nx, ny = -nx, -ny
+            length = math.hypot(nx, ny) or 1.0
+            framed.append((x, y, nx / length, ny / length))
+        return framed
+
+    lines = []
+    for k in range(RING_LANES + 1):
+        radius = RING_INNER_RADIUS + k * RING_LANE_WIDTH
+        framed = outward(samples(radius))
+        left, right = [], []
+        for x, y, nx, ny in framed:
+            left.append(world(x - nx * RING_LINE_WIDTH / 2, y - ny * RING_LINE_WIDTH / 2, 0.012))
+            right.append(world(x + nx * RING_LINE_WIDTH / 2, y + ny * RING_LINE_WIDTH / 2, 0.012))
+        lines.append((left, right))
+    inner = [world(x, y, 0.004) for x, y in samples(RING_INNER_RADIUS)]
+    outer = [world(x, y, 0.004) for x, y in samples(RING_INNER_RADIUS + RING_LANES * RING_LANE_WIDTH)]
+    center = world(0.0, 0.0, 1.1)
+    return {
+        "lines": lines,
+        "rubber": (inner, outer),
+        "center": center,
+        "n_lanes": RING_LANES,
+        "ground": 0.0,
+    }
+
+
 def _camera_offsets(up_axis: str) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """Three-quarter camera and look offsets in the plant's world frame."""
     if up_axis == "y":
@@ -280,6 +368,14 @@ def write_stage(
         "camera_offset": list(camera),
         "look_offset": list(look),
         "lighting": lighting_spec(lighting),
+        "track": {
+            "kind": "ring",
+            "n_lanes": RING_LANES,
+            "lane_width": RING_LANE_WIDTH,
+            "inner_radius": RING_INNER_RADIUS,
+            "straight": RING_STRAIGHT,
+            "up_axis": up_axis,
+        },
     }
     (output / "render.json").write_text(json.dumps(meta))
     return meta
@@ -467,6 +563,9 @@ def build_blender_scene(output: Path) -> None:
     track.track_axis = "TRACK_NEGATIVE_Z"
     track.up_axis = "UP_Y"
     scene.camera = camera
+    if meta.get("track", {}).get("kind") == "ring":
+        _add_running_ring(bpy, meta)
+        _frame_running_ring(bpy, camera, meta)
 
     # Lamp positions are in the camera frame of the reset pose, then parented
     # to the pelvis so the same modelling follows the runner.
@@ -502,10 +601,15 @@ def build_blender_scene(output: Path) -> None:
     scene.world = world
     world.use_nodes = True
     background = world.node_tree.nodes["Background"]
-    background.inputs[0].default_value = rig["world_color"]
-    background.inputs[1].default_value = float(rig["world_strength"])
+    if meta.get("track", {}).get("kind") == "ring":
+        background.inputs[0].default_value = (0.56, 0.64, 0.74, 1.0)
+        background.inputs[1].default_value = 0.45
+    else:
+        background.inputs[0].default_value = rig["world_color"]
+        background.inputs[1].default_value = float(rig["world_strength"])
 
-    _cyclorama(bpy, low, high, forward)
+    if meta.get("track", {}).get("kind") != "ring":
+        _cyclorama(bpy, low, high, forward)
     scene.frame_start = 0
     scene.frame_end = 0 if meta["preview"] else max(0, len(meta["frames"]) - 1)
     for frame, (mats, pelvis) in enumerate(zip(meta["frames"], meta["pelvis"])):
@@ -583,6 +687,90 @@ def _bounds(objects: list[Any]) -> tuple[Any, Any]:
     low = Vector(tuple(min(p[i] for p in points) for i in range(3)))
     high = Vector(tuple(max(p[i] for p in points) for i in range(3)))
     return low, high
+
+
+def _add_running_ring(bpy: Any, meta: dict[str, Any]) -> None:
+    """Rubber oval, a white line on every lane boundary, grass under it."""
+    ring = running_ring_paths(tuple(meta["pelvis"][0]), meta["track"]["up_axis"])
+    rubber = _material(bpy, "Rubber", RUBBER_COLOR, 0.55, subsurface=0.0, coat=0.04)
+    line_mat = _material(bpy, "Lane line", LINE_COLOR, 0.35, subsurface=0.0, coat=0.0)
+    grass = _material(bpy, "Grass", GRASS_COLOR, 0.9, subsurface=0.0, coat=0.0)
+    _ribbon(bpy, "Track", ring["rubber"][0], ring["rubber"][1], rubber)
+    for index, (left, right) in enumerate(ring["lines"]):
+        _ribbon(bpy, f"Lane_{index}", left, right, line_mat)
+    _grass_plane(bpy, ring, grass)
+    sun_data = bpy.data.lights.new("Track sun", "SUN")
+    sun_data.energy = 3.2
+    sun_data.color = (1.0, 0.94, 0.86)
+    sun = bpy.data.objects.new("Track sun", sun_data)
+    bpy.context.scene.collection.objects.link(sun)
+    sun.rotation_euler = (math.radians(48), 0.0, math.radians(-35))
+
+
+def _frame_running_ring(bpy: Any, camera: Any, meta: dict[str, Any]) -> None:
+    """Pull back so the oval and its lane lines fill the frame."""
+    from mathutils import Vector
+
+    center = Vector(running_ring_paths(tuple(meta["pelvis"][0]), meta["track"]["up_axis"])["center"])
+    aim = bpy.data.objects.new("Ring center", None)
+    bpy.context.scene.collection.objects.link(aim)
+    aim.location = center
+    for constraint in camera.constraints:
+        if constraint.type == "TRACK_TO":
+            constraint.target = aim
+    up = meta["track"]["up_axis"]
+    if up == "z":
+        camera_pos = center + Vector((-9.0, -24.0, 14.0))
+    else:
+        camera_pos = center + Vector((-9.0, 14.0, -24.0))
+    camera.parent = None
+    camera.location = camera_pos
+    camera.data.lens = 28
+    camera.data.clip_end = 400
+    bpy.context.view_layer.update()
+
+
+def _ribbon(bpy: Any, name: str, left: list[tuple[float, float, float]], right: list[tuple[float, float, float]], mat: Any) -> None:
+    n = len(left)
+    verts = list(left) + list(right)
+    faces = []
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append((i, j, n + j, n + i))
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(verts, [], faces)
+    mesh.materials.append(mat)
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+
+
+def _grass_plane(bpy: Any, ring: dict[str, Any], mat: Any) -> None:
+    pts = ring["rubber"][1]
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    zs = [p[2] for p in pts]
+    pad = 18.0
+    z = min(zs) - 0.01
+    if abs(max(ys) - min(ys)) > abs(max(zs) - min(zs)):
+        # Z-up: the oval spreads in x,y.
+        verts = [
+            (min(xs) - pad, min(ys) - pad, z),
+            (max(xs) + pad, min(ys) - pad, z),
+            (max(xs) + pad, max(ys) + pad, z),
+            (min(xs) - pad, max(ys) + pad, z),
+        ]
+    else:
+        verts = [
+            (min(xs) - pad, z, min(zs) - pad),
+            (max(xs) + pad, z, min(zs) - pad),
+            (max(xs) + pad, z, max(zs) + pad),
+            (min(xs) - pad, z, max(zs) + pad),
+        ]
+    mesh = bpy.data.meshes.new("Grass")
+    mesh.from_pydata(verts, [], [(0, 1, 2, 3)])
+    mesh.materials.append(mat)
+    obj = bpy.data.objects.new("Grass", mesh)
+    bpy.context.scene.collection.objects.link(obj)
 
 
 def _cyclorama(bpy: Any, low: Any, high: Any, forward: Any) -> None:
