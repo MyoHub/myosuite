@@ -72,6 +72,26 @@ def _planar(elbow_max: float = 2.5) -> mujoco.MjModel:
     return mujoco.MjModel.from_xml_string(PLANAR.format(elbow_max=elbow_max))
 
 
+def _myoleg() -> mujoco.MjModel:
+    import myosuite  # noqa: F401, PLC0415  (registers the envs)
+    from myosuite.utils import gym  # noqa: PLC0415
+    from myosuite.utils.asset_path_resolver import resolve_model_xml_path  # noqa: PLC0415
+
+    path = resolve_model_xml_path(gym.spec("myoLegWalk-v0").kwargs["model_path"])
+    return mujoco.MjModel.from_xml_path(str(path))
+
+
+def _couple(model: mujoco.MjModel, qpos: np.ndarray) -> None:
+    """Set each coupled follower from its leader (MuJoCo's polynomial of qpos0 offsets)."""
+    for e in range(model.neq):
+        joint = model.eq_type[e] == mujoco.mjtEq.mjEQ_JOINT
+        if joint and model.eq_active0[e] and model.eq_obj2id[e] >= 0:
+            follower = model.jnt_qposadr[model.eq_obj1id[e]]
+            leader = model.jnt_qposadr[model.eq_obj2id[e]]
+            offset = (qpos[leader] - model.qpos0[leader]) ** np.arange(5)
+            qpos[follower] = model.qpos0[follower] + model.eq_data[e, :5] @ offset
+
+
 def _site_pose(
     model: mujoco.MjModel, qpos: np.ndarray, site: str
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -156,6 +176,34 @@ def test_coupled_joint_stays_tied_to_its_leader() -> None:
     assert tie(far) < 1e-4
 
 
+def test_coupled_followers_may_leave_their_range() -> None:
+    # Near 0.8 rad of knee flexion, MyoLeg's knee rotation follows the knee past
+    # its own range; the range must not stop the knee.
+    leg = _myoleg()
+    truth = leg.qpos0.copy()
+    truth[leg.joint("knee_angle_r").qposadr[0]] = 0.8
+    _couple(leg, truth)
+    rotation = leg.joint("knee_angle_rotation2_r")
+    assert truth[rotation.qposadr[0]] > rotation.range[1]
+    below = {leg.body(name).id for name in ("tibia_r", "talus_r", "calcn_r", "toes_r")}
+    data = mujoco.MjData(leg)
+    data.qpos[:] = truth
+    mujoco.mj_kinematics(leg, data)
+    targets = {
+        leg.site(s).name: data.site_xpos[s].copy()
+        for s in range(leg.nsite)
+        if leg.site_bodyid[s] in below
+    }
+    leg_joints = ["hip_flexion_r", "hip_adduction_r", "hip_rotation_r", "knee_angle_r"]
+    qpos = solve_ik(leg, targets, joints=[*leg_joints, "ankle_angle_r"], tol=1e-7)
+    knee = qpos[leg.joint("knee_angle_r").qposadr[0]]
+    assert abs(knee - 0.8) < np.deg2rad(0.05)
+    data.qpos[:] = qpos
+    mujoco.mj_kinematics(leg, data)
+    for name, target in targets.items():
+        np.testing.assert_allclose(data.site(name).xpos, target, atol=1e-4)
+
+
 def test_unreachable_target_raises_or_returns_the_closest_pose() -> None:
     model = _planar()
     target = np.array([0.6, 0.8, 0.0])  # 1 m away; the arm reaches 0.55 m
@@ -167,6 +215,19 @@ def test_unreachable_target_raises_or_returns_the_closest_pose() -> None:
     np.testing.assert_allclose(
         _site_pose(model, closest, "hand")[0], 0.55 * target, atol=1e-6
     )
+
+
+def test_out_of_reach_fits_converge_to_the_closest_point() -> None:
+    # A large residual converges linearly; descent must not stop on a small cost change.
+    model = _planar()
+    for target in ([0.6, 0.8, 0.0], [-0.3, 0.9, 0.0], [0.0, -1.2, 0.0]):
+        target = np.array(target)
+        closest = solve_ik(model, {"hand": target}, strict=False, max_iters=400)
+        np.testing.assert_allclose(
+            _site_pose(model, closest, "hand")[0],
+            0.55 * target / np.linalg.norm(target),
+            atol=1e-8,
+        )
 
 
 def test_a_stalled_seed_is_retried_from_mid_range() -> None:
@@ -188,30 +249,40 @@ def test_unselected_joints_keep_their_seed() -> None:
 
 
 @pytest.mark.parametrize("jacobian", ["dense", "sparse"])
-def test_analytic_jacobian_matches_finite_differences(jacobian: str) -> None:
+def test_every_joint_type_and_a_coupling_reach_a_pose(jacobian: str) -> None:
     model = mujoco.MjModel.from_xml_string(MIXED)
     model.opt.jacobian = getattr(mujoco.mjtJacobian, f"mjJAC_{jacobian.upper()}")
-    rng = np.random.default_rng(0)
-    targets = ik._parse_targets(
-        model,
-        {"tip": (rng.normal(size=3), rng.normal(size=4)), "mid": rng.normal(size=3)},
+    root = np.array([0.8, 0.1, -0.3, 0.5]) / np.linalg.norm([0.8, 0.1, -0.3, 0.5])
+    ball = np.array([np.cos(0.4), 0.0, np.sin(0.4), 0.0])  # 0.8 rad, inside the cone
+    elbow = -0.7
+    truth = np.concatenate(
+        [
+            [0.1, -0.2, 0.9],
+            root,
+            ball,
+            [elbow, 0.02, 0.1 + 0.5 * elbow + 0.2 * elbow**2],
+        ]
     )
-    problem = ik._IKProblem(
-        model, list(range(model.njnt)), rot_weight=0.7, equality_weight=3.0
-    )
-    lower, _ = problem.prepare(targets, ik._seed(model, rng.normal(size=model.nq)))
-    assert len(problem._eq_rows) == 1  # the coupling row is part of the residual
-    step = 1e-6
-    for _ in range(5):
-        x = rng.normal(scale=0.8, size=len(lower))  # large rotation-vector steps
-        numeric = np.array(
-            [
-                (problem.residual(x + step * e) - problem.residual(x - step * e))
-                / (2 * step)
-                for e in np.eye(len(x))
-            ]
-        ).T
-        np.testing.assert_allclose(problem.jacobian(x), numeric, atol=1e-7)
+    tip, tip_quat = _site_pose(model, truth, "tip")
+    mid, _ = _site_pose(model, truth, "mid")
+    qpos = solve_ik(model, {"tip": (tip, tip_quat), "mid": mid}, tol=1e-9)
+    got, got_quat = _site_pose(model, qpos, "tip")
+    np.testing.assert_allclose(got, tip, atol=1e-9)
+    assert _angle(got_quat, tip_quat) < 1e-8
+    np.testing.assert_allclose(_site_pose(model, qpos, "mid")[0], mid, atol=1e-9)
+    assert abs(qpos[13] - (0.1 + 0.5 * qpos[11] + 0.2 * qpos[11] ** 2)) < 1e-9
+    np.testing.assert_allclose(np.linalg.norm(qpos[[3, 4, 5, 6]]), 1.0)
+    np.testing.assert_allclose(np.linalg.norm(qpos[7:11]), 1.0)
+
+
+def test_a_held_joint_outside_its_range_keeps_its_seed() -> None:
+    # The elbow is held at 3.0, beyond its range [0, 2.5]; only the shoulder turns.
+    model = _planar()
+    target = _site_pose(model, np.array([0.7, 3.0]), "hand")[0]
+    qpos = solve_ik(model, {"hand": target}, joints=["shoulder"], qpos=[0.0, 3.0])
+    assert qpos[1] == 3.0
+    assert qpos[0] == pytest.approx(0.7, abs=1e-8)
+    assert model.jnt_limited.tolist() == [False, True]  # the bound is restored
 
 
 def test_inputs_are_validated_and_the_model_is_untouched() -> None:
@@ -230,6 +301,8 @@ def test_inputs_are_validated_and_the_model_is_untouched() -> None:
         solve_ik(model, {"hand": [0.3, 0, 0]}, qpos=[0.0])
     with pytest.raises(ValueError):
         solve_ik(model, {"hand": [0.3, 0, 0]}, tol=0)
+    with pytest.raises(ValueError):
+        solve_ik(model, {"hand": [0.3, 0, 0]}, max_iters=0)
     np.testing.assert_array_equal(model.qpos0, qpos0)
 
 

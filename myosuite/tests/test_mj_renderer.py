@@ -121,6 +121,77 @@ def test_mesh_upload_refreshes_every_cached_offscreen_size(
         env.close()
 
 
+_HFIELD_XML = (
+    '<mujoco><asset><hfield name="terrain" nrow="8" ncol="8" size="1 1 .5 .1"/>'
+    '</asset><worldbody><light pos="0 0 3"/><camera name="top" pos="0 -2 2" '
+    'xyaxes="1 0 0 0 .7 .7"/><geom type="hfield" hfield="terrain" rgba="0 1 0 1"/>'
+    "</worldbody></mujoco>"
+)
+
+
+@pytest.mark.parametrize("path", ["legacy", "gymnasium"])
+def test_hfield_upload_refreshes_cached_renderers(path: str) -> None:
+    """Terrain resampled at reset (issue 307) reaches renderers created earlier."""
+    from gymnasium.envs.mujoco.mujoco_rendering import MujocoRenderer
+
+    model = mujoco.MjModel.from_xml_string(_HFIELD_XML)
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    env = MyoGymnasiumEnv()
+    env.model, env.data = model, data
+    if path == "legacy":
+        env._mj_renderer_compat = MJRenderer(model, data)
+        fresh = MJRenderer(model, data)
+
+        def frame(renderer):
+            return renderer.render_offscreen(width=160, height=120, camera_id=0)
+
+        cached = env._mj_renderer_compat
+    else:
+        env._mujoco_renderer = MujocoRenderer(
+            model, data, width=160, height=120, camera_id=0
+        )
+        fresh = MujocoRenderer(model, data, width=160, height=120, camera_id=0)
+
+        def frame(renderer):
+            return renderer.render("rgb_array").copy()
+
+        cached = env._mujoco_renderer
+    try:
+        before = frame(cached)
+        model.hfield_data[:] = np.linspace(0.0, 1.0, model.hfield_data.size)
+        _assert_same_image(frame(cached), before)  # stale without an upload
+        env._upload_hfield_to_renderers(0)
+        expected = frame(fresh)
+        assert np.abs(expected.astype(int) - before.astype(int)).max() > 10
+        _assert_same_image(frame(cached), expected)
+    finally:
+        fresh.close()
+        env.close()
+
+
+@pytest.mark.parametrize(
+    "env_id",
+    [
+        "myoLegRoughTerrainWalk-v0",
+        "myoChallengeChaseTagP2-v0",
+        "myoChallengeOslRunRandom-v0",
+    ],
+)
+def test_terrain_reset_uploads_heightfield(env_id: str, monkeypatch) -> None:
+    """Every env that resamples terrain at reset uploads the terrain heightfield."""
+    env = make_env(env_id)
+    uploaded: list[int] = []
+    monkeypatch.setattr(env.unwrapped, "_upload_hfield_to_renderers", uploaded.append)
+    try:
+        env.reset(seed=0)
+        model = env.unwrapped.model
+        assert uploaded
+        assert set(uploaded) == {int(model.geom_dataid[model.geom("terrain").id])}
+    finally:
+        env.close()
+
+
 @pytest.mark.parametrize("camera_id", [-1, None, 100])
 def test_offscreen_free_camera_follows_updated_settings(scene, camera_id) -> None:
     """Free-camera settings apply to every output mode, including cached renderers."""

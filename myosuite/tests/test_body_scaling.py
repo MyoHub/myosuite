@@ -23,22 +23,24 @@ import pytest
 from scipy.spatial.transform import Rotation
 
 from myosuite.core.body_scaling import (
-    _MYOFULLBODY_SEGMENTS,
-    _MYOLEG_SEGMENTS,
     _body_scales,
     _fit_points,
     _frame_rot,
     _geom_bottom,
     _model_digest,
     _quat,
-    _read_opensim_scales,
     _rot,
     _scale_spec,
-    _segments_for,
     scale_model,
 )
 from myosuite.core.muscle_conditions import _peak_force
 from myosuite.core.trajectory_io import MotionClip, expand_motion_clip_to_model
+from myosuite.integrations.opensim_interop import (
+    _MYOFULLBODY_SEGMENTS,
+    _MYOLEG_SEGMENTS,
+    _read_opensim_scales,
+    _segments_for,
+)
 from myosuite.tests.support.optional_deps import require_musclemimic_models
 
 pytestmark = pytest.mark.tier1
@@ -1008,6 +1010,19 @@ def test_a_marker_pair_or_planar_points_give_one_factor() -> None:
     np.testing.assert_allclose(
         _fit_points("thigh", points[:2], measured[:2] + [0.0, 0.0, 0.01]),
         np.full(3, 1.07),
+    )
+
+
+def test_measured_points_may_be_y_up_or_z_up() -> None:
+    """The fit includes a rotation, so an OpenSim (y-up) and a MuJoCo (z-up) lab agree."""
+    points = np.random.default_rng(6).uniform(-0.1, 0.1, (6, 3))
+    y_up = _measured(points, [1.08, 0.95, 1.12])
+    z_up = y_up @ np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]).T
+    np.testing.assert_allclose(_fit_points("thigh", points, z_up), [1.08, 0.95, 1.12])
+    np.testing.assert_allclose(
+        _fit_points("thigh", points[:2], z_up[:2]),
+        _fit_points("thigh", points[:2], y_up[:2]),
+        rtol=1e-12,
     )
 
 

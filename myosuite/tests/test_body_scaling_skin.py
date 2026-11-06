@@ -13,10 +13,10 @@ import numpy as np
 import pytest
 
 from myosuite.core.body_scaling import (
-    _MYOFULLBODY_SEGMENTS,
     _body_scales,
     scale_model,
 )
+from myosuite.integrations.opensim_interop import _MYOFULLBODY_SEGMENTS
 from myosuite.viz.skin import Skin, SkinPose, load_skin, load_skn, save_skn
 from myosuite.viz.skin_glb import read_skin_glb, write_skin_glb
 

@@ -279,3 +279,173 @@ class TestChaseTagVsRegistry:
             ):
                 assert data.warning[warning].number == 0
             assert headroom * data.maxuse_arena <= worst.narena
+
+
+def _root_qposadr(env, agent_id: str) -> int:
+    jid = int(env._meta.jnt_ids[agent_id][0])
+    return int(env.model.jnt_qposadr[jid])
+
+
+def _drop(env, agent_id: str, z: float = 0.3) -> None:
+    import mujoco
+
+    adr = _root_qposadr(env, agent_id)
+    env.data.qpos[adr + 2] = z
+    env.data.qvel[adr : adr + 6] = 0.0
+    mujoco.mj_forward(env.model, env.data)
+
+
+def _overlap_xy(env, mover: str, target: str) -> None:
+    import mujoco
+
+    adr_m = _root_qposadr(env, mover)
+    adr_t = _root_qposadr(env, target)
+    env.data.qpos[adr_m : adr_m + 2] = env.data.qpos[adr_t : adr_t + 2]
+    mujoco.mj_forward(env.model, env.data)
+
+
+class TestChaseTagVsRules:
+    """1v1: tag or pursuer-fall ends the match; a runner fall does not."""
+
+    def test_episode_is_over_hook(self) -> None:
+        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+            ChaseTagVsTaskConfig,
+        )
+
+        cfg = ChaseTagVsTaskConfig()
+        upright = {"agent_0": False, "agent_1": False}
+        no_ko = {"agent_0": False, "agent_1": False}
+
+        cfg.current_task = "CHASE"
+        assert cfg.episode_is_over({"agent_0": False, "agent_1": True}, no_ko) is False
+        assert cfg.episode_is_over({"agent_0": True, "agent_1": False}, no_ko) is True
+        assert cfg.episode_is_over(upright, {"agent_0": False, "agent_1": True}) is True
+
+        cfg.current_task = "EVADE"
+        assert cfg.episode_is_over({"agent_0": True, "agent_1": False}, no_ko) is False
+        assert cfg.episode_is_over({"agent_0": False, "agent_1": True}, no_ko) is True
+        assert cfg.episode_is_over(upright, {"agent_0": True, "agent_1": False}) is True
+
+    def test_runner_fall_does_not_end_episode(self) -> None:
+        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+            ChaseTagVsTaskConfig,
+        )
+        from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
+
+        env = ModularMultiAgentTaskEnv(
+            ChaseTagVsTaskConfig(task_choice="CHASE", agent_separation_m=2.0)
+        )
+        try:
+            obs, info = env.reset(seed=0)
+            assert info["task"] == "CHASE"
+            zeros = {
+                a: np.zeros(env.action_space[a].shape, dtype=np.float32) for a in obs
+            }
+            _drop(env, "agent_1")
+            _obs, _r, terminated, truncated, info = env.step(zeros)
+            assert info["fell"]["agent_1"] is True
+            assert info["fell"]["agent_0"] is False
+            assert info["tagged"] is False
+            assert not any(terminated.values())
+            assert not any(truncated.values())
+        finally:
+            env.close()
+
+    def test_pursuer_fall_ends_episode_as_runner_win(self) -> None:
+        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+            ChaseTagVsTaskConfig,
+        )
+        from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
+
+        env = ModularMultiAgentTaskEnv(
+            ChaseTagVsTaskConfig(task_choice="CHASE", agent_separation_m=2.0)
+        )
+        try:
+            obs, info = env.reset(seed=0)
+            zeros = {
+                a: np.zeros(env.action_space[a].shape, dtype=np.float32) for a in obs
+            }
+            _drop(env, "agent_0")
+            _obs, _r, terminated, truncated, info = env.step(zeros)
+            assert info["chaser_fell"] is True
+            assert info["tagged"] is False
+            assert info["task"] == "CHASE"
+            assert info["score"] == pytest.approx(0.0)
+            assert all(terminated.values())
+            assert not any(truncated.values())
+        finally:
+            env.close()
+
+    def test_tag_still_ends_episode(self) -> None:
+        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+            ChaseTagVsTaskConfig,
+        )
+        from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
+
+        env = ModularMultiAgentTaskEnv(
+            ChaseTagVsTaskConfig(task_choice="CHASE", agent_separation_m=2.0)
+        )
+        try:
+            obs, info = env.reset(seed=0)
+            zeros = {
+                a: np.zeros(env.action_space[a].shape, dtype=np.float32) for a in obs
+            }
+            _overlap_xy(env, "agent_0", "agent_1")
+            _obs, _r, terminated, truncated, info = env.step(zeros)
+            assert info["tagged"] is True
+            assert info["task"] == "CHASE"
+            assert info["score"] > 0.0
+            assert all(terminated.values())
+        finally:
+            env.close()
+
+    def test_downed_runner_can_still_be_tagged(self) -> None:
+        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+            ChaseTagVsTaskConfig,
+        )
+        from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
+
+        env = ModularMultiAgentTaskEnv(
+            ChaseTagVsTaskConfig(task_choice="CHASE", agent_separation_m=2.0)
+        )
+        try:
+            obs, info = env.reset(seed=0)
+            zeros = {
+                a: np.zeros(env.action_space[a].shape, dtype=np.float32) for a in obs
+            }
+            _drop(env, "agent_1")
+            _obs, _r, terminated, _trunc, info = env.step(zeros)
+            assert info["fell"]["agent_1"] is True
+            assert not any(terminated.values())
+            _drop(env, "agent_1")
+            _overlap_xy(env, "agent_0", "agent_1")
+            _obs, _r, terminated, _trunc, info = env.step(zeros)
+            assert info["tagged"] is True
+            assert all(terminated.values())
+            assert info["score"] > 0.0
+        finally:
+            env.close()
+
+    def test_evade_pursuer_fall_scores_the_runner(self) -> None:
+        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+            ChaseTagVsTaskConfig,
+        )
+        from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
+
+        env = ModularMultiAgentTaskEnv(
+            ChaseTagVsTaskConfig(task_choice="EVADE", agent_separation_m=2.0)
+        )
+        try:
+            obs, info = env.reset(seed=0)
+            assert info["task"] == "EVADE"
+            zeros = {
+                a: np.zeros(env.action_space[a].shape, dtype=np.float32) for a in obs
+            }
+            _drop(env, "agent_1")
+            _obs, _r, terminated, _trunc, info = env.step(zeros)
+            assert info["chaser_fell"] is True
+            assert info["tagged"] is False
+            assert all(terminated.values())
+            assert info["score"] > 0.0
+        finally:
+            env.close()
