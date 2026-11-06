@@ -214,6 +214,7 @@ def test_arm_and_torso_models_follow_the_release(installed: str, builder: str) -
         ("myoChallengeChaseTagFBP2-v0", False),
         ("myoFatiChallengeChaseTagFBP2-v0", False),
         ("myoChallengeChaseTagFBVs-v0", False),
+        ("myoFullBodyWaypoint-v0", True),
         ("myoChallengeBimanual-v0", False),
         ("myoTorsoPoseFixed-v0", False),
         ("myoHandReachFixed-v0", False),
@@ -228,6 +229,7 @@ def test_directional_env_records_the_default_release(installed: str) -> None:
         mv.env_models_version("myoFullBodyDirectional-v0") == mv.DEFAULT_MODELS_VERSION
     )
     assert mv.env_models_version("myoMimicFullbody-v0") == mv.DEFAULT_MODELS_VERSION
+    assert mv.env_models_version("myoFullBodyWaypoint-v0") == mv.DEFAULT_MODELS_VERSION
     # Full-body ChaseTag builds myo_sim's myofullbody, so it records no release.
     assert mv.env_models_version("myoChallengeChaseTagFBVs-v0") is None
     assert mv.env_models_version("myoChallengeChaseTagFBP2-v0") is None
