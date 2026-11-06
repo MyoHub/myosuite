@@ -9,9 +9,9 @@ Composes existing helpers: :func:`load_teacher_runner`,
 :class:`AgentShadowMap`, and :func:`aim_heading_xy`. Does not change the
 scored FBVs observation (546-d).
 
-``amathislab/mm-10m-2`` was trained on musclemimic_models 1.0.5. Set
-``MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5`` before ``make_env`` so the
-ChaseTag body matches the teacher.
+``amathislab/mm-10m-2`` was trained on musclemimic_models 1.0.5 and runs on that body as a
+shadow model. The scored FBVs env builds myo_sim's ``myofullbody`` and ignores
+``MYOSUITE_MUSCLEMIMIC_MODELS_VERSION``, so the teacher's body differs from the scored one.
 """
 
 from __future__ import annotations
