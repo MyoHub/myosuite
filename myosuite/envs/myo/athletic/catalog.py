@@ -2,7 +2,13 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Athletic task×plant catalog and registration matrix."""
+"""Athletic task×model catalog and registration matrix.
+
+``make_athletic(task)`` builds ``myofullbody`` with rigid tendons. Pass
+``model="myofullbody_simple"`` for the reduced skeleton and
+``tendons="elastic"`` for the series-elastic plugin. Tendon compliance is
+not part of the Gymnasium id.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +21,15 @@ from myosuite.envs.myo.athletic.factory import (
     mjlab_env_cfg_from_bundle,
     task_config_from_bundle,
 )
-from myosuite.envs.myo.athletic.specs import AthleticBundle, PlantSpec, TaskSpec, TermRef
+from myosuite.envs.myo.athletic.specs import (
+    DEFAULT_MODEL,
+    DEFAULT_TENDONS,
+    AthleticBundle,
+    PlantSpec,
+    TaskSpec,
+    TendonKind,
+    TermRef,
+)
 from myosuite.envs.myo.tasks.basic.full_body.athletic_contract import AthleticSpec
 
 _LOG = logging.getLogger(__name__)
@@ -35,6 +49,12 @@ def _load_myofullbody_simple():
     import myo_sim
 
     return myo_sim.load_spec("myofullbody_simple")
+
+
+def _load_myofullbody():
+    import myo_sim
+
+    return myo_sim.load_spec("myofullbody")
 
 
 PLANTS: dict[str, PlantSpec] = {
@@ -65,6 +85,35 @@ PLANTS: dict[str, PlantSpec] = {
         use_golden_sprint_cfg=False,
         env_id_prefix="FullbodySimple",
         aliases=("myoFullbodySimpleSprint-v0",),
+        capabilities=frozenset(
+            {
+                "lanes",
+                "hop",
+                "hurdles",
+                "blocks",
+                "curve",
+                "vertical",
+                "carioca",
+                "locomotion",
+                "imitate",
+            }
+        ),
+    ),
+    # Default skeleton. Rigid tendons are native mjMUSCLE; elastic selects
+    # the plugin (AthleticBundle.action_kind) and is not a second plant key.
+    "myofullbody": PlantSpec(
+        key="myofullbody",
+        entity_name="fullbody",
+        model_recipe="myofullbody",
+        heading_dir=(-1.0, 0.0),
+        up_axis="z",
+        fall_height=0.6,
+        body_map=FULLBODY_SIMPLE_BODY_MAP,
+        action_kind="native_muscle",
+        load_spec=_load_myofullbody,
+        use_golden_sprint_cfg=False,
+        env_id_prefix="Fullbody",
+        aliases=("myoFullbodySprint-v0",),
         capabilities=frozenset(
             {
                 "lanes",
@@ -298,14 +347,57 @@ def iter_bundles(
     return out
 
 
+def _resolve_model(model: str | None, plant: str | None) -> str:
+    """``model`` is the skeleton. ``plant`` is the previous name of that argument."""
+    if model is not None and plant is not None and model != plant:
+        raise ValueError("pass model or plant, not both")
+    if model is not None:
+        return model
+    if plant is not None:
+        return plant
+    return DEFAULT_MODEL
+
+
+def athletic_bundle(
+    task: str,
+    model: str | None = None,
+    tendons: TendonKind = DEFAULT_TENDONS,
+    *,
+    plant: str | None = None,
+) -> AthleticBundle:
+    """Resolve a task, skeleton, and series element without building an env.
+
+    ``model`` defaults to ``myofullbody``. ``tendons`` defaults to ``rigid``.
+    """
+    chosen = _resolve_model(model, plant)
+    if task not in TASKS:
+        raise ValueError(f"unknown athletic task {task!r}; expected one of {tuple(TASKS)}")
+    if chosen not in PLANTS:
+        raise ValueError(f"unknown athletic model {chosen!r}; expected one of {tuple(PLANTS)}")
+    if tendons not in ("rigid", "elastic"):
+        raise ValueError(f"unknown tendons {tendons!r}; expected 'rigid' or 'elastic'")
+    return AthleticBundle(task=TASKS[task], plant=PLANTS[chosen], tendons=tendons)
+
+
 def make_athletic(
     task: str,
-    plant: str,
+    model: str | None = None,
     backend: str = "mjlab",
+    *,
+    tendons: TendonKind = DEFAULT_TENDONS,
+    plant: str | None = None,
     **overrides: Any,
 ) -> Any:
-    """Create an athletic env from catalog keys (``make_athletic('hop', 'myofullbody_simple')``)."""
-    bundle = AthleticBundle(task=TASKS[task], plant=PLANTS[plant])
+    """Create an athletic env.
+
+    ``make_athletic("sprint")`` is ``myofullbody`` with rigid tendons.
+    ``make_athletic("sprint", "myofullbody_simple", tendons="elastic")``
+    selects the reduced skeleton and the series-elastic plugin. ``plant``
+    is the previous name of ``model``. Registered ids stay one per task and
+    skeleton (``myoFullbodySprint-v0``, ``myoFullbodySimpleSprint-v0``);
+    ``tendons`` is a constructor argument, not part of the id.
+    """
+    bundle = athletic_bundle(task, model, tendons, plant=plant)
     return make_athletic_env(bundle, backend=backend, **overrides)
 
 
@@ -317,7 +409,9 @@ def register_athletic_matrix(
 ) -> list[str]:
     """Register CPU ModularTaskEnv and/or mjlab tasks for the athletic matrix.
 
-    Returns list of registered env ids. Bolt ``myoSprint-v0`` keeps its golden
+    Returns list of registered env ids. Registration is always rigid tendons.
+    Pass ``tendons`` to :func:`make_athletic` or ``gym.make`` to request the
+    series element. Bolt ``myoSprint-v0`` keeps its golden
     ``make_sprint_env_cfg`` path via ``PlantSpec.use_golden_sprint_cfg``.
     """
     backends = backends or {"cpu", "mjlab"}
@@ -326,10 +420,18 @@ def register_athletic_matrix(
         env_id = bundle.env_id()
         if "cpu" in backends and bundle.plant.model_recipe in _CPU_RECIPES:
             try:
-                from myosuite.core.registry import register_task
+                from myosuite.core.registry import register_env
 
                 cfg = task_config_from_bundle(bundle)
-                register_task(cfg, env_id=env_id, backends={"cpu"})
+                register_env(
+                    env_id=env_id,
+                    entry_point=(
+                        "myosuite.envs.myo.athletic.factory:AthleticModularTaskEnv"
+                    ),
+                    max_episode_steps=cfg.max_episode_steps,
+                    config=cfg.to_env_config(env_id=env_id),
+                    kwargs={"task_config": cfg},
+                )
                 registered.append(env_id)
             except Exception:
                 _LOG.warning("athletic CPU register failed for %s", env_id, exc_info=True)
@@ -372,4 +474,4 @@ def register_athletic_matrix(
 
 
 # CPU ModularTaskEnv only for plants that have a model recipe registered.
-_CPU_RECIPES = frozenset({"myofullbody_simple"})
+_CPU_RECIPES = frozenset({"myofullbody_simple", "myofullbody"})

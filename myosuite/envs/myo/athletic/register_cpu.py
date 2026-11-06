@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from myosuite.envs.myo.athletic.catalog import register_athletic_matrix
 
-# myofullbody_simple has a ModularTaskEnv model recipe; bolt sprinter is mjlab-only.
+# Fullbody skeletons have ModularTaskEnv recipes. The sprinter is mjlab-only.
+# Registration is rigid tendons; pass tendons= to make_athletic or gym.make.
 register_athletic_matrix(
-    plants=("myofullbody_simple",),
+    plants=("myofullbody", "myofullbody_simple"),
     backends={"cpu"},
 )

@@ -18,7 +18,8 @@ from myosuite.core.config import (
     RewardSpec,
     TaskConfig,
 )
-from myosuite.envs.myo.athletic.specs import AthleticBundle
+from myosuite.envs.modular_env import ModularTaskEnv
+from myosuite.envs.myo.athletic.specs import AthleticBundle, ensure_tendons_applied
 from myosuite.envs.myo.athletic.terms import default_lane_reward_terms
 from myosuite.envs.myo.tasks.basic.full_body.athletic_contract import AthleticSpec
 
@@ -42,6 +43,8 @@ def task_config_from_bundle(bundle: AthleticBundle) -> TaskConfig:
         "facing_angle_deg": spec.facing_angle_deg,
         "task_key": bundle.task.key,
         **dict(bundle.task.extra),
+        "model": bundle.plant.key,
+        "tendons": bundle.tendons,
     }
     reward_term = "sprint"
     if bundle.task.kind == "locomotion":
@@ -139,10 +142,12 @@ def mjlab_env_cfg_from_bundle(
 ) -> Any:
     """Build ManagerBasedRlEnvCfg for an athletic bundle.
 
-    **Bit-match freeze:** ``myosprinter`` × ``sprint`` always delegates to
-    :func:`make_sprint_env_cfg` so existing TD3 policies and Phase 5/6 gates
-    stay identical.
+    **Bit-match freeze:** ``myosprinter`` × ``sprint`` with rigid tendons
+    delegates to :func:`make_sprint_env_cfg` so existing TD3 policies and
+    Phase 5/6 gates stay identical. Any other series element is rejected
+    before that delegation.
     """
+    ensure_tendons_applied(bundle)
     if (
         bundle.plant.use_golden_sprint_cfg
         and bundle.task.key == "sprint"
@@ -280,11 +285,12 @@ def _make_generic_athletic_env_cfg(
             },
         ),
     }
-    if plant.action_kind == "bolt_muscle":
+    if bundle.action_kind == "bolt_muscle":
         actions = {
             "bolt_muscles": BoltMuscleActionCfg(
                 entity_name=entity,
                 default_activation=kwargs.get("default_activation"),
+                tendons=bundle.tendons,
             ),
         }
     else:
@@ -333,6 +339,44 @@ def _make_generic_athletic_env_cfg(
     )
 
 
+class AthleticModularTaskEnv(ModularTaskEnv):
+    """CPU athletic env.
+
+    The registered id fixes the skeleton. ``gym.make(id)`` is that skeleton
+    with rigid tendons. ``gym.make(id, tendons="elastic")`` requests the
+    series-elastic plugin. ``model=`` must match the id.
+    """
+
+    def __init__(
+        self,
+        task_config: TaskConfig,
+        render_mode: str | None = None,
+        *,
+        tendons: str = "rigid",
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        extra = task_config.reward.extra
+        baked_model = str(extra.get("model", task_config.model))
+        if model is not None and model != baked_model:
+            raise ValueError(
+                f"{baked_model!r} is fixed by this env id; "
+                f"use make_athletic(..., model={model!r}, tendons={tendons!r}) "
+                "or the myoFullbody / myoFullbodySimple id for that skeleton"
+            )
+        if tendons not in ("rigid", "elastic"):
+            raise ValueError(f"unknown tendons {tendons!r}; expected 'rigid' or 'elastic'")
+        if tendons != "rigid":
+            raise NotImplementedError(
+                "tendons='elastic' selects the series-elastic plugin "
+                f"(model={baked_model!r}) but that element is not applied yet. "
+                "Use tendons='rigid'."
+            )
+        super().__init__(task_config, render_mode=render_mode, **kwargs)
+        self.tendons = tendons
+        self.model_name = baked_model
+
+
 def make_athletic_env(
     bundle: AthleticBundle,
     *,
@@ -341,6 +385,7 @@ def make_athletic_env(
     **overrides: Any,
 ) -> Any:
     """Instantiate an athletic environment for ``backend`` in {cpu, mjlab}."""
+    ensure_tendons_applied(bundle)
     if backend == "mjlab":
         from mjlab.envs.manager_based_rl_env import ManagerBasedRlEnv
 

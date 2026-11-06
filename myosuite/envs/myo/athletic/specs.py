@@ -2,7 +2,12 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Declarative athletic TaskSpec / PlantSpec / AthleticBundle."""
+"""Declarative athletic TaskSpec / PlantSpec / AthleticBundle.
+
+The public construction arguments are the task, the skeleton, and the series
+element. The skeleton defaults to ``myofullbody`` and the series element
+defaults to rigid tendons. Neither default is written into the Gymnasium id.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +16,16 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from myosuite.envs.myo.tasks.basic.full_body.athletic_contract import AthleticSpec
+
+# Skeletons in the athletic catalog. ``myofullbody`` is the default.
+ModelName = Literal["myofullbody", "myofullbody_simple", "myosprinter"]
+# Series element. ``rigid`` is the default. ``elastic`` selects the plugin.
+TendonKind = Literal["rigid", "elastic"]
+# ``native_muscle`` is MuJoCo ``mjMUSCLE``. ``bolt_muscle`` is the plugin.
+ActionKind = Literal["bolt_muscle", "native_muscle"]
+
+DEFAULT_MODEL: ModelName = "myofullbody"
+DEFAULT_TENDONS: TendonKind = "rigid"
 
 TaskKind = Literal[
     "sprint",
@@ -94,8 +109,9 @@ class PlantSpec:
     up_axis: Literal["y", "z"] = "z"
     fall_height: float = 0.6
     body_map: BodyMap = field(default_factory=BodyMap)
-    # "bolt_muscle" → BoltMuscleAction; "native_muscle" → MyoMuscleActivationActionCfg
-    action_kind: Literal["bolt_muscle", "native_muscle"] = "bolt_muscle"
+    # Actuator used when tendons="rigid". Elastic tendons use the plugin
+    # (see AthleticBundle.action_kind), not this field.
+    action_kind: ActionKind = "bolt_muscle"
     # Optional callable returning MjSpec (mjlab). None → use factory defaults per key.
     load_spec: Callable[[], Any] | None = None
     # Golden bolt path: factory must call make_sprint_env_cfg for sprint+this plant.
@@ -113,6 +129,19 @@ class PlantSpec:
 class AthleticBundle:
     task: TaskSpec
     plant: PlantSpec
+    tendons: TendonKind = DEFAULT_TENDONS
+
+    @property
+    def action_kind(self) -> ActionKind:
+        """Actuator for this skeleton and series element.
+
+        Rigid tendons use :attr:`PlantSpec.action_kind`. On ``myofullbody``
+        that is native ``mjMUSCLE``. Elastic tendons use the series-elastic
+        plugin on whichever skeleton was requested.
+        """
+        if self.tendons == "elastic":
+            return "bolt_muscle"
+        return self.plant.action_kind
 
     @property
     def heading_dir(self) -> tuple[float, float]:
@@ -138,6 +167,14 @@ class AthleticBundle:
         )
 
     def env_id(self) -> str:
+        """Gymnasium id for this task and skeleton.
+
+        Tendon compliance is not part of the id. ``myoFullbodySprint-v0`` is
+        ``myofullbody`` and ``myoFullbodySimpleSprint-v0`` is
+        ``myofullbody_simple``. Both are rigid unless ``tendons`` is passed
+        to :func:`~myosuite.envs.myo.athletic.catalog.make_athletic` or
+        ``gym.make``. ``myoSprint-v0`` stays the sprinter.
+        """
         prefix = self.plant.env_id_prefix
         task_title = "".join(p.capitalize() for p in self.task.key.split("_"))
         if prefix:
@@ -146,3 +183,19 @@ class AthleticBundle:
         if self.task.key == "sprint" and self.plant.key == "myosprinter":
             return "myoSprint-v0"
         return f"myo{task_title}-v0"
+
+
+def ensure_tendons_applied(bundle: AthleticBundle) -> None:
+    """Reject a series element the actuators do not apply yet.
+
+    ``tendons="elastic"`` is a real argument: it selects the plugin via
+    :attr:`AthleticBundle.action_kind`. Building an environment with it
+    before the series element is applied would silently run rigid tendons.
+    """
+    if bundle.tendons == "rigid":
+        return
+    raise NotImplementedError(
+        "tendons='elastic' selects the series-elastic plugin "
+        f"(model={bundle.plant.key!r}, action={bundle.action_kind}) "
+        "but that element is not applied yet. Use tendons='rigid'."
+    )

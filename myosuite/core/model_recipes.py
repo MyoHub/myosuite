@@ -725,6 +725,14 @@ def _myofullbody_simple(b: ModelBuilder) -> ModelBuilder:  # noqa: ARG001
     return ModelBuilder.from_spec(myo_sim.load_spec("myofullbody_simple"))
 
 
+@model_recipe("myofullbody")
+def _myofullbody(b: ModelBuilder) -> ModelBuilder:  # noqa: ARG001
+    """Full MyoSim fullbody. Rigid tendons are native mjMUSCLE."""
+    import myo_sim  # type: ignore[import-untyped]
+
+    return ModelBuilder.from_spec(myo_sim.load_spec("myofullbody"))
+
+
 # ---------------------------------------------------------------------------
 # MyoChallenge recipes
 # ---------------------------------------------------------------------------
