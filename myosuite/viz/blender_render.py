@@ -732,7 +732,11 @@ def _binding_targets(
 
 
 def _add_muscle_mesh(
-    output: Path, meta: dict[str, Any], scene: Any, material: Any
+    output: Path,
+    meta: dict[str, Any],
+    scene: Any,
+    material: Any,
+    color: tuple[float, ...] | None = None,
 ) -> None:
     """Import the skinned muscle meshes and drive their bones by the bone objects.
 
@@ -740,6 +744,7 @@ def _add_muscle_mesh(
     geom, whose animated object it then copies, so each muscle keeps its own
     weights. Every body in the scene gets its own rig and its own muscles (the
     mesh data is shared); a muscle with a bone the body lacks is left out.
+    ``color`` tints the muscles (default ``MUSCLE_UNIFORM``).
     """
     import bpy
     import numpy as np
@@ -809,7 +814,7 @@ def _add_muscle_mesh(
                 if modifier.type == "ARMATURE":
                     obj.modifiers.remove(modifier)
             obj.modifiers.new("Bones", "ARMATURE").object = rig
-            obj.color = MUSCLE_UNIFORM
+            obj.color = color or MUSCLE_UNIFORM
     for obj in imported:
         bpy.data.objects.remove(obj)
 
@@ -871,6 +876,7 @@ SKIN_BACKDROP = (0.006, 0.0065, 0.008, 1.0)
 MUSCLE_RELAXED = (0.50, 0.16, 0.15, 1.0)
 MUSCLE_ACTIVE = (0.62, 0.012, 0.02, 1.0)
 MUSCLE_UNIFORM = (0.42, 0.11, 0.10, 1.0)
+SPORT_MUSCLE = (0.45, 0.012, 0.008, 1.0)  # brighter red under the sport lights
 # MyoSuite's MuJoCo viewer colouring: activation ** 0.25 from near black to red.
 PATH_RELAXED = (0.05, 0.05, 0.05, 1.0)
 PATH_ACTIVE = (0.95, 0.3, 0.3, 1.0)
@@ -1116,7 +1122,7 @@ def build_blender_scene(output: Path) -> None:
             obj.data.materials.clear()
             obj.data.materials.append(muscle)
             obj.color = (
-                ((0.45, 0.012, 0.008, 1) if sport else MUSCLE_UNIFORM)
+                (SPORT_MUSCLE if sport else MUSCLE_UNIFORM)
                 if meta.get("muscle_color") == "uniform"
                 else _muscle_colour(0.0, meta.get("muscles") == "paths")
             )
@@ -1141,7 +1147,9 @@ def build_blender_scene(output: Path) -> None:
             obj.data.materials.append(perimeter)
     _animate_activation(output, meta, scene)
     if meta.get("muscle_mesh"):
-        _add_muscle_mesh(output, meta, scene, muscle)
+        _add_muscle_mesh(
+            output, meta, scene, muscle, SPORT_MUSCLE if sport else MUSCLE_UNIFORM
+        )
 
     low, high = (Vector(v) for v in meta["bounds"])
     center = (low + high) / 2

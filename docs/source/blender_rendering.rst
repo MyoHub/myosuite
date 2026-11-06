@@ -185,6 +185,19 @@ Reproduce the Breakaway still from the repository root:
        --seconds 0.0333333333 --resolution 1280 720 --samples 48 \
        --preview --output renders/breakaway
 
+With ``--muscle-mesh atlas`` in place of ``--muscles paths``, the anatomical
+muscle meshes (see *Anatomical muscle meshes* below) are drawn on both agents in the
+sport red. They follow the bones, so the shoulder paths, which fold back in
+extreme arm poses, are not shown:
+
+.. code-block:: bash
+
+   python scripts/render_blender.py --env myoChallengeChaseTagFBVs-v0 \
+       --motion docs/source/images/rendering/chase_tag_breakaway.npz \
+       --scene sport --muscle-mesh atlas --muscle-color uniform \
+       --seconds 0.0333333333 --resolution 1280 720 --samples 48 \
+       --preview --output renders/breakaway-atlas
+
 The supplied clip holds a hand-staged pose for two samples at 30 Hz, with
 joint couplings and tendon paths recomputed in MuJoCo. It is a composition
 example, not a learned or contact-validated rollout. The preset preserves
