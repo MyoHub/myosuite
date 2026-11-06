@@ -37,9 +37,68 @@ def _tune_mjv_scene_for_rgb(scene: Any) -> None:
     scene.flags[int(mujoco.mjtRndFlag.mjRND_SKYBOX)] = 0
 
 
-def _sport_mjv_scene(scene: Any) -> None:
+def _sport_court(scene: Any, model: Any, data: Any) -> None:
+    """Add chase-tag identity graphics to the scene, never the physics model."""
+    bodies = [
+        mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"a{i}_pelvis")
+        for i in range(2)
+    ]
+    floors = [
+        g for g in scene.geoms[: scene.ngeom] if g.type == mujoco.mjtGeom.mjGEOM_PLANE
+    ]
+    if min(bodies) < 0 or not floors:
+        return
+    z = max(float(g.pos[2]) for g in floors) + 0.008
+    strokes = []
+    for body, color in zip(bodies, ((1.0, 0.17, 0.008, 1), (0.005, 0.55, 0.95, 1))):
+        x, y = data.xpos[body, :2]
+        for begin, end, radius, width in (
+            (0.08, 0.85, 0.46, 0.007),
+            (0.28, 0.62, 0.60, 0.0025),
+        ):
+            angles = np.linspace(begin, end, 49) * 2 * np.pi
+            points = np.column_stack(
+                (
+                    x + radius * np.cos(angles),
+                    y + radius * np.sin(angles),
+                    np.full(49, z),
+                )
+            )
+            strokes.extend(
+                (a, b, width, color) for a, b in zip(points[:-1], points[1:])
+            )
+    for y in (-1.4, 1.4):
+        strokes.append(([-5.8, y, z], [5.8, y, z], 0.01, (0.28, 0.34, 0.4, 1)))
+    if scene.ngeom + len(strokes) > scene.maxgeom:
+        return
+    for start, end, width, color in strokes:
+        geom = scene.geoms[scene.ngeom]
+        mujoco.mjv_initGeom(
+            geom,
+            mujoco.mjtGeom.mjGEOM_CAPSULE,
+            np.zeros(3),
+            np.zeros(3),
+            np.eye(3).ravel(),
+            np.asarray(color),
+        )
+        mujoco.mjv_connector(
+            geom,
+            mujoco.mjtGeom.mjGEOM_CAPSULE,
+            width,
+            np.asarray(start),
+            np.asarray(end),
+        )
+        geom.emission = 0.6
+        scene.ngeom += 1
+
+
+def _sport_mjv_scene(scene: Any, model: Any, data: Any) -> None:
     """Style an RGB scene without editing its shared model or simulation data."""
     for geom in scene.geoms[: scene.ngeom]:
+        if geom.objtype == mujoco.mjtObj.mjOBJ_GEOM and geom.objid >= 0:
+            name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, geom.objid) or ""
+            if any(part in name for part in ("fence", "corner")):
+                geom.rgba[:3] = [0.035, 0.05, 0.065]
         if geom.type in (mujoco.mjtGeom.mjGEOM_PLANE, mujoco.mjtGeom.mjGEOM_HFIELD):
             geom.rgba[:3] = [0.055, 0.12, 0.19]
             if hasattr(geom, "texid"):
@@ -72,6 +131,7 @@ def _sport_mjv_scene(scene: Any) -> None:
         light.cutoff = 180.0
         light.exponent = 0.0
     scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = 1
+    _sport_court(scene, model, data)
 
 
 class MJRenderer(Renderer):
@@ -191,7 +251,7 @@ class MJRenderer(Renderer):
             )
             _tune_mjv_scene_for_rgb(self._renderer.scene)
             if scene == "sport":
-                _sport_mjv_scene(self._renderer.scene)
+                _sport_mjv_scene(self._renderer.scene, self._mj_model, self._mj_data)
             rgb_arr = self._renderer.render()
         if depth:
             self._renderer.enable_depth_rendering()
