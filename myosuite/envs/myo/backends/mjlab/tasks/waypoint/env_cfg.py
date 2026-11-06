@@ -171,6 +171,9 @@ def make_waypoint_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
             },
         ),
     }
+    metrics = {"success": MetricsTermCfg(func=wmdp.solved, reduce="last")}
+    if info.na > 0:
+        metrics[mdp.SATURATION_TERM] = mdp.muscle_saturation_metric()
     step_dt = info.opt_timestep * task.frame_skip
     return ManagerBasedRlEnvCfg(
         scene=SceneCfg(
@@ -189,7 +192,7 @@ def make_waypoint_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
         },
         rewards=rewards,
         terminations=terminations,
-        metrics={"success": MetricsTermCfg(func=wmdp.solved, reduce="last")},
+        metrics=metrics,
         events=events,
         sim=SimulationCfg(mujoco=info.mujoco_cfg, njmax=_NJMAX, nconmax=_NCONMAX),
         decimation=task.frame_skip,
