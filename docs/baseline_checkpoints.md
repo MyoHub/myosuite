@@ -23,10 +23,10 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 
 | Env                          | Checkpoint         | Deterministic success (mjlab) |
 | ---------------------------- | ------------------ | ----------------------------- |
-| motorFingerPoseFixed-v0      | `model_107.pt`     | 100.0%                        |
-| motorFingerPoseRandom-v0     | `model_1090.pt`    | 99.7%                         |
-| motorFingerReachFixed-v0     | `model_134.pt`     | 100.0%                        |
-| motorFingerReachRandom-v0    | `model_156.pt`     | 97.5%                         |
+| motorFingerPoseFixed-v0      | `model_83.pt`      | 100.0%                        |
+| motorFingerPoseRandom-v0     | `model_1499.pt`    | 99.6%                         |
+| motorFingerReachFixed-v0     | `model_57.pt`      | 100.0%                        |
+| motorFingerReachRandom-v0    | `model_1499.pt`    | 100.0%                        |
 | myoArmReachFixed-v0          | `model_696.pt`   | 100.0%                        |
 | myoArmReachRandom-v0         | `model_4999.pt`  | 79.7%                         |
 | myoChallengeChaseTagFBP2-v0  | -                  | -                             |
