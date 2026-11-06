@@ -56,9 +56,8 @@ finally:
     env.close()
 ```
 
-The [Python lesson](../tutorials/4.5_Halloween_Avoidance.py) and
-[Colab notebook](../tutorials/4.5_Halloween_Avoidance.ipynb) add comments, recording,
-quantitative assertions, and exercises. The notebook and Python code match.
+The [Colab notebook](../tutorials/4.5_Halloween_Avoidance.ipynb) adds comments, recording,
+quantitative assertions, and exercises.
 
 ## Stable muscle-action interface, explicit profiles
 

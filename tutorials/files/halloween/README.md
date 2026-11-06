@@ -9,6 +9,6 @@ These preserve the existing MyoHalloween `reactive_selector_v2` artifacts. TERRA
 
 ## Follow the lesson
 
-[Notebook](../../4.5_Halloween_Avoidance.ipynb) · [Explicit Python](../../4.5_Halloween_Avoidance.py) · [Local requirements](requirements-student.txt).
+[Notebook](../../4.5_Halloween_Avoidance.ipynb) · [Local requirements](requirements-student.txt).
 
-The lesson shows environment loading, seeded reset, controller loading, muscle-action stepping, rendering and quantitative checks. Task construction and contacts live in the environment; the controller reuses TERRA. No private repository access is required. For local use, download the Python file and requirements into one directory, create a Python 3.12 virtual environment, install the requirements and run the file. CPU with EGL is the verified rendering path; Colab is recommended on macOS/Windows.
+The lesson shows environment loading, seeded reset, controller loading, muscle-action stepping, rendering and quantitative checks. Task construction and contacts live in the environment; the controller reuses TERRA. No private repository access is required. For local use, run the notebook in Jupyter with a Python 3.12 environment using the pinned requirements. CPU with EGL is the verified rendering path; Colab is recommended on macOS/Windows.
