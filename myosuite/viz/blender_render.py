@@ -215,6 +215,22 @@ def export_rollout(
         def _load_geom(self, geom: Any) -> None:
             if (
                 geom.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN
+                and geom.objid < self.sport_overlay_count
+            ):
+                name = self._get_geom_name(geom)
+                # Court paint needs a thin box, not a tessellated capsule.
+                mesh_config = shapes.mesh_config_generator(
+                    name,
+                    mujoco.mjtGeom.mjGEOM_BOX,
+                    np.array([geom.size[0], geom.size[0], geom.size[2]]),
+                )
+                self.geom_refs[name] = objects.USDPrimitiveMesh(
+                    mesh_config, self.stage, self.model, geom, name, rgba=geom.rgba
+                )
+                self.geom_names.add(name)
+                return
+            if (
+                geom.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN
                 and geom.type == mujoco.mjtGeom.mjGEOM_MESH
             ):
                 name = self._get_geom_name(geom)
@@ -962,7 +978,7 @@ def _add_sport_arena(
         color = shader.inputs["Base Color"].default_value if shader else (0, 0, 0)
         if max(color[:3]) - min(color[:3]) >= 0.15:
             arcs.setdefault("orange" if color[0] > color[2] else "cyan", []).append(obj)
-    centres = []
+    centres, glows = [], []
     for team, objects in arcs.items():
         thickness = {o: o.dimensions.z for o in objects}
         inner = [o for o in objects if thickness[o] >= max(thickness.values()) * 0.8]
@@ -973,6 +989,7 @@ def _add_sport_arena(
         )
         glow = bpy.context.object
         glow.name = f"Team glow {team}"
+        glows.append(glow)
         # Follow the arc: it only translates with its agent.
         follow = glow.constraints.new("COPY_LOCATION")
         follow.target, follow.use_offset = inner[0], True
@@ -1009,6 +1026,14 @@ def _add_sport_arena(
         return
     middle = sum(centres, Vector()) / len(centres)
     focus = middle + Vector((0, 0, 0.95))
+    focus_target = bpy.data.objects.new("Arena focus", None)
+    scene.collection.objects.link(focus_target)
+    focus_target.location.z = focus.z
+    for index, glow in enumerate(glows):
+        follow = focus_target.constraints.new("COPY_LOCATION")
+        follow.target = glow
+        follow.influence = 1.0 / (index + 1)
+        follow.use_z = False
 
     # Arena: LED ribbon and light bars far behind the court, dark stands behind them.
     ahead = Vector((forward.x, forward.y, 0)).normalized()
@@ -1055,7 +1080,7 @@ def _add_sport_arena(
 
     # Lens: shallow depth of field on the agents.
     camera.data.dof.use_dof = True
-    camera.data.dof.focus_distance = (focus - camera.location).length
+    camera.data.dof.focus_object = focus_target
     camera.data.dof.aperture_fstop = 2.0
     _add_bloom(scene)
 
