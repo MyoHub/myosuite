@@ -34,12 +34,15 @@ dependencies = [
     "scipy",
     "pandas",
     "osqp",
-    "mujoco",
-    "Pillow>=10.1.0",
+    "mujoco<4",
+    # 13.0.0 clears the current image advisories, but gradio 6.31.0 still
+    # requires pillow<13. A Colab install that also has gradio, or a tutorial
+    # that pins Pillow 12.2.0, cannot resolve against a 13 floor.
+    "Pillow>=10.1.0,<13",
     "colorednoise>=2.2.0",
     "packaging",
     "ml-collections>=0.1.1",
-    "myo-sim==0.2.3",
+    "myo-sim==0.2.4",
     # onnxruntime <=1.23.2 is the last line shipping cp310 wheels and >=1.24.1 the
     # first shipping cp314, so no single version spans 3.10-3.14; split by marker.
     "onnxruntime<1.21; python_version < '3.14'",
@@ -80,7 +83,7 @@ examples = [
 mjlab = [
     "torch>=2.13.0; python_version >= '3.10'",
     "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14'",
-    "mujoco-warp>=3.7.0; python_version >= '3.10' and python_version < '3.14'",
+    "mujoco-warp>=3.7.0,<4; python_version >= '3.10' and python_version < '3.14'",
     "warp-lang>=1.12.0; python_version >= '3.10'",
     # mjlab's own rsl_rl dependency (rsl-rl-lib) still passes the deprecated
     # wandb.Settings(start_method=...) kwarg; wandb>=0.29.0 rewrote Settings to
@@ -151,14 +154,14 @@ dev = [
     "pytest>=9.0.3",
     "pytest-xvfb",
     "pytest-benchmark>=4.0",
-    "black",
+    "black>=26.10.1",
     "isort",
     "flake8",
 ]
 
 
 [build-system]
-requires = ["setuptools>=83", "wheel"]
+requires = ["setuptools>=84.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -229,11 +232,17 @@ extend-exclude = ["tutorials"]
 # while orbax-checkpoint wants jax>=0.6; MJX is opt-in and not part of `[dev]`.
 constraint-dependencies = [
     "torch>=2.13.0",
+    "certifi>=2026.10.18",
     "cryptography>=48.0.1",
     "idna>=3.15",
     "lxml>=6.1.0",
-    "msgpack>=1.2.1",
+    # filelock 4.2.1 clears the current advisories and requires Python >=3.11.
+    # Later 3.x releases add advisories and still do not clear the old ones.
+    "filelock>=4.2.5; python_version >= '3.11'",
+    "filelock>=3.25.2,<3.28; python_version < '3.11'",
+    "gitpython>=3.2.1",
+    "msgpack>=1.2.3",
     "paramiko>=5.0.0",
-    "setuptools>=83.0.0",
+    "setuptools>=84.1.0",
     "urllib3>=2.7.0",
 ]

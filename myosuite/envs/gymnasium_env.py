@@ -478,6 +478,21 @@ class MyoGymnasiumEnv(gym.Env):
         """
         return gym.spaces.Box(-np.inf, np.inf, shape=(obs_dim,), dtype=np.float32)
 
+    def _set_success_indicator(self, site_id: int, solved: bool) -> None:
+        """Colour a success indicator site green while solved and red otherwise.
+
+        Tasks put the site on the target object and call this from their reward
+        code. Only the red and green channels change; blue, alpha and size keep
+        their values, so a task can still hide or resize its indicator.
+
+        Args:
+            site_id: Id of the indicator site; a negative id (no such site in
+                the model) does nothing.
+            solved: Whether the task is solved.
+        """
+        if site_id >= 0:
+            self.model.site_rgba[site_id, :2] = (0.0, 2.0) if solved else (2.0, 0.0)
+
     def _ensure_obs_gymnasium_compliant(self, obs: np.ndarray) -> np.ndarray:
         """Cast obs to float32, the dtype of the observation space; never clip.
 

@@ -88,6 +88,7 @@ def register_env(
     backend_configs: dict[str, Any] | None = None,
     wrap_mj_instability_termination: bool = True,
     time_limit: bool = True,
+    mjlab_task_kwargs: bool = False,
     **kwargs: Any,
 ) -> None:
     """Register an environment for the CPU (Gymnasium) path.
@@ -108,6 +109,8 @@ def register_env(
             itself, such as the multi-agent env, whose per-agent ``truncated``
             dict ``TimeLimit`` would replace with a bare ``True``; the limit is
             then only recorded here.
+        mjlab_task_kwargs: Whether the mjlab twin supports constructor overrides
+            through ``EnvConfig.task_kwargs`` when rebuilt from the CPU registration.
         **kwargs: Additional keyword arguments forwarded to gym.register().
 
     Example:
@@ -126,6 +129,7 @@ def register_env(
         "entry_point": entry_point,
         "max_episode_steps": max_episode_steps,
         "backend_configs": backend_configs or {},
+        "mjlab_task_kwargs": mjlab_task_kwargs,
         "additional_wrappers": kwargs["additional_wrappers"],
     }
     gym_max_episode_steps = max_episode_steps if time_limit else None
@@ -471,7 +475,9 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # something else imported the backend first.
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
 
-    if config.task_kwargs:
+    if config.task_kwargs and not _ENV_REGISTRY.get(config.env_id, {}).get(
+        "mjlab_task_kwargs", False
+    ):
         raise NotImplementedError(
             "EnvConfig.task_kwargs are CPU env constructor kwargs; the mjlab twin reads "
             "them from the registration."
@@ -483,6 +489,7 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
 
     if hasattr(mjlab.envs, "make") and not (
         config.features
+        or config.task_kwargs
         or config.max_episode_steps is not None
         or config.ctrl_dt is not None
     ):
@@ -508,19 +515,19 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # The registered cfg is built once at import; features and ctrl_dt rebuild it from
     # the CPU registration (extra wrappers, ``frame_skip``).
     cfg = load_env_cfg(env_id)
-    task_kwargs: dict[str, Any] = {}
-    if config.ctrl_dt is not None:
-        n_substeps = _substeps(config.ctrl_dt, cfg.sim.mujoco.timestep)
-        if n_substeps != cfg.decimation:
-            task_kwargs["frame_skip"] = n_substeps
-    # The twin-rebuild modules are imported only when needed: a plain call works with
-    # any mjlab build that provides tasks.registry.
-    if config.features or task_kwargs:
+    task_kwargs: dict[str, Any] = dict(config.task_kwargs)
+    if config.features or task_kwargs or config.ctrl_dt is not None:
         from myosuite.envs.myo.backends.mjlab.tasks.registration import (  # noqa: PLC0415
             rebuild_twin_cfg,
         )
 
+    if config.features or task_kwargs:
         cfg = rebuild_twin_cfg(env_id, config.features, task_kwargs)
+    if config.ctrl_dt is not None:
+        n_substeps = _substeps(config.ctrl_dt, cfg.sim.mujoco.timestep)
+        if n_substeps != cfg.decimation:
+            task_kwargs["frame_skip"] = n_substeps
+            cfg = rebuild_twin_cfg(env_id, config.features, task_kwargs)
 
     num_envs = options.pop("num_envs", None)
     if num_envs is not None and hasattr(cfg, "scene"):

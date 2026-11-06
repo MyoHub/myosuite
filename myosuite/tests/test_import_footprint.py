@@ -31,6 +31,9 @@ _MUSCLEMIMIC_SOURCES = (
     f"{_MUSCLEMIMIC}.myotorso_bimanual_model",
     f"{_MUSCLEMIMIC}.fullbody_model",
     f"{_MUSCLEMIMIC}.fullbody_native_playback",
+    f"{_MUSCLEMIMIC}.terrain_observation",
+    f"{_MUSCLEMIMIC}.terrain_policy",
+    f"{_MUSCLEMIMIC}.reference_motion",
     "myosuite.core.playback_contract",
 )
 
