@@ -12,7 +12,7 @@ import pytest
 
 import myosuite.utils.video_io as video_io
 from myosuite.utils.policy_utils import examine_policy
-from myosuite.viz.mj_renderer import MJRenderer
+from myosuite.viz.mj_renderer import MJRenderer, _sport_court
 from myosuite import make_env
 from myosuite.envs.gymnasium_env import MyoGymnasiumEnv
 
@@ -119,6 +119,56 @@ def test_offscreen_rejects_unknown_scene(scene) -> None:
     _, _, renderer = scene
     with pytest.raises(ValueError, match="Unknown offscreen scene"):
         renderer.render_offscreen(scene="unknown")
+
+
+def test_sport_graphics_follow_agents_and_preserve_sensors() -> None:
+    """Identity arcs follow the current pose and stay out of depth/segmentation."""
+    model = mujoco.MjModel.from_xml_string("""<mujoco><worldbody>
+      <geom type="plane" size="6 6 .1"/>
+      <body name="a0_pelvis" pos="-.6 0 .5"><freejoint/><geom size=".1"/></body>
+      <body name="a1_pelvis" pos=".6 0 .5"><freejoint/><geom size=".1"/></body>
+    </worldbody></mujoco>""")
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    renderer = MJRenderer(model, data)
+    try:
+        original = renderer.render_offscreen(
+            width=160, height=120, depth=True, segmentation=True
+        )
+        count = renderer._renderer.scene.ngeom
+        qpos, rgba = data.qpos.copy(), model.geom_rgba.copy()
+        sport = renderer.render_offscreen(
+            width=160, height=120, depth=True, segmentation=True, scene="sport"
+        )
+        np.testing.assert_array_equal(sport[1], original[1])
+        np.testing.assert_array_equal(sport[2], original[2])
+        np.testing.assert_array_equal(data.qpos, qpos)
+        np.testing.assert_array_equal(model.geom_rgba, rgba)
+        renderer.render_offscreen(width=160, height=120, scene="sport")
+        assert renderer._renderer.scene.ngeom > count
+        first = renderer._renderer.scene.geoms[count].pos.copy()
+        data.qpos[0] += 0.25
+        mujoco.mj_forward(model, data)
+        renderer.render_offscreen(width=160, height=120, scene="sport")
+        np.testing.assert_allclose(
+            renderer._renderer.scene.geoms[count].pos - first, [0.25, 0, 0], atol=1e-6
+        )
+        renderer.render_offscreen(width=160, height=120)
+        assert renderer._renderer.scene.ngeom == count
+        limited = mujoco.MjvScene(model, maxgeom=1)
+        mujoco.mjv_initGeom(
+            limited.geoms[0],
+            mujoco.mjtGeom.mjGEOM_PLANE,
+            np.ones(3),
+            np.zeros(3),
+            np.eye(3).ravel(),
+            np.ones(4),
+        )
+        limited.ngeom = 1
+        _sport_court(limited, model, data)
+        assert limited.ngeom == 1
+    finally:
+        renderer.close()
 
 
 @pytest.mark.parametrize("render_scene", [None, "default"])

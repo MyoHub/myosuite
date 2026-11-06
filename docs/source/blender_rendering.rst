@@ -148,8 +148,11 @@ visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
   lights, and an 85 mm perspective camera. Use ``--scene mujoco`` to keep the
   task's own floor, for example a soccer pitch or an arena.
 - **Sport** (``--scene sport``). Keeps the task geometry and gives floor planes
-  a navy material, with orange/cyan rim lights, a dark background and a lower
-  50 mm camera. Camera fitting still samples the recorded poses. The light
+  a navy material, with Breakaway's orange/cyan rim lights, bright anatomy,
+  dark perimeter and a low 45 mm camera with a slight roll. Chase-tag exports
+  include sparse court lines and broken identity arcs following both agents.
+  The arcs are decorative, not tag radii, paths or performance data.
+  Camera fitting still samples the recorded poses. The light
   colours are fixed scene accents, independent of agent roles and muscle
   activation. For a chase-tag preview from a recorded joint-state clip:
 
@@ -168,9 +171,24 @@ samples three poses with a margin; check longer clips for framing before final u
 .. figure:: images/rendering/sport_blender.jpg
    :alt: Chase-tag Blender rendering with studio and sport scene presets
 
-   Studio (left) and sport (right), using the same held standing pose and
-   each preset's camera and lighting. Blender 4.3.2, Cycles, 32 samples;
+   Studio (left) and sport (right), using the same staged Breakaway pose and
+   each preset's camera and lighting. Blender 4.3.2, Cycles, 48 samples;
    uniform muscle colour, not measured activation.
+
+Reproduce the Breakaway still from the repository root:
+
+.. code-block:: bash
+
+   python scripts/render_blender.py --env myoChallengeChaseTagFBVs-v0 \
+       --motion docs/source/images/rendering/chase_tag_breakaway.npz \
+       --scene sport --muscles paths --muscle-color uniform \
+       --seconds 0.0333333333 --resolution 1280 720 --samples 48 \
+       --preview --output renders/breakaway
+
+The supplied clip holds a hand-staged pose for two samples at 30 Hz, with
+joint couplings and tendon paths recomputed in MuJoCo. It is a composition
+example, not a learned or contact-validated rollout. The preset preserves
+recorded poses; use an actual checkpoint or motion recording for action footage.
 
 Body skin
 ---------

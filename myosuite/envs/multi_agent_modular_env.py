@@ -284,7 +284,7 @@ class ModularMultiAgentTaskEnv(gym.Env):
                 )
 
                 _tune_mjv_scene_for_rgb(self._renderer.scene)
-                _sport_mjv_scene(self._renderer.scene)
+                _sport_mjv_scene(self._renderer.scene, self.model, self.data)
             return self._renderer.render()
 
         if self.render_mode == "human":

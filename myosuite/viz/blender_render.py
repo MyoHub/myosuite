@@ -61,7 +61,7 @@ class RenderConfig:
             keeps one anatomical red, e.g. for still renders.
         muscle_scale: Multiplier of all muscle radii.
         scene: ``"studio"`` backdrop, ``"mujoco"`` task floor, or ``"sport"``
-            navy floor with orange/cyan rim lights and a lower camera.
+            Breakaway lighting, navy court graphics and a low 45 mm camera.
         skin: ``.skn`` body skin, a rigged ``.glb`` skin in the model's rest pose
             (:mod:`myosuite.viz.skin_glb`), or ``"fullbody"`` for the bundled one; ``None``
             renders no skin.
@@ -193,15 +193,22 @@ def export_rollout(
     class NamedUSDExporter(USDExporter):
         def _update_scene(self, data: Any, **kwargs: Any) -> None:
             super()._update_scene(data, **kwargs)
+            start = self.scene.ngeom
+            if config.scene == "sport":
+                from myosuite.viz.mj_renderer import _sport_court
+
+                _sport_court(self.scene, self.model, data)
+            self.sport_overlay_count = self.scene.ngeom - start
             if viz_fn is not None:
-                start = self.scene.ngeom
                 viz_fn(self.frame_count - 1, self.model, data, self.scene)
-                for index in range(start, self.scene.ngeom):
-                    self.scene.geoms[index].objtype = mujoco.mjtObj.mjOBJ_UNKNOWN
-                    self.scene.geoms[index].objid = index - start
+            for index in range(start, self.scene.ngeom):
+                self.scene.geoms[index].objtype = mujoco.mjtObj.mjOBJ_UNKNOWN
+                self.scene.geoms[index].objid = index - start
 
         def _get_geom_name(self, geom: Any) -> str:
             if geom.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN:
+                if geom.objid < getattr(self, "sport_overlay_count", 0):
+                    return f"Sport_{geom.objid}"
                 return f"Overlay_{geom.objid}"
             return Tf.MakeValidIdentifier(super()._get_geom_name(geom))
 
@@ -336,6 +343,11 @@ def export_rollout(
                 low = np.minimum(low, skin_frames[-1].min(0))
                 high = np.maximum(high, skin_frames[-1].max(0))
             for geom in exporter.scene.geoms[: exporter.scene.ngeom]:
+                if (
+                    geom.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN
+                    and geom.objid < exporter.sport_overlay_count
+                ):
+                    continue
                 if geom.type != mujoco.mjtGeom.mjGEOM_PLANE and not (
                     geom.objtype == mujoco.mjtObj.mjOBJ_GEOM
                     and model.geom_bodyid[geom.objid] == 0
@@ -359,9 +371,16 @@ def export_rollout(
         scene_geoms = exporter.scene.geoms[: exporter.scene.ngeom]
 
         def _is_static(g: Any) -> bool:
-            return g.type == mujoco.mjtGeom.mjGEOM_PLANE or (
-                g.objtype == mujoco.mjtObj.mjOBJ_GEOM
-                and model.geom_bodyid[g.objid] == 0
+            return (
+                (
+                    g.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN
+                    and g.objid < exporter.sport_overlay_count
+                )
+                or g.type == mujoco.mjtGeom.mjGEOM_PLANE
+                or (
+                    g.objtype == mujoco.mjtObj.mjOBJ_GEOM
+                    and model.geom_bodyid[g.objid] == 0
+                )
             )
 
         dt = float(np.median(np.diff(times)))
@@ -839,10 +858,11 @@ STUDIO_LIGHTS = [
     ("Rim", (0.5, 1.4, 1.2), 70, (1.0, 1.0, 1.0)),
 ]
 SPORT_LIGHTS = [
-    ("Key", (-0.7, -1.0, 1.2), 45, (1.0, 0.93, 0.82)),
-    ("Fill", (1.0, -1.0, 0.7), 10, (0.8, 0.9, 1.0)),
-    ("Orange rim", (-1.0, 0.6, 0.8), 35, (1.0, 0.2, 0.025)),
-    ("Cyan rim", (1.0, 0.6, 0.8), 45, (0.015, 0.5, 1.0)),
+    ("Key", (-1.08, -1.74, 1.75), 185, (1.0, 0.93, 0.82)),
+    ("Fill", (0.73, -1.32, 0.92), 40, (0.8, 0.9, 1.0)),
+    ("Orange rim", (-1.03, 0.83, 0.86), 200, (1.0, 0.2, 0.025)),
+    ("Cyan rim", (0.75, 0.10, 1.08), 262, (0.015, 0.5, 1.0)),
+    ("Top softbox", (0.0, 0.0, 2.3), 77, (0.85, 0.9, 1.0)),
 ]
 EXPOSURE = 0.0
 BACKDROP = (0.16, 0.16, 0.17, 1.0)
@@ -1013,13 +1033,14 @@ def build_blender_scene(output: Path) -> None:
     sport_floor = (
         material("Sport floor", (0.009, 0.022, 0.04, 1), 0.46) if sport else None
     )
+    perimeter = material("Perimeter", (0.012, 0.018, 0.024, 1), 0.75) if sport else None
 
     # Waxy ivory bone and glossy, translucent muscle, as in anatomical renders.
     bone = material(
         "Bone",
-        (0.80, 0.73, 0.60, 1),
-        0.45,
-        Subsurface_Weight=0.2,
+        (0.50, 0.46, 0.38, 1) if sport else (0.80, 0.73, 0.60, 1),
+        0.4 if sport else 0.45,
+        Subsurface_Weight=0.07 if sport else 0.2,
         Subsurface_Radius=(1.0, 0.7, 0.45),
         Subsurface_Scale=0.004,
         Coat_Weight=0.15,
@@ -1028,7 +1049,7 @@ def build_blender_scene(output: Path) -> None:
         "Muscle",
         MUSCLE_RELAXED,
         0.32,
-        Subsurface_Weight=0.3,
+        Subsurface_Weight=0.08 if sport else 0.3,
         Subsurface_Radius=(1.0, 0.25, 0.15),
         Subsurface_Scale=0.006,
         Coat_Weight=0.4,
@@ -1095,7 +1116,7 @@ def build_blender_scene(output: Path) -> None:
             obj.data.materials.clear()
             obj.data.materials.append(muscle)
             obj.color = (
-                MUSCLE_UNIFORM
+                ((0.45, 0.012, 0.008, 1) if sport else MUSCLE_UNIFORM)
                 if meta.get("muscle_color") == "uniform"
                 else _muscle_colour(0.0, meta.get("muscles") == "paths")
             )
@@ -1105,6 +1126,19 @@ def build_blender_scene(output: Path) -> None:
         elif sport and any(name in obj.name for name in meta.get("plane_objects", [])):
             obj.data.materials.clear()
             obj.data.materials.append(sport_floor)
+        elif sport and "_Sport_" in obj.name:
+            for mat in obj.data.materials:
+                mat.cycles.emission_sampling = "NONE"
+                if mat.use_nodes:
+                    for shader in mat.node_tree.nodes:
+                        if shader.type == "BSDF_PRINCIPLED":
+                            shader.inputs[
+                                "Emission Color"
+                            ].default_value = shader.inputs["Base Color"].default_value
+                            shader.inputs["Emission Strength"].default_value = 2.0
+        elif sport and any(name in obj.name for name in ("fence", "corner")):
+            obj.data.materials.clear()
+            obj.data.materials.append(perimeter)
     _animate_activation(output, meta, scene)
     if meta.get("muscle_mesh"):
         _add_muscle_mesh(output, meta, scene, muscle)
@@ -1116,13 +1150,15 @@ def build_blender_scene(output: Path) -> None:
     bpy.ops.object.camera_add()
     camera = bpy.context.object
     camera.name = "Studio camera"
-    camera.data.lens = 50 if sport else 85
+    camera.data.lens = 45 if sport else 85
     camera.data.sensor_width = 36
-    view = Vector((1.3, -1.7, 0.35 if sport else 0.75)).normalized()
+    view = Vector((1.05, -4.3, 0.16) if sport else (1.3, -1.7, 0.75)).normalized()
     camera.location = center + view * span * 3
     camera.rotation_euler = (
         (center - camera.location).to_track_quat("-Z", "Y").to_euler()
     )
+    if sport:
+        camera.rotation_euler.rotate_axis("Z", math.radians(-3))
     camera.data.clip_end = max(100, span * 40)
     scene.camera = camera
     anatomy = [
@@ -1155,27 +1191,30 @@ def build_blender_scene(output: Path) -> None:
                 half_tan,
             )
         )
-        distance = (
-            1.18 * max((vhigh.x - vlow.x) / 2 / tan_x, (vhigh.y - vlow.y) / 2 / tan_y)
-            + (vhigh.z - vlow.z) / 2
-        )
+        distance = (1.06 if sport else 1.18) * max(
+            (vhigh.x - vlow.x) / 2 / tan_x, (vhigh.y - vlow.y) / 2 / tan_y
+        ) + (vhigh.z - vlow.z) / 2
         camera.location = target + view * distance
         center = target
     forward = (center - camera.location).normalized()
     right = forward.cross(Vector((0, 0, 1))).normalized()
+    light_span = span
+    if sport and view_points:
+        heights = [(rotation @ p).z for p in view_points]
+        light_span = max(max(heights) - min(heights), 0.3)
     for name, offset, power, color in SPORT_LIGHTS if sport else STUDIO_LIGHTS:
         location = (
             center
             + (right * offset[0] + forward * offset[1] + Vector((0, 0, offset[2])))
-            * span
+            * light_span
         )
         bpy.ops.object.light_add(type="AREA", location=location)
         light = bpy.context.object
         light.name = name
-        light.data.energy = power * span**2
+        light.data.energy = power * light_span**2
         light.data.color = color
         light.data.shape = "DISK"
-        light.data.size = span * 1.1
+        light.data.size = light_span * (1.67 if sport and name == "Key" else 1.1)
         light.rotation_euler = (
             (center - light.location).to_track_quat("-Z", "Y").to_euler()
         )
@@ -1334,7 +1373,7 @@ def main(argv: list[str] | None = None) -> None:
         "--scene",
         choices=["studio", "mujoco", "sport"],
         default="studio",
-        help="Studio backdrop, original task floor, or a navy sport court with rim lights.",
+        help="Studio backdrop, original task floor, or the Breakaway sport court.",
     )
     parser.add_argument(
         "--skin",
