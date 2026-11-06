@@ -23,9 +23,20 @@ of agent roles and activation values. Camera settings remain explicit:
    finally:
        renderer.close()
 
-The default remains ``scene="default"``. The preset applies to ``MJRenderer``
-offscreen RGB rendering; the interactive viewer and ``env.render()`` keep their
-existing appearance. Choose dimensions within the model's offscreen framebuffer.
+The generic ``MJRenderer`` default remains ``scene="default"``. The 1v1 chase-tag
+task selects sport styling automatically for ``env.render()`` in ``rgb_array``
+mode. To use its original appearance, override the task setting at construction:
+
+.. code-block:: python
+
+   from myosuite import make_env
+
+   env = make_env(
+       "myoChallengeChaseTagFBVs-v0", render_mode="rgb_array", render_scene="default"
+   )
+
+Other tasks and interactive viewers keep their existing defaults. Choose frame
+dimensions within the model's offscreen framebuffer.
 
 .. automodule:: myosuite.viz.renderer
    :members:

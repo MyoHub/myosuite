@@ -121,6 +121,33 @@ def test_offscreen_rejects_unknown_scene(scene) -> None:
         renderer.render_offscreen(scene="unknown")
 
 
+@pytest.mark.parametrize("render_scene", [None, "default"])
+def test_chase_tag_task_default_and_original_override(render_scene) -> None:
+    """The registered chase-tag render path defaults to sport, with an original fallback."""
+    kwargs = {} if render_scene is None else {"render_scene": render_scene}
+    env = make_env("myoChallengeChaseTagFBVs-v0", render_mode="rgb_array", **kwargs)
+    reference = None
+    try:
+        env.reset(seed=0)
+        task = env.unwrapped
+        assert task._config.render_scene == "sport"
+        assert task.render_scene == ("sport" if render_scene is None else "default")
+        qpos = task.data.qpos.copy()
+        frame = env.render()
+        reference = mujoco.Renderer(task.model, height=480, width=640)
+        reference.update_scene(task.data)
+        original = reference.render()
+        if render_scene is None:
+            assert np.abs(frame.astype(int) - original.astype(int)).max() > 10
+        else:
+            _assert_same_image(frame, original)
+        np.testing.assert_array_equal(task.data.qpos, qpos)
+    finally:
+        if reference is not None:
+            reference.close()
+        env.close()
+
+
 @pytest.mark.parametrize("size", [(160, 120), (80, 60)])
 def test_mesh_upload_refreshes_every_cached_offscreen_size(
     size: tuple[int, int],

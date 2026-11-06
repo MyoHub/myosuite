@@ -56,6 +56,8 @@ class ModularMultiAgentTaskEnv(gym.Env):
     Args:
         task_config: Task configuration supplying model, obs, and reward hooks.
         render_mode: ``"human"`` (interactive) or ``"rgb_array"`` (off-screen).
+        render_scene: Override the task's offscreen RGB preset (``"default"`` or
+            ``"sport"``).
     """
 
     metadata: dict[str, Any] = {"render_modes": ["human", "rgb_array"]}
@@ -64,11 +66,17 @@ class ModularMultiAgentTaskEnv(gym.Env):
         self,
         task_config: MultiAgentTaskConfig,
         render_mode: str | None = None,
+        render_scene: str | None = None,
     ) -> None:
         super().__init__()
         self._config = task_config
         self._agents = task_config.agents
         self.render_mode = render_mode
+        self.render_scene = (
+            task_config.render_scene if render_scene is None else render_scene
+        )
+        if self.render_scene not in ("default", "sport"):
+            raise ValueError(f"Unknown offscreen scene: {self.render_scene}")
 
         self.model, self.data, self._meta = task_config.build_model()
         self._spec: mujoco.MjSpec | None = task_config.build_spec()
@@ -269,6 +277,14 @@ class ModularMultiAgentTaskEnv(gym.Env):
             if self._renderer is None:
                 self._renderer = mujoco.Renderer(self.model, height=480, width=640)
             self._renderer.update_scene(self.data)
+            if self.render_scene == "sport":
+                from myosuite.viz.mj_renderer import (
+                    _sport_mjv_scene,
+                    _tune_mjv_scene_for_rgb,
+                )
+
+                _tune_mjv_scene_for_rgb(self._renderer.scene)
+                _sport_mjv_scene(self._renderer.scene)
             return self._renderer.render()
 
         if self.render_mode == "human":
