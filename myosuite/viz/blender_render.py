@@ -916,6 +916,216 @@ def _animate_activation(output: Path, meta: dict[str, Any], scene: Any) -> None:
             keyed = a
 
 
+def _circle_centre(points: Any) -> tuple[float, float]:
+    """Least-squares centre of points on one circle in the xy plane (Kasa fit)."""
+    import numpy as np
+
+    xy = np.asarray(points, float)[:, :2]
+    lhs = np.column_stack((2 * xy, np.ones(len(xy))))
+    (cx, cy, _), *_ = np.linalg.lstsq(lhs, (xy**2).sum(1), rcond=None)
+    return float(cx), float(cy)
+
+
+def _add_sport_arena(
+    scene: Any, camera: Any, forward: Any, floor_z: float, stand: Any
+) -> None:
+    """Game-like sport dressing: team glows, arena lights, haze, lens and bloom.
+
+    Runs in Blender. Scene-only decoration: a soft glow under each agent that
+    follows its identity arc, out-of-focus LED bars behind the court, a stage
+    spot through thin haze, shallow depth of field, then bloom and a vignette.
+    """
+    import bpy
+    from mathutils import Vector
+
+    def node_material(name: str) -> Any:
+        mat = bpy.data.materials.new(name)
+        mat.use_nodes = True
+        mat.node_tree.nodes.clear()
+        return mat
+
+    def emission(name: str, color: tuple[float, ...], strength: float) -> Any:
+        mat = node_material(name)
+        nodes, links = mat.node_tree.nodes, mat.node_tree.links
+        shader = nodes.new("ShaderNodeEmission")
+        shader.inputs[0].default_value = color
+        shader.inputs[1].default_value = strength
+        links.new(shader.outputs[0], nodes.new("ShaderNodeOutputMaterial").inputs[0])
+        return mat
+
+    # Identity arcs by team colour; the thicker (inner) arc gives the agent centre.
+    arcs: dict[str, list[Any]] = {}
+    for obj in scene.objects:
+        if "_Sport_" not in obj.name or not obj.data.materials:
+            continue
+        shader = obj.data.materials[0].node_tree.nodes.get("Principled BSDF")
+        color = shader.inputs["Base Color"].default_value if shader else (0, 0, 0)
+        if max(color[:3]) - min(color[:3]) >= 0.15:
+            arcs.setdefault("orange" if color[0] > color[2] else "cyan", []).append(obj)
+    centres = []
+    for team, objects in arcs.items():
+        thickness = {o: o.dimensions.z for o in objects}
+        inner = [o for o in objects if thickness[o] >= max(thickness.values()) * 0.8]
+        x, y = _circle_centre([o.matrix_world.translation for o in inner])
+        centres.append(Vector((x, y, floor_z)))
+        bpy.ops.mesh.primitive_circle_add(
+            vertices=64, radius=0.75, fill_type="NGON", location=(x, y, floor_z + 0.004)
+        )
+        glow = bpy.context.object
+        glow.name = f"Team glow {team}"
+        # Follow the arc: it only translates with its agent.
+        follow = glow.constraints.new("COPY_LOCATION")
+        follow.target, follow.use_offset = inner[0], True
+        follow.use_z = False
+        glow.location -= Vector((*inner[0].matrix_world.translation[:2], 0))
+        mat = node_material(glow.name)
+        nodes, links = mat.node_tree.nodes, mat.node_tree.links
+        coords = nodes.new("ShaderNodeTexCoord")
+        scale = nodes.new("ShaderNodeMapping")
+        scale.inputs["Scale"].default_value = (1.33, 1.33, 1.33)
+        falloff = nodes.new("ShaderNodeTexGradient")
+        falloff.gradient_type = "SPHERICAL"
+        soft = nodes.new("ShaderNodeMath")
+        soft.operation, soft.inputs[1].default_value = "POWER", 2.2
+        gain = nodes.new("ShaderNodeMath")
+        gain.operation, gain.inputs[1].default_value = "MULTIPLY", 4.0
+        light = nodes.new("ShaderNodeEmission")
+        light.inputs[0].default_value = (
+            (1.0, 0.25, 0.02, 1) if team == "orange" else (0.02, 0.55, 1.0, 1)
+        )
+        clear = nodes.new("ShaderNodeBsdfTransparent")
+        mix = nodes.new("ShaderNodeMixShader")
+        links.new(coords.outputs["Object"], scale.inputs["Vector"])
+        links.new(scale.outputs[0], falloff.inputs[0])
+        links.new(falloff.outputs["Fac"], soft.inputs[0])
+        links.new(soft.outputs[0], gain.inputs[0])
+        links.new(gain.outputs[0], light.inputs[1])
+        links.new(soft.outputs[0], mix.inputs[0])
+        links.new(clear.outputs[0], mix.inputs[1])
+        links.new(light.outputs[0], mix.inputs[2])
+        links.new(mix.outputs[0], nodes.new("ShaderNodeOutputMaterial").inputs[0])
+        glow.data.materials.append(mat)
+    if not centres:
+        return
+    middle = sum(centres, Vector()) / len(centres)
+    focus = middle + Vector((0, 0, 0.95))
+
+    # Arena: LED ribbon and light bars far behind the court, dark stands behind them.
+    ahead = Vector((forward.x, forward.y, 0)).normalized()
+    side = ahead.cross(Vector((0, 0, 1))).normalized()
+    heading = math.atan2(ahead.y, ahead.x) + math.pi / 2
+    far = middle + ahead * 12
+    cyan = emission("LED cyan", (0.05, 0.35, 1.0, 1), 3)
+    amber = emission("LED amber", (1.0, 0.35, 0.05, 1), 4)
+    bpy.ops.mesh.primitive_cube_add(location=(far.x, far.y, floor_z + 0.55))
+    ribbon = bpy.context.object
+    ribbon.name, ribbon.scale = "LED ribbon", (9, 0.02, 0.025)
+    ribbon.rotation_euler.z = heading
+    ribbon.data.materials.append(cyan)
+    for i in range(-8, 9):
+        spot = far + side * i * 2.2
+        bpy.ops.mesh.primitive_cube_add(location=(spot.x, spot.y, floor_z + 2.6))
+        bar = bpy.context.object
+        bar.name, bar.scale = f"LED bar {i + 8}", (0.025, 0.025, 1.4)
+        bar.data.materials.append(amber if i % 3 == 0 else cyan)
+    back = far + ahead * 0.6
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(back.x, back.y, floor_z + 3))
+    stands = bpy.context.object
+    stands.name, stands.scale = "Stands", (30, 8, 1)
+    stands.rotation_euler = (math.pi / 2, 0, heading)
+    stands.data.materials.append(stand)
+
+    # Stage spot from above through a thin haze.
+    bpy.ops.object.light_add(type="SPOT", location=(focus.x, focus.y, floor_z + 5.5))
+    stage = bpy.context.object
+    stage.name = "Stage spot"
+    stage.data.energy, stage.data.color = 2500, (0.85, 0.92, 1.0)
+    stage.data.spot_size, stage.data.spot_blend = math.radians(38), 0.6
+    bpy.ops.mesh.primitive_cube_add(location=(focus.x, focus.y, floor_z + 3))
+    haze = bpy.context.object
+    haze.name, haze.scale = "Haze", (14, 14, 3.1)
+    haze.visible_shadow = False
+    mat = node_material("Haze")
+    volume = mat.node_tree.nodes.new("ShaderNodeVolumePrincipled")
+    volume.inputs["Density"].default_value = 0.004
+    volume.inputs["Anisotropy"].default_value = 0.55
+    output = mat.node_tree.nodes.new("ShaderNodeOutputMaterial")
+    mat.node_tree.links.new(volume.outputs[0], output.inputs["Volume"])
+    haze.data.materials.append(mat)
+
+    # Lens: shallow depth of field on the agents.
+    camera.data.dof.use_dof = True
+    camera.data.dof.focus_distance = (focus - camera.location).length
+    camera.data.dof.aperture_fstop = 2.0
+    _add_bloom(scene)
+
+
+def _add_bloom(scene: Any) -> None:
+    """Bloom on bright lights and a soft vignette, in Blender's compositor.
+
+    Blender 5 builds the compositor as a node group; Blender 4 uses the
+    scene's node tree. Without a supported compositor the render keeps no bloom.
+    """
+    import bpy
+
+    if hasattr(scene, "compositing_node_group"):  # Blender 5
+        tree = bpy.data.node_groups.new("Sport look", "CompositorNodeTree")
+        scene.compositing_node_group = tree
+        tree.interface.new_socket(
+            "Image", in_out="OUTPUT", socket_type="NodeSocketColor"
+        )
+        output = tree.nodes.new("NodeGroupOutput").inputs[0]
+    else:  # Blender 4
+        scene.use_nodes = True
+        tree = scene.node_tree
+        tree.nodes.clear()
+        output = tree.nodes.new("CompositorNodeComposite").inputs["Image"]
+    if hasattr(scene.render, "compositor_device"):
+        scene.render.compositor_device = "CPU"  # runs headless without a GPU
+    nodes, links = tree.nodes, tree.links
+    layers = nodes.new("CompositorNodeRLayers")
+    glare = nodes.new("CompositorNodeGlare")
+    settings = {"Threshold": 0.6, "Strength": 0.6, "Size": 0.7}
+    if "Type" in glare.inputs:
+        glare.inputs["Type"].default_value = "Bloom"
+        for name, value in settings.items():
+            glare.inputs[name].default_value = value
+    else:
+        glare.glare_type = (
+            "BLOOM"
+            if "BLOOM"
+            in {
+                item.identifier
+                for item in glare.bl_rna.properties["glare_type"].enum_items
+            }
+            else "FOG_GLOW"
+        )
+        glare.threshold = 0.6
+    mask = nodes.new("CompositorNodeEllipseMask")
+    blur = nodes.new("CompositorNodeBlur")
+    if "Size" in mask.inputs:
+        mask.inputs["Size"].default_value = (0.95, 0.9)
+        blur.inputs["Size"].default_value = (250, 250)
+    else:
+        mask.width, mask.height = 0.95, 0.9
+        blur.size_x = blur.size_y = 250
+    if hasattr(scene, "compositing_node_group"):
+        darken = nodes.new("ShaderNodeMix")
+        darken.data_type, darken.blend_type = "RGBA", "MULTIPLY"
+        darken.inputs["Factor"].default_value = 0.6
+        image_a, image_b, result = darken.inputs[6], darken.inputs[7], darken.outputs[2]
+    else:
+        darken = nodes.new("CompositorNodeMixRGB")
+        darken.blend_type = "MULTIPLY"
+        darken.inputs[0].default_value = 0.6
+        image_a, image_b, result = darken.inputs[1], darken.inputs[2], darken.outputs[0]
+    links.new(layers.outputs["Image"], glare.inputs["Image"])
+    links.new(mask.outputs["Mask"], blur.inputs["Image"])
+    links.new(glare.outputs["Image"], image_a)
+    links.new(blur.outputs["Image"], image_b)
+    links.new(result, output)
+
+
 def _add_cyclorama(
     center: Any, forward: Any, floor_z: float, span: float, mat: Any
 ) -> None:
@@ -1003,7 +1213,7 @@ def build_blender_scene(output: Path) -> None:
     bpy.context.preferences.filepaths.save_version = 0
     scene.render.image_settings.file_format = "PNG"
     scene.view_settings.view_transform = "AgX"
-    scene.view_settings.exposure = -0.9 if sport else EXPOSURE
+    scene.view_settings.exposure = -0.6 if sport else EXPOSURE
     # High contrast makes the plain skin's silhouette read; it would oversaturate a texture.
     plain_skin = meta.get("skin_objects") and not meta.get("skin_texture")
     contrast = "High" if plain_skin else "Medium High"
@@ -1037,7 +1247,15 @@ def build_blender_scene(output: Path) -> None:
         return mat
 
     sport_floor = (
-        material("Sport floor", (0.009, 0.022, 0.04, 1), 0.46) if sport else None
+        material(
+            "Sport floor",
+            (0.009, 0.022, 0.04, 1),
+            0.16,
+            Coat_Weight=0.5,
+            Coat_Roughness=0.05,
+        )
+        if sport
+        else None
     )
     perimeter = material("Perimeter", (0.012, 0.018, 0.024, 1), 0.75) if sport else None
 
@@ -1138,10 +1356,13 @@ def build_blender_scene(output: Path) -> None:
                 if mat.use_nodes:
                     for shader in mat.node_tree.nodes:
                         if shader.type == "BSDF_PRINCIPLED":
-                            shader.inputs[
-                                "Emission Color"
-                            ].default_value = shader.inputs["Base Color"].default_value
-                            shader.inputs["Emission Strength"].default_value = 2.0
+                            color = shader.inputs["Base Color"].default_value
+                            shader.inputs["Emission Color"].default_value = color
+                            # Neutral court lines stay dim: depth of field smears them.
+                            neutral = max(color[:3]) - min(color[:3]) < 0.15
+                            shader.inputs["Emission Strength"].default_value = (
+                                0.25 if neutral else 2.0
+                            )
         elif sport and any(name in obj.name for name in ("fence", "corner")):
             obj.data.materials.clear()
             obj.data.materials.append(perimeter)
@@ -1245,6 +1466,8 @@ def build_blender_scene(output: Path) -> None:
         bpy.context.object.data.materials.append(
             sport_floor if sport else material("Floor", (0.12, 0.14, 0.17, 1), 0.85)
         )
+    if sport:
+        _add_sport_arena(scene, camera, forward, floor_z, perimeter)
     scene.frame_set(scene.frame_start)
     scene.render.filepath = str(output / "frames" / "frame_")
     bpy.ops.file.pack_all()
