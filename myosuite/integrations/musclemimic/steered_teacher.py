@@ -40,7 +40,7 @@ from myosuite.integrations.musclemimic.two_agent_scene import (
     write_clip_pose,
 )
 from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
-from myosuite.terms.multiplayer.heading import (
+from myosuite.integrations.musclemimic.steering import (
     COMPASS_LABELS,
     COMPASS_STEP,
     aim_heading_xy,
@@ -48,11 +48,10 @@ from myosuite.terms.multiplayer.heading import (
     clamp_arena_xy,
     compass_index,
     compass_label,
-    heading_yaw,
-    role_heading_xy,
     step_compass,
     wall_repulsion,
 )
+from myosuite.terms.multiplayer.heading import heading_yaw, role_heading_xy
 
 AGENTS: tuple[str, str] = ("agent_0", "agent_1")
 PREFIX: dict[str, str] = {"agent_0": "a0_", "agent_1": "a1_"}
