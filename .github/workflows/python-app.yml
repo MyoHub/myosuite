@@ -5,18 +5,29 @@ name: Python application
 on:
   push:
     branches: ["main", "dev"]
-    paths-ignore:
-      - "docs/**"
-      - ".github/**"
-      - "**/README.md"
+    paths: &code_paths
+      - "**"
+      # Docs, markdown and tooling config never change what the tests exercise.
+      - "!docs/**"
+      - "!**/*.md"
+      - "!.pre-commit-config.yaml"
+      - "!CITATION.cff"
+      # training/<method>/ projects carry their own tests.
+      - "!training/**"
+      # Other workflows do not change the tests; this one does.
+      - "!.github/**"
+      - ".github/workflows/python-app.yml"
 
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: ["main", "dev"]
-    paths-ignore:
-      - "docs/**"
-      - ".github/**"
-      - "**/README.md"
+    paths: *code_paths
+
+  # Nightly full run of dev, including the @slow tests no other run selects.
+  # Schedules fire from the default branch (main), so this starts with the next release.
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
 
 # github.ref is refs/pull/<number>/merge on a pull request, so two PRs that
 # share a branch name do not cancel each other. On a push it is the branch ref.
@@ -40,22 +51,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # PRs into dev run Ubuntu 3.10 only; macOS, Windows and Python 3.14 run
+      # after the merge (push to dev), on release PRs into main and nightly.
+      # 3.10 is the floor and still resolves NumPy 2.2.x; 3.14 is the ceiling and
+      # runs on Linux only, since dependency resolution and Python-level
+      # incompatibilities (NumPy >=2.3) are OS-independent. mjlab caps itself at <3.14.
       matrix:
-        os:
-          - macos-latest
-          - ubuntu-latest
-          - windows-latest
-        python-version: ["3.10"]
-        # Only the minimum and maximum supported Pythons. 3.10 is the floor and
-        # still resolves NumPy 2.2.x (which deprecates, rather than removes,
-        # implicit shape-(1,)-array-to-scalar conversion). 3.14 is the ceiling
-        # and runs on Linux only: the full suite there covers dependency
-        # resolution and Python-level incompatibilities, including NumPy >=2.3,
-        # which are OS-independent. The [mjlab] extra resolves to torch +
-        # warp-lang on the 3.10 Linux job; mjlab caps itself at <3.14.
-        include:
-          - os: ubuntu-latest
-            python-version: "3.14"
+        include: ${{ fromJSON(github.event_name == 'pull_request' && github.base_ref == 'dev' && '[{"os":"ubuntu-latest","python-version":"3.10"}]' || '[{"os":"ubuntu-latest","python-version":"3.10"},{"os":"macos-latest","python-version":"3.10"},{"os":"windows-latest","python-version":"3.10"},{"os":"ubuntu-latest","python-version":"3.14"}]') }}
 
     steps:
       - name: Set environment variable for macOS
@@ -64,6 +66,27 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # The nightly run tests dev; a PR checks out its merge commit, whose
+          # first parent is the base branch (needed to list the changed files).
+          ref: ${{ github.event_name == 'schedule' && 'dev' || '' }}
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      - name: Detect changed paths
+        id: changes
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            changed=$(git diff --name-only HEAD^1 HEAD)
+          else
+            changed="(not a pull request)"
+          fi
+          printf '%s\n' "$changed"
+          if [ "${{ github.event_name }}" != "pull_request" ] || grep -qE '^tutorials/|^myosuite/tests/(execute_tutorial\.py|test_tutorials\.sh)$' <<< "$changed"; then
+            echo "tutorials=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tutorials=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -103,8 +126,14 @@ jobs:
         if: ${{ runner.os == 'Linux' }}
         run: uv run python -m pytest -o addopts= myosuite/tests -v -m "not slow"
 
+      # @slow tests (benchmarks, long rollouts) only on the nightly run.
+      - name: Pytest — slow tests (nightly)
+        if: ${{ runner.os == 'Linux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+        run: uv run python -m pytest -o addopts= myosuite/tests -v -m slow
+
       # Pinned to 3.10: several tutorials depend on packages with tighter ceilings
-      # than the library itself.
+      # than the library itself. On a PR into dev, only when it touches tutorials;
+      # every push, release PR and nightly run executes them.
       - name: Execute tutorials (discovered; HF-heavy notebooks skipped in CI)
-        if: ${{ runner.os == 'Linux' && matrix.python-version == '3.10' }}
+        if: ${{ runner.os == 'Linux' && matrix.python-version == '3.10' && (github.base_ref != 'dev' || steps.changes.outputs.tutorials == 'true') }}
         run: source myosuite/tests/test_tutorials.sh
