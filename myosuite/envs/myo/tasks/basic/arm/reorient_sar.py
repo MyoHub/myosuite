@@ -105,6 +105,7 @@ class ReorientSAREnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.obj_bid = self.model.body("Object").id
         self.eps_ball_sid = self.model.site("eps_ball").id
         self.success_indicator_sid = self.model.site("success").id
+        self._success_shown = False  # stays True once solved, until the next reset
         self.obj_gid = self.model.geom("obj").id
         self.tar_gid = self.model.geom("target").id
         self.obj_t_gid = self.model.geom("top").id
@@ -220,10 +221,9 @@ class ReorientSAREnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             ],
             axis=0,
         )
-        if list(self.model.site_rgba[self.success_indicator_sid, :2]) != [0.0, 2.0]:
-            self.model.site_rgba[self.success_indicator_sid, :2] = (
-                np.array([0.0, 2.0]) if rwd_dict["solved"] else np.array([2.0, 0.0])
-            )
+        # The indicator stays green once the episode has been solved.
+        self._success_shown = self._success_shown or bool(rwd_dict["solved"])
+        self._set_success_indicator(self.success_indicator_sid, self._success_shown)
         return rwd_dict
 
     def reset_task(self, np_random: np.random.Generator) -> dict[str, Any]:
@@ -267,7 +267,8 @@ class ReorientSAREnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         # After the geometry draw, as in the legacy env, so that every muscle
         # condition samples the same episode geometry for a given seed.
         self._run_reset_stages()
-        self.model.site_rgba[self.success_indicator_sid, :2] = np.array([2.0, 0.0])
+        self._success_shown = False
+        self._set_success_indicator(self.success_indicator_sid, False)
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = self._init_qpos
         self.data.qvel[:] = self._init_qvel

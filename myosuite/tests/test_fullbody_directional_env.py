@@ -115,3 +115,32 @@ class TestMuscleMimicFullbodyDirectionalEnv:
         obs, _ = env.reset()
         assert obs.shape == env.observation_space.shape
         env.close()
+
+    def test_builds_the_default_models_release(self, directional_env):
+        """Directional locomotion uses the installed musclemimic_models default (1.0.6)."""
+        import mujoco
+        from myosuite.integrations.musclemimic.model_versions import (
+            DEFAULT_MODELS_VERSION,
+        )
+
+        assert directional_env._model_version == DEFAULT_MODELS_VERSION
+        eq_id = mujoco.mj_name2id(
+            directional_env.model,
+            mujoco.mjtObj.mjOBJ_EQUALITY,
+            "knee_angle_rotation3_constraint_l",
+        )
+        assert eq_id >= 0
+        # 1.0.6 left-knee rotation3 linear term (1.0.5 was -0.369499).
+        assert directional_env.model.eq_data[eq_id, 1] == pytest.approx(0.369499)
+
+    def test_heading_reward_uses_world_frame_velocity(self, directional_env):
+        raw = directional_env.unwrapped
+        raw._heading_dir = np.array([1.0, 0.0], np.float32)
+        raw.data.qvel[:] = 0.0
+        raw.data.qvel[0] = 0.7
+        match = raw.get_reward_dict(raw._get_obs_dict(raw._accessor))["heading"]
+        raw.data.qvel[0] = 0.0
+        raw.data.qvel[1] = 0.7
+        miss = raw.get_reward_dict(raw._get_obs_dict(raw._accessor))["heading"]
+        assert match == pytest.approx(1.0, abs=1e-5)
+        assert miss < match
