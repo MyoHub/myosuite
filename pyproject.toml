@@ -120,7 +120,9 @@ mjx = [
     "orbax-checkpoint>=0.11.22,<0.11.24; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
     "ml-collections>=0.1.1; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
     "etils[epath]>=1.3.0; python_version >= '3.10' and sys_platform != 'win32'",
-    "playground>=0.0.5; python_version >= '3.10' and sys_platform != 'win32'",
+    # playground 1.0 needs MuJoCo 4 and drops the MJX API (MjxEnv, State, registry)
+    # that backends/mjx uses; 0.2.0 runs on MuJoCo 3 and 4.
+    "playground>=0.0.5,<1; python_version >= '3.10' and sys_platform != 'win32'",
     "mediapy>=1.2.0; python_version >= '3.10' and sys_platform != 'win32'",
     "imageio>=2.31.0; python_version >= '3.10' and sys_platform != 'win32'",
     "wandb>=0.21.0; python_version >= '3.10' and sys_platform != 'win32'",
