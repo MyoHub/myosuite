@@ -84,6 +84,7 @@ Choose your path
    architecture
    environments
    model_builder
+   body_scaling
    backend_parity
    fatigue_validation
 
