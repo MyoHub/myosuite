@@ -146,9 +146,9 @@ class SuperMimicCfg:
     static_compile: bool = False
     """torch.compile with static shapes (dynamic=False)."""
     cuda_graph: bool = False
-    """Capture the actor's imagined rollout, objective and backward pass as one CUDA graph and
-    replay it every update (CUDA only; replaces compiling the imagined step). Imagination is
-    kernel-launch bound (~12k small kernels per step), and the replay removes the launch cost."""
+    """Replay each imagined step's forward and backward as CUDA graphs (one pair per horizon step,
+    ``torch.cuda.make_graphed_callables``; CUDA only, replaces compiling the step). Imagination is
+    kernel-launch bound (~12k small kernels per step); the replays remove the launch cost."""
 
 
 def use_fullbody_model(source: str) -> None:
@@ -201,6 +201,25 @@ def apply_instanttrack_preset(cfg: SuperMimicCfg) -> SuperMimicCfg:
 
 def _sigmoid_ctrl(a: torch.Tensor) -> torch.Tensor:
     return torch.sigmoid(5.0 * (a - 0.5))
+
+
+class _GraphedStep(torch.nn.Module):
+    """The trainer's imagined step as a module whose parameters are the actor's (for
+    ``torch.cuda.make_graphed_callables``); optional inputs are passed only when used."""
+
+    def __init__(self, tr: SuperMimicTrainer) -> None:
+        super().__init__()
+        self.actor = tr.actor
+        self._fn = tr._imag_step
+        self._probe = tr.cfg.act_grad_clip > 0
+        self._contact = tr.contact is not None
+
+    def forward(self, s, f, obs, *extra):  # noqa: ANN001, ANN201
+        it = iter(extra)
+        probe = next(it) if self._probe else None
+        sites = next(it) if self._contact else None
+        out = self._fn(s, f, obs, probe, sites)
+        return out if self._contact else out[:6]
 
 
 class SuperMimicTrainer:
@@ -422,10 +441,20 @@ class SuperMimicTrainer:
         sites = (
             h.kin.site_pos(self.spec.split(s)[0]) if self.contact is not None else None
         )
-        for _ in range(cfg.horizon):
+        graphed = (
+            self._graphed_steps(self._step_args(s, f, obs, probe, sites))
+            if cfg.cuda_graph
+            else None
+        )
+        for t in range(cfg.horizon):
             obs_l.append(obs)
             live_l.append((~ended).float())
-            s, f, r, d, sat, obs, sites = self._step(s, f, obs, probe, sites)
+            if graphed is None:
+                s, f, r, d, sat, obs, sites = self._step(s, f, obs, probe, sites)
+            else:
+                out = graphed[t](*self._step_args(s, f, obs, probe, sites))
+                s, f, r, d, sat, obs = out[:6]
+                sites = out[6] if self.contact is not None else None
             rew_l.append(r)
             sat_l.append(sat)
             dhat_l.append(d)
@@ -480,45 +509,47 @@ class SuperMimicTrainer:
         for m in frozen:
             m.requires_grad_(False)
         try:
-            if not self.cfg.cuda_graph:
-                roll, loss, J, sat = self._actor_objective()
-                self.opt_actor.zero_grad(set_to_none=True)
-                loss.backward()
-                return roll, J, sat
-            starts = self.buffer.sample_starts(self.cfg.imag_batch)
-            if self._graph is None:
-                self._capture_actor_graph(starts)
-            for buf, x in zip(self._graph_starts, starts):
-                buf.copy_(x)
-            self._graph.replay()
-            return self._graph_out
+            roll, loss, J, sat = self._actor_objective()
+            self.opt_actor.zero_grad(set_to_none=True)
+            loss.backward()
+            return roll, J, sat
         finally:
             for m in frozen:
                 m.requires_grad_(True)
 
-    def _capture_actor_graph(self, starts: tuple[torch.Tensor, torch.Tensor]) -> None:
-        """Record rollout + objective + backward once; later updates replay it on new starts.
+    def _step_args(
+        self,
+        s: torch.Tensor,
+        f: torch.Tensor,
+        obs: torch.Tensor,
+        probe: torch.Tensor | None,
+        sites: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, ...]:
+        return (s, f, obs) + tuple(x for x in (probe, sites) if x is not None)
 
-        The parameters, normaliser statistics and start buffers are read in place, the actor's
-        ``.grad`` tensors are written in place by the replay, so they must never be set to None
-        afterwards (the actor optimizer's ``zero_grad`` is not called on this path).
+    def _graphed_steps(self, args: tuple[torch.Tensor, ...]) -> list[Any]:
+        """One CUDA-graphed forward + backward of the imagined step per horizon step.
+
+        A single graph of the whole rollout is ~1.5M kernel nodes and fails to instantiate; one
+        graph pair per step (shared memory pool) keeps each small. A step needs its own graph
+        because its saved activations must survive until the backward pass. Parameters (the
+        actor's, and the frozen world model's read as constants) and normaliser statistics are
+        updated in place, so the replays see the current values.
         """
-        self._graph_starts = tuple(x.clone() for x in starts)
-        side = torch.cuda.Stream()
-        side.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(side):  # warm-up allocations off the capture stream
-            for _ in range(2):
-                self.opt_actor.zero_grad(set_to_none=True)
-                _, loss, _, _ = self._actor_objective(self._graph_starts)
-                loss.backward()
-        torch.cuda.current_stream().wait_stream(side)
-        self.opt_actor.zero_grad(set_to_none=True)
-        graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(graph):
-            roll, loss, J, sat = self._actor_objective(self._graph_starts)
-            loss.backward()
-        self._graph = graph
-        self._graph_out = (roll, J, sat)
+        if self._graph is None:
+            sample = tuple(
+                x.detach().clone().requires_grad_(x.is_floating_point()) for x in args
+            )
+            mods = [_GraphedStep(self) for _ in range(self.cfg.horizon)]
+            self._graph = list(
+                torch.cuda.make_graphed_callables(
+                    tuple(mods),
+                    tuple(sample for _ in mods),
+                    num_warmup_iters=2,
+                    allow_unused_input=True,
+                )
+            )
+        return self._graph
 
     def update_actor_critic(self) -> dict[str, float]:
         """One actor step on the imagined objective, then the critic on lambda-returns."""
