@@ -2229,7 +2229,14 @@ def _register_mimic_sar_tasks(
     """Internal implementation for SAR task registration."""
     import importlib.util
 
-    if importlib.util.find_spec("musclemimic_models") is None:
+    from myosuite.integrations.musclemimic.fullbody_model import (
+        mimic_fullbody_model_source,
+    )
+
+    if (
+        mimic_fullbody_model_source() == "musclemimic"
+        and importlib.util.find_spec("musclemimic_models") is None
+    ):
         return
 
     from myosuite.integrations.musclemimic.sar_torch_transform import SARTorchTransform
@@ -2648,15 +2655,23 @@ def register_directional_walk_sar(
         FileNotFoundError: If *sar_dir* does not exist.
 
     Note:
-        Silently exits if ``musclemimic_models`` is not installed.
+        Silently exits if the musclemimic full body is selected but ``musclemimic_models``
+        is not installed (``MYOSUITE_MIMIC_FULLBODY_MODEL``; myo_sim's body needs no package).
     """
     import importlib.util
+
+    from myosuite.integrations.musclemimic.fullbody_model import (
+        mimic_fullbody_model_source,
+    )
 
     sar_dir = Path(sar_dir)
     if not sar_dir.exists():
         raise FileNotFoundError(f"SAR directory not found: {sar_dir}")
 
-    if importlib.util.find_spec("musclemimic_models") is None:
+    if (
+        mimic_fullbody_model_source() == "musclemimic"
+        and importlib.util.find_spec("musclemimic_models") is None
+    ):
         return
 
     from myosuite.integrations.musclemimic.sar_torch_transform import SARTorchTransform
