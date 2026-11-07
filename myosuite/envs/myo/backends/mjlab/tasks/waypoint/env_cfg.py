@@ -33,9 +33,9 @@ from myosuite.envs.waypoint import (
     DEFAULT_MODEL_RECIPE,
     RootLayout,
     WaypointTaskCfg,
-    heading_yaw,
     initial_state,
 )
+from myosuite.terms.waypoint import heading_yaw
 
 ENTITY = "robot"
 _NJMAX, _NCONMAX = 512, 256
