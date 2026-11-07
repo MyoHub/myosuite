@@ -164,9 +164,35 @@ def use_fullbody_model(source: str) -> None:
 
 
 def apply_instanttrack_preset(cfg: SuperMimicCfg) -> SuperMimicCfg:
-    """InstantTrack's settings (``--instanttrack``); the horizon is kept (64 beat 32 on MyoFullBody)."""
+    """InstantTrack's settings (``--instanttrack``) for every field still at its default.
+
+    Values given explicitly (anything that differs from :class:`SuperMimicCfg`'s default) are kept,
+    so ``--instanttrack --imag-batch 512`` runs the preset with a 512 imagined batch. The horizon is
+    not part of the preset (64 beat 32 on MyoFullBody).
+    """
     if not cfg.instanttrack:
         return cfg
+    base = SuperMimicCfg()
+    preset = {
+        "fail_reset": 0.3,
+        "contact_reward": 0.25,
+        "pi_opt": "muon",
+        "wm_opt": "muon",
+        "lr": 4e-4,
+        "wm_batches": 5,
+        "ema_decay": 0.995,
+        "imag_batch": 2048,
+        "pi_lr_mult": 4.0,
+        "fused_adam": True,
+        "static_compile": True,
+    }
+    for k, v in preset.items():
+        if getattr(cfg, k) == getattr(base, k):
+            setattr(cfg, k, v)
+    wm = {"lr": 4e-4, "hidden": (1024, 1024, 1024)}
+    keep = {k: v for k, v in wm.items() if getattr(cfg.wm, k) == getattr(base.wm, k)}
+    cfg.wm = dataclasses.replace(cfg.wm, **keep)
+    return cfg
     cfg.fail_reset = cfg.fail_reset or 0.3
     cfg.contact_reward = cfg.contact_reward or 0.25
     cfg.pi_opt = cfg.wm_opt = "muon"
