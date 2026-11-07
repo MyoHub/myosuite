@@ -281,7 +281,7 @@ class SuperMimicTrainer:
             self.wm.load_state_dict(
                 torch.load(cfg.init_world_model, map_location=dev)["wm"]
             )
-        self.opt_wm = make_optimizer(cfg.wm_opt, self.wm, cfg.lr, fused=fused)
+        self.opt_wm = make_optimizer(cfg.wm_opt, self.wm, cfg.wm.lr, fused=fused)
         self.opt_actor = make_optimizer(
             cfg.pi_opt, self.actor.mlp, cfg.lr, betas=(0.9, 0.95), fused=fused
         )
@@ -621,13 +621,16 @@ class SuperMimicTrainer:
         boost = policy_lr_multiplier(
             self.updates, cfg.pi_lr_mult, cfg.pi_lr_decay_at, cfg.pi_lr_decay_len
         )
-        for opt, k in (
-            (self.opt_wm, 1.0),
-            (self.opt_actor, boost),
-            (self.opt_critic, 1.0),
+        for opt, base in (
+            (
+                self.opt_wm,
+                cfg.wm.lr,
+            ),  # its own rate (it was cfg.lr before; equal by default)
+            (self.opt_actor, cfg.lr * boost),
+            (self.opt_critic, cfg.lr),
         ):
             for group in opt.param_groups:
-                group["lr"] = cfg.lr * scale * k
+                group["lr"] = base * scale
 
     # ------------------------------------------------------------------ evaluation
     @torch.no_grad()
