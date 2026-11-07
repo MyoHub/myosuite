@@ -21,7 +21,6 @@ MJX backend selection:
 
 Skip conditions:
     - ``mujoco.mjx`` not importable (version mismatch / not installed)
-    - ``mujoco_playground`` not installed
 """
 
 from __future__ import annotations
@@ -36,17 +35,16 @@ pytestmark = pytest.mark.tier2
 
 
 # ---------------------------------------------------------------------------
-# Guard: skip entire module if MJX / mujoco_playground are unavailable.
+# Guard: skip entire module if MJX is unavailable.
 # Use try/except rather than pytest.importorskip because some environments
 # raise AttributeError (mujoco/mjx version mismatch) rather than ImportError.
 # ---------------------------------------------------------------------------
 try:
     from mujoco import mjx as mjx_mod  # noqa: F401
-    import mujoco_playground as _mp_check  # noqa: F401
+    import flax as _flax_check  # noqa: F401
 except (ImportError, AttributeError) as _mjx_err:
     pytest.skip(
-        f"MJX/mujoco_playground not available ({_mjx_err}); "
-        "skipping backend parity tests",
+        f"MJX not available ({_mjx_err}); skipping backend parity tests",
         allow_module_level=True,
     )
 

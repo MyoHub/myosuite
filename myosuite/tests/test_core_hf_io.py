@@ -21,6 +21,8 @@ from myosuite.core.hf_io import (
     parse_hf_ref,
 )
 
+pytestmark = pytest.mark.tier2
+
 
 def test_parse_hf_ref_with_subpath() -> None:
     """hf path parser splits repo id and subpath."""
@@ -39,7 +41,7 @@ def test_default_cache_root_path() -> None:
     """Default cache root should point to MuscleMimic AMASS cache."""
     root = default_musclemimic_cache_root()
     assert isinstance(root, pathlib.Path)
-    assert str(root).endswith("/.musclemimic/caches/AMASS")
+    assert root == pathlib.Path.home() / ".musclemimic" / "caches" / "AMASS"
 
 
 def test_default_cache_root_prefers_musclemimic_env_var(
@@ -371,3 +373,82 @@ def test_download_baseline_file_follows_the_same_tags(
         "v3.0.1",
         "v3.0",
     ]
+
+
+def test_download_baseline_file_falls_back_when_the_tag_lacks_the_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A baseline added after the release's tag is fetched from ``main`` (a missing file is like a missing tag)."""
+    from huggingface_hub.errors import EntryNotFoundError
+
+    target = tmp_path / "baseline.onnx"
+    asked: list[tuple[str, str]] = []
+
+    def fake_hf_hub_download(
+        repo_id: str, filename: str, *, repo_type: str, revision: str
+    ) -> str:
+        asked.append((filename, revision))
+        if revision == "v3.0":
+            raise EntryNotFoundError(f"{filename} not at {revision}")
+        if filename.endswith("manifest.json"):
+            raise EntryNotFoundError("no manifest")
+        return str(target)
+
+    monkeypatch.setattr(
+        "huggingface_hub.hf_hub_download", fake_hf_hub_download, raising=False
+    )
+    monkeypatch.setattr("myosuite.core.hf_io.baseline_revisions", lambda: ["v3.0"])
+
+    assert download_baseline_file("onnx/baseline.onnx") == target
+    assert asked[0] == ("onnx/baseline.onnx", "v3.0")
+    assert ("onnx/baseline.onnx", "main") in asked
+    assert "not in tag 'v3.0', using the latest" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("missing", ["revision", "file"])
+def test_pinned_baseline_never_falls_back_to_main(
+    monkeypatch: pytest.MonkeyPatch, missing: str
+) -> None:
+    """A missing pinned artifact must not silently select another policy."""
+    from huggingface_hub.errors import EntryNotFoundError
+
+    pin = "7ab693c740a9dd5a812ea5c1d6dcc52e2baa3e9b"
+    asked = []
+
+    def fake_download(repo_id: str, filename: str, *, revision: str, **kwargs) -> str:
+        asked.append(revision)
+        if missing == "revision":
+            raise _missing_tag_error()
+        raise EntryNotFoundError("file absent at the pinned revision")
+
+    monkeypatch.setattr("huggingface_hub.hf_hub_download", fake_download)
+    assert (
+        download_baseline_file(
+            "directional/walker_myofullbody.pt", revision=pin, fallback_to_main=False
+        )
+        is None
+    )
+    assert asked == [pin]
+
+
+def test_download_baseline_file_prefers_the_local_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``$MYOSUITE_BASELINES_DIR`` serves files laid out like the repo; others still download."""
+    import huggingface_hub
+
+    local = tmp_path / "stage" / "onnx" / "player.onnx"
+    local.parent.mkdir(parents=True)
+    local.write_bytes(b"x")
+    monkeypatch.setenv("MYOSUITE_BASELINES_DIR", str(tmp_path / "stage"))
+    calls = []
+
+    def fake_download(repo_id, filename, **kwargs):
+        calls.append(filename)
+        raise huggingface_hub.errors.EntryNotFoundError("missing")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", fake_download)
+    assert download_baseline_file("onnx/player.onnx") == local
+    assert calls == []
+    assert download_baseline_file("onnx/other.onnx") is None
+    assert "onnx/other.onnx" in calls

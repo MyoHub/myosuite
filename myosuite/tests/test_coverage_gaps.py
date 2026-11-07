@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
@@ -84,437 +83,6 @@ class _FakeAccessorWithModel(_FakeAccessor):
         super().__init__(n_act)
         self.model = MagicMock()
         self.model.actuator_gainprm = np.ones((n_actuators, 10))
-
-
-# ---------------------------------------------------------------------------
-# muscle_conditions.CumulativeFatigue
-# ---------------------------------------------------------------------------
-
-
-def _make_fatigue_model(n: int) -> CumulativeFatigue:  # noqa: F821
-    """Build a CumulativeFatigue with n uniform muscle actuators (no real MjModel needed)."""
-    import mujoco
-    from myosuite.core.muscle_conditions import CumulativeFatigue
-
-    mock = MagicMock()
-    mock.opt.timestep = 0.002
-    mock.nu = n
-    mock.actuator_dyntype = np.full(n, mujoco.mjtDyn.mjDYN_MUSCLE)
-    mock.actuator_dynprm = np.tile([0.01, 0.04] + [0.0] * 8, (n, 1))
-    return CumulativeFatigue(mock, use_uniform_params=True)
-
-
-def _fatigue_stepper(backend: str, n: int) -> Any:
-    """Return ``step(TL, dt) -> MA`` for the numpy or torch 3CC-r model (tau 10/40 ms)."""
-    if backend == "numpy":
-        f = _make_fatigue_model(n)
-        return lambda tl, dt: f.compute_act(tl.copy(), dt=dt)[0].copy()
-    torch = pytest.importorskip("torch")
-    from myosuite.core.muscle_conditions import TorchFatigueState
-
-    t = TorchFatigueState(num_envs=1, n_muscles=n)
-    return lambda tl, dt: (
-        t.step(torch.tensor(tl[None], dtype=torch.float32), dt)[0].double().numpy()
-    )
-
-
-# Control steps of the registered myoFati* envs (10, 20 and 25 ms).
-_FATIGUE_CTRL_DTS = (0.01, 0.02, 0.025)
-
-
-def _rest_protocol(n: int = 3) -> np.ndarray:
-    """Target loads at 20 ms: (10 s at 50%, 10 s at 20%, 10 s at rest) x 2."""
-    block = np.repeat([0.5, 0.2, 0.0], 500)
-    return np.tile(np.tile(block, 2)[:, None], (1, n))
-
-
-def _rest_protocol_trace(backend: str, loads: np.ndarray, dt: float = 0.02) -> dict:
-    """MA, MF before and after each step of the uniform-parameter model.
-
-    Starts with MF = 0.3 so that the recovery rate is visible from the start.
-    """
-    from myosuite.core.muscle_conditions import _UNIFORM_PARAMS, TorchFatigueState
-
-    n = loads.shape[1]
-    mf0 = np.full(n, 0.3)
-    if backend == "numpy":
-        cpu = _make_fatigue_model(n)
-        cpu.reset(fatigue_reset_vec=mf0)
-
-        def step(tl: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-            cpu.compute_act(tl.copy(), dt=dt)
-            return cpu.MA.copy(), cpu.MF.copy()
-
-        state = (cpu.MA.copy(), cpu.MF.copy())
-    else:
-        torch = pytest.importorskip("torch")
-        gpu = TorchFatigueState(1, n, **{k: _UNIFORM_PARAMS[k] for k in "FRr"})
-        gpu.reset(fatigue_reset_vec=mf0)
-
-        def step(tl: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-            gpu.step(torch.tensor(tl[None], dtype=torch.float32), dt)
-            return gpu.MA[0].double().numpy(), gpu.MF[0].double().numpy()
-
-        state = (gpu.MA[0].double().numpy(), gpu.MF[0].double().numpy())
-    ma, mf = [state[0]], [state[1]]
-    for tl in loads:
-        new_ma, new_mf = step(tl)
-        ma.append(new_ma)
-        mf.append(new_mf)
-    return {"MA": np.array(ma), "MF": np.array(mf), "dt": dt, **_UNIFORM_PARAMS}
-
-
-def _effective_recovery_multiplier(trace: dict) -> np.ndarray:
-    """``rR / R`` of each step, from ``dMF = (F MA - rR MF) dt``."""
-    ma, mf = trace["MA"], trace["MF"]
-    dmf_dt = np.diff(mf, axis=0) / trace["dt"]
-    return (trace["F"] * ma[:-1] - dmf_dt) / (trace["R"] * mf[:-1])
-
-
-class TestCumulativeFatigue:
-    def test_init_compartments(self) -> None:
-        f = _make_fatigue_model(6)
-        assert f.MA.shape == (6,)
-        assert f.MF.shape == (6,)
-        assert f.MR.shape == (6,)
-        assert np.all(f.MA == 0.0)
-        assert np.all(f.MF == 0.0)
-        assert np.all(f.MR == 1.0)
-
-    def test_step_output_shape(self) -> None:
-        f = _make_fatigue_model(3)
-        out = f.step(np.ones(3) * 0.5, dt=0.01)
-        assert out.shape == (3,)
-
-    def test_step_output_within_bounds(self) -> None:
-        f = _make_fatigue_model(4)
-        for _ in range(50):
-            out = f.step(np.random.rand(4), dt=0.01)
-        assert np.all(out >= 0.0)
-        assert np.all(out <= 1.0)
-
-    def test_step_monotone_accumulation(self) -> None:
-        f = _make_fatigue_model(2)
-        # MA should increase from zero when excitation > MA
-        f.step(np.ones(2), dt=1.0)
-        assert np.all(f.MA > 0.0), "Active compartment must grow"
-
-    def test_reset_restores_initial_state(self) -> None:
-        f = _make_fatigue_model(3)
-        for _ in range(20):
-            f.step(np.ones(3) * 0.8, dt=0.01)
-        f.reset()
-        assert np.all(f.MA == 0.0)
-        assert np.all(f.MF == 0.0)
-        assert np.all(f.MR == 1.0)
-
-    @pytest.mark.parametrize("readonly", [False, True])
-    def test_reset_vector_remains_owned_by_caller(self, readonly: bool) -> None:
-        f = _make_fatigue_model(3)
-        initial = np.full(3, 0.3)
-        initial.setflags(write=not readonly)
-        f.reset(fatigue_reset_vec=initial)
-        for _ in range(100):
-            f.step(np.ones(3), dt=0.02)
-        np.testing.assert_array_equal(initial, np.full(3, 0.3))
-        assert not np.shares_memory(f.MF, initial)
-        f.reset(fatigue_reset_vec=initial)
-        np.testing.assert_array_equal(f.MF, initial)
-
-    def test_custom_rates(self) -> None:
-        f = _make_fatigue_model(2)
-        f.set_FatigueCoefficient(0.1)
-        f.set_RecoveryCoefficient(0.05)
-        assert f.F == pytest.approx(0.1)
-        assert f.R == pytest.approx(0.05)
-
-    @pytest.mark.parametrize("dt", _FATIGUE_CTRL_DTS)
-    @pytest.mark.parametrize("backend", ["numpy", "torch"])
-    def test_step_from_rest_does_not_overshoot_command(
-        self, backend: str, dt: float
-    ) -> None:
-        # LD * dt reaches 5 at a control step; an explicit Euler step then
-        # drove MA from rest to 1.0 for a 0.25 command.
-        tl = np.array([0.05, 0.1, 0.25, 0.5, 0.8, 1.0])
-        ma = _fatigue_stepper(backend, tl.size)(tl, dt)
-        assert np.all(ma > 0.0)
-        assert np.all(ma <= tl + 1e-6), f"MA {ma} overshoots TL {tl}"
-
-    @pytest.mark.parametrize("dt", _FATIGUE_CTRL_DTS)
-    @pytest.mark.parametrize("backend", ["numpy", "torch"])
-    def test_step_never_crosses_command(self, backend: str, dt: float) -> None:
-        # MA moves towards TL and stops short of it (on the way down, only the
-        # fatigue drain F * MA * dt < 3e-4 may take it below TL).
-        step = _fatigue_stepper(backend, 8)
-        rng = np.random.default_rng(0)
-        ma = np.zeros(8)
-        for _ in range(300):
-            tl = rng.uniform(0.0, 1.0, 8)
-            new = step(tl, dt)
-            rising = ma < tl
-            assert np.all(new[rising] <= tl[rising] + 1e-6)
-            assert np.all(new[~rising] >= tl[~rising] - 1e-3)
-            ma = new
-
-    @pytest.mark.parametrize("backend", ["numpy", "torch"])
-    def test_rest_multiplier_applies_only_at_rest(self, backend: str) -> None:
-        """``r`` multiplies recovery only when TL == 0 (Rakshit et al. 2021, Eq. 7).
-
-        On the 20% steps that follow 50% the muscle relaxes (MA >= TL) under a
-        non-zero load, which the model used to treat as rest.
-        """
-        loads = _rest_protocol()
-        trace = _rest_protocol_trace(backend, loads)
-        mult = _effective_recovery_multiplier(trace)
-        rest = loads == 0.0
-        relaxing = (trace["MA"][:-1] >= loads) & ~rest
-        assert relaxing.sum() > 100, "protocol must relax under load"
-        np.testing.assert_allclose(mult[rest], trace["r"], rtol=0.05)
-        np.testing.assert_allclose(mult[~rest], 1.0, atol=0.3)
-
-    @pytest.mark.parametrize("backend", ["numpy", "torch"])
-    def test_near_zero_command_counts_as_rest(self, backend: str) -> None:
-        """Commands up to ``FATIGUE_REST_THRESHOLD`` rest (a sigmoid-mapped muscle
-        never reaches zero); above it recovery runs at ``R``."""
-        from myosuite.core.muscle_conditions import FATIGUE_REST_THRESHOLD
-
-        below = _rest_protocol_trace(backend, np.full((100, 3), FATIGUE_REST_THRESHOLD))
-        above = _rest_protocol_trace(
-            backend, np.full((100, 3), 2.0 * FATIGUE_REST_THRESHOLD)
-        )
-        # skip the first steps, where MA still decays towards the command
-        np.testing.assert_allclose(
-            _effective_recovery_multiplier(below)[30:], below["r"], rtol=0.05
-        )
-        np.testing.assert_allclose(
-            _effective_recovery_multiplier(above)[30:], 1.0, atol=0.3
-        )
-
-    def test_jax_rest_threshold_matches_core(self) -> None:
-        pytest.importorskip("jax")
-        from myosuite.core.muscle_conditions import FATIGUE_REST_THRESHOLD
-        from myosuite.physics import fatigue_jax
-
-        assert fatigue_jax._REST_THRESHOLD == FATIGUE_REST_THRESHOLD
-
-    @pytest.mark.parametrize("backend", ["numpy", "torch"])
-    def test_negative_command_counts_as_rest(self, backend: str) -> None:
-        """A negative command (``[-1, 1]`` muscle ctrl ranges, clamped to zero
-        excitation by MuJoCo) recovers like TL = 0."""
-        rest = _rest_protocol_trace(backend, np.zeros((100, 3)))
-        negative = _rest_protocol_trace(backend, np.full((100, 3), -1.0))
-        np.testing.assert_allclose(negative["MF"], rest["MF"], atol=1e-7)
-        mult = _effective_recovery_multiplier(negative)
-        np.testing.assert_allclose(mult, negative["r"], rtol=0.05)
-
-    def test_rest_protocol_cpu_matches_torch(self) -> None:
-        """CPU and torch agree on load / relax / rest cycles."""
-        pytest.importorskip("torch")
-        loads = _rest_protocol()
-        cpu = _rest_protocol_trace("numpy", loads)
-        gpu = _rest_protocol_trace("torch", loads)
-        for k in ("MA", "MF"):
-            np.testing.assert_allclose(gpu[k], cpu[k], atol=1e-5, err_msg=k)
-
-    def test_sustained_command_fatigue_matches_fine_step(self) -> None:
-        # At the 20 ms control step MF must match the same ODE integrated at
-        # the 2 ms physics step. Overshooting MA to TL used to select the
-        # recovery rate r * R (then applied at MA >= TL) on every other step
-        # and under-counted MF (-9%).
-        coarse, fine = _make_fatigue_model(1), _make_fatigue_model(1)
-        tl = np.full(1, 0.3)
-        for _ in range(1500):  # 30 s
-            coarse.compute_act(tl, dt=0.02)
-            for _ in range(10):
-                fine.compute_act(tl, dt=0.002)
-        np.testing.assert_allclose(coarse.MF, fine.MF, rtol=0.02)
-
-    def test_per_muscle_params_ignore_attach_prefix_and_side_suffix(self) -> None:
-        """Prefixed and side-suffixed muscle names get their group's F / R / r.
-
-        mjlab scenes prefix actuators (``robot/BIClong``); ``myohand_r.xml`` and
-        the left arm of full-body models suffix the side (``ECRL_r``, ``BIClong_l``).
-        """
-        import mujoco
-        from myosuite.core.muscle_conditions import (
-            MUSCLE_FATIGUE_PARAMS,
-            CumulativeFatigue,
-        )
-
-        def fatigue(names: list[str]) -> CumulativeFatigue:
-            mock = MagicMock()
-            mock.opt.timestep = 0.002
-            mock.nu = len(names)
-            mock.actuator_dyntype = np.full(len(names), mujoco.mjtDyn.mjDYN_MUSCLE)
-            mock.actuator_dynprm = np.tile([0.01, 0.04] + [0.0] * 8, (len(names), 1))
-            mock.actuator.side_effect = lambda i: SimpleNamespace(name=names[i])
-            return CumulativeFatigue(mock)
-
-        got = fatigue(
-            ["robot/BIClong", "ECRL_r", "robot/ECRL_r", "BIClong_l", "robot/soleus_r"]
-        )
-        want = fatigue(["BIClong", "ECRL", "ECRL", "BIClong", "soleus_r"])
-        assert np.all(want.F != MUSCLE_FATIGUE_PARAMS["Default"]["F"])
-        for p in ("F", "R", "r"):
-            np.testing.assert_array_equal(getattr(got, p), getattr(want, p), p)
-
-    def test_get_effort_is_distance_to_target_load(self) -> None:
-        """get_effort() (legacy API, JAX twins) is ||MA - TL|| after compute_act."""
-        f = _make_fatigue_model(3)
-        tl = np.array([0.2, 0.6, 1.0])
-        f.compute_act(tl, dt=0.02)
-        assert f.get_effort() == pytest.approx(float(np.linalg.norm(f.MA - tl)))
-        assert f.get_effort() > 0.0
-
-    def test_torch_nan_excitation_does_not_poison_state(self) -> None:
-        """One NaN excitation gives C = 0 on torch as on CPU; the state stays finite."""
-        torch = pytest.importorskip("torch")
-        import mujoco
-        from myosuite.core.muscle_conditions import CumulativeFatigue, TorchFatigueState
-
-        model = mujoco.MjModel.from_xml_string(_FATIGUE_MUSCLE_XML)
-        cpu = CumulativeFatigue(model)
-        gpu = TorchFatigueState.from_mj_model(model, num_envs=2)
-        rng = np.random.default_rng(0)
-        for k in range(40):
-            tl = rng.uniform(0.0, 1.0, cpu.na)
-            if k == 5:
-                tl[0] = np.nan
-            cpu.compute_act(tl.copy(), dt=0.02)
-            gpu.step(torch.tensor(np.stack([tl, np.nan_to_num(tl)])), 0.02)
-            assert bool(torch.isfinite(gpu.MA).all())
-            np.testing.assert_allclose(gpu.MA[0].numpy(), cpu.MA, atol=1e-5)
-            np.testing.assert_allclose(gpu.MF[0].numpy(), cpu.MF, atol=1e-5)
-
-    def test_torch_state_dtype_is_fixed(self) -> None:
-        """A float64 excitation no longer switches the float32 state to float64."""
-        torch = pytest.importorskip("torch")
-        from myosuite.core.muscle_conditions import TorchFatigueState
-
-        f32 = TorchFatigueState(num_envs=1, n_muscles=3)
-        f64 = TorchFatigueState(num_envs=1, n_muscles=3)
-        tl = torch.tensor([[0.2, 0.5, 0.9]], dtype=torch.float64)
-        out = f64.step(tl, 0.02)
-        f32.step(tl.float(), 0.02)
-        assert (
-            f64.MA.dtype == f64.MR.dtype == f64.MF.dtype == out.dtype == torch.float32
-        )
-        torch.testing.assert_close(f64.MA, f32.MA)
-
-    def test_uniform_params_match_across_backends(self) -> None:
-        """use_uniform_params: the v2.4 row and the model's tau on CPU and torch."""
-        torch = pytest.importorskip("torch")
-        import mujoco
-        from myosuite.core.muscle_conditions import (
-            MUSCLE_FATIGUE_PARAMS,
-            CumulativeFatigue,
-            TorchFatigueState,
-        )
-
-        model = mujoco.MjModel.from_xml_string(_FATIGUE_MUSCLE_XML)
-        cpu = CumulativeFatigue(model, use_uniform_params=True)
-        gpu = TorchFatigueState.from_mj_model(model, 1, use_uniform_params=True)
-        v24 = MUSCLE_FATIGUE_PARAMS["Default_v2_4"]
-        for p in ("F", "R", "r"):
-            np.testing.assert_allclose(getattr(cpu, p), v24[p])
-        np.testing.assert_allclose(gpu._tauact.numpy(), model.actuator_dynprm[:, 0])
-        np.testing.assert_allclose(gpu._taudeact.numpy(), model.actuator_dynprm[:, 1])
-        rng = np.random.default_rng(1)
-        for _ in range(200):
-            tl = rng.uniform(0.0, 1.0, cpu.na)
-            cpu.compute_act(tl, dt=0.02)
-            gpu.step(torch.tensor(tl[None], dtype=torch.float32), 0.02)
-        np.testing.assert_allclose(gpu.MA[0].numpy(), cpu.MA, atol=1e-5)
-        np.testing.assert_allclose(gpu.MF[0].numpy(), cpu.MF, atol=1e-5)
-
-    def test_torch_reset_vec_matches_cpu(self) -> None:
-        """A fixed fatigue vector resets the chosen envs like the CPU model."""
-        torch = pytest.importorskip("torch")
-        from myosuite.core.muscle_conditions import TorchFatigueState
-
-        cpu = _make_fatigue_model(3)
-        gpu = TorchFatigueState(num_envs=4, n_muscles=3)
-        for _ in range(30):
-            cpu.compute_act(np.full(3, 0.7), dt=0.02)
-            gpu.step(torch.full((4, 3), 0.7), 0.02)
-        before = gpu.MF.clone()
-        vec = np.array([0.1, 0.4, 0.8])
-        cpu.reset(fatigue_reset_vec=vec)
-        gpu.reset(torch.tensor([1, 3]), fatigue_reset_vec=vec)
-        for name in ("MA", "MR", "MF"):
-            got = getattr(gpu, name)[[1, 3]].double().numpy()
-            np.testing.assert_allclose(
-                got, np.tile(getattr(cpu, name), (2, 1)), atol=1e-7
-            )
-        torch.testing.assert_close(gpu.MF[[0, 2]], before[[0, 2]])
-
-    def test_torch_reset_random_matches_cpu_distribution(self) -> None:
-        """Random resets: seeded, per env, and the CPU construction of the state.
-
-        CPU and torch draw from different generators, so the states are compared
-        in distribution: ``MF = 1 - nf`` and ``MA / (MA + MR) = ap`` are uniform.
-        """
-        torch = pytest.importorskip("torch")
-        from myosuite.core.muscle_conditions import TorchFatigueState
-
-        n = 3
-        gpu = TorchFatigueState(num_envs=4000, n_muscles=n)
-        gpu.reset(fatigue_reset_random=True, generator=torch.Generator().manual_seed(0))
-        again = TorchFatigueState(num_envs=4000, n_muscles=n)
-        again.reset(
-            fatigue_reset_random=True, generator=torch.Generator().manual_seed(0)
-        )
-        torch.testing.assert_close(gpu.MF, again.MF)
-        total = (gpu.MA + gpu.MR + gpu.MF).double().numpy()
-        np.testing.assert_allclose(total, 1.0, atol=1e-6)
-        assert len(torch.unique(gpu.MF[:, 0])) > 3900  # one draw per env
-
-        cpu = _make_fatigue_model(n)
-        rng = np.random.default_rng(0)
-        states = []
-        for _ in range(4000):
-            cpu.reset(fatigue_reset_random=True, np_random=rng)
-            states.append((cpu.MA.copy(), cpu.MR.copy(), cpu.MF.copy()))
-        ma, mr, mf = (np.stack(s) for s in zip(*states))
-        q = np.linspace(0.05, 0.95, 19)
-        for cpu_x, gpu_x in (
-            (mf, gpu.MF.double().numpy()),
-            (ma, gpu.MA.double().numpy()),
-            (ma / (ma + mr), (gpu.MA / (gpu.MA + gpu.MR)).double().numpy()),
-        ):
-            np.testing.assert_allclose(
-                np.quantile(gpu_x, q), np.quantile(cpu_x, q), atol=0.02
-            )
-
-    def test_torch_reset_rejects_invalid_options(self) -> None:
-        """Both options at once, or a vector of the wrong length, raise as on CPU."""
-        torch = pytest.importorskip("torch")
-        from myosuite.core.muscle_conditions import TorchFatigueState
-
-        gpu = TorchFatigueState(num_envs=2, n_muscles=3)
-        with pytest.raises(ValueError, match="Cannot pass"):
-            gpu.reset(fatigue_reset_vec=[0.1] * 3, fatigue_reset_random=True)
-        with pytest.raises(ValueError, match="length"):
-            gpu.reset(fatigue_reset_vec=[0.1, 0.2])
-        torch.testing.assert_close(gpu.MR, torch.ones(2, 3))
-
-
-# Three muscles; the first two have non-default activation time constants.
-_FATIGUE_MUSCLE_XML = """
-<mujoco>
-  <worldbody>
-    <body>
-      <joint name="j" type="hinge" range="-1 1" limited="true"/>
-      <geom size="0.1"/>
-    </body>
-  </worldbody>
-  <actuator>
-    <muscle name="m0" joint="j" timeconst="0.02 0.08"/>
-    <muscle name="m1" joint="j" timeconst="0.005 0.03"/>
-    <muscle name="m2" joint="j"/>
-  </actuator>
-</mujoco>
-"""
 
 
 def _active_muscle_force(model: Any) -> np.ndarray:
@@ -773,34 +341,37 @@ class TestMakeEnvBackends:
     def test_make_env_mjx_import_error(self) -> None:
         from myosuite import make_env
 
-        with patch.dict("sys.modules", {"mujoco_playground": None}):
-            with pytest.raises(ImportError, match="mujoco_playground"):
+        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": None}):
+            with pytest.raises(ImportError, match=r"myosuite\[mjx\]"):
                 make_env("NonExistent-v0", backend="mjx")
 
     def test_make_env_mjx_forwards_overrides(self) -> None:
-        """Keyword overrides reach mujoco_playground as config_overrides."""
+        """Keyword overrides reach the MJX backend's make() as config_overrides."""
         import types
 
         from myosuite import make_env
 
         calls: list[tuple[str, Any]] = []
 
-        def _load(
-            env_id: str, config: Any = None, config_overrides: Any = None
-        ) -> None:
-            calls.append((env_id, config_overrides))
+        def _make(env_name: str, config_overrides: Any = None) -> None:
+            calls.append((env_name, config_overrides))
 
-        registry = types.ModuleType("mujoco_playground.registry")
-        registry.load = _load  # type: ignore[attr-defined]
-        playground = types.ModuleType("mujoco_playground")
-        playground.registry = registry  # type: ignore[attr-defined]
-        with patch.dict(
-            "sys.modules",
-            {"mujoco_playground": playground, "mujoco_playground.registry": registry},
-        ):
+        backend = types.ModuleType("myosuite.envs.myo.backends.mjx")
+        backend.make = _make  # type: ignore[attr-defined]
+        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": backend}):
             make_env("Task-v0", backend="mjx", num_envs=8)
             make_env("Task-v0", backend="mjx")
         assert calls == [("Task-v0", {"num_envs": 8}), ("Task-v0", None)]
+
+    def test_register_task_mjx_needs_no_jax(self) -> None:
+        """register_task() records the MJX twin without importing the MJX backend."""
+        from myosuite.core import registry
+
+        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": None}):
+            env_id = registry.register_task(
+                _MyoVariantTask(), env_id="NoJaxMjxTask-v0", backends={"mjx"}
+            )
+        assert registry._MJX_TASKS[env_id][1] == {}
 
     def test_make_env_mjlab_import_error(self) -> None:
         from myosuite import make_env

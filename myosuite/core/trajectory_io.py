@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 
 from myosuite.core.hf_io import default_musclemimic_cache_root
+from myosuite.core.model_names import resolve_model_names
 
 _QPOS_NAME_KEYS: tuple[str, ...] = ("qpos_names", "qpos_joint_names", "joint_names")
 _QVEL_NAME_KEYS: tuple[str, ...] = ("qvel_names", "qvel_joint_names", "joint_names")
@@ -48,6 +49,25 @@ class MotionClip:
     @property
     def num_frames(self) -> int:
         return int(self.qpos.shape[0])
+
+    def to_mjdata(self, model: Any, frame: int = 0) -> Any:
+        """Return a new ``MjData`` posed at *frame* (``qpos``, ``qvel`` if any), forwarded.
+
+        Args:
+            model: Compiled ``mujoco.MjModel`` whose ``qpos``/``qvel`` layout the clip uses.
+            frame: Clip frame to start from.
+
+        Returns:
+            A new ``mujoco.MjData`` at that frame, after ``mj_forward``.
+        """
+        import mujoco
+
+        data = mujoco.MjData(model)
+        data.qpos[:] = self.qpos[frame]
+        if self.qvel is not None and self.qvel.shape[0] > frame:
+            data.qvel[:] = self.qvel[frame]
+        mujoco.mj_forward(model, data)
+        return data
 
     def __post_init__(self) -> None:
         if self.weights is not None:
@@ -194,6 +214,7 @@ def _resolve_model_indices(
         return np.arange(expected_width, dtype=np.int32)
 
     index_map = _build_model_joint_index_map(mj_model, use_qvel=use_qvel)
+    joint_names = resolve_model_names(joint_names, index_map, field_name=field_name)
     missing = sorted(set(joint_names) - set(index_map))
     if missing:
         raise ValueError(
@@ -302,7 +323,9 @@ def expand_motion_clip_to_model(
     metadata are resolved by name at any width: a full-width clip whose joints
     are stored in another order is reordered, and a partial clip is expanded
     to the full model width (missing coordinates take the model's default
-    state).  Clips without names must already be in model order.  The result
+    state). Known full-body aliases (including prefixed agent names) are used
+    only when the exact joint name is absent. Clips without names must already
+    be in model order. The result
     is idempotent: ``expanded.qpos[:, expanded.qpos_model_indices]`` equals the
     clip's own columns.
     """

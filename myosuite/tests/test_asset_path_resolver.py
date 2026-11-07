@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import mujoco
@@ -196,19 +197,117 @@ def test_read_only_model_dir_on_disk(
     assert _model_arrays(resolved)["mesh_vert"].shape == (4 + 5, 3)
 
 
+_DATA = b"<mujoco/>"
+
+
+def _published_name(tmp_path: Path) -> str:
+    """Name ``_write_once`` gives ``_DATA`` written from ``source.xml``."""
+    return apr._write_once(
+        tmp_path / "names", "probe", tmp_path / "source.xml", _DATA
+    ).name
+
+
+def _lose_race(error: type[OSError]) -> Callable[[Path, Path], Path]:
+    """A rename/replace that loses to a writer of the same bytes, raising *error*."""
+
+    def lose(self: Path, target: Path) -> Path:
+        Path(target).write_bytes(_DATA)  # the other process got there first ...
+        raise error(13, "in use", str(target))  # ... and is still renaming it
+
+    return lose
+
+
+@pytest.mark.parametrize("error", [FileExistsError, PermissionError])
 def test_write_once_reuses_the_file_of_a_concurrent_writer(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[OSError]
 ) -> None:
-    """Losing the rename to an identical writer (Windows: file in use) is not an error."""
-    data = b"<mujoco/>"
-
-    def lose_race(self: Path, target: Path) -> Path:
-        Path(target).write_bytes(data)  # the other process got there first ...
-        raise PermissionError(13, "in use", str(target))  # ... and holds it open
-
-    monkeypatch.setattr(Path, "replace", lose_race)
-    path = apr._write_once(tmp_path, "probe", tmp_path / "source.xml", data)
+    """Losing the rename to an identical writer is not an error (Windows refuses it)."""
+    monkeypatch.setattr(Path, "rename", _lose_race(error))
+    monkeypatch.setattr(Path, "replace", _lose_race(error))
+    path = apr._write_once(tmp_path, "probe", tmp_path / "source.xml", _DATA)
     monkeypatch.undo()
 
-    assert path.read_bytes() == data
+    assert path.read_bytes() == _DATA
     assert [p.name for p in tmp_path.iterdir()] == [path.name]
+
+
+def test_write_once_retries_until_the_concurrent_file_is_readable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows also refuses a first read of the file being renamed; the write retries."""
+    read_bytes = Path.read_bytes
+    refused: list[Path] = []
+
+    def refuse_first_read(self: Path) -> bytes:
+        if self.exists() and not refused:
+            refused.append(self)
+            raise PermissionError(13, "in use", str(self))
+        return read_bytes(self)
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(Path, "rename", _lose_race(PermissionError))
+    monkeypatch.setattr(Path, "replace", _lose_race(PermissionError))
+    monkeypatch.setattr(Path, "read_bytes", refuse_first_read)
+    monkeypatch.setattr(apr.time, "sleep", sleeps.append)
+    path = apr._write_once(tmp_path, "probe", tmp_path / "source.xml", _DATA)
+    monkeypatch.undo()
+
+    assert refused == [path]
+    assert sleeps == [apr._RETRY_DELAYS[0]]
+    assert path.read_bytes() == _DATA
+    assert [p.name for p in tmp_path.iterdir()] == [path.name]
+
+
+def test_write_once_raises_when_refusals_outlast_the_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rename Windows keeps refusing fails after the last attempt, leaving no temp file."""
+    attempts: list[Path] = []
+
+    def refuse(self: Path, target: Path) -> Path:
+        attempts.append(Path(target))
+        raise PermissionError(13, "in use", str(target))
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(Path, "rename", refuse)
+    monkeypatch.setattr(Path, "replace", refuse)
+    monkeypatch.setattr(apr.time, "sleep", sleeps.append)
+    with pytest.raises(PermissionError):
+        apr._write_once(tmp_path, "probe", tmp_path / "source.xml", _DATA)
+    monkeypatch.undo()
+
+    assert len(attempts) == len(apr._RETRY_DELAYS) + 1
+    assert sleeps == list(apr._RETRY_DELAYS)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_write_once_leaves_a_published_file_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file another writer published meanwhile is kept, not replaced under its readers."""
+    path = tmp_path / _published_name(tmp_path)
+    mkstemp = apr.tempfile.mkstemp
+
+    def publish_meanwhile(*args: object, **kwargs: object) -> tuple[int, str]:
+        path.write_bytes(_DATA)  # the other process publishes while this one writes
+        return mkstemp(*args, **kwargs)
+
+    def must_not_publish(self: Path, target: Path) -> Path:
+        raise AssertionError(f"replaced the published {target}")
+
+    monkeypatch.setattr(apr.tempfile, "mkstemp", publish_meanwhile)
+    monkeypatch.setattr(Path, "rename", must_not_publish)
+    monkeypatch.setattr(Path, "replace", must_not_publish)
+    assert apr._write_once(tmp_path, "probe", tmp_path / "source.xml", _DATA) == path
+    monkeypatch.undo()
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["names", path.name]
+
+
+def test_write_once_replaces_a_stale_file(tmp_path: Path) -> None:
+    """A file under the digest name with other bytes (e.g. truncated) is rewritten."""
+    path = tmp_path / _published_name(tmp_path)
+    path.write_bytes(b"<muj")
+    assert apr._write_once(tmp_path, "probe", tmp_path / "source.xml", _DATA) == path
+    assert path.read_bytes() == _DATA
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["names", path.name]

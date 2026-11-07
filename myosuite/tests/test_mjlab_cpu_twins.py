@@ -43,6 +43,9 @@ from myosuite.envs.wrappers import FatigueWrapper  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0  # noqa: E402
 from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0  # noqa: E402
 from myosuite import make_env  # noqa: E402
+from myosuite.tests.support.joint_couplings import (  # noqa: E402
+    joint_equality_residuals,
+)
 
 if sys.platform.startswith("linux"):  # "egl" is an invalid MUJOCO_GL on Windows/macOS
     os.environ.setdefault("MUJOCO_GL", "egl")
@@ -106,9 +109,30 @@ _WARP_WRAP_DIFF_REW_ATOL = 5e-2
 # lengths agree to 1e-5 (constraint-solver ordering; the other steps match to ~1e-6).
 _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL = 1e-2, 1e-2
 # Height-field terrain: MuJoCo Warp generates at most one capsule-hfield contact where
-# C MuJoCo can create several, so contact forces (and the muscle forces reacting to them)
-# differ per step: measured up to 1e-2 in velocities and 0.2 in force / 1000.
-_HFIELD_OBS_ATOL, _HFIELD_REW_ATOL = 0.3, 0.1
+# C MuJoCo can create several, so a step that lands a foot gets other contact impulses.
+# One tolerance per actor obs term, about twice the worst gaps over 750 synced random
+# steps (30 action seeds) of each terrain, with the old and the coupled-joint reset:
+# qpos_without_xy 7.6e-2, qvel (qvel * ctrl dt) 0.13, com_vel 0.19, muscle_length 9.6e-2
+# (one step; the 90th percentile is 1.3e-3), muscle_velocity 0.51, muscle_force (/ 1000)
+# 1.75 and the reward 0.61; the pose terms 1e-2 or less, act 1.8e-7. A single 0.3 / 0.1
+# failed 1 to 14 of 20 action seeds per terrain (the test's one seed passed by chance).
+# A halved action fails act here; 10% weaker muscles fail the flat walk twin, which is
+# built by the same config function (muscle_force 25x, reward 17x its tolerance).
+_HFIELD_OBS_TERM_ATOL: dict[str, float] = {
+    "qpos_without_xy": 0.15,
+    "qvel": 0.25,
+    "com_vel": 0.4,
+    "torso_angle": 2e-3,
+    "feet_heights": 1e-2,
+    "height": 1e-3,
+    "feet_rel_positions": 2e-2,
+    "phase_var": 1e-6,
+    "muscle_length": 0.2,
+    "muscle_velocity": 1.0,
+    "muscle_force": 3.5,
+    "act": 1e-5,
+}
+_HFIELD_REW_ATOL = 1.25
 # Directional legs: one tolerance per actor obs term. Worst gaps over 500 synced random
 # steps (20 action seeds): joint_pos 1.9e-3, joint_vel (qvel * ctrl dt, |obs| <= 0.08)
 # 3.0e-3 and root_planar_vel 2.1e-3 from the falling start pose's contacts (float32 Warp
@@ -135,7 +159,7 @@ def _tolerances(env_id: str) -> tuple[float | dict[str, float], float]:
     if "Hand" in env_id or "Arm" in env_id:
         return _WARP_WRAP_DIFF_OBS_ATOL, _WARP_WRAP_DIFF_REW_ATOL
     if "TerrainWalk" in env_id:
-        return _HFIELD_OBS_ATOL, _HFIELD_REW_ATOL
+        return _HFIELD_OBS_TERM_ATOL, _HFIELD_REW_ATOL
     if "LegDirectional" in env_id:
         return _DIRECTIONAL_OBS_TERM_ATOL, _CONTACT_REW_ATOL
     if "LegWalk" in env_id:
@@ -558,6 +582,105 @@ def test_torso_exo_observation_matches_cpu(env_id: str) -> None:
         obs_cpu = cpu.step(action)[0]
         obs_mj = mj.step(torch.as_tensor(action[None]))[0]["actor"][0].numpy()
         np.testing.assert_allclose(obs_mj, obs_cpu, atol=2e-3)
+
+
+# Twins whose CPU model couples joints (mjEQ_JOINT: knee mechanisms and patellae,
+# shoulder and lumbar rhythms); test_every_coupled_twin_is_listed keeps this complete.
+COUPLED_TWIN_IDS = (
+    "myoArmReachFixed-v0",
+    "myoArmReachRandom-v0",
+    "myoFullBodyWaypoint-v0",
+    "myoLegDirectionalBackward-v0",
+    "myoLegDirectionalForward-v0",
+    "myoLegDirectionalRandom-v0",
+    "myoLegHillyTerrainWalk-v0",
+    "myoLegRoughTerrainWalk-v0",
+    "myoLegStairTerrainWalk-v0",
+    "myoLegStandRandom-v0",
+    "myoLegWalk-v0",
+    "myoMimic-v0",
+    "myoTorsoExoPoseFixed-v0",
+    "myoTorsoPoseFixed-v0",
+)
+# MyoChallenge twins: their CPU envs do not project at reset yet (a competition
+# contract, pinned by the PyPI baselines), so neither do the twins.
+_PENDING_COUPLED_TWINS = (
+    "myoChallengeChaseTagFBP2-v0",
+    "myoChallengeTableTennisP0-v0",
+    "myoChallengeTableTennisP1-v0",
+    "myoChallengeTableTennisP2-v0",
+)
+# float32 states: rounding leaves ~1e-7 (positions) and ~1e-6 (velocities up to 5 rad/s).
+_TWIN_COUPLING_ATOL = 1e-5
+
+
+def _joint_equality_count(model: mujoco.MjModel) -> int:
+    active = (model.eq_type == mujoco.mjtEq.mjEQ_JOINT) & (model.eq_active0 != 0)
+    return int(active.sum())
+
+
+@pytest.mark.parametrize("env_id", COUPLED_TWIN_IDS)
+def test_twin_resets_on_the_joint_couplings(env_id: str) -> None:
+    """Every env of the twin starts on the joint couplings, as the CPU env does.
+
+    The walk keyframe left the patella rotation 0.74 rad off its knee coupling and the
+    stand reset noise 0.18 rad; a deterministic CPU reset is replayed by the twin.
+    """
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+
+    from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData  # noqa: PLC0415
+
+    try:
+        cfg = load_env_cfg(env_id)
+        cfg.scene.num_envs = 4  # several draws of any reset noise
+        mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    except MissingMotionData as exc:  # myoMimic-v0 without its clips (CI)
+        pytest.skip(f"{env_id}: motion clips unavailable ({exc})")
+    cpu = make_env(env_id).unwrapped
+    try:
+        mj.reset()
+        qpos = mj.sim.data.qpos[:].cpu().numpy().astype(np.float64)
+        qvel = mj.sim.data.qvel[:].cpu().numpy().astype(np.float64)
+        assert _joint_equality_count(mj.sim.mj_model) == _joint_equality_count(
+            cpu.model
+        )
+        for i in range(cfg.scene.num_envs):
+            pos, vel = joint_equality_residuals(mj.sim.mj_model, qpos[i], qvel[i])
+            worst = (np.abs(pos).max(), np.abs(vel).max())
+            assert max(worst) < _TWIN_COUPLING_ATOL, f"env {i}: {worst}"
+
+        cpu.reset(seed=0)
+        cpu_qpos = cpu.data.qpos.copy()
+        cpu.reset(seed=1)
+        joints = mj.scene["robot"].data.joint_pos.cpu().numpy()
+        root = 7 if cpu.model.jnt_type[0] == mujoco.mjtJoint.mjJNT_FREE else 0
+        # A deterministic reset is replayed (an exo twin's chains have their own layout).
+        if np.array_equal(cpu_qpos, cpu.data.qpos) and joints.shape[1] == (
+            cpu.model.nq - root
+        ):
+            np.testing.assert_allclose(
+                joints, np.tile(cpu_qpos[root:], (len(joints), 1)), atol=1e-6
+            )
+    finally:
+        mj.close()
+        cpu.close()
+
+
+def test_every_coupled_twin_is_listed() -> None:
+    """Each base twin of a CPU env with joint couplings is in COUPLED_TWIN_IDS."""
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
+
+    unlisted = []
+    for env_id in set(list_tasks()) - set(COUPLED_TWIN_IDS):
+        if env_id not in gym.registry or env_id.startswith(
+            ("myoSarc", "myoFati", "myoReaf")
+        ):
+            continue
+        env = make_env(env_id)
+        if _joint_equality_count(env.unwrapped.model):
+            unlisted.append(env_id)
+        env.close()
+    assert sorted(unlisted) == sorted(_PENDING_COUPLED_TWINS), unlisted
 
 
 def test_every_twin_logs_a_success_metric() -> None:

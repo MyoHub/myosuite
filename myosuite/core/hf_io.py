@@ -81,6 +81,9 @@ def resolve_hf_snapshot(
 BASELINES_REPO_ID = "myohub/myosuite-3-baselines"
 """Hugging Face repo of the default-run mjlab checkpoints and eval videos, for envs whose
 deterministic success reached at least 25% (see that repo's ``checkpoints/README.md``)."""
+BASELINES_DIR_ENV = "MYOSUITE_BASELINES_DIR"
+"""Environment variable naming a local folder laid out like the baselines repo; files found there
+are used instead of downloads (:func:`download_baseline_file`), e.g. to test files before upload."""
 
 
 def default_baseline_revision() -> str:
@@ -114,26 +117,48 @@ def baseline_revisions() -> list[str]:
 
 
 def _download_at_revision(
-    download: Callable[[str], Any], repo_id: str, revision: str | None
+    download: Callable[[str], Any],
+    repo_id: str,
+    revision: str | None,
+    *,
+    fallback_to_main: bool = True,
 ) -> Any | None:
-    """Run ``download(revision)`` for the release tags, then for ``main`` if none of them exists.
+    """Run ``download(revision)`` for the release tags, then for ``main`` if none of them exists
+    or none of them holds the file (a baseline added after the release's tag).
 
+    ``fallback_to_main=False`` keeps downloads at the requested revisions only.
     Prints the repo revision that was used. Returns ``None`` (after printing why) on network,
     auth or repo errors.
     """
-    from huggingface_hub.errors import RevisionNotFoundError  # noqa: PLC0415
+    from huggingface_hub.errors import (  # noqa: PLC0415
+        EntryNotFoundError,
+        RevisionNotFoundError,
+    )
 
     wanted = [revision] if revision else baseline_revisions()
-    for rev in dict.fromkeys([*wanted, "main"]):
+    missing = "tag"  # what was missing at wanted[0]: the tag itself, or the file in it
+    revisions = [*wanted, "main"] if fallback_to_main else wanted
+    for rev in dict.fromkeys(revisions):
         try:
             result = download(rev)
         except RevisionNotFoundError:
+            continue
+        except (
+            EntryNotFoundError
+        ):  # the tag exists but predates the file: try the next revision
+            if rev == wanted[0]:
+                missing = "file"
             continue
         except Exception as err:  # noqa: BLE001  (network / auth / repo errors all mean "no baseline")
             print(f"Could not download from the {repo_id!r} Hugging Face repo: {err}")
             return None
         latest = ", using the latest" if rev == "main" else ""
-        note = "" if rev == wanted[0] else f" (tag {wanted[0]!r} not found{latest})"
+        what = (
+            f"tag {wanted[0]!r} not found"
+            if missing == "tag"
+            else f"not in tag {wanted[0]!r}"
+        )
+        note = "" if rev == wanted[0] else f" ({what}{latest})"
         print(f"Using baselines of {repo_id} at revision {rev!r}{note}")
         return result
     return None
@@ -186,7 +211,11 @@ def download_baseline_checkpoint(
 
 
 def download_baseline_file(
-    filename: str, repo_id: str = BASELINES_REPO_ID, revision: str | None = None
+    filename: str,
+    repo_id: str = BASELINES_REPO_ID,
+    revision: str | None = None,
+    *,
+    fallback_to_main: bool = True,
 ) -> Path | None:
     """Download one file of the baselines Hugging Face repo, at the revision of this release.
 
@@ -196,11 +225,19 @@ def download_baseline_file(
     Args:
         filename: Path of the file inside the repo.
         repo_id: Hugging Face repo id to download from.
-        revision: Branch or tag; defaults as in :func:`download_baseline_checkpoint`.
+        revision: Commit, branch or tag; defaults as in :func:`download_baseline_checkpoint`.
+        fallback_to_main: Try the moving ``main`` branch when the requested revision
+            or file is missing. Set ``False`` with a commit SHA for a pinned download.
 
     Returns:
         The local file, or ``None`` when huggingface_hub is missing or the download failed.
+        With ``$MYOSUITE_BASELINES_DIR`` set, a file at ``<that folder>/<filename>`` is returned
+        without downloading.
     """
+    local = os.environ.get(BASELINES_DIR_ENV)
+    if local and (Path(local) / filename).is_file():
+        print(f"Using {filename} from ${BASELINES_DIR_ENV}")
+        return Path(local) / filename
     try:
         from huggingface_hub import hf_hub_download
         from huggingface_hub.errors import EntryNotFoundError
@@ -218,7 +255,9 @@ def download_baseline_file(
             print(f"No manifest.json next to {filename} at revision {rev!r}.")
         return path
 
-    return _download_at_revision(fetch, repo_id, revision)
+    return _download_at_revision(
+        fetch, repo_id, revision, fallback_to_main=fallback_to_main
+    )
 
 
 def default_musclemimic_cache_root() -> Path:

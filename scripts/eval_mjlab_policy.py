@@ -29,6 +29,10 @@ Muscle-command features (the ones the checkpoint was trained with, see
     python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN \
         --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'
 
+A checkpoint trained through an action map (e.g. DynSyn muscle synergies, trained with
+``training/dynsyn``) is evaluated with the map of its training run, at its training
+progress, read from the checkpoint (see ``myosuite.utils.action_map``).
+
 Every run prints the success rate (share of episodes whose final step is
 "solved"; CPU: ``info["solved"]``, mjlab: the ``Episode_Metrics/success``
 metric that every task twin logs during training too).
@@ -896,7 +900,9 @@ def _check_stochastic(cfg: EvalConfig, policy) -> None:
         )
 
 
-def evaluate_cpu(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> None:
+def evaluate_cpu(
+    cfg: EvalConfig, checkpoint: Path, features: tuple = (), trained: Any = None
+) -> None:
     """Roll out ``cols x rows`` CPU envs in lockstep, ``episodes_per_env`` each."""
 
     import myosuite  # noqa: F401  (registers the CPU envs)
@@ -906,7 +912,20 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> Non
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
     env_config = EnvConfig(cfg.env_id, features=features)
     envs = [make_env(env_config) for _ in range(n_envs)]
-    policy = load_rslrl_policy(checkpoint, envs[0].action_space.shape[0])
+    if trained is not None:
+        from myosuite.utils.action_map import ActionMapWrapper  # noqa: PLC0415
+
+        envs = [
+            ActionMapWrapper(
+                env, trained.action_map, step_offset=trained.env_steps, frozen=True
+            )
+            for env in envs
+        ]
+    policy = load_rslrl_policy(
+        checkpoint,
+        envs[0].action_space.shape[0],
+        action_map_applied=trained is not None,
+    )
     _check_stochastic(cfg, policy)
     grid = (
         GridRenderer(
@@ -968,7 +987,9 @@ def _actor_obs(obs: Any) -> Any:
     return obs["actor"] if "actor" in obs else obs["policy"]
 
 
-def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> None:
+def evaluate_mjlab(
+    cfg: EvalConfig, checkpoint: Path, features: tuple = (), trained: Any = None
+) -> None:
     """Roll out ``cols x rows`` parallel mjlab envs, ``episodes_per_env`` each."""
     import torch
     from mjlab.envs import ManagerBasedRlEnv
@@ -991,6 +1012,12 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
     env_cfg.scene.num_envs = n_envs
     env_cfg.seed = cfg.seed
+    if trained is not None:
+        from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import (  # noqa: PLC0415
+            apply_trained_action_map,
+        )
+
+        apply_trained_action_map(env_cfg, trained, frozen=True)
     env = ManagerBasedRlEnv(cfg=env_cfg, device=device)
     grid = (
         GridRenderer(
@@ -1008,9 +1035,11 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
         else None
     )
     frames: list[np.ndarray] = []
-    policy = load_rslrl_policy(checkpoint, env.action_manager.total_action_dim).to(
-        device
-    )
+    policy = load_rslrl_policy(
+        checkpoint,
+        env.action_manager.total_action_dim,
+        action_map_applied=trained is not None,
+    ).to(device)
     _check_stochastic(cfg, policy)
     has_success = "success" in env.metrics_manager.active_terms
 
@@ -1059,10 +1088,18 @@ def main() -> None:
     print(f"\n\ncheckpoint: {checkpoint}  backend: {cfg.backend}  env: {cfg.env_id}")
     if features:
         print("features: " + ", ".join(spec.name for spec in features))
+    from myosuite.utils.action_map import trained_action_map  # noqa: PLC0415
+
+    trained = trained_action_map(checkpoint)
+    if trained is not None:
+        print(
+            f"Action map: {trained.action_map.kind} ({trained.action_map.action_dim} "
+            f"actions, as trained after {trained.env_steps:.4g} env steps)"
+        )
     if cfg.backend == "cpu":
-        evaluate_cpu(cfg, checkpoint, features)
+        evaluate_cpu(cfg, checkpoint, features, trained)
     else:
-        evaluate_mjlab(cfg, checkpoint, features)
+        evaluate_mjlab(cfg, checkpoint, features, trained)
 
 
 if __name__ == "__main__":

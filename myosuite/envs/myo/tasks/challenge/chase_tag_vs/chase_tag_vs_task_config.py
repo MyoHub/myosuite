@@ -38,10 +38,11 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     matching the MyoChallenge evaluation protocol.
     """
 
-    # --- Episode / timing (MyoChallenge: 20 s) ---
-    maxTime: float = 20.0
+    # --- Episode / timing ---
+    maxTime: float = 10.0
     ctrl_dt: float = 0.01
     sim_dt: float = 0.002
+    render_scene: str = "sport"
 
     # --- Role ---
     task_choice: str = "random"  # "CHASE" | "EVADE" | "random"
@@ -260,7 +261,7 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
 
 @dataclass
 class ChaseTagVsFullbodyTaskConfig(ChaseTagVsTaskConfig):
-    """Chase-tag on the MuscleMimic full-body model instead of myoLeg-only.
+    """Chase-tag on myo_sim's ``myofullbody`` instead of myoLeg-only.
 
     Identical hyperparameters and reward/obs term functions to
     :class:`ChaseTagVsTaskConfig` — only the model builder differs.
@@ -352,6 +353,10 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
         base = super().compute_reward(
             data, meta, agent_id, damage_delivered, health, actions, fell, ko
         )
+        # The shaping term is linear in its weights: with all of them 0 it adds nothing,
+        # so the gait clip (a gated download) is not needed.
+        if not (self.w_gait_jpos or self.w_gait_jvel or self.w_steering):
+            return base
         self._ensure_gait_clip()
         from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
         from myosuite.terms.multiplayer.chase_tag_vs_reward import (

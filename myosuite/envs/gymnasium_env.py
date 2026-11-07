@@ -423,12 +423,29 @@ class MyoGymnasiumEnv(gym.Env):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
         self._task_state = self.reset_task(self.np_random)
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         obs = self._obs_dict_to_vec(obs_dict)
         obs = self._ensure_obs_gymnasium_compliant(obs)
         return obs, {}
+
+    def _project_joint_couplings(self) -> None:
+        """Put the coupled joints (``mjEQ_JOINT``) of the current state on their polynomials.
+
+        ``qpos0``, keyframes, clip frames and reset noise can leave the dependent
+        joints (knee mechanism, patella, shoulder rhythm) off the couplings their
+        equality constraints enforce; :meth:`reset` calls this before ``mj_forward``.
+        """
+        from myosuite.physics.joint_coupling import (
+            JointCouplings,
+            project_joint_couplings,
+        )
+
+        project_joint_couplings(
+            JointCouplings.from_model(self.model), self.data.qpos, self.data.qvel
+        )
 
     # ------------------------------------------------------------------
     # Helpers

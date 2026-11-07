@@ -13,6 +13,19 @@ import pytest
 
 from scripts.reject_ai_coauthor import _author_hits, _hits, main
 
+
+@pytest.fixture(autouse=True)
+def _human_git_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin a human author/committer so results do not depend on the machine's git config.
+
+    Tests of the identity check override this with their own ``_configured_idents``.
+    """
+    monkeypatch.setattr(
+        "scripts.reject_ai_coauthor._configured_idents",
+        lambda: ["Ada Lovelace <ada@example.org> 0 +0000"] * 2,
+    )
+
+
 pytestmark = pytest.mark.tier1
 
 AI_LINES = [

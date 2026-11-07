@@ -29,7 +29,7 @@ SKIP_IN_CI_REL = frozenset(
         'tutorials/5.1_Fullbody_Load_Policy.ipynb',
         'tutorials/5.2_Fullbody_Train_Policy.ipynb',
         'tutorials/5.3_Fullbody_Train_MjLab_Policy.ipynb',
-        'tutorials/5.4_MuscleMimic_Directional_Locomotion.ipynb',
+        'tutorials/5.4_Directional_Locomotion.ipynb',
         'tutorials/5.5_MuscleMimic_SAR.ipynb',
     }
 )

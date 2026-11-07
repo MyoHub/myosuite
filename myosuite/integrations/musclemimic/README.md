@@ -93,7 +93,7 @@ toward the opponent and the runner walks away. Headings turn off the
 ±6 m fence so they stay inside the arena. Each step blends toward
 the current clip frame (``track_alpha``, default 0.45) so the gait stays
 continuous — no mid-episode joint teleport. The scored 546-d observation
-is unchanged. Playback: tutorial 5.7. Expert pairs: ``training/chasetag_teacher``.
+is unchanged. Playback: tutorial 5.7.
 A 546 → 354 student is 5.4 / 5.6 / ``myoChallengeChaseTagFBVsTrain-v0``.
 
 ```python

@@ -16,9 +16,9 @@ from brax.training.agents.ppo import train as ppo
 from myosuite.envs.myo.backends.mjx import ppo_config
 
 from myosuite.envs.myo.backends.mjx import make, get_default_config
-from mujoco_playground import wrapper
 from tensorboardX import SummaryWriter
 
+from myosuite.envs.myo.backends.mjx.brax_env import wrap_for_brax_training
 from myosuite.envs.myo.backends.mjx.utils import make_policy_params_fn
 
 import wandb
@@ -48,7 +48,7 @@ def main(env_name, impl, log_to_wandb, log_to_tb, save_policy, render_evaluation
             else SummaryWriter(f"./mjx_logs/{env_name}"),
         ),
         network_factory=network_factory,
-        wrap_env_fn=wrapper.wrap_for_brax_training,
+        wrap_env_fn=wrap_for_brax_training,
         num_eval_envs=ppo_params.pop("num_eval_envs"),
         policy_params_fn=make_policy_params_fn(env)
         if render_evaluations

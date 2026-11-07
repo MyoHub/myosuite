@@ -19,12 +19,18 @@ from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (
     normalize_mjlab_env_ids,
 )
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.commands import RESAMPLE_ON_RESET_ONLY
-from myosuite.envs.myo.backends.mjlab.tasks.mdp.events import write_cpu_state
-from myosuite.envs.waypoint import WaypointTaskCfg, heading_yaw, qpos_obs
+from myosuite.envs.myo.backends.mjlab.tasks.mdp.events import (
+    torch_joint_couplings,
+    write_cpu_state,
+)
+from myosuite.envs.waypoint import WaypointTaskCfg
+from myosuite.physics.joint_coupling import project_joint_couplings
 from myosuite.terms.base_obs import joint_vel_obs, muscle_act_obs
 from myosuite.terms.waypoint import (
     distance_to_next,
+    heading_yaw,
     perturb_qpos,
+    qpos_obs,
     sample_route,
     waypoint_progress,
     waypoint_reward,
@@ -102,6 +108,8 @@ class WaypointCommand(CommandTerm):
         return self._accessor.site_xpos([self.site])[:, 0]
 
     def _resample_command(self, env_ids: torch.Tensor) -> None:
+        for value in self.state.values():
+            value[env_ids] = 0
         k = len(env_ids)
         if self._fixed is not None:
             route = self._fixed.expand(k, -1, -1)
@@ -120,8 +128,6 @@ class WaypointCommand(CommandTerm):
         self.prev_distance[env_ids] = distance_to_next(
             torch, self._start.expand(k, 2), route, self.next_index[env_ids]
         )
-        for value in self.state.values():
-            value[env_ids] = 0
 
     def advance(self) -> torch.Tensor:
         """One control step of every route (after ``sync_forward``); returns ``solved``."""
@@ -208,10 +214,12 @@ def waypoint_targets(env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg) -> torch
 
 
 class reset_pose(ManagerTermBase):  # noqa: N801  (mjlab term style)
-    """CPU ``WaypointEnv.reset_task`` pose: reset state plus uniform joint noise.
+    """CPU ``WaypointEnv`` reset: reset state plus uniform joint noise, then the
+    coupled joints put back on their polynomials (``MyoGymnasiumEnv.reset``).
 
     Params: ``asset_cfg``, ``qpos``/``qvel`` (CPU layout), ``noise``/``low``/``high``
-    (per ``qpos`` coordinate, see :class:`~myosuite.envs.waypoint.RootLayout`).
+    (per ``qpos`` coordinate, see :class:`~myosuite.envs.waypoint.RootLayout`) and
+    ``couplings`` (:class:`~myosuite.physics.joint_coupling.JointCouplings` of the CPU model).
     """
 
     def __init__(self, cfg: Any, env: ManagerBasedRlEnv) -> None:
@@ -222,6 +230,7 @@ class reset_pose(ManagerTermBase):  # noqa: N801  (mjlab term style)
         self._noise = torch.tensor(p["noise"], dtype=torch.float32, device=dev)
         self._low = torch.tensor(p["low"], dtype=torch.float32, device=dev)
         self._high = torch.tensor(p["high"], dtype=torch.float32, device=dev)
+        self._couplings = torch_joint_couplings(p["couplings"], dev)
 
     def __call__(
         self, env: ManagerBasedRlEnv, env_ids: torch.Tensor | None, **params: Any
@@ -231,6 +240,6 @@ class reset_pose(ManagerTermBase):  # noqa: N801  (mjlab term style)
         q = perturb_qpos(
             torch, q, torch.rand_like(q), self._noise, self._low, self._high
         )
-        write_cpu_state(
-            env, params["asset_cfg"].name, ids, q, self._qvel.repeat(len(ids), 1)
-        )
+        qd = self._qvel.repeat(len(ids), 1)
+        project_joint_couplings(self._couplings, q, qd)
+        write_cpu_state(env, params["asset_cfg"].name, ids, q, qd)
