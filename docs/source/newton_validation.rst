@@ -59,11 +59,12 @@ Matched trajectories
 ``.github/newton_probe/newton_dynamics_probe.py`` compares the original authored native CPU
 model with Newton's converted CPU MuJoCo or CUDA MuJoCo-Warp solver. It uses
 the default pose and a deterministic small scalar-joint perturbation, identical
-sinusoidal muscle controls, and 128 steps at the authored timestep. The bounds
-were fixed before these runs: qpos ``rtol=1e-4, atol=1e-4`` (radians/metres), and
-muscle force ``rtol=1e-3, atol=0.05`` N. The force bounds reject a 10% muscle
-force/scale mutation in every model and pose. The qpos bounds reject the earlier
-incorrect leg contact-gap import by more than three orders of magnitude.
+sinusoidal muscle controls, and 128 steps at the authored timestep and integrator.
+The bounds were fixed before these runs: qpos ``rtol=1e-4, atol=1e-4``
+(radians/metres), and muscle force ``rtol=1e-3, atol=0.05`` N. The force bounds
+reject a 10% muscle force/scale mutation in every model and pose. The qpos bounds
+reject the earlier incorrect leg contact-gap import by more than three orders of
+magnitude.
 
 Each row gives the largest absolute errors over both poses and all steps.
 Pass/fail uses the component-wise relative and absolute bounds, rather than
