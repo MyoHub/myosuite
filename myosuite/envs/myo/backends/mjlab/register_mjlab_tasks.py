@@ -79,9 +79,15 @@ def _resolve_model_root() -> Path:
     try:
         from etils import epath
 
-        return Path(epath.resource_path("myosuite"))
+        root = epath.resource_path("myosuite")
     except (ImportError, ModuleNotFoundError):
         return Path(__file__).resolve().parents[3]
+    try:
+        return Path(root)
+    except TypeError:
+        # importlib's MultiplexedPath (myosuite seen as a namespace package, e.g. some editable
+        # installs) is not path-like: use the directory of this installed package.
+        return Path(__file__).resolve().parents[4]
 
 
 _MYOSUITE_ROOT = _resolve_model_root()
