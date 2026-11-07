@@ -649,6 +649,23 @@ def test_mjx_modular_env_step() -> None:
     assert next_state.obs["state"].shape == state.obs["state"].shape
 
 
+@pytest.mark.tier2
+@pytest.mark.skipif(not _MJX_OK, reason="JAX/MJX not available")
+def test_register_task_mjx_builds_with_make_env() -> None:
+    import jax.numpy as jnp
+
+    from myosuite.envs.myo.backends.mjx.mjx_modular_env import MjxModularTaskEnv
+
+    env_id = register_task(
+        _ElbowTask(), env_id="TestElbowMjxMakeEnv-v0", backends={"cpu", "mjx"}
+    )
+    env = make_env(env_id, backend="mjx", num_envs=2)
+    assert isinstance(env, MjxModularTaskEnv)
+    assert env._config.num_envs == 2
+    state = env.step(env.reset(_jax.random.PRNGKey(0)), jnp.zeros(env.action_size))
+    assert jnp.isfinite(state.reward)
+
+
 # ---------------------------------------------------------------------------
 # mjlab modular cfg
 # ---------------------------------------------------------------------------
