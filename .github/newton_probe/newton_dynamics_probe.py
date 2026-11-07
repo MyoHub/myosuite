@@ -24,6 +24,7 @@ from newton_compat_probe import (
     _version,
     authored_xml,
     converted_actuator_names,
+    integrator_name,
 )
 
 
@@ -124,8 +125,9 @@ def run_case(
         workdir: Directory for materialized model inputs.
 
     Returns:
-        Identity maps, numerical errors and pass/fail results, or the exception
-        that prevented the case from completing. Newton warnings are retained.
+        The integrator, identity maps, numerical errors and pass/fail results, or
+        the exception that prevented the case from completing. Newton warnings are
+        retained.
     """
     import newton
     import warp as wp
@@ -134,6 +136,9 @@ def run_case(
     notes: dict[str, list[Any]] = {}
     try:
         reference = mujoco.MjModel.from_xml_path(str(authored_xml(model_id, workdir)))
+        # Newton defaults to implicitfast; integrate as the reference does, so the
+        # trajectories compare the conversion and not two integrators.
+        result["integrator"] = integrator_name(reference)
         with _captured(notes):
             builder = newton.ModelBuilder()
             builder.add_mjcf(str(authored_xml(model_id, workdir)), ctrl_direct=True)
@@ -145,6 +150,7 @@ def run_case(
                 nconmax=2048,
                 njmax=8192,
                 strict_capacity=True,
+                integrator=result["integrator"],
             )
         mapping, source_dofs = _joint_mapping(reference, model, solver)
         result["identity_mapping"] = _identity_mapping(
@@ -177,6 +183,7 @@ def run_case(
                     nconmax=2048,
                     njmax=8192,
                     strict_capacity=True,
+                    integrator=result["integrator"],
                 )
             baseline = mujoco.MjData(reference)
             baseline.qpos[:] = source_qpos
@@ -376,6 +383,7 @@ def main(argv: list[str] | None = None) -> int:
                         "force_atol_N": 0.05,
                         "mutation": "10% muscle force/scale increase must exceed the force bounds",
                         "contacts": "native MuJoCo contacts enabled",
+                        "integrator": "the reference model's, per case",
                         "nconmax": 2048,
                         "njmax": 8192,
                         "strict_capacity": True,

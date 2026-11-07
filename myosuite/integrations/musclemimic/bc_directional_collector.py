@@ -41,6 +41,7 @@ import mujoco
 import numpy as np
 
 from myosuite.core.trajectory_io import MotionClip
+from myosuite.physics.quat import quat_yaw
 
 if TYPE_CHECKING:
     from myosuite.integrations.musclemimic.fullbody_local_policy import (
@@ -70,11 +71,6 @@ class BcCollectionConfig:
     seed: int = 0
 
 
-def _pelvis_yaw_from_qpos(qpos: np.ndarray) -> float:
-    w, x, y, z = float(qpos[3]), float(qpos[4]), float(qpos[5]), float(qpos[6])
-    return float(np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)))
-
-
 def _directional_obs(
     model: mujoco.MjModel, data: mujoco.MjData, heading_theta: float
 ) -> np.ndarray:
@@ -89,7 +85,7 @@ def _directional_obs(
     qvel_local = data.qvel[6:].astype(np.float32)
     act = data.act.astype(np.float32) if model.na > 0 else np.zeros(0, np.float32)
 
-    yaw = _pelvis_yaw_from_qpos(data.qpos)
+    yaw = float(quat_yaw(np, data.qpos[3:7]))
     vx, vy = float(data.qvel[0]), float(data.qvel[1])
     c, s = math.cos(-yaw), math.sin(-yaw)
     root_vel_body = np.array([c * vx - s * vy, s * vx + c * vy], dtype=np.float32)

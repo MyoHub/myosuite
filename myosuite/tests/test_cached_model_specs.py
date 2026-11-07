@@ -72,13 +72,13 @@ def test_a_single_make_keeps_no_recipe_spec() -> None:
 
 
 def test_chasetag_fb_loads_the_fullbody_once_for_two_makes(monkeypatch):
-    """Two makes load and edit the MuscleMimic full body once."""
+    """Two makes load and edit the myo_sim full body once."""
+    import myo_sim
+
     from myosuite.core.model_builder import clear_spec_caches
 
     clear_spec_caches()
-    calls = _count_calls(
-        monkeypatch, fullbody_model, "_load_spec_with_floor_only_upstream_scene"
-    )
+    calls = _count_calls(monkeypatch, myo_sim, "load_spec")
     env_a, model_a = _make_model(CHASETAG_FB)
     env_b, model_b = _make_model(CHASETAG_FB)
     assert len(calls) == 1

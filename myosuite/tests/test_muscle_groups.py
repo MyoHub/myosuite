@@ -64,10 +64,7 @@ _MODELS = [
         "myoMimicFullbody-v0",
         marks=pytest.mark.skipif(not _MUSCLEMIMIC, reason="needs musclemimic_models"),
     ),
-    pytest.param(
-        "myoChallengeChaseTagFBVs-v0",
-        marks=pytest.mark.skipif(not _MUSCLEMIMIC, reason="needs musclemimic_models"),
-    ),
+    "myoChallengeChaseTagFBVs-v0",
 ]
 
 

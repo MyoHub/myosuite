@@ -145,7 +145,7 @@ Read [mjlab-design-guide.md](mjlab-design-guide.md) and
 |---|---|---|---|---|
 | CPU (Gymnasium) | supported | playback / fine-tune / debug | `myosuite.envs.gymnasium_env.MyoGymnasiumEnv` subclass | `registry.register_env(...)` |
 | mjlab (Warp) | supported | parallel GPU training | mjlab `ManagerBasedRlEnvCfg` + runner cfg | `register_cpu_twins(...)` (twins of CPU envs, `backends/mjlab/tasks/`) or `register_mjlab_task(...)` (`register_mjlab_*.py`) |
-| MJX (JAX) | experimental | parallel GPU training | `envs/myo/backends/mjx/` env classes (mujoco-playground) | `register_task(..., backends={"mjx"})` from a `TaskConfig` |
+| MJX (JAX) | experimental | parallel GPU training | `envs/myo/backends/mjx/` env classes (JAX/brax) | `register_task(..., backends={"mjx"})` from a `TaskConfig` |
 | CPU via `ModularTaskEnv` | experimental | data-driven CPU (elbow and leg directional refs) | generic `ModularTaskEnv` from a `TaskConfig` (runs the muscle stages) | `register_task(..., backends={"cpu"})` |
 
 The CPU and mjlab implementations of one task share a single `env_id` and the
