@@ -2,7 +2,13 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Declarative athletic TaskSpec / PlantSpec / AthleticBundle."""
+"""Declarative athletic TaskSpec / PlantSpec / AthleticBundle.
+
+The public construction arguments are the task, the skeleton, and the series
+element. The skeleton defaults to ``myofullbody`` and the series element
+defaults to rigid tendons. Elastic tendons are a registered env-id variant
+(``…Elastic-v0``), not a silent constructor flag on the rigid id.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +16,21 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
-from myosuite.envs.myo.tasks.basic.full_body.athletic_contract import AthleticSpec
+from myosuite.envs.myo.tasks.basic.full_body.athletic_contract import (
+    ELASTIC_N_SUBSTEPS,
+    ELASTIC_SIM_DT,
+    AthleticSpec,
+)
+
+# Skeletons in the athletic catalog. ``myofullbody`` is the default.
+ModelName = Literal["myofullbody", "myofullbody_simple", "myosprinter"]
+# Series element. ``rigid`` is the default. ``elastic`` selects the plugin.
+TendonKind = Literal["rigid", "elastic"]
+# ``native_muscle`` is MuJoCo ``mjMUSCLE``. ``bolt_muscle`` is the plugin.
+ActionKind = Literal["bolt_muscle", "native_muscle"]
+
+DEFAULT_MODEL: ModelName = "myofullbody"
+DEFAULT_TENDONS: TendonKind = "rigid"
 
 TaskKind = Literal[
     "sprint",
@@ -30,7 +50,11 @@ TaskKind = Literal[
 
 @dataclass(frozen=True)
 class BodyMap:
-    """Logical athletic body names → plant-specific MuJoCo body names."""
+    """Logical athletic names → plant-specific MuJoCo body / joint names.
+
+    Terms must resolve through this map (or ``mj_name2id``) so qpos indices
+    stay valid when myo_sim renames right-arm joints or inserts neck dofs.
+    """
 
     root: str = "pelvis"
     toes_l: str = "toes_l"
@@ -67,7 +91,12 @@ class TaskSpec:
         default_factory=lambda: ("time_out", "fallen", "not_facing", "toes_out")
     )
     obs_keys: Sequence[str] = field(
-        default_factory=lambda: ("joint_pos", "joint_vel", "muscle_act", "root_planar_vel")
+        default_factory=lambda: (
+            "joint_pos",
+            "joint_vel",
+            "muscle_act",
+            "root_planar_vel",
+        )
     )
     scene: str | None = None  # lanes | hurdles | blocks | curve | vertical | None
     pose_key: str = "starting_pose_run"
@@ -94,18 +123,31 @@ class PlantSpec:
     up_axis: Literal["y", "z"] = "z"
     fall_height: float = 0.6
     body_map: BodyMap = field(default_factory=BodyMap)
-    # "bolt_muscle" → BoltMuscleAction; "native_muscle" → MyoMuscleActivationActionCfg
-    action_kind: Literal["bolt_muscle", "native_muscle"] = "bolt_muscle"
+    # Actuator used when tendons="rigid". Elastic tendons use the plugin
+    # (see AthleticBundle.action_kind), not this field.
+    action_kind: ActionKind = "bolt_muscle"
     # Optional callable returning MjSpec (mjlab). None → use factory defaults per key.
     load_spec: Callable[[], Any] | None = None
     # Golden bolt path: factory must call make_sprint_env_cfg for sprint+this plant.
     use_golden_sprint_cfg: bool = False
     capabilities: frozenset[str] = field(
         default_factory=lambda: frozenset(
-            {"lanes", "hop", "hurdles", "blocks", "curve", "vertical", "carioca", "locomotion", "imitate"}
+            {
+                "lanes",
+                "hop",
+                "hurdles",
+                "blocks",
+                "curve",
+                "vertical",
+                "carioca",
+                "locomotion",
+                "imitate",
+            }
         )
     )
-    env_id_prefix: str = ""  # e.g. "" → myoSprint; "FullbodySimple" → myoFullbodySimpleSprint
+    env_id_prefix: str = (
+        ""  # e.g. "" → myoSprint; "FullbodySimple" → myoFullbodySimpleSprint
+    )
     aliases: tuple[str, ...] = ()
 
 
@@ -113,6 +155,19 @@ class PlantSpec:
 class AthleticBundle:
     task: TaskSpec
     plant: PlantSpec
+    tendons: TendonKind = DEFAULT_TENDONS
+
+    @property
+    def action_kind(self) -> ActionKind:
+        """Actuator for this skeleton and series element.
+
+        Rigid tendons use :attr:`PlantSpec.action_kind`. On ``myofullbody``
+        that is native ``mjMUSCLE``. Elastic tendons use the series-elastic
+        plugin on whichever skeleton was requested.
+        """
+        if self.tendons == "elastic":
+            return "bolt_muscle"
+        return self.plant.action_kind
 
     @property
     def heading_dir(self) -> tuple[float, float]:
@@ -130,19 +185,58 @@ class AthleticBundle:
         facing = self.task.facing_angle_deg
         if facing is None:
             facing = self.task.athletic.facing_angle_deg
-        return replace(
+        spec = replace(
             self.task.athletic,
             heading_dir=self.heading_dir,
             fall_height=self.plant.fall_height,
             facing_angle_deg=facing,
         )
+        if self.tendons == "elastic":
+            # Own timestep so a checkpoint records which physics it trained on.
+            return replace(
+                spec,
+                sim_dt=ELASTIC_SIM_DT,
+                n_substeps=ELASTIC_N_SUBSTEPS,
+            )
+        return spec
 
     def env_id(self) -> str:
+        """Gymnasium id for this task, skeleton, and tendon variant.
+
+        Rigid ``myofullbody`` is ``myoFullbodySprint-v0``. Elastic is
+        ``myoFullbodySprintElastic-v0`` so the checkpoint contract hash
+        cannot load a rigid policy into an elastic env (or the reverse).
+        ``myoSprint-v0`` stays the rigid sprinter.
+        """
         prefix = self.plant.env_id_prefix
         task_title = "".join(p.capitalize() for p in self.task.key.split("_"))
+        tendon_suffix = "Elastic" if self.tendons == "elastic" else ""
         if prefix:
-            return f"myo{prefix}{task_title}-v0"
-        # Historical bolt sprinter sprint id.
-        if self.task.key == "sprint" and self.plant.key == "myosprinter":
+            return f"myo{prefix}{task_title}{tendon_suffix}-v0"
+        # Historical bolt sprinter sprint id (rigid only).
+        if (
+            self.task.key == "sprint"
+            and self.plant.key == "myosprinter"
+            and self.tendons == "rigid"
+        ):
             return "myoSprint-v0"
-        return f"myo{task_title}-v0"
+        if self.plant.key == "myosprinter" and self.tendons == "elastic":
+            return f"myoSprint{tendon_suffix}-v0"
+        return f"myo{task_title}{tendon_suffix}-v0"
+
+
+def ensure_tendons_applied(bundle: AthleticBundle) -> None:
+    """Reject a series element the actuators do not apply yet.
+
+    ``tendons="elastic"`` selects the plugin via :attr:`AthleticBundle.action_kind`
+    and its own env id. Building that env before the series element is applied
+    would silently run rigid tendons.
+    """
+    if bundle.tendons == "rigid":
+        return
+    raise NotImplementedError(
+        "tendons='elastic' selects the series-elastic plugin "
+        f"(model={bundle.plant.key!r}, env_id={bundle.env_id()!r}, "
+        f"action={bundle.action_kind}) but that element is not applied yet. "
+        "Use tendons='rigid'."
+    )
