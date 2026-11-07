@@ -483,7 +483,7 @@ class _ChaseTagOpponent(ManagerTermBase):
             dt: Control timestep in seconds.
         """
         lo, hi = self._vel_range
-        # The horizon equals the noise length; the index wraps beyond it.
+        # The noise is longer than the horizon; the index would wrap beyond it.
         idx = (self.noise_idx % _CHASETAG_NOISE_STEPS).view(-1, 1, 1).expand(-1, 2, 1)
         sample = _CHASETAG_NOISE_SCALE * torch.gather(self.noise, 2, idx).squeeze(2)
         self.noise_idx += 1
@@ -620,7 +620,7 @@ def _chasetag_solved(env: ManagerBasedRlEnv, win_distance: float) -> torch.Tenso
 
 def _chasetag_lose(env: ManagerBasedRlEnv) -> torch.Tensor:
     """``lose``: 1 on a fall or out of bounds (the CHASE time limit lies beyond
-    the horizon: CPU ``data.time`` after the last step is still below 20 s). (N,)."""
+    the horizon: CPU ``data.time`` after the last step is still below it). (N,)."""
     return (_chasetag_fallen(env) | _chasetag_out_of_bounds(env)).float()
 
 

@@ -26,6 +26,8 @@ Do not change the scored 546-d observation.
 
 `mm-10m-2` / the 5.4 walker were trained on **`musclemimic_models` 1.0.5**. Set `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5` for local rolls.
 
+**Body mismatch:** `myoChallengeChaseTagFBVs-v0` builds myo_sim's `myofullbody` and ignores `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION`, so the teacher's MuscleMimic body is not the scored body. How well `mm-10m-2` plays there is unchecked; moving the teacher to a policy trained on `myofullbody` is planned.
+
 ## Install
 
 ```bash
