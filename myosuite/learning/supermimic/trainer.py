@@ -145,6 +145,10 @@ class SuperMimicCfg:
     """Fused Adam kernels (CUDA only)."""
     static_compile: bool = False
     """torch.compile with static shapes (dynamic=False)."""
+    cuda_graph: bool = False
+    """Capture the actor's imagined rollout, objective and backward pass as one CUDA graph and
+    replay it every update (CUDA only; replaces compiling the imagined step). Imagination is
+    kernel-launch bound (~12k small kernels per step), and the replay removes the launch cost."""
 
 
 def use_fullbody_model(source: str) -> None:
@@ -192,18 +196,6 @@ def apply_instanttrack_preset(cfg: SuperMimicCfg) -> SuperMimicCfg:
     wm = {"lr": 4e-4, "hidden": (1024, 1024, 1024)}
     keep = {k: v for k, v in wm.items() if getattr(cfg.wm, k) == getattr(base.wm, k)}
     cfg.wm = dataclasses.replace(cfg.wm, **keep)
-    return cfg
-    cfg.fail_reset = cfg.fail_reset or 0.3
-    cfg.contact_reward = cfg.contact_reward or 0.25
-    cfg.pi_opt = cfg.wm_opt = "muon"
-    cfg.lr = 4e-4
-    cfg.wm_batches = 5
-    cfg.wm = dataclasses.replace(cfg.wm, lr=4e-4, hidden=(1024, 1024, 1024))
-    cfg.ema_decay = 0.995
-    cfg.imag_batch = 2048
-    cfg.pi_lr_mult = 4.0
-    cfg.fused_adam = True
-    cfg.static_compile = True
     return cfg
 
 
@@ -320,8 +312,12 @@ class SuperMimicTrainer:
             if cfg.static_compile
             else torch.compile
         )
-        self._step = comp(self._imag_step) if cfg.compile else self._imag_step
-        self._obs = comp(self._observe) if cfg.compile else self._observe
+        use_comp = cfg.compile and not cfg.cuda_graph
+        self._step = comp(self._imag_step) if use_comp else self._imag_step
+        self._obs = comp(self._observe) if use_comp else self._observe
+        if cfg.cuda_graph and not str(dev).startswith("cuda"):
+            raise ValueError("cuda_graph needs a CUDA device")
+        self._graph: Any = None
 
     # ------------------------------------------------------------------ simulator
     @torch.no_grad()
@@ -406,10 +402,14 @@ class SuperMimicTrainer:
         d = h.termination_prob(qpos, f, sites)
         return s, f, r, d, sat, h.observation(qpos, qvel, act, f, sites), sites
 
-    def imagine(self) -> dict[str, Any]:
+    def imagine(
+        self, starts: tuple[torch.Tensor, torch.Tensor] | None = None
+    ) -> dict[str, Any]:
         """Differentiable H-step rollout of the actor through the frozen world model."""
         cfg, h = self.cfg, self.heads
-        s, f = self.buffer.sample_starts(cfg.imag_batch)
+        s, f = (
+            starts if starts is not None else self.buffer.sample_starts(cfg.imag_batch)
+        )
         ended = h.clip_end(f)
         obs_l, rew_l, dhat_l, live_l, end_l, sat_l = [], [], [], [], [], []
         obs = self._obs(s, f)
@@ -445,16 +445,13 @@ class SuperMimicTrainer:
             "clip_probe": probe,
         }
 
-    def update_actor_critic(self) -> dict[str, float]:
-        """One actor step on the imagined objective, then the critic on lambda-returns."""
+    def _actor_objective(
+        self, starts: tuple[torch.Tensor, torch.Tensor] | None = None
+    ) -> tuple[dict[str, Any], torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Imagined rollout and the actor loss; returns ``(roll, loss, J, sat)``."""
         cfg = self.cfg
         H, g = cfg.horizon, cfg.gamma
-        # The world model is frozen here (paper: stop-gradient on omega during the policy update).
-        self.wm.requires_grad_(False)
-        try:
-            roll = self.imagine()
-        finally:
-            self.wm.requires_grad_(True)
+        roll = self.imagine(starts)
         r, d, live, just = (
             roll["reward"],
             roll["dhat"],
@@ -475,8 +472,66 @@ class SuperMimicTrainer:
         J = J + disc * c * v[H] * live[H]
         sat = roll["saturation"].mean()
         loss = -J.mean() / H + cfg.saturation_penalty * sat
+        return roll, loss, J, sat
+
+    def _actor_backward(self) -> tuple[dict[str, Any], torch.Tensor, torch.Tensor]:
+        """Actor gradients of the imagined objective (world model and critic frozen)."""
+        frozen = (self.wm, self.critic)
+        for m in frozen:
+            m.requires_grad_(False)
+        try:
+            if not self.cfg.cuda_graph:
+                roll, loss, J, sat = self._actor_objective()
+                self.opt_actor.zero_grad(set_to_none=True)
+                loss.backward()
+                return roll, J, sat
+            starts = self.buffer.sample_starts(self.cfg.imag_batch)
+            if self._graph is None:
+                self._capture_actor_graph(starts)
+            for buf, x in zip(self._graph_starts, starts):
+                buf.copy_(x)
+            self._graph.replay()
+            return self._graph_out
+        finally:
+            for m in frozen:
+                m.requires_grad_(True)
+
+    def _capture_actor_graph(self, starts: tuple[torch.Tensor, torch.Tensor]) -> None:
+        """Record rollout + objective + backward once; later updates replay it on new starts.
+
+        The parameters, normaliser statistics and start buffers are read in place, the actor's
+        ``.grad`` tensors are written in place by the replay, so they must never be set to None
+        afterwards (the actor optimizer's ``zero_grad`` is not called on this path).
+        """
+        self._graph_starts = tuple(x.clone() for x in starts)
+        side = torch.cuda.Stream()
+        side.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(side):  # warm-up allocations off the capture stream
+            for _ in range(2):
+                self.opt_actor.zero_grad(set_to_none=True)
+                _, loss, _, _ = self._actor_objective(self._graph_starts)
+                loss.backward()
+        torch.cuda.current_stream().wait_stream(side)
         self.opt_actor.zero_grad(set_to_none=True)
-        loss.backward()
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            roll, loss, J, sat = self._actor_objective(self._graph_starts)
+            loss.backward()
+        self._graph = graph
+        self._graph_out = (roll, J, sat)
+
+    def update_actor_critic(self) -> dict[str, float]:
+        """One actor step on the imagined objective, then the critic on lambda-returns."""
+        cfg = self.cfg
+        H, g = cfg.horizon, cfg.gamma
+        # The world model is frozen here (paper: stop-gradient on omega during the policy update).
+        roll, J, sat = self._actor_backward()
+        r, d, live, just = (
+            roll["reward"],
+            roll["dhat"],
+            roll["live"],
+            roll["just_ended"],
+        )
         torch.nn.utils.clip_grad_norm_(self.actor.mlp.parameters(), 1.0)
         for p in self.actor.mlp.parameters():
             if p.grad is not None:

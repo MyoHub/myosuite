@@ -38,7 +38,9 @@ class Normalizer(nn.Module):
         delta = mean_b - self._mean
         self._mean += rate * delta
         self._var += rate * (var_b - self._var + delta * (mean_b - self._mean))
-        self._std = self._var.sqrt()
+        self._std.copy_(
+            self._var.sqrt()
+        )  # in place: CUDA-graph replays read this storage
         self.count = total
 
 
