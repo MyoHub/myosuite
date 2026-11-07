@@ -73,7 +73,9 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
   (`tasks/` is git-ignored local scratch space, not part of the repository.)
 - Never mark a task done without proving it works.
 - **Small PRs.** One concern per PR: a fix, a refactor, a task, or a doc change — not several at once.
-  - Split unrelated changes into separate PRs, even when found together. Land prerequisites first and rebase; never carry another open PR's commits.
+  - Split unrelated changes into separate PRs, even when found together.
+  - **Stack dependent PRs.** Base each PR on the branch of the PR it depends on; a PR's base must be a MyoHub/myosuite branch, so push a fork's prerequisite branch to MyoHub first. When a lower PR is updated or rebased, rebase every PR above it (GitHub's stack rebase); updating only the bottom PR leaves the ones above carrying stale copies of its commits.
+  - Never carry another open PR's commits, except when its branch can't be pushed to MyoHub: then open the dependent PR as a draft that names the PR it stacks on, and rebase it onto `dev` once that PR lands.
   - Keep a PR reviewable in one sitting (aim for < ~500 changed lines excluding generated files); split larger work into a sequence.
   - Exception: release PRs into `main` (`dev` → `main`) bundle already-reviewed small PRs and can be as large as the release needs. Don't add new, unreviewed changes in them.
 - **Model weights live on Hugging Face, not in git.** Never commit `.pt`, `.pth`, `.onnx`, `.ckpt` or `.safetensors` files — not in `myosuite/`, `tutorials/`, `docs/` or `training/`.
