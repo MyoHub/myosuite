@@ -61,6 +61,9 @@ map), evaluation-guided resets, and the CUDA-graph / side-stream work.
 python scripts/supermimic/train.py --clip $CLIP --out runs/sm_it --num-envs 512 --horizon 64 --instanttrack --seed 0
 ```
 
+On a Colab GPU: [`supermimic_colab.ipynb`](https://colab.research.google.com/github/MyoHub/myosuite/blob/feat/supermimic-instanttrack/scripts/supermimic/supermimic_colab.ipynb)
+installs the branch, runs the tests, times a run and trains the baseline and `--instanttrack` for the same wall time.
+
 ## Evaluate
 
 ```bash
