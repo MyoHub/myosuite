@@ -93,34 +93,41 @@ def materialize_recipe_xml(
     Args:
         name: Recipe name registered via ``@model_recipe``.
         dest: Output path. Default: an OS temp directory
-            (``<tempdir>/myosuite_recipes/<name>.xml``); required with *edit_fn*.
+            (``<tempdir>/myosuite_recipes/<name>_<digest>.xml``, named by its
+            content); required with *edit_fn*.
         edit_fn: In-place edit of the recipe spec, applied as an env applies
             its ``edit_fn`` kwarg (see :func:`build_from_recipe`).
 
     Returns:
-        Absolute path to the written file.
+        Absolute path to the written file. The write is atomic, so processes
+        materializing the recipe at once all get a complete file.
 
     Raises:
-        ValueError: If *edit_fn* is given without *dest* (the default path
-            holds the unedited recipe).
+        ValueError: If *edit_fn* is given without *dest* (default files hold
+            unedited recipes).
     """
     if edit_fn is not None and dest is None:
         raise ValueError("edit_fn needs an explicit dest.")
     import myo_sim  # type: ignore[import-untyped]
     from myo_sim.build.compose import sanitize_spec_xml  # type: ignore[import-untyped]
 
+    from myosuite.utils.asset_path_resolver import write_atomic
+
     model, spec = build_from_recipe(name, edit_fn=edit_fn)
-    xml = sanitize_spec_xml(
+    data = sanitize_spec_xml(
         spec.to_xml(), asset_dir=str(myo_sim.MODELS_DIR), model=model
-    )
+    ).encode("utf-8")
 
     out = dest
     if out is None:
+        import hashlib
         import tempfile
 
-        out = Path(tempfile.gettempdir()) / "myosuite_recipes" / f"{name}.xml"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(xml, encoding="utf-8")
+        # Named by content: processes share one file, and a different version's
+        # recipe never overwrites a file another process is loading.
+        digest = hashlib.sha256(data).hexdigest()[:16]
+        out = Path(tempfile.gettempdir()) / "myosuite_recipes" / f"{name}_{digest}.xml"
+    write_atomic(out, data)
     return out.resolve()
 
 

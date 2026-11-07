@@ -34,6 +34,7 @@ import os
 import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
 import tempfile
+import time
 
 _SIM_PACKAGE_MAP: dict[str, tuple[str, str]] = {
     "myo_sim": ("myo_sim", "myo_sim"),
@@ -236,6 +237,11 @@ def patched_xml_dir() -> Path:
     return Path(tempfile.gettempdir()) / f"myosuite_patched_xml{user}"
 
 
+# Pauses (s) between attempts to publish a written file. Windows briefly refuses
+# to open, or rename onto, a file that another process is renaming or reading.
+_RETRY_DELAYS = (0.01, 0.02, 0.04, 0.08)
+
+
 def _holds(path: Path, data: bytes) -> bool:
     """Whether *path* is a readable file containing exactly *data*."""
     try:
@@ -244,34 +250,58 @@ def _holds(path: Path, data: bytes) -> bool:
         return False
 
 
-def _write_once(directory: Path, stem: str, source: Path, data: bytes) -> Path:
-    """Write *data* to ``<directory>/<stem>_<digest>.xml`` unless that file holds it.
+def write_atomic(path: Path, data: bytes) -> None:
+    """Atomically write *data* to *path*, leaving *path* alone if it already holds *data*.
 
-    The digest covers *source* and *data*, so repeated calls and other processes
-    share one file. The write is atomic (temp file, then rename), so a reader
-    never sees a partial file.
+    Readers never see a partial file, and processes writing the same bytes at once
+    all succeed. A file that holds *data* is never replaced: on Windows replacing
+    fails while another process reads the file, and briefly stops others from
+    opening it. Windows' transient refusals are retried with a short backoff.
+
+    Args:
+        path: File to write.
+        data: Content to write.
+
+    Raises:
+        OSError: If *path* still does not hold *data* after the last attempt.
     """
-    digest = hashlib.sha256(f"{source}\0".encode() + data).hexdigest()[:16]
-    path = directory / f"{stem}_{digest}.xml"
     if _holds(path, data):
-        return path
-    directory.mkdir(parents=True, exist_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
-        dir=directory, prefix=f"{path.stem}.", suffix=".xml"
+        dir=path.parent, prefix=f"{path.stem}.", suffix=path.suffix
     )
     tmp = Path(tmp_name)
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
-        try:
-            tmp.replace(path)
-        except OSError:
-            # Windows cannot replace a file another process holds open; that
-            # process wrote the same bytes, so its file is used.
-            if not _holds(path, data):
-                raise
+        for delay in (*_RETRY_DELAYS, None):
+            try:
+                if not path.exists():
+                    # Never replaces on Windows: a concurrent writer's file wins.
+                    tmp.rename(path)
+                elif path.read_bytes() != data:
+                    tmp.replace(path)  # stale content
+                return
+            except OSError:
+                if _holds(path, data):
+                    return
+                if delay is None:
+                    raise
+            time.sleep(delay)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def _write_once(directory: Path, stem: str, source: Path, data: bytes) -> Path:
+    """Write *data* to ``<directory>/<stem>_<digest>.xml`` unless that file holds it.
+
+    The digest covers *source* and *data*, so repeated calls and other processes
+    share one file, written with :func:`write_atomic`.
+    """
+    digest = hashlib.sha256(f"{source}\0".encode() + data).hexdigest()[:16]
+    path = directory / f"{stem}_{digest}.xml"
+    write_atomic(path, data)
     return path
 
 
