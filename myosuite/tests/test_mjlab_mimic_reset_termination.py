@@ -821,3 +821,77 @@ def test_clip_bank_steps_are_sync_free_and_read_each_envs_clip() -> None:
             assert resets[-1] and env.episode_length_buf[ending] == 0
     finally:
         env.close()
+
+
+@pytest.mark.parametrize(
+    "lean",
+    [
+        {"dtype": "float16"},
+        {"store_qvel": False},
+        {"dtype": "float16", "store_qvel": False},
+    ],
+    ids=["float16", "derived_qvel", "both"],
+)
+def test_lean_clip_bank_steps_are_sync_free(lean: dict[str, Any]) -> None:
+    """A ``MotionClipBank`` with lean storage steps without host syncs; the reference
+    stays within the measured float16 error, or is ``mj_differentiatePos`` of the
+    clip's qpos (derived qvel)."""
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
+        ClipBankCfg,
+        MotionClipBank,
+    )
+    from myosuite.tests.support.host_sync import HostSyncCounter
+
+    bank_cfg = ClipBankCfg(**lean)
+    clips = (
+        _synthetic_clip("fullbody", n_frames=60),
+        _synthetic_clip("fullbody", n_frames=90, joint_pos=_FULLBODY_PIKE),
+    )
+    entity = _ENTITY["fullbody"]
+    env = _make_env("fullbody", MotionClipBank(clips, bank_cfg), num_envs=4)
+    try:
+        torch.manual_seed(0)
+        env.reset()
+        cache = mimic._resolve_mimic_mjlab_ids(env, entity, "fullbody")
+        source = cache["clip_source"]
+        assert source.bank_cfg == bank_cfg
+        action = torch.zeros(env.num_envs, sum(env.action_manager.action_term_dim))
+        env.step(action)  # uploads the lazily built device constants once
+        for _ in range(3):
+            with HostSyncCounter(package_only=True) as syncs:
+                env.step(action)
+            assert syncs.total <= int(bool(env.reset_buf.any())), syncs.report()
+        rows = [
+            (source.clips[c], min(s + o, int(source.clips[c].qpos.shape[0]) - 1))
+            for s, c, o in zip(
+                env.episode_length_buf.tolist(),
+                source._clip_indices.tolist(),
+                source._start_offsets.tolist(),
+            )
+        ]
+        error = source.storage_error
+        sites = np.stack([c.site_xpos[f] for c, f in rows]).astype(np.float32)
+        assert np.abs(cache["target_torch"].numpy() - sites).max() <= (
+            error["site_xpos"] + 1e-6
+        )
+        qvel = mimic._clip_ref(env, cache, "ref_qvel").numpy()
+        if bank_cfg.store_qvel:
+            stored = np.stack([c.qvel[f] for c, f in rows]).astype(np.float32)
+            assert np.abs(qvel - stored).max() <= error["qvel"] + 1e-6
+        else:
+            model = _variant("fullbody")[2]
+            expected = np.zeros((len(rows), model.nv))
+            for i, (clip, f) in enumerate(rows):
+                n = int(clip.qpos.shape[0])
+                a, b = (f - 1, f) if f > 0 else (0, min(1, n - 1))
+                mujoco.mj_differentiatePos(
+                    model,
+                    expected[i],
+                    float(env.step_dt),
+                    clip.qpos[a].astype(np.float64),
+                    clip.qpos[b].astype(np.float64),
+                )
+            np.testing.assert_allclose(qvel, expected, atol=2e-3, rtol=1e-4)
+    finally:
+        env.close()
