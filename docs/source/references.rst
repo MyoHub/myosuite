@@ -168,3 +168,5 @@ Reinforcement learning and numerics
   707-710. (colored exploration noise)
 * Buss, S.R. (2004). Introduction to inverse kinematics with Jacobian transpose, pseudoinverse and
   damped least squares methods. Technical note (``myosuite.physics.inverse_kinematics``).
+* Zakka, K. (2026). Mink: Python inverse kinematics based on MuJoCo (version 1.4.0).
+  https://github.com/kevinzakka/mink (``myosuite.physics.inverse_kinematics.solve_ik``).
