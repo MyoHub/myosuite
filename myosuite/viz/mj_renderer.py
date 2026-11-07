@@ -68,7 +68,7 @@ def _sport_court(scene: Any, model: Any, data: Any) -> None:
                 (a, b, width, color) for a, b in zip(points[:-1], points[1:])
             )
     for y in (-1.4, 1.4):
-        strokes.append(([-5.8, y, z], [5.8, y, z], 0.01, (0.28, 0.34, 0.4, 1)))
+        strokes.append(([-5.8, y, z], [5.8, y, z], 0.01, (0.42, 0.50, 0.58, 1)))
     if scene.ngeom + len(strokes) > scene.maxgeom:
         return
     for start, end, width, color in strokes:
@@ -93,40 +93,44 @@ def _sport_court(scene: Any, model: Any, data: Any) -> None:
 
 
 def _sport_mjv_scene(scene: Any, model: Any, data: Any) -> None:
-    """Style an RGB scene without editing its shared model or simulation data."""
+    """Style an RGB scene without editing its shared model or simulation data.
+
+    Navy court and warm/cool rims stay, but the key and floor are bright enough
+    that anatomy and court strokes read clearly in offscreen stills.
+    """
     for geom in scene.geoms[: scene.ngeom]:
         if geom.objtype == mujoco.mjtObj.mjOBJ_GEOM and geom.objid >= 0:
             name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, geom.objid) or ""
             if any(part in name for part in ("fence", "corner")):
-                geom.rgba[:3] = [0.035, 0.05, 0.065]
+                geom.rgba[:3] = [0.10, 0.12, 0.16]
         if geom.type in (mujoco.mjtGeom.mjGEOM_PLANE, mujoco.mjtGeom.mjGEOM_HFIELD):
-            geom.rgba[:3] = [0.055, 0.12, 0.19]
+            geom.rgba[:3] = [0.12, 0.22, 0.34]
             if hasattr(geom, "texid"):
                 geom.texid = -1
             geom.matid = -1
             geom.reflectance = 0.0
-            geom.specular = 0.1
+            geom.specular = 0.18
     forward = np.asarray(scene.camera[0].forward)
     right = np.cross(forward, scene.camera[0].up)
     down = np.array([0.0, 0.0, -1.0])
     lights = [
-        (0.5 * forward + down, [0.65, 0.65, 0.65]),
-        (0.5 * right + down, [0.22, 0.07, 0.015]),
-        (-0.5 * right + down, [0.015, 0.14, 0.24]),
+        (0.5 * forward + down, [1.0, 1.0, 1.0]),
+        (0.5 * right + down, [0.38, 0.14, 0.04]),
+        (-0.5 * right + down, [0.04, 0.26, 0.42]),
     ]
     scene.nlight = len(lights)
     for index, (direction, color) in enumerate(lights):
         light = scene.lights[index]
         light.type = mujoco.mjtLightType.mjLIGHT_DIRECTIONAL
         light.texid = -1
-        light.intensity = 1.0
+        light.intensity = 1.15 if index == 0 else 1.0
         light.headlight = False
         light.castshadow = index == 0
         light.pos[:] = [0.0, 0.0, 5.0]
         light.dir[:] = direction / np.linalg.norm(direction)
-        light.ambient[:] = 0.5 if index == 0 else 0.0
+        light.ambient[:] = 0.78 if index == 0 else 0.08
         light.diffuse[:] = color
-        light.specular[:] = 0.08
+        light.specular[:] = 0.12
         light.attenuation[:] = [1.0, 0.0, 0.0]
         light.cutoff = 180.0
         light.exponent = 0.0

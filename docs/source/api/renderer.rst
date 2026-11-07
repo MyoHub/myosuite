@@ -4,13 +4,14 @@ Renderer
 Sport offscreen frames
 ----------------------
 
-``MJRenderer.render_offscreen(scene="sport")`` adds a navy floor, neutral key
-light, orange/cyan side lights and shadows to RGB frames. The preset only edits
-the rendered scene; it leaves the shared model, simulation state, depth and
-segmentation outputs unchanged. The light colours are scene accents, independent
-of agent roles and activation values. For 1v1 chase-tag, sparse court lines and
-broken orange/cyan identity arcs follow the two agents. These are decorative
-graphics, not tag radii or trajectories. Camera settings remain explicit:
+``MJRenderer.render_offscreen(scene="sport")`` adds a readable navy floor, a
+bright neutral key, orange/cyan side lights and shadows to RGB frames. The
+preset only edits the rendered scene; it leaves the shared model, simulation
+state, depth and segmentation outputs unchanged. The light colours are scene
+accents, independent of agent roles and activation values. For 1v1 chase-tag,
+sparse court lines and broken orange/cyan identity arcs follow the two agents.
+These are decorative graphics, not tag radii or trajectories. Camera settings
+remain explicit:
 
 .. code-block:: python
 

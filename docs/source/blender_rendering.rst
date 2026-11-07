@@ -182,7 +182,11 @@ samples three poses with a margin; check longer clips for framing before final u
    each preset's camera and lighting. Blender 5.2, Cycles, 48 samples; atlas
    muscle meshes in a uniform colour, not measured activation.
 
-Reproduce the Breakaway still from the repository root:
+Reproduce the Breakaway still from the repository root. The bundled pose clip
+names the elbows ``elbow_flex_*``, which exist only when the optional
+``musclemimic_models`` package is installed (``pip install musclemimic_models``).
+On a plain install the model uses ``elbow_flexion_*``, and the command fails
+with ``unknown model joints``. Aligning those names is tracked separately.
 
 .. code-block:: bash
 
