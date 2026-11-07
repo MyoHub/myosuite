@@ -68,3 +68,17 @@ def get_quat_ops(xp: Any) -> types.ModuleType:
         f"get_quat_ops: unrecognised array module {xp!r}. "
         "Expected numpy, jax.numpy, or torch."
     )
+
+
+def quat_yaw(xp: Any, quat: Any) -> Any:
+    """Yaw (rotation about world ``z``) of ``wxyz`` quaternions.
+
+    Args:
+        xp: Array module (numpy, jax.numpy or torch).
+        quat: Quaternions ``(..., 4)`` in MuJoCo's ``(w, x, y, z)`` order.
+
+    Returns:
+        Yaw angles ``(...)`` in radians.
+    """
+    w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
+    return xp.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))

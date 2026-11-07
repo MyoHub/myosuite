@@ -47,6 +47,7 @@ from mjlab.sim import SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 
 from myosuite.core.config import TaskConfig
+from myosuite.physics.quat import quat_yaw
 from myosuite.envs.myo.assets._resolve import resolve_elbow_xml as _resolve_elbow_xml
 from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
@@ -332,12 +333,6 @@ def _chasetag_obs_act(env: ManagerBasedRlEnv) -> torch.Tensor:
     return env.scene[_CHASETAG_ENTITY_NAME].data.data.act
 
 
-def _chasetag_yaw(quat: torch.Tensor) -> torch.Tensor:
-    """Yaw of ``wxyz`` quaternions, as ``_pelvis_yaw_from_qpos``. Shape (N,)."""
-    w, x, y, z = quat.unbind(dim=1)
-    return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
-
-
 def _chasetag_rotate_by_neg_yaw(xy: torch.Tensor, yaw: torch.Tensor) -> torch.Tensor:
     """Rotate planar vectors ``(N, 2)`` by ``-yaw``, as ``_directional_obs``."""
     c, s = torch.cos(-yaw), torch.sin(-yaw)
@@ -348,7 +343,7 @@ def _chasetag_rotate_by_neg_yaw(xy: torch.Tensor, yaw: torch.Tensor) -> torch.Te
 def _chasetag_obs_root_vel_body(env: ManagerBasedRlEnv) -> torch.Tensor:
     """Root planar velocity in the pelvis yaw frame. Shape (N, 2)."""
     qpos, qvel = _chasetag_root(env)
-    return _chasetag_rotate_by_neg_yaw(qvel[:, :2], _chasetag_yaw(qpos[:, 3:7]))
+    return _chasetag_rotate_by_neg_yaw(qvel[:, :2], quat_yaw(torch, qpos[:, 3:7]))
 
 
 def _chasetag_obs_heading_cmd(env: ManagerBasedRlEnv) -> torch.Tensor:
@@ -364,7 +359,7 @@ def _chasetag_obs_orientation(env: ManagerBasedRlEnv) -> torch.Tensor:
     w, x, y, z = qpos[:, 3:7].unbind(dim=1)
     roll = torch.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
     pitch = torch.asin(torch.clamp(2.0 * (w * y - z * x), -1.0, 1.0))
-    ang_b = _chasetag_rotate_by_neg_yaw(qvel[:, 3:5], _chasetag_yaw(qpos[:, 3:7]))
+    ang_b = _chasetag_rotate_by_neg_yaw(qvel[:, 3:5], quat_yaw(torch, qpos[:, 3:7]))
     return torch.cat(
         [roll[:, None], pitch[:, None], ang_b, qvel[:, 5:6], qvel[:, 2:3]], dim=1
     )
