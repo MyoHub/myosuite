@@ -77,6 +77,12 @@ def main() -> None:
     p.add_argument("--eval", type=Path, required=True)
     p.add_argument("--clip", required=True)
     p.add_argument(
+        "--fullbody-model",
+        default="myo_sim",
+        choices=["myo_sim", "musclemimic"],
+        help="body model (must match the one the checkpoint was trained on)",
+    )
+    p.add_argument(
         "--checkpoint", required=True, help="recording policy (closed-loop check)"
     )
     p.add_argument("--out", type=Path, required=True)
@@ -102,6 +108,9 @@ def main() -> None:
     )
     p.add_argument("--tf32", action=argparse.BooleanOptionalAction, default=True)
     a = p.parse_args()
+    from myosuite.learning.supermimic.trainer import use_fullbody_model
+
+    use_fullbody_model(a.fullbody_model)
     dev = a.device
     torch.manual_seed(0)
     a.out.mkdir(parents=True, exist_ok=True)

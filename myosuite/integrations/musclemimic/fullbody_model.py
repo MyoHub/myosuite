@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import importlib.util
+import os
 from pathlib import Path
 import tempfile
 import warnings
@@ -49,6 +51,33 @@ NATIVE_FULLBODY_FALLBACK_WARNING = (
     "guaranteed to transfer. Install 'musclemimic_models==1.0.6' or "
     "'myosuite[musclemimic]' for exact parity."
 )
+
+MIMIC_FULLBODY_MODEL_ENV = "MYOSUITE_MIMIC_FULLBODY_MODEL"
+"""Environment variable choosing the Mimic full-body model: ``musclemimic`` (the external
+``musclemimic_models`` MJCF), ``myo_sim`` (myo_sim's own ``myofullbody`` with the same Mimic
+edits) or ``auto`` (default: ``musclemimic`` when installed, else ``myo_sim``)."""
+
+
+def mimic_fullbody_model_source(config: config_dict.ConfigDict | None = None) -> str:
+    """Resolved full-body model source, ``"musclemimic"`` or ``"myo_sim"``.
+
+    ``config.model_source`` wins over :data:`MIMIC_FULLBODY_MODEL_ENV`; ``auto`` picks
+    ``musclemimic`` when ``musclemimic_models`` is installed.
+    """
+    v = getattr(config, "model_source", None) if config is not None else None
+    v = (v or os.environ.get(MIMIC_FULLBODY_MODEL_ENV) or "auto").strip().lower()
+    if v == "auto":
+        return (
+            "musclemimic"
+            if importlib.util.find_spec("musclemimic_models")
+            else "myo_sim"
+        )
+    if v not in ("musclemimic", "myo_sim"):
+        raise ValueError(
+            f"{MIMIC_FULLBODY_MODEL_ENV}/model_source must be musclemimic, myo_sim or auto, not {v!r}"
+        )
+    return v
+
 
 # Body → mimic site names (``MyoFullBody.body2sites_for_mimic``).
 FULLBODY_BODY2SITES_FOR_MIMIC = {
@@ -364,10 +393,20 @@ def build_mimic_fullbody_spec(
     """
     mp = getattr(config, "model_path", None)
     if mp is None:
-        try:
-            import musclemimic_models  # noqa: F401
-        except ImportError:
-            warnings.warn(NATIVE_FULLBODY_FALLBACK_WARNING, UserWarning, stacklevel=2)
+        source = mimic_fullbody_model_source(config)
+        if source == "myo_sim":
+            explicit = (
+                getattr(config, "model_source", None) or ""
+            ).lower() == "myo_sim" or (
+                os.environ.get(MIMIC_FULLBODY_MODEL_ENV, "").strip().lower()
+                == "myo_sim"
+            )
+            if (
+                not explicit
+            ):  # silent fallback only when the user did not ask for myo_sim
+                warnings.warn(
+                    NATIVE_FULLBODY_FALLBACK_WARNING, UserWarning, stacklevel=2
+                )
             return build_native_mimic_fullbody_spec(config), "myo_sim:myofullbody"
 
     xml_path = resolve_mimic_fullbody_xml(config)
@@ -517,6 +556,7 @@ def default_mimic_fullbody_config() -> config_dict.ConfigDict:
         model_disableflags=int(mujoco.mjtDisableBit.mjDSBL_EULERDAMP),
         model_path=None,
         model_version=None,
+        model_source=None,
         disable_fingers=True,
         arena_memory=MIMIC_FULLBODY_ARENA_BYTES,
         nconmax=4096,

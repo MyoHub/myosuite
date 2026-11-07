@@ -137,3 +137,59 @@ def test_policy_lr_multiplier():
     assert policy_lr_multiplier(125, 4.0, 100, 50) == 2.5
     assert policy_lr_multiplier(10_000, 4.0, 100, 50) == 1.0
     assert policy_lr_multiplier(5, 1.0, 100, 50) == 1.0
+
+
+def test_fullbody_model_source(monkeypatch):
+    import importlib.util
+
+    from myosuite.integrations.musclemimic.fullbody_model import (
+        MIMIC_FULLBODY_MODEL_ENV,
+        default_mimic_fullbody_config,
+        mimic_fullbody_model_source,
+    )
+
+    monkeypatch.setenv(MIMIC_FULLBODY_MODEL_ENV, "myo_sim")
+    assert mimic_fullbody_model_source() == "myo_sim"
+    cfg = default_mimic_fullbody_config()
+    cfg.model_source = "musclemimic"  # the config wins over the variable
+    assert mimic_fullbody_model_source(cfg) == "musclemimic"
+    monkeypatch.setenv(MIMIC_FULLBODY_MODEL_ENV, "auto")
+    have = importlib.util.find_spec("musclemimic_models") is not None
+    assert mimic_fullbody_model_source() == ("musclemimic" if have else "myo_sim")
+    monkeypatch.setenv(MIMIC_FULLBODY_MODEL_ENV, "bogus")
+    with pytest.raises(ValueError):
+        mimic_fullbody_model_source()
+
+
+def test_myo_sim_fullbody_takes_musclemimic_clip_joint_names():
+    import numpy as np
+
+    from myosuite.core.trajectory_io import MotionClip, expand_motion_clip_to_model
+    from myosuite.integrations.musclemimic.fullbody_model import (
+        build_native_mimic_fullbody_spec,
+        default_mimic_fullbody_config,
+    )
+
+    m = build_native_mimic_fullbody_spec(default_mimic_fullbody_config()).compile()
+    names = [m.joint(i).name for i in range(m.njnt)]
+    assert "elbow_flexion_l" in names and "elbow_flex_l" not in names
+    # a MuscleMimic-named clip: elbow_flex_* instead of myo_sim's elbow_flexion_*
+    clip_names = [
+        {"elbow_flexion_l": "elbow_flex_l", "elbow_flexion_r": "elbow_flex_r"}.get(n, n)
+        for n in names
+    ]
+    qn = [n for j, n in enumerate(clip_names) for _ in range(7 if j == 0 else 1)]
+    q = np.tile(m.qpos0, (3, 1))
+    q[:, m.jnt_qposadr[names.index("elbow_flexion_l")]] = 0.7
+    out = expand_motion_clip_to_model(
+        MotionClip(
+            qpos=q,
+            qvel=None,
+            site_xpos=None,
+            site_names=None,
+            qpos_joint_names=qn,
+            frequency_hz=100.0,
+        ),
+        m,
+    )
+    assert np.allclose(out.qpos[:, m.jnt_qposadr[names.index("elbow_flexion_l")]], 0.7)

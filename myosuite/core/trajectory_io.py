@@ -174,6 +174,17 @@ def _build_model_joint_index_map(
     return index_map
 
 
+# Clip joint name -> model joint name, used when the model lacks the clip's name. MuscleMimic's
+# MyoFullBody (musclemimic_models) names the elbows elbow_flex_*, myo_sim's myofullbody elbow_flexion_*;
+# the two bodies have otherwise the same 83 joints.
+JOINT_NAME_ALIASES: dict[str, str] = {
+    "elbow_flex_l": "elbow_flexion_l",
+    "elbow_flex_r": "elbow_flexion_r",
+    "elbow_flexion_l": "elbow_flex_l",
+    "elbow_flexion_r": "elbow_flex_r",
+}
+
+
 def _resolve_model_indices(
     *,
     clip_width: int,
@@ -192,6 +203,10 @@ def _resolve_model_indices(
         return np.arange(expected_width, dtype=np.int32)
 
     index_map = _build_model_joint_index_map(mj_model, use_qvel=use_qvel)
+    # Same joint under another model's name (e.g. MuscleMimic clips on myo_sim's myofullbody).
+    for clip_name, model_name in JOINT_NAME_ALIASES.items():
+        if clip_name not in index_map and model_name in index_map:
+            index_map[clip_name] = index_map[model_name]
     missing = sorted(set(joint_names) - set(index_map))
     if missing:
         raise ValueError(

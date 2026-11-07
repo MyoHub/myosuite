@@ -36,6 +36,12 @@ RUN_CHECKPOINTS = {
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--clip", required=True)
+    p.add_argument(
+        "--fullbody-model",
+        default="myo_sim",
+        choices=["myo_sim", "musclemimic"],
+        help="body model (must match the one the checkpoint was trained on)",
+    )
     p.add_argument("checkpoints", nargs="*")
     p.add_argument(
         "--run-dir",
@@ -55,6 +61,9 @@ def main() -> None:
     p.add_argument("--out", type=Path)
     p.add_argument("--device", default="cuda:0")
     a = p.parse_args()
+    from myosuite.learning.supermimic.trainer import use_fullbody_model
+
+    use_fullbody_model(a.fullbody_model)
     runs = [(ck, "") for ck in a.checkpoints]
     for d in a.run_dir:
         runs += [

@@ -20,6 +20,15 @@ clip = hf_hub_download(
 )
 ```
 
+## Body model
+
+`--fullbody-model myo_sim` (default) trains on myo_sim's own `myofullbody` with the Mimic edits (tracking
+sites, finger removal, muscle ctrlrange); `--fullbody-model musclemimic` uses the `musclemimic_models` MJCF
+(`pip install 'myosuite[musclemimic]'`). Both have the same 83 joints and 354 muscles; MuscleMimic clips map
+onto myo_sim by joint name (`elbow_flex_*` = `elbow_flexion_*`). The choice sets
+`MYOSUITE_MIMIC_FULLBODY_MODEL` for the process; evaluate a checkpoint with the model it was trained on (every
+script takes `--fullbody-model`).
+
 ## Train
 
 ```bash

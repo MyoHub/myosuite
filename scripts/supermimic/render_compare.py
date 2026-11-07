@@ -125,6 +125,12 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--clip", required=True)
     p.add_argument(
+        "--fullbody-model",
+        default="myo_sim",
+        choices=["myo_sim", "musclemimic"],
+        help="body model (must match the one the checkpoint was trained on)",
+    )
+    p.add_argument(
         "--policy",
         nargs=2,
         action="append",
@@ -140,6 +146,9 @@ def main() -> None:
     p.add_argument("--size", type=int, nargs=2, default=(420, 480), metavar=("W", "H"))
     p.add_argument("--device", default="cpu")
     a = p.parse_args()
+    from myosuite.learning.supermimic.trainer import use_fullbody_model
+
+    use_fullbody_model(a.fullbody_model)
 
     env = make_mimic_env(a.clip, 1, a.device, seed=0)
     io = MimicEnvIO(env, _ENTITY)

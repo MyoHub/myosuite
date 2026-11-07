@@ -1843,10 +1843,20 @@ def _register_mimic_tasks(
     """Internal implementation shared by both registration entry points."""
     import importlib.util
 
-    if importlib.util.find_spec("musclemimic_models") is None:
+    from myosuite.integrations.musclemimic.fullbody_model import (
+        mimic_fullbody_model_source,
+    )
+
+    # The full body needs musclemimic_models only when that model is asked for; myo_sim's own
+    # myofullbody (MYOSUITE_MIMIC_FULLBODY_MODEL=myo_sim, or auto without the package) does not.
+    if (
+        mimic_fullbody_model_source() == "musclemimic"
+        and importlib.util.find_spec("musclemimic_models") is None
+    ):
         raise ImportError(
             "musclemimic_models is not installed. "
-            "Install it with: pip install 'myosuite[musclemimic]'"
+            "Install it with: pip install 'myosuite[musclemimic]', "
+            "or set MYOSUITE_MIMIC_FULLBODY_MODEL=myo_sim"
         )
 
     from ml_collections import config_dict

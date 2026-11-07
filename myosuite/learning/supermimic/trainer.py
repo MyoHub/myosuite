@@ -61,6 +61,9 @@ class SuperMimicCfg:
 
     clip: str = ""
     out: str = "runs/supermimic"
+    fullbody_model: str = "myo_sim"
+    """Body model: myo_sim (myo_sim's own myofullbody with the Mimic edits) or musclemimic (the
+    musclemimic_models MJCF, needs myosuite[musclemimic]). Sets MYOSUITE_MIMIC_FULLBODY_MODEL."""
     num_envs: int = 1024
     buffer_steps: int = 400
     warmup_steps: int = 50
@@ -142,6 +145,22 @@ class SuperMimicCfg:
     """torch.compile with static shapes (dynamic=False)."""
 
 
+def use_fullbody_model(source: str) -> None:
+    """Select the full-body model for every env and analytic model built in this process.
+
+    Call before the first model is built: the compiled models are cached per process.
+    """
+    import os
+
+    from myosuite.integrations.musclemimic.fullbody_model import (
+        MIMIC_FULLBODY_MODEL_ENV,
+        mimic_fullbody_model_source,
+    )
+
+    os.environ[MIMIC_FULLBODY_MODEL_ENV] = source
+    mimic_fullbody_model_source()  # validates the name
+
+
 def apply_instanttrack_preset(cfg: SuperMimicCfg) -> SuperMimicCfg:
     """InstantTrack's settings (``--instanttrack``); the horizon is kept (64 beat 32 on MyoFullBody)."""
     if not cfg.instanttrack:
@@ -173,6 +192,7 @@ class SuperMimicTrainer:
 
     def __init__(self, cfg: SuperMimicCfg) -> None:
         self.cfg = cfg = apply_instanttrack_preset(cfg)
+        use_fullbody_model(cfg.fullbody_model)
         dev = cfg.device
         fused = cfg.fused_adam and str(dev).startswith("cuda")
         torch.manual_seed(cfg.seed)

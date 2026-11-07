@@ -19,6 +19,12 @@ from myosuite.learning.supermimic.policy import Actor
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--clip", required=True)
+    p.add_argument(
+        "--fullbody-model",
+        default="myo_sim",
+        choices=["myo_sim", "musclemimic"],
+        help="body model (must match the one the checkpoint was trained on)",
+    )
     p.add_argument("--checkpoint", required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--num-envs", type=int, default=1024)
@@ -33,6 +39,9 @@ def main() -> None:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--device", default="cuda:0")
     a = p.parse_args()
+    from myosuite.learning.supermimic.trainer import use_fullbody_model
+
+    use_fullbody_model(a.fullbody_model)
 
     torch.manual_seed(a.seed)
     env = make_mimic_env(a.clip, a.num_envs, a.device, seed=a.seed)
