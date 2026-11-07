@@ -92,6 +92,8 @@ class SuperMimicCfg:
     max_hours: float = 12.0
     max_sim_steps: float = 2e9
     eval_every: int = 500
+    log_every: int = 50
+    """Updates between log.jsonl records."""
     eval_envs: int = 128
     eval_steps: int = 500
     best_metric: str = "reward"
@@ -610,8 +612,13 @@ class SuperMimicTrainer:
         """Run until ``max_hours`` of training time or ``max_sim_steps``."""
         cfg = self.cfg
         log = (self.out / "log.jsonl").open("a")
+        t_w = time.time()
         for _ in range(cfg.warmup_steps):
             self.collect(max(cfg.ctrl_noise, 0.3))
+        print(
+            f"warmup: {cfg.warmup_steps} collects of {cfg.num_envs} envs in {time.time() - t_w:.1f} s",
+            flush=True,
+        )
         start = time.time() - self.elapsed
         credit = 0.0
         last: dict[str, float] = {}
@@ -629,7 +636,12 @@ class SuperMimicTrainer:
                 last = {"wm_loss": wm_loss, **self.update_actor_critic()}
                 self.updates += 1
                 t_upd += time.time() - t0
-                if self.updates % 50 == 0:
+                if self.updates <= 3:  # the first updates include torch.compile
+                    print(
+                        f"update {self.updates}: {time.time() - t0:.1f} s, sim steps {self.sim_steps}",
+                        flush=True,
+                    )
+                if self.updates % cfg.log_every == 0:
                     self.elapsed = time.time() - start
                     eps = self.done_stats[-500:]
                     rec = {
