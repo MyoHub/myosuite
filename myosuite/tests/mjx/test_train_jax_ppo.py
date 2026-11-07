@@ -76,8 +76,9 @@ def test_train_jax_ppo_env_reset_and_step(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("WANDB_DIR", str(tmp_path))
 
     env_name = "MjxFingerPoseRandom-v0"
+    # "jax" (MJX) is the script's --impl default.
     env, ppo_params, network_factory = train_jax_ppo.load_env_and_network_factory(
-        env_name
+        env_name, impl="jax"
     )
 
     # Basic sanity checks on returned objects.
