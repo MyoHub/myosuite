@@ -6,13 +6,12 @@
 import jax
 from jax import numpy as jp
 from flax import struct
-from mujoco_playground._src.mjx_env import State
 
 import io
 import imageio
 import wandb
 
-from mujoco_playground import wrapper
+from myosuite.envs.myo.backends.mjx.brax_env import State, wrap_for_brax_training
 
 
 def make_minimal_state(full_state):
@@ -45,7 +44,7 @@ def make_minimal_state(full_state):
 
 
 def make_policy_params_fn(env):
-    eval_env = wrapper.wrap_for_brax_training(
+    eval_env = wrap_for_brax_training(
         env, episode_length=env._config.max_episode_steps, action_repeat=1
     )
     jit_env_reset = jax.jit(eval_env.reset)

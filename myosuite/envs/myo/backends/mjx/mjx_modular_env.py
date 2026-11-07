@@ -30,7 +30,7 @@ from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_sp
 
 
 def modular_task_config(task_config: TaskConfig) -> config_dict.ConfigDict:
-    """Build a mujoco_playground-compatible ConfigDict from a TaskConfig.
+    """Build the env ConfigDict from a TaskConfig.
 
     Args:
         task_config: High-level task specification.
