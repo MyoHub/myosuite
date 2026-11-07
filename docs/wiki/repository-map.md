@@ -49,7 +49,7 @@ envs/myo/backends/       # GPU implementations (same env_id as the CPU task)
 │   │                     #   cpu_reference.py, registration.py, pose/ reach/ leg/ mdp/ (terms, MyoAction)
 │   ├── register_mjlab_*.py   # special-purpose tasks (Table Tennis, ChaseTag, Mimic)
 │   └── configs/, mjlab_task_builder.py   # shared config and TaskConfig builders
-└── mjx/                  # JAX/playground env classes (experimental; not guaranteed long-term)
+└── mjx/                  # JAX/brax env classes (experimental; not guaranteed long-term)
 ```
 
 A task's **CPU** env (`tasks/`) and its supported **GPU** implementation
