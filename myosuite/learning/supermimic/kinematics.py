@@ -17,7 +17,61 @@ import mujoco
 import numpy as np
 import torch
 
-from myosuite.physics.quat_math_torch import axis_angle2quat, mul_quat, rot_vec_quat
+from myosuite.physics.quat_math_torch import axis_angle2quat
+
+
+# Quaternion products as one outer product and one small matmul (2 kernels instead of ~30 scalar
+# ops: imagination is kernel-launch bound and this chain runs at every imagined step).
+def _qmul_table() -> torch.Tensor:
+    """(16, 4): ``qa * qb = (qa_i qb_j) @ T`` (Hamilton product, [w, x, y, z])."""
+    t = torch.zeros(4, 4, 4)
+    for i, j, k, sgn in (
+        (0, 0, 0, 1), (1, 1, 0, -1), (2, 2, 0, -1), (3, 3, 0, -1),
+        (0, 1, 1, 1), (1, 0, 1, 1), (2, 3, 1, 1), (3, 2, 1, -1),
+        (0, 2, 2, 1), (1, 3, 2, -1), (2, 0, 2, 1), (3, 1, 2, 1),
+        (0, 3, 3, 1), (1, 2, 3, 1), (2, 1, 3, -1), (3, 0, 3, 1),
+    ):  # fmt: skip
+        t[i, j, k] = sgn
+    return t.reshape(16, 4)
+
+
+def _qmat_table() -> torch.Tensor:
+    """(16, 9): ``|q|^2 R(q) = (q_i q_j) @ T`` (row-major R)."""
+    t = torch.zeros(4, 4, 9)
+    w, x, y, z = range(4)
+    quad = {
+        0: [(w, w, 1), (x, x, 1), (y, y, -1), (z, z, -1)],
+        1: [(x, y, 2), (w, z, -2)],
+        2: [(x, z, 2), (w, y, 2)],
+        3: [(x, y, 2), (w, z, 2)],
+        4: [(w, w, 1), (x, x, -1), (y, y, 1), (z, z, -1)],
+        5: [(y, z, 2), (w, x, -2)],
+        6: [(x, z, 2), (w, y, -2)],
+        7: [(y, z, 2), (w, x, 2)],
+        8: [(w, w, 1), (x, x, -1), (y, y, -1), (z, z, 1)],
+    }
+    for k, terms in quad.items():
+        for i, j, c in terms:
+            t[i, j, k] = c
+    return t.reshape(16, 9)
+
+
+def _outer(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    return (a[..., :, None] * b[..., None, :]).flatten(-2)
+
+
+def _qmul(a: torch.Tensor, b: torch.Tensor, table: torch.Tensor) -> torch.Tensor:
+    return _outer(a, b) @ table
+
+
+def _qmat(q: torch.Tensor, table: torch.Tensor) -> torch.Tensor:
+    """Rotation matrix of *q* (normalised by ``|q|^2``, as ``quat2mat``)."""
+    o = _outer(q, q)
+    return ((o @ table) / (q * q).sum(-1, keepdim=True)).unflatten(-1, (3, 3))
+
+
+def _mv(m: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    return (m * v[..., None, :]).sum(-1)
 
 
 @dataclass
@@ -131,6 +185,8 @@ class TorchKinematics(torch.nn.Module):
             "site_local", torch.as_tensor(model.site_pos[ids], dtype=torch.float32)
         )
         self.register_buffer("free_index", torch.tensor([max(self.free_body, 0)]))
+        self.register_buffer("qmul_table", _qmul_table(), persistent=False)
+        self.register_buffer("qmat_table", _qmat_table(), persistent=False)
 
     def _apply(self, fn, recurse=True):  # keep the level tensors on the module's device
         super()._apply(fn, recurse)
@@ -154,25 +210,29 @@ class TorchKinematics(torch.nn.Module):
             quat_t = quat_t.index_copy(
                 -2, self.free_index, (q / q.norm(dim=-1, keepdim=True))[..., None, :]
             )
+        tq, tm = self.qmul_table, self.qmat_table
         for lvl in self.levels:
             ppos = pos_t.index_select(-2, lvl.parents)
             pquat = quat_t.index_select(-2, lvl.parents)
-            xpos = ppos + rot_vec_quat(lvl.body_pos.expand_as(ppos), pquat)
-            xquat = mul_quat(pquat, lvl.body_quat.expand_as(pquat))
+            xpos = ppos + _mv(_qmat(pquat, tm), lvl.body_pos)
+            xquat = _qmul(pquat, lvl.body_quat.expand_as(pquat), tq)
+            rot = _qmat(xquat, tm)
             q = qpad[..., lvl.jnt_qadr] - lvl.jnt_qpos0  # (..., B, J)
             for k in range(lvl.jnt_qadr.shape[1]):
-                jp = lvl.jnt_pos[:, k].expand_as(xpos)
-                ax = lvl.jnt_axis[:, k].expand_as(xpos)
+                jp = lvl.jnt_pos[:, k]
+                ax = lvl.jnt_axis[:, k]
                 qk = q[..., k]
-                anchor = xpos + rot_vec_quat(jp, xquat)
+                anchor = xpos + _mv(rot, jp)
                 # Slide: translate along the world axis; hinge: rotate about the anchor.
-                xpos = (
-                    xpos
-                    + rot_vec_quat(ax, xquat) * (qk * lvl.jnt_slide[:, k])[..., None]
+                xpos = xpos + _mv(rot, ax) * (qk * lvl.jnt_slide[:, k])[..., None]
+                xquat = _qmul(
+                    xquat,
+                    axis_angle2quat(ax.expand_as(xpos), qk * lvl.jnt_hinge[:, k]),
+                    tq,
                 )
-                xquat = mul_quat(xquat, axis_angle2quat(ax, qk * lvl.jnt_hinge[:, k]))
+                rot = _qmat(xquat, tm)
                 hinge = lvl.jnt_hinge[:, k][:, None]
-                xpos = hinge * (anchor - rot_vec_quat(jp, xquat)) + (1 - hinge) * xpos
+                xpos = hinge * (anchor - _mv(rot, jp)) + (1 - hinge) * xpos
             xquat = xquat / xquat.norm(dim=-1, keepdim=True)
             pos_t = pos_t.index_copy(-2, lvl.bodies, xpos)
             quat_t = quat_t.index_copy(-2, lvl.bodies, xquat)
@@ -183,7 +243,7 @@ class TorchKinematics(torch.nn.Module):
         pos, quat = self.body_poses(qpos)
         bpos = pos.index_select(-2, self.site_body)
         bquat = quat.index_select(-2, self.site_body)
-        return bpos + rot_vec_quat(self.site_local.expand_as(bpos), bquat)
+        return bpos + _mv(_qmat(bquat, self.qmat_table), self.site_local)
 
 
 class JointCoupling(torch.nn.Module):
