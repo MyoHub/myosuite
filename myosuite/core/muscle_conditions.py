@@ -13,6 +13,7 @@ as transform callbacks and by term functions via EnvAccessor.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
@@ -118,6 +119,23 @@ Rakshit et al. (2021, Eq. 7) define rest as a zero command. A command through th
 sigmoid never reaches zero (smallest value 0.00055), so a small threshold makes a relaxed
 muscle count as resting, as a muscle commanded to 0 does.
 """
+
+MAX_FATIGUE_SUBSTEP = 0.05
+"""Longest single integration step [s]. Longer steps are split into equal sub-steps.
+
+One explicit step holds the start-of-step ``MA`` for the whole interval, so a long step at
+rest keeps fatiguing the muscle: one 300 s rest step after a 60 s hold at 40 % raised the
+elbow ``MF`` from 0.24 to 0.74 instead of recovering it to 0.01. The compartment bounds of
+the step also invert for steps above ``1 / F``. Control steps of the registered environments
+(at most 25 ms) still take a single step, so their dynamics are unchanged. The experimental
+JAX step (``physics/fatigue_jax.py``) is not sub-stepped.
+"""
+
+
+def _substeps(dt: float) -> int:
+    """Number of equal sub-steps that keeps each step <= :data:`MAX_FATIGUE_SUBSTEP`."""
+    return max(1, math.ceil(dt / MAX_FATIGUE_SUBSTEP - 1e-9))
+
 
 _DEFAULT_F = MUSCLE_FATIGUE_PARAMS["Default"]["F"]
 _DEFAULT_R = MUSCLE_FATIGUE_PARAMS["Default"]["R"]
@@ -387,6 +405,8 @@ class CumulativeFatigue:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Advance fatigue state by one step and return updated compartments.
 
+        Steps longer than :data:`MAX_FATIGUE_SUBSTEP` are integrated in equal sub-steps.
+
         Args:
             act: Target activation (commanded excitation), shape ``(na,)``.
             dt: Timestep in seconds.  Defaults to ``self._dt``.
@@ -397,7 +417,13 @@ class CumulativeFatigue:
         """
         _dt = dt if dt is not None else self._dt
         self.TL = act.copy()
+        n = _substeps(_dt)
+        for _ in range(n):
+            self._integrate(_dt / n)
+        return self._MA, self._MR, self._MF
 
+    def _integrate(self, _dt: float) -> None:
+        """One explicit 3CC-r step of length ``_dt`` towards ``self.TL``."""
         # Activation/deactivation rates (MuJoCo Hill-type dynamics)
         LD = 1.0 / (self._tauact * (0.5 + 1.5 * self._MA))
         LR = (0.5 + 1.5 * self._MA) / self._taudeact
@@ -438,8 +464,6 @@ class CumulativeFatigue:
         self._MA += dMA
         self._MR += dMR
         self._MF += dMF
-
-        return self._MA, self._MR, self._MF
 
     def get_effort(self) -> float:
         """Return the effort ``||MA - TL||`` of the last :meth:`compute_act` call.
@@ -689,7 +713,8 @@ class TorchFatigueState:
     def step(self, excitation: Any, dt: float) -> Any:
         """Advance fatigue state by one control step.
 
-        Implements the same 3CC-r dynamics as :meth:`CumulativeFatigue.step`.
+        Implements the same 3CC-r dynamics as :meth:`CumulativeFatigue.step`, including the
+        sub-steps for steps longer than :data:`MAX_FATIGUE_SUBSTEP`.
 
         Args:
             excitation: Muscle excitation tensor, shape ``(num_envs, n_muscles)``;
@@ -700,9 +725,16 @@ class TorchFatigueState:
             Active compartment ``MA`` (the effective muscle ctrl), same shape as
             *excitation*.
         """
-        import torch  # noqa: PLC0415
-
         excitation = excitation.to(self.MA.dtype)
+        n = _substeps(dt)
+        for _ in range(n):
+            self._integrate(excitation, dt / n)
+        # Same as CPU CumulativeFatigue: the active compartment is the ctrl.
+        return self.MA
+
+    def _integrate(self, excitation: Any, dt: float) -> None:
+        """One explicit 3CC-r step of length ``dt`` towards ``excitation``."""
+        import torch  # noqa: PLC0415
 
         # Activation/deactivation rates (MuJoCo Hill-type dynamics)
         LD = 1.0 / (self._tauact * (0.5 + 1.5 * self.MA))
@@ -741,8 +773,6 @@ class TorchFatigueState:
         self.MA = self.MA + dMA_dt * dt
         self.MF = self.MF + dMF_dt * dt
         self.MR = self.MR + dMR_dt * dt
-        # Same as CPU CumulativeFatigue: the active compartment is the ctrl.
-        return self.MA
 
     # ------------------------------------------------------------------
     # Reset

@@ -118,6 +118,23 @@ def _fatigue_stepper(backend: str, n: int) -> Any:
     )
 
 
+def _fatigue_state_stepper(backend: str, n: int) -> Any:
+    """Return ``step(TL, dt) -> (MA, MR, MF)`` for the numpy or torch model (uniform F, R, r)."""
+    if backend == "numpy":
+        f = _make_fatigue_model(n)
+        return lambda tl, dt: tuple(x.copy() for x in f.compute_act(tl.copy(), dt=dt))
+    torch = pytest.importorskip("torch")
+    from myosuite.core.muscle_conditions import _UNIFORM_PARAMS, TorchFatigueState
+
+    t = TorchFatigueState(1, n, **{k: _UNIFORM_PARAMS[k] for k in "FRr"})
+
+    def step(tl: np.ndarray, dt: float) -> tuple[np.ndarray, ...]:
+        t.step(torch.tensor(tl[None], dtype=torch.float32), dt)
+        return tuple(x[0].double().numpy() for x in (t.MA, t.MR, t.MF))
+
+    return step
+
+
 # Control steps of the registered myoFati* envs (10, 20 and 25 ms).
 _FATIGUE_CTRL_DTS = (0.01, 0.02, 0.025)
 
@@ -328,6 +345,36 @@ class TestCumulativeFatigue:
             for _ in range(10):
                 fine.compute_act(tl, dt=0.002)
         np.testing.assert_allclose(coarse.MF, fine.MF, rtol=0.02)
+
+    def test_control_steps_take_one_integration_step(self) -> None:
+        from myosuite.core.muscle_conditions import MAX_FATIGUE_SUBSTEP, _substeps
+
+        for dt in (*_FATIGUE_CTRL_DTS, MAX_FATIGUE_SUBSTEP):
+            assert _substeps(dt) == 1
+        assert _substeps(1.01 * MAX_FATIGUE_SUBSTEP) == 2
+        assert _substeps(300.0) == round(300.0 / MAX_FATIGUE_SUBSTEP)
+
+    @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    def test_long_step_matches_control_steps(self, backend: str) -> None:
+        # One explicit step holds the start-of-step MA for the whole interval:
+        # a 120 s rest passed in one call kept fatiguing the muscle (MF rose)
+        # instead of recovering it. Long steps are now split into sub-steps.
+        hold, rest = np.full(3, 0.4), np.zeros(3)
+        one_call = _fatigue_state_stepper(backend, 3)
+        control = _fatigue_state_stepper(backend, 3)
+        for _ in range(3000):  # 60 s at 40 %
+            one_call(hold, 0.02)
+            mf_hold = control(hold, 0.02)[2]
+        ma, mr, mf = one_call(rest, 120.0)
+        for _ in range(6000):
+            reference = control(rest, 0.02)
+        assert np.all(mf < mf_hold)
+        np.testing.assert_allclose(mf, reference[2], rtol=0.01)
+        # float32 torch state drifts ~2e-5 from MA + MR + MF = 1 over 5400 steps.
+        np.testing.assert_allclose(
+            ma + mr + mf, 1.0, atol=1e-4 if backend == "torch" else 1e-9
+        )
+        assert np.all((ma >= 0) & (mr >= 0) & (mf >= 0))
 
     def test_per_muscle_params_ignore_attach_prefix_and_side_suffix(self) -> None:
         """Prefixed and side-suffixed muscle names get their group's F / R / r.
