@@ -5,7 +5,8 @@
 """Full-body + scripted-mocap-opponent ChaseTag model builder.
 
 Reuses the existing full-body spec builder
-(:func:`myosuite.integrations.musclemimic.fullbody_model.build_mimic_fullbody_spec`)
+(:func:`myosuite.integrations.musclemimic.fullbody_model.build_native_mimic_fullbody_spec`,
+myo_sim's ``myofullbody``)
 and grafts on the mocap "opponent" body plus a heightfield terrain, matching
 the leg-only ``myolegs_chasetag.xml`` scene contract that :class:`ChaseTagEnv`
 expects (a "terrain" hfield geom, an "opponent" mocap body, and an
@@ -251,10 +252,8 @@ def _add_standing_keyframe(spec: mujoco.MjSpec) -> None:
     )
 
 
-# Arena (contacts, constraint rows, solver scratch) of each ``MjData``. The
-# reused musclemimic_models MJCF declares legacy ``<size nconmax="2000"
-# njmax="5000">``, from which MuJoCo reserves 1.3 GB per MjData (committed up
-# front on Windows). Measured high-water mark with MuJoCo 3.11 (read after every
+# Arena (contacts, constraint rows, solver scratch) of each ``MjData``. Explicit,
+# so MuJoCo does not derive it from any legacy sizes in the model. Measured high-water mark with MuJoCo 3.11 (read after every
 # substep): 0.9 MiB over seeded flat and random-terrain rollouts with falls,
 # 2.6 MiB buried inside the hfield, 5.3 MiB with every contact candidate and
 # joint limit active (5 m margins). Every body geom at the 50-contact hfield cap
@@ -408,13 +407,13 @@ def build_fullbody_chasetag_spec(
     # Deferred: registering the env only needs this module, and the full-body
     # builder pulls in ml_collections.
     from myosuite.integrations.musclemimic.fullbody_model import (  # noqa: PLC0415
-        build_mimic_fullbody_spec,
+        build_native_mimic_fullbody_spec,
         default_mimic_fullbody_config,
     )
 
     cfg = config if config is not None else default_mimic_fullbody_config()
-    spec, _xml_path = build_mimic_fullbody_spec(cfg)
-    # build_mimic_fullbody_spec returns the *uncompiled* spec, which keeps
+    spec = build_native_mimic_fullbody_spec(cfg)
+    # build_native_mimic_fullbody_spec returns the *uncompiled* spec, which keeps
     # the raw base MJCF asset's own default timestep (0.001s). cfg.sim_dt
     # (0.002s -- the actual value the directional policy was trained under,
     # and what MuscleMimicFullbodyDirectionalEnv/FBVs both compile with) is
@@ -428,7 +427,7 @@ def build_fullbody_chasetag_spec(
     # independent of and in addition to the reset-pose and action-space
     # bugs already fixed.
     spec.option.timestep = float(cfg.sim_dt)
-    # Explicit arena instead of the 1.3 GB derived from the legacy sizes.
+    # Explicit arena, see CHASETAG_FB_ARENA_BYTES.
     spec.memory = CHASETAG_FB_ARENA_BYTES
     _add_terrain(spec)
     _add_opponent(spec)

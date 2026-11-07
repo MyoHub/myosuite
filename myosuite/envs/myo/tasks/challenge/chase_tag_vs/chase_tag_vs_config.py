@@ -31,8 +31,8 @@ class ChaseTagVsConfig:
     This matches the MyoChallenge ``chasetag_v0`` scoring function.
     """
 
-    # --- Episode length (MyoChallenge: 20 s) ---
-    maxTime: float = 20.0  # seconds
+    # --- Episode length ---
+    maxTime: float = 10.0  # seconds
     ctrl_dt: float = 0.01
     sim_dt: float = 0.002
 

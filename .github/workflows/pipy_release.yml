@@ -136,6 +136,11 @@ jobs:
         if actual != expected:
             raise SystemExit(f"Built wheel version {actual} != expected {expected}")
         print(f"Verified wheel version {actual}")
+        with zipfile.ZipFile(wheels[0]) as zf:
+            tops = {n.split("/")[0] for n in zf.namelist() if not n.split("/")[0].endswith(".dist-info")}
+        if tops != {"myosuite"}:
+            raise SystemExit(f"Wheel must contain only the myosuite package, found: {sorted(tops)}")
+        print("Verified wheel top level: myosuite")
         PY
 
     - name: Store the distribution packages
