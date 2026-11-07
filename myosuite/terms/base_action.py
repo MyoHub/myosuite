@@ -34,6 +34,13 @@ excitations (``MotorNoiseCfg``, off by default). Both backends apply it after
 the action -> excitation mapping and before fatigue; see
 ``docs/wiki/cross-backend-contract.md``.
 
+Saturation
+----------
+``muscle_saturation_bounds`` gives the policy actions whose excitation is within
+a margin of 0 or 1 (or clamped), where the action map is flat. The mjlab muscle
+action terms use it for the ``muscle_saturation`` metric and the opt-in
+saturation penalty (MyoHub/myosuite#566).
+
 ``MuscleActionTerm`` is the mjlab (Isaac Lab manager API) integration wrapper.
 """
 
@@ -61,6 +68,74 @@ def sigmoid_muscle_activation(action: Any, xp: Any) -> Any:
         Array with element-wise ``1 / (1 + exp(-5 * (a - 0.5)))``.
     """
     return 1.0 / (1.0 + xp.exp(-5.0 * (action - 0.5)))
+
+
+# Excitation distance from 0 or 1 below which a muscle command counts as saturated.
+MUSCLE_SATURATION_MARGIN: float = 0.05
+
+
+def muscle_saturation_bounds(
+    *,
+    sigmoid: bool,
+    clip: tuple[float, float] | None = None,
+    margin: float = MUSCLE_SATURATION_MARGIN,
+) -> tuple[float, float]:
+    """Policy-action bounds outside which a muscle command is saturated.
+
+    A command is saturated when its excitation is within *margin* of 0 or 1, or
+    when the action is clamped. There the action-to-excitation map is (nearly)
+    flat: neither the policy gradient nor exploration noise changes the
+    excitation much (MyoHub/myosuite#566). MuJoCo clamps muscle ctrl to
+    ``[0, 1]``, so an identity map (``sigmoid=False``) saturates at its bounds too.
+
+    Args:
+        sigmoid: The map is :func:`sigmoid_muscle_activation`; otherwise the
+            excitation is the action itself.
+        clip: Clamp applied to the action before the map, if any.
+        margin: Excitation distance from 0 or 1, in ``(0, 0.5)``.
+
+    Returns:
+        ``(lo, hi)``: actions ``<= lo`` or ``>= hi`` are saturated.
+    """
+    if not 0.0 < margin < 0.5:
+        raise ValueError(f"margin must be in (0, 0.5), got {margin}.")
+    if sigmoid:
+        half = math.log((1.0 - margin) / margin) / 5.0
+        lo, hi = 0.5 - half, 0.5 + half
+    else:
+        lo, hi = margin, 1.0 - margin
+    if clip is not None:
+        lo, hi = max(lo, clip[0]), min(hi, clip[1])
+    return lo, hi
+
+
+def muscle_saturated(action: Any, lo: Any, hi: Any) -> Any:
+    """Boolean mask of saturated muscle commands (see :func:`muscle_saturation_bounds`).
+
+    Args:
+        action: Policy actions of the muscles, any shape.
+        lo: Lower bound, broadcastable to *action*.
+        hi: Upper bound, broadcastable to *action*.
+
+    Returns:
+        ``(action <= lo) | (action >= hi)``.
+    """
+    return (action <= lo) | (action >= hi)
+
+
+def muscle_saturation_excess(action: Any, lo: Any, hi: Any, xp: Any) -> Any:
+    """Distance of each muscle action beyond its saturation bounds (0 inside).
+
+    Args:
+        action: Policy actions of the muscles, any shape.
+        lo: Lower bound, broadcastable to *action*.
+        hi: Upper bound, broadcastable to *action*.
+        xp: Array module (``numpy``, ``jax.numpy`` or ``torch``).
+
+    Returns:
+        ``max(action - hi, 0) + max(lo - action, 0)``.
+    """
+    return xp.clip(action - hi, 0.0, None) + xp.clip(lo - action, 0.0, None)
 
 
 def muscle_normalize_action(accessor: EnvAccessor, action: Any, **kwargs: Any) -> Any:

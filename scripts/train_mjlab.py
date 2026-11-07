@@ -34,6 +34,9 @@ from mjlab.utils.torch import configure_torch_backends
 from mjlab.utils.wandb import add_wandb_tags
 from mjlab.utils.wrappers import VideoRecorder
 
+from myosuite.envs.myo.backends.mjlab.tasks.mdp.saturation import (
+    add_muscle_saturation_penalty,
+)
 from myosuite.utils.checkpoint_utils import resume_checkpoint
 from myosuite.utils.feature_cli import parse_feature_args
 
@@ -51,6 +54,10 @@ class TrainConfig:
     """Multiplies the weight of every reward term (e.g. ``0.1`` shrinks returns and the
     value loss, as in the myoInteract tasks). Applied on top of
     ``--env.scale-rewards-by-dt``; ``1.0`` leaves the task's rewards unchanged."""
+    saturation_penalty: float = 0.0
+    """Opt-in penalty on muscle actions beyond their saturation bounds (reward term
+    ``muscle_saturation`` with weight ``-value``, scaled by ``--reward-scale`` like the
+    others); ``0`` keeps the task's rewards. See ``mdp.muscle_saturation_l2``."""
     stop_on_success: bool = True
     """Stop the run as soon as the logged ``Episode_Metrics/success`` rate of an
     iteration exceeds ``--success-threshold``; a checkpoint of that iteration is stored
@@ -227,6 +234,10 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
 
     cfg.agent.seed = seed
     cfg.env.seed = seed
+    if cfg.saturation_penalty > 0.0:
+        add_muscle_saturation_penalty(cfg.env, cfg.saturation_penalty)
+        if rank == 0:
+            print(f"[INFO] Muscle saturation penalty {cfg.saturation_penalty}.")
     if cfg.reward_scale != 1.0:
         for term in cfg.env.rewards.values():
             term.weight *= cfg.reward_scale

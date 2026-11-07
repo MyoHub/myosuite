@@ -41,6 +41,13 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **Muscle saturation metric and opt-in penalty on mjlab ([#566]).** Every muscle task logs `Episode_Metrics/muscle_saturation`:
+  - It is the fraction of muscle commands whose excitation is within 0.05 of 0 or 1, or whose action is clamped. There the action map is flat, so the policy gradient through the action vanishes and exploration only switches muscles on or off.
+  - During training the actions include the exploration noise. `scripts/eval_mjlab_policy.py` also prints the value for the evaluated policy.
+  - `scripts/train_mjlab.py --saturation-penalty W` adds a reward term `muscle_saturation` with weight `-W`: the mean squared distance of the muscle actions beyond those bounds. It is off by default, and no registered task's reward changes.
+  - The muscle action terms report their actions and saturation bounds through `muscle_action_bounds(margin)`. The bounds come from `myosuite.terms.base_action.muscle_saturation_bounds`.
+  - `myo_ppo_runner_cfg` takes `desired_kl` (default 0.03, see Changed).
+  - The table-tennis action term now stores the unclamped policy action as `raw_action`; the ctrl is unchanged.
 * **Role-aware ChaseTag 1v1 teacher player.** `ChaseTagSteeredPair` walks `amathislab/mm-10m-2` on the existing 8-bin walk clips. Both agents look at each other; the chaser walks toward the opponent and the runner walks away. Headings turn off the ±6 m fence (and root XY is clamped) so walkers stay inside the arena. Tutorial [5.7](tutorials/5.7_ChaseTag_Steered_Teacher.ipynb) plays it; `training/chasetag_teacher` writes 546→354 pairs for the 5.4 / 5.6 / FBVs-train stack ([#579](https://github.com/MyoHub/myosuite/pull/579), [#578](https://github.com/MyoHub/myosuite/pull/578)). Scored FBVs observation (546-d) is unchanged. `mm-10m-2` needs musclemimic_models 1.0.5.
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **`myoFullBodyWaypoint-v0`: ordered waypoints for the MyoFullBody, on the CPU and on mjlab.** A random 4-waypoint
@@ -90,6 +97,12 @@ All notable changes to this project are documented in this file.
     `std_range` when its `params/agent.yaml` gives one, as in training. Retraining with the new defaults can give
     different policies (`docs/baseline_checkpoints.md`).
   - The MuscleMimic config's docstring now describes its actual settings.
+
+* **`myo_ppo_runner_cfg` uses `desired_kl` 0.03 (was 0.01) ([#566]).**
+  - This changes the training of pose, reach, leg, torso and `motorFinger*`. The MuscleMimic, ChaseTag, table-tennis and elbow configs keep 0.01.
+  - Why: the KL of a diagonal Gaussian sums over the action dimensions, so with many muscles 0.01 keeps the adaptive learning rate at its 1e-5 floor. That held for 65% of the iterations on `myoLegWalk-v0` (80 muscles) and 91% on `myoArmReachRandom-v0` (50 muscles); with 0.03 it fell to 1% and 20%.
+  - In an A/B of 3 seeds × 3000 iterations at 1024 envs, 0.03 solved leg walk in 3/3 runs (0.01: 0/3). On arm reach it raised deterministic success from 76% to 90%.
+  - Training defaults only. Observations, actions and dynamics are unchanged, and published checkpoints load and evaluate as before.
 
 * **Fatigue groups and parameters for every muscle of the bundled models.**
   - `_muscle_group` now also strips MuscleMimic's `_left` side suffix, the `a0_`/`a1_` agent prefix of two-agent

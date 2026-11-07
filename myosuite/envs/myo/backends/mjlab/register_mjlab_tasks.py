@@ -63,6 +63,10 @@ from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
     register_table_tennis_mjlab_tasks,
 )
+from myosuite.envs.myo.backends.mjlab.tasks.mdp.saturation import (
+    SATURATION_TERM,
+    muscle_saturation_metric,
+)
 from myosuite.envs.myo.backends.mjlab.tasks.rl import (
     MUSCLE_ENTROPY_COEF,
     muscle_gaussian_distribution_cfg,
@@ -191,7 +195,7 @@ def _make_elbow_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
             actuator_names=muscle_names,
         ),
     }
-    return mjlab_env_cfg_from_task_config(
+    env_cfg = mjlab_env_cfg_from_task_config(
         cfg=cfg,
         spec_fn=_elbow_spec_fn,
         entity_name=_ELBOW_ENTITY_NAME,
@@ -206,6 +210,8 @@ def _make_elbow_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         num_envs=1,
         decimation=10,
     )
+    env_cfg.metrics[SATURATION_TERM] = muscle_saturation_metric()
+    return env_cfg
 
 
 def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
@@ -727,7 +733,8 @@ def _make_chasetag_fbp2_env_cfg(num_envs: int = 128) -> ManagerBasedRlEnvCfg:
         ),
     }
     metrics = {
-        "success": MetricsTermCfg(func=_chasetag_tagged, params=win, reduce="last")
+        "success": MetricsTermCfg(func=_chasetag_tagged, params=win, reduce="last"),
+        SATURATION_TERM: muscle_saturation_metric(),
     }
     entity = EntityCfg(
         spec_fn=_chasetag_spec_fn,

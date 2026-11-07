@@ -53,6 +53,7 @@ import numpy as np
 import tyro
 from myosuite import make_env
 from myosuite.core.config import EnvConfig
+from myosuite.terms.base_action import MUSCLE_SATURATION_MARGIN
 from myosuite.utils.feature_cli import parse_feature_args
 
 
@@ -862,8 +863,10 @@ def _summary(
     returns: list[float],
     lengths: list[int],
     successes: list[float] | None,
+    saturation: list[float] | None = None,
 ) -> None:
-    """Print return/length and the success rate (``n/a`` if the env has none)."""
+    """Print return/length, the success rate (``n/a`` if the env has none) and,
+    if measured, the mean fraction of saturated muscle commands."""
     print(f"episodes: {len(returns)}")
     print(f"return:   {np.mean(returns):.3f} +- {np.std(returns):.3f}")
     print(f"length:   {np.mean(lengths):.1f}")
@@ -878,6 +881,11 @@ def _summary(
         print(f"success:  {100 * np.mean(successes):.1f}% (solved on the final step)")
     else:
         print("success:  n/a (the env reports no 'solved' flag / success metric)")
+    if saturation:
+        print(
+            f"saturated: {100 * np.mean(saturation):.1f}% of muscle commands "
+            f"(excitation within {MUSCLE_SATURATION_MARGIN} of 0 or 1, or clamped)"
+        )
 
 
 def _write_video(cfg: EvalConfig, frames: list[np.ndarray], step_dt: float) -> None:
@@ -975,6 +983,10 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
     from mjlab.tasks.registry import load_env_cfg
 
     import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp.saturation import (
+        SATURATION_TERM,
+        muscle_saturation,
+    )
     from myosuite.utils.rslrl_policy import load_rslrl_policy
 
     os.environ.setdefault("MUJOCO_GL", "egl")
@@ -1013,6 +1025,7 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
     )
     _check_stochastic(cfg, policy)
     has_success = "success" in env.metrics_manager.active_terms
+    has_saturation = SATURATION_TERM in env.metrics_manager.active_terms
 
     obs, _ = env.reset()
     ep_return = torch.zeros(n_envs, device=device)
@@ -1021,6 +1034,7 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
     returns: list[float] = []
     lengths: list[int] = []
     successes: list[float] = []
+    saturation: list[float] = []
     with torch.no_grad():
         for _ in range(per_env * env.max_episode_length):
             act = policy.sample if cfg.stochastic else policy
@@ -1028,6 +1042,9 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
             if grid is not None:
                 frames.append(grid.render())
             recording = episodes_done < per_env
+            if has_saturation:  # reset envs already dropped this step's actions
+                running = recording & ~(terminated | truncated)
+                saturation += muscle_saturation(env)[running].tolist()
             ep_return += rew * recording
             ep_length += recording.long()
             finished = (terminated | truncated) & recording
@@ -1044,7 +1061,7 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
                 break
     step_dt = env.step_dt
     env.close()
-    _summary(returns, lengths, successes)
+    _summary(returns, lengths, successes, saturation)
     if grid is not None:
         grid.close()
         _write_video(cfg, frames, step_dt)

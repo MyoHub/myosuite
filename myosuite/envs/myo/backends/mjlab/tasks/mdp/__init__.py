@@ -17,4 +17,11 @@ from .events import (  # noqa: F401
     write_cpu_state,
 )
 from .observations import act, qpos, qpos_chains, qvel, qvel_chains  # noqa: F401
+from .saturation import (  # noqa: F401
+    SATURATION_TERM,
+    add_muscle_saturation_penalty,
+    muscle_saturation,
+    muscle_saturation_l2,
+    muscle_saturation_metric,
+)
 from .terminations import SYNC_TERM, sync_forward  # noqa: F401
