@@ -120,12 +120,16 @@ mjx = [
     "orbax-checkpoint>=0.11.22,<0.11.24; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
     "ml-collections>=0.1.1; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
     "etils[epath]>=1.3.0; python_version >= '3.10' and sys_platform != 'win32'",
-    "playground>=0.0.5; python_version >= '3.10' and sys_platform != 'win32'",
+    # playground 1.0 needs MuJoCo 4 and drops the MJX API (MjxEnv, State, registry)
+    # that backends/mjx uses; 0.2.0 runs on MuJoCo 3 and 4.
+    "playground>=0.0.5,<1; python_version >= '3.10' and sys_platform != 'win32'",
     "mediapy>=1.2.0; python_version >= '3.10' and sys_platform != 'win32'",
     "imageio>=2.31.0; python_version >= '3.10' and sys_platform != 'win32'",
     "wandb>=0.21.0; python_version >= '3.10' and sys_platform != 'win32'",
 	"mujoco>=3.7",
-	"mujoco-mjx>=3.7",
+	# mujoco-mjx 4 requires mujoco-core 4, which installs a second `mujoco` module
+	# over MuJoCo 3 (core caps mujoco<4), so `mujoco.mjx` fails to import.
+	"mujoco-mjx>=3.7,<4",
 ]
 # CUDA-enabled MJX stack for GPU.
 # Install with: uv sync --extra mjx-cuda
