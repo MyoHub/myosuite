@@ -378,16 +378,18 @@ class SuperMimicTrainer:
         f: torch.Tensor,
         obs: torch.Tensor,
         probe: torch.Tensor | None = None,
+        sites_prev: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, ...]:
-        """Actor + world model + analytic heads for one imagined step (compiled as one graph)."""
+        """Actor + world model + analytic heads for one imagined step (compiled as one graph).
+
+        *sites_prev* (tracked sites before the step, for the contact reward) is the previous step's
+        returned sites, so the forward kinematics runs once per step.
+        """
         h = self.heads
         a = self.actor(obs)
         if self.cfg.act_grad_clip > 0:
             a = clip_rows_to_median(a, self.cfg.act_grad_clip, probe)
         sat = torch.relu((a - 0.5).abs() - self.cfg.saturation_band).square().mean(-1)
-        sites_prev = (
-            h.kin.site_pos(self.spec.split(s)[0]) if self.contact is not None else None
-        )
         s = self.wm.step(s, _sigmoid_ctrl(a))
         f = f + 1
         qpos, qvel, act = self.spec.split(s)
@@ -402,7 +404,7 @@ class SuperMimicTrainer:
                 sites, sites_prev, h.frame_index(f)
             )
         d = h.termination_prob(qpos, f, sites)
-        return s, f, r, d, sat, h.observation(qpos, qvel, act, f, sites)
+        return s, f, r, d, sat, h.observation(qpos, qvel, act, f, sites), sites
 
     def imagine(self) -> dict[str, Any]:
         """Differentiable H-step rollout of the actor through the frozen world model."""
@@ -417,10 +419,13 @@ class SuperMimicTrainer:
             if cfg.act_grad_clip > 0
             else None
         )
+        sites = (
+            h.kin.site_pos(self.spec.split(s)[0]) if self.contact is not None else None
+        )
         for _ in range(cfg.horizon):
             obs_l.append(obs)
             live_l.append((~ended).float())
-            s, f, r, d, sat, obs = self._step(s, f, obs, probe)
+            s, f, r, d, sat, obs, sites = self._step(s, f, obs, probe, sites)
             rew_l.append(r)
             sat_l.append(sat)
             dhat_l.append(d)
