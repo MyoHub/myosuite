@@ -10,15 +10,18 @@ Requires ``onnxruntime``; tests are skipped when it is not installed.
 
 from __future__ import annotations
 
+import importlib.util
 import tempfile
 import unittest
-import importlib.util
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 from myosuite.tests.test_actor_torch import make_fake_artifacts
+
+pytestmark = pytest.mark.tier2
 
 
 def _onnx_stack_available() -> bool:

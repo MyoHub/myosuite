@@ -21,6 +21,8 @@ from myosuite.core.hf_io import (
     parse_hf_ref,
 )
 
+pytestmark = pytest.mark.tier2
+
 
 def test_parse_hf_ref_with_subpath() -> None:
     """hf path parser splits repo id and subpath."""

@@ -17,6 +17,8 @@ from myosuite.integrations.musclemimic.fullbody_mujoco_preview import (
     _parse_preview_argv,
 )
 
+pytestmark = pytest.mark.tier2
+
 
 def test_preview_requested_requires_mujoco_flags() -> None:
     """MuJoCo preview path needs both viewer flags."""

@@ -7,8 +7,11 @@
 from __future__ import annotations
 
 import gymnasium as gym
+import pytest
 
 from myosuite.envs.myo.backends.mjlab import REGISTERED_TASKS
+
+pytestmark = pytest.mark.tier2
 
 
 def test_registered_tasks_non_empty() -> None:

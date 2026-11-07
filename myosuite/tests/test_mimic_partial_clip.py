@@ -23,6 +23,8 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     default_mimic_fullbody_config,
 )
 
+pytestmark = pytest.mark.tier2
+
 
 def _select_scalar_joints(
     model: mujoco.MjModel,
