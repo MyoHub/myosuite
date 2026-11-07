@@ -34,7 +34,8 @@ _ENTITY = "mimic_fullbody_robot"
 @functools.cache
 def _variant(variant: str) -> tuple[Any, Any, Any, tuple[str, ...]]:
     """(mimic config, spec builder, compiled model, tracked site names)."""
-    require_musclemimic_models()
+    if variant != "fullbody":  # the full body also builds from myo_sim's own model
+        require_musclemimic_models()
     from ml_collections import config_dict
 
     if variant == "fullbody":

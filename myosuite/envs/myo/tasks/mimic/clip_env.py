@@ -172,6 +172,11 @@ def _resolve_joint_field_selection(
         )
 
     model_index_map = _build_model_joint_index_map(model, use_qvel=use_qvel)
+    from myosuite.core.trajectory_io import JOINT_NAME_ALIASES  # noqa: PLC0415
+
+    for clip_name, model_name in JOINT_NAME_ALIASES.items():
+        if clip_name not in model_index_map and model_name in model_index_map:
+            model_index_map[clip_name] = model_index_map[model_name]
     missing = sorted(set(clip_joint_names) - set(model_index_map))
     if missing:
         raise ValueError(

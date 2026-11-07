@@ -52,12 +52,24 @@ _FULLBODY_PIKE = {
 def _require_mimic_stack() -> None:
     require_mjlab()
     require_mujoco_warp()
+
+
+def _require_musclemimic_fullbody() -> None:
+    """Keyframe tests: only the musclemimic_models MJCF has a keyframe (myo_sim's myofullbody resets from clips)."""
+    from myosuite.integrations.musclemimic.fullbody_model import (
+        mimic_fullbody_model_source,
+    )
+
     require_musclemimic_models()
+    if mimic_fullbody_model_source() != "musclemimic":
+        pytest.skip("the selected full-body model (myo_sim) has no keyframe")
 
 
 @functools.cache
 def _variant(variant: str) -> tuple[Any, Any, Any, tuple[str, ...]]:
     """Return (mimic config, spec builder, compiled model, tracked site names)."""
+    if variant != "fullbody":  # the full body also builds from myo_sim's own model
+        require_musclemimic_models()
     from ml_collections import config_dict
 
     if variant == "fullbody":
@@ -276,6 +288,7 @@ def test_entity_default_state_is_the_model_keyframe() -> None:
     the keyframe gets a tilted root and a root velocity so the frames differ,
     and distinct joint values so a pattern matching the wrong joint shows.
     """
+    _require_musclemimic_fullbody()
     _, _, model, _ = _variant("fullbody")
     keyed = copy.copy(model)
     rng = np.random.default_rng(0)
@@ -500,6 +513,7 @@ def test_sar_mimic_task_resets_standing_and_has_runner_obs_groups() -> None:
     started at z = 0 with the legs about 1 m through the floor.  It also had
     only a ``policy`` group, while the runner cfg asks for ``actor``/``critic``.
     """
+    _require_musclemimic_fullbody()
     from mjlab.envs import ManagerBasedRlEnv
 
     rsl_rl_utils = pytest.importorskip("rsl_rl.utils.utils")
