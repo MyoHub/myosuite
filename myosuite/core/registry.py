@@ -13,6 +13,7 @@ backend-aware factory.
 from __future__ import annotations
 
 import dataclasses
+import importlib
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
 
 # Internal store: env_id -> registration metadata
 _ENV_REGISTRY: dict[str, dict[str, Any]] = {}
+# MJX twins of register_task(..., backends={"mjx"}): env_id -> (task_config, overrides)
+_MJX_TASKS: dict[str, tuple[TaskConfig, dict[str, Any]]] = {}
 _MJ_INSTABILITY_WRAPPER_ENTRY_POINT = (
     "myosuite.envs.wrappers:MjInstabilityTerminationWrapper"
 )
@@ -267,36 +270,14 @@ def _register_task_mjx(
 ) -> None:
     """Register a TaskConfig-based env on the MJX backend.
 
+    Only records the task; :func:`make_env` imports JAX/MJX when it builds the env.
+
     Args:
         env_id: Gymnasium env id to use for MJX registration.
         task_config: Task specification.
         features: Wrapper specs of the registration (see :func:`mjx_feature_overrides`).
     """
-    try:
-        from mujoco_playground import registry as pg_registry
-        from myosuite.envs.myo.backends.mjx.mjx_modular_env import (
-            MjxModularTaskEnv,
-            modular_task_config,
-        )
-    except ImportError:
-        return  # MJX extras not installed; skip silently
-
-    cfg = modular_task_config(task_config)
-    defaults = mjx_feature_overrides(features) or {}
-
-    def _cfg_fn() -> Any:
-        return cfg
-
-    def _env_cls(
-        config: Any, config_overrides: dict[str, Any] | None = None
-    ) -> MjxModularTaskEnv:
-        # The env rebuilds its config from task_config; overrides apply on top.
-        return MjxModularTaskEnv(
-            task_config, config_overrides={**defaults, **(config_overrides or {})}
-        )
-
-    if env_id not in pg_registry._envs:  # type: ignore[attr-defined]
-        pg_registry.register_environment(env_id, _env_cls, _cfg_fn)
+    _MJX_TASKS.setdefault(env_id, (task_config, mjx_feature_overrides(features) or {}))
 
 
 def _register_task_variants(
@@ -447,19 +428,32 @@ def _make_mjx(config: EnvConfig, overrides: dict[str, Any]) -> Any:
             "The experimental mjx backend supports only SarcopeniaWrapper in "
             "EnvConfig.features."
         )
-    try:
-        from mujoco_playground import registry as pg_registry
-    except ImportError as e:
-        raise ImportError(
-            "MJX backend requires mujoco_playground. "
-            "Install with: pip install myosuite[mjx]"
-        ) from e
     options = {**feature_options, **config.backend_options, **overrides}
     if config.num_envs is not None:
         options["num_envs"] = config.num_envs
     if config.ctrl_dt is not None:
         options["ctrl_dt"] = config.ctrl_dt
-    return pg_registry.load(config.env_id, config_overrides=options or None)
+    if config.env_id in _MJX_TASKS:
+        task_config, defaults = _MJX_TASKS[config.env_id]
+        modular = _import_mjx("myosuite.envs.myo.backends.mjx.mjx_modular_env")
+        return modular.MjxModularTaskEnv(
+            task_config, config_overrides={**defaults, **options} or None
+        )
+    # The hand-written MJX envs (``Mjx*-v0``).
+    return _import_mjx("myosuite.envs.myo.backends.mjx").make(
+        config.env_id, config_overrides=options or None
+    )
+
+
+def _import_mjx(module: str) -> Any:
+    """Import a module of the MJX backend, naming the extra if JAX/MJX is missing."""
+    try:
+        return importlib.import_module(module)
+    except ImportError as e:
+        raise ImportError(
+            "The mjx backend requires JAX and MuJoCo MJX. "
+            "Install with: pip install myosuite[mjx]"
+        ) from e
 
 
 def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:

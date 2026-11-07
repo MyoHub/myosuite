@@ -773,34 +773,37 @@ class TestMakeEnvBackends:
     def test_make_env_mjx_import_error(self) -> None:
         from myosuite import make_env
 
-        with patch.dict("sys.modules", {"mujoco_playground": None}):
-            with pytest.raises(ImportError, match="mujoco_playground"):
+        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": None}):
+            with pytest.raises(ImportError, match=r"myosuite\[mjx\]"):
                 make_env("NonExistent-v0", backend="mjx")
 
     def test_make_env_mjx_forwards_overrides(self) -> None:
-        """Keyword overrides reach mujoco_playground as config_overrides."""
+        """Keyword overrides reach the MJX backend's make() as config_overrides."""
         import types
 
         from myosuite import make_env
 
         calls: list[tuple[str, Any]] = []
 
-        def _load(
-            env_id: str, config: Any = None, config_overrides: Any = None
-        ) -> None:
-            calls.append((env_id, config_overrides))
+        def _make(env_name: str, config_overrides: Any = None) -> None:
+            calls.append((env_name, config_overrides))
 
-        registry = types.ModuleType("mujoco_playground.registry")
-        registry.load = _load  # type: ignore[attr-defined]
-        playground = types.ModuleType("mujoco_playground")
-        playground.registry = registry  # type: ignore[attr-defined]
-        with patch.dict(
-            "sys.modules",
-            {"mujoco_playground": playground, "mujoco_playground.registry": registry},
-        ):
+        backend = types.ModuleType("myosuite.envs.myo.backends.mjx")
+        backend.make = _make  # type: ignore[attr-defined]
+        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": backend}):
             make_env("Task-v0", backend="mjx", num_envs=8)
             make_env("Task-v0", backend="mjx")
         assert calls == [("Task-v0", {"num_envs": 8}), ("Task-v0", None)]
+
+    def test_register_task_mjx_needs_no_jax(self) -> None:
+        """register_task() records the MJX twin without importing the MJX backend."""
+        from myosuite.core import registry
+
+        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": None}):
+            env_id = registry.register_task(
+                _MyoVariantTask(), env_id="NoJaxMjxTask-v0", backends={"mjx"}
+            )
+        assert registry._MJX_TASKS[env_id][1] == {}
 
     def test_make_env_mjlab_import_error(self) -> None:
         from myosuite import make_env

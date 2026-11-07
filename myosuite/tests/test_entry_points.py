@@ -125,6 +125,12 @@ class TestMjxEntryPoint:
         assert hasattr(brax_env, "reset"), "brax env missing reset()"
         assert hasattr(brax_env, "step"), "brax env missing step()"
 
+    def test_make_env_builds_named_mjx_env(self):
+        """make_env(<Mjx id>, backend="mjx") builds the hand-written MJX env."""
+        env = make_env("MjxElbowPoseRandom-v0", backend="mjx", num_envs=2)
+        assert type(env).__name__ == "MjxPoseEnv"
+        assert env._config.num_envs == 2
+
     def test_all_mjx_env_ids_listed(self):
         """ALL_ENVS contains at least the 6 expected environment names."""
         from myosuite.envs.myo.backends.mjx import ALL_ENVS
