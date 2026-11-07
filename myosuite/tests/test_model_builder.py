@@ -810,3 +810,26 @@ def test_materialize_recipe_xml_applies_edit_fn(tmp_path: Path) -> None:
     mujoco.MjModel.from_xml_path(str(path)).site("edit_fn_site")  # KeyError if lost
     with pytest.raises(ValueError, match="explicit dest"):
         materialize_recipe_xml("hand_pose", edit_fn=_add_site)
+
+
+@_REQUIRES_MYO_SIM
+def test_materialize_recipe_xml_default_file_is_named_by_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Processes building the default file share one, named by its content."""
+    import hashlib
+    import tempfile
+
+    import mujoco
+
+    from myosuite.core.model_recipes import materialize_recipe_xml
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    first = materialize_recipe_xml("hand_pose")
+    assert materialize_recipe_xml("hand_pose") == first
+
+    digest = hashlib.sha256(first.read_bytes()).hexdigest()[:16]
+    assert first.name == f"hand_pose_{digest}.xml"
+    assert list(first.parent.iterdir()) == [first]
+    assert first.parent == (tmp_path / "myosuite_recipes").resolve()
+    mujoco.MjModel.from_xml_path(str(first))

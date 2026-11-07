@@ -103,6 +103,30 @@ def test_incomplete_body_mapping_is_rejected() -> None:
         probe._identity_mapping(reference, model, solver, mapping)
 
 
+def test_solver_integrates_like_the_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    xml = tmp_path / "rk4.xml"
+    xml.write_text('<mujoco><option integrator="RK4"/></mujoco>')
+    calls: list[dict[str, object]] = []
+
+    def solver(model: object, **options: object) -> None:
+        calls.append(options)
+        raise RuntimeError("stop after the first solver")
+
+    builder = SimpleNamespace(add_mjcf=lambda *_, **__: None, finalize=lambda **_: None)
+    newton = SimpleNamespace(
+        ModelBuilder=lambda: builder, solvers=SimpleNamespace(SolverMuJoCo=solver)
+    )
+    monkeypatch.setitem(sys.modules, "newton", newton)
+    monkeypatch.setitem(sys.modules, "warp", SimpleNamespace())
+    monkeypatch.setattr(probe, "authored_xml", lambda *_: xml)
+    result = probe.run_case("rk4", "cpu", "cpu", 2, 1, tmp_path)
+    assert result["integrator"] == "rk4"
+    assert [call["integrator"] for call in calls] == ["rk4"]
+    assert result["error"]["message"] == "stop after the first solver"
+
+
 def test_cli_requires_multiple_poses(tmp_path: Path) -> None:
     with pytest.raises(SystemExit, match="2"):
         probe.main(["--poses", "1", "--out", str(tmp_path)])
