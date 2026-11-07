@@ -12,10 +12,15 @@ from pathlib import Path
 
 import tyro
 
-from myosuite.learning.supermimic.trainer import SuperMimicCfg, SuperMimicTrainer
+from myosuite.learning.supermimic.trainer import (
+    SuperMimicCfg,
+    SuperMimicTrainer,
+    apply_instanttrack_preset,
+)
 
 
 def main(cfg: SuperMimicCfg) -> None:
+    cfg = apply_instanttrack_preset(cfg)  # cfg.json records the settings that run
     Path(cfg.out).mkdir(parents=True, exist_ok=True)
     (Path(cfg.out) / "cfg.json").write_text(json.dumps(asdict(cfg), indent=1))
     SuperMimicTrainer(cfg).train()

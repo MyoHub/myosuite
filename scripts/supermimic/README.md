@@ -36,6 +36,31 @@ python scripts/supermimic/train.py --clip $CLIP --out runs/sm \
 - A run directory holds `ckpt_best.pt` (best training evaluation), `ckpt_final.pt` (last actor),
   `ckpt_ema.pt` (averaged actor), `log.jsonl` and `cfg.json`.
 
+## InstantTrack changes (`--instanttrack`)
+
+[InstantTrack](https://github.com/Huy-Quang-Dao/instantTrack) (MIT) cuts SuperMimic's time to target on the
+Unitree G1 by changes that are each a flag. Those that carry over to a muscle-driven body are in
+`myosuite/learning/supermimic/instanttrack.py`; each has its own flag (off by default), and
+`--instanttrack` sets InstantTrack's values:
+
+| change | flag | preset |
+|---|---|---|
+| failure-focused resets: a share of resets starts one 1 s bin before recent termination points | `--fail-reset`, `--fail-bin-s` | 0.3 |
+| foot-contact / anti-slip reward in imagination only (per-clip contact floor); the env's reward stays the metric | `--contact-reward` | 0.25 |
+| Muon on the hidden weight matrices, Adam elsewhere | `--pi-opt muon --wm-opt muon` | on |
+| learning rate, world-model batches per update, world-model size | `--lr`, `--wm-batches`, `--wm.hidden` | 4e-4, 5, 1024x3 |
+| averaged actor | `--ema-decay` | 0.995 |
+| imagined batch with a decayed policy learning-rate boost | `--imag-batch`, `--pi-lr-mult`, `--pi-lr-decay-at`, `--pi-lr-decay-len` | 2048, 4x, 1400, 300 |
+| fused Adam, static-shape compilation | `--fused-adam`, `--static-compile` | on |
+
+The preset keeps the horizon (64 beat 32 here). Not carried over: the reference-pose residual policy (no
+joint-position targets for muscles), mirror augmentation of world-model batches (needs a muscle mirror
+map), evaluation-guided resets, and the CUDA-graph / side-stream work.
+
+```bash
+python scripts/supermimic/train.py --clip $CLIP --out runs/sm_it --num-envs 512 --horizon 64 --instanttrack --seed 0
+```
+
 ## Evaluate
 
 ```bash

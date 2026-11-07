@@ -21,6 +21,7 @@ exported as ``ckpt_ema.pt``; ``ckpt_final.pt`` is the actor at the end of traini
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 import math
 import shutil
@@ -35,6 +36,13 @@ from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import _musclemimic_cp
 from myosuite.learning.supermimic.env_io import MimicEnvIO, make_mimic_env
 from myosuite.learning.supermimic.grad_clip import clip_rows_to_median
 from myosuite.learning.supermimic.heads import MimicHeads
+from myosuite.learning.supermimic.instanttrack import (
+    FailureResets,
+    FootContact,
+    foot_site_indices,
+    make_optimizer,
+    policy_lr_multiplier,
+)
 from myosuite.learning.supermimic.metrics import KinematicTracking
 from myosuite.learning.supermimic.policy import (
     Actor,
@@ -109,6 +117,47 @@ class SuperMimicCfg:
     seed: int = 0
     device: str = "cuda:0"
     wm: WorldModelCfg = field(default_factory=WorldModelCfg)
+    # InstantTrack changes (instanttrack.py); all off by default, ``--instanttrack`` sets InstantTrack's values.
+    instanttrack: bool = False
+    """Preset: fail_reset 0.3, contact_reward 0.25, Muon for actor and world model, lr 4e-4, 5 world-model
+    batches, world model 1024x3, EMA 0.995, imagined batch 2048 with a 4x policy learning rate decayed to 1x
+    over 300 updates from update 1400, fused Adam and static-shape compilation."""
+    fail_reset: float = 0.0
+    """Share of resets started one bin before recent termination points (0: off)."""
+    fail_bin_s: float = 1.0
+    """Length (s) of the bins of the failure statistics."""
+    contact_reward: float = 0.0
+    """Weight of the foot-contact / anti-slip term in imagination (the env's reward stays the metric)."""
+    pi_opt: str = "adam"
+    """Actor optimizer: adam or muon (Muon on hidden matrices, Adam elsewhere)."""
+    wm_opt: str = "adam"
+    """World-model optimizer: adam or muon."""
+    pi_lr_mult: float = 1.0
+    """Policy learning-rate multiplier, constant until pi_lr_decay_at, then decayed to 1x."""
+    pi_lr_decay_at: int = 1400
+    pi_lr_decay_len: int = 300
+    fused_adam: bool = False
+    """Fused Adam kernels (CUDA only)."""
+    static_compile: bool = False
+    """torch.compile with static shapes (dynamic=False)."""
+
+
+def apply_instanttrack_preset(cfg: SuperMimicCfg) -> SuperMimicCfg:
+    """InstantTrack's settings (``--instanttrack``); the horizon is kept (64 beat 32 on MyoFullBody)."""
+    if not cfg.instanttrack:
+        return cfg
+    cfg.fail_reset = cfg.fail_reset or 0.3
+    cfg.contact_reward = cfg.contact_reward or 0.25
+    cfg.pi_opt = cfg.wm_opt = "muon"
+    cfg.lr = 4e-4
+    cfg.wm_batches = 5
+    cfg.wm = dataclasses.replace(cfg.wm, lr=4e-4, hidden=(1024, 1024, 1024))
+    cfg.ema_decay = 0.995
+    cfg.imag_batch = 2048
+    cfg.pi_lr_mult = 4.0
+    cfg.fused_adam = True
+    cfg.static_compile = True
+    return cfg
 
 
 def _sigmoid_ctrl(a: torch.Tensor) -> torch.Tensor:
@@ -123,8 +172,9 @@ class SuperMimicTrainer:
     """
 
     def __init__(self, cfg: SuperMimicCfg) -> None:
-        self.cfg = cfg
+        self.cfg = cfg = apply_instanttrack_preset(cfg)
         dev = cfg.device
+        fused = cfg.fused_adam and str(dev).startswith("cuda")
         torch.manual_seed(cfg.seed)
         torch.backends.cuda.matmul.allow_tf32 = cfg.tf32
         self.out = Path(cfg.out)
@@ -160,9 +210,10 @@ class SuperMimicTrainer:
                 )
             groups = g.groups
         self.actor = Actor(obs_dim, model.nu, cfg.actor_hidden, groups).to(dev)
-        # Rewards are in [0, 1 + posture_weight], so no return exceeds this bound.
+        # Rewards are in [0, 1 + posture_weight + 2 contact_reward], so no return exceeds this bound.
         self.critic = Critic(
-            obs_dim, (1.0 + cfg.posture_weight) / (1.0 - cfg.gamma)
+            obs_dim,
+            (1.0 + cfg.posture_weight + 2.0 * cfg.contact_reward) / (1.0 - cfg.gamma),
         ).to(dev)
         if cfg.init_actor:
             self.actor = Actor.from_rsl_rl(cfg.init_actor, dev)
@@ -171,11 +222,38 @@ class SuperMimicTrainer:
             self.wm.load_state_dict(
                 torch.load(cfg.init_world_model, map_location=dev)["wm"]
             )
-        self.opt_wm = torch.optim.Adam(self.wm.parameters(), lr=cfg.lr)
-        self.opt_actor = torch.optim.Adam(
-            self.actor.mlp.parameters(), lr=cfg.lr, betas=(0.9, 0.95)
+        self.opt_wm = make_optimizer(cfg.wm_opt, self.wm, cfg.lr, fused=fused)
+        self.opt_actor = make_optimizer(
+            cfg.pi_opt, self.actor.mlp, cfg.lr, betas=(0.9, 0.95), fused=fused
         )
-        self.opt_critic = torch.optim.Adam(self.critic.mlp.parameters(), lr=cfg.lr)
+        self.opt_critic = torch.optim.Adam(
+            self.critic.mlp.parameters(), lr=cfg.lr, fused=fused or None
+        )
+        # InstantTrack: failure-focused resets (the env's reset event asks the clip source's hook)
+        self.fail_resets: FailureResets | None = None
+        if cfg.fail_reset > 0:
+            src = self.io.source
+            self.fail_resets = FailureResets(
+                [self.heads.clip.n_frames],
+                round(cfg.fail_bin_s / self.heads.ctrl_dt),
+                cfg.fail_reset,
+                dev,
+            )
+            src.start_sampler = self.fail_resets.sample
+        # InstantTrack: contact reward in imagination
+        self.contact: FootContact | None = None
+        if cfg.contact_reward > 0:
+            from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+                _resolve_mimic_mjlab_ids,
+            )
+
+            ids = _resolve_mimic_mjlab_ids(
+                self.env, "mimic_fullbody_robot", "fullbody"
+            )["site_ids"]
+            names = [model.site(int(i)).name for i in ids]
+            self.contact = FootContact(
+                self.heads.clip.sites, foot_site_indices(names), self.heads.ctrl_dt
+            )
         self.buffer = ReplayBuffer(
             cfg.num_envs, cfg.buffer_steps, self.spec.dim, model.nu, dev
         )
@@ -189,8 +267,13 @@ class SuperMimicTrainer:
         if cfg.resume:
             self.load(cfg.resume)
         self._eval_env: Any = None
-        self._step = torch.compile(self._imag_step) if cfg.compile else self._imag_step
-        self._obs = torch.compile(self._observe) if cfg.compile else self._observe
+        comp = (
+            (lambda fn: torch.compile(fn, dynamic=False))
+            if cfg.static_compile
+            else torch.compile
+        )
+        self._step = comp(self._imag_step) if cfg.compile else self._imag_step
+        self._obs = comp(self._observe) if cfg.compile else self._observe
 
     # ------------------------------------------------------------------ simulator
     @torch.no_grad()
@@ -208,6 +291,10 @@ class SuperMimicTrainer:
         self.sim_steps += self.cfg.num_envs
         self.ep_reward += rew
         self.ep_len += 1
+        if self.fail_resets is not None:
+            # the frame each ending episode ended at (before the env's reset rewrote it)
+            idx = torch.nonzero(done).flatten()
+            self.fail_resets.update(torch.zeros_like(idx), f[idx] + 1, term[idx])
         if bool(done.any()):
             idx = torch.nonzero(done).flatten()
             self.done_stats += list(
@@ -250,6 +337,9 @@ class SuperMimicTrainer:
         if self.cfg.act_grad_clip > 0:
             a = clip_rows_to_median(a, self.cfg.act_grad_clip, probe)
         sat = torch.relu((a - 0.5).abs() - self.cfg.saturation_band).square().mean(-1)
+        sites_prev = (
+            h.kin.site_pos(self.spec.split(s)[0]) if self.contact is not None else None
+        )
         s = self.wm.step(s, _sigmoid_ctrl(a))
         f = f + 1
         qpos, qvel, act = self.spec.split(s)
@@ -259,6 +349,10 @@ class SuperMimicTrainer:
             pelvis, trunk = h.posture_errors(qpos, f)
             posture = 0.5 * (torch.exp(-pelvis / 0.2) + torch.exp(-trunk / 0.2))
             r = r + self.cfg.posture_weight * posture
+        if self.contact is not None:
+            r = r + self.cfg.contact_reward * self.contact.reward(
+                sites, sites_prev, h.frame_index(f)
+            )
         d = h.termination_prob(qpos, f, sites)
         return s, f, r, d, sat, h.observation(qpos, qvel, act, f, sites)
 
@@ -385,9 +479,16 @@ class SuperMimicTrainer:
         scale = cfg.lr_final_frac + (1 - cfg.lr_final_frac) * 0.5 * (
             1 + math.cos(math.pi * frac)
         )
-        for opt in (self.opt_wm, self.opt_actor, self.opt_critic):
+        boost = policy_lr_multiplier(
+            self.updates, cfg.pi_lr_mult, cfg.pi_lr_decay_at, cfg.pi_lr_decay_len
+        )
+        for opt, k in (
+            (self.opt_wm, 1.0),
+            (self.opt_actor, boost),
+            (self.opt_critic, 1.0),
+        ):
             for group in opt.param_groups:
-                group["lr"] = cfg.lr * scale
+                group["lr"] = cfg.lr * scale * k
 
     # ------------------------------------------------------------------ evaluation
     @torch.no_grad()
@@ -432,6 +533,11 @@ class SuperMimicTrainer:
                 "sim_steps": self.sim_steps,
                 "elapsed": self.elapsed,
                 "best_eval": self.best_eval,
+                "fail_resets": (
+                    fr.state_dict()
+                    if (fr := getattr(self, "fail_resets", None)) is not None
+                    else None
+                ),
                 "cfg": asdict(self.cfg),
             },
             self.out / f"ckpt_{name}.pt",
@@ -475,6 +581,9 @@ class SuperMimicTrainer:
             ck["elapsed"],
         )
         self.best_eval = ck.get("best_eval", -math.inf)
+        fr = getattr(self, "fail_resets", None)
+        if fr is not None and ck.get("fail_resets") is not None:
+            fr.load_state_dict(ck["fail_resets"])
 
     # ------------------------------------------------------------------ main loop
     def train(self) -> None:

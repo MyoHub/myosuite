@@ -1289,6 +1289,11 @@ def _mimic_rsi_event(
             new_offsets = torch.randint(
                 0, clip_source.n_frames, (n_reset,), device=device, dtype=torch.long
             )
+            new_clip_indices = None
+        # Optional trainer hook (e.g. failure-focused resets): may replace some start frames.
+        sampler = getattr(clip_source, "start_sampler", None)
+        if sampler is not None:
+            new_offsets = sampler(new_offsets, new_clip_indices)
         clip_source._start_offsets[env_ids_long] = new_offsets
         # mjlab zeroes episode_length_buf after the reset events; mark these
         # envs as already at step 0 so the next update() does not see the drop
