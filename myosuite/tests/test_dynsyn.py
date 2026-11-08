@@ -1,6 +1,7 @@
 """DynSyn muscle synergies: grouping, action mapping, CPU wrapper and mjlab action term."""
 
 import re
+import shutil
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -322,6 +323,84 @@ def test_resume_refuses_contradicting_groups(walk_groups, trained_run, tmp_path)
     plain = _write_run(tmp_path / "plain", _walk_cfg(2), counter=100)
     with pytest.raises(ValueError, match="trained without DynSyn"):
         _resolve_dynsyn(cfg, plain, 0)
+    shutil.rmtree(plain.parent / "params")  # a W&B download of a plain run
+    with pytest.raises(ValueError, match="trained without DynSyn"):
+        _resolve_dynsyn(cfg, plain, 0)
+
+
+def _runner(cfg):
+    """An mjlab runner as ``train_mjlab.py`` builds it, without a log directory."""
+    from mjlab.envs import ManagerBasedRlEnv
+    from mjlab.rl import MjlabOnPolicyRunner, RslRlVecEnvWrapper
+    from mjlab.tasks.registry import load_rl_cfg
+
+    from myosuite.envs.myo.backends.mjlab.dynsyn_action import (
+        track_dynsyn_in_checkpoints,
+    )
+
+    env = RslRlVecEnvWrapper(ManagerBasedRlEnv(cfg=cfg, device="cpu"))
+    runner = MjlabOnPolicyRunner(env, asdict(load_rl_cfg("myoLegWalk-v0")), None, "cpu")
+    track_dynsyn_in_checkpoints(runner)
+    return runner
+
+
+@pytest.fixture
+def lone_checkpoint(walk_groups, tmp_path) -> Path:
+    """A DynSyn checkpoint without its run directory (as a W&B download), 2 envs, 100 steps."""
+    pytest.importorskip("mjlab")
+    from myosuite.envs.myo.backends.mjlab.dynsyn_action import apply_dynsyn
+
+    cfg = _walk_cfg(2)
+    apply_dynsyn(cfg, DynSynGroups.load(walk_groups[0]), 0, 1000)
+    runner = _runner(cfg)
+    runner.env.unwrapped.common_step_counter = 100
+    checkpoint = tmp_path / "wandb_checkpoints" / "model_1.pt"
+    checkpoint.parent.mkdir()
+    runner.save(str(checkpoint))
+    runner.env.close()
+    return checkpoint
+
+
+def test_checkpoint_alone_records_groups_schedule_and_bound(
+    walk_groups, lone_checkpoint
+):
+    from myosuite.utils.rslrl_policy import load_rslrl_policy, trained_dynsyn
+
+    assert not (lone_checkpoint.parent / "params").exists()
+    trained = trained_dynsyn(lone_checkpoint)
+    assert trained.groups.groups == walk_groups[1]
+    assert (trained.start_steps, trained.ramp_steps) == (0, 1000)
+    assert (trained.env_steps, trained.saved_counter) == (200, 100)
+    assert trained.amplitude == pytest.approx(0.02)
+    with pytest.raises(ValueError, match="trained with DynSyn"):
+        load_rslrl_policy(lone_checkpoint, 80)
+
+
+def test_resume_of_a_lone_checkpoint_with_other_num_envs_keeps_the_schedule(
+    lone_checkpoint,
+):
+    torch = pytest.importorskip("torch")
+    from myosuite.envs.myo.backends.mjlab.dynsyn_action import dynsyn_term
+    from scripts.train_mjlab import _resolve_dynsyn
+
+    cfg = SimpleNamespace(env=_walk_cfg(1), dynsyn_groups=None)
+    _resolve_dynsyn(cfg, lone_checkpoint, 0)
+    runner = _runner(cfg.env)
+    runner.load(str(lone_checkpoint))
+    env = runner.env.unwrapped
+    term = dynsyn_term(env)
+    assert env.common_step_counter == 100
+    assert term.env_steps == 200
+    env.step(torch.full((1, 80), 0.3))
+    assert term.env_steps == 201
+    runner.env.close()
+
+
+def test_plain_env_resume_of_a_dynsyn_checkpoint_fails(lone_checkpoint):
+    runner = _runner(_walk_cfg(2))  # same action width, so the weights would fit
+    with pytest.raises(ValueError, match="trained with DynSyn"):
+        runner.load(str(lone_checkpoint))
+    runner.env.close()
 
 
 @pytest.mark.parametrize("task", ["myoElbowPose1D6MRandom-v0", "myoLegWalk-v0"])

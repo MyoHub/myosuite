@@ -20,7 +20,7 @@ import torch
 import yaml
 from rsl_rl.modules import MLP, EmpiricalNormalization
 
-from myosuite.core.dynsyn import DynSynGroups, TrainedDynSyn
+from myosuite.core.dynsyn import CHECKPOINT_KEY, DynSynGroups, TrainedDynSyn
 
 
 class RslRlPolicy(torch.nn.Module):
@@ -108,16 +108,24 @@ def _agent_params(checkpoint: Path) -> dict[str, Any]:
 def trained_dynsyn(checkpoint: str | Path) -> TrainedDynSyn | None:
     """DynSyn setup of the run that wrote a checkpoint.
 
-    ``params/env.yaml`` holds the action term, so the groups and the schedule; the
-    checkpoint holds the env's step counter (mjlab's runner stores it).
+    ``scripts/train_mjlab.py`` stores the setup in the checkpoint's ``infos``, so a
+    checkpoint read on its own (a W&B download, a moved file) still has it. Older
+    checkpoints fall back to the run's ``params/env.yaml``, which holds the action
+    term, and to the env's step counter in the checkpoint.
 
     Args:
-        checkpoint: ``model_*.pt`` in its run directory.
+        checkpoint: ``model_*.pt`` of an mjlab training run.
 
     Returns:
-        The setup, or ``None`` if the run did not use DynSyn or has no ``params/env.yaml``.
+        The setup, or ``None`` if the run did not use DynSyn (or is an older run
+        without its ``params/env.yaml``).
     """
     checkpoint = Path(checkpoint)
+    state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    infos = state.get("infos") or {}
+    counter = infos.get("env_state", {}).get("common_step_counter")
+    if CHECKPOINT_KEY in infos:
+        return TrainedDynSyn.from_infos(infos[CHECKPOINT_KEY], counter or 0)
     path = checkpoint.parent / "params" / "env.yaml"
     if not path.is_file() or "DynSynActionCfg" not in path.read_text(errors="replace"):
         return None
@@ -126,8 +134,6 @@ def trained_dynsyn(checkpoint: str | Path) -> TrainedDynSyn | None:
     term = next(
         t for t in env["actions"].values() if isinstance(t, dict) and "start_steps" in t
     )
-    state = torch.load(checkpoint, map_location="cpu", weights_only=True)
-    counter = (state.get("infos") or {}).get("env_state", {}).get("common_step_counter")
     if counter is None:
         print(f"{checkpoint} stores no step count: using the full DynSyn bound.")
     steps = (

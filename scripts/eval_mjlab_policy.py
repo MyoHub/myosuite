@@ -30,7 +30,7 @@ Muscle-command features (the ones the checkpoint was trained with, see
         --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'
 
 A checkpoint trained with DynSyn (``train_mjlab.py --dynsyn-groups``) is evaluated with the
-groups, schedule and correction bound of its training run, read from the run directory.
+groups, schedule and correction bound of its training run, read from the checkpoint.
 
 Every run prints the success rate (share of episodes whose final step is
 "solved"; CPU: ``info["solved"]``, mjlab: the ``Episode_Metrics/success``
