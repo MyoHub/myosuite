@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 
 from myosuite.core.hf_io import default_musclemimic_cache_root
+from myosuite.core.model_names import FULLBODY_NAME_ALIASES
 
 _QPOS_NAME_KEYS: tuple[str, ...] = ("qpos_names", "qpos_joint_names", "joint_names")
 _QVEL_NAME_KEYS: tuple[str, ...] = ("qvel_names", "qvel_joint_names", "joint_names")
@@ -192,6 +193,25 @@ def _resolve_model_indices(
         return np.arange(expected_width, dtype=np.int32)
 
     index_map = _build_model_joint_index_map(mj_model, use_qvel=use_qvel)
+    aliases = dict(FULLBODY_NAME_ALIASES)
+    aliases.update((b, a) for a, b in FULLBODY_NAME_ALIASES)
+    resolved_names: list[str] = []
+    claimed: dict[str, str] = {}
+    for name in joint_names:
+        target = name
+        if name not in index_map:
+            for source, alias in aliases.items():
+                if name == source or name.endswith("_" + source):
+                    target = name[: -len(source)] + alias
+                    break
+        if target in claimed and claimed[target] != name:
+            raise ValueError(
+                f"Motion clip {field_name} joints {claimed[target]!r} and {name!r} "
+                f"both map to model joint {target!r}."
+            )
+        claimed[target] = name
+        resolved_names.append(target)
+    joint_names = resolved_names
     missing = sorted(set(joint_names) - set(index_map))
     if missing:
         raise ValueError(
@@ -300,7 +320,9 @@ def expand_motion_clip_to_model(
     metadata are resolved by name at any width: a full-width clip whose joints
     are stored in another order is reordered, and a partial clip is expanded
     to the full model width (missing coordinates take the model's default
-    state).  Clips without names must already be in model order.  The result
+    state). Known full-body aliases (including prefixed agent names) are used
+    only when the exact joint name is absent. Clips without names must already
+    be in model order. The result
     is idempotent: ``expanded.qpos[:, expanded.qpos_model_indices]`` equals the
     clip's own columns.
     """
