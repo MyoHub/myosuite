@@ -249,6 +249,7 @@ class StaticOptimizer:
         qvel: np.ndarray,
         qacc: np.ndarray,
         external_qfrc: np.ndarray | None = None,
+        max_activation: np.ndarray | None = None,
     ) -> StaticOptimizationResult:
         """Activations for one state.
 
@@ -257,10 +258,16 @@ class StaticOptimizer:
             qvel: ``(nv,)`` velocities.
             qacc: ``(nv,)`` accelerations.
             external_qfrc: Optional ``(nv,)`` known external generalized forces.
+            max_activation: Optional ``(nu,)`` upper activation bounds for this
+                frame (e.g. ``1 - MF`` of fatigued muscles), within the
+                actuators' own ranges.
 
         Returns:
             The solution of this frame.
         """
+        hi = self._hi
+        if max_activation is not None:
+            hi = np.maximum(np.minimum(hi, max_activation), self._lo)
         m, d = self.model, self.data
         d.qpos[:], d.qvel[:] = qpos, qvel
         mujoco.mj_fwdPosition(m, d)
@@ -292,7 +299,7 @@ class StaticOptimizer:
         A[nv + nu :, nu + nv + n_eq :] = np.eye(n_c)
         rhs = tau - moment.T @ bias
         lower = np.r_[rhs, self._lo, np.zeros(n_c)]
-        upper = np.r_[rhs, self._hi, np.full(n_c, np.inf)]
+        upper = np.r_[rhs, hi, np.full(n_c, np.inf)]
         weight = np.r_[
             np.ones(nu),
             self._reserve_weight,
@@ -301,7 +308,7 @@ class StaticOptimizer:
         ]
         x, status = self._solve_qp(A, lower, upper, weight)
 
-        a = np.clip(x[:nu], self._lo, self._hi)
+        a = np.clip(x[:nu], self._lo, hi)
         f = capacity * np.maximum(x[nu + nv + n_eq :], 0.0)
         return StaticOptimizationResult(
             activation=a,

@@ -23,3 +23,9 @@ Streaming kinematics
 
 .. automodule:: myosuite.physics.streaming_kinematics
    :members:
+
+Shadow model
+------------
+
+.. automodule:: myosuite.physics.shadow_model
+   :members:
