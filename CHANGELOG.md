@@ -12,7 +12,9 @@ Changes since **v3.1.0** (2026-11-11).
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
+* **myoSuperMimic: PODS-style action targets (opt-in, `training/supermimic`).** `--agent.pods` replaces the policy's step on the window gradient with regression onto targets `a_t + eta dJ/da_t` (after NablaMimic's `--action-target`): `eta` sets the RMS step over the rows with a finite nonzero gradient to `--agent.pods-step` (annealed to `pods_step_floor` x it), `pods_iters` minibatch steps at `pods_lr_mult` x the policy learning rate. `--agent.act-grad-clip` clips each imagined step's action gradient to a multiple of the median over the rows that carry gradient, in the graph and again on the targets. Both run inside the CUDA-graphed update without host syncs; off by default, and then the runner is bitwise unchanged ([#608]).
 
+[#608]: https://github.com/MyoHub/myosuite/pull/608
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
 ## [3.1.0] - 2026-11-11
