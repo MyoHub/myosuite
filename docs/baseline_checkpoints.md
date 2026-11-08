@@ -141,6 +141,15 @@ builds are not comparable.
 
 <sub>
 
+**Exact fatigue step.** The 3CC-r fatigue state of the `myoFati*` variants is now integrated exactly over each control step
+(`MA` over the step instead of its start value). `MA` and `MF` change by up to about 4e-4 per step and the fatigue a policy
+accumulates differs by a few percent of `MF` under fast-changing commands. The checkpoints above (base envs) are unchanged;
+fatigue results of these variants from earlier builds are not bit-identical.
+
+</sub>
+
+<sub>
+
 **MuscleMimic full body (single clip).** `checkpoints/myoMimicFullbody-v0-walking_medium06/model_81380.pt` on the
 Hugging Face repo imitates the clip `KIT/167/walking_medium06` (AMASS / KIT motion capture retargeted with GMR; cite AMASS, KIT and MuscleMimic, see the *References* page; 2.0B steps, 1024 envs, about 30 h on one GPU). It
 is scored by clip completion instead of success: 86% of 576 mean-action episodes from random start frames play to
