@@ -11,6 +11,8 @@ the arithmetic of :func:`project_joint_couplings`.
 
 from __future__ import annotations
 
+import re
+
 import mujoco
 import numpy as np
 import pytest
@@ -18,9 +20,35 @@ import pytest
 from myosuite import make_env
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.tests.support.joint_couplings import joint_equality_residuals
-from myosuite.tests.support.optional_deps import require_musclemimic_models
+from myosuite.tests.support.optional_deps import (
+    require_musclemimic_models,
+    skip_if_hf_gated,
+)
+from myosuite.utils import gym
 
 pytestmark = pytest.mark.tier1
+
+# Every CPU registration, scanned from the live gym registry as test_registry.py does.
+_ALL_ENV_IDS = sorted(
+    env_id for env_id in gym.envs.registry if env_id.startswith(("myo", "motor"))
+)
+# Projected states are on the couplings to rounding (< 1e-15); the smallest offset a
+# reset left (myoLegDirectional*, SoccerP1) was 3.5e-5.
+_RESET_ATOL = 1e-9
+# MyoChallenge envs still reset off their couplings: their resets are a competition
+# contract (PyPI baselines, published policies) and change only with maintainer sign-off.
+_OFF_COUPLING_CHALLENGES = re.compile(
+    r"myo(Fati|Sarc)?Challenge(Bimanual|ChaseTag(FBP2|FBVs|P1|P2|P2eval)"
+    r"|OslRun(Fixed|Random)|Relocate(P1|P2|P2eval)|Soccer(P1|P2)|TableTennis(P0|P1|P2))-v0"
+)
+
+
+def _reset_case(env_id: str) -> object:
+    if not _OFF_COUPLING_CHALLENGES.fullmatch(env_id):
+        return env_id
+    reason = "MyoChallenge reset off its joint couplings (pending maintainer sign-off)"
+    return pytest.param(env_id, marks=pytest.mark.xfail(reason=reason, strict=True))
+
 
 # A slider with a nonzero ref drives a hinge (all five coefficients), which drives
 # a second hinge; that chained equality is listed first. One hinge is locked
@@ -57,13 +85,6 @@ _XML = """
   </equality>
 </mujoco>
 """
-
-# Envs that reset through MyoGymnasiumEnv.reset (the MuscleMimic models).
-_BASE_RESET_ENVS = (
-    "myoMimicFullbody-v0",
-    "myoMimicBimanual-v0",
-    "myoFullBodyWaypoint-v0",
-)
 
 
 def _random_state(
@@ -135,19 +156,34 @@ def test_rejects_over_constrained_and_cyclic_couplings(equalities: str) -> None:
         JointCouplings.from_model(mujoco.MjModel.from_xml_string(xml))
 
 
-@pytest.mark.parametrize("env_id", _BASE_RESET_ENVS)
-def test_cpu_resets_start_on_the_couplings(env_id: str) -> None:
-    """``qpos0``, the keyframe and the Waypoint reset noise left the patella up to
-    5 cm off its knee coupling; ``MyoGymnasiumEnv.reset`` now projects it."""
-    require_musclemimic_models()
-    env = make_env(env_id)
-    model, data = env.unwrapped.model, env.unwrapped.data
-    for seed in range(3):
-        env.reset(seed=seed)
-        pos, vel = joint_equality_residuals(model, data.qpos, data.qvel)
-        assert np.abs(pos).max() < 1e-12
-        assert np.abs(vel).max() < 1e-12
-    env.close()
+@pytest.mark.parametrize("env_id", [_reset_case(env_id) for env_id in _ALL_ENV_IDS])
+def test_every_env_resets_on_its_joint_couplings(env_id: str) -> None:
+    """Every registered env starts its episodes with the coupled joints on their polynomials.
+
+    Keyframes, ``qpos0`` and reset noise left them off: the patella of the full body
+    5 cm (``qpos0``), the patella rotation of the leg walks 0.74 rad (keyframe 2).
+    MuJoCo pulled them back over the first steps, and ``actuator_moment`` described
+    a pose the coupled joints cannot reach until then.
+    """
+    try:
+        env = make_env(env_id)
+    except Exception as exc:
+        skip_if_hf_gated(env_id, exc)
+        raise
+    try:
+        for seed in range(3):
+            env.reset(seed=seed)
+            u = env.unwrapped  # read after reset: a scene swap replaces model and data
+            pos, vel = joint_equality_residuals(u.model, u.data.qpos, u.data.qvel)
+            worst = (np.max(np.abs(pos), initial=0.0), np.max(np.abs(vel), initial=0.0))
+            assert (
+                max(worst) < _RESET_ATOL
+            ), f"seed {seed}: |efc_pos|, |efc_vel| {worst}"
+    except Exception as exc:
+        skip_if_hf_gated(env_id, exc)
+        raise
+    finally:
+        env.close()
 
 
 def _dense_moment(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray:

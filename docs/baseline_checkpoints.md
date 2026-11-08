@@ -166,6 +166,32 @@ re-evaluated after this change.
 
 <sub>
 
+**Coupled knee joints at reset (leg tasks).** `myoLegWalk-v0`, the rough, hilly and stairs walks,
+`myoLegStandRandom-v0` and the directional walks now start, on both backends, with the tibia and patella joints of
+each knee on their joint couplings. Walk keyframe 2 set the bent knee's patella rotation 0.74 rad off its coupling
+(MuJoCo pulled it back within about 0.2 s); the stand reset noise moved the coupled joints up to 0.18 rad, and the
+directional keyframe is 3.5e-5 off. The observation, action, control step and reward definitions are unchanged, so
+the env contract hash in `manifest.json` does not warn and the checkpoints still load, but they were trained with the
+old start. Re-evaluated on the mjlab twin (CPU device, 64 mean-action episodes, `--seed 0`), old start -> new start:
+
+| Env | Success | Mean episode length |
+| --- | --- | --- |
+| `myoLegWalk-v0` | 100% -> 0% | 1000 -> 233 |
+| `myoLegRoughTerrainWalk-v0` | 100% -> 100% | 1000 -> 1000 |
+| `myoLegHillyTerrainWalk-v0` | 0% -> 93.8% | 295 -> 957 |
+| `myoLegStandRandom-v0` | 35.9% -> 32.8% | 136.9 -> 136.9 |
+
+The walk policies were trained from one deterministic start and depend on it, not on the exact state: from the old
+keyframe with N(0, 0.01) noise on every joint the walk policy still walks the full 1000 steps (8 of 8 starts), while
+from the new start it falls after 232 to 374 steps. The rough-terrain policy, from the same keyframe, is unaffected,
+and the hilly policy goes the other way on this seed (its 15.3% above is a mean over seeds 1-3). Retrain or fine-tune
+the `myoLegWalk-v0` checkpoint before using it with this version. The directional walks, whose start moved by 3.5e-5,
+were not re-evaluated.
+
+</sub>
+
+<sub>
+
 **Bounded action std in the PPO defaults (#566).** The mjlab PPO configs of the muscle tasks and of `motorFinger*`
 (whose actions are clipped before the linear map to `ctrlrange`) now keep the policy's action std in [0.05, 1.0]. The
 std parameter is projected onto that range before every forward pass and stays trainable at the bounds. MuscleMimic
