@@ -181,12 +181,12 @@ old start. Re-evaluated on the mjlab twin (CPU device, 64 mean-action episodes, 
 | `myoLegHillyTerrainWalk-v0` | 0% -> 93.8% | 295 -> 957 |
 | `myoLegStandRandom-v0` | 35.9% -> 32.8% | 136.9 -> 136.9 |
 
-The walk policies were trained from one deterministic start and depend on it, not on the exact state: from the old
-keyframe with N(0, 0.01) noise on every joint the walk policy still walks the full 1000 steps (8 of 8 starts), while
-from the new start it falls after 232 to 374 steps. The rough-terrain policy, from the same keyframe, is unaffected,
-and the hilly policy goes the other way on this seed (its 15.3% above is a mean over seeds 1-3). Retrain or fine-tune
-the `myoLegWalk-v0` checkpoint before using it with this version. The directional walks, whose start moved by 3.5e-5,
-were not re-evaluated.
+The walk policies were trained from one deterministic start. The walk policy depends on that start, not only on its
+exact state: with N(0, σ) noise on every joint (CPU env, 24 starts each) it solves 16, 13 and 4 of 24 runs from the old
+keyframe at σ = 0.005, 0.01 and 0.02 rad, and 0, 4 and 3 of 24 from the new start (without noise it falls at step 232
+there). The rough-terrain policy, from the same keyframe, is unaffected, and the hilly policy goes the other way on this
+seed (its 15.3% above is a mean over seeds 1-3). Retrain or fine-tune the `myoLegWalk-v0` checkpoint before using it
+with this version. The directional walks, whose start moved by 3.5e-5, were not re-evaluated.
 
 </sub>
 
