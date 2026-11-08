@@ -11,13 +11,11 @@ from typing import Any
 from jax import tree_util
 import numpy as np
 
+from myosuite.core.muscle_conditions import three_cc_r_step
+
 # Constants for floating-point precision
 _FLOAT_EPS = jp.finfo(jp.float32).eps
 _EPS4 = _FLOAT_EPS * 4.0
-
-
-# Same value as myosuite.core.muscle_conditions.FATIGUE_REST_THRESHOLD (this module avoids importing it).
-_REST_THRESHOLD = 0.01
 
 
 def cumulative_fatigue_step(
@@ -35,12 +33,13 @@ def cumulative_fatigue_step(
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Advance the 3CC-r compartments by one step (pure and JIT-compatible).
 
-    All three deltas are computed from the old state, so ``MA + MR + MF``
-    stays 1. Matches ``core.muscle_conditions.CumulativeFatigue.compute_act``.
+    The exact step of ``core.muscle_conditions.three_cc_r_step`` for any ``dt``;
+    ``MR = 1 - MA - MF``, so the compartments stay in ``[0, 1]`` and sum to one.
+    Matches ``core.muscle_conditions.CumulativeFatigue.compute_act``.
 
     Args:
         MA: Active fraction, shape ``(na,)``.
-        MR: Resting fraction, shape ``(na,)``.
+        MR: Resting fraction, shape ``(na,)``; implied by ``MA`` and ``MF``.
         MF: Fatigued fraction, shape ``(na,)``.
         TL: Target load (commanded excitation), shape ``(na,)``.
         F: Fatigue coefficient.
@@ -55,33 +54,10 @@ def cumulative_fatigue_step(
     Returns:
         Updated ``(MA, MR, MF)``.
     """
-    # Effective time constants (MuJoCo Hill-type dynamics).
-    LD = 1.0 / (tauact * (0.5 + 1.5 * MA))
-    LR = (0.5 + 1.5 * MA) / taudeact
-    # Integrate the first-order approach to TL exactly over dt: an explicit
-    # Euler step overshoots TL once L * dt > 1 (LD = 200 /s at MA = 0 vs
-    # 10-25 ms control steps), driving MA above the command.
-    LD = -jp.expm1(-LD * dt) / dt
-    LR = -jp.expm1(-LR * dt) / dt
-
-    # Transfer rate C(t) between MR and MA.
-    C = jp.zeros_like(MA)
-    C = jp.where((MA < TL) & (MR > (TL - MA)), LD * (TL - MA), C)
-    C = jp.where((MA < TL) & (MR <= (TL - MA)), LD * MR, C)
-    C = jp.where(MA >= TL, LR * (TL - MA), C)
-
-    # Recovery rate: r * R only at rest (Rakshit et al. 2021, Eq. 7).
-    rR = jp.where(TL <= _REST_THRESHOLD, r * R, R)
-
-    # Clip C(t) so that every compartment stays in [0, 1].
-    C_min = jp.maximum(-MA / dt + F * MA, (MR - 1) / dt + rR * MF)
-    C_max = jp.minimum((1 - MA) / dt + F * MA, MR / dt + rR * MF)
-    C = jp.clip(C, C_min, C_max)
-
-    dMA = (C - F * MA) * dt
-    dMR = (-C + rR * MF) * dt
-    dMF = (F * MA - rR * MF) * dt
-    return MA + dMA, MR + dMR, MF + dMF
+    del MR
+    return three_cc_r_step(
+        jp, MA, MF, TL, F=F, R=R, r=r, tauact=tauact, taudeact=taudeact, dt=dt
+    )
 
 
 class CumulativeFatigue:

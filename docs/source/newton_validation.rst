@@ -48,7 +48,9 @@ separately from structural preservation.
 The numerical harness records complete one-to-one source-to-converted identity
 maps for bodies, joints and sites in all six models. Hierarchical namespace
 prefixes and generated joint/shape suffixes explain the changed names; the
-scalar joint identities can be recovered through per-DoF metadata. A stable
+scalar joint identities are recovered through per-DoF labels or, where Newton
+merges a body's joints without them, through the merged joint's name and DoF
+order. A stable
 public mapping API and exact-name round trips are tracked in
 `Newton issue 4904 <https://github.com/newton-physics/newton/issues/4904>`_.
 Raw names are not counted as preserved by the strict probe.

@@ -37,6 +37,107 @@ def _tune_mjv_scene_for_rgb(scene: Any) -> None:
     scene.flags[int(mujoco.mjtRndFlag.mjRND_SKYBOX)] = 0
 
 
+def _sport_court(scene: Any, model: Any, data: Any) -> None:
+    """Add chase-tag identity graphics to the scene, never the physics model."""
+    bodies = [
+        mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"a{i}_pelvis")
+        for i in range(2)
+    ]
+    floors = [
+        g for g in scene.geoms[: scene.ngeom] if g.type == mujoco.mjtGeom.mjGEOM_PLANE
+    ]
+    if min(bodies) < 0 or not floors:
+        return
+    z = max(float(g.pos[2]) for g in floors) + 0.008
+    strokes = []
+    for body, color in zip(bodies, ((1.0, 0.17, 0.008, 1), (0.005, 0.55, 0.95, 1))):
+        x, y = data.xpos[body, :2]
+        for begin, end, radius, width in (
+            (0.08, 0.85, 0.46, 0.007),
+            (0.28, 0.62, 0.60, 0.0025),
+        ):
+            angles = np.linspace(begin, end, 49) * 2 * np.pi
+            points = np.column_stack(
+                (
+                    x + radius * np.cos(angles),
+                    y + radius * np.sin(angles),
+                    np.full(49, z),
+                )
+            )
+            strokes.extend(
+                (a, b, width, color) for a, b in zip(points[:-1], points[1:])
+            )
+    for y in (-1.4, 1.4):
+        strokes.append(([-5.8, y, z], [5.8, y, z], 0.01, (0.42, 0.50, 0.58, 1)))
+    if scene.ngeom + len(strokes) > scene.maxgeom:
+        return
+    for start, end, width, color in strokes:
+        geom = scene.geoms[scene.ngeom]
+        mujoco.mjv_initGeom(
+            geom,
+            mujoco.mjtGeom.mjGEOM_CAPSULE,
+            np.zeros(3),
+            np.zeros(3),
+            np.eye(3).ravel(),
+            np.asarray(color),
+        )
+        mujoco.mjv_connector(
+            geom,
+            mujoco.mjtGeom.mjGEOM_CAPSULE,
+            width,
+            np.asarray(start),
+            np.asarray(end),
+        )
+        geom.emission = 0.6
+        scene.ngeom += 1
+
+
+def _sport_mjv_scene(scene: Any, model: Any, data: Any) -> None:
+    """Style an RGB scene without editing its shared model or simulation data.
+
+    Navy court and warm/cool rims stay, but the key and floor are bright enough
+    that anatomy and court strokes read clearly in offscreen stills.
+    """
+    for geom in scene.geoms[: scene.ngeom]:
+        if geom.objtype == mujoco.mjtObj.mjOBJ_GEOM and geom.objid >= 0:
+            name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, geom.objid) or ""
+            if any(part in name for part in ("fence", "corner")):
+                geom.rgba[:3] = [0.10, 0.12, 0.16]
+        if geom.type in (mujoco.mjtGeom.mjGEOM_PLANE, mujoco.mjtGeom.mjGEOM_HFIELD):
+            geom.rgba[:3] = [0.12, 0.22, 0.34]
+            if hasattr(geom, "texid"):
+                geom.texid = -1
+            geom.matid = -1
+            geom.reflectance = 0.0
+            geom.specular = 0.18
+    forward = np.asarray(scene.camera[0].forward)
+    right = np.cross(forward, scene.camera[0].up)
+    down = np.array([0.0, 0.0, -1.0])
+    lights = [
+        (0.5 * forward + down, [1.0, 1.0, 1.0]),
+        (0.5 * right + down, [0.38, 0.14, 0.04]),
+        (-0.5 * right + down, [0.04, 0.26, 0.42]),
+    ]
+    scene.nlight = len(lights)
+    for index, (direction, color) in enumerate(lights):
+        light = scene.lights[index]
+        light.type = mujoco.mjtLightType.mjLIGHT_DIRECTIONAL
+        light.texid = -1
+        light.intensity = 1.15 if index == 0 else 1.0
+        light.headlight = False
+        light.castshadow = index == 0
+        light.pos[:] = [0.0, 0.0, 5.0]
+        light.dir[:] = direction / np.linalg.norm(direction)
+        light.ambient[:] = 0.78 if index == 0 else 0.08
+        light.diffuse[:] = color
+        light.specular[:] = 0.12
+        light.attenuation[:] = [1.0, 0.0, 0.0]
+        light.cutoff = 180.0
+        light.exponent = 0.0
+    scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = 1
+    _sport_court(scene, model, data)
+
+
 class MJRenderer(Renderer):
     """Renders Mujoco Physics objects."""
 
@@ -114,6 +215,8 @@ class MJRenderer(Renderer):
         segmentation: bool = False,
         camera_id: int | str = -1,
         device_id=-1,
+        *,
+        scene: str = "default",
     ) -> np.ndarray:
         """Renders the camera view as a numpy array of pixels.
 
@@ -122,10 +225,14 @@ class MJRenderer(Renderer):
             height: The viewport height (pixels).
             mode: The rendering mode.
             camera_id: The ID of the camera to render from. By default uses the free camera.
+            scene: ``"default"`` or ``"sport"`` RGB styling. Depth and segmentation
+                retain the model's geometry and camera in either case.
 
         Returns:
             A numpy array of the pixels.
         """
+        if scene not in ("default", "sport"):
+            raise ValueError(f"Unknown offscreen scene: {scene}")
         if camera_id is None:
             camera_id = -1
         if isinstance(camera_id, int) and camera_id >= 0:
@@ -147,6 +254,8 @@ class MJRenderer(Renderer):
                 self._mj_data, camera=camera, scene_option=self._scene_option
             )
             _tune_mjv_scene_for_rgb(self._renderer.scene)
+            if scene == "sport":
+                _sport_mjv_scene(self._renderer.scene, self._mj_model, self._mj_data)
             rgb_arr = self._renderer.render()
         if depth:
             self._renderer.enable_depth_rendering()
