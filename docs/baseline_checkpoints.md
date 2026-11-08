@@ -174,9 +174,12 @@ clip, `MuscleMimicClipEnvV0`, the gait reward of `myoFullBodyDirectional-v0`) no
 the model in use, with the site targets moved with the joints: on `walking_medium06` the left ankle and toe targets
 move by up to 33 and 44 mm (mean 8.5 and 10.5 mm). The observation and reward definitions are unchanged but their
 values are not, and the env contract hash does not warn. `MYOSUITE_MIMIC_CLIP_REFERENCES=stored` serves the clips as
-stored (episodes still start on the couplings), for checkpoints trained on them. The single-clip policy above is one:
-its observation normalizer puts the corrected `rotation3` reference and velocity up to 6.2 and 6.7 standard
-deviations from the stored ones it was trained on, and it completes fewer clips on them. Clip completion of
+stored (episodes still start on the couplings), for checkpoints trained on them. The single-clip policy above is one,
+and it completes fewer clips on the corrected references. Its observation normalizer puts the `rotation3` reference
+and velocity up to 6.2 and 6.7 standard deviations from the stored ones it was trained on, and the `translation2`
+reference velocity, constant in the training clip, up to 3.7. Negating the network's two `rotation3` inputs
+(normalizer mean and first-layer weights), so that it sees on the corrected references what it saw on the stored ones,
+recovers only 2 points (75.3% [71.7, 78.7], paired p = 0.73 against the default row below). Clip completion of
 `model_81380.pt` (mjlab, mean action, random start frames, 3 seeds x 64 envs x 3 episodes = 576 episodes per row,
 measured on an RTX 4090 with mjlab 1.6.0 and MuJoCo Warp 3.11):
 
