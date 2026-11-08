@@ -171,7 +171,7 @@ class SuperMimicTrainer:
             self.wm.load_state_dict(
                 torch.load(cfg.init_world_model, map_location=dev)["wm"]
             )
-        self.opt_wm = torch.optim.Adam(self.wm.parameters(), lr=cfg.lr)
+        self.opt_wm = torch.optim.Adam(self.wm.parameters(), lr=cfg.wm.lr)
         self.opt_actor = torch.optim.Adam(
             self.actor.mlp.parameters(), lr=cfg.lr, betas=(0.9, 0.95)
         )
@@ -385,9 +385,13 @@ class SuperMimicTrainer:
         scale = cfg.lr_final_frac + (1 - cfg.lr_final_frac) * 0.5 * (
             1 + math.cos(math.pi * frac)
         )
-        for opt in (self.opt_wm, self.opt_actor, self.opt_critic):
+        for opt, base in (
+            (self.opt_wm, cfg.wm.lr),
+            (self.opt_actor, cfg.lr),
+            (self.opt_critic, cfg.lr),
+        ):
             for group in opt.param_groups:
-                group["lr"] = cfg.lr * scale
+                group["lr"] = base * scale
 
     # ------------------------------------------------------------------ evaluation
     @torch.no_grad()
