@@ -21,6 +21,7 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.tests.support.joint_couplings import joint_equality_residuals
 
 pytestmark = pytest.mark.tier1
@@ -43,6 +44,34 @@ def _write_standing_clip(path: Path, n_frames: int, frame0_offset: float) -> Pat
         site_xpos=sites,
         frequency=np.array(100.0),
     )
+    return path
+
+
+def _write_105_left_knee_clip(path: Path, n_frames: int) -> Path:
+    """Knee sweep whose coupled knee joints follow ``musclemimic_models`` 1.0.5.
+
+    Like the retargeted MuscleMimic clips: the left knee's ``rotation3`` is on the
+    1.0.5 polynomial, up to 0.5 rad off 1.0.6. The sites are the forward
+    kinematics of the stored state (both releases have the same kinematic tree).
+    """
+    cfg = default_mimic_fullbody_config()
+    cfg.model_version = "1.0.5"
+    model, _, _ = compile_mimic_fullbody_mjmodel(cfg)
+    data = mujoco.MjData(model)
+    mujoco.mj_resetDataKeyframe(model, data, 0)
+    qpos = np.tile(data.qpos, (n_frames, 1))
+    qvel = np.zeros((n_frames, model.nv))
+    for name in ("knee_angle_l", "knee_angle_r"):
+        qpos[:, model.jnt_qposadr[model.joint(name).id]] = np.linspace(0, 1.2, n_frames)
+        qvel[:, model.jnt_dofadr[model.joint(name).id]] = 1.2 / (n_frames - 1) * 100
+    project_joint_couplings(JointCouplings.from_model(model), qpos, qvel)
+    site_ids = [model.site(name).id for name in _MODEL_SITE_ORDER]
+    sites = np.zeros((n_frames, len(_MODEL_SITE_ORDER), 3))
+    for t in range(n_frames):
+        data.qpos[:] = qpos[t]
+        mujoco.mj_kinematics(model, data)
+        sites[t, _CLIP_IDX_FOR_MODEL] = data.site_xpos[site_ids]
+    np.savez(path, qpos=qpos, qvel=qvel, site_xpos=sites, frequency=np.array(100.0))
     return path
 
 
@@ -79,14 +108,68 @@ def test_random_start_draws_from_the_env_rng(tmp_path: Path) -> None:
 
 def test_reset_puts_the_coupled_joints_on_their_polynomials(tmp_path: Path) -> None:
     """The clip holds the keyframe, whose patella is 5 cm off its knee coupling."""
-    env = _env(_write_standing_clip(tmp_path / "c.npz", 20, 0.0), seed=0)
-    assert (
-        np.abs(joint_equality_residuals(env.model, env._clip_qpos[0])[0]).max() > 0.05
-    )
+    clip_path = _write_standing_clip(tmp_path / "c.npz", 20, 0.0)
+    env = _env(clip_path, seed=0)
+    stored = np.load(clip_path)["qpos"][0]
+    assert np.abs(joint_equality_residuals(env.model, stored)[0]).max() > 0.05
     env.reset(seed=0)
     pos, vel = joint_equality_residuals(env.model, env.data.qpos, env.data.qvel)
     assert np.abs(pos).max() < 1e-12
     assert np.abs(vel).max() < 1e-12
+    env.close()
+
+
+def test_clip_references_are_on_the_couplings_of_the_model(tmp_path: Path) -> None:
+    """A clip with the 1.0.5 left knee is served on the 1.0.6 couplings.
+
+    Joint references, velocities and site targets are one reachable state per
+    frame: the sites below the knees move with the projected joints.
+    """
+    clip_path = _write_105_left_knee_clip(tmp_path / "c.npz", 30)
+    env = _env(clip_path, seed=0)
+    stored = np.load(clip_path)
+    worst = max(
+        np.abs(joint_equality_residuals(env.model, q)[0]).max() for q in stored["qpos"]
+    )
+    assert worst > 0.4  # knee_angle_rotation3_l, as in the retargeted clips
+    data = mujoco.MjData(env.model)
+    site_ids = [env.model.site(name).id for name in _MODEL_SITE_ORDER]
+    for t in range(len(env._clip_qpos)):
+        pos, vel = joint_equality_residuals(
+            env.model, env._clip_qpos[t], env._clip_qvel[t]
+        )
+        assert max(np.abs(pos).max(), np.abs(vel).max()) < 1e-12
+        data.qpos[:] = env._clip_qpos[t]
+        mujoco.mj_kinematics(env.model, data)
+        np.testing.assert_allclose(
+            env._clip_site_xpos[t], data.site_xpos[site_ids], rtol=0, atol=1e-12
+        )
+    np.testing.assert_array_equal(env._clip_joint_qpos, env._clip_qpos)
+    np.testing.assert_array_equal(env._clip_joint_qvel, env._clip_qvel)
+    moved = np.linalg.norm(
+        env._clip_site_xpos - stored["site_xpos"][:, _CLIP_IDX_FOR_MODEL], axis=-1
+    )
+    assert moved[:, _MODEL_SITE_ORDER.index("left_toes_mimic")].max() > 0.02
+    assert moved[:, _MODEL_SITE_ORDER.index("pelvis_mimic")].max() == 0.0
+    env.close()
+
+
+def test_stored_clip_references_keep_the_clip_and_project_the_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``MYOSUITE_MIMIC_CLIP_REFERENCES=stored`` serves the clip as retargeted."""
+    monkeypatch.setenv("MYOSUITE_MIMIC_CLIP_REFERENCES", "stored")
+    clip_path = _write_105_left_knee_clip(tmp_path / "c.npz", 10)
+    env = _env(clip_path, seed=0)
+    stored = np.load(clip_path)
+    np.testing.assert_array_equal(env._clip_qpos, stored["qpos"])
+    np.testing.assert_array_equal(env._clip_qvel, stored["qvel"])
+    np.testing.assert_array_equal(
+        env._clip_site_xpos, stored["site_xpos"][:, _CLIP_IDX_FOR_MODEL]
+    )
+    env.reset(seed=0)
+    pos, vel = joint_equality_residuals(env.model, env.data.qpos, env.data.qvel)
+    assert max(np.abs(pos).max(), np.abs(vel).max()) < 1e-12
     env.close()
 
 

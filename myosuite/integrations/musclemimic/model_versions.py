@@ -14,6 +14,9 @@ The version is ``config.model_version`` if set, else the environment variable
 ``MYOSUITE_MUSCLEMIMIC_MODELS_VERSION`` (for envs that build their config
 internally), else :data:`DEFAULT_MODELS_VERSION`. It applies to the packaged
 MJCF only; an explicit ``config.model_path`` is built as it is.
+
+The retargeted clips follow the 1.0.5 left knee; :func:`resolve_clip_references`
+selects whether tasks serve them on the couplings of the model in use or as stored.
 """
 
 from __future__ import annotations
@@ -23,12 +26,19 @@ from importlib.metadata import PackageNotFoundError, version as _dist_version
 import os
 from pathlib import Path
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import mujoco
 
+if TYPE_CHECKING:
+    from myosuite.core.trajectory_io import MotionClip
+
 DEFAULT_MODELS_VERSION = "1.0.6"
 MODELS_VERSION_ENV_VAR = "MYOSUITE_MUSCLEMIMIC_MODELS_VERSION"
+
+# How MuscleMimic tasks serve retargeted clips (see resolve_clip_references).
+CLIP_REFERENCES_ENV_VAR = "MYOSUITE_MIMIC_CLIP_REFERENCES"
+CLIP_REFERENCES = ("model", "stored")
 
 # The release each published checkpoint was trained on; unlisted ones get the
 # default. MyoSuite's myoMimicFullbody-v0 walking_medium06 baseline was trained on
@@ -150,6 +160,51 @@ def resolve_models_version(config: Any = None) -> str:
     return requested
 
 
+def resolve_clip_references() -> str:
+    """Return how MuscleMimic tasks serve retargeted clips.
+
+    The retargeted clips of ``amathislab/musclemimic-retargeted`` keep the left
+    knee's ``rotation3`` on the 1.0.5 polynomial, up to 0.5 rad off the 1.0.6
+    coupling. ``"model"`` serves every frame on the joint couplings of the model
+    in use, the site targets moved with the joints
+    (:func:`~myosuite.core.trajectory_io.project_motion_clip_couplings`).
+    ``"stored"`` serves the clips as retargeted, for checkpoints trained on them
+    such as the published ``walking_medium06`` policy. Episodes start on the
+    couplings either way.
+
+    Returns:
+        ``$MYOSUITE_MIMIC_CLIP_REFERENCES``, else ``"model"``.
+
+    Raises:
+        ValueError: If the variable is not one of :data:`CLIP_REFERENCES`.
+    """
+    mode = os.environ.get(CLIP_REFERENCES_ENV_VAR) or "model"
+    if mode not in CLIP_REFERENCES:
+        raise ValueError(
+            f"{CLIP_REFERENCES_ENV_VAR}={mode!r}; choose one of {CLIP_REFERENCES}."
+        )
+    return mode
+
+
+def clip_references_for_model(clip: MotionClip, mj_model: mujoco.MjModel) -> MotionClip:
+    """Return *clip* (in model order) as MuscleMimic tasks serve it on *mj_model*.
+
+    Args:
+        clip: Clip resolved with
+            :func:`~myosuite.core.trajectory_io.expand_motion_clip_to_model`.
+        mj_model: Compiled model the clip is played on.
+
+    Returns:
+        The clip on the model's joint couplings, or *clip* itself when
+        :func:`resolve_clip_references` is ``"stored"``.
+    """
+    from myosuite.core.trajectory_io import project_motion_clip_couplings
+
+    if resolve_clip_references() == "stored":
+        return clip
+    return project_motion_clip_couplings(clip, mj_model)
+
+
 def uses_musclemimic_models(env_id: str) -> bool:
     """Whether the env builds its body from the ``musclemimic_models`` MJCF."""
     return bool(_MODELS_ENV_ID.search(env_id))
@@ -269,6 +324,8 @@ def _set_models_values(spec: mujoco.MjSpec, models_version: str) -> int:
 
 
 __all__ = [
+    "CLIP_REFERENCES",
+    "CLIP_REFERENCES_ENV_VAR",
     "DEFAULT_MODELS_VERSION",
     "MANIFEST_FIELD",
     "MODELS_VERSION_ENV_VAR",
@@ -276,8 +333,10 @@ __all__ = [
     "SUPPORTED_MODELS_VERSIONS",
     "apply_models_version",
     "checkpoint_models_version",
+    "clip_references_for_model",
     "env_models_version",
     "installed_models_version",
+    "resolve_clip_references",
     "resolve_models_version",
     "uses_musclemimic_models",
 ]

@@ -50,7 +50,9 @@ pose and reach twins.
 MuscleMimic (``myoMimicFullbody-v0``, ``myoMimicBimanual-v0`` and their SAR variants) has its
 own mjlab implementation. It is not built from the CPU registration and is registered once a
 motion clip is given (``MYOSUITE_MIMIC_CLIP`` or ``register_mimic_mjlab_tasks_with_clip``; see
-tutorials 5.x), and it takes no muscle-command features.
+tutorials 5.x), and it takes no muscle-command features. Its references are the clip on the
+joint couplings of the model in use; ``MYOSUITE_MIMIC_CLIP_REFERENCES=stored`` serves the clip as
+retargeted, for checkpoints trained that way (see ``docs/baseline_checkpoints.md``).
 
 **Not on mjlab yet:** the other Challenge tasks, ``myoChallengeChaseTagFBVs`` (two-agent),
 ``myoElbowPoseTask*``, ``myoFullBodyDirectional`` and the hand manipulation families

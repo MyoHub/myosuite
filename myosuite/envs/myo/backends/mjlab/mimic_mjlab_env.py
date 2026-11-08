@@ -757,11 +757,19 @@ def _resolve_mimic_mjlab_ids(
             ClipTrajectorySource,
             MultiClipTrajectorySource,
         )
+        from myosuite.integrations.musclemimic.model_versions import (
+            clip_references_for_model,
+        )
 
+        # References on the joint couplings of this model, sites moved with them
+        # (as stored with MYOSUITE_MIMIC_CLIP_REFERENCES=stored).
         resolved_clips = tuple(
-            _canonicalize_clip_sites(
-                expand_motion_clip_to_model(one_clip, mj_model),
-                required_site_names=site_names,
+            clip_references_for_model(
+                _canonicalize_clip_sites(
+                    expand_motion_clip_to_model(one_clip, mj_model),
+                    required_site_names=site_names,
+                ),
+                mj_model,
             )
             for one_clip in clip_bank
         )

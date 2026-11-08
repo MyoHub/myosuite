@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -347,6 +348,121 @@ def expand_motion_clip_to_model(
     )
 
 
+def _site_kinematics(
+    mj_model: Any,
+    qpos: np.ndarray,
+    qvel: np.ndarray | None,
+    site_ids: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """World positions, frames and (with *qvel*) 6-D velocities of sites, per frame."""
+    import mujoco
+
+    data = mujoco.MjData(mj_model)
+    n, k = len(qpos), len(site_ids)
+    pos, mat, vel = np.zeros((n, k, 3)), np.zeros((n, k, 3, 3)), np.zeros((n, k, 6))
+    for t in range(n):
+        data.qpos[:] = qpos[t]
+        mujoco.mj_kinematics(mj_model, data)
+        pos[t] = data.site_xpos[site_ids]
+        mat[t] = data.site_xmat[site_ids].reshape(k, 3, 3)
+        if qvel is not None:
+            data.qvel[:] = qvel[t]
+            mujoco.mj_comPos(mj_model, data)
+            mujoco.mj_comVel(mj_model, data)
+            for j, sid in enumerate(site_ids):
+                mujoco.mj_objectVelocity(
+                    mj_model, data, mujoco.mjtObj.mjOBJ_SITE, int(sid), vel[t, j], 0
+                )
+    return pos, mat, None if qvel is None else vel
+
+
+def project_motion_clip_couplings(clip: MotionClip, mj_model: Any) -> MotionClip:
+    """Put a clip on the joint couplings (``mjEQ_JOINT``) of the model it is played on.
+
+    A clip retargeted onto one model release can store coupled joints off the
+    couplings of another: the MuscleMimic clips keep the ``musclemimic_models``
+    1.0.5 polynomial of the left knee's ``rotation3``, up to 0.5 rad off 1.0.6.
+    Every frame's dependent joints are written from their masters, with their
+    velocities along the coupling
+    (:func:`~myosuite.physics.joint_coupling.project_joint_couplings`), and the
+    site tracks (``site_xpos``, ``site_xmat``, ``site_velocity``) move with the
+    bodies they are on: by the change of the forward kinematics between the
+    stored and the projected state. Sites that are the forward kinematics of the
+    stored state therefore become those of the projected one; sites on no body
+    below a coupled joint keep their values.
+
+    Args:
+        clip: Clip in model order (:func:`expand_motion_clip_to_model`).
+        mj_model: Compiled model the clip is played on.
+
+    Returns:
+        The projected clip; *clip* itself if the model has no joint couplings.
+
+    Raises:
+        ValueError: If qpos/qvel do not have the model's width, or the clip has
+            site tracks whose ``site_names`` are missing or not sites of the model.
+    """
+    from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
+
+    couplings = JointCouplings.from_model(mj_model)
+    if not (len(couplings.dep_qpos) or len(couplings.locked_qpos)):
+        return clip
+    if clip.qpos.shape[1] != mj_model.nq or (
+        clip.qvel is not None and clip.qvel.shape[1] != mj_model.nv
+    ):
+        raise ValueError(
+            "Projecting a clip onto the joint couplings needs model-width qpos/qvel; "
+            "resolve it with expand_motion_clip_to_model first."
+        )
+    qpos = clip.qpos.copy()
+    qvel = None if clip.qvel is None else clip.qvel.copy()
+    project_joint_couplings(couplings, qpos, qvel)
+
+    site_xpos, site_xmat, site_vel = clip.site_xpos, clip.site_xmat, clip.site_velocity
+    stored = [a for a in (site_xpos, site_xmat, site_vel) if a is not None]
+    if stored:
+        import mujoco
+
+        names = clip.site_names or []
+        ids = np.asarray(
+            [mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_SITE, n) for n in names],
+            dtype=np.int64,
+        )
+        if (
+            not names
+            or (ids < 0).any()
+            or any(a.shape[1] != len(names) for a in stored)
+        ):
+            raise ValueError(
+                "Moving a clip's site tracks onto the joint couplings needs one model "
+                f"site name per track column; got site_names={clip.site_names}."
+            )
+        # Site velocities move only when the clip has joint velocities.
+        with_vel = site_vel is not None and qvel is not None
+        pos0, mat0, vel0 = _site_kinematics(
+            mj_model, clip.qpos, clip.qvel if with_vel else None, ids
+        )
+        pos1, mat1, vel1 = _site_kinematics(
+            mj_model, qpos, qvel if with_vel else None, ids
+        )
+        if site_xpos is not None:
+            site_xpos = (site_xpos + (pos1 - pos0)).astype(site_xpos.dtype)
+        if site_xmat is not None:
+            # World-frame turn of each site's body, applied to the stored frame.
+            turn = mat1 @ np.swapaxes(mat0, -1, -2)
+            site_xmat = (turn @ site_xmat).astype(site_xmat.dtype)
+        if site_vel is not None and vel0 is not None and vel1 is not None:
+            site_vel = (site_vel + (vel1 - vel0)).astype(site_vel.dtype)
+    return dataclasses.replace(
+        clip,
+        qpos=qpos,
+        qvel=qvel,
+        site_xpos=site_xpos,
+        site_xmat=site_xmat,
+        site_velocity=site_vel,
+    )
+
+
 def resolve_motion_path(
     motion_path: str,
     env_name: str = "MyoFullBody",
@@ -488,6 +604,7 @@ __all__ = [
     "check_clip_rate",
     "expand_motion_clip_to_model",
     "load_motion_clip",
+    "project_motion_clip_couplings",
     "read_npz_names",
     "resolve_motion_path",
 ]

@@ -304,6 +304,76 @@ def test_rsi_starts_on_the_joint_couplings(
         )
 
 
+def test_clip_references_are_one_reachable_state_per_frame() -> None:
+    """References and site targets are the clip on the model's joint couplings.
+
+    The synthetic clip bends the knees without moving their coupled joints, as the
+    retargeted clips keep the 1.0.5 left knee, and its sites are the kinematics of
+    that state. The served joints are projected and the leg targets move with them.
+    """
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    _, _, model, site_names = _variant("fullbody")
+    clip = _synthetic_clip(
+        "fullbody", n_frames=20, joint_pos={"knee_angle_l": 1.0, "knee_angle_r": 0.6}
+    )
+    assert np.abs(joint_equality_residuals(model, clip.qpos[0])[0]).max() > 0.2
+    env = _make_env("fullbody", clip)
+    try:
+        env.reset()
+        cache = mimic._resolve_mimic_mjlab_ids(env, _ENTITY["fullbody"], "fullbody")
+        served = cache["clip_source"].clip
+        data = mujoco.MjData(model)
+        site_ids = [model.site(name).id for name in site_names]
+        for t in range(served.num_frames):
+            pos, vel = joint_equality_residuals(model, served.qpos[t], served.qvel[t])
+            assert max(np.abs(pos).max(), np.abs(vel).max()) < 1e-6
+            data.qpos[:] = served.qpos[t]
+            mujoco.mj_kinematics(model, data)
+            np.testing.assert_allclose(
+                served.site_xpos[t], data.site_xpos[site_ids], rtol=0, atol=1e-6
+            )
+        toes = site_names.index("left_toes_mimic")
+        assert np.abs(served.site_xpos[:, toes] - clip.site_xpos[:, toes]).max() > 0.01
+        # Observations read the served clip.
+        frames = _clip_frames(env, clip)
+        ref = env.observation_manager.get_term_cfg("policy", "clip_ref_qpos").func(env)
+        np.testing.assert_array_equal(
+            ref.numpy(), served.qpos[frames].astype(np.float32)
+        )
+    finally:
+        env.close()
+
+
+def test_stored_clip_references_keep_the_clip_and_project_the_starts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``MYOSUITE_MIMIC_CLIP_REFERENCES=stored`` serves the clip as retargeted, for
+    checkpoints trained on it; RSI still starts on the couplings."""
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    monkeypatch.setenv("MYOSUITE_MIMIC_CLIP_REFERENCES", "stored")
+    _, _, model, _ = _variant("fullbody")
+    clip = _synthetic_clip(
+        "fullbody", n_frames=20, joint_pos={"knee_angle_l": 1.0, "knee_angle_r": 0.6}
+    )
+    env = _make_env("fullbody", clip)
+    try:
+        env.reset()
+        cache = mimic._resolve_mimic_mjlab_ids(env, _ENTITY["fullbody"], "fullbody")
+        served = cache["clip_source"].clip
+        np.testing.assert_array_equal(served.qpos, clip.qpos)
+        np.testing.assert_array_equal(served.qvel, clip.qvel)
+        np.testing.assert_array_equal(served.site_xpos, clip.site_xpos)
+        sim = env.scene[_ENTITY["fullbody"]].data.data
+        for i, frame in enumerate(_clip_frames(env, clip)):
+            _assert_rsi_state(
+                model, sim.qpos[i].numpy(), sim.qvel[i].numpy(), clip.qpos[frame]
+            )
+    finally:
+        env.close()
+
+
 def test_entity_default_state_is_the_model_keyframe() -> None:
     """The entity's default state (reset without RSI) is the model keyframe, with
     its coupled joints put on their polynomials (as the CPU reset).

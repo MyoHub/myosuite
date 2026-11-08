@@ -86,6 +86,32 @@ def test_version_comes_from_config_then_env_then_default(
         mv.resolve_models_version(_fullbody_cfg("1.0.4"))
 
 
+def test_clips_are_served_on_the_couplings_unless_stored_is_asked_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from myosuite.core.trajectory_io import MotionClip
+
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><body><joint name="a"/><geom size="0.1"/>'
+        '<body><joint name="b" axis="0 1 0"/><geom size="0.1"/></body></body>'
+        '</worldbody><equality><joint joint1="b" joint2="a" polycoef="0 2 0 0 0"/>'
+        "</equality></mujoco>"
+    )
+    clip = MotionClip(
+        qpos=np.array([[0.3, 0.0]]), qvel=None, site_xpos=None, site_names=None
+    )
+    monkeypatch.delenv(mv.CLIP_REFERENCES_ENV_VAR, raising=False)
+    assert mv.resolve_clip_references() == "model"
+    np.testing.assert_allclose(
+        mv.clip_references_for_model(clip, model).qpos, [[0.3, 0.6]]
+    )
+    monkeypatch.setenv(mv.CLIP_REFERENCES_ENV_VAR, "stored")
+    assert mv.clip_references_for_model(clip, model) is clip
+    monkeypatch.setenv(mv.CLIP_REFERENCES_ENV_VAR, "projected")
+    with pytest.raises(ValueError, match="stored"):
+        mv.resolve_clip_references()
+
+
 @pytest.mark.parametrize(
     "ref",
     [

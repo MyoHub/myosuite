@@ -144,3 +144,22 @@ class TestMuscleMimicFullbodyDirectionalEnv:
         miss = raw.get_reward_dict(raw._get_obs_dict(raw._accessor))["heading"]
         assert match == pytest.approx(1.0, abs=1e-5)
         assert miss < match
+
+    def test_gait_reference_and_start_clips_are_on_the_couplings(self, directional_env):
+        """The retargeted clips keep the 1.0.5 left knee (``rotation3`` up to 0.5 rad
+        off 1.0.6); the gait reward and the start frames use them on the couplings."""
+        from myosuite.tests.support.joint_couplings import joint_equality_residuals
+
+        env = directional_env.unwrapped
+        root_qpos, root_qvel = env.model.qpos0[:7], np.zeros(6)
+        states = [
+            (np.concatenate([root_qpos, q]), np.concatenate([root_qvel, v]))
+            for q, v in zip(env._gait_qpos_local, env._gait_qvel_local)
+        ]
+        states += [(q, v) for c in env._circ_clips for q, v in zip(c.qpos, c.qvel)]
+        worst = max(
+            np.abs(r).max()
+            for q, v in states
+            for r in joint_equality_residuals(env.model, q, v)
+        )
+        assert worst < 1e-12

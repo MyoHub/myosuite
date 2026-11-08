@@ -37,6 +37,7 @@ See [docs/wiki/mjlab-design-guide.md](mjlab-design-guide.md) for the full patter
 | Body/site/joint ID | `mujoco.mj_name2id` | Hardcoded integer indices |
 | Jacobian | `mujoco.mj_jacBody`, `mj_jacSite` | Manual Jacobian computation |
 | Coupled joints (`mjEQ_JOINT`) on their polynomials | `myosuite.physics.joint_coupling.project_joint_couplings` (NumPy or Torch; CPU envs: `MyoGymnasiumEnv._project_joint_couplings`) | Hand-rolled `eq_data` polynomial evaluation |
+| A motion clip on the couplings of the model it plays on (qpos, qvel, site tracks) | `myosuite.core.trajectory_io.project_motion_clip_couplings` (after `expand_motion_clip_to_model`) | Projecting the joints but keeping the stored site targets |
 
 **Unified dispatcher (preferred for new code):**
 

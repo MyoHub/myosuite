@@ -50,6 +50,7 @@ from myosuite.core.trajectory_io import (
     MotionClip,
     expand_motion_clip_to_model,
     load_motion_clip,
+    project_motion_clip_couplings,
     resolve_motion_path,
 )
 from myosuite.core.subprocess_orchestration import (
@@ -78,6 +79,7 @@ __all__ = [
     "run_passive_viewer_loop",
     "MotionClip",
     "expand_motion_clip_to_model",
+    "project_motion_clip_couplings",
     "resolve_motion_path",
     "load_motion_clip",
     "build_python_command",

@@ -393,3 +393,137 @@ def test_motion_clip_aliases_do_not_hide_unknown_joints(name: str) -> None:
     )
     with pytest.raises(ValueError, match="unknown model joints"):
         expand_motion_clip_to_model(clip, model)
+
+
+# Free-root pelvis with a site above the knee; the knee (master) drives the shank's
+# rotation (nonzero ref) and slide through quartic couplings, and the toes site is
+# below them.
+_KNEE_XML = """
+<mujoco>
+  <worldbody>
+    <body name="pelvis">
+      <freejoint name="root"/>
+      <geom size="0.1" mass="1"/>
+      <site name="hip" pos="0 0.1 0"/>
+      <body name="thigh" pos="0 0 -0.1">
+        <joint name="knee" axis="0 1 0"/>
+        <geom size="0.05" mass="1"/>
+        <body name="shank" pos="0 0 -0.4">
+          <joint name="shank_rot" axis="0 0 1" ref="0.05"/>
+          <joint name="shank_slide" type="slide" axis="1 0 0"/>
+          <geom size="0.05" mass="1"/>
+          <site name="toes" pos="0.15 0 -0.4"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <equality>
+    <joint joint1="shank_rot" joint2="knee" polycoef="0 0.37 -0.17 0.025 0"/>
+    <joint joint1="shank_slide" joint2="knee" polycoef="0 0.006 -0.001 0 0"/>
+  </equality>
+</mujoco>
+"""
+_SITES = ("hip", "toes")
+
+
+def _knee_clip(model: mujoco.MjModel) -> MotionClip:
+    """Knee sweep whose shank joints follow the negated polynomials, as the
+    MuscleMimic clips the 1.0.5 left knee; sites and velocities are its kinematics."""
+    from myosuite.core.trajectory_io import motion_clip_from_states
+
+    rng = np.random.default_rng(0)
+    knee = np.linspace(0.0, 1.2, 25)
+    qpos = np.tile(model.qpos0, (len(knee), 1))
+    qpos[:, :3] += rng.normal(0.0, 0.1, (len(knee), 3))
+    qpos[:, 7] = knee
+    qpos[:, 8] = 0.05 - (0.37 * knee - 0.17 * knee**2 + 0.025 * knee**3)
+    qpos[:, 9] = -(0.006 * knee - 0.001 * knee**2)
+    qvel = rng.normal(0.0, 1.0, (len(knee), model.nv))
+    return motion_clip_from_states(model, qpos, 0.01, _SITES, qvel=qvel)
+
+
+def test_project_motion_clip_couplings_serves_one_reachable_state_per_frame() -> None:
+    from myosuite.core.trajectory_io import (
+        motion_clip_from_states,
+        project_motion_clip_couplings,
+    )
+    from myosuite.tests.support.joint_couplings import joint_equality_residuals
+
+    model = mujoco.MjModel.from_xml_string(_KNEE_XML)
+    clip = _knee_clip(model)
+    stored = clip.qpos.copy()
+    assert np.abs(joint_equality_residuals(model, clip.qpos[-1])[0]).max() > 0.4
+
+    projected = project_motion_clip_couplings(clip, model)
+
+    # MuJoCo's own residuals: positions on the couplings, velocities along them.
+    for qpos, qvel in zip(projected.qpos, projected.qvel):
+        for residual in joint_equality_residuals(model, qpos, qvel):
+            np.testing.assert_allclose(residual, 0.0, rtol=0, atol=1e-12)
+    # The site tracks are the kinematics of the projected states.
+    expected = motion_clip_from_states(
+        model, projected.qpos, 0.01, _SITES, qvel=projected.qvel
+    )
+    for name in ("site_xpos", "site_xmat", "site_velocity"):
+        np.testing.assert_allclose(
+            getattr(projected, name), getattr(expected, name), rtol=0, atol=1e-12
+        )
+    # Root, master and the site above the coupling keep their values; toes move.
+    np.testing.assert_array_equal(projected.qpos[:, :8], stored[:, :8])
+    np.testing.assert_array_equal(projected.site_xpos[:, 0], clip.site_xpos[:, 0])
+    assert (
+        np.linalg.norm(projected.site_xpos[:, 1] - clip.site_xpos[:, 1], -1).max()
+        > 0.05
+    )
+    np.testing.assert_array_equal(clip.qpos, stored)
+    again = project_motion_clip_couplings(projected, model)
+    for name in ("qpos", "qvel", "site_xpos", "site_xmat", "site_velocity"):
+        np.testing.assert_allclose(
+            getattr(again, name), getattr(projected, name), rtol=0, atol=1e-14
+        )
+
+
+def test_project_motion_clip_couplings_moves_sites_with_their_bodies() -> None:
+    """Stored sites off the kinematics (e.g. markers) keep their offset to the bodies."""
+    import dataclasses
+
+    from myosuite.core.trajectory_io import project_motion_clip_couplings
+
+    model = mujoco.MjModel.from_xml_string(_KNEE_XML)
+    clip = _knee_clip(model)
+    offset = np.array([0.0, 0.01, 0.02])
+    marked = dataclasses.replace(clip, site_xpos=clip.site_xpos + offset)
+    np.testing.assert_allclose(
+        project_motion_clip_couplings(marked, model).site_xpos,
+        project_motion_clip_couplings(clip, model).site_xpos + offset,
+        rtol=0,
+        atol=1e-12,
+    )
+
+
+def test_project_motion_clip_couplings_needs_the_model_layout() -> None:
+    import dataclasses
+
+    from myosuite.core.trajectory_io import project_motion_clip_couplings
+
+    model = mujoco.MjModel.from_xml_string(_KNEE_XML)
+    clip = _knee_clip(model)
+    narrow = MotionClip(
+        qpos=clip.qpos[:, :8], qvel=None, site_xpos=None, site_names=None
+    )
+    with pytest.raises(ValueError, match="expand_motion_clip_to_model"):
+        project_motion_clip_couplings(narrow, model)
+    for names in (None, ["hip", "nose"]):
+        with pytest.raises(ValueError, match="site name"):
+            project_motion_clip_couplings(
+                dataclasses.replace(clip, site_names=names), model
+            )
+    uncoupled = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><body><freejoint/><geom size="0.1"/>'
+        '<body><joint name="knee"/><geom size="0.1"/></body></body>'
+        "</worldbody></mujoco>"
+    )
+    plain = MotionClip(
+        qpos=clip.qpos[:, :8], qvel=None, site_xpos=None, site_names=None
+    )
+    assert project_motion_clip_couplings(plain, uncoupled) is plain

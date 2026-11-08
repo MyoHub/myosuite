@@ -146,7 +146,8 @@ Hugging Face repo imitates the clip `KIT/167/walking_medium06` (AMASS / KIT moti
 is scored by clip completion instead of success: 86% of 576 mean-action episodes from random start frames play to
 the end of the clip (84-88% per run), the rest end on a pose deviation. It is an mjlab-only baseline (no CPU twin: the
 CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and is loaded with `--checkpoint` and
-`MIMIC_CLIP` (tutorial 5.3).
+`MIMIC_CLIP` (tutorial 5.3). It was trained on the clip's stored references: evaluate it with
+`MYOSUITE_MIMIC_CLIP_REFERENCES=stored` (see *Clip references on the joint couplings* below).
 
 </sub>
 
@@ -159,8 +160,37 @@ first 0.3 s. Clip starts (RSI, the directional env) were further off: the retarg
 `musclemimic_models` 1.0.5 sign of the left knee's `rotation3` and `translation2` couplings, up to 0.5 rad off on 1.0.6.
 The observation, action, control step and reward definitions are unchanged, so the env contract hash in `manifest.json`
 does not warn and the checkpoints still load. Only the first steps of an episode differ, but re-evaluate a policy before
-comparing it with new runs. The single-clip policy above was trained with the unprojected clip starts and was not
-re-evaluated after this change.
+comparing it with new runs. The single-clip policy above was trained with the unprojected clip starts; its clip
+completion with projected starts is in the next note.
+
+</sub>
+
+<sub>
+
+**Clip references on the joint couplings (MuscleMimic clips).** The retargeted clips keep the left knee's `rotation3`
+on the `musclemimic_models` 1.0.5 polynomial, up to 0.50 rad and 3.8 rad/s off the 1.0.6 coupling, and their site
+targets are the kinematics of that pose. The clip tasks (mjlab `myoMimicFullbody-v0` / `myoMimicBimanual-v0` with a
+clip, `MuscleMimicClipEnvV0`, the gait reward of `myoFullBodyDirectional-v0`) now serve every frame on the couplings of
+the model in use, with the site targets moved with the joints: on `walking_medium06` the left ankle and toe targets
+move by up to 33 and 44 mm (mean 8.5 and 10.5 mm). The observation and reward definitions are unchanged but their
+values are not, and the env contract hash does not warn. `MYOSUITE_MIMIC_CLIP_REFERENCES=stored` serves the clips as
+stored (episodes still start on the couplings), for checkpoints trained on them. The single-clip policy above is one:
+its observation normalizer puts the corrected `rotation3` reference and velocity up to 6.2 and 6.7 standard
+deviations from the stored ones it was trained on, and it completes fewer clips on them. Clip completion of
+`model_81380.pt` (mjlab, mean action, random start frames, 3 seeds x 64 envs x 3 episodes = 576 episodes per row,
+measured on an RTX 4090 with mjlab 1.6.0 and MuJoCo Warp 3.11):
+
+| Build | Clip completion [95% CI] | Per seed |
+|---|---|---|
+| Release 3.0.0 | 82.5% [79.1, 85.4] | 83.3, 82.8, 81.2 |
+| Before the coupling fixes | 81.4% [78.0, 84.4] | 83.9, 80.7, 79.7 |
+| Starts on the couplings, references as stored (`MYOSUITE_MIMIC_CLIP_REFERENCES=stored`) | 83.9% [80.6, 86.6] | 84.4, 82.8, 84.4 |
+| Starts and references on the couplings (default) | 73.3% [69.5, 76.7] | 72.9, 75.0, 71.9 |
+
+The first three rows do not differ (paired on start frames, McNemar p >= 0.4); the default is lower than release
+3.0.0 (p = 0.005), most of all for start frames 100-300. The 86% above was measured at release 3.0.0 with another
+software stack; this stack gives 82.5% for the same release. A policy trained on the corrected references needs a new
+run.
 
 </sub>
 

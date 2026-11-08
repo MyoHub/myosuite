@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 # pylint: disable=no-member
 import mujoco
@@ -41,6 +42,9 @@ from myosuite.terms.mimic_reward import (
     mimic_root_vel_reward,
     mimic_site_tracking_reward,
 )
+
+if TYPE_CHECKING:
+    from myosuite.core.trajectory_io import MotionClip
 
 
 class _MuscleMimicCpuBase(MyoGymnasiumEnv, EzPickle):
@@ -330,33 +334,36 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
         )
         self._setup_directional_spaces()
 
-    def _load_gait_clip(self) -> None:
+    def _load_model_clip(self, filename: str) -> MotionClip:
+        """Download a clip of the gait repo, in model order, as MuscleMimic tasks serve it."""
         from huggingface_hub import hf_hub_download
 
-        path = hf_hub_download(
-            repo_id=self._gait_repo,
-            filename=self._gait_file,
-            repo_type="dataset",
-        )
-        npz = np.load(path)
-        qpos = np.asarray(npz["qpos"], dtype=np.float64)
-        qvel = np.asarray(npz["qvel"], dtype=np.float64)
-        self._gait_qpos_local = qpos[:, 7:]
-        self._gait_qvel_local = qvel[:, 6:]
-        # Full qpos/qvel for initialization (skip first 30 frames = standing/transition)
-        self._gait_qpos_full = qpos[30:]
-        self._gait_qvel_full = qvel[30:]
-        self._gait_T = int(qpos.shape[0])
-
-    def _load_circular_clips(self) -> None:
-        """Load CW + CCW circular walking clips and precompute phase-matched frames."""
-        from huggingface_hub import hf_hub_download
         from myosuite.core.trajectory_io import (
             expand_motion_clip_to_model,
             load_motion_clip,
         )
-        from pathlib import Path as _Path
+        from myosuite.integrations.musclemimic.model_versions import (
+            clip_references_for_model,
+        )
 
+        path = hf_hub_download(
+            repo_id=self._gait_repo, filename=filename, repo_type="dataset"
+        )
+        clip = load_motion_clip(
+            Path(path), expected_nq=self.model.nq, expected_nv=self.model.nv
+        )
+        return clip_references_for_model(
+            expand_motion_clip_to_model(clip, self.model), self.model
+        )
+
+    def _load_gait_clip(self) -> None:
+        clip = self._load_model_clip(self._gait_file)
+        self._gait_qpos_local = clip.qpos[:, 7:]
+        self._gait_qvel_local = clip.qvel[:, 6:]
+        self._gait_T = clip.num_frames
+
+    def _load_circular_clips(self) -> None:
+        """Load CW + CCW circular walking clips and precompute phase-matched frames."""
         _CIRC_FILES = [
             "MyoFullBody/gmr/KIT/4/WalkInClockwiseCircle01_poses.npz",
             # CCW08 covers E (err=0.2°, spd=1.01) vs CCW04 (err=0.5°, spd=0.60).
@@ -364,16 +371,8 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             # instead of CCW04 (spd=0.60), fixing the two weakest eval sectors.
             "MyoFullBody/gmr/KIT/4/WalkInCounterClockwiseCircle08_poses.npz",
         ]
-        clips = []
-        for fname in _CIRC_FILES:
-            p = hf_hub_download(
-                repo_id=self._gait_repo, filename=fname, repo_type="dataset"
-            )
-            clip = load_motion_clip(
-                _Path(p), expected_nq=self.model.nq, expected_nv=self.model.nv
-            )
-            # Columns by joint name: qpos/qvel are indexed as model coordinates below.
-            clips.append(expand_motion_clip_to_model(clip, self.model))
+        # Model coordinates: qpos/qvel are indexed as such below.
+        clips = [self._load_model_clip(fname) for fname in _CIRC_FILES]
         self._circ_clips = clips
 
         def _ang_dist(a: float, b: float) -> float:

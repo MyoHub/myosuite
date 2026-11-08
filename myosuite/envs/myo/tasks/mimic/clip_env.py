@@ -27,7 +27,8 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
-from myosuite.core.trajectory_io import check_clip_rate, read_npz_names
+from myosuite.core.trajectory_io import MotionClip, check_clip_rate, read_npz_names
+from myosuite.integrations.musclemimic.model_versions import clip_references_for_model
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.running_stats import RunningMeanStd, normalize, update
 from myosuite.terms.mimic_obs import (
@@ -367,17 +368,36 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
             field_name="qvel",
             use_qvel=True,
         )
-        self._clip_qpos: np.ndarray = _expand_clip_field(
-            self._default_qpos, raw_qpos, self._qpos_selection
+        # clip site_xpos shape (T, 17, 3) — reorder to model site order
+        raw_sites = npz["site_xpos"].astype(np.float64)  # (T, 17, 3)
+        if raw_sites.ndim != 3 or raw_sites.shape[1:] != (len(_CLIP_SITE_ORDER), 3):
+            raise ValueError(
+                "Clip site_xpos must have shape "
+                f"(T, {len(_CLIP_SITE_ORDER)}, 3), got {raw_sites.shape}."
+            )
+        # Clip states on this model's joint couplings, the sites moved with them
+        # (as stored with MYOSUITE_MIMIC_CLIP_REFERENCES=stored).
+        clip = clip_references_for_model(
+            MotionClip(
+                qpos=_expand_clip_field(
+                    self._default_qpos, raw_qpos, self._qpos_selection
+                ),
+                qvel=_expand_clip_field(
+                    self._default_qvel, raw_qvel, self._qvel_selection
+                ),
+                site_xpos=raw_sites[:, _CLIP_IDX_FOR_MODEL, :],
+                site_names=list(_MODEL_SITE_ORDER),
+            ),
+            self.model,
         )
-        self._clip_qvel: np.ndarray = _expand_clip_field(
-            self._default_qvel, raw_qvel, self._qvel_selection
-        )
-        self._clip_joint_qpos: np.ndarray = raw_qpos[
-            :, self._qpos_selection.clip_indices
+        self._clip_qpos: np.ndarray = clip.qpos
+        self._clip_qvel: np.ndarray = clip.qvel
+        self._clip_site_xpos: np.ndarray = clip.site_xpos
+        self._clip_joint_qpos: np.ndarray = clip.qpos[
+            :, self._qpos_selection.model_indices
         ]
-        self._clip_joint_qvel: np.ndarray = raw_qvel[
-            :, self._qvel_selection.clip_indices
+        self._clip_joint_qvel: np.ndarray = clip.qvel[
+            :, self._qvel_selection.model_indices
         ]
         self._clip_root_pos: np.ndarray | None = _select_required_indices(
             self._clip_qpos, self._qpos_selection, range(0, 3)
@@ -388,14 +408,6 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
         self._clip_root_vel: np.ndarray | None = _select_required_indices(
             self._clip_qvel, self._qvel_selection, range(0, 3)
         )
-        # clip site_xpos shape (T, 17, 3) — reorder to model site order
-        raw_sites = npz["site_xpos"].astype(np.float64)  # (T, 17, 3)
-        if raw_sites.ndim != 3 or raw_sites.shape[1:] != (len(_CLIP_SITE_ORDER), 3):
-            raise ValueError(
-                "Clip site_xpos must have shape "
-                f"(T, {len(_CLIP_SITE_ORDER)}, 3), got {raw_sites.shape}."
-            )
-        self._clip_site_xpos: np.ndarray = raw_sites[:, _CLIP_IDX_FOR_MODEL, :]
         self._clip_T: int = self._clip_qpos.shape[0]
         self._frame_offset: int = 0  # random start frame, set at reset
         self._step_count: int = 0
