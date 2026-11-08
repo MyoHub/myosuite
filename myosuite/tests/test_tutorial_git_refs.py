@@ -24,10 +24,12 @@ _REF_PATTERNS = (
     re.compile(r"github/MyoHub/myosuite/blob/([^/\s)\"']+)/"),
     re.compile(r"raw\.githubusercontent\.com/MyoHub/myosuite/([^/\s)\"']+)/"),
     re.compile(r"github\.com/MyoHub/myosuite\.git@([^\s\"'#]+)"),
-    # Ref variables (f-string placeholders like ``@{GIT_REF}`` resolve to these).
+    # Ref variables (f-string placeholders like ``@{GIT_REF}`` resolve to these):
+    # only an assignment at the start of a line, so ``print("GIT_REF =", ...)`` is ignored.
     re.compile(
-        r"\b(?:MYOSUITE_GIT_REF|MYOSUITE_REF|GIT_REF)\b[^=\n]*=\s*"
-        r"(?:os\.environ\.get\([^,]+,\s*)?[\"']([^\"']+)"
+        r"^[ \t]*(?:MYOSUITE_GIT_REF|MYOSUITE_REF|GIT_REF)[ \t]*=[ \t]*"
+        r"(?:os\.environ\.get\([^,\n]+,[ \t]*)?[\"']([^\"'\n]+)",
+        re.MULTILINE,
     ),
 )
 
@@ -38,22 +40,34 @@ def _refs(text: str) -> set[str]:
 
 
 def test_ref_patterns_catch_a_feature_branch() -> None:
-    sample = (
-        "colab.research.google.com/github/MyoHub/myosuite/blob/feat/x/tutorials/a.ipynb "
-        "git+https://github.com/MyoHub/myosuite.git@fix/y "
-        'GIT_REF = os.environ.get("MYOSUITE_GIT_REF", "feature/z") '
-        'MYOSUITE_REF = "wip" pip install "git+https://github.com/MyoHub/myosuite.git@{MYOSUITE_REF}"'
+    sample = "\n".join(
+        [
+            "colab.research.google.com/github/MyoHub/myosuite/blob/feat/x/tutorials/a.ipynb",
+            "git+https://github.com/MyoHub/myosuite.git@fix/y",
+            'GIT_REF = os.environ.get("MYOSUITE_GIT_REF", "feature/z")',
+            'MYOSUITE_REF = "wip"',
+            'pip install "myosuite[musclemimic] @ git+https://github.com/MyoHub/myosuite.git@{MYOSUITE_REF}"',
+            'print("GIT_REF =", GIT_REF)',
+        ]
     )
     assert _refs(sample) == {"feat", "fix/y", "feature/z", "wip"}
 
 
+def _text(path: Path) -> str:
+    """Notebook cell sources (JSON-decoded), or the file itself for Markdown."""
+    raw = path.read_text(encoding="utf-8")
+    if path.suffix != ".ipynb":
+        return raw
+    return "\n".join("".join(cell["source"]) for cell in json.loads(raw)["cells"])
+
+
 @pytest.mark.parametrize(
-    "notebook", sorted(_TUTORIALS.glob("*.ipynb")), ids=lambda p: p.name
+    "path",
+    sorted(_TUTORIALS.glob("*.ipynb")) + sorted(_TUTORIALS.glob("*.md")),
+    ids=lambda p: p.name,
 )
-def test_tutorial_refs_are_main_or_dev(notebook: Path) -> None:
+def test_tutorial_refs_are_main_or_dev(path: Path) -> None:
     if not _TUTORIALS.is_dir():
         pytest.skip("needs a source checkout")
-    cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
-    text = "\n".join("".join(cell["source"]) for cell in cells)
-    bad = _refs(text) - _ALLOWED
-    assert not bad, f"{notebook.name} points at branches {sorted(bad)}; use main or dev"
+    bad = _refs(_text(path)) - _ALLOWED
+    assert not bad, f"{path.name} points at branches {sorted(bad)}; use main or dev"
