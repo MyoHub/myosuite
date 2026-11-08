@@ -5,6 +5,8 @@
 
 """Shared name aliases for compatible full-body models."""
 
+from collections.abc import Collection, Sequence
+
 # Left-arm muscles: myo_sim names them ``*_l``, musclemimic_models ``*_left``.
 _FULLBODY_LEFT_ARM_MUSCLES: tuple[str, ...] = tuple(
     "DELT1 DELT2 DELT3 SUPSP INFSP SUBSC TMIN TMAJ PECM1 PECM2 PECM3 LAT1 LAT2 "
@@ -22,3 +24,40 @@ FULLBODY_NAME_ALIASES: tuple[tuple[str, str], ...] = (
     ("elbow_flexion_l", "elbow_flex_l"),
     *((f"{muscle}_l", f"{muscle}_left") for muscle in _FULLBODY_LEFT_ARM_MUSCLES),
 )
+
+
+def resolve_model_names(
+    names: Sequence[str], model_names: Collection[str], *, field_name: str
+) -> list[str]:
+    """Resolve full-body aliases without changing namespaces or exact names.
+
+    Args:
+        names: Source names, possibly repeated for multi-coordinate joints.
+        model_names: Names available in the target model.
+        field_name: State field to identify in collision errors.
+
+    Returns:
+        Target names; unknown names remain for the caller to reject.
+
+    Raises:
+        ValueError: Distinct source names resolve to the same target.
+    """
+    aliases = dict(FULLBODY_NAME_ALIASES)
+    aliases.update((b, a) for a, b in FULLBODY_NAME_ALIASES)
+    resolved_names: list[str] = []
+    claimed: dict[str, str] = {}
+    for name in names:
+        target = name
+        if name not in model_names:
+            for source, alias in aliases.items():
+                if name == source or name.endswith("_" + source):
+                    target = name[: -len(source)] + alias
+                    break
+        if target in claimed and claimed[target] != name:
+            raise ValueError(
+                f"Motion clip {field_name} joints {claimed[target]!r} and {name!r} "
+                f"both map to model joint {target!r}."
+            )
+        claimed[target] = name
+        resolved_names.append(target)
+    return resolved_names

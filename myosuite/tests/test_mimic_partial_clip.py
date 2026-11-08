@@ -118,3 +118,83 @@ def test_partial_joint_clip_tracks_named_subset(tmp_path: Path) -> None:
         )
     finally:
         env.close()
+
+
+@pytest.mark.parametrize("prefix", ["", "a0_", "a1_"])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("use_qvel", [False, True])
+def test_cpu_clip_resolves_elbow_aliases(
+    prefix: str, reverse: bool, use_qvel: bool
+) -> None:
+    from myosuite.envs.myo.tasks.mimic.clip_env import _resolve_joint_field_selection
+
+    source, target = "elbow_flex", "elbow_flexion"
+    if reverse:
+        source, target = target, source
+    model = mujoco.MjModel.from_xml_string(
+        f'<mujoco><worldbody><body><freejoint name="{prefix}root"/>'
+        f'<geom size=".1"/><body><joint name="{prefix}{target}_r"/>'
+        f'<joint name="{prefix}{target}_l" axis="0 1 0"/>'
+        '<geom size=".1"/></body></body></worldbody></mujoco>'
+    )
+    selection = _resolve_joint_field_selection(
+        model=model,
+        clip_width=2,
+        expected_width=model.nv if use_qvel else model.nq,
+        clip_joint_names=(f"{prefix}{source}_l", f"{prefix}{source}_r"),
+        field_name="qvel" if use_qvel else "qpos",
+        use_qvel=use_qvel,
+    )
+    np.testing.assert_array_equal(selection.clip_indices, [0, 1])
+    np.testing.assert_array_equal(
+        selection.model_indices, [7, 6] if use_qvel else [8, 7]
+    )
+    assert selection.joint_names == (f"{prefix}{target}_l", f"{prefix}{target}_r")
+
+
+def test_cpu_clip_tracks_aliased_elbows(tmp_path: Path) -> None:
+    model, _, _ = compile_mimic_fullbody_mjmodel(default_mimic_fullbody_config())
+    targets = tuple(
+        next(
+            name
+            for name in (f"elbow_flexion_{side}", f"elbow_flex_{side}")
+            if mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name) >= 0
+        )
+        for side in ("r", "l")
+    )
+    sources = tuple(
+        name.replace("elbow_flexion_", "elbow_flex_")
+        if "flexion" in name
+        else name.replace("elbow_flex_", "elbow_flexion_")
+        for name in targets
+    )
+    path = tmp_path / "elbows.npz"
+    np.savez(
+        path,
+        qpos=np.tile([0.4, 0.7], (3, 1)),
+        qvel=np.tile([0.2, -0.1], (3, 1)),
+        joint_names=sources,
+        site_xpos=np.zeros((3, len(_MODEL_SITE_ORDER), 3)),
+    )
+    env = MuscleMimicClipEnvV0(
+        clip_path=path,
+        seed=0,
+        use_obs_normalizer=False,
+        lookahead_k=1,
+        lookahead_stride=1,
+    )
+    try:
+        env.reset(seed=0)
+        np.testing.assert_array_equal(
+            env.data.qpos[env._qpos_selection.model_indices], [0.4, 0.7]
+        )
+        np.testing.assert_array_equal(
+            env.data.qvel[env._qvel_selection.model_indices], [0.2, -0.1]
+        )
+        assert env._qpos_selection.joint_names == targets
+        assert env._qvel_selection.joint_names == targets
+        _, info = env._compute_reward()
+        assert info["joint_pos"] == pytest.approx(1.0)
+        assert info["joint_vel"] == pytest.approx(1.0)
+    finally:
+        env.close()
