@@ -122,6 +122,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+* **MuscleMimic checkpoints load on JAX ≥ 0.10.** `load_local_policy_artifacts` restored the Orbax `train_state` without a target, so Orbax rebuilt each array's sharding from the device name saved in the checkpoint (`TFRT_CPU_0` for `amathislab/mm-10m-2`), which JAX 0.10 renamed to `cpu:0`. Every MuscleMimic policy load (tutorials 5.1, 5.4 and 5.5, `myosuite-musclemimic-fullbody-eval`, `export_onnx --framework orbax`) failed with `Device TFRT_CPU_0 was not found in jax.local_devices()`. It now restores against the checkpoint's own metadata placed on the CPU device ([#614]).
 * **Tutorial 5.4 / 5.6 on musclemimic_models 1.0.6.** Directional and ChaseTag FBVs use the package default. Colab Run-all loads `HeadingTablePolicy` (`tutorials/files/5.6/policy_heading_table.pt`). The heading reward uses world-frame root velocity.
 * **Motion clips load without pickle:** `load_motion_clip`, the CPU Mimic clip env and the full-body observation adapter open `.npz` files with `allow_pickle=False` (unpickling a downloaded file can run code). Names stored as bytes now read as text instead of `"b'name'"`, and a pickled name array is refused with instructions for re-saving it. SAR synergy metadata is written as strings, and older folders still load ([#522]).
 * **Pen twirl shows success on the target pen:** `myoHandPenTwirlFixed-v0` / `myoHandPenTwirlRandom-v0` add a `target_ball` site on the target pen that turns green while the task is solved and red otherwise, as in die reorientation. The yellow `eps_ball` (the pen's position goal and drop radius) moves to the hidden site group 4, so it no longer covers the pen being twirled ([#136]). Observations, rewards and dynamics are unchanged; the model gains one site.
@@ -493,3 +494,4 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#389]: https://github.com/MyoHub/myosuite/pull/389
 [#390]: https://github.com/MyoHub/myosuite/pull/390
 [#392]: https://github.com/MyoHub/myosuite/pull/392
+[#614]: https://github.com/MyoHub/myosuite/pull/614

@@ -248,7 +248,9 @@ def _restore_on_cpu(checkpointer: Any, path: str) -> Any:
     Without a target tree Orbax rebuilds each array's sharding from the device
     name saved in the checkpoint (``TFRT_CPU_0`` for ``mm-10m-2``), which JAX
     >= 0.10 no longer reports. A target on ``jax.devices("cpu")[0]`` restores
-    on any JAX version.
+    on any JAX version. The target also turns scalar leaves into JAX arrays and,
+    with x64 disabled, narrows 64-bit leaves to 32-bit; callers here cast to
+    float32 anyway.
     """
     if not hasattr(checkpointer, "metadata"):
         return checkpointer.restore(path)

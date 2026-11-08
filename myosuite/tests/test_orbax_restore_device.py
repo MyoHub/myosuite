@@ -16,7 +16,7 @@ from myosuite.integrations.musclemimic.fullbody_local_policy import _restore_on_
 
 pytestmark = pytest.mark.tier2
 
-# orbax-checkpoint and jax are optional (MuscleMimic extras); CI's base install has neither.
+# orbax-checkpoint and jax come only with the Linux `[mjx]` extra, which CI does not install.
 ocp = pytest.importorskip("orbax.checkpoint")
 jnp = pytest.importorskip("jax.numpy")
 
@@ -42,7 +42,8 @@ def _save_with_foreign_device(path: Path) -> dict[str, np.ndarray]:
 
 def test_plain_restore_fails_on_a_foreign_device_name(tmp_path: Path) -> None:
     _save_with_foreign_device(tmp_path / "ckpt")
-    with pytest.raises(ValueError, match="NOT_A_DEVICE_7"):
+    # orbax <= 0.11 names the missing device; 0.12 reports a topology mismatch instead.
+    with pytest.raises(ValueError, match="NOT_A_DEVICE_7|[Tt]opology"):
         ocp.StandardCheckpointer().restore(str(tmp_path / "ckpt"))
 
 
