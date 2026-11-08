@@ -19,7 +19,16 @@ force as in OpenSim's static optimization; on a free joint they are the residual
 actuators that carry the wrench ground reactions would supply (not penalised: no
 actuator acts on a free root, so they equal its rows of ``tau``). ``lam`` are the
 forces of the model's equality constraints (joint couplings), free multipliers.
-Joint limits and contacts are not modelled: their loads appear in the reserves.
+Joint limits are not modelled: their loads appear in the reserves.
+
+With ``contact_forces=True`` the optimization also estimates ground reactions
+for motions without force plates: ``+ J_c^T f`` with ``f >= 0`` on the edges of
+MuJoCo's friction pyramid at every contact with a world-fixed body (floor, chair,
+table) within ``contact_distance``, penalised by ``(f / F_contact)**2``. A
+contact's capacity fades linearly to zero across that distance, so forces do not
+jump as a foot lands or lifts off. Residuals are then penalised too, so contacts
+carry what they can and residuals flag what they cannot (pulling, too little
+friction, a missed contact).
 
 :class:`StaticOptimizer` solves one frame at a time and keeps its QP (OSQP)
 warm, so the same code serves offline clips and a live stream::
@@ -48,6 +57,10 @@ from myosuite.physics.inverse_dynamics import required_qfrc
 _CONSTRAINT_SCALE = 100.0
 # Cost of a unit constraint force: regularises without biasing the activations.
 _CONSTRAINT_WEIGHT = 1e-8
+_CONTACT_ROWS = (
+    mujoco.mjtConstraint.mjCNSTR_CONTACT_FRICTIONLESS,
+    mujoco.mjtConstraint.mjCNSTR_CONTACT_PYRAMIDAL,
+)
 
 
 @dataclass(frozen=True)
@@ -60,12 +73,23 @@ class StaticOptimizationConfig:
         min_activation: Lower bound of muscle activations.
         tolerance: OSQP's absolute and relative tolerance.
         max_iter: OSQP's iteration limit per frame.
+        contact_forces: Estimate contact forces with world-fixed bodies.
+        contact_distance: Gap up to which a contact can push [m].
+        contact_optimal_force: ``F_contact`` per pyramid edge [N]; ``None`` is
+            the body weight.
+        residual_optimal_force: Optimal force of the free-joint residuals when
+            contacts are estimated [N or N m]; ``None`` is a tenth of the body
+            weight. Without contacts residuals are not penalised.
     """
 
     reserve_optimal_force: float = 1.0
     min_activation: float = 0.0
     tolerance: float = 1e-7
     max_iter: int = 20000
+    contact_forces: bool = False
+    contact_distance: float = 0.01
+    contact_optimal_force: float | None = None
+    residual_optimal_force: float | None = None
 
 
 @dataclass(frozen=True)
@@ -78,10 +102,13 @@ class StaticOptimizationResult:
         actuator_force: ``(..., nu)`` actuator forces in MuJoCo's convention
             (muscles pull with negative values) [N].
         reserve: ``(..., nv)`` generalized force of reserve and residual actuators.
-        constraint_force: ``(..., nv)`` generalized force of equality constraints.
+        constraint_force: ``(..., nv)`` generalized force of equality constraints
+            and contacts.
         joint_torque: ``(..., nv)`` inverse dynamics ``tau``, the sum of the actuator,
             reserve and constraint generalized forces.
         status: ``(...)`` OSQP status, ``"solved"`` when converged.
+        contact_force: ``(..., nbody, 3)`` world-frame contact force on each body
+            (zero without ``contact_forces``); body 0 holds the reaction on the world.
     """
 
     activation: np.ndarray
@@ -90,6 +117,7 @@ class StaticOptimizationResult:
     constraint_force: np.ndarray
     joint_torque: np.ndarray
     status: np.ndarray
+    contact_force: np.ndarray
 
 
 class StaticOptimizer:
@@ -120,15 +148,23 @@ class StaticOptimizer:
                 f"Force clamps and multi-state actuators are not supported: {unsupported}"
             )
         # Dense Jacobians, the activation (not the next one) drives the force, no ctrl
-        # clamping, equality rows built, contacts skipped.
+        # clamping, equality rows built; contacts within reach on a friction pyramid.
         m.opt.jacobian = mujoco.mjtJacobian.mjJAC_DENSE
         m.actuator_actearly[:] = 0
         flags = mujoco.mjtDisableBit
         m.opt.disableflags = (
-            (m.opt.disableflags & ~int(flags.mjDSBL_CONSTRAINT))
-            | int(flags.mjDSBL_CONTACT)
-            | int(flags.mjDSBL_CLAMPCTRL)
-        )
+            m.opt.disableflags
+            & ~int(flags.mjDSBL_CONSTRAINT)
+            & ~int(flags.mjDSBL_CONTACT)
+        ) | int(flags.mjDSBL_CLAMPCTRL)
+        if cfg.contact_forces:
+            m.opt.cone = mujoco.mjtCone.mjCONE_PYRAMIDAL
+            m.geom_margin[:] = np.maximum(m.geom_margin, cfg.contact_distance)
+            m.geom_gap[:] = 0.0
+            m.pair_margin[:] = np.maximum(m.pair_margin, cfg.contact_distance)
+            m.pair_gap[:] = 0.0
+        else:
+            m.opt.disableflags |= int(flags.mjDSBL_CONTACT)
         self.model, self.data, self.config = m, mujoco.MjData(m), cfg
 
         self._stateful = m.actuator_actadr >= 0
@@ -143,13 +179,23 @@ class StaticOptimizer:
         bounded = np.isfinite(lo) & np.isfinite(hi)
         self._probe = (np.where(bounded, lo, 0.0), np.where(bounded, hi, 1.0))
 
+        body_weight = float(
+            m.body_mass[m.body_weldid != 0].sum() * np.linalg.norm(m.opt.gravity)
+        )
+        self._contact_force = cfg.contact_optimal_force or body_weight
         self._optimal_force = np.full(m.nv, cfg.reserve_optimal_force)
-        # Free-joint residuals are fixed by their rows (no actuator acts on a free
-        # root); leaving them out of the cost keeps the large ground reaction from
-        # swamping the solver's relative tolerance.
+        # Without contacts, free-joint residuals are fixed by their rows (no actuator
+        # acts on a free root); leaving them out of the cost keeps the large ground
+        # reaction from swamping the solver's relative tolerance.
         self._reserve_weight = np.ones(m.nv)
         for j in np.flatnonzero(m.jnt_type == mujoco.mjtJoint.mjJNT_FREE):
-            self._reserve_weight[m.jnt_dofadr[j] : m.jnt_dofadr[j] + 6] = 0.0
+            root = slice(m.jnt_dofadr[j], m.jnt_dofadr[j] + 6)
+            if cfg.contact_forces:
+                self._optimal_force[root] = (
+                    cfg.residual_optimal_force or 0.1 * body_weight
+                )
+            else:
+                self._reserve_weight[root] = 0.0
         self._solver: osqp.OSQP | None = None
         self._pattern: np.ndarray | None = None
 
@@ -162,7 +208,7 @@ class StaticOptimizer:
         return d.actuator_force.copy()
 
     def _solve_qp(
-        self, A: np.ndarray, lower: np.ndarray, upper: np.ndarray, n_eq: int
+        self, A: np.ndarray, lower: np.ndarray, upper: np.ndarray, weight: np.ndarray
     ) -> tuple[np.ndarray, str]:
         """Minimise the cost subject to ``lower <= A x <= upper``, warm-started.
 
@@ -180,11 +226,6 @@ class StaticOptimizer:
         cols, rows = np.nonzero(pattern.T)  # CSC order
         indptr = np.r_[0, np.cumsum(np.bincount(cols, minlength=A.shape[1]))]
         A_csc = sparse.csc_matrix((A[rows, cols], rows, indptr), shape=A.shape)
-        weight = np.r_[
-            np.ones(self.model.nu),
-            self._reserve_weight,
-            np.full(n_eq, _CONSTRAINT_WEIGHT),
-        ]
         self._solver = osqp.OSQP()
         self._solver.setup(
             sparse.diags(2.0 * weight, format="csc"),
@@ -237,25 +278,71 @@ class StaticOptimizer:
         )
         efc_J = d.efc_J[: d.nefc * m.nv].reshape(d.nefc, m.nv)
         J_eq = efc_J[d.efc_type[: d.nefc] == mujoco.mjtConstraint.mjCNSTR_EQUALITY]
-        n_eq = len(J_eq)
+        rows, capacity = self._contact_rows()
+        nu, nv, n_eq, n_c = m.nu, m.nv, len(J_eq), len(rows)
 
-        A = np.zeros((m.nv + m.nu, m.nu + m.nv + n_eq))
-        A[: m.nv, : m.nu] = moment.T * gain
-        A[: m.nv, m.nu : m.nu + m.nv] = np.diag(self._optimal_force)
-        A[: m.nv, m.nu + m.nv :] = J_eq.T * _CONSTRAINT_SCALE
-        A[m.nv :, : m.nu] = np.eye(m.nu)
+        # Variables: activations, reserves, equality forces, contact edge forces
+        # in units of each edge's capacity.
+        A = np.zeros((nv + nu + n_c, nu + nv + n_eq + n_c))
+        A[:nv, :nu] = moment.T * gain
+        A[:nv, nu : nu + nv] = np.diag(self._optimal_force)
+        A[:nv, nu + nv : nu + nv + n_eq] = J_eq.T * _CONSTRAINT_SCALE
+        A[:nv, nu + nv + n_eq :] = efc_J[rows].T * capacity
+        A[nv : nv + nu, :nu] = np.eye(nu)
+        A[nv + nu :, nu + nv + n_eq :] = np.eye(n_c)
         rhs = tau - moment.T @ bias
-        x, status = self._solve_qp(A, np.r_[rhs, self._lo], np.r_[rhs, self._hi], n_eq)
+        lower = np.r_[rhs, self._lo, np.zeros(n_c)]
+        upper = np.r_[rhs, self._hi, np.full(n_c, np.inf)]
+        weight = np.r_[
+            np.ones(nu),
+            self._reserve_weight,
+            np.full(n_eq, _CONSTRAINT_WEIGHT),
+            np.ones(n_c),
+        ]
+        x, status = self._solve_qp(A, lower, upper, weight)
 
-        a = np.clip(x[: m.nu], self._lo, self._hi)
+        a = np.clip(x[:nu], self._lo, self._hi)
+        f = capacity * np.maximum(x[nu + nv + n_eq :], 0.0)
         return StaticOptimizationResult(
             activation=a,
             actuator_force=gain * a + bias,
-            reserve=self._optimal_force * x[m.nu : m.nu + m.nv],
-            constraint_force=J_eq.T @ (_CONSTRAINT_SCALE * x[m.nu + m.nv :]),
+            reserve=self._optimal_force * x[nu : nu + nv],
+            constraint_force=J_eq.T @ (_CONSTRAINT_SCALE * x[nu + nv : nu + nv + n_eq])
+            + efc_J[rows].T @ f,
             joint_torque=tau,
             status=np.asarray(status),
+            contact_force=self._body_contact_forces(rows, f),
         )
+
+    def _contact_rows(self) -> tuple[np.ndarray, np.ndarray]:
+        """Pyramid rows of contacts with world-fixed bodies and each row's capacity [N]."""
+        m, d = self.model, self.data
+        if not self.config.contact_forces:
+            return np.zeros(0, dtype=int), np.zeros(0)
+        rows = np.flatnonzero(np.isin(d.efc_type[: d.nefc], _CONTACT_ROWS))
+        con = d.efc_id[rows]
+        weld = m.body_weldid[m.geom_bodyid]
+        ground = (weld[d.contact.geom1[con]] == 0) | (weld[d.contact.geom2[con]] == 0)
+        rows, con = rows[ground], con[ground]
+        reach = np.maximum(d.contact.dist[con], 0.0) / self.config.contact_distance
+        return rows, self._contact_force * np.clip(1.0 - reach, 1e-3, 1.0)
+
+    def _body_contact_forces(self, rows: np.ndarray, f: np.ndarray) -> np.ndarray:
+        """World-frame contact force on each body from the pyramid edge forces *f*."""
+        m, d = self.model, self.data
+        out = np.zeros((m.nbody, 3))
+        if not len(rows):
+            return out
+        d.efc_force[: d.nefc] = 0.0
+        d.efc_force[rows] = f
+        wrench = np.zeros(6)
+        for c in np.unique(d.efc_id[rows]):
+            mujoco.mj_contactForce(m, d, int(c), wrench)
+            # Force of geom1 on geom2 in the contact frame, whose rows are its axes.
+            force = d.contact.frame[c].reshape(3, 3).T @ wrench[:3]
+            out[m.geom_bodyid[d.contact.geom2[c]]] += force
+            out[m.geom_bodyid[d.contact.geom1[c]]] -= force
+        return out
 
 
 def static_optimization(
