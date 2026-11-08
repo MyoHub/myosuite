@@ -40,19 +40,21 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def _peak_force(model: mujoco.MjModel) -> np.ndarray:
-    """Per-actuator peak force ``gainprm[:, 2]`` as MuJoCo applies it.
+def _peak_force(model: mujoco.MjModel, prm: np.ndarray | None = None) -> np.ndarray:
+    """Per-actuator peak force ``prm[:, 2]`` as MuJoCo applies it.
 
-    A negative muscle peak force (``force="-1"``) means automatic: MuJoCo
-    uses ``gainprm[3] / acc0`` at runtime, so scaling the stored value would
-    leave the force unchanged.
+    *prm* is ``actuator_gainprm`` (default, the active force) or
+    ``actuator_biasprm`` (the passive force). A negative muscle peak force
+    (``force="-1"``) means automatic: MuJoCo uses ``prm[3] / acc0`` at runtime,
+    so scaling the stored value would leave the force unchanged.
     """
     import mujoco as _mujoco  # noqa: PLC0415
 
-    force = np.array(model.actuator_gainprm[:, 2], dtype=np.float64)
+    prm = model.actuator_gainprm if prm is None else prm
+    force = np.array(prm[:, 2], dtype=np.float64)
     auto = (force < 0) & (model.actuator_gaintype == _mujoco.mjtGain.mjGAIN_MUSCLE)
     if np.any(auto):
-        force[auto] = model.actuator_gainprm[auto, 3] / np.maximum(
+        force[auto] = prm[auto, 3] / np.maximum(
             model.actuator_acc0[auto], _mujoco.mjMINVAL
         )
     return force
