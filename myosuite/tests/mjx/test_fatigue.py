@@ -353,7 +353,7 @@ def test_rest_multiplier_applies_only_at_rest_jax():
     cpu.reset(fatigue_reset_vec=np.full(na, 0.3))
     MA, MR, MF = jp.zeros(na), jp.full(na, 0.7), jp.full(na, 0.3)
     block = np.repeat([0.5, 0.2, 0.0], 500)
-    mult, rest, cpu_err = [], [], 0.0
+    mult, rest, steady, cpu_err = [], [], [], 0.0
     for tl in np.tile(block, 2):
         TL = np.full(na, tl)
         ma, mf = np.asarray(MA, np.float64), np.asarray(MF, np.float64)
@@ -361,12 +361,14 @@ def test_rest_multiplier_applies_only_at_rest_jax():
         dmf_dt = (np.asarray(MF, np.float64) - mf) / dt
         mult.append((F * ma - dmf_dt) / (R * mf))
         rest.append(TL == 0.0)
+        # dMF integrates the changing MA: read r only where MA is steady
+        steady.append(np.abs(np.asarray(MA, np.float64) - ma) < 1e-4)
         cpu_state = np.stack(cpu.compute_act(TL, dt=dt))
         jax_state = np.stack([np.asarray(MA), np.asarray(MR), np.asarray(MF)])
         cpu_err = max(cpu_err, float(np.max(np.abs(jax_state - cpu_state))))
-    mult, rest = np.array(mult), np.array(rest)
-    np.testing.assert_allclose(mult[rest], r, rtol=0.05)
-    np.testing.assert_allclose(mult[~rest], 1.0, atol=0.3)
+    mult, rest, steady = np.array(mult), np.array(rest), np.array(steady)
+    np.testing.assert_allclose(mult[rest & steady], r, rtol=0.05)
+    np.testing.assert_allclose(mult[~rest & steady], 1.0, atol=0.3)
     assert cpu_err < 2e-5, cpu_err  # float32 vs float64 over 3000 steps
 
 

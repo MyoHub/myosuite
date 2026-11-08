@@ -139,6 +139,83 @@ def _fatigue_state_stepper(backend: str, n: int) -> Any:
 _FATIGUE_CTRL_DTS = (0.01, 0.02, 0.025)
 
 
+# (MA, MF, TL) covering each controller regime and the switches between them, for
+# the elbow parameters: activation, deactivation past TL, rest, a negative command,
+# MR-limited recruitment ending (MF falls below 1 - TL) and starting (endurance).
+_EXACT_STEP_CASES = np.array(
+    [
+        [0.0, 0.0, 0.4],
+        [0.6, 0.1, 0.2],
+        [0.5, 0.3, 0.5],
+        [0.4, 0.2, 0.0],
+        [0.3, 0.5, -0.5],
+        [0.05, 0.9, 0.15],
+        [0.1, 0.3, 0.9],
+        [0.45, 0.5, 0.48],
+        [0.0, 0.0, 0.7],
+    ]
+)
+_ELBOW = {"F": 0.01086, "R": 0.00225, "r": 4.93, "tauact": 0.01, "taudeact": 0.04}
+
+
+def _exact_step(
+    backend: str,
+    ma: np.ndarray,
+    mf: np.ndarray,
+    tl: np.ndarray,
+    dt: float,
+    **params: Any,
+) -> tuple[np.ndarray, ...]:
+    """``three_cc_r_step`` with the elbow parameters on numpy, torch or jax (float32)."""
+    from myosuite.core.muscle_conditions import three_cc_r_step
+
+    kw = {k: np.broadcast_to(v, ma.shape) for k, v in {**_ELBOW, **params}.items()}
+    if backend == "numpy":
+        return three_cc_r_step(np, ma, mf, tl, dt=dt, **kw)
+    if backend == "jax":
+        jax = pytest.importorskip("jax")
+        jnp = jax.numpy
+        j = lambda x: jnp.asarray(np.asarray(x), dtype=jnp.float32)  # noqa: E731
+        # jit with dt traced, as the MJX FatigueWrapper calls it
+        step = jax.jit(lambda a, f, c, d, p: three_cc_r_step(jnp, a, f, c, dt=d, **p))
+        out = step(j(ma), j(mf), j(tl), j(dt), {k: j(v) for k, v in kw.items()})
+        return tuple(np.asarray(x, dtype=np.float64) for x in out)
+    torch = pytest.importorskip("torch")
+    t = lambda x: torch.tensor(np.asarray(x), dtype=torch.float32)  # noqa: E731
+    kw = {k: t(v) for k, v in kw.items()}
+    out = three_cc_r_step(torch, t(ma), t(mf), t(tl), dt=dt, **kw)
+    return tuple(x.double().numpy() for x in out)
+
+
+def _frozen_rate_reference(ma: float, mf: float, tl: float, dt: float) -> np.ndarray:
+    """``(MA, MR, MF)`` from solve_ivp of the 3CC-r ODE, LD and LR frozen at ``ma``."""
+    from scipy.integrate import solve_ivp
+
+    from myosuite.core.muscle_conditions import FATIGUE_REST_THRESHOLD
+
+    p = _ELBOW
+    ld = 1.0 / (p["tauact"] * (0.5 + 1.5 * ma))
+    lr = (0.5 + 1.5 * ma) / p["taudeact"]
+    rho = p["R"] * (p["r"] if tl <= FATIGUE_REST_THRESHOLD else 1.0)
+
+    def rhs(_: float, y: np.ndarray) -> list[float]:
+        a, f = y
+        c = lr * (tl - a) if a >= tl else ld * min(tl - a, 1.0 - a - f)
+        return [c - p["F"] * a, p["F"] * a - rho * f]
+
+    def empty(_: float, y: np.ndarray) -> float:  # MA reaches 0 under TL < 0
+        return y[0] if tl < 0 else 1.0
+
+    empty.terminal = True  # type: ignore[attr-defined]
+    sol = solve_ivp(
+        rhs, (0.0, dt), [ma, mf], method="LSODA", rtol=1e-11, atol=1e-13, events=empty
+    )
+    a, f = sol.y[:, -1]
+    if sol.status == 1:  # MA stays at 0, MF decays
+        a, f = 0.0, f * np.exp(-rho * (dt - sol.t[-1]))
+    return np.array([a, 1.0 - a - f, f])
+
+
 def _rest_protocol(n: int = 3) -> np.ndarray:
     """Target loads at 20 ms: (10 s at 50%, 10 s at 20%, 10 s at rest) x 2."""
     block = np.repeat([0.5, 0.2, 0.0], 500)
@@ -182,7 +259,11 @@ def _rest_protocol_trace(backend: str, loads: np.ndarray, dt: float = 0.02) -> d
 
 
 def _effective_recovery_multiplier(trace: dict) -> np.ndarray:
-    """``rR / R`` of each step, from ``dMF = (F MA - rR MF) dt``."""
+    """``rR / R`` of each step, from ``dMF = (F MA - rR MF) dt``.
+
+    The step integrates MF over the changing MA, so this holds where MA is
+    (nearly) constant over the step.
+    """
     ma, mf = trace["MA"], trace["MF"]
     dmf_dt = np.diff(mf, axis=0) / trace["dt"]
     return (trace["F"] * ma[:-1] - dmf_dt) / (trace["R"] * mf[:-1])
@@ -283,11 +364,12 @@ class TestCumulativeFatigue:
         loads = _rest_protocol()
         trace = _rest_protocol_trace(backend, loads)
         mult = _effective_recovery_multiplier(trace)
+        steady = np.abs(np.diff(trace["MA"], axis=0)) < 1e-4
         rest = loads == 0.0
         relaxing = (trace["MA"][:-1] >= loads) & ~rest
-        assert relaxing.sum() > 100, "protocol must relax under load"
-        np.testing.assert_allclose(mult[rest], trace["r"], rtol=0.05)
-        np.testing.assert_allclose(mult[~rest], 1.0, atol=0.3)
+        assert (relaxing & steady).sum() > 10, "protocol must relax under load"
+        np.testing.assert_allclose(mult[rest & steady], trace["r"], rtol=0.05)
+        np.testing.assert_allclose(mult[~rest & steady], 1.0, atol=0.3)
 
     @pytest.mark.parametrize("backend", ["numpy", "torch"])
     def test_near_zero_command_counts_as_rest(self, backend: str) -> None:
@@ -306,13 +388,6 @@ class TestCumulativeFatigue:
         np.testing.assert_allclose(
             _effective_recovery_multiplier(above)[30:], 1.0, atol=0.3
         )
-
-    def test_jax_rest_threshold_matches_core(self) -> None:
-        pytest.importorskip("jax")
-        from myosuite.core.muscle_conditions import FATIGUE_REST_THRESHOLD
-        from myosuite.physics import fatigue_jax
-
-        assert fatigue_jax._REST_THRESHOLD == FATIGUE_REST_THRESHOLD
 
     @pytest.mark.parametrize("backend", ["numpy", "torch"])
     def test_negative_command_counts_as_rest(self, backend: str) -> None:
@@ -346,19 +421,66 @@ class TestCumulativeFatigue:
                 fine.compute_act(tl, dt=0.002)
         np.testing.assert_allclose(coarse.MF, fine.MF, rtol=0.02)
 
-    def test_control_steps_take_one_integration_step(self) -> None:
-        from myosuite.core.muscle_conditions import MAX_FATIGUE_SUBSTEP, _substeps
+    @pytest.mark.parametrize("dt", (*_FATIGUE_CTRL_DTS, 1.0, 60.0, 300.0))
+    @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+    def test_step_is_exact_for_frozen_rates(self, backend: str, dt: float) -> None:
+        # One step of any length is the exact solution of the 3CC-r ODE with LD, LR
+        # held at their start values, through every regime switch inside the step.
+        ma0, mf0, tl = _EXACT_STEP_CASES.T
+        got = np.stack(_exact_step(backend, ma0, mf0, tl, dt))
+        want = np.stack(
+            [_frozen_rate_reference(*c, dt) for c in _EXACT_STEP_CASES], axis=1
+        )
+        # float64 matches to < 1e-9, float32 to ~1e-7
+        np.testing.assert_allclose(got, want, atol=1e-8 if backend == "numpy" else 1e-6)
+        assert np.all((got >= 0) & (got <= 1))
+        np.testing.assert_allclose(
+            got.sum(0), 1.0, atol=1e-12 if backend == "numpy" else 1e-6
+        )
 
-        for dt in (*_FATIGUE_CTRL_DTS, MAX_FATIGUE_SUBSTEP):
-            assert _substeps(dt) == 1
-        assert _substeps(1.01 * MAX_FATIGUE_SUBSTEP) == 2
-        assert _substeps(300.0) == round(300.0 / MAX_FATIGUE_SUBSTEP)
+    @pytest.mark.parametrize("dt", (0.02, 1.0, 30.0))
+    @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+    def test_step_keeps_the_regime_of_its_equilibrium(
+        self, backend: str, dt: float
+    ) -> None:
+        # A step starting just inside MF = 1 - TL stays in the regime that holds its
+        # equilibrium. The fast MA transient used to read as a slow-mode crossing: an
+        # MR-limited step switched to free recruitment at once (MA overshot to ~TL,
+        # MF was clipped), and a free step with a free equilibrium switched to limited.
+        cases = np.array(
+            [
+                [0.3776, 0.1 + 1e-6, 0.9],  # MR-limited, just past the boundary
+                [0.3776, 0.1 + 1e-4, 0.9],
+                [0.0, 0.4 + 1e-5, 0.6],
+                [0.149994, 0.85 - 1e-10, 0.15],  # free, F MA* < R (1 - TL); float64
+            ]
+        )
+        ma0, mf0, tl = cases.T
+        got = np.stack(_exact_step(backend, ma0, mf0, tl, dt))
+        want = np.stack([_frozen_rate_reference(*c, dt) for c in cases], axis=1)
+        np.testing.assert_allclose(got, want, atol=1e-8 if backend == "numpy" else 1e-6)
+
+    @pytest.mark.filterwarnings("error")
+    @pytest.mark.parametrize("dt", (0.02, 300.0))
+    @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+    def test_step_degenerate_rates_stay_finite(self, backend: str, dt: float) -> None:
+        # No fatigue (F = 0), no recovery (R = 0) and NaN commands (C = 0)
+        ma, mf = np.array([0.2, 0.2, 0.0, 0.3]), np.array([0.3, 0.3, 0.5, 0.2])
+        tl = np.array([0.6, 0.9, 0.95, np.nan])
+        for params in ({"F": 0.0}, {"R": 0.0}, {"F": 0.0, "R": 0.0}):
+            got = np.stack(_exact_step(backend, ma, mf, tl, dt, **params))
+            assert np.all((got >= 0) & (got <= 1)), params
+            np.testing.assert_allclose(got.sum(0), 1.0, atol=1e-6)
+        no_fatigue = _exact_step(backend, ma, mf, tl, dt, F=0.0)
+        recovered = mf[:3] * np.exp(-_ELBOW["R"] * dt)  # MF only recovers
+        np.testing.assert_allclose(no_fatigue[2][:3], recovered, rtol=1e-5)
 
     @pytest.mark.parametrize("backend", ["numpy", "torch"])
     def test_long_step_matches_control_steps(self, backend: str) -> None:
-        # One explicit step holds the start-of-step MA for the whole interval:
+        # One explicit step held the start-of-step MA for the whole interval:
         # a 120 s rest passed in one call kept fatiguing the muscle (MF rose)
-        # instead of recovering it. Long steps are now split into sub-steps.
+        # instead of recovering it. The exact step integrates MA over the step;
+        # the rest differs from 20 ms steps only by the frozen LR (2e-4).
         hold, rest = np.full(3, 0.4), np.zeros(3)
         one_call = _fatigue_state_stepper(backend, 3)
         control = _fatigue_state_stepper(backend, 3)
@@ -369,10 +491,10 @@ class TestCumulativeFatigue:
         for _ in range(6000):
             reference = control(rest, 0.02)
         assert np.all(mf < mf_hold)
-        np.testing.assert_allclose(mf, reference[2], rtol=0.01)
-        # float32 torch state drifts ~2e-5 from MA + MR + MF = 1 over 5400 steps.
+        np.testing.assert_allclose(mf, reference[2], rtol=1e-3)
+        # MR = 1 - MA - MF, so the sum stays 1 to rounding.
         np.testing.assert_allclose(
-            ma + mr + mf, 1.0, atol=1e-4 if backend == "torch" else 1e-9
+            ma + mr + mf, 1.0, atol=1e-6 if backend == "torch" else 1e-12
         )
         assert np.all((ma >= 0) & (mr >= 0) & (mf >= 0))
 
