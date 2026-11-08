@@ -181,7 +181,6 @@ packages = { find = { include = ["myosuite", "myosuite.*"], exclude = ["myosuite
     "core/**",
     "envs/**",
     "integrations/**",
-    "learning/**",
     "logger/**",
     "physics/**",
     "robot/**",
