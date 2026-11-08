@@ -112,14 +112,32 @@ MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
 }
 
 FATIGUE_REST_THRESHOLD = 0.01
-"""Commands ``TL <= FATIGUE_REST_THRESHOLD`` count as rest: recovery runs at ``r R``.
+"""Default rest threshold: commands ``TL <= FATIGUE_REST_THRESHOLD`` count as rest.
 
-Rakshit et al. (2021, Eq. 7) define rest as a zero command. A command through the muscle
-sigmoid never reaches zero (smallest value 0.00055), so a small threshold makes a relaxed
-muscle count as resting, as a muscle commanded to 0 does.
+At rest recovery runs at ``r R``. Rakshit et al. (2021, Eq. 7) define rest as a zero
+command. A command through the muscle sigmoid never reaches zero (smallest value
+0.00055), so a small threshold makes a relaxed muscle count as resting, as a muscle
+commanded to 0 does. ``CumulativeFatigue`` and ``TorchFatigueState`` take another
+value as ``rest_threshold``, e.g. above the noise floor of estimated excitations.
 """
 
 _TINY = 1e-20  # floor for rates and denominators (R = 0, F = 0, empty segments)
+
+
+def _rest_threshold(value: float) -> float:
+    """Validate a rest threshold: a finite scalar in ``[0, 1)``.
+
+    Raises:
+        ValueError: If *value* is not a scalar or lies outside ``[0, 1)`` (NaN included).
+    """
+    if np.ndim(value) != 0:
+        raise ValueError(
+            f"rest_threshold must be a scalar, got shape {np.shape(value)}"
+        )
+    threshold = float(value)
+    if not 0.0 <= threshold < 1.0:
+        raise ValueError(f"rest_threshold must lie in [0, 1), got {value!r}")
+    return threshold
 
 
 def _nonzero(xp: Any, x: Any) -> Any:
@@ -208,6 +226,7 @@ def three_cc_r_step(
     tauact: Any,
     taudeact: Any,
     dt: float,
+    rest_threshold: float = FATIGUE_REST_THRESHOLD,
 ) -> tuple[Any, Any, Any]:
     """Exact 3CC-r step of any length ``dt`` under a constant command ``TL``.
 
@@ -230,7 +249,7 @@ def three_cc_r_step(
     ``C`` is continuous across ``MF = 1 - TL``, so the switch between the last two
     regimes is placed where the slow mode crosses it (closed form; the neglected
     fast transient changes the state at second order). A step has at most three
-    segments. ``rho = r R`` at rest (``TL <= FATIGUE_REST_THRESHOLD``), else ``R``.
+    segments. ``rho = r R`` at rest (``TL <= rest_threshold``), else ``R``.
     A NaN command keeps ``C = 0``, as the masks of the explicit step did.
 
     The frozen rates are the remaining error against MuJoCo's MA-dependent rates:
@@ -248,11 +267,12 @@ def three_cc_r_step(
         tauact: Activation time constants [s].
         taudeact: Deactivation time constants [s].
         dt: Step length [s].
+        rest_threshold: Commands ``TL <= rest_threshold`` count as rest.
 
     Returns:
         ``(MA, MR, MF)`` after ``dt``, each in ``[0, 1]`` and summing to one.
     """
-    rho = xp.where(TL <= FATIGUE_REST_THRESHOLD, r * R, R)
+    rho = xp.where(TL <= rest_threshold, r * R, R)
     rho = xp.where(rho > _TINY, rho, _TINY)
     nan = xp.isnan(TL)
     TL = xp.where(nan, 0.0, TL)
@@ -489,10 +509,11 @@ class CumulativeFatigue:
     ``dMR/dt = -C(t) + r(k, TL) x R x MF``,
     ``dMF/dt = F x MA - r(k, TL) x R x MF`` with
     ``r = k if TL = 0`` and ``r = 1 if TL > 0``.  Rest is
-    ``TL <= FATIGUE_REST_THRESHOLD`` (0.01): a command of (nearly) zero, plus the
-    negative commands of ``[-1, 1]`` control ranges, which MuJoCo's muscle dynamics
-    clamp to zero excitation.  The threshold lets a command mapped through the
-    muscle sigmoid, which never reaches exactly zero, rest.
+    ``TL <= rest_threshold`` (default :data:`FATIGUE_REST_THRESHOLD`, 0.01): a
+    command of (nearly) zero, plus the negative commands of ``[-1, 1]`` control
+    ranges, which MuJoCo's muscle dynamics clamp to zero excitation.  The threshold
+    lets a command mapped through the muscle sigmoid, which never reaches exactly
+    zero, rest.
 
     Args:
         mj_model: Compiled MuJoCo model.  Used to read muscle actuator
@@ -512,6 +533,13 @@ class CumulativeFatigue:
             JAX models in ``physics/fatigue_jax.py`` also use.
         muscles: Muscle actuators to track (ids or names), in the order the
             excitations are passed; default every muscle in model order.
+        rest_threshold: Commands ``TL <= rest_threshold`` count as rest, where the
+            recovery multiplier ``r`` applies. Raise it above the noise floor of
+            estimated (e.g. tracked) excitations so that a relaxed muscle rests.
+            Must lie in ``[0, 1)``.
+
+    Raises:
+        ValueError: If *rest_threshold* is outside ``[0, 1)``.
 
     Example:
         >>> fatigue = CumulativeFatigue(mj_model, frame_skip=5)
@@ -528,7 +556,9 @@ class CumulativeFatigue:
         seed: int | None = None,
         use_uniform_params: bool = False,
         muscles: Sequence[int | str] | None = None,
+        rest_threshold: float = FATIGUE_REST_THRESHOLD,
     ) -> None:
+        self._rest_threshold = _rest_threshold(rest_threshold)
         self._dt = float(mj_model.opt.timestep) * int(frame_skip)
         self.muscle_ids = _muscle_ids(mj_model, muscles)  # actuator ids, state order
         self._tauact, self._taudeact = _muscle_time_constants(mj_model, self.muscle_ids)
@@ -601,6 +631,7 @@ class CumulativeFatigue:
             tauact=self._tauact,
             taudeact=self._taudeact,
             dt=_dt,
+            rest_threshold=self._rest_threshold,
         )
         self._MA[:], self._MR[:], self._MF[:] = MA, MR, MF
         return self._MA, self._MR, self._MF
@@ -724,6 +755,10 @@ class CumulativeFatigue:
     def r(self) -> np.ndarray:
         return self._r
 
+    @property
+    def rest_threshold(self) -> float:
+        return self._rest_threshold
+
     # ------------------------------------------------------------------
     # Legacy coefficient setters
     # ------------------------------------------------------------------
@@ -736,6 +771,10 @@ class CumulativeFatigue:
 
     def set_RecoveryMultiplier(self, r: float | np.ndarray) -> None:
         self._r = r * np.ones(self.na) if np.isscalar(r) else np.asarray(r)  # type: ignore[assignment, operator]
+
+    def set_RestThreshold(self, rest_threshold: float) -> None:
+        """Set the command at or below which a muscle rests (see ``rest_threshold``)."""
+        self._rest_threshold = _rest_threshold(rest_threshold)
 
 
 # ---------------------------------------------------------------------------
@@ -761,8 +800,14 @@ class TorchFatigueState:
         device: Torch device string (e.g. ``"cpu"``, ``"cuda:0"``).
         F: Fatigue rate — scalar or array of length *n_muscles*.
         R: Recovery rate — scalar or array of length *n_muscles*.
-        r: Recovery multiplier, applied only at rest (``TL <= FATIGUE_REST_THRESHOLD``, Rakshit
+        r: Recovery multiplier, applied only at rest (``TL <= rest_threshold``, Rakshit
             et al. 2021, Eq. 7; see :class:`CumulativeFatigue`) — scalar or array.
+        tauact: Activation time constant [s] — scalar or array.
+        taudeact: Deactivation time constant [s] — scalar or array.
+        rest_threshold: Commands at or below it count as rest; in ``[0, 1)``.
+
+    Raises:
+        ValueError: If *rest_threshold* is outside ``[0, 1)``.
     """
 
     def __init__(
@@ -775,8 +820,11 @@ class TorchFatigueState:
         r: float | np.ndarray = _DEFAULT_r,
         tauact: float | np.ndarray = 0.01,
         taudeact: float | np.ndarray = 0.04,
+        rest_threshold: float = FATIGUE_REST_THRESHOLD,
     ) -> None:
         import torch  # noqa: PLC0415
+
+        self._rest_threshold = _rest_threshold(rest_threshold)
 
         def _to_tensor(v: float | np.ndarray) -> Any:
             arr = np.broadcast_to(np.asarray(v, dtype=np.float32), (n_muscles,)).copy()
@@ -806,6 +854,7 @@ class TorchFatigueState:
         sex: str | None = None,
         use_uniform_params: bool = False,
         muscles: Sequence[int | str] | None = None,
+        rest_threshold: float = FATIGUE_REST_THRESHOLD,
     ) -> TorchFatigueState:
         """Build a :class:`TorchFatigueState` from a compiled MuJoCo model.
 
@@ -823,12 +872,19 @@ class TorchFatigueState:
                 every muscle, as :class:`CumulativeFatigue` does.
             muscles: Muscle actuators to track (ids or names), in column order;
                 default every muscle in model order.
+            rest_threshold: Commands at or below it count as rest (see
+                :class:`CumulativeFatigue`); in ``[0, 1)``.
         """
         ids = _muscle_ids(mj_model, muscles)
         tauact, taudeact = _muscle_time_constants(mj_model, ids)
         na = int(tauact.size)
         if na == 0:
-            return cls(num_envs=num_envs, n_muscles=mj_model.nu, device=device)
+            return cls(
+                num_envs=num_envs,
+                n_muscles=mj_model.nu,
+                device=device,
+                rest_threshold=rest_threshold,
+            )
         if use_uniform_params:
             F_arr = np.full(na, _UNIFORM_PARAMS["F"])
             R_arr = np.full(na, _UNIFORM_PARAMS["R"])
@@ -844,6 +900,7 @@ class TorchFatigueState:
             r=r_arr,
             tauact=tauact,
             taudeact=taudeact,
+            rest_threshold=rest_threshold,
         )
 
     # ------------------------------------------------------------------
@@ -878,9 +935,18 @@ class TorchFatigueState:
             tauact=self._tauact,
             taudeact=self._taudeact,
             dt=dt,
+            rest_threshold=self._rest_threshold,
         )
         # Same as CPU CumulativeFatigue: the active compartment is the ctrl.
         return self.MA
+
+    @property
+    def rest_threshold(self) -> float:
+        return self._rest_threshold
+
+    def set_RestThreshold(self, rest_threshold: float) -> None:
+        """Set the command at or below which a muscle rests (see ``rest_threshold``)."""
+        self._rest_threshold = _rest_threshold(rest_threshold)
 
     # ------------------------------------------------------------------
     # Reset
