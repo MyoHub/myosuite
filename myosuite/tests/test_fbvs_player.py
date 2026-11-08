@@ -31,6 +31,7 @@ _SHIPPED = (
     / "5.6"
     / "policy_heading_table.pt"
 )
+_BC = _SHIPPED.with_name("policy_bc_best.pt")
 
 
 def _fbvs_obs(data: mujoco.MjData, opponent_xy: np.ndarray, runner: bool) -> np.ndarray:
@@ -104,6 +105,22 @@ def test_fbvs_trained_checkpoint_is_used_as_is(tmp_path: Path) -> None:
     assert player(torch.zeros(2, FBVS_OBS_DIM)).shape == (2, 354)
 
 
+def test_policy_key_layout_is_accepted(tmp_path: Path) -> None:
+    ckpt = tmp_path / "walker.pt"
+    torch.save({"policy": ActorCritic(obs_dim=528).state_dict()}, ckpt)
+    assert isinstance(load_fbvs_player(ckpt).adapter, FbvsDirectionalAdapter)
+
+
+def test_colab_default_bc_walker_exports(tmp_path: Path) -> None:
+    pytest.importorskip("onnx")
+    if not _BC.is_file():
+        pytest.skip("needs a source checkout")
+    player = load_fbvs_player(_BC)
+    assert isinstance(player.adapter, FbvsDirectionalAdapter)
+    path = export_fbvs_onnx(_BC, tmp_path / "bc.onnx")
+    assert path.stat().st_size > 1000
+
+
 def test_raw_528_walker_gets_the_adapter(tmp_path: Path) -> None:
     ckpt = tmp_path / "walker.pt"
     torch.save(ActorCritic(obs_dim=528).state_dict(), ckpt)
@@ -116,4 +133,11 @@ def test_unknown_obs_dim_is_rejected(tmp_path: Path) -> None:
     ckpt = tmp_path / "odd.pt"
     torch.save(ActorCritic(obs_dim=100).state_dict(), ckpt)
     with pytest.raises(ValueError, match="obs_dim"):
+        load_fbvs_player(ckpt)
+
+
+def test_non_actor_checkpoint_lists_its_keys(tmp_path: Path) -> None:
+    ckpt = tmp_path / "other.pt"
+    torch.save({"encoder.weight": torch.zeros(2, 2)}, ckpt)
+    with pytest.raises(ValueError, match="encoder.weight"):
         load_fbvs_player(ckpt)

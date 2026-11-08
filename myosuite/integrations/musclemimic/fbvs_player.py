@@ -24,6 +24,7 @@ from myosuite.envs.myo.tasks.mimic.policy import (
     HeadingTablePolicy,
     load_directional_policy,
 )
+from myosuite.physics.quat import quat_yaw
 
 FBVS_OBS_DIM = 546
 DIRECTIONAL_OBS_DIM = 528
@@ -42,7 +43,7 @@ class FbvsDirectionalAdapter(nn.Module):
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         qpos, qvel = obs[:, 0:89], obs[:, 89:177]
         w, x, y, z = qpos[:, 3], qpos[:, 4], qpos[:, 5], qpos[:, 6]
-        yaw = torch.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+        yaw = quat_yaw(torch, qpos[:, 3:7])
         c, s = torch.cos(-yaw), torch.sin(-yaw)
         roll = torch.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
         pitch = torch.asin((2 * (w * y - z * x)).clamp(-1.0, 1.0))
@@ -105,18 +106,31 @@ def load_fbvs_player(checkpoint: str | Path) -> FbvsPlayer:
 
     Args:
         checkpoint: A heading-table package, or an :class:`ActorCritic` state
-            dict on the 528-d directional observation (wrapped with the
-            adapter) or on the 546-d FBVs observation (used as is).
+            dict (bare, or under ``model_state_dict`` / ``policy``) on the 528-d
+            directional observation (wrapped with the adapter) or on the 546-d
+            FBVs observation (used as is).
 
     Returns:
         The player in eval mode.
+
+    Raises:
+        ValueError: If the checkpoint holds no ``ActorCritic`` weights or its
+            observation size is neither 528 nor 546.
     """
     state = torch.load(str(checkpoint), map_location="cpu", weights_only=True)
     if isinstance(state, dict) and state.get("kind") == "heading_table":
         return FbvsPlayer(
             HeadingTablePolicy.load(checkpoint), FbvsDirectionalAdapter()
         ).eval()
-    weights = state.get("model_state_dict", state) if isinstance(state, dict) else state
+    weights = state
+    if isinstance(state, dict):
+        weights = state.get("model_state_dict") or state.get("policy") or state
+    if not isinstance(weights, dict) or "trunk.0.weight" not in weights:
+        keys = sorted(weights)[:10] if isinstance(weights, dict) else type(weights)
+        raise ValueError(
+            f"{checkpoint} is not a heading-table package or ActorCritic state dict "
+            f"(no 'trunk.0.weight'; keys: {keys})"
+        )
     obs_dim = int(weights["trunk.0.weight"].shape[1])
     if obs_dim == DIRECTIONAL_OBS_DIM:
         return FbvsPlayer(
