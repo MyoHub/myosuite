@@ -166,12 +166,20 @@ def _exact_step(
     dt: float,
     **params: Any,
 ) -> tuple[np.ndarray, ...]:
-    """``three_cc_r_step`` with the elbow parameters on numpy or torch (float32)."""
+    """``three_cc_r_step`` with the elbow parameters on numpy, torch or jax (float32)."""
     from myosuite.core.muscle_conditions import three_cc_r_step
 
     kw = {k: np.broadcast_to(v, ma.shape) for k, v in {**_ELBOW, **params}.items()}
     if backend == "numpy":
         return three_cc_r_step(np, ma, mf, tl, dt=dt, **kw)
+    if backend == "jax":
+        jax = pytest.importorskip("jax")
+        jnp = jax.numpy
+        j = lambda x: jnp.asarray(np.asarray(x), dtype=jnp.float32)  # noqa: E731
+        # jit with dt traced, as the MJX FatigueWrapper calls it
+        step = jax.jit(lambda a, f, c, d, p: three_cc_r_step(jnp, a, f, c, dt=d, **p))
+        out = step(j(ma), j(mf), j(tl), j(dt), {k: j(v) for k, v in kw.items()})
+        return tuple(np.asarray(x, dtype=np.float64) for x in out)
     torch = pytest.importorskip("torch")
     t = lambda x: torch.tensor(np.asarray(x), dtype=torch.float32)  # noqa: E731
     kw = {k: t(v) for k, v in kw.items()}
@@ -414,7 +422,7 @@ class TestCumulativeFatigue:
         np.testing.assert_allclose(coarse.MF, fine.MF, rtol=0.02)
 
     @pytest.mark.parametrize("dt", (*_FATIGUE_CTRL_DTS, 1.0, 60.0, 300.0))
-    @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
     def test_step_is_exact_for_frozen_rates(self, backend: str, dt: float) -> None:
         # One step of any length is the exact solution of the 3CC-r ODE with LD, LR
         # held at their start values, through every regime switch inside the step.
@@ -430,9 +438,31 @@ class TestCumulativeFatigue:
             got.sum(0), 1.0, atol=1e-12 if backend == "numpy" else 1e-6
         )
 
+    @pytest.mark.parametrize("dt", (0.02, 1.0, 30.0))
+    @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+    def test_step_keeps_the_regime_of_its_equilibrium(
+        self, backend: str, dt: float
+    ) -> None:
+        # A step starting just inside MF = 1 - TL stays in the regime that holds its
+        # equilibrium. The fast MA transient used to read as a slow-mode crossing: an
+        # MR-limited step switched to free recruitment at once (MA overshot to ~TL,
+        # MF was clipped), and a free step with a free equilibrium switched to limited.
+        cases = np.array(
+            [
+                [0.3776, 0.1 + 1e-6, 0.9],  # MR-limited, just past the boundary
+                [0.3776, 0.1 + 1e-4, 0.9],
+                [0.0, 0.4 + 1e-5, 0.6],
+                [0.149994, 0.85 - 1e-10, 0.15],  # free, F MA* < R (1 - TL); float64
+            ]
+        )
+        ma0, mf0, tl = cases.T
+        got = np.stack(_exact_step(backend, ma0, mf0, tl, dt))
+        want = np.stack([_frozen_rate_reference(*c, dt) for c in cases], axis=1)
+        np.testing.assert_allclose(got, want, atol=1e-8 if backend == "numpy" else 1e-6)
+
     @pytest.mark.filterwarnings("error")
     @pytest.mark.parametrize("dt", (0.02, 300.0))
-    @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
     def test_step_degenerate_rates_stay_finite(self, backend: str, dt: float) -> None:
         # No fatigue (F = 0), no recovery (R = 0) and NaN commands (C = 0)
         ma, mf = np.array([0.2, 0.2, 0.0, 0.3]), np.array([0.3, 0.3, 0.5, 0.2])
