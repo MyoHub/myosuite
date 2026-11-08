@@ -13,7 +13,9 @@ as transform callbacks and by term functions via EnvAccessor.
 
 from __future__ import annotations
 
+import os
 import re
+import warnings
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -303,6 +305,133 @@ def three_cc_r_step(
     MA_b, MF_b = _limited(xp, MA2, MF2, LD, F, rho, d3, modes)
     MA3 = xp.where(limited, MA_a, MA_b)
     return _bounded(xp, MA3, xp.where(limited, MF_a, MF_b))
+
+
+TORCH_FATIGUE_COMPILE: str = os.environ.get("MYOSUITE_FATIGUE_COMPILE", "auto")
+"""When :class:`TorchFatigueState` fuses its step with ``torch.compile``.
+
+``"auto"`` (default): on CUDA only, where the ~190 elementwise ops of
+:func:`three_cc_r_step` are otherwise ~190 kernel launches. ``"1"``: on every device.
+``"0"``: never (eager). Read from the environment variable ``MYOSUITE_FATIGUE_COMPILE``
+at import; set this attribute to change it at run time. If compiling fails (no
+compiler, unsupported platform, more than torch's recompile limit of state shapes in
+one process), the step warns once and runs eagerly for that device, dtype and shape.
+Compiled and eager steps agree to float32 round-off.
+"""
+
+_compiled_torch_step: Any = None  # torch.compile wrapper, built on first use
+_eager_keys: set[tuple] = set()  # (device, dtype, shape) whose compile failed
+_dt_tensors: dict[tuple, Any] = {}  # dt as a 0-d state tensor: no recompile per dt
+
+
+def _torch_step(
+    MA: Any,
+    MF: Any,
+    TL: Any,
+    F: Any,
+    R: Any,
+    r: Any,
+    tauact: Any,
+    taudeact: Any,
+    dt: Any,
+) -> tuple[Any, Any, Any]:
+    """:func:`three_cc_r_step` on torch tensors, with ``TL`` cast to the state dtype."""
+    import torch  # noqa: PLC0415
+
+    return three_cc_r_step(
+        torch,
+        MA,
+        MF,
+        TL.to(MA.dtype),
+        F=F,
+        R=R,
+        r=r,
+        tauact=tauact,
+        taudeact=taudeact,
+        dt=dt,
+    )
+
+
+def _use_compile(device: Any) -> bool:
+    """Whether :data:`TORCH_FATIGUE_COMPILE` asks to compile the step on ``device``."""
+    mode = str(TORCH_FATIGUE_COMPILE).strip().lower()
+    if mode in ("0", "off", "false", "no", ""):
+        return False
+    if mode == "auto":
+        return device.type == "cuda"
+    return True
+
+
+def torch_three_cc_r_step(
+    MA: Any,
+    MF: Any,
+    TL: Any,
+    *,
+    F: Any,
+    R: Any,
+    r: Any,
+    tauact: Any,
+    taudeact: Any,
+    dt: float,
+    compile: bool | None = None,
+) -> tuple[Any, Any, Any]:
+    """:func:`three_cc_r_step` on torch tensors, fused with ``torch.compile``.
+
+    Compiles lazily on first use (``fullgraph``, static shapes); torch specialises
+    the graph per device, dtype and shape, and passes ``dt`` as a 0-d tensor so a
+    new ``dt`` does not recompile. Falls back to the eager step, with one warning,
+    where compiling fails.
+
+    Args:
+        MA: Active fraction, shape ``(num_envs, n_muscles)``.
+        MF: Fatigued fraction, same shape.
+        TL: Command, same shape; cast to the dtype of ``MA``.
+        F: Fatigue rate [1/s], shape ``(n_muscles,)``.
+        R: Recovery rate [1/s].
+        r: Rest recovery multiplier.
+        tauact: Activation time constants [s].
+        taudeact: Deactivation time constants [s].
+        dt: Step length [s].
+        compile: Compile (``True``), run eagerly (``False``) or follow
+            :data:`TORCH_FATIGUE_COMPILE` (``None``).
+
+    Returns:
+        ``(MA, MR, MF)`` after ``dt``.
+    """
+    global _compiled_torch_step
+    args = (MA, MF, TL, F, R, r, tauact, taudeact)
+    if compile is None:
+        compile = _use_compile(MA.device)
+    key = (str(MA.device), MA.dtype, tuple(MA.shape))
+    if not compile or key in _eager_keys:
+        return _torch_step(*args, float(dt))
+    import torch  # noqa: PLC0415
+
+    try:
+        if _compiled_torch_step is None:
+            # Inductor's vectorised CPU expm1 is exp(x) - 1, which loses the small
+            # increments; its scalar CPU code calls std::expm1 (CUDA: libdevice).
+            _compiled_torch_step = torch.compile(
+                _torch_step,
+                fullgraph=True,
+                dynamic=False,
+                options={"cpp.simdlen": 0},
+            )
+        dt_key = (str(MA.device), MA.dtype, float(dt))
+        if dt_key not in _dt_tensors:
+            _dt_tensors[dt_key] = torch.tensor(
+                float(dt), dtype=MA.dtype, device=MA.device
+            )
+        return _compiled_torch_step(*args, _dt_tensors[dt_key])
+    except Exception as err:  # any compiler failure falls back to eager
+        _eager_keys.add(key)
+        warnings.warn(
+            f"torch.compile of the 3CC-r fatigue step failed on {key[0]} "
+            f"({type(err).__name__}: {err}); running it eagerly.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return _torch_step(*args, float(dt))
 
 
 _DEFAULT_F = MUSCLE_FATIGUE_PARAMS["Default"]["F"]
@@ -848,7 +977,8 @@ class TorchFatigueState:
     def step(self, excitation: Any, dt: float) -> Any:
         """Advance fatigue state by one control step.
 
-        Same exact step as :meth:`CumulativeFatigue.compute_act` (:func:`three_cc_r_step`).
+        Same exact step as :meth:`CumulativeFatigue.compute_act` (:func:`three_cc_r_step`),
+        fused with ``torch.compile`` on CUDA (see :data:`TORCH_FATIGUE_COMPILE`).
 
         Args:
             excitation: Muscle excitation tensor, shape ``(num_envs, n_muscles)``;
@@ -859,11 +989,7 @@ class TorchFatigueState:
             Active compartment ``MA`` (the effective muscle ctrl), same shape as
             *excitation*.
         """
-        excitation = excitation.to(self.MA.dtype)
-        import torch  # noqa: PLC0415
-
-        self.MA, self.MR, self.MF = three_cc_r_step(
-            torch,
+        self.MA, self.MR, self.MF = torch_three_cc_r_step(
             self.MA,
             self.MF,
             excitation,

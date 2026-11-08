@@ -540,6 +540,75 @@ class TestCumulativeFatigue:
         )
         torch.testing.assert_close(f64.MA, f32.MA)
 
+    @pytest.mark.parametrize("device", ["cpu", "cuda"])
+    def test_compiled_torch_step_matches_eager(self, device: str) -> None:
+        """torch.compile fuses the exact step and changes only float32 round-off."""
+        torch = pytest.importorskip("torch")
+        if device == "cuda" and not torch.cuda.is_available():
+            pytest.skip("CUDA unavailable")
+        from myosuite.core import muscle_conditions as mc
+
+        g = torch.Generator().manual_seed(0)
+        n_env, n = 64, 39
+
+        def rand(*shape: int) -> Any:
+            return torch.rand(*shape, generator=g, dtype=torch.float64).to(device)
+
+        p64 = {
+            "F": 0.005 + 0.015 * rand(n),
+            "R": 0.0008 + 0.004 * rand(n),
+            "r": 1.0 + 24.0 * rand(n),
+            "tauact": torch.full((n,), 0.01, dtype=torch.float64, device=device),
+            "taudeact": torch.full((n,), 0.04, dtype=torch.float64, device=device),
+        }
+        p = {k: v.float() for k, v in p64.items()}
+        ma0 = 0.8 * rand(n_env, n)
+        mf0 = (1.0 - ma0) * rand(n_env, n)
+        ma0[0], mf0[1] = 0.0, 1.0 - ma0[1]  # empty MA, empty MR
+
+        def command() -> Any:
+            tl = 1.2 * rand(n_env, n) - 0.1  # rest, negative and > 1 commands
+            tl[:, :5] = 0.0
+            return tl
+
+        def step(state: tuple, tl: Any, dt: float, compile: bool) -> tuple:
+            if state[0].dtype == torch.float64:
+                out = mc.torch_three_cc_r_step(*state, tl, dt=dt, compile=False, **p64)
+            else:
+                out = mc.torch_three_cc_r_step(
+                    *state, tl.float(), dt=dt, compile=compile, **p
+                )
+            return out[0], out[2]
+
+        start = (ma0.float(), mf0.float())
+        step(start, command(), 0.02, compile=True)  # compiles, or falls back
+        if (str(start[0].device), torch.float32, (n_env, n)) in mc._eager_keys:
+            pytest.skip(f"torch.compile unavailable on {device}")
+        nan_tl = command()
+        nan_tl[2, 0] = float("nan")
+        for a, b in zip(
+            step(start, nan_tl, 0.02, True), step(start, nan_tl, 0.02, False)
+        ):
+            torch.testing.assert_close(a, b, atol=1e-6, rtol=0.0)
+        # One step from the same state, control steps to long rests.
+        for dt in (0.01, 0.02, 0.025, 1.0, 300.0):
+            tl = command()
+            for a, b in zip(step(start, tl, dt, True), step(start, tl, dt, False)):
+                torch.testing.assert_close(a, b, atol=1e-6, rtol=0.0)
+        # A 20 ms rollout with a new command every step. Near a regime switch float32
+        # rounding can move either path by ~1e-4 (rarely), so also compare to float64.
+        fused, eager, exact = start, start, (ma0, mf0)
+        for _ in range(250):
+            tl = command()
+            fused = step(fused, tl, 0.02, compile=True)
+            eager = step(eager, tl, 0.02, compile=False)
+            exact = step(exact, tl, 0.02, compile=False)
+        for a, b, c in zip(fused, eager, exact):
+            torch.testing.assert_close(a, b, atol=1e-5, rtol=0.0)
+            err_fused = float((a.double() - c).abs().max())
+            err_eager = float((b.double() - c).abs().max())
+            assert err_fused <= err_eager + 1e-6
+
     def test_uniform_params_match_across_backends(self) -> None:
         """use_uniform_params: the v2.4 row and the model's tau on CPU and torch."""
         torch = pytest.importorskip("torch")
