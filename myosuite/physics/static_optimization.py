@@ -109,6 +109,8 @@ class StaticOptimizationResult:
         status: ``(...)`` OSQP status, ``"solved"`` when converged.
         contact_force: ``(..., nbody, 3)`` world-frame contact force on each body
             (zero without ``contact_forces``); body 0 holds the reaction on the world.
+        contact_qfrc: ``(..., nv)`` generalized force of those contact forces, the
+            contact part of ``constraint_force``.
     """
 
     activation: np.ndarray
@@ -118,6 +120,7 @@ class StaticOptimizationResult:
     joint_torque: np.ndarray
     status: np.ndarray
     contact_force: np.ndarray
+    contact_qfrc: np.ndarray
 
 
 class StaticOptimizer:
@@ -316,15 +319,17 @@ class StaticOptimizer:
 
         a = np.clip(x[:nu], lo, hi)
         f = capacity * np.maximum(x[nu + nv + n_eq :], 0.0)
+        contact_qfrc = efc_J[rows].T @ f
         return StaticOptimizationResult(
             activation=a,
             actuator_force=gain * a + bias,
             reserve=self._optimal_force * x[nu : nu + nv],
             constraint_force=J_eq.T @ (_CONSTRAINT_SCALE * x[nu + nv : nu + nv + n_eq])
-            + efc_J[rows].T @ f,
+            + contact_qfrc,
             joint_torque=tau,
             status=np.asarray(status),
             contact_force=self._body_contact_forces(rows, f),
+            contact_qfrc=contact_qfrc,
         )
 
     def _contact_rows(self) -> tuple[np.ndarray, np.ndarray]:
