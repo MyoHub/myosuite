@@ -13,8 +13,6 @@ import pytest
 from myosuite.core.trajectory_io import MotionClip
 from myosuite.viz.rollout_video import offscreen_size, record_rollout, tracking_camera
 
-pytestmark = pytest.mark.tier1
-
 _XML = """
 <mujoco>
   <visual><global offwidth="320" offheight="200"/></visual>
@@ -34,11 +32,13 @@ def model() -> mujoco.MjModel:
     return mujoco.MjModel.from_xml_string(_XML)
 
 
+@pytest.mark.tier1
 def test_offscreen_size_clamps_to_the_framebuffer(model: mujoco.MjModel) -> None:
     assert offscreen_size(model, 640, 480) == (320, 200)
     assert offscreen_size(model, 100, 50) == (100, 50)
 
 
+@pytest.mark.tier1
 def test_tracking_camera_follows_the_free_root_by_default(
     model: mujoco.MjModel,
 ) -> None:
@@ -49,6 +49,7 @@ def test_tracking_camera_follows_the_free_root_by_default(
         tracking_camera(model, "missing")
 
 
+@pytest.mark.tier1
 def test_clip_to_mjdata_poses_and_forwards(model: mujoco.MjModel) -> None:
     qpos = np.zeros((3, model.nq))
     qpos[:, 3] = 1.0

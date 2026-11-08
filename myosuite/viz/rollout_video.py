@@ -55,6 +55,9 @@ def tracking_camera(
 
     Returns:
         A ``mjCAMERA_TRACKING`` camera for :func:`record_rollout`.
+
+    Raises:
+        ValueError: If ``body`` is a name the model does not have.
     """
     if body is None:
         free = np.flatnonzero(model.jnt_type == mujoco.mjtJoint.mjJNT_FREE)
@@ -99,7 +102,8 @@ def record_rollout(
         ``uint8`` frames of shape ``(T, H, W, 3)``, one per completed step.
     """
     w, h = offscreen_size(model, width, height)
-    frames: list[np.ndarray] = []
+    frames = np.empty((int(n_steps), h, w, 3), dtype=np.uint8)
+    count = 0
     renderer = mujoco.Renderer(model, height=h, width=w)
     try:
         for i in range(int(n_steps)):
@@ -108,9 +112,10 @@ def record_rollout(
                 renderer.update_scene(data)
             else:
                 renderer.update_scene(data, camera=camera)
-            frames.append(renderer.render().copy())
+            renderer.render(out=frames[count])
+            count += 1
             if keep_going is False:
                 break
     finally:
         renderer.close()
-    return np.asarray(frames, dtype=np.uint8).reshape(len(frames), h, w, 3)
+    return frames[:count]

@@ -54,6 +54,9 @@ class MotionClip:
         Args:
             model: Compiled ``mujoco.MjModel`` whose ``qpos``/``qvel`` layout the clip uses.
             frame: Clip frame to start from.
+
+        Returns:
+            A new ``mujoco.MjData`` at that frame, after ``mj_forward``.
         """
         import mujoco
 
