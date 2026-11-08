@@ -12,11 +12,12 @@ on:
       - "!**/*.md"
       - "!.pre-commit-config.yaml"
       - "!CITATION.cff"
-      # training/<method>/ projects carry their own tests.
+      # training/<method>/ projects are outside this suite; no workflow runs their tests.
       - "!training/**"
-      # Other workflows do not change the tests; this one does.
+      # Other workflows do not change the tests; this one and the probe test_newton_compat_probe imports do.
       - "!.github/**"
       - ".github/workflows/python-app.yml"
+      - ".github/newton_probe/**"
 
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -24,16 +25,18 @@ on:
     paths: *code_paths
 
   # Nightly full run of dev, including the @slow tests no other run selects.
-  # Schedules fire from the default branch (main), so this starts with the next release.
+  # Schedules fire from the default branch (main) and run main's copy of this file,
+  # so this starts, and later edits apply, only once they are released to main.
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
 
 # github.ref is refs/pull/<number>/merge on a pull request, so two PRs that
 # share a branch name do not cancel each other. On a push it is the branch ref.
+# Only PR runs cancel superseded ones; every push to main/dev and nightly run completes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -76,13 +79,13 @@ jobs:
         id: changes
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            changed=$(git diff --name-only HEAD^1 HEAD)
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            changed=$(git -c core.quotePath=false diff --name-only HEAD^1 HEAD)
           else
             changed="(not a pull request)"
           fi
           printf '%s\n' "$changed"
-          if [ "${{ github.event_name }}" != "pull_request" ] || grep -qE '^tutorials/|^myosuite/tests/(execute_tutorial\.py|test_tutorials\.sh)$' <<< "$changed"; then
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ] || grep -qE '^tutorials/|^myosuite/tests/(execute_tutorial\.py|test_tutorials\.sh)$' <<< "$changed"; then
             echo "tutorials=true" >> "$GITHUB_OUTPUT"
           else
             echo "tutorials=false" >> "$GITHUB_OUTPUT"
