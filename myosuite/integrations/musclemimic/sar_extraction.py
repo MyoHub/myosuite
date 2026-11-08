@@ -313,7 +313,7 @@ def decode_synergies(model: SynergyModel, syn: np.ndarray) -> np.ndarray:
 
     Args:
         model: Fitted :class:`SynergyModel`.
-        syn: Synergy activations, shape ``(T, n_synergies)`` or ``(n_synergies,)``.
+        syn: Synergy activations (array-like), shape ``(T, n_synergies)`` or ``(n_synergies,)``.
 
     Returns:
         Muscle activations, shape ``(T, n_muscles)`` or ``(n_muscles,)``, in
@@ -322,6 +322,7 @@ def decode_synergies(model: SynergyModel, syn: np.ndarray) -> np.ndarray:
     Raises:
         ValueError: If ``syn`` last dimension does not match ``n_synergies``.
     """
+    syn = np.asarray(syn)
     single = syn.ndim == 1
     S = syn.reshape(1, -1) if single else syn
     if S.shape[1] != model.n_synergies:

@@ -265,17 +265,28 @@ class TestDecodeSynergies(unittest.TestCase):
             encode_activations,
         )
 
+        # On training data (no scaler clipping) decode inverts encode exactly, so the
+        # round trip equals the PCA reconstruction.
         decoded = decode_synergies(
             self.model, encode_activations(self.model, self.acts)
         )
-        err = np.mean((decoded - self.acts) ** 2)
-        self.assertLess(err, np.var(self.acts) * (1.0 - self.model.vaf) + 1e-3)
+        pca = self.model.pca
+        expected = np.clip(pca.inverse_transform(pca.transform(self.acts)), 0.0, 1.0)
+        np.testing.assert_allclose(decoded, expected, atol=1e-5)
 
     def test_raises_on_wrong_synergy_dim(self) -> None:
         from myosuite.integrations.musclemimic.sar_extraction import decode_synergies
 
         with self.assertRaises(ValueError):
             decode_synergies(self.model, np.zeros((5, 7), dtype=np.float32))
+
+    def test_accepts_a_list(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import decode_synergies
+
+        np.testing.assert_array_equal(
+            decode_synergies(self.model, self.syn[0].tolist()),
+            decode_synergies(self.model, self.syn[0]),
+        )
 
 
 # ---------------------------------------------------------------------------
