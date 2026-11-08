@@ -34,7 +34,7 @@ dependencies = [
     "scipy",
     "pandas",
     "osqp",
-    "mujoco",
+    "mujoco<4",
     # 13.0.0 clears the current image advisories, but gradio 6.31.0 still
     # requires pillow<13. A Colab install that also has gradio, or a tutorial
     # that pins Pillow 12.2.0, cannot resolve against a 13 floor.
@@ -42,7 +42,7 @@ dependencies = [
     "colorednoise>=2.2.0",
     "packaging",
     "ml-collections>=0.1.1",
-    "myo-sim==0.2.3",
+    "myo-sim==0.2.4",
     # onnxruntime <=1.23.2 is the last line shipping cp310 wheels and >=1.24.1 the
     # first shipping cp314, so no single version spans 3.10-3.14; split by marker.
     "onnxruntime<1.21; python_version < '3.14'",
@@ -83,7 +83,7 @@ examples = [
 mjlab = [
     "torch>=2.13.0; python_version >= '3.10'",
     "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14'",
-    "mujoco-warp>=3.7.0; python_version >= '3.10' and python_version < '3.14'",
+    "mujoco-warp>=3.7.0,<4; python_version >= '3.10' and python_version < '3.14'",
     "warp-lang>=1.12.0; python_version >= '3.10'",
     # mjlab's own rsl_rl dependency (rsl-rl-lib) still passes the deprecated
     # wandb.Settings(start_method=...) kwarg; wandb>=0.29.0 rewrote Settings to
@@ -108,9 +108,9 @@ mjx = [
     "optax>=0.1.7; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
     # orbax-checkpoint>=0.11.25 requires jax>=0.6.0, incompatible with the
     # jax<0.5.3 cap above (brax API removal) — cap below that floor bump.
-    # Floor raised to 0.11.22: brax/playground (both above) declare
-    # orbax-checkpoint>=0.11.22 themselves, so anything below that conflicts
-    # with them at resolve time. Ceiling tightened to <0.11.24: 0.11.24 calls
+    # Floor raised to 0.11.22: brax (above) declares
+    # orbax-checkpoint>=0.11.22 itself, so anything below that conflicts
+    # with it at resolve time. Ceiling tightened to <0.11.24: 0.11.24 calls
     # jax.monitoring.record_scalar(), an API that doesn't exist anywhere in the
     # jax<0.5.3 range above (added later, alongside the same jax>=0.6.0 bump
     # that forced the >=0.11.25 floor) — AttributeError at checkpoint-restore
@@ -120,7 +120,10 @@ mjx = [
     "orbax-checkpoint>=0.11.22,<0.11.24; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
     "ml-collections>=0.1.1; python_version >= '3.10' and sys_platform != 'win32' and sys_platform != 'darwin'",
     "etils[epath]>=1.3.0; python_version >= '3.10' and sys_platform != 'win32'",
-    "playground>=0.0.5; python_version >= '3.10' and sys_platform != 'win32'",
+    # No `playground`: 1.0 dropped JAX/MJX for torch and MuJoCo Warp, and the
+    # few pieces of 0.x the backend used live in backends/mjx now. warp-lang
+    # (for mjx_impl="warp") is what playground 0.2.0 brought besides those.
+    "warp-lang>=1.11; python_version >= '3.10' and sys_platform != 'win32'",
     "mediapy>=1.2.0; python_version >= '3.10' and sys_platform != 'win32'",
     "imageio>=2.31.0; python_version >= '3.10' and sys_platform != 'win32'",
     "wandb>=0.21.0; python_version >= '3.10' and sys_platform != 'win32'",
@@ -165,7 +168,9 @@ requires = ["setuptools>=84.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = { find = { exclude = ["myosuite.agents", "myosuite.agents.*"] } }
+# Ship only the myosuite package: without `include`, setuptools also installs the
+# repo's docs/, scripts/, training/ and tutorials/ as top-level packages.
+packages = { find = { include = ["myosuite", "myosuite.*"], exclude = ["myosuite.agents", "myosuite.agents.*"] } }
 
 [tool.setuptools.package-data]
 "myosuite" = [
@@ -206,6 +211,7 @@ markers = [
     "tier3: Performance, tutorials, and legacy integration tests.",
     "slow: Slow-running tests (benchmarks, long rollouts, or heavy external deps).",
     "legacy: Tests that exercise deprecated BaseV0/env_base paths or legacy-style APIs.",
+    "mjlab: Tests in modules that use mjlab / MuJoCo Warp (set by conftest.py; CI runs them in their own job).",
 ]
 # A test module with no explicit `pytestmark = pytest.mark.tierN` is defaulted to
 # tier2 by myosuite/tests/conftest.py (with a warning), so `-m tierN` never

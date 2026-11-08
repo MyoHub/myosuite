@@ -33,9 +33,10 @@ from myosuite.envs.waypoint import (
     DEFAULT_MODEL_RECIPE,
     RootLayout,
     WaypointTaskCfg,
-    heading_yaw,
     initial_state,
 )
+from myosuite.physics.joint_coupling import JointCouplings
+from myosuite.terms.waypoint import heading_yaw
 
 ENTITY = "robot"
 _NJMAX, _NCONMAX = 512, 256
@@ -48,6 +49,7 @@ class _ResetInfo:
     start: tuple[float, float]
     start_yaw: float
     layout: RootLayout
+    couplings: JointCouplings
 
 
 @functools.cache
@@ -76,6 +78,7 @@ def _reset_info(
         tuple(map(float, data.site_xpos[site_id, :2])),
         float(heading_yaw(np, pos, layout.has_free_root)),
         layout,
+        JointCouplings.from_model(model),
     )
 
 
@@ -168,6 +171,7 @@ def make_waypoint_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
                 "noise": tuple(map(float, noise)),
                 "low": tuple(map(float, reset.layout.low)),
                 "high": tuple(map(float, reset.layout.high)),
+                "couplings": reset.couplings,
             },
         ),
     }

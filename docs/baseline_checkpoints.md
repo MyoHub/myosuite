@@ -23,10 +23,10 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 
 | Env                          | Checkpoint         | Deterministic success (mjlab) |
 | ---------------------------- | ------------------ | ----------------------------- |
-| motorFingerPoseFixed-v0      | `model_267.pt`   | 100.0%                        |
-| motorFingerPoseRandom-v0     | `model_152.pt`   | 100.0%                        |
-| motorFingerReachFixed-v0     | `model_120.pt`   | 100.0%                        |
-| motorFingerReachRandom-v0    | `model_1999.pt`  | 93.9%                         |
+| motorFingerPoseFixed-v0      | `model_83.pt`      | 100.0%                        |
+| motorFingerPoseRandom-v0     | `model_1499.pt`    | 99.6%                         |
+| motorFingerReachFixed-v0     | `model_57.pt`      | 100.0%                        |
+| motorFingerReachRandom-v0    | `model_1499.pt`    | 100.0%                        |
 | myoArmReachFixed-v0          | `model_696.pt`   | 100.0%                        |
 | myoArmReachRandom-v0         | `model_4999.pt`  | 79.7%                         |
 | myoChallengeChaseTagFBP2-v0  | -                  | -                             |
@@ -58,7 +58,7 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 | myoLegDirectionalBackward-v0 | `model_681.pt`   | 100.0%²                       |
 | myoLegDirectionalForward-v0  | `model_583.pt`   | 96.9%²                        |
 | myoLegDirectionalRandom-v0   | `model_2000.pt`  | 53.8%                         |
-| myoLegHillyTerrainWalk-v0    | `model_4999.pt`  | 26.6%                         |
+| myoLegHillyTerrainWalk-v0    | `model_4999.pt`  | 15.3%³                        |
 | myoLegRoughTerrainWalk-v0    | `model_4176.pt`  | 91.0%¹                        |
 | myoLegStairTerrainWalk-v0    | -                  | -                             |
 | myoLegStandRandom-v0         | `model_3500.pt`  | 34.1%                         |
@@ -72,6 +72,9 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 walks along `-y` is now the forward one. Each checkpoint moved with its task definition; a checkpoint downloaded under the old
 name walks in the opposite direction of the new one.
 
+³ Mean of seeds 1-3 with 256 episodes each. The earlier 26.6% was a single draw of 64 episodes; the twin bakes one terrain per seed,
+so one draw varies a lot. The released 3.0.0 code gives 18.4, 19.9 and 14.1% on the same seeds, so the change is not a regression.
+
 CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` now reuse the requested initial fatigue in every episode. Earlier versions mutated that array during stepping, which changed later episodes. Reevaluate checkpoints measured with this configuration.
 
 ---
@@ -80,9 +83,9 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 
 **Not all published policies converged to the standard 95% threshold**, and training for more
 iterations may well reach higher success rates: `myoHandPoseRandom-v0` (36%, plateaued),
-`myoArmReachRandom-v0` (80%), `myoFingerReachRandom-v0` (73%), `motorFingerReachRandom-v0` (94%),
+`myoArmReachRandom-v0` (80%), `myoFingerReachRandom-v0` (73%),
 `myoLegDirectionalRandom-v0` (54%), `myoLegStandRandom-v0` (34%) and `myoLegHillyTerrainWalk-v0`
-(27%). `myoLegDirectionalRandom-v0` succeeds with exploration noise (99% sampled success) but only about half of the time with the mean
+(15%). `myoLegDirectionalRandom-v0` succeeds with exploration noise (99% sampled success) but only about half of the time with the mean
 action; the checkpoint is the best one of the run.
 
 </sub>
@@ -122,6 +125,12 @@ models collected before the MuscleMimic bridge fix (#459) must be recollected.
 
 <sub>
 
+**Motor finger gears.** With `myo_sim` 0.2.4 the `motorFinger*` envs use the gears of `motorfinger_v0.xml` as they are, 160/80/80/160/160 (`extn`, `adabR`, `adabL`, `mflx`, `dflx`), and MyoSuite no longer scales them. Checkpoints trained on the earlier 80/20/20/40/40 no longer apply. Their observations, actions and control step are unchanged, so they still load and the env contract hash in `manifest.json` does not warn about them: use the checkpoints of the release that matches your MyoSuite version. The four `motorFinger*` rows are means over seeds 0-2 with 256 episodes each.
+
+</sub>
+
+<sub>
+
 **Fatigue parameters of torso, hamstring, forearm and two-agent muscles.** In the `myoFati*` variants, lumbar and
 abdominal muscles use the new `Trunk` row and hamstrings the `Thigh-Hamstring` row (both used `Default`), the forearm
 rotators `SUP`/`PT`/`PQ` the `Elbow` row and `APL` the wrist-extensor row, and the left arm of the MuscleMimic models
@@ -138,6 +147,20 @@ is scored by clip completion instead of success: 86% of 576 mean-action episodes
 the end of the clip (84-88% per run), the rest end on a pose deviation. It is an mjlab-only baseline (no CPU twin: the
 CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and is loaded with `--checkpoint` and
 `MIMIC_CLIP` (tutorial 5.3).
+
+</sub>
+
+<sub>
+
+**Coupled knee joints at reset (MuscleMimic models).** The CPU envs `myoMimicFullbody-v0`, `myoFullBodyWaypoint-v0`
+and `myoFullBodyDirectional-v0` and their mjlab tasks now start with the tibia and patella joints of each knee on their
+joint couplings. From `qpos0` and the keyframe the patella started up to 5.2 cm off them and was pulled back over the
+first 0.3 s. Clip starts (RSI, the directional env) were further off: the retargeted clips keep the
+`musclemimic_models` 1.0.5 sign of the left knee's `rotation3` and `translation2` couplings, up to 0.5 rad off on 1.0.6.
+The observation, action, control step and reward definitions are unchanged, so the env contract hash in `manifest.json`
+does not warn and the checkpoints still load. Only the first steps of an episode differ, but re-evaluate a policy before
+comparing it with new runs. The single-clip policy above was trained with the unprojected clip starts and was not
+re-evaluated after this change.
 
 </sub>
 
@@ -165,6 +188,21 @@ tutorial 5.5 were measured with the earlier defaults.
 
 **`myoChallengeChaseTagFBP2-v0`** (success: the agent tags the opponent) and
 **`myoChallengeTableTennisP{0,1,2}-v0`** have no trained checkpoint available yet to evaluate.
+
+</sub>
+
+<sub>
+
+**`myoChallengeChaseTagFBVs-v0`** (the scored 1v1 game, CPU only). `onnx/chasetag_fbvs_baseline.onnx` in the `myohub/myosuite-3-baselines` Hugging Face repo at revision `ed40fb4f0a53` (`myosuite.core.hf_io.download_baseline_file`) plays one player, 546 -> 354, in either role. It is a starting point: it reaches and tags a player that does nothing, but it often falls before the 10 s limit: at about 6.7 s as a chaser against itself. Measured with action noise 0.02 and 12 episodes per role, on myo_sim 0.2.4 and MuJoCo 3.11; myo_sim 0.2.3 and MuJoCo 3.17 gave the same tags and falls:
+
+| Match | Tags | Chaser falls | Mean length | Fell at (median) |
+|---|---:|---:|---:|---|
+| Chases a player that does nothing, as player A | 12/12 | 0 | 3.0 s | - |
+| Chases a player that does nothing, as player B | 12/12 | 0 | 3.6 s | - |
+| Against itself, A chases | 11/12 | 0 | 5.2 s | runner 1.7 s |
+| Against itself, B chases | 0/12 | 12 | 7.1 s | runner 5.5 s, chaser 6.7 s |
+
+It was fine-tuned with self-play on `myofullbody` (4,000 iterations, 2048 envs) from a policy that descends from the behaviour-cloned tutorial 5.4 walker (`policy_bc_best.pt`, a student of MuscleMimic `amathislab/mm-10m-2`), so it is not trained from scratch on this body. Observations and actions match the game; only the dynamics of `myofullbody` were new to it. Policies trained on `musclemimic_models` do not carry over reliably: moving between releases 1.0.6 and 1.0.5 of that body already took a similar policy to 0 tags.
 
 </sub>
 

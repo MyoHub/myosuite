@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from myosuite.physics.quat import quat_yaw
+
 
 @dataclass(frozen=True)
 class WaypointRouteCfg:
@@ -48,10 +50,16 @@ class WaypointRewardCfg:
     failure: float = 10.0
 
 
-def quat_yaw(xp: Any, quat: Any) -> Any:
-    """Yaw (rotation about world ``z``) of ``wxyz`` quaternions ``(..., 4)``."""
-    w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
-    return xp.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+def qpos_obs(qpos: Any, has_free_root: bool) -> Any:
+    """``qpos`` without the world ``x, y`` of a free root (translation invariant)."""
+    return qpos[..., 2:] if has_free_root else qpos
+
+
+def heading_yaw(xp: Any, qpos: Any, has_free_root: bool) -> Any:
+    """Yaw of the free root, or zero (world frame) without one."""
+    if has_free_root:
+        return quat_yaw(xp, qpos[..., 3:7])
+    return 0 * qpos[..., 0]
 
 
 def select_waypoints(xp: Any, waypoints: Any, index: Any) -> Any:

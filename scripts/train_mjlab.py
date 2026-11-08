@@ -497,6 +497,11 @@ def launch_training(task_id: str, args: TrainConfig | None = None):
 
 
 def main():
+    # On Windows a piped or redirected stdout uses the ANSI code page (e.g. cp1252),
+    # which lacks the "→" in mjlab's help text: escape such characters, as stderr does.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="backslashreplace")
+
     # Parse first argument to choose the task.
     # Import tasks to populate the registry.
     import mjlab.tasks  # noqa: F401

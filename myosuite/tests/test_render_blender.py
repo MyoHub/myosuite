@@ -119,6 +119,52 @@ def test_export_preserves_metres_timing_motion_and_valid_names(
     assert np.load(tmp_path / "muscles.npz")["activation"].shape == (5, 1)
 
 
+def test_sport_graphics_export_animation_without_affecting_camera_bounds(
+    tmp_path: Path,
+) -> None:
+    """The same court strokes follow the agents in USD and stay out of framing."""
+    pytest.importorskip("pxr")
+    from dataclasses import replace
+    from pxr import Usd, UsdGeom
+
+    env = _Env()
+    env.model = mujoco.MjModel.from_xml_string("""<mujoco><worldbody>
+      <geom type="plane" size="6 6 .1"/>
+      <body name="a0_pelvis" pos="-.6 0 .5"><freejoint/><geom size=".1"/></body>
+      <body name="a1_pelvis" pos=".6 0 .5"><freejoint/><geom size=".1"/></body>
+    </worldbody></mujoco>""")
+    env.data = mujoco.MjData(env.model)
+    poses = np.stack([env.model.qpos0.copy()] * 2)
+    poses[1, 0] += 0.25
+    clip = tmp_path / "motion.npz"
+    np.savez(clip, qpos=poses, frequency=25.0)
+    meta = blender_render.export_rollout(
+        replace(_config(tmp_path / "export"), motion=clip, scene="sport"), env=env
+    )
+    stage = Usd.Stage.Open(meta["usd"])
+    prim = stage.GetPrimAtPath("/World/Mesh_Xform_Sport_0")
+    transform = UsdGeom.Xformable(prim)
+    first = np.array(transform.ComputeLocalToWorldTransform(0).ExtractTranslation())
+    last = np.array(transform.ComputeLocalToWorldTransform(1).ExtractTranslation())
+    np.testing.assert_allclose(last - first, [0.25, 0, 0], atol=1e-6)
+    assert "Sport_0" in meta["static_objects"]
+    court_meshes = [
+        UsdGeom.Mesh(prim)
+        for prim in stage.Traverse()
+        if prim.GetTypeName() == "Mesh" and prim.GetName().startswith("Mesh_Sport_")
+    ]
+    assert len(court_meshes) == 194
+    assert (
+        sum(len(mesh.GetFaceVertexIndicesAttr().Get()) // 3 for mesh in court_meshes)
+        <= 2_500
+    )
+    assert all(len(mesh.GetPointsAttr().Get()) <= 8 for mesh in court_meshes)
+    assert max(abs(np.array(meta["bounds"])).ravel()) < 2
+    np.testing.assert_array_equal(
+        np.load(tmp_path / "export/reference.npz")["qpos"], poses
+    )
+
+
 def test_path_mode_colours_mujoco_segments_by_activation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -757,3 +803,12 @@ def test_bone_overlay_exports_original_mesh_not_another_geometry(
     np.testing.assert_allclose(
         pose.ExtractTranslation(), expected.geom_xpos[env.model.geom("bone").id]
     )
+
+
+def test_circle_centre_finds_an_arcs_agent_position() -> None:
+    """The team glow is centred on the identity arc, which spans under a full turn."""
+    angles = np.linspace(0.08, 0.85, 20) * 2 * np.pi
+    points = np.column_stack(
+        (1.2 + 0.46 * np.cos(angles), -0.3 + 0.46 * np.sin(angles), np.zeros(20))
+    )
+    np.testing.assert_allclose(blender_render._circle_centre(points), (1.2, -0.3))
