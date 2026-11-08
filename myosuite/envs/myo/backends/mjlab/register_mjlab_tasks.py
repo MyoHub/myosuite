@@ -824,6 +824,20 @@ def register_mjlab_tasks() -> None:
             "mjlab: failed to register myoChallengeChaseTagFBP2-v0", exc_info=True
         )
 
+    # --- Multi-clip full-body tracking (MuscleMimic's MDP, mjlab only) ---
+    try:
+        from myosuite.envs.myo.backends.mjlab.tasks import (  # noqa: PLC0415
+            mimic_multiclip,
+        )
+
+        mimic_multiclip.register()
+    except ValueError:
+        pass  # already registered
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "mjlab: failed to register myoMimicFullbodyMulticlip-v0", exc_info=True
+        )
+
 
 def bootstrap_myosuite_mjlab_registry(
     *,

@@ -354,8 +354,8 @@ def make_env(
         backend: One of "cpu", "mjx", or "mjlab"; default: ``EnvConfig.backend``
             ("cpu" for a plain id).
         **overrides: Backend-specific options, merged over ``EnvConfig.backend_options``
-            and (CPU) ``task_kwargs``: env constructor kwargs on the CPU, ``device``
-            etc. on mjlab, ``config_overrides`` on "mjx".
+            and (CPU) ``task_kwargs``: env constructor kwargs on the CPU, ``device``,
+            ``seed`` etc. on mjlab, ``config_overrides`` on "mjx".
 
     Returns:
         An environment instance appropriate for the backend.
@@ -469,8 +469,16 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # something else imported the backend first.
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
 
-    if config.task_kwargs and not _ENV_REGISTRY.get(config.env_id, {}).get(
-        "mjlab_task_kwargs", False
+    from myosuite.envs.myo.backends.mjlab.tasks.registration import (  # noqa: PLC0415
+        build_task_cfg,
+    )
+
+    # mjlab-only tasks with a config factory take task_kwargs and ctrl_dt as options.
+    factory_cfg = build_task_cfg(config.env_id, config.task_kwargs, config.ctrl_dt)
+    if (
+        factory_cfg is None
+        and config.task_kwargs
+        and not _ENV_REGISTRY.get(config.env_id, {}).get("mjlab_task_kwargs", False)
     ):
         raise NotImplementedError(
             "EnvConfig.task_kwargs are CPU env constructor kwargs; the mjlab twin reads "
@@ -481,11 +489,17 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
         options["num_envs"] = config.num_envs
     env_id = config.env_id
 
-    if hasattr(mjlab.envs, "make") and not (
-        config.features
-        or config.task_kwargs
-        or config.max_episode_steps is not None
-        or config.ctrl_dt is not None
+    seed = options.pop("seed", None)
+    if (
+        hasattr(mjlab.envs, "make")
+        and factory_cfg is None
+        and seed is None
+        and not (
+            config.features
+            or config.task_kwargs
+            or config.max_episode_steps is not None
+            or config.ctrl_dt is not None
+        )
     ):
         return mjlab.envs.make(env_id, **options)
 
@@ -508,21 +522,29 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
         )
     # The registered cfg is built once at import; features and ctrl_dt rebuild it from
     # the CPU registration (extra wrappers, ``frame_skip``).
-    cfg = load_env_cfg(env_id)
+    cfg = load_env_cfg(env_id) if factory_cfg is None else factory_cfg
     task_kwargs: dict[str, Any] = dict(config.task_kwargs)
-    if config.features or task_kwargs or config.ctrl_dt is not None:
+    if factory_cfg is None and (
+        config.features or task_kwargs or config.ctrl_dt is not None
+    ):
         from myosuite.envs.myo.backends.mjlab.tasks.registration import (  # noqa: PLC0415
             rebuild_twin_cfg,
         )
 
-    if config.features or task_kwargs:
+    if factory_cfg is not None and config.features:
+        raise NotImplementedError(
+            f"{env_id} is an mjlab-only task: EnvConfig.features are not supported."
+        )
+    if factory_cfg is None and (config.features or task_kwargs):
         cfg = rebuild_twin_cfg(env_id, config.features, task_kwargs)
-    if config.ctrl_dt is not None:
+    if factory_cfg is None and config.ctrl_dt is not None:
         n_substeps = _substeps(config.ctrl_dt, cfg.sim.mujoco.timestep)
         if n_substeps != cfg.decimation:
             task_kwargs["frame_skip"] = n_substeps
             cfg = rebuild_twin_cfg(env_id, config.features, task_kwargs)
 
+    if seed is not None:
+        cfg.seed = int(seed)
     num_envs = options.pop("num_envs", None)
     if num_envs is not None and hasattr(cfg, "scene"):
         cfg.scene.num_envs = int(num_envs)

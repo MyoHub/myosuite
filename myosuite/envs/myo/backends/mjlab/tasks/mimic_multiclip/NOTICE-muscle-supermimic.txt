@@ -1,0 +1,99 @@
+This is the NOTICE file of muscle-supermimic (https://github.com/kaibohex/muscle-supermimic,
+Apache License 2.0), at commit 8a6244b0178eb2cf1b5a14a903d82ebba867b792, from which the task code in
+this package (myosuite/envs/myo/backends/mjlab/tasks/mimic_multiclip/) is ported; every ported file
+names its source in its docstring. The paths below are muscle-supermimic's. MyoSuite's changes: the
+body is myo_sim's myofullbody, the joint couplings use myosuite.physics.joint_coupling, and the task
+is configured through make_env options. Not ported: the MS-Human-700 robot, the DEP controller
+(dep.py) and the evaluation-guided resets. The KIT train/test lists in data/ are MuscleMimic's, as
+below. The training side (SuperMimic runner, world model) is in MyoSuite's training/supermimic/
+project, which carries this notice too.
+
+----------------------------------------------------------------------------------------------------
+
+muscle-supermimic
+Copyright 2026 The muscle-supermimic Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The SuperMimic implementation (mainly src/muscle_supermimic/rl/supermimic/; every ported file says
+so in its docstring) is ported from supermimic_vibed (https://github.com/zita-ch/supermimic_vibed), which is licensed as follows:
+
+    MIT License
+
+    Copyright (c) 2026 ETH Zurich, Chong Zhang
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+The MyoFullBody entity follows MuscleMimic (https://github.com/amathislab/musclemimic),
+Apache License 2.0; see third_party/musclemimic/LICENSE. The KIT train/test lists in
+data/musclemimic/ are MuscleMimic's.
+
+The BlinkMimic pieces of the SuperMimic runner (src/muscle_supermimic/rl/supermimic/optim.py; the policy EMA,
+the no-sync update loop, the Muon optimizer split, the policy learning-rate schedule and the reset-statistics
+fixes in runner.py, networks.py and tasks/tracking/mdp/commands.py; scripts/train_blink.sh) are ported from
+BlinkMimic (https://github.com/fuyichen0725/blinkmimic), which derives from InstantTrack
+(https://github.com/Huy-Quang-Dao/instantTrack); both are licensed as follows:
+
+    MIT License
+
+    Copyright (c) 2026 Fuyi Chen
+    Copyright (c) 2026 Huy-Quang-Dao (InstantTrack, from which this software is derived)
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+The DEP controller of the DEP-RL exploration (src/muscle_supermimic/rl/supermimic/dep.py) is ported from depRL
+(https://github.com/martius-lab/depRL), which is licensed as follows:
+
+    MIT License
+
+    Copyright (c) 2023 Autonomous Learning Group
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.

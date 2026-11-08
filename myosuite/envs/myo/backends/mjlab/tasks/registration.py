@@ -34,6 +34,44 @@ def condition_variants(env_id: str) -> list[str]:
 _CFG_FACTORIES: dict[str, Callable[..., ManagerBasedRlEnvCfg]] = {}
 
 
+_TASK_CFG_FACTORIES: dict[str, Callable[..., ManagerBasedRlEnvCfg]] = {}
+
+
+def register_task_cfg_factory(
+    env_id: str, cfg_fn: Callable[..., ManagerBasedRlEnvCfg]
+) -> None:
+    """Let ``make_env`` build the mjlab-only task *env_id* from options.
+
+    Args:
+        env_id: A task registered with ``register_mjlab_task`` that has no CPU twin.
+        cfg_fn: ``cfg_fn(**task_kwargs)`` building its env config; it takes ``ctrl_dt``
+            (``EnvConfig.ctrl_dt``) like any other option.
+    """
+    _TASK_CFG_FACTORIES[env_id] = cfg_fn
+
+
+def build_task_cfg(
+    env_id: str, task_kwargs: dict[str, Any], ctrl_dt: float | None = None
+) -> ManagerBasedRlEnvCfg | None:
+    """The config of a factory-registered mjlab-only task, or ``None`` for other ids.
+
+    Args:
+        env_id: Task id.
+        task_kwargs: ``EnvConfig.task_kwargs``, the factory's options.
+        ctrl_dt: ``EnvConfig.ctrl_dt``, if set.
+
+    Returns:
+        A fresh env config, or ``None`` if *env_id* has no factory.
+    """
+    factory = _TASK_CFG_FACTORIES.get(env_id)
+    if factory is None:
+        return None
+    options = dict(task_kwargs)
+    if ctrl_dt is not None:
+        options["ctrl_dt"] = ctrl_dt
+    return factory(**options)
+
+
 def rebuild_twin_cfg(
     env_id: str,
     features: Iterable[Any] = (),

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-supermimic"
+version = "0.1.0"
+description = "SuperMimic (world model + backpropagation through imagined rollouts) for MyoSuite's multi-clip full-body tracking"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE-muscle-supermimic.txt", "LICENSE-*.txt"]
+# Consumes the myoMimicFullbodyMulticlip-v0 task of MyoSuite (install MyoSuite first, from the same checkout).
+dependencies = [
+    "myosuite[mjlab]",
+    "torch>=2.13",
+    "mjlab>=1.6",
+    "mujoco-warp>=3.11,<4",
+    "tensordict",
+    "tyro",
+    "huggingface_hub>=0.20",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["supermimic*"]

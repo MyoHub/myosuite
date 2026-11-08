@@ -163,9 +163,11 @@ class EnvConfig:
             :class:`~gymnasium.envs.registration.WrapperSpec` (see
             :func:`myosuite.envs.wrappers.wrapper_spec`); stored as specs. Every backend
             runs them identically. All are off unless listed here or in the registration.
-        task_kwargs: Task-specific constructor overrides (CPU env kwargs).
-        backend_options: Options of one backend only (``device``, ``render_mode``, ...);
-            nothing portable belongs here.
+        task_kwargs: Task-specific constructor overrides (CPU env kwargs), or the
+            options of an mjlab-only task's config factory (e.g. the clips of
+            ``myoMimicFullbodyMulticlip-v0``).
+        backend_options: Options of one backend only (``device``, ``render_mode``,
+            ``seed`` on mjlab, ...); nothing portable belongs here.
     """
 
     env_id: str = ""

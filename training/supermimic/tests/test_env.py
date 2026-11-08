@@ -1,0 +1,43 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""The training env is MyoSuite's task through ``make_env`` with the recipe's options."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import torch
+
+pytestmark = pytest.mark.tier2
+
+
+def test_recipe_env_through_make_env(clips: Path) -> None:
+    from supermimic.env import TaskEnvCfg, make_task_env, settings_cfg
+
+    env = make_task_env(
+        TaskEnvCfg(motion_file=str(clips / "clips.txt"), num_envs=3),
+        device="cpu",
+        seed=1,
+    )
+    u = env.unwrapped
+    cmd = u.command_manager.get_term("motion").cfg
+    assert (
+        u.cfg.decimation,
+        cmd.stride,
+        cmd.sampling_mode,
+        cmd.bin_fix,
+        cmd.fail_reset,
+    ) == (10, 10, "return", True, 0.3)
+    assert not u.cfg.auto_reset and u.cfg.seed == 1
+    assert "muscle_length" not in u.observation_manager.active_terms["policy"]
+    obs = env.get_observations()
+    assert set(obs.keys()) >= {"policy", "goal"}
+    env.step(torch.full((3, u.action_manager.total_action_dim), 0.1))
+    s = settings_cfg(
+        {"decimation": 5, "stride": 20, "lookahead": 5, "muscle_obs": True},
+        motion_file="x",
+    )
+    assert (s.ctrl_dt, s.goal_stride, s.muscle_obs) == (0.01, 20, True)

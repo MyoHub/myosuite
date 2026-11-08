@@ -211,6 +211,7 @@ features of that registration or of the `EnvConfig`.
 | Table Tennis P0, P1, P2 | yes | yes | no |
 | ChaseTag against a scripted opponent (multi-agent) | no | no | - |
 | MuscleMimic (fullbody, bimanual, directional) | no | yes, registered separately (own implementation) | no |
+| Multi-clip full-body tracking (`myoMimicFullbodyMulticlip-v0`, provisional) | - (mjlab only) | built from `EnvConfig.task_kwargs` / `ctrl_dt` | no |
 
 Unsupported combinations raise: `NotImplementedError` from `make_env` on mjlab or MJX, `TypeError` from a wrapper on an
 env that does not run stages. The condition ids (`myoFati*`, `myoSarc*`, `myoReaf*`) have mjlab twins only for the

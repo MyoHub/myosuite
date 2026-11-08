@@ -465,6 +465,9 @@ Full body and MuscleMimic
    * - ``myoMimicBimanual-v0`` (also ``myoMuscleMimicBimanual-v0``)
      - MuscleMimic bimanual arm imitation
      - yes
+   * - ``myoMimicFullbodyMulticlip-v0`` (provisional id, mjlab only)
+     - MuscleMimic's multi-clip tracking MDP (KIT split, analytic terms) on myo_sim's full body
+     - only
    * - ``myoFullBodyDirectional-v0``
      - Full-body directional locomotion
      - no
