@@ -117,12 +117,16 @@ jobs:
           sleep 1
 
       # Gait clips, model releases and checkpoints the tests fetch from Hugging Face.
+      # Per group (each fetches different files), saved under a fresh key every run
+      # so newly pinned revisions are kept; restore takes the latest prefix match.
       - name: Cache Hugging Face downloads
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: hf-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'myosuite/integrations/musclemimic/model_versions.py') }}
-          restore-keys: hf-${{ runner.os }}-
+          key: hf-${{ runner.os }}-${{ matrix.group }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            hf-${{ runner.os }}-${{ matrix.group }}-
+            hf-${{ runner.os }}-
 
       # [rl] (Stable-Baselines3) so the SB3 tests run instead of skipping, among
       # them the tier-1 SB3 -> ONNX export check (test_export_onnx.py).
