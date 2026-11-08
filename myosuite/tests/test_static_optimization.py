@@ -186,3 +186,39 @@ def test_config_reserve_weight_trades_off_activations(arm_motion) -> None:
     )
     assert np.abs(b.reserve).sum() > 10 * np.abs(a.reserve).sum()
     assert (b.activation**2).sum() < (a.activation**2).sum()
+
+
+def test_max_activation_bounds_one_frame() -> None:
+    env = make_env("myoElbowPose1D6MRandom-v0")
+    model = env.unwrapped.model
+    qpos, zero, load = np.array([1.2]), np.zeros(1), np.array([-20.0])
+    so = StaticOptimizer(model)
+    free = so.solve(qpos, zero, zero, load)
+    i = int(np.argmax(free.activation))
+    cap = np.full(model.nu, np.inf)
+    cap[i] = 0.5 * free.activation[i]
+    bounded = so.solve(qpos, zero, zero, load, max_activation=cap)
+    np.testing.assert_allclose(bounded.activation[i], cap[i], atol=1e-6)
+    # Synergists take over; the joint torque to balance is unchanged.
+    rest = np.arange(model.nu) != i
+    assert bounded.activation[rest].sum() > free.activation[rest].sum() + 0.05
+    np.testing.assert_array_equal(bounded.joint_torque, free.joint_torque)
+    # Optimality with the bound: a_j = clip(mu c_j / 2, 0, cap_j) for every muscle.
+    base = _qfrc_actuator(model, qpos, zero, np.zeros(model.nu))
+    c = np.array(
+        [
+            _qfrc_actuator(model, qpos, zero, np.eye(model.nu)[j])[0] - base[0]
+            for j in range(model.nu)
+        ]
+    )
+    mu = 2 * bounded.reserve[0] / so.config.reserve_optimal_force**2
+    np.testing.assert_allclose(
+        bounded.activation, np.clip(mu * c / 2, 0.0, np.minimum(cap, 1.0)), atol=1e-5
+    )
+    # A bound below the actuator range clamps to it; the next frame is unbounded again.
+    low = so.solve(qpos, zero, zero, load, max_activation=np.full(model.nu, -1.0))
+    np.testing.assert_array_equal(low.activation, np.zeros(model.nu))
+    np.testing.assert_allclose(
+        so.solve(qpos, zero, zero, load).activation, free.activation, atol=1e-6
+    )
+    env.close()
