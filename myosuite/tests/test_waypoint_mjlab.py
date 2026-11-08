@@ -24,6 +24,9 @@ from mjlab.tasks.registry import load_env_cfg  # noqa: E402
 from myosuite import make_env  # noqa: E402
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
 from myosuite.envs.myo.backends.mjlab.tasks.waypoint.mdp import COMMAND  # noqa: E402
+from myosuite.tests.support.joint_couplings import (  # noqa: E402
+    joint_equality_residuals,
+)
 
 ENV_ID = "myoFullBodyWaypoint-v0"
 # Float32 Warp vs float64 MuJoCo with foot contacts after one 10 ms step.
@@ -92,6 +95,25 @@ def test_reset_routes_follow_the_cpu_distribution(pair) -> None:
         <= (first + np.pi) % (2 * np.pi) - np.pi
         <= cfg.turn_angle[1] + 1e-5
     )
+
+
+def test_resets_put_the_coupled_joints_on_their_polynomials(pair) -> None:
+    """The reset noise perturbs every joint, the patella too (and the keyframe has
+    it 5 cm off its knee coupling); both halves then project the couplings."""
+    cpu, mj = pair
+    idx = mj.scene["robot"].indexing
+    q_adr = torch.sort(torch.cat([idx.free_joint_q_adr, idx.joint_q_adr]).long())[0]
+    v_adr = torch.sort(torch.cat([idx.free_joint_v_adr, idx.joint_v_adr]).long())[0]
+    for seed in range(3):
+        cpu.reset(seed=seed)
+        mj.reset()
+        for qpos, qvel in (
+            (cpu.data.qpos, cpu.data.qvel),
+            (mj.sim.data.qpos[0, q_adr].numpy(), mj.sim.data.qvel[0, v_adr].numpy()),
+        ):
+            pos, vel = joint_equality_residuals(cpu.model, qpos, qvel)
+            assert np.abs(pos).max() < 1e-6
+            assert np.abs(vel).max() < 1e-6
 
 
 def test_one_step_parity(pair) -> None:

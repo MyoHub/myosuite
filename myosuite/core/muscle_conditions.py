@@ -292,7 +292,12 @@ def three_cc_r_step(
     down = (q > 0) & (q < 1)
     t_b = xp.log(xp.where(down, q, 1.0)) / lam2
     t_b = xp.where(MFe + p2 < thr, 0.0, xp.where(down, t_b, xp.inf))
+    # C is continuous at MF = 1 - TL, so the regime holding the equilibrium is absorbing:
+    # a limited step whose equilibrium is limited never switches (near the boundary the
+    # fast transient would otherwise read as a crossing), nor a free step with a free one.
+    t_b = xp.where(MFe >= thr, xp.inf, t_b)
     t_a = _free_switch_time(xp, MA1, MF1, LD, TLc, thr, F, rho)
+    t_a = xp.where(F * (LD * TLc / _nonzero(xp, LD + F)) < rho * thr, xp.inf, t_a)
     t_sw = xp.where(limited, t_b, t_a)
     d2 = xp.where(t_sw < T2, t_sw, T2)
     d3 = T2 - d2

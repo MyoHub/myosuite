@@ -161,6 +161,20 @@ CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and
 
 <sub>
 
+**Coupled knee joints at reset (MuscleMimic models).** The CPU envs `myoMimicFullbody-v0`, `myoFullBodyWaypoint-v0`
+and `myoFullBodyDirectional-v0` and their mjlab tasks now start with the tibia and patella joints of each knee on their
+joint couplings. From `qpos0` and the keyframe the patella started up to 5.2 cm off them and was pulled back over the
+first 0.3 s. Clip starts (RSI, the directional env) were further off: the retargeted clips keep the
+`musclemimic_models` 1.0.5 sign of the left knee's `rotation3` and `translation2` couplings, up to 0.5 rad off on 1.0.6.
+The observation, action, control step and reward definitions are unchanged, so the env contract hash in `manifest.json`
+does not warn and the checkpoints still load. Only the first steps of an episode differ, but re-evaluate a policy before
+comparing it with new runs. The single-clip policy above was trained with the unprojected clip starts and was not
+re-evaluated after this change.
+
+</sub>
+
+<sub>
+
 **Bounded action std in the PPO defaults (#566).** The mjlab PPO configs of the muscle tasks and of `motorFinger*`
 (whose actions are clipped before the linear map to `ctrlrange`) now keep the policy's action std in [0.05, 1.0]. The
 std parameter is projected onto that range before every forward pass and stays trainable at the bounds. MuscleMimic
