@@ -23,3 +23,9 @@ Streaming kinematics
 
 .. automodule:: myosuite.physics.streaming_kinematics
    :members:
+
+Computed muscle control
+-----------------------
+
+.. automodule:: myosuite.physics.computed_muscle_control
+   :members:

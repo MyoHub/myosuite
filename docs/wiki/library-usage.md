@@ -37,6 +37,7 @@ See [docs/wiki/mjlab-design-guide.md](mjlab-design-guide.md) for the full patter
 | Body/site/joint ID | `mujoco.mj_name2id` | Hardcoded integer indices |
 | Jacobian | `mujoco.mj_jacBody`, `mj_jacSite` | Manual Jacobian computation |
 | Coupled joints (`mjEQ_JOINT`) on their polynomials | `myosuite.physics.joint_coupling.project_joint_couplings` (NumPy or Torch; CPU envs: `MyoGymnasiumEnv._project_joint_couplings`) | Hand-rolled `eq_data` polynomial evaluation |
+| Muscle activations for a motion (static optimization), excitations that make a simulation track it (CMC) | `myosuite.physics.static_optimization.StaticOptimizer`, `myosuite.physics.computed_muscle_control.computed_muscle_control` | Optimizer loops copied from tutorials 3.3 / 3.4 |
 
 **Unified dispatcher (preferred for new code):**
 
