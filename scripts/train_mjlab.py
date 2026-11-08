@@ -53,8 +53,9 @@ class TrainConfig:
     ``--env.scale-rewards-by-dt``; ``1.0`` leaves the task's rewards unchanged."""
     dynsyn_groups: str | None = None
     """DynSyn (He et al., ICML 2024): muscle groups from ``scripts/dynsyn_groups.py``. The policy
-    then commands one action per group plus a bounded correction per muscle. ``--agent.resume`` of
-    a DynSyn run continues with the run's own groups and schedule, without this flag."""
+    then commands one action per group plus a bounded correction per muscle. ``--agent.resume`` or
+    ``--wandb-run-path`` of a DynSyn run continues with the groups and schedule its checkpoint
+    stores, without this flag."""
     dynsyn_start_steps: float = 5e7
     """Environment steps (all envs together) before DynSyn's per-muscle corrections start."""
     dynsyn_ramp_steps: float = 1e8
@@ -156,6 +157,9 @@ def _make_eval_env(
 def _resolve_dynsyn(cfg: TrainConfig, resume_path: Path | None, rank: int) -> None:
     """Apply DynSyn to ``cfg.env``: a resumed run's own setup, or the ``--dynsyn-*`` flags.
 
+    The resumed run's setup comes from its checkpoint (or, for older runs, its
+    ``params/env.yaml``), so a W&B download resumes with it too.
+
     Raises:
         ValueError: ``--dynsyn-groups`` contradicts the checkpoint that is resumed.
     """
@@ -180,8 +184,7 @@ def _resolve_dynsyn(cfg: TrainConfig, resume_path: Path | None, rank: int) -> No
                 f"bound {trained.amplitude:.4g} after {trained.env_steps:.4g} env steps."
             )
     elif groups is not None:
-        params = None if resume_path is None else resume_path.parent / "params"
-        if params is not None and (params / "env.yaml").is_file():
+        if resume_path is not None:
             raise ValueError(
                 f"{resume_path} was trained without DynSyn: its actions are per muscle, "
                 "so --dynsyn-groups cannot continue it."
@@ -402,6 +405,11 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
         runner_kwargs["registry_name"] = registry_name
 
     runner = runner_cls(env, agent_cfg, str(log_dir), device, **runner_kwargs)
+    from myosuite.envs.myo.backends.mjlab.dynsyn_action import (  # noqa: PLC0415
+        track_dynsyn_in_checkpoints,
+    )
+
+    track_dynsyn_in_checkpoints(runner)
 
     add_wandb_tags(cfg.agent.wandb_tags)
     runner.add_git_repo_to_log(__file__)

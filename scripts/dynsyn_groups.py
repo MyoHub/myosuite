@@ -3,8 +3,9 @@
     python scripts/dynsyn_groups.py myoLegWalk-v0 --groups 40 --out dynsyn/myoLegWalk-v0_k40.json
 
 Moves every joint with random velocities while the muscles are relaxed, groups the muscles whose
-lengths change together (k-medoids on 1 - cosine similarity) and writes the groups in the order of
-the task's muscle action term.
+lengths change together (k-medoids on 1 minus the mean correlation of centred length segments,
+see ``myosuite.core.dynsyn.length_similarity``) and writes the groups in the order of the task's
+muscle action term.
 """
 
 import argparse

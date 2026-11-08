@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from myosuite.core.dynsyn import (
+    CHECKPOINT_KEY,
     DynSynGroups,
     TrainedDynSyn,
     expand_actions,
@@ -131,6 +132,17 @@ class DynSynAction:
             self.cfg.max_amplitude,
         )
 
+    def trained(self) -> TrainedDynSyn:
+        """The setup at the current step, as a checkpoint stores it."""
+        return TrainedDynSyn(
+            groups=self.cfg.groups,
+            start_steps=self.cfg.start_steps,
+            ramp_steps=self.cfg.ramp_steps,
+            max_amplitude=self.cfg.max_amplitude,
+            env_steps=self.env_steps,
+            saved_counter=int(self._env.common_step_counter),
+        )
+
     def process_actions(self, actions: Any) -> None:
         import torch  # noqa: PLC0415
 
@@ -238,3 +250,36 @@ def dynsyn_term(env: Any) -> DynSynAction | None:
         if isinstance(term, DynSynActionCfg):
             return env.action_manager.get_term(name)
     return None
+
+
+def track_dynsyn_in_checkpoints(runner: Any) -> None:
+    """Keep a runner's checkpoints and its env's DynSyn setup together (in place).
+
+    Every checkpoint the runner saves stores the env's setup in its ``infos``
+    (:meth:`TrainedDynSyn.to_infos`), so a checkpoint without its run directory (a
+    W&B download) can be resumed and evaluated as trained. Loading a DynSyn
+    checkpoint into an env without DynSyn raises instead of reading its actions as
+    per-muscle actions.
+
+    Args:
+        runner: An RSL-RL runner whose ``save`` takes ``infos`` (mjlab's runners).
+    """
+    from myosuite.utils.rslrl_policy import trained_dynsyn  # noqa: PLC0415
+
+    term = dynsyn_term(runner.env.unwrapped)
+    save, load = runner.save, runner.load
+
+    def save_with_dynsyn(path: str, infos: dict | None = None) -> None:
+        if term is not None:
+            infos = {**(infos or {}), CHECKPOINT_KEY: term.trained().to_infos()}
+        save(path, infos)
+
+    def load_checked(path: str, *args: Any, **kwargs: Any) -> Any:
+        if term is None and trained_dynsyn(path) is not None:
+            raise ValueError(
+                f"{path} was trained with DynSyn, but this env has per-muscle actions. "
+                "Resume it with scripts/train_mjlab.py, which applies the run's setup."
+            )
+        return load(path, *args, **kwargs)
+
+    runner.save, runner.load = save_with_dynsyn, load_checked

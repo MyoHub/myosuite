@@ -53,6 +53,10 @@ class DynSynGroups:
         return DynSynGroups(**json.loads(Path(path).read_text()))
 
 
+# Key of the DynSyn setup in a checkpoint's ``infos``.
+CHECKPOINT_KEY = "dynsyn"
+
+
 @dataclass
 class TrainedDynSyn:
     """DynSyn setup of a training run at one of its checkpoints.
@@ -78,6 +82,24 @@ class TrainedDynSyn:
         """Correction bound the checkpoint was trained with."""
         return weight_amplitude(
             self.env_steps, self.start_steps, self.ramp_steps, self.max_amplitude
+        )
+
+    def to_infos(self) -> dict[str, Any]:
+        """Plain types for a checkpoint's ``infos`` (which hold the step counter already)."""
+        infos = asdict(self)
+        del infos["saved_counter"]
+        return infos
+
+    @staticmethod
+    def from_infos(infos: dict[str, Any], saved_counter: int = 0) -> TrainedDynSyn:
+        """Read back what :meth:`to_infos` wrote."""
+        return TrainedDynSyn(
+            groups=DynSynGroups(**infos["groups"]),
+            start_steps=infos["start_steps"],
+            ramp_steps=infos["ramp_steps"],
+            max_amplitude=infos["max_amplitude"],
+            env_steps=infos["env_steps"],
+            saved_counter=saved_counter,
         )
 
 
