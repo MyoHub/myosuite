@@ -228,6 +228,67 @@ class TestEncodeActivations(unittest.TestCase):
             encode_activations(self.model, wrong)
 
 
+@unittest.skipUnless(_sklearn_available(), "scikit-learn not installed")
+class TestDecodeSynergies(unittest.TestCase):
+    def setUp(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import extract_synergies
+
+        self.acts = _make_acts(n_samples=300, n_muscles=20)
+        self.model = extract_synergies(self.acts, n_synergies=5)
+        self.syn = np.random.default_rng(0).random((10, 5)).astype(np.float32)
+
+    def test_shapes_dtype_and_range(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import decode_synergies
+
+        batch = decode_synergies(self.model, self.syn)
+        single = decode_synergies(self.model, self.syn[0])
+        self.assertEqual(batch.shape, (10, 20))
+        self.assertEqual(single.shape, (20,))
+        self.assertEqual(batch.dtype, np.float32)
+        self.assertTrue(((batch >= 0.0) & (batch <= 1.0)).all())
+        np.testing.assert_array_equal(single, batch[0])
+
+    def test_matches_the_inverse_sklearn_pipeline(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import decode_synergies
+
+        m = self.model
+        x = m.pca.inverse_transform(
+            m.ica.inverse_transform(m.scaler.inverse_transform(self.syn))
+        )
+        expected = np.clip(x, 0.0, 1.0).astype(np.float32)
+        # decode_synergies works in float64 (as encode_activations); float32 rounding only.
+        np.testing.assert_allclose(decode_synergies(m, self.syn), expected, atol=1e-6)
+
+    def test_roundtrip_reconstructs_activations(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import (
+            decode_synergies,
+            encode_activations,
+        )
+
+        # On training data (no scaler clipping) decode inverts encode exactly, so the
+        # round trip equals the PCA reconstruction.
+        decoded = decode_synergies(
+            self.model, encode_activations(self.model, self.acts)
+        )
+        pca = self.model.pca
+        expected = np.clip(pca.inverse_transform(pca.transform(self.acts)), 0.0, 1.0)
+        np.testing.assert_allclose(decoded, expected, atol=1e-5)
+
+    def test_raises_on_wrong_synergy_dim(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import decode_synergies
+
+        with self.assertRaises(ValueError):
+            decode_synergies(self.model, np.zeros((5, 7), dtype=np.float32))
+
+    def test_accepts_a_list(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import decode_synergies
+
+        np.testing.assert_array_equal(
+            decode_synergies(self.model, self.syn[0].tolist()),
+            decode_synergies(self.model, self.syn[0]),
+        )
+
+
 # ---------------------------------------------------------------------------
 # Tests: save / load roundtrip
 # ---------------------------------------------------------------------------
