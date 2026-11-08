@@ -64,8 +64,11 @@ _STEP_ATOL = {
 _STEP_MEDIAN_ATOL = 1e-3  # a block that is merely bounded (e.g. zeros) fails this
 # Blocks whose median float32/solver noise exceeds the default. Orientation stays near 1e-4,
 # with rare single-step spikes on any body: up to 0.0105 on the MuscleMimic body and 0.0071
-# on myofullbody over seeds 2-6, with matching contact sets.
-_STEP_MEDIAN_ATOL_BY_KEY = {"orientation": 1e-2}
+# on myofullbody over seeds 2-6, with matching contact sets. qvel_local spikes at one
+# contact-rich step of seed 2 with mujoco / mujoco-warp 3.11: 6e-4 on Windows, 1.5e-3 and
+# 1.6e-3 on some Linux runners (the same tree passes on others). Dropped joint velocities
+# still give a 4e-2 median.
+_STEP_MEDIAN_ATOL_BY_KEY = {"orientation": 1e-2, "qvel_local": 5e-3}
 _STEP_REW_ATOL = 1e-3
 # Same state, no physics: term functions must agree to float32 precision.
 _TERM_ATOL = 1e-5
