@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import torch
 from mjlab.managers.event_manager import EventTermCfg, requires_model_fields
@@ -14,9 +14,30 @@ from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
+from myosuite.physics.joint_coupling import JointCouplings
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
+
+
+def torch_joint_couplings(
+    couplings: JointCouplings, device: Any, dtype: torch.dtype = torch.float32
+) -> JointCouplings:
+    """*couplings* as tensors on *device*: addresses ``long``, values in *dtype*.
+
+    Args:
+        couplings: NumPy couplings (:meth:`JointCouplings.from_model`).
+        device: Torch device of the states they will project.
+        dtype: Floating dtype of those states.
+
+    Returns:
+        The couplings for :func:`~myosuite.physics.joint_coupling.project_joint_couplings`.
+    """
+    return couplings.map_arrays(
+        lambda a: torch.as_tensor(
+            a, device=device, dtype=dtype if a.dtype.kind == "f" else torch.long
+        )
+    )
 
 
 class reset_joints_uniform_in_range(ManagerTermBase):  # noqa: N801  (mjlab term style)

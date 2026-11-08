@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 
 from myosuite.core.hf_io import default_musclemimic_cache_root
+from myosuite.core.model_names import resolve_model_names
 
 _QPOS_NAME_KEYS: tuple[str, ...] = ("qpos_names", "qpos_joint_names", "joint_names")
 _QVEL_NAME_KEYS: tuple[str, ...] = ("qvel_names", "qvel_joint_names", "joint_names")
@@ -192,6 +193,7 @@ def _resolve_model_indices(
         return np.arange(expected_width, dtype=np.int32)
 
     index_map = _build_model_joint_index_map(mj_model, use_qvel=use_qvel)
+    joint_names = resolve_model_names(joint_names, index_map, field_name=field_name)
     missing = sorted(set(joint_names) - set(index_map))
     if missing:
         raise ValueError(
@@ -300,7 +302,9 @@ def expand_motion_clip_to_model(
     metadata are resolved by name at any width: a full-width clip whose joints
     are stored in another order is reordered, and a partial clip is expanded
     to the full model width (missing coordinates take the model's default
-    state).  Clips without names must already be in model order.  The result
+    state). Known full-body aliases (including prefixed agent names) are used
+    only when the exact joint name is absent. Clips without names must already
+    be in model order. The result
     is idempotent: ``expanded.qpos[:, expanded.qpos_model_indices]`` equals the
     clip's own columns.
     """
