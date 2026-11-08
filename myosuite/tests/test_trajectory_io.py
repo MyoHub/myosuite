@@ -283,3 +283,113 @@ def test_supplied_reference_velocity_preserves_states_and_site_kinematics() -> N
         np.testing.assert_array_equal(clip.site_velocity[frame, 0], velocity)
     with pytest.raises(ValueError, match="qvel"):
         motion_clip_from_states(model, poses, 0.01, ("tip",), qvel=np.zeros((1, 1)))
+
+
+@pytest.mark.parametrize("prefix", ["", "a0_", "a1_"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_motion_clip_elbow_aliases(prefix: str, reverse: bool) -> None:
+    source, target = ("elbow_flex", "elbow_flexion")
+    if reverse:
+        source, target = target, source
+    model = mujoco.MjModel.from_xml_string(
+        f'<mujoco><worldbody><body><freejoint name="{prefix}root"/>'
+        f'<geom size="0.1"/><body><joint name="{prefix}{target}_r"/>'
+        f'<joint name="{prefix}{target}_l" axis="0 1 0"/>'
+        '<geom size="0.1"/></body></body></worldbody></mujoco>'
+    )
+    clip = MotionClip(
+        qpos=np.array([[0.3, 0.8]]),
+        qvel=np.array([[0.4, -0.2]]),
+        site_xpos=None,
+        site_names=None,
+        qpos_joint_names=[f"{prefix}{source}_l", f"{prefix}{source}_r"],
+        qvel_joint_names=[f"{prefix}{source}_l", f"{prefix}{source}_r"],
+    )
+    expanded = expand_motion_clip_to_model(clip, model)
+    np.testing.assert_array_equal(expanded.qpos[:, 7:], [[0.8, 0.3]])
+    np.testing.assert_array_equal(expanded.qvel[:, 6:], [[-0.2, 0.4]])
+    np.testing.assert_array_equal(expanded.qpos_model_indices, [8, 7])
+    np.testing.assert_array_equal(expanded.qvel_model_indices, [7, 6])
+    again = expand_motion_clip_to_model(expanded, model)
+    np.testing.assert_array_equal(again.qpos, expanded.qpos)
+    np.testing.assert_array_equal(clip.qpos, [[0.3, 0.8]])
+
+
+@pytest.mark.parametrize("field", ["qpos", "qvel"])
+def test_motion_clip_rejects_alias_collision(field: str) -> None:
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><body><joint name="elbow_flexion_r"/>'
+        '<geom size="0.1"/></body></worldbody></mujoco>'
+    )
+    kwargs = {
+        "qpos": np.zeros((1, 1)),
+        "qvel": None,
+        "site_xpos": None,
+        "site_names": None,
+    }
+    kwargs[field] = np.zeros((1, 2))
+    kwargs[field + "_joint_names"] = ["elbow_flexion_r", "elbow_flex_r"]
+    with pytest.raises(ValueError, match="both map to model joint"):
+        expand_motion_clip_to_model(MotionClip(**kwargs), model)
+
+
+def test_motion_clip_exact_joint_name_wins_over_alias() -> None:
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><body><joint name="elbow_flexion_r"/>'
+        '<joint name="elbow_flex_r" axis="0 1 0"/><geom size="0.1"/>'
+        "</body></worldbody></mujoco>"
+    )
+    clip = MotionClip(
+        qpos=np.array([[0.2, 0.7]]),
+        qvel=None,
+        site_xpos=None,
+        site_names=None,
+        qpos_joint_names=["elbow_flex_r", "elbow_flexion_r"],
+    )
+    np.testing.assert_array_equal(
+        expand_motion_clip_to_model(clip, model).qpos, [[0.7, 0.2]]
+    )
+
+
+def test_native_chase_tag_accepts_musclemimic_joint_names(tmp_path: Path) -> None:
+    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
+        ChaseTagVsConfig,
+    )
+    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_model import (
+        build_chase_tag_vs_fullbody_model,
+    )
+
+    model, _, _ = build_chase_tag_vs_fullbody_model(ChaseTagVsConfig())
+    names = [
+        model.joint(i).name.replace("elbow_flexion_", "elbow_flex_")
+        for i in range(model.njnt)
+    ]
+    assert sum("elbow_flex_" in name for name in names) == 4
+    qpos = np.repeat(model.qpos0[None, :], 2, axis=0)
+    for i in range(model.njnt):
+        if "elbow_flex_" in names[i]:
+            qpos[:, model.jnt_qposadr[i]] = [0.3, 0.7]
+    qvel = np.arange(2 * model.nv, dtype=float).reshape(2, model.nv) / 100
+    path = tmp_path / "pose.npz"
+    np.savez(path, qpos=qpos, qvel=qvel, joint_names=names)
+    clip = load_motion_clip(path, model.nq, model.nv)
+    expanded = expand_motion_clip_to_model(clip, model)
+    np.testing.assert_array_equal(expanded.qpos, qpos)
+    np.testing.assert_array_equal(expanded.qvel, qvel)
+
+
+@pytest.mark.parametrize("name", ["unknown_joint", "a1_elbow_flex_r"])
+def test_motion_clip_aliases_do_not_hide_unknown_joints(name: str) -> None:
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><body><joint name="a0_elbow_flexion_r"/>'
+        '<geom size="0.1"/></body></worldbody></mujoco>'
+    )
+    clip = MotionClip(
+        qpos=np.array([[0.2]]),
+        qvel=None,
+        site_xpos=None,
+        site_names=None,
+        qpos_joint_names=[name],
+    )
+    with pytest.raises(ValueError, match="unknown model joints"):
+        expand_motion_clip_to_model(clip, model)

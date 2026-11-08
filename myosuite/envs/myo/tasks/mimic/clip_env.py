@@ -21,6 +21,7 @@ from gymnasium import spaces
 from gymnasium.utils import EzPickle
 
 import gymnasium as gym
+from myosuite.core.model_names import resolve_model_names
 from myosuite.integrations.musclemimic.fullbody_model import (
     FULLBODY_BODY2SITES_FOR_MIMIC,
     compile_mimic_fullbody_mjmodel,
@@ -173,6 +174,9 @@ def _resolve_joint_field_selection(
         )
 
     model_index_map = _build_model_joint_index_map(model, use_qvel=use_qvel)
+    clip_joint_names = tuple(
+        resolve_model_names(clip_joint_names, model_index_map, field_name=field_name)
+    )
     missing = sorted(set(clip_joint_names) - set(model_index_map))
     if missing:
         raise ValueError(
