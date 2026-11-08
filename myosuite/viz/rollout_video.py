@@ -118,4 +118,5 @@ def record_rollout(
                 break
     finally:
         renderer.close()
-    return frames[:count]
+    # Copy a short rollout so the unused tail of the buffer can be freed.
+    return frames if count == len(frames) else frames[:count].copy()

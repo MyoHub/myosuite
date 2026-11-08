@@ -91,5 +91,6 @@ def test_record_rollout_renders_each_step_and_stops_early(
     )
     assert calls == [0, 1, 2, 3, 4]
     assert frames.shape == (5, 200, 320, 3)
+    assert frames.base is None  # owns its data, not a view of the 10-step buffer
     assert frames.dtype == np.uint8
     assert frames.any()
