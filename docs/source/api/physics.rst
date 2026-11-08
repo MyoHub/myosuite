@@ -17,3 +17,9 @@ Static optimization
 
 .. automodule:: myosuite.physics.static_optimization
    :members:
+
+Streaming kinematics
+--------------------
+
+.. automodule:: myosuite.physics.streaming_kinematics
+   :members:
