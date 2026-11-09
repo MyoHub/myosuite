@@ -27,7 +27,7 @@ from myosuite.envs.myo.tasks.mimic.tracking.config import (
     RewardTermCfg,
     resolve_task,
 )
-from myosuite.envs.myo.tasks.mimic.tracking.metrics import evaluate
+from myosuite.envs.myo.tasks.mimic.tracking.metrics import METRICS, evaluate, summarize
 from myosuite.envs.myo.tasks.mimic.tracking.models import (
     compiled_body,
     model_cfg,
@@ -281,6 +281,19 @@ def test_metrics_report(clip: str) -> None:
     )
     for k in ("mpjpe_mm", "g_mpjpe_mm", "joint_rmse_deg", "root_ori_rad"):
         assert np.isfinite(rep[k])
+
+
+def test_metrics_report_without_flagged_clips() -> None:
+    keys = {k for k, _ in METRICS.values()}
+    sums = {k: np.array([1.0, 1.0, 9.0]) for k in keys}
+    args = (np.ones(3), np.array([1.0, 1.0, 0.0]), np.ones(3),
+            np.array([False, False, True]), np.array([False, False, True]))  # fmt: skip
+    rep = summarize(["a", "b", "c"], sums, *args, flagged=[False, False, True])
+    assert rep["flagged"] == ["c"] and rep["tracked_to_end"] == pytest.approx(2 / 3)
+    sub = rep["unflagged"]
+    assert sub["n_clips"] == 2 and sub["tracked_to_end"] == 1.0
+    assert sub["mpjpe_mm"] == pytest.approx(1000.0) and "per_clip" not in sub
+    assert "unflagged" not in summarize(["a", "b", "c"], sums, *args)
 
 
 # --------------------------------------------------------------------------- mjlab twin

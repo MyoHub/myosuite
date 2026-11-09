@@ -256,6 +256,8 @@ class MotionLib:
             fields plus ``body_pos`` / ``body_lin_vel`` (tracked bodies, world) and
             ``reset_qpos`` / ``reset_qvel`` (the full state written at a reset, joints
             clamped to their ranges).
+        quality_flags: Per clip, the ``quality_flags`` of its retarget metadata (e.g.
+            ``"source_knee_hyperextension"``); empty for an unflagged clip (the default).
     """
 
     names: list[str]
@@ -269,6 +271,7 @@ class MotionLib:
     bin_start: Any
     frame_bin: Any
     frames: dict[str, Any]
+    quality_flags: list[list[str]] = dataclasses.field(default_factory=list)
 
     @property
     def num_frames(self) -> int:
@@ -318,6 +321,8 @@ def build_motion_lib(
     Returns:
         The library.
     """
+    from myosuite.methods.biomech.retarget import read_refit_meta  # noqa: PLC0415
+
     if not files:
         raise ValueError("no motion clips")
     info = ModelInfo(m)
@@ -350,10 +355,11 @@ def build_motion_lib(
     frame_bin = np.empty(int(lens.sum()), np.int64)
     for b, (c, s) in enumerate(zip(bin_clip, bin_start)):
         frame_bin[s : min(s + bin_frames, start[c] + lens[c])] = b
+    flags = [list((read_refit_meta(f) or {}).get("quality_flags", [])) for f in files]
     return MotionLib(
         names=names, dt=dt, clip_start=start, clip_len=lens, clip_end=start + lens - 1,
         clip_id=clip_id, bin_frames=bin_frames, bin_clip=bin_clip, bin_start=bin_start,
-        frame_bin=frame_bin, frames=frames,
+        frame_bin=frame_bin, frames=frames, quality_flags=flags,
     )  # fmt: skip
 
 

@@ -13,7 +13,9 @@ parallel and written, in the layout ``myoMimic-v0``'s motion library reads, to
 ``~/.cache/myosuite/mimic/<model>-<myo_sim version>``, dataset: the input folder's
 name). Clips whose output already holds a fit of the same source hash, model version,
 maps, trim and solver options are skipped. ``--trim 3`` drops three frames at each end,
-as MuscleMimic's KIT clips do. The report directory gets ``retarget_summary.json``,
+as MuscleMimic's KIT clips do. ``--quality-flags`` merges a curation file
+(``{"AMASS/<dataset>/<clip>": {"quality_flags": [...], ...}}``) into the metadata; every
+clip gets ``quality_flags`` (empty when unflagged). The report directory gets ``retarget_summary.json``,
 ``retarget_summary.md`` and one JSON line per clip; flagged clips are listed there, not
 dropped silently. The AMASS data and SMPL+H models are not part of MyoSuite.
 """
@@ -93,10 +95,11 @@ def _twist(
     return out
 
 
-def _work(job: tuple[str, str, str]) -> dict[str, Any]:
-    src, dst, label = job
+def _work(job: tuple[str, str, str, dict[str, Any]]) -> dict[str, Any]:
+    src, dst, label, curation = job
     s = _STATE
     rt, model, lmap = s["rt"], s["model"], s["lmap"]
+    curation = {"quality_flags": [], **curation}
     try:
         if Path(dst).exists():
             meta = rt.read_refit_meta(dst)
@@ -109,11 +112,17 @@ def _work(job: tuple[str, str, str]) -> dict[str, Any]:
                 and (meta.get("smplh_map_version"), meta.get("trim"))
                 == (s["source"].smap.version, list(s["source"].trim))
             ):
+                if any(meta.get(k) != v for k, v in curation.items()):
+                    meta.update(curation)  # curation changed: rewrite the metadata only
+                    with np.load(dst) as d:
+                        qpos, freq = d["qpos"], float(d["frequency"])
+                    rt.save_refit(dst, model, qpos, freq, meta)
                 return {"meta": meta, "skipped": True}
         qpos, freq, meta = rt.refit_clip(
             src, model, s["name"], s["version"], lmap, s["source"], ik=s["ik"]
         )
         meta["source"] = label  # dataset-relative, no local paths in shared files
+        meta.update(curation)
         rt.save_refit(dst, model, qpos, freq, meta)
         res: dict[str, Any] = {"meta": meta, "skipped": False}
         if STRAIGHT_WALK.search(Path(src).name):
@@ -216,6 +225,11 @@ def main(argv: list[str] | None = None) -> int:
         default=0,
         help="source frames dropped at each end (3 for MuscleMimic's KIT clips)",
     )
+    p.add_argument(
+        "--quality-flags",
+        default="",
+        help="JSON {clip label: metadata fields} merged into the clips (curation)",
+    )
     args = p.parse_args(argv)
 
     import myo_sim  # noqa: PLC0415
@@ -239,8 +253,14 @@ def main(argv: list[str] | None = None) -> int:
         else rt.default_cache_root(args.model, version)
     )
     dataset = args.dataset or base.name
-    jobs = [(str(f), str(out_root / dataset / f.relative_to(base)),
-             f"AMASS/{dataset}/{f.relative_to(base)}") for f in files]  # fmt: skip
+    curation = (
+        json.loads(Path(args.quality_flags).read_text()) if args.quality_flags else {}
+    )
+    jobs = []
+    for f in files:
+        label = f"AMASS/{dataset}/{f.relative_to(base)}"
+        dst = str(out_root / dataset / f.relative_to(base))
+        jobs.append((str(f), dst, label, curation.get(label, {})))
     workers = choose_workers(args.workers)
     t0 = time.time()
     results = []

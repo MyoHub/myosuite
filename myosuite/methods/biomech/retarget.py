@@ -71,11 +71,16 @@ class OrientationTarget:
         source: The clip's body name (``body_names``), whose ``xquat`` is the target.
         body: Model body.
         weight: Metres of position error one radian is worth.
+        axis: Body-frame unit axis (e.g. a limb's long axis) whose rotation component
+            is weighted by ``axis_weight`` relative to the other two; ``None``: isotropic.
+        axis_weight: Weight factor of the rotation about ``axis``.
     """
 
     source: str
     body: str
     weight: float = 0.05
+    axis: tuple[float, float, float] | None = None
+    axis_weight: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -95,7 +100,7 @@ class LandmarkMap:
         period_joint: Joint whose autocorrelation gives the stride period.
         posture: ``(joint, value, weight)`` priors on independent joints (metres per
             radian), for joints the targets leave open (the plane of elevation of a
-            hanging arm).
+            hanging arm); a source may give per-frame values (:class:`ClipTargets`).
     """
 
     name: str
@@ -175,6 +180,8 @@ class ClipTargets:
         quat: ``(T, O, 4)`` target orientations (wxyz).
         seed: ``(nq,)`` start pose of the first frame.
         contact: ``(T, 2)`` left/right foot contact of the source.
+        posture: ``(T, P)`` per-frame values of the map's posture priors, or ``None``
+            (the map's fixed values).
     """
 
     frequency: float
@@ -182,6 +189,7 @@ class ClipTargets:
     quat: np.ndarray
     seed: np.ndarray
     contact: np.ndarray
+    posture: np.ndarray | None = None
 
 
 def file_sha256(path: str | Path) -> str:
@@ -237,6 +245,12 @@ class LandmarkIK:
             [m.body(o.body).id for o in lmap.orientations], np.int64
         )
         self.or_w = np.array([o.weight for o in lmap.orientations])
+        # anisotropic orientation weights: (target index, body-frame axis, 1 - factor)
+        self.or_axes = [
+            (k, np.asarray(o.axis, np.float64), 1.0 - o.axis_weight)
+            for k, o in enumerate(lmap.orientations)
+            if o.axis is not None and o.axis_weight != 1.0
+        ]
         # reduced coordinates: every dof that no coupling or lock sets
         self.couplings = JointCouplings.from_model(m)
         c = self.couplings
@@ -314,7 +328,7 @@ class LandmarkIK:
 
     def _evaluate(
         self, qpos: np.ndarray, pos: np.ndarray, quat: np.ndarray,
-        prev: np.ndarray | None, jac: bool,
+        prev: np.ndarray | None, jac: bool, posture: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray | None]:  # fmt: skip
         m, d = self.model, self.data
         d.qpos[:] = qpos
@@ -325,14 +339,20 @@ class LandmarkIK:
         p = d.xpos[self.lm_body] + np.einsum("lij,lj->li", R, self.lm_off)
         res = [((p - pos) * self.lm_w[:, None]).ravel()]
         qerr = np.empty(4)
+        # per orientation target: world-frame weight matrix (axial component rescaled)
+        W = self.or_w[:, None, None] * np.eye(3)
+        for k, axis, drop in self.or_axes:
+            a = d.xmat[self.or_body[k]].reshape(3, 3) @ axis
+            W[k] -= self.or_w[k] * drop * np.outer(a, a)
         for k, b in enumerate(self.or_body):
             # world-frame rotation error R_model R_target^T
             neg = np.empty(4)
             mujoco.mju_negQuat(neg, quat[k])
             mujoco.mju_mulQuat(qerr, d.xquat[b], neg)
-            res.append(self.or_w[k] * _so3_log_quat(qerr))
+            res.append(W[k] @ _so3_log_quat(qerr))
         if len(self.post_w):
-            res.append(self.post_w * (qpos[self.post_qadr] - self.post_ref))
+            ref = self.post_ref if posture is None else posture
+            res.append(self.post_w * (qpos[self.post_qadr] - ref))
         if prev is not None:
             dq = np.empty(m.nv)
             mujoco.mj_differentiatePos(m, dq, 1.0, prev, qpos)
@@ -347,7 +367,7 @@ class LandmarkIK:
         o = 3 * len(self.lm_body)
         for k, b in enumerate(self.or_body):
             mujoco.mj_jacBody(m, d, None, self._jacr, b)
-            J[o + 3 * k : o + 3 * k + 3] = self._jacr * self.or_w[k]
+            J[o + 3 * k : o + 3 * k + 3] = W[k] @ self._jacr
         Jr = J[: o + 3 * len(self.or_body)] @ self._coupling_map(qpos)
         if len(self.post_w):
             Jp = np.zeros((len(self.post_w), self.nr))
@@ -401,7 +421,7 @@ class LandmarkIK:
 
     def solve(
         self, seed: np.ndarray, pos: np.ndarray, quat: np.ndarray,
-        prev: np.ndarray | None = None,
+        prev: np.ndarray | None = None, posture: np.ndarray | None = None,
     ) -> tuple[np.ndarray, int]:  # fmt: skip
         """Fit one frame.
 
@@ -411,13 +431,14 @@ class LandmarkIK:
             quat: ``(O, 4)`` orientation targets.
             prev: Predicted pose of the smoothing term (constant velocity from the
                 previous frames), or ``None``.
+            posture: ``(P,)`` values of the posture priors (``None``: the map's).
 
         Returns:
             ``(qpos, iterations)``.
         """
         cfg = self.config
         q = self.project(seed)
-        r, J = self._evaluate(q, pos, quat, prev, True)
+        r, J = self._evaluate(q, pos, quat, prev, True, posture)
         cost = r @ r
         lam = cfg.damping
         it = 0
@@ -427,7 +448,7 @@ class LandmarkIK:
             Hd = H + lam * np.diag(np.diag(H)) + 1e-9 * np.eye(self.nr)
             delta = self._box_step(Hd, g, q)
             q_new = self._step(q, delta)
-            r_new, J_new = self._evaluate(q_new, pos, quat, prev, True)
+            r_new, J_new = self._evaluate(q_new, pos, quat, prev, True, posture)
             cost_new = r_new @ r_new
             if cost_new <= cost:
                 q, r, J, cost = q_new, r_new, J_new, cost_new
@@ -441,8 +462,9 @@ class LandmarkIK:
         return q, it
 
     def fit(
-        self, pos: np.ndarray, quat: np.ndarray, seed: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
+        self, pos: np.ndarray, quat: np.ndarray, seed: np.ndarray,
+        posture: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:  # fmt: skip
         """Fit a clip frame by frame, warm-started from the previous frame.
 
         Args:
@@ -450,6 +472,7 @@ class LandmarkIK:
             quat: ``(T, O, 4)`` orientation targets.
             seed: ``(nq,)`` start pose of the first frame (later frames start from
                 the constant-velocity prediction).
+            posture: ``(T, P)`` per-frame posture values (``None``: the map's).
 
         Returns:
             ``(qpos (T, nq), iterations (T,))``.
@@ -469,7 +492,8 @@ class LandmarkIK:
                 pred = out[t - 1].copy()
                 mujoco.mj_integratePos(m, pred, vel, 1.0)
             start = seed if pred is None else pred
-            out[t], iters[t] = self.solve(start, pos[t], quat[t], pred)
+            ref = None if posture is None else posture[t]
+            out[t], iters[t] = self.solve(start, pos[t], quat[t], pred, ref)
         return out, iters
 
 
@@ -821,7 +845,7 @@ def refit_clip(
     ik = ik or LandmarkIK(model, lmap, config)
     targets = source.targets(src, model, lmap)
     t0 = time.perf_counter()
-    qpos, iters = ik.fit(targets.pos, targets.quat, targets.seed)
+    qpos, iters = ik.fit(targets.pos, targets.quat, targets.seed, targets.posture)
     qpos, targets, extra = source.finish(ik, targets, qpos)
     seconds = time.perf_counter() - t0
     metrics = validate_refit(ik, targets, qpos, thresholds)

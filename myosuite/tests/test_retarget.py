@@ -93,6 +93,49 @@ def test_posture_prior_holds_an_open_joint(model, walk) -> None:
     np.testing.assert_allclose(q[:, adr], 0.1, atol=1e-3)
 
 
+def test_per_frame_posture_and_axial_weight(model, walk) -> None:
+    lmap = rt.LandmarkMap(
+        "test", "0", tuple(lm for lm in LMAP.landmarks if lm.body != "lunate_l"),
+        tuple(o for o in LMAP.orientations if o.body != "lunate_l"), LMAP.feet,
+        posture=(("deviation_l", 0.1, 0.05),),
+    )  # fmt: skip
+    keep = [i for i, b in enumerate(BODIES) if b != "lunate_l"]
+    tg = _targets(model, walk[:5])
+    ik = rt.LandmarkIK(model, lmap, rt.RefitConfig(smooth_weight=0.0))
+    ref = np.linspace(-0.1, 0.1, 5)[:, None]
+    q, _ = ik.fit(tg.pos[:, keep], tg.quat[:, [0, 1, 3, 4, 5]], tg.seed, ref)
+    adr = model.jnt_qposadr[model.joint("deviation_l").id]
+    np.testing.assert_allclose(q[:, adr], ref[:, 0], atol=1e-3)
+    # an orientation target's axial component weighted by 0: rotating the target about
+    # the axis costs nothing
+    axial = rt.LandmarkMap(
+        "test", "0", (), (rt.OrientationTarget("torso", "torso", 1.0, (0.0, 0.0, 1.0), 0.0),)
+    )  # fmt: skip
+    ik = rt.LandmarkIK(model, axial)
+    d = mujoco.MjData(model)
+    d.qpos[:] = walk[0]
+    mujoco.mj_kinematics(model, d)
+    turn, target = np.empty(4), np.empty(4)
+    mujoco.mju_axisAngle2Quat(
+        turn, d.xmat[model.body("torso").id].reshape(3, 3)[:, 2], 0.3
+    )
+    mujoco.mju_mulQuat(target, turn, d.xquat[model.body("torso").id])
+    r, _ = ik._evaluate(walk[0], np.zeros((0, 3)), target[None], None, False)
+    np.testing.assert_allclose(r, 0.0, atol=1e-9)
+
+
+def test_elbow_angle_table(model) -> None:
+    from myosuite.methods.biomech import retarget_smplh as rs
+
+    q = model.qpos0.copy()
+    q[model.jnt_qposadr[model.joint("shoulder_elv_l").id]] = np.pi / 2
+    hinge = next(h for h in rs.SMPLH_MYOFULLBODY.hinges if h.joint == "elbow_flexion_l")
+    phi, theta = rs._hinge_table(model, mujoco.MjData(model), q, hinge)
+    # myofullbody's carrying angle at zero flexion; the angle then follows the hinge
+    assert np.degrees(theta[0]) == pytest.approx(12.8, abs=0.2)
+    assert np.all(np.diff(theta) > 0) and abs(theta[-1] - phi[-1]) < np.radians(5)
+
+
 def test_validation_flags_a_spike(model, walk) -> None:
     tg = _targets(model, walk)
     ik = rt.LandmarkIK(model, LMAP)

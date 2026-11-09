@@ -18,6 +18,9 @@ before a clip's end or failure) and per clip first (suffix ``_clip``):
   positions; ``joint_rmse_deg`` / ``joint_mae_deg`` over the independent joints;
   ``root_ori_rad``; ``body_vel_mps``.
 
+Clips whose retarget metadata carries ``quality_flags`` (curation, none by default)
+are scored as usual; ``unflagged`` repeats the report without them.
+
 Ported from muscle-supermimic (github.com/kaibohex/muscle-supermimic, Apache-2.0) at
 commit 8a6244b, ``src/muscle_supermimic/tasks/tracking/scripts/evaluate.py``.
 """
@@ -88,6 +91,7 @@ METRICS: dict[str, tuple[str, Callable[[float], float]]] = {
 def summarize(
     names: Sequence[str], sums: dict[str, np.ndarray], counts: np.ndarray,
     returns: np.ndarray, max_return: np.ndarray, failed: np.ndarray, failed_05: np.ndarray,
+    flagged: Sequence[bool] | None = None,
 ) -> dict[str, Any]:  # fmt: skip
     """The report of one evaluation from per-clip accumulators.
 
@@ -99,6 +103,8 @@ def summarize(
         max_return: Largest attainable return per clip.
         failed: Clips the failure rule ended.
         failed_05: Clips that failed or exceeded :data:`VALIDATION_REL_SITE`.
+        flagged: Clips with quality flags; when any, ``unflagged`` holds the report
+            of the other clips (without ``per_clip``) and ``flagged`` their names.
 
     Returns:
         The metrics (see the module docstring), ``failed`` (clip names) and ``per_clip``.
@@ -118,6 +124,16 @@ def summarize(
         vals = [fn(float(v)) for v in sums[key][counted] / counts[counted]]
         out[name + "_clip"] = float(np.mean(vals)) if vals else float("nan")
     out["per_clip"] = {n: round(float(x), 4) for n, x in zip(names, norm)}
+    fl = np.zeros(len(names), bool) if flagged is None else np.asarray(flagged, bool)
+    if fl.any() and not fl.all():
+        k = ~fl
+        sub = summarize(
+            [n for n, x in zip(names, k) if x], {key: v[k] for key, v in sums.items()},
+            counts[k], returns[k], max_return[k], failed[k], failed_05[k],
+        )  # fmt: skip
+        sub.pop("per_clip")
+        out["unflagged"] = sub
+        out["flagged"] = [n for n, x in zip(names, fl) if x]
     return out
 
 
@@ -166,6 +182,8 @@ def evaluate(
                 sums[k][i] += float(errs[k])
             counts[i] += 1
     max_return = (m.clip_len[ids] - 1) * u.max_step_reward
+    flagged = [bool(m.quality_flags[c]) for c in ids] if m.quality_flags else None
     return summarize(
-        [m.names[c] for c in ids], sums, counts, returns, max_return, failed, failed_05
-    )
+        [m.names[c] for c in ids], sums, counts, returns, max_return, failed,
+        failed_05, flagged,
+    )  # fmt: skip
