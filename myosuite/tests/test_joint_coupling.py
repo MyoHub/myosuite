@@ -256,8 +256,9 @@ def test_functional_projection_gradients() -> None:
     )
     out, out_vel = projected_joint_couplings(couplings, qpos_t, qvel_t)
     np.testing.assert_allclose(
-        out.detach().numpy(), projected_joint_couplings(
-            JointCouplings.from_model(model), qpos, qvel)[0], atol=1e-15
+        out.detach().numpy(),
+        projected_joint_couplings(JointCouplings.from_model(model), qpos, qvel)[0],
+        atol=1e-15,
     )
     adr = {n: model.jnt_qposadr[model.joint(n).id] for n in
            ("master", "dep", "chained", "locked")}  # fmt: skip
@@ -281,5 +282,7 @@ def test_as_torch_casts_values_and_keeps_addresses() -> None:
     assert couplings.dep_qpos.dtype == torch.int64
     assert couplings.level_ends == (1, 2)
     qpos, _ = _random_state(model, np.random.default_rng(4), (3,))
-    out, _ = projected_joint_couplings(couplings, torch.tensor(qpos, dtype=torch.float32))
+    out, _ = projected_joint_couplings(
+        couplings, torch.tensor(qpos, dtype=torch.float32)
+    )
     assert out.dtype == torch.float32

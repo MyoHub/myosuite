@@ -41,6 +41,22 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **`myoMimic-v0`: multi-clip full-body motion tracking, on the CPU and on mjlab.** The task tracks MuscleMimic's
+  retargeted KIT clips (972 training / 108 held-out, `motion.clips="kit_train"` / `"kit_test"`) with myo_sim's
+  `myofullbody`. It is defined apart from the body model and the learning method:
+  - task: observations from a shared vocabulary (`myosuite.terms.mimic_track`, pure NumPy/torch functions a method can
+    also differentiate), MimicReward as the proposed dense reward, a failure rule (mean relative site deviation 1 m,
+    root position 1 m, root orientation 1 rad) and success metrics that do not depend on the control step
+    (`myosuite.envs.myo.tasks.mimic.tracking.metrics`: tracked-to-end, normalized return per second, MPJPE, joint
+    error, plus MuscleMimic's 0.5 m rule as an extra column);
+  - model: `EnvConfig.model` / `make_env(..., model=...)` picks the body of an id registered with
+    `register_env(models=...)` (`"myofullbody"` so far);
+  - method: typed presets (`MimicTaskCfg`, default `"supermimic"`) with dotted overrides through
+    `EnvConfig.task_kwargs={"preset": ..., "overrides": {...}}`; the control step is `EnvConfig.ctrl_dt` (default 0.02 s).
+
+  The mjlab twin reads the CPU registration (`register_cpu_twins`) and takes the muscle-command features.
+  `make_env` also accepts `model=` and `ctrl_dt=` as keywords. `myoMimicFullbody-v0` is unchanged.
+
 * **`load_fbvs_player` / `export_fbvs_onnx`** in `myosuite.integrations.musclemimic.fbvs_player` wrap a tutorial 5.4 walker as a ChaseTag FBVs player (546 -> 354) and write the ONNX the MyoChallenge server runs; tutorial 5.6 uses them instead of an inline wrapper ([#617]).
 * **`decode_synergies(model, syn)`** in `myosuite.integrations.musclemimic.sar_extraction` maps SAR synergy activations back to muscle activations (the NumPy inverse of `encode_activations`); tutorial 5.5 uses it instead of its own decoder ([#616]).
 * **Rollout videos without hand-written render loops:** `myosuite.viz.rollout_video` adds `record_rollout(model, data, step, n_steps)` (renders after each step, stops early when `step` returns `False`), `tracking_camera` (follows the free root body) and `offscreen_size`; `MotionClip.to_mjdata(model, frame)` returns a posed, forwarded `MjData`. Tutorials 5.1 and 5.5 use them instead of their own render loops ([#613]).

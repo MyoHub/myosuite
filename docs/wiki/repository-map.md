@@ -41,12 +41,13 @@ envs/myo/tasks/          # CPU implementations (MyoGymnasiumEnv)
 │   ├── arm/ hand/ leg/ torso/ full_body/   # MyoGymnasiumEnv subclasses: pose.py, reach.py, ...
 │   └── specs/, leg/specs/  # TaskConfig data-driven references (elbow pose, leg directional → cpu + mjx)
 ├── challenge/              # chasetag, relocate, reorient, soccer, tabletennis, ...
-└── mimic/                  # MuscleMimic CPU tasks
+└── mimic/                  # MuscleMimic CPU tasks; tracking/ = myoMimic-v0 (task cfg, models, motion lib, metrics)
 
 envs/myo/backends/       # GPU implementations (same env_id as the CPU task)
 ├── mjlab/                # MuJoCo-Warp ManagerBasedRlEnvCfg (supported)
 │   ├── tasks/            # twins of the CPU envs, built from the CPU registration:
-│   │                     #   cpu_reference.py, registration.py, pose/ reach/ leg/ mdp/ (terms, MyoAction)
+│   │                     #   cpu_reference.py, registration.py, pose/ reach/ leg/ waypoint/
+│   │                     #   mimic_tracking/ (myoMimic-v0), mdp/ (terms, MyoAction)
 │   ├── register_mjlab_*.py   # special-purpose tasks (Table Tennis, ChaseTag, Mimic)
 │   └── configs/, mjlab_task_builder.py   # shared config and TaskConfig builders
 └── mjx/                  # JAX/brax env classes (experimental; not guaranteed long-term)
