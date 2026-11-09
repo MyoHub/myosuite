@@ -9,6 +9,12 @@ Inverse kinematics
 .. automodule:: myosuite.methods.biomech.inverse_kinematics
    :members:
 
+OpenSim motions
+---------------
+
+.. automodule:: myosuite.methods.biomech.opensim_motion
+   :members:
+
 Inverse dynamics
 ----------------
 
