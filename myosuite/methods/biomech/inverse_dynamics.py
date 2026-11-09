@@ -53,11 +53,13 @@ class ClipKinematics:
 
 def _quaternion_addresses(model: mujoco.MjModel) -> list[int]:
     """First qpos address of every free- and ball-joint quaternion."""
-    free, ball = mujoco.mjtJoint.mjJNT_FREE, mujoco.mjtJoint.mjJNT_BALL
+    # Plain ints: some MuJoCo builds' enums do not compare equal to NumPy scalars.
+    free, ball = int(mujoco.mjtJoint.mjJNT_FREE), int(mujoco.mjtJoint.mjJNT_BALL)
+    types = model.jnt_type.tolist()
     return [
-        int(model.jnt_qposadr[j]) + (3 if model.jnt_type[j] == free else 0)
+        int(model.jnt_qposadr[j]) + (3 if types[j] == free else 0)
         for j in range(model.njnt)
-        if model.jnt_type[j] in (free, ball)
+        if types[j] in (free, ball)
     ]
 
 

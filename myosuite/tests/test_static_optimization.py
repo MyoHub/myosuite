@@ -219,11 +219,13 @@ def test_floating_base_residuals_carry_the_root_wrench() -> None:
         np.abs(res.joint_torque[:, 2]).min() > 300
     )  # body weight on the vertical residual
     assert np.abs(res.reserve[:, 6:]).max() < 0.5
-    # The body weight on the root must not swamp the solver's relative tolerance.
+    # The body weight on the root must not swamp the solver's relative tolerance:
+    # polished at 1e-5, the solve lands on the default one (with the root residuals
+    # in the cost it stays about 2e-5 off; at 1e-4 platforms differ by 2-5e-3).
     loose = static_optimization(
-        model, qpos, qvel, qacc, config=StaticOptimizationConfig(tolerance=1e-4)
+        model, qpos, qvel, qacc, config=StaticOptimizationConfig(tolerance=1e-5)
     )
-    assert np.abs(loose.activation - res.activation).max() < 2e-3
+    assert np.abs(loose.activation - res.activation).max() < 1e-6
     env.close()
 
 

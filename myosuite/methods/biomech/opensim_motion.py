@@ -156,7 +156,8 @@ def _free_body(model: mujoco.MjModel, body: int) -> tuple[int, np.ndarray, np.nd
         joints = range(
             model.body_jntadr[b], model.body_jntadr[b] + model.body_jntnum[b]
         )
-        if any(model.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE for j in joints):
+        free = [j for j in joints if model.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE]
+        if free:
             data = mujoco.MjData(model)
             mujoco.mj_kinematics(model, data)
             inv = np.empty(4)
@@ -164,7 +165,7 @@ def _free_body(model: mujoco.MjModel, body: int) -> tuple[int, np.ndarray, np.nd
             pos, quat = np.empty(3), np.empty(4)
             mujoco.mju_rotVecQuat(pos, data.xpos[body] - data.xpos[b], inv)
             mujoco.mju_mulQuat(quat, inv, data.xquat[body])
-            return next(j for j in joints if model.jnt_type[j] == 0), pos, quat
+            return free[0], pos, quat
         if model.body_jntnum[b]:
             break
         chain.append(model.body_parentid[b])
@@ -244,12 +245,14 @@ def opensim_motion_to_qpos(
     qpos = np.tile(model.qpos0, (len(time), 1))
     used = set()
 
-    hinge, slide = mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE
+    # Plain ints: some MuJoCo builds' enums do not compare equal to NumPy scalars.
+    hinge, slide = int(mujoco.mjtJoint.mjJNT_HINGE), int(mujoco.mjtJoint.mjJNT_SLIDE)
+    types = model.jnt_type.tolist()
     for j in range(model.njnt):
         name = model.joint(j).name
-        if model.jnt_type[j] in (hinge, slide) and name in motion.labels:
+        if types[j] in (hinge, slide) and name in motion.labels:
             value = column(name)
-            if model.jnt_type[j] == hinge:
+            if types[j] == hinge:
                 value = angle(value)
             qpos[:, model.jnt_qposadr[j]] = signs.get(name, 1.0) * value
             used.add(name)
