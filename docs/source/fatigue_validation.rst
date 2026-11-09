@@ -4,9 +4,10 @@ Fatigue Model Validation
 The ``myoFati*`` environments and the mjlab fatigue twins use the
 three-compartment controller model with a rest-recovery multiplier (3CC-r):
 :class:`~myosuite.core.muscle_conditions.CumulativeFatigue` on CPU and
-:class:`~myosuite.core.muscle_conditions.TorchFatigueState` on mjlab. This page
+:class:`~myosuite.core.muscle_conditions.TorchFatigueState` on mjlab. Both are
+implemented in ``myo_sim.physics.fatigue`` (myo-sim 0.2.5 and later). This page
 checks its sustained-contraction endurance times against published data. The
-numbers are pinned by ``myosuite/tests/test_fatigue_validation.py``.
+numbers are pinned by myo_sim's ``tests/test_physics_fatigue_validation.py``.
 
 Model
 -----
@@ -64,7 +65,7 @@ Parameters and sources
 ----------------------
 
 :data:`~myosuite.core.muscle_conditions.MUSCLE_FATIGUE_PARAMS` maps functional
-muscle groups (``myosuite/core/muscle_groups.py``) to ``F``, ``R`` and ``r``:
+muscle groups (``myo_sim.physics.muscle_groups``) to ``F``, ``R`` and ``r``:
 
 * ``Default``: the "general" fit of Frey-Law et al. (2012, Table 1),
   F = 0.00970, R = 0.00091, with r = 15, which Looft et al. (2018) found optimal

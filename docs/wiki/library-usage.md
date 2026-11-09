@@ -36,7 +36,7 @@ See [docs/wiki/mjlab-design-guide.md](mjlab-design-guide.md) for the full patter
 | Contact force | `mujoco.mj_contactForce` | Manual contact struct field access |
 | Body/site/joint ID | `mujoco.mj_name2id` | Hardcoded integer indices |
 | Jacobian | `mujoco.mj_jacBody`, `mj_jacSite` | Manual Jacobian computation |
-| Coupled joints (`mjEQ_JOINT`) on their polynomials | `myosuite.physics.joint_coupling.project_joint_couplings` (NumPy or Torch; CPU envs: `MyoGymnasiumEnv._project_joint_couplings`) | Hand-rolled `eq_data` polynomial evaluation |
+| Coupled joints (`mjEQ_JOINT`) on their polynomials | `myo_sim.physics.joint_coupling.project_joint_couplings`, re-exported as `myosuite.physics.joint_coupling` (NumPy or Torch; CPU envs: `MyoGymnasiumEnv._project_joint_couplings`) | Hand-rolled `eq_data` polynomial evaluation |
 
 **Unified dispatcher (preferred for new code):**
 

@@ -70,7 +70,7 @@ for example, h5py currently provides 3.15 wheels through its maintainer-supporte
 and PyTorch CPU wheels are available from its
 [official CPU index](https://download.pytorch.org/whl/cpu/).
 
-**Models.** The musculoskeletal models ship in the `myo-sim` package, pinned to 0.2.4 and installed from PyPI together with MyoSuite, so no git submodules and no separate model install are needed. The few MPL, YCB and furniture assets the tasks use are bundled in `myosuite/envs/myo/assets/`. Environments compose their models with `ModelBuilder` (see the [model builder guide](docs/source/model_builder.rst)). A different `myo-sim` version can change joints and ranges (the thumb joints did in 0.2.0), so the baseline policies are only valid for the pinned version.
+**Models.** The musculoskeletal models ship in the `myo-sim` package, pinned to 0.2.5 and installed from PyPI together with MyoSuite, so no git submodules and no separate model install are needed. The few MPL, YCB and furniture assets the tasks use are bundled in `myosuite/envs/myo/assets/`. Environments compose their models with `ModelBuilder` (see the [model builder guide](docs/source/model_builder.rst)). A different `myo-sim` version can change joints and ranges (the thumb joints did in 0.2.0), so the baseline policies are only valid for the pinned version.
 
 Verify (replace "onscreen" with "offscreen" when running on a remote, headless machine):
 
