@@ -105,6 +105,21 @@ class TrackFeatures:
     site_rvel: Any
 
 
+def array_module(x: Any) -> Any:
+    """The array module of an array or container of arrays (numpy or torch)."""
+    if isinstance(x, (TrackState, TrackRef)):
+        x = x.root_pos
+    elif isinstance(x, TrackFeatures):
+        x = x.root_rot
+    if type(x).__module__.startswith("torch"):
+        import torch  # noqa: PLC0415
+
+        return torch
+    import numpy  # noqa: PLC0415
+
+    return numpy
+
+
 # ---------------------------------------------------------------------------
 # Rotations (wxyz quaternions, matrices act on column vectors)
 # ---------------------------------------------------------------------------
@@ -347,6 +362,14 @@ def reward(
 ) -> Any:
     """One MimicReward component (a key of :data:`REWARDS`), ``(...,)`` in [0, 1]."""
     return REWARDS[name](xp, s, f, r, kernel)
+
+
+def weighted_reward(
+    xp: Any, s: TrackState, f: TrackFeatures, r: TrackRef,
+    terms: Any, step_weights: dict[str, float],
+) -> Any:  # fmt: skip
+    """``sum_k step_weight_k * component_k`` over ``terms`` (``(name, kernel)`` pairs)."""
+    return sum(step_weights[n] * reward(xp, s, f, r, n, k) for n, k in terms)
 
 
 # ---------------------------------------------------------------------------

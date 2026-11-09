@@ -18,7 +18,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -160,6 +160,14 @@ class MimicTaskCfg:
         reset: Episode starts.
         episode_length_s: Time limit (a truncation); ``None``: clips run to their end.
         self_collisions: Keep the body's self-contact pairs.
+        reward_fn: A method's own step reward ``reward_fn(state, ref, ctrl_dt)`` replacing
+            :attr:`reward` (``None``: the proposed reward). It gets the
+            :class:`~myosuite.terms.mimic_track.TrackState` of the post-step state and the
+            :class:`~myosuite.terms.mimic_track.TrackRef` of frame f + 1, batched NumPy or
+            torch arrays (:func:`~myosuite.terms.mimic_track.array_module`), and returns the
+            reward per step, ``(...,)``. The proposed reward is still reported (CPU
+            ``info["task_reward"]``, the twin's ``task_reward``). A whole replacement
+            ``RewardCfg`` of the library's components is an override of ``"reward"``.
     """
 
     motion: MotionCfg = field(default_factory=MotionCfg)
@@ -169,6 +177,7 @@ class MimicTaskCfg:
     reset: ResetCfg = field(default_factory=ResetCfg)
     episode_length_s: float | None = 300.0
     self_collisions: bool = True
+    reward_fn: Callable[[Any, Any, float], Any] | None = None
 
     def fingerprint(self) -> str:
         """Stable hash of the config (store it with checkpoints)."""

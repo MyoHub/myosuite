@@ -16,7 +16,11 @@ method:
 * model: a body adapter (:mod:`.models`; myo_sim's ``myofullbody`` so far), chosen with
   ``EnvConfig.model``;
 * method: presets (:mod:`.config`) select a method's MDP choices (``"supermimic"``,
-  the default); methods live in ``myosuite.methods``.
+  the default); methods live in ``myosuite.methods``. A method may train on its own
+  reward (``overrides={"reward_fn": fn}``, ``fn(state, ref, ctrl_dt)``, or a whole
+  ``RewardCfg`` as ``overrides={"reward": ...}``); the proposed reward is still reported
+  (``info["task_reward"]`` on the CPU, the twin command's ``task_reward`` and its
+  ``Metrics/motion/task_reward`` log) and is what the metrics score.
 
 Build it with ``make_env(MIMIC_ENV_ID)`` on the CPU or ``backend="mjlab"``; the control
 step is ``EnvConfig.ctrl_dt`` (default 0.02 s).

@@ -11,7 +11,7 @@ before a clip's end or failure) and per clip first (suffix ``_clip``):
 
 * ``tracked_to_end``: share of clips without failure; ``tracked_to_end_05m`` the same
   with MuscleMimic's stricter validation rule (mean relative site deviation > 0.5 m);
-* ``norm_return``: the return divided by its maximum over the clip, i.e. the reward per
+* ``norm_return``: the proposed reward's return divided by its maximum over the clip, i.e. the reward per
   second of reference motion over its maximum, in [0, 1] (steps after a failure earn 0);
 * ``mpjpe_mm``: mean distance of the 16 bodies' offsets from the pelvis (world axes);
   ``mpjpe_root_mm`` with the offsets in the root frame; ``g_mpjpe_mm`` of the 17 world
@@ -149,8 +149,8 @@ def evaluate(
         obs, _ = env.reset(options={"clip": c})
         done = False
         while not done:
-            obs, rwd, terminated, truncated, info = env.step(policy(obs))
-            returns[i] += rwd
+            obs, _, terminated, truncated, info = env.step(policy(obs))
+            returns[i] += info["task_reward"]
             failed[i] |= terminated
             failed_05[i] |= terminated or info["dev_rel_site"] > VALIDATION_REL_SITE
             done = terminated or truncated

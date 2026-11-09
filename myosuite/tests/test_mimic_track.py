@@ -23,6 +23,8 @@ from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
 from myosuite.envs.myo.tasks.mimic.tracking.config import (
     PRESETS,
     MimicTaskCfg,
+    RewardCfg,
+    RewardTermCfg,
     resolve_task,
 )
 from myosuite.envs.myo.tasks.mimic.tracking.metrics import evaluate
@@ -352,3 +354,64 @@ def test_features_run(clip: str, backend: str) -> None:
         import torch  # noqa: PLC0415
 
         env.step(torch.full((2, 354), 0.2))
+
+
+def _root_reward(state: mt.TrackState, ref: mt.TrackRef, ctrl_dt: float):
+    """A method's own reward: root tracking per second (pure, NumPy or torch)."""
+    xp = mt.array_module(state)
+    return xp.exp(-10.0 * ((state.root_pos - ref.root_pos) ** 2).sum(-1)) * ctrl_dt
+
+
+def test_custom_reward_cpu(clip: str) -> None:
+    """``reward_fn`` replaces the step reward; ``task_reward`` stays the proposed one."""
+    base = _env(clip)
+    custom = _env(clip, reward_fn=_root_reward)
+    whole = make_env(  # a whole replacement RewardCfg from library components
+        EnvConfig(MIMIC_ENV_ID, task_kwargs={"overrides": {
+            "motion.clips": clip, "reward": RewardCfg(terms=(RewardTermCfg("rpos", 1.0, 100.0),), scale=1.0)}})
+    )  # fmt: skip
+    for env in (base, custom, whole):
+        env.reset(seed=0, options={"clip": 0})
+    for _ in range(3):
+        a = np.full(354, 0.1)
+        _, r0, *_, i0 = base.step(a)
+        _, r1, *_, i1 = custom.step(a)
+        _, r2, *_, i2 = whole.step(a)
+        assert (
+            r0 == pytest.approx(i0["task_reward"]) == pytest.approx(i1["task_reward"])
+        )
+        u = custom.unwrapped
+        s = u.track_state()
+        expect = _root_reward(
+            s, u.motion.ref(min(u.frame, u.motion.clip_end[0])), u._ctrl_dt
+        )
+        assert r1 == pytest.approx(float(expect), rel=1e-6) and r1 != pytest.approx(r0)
+        assert r2 == pytest.approx(i2["r_rpos"] * 0.02 / 0.01)
+
+
+def test_custom_reward_mjlab_matches_cpu(clip: str) -> None:
+    """The twin uses the same ``reward_fn`` and reports the proposed reward as ``task_reward``."""
+    pytest.importorskip("mjlab")
+    torch = pytest.importorskip("torch")
+
+    def make(backend: str, **ov):
+        tk = {"overrides": {"motion.clips": clip, "reset.mode": "start", **ov}}
+        kw = {"device": "cpu"} if backend == "mjlab" else {}
+        return make_env(EnvConfig(MIMIC_ENV_ID, backend=backend, task_kwargs=tk,
+                                  **({"num_envs": 1} if backend == "mjlab" else {})), **kw)  # fmt: skip
+
+    mj_base, mj = make("mjlab"), make("mjlab", reward_fn=_root_reward)
+    cpu = make("cpu", reward_fn=_root_reward)
+    for e in (mj_base, mj):
+        e.reset()
+    cpu.reset(seed=0, options={"clip": 0})
+    a = np.full(354, 0.1, np.float32)
+    for _ in range(3):
+        _, r_cpu, *_, info = cpu.step(a)
+        _, r_base, *_ = mj_base.step(torch.tensor(a)[None])
+        _, r_mj, *_ = mj.step(torch.tensor(a)[None])
+        assert float(r_mj[0]) == pytest.approx(r_cpu, rel=1e-4)
+        task_reward = mj.unwrapped.command_manager.get_term("motion").task_reward
+        assert float(task_reward[0]) == pytest.approx(float(r_base[0]), rel=1e-5)
+        assert float(task_reward[0]) == pytest.approx(info["task_reward"], rel=1e-4)
+    assert "task_reward" in mj.unwrapped.command_manager.get_term("motion").metrics

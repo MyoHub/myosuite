@@ -87,14 +87,16 @@ class MotionCommand(CommandTerm):
         self._just_reset = torch.zeros(self.num_envs, dtype=torch.bool, device=dev)
         self.ep_disc_ret = torch.zeros(self.num_envs, device=dev)
         self.ep_ret = torch.zeros(self.num_envs, device=dev)
-        self.max_step_reward = (
-            sum(
-                r.weight
-                for r in env.cfg.rewards.values()
-                if r is not None and r.weight > 0
-            )
-            * env.step_dt
+        # the proposed reward's largest step reward (also with a method's reward_fn)
+        weights = (
+            [r.weight * env.step_dt for r in env.cfg.rewards.values() if r is not None]
+            if task.reward_fn is None
+            else list(task.reward.step_weights(env.step_dt).values())
         )
+        self.max_step_reward = sum(w for w in weights if w > 0)
+        self.task_reward = torch.zeros(self.num_envs, device=dev)
+        """The proposed reward of the last step (the env's reward unless ``reward_fn`` replaces it)."""
+        self.metrics["task_reward"] = torch.zeros(self.num_envs, device=dev)
         self.G_max = self.max_step_reward / (1 - task.reset.gamma)
         nb = self.motion.num_bins
         self.bin_G = torch.zeros(nb, device=dev)
@@ -384,6 +386,9 @@ class MotionCommand(CommandTerm):
             return
         stepped = ~self._just_reset
         env = self._env
+        if self.task.reward_fn is None:
+            self.task_reward = env.reward_buf.clone()
+        self.metrics["task_reward"] += torch.where(stepped, self.task_reward, 0.0)
         r = torch.where(stepped, env.reward_buf, 0.0)
         T = env.episode_length_buf.float()
         self.ep_disc_ret += (self.task.reset.gamma ** (T - 1).clamp(min=0)) * r

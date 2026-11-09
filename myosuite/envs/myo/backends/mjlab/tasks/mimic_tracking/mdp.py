@@ -59,6 +59,20 @@ def track_reward(
     return mt.reward(torch, s, f, r, name, kernel)
 
 
+def custom_reward(
+    env: ManagerBasedRlEnv,
+    command_name: str,
+    terms: tuple[tuple[str, float], ...],
+    step_weights: dict[str, float],
+) -> torch.Tensor:
+    """The task's ``reward_fn`` of the post-step state against frame f + 1; the proposed
+    reward goes to the command's ``task_reward``."""
+    cmd = _cmd(env, command_name)
+    s, f, r = cmd.transition()
+    cmd.task_reward = mt.weighted_reward(torch, s, f, r, terms, step_weights)
+    return cmd.task.reward_fn(s, r, env.step_dt)
+
+
 @_pure(mt.exceeds)
 def track_failure(
     env: ManagerBasedRlEnv, command_name: str, name: str, threshold: float

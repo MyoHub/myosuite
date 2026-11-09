@@ -131,14 +131,28 @@ def make_mimic_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
         ),
     }
     rc = task.reward
-    rewards = {  # mjlab multiplies the weights by the step dt
-        f"mimic_{t.name}": RewardTermCfg(
-            func=mdp.track_reward,
-            weight=t.weight * rc.scale / rc.ref_dt,
-            params={**CMD, "name": t.name, "kernel": t.kernel},
-        )
-        for t in rc.terms
-    }
+    if task.reward_fn is None:
+        rewards = {  # mjlab multiplies the weights by the step dt
+            f"mimic_{t.name}": RewardTermCfg(
+                func=mdp.track_reward,
+                weight=t.weight * rc.scale / rc.ref_dt,
+                params={**CMD, "name": t.name, "kernel": t.kernel},
+            )
+            for t in rc.terms
+        }
+    else:  # a method's reward per step; the proposed one is still computed (task_reward)
+        step_dt = timestep * cpu.frame_skip
+        rewards = {
+            "custom": RewardTermCfg(
+                func=mdp.custom_reward,
+                weight=1.0 / step_dt,
+                params={
+                    **CMD,
+                    "terms": tuple((t.name, t.kernel) for t in rc.terms),
+                    "step_weights": rc.step_weights(step_dt),
+                },
+            )
+        }
     terminations = {
         base_mdp.SYNC_TERM: TerminationTermCfg(func=base_mdp.sync_forward),
         "time_out": TerminationTermCfg(func=base_mdp.time_out, time_out=True),

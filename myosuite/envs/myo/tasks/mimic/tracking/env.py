@@ -171,8 +171,11 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
         obs["goal"] = self._goal()
         return obs
 
-    def transition_terms(self) -> tuple[dict[str, float], dict[str, float]]:
-        """Reward components and deviations of the current state against frame f + 1."""
+    def transition_terms(
+        self,
+    ) -> tuple[dict[str, float], dict[str, float], float | None]:
+        """Reward components, deviations and the custom ``reward_fn`` (if any) of the
+        current state against frame f + 1."""
         m = self.motion
         f1 = min(self._f + 1, int(m.clip_end[m.clip_id[self._f]]))
         s = self.track_state()
@@ -182,16 +185,22 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
             for n, k in self._kernels.items()
         }
         devs = {n: float(mt.deviation(np, s, feats, ref, n)) for n in mt.DEVIATIONS}
-        return rewards, devs
+        fn = self.task.reward_fn
+        custom = None if fn is None else float(fn(s, ref, self._ctrl_dt))
+        return rewards, devs, custom
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
-        """Reward of the last transition (state vs frame f + 1) and the failure rule."""
+        """Reward of the last transition (state vs frame f + 1) and the failure rule.
+
+        ``task_reward`` is the proposed reward, also when ``reward_fn`` replaces it.
+        """
         del obs_dict
-        rewards, devs = self.transition_terms()
-        dense = sum(self._step_weights[n] * r for n, r in rewards.items())
+        rewards, devs, custom = self.transition_terms()
+        task_reward = sum(self._step_weights[n] * r for n, r in rewards.items())
         failed = any(devs[n] > thr for n, thr in self.task.failure.thresholds().items())
         return {
-            "dense": dense,
+            "dense": task_reward if custom is None else custom,
+            "task_reward": task_reward,
             "solved": False,
             "done": failed,
             "failed": failed,
