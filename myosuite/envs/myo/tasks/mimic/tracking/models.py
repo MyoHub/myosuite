@@ -155,6 +155,14 @@ def scene_spec(model: MimicModelCfg, self_collisions: bool = True) -> mujoco.MjS
     return spec
 
 
+def model_version(name: str) -> str:
+    """Version of the package model *name* comes from (myo_sim for every model so far)."""
+    model_cfg(name)
+    import myo_sim  # noqa: PLC0415
+
+    return str(myo_sim.__version__)
+
+
 @functools.lru_cache(maxsize=4)
 def compiled_scene(name: str, self_collisions: bool = True) -> mujoco.MjModel:
     """Compiled :func:`scene_spec` (cached; copy before editing)."""

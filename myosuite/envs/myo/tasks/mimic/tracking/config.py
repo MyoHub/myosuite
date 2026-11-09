@@ -32,8 +32,10 @@ class MotionCfg:
     Attributes:
         clips: A clip (``.npz``), a directory, a ``.txt`` list, or ``"kit_train"`` /
             ``"kit_test"`` (MuscleMimic's KIT split, 972 / 108 clips).
-        root: Directory the paths of a list start from (default: the KIT dataset
-            download for the KIT names, else the list's own directory).
+        root: Directory the paths of a list start from (default for the KIT names:
+            ``$MYOSUITE_KIT_ROOT``, the local retarget cache or the download, see
+            :func:`~myosuite.envs.myo.tasks.mimic.tracking.kit_root`; else the
+            list's own directory).
         bin_s: Length of the reset bins in seconds.
     """
 

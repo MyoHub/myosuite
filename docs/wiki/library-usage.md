@@ -37,6 +37,7 @@ See [docs/wiki/mjlab-design-guide.md](mjlab-design-guide.md) for the full patter
 | Body/site/joint ID | `mujoco.mj_name2id` | Hardcoded integer indices |
 | Jacobian | `mujoco.mj_jacBody`, `mj_jacSite` | Manual Jacobian computation |
 | Coupled joints (`mjEQ_JOINT`) on their polynomials | `myosuite.physics.joint_coupling.project_joint_couplings` (in place, NumPy or Torch; CPU envs: `MyoGymnasiumEnv._project_joint_couplings`); `projected_joint_couplings` (out of place, differentiable with Torch; `JointCouplings.as_torch`) | Hand-rolled `eq_data` polynomial evaluation |
+| AMASS SMPL+H motion onto a body model | `myosuite.methods.biomech.retarget_smplh` (one SMPL+H -> model table, `smplh_source`; `scripts/mimic/retarget_amass.py`), FK in `myosuite.methods.biomech.smplh`, landmark IK on the couplings in `myosuite.methods.biomech.retarget` | Another SMPL FK or IK loop, `smplx`/torch at runtime, or projecting coupled joints of clips fitted on another body |
 
 **Unified dispatcher (preferred for new code):**
 

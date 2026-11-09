@@ -29,6 +29,7 @@ from __future__ import annotations
 import concurrent.futures
 import dataclasses
 import functools
+import json
 import glob
 import os
 from collections.abc import Callable, Sequence
@@ -358,11 +359,15 @@ def build_motion_lib(
 
 def write_synthetic_clip(
     path: str | os.PathLike, m: mujoco.MjModel, seconds: float, speed: float,
-    amp: float, seed: int, climb: float = 0.0,
+    amp: float, seed: int, climb: float = 0.0, model_name: str = "myofullbody",
 ) -> None:  # fmt: skip
-    """A MuscleMimic-format clip for tests: the default pose moving along x at *speed*
-    (and up at *climb*), each independent joint oscillating by *amp* of its half range
-    at 1 Hz, sampled at 100 Hz."""
+    """A clip for tests: the default pose moving along x at *speed* (and up at *climb*),
+    each independent joint oscillating by *amp* of its half range at 1 Hz, sampled at
+    100 Hz, with the metadata of a clip fitted on *model_name* (its current version)."""
+    from myosuite.methods.biomech.retarget import REFIT_META_KEY  # noqa: PLC0415
+
+    from .models import model_version  # noqa: PLC0415
+
     fps = 100.0
     t = np.arange(int(seconds * fps) + 1) / fps
     qpos = np.tile(m.qpos0, (len(t), 1))
@@ -374,15 +379,18 @@ def write_synthetic_clip(
         wave = amp * 0.5 * (hi - lo) * np.sin(2 * np.pi * t + rng.uniform(0, 2 * np.pi))
         qpos[:, adr] = np.clip(m.qpos0[adr] + wave, lo, hi)
     names = np.array([m.joint(j).name for j in range(m.njnt)])
+    meta = {"source": "synthetic", "model": model_name,
+            "model_version": model_version(model_name)}  # fmt: skip
     np.savez(
-        Path(path), qpos=qpos, joint_names=names, jnt_type=m.jnt_type, frequency=fps
-    )
+        Path(path), qpos=qpos, joint_names=names, jnt_type=m.jnt_type, frequency=fps,
+        **{REFIT_META_KEY: np.array(json.dumps(meta))},
+    )  # fmt: skip
 
 
 @functools.lru_cache(maxsize=2)
 def load_motion_lib(
-    clips: str, root: str, model: str, self_collisions: bool, dt: float, bin_s: float
-) -> MotionLib:
+    clips: str, root: str, model: str, self_collisions: bool, dt: float, bin_s: float,
+) -> MotionLib:  # fmt: skip
     """The (cached) library of a :class:`~.config.MotionCfg` on a task model.
 
     Args:
@@ -395,12 +403,21 @@ def load_motion_lib(
 
     Returns:
         The library (NumPy; do not modify).
-    """
-    from . import resolve_clips  # noqa: PLC0415
-    from .models import compiled_scene, model_cfg  # noqa: PLC0415
 
-    path, root = resolve_clips(clips, root)
+    Raises:
+        ValueError: For a clip fitted on another model or model version, or a clip
+            without that metadata.
+    """
+    from myosuite.methods.biomech.retarget import check_refit_meta  # noqa: PLC0415
+
+    from . import resolve_clips  # noqa: PLC0415
+    from .models import compiled_scene, model_cfg, model_version  # noqa: PLC0415
+
+    files = motion_files(*resolve_clips(clips, root, model))
+    version = model_version(model)
+    for f in files:
+        check_refit_meta(f, model, version)
     return build_motion_lib(
-        motion_files(path, root), compiled_scene(model, self_collisions),
+        files, compiled_scene(model, self_collisions),
         model_cfg(model).tracked_bodies, dt, bin_s,
     )  # fmt: skip

@@ -41,8 +41,10 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-* **`myoMimic-v0`: multi-clip full-body motion tracking, on the CPU and on mjlab.** The task tracks MuscleMimic's
-  retargeted KIT clips (972 training / 108 held-out, `motion.clips="kit_train"` / `"kit_test"`) with myo_sim's
+* **`myoMimic-v0`: multi-clip full-body motion tracking, on the CPU and on mjlab.** The task tracks the AMASS KIT
+  motions retargeted onto the task model (MuscleMimic's KIT split, 972 training / 108 held-out, `motion.clips="kit_train"` /
+  `"kit_test"`; read from the local retarget cache that `scripts/mimic/retarget_amass.py` fills from an AMASS download,
+  or from `$MYOSUITE_KIT_ROOT`) with myo_sim's
   `myofullbody`. It is defined apart from the body model and the learning method:
   - task: observations from a shared vocabulary (`myosuite.terms.mimic_track`, pure NumPy/torch functions a method can
     also differentiate), MimicReward as the proposed dense reward, a failure rule (mean relative site deviation 1 m,
@@ -58,6 +60,15 @@ All notable changes to this project are documented in this file.
   `make_env` also accepts `model=` and `ctrl_dt=` as keywords. `myoMimicFullbody-v0` is unchanged.
   Methods may replace the reward (`overrides={"reward_fn": fn}` with a pure `fn(state, ref, ctrl_dt)`, or a whole
   `RewardCfg`); the proposed reward is then still reported (`info["task_reward"]`, the twin's `task_reward`).
+* **AMASS SMPL+H motions straight onto a body model** (`myosuite.methods.biomech.smplh`, `.retarget_smplh`,
+  `.retarget`; `scripts/mimic/retarget_amass.py`). SMPL+H forward kinematics in NumPy (subject shape, gender-specific
+  model) and one explicit SMPL+H -> model table, calibrated on the model in SMPL's T-pose (GMR's approach, as MuscleMimic
+  used it): per-segment proportion scaling, limb orientation targets and a per-frame ground height from the subject's foot
+  contacts. A landmark IK solves each frame for the root and the independent joints only, so the joint couplings hold
+  exactly; joint limits are hard, and smoothing keeps frames continuous. On the 1080 KIT clips on myofullbody (myo_sim
+  0.2.4): median pose error to the AMASS source 13.9 mm (MuscleMimic's GMR clips on the same model: 29.5 mm), no foot
+  penetration, contact sliding 0.079 m/s (0.093), left/right symmetric axial twist. `myoMimic-v0` uses these clips
+  and refuses clips fitted on another model or model version.
 
 * **`load_fbvs_player` / `export_fbvs_onnx`** in `myosuite.integrations.musclemimic.fbvs_player` wrap a tutorial 5.4 walker as a ChaseTag FBVs player (546 -> 354) and write the ONNX the MyoChallenge server runs; tutorial 5.6 uses them instead of an inline wrapper ([#617]).
 * **`decode_synergies(model, syn)`** in `myosuite.integrations.musclemimic.sar_extraction` maps SAR synergy activations back to muscle activations (the NumPy inverse of `encode_activations`); tutorial 5.5 uses it instead of its own decoder ([#616]).
