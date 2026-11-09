@@ -27,6 +27,7 @@ tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
 | `utils/` | Generic helpers — dict, xml, path, tensor, onnx export, plotting. No domain math. |
 | `viz/` | Rendering and visualization; `blender_render.py` (USD export and Blender studio scene), `muscle_tubes.py` (volumetric muscle geometry) and `skin.py` (`.skn` body skin; bundled skin in `assets/`) |
 | `integrations/` | Third-party integrations (musclemimic) |
+| `methods/` | Learning methods and opt-in method options on registered tasks (`dynsyn/`: DynSyn muscle-group actions for PPO); heavy imports only inside each method |
 | `logger/` | Rollout logging / grouped datasets |
 | `scenes/` | Scene assembly helpers |
 | `tests/` | Test suites (tiers 1–3, see pyproject markers); `tests/benchmarks/` holds the throughput benchmarks |

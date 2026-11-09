@@ -29,6 +29,9 @@ Muscle-command features (the ones the checkpoint was trained with, see
     python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN \
         --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'
 
+A checkpoint trained with DynSyn (``train_mjlab.py --dynsyn-groups``) is evaluated with the
+groups, schedule and correction bound of its training run, read from the checkpoint.
+
 Every run prints the success rate (share of episodes whose final step is
 "solved"; CPU: ``info["solved"]``, mjlab: the ``Episode_Metrics/success``
 metric that every task twin logs during training too).
@@ -896,7 +899,9 @@ def _check_stochastic(cfg: EvalConfig, policy) -> None:
         )
 
 
-def evaluate_cpu(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> None:
+def evaluate_cpu(
+    cfg: EvalConfig, checkpoint: Path, features: tuple = (), dynsyn: Any = None
+) -> None:
     """Roll out ``cols x rows`` CPU envs in lockstep, ``episodes_per_env`` each."""
 
     import myosuite  # noqa: F401  (registers the CPU envs)
@@ -906,7 +911,24 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> Non
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
     env_config = EnvConfig(cfg.env_id, features=features)
     envs = [make_env(env_config) for _ in range(n_envs)]
-    policy = load_rslrl_policy(checkpoint, envs[0].action_space.shape[0])
+    if dynsyn is not None:
+        from myosuite.methods.dynsyn.cpu_wrapper import DynSynWrapper  # noqa: PLC0415
+
+        envs = [
+            DynSynWrapper(
+                env,
+                dynsyn.groups,
+                dynsyn.start_steps,
+                dynsyn.ramp_steps,
+                dynsyn.max_amplitude,
+                step_offset=dynsyn.env_steps,
+                frozen=True,
+            )
+            for env in envs
+        ]
+    policy = load_rslrl_policy(
+        checkpoint, envs[0].action_space.shape[0], dynsyn_applied=dynsyn is not None
+    )
     _check_stochastic(cfg, policy)
     grid = (
         GridRenderer(
@@ -968,7 +990,9 @@ def _actor_obs(obs: Any) -> Any:
     return obs["actor"] if "actor" in obs else obs["policy"]
 
 
-def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> None:
+def evaluate_mjlab(
+    cfg: EvalConfig, checkpoint: Path, features: tuple = (), dynsyn: Any = None
+) -> None:
     """Roll out ``cols x rows`` parallel mjlab envs, ``episodes_per_env`` each."""
     import torch
     from mjlab.envs import ManagerBasedRlEnv
@@ -991,6 +1015,12 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
     env_cfg.scene.num_envs = n_envs
     env_cfg.seed = cfg.seed
+    if dynsyn is not None:
+        from myosuite.methods.dynsyn.mjlab_action import (  # noqa: PLC0415
+            apply_trained_dynsyn,
+        )
+
+        apply_trained_dynsyn(env_cfg, dynsyn, frozen=True)
     env = ManagerBasedRlEnv(cfg=env_cfg, device=device)
     grid = (
         GridRenderer(
@@ -1008,9 +1038,11 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
         else None
     )
     frames: list[np.ndarray] = []
-    policy = load_rslrl_policy(checkpoint, env.action_manager.total_action_dim).to(
-        device
-    )
+    policy = load_rslrl_policy(
+        checkpoint,
+        env.action_manager.total_action_dim,
+        dynsyn_applied=dynsyn is not None,
+    ).to(device)
     _check_stochastic(cfg, policy)
     has_success = "success" in env.metrics_manager.active_terms
 
@@ -1059,10 +1091,18 @@ def main() -> None:
     print(f"\n\ncheckpoint: {checkpoint}  backend: {cfg.backend}  env: {cfg.env_id}")
     if features:
         print("features: " + ", ".join(spec.name for spec in features))
+    from myosuite.methods.dynsyn.checkpoint import trained_dynsyn  # noqa: PLC0415
+
+    dynsyn = trained_dynsyn(checkpoint)
+    if dynsyn is not None:
+        print(
+            f"DynSyn: {len(dynsyn.groups.groups)} groups, correction bound "
+            f"{dynsyn.amplitude:.4g} (as trained, after {dynsyn.env_steps:.4g} env steps)"
+        )
     if cfg.backend == "cpu":
-        evaluate_cpu(cfg, checkpoint, features)
+        evaluate_cpu(cfg, checkpoint, features, dynsyn)
     else:
-        evaluate_mjlab(cfg, checkpoint, features)
+        evaluate_mjlab(cfg, checkpoint, features, dynsyn)
 
 
 if __name__ == "__main__":

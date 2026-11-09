@@ -79,7 +79,7 @@ class RslRlPolicy(torch.nn.Module):
         return (self.sample(x) if stochastic else self(x)).numpy()
 
 
-class _CfgLoader(yaml.SafeLoader):
+class CfgLoader(yaml.SafeLoader):
     """SafeLoader that reads ``!!python/*`` tags (e.g. tuples) as plain data."""
 
 
@@ -91,7 +91,7 @@ def _construct_plain(loader: yaml.SafeLoader, _suffix: str, node: yaml.Node) -> 
     return loader.construct_scalar(node)
 
 
-_CfgLoader.add_multi_constructor("tag:yaml.org,2002:python/", _construct_plain)
+CfgLoader.add_multi_constructor("tag:yaml.org,2002:python/", _construct_plain)
 
 
 def _agent_params(checkpoint: Path) -> dict[str, Any]:
@@ -100,10 +100,12 @@ def _agent_params(checkpoint: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     with path.open() as f:
-        return yaml.load(f, Loader=_CfgLoader) or {}
+        return yaml.load(f, Loader=CfgLoader) or {}
 
 
-def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
+def load_rslrl_policy(
+    checkpoint: str | Path, action_dim: int, dynsyn_applied: bool = False
+) -> RslRlPolicy:
     """Rebuild the deterministic actor of an RSL-RL checkpoint.
 
     Layer sizes are read from the weights; the activation comes from the run's
@@ -115,11 +117,26 @@ def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
     Args:
         checkpoint: ``model_*.pt`` from an mjlab training run.
         action_dim: Action dimension of the env the policy will drive.
+        dynsyn_applied: The env applies the run's DynSyn setup
+            (:func:`myosuite.methods.dynsyn.checkpoint.trained_dynsyn`).
 
     Returns:
         The policy in eval mode on CPU.
+
+    Raises:
+        ValueError: The run used DynSyn and ``dynsyn_applied`` is not set: its actions
+            are group actions and corrections, not one action per muscle.
     """
+    from myosuite.methods.dynsyn.checkpoint import trained_dynsyn  # noqa: PLC0415
+
     checkpoint = Path(checkpoint)
+    if not dynsyn_applied and trained_dynsyn(checkpoint) is not None:
+        raise ValueError(
+            f"{checkpoint} was trained with DynSyn: its actions are group actions and "
+            "corrections, not one action per muscle. Evaluate it with "
+            "scripts/eval_mjlab_policy.py, which applies them, or wrap the env in "
+            "myosuite.methods.dynsyn.DynSynWrapper and pass dynsyn_applied=True."
+        )
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
     actor_state: dict[str, torch.Tensor] = state["actor_state_dict"]
     actor_cfg = _agent_params(checkpoint).get("actor", {})

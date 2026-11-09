@@ -2,42 +2,40 @@
 
 > Related proposal: #580
 
-MyoSuite provides environments, simulation, task definitions, and reusable runtime functionality. Training algorithms and experimental learning methods should stay outside the installable `myosuite` package.
+MyoSuite has three layers: tasks (registered env ids), models (myo_sim) and learning methods. Methods live in the installable package under `myosuite/methods/<method>/` (for example `myosuite/methods/dynsyn/`).
 
 ## Placement
 
-Add method-specific training code under top-level:
-
 ```text
-training/<method>/
+myosuite/methods/<method>/     # the method package, with its upstream LICENSE / NOTICE files next to the code
+scripts/<method>/              # command lines (not shipped)
+myosuite/tests/test_<method>_*.py
+docs/wiki/<method>.md          # usage, recipe, results
 ```
 
-Each method should be a self-contained Python project with its own `pyproject.toml`, dependencies, tests, README, and optional lockfile.
+A method takes a task id, a model and a control step and builds its env through `make_env(EnvConfig(env_id, ctrl_dt=...), backend=...)`. Tasks never import methods.
 
-Do not add method-specific training dependencies to the root MyoSuite `pyproject.toml`.
+## Dependencies
 
-## Dependency isolation
+Methods add no separate distribution and no new extra. GPU methods use the existing `[mjlab]` extra (mjlab brings torch, tensordict and tyro); raise its floors only when a method needs it.
 
-Different methods may require incompatible versions of PyTorch, JAX, mjlab, or other research dependencies. Do not assume training methods can share one environment.
+- `import myosuite` and `import myosuite.methods` must not import torch or mjlab.
+- A method package that lacks its dependencies raises an `ImportError` naming `pip install 'myosuite[mjlab]'`.
+- Tests skip cleanly without them (`pytest.importorskip("torch")`, `pytest.importorskip("mjlab")`).
 
-Each method should be independently installable, for example:
+`scripts/train_mjlab.py`, `scripts/train_sb3.py`, and the root `rl` and `mjlab` extras stay where they are. Older projects under `training/` predate this layout.
 
-```bash
-pip install myosuite
-pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=training/<method>"
-```
+## Method options
 
-Use separate virtual environments when dependency stacks conflict.
+Some methods are options of a trainer rather than trainers of their own. They change how a policy acts on a task, not the task or the model, so they stay opt-in and live under `myosuite/methods/` too.
 
-## Existing training entry points and extras
-
-`scripts/train_mjlab.py`, `scripts/train_sb3.py`, and the root `rl` and `mjlab` extras stay in their current locations. This guideline does not require moving or removing them. Any future migration should be proposed and reviewed separately, preserving supported training commands and dependency installation paths. New method-specific trainers and dependencies follow the `training/<method>/` layout above.
+- **DynSyn** (`myosuite/methods/dynsyn/`, He et al., ICML 2024): one action per muscle group, optionally plus bounded per-muscle corrections. Supported by PPO: `scripts/dynsyn_groups.py` computes the groups, `scripts/train_mjlab.py --dynsyn-groups <groups.json>` trains with them, and every checkpoint stores the setup, so `scripts/eval_mjlab_policy.py` and `--agent.resume` reuse it. CPU envs take `DynSynWrapper`. Other methods (e.g. SuperMimic) could adopt it later through the same mjlab action term.
 
 ## Attribution and licensing
 
 Training methods adapted from or based on external research or code must preserve appropriate attribution.
 
-- Credit the original paper and authors in the method's README, with links to the publication and source repository when available.
+- Credit the original paper and authors in the method's wiki page and module docstring, with links to the publication and source repository when available.
 - Preserve copyright, license, and attribution notices required by the upstream license.
 - Clearly distinguish upstream/adapted code from new MyoSuite-specific implementation.
 - Include upstream license files or notices when required.
@@ -48,7 +46,7 @@ Agents must check attribution and license requirements before adding or modifyin
 
 ## Boundary
 
-Keep in `myosuite/`:
+Keep in the task and core layers of `myosuite/`:
 
 - environments and tasks
 - default per-task runner configurations registered with their environments through `register_cpu_twins` / `register_mjlab_task` (for example, `myo_ppo_runner_cfg` in `myosuite/envs/myo/backends/mjlab/tasks/rl.py`)
@@ -57,7 +55,7 @@ Keep in `myosuite/`:
 - reusable biomechanical/runtime functionality
 - lightweight inference/integration interfaces
 
-Keep in `training/`:
+Keep in `myosuite/methods/<method>/`:
 
 - trainers and optimizers
 - replay buffers
@@ -66,6 +64,6 @@ Keep in `training/`:
 - algorithm-specific evaluation
 - other method-specific learning code
 
-When in doubt, keep the training implementation under `training/` and move only clearly reusable runtime functionality into `myosuite/`.
+When in doubt, keep code in the method and move only clearly reusable runtime functionality into the task or core layers.
 
 > **MyoSuite defines the simulation and task contract; training methods consume that contract.**

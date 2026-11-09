@@ -68,6 +68,12 @@ def test_import_myosuite_skips_heavy_modules() -> None:
     assert _loaded_after("import myosuite", heavy) == []
 
 
+def test_import_dynsyn_skips_torch() -> None:
+    """``myosuite.methods.dynsyn`` (groups, CPU wrapper) loads neither torch nor mjlab."""
+    heavy = ("myosuite.methods.dynsyn.mjlab_action", "torch", "mjlab")
+    assert _loaded_after("import myosuite.methods.dynsyn", heavy) == []
+
+
 @pytest.mark.parametrize(
     "env_id", ["myoChallengeSoccerP1-v0", "myoChallengeChaseTagP1-v0"]
 )
