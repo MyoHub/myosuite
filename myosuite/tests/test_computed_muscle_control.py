@@ -7,15 +7,13 @@
 
 from __future__ import annotations
 
-import copy
-
 import mujoco
 import myo_sim
 import numpy as np
 import pytest
 
-from myosuite import make_env
-from myosuite.core.model_builder import ModelBuilder
+from myosuite.core.model_builder import ModelBuilder, build_from_recipe
+from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
 from myosuite.physics.computed_muscle_control import (
     ComputedMuscleControl,
     ComputedMuscleControlConfig,
@@ -102,9 +100,8 @@ def test_tracks_a_forward_simulated_elbow_motion(
 
 def test_tracks_myoarm_reaches() -> None:
     """myoArm (50 muscles, 11 shoulder couplings): minimum-jerk reaches at 100 Hz."""
-    env = make_env("myoArmReachRandom-v0")
-    model = copy.deepcopy(env.unwrapped.model)
-    env.close()
+    # The myoArmReach model, built directly: its env id is registered twice.
+    model = build_from_recipe("full_arm", edit_fn=edit_fn_arm_reaching)[0]
     qpos = _reaching_motion(model, 100.0, 3.0)
     kin = clip_kinematics(model, qpos, 0.01)
     config = ComputedMuscleControlConfig(kp=400.0)

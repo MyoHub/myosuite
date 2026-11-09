@@ -14,6 +14,8 @@ import numpy as np
 import pytest
 
 from myosuite import make_env
+from myosuite.core.model_builder import build_from_recipe
+from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.static_optimization import (
     StaticOptimizationConfig,
@@ -37,8 +39,9 @@ def _qfrc_actuator(model: mujoco.MjModel, qpos, qvel, activation) -> np.ndarray:
 @pytest.fixture(scope="module")
 def arm_motion() -> tuple[mujoco.MjModel, dict[str, np.ndarray]]:
     """myoArm driven by known activations, without contacts or limits."""
-    env = make_env("myoArmReachRandom-v0")  # 50 muscles, 11 joint equalities
-    model = env.unwrapped.model
+    # The myoArmReach model (50 muscles, 11 joint equalities), built directly: two
+    # modules register its env id with different models, so the id is order-dependent.
+    model = build_from_recipe("full_arm", edit_fn=edit_fn_arm_reaching)[0]
     sim_model = copy.deepcopy(model)
     sim_model.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_CONTACT)
     sim_model.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_LIMIT)
@@ -52,7 +55,6 @@ def arm_motion() -> tuple[mujoco.MjModel, dict[str, np.ndarray]]:
             rec[k].append(getattr(data, k).copy())
         for _ in range(5):
             mujoco.mj_step(sim_model, data)
-    env.close()
     return model, {k: np.array(v) for k, v in rec.items()}
 
 
