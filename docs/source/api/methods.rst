@@ -26,3 +26,15 @@ Static optimization
 
 .. automodule:: myosuite.methods.biomech.static_optimization
    :members:
+
+Streaming kinematics
+--------------------
+
+.. automodule:: myosuite.methods.biomech.streaming_kinematics
+   :members:
+
+Computed muscle control
+-----------------------
+
+.. automodule:: myosuite.methods.biomech.computed_muscle_control
+   :members:
