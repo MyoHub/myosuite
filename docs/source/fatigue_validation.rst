@@ -30,7 +30,9 @@ The rest-recovery multiplier ``r`` (Looft et al. 2018) follows Rakshit et al.
 ``1 if TL > 0``, so ``R_r = r R`` at rest and ``R`` under any load. Rakshit et al.
 define rest as a zero command. A command through the muscle sigmoid never reaches
 zero, so MyoSuite counts ``TL <= 0.01``
-(:data:`~myosuite.core.muscle_conditions.FATIGUE_REST_THRESHOLD`) as rest. Negative commands, which occur
+(:data:`~myosuite.core.muscle_conditions.FATIGUE_REST_THRESHOLD`) as rest. ``CumulativeFatigue`` and
+``TorchFatigueState`` take another threshold as ``rest_threshold`` (or ``set_RestThreshold``), e.g. above
+the noise floor of excitations estimated from tracked motion; the registered envs keep 0.01. Negative commands, which occur
 with the ``[-1, 1]`` muscle control range of ``myoFatiChallengeChaseTagFBP2-v0``
 and which MuJoCo's muscle dynamics clamp to zero excitation, also count as rest.
 Earlier versions, including the legacy v2.x model, applied the multiplier

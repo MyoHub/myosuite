@@ -42,6 +42,7 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     maxTime: float = 10.0
     ctrl_dt: float = 0.01
     sim_dt: float = 0.002
+    render_scene: str = "sport"
 
     # --- Role ---
     task_choice: str = "random"  # "CHASE" | "EVADE" | "random"

@@ -49,6 +49,25 @@ class MotionClip:
     def num_frames(self) -> int:
         return int(self.qpos.shape[0])
 
+    def to_mjdata(self, model: Any, frame: int = 0) -> Any:
+        """Return a new ``MjData`` posed at *frame* (``qpos``, ``qvel`` if any), forwarded.
+
+        Args:
+            model: Compiled ``mujoco.MjModel`` whose ``qpos``/``qvel`` layout the clip uses.
+            frame: Clip frame to start from.
+
+        Returns:
+            A new ``mujoco.MjData`` at that frame, after ``mj_forward``.
+        """
+        import mujoco
+
+        data = mujoco.MjData(model)
+        data.qpos[:] = self.qpos[frame]
+        if self.qvel is not None and self.qvel.shape[0] > frame:
+            data.qvel[:] = self.qvel[frame]
+        mujoco.mj_forward(model, data)
+        return data
+
     def __post_init__(self) -> None:
         if self.weights is not None:
             frames = next(

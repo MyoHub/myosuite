@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import warnings
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -45,6 +47,29 @@ def _assign_default_tiers(items: list[Any]) -> None:
         )
 
 
+# Modules that use the GPU stack (mjlab / MuJoCo Warp) get the ``mjlab`` marker, so
+# CI can run them in their own job: `-m mjlab` and `-m "not mjlab"` split the suite.
+_MJLAB_SOURCE = re.compile(
+    r"^\s*(?:import mjlab|from mjlab|import warp|import mujoco_warp)"
+    r"|importorskip\(\s*[\"'](?:mjlab|warp|mujoco_warp)[\"']"
+    r"|backends[./]mjlab",
+    re.MULTILINE,
+)
+
+
+def _assign_mjlab_marker(items: list[Any]) -> None:
+    """Mark every test of a module whose source uses mjlab or MuJoCo Warp."""
+    uses_mjlab: dict[Path, bool] = {}
+    for item in items:
+        path = Path(item.path)
+        if path not in uses_mjlab:
+            uses_mjlab[path] = bool(
+                _MJLAB_SOURCE.search(path.read_text(errors="ignore"))
+            )
+        if uses_mjlab[path]:
+            item.add_marker(pytest.mark.mjlab)
+
+
 # MuJoCo Warp + full biped mjlab leg walk has crashed the interpreter on macOS
 # (segfault in native forward). Linux CI is the supported environment for these.
 _DARWIN_MJLAB_LEG_WALK_SKIP_REASON = (
@@ -64,9 +89,10 @@ _DARWIN_SKIP_ORIGINAL_NAMES: frozenset[str] = frozenset(
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[Any]) -> None:
-    """Assign default tiers, then skip mjlab biped leg-walk on macOS (Warp instability)."""
+    """Assign default tiers and the mjlab marker, then skip mjlab biped leg-walk on macOS."""
     _ = config  # hook name is part of the pytest API contract
     _assign_default_tiers(items)
+    _assign_mjlab_marker(items)
     if sys.platform != "darwin":
         return
     skip = pytest.mark.skip(reason=_DARWIN_MJLAB_LEG_WALK_SKIP_REASON)

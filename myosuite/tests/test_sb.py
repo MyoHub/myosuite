@@ -5,10 +5,16 @@
 
 from __future__ import annotations
 
+import gymnasium as gym
 import pytest
+from huggingface_hub.errors import GatedRepoError
 
 import myosuite
 from myosuite import make_env
+from myosuite.envs.multi_agent_modular_env import (
+    ModularMultiAgentSingleAgentWrapper,
+    ModularMultiAgentTaskEnv,
+)
 
 # SB3 imports matplotlib at module import time; a NumPy 2 / older matplotlib
 # binary mismatch raises AttributeError: _ARRAY_API not found. Defer failure to
@@ -25,20 +31,28 @@ else:
 pytestmark = [pytest.mark.tier3, pytest.mark.slow]
 
 
-def test_sb3_smoke_for_myochal_envs() -> None:
-    """Very short SB3 PPO smoke test across MyoChallenge envs."""
+def _single_agent_view(env: gym.Env) -> gym.Env:
+    """Return ``env``, or one player's view of a two-agent game.
+
+    SB3 rejects the per-agent ``Dict`` spaces of a ``ModularMultiAgentTaskEnv``;
+    the wrapper trains ``agent_0`` against an opponent taking random actions.
+    """
+    if isinstance(env.unwrapped, ModularMultiAgentTaskEnv):
+        return ModularMultiAgentSingleAgentWrapper(env)
+    return env
+
+
+@pytest.mark.parametrize("env_name", myosuite.myosuite_myochal_suite)
+def test_sb3_smoke_for_myochal_envs(env_name: str) -> None:
+    """Very short SB3 PPO smoke test on one MyoChallenge env."""
     if _PPO_IMPORT_ERROR is not None or PPO is None:
         pytest.skip(
             "stable_baselines3 is missing or incompatible with the current "
             f"NumPy/Matplotlib build (install myosuite[rl] with compatible wheels): {_PPO_IMPORT_ERROR}"
         )
     assert PPO is not None
-    suite = list(myosuite.myosuite_myochal_suite)
-    total = len(suite)
-    for i, env_name in enumerate(suite, 1):
-        print(f"  [{i}/{total}] {env_name} ...", flush=True)
-        env = make_env(env_name)
-        try:
+    try:
+        with _single_agent_view(make_env(env_name)) as env:
             # Force CPU device so this smoke test remains lightweight even when
             # CUDA is available in the environment.
             # Use n_steps=2 and batch_size=2 so learn(2) actually runs ~2 steps;
@@ -52,6 +66,7 @@ def test_sb3_smoke_for_myochal_envs() -> None:
                 batch_size=2,
             )
             model.learn(total_timesteps=2)
-        finally:
-            env.close()
-    print(f"  Done: {total} envs.", flush=True)
+    except GatedRepoError as exc:
+        # Gait reference clips (e.g. ChaseTagFBVs' reward) come from a gated HF
+        # dataset; CI has no token for an account that accepted its license.
+        pytest.skip(f"{env_name}: gated HF dataset unavailable ({exc})")

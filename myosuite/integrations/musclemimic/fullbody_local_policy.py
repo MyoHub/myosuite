@@ -242,6 +242,35 @@ def has_local_policy_artifacts(checkpoint_root: Path) -> bool:
     return (p / "train_state").is_dir() and (p / "config" / "metadata").exists()
 
 
+def _restore_on_cpu(checkpointer: Any, path: str) -> Any:
+    """Restore an Orbax checkpoint onto this process's CPU device.
+
+    Without a target tree Orbax rebuilds each array's sharding from the device
+    name saved in the checkpoint (``TFRT_CPU_0`` for ``mm-10m-2``), which JAX
+    >= 0.10 no longer reports. A target on ``jax.devices("cpu")[0]`` restores
+    on any JAX version. The target also turns scalar leaves into JAX arrays and,
+    with x64 disabled, narrows 64-bit leaves to 32-bit; callers here cast to
+    float32 anyway.
+    """
+    if not hasattr(checkpointer, "metadata"):
+        return checkpointer.restore(path)
+    import jax
+
+    meta = checkpointer.metadata(path)
+    tree = getattr(meta, "item_metadata", meta)
+    tree = getattr(tree, "tree", tree)
+    if not isinstance(tree, dict):
+        return checkpointer.restore(path)
+    cpu = jax.sharding.SingleDeviceSharding(jax.devices("cpu")[0])
+
+    def abstract(leaf: Any) -> Any:
+        if hasattr(leaf, "shape") and hasattr(leaf, "dtype"):
+            return jax.ShapeDtypeStruct(leaf.shape, leaf.dtype, sharding=cpu)
+        return leaf
+
+    return checkpointer.restore(path, jax.tree_util.tree_map(abstract, tree))
+
+
 def load_local_policy_artifacts(
     checkpoint_root: Path, seed: int = 0
 ) -> LocalPolicyArtifacts:
@@ -257,7 +286,7 @@ def load_local_policy_artifacts(
             "orbax.checkpoint is required for local policy inference."
         ) from err
 
-    restored = ocp.StandardCheckpointer().restore(str(train_state_dir))
+    restored = _restore_on_cpu(ocp.StandardCheckpointer(), str(train_state_dir))
     params_raw = restored["params"]
     run_stats = restored["run_stats"]["RunningMeanStd_0"]
     params = _to_numpy_tree(params_raw)

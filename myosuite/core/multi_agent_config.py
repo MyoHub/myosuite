@@ -49,10 +49,12 @@ class MultiAgentTaskConfig(ABC):
         agents: Ordered tuple of agent identifiers.  Fixed at
             ``("agent_0", "agent_1")`` for all current challenges.
         max_episode_steps: Episode length limit (triggers truncation).
+        render_scene: Default offscreen RGB preset, overridable per environment.
     """
 
     agents: tuple[str, ...] = ("agent_0", "agent_1")
     max_episode_steps: int = 1000
+    render_scene: str = "default"
 
     # ------------------------------------------------------------------
     # Model construction
