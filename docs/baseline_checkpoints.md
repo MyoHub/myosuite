@@ -141,13 +141,17 @@ builds are not comparable.
 
 <sub>
 
-**MuscleMimic full body (single clip).** `checkpoints/myoMimicFullbody-v0-walking_medium06/model_81380.pt` on the
-Hugging Face repo imitates the clip `KIT/167/walking_medium06` (AMASS / KIT motion capture retargeted with GMR; cite AMASS, KIT and MuscleMimic, see the *References* page; 2.0B steps, 1024 envs, about 30 h on one GPU). It
-is scored by clip completion instead of success: 86% of 576 mean-action episodes from random start frames play to
-the end of the clip (84-88% per run), the rest end on a pose deviation. It is an mjlab-only baseline (no CPU twin: the
-CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and is loaded with `--checkpoint` and
-`MIMIC_CLIP` (tutorial 5.3). It was trained on the clip's stored references: evaluate it with
-`MYOSUITE_MIMIC_CLIP_REFERENCES=stored` (see *Clip references on the joint couplings* below).
+**MuscleMimic full body (single clip).** `checkpoints/myoMimicFullbody-v0-walking_medium06/` on the Hugging Face repo
+holds two policies that imitate the clip `KIT/167/walking_medium06` (AMASS / KIT motion capture retargeted with GMR; cite
+AMASS, KIT and MuscleMimic, see the *References* page). They are scored by clip completion instead of success: the share
+of mean-action episodes from random start frames that play to the end of the clip; the rest end on a pose deviation.
+`model_82000.pt` (revision `@HF_REVISION@`; not in the `v3.0` tag) is the one for the default clip references, which sit
+on the model's joint couplings (see *Clip references on the joint couplings* below): `model_81380.pt` fine-tuned on them
+for 622 PPO iterations (15.3M steps), it completes 99.5% of 576 episodes. `model_81380.pt` (2.0B steps, 1024 envs,
+about 30 h on one GPU) was trained on the clip's stored references, where 86% of 576 episodes played to the end of the
+clip at release 3.0.0 (84-88% per run): evaluate it with `MYOSUITE_MIMIC_CLIP_REFERENCES=stored`. Both are mjlab-only
+baselines (no CPU twin: the CPU `myoMimicFullbody-v0` uses random targets), so they sit in their own folder and are
+loaded with `--checkpoint` and `MIMIC_CLIP` (tutorial 5.3).
 
 </sub>
 
@@ -160,8 +164,8 @@ first 0.3 s. Clip starts (RSI, the directional env) were further off: the retarg
 `musclemimic_models` 1.0.5 sign of the left knee's `rotation3` and `translation2` couplings, up to 0.5 rad off on 1.0.6.
 The observation, action, control step and reward definitions are unchanged, so the env contract hash in `manifest.json`
 does not warn and the checkpoints still load. Only the first steps of an episode differ, but re-evaluate a policy before
-comparing it with new runs. The single-clip policy above was trained with the unprojected clip starts; its clip
-completion with projected starts is in the next note.
+comparing it with new runs. The single-clip policy `model_81380.pt` was trained with the unprojected clip starts; its
+clip completion with projected starts is in the next note.
 
 </sub>
 
@@ -174,8 +178,8 @@ clip, `MuscleMimicClipEnvV0`, the gait reward of `myoFullBodyDirectional-v0`) no
 the model in use, with the site targets moved with the joints: on `walking_medium06` the left ankle and toe targets
 move by up to 33 and 44 mm (mean 8.5 and 10.5 mm). The observation and reward definitions are unchanged but their
 values are not, and the env contract hash does not warn. `MYOSUITE_MIMIC_CLIP_REFERENCES=stored` serves the clips as
-stored (episodes still start on the couplings), for checkpoints trained on them. The single-clip policy above is one,
-and it completes fewer clips on the corrected references. Its observation normalizer puts the `rotation3` reference
+stored (episodes still start on the couplings), for checkpoints trained on them. The single-clip policy
+`model_81380.pt` is one, and it completes fewer clips on the corrected references. Its observation normalizer puts the `rotation3` reference
 and velocity up to 6.2 and 6.7 standard deviations from the stored ones it was trained on, and the `translation2`
 reference velocity, constant in the training clip, up to 3.7. Negating the network's two `rotation3` inputs
 (normalizer mean and first-layer weights), so that it sees on the corrected references what it saw on the stored ones,
@@ -192,8 +196,24 @@ measured on an RTX 4090 with mjlab 1.6.0 and MuJoCo Warp 3.11):
 
 The first three rows do not differ (paired on start frames, McNemar p >= 0.4); the default is lower than release
 3.0.0 (p = 0.005), most of all for start frames 100-300. The 86% above was measured at release 3.0.0 with another
-software stack; this stack gives 82.5% for the same release. A policy trained on the corrected references needs a new
-run.
+software stack; this stack gives 82.5% for the same release. Negating the `rotation3` inputs and also zeroing the
+first-layer weights of the two `translation2` reference inputs gives 81.9% [78.6, 84.9] without training, no different
+from the stored-reference row (paired p = 0.48): these inputs account for the drop.
+
+`model_82000.pt` is `model_81380.pt` fine-tuned on the corrected references with the PPO settings it was trained with
+(scalar action std of about 14, unbounded, and entropy 0.01; 1024 envs). `model_81380.pt` holds no optimizer state, so
+the fine-tune started a new Adam optimizer at the adaptive schedule's lowest learning rate (1e-5). Same protocol:
+
+| Policy | References | Clip completion [95% CI] | Per seed |
+|---|---|---|---|
+| `model_81380.pt` + 321 iterations (7.9M steps) | corrected (default) | 96.7% [94.9, 97.9] | 97.4, 97.4, 95.3 |
+| `model_81380.pt` + 622 iterations (15.3M steps): `model_82000.pt` | corrected (default) | 99.5% [98.5, 99.8] | 99.5, 100.0, 99.0 |
+| `model_81380.pt` + 321 iterations on the stored references (control) | stored | 99.5% [98.5, 99.8] | 99.5, 99.0, 100.0 |
+
+`model_82000.pt` completes more clips than `model_81380.pt` on either reference (first episodes, paired on start frames:
+98.4% against 85.9% for the stored-reference row, McNemar p < 0.001), most of all from start frames 0-100 (97.5% against
+40%). The same fine-tune on the stored references gains as much, so the gain comes from the extra training, not from the
+corrected references; these cost about 300 iterations of adaptation (96.7% after 321 iterations, 99.5% after 622).
 
 </sub>
 
