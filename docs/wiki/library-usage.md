@@ -37,6 +37,7 @@ See [docs/wiki/mjlab-design-guide.md](mjlab-design-guide.md) for the full patter
 | Body/site/joint ID | `mujoco.mj_name2id` | Hardcoded integer indices |
 | Jacobian | `mujoco.mj_jacBody`, `mj_jacSite` | Manual Jacobian computation |
 | Coupled joints (`mjEQ_JOINT`) on their polynomials | `myosuite.physics.joint_coupling.project_joint_couplings` (NumPy or Torch; CPU envs: `MyoGymnasiumEnv._project_joint_couplings`) | Hand-rolled `eq_data` polynomial evaluation |
+| Clip retargeted on a negated coupling (musclemimic-retargeted, left knee of `musclemimic_models` ≤ 1.0.5) | `myosuite.physics.coupling_refit.refit_stale_couplings` before analysis (needs mink) | Projecting its dependent joints (`project_joint_couplings` keeps GMR's thigh error and over-rotates the shank) |
 
 **Unified dispatcher (preferred for new code):**
 
