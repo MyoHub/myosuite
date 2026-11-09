@@ -142,46 +142,55 @@ def _make_eval_env(
     cfg: TrainConfig, device: str, train_env: ManagerBasedRlEnv
 ) -> RslRlVecEnvWrapper:
     """A small separate env (own seed) for the deterministic success check."""
-    from myosuite.methods.dynsyn.mjlab_action import dynsyn_term
+    from myosuite.methods.synergies.base import action_map_term
 
     eval_cfg = copy.deepcopy(cfg.env)
     eval_cfg.scene.num_envs = DETERMINISTIC_EVAL_ENVS
     eval_cfg.seed = cfg.env.seed + 1
     eval_env = ManagerBasedRlEnv(cfg=eval_cfg, device=device)
-    term = dynsyn_term(eval_env)
-    if term is not None:  # the current correction bound, not one from its own steps
-        term.schedule_source = dynsyn_term(train_env)
+    term = action_map_term(eval_env)
+    if term is not None:  # the training's progress, not its own steps
+        term.schedule_source = action_map_term(train_env)
     return RslRlVecEnvWrapper(eval_env, clip_actions=cfg.agent.clip_actions)
 
 
 def _resolve_dynsyn(cfg: TrainConfig, resume_path: Path | None, rank: int) -> None:
-    """Apply DynSyn to ``cfg.env``: a resumed run's own setup, or the ``--dynsyn-*`` flags.
+    """Apply DynSyn to ``cfg.env``: a resumed run's own action map, or the ``--dynsyn-*`` flags.
 
-    The resumed run's setup comes from its checkpoint (or, for older runs, its
+    The resumed run's map comes from its checkpoint (or, for older runs, its
     ``params/env.yaml``), so a W&B download resumes with it too.
 
     Raises:
         ValueError: ``--dynsyn-groups`` contradicts the checkpoint that is resumed.
     """
-    from myosuite.methods.dynsyn.groups import DynSynGroups
-    from myosuite.methods.dynsyn.mjlab_action import (
-        apply_dynsyn,
-        apply_trained_dynsyn,
+    from myosuite.methods.synergies.base import (
+        apply_action_map,
+        apply_trained_action_map,
     )
-    from myosuite.methods.dynsyn.checkpoint import trained_dynsyn
+    from myosuite.methods.synergies.checkpoint import trained_action_map
+    from myosuite.methods.synergies.dynsyn import DynSyn, DynSynGroups
 
-    trained = trained_dynsyn(resume_path) if resume_path is not None else None
+    trained = trained_action_map(resume_path) if resume_path is not None else None
     groups = DynSynGroups.load(cfg.dynsyn_groups) if cfg.dynsyn_groups else None
     if trained is not None:
-        if groups is not None and groups.groups != trained.groups.groups:
+        trained_map = trained.action_map
+        if groups is not None and (
+            not isinstance(trained_map, DynSyn)
+            or groups.groups != trained_map.groups.groups
+        ):
             raise ValueError(
                 f"--dynsyn-groups differs from the groups of {resume_path}."
             )
-        apply_trained_dynsyn(cfg.env, trained)
+        apply_trained_action_map(cfg.env, trained)
         if rank == 0:
+            bound = (
+                f"; correction bound {trained_map.amplitude(trained.env_steps):.4g}"
+                if isinstance(trained_map, DynSyn)
+                else ""
+            )
             print(
-                f"[INFO] DynSyn groups and schedule from {resume_path.parent}; correction "
-                f"bound {trained.amplitude:.4g} after {trained.env_steps:.4g} env steps."
+                f"[INFO] {trained_map.kind} action map from {resume_path.parent}{bound} "
+                f"after {trained.env_steps:.4g} env steps."
             )
     elif groups is not None:
         if resume_path is not None:
@@ -189,12 +198,14 @@ def _resolve_dynsyn(cfg: TrainConfig, resume_path: Path | None, rank: int) -> No
                 f"{resume_path} was trained without DynSyn: its actions are per muscle, "
                 "so --dynsyn-groups cannot continue it."
             )
-        apply_dynsyn(
+        apply_action_map(
             cfg.env,
-            groups,
-            cfg.dynsyn_start_steps,
-            cfg.dynsyn_ramp_steps,
-            cfg.dynsyn_max_amplitude,
+            DynSyn(
+                groups,
+                cfg.dynsyn_start_steps,
+                cfg.dynsyn_ramp_steps,
+                cfg.dynsyn_max_amplitude,
+            ),
         )
         if rank == 0:
             print(f"[INFO] DynSyn action groups from {cfg.dynsyn_groups}.")
@@ -405,11 +416,11 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
         runner_kwargs["registry_name"] = registry_name
 
     runner = runner_cls(env, agent_cfg, str(log_dir), device, **runner_kwargs)
-    from myosuite.methods.dynsyn.mjlab_action import (  # noqa: PLC0415
-        track_dynsyn_in_checkpoints,
+    from myosuite.methods.synergies.base import (  # noqa: PLC0415
+        track_action_map_in_checkpoints,
     )
 
-    track_dynsyn_in_checkpoints(runner)
+    track_action_map_in_checkpoints(runner)
 
     add_wandb_tags(cfg.agent.wandb_tags)
     runner.add_git_repo_to_log(__file__)

@@ -4,7 +4,7 @@
 
 Moves every joint with random velocities while the muscles are relaxed, groups the muscles whose
 lengths change together (k-medoids on 1 minus the mean correlation of centred length segments,
-see ``myosuite.methods.dynsyn.groups.length_similarity``) and writes the groups in the order of the task's
+see ``myosuite.methods.synergies.dynsyn.length_similarity``) and writes the groups in the order of the task's
 muscle action term.
 """
 
@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from myosuite.methods.dynsyn.groups import DynSynGroups, synergy_groups
+from myosuite.methods.synergies.dynsyn import DynSyn
 
 
 def main() -> None:
@@ -39,7 +39,7 @@ def main() -> None:
     from mjlab.tasks.registry import load_env_cfg
 
     import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the tasks)
-    from myosuite.methods.dynsyn.mjlab_action import (
+    from myosuite.methods.synergies.base import (
         action_actuator_names,
         muscle_action_terms,
     )
@@ -56,16 +56,16 @@ def main() -> None:
     ids = np.array([short.index(n) for n in names])
     env.close()
 
-    groups, meta = synergy_groups(
+    groups = DynSyn.fit(
         model, ids, args.groups, args.steps, args.velocity, args.seed
-    )
-    meta.update(
-        task=args.task, steps=args.steps, velocity=args.velocity, seed=args.seed
-    )
+    ).groups
+    assert groups.muscle_names == names
+    groups.meta["task"] = args.task
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    DynSynGroups(groups=groups, muscle_names=names, meta=meta).save(args.out)
+    groups.save(args.out)
     print(
-        f"{len(groups)} groups of {len(names)} muscles, sizes {meta['sizes']} -> {args.out}"
+        f"{len(groups.groups)} groups of {len(names)} muscles, sizes "
+        f"{groups.meta['sizes']} -> {args.out}"
     )
 
 

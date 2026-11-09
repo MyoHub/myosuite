@@ -1,5 +1,6 @@
-"""DynSyn muscle synergies: grouping, action mapping, CPU wrapper and mjlab action term."""
+"""Synergy action maps (DynSyn): grouping, mapping, CPU wrapper, mjlab action term, checkpoints."""
 
+import json
 import re
 import shutil
 from dataclasses import asdict
@@ -9,16 +10,100 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from myosuite.methods.dynsyn.groups import (
+from myosuite.methods.synergies.base import ActionMap, ActionMapWrapper
+from myosuite.methods.synergies.dynsyn import (
+    DynSyn,
     DynSynGroups,
-    expand_actions,
     k_medoids,
     length_similarity,
     synergy_groups,
     weight_amplitude,
 )
 
+pytestmark = pytest.mark.tier2
+
 GROUPS = [[0, 2], [1], [3, 4, 5]]
+NAMES = [f"m{i}" for i in range(6)]
+
+
+def expand_actions(actions, groups, amplitude, xp, kappa=0.1):
+    """Per-muscle actions of a DynSyn map with a fixed correction bound."""
+    m = DynSyn(DynSynGroups(groups, NAMES[: sum(map(len, groups))]), 0, 1, kappa)
+    state = {"env_steps": amplitude / kappa}  # the schedule's bound is then amplitude
+    if xp is np:
+        return m.forward(np.asarray(actions, dtype=np.float64), state)
+    return m.forward_torch(actions, state)
+
+
+# Outputs of the expand_actions / weight_amplitude functions this map replaced, for
+# Z with groups GROUPS, start 100 and ramp 200: (env steps, max amplitude) -> output.
+Z = [
+    [0.002, 0.597, -0.548, -1.781, -0.909, -1.983],
+    [0.12, 2.68, -0.984, -1.241, 0.98, 0.714],
+]
+REFERENCE = {
+    (150, 0.1): [
+        [0.002, 0.597, 0.00195, -0.548, -0.5343, -0.5343],
+        [0.12, 2.68, 0.11699999999999999, -0.984, -1.0086, -1.0086],
+    ],
+    (1e9, 0.1): [
+        [
+            0.002,
+            0.597,
+            0.0018110394790250108,
+            -0.548,
+            -0.5085082737102264,
+            -0.4952381970009459,
+        ],
+        [
+            0.12,
+            2.68,
+            0.10985111328548287,
+            -0.984,
+            -1.0581016850391638,
+            -1.0443368138584825,
+        ],
+    ],
+    (1e9, 0.3): [
+        [
+            0.002,
+            0.597,
+            0.0014331184370750326,
+            -0.548,
+            -0.42952482113067914,
+            -0.3897145910028374,
+        ],
+        [
+            0.12,
+            2.68,
+            0.08955333985644863,
+            -0.984,
+            -1.2063050551174916,
+            -1.1650104415754483,
+        ],
+    ],
+}
+
+
+@pytest.mark.parametrize(("steps", "max_amplitude"), list(REFERENCE))
+def test_dynsyn_map_matches_the_replaced_functions(steps, max_amplitude):
+    m = DynSyn(DynSynGroups(GROUPS, NAMES), 100, 200, max_amplitude)
+    assert isinstance(m, ActionMap) and m.action_dim == m.n_muscles == 6
+    out = m.forward(np.array(Z), {"env_steps": steps})
+    np.testing.assert_allclose(out, REFERENCE[steps, max_amplitude], rtol=1e-15)
+    torch = pytest.importorskip("torch")
+    out_t = m.forward_torch(
+        torch.tensor(Z, dtype=torch.float64), {"env_steps": steps}
+    ).numpy()
+    np.testing.assert_allclose(out_t, REFERENCE[steps, max_amplitude], rtol=1e-15)
+
+
+def test_manifest_round_trip():
+    from myosuite.methods.synergies import action_map_from_manifest
+
+    m = DynSyn(DynSynGroups(GROUPS, NAMES, {"seed": 1}), 3.0, 4.0, 0.0)
+    back = action_map_from_manifest(m.to_manifest())
+    assert back == m and back.action_dim == 3
 
 
 def test_expand_actions_numpy_matches_torch():
@@ -93,11 +178,11 @@ def test_synergy_groups_partition_the_muscles(walk_groups):
 
 def test_cpu_wrapper_steps(walk_groups):
     from myosuite import make_env
-    from myosuite.methods.dynsyn.cpu_wrapper import DynSynWrapper
 
     path, groups = walk_groups
-    env = DynSynWrapper(
-        make_env("myoLegWalk-v0"), str(path), start_steps=1, ramp_steps=2
+    env = ActionMapWrapper(
+        make_env("myoLegWalk-v0"),
+        DynSyn(DynSynGroups.load(path), start_steps=1, ramp_steps=2),
     )
     env.reset(seed=0)
     a = np.full(env.action_space.shape, 0.3, dtype=np.float32)
@@ -106,7 +191,7 @@ def test_cpu_wrapper_steps(walk_groups):
     )
     for _ in range(3):
         env.step(a)
-    assert env.amplitude == pytest.approx(0.1)
+    assert env.action_map.amplitude(env.env_steps) == pytest.approx(0.1)
     env.close()
 
 
@@ -118,19 +203,20 @@ def test_mjlab_action_term(walk_groups):
     from mjlab.tasks.registry import load_env_cfg
 
     import myosuite.envs.myo.backends.mjlab  # noqa: F401
-    from myosuite.methods.dynsyn.mjlab_action import apply_dynsyn
+    from myosuite.methods.synergies.base import apply_action_map
 
     path, groups = walk_groups
     cfg = load_env_cfg("myoLegWalk-v0")
     cfg.scene.num_envs = 2
-    apply_dynsyn(cfg, DynSynGroups.load(path), start_steps=0, ramp_steps=1)
+    apply_action_map(cfg, DynSyn(DynSynGroups.load(path), start_steps=0, ramp_steps=1))
     env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
     env.reset()
     actions = torch.full((2, 80), 0.3)
     env.step(actions)  # the bound is still 0 here; 2 env steps later it is full
     env.step(actions)
     term = env.action_manager.get_term("muscles")
-    assert term.action_dim == 80 and term.amplitude == pytest.approx(0.1)
+    assert term.action_dim == 80
+    assert term.action_map.amplitude(term.env_steps) == pytest.approx(0.1)
     expected = expand_actions(actions, groups, 0.1, torch)
     torch.testing.assert_close(term.processed_action, expected)
     env.close()
@@ -138,10 +224,11 @@ def test_mjlab_action_term(walk_groups):
 
 def test_groups_only_reduces_the_action_space(walk_groups):
     from myosuite import make_env
-    from myosuite.methods.dynsyn.cpu_wrapper import DynSynWrapper
 
     path, groups = walk_groups
-    env = DynSynWrapper(make_env("myoLegWalk-v0"), str(path), 0, 0, max_amplitude=0)
+    env = ActionMapWrapper(
+        make_env("myoLegWalk-v0"), DynSyn(DynSynGroups.load(path), 0, 0, 0)
+    )
     assert env.action_space.shape == (len(groups),)
     env.reset(seed=0)
     env.step(env.action_space.sample())
@@ -186,41 +273,45 @@ def _write_run(run: Path, cfg, counter: int, n_actions: int = 80) -> Path:
 def trained_run(walk_groups, tmp_path) -> Path:
     """Checkpoint of a 2-env DynSyn run after 100 env steps: bound 0.1 * 200 / 1000."""
     pytest.importorskip("mjlab")
-    from myosuite.methods.dynsyn.mjlab_action import apply_dynsyn
+    from myosuite.methods.synergies.base import apply_action_map
 
     cfg = _walk_cfg(2)
-    apply_dynsyn(cfg, DynSynGroups.load(walk_groups[0]), 0, 1000)
+    apply_action_map(cfg, DynSyn(DynSynGroups.load(walk_groups[0]), 0, 1000))
     return _write_run(tmp_path / "run", cfg, counter=100)
 
 
 def test_run_directory_records_groups_schedule_and_bound(walk_groups, trained_run):
-    from myosuite.methods.dynsyn.checkpoint import trained_dynsyn
+    from myosuite.methods.synergies.checkpoint import trained_action_map
 
-    trained = trained_dynsyn(trained_run)
-    assert trained.groups.groups == walk_groups[1]
-    assert (trained.start_steps, trained.ramp_steps) == (0, 1000)
+    trained = trained_action_map(trained_run)
+    m = trained.action_map
+    assert m.groups.groups == walk_groups[1]
+    assert (m.start_steps, m.ramp_steps) == (0, 1000)
     assert trained.env_steps == 200
-    assert trained.amplitude == pytest.approx(0.02)
+    assert m.amplitude(trained.env_steps) == pytest.approx(0.02)
 
 
 def test_plain_policy_load_of_a_dynsyn_run_fails(trained_run, tmp_path):
-    from myosuite.methods.dynsyn.checkpoint import trained_dynsyn
+    from myosuite.methods.synergies.checkpoint import trained_action_map
     from myosuite.utils.rslrl_policy import load_rslrl_policy
 
-    with pytest.raises(ValueError, match="trained with DynSyn"):
+    from myosuite.methods.synergies.checkpoint import load_policy
+
+    with pytest.raises(ValueError, match="'dynsyn' action map"):
         load_rslrl_policy(trained_run, 80)
-    assert load_rslrl_policy(trained_run, 80, dynsyn_applied=True).action_dim == 80
+    policy, trained = load_policy(trained_run, 80)
+    assert policy.action_dim == 80 and trained.action_map.kind == "dynsyn"
     plain = _write_run(tmp_path / "plain", _walk_cfg(2), counter=100)
-    assert trained_dynsyn(plain) is None
+    assert trained_action_map(plain) is None
     assert load_rslrl_policy(plain, 80).action_dim == 80
 
 
 def test_old_run_without_step_offset_is_read(walk_groups, trained_run):
-    from myosuite.methods.dynsyn.checkpoint import trained_dynsyn
+    from myosuite.methods.synergies.checkpoint import trained_action_map
 
     params = trained_run.parent / "params" / "env.yaml"
     params.write_text(re.sub(r" *step_offset: .*\n", "", params.read_text()))
-    assert trained_dynsyn(trained_run).env_steps == 200
+    assert trained_action_map(trained_run).env_steps == 200
 
 
 def test_evaluation_keeps_the_trained_bound_on_both_backends(trained_run):
@@ -228,36 +319,32 @@ def test_evaluation_keeps_the_trained_bound_on_both_backends(trained_run):
     from mjlab.envs import ManagerBasedRlEnv
 
     from myosuite import make_env
-    from myosuite.methods.dynsyn.mjlab_action import (
-        apply_trained_dynsyn,
-        dynsyn_term,
+    from myosuite.methods.synergies.base import (
+        action_map_term,
+        apply_trained_action_map,
     )
-    from myosuite.methods.dynsyn.cpu_wrapper import DynSynWrapper
-    from myosuite.methods.dynsyn.checkpoint import trained_dynsyn
+    from myosuite.methods.synergies.checkpoint import trained_action_map
 
-    trained = trained_dynsyn(trained_run)
+    trained = trained_action_map(trained_run)
     cfg = _walk_cfg(1)
-    apply_trained_dynsyn(cfg, trained, frozen=True)
+    apply_trained_action_map(cfg, trained, frozen=True)
     env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
     env.reset()
-    term = dynsyn_term(env)
-    assert term.amplitude == pytest.approx(trained.amplitude)
+    term = action_map_term(env)
+    assert term.env_steps == trained.env_steps
     env.step(torch.full((1, 80), 0.3))
-    assert term.amplitude == pytest.approx(trained.amplitude)
+    assert term.env_steps == trained.env_steps
     env.close()
 
-    cpu = DynSynWrapper(
+    cpu = ActionMapWrapper(
         make_env("myoLegWalk-v0"),
-        trained.groups,
-        trained.start_steps,
-        trained.ramp_steps,
-        trained.max_amplitude,
+        trained.action_map,
         step_offset=trained.env_steps,
         frozen=True,
     )
     cpu.reset(seed=0)
     cpu.step(np.full(80, 0.3, dtype=np.float32))
-    assert cpu.amplitude == pytest.approx(trained.amplitude)
+    assert cpu.env_steps == trained.env_steps
     cpu.close()
 
 
@@ -266,19 +353,19 @@ def test_resume_continues_the_schedule(trained_run, num_envs):
     torch = pytest.importorskip("torch")
     from mjlab.envs import ManagerBasedRlEnv
 
-    from myosuite.methods.dynsyn.mjlab_action import (
-        apply_trained_dynsyn,
-        dynsyn_term,
+    from myosuite.methods.synergies.base import (
+        action_map_term,
+        apply_trained_action_map,
     )
-    from myosuite.methods.dynsyn.checkpoint import trained_dynsyn
+    from myosuite.methods.synergies.checkpoint import trained_action_map
 
-    trained = trained_dynsyn(trained_run)
+    trained = trained_action_map(trained_run)
     cfg = _walk_cfg(num_envs)
-    apply_trained_dynsyn(cfg, trained)
+    apply_trained_action_map(cfg, trained)
     env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
     env.reset()
     env.common_step_counter = trained.saved_counter  # as the runner's load() does
-    term = dynsyn_term(env)
+    term = action_map_term(env)
     assert term.env_steps == trained.env_steps
     env.step(torch.full((num_envs, 80), 0.3))
     assert term.env_steps == trained.env_steps + num_envs
@@ -289,14 +376,11 @@ def test_success_check_env_follows_the_training_bound(walk_groups):
     pytest.importorskip("mjlab")
     from mjlab.envs import ManagerBasedRlEnv
 
-    from myosuite.methods.dynsyn.mjlab_action import (
-        apply_dynsyn,
-        dynsyn_term,
-    )
+    from myosuite.methods.synergies.base import action_map_term, apply_action_map
     from scripts.train_mjlab import _make_eval_env
 
     cfg = _walk_cfg(1)
-    apply_dynsyn(cfg, DynSynGroups.load(walk_groups[0]), 0, 1000)
+    apply_action_map(cfg, DynSyn(DynSynGroups.load(walk_groups[0]), 0, 1000))
     cfg.seed = 0
     train_env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
     train_env.common_step_counter = 500
@@ -305,7 +389,8 @@ def test_success_check_env_follows_the_training_bound(walk_groups):
         "cpu",
         train_env,
     )
-    assert dynsyn_term(wrapped.unwrapped).amplitude == pytest.approx(0.05)
+    term = action_map_term(wrapped.unwrapped)
+    assert term.action_map.amplitude(term.env_steps) == pytest.approx(0.05)
     wrapped.close()
     train_env.close()
 
@@ -335,13 +420,11 @@ def _runner(cfg):
     from mjlab.rl import MjlabOnPolicyRunner, RslRlVecEnvWrapper
     from mjlab.tasks.registry import load_rl_cfg
 
-    from myosuite.methods.dynsyn.mjlab_action import (
-        track_dynsyn_in_checkpoints,
-    )
+    from myosuite.methods.synergies.base import track_action_map_in_checkpoints
 
     env = RslRlVecEnvWrapper(ManagerBasedRlEnv(cfg=cfg, device="cpu"))
     runner = MjlabOnPolicyRunner(env, asdict(load_rl_cfg("myoLegWalk-v0")), None, "cpu")
-    track_dynsyn_in_checkpoints(runner)
+    track_action_map_in_checkpoints(runner)
     return runner
 
 
@@ -349,10 +432,10 @@ def _runner(cfg):
 def lone_checkpoint(walk_groups, tmp_path) -> Path:
     """A DynSyn checkpoint without its run directory (as a W&B download), 2 envs, 100 steps."""
     pytest.importorskip("mjlab")
-    from myosuite.methods.dynsyn.mjlab_action import apply_dynsyn
+    from myosuite.methods.synergies.base import apply_action_map
 
     cfg = _walk_cfg(2)
-    apply_dynsyn(cfg, DynSynGroups.load(walk_groups[0]), 0, 1000)
+    apply_action_map(cfg, DynSyn(DynSynGroups.load(walk_groups[0]), 0, 1000))
     runner = _runner(cfg)
     runner.env.unwrapped.common_step_counter = 100
     checkpoint = tmp_path / "wandb_checkpoints" / "model_1.pt"
@@ -365,16 +448,17 @@ def lone_checkpoint(walk_groups, tmp_path) -> Path:
 def test_checkpoint_alone_records_groups_schedule_and_bound(
     walk_groups, lone_checkpoint
 ):
-    from myosuite.methods.dynsyn.checkpoint import trained_dynsyn
+    from myosuite.methods.synergies.checkpoint import trained_action_map
     from myosuite.utils.rslrl_policy import load_rslrl_policy
 
     assert not (lone_checkpoint.parent / "params").exists()
-    trained = trained_dynsyn(lone_checkpoint)
-    assert trained.groups.groups == walk_groups[1]
-    assert (trained.start_steps, trained.ramp_steps) == (0, 1000)
+    trained = trained_action_map(lone_checkpoint)
+    m = trained.action_map
+    assert m.groups.groups == walk_groups[1]
+    assert (m.start_steps, m.ramp_steps) == (0, 1000)
     assert (trained.env_steps, trained.saved_counter) == (200, 100)
-    assert trained.amplitude == pytest.approx(0.02)
-    with pytest.raises(ValueError, match="trained with DynSyn"):
+    assert m.amplitude(trained.env_steps) == pytest.approx(0.02)
+    with pytest.raises(ValueError, match="'dynsyn' action map"):
         load_rslrl_policy(lone_checkpoint, 80)
 
 
@@ -382,7 +466,7 @@ def test_resume_of_a_lone_checkpoint_with_other_num_envs_keeps_the_schedule(
     lone_checkpoint,
 ):
     torch = pytest.importorskip("torch")
-    from myosuite.methods.dynsyn.mjlab_action import dynsyn_term
+    from myosuite.methods.synergies.base import action_map_term
     from scripts.train_mjlab import _resolve_dynsyn
 
     cfg = SimpleNamespace(env=_walk_cfg(1), dynsyn_groups=None)
@@ -390,7 +474,7 @@ def test_resume_of_a_lone_checkpoint_with_other_num_envs_keeps_the_schedule(
     runner = _runner(cfg.env)
     runner.load(str(lone_checkpoint))
     env = runner.env.unwrapped
-    term = dynsyn_term(env)
+    term = action_map_term(env)
     assert env.common_step_counter == 100
     assert term.env_steps == 200
     env.step(torch.full((1, 80), 0.3))
@@ -400,7 +484,7 @@ def test_resume_of_a_lone_checkpoint_with_other_num_envs_keeps_the_schedule(
 
 def test_plain_env_resume_of_a_dynsyn_checkpoint_fails(lone_checkpoint):
     runner = _runner(_walk_cfg(2))  # same action width, so the weights would fit
-    with pytest.raises(ValueError, match="trained with DynSyn"):
+    with pytest.raises(ValueError, match="'dynsyn' action map"):
         runner.load(str(lone_checkpoint))
     runner.env.close()
 
@@ -415,12 +499,11 @@ def test_both_backends_command_the_same_muscles(task):
     from mjlab.tasks.registry import load_env_cfg
 
     from myosuite import make_env
-    from myosuite.methods.dynsyn.mjlab_action import (
+    from myosuite.methods.synergies.base import (
         action_actuator_names,
-        apply_dynsyn,
-        dynsyn_term,
+        action_map_term,
+        apply_action_map,
     )
-    from myosuite.methods.dynsyn.cpu_wrapper import DynSynWrapper
     from myosuite.terms.base_action import sigmoid_muscle_activation
 
     cpu = make_env(task)
@@ -429,7 +512,7 @@ def test_both_backends_command_the_same_muscles(task):
     groups = DynSynGroups(
         groups=[list(range(3)), list(range(3, model.nu))], muscle_names=names
     )
-    cpu = DynSynWrapper(cpu, groups, 0, 0, 0.2, step_offset=1, frozen=True)
+    cpu = ActionMapWrapper(cpu, DynSyn(groups, 0, 0, 0.2), step_offset=1, frozen=True)
     cpu.reset(seed=0)
     action = np.full(model.nu, 2.0, dtype=np.float32)  # saturated corrections
     action[:2] = [0.4, 0.2]
@@ -438,11 +521,11 @@ def test_both_backends_command_the_same_muscles(task):
     cfg = load_env_cfg(task)
     cfg.scene.num_envs = 1
     sigmoid = cfg.actions["muscles"].muscle_sigmoid
-    apply_dynsyn(cfg, groups, 0, 0, 0.2, step_offset=1, frozen=True)
+    apply_action_map(cfg, DynSyn(groups, 0, 0, 0.2), step_offset=1, frozen=True)
     env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
     env.reset()
     env.step(torch.as_tensor(action)[None])
-    term = dynsyn_term(env)
+    term = action_map_term(env)
     assert action_actuator_names(term, env) == names
     twin = term.processed_action[0].numpy()
     np.testing.assert_allclose(twin, cpu.unwrapped.data.ctrl, atol=1e-5)
@@ -481,3 +564,60 @@ def test_similarity_measures_length_changes_not_slow_drift() -> None:
     similarity = length_similarity(still, segment=segment)
     assert np.isfinite(similarity).all()
     assert similarity[1, 1] == 1.0
+
+
+def test_checkpoints_of_the_earlier_dynsyn_format_are_read_and_refused(
+    walk_groups, tmp_path
+):
+    """Checkpoints written before the generic action-map record (``infos["dynsyn"]``,
+    or only a ``DynSynActionCfg`` in ``params/env.yaml``)."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("mjlab")
+    from myosuite.methods.synergies.checkpoint import trained_action_map
+    from myosuite.utils.rslrl_policy import load_rslrl_policy
+
+    groups = DynSynGroups.load(walk_groups[0])
+    legacy = {
+        "groups": asdict(groups),
+        "start_steps": 0,
+        "ramp_steps": 1000,
+        "max_amplitude": 0.1,
+        "env_steps": 200,
+    }
+    plain = _write_run(tmp_path / "plain", _walk_cfg(2), counter=100)
+    state = torch.load(plain, weights_only=True)
+    state["infos"]["dynsyn"] = legacy
+    lone = tmp_path / "lone" / "model_1.pt"
+    lone.parent.mkdir()
+    torch.save(state, lone)
+
+    run = tmp_path / "run" / "model_1.pt"
+    run.parent.mkdir()
+    shutil.copy(plain, run)
+    term = {k: v for k, v in legacy.items() if k != "env_steps"}
+    (run.parent / "params").mkdir()
+    (run.parent / "params" / "env.yaml").write_text(
+        "actions:\n  muscles: !!python/object:myosuite.envs.myo.backends.mjlab."
+        "dynsyn_action.DynSynActionCfg\n"
+        + "".join(f"    {k}: {v!r}\n" for k, v in term.items() if k != "groups")
+        + f"    groups: {json.dumps(term['groups'])}\n"
+        + "scene:\n  num_envs: 2\n"
+    )
+    for checkpoint in (lone, run):
+        trained = trained_action_map(checkpoint)
+        assert trained.action_map.groups.groups == walk_groups[1]
+        assert trained.env_steps == 200
+        assert trained.action_map.amplitude(200) == pytest.approx(0.02)
+        with pytest.raises(ValueError, match="'dynsyn' action map"):
+            load_rslrl_policy(checkpoint, 80)
+
+
+def test_manifest_json_action_map_is_detected(tmp_path):
+    from myosuite.utils.checkpoint_manifest import action_map_kind, write_manifest
+
+    m = DynSyn(DynSynGroups(GROUPS, NAMES))
+    (tmp_path / "model_1.pt").touch()
+    write_manifest(tmp_path, "myoLegWalk-v0", contract={}, action_map=m.to_manifest())
+    assert action_map_kind({}, tmp_path / "model_1.pt") == "dynsyn"
+    (tmp_path / "manifest.json").unlink()
+    assert action_map_kind({}, tmp_path / "model_1.pt") is None

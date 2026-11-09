@@ -12,20 +12,23 @@ docstrings say what is used here. The form and scale of the correction and the d
 of :func:`synergy_groups` follow the authors' reference implementation
 (github.com/Beanpow/DynSyn), which was read while writing this.
 
-The grouping runs on a CPU ``MjModel``; the action mapping is backend-agnostic
-(``torch`` or ``numpy``).
+:class:`DynSyn` is the :class:`~myosuite.methods.synergies.base.ActionMap`; the grouping
+runs on a CPU ``MjModel`` (:meth:`DynSyn.fit`), the mapping on ``numpy`` or ``torch``.
 """
 
 from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import mujoco
 import numpy as np
+
+from myosuite.methods.synergies.base import ActionMap, register_action_map
 
 
 @dataclass
@@ -51,56 +54,6 @@ class DynSynGroups:
     def load(path: str | Path) -> DynSynGroups:
         """Read groups written by :meth:`save`."""
         return DynSynGroups(**json.loads(Path(path).read_text()))
-
-
-# Key of the DynSyn setup in a checkpoint's ``infos``.
-CHECKPOINT_KEY = "dynsyn"
-
-
-@dataclass
-class TrainedDynSyn:
-    """DynSyn setup of a training run at one of its checkpoints.
-
-    Attributes:
-        groups: The run's muscle groups.
-        start_steps: Environment steps before the corrections start.
-        ramp_steps: Environment steps from zero to the full correction bound.
-        max_amplitude: Full correction bound (0: groups only).
-        env_steps: Environment steps of the schedule at the checkpoint.
-        saved_counter: The env's step counter stored in the checkpoint.
-    """
-
-    groups: DynSynGroups
-    start_steps: float
-    ramp_steps: float
-    max_amplitude: float
-    env_steps: float
-    saved_counter: int = 0
-
-    @property
-    def amplitude(self) -> float:
-        """Correction bound the checkpoint was trained with."""
-        return weight_amplitude(
-            self.env_steps, self.start_steps, self.ramp_steps, self.max_amplitude
-        )
-
-    def to_infos(self) -> dict[str, Any]:
-        """Plain types for a checkpoint's ``infos`` (which hold the step counter already)."""
-        infos = asdict(self)
-        del infos["saved_counter"]
-        return infos
-
-    @staticmethod
-    def from_infos(infos: dict[str, Any], saved_counter: int = 0) -> TrainedDynSyn:
-        """Read back what :meth:`to_infos` wrote."""
-        return TrainedDynSyn(
-            groups=DynSynGroups(**infos["groups"]),
-            start_steps=infos["start_steps"],
-            ramp_steps=infos["ramp_steps"],
-            max_amplitude=infos["max_amplitude"],
-            env_steps=infos["env_steps"],
-            saved_counter=saved_counter,
-        )
 
 
 def record_muscle_lengths(
@@ -284,7 +237,7 @@ def weight_amplitude(
     return float(min(max((env_steps - start) / ramp, 0.0), 1.0) * max_amp)
 
 
-def expand_actions(
+def _expand_actions(
     actions: Any,
     groups: list[list[int]],
     amplitude: float,
@@ -309,7 +262,7 @@ def expand_actions(
             per non-representative muscle (in group order); ``(..., n_groups)``
             when ``amplitude`` is 0 (groups only).
         groups: Groups as in :class:`DynSynGroups`.
-        amplitude: Correction bound (:func:`weight_amplitude`).
+        amplitude: Correction bound (:meth:`DynSyn.amplitude`).
         xp: ``numpy`` or ``torch``.
         kappa: Scale of the corrections, the full bound of :func:`weight_amplitude`.
 
@@ -332,3 +285,109 @@ def expand_actions(
         scale = 1.0 + xp.clip(kappa * xp.tanh(w), -amplitude, amplitude)
         out[..., corrected] = out[..., corrected] * scale
     return out
+
+
+@register_action_map
+@dataclass
+class DynSyn(ActionMap):
+    """DynSyn as an action map: one action per group, plus scheduled corrections.
+
+    Attributes:
+        groups: The muscle groups.
+        start_steps: Environment steps (all envs together) before corrections start.
+        ramp_steps: Environment steps from zero to the full correction bound.
+        max_amplitude: Full correction bound (0: groups only, one action per group).
+    """
+
+    kind: ClassVar[str] = "dynsyn"
+    groups: DynSynGroups
+    start_steps: float = 5e7
+    ramp_steps: float = 1e8
+    max_amplitude: float = 0.1
+
+    @property
+    def muscle_names(self) -> list[str]:
+        return list(self.groups.muscle_names)
+
+    @property
+    def action_dim(self) -> int:
+        # Groups only: no action dimensions that do nothing (they would still drift
+        # and inflate PPO's KL estimate).
+        return len(self.groups.groups) if self.max_amplitude == 0 else self.n_muscles
+
+    def amplitude(self, env_steps: float) -> float:
+        """Correction bound after ``env_steps`` environment steps."""
+        return weight_amplitude(
+            env_steps, self.start_steps, self.ramp_steps, self.max_amplitude
+        )
+
+    def forward(self, z: np.ndarray, state: Mapping[str, Any]) -> np.ndarray:
+        z = np.asarray(z)
+        return _expand_actions(
+            z.astype(np.float64),
+            self.groups.groups,
+            self.amplitude(state["env_steps"]),
+            np,
+            self.max_amplitude,
+        ).astype(z.dtype)
+
+    def forward_torch(self, z: Any, state: Mapping[str, Any]) -> Any:
+        import torch  # noqa: PLC0415
+
+        return _expand_actions(
+            z,
+            self.groups.groups,
+            self.amplitude(state["env_steps"]),
+            torch,
+            self.max_amplitude,
+        )
+
+    def to_manifest(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "groups": asdict(self.groups),
+            "start_steps": self.start_steps,
+            "ramp_steps": self.ramp_steps,
+            "max_amplitude": self.max_amplitude,
+        }
+
+    @classmethod
+    def from_manifest(cls, manifest: Mapping[str, Any]) -> DynSyn:
+        return cls(
+            groups=DynSynGroups(**manifest["groups"]),
+            start_steps=manifest["start_steps"],
+            ramp_steps=manifest["ramp_steps"],
+            max_amplitude=manifest["max_amplitude"],
+        )
+
+    @classmethod
+    def fit(
+        cls,
+        model: mujoco.MjModel,
+        actuator_ids: np.ndarray,
+        k: int,
+        steps: int = 500_000,
+        velocity_amplitude: float = 10.0,
+        seed: int = 0,
+        **schedule: float,
+    ) -> DynSyn:
+        """Group a model's muscles (:func:`synergy_groups`) into a DynSyn map.
+
+        Args:
+            model: CPU model.
+            actuator_ids: Muscle actuators, in action order.
+            k: Number of groups.
+            steps: Simulation steps of random joint motion.
+            velocity_amplitude: Bound of the random joint velocities.
+            seed: Random seed.
+            **schedule: ``start_steps``, ``ramp_steps``, ``max_amplitude``.
+
+        Returns:
+            The map; ``groups.meta`` holds the grouping summary and its settings.
+        """
+        groups, meta = synergy_groups(
+            model, actuator_ids, k, steps, velocity_amplitude, seed
+        )
+        meta.update(steps=steps, velocity=velocity_amplitude, seed=seed)
+        names = [model.actuator(int(i)).name.split("/")[-1] for i in actuator_ids]
+        return cls(DynSynGroups(groups, names, meta), **schedule)

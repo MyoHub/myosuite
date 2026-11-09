@@ -3,6 +3,11 @@
 A policy only works on the observations, actions and control step it was trained with. The
 *contract* records exactly those; its short hash is stored in ``manifest.json`` next to the
 checkpoint and compared with the current env when a downloaded checkpoint is used.
+
+A policy trained through an action map (``myosuite.methods.synergies``) does not command one
+action per muscle. Its checkpoint records the map under :data:`ACTION_MAP_FIELD` (in the
+checkpoint's ``infos`` and, if written, in ``manifest.json``); :func:`action_map_kind` finds
+it, so plain loaders can refuse such checkpoints without importing any method.
 """
 
 from __future__ import annotations
@@ -15,10 +20,32 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 import myosuite
 
 MANIFEST_NAME = "manifest.json"
 SCHEMA_VERSION = 1
+# Action map a checkpoint needs: ``{"manifest": {"kind": ..., ...}, "env_steps": ...}``.
+ACTION_MAP_FIELD = "action_map"
+# Checkpoints written before ACTION_MAP_FIELD: ``infos`` key / env.yaml class -> kind.
+_LEGACY_INFOS_KEYS = {"dynsyn": "dynsyn"}
+_LEGACY_ENV_CLASSES = {"DynSynActionCfg": "dynsyn"}
+
+
+class CfgLoader(yaml.SafeLoader):
+    """SafeLoader that reads ``!!python/*`` tags (e.g. tuples) as plain data."""
+
+
+def _construct_plain(loader: yaml.SafeLoader, _suffix: str, node: yaml.Node) -> Any:
+    if isinstance(node, yaml.SequenceNode):
+        return tuple(loader.construct_sequence(node, deep=True))
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node, deep=True)
+    return loader.construct_scalar(node)
+
+
+CfgLoader.add_multi_constructor("tag:yaml.org,2002:python/", _construct_plain)
 
 
 def _shape(space: Any) -> list[int] | dict[str, Any]:
@@ -92,6 +119,7 @@ def write_manifest(
     success: float | None = None,
     steps: int | None = None,
     note: str | None = None,
+    action_map: dict[str, Any] | None = None,
 ) -> Path:
     """Write ``manifest.json`` into a checkpoint folder.
 
@@ -102,6 +130,7 @@ def write_manifest(
         success: Deterministic success rate in percent, if measured.
         steps: Environment steps the policy was trained for, if known.
         note: Free text (for example how success is scored).
+        action_map: Manifest of the action map the policy acts through, if any.
 
     Returns:
         Path of the written manifest. For envs whose body is built from ``musclemimic_models``
@@ -123,6 +152,8 @@ def write_manifest(
         "files": sorted(p.name for p in checkpoint_dir.glob("model_*.pt")),
         "note": note,
     }
+    if action_map is not None:
+        manifest[ACTION_MAP_FIELD] = action_map
     from myosuite.integrations.musclemimic.model_versions import (
         MANIFEST_FIELD,
         env_models_version,
@@ -167,3 +198,37 @@ def check_contract(env_id: str, checkpoint_dir: str | Path) -> bool:
         stacklevel=2,
     )
     return False
+
+
+def action_map_kind(infos: dict[str, Any], checkpoint: str | Path) -> str | None:
+    """Kind of the action map a checkpoint was trained through, if any.
+
+    Args:
+        infos: The checkpoint's ``infos`` (``torch.load(checkpoint)["infos"]``).
+        checkpoint: ``model_*.pt`` path; its folder's ``manifest.json`` and the run's
+            ``params/env.yaml`` are checked too.
+
+    Returns:
+        The kind (e.g. ``"dynsyn"``), or ``None`` for one action per muscle.
+    """
+    if ACTION_MAP_FIELD in infos:
+        return infos[ACTION_MAP_FIELD]["manifest"]["kind"]
+    for key, kind in _LEGACY_INFOS_KEYS.items():
+        if key in infos:
+            return kind
+    folder = Path(checkpoint).parent
+    manifest = read_manifest(folder)
+    if manifest is not None and ACTION_MAP_FIELD in manifest:
+        return manifest[ACTION_MAP_FIELD]["kind"]
+    env_yaml = folder / "params" / "env.yaml"
+    if env_yaml.is_file():
+        text = env_yaml.read_text(errors="replace")
+        for cls, kind in _LEGACY_ENV_CLASSES.items():
+            if cls in text:
+                return kind
+        if "ActionMapActionCfg" in text:
+            actions = (yaml.load(text, Loader=CfgLoader) or {}).get("actions", {})
+            for term in actions.values():
+                if isinstance(term, dict) and ACTION_MAP_FIELD in term:
+                    return term[ACTION_MAP_FIELD]["kind"]
+    return None

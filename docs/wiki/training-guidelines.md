@@ -29,7 +29,10 @@ Methods add no separate distribution and no new extra. GPU methods use the exist
 
 Some methods are options of a trainer rather than trainers of their own. They change how a policy acts on a task, not the task or the model, so they stay opt-in and live under `myosuite/methods/` too.
 
-- **DynSyn** (`myosuite/methods/dynsyn/`, He et al., ICML 2024): one action per muscle group, optionally plus bounded per-muscle corrections. Supported by PPO: `scripts/dynsyn_groups.py` computes the groups, `scripts/train_mjlab.py --dynsyn-groups <groups.json>` trains with them, and every checkpoint stores the setup, so `scripts/eval_mjlab_policy.py` and `--agent.resume` reuse it. CPU envs take `DynSynWrapper`. Other methods (e.g. SuperMimic) could adopt it later through the same mjlab action term.
+- **Synergies** (`myosuite/methods/synergies/`): action maps `a_muscles = M(z, state)` that change the action space. `base.py` holds the `ActionMap` protocol (`action_dim`, `n_muscles`, `forward`, optional `forward_torch`, `to_manifest` / `from_manifest`), the CPU wrapper `ActionMapWrapper` and the mjlab action term, written once for every map. Each checkpoint records its map under `action_map` (`myosuite/utils/checkpoint_manifest.py`); `load_rslrl_policy` refuses such checkpoints, and `myosuite.methods.synergies.checkpoint.load_policy` loads them with their map.
+  - **DynSyn** (`dynsyn.py`, He et al., ICML 2024): one action per muscle group, optionally plus bounded per-muscle corrections. Supported by PPO: `scripts/dynsyn_groups.py` computes the groups, `scripts/train_mjlab.py --dynsyn-groups <groups.json>` trains with them, and `scripts/eval_mjlab_policy.py` and `--agent.resume` reuse the checkpoint's map. Other methods (e.g. SuperMimic) could adopt it later through the same action term.
+  - SAR is planned as `sar.py`, from the extraction in `myosuite/integrations/musclemimic/sar_extraction.py`.
+- **Exploration** (`myosuite/methods/exploration/`, no code yet): rollout-time exploration such as DEP, Lattice or coloured noise, with the interface `explore(obs, action, state) -> action`.
 
 ## Attribution and licensing
 

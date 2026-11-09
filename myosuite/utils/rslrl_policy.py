@@ -20,6 +20,8 @@ import torch
 import yaml
 from rsl_rl.modules import MLP, EmpiricalNormalization
 
+from myosuite.utils.checkpoint_manifest import CfgLoader, action_map_kind
+
 
 class RslRlPolicy(torch.nn.Module):
     """RSL-RL actor: ``mlp(normalizer(obs))`` -> action mean (deterministic).
@@ -79,21 +81,6 @@ class RslRlPolicy(torch.nn.Module):
         return (self.sample(x) if stochastic else self(x)).numpy()
 
 
-class CfgLoader(yaml.SafeLoader):
-    """SafeLoader that reads ``!!python/*`` tags (e.g. tuples) as plain data."""
-
-
-def _construct_plain(loader: yaml.SafeLoader, _suffix: str, node: yaml.Node) -> Any:
-    if isinstance(node, yaml.SequenceNode):
-        return tuple(loader.construct_sequence(node, deep=True))
-    if isinstance(node, yaml.MappingNode):
-        return loader.construct_mapping(node, deep=True)
-    return loader.construct_scalar(node)
-
-
-CfgLoader.add_multi_constructor("tag:yaml.org,2002:python/", _construct_plain)
-
-
 def _agent_params(checkpoint: Path) -> dict[str, Any]:
     """``params/agent.yaml`` written by ``scripts/train_mjlab.py`` (if present)."""
     path = checkpoint.parent / "params" / "agent.yaml"
@@ -104,7 +91,7 @@ def _agent_params(checkpoint: Path) -> dict[str, Any]:
 
 
 def load_rslrl_policy(
-    checkpoint: str | Path, action_dim: int, dynsyn_applied: bool = False
+    checkpoint: str | Path, action_dim: int, action_map_applied: bool = False
 ) -> RslRlPolicy:
     """Rebuild the deterministic actor of an RSL-RL checkpoint.
 
@@ -117,27 +104,25 @@ def load_rslrl_policy(
     Args:
         checkpoint: ``model_*.pt`` from an mjlab training run.
         action_dim: Action dimension of the env the policy will drive.
-        dynsyn_applied: The env applies the run's DynSyn setup
-            (:func:`myosuite.methods.dynsyn.checkpoint.trained_dynsyn`).
+        action_map_applied: The env applies the action map the run was trained
+            through (see :mod:`myosuite.methods.synergies`).
 
     Returns:
         The policy in eval mode on CPU.
 
     Raises:
-        ValueError: The run used DynSyn and ``dynsyn_applied`` is not set: its actions
-            are group actions and corrections, not one action per muscle.
+        ValueError: The checkpoint records an action map and ``action_map_applied``
+            is not set: its actions are not one action per muscle.
     """
-    from myosuite.methods.dynsyn.checkpoint import trained_dynsyn  # noqa: PLC0415
-
     checkpoint = Path(checkpoint)
-    if not dynsyn_applied and trained_dynsyn(checkpoint) is not None:
-        raise ValueError(
-            f"{checkpoint} was trained with DynSyn: its actions are group actions and "
-            "corrections, not one action per muscle. Evaluate it with "
-            "scripts/eval_mjlab_policy.py, which applies them, or wrap the env in "
-            "myosuite.methods.dynsyn.DynSynWrapper and pass dynsyn_applied=True."
-        )
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    kind = action_map_kind(state.get("infos") or {}, checkpoint)
+    if kind is not None and not action_map_applied:
+        raise ValueError(
+            f"{checkpoint} was trained through the {kind!r} action map: its actions are "
+            "not one action per muscle. Load it through myosuite.methods.synergies "
+            "(load_policy), or evaluate it with scripts/eval_mjlab_policy.py."
+        )
     actor_state: dict[str, torch.Tensor] = state["actor_state_dict"]
     actor_cfg = _agent_params(checkpoint).get("actor", {})
 
