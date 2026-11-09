@@ -145,7 +145,7 @@ builds are not comparable.
 holds two policies that imitate the clip `KIT/167/walking_medium06` (AMASS / KIT motion capture retargeted with GMR; cite
 AMASS, KIT and MuscleMimic, see the *References* page). They are scored by clip completion instead of success: the share
 of mean-action episodes from random start frames that play to the end of the clip; the rest end on a pose deviation.
-`model_82000.pt` (revision `@HF_REVISION@`; not in the `v3.0` tag) is the one for the default clip references, which sit
+`model_82000.pt` (revision `45cbb19e6a33`; not in the `v3.0` tag) is the one for the default clip references, which sit
 on the model's joint couplings (see *Clip references on the joint couplings* below): `model_81380.pt` fine-tuned on them
 for 622 PPO iterations (15.3M steps), it completes 99.5% of 576 episodes. `model_81380.pt` (2.0B steps, 1024 envs,
 about 30 h on one GPU) was trained on the clip's stored references, where 86% of 576 episodes played to the end of the
