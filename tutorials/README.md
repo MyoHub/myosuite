@@ -41,8 +41,8 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | **3 — Analysis** | | |
 | 3.1 | [Analyse Movements](./3.1_Analyse_Movements.ipynb) — kinematics and synergies | `pip install stable-baselines3 scikit-learn` |
 | 3.2 | [Inverse Kinematics](./3.2_Inverse_Kinematics.ipynb) | `pip install "myosuite[examples]"` (mink) |
-| 3.3 | [Inverse Dynamics](./3.3_Inverse_Dynamics.ipynb) | `osqp` |
-| 3.4 | [Computed Muscle Control](./3.4_Computed_Muscle_Control.ipynb) | — |
+| 3.3 | [Inverse Dynamics](./3.3_Inverse_Dynamics.ipynb) — inverse dynamics and static optimization of a walk on MyoLeg, with estimated ground reactions | — |
+| 3.4 | [Computed Muscle Control](./3.4_Computed_Muscle_Control.ipynb) — track the arm26 elbow motion (vs OpenSim CMC) and the 3.3 walk in forward simulation | — |
 | 3.5 | [Playback Mot File](./3.5_Playback_Mot_File.ipynb) — OpenSim `.mot` playback | — |
 | 3.6 | [Blender Rendering](./3.6_Blender_Rendering.ipynb) — studio renders of a rollout with volumetric muscles | `pip install usd-core`, [Blender](https://www.blender.org/download/) 4.5+ |
 | **4 — Modelling and conditions** | | |
@@ -60,8 +60,7 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | 5.6 | [ChaseTag MyoChallenge](./5.6_ChaseTag_MyoChallenge.ipynb) ([Colab](https://colab.research.google.com/github/MyoHub/myosuite/blob/dev/tutorials/5.6_ChaseTag_MyoChallenge.ipynb)) — register, export 5.4 walker to ONNX, submit | — |
 | 5.7 | [ChaseTag 1v1 steered teacher](./5.7_ChaseTag_Steered_Teacher.ipynb) — play scored FBVs with `ChaseTagSteeredPair` | `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5`; train/submit stays in 5.4 / 5.6 / [#578](https://github.com/MyoHub/myosuite/pull/578) |
 
-Defaults that keep the notebooks quick: 3.3 and 3.4 use the first 80 trajectory frames
-(set `FULL_ID = True` for the full CSV); 5.2 trains 256 PPO steps (`MYOSUITE_FULL_MIMIC=1`
+Defaults that keep the notebooks quick: 5.2 trains 256 PPO steps (`MYOSUITE_FULL_MIMIC=1`
 for the 50k demo); 5.3 skips Warp env creation on macOS / CPU; 5.4 stays in `QUICK_MODE`
 unless `MYOSUITE_FULL_BC=1`; 5.7 stays at 200 steps unless `MYOSUITE_FULL_1V1=1`.
 

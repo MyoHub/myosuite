@@ -68,6 +68,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+* **Tutorials 3.3 and 3.4 use the new inverse dynamics, static optimization and computed muscle control modules** instead of their own solvers. 3.3 maps OpenSim's gait2392 treadmill walk (the 3.5 `.mot` file) onto MyoLeg, computes its inverse dynamics and runs static optimization with estimated ground reactions; 3.4 compares CMC on the 2-DoF elbow with OpenSim's CMC and tracks the walk in a forward simulation. Both run on the CPU in a few seconds; the MyoHand trajectory CSV of the old 3.3 is removed.
 * **`myoFingerReachRandom-v0` and `motorFingerReachRandom-v0` targets on MuJoCo 3.12 and newer.** The table of reachable targets checked joint types with a comparison that is always false from MuJoCo 3.12, so no joint was sampled and every target sat at the fingertip's start. Both envs, on the CPU and in mjlab, now sample the full table on every version.
 * **`mujoco<4` and `mujoco-warp<4`.** MuJoCo 4 changes how spatial tendons use side sites, which moves some muscle paths in the models, so this release stays on MuJoCo 3.
 * **The `[mjx]` extra no longer installs `playground`.** `playground` 1.0 (2026-11-06) is a rewrite on PyTorch, `reaf-sim` and MuJoCo Warp with no JAX/MJX API, and its JAX line stays at 0.2.0. The MJX backend now carries the few pieces of 0.x it used: `State`, the substep loop and the brax auto-reset wrapper. So it works with `playground` 0.x, 1.0 or none installed.
