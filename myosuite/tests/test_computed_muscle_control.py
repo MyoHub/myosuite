@@ -168,12 +168,14 @@ def test_applied_loads_are_known_and_kept() -> None:
     """A 2 kg weight in the hand and a joint torque: held, and left in place."""
     model = _elbow(1)
     data = mujoco.MjData(model)
-    data.qpos[0] = np.radians(90.0)
     data.xfrc_applied[model.body("r_ulna_radius_hand").id, 2] = -19.6
     data.qfrc_applied[0] = 0.5
     xfrc, qfrc = data.xfrc_applied.copy(), data.qfrc_applied.copy()
-    mujoco.mj_forward(model, data)
     cmc, zero = ComputedMuscleControl(model), np.zeros(1)
+    start = cmc.reset(data, np.radians([90.0]), zero, zero)
+    np.testing.assert_array_equal(data.act, start.activation)
+    unloaded = cmc.reset(mujoco.MjData(model), np.radians([90.0]), zero, zero)
+    assert start.joint_torque[0] - unloaded.joint_torque[0] > 2.0  # the weight's pull
     steps = [
         cmc.step(data, data.qpos.copy(), zero, zero, n_substeps=5) for _ in range(100)
     ]

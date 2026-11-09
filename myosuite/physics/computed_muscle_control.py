@@ -130,6 +130,52 @@ class ComputedMuscleControl:
         self.kp = self.config.kp
         self.kv = 2.0 * np.sqrt(self.kp) if self.config.kv is None else self.config.kv
 
+    def reset(
+        self,
+        data: mujoco.MjData,
+        qpos: np.ndarray,
+        qvel: np.ndarray,
+        qacc: np.ndarray,
+    ) -> StaticOptimizationResult:
+        """Start tracking at a reference state, the muscles in equilibrium with it.
+
+        Puts *data* at *qpos* and *qvel* with the controls and activations of the
+        state's static optimization for *qacc* (``qfrc_applied`` and
+        ``xfrc_applied`` are known loads, as in :meth:`step`) and forwards it.
+
+        Args:
+            data: Forward simulation of the model; its applied loads are kept.
+            qpos: ``(nq,)`` reference positions.
+            qvel: ``(nv,)`` reference velocities.
+            qacc: ``(nv,)`` reference accelerations.
+
+        Returns:
+            The static optimization of the state.
+        """
+        data.qpos[:], data.qvel[:] = qpos, qvel
+        mujoco.mj_forward(self.model, data)
+        res = self.optimizer.solve(qpos, qvel, qacc, self._known_loads(data))
+        data.ctrl[:] = res.activation
+        data.act[self._actadr] = res.activation[self._muscles]
+        mujoco.mj_forward(self.model, data)
+        return res
+
+    def _known_loads(self, data: mujoco.MjData) -> np.ndarray:
+        """``qfrc_applied`` plus ``xfrc_applied`` as generalized forces."""
+        loads = data.qfrc_applied.copy()
+        for body in np.flatnonzero(np.any(data.xfrc_applied != 0, axis=1)):
+            wrench = data.xfrc_applied[body]
+            mujoco.mj_applyFT(
+                self.model,
+                data,
+                wrench[:3],
+                wrench[3:],
+                data.xipos[body],
+                int(body),
+                loads,
+            )
+        return loads
+
     def step(
         self,
         data: mujoco.MjData,
@@ -164,12 +210,7 @@ class ComputedMuscleControl:
         qacc = qacc_ref + self.kv * (qvel_ref - data.qvel) + self.kp * error
 
         applied = data.qfrc_applied.copy()
-        external = applied - self._implicit_damping * qacc
-        for body in np.flatnonzero(np.any(data.xfrc_applied != 0, axis=1)):
-            wrench = data.xfrc_applied[body]
-            mujoco.mj_applyFT(
-                m, data, wrench[:3], wrench[3:], data.xipos[body], int(body), external
-            )
+        external = self._known_loads(data) - self._implicit_damping * qacc
 
         # Mean activations reachable over the step with the extreme excitations.
         current = data.act[self._actadr]
@@ -288,12 +329,9 @@ def computed_muscle_control(
         )
     cmc = ComputedMuscleControl(model, config)
     data = mujoco.MjData(model)
-    data.qpos[:], data.qvel[:] = qpos[0], qvel[0]
     loads = np.zeros((len(qpos), model.nv)) if external_qfrc is None else external_qfrc
-    first = cmc.optimizer.solve(qpos[0], qvel[0], qacc[0], loads[0])
-    data.ctrl[:] = first.activation
-    data.act[cmc._actadr] = first.activation[cmc._muscles]
-    mujoco.mj_forward(model, data)
+    data.qfrc_applied[:] = loads[0]
+    cmc.reset(data, qpos[0], qvel[0], qacc[0])
     steps = []
     for t in range(1, len(qpos)):
         data.qfrc_applied[:] = loads[t]
