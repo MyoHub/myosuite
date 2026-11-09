@@ -26,3 +26,9 @@ Static optimization
 
 .. automodule:: myosuite.methods.biomech.static_optimization
    :members:
+
+Uncertainty bands
+-----------------
+
+.. automodule:: myosuite.methods.biomech.uncertainty
+   :members:
