@@ -8,3 +8,15 @@ Inverse kinematics
 
 .. automodule:: myosuite.methods.biomech.inverse_kinematics
    :members:
+
+Inverse dynamics
+----------------
+
+.. automodule:: myosuite.methods.biomech.inverse_dynamics
+   :members:
+
+Static optimization
+-------------------
+
+.. automodule:: myosuite.methods.biomech.static_optimization
+   :members:
