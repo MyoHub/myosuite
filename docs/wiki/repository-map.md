@@ -19,7 +19,8 @@ tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
 |---|---|
 | `core/` | Registry and `make_env`, config dataclasses (`EnvConfig`, `TaskConfig`), model builder/recipes, muscle conditions |
 | `terms/` | Backend-agnostic pure term functions (obs, reward, action, event, termination) |
-| `physics/` | Biomechanics math — quaternions, fatigue, IK, min-jerk. No backend imports. |
+| `physics/` | Model-level runtime math — quaternions, fatigue, joint couplings, min-jerk. No backend imports. |
+| `methods/` | Methods that produce or analyse behaviour, one subpackage each: `biomech/` (inverse kinematics and dynamics, static optimization). NumPy / SciPy / MuJoCo only; tasks never import them. |
 | `envs/` | `gymnasium_env.py` (CPU base), `modular_env.py` and `multi_agent_modular_env.py` (data-driven envs), `wrappers.py` and `muscle_stages.py` (muscle noise / fatigue / reafferentation / sarcopenia as wrappers) |
 | `envs/myo/tasks/` | Task definitions organized by collection (`basic/`, `challenge/`, `mimic/`) |
 | `envs/myo/backends/` | `mjx/` (JAX) and `mjlab/` (Warp) execution backends |
@@ -68,6 +69,7 @@ guaranteed long-term.)
 | Add/change model composition | `myosuite/core/model_builder.py`, `model_recipes.py` |
 | Add/change a term function | `myosuite/terms/base_*.py` |
 | Add/change biomechanics math | `myosuite/physics/` |
+| Analyse a motion (IK, ID, static optimization) | `myosuite/methods/biomech/` |
 | Add a CPU env (MyoGymnasiumEnv) | `envs/myo/tasks/basic/<effector>/` or `challenge/` |
 | Add the matched mjlab GPU task | `envs/myo/backends/mjlab/tasks/<family>/` (twins of CPU envs), `register_mjlab_*.py` (special tasks) |
 | Muscle noise, fatigue, reafferentation, sarcopenia | `envs/wrappers.py`, `envs/muscle_stages.py`; on mjlab `backends/mjlab/tasks/mdp/actions.py` |

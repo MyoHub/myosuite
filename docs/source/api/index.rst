@@ -15,6 +15,7 @@ The **core** and **terms** packages are documented via Sphinx autoapi (see the
    muscle_stages
    policy_utils
    physics
+   methods
    quat_math
    tensor_utils
    renderer
