@@ -87,12 +87,13 @@ def qpos_from_site_pose(
 
     Returns:
       An `IKResult` namedtuple with the following fields:
-        qpos: An (nq,) numpy array of joint positions.
-        err_norm: A float, the weighted sum of L2 norms for the residual
-          translational and rotational errors.
-        steps: An int, the number of iterations that were performed.
-        success: Boolean, True if we converged on a solution within `max_steps`,
-          False otherwise.
+
+      - qpos: An (nq,) numpy array of joint positions.
+      - err_norm: A float, the weighted sum of L2 norms for the residual
+        translational and rotational errors.
+      - steps: An int, the number of iterations that were performed.
+      - success: Boolean, True if we converged on a solution within `max_steps`,
+        False otherwise.
 
     Raises:
       ValueError: If both `target_pos` and `target_quat` are None, or if
