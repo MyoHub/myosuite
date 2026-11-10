@@ -75,6 +75,13 @@ All notable changes to this project are documented in this file.
   knees at their 0 limit on 5.4% (left) and 1.7% (right) of frames, elbow flexion within 0.2 deg of the source's
   (median). The source's knee range goes into each clip's metadata, and `--quality-flags` adds curation flags
   (`quality_flags`). `myoMimic-v0` uses these clips and refuses clips fitted on another model or model version.
+* **myoSuperMimic, a training project in `training/supermimic/`** (experimental; import name `supermimic`, not part of
+  the `myosuite` package): SuperMimic (Liao et al.) on `myoMimic-v0`, a port of muscle-supermimic (Apache-2.0) with
+  supermimic_vibed and BlinkMimic / InstantTrack (MIT) parts and systems options after XMimic (MIT); licences and
+  notices in the project. It trains, evaluates, refines and fine-tunes through `make_env`, scoring imagined states
+  with the task's pure terms through its own differentiable kinematics, muscle geometry and activation dynamics.
+  Install: `pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=training/supermimic"` (pulls in
+  `myosuite[mjlab]`); usage and results in `training/supermimic/README.md`.
 * **`projected_joint_couplings`** (`myosuite.physics.joint_coupling`): the joint-coupling projection out of place,
   differentiable with Torch, in `JointCouplings`' topological order; `JointCouplings.as_torch`.
 * **`build_native_mimic_fullbody_spec` takes `model_name`** (default `"myofullbody"`), the myo_sim full body to build.
