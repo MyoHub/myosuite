@@ -3,9 +3,10 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Tests for sar_extraction.py.
+"""Tests for sar_extraction.py (encode, decode, save, load).
 
-Requires scikit-learn and joblib; tests are skipped when not installed.
+The fitting tests are in training/musclemimic. Requires scikit-learn and joblib;
+tests are skipped when not installed.
 """
 
 from __future__ import annotations
@@ -37,151 +38,6 @@ def _make_acts(
 
 
 # ---------------------------------------------------------------------------
-# Tests: _validate_acts
-# ---------------------------------------------------------------------------
-
-
-class TestValidateActs(unittest.TestCase):
-    def test_raises_on_1d(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import _validate_acts
-
-        with self.assertRaises(ValueError):
-            _validate_acts(np.zeros(10))
-
-    def test_raises_on_empty(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import _validate_acts
-
-        with self.assertRaises(ValueError):
-            _validate_acts(np.zeros((0, 10)))
-
-    def test_passes_valid(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import _validate_acts
-
-        _validate_acts(np.zeros((5, 10)))  # should not raise
-
-
-# ---------------------------------------------------------------------------
-# Tests: compute_vaf_curve
-# ---------------------------------------------------------------------------
-
-
-@unittest.skipUnless(_sklearn_available(), "scikit-learn not installed")
-class TestComputeVafCurve(unittest.TestCase):
-    def test_returns_dict_with_correct_keys(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import compute_vaf_curve
-
-        acts = _make_acts(n_samples=100, n_muscles=10)
-        curve = compute_vaf_curve(acts, max_synergies=5)
-        self.assertEqual(set(curve.keys()), {1, 2, 3, 4, 5})
-
-    def test_vaf_monotonically_increasing(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import compute_vaf_curve
-
-        acts = _make_acts(n_samples=200, n_muscles=15)
-        curve = compute_vaf_curve(acts, max_synergies=10)
-        values = [curve[k] for k in sorted(curve)]
-        self.assertTrue(all(v2 >= v1 for v1, v2 in zip(values, values[1:])))
-
-    def test_vaf_in_0_1(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import compute_vaf_curve
-
-        acts = _make_acts(n_samples=100, n_muscles=10)
-        curve = compute_vaf_curve(acts, max_synergies=10)
-        for v in curve.values():
-            self.assertGreaterEqual(v, 0.0)
-            self.assertLessEqual(v, 1.0 + 1e-6)
-
-    def test_clamped_by_n_muscles(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import compute_vaf_curve
-
-        acts = _make_acts(n_samples=50, n_muscles=5)
-        curve = compute_vaf_curve(acts, max_synergies=100)
-        self.assertLessEqual(max(curve.keys()), 5)
-
-    def test_raises_on_invalid_acts(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import compute_vaf_curve
-
-        with self.assertRaises(ValueError):
-            compute_vaf_curve(np.zeros(10), max_synergies=5)
-
-
-# ---------------------------------------------------------------------------
-# Tests: select_n_synergies
-# ---------------------------------------------------------------------------
-
-
-class TestSelectNSynergies(unittest.TestCase):
-    def test_returns_first_above_threshold(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import select_n_synergies
-
-        curve = {1: 0.5, 2: 0.8, 3: 0.92, 4: 0.96, 5: 0.99}
-        n = select_n_synergies(curve, threshold=0.95)
-        self.assertEqual(n, 4)
-
-    def test_returns_max_when_threshold_not_reached(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import select_n_synergies
-
-        curve = {1: 0.5, 2: 0.7, 3: 0.85}
-        n = select_n_synergies(curve, threshold=0.99)
-        self.assertEqual(n, 3)
-
-    def test_exact_threshold_match(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import select_n_synergies
-
-        curve = {1: 0.5, 2: 0.95, 3: 0.99}
-        n = select_n_synergies(curve, threshold=0.95)
-        self.assertEqual(n, 2)
-
-
-# ---------------------------------------------------------------------------
-# Tests: extract_synergies
-# ---------------------------------------------------------------------------
-
-
-@unittest.skipUnless(_sklearn_available(), "scikit-learn not installed")
-class TestExtractSynergies(unittest.TestCase):
-    def setUp(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import extract_synergies
-
-        self.acts = _make_acts(n_samples=300, n_muscles=20)
-        self.n_syn = 5
-        self.model = extract_synergies(self.acts, self.n_syn)
-
-    def test_n_synergies_stored(self) -> None:
-        self.assertEqual(self.model.n_synergies, self.n_syn)
-
-    def test_n_muscles_stored(self) -> None:
-        self.assertEqual(self.model.n_muscles, 20)
-
-    def test_vaf_in_0_1(self) -> None:
-        self.assertGreaterEqual(self.model.vaf, 0.0)
-        self.assertLessEqual(self.model.vaf, 1.0 + 1e-6)
-
-    def test_raises_when_n_syn_too_large(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import extract_synergies
-
-        with self.assertRaises(ValueError):
-            extract_synergies(self.acts, n_synergies=9999)
-
-    def test_raises_on_invalid_acts(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import extract_synergies
-
-        with self.assertRaises(ValueError):
-            extract_synergies(np.zeros(10), n_synergies=3)
-
-    def test_source_clips_stored(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import extract_synergies
-
-        model = extract_synergies(
-            self.acts, self.n_syn, source_clips=["clip_a.npz", "clip_b.npz"]
-        )
-        self.assertEqual(model.source_clips, ["clip_a.npz", "clip_b.npz"])
-
-    def test_default_empty_source_clips(self) -> None:
-        self.assertEqual(self.model.source_clips, [])
-
-
-# ---------------------------------------------------------------------------
 # Tests: encode_activations
 # ---------------------------------------------------------------------------
 
@@ -189,10 +45,10 @@ class TestExtractSynergies(unittest.TestCase):
 @unittest.skipUnless(_sklearn_available(), "scikit-learn not installed")
 class TestEncodeActivations(unittest.TestCase):
     def setUp(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import extract_synergies
+        from myosuite.tests.support.synergy_models import fit_synergy_model
 
         self.acts = _make_acts(n_samples=300, n_muscles=20)
-        self.model = extract_synergies(self.acts, n_synergies=5)
+        self.model = fit_synergy_model(self.acts, n_synergies=5)
 
     def test_output_shape_batch(self) -> None:
         from myosuite.integrations.musclemimic.sar_extraction import encode_activations
@@ -231,10 +87,10 @@ class TestEncodeActivations(unittest.TestCase):
 @unittest.skipUnless(_sklearn_available(), "scikit-learn not installed")
 class TestDecodeSynergies(unittest.TestCase):
     def setUp(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import extract_synergies
+        from myosuite.tests.support.synergy_models import fit_synergy_model
 
         self.acts = _make_acts(n_samples=300, n_muscles=20)
-        self.model = extract_synergies(self.acts, n_synergies=5)
+        self.model = fit_synergy_model(self.acts, n_synergies=5)
         self.syn = np.random.default_rng(0).random((10, 5)).astype(np.float32)
 
     def test_shapes_dtype_and_range(self) -> None:
@@ -297,10 +153,10 @@ class TestDecodeSynergies(unittest.TestCase):
 @unittest.skipUnless(_sklearn_available(), "scikit-learn not installed")
 class TestSaveLoadRoundtrip(unittest.TestCase):
     def setUp(self) -> None:
-        from myosuite.integrations.musclemimic.sar_extraction import extract_synergies
+        from myosuite.tests.support.synergy_models import fit_synergy_model
 
         acts = _make_acts(n_samples=300, n_muscles=20)
-        self.model = extract_synergies(acts, n_synergies=5, source_clips=["clip.npz"])
+        self.model = fit_synergy_model(acts, n_synergies=5, source_clips=["clip.npz"])
 
     def test_roundtrip_metadata(self) -> None:
         from myosuite.integrations.musclemimic.sar_extraction import (

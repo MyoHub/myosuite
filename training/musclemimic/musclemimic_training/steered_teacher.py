@@ -40,7 +40,7 @@ from myosuite.integrations.musclemimic.two_agent_scene import (
     write_clip_pose,
 )
 from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
-from myosuite.integrations.musclemimic.steering import (
+from musclemimic_training.steering import (
     COMPASS_LABELS,
     COMPASS_STEP,
     body_yaw,

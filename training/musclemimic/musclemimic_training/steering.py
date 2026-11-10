@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 """Scripted chase-tag steering: the 8-bin compass of the steered teacher.
 
-Controller code for :mod:`~myosuite.integrations.musclemimic.steered_teacher`,
+Controller code for :mod:`~musclemimic_training.steered_teacher`,
 not a term function; the role and fence-aware headings are in
 :mod:`myosuite.terms.multiplayer.heading`.
 """

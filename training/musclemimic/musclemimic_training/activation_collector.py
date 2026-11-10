@@ -22,7 +22,7 @@ Typical usage::
     from myosuite.core.trajectory_io import (
         load_motion_clip, resolve_motion_path,
     )
-    from myosuite.integrations.musclemimic.activation_collector import (
+    from musclemimic_training.activation_collector import (
         CollectionConfig, collect_activations,
     )
 

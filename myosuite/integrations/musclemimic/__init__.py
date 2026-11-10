@@ -20,6 +20,10 @@ Upstream: https://github.com/amathislab/musclemimic
 The names below and the submodules are imported on first access (PEP 562), so
 importing one submodule (e.g. ``fbvs_player`` for the ChaseTag player) does not
 import the others (``fullbody_native_playback`` pulls in ``scipy.spatial``).
+
+The training-side tools (SAR activation collection and fitting, BC data collection,
+the ChaseTag steered teacher) are in the MuscleMimic training project,
+``training/musclemimic`` (import name ``musclemimic_training``).
 """
 
 from __future__ import annotations

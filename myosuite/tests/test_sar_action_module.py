@@ -357,14 +357,14 @@ class TestSARTorchTransformMatchesSklearn(unittest.TestCase):
         out = transform(torch.as_tensor(syn, dtype=torch.float32)).numpy()
         np.testing.assert_allclose(out, expected, rtol=0.0, atol=1e-5)
 
-    def test_whitened_pca_from_extract_synergies(self) -> None:
+    def test_whitened_pca_as_fitted_for_sar(self) -> None:
         from myosuite.integrations.musclemimic.sar_extraction import (
             encode_activations,
-            extract_synergies,
         )
+        from myosuite.tests.support.synergy_models import fit_synergy_model
 
         acts = _synergistic_acts()
-        model = extract_synergies(acts, n_synergies=N_SYN)
+        model = fit_synergy_model(acts, n_synergies=N_SYN)
         self.assertTrue(model.pca.whiten)
         syn = encode_activations(model, acts[:100])
         self._assert_matches_sklearn(model.pca, model.ica, model.scaler, syn)
@@ -409,14 +409,12 @@ class TestRegisterMimicMjlabTasksWithSar(unittest.TestCase):
         from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
             register_mimic_mjlab_tasks_with_sar,
         )
-        from myosuite.integrations.musclemimic.sar_extraction import (
-            extract_synergies,
-            save_synergy_model,
-        )
+        from myosuite.integrations.musclemimic.sar_extraction import save_synergy_model
+        from myosuite.tests.support.synergy_models import fit_synergy_model
 
         rng = np.random.default_rng(7)
         acts = rng.random((200, N_MUSCLES)).astype(np.float32)
-        model = extract_synergies(acts, n_synergies=N_SYN)
+        model = fit_synergy_model(acts, n_synergies=N_SYN)
 
         with tempfile.TemporaryDirectory() as tmp:
             save_synergy_model(model, tmp)

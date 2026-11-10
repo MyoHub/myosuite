@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-musclemimic"
+version = "0.1.0"
+description = "MuscleMimic training tools for MyoSuite: SAR activation collection and fitting, BC data collection, the ChaseTag steered teacher"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+# Uses MyoSuite's MuscleMimic integration (models, checkpoint loaders, playback);
+# install MyoSuite from the same checkout or branch first.
+dependencies = [
+    "myosuite[musclemimic]",
+    "numpy",
+    "scikit-learn>=1.6.1",
+    "joblib>=1.4.0",
+]
+
+[project.optional-dependencies]
+# Rolling the amathislab/mm-10m-2 checkpoint (Orbax); the pin matches MyoSuite's jax cap.
+teacher = ["orbax-checkpoint>=0.11.22,<0.11.24", "flax"]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["musclemimic_training*"]

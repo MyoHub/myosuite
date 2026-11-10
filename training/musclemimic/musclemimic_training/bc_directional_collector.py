@@ -19,7 +19,7 @@ direction.  At each simulation step records:
 - the teacher's muscle-activation action for that step.
 
 This mirrors the collection pattern in
-:mod:`myosuite.integrations.musclemimic.activation_collector` (same
+:mod:`musclemimic_training.activation_collector` (same
 ``LocalPolicyRunner`` + clip-rollout idiom), but records ``(obs, action)``
 teacher-imitation pairs instead of filtered activation-only sequences.
 
@@ -109,7 +109,9 @@ def collect_bc_dataset(
             checkpoint_root, model, clip, seed=cfg.seed + clip_idx
         )
 
-        obs_buf = np.empty((cfg.samples_per_clip, DIRECTIONAL_OBS_DIM), dtype=np.float32)
+        obs_buf = np.empty(
+            (cfg.samples_per_clip, DIRECTIONAL_OBS_DIM), dtype=np.float32
+        )
         act_buf = np.empty((cfg.samples_per_clip, model.nu), dtype=np.float32)
         theta_buf = np.empty((cfg.samples_per_clip,), dtype=np.float32)
 

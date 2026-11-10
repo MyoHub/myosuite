@@ -604,14 +604,12 @@ def test_directional_sar_task_has_runner_obs_groups(tmp_path: Any) -> None:
     from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
 
     pytest.importorskip("sklearn")
-    from myosuite.integrations.musclemimic.sar_extraction import (
-        extract_synergies,
-        save_synergy_model,
-    )
+    from myosuite.integrations.musclemimic.sar_extraction import save_synergy_model
+    from myosuite.tests.support.synergy_models import fit_synergy_model
 
     n_muscles = len(mimic._muscle_actuator_names(_variant("fullbody")[2]))
     activations = np.random.default_rng(0).random((200, n_muscles))
-    save_synergy_model(extract_synergies(activations, n_synergies=4), tmp_path)
+    save_synergy_model(fit_synergy_model(activations, n_synergies=4), tmp_path)
     task = _registered_cfgs(
         mimic.register_directional_walk_sar,
         rl_cfg_fn=mimic.default_mimic_clip_on_policy_runner_cfg,

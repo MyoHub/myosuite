@@ -2,7 +2,10 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Unit tests for chase-tag heading, clip yaw, and two-agent shadow maps."""
+"""Unit tests for chase-tag heading, clip yaw, and two-agent shadow maps.
+
+The steered teacher's own compass tests are in training/musclemimic.
+"""
 
 from __future__ import annotations
 
@@ -26,12 +29,6 @@ from myosuite.integrations.musclemimic.two_agent_scene import (
 )
 from myosuite.physics import quat_math
 from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
-from myosuite.integrations.musclemimic.steering import (
-    COMPASS_LABELS,
-    body_yaw,
-    compass_index,
-    step_compass,
-)
 from myosuite.terms.multiplayer.heading import (
     ARENA_LIM_M,
     aim_heading_xy,
@@ -63,19 +60,10 @@ def test_role_heading_points_toward_or_away() -> None:
     opp = np.array([2.0, 0.0])
     toward = role_heading_xy(me, opp, pursue=True)
     away = role_heading_xy(me, opp, pursue=False)
-    assert body_yaw(toward) == pytest.approx(heading_yaw(toward) + np.pi / 2)
     assert toward[0] == pytest.approx(1.0)
     assert away[0] == pytest.approx(-1.0)
-    assert compass_index(heading_yaw(toward)) == COMPASS_LABELS.index("E")
-    assert compass_index(heading_yaw(away)) == COMPASS_LABELS.index("W")
-
-
-def test_step_compass_turns_at_most_one_bin() -> None:
-    assert step_compass(0, 0) == 0
-    assert step_compass(0, 1) == 1
-    assert step_compass(0, 2) == 1
-    assert step_compass(0, 7) == 7
-    assert step_compass(0, 4) in (1, 7)
+    assert heading_yaw(toward) == pytest.approx(0.0)
+    assert abs(heading_yaw(away)) == pytest.approx(np.pi)
 
 
 def test_wall_repulsion_pushes_inward() -> None:

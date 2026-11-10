@@ -205,7 +205,7 @@ class TestInitEpisode(unittest.TestCase):
         self.data.time = 1.5
 
     def test_sets_qpos(self) -> None:
-        from myosuite.integrations.musclemimic.activation_collector import _init_episode
+        from musclemimic_training.activation_collector import _init_episode
 
         clip = _slider_clip(20)
         _init_episode(self.model, self.data, clip, start_frame=3)
@@ -213,7 +213,7 @@ class TestInitEpisode(unittest.TestCase):
         np.testing.assert_array_equal(self.data.qpos, clip.qpos[3])
 
     def test_sets_qvel_when_present(self) -> None:
-        from myosuite.integrations.musclemimic.activation_collector import _init_episode
+        from musclemimic_training.activation_collector import _init_episode
 
         clip = _slider_clip(20)
         clip.qvel = np.linspace(-1.0, 1.0, 20)[:, None]
@@ -222,14 +222,14 @@ class TestInitEpisode(unittest.TestCase):
         np.testing.assert_array_equal(self.data.qvel, clip.qvel[5])
 
     def test_zeroes_qvel_when_none(self) -> None:
-        from myosuite.integrations.musclemimic.activation_collector import _init_episode
+        from musclemimic_training.activation_collector import _init_episode
 
         _init_episode(self.model, self.data, _slider_clip(20), start_frame=0)
 
         np.testing.assert_array_equal(self.data.qvel, [0.0])
 
     def test_clears_activation_ctrl_and_time(self) -> None:
-        from myosuite.integrations.musclemimic.activation_collector import _init_episode
+        from musclemimic_training.activation_collector import _init_episode
 
         _init_episode(self.model, self.data, _slider_clip(20), start_frame=0)
 
@@ -245,7 +245,7 @@ class TestInitEpisode(unittest.TestCase):
 
 class TestRunEpisode(unittest.TestCase):
     def _run(self, start_frame: int = 0, max_steps: int = 10):
-        from myosuite.integrations.musclemimic.activation_collector import _run_episode
+        from musclemimic_training.activation_collector import _run_episode
 
         clip = _make_clip()
         model = _make_model()
@@ -256,7 +256,7 @@ class TestRunEpisode(unittest.TestCase):
             patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
-                "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
+                "musclemimic_training.activation_collector._tracking_reward",
                 return_value=0.5,
             ),
         ):
@@ -293,7 +293,7 @@ class TestRunEpisode(unittest.TestCase):
 
     def test_forwards_obs_adapter_to_action_for(self) -> None:
         """Per-clip obs adapter must reach the policy so frame_idx stays in bounds."""
-        from myosuite.integrations.musclemimic.activation_collector import _run_episode
+        from musclemimic_training.activation_collector import _run_episode
 
         clip = _make_clip()
         model = _make_model()
@@ -305,7 +305,7 @@ class TestRunEpisode(unittest.TestCase):
             patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
-                "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
+                "musclemimic_training.activation_collector._tracking_reward",
                 return_value=0.5,
             ),
         ):
@@ -326,7 +326,7 @@ class TestRunEpisode(unittest.TestCase):
 class TestEpisodeIndependence(unittest.TestCase):
     def test_each_episode_starts_clean_after_a_runner_reset(self) -> None:
         """act, ctrl and qvel (the clip has none) must not carry over."""
-        from myosuite.integrations.musclemimic.activation_collector import _run_episode
+        from musclemimic_training.activation_collector import _run_episode
 
         model = mujoco.MjModel.from_xml_string(_SLIDER_XML)
         data = mujoco.MjData(model)
@@ -348,7 +348,7 @@ class TestEpisodeIndependence(unittest.TestCase):
         Episode A ends at frame 9 and episode B starts at frame 30, so the
         runner's own frame-index check would not reset the history.
         """
-        from myosuite.integrations.musclemimic.activation_collector import _run_episode
+        from musclemimic_training.activation_collector import _run_episode
 
         model = mujoco.MjModel.from_xml_string(_SLIDER_XML)
         clip = _slider_clip(50)
@@ -375,7 +375,7 @@ def _make_rng() -> np.random.Generator:
 
 class TestCollectActivationsFromClip(unittest.TestCase):
     def _collect(self, n_episodes: int = 20, percentile: int = 50) -> np.ndarray:
-        from myosuite.integrations.musclemimic.activation_collector import (
+        from musclemimic_training.activation_collector import (
             CollectionConfig,
             collect_activations_from_clip,
         )
@@ -396,7 +396,7 @@ class TestCollectActivationsFromClip(unittest.TestCase):
             patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
-                "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
+                "musclemimic_training.activation_collector._tracking_reward",
                 return_value=1.0,
             ),
         ):
@@ -416,7 +416,7 @@ class TestCollectActivationsFromClip(unittest.TestCase):
 
     def test_empty_when_none_pass(self) -> None:
         """With percentile=100 effectively all episodes fail the threshold."""
-        from myosuite.integrations.musclemimic.activation_collector import (
+        from musclemimic_training.activation_collector import (
             CollectionConfig,
             collect_activations_from_clip,
         )
@@ -437,7 +437,7 @@ class TestCollectActivationsFromClip(unittest.TestCase):
             patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
-                "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
+                "musclemimic_training.activation_collector._tracking_reward",
                 side_effect=rewards,
             ),
         ):
@@ -462,7 +462,7 @@ class TestRewardFilterLengthBias(unittest.TestCase):
         frame. Summed negative errors used to keep only short clip-end
         episodes (all kept starts >= 238 of 300).
         """
-        from myosuite.integrations.musclemimic import activation_collector as ac
+        from musclemimic_training import activation_collector as ac
 
         model = mujoco.MjModel.from_xml_string(_SLIDER_XML)
         clip = _slider_clip(300)
@@ -514,7 +514,7 @@ class TestCollectActivations(unittest.TestCase):
         return runner, model, clips
 
     def test_concatenates_all_clips(self) -> None:
-        from myosuite.integrations.musclemimic.activation_collector import (
+        from musclemimic_training.activation_collector import (
             CollectionConfig,
             collect_activations,
         )
@@ -527,7 +527,7 @@ class TestCollectActivations(unittest.TestCase):
             patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
-                "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
+                "musclemimic_training.activation_collector._tracking_reward",
                 return_value=1.0,
             ),
         ):
@@ -538,7 +538,7 @@ class TestCollectActivations(unittest.TestCase):
         self.assertEqual(acts.dtype, np.float32)
 
     def test_raises_when_no_activations(self) -> None:
-        from myosuite.integrations.musclemimic.activation_collector import (
+        from musclemimic_training.activation_collector import (
             CollectionConfig,
             collect_activations,
         )
@@ -551,7 +551,7 @@ class TestCollectActivations(unittest.TestCase):
             patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
-                "myosuite.integrations.musclemimic.activation_collector._run_episode",
+                "musclemimic_training.activation_collector._run_episode",
                 return_value=(np.empty((0, N_MUSCLES), dtype=np.float32), -999.0),
             ),
         ):
@@ -559,7 +559,7 @@ class TestCollectActivations(unittest.TestCase):
                 collect_activations(runner, model, clips, config)
 
     def test_cache_path_saves_and_loads(self) -> None:
-        from myosuite.integrations.musclemimic.activation_collector import (
+        from musclemimic_training.activation_collector import (
             CollectionConfig,
             collect_activations,
         )
@@ -575,7 +575,7 @@ class TestCollectActivations(unittest.TestCase):
                 patch("mujoco.mj_resetData"),
                 patch("mujoco.mj_forward"),
                 patch(
-                    "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
+                    "musclemimic_training.activation_collector._tracking_reward",
                     return_value=1.0,
                 ),
             ):
@@ -594,7 +594,7 @@ class TestCollectActivations(unittest.TestCase):
             runner2.action_for.assert_not_called()
 
     def test_uses_default_config_when_none(self) -> None:
-        from myosuite.integrations.musclemimic.activation_collector import (
+        from musclemimic_training.activation_collector import (
             collect_activations,
         )
 
@@ -605,7 +605,7 @@ class TestCollectActivations(unittest.TestCase):
             patch("mujoco.mj_resetData"),
             patch("mujoco.mj_forward"),
             patch(
-                "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
+                "musclemimic_training.activation_collector._tracking_reward",
                 return_value=1.0,
             ),
         ):

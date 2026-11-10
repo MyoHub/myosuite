@@ -103,7 +103,7 @@ class SARTorchTransform(nn.Module if _TORCH_OK else object):
         # sklearn:  X_reduced = (X - mean_) @ components_.T
         # inverse:  X = X_reduced @ components_ + mean_
         #   components_ shape: (n_components, n_features) = (n_pca_comps, n_muscles)
-        # With whiten=True (as fitted by sar_extraction.extract_synergies)
+        # With whiten=True (as fitted by musclemimic_training.sar_fitting.extract_synergies)
         # transform also divides by sqrt(explained_variance_), so the inverse
         # scales each component back, exactly as pca.inverse_transform does.
         components = np.asarray(pca.components_, dtype=np.float64)
