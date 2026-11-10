@@ -137,8 +137,10 @@ def k_medoids(
         while len(start) < k:
             d2 = distance[:, start].min(1) ** 2
             d2[start] = 0.0
-            p = d2 / d2.sum() if d2.sum() > 0 else None
-            start.append(int(rng.choice(n, p=p)))
+            if d2.sum() == 0.0:
+                d2[:] = 1.0
+                d2[start] = 0.0
+            start.append(int(rng.choice(n, p=d2 / d2.sum())))
         medoids = np.array(start)
         for _ in range(iterations):
             labels = distance[:, medoids].argmin(1)
