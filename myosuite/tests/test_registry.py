@@ -195,3 +195,16 @@ def test_envs_without_an_instability_wrapper_get_a_plain_forwarding_wrapper() ->
     wrapped = AttributeForwardingWrapper(base)
     assert callable(wrapped.mj_render)
     assert not hasattr(wrapped, "_private_attribute")
+
+
+def test_make_env_passes_a_non_string_model_to_the_env() -> None:
+    """Only a string ``model`` selects a body model; an MjModel stays a constructor kwarg."""
+    import pytest
+    from myosuite import make_env
+
+    env = make_env("myoElbowPose1D6MRandom-v0")
+    try:
+        with pytest.raises(ValueError, match="one fixed model"):
+            make_env("myoElbowPose1D6MRandom-v0", model="myofullbody")
+    finally:
+        env.close()
