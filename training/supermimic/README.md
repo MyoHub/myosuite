@@ -124,6 +124,22 @@ failed clip. One fine-tuning example (`finetune.py`, 6 minutes including about 5
 checkpoint on the held-out clip it tracked worst (KIT 348 `turn_right02`): the return on that clip went from 0.47 to
 0.93 and the MPJPE from 46 to 23 mm.
 
+## Submodels
+
+The task runs on any body registered as a ``MimicModelCfg`` (``register_model``; ``myoelbow2dof`` is a built-in
+fixed-base example), selected with ``TaskEnvCfg(model=...)``:
+
+* a fixed root (no free joint): the root terms drop out of the task, the world model integrates the joints only;
+* motors next to the muscles (``motor_expr``): the policy's action in [0, 1] maps onto each motor's control range, and
+  the state carries one drive per actuator (muscle activation, a direct motor's normalized command, a first-order
+  motor's normalized activation), integrated analytically like the muscles;
+* no contact bodies: no touch observation or world-model touch head; no ``mirror_sides``: mirror augmentation off;
+* ``effectors``: their world position error is reported under the model's metric name (e.g. ``tip_err_cm``).
+
+``TaskEnvCfg.task`` passes further task overrides (e.g. reward kernels at the body's scale). Checkpoints store the
+model and the control step. ``tests/test_submodel.py`` runs the runner-vs-env and collector-vs-``env.step`` checks on
+a fixed-base body with muscles, a direct and a first-order motor.
+
 ## Planned: DynSyn action groups
 
 The policy acts through an action map from its outputs to the muscle excitations: identity today, so checkpoints hold

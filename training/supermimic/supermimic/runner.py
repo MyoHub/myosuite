@@ -49,7 +49,6 @@ from supermimic.networks import (
 )
 from supermimic.optim import MuonAdam, gated_step
 from supermimic.heads import (
-    NUM_TOUCH,
     _goal,
     StepCtx,
     analytic,
@@ -246,7 +245,9 @@ class SuperMimicRunner:
             self.cmd.muscle,
             self.cmd.motion,
         )
-        self.nq, self.nm = self.heads.nq, self.cmd.info.num_muscles
+        # nm: one action per actuator (the muscles' excitations, the motors' normalized commands)
+        self.nq, self.nm = self.heads.nq, self.cmd.num_actuators
+        self.num_touch = self.cmd.num_touch
         self.cmd.kin.unbind = cfg.kin_unbind
         self.obs_policy = AnalyticObsGroup(u, cfg.obs_groups["policy"][0], self.heads)
         self.obs_goal = AnalyticObsGroup(u, cfg.obs_groups["goal"][0], self.heads)
@@ -294,12 +295,17 @@ class SuperMimicRunner:
         self.mirror = (
             None  # wm_mirror: the model's left-right maps (validated on the model here)
         )
-        if cfg.wm_mirror > 0:
+        sides = self.cmd.model_cfg.mirror_sides
+        if cfg.wm_mirror > 0 and sides is None:
+            print("wm_mirror: off (the body has no left-right mirror map)", flush=True)
+        elif cfg.wm_mirror > 0:
+            touch = self.cmd.touch_sensor
             self.mirror = Mirror(
                 self.cmd.kin,
                 self.cmd.geo,
-                tuple(self.cmd.touch_sensor.cfg.primary.pattern),
+                () if touch is None else tuple(touch.cfg.primary.pattern),
                 device,
+                sides=sides,
             )
             print(
                 "wm_mirror: "
@@ -343,10 +349,19 @@ class SuperMimicRunner:
 
     def _build_networks(self):
         c, dev = self.cfg, self.device
-        self.wm = WorldModel(self.nq, self.nm, NUM_TOUCH, c.wm_hidden, structured=c.wm_structured, dt=self.uenv.step_dt,
-                             substeps=self.uenv.cfg.decimation).to(dev)  # fmt: skip
+        self.wm = WorldModel(self.nq, self.nm, self.num_touch, c.wm_hidden, structured=c.wm_structured,
+                             dt=self.uenv.step_dt, substeps=self.uenv.cfg.decimation,
+                             fixed_root=self.cmd.fixed_root).to(dev)  # fmt: skip
+        init = c.init_excitation
+        if self.cmd.has_motors:  # motors start at zero command (their range's zero, clipped into the open box)
+            info = self.cmd.info
+            init = torch.full((self.nm,), c.init_excitation)
+            zero = -info.motor_lo / (info.motor_hi - info.motor_lo)
+            init[torch.as_tensor(info.motor_ids)] = torch.as_tensor(
+                zero, dtype=torch.float32
+            ).clamp(0.01, 0.99)
         self.pi = Policy(self.obs_policy.dim, self.obs_goal.dim, self.nm, c.enc_hidden, c.dec_hidden, c.latent_dim,
-                         c.init_excitation, action_map=ActionMap(self.nm)).to(dev)  # fmt: skip
+                         init, action_map=ActionMap(self.nm)).to(dev)  # fmt: skip
         # overlap_wm: imagination steps a copy of the world model taken at the start of each iteration (sync_wm_imag),
         # so that the world-model updates can run concurrently with the policy update
         self.wm_imag = (
@@ -460,7 +475,10 @@ class SuperMimicRunner:
             self.wm.state_error(S_hat[:6], unflatten_body(s1, self.nq)) / std
         ) ** 2  # (B, k, D)
         e = e.mean(-1)
-        e_touch = ((S_hat[6] - self.wm.touch_norm(touch1)) ** 2).mean(-1)
+        if self.num_touch:
+            e_touch = ((S_hat[6] - self.wm.touch_norm(touch1)) ** 2).mean(-1)
+        else:  # no contact bodies
+            e_touch = torch.zeros_like(e)
         loss = (e * mask).sum() / s1.shape[0] + self.cfg.touch_loss_weight * (
             e_touch * mask
         ).sum() / s1.shape[0]
@@ -747,7 +765,7 @@ class SuperMimicRunner:
             u.num_envs,
             self.heads.body_state_dim,
             self.nm,
-            NUM_TOUCH,
+            self.num_touch,
             self.device,
         )
         self.ep_ret = torch.zeros(u.num_envs, device=self.device)
@@ -1180,7 +1198,8 @@ class SuperMimicRunner:
 
     def env_settings(self) -> dict:
         """The env settings a policy depends on, stored in each checkpoint so evaluation can match them."""
-        return {"decimation": self.uenv.cfg.decimation, "stride": self.cmd.stride, "lookahead": self.cmd.lookahead,
+        return {"decimation": self.uenv.cfg.decimation, "ctrl_dt": self.uenv.step_dt, "model": self.cmd.cfg.model,
+                "stride": self.cmd.stride, "lookahead": self.cmd.lookahead,
                 "muscle_obs": self.cmd.observes_muscles, "obs_dim": self.obs_policy.dim, "goal_dim": self.obs_goal.dim}  # fmt: skip
 
     def get_inference_policy(self, device=None):

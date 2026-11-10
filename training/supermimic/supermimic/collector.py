@@ -157,9 +157,8 @@ class Collector:
         self.pi.goal_norm.update(goal)
         a = self.pi(obs, goal)
         a = explore(a, c.action_noise, c.action_noise_dist).to(a.dtype)
-        self.ctrl[:, self.ctrl_ids] = (
-            a  # the muscle excitation action: excitation j is the ctrl of actuator j
-        )
+        # action j drives actuator j: a muscle's excitation, a motor's command mapped onto its range (as the env)
+        self.ctrl[:, self.ctrl_ids] = cmd.to_ctrl(a)
         for _ in range(u.cfg.decimation):
             mjwarp.step(sim.wp_model, sim.wp_data)
         u.episode_length_buf.add_(1)
@@ -256,7 +255,8 @@ class Collector:
             out = self.out
         self.r.buffer.advance_host()
         # mjlab's per-step caches would hold states of before the step
-        self.cmd.touch_sensor._invalidate_cache()
+        if self.cmd.touch_sensor is not None:
+            self.cmd.touch_sensor._invalidate_cache()
         return out
 
     def _capture(self):

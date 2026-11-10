@@ -174,6 +174,9 @@ class MyoActionCfg(ActionTermCfg):
         reroute: ``(source, destination)`` actuator names for reafferentation:
             ``ctrl[dst] = ctrl[src]; ctrl[src] = 0``.
         motor_noise: Noise on muscle excitations, applied before fatigue.
+        motor_ctrl_range: With muscles present, map the non-muscle columns from
+            ``action_range`` onto their control range (the muscles keep the clamped
+            action); off: every column keeps the clamped action.
         excitation_stages: Factories of portable custom stages
             (:class:`~myosuite.envs.muscle_stages.ExcitationStage`) on the muscle
             excitations; each env scene builds its own instances. They run after the
@@ -189,6 +192,7 @@ class MyoActionCfg(ActionTermCfg):
     fatigue_muscles: tuple[str | int, ...] | None = None
     reroute: tuple[str, str] | None = None
     motor_noise: MotorNoiseCfg = field(default_factory=MotorNoiseCfg)
+    motor_ctrl_range: bool = False
     excitation_stages: tuple[Callable[[], ExcitationStage], ...] = ()
 
     def build(self, env: ManagerBasedRlEnv) -> MyoAction:
@@ -239,6 +243,9 @@ class MyoAction(ActionTerm):
         self._muscle_cols = _long(
             [i for i, d in enumerate(dyn_type) if d == mujoco.mjtDyn.mjDYN_MUSCLE]
         )
+        self._motor_cols = _long(
+            [i for i, d in enumerate(dyn_type) if d != mujoco.mjtDyn.mjDYN_MUSCLE]
+        )
         self._has_activation = int(model.actuator_actnum[ctrl_ids].sum()) > 0
         ctrl_range = torch.as_tensor(
             model.actuator_ctrlrange[ctrl_ids], dtype=torch.float32, device=self.device
@@ -286,6 +293,10 @@ class MyoAction(ActionTerm):
                 ctrl[:, self._muscle_cols] = sigmoid_muscle_activation(
                     ctrl[:, self._muscle_cols], torch
                 )
+            if self.cfg.motor_ctrl_range and len(self._motor_cols):
+                c = self._motor_cols
+                lo, hi = self._ctrl_lo[c], self._ctrl_hi[c]
+                ctrl[:, c] = lo + (ctrl[:, c] - a_lo) / (a_hi - a_lo) * (hi - lo)
         elif self.cfg.normalize_act:
             ctrl = self._ctrl_lo + (ctrl - a_lo) / (a_hi - a_lo) * (
                 self._ctrl_hi - self._ctrl_lo

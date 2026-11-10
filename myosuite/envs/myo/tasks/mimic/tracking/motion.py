@@ -13,6 +13,9 @@ A clip is one ``.npz`` in one of these formats:
 * **canonical**: ``fps``, ``root_pos`` (T, 3), ``root_quat`` (T, 4, wxyz, canonical
   root frame: x forward, z up), ``joint_pos`` (T, J) and ``joint_names``.
 
+A body with a fixed root needs no root data (a trajectory without a free joint, or a
+canonical clip without ``root_pos`` / ``root_quat``); its root arrays have width 0.
+
 Coupled joints in a clip are ignored (they follow from the independent ones). Clips are
 resampled to the control step (linear, slerp for the root), velocities are central
 differences, and the tracked bodies' poses and velocities are MuJoCo's forward
@@ -87,14 +90,15 @@ def motion_files(path: str | os.PathLike, root: str | os.PathLike = "") -> list[
 
 def _model_names(names: Sequence[str], info: ModelInfo) -> list[str]:
     """A clip's joint names in the model's naming (``elbow_flex_*`` -> ``elbow_flexion_*``)."""
-    model = [info.root_joint_name, *info.joint_names]
+    model = ([] if info.fixed_root else [info.root_joint_name]) + info.joint_names
     return resolve_model_names([str(n) for n in names], model, field_name="qpos")
 
 
 def load_clip(
     path: str, info: ModelInfo, R_off: np.ndarray
 ) -> tuple[float, np.ndarray, np.ndarray, np.ndarray]:
-    """``(fps, root_pos (T,3), root_quat (T,4) of the free-joint body, indep. joints (T,J))``."""
+    """``(fps, root_pos (T,3), root_quat (T,4) of the free-joint body, indep. joints (T,J))``;
+    the root entries are ``None`` for a fixed root."""
     data = np.load(path, allow_pickle=False)
     names = _model_names(data["joint_names"], info)
     missing = [n for n in info.indep_names if n not in names]
@@ -106,18 +110,22 @@ def load_clip(
             raise ValueError(
                 f"{path}: {q.shape[1]} joint columns for {len(names)} names"
             )
+        cols = q[:, [names.index(n) for n in info.indep_names]]
+        if info.fixed_root:
+            return float(data["fps"]), None, None, cols
         R = mt.quat_to_mat(np, np.asarray(data["root_quat"], np.float64)) @ R_off.T
         return (
             float(data["fps"]),
             np.asarray(data["root_pos"], np.float64),
             mt.mat_to_quat(np, R),
-            q[:, [names.index(n) for n in info.indep_names]],
+            cols,
         )
     free = int(mujoco.mjtJoint.mjJNT_FREE)
     types = (
         data["jnt_type"]
         if "jnt_type" in data.files
-        else [free] + [1] * (len(names) - 1)
+        else ([] if info.fixed_root else [free])
+        + [1] * (len(names) - (not info.fixed_root))
     )
     adr = np.cumsum([0] + [QPOS_WIDTH[int(t)] for t in types])
     qpos = np.asarray(data["qpos"], np.float64)
@@ -125,16 +133,19 @@ def load_clip(
         raise ValueError(
             f"{path}: qpos has {qpos.shape[1]} columns, the joints need {adr[-1]}"
         )
-    if names[0] != info.root_joint_name or int(types[0]) != free:
-        raise ValueError(f"{path}: the first joint must be the root free joint")
     if "split_points" in data.files and len(data["split_points"]) != 2:
         raise ValueError(f"{path}: several trajectories in one file")
+    joints = qpos[:, [adr[names.index(n)] for n in info.indep_names]]
+    if info.fixed_root:
+        return float(data["frequency"]), None, None, joints
+    if names[0] != info.root_joint_name or int(types[0]) != free:
+        raise ValueError(f"{path}: the first joint must be the root free joint")
     quat = qpos[:, 3:7] / np.linalg.norm(qpos[:, 3:7], axis=-1, keepdims=True)
     return (
         float(data["frequency"]),
         qpos[:, :3].copy(),
         np.where(quat[:, :1] < 0, -quat, quat),
-        qpos[:, [adr[names.index(n)] for n in info.indep_names]],
+        joints,
     )
 
 
@@ -172,27 +183,34 @@ def _process_clip(
     tracked: np.ndarray, dt: float,
 ) -> dict[str, np.ndarray]:  # fmt: skip
     fps, p, quat, j = load_clip(path, info, R_off)
-    T_src = p.shape[0]
+    fixed = info.fixed_root
+    T_src = j.shape[0]
     if T_src < 2:
         raise ValueError(f"{path}: a clip needs at least two frames")
     n = int(np.floor((T_src - 1) / fps / dt + 1e-6)) + 1
     t = np.arange(n) * dt * fps
     i0 = np.minimum(np.floor(t).astype(np.int64), T_src - 2)
     a = np.clip(t - i0, 0.0, 1.0)[:, None]
-    p = p[i0] * (1 - a) + p[i0 + 1] * a
     j = j[i0] * (1 - a) + j[i0 + 1] * a
-    quat = _slerp(quat[i0], quat[i0 + 1], a[:, 0])
-    R = mt.quat_to_mat(np, quat)
-    v, w, jd = _gradient(p, dt), _angular_velocity(R, dt), _gradient(j, dt)
-    w_body = (R.swapaxes(-1, -2) @ w[..., None])[..., 0]
+    jd = _gradient(j, dt)
+    if fixed:  # zero-width root, identity rotation
+        p, v, w_body = np.zeros((n, 0)), np.zeros((n, 0)), np.zeros((n, 0))
+        R = np.broadcast_to(np.eye(3), (n, 3, 3)).copy()
+    else:
+        p = p[i0] * (1 - a) + p[i0 + 1] * a
+        quat = _slerp(quat[i0], quat[i0 + 1], a[:, 0])
+        R = mt.quat_to_mat(np, quat)
+        v, w = _gradient(p, dt), _angular_velocity(R, dt)
+        w_body = (R.swapaxes(-1, -2) @ w[..., None])[..., 0]
 
     def full_state(q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         qpos = np.tile(m.qpos0, (n, 1))
         qvel = np.zeros((n, m.nv))
-        qpos[:, info.root_qadr : info.root_qadr + 3] = p
-        qpos[:, info.root_qadr + 3 : info.root_qadr + 7] = quat
-        qvel[:, info.root_dadr : info.root_dadr + 3] = v
-        qvel[:, info.root_dadr + 3 : info.root_dadr + 6] = w_body
+        if not fixed:
+            qpos[:, info.root_qadr : info.root_qadr + 3] = p
+            qpos[:, info.root_qadr + 3 : info.root_qadr + 7] = quat
+            qvel[:, info.root_dadr : info.root_dadr + 3] = v
+            qvel[:, info.root_dadr + 3 : info.root_dadr + 6] = w_body
         qpos[:, info.indep_qadr] = q
         qvel[:, info.indep_dadr] = jd
         project_joint_couplings(info.couplings, qpos, qvel)
@@ -222,7 +240,7 @@ def _process_clip(
         "root_pos": p,
         "root_rot": R,
         "root_qvel": root_qvel,
-        "root_vel_local": mt.root_vel_local(np, R, root_qvel),
+        "root_vel_local": root_qvel if fixed else mt.root_vel_local(np, R, root_qvel),
         "joint_pos": qpos[:, info.joint_qadr],
         "joint_vel": qvel[:, info.joint_dadr],
         "site_rpos": rpos,
@@ -313,7 +331,7 @@ def build_motion_lib(
     Args:
         files: Clip files.
         m: The body (or scene) model.
-        tracked: Tracked body names, the one welded to the root first.
+        tracked: Tracked body names, the anchor first (with a free root, welded to it).
         dt: Control step.
         bin_s: Reset bin length in seconds.
         workers: Threads processing clips (MuJoCo releases the GIL).
@@ -328,7 +346,7 @@ def build_motion_lib(
     info = ModelInfo(m)
     R_off = root_offset(m)
     ids = np.array([m.body(n).id for n in tracked])
-    if m.body_weldid[ids[0]] != info.root_id:
+    if not info.fixed_root and m.body_weldid[ids[0]] != info.root_id:
         raise ValueError(
             f"the first tracked body {tracked[0]!r} must be welded to the root"
         )
@@ -341,7 +359,7 @@ def build_motion_lib(
     names = [
         os.path.splitext(os.path.relpath(os.path.abspath(f), base))[0] for f in files
     ]
-    lens = np.array([len(c["root_pos"]) for c in clips])
+    lens = np.array([len(c["joint_pos"]) for c in clips])
     start = np.concatenate(([0], np.cumsum(lens)[:-1]))
     bin_frames = max(1, round(bin_s / dt))
     bin_clip = np.concatenate(
@@ -367,10 +385,10 @@ def write_synthetic_clip(
     path: str | os.PathLike, m: mujoco.MjModel, seconds: float, speed: float,
     amp: float, seed: int, climb: float = 0.0, model_name: str = "myofullbody",
 ) -> None:  # fmt: skip
-    """A clip for tests: the default pose moving along x at *speed* (and up at *climb*),
-    each independent joint oscillating by *amp* of its half range at 1 Hz, sampled at
-    100 Hz, with the metadata of a clip fitted on *model_name* (its current version and
-    kinematic fingerprint)."""
+    """A clip for tests: the default pose moving along x at *speed* (and up at *climb*;
+    both ignored for a fixed root), each independent joint oscillating by *amp* of its
+    half range at 1 Hz, sampled at 100 Hz, with the metadata of a clip fitted on
+    *model_name* (its current version and kinematic fingerprint)."""
     from myosuite.biomechanics.retarget import REFIT_META_KEY  # noqa: PLC0415
 
     from .models import kinematic_fingerprint, model_version  # noqa: PLC0415
@@ -378,10 +396,12 @@ def write_synthetic_clip(
     fps = 100.0
     t = np.arange(int(seconds * fps) + 1) / fps
     qpos = np.tile(m.qpos0, (len(t), 1))
-    qpos[:, 0] = speed * t
-    qpos[:, 2] += climb * t
+    info = ModelInfo(m)
+    if not info.fixed_root:
+        qpos[:, 0] = speed * t
+        qpos[:, 2] += climb * t
     rng = np.random.default_rng(seed)
-    for j in ModelInfo(m).indep_ids:
+    for j in info.indep_ids:
         adr, (lo, hi) = m.jnt_qposadr[j], m.jnt_range[j]
         wave = amp * 0.5 * (hi - lo) * np.sin(2 * np.pi * t + rng.uniform(0, 2 * np.pi))
         qpos[:, adr] = np.clip(m.qpos0[adr] + wave, lo, hi)

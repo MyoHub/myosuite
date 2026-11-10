@@ -61,6 +61,8 @@ class RunningNorm(nn.Module):
 
     @torch.no_grad()
     def update(self, x: torch.Tensor):
+        if x.shape[-1] == 0:  # nothing to normalize (e.g. no touch values)
+            return
         x = x.reshape(-1, x.shape[-1]).float()
         if not self.no_sync and self.count >= self.max_count:
             return
@@ -141,12 +143,12 @@ class WorldModel(nn.Module):
     ``structured`` (BlinkMimic's semi-implicit world model): the network predicts the velocity increments, and the
     positions follow the old and new velocities as the simulator's semi-implicit Euler substeps make them, plus
     small corrections the network predicts on top of that drift. ``dt`` is the control step and ``substeps`` its
-    physics substeps."""
+    physics substeps. ``fixed_root``: the root state is held (a body welded to the world); only the joints evolve."""
 
     def __init__(self, nq: int, num_muscles: int, num_touch: int, hidden=(2048, 2048, 2048), structured: bool = False,
-                 dt: float = 0.01, substeps: int = 5):  # fmt: skip
+                 dt: float = 0.01, substeps: int = 5, fixed_root: bool = False):  # fmt: skip
         super().__init__()
-        self.nq, self.num_touch = nq, num_touch
+        self.nq, self.num_touch, self.fixed_root = nq, num_touch, fixed_root
         self.structured, self.dt = structured, dt
         # weight of the new velocity in the position drift: n semi-implicit substeps with a linearly changing velocity
         # give sum_{k=1..n} (k / n) / n = (n + 1) / (2 n): 0.6 for 5 substeps (BlinkMimic: 0.625 for its 4)
@@ -224,6 +226,8 @@ class WorldModel(nn.Module):
         if self.structured:
             gp, gth, gq = self._drift(S, v1, w1, qd1)
             dp, dth, dq = dp + gp, dth + gth, dq + gq
+        if self.fixed_root:
+            return (p, R, v, w, q + dq, qd1)
         return (p + mv3(H, dp), mm3(R, so3_exp(dth)), v1, w1, q + dq, qd1)
 
     def step(self, S, act, act1):
@@ -287,6 +291,8 @@ class ActionMap(nn.Module):
 class Policy(nn.Module):
     """e = map(sigmoid(dec(enc(g), o_t))); deterministic, latent z in R^32 bounded by tanh.
 
+    ``init_excitation``: the initial action, one value or one per output.
+
     The decoder outputs one logit per action-map output (per muscle with the identity map); the env action is the
     excitation in [0, 1].
     """
@@ -299,7 +305,7 @@ class Policy(nn.Module):
         enc_hidden=(2048, 1024, 512, 256),
         dec_hidden=(2048, 1024, 512, 256),
         z_dim: int = 32,
-        init_excitation: float = 0.1,
+        init_excitation: float | torch.Tensor = 0.1,
         action_map: ActionMap | None = None,
     ):
         super().__init__()
@@ -310,7 +316,14 @@ class Policy(nn.Module):
         self.dec = mlp(z_dim + obs_dim, list(dec_hidden), self.action_map.num_outputs)
         with torch.no_grad():
             self.dec[-1].weight.mul_(0.01)
-            self.dec[-1].bias.fill_(math.log(init_excitation / (1 - init_excitation)))
+            if torch.is_tensor(
+                init_excitation
+            ):  # one per output (e.g. motors at zero torque)
+                self.dec[-1].bias.copy_(torch.logit(init_excitation.float()))
+            else:
+                self.dec[-1].bias.fill_(
+                    math.log(init_excitation / (1 - init_excitation))
+                )
         self.obs_norm = RunningNorm(obs_dim)
         self.goal_norm = RunningNorm(goal_dim)
 

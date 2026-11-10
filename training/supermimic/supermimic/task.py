@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import mujoco
+import numpy as np
 import torch
 
 from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
@@ -41,16 +43,22 @@ class TaskView:
         self.cmd = cmd = env.command_manager.get_term(command_name)
         dev = cmd.device
         self.robot = cmd.robot
-        self.info = cmd.info
-        m = self.info.m
-        self.kin = SkeletonKinematics(model_cfg(cmd.cfg.model).tracked_bodies, dev, m)
-        self.muscle = MuscleActivation(m, env.cfg.decimation, env.physics_dt, dev)
-        self.geo = MuscleGeometry(m, dev)
+        self.info = info = cmd.info
+        m = info.m
+        self.model_cfg = mc = model_cfg(cmd.cfg.model)
+        self.fixed_root = info.fixed_root
+        self.num_touch = len(mc.foot_bodies)
+        self.num_actuators = info.num_actuators
+        mus = None if not len(info.motor_ids) else info.muscle_ids
+        self.kin = SkeletonKinematics(mc.tracked_bodies, dev, m)
+        self.muscle = MuscleActivation(m, env.cfg.decimation, env.physics_dt, dev, mus)
+        self.geo = MuscleGeometry(m, dev, muscle_ids=mus)
         task = cmd.task
         self.lookahead, self.stride = task.obs.goal_frames, cmd.goal_stride
         self.heads = TrackingHeads(
-            self.kin, cmd.motion, self.geo, self.lookahead, self.stride
-        )
+            self.kin, cmd.motion, self.geo, self.lookahead, self.stride,
+            None if mus is None else torch.as_tensor(mus, device=dev),
+        )  # fmt: skip
         self.observes_muscles = any(
             t.params.get("name") in MUSCLE_OBSERVATIONS
             for g in env.cfg.observations.values()
@@ -75,9 +83,27 @@ class TaskView:
         cols = torch.tensor(self.info.indep_cols, device=dev)
         self._q_adr = idx.joint_q_adr.long()[cols]
         self._v_adr = idx.joint_v_adr.long()[cols]
+        ctrl_ids = idx.ctrl_ids.cpu().numpy()
         self._act_adr = torch.tensor(
-            env.sim.mj_model.actuator_actadr[idx.ctrl_ids.cpu().numpy()], device=dev
+            env.sim.mj_model.actuator_actadr[ctrl_ids[info.muscle_ids]], device=dev
         ).long()
+        # motors: the drive is the normalized command (direct) or activation (filter) of each
+        self.has_motors = bool(len(info.motor_ids))
+        if self.has_motors:
+            mj = env.sim.mj_model
+            mot = ctrl_ids[info.motor_ids]
+            filt = mj.actuator_dyntype[mot] == mujoco.mjtDyn.mjDYN_FILTER
+            t = lambda x, **k: torch.as_tensor(x, device=dev, **k)  # noqa: E731
+            self._mot_cols = t(info.motor_ids, dtype=torch.long)
+            self._mus_cols = t(info.muscle_ids, dtype=torch.long)
+            self._mot_ctrl = t(mot, dtype=torch.long)
+            self._mot_filter = t(filt)
+            self._mot_act_adr = t(
+                np.where(filt, mj.actuator_actadr[mot], 0), dtype=torch.long
+            )
+            self._mot_lo = t(info.motor_lo, dtype=torch.float32)
+            self._mot_hi = t(info.motor_hi, dtype=torch.float32)
+            self._order = torch.argsort(torch.cat((self._mus_cols, self._mot_cols)))
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.cmd, name)
@@ -100,15 +126,48 @@ class TaskView:
                 without mjlab's scene updates).
         """
         d = self._env.sim.data
-        root_q, root_v = d.qpos[:, self._free_q], d.qvel[:, self._free_v]
-        Rb = quat_to_mat(root_q[:, 3:7])
-        p = root_q[:, :3] - self._env.scene.env_origins
-        w = (Rb @ root_v[:, 3:6].unsqueeze(-1)).squeeze(-1)  # free joint: body-local
-        sensor = self.cmd.touch_sensor
-        force = sensor._compute_data().force if fresh_touch else sensor.data.force
-        touch = force[..., 2].abs().reshape(self._env.num_envs, -1)
-        return (p, Rb @ self.kin.R_off, root_v[:, :3], w, d.qpos[:, self._q_adr], d.qvel[:, self._v_adr],
-                d.act[:, self._act_adr], touch)  # fmt: skip
+        if self.fixed_root:
+            z = d.qpos.new_zeros(self._env.num_envs, 3)
+            p, R, v, w = z, torch.eye(3, device=z.device).expand(z.shape[0], 3, 3), z, z
+        else:
+            root_q, root_v = d.qpos[:, self._free_q], d.qvel[:, self._free_v]
+            Rb = quat_to_mat(root_q[:, 3:7])
+            p = root_q[:, :3] - self._env.scene.env_origins
+            w = (Rb @ root_v[:, 3:6].unsqueeze(-1)).squeeze(
+                -1
+            )  # free joint: body-local
+            R, v = Rb @ self.kin.R_off, root_v[:, :3]
+        touch = self.cmd.read_touch(fresh_touch)
+        return (
+            p,
+            R,
+            v,
+            w,
+            d.qpos[:, self._q_adr],
+            d.qvel[:, self._v_adr],
+            self.drive(d),
+            touch,
+        )
+
+    def drive(self, d) -> torch.Tensor:
+        """The actuator drive in [0, 1] (muscles: activation; motors: normalized command or activation)."""
+        act = d.act[:, self._act_adr]
+        if not self.has_motors:
+            return act
+        raw = torch.where(
+            self._mot_filter, d.act[:, self._mot_act_adr], d.ctrl[:, self._mot_ctrl]
+        )
+        mot = (raw - self._mot_lo) / (self._mot_hi - self._mot_lo)
+        return torch.cat((act, mot), -1)[:, self._order]
+
+    def to_ctrl(self, a: torch.Tensor) -> torch.Tensor:
+        """The actuator controls of an action in [0, 1] (the env's map: motors onto their control range)."""
+        if not self.has_motors:
+            return a
+        # ModelInfo.action_to_ctrl with the device tensors made here (graph-capturable)
+        ctrl = a.clamp(0.0, 1.0)
+        mot = self._mot_lo + ctrl[..., self._mot_cols] * (self._mot_hi - self._mot_lo)
+        return ctrl.index_copy(-1, self._mot_cols, mot.to(ctrl.dtype))
 
     def obs_ctx(self) -> StepCtx:
         """The current state against frame f, with its shared pieces."""

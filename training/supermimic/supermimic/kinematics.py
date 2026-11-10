@@ -13,7 +13,8 @@ of that, takes only the independent coordinates, and propagates link-origin velo
 same function labels reference motions, simulator transitions and world-model predictions.
 
 Only bodies on the path to a tracked body are evaluated; joint-less bodies on that path are folded
-into their children's fixed offsets.
+into their children's fixed offsets. A body with a fixed root (no free joint) is evaluated from the
+world body, whose pose is the root state ``(p, R) = (0, I)`` with zero velocity.
 
 Ported from muscle-supermimic (github.com/kaibohex/muscle-supermimic, Apache-2.0) at commit
 8a6244b, ``src/muscle_supermimic/tasks/tracking/mdp/kinematics.py``.
@@ -48,11 +49,11 @@ class SkeletonKinematics:
         self.info, self.device = info, device
         self.num_q = len(info.indep_ids)
         self.R_off = torch.tensor(root_offset(m), dtype=dtype, device=device)
-        root = info.root_id
+        root = info.root_id  # the world for a fixed root
         tracked_ids = [m.body(n).id for n in tracked]
         # tracked bodies welded to the root (the root body itself, or a body without joints under it)
         self.tracked_on_root = [bool(m.body_weldid[b] == root) for b in tracked_ids]
-        needed = set()
+        needed = {0} if info.fixed_root else set()
         for b in tracked_ids:
             while b != 0:
                 needed.add(b)
@@ -71,7 +72,7 @@ class SkeletonKinematics:
         # nodes in tree order (mujoco orders parents before children)
         self.body_names, self.parent, off_p, off_R, self.joints = [], [], [], [], []
         local = {}
-        for b in range(1, m.nbody):
+        for b in range(0 if info.fixed_root else 1, m.nbody):
             if b not in keep:
                 continue
             local[b] = len(self.body_names)
@@ -156,6 +157,8 @@ class SkeletonKinematics:
 
     def full_joint_state(self, q: torch.Tensor, qd: torch.Tensor):
         """Independent coordinates (..., 37) -> every non-root joint (..., 79) in model (= entity) order."""
+        if not self._coupled_qadr.numel():  # no couplings
+            return q[..., self.full_index], qd[..., self.full_index]
         qc, qdc = self.coupled(q, qd)
         return torch.cat((q, qc), -1)[..., self.full_index], torch.cat((qd, qdc), -1)[
             ..., self.full_index

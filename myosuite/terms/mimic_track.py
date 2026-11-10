@@ -16,6 +16,11 @@ muscle-supermimic (``tasks/tracking/mdp``, commit 8a6244b): the 16 relative site
 tracked bodies minus the first one (the pelvis), the reward is MimicReward
 (``exp(-kernel * mean squared error)`` per component) and the failure rule is
 MuscleMimic's mean relative site / root position / root orientation deviation.
+
+A body with a fixed root (no free joint) has zero-width root arrays (``root_pos``,
+``root_quat``, ``root_qvel`` and the reference's ``root_pos``, ``root_qvel``,
+``root_vel_local`` of size 0) and the identity as root rotation: its root terms are
+constant, and its task leaves them out (``config.for_body``).
 """
 
 from __future__ import annotations
@@ -33,7 +38,8 @@ class TrackState:
     """Body state of a tracking agent (arrays with leading batch axes ``...``).
 
     Attributes:
-        root_pos: ``(..., 3)`` free-joint position (env frame).
+        root_pos: ``(..., 3)`` free-joint position (env frame); ``(..., 0)`` for a
+            fixed root (likewise ``root_quat`` and ``root_qvel``).
         root_quat: ``(..., 4)`` free-joint orientation (wxyz).
         root_qvel: ``(..., 6)`` free-joint velocity ``[v world, w body]``.
         joint_pos: ``(..., J)`` every non-root joint, model order.
@@ -43,8 +49,9 @@ class TrackState:
         body_lin_vel: ``(..., B, 3)`` linear velocity of the body origins (world).
         body_ang_vel: ``(..., B, 3)`` angular velocity (world).
         act: ``(..., M)`` muscle activations.
-        excitation: ``(..., M)`` the last action (the commanded excitation).
-        touch: ``(..., 4)`` normal ground force on the heels and toes (N).
+        excitation: ``(..., U)`` the last action (one per actuator: the muscles'
+            excitation, the motors' normalized command).
+        touch: ``(..., C)`` normal ground force on the contact bodies (N).
         muscle_length: ``(..., M)`` optional.
         muscle_velocity: ``(..., M)`` optional.
         muscle_force: ``(..., M)`` optional.
@@ -230,12 +237,23 @@ def root_vel_local(xp: Any, root_rot: Any, root_qvel: Any) -> Any:
     )
 
 
+def identity_rotations(xp: Any, like: Any) -> Any:
+    """Identity rotations ``(..., 3, 3)`` for the batch of ``like`` ``(..., n)``."""
+    batch = tuple(like.shape[:-1])
+    if xp.__name__ == "numpy":
+        return xp.broadcast_to(xp.eye(3, dtype=like.dtype), batch + (3, 3)).copy()
+    return xp.eye(3, dtype=like.dtype, device=like.device).expand(*batch, 3, 3)
+
+
 def features(xp: Any, s: TrackState) -> TrackFeatures:
     """The shared quantities of a state (relative sites, root rotation and velocity)."""
-    R = quat_to_mat(xp, s.root_quat)
     rpos, rangles, rvel = relative_sites(
         xp, s.body_pos, s.body_rot, s.body_lin_vel, s.body_ang_vel
     )
+    if s.root_quat.shape[-1] == 0:  # fixed root
+        R = identity_rotations(xp, s.body_pos[..., 0, :])
+        return TrackFeatures(R, s.root_qvel, rpos, rangles, rvel)
+    R = quat_to_mat(xp, s.root_quat)
     return TrackFeatures(R, root_vel_local(xp, R, s.root_qvel), rpos, rangles, rvel)
 
 
@@ -297,7 +315,7 @@ def goal_observation(xp: Any, now: TrackRef, future: TrackRef, phase: Any) -> An
         phase: ``(...,)`` progress through the clip.
 
     Returns:
-        ``(..., 3 (B-1) + K (9 + 3 (B-1)) + 1)``.
+        ``(..., 3 (B-1) + K (9 + 3 (B-1)) + 1)`` (``K 9`` -> 0 for a fixed root).
     """
     fut = xp.concatenate(
         (

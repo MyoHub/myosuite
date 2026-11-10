@@ -428,3 +428,94 @@ def test_custom_reward_mjlab_matches_cpu(clip: str) -> None:
         assert float(task_reward[0]) == pytest.approx(float(r_base[0]), rel=1e-5)
         assert float(task_reward[0]) == pytest.approx(info["task_reward"], rel=1e-4)
     assert "task_reward" in mj.unwrapped.command_manager.get_term("motion").metrics
+
+
+# --------------------------------------------------------------------------- submodels
+
+
+def test_for_body_keeps_the_full_body_and_drops_root_terms() -> None:
+    from myosuite.envs.myo.tasks.mimic.tracking.config import for_body
+
+    task = resolve_task()
+    assert for_body(task, fixed_root=False, touch=True) is task
+    fixed = for_body(task, fixed_root=True, touch=False)
+    assert not {"root_pos", "root_vel", "touch"} & set(fixed.obs.policy)
+    assert {t.name for t in fixed.reward.terms} == set(KERNELS) - {
+        "root_pos",
+        "root_vel",
+    }
+    assert set(fixed.failure.thresholds()) == {"rel_site"}
+
+
+@pytest.fixture(scope="module", params=["myoelbow2dof", "mixed"])
+def submodel(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory):
+    """A fixed-base body (muscles only, or with a direct and a first-order motor) and a clip."""
+    from myosuite.tests.mimic_toy import register_mixed_model
+
+    name = register_mixed_model().name if request.param == "mixed" else request.param
+    path = tmp_path_factory.mktemp("sub") / f"{name}.npz"
+    write_synthetic_clip(path, compiled_body(name), 2.0, 0.0, 0.3, 0, model_name=name)
+    return name, str(path)
+
+
+def test_submodel_motion_lib_has_no_root(submodel) -> None:
+    name, path = submodel
+    m = compiled_body(name)
+    lib = build_motion_lib([path], m, model_cfg(name).tracked_bodies, 0.02)
+    T = lib.num_frames
+    assert lib.frames["root_pos"].shape == (T, 0) and lib.frames["root_qvel"].shape == (
+        T,
+        0,
+    )
+    np.testing.assert_allclose(
+        lib.frames["root_rot"], np.broadcast_to(np.eye(3), (T, 3, 3))
+    )
+    assert lib.frames["site_rpos"].shape == (T, 3, 3)
+
+
+def test_submodel_mjlab_twin_parity(submodel) -> None:
+    """A fixed-base body (and its motors) observes and scores alike on the CPU and in the twin."""
+    pytest.importorskip("mjlab")
+    torch = pytest.importorskip("torch")
+    name, path = submodel
+    tk = {"model": name, "overrides": {"motion.clips": path, "reset.mode": "start"}}
+    cpu = make_env(EnvConfig(MIMIC_ENV_ID, task_kwargs=tk)).unwrapped
+    mj = make_env(
+        EnvConfig(MIMIC_ENV_ID, backend="mjlab", num_envs=2, task_kwargs=tk),
+        device="cpu",
+    )
+    assert cpu.info.fixed_root and "root_pos" not in cpu.obs_dims
+    obs_mj, _ = mj.reset()
+    obs_cpu, _ = cpu.reset(seed=0, options={"clip": 0})
+    o_mj = torch.cat((obs_mj["policy"][0], obs_mj["goal"][0])).numpy()
+    np.testing.assert_allclose(o_mj, obs_cpu, atol=1e-5)
+    a = np.linspace(0.1, 0.9, cpu.model.nu).astype(np.float32)
+    for _ in range(10):
+        obs_cpu, r_cpu, term_cpu, _, _ = cpu.step(a)
+        obs_mj, r_mj, term_mj, _, _ = mj.step(torch.tensor(a)[None].repeat(2, 1))
+        o_mj = torch.cat((obs_mj["policy"][0], obs_mj["goal"][0])).numpy()
+        assert float(r_mj[0]) == pytest.approx(r_cpu, rel=1e-4)
+        assert float(r_mj[1]) == float(
+            r_mj[0]
+        )  # a fixed base is not moved by env origins
+        assert bool(term_mj[0]) == term_cpu
+        np.testing.assert_allclose(o_mj, obs_cpu, atol=1e-4, rtol=1e-4)
+    ctrl = mj.unwrapped.sim.data.ctrl[0].cpu().numpy()
+    np.testing.assert_allclose(ctrl, cpu.data.ctrl, atol=1e-6)
+    np.testing.assert_allclose(cpu.data.ctrl, cpu.info.action_to_ctrl(np, a))
+
+
+def test_submodel_metrics_report_the_effector(submodel) -> None:
+    name, path = submodel
+    env = make_env(
+        EnvConfig(
+            MIMIC_ENV_ID,
+            task_kwargs={
+                "model": name,
+                "overrides": {"motion.clips": path, "episode_length_s": None},
+            },
+        )
+    )
+    nu = env.unwrapped.model.nu
+    rep = evaluate(lambda obs: np.full(nu, 0.5), env)
+    assert np.isfinite(rep["tip_err_cm"]) and np.isfinite(rep["mpjpe_mm"])

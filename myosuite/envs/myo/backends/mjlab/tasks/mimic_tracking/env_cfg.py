@@ -6,9 +6,10 @@
 
 Preset, overrides, model, control step and muscle-command features are read from the
 CPU registration (``EnvConfig.task_kwargs``), so both halves are one MDP: the body on a
-plane with the foot contact sensors, the CPU physics options, excitations clipped to
-[0, 1], the ``policy`` and ``goal`` observation groups, MimicReward, the failure rule
-and the clip end as a time-out.
+plane with the foot contact sensors (no ground for a body without contact bodies), the
+CPU physics options, actions clipped to [0, 1] (motors mapped onto their control
+range), the ``policy`` and ``goal`` observation groups, MimicReward, the failure rule
+and the clip end as a time-out. A fixed-root body is a fixed-base entity.
 """
 
 from __future__ import annotations
@@ -39,9 +40,11 @@ from myosuite.envs.myo.tasks.mimic.tracking.models import (
     GROUND_BODY,
     TOUCH_SENSOR,
     MimicModelCfg,
+    body_info,
     compiled_body,
     compiled_scene,
     model_cfg,
+    task_on_model,
 )
 
 from . import mdp
@@ -49,7 +52,6 @@ from .commands import MotionCommandCfg
 
 ENTITY = "robot"
 CMD = {"command_name": "motion"}
-_NJMAX, _NCONMAX = 768, 96  # MuscleMimic's per-env MuJoCo-Warp budget for this body
 
 
 def _body_spec(
@@ -65,11 +67,32 @@ def _entity_cfg(
     model: MimicModelCfg, task: MimicTaskCfg, cpu: ref.CpuTaskSpec
 ) -> EntityCfg:
     m = compiled_body(model.name)
-    root_q = m.qpos0[:7]
+    info = body_info(model.name)
+    if (
+        info.fixed_root
+    ):  # mjlab welds a fixed base to a mocap body at the init pose: the world frame
+        pos, rot = (0.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.0)
+    else:
+        pos, rot = m.qpos0[:3], m.qpos0[3:7]
+    actuators = [
+        XmlActuatorCfg(
+            target_names_expr=model.muscle_tendon_expr,
+            transmission_type=TransmissionType.TENDON,
+            command_field="effort",
+        )
+    ]
+    if info.motor_joint_names:
+        actuators.append(
+            XmlActuatorCfg(
+                target_names_expr=tuple(f"^{n}$" for n in info.motor_joint_names),
+                transmission_type=TransmissionType.JOINT,
+                command_field="effort",
+            )
+        )
     return EntityCfg(
         init_state=EntityCfg.InitialStateCfg(
-            pos=tuple(map(float, root_q[:3])),
-            rot=tuple(map(float, root_q[3:7])),
+            pos=tuple(map(float, pos)),
+            rot=tuple(map(float, rot)),
             joint_pos={".*": 0.0},
             joint_vel={".*": 0.0},
         ),
@@ -80,13 +103,7 @@ def _entity_cfg(
             cpu.wrapper_kwargs("SarcopeniaWrapper"),
         ),
         articulation=EntityArticulationInfoCfg(
-            actuators=(
-                XmlActuatorCfg(
-                    target_names_expr=model.muscle_tendon_expr,
-                    transmission_type=TransmissionType.TENDON,
-                    command_field="effort",
-                ),
-            ),
+            actuators=tuple(actuators),
             soft_joint_pos_limit_factor=1.0,
         ),
     )
@@ -104,8 +121,10 @@ def make_mimic_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
     """
     cpu = ref.cpu_task_spec(env_id)
     kw = cpu.kwargs
-    task = resolve_task(kw.get("preset", "supermimic"), kw.get("overrides"))
     model = model_cfg(kw.get("model", DEFAULT_MODEL))
+    task = task_on_model(
+        resolve_task(kw.get("preset", "supermimic"), kw.get("overrides")), model.name
+    )
     if play:
         task = dataclasses.replace(
             task,
@@ -168,29 +187,40 @@ def make_mimic_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
     }
     if task.episode_length_s is None:
         terminations.pop("time_out")
-    # excitations clipped to [0, 1], as MimicEnv.step
-    action = ref.action_cfg(cpu, ENTITY, action_range=(0.0, 1.0), muscle_sigmoid=False)
+    # actions clipped to [0, 1] and motors mapped onto their range, as MimicEnv.step
+    action = dataclasses.replace(
+        ref.action_cfg(cpu, ENTITY, action_range=(0.0, 1.0), muscle_sigmoid=False),
+        motor_ctrl_range=True,
+    )
+    sensors = ()
+    if model.ground:
+        sensors = (
+            ContactSensorCfg(
+                name=TOUCH_SENSOR,
+                primary=ContactMatch(
+                    mode="body", pattern=model.foot_bodies, entity=ENTITY
+                ),
+                secondary=ContactMatch(mode="body", pattern=GROUND_BODY),
+                fields=("force",),
+                reduce="netforce",
+            ),
+        )
     return ManagerBasedRlEnvCfg(
         scene=SceneCfg(
-            terrain=TerrainEntityCfg(terrain_type="plane"),
+            terrain=TerrainEntityCfg(terrain_type="plane") if model.ground else None,
             num_envs=1 if play else 1024,
             entities={ENTITY: _entity_cfg(model, task, cpu)},
-            sensors=(
-                ContactSensorCfg(
-                    name=TOUCH_SENSOR,
-                    primary=ContactMatch(
-                        mode="body", pattern=model.foot_bodies, entity=ENTITY
-                    ),
-                    secondary=ContactMatch(mode="body", pattern=GROUND_BODY),
-                    fields=("force",),
-                    reduce="netforce",
-                ),
-            ),
+            sensors=sensors,
         ),
         observations=observations,
         actions={"muscles": action},
         commands={
-            "motion": MotionCommandCfg(task=task, model=model.name, entity_name=ENTITY)
+            "motion": MotionCommandCfg(
+                task=task,
+                model=model.name,
+                entity_name=ENTITY,
+                touch_sensor_name=TOUCH_SENSOR if model.ground else None,
+            )
         },
         events={},
         rewards=rewards,
@@ -205,8 +235,8 @@ def make_mimic_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
             azimuth=120.0,
         ),
         sim=SimulationCfg(
-            nconmax=_NCONMAX,
-            njmax=_NJMAX,
+            nconmax=model.nconmax,
+            njmax=model.njmax,
             mujoco=ref.mujoco_cfg_from_model(cpu_model, timestep=timestep),
         ),
         decimation=cpu.frame_skip,

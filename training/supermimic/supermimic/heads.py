@@ -6,7 +6,9 @@
 
 The state tuple is ``S = (p, R, v, w, q, qd, act, touch)``: root position, canonical root rotation
 matrix, world linear and angular velocity of the root link frame, the independent joint positions and
-velocities, the muscle activations and the four foot touch values. :class:`TrackingHeads` turns it into the
+velocities, the actuator drive (the muscle activations; motors: see ``activation``) and the contact
+bodies' touch values. A body with a fixed root keeps ``(p, R, v, w) = (0, I, 0, 0)``; its task state has
+zero-width root arrays. :class:`TrackingHeads` turns it into the
 task's :class:`~myosuite.terms.mimic_track.TrackState` with this method's differentiable kinematics and muscle
 geometry, and :func:`analytic` maps each term of the task's env cfg (through its ``func.pure``) to the task's
 pure function on that state, so the simulator and imagination score one MDP.
@@ -44,6 +46,7 @@ BODY_STATE_DIM_EXTRA = 3 + 4 + 3 + 3  # p, quat, v, w (+ q, qd)
 NUM_TOUCH = (
     4  # right heel, right toes, left heel, left toes (MyoFullBody's foot touch sensors)
 )
+"""Touch values of the full body (other bodies: their number of contact bodies)."""
 
 
 @dataclass
@@ -131,11 +134,14 @@ class TrackingHeads:
     """
 
     def __init__(self, kin: SkeletonKinematics, motion: MotionLib, geometry: MuscleGeometry, lookahead: int = 5,
-                 stride: int = 20):  # fmt: skip
-        assert kin.tracked_on_root[
-            0
-        ], "the first tracked body must be rigid with the root"
+                 stride: int = 20, muscle_ids=None):  # fmt: skip
+        self.fixed_root = kin.info.fixed_root
+        assert (
+            self.fixed_root or kin.tracked_on_root[0]
+        ), "the first tracked body must be rigid with the root"
         self.kin, self.motion, self.geo = kin, motion, geometry
+        # the muscles' columns of the drive (None: every actuator is a muscle)
+        self.muscle_cols = muscle_ids
         self.lookahead, self.stride = lookahead, stride
         self.nq = kin.num_q
         self.body_state_dim = BODY_STATE_DIM_EXTRA + 2 * self.nq
@@ -176,8 +182,16 @@ class TrackingHeads:
         """Muscle lengths, velocities and forces of the state."""
         if "muscles" not in ctx.cache:
             L, Ld = self.geo.length_velocity(ctx.S[4], ctx.S[5])
-            ctx.cache["muscles"] = (L, Ld, self.geo.force(L, Ld, ctx.S[6]))
+            ctx.cache["muscles"] = (
+                L,
+                Ld,
+                self.geo.force(L, Ld, self.activation(ctx.S[6])),
+            )
         return ctx.cache["muscles"]
+
+    def activation(self, drive: torch.Tensor) -> torch.Tensor:
+        """The muscles' activations of a drive (the drive itself without motors)."""
+        return drive if self.muscle_cols is None else drive[..., self.muscle_cols]
 
     def pelvis(self, ctx: StepCtx):
         """The free joint's rotation (its body's frame) and its qvel [v world, w body]."""
@@ -206,14 +220,19 @@ class TrackingHeads:
             q, qd = self.joints(ctx)
             Rp, qvel = self.pelvis(ctx)
             rpos, rangles, rvel = self.sites(ctx)
+            if self.fixed_root:  # zero-width root, identity rotation
+                empty = ctx.S[0][..., :0]
+                root_pos = root_quat = qvel = local = empty
+            else:
+                root_pos, root_quat = ctx.S[0], mat_to_quat(Rp)
+                local = torch.cat(
+                    (_mv(Rp.transpose(-1, -2), qvel[..., :3]), qvel[..., 3:]), -1
+                )
             s = mt.TrackState(
-                root_pos=ctx.S[0], root_quat=mat_to_quat(Rp), root_qvel=qvel, joint_pos=q, joint_vel=qd,
-                body_pos=P, body_rot=R, body_lin_vel=V, body_ang_vel=W, act=ctx.S[6], excitation=ctx.a,
-                touch=ctx.S[7],
+                root_pos=root_pos, root_quat=root_quat, root_qvel=qvel, joint_pos=q, joint_vel=qd,
+                body_pos=P, body_rot=R, body_lin_vel=V, body_ang_vel=W, act=self.activation(ctx.S[6]),
+                excitation=ctx.a, touch=ctx.S[7],
             )  # fmt: skip
-            local = torch.cat(
-                (_mv(Rp.transpose(-1, -2), qvel[..., :3]), qvel[..., 3:]), -1
-            )
             ctx.cache["track"] = (s, mt.TrackFeatures(Rp, local, rpos, rangles, rvel))
         return ctx.cache["track"]
 
@@ -231,11 +250,14 @@ class TrackingHeads:
 
     def goal_dim(self) -> int:
         n = 3 * (self.num_tracked - 1)
-        return n + (self.lookahead - 1) * (3 + 6 + n) + 1
+        return n + (self.lookahead - 1) * ((0 if self.fixed_root else 9) + n) + 1
 
     # ---------------- critic: privileged reference errors ----------------
     def critic_extras(self, ctx: StepCtx) -> torch.Tensor:
         f = ctx.f
+        if self.fixed_root:  # the root errors are constant
+            q, qd = self.joints(ctx)
+            return torch.cat((self.ref_q[f] - q, self.ref_qd[f] - qd), -1)
         p, R = ctx.S[0], ctx.S[1]
         e_root = _mv(yaw_mat(R).transpose(-1, -2), self.root_p[f] - p)
         Rr = self.root_R[f]
@@ -255,7 +277,7 @@ class TrackingHeads:
         )
 
     def critic_extras_dim(self) -> int:
-        return 3 + 2 + 2 * self.ref_q.shape[-1]
+        return (0 if self.fixed_root else 3 + 2) + 2 * self.ref_q.shape[-1]
 
 
 # ---------------- the task's terms on method states (signature: (heads, ctx, **params)) ----------------

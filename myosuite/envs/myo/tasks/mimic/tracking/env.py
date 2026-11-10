@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""CPU half of ``myoMimic-v0``: multi-clip full-body motion tracking."""
+"""CPU half of ``myoMimic-v0``: multi-clip motion tracking (full body or a submodel)."""
 
 from __future__ import annotations
 
@@ -19,29 +19,38 @@ from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.terms import mimic_track as mt
 
 from .config import DEFAULT_PRESET, MimicTaskCfg, resolve_task
-from .models import DEFAULT_MODEL, TOUCH_SENSOR, ModelInfo, compiled_scene, model_cfg
+from .models import (
+    DEFAULT_MODEL,
+    TOUCH_SENSOR,
+    ModelInfo,
+    compiled_scene,
+    model_cfg,
+    task_on_model,
+)
 from .motion import MotionLib, load_motion_lib
 from .sampling import ResetSampler
 
 
 def observation_dims(
-    task: MimicTaskCfg, info: ModelInfo, num_tracked: int
+    task: MimicTaskCfg, info: ModelInfo, num_tracked: int, num_touch: int = 4
 ) -> dict[str, int]:
     """Size of every policy term and of the goal."""
     n_j, n_m, n_s = len(info.joint_ids), info.num_muscles, num_tracked - 1
+    n_root = 0 if info.fixed_root else 9  # root position and velocity in the goal
     sizes = {
         "root_pos": 5, "joint_pos": n_j, "root_vel": 6, "joint_vel": n_j,
         "muscle_length": n_m, "muscle_velocity": n_m, "muscle_force": n_m,
-        "muscle_excitation": n_m, "muscle_activation": n_m, "touch": 4,
-        "site_rpos": 3 * n_s, "site_rangles": 3 * n_s, "site_rvel": 6 * n_s,
+        "muscle_excitation": info.num_actuators, "muscle_activation": n_m,
+        "touch": num_touch, "site_rpos": 3 * n_s, "site_rangles": 3 * n_s,
+        "site_rvel": 6 * n_s,
     }  # fmt: skip
     dims = {name: sizes[name] for name in task.obs.policy}
-    dims["goal"] = 3 * n_s + (task.obs.goal_frames - 1) * (9 + 3 * n_s) + 1
+    dims["goal"] = 3 * n_s + (task.obs.goal_frames - 1) * (n_root + 3 * n_s) + 1
     return dims
 
 
 class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
-    """Track reference motion clips with a full-body muscle model.
+    """Track reference motion clips with a musculoskeletal model (full body or submodel).
 
     Args:
         frame_skip: Physics steps per control step (``EnvConfig.ctrl_dt``).
@@ -51,7 +60,8 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
         render_mode: Standard render mode.
         seed: Seed of ``np_random``.
 
-    Actions are muscle excitations, clipped to [0, 1]. The observation is the
+    Actions are in [0, 1] (clipped): muscle excitations, and for motors a command mapped
+    onto their control range (:meth:`ModelInfo.action_to_ctrl`). The observation is the
     ``policy`` terms followed by the ``goal`` (the mjlab twin's two groups, in order).
     An episode ends at a failure (``terminated``), at the clip end or the time limit
     (``truncated``). ``reset(options={"clip": c})`` starts at the first frame of clip
@@ -68,9 +78,9 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
         render_mode: str | None = None,
         seed: int | None = None,
     ) -> None:
-        self.task = resolve_task(preset, overrides)
         self.model_name = model
         self._model_cfg = model_cfg(model)
+        self.task = task_on_model(resolve_task(preset, overrides), model)
         super().__init__(frame_skip=int(frame_skip), render_mode=render_mode)
         self.seed(seed)
         self.model = copy.deepcopy(compiled_scene(model, self.task.self_collisions))
@@ -80,7 +90,7 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
             **self.metadata,
             "render_fps": max(1, round(1 / self._ctrl_dt)),
         }
-        self.info = ModelInfo(self.model)
+        self.info = ModelInfo(self.model, self._model_cfg.motor_expr or None)
         self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
         m = self.model
         self._tracked = np.array([m.body(n).id for n in self._model_cfg.tracked_bodies])
@@ -88,13 +98,15 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
         # mjlab orders the foot sensors as its find_bodies does: model order
         feet = sorted(self._model_cfg.foot_bodies, key=lambda n: m.body(n).id)
         self._touch_adr = np.array(
-            [m.sensor(f"{TOUCH_SENSOR}_{n}_force").adr[0] + 2 for n in feet]
+            [m.sensor(f"{TOUCH_SENSOR}_{n}_force").adr[0] + 2 for n in feet], np.int64
         )
         self._step_weights = self.task.reward.step_weights(self._ctrl_dt)
         self.max_step_reward = sum(w for w in self._step_weights.values() if w > 0)
         self._kernels = {t.name: t.kernel for t in self.task.reward.terms}
         self._goal_stride = max(1, round(self.task.obs.goal_spacing_s / self._ctrl_dt))
-        self.obs_dims = observation_dims(self.task, self.info, len(self._tracked))
+        self.obs_dims = observation_dims(
+            self.task, self.info, len(self._tracked), len(feet)
+        )
         self.obs_groups = {"policy": tuple(self.task.obs.policy), "goal": ("goal",)}
         self.obs_keys = [*self.task.obs.policy, "goal"]
         self.action_space = gym.spaces.Box(0.0, 1.0, (m.nu,), dtype=np.float32)
@@ -133,14 +145,21 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
     def track_state(self) -> mt.TrackState:
         """The body state of :mod:`myosuite.terms.mimic_track` (needs fresh derived data)."""
         _m, d, info = self.model, self.data, self.info
-        root_q = d.qpos[info.root_qadr : info.root_qadr + 7]
         ids = self._tracked
         w = d.cvel[ids, :3]
         com = d.subtree_com[self._tracked_root]
+        if info.fixed_root:
+            root_pos, root_quat, root_qvel = np.zeros(0), np.zeros(0), np.zeros(0)
+        else:
+            root_q = d.qpos[info.root_qadr : info.root_qadr + 7]
+            root_pos = root_q[:3].copy()
+            root_quat = root_q[3:7] / np.linalg.norm(root_q[3:7])
+            root_qvel = d.qvel[info.root_dadr : info.root_dadr + 6].copy()
+        mus = info.muscle_ids
         return mt.TrackState(
-            root_pos=root_q[:3].copy(),
-            root_quat=root_q[3:7] / np.linalg.norm(root_q[3:7]),
-            root_qvel=d.qvel[info.root_dadr : info.root_dadr + 6].copy(),
+            root_pos=root_pos,
+            root_quat=root_quat,
+            root_qvel=root_qvel,
             joint_pos=d.qpos[info.joint_qadr].copy(),
             joint_vel=d.qvel[info.joint_dadr].copy(),
             body_pos=d.xpos[ids].copy(),
@@ -150,9 +169,9 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
             act=d.act[info.act_adr].copy(),
             excitation=self._excitation.copy(),
             touch=np.abs(d.sensordata[self._touch_adr]),
-            muscle_length=d.actuator_length.copy(),
-            muscle_velocity=d.actuator_velocity.copy(),
-            muscle_force=d.actuator_force.copy(),
+            muscle_length=d.actuator_length[mus],
+            muscle_velocity=d.actuator_velocity[mus],
+            muscle_force=d.actuator_force[mus],
         )
 
     def _goal(self) -> np.ndarray:
@@ -253,7 +272,7 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
         m = self.motion
         action = np.asarray(action, dtype=float)
         self._excitation = action.copy()
-        ctrl = np.clip(action, 0.0, 1.0)
+        ctrl = self.info.action_to_ctrl(np, action)
         self.data.ctrl[:] = self._run_ctrl_stages(ctrl)
         self._step_physics()
         clip_end = bool(self._f + 1 >= int(m.clip_end[m.clip_id[self._f]]))
