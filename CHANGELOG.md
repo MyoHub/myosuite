@@ -61,7 +61,7 @@ All notable changes to this project are documented in this file.
   `make_env` also accepts `model=` and `ctrl_dt=` as keywords. `myoMimicFullbody-v0` is unchanged.
   Methods may replace the reward (`overrides={"reward_fn": fn}` with a pure `fn(state, ref, ctrl_dt)`, or a whole
   `RewardCfg`); the proposed reward is then still reported (`info["task_reward"]`, the twin's `task_reward`).
-* **AMASS SMPL+H motions straight onto a body model** (`myosuite.biomech.smplh`, `.retarget_smplh`,
+* **AMASS SMPL+H motions straight onto a body model** (`myosuite.biomechanics.smplh`, `.retarget_smplh`,
   `.retarget`; `scripts/mimic/retarget_amass.py`). SMPL+H forward kinematics in NumPy (subject shape, gender-specific
   model) and one explicit SMPL+H -> model table, calibrated on the model in SMPL's T-pose (GMR's approach, as MuscleMimic
   used it): per-segment proportion scaling, limb orientation targets and a per-frame ground height from the subject's foot

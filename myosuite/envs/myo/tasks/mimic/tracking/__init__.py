@@ -97,7 +97,7 @@ def kit_root(model: str = "myofullbody") -> Path:
     """
     if os.environ.get(KIT_ROOT_ENV):
         return Path(os.environ[KIT_ROOT_ENV])
-    from myosuite.biomech.retarget import default_cache_root  # noqa: PLC0415
+    from myosuite.biomechanics.retarget import default_cache_root  # noqa: PLC0415
 
     from .models import model_version  # noqa: PLC0415
 

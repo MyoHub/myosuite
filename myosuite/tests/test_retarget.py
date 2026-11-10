@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Landmark IK on a model's couplings (``myosuite.biomech.retarget``) and the
+"""Landmark IK on a model's couplings (``myosuite.biomechanics.retarget``) and the
 metadata check of ``myoMimic-v0``'s motion sources.
 
 Targets are made on myofullbody itself (round trip): body origins and orientations of a
@@ -20,7 +20,7 @@ from myosuite.envs.myo.tasks.mimic.tracking.motion import (
     load_motion_lib,
     write_synthetic_clip,
 )
-from myosuite.biomech import retarget as rt
+from myosuite.biomechanics import retarget as rt
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 pytestmark = pytest.mark.tier2
@@ -125,7 +125,7 @@ def test_per_frame_posture_and_axial_weight(model, walk) -> None:
 
 
 def test_elbow_angle_table(model) -> None:
-    from myosuite.biomech import retarget_smplh as rs
+    from myosuite.biomechanics import retarget_smplh as rs
 
     q = model.qpos0.copy()
     q[model.jnt_qposadr[model.joint("shoulder_elv_l").id]] = np.pi / 2
