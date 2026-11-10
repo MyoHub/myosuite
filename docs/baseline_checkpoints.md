@@ -77,6 +77,31 @@ so one draw varies a lot. The released 3.0.0 code gives 18.4, 19.9 and 14.1% on 
 
 CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` now reuse the requested initial fatigue in every episode. Earlier versions mutated that array during stepping, which changed later episodes. Reevaluate checkpoints measured with this configuration.
 
+## Compatibility notes for 3.1.0
+
+What changes for checkpoints between MyoSuite 3.0.x and 3.1.0. The notes below the table give the details.
+
+- **Hugging Face revisions.** MyoSuite 3.1 reads the baselines repo at tag `v3.1.0`, then `v3.1`, and falls back to
+  `main` when no tag exists or the file is not in it. 3.0.x installs keep reading `v3.0`.
+- **`motorFinger*`.** The four checkpoints in the table are a new round for the `myo_sim` 0.2.4 gears, trained with
+  the bounded action std of #584: `motorFingerPoseFixed-v0` `model_83.pt`, `motorFingerPoseRandom-v0`
+  `model_1499.pt`, `motorFingerReachFixed-v0` `model_57.pt`, `motorFingerReachRandom-v0` `model_1499.pt`. They are on
+  `main` and go into `v3.1.0`; the `v3.0` checkpoints match only the earlier gears (*Motor finger gears* below).
+- **`myoChallengeChaseTagFBVs-v0` and `myoChallengeChaseTagFBP2-v0`** run on `myo_sim`'s `myofullbody` with 10 s
+  episodes. Policies trained on the `musclemimic_models` body before 3.1 do not transfer reliably; the 1v1 baseline is
+  `onnx/chasetag_fbvs_baseline.onnx` (*`myoChallengeChaseTagFBVs-v0`* below).
+- **Leg resets on the knee couplings (#630).** `myoLegWalk-v0`, the terrain walks, `myoLegStandRandom-v0` and the
+  directional walks start with the coupled knee joints on their polynomials. The published `myoLegWalk-v0` checkpoint
+  was trained from the old start and falls from the new one; the rough-terrain checkpoint is unaffected (*Coupled knee
+  joints at reset (leg tasks)* below). The MuscleMimic full-body envs reset the same way.
+- **`myoMimic-v0`** is new. Its clips are matched to the body by a kinematic fingerprint, so clips keep
+  loading under `myo_sim` releases that leave the body's kinematics unchanged; on a mismatch the error names the
+  `myo_sim` version the clips were fitted for. No `myoMimic-v0` checkpoint is published in this repo.
+- **Joint couplings and fatigue in `myo_sim` 0.2.5.** They moved from MyoSuite into `myo_sim` with identical numerics,
+  so no checkpoint changes.
+- **Training defaults.** The bounded action std (#566) and the fatigue groups and exact fatigue step of the
+  `myoFati*` variants change training and fatigue results, not the published base-env checkpoints (notes below).
+
 ---
 
 <sub>
@@ -207,8 +232,8 @@ std parameter is projected onto that range before every forward pass and stays t
 (with the SAR tasks of tutorial 5.5, which register with its config), ChaseTag FBP2, table tennis and the elbow config
 also start at std 0.5 and use an entropy bonus of 0.001 (were 1.0 and 0.01). The bound limits the drift of the std of
 saturated controls (up to the learning rate per update, less with the noise of PPO's surrogate gradient); it does not
-by itself prevent saturated (bang-bang) controls. The checkpoints above were trained with the earlier, unbounded
-defaults. They still load, and `eval_mjlab_policy.py` scores them as before, with or without `--stochastic`: the bound
+by itself prevent saturated (bang-bang) controls. The checkpoints above, except the four `motorFinger*` ones, were
+trained with the earlier, unbounded defaults. They still load, and `eval_mjlab_policy.py` scores them as before, with or without `--stochastic`: the bound
 adds no parameter, and a run whose `params/agent.yaml` has no `std_range` is sampled with the checkpoint's own std
 (runs trained with the bound are sampled with the std clamped to their range, as in training). Resuming training from
 one of them projects a std above 1 to 1 on the first update (the MuscleMimic run of #566 ended at 14), and the std stays
@@ -243,6 +268,6 @@ It was fine-tuned with self-play on `myofullbody` (4,000 iterations, 2048 envs) 
 
 <sub>
 
-**Manifests and releases.** Every `checkpoints/<env_id>/` folder on the Hugging Face repo has a `manifest.json` with the env id, a hash of the env contract (observation and action shapes, control step), the MyoSuite version and commit, and the success rate above. When a downloaded checkpoint is used, MyoSuite compares that hash with the current env and warns if they differ, because the policy may then not work. The repo is tagged per release (`v3.0`, `v3.1`, ...), and per patch release where baselines changed (`v3.0.1`); `download_baseline_checkpoint` (one env) and `download_baseline_file` (a single file, such as the MuscleMimic policy) take the tag of your installed version, the patch tag first (`v3.0.1`, then `v3.0`; `MYOSUITE_BASELINES_REVISION` or the `revision` argument override it), and fall back to `main` when no tag exists; they print the revision they used. Write the manifests of a baselines checkout with `python scripts/write_checkpoint_manifests.py <dir>`.
+**Manifests and releases.** Every `checkpoints/<env_id>/` folder on the Hugging Face repo has a `manifest.json` with the env id, a hash of the env contract (observation and action shapes, control step), the MyoSuite version and commit, and the success rate above. When a downloaded checkpoint is used, MyoSuite compares that hash with the current env and warns if they differ, because the policy may then not work. The repo is tagged per release (`v3.0`, `v3.1.0`, ...), and per patch release where baselines changed (`v3.0.1`); `download_baseline_checkpoint` (one env) and `download_baseline_file` (a single file, such as the MuscleMimic policy) take the tag of your installed version, the patch tag first (`v3.1.0`, then `v3.1`; `MYOSUITE_BASELINES_REVISION` or the `revision` argument override it), and fall back to `main` when no tag exists or the tag does not hold the file; they print the revision they used. Write the manifests of a baselines checkout with `python scripts/write_checkpoint_manifests.py <dir>`.
 
 </sub>
