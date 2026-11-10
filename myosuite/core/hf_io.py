@@ -81,6 +81,9 @@ def resolve_hf_snapshot(
 BASELINES_REPO_ID = "myohub/myosuite-3-baselines"
 """Hugging Face repo of the default-run mjlab checkpoints and eval videos, for envs whose
 deterministic success reached at least 25% (see that repo's ``checkpoints/README.md``)."""
+BASELINES_DIR_ENV = "MYOSUITE_BASELINES_DIR"
+"""Environment variable naming a local folder laid out like the baselines repo; files found there
+are used instead of downloads (:func:`download_baseline_file`), e.g. to test files before upload."""
 
 
 def default_baseline_revision() -> str:
@@ -216,7 +219,13 @@ def download_baseline_file(
 
     Returns:
         The local file, or ``None`` when huggingface_hub is missing or the download failed.
+        With ``$MYOSUITE_BASELINES_DIR`` set, a file at ``<that folder>/<filename>`` is returned
+        without downloading.
     """
+    local = os.environ.get(BASELINES_DIR_ENV)
+    if local and (Path(local) / filename).is_file():
+        print(f"Using {filename} from ${BASELINES_DIR_ENV}")
+        return Path(local) / filename
     try:
         from huggingface_hub import hf_hub_download
         from huggingface_hub.errors import EntryNotFoundError
