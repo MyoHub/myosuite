@@ -75,6 +75,11 @@ All notable changes to this project are documented in this file.
   knees at their 0 limit on 5.4% (left) and 1.7% (right) of frames, elbow flexion within 0.2 deg of the source's
   (median). The source's knee range goes into each clip's metadata, and `--quality-flags` adds curation flags
   (`quality_flags`). `myoMimic-v0` uses these clips and refuses clips fitted on another model or model version.
+* **`projected_joint_couplings`** (`myosuite.physics.joint_coupling`): the joint-coupling projection out of place,
+  differentiable with Torch, in `JointCouplings`' topological order; `JointCouplings.as_torch`.
+* **`build_native_mimic_fullbody_spec` takes `model_name`** (default `"myofullbody"`), the myo_sim full body to build.
+* **`make_env(..., backend="mjlab", seed=...)`** sets the env config's seed. The `myoMimic-v0` `ModelInfo` exposes
+  the joint-coupling map, the root body name, `qpos0` and the muscle and muscle-tendon names.
 * **Muscle effort metrics for recorded rollouts:** `myosuite.biomechanics.effort` adds `squared_activation` (mean over time of `sum a^2`), `wasted_torque` and `cocontraction_index` (torque antagonists cancel, as in the co-contraction cost of [#607]) and `muscle_saturation` with `muscle_saturation_bounds` (the saturation metric of [#588] by Mark Colley, [#566]). Pure functions on NumPy arrays or torch tensors of shape `(..., T, M)`; no env coupling.
 
 * **`load_fbvs_player` / `export_fbvs_onnx`** in `myosuite.integrations.musclemimic.fbvs_player` wrap a tutorial 5.4 walker as a ChaseTag FBVs player (546 -> 354) and write the ONNX the MyoChallenge server runs; tutorial 5.6 uses them instead of an inline wrapper ([#617]).

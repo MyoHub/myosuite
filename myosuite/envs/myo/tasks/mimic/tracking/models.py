@@ -193,11 +193,20 @@ class ModelInfo:
         self.root_id = int(m.jnt_bodyid[free[0]])
         self.root_qadr = int(m.jnt_qposadr[free[0]])
         self.root_dadr = int(m.jnt_dofadr[free[0]])
-        coupled = {
-            int(m.eq_obj1id[e])
-            for e in range(m.neq)
-            if m.eq_type[e] == mujoco.mjtEq.mjEQ_JOINT and m.eq_active0[e]
-        }
+        self.m = m
+        self.root_name = m.body(self.root_id).name
+        coupled = {}
+        for e in range(m.neq):
+            if m.eq_type[e] != mujoco.mjtEq.mjEQ_JOINT or not m.eq_active0[e]:
+                continue
+            j2, c = int(m.eq_obj2id[e]), m.eq_data[e, :5].copy()
+            if (
+                j2 < 0
+            ):  # held at qpos0 + polycoef[0]; MuJoCo ignores the other coefficients
+                j2, c[1:] = None, 0.0
+            coupled[int(m.eq_obj1id[e])] = (j2, c)
+        self.coupled = coupled
+        """Coupled joint id -> (its independent joint id or ``None``, polycoef[5])."""
         self.couplings = JointCouplings.from_model(m)
         self.joint_ids = [
             j for j in range(m.njnt) if m.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE
@@ -216,6 +225,11 @@ class ModelInfo:
         if not (m.actuator_trntype == mujoco.mjtTrn.mjTRN_TENDON).all():
             raise ValueError("every actuator must be a tendon-driven muscle")
         self.num_muscles = m.nu
+        self.muscle_names = [m.actuator(a).name for a in range(m.nu)]
+        self.muscle_tendon_names = [
+            m.tendon(int(t)).name for t in m.actuator_trnid[:, 0]
+        ]
+        self.qpos0 = m.qpos0.copy()
         self.act_adr = m.actuator_actadr.copy()
 
 

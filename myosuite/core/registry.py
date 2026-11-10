@@ -358,8 +358,8 @@ def make_env(
         backend: One of "cpu", "mjx", or "mjlab"; default: ``EnvConfig.backend``
             ("cpu" for a plain id).
         **overrides: Backend-specific options, merged over ``EnvConfig.backend_options``
-            and (CPU) ``task_kwargs``: env constructor kwargs on the CPU, ``device``
-            etc. on mjlab, ``config_overrides`` on "mjx".
+            and (CPU) ``task_kwargs``: env constructor kwargs on the CPU, ``device``,
+            ``seed`` etc. on mjlab, ``config_overrides`` on "mjx".
             ``model`` and ``ctrl_dt`` set the :class:`EnvConfig` fields of that name.
 
     Returns:
@@ -507,12 +507,17 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     if config.num_envs is not None:
         options["num_envs"] = config.num_envs
     env_id = config.env_id
+    seed = options.pop("seed", None)
 
-    if hasattr(mjlab.envs, "make") and not (
-        config.features
-        or config.task_kwargs
-        or config.max_episode_steps is not None
-        or config.ctrl_dt is not None
+    if (
+        hasattr(mjlab.envs, "make")
+        and seed is None
+        and not (
+            config.features
+            or config.task_kwargs
+            or config.max_episode_steps is not None
+            or config.ctrl_dt is not None
+        )
     ):
         return mjlab.envs.make(env_id, **options)
 
@@ -569,5 +574,7 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
         except Exception:
             device = "cpu"
+    if seed is not None:
+        cfg.seed = int(seed)
     env_cls = getattr(cfg, "env_cls", ManagerBasedRlEnv)
     return env_cls(cfg, device=device, **options)
