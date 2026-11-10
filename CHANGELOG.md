@@ -185,6 +185,7 @@ All notable changes to this project are documented in this file.
   `myoLegDirectionalRandom-v0` is unchanged.
 * Baseline downloads look for the patch-release tag first (`v3.0.1`), then the minor-release tag (`v3.0`), then
   `main`, so a patch release can ship changed baselines without changing those of earlier releases.
+* **Memory-lean mjlab clip bank for large motion datasets.** Unchanged results by default: clips upload one at a time (no host copy of the whole bank), a new env count and `make_init_state_fn` reuse the uploaded bank, and `load_motion_clip(..., dtype=np.float32)` halves the host memory. Opt-in with `MotionClipBank(clips, ClipBankCfg(...))`: `store_qvel=False` derives the reference qvel from the previous qpos frame (`mj_differentiatePos`; validate its difference from stored velocities with `qvel_derivation_error`), and `dtype="float16"` stores the sites around a float32 centroid with a measured `storage_error`. Both together (qpos stays float32 under a derived qvel) bring the full-body bank from 912 to 470 bytes per frame (29 to 15 GiB for 95 h at 100 Hz) with exact qpos. Derived velocities are approximate: the pinned walking clip differs from stored qvel by max 5.431122 rad/s, RMS 0.079889 rad/s ([#509]).
 
 ### Fixed
 
@@ -421,6 +422,7 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#505]: https://github.com/MyoHub/myosuite/pull/505
 [#506]: https://github.com/MyoHub/myosuite/pull/506
 [#508]: https://github.com/MyoHub/myosuite/pull/508
+[#509]: https://github.com/MyoHub/myosuite/pull/509
 [#520]: https://github.com/MyoHub/myosuite/pull/520
 
 ## [2.12.2] - 2026-05-06

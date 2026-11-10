@@ -388,6 +388,49 @@ shared loader accepts those clips, and the CPU baseline / mjlab mimic paths
 expand them against the target MuJoCo model so qpos/qvel tracking applies only
 on that named joint subset.
 
+### Large motion datasets (clip bank memory)
+
+Several clips form a bank that stays on the device: 17 tracked sites + qpos (89) +
+qvel (88) per frame at 100 Hz, about 0.31 GiB of GPU memory per hour of motion in
+the exact float32 default (29 GiB for 95 h). Clips are uploaded one at a time, so
+the host holds no second copy of the bank. To fit more motion:
+
+- `load_motion_clip(..., dtype=np.float32)` halves the host memory; the device bank
+  is unchanged (bit-identical).
+- `MotionClipBank(clips, ClipBankCfg(...))` passed as `clip=` sets the device
+  storage (opt-in, not bit-identical):
+  - `store_qvel=False` drops the qvel bank (-39 %) and derives the reference qvel
+    with `mj_differentiatePos` from the previous frame (forward at a clip's first
+    frame). This can differ from stored velocities: check every dataset first
+    with `qvel_derivation_error(clips, model, ctrl_dt)` (maximum absolute error).
+  - `dtype="float16"` halves the rest: sites as a float32 per-frame centroid plus
+    float16 offsets (sub-millimetre for full-body sites), qpos columns larger than 4
+    (a travelled root position) in float32 and the rest in float16 (at most 2e-3),
+    qvel in float16 (relative 5e-4). The measured error is `source.storage_error`.
+  - Both together keep qpos in float32 (a derived qvel would amplify float16 qpos
+    error by `2 / ctrl_dt`, about 0.1 rad/s): 470 instead of 912 bytes per frame
+    (15 GiB for 95 h), the size of `float16` alone but with exact qpos. Keep
+    `store_qvel=True` when the stored reference velocities must be preserved.
+
+The pinned `KIT/167/walking_medium06` clip at dataset revision
+`c3327a8013bf5213d0afe736f68b6393da10d84a`, expanded on
+`musclemimic_models` 1.0.6 at 100 Hz, differs from the MuJoCo backward difference
+by a maximum of **5.431122 rad/s** and RMS **0.079889 rad/s** over all velocity
+entries. Excluding the first frame still gives maximum 2.254896 and RMS
+0.066603 rad/s. These are differences from the stored reference, separate from
+float16 storage error. The derived bank is checked against `mj_differentiatePos`;
+it does not reproduce this clip's stored qvel.
+
+```python
+from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
+    ClipBankCfg, MotionClipBank,
+)
+
+clips = [load_motion_clip(p, 89, 88, dtype=np.float32) for p in paths]
+bank = MotionClipBank(clips, ClipBankCfg(dtype="float16", store_qvel=False))
+register_mimic_mjlab_tasks_with_clip(register_mjlab_task, _elbow_ppo_runner_cfg, clip=bank)
+```
+
 ### Requirements
 
 ```bash
