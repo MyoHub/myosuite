@@ -164,7 +164,7 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
             reduce="last",
         )
     }
-    # CPU reset_type "init": keyframe 2 (qpos and qvel).
+    # CPU reset_type "init": keyframe 2 (qpos and qvel), on the joint couplings.
     events = {
         "reset_scene_to_default": EventTermCfg(
             func=mdp.reset_to_cpu_state,
@@ -173,6 +173,7 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
                 "asset_cfg": robot,
                 "qpos": info.key_qpos[2],
                 "qvel": info.key_qvel[2],
+                "couplings": info.couplings,
             },
         ),
     }

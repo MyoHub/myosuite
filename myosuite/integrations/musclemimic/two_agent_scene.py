@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import mujoco
 import numpy as np
 
+from myosuite.core.model_names import resolve_model_names
 from myosuite.physics import quat_math
 
 logger = logging.getLogger(__name__)
@@ -245,6 +246,9 @@ def build_agent_shadow_map(
 ) -> AgentShadowMap:
     """Map every shadow joint onto the same joint name under *prefix* in *fbvs_model*.
 
+    Names the two full bodies spell differently (myo_sim ``elbow_flexion_r``,
+    musclemimic_models ``elbow_flex_r``) go through ``FULLBODY_NAME_ALIASES``.
+
     Args:
         fbvs_model: Combined two-agent model (names like ``a0_root``).
         shadow_model: Single-agent MuscleMimic model (names like ``root``).
@@ -256,13 +260,22 @@ def build_agent_shadow_map(
     """
     qpos_pairs: list[tuple[int, int, int]] = []
     qvel_pairs: list[tuple[int, int, int]] = []
+    shadow_names = []
     for sj in range(shadow_model.njnt):
         sname = mujoco.mj_id2name(shadow_model, mujoco.mjtObj.mjOBJ_JOINT, sj)
         if sname is None:
             raise RuntimeError(f"shadow joint {sj} has no name")
-        fj = mujoco.mj_name2id(fbvs_model, mujoco.mjtObj.mjOBJ_JOINT, prefix + sname)
+        shadow_names.append(sname)
+    fbvs_joints = (
+        mujoco.mj_id2name(fbvs_model, mujoco.mjtObj.mjOBJ_JOINT, j) or ""
+        for j in range(fbvs_model.njnt)
+    )
+    agent_names = {n[len(prefix) :] for n in fbvs_joints if n.startswith(prefix)}
+    fbvs_names = resolve_model_names(shadow_names, agent_names, field_name="shadow")
+    for sj, fname in enumerate(fbvs_names):
+        fj = mujoco.mj_name2id(fbvs_model, mujoco.mjtObj.mjOBJ_JOINT, prefix + fname)
         if fj < 0:
-            raise RuntimeError(f"missing FBVs joint {prefix}{sname}")
+            raise RuntimeError(f"missing FBVs joint {prefix}{fname}")
         jt = int(shadow_model.jnt_type[sj])
         qpos_pairs.append(
             (

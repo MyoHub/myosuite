@@ -3190,7 +3190,7 @@ requires-dist = [
     { name = "ml-collections", marker = "python_full_version >= '3.10' and sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=0.1.1" },
     { name = "mujoco", specifier = "<4" },
     { name = "mujoco", marker = "extra == 'mjx'", specifier = ">=3.7" },
-    { name = "mujoco-mjx", marker = "extra == 'mjx'", specifier = ">=3.7" },
+    { name = "mujoco-mjx", marker = "extra == 'mjx'", specifier = ">=3.7,<4" },
     { name = "mujoco-warp", marker = "python_full_version >= '3.10' and python_full_version < '3.14' and extra == 'mjlab'", specifier = ">=3.7.0,<4" },
     { name = "musclemimic-models", marker = "extra == 'musclemimic'", specifier = "==1.0.6" },
     { name = "myo-sim", specifier = "==0.2.4" },

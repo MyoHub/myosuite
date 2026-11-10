@@ -27,6 +27,8 @@ from myosuite.integrations.musclemimic.fullbody_local_policy import (
     running_mean_std_update,
 )
 
+pytestmark = pytest.mark.tier2
+
 
 def _toy_params(obs_dim: int, hidden_dim: int, action_dim: int) -> dict[str, object]:
     z_h = np.zeros((hidden_dim,), dtype=np.float32)

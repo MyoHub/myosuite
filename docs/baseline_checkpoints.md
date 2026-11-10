@@ -175,6 +175,32 @@ re-evaluated after this change.
 
 <sub>
 
+**Coupled knee joints at reset (leg tasks).** `myoLegWalk-v0`, the rough, hilly and stairs walks,
+`myoLegStandRandom-v0` and the directional walks now start, on both backends, with the tibia and patella joints of
+each knee on their joint couplings. Walk keyframe 2 set the bent knee's patella rotation 0.74 rad off its coupling
+(MuJoCo pulled it back within about 0.2 s); the stand reset noise moved the coupled joints up to 0.18 rad, and the
+directional keyframe is 3.5e-5 off. The observation, action, control step and reward definitions are unchanged, so
+the env contract hash in `manifest.json` does not warn and the checkpoints still load, but they were trained with the
+old start. Re-evaluated on the mjlab twin (CPU device, 64 mean-action episodes, `--seed 0`), old start -> new start:
+
+| Env | Success | Mean episode length |
+| --- | --- | --- |
+| `myoLegWalk-v0` | 100% -> 0% | 1000 -> 233 |
+| `myoLegRoughTerrainWalk-v0` | 100% -> 100% | 1000 -> 1000 |
+| `myoLegHillyTerrainWalk-v0` | 0% -> 93.8% | 295 -> 957 |
+| `myoLegStandRandom-v0` | 35.9% -> 32.8% | 136.9 -> 136.9 |
+
+The walk policies were trained from one deterministic start. The walk policy depends on that start, not only on its
+exact state: with N(0, σ) noise on every joint (CPU env, 24 starts each) it solves 16, 13 and 4 of 24 runs from the old
+keyframe at σ = 0.005, 0.01 and 0.02 rad, and 0, 4 and 3 of 24 from the new start (without noise it falls at step 232
+there). The rough-terrain policy, from the same keyframe, is unaffected, and the hilly policy goes the other way on this
+seed (its 15.3% above is a mean over seeds 1-3). Retrain or fine-tune the `myoLegWalk-v0` checkpoint before using it
+with this version. The directional walks, whose start moved by 3.5e-5, were not re-evaluated.
+
+</sub>
+
+<sub>
+
 **Bounded action std in the PPO defaults (#566).** The mjlab PPO configs of the muscle tasks and of `motorFinger*`
 (whose actions are clipped before the linear map to `ctrlrange`) now keep the policy's action std in [0.05, 1.0]. The
 std parameter is projected onto that range before every forward pass and stays trainable at the bounds. MuscleMimic
@@ -202,7 +228,7 @@ tutorial 5.5 were measured with the earlier defaults.
 
 <sub>
 
-**`myoChallengeChaseTagFBVs-v0`** (the scored 1v1 game, CPU only). `onnx/chasetag_fbvs_baseline.onnx` in the `myohub/myosuite-3-baselines` Hugging Face repo at revision `ed40fb4f0a53` (`myosuite.core.hf_io.download_baseline_file`) plays one player, 546 -> 354, in either role. It is a starting point: it reaches and tags a player that does nothing, but it often falls before the 10 s limit: at about 6.7 s as a chaser against itself. Measured with action noise 0.02 and 12 episodes per role, on myo_sim 0.2.4 and MuJoCo 3.11; myo_sim 0.2.3 and MuJoCo 3.17 gave the same tags and falls:
+**`myoChallengeChaseTagFBVs-v0`** (the scored 1v1 game, CPU only). `onnx/chasetag_fbvs_baseline.onnx` in the `myohub/myosuite-3-baselines` Hugging Face repo (`myosuite.core.hf_io.download_baseline_file`) plays one player, 546 -> 354, in either role. It is a starting point: it reaches and tags a player that does nothing, but it often falls before the 10 s limit: at about 6.7 s as a chaser against itself. Measured with action noise 0.02 and 12 episodes per role, on myo_sim 0.2.4 and MuJoCo 3.11; myo_sim 0.2.3 and MuJoCo 3.17 gave the same tags and falls:
 
 | Match | Tags | Chaser falls | Mean length | Fell at (median) |
 |---|---:|---:|---:|---|

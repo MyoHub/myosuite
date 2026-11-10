@@ -9,7 +9,9 @@ myosuite/          # core package (see below)
 docs/source/       # Sphinx documentation (quickstarts, environment reference, API)
 docs/wiki/         # this developer wiki
 scripts/           # training, evaluation and rendering CLIs (train_mjlab, train_sb3, eval_mjlab_policy, render_blender), parity baselines
+training/          # method projects with their own pyproject.toml, outside the package (chasetag_teacher, dynsyn); see training-guidelines.md
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
+training/          # self-contained training projects outside the package, one per method (chasetag_teacher/, supermimic/)
 .github/           # CI and release workflows
 ```
 
@@ -25,7 +27,7 @@ tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
 | `envs/myo/tasks/` | Task definitions organized by collection (`basic/`, `challenge/`, `mimic/`) |
 | `envs/myo/backends/` | `mjx/` (JAX) and `mjlab/` (Warp) execution backends |
 | `envs/myo/myoedits/` | Model-editing helpers and the registered edit variants |
-| `utils/` | Generic helpers — dict, xml, path, tensor, onnx export, plotting. No domain math. |
+| `utils/` | Generic helpers — dict, xml, path, tensor, onnx export, plotting. No domain math. Checkpoint playback: `rslrl_policy.py`, `checkpoint_manifest.py`, `action_map.py` (action maps such as DynSyn: policy actions -> per-muscle actions, CPU wrapper, checkpoint reading) |
 | `viz/` | Rendering and visualization; `blender_render.py` (USD export and Blender studio scene), `muscle_tubes.py` (volumetric muscle geometry) and `skin.py` (`.skn` body skin; bundled skin in `assets/`) |
 | `integrations/` | Third-party integrations (musclemimic) |
 | `logger/` | Rollout logging / grouped datasets |
@@ -42,12 +44,13 @@ envs/myo/tasks/          # CPU implementations (MyoGymnasiumEnv)
 │   ├── arm/ hand/ leg/ torso/ full_body/   # MyoGymnasiumEnv subclasses: pose.py, reach.py, ...
 │   └── specs/, leg/specs/  # TaskConfig data-driven references (elbow pose, leg directional → cpu + mjx)
 ├── challenge/              # chasetag, relocate, reorient, soccer, tabletennis, ...
-└── mimic/                  # MuscleMimic CPU tasks
+└── mimic/                  # MuscleMimic CPU tasks; tracking/ = myoMimic-v0 (task cfg, models, motion lib, metrics)
 
 envs/myo/backends/       # GPU implementations (same env_id as the CPU task)
 ├── mjlab/                # MuJoCo-Warp ManagerBasedRlEnvCfg (supported)
 │   ├── tasks/            # twins of the CPU envs, built from the CPU registration:
-│   │                     #   cpu_reference.py, registration.py, pose/ reach/ leg/ mdp/ (terms, MyoAction)
+│   │                     #   cpu_reference.py, registration.py, pose/ reach/ leg/ waypoint/
+│   │                     #   mimic_tracking/ (myoMimic-v0), mdp/ (terms, MyoAction)
 │   ├── register_mjlab_*.py   # special-purpose tasks (Table Tennis, ChaseTag, Mimic)
 │   └── configs/, mjlab_task_builder.py   # shared config and TaskConfig builders
 └── mjx/                  # JAX/brax env classes (experimental; not guaranteed long-term)
@@ -69,10 +72,11 @@ guaranteed long-term.)
 | Add/change model composition | `myosuite/core/model_builder.py`, `model_recipes.py` |
 | Add/change a term function | `myosuite/terms/base_*.py` |
 | Add/change biomechanics math | `myosuite/physics/` |
-| Analyse a motion (IK, ID, static optimization) | `myosuite/biomechanics/` |
+| Analyse a motion (IK, ID, static optimization), retarget motion data (SMPL+H), muscle effort of rollouts | `myosuite/biomechanics/` |
 | Add a CPU env (MyoGymnasiumEnv) | `envs/myo/tasks/basic/<effector>/` or `challenge/` |
 | Add the matched mjlab GPU task | `envs/myo/backends/mjlab/tasks/<family>/` (twins of CPU envs), `register_mjlab_*.py` (special tasks) |
 | Muscle noise, fatigue, reafferentation, sarcopenia | `envs/wrappers.py`, `envs/muscle_stages.py`; on mjlab `backends/mjlab/tasks/mdp/actions.py` |
+| Play a checkpoint trained through an action map (DynSyn) | `utils/action_map.py`; on mjlab `backends/mjlab/tasks/mdp/action_map.py`; training in `training/dynsyn/` |
 | `make_env` / `EnvConfig` (one entry point for both backends) | `core/registry.py`, `core/config.py`; `utils/feature_cli.py` for the `--feature` flags |
 | Data-driven `TaskConfig` route (experimental) | `envs/myo/tasks/basic/specs/` + [adding-a-new-task.md](adding-a-new-task.md) |
 | Change the CPU step/reset loop | `myosuite/envs/gymnasium_env.py` |
