@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -21,9 +22,9 @@ class TaskEnvCfg:
     points, and resets driven by the runner (``auto_reset`` off: it records each terminal state first).
     """
 
-    motion_file: str = "kit_all"
-    """A clip, a directory of clips, a ``.txt`` clip list or a KIT set name (``"kit_all"``: all 1080 clips, for a
-    policy to release or reuse; ``"kit_train"`` / ``"kit_test"``: MuscleMimic's split, for benchmarks)."""
+    motion_file: str = "kit_train"
+    """A clip, a directory of clips, a ``.txt`` clip list or ``"kit_train"`` (myoMimic-v0's default: MuscleMimic's 972
+    KIT training motions)."""
     motion_root: str = ""
     """The directory a list's paths start from (the dataset root of the packaged KIT lists)."""
     num_envs: int = 1024
@@ -114,3 +115,14 @@ def settings_cfg(settings: dict, **overrides: Any) -> TaskEnvCfg:
     if "stride" in settings:
         cfg.goal_stride = settings["stride"]
     return cfg
+
+
+HELD_OUT = Path(__file__).parent / "data" / "kit_test.txt"
+"""MuscleMimic's 108 held-out KIT motions: the benchmark's evaluation list (paths relative to the KIT clip root)."""
+
+
+def held_out_clips(model: str = "myofullbody") -> tuple[str, str]:
+    """``(list, root)`` of the benchmark's held-out clips, for ``evaluate.build`` and ``evaluate_run``."""
+    from myosuite.envs.myo.tasks.mimic.tracking import kit_root  # noqa: PLC0415
+
+    return str(HELD_OUT), str(kit_root(model))

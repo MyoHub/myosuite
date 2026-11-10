@@ -67,10 +67,10 @@ observations, return-based resets with the reset-statistics fix and 30 % of the 
 ## Train, evaluate, refine, fine-tune
 
 ```bash
-# the fast recipe on all 1080 KIT clips (fast_runner_cfg + TaskEnvCfg defaults); any --agent.* / --env.* field can be overridden
-python training/supermimic/scripts/train.py --agent.max-hours 0.5 --agent.seed 0
-# the benchmark: train on MuscleMimic's 972 training clips, evaluate on the 108 held-out ones (evaluate.py's default)
-python training/supermimic/scripts/train.py --env.motion-file kit_train --agent.max-hours 0.5 --agent.seed 1
+# the benchmark: the fast recipe (fast_runner_cfg + TaskEnvCfg defaults) on myoMimic-v0's default clips, MuscleMimic's
+# 972 KIT training motions; evaluate.py scores on the 108 held-out ones (supermimic/data/kit_test.txt) by default.
+# Any --agent.* / --env.* field can be overridden.
+python training/supermimic/scripts/train.py --agent.max-hours 0.5 --agent.seed 1
 # held-out evaluation of every checkpoint of a run (eval.csv: normalized return, failed clips, MPJPE, joint errors)
 python training/supermimic/scripts/evaluate.py --run-dir logs/rsl_rl/supermimic_fullbody/<run> --batch 8
 # one checkpoint, with test-time action refinement through the world model (5 gradient steps per control step)
@@ -79,7 +79,7 @@ python training/supermimic/scripts/evaluate.py --checkpoint <run>/model_004000.p
 python training/supermimic/scripts/finetune.py --checkpoint <run>/model_008000.pt --motion-file my_clips.txt \
     --iterations 2000 --out logs/ft_my_clips
 # seconds per iteration, piece by piece
-python training/supermimic/scripts/bench.py --motion-file kit_train
+python training/supermimic/scripts/bench.py
 ```
 
 The recipe: CUDA-graphed world-model and policy updates and graphed collection on a second stream, no host syncs,
