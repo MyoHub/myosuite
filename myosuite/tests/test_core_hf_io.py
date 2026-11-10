@@ -41,7 +41,7 @@ def test_default_cache_root_path() -> None:
     """Default cache root should point to MuscleMimic AMASS cache."""
     root = default_musclemimic_cache_root()
     assert isinstance(root, pathlib.Path)
-    assert str(root).endswith("/.musclemimic/caches/AMASS")
+    assert root == pathlib.Path.home() / ".musclemimic" / "caches" / "AMASS"
 
 
 def test_default_cache_root_prefers_musclemimic_env_var(
@@ -403,6 +403,32 @@ def test_download_baseline_file_falls_back_when_the_tag_lacks_the_file(
     assert asked[0] == ("onnx/baseline.onnx", "v3.0")
     assert ("onnx/baseline.onnx", "main") in asked
     assert "not in tag 'v3.0', using the latest" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("missing", ["revision", "file"])
+def test_pinned_baseline_never_falls_back_to_main(
+    monkeypatch: pytest.MonkeyPatch, missing: str
+) -> None:
+    """A missing pinned artifact must not silently select another policy."""
+    from huggingface_hub.errors import EntryNotFoundError
+
+    pin = "7ab693c740a9dd5a812ea5c1d6dcc52e2baa3e9b"
+    asked = []
+
+    def fake_download(repo_id: str, filename: str, *, revision: str, **kwargs) -> str:
+        asked.append(revision)
+        if missing == "revision":
+            raise _missing_tag_error()
+        raise EntryNotFoundError("file absent at the pinned revision")
+
+    monkeypatch.setattr("huggingface_hub.hf_hub_download", fake_download)
+    assert (
+        download_baseline_file(
+            "directional/walker_myofullbody.pt", revision=pin, fallback_to_main=False
+        )
+        is None
+    )
+    assert asked == [pin]
 
 
 def test_download_baseline_file_prefers_the_local_folder(
