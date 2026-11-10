@@ -24,7 +24,7 @@ from myosuite import make_env
 from myosuite.core.config import EnvConfig
 from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
 from myosuite.envs.myo.tasks.mimic.tracking.models import root_offset
-from supermimic.env import settings_cfg, task_overrides
+from supermimic.env import settings_cfg, task_overrides, held_out_clips
 
 from chasetag_supermimic.reference import ClipLibrary, SteeredReference
 from chasetag_supermimic.tracker import CpuTracker, check_same_body, load_policy
@@ -39,7 +39,12 @@ def main() -> None:
     a = ap.parse_args()
     torch.set_num_threads(4)
     _, settings = load_policy(a.checkpoint)
-    cfg = settings_cfg(settings, motion_file="kit_test", sampling_mode="start")
+    held_out, root = (
+        held_out_clips()
+    )  # the benchmark's held-out clips (training/supermimic)
+    cfg = settings_cfg(
+        settings, motion_file=held_out, motion_root=root, sampling_mode="start"
+    )
     env = make_env(EnvConfig(MIMIC_ENV_ID, ctrl_dt=cfg.ctrl_dt,
                              task_kwargs={"preset": "supermimic", "overrides": task_overrides(cfg)}))  # fmt: skip
     u = env.unwrapped
