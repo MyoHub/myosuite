@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -35,6 +36,11 @@ class wasted_torque(ManagerTermBase):  # noqa: N801  (mjlab term style)
     """
 
     def __init__(self, cfg: Any, env: ManagerBasedRlEnv) -> None:
+        weight = float(getattr(cfg, "weight", 0.0))
+        if not math.isfinite(weight) or weight > 0:
+            raise ValueError(
+                "Wasted torque reward weight must be finite and non-positive."
+            )
         super().__init__(env)
         name: str = cfg.params["entity_name"]
         cost: WastedTorqueCfg = cfg.params.get("cfg") or WastedTorqueCfg()

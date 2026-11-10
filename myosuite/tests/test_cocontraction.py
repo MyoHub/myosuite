@@ -121,6 +121,13 @@ def test_a_single_agonist_wastes_nothing() -> None:
 
 
 @pytest.mark.tier1
+@pytest.mark.parametrize("weight", [-0.005, float("nan"), float("inf"), -float("inf")])
+def test_penalty_magnitude_must_be_nonnegative_and_finite(weight: float) -> None:
+    with pytest.raises(ValueError, match="finite and nonnegative"):
+        WastedTorqueCfg(weight=weight)
+
+
+@pytest.mark.tier1
 def test_dofs_outside_the_set_are_ignored() -> None:
     """Muscles that do not cross the scored DOFs are left out of the index."""
     model, data = _antagonist_state((1.0, 1.0, 1.0))
@@ -351,6 +358,69 @@ def test_directional_weight_zero_keeps_the_reward() -> None:
 
 _ENTITY = "mimic_fullbody_robot"
 _COST = WastedTorqueCfg(weight=0.005)
+
+
+@pytest.mark.tier2
+@pytest.mark.parametrize("ctrl_dt", [0.01, 0.02])
+def test_directional_sar_penalty_is_a_reward_rate(ctrl_dt: float) -> None:
+    """Equal physical durations earn equal penalties at either control rate."""
+    require_mjlab()
+    torch = pytest.importorskip("torch")
+    from mjlab.managers.reward_manager import RewardManager
+
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    cfg = mimic._make_directional_sar_env_cfg(
+        _task_id="sar-test",
+        entity_name="robot",
+        spec_fn=mujoco.MjSpec,
+        muscle_actuators=("m",),
+        tendon_targets=("t",),
+        sar_transform=None,
+        sim_dt=0.002,
+        ctrl_dt=ctrl_dt,
+        max_episode_steps=100,
+        wasted_torque=_COST,
+    )
+    term = cfg.rewards["wasted_torque"]
+    assert cfg.scale_rewards_by_dt
+    assert "wasted_torque" in cfg.metrics
+    env = SimpleNamespace(num_envs=2, device="cpu")
+    term.func = lambda _env, **_params: torch.full((2,), 12.0)
+    manager = RewardManager({"wasted_torque": term}, env)
+    torch.testing.assert_close(
+        manager.compute(ctrl_dt), torch.full((2,), -0.005 * 12 * ctrl_dt)
+    )
+    total = torch.zeros(2)
+    for _ in range(round(1.0 / ctrl_dt)):
+        total += manager.compute(ctrl_dt)
+    torch.testing.assert_close(
+        total, torch.full((2,), -0.005 * 12), atol=1e-7, rtol=1e-5
+    )
+    mimic_term, _ = mimic._wasted_torque_terms("robot", ctrl_dt, _COST)
+    mimic_term.func = term.func
+    mimic_manager = RewardManager({"wasted_torque": mimic_term}, env)
+    torch.testing.assert_close(
+        mimic_manager.compute(ctrl_dt), torch.full((2,), -0.005 * 12)
+    )
+
+
+@pytest.mark.tier2
+@pytest.mark.parametrize("weight", [0.005, float("nan"), float("inf"), -float("inf")])
+def test_mjlab_rejects_a_reward_that_pays_for_cocontraction(weight: float) -> None:
+    """A CLI-overridden RewardTermCfg must fail while the manager is configured."""
+    require_mjlab()
+    from mjlab.managers.reward_manager import RewardManager, RewardTermCfg
+
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp.rewards import wasted_torque
+
+    cfg = RewardTermCfg(
+        func=wasted_torque,
+        weight=weight,
+        params={"entity_name": "robot", "cfg": _COST},
+    )
+    with pytest.raises(ValueError, match="finite and non-positive"):
+        RewardManager({"wasted_torque": cfg}, SimpleNamespace(num_envs=2, device="cpu"))
 
 
 @functools.cache

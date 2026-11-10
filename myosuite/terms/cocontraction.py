@@ -21,6 +21,7 @@ term gathers ``actuator_moment[rowadr[m] + offset]`` on either backend.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
@@ -61,8 +62,10 @@ class WastedTorqueCfg:
     """Opt-in co-contraction cost.
 
     Attributes:
-        weight: Penalty per N·m/kg, subtracted from the reward every control step. ``0`` logs
-            the metric without changing the reward.
+        weight: Nonnegative penalty magnitude per N·m/kg. CPU and Mimic subtract
+            ``weight * metric`` per control step. Directional SAR treats it as a
+            reward rate and subtracts ``weight * metric * ctrl_dt`` per step.
+            ``0`` logs the metric without changing the reward.
         joints: Independent hinge or slide joints whose DOFs are scored.
         body_mass: Normaliser in kg; ``None`` uses the model's total mass.
     """
@@ -70,6 +73,12 @@ class WastedTorqueCfg:
     weight: float = 0.0
     joints: tuple[str, ...] = FULLBODY_LEG_JOINTS
     body_mass: float | None = None
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.weight) or self.weight < 0:
+            raise ValueError(
+                "Wasted torque penalty weight must be finite and nonnegative."
+            )
 
 
 @dataclass(frozen=True)

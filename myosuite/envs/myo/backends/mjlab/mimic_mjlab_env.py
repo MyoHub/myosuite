@@ -1523,13 +1523,15 @@ def mimic_viewer_cfg(
 
 
 def _wasted_torque_terms(
-    entity_name: str, ctrl_dt: float, cost: WastedTorqueCfg
+    entity_name: str, ctrl_dt: float, cost: WastedTorqueCfg, *, per_second: bool = False
 ) -> tuple[Any, Any]:
     """Reward and metric terms of the co-contraction cost (:mod:`myosuite.terms.cocontraction`).
 
-    The reward weight is ``-cost.weight / ctrl_dt``: mjlab scales rewards by ``ctrl_dt``, so the
-    term subtracts ``cost.weight`` per N·m/kg each control step, as the CPU envs do. With
-    ``cost.weight == 0`` mjlab skips the reward term; the metric is logged either way.
+    By default the reward weight is ``-cost.weight / ctrl_dt``: mjlab scales rewards
+    by ``ctrl_dt``, preserving the CPU/Mimic penalty per control step. With
+    ``per_second=True`` (directional SAR), the weight is ``-cost.weight``, a reward
+    rate per N·m/kg, and the step penalty is ``cost.weight * metric * ctrl_dt``.
+    With weight 0 the reward is skipped; the metric is logged either way.
     """
     from mjlab.managers.metrics_manager import MetricsTermCfg
     from mjlab.managers.reward_manager import RewardTermCfg
@@ -1538,7 +1540,9 @@ def _wasted_torque_terms(
 
     params = {"entity_name": entity_name, "cfg": cost}
     reward = RewardTermCfg(
-        func=wasted_torque, weight=-float(cost.weight) / ctrl_dt, params=params
+        func=wasted_torque,
+        weight=-float(cost.weight) / (1.0 if per_second else ctrl_dt),
+        params=params,
     )
     return reward, MetricsTermCfg(func=wasted_torque, params=dict(params))
 
@@ -2580,8 +2584,9 @@ def _make_directional_sar_env_cfg(
         mj_model: Optional compiled :class:`mujoco.MjModel` (e.g. from ``spec.compile()``)
             with keyframes, used to seed :class:`~mjlab.entity.EntityCfg.InitialStateCfg`.
             If ``None``, mjlab's default initial state is used.
-        wasted_torque: Optional co-contraction cost; adds the ``wasted_torque`` reward term,
-            its metric and ``sync_forward`` (the term reads actuator forces and moments).
+        wasted_torque: Optional co-contraction cost, in reward per second per N·m/kg.
+            Adds its dt-scaled reward, metric and ``sync_forward`` (the term reads
+            actuator forces and moments).
 
     Returns:
         A fully configured :class:`~mjlab.envs.ManagerBasedRlEnvCfg`.
@@ -2675,7 +2680,7 @@ def _make_directional_sar_env_cfg(
             **terminations,
         }
         rewards["wasted_torque"], metrics["wasted_torque"] = _wasted_torque_terms(
-            entity_name, ctrl_dt, wasted_torque
+            entity_name, ctrl_dt, wasted_torque, per_second=True
         )
 
     return ManagerBasedRlEnvCfg(
@@ -2718,7 +2723,8 @@ def register_directional_walk_sar(
         target_vel: Target forward walking speed in m/s (default 1.2).
         alive_bonus: Weight for the alive reward term (default 0.2).
         act_reg_weight: Weight for the activation L2 penalty (default 0.001).
-        wasted_torque: Optional co-contraction cost (off by default).
+        wasted_torque: Optional co-contraction cost, in reward per second per N·m/kg
+            (off by default); each step subtracts ``weight * metric * ctrl_dt``.
 
     Raises:
         FileNotFoundError: If *sar_dir* does not exist.
