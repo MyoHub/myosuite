@@ -10,6 +10,7 @@ docs/source/       # Sphinx documentation (quickstarts, environment reference, A
 docs/wiki/         # this developer wiki
 scripts/           # training, evaluation and rendering CLIs (train_mjlab, train_sb3, eval_mjlab_policy, render_blender), parity baselines
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
+training/          # self-contained training projects outside the package, one per method (chasetag_teacher/, supermimic/)
 .github/           # CI and release workflows
 ```
 
@@ -69,7 +70,7 @@ guaranteed long-term.)
 | Add/change model composition | `myosuite/core/model_builder.py`, `model_recipes.py` |
 | Add/change a term function | `myosuite/terms/base_*.py` |
 | Add/change biomechanics math | `myosuite/physics/` |
-| Biomechanics tools for motion data (retargeting, SMPL+H) | `myosuite/biomechanics/` |
+| Biomechanics tools for motion data and rollouts (retargeting, SMPL+H, muscle effort) | `myosuite/biomechanics/` |
 | Add a CPU env (MyoGymnasiumEnv) | `envs/myo/tasks/basic/<effector>/` or `challenge/` |
 | Add the matched mjlab GPU task | `envs/myo/backends/mjlab/tasks/<family>/` (twins of CPU envs), `register_mjlab_*.py` (special tasks) |
 | Muscle noise, fatigue, reafferentation, sarcopenia | `envs/wrappers.py`, `envs/muscle_stages.py`; on mjlab `backends/mjlab/tasks/mdp/actions.py` |
