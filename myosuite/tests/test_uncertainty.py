@@ -14,13 +14,13 @@ import numpy as np
 import pytest
 
 from myosuite import make_env
-from myosuite.methods.biomech.inverse_dynamics import clip_kinematics
-from myosuite.methods.biomech import uncertainty
-from myosuite.methods.biomech.static_optimization import (
+from myosuite.biomechanics.inverse_dynamics import clip_kinematics
+from myosuite.biomechanics import uncertainty
+from myosuite.biomechanics.static_optimization import (
     StaticOptimizer,
     static_optimization,
 )
-from myosuite.methods.biomech.uncertainty import (
+from myosuite.biomechanics.uncertainty import (
     UncertaintyConfig,
     perturbed_model,
     static_optimization_bands,

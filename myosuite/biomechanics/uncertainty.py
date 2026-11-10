@@ -34,8 +34,8 @@ import mujoco
 import numpy as np
 
 from myosuite.core.muscle_conditions import _peak_force
-from myosuite.methods.biomech.inverse_dynamics import clip_kinematics
-from myosuite.methods.biomech.static_optimization import (
+from myosuite.biomechanics.inverse_dynamics import clip_kinematics
+from myosuite.biomechanics.static_optimization import (
     StaticOptimizationConfig,
     StaticOptimizationResult,
     StaticOptimizer,
@@ -144,8 +144,8 @@ def static_optimization_bands(
     """Quantile bands of a clip's static optimization over sampled uncertainty.
 
     Each sample perturbs the model (:func:`perturbed_model`) and the hinge
-    angles, then runs :func:`~myosuite.methods.biomech.inverse_dynamics.clip_kinematics`
-    and :func:`~myosuite.methods.biomech.static_optimization.static_optimization`. The
+    angles, then runs :func:`~myosuite.biomechanics.inverse_dynamics.clip_kinematics`
+    and :func:`~myosuite.biomechanics.static_optimization.static_optimization`. The
     cost is ``samples`` times that of one analysis.
 
     Args:

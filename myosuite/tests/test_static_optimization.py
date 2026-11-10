@@ -18,7 +18,7 @@ from myosuite.core.model_builder import build_from_recipe
 from myosuite.core.muscle_conditions import _peak_force
 from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
-from myosuite.methods.biomech.static_optimization import (
+from myosuite.biomechanics.static_optimization import (
     StaticOptimizationConfig,
     StaticOptimizer,
     static_optimization,

@@ -216,7 +216,7 @@ def opensim_motion_to_qpos(
         signs: Per coordinate, the sign that turns OpenSim's into the model's
             convention.
         project_couplings: Put coupled joints on their polynomials, as
-            :func:`~myosuite.methods.biomech.inverse_dynamics.clip_kinematics` does.
+            :func:`~myosuite.biomechanics.inverse_dynamics.clip_kinematics` does.
 
     Returns:
         Positions per frame, the frame times and period, and which labels were

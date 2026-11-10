@@ -37,8 +37,8 @@ See [docs/wiki/mjlab-design-guide.md](mjlab-design-guide.md) for the full patter
 | Body/site/joint ID | `mujoco.mj_name2id` | Hardcoded integer indices |
 | Jacobian | `mujoco.mj_jacBody`, `mj_jacSite` | Manual Jacobian computation |
 | Coupled joints (`mjEQ_JOINT`) on their polynomials | `myosuite.physics.joint_coupling.project_joint_couplings` (NumPy or Torch; CPU envs: `MyoGymnasiumEnv._project_joint_couplings`) | Hand-rolled `eq_data` polynomial evaluation |
-| Muscle activations for a motion (static optimization) | `myosuite.methods.biomech.static_optimization.StaticOptimizer` | Optimizer loops copied from tutorial 3.3 |
-| OpenSim `.mot` / `.sto` coordinates (free root included) as model `qpos` | `myosuite.methods.biomech.opensim_motion.opensim_motion_to_qpos` | Hand-written readers and pelvis mappings in tutorials |
+| Muscle activations for a motion (static optimization) | `myosuite.biomechanics.static_optimization.StaticOptimizer` | Optimizer loops copied from tutorial 3.3 |
+| OpenSim `.mot` / `.sto` coordinates (free root included) as model `qpos` | `myosuite.biomechanics.opensim_motion.opensim_motion_to_qpos` | Hand-written readers and pelvis mappings in tutorials |
 
 **Unified dispatcher (preferred for new code):**
 

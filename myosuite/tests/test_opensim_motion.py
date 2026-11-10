@@ -15,7 +15,7 @@ import pytest
 from scipy.spatial.transform import Rotation
 
 from myosuite import make_env
-from myosuite.methods.biomech.opensim_motion import (
+from myosuite.biomechanics.opensim_motion import (
     GROUND_Y_UP,
     opensim_motion_to_qpos,
     read_opensim_motion,

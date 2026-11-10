@@ -167,4 +167,4 @@ Reinforcement learning and numerics
 * Timmer, J., Koenig, M. (1995). On generating power law noise. *Astronomy & Astrophysics* 300,
   707-710. (colored exploration noise)
 * Buss, S.R. (2004). Introduction to inverse kinematics with Jacobian transpose, pseudoinverse and
-  damped least squares methods. Technical note (``myosuite.methods.biomech.inverse_kinematics``).
+  damped least squares methods. Technical note (``myosuite.biomechanics.inverse_kinematics``).
