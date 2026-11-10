@@ -22,31 +22,10 @@ import pytest
 
 from myosuite.utils import gym
 from myosuite import make_env
+from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 
 pytestmark = pytest.mark.tier1
-
-
-def _skip_if_hf_gated(env_id: str, exc: Exception) -> None:
-    """Skip (rather than fail) an env that needs a gated HuggingFace dataset.
-
-    Some envs (e.g. ChaseTagFBVs, FullBodyDirectional) download a reference
-    gait clip from a gated HF dataset (amathislab/musclemimic-retargeted) on
-    first reset/step. CI has no HF_TOKEN for an account that has accepted the
-    dataset's license, so this is an access-control limitation, not a code
-    bug -- treat it the same as an unavailable optional dependency (see
-    module docstring).
-    """
-    from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData
-
-    if isinstance(exc, MissingMotionData):
-        pytest.skip(f"{env_id}: motion clips unavailable ({exc})")
-    try:
-        from huggingface_hub.errors import HfHubHTTPError
-    except ImportError:
-        return
-    if isinstance(exc, HfHubHTTPError):
-        pytest.skip(f"{env_id}: gated HF dataset unavailable ({exc})")
 
 
 def _get_myo_env_ids() -> list[str]:
@@ -99,7 +78,7 @@ def test_env_smoke(env_id: str) -> None:
 
         assert isinstance(info, dict), f"{env_id}: step() info must be a dict"
     except Exception as exc:
-        _skip_if_hf_gated(env_id, exc)
+        skip_if_hf_gated(env_id, exc)
         raise
     finally:
         env.close()

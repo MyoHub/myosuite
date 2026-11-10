@@ -21,6 +21,8 @@ from myosuite.integrations.musclemimic.mjlab_policy_runner import (  # noqa: E40
     OnnxCheckpointingMjlabRunner,
 )
 
+pytestmark = pytest.mark.tier2
+
 
 class _MlpActor(torch.nn.Module):
     """One 1D group, like the RSL-RL MLP model."""

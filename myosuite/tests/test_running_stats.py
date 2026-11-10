@@ -7,8 +7,11 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from myosuite.physics.running_stats import RunningMeanStd, normalize, update
+
+pytestmark = pytest.mark.tier2
 
 RNG = np.random.default_rng(7)
 DIM = 32

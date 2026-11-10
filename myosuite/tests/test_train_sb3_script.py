@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.tier2
+
 pytest.importorskip("stable_baselines3")
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "train_sb3.py"
