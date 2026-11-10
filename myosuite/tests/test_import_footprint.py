@@ -68,6 +68,12 @@ def test_import_myosuite_skips_heavy_modules() -> None:
     assert _loaded_after("import myosuite", heavy) == []
 
 
+def test_import_action_map_skips_torch() -> None:
+    """``myosuite.utils.action_map`` (maps, CPU wrapper) loads neither torch nor mjlab."""
+    heavy = ("torch", "mjlab", "myosuite.utils.rslrl_policy")
+    assert _loaded_after("import myosuite.utils.action_map", heavy) == []
+
+
 @pytest.mark.parametrize(
     "env_id", ["myoChallengeSoccerP1-v0", "myoChallengeChaseTagP1-v0"]
 )
