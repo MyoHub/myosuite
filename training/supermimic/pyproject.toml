@@ -25,3 +25,6 @@ test = ["pytest"]
 
 [tool.setuptools.packages.find]
 include = ["supermimic*"]
+
+[tool.setuptools.package-data]
+supermimic = ["data/*.txt"]

@@ -1,5 +1,5 @@
-# MuscleMimic's KIT_KINESIS split as paths of the retargeted clips,
-# relative to their root (kit_root).
+# MuscleMimic's KIT_KINESIS held-out motions (108 clips): the benchmark's evaluation list, as paths of the
+# retargeted clips relative to their root (kit_root); training uses myoMimic-v0's default list (kit_train).
 KIT/4/WalkInCounterClockwiseCircle04_poses.npz
 KIT/6/WalkInClockwiseCircle07_1_poses.npz
 KIT/314/walking_slow05_poses.npz

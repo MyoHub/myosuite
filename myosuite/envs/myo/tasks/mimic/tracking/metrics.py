@@ -147,7 +147,7 @@ def evaluate(
     Args:
         policy: Deterministic ``obs -> action``.
         env: A ``myoMimic-v0`` CPU env (``make_env``), e.g. with
-            ``overrides={"motion.clips": "kit_test", "episode_length_s": None}``.
+            ``overrides={"motion.clips": "held_out.txt", "episode_length_s": None}``.
         clips: Clip indices (default: all).
 
     Returns:

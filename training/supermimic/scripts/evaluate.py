@@ -26,7 +26,7 @@ import tyro
 @dataclass
 class EvalArgs:
     motion_file: str = ""
-    """Evaluation clips (default ``kit_test``: the 108 held-out KIT clips of MuscleMimic's split)."""
+    """Evaluation clips (default: the benchmark's 108 held-out KIT clips, ``supermimic/data/kit_test.txt``)."""
     motion_root: str = ""
     checkpoint: str = ""
     run_dir: str = ""
@@ -57,7 +57,10 @@ def main(a: EvalArgs) -> None:
     )
     from supermimic.refine import Refiner, run
 
-    motion = a.motion_file or "kit_test"
+    from supermimic.env import held_out_clips
+
+    motion, root = (a.motion_file, a.motion_root) if a.motion_file else held_out_clips()
+    a.motion_root = a.motion_root or root
     if a.run_dir:
         evaluate_run(
             a.run_dir,

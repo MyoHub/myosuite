@@ -1,4 +1,5 @@
-# MuscleMimic's KIT_KINESIS split as paths of the retargeted clips,
+# MuscleMimic's KIT_KINESIS training motions (the clips its released checkpoints were
+# trained on): myoMimic-v0's default clip list, as paths of the retargeted clips,
 # relative to their root (kit_root).
 KIT/12/LeftTurn03_poses.npz
 KIT/359/turn_left05_poses.npz

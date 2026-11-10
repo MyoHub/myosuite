@@ -42,8 +42,8 @@ All notable changes to this project are documented in this file.
 ### Added
 
 * **`myoMimic-v0`: multi-clip full-body motion tracking, on the CPU and on mjlab.** The task tracks the AMASS KIT
-  motions retargeted onto the task model (by default all 1080 KIT clips, `motion.clips="kit_all"`, for a policy to
-  release or reuse; for benchmarks MuscleMimic's KIT split, 972 training / 108 held-out, `"kit_train"` / `"kit_test"`; read from the local retarget cache that `scripts/mimic/retarget_amass.py` fills from an AMASS download,
+  motions retargeted onto the task model (by default MuscleMimic's 972 KIT training motions, `motion.clips="kit_train"`,
+  the clips its released checkpoints were trained on; any clip, directory or `.txt` list works too; read from the local retarget cache that `scripts/mimic/retarget_amass.py` fills from an AMASS download,
   or from `$MYOSUITE_KIT_ROOT`) with myo_sim's
   `myofullbody`. It is defined apart from the body model and the learning method:
   - task: observations from a shared vocabulary (`myosuite.terms.mimic_track`, pure NumPy/torch functions a method can
